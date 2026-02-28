@@ -422,10 +422,9 @@ export default function (pi: ExtensionAPI) {
 							details: { action: "query", abbreviations: [], error: "name required" } as AbbrDetails,
 						};
 					}
-					const exists = abbreviations.has(params.name);
 					const abbr = abbreviations.get(params.name);
 					return {
-						content: [{ type: "text", text: exists ? `Yes: ${abbr!.expansion}` : "No" }],
+						content: [{ type: "text", text: abbr ? `Yes: ${abbr.expansion}` : "No" }],
 						details: { action: "query", abbreviations: Array.from(abbreviations.values()) } as AbbrDetails,
 					};
 				}

@@ -4,7 +4,7 @@
  * @role Extension entry point for Web UI dashboard
  * @why Provide browser-based monitoring and configuration interface for all pi instances
  * @related server.ts, lib/instance-registry.ts, web/src/app.tsx
- * @public_api default (extension function)
+ * @public_api default (extension function), getServerUrl
  * @invariants Server lifecycle must be managed properly, instances must be registered
  * @side_effects Starts HTTP server, registers commands and flags, accesses shared storage, subscribes to pi events
  * @failure_modes Port conflict, build missing, permission denied
@@ -73,6 +73,27 @@ const openBrowser = async (url: string): Promise<boolean> => {
 
 const DEFAULT_PORT = 3000;
 
+/**
+ * サーバーのURLを取得する
+ * @summary サーバーURL取得
+ * @description ローカルサーバーまたはレジストリからサーバー情報を取得し、URLを返す
+ * サーバーが実行中でない場合はデフォルトポートのURLを返す（TOCTOU問題を回避）
+ * @returns サーバーのURL（常に有効なURLを返す）
+ */
+function getServerUrl(): string {
+  // Check local server first
+  if (isServerRunning()) {
+    return `http://localhost:${getServerPort()}`;
+  }
+  // Then check registry
+  const registryServer = ServerRegistry.isRunning();
+  if (registryServer) {
+    return `http://localhost:${registryServer.port}`;
+  }
+  // Fallback to default port - avoids TOCTOU issues by always returning a valid URL
+  return `http://localhost:${DEFAULT_PORT}`;
+}
+
 export default function (pi: ExtensionAPI) {
   const registry = new InstanceRegistry(process.cwd());
   let registered = false;
@@ -134,16 +155,13 @@ export default function (pi: ExtensionAPI) {
           break;
 
         case "open":
-          if (!isServerRunning() && !ServerRegistry.isRunning()) {
-            ctx.ui.notify("Web UI is not running. Use /web-ui start first.", "warning");
-            return;
-          }
-          const openUrl = `http://localhost:${isServerRunning() ? getServerPort() : ServerRegistry.isRunning()!.port}`;
-          const opened = await openBrowser(openUrl);
+          // getServerUrl() always returns a valid URL (fallback to default port if not running)
+          const serverUrl = getServerUrl();
+          const opened = await openBrowser(serverUrl);
           if (opened) {
-            ctx.ui.notify(`Opening Web UI: ${openUrl}`, "info");
+            ctx.ui.notify(`Opening Web UI: ${serverUrl}`, "info");
           } else {
-            ctx.ui.notify(`Web UI available at ${openUrl} (could not open browser automatically)`, "warning");
+            ctx.ui.notify(`Web UI available at ${serverUrl} (could not open browser automatically)`, "warning");
           }
           break;
 

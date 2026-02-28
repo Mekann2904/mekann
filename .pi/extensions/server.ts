@@ -37,6 +37,11 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
+import {
+  getAllUlWorkflowTasks,
+  getUlWorkflowTask,
+  getActiveUlWorkflowTask,
+} from "./web-ui/lib/ul-workflow-reader.js";
 
 const logger = getLogger();
 
@@ -392,6 +397,41 @@ function handleGetStats(): ApiResponse {
 }
 
 // ============================================
+// UL Workflow Task Handlers (Read-only)
+// ============================================
+
+function handleGetUlWorkflowTasks(): ApiResponse {
+	try {
+		const tasks = getAllUlWorkflowTasks();
+		return { success: true, data: tasks, total: tasks.length };
+	} catch (error) {
+		return { success: false, error: `Failed to load UL workflow tasks: ${error}` };
+	}
+}
+
+function handleGetUlWorkflowTask(id: string): ApiResponse {
+	try {
+		const taskId = id.startsWith("ul-") ? id.slice(3) : id;
+		const task = getUlWorkflowTask(taskId);
+		if (!task) {
+			return { success: false, error: `Task not found: ${id}` };
+		}
+		return { success: true, data: task };
+	} catch (error) {
+		return { success: false, error: `Failed to load task: ${error}` };
+	}
+}
+
+function handleGetActiveUlWorkflowTask(): ApiResponse {
+	try {
+		const task = getActiveUlWorkflowTask();
+		return { success: true, data: task };
+	} catch (error) {
+		return { success: false, error: `Failed to load active UL workflow task: ${error}` };
+	}
+}
+
+// ============================================
 // Request Router
 // ============================================
 
@@ -467,6 +507,25 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 		const deleteMatch = path.match(/^\/api\/tasks\/([^/]+)$/);
 		if (method === "DELETE" && deleteMatch) {
 			sendJson(res, 200, handleDeleteTask(deleteMatch[1]));
+			return;
+		}
+
+		// GET /api/ul-workflow/tasks/active - Get active UL workflow task
+		if (method === "GET" && path === "/api/ul-workflow/tasks/active") {
+			sendJson(res, 200, handleGetActiveUlWorkflowTask());
+			return;
+		}
+
+		// GET /api/ul-workflow/tasks/:id - Get single UL workflow task
+		const ulTaskMatch = path.match(/^\/api\/ul-workflow\/tasks\/([^/]+)$/);
+		if (method === "GET" && ulTaskMatch) {
+			sendJson(res, 200, handleGetUlWorkflowTask(ulTaskMatch[1]));
+			return;
+		}
+
+		// GET /api/ul-workflow/tasks - Get all UL workflow tasks
+		if (method === "GET" && path === "/api/ul-workflow/tasks") {
+			sendJson(res, 200, handleGetUlWorkflowTasks());
 			return;
 		}
 

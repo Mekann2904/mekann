@@ -32,6 +32,7 @@
 import { Key, matchesKey } from "@mariozechner/pi-tui";
 
 import type { Theme } from "../../lib/tui/types.js";
+import type { TuiInstance, KeybindingMap, LiveMonitorContext } from "../../lib/tui-types.js";
 import {
   formatDurationMs,
   formatBytes,
@@ -1007,7 +1008,7 @@ export function renderAgentTeamLiveView(input: {
  * @returns {AgentTeamLiveMonitorController | undefined} コントローラインスタンス
  */
 export function createAgentTeamLiveMonitor(
-  ctx: any,
+  ctx: LiveMonitorContext,
   input: {
     title: string;
     items: Array<{ key: string; label: string; partners?: string[] }>;
@@ -1118,7 +1119,7 @@ export function createAgentTeamLiveMonitor(
   };
 
   const uiPromise = ctx.ui
-    .custom((tui: any, theme: Theme, _keybindings: any, done: () => void) => {
+    .custom((tui: TuiInstance, theme: Theme, _keybindings: KeybindingMap, done: () => void) => {
       doneUi = done;
       requestRender = () => {
         if (!closed) {
