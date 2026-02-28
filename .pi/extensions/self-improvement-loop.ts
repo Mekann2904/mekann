@@ -50,7 +50,7 @@ import {
   TrajectoryTracker,
   getRecommendedAction,
   type SemanticRepetitionResult,
-} from "../lib/semantic-repetition.js";
+} from "../lib/storage/semantic-repetition.js";
 import {
   runMetacognitiveCheck,
   type MetacognitiveCheck,

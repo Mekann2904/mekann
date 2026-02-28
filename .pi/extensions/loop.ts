@@ -64,7 +64,7 @@ import {
 import {
   detectSemanticRepetition,
   type SemanticRepetitionResult,
-} from "../lib/semantic-repetition";
+} from "../lib/storage/semantic-repetition.js";
 import { atomicWriteTextFile, withFileLock } from "../lib/storage/storage-lock.js";
 import {
   findRelevantPatterns,

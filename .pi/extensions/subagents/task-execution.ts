@@ -55,7 +55,7 @@ import {
 } from "../../lib/agent/agent-errors.js";
 import {
   validateSubagentOutput,
-} from "../../lib/output-validation.js";
+} from "../../lib/agent/output-validation.js";
 import {
   findRelevantPatterns,
   type ExtractedPattern,

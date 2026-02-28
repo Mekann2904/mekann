@@ -49,7 +49,7 @@ import {
 } from "../../lib/agent/agent-types.js";
 import {
   validateTeamMemberOutput,
-} from "../../lib/output-validation.js";
+} from "../../lib/agent/output-validation.js";
 import { SchemaValidationError, ExecutionError } from "../../lib/core/errors.js";
 import {
   findRelevantPatterns,

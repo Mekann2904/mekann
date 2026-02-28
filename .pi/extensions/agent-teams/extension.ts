@@ -82,7 +82,7 @@ import {
   DEFAULT_AGENT_TIMEOUT_MS,
 } from "../../lib/agent/agent-types.js";
 import { computeModelTimeoutMs } from "../../lib/agent/model-timeouts.js";
-import { validateTeamMemberOutput } from "../../lib/output-validation.js";
+import { validateTeamMemberOutput } from "../../lib/agent/output-validation.js";
 import { trimForError, buildRateLimitKey, buildTraceTaskId, createRetrySchema, toConcurrencyLimit } from "../../lib/agent/runtime-utils.js";
 import { resolveEffectiveTimeoutMs } from "../../lib/runtime-error-builders.js";
 import { createChildAbortController } from "../../lib/abort-utils";
