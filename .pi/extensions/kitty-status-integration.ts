@@ -153,16 +153,38 @@ function notifyMacOS(text: string, title = "pi"): void {
   }
 }
 
-// サウンドを再生（macOSのみ）
+// サウンドを再生（macOSのみ、フォールバック付き）
 export function playSound(soundPath: string): void {
-  if (!isMacOS) return;
-  try {
-    spawn("afplay", [soundPath], {
-      detached: true,
-      stdio: "ignore"
-    }).unref();
-  } catch (error: unknown) {
-    console.error("Sound playback error:", error instanceof Error ? error.message : String(error));
+  // macOSの場合: afplayを使用
+  if (isMacOS) {
+    // デフォルトサウンドファイルのリスト
+    const defaultSounds = [
+      soundPath,
+      "/System/Library/Sounds/Glass.aiff",
+      "/System/Library/Sounds/Ping.aiff",
+      "/System/Library/Sounds/Tink.aiff",
+    ];
+    
+    // 存在するサウンドファイルを探す
+    const existingSound = defaultSounds.find(s => existsSync(s));
+    
+    if (existingSound) {
+      try {
+        spawn("afplay", [existingSound], {
+          detached: true,
+          stdio: "ignore"
+        }).unref();
+      } catch (error: unknown) {
+        // サウンド再生失敗時はターミナルベルをフォールバック
+        process.stdout.write('\u0007');
+      }
+    } else {
+      // サウンドファイルが見つからない場合はターミナルベル
+      process.stdout.write('\u0007');
+    }
+  } else {
+    // 非macOSの場合: ターミナルベルを使用
+    process.stdout.write('\u0007');
   }
 }
 
