@@ -29,6 +29,8 @@ import { join } from "node:path";
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
+import { getInstanceId, isProcessAlive, extractPidFromInstanceId } from "./ul-workflow.js";
+
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
 
@@ -54,6 +56,8 @@ interface Task {
 	updatedAt: string;
 	completedAt?: string;
 	parentTaskId?: string;
+	ownerInstanceId?: string; // 所有するpiインスタンスID（sessionId-pid形式）
+	claimedAt?: string;       // 所有取得時刻
 }
 
 interface TaskStorage {
@@ -142,19 +146,44 @@ function saveConfig(): void {
 // ============================================
 
 function getNextPendingTask(storage: TaskStorage): Task | null {
-	const todoTasks = storage.tasks.filter(t => t.status === "todo");
-	if (todoTasks.length === 0) {
+	const instanceId = getInstanceId();
+	
+	// 候補となるタスクを抽出
+	const candidates = storage.tasks.filter(t => {
+		// todoタスクは常に候補
+		if (t.status === "todo") return true;
+		
+		// in_progressタスクは所有者チェック
+		if (t.status === "in_progress") {
+			// 所有者がいない → 候補に含める（古いデータの移行対応）
+			if (!t.ownerInstanceId) return true;
+			
+			// 自分が所有している → 候補に含める
+			if (t.ownerInstanceId === instanceId) return true;
+			
+			// 他のインスタンスが所有している → プロセスが死んでいれば再取得可能
+			const pid = extractPidFromInstanceId(t.ownerInstanceId);
+			if (pid && !isProcessAlive(pid)) return true;
+			
+			// 他のインスタンスが実行中 → スキップ
+			return false;
+		}
+		
+		return false;
+	});
+	
+	if (candidates.length === 0) {
 		return null;
 	}
 
 	// Sort by priority (highest first), then by creation date (oldest first)
-	todoTasks.sort((a, b) => {
+	candidates.sort((a, b) => {
 		const priorityDiff = PRIORITY_ORDER[b.priority] - PRIORITY_ORDER[a.priority];
 		if (priorityDiff !== 0) return priorityDiff;
 		return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
 	});
 
-	return todoTasks[0];
+	return candidates[0];
 }
 
 // ============================================
@@ -200,9 +229,12 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 				};
 			}
 
-			// Update status to in_progress
+			// Update status to in_progress and record owner
 			const taskIndex = storage.tasks.findIndex(t => t.id === nextTask.id);
+			const instanceId = getInstanceId();
 			storage.tasks[taskIndex].status = "in_progress";
+			storage.tasks[taskIndex].ownerInstanceId = instanceId;
+			storage.tasks[taskIndex].claimedAt = new Date().toISOString();
 			storage.tasks[taskIndex].updatedAt = new Date().toISOString();
 			saveStorage(storage);
 

@@ -39,6 +39,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { runSubagentTask } from "./subagents/task-execution";
 import { loadStorage as loadSubagentStorage } from "./subagents/storage";
 import type { SubagentDefinition } from "./subagents/storage";
+import { getInstanceId } from "./ul-workflow.js";
 
 // ============================================
 // Type Definitions (local copies for type safety)
@@ -71,6 +72,8 @@ interface Task {
 	updatedAt: string;
 	completedAt?: string;
 	parentTaskId?: string;
+	ownerInstanceId?: string; // 所有するpiインスタンスID
+	claimedAt?: string;       // 所有取得時刻
 }
 
 /**
@@ -274,8 +277,10 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			// Update to in_progress
+			// Update to in_progress and record owner
 			task.status = "in_progress";
+			task.ownerInstanceId = getInstanceId();
+			task.claimedAt = new Date().toISOString();
 			task.updatedAt = new Date().toISOString();
 			saveTaskStorage(storage);
 
