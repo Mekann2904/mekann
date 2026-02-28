@@ -5,20 +5,20 @@
  * @why Visualize real-time context usage for each running pi instance
  * @related app.tsx, ui/chart.tsx
  * @public_api DashboardPage
- * @invariants Data is fetched from API on mount and updated via polling
- * @side_effects Fetches data from /api/context-history
+ * @invariants Data is fetched from API on mount and updated via SSE
+ * @side_effects Fetches data from /api/context-history, connects to /api/events
  * @failure_modes API unavailable, network error
  *
  * @abdd.explain
  * @overview Dashboard showing per-instance context usage charts
- * @what_it_does Fetches context history from API, displays individual chart for each instance
- * @why_it_exists Allows users to monitor each pi instance's token usage separately
- * @scope(in) API data, user interactions
+ * @what_it_does Fetches context history from API, displays individual chart for each instance, updates via SSE
+ * @why_it_exists Allows users to monitor each pi instance's token usage separately in real-time
+ * @scope(in) API data, SSE events, user interactions
  * @scope(out) Rendered dashboard, per-instance charts
  */
 
 import { h } from "preact";
-import { useState, useEffect } from "preact/hooks";
+import { useState, useEffect, useCallback, useRef } from "preact/hooks";
 import {
   BarChart,
   Bar,
@@ -28,7 +28,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import { Activity, Loader2, RefreshCw, Cpu, Folder, AlertCircle } from "lucide-preact";
+import { Activity, Loader2, RefreshCw, Cpu, Folder, AlertCircle, Wifi, WifiOff } from "lucide-preact";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -67,6 +67,16 @@ interface ContextHistoryResponse {
 }
 
 /**
+ * @summary SSEコンテキスト更新イベント
+ */
+interface ContextUpdateEvent {
+  pid: number;
+  timestamp: string;
+  input: number;
+  output: number;
+}
+
+/**
  * @summary インスタンス識別用の色
  */
 const INSTANCE_COLORS = [
@@ -102,9 +112,12 @@ export function DashboardPage() {
   const [contextLoading, setContextLoading] = useState(true);
   const [contextError, setContextError] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<"input" | "output" | "both">("both");
+  const [sseConnected, setSseConnected] = useState(false);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // コンテキスト履歴を取得
-  const fetchContextHistory = async () => {
+  const fetchContextHistory = useCallback(async () => {
     setContextError(null);
     try {
       const res = await fetch("/api/context-history");
@@ -121,16 +134,96 @@ export function DashboardPage() {
     } finally {
       setContextLoading(false);
     }
-  };
+  }, []);
 
-  // 初回データ取得 + ポーリング
+  // SSE接続
+  const connectSSE = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
+    const eventSource = new EventSource("/api/events");
+    eventSourceRef.current = eventSource;
+
+    eventSource.onopen = () => {
+      setSseConnected(true);
+    };
+
+    eventSource.onerror = () => {
+      setSseConnected(false);
+      // Reconnect after 5 seconds
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      reconnectTimeoutRef.current = setTimeout(() => {
+        connectSSE();
+      }, 5000);
+    };
+
+    // Handle context-update event
+    eventSource.addEventListener("context-update", (event: MessageEvent) => {
+      try {
+        const update = JSON.parse(event.data) as ContextUpdateEvent;
+        setContextHistory((prev) => {
+          if (!prev) return prev;
+
+          const newInstanceHistory = { ...prev.instances };
+          const existing = newInstanceHistory[update.pid];
+
+          if (existing) {
+            // Add new entry to existing instance
+            newInstanceHistory[update.pid] = {
+              ...existing,
+              history: [...existing.history, {
+                timestamp: update.timestamp,
+                input: update.input,
+                output: update.output,
+                pid: update.pid,
+              }].slice(-100), // Keep last 100 entries
+            };
+          }
+
+          return { instances: newInstanceHistory };
+        });
+      } catch (e) {
+        console.warn("[DashboardPage] Failed to parse context-update:", e);
+      }
+    });
+
+    // Handle instances-update event to sync instance list
+    eventSource.addEventListener("instances-update", () => {
+      // Refresh context history when instances change
+      fetchContextHistory();
+    });
+
+    // Handle heartbeat to confirm connection
+    eventSource.addEventListener("heartbeat", () => {
+      setSseConnected(true);
+    });
+  }, [fetchContextHistory]);
+
+  // 初回データ取得 + SSE接続
   useEffect(() => {
     fetchContextHistory();
+    connectSSE();
+
+    // Fallback polling (30 seconds) in case SSE fails
     const interval = setInterval(() => {
-      fetchContextHistory();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
+      if (!sseConnected) {
+        fetchContextHistory();
+      }
+    }, 30000);
+
+    return () => {
+      clearInterval(interval);
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+    };
+  }, [fetchContextHistory, connectSSE, sseConnected]);
 
   const instances = contextHistory ? Object.values(contextHistory.instances) : [];
   const instanceCount = instances.length;
@@ -152,9 +245,13 @@ export function DashboardPage() {
           </p>
         </div>
         <div class="flex items-center gap-2">
-          <div class="flex items-center gap-2 text-sm text-muted-foreground">
-            <Activity class="h-4 w-4" />
-            <span>Live</span>
+          {/* SSE Connection Status */}
+          <div class={cn(
+            "flex items-center gap-1.5 text-xs px-2 py-1 rounded",
+            sseConnected ? "text-green-500 bg-green-500/10" : "text-yellow-500 bg-yellow-500/10"
+          )}>
+            {sseConnected ? <Wifi class="h-3 w-3" /> : <WifiOff class="h-3 w-3" />}
+            <span>{sseConnected ? "Live" : "Polling"}</span>
           </div>
           <Button
             variant="outline"

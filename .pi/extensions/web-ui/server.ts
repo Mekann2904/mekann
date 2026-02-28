@@ -150,6 +150,7 @@ interface SSEClient {
 class SSEEventBus {
   private clients: Map<string, SSEClient> = new Map();
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private instancesBroadcastInterval: ReturnType<typeof setInterval> | null = null;
 
   /**
    * @summary Add SSE client connection
@@ -197,12 +198,34 @@ class SSEEventBus {
   }
 
   /**
+   * @summary Start instances broadcast interval (3 seconds)
+   */
+  startInstancesBroadcast(): void {
+    this.instancesBroadcastInterval = setInterval(() => {
+      const instances = InstanceRegistry.getAll();
+      this.broadcast({
+        type: "instances-update",
+        data: {
+          instances,
+          count: instances.length,
+          timestamp: Date.now(),
+        },
+        timestamp: Date.now(),
+      });
+    }, 3000);
+  }
+
+  /**
    * @summary Stop heartbeat interval and clear all clients
    */
   stopHeartbeat(): void {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
+    }
+    if (this.instancesBroadcastInterval) {
+      clearInterval(this.instancesBroadcastInterval);
+      this.instancesBroadcastInterval = null;
     }
     // Clear all clients on server shutdown
     this.clients.clear();
@@ -1139,6 +1162,9 @@ export function startServer(
 
     // SSEハートビートを開始
     sseEventBus.startHeartbeat();
+
+    // インスタンス情報の定期ブロードキャストを開始
+    sseEventBus.startInstancesBroadcast();
 
     // 定期的に古い履歴ファイルをクリーンアップ（5分ごと）
     if (contextCleanupInterval) {

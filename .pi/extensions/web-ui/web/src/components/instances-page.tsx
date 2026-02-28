@@ -1,13 +1,12 @@
-import { useState, useEffect } from "preact/hooks";
+import { useState, useEffect, useCallback, useRef } from "preact/hooks";
 import { Button } from "./ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "./ui/card";
-import { Activity, Cpu, Folder, Clock, RefreshCw, Monitor } from "lucide-preact";
+import { Activity, Cpu, Folder, Clock, RefreshCw, Monitor, Wifi, WifiOff } from "lucide-preact";
 import { cn } from "@/lib/utils";
 
 /**
@@ -77,11 +76,24 @@ function truncatePath(path: string, maxLength: number = 40): string {
   return "..." + path.slice(-(maxLength - 3));
 }
 
+/**
+ * Get instance status based on heartbeat
+ */
+function getInstanceStatus(instance: InstanceInfo): "active" | "stale" | "dead" {
+  const timeSinceHeartbeat = Date.now() - instance.lastHeartbeat;
+  if (timeSinceHeartbeat < 30000) return "active";
+  if (timeSinceHeartbeat < 60000) return "stale";
+  return "dead";
+}
+
 export function InstancesPage() {
   const [data, setData] = useState<InstancesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [sseConnected, setSseConnected] = useState(false);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchData = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -100,11 +112,63 @@ export function InstancesPage() {
     }
   };
 
+  const connectSSE = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
+    const eventSource = new EventSource("/api/events");
+    eventSourceRef.current = eventSource;
+
+    eventSource.onopen = () => {
+      setSseConnected(true);
+    };
+
+    eventSource.onerror = () => {
+      setSseConnected(false);
+      // Reconnect after 5 seconds
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      reconnectTimeoutRef.current = setTimeout(() => {
+        connectSSE();
+      }, 5000);
+    };
+
+    // Handle instances-update event
+    eventSource.addEventListener("instances-update", (event: MessageEvent) => {
+      try {
+        const payload = JSON.parse(event.data) as { instances: InstanceInfo[]; count: number };
+        setData((prev) => ({
+          instances: payload.instances,
+          count: payload.count,
+          serverPid: prev?.serverPid ?? 0,
+          serverPort: prev?.serverPort ?? 3000,
+        }));
+      } catch (e) {
+        console.warn("[InstancesPage] Failed to parse instances-update:", e);
+      }
+    });
+
+    // Handle heartbeat to confirm connection
+    eventSource.addEventListener("heartbeat", () => {
+      setSseConnected(true);
+    });
+  }, []);
+
   useEffect(() => {
     fetchData();
-    const interval = setInterval(() => fetchData(), 1000);
-    return () => clearInterval(interval);
-  }, []);
+    connectSSE();
+
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+    };
+  }, [connectSSE]);
 
   if (loading) {
     return (
@@ -148,15 +212,25 @@ export function InstancesPage() {
             {data?.count ?? 0} active instance{(data?.count ?? 0) !== 1 ? "s" : ""}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => fetchData(true)}
-          disabled={refreshing}
-        >
-          <RefreshCw class={cn("h-4 w-4 mr-2", refreshing && "animate-spin")} />
-          Refresh
-        </Button>
+        <div class="flex items-center gap-2">
+          {/* SSE Connection Status */}
+          <div class={cn(
+            "flex items-center gap-1.5 text-xs px-2 py-1 rounded",
+            sseConnected ? "text-green-500 bg-green-500/10" : "text-yellow-500 bg-yellow-500/10"
+          )}>
+            {sseConnected ? <Wifi class="h-3 w-3" /> : <WifiOff class="h-3 w-3" />}
+            <span>{sseConnected ? "Live" : "Polling"}</span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchData(true)}
+            disabled={refreshing}
+          >
+            <RefreshCw class={cn("h-4 w-4 mr-2", refreshing && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Server Info */}
@@ -194,57 +268,78 @@ export function InstancesPage() {
             </CardContent>
           </Card>
         ) : (
-          sortedInstances.map((instance) => (
-            <Card key={instance.pid}>
-              <CardContent class="py-4">
-                <div class="flex items-start gap-4">
-                  {/* Icon */}
-                  <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                    <Cpu class="h-5 w-5 text-primary" />
-                  </div>
+          sortedInstances.map((instance) => {
+            const status = getInstanceStatus(instance);
+            const isStale = status !== "active";
 
-                  {/* Info */}
-                  <div class="min-w-0 flex-1">
-                    {/* PID & Model */}
+            return (
+              <Card key={instance.pid} class={cn(isStale && "opacity-60")}>
+                <CardContent class="py-4">
+                  <div class="flex items-start gap-4">
+                    {/* Icon */}
+                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                      <Cpu class="h-5 w-5 text-primary" />
+                    </div>
+
+                    {/* Info */}
+                    <div class="min-w-0 flex-1">
+                      {/* PID & Model */}
+                      <div class="flex items-center gap-2">
+                        <span class="font-mono text-sm font-medium">
+                          PID {instance.pid}
+                        </span>
+                        <span class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                          {instance.model}
+                        </span>
+                      </div>
+
+                      {/* Path */}
+                      <div class="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Folder class="h-3 w-3" />
+                        <span class="truncate" title={instance.cwd}>
+                          {truncatePath(instance.cwd, 50)}
+                        </span>
+                      </div>
+
+                      {/* Times */}
+                      <div class="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
+                        <div class="flex items-center gap-1">
+                          <Clock class="h-3 w-3" />
+                          <span>Started {formatRelativeTime(instance.startedAt)}</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                          <Activity class="h-3 w-3" />
+                          <span>Running {formatDuration(instance.startedAt)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Status Indicator */}
                     <div class="flex items-center gap-2">
-                      <span class="font-mono text-sm font-medium">
-                        PID {instance.pid}
-                      </span>
-                      <span class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                        {instance.model}
-                      </span>
-                    </div>
-
-                    {/* Path */}
-                    <div class="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Folder class="h-3 w-3" />
-                      <span class="truncate" title={instance.cwd}>
-                        {truncatePath(instance.cwd, 50)}
-                      </span>
-                    </div>
-
-                    {/* Times */}
-                    <div class="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
-                      <div class="flex items-center gap-1">
-                        <Clock class="h-3 w-3" />
-                        <span>Started {formatRelativeTime(instance.startedAt)}</span>
-                      </div>
-                      <div class="flex items-center gap-1">
-                        <Activity class="h-3 w-3" />
-                        <span>Running {formatDuration(instance.startedAt)}</span>
-                      </div>
+                      {status === "active" && (
+                        <>
+                          <div class="h-2 w-2 animate-pulse rounded-full bg-green-500" />
+                          <span class="text-xs text-muted-foreground">Active</span>
+                        </>
+                      )}
+                      {status === "stale" && (
+                        <>
+                          <div class="h-2 w-2 rounded-full bg-yellow-500" />
+                          <span class="text-xs text-yellow-600">Stale</span>
+                        </>
+                      )}
+                      {status === "dead" && (
+                        <>
+                          <div class="h-2 w-2 rounded-full bg-red-500" />
+                          <span class="text-xs text-red-600">Disconnected</span>
+                        </>
+                      )}
                     </div>
                   </div>
-
-                  {/* Status Indicator */}
-                  <div class="flex items-center gap-2">
-                    <div class="h-2 w-2 animate-pulse rounded-full bg-green-500" />
-                    <span class="text-xs text-muted-foreground">Active</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))
+                </CardContent>
+              </Card>
+            );
+          })
         )}
       </div>
     </div>
