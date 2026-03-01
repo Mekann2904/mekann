@@ -67,6 +67,9 @@ import {
   clearBeliefStateCache,
   extractField,
   type PrecomputedMemberContext,
+  createSharedFileCache,
+  type SharedFileCache,
+  type CachedFileContent,
 } from "./communication.js";
 import { runMember } from "./member-execution.js";
 import { runFinalJudge, buildFallbackJudge, computeProxyUncertainty, computeProxyUncertaintyWithExplainability, formatJudgeExplanation, checkEarlyTermination, type TeamUncertaintyProxy, type JudgeExplanation, type EarlyTerminationCheck } from "./judge.js";
@@ -280,6 +283,9 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
   const activeMemberById = new Map(activeMembers.map((member) => [member.id, member]));
   const memberById = new Map(input.team.members.map((member) => [member.id, member]));
   const communicationAudit: TeamCommunicationAuditEntry[] = [];
+
+  // 8.1最適化: 共有ファイルキャッシュの初期化
+  const sharedFileCache = createSharedFileCache();
 
   // 初期イベント発行
   input.onTeamEvent?.(
@@ -505,6 +511,7 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
       memberResults,
       communicationAudit,
       emitResultEvent,
+      sharedFileCache,
     });
     
     const roundAuditEntries = communicationAudit.filter((entry) => entry.round === round);
@@ -540,6 +547,7 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
       emitResultEvent,
       recoveredMembers,
       failedMemberRetryApplied,
+      sharedFileCache,
     });
   }
 
@@ -583,6 +591,8 @@ interface CommunicationRoundParams {
   memberResults: TeamMemberResult[];
   communicationAudit: TeamCommunicationAuditEntry[];
   emitResultEvent: (member: TeamMember, phaseLabel: string, result: TeamMemberResult) => void;
+  /** 8.1最適化: 共有ファイルキャッシュ */
+  sharedFileCache?: SharedFileCache;
 }
 
 async function executeCommunicationRound(
@@ -627,6 +637,7 @@ async function executeCommunicationRound(
             communicationAudit,
             emitResultEvent,
             signal: childController.signal,
+            sharedFileCache: params.sharedFileCache,
           });
         } finally {
           cleanupAbort();
@@ -655,6 +666,7 @@ async function executeCommunicationRound(
         communicationAudit,
         emitResultEvent,
         signal: input.signal,
+        sharedFileCache: params.sharedFileCache,
       });
       roundResults.push(result);
       input.onMemberResult?.(member, result);
@@ -675,6 +687,8 @@ interface RunCommunicationMemberParams {
   communicationAudit: TeamCommunicationAuditEntry[];
   emitResultEvent: (member: TeamMember, phaseLabel: string, result: TeamMemberResult) => void;
   signal?: AbortSignal;
+  /** 8.1最適化: 共有ファイルキャッシュ */
+  sharedFileCache?: SharedFileCache;
 }
 
 async function runCommunicationMember(
@@ -712,6 +726,7 @@ async function runCommunicationMember(
     round,
     partnerIds,
     contextMap,
+    fileCache: params.sharedFileCache,
   });
   
   input.onMemberEvent?.(
@@ -814,6 +829,8 @@ interface FailedMemberRetryParams {
   emitResultEvent: (member: TeamMember, phaseLabel: string, result: TeamMemberResult) => void;
   recoveredMembers: Set<string>;
   failedMemberRetryApplied: number;
+  /** 8.1最適化: 共有ファイルキャッシュ */
+  sharedFileCache?: SharedFileCache;
 }
 
 async function executeFailedMemberRetries(
@@ -932,6 +949,7 @@ async function executeFailedMemberRetries(
             memberById,
             communicationAudit,
             emitResultEvent,
+            sharedFileCache: params.sharedFileCache,
           });
 
           // Mark as recovered if retry succeeded
@@ -968,6 +986,7 @@ async function executeFailedMemberRetries(
           memberById,
           communicationAudit,
           emitResultEvent,
+          sharedFileCache: params.sharedFileCache,
         });
 
         // Mark as recovered if retry succeeded
@@ -1019,6 +1038,8 @@ interface RunRetryMemberParams {
   memberById: Map<string, TeamMember>;
   communicationAudit: TeamCommunicationAuditEntry[];
   emitResultEvent: (member: TeamMember, phaseLabel: string, result: TeamMemberResult) => void;
+  /** 8.1最適化: 共有ファイルキャッシュ */
+  sharedFileCache?: SharedFileCache;
 }
 
 async function runRetryMember(params: RunRetryMemberParams): Promise<TeamMemberResult> {
@@ -1057,6 +1078,7 @@ async function runRetryMember(params: RunRetryMemberParams): Promise<TeamMemberR
       round: retryPhaseRound,
       partnerIds,
       contextMap,
+      fileCache: params.sharedFileCache,
     });
     
     input.onMemberEvent?.(
