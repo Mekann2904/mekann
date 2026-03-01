@@ -938,6 +938,46 @@ function createApp(): Express {
     }
   });
 
+  // ============= Agent Usage API =============
+
+  /**
+   * GET /api/agent-usage - Get agent usage statistics
+   */
+  app.get("/api/agent-usage", (_req: Request, res: Response) => {
+    try {
+      const usageFile = path.join(process.cwd(), ".pi", "analytics", "agent-usage-stats.json");
+
+      if (!fs.existsSync(usageFile)) {
+        res.json({
+          success: true,
+          data: {
+            totals: {
+              toolCalls: 0,
+              toolErrors: 0,
+              agentRuns: 0,
+              agentRunErrors: 0,
+              contextSamples: 0,
+              contextRatioSum: 0,
+              contextTokenSamples: 0,
+              contextTokenSum: 0,
+            },
+            features: {},
+            events: [],
+          },
+        });
+        return;
+      }
+
+      const rawData = fs.readFileSync(usageFile, "utf-8");
+      const data = JSON.parse(rawData);
+
+      res.json({ success: true, data });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get agent usage", details: errorMessage });
+    }
+  });
+
   // ============= MCP API (Stub - requires pi instance) =============
 
   /**

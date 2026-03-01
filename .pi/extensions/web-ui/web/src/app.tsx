@@ -13,6 +13,7 @@ import { InstancesPage } from "./components/instances-page";
 import { McpPage } from "./components/mcp-page";
 import { TasksPage } from "./components/tasks-page";
 import { AnalyticsPage } from "./components/analytics-page";
+import { AgentUsagePage } from "./components/agent-usage-page";
 import {
   Activity,
   Monitor,
@@ -22,6 +23,7 @@ import {
   AlertCircle,
   ListTodo,
   BarChart3,
+  TrendingUp,
 } from "lucide-preact";
 import { cn } from "@/lib/utils";
 import "./styles/globals.css";
@@ -255,6 +257,7 @@ export function App() {
           <McpPage path="/mcp" />
           <TasksPage path="/tasks" />
           <AnalyticsPage path="/analytics" />
+          <AgentUsagePage path="/agent-usage" />
           <ThemePage path="/theme" onThemeChange={applyTheme} />
         </Router>
       </main>
@@ -290,6 +293,7 @@ function Sidebar({ sseConnected, sseExhausted, onSseReconnect }: SidebarProps) {
     { path: "/", icon: Activity, label: "Dashboard" },
     { path: "/tasks", icon: ListTodo, label: "Tasks" },
     { path: "/analytics", icon: BarChart3, label: "Analytics" },
+    { path: "/agent-usage", icon: TrendingUp, label: "Agent Usage" },
     { path: "/instances", icon: Monitor, label: "Instances" },
     { path: "/mcp", icon: Server, label: "MCP" },
     { path: "/theme", icon: Palette, label: "Theme" },
