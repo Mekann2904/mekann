@@ -39,7 +39,7 @@ import {
   ReflectionModule,
   createReflectionModule,
 } from "./reflection-module.js";
-import { countTokens } from "./serialization.js";
+import { countTokens, messageToStep } from "./serialization.js";
 
 export type {
   TrajectoryStep,
@@ -50,7 +50,7 @@ export type {
   WasteType,
 };
 
-export { DEFAULT_TRAJECTORY_REDUCTION_CONFIG, globalTrajectoryStore };
+export { DEFAULT_TRAJECTORY_REDUCTION_CONFIG, globalTrajectoryStore, messageToStep };
 
 /**
  * 軌跡圧縮器
