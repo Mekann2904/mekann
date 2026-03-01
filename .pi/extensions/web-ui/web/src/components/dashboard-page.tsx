@@ -30,7 +30,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import { RefreshCw, Cpu, Folder, Wifi, WifiOff, FileText, Loader2, Maximize2, Loader2 } from "lucide-preact";
+import { RefreshCw, Cpu, Folder, Wifi, WifiOff, FileText, Loader2 } from "lucide-preact";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -41,7 +41,6 @@ import {
 } from "./ui/card";
 import {
   Drawer,
-  DrawerTrigger,
   DrawerContent,
   DrawerHeader,
   DrawerTitle,
@@ -142,6 +141,7 @@ export function DashboardPage() {
   const [activeTask, setActiveTask] = useState<{ id: string; title: string } | null>(null);
   const [plan, setPlan] = useState<string | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
+  const [isPlanDrawerOpen, setIsPlanDrawerOpen] = useState(false);
 
   // コンテキスト履歴を取得
   const fetchContextHistory = useCallback(async () => {
@@ -397,6 +397,28 @@ export function DashboardPage() {
         <LoadingState message="Loading context history..." />
       ) : instanceCount === 0 ? (
         <ChartEmptyState message="No active instances" height={200} />
+      ) : activeTask ? (
+        <Drawer direction="bottom" open={isPlanDrawerOpen} onOpenChange={setIsPlanDrawerOpen}>
+          <div class="space-y-3">
+            {instances.map((instance, idx) => (
+              <InstanceChartCard
+                key={instance.pid}
+                instance={instance}
+                color={getInstanceColor(idx)}
+                displayMode={displayMode}
+                planPath={idx === 0 ? `.pi/ul-workflow/tasks/${activeTask.id}/plan.md` : undefined}
+                onPlanClick={idx === 0 ? () => setIsPlanDrawerOpen(true) : undefined}
+              />
+            ))}
+          </div>
+
+          {/* Full plan drawer */}
+          <DrawerContent>
+            <div class="flex-1 overflow-y-auto p-4">
+              {plan && <MarkdownRenderer content={plan} />}
+            </div>
+          </DrawerContent>
+        </Drawer>
       ) : (
         <div class="space-y-3">
           {instances.map((instance, idx) => (
@@ -409,58 +431,6 @@ export function DashboardPage() {
           ))}
         </div>
       )}
-
-      {/* アクティブなUL WorkflowのPlan */}
-      {activeTask && (
-        <Drawer direction="bottom">
-          <Card class="mt-4">
-            <CardHeader class="py-3 px-4">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                  <FileText class="h-4 w-4 text-muted-foreground" />
-                  <CardTitle class="text-sm font-medium">
-                    Active Plan: {activeTask.title}
-                  </CardTitle>
-                  <span class="text-xs text-muted-foreground font-mono">
-                    {activeTask.id}
-                  </span>
-                </div>
-                {plan && (
-                  <DrawerTrigger asChild>
-                    <Button variant="ghost" size="sm" class="h-7 gap-1">
-                      <Maximize2 class="h-3.5 w-3.5" />
-                      <span class="text-xs">Expand</span>
-                    </Button>
-                  </DrawerTrigger>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent class="pt-0">
-              {planLoading ? (
-                <div class="flex items-center gap-2 text-muted-foreground text-sm py-4">
-                  <Loader2 class="h-4 w-4 animate-spin" />
-                  Loading plan...
-                </div>
-              ) : plan ? (
-                <div class="bg-muted/30 rounded-md p-4 max-h-[400px] overflow-y-auto">
-                  <pre class="text-xs font-mono whitespace-pre-wrap text-muted-foreground">
-                    {plan}
-                  </pre>
-                </div>
-              ) : (
-                <p class="text-sm text-muted-foreground py-4">No plan available</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Full plan drawer */}
-          <DrawerContent>
-            <div class="flex-1 overflow-y-auto p-4">
-              {plan && <MarkdownRenderer content={plan} />}
-            </div>
-          </DrawerContent>
-        </Drawer>
-      )}
     </PageLayout>
   );
 }
@@ -472,10 +442,14 @@ function InstanceChartCard({
   instance,
   color,
   displayMode,
+  planPath,
+  onPlanClick,
 }: {
   instance: InstanceContextHistory;
   color: string;
   displayMode: "input" | "output" | "both";
+  planPath?: string;
+  onPlanClick?: () => void;
 }) {
   const bucketMs = 10_000;
   const latestByBucket = new Map<number, ContextHistoryEntry>();
@@ -516,6 +490,16 @@ function InstanceChartCard({
                   {truncatePath(instance.cwd, 30)}
                 </span>
               </CardDescription>
+              {planPath && (
+                <button
+                  type="button"
+                  onClick={onPlanClick}
+                  class="flex items-center gap-1 mt-1 text-xs text-blue-400 hover:text-blue-300 underline underline-offset-2 cursor-pointer bg-transparent border-0 p-0 font-mono"
+                >
+                  <FileText class="h-3 w-3" />
+                  <span class="truncate max-w-[280px]">{planPath}</span>
+                </button>
+              )}
             </div>
           </div>
           <span class="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
