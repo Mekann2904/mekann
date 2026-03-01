@@ -28,7 +28,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import { Activity, Loader2, RefreshCw, Cpu, Folder, AlertCircle, Wifi, WifiOff } from "lucide-preact";
+import { RefreshCw, Cpu, Folder, Wifi, WifiOff } from "lucide-preact";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -38,6 +38,16 @@ import {
   CardTitle,
 } from "./ui/card";
 import { cn } from "@/lib/utils";
+import {
+  PageLayout,
+  PageHeader,
+  StatsGrid,
+  SimpleStatsCard,
+  LoadingState,
+  ErrorBanner,
+  ChartEmptyState,
+  CHART_TOOLTIP_STYLE,
+} from "./layout";
 
 /**
  * @summary コンテキスト履歴エントリ
@@ -247,106 +257,94 @@ export function DashboardPage() {
     totalOutput: instances.reduce((sum, i) => sum + i.history.reduce((s, e) => s + e.output, 0), 0),
   };
 
+  // SSE接続ステータスコンポーネント
+  const ConnectionStatus = () => (
+    <div class={cn(
+      "flex items-center gap-1.5 text-xs px-2 py-1 rounded",
+      sseConnected ? "text-green-500 bg-green-500/10" : "text-yellow-500 bg-yellow-500/10"
+    )}>
+      {sseConnected ? <Wifi class="h-3 w-3" /> : <WifiOff class="h-3 w-3" />}
+      <span>{sseConnected ? "Live" : "Polling"}</span>
+    </div>
+  );
+
+  // 表示モード切り替えボタン
+  const DisplayModeButtons = () => (
+    <div class="flex gap-2 shrink-0">
+      <Button
+        variant={displayMode === "input" ? "default" : "outline"}
+        size="sm"
+        onClick={() => setDisplayMode("input")}
+      >
+        Input
+      </Button>
+      <Button
+        variant={displayMode === "output" ? "default" : "outline"}
+        size="sm"
+        onClick={() => setDisplayMode("output")}
+      >
+        Output
+      </Button>
+      <Button
+        variant={displayMode === "both" ? "default" : "outline"}
+        size="sm"
+        onClick={() => setDisplayMode("both")}
+      >
+        Both
+      </Button>
+    </div>
+  );
+
   return (
-    <div class="flex h-full flex-col gap-4 p-4 overflow-auto">
+    <PageLayout variant="default">
       {/* Header */}
-      <div class="flex gap-2 shrink-0 items-center justify-between">
-        <div>
-          <h1 class="text-xl font-bold">Dashboard</h1>
-          <p class="text-sm text-muted-foreground">
-            {instanceCount} instance{instanceCount !== 1 ? "s" : ""} active
-          </p>
-        </div>
-        <div class="flex items-center gap-2">
-          {/* SSE Connection Status */}
-          <div class={cn(
-            "flex items-center gap-1.5 text-xs px-2 py-1 rounded",
-            sseConnected ? "text-green-500 bg-green-500/10" : "text-yellow-500 bg-yellow-500/10"
-          )}>
-            {sseConnected ? <Wifi class="h-3 w-3" /> : <WifiOff class="h-3 w-3" />}
-            <span>{sseConnected ? "Live" : "Polling"}</span>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchContextHistory}
-            disabled={contextLoading}
-          >
-            <RefreshCw class={cn("h-4 w-4", contextLoading && "animate-spin")} />
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        description={`${instanceCount} instance${instanceCount !== 1 ? "s" : ""} active`}
+        actions={
+          <>
+            <ConnectionStatus />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchContextHistory}
+              disabled={contextLoading}
+            >
+              <RefreshCw class={cn("h-4 w-4", contextLoading && "animate-spin")} />
+            </Button>
+          </>
+        }
+      />
 
       {/* 全体統計 */}
-      <div class="grid grid-cols-2 gap-2 shrink-0">
-        <Card>
-          <CardContent class="py-3 text-center">
-            <div class="text-lg font-bold">{totalStats.totalInput.toLocaleString()}</div>
-            <div class="text-xs text-muted-foreground">Total Input</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent class="py-3 text-center">
-            <div class="text-lg font-bold">{totalStats.totalOutput.toLocaleString()}</div>
-            <div class="text-xs text-muted-foreground">Total Output</div>
-          </CardContent>
-        </Card>
-      </div>
+      <StatsGrid cols={2}>
+        <SimpleStatsCard
+          value={totalStats.totalInput.toLocaleString()}
+          label="Total Input"
+        />
+        <SimpleStatsCard
+          value={totalStats.totalOutput.toLocaleString()}
+          label="Total Output"
+        />
+      </StatsGrid>
 
       {/* 表示モード切り替え */}
-      <div class="flex gap-2 shrink-0">
-        <Button
-          variant={displayMode === "input" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setDisplayMode("input")}
-        >
-          Input
-        </Button>
-        <Button
-          variant={displayMode === "output" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setDisplayMode("output")}
-        >
-          Output
-        </Button>
-        <Button
-          variant={displayMode === "both" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setDisplayMode("both")}
-        >
-          Both
-        </Button>
-      </div>
+      <DisplayModeButtons />
 
       {/* Error display */}
       {contextError && (
-        <Card class="border-destructive shrink-0">
-          <CardContent class="py-3 flex items-center gap-2 text-destructive">
-            <AlertCircle class="h-4 w-4" />
-            <span class="text-sm">Failed to load data: {contextError}</span>
-            <Button variant="outline" size="sm" onClick={fetchContextHistory} class="ml-auto">
-              Retry
-            </Button>
-          </CardContent>
-        </Card>
+        <ErrorBanner
+          message={`Failed to load data: ${contextError}`}
+          onRetry={fetchContextHistory}
+          onDismiss={() => setContextError(null)}
+        />
       )}
 
       {/* インスタンスごとのチャート */}
       {contextLoading && !contextHistory ? (
-        <Card>
-          <CardContent class="py-8 flex items-center justify-center">
-            <div class="flex flex-col items-center gap-2">
-              <Loader2 class="h-6 w-6 animate-spin text-primary" />
-              <p class="text-sm text-muted-foreground">Loading context history...</p>
-            </div>
-          </CardContent>
-        </Card>
+        <LoadingState message="Loading context history..." />
       ) : instanceCount === 0 ? (
-        <Card>
-          <CardContent class="py-8 flex items-center justify-center">
-            <p class="text-sm text-muted-foreground">No active instances</p>
-          </CardContent>
-        </Card>
+        <ChartEmptyState message="No active instances" height={200} />
       ) : (
         <div class="space-y-3">
           {instances.map((instance, idx) => (
@@ -359,7 +357,7 @@ export function DashboardPage() {
           ))}
         </div>
       )}
-    </div>
+    </PageLayout>
   );
 }
 
@@ -422,11 +420,8 @@ function InstanceChartCard({
         </div>
       </CardHeader>
       <CardContent>
-        {/* チャート */}
         {chartData.length === 0 ? (
-          <div class="flex h-[120px] items-center justify-center text-muted-foreground text-xs">
-            No history data
-          </div>
+          <ChartEmptyState message="No history data" height={120} showCard={false} />
         ) : (
           <div class="h-[150px] w-full">
             <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
@@ -446,12 +441,7 @@ function InstanceChartCard({
                   width={45}
                 />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "6px",
-                    fontSize: "11px",
-                  }}
+                  contentStyle={CHART_TOOLTIP_STYLE}
                   labelStyle={{ color: "hsl(var(--foreground))" }}
                   formatter={(value: number | undefined, name: string) => [
                     value?.toLocaleString() ?? "0",
