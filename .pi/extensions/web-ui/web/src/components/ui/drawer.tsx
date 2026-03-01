@@ -80,6 +80,10 @@ export function DrawerContent({ children, className }: DrawerContentProps) {
         <div class="flex justify-center pt-2 pb-1 shrink-0">
           <div class="h-1 w-10 rounded-full bg-zinc-600" />
         </div>
+        {/* Visually hidden title for accessibility */}
+        <VaulDrawer.Title style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0, 0, 0, 0)", whiteSpace: "nowrap", border: 0 }}>
+          Plan Viewer
+        </VaulDrawer.Title>
         {children}
       </VaulDrawer.Content>
     </VaulDrawer.Portal>
