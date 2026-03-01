@@ -79,6 +79,14 @@ import {
   hashTask,
   type FailureRecord,
 } from "./failure-memory.js";
+import {
+  createTrajectoryReducer,
+  messageToStep,
+  type TrajectoryReducer,
+  type TrajectoryReductionConfig,
+  type ReductionStats,
+  DEFAULT_TRAJECTORY_REDUCTION_CONFIG,
+} from "../../lib/trajectory-reduction/index.js";
 
 const logger = getLogger();
 const STABLE_AGENT_TEAM_RUNTIME = STABLE_RUNTIME_PROFILE;
@@ -155,6 +163,8 @@ export interface TeamTaskResult {
   uncertaintyProxy: TeamUncertaintyProxy;
   /** 不確実性判定の説明可能性データ */
   uncertaintyProxyExplanation: JudgeExplanation;
+  /** 軌跡圧縮統計 */
+  trajectoryReduction?: ReductionStats;
 }
 
 // ============================================================================
@@ -287,6 +297,23 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
   // 8.1最適化: 共有ファイルキャッシュの初期化
   const sharedFileCache = createSharedFileCache();
 
+  // Trajectory Reduction: リデューサーを作成
+  const trajectoryConfig: TrajectoryReductionConfig = {
+    ...DEFAULT_TRAJECTORY_REDUCTION_CONFIG,
+    enabled: true,
+    // チーム実行では閾値を下げてより多くを圧縮
+    threshold: 300,
+  };
+  const trajectoryReducer = createTrajectoryReducer(
+    runId,
+    trajectoryConfig,
+    async () => {
+      // チーム実行では圧縮用LLMは使用せず、ヒューリスティックのみ
+      return "WASTE_TYPES: []\nCONTENT: (compressed)";
+    },
+  );
+  let trajectoryStepNumber = 0;
+
   // 初期イベント発行
   input.onTeamEvent?.(
     `team=${input.team.id} start strategy=${input.strategy} members=${activeMembers.length} communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryRounds}`,
@@ -307,7 +334,7 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
   }
 
   /**
-   * 結果イベントを発行
+   * 結果イベントを発行し、軌跡を記録
    */
   const emitResultEvent = (
     member: TeamMember,
@@ -321,6 +348,15 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
       member,
       `${phaseLabel} result: status=${result.status} latency=${result.latencyMs}ms summary=${normalizeForSingleLine(result.summary, 96)}${diagnostics}${result.error ? ` error=${normalizeForSingleLine(result.error, 120)}` : ""}`,
     );
+
+    // Trajectory Reduction: メンバー結果を軌跡に記録
+    trajectoryStepNumber += 1;
+    const step = messageToStep(
+      { role: "assistant", content: result.output || result.error || "" },
+      trajectoryStepNumber,
+    );
+    step.metadata = { memberId: member.id, phase: phaseLabel, status: result.status };
+    trajectoryReducer.addStep(step);
   };
 
   // ============================================================================
@@ -572,7 +608,10 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
     skippedByEarlyTermination,
   });
 
-  return finalResult;
+  return {
+    ...finalResult,
+    trajectoryReduction: trajectoryReducer.getStats(),
+  };
 }
 
 // ============================================================================
