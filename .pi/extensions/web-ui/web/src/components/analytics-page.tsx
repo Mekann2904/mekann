@@ -29,6 +29,7 @@ import {
   Tooltip,
   LineChart,
   Line,
+  Legend,
 } from "recharts";
 import {
   Activity,
@@ -153,20 +154,26 @@ function formatAnomalyType(type: string): string {
 // Components
 // ============================================================================
 
+type TimeRange = "24h" | "7d" | "30d";
+
 export function AnalyticsPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [records, setRecords] = useState<BehaviorRecord[]>([]);
-  const [hourlyAggregates, setHourlyAggregates] = useState<Aggregates[]>([]);
+  const [aggregates, setAggregates] = useState<Aggregates[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [timeRange, setTimeRange] = useState<TimeRange>("24h");
 
   const fetchData = useCallback(async () => {
     setError(null);
     try {
+      // 期間に応じた集計タイプを決定
+      const aggregateType = timeRange === "24h" ? "hourly" : timeRange === "7d" ? "daily" : "daily";
+      
       const [summaryRes, recordsRes, aggregatesRes] = await Promise.all([
         fetch("/api/analytics/summary"),
         fetch("/api/analytics/records?limit=20"),
-        fetch("/api/analytics/aggregates?type=hourly"),
+        fetch(`/api/analytics/aggregates?type=${aggregateType}&range=${timeRange}`),
       ]);
 
       if (summaryRes.ok) {
@@ -176,7 +183,7 @@ export function AnalyticsPage() {
         setRecords(await recordsRes.json());
       }
       if (aggregatesRes.ok) {
-        setHourlyAggregates(await aggregatesRes.json());
+        setAggregates(await aggregatesRes.json());
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : "Network error";
@@ -184,7 +191,7 @@ export function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [timeRange]);
 
   useEffect(() => {
     fetchData();
@@ -217,6 +224,9 @@ export function AnalyticsPage() {
   } : null);
   
   const anomalyCount = displayData?.anomalies?.length ?? 0;
+  
+  // 期間表示用のラベル
+  const timeRangeLabel = timeRange === "24h" ? "24h" : timeRange === "7d" ? "7 days" : "30 days";
 
   return (
     <div class="flex h-full flex-col gap-4 p-4 overflow-auto">
@@ -228,14 +238,30 @@ export function AnalyticsPage() {
             Behavior metrics and optimization insights
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchData}
-          disabled={loading}
-        >
-          <RefreshCw class={cn("h-4 w-4", loading && "animate-spin")} />
-        </Button>
+        <div class="flex items-center gap-2">
+          {/* Time Range Selector */}
+          <div class="flex gap-1 bg-muted rounded-lg p-1">
+            {(["24h", "7d", "30d"] as TimeRange[]).map((range) => (
+              <Button
+                key={range}
+                variant={timeRange === range ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setTimeRange(range)}
+                class="px-3"
+              >
+                {range}
+              </Button>
+            ))}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchData}
+            disabled={loading}
+          >
+            <RefreshCw class={cn("h-4 w-4", loading && "animate-spin")} />
+          </Button>
+        </div>
       </div>
 
       {/* Error */}
@@ -304,22 +330,21 @@ export function AnalyticsPage() {
               <CardHeader class="pb-2">
                 <CardTitle class="text-sm flex items-center gap-2">
                   <TrendingUp class="h-4 w-4" />
-                  Efficiency Trend (24h)
+                  Efficiency Trend ({timeRangeLabel})
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {hourlyAggregates.length === 0 ? (
+                {aggregates.length === 0 ? (
                   <div class="flex h-[150px] items-center justify-center text-muted-foreground text-xs">
                     No data available
                   </div>
                 ) : (
                   <div class="h-[150px] w-full">
                     <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
-                      <LineChart data={hourlyAggregates.map((a) => ({
-                        time: new Date(a.startTime).toLocaleTimeString("ja-JP", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        }),
+                      <LineChart data={aggregates.map((a) => ({
+                        time: timeRange === "24h" 
+                          ? new Date(a.startTime).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })
+                          : new Date(a.startTime).toLocaleDateString("ja-JP", { month: "short", day: "numeric" }),
                         efficiency: (a.averages.efficiency * 100).toFixed(1),
                       }))}>
                         <CartesianGrid strokeDasharray="3 3" class="stroke-border" />
@@ -363,21 +388,21 @@ export function AnalyticsPage() {
               <CardHeader class="pb-2">
                 <CardTitle class="text-sm flex items-center gap-2">
                   <BarChart3 class="h-4 w-4" />
-                  Token Distribution (24h)
+                  Token Distribution ({timeRangeLabel})
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {hourlyAggregates.length === 0 ? (
+                {aggregates.length === 0 ? (
                   <div class="flex h-[150px] items-center justify-center text-muted-foreground text-xs">
                     No data available
                   </div>
                 ) : (
                   <div class="h-[150px] w-full">
                     <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
-                      <BarChart data={hourlyAggregates.slice(-12).map((a) => ({
-                        time: new Date(a.startTime).toLocaleTimeString("ja-JP", {
-                          hour: "2-digit",
-                        }),
+                      <BarChart data={aggregates.slice(-12).map((a) => ({
+                        time: timeRange === "24h"
+                          ? new Date(a.startTime).toLocaleTimeString("ja-JP", { hour: "2-digit" })
+                          : new Date(a.startTime).toLocaleDateString("ja-JP", { month: "short", day: "numeric" }),
                         prompt: a.totals.totalPromptTokens,
                         output: a.totals.totalOutputTokens,
                       }))}>
@@ -400,19 +425,19 @@ export function AnalyticsPage() {
                             borderRadius: "6px",
                             fontSize: "11px",
                           }}
-                          formatter={(value: number) => [formatNumber(value), ""]}
+                          formatter={(value: number) => formatNumber(value)}
                         />
                         <Bar
                           dataKey="prompt"
-                          name="Prompt"
-                          fill="hsl(var(--chart-2))"
+                          name="Input"
+                          fill="hsl(var(--chart-1))"
                           radius={[2, 2, 0, 0]}
                           maxBarSize={20}
                         />
                         <Bar
                           dataKey="output"
                           name="Output"
-                          fill="hsl(var(--chart-1))"
+                          fill="hsl(var(--chart-2))"
                           radius={[2, 2, 0, 0]}
                           maxBarSize={20}
                         />
@@ -516,7 +541,9 @@ function MetricCard({
 
 function RecordItem({ record }: { record: BehaviorRecord }) {
   const isSuccess = record.execution.outcomeCode === "SUCCESS";
-  const efficiency = (
+  // efficiencyはAPIから取得した値を使用（集計と同じ計算式）
+  // フォールバックとして簡易計算を使用
+  const efficiency = record.efficiency ?? (
     (record.output.estimatedTokens / Math.max(1, record.prompt.estimatedTokens)) +
     record.quality.formatComplianceScore +
     record.quality.claimResultConsistency

@@ -34,6 +34,9 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// プロジェクトルートディレクトリ（standalone-server.tsから3階層上）
+const PROJECT_ROOT = path.resolve(__dirname, "../../..");
+
 // ============================================================================
 // Types (duplicated from instance-registry.ts to avoid dependency)
 // ============================================================================
@@ -855,7 +858,7 @@ function createApp(): Express {
   app.get("/api/analytics/stats", async (_req: Request, res: Response) => {
     try {
       const { getStorageStats } = await import("../../lib/analytics/behavior-storage.js");
-      const stats = getStorageStats();
+      const stats = getStorageStats(PROJECT_ROOT);
       res.json(stats);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -870,7 +873,7 @@ function createApp(): Express {
     try {
       const { loadRecentRecords } = await import("../../lib/analytics/behavior-storage.js");
       const limit = parseInt(req.query.limit as string || "50", 10);
-      const records = loadRecentRecords(limit);
+      const records = loadRecentRecords(limit, PROJECT_ROOT);
       res.json(records);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -888,7 +891,7 @@ function createApp(): Express {
       const endDate = new Date();
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - 7);
-      const aggregates = loadAggregates(type, startDate, endDate);
+      const aggregates = loadAggregates(type, startDate, endDate, PROJECT_ROOT);
       res.json(aggregates);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -902,7 +905,7 @@ function createApp(): Express {
   app.get("/api/analytics/anomalies", async (_req: Request, res: Response) => {
     try {
       const { getAnomalySummary } = await import("../../lib/analytics/anomaly-detector.js");
-      const summary = getAnomalySummary();
+      const summary = getAnomalySummary(PROJECT_ROOT);
       res.json(summary);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -916,7 +919,7 @@ function createApp(): Express {
   app.get("/api/analytics/summary", async (_req: Request, res: Response) => {
     try {
       const { getAggregationSummary } = await import("../../lib/analytics/aggregator.js");
-      const summary = getAggregationSummary();
+      const summary = getAggregationSummary(PROJECT_ROOT);
       res.json(summary);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -930,7 +933,7 @@ function createApp(): Express {
   app.get("/api/analytics/paths", async (_req: Request, res: Response) => {
     try {
       const { getAnalyticsPaths } = await import("../../lib/analytics/behavior-storage.js");
-      const paths = getAnalyticsPaths();
+      const paths = getAnalyticsPaths(PROJECT_ROOT);
       res.json(paths);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
