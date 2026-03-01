@@ -218,6 +218,11 @@ export class InstanceRegistry {
     this.heartbeatInterval = setInterval(() => {
       this.updateHeartbeat();
     }, 5000);
+
+    // プロセス終了をブロックしないようにunref
+    if (this.heartbeatInterval.unref) {
+      this.heartbeatInterval.unref();
+    }
   }
 
   /**

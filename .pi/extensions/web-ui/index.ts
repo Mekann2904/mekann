@@ -150,6 +150,10 @@ export default function (pi: ExtensionAPI) {
   // コンテキスト履歴ストレージを初期化
   if (!contextHistoryStorage) {
     contextHistoryStorage = new ContextHistoryStorage(process.pid);
+  } else if (contextHistoryStorage.getPid() !== process.pid) {
+    // PIDが変わっている場合は再作成
+    contextHistoryStorage.dispose();
+    contextHistoryStorage = new ContextHistoryStorage(process.pid);
   }
 
   // Register command for manual control

@@ -363,6 +363,8 @@ export function addContextHistory(entry: Omit<ContextHistoryEntry, "pid"> & { pi
   const pid = entry.pid ?? process.pid;
 
   if (!contextHistoryStorage || contextHistoryStorage.getPid() !== pid) {
+    // 古いインスタンスを解放してから新規作成
+    contextHistoryStorage?.dispose();
     contextHistoryStorage = new ContextHistoryStorage(pid);
   }
 
@@ -1323,6 +1325,8 @@ export function startServer(
 
   state.server.listen(port, () => {
     // コンテキスト履歴ストレージを初期化
+    // 既存インスタンスがあれば解放してから再作成
+    contextHistoryStorage?.dispose();
     contextHistoryStorage = new ContextHistoryStorage(process.pid);
 
     // SSEハートビートを開始
