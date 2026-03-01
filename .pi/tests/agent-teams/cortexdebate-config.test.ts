@@ -38,10 +38,10 @@ describe("CortexDebate Config", () => {
   });
 
   describe("getCortexDebateConfig", () => {
-    it("should return default config when no env vars set", () => {
+    it("should return default config (CortexDebate enabled) when no env vars set", () => {
       const config = getCortexDebateConfig();
 
-      expect(config.enabled).toBe(false);
+      expect(config.enabled).toBe(true);
       expect(config.maxRounds).toBe(5);
       expect(config.convergenceThreshold).toBe(0.85);
     });
@@ -238,17 +238,17 @@ describe("CortexDebate Config", () => {
   });
 
   describe("isCortexDebateEnabled", () => {
-    it("should return false by default", () => {
+    it("should return true by default (CortexDebate is enabled)", () => {
       clearConfigCache();
-      expect(isCortexDebateEnabled()).toBe(false);
+      expect(isCortexDebateEnabled()).toBe(true);
     });
 
-    it("should return true when enabled", () => {
+    it("should return false when disabled", () => {
       setConfigForTesting({
-        enabled: true,
+        enabled: false,
       } as CortexDebateConfig);
 
-      expect(isCortexDebateEnabled()).toBe(true);
+      expect(isCortexDebateEnabled()).toBe(false);
     });
   });
 

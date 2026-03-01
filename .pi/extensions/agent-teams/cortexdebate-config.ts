@@ -64,7 +64,7 @@ export interface CortexDebateConfig {
  * デフォルトCortexDebate設定
  */
 const DEFAULT_CONFIG: CortexDebateConfig = {
-  enabled: false,
+  enabled: true, // デフォルトで有効（議論グラフ + MDM変調を使用）
   mdmConfig: createDefaultMDMConfig(),
   sparsityConfig: {
     targetDensity: 0.3,
@@ -162,8 +162,10 @@ export function getCortexDebateConfig(): CortexDebateConfig {
   };
 
   // Main enable/disable
-  if (parseBooleanEnv(process.env.PI_CORTEXDEBATE_ENABLED, false)) {
-    config.enabled = true;
+  // PI_CORTEXDEBATE_ENABLED で明示的に無効化できる
+  const enabledEnv = process.env.PI_CORTEXDEBATE_ENABLED;
+  if (enabledEnv !== undefined) {
+    config.enabled = parseBooleanEnv(enabledEnv, config.enabled);
   }
 
   // Feature flags
