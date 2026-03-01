@@ -402,7 +402,7 @@ function InstanceChartCard({
     }));
 
   return (
-    <Card style={{ borderLeftColor: color, borderLeftWidth: "3px" }}>
+    <Card class="border-l-2" style={{ borderLeftColor: color }}>
       <CardHeader class="pb-2">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
@@ -424,7 +424,7 @@ function InstanceChartCard({
       </CardHeader>
       <CardContent>
         {chartData.length === 0 ? (
-          <ChartEmptyState message="No history data" height={120} showCard={false} />
+          <ChartEmptyState message="No history data" height={120} />
         ) : (
           <div class="h-[150px] w-full">
             <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
@@ -446,9 +446,9 @@ function InstanceChartCard({
                 <Tooltip
                   contentStyle={CHART_TOOLTIP_STYLE}
                   labelStyle={{ color: "hsl(var(--foreground))" }}
-                  formatter={(value: number | undefined, name: string) => [
+                  formatter={(value: number | undefined, name: string | undefined) => [
                     value?.toLocaleString() ?? "0",
-                    name,
+                    name ?? "",
                   ]}
                 />
                 {(displayMode === "input" || displayMode === "both") && (

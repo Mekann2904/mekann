@@ -240,7 +240,7 @@ export const ContextUsagePage: FunctionalComponent = () => {
                   />
                   <Tooltip
                     contentStyle={CHART_TOOLTIP_STYLE}
-                    formatter={(value: number) => formatChartNumber(value)}
+                    formatter={(value: number | undefined) => formatChartNumber(value ?? 0)}
                   />
                   {(displayMode === "input" || displayMode === "both") && (
                     <Bar

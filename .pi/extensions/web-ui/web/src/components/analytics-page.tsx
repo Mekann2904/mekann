@@ -99,6 +99,8 @@ interface BehaviorRecord {
     claimResultConsistency: number;
     evidenceCount: number;
   };
+  /** 効率スコア（オプション） */
+  efficiency?: number;
 }
 
 interface Aggregates {
@@ -362,7 +364,7 @@ export function AnalyticsPage() {
                         />
                         <Tooltip
                           contentStyle={CHART_TOOLTIP_STYLE}
-                          formatter={(value: string) => [`${value}%`, "Efficiency"]}
+                          formatter={(value: string | undefined) => [`${value ?? ""}%`, "Efficiency"]}
                         />
                         <Line
                           type="monotone"
@@ -413,7 +415,7 @@ export function AnalyticsPage() {
                         />
                         <Tooltip
                           contentStyle={CHART_TOOLTIP_STYLE}
-                          formatter={(value: number) => formatChartNumber(value)}
+                          formatter={(value: number | undefined) => formatChartNumber(value ?? 0)}
                         />
                         <Bar
                           dataKey="prompt"

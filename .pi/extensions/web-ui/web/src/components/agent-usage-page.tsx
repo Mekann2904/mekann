@@ -564,9 +564,9 @@ export function AgentUsagePage() {
                         fontSize: "11px",
                       }}
                       labelStyle={{ color: "hsl(var(--foreground))" }}
-                      formatter={(value: number | undefined, name: string) => [
+                      formatter={(value: number | undefined, name: string | undefined) => [
                         value?.toLocaleString() ?? "0",
-                        name,
+                        name ?? "",
                       ]}
                     />
                     <Legend />
@@ -765,9 +765,9 @@ export function AgentUsagePage() {
                         fontSize: "11px",
                       }}
                       labelStyle={{ color: "hsl(var(--foreground))" }}
-                      formatter={(value: number | undefined, name: string) => [
+                      formatter={(value: number | undefined, name: string | undefined) => [
                         value?.toLocaleString() ?? "0",
-                        name,
+                        name ?? "",
                       ]}
                     />
                     <Legend />
