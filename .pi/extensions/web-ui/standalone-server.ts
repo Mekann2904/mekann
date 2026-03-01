@@ -1017,6 +1017,40 @@ function createApp(): Express {
     });
   });
 
+  /**
+   * GET /api/runtime/stream - SSE endpoint for real-time runtime updates (stub)
+   */
+  app.get("/api/runtime/stream", (req: Request, res: Response) => {
+    // Set SSE headers
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+
+    // Send initial empty snapshot
+    res.write(`event: status_snapshot\ndata: []\nid: ${Date.now()}\n\n`);
+
+    // Send notification that runtime streaming is unavailable
+    res.write(`event: unavailable\ndata: ${JSON.stringify({ message: "Runtime streaming requires active pi instance" })}\nid: ${Date.now()}\n\n`);
+
+    // Keep connection alive with periodic comments
+    const keepAlive = setInterval(() => {
+      try {
+        res.write(": keepalive\n\n");
+      } catch {
+        clearInterval(keepAlive);
+      }
+    }, 15000);
+
+    // Clean up on close
+    req.on("close", () => {
+      clearInterval(keepAlive);
+    });
+    res.on("close", () => {
+      clearInterval(keepAlive);
+    });
+  });
+
   // ============= Static Files =============
 
   const distPath = path.join(__dirname, "dist");
