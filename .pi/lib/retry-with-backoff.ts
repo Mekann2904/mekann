@@ -97,6 +97,8 @@ interface RetryWithBackoffOptions {
   signal?: AbortSignal;
   now?: () => number;
   rateLimitKey?: string;
+  /** Provider identifier for per-provider rate limit isolation (e.g., "openai", "anthropic") */
+  providerKey?: string;
   maxRateLimitRetries?: number;
   maxRateLimitWaitMs?: number;
   onRateLimitWait?: (context: RateLimitWaitContext) => void;
@@ -116,6 +118,8 @@ interface SharedRateLimitStateEntry {
   untilMs: number;
   hits: number;
   updatedAtMs: number;
+  /** Provider key for per-provider isolation */
+  providerKey?: string;
 }
 
 interface SharedRateLimitState {
@@ -142,12 +146,15 @@ export interface RateLimitGateSnapshot {
  * @param waitMs 待機時間
  * @param hits ヒット数
  * @param untilMs 有効期限
+ * @param providerKey プロバイダーキー（オプション）
  */
 export interface RateLimitWaitContext {
   key: string;
   waitMs: number;
   hits: number;
   untilMs: number;
+  /** Provider key for per-provider isolation */
+  providerKey?: string;
 }
 
 interface RetryTimeOptions {
@@ -539,17 +546,31 @@ export async function getRateLimitGateSnapshot(
   });
 }
 
+/**
+ * Register a rate limit gate hit with optional provider isolation
+ * @summary レートリミットヒット登録
+ * @param key - Rate limit key (e.g., "subagent:implementer")
+ * @param retryDelayMs - Retry delay in milliseconds
+ * @param now - Function to get current time
+ * @param providerKey - Optional provider identifier for per-provider isolation
+ * @returns Gate snapshot with wait time
+ */
 async function registerRateLimitGateHit(
   key: string | undefined,
   retryDelayMs: number,
   now: () => number,
+  providerKey?: string,
 ): Promise<RateLimitGateSnapshot> {
+  // Namespace the key by provider for isolation
   const normalizedKey = normalizeRateLimitKey(key);
+  const namespacedKey = providerKey
+    ? `${providerKey}:${normalizedKey}`
+    : normalizedKey;
   const nowMs = now();
 
   return await withSharedRateLimitState(nowMs, () => {
     const state = getSharedRateLimitState();
-    const previous = state.entries.get(normalizedKey);
+    const previous = state.entries.get(namespacedKey);
     const nextHits = Math.min(8, (previous?.hits ?? 0) + 1);
     const baseDelayMs = Math.max(
       DEFAULT_RATE_LIMIT_GATE_BASE_DELAY_MS,
@@ -561,15 +582,16 @@ async function registerRateLimitGateHit(
     );
     const nextUntilMs = Math.max(previous?.untilMs ?? nowMs, nowMs + adaptiveDelayMs);
 
-    state.entries.set(normalizedKey, {
+    state.entries.set(namespacedKey, {
       untilMs: nextUntilMs,
       hits: nextHits,
       updatedAtMs: nowMs,
+      providerKey,
     });
     enforceRateLimitEntryCap(state);
 
     return {
-      key: normalizedKey,
+      key: namespacedKey,
       waitMs: Math.max(0, nextUntilMs - nowMs),
       hits: nextHits,
       untilMs: nextUntilMs,
@@ -577,17 +599,27 @@ async function registerRateLimitGateHit(
   });
 }
 
-async function registerRateLimitGateSuccess(key: string | undefined, now: () => number): Promise<void> {
+/**
+ * Register successful request to decay rate limit state
+ * @summary レートリミット成功登録
+ * @param key - Rate limit key
+ * @param now - Function to get current time
+ * @param providerKey - Optional provider identifier for per-provider isolation
+ */
+async function registerRateLimitGateSuccess(key: string | undefined, now: () => number, providerKey?: string): Promise<void> {
   const normalizedKey = normalizeRateLimitKey(key);
+  const namespacedKey = providerKey
+    ? `${providerKey}:${normalizedKey}`
+    : normalizedKey;
   const nowMs = now();
   await withSharedRateLimitState(nowMs, () => {
     const state = getSharedRateLimitState();
-    const current = state.entries.get(normalizedKey);
+    const current = state.entries.get(namespacedKey);
     if (!current) return;
 
     const nextHits = Math.max(0, current.hits - 1);
     if (nextHits === 0) {
-      state.entries.delete(normalizedKey);
+      state.entries.delete(namespacedKey);
       return;
     }
 
@@ -595,10 +627,11 @@ async function registerRateLimitGateSuccess(key: string | undefined, now: () => 
       nowMs,
       Math.min(current.untilMs, nowMs + DEFAULT_RATE_LIMIT_GATE_BASE_DELAY_MS),
     );
-    state.entries.set(normalizedKey, {
+    state.entries.set(namespacedKey, {
       untilMs: nextUntilMs,
       hits: nextHits,
       updatedAtMs: nowMs,
+      providerKey,
     });
   });
 }
@@ -897,7 +930,7 @@ export async function retryWithBackoff<T>(
       });
       if (rateLimitKeys.length > 0) {
         for (const scopeKey of rateLimitKeys) {
-          await registerRateLimitGateSuccess(scopeKey, now);
+          await registerRateLimitGateSuccess(scopeKey, now, options.providerKey);
         }
       }
       // サーキットブレーカーに成功を記録
@@ -940,7 +973,7 @@ export async function retryWithBackoff<T>(
       if (statusCode === 429 && rateLimitKeys.length > 0) {
         const nowMs = now();
         const gateHits = await Promise.all(
-          rateLimitKeys.map((scopeKey) => registerRateLimitGateHit(scopeKey, delayMs, now))
+          rateLimitKeys.map((scopeKey) => registerRateLimitGateHit(scopeKey, delayMs, now, options.providerKey))
         );
         const sharedGate = selectLongestRateLimitGate(gateHits, nowMs);
         delayMs = Math.max(delayMs, sharedGate.waitMs);

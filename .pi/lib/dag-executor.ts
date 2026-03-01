@@ -46,6 +46,11 @@ import {
   type SchedulerConfig,
 } from "./coordination/priority-scheduler.js";
 import { SelfRevisionModule, type RevisionExecutor } from "./self-revision.js";
+import {
+  summarizeContext,
+  createSummarizerConfigFromEnv,
+  type SummarizerConfig,
+} from "./context-summarizer.js";
 
 /**
  * 実行トレースエントリ
@@ -188,6 +193,8 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
   private nodeRetryCount: Map<string, number> = new Map();
   /** TDP: Self-Revisionモジュール */
   private revisionModule: SelfRevisionModule | null = null;
+  /** コンテキスト要約設定 */
+  private summarizerConfig: SummarizerConfig;
 
   /**
    * DAG Executorを作成
@@ -225,6 +232,9 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
     if (this.options.enableSelfRevision) {
       this.revisionModule = new SelfRevisionModule(this);
     }
+
+    // コンテキスト要約設定の初期化
+    this.summarizerConfig = createSummarizerConfigFromEnv();
 
     this.initializeGraph();
   }
@@ -568,16 +578,19 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
     const scopedContext = this.buildNodeScopedContext(task);
     const contexts: string[] = [];
 
-    // 1. 前提ノードの結果
-    for (const [depId, result] of scopedContext.prerequisiteResults) {
+    // 1. 前提ノードの結果（要約付き）
+    Array.from(scopedContext.prerequisiteResults.entries()).forEach(([depId, result]) => {
       if (result.status === "completed" && result.output !== undefined) {
         const outputStr =
           typeof result.output === "string"
             ? result.output
             : JSON.stringify(result.output, null, 2);
-        contexts.push(`## Result from ${depId}\n${outputStr}`);
+        
+        // 大きな出力は要約してトークン効率を向上
+        const summarizedOutput = summarizeContext(outputStr, this.summarizerConfig);
+        contexts.push(`## Result from ${depId}\n${summarizedOutput}`);
       }
-    }
+    });
 
     // 2. 現在ノードの実行履歴（TDP追加）
     if (scopedContext.localTrace.length > 0) {

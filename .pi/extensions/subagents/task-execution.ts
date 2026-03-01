@@ -1015,6 +1015,7 @@ export async function runSubagentTask(input: {
           overrides: retryOverrides,
           signal: input.signal,
           rateLimitKey,
+          providerKey: resolvedProvider,
           maxRateLimitRetries: STABLE_MAX_RATE_LIMIT_RETRIES,
           maxRateLimitWaitMs: STABLE_MAX_RATE_LIMIT_WAIT_MS,
           onRateLimitWait: ({ waitMs, hits }) => {

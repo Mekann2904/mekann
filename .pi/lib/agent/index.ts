@@ -99,9 +99,13 @@ export {
 // Adaptive penalty controller (Layer 1)
 export {
   createAdaptivePenaltyController,
+  createProviderIsolatedPenaltyController,
+  extractProviderFromModel,
   type AdaptivePenaltyState,
   type AdaptivePenaltyOptions,
   type AdaptivePenaltyController,
+  type ProviderKey,
+  type ProviderIsolatedPenaltyController,
 } from "./adaptive-penalty.js";
 
 // Live view utilities (Layer 1)
