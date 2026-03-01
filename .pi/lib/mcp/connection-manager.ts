@@ -36,7 +36,7 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { WebSocketClientTransport } from "@modelcontextprotocol/sdk/client/websocket.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ListRootsRequestSchema, CreateMessageRequestSchema, ElicitRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import type { McpConnection, McpConnectionState, McpToolInfo, McpResourceInfo, McpNotificationType, McpNotification, McpRoot, McpPromptInfo, McpPromptResult, McpAuthProvider, McpResourceTemplateInfo, McpConnectOptions, McpActiveTransportType, McpLoggingLevel, McpSamplingHandler, McpSamplingRequest, McpSamplingResponse, McpElicitationHandler, McpElicitationRequest, McpElicitationResponse } from "./types.js";
+import type { McpConnection, McpConnectionState, McpToolInfo, McpResourceInfo, McpNotificationType, McpNotification, McpRoot, McpPromptInfo, McpPromptResult, McpAuthProvider, McpResourceTemplateInfo, McpConnectOptions, McpActiveTransportType, McpLoggingLevel, McpSamplingHandler, McpSamplingRequest, McpSamplingResponse, McpElicitationHandler, McpElicitationRequest, McpElicitationResponse, ConnectedMcpConnection } from "./types.js";
 import { authProviderToRequestInit, mergeHeaders } from "./auth-provider.js";
 
 /**
@@ -230,12 +230,13 @@ export class McpConnectionManager {
 		}
 
 		// 接続情報の初期化（先に作成してステータス追跡）
+		// client/transportは接続成功後に設定されるため、初期値はundefined
 		const connection: McpConnection = {
 			id,
 			name: id,
 			url,
-			client: null as unknown as Client,
-			transport: null as unknown as Transport,
+			client: undefined,
+			transport: undefined,
 			status: 'connecting',
 			tools: [],
 			resources: [],
@@ -457,7 +458,7 @@ export class McpConnectionManager {
 		connection.subscriptions.clear();
 
 		try {
-			await connection.client.close();
+			await connection.client?.close();
 		} catch (error) {
 			console.warn(`Error closing connection ${id}:`, error);
 		} finally {
@@ -1061,7 +1062,7 @@ export class McpConnectionManager {
 	 * 接続情報を取得する（存在しない場合はエラー）
 	 * @param id - 接続ID
 	 */
-	private getConnectionOrFail(id: string): McpConnection {
+	private getConnectionOrFail(id: string): ConnectedMcpConnection {
 		const connection = this.state.connections.get(id);
 		if (!connection) {
 			throw new Error(`Connection '${id}' not found. Use mcp_connect to establish a connection first.`);
@@ -1069,7 +1070,10 @@ export class McpConnectionManager {
 		if (connection.status !== 'connected') {
 			throw new Error(`Connection '${id}' is not connected (status: ${connection.status})`);
 		}
-		return connection;
+		if (!connection.client || !connection.transport) {
+			throw new Error(`Connection '${id}' has no active client/transport`);
+		}
+		return connection as ConnectedMcpConnection;
 	}
 
 	/**

@@ -109,7 +109,9 @@ function writeJsonFile<T>(filePath: string, data: T): void {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
     try {
       fs.unlinkSync(tempPath);
-    } catch {}
+    } catch (error) {
+      console.error('[standalone-server] Failed to unlink temp file:', tempPath, error);
+    }
   }
 }
 
@@ -167,7 +169,9 @@ class ServerRegistry {
   static unregister(): void {
     try {
       fs.unlinkSync(SERVER_FILE);
-    } catch {}
+    } catch (error) {
+      console.error('[standalone-server] Failed to unregister server file:', error);
+    }
   }
 
   static isRunning(): ServerInfo | null {
@@ -182,7 +186,9 @@ class ServerRegistry {
     } catch {
       try {
         fs.unlinkSync(SERVER_FILE);
-      } catch {}
+      } catch (error) {
+        console.error('[standalone-server] Failed to cleanup stale server file:', error);
+      }
       return null;
     }
   }
@@ -271,7 +277,9 @@ class ContextHistoryStorage {
         if (!activePids.has(pid)) {
           try {
             fs.unlinkSync(path.join(SHARED_DIR, file));
-          } catch {}
+          } catch (error) {
+            console.error('[standalone-server] Failed to cleanup orphaned history file:', file, error);
+          }
         }
       }
     }

@@ -147,8 +147,8 @@ function loadPrintThrottleStatesIntoMemory(nowMs: number): void {
         lastAccessedMs,
       });
     }
-  } catch {
-    // Ignore broken state files.
+  } catch (error) {
+    console.error('[pi-print-executor] Failed to load throttle state file:', error);
   }
 }
 
@@ -161,8 +161,8 @@ function savePrintThrottleStates(nowMs: number): void {
       states: Object.fromEntries(printThrottleStates.entries()),
     };
     writeFileSync(PRINT_THROTTLE_STATE_FILE, JSON.stringify(payload, null, 2), "utf-8");
-  } catch {
-    // Best effort only.
+  } catch (error) {
+    console.error('[pi-print-executor] Failed to save throttle state file:', error);
   }
 }
 
@@ -185,7 +185,8 @@ function withPrintThrottleMutation<T>(nowMs: number, mutator: () => T): T {
       },
       PRINT_THROTTLE_FILE_LOCK_OPTIONS,
     );
-  } catch {
+  } catch (error) {
+    console.error('[pi-print-executor] Failed to acquire file lock, using fallback:', error);
     return fallback();
   }
 }

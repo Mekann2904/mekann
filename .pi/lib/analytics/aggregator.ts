@@ -275,8 +275,8 @@ export function loadAggregates(
       if (aggStart >= startDate && aggStart <= endDate) {
         aggregates.push(agg);
       }
-    } catch {
-      // 読み込みエラーはスキップ
+    } catch (error) {
+      console.error('[analytics/aggregator] Failed to read analytics file:', join(aggregateDir, file), error);
     }
   }
 
