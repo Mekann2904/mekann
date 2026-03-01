@@ -28,6 +28,13 @@ import { join, dirname } from "node:path";
 import type { LLMBehaviorRecord, LLMBehaviorConfig } from "./llm-behavior-types.js";
 import { DEFAULT_LLM_BEHAVIOR_CONFIG } from "./llm-behavior-types.js";
 import { createRunId } from "../agent/agent-utils.js";
+import {
+  collectPromptMetrics,
+  collectOutputMetrics,
+  collectQualityMetrics,
+  collectExecutionMetrics,
+  extractExecutionContext,
+} from "./metric-collectors.js";
 
 // ============================================================================
 // Path Management
@@ -122,14 +129,6 @@ export function createAndRecordMetrics(params: {
   cwd?: string;
 }): LLMBehaviorRecord {
   // 動的インポートで循環依存を回避
-  const {
-    collectPromptMetrics,
-    collectOutputMetrics,
-    collectQualityMetrics,
-    collectExecutionMetrics,
-    extractExecutionContext,
-  } = require("./metric-collectors.js");
-
   const record: LLMBehaviorRecord = {
     id: createRunId(),
     timestamp: new Date().toISOString(),
