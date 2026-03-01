@@ -220,6 +220,12 @@ import {
   type PartnerReferenceResultV2,
 } from "./communication";
 
+// CortexDebate integration
+import { isCortexDebateEnabled, getCortexDebateConfig } from "./cortexdebate-config";
+import { MDMModulator } from "./mdm-modulator";
+import type { MDMState, DebateGraph } from "./mdm-types";
+import { buildDebateGraph } from "./debate-graph";
+
 // Import definition-loader module (extracted for SRP compliance)
 import {
   parseTeamMarkdownFile,
@@ -1020,12 +1026,36 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
       let communicationLinks: Map<string, string[]>;
       let commIdEntries: CommIdEntry[] = [];
       
+      // CortexDebate: State tracking across rounds
+      let mdmState: MDMState | undefined;
+      let debateGraph: DebateGraph | undefined;
+      
       if (commConfig.linksV2) {
         commIdEntries = resolveUniqueCommIds(activeMembers, team.id);
+        
+        // CortexDebate: Use sparse-graph strategy when enabled
+        const cortexDebateEnabled = isCortexDebateEnabled();
+        const commStrategy = cortexDebateEnabled ? "sparse-graph" : "ring";
+        
+        // Initialize MDM state and debate graph for CortexDebate
+        if (cortexDebateEnabled) {
+          const config = getCortexDebateConfig();
+          const mdmModulator = new MDMModulator(config.mdmConfig);
+          mdmModulator.initializePositions(activeMembers.map(m => ({
+            id: m.id,
+            role: m.role,
+          })));
+          mdmState = mdmModulator.getState();
+          // Build initial graph with empty results (will be updated after each round)
+          debateGraph = buildDebateGraph([], mdmState);
+        }
+        
         communicationLinks = createCommunicationLinksMapV2(activeMembers, {
           round: 0,
           seed: team.id,
-          strategy: "ring",
+          strategy: commStrategy,
+          mdmState,
+          debateGraph,
         });
       } else {
         communicationLinks = createCommunicationLinksMap(activeMembers);
