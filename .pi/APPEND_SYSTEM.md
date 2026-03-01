@@ -395,3 +395,89 @@ RepoAuditは以下の3層パイプラインで動作:
 | 軽量なコード検索 | `code_search`, `sym_find` |
 | 構造理解・ナビゲーション | `repograph_localize`, `context_explore` |
 | レビュー指摘の対応 | `skills/code-review/SKILL.md` |
+
+---
+
+## Agent Memory Usage (RECOMMENDED)
+
+エージェントの学習・最適化機能を活用し、**継続的な効率改善**を行う。
+
+### 2つのメモリシステム
+
+| システム | 場所 | 目的 | 使用タイミング |
+|---------|------|------|---------------|
+| **agent-memory** | `.pi/lib/agent/agent-memory.ts` | 探索結果のキャッシュ・再利用 | RepoAudit実行時 |
+| **AWO** | `.pi/lib/awo/` | 実行パターンの最適化・メタツール生成 | 定期的な分析時 |
+
+### agent-memory（探索キャッシュ）
+
+RepoAuditの需要駆動探索で使用されるセマンティックキャッシュ。
+
+**使用場面**:
+- 同じクエリを繰り返し実行する場合
+- 類似コードの探索を行う場合
+- RepoAuditのExplorerフェーズ
+
+**効果**:
+- 重複探索の回避
+- レスポンス時間の短縮
+
+### AWO（Agent Workflow Optimization）
+
+論文「Optimizing Agentic Workflows using Meta-tools」に基づく最適化システム。
+
+**使用場面**:
+- 定期的な実行パターン分析（週次など）
+- 新規メタツール候補の生成
+- LLM呼び出しコストの削減
+
+**効果**:
+- LLM呼び出し最大11.9%削減
+- タスク成功率向上（最大+4.2%ポイント）
+
+### 推奨ワークフロー
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  日次実行                                                │
+│  └─ agent-memory: 自動的に探索結果をキャッシュ           │
+└─────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────┐
+│  週次分析                                                │
+│  └─ AWO: トレースを分析してメタツール候補を生成          │
+│  └─ レビュー後、有用なメタツールを登録                   │
+└─────────────────────────────────────────────────────────┘
+```
+
+### AWO API
+
+```typescript
+import { AWOOrchestrator, getGlobalAWO } from "./lib/awo/index.js";
+
+// トレース分析
+const awo = getGlobalAWO();
+const candidates = awo.analyzeCandidates();
+
+// メタツール生成（手動承認）
+const tools = awo.generateMetaTools(false);
+
+// 登録済みツール確認
+const registered = awo.getRegisteredTools();
+
+// 統計確認
+const stats = awo.getStats();
+```
+
+### 設定
+
+デフォルト設定（`.pi/lib/awo/types.ts`）:
+
+| パラメータ | デフォルト | 説明 |
+|-----------|-----------|------|
+| `traceCollection.enabled` | `true` | トレース収集を有効化 |
+| `traceCollection.maxTraces` | `10000` | 最大トレース数 |
+| `traceCollection.retentionDays` | `30` | 保持期間（日） |
+| `extraction.threshold` | `5` | メタツール抽出閾値 |
+| `registry.autoRegister` | `false` | 自動登録（手動承認を推奨） |
