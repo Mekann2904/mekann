@@ -82,7 +82,6 @@ import {
 import {
   createTrajectoryReducer,
   messageToStep,
-  type TrajectoryReducer,
   type TrajectoryReductionConfig,
   type ReductionStats,
   DEFAULT_TRAJECTORY_REDUCTION_CONFIG,

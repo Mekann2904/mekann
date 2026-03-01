@@ -77,9 +77,7 @@ import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-execut
 import { checkUlWorkflowOwnership } from "./subagents.js";
 import {
   createTrajectoryReducer,
-  globalTrajectoryStore,
   messageToStep,
-  type TrajectoryReducer,
   type TrajectoryReductionConfig,
   type ReductionStats,
   DEFAULT_TRAJECTORY_REDUCTION_CONFIG,
