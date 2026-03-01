@@ -119,6 +119,8 @@ export interface SimpleStatsCardProps {
   value: string | number;
   /** ラベル */
   label: string;
+  /** 値の下の補足ラベル */
+  subLabel?: string;
   /** 値の色クラス */
   valueClassName?: string;
   /** カスタムクラス名 */
@@ -135,6 +137,7 @@ export interface SimpleStatsCardProps {
 export function SimpleStatsCard({
   value,
   label,
+  subLabel,
   valueClassName,
   className,
   testId,
@@ -144,6 +147,9 @@ export function SimpleStatsCard({
       <CardContent class="py-3 text-center">
         <div class={cn("text-lg font-bold", valueClassName)}>{value}</div>
         <div class="text-xs text-muted-foreground">{label}</div>
+        {subLabel && (
+          <div class="text-[10px] text-muted-foreground">{subLabel}</div>
+        )}
       </CardContent>
     </Card>
   );

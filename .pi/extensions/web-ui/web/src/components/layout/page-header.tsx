@@ -13,11 +13,12 @@
  * overview: ページヘッダーコンポーネント
  * what_it_does: タイトル、説明、アクション領域を一貫した構造で提供
  * why_it_exists: ヘッダーのデザインを統一するため
- * scope(in/out): in=title, description, actions, badge / out=統一されたヘッダー
+ * scope(in/out): in=title, description, actions, badge, icon / out=統一されたヘッダー
  */
 
 import { h } from "preact";
 import { cn } from "@/lib/utils";
+import type { LucideIcon } from "lucide-preact";
 
 /** @summary PageHeaderのプロパティ */
 export interface PageHeaderProps {
@@ -29,6 +30,8 @@ export interface PageHeaderProps {
   actions?: preact.ComponentChildren;
   /** タイトル横のバッジ（統計数等） */
   badge?: preact.ComponentChildren;
+  /** タイトル横のアイコン */
+  icon?: LucideIcon;
   /** カスタムクラス名 */
   className?: string;
   /** 区切り線を表示するか */
@@ -47,6 +50,7 @@ export function PageHeader({
   description,
   actions,
   badge,
+  icon: Icon,
   className,
   showBorder = false,
   testId,
@@ -62,6 +66,11 @@ export function PageHeader({
       data-testid={testId}
     >
       <div class="flex items-center gap-4">
+        {Icon && (
+          <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+            <Icon class="h-5 w-5 text-primary" />
+          </div>
+        )}
         <div>
           <h1 class="text-xl font-bold">{title}</h1>
           {description && (
