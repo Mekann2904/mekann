@@ -61,6 +61,11 @@ import {
   ChartEmptyState,
   CHART_TOOLTIP_STYLE,
   formatChartNumber,
+  TYPOGRAPHY,
+  CARD_STYLES,
+  FORM_STYLES,
+  PATTERNS,
+  STATE_STYLES,
 } from "./layout";
 
 // ============================================================================
@@ -488,36 +493,35 @@ function RecordItem({ record }: { record: BehaviorRecord }) {
   ) / 3;
 
   return (
-    <div class="p-2 bg-muted/50 rounded-lg text-xs">
+    <div class={cn("p-2 bg-muted/50 rounded-lg", TYPOGRAPHY.bodySmall)}>
       <div class="flex items-center justify-between mb-1.5">
-        <span class="font-mono text-muted-foreground">
+        <span class={PATTERNS.monoSm}>
           {record.id.slice(0, 12)}...
         </span>
         <span class={cn(
-          "px-1.5 py-0.5 rounded text-[10px] font-medium",
-          isSuccess ? "bg-green-500/20 text-green-500" : "bg-red-500/20 text-red-500"
+          PATTERNS.badgeSm,
+          isSuccess ? cn(STATE_STYLES.success.bg, STATE_STYLES.success.text) : cn(STATE_STYLES.error.bg, STATE_STYLES.error.text)
         )}>
           {record.execution.outcomeCode}
         </span>
       </div>
-      <div class="grid grid-cols-4 gap-2 text-muted-foreground">
+      <div class={cn("grid grid-cols-4", SPACING.element, "text-muted-foreground")}>
         <div>
-          <span class="block text-[10px]">Prompt</span>
+          <span class={cn("block", TYPOGRAPHY.muted)}>Prompt</span>
           <span class="text-foreground">{record.prompt.estimatedTokens}</span>
         </div>
         <div>
-          <span class="block text-[10px]">Output</span>
+          <span class={cn("block", TYPOGRAPHY.muted)}>Output</span>
           <span class="text-foreground">{record.output.estimatedTokens}</span>
         </div>
         <div>
-          <span class="block text-[10px]">Duration</span>
+          <span class={cn("block", TYPOGRAPHY.muted)}>Duration</span>
           <span class="text-foreground">{formatDuration(record.execution.durationMs)}</span>
         </div>
         <div>
-          <span class="block text-[10px]">Efficiency</span>
+          <span class={cn("block", TYPOGRAPHY.muted)}>Efficiency</span>
           <span class={cn(
-            "text-foreground",
-            efficiency >= 0.7 ? "text-green-500" : efficiency >= 0.4 ? "text-yellow-500" : "text-red-500"
+            efficiency >= 0.7 ? STATE_STYLES.success.text : efficiency >= 0.4 ? STATE_STYLES.warning.text : STATE_STYLES.error.text
           )}>
             {(efficiency * 100).toFixed(0)}%
           </span>
@@ -528,16 +532,22 @@ function RecordItem({ record }: { record: BehaviorRecord }) {
 }
 
 function AnomalyItem({ anomaly }: { anomaly: AnomalyRecord }) {
+  const severityStyle = anomaly.severity === "high"
+    ? STATE_STYLES.error
+    : anomaly.severity === "medium"
+    ? STATE_STYLES.warning
+    : STATE_STYLES.info;
+
   return (
     <div class={cn(
-      "p-2 rounded-lg border-l-2 text-xs",
-      anomaly.severity === "high" && "bg-red-500/10 border-red-500",
-      anomaly.severity === "medium" && "bg-yellow-500/10 border-yellow-500",
-      anomaly.severity === "low" && "bg-blue-500/10 border-blue-500",
+      "p-2 rounded-lg border-l-2",
+      TYPOGRAPHY.bodySmall,
+      severityStyle.bg,
+      `border-l-[${severityStyle.border.split(" ")[0]}]`,
     )}>
       <div class="font-medium mb-0.5">{formatAnomalyType(anomaly.type)}</div>
       <div class="text-muted-foreground">{anomaly.details}</div>
-      <div class="text-[10px] text-muted-foreground mt-1">
+      <div class={cn("mt-1", TYPOGRAPHY.muted)}>
         {new Date(anomaly.timestamp).toLocaleString()}
       </div>
     </div>
