@@ -164,3 +164,6 @@ philosophy.md
 
 # Cache optimizer metrics
 .pi/cache-optimizer/
+
+# Runtime data (trajectory-reduction config, etc.)
+.pi/data/
