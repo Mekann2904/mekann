@@ -151,7 +151,12 @@ export function KanbanTaskCard({
 }: KanbanTaskCardProps) {
   const priorityColor = PRIORITY_COLORS[task.priority];
   const priorityLabel = PRIORITY_LABELS[task.priority];
-  const descriptionPreview = formatDescriptionPreview(task.description);
+  const descriptionPreview = (() => {
+    const preview = formatDescriptionPreview(task.description);
+    // タイトルと同じ内容の場合は表示しない
+    if (preview && preview === task.title.trim()) return null;
+    return preview;
+  })();
   const isOverdue =
     task.dueDate &&
     task.status !== "completed" &&
