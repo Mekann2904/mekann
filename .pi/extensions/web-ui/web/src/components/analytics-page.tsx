@@ -29,17 +29,13 @@ import {
   Tooltip,
   LineChart,
   Line,
-  Legend,
 } from "recharts";
 import {
   Activity,
-  Loader2,
   RefreshCw,
   TrendingUp,
-  TrendingDown,
   Clock,
   CheckCircle,
-  XCircle,
   AlertTriangle,
   Zap,
   FileText,
@@ -54,6 +50,18 @@ import {
   CardTitle,
 } from "./ui/card";
 import { cn } from "@/lib/utils";
+import {
+  PageLayout,
+  PageHeader,
+  StatsCard,
+  StatsGrid,
+  LoadingState,
+  ErrorBanner,
+  EmptyState,
+  ChartEmptyState,
+  CHART_TOOLTIP_STYLE,
+  formatChartNumber,
+} from "./layout";
 
 // ============================================================================
 // Types
@@ -132,12 +140,6 @@ function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
   return `${(ms / 60000).toFixed(1)}m`;
-}
-
-function formatNumber(num: number): string {
-  if (num < 1000) return String(num);
-  if (num < 1000000) return `${(num / 1000).toFixed(1)}K`;
-  return `${(num / 1000000).toFixed(1)}M`;
 }
 
 function formatAnomalyType(type: string): string {
@@ -228,100 +230,94 @@ export function AnalyticsPage() {
   // 期間表示用のラベル
   const timeRangeLabel = timeRange === "24h" ? "24h" : timeRange === "7d" ? "7 days" : "30 days";
 
+  // Time Range Selector
+  const TimeRangeSelector = () => (
+    <div class="flex gap-1 bg-muted rounded-lg p-1">
+      {(["24h", "7d", "30d"] as TimeRange[]).map((range) => (
+        <Button
+          key={range}
+          variant={timeRange === range ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setTimeRange(range)}
+          class="px-3"
+        >
+          {range}
+        </Button>
+      ))}
+    </div>
+  );
+
   return (
-    <div class="flex h-full flex-col gap-4 p-4 overflow-auto">
+    <PageLayout variant="default">
       {/* Header */}
-      <div class="flex gap-2 shrink-0 items-center justify-between">
-        <div>
-          <h1 class="text-xl font-bold">LLM Analytics</h1>
-          <p class="text-sm text-muted-foreground">
-            Behavior metrics and optimization insights
-          </p>
-        </div>
-        <div class="flex items-center gap-2">
-          {/* Time Range Selector */}
-          <div class="flex gap-1 bg-muted rounded-lg p-1">
-            {(["24h", "7d", "30d"] as TimeRange[]).map((range) => (
-              <Button
-                key={range}
-                variant={timeRange === range ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setTimeRange(range)}
-                class="px-3"
-              >
-                {range}
-              </Button>
-            ))}
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchData}
-            disabled={loading}
-          >
-            <RefreshCw class={cn("h-4 w-4", loading && "animate-spin")} />
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="LLM Analytics"
+        description="Behavior metrics and optimization insights"
+        actions={
+          <>
+            <TimeRangeSelector />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchData}
+              disabled={loading}
+            >
+              <RefreshCw class={cn("h-4 w-4", loading && "animate-spin")} />
+            </Button>
+          </>
+        }
+      />
 
       {/* Error */}
       {error && (
-        <Card class="border-destructive shrink-0">
-          <CardContent class="py-3 flex items-center gap-2 text-destructive">
-            <AlertTriangle class="h-4 w-4" />
-            <span class="text-sm">Failed to load data: {error}</span>
-          </CardContent>
-        </Card>
+        <ErrorBanner
+          message={`Failed to load data: ${error}`}
+          onRetry={fetchData}
+          onDismiss={() => setError(null)}
+        />
       )}
 
       {/* Loading */}
       {loading && !summary ? (
-        <Card>
-          <CardContent class="py-8 flex items-center justify-center">
-            <div class="flex flex-col items-center gap-2">
-              <Loader2 class="h-6 w-6 animate-spin text-primary" />
-              <p class="text-sm text-muted-foreground">Loading analytics...</p>
-            </div>
-          </CardContent>
-        </Card>
+        <LoadingState message="Loading analytics..." />
       ) : (
         <>
           {/* Metrics Grid */}
-          <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 shrink-0">
-            <MetricCard
+          <StatsGrid cols={6}>
+            <StatsCard
               icon={Activity}
               label="Runs"
               value={displayData?.totals.runs ?? 0}
             />
-            <MetricCard
+            <StatsCard
               icon={Zap}
               label="Efficiency"
               value={`${((displayData?.averages.efficiency ?? 0) * 100).toFixed(0)}%`}
               progress={(displayData?.averages.efficiency ?? 0) * 100}
             />
-            <MetricCard
+            <StatsCard
               icon={Clock}
               label="Avg Duration"
               value={formatDuration(displayData?.averages.durationMs ?? 0)}
             />
-            <MetricCard
+            <StatsCard
               icon={CheckCircle}
               label="Compliance"
               value={`${((displayData?.averages.formatCompliance ?? 0) * 100).toFixed(0)}%`}
               progress={(displayData?.averages.formatCompliance ?? 0) * 100}
             />
-            <MetricCard
+            <StatsCard
               icon={FileText}
               label="Total Tokens"
-              value={formatNumber((displayData?.totals.totalOutputTokens ?? 0) + (displayData?.totals.totalPromptTokens ?? 0))}
+              value={formatChartNumber((displayData?.totals.totalOutputTokens ?? 0) + (displayData?.totals.totalPromptTokens ?? 0))}
             />
-            <MetricCard
+            <StatsCard
               icon={AlertTriangle}
               label="Anomalies"
               value={anomalyCount}
               variant={anomalyCount > 0 ? "warning" : "default"}
             />
-          </div>
+          </StatsGrid>
 
           {/* Charts Row */}
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -335,9 +331,7 @@ export function AnalyticsPage() {
               </CardHeader>
               <CardContent>
                 {aggregates.length === 0 ? (
-                  <div class="flex h-[150px] items-center justify-center text-muted-foreground text-xs">
-                    No data available
-                  </div>
+                  <ChartEmptyState height={150} />
                 ) : (
                   <div class="h-[150px] w-full">
                     <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
@@ -361,12 +355,7 @@ export function AnalyticsPage() {
                           width={30}
                         />
                         <Tooltip
-                          contentStyle={{
-                            backgroundColor: "hsl(var(--card))",
-                            border: "1px solid hsl(var(--border))",
-                            borderRadius: "6px",
-                            fontSize: "11px",
-                          }}
+                          contentStyle={CHART_TOOLTIP_STYLE}
                           formatter={(value: string) => [`${value}%`, "Efficiency"]}
                         />
                         <Line
@@ -393,9 +382,7 @@ export function AnalyticsPage() {
               </CardHeader>
               <CardContent>
                 {aggregates.length === 0 ? (
-                  <div class="flex h-[150px] items-center justify-center text-muted-foreground text-xs">
-                    No data available
-                  </div>
+                  <ChartEmptyState height={150} />
                 ) : (
                   <div class="h-[150px] w-full">
                     <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
@@ -415,17 +402,12 @@ export function AnalyticsPage() {
                         <YAxis
                           tick={{ fontSize: 9 }}
                           class="text-muted-foreground"
-                          tickFormatter={(v: number) => formatNumber(v)}
+                          tickFormatter={(v: number) => formatChartNumber(v)}
                           width={35}
                         />
                         <Tooltip
-                          contentStyle={{
-                            backgroundColor: "hsl(var(--card))",
-                            border: "1px solid hsl(var(--border))",
-                            borderRadius: "6px",
-                            fontSize: "11px",
-                          }}
-                          formatter={(value: number) => formatNumber(value)}
+                          contentStyle={CHART_TOOLTIP_STYLE}
+                          formatter={(value: number) => formatChartNumber(value)}
                         />
                         <Bar
                           dataKey="prompt"
@@ -459,9 +441,7 @@ export function AnalyticsPage() {
               </CardHeader>
               <CardContent class="max-h-[300px] overflow-auto space-y-2">
                 {records.length === 0 ? (
-                  <div class="flex items-center justify-center py-8 text-muted-foreground text-xs">
-                    No records found
-                  </div>
+                  <EmptyState message="No records found" showCard={false} />
                 ) : (
                   records.map((record) => (
                     <RecordItem key={record.id} record={record} />
@@ -478,9 +458,7 @@ export function AnalyticsPage() {
               </CardHeader>
               <CardContent class="max-h-[300px] overflow-auto space-y-2">
                 {(!displayData?.anomalies || displayData.anomalies.length === 0) ? (
-                  <div class="flex items-center justify-center py-8 text-muted-foreground text-xs">
-                    No anomalies detected
-                  </div>
+                  <EmptyState message="No anomalies detected" showCard={false} />
                 ) : (
                   displayData.anomalies.map((anomaly, idx) => (
                     <AnomalyItem key={idx} anomaly={anomaly} />
@@ -491,53 +469,13 @@ export function AnalyticsPage() {
           </div>
         </>
       )}
-    </div>
+    </PageLayout>
   );
 }
 
 // ============================================================================
 // Sub-Components
 // ============================================================================
-
-function MetricCard({
-  icon: Icon,
-  label,
-  value,
-  progress,
-  variant = "default",
-}: {
-  icon: typeof Activity;
-  label: string;
-  value: string | number;
-  progress?: number;
-  variant?: "default" | "warning" | "success";
-}) {
-  return (
-    <Card class={cn(
-      variant === "warning" && "border-yellow-500/50",
-      variant === "success" && "border-green-500/50",
-    )}>
-      <CardContent class="py-3">
-        <div class="flex items-center gap-2 mb-1">
-          <Icon class="h-3.5 w-3.5 text-muted-foreground" />
-          <span class="text-xs text-muted-foreground">{label}</span>
-        </div>
-        <div class="text-lg font-bold">{value}</div>
-        {progress !== undefined && (
-          <div class="mt-1.5 h-1.5 w-full bg-muted rounded-full overflow-hidden">
-            <div
-              class={cn(
-                "h-full rounded-full transition-all",
-                progress >= 70 ? "bg-green-500" : progress >= 40 ? "bg-yellow-500" : "bg-red-500"
-              )}
-              style={{ width: `${Math.min(100, progress)}%` }}
-            />
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
 
 function RecordItem({ record }: { record: BehaviorRecord }) {
   const isSuccess = record.execution.outcomeCode === "SUCCESS";
