@@ -65,20 +65,20 @@ interface DrawerContentProps {
 export function DrawerContent({ children, className }: DrawerContentProps) {
   return (
     <VaulDrawer.Portal>
-      <VaulDrawer.Overlay className="fixed inset-0 bg-black/50 z-40" />
+      <VaulDrawer.Overlay className="fixed inset-0 bg-black/60 z-40" />
       <VaulDrawer.Content
         className={`
-          fixed z-50 bg-zinc-900 border-t border-zinc-800
+          fixed z-50 bg-zinc-900 border-t border-zinc-700
           bottom-0 left-0 right-0
           rounded-t-xl
-          max-h-[90vh]
+          h-[90vh]
           flex flex-col
           ${className || ""}
         `}
       >
         {/* Handle bar */}
-        <div class="flex justify-center pt-3 pb-2 shrink-0">
-          <div class="h-1.5 w-12 rounded-full bg-zinc-700" />
+        <div class="flex justify-center pt-2 pb-1 shrink-0">
+          <div class="h-1 w-10 rounded-full bg-zinc-600" />
         </div>
         {children}
       </VaulDrawer.Content>

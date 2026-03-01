@@ -453,23 +453,8 @@ export function DashboardPage() {
 
           {/* Full plan drawer */}
           <DrawerContent>
-            <DrawerHeader>
-              <DrawerTitle>{activeTask.title}</DrawerTitle>
-              <DrawerDescription>
-                Plan for {activeTask.id}
-              </DrawerDescription>
-            </DrawerHeader>
-            <div class="flex-1 overflow-y-auto px-4 pb-4">
-              {plan && (
-                <pre class="text-sm font-mono whitespace-pre-wrap text-zinc-300">
-                  {plan}
-                </pre>
-              )}
-            </div>
-            <div class="px-4 py-3 border-t border-zinc-800 flex justify-end">
-              <DrawerClose asChild>
-                <Button variant="outline" size="sm">Close</Button>
-              </DrawerClose>
+            <div class="flex-1 overflow-y-auto p-4">
+              {plan && <MarkdownRenderer content={plan} />}
             </div>
           </DrawerContent>
         </Drawer>
@@ -594,4 +579,144 @@ function InstanceChartCard({
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * @summary 簡易Markdownレンダラー
+ */
+function MarkdownRenderer({ content }: { content: string }) {
+  const lines = content.split("\n");
+  const elements: h.JSX.Element[] = [];
+
+  let inCodeBlock = false;
+  let codeContent: string[] = [];
+  let inList = false;
+  let listItems: string[] = [];
+
+  const flushList = () => {
+    if (listItems.length > 0) {
+      elements.push(
+        <ul class="list-disc list-inside space-y-1 my-2 text-zinc-300">
+          {listItems.map((item, i) => (
+            <li key={i} class="text-sm">{item}</li>
+          ))}
+        </ul>
+      );
+      listItems = [];
+      inList = false;
+    }
+  };
+
+  lines.forEach((line, idx) => {
+    // コードブロック
+    if (line.startsWith("```")) {
+      if (inCodeBlock) {
+        elements.push(
+          <pre key={`code-${idx}`} class="bg-zinc-800 p-3 rounded-md overflow-x-auto my-2 text-xs font-mono text-zinc-300">
+            <code>{codeContent.join("\n")}</code>
+          </pre>
+        );
+        codeContent = [];
+        inCodeBlock = false;
+      } else {
+        flushList();
+        inCodeBlock = true;
+      }
+      return;
+    }
+
+    if (inCodeBlock) {
+      codeContent.push(line);
+      return;
+    }
+
+    // 見出し
+    if (line.startsWith("# ")) {
+      flushList();
+      elements.push(
+        <h1 key={idx} class="text-xl font-bold text-zinc-100 mt-4 mb-2">
+          {line.slice(2)}
+        </h1>
+      );
+      return;
+    }
+    if (line.startsWith("## ")) {
+      flushList();
+      elements.push(
+        <h2 key={idx} class="text-lg font-semibold text-zinc-100 mt-3 mb-2 border-b border-zinc-700 pb-1">
+          {line.slice(3)}
+        </h2>
+      );
+      return;
+    }
+    if (line.startsWith("### ")) {
+      flushList();
+      elements.push(
+        <h3 key={idx} class="text-base font-medium text-zinc-200 mt-2 mb-1">
+          {line.slice(4)}
+        </h3>
+      );
+      return;
+    }
+
+    // リスト
+    if (line.startsWith("- ") || line.startsWith("* ")) {
+      inList = true;
+      listItems.push(line.slice(2));
+      return;
+    }
+    if (line.match(/^\d+\.\s/)) {
+      inList = true;
+      listItems.push(line.replace(/^\d+\.\s/, ""));
+      return;
+    }
+
+    // 空行
+    if (line.trim() === "") {
+      flushList();
+      elements.push(<div key={idx} class="h-2" />);
+      return;
+    }
+
+    // 通常のテキスト
+    flushList();
+    
+    // インラインコード
+    const codeMatches = line.match(/`([^`]+)`/g);
+    if (codeMatches) {
+      const parts: (string | h.JSX.Element)[] = [];
+      let lastIdx = 0;
+      codeMatches.forEach((match, i) => {
+        const matchIdx = line.indexOf(match, lastIdx);
+        if (matchIdx > lastIdx) {
+          parts.push(line.slice(lastIdx, matchIdx));
+        }
+        parts.push(
+          <code key={`inline-${idx}-${i}`} class="bg-zinc-800 px-1.5 py-0.5 rounded text-xs text-zinc-300">
+            {match.slice(1, -1)}
+          </code>
+        );
+        lastIdx = matchIdx + match.length;
+      });
+      if (lastIdx < line.length) {
+        parts.push(line.slice(lastIdx));
+      }
+      elements.push(
+        <p key={idx} class="text-sm text-zinc-300 my-1">
+          {parts}
+        </p>
+      );
+      return;
+    }
+
+    elements.push(
+      <p key={idx} class="text-sm text-zinc-300 my-1">
+        {line}
+      </p>
+    );
+  });
+
+  flushList();
+
+  return <div class="plan-content">{elements}</div>;
 }
