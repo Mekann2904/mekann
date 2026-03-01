@@ -157,3 +157,10 @@ philosophy.md
 
 # Config and user data
 .playwright/
+
+# ============================================================================
+# Cache & Optimization (runtime data)
+# ============================================================================
+
+# Cache optimizer metrics
+.pi/cache-optimizer/
