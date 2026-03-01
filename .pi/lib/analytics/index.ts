@@ -68,3 +68,24 @@ export {
   normalizeRatio,
   comparePeriods,
 } from "./efficiency-analyzer.js";
+
+// Aggregation (Phase 2)
+export {
+  aggregateHourly,
+  aggregateDaily,
+  aggregateWeekly,
+  runAggregation,
+  loadAggregates,
+  getAggregationSummary,
+} from "./aggregator.js";
+
+// Anomaly Detection (Phase 3)
+export {
+  AnomalyDetector,
+  detectAnomalies,
+  saveAnomalies,
+  loadAnomalies,
+  getAnomalySummary,
+  DEFAULT_ANOMALY_THRESHOLDS,
+  type AnomalyThresholds,
+} from "./anomaly-detector.js";
