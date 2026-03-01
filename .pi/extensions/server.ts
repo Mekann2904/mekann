@@ -47,6 +47,91 @@ import {
 const logger = getLogger();
 
 // ============================================
+// Security Configuration
+// ============================================
+
+/**
+ * CORS設定
+ * 環境変数 PI_CORS_ORIGIN で許可するオリジンを指定（カンマ区切りで複数可）
+ * デフォルト: "http://localhost:*" (ローカルホストのみ許可)
+ * 例: PI_CORS_ORIGIN="http://localhost:3000,http://localhost:8080"
+ * ワイルドカード: "*" (全許可 - 開発環境のみ推奨)
+ */
+const CORS_ORIGIN = process.env.PI_CORS_ORIGIN || "http://localhost:*";
+const CORS_ALLOWED_ORIGINS = CORS_ORIGIN.split(",").map((o) => o.trim());
+
+/**
+ * API認証トークン
+ * 環境変数 PI_API_TOKEN が設定されている場合、APIリクエストに認証を要求
+ * ヘッダー: Authorization: Bearer <token>
+ * または: X-API-Key: <token>
+ */
+const API_TOKEN = process.env.PI_API_TOKEN;
+
+/**
+ * @summary CORSオリジンを検証する
+ * @param origin - リクエストのOriginヘッダー
+ * @returns 許可される場合はtrue
+ */
+function isCorsAllowed(origin: string | undefined): boolean {
+	// Originヘッダーがない場合は同じオリジンからのリクエスト
+	if (!origin) return true;
+
+	// ワイルドカード許可
+	if (CORS_ALLOWED_ORIGINS.includes("*")) return true;
+
+	// 完全一致
+	if (CORS_ALLOWED_ORIGINS.includes(origin)) return true;
+
+	// ワイルドカードパターンマッチ (例: http://localhost:*)
+	for (const allowed of CORS_ALLOWED_ORIGINS) {
+		if (allowed.endsWith("*")) {
+			const prefix = allowed.slice(0, -1);
+			if (origin.startsWith(prefix)) return true;
+		}
+	}
+
+	return false;
+}
+
+/**
+ * @summary API認証を検証する
+ * @param req - HTTPリクエスト
+ * @returns 認証OKの場合はtrue、トークン未設定または認証成功時
+ */
+function isAuthenticated(req: IncomingMessage): boolean {
+	// トークンが設定されていない場合は認証不要
+	if (!API_TOKEN) return true;
+
+	const authHeader = req.headers.authorization;
+	const apiKeyHeader = req.headers["x-api-key"];
+
+	// Bearer トークン認証
+	if (authHeader?.startsWith("Bearer ")) {
+		const token = authHeader.slice(7);
+		return token === API_TOKEN;
+	}
+
+	// API Key ヘッダー認証
+	if (apiKeyHeader) {
+		return apiKeyHeader === API_TOKEN;
+	}
+
+	return false;
+}
+
+/**
+ * @summary 認証エラーレスポンスを送信
+ * @param res - HTTPレスポンス
+ */
+function sendAuthError(res: ServerResponse): void {
+	res.writeHead(401, {
+		"Content-Type": "application/json",
+	});
+	res.end(JSON.stringify({ success: false, error: "認証が必要です" }));
+}
+
+// ============================================
 // Types
 // ============================================
 
@@ -137,11 +222,9 @@ function generateId(): string {
 }
 
 function sendJson(res: ServerResponse, status: number, data: ApiResponse): void {
+	// CORS headers are set in handleRequest, only set Content-Type here
 	res.writeHead(status, {
 		"Content-Type": "application/json",
-		"Access-Control-Allow-Origin": "*",
-		"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
-		"Access-Control-Allow-Headers": "Content-Type",
 	});
 	res.end(JSON.stringify(data));
 }
@@ -560,15 +643,35 @@ function handleGetActiveUlWorkflowTask(): ApiResponse {
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
 	const { path, query } = parseUrl(req.url || "/");
 	const method = req.method || "GET";
+	const origin = req.headers.origin;
 
-	// CORS headers
-	res.setHeader("Access-Control-Allow-Origin", "*");
+	// CORS: オリジンチェック
+	if (!isCorsAllowed(origin)) {
+		logger.warn(`[server] CORS blocked: ${origin}`);
+		res.writeHead(403, { "Content-Type": "application/json" });
+		res.end(JSON.stringify({ success: false, error: "CORS policy blocked" }));
+		return;
+	}
+
+	// CORS headers（許可されたオリジンのみ）
+	const corsOrigin = origin && isCorsAllowed(origin) ? origin : CORS_ALLOWED_ORIGINS[0];
+	res.setHeader("Access-Control-Allow-Origin", corsOrigin || "*");
 	res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
-	res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+	res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key");
+	res.setHeader("Access-Control-Allow-Credentials", "true");
 
 	if (method === "OPTIONS") {
 		res.writeHead(204);
 		res.end();
+		return;
+	}
+
+	// API認証チェック（/health と静的ファイルは除外）
+	const isApiRoute = path.startsWith("/api/");
+	const isHealthCheck = path === "/health";
+	if (isApiRoute && !isHealthCheck && !isAuthenticated(req)) {
+		logger.warn(`[server] Authentication failed for ${method} ${path}`);
+		sendAuthError(res);
 		return;
 	}
 
