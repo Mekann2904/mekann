@@ -19,14 +19,22 @@
 
 import { h } from "preact";
 import { useState, useEffect, useCallback, useMemo, useRef } from "preact/hooks";
-import { Plus, Loader2, AlertCircle, RefreshCw, Search, X } from "lucide-preact";
+import { Plus, RefreshCw, Search, X } from "lucide-preact";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { KanbanTaskCard, type Task, type TaskStatus, type TaskPriority } from "./kanban-task-card";
 import { TaskDetailPanel } from "./task-detail-panel";
 import { useRuntimeStatus } from "../hooks/useRuntimeStatus";
 import { cn } from "@/lib/utils";
-import { PageLayout, LoadingState, ErrorBanner } from "./layout";
+import {
+  PageLayout,
+  LoadingState,
+  ErrorBanner,
+  TYPOGRAPHY,
+  FORM_STYLES,
+  PATTERNS,
+  SPACING,
+} from "./layout";
 
 interface TaskStats {
   total: number;
@@ -544,11 +552,11 @@ export function TasksPage() {
         onDrop={(e) => handleDrop(e, column.id)}
       >
         {/* Column header */}
-        <div class="flex items-center justify-between px-3 py-2 border-b border-border/50">
-          <div class="flex items-center gap-2">
-            <span class="text-sm text-muted-foreground">{column.icon}</span>
-            <span class="text-sm font-medium">{column.label}</span>
-            <span class="text-xs text-muted-foreground bg-muted px-1.5 rounded">
+        <div class={cn("flex items-center justify-between px-3 py-2", PATTERNS.divider)}>
+          <div class={cn("flex items-center", SPACING.element)}>
+            <span class={TYPOGRAPHY.body}>{column.icon}</span>
+            <span class={TYPOGRAPHY.labelLarge}>{column.label}</span>
+            <span class={cn(PATTERNS.badge, "bg-muted")}>
               {columnTasks.length}
             </span>
           </div>
@@ -565,7 +573,7 @@ export function TasksPage() {
         </div>
 
         {/* Task cards */}
-        <div class="flex-1 overflow-y-auto p-2 space-y-2">
+        <div class={cn("flex-1 overflow-y-auto p-2", SPACING.element)}>
           {columnTasks.map((task) => {
             // Check if this is a subtask
             const isSubtask = !!task.parentTaskId;
