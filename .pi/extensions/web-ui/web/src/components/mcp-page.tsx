@@ -22,6 +22,18 @@ import {
   Circle,
 } from "lucide-preact";
 import { cn } from "@/lib/utils";
+import {
+  PageLayout,
+  PageHeader,
+  LoadingState,
+  ErrorBanner,
+  EmptyState,
+  TYPOGRAPHY,
+  CARD_STYLES,
+  PATTERNS,
+  SPACING,
+  STATE_STYLES,
+} from "./layout";
 
 // Types matching server response (from /api/mcp/servers)
 interface McpServerInfo {
