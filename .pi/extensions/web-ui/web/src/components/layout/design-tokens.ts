@@ -83,6 +83,10 @@ export const TYPOGRAPHY = {
   // 補足
   muted: "text-xs text-muted-foreground",
   mutedLarge: "text-sm text-muted-foreground",
+
+  // モノスペース
+  mono: "font-mono text-xs",
+  monoSm: "font-mono text-[10px]",
 } as const;
 
 // ============================================================================
