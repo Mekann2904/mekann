@@ -289,6 +289,12 @@ export function DashboardPage() {
     });
   }, [fetchContextHistory]);
 
+  // SSE接続状態をrefで管理（ポーリング判定用）
+  const sseConnectedRef = useRef(sseConnected);
+  useEffect(() => {
+    sseConnectedRef.current = sseConnected;
+  }, [sseConnected]);
+
   // 初回データ取得 + SSE接続
   useEffect(() => {
     fetchContextHistory();
@@ -296,7 +302,7 @@ export function DashboardPage() {
 
     // Fallback polling (30 seconds) in case SSE fails
     const interval = setInterval(() => {
-      if (!sseConnected) {
+      if (!sseConnectedRef.current) {
         fetchContextHistory();
       }
     }, 30000);
@@ -310,7 +316,7 @@ export function DashboardPage() {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [fetchContextHistory, connectSSE, sseConnected]);
+  }, [fetchContextHistory, connectSSE]);
 
   const instances = contextHistory ? Object.values(contextHistory.instances) : [];
   const instanceCount = instances.length;
