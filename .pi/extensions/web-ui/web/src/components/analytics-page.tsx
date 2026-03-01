@@ -29,6 +29,9 @@ import {
   Tooltip,
   LineChart,
   Line,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 import {
   Activity,
@@ -40,6 +43,7 @@ import {
   Zap,
   FileText,
   BarChart3,
+  PieChart as PieChartIcon,
 } from "lucide-preact";
 import { Button } from "./ui/button";
 import {
@@ -328,7 +332,7 @@ export function AnalyticsPage() {
           </StatsGrid>
 
           {/* Charts Row */}
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Efficiency Trend */}
             <Card>
               <CardHeader class="pb-2">
@@ -433,6 +437,59 @@ export function AnalyticsPage() {
                         />
                       </BarChart>
                     </ResponsiveContainer>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Context Ratio (Pie Chart) */}
+            <Card>
+              <CardHeader class="pb-2">
+                <CardTitle class="text-sm flex items-center gap-2">
+                  <PieChartIcon class="h-4 w-4" />
+                  Context Ratio ({timeRangeLabel})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {!displayData ? (
+                  <ChartEmptyState height={150} />
+                ) : (
+                  <div class="h-[150px] w-full">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
+                      <PieChart>
+                        <Pie
+                          data={[
+                            { name: "Input", value: displayData.totals.totalPromptTokens },
+                            { name: "Output", value: displayData.totals.totalOutputTokens },
+                          ]}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={35}
+                          outerRadius={55}
+                          paddingAngle={2}
+                          dataKey="value"
+                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                          labelLine={false}
+                        >
+                          <Cell fill="hsl(var(--chart-1))" />
+                          <Cell fill="hsl(var(--chart-2))" />
+                        </Pie>
+                        <Tooltip
+                          contentStyle={CHART_TOOLTIP_STYLE}
+                          formatter={(value: number | undefined) => [formatChartNumber(value ?? 0), "Tokens"]}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div class="flex justify-center gap-4 mt-2 text-xs text-muted-foreground">
+                      <div class="flex items-center gap-1">
+                        <div class="w-2 h-2 rounded-full bg-[hsl(var(--chart-1))]" />
+                        <span>Input: {formatChartNumber(displayData.totals.totalPromptTokens)}</span>
+                      </div>
+                      <div class="flex items-center gap-1">
+                        <div class="w-2 h-2 rounded-full bg-[hsl(var(--chart-2))]" />
+                        <span>Output: {formatChartNumber(displayData.totals.totalOutputTokens)}</span>
+                      </div>
+                    </div>
                   </div>
                 )}
               </CardContent>
