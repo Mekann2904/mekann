@@ -34,7 +34,7 @@ import {
 
 const execAsync = promisify(exec);
 
-const DEFAULT_PORT = 3000;
+const DEFAULT_PORT = 3456;
 
 /**
  * コンテキスト履歴ストレージのインスタンス

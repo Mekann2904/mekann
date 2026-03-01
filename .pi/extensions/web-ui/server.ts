@@ -406,7 +406,7 @@ interface ServerState {
 
 const state: ServerState = {
   server: null,
-  port: 3000,
+  port: 3456,
   pi: null,
   ctx: null,
   unsubscribeSessionEvents: null,
