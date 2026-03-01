@@ -35,11 +35,43 @@
  */
 
 import * as fs from "node:fs";
+import * as path from "node:path";
 
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { highlightCode, getLanguageFromPath } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
+
+// セキュリティ: 許可されるベースディレクトリ
+const ALLOWED_BASE_DIR = process.cwd();
+
+/**
+ * @summary パストラバーサル攻撃を防止するパス検証
+ * @param inputPath - 検証するパス
+ * @returns 検証結果（safe, resolved, error）
+ */
+function validatePath(inputPath: string): { safe: boolean; resolved: string; error?: string } {
+	// ヌルバイト攻撃を防止
+	if (inputPath.includes("\0")) {
+		return { safe: false, resolved: inputPath, error: "無効なパス文字列です" };
+	}
+
+	// パストラバーサルパターンを検出
+	const normalizedInput = path.normalize(inputPath);
+	if (normalizedInput.includes("..")) {
+		return { safe: false, resolved: inputPath, error: "許可されていないパスです" };
+	}
+
+	// パスを絶対パスに正規化
+	const resolved = path.resolve(ALLOWED_BASE_DIR, inputPath);
+
+	// 許可されるベースディレクトリ内かチェック
+	if (!resolved.startsWith(ALLOWED_BASE_DIR + path.sep) && resolved !== ALLOWED_BASE_DIR) {
+		return { safe: false, resolved, error: "許可されていないディレクトリへのアクセスです" };
+	}
+
+	return { safe: true, resolved };
+}
 
 // パラメータスキーマ定義
 const ViewCodeParams = Type.Object({
@@ -121,9 +153,27 @@ export default function (pi: ExtensionAPI): void {
 			try {
 				// ファイルパスが指定された場合
 				if (params.path) {
-					resolvedPath = params.path;
+					// セキュリティ: パストラバーサル攻撃を防止
+					const pathValidation = validatePath(params.path);
+					if (!pathValidation.safe) {
+						return {
+							content: [
+								{
+									type: "text" as const,
+									text: `エラー: ${pathValidation.error}`,
+								},
+							],
+							details: {
+								path: params.path,
+								lineCount: 0,
+								error: pathValidation.error,
+							} as ViewCodeDetails,
+						};
+					}
 
-					if (!fs.existsSync(params.path)) {
+					resolvedPath = pathValidation.resolved;
+
+					if (!fs.existsSync(resolvedPath)) {
 						return {
 							content: [
 								{
@@ -139,7 +189,7 @@ export default function (pi: ExtensionAPI): void {
 						};
 					}
 
-					code = fs.readFileSync(params.path, "utf-8");
+					code = fs.readFileSync(resolvedPath, "utf-8");
 
 					// 言語が指定されていない場合、パスから自動検出
 					if (!language) {
