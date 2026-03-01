@@ -97,8 +97,6 @@ export interface SlidingWindowContext {
 export interface TrajectoryReductionConfig {
   /** 有効フラグ */
   enabled: boolean;
-  /** リフレクションLLMモデル（デフォルト: gpt-4o-mini） */
-  reflectionModel: string;
   /** トークン閾値（この値以下のステップはスキップ、デフォルト: 500） */
   threshold: number;
   /** 何ステップ後ろを対象にするか（デフォルト: 2） */
@@ -122,7 +120,6 @@ export interface TrajectoryReductionConfig {
  */
 export const DEFAULT_TRAJECTORY_REDUCTION_CONFIG: TrajectoryReductionConfig = {
   enabled: true,
-  reflectionModel: "gpt-4o-mini",
   threshold: 500,
   stepsAfter: 2,
   stepsBefore: 1,

@@ -85,24 +85,28 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  // 現在のモデルを取得（PI_CURRENT_MODEL環境変数から）
-  function getCurrentModel(): string {
-    const envModel = process.env.PI_CURRENT_MODEL;
-    if (envModel) {
-      return envModel;
+  // 現在のモデルを取得（ctxまたはPI_CURRENT_MODEL環境変数から）
+  const DEFAULT_REFLECTION_MODEL = "gpt-4o-mini";
+  
+  function getCurrentModel(ctx?: { model?: { provider?: string; id?: string } }): string {
+    // ctxから取得を試みる
+    if (ctx?.model?.provider && ctx?.model?.id) {
+      return `${ctx.model.provider}:${ctx.model.id}`;
     }
-    return DEFAULT_TRAJECTORY_REDUCTION_CONFIG.reflectionModel;
+    // 環境変数から取得
+    return process.env.PI_CURRENT_MODEL || DEFAULT_REFLECTION_MODEL;
   }
 
   // LLM呼び出し関数
-  async function callLLM(prompt: string, model: string): Promise<string> {
-    const effectiveModel = getCurrentModel();
-    
-    console.log(`[trajectory-reduction] Calling ${effectiveModel} for reflection...`);
+  function createCallLLM() {
+    return async (prompt: string, _model: string): Promise<string> => {
+      const model = getCurrentModel();
+      console.log(`[trajectory-reduction] Calling ${model} for reflection...`);
 
-    // TODO: piのcallModelViaPiインフラを使用
-    // 現在はフォールバック実装
-    return fallbackLLM(prompt, effectiveModel);
+      // TODO: piのcallModelViaPiインフラを使用
+      // 現在はフォールバック実装
+      return fallbackLLM(prompt, model);
+    };
   }
 
   // フォールバック用モック関数
@@ -229,7 +233,7 @@ CONTENT:
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const config = loadConfig(ctx.cwd);
-      const currentModel = getCurrentModel();
+      const currentModel = getCurrentModel(ctx);
 
       switch (params.action) {
         case "show": {
@@ -239,7 +243,7 @@ CONTENT:
             "| パラメータ | 値 |",
             "|-----------|-----|",
             `| enabled | ${config.enabled} |`,
-            `| reflectionModel | ${currentModel} (設定: ${config.reflectionModel}) |`,
+            `| 圧縮モデル | ${currentModel} |`,
             `| threshold | ${config.threshold} |`,
             `| stepsAfter | ${config.stepsAfter} |`,
             `| stepsBefore | ${config.stepsBefore} |`,
@@ -317,7 +321,7 @@ CONTENT:
 
       if (!reducer) {
         const config = loadConfig(ctx.cwd);
-        reducer = createTrajectoryReducer(params.runId, config, callLLM);
+        reducer = createTrajectoryReducer(params.runId, config, createCallLLM());
       }
 
       const currentStep = params.step ?? reducer.getTrajectory().length;
@@ -378,10 +382,38 @@ CONTENT:
 
       if (command === "config") {
         const subCommand = rest[0];
-        if (["show", "enable", "disable"].includes(subCommand)) {
+        const config = loadConfig(ctx.cwd);
+        const currentModel = getCurrentModel(ctx);
+
+        if (subCommand === "show") {
+          const lines = [
+            "## Trajectory Reduction 設定",
+            "",
+            `| パラメータ | 値 |`,
+            `|-----------|-----|`,
+            `| enabled | ${config.enabled} |`,
+            `| 圧縮モデル | ${currentModel} |`,
+            `| threshold | ${config.threshold} |`,
+            `| stepsAfter | ${config.stepsAfter} |`,
+            `| stepsBefore | ${config.stepsBefore} |`,
+          ];
           pi.sendMessage({
             customType: "trajectory-config",
-            content: `設定を${subCommand === "show" ? "表示" : subCommand === "enable" ? "有効化" : "無効化"}中...`,
+            content: lines.join("\n"),
+            display: true,
+          });
+        } else if (subCommand === "enable") {
+          saveConfig(ctx.cwd, { enabled: true });
+          pi.sendMessage({
+            customType: "trajectory-config",
+            content: `軌跡圧縮を有効化しました。`,
+            display: true,
+          });
+        } else if (subCommand === "disable") {
+          saveConfig(ctx.cwd, { enabled: false });
+          pi.sendMessage({
+            customType: "trajectory-config",
+            content: `軌跡圧縮を無効化しました。`,
             display: true,
           });
         } else {
@@ -411,7 +443,7 @@ CONTENT:
   // セッション開始時の初期化
   pi.on("session_start", async (_event, ctx) => {
     const config = loadConfig(ctx.cwd);
-    const currentModel = getCurrentModel();
+    const currentModel = getCurrentModel(ctx);
     ctx.ui.notify(
       `Trajectory Reduction 拡張機能を読み込みました (enabled: ${config.enabled}, model: ${currentModel})`,
       "info"
@@ -424,7 +456,7 @@ CONTENT:
       let reducer = globalReducerStore.get(runId);
       if (!reducer) {
         const config = loadConfig(cwd);
-        reducer = createTrajectoryReducer(runId, config, callLLM);
+        reducer = createTrajectoryReducer(runId, config, createCallLLM());
       }
       return reducer;
     },

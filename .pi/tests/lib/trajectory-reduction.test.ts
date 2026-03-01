@@ -74,7 +74,6 @@ function createTestTrajectory(count: number): TrajectoryStep[] {
 describe("Types", () => {
   it("should have correct default config", () => {
     expect(DEFAULT_TRAJECTORY_REDUCTION_CONFIG.enabled).toBe(true);
-    expect(DEFAULT_TRAJECTORY_REDUCTION_CONFIG.reflectionModel).toBe("gpt-4o-mini");
     expect(DEFAULT_TRAJECTORY_REDUCTION_CONFIG.threshold).toBe(500);
     expect(DEFAULT_TRAJECTORY_REDUCTION_CONFIG.stepsAfter).toBe(2);
     expect(DEFAULT_TRAJECTORY_REDUCTION_CONFIG.stepsBefore).toBe(1);
