@@ -374,7 +374,7 @@ interface ServerState {
 
 const state: ServerState = {
   server: null,
-  port: 3456,
+  port: 3000,
 };
 
 // ============================================================================
@@ -1145,5 +1145,5 @@ setInterval(() => {
 }, 30000); // Check every 30 seconds
 
 // CLI entry point
-const port = parseInt(process.env.PI_WEB_UI_PORT || "") || 3456;
+const port = parseInt(process.env.PI_WEB_UI_PORT || "") || 3000;
 startStandaloneServer(port);

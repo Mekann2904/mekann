@@ -138,7 +138,7 @@ interface SSEEvent {
   timestamp: number;
 }
 
-const API_BASE = "http://localhost:3456";
+const API_BASE = "";
 
 /**
  * Hook for runtime status with SSE real-time updates
