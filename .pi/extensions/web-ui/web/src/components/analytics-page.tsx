@@ -463,14 +463,6 @@ export function AnalyticsPage() {
                 {!displayData ? (
                   <ChartEmptyState height={180} />
                 ) : (() => {
-                  const totalTokens = displayData.totals.totalPromptTokens + displayData.totals.totalOutputTokens;
-                  const inputPercent = totalTokens > 0
-                    ? ((displayData.totals.totalPromptTokens / totalTokens) * 100).toFixed(1)
-                    : "0";
-                  const outputPercent = totalTokens > 0
-                    ? ((displayData.totals.totalOutputTokens / totalTokens) * 100).toFixed(1)
-                    : "0";
-
                   const pieConfig: ChartConfig = {
                     input: {
                       label: "Input",
@@ -521,28 +513,6 @@ export function AnalyticsPage() {
                           </PieChart>
                         </ResponsiveContainer>
                       </ChartContainer>
-                      <div class="grid grid-cols-2 gap-4 w-full mt-2">
-                        <div class="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
-                          <div class="w-3 h-3 rounded-full bg-[hsl(var(--chart-1))]" />
-                          <div class="flex-1">
-                            <div class="text-xs text-muted-foreground">Input</div>
-                            <div class="text-sm font-semibold">{inputPercent}%</div>
-                          </div>
-                          <div class="text-xs text-muted-foreground">
-                            {formatChartNumber(displayData.totals.totalPromptTokens)}
-                          </div>
-                        </div>
-                        <div class="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
-                          <div class="w-3 h-3 rounded-full bg-[hsl(var(--chart-2))]" />
-                          <div class="flex-1">
-                            <div class="text-xs text-muted-foreground">Output</div>
-                            <div class="text-sm font-semibold">{outputPercent}%</div>
-                          </div>
-                          <div class="text-xs text-muted-foreground">
-                            {formatChartNumber(displayData.totals.totalOutputTokens)}
-                          </div>
-                        </div>
-                      </div>
                     </div>
                   );
                 })()}
