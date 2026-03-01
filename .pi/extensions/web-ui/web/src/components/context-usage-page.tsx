@@ -28,10 +28,26 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import { BarChart2, Loader2, RefreshCw } from "lucide-preact";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { BarChart2, RefreshCw } from "lucide-preact";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
+import {
+  PageLayout,
+  PageHeader,
+  StatsGrid,
+  SimpleStatsCard,
+  LoadingState,
+  ErrorBanner,
+  ChartEmptyState,
+  CHART_TOOLTIP_STYLE,
+  formatChartNumber,
+  TYPOGRAPHY,
+  CARD_STYLES,
+  FORM_STYLES,
+  PATTERNS,
+  SPACING,
+} from "./layout";
 
 /**
  * @summary コンテキスト履歴エントリ
@@ -56,20 +72,6 @@ interface ContextHistoryResponse {
  * @summary 表示モード
  */
 type DisplayMode = "input" | "output" | "both";
-
-/**
- * @summary チャート設定
- */
-const chartConfig = {
-  input: {
-    label: "Input Tokens",
-    color: "hsl(var(--chart-1))",
-  },
-  output: {
-    label: "Output Tokens",
-    color: "hsl(var(--chart-2))",
-  },
-};
 
 /**
  * @summary コンテキスト使用量追跡ページ
@@ -131,224 +133,184 @@ export const ContextUsagePage: FunctionalComponent = () => {
   };
 
   if (loading && data.length === 0) {
-    return (
-      <div class="flex h-full items-center justify-center p-8">
-        <div class="flex flex-col items-center gap-2">
-          <Loader2 class="h-6 w-6 animate-spin text-primary" />
-          <p class="text-sm text-muted-foreground">Loading context history...</p>
-        </div>
-      </div>
-    );
+    return <LoadingState message="Loading context history..." />;
   }
 
   return (
-    <div class="h-full overflow-auto p-6">
-      <div class="mx-auto max-w-4xl space-y-6">
-        {/* ヘッダー */}
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <BarChart2 class="h-6 w-6 text-primary" />
-            <h1 class="text-2xl font-semibold">Context Usage</h1>
-          </div>
+    <PageLayout variant="default">
+      {/* Header */}
+      <PageHeader
+        title="Context Usage"
+        description="Token usage history and statistics"
+        icon={BarChart2}
+        actions={
           <Button
             variant="outline"
             size="sm"
             onClick={fetchData}
             disabled={loading}
-            class="flex items-center gap-2"
           >
             <RefreshCw class={cn("h-4 w-4", loading && "animate-spin")} />
-            Refresh
           </Button>
+        }
+      />
+
+      {/* Error */}
+      {error && (
+        <ErrorBanner
+          message={`Error: ${error}`}
+          onRetry={fetchData}
+          onDismiss={() => setError(null)}
+        />
+      )}
+
+      {/* Stats */}
+      <StatsGrid cols={4}>
+        <SimpleStatsCard
+          value={formatChartNumber(stats.totalInput)}
+          label="Total Input"
+          subLabel="tokens"
+        />
+        <SimpleStatsCard
+          value={formatChartNumber(stats.totalOutput)}
+          label="Total Output"
+          subLabel="tokens"
+        />
+        <SimpleStatsCard
+          value={formatChartNumber(stats.avgInput)}
+          label="Avg Input"
+          subLabel="tokens/req"
+        />
+        <SimpleStatsCard
+          value={formatChartNumber(stats.avgOutput)}
+          label="Avg Output"
+          subLabel="tokens/req"
+        />
+      </StatsGrid>
+
+      {/* Display Mode Toggle */}
+      <div class={cn("flex items-center", SPACING.element)}>
+        <span class={TYPOGRAPHY.label}>Display:</span>
+        <div class="flex border rounded overflow-hidden">
+          {(["both", "input", "output"] as DisplayMode[]).map((mode) => (
+            <button
+              key={mode}
+              class={cn(
+                FORM_STYLES.buttonCompact,
+                displayMode === mode
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-background hover:bg-muted"
+              )}
+              onClick={() => setDisplayMode(mode)}
+            >
+              {mode.charAt(0).toUpperCase() + mode.slice(1)}
+            </button>
+          ))}
         </div>
+      </div>
 
-        {/* エラー表示 */}
-        {error && (
-          <div class="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-            Error: {error}
-          </div>
-        )}
+      {/* Chart */}
+      <Card>
+        <CardHeader class={CARD_STYLES.headerCompact}>
+          <CardTitle class={CARD_STYLES.title}>Usage History</CardTitle>
+          <CardDescription>Last {data.length} requests</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {chartData.length === 0 ? (
+            <ChartEmptyState height={300} />
+          ) : (
+            <div class="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
+                <BarChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" class="stroke-border" />
+                  <XAxis
+                    dataKey="time"
+                    tick={{ fontSize: 9 }}
+                    class="text-muted-foreground"
+                    interval="preserveStartEnd"
+                    angle={-45}
+                    textAnchor="end"
+                    height={60}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 9 }}
+                    class="text-muted-foreground"
+                    tickFormatter={(v: number) => formatChartNumber(v)}
+                    width={50}
+                  />
+                  <Tooltip
+                    contentStyle={CHART_TOOLTIP_STYLE}
+                    formatter={(value: number) => formatChartNumber(value)}
+                  />
+                  {(displayMode === "input" || displayMode === "both") && (
+                    <Bar
+                      dataKey="input"
+                      name="Input"
+                      fill="hsl(var(--chart-1))"
+                      radius={[2, 2, 0, 0]}
+                      maxBarSize={20}
+                    />
+                  )}
+                  {(displayMode === "output" || displayMode === "both") && (
+                    <Bar
+                      dataKey="output"
+                      name="Output"
+                      fill="hsl(var(--chart-2))"
+                      radius={[2, 2, 0, 0]}
+                      maxBarSize={20}
+                    />
+                  )}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-        {/* 統計カード */}
-        <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <Card>
-            <CardHeader class="pb-2">
-              <CardTitle class="text-sm font-medium text-muted-foreground">
-                Total Input
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div class="text-2xl font-bold">
-                {stats.totalInput.toLocaleString()}
-              </div>
-              <p class="text-xs text-muted-foreground">tokens</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader class="pb-2">
-              <CardTitle class="text-sm font-medium text-muted-foreground">
-                Total Output
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div class="text-2xl font-bold">
-                {stats.totalOutput.toLocaleString()}
-              </div>
-              <p class="text-xs text-muted-foreground">tokens</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader class="pb-2">
-              <CardTitle class="text-sm font-medium text-muted-foreground">
-                Avg Input
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div class="text-2xl font-bold">{stats.avgInput.toLocaleString()}</div>
-              <p class="text-xs text-muted-foreground">tokens/req</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader class="pb-2">
-              <CardTitle class="text-sm font-medium text-muted-foreground">
-                Avg Output
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div class="text-2xl font-bold">
-                {stats.avgOutput.toLocaleString()}
-              </div>
-              <p class="text-xs text-muted-foreground">tokens/req</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* 表示モード切り替え */}
-        <div class="flex gap-2">
-          <Button
-            variant={displayMode === "input" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setDisplayMode("input")}
-          >
-            Input Only
-          </Button>
-          <Button
-            variant={displayMode === "output" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setDisplayMode("output")}
-          >
-            Output Only
-          </Button>
-          <Button
-            variant={displayMode === "both" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setDisplayMode("both")}
-          >
-            Both
-          </Button>
-        </div>
-
-        {/* チャート */}
+      {/* Instance Table */}
+      {data.length > 0 && (
         <Card>
-          <CardHeader>
-            <CardTitle>Token Usage Over Time</CardTitle>
+          <CardHeader class={CARD_STYLES.headerCompact}>
+            <CardTitle class={CARD_STYLES.title}>By Instance</CardTitle>
+            <CardDescription>Token usage breakdown by PID</CardDescription>
           </CardHeader>
           <CardContent>
-            {chartData.length === 0 ? (
-              <div class="flex h-[300px] items-center justify-center text-muted-foreground">
-                No context history data available
-              </div>
-            ) : (
-              <div class="h-[350px] w-full">
-                <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
-                  <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" class="stroke-border" />
-                    <XAxis
-                      dataKey="time"
-                      tick={{ fontSize: 12 }}
-                      class="text-muted-foreground"
-                    />
-                    <YAxis
-                      tick={{ fontSize: 12 }}
-                      class="text-muted-foreground"
-                      tickFormatter={(value: number) => value.toLocaleString()}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: "8px",
-                      }}
-                      labelStyle={{ color: "hsl(var(--foreground))" }}
-                    />
-                    {(displayMode === "input" || displayMode === "both") && (
-                      <Bar
-                        dataKey="input"
-                        name="Input"
-                        fill="hsl(var(--chart-1))"
-                        radius={[4, 4, 0, 0]}
-                      />
-                    )}
-                    {(displayMode === "output" || displayMode === "both") && (
-                      <Bar
-                        dataKey="output"
-                        name="Output"
-                        fill="hsl(var(--chart-2))"
-                        radius={[4, 4, 0, 0]}
-                      />
-                    )}
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
+            <div class="overflow-x-auto">
+              <table class={cn("w-full", TYPOGRAPHY.body)}>
+                <thead>
+                  <tr class={PATTERNS.divider}>
+                    <th class={cn("text-left py-2 px-2", TYPOGRAPHY.label)}>PID</th>
+                    <th class={cn("text-right py-2 px-2", TYPOGRAPHY.label)}>Requests</th>
+                    <th class={cn("text-right py-2 px-2", TYPOGRAPHY.label)}>Total Input</th>
+                    <th class={cn("text-right py-2 px-2", TYPOGRAPHY.label)}>Total Output</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(
+                    data.reduce((acc, e) => {
+                      const pid = e.pid ?? "unknown";
+                      if (!acc[pid]) {
+                        acc[pid] = { count: 0, input: 0, output: 0 };
+                      }
+                      acc[pid].count++;
+                      acc[pid].input += e.input;
+                      acc[pid].output += e.output;
+                      return acc;
+                    }, {} as Record<string, { count: number; input: number; output: number }>)
+                  ).map(([pid, stats]) => (
+                    <tr key={pid} class={PATTERNS.tableRow}>
+                      <td class={cn("py-2 px-2", PATTERNS.mono)}>{pid}</td>
+                      <td class="text-right py-2 px-2">{stats.count}</td>
+                      <td class="text-right py-2 px-2">{formatChartNumber(stats.input)}</td>
+                      <td class="text-right py-2 px-2">{formatChartNumber(stats.output)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </CardContent>
         </Card>
-
-        {/* データテーブル（オプション） */}
-        {chartData.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Requests</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div class="max-h-[200px] overflow-auto">
-                <table class="w-full text-sm">
-                  <thead class="sticky top-0 bg-card">
-                    <tr class="border-b">
-                      <th class="px-4 py-2 text-left font-medium">Time</th>
-                      <th class="px-4 py-2 text-right font-medium">Input</th>
-                      <th class="px-4 py-2 text-right font-medium">Output</th>
-                      <th class="px-4 py-2 text-right font-medium">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {chartData
-                      .slice()
-                      .reverse()
-                      .slice(0, 10)
-                      .map((entry, index) => (
-                        <tr key={index} class="border-b">
-                          <td class="px-4 py-2 text-muted-foreground">
-                            {entry.time}
-                          </td>
-                          <td class="px-4 py-2 text-right">
-                            {entry.input.toLocaleString()}
-                          </td>
-                          <td class="px-4 py-2 text-right">
-                            {entry.output.toLocaleString()}
-                          </td>
-                          <td class="px-4 py-2 text-right font-medium">
-                            {(entry.input + entry.output).toLocaleString()}
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    </div>
+      )}
+    </PageLayout>
   );
 };
