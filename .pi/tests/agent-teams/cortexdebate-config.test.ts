@@ -7,6 +7,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   getCortexDebateConfig,
   isCortexDebateEnabled,
+  shouldUseCortexDebate,
+  getMinTeamSize,
   isFeatureEnabled,
   clearConfigCache,
   setConfigForTesting,
@@ -249,6 +251,48 @@ describe("CortexDebate Config", () => {
       } as CortexDebateConfig);
 
       expect(isCortexDebateEnabled()).toBe(false);
+    });
+  });
+
+  describe("shouldUseCortexDebate", () => {
+    it("should return false when team size is below minimum (default: 4)", () => {
+      clearConfigCache();
+      expect(shouldUseCortexDebate(2)).toBe(false);
+      expect(shouldUseCortexDebate(3)).toBe(false);
+    });
+
+    it("should return true when team size meets minimum", () => {
+      clearConfigCache();
+      expect(shouldUseCortexDebate(4)).toBe(true);
+      expect(shouldUseCortexDebate(5)).toBe(true);
+      expect(shouldUseCortexDebate(10)).toBe(true);
+    });
+
+    it("should return false when CortexDebate is disabled regardless of team size", () => {
+      setConfigForTesting({
+        enabled: false,
+        minTeamSize: 4,
+      } as CortexDebateConfig);
+
+      expect(shouldUseCortexDebate(4)).toBe(false);
+      expect(shouldUseCortexDebate(10)).toBe(false);
+    });
+
+    it("should respect custom minTeamSize", () => {
+      setConfigForTesting({
+        enabled: true,
+        minTeamSize: 6,
+      } as CortexDebateConfig);
+
+      expect(shouldUseCortexDebate(5)).toBe(false);
+      expect(shouldUseCortexDebate(6)).toBe(true);
+    });
+  });
+
+  describe("getMinTeamSize", () => {
+    it("should return default minimum team size (4)", () => {
+      clearConfigCache();
+      expect(getMinTeamSize()).toBe(4);
     });
   });
 

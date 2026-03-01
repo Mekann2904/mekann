@@ -45,6 +45,7 @@ export interface CortexDebateFeatureFlags {
  * CortexDebate設定
  * @summary CortexDebate設定
  * @param enabled 機能全体の有効/無効
+ * @param minTeamSize CortexDebateを使用する最小チームサイズ
  * @param mdmConfig MDM設定
  * @param sparsityConfig スパースグラフ設定
  * @param maxRounds 最大ラウンド数
@@ -53,6 +54,8 @@ export interface CortexDebateFeatureFlags {
  */
 export interface CortexDebateConfig {
   enabled: boolean;
+  /** CortexDebateを使用する最小チームサイズ（デフォルト: 4） */
+  minTeamSize: number;
   mdmConfig: MDMConfig;
   sparsityConfig: SparsityConfig;
   maxRounds: number;
@@ -62,9 +65,11 @@ export interface CortexDebateConfig {
 
 /**
  * デフォルトCortexDebate設定
+ * 論文の知見: メンバーが多い場合にコンテキスト削減効果が顕著
  */
 const DEFAULT_CONFIG: CortexDebateConfig = {
-  enabled: true, // デフォルトで有効（議論グラフ + MDM変調を使用）
+  enabled: true,
+  minTeamSize: 4, // 4人以上のチームでのみCortexDebateを使用
   mdmConfig: createDefaultMDMConfig(),
   sparsityConfig: {
     targetDensity: 0.3,
@@ -243,6 +248,29 @@ export function getCortexDebateConfig(): CortexDebateConfig {
  */
 export function isCortexDebateEnabled(): boolean {
   return getCortexDebateConfig().enabled;
+}
+
+/**
+ * 指定されたチームサイズでCortexDebateを使用すべきか判定
+ * 論文の知見: メンバーが多い場合にコンテキスト削減効果が顕著
+ * @summary チームサイズ考慮の有効判定
+ * @param teamSize チームのメンバー数
+ * @returns 使用すべき場合true
+ */
+export function shouldUseCortexDebate(teamSize: number): boolean {
+  const config = getCortexDebateConfig();
+  if (!config.enabled) return false;
+  // チームサイズが閾値未満の場合は使用しない
+  return teamSize >= config.minTeamSize;
+}
+
+/**
+ * 最小チームサイズを取得
+ * @summary 最小チームサイズ取得
+ * @returns 最小チームサイズ
+ */
+export function getMinTeamSize(): number {
+  return getCortexDebateConfig().minTeamSize;
 }
 
 /**

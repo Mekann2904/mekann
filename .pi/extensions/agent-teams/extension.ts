@@ -221,7 +221,7 @@ import {
 } from "./communication";
 
 // CortexDebate integration
-import { isCortexDebateEnabled, getCortexDebateConfig } from "./cortexdebate-config";
+import { shouldUseCortexDebate, getCortexDebateConfig, getMinTeamSize } from "./cortexdebate-config";
 import { MDMModulator } from "./mdm-modulator";
 import type { MDMState, DebateGraph } from "./mdm-types";
 import { buildDebateGraph } from "./debate-graph";
@@ -1032,11 +1032,12 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
       
       if (commConfig.linksV2) {
         commIdEntries = resolveUniqueCommIds(activeMembers, team.id);
-        
-        // CortexDebate: Use sparse-graph strategy when enabled
-        const cortexDebateEnabled = isCortexDebateEnabled();
+
+        // CortexDebate: Use sparse-graph strategy when team is large enough
+        // 論文の知見: メンバーが多い場合にコンテキスト削減効果が顕著
+        const cortexDebateEnabled = shouldUseCortexDebate(activeMembers.length);
         const commStrategy = cortexDebateEnabled ? "sparse-graph" : "ring";
-        
+
         // Initialize MDM state and debate graph for CortexDebate
         if (cortexDebateEnabled) {
           const config = getCortexDebateConfig();
