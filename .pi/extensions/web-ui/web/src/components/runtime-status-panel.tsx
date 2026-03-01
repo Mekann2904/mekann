@@ -4,7 +4,7 @@
  * @role Dashboard panel showing runtime status and active sessions
  * @why Provide overview of agent execution state at a glance
  * @related dashboard-page.tsx, execution-status-indicator.tsx
- * @public_api RuntimeStatusPanel
+ * @public_api RuntimeStatusPanel, CompactRuntimeStatus
  * @invariants Data is fetched via SSE
  * @side_effects None (display only)
  * @failure_modes SSE connection failure handled gracefully
@@ -22,6 +22,13 @@ import { Activity, Users, Clock, Loader2, Wifi, WifiOff, RefreshCw, Cpu } from "
 import { useRuntimeStatus, type RuntimeSession } from "../hooks/useRuntimeStatus";
 import { ExecutionStatusIndicator } from "./execution-status-indicator";
 import { cn } from "@/lib/utils";
+import {
+  TYPOGRAPHY,
+  CARD_STYLES,
+  PATTERNS,
+  SPACING,
+  STATE_STYLES,
+} from "./layout";
 
 /**
  * Calculate utilization percentage
@@ -58,13 +65,13 @@ function UtilizationBar({
   const colorClass = getUtilizationColor(percent);
 
   return (
-    <div class="space-y-1">
-      <div class="flex items-center justify-between text-xs">
-        <span class="flex items-center gap-1 text-muted-foreground">
+    <div class={SPACING.element}>
+      <div class={cn("flex items-center justify-between", TYPOGRAPHY.muted)}>
+        <span class={cn("flex items-center", SPACING.tight)}>
           <Icon class="h-3 w-3" />
           {label}
         </span>
-        <span class="font-mono">
+        <span class={PATTERNS.mono}>
           {current}/{max ?? "?"}
         </span>
       </div>
@@ -74,18 +81,7 @@ function UtilizationBar({
           style={{ width: `${percent}%` }}
         />
       </div>
-      <div class="text-[10px] text-muted-foreground text-right">{percent}%</div>
-    </div>
-  );
-}
-
-/**
- * Session list item
- */
-function SessionListItem({ session }: { session: RuntimeSession }) {
-  return (
-    <div class="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
-      <ExecutionStatusIndicator session={session} compact />
+      <div class={cn(TYPOGRAPHY.monoSm, "text-right")}>{percent}%</div>
     </div>
   );
 }
@@ -101,9 +97,9 @@ export function RuntimeStatusPanel() {
   // Loading state
   if (!status && !error) {
     return (
-      <div class="p-4 text-center">
+      <div class={cn("p-4 text-center", SPACING.element)}>
         <Loader2 class="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
-        <p class="text-xs text-muted-foreground mt-2">Loading runtime status...</p>
+        <p class={cn(TYPOGRAPHY.muted, "mt-2")}>Loading runtime status...</p>
       </div>
     );
   }
@@ -111,12 +107,12 @@ export function RuntimeStatusPanel() {
   // Error state
   if (error && !status) {
     return (
-      <div class="p-4 text-center">
+      <div class={cn("p-4 text-center", SPACING.element)}>
         <WifiOff class="h-5 w-5 mx-auto text-red-500" />
-        <p class="text-xs text-red-500 mt-2">{error}</p>
+        <p class={cn(TYPOGRAPHY.muted, "mt-2", STATE_STYLES.error.text)}>{error}</p>
         <button
           onClick={refresh}
-          class="mt-2 text-xs text-muted-foreground hover:text-foreground underline"
+          class={cn("mt-2", TYPOGRAPHY.muted, "hover:text-foreground underline")}
         >
           Retry
         </button>
@@ -132,14 +128,14 @@ export function RuntimeStatusPanel() {
   );
 
   return (
-    <div class="p-4 space-y-4">
+    <div class={cn("p-4", SPACING.section)}>
       {/* Header with connection status */}
       <div class="flex items-center justify-between">
-        <h3 class="text-sm font-semibold flex items-center gap-2">
+        <h3 class={cn(TYPOGRAPHY.h4, "flex items-center gap-2")}>
           <Cpu class="h-4 w-4" />
           Runtime
         </h3>
-        <div class="flex items-center gap-2">
+        <div class={cn("flex items-center", SPACING.element)}>
           {connected ? (
             <Wifi class="h-3.5 w-3.5 text-green-500" title="Connected" />
           ) : (
@@ -157,13 +153,18 @@ export function RuntimeStatusPanel() {
 
       {/* Warning if agent-runtime unavailable */}
       {status?.warning && (
-        <div class="p-2 rounded-md bg-yellow-500/10 border border-yellow-500/30 text-xs text-yellow-600">
+        <div class={cn(
+          "p-2 rounded-md",
+          TYPOGRAPHY.muted,
+          STATE_STYLES.warning.bg,
+          `border ${STATE_STYLES.warning.border}`
+        )}>
           {status.warning}
         </div>
       )}
 
       {/* Utilization gauges */}
-      <div class="space-y-3">
+      <div class={SPACING.section}>
         <UtilizationBar
           label="Active LLMs"
           current={status?.activeLlm ?? 0}
@@ -180,7 +181,7 @@ export function RuntimeStatusPanel() {
 
       {/* Queue status */}
       {status?.queuedOrchestrations && status.queuedOrchestrations > 0 && (
-        <div class="flex items-center gap-2 text-xs text-muted-foreground">
+        <div class={cn("flex items-center gap-2", TYPOGRAPHY.muted)}>
           <Clock class="h-3 w-3" />
           {status.queuedOrchestrations} queued
         </div>
@@ -188,17 +189,17 @@ export function RuntimeStatusPanel() {
 
       {/* Active sessions */}
       {activeSessions.length > 0 && (
-        <div class="space-y-2">
-          <h4 class="text-xs font-medium text-muted-foreground flex items-center gap-1">
+        <div class={SPACING.element}>
+          <h4 class={cn(TYPOGRAPHY.label, "flex items-center gap-1")}>
             <Activity class="h-3 w-3" />
             Active ({activeSessions.length})
           </h4>
-          <div class="space-y-1">
+          <div class={SPACING.element}>
             {activeSessions.slice(0, 5).map((session) => (
               <ExecutionStatusIndicator key={session.id} session={session} />
             ))}
             {activeSessions.length > 5 && (
-              <p class="text-[10px] text-muted-foreground text-center">
+              <p class={cn(TYPOGRAPHY.monoSm, "text-center")}>
                 +{activeSessions.length - 5} more
               </p>
             )}
@@ -209,11 +210,11 @@ export function RuntimeStatusPanel() {
       {/* Recently completed sessions */}
       {completedSessions.length > 0 && (
         <details class="group">
-          <summary class="text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1">
+          <summary class={cn(TYPOGRAPHY.label, "cursor-pointer hover:text-foreground flex items-center gap-1")}>
             <Clock class="h-3 w-3" />
             Recent ({completedSessions.length})
           </summary>
-          <div class="mt-2 space-y-1">
+          <div class={cn("mt-2", SPACING.element)}>
             {completedSessions.slice(0, 10).map((session) => (
               <ExecutionStatusIndicator key={session.id} session={session} />
             ))}
@@ -223,19 +224,22 @@ export function RuntimeStatusPanel() {
 
       {/* Empty state */}
       {activeSessions.length === 0 && completedSessions.length === 0 && (
-        <div class="text-center py-4 text-muted-foreground">
+        <div class={cn("text-center py-4 text-muted-foreground", SPACING.element)}>
           <Activity class="h-6 w-6 mx-auto opacity-50" />
-          <p class="text-xs mt-2">No active sessions</p>
+          <p class={cn(TYPOGRAPHY.muted, "mt-2")}>No active sessions</p>
         </div>
       )}
 
       {/* Session stats summary */}
       {status?.sessions && (
-        <div class="text-[10px] text-muted-foreground border-t border-border/50 pt-2 flex items-center justify-between">
+        <div class={cn(
+          TYPOGRAPHY.monoSm,
+          "border-t border-border/50 pt-2 flex items-center justify-between"
+        )}>
           <span>
             Total: {status.sessions.total}
           </span>
-          <span class="flex items-center gap-2">
+          <span class={cn("flex items-center", SPACING.element)}>
             {status.sessions.starting > 0 && (
               <span class="text-yellow-500">◐ {status.sessions.starting}</span>
             )}
@@ -265,15 +269,17 @@ export function CompactRuntimeStatus() {
   const activeCount = status?.sessions?.running ?? status?.activeLlm ?? 0;
 
   return (
-    <div class="flex items-center gap-2 px-2 py-1 rounded-md bg-muted/30 text-xs">
+    <div class={cn(
+      "flex items-center px-2 py-1 rounded-md bg-muted/30",
+      SPACING.element,
+      TYPOGRAPHY.muted
+    )}>
       {connected ? (
         <Wifi class="h-3 w-3 text-green-500" />
       ) : (
         <WifiOff class="h-3 w-3 text-red-500" />
       )}
-      <span class="text-muted-foreground">
-        {activeCount} active
-      </span>
+      <span>{activeCount} active</span>
     </div>
   );
 }
