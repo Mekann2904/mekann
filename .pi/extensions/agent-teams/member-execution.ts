@@ -436,6 +436,47 @@ function parseDirectives(sharedContext?: string): PromptDirective {
   };
 }
 
+function buildPrioritizedCommunicationContext(communicationContext: string, maxLines = 20): string {
+  const lines = communicationContext
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim().length > 0);
+
+  if (lines.length <= maxLines) {
+    return lines.join("\n");
+  }
+
+  const priorityPattern = /known_facts=|open_questions=|evidence_snippets=|CONTEXT_PACK_V1/i;
+  const prioritized: string[] = [];
+  const regular: string[] = [];
+
+  for (const line of lines) {
+    if (priorityPattern.test(line)) {
+      prioritized.push(line);
+    } else {
+      regular.push(line);
+    }
+  }
+
+  const merged = [...prioritized, ...regular].slice(0, maxLines);
+  return merged.join("\n");
+}
+
+function buildSharedContextForInternal(sharedContext?: string, maxLines = 8): string | null {
+  const raw = sharedContext?.trim();
+  if (!raw) return null;
+
+  const directivePattern = /^(OUTPUT MODE|LANGUAGE|FORMAT|MAX TOKENS)\s*:/i;
+  const lines = raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !directivePattern.test(line))
+    .slice(0, maxLines);
+
+  if (lines.length === 0) return null;
+  return lines.join("\n");
+}
+
 /**
  * プロンプト構築
  * @summary プロンプト作成
@@ -466,6 +507,13 @@ export function buildTeamMemberPrompt(input: {
     lines.push("");
     lines.push("TASK:");
     lines.push(input.task);
+
+    const sharedContextForInternal = buildSharedContextForInternal(input.sharedContext);
+    if (sharedContextForInternal) {
+      lines.push("");
+      lines.push("SHARED CONTEXT:");
+      lines.push(sharedContextForInternal);
+    }
     
     // Minimal skills section
     const effectiveSkills = resolveEffectiveTeamMemberSkills(input.team, input.member) ?? [];
@@ -478,11 +526,7 @@ export function buildTeamMemberPrompt(input: {
     if (input.communicationContext?.trim()) {
       lines.push("");
       lines.push("TEAMMATE OUTPUTS:");
-      // Truncate to essential info
-      const compactContext = input.communicationContext
-        .split("\n")
-        .slice(0, 20)
-        .join("\n");
+      const compactContext = buildPrioritizedCommunicationContext(input.communicationContext, 20);
       lines.push(compactContext);
     }
     
@@ -548,6 +592,10 @@ export function buildTeamMemberPrompt(input: {
     lines.push("");
     lines.push("連携コンテキスト:");
     lines.push(input.communicationContext.trim());
+    lines.push("連携方針:");
+    lines.push("- known_facts を優先して検証し、矛盾時のみ追加探索する。");
+    lines.push("- open_questions を優先度付きの調査キューとして扱う。");
+    lines.push("- evidence_snippets を引用してから探索範囲を拡張する。");
   }
 
   // Add relevant patterns from past executions as dialogue partners (not constraints)

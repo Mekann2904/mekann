@@ -589,6 +589,32 @@ function parseSubagentDirectives(extraContext?: string, task?: string): Subagent
   };
 }
 
+function buildInternalContextHandoff(extraContext?: string, maxLines = 12): string[] {
+  const context = extraContext?.trim();
+  if (!context) return [];
+
+  const lines = context
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim().length > 0);
+
+  if (lines.length === 0) return [];
+
+  const priorityPattern = /known_facts=|open_questions=|evidence_snippets=|KNOWN_FACTS|OPEN_QUESTIONS|EVIDENCE_SNIPPETS|CONTEXT_PACK_V1/i;
+  const prioritized: string[] = [];
+  const regular: string[] = [];
+
+  for (const line of lines) {
+    if (priorityPattern.test(line)) {
+      prioritized.push(line);
+    } else {
+      regular.push(line);
+    }
+  }
+
+  return [...prioritized, ...regular].slice(0, maxLines);
+}
+
 /**
  * サブエージェント用プロンプトを構築
  * @summary プロンプト構築
@@ -629,6 +655,14 @@ export function buildSubagentPrompt(input: {
     if (effectiveSkills.length > 0) {
       lines.push("");
       lines.push(`Skills: ${effectiveSkills.map(s => typeof s === 'string' ? s : s).join(", ")}`);
+    }
+
+    const contextHandoff = buildInternalContextHandoff(input.extraContext);
+    if (contextHandoff.length > 0) {
+      lines.push("");
+      lines.push("CONTEXT HANDOFF:");
+      lines.push(...contextHandoff);
+      lines.push("Context policy: Reuse known_facts first. Investigate open_questions first. Expand search only when evidence is missing or conflicting.");
     }
     
     // CRITICAL output format at the END
@@ -685,6 +719,10 @@ export function buildSubagentPrompt(input: {
     lines.push("");
     lines.push("Extra context:");
     lines.push(input.extraContext.trim());
+    lines.push("Context policy:");
+    lines.push("- Reuse known_facts as baseline and verify contradictions.");
+    lines.push("- Prioritize open_questions before broad repository scans.");
+    lines.push("- Use evidence_snippets first; expand exploration only when needed.");
   }
 
   // Add relevant patterns from past executions as dialogue partners (not constraints)
