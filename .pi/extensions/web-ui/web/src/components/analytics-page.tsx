@@ -193,7 +193,30 @@ export function AnalyticsPage() {
   }, [fetchData]);
 
   const today = summary?.today;
-  const anomalyCount = today?.anomalies?.length ?? 0;
+  const last24Hours = summary?.last24Hours ?? [];
+  
+  // todayがない場合はlast24Hoursから集計値を計算
+  const displayData = today ?? (last24Hours.length > 0 ? {
+    totals: {
+      runs: last24Hours.reduce((sum, h) => sum + h.totals.runs, 0),
+      errors: last24Hours.reduce((sum, h) => sum + h.totals.errors, 0),
+      totalPromptTokens: last24Hours.reduce((sum, h) => sum + h.totals.totalPromptTokens, 0),
+      totalOutputTokens: last24Hours.reduce((sum, h) => sum + h.totals.totalOutputTokens, 0),
+      totalThinkingTokens: last24Hours.reduce((sum, h) => sum + h.totals.totalThinkingTokens, 0),
+      totalDurationMs: last24Hours.reduce((sum, h) => sum + h.totals.totalDurationMs, 0),
+    },
+    averages: {
+      promptTokens: last24Hours.reduce((sum, h) => sum + h.averages.promptTokens, 0) / last24Hours.length,
+      outputTokens: last24Hours.reduce((sum, h) => sum + h.averages.outputTokens, 0) / last24Hours.length,
+      efficiency: last24Hours.reduce((sum, h) => sum + h.averages.efficiency, 0) / last24Hours.length,
+      formatCompliance: last24Hours.reduce((sum, h) => sum + h.averages.formatCompliance, 0) / last24Hours.length,
+      claimResultConsistency: last24Hours.reduce((sum, h) => sum + h.averages.claimResultConsistency, 0) / last24Hours.length,
+      durationMs: last24Hours.reduce((sum, h) => sum + h.averages.durationMs, 0) / last24Hours.length,
+    },
+    anomalies: [],
+  } : null);
+  
+  const anomalyCount = displayData?.anomalies?.length ?? 0;
 
   return (
     <div class="flex h-full flex-col gap-4 p-4 overflow-auto">
@@ -242,29 +265,29 @@ export function AnalyticsPage() {
             <MetricCard
               icon={Activity}
               label="Runs"
-              value={today?.totals.runs ?? 0}
+              value={displayData?.totals.runs ?? 0}
             />
             <MetricCard
               icon={Zap}
               label="Efficiency"
-              value={`${((today?.averages.efficiency ?? 0) * 100).toFixed(0)}%`}
-              progress={(today?.averages.efficiency ?? 0) * 100}
+              value={`${((displayData?.averages.efficiency ?? 0) * 100).toFixed(0)}%`}
+              progress={(displayData?.averages.efficiency ?? 0) * 100}
             />
             <MetricCard
               icon={Clock}
               label="Avg Duration"
-              value={formatDuration(today?.averages.durationMs ?? 0)}
+              value={formatDuration(displayData?.averages.durationMs ?? 0)}
             />
             <MetricCard
               icon={CheckCircle}
               label="Compliance"
-              value={`${((today?.averages.formatCompliance ?? 0) * 100).toFixed(0)}%`}
-              progress={(today?.averages.formatCompliance ?? 0) * 100}
+              value={`${((displayData?.averages.formatCompliance ?? 0) * 100).toFixed(0)}%`}
+              progress={(displayData?.averages.formatCompliance ?? 0) * 100}
             />
             <MetricCard
               icon={FileText}
               label="Total Tokens"
-              value={formatNumber((today?.totals.totalOutputTokens ?? 0) + (today?.totals.totalPromptTokens ?? 0))}
+              value={formatNumber((displayData?.totals.totalOutputTokens ?? 0) + (displayData?.totals.totalPromptTokens ?? 0))}
             />
             <MetricCard
               icon={AlertTriangle}
@@ -429,12 +452,12 @@ export function AnalyticsPage() {
                 <CardDescription>Detected issues</CardDescription>
               </CardHeader>
               <CardContent class="max-h-[300px] overflow-auto space-y-2">
-                {(!today?.anomalies || today.anomalies.length === 0) ? (
+                {(!displayData?.anomalies || displayData.anomalies.length === 0) ? (
                   <div class="flex items-center justify-center py-8 text-muted-foreground text-xs">
                     No anomalies detected
                   </div>
                 ) : (
-                  today.anomalies.map((anomaly, idx) => (
+                  displayData.anomalies.map((anomaly, idx) => (
                     <AnomalyItem key={idx} anomaly={anomaly} />
                   ))
                 )}
