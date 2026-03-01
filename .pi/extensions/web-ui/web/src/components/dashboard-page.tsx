@@ -20,6 +20,7 @@
 import { h } from "preact";
 import { useState, useEffect, useCallback, useRef } from "preact/hooks";
 import { marked } from "marked";
+import { codeToHtml } from "shiki";
 import {
   BarChart,
   Bar,
@@ -29,7 +30,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import { RefreshCw, Cpu, Folder, Wifi, WifiOff, FileText, Loader2, Maximize2 } from "lucide-preact";
+import { RefreshCw, Cpu, Folder, Wifi, WifiOff, FileText, Loader2, Maximize2, Loader2 } from "lucide-preact";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -583,36 +584,114 @@ function InstanceChartCard({
 }
 
 /**
- * @summary Markdownレンダラー（marked使用）
+ * @summary Markdownレンダラー（marked + shiki）
  */
 function MarkdownRenderer({ content }: { content: string }) {
-  // markedの設定
-  marked.setOptions({
-    breaks: true,
-    gfm: true,
-  });
+  const [html, setHtml] = useState<string>("");
+  const [loading, setLoading] = useState(true);
 
-  const html = marked.parse(content) as string;
+  useEffect(() => {
+    const renderMarkdown = async () => {
+      setLoading(true);
+
+      // カスタムレンダラー
+      const renderer = new marked.Renderer();
+
+      // コードブロックのレンダリング
+      renderer.code = async ({ text, lang }) => {
+        try {
+          const highlighted = await codeToHtml(text, {
+            lang: lang || "text",
+            theme: "github-dark-high-contrast",
+          });
+          return `<div class="my-4 rounded-lg overflow-hidden">${highlighted}</div>`;
+        } catch {
+          // ハイライト失敗時はプレーンテキスト
+          return `<pre class="bg-zinc-900 p-4 rounded-lg overflow-x-auto my-4"><code>${text}</code></pre>`;
+        }
+      };
+
+      // その他のスタイル
+      renderer.heading = ({ text, depth }) => {
+        const sizes: Record<number, string> = {
+          1: "text-2xl font-bold mt-6 mb-3 text-zinc-100",
+          2: "text-xl font-semibold mt-5 mb-2 text-zinc-100 border-b border-zinc-700 pb-2",
+          3: "text-lg font-medium mt-4 mb-2 text-zinc-200",
+          4: "text-base font-medium mt-3 mb-1 text-zinc-200",
+          5: "text-sm font-medium mt-2 mb-1 text-zinc-300",
+          6: "text-sm font-medium mt-2 mb-1 text-zinc-400",
+        };
+        return `<h${depth} class="${sizes[depth] || sizes[3]}">${text}</h${depth}>`;
+      };
+
+      renderer.paragraph = ({ text }) => {
+        return `<p class="text-sm text-zinc-300 my-2 leading-relaxed">${text}</p>`;
+      };
+
+      renderer.list = ({ items, ordered }) => {
+        const tag = ordered ? "ol" : "ul";
+        const listClass = ordered 
+          ? "list-decimal list-inside my-3 space-y-1 text-zinc-300"
+          : "list-disc list-inside my-3 space-y-1 text-zinc-300";
+        return `<${tag} class="${listClass}">${items.join("")}</${tag}>`;
+      };
+
+      renderer.listitem = ({ text }) => {
+        return `<li class="text-sm">${text}</li>`;
+      };
+
+      renderer.blockquote = ({ text }) => {
+        return `<blockquote class="border-l-4 border-zinc-600 pl-4 my-4 text-zinc-400 italic">${text}</blockquote>`;
+      };
+
+      renderer.codespan = ({ text }) => {
+        return `<code class="bg-zinc-800 px-1.5 py-0.5 rounded text-xs text-zinc-300 font-mono">${text}</code>`;
+      };
+
+      renderer.strong = ({ text }) => {
+        return `<strong class="font-semibold text-zinc-100">${text}</strong>`;
+      };
+
+      renderer.em = ({ text }) => {
+        return `<em class="italic text-zinc-300">${text}</em>`;
+      };
+
+      renderer.link = ({ href, text }) => {
+        return `<a href="${href}" class="text-blue-400 hover:underline" target="_blank" rel="noopener">${text}</a>`;
+      };
+
+      renderer.hr = () => {
+        return `<hr class="border-zinc-700 my-6" />`;
+      };
+
+      marked.setOptions({
+        renderer,
+        breaks: true,
+        gfm: true,
+      });
+
+      // marked.useで非同期レンダラーを有効化
+      marked.use({ async: true });
+
+      const result = await marked.parse(content) as string;
+      setHtml(result);
+      setLoading(false);
+    };
+
+    renderMarkdown();
+  }, [content]);
+
+  if (loading) {
+    return (
+      <div class="flex items-center justify-center py-8">
+        <Loader2 class="h-6 w-6 animate-spin text-zinc-400" />
+      </div>
+    );
+  }
 
   return (
     <div
-      class="prose prose-invert prose-sm max-w-none
-        prose-headings:text-zinc-100 prose-headings:font-semibold
-        prose-h1:text-xl prose-h1:mt-4 prose-h1:mb-2
-        prose-h2:text-lg prose-h2:mt-4 prose-h2:mb-2 prose-h2:border-b prose-h2:border-zinc-700 prose-h2:pb-1
-        prose-h3:text-base prose-h3:mt-3 prose-h3:mb-1
-        prose-p:text-zinc-300 prose-p:my-2
-        prose-ul:list-disc prose-ul:list-inside prose-ul:my-2 prose-ul:text-zinc-300
-        prose-ol:list-decimal prose-ol:list-inside prose-ol:my-2 prose-ol:text-zinc-300
-        prose-li:my-0.5
-        prose-code:bg-zinc-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:text-zinc-300 prose-code:before:content-none prose-code:after:content-none
-        prose-pre:bg-zinc-800 prose-pre:p-3 prose-pre:rounded-md prose-pre:overflow-x-auto prose-pre:my-3
-        prose-blockquote:border-l-zinc-600 prose-blockquote:text-zinc-400 prose-blockquote:pl-4 prose-blockquote:italic
-        prose-hr:border-zinc-700 prose-hr:my-4
-        prose-strong:text-zinc-100
-        prose-em:text-zinc-300
-        prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline
-      "
+      class="markdown-body max-w-none"
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
