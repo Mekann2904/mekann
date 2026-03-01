@@ -248,6 +248,258 @@ export interface JudgeExplanation {
 }
 
 // ============================================================================
+// Early Termination Check (8.2 Optimization)
+// ============================================================================
+
+/**
+ * 早期終了チェックの設定
+ * @summary 早期終了設定
+ */
+export interface EarlyTerminationConfig {
+  /** 合意度の最低閾値（デフォルト: 0.85） */
+  minAgreementScore?: number;
+  /** 全メンバー完了を必須とするか（デフォルト: true） */
+  requireAllCompleted?: boolean;
+  /** 信頼度の分散閾値（デフォルト: 0.15） */
+  maxConfidenceSpread?: number;
+  /** 反対意見の許容数（デフォルト: 0） */
+  maxDisagreementCount?: number;
+}
+
+/**
+ * 早期終了チェックの結果
+ * @summary 早期終了結果
+ */
+export interface EarlyTerminationCheck {
+  /** 早期終了可能か */
+  canTerminateEarly: boolean;
+  /** 合意度スコア（0-1） */
+  agreementScore: number;
+  /** 反対意見の有無 */
+  hasDisagreement: boolean;
+  /** コンフリクトの有無 */
+  hasConflict: boolean;
+  /** 判定理由 */
+  reason: string;
+  /** 詳細な内訳 */
+  breakdown: {
+    claimSimilarity: number;
+    confidenceAlignment: number;
+    disagreementCount: number;
+    conflictCount: number;
+    completedRatio: number;
+  };
+}
+
+/**
+ * CLAIM類似度を計算（簡易版：キーワード共通率）
+ * @summary CLAIM類似度計算
+ */
+function computeClaimSimilarity(results: TeamMemberResult[]): number {
+  const completedResults = results.filter(r => r.status === "completed" && r.output);
+  if (completedResults.length < 2) return 0;
+
+  // 各結果からCLAIMを抽出してキーワードに分解
+  const claimKeywords = completedResults.map(r => {
+    const claim = extractField(r.output, "CLAIM") || r.summary || "";
+    return new Set(
+      claim.toLowerCase()
+        .replace(/[^\w\s\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf]/g, " ")
+        .split(/\s+/)
+        .filter(w => w.length > 2)
+    );
+  });
+
+  if (claimKeywords.length < 2) return 0;
+
+  // 全ペアのJaccard類似度の平均
+  let totalSimilarity = 0;
+  let pairCount = 0;
+
+  for (let i = 0; i < claimKeywords.length; i++) {
+    for (let j = i + 1; j < claimKeywords.length; j++) {
+      const setA = claimKeywords[i];
+      const setB = claimKeywords[j];
+      
+      if (setA.size === 0 && setB.size === 0) continue;
+      if (setA.size === 0 || setB.size === 0) {
+        totalSimilarity += 0;
+        pairCount += 1;
+        continue;
+      }
+
+      const intersection = new Set([...setA].filter(x => setB.has(x)));
+      const union = new Set([...setA, ...setB]);
+      totalSimilarity += intersection.size / union.size;
+      pairCount += 1;
+    }
+  }
+
+  return pairCount > 0 ? totalSimilarity / pairCount : 0;
+}
+
+/**
+ * 通信ラウンドを早期終了すべきかチェック
+ * @summary 早期終了チェック
+ * @param memberResults メンバーの実行結果
+ * @param config 設定オプション
+ * @returns 早期終了チェック結果
+ */
+export function checkEarlyTermination(
+  memberResults: TeamMemberResult[],
+  config: EarlyTerminationConfig = {}
+): EarlyTerminationCheck {
+  const {
+    minAgreementScore = 0.85,
+    requireAllCompleted = true,
+    maxConfidenceSpread = 0.15,
+    maxDisagreementCount = 0,
+  } = config;
+
+  const total = memberResults.length;
+  if (total === 0) {
+    return {
+      canTerminateEarly: false,
+      agreementScore: 0,
+      hasDisagreement: false,
+      hasConflict: false,
+      reason: "No member results",
+      breakdown: {
+        claimSimilarity: 0,
+        confidenceAlignment: 0,
+        disagreementCount: 0,
+        conflictCount: 0,
+        completedRatio: 0,
+      },
+    };
+  }
+
+  const completedResults = memberResults.filter(r => r.status === "completed");
+  const completedRatio = completedResults.length / total;
+
+  // 全完了必須チェック
+  if (requireAllCompleted && completedResults.length < total) {
+    return {
+      canTerminateEarly: false,
+      agreementScore: 0,
+      hasDisagreement: false,
+      hasConflict: false,
+      reason: `Not all members completed (${completedResults.length}/${total})`,
+      breakdown: {
+        claimSimilarity: 0,
+        confidenceAlignment: 0,
+        disagreementCount: 0,
+        conflictCount: 0,
+        completedRatio,
+      },
+    };
+  }
+
+  // メンバーが1人以下の場合は通信不要
+  if (completedResults.length <= 1) {
+    return {
+      canTerminateEarly: true,
+      agreementScore: 1,
+      hasDisagreement: false,
+      hasConflict: false,
+      reason: "Single or no member - no communication needed",
+      breakdown: {
+        claimSimilarity: 1,
+        confidenceAlignment: 1,
+        disagreementCount: 0,
+        conflictCount: 0,
+        completedRatio,
+      },
+    };
+  }
+
+  // 1. CLAIM類似度
+  const claimSimilarity = computeClaimSimilarity(completedResults);
+
+  // 2. 信頼度の整制度
+  const confidences = completedResults.map(r => r.diagnostics?.confidence ?? 0.5);
+  const meanConfidence = confidences.reduce((s, v) => s + v, 0) / confidences.length;
+  const variance = confidences.reduce((s, v) => s + (v - meanConfidence) ** 2, 0) / confidences.length;
+  const confidenceSpread = Math.sqrt(variance);
+  const confidenceAlignment = 1 - clampConfidence(confidenceSpread / 0.5);
+
+  // 3. 反対意見・コンフリクトの検出
+  const outputs = completedResults.map(r => r.output || "");
+  const allOutput = outputs.join(" ").toLowerCase();
+  
+  const disagreementKeywords = [
+    "disagree", "反対", "不同意", "oppose", "reject",
+    "incorrect", "誤り", "間違い", "wrong"
+  ];
+  const conflictKeywords = [
+    "conflict", "矛盾", "対立", "inconsistent",
+    "not aligned", "不一致", "意見が割れ"
+  ];
+
+  const disagreementCount = outputs.filter(o => 
+    disagreementKeywords.some(kw => o.toLowerCase().includes(kw))
+  ).length;
+  
+  const conflictCount = outputs.filter(o =>
+    conflictKeywords.some(kw => o.toLowerCase().includes(kw))
+  ).length;
+
+  const hasDisagreement = disagreementCount > maxDisagreementCount;
+  const hasConflict = conflictCount > 0;
+
+  // 4. 総合合意度スコア計算
+  const agreementScore = clampConfidence(
+    0.4 * claimSimilarity +
+    0.3 * confidenceAlignment +
+    0.2 * (hasDisagreement ? 0 : 1) +
+    0.1 * (hasConflict ? 0 : 1)
+  );
+
+  // 5. 早期終了判定
+  const canTerminateEarly =
+    agreementScore >= minAgreementScore &&
+    !hasDisagreement &&
+    !hasConflict &&
+    confidenceSpread <= maxConfidenceSpread;
+
+  // 理由の構築
+  const reasons: string[] = [];
+  if (canTerminateEarly) {
+    reasons.push(`agreement=${(agreementScore * 100).toFixed(0)}%`);
+    reasons.push(`claim_similarity=${(claimSimilarity * 100).toFixed(0)}%`);
+    reasons.push(`confidence_aligned=${(confidenceAlignment * 100).toFixed(0)}%`);
+  } else {
+    if (agreementScore < minAgreementScore) {
+      reasons.push(`agreement too low (${(agreementScore * 100).toFixed(0)}% < ${(minAgreementScore * 100).toFixed(0)}%)`);
+    }
+    if (hasDisagreement) {
+      reasons.push(`disagreement detected (${disagreementCount} members)`);
+    }
+    if (hasConflict) {
+      reasons.push(`conflict detected (${conflictCount} members)`);
+    }
+    if (confidenceSpread > maxConfidenceSpread) {
+      reasons.push(`confidence spread too high (${confidenceSpread.toFixed(2)} > ${maxConfidenceSpread})`);
+    }
+  }
+
+  return {
+    canTerminateEarly,
+    agreementScore,
+    hasDisagreement,
+    hasConflict,
+    reason: reasons.join(", "),
+    breakdown: {
+      claimSimilarity,
+      confidenceAlignment,
+      disagreementCount,
+      conflictCount,
+      completedRatio,
+    },
+  };
+}
+
+// ============================================================================
 // Aggregation Strategy Types (Phase 2: M1-Parallel Integration)
 // ============================================================================
 

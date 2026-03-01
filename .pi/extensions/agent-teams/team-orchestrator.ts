@@ -69,7 +69,7 @@ import {
   type PrecomputedMemberContext,
 } from "./communication.js";
 import { runMember } from "./member-execution.js";
-import { runFinalJudge, buildFallbackJudge, computeProxyUncertainty, computeProxyUncertaintyWithExplainability, formatJudgeExplanation, type TeamUncertaintyProxy, type JudgeExplanation } from "./judge.js";
+import { runFinalJudge, buildFallbackJudge, computeProxyUncertainty, computeProxyUncertaintyWithExplainability, formatJudgeExplanation, checkEarlyTermination, type TeamUncertaintyProxy, type JudgeExplanation, type EarlyTerminationCheck } from "./judge.js";
 import type { TeamLivePhase } from "../../lib/agent/team-types.js";
 import {
   getGlobalFailureMemory,
@@ -422,10 +422,34 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
   }
 
   // ============================================================================
+  // Early Termination Check (8.2 Optimization)
+  // ============================================================================
+
+  let earlyTerminationResult = checkEarlyTermination(memberResults);
+  let skippedByEarlyTermination = false;
+
+  if (earlyTerminationResult.canTerminateEarly && communicationRounds > 0) {
+    skippedByEarlyTermination = true;
+    input.onTeamEvent?.(
+      `early termination: agreement=${(earlyTerminationResult.agreementScore * 100).toFixed(0)}% reason=${earlyTerminationResult.reason}`
+    );
+    input.onTeamEvent?.(
+      `early termination: skipping ${communicationRounds} communication round(s) and ${failedMemberRetryRounds} retry round(s)`
+    );
+    for (const member of activeMembers) {
+      input.onMemberEvent?.(
+        member,
+        `early termination: consensus reached, communication skipped`
+      );
+    }
+  }
+
+  // ============================================================================
   // Phase 2: Communication Rounds
   // ============================================================================
-  
+
   let canRunCommunication =
+    !skippedByEarlyTermination &&
     memberResults.filter((result) => result.status === "completed").length >= 2;
   
   for (let round = 1; round <= communicationRounds; round += 1) {
@@ -499,26 +523,30 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
   // ============================================================================
   // Phase 3: Failed Member Retry
   // ============================================================================
-  
-  memberResults = await executeFailedMemberRetries({
-    input,
-    failedMemberRetryRounds,
-    memberResults,
-    activeMembers,
-    activeMemberById,
-    communicationLinks,
-    memberById,
-    communicationRounds,
-    communicationAudit,
-    emitResultEvent,
-    recoveredMembers,
-    failedMemberRetryApplied,
-  });
+
+  if (skippedByEarlyTermination) {
+    input.onTeamEvent?.("failed-member retry skipped: early termination active");
+  } else {
+    memberResults = await executeFailedMemberRetries({
+      input,
+      failedMemberRetryRounds,
+      memberResults,
+      activeMembers,
+      activeMemberById,
+      communicationLinks,
+      memberById,
+      communicationRounds,
+      communicationAudit,
+      emitResultEvent,
+      recoveredMembers,
+      failedMemberRetryApplied,
+    });
+  }
 
   // ============================================================================
   // Phase 4: Final Judge
   // ============================================================================
-  
+
   const finalResult = await executeFinalJudge({
     input,
     memberResults,
@@ -532,6 +560,8 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
     runId,
     startedAt,
     outputFile,
+    earlyTerminationResult,
+    skippedByEarlyTermination,
   });
 
   return finalResult;
@@ -1114,6 +1144,10 @@ interface FinalJudgeParams {
   runId: string;
   startedAt: string;
   outputFile: string;
+  /** 早期終了チェック結果（8.2最適化） */
+  earlyTerminationResult?: EarlyTerminationCheck;
+  /** 早期終了によりスキップされたか */
+  skippedByEarlyTermination?: boolean;
 }
 
 async function executeFinalJudge(
@@ -1132,18 +1166,25 @@ async function executeFinalJudge(
     runId,
     startedAt,
     outputFile,
+    earlyTerminationResult,
+    skippedByEarlyTermination,
   } = params;
 
   const failed = memberResults.filter((result) => result.status === "failed");
   const communicationLinksRecord = Object.fromEntries(
     activeMembers.map((member) => [member.id, communicationLinks.get(member.id) ?? []]),
   );
-  
+
+  // 早期終了情報をsummaryに含める
+  const earlyTerminationSummary = skippedByEarlyTermination
+    ? ` early_termination=yes agreement=${(earlyTerminationResult?.agreementScore ?? 0 * 100).toFixed(0)}%`
+    : "";
+
   const summary =
     failed.length === 0
-      ? `${memberResults.length} teammates completed. communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryApplied}/${failedMemberRetryRounds} recovered=${recoveredMembers.size}`
-      : `${memberResults.length - failed.length}/${memberResults.length} teammates completed (${failed.length} failed). communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryApplied}/${failedMemberRetryRounds} recovered=${recoveredMembers.size}`;
-  
+      ? `${memberResults.length} teammates completed. communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryApplied}/${failedMemberRetryRounds} recovered=${recoveredMembers.size}${earlyTerminationSummary}`
+      : `${memberResults.length - failed.length}/${memberResults.length} teammates completed (${failed.length} failed). communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryApplied}/${failedMemberRetryRounds} recovered=${recoveredMembers.size}${earlyTerminationSummary}`;
+
   const { proxy, explanation } = computeProxyUncertaintyWithExplainability(memberResults);
 
   // Log judge explanation for transparency (P0 improvement: decision explainability)
@@ -1161,7 +1202,9 @@ async function executeFinalJudge(
     achieved.push(`${memberResults.length - failed.length}/${memberResults.length} teammates completed`);
     remaining.push(`${failed.length} teammate(s) failed`);
   }
-  if (communicationRounds > 0 && communicationAudit.length > 0) {
+  if (skippedByEarlyTermination) {
+    achieved.push("Early termination: consensus reached");
+  } else if (communicationRounds > 0 && communicationAudit.length > 0) {
     achieved.push("Communication rounds executed");
   }
 
