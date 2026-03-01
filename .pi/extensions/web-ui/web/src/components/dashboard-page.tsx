@@ -28,7 +28,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import { RefreshCw, Cpu, Folder, Wifi, WifiOff } from "lucide-preact";
+import { RefreshCw, Cpu, Folder, Wifi, WifiOff, FileText, Loader2 } from "lucide-preact";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -127,6 +127,11 @@ export function DashboardPage() {
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // アクティブなUL Workflowタスク
+  const [activeTask, setActiveTask] = useState<{ id: string; title: string } | null>(null);
+  const [plan, setPlan] = useState<string | null>(null);
+  const [planLoading, setPlanLoading] = useState(false);
+
   // コンテキスト履歴を取得
   const fetchContextHistory = useCallback(async () => {
     setContextError(null);
@@ -146,6 +151,53 @@ export function DashboardPage() {
       setContextLoading(false);
     }
   }, []);
+
+  // アクティブなUL Workflowタスクを取得
+  useEffect(() => {
+    const fetchActiveTask = async () => {
+      try {
+        const res = await fetch("/api/ul-workflow/tasks/active");
+        if (res.ok) {
+          const json = await res.json();
+          if (json.data) {
+            setActiveTask({ id: json.data.id, title: json.data.title });
+          }
+        }
+      } catch (e) {
+        console.error("Failed to fetch active task:", e);
+      }
+    };
+
+    fetchActiveTask();
+    // 10秒ごとにポーリング
+    const interval = setInterval(fetchActiveTask, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // plan.mdを取得
+  useEffect(() => {
+    if (!activeTask) {
+      setPlan(null);
+      return;
+    }
+
+    const fetchPlan = async () => {
+      setPlanLoading(true);
+      try {
+        const res = await fetch(`/api/ul-workflow/tasks/${activeTask.id}/plan`);
+        if (res.ok) {
+          const text = await res.text();
+          setPlan(text);
+        }
+      } catch (e) {
+        console.error("Failed to fetch plan:", e);
+      } finally {
+        setPlanLoading(false);
+      }
+    };
+
+    fetchPlan();
+  }, [activeTask]);
 
   // SSE接続
   const connectSSE = useCallback(() => {
@@ -345,6 +397,39 @@ export function DashboardPage() {
             />
           ))}
         </div>
+      )}
+
+      {/* アクティブなUL WorkflowのPlan */}
+      {activeTask && (
+        <Card class="mt-4">
+          <CardHeader class="py-3 px-4">
+            <div class="flex items-center gap-2">
+              <FileText class="h-4 w-4 text-muted-foreground" />
+              <CardTitle class="text-sm font-medium">
+                Active Plan: {activeTask.title}
+              </CardTitle>
+              <span class="text-xs text-muted-foreground font-mono">
+                {activeTask.id}
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent class="pt-0">
+            {planLoading ? (
+              <div class="flex items-center gap-2 text-muted-foreground text-sm py-4">
+                <Loader2 class="h-4 w-4 animate-spin" />
+                Loading plan...
+              </div>
+            ) : plan ? (
+              <div class="bg-muted/30 rounded-md p-4 max-h-[400px] overflow-y-auto">
+                <pre class="text-xs font-mono whitespace-pre-wrap text-muted-foreground">
+                  {plan}
+                </pre>
+              </div>
+            ) : (
+              <p class="text-sm text-muted-foreground py-4">No plan available</p>
+            )}
+          </CardContent>
+        </Card>
       )}
     </PageLayout>
   );
