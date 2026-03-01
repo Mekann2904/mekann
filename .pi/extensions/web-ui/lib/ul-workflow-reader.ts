@@ -177,3 +177,22 @@ function loadTask(taskId: string): UlWorkflowTask | null {
     return null;
   }
 }
+
+/**
+ * @summary Get plan.md content for a UL workflow task
+ * @param taskId - Task ID (with or without "ul-" prefix)
+ * @returns Plan content as string, or null if not found
+ */
+export function getTaskPlan(taskId: string): string | null {
+  const rawTaskId = taskId.startsWith("ul-") ? taskId.slice(3) : taskId;
+  const planPath = path.join(UL_TASKS_DIR, rawTaskId, "plan.md");
+
+  try {
+    if (!fs.existsSync(planPath)) {
+      return null;
+    }
+    return fs.readFileSync(planPath, "utf-8");
+  } catch {
+    return null;
+  }
+}

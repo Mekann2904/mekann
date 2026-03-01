@@ -28,6 +28,7 @@ import {
   getUlWorkflowTask,
   getActiveUlWorkflowTask,
   invalidateCache,
+  getTaskPlan,
   type UlWorkflowTask,
 } from "./lib/ul-workflow-reader.js";
 
@@ -847,6 +848,26 @@ function createApp(): Express {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       res.status(500).json({ success: false, error: "Failed to load task", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/ul-workflow/tasks/:id/plan - Get plan.md content for a task
+   */
+  app.get("/api/ul-workflow/tasks/:id/plan", (req: Request, res: Response) => {
+    try {
+      const taskId = req.params.id.startsWith("ul-")
+        ? req.params.id.slice(3)
+        : req.params.id;
+      const plan = getTaskPlan(taskId);
+      if (!plan) {
+        res.status(404).json({ success: false, error: "Plan not found" });
+        return;
+      }
+      res.type("text/markdown").send(plan);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ success: false, error: "Failed to load plan", details: errorMessage });
     }
   });
 
