@@ -54,6 +54,10 @@ import {
   reevaluateAgentRunFailure,
 } from "../../lib/agent/agent-errors.js";
 import {
+  filterRelevantSkills,
+  type SkillRelevanceConfig,
+} from "../../lib/skill-relevance.js";
+import {
   validateSubagentOutput,
 } from "../../lib/agent/output-validation.js";
 import {
@@ -498,6 +502,32 @@ export function resolveEffectiveSkills(
 }
 
 /**
+ * タスクに関連するスキルのみをフィルタリング
+ * @summary 関連スキルフィルタリング（8.4最適化）
+ * @param task タスク内容
+ * @param skills スキルリスト
+ * @param config 設定（オプション）
+ * @returns フィルタリングされたスキルリスト
+ */
+export function filterSkillsByRelevance(
+  task: string,
+  skills: string[] | undefined,
+  config?: Partial<SkillRelevanceConfig>,
+): string[] {
+  if (!skills || skills.length === 0) return [];
+
+  const { highRelevance, mediumRelevance } = filterRelevantSkills(task, skills, {
+    highRelevanceThreshold: config?.highRelevanceThreshold ?? 0.4,
+    mediumRelevanceThreshold: config?.mediumRelevanceThreshold ?? 0.15,
+    keywordWeight: config?.keywordWeight ?? 0.7,
+    contextWeight: config?.contextWeight ?? 0.3,
+  });
+
+  // 高関連 + 中関連のスキルを返す（最大5個）
+  return [...highRelevance, ...mediumRelevance].slice(0, 5);
+}
+
+/**
  * スキル一覧を整形
  * @summary スキル一覧を整形
  * @param skills スキル配列
@@ -650,11 +680,12 @@ export function buildSubagentPrompt(input: {
     lines.push("TASK:");
     lines.push(input.task);
     
-    // Minimal skills
-    const effectiveSkills = resolveEffectiveSkills(input.agent, input.parentSkills) ?? [];
+    // Minimal skills (8.4最適化: 関連スキルのみ)
+    const allSkills = resolveEffectiveSkills(input.agent, input.parentSkills) ?? [];
+    const effectiveSkills = filterSkillsByRelevance(input.task, allSkills);
     if (effectiveSkills.length > 0) {
       lines.push("");
-      lines.push(`Skills: ${effectiveSkills.map(s => typeof s === 'string' ? s : s).join(", ")}`);
+      lines.push(`Skills: ${effectiveSkills.join(", ")}`);
     }
 
     const contextHandoff = buildInternalContextHandoff(input.extraContext);
@@ -702,8 +733,9 @@ export function buildSubagentPrompt(input: {
   lines.push("Subagent operating instructions:");
   lines.push(input.agent.systemPrompt);
 
-  // Resolve and include skills
-  const effectiveSkills = resolveEffectiveSkills(input.agent, input.parentSkills) ?? [];
+  // Resolve and include skills (8.4最適化: 関連スキルのみ)
+  const allSkills = resolveEffectiveSkills(input.agent, input.parentSkills) ?? [];
+  const effectiveSkills = filterSkillsByRelevance(input.task, allSkills);
   const skillsSection = formatSkillsSection(effectiveSkills);
   if (skillsSection) {
     lines.push("");
