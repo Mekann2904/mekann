@@ -25,6 +25,13 @@ import { Input } from "./ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { cn } from "@/lib/utils";
 import type { Task, TaskStatus, TaskPriority } from "./kanban-task-card";
+import {
+  TYPOGRAPHY,
+  CARD_STYLES,
+  FORM_STYLES,
+  PATTERNS,
+  SPACING,
+} from "./layout";
 
 interface TaskFormData {
   title: string;
