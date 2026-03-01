@@ -58,6 +58,12 @@ import {
   type SkillRelevanceConfig,
 } from "../../lib/skill-relevance.js";
 import {
+  createAndRecordMetrics,
+} from "../../lib/analytics/behavior-storage.js";
+import {
+  DEFAULT_LLM_BEHAVIOR_CONFIG,
+} from "../../lib/analytics/llm-behavior-types.js";
+import {
   validateSubagentOutput,
 } from "../../lib/agent/output-validation.js";
 import {
@@ -1090,6 +1096,31 @@ export async function runSubagentTask(input: {
         "utf-8",
       );
 
+      // 8.4最適化: LLM行動計測
+      if (DEFAULT_LLM_BEHAVIOR_CONFIG.enabled && Math.random() < DEFAULT_LLM_BEHAVIOR_CONFIG.samplingRate) {
+        try {
+          createAndRecordMetrics({
+            source: "subagent",
+            prompt: { text: prompt },
+            output: { text: commandResult.output },
+            execution: {
+              durationMs: Date.now() - startedAtMs,
+              retryCount,
+              outcomeCode: "SUCCESS",
+              modelUsed: resolvedModel,
+              thinkingLevel: "medium",
+            },
+            context: {
+              task: input.task,
+              agentId: input.agent.id,
+            },
+            cwd: input.cwd,
+          });
+        } catch {
+          // 計測エラーは実行に影響させない
+        }
+      }
+
       return {
         runRecord,
         output: commandResult.output,
@@ -1159,6 +1190,31 @@ export async function runSubagentTask(input: {
         ),
         "utf-8",
       );
+
+      // 8.4最適化: LLM行動計測（失敗時）
+      if (DEFAULT_LLM_BEHAVIOR_CONFIG.enabled && Math.random() < DEFAULT_LLM_BEHAVIOR_CONFIG.samplingRate) {
+        try {
+          createAndRecordMetrics({
+            source: "subagent",
+            prompt: { text: prompt },
+            output: { text: "" },
+            execution: {
+              durationMs: Date.now() - startedAtMs,
+              retryCount,
+              outcomeCode: effectiveStatus === "completed" ? "SUCCESS" : "FAILURE",
+              modelUsed: resolvedModel,
+              thinkingLevel: "medium",
+            },
+            context: {
+              task: input.task,
+              agentId: input.agent.id,
+            },
+            cwd: input.cwd,
+          });
+        } catch {
+          // 計測エラーは実行に影響させない
+        }
+      }
 
       return {
         runRecord,
