@@ -631,6 +631,77 @@ function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined
   };
 }
 
+const RESULT_REUSE_ENABLED = process.env.PI_DELEGATION_RESULT_REUSE !== "0";
+const RESULT_REUSE_WINDOW_MS = (() => {
+  const raw = Number(process.env.PI_DELEGATION_RESULT_REUSE_WINDOW_MS ?? "600000");
+  if (!Number.isFinite(raw) || raw <= 0) return 600_000;
+  return Math.max(30_000, Math.min(7_200_000, Math.trunc(raw)));
+})();
+
+function normalizeReuseText(value: string | undefined): string {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function loadSubagentRunArtifact(outputFile: string): { prompt?: string; output?: string } | null {
+  if (!outputFile || !existsSync(outputFile)) return null;
+  try {
+    const raw = readFileSync(outputFile, "utf-8");
+    const parsed = JSON.parse(raw) as { prompt?: string; output?: string };
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function findReusableSubagentRun(input: {
+  storage: SubagentStorage;
+  agentId: string;
+  task: string;
+  extraContext?: string;
+}): { runRecord: SubagentRunRecord; output: string; cacheAgeMs: number } | null {
+  if (!RESULT_REUSE_ENABLED) return null;
+
+  const normalizedTask = normalizeReuseText(input.task);
+  if (!normalizedTask) return null;
+
+  const normalizedExtraContext = normalizeReuseText(input.extraContext);
+  const nowMs = Date.now();
+
+  const recentRuns = input.storage.runs.slice().reverse();
+  for (const run of recentRuns) {
+    if (run.status !== "completed") continue;
+    if (run.agentId !== input.agentId) continue;
+    if (normalizeReuseText(run.task) !== normalizedTask) continue;
+
+    const finishedAtMs = Date.parse(run.finishedAt || run.startedAt || "");
+    if (!Number.isFinite(finishedAtMs)) continue;
+    const cacheAgeMs = nowMs - finishedAtMs;
+    if (cacheAgeMs < 0 || cacheAgeMs > RESULT_REUSE_WINDOW_MS) continue;
+
+    const artifact = loadSubagentRunArtifact(run.outputFile);
+    const output = artifact?.output?.trim() || run.summary || "(cached summary only)";
+
+    if (normalizedExtraContext) {
+      const normalizedPrompt = normalizeReuseText(artifact?.prompt);
+      const probe = normalizedExtraContext.slice(0, 180);
+      if (!normalizedPrompt || !normalizedPrompt.includes(probe)) {
+        continue;
+      }
+    }
+
+    return {
+      runRecord: run,
+      output,
+      cacheAgeMs,
+    };
+  }
+
+  return null;
+}
+
 function toAgentId(input: string): string {
   return input
     .toLowerCase()
@@ -943,6 +1014,31 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             error: "subagent_disabled",
             subagentId: agent.id,
             outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+            retryRecommended: false,
+          },
+        };
+      }
+
+      const reusable = findReusableSubagentRun({
+        storage,
+        agentId: agent.id,
+        task: params.task,
+        extraContext: params.extraContext,
+      });
+      if (reusable) {
+        const ageSec = Math.floor(reusable.cacheAgeMs / 1000);
+        return {
+          content: [{
+            type: "text" as const,
+            text: `[cache-hit] Reused subagent result (${reusable.runRecord.runId}, age=${ageSec}s)\n\n${reusable.output}`,
+          }],
+          details: {
+            runRecord: reusable.runRecord,
+            subagentId: agent.id,
+            cached: true,
+            cacheAgeMs: reusable.cacheAgeMs,
+            cacheWindowMs: RESULT_REUSE_WINDOW_MS,
+            outcomeCode: "SUCCESS" as RunOutcomeCode,
             retryRecommended: false,
           },
         };
@@ -1278,6 +1374,51 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         };
       }
 
+      const cachedByAgentId = new Map<string, { runRecord: SubagentRunRecord; output: string; cacheAgeMs: number }>();
+      for (const agent of activeAgents) {
+        const reusable = findReusableSubagentRun({
+          storage,
+          agentId: agent.id,
+          task: params.task,
+          extraContext: params.extraContext,
+        });
+        if (reusable) {
+          cachedByAgentId.set(agent.id, reusable);
+        }
+      }
+
+      if (cachedByAgentId.size === activeAgents.length) {
+        const aggregatedOutput = activeAgents
+          .map((agent) => {
+            const reusable = cachedByAgentId.get(agent.id)!;
+            const ageSec = Math.floor(reusable.cacheAgeMs / 1000);
+            return `## ${agent.id}\nStatus: SUCCESS (cache-hit, age=${ageSec}s)\n${reusable.output || reusable.runRecord.summary || ""}`;
+          })
+          .join("\n\n");
+
+        return {
+          content: [{ type: "text" as const, text: aggregatedOutput }],
+          details: {
+            results: activeAgents.map((agent) => {
+              const reusable = cachedByAgentId.get(agent.id)!;
+              return {
+                agentId: agent.id,
+                status: reusable.runRecord.status,
+                summary: reusable.runRecord.summary,
+                output: reusable.output,
+                cached: true,
+                cacheAgeMs: reusable.cacheAgeMs,
+              };
+            }),
+            successCount: activeAgents.length,
+            totalCount: activeAgents.length,
+            cachedCount: activeAgents.length,
+            outcomeCode: "SUCCESS" as RunOutcomeCode,
+            retryRecommended: false,
+          },
+        };
+      }
+
       // Synchronous execution (matching agent_team_run behavior)
       logger.startOperation(
         "subagent_run_parallel" as OperationType,
@@ -1292,6 +1433,18 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         },
       );
 
+      const executableAgents = activeAgents.filter((agent) => !cachedByAgentId.has(agent.id));
+      const cachedResults: { runRecord: SubagentRunRecord; output: string; prompt: string }[] = activeAgents
+        .filter((agent) => cachedByAgentId.has(agent.id))
+        .map((agent) => {
+          const reusable = cachedByAgentId.get(agent.id)!;
+          return {
+            runRecord: reusable.runRecord,
+            output: reusable.output,
+            prompt: "[cache-hit]",
+          };
+        });
+
       let capacityReservation: RuntimeCapacityReservationLease | undefined;
       let stopReservationHeartbeat: (() => void) | undefined;
       let liveMonitor: SubagentLiveMonitorController | undefined;
@@ -1305,10 +1458,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           1,
           Math.min(
             configuredParallelLimit,
-            activeAgents.length,
+            Math.max(1, executableAgents.length),
             Math.max(1, snapshot.limits.maxTotalActiveLlm),
             resolveProviderConcurrencyCap(
-              activeAgents,
+              executableAgents,
               ctx.model?.provider,
               ctx.model?.id,
             ),
@@ -1321,10 +1474,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             additionalRequests: 1,
             additionalLlm: Math.min(effectiveParallelism, snapshot.limits.maxParallelSubagentsPerRun),
           },
-          tenantKey: activeAgents.map((entry) => entry.id).join(","),
+          tenantKey: executableAgents.map((entry) => entry.id).join(","),
           source: "scheduled",
           estimatedDurationMs: 60_000,
-          estimatedRounds: Math.max(1, activeAgents.length),
+          estimatedRounds: Math.max(1, executableAgents.length),
           maxWaitMs: snapshot.limits.capacityWaitMs,
           pollIntervalMs: snapshot.limits.capacityPollMs,
           signal: _signal,
@@ -1551,7 +1704,7 @@ ${allResults.map((r) => {
         // DynTaskMAS: エージェントの重みを計算（専門性ベース）
         // 重みが大きい（専門性が高い）エージェントを優先的に実行
         const agentWeights = new Map<string, number>();
-        for (const agent of activeAgents) {
+        for (const agent of executableAgents) {
           const weight = getAgentSpecializationWeight(agent.id);
           agentWeights.set(agent.id, weight);
         }
@@ -1576,7 +1729,7 @@ ${allResults.map((r) => {
         type SettledTaskResult = { status: 'fulfilled' | 'rejected'; value?: SubagentTaskResult; reason?: unknown; index: number };
 
         const settledResults = await runWithConcurrencyLimit(
-          activeAgents,
+          executableAgents,
           Math.max(1, effectiveParallelism),
           async (agent): Promise<SubagentTaskResult> => {
             const result = await runSubagentTask({
@@ -1632,11 +1785,11 @@ ${allResults.map((r) => {
         const rejectedResults = settledResults.filter((r) => r.status === 'rejected');
 
         // 結果を統合（成功したもののみ）
-        const results = succeededResults;
+        const results = [...cachedResults, ...succeededResults];
 
         // 拒否されたタスクをエージェントIDと共に記録
         const rejectedDetails = rejectedResults.map((r) => {
-          const agent = activeAgents[r.index];
+          const agent = executableAgents[r.index];
           return {
             agentId: agent?.id ?? `unknown-${r.index}`,
             error: r.reason instanceof Error ? r.reason.message : String(r.reason),

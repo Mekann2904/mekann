@@ -510,6 +510,87 @@ function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined
   };
 }
 
+const RESULT_REUSE_ENABLED = process.env.PI_DELEGATION_RESULT_REUSE !== "0";
+const RESULT_REUSE_WINDOW_MS = (() => {
+  const raw = Number(process.env.PI_DELEGATION_RESULT_REUSE_WINDOW_MS ?? "600000");
+  if (!Number.isFinite(raw) || raw <= 0) return 600_000;
+  return Math.max(30_000, Math.min(7_200_000, Math.trunc(raw)));
+})();
+
+function normalizeReuseText(value: string | undefined): string {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function loadTeamRunArtifact(outputFile: string): {
+  run?: TeamRunRecord;
+  memberResults?: TeamMemberResult[];
+  communicationAudit?: TeamCommunicationAuditEntry[];
+  task?: string;
+  sharedContext?: string;
+} | null {
+  if (!outputFile || !existsSync(outputFile)) return null;
+  try {
+    const raw = readFileSync(outputFile, "utf-8");
+    const parsed = JSON.parse(raw) as {
+      run?: TeamRunRecord;
+      memberResults?: TeamMemberResult[];
+      communicationAudit?: TeamCommunicationAuditEntry[];
+      task?: string;
+      sharedContext?: string;
+    };
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function findReusableTeamRun(input: {
+  storage: TeamStorage;
+  teamId: string;
+  task: string;
+  sharedContext?: string;
+}): {
+  runRecord: TeamRunRecord;
+  memberResults: TeamMemberResult[];
+  communicationAudit: TeamCommunicationAuditEntry[];
+  cacheAgeMs: number;
+} | null {
+  if (!RESULT_REUSE_ENABLED) return null;
+
+  const normalizedTask = normalizeReuseText(input.task);
+  const normalizedSharedContext = normalizeReuseText(input.sharedContext);
+  const nowMs = Date.now();
+
+  for (const run of input.storage.runs.slice().reverse()) {
+    if (run.status !== "completed") continue;
+    if (run.teamId !== input.teamId) continue;
+    if (normalizeReuseText(run.task) !== normalizedTask) continue;
+
+    const finishedAtMs = Date.parse(run.finishedAt || run.startedAt || "");
+    if (!Number.isFinite(finishedAtMs)) continue;
+    const cacheAgeMs = nowMs - finishedAtMs;
+    if (cacheAgeMs < 0 || cacheAgeMs > RESULT_REUSE_WINDOW_MS) continue;
+
+    const artifact = loadTeamRunArtifact(run.outputFile);
+    if (!artifact?.memberResults || artifact.memberResults.length === 0) continue;
+
+    const artifactSharedContext = normalizeReuseText(artifact.sharedContext);
+    if (normalizedSharedContext !== artifactSharedContext) continue;
+
+    return {
+      runRecord: artifact.run ?? run,
+      memberResults: artifact.memberResults,
+      communicationAudit: artifact.communicationAudit ?? [],
+      cacheAgeMs,
+    };
+  }
+
+  return null;
+}
+
 /**
  * 集約戦略の正規化結果
  * @summary 集約戦略設定
@@ -862,6 +943,43 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             error: "no_active_members",
             teamId: team.id,
             outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+            retryRecommended: false,
+          },
+        };
+      }
+
+      const reusable = findReusableTeamRun({
+        storage,
+        teamId: team.id,
+        task: params.task,
+        sharedContext: params.sharedContext,
+      });
+      if (reusable) {
+        const ageSec = Math.floor(reusable.cacheAgeMs / 1000);
+        const cachedOutput = buildTeamResultText({
+          run: reusable.runRecord,
+          team,
+          memberResults: reusable.memberResults,
+          communicationAudit: reusable.communicationAudit,
+        });
+
+        return {
+          content: [{
+            type: "text" as const,
+            text: `[cache-hit] Reused team result (${reusable.runRecord.runId}, age=${ageSec}s)\n${cachedOutput}`,
+          }],
+          details: {
+            run: reusable.runRecord,
+            team: {
+              id: team.id,
+              name: team.name,
+            },
+            memberResults: reusable.memberResults,
+            communicationAudit: reusable.communicationAudit,
+            cached: true,
+            cacheAgeMs: reusable.cacheAgeMs,
+            cacheWindowMs: RESULT_REUSE_WINDOW_MS,
+            outcomeCode: "SUCCESS" as RunOutcomeCode,
             retryRecommended: false,
           },
         };
@@ -1417,6 +1535,65 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         };
       }
 
+      const reusableTeams = enabledTeams.map((team) => ({
+        team,
+        reusable: findReusableTeamRun({
+          storage,
+          teamId: team.id,
+          task: params.task,
+          sharedContext: params.sharedContext,
+        }),
+      }));
+
+      if (reusableTeams.every((entry) => entry.reusable)) {
+        const lines: string[] = [];
+        lines.push(`Parallel agent team run completed (${enabledTeams.length} teams, cache-hit).`);
+        lines.push(`Reuse window: ${Math.floor(RESULT_REUSE_WINDOW_MS / 1000)}s`);
+        lines.push("All selected teams were served from cache.");
+        lines.push("");
+        lines.push("Team summaries:");
+
+        for (const entry of reusableTeams) {
+          const reusable = entry.reusable!;
+          const ageSec = Math.floor(reusable.cacheAgeMs / 1000);
+          lines.push(`- ${entry.team.id} [ok][cache-hit age=${ageSec}s] ${reusable.runRecord.summary} (${reusable.runRecord.outputFile})`);
+        }
+
+        lines.push("");
+        lines.push("Detailed outputs:");
+        for (const entry of reusableTeams) {
+          const reusable = entry.reusable!;
+          lines.push("");
+          lines.push(`## Team ${entry.team.id}`);
+          lines.push(
+            buildTeamResultText({
+              run: reusable.runRecord,
+              team: entry.team,
+              memberResults: reusable.memberResults,
+              communicationAudit: reusable.communicationAudit,
+            }),
+          );
+        }
+
+        return {
+          content: [{ type: "text" as const, text: lines.join("\n") }],
+          details: {
+            selectedTeams: enabledTeams.map((team) => team.id),
+            runs: reusableTeams.map((entry) => entry.reusable!.runRecord),
+            cached: true,
+            cachedCount: enabledTeams.length,
+            cacheWindowMs: RESULT_REUSE_WINDOW_MS,
+            outcomeCode: "SUCCESS" as RunOutcomeCode,
+            retryRecommended: false,
+          },
+        };
+      }
+
+      const cachedTeamEntries = reusableTeams.filter((entry) => entry.reusable);
+      const executableTeams = reusableTeams
+        .filter((entry) => !entry.reusable)
+        .map((entry) => entry.team);
+
       // Logger: start parallel team operation tracking
       const parallelTeamOperationId = logger.startOperation("team_run" as OperationType, enabledTeams.map(t => t.id).join(","), {
         task: params.task,
@@ -1454,7 +1631,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         1,
         Math.min(
           configuredTeamParallelLimit,
-          enabledTeams.length,
+          Math.max(1, executableTeams.length),
           Math.max(1, snapshot.limits.maxTotalActiveRequests),
         ),
       );
@@ -1464,7 +1641,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         snapshot.limits.maxParallelTeammatesPerTeam,
         1,
       );
-      const maxEnabledMembersPerTeam = enabledTeams.reduce((maxCount, team) => {
+      const maxEnabledMembersPerTeam = executableTeams.reduce((maxCount, team) => {
         const enabledMemberCount = team.members.filter((member) => member.enabled).length;
         return Math.max(maxCount, enabledMemberCount);
       }, 0);
@@ -1496,10 +1673,10 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             snapshot.limits.maxParallelTeamsPerRun * snapshot.limits.maxParallelTeammatesPerTeam,
           ),
         },
-        tenantKey: enabledTeams.map((team) => team.id).sort().join("+"),
+        tenantKey: executableTeams.map((team) => team.id).sort().join("+"),
         source: "scheduled",
         estimatedDurationMs: Math.round(90_000 * (1 + communicationRounds * 0.3)),
-        estimatedRounds: Math.max(1, enabledTeams.length * (1 + communicationRounds)),
+        estimatedRounds: Math.max(1, executableTeams.length * (1 + communicationRounds)),
         maxWaitMs: snapshot.limits.capacityWaitMs,
         pollIntervalMs: snapshot.limits.capacityPollMs,
         signal,
@@ -1542,6 +1719,8 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             adaptivePenaltyBefore,
             adaptivePenaltyAfter: adaptivePenalty.get(),
             requestedTeamCount: enabledTeams.length,
+            executableTeamCount: executableTeams.length,
+            cachedTeamCount: cachedTeamEntries.length,
             failedMemberRetryRounds,
             queuedAhead: dispatchPermit.queuedAhead,
             queuePosition: dispatchPermit.queuePosition,
@@ -1563,8 +1742,8 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
 
       try {
         const liveMonitor = createAgentTeamLiveMonitor(ctx, {
-          title: `Agent Team Run Parallel (detailed live view: ${enabledTeams.length} teams)`,
-          items: enabledTeams.flatMap((team) => {
+          title: `Agent Team Run Parallel (detailed live view: ${executableTeams.length} teams)`,
+          items: executableTeams.flatMap((team) => {
             const enabledMembers = team.members.filter((member) => member.enabled);
             const communicationLinks = createCommunicationLinksMap(enabledMembers);
             return enabledMembers.map((member) => ({
@@ -1577,7 +1756,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           }),
         });
         liveMonitor?.appendBroadcastEvent(
-          `parallel orchestration prepared: teams=${enabledTeams.length} team_parallel=${appliedTeamParallelism} requested_team_parallel=${effectiveTeamParallelism} (baseline=${baselineTeamParallelism}) teammate_parallel=${appliedMemberParallelism} requested_teammate_parallel=${effectiveMemberParallelism} (baseline=${baselineMemberParallelism}) adaptive_penalty=${adaptivePenaltyBefore} communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryRounds}`,
+          `parallel orchestration prepared: teams=${enabledTeams.length} executable_teams=${executableTeams.length} cached_teams=${cachedTeamEntries.length} team_parallel=${appliedTeamParallelism} requested_team_parallel=${effectiveTeamParallelism} (baseline=${baselineTeamParallelism}) teammate_parallel=${appliedMemberParallelism} requested_teammate_parallel=${effectiveMemberParallelism} (baseline=${baselineMemberParallelism}) adaptive_penalty=${adaptivePenaltyBefore} communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryRounds}`,
         );
         liveMonitor?.appendBroadcastEvent(
           `runtime capacity granted: projected_requests=${dispatchPermit.projectedRequests} projected_llm=${dispatchPermit.projectedLlm}`,
@@ -1602,7 +1781,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           ctx.model?.id,
           params.task
         );
-        const totalMembers = enabledTeams.reduce(
+        const totalMembers = executableTeams.reduce(
           (sum, team) => sum + team.members.filter((m) => m.enabled).length,
           0
         );
@@ -1614,7 +1793,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           base_tokens: baseEstimate.estimatedTokens,
           adjusted_ms: adjustedDurationMs,
           adjusted_tokens: adjustedTokens,
-          teams: enabledTeams.length,
+          teams: executableTeams.length,
           total_members: totalMembers,
           rounds: communicationRounds,
           method: baseEstimate.method,
@@ -1821,24 +2000,32 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
 
         // DynTaskMAS: チームの重みを計算（メンバー構成ベース）
         const teamWeights = new Map<string, number>();
-        for (const team of enabledTeams) {
+        for (const team of executableTeams) {
           const weight = calculateTeamWeight(team);
           teamWeights.set(team.id, weight);
         }
 
-        const results = await runWithConcurrencyLimit(enabledTeams, appliedTeamParallelism, runTeamWorker, {
+        const cachedResults: TeamRunResult[] = cachedTeamEntries.map((entry) => ({
+          team: entry.team,
+          runRecord: entry.reusable!.runRecord,
+          memberResults: entry.reusable!.memberResults,
+          communicationAudit: entry.reusable!.communicationAudit,
+        }));
+
+        const uncachedResults = await runWithConcurrencyLimit(executableTeams, appliedTeamParallelism, runTeamWorker, {
           signal,
           usePriorityScheduling: true,
           itemWeights: teamWeights,
           getItemId: (team: TeamDefinition) => team.id,
         });
 
-        for (const result of results) {
+        for (const result of uncachedResults) {
           storage.runs.push(result.runRecord);
           pi.appendEntry("agent-team-run", result.runRecord);
         }
         saveStorage(ctx.cwd, storage);
 
+        const results: TeamRunResult[] = [...cachedResults, ...uncachedResults];
         const failed = results.filter((result) => result.runRecord.status === "failed");
         const totalTeammates = results.reduce((count, result) => count + result.runRecord.memberCount, 0);
         const pressureFailures = results.reduce((count, result) => {
@@ -1901,7 +2088,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         });
 
         const lines: string[] = [];
-        lines.push(`Parallel agent team run completed (${results.length} teams, ${totalTeammates} teammates).`);
+        lines.push(`Parallel agent team run completed (${results.length} teams, ${totalTeammates} teammates, cache-hit=${cachedTeamEntries.length}).`);
         lines.push(
           `Applied limits: teams=${appliedTeamParallelism} concurrent (requested=${effectiveTeamParallelism}, baseline=${baselineTeamParallelism}), teammates/team=${appliedMemberParallelism} (requested=${effectiveMemberParallelism}, baseline=${baselineMemberParallelism}), adaptive_penalty=${adaptivePenaltyBefore}->${adaptivePenaltyAfter}.`,
         );
@@ -1914,9 +2101,11 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         );
         lines.push("");
         lines.push("Team summaries:");
+        const cachedTeamIdSet = new Set(cachedTeamEntries.map((entry) => entry.team.id));
         for (const result of results) {
           const state = result.runRecord.status === "completed" ? "ok" : "failed";
-          lines.push(`- ${result.team.id} [${state}] ${result.runRecord.summary} (${result.runRecord.outputFile})`);
+          const cacheTag = cachedTeamIdSet.has(result.team.id) ? "[cache-hit]" : "";
+          lines.push(`- ${result.team.id} [${state}]${cacheTag} ${result.runRecord.summary} (${result.runRecord.outputFile})`);
         }
 
         // Add aggregation result summary
@@ -1956,6 +2145,9 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           content: [{ type: "text" as const, text: lines.join("\n") }],
           details: {
             selectedTeams: enabledTeams.map((team) => team.id),
+            executableTeams: executableTeams.map((team) => team.id),
+            cachedTeams: cachedTeamEntries.map((entry) => entry.team.id),
+            cachedCount: cachedTeamEntries.length,
             configuredTeamParallelLimit,
             configuredMemberParallelLimit,
             baselineTeamParallelism,
