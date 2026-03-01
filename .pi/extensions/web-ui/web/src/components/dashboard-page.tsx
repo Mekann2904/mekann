@@ -19,8 +19,8 @@
 
 import { h } from "preact";
 import { useState, useEffect, useCallback, useRef } from "preact/hooks";
-import { marked } from "marked";
-import { codeToHtml } from "shiki";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   BarChart,
   Bar,
@@ -568,151 +568,16 @@ function InstanceChartCard({
 }
 
 /**
- * @summary Markdownレンダラー（marked + shiki）
+ * @summary Markdownレンダラー（react-markdown + Tailwind typography）
  */
 function MarkdownRenderer({ content }: { content: string }) {
-  const [html, setHtml] = useState<string>("");
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const renderMarkdown = async () => {
-      setLoading(true);
-
-      try {
-        // 1. コードブロックを抽出してハイライト
-        const codeBlocks: { placeholder: string; html: string }[] = [];
-        let processedContent = content;
-
-        // コードブロックを検索
-        const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
-        let match;
-        let idx = 0;
-
-        while ((match = codeBlockRegex.exec(content)) !== null) {
-          const lang = match[1] || "text";
-          const code = match[2];
-          const placeholder = `__CODE_BLOCK_${idx}__`;
-
-          try {
-            const highlighted = await codeToHtml(code, {
-              lang,
-              theme: "github-dark-high-contrast",
-            });
-            codeBlocks.push({ placeholder, html: `<div class="my-4 rounded-lg overflow-hidden">${highlighted}</div>` });
-          } catch {
-            // ハイライト失敗時はプレーンテキスト
-            const escaped = code
-              .replace(/&/g, "&amp;")
-              .replace(/</g, "&lt;")
-              .replace(/>/g, "&gt;");
-            codeBlocks.push({
-              placeholder,
-              html: `<pre class="bg-zinc-900 p-4 rounded-lg overflow-x-auto my-4"><code>${escaped}</code></pre>`,
-            });
-          }
-
-          processedContent = processedContent.replace(match[0], placeholder);
-          idx++;
-        }
-
-        // 2. 残りのMarkdownを処理
-        const renderer = new marked.Renderer();
-
-        renderer.heading = ({ text, depth }) => {
-          const sizes: Record<number, string> = {
-            1: "text-2xl font-bold mt-6 mb-3 text-zinc-100",
-            2: "text-xl font-semibold mt-5 mb-2 text-zinc-100 border-b border-zinc-700 pb-2",
-            3: "text-lg font-medium mt-4 mb-2 text-zinc-200",
-            4: "text-base font-medium mt-3 mb-1 text-zinc-200",
-            5: "text-sm font-medium mt-2 mb-1 text-zinc-300",
-            6: "text-sm font-medium mt-2 mb-1 text-zinc-400",
-          };
-          return `<h${depth} class="${sizes[depth] || sizes[3]}">${text}</h${depth}>`;
-        };
-
-        renderer.paragraph = ({ text }) => {
-          return `<p class="text-sm text-zinc-300 my-2 leading-relaxed">${text}</p>`;
-        };
-
-        renderer.list = ({ items, ordered }) => {
-          const tag = ordered ? "ol" : "ul";
-          const listClass = ordered
-            ? "list-decimal list-inside my-3 space-y-1 text-zinc-300"
-            : "list-disc list-inside my-3 space-y-1 text-zinc-300";
-          return `<${tag} class="${listClass}">${items.join("")}</${tag}>`;
-        };
-
-        renderer.listitem = ({ text }) => {
-          return `<li class="text-sm">${text}</li>`;
-        };
-
-        renderer.blockquote = ({ text }) => {
-          return `<blockquote class="border-l-4 border-zinc-600 pl-4 my-4 text-zinc-400 italic">${text}</blockquote>`;
-        };
-
-        renderer.codespan = ({ text }) => {
-          return `<code class="bg-zinc-800 px-1.5 py-0.5 rounded text-xs text-zinc-300 font-mono">${text}</code>`;
-        };
-
-        renderer.strong = ({ text }) => {
-          return `<strong class="font-semibold text-zinc-100">${text}</strong>`;
-        };
-
-        renderer.em = ({ text }) => {
-          return `<em class="italic text-zinc-300">${text}</em>`;
-        };
-
-        renderer.link = ({ href, text }) => {
-          return `<a href="${href}" class="text-blue-400 hover:underline" target="_blank" rel="noopener">${text}</a>`;
-        };
-
-        renderer.hr = () => {
-          return `<hr class="border-zinc-700 my-6" />`;
-        };
-
-        // コードブロックはプレースホルダーとして扱う（既に処理済み）
-        renderer.code = ({ text }) => {
-          return text; // プレースホルダーをそのまま返す
-        };
-
-        marked.setOptions({
-          renderer,
-          breaks: true,
-          gfm: true,
-        });
-
-        let result = marked.parse(processedContent) as string;
-
-        // 3. プレースホルダーをハイライト済みHTMLに置き換え
-        for (const { placeholder, html: codeHtml } of codeBlocks) {
-          result = result.replace(placeholder, codeHtml);
-        }
-
-        setHtml(result);
-      } catch (e) {
-        console.error("Markdown render error:", e);
-        // エラー時はプレーンテキスト
-        setHtml(`<pre class="text-sm text-zinc-300">${content}</pre>`);
-      }
-
-      setLoading(false);
-    };
-
-    renderMarkdown();
-  }, [content]);
-
-  if (loading) {
-    return (
-      <div class="flex items-center justify-center py-8">
-        <Loader2 class="h-6 w-6 animate-spin text-zinc-400" />
-      </div>
-    );
-  }
-
   return (
-    <div
-      class="markdown-body max-w-none"
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <article class="prose prose-invert prose-sm dark:prose-invert max-w-[900px] mx-auto
+      prose-headings:scroll-mt-4
+    ">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {content}
+      </ReactMarkdown>
+    </article>
   );
 }
