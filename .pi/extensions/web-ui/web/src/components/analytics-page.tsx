@@ -502,7 +502,7 @@ export function AnalyticsPage() {
                   return (
                     <div class="flex flex-col items-center">
                       <ChartContainer config={pieConfig} class="h-[180px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
                           <PieChart>
                             <Pie
                               data={pieData}
