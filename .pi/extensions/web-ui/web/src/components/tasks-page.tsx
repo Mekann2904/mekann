@@ -19,13 +19,14 @@
 
 import { h } from "preact";
 import { useState, useEffect, useCallback, useMemo, useRef } from "preact/hooks";
-import { Plus, Loader2, AlertCircle, ListTodo, RefreshCw, Search, X } from "lucide-preact";
+import { Plus, Loader2, AlertCircle, RefreshCw, Search, X } from "lucide-preact";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { KanbanTaskCard, type Task, type TaskStatus, type TaskPriority } from "./kanban-task-card";
 import { TaskDetailPanel } from "./task-detail-panel";
 import { useRuntimeStatus } from "../hooks/useRuntimeStatus";
 import { cn } from "@/lib/utils";
+import { PageLayout, LoadingState, ErrorBanner } from "./layout";
 
 interface TaskStats {
   total: number;
@@ -665,7 +666,7 @@ export function TasksPage() {
   };
 
   return (
-    <div class="flex h-full overflow-hidden">
+    <PageLayout variant="board">
       {/* Main board area */}
       <div class="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
@@ -707,22 +708,19 @@ export function TasksPage() {
 
         {/* Error banner */}
         {error && (
-          <div class="shrink-0 mx-4 mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-md flex items-center gap-2 text-red-500">
-            <AlertCircle class="h-4 w-4 shrink-0" />
-            <span class="text-sm flex-1">{error}</span>
-            <Button variant="ghost" size="sm" onClick={() => setError(null)}>
-              <X class="h-3.5 w-3.5" />
-            </Button>
+          <div class="shrink-0 mx-4 mt-4">
+            <ErrorBanner
+              message={error}
+              onDismiss={() => setError(null)}
+              showCard={false}
+            />
           </div>
         )}
 
         {/* Kanban board */}
         {loading ? (
           <div class="flex-1 flex items-center justify-center">
-            <div class="flex flex-col items-center gap-2">
-              <Loader2 class="h-6 w-6 animate-spin text-primary" />
-              <p class="text-sm text-muted-foreground">Loading...</p>
-            </div>
+            <LoadingState message="Loading..." showCard={false} />
           </div>
         ) : (
           <div class="flex-1 overflow-x-auto p-4">
@@ -761,6 +759,6 @@ export function TasksPage() {
           onDeleteSubtask={handleDeleteSubtask}
         />
       )}
-    </div>
+    </PageLayout>
   );
 }
