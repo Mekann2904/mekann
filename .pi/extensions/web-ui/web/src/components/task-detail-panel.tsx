@@ -24,6 +24,14 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { cn } from "@/lib/utils";
 import type { Task, TaskStatus, TaskPriority } from "./kanban-task-card";
+import {
+  TYPOGRAPHY,
+  CARD_STYLES,
+  FORM_STYLES,
+  PATTERNS,
+  SPACING,
+  STATE_STYLES,
+} from "./layout";
 
 interface TaskDetailPanelProps {
   task: Task;
