@@ -4,7 +4,7 @@
  * @role Visual indicator for agent execution status on Kanban cards
  * @why Show real-time execution progress and status to users
  * @related kanban-task-card.tsx, runtime-status-panel.tsx
- * @public_api ExecutionStatusIndicator
+ * @public_api ExecutionStatusIndicator, MiniProgressBar, StatusBadge
  * @invariants Session data is immutable during render
  * @side_effects None (display only)
  * @failure_modes None (graceful fallback for missing data)
@@ -21,6 +21,12 @@ import { h } from "preact";
 import { Loader2, CheckCircle2, XCircle, Clock, Users } from "lucide-preact";
 import { cn } from "@/lib/utils";
 import type { RuntimeSession, RuntimeSessionStatus } from "../hooks/useRuntimeStatus";
+import {
+  TYPOGRAPHY,
+  PATTERNS,
+  SPACING,
+  STATE_STYLES,
+} from "./layout";
 
 interface ExecutionStatusIndicatorProps {
   /** Session data */
@@ -46,27 +52,27 @@ const STATUS_CONFIG: Record<
 > = {
   starting: {
     icon: Clock,
-    color: "text-yellow-500",
-    bgColor: "bg-yellow-500/10",
+    color: STATE_STYLES.warning.text,
+    bgColor: STATE_STYLES.warning.bg,
     label: "Starting",
   },
   running: {
     icon: Loader2,
-    color: "text-blue-500",
-    bgColor: "bg-blue-500/10",
+    color: STATE_STYLES.info.text,
+    bgColor: STATE_STYLES.info.bg,
     label: "Running",
     animate: true,
   },
   completed: {
     icon: CheckCircle2,
-    color: "text-green-500",
-    bgColor: "bg-green-500/10",
+    color: STATE_STYLES.success.text,
+    bgColor: STATE_STYLES.success.bg,
     label: "Completed",
   },
   failed: {
     icon: XCircle,
-    color: "text-red-500",
-    bgColor: "bg-red-500/10",
+    color: STATE_STYLES.error.text,
+    bgColor: STATE_STYLES.error.bg,
     label: "Failed",
   },
 };
@@ -131,7 +137,8 @@ export function ExecutionStatusIndicator({
     return (
       <div
         class={cn(
-          "flex items-center gap-1.5 px-2 py-1 rounded",
+          "flex items-center px-2 py-1 rounded",
+          SPACING.element,
           config.bgColor,
           className
         )}
@@ -143,16 +150,16 @@ export function ExecutionStatusIndicator({
             config.animate && "animate-spin"
           )}
         />
-        <span class="text-[10px] font-medium text-foreground/80 truncate max-w-[100px]">
+        <span class={cn(TYPOGRAPHY.monoSm, "text-foreground/80 truncate max-w-[100px]")}>
           {getAgentDisplayName(session)}
         </span>
         {session.status === "running" && typeof session.progress === "number" && (
-          <span class="text-[9px] text-muted-foreground">
+          <span class={TYPOGRAPHY.monoSm}>
             {session.progress}%
           </span>
         )}
         {duration && (
-          <span class="text-[9px] text-muted-foreground ml-auto">
+          <span class={cn(TYPOGRAPHY.monoSm, "ml-auto")}>
             {duration}
           </span>
         )}
@@ -164,13 +171,14 @@ export function ExecutionStatusIndicator({
   return (
     <div
       class={cn(
-        "flex flex-col gap-1.5 p-2.5 rounded-md border border-border/50",
+        "flex flex-col p-2.5 rounded-md border border-border/50",
+        SPACING.element,
         config.bgColor,
         className
       )}
     >
       {/* Header: icon, agent name, status */}
-      <div class="flex items-center gap-2">
+      <div class={cn("flex items-center", SPACING.element)}>
         <Icon
           class={cn(
             "h-4 w-4",
@@ -178,32 +186,32 @@ export function ExecutionStatusIndicator({
             config.animate && "animate-spin"
           )}
         />
-        <div class="flex items-center gap-1.5 flex-1 min-w-0">
-          <span class="text-xs font-medium truncate">
+        <div class={cn("flex items-center flex-1 min-w-0", SPACING.element)}>
+          <span class={cn(TYPOGRAPHY.body, "truncate")}>
             {getAgentDisplayName(session)}
           </span>
           {session.type === "agent-team" && session.teammateCount && (
-            <span class="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+            <span class={cn("flex items-center", SPACING.tight, TYPOGRAPHY.muted)}>
               <Users class="h-3 w-3" />
               {session.teammateCount}
             </span>
           )}
         </div>
-        <span class={cn("text-[10px] font-medium", config.color)}>
+        <span class={cn(TYPOGRAPHY.monoSm, "font-medium", config.color)}>
           {config.label}
         </span>
       </div>
 
       {/* Task title (if available) */}
       {session.taskTitle && (
-        <p class="text-[11px] text-muted-foreground truncate">
+        <p class={cn(TYPOGRAPHY.muted, "truncate")}>
           {session.taskTitle}
         </p>
       )}
 
       {/* Progress bar (for running sessions) */}
       {session.status === "running" && typeof session.progress === "number" && (
-        <div class="space-y-0.5">
+        <div class={SPACING.tight}>
           <div class="h-1.5 bg-muted rounded-full overflow-hidden">
             <div
               class="h-full bg-blue-500 transition-all duration-300"
@@ -211,11 +219,11 @@ export function ExecutionStatusIndicator({
             />
           </div>
           <div class="flex items-center justify-between">
-            <span class="text-[10px] text-muted-foreground">
+            <span class={TYPOGRAPHY.monoSm}>
               {session.progress}%
             </span>
             {duration && (
-              <span class="text-[10px] text-muted-foreground">{duration}</span>
+              <span class={TYPOGRAPHY.monoSm}>{duration}</span>
             )}
           </div>
         </div>
@@ -223,14 +231,14 @@ export function ExecutionStatusIndicator({
 
       {/* Status message (if available) */}
       {session.message && (
-        <p class="text-[10px] text-muted-foreground line-clamp-2">
+        <p class={cn(TYPOGRAPHY.monoSm, "line-clamp-2")}>
           {session.message}
         </p>
       )}
 
       {/* Duration for starting/completed/failed */}
       {session.status !== "running" && duration && (
-        <span class="text-[10px] text-muted-foreground">
+        <span class={TYPOGRAPHY.monoSm}>
           {session.status === "starting" ? `Waiting ${duration}` : duration}
         </span>
       )}
@@ -282,7 +290,9 @@ export function StatusBadge({
   return (
     <span
       class={cn(
-        "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5",
+        PATTERNS.badge,
+        "rounded-full",
+        SPACING.tight,
         config.bgColor
       )}
     >
@@ -293,7 +303,7 @@ export function StatusBadge({
           config.animate && "animate-spin"
         )}
       />
-      <span class={cn("text-[10px] font-medium", config.color)}>
+      <span class={cn(TYPOGRAPHY.monoSm, config.color)}>
         {config.label}
       </span>
     </span>
