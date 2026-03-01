@@ -53,6 +53,12 @@ import {
   CardHeader,
   CardTitle,
 } from "./ui/card";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "./ui/chart";
 import { cn } from "@/lib/utils";
 import {
   PageLayout,
@@ -449,49 +455,97 @@ export function AnalyticsPage() {
                   <PieChartIcon class="h-4 w-4" />
                   Context Ratio ({timeRangeLabel})
                 </CardTitle>
+                <CardDescription>
+                  Input vs Output token distribution
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 {!displayData ? (
-                  <ChartEmptyState height={150} />
-                ) : (
-                  <div class="h-[150px] w-full">
-                    <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
-                      <PieChart>
-                        <Pie
-                          data={[
-                            { name: "Input", value: displayData.totals.totalPromptTokens },
-                            { name: "Output", value: displayData.totals.totalOutputTokens },
-                          ]}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={35}
-                          outerRadius={55}
-                          paddingAngle={2}
-                          dataKey="value"
-                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                          labelLine={false}
-                        >
-                          <Cell fill="hsl(var(--chart-1))" />
-                          <Cell fill="hsl(var(--chart-2))" />
-                        </Pie>
-                        <Tooltip
-                          contentStyle={CHART_TOOLTIP_STYLE}
-                          formatter={(value: number | undefined) => [formatChartNumber(value ?? 0), "Tokens"]}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div class="flex justify-center gap-4 mt-2 text-xs text-muted-foreground">
-                      <div class="flex items-center gap-1">
-                        <div class="w-2 h-2 rounded-full bg-[hsl(var(--chart-1))]" />
-                        <span>Input: {formatChartNumber(displayData.totals.totalPromptTokens)}</span>
-                      </div>
-                      <div class="flex items-center gap-1">
-                        <div class="w-2 h-2 rounded-full bg-[hsl(var(--chart-2))]" />
-                        <span>Output: {formatChartNumber(displayData.totals.totalOutputTokens)}</span>
+                  <ChartEmptyState height={180} />
+                ) : (() => {
+                  const totalTokens = displayData.totals.totalPromptTokens + displayData.totals.totalOutputTokens;
+                  const inputPercent = totalTokens > 0
+                    ? ((displayData.totals.totalPromptTokens / totalTokens) * 100).toFixed(1)
+                    : "0";
+                  const outputPercent = totalTokens > 0
+                    ? ((displayData.totals.totalOutputTokens / totalTokens) * 100).toFixed(1)
+                    : "0";
+
+                  const pieConfig: ChartConfig = {
+                    input: {
+                      label: "Input",
+                      color: "hsl(var(--chart-1))",
+                    },
+                    output: {
+                      label: "Output",
+                      color: "hsl(var(--chart-2))",
+                    },
+                  };
+
+                  const pieData = [
+                    { name: "input", value: displayData.totals.totalPromptTokens, fill: "hsl(var(--chart-1))" },
+                    { name: "output", value: displayData.totals.totalOutputTokens, fill: "hsl(var(--chart-2))" },
+                  ];
+
+                  return (
+                    <div class="flex flex-col items-center">
+                      <ChartContainer config={pieConfig} class="h-[180px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={pieData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={45}
+                              outerRadius={70}
+                              paddingAngle={2}
+                              dataKey="value"
+                              strokeWidth={0}
+                            >
+                              <Cell fill="hsl(var(--chart-1))" />
+                              <Cell fill="hsl(var(--chart-2))" />
+                            </Pie>
+                            <Tooltip
+                              content={({ active, payload }) => (
+                                <ChartTooltipContent
+                                  active={active}
+                                  payload={payload?.map(p => ({
+                                    name: p.name ?? "",
+                                    value: p.value as number,
+                                    color: pieConfig[p.name ?? ""]?.color ?? "",
+                                  })) ?? []}
+                                  config={pieConfig}
+                                />
+                              )}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </ChartContainer>
+                      <div class="grid grid-cols-2 gap-4 w-full mt-2">
+                        <div class="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
+                          <div class="w-3 h-3 rounded-full bg-[hsl(var(--chart-1))]" />
+                          <div class="flex-1">
+                            <div class="text-xs text-muted-foreground">Input</div>
+                            <div class="text-sm font-semibold">{inputPercent}%</div>
+                          </div>
+                          <div class="text-xs text-muted-foreground">
+                            {formatChartNumber(displayData.totals.totalPromptTokens)}
+                          </div>
+                        </div>
+                        <div class="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
+                          <div class="w-3 h-3 rounded-full bg-[hsl(var(--chart-2))]" />
+                          <div class="flex-1">
+                            <div class="text-xs text-muted-foreground">Output</div>
+                            <div class="text-sm font-semibold">{outputPercent}%</div>
+                          </div>
+                          <div class="text-xs text-muted-foreground">
+                            {formatChartNumber(displayData.totals.totalOutputTokens)}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </CardContent>
             </Card>
           </div>

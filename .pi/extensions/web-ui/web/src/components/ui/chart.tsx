@@ -3,15 +3,15 @@
  * @path .pi/extensions/web-ui/web/src/components/ui/chart.tsx
  * @role Recharts wrapper components for Preact
  * @why Provide shadcn/ui-compatible chart components for data visualization
- * @related context-usage-page.tsx
- * @public_api ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig
+ * @related context-usage-page.tsx, analytics-page.tsx
+ * @public_api ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig, ChartLegend
  * @invariants Components must be Preact-compatible
  * @side_effects None
  * @failure_modes Invalid config, missing data
  *
  * @abdd.explain
  * @overview Recharts wrapper components following shadcn/ui patterns
- * @what_it_does Provides ChartContainer, ChartTooltip, ChartTooltipContent for chart rendering
+ * @what_it_does Provides ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend for chart rendering
  * @why_it_exists Enables consistent chart styling and configuration across the app
  * @scope(in) Chart configuration, data
  * @scope(out) Rendered chart components
@@ -129,3 +129,77 @@ export const ChartTooltipContent: FunctionalComponent<ChartTooltipContentProps> 
     </div>
   );
 };
+
+/**
+ * @summary Chart legend props
+ */
+interface ChartLegendProps {
+  payload?: Array<{
+    value: string;
+    type: string;
+    id: string;
+    color: string;
+  }>;
+  config?: ChartConfig;
+  class?: string;
+}
+
+/**
+ * @summary Custom legend component for charts
+ */
+export const ChartLegend: FunctionalComponent<ChartLegendProps> = ({
+  payload,
+  config,
+  class: className,
+}) => {
+  if (!payload?.length) {
+    return null;
+  }
+
+  return (
+    <div class={cn("flex flex-wrap items-center justify-center gap-4", className)}>
+      {payload.map((item, index) => {
+        const itemConfig = config?.[item.id];
+        return (
+          <div key={index} class="flex items-center gap-1.5 text-xs">
+            <div
+              class="h-2.5 w-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: item.color }}
+            />
+            <span class="text-muted-foreground">
+              {itemConfig?.label ?? item.value}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+/**
+ * @summary Chart legend content for recharts Legend component
+ */
+export function ChartLegendContent({ payload, config }: ChartLegendProps) {
+  if (!payload?.length) {
+    return null;
+  }
+
+  return (
+    <div class="flex flex-wrap items-center justify-center gap-4">
+      {payload.map((entry, index) => {
+        const itemConfig = config?.[entry.id];
+        return (
+          <div key={index} class="flex items-center gap-1.5 text-xs">
+            <div
+              class="h-2.5 w-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: entry.color }}
+            />
+            <span class="text-muted-foreground">
+              {itemConfig?.label ?? entry.value}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
