@@ -67,6 +67,10 @@ import {
   type RetryWithBackoffOverrides,
 } from "../../lib/retry-with-backoff.js";
 import { sleep } from "../../lib/sleep-utils.js";
+import {
+  createAndRecordMetrics,
+} from "../../lib/analytics/behavior-storage.js";
+import { DEFAULT_LLM_BEHAVIOR_CONFIG } from "../../lib/analytics/llm-behavior-types.js";
 import { isHighStakesTask } from "../../lib/verification-high-stakes.js";
 import {
   STABLE_MAX_RETRIES,
@@ -929,6 +933,31 @@ export async function runMember(input: {
       // Extract summary and diagnostics
       const summary = extractSummary(result.output);
 
+      // LLM行動計測（成功時）
+      if (DEFAULT_LLM_BEHAVIOR_CONFIG.enabled && Math.random() < DEFAULT_LLM_BEHAVIOR_CONFIG.samplingRate) {
+        try {
+          createAndRecordMetrics({
+            source: "team_member",
+            prompt: { text: prompt },
+            output: { text: normalized.output },
+            execution: {
+              durationMs: result.latencyMs,
+              retryCount,
+              outcomeCode: "SUCCESS",
+              modelUsed: resolvedModel,
+              thinkingLevel: "medium",
+            },
+            context: {
+              task: input.task,
+              agentId: input.member.id,
+            },
+            cwd: input.cwd,
+          });
+        } catch {
+          // 計測エラーは実行に影響させない
+        }
+      }
+
       return {
         memberId: input.member.id,
         role: input.member.role,
@@ -962,6 +991,32 @@ export async function runMember(input: {
         input.member,
         `member run failed: ${normalizeForSingleLine(detailedErrorMessage, 180)}`,
       );
+
+      // LLM行動計測（失敗時）
+      if (DEFAULT_LLM_BEHAVIOR_CONFIG.enabled && Math.random() < DEFAULT_LLM_BEHAVIOR_CONFIG.samplingRate) {
+        try {
+          createAndRecordMetrics({
+            source: "team_member",
+            prompt: { text: prompt },
+            output: { text: "" },
+            execution: {
+              durationMs: 0,
+              retryCount,
+              outcomeCode: "FAILURE",
+              modelUsed: resolvedModel,
+              thinkingLevel: "medium",
+            },
+            context: {
+              task: input.task,
+              agentId: input.member.id,
+            },
+            cwd: input.cwd,
+          });
+        } catch {
+          // 計測エラーは実行に影響させない
+        }
+      }
+
       return {
         memberId: input.member.id,
         role: input.member.role,
