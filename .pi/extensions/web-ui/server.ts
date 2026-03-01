@@ -388,6 +388,7 @@ interface ServerState {
   port: number;
   pi: ExtensionAPI | null;
   ctx: ExtensionContext | null;
+  unsubscribeSessionEvents: (() => void) | null;
 }
 
 const state: ServerState = {
@@ -395,6 +396,7 @@ const state: ServerState = {
   port: 3000,
   pi: null,
   ctx: null,
+  unsubscribeSessionEvents: null,
 };
 
 /**
@@ -1251,6 +1253,9 @@ export function startServer(
       }
     }
   });
+  
+  // Store unsubscribe function for cleanup
+  state.unsubscribeSessionEvents = unsubscribeSessionEvents;
 
   /**
    * GET /api/runtime/stream - SSE endpoint for real-time runtime updates
@@ -1371,6 +1376,12 @@ export function startServer(
  */
 export function stopServer(): void {
   if (state.server) {
+    // Unsubscribe from session events
+    if (state.unsubscribeSessionEvents) {
+      state.unsubscribeSessionEvents();
+      state.unsubscribeSessionEvents = null;
+    }
+    
     sseEventBus.stopHeartbeat();
     if (contextCleanupInterval) {
       clearInterval(contextCleanupInterval);

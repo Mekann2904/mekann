@@ -216,9 +216,11 @@ function scheduleWritePersistedState(): void {
 }
 
 // プロセス終了時に確実に書き込む（重複登録を防ぐ）
-let beforeExitHandlerRegistered = false;
-if (!beforeExitHandlerRegistered) {
-  beforeExitHandlerRegistered = true;
+const BEFORE_EXIT_GUARD = Symbol.for('pi.retryWithBackoff.beforeExitHookRegistered');
+const g = globalThis as typeof globalThis & { [BEFORE_EXIT_GUARD]?: boolean };
+
+if (!g[BEFORE_EXIT_GUARD]) {
+  g[BEFORE_EXIT_GUARD] = true;
   process.on("beforeExit", () => {
     if (writeDebounceTimer) {
       clearTimeout(writeDebounceTimer);
