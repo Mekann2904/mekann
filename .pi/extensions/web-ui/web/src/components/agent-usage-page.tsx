@@ -28,22 +28,17 @@ import {
   ResponsiveContainer,
   Tooltip,
   Legend,
-  StackedAreaChart,
   BarChart,
   Bar,
-  ComposedChart,
-  Line,
 } from "recharts";
 import {
-  Activity,
-  Loader2,
   RefreshCw,
-  AlertCircle,
   Filter,
   TrendingUp,
   BarChart3,
   GitCompare,
   PieChart,
+  Activity,
 } from "lucide-preact";
 import { Button } from "./ui/button";
 import {
@@ -54,6 +49,18 @@ import {
   CardTitle,
 } from "./ui/card";
 import { cn } from "@/lib/utils";
+import {
+  PageLayout,
+  PageHeader,
+  StatsGrid,
+  SimpleStatsCard,
+  LoadingState,
+  ErrorBanner,
+  EmptyState,
+  ChartEmptyState,
+  CHART_TOOLTIP_STYLE,
+  formatChartNumber,
+} from "./layout";
 
 /**
  * @summary Feature metrics from agent-usage-stats.json
@@ -379,57 +386,53 @@ export function AgentUsagePage() {
 
   const totals = data?.data?.totals;
 
+  // ヘッダー説明文
+  const headerDescription = totals
+    ? `${formatChartNumber(totals.toolCalls)} tool calls, ${formatChartNumber(totals.agentRuns)} agent runs`
+    : "Loading...";
+
   return (
-    <div class="flex h-full flex-col gap-4 p-4 overflow-auto">
+    <PageLayout variant="default">
       {/* Header */}
-      <div class="flex gap-2 shrink-0 items-center justify-between">
-        <div>
-          <h1 class="text-xl font-bold">Agent Usage</h1>
-          <p class="text-sm text-muted-foreground">
-            {formatNumber(totals?.toolCalls)} tool calls, {formatNumber(totals?.agentRuns)} agent runs
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchData}
-          disabled={loading}
-        >
-          <RefreshCw class={cn("h-4 w-4", loading && "animate-spin")} />
-        </Button>
-      </div>
+      <PageHeader
+        title="Agent Usage"
+        description={headerDescription}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchData}
+            disabled={loading}
+          >
+            <RefreshCw class={cn("h-4 w-4", loading && "animate-spin")} />
+          </Button>
+        }
+      />
 
       {/* Stats Cards */}
-      <div class="grid grid-cols-4 gap-2 shrink-0">
-        <Card>
-          <CardContent class="py-3 text-center">
-            <div class="text-lg font-bold">{formatNumber(totals?.toolCalls)}</div>
-            <div class="text-xs text-muted-foreground">Tool Calls</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent class="py-3 text-center">
-            <div class="text-lg font-bold text-destructive">{formatNumber(totals?.toolErrors)}</div>
-            <div class="text-xs text-muted-foreground">Tool Errors</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent class="py-3 text-center">
-            <div class="text-lg font-bold">{formatNumber(totals?.agentRuns)}</div>
-            <div class="text-xs text-muted-foreground">Agent Runs</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent class="py-3 text-center">
-            <div class="text-lg font-bold">
-              {totals?.contextSamples && totals.contextSamples > 0
-                ? formatPercent(totals.contextRatioSum / totals.contextSamples)
-                : "-"}
-            </div>
-            <div class="text-xs text-muted-foreground">Avg Context</div>
-          </CardContent>
-        </Card>
-      </div>
+      <StatsGrid cols={4}>
+        <SimpleStatsCard
+          value={formatChartNumber(totals?.toolCalls)}
+          label="Tool Calls"
+        />
+        <SimpleStatsCard
+          value={formatChartNumber(totals?.toolErrors)}
+          label="Tool Errors"
+          valueClassName="text-destructive"
+        />
+        <SimpleStatsCard
+          value={formatChartNumber(totals?.agentRuns)}
+          label="Agent Runs"
+        />
+        <SimpleStatsCard
+          value={
+            totals?.contextSamples && totals.contextSamples > 0
+              ? `${((totals.contextRatioSum / totals.contextSamples) * 100).toFixed(1)}%`
+              : "-"
+          }
+          label="Avg Context"
+        />
+      </StatsGrid>
 
       {/* Filters */}
       <div class="flex gap-2 shrink-0 flex-wrap items-center">
@@ -503,27 +506,16 @@ export function AgentUsagePage() {
 
       {/* Error display */}
       {error && (
-        <Card class="border-destructive shrink-0">
-          <CardContent class="py-3 flex items-center gap-2 text-destructive">
-            <AlertCircle class="h-4 w-4" />
-            <span class="text-sm">Failed to load data: {error}</span>
-            <Button variant="outline" size="sm" onClick={fetchData} class="ml-auto">
-              Retry
-            </Button>
-          </CardContent>
-        </Card>
+        <ErrorBanner
+          message={`Failed to load data: ${error}`}
+          onRetry={fetchData}
+          onDismiss={() => setError(null)}
+        />
       )}
 
       {/* Charts */}
       {loading && !data ? (
-        <Card>
-          <CardContent class="py-8 flex items-center justify-center">
-            <div class="flex flex-col items-center gap-2">
-              <Loader2 class="h-6 w-6 animate-spin text-primary" />
-              <p class="text-sm text-muted-foreground">Loading usage data...</p>
-            </div>
-          </CardContent>
-        </Card>
+        <LoadingState message="Loading usage data..." />
       ) : viewMode === "comparison" ? (
         /* Comparison Mode */
         <div class="space-y-4">
@@ -913,6 +905,6 @@ export function AgentUsagePage() {
           </Card>
         </div>
       )}
-    </div>
+    </PageLayout>
   );
 }
