@@ -28,6 +28,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   type TrajectoryStep,
   type TrajectoryReductionConfig,
+  type ReductionResult,
   DEFAULT_TRAJECTORY_REDUCTION_CONFIG,
 } from "../types.js";
 import {
@@ -254,12 +255,12 @@ test_exports.py ... PASSED
 
   describe("validateReduction", () => {
     it("should reject empty content", () => {
-      const result = {
+      const result: ReductionResult = {
         content: "",
         tokenCount: 0,
         tokensSaved: 100,
         reductionRatio: 1,
-        wasteTypes: ["useless"] as const,
+        wasteTypes: ["useless"],
         processingTimeMs: 100,
         reflectionModel: "gpt-4o-mini",
       };
@@ -267,12 +268,12 @@ test_exports.py ... PASSED
     });
 
     it("should reject when savings below threshold", () => {
-      const result = {
+      const result: ReductionResult = {
         content: "short",
         tokenCount: 1,
         tokensSaved: 10, // Below threshold of 500
         reductionRatio: 0.9,
-        wasteTypes: ["useless"] as const,
+        wasteTypes: ["useless"],
         processingTimeMs: 100,
         reflectionModel: "gpt-4o-mini",
       };

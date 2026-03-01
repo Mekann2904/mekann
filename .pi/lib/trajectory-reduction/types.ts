@@ -113,6 +113,8 @@ export interface TrajectoryReductionConfig {
   skipOnCacheHit: boolean;
   /** 最大コンテキスト長（トークン、デフォルト: 8000） */
   maxContextTokens: number;
+  /** リフレクションモデル（デフォルト: gpt-4o-mini） */
+  reflectionModel: string;
 }
 
 /**
@@ -128,6 +130,7 @@ export const DEFAULT_TRAJECTORY_REDUCTION_CONFIG: TrajectoryReductionConfig = {
   logReductions: true,
   skipOnCacheHit: true,
   maxContextTokens: 8000,
+  reflectionModel: "gpt-4o-mini",
 };
 
 /**
