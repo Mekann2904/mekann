@@ -251,6 +251,54 @@ describe("runWithConcurrencyLimit", () => {
 				runWithConcurrencyLimit(items, 2, worker, options),
 			).rejects.toThrow();
 		});
+
+		it("should_not_throw_in_allSettled_mode", async () => {
+			// Arrange
+			const items = [1, 2, 3, 4];
+			const worker = vi.fn(async (n: number) => {
+				if (n === 2 || n === 4) throw new Error(`Error at ${n}`);
+				return n * 10;
+			});
+
+			// Act
+			const results = await runWithConcurrencyLimit(items, 2, worker, {
+				settleMode: "allSettled",
+				abortOnError: false,
+			});
+
+			// Assert
+			expect(results).toHaveLength(4);
+			expect(results[0]).toMatchObject({ status: "fulfilled", value: 10, index: 0 });
+			expect(results[1]).toMatchObject({ status: "rejected", index: 1 });
+			expect(results[2]).toMatchObject({ status: "fulfilled", value: 30, index: 2 });
+			expect(results[3]).toMatchObject({ status: "rejected", index: 3 });
+		});
+
+		it("should_return_dense_allSettled_results_with_default_abortOnError", async () => {
+			// Arrange
+			const items = [1, 2, 3, 4, 5, 6];
+			const worker = vi.fn(async (n: number) => {
+				if (n === 2) {
+					throw new Error("boom");
+				}
+				await new Promise((r) => setTimeout(r, 10));
+				return n;
+			});
+
+			// Act
+			const results = await runWithConcurrencyLimit(items, 2, worker, {
+				settleMode: "allSettled",
+			});
+
+			// Assert: 配列ホールがないこと（全indexが定義済み）
+			expect(results).toHaveLength(items.length);
+			expect(Object.keys(results)).toHaveLength(items.length);
+			for (let i = 0; i < items.length; i++) {
+				expect(results[i]).toBeDefined();
+				expect(results[i]).toHaveProperty("status");
+				expect(results[i]).toHaveProperty("index", i);
+			}
+		});
 	});
 
 	describe("AbortSignal", () => {

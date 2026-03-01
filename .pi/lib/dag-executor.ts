@@ -468,9 +468,10 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
     executor: TaskExecutor<T>,
     signal?: AbortSignal,
   ): Promise<BatchResult<T>[]> {
-    const concurrencyOptions: ConcurrencyRunOptions = {
+    const concurrencyOptions: ConcurrencyRunOptions<BatchItem> & { settleMode: "throw" } = {
       signal,
       abortOnError: false,
+      settleMode: "throw",
     };
 
     return runWithConcurrencyLimit<BatchItem, BatchResult<T>>(
