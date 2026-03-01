@@ -28,7 +28,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import { RefreshCw, Cpu, Folder, Wifi, WifiOff, FileText, Loader2 } from "lucide-preact";
+import { RefreshCw, Cpu, Folder, Wifi, WifiOff, FileText, Loader2, Maximize2 } from "lucide-preact";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -37,6 +37,15 @@ import {
   CardHeader,
   CardTitle,
 } from "./ui/card";
+import {
+  Drawer,
+  DrawerTrigger,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+  DrawerClose,
+} from "./ui/drawer";
 import { cn } from "@/lib/utils";
 import {
   PageLayout,
@@ -401,35 +410,69 @@ export function DashboardPage() {
 
       {/* アクティブなUL WorkflowのPlan */}
       {activeTask && (
-        <Card class="mt-4">
-          <CardHeader class="py-3 px-4">
-            <div class="flex items-center gap-2">
-              <FileText class="h-4 w-4 text-muted-foreground" />
-              <CardTitle class="text-sm font-medium">
-                Active Plan: {activeTask.title}
-              </CardTitle>
-              <span class="text-xs text-muted-foreground font-mono">
-                {activeTask.id}
-              </span>
-            </div>
-          </CardHeader>
-          <CardContent class="pt-0">
-            {planLoading ? (
-              <div class="flex items-center gap-2 text-muted-foreground text-sm py-4">
-                <Loader2 class="h-4 w-4 animate-spin" />
-                Loading plan...
+        <Drawer direction="bottom">
+          <Card class="mt-4">
+            <CardHeader class="py-3 px-4">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <FileText class="h-4 w-4 text-muted-foreground" />
+                  <CardTitle class="text-sm font-medium">
+                    Active Plan: {activeTask.title}
+                  </CardTitle>
+                  <span class="text-xs text-muted-foreground font-mono">
+                    {activeTask.id}
+                  </span>
+                </div>
+                {plan && (
+                  <DrawerTrigger asChild>
+                    <Button variant="ghost" size="sm" class="h-7 gap-1">
+                      <Maximize2 class="h-3.5 w-3.5" />
+                      <span class="text-xs">Expand</span>
+                    </Button>
+                  </DrawerTrigger>
+                )}
               </div>
-            ) : plan ? (
-              <div class="bg-muted/30 rounded-md p-4 max-h-[400px] overflow-y-auto">
-                <pre class="text-xs font-mono whitespace-pre-wrap text-muted-foreground">
+            </CardHeader>
+            <CardContent class="pt-0">
+              {planLoading ? (
+                <div class="flex items-center gap-2 text-muted-foreground text-sm py-4">
+                  <Loader2 class="h-4 w-4 animate-spin" />
+                  Loading plan...
+                </div>
+              ) : plan ? (
+                <div class="bg-muted/30 rounded-md p-4 max-h-[400px] overflow-y-auto">
+                  <pre class="text-xs font-mono whitespace-pre-wrap text-muted-foreground">
+                    {plan}
+                  </pre>
+                </div>
+              ) : (
+                <p class="text-sm text-muted-foreground py-4">No plan available</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Full plan drawer */}
+          <DrawerContent>
+            <DrawerHeader>
+              <DrawerTitle>{activeTask.title}</DrawerTitle>
+              <DrawerDescription>
+                Plan for {activeTask.id}
+              </DrawerDescription>
+            </DrawerHeader>
+            <div class="flex-1 overflow-y-auto px-4 pb-4">
+              {plan && (
+                <pre class="text-sm font-mono whitespace-pre-wrap text-zinc-300">
                   {plan}
                 </pre>
-              </div>
-            ) : (
-              <p class="text-sm text-muted-foreground py-4">No plan available</p>
-            )}
-          </CardContent>
-        </Card>
+              )}
+            </div>
+            <div class="px-4 py-3 border-t border-zinc-800 flex justify-end">
+              <DrawerClose asChild>
+                <Button variant="outline" size="sm">Close</Button>
+              </DrawerClose>
+            </div>
+          </DrawerContent>
+        </Drawer>
       )}
     </PageLayout>
   );
