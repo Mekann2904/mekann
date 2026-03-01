@@ -42,6 +42,9 @@ import { isRetryableTeamMemberError as isRetryableTeamMemberErrorLib } from "../
 
 import type { TeamMemberResult, TeamRunRecord, TeamDefinition, TeamCommunicationAuditEntry } from "./storage";
 import type { AggregationStrategy, AggregationInput, AggregationResult, TeamFinalJudge } from "./judge";
+import type { DebateGraph } from "./mdm-types";
+import { isCortexDebateEnabled } from "./cortexdebate-config";
+import { findConsensusClusters } from "./debate-graph";
 
 // Re-export outcome types for convenience
 export type { RunOutcomeCode, RunOutcomeSignal };
@@ -87,6 +90,9 @@ export async function aggregateTeamResults(
 
     case 'llm-aggregate':
       return aggregateWithLLM(teamResults, task, _ctx);
+
+    case 'graph-consensus':
+      return aggregateGraphConsensus(teamResults, input.debateGraph);
 
     default:
       return aggregateRuleBased(teamResults);
@@ -274,6 +280,99 @@ function extractKeyPoints(memberResults: TeamMemberResult[]): string[] {
     }
   }
   return points;
+}
+
+// ============================================================================
+// CortexDebate: Graph Consensus Aggregation
+// ============================================================================
+
+/**
+ * グラフコンセンサスベースの集約
+ * CortexDebateの議論グラフを使用してコンセンサスクラスタを検出し、
+ * 最大のクラスタの結果を採用する
+ * @summary グラフコンセンサス集約
+ * @param results チーム結果リスト
+ * @param debateGraph 議論グラフ（オプション）
+ * @returns 集約結果
+ */
+function aggregateGraphConsensus(
+  results: AggregationInput['teamResults'],
+  debateGraph?: DebateGraph
+): AggregationResult {
+  // グラフがない場合はフォールバック
+  if (!debateGraph || !isCortexDebateEnabled()) {
+    return aggregateMajorityVote(results);
+  }
+
+  // コンセンサスクラスタを検出
+  const clusters = findConsensusClusters(debateGraph);
+  const largestCluster = clusters[0];
+
+  if (!largestCluster || largestCluster.length === 0) {
+    return {
+      verdict: 'untrusted',
+      confidence: 0.3,
+      explanation: 'No consensus cluster found in debate graph',
+    };
+  }
+
+  // クラスタメンバーのチームIDを抽出
+  const clusterMemberIds = new Set(
+    largestCluster.map(nodeId => {
+      const match = nodeId.match(/^node-(.+)$/);
+      return match ? match[1] : nodeId;
+    })
+  );
+
+  // クラスタに含まれるチーム結果をフィルタリング
+  const clusterResults = results.filter(r => {
+    // メンバー結果のいずれかがクラスタに含まれるかチェック
+    return r.memberResults.some(mr => clusterMemberIds.has(mr.memberId));
+  });
+
+  if (clusterResults.length === 0) {
+    return {
+      verdict: 'untrusted',
+      confidence: 0.3,
+      explanation: 'Consensus cluster found but no matching team results',
+    };
+  }
+
+  // クラスタ内の結果から加重平均信頼度を計算
+  const totalWeight = clusterResults.reduce(
+    (sum, r) => sum + (r.finalJudge?.confidence ?? 0.5),
+    0
+  );
+  const avgConfidence = totalWeight / clusterResults.length;
+
+  // クラスタ比率を計算
+  const clusterRatio = largestCluster.length / debateGraph.nodes.size;
+
+  // 評決を決定
+  let verdict: 'trusted' | 'partial' | 'untrusted';
+
+  if (clusterRatio >= 0.7 && avgConfidence >= 0.7) {
+    verdict = 'trusted';
+  } else if (clusterRatio >= 0.5 && avgConfidence >= 0.5) {
+    verdict = 'partial';
+  } else {
+    verdict = 'untrusted';
+  }
+
+  // 最高信頼度のチームを選択
+  const selected = clusterResults.reduce(
+    (best, curr) =>
+      (curr.finalJudge?.confidence ?? 0) > (best?.finalJudge?.confidence ?? 0) ? curr : best,
+    clusterResults[0]
+  );
+
+  return {
+    verdict,
+    confidence: avgConfidence * clusterRatio,
+    selectedTeamId: selected?.teamId,
+    explanation: `Graph consensus: ${largestCluster.length}/${debateGraph.nodes.size} members in largest cluster (${(clusterRatio * 100).toFixed(0)}%), avg confidence: ${(avgConfidence * 100).toFixed(0)}%`,
+    consensusCluster: largestCluster,
+  };
 }
 
 // ============================================================================

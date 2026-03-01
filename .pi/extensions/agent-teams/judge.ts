@@ -41,6 +41,9 @@ import type {
   TeamMemberResult,
   TeamStrategy,
 } from "./storage";
+import type { DebateGraph, GraphMetrics, MDMState } from "./mdm-types";
+import { isCortexDebateEnabled } from "./cortexdebate-config";
+import { MDMModulator } from "./mdm-modulator";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, isAbsolute } from "node:path";
 import {
@@ -511,7 +514,8 @@ export type AggregationStrategy =
   | 'rule-based'      // 現在の動作（決定論的）
   | 'majority-vote'   // 最も多い評決が採用される
   | 'best-confidence' // 最高信頼度が採用される
-  | 'llm-aggregate';  // LLMが最終結果を統合
+  | 'llm-aggregate'   // LLMが最終結果を統合
+  | 'graph-consensus'; // CortexDebate: グラフベースのコンセンサス
 
 /**
  * 集約関数への入力データ
@@ -528,6 +532,8 @@ export interface AggregationInput {
   strategy: AggregationStrategy;
   /** 元のタスク内容 */
   task: string;
+  /** CortexDebate: 議論グラフ（graph-consensus戦略用） */
+  debateGraph?: import("./mdm-types").DebateGraph;
 }
 
 /**
@@ -545,6 +551,8 @@ export interface AggregationResult {
   aggregatedContent?: string;
   /** 結果の説明 */
   explanation: string;
+  /** CortexDebate: コンセンサスクラスタ（graph-consensus戦略用） */
+  consensusCluster?: string[];
 }
 
 // ============================================================================
@@ -568,6 +576,26 @@ export interface TeamUncertaintyProxy {
   uSys: number;
   /** Signals that triggered collapse conditions */
   collapseSignals: string[];
+}
+
+/**
+ * CortexDebate拡張不確実性プロキシ
+ * @summary CortexDebate用の拡張不確実性プロキシ
+ * @param uIntra メンバー内の不確実性
+ * @param uInter メンバー間の不確実性
+ * @param uSys システムレベルの不確実性
+ * @param collapseSignals 崩壊シグナル
+ * @param graphMetrics グラフメトリクス（CortexDebate有効時）
+ * @param mdmConverged MDM収束フラグ
+ * @param deadlockedClusters デッドロック検出クラスタ
+ */
+export interface CortexDebateUncertaintyProxy extends TeamUncertaintyProxy {
+  /** Graph metrics when CortexDebate is enabled */
+  graphMetrics?: GraphMetrics;
+  /** Whether MDM state has converged */
+  mdmConverged?: boolean;
+  /** Detected deadlock clusters */
+  deadlockedClusters?: string[][];
 }
 
  /**
@@ -1102,4 +1130,96 @@ export async function runFinalJudge(input: {
     memberResults,
     proxy,
   });
+}
+
+// ============================================================================
+// CortexDebate Integration
+// ============================================================================
+
+/**
+ * グラフメトリクスを考慮した不確実性計算
+ * @summary CortexDebate対応不確実性計算
+ * @param memberResults メンバーの実行結果リスト
+ * @param graph 議論グラフ（任意）
+ * @param mdmState MDM状態（任意）
+ * @returns CortexDebate拡張不確実性プロキシ
+ */
+export function computeCortexDebateUncertainty(
+  memberResults: TeamMemberResult[],
+  graph?: DebateGraph,
+  mdmState?: MDMState
+): CortexDebateUncertaintyProxy {
+  // 基本不確実性を計算
+  const baseProxy = computeProxyUncertainty(memberResults);
+
+  // CortexDebateが無効またはグラフがない場合は基本を返す
+  if (!isCortexDebateEnabled() || !graph) {
+    return baseProxy;
+  }
+
+  // グラフ拡張メトリクス
+  const graphMetrics = graph.metrics;
+
+  // グラフ収束に基づいてuInterを調整
+  const convergenceBonus = graphMetrics.convergenceScore * 0.15;
+
+  // クラスタリングに基づいてuIntraを調整
+  const clusteringPenalty = (1 - graphMetrics.clustering) * 0.1;
+
+  // デッドロック検出
+  let deadlockedClusters: string[][] | undefined;
+  if (mdmState) {
+    const modulator = new MDMModulator();
+    // MDM状態からデッドロックを検出（簡易実装）
+    const positions = mdmState.positions;
+    const threshold = 0.05;
+    const visited = new Set<string>();
+    deadlockedClusters = [];
+
+    for (const [memberId, position] of positions) {
+      if (visited.has(memberId)) continue;
+
+      const cluster = [memberId];
+      visited.add(memberId);
+
+      for (const [otherId, otherPosition] of positions) {
+        if (visited.has(otherId)) continue;
+
+        // ユークリッド距離計算
+        let distance = 0;
+        for (let i = 0; i < position.length; i++) {
+          distance += Math.pow(position[i] - otherPosition[i], 2);
+        }
+        distance = Math.sqrt(distance);
+
+        if (distance < threshold) {
+          cluster.push(otherId);
+          visited.add(otherId);
+        }
+      }
+
+      if (cluster.length > 1) {
+        deadlockedClusters.push(cluster);
+      }
+    }
+
+    if (deadlockedClusters.length === 0) {
+      deadlockedClusters = undefined;
+    }
+  }
+
+  return {
+    ...baseProxy,
+    uInter: Math.max(0, baseProxy.uInter - convergenceBonus),
+    uIntra: Math.max(0, baseProxy.uIntra + clusteringPenalty),
+    graphMetrics,
+    mdmConverged: mdmState?.converged ?? false,
+    deadlockedClusters,
+    collapseSignals: [
+      ...baseProxy.collapseSignals,
+      ...(deadlockedClusters && deadlockedClusters.length > 0
+        ? [`deadlock-detected:${deadlockedClusters.length}`]
+        : []),
+    ],
+  };
 }
