@@ -35,6 +35,139 @@
  */
 
 // ============================================================================
+// Provider Isolation Types (Phase 1 - Quick Wins)
+// ============================================================================
+
+/**
+ * Provider identifier for penalty isolation.
+ * Extracted from model ID to isolate rate limits per provider.
+ * @summary プロバイダー識別子
+ */
+export type ProviderKey = string;  // e.g., "openai", "anthropic", "google", "local"
+
+/**
+ * Multi-provider penalty state container.
+ * Maintains separate penalty state per LLM provider.
+ * @summary マルチプロバイダー状態
+ */
+export interface MultiProviderPenaltyState {
+  providers: Map<ProviderKey, AdaptivePenaltyState>;
+  globalState: AdaptivePenaltyState;  // Fallback for unknown providers
+}
+
+/**
+ * Provider-isolated penalty controller interface.
+ * Provides per-provider penalty management to prevent cross-provider throttling.
+ * @summary プロバイダー分離コントローラー
+ */
+export interface ProviderIsolatedPenaltyController {
+  /** Get or create controller for specific provider */
+  getProviderController: (providerKey: ProviderKey) => EnhancedPenaltyController;
+  /** Raise penalty for specific provider */
+  raise: (providerKey: ProviderKey, reason: PenaltyReason) => void;
+  /** Lower penalty for specific provider */
+  lower: (providerKey: ProviderKey) => void;
+  /** Apply limit adjustment for specific provider */
+  applyLimit: (providerKey: ProviderKey, baseLimit: number) => number;
+  /** Get global penalty (for monitoring) */
+  getGlobalPenalty: () => number;
+  /** Get all provider keys with active penalties */
+  getActiveProviders: () => ProviderKey[];
+}
+
+/**
+ * Extract provider key from model ID.
+ * Maps model prefixes to provider identifiers for penalty isolation.
+ * @summary モデルIDからプロバイダー抽出
+ * @param modelId - LLM model identifier (e.g., "gpt-4", "claude-3-opus")
+ * @returns Provider key for penalty isolation
+ */
+export function extractProviderFromModel(modelId: string): ProviderKey {
+  const normalized = modelId.toLowerCase();
+
+  // OpenAI models
+  if (normalized.startsWith("gpt") || normalized.startsWith("o1") || normalized.startsWith("o3")) {
+    return "openai";
+  }
+
+  // Anthropic models
+  if (normalized.startsWith("claude")) {
+    return "anthropic";
+  }
+
+  // Google models
+  if (normalized.startsWith("gemini")) {
+    return "google";
+  }
+
+  // Local/OLLAMA models
+  if (normalized.includes("local") || normalized.includes("ollama") || normalized.includes("llama")) {
+    return "local";
+  }
+
+  // Azure OpenAI
+  if (normalized.includes("azure")) {
+    return "azure";
+  }
+
+  return "unknown";
+}
+
+/**
+ * Create provider-isolated penalty controller.
+ * Each provider maintains independent penalty state to prevent cross-provider throttling.
+ * @summary プロバイダー分離コントローラー作成
+ * @param options - Enhanced penalty options
+ * @returns Provider-isolated controller instance
+ */
+export function createProviderIsolatedPenaltyController(
+  options: EnhancedPenaltyOptions
+): ProviderIsolatedPenaltyController {
+  const controllers = new Map<ProviderKey, EnhancedPenaltyController>();
+  const globalController = createEnhancedPenaltyController(options);
+
+  const getOrCreate = (providerKey: ProviderKey): EnhancedPenaltyController => {
+    let controller = controllers.get(providerKey);
+    if (!controller) {
+      controller = createEnhancedPenaltyController(options);
+      controllers.set(providerKey, controller);
+    }
+    return controller;
+  };
+
+  return {
+    getProviderController: (providerKey) => getOrCreate(providerKey),
+
+    raise: (providerKey, reason) => {
+      getOrCreate(providerKey).raiseWithReason(reason);
+    },
+
+    lower: (providerKey) => {
+      const controller = controllers.get(providerKey);
+      if (controller) {
+        controller.lower();
+      }
+    },
+
+    applyLimit: (providerKey, baseLimit) => {
+      return getOrCreate(providerKey).applyLimit(baseLimit);
+    },
+
+    getGlobalPenalty: () => globalController.get(),
+
+    getActiveProviders: () => {
+      const active: ProviderKey[] = [];
+      for (const [key, controller] of Array.from(controllers.entries())) {
+        if (controller.get() > 0) {
+          active.push(key);
+        }
+      }
+      return active;
+    },
+  };
+}
+
+// ============================================================================
 // Enhanced Types (P1-4)
 // ============================================================================
 

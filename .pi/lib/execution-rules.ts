@@ -4,7 +4,7 @@
  * role: エージェントおよびサブエージェントの実行ポリシー定義
  * why: 生成品質の保証、認知バイアスの抑制、出力フォーマットの一貫性維持
  * related: .pi/lib/agent-core.ts, .pi/lib/validation.ts, .pi/prompts/system-prompt.ts
- * public_api: QUALITY_BASELINE_RULES, COMMON_EXECUTION_RULES, SUBAGENT_SPECIFIC_RULES, COGNITIVE_BIAS_COUNTERMEASURES, SELF_VERIFICATION_RULES, WORKING_MEMORY_GUIDELINES
+ * public_api: UNIFIED_QUALITY_RULES, QUALITY_BASELINE_RULES, COMMON_EXECUTION_RULES, SUBAGENT_SPECIFIC_RULES, COGNITIVE_BIAS_COUNTERMEASURES, SELF_VERIFICATION_RULES, WORKING_MEMORY_GUIDELINES
  * invariants: 各定数配列は文字列リテラルで構成される、品質基準ルールは「CLAIM-RESULT整合性」「EVIDENCEの具体性」等の固定項目を含む
  * side_effects: なし（定数定義のみ）
  * failure_modes: ルール定義と実際のプロンプト生成ロジックの不一致、ルールの過剰指定によるLLM応答性能の低下
@@ -31,31 +31,33 @@
  */
 
 /**
- * 出力品質基準ルール
- * 生成時品質保証システムの基準
+ * 統合品質ルール（8.4最適化）
+ * QUALITY_BASELINE_RULES + SELF_VERIFICATION_RULES を統合し、重複を削除
  */
-export const QUALITY_BASELINE_RULES = [
+export const UNIFIED_QUALITY_RULES = [
   "",
-  "【出力品質基準（MANDATORY）】",
+  "【品質基準・自己検証（MANDATORY）】",
   "",
-  "1. **CLAIM-RESULT整合性**",
+  "1. CLAIM-RESULT整合性:",
   "   - CLAIMとRESULTが論理的に矛盾していないか確認",
   "   - 例: 「実装完了」→「テスト失敗」は矛盾の可能性",
   "",
-  "2. **EVIDENCEの具体性**",
+  "2. EVIDENCEの具体性:",
   "   - ファイルパス:行番号 形式で証拠を提示",
   "   - 抽象的な表現（「適切に処理」等）を避ける",
   "",
-  "3. **CONFIDENCEの妥当性**",
+  "3. CONFIDENCEの妥当性:",
   "   - 短い証拠（50文字未満）で高い信頼度（>0.9）を主張しない",
-  "   - 不確実な場合は明示的に低い値を設定",
   "",
-  "4. **COUNTER_EVIDENCE必須（高リスクタスク時）**",
+  "4. 反例検討（COUNTER_EVIDENCE）:",
   "   - 自分の仮説を否定する証拠を最低1つ探す",
   "   - 「反例は見つからなかった」も有効な記述",
   "",
-  "5. **境界条件の明示**",
+  "5. 境界条件の明示:",
   "   - この結論が成立しない条件を明記",
+  "",
+  "6. 代替解釈の考慮:",
+  "   - 自分が採用しなかった代替仮説とその理由を明示",
   "",
 ].join("\n");
 
@@ -111,32 +113,10 @@ export const COGNITIVE_BIAS_COUNTERMEASURES = [
 ].join("\n");
 
 /**
- * 自己検証ルール
- * 論文「Large Language Model Reasoning Failures」の知見に基づく
+ * 自己検証ルール（非推奨: UNIFIED_QUALITY_RULES を使用）
+ * @deprecated UNIFIED_QUALITY_RULES に統合されました
  */
-export const SELF_VERIFICATION_RULES = [
-  "",
-  "【自己検証チェックリスト】",
-  "",
-  "結論を出力する前に以下を確認してください:",
-  "",
-  "1. 自己矛盾チェック:",
-  "   - CLAIMとRESULTが論理的に整合しているか",
-  "   - 複数の主張間に矛盾がないか",
-  "",
-  "2. 証拠の過不足評価:",
-  "   - EVIDENCEに挙げた証拠がCLAIMを過不足なくサポートしているか",
-  "   - 重要な証拠が欠落していないか",
-  "",
-  "3. 境界条件の明示:",
-  "   - 自分の主張が成り立たない境界条件がある場合は明示してください",
-  "   - 前提条件の変化に対する感度を評価してください",
-  "",
-  "4. 代替解釈の考慮:",
-  "   - 自分が採用しなかった代替仮説とその理由を明示してください",
-  "   - 確信度が0.8以上の場合は、なぜそう確信するのか根拠を追加してください",
-  "",
-].join("\n");
+export const SELF_VERIFICATION_RULES = UNIFIED_QUALITY_RULES;
 
 /**
  * 作業記憶管理ルール
@@ -555,8 +535,12 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
   lines.push(...COMMON_EXECUTION_RULES);
 
   // 品質基準（デフォルトで有効）
-  if (options.includeQualityBaseline !== false) {
-    lines.push(QUALITY_BASELINE_RULES.trim());
+  // 8.4最適化: QUALITY_BASELINE + SELF_VERIFICATION を統合
+  const shouldIncludeQuality = options.includeQualityBaseline !== false;
+  const shouldIncludeSelfVerify = options.includeSelfVerification;
+  
+  if (shouldIncludeQuality || shouldIncludeSelfVerify) {
+    lines.push(UNIFIED_QUALITY_RULES.trim());
   }
 
   // 固有ルール
@@ -583,10 +567,10 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
     lines.push(COGNITIVE_BIAS_COUNTERMEASURES.trim());
   }
 
-  // 自己検証ルール
-  if (options.includeSelfVerification) {
-    lines.push(SELF_VERIFICATION_RULES.trim());
-  }
+  // 自己検証ルール（8.4最適化で品質基準に統合済み）
+  // if (options.includeSelfVerification) {
+  //   lines.push(SELF_VERIFICATION_RULES.trim());
+  // }
 
   // 作業記憶管理ルール
   if (options.includeWorkingMemoryGuidelines) {
@@ -618,9 +602,9 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
     lines.push(VERIFICATION_WORKFLOW_RULES.trim());
   }
 
-  // 品質基準ルール（生成時品質保証）
+  // 品質基準ルール（生成時品質保証）- 8.4最適化で統合版を使用
   if (options.includeQualityBaseline) {
-    lines.push(QUALITY_BASELINE_RULES.trim());
+    lines.push(UNIFIED_QUALITY_RULES.trim());
   }
 
   // 7つの哲学的視座による自己点検（深い思考のために）

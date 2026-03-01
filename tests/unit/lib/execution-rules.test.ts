@@ -138,9 +138,9 @@ describe("定数テスト", () => {
       expect(typeof SELF_VERIFICATION_RULES).toBe("string");
     });
 
-    it("SELF_VERIFICATION_RULES_自己矛盾チェック含む", () => {
+    it("SELF_VERIFICATION_RULES_矛盾チェック含む", () => {
       // Assert
-      expect(SELF_VERIFICATION_RULES).toContain("自己矛盾");
+      expect(SELF_VERIFICATION_RULES).toContain("矛盾");
     });
 
     it("SELF_VERIFICATION_RULES_証拠評価含む", () => {

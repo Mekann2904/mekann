@@ -15,6 +15,7 @@
 | **Parallel execution** | Use `subagent_run_dag` (see DAG Execution Guide) |
 | **Code review** | Load `skills/code-review/SKILL.md` |
 | **Architecture** | Load `skills/clean-architecture/SKILL.md` |
+| **Code audit** | Use `repo_audit` tool (see RepoAudit Usage Rule) |
 | **Ownership system** | `docs/04-reference/ownership.md` - UL workflow ownership |
 
 **Core Rules**: No emoji | Use question tool for user choices | Delegate non-trivial tasks
@@ -320,3 +321,163 @@ playwright_cli({
 ### 違反時の対応
 
 ブラウザを開くために他の方法を使用しようとした場合、STOPし、`playwright_cli`ツールを使用すること。
+
+---
+
+## RepoAudit Usage (RECOMMENDED)
+
+コード監査タスクでは、**積極的に`repo_audit`ツールを使用すること**。
+
+### 推奨される使用場面
+
+| 場面 | 実行例 |
+|------|--------|
+| 実装前の影響範囲調査 | `repo_audit({ target: "対象モジュール", scope: "module" })` |
+| セキュリティ懸念の確認 | `repo_audit({ target: "認証系", focus: ["security"] })` |
+| リファクタリング前の評価 | `repo_audit({ target: "変更対象", focus: ["maintainability"] })` |
+| バグ原因の体系的調査 | `repo_audit({ target: "不具合箇所", focus: ["correctness"] })` |
+
+### 検出パターン（推奨実行トリガー）
+
+- キーワード: "audit", "review", "investigate", "analyze code", "check for issues"
+- 日本語: "監査", "コードレビュー", "調査", "分析", "問題箇所を特定", "影響範囲"
+- アクション: コード品質評価、セキュリティチェック、バグ原因特定、リファクタリング準備
+
+### 使用例
+
+```typescript
+// ファイル単位の監査
+repo_audit({
+  target: ".pi/lib/errors.ts",
+  scope: "file",
+  focus: ["correctness", "maintainability"]
+})
+
+// モジュール単位のセキュリティ監査
+repo_audit({
+  target: ".pi/lib",
+  scope: "module",
+  focus: ["security"],
+  verificationMode: "repo-audit"
+})
+
+// リポジトリ全体の包括的監査
+repo_audit({
+  target: ".",
+  scope: "repository",
+  maxExplorationDepth: 3
+})
+```
+
+### 3層アーキテクチャ
+
+RepoAuditは以下の3層パイプラインで動作:
+
+1. **Initiator**: bug-huntingスキルで仮説生成
+2. **Explorer**: 需要駆動探索で問題箇所を特定
+3. **Validator**: verification-workflowで結果を検証
+
+### パラメータ
+
+| パラメータ | 説明 | デフォルト |
+|-----------|------|-----------|
+| `target` | 監査対象（ファイル/ディレクトリ/パターン） | 必須 |
+| `scope` | 監査スコープ（file/module/repository） | `module` |
+| `focus` | フォーカス領域（security/performance/correctness/maintainability） | すべて |
+| `verificationMode` | 検証モード（disabled/repo-audit/high-stakes-only/explicit-only） | `repo-audit` |
+| `maxExplorationDepth` | 最大探索深度 | `5` |
+
+### 他ツールとの使い分け
+
+| 目的 | 使用ツール |
+|------|-----------|
+| コード監査・問題特定 | `repo_audit` |
+| 軽量なコード検索 | `code_search`, `sym_find` |
+| 構造理解・ナビゲーション | `repograph_localize`, `context_explore` |
+| レビュー指摘の対応 | `skills/code-review/SKILL.md` |
+
+---
+
+## Agent Memory Usage (RECOMMENDED)
+
+エージェントの学習・最適化機能を活用し、**継続的な効率改善**を行う。
+
+### 2つのメモリシステム
+
+| システム | 場所 | 目的 | 使用タイミング |
+|---------|------|------|---------------|
+| **agent-memory** | `.pi/lib/agent/agent-memory.ts` | 探索結果のキャッシュ・再利用 | RepoAudit実行時 |
+| **AWO** | `.pi/lib/awo/` | 実行パターンの最適化・メタツール生成 | 定期的な分析時 |
+
+### agent-memory（探索キャッシュ）
+
+RepoAuditの需要駆動探索で使用されるセマンティックキャッシュ。
+
+**使用場面**:
+- 同じクエリを繰り返し実行する場合
+- 類似コードの探索を行う場合
+- RepoAuditのExplorerフェーズ
+
+**効果**:
+- 重複探索の回避
+- レスポンス時間の短縮
+
+### AWO（Agent Workflow Optimization）
+
+論文「Optimizing Agentic Workflows using Meta-tools」に基づく最適化システム。
+
+**使用場面**:
+- 定期的な実行パターン分析（週次など）
+- 新規メタツール候補の生成
+- LLM呼び出しコストの削減
+
+**効果**:
+- LLM呼び出し最大11.9%削減
+- タスク成功率向上（最大+4.2%ポイント）
+
+### 推奨ワークフロー
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  日次実行                                                │
+│  └─ agent-memory: 自動的に探索結果をキャッシュ           │
+└─────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────┐
+│  週次分析                                                │
+│  └─ AWO: トレースを分析してメタツール候補を生成          │
+│  └─ レビュー後、有用なメタツールを登録                   │
+└─────────────────────────────────────────────────────────┘
+```
+
+### AWO API
+
+```typescript
+import { AWOOrchestrator, getGlobalAWO } from "./lib/awo/index.js";
+
+// トレース分析
+const awo = getGlobalAWO();
+const candidates = awo.analyzeCandidates();
+
+// メタツール生成（手動承認）
+const tools = awo.generateMetaTools(false);
+
+// 登録済みツール確認
+const registered = awo.getRegisteredTools();
+
+// 統計確認
+const stats = awo.getStats();
+```
+
+### 設定
+
+デフォルト設定（`.pi/lib/awo/types.ts`）:
+
+| パラメータ | デフォルト | 説明 |
+|-----------|-----------|------|
+| `traceCollection.enabled` | `true` | トレース収集を有効化 |
+| `traceCollection.maxTraces` | `10000` | 最大トレース数 |
+| `traceCollection.retentionDays` | `30` | 保持期間（日） |
+| `extraction.threshold` | `5` | メタツール抽出閾値 |
+| `registry.autoRegister` | `false` | 自動登録（手動承認を推奨） |

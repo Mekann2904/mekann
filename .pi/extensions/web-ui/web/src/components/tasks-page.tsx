@@ -37,7 +37,7 @@ interface TaskStats {
   overdue: number;
 }
 
-const API_BASE = "http://localhost:3456";
+const API_BASE = "";
 
 // UL Workflow Task interface (extends Task)
 interface UlWorkflowTask extends Task {

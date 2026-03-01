@@ -282,11 +282,17 @@ export function withTrackedResourceSync<T>(
 
 // グローバルにエクスポートして、プロセス終了時にリークを報告
 if (typeof process !== 'undefined') {
-  process.on('beforeExit', () => {
-    const tracker = ResourceTracker.getInstance();
-    const leaks = tracker.getLeaks(1000); // 1秒以上経過したリークのみ
-    if (leaks.length > 0) {
-      console.warn(tracker.getLeakSummary());
-    }
-  });
+  const BEFORE_EXIT_GUARD = Symbol.for('pi.resourceTracker.beforeExitHookRegistered');
+  const g = globalThis as typeof globalThis & { [BEFORE_EXIT_GUARD]?: boolean };
+  
+  if (!g[BEFORE_EXIT_GUARD]) {
+    process.on('beforeExit', () => {
+      const tracker = ResourceTracker.getInstance();
+      const leaks = tracker.getLeaks(1000); // 1秒以上経過したリークのみ
+      if (leaks.length > 0) {
+        console.warn(tracker.getLeakSummary());
+      }
+    });
+    g[BEFORE_EXIT_GUARD] = true;
+  }
 }

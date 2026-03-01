@@ -54,6 +54,16 @@ import {
   reevaluateAgentRunFailure,
 } from "../../lib/agent/agent-errors.js";
 import {
+  filterRelevantSkills,
+  type SkillRelevanceConfig,
+} from "../../lib/skill-relevance.js";
+import {
+  createAndRecordMetrics,
+} from "../../lib/analytics/behavior-storage.js";
+import {
+  DEFAULT_LLM_BEHAVIOR_CONFIG,
+} from "../../lib/analytics/llm-behavior-types.js";
+import {
   validateSubagentOutput,
 } from "../../lib/agent/output-validation.js";
 import {
@@ -498,6 +508,32 @@ export function resolveEffectiveSkills(
 }
 
 /**
+ * タスクに関連するスキルのみをフィルタリング
+ * @summary 関連スキルフィルタリング（8.4最適化）
+ * @param task タスク内容
+ * @param skills スキルリスト
+ * @param config 設定（オプション）
+ * @returns フィルタリングされたスキルリスト
+ */
+export function filterSkillsByRelevance(
+  task: string,
+  skills: string[] | undefined,
+  config?: Partial<SkillRelevanceConfig>,
+): string[] {
+  if (!skills || skills.length === 0) return [];
+
+  const { highRelevance, mediumRelevance } = filterRelevantSkills(task, skills, {
+    highRelevanceThreshold: config?.highRelevanceThreshold ?? 0.4,
+    mediumRelevanceThreshold: config?.mediumRelevanceThreshold ?? 0.15,
+    keywordWeight: config?.keywordWeight ?? 0.7,
+    contextWeight: config?.contextWeight ?? 0.3,
+  });
+
+  // 高関連 + 中関連のスキルを返す（最大5個）
+  return [...highRelevance, ...mediumRelevance].slice(0, 5);
+}
+
+/**
  * スキル一覧を整形
  * @summary スキル一覧を整形
  * @param skills スキル配列
@@ -589,6 +625,32 @@ function parseSubagentDirectives(extraContext?: string, task?: string): Subagent
   };
 }
 
+function buildInternalContextHandoff(extraContext?: string, maxLines = 12): string[] {
+  const context = extraContext?.trim();
+  if (!context) return [];
+
+  const lines = context
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim().length > 0);
+
+  if (lines.length === 0) return [];
+
+  const priorityPattern = /known_facts=|open_questions=|evidence_snippets=|KNOWN_FACTS|OPEN_QUESTIONS|EVIDENCE_SNIPPETS|CONTEXT_PACK_V1/i;
+  const prioritized: string[] = [];
+  const regular: string[] = [];
+
+  for (const line of lines) {
+    if (priorityPattern.test(line)) {
+      prioritized.push(line);
+    } else {
+      regular.push(line);
+    }
+  }
+
+  return [...prioritized, ...regular].slice(0, maxLines);
+}
+
 /**
  * サブエージェント用プロンプトを構築
  * @summary プロンプト構築
@@ -624,11 +686,20 @@ export function buildSubagentPrompt(input: {
     lines.push("TASK:");
     lines.push(input.task);
     
-    // Minimal skills
-    const effectiveSkills = resolveEffectiveSkills(input.agent, input.parentSkills) ?? [];
+    // Minimal skills (8.4最適化: 関連スキルのみ)
+    const allSkills = resolveEffectiveSkills(input.agent, input.parentSkills) ?? [];
+    const effectiveSkills = filterSkillsByRelevance(input.task, allSkills);
     if (effectiveSkills.length > 0) {
       lines.push("");
-      lines.push(`Skills: ${effectiveSkills.map(s => typeof s === 'string' ? s : s).join(", ")}`);
+      lines.push(`Skills: ${effectiveSkills.join(", ")}`);
+    }
+
+    const contextHandoff = buildInternalContextHandoff(input.extraContext);
+    if (contextHandoff.length > 0) {
+      lines.push("");
+      lines.push("CONTEXT HANDOFF:");
+      lines.push(...contextHandoff);
+      lines.push("Context policy: Reuse known_facts first. Investigate open_questions first. Expand search only when evidence is missing or conflicting.");
     }
     
     // CRITICAL output format at the END
@@ -648,7 +719,12 @@ export function buildSubagentPrompt(input: {
     lines.push("[CONFIDENCE] <0.0-1.0>");
     lines.push("[ACTION] <next|done>");
     lines.push("");
-    lines.push("PROHIBITED: Japanese, long explanations, thinking blocks");
+    lines.push("PROHIBITED:");
+    lines.push("- Japanese language (use English only)");
+    lines.push("- Long explanations (be concise)");
+    lines.push("- [Thinking] blocks (output structured format directly)");
+    lines.push("- Internal monologue (go straight to output)");
+    lines.push("- Markdown formatting (use labels only)");
     lines.push("=".repeat(60));
     
     return lines.join("\n");
@@ -668,8 +744,9 @@ export function buildSubagentPrompt(input: {
   lines.push("Subagent operating instructions:");
   lines.push(input.agent.systemPrompt);
 
-  // Resolve and include skills
-  const effectiveSkills = resolveEffectiveSkills(input.agent, input.parentSkills) ?? [];
+  // Resolve and include skills (8.4最適化: 関連スキルのみ)
+  const allSkills = resolveEffectiveSkills(input.agent, input.parentSkills) ?? [];
+  const effectiveSkills = filterSkillsByRelevance(input.task, allSkills);
   const skillsSection = formatSkillsSection(effectiveSkills);
   if (skillsSection) {
     lines.push("");
@@ -685,6 +762,10 @@ export function buildSubagentPrompt(input: {
     lines.push("");
     lines.push("Extra context:");
     lines.push(input.extraContext.trim());
+    lines.push("Context policy:");
+    lines.push("- Reuse known_facts as baseline and verify contradictions.");
+    lines.push("- Prioritize open_questions before broad repository scans.");
+    lines.push("- Use evidence_snippets first; expand exploration only when needed.");
   }
 
   // Add relevant patterns from past executions as dialogue partners (not constraints)
@@ -934,6 +1015,7 @@ export async function runSubagentTask(input: {
           overrides: retryOverrides,
           signal: input.signal,
           rateLimitKey,
+          providerKey: resolvedProvider,
           maxRateLimitRetries: STABLE_MAX_RATE_LIMIT_RETRIES,
           maxRateLimitWaitMs: STABLE_MAX_RATE_LIMIT_WAIT_MS,
           onRateLimitWait: ({ waitMs, hits }) => {
@@ -1015,6 +1097,31 @@ export async function runSubagentTask(input: {
         "utf-8",
       );
 
+      // 8.4最適化: LLM行動計測
+      if (DEFAULT_LLM_BEHAVIOR_CONFIG.enabled && Math.random() < DEFAULT_LLM_BEHAVIOR_CONFIG.samplingRate) {
+        try {
+          createAndRecordMetrics({
+            source: "subagent",
+            prompt: { text: prompt },
+            output: { text: commandResult.output },
+            execution: {
+              durationMs: Date.now() - startedAtMs,
+              retryCount,
+              outcomeCode: "SUCCESS",
+              modelUsed: resolvedModel,
+              thinkingLevel: "medium",
+            },
+            context: {
+              task: input.task,
+              agentId: input.agent.id,
+            },
+            cwd: input.cwd,
+          });
+        } catch {
+          // 計測エラーは実行に影響させない
+        }
+      }
+
       return {
         runRecord,
         output: commandResult.output,
@@ -1084,6 +1191,31 @@ export async function runSubagentTask(input: {
         ),
         "utf-8",
       );
+
+      // 8.4最適化: LLM行動計測（失敗時）
+      if (DEFAULT_LLM_BEHAVIOR_CONFIG.enabled && Math.random() < DEFAULT_LLM_BEHAVIOR_CONFIG.samplingRate) {
+        try {
+          createAndRecordMetrics({
+            source: "subagent",
+            prompt: { text: prompt },
+            output: { text: "" },
+            execution: {
+              durationMs: Date.now() - startedAtMs,
+              retryCount,
+              outcomeCode: effectiveStatus === "completed" ? "SUCCESS" : "FAILURE",
+              modelUsed: resolvedModel,
+              thinkingLevel: "medium",
+            },
+            context: {
+              task: input.task,
+              agentId: input.agent.id,
+            },
+            cwd: input.cwd,
+          });
+        } catch {
+          // 計測エラーは実行に影響させない
+        }
+      }
 
       return {
         runRecord,

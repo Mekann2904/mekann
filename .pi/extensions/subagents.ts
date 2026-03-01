@@ -33,6 +33,10 @@ import { readdirSync, unlinkSync, writeFileSync, existsSync, readFileSync, mkdir
 import { basename, join } from "node:path";
 
 import { Type } from "@mariozechner/pi-ai";
+import {
+  buildPromptWithTemplates,
+  getTemplatesForAgent,
+} from "../lib/prompt-templates.js";
 import { integrateWithSubagents } from "./tool-compiler.js";
 import type { ToolCall } from "../lib/tool-compiler-types.js";
 import { getMarkdownTheme, isToolCallEventType, type ExtensionAPI, type ToolCallEvent } from "@mariozechner/pi-coding-agent";
@@ -81,7 +85,9 @@ import { hasNonEmptyResultSection, validateSubagentOutput } from "../lib/agent/o
 import { trimForError, buildRateLimitKey, createRetrySchema, toConcurrencyLimit } from "../lib/agent/runtime-utils.js";
 import { resolveEffectiveTimeoutMs } from "../lib/agent/runtime-error-builders.js";
 import {
-  createAdaptivePenaltyController,
+  createProviderIsolatedPenaltyController,
+  extractProviderFromModel,
+  type ProviderIsolatedPenaltyController,
 } from "../lib/agent/adaptive-penalty.js";
 import {
   STABLE_RUNTIME_PROFILE,
@@ -135,6 +141,12 @@ import {
   retryWithBackoff,
   type RetryWithBackoffOverrides,
 } from "../lib/retry-with-backoff.js";
+import {
+  SemanticCache,
+  getSharedSemanticCache,
+  type SemanticCacheConfig,
+  type CacheEntry,
+} from "../lib/semantic-cache.js";
 
 import {
   runPiPrintMode as sharedRunPiPrintMode,
@@ -356,11 +368,74 @@ const LIVE_LIST_WINDOW_SIZE = 20;
 
 const runtimeState = getSharedRuntimeState().subagents;
 
-const adaptivePenalty = createAdaptivePenaltyController({
+// Provider-isolated penalty controller for cross-provider rate limit isolation
+// Phase 1 - Quick Wins: Adaptive Penalty Per-Provider Isolation
+const providerIsolatedPenalty = createProviderIsolatedPenaltyController({
   isStable: STABLE_RUNTIME_PROFILE,
   maxPenalty: SHARED_ADAPTIVE_PARALLEL_MAX_PENALTY,
   decayMs: SHARED_ADAPTIVE_PARALLEL_DECAY_MS,
+  decayStrategy: "hybrid",  // Faster recovery with hybrid decay
 });
+
+// Legacy adapter for backward compatibility (maps to "unknown" provider)
+const adaptivePenalty = {
+  get: () => providerIsolatedPenalty.getGlobalPenalty(),
+  applyLimit: (baseLimit: number) => providerIsolatedPenalty.applyLimit("unknown", baseLimit),
+  raise: (reason: "rate_limit" | "timeout" | "capacity") => providerIsolatedPenalty.raise("unknown", reason),
+  lower: () => providerIsolatedPenalty.lower("unknown"),
+};
+
+// Phase 3 - Advanced Features: Semantic Result Cache
+// Enable semantic similarity matching for cache lookups
+const SEMANTIC_CACHE_ENABLED = process.env.PI_SEMANTIC_CACHE !== "0";
+const SEMANTIC_CACHE_THRESHOLD = parseFloat(process.env.PI_SEMANTIC_THRESHOLD || "0.85");
+const SEMANTIC_CACHE_MAX_ENTRIES = parseInt(process.env.PI_SEMANTIC_MAX_ENTRIES || "1000", 10);
+const SEMANTIC_CACHE_TTL_MS = parseInt(process.env.PI_SEMANTIC_TTL_MS || "1800000", 10); // 30 minutes
+
+/**
+ * Get embedding for text (placeholder - uses simple hash for now)
+ * In production, this would call an embedding API like OpenAI text-embedding-3-small
+ * @summary 埋め込みベクトル取得
+ */
+async function getEmbedding(text: string): Promise<number[]> {
+  // Simple hash-based pseudo-embedding for basic similarity detection
+  // This is a placeholder - in production, use a real embedding model
+  const normalized = text.toLowerCase().trim();
+  const words = normalized.split(/\s+/).filter(w => w.length > 2);
+  
+  // Create a simple bag-of-words style embedding
+  const embedding: number[] = new Array(128).fill(0);
+  
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i] || "";
+    for (let j = 0; j < word.length && j < 128; j++) {
+      const charCode = word.charCodeAt(j) || 0;
+      const idx = (i * 7 + j * 13 + charCode) % 128;
+      embedding[idx] = (embedding[idx] || 0) + 1 / (1 + i);
+    }
+  }
+  
+  // Normalize the embedding
+  const norm = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
+  if (norm > 0) {
+    for (let i = 0; i < embedding.length; i++) {
+      embedding[i] = embedding[i]! / norm;
+    }
+  }
+  
+  return embedding;
+}
+
+// Initialize semantic cache
+const semanticCache = getSharedSemanticCache(
+  {
+    enabled: SEMANTIC_CACHE_ENABLED,
+    similarityThreshold: SEMANTIC_CACHE_THRESHOLD,
+    maxEntries: SEMANTIC_CACHE_MAX_ENTRIES,
+    ttlMs: SEMANTIC_CACHE_TTL_MS,
+  },
+  getEmbedding,
+);
 
 // Note: SubagentLiveItem and monitor interfaces are imported from lib/subagent-types.ts
 // LiveStreamView and LiveViewMode are re-exported from lib/subagent-types.ts (originally from lib/index.ts)
@@ -629,6 +704,77 @@ function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined
     multiplier: typeof raw.multiplier === "number" ? raw.multiplier : undefined,
     jitter,
   };
+}
+
+const RESULT_REUSE_ENABLED = process.env.PI_DELEGATION_RESULT_REUSE !== "0";
+const RESULT_REUSE_WINDOW_MS = (() => {
+  const raw = Number(process.env.PI_DELEGATION_RESULT_REUSE_WINDOW_MS ?? "600000");
+  if (!Number.isFinite(raw) || raw <= 0) return 600_000;
+  return Math.max(30_000, Math.min(7_200_000, Math.trunc(raw)));
+})();
+
+function normalizeReuseText(value: string | undefined): string {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function loadSubagentRunArtifact(outputFile: string): { prompt?: string; output?: string } | null {
+  if (!outputFile || !existsSync(outputFile)) return null;
+  try {
+    const raw = readFileSync(outputFile, "utf-8");
+    const parsed = JSON.parse(raw) as { prompt?: string; output?: string };
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function findReusableSubagentRun(input: {
+  storage: SubagentStorage;
+  agentId: string;
+  task: string;
+  extraContext?: string;
+}): { runRecord: SubagentRunRecord; output: string; cacheAgeMs: number } | null {
+  if (!RESULT_REUSE_ENABLED) return null;
+
+  const normalizedTask = normalizeReuseText(input.task);
+  if (!normalizedTask) return null;
+
+  const normalizedExtraContext = normalizeReuseText(input.extraContext);
+  const nowMs = Date.now();
+
+  const recentRuns = input.storage.runs.slice().reverse();
+  for (const run of recentRuns) {
+    if (run.status !== "completed") continue;
+    if (run.agentId !== input.agentId) continue;
+    if (normalizeReuseText(run.task) !== normalizedTask) continue;
+
+    const finishedAtMs = Date.parse(run.finishedAt || run.startedAt || "");
+    if (!Number.isFinite(finishedAtMs)) continue;
+    const cacheAgeMs = nowMs - finishedAtMs;
+    if (cacheAgeMs < 0 || cacheAgeMs > RESULT_REUSE_WINDOW_MS) continue;
+
+    const artifact = loadSubagentRunArtifact(run.outputFile);
+    const output = artifact?.output?.trim() || run.summary || "(cached summary only)";
+
+    if (normalizedExtraContext) {
+      const normalizedPrompt = normalizeReuseText(artifact?.prompt);
+      const probe = normalizedExtraContext.slice(0, 180);
+      if (!normalizedPrompt || !normalizedPrompt.includes(probe)) {
+        continue;
+      }
+    }
+
+    return {
+      runRecord: run,
+      output,
+      cacheAgeMs,
+    };
+  }
+
+  return null;
 }
 
 function toAgentId(input: string): string {
@@ -948,6 +1094,76 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         };
       }
 
+      const reusable = findReusableSubagentRun({
+        storage,
+        agentId: agent.id,
+        task: params.task,
+        extraContext: params.extraContext,
+      });
+      if (reusable) {
+        const ageSec = Math.floor(reusable.cacheAgeMs / 1000);
+        return {
+          content: [{
+            type: "text" as const,
+            text: `[cache-hit] Reused subagent result (${reusable.runRecord.runId}, age=${ageSec}s)\n\n${reusable.output}`,
+          }],
+          details: {
+            runRecord: reusable.runRecord,
+            subagentId: agent.id,
+            cached: true,
+            cacheAgeMs: reusable.cacheAgeMs,
+            cacheWindowMs: RESULT_REUSE_WINDOW_MS,
+            outcomeCode: "SUCCESS" as RunOutcomeCode,
+            retryRecommended: false,
+          },
+        };
+      }
+
+      // Phase 3: Semantic cache lookup for similar tasks
+      if (SEMANTIC_CACHE_ENABLED) {
+        try {
+          const semanticMatch = await semanticCache.findSimilar(
+            params.task,
+            agent.id,
+            {}, // Empty file hashes for now - can be enhanced with actual file tracking
+          );
+          if (semanticMatch) {
+            const ageSec = Math.floor((Date.now() - semanticMatch.timestamp) / 1000);
+            const similarity = semanticMatch.embedding ? 
+              await (async () => {
+                const queryEmbedding = await getEmbedding(params.task);
+                const cached = semanticMatch.embedding!;
+                let dot = 0, normA = 0, normB = 0;
+                for (let i = 0; i < queryEmbedding.length; i++) {
+                  dot += queryEmbedding[i]! * (cached[i] || 0);
+                  normA += queryEmbedding[i]! * queryEmbedding[i]!;
+                  normB += (cached[i] || 0) * (cached[i] || 0);
+                }
+                return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+              })() : 0;
+            console.log(`[semantic-cache] Hit for task "${params.task.slice(0, 50)}..." similarity=${(similarity * 100).toFixed(1)}% age=${ageSec}s`);
+            return {
+              content: [{
+                type: "text" as const,
+                text: `[semantic-cache-hit] Similar task result (similarity=${(similarity * 100).toFixed(1)}%, age=${ageSec}s)\n\n${JSON.stringify(semanticMatch.result)}`,
+              }],
+              details: {
+                subagentId: agent.id,
+                cached: true,
+                semanticCache: true,
+                similarity,
+                cacheAgeMs: Date.now() - semanticMatch.timestamp,
+                outcomeCode: "SUCCESS" as RunOutcomeCode,
+                retryRecommended: false,
+              },
+            };
+          }
+        } catch (error) {
+          // Semantic cache lookup failed - log and continue with normal execution
+          console.debug(`[semantic-cache] Lookup failed: ${error}`);
+        }
+      }
+
       // Synchronous execution (matching agent_team_run behavior)
       logger.startOperation("subagent_run" as OperationType, agent.id, {
         task: params.task,
@@ -1138,6 +1354,21 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           };
         } else {
           adaptivePenalty.lower();
+          
+          // Phase 3: Add result to semantic cache
+          if (SEMANTIC_CACHE_ENABLED && result.output) {
+            try {
+              await semanticCache.add(
+                params.task,
+                agent.id,
+                { output: result.output, summary: result.runRecord.summary },
+                {}, // Empty file hashes for now
+              );
+            } catch {
+              // Cache add failed - non-critical
+            }
+          }
+          
           logger.endOperation({
             status: "success",
             tokensUsed: 0,
@@ -1278,6 +1509,51 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         };
       }
 
+      const cachedByAgentId = new Map<string, { runRecord: SubagentRunRecord; output: string; cacheAgeMs: number }>();
+      for (const agent of activeAgents) {
+        const reusable = findReusableSubagentRun({
+          storage,
+          agentId: agent.id,
+          task: params.task,
+          extraContext: params.extraContext,
+        });
+        if (reusable) {
+          cachedByAgentId.set(agent.id, reusable);
+        }
+      }
+
+      if (cachedByAgentId.size === activeAgents.length) {
+        const aggregatedOutput = activeAgents
+          .map((agent) => {
+            const reusable = cachedByAgentId.get(agent.id)!;
+            const ageSec = Math.floor(reusable.cacheAgeMs / 1000);
+            return `## ${agent.id}\nStatus: SUCCESS (cache-hit, age=${ageSec}s)\n${reusable.output || reusable.runRecord.summary || ""}`;
+          })
+          .join("\n\n");
+
+        return {
+          content: [{ type: "text" as const, text: aggregatedOutput }],
+          details: {
+            results: activeAgents.map((agent) => {
+              const reusable = cachedByAgentId.get(agent.id)!;
+              return {
+                agentId: agent.id,
+                status: reusable.runRecord.status,
+                summary: reusable.runRecord.summary,
+                output: reusable.output,
+                cached: true,
+                cacheAgeMs: reusable.cacheAgeMs,
+              };
+            }),
+            successCount: activeAgents.length,
+            totalCount: activeAgents.length,
+            cachedCount: activeAgents.length,
+            outcomeCode: "SUCCESS" as RunOutcomeCode,
+            retryRecommended: false,
+          },
+        };
+      }
+
       // Synchronous execution (matching agent_team_run behavior)
       logger.startOperation(
         "subagent_run_parallel" as OperationType,
@@ -1292,6 +1568,18 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         },
       );
 
+      const executableAgents = activeAgents.filter((agent) => !cachedByAgentId.has(agent.id));
+      const cachedResults: { runRecord: SubagentRunRecord; output: string; prompt: string }[] = activeAgents
+        .filter((agent) => cachedByAgentId.has(agent.id))
+        .map((agent) => {
+          const reusable = cachedByAgentId.get(agent.id)!;
+          return {
+            runRecord: reusable.runRecord,
+            output: reusable.output,
+            prompt: "[cache-hit]",
+          };
+        });
+
       let capacityReservation: RuntimeCapacityReservationLease | undefined;
       let stopReservationHeartbeat: (() => void) | undefined;
       let liveMonitor: SubagentLiveMonitorController | undefined;
@@ -1305,10 +1593,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           1,
           Math.min(
             configuredParallelLimit,
-            activeAgents.length,
+            Math.max(1, executableAgents.length),
             Math.max(1, snapshot.limits.maxTotalActiveLlm),
             resolveProviderConcurrencyCap(
-              activeAgents,
+              executableAgents,
               ctx.model?.provider,
               ctx.model?.id,
             ),
@@ -1321,10 +1609,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             additionalRequests: 1,
             additionalLlm: Math.min(effectiveParallelism, snapshot.limits.maxParallelSubagentsPerRun),
           },
-          tenantKey: activeAgents.map((entry) => entry.id).join(","),
+          tenantKey: executableAgents.map((entry) => entry.id).join(","),
           source: "scheduled",
           estimatedDurationMs: 60_000,
-          estimatedRounds: Math.max(1, activeAgents.length),
+          estimatedRounds: Math.max(1, executableAgents.length),
           maxWaitMs: snapshot.limits.capacityWaitMs,
           pollIntervalMs: snapshot.limits.capacityPollMs,
           signal: _signal,
@@ -1551,7 +1839,7 @@ ${allResults.map((r) => {
         // DynTaskMAS: エージェントの重みを計算（専門性ベース）
         // 重みが大きい（専門性が高い）エージェントを優先的に実行
         const agentWeights = new Map<string, number>();
-        for (const agent of activeAgents) {
+        for (const agent of executableAgents) {
           const weight = getAgentSpecializationWeight(agent.id);
           agentWeights.set(agent.id, weight);
         }
@@ -1576,7 +1864,7 @@ ${allResults.map((r) => {
         type SettledTaskResult = { status: 'fulfilled' | 'rejected'; value?: SubagentTaskResult; reason?: unknown; index: number };
 
         const settledResults = await runWithConcurrencyLimit(
-          activeAgents,
+          executableAgents,
           Math.max(1, effectiveParallelism),
           async (agent): Promise<SubagentTaskResult> => {
             const result = await runSubagentTask({
@@ -1632,11 +1920,11 @@ ${allResults.map((r) => {
         const rejectedResults = settledResults.filter((r) => r.status === 'rejected');
 
         // 結果を統合（成功したもののみ）
-        const results = succeededResults;
+        const results = [...cachedResults, ...succeededResults];
 
         // 拒否されたタスクをエージェントIDと共に記録
         const rejectedDetails = rejectedResults.map((r) => {
-          const agent = activeAgents[r.index];
+          const agent = executableAgents[r.index];
           return {
             agentId: agent?.id ?? `unknown-${r.index}`,
             error: r.reason instanceof Error ? r.reason.message : String(r.reason),
@@ -2309,56 +2597,20 @@ ${allResults.map((r) => {
   });
 
   // デフォルトでマルチエージェント委譲を積極化する。
+  // テンプレートシステムを使用してトークン効率を向上
   pi.on("before_agent_start", async (event, _ctx) => {
     if (String(process.env.PI_SUBAGENT_PROACTIVE_PROMPT || "1") !== "1") {
       return;
     }
 
-    const proactivePrompt = `
----
-## Proactive Multi-Agent Execution Policy (MANDATORY)
-
-### WHY This Policy Exists
-
-You are subject to cognitive biases that degrade your output:
-
-1. **Planning Fallacy**: You underestimate task complexity. "I can do this quickly" is usually wrong.
-2. **Cognitive Load Saturation**: Juggling requirements, design, implementation, and review means dropping details.
-3. **Single-Perspective Blindness**: One agent = one mental model. You cannot see what you cannot see.
-4. **No Self-Correction**: Working alone, you have no feedback loop to catch your own errors.
-5. **Sequential Bottleneck**: One agent doing everything is SLOWER than parallel delegation.
-
-Delegation is not bureaucracy. It is quality assurance AND speed optimization combined.
-
-### When Direct Editing IS Appropriate
-
-- Trivial typo fixes (1-2 characters)
-- You ALREADY delegated analysis and now implement the agreed solution
-- Emergency hotfixes where speed is critical
-
-### When Direct Editing IS NOT Appropriate
-
-- Architectural decisions
-- Multi-file or multi-module changes
-- Security-sensitive code (auth, crypto, permissions)
-- Database schema or API contract changes
-- Anything a human would want code-reviewed
-
-### REQUIRED Execution Workflow
-
-1. Decompose request into 2-4 parallel tracks.
-2. Prefer \`agent_team_run_parallel\` with explicit \`teamIds\`.
-3. Use \`strategy: "parallel"\`, \`communicationRounds: 1\`, \`failedMemberRetryRounds: 1\` as baseline.
-4. If conflicts remain, run one additional focused team round.
-5. For subagents: \`subagent_run_parallel\` with 2-4 explicit \`subagentIds\`.
-6. If only one specialist is needed, use \`subagent_run\`.
-
-Do NOT skip orchestration because direct execution "seems faster". It is not.
-Only skip when the task is truly trivial (single obvious step, no architectural impact).
----`;
+    // テンプレートからプロンプトを構築
+    const templates = getTemplatesForAgent("default");
+    const proactivePrompt = buildPromptWithTemplates(templates, "", {
+      separator: "---",
+    });
 
     return {
-      systemPrompt: `${event.systemPrompt}${proactivePrompt}`,
+      systemPrompt: `${event.systemPrompt}\n${proactivePrompt}`,
     };
   });
 

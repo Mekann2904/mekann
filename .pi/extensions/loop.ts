@@ -75,6 +75,13 @@ import {
 
 import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor";
 import { checkUlWorkflowOwnership } from "./subagents.js";
+import {
+  createTrajectoryReducer,
+  messageToStep,
+  type TrajectoryReductionConfig,
+  type ReductionStats,
+  DEFAULT_TRAJECTORY_REDUCTION_CONFIG,
+} from "../lib/trajectory-reduction/index.js";
 
 // Import extracted modules for SSRF protection, reference loading, verification, and iteration building
 import {
@@ -259,6 +266,8 @@ interface LoopRunSummary {
   };
   /** Sufficiency assessment based on self-reflection skill criteria */
   sufficiencyAssessment?: SufficiencyAssessment;
+  /** Trajectory reduction statistics */
+  trajectoryReduction?: ReductionStats;
 }
 
 interface LoopRunOutput {
@@ -945,6 +954,17 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     similarities: [] as number[],
   };
 
+  // Trajectory Reduction: リデューサーを作成
+  const trajectoryConfig: TrajectoryReductionConfig = {
+    ...DEFAULT_TRAJECTORY_REDUCTION_CONFIG,
+    enabled: true,  // loopでは常に有効
+  };
+  const callLLMForReduction = async (prompt: string, _model: string): Promise<string> => {
+    // 実際のLLMを使用（TODO: 専用の安価なモデルを使用する設定を追加）
+    return callModelViaPi(input.model, prompt, 30000, input.signal);
+  };
+  const trajectoryReducer = createTrajectoryReducer(runId, trajectoryConfig, callLLMForReduction);
+
   for (let iteration = 1; iteration <= input.config.maxIterations; iteration++) {
     throwIfAborted(input.signal);
 
@@ -1085,6 +1105,37 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
       output,
     };
     iterations.push(iterationResult);
+
+    // Trajectory Reduction: ステップを追加して圧縮処理
+    const promptStep = messageToStep({ role: "user", content: prompt }, iteration * 2 - 1);
+    const responseStep = messageToStep({ role: "assistant", content: output }, iteration * 2);
+    trajectoryReducer.addStep(promptStep);
+    trajectoryReducer.addStep(responseStep);
+    
+    // 圧縮処理を実行（stepsAfter=2なので、2ステップ前を圧縮）
+    try {
+      const reductionResult = await trajectoryReducer.afterStepExecution(iteration * 2);
+      if (reductionResult) {
+        appendJsonl(logFile, {
+          type: "trajectory_reduction",
+          runId,
+          iteration,
+          targetStep: iteration * 2 - 3,  // 圧縮対象ステップ
+          tokensSaved: reductionResult.tokensSaved,
+          reductionRatio: reductionResult.reductionRatio,
+          wasteTypes: reductionResult.wasteTypes,
+        });
+      }
+    } catch (error: unknown) {
+      // 圧縮エラーはループをブロックしない
+      const message = toErrorMessage(error);
+      appendJsonl(logFile, {
+        type: "trajectory_reduction_error",
+        runId,
+        iteration,
+        error: message,
+      });
+    }
 
     appendJsonl(logFile, {
       type: "iteration",
@@ -1240,6 +1291,8 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     } : undefined,
     // Sufficiency assessment (always computed for user reference)
     sufficiencyAssessment,
+    // Trajectory reduction statistics
+    trajectoryReduction: trajectoryReducer.getStats(),
   };
 
   const summaryPayload = {

@@ -74,10 +74,10 @@ export interface McpConnection {
 	name: string;
 	/** MCPサーバーのURL */
 	url: string;
-	/** MCPクライアントインスタンス */
-	client: Client;
-	/** トランスポートインスタンス */
-	transport: Transport;
+	/** MCPクライアントインスタンス（接続成功後に設定） */
+	client?: Client;
+	/** トランスポートインスタンス（接続成功後に設定） */
+	transport?: Transport;
 	/** 使用中のトランスポート種別（接続後に設定） */
 	transportType?: import('./types.js').McpActiveTransportType;
 	/** 接続ステータス */
@@ -97,6 +97,17 @@ export interface McpConnection {
 	};
 	/** アクティブなリソース購読URI一覧 */
 	subscriptions: Set<string>;
+}
+
+/**
+ * 接続済みのMCP接続情報
+ * clientとtransportが必ず存在することを保証する型
+ */
+export interface ConnectedMcpConnection extends Omit<McpConnection, 'client' | 'transport'> {
+	/** MCPクライアントインスタンス（必須） */
+	client: Client;
+	/** トランスポートインスタンス（必須） */
+	transport: Transport;
 }
 
 /**

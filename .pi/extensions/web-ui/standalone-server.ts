@@ -109,7 +109,9 @@ function writeJsonFile<T>(filePath: string, data: T): void {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
     try {
       fs.unlinkSync(tempPath);
-    } catch {}
+    } catch (error) {
+      console.error('[standalone-server] Failed to unlink temp file:', tempPath, error);
+    }
   }
 }
 
@@ -167,7 +169,9 @@ class ServerRegistry {
   static unregister(): void {
     try {
       fs.unlinkSync(SERVER_FILE);
-    } catch {}
+    } catch (error) {
+      console.error('[standalone-server] Failed to unregister server file:', error);
+    }
   }
 
   static isRunning(): ServerInfo | null {
@@ -182,7 +186,9 @@ class ServerRegistry {
     } catch {
       try {
         fs.unlinkSync(SERVER_FILE);
-      } catch {}
+      } catch (error) {
+        console.error('[standalone-server] Failed to cleanup stale server file:', error);
+      }
       return null;
     }
   }
@@ -271,7 +277,9 @@ class ContextHistoryStorage {
         if (!activePids.has(pid)) {
           try {
             fs.unlinkSync(path.join(SHARED_DIR, file));
-          } catch {}
+          } catch (error) {
+            console.error('[standalone-server] Failed to cleanup orphaned history file:', file, error);
+          }
         }
       }
     }
@@ -839,6 +847,97 @@ function createApp(): Express {
     }
   });
 
+  // ============= Analytics API =============
+
+  /**
+   * GET /api/analytics/stats - Get storage statistics
+   */
+  app.get("/api/analytics/stats", async (_req: Request, res: Response) => {
+    try {
+      const { getStorageStats } = await import("../../lib/analytics/behavior-storage.js");
+      const stats = getStorageStats();
+      res.json(stats);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get stats", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/analytics/records - Get recent behavior records
+   */
+  app.get("/api/analytics/records", async (req: Request, res: Response) => {
+    try {
+      const { loadRecentRecords } = await import("../../lib/analytics/behavior-storage.js");
+      const limit = parseInt(req.query.limit as string || "50", 10);
+      const records = loadRecentRecords(limit);
+      res.json(records);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get records", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/analytics/aggregates - Get aggregated data
+   */
+  app.get("/api/analytics/aggregates", async (req: Request, res: Response) => {
+    try {
+      const { loadAggregates } = await import("../../lib/analytics/aggregator.js");
+      const type = (req.query.type as string || "daily") as "hourly" | "daily" | "weekly";
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 7);
+      const aggregates = loadAggregates(type, startDate, endDate);
+      res.json(aggregates);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get aggregates", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/analytics/anomalies - Get anomaly summary
+   */
+  app.get("/api/analytics/anomalies", async (_req: Request, res: Response) => {
+    try {
+      const { getAnomalySummary } = await import("../../lib/analytics/anomaly-detector.js");
+      const summary = getAnomalySummary();
+      res.json(summary);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get anomalies", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/analytics/summary - Get aggregation summary
+   */
+  app.get("/api/analytics/summary", async (_req: Request, res: Response) => {
+    try {
+      const { getAggregationSummary } = await import("../../lib/analytics/aggregator.js");
+      const summary = getAggregationSummary();
+      res.json(summary);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get summary", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/analytics/paths - Get analytics paths
+   */
+  app.get("/api/analytics/paths", async (_req: Request, res: Response) => {
+    try {
+      const { getAnalyticsPaths } = await import("../../lib/analytics/behavior-storage.js");
+      const paths = getAnalyticsPaths();
+      res.json(paths);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get paths", details: errorMessage });
+    }
+  });
+
   // ============= MCP API (Stub - requires pi instance) =============
 
   /**
@@ -923,6 +1022,40 @@ function createApp(): Express {
         stats: { total: 0, running: 0, idle: 0 },
         note: "Runtime sessions require active pi instance",
       },
+    });
+  });
+
+  /**
+   * GET /api/runtime/stream - SSE endpoint for real-time runtime updates (stub)
+   */
+  app.get("/api/runtime/stream", (req: Request, res: Response) => {
+    // Set SSE headers
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+
+    // Send initial empty snapshot
+    res.write(`event: status_snapshot\ndata: []\nid: ${Date.now()}\n\n`);
+
+    // Send notification that runtime streaming is unavailable
+    res.write(`event: unavailable\ndata: ${JSON.stringify({ message: "Runtime streaming requires active pi instance" })}\nid: ${Date.now()}\n\n`);
+
+    // Keep connection alive with periodic comments
+    const keepAlive = setInterval(() => {
+      try {
+        res.write(": keepalive\n\n");
+      } catch {
+        clearInterval(keepAlive);
+      }
+    }, 15000);
+
+    // Clean up on close
+    req.on("close", () => {
+      clearInterval(keepAlive);
+    });
+    res.on("close", () => {
+      clearInterval(keepAlive);
     });
   });
 

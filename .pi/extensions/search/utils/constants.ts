@@ -50,6 +50,12 @@ export const DEFAULT_EXCLUDES = [
 	"build",
 	"coverage",
 
+	// Coverage reports (minified JSON, huge single-line files)
+	"coverage-report.json",
+	"coverage-final.json",
+	"*.lcov",
+	"*.lcov.info",
+
 	// Framework-specific
 	".next",
 	".nuxt",
@@ -62,6 +68,11 @@ export const DEFAULT_EXCLUDES = [
 	// Minified files (usually not useful to search)
 	"*.min.js",
 	"*.min.css",
+
+	// Lock files (large, auto-generated)
+	"package-lock.json",
+	"yarn.lock",
+	"pnpm-lock.yaml",
 
 	// pi-specific directories
 	".pi/search",

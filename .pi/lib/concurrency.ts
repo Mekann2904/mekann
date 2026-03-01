@@ -135,8 +135,26 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
   items: TInput[],
   limit: number,
   worker: (item: TInput, index: number, signal?: AbortSignal) => Promise<TResult>,
+  options: ConcurrencyRunOptions<TInput> & { settleMode: 'allSettled' },
+): Promise<SettledResult<TResult>[]>;
+export async function runWithConcurrencyLimit<TInput, TResult>(
+  items: TInput[],
+  limit: number,
+  worker: (item: TInput, index: number, signal?: AbortSignal) => Promise<TResult>,
+  options?: ConcurrencyRunOptions<TInput> & { settleMode?: 'throw' },
+): Promise<TResult[]>;
+export async function runWithConcurrencyLimit<TInput, TResult>(
+  items: TInput[],
+  limit: number,
+  worker: (item: TInput, index: number, signal?: AbortSignal) => Promise<TResult>,
+  options: ConcurrencyRunOptions<TInput>,
+): Promise<TResult[] | SettledResult<TResult>[]>;
+export async function runWithConcurrencyLimit<TInput, TResult>(
+  items: TInput[],
+  limit: number,
+  worker: (item: TInput, index: number, signal?: AbortSignal) => Promise<TResult>,
   options: ConcurrencyRunOptions<TInput> = {},
-): Promise<TResult[]> {
+): Promise<TResult[] | SettledResult<TResult>[]> {
   if (items.length === 0) return [];
 
   const abortOnError = options.abortOnError !== false;
@@ -233,6 +251,25 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
     cleanup();
   }
 
+  // allSettled mode: return SettledResult array for partial failure handling
+  // NOTE: allSettled では firstError が存在しても throw しない（契約どおり配列で返す）
+  if (settleMode === 'allSettled') {
+    return Array.from({ length: items.length }, (_, index) => {
+      const item = results[index];
+      if (!item) {
+        return {
+          status: 'rejected' as const,
+          reason: new Error(`concurrency pool internal error: missing result at index ${index}`),
+          index,
+        };
+      }
+      if (item.error) {
+        return { status: 'rejected' as const, reason: item.error, index };
+      }
+      return { status: 'fulfilled' as const, value: item.result as TResult, index };
+    });
+  }
+
   // throw mode: If any worker failed, throw the first error encountered
   // Note: Check firstError BEFORE ensureNotAborted to preserve the original error message
   if (firstError !== undefined) {
@@ -241,19 +278,6 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
 
   // Only check abort status if no worker error occurred
   ensureNotAborted(effectiveSignal);
-
-  // allSettled mode: return SettledResult array for partial failure handling
-  if (settleMode === 'allSettled') {
-    return results.map((item, index) => {
-      if (!item) {
-        return { status: 'rejected' as const, reason: new Error(`concurrency pool internal error: missing result at index ${index}`), index };
-      }
-      if (item.error) {
-        return { status: 'rejected' as const, reason: item.error, index };
-      }
-      return { status: 'fulfilled' as const, value: item.result as TResult, index };
-    }) as TResult[];
-  }
 
   // Unwrap results with explicit guards for unexpected holes.
   // Track which indices had errors for more precise error messages.

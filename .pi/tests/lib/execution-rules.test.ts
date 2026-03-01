@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
-	QUALITY_BASELINE_RULES,
+	UNIFIED_QUALITY_RULES,
 	COMMON_EXECUTION_RULES,
 	SUBAGENT_SPECIFIC_RULES,
 	COGNITIVE_BIAS_COUNTERMEASURES,
@@ -19,25 +19,25 @@ import {
 	VERIFICATION_WORKFLOW_RULES,
 } from "../../lib/execution-rules.js";
 
-describe("QUALITY_BASELINE_RULES", () => {
+describe("UNIFIED_QUALITY_RULES", () => {
 	describe("正常系", () => {
 		it("should be a string constant", () => {
-			expect(QUALITY_BASELINE_RULES).toBeDefined();
-			expect(typeof QUALITY_BASELINE_RULES).toBe("string");
+			expect(UNIFIED_QUALITY_RULES).toBeDefined();
+			expect(typeof UNIFIED_QUALITY_RULES).toBe("string");
 		});
 
 		it("should contain required sections", () => {
-			expect(QUALITY_BASELINE_RULES).toContain("出力品質基準");
-			expect(QUALITY_BASELINE_RULES).toContain("CLAIM-RESULT整合性");
-			expect(QUALITY_BASELINE_RULES).toContain("EVIDENCEの具体性");
-			expect(QUALITY_BASELINE_RULES).toContain("CONFIDENCEの妥当性");
-			expect(QUALITY_BASELINE_RULES).toContain("境界条件の明示");
+			expect(UNIFIED_QUALITY_RULES).toContain("品質基準・自己検証");
+			expect(UNIFIED_QUALITY_RULES).toContain("CLAIM-RESULT整合性");
+			expect(UNIFIED_QUALITY_RULES).toContain("EVIDENCEの具体性");
+			expect(UNIFIED_QUALITY_RULES).toContain("CONFIDENCEの妥当性");
+			expect(UNIFIED_QUALITY_RULES).toContain("境界条件の明示");
 		});
 	});
 
 	describe("境界条件", () => {
 		it("should be non-empty string", () => {
-			expect(QUALITY_BASELINE_RULES.length).toBeGreaterThan(0);
+			expect(UNIFIED_QUALITY_RULES.length).toBeGreaterThan(0);
 		});
 	});
 });
@@ -117,9 +117,9 @@ describe("SELF_VERIFICATION_RULES", () => {
 		});
 
 		it("should contain expected sections", () => {
-			expect(SELF_VERIFICATION_RULES).toContain("自己検証チェックリスト");
-			expect(SELF_VERIFICATION_RULES).toContain("自己矛盾チェック");
-			expect(SELF_VERIFICATION_RULES).toContain("証拠の過不足評価");
+			expect(SELF_VERIFICATION_RULES).toContain("自己検証");
+			expect(SELF_VERIFICATION_RULES).toContain("矛盾");
+			expect(SELF_VERIFICATION_RULES).toContain("証拠");
 		});
 	});
 

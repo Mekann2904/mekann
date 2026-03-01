@@ -48,6 +48,19 @@ import {
   getActiveUlWorkflowTask,
   invalidateCache,
 } from "./lib/ul-workflow-reader.js";
+// Analytics imports
+import {
+  getStorageStats,
+  loadRecentRecords,
+  getAnalyticsPaths,
+} from "../../lib/analytics/behavior-storage.js";
+import {
+  getAggregationSummary,
+  loadAggregates,
+} from "../../lib/analytics/aggregator.js";
+import {
+  getAnomalySummary,
+} from "../../lib/analytics/anomaly-detector.js";
 // Note: mcpManager is imported dynamically in each request to ensure
 // we always get the latest instance from globalThis (handles reload scenarios)
 
@@ -363,6 +376,8 @@ export function addContextHistory(entry: Omit<ContextHistoryEntry, "pid"> & { pi
   const pid = entry.pid ?? process.pid;
 
   if (!contextHistoryStorage || contextHistoryStorage.getPid() !== pid) {
+    // 古いインスタンスを解放してから新規作成
+    contextHistoryStorage?.dispose();
     contextHistoryStorage = new ContextHistoryStorage(pid);
   }
 
@@ -386,13 +401,15 @@ interface ServerState {
   port: number;
   pi: ExtensionAPI | null;
   ctx: ExtensionContext | null;
+  unsubscribeSessionEvents: (() => void) | null;
 }
 
 const state: ServerState = {
   server: null,
-  port: 3000,
+  port: 3456,
   pi: null,
   ctx: null,
+  unsubscribeSessionEvents: null,
 };
 
 /**
@@ -1089,6 +1106,92 @@ export function startServer(
     }
   });
 
+  // ============= Analytics API =============
+
+  /**
+   * GET /api/analytics/stats - Get storage statistics
+   */
+  app.get("/api/analytics/stats", (_req: Request, res: Response) => {
+    try {
+      const stats = getStorageStats();
+      res.json(stats);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get stats", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/analytics/records - Get recent behavior records
+   */
+  app.get("/api/analytics/records", (req: Request, res: Response) => {
+    try {
+      const limit = parseInt(req.query.limit as string || "50", 10);
+      const records = loadRecentRecords(limit);
+      res.json(records);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get records", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/analytics/aggregates - Get aggregated data
+   */
+  app.get("/api/analytics/aggregates", (req: Request, res: Response) => {
+    try {
+      const type = (req.query.type as string || "daily") as "hourly" | "daily" | "weekly";
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 7);
+
+      const aggregates = loadAggregates(type, startDate, endDate);
+      res.json(aggregates);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get aggregates", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/analytics/anomalies - Get anomaly summary
+   */
+  app.get("/api/analytics/anomalies", (_req: Request, res: Response) => {
+    try {
+      const summary = getAnomalySummary();
+      res.json(summary);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get anomalies", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/analytics/summary - Get aggregation summary
+   */
+  app.get("/api/analytics/summary", (_req: Request, res: Response) => {
+    try {
+      const summary = getAggregationSummary();
+      res.json(summary);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get summary", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/analytics/paths - Get analytics paths
+   */
+  app.get("/api/analytics/paths", (_req: Request, res: Response) => {
+    try {
+      const paths = getAnalyticsPaths();
+      res.json(paths);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get paths", details: errorMessage });
+    }
+  });
+
   // ============= UL Workflow Task API (Read-only) =============
 
   /**
@@ -1249,6 +1352,9 @@ export function startServer(
       }
     }
   });
+  
+  // Store unsubscribe function for cleanup
+  state.unsubscribeSessionEvents = unsubscribeSessionEvents;
 
   /**
    * GET /api/runtime/stream - SSE endpoint for real-time runtime updates
@@ -1323,6 +1429,8 @@ export function startServer(
 
   state.server.listen(port, () => {
     // コンテキスト履歴ストレージを初期化
+    // 既存インスタンスがあれば解放してから再作成
+    contextHistoryStorage?.dispose();
     contextHistoryStorage = new ContextHistoryStorage(process.pid);
 
     // SSEハートビートを開始
@@ -1367,6 +1475,12 @@ export function startServer(
  */
 export function stopServer(): void {
   if (state.server) {
+    // Unsubscribe from session events
+    if (state.unsubscribeSessionEvents) {
+      state.unsubscribeSessionEvents();
+      state.unsubscribeSessionEvents = null;
+    }
+    
     sseEventBus.stopHeartbeat();
     if (contextCleanupInterval) {
       clearInterval(contextCleanupInterval);

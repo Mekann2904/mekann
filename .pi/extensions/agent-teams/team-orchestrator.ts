@@ -67,15 +67,25 @@ import {
   clearBeliefStateCache,
   extractField,
   type PrecomputedMemberContext,
+  createSharedFileCache,
+  type SharedFileCache,
+  type CachedFileContent,
 } from "./communication.js";
 import { runMember } from "./member-execution.js";
-import { runFinalJudge, buildFallbackJudge, computeProxyUncertainty, computeProxyUncertaintyWithExplainability, formatJudgeExplanation, type TeamUncertaintyProxy, type JudgeExplanation } from "./judge.js";
+import { runFinalJudge, buildFallbackJudge, computeProxyUncertainty, computeProxyUncertaintyWithExplainability, formatJudgeExplanation, checkEarlyTermination, type TeamUncertaintyProxy, type JudgeExplanation, type EarlyTerminationCheck } from "./judge.js";
 import type { TeamLivePhase } from "../../lib/agent/team-types.js";
 import {
   getGlobalFailureMemory,
   hashTask,
   type FailureRecord,
 } from "./failure-memory.js";
+import {
+  createTrajectoryReducer,
+  messageToStep,
+  type TrajectoryReductionConfig,
+  type ReductionStats,
+  DEFAULT_TRAJECTORY_REDUCTION_CONFIG,
+} from "../../lib/trajectory-reduction/index.js";
 
 const logger = getLogger();
 const STABLE_AGENT_TEAM_RUNTIME = STABLE_RUNTIME_PROFILE;
@@ -152,6 +162,8 @@ export interface TeamTaskResult {
   uncertaintyProxy: TeamUncertaintyProxy;
   /** 不確実性判定の説明可能性データ */
   uncertaintyProxyExplanation: JudgeExplanation;
+  /** 軌跡圧縮統計 */
+  trajectoryReduction?: ReductionStats;
 }
 
 // ============================================================================
@@ -281,6 +293,26 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
   const memberById = new Map(input.team.members.map((member) => [member.id, member]));
   const communicationAudit: TeamCommunicationAuditEntry[] = [];
 
+  // 8.1最適化: 共有ファイルキャッシュの初期化
+  const sharedFileCache = createSharedFileCache();
+
+  // Trajectory Reduction: リデューサーを作成
+  const trajectoryConfig: TrajectoryReductionConfig = {
+    ...DEFAULT_TRAJECTORY_REDUCTION_CONFIG,
+    enabled: true,
+    // チーム実行では閾値を下げてより多くを圧縮
+    threshold: 300,
+  };
+  const trajectoryReducer = createTrajectoryReducer(
+    runId,
+    trajectoryConfig,
+    async () => {
+      // チーム実行では圧縮用LLMは使用せず、ヒューリスティックのみ
+      return "WASTE_TYPES: []\nCONTENT: (compressed)";
+    },
+  );
+  let trajectoryStepNumber = 0;
+
   // 初期イベント発行
   input.onTeamEvent?.(
     `team=${input.team.id} start strategy=${input.strategy} members=${activeMembers.length} communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryRounds}`,
@@ -301,7 +333,7 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
   }
 
   /**
-   * 結果イベントを発行
+   * 結果イベントを発行し、軌跡を記録
    */
   const emitResultEvent = (
     member: TeamMember,
@@ -315,6 +347,15 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
       member,
       `${phaseLabel} result: status=${result.status} latency=${result.latencyMs}ms summary=${normalizeForSingleLine(result.summary, 96)}${diagnostics}${result.error ? ` error=${normalizeForSingleLine(result.error, 120)}` : ""}`,
     );
+
+    // Trajectory Reduction: メンバー結果を軌跡に記録
+    trajectoryStepNumber += 1;
+    const step = messageToStep(
+      { role: "assistant", content: result.output || result.error || "" },
+      trajectoryStepNumber,
+    );
+    step.metadata = { memberId: member.id, phase: phaseLabel, status: result.status };
+    trajectoryReducer.addStep(step);
   };
 
   // ============================================================================
@@ -422,10 +463,34 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
   }
 
   // ============================================================================
+  // Early Termination Check (8.2 Optimization)
+  // ============================================================================
+
+  let earlyTerminationResult = checkEarlyTermination(memberResults);
+  let skippedByEarlyTermination = false;
+
+  if (earlyTerminationResult.canTerminateEarly && communicationRounds > 0) {
+    skippedByEarlyTermination = true;
+    input.onTeamEvent?.(
+      `early termination: agreement=${(earlyTerminationResult.agreementScore * 100).toFixed(0)}% reason=${earlyTerminationResult.reason}`
+    );
+    input.onTeamEvent?.(
+      `early termination: skipping ${communicationRounds} communication round(s) and ${failedMemberRetryRounds} retry round(s)`
+    );
+    for (const member of activeMembers) {
+      input.onMemberEvent?.(
+        member,
+        `early termination: consensus reached, communication skipped`
+      );
+    }
+  }
+
+  // ============================================================================
   // Phase 2: Communication Rounds
   // ============================================================================
-  
+
   let canRunCommunication =
+    !skippedByEarlyTermination &&
     memberResults.filter((result) => result.status === "completed").length >= 2;
   
   for (let round = 1; round <= communicationRounds; round += 1) {
@@ -481,6 +546,7 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
       memberResults,
       communicationAudit,
       emitResultEvent,
+      sharedFileCache,
     });
     
     const roundAuditEntries = communicationAudit.filter((entry) => entry.round === round);
@@ -499,26 +565,31 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
   // ============================================================================
   // Phase 3: Failed Member Retry
   // ============================================================================
-  
-  memberResults = await executeFailedMemberRetries({
-    input,
-    failedMemberRetryRounds,
-    memberResults,
-    activeMembers,
-    activeMemberById,
-    communicationLinks,
-    memberById,
-    communicationRounds,
-    communicationAudit,
-    emitResultEvent,
-    recoveredMembers,
-    failedMemberRetryApplied,
-  });
+
+  if (skippedByEarlyTermination) {
+    input.onTeamEvent?.("failed-member retry skipped: early termination active");
+  } else {
+    memberResults = await executeFailedMemberRetries({
+      input,
+      failedMemberRetryRounds,
+      memberResults,
+      activeMembers,
+      activeMemberById,
+      communicationLinks,
+      memberById,
+      communicationRounds,
+      communicationAudit,
+      emitResultEvent,
+      recoveredMembers,
+      failedMemberRetryApplied,
+      sharedFileCache,
+    });
+  }
 
   // ============================================================================
   // Phase 4: Final Judge
   // ============================================================================
-  
+
   const finalResult = await executeFinalJudge({
     input,
     memberResults,
@@ -532,9 +603,14 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
     runId,
     startedAt,
     outputFile,
+    earlyTerminationResult,
+    skippedByEarlyTermination,
   });
 
-  return finalResult;
+  return {
+    ...finalResult,
+    trajectoryReduction: trajectoryReducer.getStats(),
+  };
 }
 
 // ============================================================================
@@ -553,6 +629,8 @@ interface CommunicationRoundParams {
   memberResults: TeamMemberResult[];
   communicationAudit: TeamCommunicationAuditEntry[];
   emitResultEvent: (member: TeamMember, phaseLabel: string, result: TeamMemberResult) => void;
+  /** 8.1最適化: 共有ファイルキャッシュ */
+  sharedFileCache?: SharedFileCache;
 }
 
 async function executeCommunicationRound(
@@ -597,6 +675,7 @@ async function executeCommunicationRound(
             communicationAudit,
             emitResultEvent,
             signal: childController.signal,
+            sharedFileCache: params.sharedFileCache,
           });
         } finally {
           cleanupAbort();
@@ -625,6 +704,7 @@ async function executeCommunicationRound(
         communicationAudit,
         emitResultEvent,
         signal: input.signal,
+        sharedFileCache: params.sharedFileCache,
       });
       roundResults.push(result);
       input.onMemberResult?.(member, result);
@@ -645,6 +725,8 @@ interface RunCommunicationMemberParams {
   communicationAudit: TeamCommunicationAuditEntry[];
   emitResultEvent: (member: TeamMember, phaseLabel: string, result: TeamMemberResult) => void;
   signal?: AbortSignal;
+  /** 8.1最適化: 共有ファイルキャッシュ */
+  sharedFileCache?: SharedFileCache;
 }
 
 async function runCommunicationMember(
@@ -682,6 +764,7 @@ async function runCommunicationMember(
     round,
     partnerIds,
     contextMap,
+    fileCache: params.sharedFileCache,
   });
   
   input.onMemberEvent?.(
@@ -784,6 +867,8 @@ interface FailedMemberRetryParams {
   emitResultEvent: (member: TeamMember, phaseLabel: string, result: TeamMemberResult) => void;
   recoveredMembers: Set<string>;
   failedMemberRetryApplied: number;
+  /** 8.1最適化: 共有ファイルキャッシュ */
+  sharedFileCache?: SharedFileCache;
 }
 
 async function executeFailedMemberRetries(
@@ -902,6 +987,7 @@ async function executeFailedMemberRetries(
             memberById,
             communicationAudit,
             emitResultEvent,
+            sharedFileCache: params.sharedFileCache,
           });
 
           // Mark as recovered if retry succeeded
@@ -938,6 +1024,7 @@ async function executeFailedMemberRetries(
           memberById,
           communicationAudit,
           emitResultEvent,
+          sharedFileCache: params.sharedFileCache,
         });
 
         // Mark as recovered if retry succeeded
@@ -989,6 +1076,8 @@ interface RunRetryMemberParams {
   memberById: Map<string, TeamMember>;
   communicationAudit: TeamCommunicationAuditEntry[];
   emitResultEvent: (member: TeamMember, phaseLabel: string, result: TeamMemberResult) => void;
+  /** 8.1最適化: 共有ファイルキャッシュ */
+  sharedFileCache?: SharedFileCache;
 }
 
 async function runRetryMember(params: RunRetryMemberParams): Promise<TeamMemberResult> {
@@ -1027,6 +1116,7 @@ async function runRetryMember(params: RunRetryMemberParams): Promise<TeamMemberR
       round: retryPhaseRound,
       partnerIds,
       contextMap,
+      fileCache: params.sharedFileCache,
     });
     
     input.onMemberEvent?.(
@@ -1114,6 +1204,10 @@ interface FinalJudgeParams {
   runId: string;
   startedAt: string;
   outputFile: string;
+  /** 早期終了チェック結果（8.2最適化） */
+  earlyTerminationResult?: EarlyTerminationCheck;
+  /** 早期終了によりスキップされたか */
+  skippedByEarlyTermination?: boolean;
 }
 
 async function executeFinalJudge(
@@ -1132,18 +1226,25 @@ async function executeFinalJudge(
     runId,
     startedAt,
     outputFile,
+    earlyTerminationResult,
+    skippedByEarlyTermination,
   } = params;
 
   const failed = memberResults.filter((result) => result.status === "failed");
   const communicationLinksRecord = Object.fromEntries(
     activeMembers.map((member) => [member.id, communicationLinks.get(member.id) ?? []]),
   );
-  
+
+  // 早期終了情報をsummaryに含める
+  const earlyTerminationSummary = skippedByEarlyTermination
+    ? ` early_termination=yes agreement=${(earlyTerminationResult?.agreementScore ?? 0 * 100).toFixed(0)}%`
+    : "";
+
   const summary =
     failed.length === 0
-      ? `${memberResults.length} teammates completed. communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryApplied}/${failedMemberRetryRounds} recovered=${recoveredMembers.size}`
-      : `${memberResults.length - failed.length}/${memberResults.length} teammates completed (${failed.length} failed). communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryApplied}/${failedMemberRetryRounds} recovered=${recoveredMembers.size}`;
-  
+      ? `${memberResults.length} teammates completed. communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryApplied}/${failedMemberRetryRounds} recovered=${recoveredMembers.size}${earlyTerminationSummary}`
+      : `${memberResults.length - failed.length}/${memberResults.length} teammates completed (${failed.length} failed). communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryApplied}/${failedMemberRetryRounds} recovered=${recoveredMembers.size}${earlyTerminationSummary}`;
+
   const { proxy, explanation } = computeProxyUncertaintyWithExplainability(memberResults);
 
   // Log judge explanation for transparency (P0 improvement: decision explainability)
@@ -1161,7 +1262,9 @@ async function executeFinalJudge(
     achieved.push(`${memberResults.length - failed.length}/${memberResults.length} teammates completed`);
     remaining.push(`${failed.length} teammate(s) failed`);
   }
-  if (communicationRounds > 0 && communicationAudit.length > 0) {
+  if (skippedByEarlyTermination) {
+    achieved.push("Early termination: consensus reached");
+  } else if (communicationRounds > 0 && communicationAudit.length > 0) {
     achieved.push("Communication rounds executed");
   }
 
