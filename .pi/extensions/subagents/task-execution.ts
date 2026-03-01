@@ -713,7 +713,12 @@ export function buildSubagentPrompt(input: {
     lines.push("[CONFIDENCE] <0.0-1.0>");
     lines.push("[ACTION] <next|done>");
     lines.push("");
-    lines.push("PROHIBITED: Japanese, long explanations, thinking blocks");
+    lines.push("PROHIBITED:");
+    lines.push("- Japanese language (use English only)");
+    lines.push("- Long explanations (be concise)");
+    lines.push("- [Thinking] blocks (output structured format directly)");
+    lines.push("- Internal monologue (go straight to output)");
+    lines.push("- Markdown formatting (use labels only)");
     lines.push("=".repeat(60));
     
     return lines.join("\n");
