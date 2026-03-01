@@ -22,6 +22,12 @@ import { GripVertical, Calendar, Trash2, CheckCircle2, Circle } from "lucide-pre
 import { cn } from "@/lib/utils";
 import type { RuntimeSession } from "../hooks/useRuntimeStatus";
 import { ExecutionStatusIndicator } from "./execution-status-indicator";
+import {
+  TYPOGRAPHY,
+  PATTERNS,
+  SPACING,
+  STATE_STYLES,
+} from "./layout";
 
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
 export type TaskStatus = "todo" | "in_progress" | "completed" | "cancelled" | "failed";
@@ -155,7 +161,7 @@ export function KanbanTaskCard({
   // UL workflow visual elements
   const ulWorkflowBadge = task.isUlWorkflow && (
     <span
-      class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium"
+      class={cn(PATTERNS.badgeSm, "rounded-full")}
       style={{ backgroundColor: "#8b5cf6", color: "#ffffff" }}
       title="UL Workflow Task"
     >
@@ -164,7 +170,7 @@ export function KanbanTaskCard({
   );
 
   const phaseBadge = task.phase && task.isUlWorkflow && (
-    <span class="text-[10px] text-muted-foreground uppercase">
+    <span class={cn(TYPOGRAPHY.monoSm, "uppercase")}>
       {task.phase}
     </span>
   );
