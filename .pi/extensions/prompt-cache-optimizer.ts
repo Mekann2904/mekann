@@ -355,7 +355,7 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify(
           `[Cache Optimizer] Detected ${detection.elements.length} dynamic elements in system prompt: ` +
             `${detection.types.join(", ")}. This may reduce cache hit rate.`,
-          "warn"
+          "warning"
         );
 
         if (config.debug) {
@@ -399,17 +399,19 @@ export default function (pi: ExtensionAPI) {
     // z.ai: usage.prompt_tokens_details.cached_tokens
     // OpenAI: usage.prompt_tokens_details.cached_tokens
     const cachedTokens = (usage as any).prompt_tokens_details?.cached_tokens || 0;
+    const usageAny = usage as any;
+    const contextAny = contextUsage as any;
 
     const metrics: CacheMetrics = {
       sessionId: randomUUID(),
       timestamp: Date.now(),
-      provider: contextUsage.model?.provider || "unknown",
-      model: contextUsage.model?.id || "unknown",
-      promptTokens: usage.prompt_tokens || 0,
+      provider: contextAny.model?.provider || "unknown",
+      model: contextAny.model?.id || "unknown",
+      promptTokens: usageAny.prompt_tokens || 0,
       cachedTokens,
-      completionTokens: usage.completion_tokens || 0,
+      completionTokens: usageAny.completion_tokens || 0,
       estimatedSavingsPercent:
-        usage.prompt_tokens > 0 ? (cachedTokens / usage.prompt_tokens) * 50 : 0,
+        usageAny.prompt_tokens > 0 ? (cachedTokens / usageAny.prompt_tokens) * 50 : 0,
     };
 
     sessionMetrics.push(metrics);
@@ -498,7 +500,7 @@ export default function (pi: ExtensionAPI) {
     handler: async (_args, ctx) => {
       const systemPrompt = ctx.getSystemPrompt();
       if (!systemPrompt) {
-        ctx.ui.notify("No system prompt available", "warn");
+        ctx.ui.notify("No system prompt available", "warning");
         return;
       }
 
@@ -509,10 +511,10 @@ export default function (pi: ExtensionAPI) {
       } else {
         ctx.ui.notify(
           `[Cache Optimizer] Found ${detection.elements.length} dynamic elements:`,
-          "warn"
+          "warning"
         );
         for (const type of detection.types) {
-          ctx.ui.notify(`  - ${type}`, "warn");
+          ctx.ui.notify(`  - ${type}`, "warning");
         }
         ctx.ui.notify(`Recommendation: ${detection.recommendation}`, "info");
       }

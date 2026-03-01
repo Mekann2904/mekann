@@ -107,8 +107,8 @@ export class MetaToolExtractor {
   generateTool(candidate: MetaToolCandidate): MetaToolDefinition {
     const name = this.generateToolName(candidate);
     const description = this.generateDescription(candidate);
-    const parameters = this.inferParameters(candidate);
-    const implementation = this.generateImplementation(candidate);
+    const parameters = this.inferParameters(candidate.toolSequence);
+    const implementation = this.generateImplementation(candidate.toolSequence);
 
     return {
       name,
