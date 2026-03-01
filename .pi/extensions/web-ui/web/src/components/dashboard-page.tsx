@@ -41,8 +41,6 @@ import { cn } from "@/lib/utils";
 import {
   PageLayout,
   PageHeader,
-  StatsGrid,
-  SimpleStatsCard,
   LoadingState,
   ErrorBanner,
   ChartEmptyState,
@@ -318,18 +316,6 @@ export function DashboardPage() {
           </>
         }
       />
-
-      {/* 全体統計 */}
-      <StatsGrid cols={2}>
-        <SimpleStatsCard
-          value={totalStats.totalInput.toLocaleString()}
-          label="Total Input"
-        />
-        <SimpleStatsCard
-          value={totalStats.totalOutput.toLocaleString()}
-          label="Total Output"
-        />
-      </StatsGrid>
 
       {/* 表示モード切り替え */}
       <DisplayModeButtons />
