@@ -48,6 +48,19 @@ import {
   getActiveUlWorkflowTask,
   invalidateCache,
 } from "./lib/ul-workflow-reader.js";
+// Analytics imports
+import {
+  getStorageStats,
+  loadRecentRecords,
+  getAnalyticsPaths,
+} from "../../lib/analytics/behavior-storage.js";
+import {
+  getAggregationSummary,
+  loadAggregates,
+} from "../../lib/analytics/aggregator.js";
+import {
+  getAnomalySummary,
+} from "../../lib/analytics/anomaly-detector.js";
 // Note: mcpManager is imported dynamically in each request to ensure
 // we always get the latest instance from globalThis (handles reload scenarios)
 
@@ -1090,6 +1103,92 @@ export function startServer(
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       res.status(500).json({ success: false, error: "Failed to delete task", details: errorMessage });
+    }
+  });
+
+  // ============= Analytics API =============
+
+  /**
+   * GET /api/analytics/stats - Get storage statistics
+   */
+  app.get("/api/analytics/stats", (_req: Request, res: Response) => {
+    try {
+      const stats = getStorageStats();
+      res.json(stats);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get stats", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/analytics/records - Get recent behavior records
+   */
+  app.get("/api/analytics/records", (req: Request, res: Response) => {
+    try {
+      const limit = parseInt(req.query.limit as string || "50", 10);
+      const records = loadRecentRecords(limit);
+      res.json(records);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get records", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/analytics/aggregates - Get aggregated data
+   */
+  app.get("/api/analytics/aggregates", (req: Request, res: Response) => {
+    try {
+      const type = (req.query.type as string || "daily") as "hourly" | "daily" | "weekly";
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 7);
+
+      const aggregates = loadAggregates(type, startDate, endDate);
+      res.json(aggregates);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get aggregates", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/analytics/anomalies - Get anomaly summary
+   */
+  app.get("/api/analytics/anomalies", (_req: Request, res: Response) => {
+    try {
+      const summary = getAnomalySummary();
+      res.json(summary);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get anomalies", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/analytics/summary - Get aggregation summary
+   */
+  app.get("/api/analytics/summary", (_req: Request, res: Response) => {
+    try {
+      const summary = getAggregationSummary();
+      res.json(summary);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get summary", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/analytics/paths - Get analytics paths
+   */
+  app.get("/api/analytics/paths", (_req: Request, res: Response) => {
+    try {
+      const paths = getAnalyticsPaths();
+      res.json(paths);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get paths", details: errorMessage });
     }
   });
 
