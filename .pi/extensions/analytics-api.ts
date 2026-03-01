@@ -28,6 +28,8 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { join, extname } from "node:path";
+import { Type } from "@sinclair/typebox";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
   getStorageStats,
   loadRecentRecords,
@@ -166,8 +168,6 @@ async function handleApiRequest(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  const paths = getAnalyticsPaths();
-
   // GET /api/analytics/stats
   if (url === "/api/analytics/stats") {
     const stats = getStorageStats();
@@ -213,6 +213,7 @@ async function handleApiRequest(
 
   // GET /api/analytics/paths
   if (url === "/api/analytics/paths") {
+    const paths = getAnalyticsPaths();
     sendJson(res, paths);
     return;
   }
@@ -271,3 +272,127 @@ function sendError(res: ServerResponse, code: number, message: string): void {
   res.writeHead(code);
   res.end(JSON.stringify({ error: message }));
 }
+
+// ============================================================================
+// TypeBox Schemas
+// ============================================================================
+
+const StartApiParams = Type.Object({
+  port: Type.Optional(Type.Number({ description: "Port number (default: 3457)" })),
+  host: Type.Optional(Type.String({ description: "Host to bind (default: localhost)" })),
+});
+
+const StopApiParams = Type.Object({});
+
+const StatusApiParams = Type.Object({});
+
+// ============================================================================
+// Extension Factory
+// ============================================================================
+
+export default (pi: ExtensionAPI) => {
+  pi.registerTool({
+    name: "analytics_api_start",
+    label: "Analytics API Start",
+    description: "Start the LLM behavior analytics REST API server for web UI dashboard",
+    parameters: StartApiParams,
+
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      try {
+        await startAnalyticsApiServer({
+          port: params.port ?? 3457,
+          host: params.host ?? "localhost",
+        });
+        return {
+          content: [{
+            type: "text",
+            text: `Analytics API server started at http://${config.host}:${config.port}`,
+          }],
+          details: {
+            status: "success",
+            port: config.port,
+            host: config.host,
+          },
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          }],
+          details: {
+            status: "error",
+            error: error instanceof Error ? error.message : String(error),
+          },
+        };
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "analytics_api_stop",
+    label: "Analytics API Stop",
+    description: "Stop the LLM behavior analytics REST API server",
+    parameters: StopApiParams,
+
+    async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+      try {
+        await stopAnalyticsApiServer();
+        return {
+          content: [{
+            type: "text",
+            text: "Analytics API server stopped",
+          }],
+          details: { status: "success" },
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          }],
+          details: {
+            status: "error",
+            error: error instanceof Error ? error.message : String(error),
+          },
+        };
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "analytics_api_status",
+    label: "Analytics API Status",
+    description: "Check if the analytics API server is running",
+    parameters: StatusApiParams,
+
+    async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+      const running = isAnalyticsApiServerRunning();
+      return {
+        content: [{
+          type: "text",
+          text: running
+            ? `Analytics API server is running at http://${config.host}:${config.port}`
+            : "Analytics API server is not running",
+        }],
+        details: {
+          status: "success",
+          running,
+          port: config.port,
+          host: config.host,
+          url: running ? `http://${config.host}:${config.port}` : null,
+        },
+      };
+    },
+  });
+
+  pi.registerCommand("analytics-dashboard", {
+    description: "Open the LLM behavior analytics dashboard in browser",
+    handler: async (_args, _ctx) => {
+      if (!isAnalyticsApiServerRunning()) {
+        await startAnalyticsApiServer();
+      }
+      console.log(`Dashboard available at: http://${config.host}:${config.port}`);
+    },
+  });
+};
