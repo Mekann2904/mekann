@@ -14,10 +14,8 @@
  *   - trajectory_reduce: 手動圧縮ツール
  *   - trajectory_stats: 統計表示ツール
  *   - trajectory_config: 設定管理ツール
- *   - subagents.tsへの自動統合フック
  * why_it_exists:
  *   - ユーザーが軌跡圧縮機能を操作できるようにするため
- *   - 既存のエージェント実行に自動的に統合するため
  * scope:
  *   in: ExtensionAPI, 設定
  *   out: ツール登録, イベントフック
@@ -87,12 +85,28 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  // LLM呼び出し関数（簡易実装）
-  async function callLLM(prompt: string, model: string): Promise<string> {
-    // 実際の実装では pi のインフラを使用
-    // 現在は簡易的なモック実装
-    console.log(`[trajectory-reduction] Calling ${model} for reflection...`);
+  // 現在のモデルを取得（PI_CURRENT_MODEL環境変数から）
+  function getCurrentModel(): string {
+    const envModel = process.env.PI_CURRENT_MODEL;
+    if (envModel) {
+      return envModel;
+    }
+    return DEFAULT_TRAJECTORY_REDUCTION_CONFIG.reflectionModel;
+  }
 
+  // LLM呼び出し関数
+  async function callLLM(prompt: string, model: string): Promise<string> {
+    const effectiveModel = getCurrentModel();
+    
+    console.log(`[trajectory-reduction] Calling ${effectiveModel} for reflection...`);
+
+    // TODO: piのcallModelViaPiインフラを使用
+    // 現在はフォールバック実装
+    return fallbackLLM(prompt, effectiveModel);
+  }
+
+  // フォールバック用モック関数
+  function fallbackLLM(prompt: string, model: string): string {
     // テスト出力を検出した場合の圧縮
     if (prompt.includes("PASSED") && prompt.length > 1000) {
       const failedMatch = prompt.match(/FAILED[^\n]*/g);
@@ -139,7 +153,6 @@ CONTENT:
       const format = params.format ?? "markdown";
 
       if (params.runId) {
-        // 特定の実行の統計
         const reducer = globalReducerStore.get(params.runId);
         if (!reducer) {
           return {
@@ -172,7 +185,6 @@ CONTENT:
 
       // 全実行の統計
       const allStats: { runId: string; stats: ReductionStats }[] = [];
-      // Note: プライベートプロパティへのアクセスを回避
       const reducerEntries = Array.from((globalReducerStore as unknown as Map<string, TrajectoryReducer>).entries());
 
       for (const [runId, reducer] of reducerEntries) {
@@ -181,18 +193,13 @@ CONTENT:
 
       if (format === "json") {
         return {
-          content: [{
-            type: "text" as const,
-            text: JSON.stringify(allStats, null, 2),
-          }],
+          content: [{ type: "text" as const, text: JSON.stringify(allStats, null, 2) }],
           details: { runs: allStats },
         };
       }
 
       const summary = allStats
-        .map(({ runId, stats }) => {
-          return `### ${runId}\n${formatStats(stats)}`;
-        })
+        .map(({ runId, stats }) => `### ${runId}\n${formatStats(stats)}`)
         .join("\n\n");
 
       return {
@@ -222,6 +229,7 @@ CONTENT:
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const config = loadConfig(ctx.cwd);
+      const currentModel = getCurrentModel();
 
       switch (params.action) {
         case "show": {
@@ -231,19 +239,14 @@ CONTENT:
             "| パラメータ | 値 |",
             "|-----------|-----|",
             `| enabled | ${config.enabled} |`,
-            `| reflectionModel | ${config.reflectionModel} |`,
+            `| reflectionModel | ${currentModel} (設定: ${config.reflectionModel}) |`,
             `| threshold | ${config.threshold} |`,
             `| stepsAfter | ${config.stepsAfter} |`,
             `| stepsBefore | ${config.stepsBefore} |`,
-            `| skipShortTasks | ${config.skipShortTasks} |`,
-            `| minStepsForReduction | ${config.minStepsForReduction} |`,
-            `| logReductions | ${config.logReductions} |`,
-            `| skipOnCacheHit | ${config.skipOnCacheHit} |`,
-            `| maxContextTokens | ${config.maxContextTokens} |`,
           ];
           return {
             content: [{ type: "text" as const, text: lines.join("\n") }],
-            details: { config },
+            details: { config, currentModel },
           };
         }
 
@@ -266,10 +269,7 @@ CONTENT:
         case "set": {
           if (!params.key || params.value === undefined) {
             return {
-              content: [{
-                type: "text" as const,
-                text: "エラー: key と value パラメータが必要です。",
-              }],
+              content: [{ type: "text" as const, text: "エラー: key と value パラメータが必要です。" }],
               details: { error: "missing_params" },
             };
           }
@@ -277,32 +277,19 @@ CONTENT:
           const key = params.key as keyof TrajectoryReductionConfig;
           let value: string | number | boolean = params.value;
 
-          // 型変換
-          if (key === "threshold" || key === "stepsAfter" || key === "stepsBefore" ||
-              key === "minStepsForReduction" || key === "maxContextTokens") {
+          if (["threshold", "stepsAfter", "stepsBefore", "minStepsForReduction", "maxContextTokens"].includes(key)) {
             value = parseInt(params.value, 10);
-            if (isNaN(value)) {
+            if (isNaN(value as number)) {
               return {
-                content: [{
-                  type: "text" as const,
-                  text: `エラー: ${key} は数値である必要があります。`,
-                }],
+                content: [{ type: "text" as const, text: `エラー: ${key} は数値である必要があります。` }],
                 details: { error: "invalid_type", key },
               };
             }
-          } else if (key === "enabled" || key === "skipShortTasks" ||
-                     key === "logReductions" || key === "skipOnCacheHit") {
-            value = params.value.toLowerCase() === "true";
           }
 
-          const updates = { [key]: value } as Partial<TrajectoryReductionConfig>;
-          saveConfig(ctx.cwd, updates);
-
+          saveConfig(ctx.cwd, { [key]: value } as Partial<TrajectoryReductionConfig>);
           return {
-            content: [{
-              type: "text" as const,
-              text: `設定を更新しました: ${key} = ${value}`,
-            }],
+            content: [{ type: "text" as const, text: `設定を更新しました: ${key} = ${value}` }],
             details: { key, value },
           };
         }
@@ -329,7 +316,6 @@ CONTENT:
       let reducer = globalReducerStore.get(params.runId);
 
       if (!reducer) {
-        // 新規作成
         const config = loadConfig(ctx.cwd);
         reducer = createTrajectoryReducer(params.runId, config, callLLM);
       }
@@ -339,10 +325,7 @@ CONTENT:
 
       if (!result) {
         return {
-          content: [{
-            type: "text" as const,
-            text: `ステップ ${currentStep} は圧縮条件を満たしていません（閾値以下または既に圧縮済み）。`,
-          }],
+          content: [{ type: "text" as const, text: `ステップ ${currentStep} は圧縮条件を満たしていません。` }],
           details: { compressed: false, step: currentStep },
         };
       }
@@ -385,10 +368,9 @@ CONTENT:
       const [command, ...rest] = input.split(/\s+/);
 
       if (command === "stats") {
-        const runId = rest[0];
         pi.sendMessage({
           customType: "trajectory-stats",
-          content: runId ? `実行 ${runId} の統計を取得中...` : "全実行の統計を取得中...",
+          content: rest[0] ? `実行 ${rest[0]} の統計を取得中...` : "全実行の統計を取得中...",
           display: true,
         });
         return;
@@ -396,7 +378,7 @@ CONTENT:
 
       if (command === "config") {
         const subCommand = rest[0];
-        if (subCommand === "show" || subCommand === "enable" || subCommand === "disable") {
+        if (["show", "enable", "disable"].includes(subCommand)) {
           pi.sendMessage({
             customType: "trajectory-config",
             content: `設定を${subCommand === "show" ? "表示" : subCommand === "enable" ? "有効化" : "無効化"}中...`,
@@ -429,17 +411,15 @@ CONTENT:
   // セッション開始時の初期化
   pi.on("session_start", async (_event, ctx) => {
     const config = loadConfig(ctx.cwd);
+    const currentModel = getCurrentModel();
     ctx.ui.notify(
-      `Trajectory Reduction 拡張機能を読み込みました (enabled: ${config.enabled}, model: ${config.reflectionModel})`,
+      `Trajectory Reduction 拡張機能を読み込みました (enabled: ${config.enabled}, model: ${currentModel})`,
       "info"
     );
   });
 
-  // エクスポート: 他の拡張機能から使用可能
+  // エクスポート
   return {
-    /**
-     * リデューサーを作成または取得
-     */
     getOrCreateReducer(runId: string, cwd: string): TrajectoryReducer {
       let reducer = globalReducerStore.get(runId);
       if (!reducer) {
@@ -449,30 +429,24 @@ CONTENT:
       return reducer;
     },
 
-    /**
-     * 軌跡にステップを追加
-     */
     addStep(runId: string, message: { role: string; content: string }, stepNumber: number): void {
       const step = messageToStep(message, stepNumber);
       globalTrajectoryStore.addStep(runId, step);
     },
 
-    /**
-     * ステップ実行後に圧縮を試行
-     */
     async reduceAfterStep(runId: string, currentStep: number, cwd: string) {
       const reducer = this.getOrCreateReducer(runId, cwd);
       return reducer.afterStepExecution(currentStep);
     },
 
-    /**
-     * 現在の設定を取得
-     */
     getConfig(cwd: string): TrajectoryReductionConfig {
       return loadConfig(cwd);
+    },
+
+    getCurrentModel(): string {
+      return getCurrentModel();
     },
   };
 }
 
-// 型エクスポート
 export type TrajectoryReductionExtension = ReturnType<typeof exports>;
