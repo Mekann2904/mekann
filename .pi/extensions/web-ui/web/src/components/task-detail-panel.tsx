@@ -236,6 +236,7 @@ export function TaskDetailPanel({
                 if (e.key === "Enter") {
                   handleTitleBlur();
                 } else if (e.key === "Escape") {
+                  e.stopPropagation();
                   setEditedTask({ ...editedTask, title: task.title });
                   setIsEditingTitle(false);
                 }
@@ -408,6 +409,7 @@ export function TaskDetailPanel({
               onBlur={handleDescriptionBlur}
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
+                  e.stopPropagation();
                   setEditedTask({ ...editedTask, description: task.description });
                   setIsEditingDescription(false);
                 }
@@ -511,6 +513,7 @@ export function TaskDetailPanel({
                         setIsAddingSubtask(false);
                       }
                     } else if (e.key === "Escape") {
+                      e.stopPropagation();
                       setNewSubtaskTitle("");
                       setIsAddingSubtask(false);
                     }

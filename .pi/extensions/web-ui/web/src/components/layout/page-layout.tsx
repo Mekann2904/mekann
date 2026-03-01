@@ -49,7 +49,8 @@ export function PageLayout({
   variant = "default",
   testId,
 }: PageLayoutProps) {
-  const baseClasses = "flex h-full flex-col";
+  // board variant uses flex-row for side panel layout
+  const baseClasses = variant === "board" ? "flex h-full flex-row" : "flex h-full flex-col";
 
   const variantClasses: Record<PageLayoutVariant, string> = {
     default: "gap-4 p-4 overflow-auto",

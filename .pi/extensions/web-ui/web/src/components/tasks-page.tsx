@@ -83,18 +83,36 @@ export function TasksPage() {
   const [stats, setStats] = useState<TaskStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   
   // Runtime status for execution indicators
   const { sessions: runtimeSessions } = useRuntimeStatus();
-  
+
+  // Derive selectedTask from tasks array (always fresh after polling)
+  const selectedTask = useMemo(() => {
+    if (!selectedTaskId) return null;
+    return tasks.find(t => t.id === selectedTaskId) || null;
+  }, [selectedTaskId, tasks]);
+
   // Inline add state per column
   const [addingToColumn, setAddingToColumn] = useState<TaskStatus | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const addInputRefs = useRef<Record<TaskStatus, HTMLTextAreaElement | null>>({} as Record<TaskStatus, HTMLTextAreaElement | null>);
+
+  // Refs for keyboard handler (avoid re-registering event listener)
+  const addingToColumnRef = useRef(addingToColumn);
+  const selectedTaskIdRef = useRef(selectedTaskId);
+
+  useEffect(() => {
+    addingToColumnRef.current = addingToColumn;
+  }, [addingToColumn]);
+
+  useEffect(() => {
+    selectedTaskIdRef.current = selectedTaskId;
+  }, [selectedTaskId]);
 
   // Fetch tasks
   const fetchTasks = useCallback(async () => {
@@ -347,8 +365,8 @@ export function TasksPage() {
         throw new Error("Failed to delete task");
       }
 
-      if (selectedTask?.id === id) {
-        setSelectedTask(null);
+      if (selectedTaskId === id) {
+        setSelectedTaskId(null);
       }
       await fetchTasks();
       await fetchStats();
@@ -375,17 +393,9 @@ export function TasksPage() {
         throw new Error("Failed to create subtask");
       }
 
+      // fetchTasks() updates tasks array, selectedTask is auto-updated via useMemo
       await fetchTasks();
       await fetchStats();
-
-      // Refresh selectedTask to update subtask list
-      if (selectedTask) {
-        const refreshedRes = await fetch(`${API_BASE}/api/tasks/${selectedTask.id}`);
-        if (refreshedRes.ok) {
-          const data = await refreshedRes.json();
-          setSelectedTask(data.data);
-        }
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create subtask");
     }
@@ -407,17 +417,9 @@ export function TasksPage() {
         throw new Error("Failed to update subtask");
       }
 
+      // fetchTasks() updates tasks array, selectedTask is auto-updated via useMemo
       await fetchTasks();
       await fetchStats();
-
-      // Refresh selectedTask to update subtask progress
-      if (selectedTask) {
-        const refreshedRes = await fetch(`${API_BASE}/api/tasks/${selectedTask.id}`);
-        if (refreshedRes.ok) {
-          const data = await refreshedRes.json();
-          setSelectedTask(data.data);
-        }
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update subtask");
     }
@@ -434,17 +436,9 @@ export function TasksPage() {
         throw new Error("Failed to delete subtask");
       }
 
+      // fetchTasks() updates tasks array, selectedTask is auto-updated via useMemo
       await fetchTasks();
       await fetchStats();
-
-      // Refresh selectedTask to update subtask list
-      if (selectedTask) {
-        const refreshedRes = await fetch(`${API_BASE}/api/tasks/${selectedTask.id}`);
-        if (refreshedRes.ok) {
-          const data = await refreshedRes.json();
-          setSelectedTask(data.data);
-        }
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete subtask");
     }
@@ -522,17 +516,17 @@ export function TasksPage() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (addingToColumn) {
+        if (addingToColumnRef.current) {
           setAddingToColumn(null);
           setNewTaskTitle("");
-        } else if (selectedTask) {
-          setSelectedTask(null);
+        } else if (selectedTaskIdRef.current) {
+          setSelectedTaskId(null);
         }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [addingToColumn, selectedTask]);
+  }, []);
 
   // Render column
   const renderColumn = (column: ColumnConfig) => {
@@ -573,7 +567,7 @@ export function TasksPage() {
         </div>
 
         {/* Task cards */}
-        <div class={cn("flex-1 overflow-y-auto p-2", SPACING.element)}>
+        <div class="flex-1 overflow-y-auto p-2 space-y-2">
           {columnTasks.map((task) => {
             // Check if this is a subtask
             const isSubtask = !!task.parentTaskId;
@@ -593,7 +587,7 @@ export function TasksPage() {
                 subtaskProgress={subtaskProgress}
                 isSubtask={isSubtask}
                 session={taskSession}
-                onClick={() => setSelectedTask(task)}
+                onClick={() => setSelectedTaskId(task.id)}
                 onDragStart={(e) => handleDragStart(e, task)}
                 onDragEnd={handleDragEnd}
                 onDelete={() => handleDelete(task.id)}
@@ -744,25 +738,20 @@ export function TasksPage() {
         <TaskDetailPanel
           task={selectedTask}
           allTasks={tasks}
-          onClose={() => setSelectedTask(null)}
+          onClose={() => setSelectedTaskId(null)}
           onUpdate={(updated) => {
             handleUpdateTask(updated);
-            setSelectedTask(updated);
+            // selectedTask auto-updates via useMemo when tasks changes
           }}
           onDelete={() => handleDelete(selectedTask.id)}
           onStatusChange={async (status) => {
-            const success = await handleStatusChange(selectedTask.id, status);
-            if (success) {
-              setSelectedTask({ ...selectedTask, status });
-            }
+            await handleStatusChange(selectedTask.id, status);
+            // selectedTask auto-updates via useMemo when tasks changes
           }}
           onCreateSubtask={handleCreateSubtask}
           onUpdateSubtask={(subtask) => {
             handleUpdateSubtask(subtask);
-            // Refresh selected task if it's the parent
-            if (subtask.parentTaskId === selectedTask.id) {
-              // Keep current selection
-            }
+            // selectedTask auto-updates via useMemo when tasks changes
           }}
           onDeleteSubtask={handleDeleteSubtask}
         />
