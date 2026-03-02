@@ -150,10 +150,29 @@ export function DashboardPage() {
   const [contextHistory, setContextHistory] = useState<ContextHistoryResponse | null>(null);
   const [contextLoading, setContextLoading] = useState(true);
   const [contextError, setContextError] = useState<string | null>(null);
-  const [displayMode, setDisplayMode] = useState<"input" | "output" | "both">("both");
+  const [displayMode, setDisplayMode] = useState<"input" | "output">("input");
   const [sseConnected, setSseConnected] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Agent Usage Stats
+  const [agentUsage, setAgentUsage] = useState<{
+    totals: {
+      toolCalls: number;
+      toolErrors: number;
+      agentRuns: number;
+      agentRunErrors: number;
+      contextSamples: number;
+      contextRatioSum: number;
+      contextTokenSamples: number;
+      contextTokenSum: number;
+    };
+    features: Record<string, {
+      calls: number;
+      errors: number;
+      avgContext?: number;
+    }>;
+  } | null>(null);
 
   // アクティブなUL Workflowタスク
   const [activeTask, setActiveTask] = useState<{ id: string; title: string; ownerInstanceId?: string } | null>(null);
@@ -178,6 +197,21 @@ export function DashboardPage() {
       console.error("Failed to fetch context history:", e);
     } finally {
       setContextLoading(false);
+    }
+  }, []);
+
+  // Agent Usage Statsを取得
+  const fetchAgentUsage = useCallback(async () => {
+    try {
+      const res = await fetch("/api/agent-usage");
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          setAgentUsage(json.data);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch agent usage:", e);
     }
   }, []);
 
@@ -320,12 +354,14 @@ export function DashboardPage() {
   // 初回データ取得 + SSE接続
   useEffect(() => {
     fetchContextHistory();
+    fetchAgentUsage();
     connectSSE();
 
     // Fallback polling (30 seconds) in case SSE fails
     const interval = setInterval(() => {
       if (!sseConnectedRef.current) {
         fetchContextHistory();
+        fetchAgentUsage();
       }
     }, 30000);
 
@@ -338,7 +374,7 @@ export function DashboardPage() {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [fetchContextHistory, connectSSE]);
+  }, [fetchContextHistory, fetchAgentUsage, connectSSE]);
 
   const instances = contextHistory ? Object.values(contextHistory.instances) : [];
   const instanceCount = instances.length;
@@ -519,7 +555,7 @@ export function DashboardPage() {
                           day: "numeric",
                         });
                       }}
-                    />
+                    /> as any
                   }
                 />
                 <Line
@@ -573,7 +609,7 @@ export function DashboardPage() {
                     <Legend
                       verticalAlign="bottom"
                       height={24}
-                      formatter={(value, entry) => {
+                      formatter={(value: string, entry: { payload?: { value?: number } }) => {
                         const total = totalStats.totalInput + totalStats.totalOutput;
                         const percent = total > 0 ? ((entry.payload?.value || 0) / total * 100).toFixed(1) : "0";
                         return <span class="text-xs text-muted-foreground">{value} ({percent}%)</span>;
@@ -585,6 +621,46 @@ export function DashboardPage() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Tool Usage Stats */}
+      {agentUsage && (
+        <Card class="mb-4">
+          <CardHeader class="pb-2">
+            <CardTitle class="text-sm">Tool Usage Statistics</CardTitle>
+            <CardDescription class="text-xs">
+              {agentUsage.totals.toolCalls.toLocaleString()} calls | {agentUsage.totals.toolErrors} errors | Avg context: {
+                agentUsage.totals.contextSamples > 0
+                  ? (agentUsage.totals.contextRatioSum / agentUsage.totals.contextSamples * 100).toFixed(1)
+                  : "0"
+              }%
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div class="space-y-1">
+              {Object.entries(agentUsage.features)
+                .sort((a, b) => b[1].calls - a[1].calls)
+                .slice(0, 10)
+                .map(([name, data]) => {
+                  const shortName = name.replace(/^\[tool\] /, "").replace(/^\[agent_run\] /, "[agent] ");
+                  const errorRate = data.calls > 0 ? (data.errors / data.calls * 100).toFixed(1) : "0";
+                  const avgCtx = data.avgContext !== undefined ? (data.avgContext * 100).toFixed(0) : "-";
+                  return (
+                    <div key={name} class="flex items-center justify-between text-xs py-1 border-b border-border/50 last:border-0">
+                      <span class="text-muted-foreground truncate flex-1">{shortName}</span>
+                      <div class="flex items-center gap-4 text-right">
+                        <span class="w-16">{data.calls.toLocaleString()} calls</span>
+                        <span class={cn("w-12", data.errors > 0 ? "text-destructive" : "text-muted-foreground")}>
+                          {errorRate}%
+                        </span>
+                        <span class="w-12 text-muted-foreground">{avgCtx}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Error display */}
