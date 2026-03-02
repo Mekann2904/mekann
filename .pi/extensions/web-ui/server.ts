@@ -38,7 +38,6 @@ import { registerSSERoutes } from "./routes/sse.js";
 
 // Lib
 import {
-  ServerRegistry,
   ContextHistoryStorage,
   type ContextHistoryEntry,
 } from "./lib/instance-registry.js";
@@ -97,7 +96,7 @@ interface ServerState {
 
 const state: ServerState = {
   server: null,
-  port: 3456,
+  port: 3457,
   pi: null,
   ctx: null,
   unsubscribeSessionEvents: null,
@@ -139,8 +138,8 @@ export function startServer(
   state.pi = pi;
   state.ctx = ctx;
 
-  // Register this server
-  ServerRegistry.register(process.pid, port);
+  // Note: Do NOT register with ServerRegistry - this is an internal runtime API server
+  // The main web UI server (standalone-server.ts) registers itself separately
 
   // Cleanup UL tasks owned by inactive instances
   const cleanedCount = cleanupDeadOwnerUlWorkflowTasks();
@@ -271,7 +270,6 @@ export function stopServer(): void {
     }
     state.server.close();
     state.server = null;
-    ServerRegistry.unregister();
 
     // バッファをフラッシュしてイベントリスナーを削除
     if (contextHistoryStorage) {
