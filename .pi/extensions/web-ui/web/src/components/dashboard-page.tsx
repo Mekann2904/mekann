@@ -150,7 +150,7 @@ export function DashboardPage() {
   const [contextHistory, setContextHistory] = useState<ContextHistoryResponse | null>(null);
   const [contextLoading, setContextLoading] = useState(true);
   const [contextError, setContextError] = useState<string | null>(null);
-  const [displayMode, setDisplayMode] = useState<"input" | "output">("input");
+  const [displayMode, setDisplayMode] = useState<"input" | "output" | "both">("input");
   const [sseConnected, setSseConnected] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
