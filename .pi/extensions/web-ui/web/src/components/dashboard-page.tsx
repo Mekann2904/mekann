@@ -29,15 +29,11 @@ import {
   YAxis,
   ResponsiveContainer,
   Tooltip,
-  PieChart,
-  Pie,
-  Cell,
   LineChart,
   Line,
-  Legend,
 } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "./ui/chart";
-import { RefreshCw, Cpu, Folder, Wifi, WifiOff, FileText, Loader2 } from "lucide-preact";
+import { RefreshCw, Cpu, Folder, Wifi, WifiOff, FileText } from "lucide-preact";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -54,6 +50,7 @@ import {
   DrawerDescription,
   DrawerClose,
 } from "./ui/drawer";
+import { Progress } from "./ui/progress";
 import { cn } from "@/lib/utils";
 import {
   PageLayout,
@@ -174,6 +171,27 @@ export function DashboardPage() {
     }>;
   } | null>(null);
 
+  // Current Context Usage
+  const [currentContext, setCurrentContext] = useState<{
+    used: number;
+    total: number;
+    percent: number;
+    free: number;
+    categoryTokens: {
+      user: number;
+      assistant: number;
+      tools: number;
+      other: number;
+    };
+    toolOccupancy: Record<string, {
+      tokens: number;
+      calls: number;
+      share: number;
+    }>;
+    cwd: string;
+    model: string;
+  } | null>(null);
+
   // LLM Usage Stats
   const [llmUsage, setLlmUsage] = useState<{
     totals: {
@@ -231,6 +249,21 @@ export function DashboardPage() {
       }
     } catch (e) {
       console.error("Failed to fetch agent usage:", e);
+    }
+  }, []);
+
+  // Current Context Usageを取得
+  const fetchCurrentContext = useCallback(async () => {
+    try {
+      const res = await fetch("/api/context/current");
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          setCurrentContext(json.data);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch current context:", e);
     }
   }, []);
 
@@ -389,6 +422,7 @@ export function DashboardPage() {
   useEffect(() => {
     fetchContextHistory();
     fetchAgentUsage();
+    fetchCurrentContext();
     fetchPiUsage();
     connectSSE();
 
@@ -397,6 +431,7 @@ export function DashboardPage() {
       if (!sseConnectedRef.current) {
         fetchContextHistory();
         fetchAgentUsage();
+        fetchCurrentContext();
         fetchPiUsage();
       }
     }, 30000);
@@ -410,7 +445,7 @@ export function DashboardPage() {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [fetchContextHistory, fetchAgentUsage, fetchPiUsage, connectSSE]);
+  }, [fetchContextHistory, fetchAgentUsage, fetchCurrentContext, fetchPiUsage, connectSSE]);
 
   const instances = contextHistory ? Object.values(contextHistory.instances) : [];
   const instanceCount = instances.length;
@@ -607,94 +642,77 @@ export function DashboardPage() {
         </Card>
       )}
 
-      {/* コンテキスト分析（円グラフ） - 小さく表示 */}
-      {instances.length > 0 && (
-        <div class="mb-4">
-          <Card>
-            <CardHeader class="pb-2">
-              <CardTitle class="text-sm">Token Distribution</CardTitle>
-              <CardDescription class="text-xs">Input vs Output ratio</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div class="h-[150px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={[
-                        { name: "Input", value: totalStats.totalInput, color: "hsl(var(--chart-1))" },
-                        { name: "Output", value: totalStats.totalOutput, color: "hsl(var(--chart-2))" },
-                      ].filter(d => d.value > 0)}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={40}
-                      outerRadius={60}
-                      paddingAngle={2}
-                      dataKey="value"
-                    >
-                      {[
-                        { name: "Input", value: totalStats.totalInput, color: "hsl(var(--chart-1))" },
-                        { name: "Output", value: totalStats.totalOutput, color: "hsl(var(--chart-2))" },
-                      ].filter(d => d.value > 0).map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={CHART_TOOLTIP_STYLE}
-                      formatter={(value: number) => [value.toLocaleString() + " tokens", ""]}
-                    />
-                    <Legend
-                      verticalAlign="bottom"
-                      height={24}
-                      formatter={(value: string, entry: { payload?: { value?: number } }) => {
-                        const total = totalStats.totalInput + totalStats.totalOutput;
-                        const percent = total > 0 ? ((entry.payload?.value || 0) / total * 100).toFixed(1) : "0";
-                        return <span class="text-xs text-muted-foreground">{value} ({percent}%)</span>;
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Tool Usage Stats */}
-      {agentUsage && (
+      {/* Current Context Usage */}
+      {currentContext && (
         <Card class="mb-4">
           <CardHeader class="pb-2">
-            <CardTitle class="text-sm">Tool Usage Statistics</CardTitle>
-            <CardDescription class="text-xs">
-              {agentUsage.totals.toolCalls.toLocaleString()} calls | {agentUsage.totals.toolErrors} errors | Avg context: {
-                agentUsage.totals.contextSamples > 0
-                  ? (agentUsage.totals.contextRatioSum / agentUsage.totals.contextSamples * 100).toFixed(1)
-                  : "0"
-              }%
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div class="space-y-1">
-              {Object.entries(agentUsage.features)
-                .sort((a, b) => b[1].calls - a[1].calls)
-                .slice(0, 10)
-                .map(([name, data]) => {
-                  const shortName = name.replace(/^\[tool\] /, "").replace(/^\[agent_run\] /, "[agent] ");
-                  const errorRate = data.calls > 0 ? (data.errors / data.calls * 100).toFixed(1) : "0";
-                  const avgCtx = data.avgContext !== undefined ? (data.avgContext * 100).toFixed(0) : "-";
-                  return (
-                    <div key={name} class="flex items-center justify-between text-xs py-1 border-b border-border/50 last:border-0">
-                      <span class="text-muted-foreground truncate flex-1">{shortName}</span>
-                      <div class="flex items-center gap-4 text-right">
-                        <span class="w-16">{data.calls.toLocaleString()} calls</span>
-                        <span class={cn("w-12", data.errors > 0 ? "text-destructive" : "text-muted-foreground")}>
-                          {errorRate}%
-                        </span>
-                        <span class="w-12 text-muted-foreground">{avgCtx}%</span>
-                      </div>
-                    </div>
-                  );
-                })}
+            <div class="flex items-center justify-between">
+              <div>
+                <CardTitle class="text-sm">Current Context</CardTitle>
+                <CardDescription class="text-xs truncate max-w-[300px]" title={currentContext.cwd}>
+                  {currentContext.cwd}
+                </CardDescription>
+              </div>
+              <span class="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                {currentContext.model}
+              </span>
             </div>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            {/* Usage bar */}
+            <div class="space-y-2">
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-muted-foreground">
+                  used {currentContext.used.toLocaleString()} / {currentContext.total.toLocaleString()} ({currentContext.percent.toFixed(1)}%)
+                </span>
+                <span class="text-muted-foreground">
+                  free {currentContext.free.toLocaleString()} tokens
+                </span>
+              </div>
+              <Progress value={currentContext.percent} class="h-2" />
+            </div>
+
+            {/* Category breakdown */}
+            <div class="grid grid-cols-4 gap-2 text-xs">
+              <div class="text-center">
+                <div class="text-muted-foreground">User</div>
+                <div class="font-mono">{(currentContext.categoryTokens.user / 1000).toFixed(1)}k</div>
+              </div>
+              <div class="text-center">
+                <div class="text-muted-foreground">Assistant</div>
+                <div class="font-mono">{(currentContext.categoryTokens.assistant / 1000).toFixed(1)}k</div>
+              </div>
+              <div class="text-center">
+                <div class="text-muted-foreground">Tools</div>
+                <div class="font-mono">{(currentContext.categoryTokens.tools / 1000).toFixed(1)}k</div>
+              </div>
+              <div class="text-center">
+                <div class="text-muted-foreground">Other</div>
+                <div class="font-mono">{(currentContext.categoryTokens.other / 1000).toFixed(1)}k</div>
+              </div>
+            </div>
+
+            {/* Tool Occupancy */}
+            {Object.keys(currentContext.toolOccupancy).length > 0 && (
+              <div class="space-y-1">
+                <div class="text-xs text-muted-foreground font-medium">Current Tool Occupancy (estimate)</div>
+                <div class="space-y-1 max-h-[200px] overflow-y-auto">
+                  {Object.entries(currentContext.toolOccupancy)
+                    .sort((a, b) => b[1].tokens - a[1].tokens)
+                    .slice(0, 8)
+                    .map(([tool, data]) => (
+                      <div key={tool} class="flex items-center justify-between text-xs py-1 border-b border-border/50 last:border-0">
+                        <span class="text-muted-foreground truncate flex-1">{tool}</span>
+                        <div class="flex items-center gap-4 text-right">
+                          <span class="w-16">{data.tokens.toLocaleString()}</span>
+                          <span class="w-10 text-muted-foreground">{(data.share * 100).toFixed(1)}%</span>
+                          <span class="w-10 text-muted-foreground">{data.calls}</span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

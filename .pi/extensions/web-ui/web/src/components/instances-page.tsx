@@ -173,7 +173,7 @@ export function InstancesPage() {
           instances: payload.instances,
           count: payload.count,
           serverPid: prev?.serverPid ?? 0,
-          serverPort: prev?.serverPort ?? 3000,
+          serverPort: prev?.serverPort ?? 3456,
         }));
       } catch (e) {
         console.warn("[InstancesPage] Failed to parse instances-update:", e);
