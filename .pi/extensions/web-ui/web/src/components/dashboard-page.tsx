@@ -264,7 +264,7 @@ export function DashboardPage() {
   } | null>(null);
 
   // Time range for all stats (shared across all cards)
-  const [llmTimeRange, setLlmTimeRange] = useState<LlmTimeRange>("1m");
+  const [llmTimeRange, setLlmTimeRange] = useState<LlmTimeRange>("1y");
   
   // Metric type for heatmap
   const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>("tokens");
@@ -726,42 +726,16 @@ export function DashboardPage() {
           }
         };
         
-        // Build filtered data map
+        // Build filtered data map (daily for all views)
         const filteredByMetric: Record<string, number> = {};
-        
-        // For 1 year view, aggregate by week
-        if (llmTimeRange === "1y") {
-          // Create weekly buckets
-          const weeklyData: Record<string, number> = {};
-          for (let i = 0; i < days; i++) {
-            const date = new Date(startDate);
-            date.setDate(startDate.getDate() + i);
-            const dateStr = date.toISOString().split('T')[0];
-            if (dateStr) {
-              const value = getMetricValue(dateStr);
-              if (value > 0) {
-                // Get the Monday of this week as the bucket key
-                const dayOfWeek = date.getDay();
-                const monday = new Date(date);
-                monday.setDate(date.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-                const weekKey = monday.toISOString().split('T')[0] || dateStr;
-                weeklyData[weekKey] = (weeklyData[weekKey] || 0) + value;
-              }
-            }
-          }
-          // Use weekly data for 1 year view
-          Object.assign(filteredByMetric, weeklyData);
-        } else {
-          // Daily data for other views
-          for (let i = 0; i < days; i++) {
-            const date = new Date(startDate);
-            date.setDate(startDate.getDate() + i);
-            const dateStr = date.toISOString().split('T')[0];
-            if (dateStr) {
-              const value = getMetricValue(dateStr);
-              if (value > 0) {
-                filteredByMetric[dateStr] = value;
-              }
+        for (let i = 0; i < days; i++) {
+          const date = new Date(startDate);
+          date.setDate(startDate.getDate() + i);
+          const dateStr = date.toISOString().split('T')[0];
+          if (dateStr) {
+            const value = getMetricValue(dateStr);
+            if (value > 0) {
+              filteredByMetric[dateStr] = value;
             }
           }
         }
@@ -783,18 +757,20 @@ export function DashboardPage() {
         }
         
         // Generate description based on metric
-        const periodUnit = llmTimeRange === "1y" ? "weeks" : llmTimeRange === "1d" ? "hours" : "days";
         const summaryText = heatmapMetric === "cost" 
-          ? `Total: $${totalValue.toFixed(2)} | ${Object.keys(filteredByModel).length} models | ${values.length} active ${periodUnit}`
+          ? `Total: $${totalValue.toFixed(2)} | ${Object.keys(filteredByModel).length} models | ${values.length} active days`
           : heatmapMetric === "tokens"
-          ? `Total: ${(totalValue / 1000000).toFixed(2)}M tokens | ${Object.keys(filteredByModel).length} models | ${values.length} active ${periodUnit}`
-          : `Total: ${totalValue} runs | ${Object.keys(filteredByModel).length} models | ${values.length} active ${periodUnit}`;
+          ? `Total: ${(totalValue / 1000000).toFixed(2)}M tokens | ${Object.keys(filteredByModel).length} models | ${values.length} active days`
+          : `Total: ${totalValue} runs | ${Object.keys(filteredByModel).length} models | ${values.length} active days`;
         
-        // For 1 year view, render weekly heatmap (52 weeks)
         // For 1 day view, render single day highlight
-        // For 1 week / 1 month view, render daily heatmap
-        const isYearView = llmTimeRange === "1y";
+        // For all other views, render GitHub-style calendar heatmap
         const isDayView = llmTimeRange === "1d";
+        const isYearView = llmTimeRange === "1y";
+        
+        // Cell size based on view (smaller for year view)
+        const cellSize = isYearView ? "w-[3px] h-[3px]" : "w-[11px] h-[11px]";
+        const cellGap = isYearView ? "gap-[1px]" : "gap-[2px]";
         
         return (
           <Card class="mb-4">
@@ -810,38 +786,7 @@ export function DashboardPage() {
             <CardContent>
               {hasData ? (
                 <>
-                  {isYearView ? (
-                    // Year view: 52 weeks as horizontal bars
-                    <div class="space-y-1">
-                      {Array.from({ length: 52 }, (_, weekIndex) => {
-                        // Calculate the Monday of this week
-                        const monday = new Date();
-                        monday.setDate(monday.getDate() - (365 - weekIndex * 7));
-                        const dayOfWeek = monday.getDay();
-                        monday.setDate(monday.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-                        const weekKey = monday.toISOString().split('T')[0];
-                        const value = filteredByMetric[weekKey || ''] || 0;
-                        const intensity = maxValue > 0 ? value / maxValue : 0;
-                        const bgClass = getGreenHeatmapClass(intensity);
-                        const monthLabel = monday.toLocaleDateString('en-US', { month: 'short' });
-                        const showMonthLabel = monday.getDate() <= 7;
-                        
-                        return (
-                          <div key={weekIndex} class="flex items-center gap-1">
-                            {showMonthLabel && weekIndex < 50 ? (
-                              <span class="w-8 text-xs text-muted-foreground">{monthLabel}</span>
-                            ) : (
-                              <span class="w-8" />
-                            )}
-                            <div 
-                              class={cn("w-full h-3 rounded-sm", bgClass)}
-                              title={`${weekKey || `Week ${weekIndex + 1}`}: ${formatMetricValue(value)}`}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : isDayView ? (
+                  {isDayView ? (
                     // Day view: Show today's data prominently
                     <div class="flex items-center justify-center py-4">
                       <div class="text-center">
@@ -857,8 +802,8 @@ export function DashboardPage() {
                       </div>
                     </div>
                   ) : (
-                    // Week/Month view: GitHub-style calendar heatmap
-                    <div class="space-y-0.5">
+                    // Week/Month/Year view: GitHub-style calendar heatmap
+                    <div class={cn("space-y-0.5", isYearView && "space-y-0")}>
                       {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, dayIndex) => {
                         // Get all dates for this weekday in the selected time range
                         const dates: string[] = [];
@@ -873,8 +818,10 @@ export function DashboardPage() {
 
                         return (
                           <div key={day} class="flex items-center gap-2">
-                            <span class="w-8 text-xs text-muted-foreground">{day}</span>
-                            <div class="flex gap-[2px]">
+                            <span class={cn("text-xs text-muted-foreground", isYearView ? "w-4 text-[8px]" : "w-8")}>
+                              {!isYearView && day}
+                            </span>
+                            <div class={cn("flex", cellGap)}>
                               {dates.map((dateStr) => {
                                 const value = filteredByMetric[dateStr] || 0;
                                 const intensity = maxValue > 0 ? value / maxValue : 0;
@@ -882,7 +829,7 @@ export function DashboardPage() {
                                 return (
                                   <div
                                     key={dateStr}
-                                    class={cn("w-[11px] h-[11px] rounded-sm", bgClass)}
+                                    class={cn("rounded-sm", cellSize, bgClass)}
                                     title={`${dateStr}: ${formatMetricValue(value)}`}
                                   />
                                 );
@@ -897,12 +844,12 @@ export function DashboardPage() {
                     <span>{startDateStr}</span>
                     <div class="flex items-center gap-1">
                       <span>Less</span>
-                      <div class="flex gap-[2px]">
-                        <div class={cn("w-[11px] h-[11px] rounded-sm", getGreenHeatmapClass(0))} />
-                        <div class={cn("w-[11px] h-[11px] rounded-sm", getGreenHeatmapClass(0.1))} />
-                        <div class={cn("w-[11px] h-[11px] rounded-sm", getGreenHeatmapClass(0.3))} />
-                        <div class={cn("w-[11px] h-[11px] rounded-sm", getGreenHeatmapClass(0.5))} />
-                        <div class={cn("w-[11px] h-[11px] rounded-sm", getGreenHeatmapClass(0.9))} />
+                      <div class={cn("flex", cellGap)}>
+                        <div class={cn("rounded-sm", cellSize, getGreenHeatmapClass(0))} />
+                        <div class={cn("rounded-sm", cellSize, getGreenHeatmapClass(0.1))} />
+                        <div class={cn("rounded-sm", cellSize, getGreenHeatmapClass(0.3))} />
+                        <div class={cn("rounded-sm", cellSize, getGreenHeatmapClass(0.5))} />
+                        <div class={cn("rounded-sm", cellSize, getGreenHeatmapClass(0.9))} />
                       </div>
                       <span>More</span>
                     </div>
