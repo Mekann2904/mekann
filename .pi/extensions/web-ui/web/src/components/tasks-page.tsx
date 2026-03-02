@@ -308,12 +308,6 @@ export function TasksPage() {
 
   // Update task status (drag and drop)
   const handleStatusChange = async (taskId: string, newStatus: TaskStatus): Promise<boolean> => {
-    // UL workflow tasks are read-only
-    if (taskId.startsWith("ul-")) {
-      setError("UL Workflow tasks are read-only and cannot be modified");
-      return false;
-    }
-
     // Check if moving parent task to "completed" - all subtasks must be completed first
     if (newStatus === "completed") {
       const task = tasks.find((t) => t.id === taskId);
@@ -350,12 +344,6 @@ export function TasksPage() {
 
   // Delete task
   const handleDelete = async (id: string) => {
-    // UL workflow tasks cannot be deleted
-    if (id.startsWith("ul-")) {
-      setError("UL Workflow tasks cannot be deleted from this view");
-      return;
-    }
-
     try {
       const res = await fetch(`${API_BASE}/api/tasks/${id}`, {
         method: "DELETE",
