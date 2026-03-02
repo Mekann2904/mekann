@@ -67,7 +67,7 @@ import {
 /**
  * @summary 時間軸の種類
  */
-type LlmTimeRange = "1d" | "7d" | "1m" | "1y";
+type LlmTimeRange = "1d" | "1w" | "1m" | "1y";
 
 /**
  * @summary ヒートマップのメトリクス種類
@@ -75,15 +75,45 @@ type LlmTimeRange = "1d" | "7d" | "1m" | "1y";
 type HeatmapMetric = "cost" | "tokens" | "runs";
 
 /**
- * @summary 時間軸に対応する日数を取得
+ * @summary 時間範囲の開始日を取得（今日/今週/今月/今年）
+ */
+function getTimeRangeStartDate(range: LlmTimeRange): Date {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  switch (range) {
+    case "1d": {
+      // 今日の0:00
+      return today;
+    }
+    case "1w": {
+      // 今週の月曜日
+      const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // 月曜日までの日数
+      const monday = new Date(today);
+      monday.setDate(today.getDate() + diff);
+      return monday;
+    }
+    case "1m": {
+      // 今月の1日
+      return new Date(today.getFullYear(), today.getMonth(), 1);
+    }
+    case "1y": {
+      // 今年の1月1日
+      return new Date(today.getFullYear(), 0, 1);
+    }
+  }
+}
+
+/**
+ * @summary 時間範囲の日数を計算
  */
 function getTimeRangeDays(range: LlmTimeRange): number {
-  switch (range) {
-    case "1d": return 1;
-    case "7d": return 7;
-    case "1m": return 30;
-    case "1y": return 365;
-  }
+  const startDate = getTimeRangeStartDate(range);
+  const today = new Date();
+  today.setHours(23, 59, 59, 999); // 今日の終わり
+  const diffTime = today.getTime() - startDate.getTime();
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include both start and end
 }
 
 /**
@@ -91,10 +121,10 @@ function getTimeRangeDays(range: LlmTimeRange): number {
  */
 function getTimeRangeLabel(range: LlmTimeRange): string {
   switch (range) {
-    case "1d": return "1 Day";
-    case "7d": return "1 Week";
-    case "1m": return "1 Month";
-    case "1y": return "1 Year";
+    case "1d": return "Today";
+    case "1w": return "This Week";
+    case "1m": return "This Month";
+    case "1y": return "This Year";
   }
 }
 
@@ -551,10 +581,10 @@ export function DashboardPage() {
   const GlobalTimeRangeSelector = () => (
     <div class="flex gap-0.5 bg-muted rounded p-0.5">
       {([
-        { value: "1d" as LlmTimeRange, label: "1D" },
-        { value: "7d" as LlmTimeRange, label: "1W" },
-        { value: "1m" as LlmTimeRange, label: "1M" },
-        { value: "1y" as LlmTimeRange, label: "1Y" },
+        { value: "1d" as LlmTimeRange, label: "Today" },
+        { value: "1w" as LlmTimeRange, label: "Week" },
+        { value: "1m" as LlmTimeRange, label: "Month" },
+        { value: "1y" as LlmTimeRange, label: "Year" },
       ]).map((item) => (
         <button
           key={item.value}
@@ -693,13 +723,14 @@ export function DashboardPage() {
 
       {/* LLM Usage - Daily Activity Heatmap (GitHub-style green) */}
       {piUsage && Object.keys(piUsage.byDate).length > 0 && (() => {
-        const days = getTimeRangeDays(llmTimeRange);
         const label = getTimeRangeLabel(llmTimeRange);
         const metricLabel = getMetricLabel(heatmapMetric);
         
-        // Filter data by time range
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - days);
+        // Get start date based on time range (Today/This Week/This Month/This Year)
+        const startDate = getTimeRangeStartDate(llmTimeRange);
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        const days = Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
         const startDateStr = startDate.toISOString().split('T')[0];
         
         // Get filtered data based on metric
