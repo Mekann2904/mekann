@@ -32,11 +32,8 @@ import {
   PieChart,
   Pie,
   Cell,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
+  LineChart,
+  Line,
   Legend,
 } from "recharts";
 import { RefreshCw, Cpu, Folder, Wifi, WifiOff, FileText, Loader2 } from "lucide-preact";
@@ -351,17 +348,29 @@ export function DashboardPage() {
     totalOutput: instances.reduce((sum, i) => sum + i.history.reduce((s, e) => s + e.output, 0), 0),
   };
 
-  // レーダーチャート用データ
-  const totalTokens = totalStats.totalInput + totalStats.totalOutput;
-  const totalEntries = instances.reduce((sum, i) => sum + i.history.length, 0);
-  const avgTokensPerEntry = totalEntries > 0 ? totalTokens / totalEntries : 0;
-  const radarData = [
-    { subject: "Instances", value: Math.min(instances.length, 10), raw: instances.length },
-    { subject: "Entries", value: Math.min(totalEntries / 10, 10), raw: totalEntries },
-    { subject: "Input", value: Math.min(totalStats.totalInput / 10000, 10), raw: totalStats.totalInput },
-    { subject: "Output", value: Math.min(totalStats.totalOutput / 10000, 10), raw: totalStats.totalOutput },
-    { subject: "Avg/Entry", value: Math.min(avgTokensPerEntry / 1000, 10), raw: Math.round(avgTokensPerEntry) },
-  ];
+  // 日次コンテキストデータ（ラインチャート用）
+  const dailyContextData = (() => {
+    const allEntries = instances.flatMap((i) => i.history);
+    const byDate = new Map<string, { input: number; output: number }>();
+
+    for (const entry of allEntries) {
+      const date = new Date(entry.timestamp).toISOString().split("T")[0];
+      if (!date) continue;
+      const existing = byDate.get(date) || { input: 0, output: 0 };
+      existing.input += entry.input;
+      existing.output += entry.output;
+      byDate.set(date, existing);
+    }
+
+    return Array.from(byDate.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-30) // 直近30日
+      .map(([date, values]) => ({
+        date,
+        input: values.input,
+        output: values.output,
+      }));
+  })();
 
   // SSE接続ステータスコンポーネント
   const ConnectionStatus = () => (
@@ -425,7 +434,7 @@ export function DashboardPage() {
       {/* 表示モード切り替え */}
       <DisplayModeButtons />
 
-      {/* チャートセクション（円グラフ・レーダーチャート） */}
+      {/* チャートセクション（円グラフ・日次ラインチャート） */}
       {instances.length > 0 && (
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           {/* コンテキスト分析（円グラフ） */}
@@ -440,8 +449,8 @@ export function DashboardPage() {
                   <PieChart>
                     <Pie
                       data={[
-                        { name: "Input Tokens", value: totalStats.totalInput, color: "hsl(var(--chart-1))" },
-                        { name: "Output Tokens", value: totalStats.totalOutput, color: "hsl(var(--chart-2))" },
+                        { name: "Input", value: totalStats.totalInput, color: "hsl(var(--chart-1))" },
+                        { name: "Output", value: totalStats.totalOutput, color: "hsl(var(--chart-2))" },
                       ].filter(d => d.value > 0)}
                       cx="50%"
                       cy="50%"
@@ -451,8 +460,8 @@ export function DashboardPage() {
                       dataKey="value"
                     >
                       {[
-                        { name: "Input Tokens", value: totalStats.totalInput, color: "hsl(var(--chart-1))" },
-                        { name: "Output Tokens", value: totalStats.totalOutput, color: "hsl(var(--chart-2))" },
+                        { name: "Input", value: totalStats.totalInput, color: "hsl(var(--chart-1))" },
+                        { name: "Output", value: totalStats.totalOutput, color: "hsl(var(--chart-2))" },
                       ].filter(d => d.value > 0).map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
@@ -479,73 +488,106 @@ export function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* リソース使用量（レーダーチャート） */}
+          {/* 日次コンテキスト使用量（ラインチャート） */}
           <Card>
             <CardHeader class="pb-2">
-              <CardTitle class="text-sm">Resource Usage</CardTitle>
-              <CardDescription class="text-xs">System resource metrics overview</CardDescription>
+              <div class="flex items-center justify-between">
+                <div>
+                  <CardTitle class="text-sm">Daily Context Usage</CardTitle>
+                  <CardDescription class="text-xs">Token usage over time</CardDescription>
+                </div>
+                <div class="flex gap-1">
+                  {(["input", "output"] as const).map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      data-active={displayMode === key || displayMode === "both"}
+                      class={cn(
+                        "px-2 py-1 text-xs rounded transition-colors",
+                        (displayMode === key || displayMode === "both")
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted hover:bg-muted/80 text-muted-foreground"
+                      )}
+                      onClick={() => {
+                        if (displayMode === key) {
+                          setDisplayMode("both");
+                        } else {
+                          setDisplayMode(key);
+                        }
+                      }}
+                    >
+                      <span class="capitalize">{key}</span>
+                      <span class="ml-1 font-medium">
+                        {key === "input" ? totalStats.totalInput.toLocaleString() : totalStats.totalOutput.toLocaleString()}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <div class="h-[200px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart
-                    cx="50%"
-                    cy="50%"
-                    outerRadius="70%"
-                    data={radarData}
+                  <LineChart
+                    data={dailyContextData}
+                    margin={{ left: 12, right: 12, top: 5, bottom: 5 }}
                   >
-                    <PolarGrid stroke="hsl(var(--border))" />
-                    <PolarAngleAxis
-                      dataKey="subject"
+                    <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
+                    <XAxis
+                      dataKey="date"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      minTickGap={32}
                       tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                      tickFormatter={(value: string) => {
+                        const date = new Date(value);
+                        return date.toLocaleDateString("ja-JP", { month: "short", day: "numeric" });
+                      }}
                     />
-                    <PolarRadiusAxis
-                      tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 8 }}
-                      tickCount={5}
-                    />
-                    <Radar
-                      name="Usage"
-                      dataKey="value"
-                      stroke="hsl(var(--chart-3))"
-                      fill="hsl(var(--chart-3))"
-                      fillOpacity={0.4}
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }}
+                      tickFormatter={(value: number) => value.toLocaleString()}
+                      width={50}
                     />
                     <Tooltip
                       contentStyle={CHART_TOOLTIP_STYLE}
-                      content={({ active, payload }) => {
-                        if (!active || !payload?.length) return null;
-                        return (
-                          <div class="rounded-lg border bg-background p-2 shadow-sm text-xs">
-                            {payload.map((entry: { payload?: { subject?: string; raw?: number } }, idx: number) => {
-                              const item = entry.payload;
-                              if (!item) return null;
-                              return (
-                                <div key={idx} class="flex justify-between gap-4">
-                                  <span class="text-muted-foreground">{item.subject}:</span>
-                                  <span class="font-medium">{item.raw?.toLocaleString() ?? "-"}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        );
+                      labelFormatter={(label: string) => {
+                        return new Date(label).toLocaleDateString("ja-JP", {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        });
                       }}
+                      formatter={(value: number, name: string) => [
+                        value.toLocaleString() + " tokens",
+                        name === "input" ? "Input" : "Output",
+                      ]}
                     />
-                  </RadarChart>
+                    {(displayMode === "input" || displayMode === "both") && (
+                      <Line
+                        dataKey="input"
+                        name="input"
+                        type="monotone"
+                        stroke="hsl(var(--chart-1))"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    )}
+                    {(displayMode === "output" || displayMode === "both") && (
+                      <Line
+                        dataKey="output"
+                        name="output"
+                        type="monotone"
+                        stroke="hsl(var(--chart-2))"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    )}
+                  </LineChart>
                 </ResponsiveContainer>
-              </div>
-              <div class="grid grid-cols-3 gap-2 mt-2 text-center text-xs">
-                <div>
-                  <div class="text-muted-foreground">Instances</div>
-                  <div class="font-medium">{instances.length}</div>
-                </div>
-                <div>
-                  <div class="text-muted-foreground">Entries</div>
-                  <div class="font-medium">{totalEntries}</div>
-                </div>
-                <div>
-                  <div class="text-muted-foreground">Avg/Entry</div>
-                  <div class="font-medium">{Math.round(avgTokensPerEntry).toLocaleString()}</div>
-                </div>
               </div>
             </CardContent>
           </Card>
