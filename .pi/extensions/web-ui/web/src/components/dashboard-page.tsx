@@ -724,14 +724,13 @@ export function DashboardPage() {
       {/* LLM Usage - Daily Activity Heatmap (GitHub-style green) */}
       {piUsage && Object.keys(piUsage.byDate).length > 0 && (() => {
         const label = getTimeRangeLabel(llmTimeRange);
-        const metricLabel = getMetricLabel(heatmapMetric);
         
         // Get start date based on time range (Today/This Week/This Month/This Year)
         const startDate = getTimeRangeStartDate(llmTimeRange);
-        const today = new Date();
-        today.setHours(23, 59, 59, 999);
-        const days = Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        const endDate = new Date();
+        endDate.setHours(23, 59, 59, 999);
         const startDateStr = startDate.toISOString().split('T')[0];
+        const endDateStr = endDate.toISOString().split('T')[0];
         
         // Get filtered data based on metric
         const getMetricValue = (date: string): number => {
@@ -757,42 +756,37 @@ export function DashboardPage() {
           }
         };
         
-        // Build filtered data map (daily for all views)
+        // Build filtered data map from startDate to endDate
         const filteredByMetric: Record<string, number> = {};
-        for (let i = 0; i < days; i++) {
-          const date = new Date(startDate);
-          date.setDate(startDate.getDate() + i);
-          const dateStr = date.toISOString().split('T')[0];
+        const allDates: string[] = [];
+        const current = new Date(startDate);
+        while (current <= endDate) {
+          const dateStr = current.toISOString().split('T')[0];
           if (dateStr) {
+            allDates.push(dateStr);
             const value = getMetricValue(dateStr);
             if (value > 0) {
               filteredByMetric[dateStr] = value;
             }
           }
+          current.setDate(current.getDate() + 1);
         }
         
-        // Calculate max for intensity scaling (use log scale for better distribution)
+        // Calculate max for intensity scaling
         const values = Object.values(filteredByMetric);
         const maxValue = values.length > 0 ? Math.max(...values) : 0;
         const hasData = values.length > 0;
         
         // Calculate summary stats
         const totalValue = values.reduce((sum, v) => sum + v, 0);
-        const filteredByModel: Record<string, number> = {};
-        for (const [date, models] of Object.entries(piUsage.byDateModel)) {
-          if (date >= (startDateStr ?? '')) {
-            for (const [model, cost] of Object.entries(models)) {
-              filteredByModel[model] = (filteredByModel[model] || 0) + cost;
-            }
-          }
-        }
+        const activeDays = values.length;
         
         // Generate description based on metric
         const summaryText = heatmapMetric === "cost" 
-          ? `Total: $${totalValue.toFixed(2)} | ${Object.keys(filteredByModel).length} models | ${values.length} active days`
+          ? `Total: $${totalValue.toFixed(2)} | ${activeDays} active days`
           : heatmapMetric === "tokens"
-          ? `Total: ${(totalValue / 1000000).toFixed(2)}M tokens | ${Object.keys(filteredByModel).length} models | ${values.length} active days`
-          : `Total: ${totalValue} runs | ${Object.keys(filteredByModel).length} models | ${values.length} active days`;
+          ? `Total: ${(totalValue / 1000000).toFixed(2)}M tokens | ${activeDays} active days`
+          : `Total: ${totalValue.toLocaleString()} runs | ${activeDays} active days`;
         
         // For 1 day view, render single day highlight
         // For all other views, render GitHub-style calendar heatmap
@@ -802,6 +796,47 @@ export function DashboardPage() {
         // Cell size based on view (smaller for year view)
         const cellSize = isYearView ? "w-[3px] h-[3px]" : "w-[11px] h-[11px]";
         const cellGap = isYearView ? "gap-[1px]" : "gap-[2px]";
+        
+        // Group dates by week (for GitHub-style layout)
+        // Each column is a week, rows are days of week (Sun=0 to Sat=6)
+        const weeks: Array<Array<string | null>> = [];
+        let currentWeek: Array<string | null> = new Array(7).fill(null);
+        
+        // Find the first Sunday on or before startDate
+        const firstSunday = new Date(startDate);
+        const startDayOfWeek = startDate.getDay();
+        firstSunday.setDate(startDate.getDate() - startDayOfWeek);
+        
+        // Build weeks array
+        const iterDate = new Date(firstSunday);
+        while (iterDate <= endDate || weeks.length === 0) {
+          const dayOfWeek = iterDate.getDay();
+          const dateStr = iterDate.toISOString().split('T')[0];
+          
+          // Only include dates within our range
+          if (iterDate >= startDate && iterDate <= endDate) {
+            currentWeek[dayOfWeek] = dateStr;
+          } else if (iterDate < startDate) {
+            // Before start date - leave as null (empty cell)
+            currentWeek[dayOfWeek] = null;
+          }
+          
+          // If Saturday, end the week
+          if (dayOfWeek === 6) {
+            weeks.push(currentWeek);
+            currentWeek = new Array(7).fill(null);
+          }
+          
+          iterDate.setDate(iterDate.getDate() + 1);
+          
+          // Safety: don't create infinite loop
+          if (weeks.length > 60) break;
+        }
+        
+        // Push remaining week if not empty
+        if (currentWeek.some(d => d !== null)) {
+          weeks.push(currentWeek);
+        }
         
         return (
           <Card class="mb-4">
@@ -834,41 +869,29 @@ export function DashboardPage() {
                     </div>
                   ) : (
                     // Week/Month/Year view: GitHub-style calendar heatmap
-                    <div class={cn("space-y-0.5", isYearView && "space-y-0")}>
-                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, dayIndex) => {
-                        // Get all dates for this weekday in the selected time range
-                        const dates: string[] = [];
-                        const today = new Date();
-                        for (let i = days - 1; i >= 0; i--) {
-                          const date = new Date(today);
-                          date.setDate(date.getDate() - i);
-                          if (date.getDay() === dayIndex) {
-                            dates.push(date.toISOString().split('T')[0] ?? '');
-                          }
-                        }
-
-                        return (
-                          <div key={day} class="flex items-center gap-2">
-                            <span class={cn("text-xs text-muted-foreground", isYearView ? "w-4 text-[8px]" : "w-8")}>
-                              {!isYearView && day}
-                            </span>
-                            <div class={cn("flex", cellGap)}>
-                              {dates.map((dateStr) => {
-                                const value = filteredByMetric[dateStr] || 0;
-                                const intensity = maxValue > 0 ? value / maxValue : 0;
-                                const bgClass = getGreenHeatmapClass(intensity);
-                                return (
-                                  <div
-                                    key={dateStr}
-                                    class={cn("rounded-sm", cellSize, bgClass)}
-                                    title={`${dateStr}: ${formatMetricValue(value)}`}
-                                  />
-                                );
-                              })}
-                            </div>
+                    <div class={cn("overflow-x-auto", isYearView && "max-h-[32px]")}>
+                      <div class={cn("flex", cellGap)}>
+                        {weeks.map((week, weekIndex) => (
+                          <div key={weekIndex} class={cn("flex flex-col", cellGap)}>
+                            {week.map((dateStr, dayIndex) => {
+                              if (dateStr === null) {
+                                // Empty cell (before start date)
+                                return <div key={dayIndex} class={cn(cellSize)} />;
+                              }
+                              const value = filteredByMetric[dateStr] || 0;
+                              const intensity = maxValue > 0 ? value / maxValue : 0;
+                              const bgClass = getGreenHeatmapClass(intensity);
+                              return (
+                                <div
+                                  key={dayIndex}
+                                  class={cn("rounded-sm", cellSize, bgClass)}
+                                  title={`${dateStr}: ${formatMetricValue(value)}`}
+                                />
+                              );
+                            })}
                           </div>
-                        );
-                      })}
+                        ))}
+                      </div>
                     </div>
                   )}
                   <div class="flex items-center justify-between mt-3 text-xs text-muted-foreground">
@@ -884,7 +907,7 @@ export function DashboardPage() {
                       </div>
                       <span>More</span>
                     </div>
-                    <span>{new Date().toISOString().split('T')[0]}</span>
+                    <span>{endDateStr}</span>
                   </div>
                 </>
               ) : (
@@ -899,10 +922,9 @@ export function DashboardPage() {
 
       {/* Activity Summary - Combined */}
       {piUsage && Object.keys(piUsage.byModel).length > 0 && (() => {
-        const days = getTimeRangeDays(llmTimeRange);
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - days);
-        const startDateStr = startDate.toISOString().split('T')[0];
+        const startDate = getTimeRangeStartDate(llmTimeRange);
+        const endDate = new Date();
+        endDate.setHours(23, 59, 59, 999);
         
         // Calculate totals based on metric
         let totalValue = 0;
@@ -910,38 +932,39 @@ export function DashboardPage() {
         let peakDate = '';
         let activeDays = 0;
         
-        for (let i = 0; i < days; i++) {
-          const date = new Date(startDate);
-          date.setDate(startDate.getDate() + i);
-          const dateStr = date.toISOString().split('T')[0];
-          if (!dateStr) continue;
-          
-          let value = 0;
-          if (heatmapMetric === "cost") {
-            value = piUsage.byDate[dateStr] || 0;
-          } else if (heatmapMetric === "tokens") {
-            const tokens = piUsage.byDateTokens?.[dateStr];
-            value = tokens ? tokens.input + tokens.output : 0;
-          } else {
-            value = piUsage.byDateRuns?.[dateStr] || 0;
-          }
-          
-          if (value > 0) {
-            activeDays++;
-            totalValue += value;
-            if (value > peakValue) {
-              peakValue = value;
-              peakDate = dateStr;
+        const current = new Date(startDate);
+        while (current <= endDate) {
+          const dateStr = current.toISOString().split('T')[0];
+          if (dateStr) {
+            let value = 0;
+            if (heatmapMetric === "cost") {
+              value = piUsage.byDate[dateStr] || 0;
+            } else if (heatmapMetric === "tokens") {
+              const tokens = piUsage.byDateTokens?.[dateStr];
+              value = tokens ? tokens.input + tokens.output : 0;
+            } else {
+              value = piUsage.byDateRuns?.[dateStr] || 0;
+            }
+            
+            if (value > 0) {
+              activeDays++;
+              totalValue += value;
+              if (value > peakValue) {
+                peakValue = value;
+                peakDate = dateStr;
+              }
             }
           }
+          current.setDate(current.getDate() + 1);
         }
         
         const avgPerDay = activeDays > 0 ? totalValue / activeDays : 0;
         
-        // Model stats
+        // Model stats - filter by date range
+        const startDateStr = startDate.toISOString().split('T')[0];
         const filteredByModel: Record<string, number> = {};
         for (const [date, models] of Object.entries(piUsage.byDateModel)) {
-          if (date >= (startDateStr ?? '')) {
+          if (date >= startDateStr) {
             for (const [model, cost] of Object.entries(models)) {
               filteredByModel[model] = (filteredByModel[model] || 0) + cost;
             }
