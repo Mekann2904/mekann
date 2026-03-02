@@ -174,6 +174,17 @@ export function DashboardPage() {
     }>;
   } | null>(null);
 
+  // LLM Usage Stats
+  const [llmUsage, setLlmUsage] = useState<{
+    totals: {
+      runs: number;
+      promptTokens: number;
+      outputTokens: number;
+      thinkingTokens: number;
+    };
+    dailyActivity: Array<{ date: string; tokens: number; runs: number }>;
+  } | null>(null);
+
   // アクティブなUL Workflowタスク
   const [activeTask, setActiveTask] = useState<{ id: string; title: string; ownerInstanceId?: string } | null>(null);
   const [plan, setPlan] = useState<string | null>(null);
@@ -212,6 +223,21 @@ export function DashboardPage() {
       }
     } catch (e) {
       console.error("Failed to fetch agent usage:", e);
+    }
+  }, []);
+
+  // LLM Usage Statsを取得
+  const fetchLlmUsage = useCallback(async () => {
+    try {
+      const res = await fetch("/api/llm-usage");
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          setLlmUsage(json.data);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch LLM usage:", e);
     }
   }, []);
 
@@ -355,6 +381,7 @@ export function DashboardPage() {
   useEffect(() => {
     fetchContextHistory();
     fetchAgentUsage();
+    fetchLlmUsage();
     connectSSE();
 
     // Fallback polling (30 seconds) in case SSE fails
@@ -362,6 +389,7 @@ export function DashboardPage() {
       if (!sseConnectedRef.current) {
         fetchContextHistory();
         fetchAgentUsage();
+        fetchLlmUsage();
       }
     }, 30000);
 
@@ -374,7 +402,7 @@ export function DashboardPage() {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [fetchContextHistory, fetchAgentUsage, connectSSE]);
+  }, [fetchContextHistory, fetchAgentUsage, fetchLlmUsage, connectSSE]);
 
   const instances = contextHistory ? Object.values(contextHistory.instances) : [];
   const instanceCount = instances.length;
@@ -658,6 +686,66 @@ export function DashboardPage() {
                     </div>
                   );
                 })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* LLM Usage - Daily Activity Heatmap */}
+      {llmUsage && llmUsage.dailyActivity.length > 0 && (
+        <Card class="mb-4">
+          <CardHeader class="pb-2">
+            <CardTitle class="text-sm">Daily Activity (12 weeks)</CardTitle>
+            <CardDescription class="text-xs">
+              {(llmUsage.totals.promptTokens + llmUsage.totals.outputTokens).toLocaleString()} tokens | {llmUsage.totals.runs} runs
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div class="space-y-1">
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, dayIndex) => (
+                <div key={day} class="flex items-center gap-2">
+                  <span class="w-8 text-xs text-muted-foreground">{day}</span>
+                  <div class="flex gap-0.5">
+                    {llmUsage.dailyActivity
+                      .filter((_, i) => i % 7 === dayIndex)
+                      .map((d, i) => {
+                        const maxTokens = Math.max(...llmUsage.dailyActivity.map(a => a.tokens), 1);
+                        const intensity = d.tokens / maxTokens;
+                        const bgClass = intensity === 0
+                          ? "bg-muted/30"
+                          : intensity < 0.25
+                          ? "bg-chart-1/30"
+                          : intensity < 0.5
+                          ? "bg-chart-1/50"
+                          : intensity < 0.75
+                          ? "bg-chart-1/70"
+                          : "bg-chart-1";
+                        return (
+                          <div
+                            key={i}
+                            class={cn("w-3 h-3 rounded-sm", bgClass)}
+                            title={`${d.date}: ${d.tokens.toLocaleString()} tokens, ${d.runs} runs`}
+                          />
+                        );
+                      })}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div class="flex items-center justify-between mt-3 text-xs text-muted-foreground">
+              <span>{llmUsage.dailyActivity[0]?.date ?? ''}</span>
+              <div class="flex items-center gap-1">
+                <span>Less</span>
+                <div class="flex gap-0.5">
+                  <div class="w-3 h-3 rounded-sm bg-muted/30" />
+                  <div class="w-3 h-3 rounded-sm bg-chart-1/30" />
+                  <div class="w-3 h-3 rounded-sm bg-chart-1/50" />
+                  <div class="w-3 h-3 rounded-sm bg-chart-1/70" />
+                  <div class="w-3 h-3 rounded-sm bg-chart-1" />
+                </div>
+                <span>More</span>
+              </div>
+              <span>{llmUsage.dailyActivity[llmUsage.dailyActivity.length - 1]?.date ?? ''}</span>
             </div>
           </CardContent>
         </Card>

@@ -1002,6 +1002,84 @@ function createApp(): Express {
     }
   });
 
+  /**
+   * GET /api/llm-usage - Get LLM usage statistics (cost, models, daily activity)
+   */
+  app.get("/api/llm-usage", async (_req: Request, res: Response) => {
+    try {
+      // Read llm-behavior aggregates
+      const dailyDir = path.join(process.cwd(), ".pi", "analytics", "llm-behavior", "aggregates", "daily");
+      const weeklyDir = path.join(process.cwd(), ".pi", "analytics", "llm-behavior", "aggregates", "weekly");
+
+      interface DailyAggregate {
+        period: string;
+        startTime: string;
+        endTime: string;
+        totals: {
+          runs: number;
+          errors: number;
+          totalPromptTokens: number;
+          totalOutputTokens: number;
+          totalThinkingTokens: number;
+          totalDurationMs: number;
+        };
+        averages: {
+          promptTokens: number;
+          outputTokens: number;
+          efficiency: number;
+          formatCompliance: number;
+          claimResultConsistency: number;
+          durationMs: number;
+        };
+        anomalies: unknown[];
+      }
+
+      const dailyData: DailyAggregate[] = [];
+      if (fs.existsSync(dailyDir)) {
+        const files = fs.readdirSync(dailyDir).filter(f => f.endsWith('.json'));
+        for (const file of files) {
+          const content = fs.readFileSync(path.join(dailyDir, file), 'utf-8');
+          dailyData.push(JSON.parse(content) as DailyAggregate);
+        }
+      }
+
+      // Calculate totals
+      const totals = {
+        runs: dailyData.reduce((sum, d) => sum + d.totals.runs, 0),
+        promptTokens: dailyData.reduce((sum, d) => sum + d.totals.totalPromptTokens, 0),
+        outputTokens: dailyData.reduce((sum, d) => sum + d.totals.totalOutputTokens, 0),
+        thinkingTokens: dailyData.reduce((sum, d) => sum + d.totals.totalThinkingTokens, 0),
+      };
+
+      // Generate daily activity for last 12 weeks (84 days)
+      const dailyActivity: Array<{ date: string; tokens: number; runs: number }> = [];
+      const today = new Date();
+      for (let i = 83; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        const dayData = dailyData.find(d => d.startTime?.split('T')[0] === dateStr);
+        dailyActivity.push({
+          date: dateStr ?? '',
+          tokens: dayData?.totals?.totalPromptTokens ?? 0 + dayData?.totals?.totalOutputTokens ?? 0,
+          runs: dayData?.totals?.runs ?? 0,
+        });
+      }
+
+      res.json({
+        success: true,
+        data: {
+          totals,
+          dailyActivity,
+          dailyData: dailyData.slice(-30), // Last 30 days
+        },
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get LLM usage", details: errorMessage });
+    }
+  });
+
   // ============= MCP API (Stub - requires pi instance) =============
 
   /**
