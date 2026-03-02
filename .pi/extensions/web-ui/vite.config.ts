@@ -8,6 +8,14 @@ export default defineConfig({
   build: {
     outDir: "../dist",
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'lucide': ['lucide-preact'],
+          'preact': ['preact', 'preact/compat', 'preact/hooks'],
+        },
+      },
+    },
   },
   server: {
     port: 3000,
@@ -15,6 +23,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./web/src"),
+      react: "preact/compat",
+      "react-dom": "preact/compat",
     },
   },
 });

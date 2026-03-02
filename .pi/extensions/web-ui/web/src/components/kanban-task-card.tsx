@@ -18,6 +18,7 @@
  */
 
 import { h } from "preact";
+import { memo, useMemo, useCallback } from "preact/compat";
 import { GripVertical, Calendar, Trash2, CheckCircle2, Circle } from "lucide-preact";
 import { cn } from "@/lib/utils";
 import type { RuntimeSession } from "../hooks/useRuntimeStatus";
@@ -137,7 +138,7 @@ function getAvatarColor(name: string): string {
   return colors[Math.abs(hash) % colors.length];
 }
 
-export function KanbanTaskCard({
+function KanbanTaskCardInner({
   task,
   subtaskProgress,
   isSubtask,
@@ -151,17 +152,45 @@ export function KanbanTaskCard({
 }: KanbanTaskCardProps) {
   const priorityColor = PRIORITY_COLORS[task.priority];
   const priorityLabel = PRIORITY_LABELS[task.priority];
-  const descriptionPreview = (() => {
+  const descriptionPreview = useMemo(() => {
     const preview = formatDescriptionPreview(task.description);
-    // タイトルと同じ内容の場合は表示しない
     if (preview && preview === task.title.trim()) return null;
     return preview;
-  })();
-  const isOverdue =
-    task.dueDate &&
-    task.status !== "completed" &&
-    task.status !== "cancelled" &&
-    new Date(task.dueDate) < new Date();
+  }, [task.description, task.title]);
+  const isOverdue = useMemo(
+    () =>
+      task.dueDate &&
+      task.status !== "completed" &&
+      task.status !== "cancelled" &&
+      new Date(task.dueDate) < new Date(),
+    [task.dueDate, task.status]
+  );
+
+  const handleClick = useCallback(() => {
+    onClick?.();
+  }, [onClick]);
+
+  const handleDragStart = useCallback(
+    (e: DragEvent) => {
+      onDragStart?.(e);
+    },
+    [onDragStart]
+  );
+
+  const handleDragEnd = useCallback(
+    (e: DragEvent) => {
+      onDragEnd?.(e);
+    },
+    [onDragEnd]
+  );
+
+  const handleDelete = useCallback(
+    (e: MouseEvent) => {
+      e.stopPropagation();
+      onDelete?.();
+    },
+    [onDelete]
+  );
 
   // UL workflow visual elements
   const ulWorkflowBadge = task.isUlWorkflow && (
@@ -183,14 +212,14 @@ export function KanbanTaskCard({
   return (
     <div
       draggable
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onClick={onClick}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onClick={handleClick}
       class={cn(
         "group relative bg-card rounded-md border border-border cursor-pointer",
         "transition-all duration-150",
         "hover:border-primary/30 hover:shadow-sm",
-        isDragging && "opacity-50 scale-[0.98]",
+        isDragging && "opacity-50 shadow-xl scale-105 rotate-2 z-50",
         isSelected && "ring-2 ring-primary border-primary/50",
         task.status === "completed" && "opacity-60",
         task.isUlWorkflow && "border-purple-500/30 bg-purple-500/5"
@@ -205,10 +234,7 @@ export function KanbanTaskCard({
       {onDelete && (
         <button
           class="absolute right-1 top-1 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/10 hover:text-red-500 text-muted-foreground"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
+          onClick={handleDelete}
           title="Delete task"
         >
           <Trash2 class="h-3.5 w-3.5" />
@@ -329,3 +355,5 @@ export function KanbanTaskCard({
     </div>
   );
 }
+
+export const KanbanTaskCard = memo(KanbanTaskCardInner);

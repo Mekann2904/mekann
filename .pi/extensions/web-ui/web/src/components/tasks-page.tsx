@@ -19,7 +19,7 @@
 
 import { h } from "preact";
 import { useState, useEffect, useCallback, useMemo, useRef } from "preact/hooks";
-import { Plus, RefreshCw, Search, X, Trash2 } from "lucide-preact";
+import { Plus, RefreshCw, Search, X, Trash2, Filter, ChevronDown, Check } from "lucide-preact";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import {
@@ -34,6 +34,7 @@ import {
 import { KanbanTaskCard, type Task, type TaskStatus, type TaskPriority } from "./kanban-task-card";
 import { TaskDetailPanel } from "./task-detail-panel";
 import { useRuntimeStatus } from "../hooks/useRuntimeStatus";
+import { useKeyboardShortcuts, COMMON_SHORTCUTS } from "../hooks/useKeyboardShortcuts";
 import { cn } from "@/lib/utils";
 import {
   PageLayout,
@@ -97,6 +98,12 @@ export function TasksPage() {
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   
+  // Filter state
+  const [statusFilters, setStatusFilters] = useState<Set<TaskStatus>>(new Set());
+  const [priorityFilter, setPriorityFilter] = useState<TaskPriority | null>(null);
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const [showPriorityDropdown, setShowPriorityDropdown] = useState(false);
+  
   // Delete confirmation state
   const [deleteConfirmTaskId, setDeleteConfirmTaskId] = useState<string | null>(null);
   const [deleteConfirmSubtaskId, setDeleteConfirmSubtaskId] = useState<string | null>(null);
@@ -126,6 +133,47 @@ export function TasksPage() {
   useEffect(() => {
     selectedTaskIdRef.current = selectedTaskId;
   }, [selectedTaskId]);
+
+  // URL query parameter sync for filters
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    
+    // Read status filters from URL
+    const statusParam = params.get("status");
+    if (statusParam) {
+      const statuses = statusParam.split(",") as TaskStatus[];
+      setStatusFilters(new Set(statuses.filter(s => ["todo", "in_progress", "completed", "cancelled", "failed"].includes(s))));
+    }
+    
+    // Read priority filter from URL
+    const priorityParam = params.get("priority") as TaskPriority | null;
+    if (priorityParam && ["low", "medium", "high", "urgent"].includes(priorityParam)) {
+      setPriorityFilter(priorityParam);
+    }
+  }, []);
+
+  // Update URL when filters change
+  useEffect(() => {
+    const params = new URLSearchParams();
+    
+    if (statusFilters.size > 0 && statusFilters.size < COLUMNS.length) {
+      params.set("status", Array.from(statusFilters).join(","));
+    }
+    
+    if (priorityFilter) {
+      params.set("priority", priorityFilter);
+    }
+    
+    const newSearch = params.toString();
+    const currentSearch = window.location.search.slice(1);
+    
+    if (newSearch !== currentSearch) {
+      const newUrl = newSearch 
+        ? `${window.location.pathname}?${newSearch}` 
+        : window.location.pathname;
+      window.history.replaceState(null, "", newUrl);
+    }
+  }, [statusFilters, priorityFilter]);
 
   // Fetch tasks
   const fetchTasks = useCallback(async () => {
@@ -208,17 +256,33 @@ export function TasksPage() {
     return () => clearInterval(interval);
   }, [fetchStats]);
 
-  // Filter tasks by search
+  // Filter tasks by search, status, and priority
   const filteredTasks = useMemo(() => {
-    if (!searchQuery.trim()) return tasks;
-    const query = searchQuery.toLowerCase();
-    return tasks.filter(
-      (t) =>
-        t.title.toLowerCase().includes(query) ||
-        (t.description?.toLowerCase().includes(query)) ||
-        t.tags.some((tag) => tag.toLowerCase().includes(query))
-    );
-  }, [tasks, searchQuery]);
+    let result = tasks;
+    
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(
+        (t) =>
+          t.title.toLowerCase().includes(query) ||
+          (t.description?.toLowerCase().includes(query)) ||
+          t.tags.some((tag) => tag.toLowerCase().includes(query))
+      );
+    }
+    
+    // Apply status filter (only if some but not all statuses are selected)
+    if (statusFilters.size > 0 && statusFilters.size < COLUMNS.length) {
+      result = result.filter((t) => statusFilters.has(t.status));
+    }
+    
+    // Apply priority filter
+    if (priorityFilter) {
+      result = result.filter((t) => t.priority === priorityFilter);
+    }
+    
+    return result;
+  }, [tasks, searchQuery, statusFilters, priorityFilter]);
 
   // Group tasks by status
   const tasksByColumn = useMemo(() => {
@@ -526,20 +590,33 @@ export function TasksPage() {
   }, [addingToColumn]);
 
   // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (addingToColumnRef.current) {
-          setAddingToColumn(null);
-          setNewTaskTitle("");
-        } else if (selectedTaskIdRef.current) {
-          setSelectedTaskId(null);
-        }
+  useKeyboardShortcuts([
+    COMMON_SHORTCUTS.escape(() => {
+      // Close dropdowns first
+      if (showStatusDropdown || showPriorityDropdown) {
+        setShowStatusDropdown(false);
+        setShowPriorityDropdown(false);
+        return;
       }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+      // Close add form
+      if (addingToColumnRef.current) {
+        setAddingToColumn(null);
+        setNewTaskTitle("");
+        return;
+      }
+      // Close detail panel
+      if (selectedTaskIdRef.current) {
+        setSelectedTaskId(null);
+        return;
+      }
+    }),
+    COMMON_SHORTCUTS.newTask(() => {
+      // Open add form in first column (todo)
+      if (!addingToColumnRef.current && !selectedTaskIdRef.current) {
+        setAddingToColumn("todo");
+      }
+    }),
+  ]);
 
   // Render column
   const renderColumn = (column: ColumnConfig) => {
@@ -551,8 +628,8 @@ export function TasksPage() {
       <div
         key={column.id}
         class={cn(
-          "flex flex-col w-[280px] shrink-0 bg-muted/30 rounded-md",
-          isDropTarget && "ring-2 ring-primary/50 bg-primary/5"
+          "flex flex-col w-[280px] shrink-0 bg-muted/30 rounded-md transition-all duration-150",
+          isDropTarget && "ring-2 ring-primary/50 bg-accent/10 border-2 border-dashed border-primary/30"
         )}
         onDragOver={(e) => handleDragOver(e, column.id)}
         onDragLeave={handleDragLeave}
@@ -698,6 +775,140 @@ export function TasksPage() {
             )}
           </div>
           <div class="flex items-center gap-2">
+            {/* Active filter chips */}
+            {(statusFilters.size > 0 || priorityFilter) && (
+              <div class="flex items-center gap-1">
+                {Array.from(statusFilters).map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => {
+                      const newFilters = new Set(statusFilters);
+                      newFilters.delete(status);
+                      setStatusFilters(newFilters);
+                    }}
+                    class="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                  >
+                    {COLUMNS.find(c => c.id === status)?.label || status}
+                    <X class="h-3 w-3" />
+                  </button>
+                ))}
+                {priorityFilter && (
+                  <button
+                    onClick={() => setPriorityFilter(null)}
+                    class="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                  >
+                    {priorityFilter}
+                    <X class="h-3 w-3" />
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setStatusFilters(new Set());
+                    setPriorityFilter(null);
+                  }}
+                  class="text-xs text-muted-foreground hover:text-foreground ml-1"
+                >
+                  クリア
+                </button>
+              </div>
+            )}
+            
+            {/* Status filter dropdown */}
+            <div class="relative">
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-8 gap-1"
+                onClick={() => {
+                  setShowStatusDropdown(!showStatusDropdown);
+                  setShowPriorityDropdown(false);
+                }}
+              >
+                <Filter class="h-3.5 w-3.5" />
+                <span class="text-xs">ステータス</span>
+                <ChevronDown class="h-3 w-3" />
+              </Button>
+              {showStatusDropdown && (
+                <div class="absolute top-full right-0 mt-1 w-40 bg-card border border-border rounded-md shadow-lg z-50 py-1">
+                  {COLUMNS.map((column) => {
+                    const isSelected = statusFilters.has(column.id);
+                    return (
+                      <button
+                        key={column.id}
+                        onClick={() => {
+                          const newFilters = new Set(statusFilters);
+                          if (isSelected) {
+                            newFilters.delete(column.id);
+                          } else {
+                            newFilters.add(column.id);
+                          }
+                          setStatusFilters(newFilters);
+                        }}
+                        class={cn(
+                          "w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/50 transition-colors",
+                          isSelected && "bg-muted/30"
+                        )}
+                      >
+                        <span class="w-4 h-4 flex items-center justify-center">
+                          {isSelected && <Check class="h-3 w-3" />}
+                        </span>
+                        <span>{column.icon}</span>
+                        <span>{column.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            
+            {/* Priority filter dropdown */}
+            <div class="relative">
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-8 gap-1"
+                onClick={() => {
+                  setShowPriorityDropdown(!showPriorityDropdown);
+                  setShowStatusDropdown(false);
+                }}
+              >
+                <Filter class="h-3.5 w-3.5" />
+                <span class="text-xs">優先度</span>
+                <ChevronDown class="h-3 w-3" />
+              </Button>
+              {showPriorityDropdown && (
+                <div class="absolute top-full right-0 mt-1 w-32 bg-card border border-border rounded-md shadow-lg z-50 py-1">
+                  {(["urgent", "high", "medium", "low"] as TaskPriority[]).map((priority) => {
+                    const isSelected = priorityFilter === priority;
+                    const labels: Record<TaskPriority, string> = {
+                      urgent: "緊急",
+                      high: "高",
+                      medium: "中",
+                      low: "低",
+                    };
+                    return (
+                      <button
+                        key={priority}
+                        onClick={() => {
+                          setPriorityFilter(isSelected ? null : priority);
+                          setShowPriorityDropdown(false);
+                        }}
+                        class={cn(
+                          "w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/50 transition-colors",
+                          isSelected && "bg-muted/30"
+                        )}
+                      >
+                        <span class="w-4 h-4 flex items-center justify-center">
+                          {isSelected && <Check class="h-3 w-3" />}
+                        </span>
+                        <span>{labels[priority]}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            
             {/* Search */}
             <div class="relative">
               <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -720,6 +931,17 @@ export function TasksPage() {
             </Button>
           </div>
         </div>
+        
+        {/* Click outside to close dropdowns */}
+        {(showStatusDropdown || showPriorityDropdown) && (
+          <div 
+            class="fixed inset-0 z-40" 
+            onClick={() => {
+              setShowStatusDropdown(false);
+              setShowPriorityDropdown(false);
+            }}
+          />
+        )}
 
         {/* Error banner */}
         {error && (
