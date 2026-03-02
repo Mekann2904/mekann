@@ -645,81 +645,6 @@ export function DashboardPage() {
         }
       />
 
-      {/* Current Context Usage */}
-      {currentContext && (
-        <Card class="mb-4">
-          <CardHeader class="pb-2">
-            <div class="flex items-center justify-between">
-              <div>
-                <CardTitle class="text-sm">Current Context</CardTitle>
-                <div class="text-xs text-muted-foreground truncate max-w-[300px]" title={currentContext.cwd}>
-                  {currentContext.cwd}
-                </div>
-              </div>
-              <span class="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                {currentContext.model}
-              </span>
-            </div>
-          </CardHeader>
-          <CardContent class="space-y-4">
-            {/* Usage bar */}
-            <div class="space-y-2">
-              <div class="flex items-center justify-between text-sm">
-                <span class="text-muted-foreground">
-                  used {currentContext.used.toLocaleString()} / {currentContext.total.toLocaleString()} ({currentContext.percent.toFixed(1)}%)
-                </span>
-                <span class="text-muted-foreground">
-                  free {currentContext.free.toLocaleString()} tokens
-                </span>
-              </div>
-              <Progress value={currentContext.percent} class="h-2" />
-            </div>
-
-            {/* Category breakdown */}
-            <div class="grid grid-cols-4 gap-2 text-xs">
-              <div class="text-center">
-                <div class="text-muted-foreground">User</div>
-                <div class="font-mono">{(currentContext.categoryTokens.user / 1000).toFixed(1)}k</div>
-              </div>
-              <div class="text-center">
-                <div class="text-muted-foreground">Assistant</div>
-                <div class="font-mono">{(currentContext.categoryTokens.assistant / 1000).toFixed(1)}k</div>
-              </div>
-              <div class="text-center">
-                <div class="text-muted-foreground">Tools</div>
-                <div class="font-mono">{(currentContext.categoryTokens.tools / 1000).toFixed(1)}k</div>
-              </div>
-              <div class="text-center">
-                <div class="text-muted-foreground">Other</div>
-                <div class="font-mono">{(currentContext.categoryTokens.other / 1000).toFixed(1)}k</div>
-              </div>
-            </div>
-
-            {/* Tool Occupancy */}
-            {Object.keys(currentContext.toolOccupancy).length > 0 && (
-              <div class="space-y-1">
-                <div class="text-xs text-muted-foreground font-medium">Current Tool Occupancy (estimate)</div>
-                <div class="space-y-1 max-h-[200px] overflow-y-auto">
-                  {Object.entries(currentContext.toolOccupancy)
-                    .sort((a, b) => b[1].tokens - a[1].tokens)
-                    .slice(0, 8)
-                    .map(([tool, data]) => (
-                      <div key={tool} class="flex items-center justify-between text-xs py-1 border-b border-border/50 last:border-0">
-                        <span class="text-muted-foreground truncate flex-1">{tool}</span>
-                        <div class="flex items-center gap-4 text-right">
-                          <span class="w-16">{data.tokens.toLocaleString()}</span>
-                          <span class="w-10 text-muted-foreground">{(data.share * 100).toFixed(1)}%</span>
-                          <span class="w-10 text-muted-foreground">{data.calls}</span>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
       {/* Activity Heatmap and Tool Breakdown Row */}
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         {/* LLM Usage - Daily Activity Heatmap (GitHub-style green) */}
@@ -1059,6 +984,81 @@ export function DashboardPage() {
             />
           ))}
         </div>
+      )}
+
+      {/* Current Context Usage */}
+      {currentContext && (
+        <Card class="mb-4">
+          <CardHeader class="pb-2">
+            <div class="flex items-center justify-between">
+              <div>
+                <CardTitle class="text-sm">Current Context</CardTitle>
+                <div class="text-xs text-muted-foreground truncate max-w-[300px]" title={currentContext.cwd}>
+                  {currentContext.cwd}
+                </div>
+              </div>
+              <span class="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                {currentContext.model}
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            {/* Usage bar */}
+            <div class="space-y-2">
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-muted-foreground">
+                  used {currentContext.used.toLocaleString()} / {currentContext.total.toLocaleString()} ({currentContext.percent.toFixed(1)}%)
+                </span>
+                <span class="text-muted-foreground">
+                  free {currentContext.free.toLocaleString()} tokens
+                </span>
+              </div>
+              <Progress value={currentContext.percent} class="h-2" />
+            </div>
+
+            {/* Category breakdown */}
+            <div class="grid grid-cols-4 gap-2 text-xs">
+              <div class="text-center">
+                <div class="text-muted-foreground">User</div>
+                <div class="font-mono">{(currentContext.categoryTokens.user / 1000).toFixed(1)}k</div>
+              </div>
+              <div class="text-center">
+                <div class="text-muted-foreground">Assistant</div>
+                <div class="font-mono">{(currentContext.categoryTokens.assistant / 1000).toFixed(1)}k</div>
+              </div>
+              <div class="text-center">
+                <div class="text-muted-foreground">Tools</div>
+                <div class="font-mono">{(currentContext.categoryTokens.tools / 1000).toFixed(1)}k</div>
+              </div>
+              <div class="text-center">
+                <div class="text-muted-foreground">Other</div>
+                <div class="font-mono">{(currentContext.categoryTokens.other / 1000).toFixed(1)}k</div>
+              </div>
+            </div>
+
+            {/* Tool Occupancy */}
+            {Object.keys(currentContext.toolOccupancy).length > 0 && (
+              <div class="space-y-1">
+                <div class="text-xs text-muted-foreground font-medium">Current Tool Occupancy (estimate)</div>
+                <div class="space-y-1 max-h-[200px] overflow-y-auto">
+                  {Object.entries(currentContext.toolOccupancy)
+                    .sort((a, b) => b[1].tokens - a[1].tokens)
+                    .slice(0, 8)
+                    .map(([tool, data]) => (
+                      <div key={tool} class="flex items-center justify-between text-xs py-1 border-b border-border/50 last:border-0">
+                        <span class="text-muted-foreground truncate flex-1">{tool}</span>
+                        <div class="flex items-center gap-4 text-right">
+                          <span class="w-16">{data.tokens.toLocaleString()}</span>
+                          <span class="w-10 text-muted-foreground">{(data.share * 100).toFixed(1)}%</span>
+                          <span class="w-10 text-muted-foreground">{data.calls}</span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
     </PageLayout>
   );
