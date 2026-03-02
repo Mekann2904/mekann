@@ -792,10 +792,14 @@ export function DashboardPage() {
         // For all other views, render GitHub-style calendar heatmap
         const isDayView = llmTimeRange === "1d";
         const isYearView = llmTimeRange === "1y";
+        const isWeekView = llmTimeRange === "1w";
         
-        // Cell size based on view (smaller for year view)
-        const cellSize = isYearView ? "w-[3px] h-[3px]" : "w-[11px] h-[11px]";
-        const cellGap = isYearView ? "gap-[1px]" : "gap-[2px]";
+        // Cell size based on view
+        // Year: 10px (53 weeks, scrollable)
+        // Month: 14px (4-5 weeks)
+        // Week: 18px (1 week)
+        const cellSize = isYearView ? "w-[10px] h-[10px]" : isWeekView ? "w-[18px] h-[18px]" : "w-[14px] h-[14px]";
+        const cellGap = isYearView ? "gap-[2px]" : "gap-[3px]";
         
         // Group dates by week (for GitHub-style layout)
         // Each column is a week, rows are days of week (Sun=0 to Sat=6)
@@ -869,28 +873,41 @@ export function DashboardPage() {
                     </div>
                   ) : (
                     // Week/Month/Year view: GitHub-style calendar heatmap
-                    <div class={cn("overflow-x-auto", isYearView && "max-h-[32px]")}>
-                      <div class={cn("flex", cellGap)}>
-                        {weeks.map((week, weekIndex) => (
-                          <div key={weekIndex} class={cn("flex flex-col", cellGap)}>
-                            {week.map((dateStr, dayIndex) => {
-                              if (dateStr === null) {
-                                // Empty cell (before start date)
-                                return <div key={dayIndex} class={cn(cellSize)} />;
-                              }
-                              const value = filteredByMetric[dateStr] || 0;
-                              const intensity = maxValue > 0 ? value / maxValue : 0;
-                              const bgClass = getGreenHeatmapClass(intensity);
-                              return (
-                                <div
-                                  key={dayIndex}
-                                  class={cn("rounded-sm", cellSize, bgClass)}
-                                  title={`${dateStr}: ${formatMetricValue(value)}`}
-                                />
-                              );
-                            })}
-                          </div>
-                        ))}
+                    <div class="flex gap-2">
+                      {/* Day labels (hide for year view) */}
+                      {!isYearView && (
+                        <div class={cn("flex flex-col", cellGap)}>
+                          {["", "Mon", "", "Wed", "", "Fri", ""].map((day, i) => (
+                            <div key={i} class={cn(cellSize, "flex items-center justify-center text-[9px] text-muted-foreground")}>
+                              {day}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {/* Heatmap grid */}
+                      <div class="overflow-x-auto">
+                        <div class={cn("flex", cellGap)}>
+                          {weeks.map((week, weekIndex) => (
+                            <div key={weekIndex} class={cn("flex flex-col flex-shrink-0", cellGap)}>
+                              {week.map((dateStr, dayIndex) => {
+                                if (dateStr === null) {
+                                  // Empty cell (before start date)
+                                  return <div key={dayIndex} class={cn(cellSize, "flex-shrink-0")} />;
+                                }
+                                const value = filteredByMetric[dateStr] || 0;
+                                const intensity = maxValue > 0 ? value / maxValue : 0;
+                                const bgClass = getGreenHeatmapClass(intensity);
+                                return (
+                                  <div
+                                    key={dayIndex}
+                                    class={cn("rounded-sm flex-shrink-0", cellSize, bgClass)}
+                                    title={`${dateStr}: ${formatMetricValue(value)}`}
+                                  />
+                                );
+                              })}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -899,11 +916,11 @@ export function DashboardPage() {
                     <div class="flex items-center gap-1">
                       <span>Less</span>
                       <div class={cn("flex", cellGap)}>
-                        <div class={cn("rounded-sm", cellSize, getGreenHeatmapClass(0))} />
-                        <div class={cn("rounded-sm", cellSize, getGreenHeatmapClass(0.1))} />
-                        <div class={cn("rounded-sm", cellSize, getGreenHeatmapClass(0.3))} />
-                        <div class={cn("rounded-sm", cellSize, getGreenHeatmapClass(0.5))} />
-                        <div class={cn("rounded-sm", cellSize, getGreenHeatmapClass(0.9))} />
+                        <div class={cn("rounded-sm flex-shrink-0", cellSize, getGreenHeatmapClass(0))} />
+                        <div class={cn("rounded-sm flex-shrink-0", cellSize, getGreenHeatmapClass(0.1))} />
+                        <div class={cn("rounded-sm flex-shrink-0", cellSize, getGreenHeatmapClass(0.3))} />
+                        <div class={cn("rounded-sm flex-shrink-0", cellSize, getGreenHeatmapClass(0.5))} />
+                        <div class={cn("rounded-sm flex-shrink-0", cellSize, getGreenHeatmapClass(0.9))} />
                       </div>
                       <span>More</span>
                     </div>
