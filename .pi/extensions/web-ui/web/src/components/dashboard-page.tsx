@@ -26,7 +26,6 @@ import {
   Bar,
   CartesianGrid,
   XAxis,
-  YAxis,
   ResponsiveContainer,
   Tooltip,
   PieChart,
@@ -36,6 +35,7 @@ import {
   Line,
   Legend,
 } from "recharts";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "./ui/chart";
 import { RefreshCw, Cpu, Folder, Wifi, WifiOff, FileText, Loader2 } from "lucide-preact";
 import { Button } from "./ui/button";
 import {
@@ -348,6 +348,21 @@ export function DashboardPage() {
     totalOutput: instances.reduce((sum, i) => sum + i.history.reduce((s, e) => s + e.output, 0), 0),
   };
 
+  // チャート設定
+  const chartConfig: ChartConfig = {
+    tokens: {
+      label: "Tokens",
+    },
+    input: {
+      label: "Input",
+      color: "hsl(var(--chart-1))",
+    },
+    output: {
+      label: "Output",
+      color: "hsl(var(--chart-2))",
+    },
+  };
+
   // 日次コンテキストデータ（ラインチャート用）
   const dailyContextData = (() => {
     const allEntries = instances.flatMap((i) => i.history);
@@ -434,17 +449,101 @@ export function DashboardPage() {
       {/* 表示モード切り替え */}
       <DisplayModeButtons />
 
-      {/* チャートセクション（円グラフ・日次ラインチャート） */}
+      {/* 日次コンテキスト使用量（ラインチャート） */}
+      {instances.length > 0 && dailyContextData.length > 0 && (
+        <Card class="mb-4 py-4 sm:py-0">
+          <CardHeader class="flex flex-col items-stretch border-b p-0! sm:flex-row">
+            <div class="flex flex-1 flex-col justify-center gap-1 px-6 pb-3 sm:pb-0">
+              <CardTitle>Daily Context Usage</CardTitle>
+              <CardDescription>
+                Token usage for the last {dailyContextData.length} days
+              </CardDescription>
+            </div>
+            <div class="flex">
+              {(["input", "output"] as const).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  data-active={displayMode === key}
+                  class={cn(
+                    "flex flex-1 flex-col justify-center gap-1 border-t px-6 py-4 text-left even:border-l data-[active=true]:bg-muted/50 sm:border-t-0 sm:border-l sm:px-8 sm:py-6"
+                  )}
+                  onClick={() => setDisplayMode(key)}
+                >
+                  <span class="text-xs text-muted-foreground capitalize">
+                    {key}
+                  </span>
+                  <span class="text-lg leading-none font-bold sm:text-3xl">
+                    {(key === "input" ? totalStats.totalInput : totalStats.totalOutput).toLocaleString()}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </CardHeader>
+          <CardContent class="px-2 sm:p-6">
+            <ChartContainer
+              config={chartConfig}
+              class="aspect-auto h-[250px] w-full"
+            >
+              <LineChart
+                data={dailyContextData}
+                margin={{ left: 12, right: 12 }}
+              >
+                <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
+                <XAxis
+                  dataKey="date"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  minTickGap={32}
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                  tickFormatter={(value: string) => {
+                    const date = new Date(value);
+                    return date.toLocaleDateString("ja-JP", {
+                      month: "short",
+                      day: "numeric",
+                    });
+                  }}
+                />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      class="w-[150px]"
+                      nameKey="tokens"
+                      config={chartConfig}
+                      labelFormatter={(value: string) => {
+                        return new Date(value).toLocaleDateString("ja-JP", {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        });
+                      }}
+                    />
+                  }
+                />
+                <Line
+                  dataKey={displayMode}
+                  type="monotone"
+                  stroke={`var(--color-${displayMode})`}
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* コンテキスト分析（円グラフ） - 小さく表示 */}
       {instances.length > 0 && (
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          {/* コンテキスト分析（円グラフ） */}
+        <div class="mb-4">
           <Card>
             <CardHeader class="pb-2">
-              <CardTitle class="text-sm">Context Analysis</CardTitle>
-              <CardDescription class="text-xs">Input vs Output token distribution</CardDescription>
+              <CardTitle class="text-sm">Token Distribution</CardTitle>
+              <CardDescription class="text-xs">Input vs Output ratio</CardDescription>
             </CardHeader>
             <CardContent>
-              <div class="h-[200px] w-full">
+              <div class="h-[150px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -454,9 +553,9 @@ export function DashboardPage() {
                       ].filter(d => d.value > 0)}
                       cx="50%"
                       cy="50%"
-                      innerRadius={50}
-                      outerRadius={75}
-                      paddingAngle={3}
+                      innerRadius={40}
+                      outerRadius={60}
+                      paddingAngle={2}
                       dataKey="value"
                     >
                       {[
@@ -480,113 +579,6 @@ export function DashboardPage() {
                       }}
                     />
                   </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div class="flex justify-center gap-4 mt-2 text-xs text-muted-foreground">
-                <span>Total: {(totalStats.totalInput + totalStats.totalOutput).toLocaleString()} tokens</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 日次コンテキスト使用量（ラインチャート） */}
-          <Card>
-            <CardHeader class="pb-2">
-              <div class="flex items-center justify-between">
-                <div>
-                  <CardTitle class="text-sm">Daily Context Usage</CardTitle>
-                  <CardDescription class="text-xs">Token usage over time</CardDescription>
-                </div>
-                <div class="flex gap-1">
-                  {(["input", "output"] as const).map((key) => (
-                    <button
-                      key={key}
-                      type="button"
-                      data-active={displayMode === key || displayMode === "both"}
-                      class={cn(
-                        "px-2 py-1 text-xs rounded transition-colors",
-                        (displayMode === key || displayMode === "both")
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted hover:bg-muted/80 text-muted-foreground"
-                      )}
-                      onClick={() => {
-                        if (displayMode === key) {
-                          setDisplayMode("both");
-                        } else {
-                          setDisplayMode(key);
-                        }
-                      }}
-                    >
-                      <span class="capitalize">{key}</span>
-                      <span class="ml-1 font-medium">
-                        {key === "input" ? totalStats.totalInput.toLocaleString() : totalStats.totalOutput.toLocaleString()}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div class="h-[200px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={dailyContextData}
-                    margin={{ left: 12, right: 12, top: 5, bottom: 5 }}
-                  >
-                    <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
-                    <XAxis
-                      dataKey="date"
-                      tickLine={false}
-                      axisLine={false}
-                      tickMargin={8}
-                      minTickGap={32}
-                      tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
-                      tickFormatter={(value: string) => {
-                        const date = new Date(value);
-                        return date.toLocaleDateString("ja-JP", { month: "short", day: "numeric" });
-                      }}
-                    />
-                    <YAxis
-                      tickLine={false}
-                      axisLine={false}
-                      tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }}
-                      tickFormatter={(value: number) => value.toLocaleString()}
-                      width={50}
-                    />
-                    <Tooltip
-                      contentStyle={CHART_TOOLTIP_STYLE}
-                      labelFormatter={(label: string) => {
-                        return new Date(label).toLocaleDateString("ja-JP", {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        });
-                      }}
-                      formatter={(value: number, name: string) => [
-                        value.toLocaleString() + " tokens",
-                        name === "input" ? "Input" : "Output",
-                      ]}
-                    />
-                    {(displayMode === "input" || displayMode === "both") && (
-                      <Line
-                        dataKey="input"
-                        name="input"
-                        type="monotone"
-                        stroke="hsl(var(--chart-1))"
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                    )}
-                    {(displayMode === "output" || displayMode === "both") && (
-                      <Line
-                        dataKey="output"
-                        name="output"
-                        type="monotone"
-                        stroke="hsl(var(--chart-2))"
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                    )}
-                  </LineChart>
                 </ResponsiveContainer>
               </div>
             </CardContent>

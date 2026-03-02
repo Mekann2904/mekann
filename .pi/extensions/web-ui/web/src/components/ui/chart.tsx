@@ -93,6 +93,9 @@ export interface ChartTooltipContentProps {
   }>;
   label?: string;
   config?: ChartConfig;
+  nameKey?: string;
+  labelFormatter?: (label: string) => string;
+  class?: string;
 }
 
 /**
@@ -103,14 +106,17 @@ export const ChartTooltipContent: FunctionalComponent<ChartTooltipContentProps> 
   payload,
   label,
   config,
+  labelFormatter,
 }) => {
   if (!active || !payload?.length) {
     return null;
   }
 
+  const formattedLabel = labelFormatter && label ? labelFormatter(label) : label;
+
   return (
     <div class="rounded-lg border bg-background p-2 shadow-sm">
-      <div class="text-xs text-muted-foreground mb-1">{label}</div>
+      <div class="text-xs text-muted-foreground mb-1">{formattedLabel}</div>
       {payload.map((item, index) => {
         const itemConfig = config?.[item.name];
         return (
