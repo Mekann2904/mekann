@@ -128,6 +128,17 @@ function truncatePath(path: string, maxLength: number = 40): string {
   return "..." + path.slice(-(maxLength - 3));
 }
 
+/**
+ * @summary ownerInstanceIdからPIDを抽出
+ * @param ownerInstanceId - "{sessionId}-{pid}"形式のインスタンスID
+ * @returns PID数値、または抽出失敗時はnull
+ */
+function extractPidFromOwnerInstanceId(ownerInstanceId: string | undefined): number | null {
+  if (!ownerInstanceId) return null;
+  const match = ownerInstanceId.match(/-(\d+)$/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
 export function DashboardPage() {
   const [contextHistory, setContextHistory] = useState<ContextHistoryResponse | null>(null);
   const [contextLoading, setContextLoading] = useState(true);
@@ -138,7 +149,7 @@ export function DashboardPage() {
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // アクティブなUL Workflowタスク
-  const [activeTask, setActiveTask] = useState<{ id: string; title: string } | null>(null);
+  const [activeTask, setActiveTask] = useState<{ id: string; title: string; ownerInstanceId?: string } | null>(null);
   const [plan, setPlan] = useState<string | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
   const [isPlanDrawerOpen, setIsPlanDrawerOpen] = useState(false);
@@ -171,7 +182,11 @@ export function DashboardPage() {
         if (res.ok) {
           const json = await res.json();
           if (json.data) {
-            setActiveTask({ id: json.data.id, title: json.data.title });
+            setActiveTask({ 
+              id: json.data.id, 
+              title: json.data.title,
+              ownerInstanceId: json.data.ownerInstanceId,
+            });
           }
         }
       } catch (e) {
@@ -406,16 +421,21 @@ export function DashboardPage() {
       ) : activeTask ? (
         <Drawer direction="bottom" open={isPlanDrawerOpen} onOpenChange={setIsPlanDrawerOpen}>
           <div class="space-y-3">
-            {instances.map((instance, idx) => (
-              <InstanceChartCard
-                key={instance.pid}
-                instance={instance}
-                color={getInstanceColor(idx)}
-                displayMode={displayMode}
-                planPath={idx === 0 ? `.pi/ul-workflow/tasks/${activeTask.id}/plan.md` : undefined}
-                onPlanClick={idx === 0 ? () => setIsPlanDrawerOpen(true) : undefined}
-              />
-            ))}
+            {instances.map((instance, idx) => {
+              const ownerPid = extractPidFromOwnerInstanceId(activeTask?.ownerInstanceId);
+              const isOwner = instance.pid === ownerPid;
+              
+              return (
+                <InstanceChartCard
+                  key={instance.pid}
+                  instance={instance}
+                  color={getInstanceColor(idx)}
+                  displayMode={displayMode}
+                  planPath={isOwner ? `.pi/ul-workflow/tasks/${activeTask.id}/plan.md` : undefined}
+                  onPlanClick={isOwner ? () => setIsPlanDrawerOpen(true) : undefined}
+                />
+              );
+            })}
           </div>
 
           {/* Full plan drawer */}
