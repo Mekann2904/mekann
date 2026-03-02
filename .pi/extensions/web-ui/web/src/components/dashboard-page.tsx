@@ -62,7 +62,6 @@ import {
   FORM_STYLES,
   PATTERNS,
 } from "./layout";
-import { StatsCard, StatsGrid } from "./layout/stats-card";
 
 /**
  * @summary 時間軸の種類
@@ -721,84 +720,6 @@ export function DashboardPage() {
         </Card>
       )}
 
-      {/* Stats Grid - Summary */}
-      {piUsage && Object.keys(piUsage.byModel).length > 0 && (() => {
-        const startDate = getTimeRangeStartDate(llmTimeRange);
-        const endDate = new Date();
-        endDate.setHours(23, 59, 59, 999);
-        
-        // Calculate totals for all metrics
-        let totalTokens = 0;
-        let totalRuns = 0;
-        let totalCost = 0;
-        let activeDays = 0;
-        
-        const current = new Date(startDate);
-        while (current <= endDate) {
-          const dateStr = current.toISOString().split('T')[0];
-          if (dateStr) {
-            const cost = piUsage.byDate[dateStr] || 0;
-            const tokens = piUsage.byDateTokens?.[dateStr];
-            const runs = piUsage.byDateRuns?.[dateStr] || 0;
-            
-            if (cost > 0 || (tokens && (tokens.input > 0 || tokens.output > 0)) || runs > 0) {
-              activeDays++;
-            }
-            
-            totalCost += cost;
-            if (tokens) {
-              totalTokens += tokens.input + tokens.output;
-            }
-            totalRuns += runs;
-          }
-          current.setDate(current.getDate() + 1);
-        }
-        
-        const avgTokensPerDay = activeDays > 0 ? Math.round(totalTokens / activeDays) : 0;
-        
-        // Top model by cost
-        const startDateStr = startDate.toISOString().split('T')[0];
-        const filteredByModel: Record<string, number> = {};
-        for (const [date, models] of Object.entries(piUsage.byDateModel)) {
-          if (date >= startDateStr) {
-            for (const [model, cost] of Object.entries(models)) {
-              filteredByModel[model] = (filteredByModel[model] || 0) + cost;
-            }
-          }
-        }
-        const sortedModels = Object.entries(filteredByModel).sort((a, b) => b[1] - a[1]);
-        const topModelName = sortedModels[0]?.[0]?.split('/').pop() || '-';
-        
-        return (
-          <StatsGrid cols={6} className="mb-4">
-            <StatsCard
-              label="Total Tokens"
-              value={totalTokens >= 1000000 ? `${(totalTokens / 1000000).toFixed(1)}M` : totalTokens >= 1000 ? `${(totalTokens / 1000).toFixed(1)}K` : totalTokens.toString()}
-            />
-            <StatsCard
-              label="Total Runs"
-              value={totalRuns >= 1000 ? `${(totalRuns / 1000).toFixed(1)}K` : totalRuns.toString()}
-            />
-            <StatsCard
-              label="Total Cost"
-              value={`$${totalCost.toFixed(2)}`}
-            />
-            <StatsCard
-              label="Active Days"
-              value={activeDays.toString()}
-            />
-            <StatsCard
-              label="Avg Tokens/Day"
-              value={avgTokensPerDay >= 1000 ? `${(avgTokensPerDay / 1000).toFixed(1)}K` : avgTokensPerDay.toString()}
-            />
-            <StatsCard
-              label="Top Model"
-              value={topModelName}
-            />
-          </StatsGrid>
-        );
-      })()}
-
       {/* Activity Heatmap and Tool Breakdown Row */}
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         {/* LLM Usage - Daily Activity Heatmap (GitHub-style green) */}
@@ -1058,6 +979,35 @@ export function DashboardPage() {
           </Card>
         )}
       </div>
+
+      {/* Total Cost */}
+      {piUsage && Object.keys(piUsage.byModel).length > 0 && (() => {
+        const startDate = getTimeRangeStartDate(llmTimeRange);
+        const endDate = new Date();
+        endDate.setHours(23, 59, 59, 999);
+        
+        // Calculate total cost
+        let totalCost = 0;
+        const current = new Date(startDate);
+        while (current <= endDate) {
+          const dateStr = current.toISOString().split('T')[0];
+          if (dateStr) {
+            totalCost += piUsage.byDate[dateStr] || 0;
+          }
+          current.setDate(current.getDate() + 1);
+        }
+        
+        return (
+          <Card class="mb-4">
+            <CardContent class="py-4">
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-muted-foreground">Total Cost ({getTimeRangeLabel(llmTimeRange)})</span>
+                <span class="text-2xl font-bold text-green-500">${totalCost.toFixed(2)}</span>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Error display */}
       {contextError && (
