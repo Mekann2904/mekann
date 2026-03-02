@@ -1173,9 +1173,17 @@ ${phasesDisplay}
       // Sync to file
       saveState(currentWorkflow);
 
-      // BUG FIX: 終了フェーズではアクティブ状態をクリア
+      // BUG FIX: 終了フェーズではアクティブ状態をクリア + タスクディレクトリ削除
       if (nextPhase === "completed" || nextPhase === "aborted") {
         setCurrentWorkflow(null);
+        // 完了/中止したタスクディレクトリを削除
+        const taskDir = path.join(TASKS_DIR, currentWorkflow.taskId);
+        try {
+          await fsPromises.rm(taskDir, { recursive: true, force: true });
+        } catch (e) {
+          // ディレクトリ削除に失敗してもクリティカルではない
+          console.error(`Failed to remove task directory: ${taskDir}`, e);
+        }
       } else {
         setCurrentWorkflow(currentWorkflow);
       }
