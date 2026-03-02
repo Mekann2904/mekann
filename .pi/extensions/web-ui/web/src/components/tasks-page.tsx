@@ -629,7 +629,7 @@ export function TasksPage() {
         key={column.id}
         class={cn(
           "flex flex-col w-[280px] shrink-0 bg-muted/30 rounded-md transition-all duration-150",
-          isDropTarget && "ring-2 ring-primary/50 bg-accent/10 border-2 border-dashed border-primary/30"
+          isDropTarget && "ring-2 ring-primary/50 bg-accent/10"
         )}
         onDragOver={(e) => handleDragOver(e, column.id)}
         onDragLeave={handleDragLeave}

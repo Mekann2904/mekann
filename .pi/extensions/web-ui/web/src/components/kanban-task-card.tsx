@@ -219,7 +219,7 @@ function KanbanTaskCardInner({
         "group relative bg-card rounded-md border border-border cursor-pointer",
         "transition-all duration-150",
         "hover:border-primary/30 hover:shadow-sm",
-        isDragging && "opacity-50 shadow-xl scale-105 rotate-2 z-50",
+        isDragging && "opacity-50 shadow-xl scale-105 z-50",
         isSelected && "ring-2 ring-primary border-primary/50",
         task.status === "completed" && "opacity-60",
         task.isUlWorkflow && "border-purple-500/30 bg-purple-500/5"
