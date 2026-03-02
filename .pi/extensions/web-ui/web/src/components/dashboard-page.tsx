@@ -624,7 +624,7 @@ export function DashboardPage() {
   );
 
   return (
-    <PageLayout variant="default">
+    <PageLayout variant="default" className="gap-2 p-2">
       {/* Header */}
       <PageHeader
         title="Dashboard"
@@ -645,7 +645,7 @@ export function DashboardPage() {
         }
       />
 
-      {/* Total Cost */}
+      {/* Total Cost - Compact inline */}
       {piUsage && Object.keys(piUsage.byModel).length > 0 && (() => {
         const startDate = getTimeRangeStartDate(llmTimeRange);
         const endDate = new Date();
@@ -663,19 +663,15 @@ export function DashboardPage() {
         }
         
         return (
-          <Card class="mb-4">
-            <CardContent class="py-4">
-              <div class="flex items-center justify-between">
-                <span class="text-sm text-muted-foreground">Total Cost ({getTimeRangeLabel(llmTimeRange)})</span>
-                <span class="text-2xl font-bold text-green-500">${totalCost.toFixed(2)}</span>
-              </div>
-            </CardContent>
-          </Card>
+          <div class="flex items-center justify-between px-1 mb-2">
+            <span class="text-xs text-muted-foreground">Total Cost ({getTimeRangeLabel(llmTimeRange)})</span>
+            <span class="text-lg font-bold text-green-500">${totalCost.toFixed(2)}</span>
+          </div>
         );
       })()}
 
       {/* Activity Heatmap and Tool Breakdown Row */}
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+      <div class="flex gap-2 mb-2">
         {/* LLM Usage - Daily Activity Heatmap (GitHub-style green) */}
         {piUsage && Object.keys(piUsage.byDate).length > 0 && (() => {
           const label = getTimeRangeLabel(llmTimeRange);
@@ -798,37 +794,37 @@ export function DashboardPage() {
         }
         
         return (
-          <Card class="lg:col-span-2">
-            <CardHeader class="pb-2">
+          <Card class="flex-none">
+            <CardHeader class="pb-1 pt-2 px-3">
               <div class="flex items-center justify-between">
                 <div>
-                  <CardTitle class="text-sm">Activity Heatmap ({label})</CardTitle>
-                  <CardDescription class="text-xs">{summaryText}</CardDescription>
+                  <CardTitle class="text-xs">Activity ({label})</CardTitle>
+                  <CardDescription class="text-[10px]">{summaryText}</CardDescription>
                 </div>
                 <MetricSelector />
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent class="pt-0 pb-2 px-3">
               {hasData ? (
                 <>
                   {isDayView ? (
                     // Day view: Show today's data prominently
-                    <div class="flex items-center justify-center py-4">
+                    <div class="flex items-center justify-center py-2">
                       <div class="text-center">
                         <div class={cn(
-                          "w-20 h-20 rounded-lg flex items-center justify-center text-2xl font-bold mx-auto mb-2",
+                          "w-16 h-16 rounded-lg flex items-center justify-center text-xl font-bold mx-auto mb-1",
                           maxValue > 0 ? "bg-green-500 text-white" : "bg-muted text-muted-foreground"
                         )}>
                           {formatMetricValue(totalValue)}
                         </div>
-                        <div class="text-sm text-muted-foreground">
-                          {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                        <div class="text-[10px] text-muted-foreground">
+                          {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                         </div>
                       </div>
                     </div>
                   ) : (
                     // Week/Month/Year view: GitHub-style calendar heatmap
-                    <div class="flex gap-2">
+                    <div class="flex gap-1">
                       {/* Day labels (hide for year view) */}
                       {!isYearView && (
                         <div class={cn("flex flex-col", cellGap)}>
@@ -839,8 +835,8 @@ export function DashboardPage() {
                           ))}
                         </div>
                       )}
-                      {/* Heatmap grid */}
-                      <div class="overflow-x-auto">
+                      {/* Heatmap grid - fit content width */}
+                      <div>
                         <div class={cn("flex", cellGap)}>
                           {weeks.map((week, weekIndex) => (
                             <div key={weekIndex} class={cn("flex flex-col flex-shrink-0", cellGap)}>
@@ -866,8 +862,8 @@ export function DashboardPage() {
                       </div>
                     </div>
                   )}
-                  <div class="flex items-center justify-between mt-3 text-xs text-muted-foreground">
-                    <span>{startDateStr}</span>
+                  {/* Legend only - no date labels */}
+                  <div class="flex items-center justify-center mt-2 text-[10px] text-muted-foreground">
                     <div class="flex items-center gap-1">
                       <span>Less</span>
                       <div class={cn("flex", cellGap)}>
@@ -879,7 +875,6 @@ export function DashboardPage() {
                       </div>
                       <span>More</span>
                     </div>
-                    <span>{endDateStr}</span>
                   </div>
                 </>
               ) : (
@@ -894,117 +889,70 @@ export function DashboardPage() {
 
         {/* Tool Breakdown */}
         {agentUsage && Object.keys(agentUsage.features).length > 0 && (
-          <Card>
-            <CardHeader class="pb-2">
-              <CardTitle class="text-sm">Tool Breakdown ({getTimeRangeLabel(llmTimeRange)})</CardTitle>
-              <CardDescription class="text-xs">
-                {agentUsage.totals.toolCalls.toLocaleString()} calls | {Math.round(agentUsage.totals.contextTokenSum / 1000000).toLocaleString()}M context tokens
+          <Card class="flex-1 min-w-0">
+            <CardHeader class="pb-1 pt-2 px-3">
+              <CardTitle class="text-xs">Tools ({getTimeRangeLabel(llmTimeRange)})</CardTitle>
+              <CardDescription class="text-[10px]">
+                {agentUsage.totals.toolCalls.toLocaleString()} calls
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div class="space-y-1">
+            <CardContent class="pt-0 pb-2 px-3">
+              <div class="space-y-0.5">
                 {Object.entries(agentUsage.features)
                   .filter(([key]) => key.startsWith('tool:'))
                   .sort((a, b) => b[1].calls - a[1].calls)
-                  .slice(0, 10)
+                  .slice(0, 6)
                   .map(([key, data]) => {
                     const toolName = data.featureName || key.split(':').pop() || key;
-                    const contextEst = data.contextTokenSum ? Math.round(data.contextTokenSum / 1000) : 0;
                     const maxCalls = Math.max(...Object.values(agentUsage.features).map(f => f.calls));
                     const barWidth = maxCalls > 0 ? (data.calls / maxCalls * 100) : 0;
                     return (
-                      <div key={key} class="flex items-center gap-2 text-xs">
+                      <div key={key} class="flex items-center gap-1.5 text-[10px]">
                         <span class="flex-1 truncate font-mono">{toolName}</span>
-                        <span class="w-12 text-right">{data.calls.toLocaleString()}</span>
-                        <span class="w-16 text-right text-muted-foreground">{contextEst > 0 ? `${contextEst}K` : '-'}</span>
-                        <div class="w-12 h-2 bg-muted rounded overflow-hidden">
+                        <span class="w-10 text-right">{data.calls.toLocaleString()}</span>
+                        <div class="w-10 h-1.5 bg-muted rounded overflow-hidden">
                           <div class="h-full bg-emerald-500 rounded" style={{ width: `${barWidth}%` }} />
                         </div>
                       </div>
                     );
                   })}
               </div>
-              <div class="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-                <span>Tool</span>
-                <span>Calls</span>
-                <span>Context</span>
-              </div>
             </CardContent>
           </Card>
         )}
       </div>
 
-      {/* Current Context Usage */}
+      {/* Current Context Usage - Compact */}
       {currentContext && (
-        <Card class="mb-4">
-          <CardHeader class="pb-2">
+        <Card class="mb-2">
+          <CardHeader class="pb-1 pt-2 px-3">
             <div class="flex items-center justify-between">
-              <div>
-                <CardTitle class="text-sm">Current Context</CardTitle>
-                <div class="text-xs text-muted-foreground truncate max-w-[300px]" title={currentContext.cwd}>
-                  {currentContext.cwd}
-                </div>
+              <div class="flex items-center gap-2">
+                <CardTitle class="text-xs">Context</CardTitle>
+                <span class="text-[10px] text-muted-foreground truncate max-w-[200px]" title={currentContext.cwd}>
+                  {truncatePath(currentContext.cwd, 25)}
+                </span>
               </div>
-              <span class="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                {currentContext.model}
-              </span>
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] text-muted-foreground">
+                  {currentContext.percent.toFixed(0)}%
+                </span>
+                <span class="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                  {currentContext.model}
+                </span>
+              </div>
             </div>
           </CardHeader>
-          <CardContent class="space-y-4">
+          <CardContent class="pt-0 pb-2 px-3 space-y-2">
             {/* Usage bar */}
-            <div class="space-y-2">
-              <div class="flex items-center justify-between text-sm">
-                <span class="text-muted-foreground">
-                  used {currentContext.used.toLocaleString()} / {currentContext.total.toLocaleString()} ({currentContext.percent.toFixed(1)}%)
-                </span>
-                <span class="text-muted-foreground">
-                  free {currentContext.free.toLocaleString()} tokens
-                </span>
-              </div>
-              <Progress value={currentContext.percent} class="h-2" />
-            </div>
+            <Progress value={currentContext.percent} class="h-1.5" />
 
-            {/* Category breakdown */}
-            <div class="grid grid-cols-4 gap-2 text-xs">
-              <div class="text-center">
-                <div class="text-muted-foreground">User</div>
-                <div class="font-mono">{(currentContext.categoryTokens.user / 1000).toFixed(1)}k</div>
-              </div>
-              <div class="text-center">
-                <div class="text-muted-foreground">Assistant</div>
-                <div class="font-mono">{(currentContext.categoryTokens.assistant / 1000).toFixed(1)}k</div>
-              </div>
-              <div class="text-center">
-                <div class="text-muted-foreground">Tools</div>
-                <div class="font-mono">{(currentContext.categoryTokens.tools / 1000).toFixed(1)}k</div>
-              </div>
-              <div class="text-center">
-                <div class="text-muted-foreground">Other</div>
-                <div class="font-mono">{(currentContext.categoryTokens.other / 1000).toFixed(1)}k</div>
-              </div>
+            {/* Category breakdown - inline */}
+            <div class="flex items-center gap-3 text-[10px]">
+              <span class="text-muted-foreground">User: <span class="font-mono">{(currentContext.categoryTokens.user / 1000).toFixed(0)}k</span></span>
+              <span class="text-muted-foreground">Asst: <span class="font-mono">{(currentContext.categoryTokens.assistant / 1000).toFixed(0)}k</span></span>
+              <span class="text-muted-foreground">Tools: <span class="font-mono">{(currentContext.categoryTokens.tools / 1000).toFixed(0)}k</span></span>
             </div>
-
-            {/* Tool Occupancy */}
-            {Object.keys(currentContext.toolOccupancy).length > 0 && (
-              <div class="space-y-1">
-                <div class="text-xs text-muted-foreground font-medium">Current Tool Occupancy (estimate)</div>
-                <div class="space-y-1 max-h-[200px] overflow-y-auto">
-                  {Object.entries(currentContext.toolOccupancy)
-                    .sort((a, b) => b[1].tokens - a[1].tokens)
-                    .slice(0, 8)
-                    .map(([tool, data]) => (
-                      <div key={tool} class="flex items-center justify-between text-xs py-1 border-b border-border/50 last:border-0">
-                        <span class="text-muted-foreground truncate flex-1">{tool}</span>
-                        <div class="flex items-center gap-4 text-right">
-                          <span class="w-16">{data.tokens.toLocaleString()}</span>
-                          <span class="w-10 text-muted-foreground">{(data.share * 100).toFixed(1)}%</span>
-                          <span class="w-10 text-muted-foreground">{data.calls}</span>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
       )}
@@ -1105,14 +1053,14 @@ function InstanceChartCard({
 
   return (
     <Card class="border-l-2" style={{ borderLeftColor: color }}>
-      <CardHeader class="pb-2">
+      <CardHeader class="pb-1 pt-2 px-3">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <Cpu class="h-4 w-4" style={{ color }} />
+            <Cpu class="h-3.5 w-3.5" style={{ color }} />
             <div>
-              <CardTitle class="text-sm font-mono">PID {instance.pid}</CardTitle>
-              <CardDescription class="flex items-center gap-1 mt-0.5">
-                <Folder class="h-3 w-3" />
+              <CardTitle class="text-xs font-mono">PID {instance.pid}</CardTitle>
+              <CardDescription class="flex items-center gap-1 mt-0.5 text-[10px]">
+                <Folder class="h-2.5 w-2.5" />
                 <span class="truncate max-w-[200px]" title={instance.cwd}>
                   {truncatePath(instance.cwd, 30)}
                 </span>
@@ -1121,24 +1069,24 @@ function InstanceChartCard({
                 <button
                   type="button"
                   onClick={onPlanClick}
-                  class="flex items-center gap-1 mt-1 text-xs text-blue-400 hover:text-blue-300 underline underline-offset-2 cursor-pointer bg-transparent border-0 p-0 font-mono"
+                  class="flex items-center gap-1 mt-1 text-[10px] text-blue-400 hover:text-blue-300 underline underline-offset-2 cursor-pointer bg-transparent border-0 p-0 font-mono"
                 >
-                  <FileText class="h-3 w-3" />
+                  <FileText class="h-2.5 w-2.5" />
                   <span class="truncate max-w-[280px]">{planPath}</span>
                 </button>
               )}
             </div>
           </div>
-          <span class="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+          <span class="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
             {instance.model}
           </span>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent class="pt-0 pb-2 px-3">
         {chartData.length === 0 ? (
-          <ChartEmptyState message="No history data" height={120} />
+          <ChartEmptyState message="No history data" height={80} />
         ) : (
-          <div class="h-[150px] w-full">
+          <div class="h-[100px] w-full">
             <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
               <BarChart data={chartData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" class="stroke-border" />
