@@ -52,6 +52,10 @@ interface FileStats {
 	byModel: Record<string, number>;
 	byDate: Record<string, number>;
 	byDateModel: Record<string, Record<string, number>>;
+	// Extended metrics
+	byDateTokens: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>;
+	byDateRuns: Record<string, number>;
+	byModelTokens: Record<string, { input: number; output: number }>;
 }
 
 interface CacheData {
@@ -98,14 +102,48 @@ function mergeRecordToMap(target: Map<string, number>, source: Record<string, nu
 	}
 }
 
+function mergeTokenRecordToMap(
+	target: Map<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>,
+	source: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>
+) {
+	for (const [key, value] of Object.entries(source)) {
+		const existing = target.get(key) || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+		target.set(key, {
+			input: existing.input + value.input,
+			output: existing.output + value.output,
+			cacheRead: existing.cacheRead + value.cacheRead,
+			cacheWrite: existing.cacheWrite + value.cacheWrite,
+		});
+	}
+}
+
+function mergeModelTokenRecordToMap(
+	target: Map<string, { input: number; output: number }>,
+	source: Record<string, { input: number; output: number }>
+) {
+	for (const [key, value] of Object.entries(source)) {
+		const existing = target.get(key) || { input: 0, output: 0 };
+		target.set(key, {
+			input: existing.input + value.input,
+			output: existing.output + value.output,
+		});
+	}
+}
+
 function parseUsageFile(filePath: string): {
 	byModel: Record<string, number>;
 	byDate: Record<string, number>;
 	byDateModel: Record<string, Record<string, number>>;
+	byDateTokens: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>;
+	byDateRuns: Record<string, number>;
+	byModelTokens: Record<string, { input: number; output: number }>;
 } {
 	const byModel: Record<string, number> = {};
 	const byDate: Record<string, number> = {};
 	const byDateModel: Record<string, Record<string, number>> = {};
+	const byDateTokens: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {};
+	const byDateRuns: Record<string, number> = {};
+	const byModelTokens: Record<string, { input: number; output: number }> = {};
 
 	try {
 		const content = readFileSync(filePath, "utf-8");
@@ -115,15 +153,45 @@ function parseUsageFile(filePath: string): {
 			if (!line.trim()) continue;
 			try {
 				const data = JSON.parse(line);
-				if (data.type === "message" && data.message?.usage?.cost?.total > 0) {
+				if (data.type === "message" && data.message?.usage) {
 					const date = data.timestamp?.slice(0, 10) || "unknown";
 					const model = data.message.model || "unknown";
-					const cost = data.message.usage.cost.total;
+					const usage = data.message.usage;
+					const cost = usage.cost?.total || 0;
 
-					byModel[model] = (byModel[model] || 0) + cost;
-					byDate[date] = (byDate[date] || 0) + cost;
-					if (!byDateModel[date]) byDateModel[date] = {};
-					byDateModel[date][model] = (byDateModel[date][model] || 0) + cost;
+					// Cost metrics
+					if (cost > 0) {
+						byModel[model] = (byModel[model] || 0) + cost;
+						byDate[date] = (byDate[date] || 0) + cost;
+						if (!byDateModel[date]) byDateModel[date] = {};
+						byDateModel[date][model] = (byDateModel[date][model] || 0) + cost;
+					}
+
+					// Token metrics (always collect if available)
+					const input = usage.input || 0;
+					const output = usage.output || 0;
+					const cacheRead = usage.cacheRead || 0;
+					const cacheWrite = usage.cacheWrite || 0;
+
+					if (!byDateTokens[date]) {
+						byDateTokens[date] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+					}
+					byDateTokens[date].input += input;
+					byDateTokens[date].output += output;
+					byDateTokens[date].cacheRead += cacheRead;
+					byDateTokens[date].cacheWrite += cacheWrite;
+
+					// Run count (assistant messages with usage)
+					if (data.message.role === "assistant") {
+						byDateRuns[date] = (byDateRuns[date] || 0) + 1;
+					}
+
+					// Model tokens
+					if (!byModelTokens[model]) {
+						byModelTokens[model] = { input: 0, output: 0 };
+					}
+					byModelTokens[model].input += input;
+					byModelTokens[model].output += output;
 				}
 			} catch (e) {
 				// Skip malformed JSON lines (normal for partial writes)
@@ -133,18 +201,24 @@ function parseUsageFile(filePath: string): {
 		console.debug("[usage-tracker] parseUsageFile failed:", { path: filePath, error: e });
 	}
 
-	return { byModel, byDate, byDateModel };
+	return { byModel, byDate, byDateModel, byDateTokens, byDateRuns, byModelTokens };
 }
 
 function collectData(): {
 	byModel: Map<string, number>;
 	byDate: Map<string, number>;
 	byDateModel: Map<string, Map<string, number>>;
+	byDateTokens: Map<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>;
+	byDateRuns: Map<string, number>;
+	byModelTokens: Map<string, { input: number; output: number }>;
 } {
 	const cache = loadCache();
 	const byModel = new Map<string, number>();
 	const byDate = new Map<string, number>();
 	const byDateModel = new Map<string, Map<string, number>>();
+	const byDateTokens = new Map<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>();
+	const byDateRuns = new Map<string, number>();
+	const byModelTokens = new Map<string, { input: number; output: number }>();
 	const nextFiles: Record<string, FileStats> = {};
 
 	try {
@@ -170,7 +244,8 @@ function collectData(): {
 				const needsParse =
 					!cachedFile ||
 					cachedFile.mtimeMs !== mtimeMs ||
-					!cachedFile.byDateModel;
+					!cachedFile.byDateModel ||
+					!cachedFile.byDateTokens;
 				const stats = needsParse
 					? {
 						mtimeMs,
@@ -188,6 +263,16 @@ function collectData(): {
 						dayMap.set(model, (dayMap.get(model) || 0) + cost);
 					}
 				}
+				// Merge extended metrics
+				if (stats.byDateTokens) {
+					mergeTokenRecordToMap(byDateTokens, stats.byDateTokens);
+				}
+				if (stats.byDateRuns) {
+					mergeRecordToMap(byDateRuns, stats.byDateRuns);
+				}
+				if (stats.byModelTokens) {
+					mergeModelTokenRecordToMap(byModelTokens, stats.byModelTokens);
+				}
 			}
 		}
 	} catch (e) {
@@ -196,7 +281,7 @@ function collectData(): {
 
 	saveCache({ files: nextFiles });
 
-	return { byModel, byDate, byDateModel };
+	return { byModel, byDate, byDateModel, byDateTokens, byDateRuns, byModelTokens };
 }
 
 function getRangeKeys(byDate: Map<string, number>, weeksCount: number): string[] {
