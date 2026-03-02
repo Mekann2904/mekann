@@ -147,7 +147,6 @@ export function DashboardPage() {
   const [contextHistory, setContextHistory] = useState<ContextHistoryResponse | null>(null);
   const [contextLoading, setContextLoading] = useState(true);
   const [contextError, setContextError] = useState<string | null>(null);
-  const [displayMode, setDisplayMode] = useState<"input" | "output" | "both">("input");
   const [sseConnected, setSseConnected] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -476,33 +475,6 @@ export function DashboardPage() {
     </div>
   );
 
-  // 表示モード切り替えボタン
-  const DisplayModeButtons = () => (
-    <div class="flex gap-2 shrink-0">
-      <Button
-        variant={displayMode === "input" ? "default" : "outline"}
-        size="sm"
-        onClick={() => setDisplayMode("input")}
-      >
-        Input
-      </Button>
-      <Button
-        variant={displayMode === "output" ? "default" : "outline"}
-        size="sm"
-        onClick={() => setDisplayMode("output")}
-      >
-        Output
-      </Button>
-      <Button
-        variant={displayMode === "both" ? "default" : "outline"}
-        size="sm"
-        onClick={() => setDisplayMode("both")}
-      >
-        Both
-      </Button>
-    </div>
-  );
-
   return (
     <PageLayout variant="default">
       {/* Header */}
@@ -523,9 +495,6 @@ export function DashboardPage() {
           </>
         }
       />
-
-      {/* 表示モード切り替え */}
-      <DisplayModeButtons />
 
       {/* Current Context Usage */}
       {currentContext && (
@@ -732,7 +701,6 @@ export function DashboardPage() {
                   key={instance.pid}
                   instance={instance}
                   color={getInstanceColor(idx)}
-                  displayMode={displayMode}
                   planPath={isOwner ? `.pi/ul-workflow/tasks/${activeTask.id}/plan.md` : undefined}
                   onPlanClick={isOwner ? () => setIsPlanDrawerOpen(true) : undefined}
                 />
@@ -754,7 +722,6 @@ export function DashboardPage() {
               key={instance.pid}
               instance={instance}
               color={getInstanceColor(idx)}
-              displayMode={displayMode}
             />
           ))}
         </div>
@@ -769,13 +736,11 @@ export function DashboardPage() {
 function InstanceChartCard({
   instance,
   color,
-  displayMode,
   planPath,
   onPlanClick,
 }: {
   instance: InstanceContextHistory;
   color: string;
-  displayMode: "input" | "output" | "both";
   planPath?: string;
   onPlanClick?: () => void;
 }) {
@@ -864,28 +829,24 @@ function InstanceChartCard({
                     name ?? "",
                   ]}
                 />
-                {(displayMode === "input" || displayMode === "both") && (
-                  <Bar
-                    dataKey="input"
-                    name="Input"
-                    fill="hsl(var(--chart-1))"
-                    radius={[2, 2, 0, 0]}
-                    maxBarSize={12}
-                    isAnimationActive
-                    animationDuration={250}
-                  />
-                )}
-                {(displayMode === "output" || displayMode === "both") && (
-                  <Bar
-                    dataKey="output"
-                    name="Output"
-                    fill="hsl(var(--chart-2))"
-                    radius={[2, 2, 0, 0]}
-                    maxBarSize={12}
-                    isAnimationActive
-                    animationDuration={250}
-                  />
-                )}
+                <Bar
+                  dataKey="input"
+                  name="Input"
+                  fill="hsl(var(--chart-1))"
+                  radius={[2, 2, 0, 0]}
+                  maxBarSize={12}
+                  isAnimationActive
+                  animationDuration={250}
+                />
+                <Bar
+                  dataKey="output"
+                  name="Output"
+                  fill="hsl(var(--chart-2))"
+                  radius={[2, 2, 0, 0]}
+                  maxBarSize={12}
+                  isAnimationActive
+                  animationDuration={250}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
