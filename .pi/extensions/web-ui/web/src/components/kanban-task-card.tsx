@@ -183,7 +183,7 @@ export function KanbanTaskCard({
   return (
     <div
       draggable
-      onDragStart={handleDragStart}
+      onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onClick}
       class={cn(
