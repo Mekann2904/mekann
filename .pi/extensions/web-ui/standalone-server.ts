@@ -1003,59 +1003,96 @@ function createApp(): Express {
   });
 
   /**
-   * GET /api/pi-usage - Get pi usage statistics (cost, models, daily activity)
+   * GET /api/pi-usage - Get pi usage statistics (cost, models, daily activity, tokens, runs)
    */
   app.get("/api/pi-usage", (_req: Request, res: Response) => {
     try {
-      const usageFile = path.join(homedir(), ".pi", "extensions", "usage-cache.json");
-
-      if (!fs.existsSync(usageFile)) {
-        res.json({
-          success: true,
-          data: {
-            byModel: {},
-            byDate: {},
-            byDateModel: {},
-            totalCost: 0,
-          },
-        });
-        return;
-      }
-
-      const rawData = fs.readFileSync(usageFile, "utf-8");
-      const sessionData = JSON.parse(rawData);
-
-      // Aggregate all sessions
+      // Parse session files directly to get all metrics including tokens and runs
+      const sessionsDir = path.join(homedir(), ".pi", "agent", "sessions");
+      
       const byModel: Record<string, number> = {};
       const byDate: Record<string, number> = {};
       const byDateModel: Record<string, Record<string, number>> = {};
+      const byDateTokens: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {};
+      const byDateRuns: Record<string, number> = {};
+      const byModelTokens: Record<string, { input: number; output: number }> = {};
 
-      for (const session of Object.values(sessionData) as Array<{
-        byModel?: Record<string, number>;
-        byDate?: Record<string, number>;
-        byDateModel?: Record<string, Record<string, number>>;
-      }>) {
-        if (session.byModel) {
-          for (const [model, cost] of Object.entries(session.byModel)) {
-            byModel[model] = (byModel[model] || 0) + cost;
-          }
-        }
-        if (session.byDate) {
-          for (const [date, cost] of Object.entries(session.byDate)) {
-            byDate[date] = (byDate[date] || 0) + cost;
-          }
-        }
-        if (session.byDateModel) {
-          for (const [date, models] of Object.entries(session.byDateModel)) {
-            if (!byDateModel[date]) byDateModel[date] = {};
-            for (const [model, cost] of Object.entries(models)) {
-              byDateModel[date][model] = (byDateModel[date][model] || 0) + cost;
+      if (fs.existsSync(sessionsDir)) {
+        const dirs = fs.readdirSync(sessionsDir, { withFileTypes: true })
+          .filter((d) => d.isDirectory())
+          .map((d) => d.name);
+
+        for (const dir of dirs) {
+          const dirPath = path.join(sessionsDir, dir);
+          const files = fs.readdirSync(dirPath).filter((f) => f.endsWith(".jsonl"));
+
+          for (const file of files) {
+            const filePath = path.join(dirPath, file);
+            try {
+              const content = fs.readFileSync(filePath, "utf-8");
+              const lines = content.split("\n").slice(-1000);
+
+              for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                  const data = JSON.parse(line);
+                  if (data.type === "message" && data.message?.usage) {
+                    const date = data.timestamp?.slice(0, 10) || "unknown";
+                    const model = data.message.model || "unknown";
+                    const usage = data.message.usage;
+                    const cost = usage.cost?.total || 0;
+
+                    // Cost metrics
+                    if (cost > 0) {
+                      byModel[model] = (byModel[model] || 0) + cost;
+                      byDate[date] = (byDate[date] || 0) + cost;
+                      if (!byDateModel[date]) byDateModel[date] = {};
+                      byDateModel[date][model] = (byDateModel[date][model] || 0) + cost;
+                    }
+
+                    // Token metrics
+                    const input = usage.input || 0;
+                    const output = usage.output || 0;
+                    const cacheRead = usage.cacheRead || 0;
+                    const cacheWrite = usage.cacheWrite || 0;
+
+                    if (!byDateTokens[date]) {
+                      byDateTokens[date] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+                    }
+                    byDateTokens[date].input += input;
+                    byDateTokens[date].output += output;
+                    byDateTokens[date].cacheRead += cacheRead;
+                    byDateTokens[date].cacheWrite += cacheWrite;
+
+                    // Run count (assistant messages with usage)
+                    if (data.message.role === "assistant") {
+                      byDateRuns[date] = (byDateRuns[date] || 0) + 1;
+                    }
+
+                    // Model tokens
+                    if (!byModelTokens[model]) {
+                      byModelTokens[model] = { input: 0, output: 0 };
+                    }
+                    byModelTokens[model].input += input;
+                    byModelTokens[model].output += output;
+                  }
+                } catch {
+                  // Skip malformed JSON lines
+                }
+              }
+            } catch {
+              // Skip files that can't be read
             }
           }
         }
       }
 
       const totalCost = Object.values(byModel).reduce((sum, c) => sum + c, 0);
+      const totalTokens = Object.values(byDateTokens).reduce(
+        (sum, t) => ({ input: sum.input + t.input, output: sum.output + t.output }),
+        { input: 0, output: 0 }
+      );
+      const totalRuns = Object.values(byDateRuns).reduce((sum, r) => sum + r, 0);
 
       res.json({
         success: true,
@@ -1064,6 +1101,11 @@ function createApp(): Express {
           byDate,
           byDateModel,
           totalCost,
+          byDateTokens,
+          byDateRuns,
+          byModelTokens,
+          totalTokens,
+          totalRuns,
         },
       });
     } catch (error) {
@@ -1131,7 +1173,7 @@ function createApp(): Express {
         const dayData = dailyData.find(d => d.startTime?.split('T')[0] === dateStr);
         dailyActivity.push({
           date: dateStr ?? '',
-          tokens: dayData?.totals?.totalPromptTokens ?? 0 + dayData?.totals?.totalOutputTokens ?? 0,
+          tokens: (dayData?.totals?.totalPromptTokens ?? 0) + (dayData?.totals?.totalOutputTokens ?? 0),
           runs: dayData?.totals?.runs ?? 0,
         });
       }
