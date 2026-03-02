@@ -1276,14 +1276,39 @@ function createApp(): Express {
   const distPath = path.join(__dirname, "dist");
   app.use(express.static(distPath));
 
+  // ============= API Proxy to pi runtime API (port 3457) =============
+  // This must come AFTER static files but BEFORE SPA fallback
+  // Only proxy requests that don't match any local route
+
+  const PI_RUNTIME_PORT = parseInt(process.env.PI_RUNTIME_PORT || "3457");
+
+  app.all("/api/*", async (req: Request, res: Response) => {
+    const proxyUrl = `http://localhost:${PI_RUNTIME_PORT}${req.originalUrl}`;
+
+    try {
+      const response = await fetch(proxyUrl, {
+        method: req.method,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: req.method !== "GET" && req.method !== "HEAD" ? JSON.stringify(req.body) : undefined,
+      });
+
+      const data = await response.json();
+      res.status(response.status).json(data);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(502).json({
+        error: "Proxy error",
+        details: errorMessage,
+        target: proxyUrl,
+      });
+    }
+  });
+
   // ============= SPA Fallback =============
 
   app.get("*", (req: Request, res: Response) => {
-    if (req.path.startsWith("/api/")) {
-      res.status(404).json({ error: "Not found" });
-      return;
-    }
-
     res.sendFile(path.join(distPath, "index.html"), (err) => {
       if (err) {
         res.status(404).send(`
