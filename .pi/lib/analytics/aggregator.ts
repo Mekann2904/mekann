@@ -23,7 +23,7 @@
  *   out: aggregatesディレクトリへの集計JSON
  */
 
-import { writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { writeFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import type { LLMBehaviorRecord, LLMBehaviorAggregates } from "./llm-behavior-types.js";
 import { loadBehaviorRecords, getAnalyticsPaths } from "./behavior-storage.js";
@@ -63,8 +63,9 @@ export function aggregateHourly(date: Date, cwd?: string): string[] {
       continue;
     }
 
-    // 保存
-    const hourStr = `${date.toISOString().split("T")[0]}T${hour.toString().padStart(2, "0")}`;
+    // 保存（ローカル日付を使用）
+    const localDate = `${hourStart.getFullYear()}-${String(hourStart.getMonth() + 1).padStart(2, "0")}-${String(hourStart.getDate()).padStart(2, "0")}`;
+    const hourStr = `${localDate}T${hour.toString().padStart(2, "0")}`;
     const outputDir = join(paths.aggregates, "hourly");
     ensureDir(outputDir);
 
@@ -103,8 +104,8 @@ export function aggregateDaily(date: Date, cwd?: string): string | null {
     return null;
   }
 
-  // 保存
-  const dateStr = date.toISOString().split("T")[0];
+  // 保存（ローカル日付を使用）
+  const dateStr = `${dayStart.getFullYear()}-${String(dayStart.getMonth() + 1).padStart(2, "0")}-${String(dayStart.getDate()).padStart(2, "0")}`;
   const outputDir = join(paths.aggregates, "daily");
   ensureDir(outputDir);
 
@@ -260,7 +261,6 @@ export function loadAggregates(
     return [];
   }
 
-  const { readdirSync, readFileSync } = require("node:fs");
   const files = readdirSync(aggregateDir).filter((f: string) => f.endsWith(".json"));
 
   const aggregates: LLMBehaviorAggregates[] = [];

@@ -23,7 +23,7 @@
  *   out: AnomalyRecord配列
  */
 
-import { writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { writeFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type {
   LLMBehaviorRecord,
@@ -312,7 +312,7 @@ export function saveAnomalies(
   let existingAnomalies: AnomalyRecord[] = [];
   if (existsSync(outputPath)) {
     try {
-      const content = require("fs").readFileSync(outputPath, "utf-8");
+      const content = readFileSync(outputPath, "utf-8");
       existingAnomalies = JSON.parse(content);
     } catch {
       // 読み込みエラーは無視
@@ -351,7 +351,6 @@ export function loadAnomalies(
     return [];
   }
 
-  const { readdirSync, readFileSync } = require("node:fs");
   const files = readdirSync(paths.anomalies).filter((f: string) => f.endsWith(".json"));
 
   const anomalies: AnomalyRecord[] = [];

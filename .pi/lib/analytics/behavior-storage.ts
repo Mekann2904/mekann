@@ -28,6 +28,13 @@ import { join, dirname } from "node:path";
 import type { LLMBehaviorRecord, LLMBehaviorConfig } from "./llm-behavior-types.js";
 import { DEFAULT_LLM_BEHAVIOR_CONFIG } from "./llm-behavior-types.js";
 import { createRunId } from "../agent/agent-utils.js";
+import {
+  collectPromptMetrics,
+  collectOutputMetrics,
+  collectQualityMetrics,
+  collectExecutionMetrics,
+  extractExecutionContext,
+} from "./metric-collectors.js";
 
 // ============================================================================
 // Path Management
@@ -122,14 +129,6 @@ export function createAndRecordMetrics(params: {
   cwd?: string;
 }): LLMBehaviorRecord {
   // 動的インポートで循環依存を回避
-  const {
-    collectPromptMetrics,
-    collectOutputMetrics,
-    collectQualityMetrics,
-    collectExecutionMetrics,
-    extractExecutionContext,
-  } = require("./metric-collectors.js");
-
   const record: LLMBehaviorRecord = {
     id: createRunId(),
     timestamp: new Date().toISOString(),
@@ -190,9 +189,12 @@ export function loadBehaviorRecords(
   const dateDirs = readdirSync(paths.records);
 
   for (const dateDir of dateDirs) {
-    // 日付範囲チェック
-    const dirDate = new Date(dateDir);
-    if (dirDate < startDate || dirDate > endDate) {
+    // ディレクトリの日付が範囲と重なっているかチェック
+    const dirDateStart = new Date(dateDir + 'T00:00:00Z');
+    const dirDateEnd = new Date(dateDir + 'T23:59:59.999Z');
+    
+    // ディレクトリの日付範囲が検索範囲と重なっていない場合はスキップ
+    if (dirDateEnd < startDate || dirDateStart > endDate) {
       continue;
     }
 
@@ -209,7 +211,12 @@ export function loadBehaviorRecords(
         const filePath = join(fullPath, file);
         const content = readFileSync(filePath, "utf-8");
         const record = JSON.parse(content) as LLMBehaviorRecord;
-        records.push(record);
+        
+        // タイムスタンプでフィルタリング
+        const recordDate = new Date(record.timestamp);
+        if (recordDate >= startDate && recordDate <= endDate) {
+          records.push(record);
+        }
       } catch (error) {
         // 読み込みエラーはスキップ
         console.warn(`Failed to load record: ${file}`, error);

@@ -19,13 +19,22 @@
 
 import { h } from "preact";
 import { useState, useEffect, useCallback, useMemo, useRef } from "preact/hooks";
-import { Plus, Loader2, AlertCircle, ListTodo, RefreshCw, Search, X } from "lucide-preact";
+import { Plus, RefreshCw, Search, X } from "lucide-preact";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { KanbanTaskCard, type Task, type TaskStatus, type TaskPriority } from "./kanban-task-card";
 import { TaskDetailPanel } from "./task-detail-panel";
 import { useRuntimeStatus } from "../hooks/useRuntimeStatus";
 import { cn } from "@/lib/utils";
+import {
+  PageLayout,
+  LoadingState,
+  ErrorBanner,
+  TYPOGRAPHY,
+  FORM_STYLES,
+  PATTERNS,
+  SPACING,
+} from "./layout";
 
 interface TaskStats {
   total: number;
@@ -74,18 +83,36 @@ export function TasksPage() {
   const [stats, setStats] = useState<TaskStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   
   // Runtime status for execution indicators
   const { sessions: runtimeSessions } = useRuntimeStatus();
-  
+
+  // Derive selectedTask from tasks array (always fresh after polling)
+  const selectedTask = useMemo(() => {
+    if (!selectedTaskId) return null;
+    return tasks.find(t => t.id === selectedTaskId) || null;
+  }, [selectedTaskId, tasks]);
+
   // Inline add state per column
   const [addingToColumn, setAddingToColumn] = useState<TaskStatus | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const addInputRefs = useRef<Record<TaskStatus, HTMLTextAreaElement | null>>({} as Record<TaskStatus, HTMLTextAreaElement | null>);
+
+  // Refs for keyboard handler (avoid re-registering event listener)
+  const addingToColumnRef = useRef(addingToColumn);
+  const selectedTaskIdRef = useRef(selectedTaskId);
+
+  useEffect(() => {
+    addingToColumnRef.current = addingToColumn;
+  }, [addingToColumn]);
+
+  useEffect(() => {
+    selectedTaskIdRef.current = selectedTaskId;
+  }, [selectedTaskId]);
 
   // Fetch tasks
   const fetchTasks = useCallback(async () => {
@@ -338,8 +365,8 @@ export function TasksPage() {
         throw new Error("Failed to delete task");
       }
 
-      if (selectedTask?.id === id) {
-        setSelectedTask(null);
+      if (selectedTaskId === id) {
+        setSelectedTaskId(null);
       }
       await fetchTasks();
       await fetchStats();
@@ -366,17 +393,9 @@ export function TasksPage() {
         throw new Error("Failed to create subtask");
       }
 
+      // fetchTasks() updates tasks array, selectedTask is auto-updated via useMemo
       await fetchTasks();
       await fetchStats();
-
-      // Refresh selectedTask to update subtask list
-      if (selectedTask) {
-        const refreshedRes = await fetch(`${API_BASE}/api/tasks/${selectedTask.id}`);
-        if (refreshedRes.ok) {
-          const data = await refreshedRes.json();
-          setSelectedTask(data.data);
-        }
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create subtask");
     }
@@ -398,17 +417,9 @@ export function TasksPage() {
         throw new Error("Failed to update subtask");
       }
 
+      // fetchTasks() updates tasks array, selectedTask is auto-updated via useMemo
       await fetchTasks();
       await fetchStats();
-
-      // Refresh selectedTask to update subtask progress
-      if (selectedTask) {
-        const refreshedRes = await fetch(`${API_BASE}/api/tasks/${selectedTask.id}`);
-        if (refreshedRes.ok) {
-          const data = await refreshedRes.json();
-          setSelectedTask(data.data);
-        }
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update subtask");
     }
@@ -425,17 +436,9 @@ export function TasksPage() {
         throw new Error("Failed to delete subtask");
       }
 
+      // fetchTasks() updates tasks array, selectedTask is auto-updated via useMemo
       await fetchTasks();
       await fetchStats();
-
-      // Refresh selectedTask to update subtask list
-      if (selectedTask) {
-        const refreshedRes = await fetch(`${API_BASE}/api/tasks/${selectedTask.id}`);
-        if (refreshedRes.ok) {
-          const data = await refreshedRes.json();
-          setSelectedTask(data.data);
-        }
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete subtask");
     }
@@ -513,17 +516,17 @@ export function TasksPage() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (addingToColumn) {
+        if (addingToColumnRef.current) {
           setAddingToColumn(null);
           setNewTaskTitle("");
-        } else if (selectedTask) {
-          setSelectedTask(null);
+        } else if (selectedTaskIdRef.current) {
+          setSelectedTaskId(null);
         }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [addingToColumn, selectedTask]);
+  }, []);
 
   // Render column
   const renderColumn = (column: ColumnConfig) => {
@@ -543,11 +546,11 @@ export function TasksPage() {
         onDrop={(e) => handleDrop(e, column.id)}
       >
         {/* Column header */}
-        <div class="flex items-center justify-between px-3 py-2 border-b border-border/50">
-          <div class="flex items-center gap-2">
-            <span class="text-sm text-muted-foreground">{column.icon}</span>
-            <span class="text-sm font-medium">{column.label}</span>
-            <span class="text-xs text-muted-foreground bg-muted px-1.5 rounded">
+        <div class={cn("flex items-center justify-between px-3 py-2", PATTERNS.divider)}>
+          <div class={cn("flex items-center", SPACING.element)}>
+            <span class={TYPOGRAPHY.body}>{column.icon}</span>
+            <span class={TYPOGRAPHY.labelLarge}>{column.label}</span>
+            <span class={cn(PATTERNS.badge, "bg-muted")}>
               {columnTasks.length}
             </span>
           </div>
@@ -584,7 +587,7 @@ export function TasksPage() {
                 subtaskProgress={subtaskProgress}
                 isSubtask={isSubtask}
                 session={taskSession}
-                onClick={() => setSelectedTask(task)}
+                onClick={() => setSelectedTaskId(task.id)}
                 onDragStart={(e) => handleDragStart(e, task)}
                 onDragEnd={handleDragEnd}
                 onDelete={() => handleDelete(task.id)}
@@ -665,7 +668,7 @@ export function TasksPage() {
   };
 
   return (
-    <div class="flex h-full overflow-hidden">
+    <PageLayout variant="board">
       {/* Main board area */}
       <div class="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
@@ -707,22 +710,19 @@ export function TasksPage() {
 
         {/* Error banner */}
         {error && (
-          <div class="shrink-0 mx-4 mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-md flex items-center gap-2 text-red-500">
-            <AlertCircle class="h-4 w-4 shrink-0" />
-            <span class="text-sm flex-1">{error}</span>
-            <Button variant="ghost" size="sm" onClick={() => setError(null)}>
-              <X class="h-3.5 w-3.5" />
-            </Button>
+          <div class="shrink-0 mx-4 mt-4">
+            <ErrorBanner
+              message={error}
+              onDismiss={() => setError(null)}
+              showCard={false}
+            />
           </div>
         )}
 
         {/* Kanban board */}
         {loading ? (
           <div class="flex-1 flex items-center justify-center">
-            <div class="flex flex-col items-center gap-2">
-              <Loader2 class="h-6 w-6 animate-spin text-primary" />
-              <p class="text-sm text-muted-foreground">Loading...</p>
-            </div>
+            <LoadingState message="Loading..." showCard={false} />
           </div>
         ) : (
           <div class="flex-1 overflow-x-auto p-4">
@@ -738,29 +738,24 @@ export function TasksPage() {
         <TaskDetailPanel
           task={selectedTask}
           allTasks={tasks}
-          onClose={() => setSelectedTask(null)}
+          onClose={() => setSelectedTaskId(null)}
           onUpdate={(updated) => {
             handleUpdateTask(updated);
-            setSelectedTask(updated);
+            // selectedTask auto-updates via useMemo when tasks changes
           }}
           onDelete={() => handleDelete(selectedTask.id)}
           onStatusChange={async (status) => {
-            const success = await handleStatusChange(selectedTask.id, status);
-            if (success) {
-              setSelectedTask({ ...selectedTask, status });
-            }
+            await handleStatusChange(selectedTask.id, status);
+            // selectedTask auto-updates via useMemo when tasks changes
           }}
           onCreateSubtask={handleCreateSubtask}
           onUpdateSubtask={(subtask) => {
             handleUpdateSubtask(subtask);
-            // Refresh selected task if it's the parent
-            if (subtask.parentTaskId === selectedTask.id) {
-              // Keep current selection
-            }
+            // selectedTask auto-updates via useMemo when tasks changes
           }}
           onDeleteSubtask={handleDeleteSubtask}
         />
       )}
-    </div>
+    </PageLayout>
   );
 }

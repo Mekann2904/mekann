@@ -2125,7 +2125,9 @@ async function callModel(
           }
         },
         onRateLimitWait: (context) => {
-          console.log(`[self-improvement-loop] Rate limit gate: waiting ${context.waitMs}ms (hits=${context.hits}, key=${context.key})`);
+          // セキュリティ: key値をマスクしてログ出力
+          const maskedKey = context.key ? `${context.key.substring(0, 4)}***` : "unknown";
+          console.log(`[self-improvement-loop] Rate limit gate: waiting ${context.waitMs}ms (hits=${context.hits}, key=${maskedKey})`);
         },
       }
     );

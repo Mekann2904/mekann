@@ -20,7 +20,7 @@
  *   out: Analysis reports in JSON/Markdown format
  */
 
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -159,11 +159,14 @@ const RISK_MITIGATIONS: Record<string, string[]> = {
  */
 function runGitCommand(args: string[], cwd: string = process.cwd()): string {
   try {
-    return execSync(`git ${args.join(" ")}`, {
+    // セキュリティ: spawnSyncを使用し、引数を配列で渡すことでコマンドインジェクションを防止
+    const result = spawnSync("git", args, {
       encoding: "utf-8",
       cwd,
+      shell: false,
       stdio: ["pipe", "pipe", "pipe"],
     });
+    return result.stdout || "";
   } catch {
     return "";
   }

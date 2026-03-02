@@ -1,13 +1,43 @@
+/**
+ * @abdd.meta
+ * @path .pi/extensions/web-ui/web/src/components/instances-page.tsx
+ * @role piインスタンス一覧ページ
+ * @why 稼働中のpiインスタンスを監視・管理するため
+ * @related app.tsx, server.ts
+ * @public_api InstancesPage
+ * @invariants データはAPIとSSEでリアルタイム更新
+ * @side_effects /api/instances, /api/events にアクセス
+ * @failure_modes API unavailable, SSE切断
+ *
+ * @abdd.explain
+ * @overview 稼働中のpiインスタンスを一覧表示
+ * @what_it_does インスタンス情報を取得し、ステータス付きで表示
+ * @why_it_exists 複数のpiインスタンスを把握・監視するため
+ * @scope(in) API data, SSE events
+ * @scope(out) Rendered instance list
+ */
+
+import { h } from "preact";
 import { useState, useEffect, useCallback, useRef } from "preact/hooks";
 import { Button } from "./ui/button";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from "./ui/card";
 import { Activity, Cpu, Folder, Clock, RefreshCw, Monitor, Wifi, WifiOff } from "lucide-preact";
 import { cn } from "@/lib/utils";
+import {
+  PageLayout,
+  PageHeader,
+  LoadingState,
+  ErrorBanner,
+  EmptyState,
+  TYPOGRAPHY,
+  CARD_STYLES,
+  PATTERNS,
+  SPACING,
+  STATE_STYLES,
+} from "./layout";
 
 /**
  * Instance information from API
@@ -150,99 +180,86 @@ export function InstancesPage() {
       }
     });
 
-    // Handle heartbeat to confirm connection
-    eventSource.addEventListener("heartbeat", () => {
-      setSseConnected(true);
-    });
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-    connectSSE();
-
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
+      eventSource.close();
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const cleanup = connectSSE();
+    return cleanup;
   }, [connectSSE]);
 
-  if (loading) {
-    return (
-      <div class="flex h-full items-center justify-center">
-        <div class="flex flex-col items-center gap-2">
-          <RefreshCw class="h-6 w-6 animate-spin text-primary" />
-          <p class="text-sm text-muted-foreground">Loading instances...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div class="flex h-full items-center justify-center">
-        <Card class="w-96">
-          <CardHeader>
-            <CardTitle class="text-destructive">Error</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p class="text-sm text-muted-foreground">{error}</p>
-            <Button class="mt-4" onClick={() => fetchData(true)}>
-              Retry
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    };
+  }, []);
 
   const instances = data?.instances || [];
   const sortedInstances = [...instances].sort((a, b) => b.startedAt - a.startedAt);
 
+  // Header description
+  const headerDescription = `${data?.count ?? 0} active instance${(data?.count ?? 0) !== 1 ? "s" : ""}`;
+
   return (
-    <div class="flex h-full flex-col gap-4 p-4">
+    <PageLayout variant="default">
       {/* Header */}
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-2xl font-bold">Instances</h1>
-          <p class="text-sm text-muted-foreground">
-            {data?.count ?? 0} active instance{(data?.count ?? 0) !== 1 ? "s" : ""}
-          </p>
-        </div>
-        <div class="flex items-center gap-2">
-          {/* SSE Connection Status */}
-          <div class={cn(
-            "flex items-center gap-1.5 text-xs px-2 py-1 rounded",
-            sseConnected ? "text-green-500 bg-green-500/10" : "text-yellow-500 bg-yellow-500/10"
-          )}>
-            {sseConnected ? <Wifi class="h-3 w-3" /> : <WifiOff class="h-3 w-3" />}
-            <span>{sseConnected ? "Live" : "Polling"}</span>
+      <PageHeader
+        title="Instances"
+        description={headerDescription}
+        actions={
+          <div class={cn("flex items-center", SPACING.element)}>
+            {/* SSE Connection Status */}
+            <div class={cn(
+              "flex items-center gap-1.5 px-2 py-1 rounded",
+              PATTERNS.badge,
+              sseConnected ? cn(STATE_STYLES.success.bg, STATE_STYLES.success.text) : cn(STATE_STYLES.warning.bg, STATE_STYLES.warning.text)
+            )}>
+              {sseConnected ? <Wifi class="h-3 w-3" /> : <WifiOff class="h-3 w-3" />}
+              <span>{sseConnected ? "Live" : "Polling"}</span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchData(true)}
+              disabled={refreshing}
+            >
+              <RefreshCw class={cn("h-4 w-4", refreshing && "animate-spin")} />
+            </Button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fetchData(true)}
-            disabled={refreshing}
-          >
-            <RefreshCw class={cn("h-4 w-4 mr-2", refreshing && "animate-spin")} />
-            Refresh
-          </Button>
-        </div>
-      </div>
+        }
+      />
+
+      {/* Loading */}
+      {loading && <LoadingState message="Loading instances..." />}
+
+      {/* Error */}
+      {error && (
+        <ErrorBanner
+          message={`Error: ${error}`}
+          onRetry={() => fetchData()}
+          onDismiss={() => setError(null)}
+        />
+      )}
 
       {/* Server Info */}
-      {data && (
+      {data && !loading && (
         <Card>
-          <CardContent class="flex items-center gap-4 py-4">
+          <CardContent class={cn("flex items-center", SPACING.element, "py-4")}>
             <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
               <Monitor class="h-5 w-5 text-primary" />
             </div>
             <div class="flex-1">
-              <p class="text-sm font-medium">Web UI Server</p>
-              <p class="text-xs text-muted-foreground">
+              <p class={TYPOGRAPHY.labelLarge}>Web UI Server</p>
+              <p class={TYPOGRAPHY.muted}>
                 PID: {data.serverPid} | Port: {data.serverPort}
               </p>
             </div>
@@ -250,7 +267,7 @@ export function InstancesPage() {
               href={`http://localhost:${data.serverPort}`}
               target="_blank"
               rel="noopener noreferrer"
-              class="text-sm text-primary hover:underline"
+              class={cn(TYPOGRAPHY.body, "text-primary hover:underline")}
             >
               Open in Browser
             </a>
@@ -259,14 +276,12 @@ export function InstancesPage() {
       )}
 
       {/* Instances List */}
-      <div class="flex-1 space-y-3 overflow-y-auto">
-        {sortedInstances.length === 0 ? (
-          <Card>
-            <CardContent class="flex flex-col items-center justify-center py-12">
-              <Activity class="h-12 w-12 text-muted-foreground/50" />
-              <p class="mt-4 text-sm text-muted-foreground">No instances found</p>
-            </CardContent>
-          </Card>
+      <div class={cn("flex-1", SPACING.element, "overflow-y-auto")}>
+        {sortedInstances.length === 0 && !loading ? (
+          <EmptyState
+            message="No instances found"
+            icon={Activity}
+          />
         ) : (
           sortedInstances.map((instance) => {
             const status = getInstanceStatus(instance);
@@ -275,7 +290,7 @@ export function InstancesPage() {
             return (
               <Card key={instance.pid} class={cn(isStale && "opacity-60")}>
                 <CardContent class="py-4">
-                  <div class="flex items-start gap-4">
+                  <div class={cn("flex items-start", SPACING.element)}>
                     {/* Icon */}
                     <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                       <Cpu class="h-5 w-5 text-primary" />
@@ -284,17 +299,17 @@ export function InstancesPage() {
                     {/* Info */}
                     <div class="min-w-0 flex-1">
                       {/* PID & Model */}
-                      <div class="flex items-center gap-2">
-                        <span class="font-mono text-sm font-medium">
+                      <div class={cn("flex items-center", SPACING.element)}>
+                        <span class={cn(PATTERNS.mono, TYPOGRAPHY.labelLarge)}>
                           PID {instance.pid}
                         </span>
-                        <span class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                        <span class={cn(PATTERNS.badge, "bg-muted", TYPOGRAPHY.muted)}>
                           {instance.model}
                         </span>
                       </div>
 
                       {/* Path */}
-                      <div class="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <div class={cn("mt-1 flex items-center", SPACING.tight, TYPOGRAPHY.muted)}>
                         <Folder class="h-3 w-3" />
                         <span class="truncate" title={instance.cwd}>
                           {truncatePath(instance.cwd, 50)}
@@ -302,12 +317,12 @@ export function InstancesPage() {
                       </div>
 
                       {/* Times */}
-                      <div class="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
-                        <div class="flex items-center gap-1">
+                      <div class={cn("mt-2 flex items-center", SPACING.element, TYPOGRAPHY.muted)}>
+                        <div class={cn("flex items-center", SPACING.tight)}>
                           <Clock class="h-3 w-3" />
                           <span>Started {formatRelativeTime(instance.startedAt)}</span>
                         </div>
-                        <div class="flex items-center gap-1">
+                        <div class={cn("flex items-center", SPACING.tight)}>
                           <Activity class="h-3 w-3" />
                           <span>Running {formatDuration(instance.startedAt)}</span>
                         </div>
@@ -315,23 +330,23 @@ export function InstancesPage() {
                     </div>
 
                     {/* Status Indicator */}
-                    <div class="flex items-center gap-2">
+                    <div class={cn("flex items-center", SPACING.element)}>
                       {status === "active" && (
                         <>
                           <div class="h-2 w-2 animate-pulse rounded-full bg-green-500" />
-                          <span class="text-xs text-muted-foreground">Active</span>
+                          <span class={TYPOGRAPHY.muted}>Active</span>
                         </>
                       )}
                       {status === "stale" && (
                         <>
                           <div class="h-2 w-2 rounded-full bg-yellow-500" />
-                          <span class="text-xs text-yellow-600">Stale</span>
+                          <span class={STATE_STYLES.warning.text}>Stale</span>
                         </>
                       )}
                       {status === "dead" && (
                         <>
                           <div class="h-2 w-2 rounded-full bg-red-500" />
-                          <span class="text-xs text-red-600">Disconnected</span>
+                          <span class={STATE_STYLES.error.text}>Disconnected</span>
                         </>
                       )}
                     </div>
@@ -342,6 +357,6 @@ export function InstancesPage() {
           })
         )}
       </div>
-    </div>
+    </PageLayout>
   );
 }

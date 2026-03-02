@@ -19,11 +19,19 @@
 
 import { h } from "preact";
 import { useState, useEffect, useRef } from "preact/hooks";
-import { X, Calendar, User, Tag, Trash2, CheckCircle2, Circle, Clock, AlertTriangle, Plus, ListChecks } from "lucide-preact";
+import { X, Calendar, User, Tag, Trash2, CheckCircle2, Circle, Clock, AlertTriangle, Plus, ListChecks, FileText, Loader2 } from "lucide-preact";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { cn } from "@/lib/utils";
 import type { Task, TaskStatus, TaskPriority } from "./kanban-task-card";
+import {
+  TYPOGRAPHY,
+  CARD_STYLES,
+  FORM_STYLES,
+  PATTERNS,
+  SPACING,
+  STATE_STYLES,
+} from "./layout";
 
 interface TaskDetailPanelProps {
   task: Task;
@@ -71,6 +79,8 @@ export function TaskDetailPanel({
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
   const [isAddingSubtask, setIsAddingSubtask] = useState(false);
+  const [plan, setPlan] = useState<string | null>(null);
+  const [planLoading, setPlanLoading] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const subtaskInputRef = useRef<HTMLInputElement>(null);
@@ -102,6 +112,31 @@ export function TaskDetailPanel({
       descriptionRef.current.focus();
     }
   }, [isEditingDescription]);
+
+  // Fetch plan.md for UL workflow tasks
+  useEffect(() => {
+    if (!task.isUlWorkflow) {
+      setPlan(null);
+      return;
+    }
+
+    const fetchPlan = async () => {
+      setPlanLoading(true);
+      try {
+        const response = await fetch(`/api/ul-workflow/tasks/${task.id}/plan`);
+        if (response.ok) {
+          const text = await response.text();
+          setPlan(text);
+        }
+      } catch (e) {
+        console.error("Failed to fetch plan:", e);
+      } finally {
+        setPlanLoading(false);
+      }
+    };
+
+    fetchPlan();
+  }, [task.id, task.isUlWorkflow]);
 
   const updateField = <K extends keyof Task>(key: K, value: Task[K]) => {
     const updated = { ...editedTask, [key]: value };
@@ -201,6 +236,7 @@ export function TaskDetailPanel({
                 if (e.key === "Enter") {
                   handleTitleBlur();
                 } else if (e.key === "Escape") {
+                  e.stopPropagation();
                   setEditedTask({ ...editedTask, title: task.title });
                   setIsEditingTitle(false);
                 }
@@ -373,6 +409,7 @@ export function TaskDetailPanel({
               onBlur={handleDescriptionBlur}
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
+                  e.stopPropagation();
                   setEditedTask({ ...editedTask, description: task.description });
                   setIsEditingDescription(false);
                 }
@@ -476,6 +513,7 @@ export function TaskDetailPanel({
                         setIsAddingSubtask(false);
                       }
                     } else if (e.key === "Escape") {
+                      e.stopPropagation();
                       setNewSubtaskTitle("");
                       setIsAddingSubtask(false);
                     }
@@ -522,6 +560,31 @@ export function TaskDetailPanel({
                 <Plus class="h-3.5 w-3.5" />
                 Add subtask
               </button>
+            )}
+          </div>
+        )}
+
+        {/* Plan.md section for UL workflow tasks */}
+        {task.isUlWorkflow && (
+          <div class="px-4 py-3 border-t border-border">
+            <div class="flex items-center gap-2 mb-2">
+              <FileText class="h-4 w-4 text-muted-foreground" />
+              <span class="text-sm font-medium">Plan</span>
+            </div>
+            {planLoading ? (
+              <div class="flex items-center gap-2 text-muted-foreground text-xs">
+                <Loader2 class="h-3 w-3 animate-spin" />
+                Loading plan...
+              </div>
+            ) : plan ? (
+              <div class="bg-muted/30 rounded-md p-3 max-h-[300px] overflow-y-auto">
+                <pre class="text-xs font-mono whitespace-pre-wrap text-muted-foreground">
+                  {plan.slice(0, 2000)}
+                  {plan.length > 2000 && "..."}
+                </pre>
+              </div>
+            ) : (
+              <p class="text-xs text-muted-foreground">No plan available</p>
             )}
           </div>
         )}

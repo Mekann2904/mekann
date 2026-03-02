@@ -29,6 +29,16 @@ import { cn } from "@/lib/utils";
 import { THEMES } from "@/theme/registry";
 import { applyThemeToDOM } from "@/theme/runtime";
 import type { Mode, Theme } from "@/theme/types";
+import {
+  PageLayout,
+  PageHeader,
+  LoadingState,
+  TYPOGRAPHY,
+  CARD_STYLES,
+  FORM_STYLES,
+  PATTERNS,
+  SPACING,
+} from "./layout";
 
 export { THEMES } from "@/theme/registry";
 export { applyThemeToDOM } from "@/theme/runtime";

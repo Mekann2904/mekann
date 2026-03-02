@@ -29,20 +29,21 @@ import {
   Tooltip,
   LineChart,
   Line,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 import {
   Activity,
-  Loader2,
   RefreshCw,
   TrendingUp,
-  TrendingDown,
   Clock,
   CheckCircle,
-  XCircle,
   AlertTriangle,
   Zap,
   FileText,
   BarChart3,
+  PieChart as PieChartIcon,
 } from "lucide-preact";
 import { Button } from "./ui/button";
 import {
@@ -52,7 +53,31 @@ import {
   CardHeader,
   CardTitle,
 } from "./ui/card";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "./ui/chart";
 import { cn } from "@/lib/utils";
+import {
+  PageLayout,
+  PageHeader,
+  StatsCard,
+  StatsGrid,
+  LoadingState,
+  ErrorBanner,
+  EmptyState,
+  ChartEmptyState,
+  CHART_TOOLTIP_STYLE,
+  formatChartNumber,
+  TYPOGRAPHY,
+  CARD_STYLES,
+  FORM_STYLES,
+  PATTERNS,
+  STATE_STYLES,
+  SPACING,
+} from "./layout";
 
 // ============================================================================
 // Types
@@ -84,6 +109,8 @@ interface BehaviorRecord {
     claimResultConsistency: number;
     evidenceCount: number;
   };
+  /** 効率スコア（オプション） */
+  efficiency?: number;
 }
 
 interface Aggregates {
@@ -133,12 +160,6 @@ function formatDuration(ms: number): string {
   return `${(ms / 60000).toFixed(1)}m`;
 }
 
-function formatNumber(num: number): string {
-  if (num < 1000) return String(num);
-  if (num < 1000000) return `${(num / 1000).toFixed(1)}K`;
-  return `${(num / 1000000).toFixed(1)}M`;
-}
-
 function formatAnomalyType(type: string): string {
   const map: Record<string, string> = {
     efficiency_drop: "Efficiency Drop",
@@ -153,20 +174,26 @@ function formatAnomalyType(type: string): string {
 // Components
 // ============================================================================
 
+type TimeRange = "24h" | "7d" | "30d";
+
 export function AnalyticsPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [records, setRecords] = useState<BehaviorRecord[]>([]);
-  const [hourlyAggregates, setHourlyAggregates] = useState<Aggregates[]>([]);
+  const [aggregates, setAggregates] = useState<Aggregates[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [timeRange, setTimeRange] = useState<TimeRange>("24h");
 
   const fetchData = useCallback(async () => {
     setError(null);
     try {
+      // 期間に応じた集計タイプを決定
+      const aggregateType = timeRange === "24h" ? "hourly" : timeRange === "7d" ? "daily" : "daily";
+      
       const [summaryRes, recordsRes, aggregatesRes] = await Promise.all([
         fetch("/api/analytics/summary"),
         fetch("/api/analytics/records?limit=20"),
-        fetch("/api/analytics/aggregates?type=hourly"),
+        fetch(`/api/analytics/aggregates?type=${aggregateType}&range=${timeRange}`),
       ]);
 
       if (summaryRes.ok) {
@@ -176,7 +203,7 @@ export function AnalyticsPage() {
         setRecords(await recordsRes.json());
       }
       if (aggregatesRes.ok) {
-        setHourlyAggregates(await aggregatesRes.json());
+        setAggregates(await aggregatesRes.json());
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : "Network error";
@@ -184,7 +211,7 @@ export function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [timeRange]);
 
   useEffect(() => {
     fetchData();
@@ -193,110 +220,163 @@ export function AnalyticsPage() {
   }, [fetchData]);
 
   const today = summary?.today;
-  const anomalyCount = today?.anomalies?.length ?? 0;
+  const last24Hours = summary?.last24Hours ?? [];
+  
+  // todayがない場合はlast24Hoursから集計値を計算
+  // last24Hours.lengthが0の場合はデフォルト値を使用（ゼロ除算回避）
+  const displayData = today ?? (last24Hours.length > 0 ? {
+    totals: {
+      runs: last24Hours.reduce((sum, h) => sum + h.totals.runs, 0),
+      errors: last24Hours.reduce((sum, h) => sum + h.totals.errors, 0),
+      totalPromptTokens: last24Hours.reduce((sum, h) => sum + h.totals.totalPromptTokens, 0),
+      totalOutputTokens: last24Hours.reduce((sum, h) => sum + h.totals.totalOutputTokens, 0),
+      totalThinkingTokens: last24Hours.reduce((sum, h) => sum + h.totals.totalThinkingTokens, 0),
+      totalDurationMs: last24Hours.reduce((sum, h) => sum + h.totals.totalDurationMs, 0),
+    },
+    averages: {
+      promptTokens: last24Hours.reduce((sum, h) => sum + h.averages.promptTokens, 0) / last24Hours.length,
+      outputTokens: last24Hours.reduce((sum, h) => sum + h.averages.outputTokens, 0) / last24Hours.length,
+      efficiency: last24Hours.reduce((sum, h) => sum + h.averages.efficiency, 0) / last24Hours.length,
+      formatCompliance: last24Hours.reduce((sum, h) => sum + h.averages.formatCompliance, 0) / last24Hours.length,
+      claimResultConsistency: last24Hours.reduce((sum, h) => sum + h.averages.claimResultConsistency, 0) / last24Hours.length,
+      durationMs: last24Hours.reduce((sum, h) => sum + h.averages.durationMs, 0) / last24Hours.length,
+    },
+    anomalies: [],
+  } : {
+    // デフォルト値（データがない場合）
+    totals: {
+      runs: 0,
+      errors: 0,
+      totalPromptTokens: 0,
+      totalOutputTokens: 0,
+      totalThinkingTokens: 0,
+      totalDurationMs: 0,
+    },
+    averages: {
+      promptTokens: 0,
+      outputTokens: 0,
+      efficiency: 0,
+      formatCompliance: 0,
+      claimResultConsistency: 0,
+      durationMs: 0,
+    },
+    anomalies: [],
+  });
+  
+  const anomalyCount = displayData?.anomalies?.length ?? 0;
+  
+  // 期間表示用のラベル
+  const timeRangeLabel = timeRange === "24h" ? "24h" : timeRange === "7d" ? "7 days" : "30 days";
+
+  // Time Range Selector
+  const TimeRangeSelector = () => (
+    <div class="flex gap-1 bg-muted rounded-lg p-1">
+      {(["24h", "7d", "30d"] as TimeRange[]).map((range) => (
+        <Button
+          key={range}
+          variant={timeRange === range ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setTimeRange(range)}
+          class="px-3"
+        >
+          {range}
+        </Button>
+      ))}
+    </div>
+  );
 
   return (
-    <div class="flex h-full flex-col gap-4 p-4 overflow-auto">
+    <PageLayout variant="default">
       {/* Header */}
-      <div class="flex gap-2 shrink-0 items-center justify-between">
-        <div>
-          <h1 class="text-xl font-bold">LLM Analytics</h1>
-          <p class="text-sm text-muted-foreground">
-            Behavior metrics and optimization insights
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchData}
-          disabled={loading}
-        >
-          <RefreshCw class={cn("h-4 w-4", loading && "animate-spin")} />
-        </Button>
-      </div>
+      <PageHeader
+        title="LLM Analytics"
+        description="Behavior metrics and optimization insights"
+        actions={
+          <>
+            <TimeRangeSelector />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchData}
+              disabled={loading}
+            >
+              <RefreshCw class={cn("h-4 w-4", loading && "animate-spin")} />
+            </Button>
+          </>
+        }
+      />
 
       {/* Error */}
       {error && (
-        <Card class="border-destructive shrink-0">
-          <CardContent class="py-3 flex items-center gap-2 text-destructive">
-            <AlertTriangle class="h-4 w-4" />
-            <span class="text-sm">Failed to load data: {error}</span>
-          </CardContent>
-        </Card>
+        <ErrorBanner
+          message={`Failed to load data: ${error}`}
+          onRetry={fetchData}
+          onDismiss={() => setError(null)}
+        />
       )}
 
       {/* Loading */}
       {loading && !summary ? (
-        <Card>
-          <CardContent class="py-8 flex items-center justify-center">
-            <div class="flex flex-col items-center gap-2">
-              <Loader2 class="h-6 w-6 animate-spin text-primary" />
-              <p class="text-sm text-muted-foreground">Loading analytics...</p>
-            </div>
-          </CardContent>
-        </Card>
+        <LoadingState message="Loading analytics..." />
       ) : (
         <>
           {/* Metrics Grid */}
-          <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 shrink-0">
-            <MetricCard
+          <StatsGrid cols={6}>
+            <StatsCard
               icon={Activity}
               label="Runs"
-              value={today?.totals.runs ?? 0}
+              value={displayData?.totals.runs ?? 0}
             />
-            <MetricCard
+            <StatsCard
               icon={Zap}
               label="Efficiency"
-              value={`${((today?.averages.efficiency ?? 0) * 100).toFixed(0)}%`}
-              progress={(today?.averages.efficiency ?? 0) * 100}
+              value={`${((displayData?.averages.efficiency ?? 0) * 100).toFixed(0)}%`}
+              progress={(displayData?.averages.efficiency ?? 0) * 100}
             />
-            <MetricCard
+            <StatsCard
               icon={Clock}
               label="Avg Duration"
-              value={formatDuration(today?.averages.durationMs ?? 0)}
+              value={formatDuration(displayData?.averages.durationMs ?? 0)}
             />
-            <MetricCard
+            <StatsCard
               icon={CheckCircle}
               label="Compliance"
-              value={`${((today?.averages.formatCompliance ?? 0) * 100).toFixed(0)}%`}
-              progress={(today?.averages.formatCompliance ?? 0) * 100}
+              value={`${((displayData?.averages.formatCompliance ?? 0) * 100).toFixed(0)}%`}
+              progress={(displayData?.averages.formatCompliance ?? 0) * 100}
             />
-            <MetricCard
+            <StatsCard
               icon={FileText}
               label="Total Tokens"
-              value={formatNumber((today?.totals.totalOutputTokens ?? 0) + (today?.totals.totalPromptTokens ?? 0))}
+              value={formatChartNumber((displayData?.totals.totalOutputTokens ?? 0) + (displayData?.totals.totalPromptTokens ?? 0))}
             />
-            <MetricCard
+            <StatsCard
               icon={AlertTriangle}
               label="Anomalies"
               value={anomalyCount}
               variant={anomalyCount > 0 ? "warning" : "default"}
             />
-          </div>
+          </StatsGrid>
 
           {/* Charts Row */}
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Efficiency Trend */}
             <Card>
               <CardHeader class="pb-2">
                 <CardTitle class="text-sm flex items-center gap-2">
                   <TrendingUp class="h-4 w-4" />
-                  Efficiency Trend (24h)
+                  Efficiency Trend ({timeRangeLabel})
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {hourlyAggregates.length === 0 ? (
-                  <div class="flex h-[150px] items-center justify-center text-muted-foreground text-xs">
-                    No data available
-                  </div>
+                {aggregates.length === 0 ? (
+                  <ChartEmptyState height={150} />
                 ) : (
                   <div class="h-[150px] w-full">
                     <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
-                      <LineChart data={hourlyAggregates.map((a) => ({
-                        time: new Date(a.startTime).toLocaleTimeString("ja-JP", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        }),
+                      <LineChart data={aggregates.map((a) => ({
+                        time: timeRange === "24h" 
+                          ? new Date(a.startTime).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })
+                          : new Date(a.startTime).toLocaleDateString("ja-JP", { month: "short", day: "numeric" }),
                         efficiency: (a.averages.efficiency * 100).toFixed(1),
                       }))}>
                         <CartesianGrid strokeDasharray="3 3" class="stroke-border" />
@@ -313,13 +393,8 @@ export function AnalyticsPage() {
                           width={30}
                         />
                         <Tooltip
-                          contentStyle={{
-                            backgroundColor: "hsl(var(--card))",
-                            border: "1px solid hsl(var(--border))",
-                            borderRadius: "6px",
-                            fontSize: "11px",
-                          }}
-                          formatter={(value: string) => [`${value}%`, "Efficiency"]}
+                          contentStyle={CHART_TOOLTIP_STYLE}
+                          formatter={(value: string | undefined) => [`${value ?? ""}%`, "Efficiency"]}
                         />
                         <Line
                           type="monotone"
@@ -340,21 +415,19 @@ export function AnalyticsPage() {
               <CardHeader class="pb-2">
                 <CardTitle class="text-sm flex items-center gap-2">
                   <BarChart3 class="h-4 w-4" />
-                  Token Distribution (24h)
+                  Token Distribution ({timeRangeLabel})
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {hourlyAggregates.length === 0 ? (
-                  <div class="flex h-[150px] items-center justify-center text-muted-foreground text-xs">
-                    No data available
-                  </div>
+                {aggregates.length === 0 ? (
+                  <ChartEmptyState height={150} />
                 ) : (
                   <div class="h-[150px] w-full">
                     <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
-                      <BarChart data={hourlyAggregates.slice(-12).map((a) => ({
-                        time: new Date(a.startTime).toLocaleTimeString("ja-JP", {
-                          hour: "2-digit",
-                        }),
+                      <BarChart data={aggregates.slice(-12).map((a) => ({
+                        time: timeRange === "24h"
+                          ? new Date(a.startTime).toLocaleTimeString("ja-JP", { hour: "2-digit" })
+                          : new Date(a.startTime).toLocaleDateString("ja-JP", { month: "short", day: "numeric" }),
                         prompt: a.totals.totalPromptTokens,
                         output: a.totals.totalOutputTokens,
                       }))}>
@@ -367,29 +440,24 @@ export function AnalyticsPage() {
                         <YAxis
                           tick={{ fontSize: 9 }}
                           class="text-muted-foreground"
-                          tickFormatter={(v: number) => formatNumber(v)}
+                          tickFormatter={(v: number) => formatChartNumber(v)}
                           width={35}
                         />
                         <Tooltip
-                          contentStyle={{
-                            backgroundColor: "hsl(var(--card))",
-                            border: "1px solid hsl(var(--border))",
-                            borderRadius: "6px",
-                            fontSize: "11px",
-                          }}
-                          formatter={(value: number) => [formatNumber(value), ""]}
+                          contentStyle={CHART_TOOLTIP_STYLE}
+                          formatter={(value: number | undefined) => formatChartNumber(value ?? 0)}
                         />
                         <Bar
                           dataKey="prompt"
-                          name="Prompt"
-                          fill="hsl(var(--chart-2))"
+                          name="Input"
+                          fill="hsl(var(--chart-1))"
                           radius={[2, 2, 0, 0]}
                           maxBarSize={20}
                         />
                         <Bar
                           dataKey="output"
                           name="Output"
-                          fill="hsl(var(--chart-1))"
+                          fill="hsl(var(--chart-2))"
                           radius={[2, 2, 0, 0]}
                           maxBarSize={20}
                         />
@@ -397,6 +465,77 @@ export function AnalyticsPage() {
                     </ResponsiveContainer>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Context Ratio (Pie Chart) */}
+            <Card>
+              <CardHeader class="pb-2">
+                <CardTitle class="text-sm flex items-center gap-2">
+                  <PieChartIcon class="h-4 w-4" />
+                  Context Ratio ({timeRangeLabel})
+                </CardTitle>
+                <CardDescription>
+                  Input vs Output token distribution
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {!displayData ? (
+                  <ChartEmptyState height={180} />
+                ) : (() => {
+                  const pieConfig: ChartConfig = {
+                    input: {
+                      label: "Input",
+                      color: "hsl(var(--chart-1))",
+                    },
+                    output: {
+                      label: "Output",
+                      color: "hsl(var(--chart-2))",
+                    },
+                  };
+
+                  const pieData = [
+                    { name: "input", value: displayData.totals.totalPromptTokens, fill: "hsl(var(--chart-1))" },
+                    { name: "output", value: displayData.totals.totalOutputTokens, fill: "hsl(var(--chart-2))" },
+                  ];
+
+                  return (
+                    <div class="flex flex-col items-center">
+                      <ChartContainer config={pieConfig} class="h-[180px] w-full">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
+                          <PieChart>
+                            <Pie
+                              data={pieData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={45}
+                              outerRadius={70}
+                              paddingAngle={2}
+                              dataKey="value"
+                              strokeWidth={0}
+                            >
+                              <Cell fill="hsl(var(--chart-1))" />
+                              <Cell fill="hsl(var(--chart-2))" />
+                            </Pie>
+                            <Tooltip
+                              content={({ active, payload }) => (
+                                <ChartTooltipContent
+                                  active={active}
+                                  payload={payload?.map(p => ({
+                                    name: p.name ?? "",
+                                    value: p.value as number,
+                                    color: pieConfig[p.name ?? ""]?.color ?? "",
+                                  })) ?? []}
+                                  config={pieConfig}
+                                />
+                              )}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </ChartContainer>
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
           </div>
@@ -411,9 +550,7 @@ export function AnalyticsPage() {
               </CardHeader>
               <CardContent class="max-h-[300px] overflow-auto space-y-2">
                 {records.length === 0 ? (
-                  <div class="flex items-center justify-center py-8 text-muted-foreground text-xs">
-                    No records found
-                  </div>
+                  <EmptyState message="No records found" showCard={false} />
                 ) : (
                   records.map((record) => (
                     <RecordItem key={record.id} record={record} />
@@ -429,12 +566,10 @@ export function AnalyticsPage() {
                 <CardDescription>Detected issues</CardDescription>
               </CardHeader>
               <CardContent class="max-h-[300px] overflow-auto space-y-2">
-                {(!today?.anomalies || today.anomalies.length === 0) ? (
-                  <div class="flex items-center justify-center py-8 text-muted-foreground text-xs">
-                    No anomalies detected
-                  </div>
+                {(!displayData?.anomalies || displayData.anomalies.length === 0) ? (
+                  <EmptyState message="No anomalies detected" showCard={false} />
                 ) : (
-                  today.anomalies.map((anomaly, idx) => (
+                  displayData.anomalies.map((anomaly, idx) => (
                     <AnomalyItem key={idx} anomaly={anomaly} />
                   ))
                 )}
@@ -443,7 +578,7 @@ export function AnalyticsPage() {
           </div>
         </>
       )}
-    </div>
+    </PageLayout>
   );
 }
 
@@ -451,85 +586,46 @@ export function AnalyticsPage() {
 // Sub-Components
 // ============================================================================
 
-function MetricCard({
-  icon: Icon,
-  label,
-  value,
-  progress,
-  variant = "default",
-}: {
-  icon: typeof Activity;
-  label: string;
-  value: string | number;
-  progress?: number;
-  variant?: "default" | "warning" | "success";
-}) {
-  return (
-    <Card class={cn(
-      variant === "warning" && "border-yellow-500/50",
-      variant === "success" && "border-green-500/50",
-    )}>
-      <CardContent class="py-3">
-        <div class="flex items-center gap-2 mb-1">
-          <Icon class="h-3.5 w-3.5 text-muted-foreground" />
-          <span class="text-xs text-muted-foreground">{label}</span>
-        </div>
-        <div class="text-lg font-bold">{value}</div>
-        {progress !== undefined && (
-          <div class="mt-1.5 h-1.5 w-full bg-muted rounded-full overflow-hidden">
-            <div
-              class={cn(
-                "h-full rounded-full transition-all",
-                progress >= 70 ? "bg-green-500" : progress >= 40 ? "bg-yellow-500" : "bg-red-500"
-              )}
-              style={{ width: `${Math.min(100, progress)}%` }}
-            />
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 function RecordItem({ record }: { record: BehaviorRecord }) {
   const isSuccess = record.execution.outcomeCode === "SUCCESS";
-  const efficiency = (
+  // efficiencyはAPIから取得した値を使用（集計と同じ計算式）
+  // フォールバックとして簡易計算を使用
+  const efficiency = record.efficiency ?? (
     (record.output.estimatedTokens / Math.max(1, record.prompt.estimatedTokens)) +
     record.quality.formatComplianceScore +
     record.quality.claimResultConsistency
   ) / 3;
 
   return (
-    <div class="p-2 bg-muted/50 rounded-lg text-xs">
+    <div class={cn("p-2 bg-muted/50 rounded-lg", TYPOGRAPHY.bodySmall)}>
       <div class="flex items-center justify-between mb-1.5">
-        <span class="font-mono text-muted-foreground">
+        <span class={PATTERNS.monoSm}>
           {record.id.slice(0, 12)}...
         </span>
         <span class={cn(
-          "px-1.5 py-0.5 rounded text-[10px] font-medium",
-          isSuccess ? "bg-green-500/20 text-green-500" : "bg-red-500/20 text-red-500"
+          PATTERNS.badgeSm,
+          isSuccess ? cn(STATE_STYLES.success.bg, STATE_STYLES.success.text) : cn(STATE_STYLES.error.bg, STATE_STYLES.error.text)
         )}>
           {record.execution.outcomeCode}
         </span>
       </div>
-      <div class="grid grid-cols-4 gap-2 text-muted-foreground">
+      <div class={cn("grid grid-cols-4", SPACING.element, "text-muted-foreground")}>
         <div>
-          <span class="block text-[10px]">Prompt</span>
+          <span class={cn("block", TYPOGRAPHY.muted)}>Prompt</span>
           <span class="text-foreground">{record.prompt.estimatedTokens}</span>
         </div>
         <div>
-          <span class="block text-[10px]">Output</span>
+          <span class={cn("block", TYPOGRAPHY.muted)}>Output</span>
           <span class="text-foreground">{record.output.estimatedTokens}</span>
         </div>
         <div>
-          <span class="block text-[10px]">Duration</span>
+          <span class={cn("block", TYPOGRAPHY.muted)}>Duration</span>
           <span class="text-foreground">{formatDuration(record.execution.durationMs)}</span>
         </div>
         <div>
-          <span class="block text-[10px]">Efficiency</span>
+          <span class={cn("block", TYPOGRAPHY.muted)}>Efficiency</span>
           <span class={cn(
-            "text-foreground",
-            efficiency >= 0.7 ? "text-green-500" : efficiency >= 0.4 ? "text-yellow-500" : "text-red-500"
+            efficiency >= 0.7 ? STATE_STYLES.success.text : efficiency >= 0.4 ? STATE_STYLES.warning.text : STATE_STYLES.error.text
           )}>
             {(efficiency * 100).toFixed(0)}%
           </span>
@@ -540,16 +636,22 @@ function RecordItem({ record }: { record: BehaviorRecord }) {
 }
 
 function AnomalyItem({ anomaly }: { anomaly: AnomalyRecord }) {
+  const severityStyle = anomaly.severity === "high"
+    ? STATE_STYLES.error
+    : anomaly.severity === "medium"
+    ? STATE_STYLES.warning
+    : STATE_STYLES.info;
+
   return (
     <div class={cn(
-      "p-2 rounded-lg border-l-2 text-xs",
-      anomaly.severity === "high" && "bg-red-500/10 border-red-500",
-      anomaly.severity === "medium" && "bg-yellow-500/10 border-yellow-500",
-      anomaly.severity === "low" && "bg-blue-500/10 border-blue-500",
+      "p-2 rounded-lg border-l-2",
+      TYPOGRAPHY.bodySmall,
+      severityStyle.bg,
+      `border-l-[${severityStyle.border.split(" ")[0]}]`,
     )}>
       <div class="font-medium mb-0.5">{formatAnomalyType(anomaly.type)}</div>
       <div class="text-muted-foreground">{anomaly.details}</div>
-      <div class="text-[10px] text-muted-foreground mt-1">
+      <div class={cn("mt-1", TYPOGRAPHY.muted)}>
         {new Date(anomaly.timestamp).toLocaleString()}
       </div>
     </div>

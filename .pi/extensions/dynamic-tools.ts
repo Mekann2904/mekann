@@ -74,6 +74,20 @@ import { isHighStakesTask } from "../lib/verification-high-stakes.js";
 
 const logger = getLogger();
 
+// セキュリティ: スタックトレース露出防止
+// 環境変数 PI_DEBUG が設定されている場合のみスタックトレースを含める
+const DEBUG_MODE = process.env.PI_DEBUG === "true";
+
+/**
+ * @summary デバッグモード時のみスタックトレースを返す
+ * @param error - エラーオブジェクト
+ * @returns スタックトレース文字列
+ */
+function getSafeStackTrace(error: unknown): string {
+	if (!DEBUG_MODE) return "";
+	return error instanceof Error ? error.stack || "" : "";
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -527,7 +541,7 @@ ${warningText}
       error: {
         type: error instanceof Error ? error.constructor.name : "UnknownError",
         message: errorMessage,
-        stack: error instanceof Error ? error.stack || "" : "",
+        stack: getSafeStackTrace(error),
       },
     });
     return `エラー: ${errorMessage}`;
@@ -672,7 +686,7 @@ ${resultText}
       error: {
         type: error instanceof Error ? error.constructor.name : "UnknownError",
         message: errorMessage,
-        stack: error instanceof Error ? error.stack || "" : "",
+        stack: getSafeStackTrace(error),
       },
     });
     return `エラー: ${errorMessage}`;
@@ -822,7 +836,7 @@ async function handleDeleteDynamicTool(
       error: {
         type: error instanceof Error ? error.constructor.name : "UnknownError",
         message: errorMessage,
-        stack: error instanceof Error ? error.stack || "" : "",
+        stack: getSafeStackTrace(error),
       },
     });
     return `エラー: ${errorMessage}`;

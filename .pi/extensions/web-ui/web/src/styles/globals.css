@@ -73,11 +73,11 @@
   }
 }
 
-/* スクロールバー非表示 */
-.scrollbar-hide {
+/* スクロールバー非表示（全要素に適用） */
+* {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
-.scrollbar-hide::-webkit-scrollbar {
+*::-webkit-scrollbar {
   display: none;
 }

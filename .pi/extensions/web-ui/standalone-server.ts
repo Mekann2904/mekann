@@ -28,11 +28,15 @@ import {
   getUlWorkflowTask,
   getActiveUlWorkflowTask,
   invalidateCache,
+  getTaskPlan,
   type UlWorkflowTask,
 } from "./lib/ul-workflow-reader.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// プロジェクトルートディレクトリ（standalone-server.tsから3階層上）
+const PROJECT_ROOT = path.resolve(__dirname, "../../..");
 
 // ============================================================================
 // Types (duplicated from instance-registry.ts to avoid dependency)
@@ -847,6 +851,26 @@ function createApp(): Express {
     }
   });
 
+  /**
+   * GET /api/ul-workflow/tasks/:id/plan - Get plan.md content for a task
+   */
+  app.get("/api/ul-workflow/tasks/:id/plan", (req: Request, res: Response) => {
+    try {
+      const taskId = req.params.id.startsWith("ul-")
+        ? req.params.id.slice(3)
+        : req.params.id;
+      const plan = getTaskPlan(taskId);
+      if (!plan) {
+        res.status(404).json({ success: false, error: "Plan not found" });
+        return;
+      }
+      res.type("text/markdown").send(plan);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ success: false, error: "Failed to load plan", details: errorMessage });
+    }
+  });
+
   // ============= Analytics API =============
 
   /**
@@ -855,7 +879,7 @@ function createApp(): Express {
   app.get("/api/analytics/stats", async (_req: Request, res: Response) => {
     try {
       const { getStorageStats } = await import("../../lib/analytics/behavior-storage.js");
-      const stats = getStorageStats();
+      const stats = getStorageStats(PROJECT_ROOT);
       res.json(stats);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -870,7 +894,7 @@ function createApp(): Express {
     try {
       const { loadRecentRecords } = await import("../../lib/analytics/behavior-storage.js");
       const limit = parseInt(req.query.limit as string || "50", 10);
-      const records = loadRecentRecords(limit);
+      const records = loadRecentRecords(limit, PROJECT_ROOT);
       res.json(records);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -888,7 +912,7 @@ function createApp(): Express {
       const endDate = new Date();
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - 7);
-      const aggregates = loadAggregates(type, startDate, endDate);
+      const aggregates = loadAggregates(type, startDate, endDate, PROJECT_ROOT);
       res.json(aggregates);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -902,7 +926,7 @@ function createApp(): Express {
   app.get("/api/analytics/anomalies", async (_req: Request, res: Response) => {
     try {
       const { getAnomalySummary } = await import("../../lib/analytics/anomaly-detector.js");
-      const summary = getAnomalySummary();
+      const summary = getAnomalySummary(PROJECT_ROOT);
       res.json(summary);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -916,7 +940,7 @@ function createApp(): Express {
   app.get("/api/analytics/summary", async (_req: Request, res: Response) => {
     try {
       const { getAggregationSummary } = await import("../../lib/analytics/aggregator.js");
-      const summary = getAggregationSummary();
+      const summary = getAggregationSummary(PROJECT_ROOT);
       res.json(summary);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -930,11 +954,51 @@ function createApp(): Express {
   app.get("/api/analytics/paths", async (_req: Request, res: Response) => {
     try {
       const { getAnalyticsPaths } = await import("../../lib/analytics/behavior-storage.js");
-      const paths = getAnalyticsPaths();
+      const paths = getAnalyticsPaths(PROJECT_ROOT);
       res.json(paths);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       res.status(500).json({ error: "Failed to get paths", details: errorMessage });
+    }
+  });
+
+  // ============= Agent Usage API =============
+
+  /**
+   * GET /api/agent-usage - Get agent usage statistics
+   */
+  app.get("/api/agent-usage", (_req: Request, res: Response) => {
+    try {
+      const usageFile = path.join(process.cwd(), ".pi", "analytics", "agent-usage-stats.json");
+
+      if (!fs.existsSync(usageFile)) {
+        res.json({
+          success: true,
+          data: {
+            totals: {
+              toolCalls: 0,
+              toolErrors: 0,
+              agentRuns: 0,
+              agentRunErrors: 0,
+              contextSamples: 0,
+              contextRatioSum: 0,
+              contextTokenSamples: 0,
+              contextTokenSum: 0,
+            },
+            features: {},
+            events: [],
+          },
+        });
+        return;
+      }
+
+      const rawData = fs.readFileSync(usageFile, "utf-8");
+      const data = JSON.parse(rawData);
+
+      res.json({ success: true, data });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get agent usage", details: errorMessage });
     }
   });
 
@@ -1142,11 +1206,21 @@ setInterval(() => {
   ContextHistoryStorage.cleanup();
 }, 5 * 60 * 1000);
 
-// Periodic check for active instances (if no instances, shutdown server)
+// Startup grace period - don't shutdown immediately after startup
+let startupGracePeriodEnd = Date.now() + 60000; // 60 seconds grace period
+
+// Periodic check for active instances
+let hasShownShutdownWarning = false;
+
 setInterval(() => {
+  // During grace period, don't check for instances
+  if (Date.now() < startupGracePeriodEnd) {
+    return;
+  }
+
   const count = InstanceRegistry.getCount();
-  if (count === 0) {
-    console.log("[web-ui-standalone] No active instances, shutting down server...");
+  if (count === 0 && !hasShownShutdownWarning) {
+    console.log("[web-ui-standalone] No active instances for 60 seconds, shutting down server...");
     stopStandaloneServer();
     process.exit(0);
   }

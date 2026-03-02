@@ -1,18 +1,25 @@
 import { type ComponentChildren } from "preact";
 import { cn } from "@/lib/utils";
+import type { h } from "preact";
 
 interface CardProps {
   children: ComponentChildren;
   class?: string;
+  style?: h.JSX.CSSProperties;
+  onClick?: () => void;
+  "data-testid"?: string;
 }
 
-export function Card({ children, class: className }: CardProps) {
+export function Card({ children, class: className, style, onClick, "data-testid": testId }: CardProps) {
   return (
     <div
       class={cn(
         "rounded-xl border bg-card text-card-foreground shadow",
         className
       )}
+      style={style}
+      onClick={onClick}
+      data-testid={testId}
     >
       {children}
     </div>

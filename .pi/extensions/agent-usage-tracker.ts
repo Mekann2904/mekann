@@ -389,6 +389,16 @@ function resolveExtensionForTool(toolName: string, catalog: FeatureCatalog): str
   if (toolName === "loop_run") return "loop";
   if (toolName === "question") return "question";
   if (toolName === "abbr") return "abbr";
+  // Search tools
+  if (toolName.startsWith("repograph_") || toolName === "code_search" ||
+      toolName === "file_candidates" || toolName === "sym_index" ||
+      toolName === "sym_find" || toolName === "semantic_search" ||
+      toolName === "semantic_index" || toolName === "context_explore" ||
+      toolName === "search_class" || toolName === "search_method" ||
+      toolName === "fault_localize" || toolName === "search_history" ||
+      toolName === "ast_summary" || toolName === "merge_results" ||
+      toolName === "call_graph_index" || toolName === "find_callers" ||
+      toolName === "find_callees") return "search";
   if (BUILT_IN_TOOLS.has(toolName)) return "core";
   return "unknown";
 }
