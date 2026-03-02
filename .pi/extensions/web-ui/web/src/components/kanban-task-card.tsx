@@ -232,7 +232,7 @@ export function KanbanTaskCard({
         {/* Title */}
         <p
           class={cn(
-            "text-[15px] font-medium leading-snug mb-1.5",
+            "text-[15px] font-medium leading-snug mb-1.5 break-words",
             task.status === "completed" && "line-through text-muted-foreground"
           )}
         >
