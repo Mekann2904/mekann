@@ -19,9 +19,18 @@
 
 import { h } from "preact";
 import { useState, useEffect, useCallback, useMemo, useRef } from "preact/hooks";
-import { Plus, RefreshCw, Search, X } from "lucide-preact";
+import { Plus, RefreshCw, Search, X, Trash2 } from "lucide-preact";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import {
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "./ui/alert-dialog";
 import { KanbanTaskCard, type Task, type TaskStatus, type TaskPriority } from "./kanban-task-card";
 import { TaskDetailPanel } from "./task-detail-panel";
 import { useRuntimeStatus } from "../hooks/useRuntimeStatus";
@@ -87,6 +96,10 @@ export function TasksPage() {
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  
+  // Delete confirmation state
+  const [deleteConfirmTaskId, setDeleteConfirmTaskId] = useState<string | null>(null);
+  const [deleteConfirmSubtaskId, setDeleteConfirmSubtaskId] = useState<string | null>(null);
   
   // Runtime status for execution indicators
   const { sessions: runtimeSessions } = useRuntimeStatus();
@@ -308,12 +321,6 @@ export function TasksPage() {
 
   // Update task status (drag and drop)
   const handleStatusChange = async (taskId: string, newStatus: TaskStatus): Promise<boolean> => {
-    // UL workflow tasks are read-only
-    if (taskId.startsWith("ul-")) {
-      setError("UL Workflow tasks are read-only and cannot be modified");
-      return false;
-    }
-
     // Check if moving parent task to "completed" - all subtasks must be completed first
     if (newStatus === "completed") {
       const task = tasks.find((t) => t.id === taskId);
@@ -348,14 +355,14 @@ export function TasksPage() {
     }
   };
 
-  // Delete task
-  const handleDelete = async (id: string) => {
-    // UL workflow tasks cannot be deleted
-    if (id.startsWith("ul-")) {
-      setError("UL Workflow tasks cannot be deleted from this view");
-      return;
-    }
+  // Request delete confirmation
+  const handleDeleteRequest = (id: string) => {
+    setDeleteConfirmTaskId(id);
+  };
 
+  // Confirm and execute delete
+  const handleDelete = async (id: string) => {
+    setDeleteConfirmTaskId(null);
     try {
       const res = await fetch(`${API_BASE}/api/tasks/${id}`, {
         method: "DELETE",
@@ -372,6 +379,31 @@ export function TasksPage() {
       await fetchStats();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete task");
+    }
+  };
+
+  // Request subtask delete confirmation
+  const handleDeleteSubtaskRequest = (subtaskId: string) => {
+    setDeleteConfirmSubtaskId(subtaskId);
+  };
+
+  // Confirm and execute subtask delete
+  const handleDeleteSubtask = async (subtaskId: string) => {
+    setDeleteConfirmSubtaskId(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/tasks/${subtaskId}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to delete subtask");
+      }
+
+      // fetchTasks() updates tasks array, selectedTask is auto-updated via useMemo
+      await fetchTasks();
+      await fetchStats();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete subtask");
     }
   };
 
@@ -422,25 +454,6 @@ export function TasksPage() {
       await fetchStats();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update subtask");
-    }
-  };
-
-  // Delete subtask
-  const handleDeleteSubtask = async (subtaskId: string) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/tasks/${subtaskId}`, {
-        method: "DELETE",
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to delete subtask");
-      }
-
-      // fetchTasks() updates tasks array, selectedTask is auto-updated via useMemo
-      await fetchTasks();
-      await fetchStats();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete subtask");
     }
   };
 
@@ -590,7 +603,7 @@ export function TasksPage() {
                 onClick={() => setSelectedTaskId(task.id)}
                 onDragStart={(e) => handleDragStart(e, task)}
                 onDragEnd={handleDragEnd}
-                onDelete={() => handleDelete(task.id)}
+                onDelete={() => handleDeleteRequest(task.id)}
                 isDragging={draggedTask?.id === task.id}
                 isSelected={selectedTask?.id === task.id}
               />
@@ -743,7 +756,7 @@ export function TasksPage() {
             handleUpdateTask(updated);
             // selectedTask auto-updates via useMemo when tasks changes
           }}
-          onDelete={() => handleDelete(selectedTask.id)}
+          onDelete={() => handleDeleteRequest(selectedTask.id)}
           onStatusChange={async (status) => {
             await handleStatusChange(selectedTask.id, status);
             // selectedTask auto-updates via useMemo when tasks changes
@@ -753,8 +766,72 @@ export function TasksPage() {
             handleUpdateSubtask(subtask);
             // selectedTask auto-updates via useMemo when tasks changes
           }}
-          onDeleteSubtask={handleDeleteSubtask}
+          onDeleteSubtask={handleDeleteSubtaskRequest}
         />
+      )}
+
+      {/* Delete confirmation dialog */}
+      {deleteConfirmTaskId && (
+        <AlertDialogContent
+          size="sm"
+          open={!!deleteConfirmTaskId}
+          onOpenChange={(open) => !open && setDeleteConfirmTaskId(null)}
+        >
+          <AlertDialogHeader>
+            <div class="flex items-center gap-3 mb-2">
+              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+                <Trash2 class="h-5 w-5" />
+              </div>
+              <AlertDialogTitle>タスクを削除しますか？</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription>
+              この操作は取り消せません。タスクとすべてのサブタスクが完全に削除されます。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteConfirmTaskId(null)}>
+              キャンセル
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => handleDelete(deleteConfirmTaskId)}
+            >
+              削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      )}
+
+      {/* Subtask delete confirmation dialog */}
+      {deleteConfirmSubtaskId && (
+        <AlertDialogContent
+          size="sm"
+          open={!!deleteConfirmSubtaskId}
+          onOpenChange={(open) => !open && setDeleteConfirmSubtaskId(null)}
+        >
+          <AlertDialogHeader>
+            <div class="flex items-center gap-3 mb-2">
+              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+                <Trash2 class="h-5 w-5" />
+              </div>
+              <AlertDialogTitle>サブタスクを削除しますか？</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription>
+              この操作は取り消せません。サブタスクが完全に削除されます。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteConfirmSubtaskId(null)}>
+              キャンセル
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => handleDeleteSubtask(deleteConfirmSubtaskId)}
+            >
+              削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
       )}
     </PageLayout>
   );

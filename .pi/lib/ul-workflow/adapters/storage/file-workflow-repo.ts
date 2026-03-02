@@ -162,6 +162,21 @@ ${description}
   }
 
   /**
+   * タスクを削除
+   * @summary タスク削除
+   * @param taskId - タスクID
+   */
+  async delete(taskId: string): Promise<void> {
+    const taskDir = getTaskDir(taskId);
+    try {
+      await fsPromises.rm(taskDir, { recursive: true, force: true });
+    } catch (e) {
+      // ディレクトリ削除に失敗してもクリティカルではない
+      console.error(`Failed to remove task directory: ${taskDir}`, e);
+    }
+  }
+
+  /**
    * 同期版: 現在のアクティブワークフローを取得
    * @summary 同期アクティブ取得
    * @returns ワークフロー状態（ない場合はnull）

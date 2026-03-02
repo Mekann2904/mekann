@@ -180,20 +180,10 @@ export function KanbanTaskCard({
     </span>
   );
 
-  const handleDragStart = (e: DragEvent) => {
-    // UL workflow tasks cannot be dragged
-    if (task.isUlWorkflow) {
-      e.preventDefault();
-      return;
-    }
-    e.stopPropagation();
-    onDragStart?.(e);
-  };
-
   return (
     <div
-      draggable={!task.isUlWorkflow}
-      onDragStart={handleDragStart}
+      draggable
+      onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onClick}
       class={cn(
@@ -206,15 +196,13 @@ export function KanbanTaskCard({
         task.isUlWorkflow && "border-purple-500/30 bg-purple-500/5"
       )}
     >
-      {/* Drag handle - hide for UL workflow tasks */}
-      {!task.isUlWorkflow && (
-        <div class="absolute left-0 top-0 bottom-0 w-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
-          <GripVertical class="h-3.5 w-3.5 text-muted-foreground/50" />
-        </div>
-      )}
+      {/* Drag handle */}
+      <div class="absolute left-0 top-0 bottom-0 w-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
+        <GripVertical class="h-3.5 w-3.5 text-muted-foreground/50" />
+      </div>
 
-      {/* Delete button - hover only, hide for UL workflow */}
-      {onDelete && !task.isUlWorkflow && (
+      {/* Delete button - hover only */}
+      {onDelete && (
         <button
           class="absolute right-1 top-1 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/10 hover:text-red-500 text-muted-foreground"
           onClick={(e) => {
@@ -228,11 +216,11 @@ export function KanbanTaskCard({
       )}
 
       {/* Content */}
-      <div class={cn("p-2.5", !task.isUlWorkflow && "pl-6")}>
+      <div class="p-2.5 pl-6">
         {/* Title */}
         <p
           class={cn(
-            "text-[15px] font-medium leading-snug mb-1.5",
+            "text-[15px] font-medium leading-snug mb-1.5 break-words",
             task.status === "completed" && "line-through text-muted-foreground"
           )}
         >

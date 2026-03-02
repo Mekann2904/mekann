@@ -65,6 +65,12 @@ export interface IWorkflowRepository {
    * @param taskId - タスクID
    */
   readPlanFile(taskId: string): Promise<string>;
+
+  /**
+   * タスクを削除
+   * @param taskId - タスクID
+   */
+  delete(taskId: string): Promise<void>;
 }
 
 /**
