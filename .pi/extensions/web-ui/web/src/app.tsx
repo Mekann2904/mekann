@@ -8,7 +8,6 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "preact/hooks";
 import { Router, route } from "preact-router";
 import { ThemePage, applyThemeToDOM, type Mode } from "./components/theme-page";
-import { DashboardPage } from "./components/dashboard-page";
 import { InstancesPage } from "./components/instances-page";
 import { McpPage } from "./components/mcp-page";
 import { TasksPage } from "./components/tasks-page";
@@ -18,7 +17,6 @@ import { ToastProvider } from "./hooks/useToast";
 import { ToastContainer } from "./components/ui/toast";
 import { useGlobalShortcuts } from "./hooks/useKeyboardShortcuts";
 import {
-  Activity,
   Monitor,
   Palette,
   Loader2,
@@ -272,10 +270,9 @@ export function App() {
         <Sidebar sseConnected={sseConnected} sseExhausted={sseExhausted} onSseReconnect={sseReconnect} />
         <main class="flex-1 overflow-hidden">
           <Router>
-            <DashboardPage path="/" />
+            <TasksPage path="/" />
             <InstancesPage path="/instances" />
             <McpPage path="/mcp" />
-            <TasksPage path="/tasks" />
             <AnalyticsPage path="/analytics" />
             <AgentUsagePage path="/agent-usage" />
             <ThemePage path="/theme" onThemeChange={applyTheme} />
@@ -344,8 +341,7 @@ function Sidebar({ sseConnected, sseExhausted, onSseReconnect }: SidebarProps) {
   };
 
   const navItems = [
-    { path: "/", icon: Activity, label: "Dashboard" },
-    { path: "/tasks", icon: ListTodo, label: "Tasks" },
+    { path: "/", icon: ListTodo, label: "Tasks" },
     { path: "/analytics", icon: BarChart3, label: "Analytics" },
     { path: "/agent-usage", icon: TrendingUp, label: "Agent Usage" },
     { path: "/instances", icon: Monitor, label: "Instances" },
