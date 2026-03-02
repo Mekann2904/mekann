@@ -450,12 +450,6 @@ export function DashboardPage() {
   const instances = contextHistory ? Object.values(contextHistory.instances) : [];
   const instanceCount = instances.length;
 
-  // 全体の統計
-  const totalStats = {
-    totalInput: instances.reduce((sum, i) => sum + i.history.reduce((s, e) => s + e.input, 0), 0),
-    totalOutput: instances.reduce((sum, i) => sum + i.history.reduce((s, e) => s + e.output, 0), 0),
-  };
-
   // チャート設定
   const chartConfig: ChartConfig = {
     tokens: {
@@ -470,30 +464,6 @@ export function DashboardPage() {
       color: "hsl(var(--chart-2))",
     },
   };
-
-  // 日次コンテキストデータ（ラインチャート用）
-  const dailyContextData = (() => {
-    const allEntries = instances.flatMap((i) => i.history);
-    const byDate = new Map<string, { input: number; output: number }>();
-
-    for (const entry of allEntries) {
-      const date = new Date(entry.timestamp).toISOString().split("T")[0];
-      if (!date) continue;
-      const existing = byDate.get(date) || { input: 0, output: 0 };
-      existing.input += entry.input;
-      existing.output += entry.output;
-      byDate.set(date, existing);
-    }
-
-    return Array.from(byDate.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .slice(-30) // 直近30日
-      .map(([date, values]) => ({
-        date,
-        input: values.input,
-        output: values.output,
-      }));
-  })();
 
   // SSE接続ステータスコンポーネント
   const ConnectionStatus = () => (
@@ -556,91 +526,6 @@ export function DashboardPage() {
 
       {/* 表示モード切り替え */}
       <DisplayModeButtons />
-
-      {/* 日次コンテキスト使用量（ラインチャート） */}
-      {instances.length > 0 && dailyContextData.length > 0 && (
-        <Card class="mb-4 py-4 sm:py-0">
-          <CardHeader class="flex flex-col items-stretch border-b p-0! sm:flex-row">
-            <div class="flex flex-1 flex-col justify-center gap-1 px-6 pb-3 sm:pb-0">
-              <CardTitle>Daily Context Usage</CardTitle>
-              <CardDescription>
-                Token usage for the last {dailyContextData.length} days
-              </CardDescription>
-            </div>
-            <div class="flex">
-              {(["input", "output"] as const).map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  data-active={displayMode === key}
-                  class={cn(
-                    "flex flex-1 flex-col justify-center gap-1 border-t px-6 py-4 text-left even:border-l data-[active=true]:bg-muted/50 sm:border-t-0 sm:border-l sm:px-8 sm:py-6"
-                  )}
-                  onClick={() => setDisplayMode(key)}
-                >
-                  <span class="text-xs text-muted-foreground capitalize">
-                    {key}
-                  </span>
-                  <span class="text-lg leading-none font-bold sm:text-3xl">
-                    {(key === "input" ? totalStats.totalInput : totalStats.totalOutput).toLocaleString()}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </CardHeader>
-          <CardContent class="px-2 sm:p-6">
-            <ChartContainer
-              config={chartConfig}
-              class="aspect-auto h-[250px] w-full"
-            >
-              <LineChart
-                data={dailyContextData}
-                margin={{ left: 12, right: 12 }}
-              >
-                <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
-                <XAxis
-                  dataKey="date"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  minTickGap={32}
-                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                  tickFormatter={(value: string) => {
-                    const date = new Date(value);
-                    return date.toLocaleDateString("ja-JP", {
-                      month: "short",
-                      day: "numeric",
-                    });
-                  }}
-                />
-                <ChartTooltip
-                  content={
-                    <ChartTooltipContent
-                      class="w-[150px]"
-                      nameKey="tokens"
-                      config={chartConfig}
-                      labelFormatter={(value: string) => {
-                        return new Date(value).toLocaleDateString("ja-JP", {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        });
-                      }}
-                    /> as any
-                  }
-                />
-                <Line
-                  dataKey={displayMode}
-                  type="monotone"
-                  stroke={`var(--color-${displayMode})`}
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </ChartContainer>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Current Context Usage */}
       {currentContext && (
