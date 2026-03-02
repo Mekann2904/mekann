@@ -163,16 +163,6 @@ export function DashboardPage() {
   const [planLoading, setPlanLoading] = useState(false);
   const [isPlanDrawerOpen, setIsPlanDrawerOpen] = useState(false);
 
-  // タスク統計（円グラフ・レーダーチャート用）
-  const [taskStats, setTaskStats] = useState<{
-    total: number;
-    todo: number;
-    inProgress: number;
-    completed: number;
-    cancelled: number;
-    byPriority: { low: number; medium: number; high: number; urgent: number };
-  } | null>(null);
-
   // コンテキスト履歴を取得
   const fetchContextHistory = useCallback(async () => {
     setContextError(null);
@@ -190,21 +180,6 @@ export function DashboardPage() {
       console.error("Failed to fetch context history:", e);
     } finally {
       setContextLoading(false);
-    }
-  }, []);
-
-  // タスク統計を取得（円グラフ・レーダーチャート用）
-  const fetchTaskStats = useCallback(async () => {
-    try {
-      const res = await fetch("/api/tasks/stats");
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data) {
-          setTaskStats(json.data);
-        }
-      }
-    } catch (e) {
-      console.error("Failed to fetch task stats:", e);
     }
   }, []);
 
@@ -347,14 +322,12 @@ export function DashboardPage() {
   // 初回データ取得 + SSE接続
   useEffect(() => {
     fetchContextHistory();
-    fetchTaskStats();
     connectSSE();
 
     // Fallback polling (30 seconds) in case SSE fails
     const interval = setInterval(() => {
       if (!sseConnectedRef.current) {
         fetchContextHistory();
-        fetchTaskStats();
       }
     }, 30000);
 
@@ -367,7 +340,7 @@ export function DashboardPage() {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [fetchContextHistory, fetchTaskStats, connectSSE]);
+  }, [fetchContextHistory, connectSSE]);
 
   const instances = contextHistory ? Object.values(contextHistory.instances) : [];
   const instanceCount = instances.length;
@@ -441,13 +414,13 @@ export function DashboardPage() {
       <DisplayModeButtons />
 
       {/* チャートセクション（円グラフ・レーダーチャート） */}
-      {taskStats && taskStats.total > 0 && (
+      {instances.length > 0 && (
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          {/* タスクステータス分布（円グラフ） */}
+          {/* コンテキスト分析（円グラフ） */}
           <Card>
             <CardHeader class="pb-2">
-              <CardTitle class="text-sm">Task Status Distribution</CardTitle>
-              <CardDescription class="text-xs">Current task breakdown by status</CardDescription>
+              <CardTitle class="text-sm">Context Analysis</CardTitle>
+              <CardDescription class="text-xs">Input vs Output token distribution</CardDescription>
             </CardHeader>
             <CardContent>
               <div class="h-[200px] w-full">
@@ -455,49 +428,50 @@ export function DashboardPage() {
                   <PieChart>
                     <Pie
                       data={[
-                        { name: "Todo", value: taskStats.todo, color: "hsl(var(--chart-1))" },
-                        { name: "In Progress", value: taskStats.inProgress, color: "hsl(var(--chart-2))" },
-                        { name: "Completed", value: taskStats.completed, color: "hsl(var(--chart-3))" },
-                        { name: "Cancelled", value: taskStats.cancelled, color: "hsl(var(--chart-4))" },
+                        { name: "Input Tokens", value: totalStats.totalInput, color: "hsl(var(--chart-1))" },
+                        { name: "Output Tokens", value: totalStats.totalOutput, color: "hsl(var(--chart-2))" },
                       ].filter(d => d.value > 0)}
                       cx="50%"
                       cy="50%"
-                      innerRadius={40}
-                      outerRadius={70}
-                      paddingAngle={2}
+                      innerRadius={50}
+                      outerRadius={75}
+                      paddingAngle={3}
                       dataKey="value"
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      labelLine={false}
                     >
                       {[
-                        { name: "Todo", value: taskStats.todo, color: "hsl(var(--chart-1))" },
-                        { name: "In Progress", value: taskStats.inProgress, color: "hsl(var(--chart-2))" },
-                        { name: "Completed", value: taskStats.completed, color: "hsl(var(--chart-3))" },
-                        { name: "Cancelled", value: taskStats.cancelled, color: "hsl(var(--chart-4))" },
+                        { name: "Input Tokens", value: totalStats.totalInput, color: "hsl(var(--chart-1))" },
+                        { name: "Output Tokens", value: totalStats.totalOutput, color: "hsl(var(--chart-2))" },
                       ].filter(d => d.value > 0).map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
                     <Tooltip
                       contentStyle={CHART_TOOLTIP_STYLE}
-                      formatter={(value: number) => [value.toString(), ""]}
+                      formatter={(value: number) => [value.toLocaleString() + " tokens", ""]}
                     />
                     <Legend
                       verticalAlign="bottom"
                       height={24}
-                      formatter={(value) => <span class="text-xs text-muted-foreground">{value}</span>}
+                      formatter={(value, entry) => {
+                        const total = totalStats.totalInput + totalStats.totalOutput;
+                        const percent = total > 0 ? ((entry.payload?.value || 0) / total * 100).toFixed(1) : "0";
+                        return <span class="text-xs text-muted-foreground">{value} ({percent}%)</span>;
+                      }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
+              <div class="flex justify-center gap-4 mt-2 text-xs text-muted-foreground">
+                <span>Total: {(totalStats.totalInput + totalStats.totalOutput).toLocaleString()} tokens</span>
+              </div>
             </CardContent>
           </Card>
 
-          {/* タスク優先度分布（レーダーチャート） */}
+          {/* リソース使用量（レーダーチャート） */}
           <Card>
             <CardHeader class="pb-2">
-              <CardTitle class="text-sm">Priority Distribution</CardTitle>
-              <CardDescription class="text-xs">Tasks by priority level</CardDescription>
+              <CardTitle class="text-sm">Resource Usage</CardTitle>
+              <CardDescription class="text-xs">System resource metrics overview</CardDescription>
             </CardHeader>
             <CardContent>
               <div class="h-[200px] w-full">
@@ -506,35 +480,86 @@ export function DashboardPage() {
                     cx="50%"
                     cy="50%"
                     outerRadius="70%"
-                    data={[
-                      { subject: "Low", value: taskStats.byPriority.low, fullMark: Math.max(taskStats.total, 1) },
-                      { subject: "Medium", value: taskStats.byPriority.medium, fullMark: Math.max(taskStats.total, 1) },
-                      { subject: "High", value: taskStats.byPriority.high, fullMark: Math.max(taskStats.total, 1) },
-                      { subject: "Urgent", value: taskStats.byPriority.urgent, fullMark: Math.max(taskStats.total, 1) },
-                    ]}
+                    data={() => {
+                      const totalTokens = totalStats.totalInput + totalStats.totalOutput;
+                      const totalEntries = instances.reduce((sum, i) => sum + i.history.length, 0);
+                      const avgTokensPerEntry = totalEntries > 0 ? totalTokens / totalEntries : 0;
+                      const maxTokens = Math.max(totalTokens, 1);
+                      const maxEntries = Math.max(totalEntries, 1);
+                      const maxInstances = Math.max(instances.length, 1);
+                      
+                      return [
+                        { subject: "Instances", value: instances.length, fullMark: 10 },
+                        { subject: "Entries", value: Math.min(totalEntries / 10, 10), fullMark: 10 },
+                        { subject: "Input", value: Math.min(totalStats.totalInput / 10000, 10), fullMark: 10 },
+                        { subject: "Output", value: Math.min(totalStats.totalOutput / 10000, 10), fullMark: 10 },
+                        { subject: "Avg/Entry", value: Math.min(avgTokensPerEntry / 1000, 10), fullMark: 10 },
+                      ];
+                    }}
                   >
                     <PolarGrid stroke="hsl(var(--border))" />
                     <PolarAngleAxis
                       dataKey="subject"
-                      tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                      tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
                     />
                     <PolarRadiusAxis
-                      tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }}
-                      tickCount={4}
+                      tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 8 }}
+                      tickCount={5}
                     />
                     <Radar
-                      name="Tasks"
+                      name="Usage"
                       dataKey="value"
-                      stroke="hsl(var(--chart-5))"
-                      fill="hsl(var(--chart-5))"
+                      stroke="hsl(var(--chart-3))"
+                      fill="hsl(var(--chart-3))"
                       fillOpacity={0.4}
                     />
                     <Tooltip
                       contentStyle={CHART_TOOLTIP_STYLE}
-                      formatter={(value: number) => [value.toString(), "Tasks"]}
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const data = {
+                          Instances: instances.length,
+                          Entries: instances.reduce((sum, i) => sum + i.history.length, 0),
+                          Input: totalStats.totalInput.toLocaleString(),
+                          Output: totalStats.totalOutput.toLocaleString(),
+                          "Avg/Entry": Math.round(
+                            (totalStats.totalInput + totalStats.totalOutput) / 
+                            Math.max(instances.reduce((sum, i) => sum + i.history.length, 0), 1)
+                          ).toLocaleString(),
+                        };
+                        return (
+                          <div class="rounded-lg border bg-background p-2 shadow-sm text-xs">
+                            {Object.entries(data).map(([key, value]) => (
+                              <div key={key} class="flex justify-between gap-4">
+                                <span class="text-muted-foreground">{key}:</span>
+                                <span class="font-medium">{value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      }}
                     />
                   </RadarChart>
                 </ResponsiveContainer>
+              </div>
+              <div class="grid grid-cols-3 gap-2 mt-2 text-center text-xs">
+                <div>
+                  <div class="text-muted-foreground">Instances</div>
+                  <div class="font-medium">{instances.length}</div>
+                </div>
+                <div>
+                  <div class="text-muted-foreground">Entries</div>
+                  <div class="font-medium">{instances.reduce((sum, i) => sum + i.history.length, 0)}</div>
+                </div>
+                <div>
+                  <div class="text-muted-foreground">Avg/Entry</div>
+                  <div class="font-medium">
+                    {Math.round(
+                      (totalStats.totalInput + totalStats.totalOutput) / 
+                      Math.max(instances.reduce((sum, i) => sum + i.history.length, 0), 1)
+                    ).toLocaleString()}
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
