@@ -185,6 +185,14 @@ export function DashboardPage() {
     dailyActivity: Array<{ date: string; tokens: number; runs: number }>;
   } | null>(null);
 
+  // PI Usage Stats (cost, models)
+  const [piUsage, setPiUsage] = useState<{
+    byModel: Record<string, number>;
+    byDate: Record<string, number>;
+    byDateModel: Record<string, Record<string, number>>;
+    totalCost: number;
+  } | null>(null);
+
   // アクティブなUL Workflowタスク
   const [activeTask, setActiveTask] = useState<{ id: string; title: string; ownerInstanceId?: string } | null>(null);
   const [plan, setPlan] = useState<string | null>(null);
@@ -226,18 +234,18 @@ export function DashboardPage() {
     }
   }, []);
 
-  // LLM Usage Statsを取得
-  const fetchLlmUsage = useCallback(async () => {
+  // PI Usage Statsを取得（コスト、モデル別）
+  const fetchPiUsage = useCallback(async () => {
     try {
-      const res = await fetch("/api/llm-usage");
+      const res = await fetch("/api/pi-usage");
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.data) {
-          setLlmUsage(json.data);
+          setPiUsage(json.data);
         }
       }
     } catch (e) {
-      console.error("Failed to fetch LLM usage:", e);
+      console.error("Failed to fetch pi usage:", e);
     }
   }, []);
 
@@ -381,7 +389,7 @@ export function DashboardPage() {
   useEffect(() => {
     fetchContextHistory();
     fetchAgentUsage();
-    fetchLlmUsage();
+    fetchPiUsage();
     connectSSE();
 
     // Fallback polling (30 seconds) in case SSE fails
@@ -389,7 +397,7 @@ export function DashboardPage() {
       if (!sseConnectedRef.current) {
         fetchContextHistory();
         fetchAgentUsage();
-        fetchLlmUsage();
+        fetchPiUsage();
       }
     }, 30000);
 
@@ -402,7 +410,7 @@ export function DashboardPage() {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [fetchContextHistory, fetchAgentUsage, fetchLlmUsage, connectSSE]);
+  }, [fetchContextHistory, fetchAgentUsage, fetchPiUsage, connectSSE]);
 
   const instances = contextHistory ? Object.values(contextHistory.instances) : [];
   const instanceCount = instances.length;
@@ -692,25 +700,37 @@ export function DashboardPage() {
       )}
 
       {/* LLM Usage - Daily Activity Heatmap */}
-      {llmUsage && llmUsage.dailyActivity.length > 0 && (
+      {piUsage && Object.keys(piUsage.byDate).length > 0 && (
         <Card class="mb-4">
           <CardHeader class="pb-2">
-            <CardTitle class="text-sm">Daily Activity (12 weeks)</CardTitle>
+            <CardTitle class="text-sm">LLM Usage (12 weeks)</CardTitle>
             <CardDescription class="text-xs">
-              {(llmUsage.totals.promptTokens + llmUsage.totals.outputTokens).toLocaleString()} tokens | {llmUsage.totals.runs} runs
+              Total: ${piUsage.totalCost.toFixed(2)} | {Object.keys(piUsage.byModel).length} models
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div class="space-y-1">
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, dayIndex) => (
-                <div key={day} class="flex items-center gap-2">
-                  <span class="w-8 text-xs text-muted-foreground">{day}</span>
-                  <div class="flex gap-0.5">
-                    {llmUsage.dailyActivity
-                      .filter((_, i) => i % 7 === dayIndex)
-                      .map((d, i) => {
-                        const maxTokens = Math.max(...llmUsage.dailyActivity.map(a => a.tokens), 1);
-                        const intensity = d.tokens / maxTokens;
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, dayIndex) => {
+                // Get all dates for this weekday in the last 12 weeks
+                const dates: string[] = [];
+                const today = new Date();
+                for (let i = 83; i >= 0; i--) {
+                  const date = new Date(today);
+                  date.setDate(date.getDate() - i);
+                  if (date.getDay() === dayIndex) {
+                    dates.push(date.toISOString().split('T')[0] ?? '');
+                  }
+                }
+
+                const maxCost = Math.max(...Object.values(piUsage.byDate), 0.01);
+
+                return (
+                  <div key={day} class="flex items-center gap-2">
+                    <span class="w-8 text-xs text-muted-foreground">{day}</span>
+                    <div class="flex gap-0.5">
+                      {dates.map((dateStr) => {
+                        const cost = piUsage.byDate[dateStr] || 0;
+                        const intensity = cost / maxCost;
                         const bgClass = intensity === 0
                           ? "bg-muted/30"
                           : intensity < 0.25
@@ -722,18 +742,19 @@ export function DashboardPage() {
                           : "bg-chart-1";
                         return (
                           <div
-                            key={i}
+                            key={dateStr}
                             class={cn("w-3 h-3 rounded-sm", bgClass)}
-                            title={`${d.date}: ${d.tokens.toLocaleString()} tokens, ${d.runs} runs`}
+                            title={`${dateStr}: $${cost.toFixed(2)}`}
                           />
                         );
                       })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <div class="flex items-center justify-between mt-3 text-xs text-muted-foreground">
-              <span>{llmUsage.dailyActivity[0]?.date ?? ''}</span>
+              <span>{Object.keys(piUsage.byDate).sort()[0] ?? ''}</span>
               <div class="flex items-center gap-1">
                 <span>Less</span>
                 <div class="flex gap-0.5">
@@ -745,7 +766,38 @@ export function DashboardPage() {
                 </div>
                 <span>More</span>
               </div>
-              <span>{llmUsage.dailyActivity[llmUsage.dailyActivity.length - 1]?.date ?? ''}</span>
+              <span>{Object.keys(piUsage.byDate).sort()[Object.keys(piUsage.byDate).length - 1] ?? ''}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Top Models by Cost */}
+      {piUsage && Object.keys(piUsage.byModel).length > 0 && (
+        <Card class="mb-4">
+          <CardHeader class="pb-2">
+            <CardTitle class="text-sm">Top Models (USD)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div class="space-y-1">
+              {Object.entries(piUsage.byModel)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 7)
+                .map(([model, cost], index) => {
+                  const share = piUsage.totalCost > 0 ? (cost / piUsage.totalCost * 100) : 0;
+                  const barWidth = piUsage.totalCost > 0 ? (cost / Math.max(...Object.values(piUsage.byModel)) * 100) : 0;
+                  return (
+                    <div key={model} class="flex items-center gap-2 text-xs">
+                      <span class="w-4 text-muted-foreground">{index + 1}</span>
+                      <span class="flex-1 truncate">{model}</span>
+                      <span class="w-16 text-right">${cost.toFixed(2)}</span>
+                      <span class="w-10 text-right text-muted-foreground">{share.toFixed(1)}%</span>
+                      <div class="w-16 h-2 bg-muted rounded overflow-hidden">
+                        <div class="h-full bg-chart-1 rounded" style={{ width: `${barWidth}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
           </CardContent>
         </Card>

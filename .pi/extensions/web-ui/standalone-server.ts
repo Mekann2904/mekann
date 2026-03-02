@@ -1003,6 +1003,76 @@ function createApp(): Express {
   });
 
   /**
+   * GET /api/pi-usage - Get pi usage statistics (cost, models, daily activity)
+   */
+  app.get("/api/pi-usage", (_req: Request, res: Response) => {
+    try {
+      const usageFile = path.join(homedir(), ".pi", "extensions", "usage-cache.json");
+
+      if (!fs.existsSync(usageFile)) {
+        res.json({
+          success: true,
+          data: {
+            byModel: {},
+            byDate: {},
+            byDateModel: {},
+            totalCost: 0,
+          },
+        });
+        return;
+      }
+
+      const rawData = fs.readFileSync(usageFile, "utf-8");
+      const sessionData = JSON.parse(rawData);
+
+      // Aggregate all sessions
+      const byModel: Record<string, number> = {};
+      const byDate: Record<string, number> = {};
+      const byDateModel: Record<string, Record<string, number>> = {};
+
+      for (const session of Object.values(sessionData) as Array<{
+        byModel?: Record<string, number>;
+        byDate?: Record<string, number>;
+        byDateModel?: Record<string, Record<string, number>>;
+      }>) {
+        if (session.byModel) {
+          for (const [model, cost] of Object.entries(session.byModel)) {
+            byModel[model] = (byModel[model] || 0) + cost;
+          }
+        }
+        if (session.byDate) {
+          for (const [date, cost] of Object.entries(session.byDate)) {
+            byDate[date] = (byDate[date] || 0) + cost;
+          }
+        }
+        if (session.byDateModel) {
+          for (const [date, models] of Object.entries(session.byDateModel)) {
+            if (!byDateModel[date]) byDateModel[date] = {};
+            for (const [model, cost] of Object.entries(models)) {
+              byDateModel[date][model] = (byDateModel[date][model] || 0) + cost;
+            }
+          }
+        }
+      }
+
+      const totalCost = Object.values(byModel).reduce((sum, c) => sum + c, 0);
+
+      res.json({
+        success: true,
+        data: {
+          byModel,
+          byDate,
+          byDateModel,
+          totalCost,
+        },
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get pi usage", details: errorMessage });
+    }
+  });
+
+  /**
    * GET /api/llm-usage - Get LLM usage statistics (cost, models, daily activity)
    */
   app.get("/api/llm-usage", async (_req: Request, res: Response) => {
