@@ -1206,11 +1206,21 @@ setInterval(() => {
   ContextHistoryStorage.cleanup();
 }, 5 * 60 * 1000);
 
-// Periodic check for active instances (if no instances, shutdown server)
+// Startup grace period - don't shutdown immediately after startup
+let startupGracePeriodEnd = Date.now() + 60000; // 60 seconds grace period
+
+// Periodic check for active instances
+let hasShownShutdownWarning = false;
+
 setInterval(() => {
+  // During grace period, don't check for instances
+  if (Date.now() < startupGracePeriodEnd) {
+    return;
+  }
+
   const count = InstanceRegistry.getCount();
-  if (count === 0) {
-    console.log("[web-ui-standalone] No active instances, shutting down server...");
+  if (count === 0 && !hasShownShutdownWarning) {
+    console.log("[web-ui-standalone] No active instances for 60 seconds, shutting down server...");
     stopStandaloneServer();
     process.exit(0);
   }
