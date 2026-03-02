@@ -351,6 +351,18 @@ export function DashboardPage() {
     totalOutput: instances.reduce((sum, i) => sum + i.history.reduce((s, e) => s + e.output, 0), 0),
   };
 
+  // レーダーチャート用データ
+  const totalTokens = totalStats.totalInput + totalStats.totalOutput;
+  const totalEntries = instances.reduce((sum, i) => sum + i.history.length, 0);
+  const avgTokensPerEntry = totalEntries > 0 ? totalTokens / totalEntries : 0;
+  const radarData = [
+    { subject: "Instances", value: Math.min(instances.length, 10), raw: instances.length },
+    { subject: "Entries", value: Math.min(totalEntries / 10, 10), raw: totalEntries },
+    { subject: "Input", value: Math.min(totalStats.totalInput / 10000, 10), raw: totalStats.totalInput },
+    { subject: "Output", value: Math.min(totalStats.totalOutput / 10000, 10), raw: totalStats.totalOutput },
+    { subject: "Avg/Entry", value: Math.min(avgTokensPerEntry / 1000, 10), raw: Math.round(avgTokensPerEntry) },
+  ];
+
   // SSE接続ステータスコンポーネント
   const ConnectionStatus = () => (
     <div class={cn(
@@ -480,22 +492,7 @@ export function DashboardPage() {
                     cx="50%"
                     cy="50%"
                     outerRadius="70%"
-                    data={() => {
-                      const totalTokens = totalStats.totalInput + totalStats.totalOutput;
-                      const totalEntries = instances.reduce((sum, i) => sum + i.history.length, 0);
-                      const avgTokensPerEntry = totalEntries > 0 ? totalTokens / totalEntries : 0;
-                      const maxTokens = Math.max(totalTokens, 1);
-                      const maxEntries = Math.max(totalEntries, 1);
-                      const maxInstances = Math.max(instances.length, 1);
-                      
-                      return [
-                        { subject: "Instances", value: instances.length, fullMark: 10 },
-                        { subject: "Entries", value: Math.min(totalEntries / 10, 10), fullMark: 10 },
-                        { subject: "Input", value: Math.min(totalStats.totalInput / 10000, 10), fullMark: 10 },
-                        { subject: "Output", value: Math.min(totalStats.totalOutput / 10000, 10), fullMark: 10 },
-                        { subject: "Avg/Entry", value: Math.min(avgTokensPerEntry / 1000, 10), fullMark: 10 },
-                      ];
-                    }}
+                    data={radarData}
                   >
                     <PolarGrid stroke="hsl(var(--border))" />
                     <PolarAngleAxis
@@ -517,24 +514,18 @@ export function DashboardPage() {
                       contentStyle={CHART_TOOLTIP_STYLE}
                       content={({ active, payload }) => {
                         if (!active || !payload?.length) return null;
-                        const data = {
-                          Instances: instances.length,
-                          Entries: instances.reduce((sum, i) => sum + i.history.length, 0),
-                          Input: totalStats.totalInput.toLocaleString(),
-                          Output: totalStats.totalOutput.toLocaleString(),
-                          "Avg/Entry": Math.round(
-                            (totalStats.totalInput + totalStats.totalOutput) / 
-                            Math.max(instances.reduce((sum, i) => sum + i.history.length, 0), 1)
-                          ).toLocaleString(),
-                        };
                         return (
                           <div class="rounded-lg border bg-background p-2 shadow-sm text-xs">
-                            {Object.entries(data).map(([key, value]) => (
-                              <div key={key} class="flex justify-between gap-4">
-                                <span class="text-muted-foreground">{key}:</span>
-                                <span class="font-medium">{value}</span>
-                              </div>
-                            ))}
+                            {payload.map((entry: { payload?: { subject?: string; raw?: number } }, idx: number) => {
+                              const item = entry.payload;
+                              if (!item) return null;
+                              return (
+                                <div key={idx} class="flex justify-between gap-4">
+                                  <span class="text-muted-foreground">{item.subject}:</span>
+                                  <span class="font-medium">{item.raw?.toLocaleString() ?? "-"}</span>
+                                </div>
+                              );
+                            })}
                           </div>
                         );
                       }}
@@ -549,16 +540,11 @@ export function DashboardPage() {
                 </div>
                 <div>
                   <div class="text-muted-foreground">Entries</div>
-                  <div class="font-medium">{instances.reduce((sum, i) => sum + i.history.length, 0)}</div>
+                  <div class="font-medium">{totalEntries}</div>
                 </div>
                 <div>
                   <div class="text-muted-foreground">Avg/Entry</div>
-                  <div class="font-medium">
-                    {Math.round(
-                      (totalStats.totalInput + totalStats.totalOutput) / 
-                      Math.max(instances.reduce((sum, i) => sum + i.history.length, 0), 1)
-                    ).toLocaleString()}
-                  </div>
+                  <div class="font-medium">{Math.round(avgTokensPerEntry).toLocaleString()}</div>
                 </div>
               </div>
             </CardContent>
