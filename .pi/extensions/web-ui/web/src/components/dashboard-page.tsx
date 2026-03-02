@@ -29,6 +29,15 @@ import {
   YAxis,
   ResponsiveContainer,
   Tooltip,
+  PieChart,
+  Pie,
+  Cell,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
+  Legend,
 } from "recharts";
 import { RefreshCw, Cpu, Folder, Wifi, WifiOff, FileText, Loader2 } from "lucide-preact";
 import { Button } from "./ui/button";
@@ -154,6 +163,16 @@ export function DashboardPage() {
   const [planLoading, setPlanLoading] = useState(false);
   const [isPlanDrawerOpen, setIsPlanDrawerOpen] = useState(false);
 
+  // タスク統計（円グラフ・レーダーチャート用）
+  const [taskStats, setTaskStats] = useState<{
+    total: number;
+    todo: number;
+    inProgress: number;
+    completed: number;
+    cancelled: number;
+    byPriority: { low: number; medium: number; high: number; urgent: number };
+  } | null>(null);
+
   // コンテキスト履歴を取得
   const fetchContextHistory = useCallback(async () => {
     setContextError(null);
@@ -171,6 +190,21 @@ export function DashboardPage() {
       console.error("Failed to fetch context history:", e);
     } finally {
       setContextLoading(false);
+    }
+  }, []);
+
+  // タスク統計を取得（円グラフ・レーダーチャート用）
+  const fetchTaskStats = useCallback(async () => {
+    try {
+      const res = await fetch("/api/tasks/stats");
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data) {
+          setTaskStats(json.data);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch task stats:", e);
     }
   }, []);
 
@@ -313,12 +347,14 @@ export function DashboardPage() {
   // 初回データ取得 + SSE接続
   useEffect(() => {
     fetchContextHistory();
+    fetchTaskStats();
     connectSSE();
 
     // Fallback polling (30 seconds) in case SSE fails
     const interval = setInterval(() => {
       if (!sseConnectedRef.current) {
         fetchContextHistory();
+        fetchTaskStats();
       }
     }, 30000);
 
@@ -331,7 +367,7 @@ export function DashboardPage() {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [fetchContextHistory, connectSSE]);
+  }, [fetchContextHistory, fetchTaskStats, connectSSE]);
 
   const instances = contextHistory ? Object.values(contextHistory.instances) : [];
   const instanceCount = instances.length;
@@ -403,6 +439,107 @@ export function DashboardPage() {
 
       {/* 表示モード切り替え */}
       <DisplayModeButtons />
+
+      {/* チャートセクション（円グラフ・レーダーチャート） */}
+      {taskStats && taskStats.total > 0 && (
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          {/* タスクステータス分布（円グラフ） */}
+          <Card>
+            <CardHeader class="pb-2">
+              <CardTitle class="text-sm">Task Status Distribution</CardTitle>
+              <CardDescription class="text-xs">Current task breakdown by status</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div class="h-[200px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: "Todo", value: taskStats.todo, color: "hsl(var(--chart-1))" },
+                        { name: "In Progress", value: taskStats.inProgress, color: "hsl(var(--chart-2))" },
+                        { name: "Completed", value: taskStats.completed, color: "hsl(var(--chart-3))" },
+                        { name: "Cancelled", value: taskStats.cancelled, color: "hsl(var(--chart-4))" },
+                      ].filter(d => d.value > 0)}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={40}
+                      outerRadius={70}
+                      paddingAngle={2}
+                      dataKey="value"
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      labelLine={false}
+                    >
+                      {[
+                        { name: "Todo", value: taskStats.todo, color: "hsl(var(--chart-1))" },
+                        { name: "In Progress", value: taskStats.inProgress, color: "hsl(var(--chart-2))" },
+                        { name: "Completed", value: taskStats.completed, color: "hsl(var(--chart-3))" },
+                        { name: "Cancelled", value: taskStats.cancelled, color: "hsl(var(--chart-4))" },
+                      ].filter(d => d.value > 0).map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={CHART_TOOLTIP_STYLE}
+                      formatter={(value: number) => [value.toString(), ""]}
+                    />
+                    <Legend
+                      verticalAlign="bottom"
+                      height={24}
+                      formatter={(value) => <span class="text-xs text-muted-foreground">{value}</span>}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* タスク優先度分布（レーダーチャート） */}
+          <Card>
+            <CardHeader class="pb-2">
+              <CardTitle class="text-sm">Priority Distribution</CardTitle>
+              <CardDescription class="text-xs">Tasks by priority level</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div class="h-[200px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart
+                    cx="50%"
+                    cy="50%"
+                    outerRadius="70%"
+                    data={[
+                      { subject: "Low", value: taskStats.byPriority.low, fullMark: Math.max(taskStats.total, 1) },
+                      { subject: "Medium", value: taskStats.byPriority.medium, fullMark: Math.max(taskStats.total, 1) },
+                      { subject: "High", value: taskStats.byPriority.high, fullMark: Math.max(taskStats.total, 1) },
+                      { subject: "Urgent", value: taskStats.byPriority.urgent, fullMark: Math.max(taskStats.total, 1) },
+                    ]}
+                  >
+                    <PolarGrid stroke="hsl(var(--border))" />
+                    <PolarAngleAxis
+                      dataKey="subject"
+                      tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                    />
+                    <PolarRadiusAxis
+                      tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }}
+                      tickCount={4}
+                    />
+                    <Radar
+                      name="Tasks"
+                      dataKey="value"
+                      stroke="hsl(var(--chart-5))"
+                      fill="hsl(var(--chart-5))"
+                      fillOpacity={0.4}
+                    />
+                    <Tooltip
+                      contentStyle={CHART_TOOLTIP_STYLE}
+                      formatter={(value: number) => [value.toString(), "Tasks"]}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Error display */}
       {contextError && (
