@@ -24,16 +24,12 @@ import { Button } from "../ui/button";
 import { KanbanTaskCard, type Task, type TaskStatus } from "../kanban-task-card";
 import { cn } from "@/lib/utils";
 import { TYPOGRAPHY, PATTERNS, SPACING } from "../layout";
+import type { RuntimeSession } from "@/hooks/useRuntimeStatus";
 
 export interface ColumnConfig {
   id: TaskStatus;
   label: string;
   icon: string;
-}
-
-interface RuntimeSession {
-  taskId: string;
-  status: string;
 }
 
 export interface TaskKanbanProps {
