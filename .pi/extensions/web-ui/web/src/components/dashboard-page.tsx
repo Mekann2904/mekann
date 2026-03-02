@@ -645,6 +645,35 @@ export function DashboardPage() {
         }
       />
 
+      {/* Total Cost */}
+      {piUsage && Object.keys(piUsage.byModel).length > 0 && (() => {
+        const startDate = getTimeRangeStartDate(llmTimeRange);
+        const endDate = new Date();
+        endDate.setHours(23, 59, 59, 999);
+        
+        // Calculate total cost
+        let totalCost = 0;
+        const current = new Date(startDate);
+        while (current <= endDate) {
+          const dateStr = current.toISOString().split('T')[0];
+          if (dateStr) {
+            totalCost += piUsage.byDate[dateStr] || 0;
+          }
+          current.setDate(current.getDate() + 1);
+        }
+        
+        return (
+          <Card class="mb-4">
+            <CardContent class="py-4">
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-muted-foreground">Total Cost ({getTimeRangeLabel(llmTimeRange)})</span>
+                <span class="text-2xl font-bold text-green-500">${totalCost.toFixed(2)}</span>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       {/* Activity Heatmap and Tool Breakdown Row */}
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         {/* LLM Usage - Daily Activity Heatmap (GitHub-style green) */}
@@ -905,87 +934,6 @@ export function DashboardPage() {
         )}
       </div>
 
-      {/* Total Cost */}
-      {piUsage && Object.keys(piUsage.byModel).length > 0 && (() => {
-        const startDate = getTimeRangeStartDate(llmTimeRange);
-        const endDate = new Date();
-        endDate.setHours(23, 59, 59, 999);
-        
-        // Calculate total cost
-        let totalCost = 0;
-        const current = new Date(startDate);
-        while (current <= endDate) {
-          const dateStr = current.toISOString().split('T')[0];
-          if (dateStr) {
-            totalCost += piUsage.byDate[dateStr] || 0;
-          }
-          current.setDate(current.getDate() + 1);
-        }
-        
-        return (
-          <Card class="mb-4">
-            <CardContent class="py-4">
-              <div class="flex items-center justify-between">
-                <span class="text-sm text-muted-foreground">Total Cost ({getTimeRangeLabel(llmTimeRange)})</span>
-                <span class="text-2xl font-bold text-green-500">${totalCost.toFixed(2)}</span>
-              </div>
-            </CardContent>
-          </Card>
-        );
-      })()}
-
-      {/* Error display */}
-      {contextError && (
-        <ErrorBanner
-          message={`Failed to load data: ${contextError}`}
-          onRetry={fetchContextHistory}
-          onDismiss={() => setContextError(null)}
-        />
-      )}
-
-      {/* インスタンスごとのチャート */}
-      {contextLoading && !contextHistory ? (
-        <LoadingState message="Loading context history..." />
-      ) : instanceCount === 0 ? (
-        <ChartEmptyState message="No active instances" height={200} />
-      ) : activeTask ? (
-        <Drawer direction="bottom" open={isPlanDrawerOpen} onOpenChange={setIsPlanDrawerOpen}>
-          <div class="space-y-3">
-            {instances.map((instance, idx) => {
-              const ownerPid = extractPidFromOwnerInstanceId(activeTask?.ownerInstanceId);
-              const isOwner = instance.pid === ownerPid;
-              
-              return (
-                <InstanceChartCard
-                  key={instance.pid}
-                  instance={instance}
-                  color={getInstanceColor(idx)}
-                  planPath={isOwner ? `.pi/ul-workflow/tasks/${activeTask.id}/plan.md` : undefined}
-                  onPlanClick={isOwner ? () => setIsPlanDrawerOpen(true) : undefined}
-                />
-              );
-            })}
-          </div>
-
-          {/* Full plan drawer */}
-          <DrawerContent>
-            <div class="flex-1 overflow-y-auto p-4">
-              {plan && <MarkdownRenderer content={plan} />}
-            </div>
-          </DrawerContent>
-        </Drawer>
-      ) : (
-        <div class="space-y-3">
-          {instances.map((instance, idx) => (
-            <InstanceChartCard
-              key={instance.pid}
-              instance={instance}
-              color={getInstanceColor(idx)}
-            />
-          ))}
-        </div>
-      )}
-
       {/* Current Context Usage */}
       {currentContext && (
         <Card class="mb-4">
@@ -1059,6 +1007,58 @@ export function DashboardPage() {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {/* Error display */}
+      {contextError && (
+        <ErrorBanner
+          message={`Failed to load data: ${contextError}`}
+          onRetry={fetchContextHistory}
+          onDismiss={() => setContextError(null)}
+        />
+      )}
+
+      {/* インスタンスごとのチャート */}
+      {contextLoading && !contextHistory ? (
+        <LoadingState message="Loading context history..." />
+      ) : instanceCount === 0 ? (
+        <ChartEmptyState message="No active instances" height={200} />
+      ) : activeTask ? (
+        <Drawer direction="bottom" open={isPlanDrawerOpen} onOpenChange={setIsPlanDrawerOpen}>
+          <div class="space-y-3">
+            {instances.map((instance, idx) => {
+              const ownerPid = extractPidFromOwnerInstanceId(activeTask?.ownerInstanceId);
+              const isOwner = instance.pid === ownerPid;
+              
+              return (
+                <InstanceChartCard
+                  key={instance.pid}
+                  instance={instance}
+                  color={getInstanceColor(idx)}
+                  planPath={isOwner ? `.pi/ul-workflow/tasks/${activeTask.id}/plan.md` : undefined}
+                  onPlanClick={isOwner ? () => setIsPlanDrawerOpen(true) : undefined}
+                />
+              );
+            })}
+          </div>
+
+          {/* Full plan drawer */}
+          <DrawerContent>
+            <div class="flex-1 overflow-y-auto p-4">
+              {plan && <MarkdownRenderer content={plan} />}
+            </div>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <div class="space-y-3">
+          {instances.map((instance, idx) => (
+            <InstanceChartCard
+              key={instance.pid}
+              instance={instance}
+              color={getInstanceColor(idx)}
+            />
+          ))}
+        </div>
       )}
     </PageLayout>
   );
