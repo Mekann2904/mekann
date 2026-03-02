@@ -167,6 +167,9 @@ export function DashboardPage() {
       calls: number;
       errors: number;
       avgContext?: number;
+      contextTokenSum?: number;
+      extension?: string;
+      featureName?: string;
     }>;
   } | null>(null);
 
@@ -670,6 +673,85 @@ export function DashboardPage() {
                     </div>
                   );
                 })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Last 7 Days Summary */}
+      {piUsage && Object.keys(piUsage.byDate).length > 0 && (
+        <Card class="mb-4">
+          <CardHeader class="pb-2">
+            <CardTitle class="text-sm">Last 7 Days</CardTitle>
+            <CardDescription class="text-xs">
+              {Object.keys(piUsage.byDate).length} days | {Object.keys(piUsage.byModel).length} models
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div class="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <div class="text-muted-foreground text-xs">Total Cost</div>
+                <div class="font-semibold">${piUsage.totalCost.toFixed(2)}</div>
+              </div>
+              <div>
+                <div class="text-muted-foreground text-xs">Top Model</div>
+                <div class="font-semibold truncate">
+                  {Object.entries(piUsage.byModel).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '-'}
+                </div>
+              </div>
+              <div>
+                <div class="text-muted-foreground text-xs">Avg Cost/Day</div>
+                <div class="font-semibold">
+                  ${(piUsage.totalCost / Math.max(Object.keys(piUsage.byDate).length, 1)).toFixed(2)}
+                </div>
+              </div>
+              <div>
+                <div class="text-muted-foreground text-xs">Peak Day</div>
+                <div class="font-semibold truncate">
+                  {Object.entries(piUsage.byDate).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '-'}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Weekly Tool Breakdown */}
+      {agentUsage && Object.keys(agentUsage.features).length > 0 && (
+        <Card class="mb-4">
+          <CardHeader class="pb-2">
+            <CardTitle class="text-sm">Weekly Tool Breakdown</CardTitle>
+            <CardDescription class="text-xs">
+              {agentUsage.totals.toolCalls.toLocaleString()} calls | {Math.round(agentUsage.totals.contextTokenSum / 1000000).toLocaleString()}M context tokens
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div class="space-y-1">
+              {Object.entries(agentUsage.features)
+                .filter(([key]) => key.startsWith('tool:'))
+                .sort((a, b) => b[1].calls - a[1].calls)
+                .slice(0, 10)
+                .map(([key, data]) => {
+                  const toolName = data.featureName || key.split(':').pop() || key;
+                  const contextEst = data.contextTokenSum ? Math.round(data.contextTokenSum / 1000) : 0;
+                  const maxCalls = Math.max(...Object.values(agentUsage.features).map(f => f.calls));
+                  const barWidth = maxCalls > 0 ? (data.calls / maxCalls * 100) : 0;
+                  return (
+                    <div key={key} class="flex items-center gap-2 text-xs">
+                      <span class="flex-1 truncate font-mono">{toolName}</span>
+                      <span class="w-12 text-right">{data.calls.toLocaleString()}</span>
+                      <span class="w-16 text-right text-muted-foreground">{contextEst > 0 ? `${contextEst}K` : '-'}</span>
+                      <div class="w-12 h-2 bg-muted rounded overflow-hidden">
+                        <div class="h-full bg-chart-2 rounded" style={{ width: `${barWidth}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+            <div class="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+              <span>Tool</span>
+              <span>Calls</span>
+              <span>Context</span>
             </div>
           </CardContent>
         </Card>
