@@ -184,7 +184,13 @@ export class WorkflowService {
     state.phaseIndex = getNextPhaseIndex(state);
 
     await this.repository.save(state);
-    await this.repository.setCurrent(state);
+
+    // BUG FIX: 終了フェーズではアクティブ状態をクリア
+    if (isTerminalPhase(nextPhase)) {
+      await this.repository.setCurrent(null);
+    } else {
+      await this.repository.setCurrent(state);
+    }
 
     let nextAction = "";
     if (nextPhase === "plan") {

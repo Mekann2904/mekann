@@ -1172,7 +1172,13 @@ ${phasesDisplay}
 
       // Sync to file
       saveState(currentWorkflow);
-      setCurrentWorkflow(currentWorkflow);
+
+      // BUG FIX: 終了フェーズではアクティブ状態をクリア
+      if (nextPhase === "completed" || nextPhase === "aborted") {
+        setCurrentWorkflow(null);
+      } else {
+        setCurrentWorkflow(currentWorkflow);
+      }
 
       return makeResult(text, { taskId: currentWorkflow.taskId, previousPhase, nextPhase });
     },
