@@ -25,6 +25,112 @@ import {
   onSessionEvent,
   type SessionEvent,
 } from "../../../lib/runtime-sessions.js";
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+
+/**
+ * @summary 現在のコンテキスト使用量スナップショットを収集
+ * @param ctx - Extension context
+ * @returns コンテキスト使用量データ
+ */
+function collectCurrentContextSnapshot(ctx: ExtensionContext) {
+  const usage = ctx.getContextUsage();
+  const branchEntries = ctx.sessionManager.getBranch();
+
+  let userTokens = 0;
+  let assistantTokens = 0;
+  let toolTokensRaw = 0;
+  let otherTokens = 0;
+
+  const toolTokensMapRaw = new Map<string, number>();
+  const toolCallsMap = new Map<string, number>();
+
+  // セッションのbranchからトークンを推定
+  for (const entry of branchEntries) {
+    if (entry.type === "message") {
+      const message = entry.message as {
+        role?: string;
+        content?: unknown;
+        toolName?: string;
+      };
+
+      // 簡易的なトークン推定（文字数/4）
+      const estimateTokens = (value: unknown): number => {
+        if (typeof value === "string") {
+          return Math.ceil(value.length / 4);
+        }
+        if (Array.isArray(value)) {
+          let chars = 0;
+          for (const block of value) {
+            if (block && typeof block === "object" && "type" in block) {
+              const typedBlock = block as { type: string; text?: string; thinking?: string; name?: string };
+              if (typedBlock.type === "text" && typeof typedBlock.text === "string") {
+                chars += typedBlock.text.length;
+              } else if (typedBlock.type === "thinking" && typeof typedBlock.thinking === "string") {
+                chars += typedBlock.thinking.length;
+              } else if (typedBlock.type === "toolCall" && typeof typedBlock.name === "string") {
+                const calls = toolCallsMap.get(typedBlock.name) || 0;
+                toolCallsMap.set(typedBlock.name, calls + 1);
+              }
+            }
+          }
+          return Math.ceil(chars / 4);
+        }
+        return 0;
+      };
+
+      const estimated = estimateTokens(message.content);
+
+      if (message?.role === "user") {
+        userTokens += estimated;
+      } else if (message?.role === "assistant") {
+        assistantTokens += estimated;
+      } else if (message?.role === "toolResult") {
+        toolTokensRaw += estimated;
+        const toolName = String(message.toolName || "unknown");
+        toolTokensMapRaw.set(toolName, (toolTokensMapRaw.get(toolName) || 0) + estimated);
+      } else {
+        otherTokens += estimated;
+      }
+    }
+  }
+
+  const estimatedTotal = userTokens + assistantTokens + toolTokensRaw + otherTokens;
+  const referenceTotal = usage?.tokens && usage.tokens > 0 ? usage.tokens : estimatedTotal;
+  const scale = estimatedTotal > 0 ? referenceTotal / estimatedTotal : 1;
+
+  // Tool occupancyを計算
+  const toolOccupancy: Record<string, { tokens: number; calls: number; share: number }> = {};
+  for (const [toolName, tokens] of toolTokensMapRaw.entries()) {
+    const scaledTokens = tokens * scale;
+    const calls = toolCallsMap.get(toolName) || 0;
+    const share = referenceTotal > 0 ? scaledTokens / referenceTotal : 0;
+    toolOccupancy[toolName] = {
+      tokens: Math.round(scaledTokens),
+      calls,
+      share,
+    };
+  }
+
+  const usedTokens = usage?.tokens ?? 0;
+  const totalTokens = usage?.contextWindow ?? 200000;
+  const percent = usage?.percent ?? (totalTokens > 0 ? (usedTokens / totalTokens) * 100 : 0);
+
+  return {
+    used: usedTokens,
+    total: totalTokens,
+    percent,
+    free: Math.max(totalTokens - usedTokens, 0),
+    categoryTokens: {
+      user: Math.round(userTokens * scale),
+      assistant: Math.round(assistantTokens * scale),
+      tools: Math.round(toolTokensRaw * scale),
+      other: Math.round(otherTokens * scale),
+    },
+    toolOccupancy,
+    cwd: process.cwd(),
+    model: "unknown", // Model info not available in ContextUsage
+  };
+}
 
 /**
  * @summary Register runtime routes on Express app
@@ -85,6 +191,39 @@ export function registerRuntimeRoutes(app: Express): () => void {
           sessions: sessionStats,
           warning: `agent-runtime unavailable: ${errorMessage}`,
         },
+      });
+    }
+  });
+
+  /**
+   * GET /api/context/current - Get current context usage
+   */
+  app.get("/api/context/current", async (_req: Request, res: Response) => {
+    try {
+      // Import getContext dynamically to avoid circular dependency
+      const { getContext } = await import("../server.js");
+      const ctx = getContext();
+
+      if (!ctx) {
+        res.json({
+          success: false,
+          error: "Context not available",
+        });
+        return;
+      }
+
+      const snapshot = collectCurrentContextSnapshot(ctx);
+
+      res.json({
+        success: true,
+        data: snapshot,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to get context usage",
+        details: errorMessage,
       });
     }
   });
