@@ -59,10 +59,10 @@ import {
   ErrorBanner,
   ChartEmptyState,
   CHART_TOOLTIP_STYLE,
-  TYPOGRAPHY,
   FORM_STYLES,
   PATTERNS,
 } from "./layout";
+import { StatsCard, StatsGrid } from "./layout/stats-card";
 
 /**
  * @summary 時間軸の種類
@@ -721,9 +721,89 @@ export function DashboardPage() {
         </Card>
       )}
 
-      {/* LLM Usage - Daily Activity Heatmap (GitHub-style green) */}
-      {piUsage && Object.keys(piUsage.byDate).length > 0 && (() => {
-        const label = getTimeRangeLabel(llmTimeRange);
+      {/* Stats Grid - Summary */}
+      {piUsage && Object.keys(piUsage.byModel).length > 0 && (() => {
+        const startDate = getTimeRangeStartDate(llmTimeRange);
+        const endDate = new Date();
+        endDate.setHours(23, 59, 59, 999);
+        
+        // Calculate totals for all metrics
+        let totalTokens = 0;
+        let totalRuns = 0;
+        let totalCost = 0;
+        let activeDays = 0;
+        
+        const current = new Date(startDate);
+        while (current <= endDate) {
+          const dateStr = current.toISOString().split('T')[0];
+          if (dateStr) {
+            const cost = piUsage.byDate[dateStr] || 0;
+            const tokens = piUsage.byDateTokens?.[dateStr];
+            const runs = piUsage.byDateRuns?.[dateStr] || 0;
+            
+            if (cost > 0 || (tokens && (tokens.input > 0 || tokens.output > 0)) || runs > 0) {
+              activeDays++;
+            }
+            
+            totalCost += cost;
+            if (tokens) {
+              totalTokens += tokens.input + tokens.output;
+            }
+            totalRuns += runs;
+          }
+          current.setDate(current.getDate() + 1);
+        }
+        
+        const avgTokensPerDay = activeDays > 0 ? Math.round(totalTokens / activeDays) : 0;
+        
+        // Top model by cost
+        const startDateStr = startDate.toISOString().split('T')[0];
+        const filteredByModel: Record<string, number> = {};
+        for (const [date, models] of Object.entries(piUsage.byDateModel)) {
+          if (date >= startDateStr) {
+            for (const [model, cost] of Object.entries(models)) {
+              filteredByModel[model] = (filteredByModel[model] || 0) + cost;
+            }
+          }
+        }
+        const sortedModels = Object.entries(filteredByModel).sort((a, b) => b[1] - a[1]);
+        const topModelName = sortedModels[0]?.[0]?.split('/').pop() || '-';
+        
+        return (
+          <StatsGrid cols={6} className="mb-4">
+            <StatsCard
+              label="Total Tokens"
+              value={totalTokens >= 1000000 ? `${(totalTokens / 1000000).toFixed(1)}M` : totalTokens >= 1000 ? `${(totalTokens / 1000).toFixed(1)}K` : totalTokens.toString()}
+            />
+            <StatsCard
+              label="Total Runs"
+              value={totalRuns >= 1000 ? `${(totalRuns / 1000).toFixed(1)}K` : totalRuns.toString()}
+            />
+            <StatsCard
+              label="Total Cost"
+              value={`$${totalCost.toFixed(2)}`}
+            />
+            <StatsCard
+              label="Active Days"
+              value={activeDays.toString()}
+            />
+            <StatsCard
+              label="Avg Tokens/Day"
+              value={avgTokensPerDay >= 1000 ? `${(avgTokensPerDay / 1000).toFixed(1)}K` : avgTokensPerDay.toString()}
+            />
+            <StatsCard
+              label="Top Model"
+              value={topModelName}
+            />
+          </StatsGrid>
+        );
+      })()}
+
+      {/* Activity Heatmap and Tool Breakdown Row */}
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+        {/* LLM Usage - Daily Activity Heatmap (GitHub-style green) */}
+        {piUsage && Object.keys(piUsage.byDate).length > 0 && (() => {
+          const label = getTimeRangeLabel(llmTimeRange);
         
         // Get start date based on time range (Today/This Week/This Month/This Year)
         const startDate = getTimeRangeStartDate(llmTimeRange);
@@ -843,7 +923,7 @@ export function DashboardPage() {
         }
         
         return (
-          <Card class="mb-4">
+          <Card class="lg:col-span-2">
             <CardHeader class="pb-2">
               <div class="flex items-center justify-between">
                 <div>
@@ -937,169 +1017,47 @@ export function DashboardPage() {
         );
       })()}
 
-      {/* Activity Summary - Combined */}
-      {piUsage && Object.keys(piUsage.byModel).length > 0 && (() => {
-        const startDate = getTimeRangeStartDate(llmTimeRange);
-        const endDate = new Date();
-        endDate.setHours(23, 59, 59, 999);
-        
-        // Calculate totals based on metric
-        let totalValue = 0;
-        let peakValue = 0;
-        let peakDate = '';
-        let activeDays = 0;
-        
-        const current = new Date(startDate);
-        while (current <= endDate) {
-          const dateStr = current.toISOString().split('T')[0];
-          if (dateStr) {
-            let value = 0;
-            if (heatmapMetric === "cost") {
-              value = piUsage.byDate[dateStr] || 0;
-            } else if (heatmapMetric === "tokens") {
-              const tokens = piUsage.byDateTokens?.[dateStr];
-              value = tokens ? tokens.input + tokens.output : 0;
-            } else {
-              value = piUsage.byDateRuns?.[dateStr] || 0;
-            }
-            
-            if (value > 0) {
-              activeDays++;
-              totalValue += value;
-              if (value > peakValue) {
-                peakValue = value;
-                peakDate = dateStr;
-              }
-            }
-          }
-          current.setDate(current.getDate() + 1);
-        }
-        
-        const avgPerDay = activeDays > 0 ? totalValue / activeDays : 0;
-        
-        // Model stats - filter by date range
-        const startDateStr = startDate.toISOString().split('T')[0];
-        const filteredByModel: Record<string, number> = {};
-        for (const [date, models] of Object.entries(piUsage.byDateModel)) {
-          if (date >= startDateStr) {
-            for (const [model, cost] of Object.entries(models)) {
-              filteredByModel[model] = (filteredByModel[model] || 0) + cost;
-            }
-          }
-        }
-        
-        const sortedModels = Object.entries(filteredByModel).sort((a, b) => b[1] - a[1]);
-        const topModel = sortedModels[0];
-        
-        // Format functions
-        const formatValue = (v: number): string => {
-          if (heatmapMetric === "cost") return `$${v.toFixed(2)}`;
-          if (heatmapMetric === "tokens") return v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toString();
-          return v.toString();
-        };
-        
-        const formatAvg = (v: number): string => {
-          if (heatmapMetric === "cost") return `$${v.toFixed(2)}`;
-          if (heatmapMetric === "tokens") return v >= 1000000 ? `${(v / 1000000).toFixed(2)}M` : v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toString();
-          return v.toFixed(1);
-        };
-        
-        return (
-          <Card class="mb-4">
+        {/* Tool Breakdown */}
+        {agentUsage && Object.keys(agentUsage.features).length > 0 && (
+          <Card>
             <CardHeader class="pb-2">
-              <div class="flex items-center justify-between">
-                <CardTitle class="text-sm">{getMetricLabel(heatmapMetric)} Summary ({getTimeRangeLabel(llmTimeRange)})</CardTitle>
-              </div>
+              <CardTitle class="text-sm">Tool Breakdown ({getTimeRangeLabel(llmTimeRange)})</CardTitle>
+              <CardDescription class="text-xs">
+                {agentUsage.totals.toolCalls.toLocaleString()} calls | {Math.round(agentUsage.totals.contextTokenSum / 1000000).toLocaleString()}M context tokens
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Summary Stats */}
-              <div class="grid grid-cols-4 gap-3 mb-4 pb-4 border-b border-border/50">
-                <div>
-                  <div class="text-muted-foreground text-xs">Total</div>
-                  <div class="font-semibold text-lg text-green-500">{formatValue(totalValue)}</div>
-                </div>
-                <div>
-                  <div class="text-muted-foreground text-xs">Top Model</div>
-                  <div class="font-semibold truncate text-sm" title={topModel?.[0]}>
-                    {topModel ? topModel[0].split('/').pop() : '-'}
-                  </div>
-                </div>
-                <div>
-                  <div class="text-muted-foreground text-xs">Avg/Day</div>
-                  <div class="font-semibold text-green-400">{formatAvg(avgPerDay)}</div>
-                </div>
-                <div>
-                  <div class="text-muted-foreground text-xs">Peak</div>
-                  <div class="font-semibold text-sm text-green-400">{peakValue > 0 ? formatValue(peakValue) : '-'}</div>
-                  {peakDate && <div class="text-xs text-muted-foreground">{peakDate}</div>}
-                </div>
-              </div>
-              
-              {/* Top Models List */}
               <div class="space-y-1">
-                <div class="text-xs text-muted-foreground mb-1">Top Models by Cost</div>
-                {sortedModels.slice(0, 5).map(([model, cost], index) => {
-                  const totalCost = Object.values(filteredByModel).reduce((s, c) => s + c, 0);
-                  const share = totalCost > 0 ? (cost / totalCost * 100) : 0;
-                  const barWidth = topModel ? (cost / topModel[1] * 100) : 0;
-                  return (
-                    <div key={model} class="flex items-center gap-2 text-xs">
-                      <span class="w-4 text-muted-foreground">{index + 1}</span>
-                      <span class="flex-1 truncate" title={model}>{model}</span>
-                      <span class="w-14 text-right">${cost.toFixed(2)}</span>
-                      <span class="w-10 text-right text-muted-foreground">{share.toFixed(1)}%</span>
-                      <div class="w-14 h-2 bg-muted rounded overflow-hidden">
-                        <div class="h-full bg-green-500 rounded" style={{ width: `${barWidth}%` }} />
+                {Object.entries(agentUsage.features)
+                  .filter(([key]) => key.startsWith('tool:'))
+                  .sort((a, b) => b[1].calls - a[1].calls)
+                  .slice(0, 10)
+                  .map(([key, data]) => {
+                    const toolName = data.featureName || key.split(':').pop() || key;
+                    const contextEst = data.contextTokenSum ? Math.round(data.contextTokenSum / 1000) : 0;
+                    const maxCalls = Math.max(...Object.values(agentUsage.features).map(f => f.calls));
+                    const barWidth = maxCalls > 0 ? (data.calls / maxCalls * 100) : 0;
+                    return (
+                      <div key={key} class="flex items-center gap-2 text-xs">
+                        <span class="flex-1 truncate font-mono">{toolName}</span>
+                        <span class="w-12 text-right">{data.calls.toLocaleString()}</span>
+                        <span class="w-16 text-right text-muted-foreground">{contextEst > 0 ? `${contextEst}K` : '-'}</span>
+                        <div class="w-12 h-2 bg-muted rounded overflow-hidden">
+                          <div class="h-full bg-emerald-500 rounded" style={{ width: `${barWidth}%` }} />
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+              </div>
+              <div class="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+                <span>Tool</span>
+                <span>Calls</span>
+                <span>Context</span>
               </div>
             </CardContent>
           </Card>
-        );
-      })()}
-
-      {/* Tool Breakdown */}
-      {agentUsage && Object.keys(agentUsage.features).length > 0 && (
-        <Card class="mb-4">
-          <CardHeader class="pb-2">
-            <CardTitle class="text-sm">Tool Breakdown ({getTimeRangeLabel(llmTimeRange)})</CardTitle>
-            <CardDescription class="text-xs">
-              {agentUsage.totals.toolCalls.toLocaleString()} calls | {Math.round(agentUsage.totals.contextTokenSum / 1000000).toLocaleString()}M context tokens
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div class="space-y-1">
-              {Object.entries(agentUsage.features)
-                .filter(([key]) => key.startsWith('tool:'))
-                .sort((a, b) => b[1].calls - a[1].calls)
-                .slice(0, 10)
-                .map(([key, data]) => {
-                  const toolName = data.featureName || key.split(':').pop() || key;
-                  const contextEst = data.contextTokenSum ? Math.round(data.contextTokenSum / 1000) : 0;
-                  const maxCalls = Math.max(...Object.values(agentUsage.features).map(f => f.calls));
-                  const barWidth = maxCalls > 0 ? (data.calls / maxCalls * 100) : 0;
-                  return (
-                    <div key={key} class="flex items-center gap-2 text-xs">
-                      <span class="flex-1 truncate font-mono">{toolName}</span>
-                      <span class="w-12 text-right">{data.calls.toLocaleString()}</span>
-                      <span class="w-16 text-right text-muted-foreground">{contextEst > 0 ? `${contextEst}K` : '-'}</span>
-                      <div class="w-12 h-2 bg-muted rounded overflow-hidden">
-                        <div class="h-full bg-emerald-500 rounded" style={{ width: `${barWidth}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-            <div class="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-              <span>Tool</span>
-              <span>Calls</span>
-              <span>Context</span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+        )}
+      </div>
 
       {/* Error display */}
       {contextError && (
