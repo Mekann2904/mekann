@@ -31,6 +31,10 @@ import {
   startServer as startApiServer,
   isApiServerRunning,
 } from "../server.js";
+import {
+  startServer as startRuntimeServer,
+  isServerRunning as isRuntimeServerRunning,
+} from "./server.js";
 
 const execAsync = promisify(exec);
 
@@ -334,6 +338,17 @@ export default function (pi: ExtensionAPI) {
 
     // Register this instance first
     ensureRegistered(ctx.model?.id);
+
+    // Start runtime API server (port 3457) for /api/context/current etc.
+    const runtimePort = parseInt(process.env.PI_RUNTIME_PORT || "") || 3457;
+    if (!isRuntimeServerRunning()) {
+      try {
+        startRuntimeServer(runtimePort, pi, ctx);
+        console.log(`[web-ui] Runtime API server started on port ${runtimePort}`);
+      } catch (error) {
+        console.error(`[web-ui] Failed to start runtime API server:`, error);
+      }
+    }
 
     // Check if already running (another instance may have started it)
     const existingServer = ServerRegistry.isRunning();
