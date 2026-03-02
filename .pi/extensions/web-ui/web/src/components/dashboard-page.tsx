@@ -65,6 +65,64 @@ import {
 } from "./layout";
 
 /**
+ * @summary 時間軸の種類
+ */
+type LlmTimeRange = "1d" | "7d" | "1m" | "1y";
+
+/**
+ * @summary ヒートマップのメトリクス種類
+ */
+type HeatmapMetric = "cost" | "tokens" | "runs";
+
+/**
+ * @summary 時間軸に対応する日数を取得
+ */
+function getTimeRangeDays(range: LlmTimeRange): number {
+  switch (range) {
+    case "1d": return 1;
+    case "7d": return 7;
+    case "1m": return 30;
+    case "1y": return 365;
+  }
+}
+
+/**
+ * @summary 時間軸に対応するラベルを取得
+ */
+function getTimeRangeLabel(range: LlmTimeRange): string {
+  switch (range) {
+    case "1d": return "1 Day";
+    case "7d": return "1 Week";
+    case "1m": return "1 Month";
+    case "1y": return "1 Year";
+  }
+}
+
+/**
+ * @summary メトリクスに対応するラベルを取得
+ */
+function getMetricLabel(metric: HeatmapMetric): string {
+  switch (metric) {
+    case "cost": return "Cost";
+    case "tokens": return "Tokens";
+    case "runs": return "Runs";
+  }
+}
+
+/**
+ * @summary GitHub風緑色のヒートマップ色クラスを取得（5段階）
+ */
+function getGreenHeatmapClass(intensity: number): string {
+  // intensity: 0-1
+  if (intensity === 0) return "bg-[#161b22]"; // No data - dark background
+  if (intensity < 0.2) return "bg-[#0e4429]"; // Level 1 - darkest green
+  if (intensity < 0.4) return "bg-[#006d32]"; // Level 2
+  if (intensity < 0.6) return "bg-[#26a641]"; // Level 3
+  if (intensity < 0.8) return "bg-[#39d353]"; // Level 4
+  return "bg-[#7ee787]"; // Level 5 - brightest green
+}
+
+/**
  * @summary コンテキスト履歴エントリ
  */
 interface ContextHistoryEntry {
@@ -205,12 +263,23 @@ export function DashboardPage() {
     dailyActivity: Array<{ date: string; tokens: number; runs: number }>;
   } | null>(null);
 
-  // PI Usage Stats (cost, models)
+  // Time range for all stats (shared across all cards)
+  const [llmTimeRange, setLlmTimeRange] = useState<LlmTimeRange>("1m");
+  
+  // Metric type for heatmap
+  const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>("tokens");
+
+  // PI Usage Stats (cost, models, tokens, runs)
   const [piUsage, setPiUsage] = useState<{
     byModel: Record<string, number>;
     byDate: Record<string, number>;
     byDateModel: Record<string, Record<string, number>>;
     totalCost: number;
+    byDateTokens?: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>;
+    byDateRuns?: Record<string, number>;
+    byModelTokens?: Record<string, { input: number; output: number }>;
+    totalTokens?: { input: number; output: number };
+    totalRuns?: number;
   } | null>(null);
 
   // アクティブなUL Workflowタスク
@@ -478,6 +547,53 @@ export function DashboardPage() {
     </div>
   );
 
+  // Global Time Range Selector (used in header)
+  const GlobalTimeRangeSelector = () => (
+    <div class="flex gap-0.5 bg-muted rounded p-0.5">
+      {([
+        { value: "1d" as LlmTimeRange, label: "1D" },
+        { value: "7d" as LlmTimeRange, label: "1W" },
+        { value: "1m" as LlmTimeRange, label: "1M" },
+        { value: "1y" as LlmTimeRange, label: "1Y" },
+      ]).map((item) => (
+        <button
+          key={item.value}
+          type="button"
+          onClick={() => setLlmTimeRange(item.value)}
+          class={cn(
+            "px-2 py-0.5 text-xs rounded transition-colors cursor-pointer border-0",
+            llmTimeRange === item.value
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/80"
+          )}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  // Metric Selector for heatmap
+  const MetricSelector = () => (
+    <div class="flex gap-0.5 bg-muted rounded p-0.5">
+      {(["tokens", "cost", "runs"] as HeatmapMetric[]).map((metric) => (
+        <button
+          key={metric}
+          type="button"
+          onClick={() => setHeatmapMetric(metric)}
+          class={cn(
+            "px-2 py-0.5 text-xs rounded transition-colors cursor-pointer border-0 capitalize",
+            heatmapMetric === metric
+              ? "bg-green-600 text-white"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/80"
+          )}
+        >
+          {metric}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <PageLayout variant="default">
       {/* Header */}
@@ -486,6 +602,7 @@ export function DashboardPage() {
         description={`${instanceCount} instance${instanceCount !== 1 ? "s" : ""} active`}
         actions={
           <>
+            <GlobalTimeRangeSelector />
             <ConnectionStatus />
             <Button
               variant="outline"
@@ -506,9 +623,9 @@ export function DashboardPage() {
             <div class="flex items-center justify-between">
               <div>
                 <CardTitle class="text-sm">Current Context</CardTitle>
-                <CardDescription class="text-xs truncate max-w-[300px]" title={currentContext.cwd}>
+                <div class="text-xs text-muted-foreground truncate max-w-[300px]" title={currentContext.cwd}>
                   {currentContext.cwd}
-                </CardDescription>
+                </div>
               </div>
               <span class="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
                 {currentContext.model}
@@ -574,153 +691,362 @@ export function DashboardPage() {
         </Card>
       )}
 
-      {/* LLM Usage - Daily Activity Heatmap */}
-      {piUsage && Object.keys(piUsage.byDate).length > 0 && (
-        <Card class="mb-4">
-          <CardHeader class="pb-2">
-            <CardTitle class="text-sm">LLM Usage (12 weeks)</CardTitle>
-            <CardDescription class="text-xs">
-              Total: ${piUsage.totalCost.toFixed(2)} | {Object.keys(piUsage.byModel).length} models
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div class="space-y-1">
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, dayIndex) => {
-                // Get all dates for this weekday in the last 12 weeks
-                const dates: string[] = [];
-                const today = new Date();
-                for (let i = 83; i >= 0; i--) {
-                  const date = new Date(today);
-                  date.setDate(date.getDate() - i);
-                  if (date.getDay() === dayIndex) {
-                    dates.push(date.toISOString().split('T')[0] ?? '');
-                  }
-                }
-
-                const maxCost = Math.max(...Object.values(piUsage.byDate), 0.01);
-
-                return (
-                  <div key={day} class="flex items-center gap-2">
-                    <span class="w-8 text-xs text-muted-foreground">{day}</span>
-                    <div class="flex gap-0.5">
-                      {dates.map((dateStr) => {
-                        const cost = piUsage.byDate[dateStr] || 0;
-                        const intensity = cost / maxCost;
-                        const bgClass = intensity === 0
-                          ? "bg-muted/30"
-                          : intensity < 0.25
-                          ? "bg-chart-1/30"
-                          : intensity < 0.5
-                          ? "bg-chart-1/50"
-                          : intensity < 0.75
-                          ? "bg-chart-1/70"
-                          : "bg-chart-1";
+      {/* LLM Usage - Daily Activity Heatmap (GitHub-style green) */}
+      {piUsage && Object.keys(piUsage.byDate).length > 0 && (() => {
+        const days = getTimeRangeDays(llmTimeRange);
+        const label = getTimeRangeLabel(llmTimeRange);
+        const metricLabel = getMetricLabel(heatmapMetric);
+        
+        // Filter data by time range
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+        const startDateStr = startDate.toISOString().split('T')[0];
+        
+        // Get filtered data based on metric
+        const getMetricValue = (date: string): number => {
+          if (heatmapMetric === "cost") {
+            return piUsage.byDate[date] || 0;
+          } else if (heatmapMetric === "tokens") {
+            const tokens = piUsage.byDateTokens?.[date];
+            return tokens ? tokens.input + tokens.output : 0;
+          } else {
+            return piUsage.byDateRuns?.[date] || 0;
+          }
+        };
+        
+        const formatMetricValue = (value: number): string => {
+          if (heatmapMetric === "cost") {
+            return `$${value.toFixed(2)}`;
+          } else if (heatmapMetric === "tokens") {
+            return value >= 1000000 ? `${(value / 1000000).toFixed(1)}M` :
+                   value >= 1000 ? `${(value / 1000).toFixed(1)}K` :
+                   value.toString();
+          } else {
+            return `${value} runs`;
+          }
+        };
+        
+        // Build filtered data map
+        const filteredByMetric: Record<string, number> = {};
+        
+        // For 1 year view, aggregate by week
+        if (llmTimeRange === "1y") {
+          // Create weekly buckets
+          const weeklyData: Record<string, number> = {};
+          for (let i = 0; i < days; i++) {
+            const date = new Date(startDate);
+            date.setDate(startDate.getDate() + i);
+            const dateStr = date.toISOString().split('T')[0];
+            if (dateStr) {
+              const value = getMetricValue(dateStr);
+              if (value > 0) {
+                // Get the Monday of this week as the bucket key
+                const dayOfWeek = date.getDay();
+                const monday = new Date(date);
+                monday.setDate(date.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+                const weekKey = monday.toISOString().split('T')[0] || dateStr;
+                weeklyData[weekKey] = (weeklyData[weekKey] || 0) + value;
+              }
+            }
+          }
+          // Use weekly data for 1 year view
+          Object.assign(filteredByMetric, weeklyData);
+        } else {
+          // Daily data for other views
+          for (let i = 0; i < days; i++) {
+            const date = new Date(startDate);
+            date.setDate(startDate.getDate() + i);
+            const dateStr = date.toISOString().split('T')[0];
+            if (dateStr) {
+              const value = getMetricValue(dateStr);
+              if (value > 0) {
+                filteredByMetric[dateStr] = value;
+              }
+            }
+          }
+        }
+        
+        // Calculate max for intensity scaling (use log scale for better distribution)
+        const values = Object.values(filteredByMetric);
+        const maxValue = values.length > 0 ? Math.max(...values) : 0;
+        const hasData = values.length > 0;
+        
+        // Calculate summary stats
+        const totalValue = values.reduce((sum, v) => sum + v, 0);
+        const filteredByModel: Record<string, number> = {};
+        for (const [date, models] of Object.entries(piUsage.byDateModel)) {
+          if (date >= (startDateStr ?? '')) {
+            for (const [model, cost] of Object.entries(models)) {
+              filteredByModel[model] = (filteredByModel[model] || 0) + cost;
+            }
+          }
+        }
+        
+        // Generate description based on metric
+        const periodUnit = llmTimeRange === "1y" ? "weeks" : llmTimeRange === "1d" ? "hours" : "days";
+        const summaryText = heatmapMetric === "cost" 
+          ? `Total: $${totalValue.toFixed(2)} | ${Object.keys(filteredByModel).length} models | ${values.length} active ${periodUnit}`
+          : heatmapMetric === "tokens"
+          ? `Total: ${(totalValue / 1000000).toFixed(2)}M tokens | ${Object.keys(filteredByModel).length} models | ${values.length} active ${periodUnit}`
+          : `Total: ${totalValue} runs | ${Object.keys(filteredByModel).length} models | ${values.length} active ${periodUnit}`;
+        
+        // For 1 year view, render weekly heatmap (52 weeks)
+        // For 1 day view, render single day highlight
+        // For 1 week / 1 month view, render daily heatmap
+        const isYearView = llmTimeRange === "1y";
+        const isDayView = llmTimeRange === "1d";
+        
+        return (
+          <Card class="mb-4">
+            <CardHeader class="pb-2">
+              <div class="flex items-center justify-between">
+                <div>
+                  <CardTitle class="text-sm">Activity Heatmap ({label})</CardTitle>
+                  <CardDescription class="text-xs">{summaryText}</CardDescription>
+                </div>
+                <MetricSelector />
+              </div>
+            </CardHeader>
+            <CardContent>
+              {hasData ? (
+                <>
+                  {isYearView ? (
+                    // Year view: 52 weeks as horizontal bars
+                    <div class="space-y-1">
+                      {Array.from({ length: 52 }, (_, weekIndex) => {
+                        // Calculate the Monday of this week
+                        const monday = new Date();
+                        monday.setDate(monday.getDate() - (365 - weekIndex * 7));
+                        const dayOfWeek = monday.getDay();
+                        monday.setDate(monday.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+                        const weekKey = monday.toISOString().split('T')[0];
+                        const value = filteredByMetric[weekKey || ''] || 0;
+                        const intensity = maxValue > 0 ? value / maxValue : 0;
+                        const bgClass = getGreenHeatmapClass(intensity);
+                        const monthLabel = monday.toLocaleDateString('en-US', { month: 'short' });
+                        const showMonthLabel = monday.getDate() <= 7;
+                        
                         return (
-                          <div
-                            key={dateStr}
-                            class={cn("w-3 h-3 rounded-sm", bgClass)}
-                            title={`${dateStr}: $${cost.toFixed(2)}`}
-                          />
+                          <div key={weekIndex} class="flex items-center gap-1">
+                            {showMonthLabel && weekIndex < 50 ? (
+                              <span class="w-8 text-xs text-muted-foreground">{monthLabel}</span>
+                            ) : (
+                              <span class="w-8" />
+                            )}
+                            <div 
+                              class={cn("w-full h-3 rounded-sm", bgClass)}
+                              title={`${weekKey || `Week ${weekIndex + 1}`}: ${formatMetricValue(value)}`}
+                            />
+                          </div>
                         );
                       })}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div class="flex items-center justify-between mt-3 text-xs text-muted-foreground">
-              <span>{Object.keys(piUsage.byDate).sort()[0] ?? ''}</span>
-              <div class="flex items-center gap-1">
-                <span>Less</span>
-                <div class="flex gap-0.5">
-                  <div class="w-3 h-3 rounded-sm bg-muted/30" />
-                  <div class="w-3 h-3 rounded-sm bg-chart-1/30" />
-                  <div class="w-3 h-3 rounded-sm bg-chart-1/50" />
-                  <div class="w-3 h-3 rounded-sm bg-chart-1/70" />
-                  <div class="w-3 h-3 rounded-sm bg-chart-1" />
-                </div>
-                <span>More</span>
-              </div>
-              <span>{Object.keys(piUsage.byDate).sort()[Object.keys(piUsage.byDate).length - 1] ?? ''}</span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                  ) : isDayView ? (
+                    // Day view: Show today's data prominently
+                    <div class="flex items-center justify-center py-4">
+                      <div class="text-center">
+                        <div class={cn(
+                          "w-20 h-20 rounded-lg flex items-center justify-center text-2xl font-bold mx-auto mb-2",
+                          maxValue > 0 ? "bg-green-500 text-white" : "bg-muted text-muted-foreground"
+                        )}>
+                          {formatMetricValue(totalValue)}
+                        </div>
+                        <div class="text-sm text-muted-foreground">
+                          {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    // Week/Month view: GitHub-style calendar heatmap
+                    <div class="space-y-0.5">
+                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, dayIndex) => {
+                        // Get all dates for this weekday in the selected time range
+                        const dates: string[] = [];
+                        const today = new Date();
+                        for (let i = days - 1; i >= 0; i--) {
+                          const date = new Date(today);
+                          date.setDate(date.getDate() - i);
+                          if (date.getDay() === dayIndex) {
+                            dates.push(date.toISOString().split('T')[0] ?? '');
+                          }
+                        }
 
-      {/* Top Models by Cost */}
-      {piUsage && Object.keys(piUsage.byModel).length > 0 && (
-        <Card class="mb-4">
-          <CardHeader class="pb-2">
-            <CardTitle class="text-sm">Top Models (USD)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div class="space-y-1">
-              {Object.entries(piUsage.byModel)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 7)
-                .map(([model, cost], index) => {
-                  const share = piUsage.totalCost > 0 ? (cost / piUsage.totalCost * 100) : 0;
-                  const barWidth = piUsage.totalCost > 0 ? (cost / Math.max(...Object.values(piUsage.byModel)) * 100) : 0;
+                        return (
+                          <div key={day} class="flex items-center gap-2">
+                            <span class="w-8 text-xs text-muted-foreground">{day}</span>
+                            <div class="flex gap-[2px]">
+                              {dates.map((dateStr) => {
+                                const value = filteredByMetric[dateStr] || 0;
+                                const intensity = maxValue > 0 ? value / maxValue : 0;
+                                const bgClass = getGreenHeatmapClass(intensity);
+                                return (
+                                  <div
+                                    key={dateStr}
+                                    class={cn("w-[11px] h-[11px] rounded-sm", bgClass)}
+                                    title={`${dateStr}: ${formatMetricValue(value)}`}
+                                  />
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div class="flex items-center justify-between mt-3 text-xs text-muted-foreground">
+                    <span>{startDateStr}</span>
+                    <div class="flex items-center gap-1">
+                      <span>Less</span>
+                      <div class="flex gap-[2px]">
+                        <div class={cn("w-[11px] h-[11px] rounded-sm", getGreenHeatmapClass(0))} />
+                        <div class={cn("w-[11px] h-[11px] rounded-sm", getGreenHeatmapClass(0.1))} />
+                        <div class={cn("w-[11px] h-[11px] rounded-sm", getGreenHeatmapClass(0.3))} />
+                        <div class={cn("w-[11px] h-[11px] rounded-sm", getGreenHeatmapClass(0.5))} />
+                        <div class={cn("w-[11px] h-[11px] rounded-sm", getGreenHeatmapClass(0.9))} />
+                      </div>
+                      <span>More</span>
+                    </div>
+                    <span>{new Date().toISOString().split('T')[0]}</span>
+                  </div>
+                </>
+              ) : (
+                <div class="text-center text-muted-foreground py-8 text-sm">
+                  No activity data for this period
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+      {/* Activity Summary - Combined */}
+      {piUsage && Object.keys(piUsage.byModel).length > 0 && (() => {
+        const days = getTimeRangeDays(llmTimeRange);
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+        const startDateStr = startDate.toISOString().split('T')[0];
+        
+        // Calculate totals based on metric
+        let totalValue = 0;
+        let peakValue = 0;
+        let peakDate = '';
+        let activeDays = 0;
+        
+        for (let i = 0; i < days; i++) {
+          const date = new Date(startDate);
+          date.setDate(startDate.getDate() + i);
+          const dateStr = date.toISOString().split('T')[0];
+          if (!dateStr) continue;
+          
+          let value = 0;
+          if (heatmapMetric === "cost") {
+            value = piUsage.byDate[dateStr] || 0;
+          } else if (heatmapMetric === "tokens") {
+            const tokens = piUsage.byDateTokens?.[dateStr];
+            value = tokens ? tokens.input + tokens.output : 0;
+          } else {
+            value = piUsage.byDateRuns?.[dateStr] || 0;
+          }
+          
+          if (value > 0) {
+            activeDays++;
+            totalValue += value;
+            if (value > peakValue) {
+              peakValue = value;
+              peakDate = dateStr;
+            }
+          }
+        }
+        
+        const avgPerDay = activeDays > 0 ? totalValue / activeDays : 0;
+        
+        // Model stats
+        const filteredByModel: Record<string, number> = {};
+        for (const [date, models] of Object.entries(piUsage.byDateModel)) {
+          if (date >= (startDateStr ?? '')) {
+            for (const [model, cost] of Object.entries(models)) {
+              filteredByModel[model] = (filteredByModel[model] || 0) + cost;
+            }
+          }
+        }
+        
+        const sortedModels = Object.entries(filteredByModel).sort((a, b) => b[1] - a[1]);
+        const topModel = sortedModels[0];
+        
+        // Format functions
+        const formatValue = (v: number): string => {
+          if (heatmapMetric === "cost") return `$${v.toFixed(2)}`;
+          if (heatmapMetric === "tokens") return v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toString();
+          return v.toString();
+        };
+        
+        const formatAvg = (v: number): string => {
+          if (heatmapMetric === "cost") return `$${v.toFixed(2)}`;
+          if (heatmapMetric === "tokens") return v >= 1000000 ? `${(v / 1000000).toFixed(2)}M` : v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toString();
+          return v.toFixed(1);
+        };
+        
+        return (
+          <Card class="mb-4">
+            <CardHeader class="pb-2">
+              <div class="flex items-center justify-between">
+                <CardTitle class="text-sm">{getMetricLabel(heatmapMetric)} Summary ({getTimeRangeLabel(llmTimeRange)})</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {/* Summary Stats */}
+              <div class="grid grid-cols-4 gap-3 mb-4 pb-4 border-b border-border/50">
+                <div>
+                  <div class="text-muted-foreground text-xs">Total</div>
+                  <div class="font-semibold text-lg text-green-500">{formatValue(totalValue)}</div>
+                </div>
+                <div>
+                  <div class="text-muted-foreground text-xs">Top Model</div>
+                  <div class="font-semibold truncate text-sm" title={topModel?.[0]}>
+                    {topModel ? topModel[0].split('/').pop() : '-'}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-muted-foreground text-xs">Avg/Day</div>
+                  <div class="font-semibold text-green-400">{formatAvg(avgPerDay)}</div>
+                </div>
+                <div>
+                  <div class="text-muted-foreground text-xs">Peak</div>
+                  <div class="font-semibold text-sm text-green-400">{peakValue > 0 ? formatValue(peakValue) : '-'}</div>
+                  {peakDate && <div class="text-xs text-muted-foreground">{peakDate}</div>}
+                </div>
+              </div>
+              
+              {/* Top Models List */}
+              <div class="space-y-1">
+                <div class="text-xs text-muted-foreground mb-1">Top Models by Cost</div>
+                {sortedModels.slice(0, 5).map(([model, cost], index) => {
+                  const totalCost = Object.values(filteredByModel).reduce((s, c) => s + c, 0);
+                  const share = totalCost > 0 ? (cost / totalCost * 100) : 0;
+                  const barWidth = topModel ? (cost / topModel[1] * 100) : 0;
                   return (
                     <div key={model} class="flex items-center gap-2 text-xs">
                       <span class="w-4 text-muted-foreground">{index + 1}</span>
-                      <span class="flex-1 truncate">{model}</span>
-                      <span class="w-16 text-right">${cost.toFixed(2)}</span>
+                      <span class="flex-1 truncate" title={model}>{model}</span>
+                      <span class="w-14 text-right">${cost.toFixed(2)}</span>
                       <span class="w-10 text-right text-muted-foreground">{share.toFixed(1)}%</span>
-                      <div class="w-16 h-2 bg-muted rounded overflow-hidden">
-                        <div class="h-full bg-chart-1 rounded" style={{ width: `${barWidth}%` }} />
+                      <div class="w-14 h-2 bg-muted rounded overflow-hidden">
+                        <div class="h-full bg-green-500 rounded" style={{ width: `${barWidth}%` }} />
                       </div>
                     </div>
                   );
                 })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
-      {/* Last 7 Days Summary */}
-      {piUsage && Object.keys(piUsage.byDate).length > 0 && (
-        <Card class="mb-4">
-          <CardHeader class="pb-2">
-            <CardTitle class="text-sm">Last 7 Days</CardTitle>
-            <CardDescription class="text-xs">
-              {Object.keys(piUsage.byDate).length} days | {Object.keys(piUsage.byModel).length} models
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div class="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <div class="text-muted-foreground text-xs">Total Cost</div>
-                <div class="font-semibold">${piUsage.totalCost.toFixed(2)}</div>
-              </div>
-              <div>
-                <div class="text-muted-foreground text-xs">Top Model</div>
-                <div class="font-semibold truncate">
-                  {Object.entries(piUsage.byModel).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '-'}
-                </div>
-              </div>
-              <div>
-                <div class="text-muted-foreground text-xs">Avg Cost/Day</div>
-                <div class="font-semibold">
-                  ${(piUsage.totalCost / Math.max(Object.keys(piUsage.byDate).length, 1)).toFixed(2)}
-                </div>
-              </div>
-              <div>
-                <div class="text-muted-foreground text-xs">Peak Day</div>
-                <div class="font-semibold truncate">
-                  {Object.entries(piUsage.byDate).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '-'}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Weekly Tool Breakdown */}
+      {/* Tool Breakdown */}
       {agentUsage && Object.keys(agentUsage.features).length > 0 && (
         <Card class="mb-4">
           <CardHeader class="pb-2">
-            <CardTitle class="text-sm">Weekly Tool Breakdown</CardTitle>
+            <CardTitle class="text-sm">Tool Breakdown ({getTimeRangeLabel(llmTimeRange)})</CardTitle>
             <CardDescription class="text-xs">
               {agentUsage.totals.toolCalls.toLocaleString()} calls | {Math.round(agentUsage.totals.contextTokenSum / 1000000).toLocaleString()}M context tokens
             </CardDescription>
@@ -742,7 +1068,7 @@ export function DashboardPage() {
                       <span class="w-12 text-right">{data.calls.toLocaleString()}</span>
                       <span class="w-16 text-right text-muted-foreground">{contextEst > 0 ? `${contextEst}K` : '-'}</span>
                       <div class="w-12 h-2 bg-muted rounded overflow-hidden">
-                        <div class="h-full bg-chart-2 rounded" style={{ width: `${barWidth}%` }} />
+                        <div class="h-full bg-emerald-500 rounded" style={{ width: `${barWidth}%` }} />
                       </div>
                     </div>
                   );
