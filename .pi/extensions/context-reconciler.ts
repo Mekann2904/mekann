@@ -33,6 +33,7 @@
  *   out: ソース別トークン配分データ(ContextBreakdown)
  */
 
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { ContextBreakdown, ContextSourceInfo } from "../lib/types.js";
 import { getTrackedSources, clearTrackedSources } from "../lib/context-breakdown-utils.js";
 
@@ -145,4 +146,40 @@ export function registerEventListeners(bus: {
   on: (event: string, handler: (data: unknown) => void) => void;
 }): void {
   bus.on("after_agent_start", handleAgentStart);
+}
+
+// ============================================================================
+// Extension Entry Point
+// ============================================================================
+
+let isInitialized = false;
+
+/**
+ * Context Reconciler Extension
+ * 
+ * APIレスポンスのトークン使用量をコンテキストソース別に照合・配分する拡張機能
+ */
+export default function (pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
+  // after_agent_startイベントでトークン使用量を照合
+  pi.on("after_agent_start", async (event, _ctx) => {
+    const response = event.response as { usage?: { input_tokens?: number } } | undefined;
+    const totalTokens = response?.usage?.input_tokens;
+
+    if (typeof totalTokens === "number" && totalTokens > 0) {
+      const trackedSources = getTrackedSources();
+      lastReconciliation = reconcileTokens(totalTokens, trackedSources);
+    }
+
+    return undefined;
+  });
+
+  // セッション終了時に追跡状態をリセット
+  pi.on("session_shutdown", async () => {
+    clearTrackedSources();
+    lastReconciliation = null;
+    isInitialized = false;
+  });
 }
