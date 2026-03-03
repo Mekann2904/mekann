@@ -308,41 +308,54 @@ function ServerCard({
 // Tools view - aggregate all tools from connected servers
 function ToolsView({ servers }: { servers: McpServerInfo[] }) {
   const [tools, setTools] = useState<Array<{ serverId: string; tool: { name: string; description?: string } }>>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  const connectedServers = servers.filter(s => s.status === "connected");
+  // 安定したサーバーID文字列を使用（配列参照の変化を防ぐ）
   const connectedServerIds = useMemo(
-    () => connectedServers.map(s => s.id),
-    [connectedServers]
+    () => servers.filter(s => s.status === "connected").map(s => s.id).sort().join(","),
+    [servers]
   );
 
   useEffect(() => {
+    // 接続済みサーバーがない場合はスキップ
+    if (!connectedServerIds) {
+      setTools([]);
+      return;
+    }
+
+    let cancelled = false;
     const fetchAllTools = async () => {
       setLoading(true);
       const results: Array<{ serverId: string; tool: { name: string; description?: string } }> = [];
 
-      for (const server of connectedServers) {
+      const ids = connectedServerIds.split(",");
+      for (const serverId of ids) {
         try {
-          const res = await fetch(`/api/mcp/tools/${server.id}`);
+          const res = await fetch(`/api/mcp/tools/${serverId}`);
+          if (cancelled) return;
           if (res.ok) {
             const json = await res.json();
-            for (const tool of json.tools) {
-              results.push({ serverId: server.id, tool });
+            const toolList = json.data?.tools || json.tools || [];
+            for (const tool of toolList) {
+              results.push({ serverId, tool });
             }
           }
         } catch (e) {
-          console.error(`Failed to fetch tools for ${server.id}:`, e);
+          console.error(`Failed to fetch tools for ${serverId}:`, e);
         }
       }
 
-      setTools(results);
-      setLoading(false);
+      if (!cancelled) {
+        setTools(results);
+        setLoading(false);
+      }
     };
 
     fetchAllTools();
+    return () => { cancelled = true; };
   }, [connectedServerIds]);
 
-  if (connectedServers.length === 0) {
+  if (!connectedServerIds) {
     return (
       <Card>
         <CardContent class="py-8">
@@ -395,41 +408,54 @@ function ToolsView({ servers }: { servers: McpServerInfo[] }) {
 // Resources view - aggregate all resources from connected servers
 function ResourcesView({ servers }: { servers: McpServerInfo[] }) {
   const [resources, setResources] = useState<Array<{ serverId: string; resource: { uri: string; name: string; mimeType?: string } }>>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  const connectedServers = servers.filter(s => s.status === "connected");
+  // 安定したサーバーID文字列を使用（配列参照の変化を防ぐ）
   const connectedServerIds = useMemo(
-    () => connectedServers.map(s => s.id),
-    [connectedServers]
+    () => servers.filter(s => s.status === "connected").map(s => s.id).sort().join(","),
+    [servers]
   );
 
   useEffect(() => {
+    // 接続済みサーバーがない場合はスキップ
+    if (!connectedServerIds) {
+      setResources([]);
+      return;
+    }
+
+    let cancelled = false;
     const fetchAllResources = async () => {
       setLoading(true);
       const results: Array<{ serverId: string; resource: { uri: string; name: string; mimeType?: string } }> = [];
 
-      for (const server of connectedServers) {
+      const ids = connectedServerIds.split(",");
+      for (const serverId of ids) {
         try {
-          const res = await fetch(`/api/mcp/resources/${server.id}`);
+          const res = await fetch(`/api/mcp/resources/${serverId}`);
+          if (cancelled) return;
           if (res.ok) {
             const json = await res.json();
-            for (const resource of json.resources || []) {
-              results.push({ serverId: server.id, resource });
+            const resourceList = json.data?.resources || json.resources || [];
+            for (const resource of resourceList) {
+              results.push({ serverId, resource });
             }
           }
         } catch (e) {
-          console.error(`Failed to fetch resources for ${server.id}:`, e);
+          console.error(`Failed to fetch resources for ${serverId}:`, e);
         }
       }
 
-      setResources(results);
-      setLoading(false);
+      if (!cancelled) {
+        setResources(results);
+        setLoading(false);
+      }
     };
 
     fetchAllResources();
+    return () => { cancelled = true; };
   }, [connectedServerIds]);
 
-  if (connectedServers.length === 0) {
+  if (!connectedServerIds) {
     return (
       <Card>
         <CardContent class="py-8">
@@ -514,7 +540,7 @@ export function McpPage() {
       const res = await fetch(`/api/mcp/connection/${id}`);
       if (res.ok) {
         const json = await res.json();
-        setDetail(json);
+        setDetail(json.data || json);
       }
     } catch (e) {
       console.error("Failed to fetch detail:", e);
@@ -563,7 +589,8 @@ export function McpPage() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(() => fetchData(), 5000);
+    // ポーリング間隔を30秒に延長（ちらつき防止）
+    const interval = setInterval(() => fetchData(), 30000);
     return () => clearInterval(interval);
   }, []);
 
