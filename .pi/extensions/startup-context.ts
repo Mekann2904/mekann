@@ -39,7 +39,6 @@ import { execSync } from "node:child_process";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { startSession, recordInjection } from "../lib/context-breakdown-utils.js";
-import { recordInjection } from "../lib/context-breakdown-utils.js";
 
 // モジュールレベルのフラグ（reload時のリスナー重複登録防止）
 let isInitialized = false;
