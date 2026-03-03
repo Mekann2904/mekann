@@ -495,6 +495,10 @@ export class ToolFuser {
    * @param dependencyGraph - 依存グラフ
    * @returns 融合操作配列
    * @summary 融合操作生成
+   * @remarks
+   * Note: This method uses a local Set for tracking processed items.
+   * The ToolFuser class is NOT thread-safe and should not be shared across concurrent executions.
+   * Each concurrent compilation should use its own ToolFuser instance.
    */
   private createFusedOperations(
     toolCalls: ToolCall[],
