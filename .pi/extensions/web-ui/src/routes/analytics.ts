@@ -17,14 +17,17 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+// @ts-ignore - JSファイルの型定義なし
 import {
   getStorageStats,
   loadRecentRecords,
 } from "../../lib/analytics/behavior-storage.js";
+// @ts-ignore - JSファイルの型定義なし
 import {
   getAggregationSummary,
   loadAggregates,
 } from "../../lib/analytics/aggregator.js";
+// @ts-ignore - JSファイルの型定義なし
 import {
   getAnomalySummary,
 } from "../../lib/analytics/anomaly-detector.js";

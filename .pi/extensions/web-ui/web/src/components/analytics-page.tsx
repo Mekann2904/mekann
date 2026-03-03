@@ -193,7 +193,7 @@ export function AnalyticsPage() {
       const [summaryRes, recordsRes, aggregatesRes] = await Promise.all([
         fetch("/api/v2/analytics/summary"),
         fetch("/api/v2/analytics/records?limit=20"),
-        fetch(`/api/analytics/aggregates?type=${aggregateType}&range=${timeRange}`),
+        fetch(`/api/v2/analytics/aggregates?type=${aggregateType}&range=${timeRange}`),
       ]);
 
       if (summaryRes.ok) {

@@ -29,41 +29,48 @@ import { randomUUID } from "crypto";
 export const sseRoutes = new Hono();
 
 /**
- * GET /api/sse - SSE接続
+ * GET / - SSE接続
  */
 sseRoutes.get("/", async (c) => {
   const sseService = getSSEService();
-  const instanceService = getInstanceService();
-
-  // SSEヘッダー設定
-  c.header("Content-Type", "text/event-stream");
-  c.header("Cache-Control", "no-cache");
-  c.header("Connection", "keep-alive");
-  c.header("X-Accel-Buffering", "no"); // Nginx対策
 
   // クライアントID生成
   const clientId = randomUUID();
 
-  // レスポンスオブジェクトを取得
-  // Honoの仕組み上、Node.jsのServerResponseを直接操作する必要がある
-  const res = c.res as unknown as ServerResponse;
+  // SSE用のReadableStreamを作成
+  const stream = new ReadableStream({
+    start(controller) {
+      // クライアントを登録
+      sseService.addClient(clientId, {
+        write: (data: string) => {
+          controller.enqueue(new TextEncoder().encode(data));
+        },
+        end: () => {
+          try {
+            controller.close();
+          } catch {
+            // 既にクローズされている場合は無視
+          }
+        },
+      });
 
-  // クライアントを登録
-  sseService.addClient(clientId, res);
-
-  // 初期接続メッセージ
-  res.write(`event: connected\ndata: ${JSON.stringify({ clientId })}\n\n`);
-
-  // 切断時のクリーンアップ
-  res.on("close", () => {
-    sseService.removeClient(clientId);
+      // 初期接続メッセージ
+      const connectMsg = `event: connected\ndata: ${JSON.stringify({ clientId })}\n\n`;
+      controller.enqueue(new TextEncoder().encode(connectMsg));
+    },
+    cancel() {
+      // クライアント切断時のクリーンアップ
+      sseService.removeClient(clientId);
+    },
   });
 
-  // 接続を維持
-  return new Promise<void>((resolve) => {
-    res.on("close", () => {
-      resolve();
-    });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
   });
 });
 
