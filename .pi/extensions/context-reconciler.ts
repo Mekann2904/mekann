@@ -163,12 +163,20 @@ export default function (pi: ExtensionAPI) {
   if (isInitialized) return;
   isInitialized = true;
 
-  // after_agent_startイベントでトークン使用量を照合
-  pi.on("after_agent_start", async (event, _ctx) => {
-    const response = event.response as { usage?: { input_tokens?: number } } | undefined;
-    const totalTokens = response?.usage?.input_tokens;
+  // agent_endイベントでトークン使用量を照合
+  pi.on("agent_end", async (_event, ctx) => {
+    const usage = ctx.getContextUsage?.();
+    if (!usage) return;
 
-    if (typeof totalTokens === "number" && totalTokens > 0) {
+    // inputTokensを取得（存在しない場合は総トークンの70%と推定）
+    const totalTokens = 
+      ('inputTokens' in usage && typeof usage.inputTokens === 'number')
+        ? usage.inputTokens
+        : ('tokens' in usage && typeof usage.tokens === 'number')
+          ? Math.round(usage.tokens * 0.7)
+          : 0;
+
+    if (totalTokens > 0) {
       const trackedSources = getTrackedSources();
       lastReconciliation = reconcileTokens(totalTokens, trackedSources);
     }
