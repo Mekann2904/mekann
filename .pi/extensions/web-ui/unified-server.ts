@@ -126,7 +126,13 @@ export function startUnifiedServer(
   console.log(`[web-ui] Static files directory: ${distPath}`);
   console.log(`[web-ui] Dist exists: ${existsSync(distPath)}`);
 
-  // Honoアプリを作成
+  // 死んだオーナーのULタスクをクリーンアップ
+  const cleanedCount = cleanupDeadOwnerUlWorkflowTasks();
+  if (cleanedCount > 0) {
+    console.log(`[web-ui] Cleaned up ${cleanedCount} UL task(s) from inactive instances`);
+  }
+
+  // ============= Hono App =============
   const app = new Hono();
 
   // グローバルミドルウェア
@@ -139,53 +145,64 @@ export function startUnifiedServer(
     credentials: true,
   }));
 
-  // 死んだオーナーのULタスクをクリーンアップ
-  const cleanedCount = cleanupDeadOwnerUlWorkflowTasks();
-  if (cleanedCount > 0) {
-    console.log(`[web-ui] Cleaned up ${cleanedCount} UL task(s) from inactive instances`);
+  // ============= API Routes =============
+  // createApp() は src/server/app.ts で定義されたすべてのルートを含む
+  const apiApp = createApp();
+  
+  // デバッグ: APIルートをログ出力
+  console.log("[web-ui] API app created, routes:");
+  try {
+    apiApp.showRoutes();
+  } catch {
+    console.log("[web-ui] Could not show routes (expected in production)");
   }
 
-  // ============= API Routes (Hono) =============
   // フロントエンドは /api/v2/* を使用
-  const apiApp = createApp();
   app.route("/api/v2", apiApp);
+  console.log("[web-ui] API routes mounted at /api/v2");
 
   // 後方互換性のため /api/* もサポート（一時的）
   app.route("/api", apiApp);
+  console.log("[web-ui] API routes also mounted at /api (for backward compatibility)");
+
+  // デバッグ: 登録されたルートをログ出力
+  console.log("[web-ui] Routes registered:");
+  app.showRoutes();
 
   // ============= SSE Events =============
   // SSEイベントをJotai atomsに統合するためのエンドポイント
-  app.get("/api/events", (c) => {
+  app.get("/api/v2/events", (c) => {
     // SSEヘッダー設定
     c.header("Content-Type", "text/event-stream");
     c.header("Cache-Control", "no-cache");
     c.header("Connection", "keep-alive");
     c.header("X-Accel-Buffering", "no");
 
-    // EventSourceの実装はクライアント側で行う
-    // ここでは接続IDを返す
     const clientId = `client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     
-    // ReadableStreamを使用してSSEを実装
     const stream = new ReadableStream({
-      async start(controller) {
-        // 初期接続メッセージ
+      start(controller) {
         const connectMsg = `event: connected\ndata: ${JSON.stringify({ clientId })}\n\n`;
         controller.enqueue(new TextEncoder().encode(connectMsg));
 
-        // ハートビート
         const heartbeatInterval = setInterval(() => {
-          const heartbeatMsg = `event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`;
-          controller.enqueue(new TextEncoder().encode(heartbeatMsg));
+          try {
+            const heartbeatMsg = `event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`;
+            controller.enqueue(new TextEncoder().encode(heartbeatMsg));
+          } catch {
+            clearInterval(heartbeatInterval);
+          }
         }, 30000);
-
-        // クリーンアップ用に保存
-        // Note: 実際の実装ではSSEEventBusを使用
       },
     });
 
     return new Response(stream, {
-      headers: c.res.headers,
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+      },
     });
   });
 

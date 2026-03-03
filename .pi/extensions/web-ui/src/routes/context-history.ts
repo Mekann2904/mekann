@@ -13,7 +13,6 @@
 import { Hono } from "hono";
 import { ContextHistoryStorage } from "../../lib/instance-registry.js";
 import type { SuccessResponse } from "../schemas/common.schema.js";
-import type { InstanceContextHistory } from "../schemas/instance.schema.js";
 
 /**
  * コンテキスト履歴ルート
@@ -26,11 +25,16 @@ export const contextHistoryRoutes = new Hono();
 contextHistoryRoutes.get("/", (c) => {
   try {
     const historyMap = ContextHistoryStorage.getAllInstances();
+    
+    // InstanceContextHistoryの形式に変換
     const history = Array.from(historyMap.entries()).map(([pid, entries]) => ({
       pid,
+      cwd: process.cwd(),
+      model: "unknown",
       history: entries,
     }));
-    return c.json<SuccessResponse<InstanceContextHistory[]>>({
+    
+    return c.json({
       success: true,
       data: history,
     });
@@ -61,7 +65,12 @@ contextHistoryRoutes.get("/:pid", (c) => {
 
     return c.json({
       success: true,
-      data: { pid, history: entries },
+      data: {
+        pid,
+        cwd: process.cwd(),
+        model: "unknown",
+        history: entries,
+      },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

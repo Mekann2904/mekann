@@ -45,21 +45,10 @@ export interface AppContext {
 
 /**
  * Hono アプリケーションを作成
+ * 注: ミドルウェアは unified-server.ts で設定されるため、ここではルートのみ登録
  */
 export function createApp(): Hono<AppContext> {
   const app = new Hono<AppContext>();
-
-  // グローバルミドルウェア
-  app.use("*", logger());
-  app.use("*", secureHeaders());
-  
-  // CORS（localhostのみ許可）
-  app.use("*", cors({
-    origin: ["http://localhost:*", "http://127.0.0.1:*"],
-    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-  }));
 
   // エラーハンドラー
   app.use("*", errorHandler());
