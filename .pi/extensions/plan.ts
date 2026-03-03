@@ -242,6 +242,7 @@ function getReadySteps(plan: Plan): PlanStep[] {
 function formatPlanSummary(plan: Plan): string {
 	const lines: string[] = [];
 	lines.push(`## Plan: ${plan.name}`);
+	lines.push(`ID: ${plan.id}`);  // BUGFIX: プランIDを出力に含める
 	if (plan.description) {
 		lines.push(`\n${plan.description}`);
 	}
@@ -589,7 +590,7 @@ export default function (pi: ExtensionAPI) {
 			});
 
 			return {
-				content: [{ type: "text", text: `Step added to plan "${plan.name}":\n\n• ${step.title}${step.description ? `\n  ${step.description}` : ""}` }],
+				content: [{ type: "text", text: `Step added to plan "${plan.name}" (ID: ${plan.id}):\n\n• ${step.title}${step.description ? `\n  ${step.description}` : ""}` }],
 				details: { planId: plan.id, stepId: step.id }
 			};
 		},
