@@ -30,6 +30,7 @@ import { themeRoutes } from "../routes/theme.js";
 import { agentUsageRoutes } from "../routes/agent-usage.js";
 import { contextHistoryRoutes } from "../routes/context-history.js";
 import { mcpRoutes } from "../routes/mcp.js";
+import { ulWorkflowRoutes } from "../routes/ul-workflow.js";
 
 /**
  * アプリケーションコンテキスト型
@@ -84,9 +85,7 @@ export function createApp(): Hono<AppContext> {
   app.route("/api/agent-usage", agentUsageRoutes);
   app.route("/api/context-history", contextHistoryRoutes);
   app.route("/api/mcp", mcpRoutes);
-
-  // TODO: 他のルートを追加
-  // app.route("/api/ul-workflow", ulWorkflowRoutes);
+  app.route("/api/ul-workflow", ulWorkflowRoutes);
 
   // 404 ハンドラー
   app.notFound(notFoundHandler);
