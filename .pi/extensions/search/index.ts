@@ -80,6 +80,12 @@ import {
 	formatRepoGraphIndex,
 	formatRepoGraphQuery,
 } from "./tools/repograph_index.js";
+import {
+	locagentIndex,
+	locagentQuery,
+	formatLocAgentIndex,
+	formatLocAgentQuery,
+} from "./tools/locagent_index.js";
 import { checkToolAvailability } from "./utils/cli.js";
 import {
 	formatFileCandidates,
@@ -1362,6 +1368,118 @@ export default function (pi: ExtensionAPI) {
 					return {
 						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
 						details: { error: errorMessage, type: params.type, total: 0, truncated: false, nodes: [] },
+					};
+				}
+			},
+		});
+
+		// ============================================
+		// Tool: locagent_index
+		// ============================================
+		pi.registerTool({
+			name: "locagent_index",
+			label: "LocAgent Index",
+			description:
+				"Build LocAgent heterogeneous graph index for code localization. Creates directory/file/class/function nodes with contain/import/invoke/inherit edges.",
+			parameters: Type.Object({
+				path: Type.Optional(
+					Type.String({ description: "Path to index (default: current directory)" })
+				),
+				force: Type.Optional(
+					Type.Boolean({ description: "Force rebuild even if index exists" })
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				try {
+					const result = await locagentIndex(params, cwd);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: formatLocAgentIndex(result),
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: { success: false, error: errorMessage, fileCount: 0, nodeCount: 0, edgeCount: 0, outputPath: "" },
+					};
+				}
+			},
+		});
+
+		// ============================================
+		// Tool: locagent_query
+		// ============================================
+		pi.registerTool({
+			name: "locagent_query",
+			label: "LocAgent Query",
+			description:
+				"Query LocAgent heterogeneous graph index. Supports: search (keyword search), traverse (BFS graph traversal), retrieve (entity details), symbol (symbol lookup), stats (graph statistics).",
+			parameters: Type.Object({
+				type: Type.Union(
+					[
+						Type.Literal("search"),
+						Type.Literal("traverse"),
+						Type.Literal("retrieve"),
+						Type.Literal("symbol"),
+						Type.Literal("stats"),
+					],
+					{ description: "Query type" }
+				),
+				keywords: Type.Optional(
+					Type.Array(Type.String(), { description: "Keywords for search/symbol queries" })
+				),
+				nodeIds: Type.Optional(
+					Type.Array(Type.String(), { description: "Node IDs for traverse/retrieve queries" })
+				),
+				nodeTypes: Type.Optional(
+					Type.Array(Type.String(), { description: "Filter by node types (directory/file/class/function)" })
+				),
+				edgeTypes: Type.Optional(
+					Type.Array(Type.String(), { description: "Filter by edge types (contain/import/invoke/inherit)" })
+				),
+				direction: Type.Optional(
+					Type.String({ description: "Traversal direction: upstream, downstream, both" })
+				),
+				hops: Type.Optional(
+					Type.Number({ description: "Number of hops for traversal (default: 2)" })
+				),
+				detailLevel: Type.Optional(
+					Type.String({ description: "Detail level for search: fold, preview, full" })
+				),
+				limit: Type.Optional(
+					Type.Number({ description: "Maximum results" })
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				try {
+					const result = await locagentQuery(params, cwd);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: formatLocAgentQuery(result),
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: { type: params.type, success: false, error: errorMessage },
 					};
 				}
 			},
