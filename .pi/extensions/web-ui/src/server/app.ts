@@ -23,6 +23,8 @@ import { logger } from "hono/logger";
 import { secureHeaders } from "hono/secure-headers";
 import { errorHandler, notFoundHandler } from "../middleware/error-handler.js";
 import { taskRoutes } from "../routes/tasks.js";
+import { instanceRoutes } from "../routes/instances.js";
+import { sseRoutes } from "../routes/sse.js";
 
 /**
  * アプリケーションコンテキスト型
@@ -70,11 +72,13 @@ export function createApp(): Hono<AppContext> {
 
   // API ルート登録
   app.route("/api/tasks", taskRoutes);
+  app.route("/api/instances", instanceRoutes);
+  app.route("/api/sse", sseRoutes);
 
   // TODO: 他のルートを追加
-  // app.route("/api/instances", instanceRoutes);
   // app.route("/api/analytics", analyticsRoutes);
-  // app.route("/api/sse", sseRoutes);
+  // app.route("/api/mcp", mcpRoutes);
+  // app.route("/api/ul-workflow", ulWorkflowRoutes);
 
   // 404 ハンドラー
   app.notFound(notFoundHandler);
