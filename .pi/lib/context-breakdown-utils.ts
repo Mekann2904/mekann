@@ -872,10 +872,14 @@ export function recordInjection(source: string, content: string): void {
 
 /**
  * @summary 追跡されたソース情報を取得
- * @returns ソース情報配列
+ * @returns ソース情報配列（injectedContent含む）
  */
-export function getTrackedSources(): Array<{ source: string; charCount: number }> {
-  return trackedSources.map(s => ({ source: s.source, charCount: s.charCount }));
+export function getTrackedSources(): Array<{ source: string; charCount: number; injectedContent?: string }> {
+  return trackedSources.map(s => ({ 
+    source: s.source, 
+    charCount: s.charCount,
+    injectedContent: s.content 
+  }));
 }
 
 /**

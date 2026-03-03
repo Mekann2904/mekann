@@ -22,7 +22,7 @@
  * @abdd.explain
  * overview: APIレスポンスのトークン使用量をコンテキストソース別に照合・配分する
  * what_it_does:
- *   - after_agent_startイベントでAPIレスポンスからトークン数を取得
+ *   - agent_endイベントでAPIレスポンスからトークン数を取得
  *   - 記録されたソースの注入内容と文字数比率で配分
  *   - ContextBreakdown型に整形して保存・返却
  * why_it_exists:
