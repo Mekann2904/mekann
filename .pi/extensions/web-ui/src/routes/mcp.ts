@@ -33,16 +33,18 @@ function getMcpConfigPath(): string {
 interface McpServerConfig {
   id: string;
   name: string;
-  transportType: string;
   url?: string;
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  description?: string;
+  enabled?: boolean;
   disabled?: boolean;
 }
 
 interface McpConfig {
-  mcpServers: Record<string, McpServerConfig>;
+  servers?: McpServerConfig[];
+  mcpServers?: Record<string, McpServerConfig>;  // 旧形式（後方互換性）
 }
 
 /**
@@ -62,14 +64,29 @@ mcpRoutes.get("/servers", (c) => {
     const content = fs.readFileSync(configPath, "utf-8");
     const config: McpConfig = JSON.parse(content);
 
-    const servers = Object.entries(config.mcpServers || {}).map(([id, server]) => ({
-      ...server,
-      id,
-    }));
+    // 新形式: { servers: [...] }
+    if (config.servers && Array.isArray(config.servers)) {
+      return c.json({
+        success: true,
+        data: config.servers,
+      });
+    }
+
+    // 旧形式: { mcpServers: { ... } }
+    if (config.mcpServers) {
+      const servers = Object.entries(config.mcpServers).map(([id, server]) => ({
+        ...server,
+        id,
+      }));
+      return c.json({
+        success: true,
+        data: servers,
+      });
+    }
 
     return c.json({
       success: true,
-      data: servers,
+      data: [],
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

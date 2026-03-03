@@ -18,17 +18,9 @@
  */
 
 import type { InstanceInfo, ContextHistoryEntry, InstanceContextHistory } from "../schemas/instance.schema.js";
-import { JsonStorage, SHARED_DIR } from "../lib/storage.js";
+import { SHARED_DIR } from "../lib/storage.js";
 import { join } from "path";
-import { readdirSync } from "fs";
-
-/**
- * インスタンスストレージのデータ構造
- */
-interface InstanceStorage {
-  instances: Record<number, InstanceInfo>;
-  version: number;
-}
+import { readdirSync, readFileSync, existsSync, writeFileSync, renameSync, unlinkSync } from "fs";
 
 /**
  * ハートビート設定
@@ -37,32 +29,60 @@ const HEARTBEAT_STALE_MS = 60000; // 60秒
 
 /**
  * インスタンスリポジトリ
+ * 
+ * 注意: lib/instance-registry.ts と同じファイル形式を使用
+ * ファイル形式: Record<number, InstanceInfo> (直接レコード、ラッパーなし)
  */
 export class InstanceRepository {
-  private readonly storage: JsonStorage<InstanceStorage>;
+  private readonly filePath: string;
 
   constructor() {
-    this.storage = new JsonStorage<InstanceStorage>(
-      "instances.json",
-      { instances: {}, version: 1 },
-      { dataDir: SHARED_DIR }
-    );
+    this.filePath = join(SHARED_DIR, "instances.json");
+  }
+
+  /**
+   * ファイルから直接読み込む
+   */
+  private readAll(): Record<number, InstanceInfo> {
+    try {
+      if (!existsSync(this.filePath)) {
+        return {};
+      }
+      const content = readFileSync(this.filePath, "utf-8");
+      return JSON.parse(content);
+    } catch (error) {
+      console.error(`[instance-repo] Failed to read ${this.filePath}:`, error);
+      return {};
+    }
+  }
+
+  /**
+   * ファイルへ書き込む
+   */
+  private writeAll(instances: Record<number, InstanceInfo>): void {
+    const tempPath = `${this.filePath}.tmp`;
+    writeFileSync(tempPath, JSON.stringify(instances, null, 2), "utf-8");
+    try {
+      renameSync(tempPath, this.filePath);
+    } catch {
+      writeFileSync(this.filePath, JSON.stringify(instances, null, 2), "utf-8");
+      try {
+        unlinkSync(tempPath);
+      } catch {}
+    }
   }
 
   /**
    * 全インスタンスを取得（アクティブのみ）
    */
   findAll(): InstanceInfo[] {
-    const { instances } = this.storage.read();
+    const instances = this.readAll();
     const now = Date.now();
 
     // アクティブなインスタンスのみフィルタ
     const active = Object.values(instances).filter(
       (info) => now - info.lastHeartbeat < HEARTBEAT_STALE_MS
     );
-
-    // 古いエントリをクリーンアップ
-    this.cleanup(instances, active);
 
     return active;
   }
@@ -71,7 +91,7 @@ export class InstanceRepository {
    * PIDでインスタンスを検索
    */
   findByPid(pid: number): InstanceInfo | undefined {
-    const { instances } = this.storage.read();
+    const instances = this.readAll();
     return instances[pid];
   }
 
@@ -79,24 +99,24 @@ export class InstanceRepository {
    * インスタンスを登録または更新
    */
   save(info: InstanceInfo): void {
-    const data = this.storage.read();
-    data.instances[info.pid] = info;
-    this.storage.write(data);
+    const instances = this.readAll();
+    instances[info.pid] = info;
+    this.writeAll(instances);
   }
 
   /**
    * ハートビートを更新
    */
   updateHeartbeat(pid: number, model?: string): void {
-    const data = this.storage.read();
-    const existing = data.instances[pid];
+    const instances = this.readAll();
+    const existing = instances[pid];
 
     if (existing) {
       existing.lastHeartbeat = Date.now();
       if (model) {
         existing.model = model;
       }
-      this.storage.write(data);
+      this.writeAll(instances);
     }
   }
 
@@ -104,14 +124,14 @@ export class InstanceRepository {
    * インスタンスを削除
    */
   delete(pid: number): boolean {
-    const data = this.storage.read();
+    const instances = this.readAll();
 
-    if (!data.instances[pid]) {
+    if (!instances[pid]) {
       return false;
     }
 
-    delete data.instances[pid];
-    this.storage.write(data);
+    delete instances[pid];
+    this.writeAll(instances);
     return true;
   }
 
@@ -121,61 +141,56 @@ export class InstanceRepository {
   count(): number {
     return this.findAll().length;
   }
-
-  /**
-   * 古いエントリをクリーンアップ
-   */
-  private cleanup(instances: Record<number, InstanceInfo>, active: InstanceInfo[]): void {
-    const activePids = new Set(active.map((i) => i.pid));
-    let hasStale = false;
-
-    for (const pid of Object.keys(instances)) {
-      if (!activePids.has(Number(pid))) {
-        delete instances[Number(pid)];
-        hasStale = true;
-      }
-    }
-
-    if (hasStale) {
-      this.storage.write({ instances, version: 1 });
-    }
-  }
 }
 
 /**
  * コンテキスト履歴リポジトリ
  */
 export class ContextHistoryRepository {
-  private readonly storage: JsonStorage<{ history: ContextHistoryEntry[] }>;
+  private readonly filePath: string;
 
   constructor(pid: number) {
-    this.storage = new JsonStorage(
-      `context-history-${pid}.json`,
-      { history: [] },
-      { dataDir: SHARED_DIR }
-    );
+    this.filePath = join(SHARED_DIR, `context-history-${pid}.json`);
   }
 
   /**
    * 履歴を追加
    */
   add(entry: Omit<ContextHistoryEntry, "pid">, pid: number): void {
-    const data = this.storage.read();
-    data.history.push({ ...entry, pid });
+    let history: ContextHistoryEntry[] = [];
+    
+    try {
+      if (existsSync(this.filePath)) {
+        const content = readFileSync(this.filePath, "utf-8");
+        const data = JSON.parse(content);
+        history = data.history || [];
+      }
+    } catch {}
+
+    history.push({ ...entry, pid });
 
     // 最大100件に制限
-    if (data.history.length > 100) {
-      data.history = data.history.slice(-100);
+    if (history.length > 100) {
+      history = history.slice(-100);
     }
 
-    this.storage.write(data);
+    writeFileSync(this.filePath, JSON.stringify({ history }, null, 2), "utf-8");
   }
 
   /**
    * 履歴を取得
    */
   getAll(): ContextHistoryEntry[] {
-    return this.storage.read().history;
+    try {
+      if (!existsSync(this.filePath)) {
+        return [];
+      }
+      const content = readFileSync(this.filePath, "utf-8");
+      const data = JSON.parse(content);
+      return data.history || [];
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -193,21 +208,22 @@ export class ContextHistoryRepository {
       const match = file.match(/context-history-(\d+)\.json/);
       if (match) {
         const pid = parseInt(match[1], 10);
-        const storage = new JsonStorage<{ history: ContextHistoryEntry[] }>(
-          file,
-          { history: [] },
-          { dataDir: SHARED_DIR }
-        );
-        const history = storage.read().history;
+        const filePath = join(SHARED_DIR, file);
+        
+        try {
+          const content = readFileSync(filePath, "utf-8");
+          const data = JSON.parse(content);
+          const history = data.history || [];
 
-        if (history.length > 0) {
-          result.push({
-            pid,
-            cwd: process.cwd(), // TODO: 実際の値を取得
-            model: "unknown", // TODO: 実際の値を取得
-            history,
-          });
-        }
+          if (history.length > 0) {
+            result.push({
+              pid,
+              cwd: process.cwd(), // TODO: 実際の値を取得
+              model: "unknown", // TODO: 実際の値を取得
+              history,
+            });
+          }
+        } catch {}
       }
     }
 
