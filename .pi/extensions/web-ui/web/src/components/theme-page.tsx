@@ -78,8 +78,7 @@ export function ThemePage({ onThemeChange }: ThemePageProps) {
     fetch("/api/v2/theme")
       .then((res) => res.json())
       .then((json) => {
-        // API returns { success: true, data: { themeId, mode } }
-        const data = json.data || json;
+        const data = json.data;
         if (data.themeId && data.mode) {
           setSelectedId(data.themeId);
           setMode(data.mode);

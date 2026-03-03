@@ -333,11 +333,11 @@ function ToolsView({ servers }: { servers: McpServerInfo[] }) {
       const ids = connectedServerIds.split(",");
       for (const serverId of ids) {
         try {
-          const res = await fetch(`/api/mcp/tools/${serverId}`);
+          const res = await fetch(`/api/v2/mcp/tools/${serverId}`);
           if (cancelled) return;
           if (res.ok) {
             const json = await res.json();
-            const toolList = json.data?.tools || json.tools || [];
+            const toolList = json.tools || [];
             for (const tool of toolList) {
               results.push({ serverId, tool });
             }
@@ -435,11 +435,11 @@ function ResourcesView({ servers }: { servers: McpServerInfo[] }) {
       const ids = connectedServerIds.split(",");
       for (const serverId of ids) {
         try {
-          const res = await fetch(`/api/mcp/resources/${serverId}`);
+          const res = await fetch(`/api/v2/mcp/resources/${serverId}`);
           if (cancelled) return;
           if (res.ok) {
             const json = await res.json();
-            const resourceList = json.data?.resources || json.resources || [];
+            const resourceList = json.resources || [];
             for (const resource of resourceList) {
               results.push({ serverId, resource });
             }
@@ -541,10 +541,10 @@ export function McpPage() {
 
   const fetchDetail = async (id: string) => {
     try {
-      const res = await fetch(`/api/mcp/connection/${id}`);
+      const res = await fetch(`/api/v2/mcp/connection/${id}`);
       if (res.ok) {
         const json = await res.json();
-        setDetail(json.data || json);
+        setDetail(json.data);
       }
     } catch (e) {
       console.error("Failed to fetch detail:", e);
@@ -554,7 +554,7 @@ export function McpPage() {
   const handleConnect = async (serverId: string) => {
     setActionInProgress(prev => ({ ...prev, [serverId]: "connect" }));
     try {
-      const res = await fetch(`/api/mcp/connect/${serverId}`, { method: "POST" });
+      const res = await fetch(`/api/v2/mcp/connect/${serverId}`, { method: "POST" });
       if (!res.ok) {
         const json = await res.json();
         throw new Error(json.details || json.error || "Connect failed");
@@ -572,7 +572,7 @@ export function McpPage() {
   const handleDisconnect = async (serverId: string) => {
     setActionInProgress(prev => ({ ...prev, [serverId]: "disconnect" }));
     try {
-      const res = await fetch(`/api/mcp/disconnect/${serverId}`, { method: "POST" });
+      const res = await fetch(`/api/v2/mcp/disconnect/${serverId}`, { method: "POST" });
       if (!res.ok) {
         const json = await res.json();
         throw new Error(json.details || json.error || "Disconnect failed");

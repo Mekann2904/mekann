@@ -132,7 +132,7 @@ export function InstancesPage() {
       const res = await fetch("/api/v2/instances");
       if (!res.ok) throw new Error("Failed to fetch instances");
       const json = await res.json();
-      setData(json.data ? { instances: json.data, count: json.data.length, serverPid: 0, serverPort: 3456 } : json);
+      setData({ instances: json.data, count: json.data.length, serverPid: 0, serverPort: 3456 });
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");

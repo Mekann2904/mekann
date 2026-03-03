@@ -198,15 +198,15 @@ export function AnalyticsPage() {
 
       if (summaryRes.ok) {
         const json = await summaryRes.json();
-        setSummary(json.data ?? json);
+        setSummary(json.data);
       }
       if (recordsRes.ok) {
         const json = await recordsRes.json();
-        setRecords(json.data ?? json);
+        setRecords(json.data);
       }
       if (aggregatesRes.ok) {
         const json = await aggregatesRes.json();
-        setAggregates(json.data ?? json);
+        setAggregates(json.data);
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : "Network error";

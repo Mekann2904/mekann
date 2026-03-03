@@ -42,9 +42,6 @@ import { getConfig } from "./config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Re-export types for backward compatibility
-export type { SSEEventType, SSEEvent };
-
 // Global instances
 const sseEventBus = new SSEEventBus();
 let contextCleanupInterval: ReturnType<typeof setInterval> | null = null;
@@ -153,10 +150,6 @@ export function startUnifiedServer(
   // フロントエンドは /api/v2/* を使用
   app.route("/api/v2", apiApp);
   console.log("[web-ui] API routes mounted at /api/v2");
-
-  // 後方互換性のため /api/* もサポート（一時的）
-  app.route("/api", apiApp);
-  console.log("[web-ui] API routes also mounted at /api (for backward compatibility)");
 
   // ============= SSE Events =============
   // SSEイベントをJotai atomsに統合するためのエンドポイント

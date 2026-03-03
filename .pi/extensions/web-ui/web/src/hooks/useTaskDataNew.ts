@@ -46,7 +46,7 @@ export interface UseTaskDataReturn {
   clearError: () => void;
 }
 
-const API_BASE = "";
+const API_BASE = "/api/v2";
 
 /**
  * 新しいAPI（/api/v2）を使用するタスクデータフック
@@ -63,8 +63,8 @@ export function useTaskDataNew(pollInterval: number = 10000): UseTaskDataReturn 
     try {
       // 新しいHono APIを使用
       const [regularRes, ulRes] = await Promise.all([
-        fetch(`${API_BASE}/api/v2/tasks`),
-        fetch(`${API_BASE}/api/ul-workflow/tasks`),
+        fetch(`${API_BASE}/tasks`),
+        fetch(`${API_BASE}/ul-workflow/tasks`),
       ]);
 
       const regularData = regularRes.ok ? await regularRes.json() : { data: [] };
@@ -86,7 +86,7 @@ export function useTaskDataNew(pollInterval: number = 10000): UseTaskDataReturn 
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/v2/tasks/stats`);
+      const res = await fetch(`${API_BASE}/tasks/stats`);
       if (res.ok) {
         const data = await res.json();
         setStats(data.data);
@@ -102,7 +102,7 @@ export function useTaskDataNew(pollInterval: number = 10000): UseTaskDataReturn 
     priority: TaskPriority
   ): Promise<boolean> => {
     try {
-      const res = await fetch(`${API_BASE}/api/v2/tasks`, {
+      const res = await fetch(`${API_BASE}/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, status, priority }),
@@ -124,7 +124,7 @@ export function useTaskDataNew(pollInterval: number = 10000): UseTaskDataReturn 
 
   const updateTask = useCallback(async (updatedTask: Task): Promise<boolean> => {
     try {
-      const res = await fetch(`${API_BASE}/api/v2/tasks/${updatedTask.id}`, {
+      const res = await fetch(`${API_BASE}/tasks/${updatedTask.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -170,7 +170,7 @@ export function useTaskDataNew(pollInterval: number = 10000): UseTaskDataReturn 
     }
 
     try {
-      const res = await fetch(`${API_BASE}/api/v2/tasks/${taskId}`, {
+      const res = await fetch(`${API_BASE}/tasks/${taskId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
@@ -192,7 +192,7 @@ export function useTaskDataNew(pollInterval: number = 10000): UseTaskDataReturn 
 
   const deleteTask = useCallback(async (taskId: string): Promise<boolean> => {
     try {
-      const res = await fetch(`${API_BASE}/api/v2/tasks/${taskId}`, {
+      const res = await fetch(`${API_BASE}/tasks/${taskId}`, {
         method: "DELETE",
       });
 
@@ -212,7 +212,7 @@ export function useTaskDataNew(pollInterval: number = 10000): UseTaskDataReturn 
 
   const createSubtask = useCallback(async (parentId: string, title: string): Promise<boolean> => {
     try {
-      const res = await fetch(`${API_BASE}/api/v2/tasks`, {
+      const res = await fetch(`${API_BASE}/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -260,8 +260,8 @@ export function useTaskDataNew(pollInterval: number = 10000): UseTaskDataReturn 
       setError(null);
       try {
         const [regularRes, ulRes] = await Promise.all([
-          fetch(`${API_BASE}/api/v2/tasks`),
-          fetch(`${API_BASE}/api/ul-workflow/tasks`),
+          fetch(`${API_BASE}/tasks`),
+          fetch(`${API_BASE}/ul-workflow/tasks`),
         ]);
 
         const regularData = regularRes.ok ? await regularRes.json() : { data: [] };
