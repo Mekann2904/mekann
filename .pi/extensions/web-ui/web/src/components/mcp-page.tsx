@@ -496,7 +496,7 @@ export function McpPage() {
 
     try {
       // Use /api/mcp/servers to get all servers (including disconnected)
-      const res = await fetch("/api/mcp/servers");
+      const res = await fetch("/api/v2/mcp/servers");
       if (!res.ok) throw new Error("Failed to fetch servers");
       const json = await res.json();
       setData(json);

@@ -87,7 +87,7 @@ export const ContextUsagePage: FunctionalComponent = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/context-history");
+      const res = await fetch("/api/v2/context-history");
       if (!res.ok) {
         throw new Error(`HTTP error: ${res.status}`);
       }
