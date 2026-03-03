@@ -308,7 +308,7 @@ function ServerCard({
 // Tools view - aggregate all tools from connected servers
 function ToolsView({ servers }: { servers: McpServerInfo[] }) {
   const [tools, setTools] = useState<Array<{ serverId: string; tool: { name: string; description?: string } }>>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // 安定したサーバーID文字列を使用（配列参照の変化を防ぐ）
   const connectedServerIds = useMemo(
@@ -320,12 +320,14 @@ function ToolsView({ servers }: { servers: McpServerInfo[] }) {
     // 接続済みサーバーがない場合はスキップ
     if (!connectedServerIds) {
       setTools([]);
+      setLoading(false);
       return;
     }
 
     let cancelled = false;
+    setLoading(true);  // フェッチ開始時にローディング状態を設定
+
     const fetchAllTools = async () => {
-      setLoading(true);
       const results: Array<{ serverId: string; tool: { name: string; description?: string } }> = [];
 
       const ids = connectedServerIds.split(",");
@@ -408,7 +410,7 @@ function ToolsView({ servers }: { servers: McpServerInfo[] }) {
 // Resources view - aggregate all resources from connected servers
 function ResourcesView({ servers }: { servers: McpServerInfo[] }) {
   const [resources, setResources] = useState<Array<{ serverId: string; resource: { uri: string; name: string; mimeType?: string } }>>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // 安定したサーバーID文字列を使用（配列参照の変化を防ぐ）
   const connectedServerIds = useMemo(
@@ -420,12 +422,14 @@ function ResourcesView({ servers }: { servers: McpServerInfo[] }) {
     // 接続済みサーバーがない場合はスキップ
     if (!connectedServerIds) {
       setResources([]);
+      setLoading(false);
       return;
     }
 
     let cancelled = false;
+    setLoading(true);  // フェッチ開始時にローディング状態を設定
+
     const fetchAllResources = async () => {
-      setLoading(true);
       const results: Array<{ serverId: string; resource: { uri: string; name: string; mimeType?: string } }> = [];
 
       const ids = connectedServerIds.split(",");
