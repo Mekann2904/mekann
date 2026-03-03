@@ -143,7 +143,11 @@ export function startUnifiedServer(
   }
 
   // ============= API Routes (Hono) =============
+  // フロントエンドは /api/v2/* を使用
   const apiApp = createApp();
+  app.route("/api/v2", apiApp);
+
+  // 後方互換性のため /api/* もサポート（一時的）
   app.route("/api", apiApp);
 
   // ============= SSE Events =============

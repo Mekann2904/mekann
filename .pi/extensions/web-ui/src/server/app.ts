@@ -65,7 +65,7 @@ export function createApp(): Hono<AppContext> {
   app.use("*", errorHandler());
 
   // ヘルスチェック
-  app.get("/api/health", (c) => {
+  app.get("/health", (c) => {
     return c.json({
       success: true,
       data: {
@@ -76,16 +76,16 @@ export function createApp(): Hono<AppContext> {
     });
   });
 
-  // API ルート登録
-  app.route("/api/tasks", taskRoutes);
-  app.route("/api/instances", instanceRoutes);
-  app.route("/api/sse", sseRoutes);
-  app.route("/api/analytics", analyticsRoutes);
-  app.route("/api/theme", themeRoutes);
-  app.route("/api/agent-usage", agentUsageRoutes);
-  app.route("/api/context-history", contextHistoryRoutes);
-  app.route("/api/mcp", mcpRoutes);
-  app.route("/api/ul-workflow", ulWorkflowRoutes);
+  // API ルート登録（プレフィックスなしでマウントポイントで決定）
+  app.route("/tasks", taskRoutes);
+  app.route("/instances", instanceRoutes);
+  app.route("/sse", sseRoutes);
+  app.route("/analytics", analyticsRoutes);
+  app.route("/theme", themeRoutes);
+  app.route("/agent-usage", agentUsageRoutes);
+  app.route("/context-history", contextHistoryRoutes);
+  app.route("/mcp", mcpRoutes);
+  app.route("/ul-workflow", ulWorkflowRoutes);
 
   // 404 ハンドラー
   app.notFound(notFoundHandler);
