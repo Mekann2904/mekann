@@ -585,47 +585,65 @@ function serializeRuntimeLimits(limits: AgentRuntimeLimits): string {
   ].join(":");
 }
 
+/** BUG-004修正: スイーパー初期化状態を追跡するフラグ */
 let runtimeReservationSweeperInitializing = false;
-let runtimeReservationSweeperInitAttempts = 0;
-const MAX_SWEEPER_INIT_ATTEMPTS = 3;
+/** BUG-004修正: スイーパー初期化のPromiseを保持（重複作成防止） */
+let runtimeReservationSweeperInitPromise: Promise<void> | null = null;
 /** BUG-RC-002修正: タイマー作成の競合状態を防ぐためのMutex */
 const sweeperMutex = new Mutex();
 
 /**
- * Phase 4修正: 初期化試行回数を制限し、無限待機を防止
- * BUG-RC-002修正: Mutexを使用してアトミックな初期化を実現
+ * BUG-004修正: スイーパーの重複作成を防止
+ * - 初期化中フラグによる重複実行防止
+ * - 同じ初期化Promiseを共有して複数呼び出し元が同じ結果を待機
+ * - Mutexによる排他制御
  */
 async function ensureReservationSweeper(): Promise<void> {
   // 既に初期化済みの場合は即座にreturn
   if (runtimeReservationSweeper) return;
 
-  // BUG-RC-002修正: Mutexで保護された初期化
-  const release = await sweeperMutex.acquire();
-  try {
-    // 再度チェック（Mutex待機中に他が作成した可能性）
-    if (runtimeReservationSweeper) return;
-
-    // Bug #4 warning: 二重作成のリスクをログ
-    const debugRuntime = process.env.PI_DEBUG_RUNTIME === "1" || process.env.PI_DEBUG_RUNTIME_QUEUE === "1";
-    if (debugRuntime) {
-      console.warn(
-        "[agent-runtime] Creating reservation sweeper - ensure this is called once per session"
-      );
-    }
-
-    const sweepMs = resolveLimitFromEnv(
-      "PI_AGENT_RESERVATION_SWEEP_MS",
-      DEFAULT_RESERVATION_SWEEP_MS,
-      60_000,
-    );
-    runtimeReservationSweeper = setInterval(() => {
-      const runtime = getSharedRuntimeState();
-      cleanupExpiredReservations(runtime);
-    }, sweepMs);
-    runtimeReservationSweeper.unref?.();
-  } finally {
-    release();
+  // BUG-004修正: 初期化中の場合、既存のPromiseを返す（重複作成防止）
+  if (runtimeReservationSweeperInitializing && runtimeReservationSweeperInitPromise) {
+    return runtimeReservationSweeperInitPromise;
   }
+
+  // BUG-004修正: 初期化開始フラグを設定
+  runtimeReservationSweeperInitializing = true;
+
+  // BUG-004修正: 初期化Promiseを作成・保持
+  runtimeReservationSweeperInitPromise = (async () => {
+    // BUG-RC-002修正: Mutexで保護された初期化
+    const release = await sweeperMutex.acquire();
+    try {
+      // 再度チェック（Mutex待機中に他が作成した可能性）
+      if (runtimeReservationSweeper) return;
+
+      // Bug #4 warning: 二重作成のリスクをログ
+      const debugRuntime = process.env.PI_DEBUG_RUNTIME === "1" || process.env.PI_DEBUG_RUNTIME_QUEUE === "1";
+      if (debugRuntime) {
+        console.warn(
+          "[agent-runtime] Creating reservation sweeper - ensure this is called once per session"
+        );
+      }
+
+      const sweepMs = resolveLimitFromEnv(
+        "PI_AGENT_RESERVATION_SWEEP_MS",
+        DEFAULT_RESERVATION_SWEEP_MS,
+        60_000,
+      );
+      runtimeReservationSweeper = setInterval(() => {
+        const runtime = getSharedRuntimeState();
+        cleanupExpiredReservations(runtime);
+      }, sweepMs);
+      runtimeReservationSweeper.unref?.();
+    } finally {
+      release();
+      // BUG-004修正: 初期化完了後にフラグを解除
+      runtimeReservationSweeperInitializing = false;
+    }
+  })();
+
+  return runtimeReservationSweeperInitPromise;
 }
 
 /**
@@ -634,9 +652,9 @@ async function ensureReservationSweeper(): Promise<void> {
  * @deprecated ensureReservationSweeperAsync()の使用を推奨
  */
 function ensureReservationSweeperSync(): void {
-  // 既に初期化済みの場合は即座にreturn
-  if (runtimeReservationSweeper) return;
-  
+  // 既に初期化済みまたは初期化中の場合は即座にreturn
+  if (runtimeReservationSweeper || runtimeReservationSweeperInitializing) return;
+
   // 非同期版を起動（待機なし）
   ensureReservationSweeper().catch((err) => {
     console.warn("[agent-runtime] Reservation sweeper initialization failed:", err);

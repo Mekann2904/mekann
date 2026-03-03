@@ -1500,6 +1500,17 @@ export function tryAcquireLock(
   } catch (error: unknown) {
     const errorCode = (error as NodeJS.ErrnoException)?.code;
 
+    // BUG-005 FIX: Close the first FD if it was opened before retrying
+    // to prevent file descriptor leak when writeSync fails after openSync succeeds
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        // Ignore close errors
+      }
+      fd = undefined;
+    }
+
     if (errorCode === "EEXIST") {
       // File exists - check if it's expired and try atomic cleanup + reacquisition
       const cleaned = tryCleanupExpiredLock(lockFile, nowMs);

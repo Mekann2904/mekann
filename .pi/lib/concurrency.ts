@@ -60,8 +60,9 @@ export interface ConcurrencyRunOptions<T = unknown> {
 }
 
 /**
- * Result wrapper for tracking success/failure of individual workers.
- * Used internally to ensure all workers complete before throwing errors.
+ * ワーカー実行結果の内部ラッパー
+ * @summary 個別ワーカーの成功/失敗を追跡
+ * @description 全ワーカーの完了を待ってからエラーをthrowするために使用
  */
 interface WorkerResult<TResult> {
   index: number;
@@ -77,17 +78,36 @@ export type SettledResult<TResult> =
   | { status: 'fulfilled'; value: TResult; index: number }
   | { status: 'rejected'; reason: unknown; index: number };
 
+/**
+ * 並行数制限を正規化する
+ * @summary 制限値を1以上itemCount以下に正規化
+ * @param limit - 元の制限値
+ * @param itemCount - アイテム総数
+ * @returns 正規化された制限値（1 <= result <= itemCount）
+ */
 function toPositiveLimit(limit: number, itemCount: number): number {
   const safeLimit = Number.isFinite(limit) ? Math.trunc(limit) : 1;
   return Math.max(1, Math.min(itemCount, safeLimit));
 }
 
+/**
+ * シグナルが中断状態かチェックし、中断時はエラーを投げる
+ * @summary 中断シグナルの検証
+ * @param signal - チェック対象のAbortSignal
+ * @throws {Error} signalが中断状態の場合 "concurrency pool aborted"
+ */
 function ensureNotAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
     throw new Error("concurrency pool aborted");
   }
 }
 
+/**
+ * エラーがプール中断エラーか判定する
+ * @summary プール中断エラーの識別
+ * @param error - 判定対象のエラー
+ * @returns プール中断エラーの場合true
+ */
 function isPoolAbortError(error: unknown): boolean {
   return error instanceof Error && error.message === "concurrency pool aborted";
 }
