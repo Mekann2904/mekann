@@ -73,6 +73,18 @@ export interface BashOptions {
 }
 
 /**
+ * エラー詳細情報
+ */
+export interface BashErrorDetails {
+  /** 表示用の短縮メッセージ（最大200文字） */
+  message: string;
+  /** 完全なエラーメッセージ */
+  fullMessage: string;
+  /** メッセージが切り詰められたか */
+  truncated: boolean;
+}
+
+/**
  * safeBash の結果
  */
 export interface SafeBashResult extends BaseToolResult {
@@ -81,6 +93,8 @@ export interface SafeBashResult extends BaseToolResult {
   exitCode: number;
   /** exit code が非ゼロだが許容された場合 */
   isNonZeroAllowed?: boolean;
+  /** エラー詳細情報（status='error'時のみ設定） */
+  errorDetails?: BashErrorDetails;
 }
 
 /**
@@ -164,17 +178,25 @@ export function safeBash(options: BashOptions): SafeBashResult {
     }
 
     // エラーとして返す（ただし非クリティカルの可能性）
+    const truncatedMessage = stderr.slice(0, 200);
+    const isTruncated = stderr.length > 200;
     return {
       status: "error",
       isCritical: false, // bash エラーは通常リカバリ可能
       stdout,
       stderr,
       exitCode,
-      error: `Command exited with code ${exitCode}: ${stderr.slice(0, 200)}`,
+      error: `Command exited with code ${exitCode}: ${truncatedMessage}${isTruncated ? '...' : ''}`,
+      errorDetails: {
+        message: truncatedMessage,
+        fullMessage: stderr,
+        truncated: isTruncated,
+      },
       suggestions: [
         "コマンド構文を確認してください",
         "必要なツールがインストールされているか確認してください",
         exitCode === 1 && !allowExitOne ? "allowExitOne: true で exit 1 を許容できます" : undefined,
+        isTruncated ? "完全なエラーメッセージは errorDetails.fullMessage を参照してください" : undefined,
       ].filter(Boolean) as string[],
     };
   }
