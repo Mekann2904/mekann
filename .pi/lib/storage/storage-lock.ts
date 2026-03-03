@@ -249,6 +249,8 @@ export function withFileLock<T>(
       const startTime = Date.now();
       let pollCount = 0;
       const maxPolls = Math.max(1, Math.ceil(maxWaitMs / 10)); // ~10ms intervals
+      let currentDelayMs = 1; // Start with 1ms delay
+      const maxDelayMs = 100; // Cap at 100ms to maintain responsiveness
 
       while (!acquired && pollCount < maxPolls) {
         acquired = tryAcquireLock(lockFile);
@@ -259,12 +261,13 @@ export function withFileLock<T>(
           break;
         }
 
-        // Short busy-wait (~1ms) to avoid tight loop while respecting environment constraints
-        // This is a compromise between "no busy-wait" and "respect maxWaitMs"
+        // Exponential backoff: double the delay each iteration, capped at maxDelayMs
+        // This reduces CPU usage compared to fixed short delays
         const waitStart = Date.now();
-        while (Date.now() - waitStart < 1) {
-          // Busy-wait for ~1ms
+        while (Date.now() - waitStart < currentDelayMs) {
+          // Busy-wait with increasing delay
         }
+        currentDelayMs = Math.min(currentDelayMs * 2, maxDelayMs);
         pollCount++;
       }
 
