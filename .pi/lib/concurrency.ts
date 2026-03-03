@@ -63,9 +63,14 @@ export interface ConcurrencyRunOptions<T = unknown> {
  * ワーカー実行結果の内部ラッパー
  * @summary 個別ワーカーの成功/失敗を追跡
  * @description 全ワーカーの完了を待ってからエラーをthrowするために使用
+ * @property itemIndex - 元のアイテム配列内のインデックス（優先度スケジューリング前）
+ * @property executionOrder - 実行順序（優先度スケジューリング後の順位）
+ * @property result - 成功時の結果
+ * @property error - 失敗時のエラー
  */
 interface WorkerResult<TResult> {
-  index: number;
+  itemIndex: number;
+  executionOrder: number;
   result?: TResult;
   error?: unknown;
 }
@@ -262,7 +267,7 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
 
       try {
         const result = await worker(items[currentIndex], currentIndex, effectiveSignal);
-        results[currentIndex] = { index: currentIndex, result };
+        results[currentIndex] = { itemIndex: currentIndex, executionOrder: cursorIndex, result };
       } catch (error) {
         // Capture the first error but continue processing to avoid dangling workers
         if (firstError === undefined) {
@@ -271,7 +276,7 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
             poolAbortController.abort();
           }
         }
-        results[currentIndex] = { index: currentIndex, error };
+        results[currentIndex] = { itemIndex: currentIndex, executionOrder: cursorIndex, error };
       }
 
       try {
@@ -300,7 +305,7 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
       if (!item) {
         return {
           status: 'rejected' as const,
-          reason: new Error(`concurrency pool internal error: missing result at index ${index}`),
+          reason: new Error(`concurrency pool internal error: missing result at itemIndex=${index}`),
           index,
         };
       }
@@ -325,11 +330,14 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
   const errorIndices: number[] = [];
   return results.map((item, index) => {
     if (!item) {
-      throw new Error(`concurrency pool internal error: missing result at index ${index}`);
+      throw new Error(`concurrency pool internal error: missing result at itemIndex=${index}`);
     }
     if (item?.error) {
       // エラー発生インデックスを記録（デバッグ用）
+      // BUG-013 fix: executionOrderを含めてデバッグ情報を強化
+      const execOrder = 'executionOrder' in item ? item.executionOrder : 'N/A';
       errorIndices.push(index);
+      console.debug(`[concurrency] Worker error at itemIndex=${index}, executionOrder=${execOrder}`);
       throw item.error;
     }
     return item.result as TResult;

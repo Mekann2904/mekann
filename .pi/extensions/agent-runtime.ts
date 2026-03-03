@@ -1103,7 +1103,8 @@ function trimPendingQueueToLimit(runtime: AgentRuntimeState): RuntimeQueueEntry 
 
 function toQueueClass(input: RuntimeDispatchPermitInput): RuntimeQueueClass {
   if (input.queueClass) return input.queueClass;
-  if (input.source === "user-interactive" || input.toolName === "question") return "interactive";
+  // BUG-009 fix: nullチェックを追加
+  if (input.source === "user-interactive" || (input.toolName && input.toolName === "question")) return "interactive";
   if (input.source === "background") return "batch";
   return "standard";
 }
@@ -1499,7 +1500,10 @@ export async function reserveRuntimeCapacity(
       if (remainingDelayMs > 0) {
         await wait(remainingDelayMs, input.signal);
       }
-    } catch {
+    } catch (error) {
+      // BUG-009 fix: エラーをログに記録（元はcatch {}で無視していた）
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[agent-runtime] reserveRuntimeCapacity failed: ${errorMessage}`);
       return {
         ...attempted,
         waitedMs: runtimeNow() - startedAt,
@@ -1861,7 +1865,10 @@ export async function waitForRuntimeOrchestrationTurn(
       if (remainingDelayMs > 0) {
         await wait(remainingDelayMs, input.signal);
       }
-    } catch {
+    } catch (error) {
+      // BUG-010 fix: エラーをログに記録（元はcatch {}で無視していた）
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[agent-runtime] waitForRuntimeOrchestrationTurn failed: ${errorMessage}`);
       removeQueuedEntry(runtime, entryId);
       return {
         allowed: false,
@@ -1890,6 +1897,22 @@ export async function acquireRuntimeDispatchPermit(
     snapshot.limits.capacityPollMs,
     60_000,
   );
+  // BUG-010 fix: nullチェックを追加
+  if (!input.candidate) {
+    return {
+      allowed: false,
+      waitedMs: 0,
+      attempts: 1,
+      timedOut: false,
+      aborted: false,
+      queuePosition: 0,
+      queuedAhead: 0,
+      orchestrationId: createRuntimeQueueEntryId(),
+      projectedRequests: 0,
+      projectedLlm: 0,
+      reasons: ["candidate is required"],
+    };
+  }
   const additionalRequests = clampPlannedCount(input.candidate.additionalRequests);
   const additionalLlm = clampPlannedCount(input.candidate.additionalLlm);
 
