@@ -20,6 +20,7 @@
 import type {
   Task,
   CreateTaskInput,
+  CreateSubtaskInput,
   UpdateTaskInput,
   TaskFilter,
   TaskStats,
@@ -155,6 +156,45 @@ export class TaskService {
 
     this.repository.save(updated);
     return updated;
+  }
+
+  /**
+   * サブタスクを作成
+   */
+  createSubtask(parentId: string, input: CreateSubtaskInput): Task | null {
+    const parent = this.repository.findById(parentId);
+    if (!parent) {
+      return null;
+    }
+
+    const now = new Date().toISOString();
+    const id = this.generateId();
+
+    const subtask: Task = {
+      id,
+      title: input.title,
+      description: input.description ?? null,
+      status: input.status,
+      priority: input.priority ?? parent.priority, // デフォルトは親の優先度
+      tags: [...parent.tags], // 親のタグを継承
+      dueDate: parent.dueDate, // 親の期限を継承
+      assignee: parent.assignee, // 親の担当者を継承
+      parentTaskId: parentId,
+      createdAt: now,
+      updatedAt: now,
+      completedAt: null,
+    };
+
+    this.repository.save(subtask);
+    return subtask;
+  }
+
+  /**
+   * サブタスク一覧を取得
+   */
+  getSubtasks(parentId: string): Task[] {
+    const allTasks = this.repository.findAll();
+    return allTasks.filter((t) => t.parentTaskId === parentId);
   }
 
   /**

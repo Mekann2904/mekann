@@ -97,6 +97,16 @@ export const TaskFilterSchema = z.object({
 });
 
 /**
+ * サブタスク作成スキーマ
+ */
+export const CreateSubtaskSchema = z.object({
+  title: z.string().min(1, "タイトルは必須です").max(200),
+  description: z.string().max(5000).optional(),
+  status: TaskStatusSchema.optional().default("todo"),
+  priority: TaskPrioritySchema.optional(),
+});
+
+/**
  * タスク統計スキーマ
  */
 export const TaskStatsSchema = z.object({
@@ -122,5 +132,6 @@ export type TaskPriority = z.infer<typeof TaskPrioritySchema>;
 export type Task = z.infer<typeof TaskSchema>;
 export type CreateTaskInput = z.infer<typeof CreateTaskSchema>;
 export type UpdateTaskInput = z.infer<typeof UpdateTaskSchema>;
+export type CreateSubtaskInput = z.infer<typeof CreateSubtaskSchema>;
 export type TaskFilter = z.infer<typeof TaskFilterSchema>;
 export type TaskStats = z.infer<typeof TaskStatsSchema>;

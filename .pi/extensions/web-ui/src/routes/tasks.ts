@@ -20,10 +20,10 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { getTaskService } from "../services/task-service.js";
-import { CreateTaskSchema, UpdateTaskSchema, TaskFilterSchema } from "../schemas/task.schema.js";
+import { CreateTaskSchema, CreateSubtaskSchema, UpdateTaskSchema, TaskFilterSchema } from "../schemas/task.schema.js";
 import { z } from "zod";
 import type { SuccessResponse } from "../schemas/common.schema.js";
-import type { Task, TaskStats, CreateTaskInput, UpdateTaskInput } from "../schemas/task.schema.js";
+import type { Task, TaskStats, CreateTaskInput, CreateSubtaskInput, UpdateTaskInput } from "../schemas/task.schema.js";
 
 /**
  * IDパラメータスキーマ
@@ -148,5 +148,46 @@ taskRoutes.delete("/:id", zValidator("param", IdParamSchema), (c) => {
   return c.json<SuccessResponse<{ deletedTaskId: string }>>({
     success: true,
     data: { deletedTaskId: id },
+  });
+});
+
+/**
+ * POST /api/tasks/:id/subtasks - サブタスク作成
+ */
+taskRoutes.post("/:id/subtasks", zValidator("param", IdParamSchema), zValidator("json", CreateSubtaskSchema), (c) => {
+  const { id } = c.req.valid("param");
+  const input = c.req.valid("json");
+  const service = getTaskService();
+
+  const subtask = service.createSubtask(id, input as CreateSubtaskInput);
+
+  if (!subtask) {
+    return c.json({ success: false, error: "親タスクが見つかりません" }, 404);
+  }
+
+  return c.json<SuccessResponse<Task>>({
+    success: true,
+    data: subtask,
+  }, 201);
+});
+
+/**
+ * GET /api/tasks/:id/subtasks - サブタスク一覧取得
+ */
+taskRoutes.get("/:id/subtasks", zValidator("param", IdParamSchema), (c) => {
+  const { id } = c.req.valid("param");
+  const service = getTaskService();
+
+  // 親タスクの存在確認
+  const parent = service.getById(id);
+  if (!parent) {
+    return c.json({ success: false, error: "親タスクが見つかりません" }, 404);
+  }
+
+  const subtasks = service.getSubtasks(id);
+
+  return c.json<SuccessResponse<Task[]>>({
+    success: true,
+    data: subtasks,
   });
 });
