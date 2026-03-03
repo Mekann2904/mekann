@@ -38,6 +38,7 @@
 import { execSync } from "node:child_process";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { recordInjection } from "../lib/context-breakdown-utils.js";
 
 // モジュールレベルのフラグ（reload時のリスナー重複登録防止）
 let isInitialized = false;
@@ -95,6 +96,9 @@ export default function (pi: ExtensionAPI) {
       `${contextParts.join("\n\n")}\n\n` +
       `---\n` +
       `_End of startup context._`;
+
+    // Record injection for context breakdown tracking
+    recordInjection('startup-context', injectedContext);
 
     // Append to system prompt instead of injecting a user message
     // This way it's sent to LLM but not displayed in TUI

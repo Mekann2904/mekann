@@ -21,6 +21,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { recordInjection } from "../lib/context-breakdown-utils.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -77,6 +78,10 @@ export default function (pi: ExtensionAPI) {
     if (additionalPrompt) {
       // マーカー付きで追加（重複検出用）
       const markedContent = `\n\n${INJECTION_MARKER}\n${additionalPrompt}`;
+      
+      // Record injection for context breakdown tracking
+      recordInjection('inject-prompt', markedContent);
+      
       return {
         systemPrompt: event.systemPrompt + markedContent,
       };
