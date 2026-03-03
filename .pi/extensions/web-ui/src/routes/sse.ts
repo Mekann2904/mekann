@@ -18,49 +18,63 @@
  */
 
 import { Hono } from "hono";
-import { getSSEService } from "../services/sse-service.js";
-import { getInstanceService } from "../services/instance-service.js";
-import type { ServerResponse } from "http";
 import { randomUUID } from "crypto";
+
+/**
+ * グローバルSSEクライアント管理
+ */
+const sseClients = new Map<string, {
+  controller: ReadableStreamDefaultController<Uint8Array>;
+  lastHeartbeat: number;
+}>();
 
 /**
  * SSEルート
  */
 export const sseRoutes = new Hono();
 
+// ハートビート間隔（30秒）
+setInterval(() => {
+  const now = Date.now();
+  const msg = `event: heartbeat\ndata: ${JSON.stringify({ timestamp: now })}\n\n`;
+  const encoder = new TextEncoder();
+
+  sseClients.forEach((client, id) => {
+    try {
+      client.controller.enqueue(encoder.encode(msg));
+      client.lastHeartbeat = now;
+    } catch {
+      // クライアントが切断された
+      sseClients.delete(id);
+    }
+  });
+}, 30000);
+
 /**
  * GET / - SSE接続
  */
-sseRoutes.get("/", async (c) => {
-  const sseService = getSSEService();
-
-  // クライアントID生成
+sseRoutes.get("/", (c) => {
   const clientId = randomUUID();
+  const encoder = new TextEncoder();
 
-  // SSE用のReadableStreamを作成
-  const stream = new ReadableStream({
+  const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       // クライアントを登録
-      sseService.addClient(clientId, {
-        write: (data: string) => {
-          controller.enqueue(new TextEncoder().encode(data));
-        },
-        end: () => {
-          try {
-            controller.close();
-          } catch {
-            // 既にクローズされている場合は無視
-          }
-        },
+      sseClients.set(clientId, {
+        controller,
+        lastHeartbeat: Date.now(),
       });
 
       // 初期接続メッセージ
       const connectMsg = `event: connected\ndata: ${JSON.stringify({ clientId })}\n\n`;
-      controller.enqueue(new TextEncoder().encode(connectMsg));
+      controller.enqueue(encoder.encode(connectMsg));
+
+      console.log(`[sse] Client ${clientId} connected`);
     },
     cancel() {
       // クライアント切断時のクリーンアップ
-      sseService.removeClient(clientId);
+      sseClients.delete(clientId);
+      console.log(`[sse] Client ${clientId} disconnected`);
     },
   });
 
@@ -75,40 +89,59 @@ sseRoutes.get("/", async (c) => {
 });
 
 /**
- * POST /api/sse/broadcast - 手動ブロードキャスト（デバッグ用）
+ * POST /broadcast - 手動ブロードキャスト（デバッグ用）
  */
 sseRoutes.post("/broadcast", async (c) => {
-  const body = await c.req.json();
-  const { type, data } = body;
+  try {
+    const body = await c.req.json();
+    const { type, data } = body;
 
-  if (!type || !data) {
-    return c.json({ success: false, error: "typeとdataが必要です" }, 400);
+    if (!type || !data) {
+      return c.json({ success: false, error: "typeとdataが必要です" }, 400);
+    }
+
+    const msg = `event: ${type}\ndata: ${JSON.stringify(data)}\nid: ${Date.now()}\n\n`;
+    const encoder = new TextEncoder();
+
+    sseClients.forEach((client, id) => {
+      try {
+        client.controller.enqueue(encoder.encode(msg));
+      } catch {
+        sseClients.delete(id);
+      }
+    });
+
+    return c.json({
+      success: true,
+      data: { broadcastedTo: sseClients.size },
+    });
+  } catch (error) {
+    return c.json({ success: false, error: "Invalid JSON" }, 400);
   }
+});
 
-  const sseService = getSSEService();
-  const clientCount = sseService.getClientCount();
-
-  sseService.broadcast({
-    type,
-    data,
-    timestamp: Date.now(),
-  });
-
+/**
+ * GET /clients - 接続クライアント数
+ */
+sseRoutes.get("/clients", (c) => {
   return c.json({
     success: true,
-    data: { broadcastedTo: clientCount },
+    data: { clientCount: sseClients.size },
   });
 });
 
 /**
- * GET /api/sse/clients - 接続クライアント数
+ * 外部からのブロードキャスト用
  */
-sseRoutes.get("/clients", (c) => {
-  const sseService = getSSEService();
-  const count = sseService.getClientCount();
+export function broadcastSSE(event: { type: string; data: unknown }): void {
+  const msg = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\nid: ${Date.now()}\n\n`;
+  const encoder = new TextEncoder();
 
-  return c.json({
-    success: true,
-    data: { clientCount: count },
+  sseClients.forEach((client, id) => {
+    try {
+      client.controller.enqueue(encoder.encode(msg));
+    } catch {
+      sseClients.delete(id);
+    }
   });
-});
+}

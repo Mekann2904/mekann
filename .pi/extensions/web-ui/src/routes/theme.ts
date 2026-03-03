@@ -54,11 +54,18 @@ themeRoutes.get("/", (c) => {
 themeRoutes.post("/", async (c) => {
   try {
     const body = await c.req.json();
+    console.log("[theme] Received body:", body);
+
     const parsed = UpdateThemeSchema.safeParse(body);
 
     if (!parsed.success) {
+      console.error("[theme] Validation error:", parsed.error.errors);
       return c.json(
-        { success: false, error: "Invalid theme settings", details: parsed.error.message },
+        {
+          success: false,
+          error: "Invalid theme settings",
+          details: parsed.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')
+        },
         400
       );
     }
@@ -71,6 +78,7 @@ themeRoutes.post("/", async (c) => {
       data: updated,
     });
   } catch (error) {
+    console.error("[theme] Error:", error);
     const message = error instanceof Error ? error.message : String(error);
     return c.json({ success: false, error: "Failed to update theme", details: message }, 500);
   }
