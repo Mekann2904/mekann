@@ -651,7 +651,7 @@ export default function (pi: ExtensionAPI) {
 			});
 
 			return {
-				content: [{ type: "text", text: `Step status updated:\n\n• ${step?.title} → ${params.status}` }],
+				content: [{ type: "text", text: `Step status updated (Plan: ${plan.id}):\n\n• ${step?.title} → ${params.status}` }],
 				details: { planId: plan.id, stepId: params.stepId, status: params.status }
 			};
 		},
@@ -788,7 +788,7 @@ export default function (pi: ExtensionAPI) {
 			});
 
 			return {
-				content: [{ type: "text", text: `Plan "${plan.name}" status updated to: ${params.status}` }],
+				content: [{ type: "text", text: `Plan "${plan.name}" (ID: ${plan.id}) status updated to: ${params.status}` }],
 				details: { planId: plan.id, status: params.status }
 			};
 		},
