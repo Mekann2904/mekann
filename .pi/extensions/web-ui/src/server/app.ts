@@ -25,6 +25,8 @@ import { errorHandler, notFoundHandler } from "../middleware/error-handler.js";
 import { taskRoutes } from "../routes/tasks.js";
 import { instanceRoutes } from "../routes/instances.js";
 import { sseRoutes } from "../routes/sse.js";
+import { analyticsRoutes } from "../routes/analytics.js";
+import { themeRoutes } from "../routes/theme.js";
 
 /**
  * アプリケーションコンテキスト型
@@ -74,9 +76,10 @@ export function createApp(): Hono<AppContext> {
   app.route("/api/tasks", taskRoutes);
   app.route("/api/instances", instanceRoutes);
   app.route("/api/sse", sseRoutes);
+  app.route("/api/analytics", analyticsRoutes);
+  app.route("/api/theme", themeRoutes);
 
   // TODO: 他のルートを追加
-  // app.route("/api/analytics", analyticsRoutes);
   // app.route("/api/mcp", mcpRoutes);
   // app.route("/api/ul-workflow", ulWorkflowRoutes);
 
