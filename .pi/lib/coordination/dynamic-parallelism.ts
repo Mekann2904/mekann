@@ -222,7 +222,9 @@ export class DynamicParallelismAdjuster {
     const state = this.getOrCreateState(key);
     const now = Date.now();
 
-    // Record the error
+    // Record the error and update state atomically within this synchronous function
+    // JavaScript's single-threaded nature ensures no race conditions here,
+    // but we keep all related operations together for clarity
     state.recentErrors.push({ type: errorType, timestamp: now });
     this.pruneErrors(state);
 
@@ -248,11 +250,13 @@ export class DynamicParallelismAdjuster {
         break;
     }
 
-    // Apply reduction
+    // Apply reduction with floating-point safety
     const oldParallelism = state.config.currentParallelism;
+    const rawParallelism = state.config.currentParallelism * (1 - reductionFactor);
+    // Clamp to valid range with epsilon to prevent floating-point undershoot
     const newParallelism = Math.max(
       this.config.minParallelism,
-      Math.floor(state.config.currentParallelism * (1 - reductionFactor))
+      Math.max(0, Math.floor(rawParallelism + 1e-10)) // Add epsilon before floor to avoid FP issues
     );
 
     if (newParallelism !== oldParallelism) {
