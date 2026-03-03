@@ -24,6 +24,9 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+/** 重複検出用マーカー */
+const INJECTION_MARKER = "<!-- INJECT_SYSTEM_PROMPT -->";
+
 /**
  * docsディレクトリからガイドファイルを読み込む
  * @param filename - ファイル名
@@ -51,13 +54,18 @@ export default function (pi: ExtensionAPI) {
   if (isInitialized) return;
   isInitialized = true;
 
-  pi.on("before_agent_start", async (event, ctx) => {
+  pi.on("before_agent_start", async (event, _ctx) => {
+    // 重複注入を防ぐため、既にマーカーが含まれている場合はスキップ
+    if (event.systemPrompt && event.systemPrompt.includes(INJECTION_MARKER)) {
+      return undefined;
+    }
+
     let additionalPrompt = "";
 
     // UL Mode Guideline
     const ulModeGuide = readGuideFile("ul-mode-guide.md");
     if (ulModeGuide) {
-      additionalPrompt += "\n\n---\n\n# UL Mode Guideline\n\n" + ulModeGuide;
+      additionalPrompt += "\n\n# UL Mode Guideline\n\n" + ulModeGuide;
     }
 
     // DAG Execution Guide
@@ -67,8 +75,10 @@ export default function (pi: ExtensionAPI) {
     }
 
     if (additionalPrompt) {
+      // マーカー付きで追加（重複検出用）
+      const markedContent = `\n\n${INJECTION_MARKER}\n${additionalPrompt}`;
       return {
-        systemPrompt: event.systemPrompt + additionalPrompt,
+        systemPrompt: event.systemPrompt + markedContent,
       };
     }
     return undefined;

@@ -22,25 +22,6 @@
 
 ---
 
-# UL Mode Guideline
-
-基本フロー: Research → Plan → [ユーザーレビュー] → Implement → Commit
-
-> 拡張機能`inject-system-prompt`により、詳細なガイドラインが自動的にシステムプロンプトに注入されます。
-
----
-
-# DAG Execution Guide
-
-基本原則: 複雑なタスクはDAGで並列化し、レイテンシを削減する
-
-- `subagent_run_dag` - タスクをDAGに分解して並列実行
-- `agent_team_run_parallel` - 複数チームを並列実行
-
-> 拡張機能`inject-system-prompt`により、詳細なガイドラインが自動的にシステムプロンプトに注入されます。
-
----
-
 # Protected Files (DO NOT DELETE)
 
 These files are **system-critical** and must NOT be deleted, renamed, or moved:

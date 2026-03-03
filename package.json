@@ -69,6 +69,7 @@
       "./.pi/extensions/enhanced-read.ts",
       "./.pi/extensions/github-agent.ts",
       "./.pi/extensions/playwright-cli.ts",
+      "./.pi/extensions/inject-system-prompt.ts",
       "./.pi/extensions/invariant-pipeline.ts",
       "./.pi/extensions/kitty-status-integration.ts",
       "./.pi/extensions/loop.ts",
