@@ -25,17 +25,29 @@ export const agentUsageRoutes = new Hono();
  */
 agentUsageRoutes.get("/", (c) => {
   try {
-    const usagePath = path.join(process.cwd(), ".pi", "agent-usage.json");
+    // 正しいパス: .pi/analytics/agent-usage-stats.json
+    const usagePath = path.join(process.cwd(), ".pi", "analytics", "agent-usage-stats.json");
 
     if (!fs.existsSync(usagePath)) {
       return c.json({ data: { features: {}, events: [], totals: { calls: 0, errors: 0 } } });
     }
 
     const content = fs.readFileSync(usagePath, "utf-8");
-    const data = JSON.parse(content);
+    const rawData = JSON.parse(content);
 
-    // フロントエンドが期待する形式で返す（successラッパーなし）
-    return c.json(data);
+    // フロントエンドが期待する形式に変換
+    const data = {
+      ...rawData,
+      totals: {
+        calls: rawData.totals.toolCalls ?? rawData.totals.calls ?? 0,
+        errors: rawData.totals.toolErrors ?? rawData.totals.errors ?? 0,
+        agentRuns: rawData.totals.agentRuns ?? 0,
+        agentRunErrors: rawData.totals.agentRunErrors ?? 0,
+      }
+    };
+
+    // フロントエンドが期待する形式で返す（dataラッパー付き）
+    return c.json({ data });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return c.json({ success: false, error: "Failed to get agent usage", details: message }, 500);
