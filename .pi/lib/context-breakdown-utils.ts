@@ -850,8 +850,50 @@ interface TrackedSource {
   timestamp: number;
 }
 
-/** グローバルな追跡状態 */
-const trackedSources: TrackedSource[] = [];
+/** セッション固有の追跡状態 */
+const sessionTrackedSources = new Map<string, TrackedSource[]>();
+
+/** 現在のアクティブセッションID */
+let currentSessionId: string | null = null;
+
+/**
+ * @summary セッションIDを取得または生成
+ * @param ctx ExtensionAPIコンテキスト
+ * @returns セッションID
+ */
+function getSessionId(ctx?: { sessionManager?: { getSessionFile?: () => string } }): string {
+  // ctxからセッション識別子を取得（可能な場合）
+  if (ctx?.sessionManager?.getSessionFile) {
+    const sessionFile = ctx.sessionManager.getSessionFile();
+    return sessionFile.replace(/[^a-zA-Z0-9]/g, '_');
+  }
+  
+  // フォールバック: 現在のセッションIDまたは新規生成
+  if (!currentSessionId) {
+    currentSessionId = `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+  }
+  return currentSessionId;
+}
+
+/**
+ * @summary 新しいセッションを開始
+ * @param ctx ExtensionAPIコンテキスト（オプション）
+ */
+export function startSession(ctx?: { sessionManager?: { getSessionFile?: () => string } }): void {
+  currentSessionId = getSessionId(ctx);
+  // 既存のエントリがあればクリア
+  sessionTrackedSources.delete(currentSessionId);
+}
+
+/**
+ * @summary セッションを終了
+ */
+export function endSession(): void {
+  if (currentSessionId) {
+    sessionTrackedSources.delete(currentSessionId);
+    currentSessionId = null;
+  }
+}
 
 /**
  * @summary コンテキスト注入を記録
@@ -859,7 +901,14 @@ const trackedSources: TrackedSource[] = [];
  * @param content 注入されたコンテンツ
  */
 export function recordInjection(source: string, content: string): void {
-  trackedSources.push({
+  const sessionId = currentSessionId || getSessionId();
+  
+  if (!sessionTrackedSources.has(sessionId)) {
+    sessionTrackedSources.set(sessionId, []);
+  }
+  
+  const sources = sessionTrackedSources.get(sessionId)!;
+  sources.push({
     source,
     content,
     charCount: content.length,
@@ -867,7 +916,7 @@ export function recordInjection(source: string, content: string): void {
   });
   
   const tokenEstimate = Math.ceil(content.length / 4);
-  console.log(`[context-breakdown] Injection recorded: ${source} (~${tokenEstimate} tokens)`);
+  console.log(`[context-breakdown] Injection recorded: ${source} (~${tokenEstimate} tokens) [session: ${sessionId.slice(0, 8)}...]`);
 }
 
 /**
@@ -875,7 +924,10 @@ export function recordInjection(source: string, content: string): void {
  * @returns ソース情報配列（injectedContent含む）
  */
 export function getTrackedSources(): Array<{ source: string; charCount: number; injectedContent?: string }> {
-  return trackedSources.map(s => ({ 
+  const sessionId = currentSessionId || getSessionId();
+  const sources = sessionTrackedSources.get(sessionId) || [];
+  
+  return sources.map(s => ({ 
     source: s.source, 
     charCount: s.charCount,
     injectedContent: s.content 
@@ -886,7 +938,8 @@ export function getTrackedSources(): Array<{ source: string; charCount: number; 
  * @summary 追跡状態をクリア
  */
 export function clearTrackedSources(): void {
-  trackedSources.length = 0;
+  const sessionId = currentSessionId || getSessionId();
+  sessionTrackedSources.delete(sessionId);
 }
 
 // ============================================================================

@@ -38,6 +38,7 @@
 import { execSync } from "node:child_process";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { startSession, recordInjection } from "../lib/context-breakdown-utils.js";
 import { recordInjection } from "../lib/context-breakdown-utils.js";
 
 // モジュールレベルのフラグ（reload時のリスナー重複登録防止）
@@ -49,8 +50,9 @@ export default function (pi: ExtensionAPI) {
 
   let isFirstPrompt = true;
 
-  pi.on("session_start", async (_event, _ctx) => {
+  pi.on("session_start", async (_event, ctx) => {
     isFirstPrompt = true;
+    startSession(ctx);
   });
 
   pi.on("before_agent_start", async (event, _ctx) => {

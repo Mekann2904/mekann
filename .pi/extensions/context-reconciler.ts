@@ -35,7 +35,12 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { ContextBreakdown, ContextSourceInfo } from "../lib/types.js";
-import { getTrackedSources, clearTrackedSources } from "../lib/context-breakdown-utils.js";
+import { 
+  getTrackedSources, 
+  clearTrackedSources, 
+  startSession, 
+  endSession 
+} from "../lib/context-breakdown-utils.js";
 
 /** 最後の照合結果を保持 */
 let lastReconciliation: ContextBreakdown | null = null;
@@ -163,6 +168,11 @@ export default function (pi: ExtensionAPI) {
   if (isInitialized) return;
   isInitialized = true;
 
+  // セッション開始時に追跡状態を初期化
+  pi.on("session_start", async (_event, ctx) => {
+    startSession(ctx);
+  });
+
   // agent_endイベントでトークン使用量を照合
   pi.on("agent_end", async (_event, ctx) => {
     const usage = ctx.getContextUsage?.();
@@ -186,7 +196,7 @@ export default function (pi: ExtensionAPI) {
 
   // セッション終了時に追跡状態をリセット
   pi.on("session_shutdown", async () => {
-    clearTrackedSources();
+    endSession();
     lastReconciliation = null;
     isInitialized = false;
   });
