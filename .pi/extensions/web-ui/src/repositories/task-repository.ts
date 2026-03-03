@@ -18,8 +18,43 @@
  */
 
 import type { Task, TaskStats } from "../schemas/task.schema.js";
-import { JsonStorage, SHARED_DIR } from "../lib/storage.js";
-import { join } from "path";
+import { JsonStorage } from "../lib/storage.js";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+import { existsSync } from "fs";
+
+// tasks/storage.jsonが存在する.piディレクトリを探す
+function findPiDir(): string {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  
+  // 上位ディレクトリを順に探索
+  let current = __dirname;
+  for (let i = 0; i < 10; i++) {
+    const tasksFile = join(current, ".pi", "tasks", "storage.json");
+    if (existsSync(tasksFile)) {
+      return join(current, ".pi");
+    }
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  
+  // cwdから探索
+  current = process.cwd();
+  for (let i = 0; i < 10; i++) {
+    const tasksFile = join(current, ".pi", "tasks", "storage.json");
+    if (existsSync(tasksFile)) {
+      return join(current, ".pi");
+    }
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  
+  throw new Error("Could not find .pi/tasks/storage.json");
+}
+
+const PI_DIR = findPiDir();
 
 /**
  * タスクストレージのデータ構造
@@ -46,7 +81,7 @@ export class TaskRepository {
     this.storage = new JsonStorage<TaskStorage>(
       "tasks/storage.json",
       { tasks: [], version: 1 },
-      { dataDir: SHARED_DIR }
+      { dataDir: PI_DIR }
     );
   }
 
