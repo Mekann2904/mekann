@@ -161,20 +161,33 @@ export function startUnifiedServer(
     c.header("X-Accel-Buffering", "no");
 
     const clientId = `client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    
+
+    // BUG-5修正: heartbeatIntervalを外部スコープで管理
+    let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+
     const stream = new ReadableStream({
       start(controller) {
         const connectMsg = `event: connected\ndata: ${JSON.stringify({ clientId })}\n\n`;
         controller.enqueue(new TextEncoder().encode(connectMsg));
 
-        const heartbeatInterval = setInterval(() => {
+        heartbeatInterval = setInterval(() => {
           try {
             const heartbeatMsg = `event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`;
             controller.enqueue(new TextEncoder().encode(heartbeatMsg));
           } catch {
-            clearInterval(heartbeatInterval);
+            if (heartbeatInterval) {
+              clearInterval(heartbeatInterval);
+              heartbeatInterval = null;
+            }
           }
         }, 30000);
+      },
+      cancel() {
+        // BUG-5修正: クライアント切断時にハートビートをクリーンアップ
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+          heartbeatInterval = null;
+        }
       },
     });
 
@@ -264,6 +277,15 @@ export function startUnifiedServer(
 export function stopUnifiedServer(): void {
   if (state.server) {
     sseEventBus.stopHeartbeat();
+
+    // BUG-1, BUG-2修正: SSEルートのクリーンアップ関数を呼び出し
+    import("./src/routes/sse.js").then(({ cleanupSSE }) => {
+      cleanupSSE();
+    });
+    // BUG-2修正: Runtime SSEのクリーンアップ関数を呼び出し
+    import("./src/routes/runtime.js").then(({ cleanupRuntimeSSE }) => {
+      cleanupRuntimeSSE();
+    });
 
     if (contextCleanupInterval) {
       clearInterval(contextCleanupInterval);

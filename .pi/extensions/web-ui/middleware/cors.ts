@@ -20,8 +20,16 @@
 import type { Request, Response } from "express";
 
 // セキュリティ設定: CORS
-const CORS_ORIGIN = process.env.PI_CORS_ORIGIN || "http://localhost:*";
+// BUG-6修正: 本番環境では明示的なオリジン指定を推奨
+const isProduction = process.env.NODE_ENV === "production";
+const defaultOrigin = isProduction ? "" : "http://localhost:*";
+const CORS_ORIGIN = process.env.PI_CORS_ORIGIN || defaultOrigin;
 const CORS_ALLOWED_ORIGINS = CORS_ORIGIN.split(",").map((o) => o.trim());
+
+// 本番環境でCORS設定がない場合は警告
+if (isProduction && (!CORS_ORIGIN || CORS_ALLOWED_ORIGINS.includes("*") || CORS_ALLOWED_ORIGINS.includes("http://localhost:*"))) {
+  console.warn("[cors] WARNING: Production environment detected with permissive CORS settings. Set PI_CORS_ORIGIN explicitly.");
+}
 
 /**
  * @summary CORSオリジンを検証する

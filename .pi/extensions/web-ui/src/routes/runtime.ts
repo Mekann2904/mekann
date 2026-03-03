@@ -27,21 +27,46 @@ const sseClients = new Map<string, {
   lastHeartbeat: number;
 }>();
 
-// ハートビート
-setInterval(() => {
-  const now = Date.now();
-  const msg = `event: heartbeat\ndata: ${JSON.stringify({ timestamp: now })}\n\n`;
-  const encoder = new TextEncoder();
+// BUG-2修正: ハートビート参照を保持してクリーンアップ可能に
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
-  sseClients.forEach((client, id) => {
-    try {
-      client.controller.enqueue(encoder.encode(msg));
-      client.lastHeartbeat = now;
-    } catch {
-      sseClients.delete(id);
-    }
-  });
-}, 30000);
+/**
+ * ハートビートを開始
+ */
+function startHeartbeat(): void {
+  if (heartbeatInterval) return; // 既に開始済み
+
+  heartbeatInterval = setInterval(() => {
+    const now = Date.now();
+    const msg = `event: heartbeat\ndata: ${JSON.stringify({ timestamp: now })}\n\n`;
+    const encoder = new TextEncoder();
+
+    sseClients.forEach((client, id) => {
+      try {
+        client.controller.enqueue(encoder.encode(msg));
+        client.lastHeartbeat = now;
+      } catch {
+        sseClients.delete(id);
+      }
+    });
+  }, 30000);
+}
+
+/**
+ * Runtime SSEサーバーのクリーンアップ（サーバー停止時に呼び出す）
+ */
+export function cleanupRuntimeSSE(): void {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+  sseClients.clear();
+  sessions.clear();
+  console.log("[runtime] Cleaned up Runtime SSE resources");
+}
+
+// モジュール読み込み時にハートビートを開始
+startHeartbeat();
 
 /**
  * Runtime session type

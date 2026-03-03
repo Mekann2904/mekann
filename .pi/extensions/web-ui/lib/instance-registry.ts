@@ -117,16 +117,28 @@ class FileLock {
           this.release();
         }
       }
-      // Brief spin-wait (not ideal but keeps sync API)
+      // BUG-3修正: ビジーウェイトをAtomics.waitに置き換え
       if (attempt < 2) {
-        const start = Date.now();
-        while (Date.now() - start < 10) {
-          // 10ms spin
-        }
+        sleepSync(10);
       }
     }
     console.warn("[instance-registry] Could not acquire lock after 3 attempts, proceeding without lock");
     return fn();
+  }
+}
+
+/**
+ * 同期的スリープ（ビジーウェイト回避）
+ * Atomics.waitを使用してCPUサイクルを消費しない
+ */
+function sleepSync(ms: number): void {
+  try {
+    const buffer = new SharedArrayBuffer(4);
+    const view = new Int32Array(buffer);
+    Atomics.wait(view, 0, 0, ms);
+  } catch {
+    // SharedArrayBufferが利用できない環境（ブラウザ等）のフォールバック
+    // 注：この環境ではビジーウェイトを使用せず、即座に再試行
   }
 }
 

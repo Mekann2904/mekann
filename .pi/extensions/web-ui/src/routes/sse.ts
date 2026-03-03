@@ -33,22 +33,46 @@ const sseClients = new Map<string, {
  */
 export const sseRoutes = new Hono();
 
-// ハートビート間隔（30秒）
-setInterval(() => {
-  const now = Date.now();
-  const msg = `event: heartbeat\ndata: ${JSON.stringify({ timestamp: now })}\n\n`;
-  const encoder = new TextEncoder();
+// ハートビート間隔（30秒）- BUG-1修正: 参照を保持してクリーンアップ可能に
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
-  sseClients.forEach((client, id) => {
-    try {
-      client.controller.enqueue(encoder.encode(msg));
-      client.lastHeartbeat = now;
-    } catch {
-      // クライアントが切断された
-      sseClients.delete(id);
-    }
-  });
-}, 30000);
+/**
+ * ハートビートを開始
+ */
+function startHeartbeat(): void {
+  if (heartbeatInterval) return; // 既に開始済み
+
+  heartbeatInterval = setInterval(() => {
+    const now = Date.now();
+    const msg = `event: heartbeat\ndata: ${JSON.stringify({ timestamp: now })}\n\n`;
+    const encoder = new TextEncoder();
+
+    sseClients.forEach((client, id) => {
+      try {
+        client.controller.enqueue(encoder.encode(msg));
+        client.lastHeartbeat = now;
+      } catch {
+        // クライアントが切断された
+        sseClients.delete(id);
+      }
+    });
+  }, 30000);
+}
+
+/**
+ * SSEサーバーのクリーンアップ（サーバー停止時に呼び出す）
+ */
+export function cleanupSSE(): void {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+  sseClients.clear();
+  console.log("[sse] Cleaned up SSE resources");
+}
+
+// モジュール読み込み時にハートビートを開始
+startHeartbeat();
 
 /**
  * GET / - SSE接続
@@ -132,16 +156,26 @@ sseRoutes.get("/clients", (c) => {
 
 /**
  * 外部からのブロードキャスト用
+ * BUG-9修正: forEach中のdeleteを回避し、削除対象を配列に収集してから一括削除
  */
 export function broadcastSSE(event: { type: string; data: unknown }): void {
   const msg = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\nid: ${Date.now()}\n\n`;
   const encoder = new TextEncoder();
 
+  // 削除対象を収集
+  const toDelete: string[] = [];
+
   sseClients.forEach((client, id) => {
     try {
       client.controller.enqueue(encoder.encode(msg));
     } catch {
-      sseClients.delete(id);
+      // 削除対象に追加（forEach中はdeleteしない）
+      toDelete.push(id);
     }
   });
+
+  // 一括削除
+  for (const id of toDelete) {
+    sseClients.delete(id);
+  }
 }

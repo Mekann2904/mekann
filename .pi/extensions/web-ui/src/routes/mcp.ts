@@ -28,7 +28,19 @@ export const mcpRoutes = new Hono();
  * MCP設定ファイルのパス
  */
 function getMcpConfigPath(): string {
-  return path.join(process.cwd(), ".pi", "mcp-servers.json");
+  // BUG-8修正: 設定ファイルパスを検証し、許可されたディレクトリ内に制限
+  const configPath = path.join(process.cwd(), ".pi", "mcp-servers.json");
+  const resolvedPath = path.resolve(configPath);
+  
+  // 許可されたディレクトリのリスト（プロジェクトルートのみ許可）
+  const allowedDirs = [path.join(process.cwd(), ".pi")];
+  
+  // パストラバーサル防止: 設定ファイルがプロジェクト内の.piディレクトリを指しているか
+  if (!resolvedPath.startsWith(allowedDirs[0])) {
+    throw new Error("Invalid config path: path must be within .pi directory");
+  }
+  
+  return resolvedPath;
 }
 
 /**
@@ -44,6 +56,25 @@ interface McpServerConfig {
   description?: string;
   enabled?: boolean;
   disabled?: boolean;
+}
+
+/**
+ * BUG-10修正: MCPツールの型定義（any[]を置き換え）
+ */
+interface McpTool {
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+}
+
+/**
+ * BUG-10修正: MCPリソースの型定義（any[]を置き換え）
+ */
+interface McpResource {
+  uri: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
 }
 
 interface McpConfig {
@@ -236,7 +267,7 @@ mcpRoutes.get("/tools/:id", async (c) => {
       return c.json({ success: true, tools: [] });
     }
 
-    let tools: any[] = [];
+    let tools: McpTool[] = [];
     try {
       tools = await mcpManager.listAllTools(serverId) || [];
     } catch (e) {
@@ -263,7 +294,7 @@ mcpRoutes.get("/resources/:id", async (c) => {
       return c.json({ success: true, resources: [] });
     }
 
-    let resources: any[] = [];
+    let resources: McpResource[] = [];
     try {
       resources = await mcpManager.listAllResources(serverId) || [];
     } catch (e) {
@@ -302,8 +333,8 @@ mcpRoutes.get("/connection/:id", async (c) => {
     }
 
     // ツールとリソースを取得（エラー時は空配列）
-    let tools: any[] = [];
-    let resources: any[] = [];
+    let tools: McpTool[] = [];
+    let resources: McpResource[] = [];
 
     try {
       tools = await mcpManager.listAllTools(serverId) || [];

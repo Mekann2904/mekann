@@ -174,12 +174,21 @@ export class FileLock {
   }
 
   /**
-   * 同期スリープ
+   * 同期スリープ（ビジーウェイト回避）
+   * BUG-4修正: Atomics.waitを使用してCPUサイクルを消費しない
    */
   private sleep(ms: number): void {
-    const start = Date.now();
-    while (Date.now() - start < ms) {
-      // busy wait（短時間なので許容）
+    try {
+      const buffer = new SharedArrayBuffer(4);
+      const view = new Int32Array(buffer);
+      Atomics.wait(view, 0, 0, ms);
+    } catch {
+      // SharedArrayBufferが利用できない環境のフォールバック
+      // 注：この環境では短いビジーウェイトを使用（最終手段）
+      const start = Date.now();
+      while (Date.now() - start < ms) {
+        // busy wait（フォールバック）
+      }
     }
   }
 
