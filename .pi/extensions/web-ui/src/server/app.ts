@@ -27,6 +27,9 @@ import { instanceRoutes } from "../routes/instances.js";
 import { sseRoutes } from "../routes/sse.js";
 import { analyticsRoutes } from "../routes/analytics.js";
 import { themeRoutes } from "../routes/theme.js";
+import { agentUsageRoutes } from "../routes/agent-usage.js";
+import { contextHistoryRoutes } from "../routes/context-history.js";
+import { mcpRoutes } from "../routes/mcp.js";
 
 /**
  * アプリケーションコンテキスト型
@@ -78,9 +81,11 @@ export function createApp(): Hono<AppContext> {
   app.route("/api/sse", sseRoutes);
   app.route("/api/analytics", analyticsRoutes);
   app.route("/api/theme", themeRoutes);
+  app.route("/api/agent-usage", agentUsageRoutes);
+  app.route("/api/context-history", contextHistoryRoutes);
+  app.route("/api/mcp", mcpRoutes);
 
   // TODO: 他のルートを追加
-  // app.route("/api/mcp", mcpRoutes);
   // app.route("/api/ul-workflow", ulWorkflowRoutes);
 
   // 404 ハンドラー
