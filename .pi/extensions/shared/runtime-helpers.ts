@@ -30,7 +30,6 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
   getRuntimeSnapshot,
   type RuntimeCapacityReservationLease,

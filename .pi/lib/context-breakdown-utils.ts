@@ -842,21 +842,47 @@ export function completeUsageTracking(
 // Injection Tracking
 // ============================================================================
 
+/** 追跡されたソース情報 */
+interface TrackedSource {
+  source: string;
+  content: string;
+  charCount: number;
+  timestamp: number;
+}
+
+/** グローバルな追跡状態 */
+const trackedSources: TrackedSource[] = [];
+
 /**
  * @summary コンテキスト注入を記録
  * @param source 注入ソース（'startup-context', 'append-system', 'inject-prompt'など）
  * @param content 注入されたコンテンツ
  */
 export function recordInjection(source: string, content: string): void {
-  // Store injection info for context breakdown analysis
-  const injection = {
+  trackedSources.push({
     source,
+    content,
+    charCount: content.length,
     timestamp: Date.now(),
-    tokenEstimate: Math.ceil(content.length / 4), // Rough estimate: ~4 chars per token
-  };
+  });
   
-  // Log for debugging (can be removed in production)
-  console.log(`[context-breakdown] Injection recorded: ${source} (~${injection.tokenEstimate} tokens)`);
+  const tokenEstimate = Math.ceil(content.length / 4);
+  console.log(`[context-breakdown] Injection recorded: ${source} (~${tokenEstimate} tokens)`);
+}
+
+/**
+ * @summary 追跡されたソース情報を取得
+ * @returns ソース情報配列
+ */
+export function getTrackedSources(): Array<{ source: string; charCount: number }> {
+  return trackedSources.map(s => ({ source: s.source, charCount: s.charCount }));
+}
+
+/**
+ * @summary 追跡状態をクリア
+ */
+export function clearTrackedSources(): void {
+  trackedSources.length = 0;
 }
 
 // ============================================================================

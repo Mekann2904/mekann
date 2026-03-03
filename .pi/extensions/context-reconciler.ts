@@ -34,7 +34,7 @@
  */
 
 import type { ContextBreakdown, ContextSourceInfo } from "../lib/types.js";
-import { getTrackedSources, clearTrackedSources } from "./context-tracker.js";
+import { getTrackedSources, clearTrackedSources } from "../lib/context-breakdown-utils.js";
 
 /** 最後の照合結果を保持 */
 let lastReconciliation: ContextBreakdown | null = null;

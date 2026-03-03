@@ -505,9 +505,9 @@ export function buildTeamMemberPrompt(input: {
 
   // INTERNAL mode: Build English prompt with strict output control
   if (isInternal) {
-    lines.push(`You are a member of agent team "${input.team.id}".`);
-    lines.push(`Role: ${input.member.role}`);
-    lines.push(`Mission: ${input.member.description}`);
+    lines.push(`You are a member of agent team "${input.team?.id ?? "(no team)"}".`);
+    lines.push(`Role: ${input.member?.role ?? "(no role)"}`);
+    lines.push(`Mission: ${input.member?.description ?? "(no description)"}`);
     lines.push("");
     lines.push("TASK:");
     lines.push(input.task);
@@ -569,8 +569,8 @@ export function buildTeamMemberPrompt(input: {
 
   lines.push(`あなたはエージェントチーム ${input.team.name} (${input.team.id}) のメンバーです。`);
   lines.push(`チームミッション: ${input.team.description}`);
-  lines.push(`あなたの役割: ${input.member.role} (${input.member.id})`);
-  lines.push(`役割目標: ${input.member.description}`);
+  lines.push(`あなたの役割: ${input.member?.role ?? "(no role)"} (${input.member?.id ?? "(no id)"})`);
+  lines.push(`役割目標: ${input.member?.description ?? "(no description)"}`);
   lines.push(`現在フェーズ: ${phaseLabel}`);
 
   // Resolve and include skills (team common + member individual)
@@ -647,7 +647,7 @@ export function buildTeamMemberPrompt(input: {
 
   // 思考領域改善: 高リスクタスクでは自動的にhighに昇格
   // Note: INTERNAL mode already returned earlier, this is USER-FACING only
-  const baseThinkingLevel = input.member.thinkingLevel ?? input.team.thinkingLevel ?? "medium";
+  const baseThinkingLevel = input.member?.thinkingLevel ?? input.team?.thinkingLevel ?? "medium";
   const isHighStakes = isHighStakesTask(input.task);
   const effectiveThinkingLevel = isHighStakes && (baseThinkingLevel === "medium" || baseThinkingLevel === "low" || baseThinkingLevel === "minimal")
     ? "high"
