@@ -17,6 +17,7 @@
  * @scope(out) HTTP responses, SSE broadcasts, shared storage updates
  */
 
+import { existsSync, readFileSync } from "fs";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
@@ -120,8 +121,10 @@ export function startUnifiedServer(
     state.ctx = ctx;
   }
 
-  // 静的ファイル配信用ディレクトリ
-  const distPath = path.join(__dirname, "dist");
+  // 静的ファイル配信用ディレクトリ（絶対パス）
+  const distPath = path.resolve(__dirname, "dist");
+  console.log(`[web-ui] Static files directory: ${distPath}`);
+  console.log(`[web-ui] Dist exists: ${existsSync(distPath)}`);
 
   // Honoアプリを作成
   const app = new Hono();
@@ -190,8 +193,13 @@ export function startUnifiedServer(
   // 静的ファイル配信
   app.use("/*", serveStatic({ root: distPath }));
 
-  // SPA フォールバック
+  // SPA フォールバック（index.htmlを返す）
   app.get("*", (c) => {
+    const indexPath = path.join(distPath, "index.html");
+    if (existsSync(indexPath)) {
+      const html = readFileSync(indexPath, "utf-8");
+      return c.html(html, 200, { "Content-Type": "text/html; charset=utf-8" });
+    }
     return c.html(`
       <html>
         <body style="background:#0d1117;color:#f0f6fc;font-family:sans-serif;padding:2rem;">
