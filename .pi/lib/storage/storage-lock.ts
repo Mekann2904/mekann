@@ -209,11 +209,13 @@ function clearStaleLock(lockFile: string, staleMs: number): void {
 
 /**
  * @summary ロック取得実行
+ * @description SharedArrayBuffer非対応環境では、ポーリングベースのフォールバックを使用。
+ *   maxWaitMsを尊重しつつ、CPUスピンを最小限に抑えるため、約10ms間隔でリトライする。
  * @param targetFile - ロック対象ファイル
  * @param fn - 実行する関数
  * @param options - ロックオプション
  * @returns {T} 関数の実行結果
- * @throws ロック取得失敗時
+ * @throws ロック取得失敗時（maxWaitMs超過または環境制約）
  */
 export function withFileLock<T>(
   targetFile: string,
@@ -241,12 +243,34 @@ export function withFileLock<T>(
     if (acquired) break;
     clearStaleLock(lockFile, staleMs);
 
-    // If efficient sleep is unavailable, do one last immediate retry then exit.
-    // This avoids a tight spin loop in environments without SharedArrayBuffer.
+    // If efficient sleep is unavailable, use polling-based fallback
+    // to respect maxWaitMs while avoiding tight spin loops
     if (!canSleep) {
-      acquired = tryAcquireLock(lockFile);
-      if (acquired) break;
-      break;
+      const startTime = Date.now();
+      let pollCount = 0;
+      const maxPolls = Math.max(1, Math.ceil(maxWaitMs / 10)); // ~10ms intervals
+
+      while (!acquired && pollCount < maxPolls) {
+        acquired = tryAcquireLock(lockFile);
+        if (acquired) break;
+
+        // Check timeout
+        if (Date.now() - startTime >= maxWaitMs) {
+          break;
+        }
+
+        // Short busy-wait (~1ms) to avoid tight loop while respecting environment constraints
+        // This is a compromise between "no busy-wait" and "respect maxWaitMs"
+        const waitStart = Date.now();
+        while (Date.now() - waitStart < 1) {
+          // Busy-wait for ~1ms
+        }
+        pollCount++;
+      }
+
+      if (!acquired) {
+        break; // Exit the main while loop
+      }
     }
 
     const sleepOk = sleepSync(pollMs);
