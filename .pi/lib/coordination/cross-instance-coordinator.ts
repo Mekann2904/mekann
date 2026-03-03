@@ -295,6 +295,47 @@ function patchMyInstanceInfo(mutator: (info: InstanceInfo) => void): void {
   );
 }
 
+/**
+ * Register process shutdown hooks to ensure final heartbeat is written.
+ * This prevents memory/file heartbeat inconsistency when the process exits.
+ */
+let shutdownHooksRegistered = false;
+
+function registerShutdownHooks(): void {
+  if (shutdownHooksRegistered) return;
+  shutdownHooksRegistered = true;
+
+  const forceHeartbeatWrite = (): void => {
+    if (!state) return;
+    // Force write heartbeat bypassing debounce
+    lastHeartbeatWrite = 0;
+    updateHeartbeat();
+  };
+
+  // Handle graceful shutdown signals
+  process.once("SIGTERM", () => {
+    logCoordinatorDebug("Received SIGTERM, writing final heartbeat");
+    forceHeartbeatWrite();
+    unregisterInstance();
+    process.exit(0);
+  });
+
+  process.once("SIGINT", () => {
+    logCoordinatorDebug("Received SIGINT, writing final heartbeat");
+    forceHeartbeatWrite();
+    unregisterInstance();
+    process.exit(0);
+  });
+
+  // Handle normal exit
+  process.once("beforeExit", () => {
+    if (state) {
+      logCoordinatorDebug("Process exiting, writing final heartbeat");
+      forceHeartbeatWrite();
+    }
+  });
+}
+
 function generateInstanceId(sessionId: string): string {
   const timestamp = currentTimeMs().toString(36);
   const randomSuffix = randomBytes(4).toString("hex");
@@ -442,6 +483,11 @@ export function registerInstance(
       config,
       heartbeatTimer,
     };
+
+    // Register shutdown hooks to ensure final heartbeat is written
+    // This prevents other instances from incorrectly marking this instance as dead
+    // when the process exits gracefully or receives termination signals
+    registerShutdownHooks();
   } catch (error) {
     // Clean up timer on error to prevent leak (BUG-018)
     if (heartbeatTimer) {

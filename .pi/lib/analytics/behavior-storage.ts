@@ -210,10 +210,22 @@ export function loadBehaviorRecords(
       try {
         const filePath = join(fullPath, file);
         const content = readFileSync(filePath, "utf-8");
-        const record = JSON.parse(content) as LLMBehaviorRecord;
+        const parsed = JSON.parse(content);
+        
+        // 基本的な検証：必須フィールドの存在確認
+        if (!parsed || typeof parsed !== 'object' || !parsed.timestamp) {
+          console.warn(`Invalid record format: ${file}`);
+          continue;
+        }
+        
+        const record = parsed as LLMBehaviorRecord;
         
         // タイムスタンプでフィルタリング
         const recordDate = new Date(record.timestamp);
+        if (isNaN(recordDate.getTime())) {
+          console.warn(`Invalid timestamp in record: ${file}`);
+          continue;
+        }
         if (recordDate >= startDate && recordDate <= endDate) {
           records.push(record);
         }
