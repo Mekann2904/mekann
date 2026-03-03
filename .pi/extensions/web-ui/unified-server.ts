@@ -1,31 +1,31 @@
 /**
  * @abdd.meta
- * @path .pi/extensions/web-ui/server.ts
- * @role HTTP server for Web UI extension
- * @why Serve Preact dashboard to browser with multi-instance support and real-time updates
- * @related index.ts, lib/instance-registry.ts, routes/*.ts, middleware/*.ts
- * @public_api startServer, stopServer, isServerRunning, getServerPort, broadcastSSEEvent, getSSEClientCount, addContextHistory
+ * @path .pi/extensions/web-ui/unified-server.ts
+ * @role Unified HTTP server for Web UI (single server architecture)
+ * @why Simplify management by consolidating server.ts and standalone-server.ts
+ * @related config.ts, routes/*.ts, middleware/*.ts
+ * @public_api startUnifiedServer, stopUnifiedServer, isServerRunning, getServerPort, broadcastSSEEvent
  * @invariants Server must clean up on shutdown, SSE clients must be cleaned up on disconnect
  * @side_effects Opens TCP port, serves HTTP requests, accesses shared storage, maintains SSE connections
  * @failure_modes Port in use, file not found, SSE connection failures
  *
  * @abdd.explain
- * @overview Express server that serves static files, API endpoints, and SSE for real-time updates
- * @what_it_does Hosts built Preact app, provides REST API for pi state and instances, broadcasts SSE events
- * @why_it_exists Allows browser access to pi monitoring/configuration with real-time push notifications
- * @scope(in) ExtensionAPI, ExtensionContext, SSE events
- * @scope(out) HTTP responses, shared storage files, SSE broadcasts
+ * @overview Unified Express server that serves static files, API endpoints, and SSE
+ * @what_it_does Hosts built Preact app, provides REST API, broadcasts SSE events, manages instances
+ * @why_it_exists Replaces dual-server architecture with single, simpler server
+ * @scope(in) ExtensionAPI, ExtensionContext, SSE events, shared storage
+ * @scope(out) HTTP responses, SSE broadcasts, shared storage updates
  */
 
 import express, { type Express, type Request, type Response } from "express";
 import { createServer, type Server as HttpServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
-import fs from "fs";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 // Middleware
 import { securityHeaders, corsMiddleware } from "./middleware/cors.js";
+import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 
 // Routes
 import { registerTaskRoutes } from "./routes/tasks.js";
@@ -43,37 +43,33 @@ import {
 } from "./lib/instance-registry.js";
 import { SSEEventBus, type SSEEvent, type SSEEventType } from "./lib/sse-bus.js";
 import { cleanupDeadOwnerUlWorkflowTasks } from "./lib/server-utils.js";
+import { getConfig } from "./config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Re-export types for backward compatibility
 export type { SSEEventType, SSEEvent };
 
+// Global instances
 const sseEventBus = new SSEEventBus();
 let contextCleanupInterval: ReturnType<typeof setInterval> | null = null;
 let ulTaskCleanupInterval: ReturnType<typeof setInterval> | null = null;
-
-/**
- * @summary 現在のインスタンス用コンテキスト履歴ストレージ
- */
 let contextHistoryStorage: ContextHistoryStorage | null = null;
 
 /**
- * @summary コンテキスト履歴を追加してSSEで通知
- * @param entry - コンテキスト履歴エントリ（pidは省略可能、省略時はprocess.pid）
+ * @summary Add context history entry and broadcast via SSE
+ * @param entry - Context history entry (pid is optional, defaults to process.pid)
  */
 export function addContextHistory(entry: Omit<ContextHistoryEntry, "pid"> & { pid?: number }): void {
   const pid = entry.pid ?? process.pid;
 
   if (!contextHistoryStorage || contextHistoryStorage.getPid() !== pid) {
-    // 古いインスタンスを解放してから新規作成
     contextHistoryStorage?.dispose();
     contextHistoryStorage = new ContextHistoryStorage(pid);
   }
 
   contextHistoryStorage.add(entry);
 
-  // SSEでコンテキスト更新を通知
   sseEventBus.broadcast({
     type: "context-update",
     data: {
@@ -96,7 +92,7 @@ interface ServerState {
 
 const state: ServerState = {
   server: null,
-  port: 3457,
+  port: 3000,
   pi: null,
   ctx: null,
   unsubscribeSessionEvents: null,
@@ -117,29 +113,28 @@ export function getPi(): ExtensionAPI | null {
 }
 
 /**
- * @summary Start HTTP server for Web UI
- * @param port Port number to listen on
- * @param pi Extension API instance
- * @param ctx Extension context
+ * @summary Start unified HTTP server for Web UI
+ * @param pi Extension API instance (optional for standalone mode)
+ * @param ctx Extension context (optional for standalone mode)
  * @returns HTTP server instance
  */
-export function startServer(
-  port: number,
-  pi: ExtensionAPI,
-  ctx: ExtensionContext
+export function startUnifiedServer(
+  pi?: ExtensionAPI,
+  ctx?: ExtensionContext
 ): HttpServer {
+  const config = getConfig();
   const app: Express = express();
-  
-  // セキュリティミドルウェアを適用
+
+  // Security middleware
   app.use(securityHeaders);
   app.use(corsMiddleware);
   app.use(express.json());
 
-  state.pi = pi;
-  state.ctx = ctx;
-
-  // Note: Do NOT register with ServerRegistry - this is an internal runtime API server
-  // The main web UI server (standalone-server.ts) registers itself separately
+  // Store API references if provided (internal mode)
+  if (pi && ctx) {
+    state.pi = pi;
+    state.ctx = ctx;
+  }
 
   // Cleanup UL tasks owned by inactive instances
   const cleanedCount = cleanupDeadOwnerUlWorkflowTasks();
@@ -168,22 +163,29 @@ export function startServer(
   registerUlWorkflowRoutes(app);
 
   // Runtime routes (returns unsubscribe function)
-  state.unsubscribeSessionEvents = registerRuntimeRoutes(app);
+  if (pi && ctx) {
+    state.unsubscribeSessionEvents = registerRuntimeRoutes(app);
+  }
+
+  // ============= Server Registry =============
+
+  // Register server in shared storage (for multi-instance management)
+  import("./lib/instance-registry.js").then(({ ServerRegistry }) => {
+    ServerRegistry.register(process.pid, config.port);
+  });
 
   // ============= Static Files =============
 
   const distPath = path.join(__dirname, "dist");
   app.use(express.static(distPath));
 
-  // ============= SPA Fallback =============
+  // ============= Error Handlers =============
 
+  // 404 handler for API routes
+  app.use("/api/*", notFoundHandler);
+
+  // SPA fallback (must be after API routes)
   app.get("*", (req: Request, res: Response) => {
-    // Skip API routes
-    if (req.path.startsWith("/api/")) {
-      res.status(404).json({ error: "Not found" });
-      return;
-    }
-
     res.sendFile(path.join(distPath, "index.html"), (err) => {
       if (err) {
         res.status(404).send(`
@@ -198,33 +200,36 @@ export function startServer(
     });
   });
 
-  state.server = createServer(app);
-  state.port = port;
+  // Global error handler
+  app.use(errorHandler);
 
-  state.server.listen(port, () => {
-    // コンテキスト履歴ストレージを初期化
-    // 既存インスタンスがあれば解放してから再作成
+  // ============= Start Server =============
+
+  state.server = createServer(app);
+  state.port = config.port;
+
+  state.server.listen(config.port, () => {
+    // Initialize context history storage
     contextHistoryStorage?.dispose();
     contextHistoryStorage = new ContextHistoryStorage(process.pid);
 
-    // SSEハートビートを開始
+    // Start SSE heartbeat
     sseEventBus.startHeartbeat();
 
-    // インスタンス情報の定期ブロードキャストを開始
-    // Import InstanceRegistry dynamically to avoid circular dependency
+    // Start instance broadcast
     import("./lib/instance-registry.js").then(({ InstanceRegistry }) => {
       sseEventBus.startInstancesBroadcast(() => InstanceRegistry.getAll());
     });
 
-    // 定期的に古い履歴ファイルをクリーンアップ（5分ごと）
+    // Periodic cleanup of old history files
     if (contextCleanupInterval) {
       clearInterval(contextCleanupInterval);
     }
     contextCleanupInterval = setInterval(() => {
       ContextHistoryStorage.cleanup();
-    }, 5 * 60 * 1000);
+    }, config.cleanupInterval);
 
-    // 定期的に非アクティブなインスタンスが所有するULタスクをクリーンアップ（5分ごと）
+    // Periodic cleanup of UL tasks owned by inactive instances
     if (ulTaskCleanupInterval) {
       clearInterval(ulTaskCleanupInterval);
     }
@@ -233,15 +238,9 @@ export function startServer(
       if (cleanedCount > 0) {
         console.log(`[web-ui] Periodic cleanup: removed ${cleanedCount} UL task(s) from inactive instances`);
       }
-    }, 5 * 60 * 1000);
+    }, config.ulTaskCleanupInterval);
 
-    // MCPサーバー設定ファイルからの自動接続は無効化
-    // 理由: MCPサーバーの起動メッセージがTUI入力欄に混入する問題を回避
-    // 必要な場合は手動で接続してください
-    // loadAndConnectMcpServers();
-
-    // Server start notification is handled by ctx.ui.notify in index.ts
-    // to avoid TUI input field overlap
+    console.log(`[web-ui] Unified server started on port ${config.port}`);
   });
 
   return state.server;
@@ -250,14 +249,14 @@ export function startServer(
 /**
  * @summary Stop the HTTP server
  */
-export function stopServer(): void {
+export function stopUnifiedServer(): void {
   if (state.server) {
     // Unsubscribe from session events
     if (state.unsubscribeSessionEvents) {
       state.unsubscribeSessionEvents();
       state.unsubscribeSessionEvents = null;
     }
-    
+
     sseEventBus.stopHeartbeat();
 
     if (contextCleanupInterval) {
@@ -271,11 +270,18 @@ export function stopServer(): void {
     state.server.close();
     state.server = null;
 
-    // バッファをフラッシュしてイベントリスナーを削除
+    // Flush buffer and remove event listeners
     if (contextHistoryStorage) {
       contextHistoryStorage.dispose();
       contextHistoryStorage = null;
     }
+
+    // Unregister server from shared storage
+    import("./lib/instance-registry.js").then(({ ServerRegistry }) => {
+      ServerRegistry.unregister();
+    });
+
+    console.log("[web-ui] Unified server stopped");
   }
 }
 
@@ -305,4 +311,30 @@ export function broadcastSSEEvent(event: SSEEvent): void {
  */
 export function getSSEClientCount(): number {
   return sseEventBus.getClientCount();
+}
+
+// ============= Signal Handlers for Detached Mode =============
+
+/**
+ * Handle graceful shutdown signals
+ */
+function setupSignalHandlers(): void {
+  const shutdown = (signal: string) => {
+    console.log(`[web-ui] Received ${signal}, shutting down...`);
+    stopUnifiedServer();
+    process.exit(0);
+  };
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+}
+
+// ============= CLI Entry Point =============
+
+/**
+ * Start unified server in standalone mode (when run directly)
+ */
+if (import.meta.url === `file://${process.argv[1]}`) {
+  setupSignalHandlers();
+  startUnifiedServer();
 }

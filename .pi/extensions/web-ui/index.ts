@@ -31,10 +31,6 @@ import {
   startServer as startApiServer,
   isApiServerRunning,
 } from "../server.js";
-import {
-  startServer as startRuntimeServer,
-  isServerRunning as isRuntimeServerRunning,
-} from "./server.js";
 
 const execAsync = promisify(exec);
 
@@ -46,13 +42,13 @@ const DEFAULT_PORT = 3000;
 let contextHistoryStorage: ContextHistoryStorage | null = null;
 
 /**
- * スタンドアロンサーバーをdetached子プロセスとして起動
+ * 統合サーバーをdetached子プロセスとして起動
  * @param port - ポート番号
  * @returns 子プロセス
  */
-function startStandaloneServerProcess(port: number): ChildProcess | null {
+function startUnifiedServerProcess(port: number): ChildProcess | null {
   // サーバースクリプトのパスを取得
-  const serverScript = join(import.meta.dirname, "standalone-server.ts");
+  const serverScript = join(import.meta.dirname, "unified-server.ts");
 
   // tsxを使用してTypeScriptを直接実行
   const child = spawn("npx", ["tsx", serverScript], {
@@ -68,24 +64,24 @@ function startStandaloneServerProcess(port: number): ChildProcess | null {
   child.unref();
 
   child.on("error", (error) => {
-    console.error(`[web-ui] Failed to start standalone server: ${error}`);
+    console.error(`[web-ui] Failed to start unified server: ${error}`);
   });
 
   return child;
 }
 
 /**
- * スタンドアロンサーバーを停止（SIGTERMを送信）
+ * 統合サーバーを停止（SIGTERMを送信）
  */
-function stopStandaloneServerProcess(): void {
+function stopUnifiedServerProcess(): void {
   const serverInfo = ServerRegistry.isRunning();
   if (serverInfo) {
     try {
       process.kill(serverInfo.pid, "SIGTERM");
-      console.log(`[web-ui] Sent SIGTERM to standalone server (PID: ${serverInfo.pid})`);
+      console.log(`[web-ui] Sent SIGTERM to unified server (PID: ${serverInfo.pid})`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[web-ui] Failed to stop standalone server: ${message}`);
+      console.error(`[web-ui] Failed to stop unified server: ${message}`);
     }
   }
 }
@@ -177,7 +173,7 @@ export default function (pi: ExtensionAPI) {
       switch (subcommand) {
         case "stop":
           // 強制停止（スタンドアロンサーバーを停止）
-          stopStandaloneServerProcess();
+          stopUnifiedServerProcess();
           ensureUnregistered();
           ctx.ui.notify("Web UI stopped", "info");
           break;
@@ -220,7 +216,7 @@ export default function (pi: ExtensionAPI) {
 
           const portNum = parseInt(process.env.PI_WEB_UI_PORT || "") || DEFAULT_PORT;
           try {
-            startStandaloneServerProcess(portNum);
+            startUnifiedServerProcess(portNum);
             ctx.ui.notify(`Web UI started: http://localhost:${portNum}`, "info");
             // サーバー起動後にブラウザを開く（少し待機してサーバーの準備を待つ）
             setTimeout(async () => {
@@ -267,7 +263,7 @@ export default function (pi: ExtensionAPI) {
 
       if (remainingInstances === 0) {
         console.log("[web-ui] No remaining instances, stopping standalone server...");
-        stopStandaloneServerProcess();
+        stopUnifiedServerProcess();
       } else {
         console.log(`[web-ui] ${remainingInstances} instance(s) still running, keeping server alive`);
       }
@@ -339,17 +335,6 @@ export default function (pi: ExtensionAPI) {
     // Register this instance first
     ensureRegistered(ctx.model?.id);
 
-    // Start runtime API server (port 3457) for /api/context/current etc.
-    const runtimePort = parseInt(process.env.PI_RUNTIME_PORT || "") || 3457;
-    if (!isRuntimeServerRunning()) {
-      try {
-        startRuntimeServer(runtimePort, pi, ctx);
-        console.log(`[web-ui] Runtime API server started on port ${runtimePort}`);
-      } catch (error) {
-        console.error(`[web-ui] Failed to start runtime API server:`, error);
-      }
-    }
-
     // Check if already running (another instance may have started it)
     const existingServer = ServerRegistry.isRunning();
     if (existingServer) {
@@ -357,10 +342,10 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    // Start the standalone server as a detached child process
+    // Start the unified server as a detached child process
     const portNum = parseInt(process.env.PI_WEB_UI_PORT || "") || DEFAULT_PORT;
     try {
-      startStandaloneServerProcess(portNum);
+      startUnifiedServerProcess(portNum);
       ctx.ui.notify(`Web UI auto-started: http://localhost:${portNum}`, "info");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
