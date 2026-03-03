@@ -129,10 +129,10 @@ export function InstancesPage() {
     if (isRefresh) setRefreshing(true);
 
     try {
-      const res = await fetch("/api/instances");
+      const res = await fetch("/api/v2/instances");
       if (!res.ok) throw new Error("Failed to fetch instances");
       const json = await res.json();
-      setData(json);
+      setData(json.data ? { instances: json.data, count: json.data.length, serverPid: 0, serverPort: 3456 } : json);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
@@ -147,7 +147,7 @@ export function InstancesPage() {
       eventSourceRef.current.close();
     }
 
-    const eventSource = new EventSource("/api/events");
+    const eventSource = new EventSource("/api/v2/sse");
     eventSourceRef.current = eventSource;
 
     eventSource.onopen = () => {

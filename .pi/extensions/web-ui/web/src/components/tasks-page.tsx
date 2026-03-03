@@ -36,7 +36,7 @@ import { TaskDetailPanel } from "./task-detail-panel";
 import { TaskKanban, DEFAULT_COLUMNS } from "./tasks/TaskKanban";
 import { useRuntimeStatus } from "../hooks/useRuntimeStatus";
 import { useKeyboardShortcuts, COMMON_SHORTCUTS } from "../hooks/useKeyboardShortcuts";
-import { useTaskData } from "../hooks/useTaskData";
+import { useTaskDataNew as useTaskData } from "../hooks/useTaskDataNew";
 import { useTaskFilters } from "../hooks/useTaskFilters";
 import { cn } from "@/lib/utils";
 import {
