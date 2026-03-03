@@ -57,7 +57,9 @@ async function fetchGlobalTheme(): Promise<ThemeSettings | null> {
   try {
     const res = await fetch("/api/v2/theme");
     if (res.ok) {
-      return await res.json();
+      const json = await res.json();
+      // API returns { success: true, data: { themeId, mode } }
+      return json.data || json;
     }
   } catch (e) {
     console.warn("Failed to fetch global theme:", e);
