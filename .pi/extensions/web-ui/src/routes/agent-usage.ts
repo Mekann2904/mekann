@@ -28,19 +28,14 @@ agentUsageRoutes.get("/", (c) => {
     const usagePath = path.join(process.cwd(), ".pi", "agent-usage.json");
 
     if (!fs.existsSync(usagePath)) {
-      return c.json<SuccessResponse<null>>({
-        success: true,
-        data: null,
-      });
+      return c.json({ data: { features: {}, events: [], totals: { calls: 0, errors: 0 } } });
     }
 
     const content = fs.readFileSync(usagePath, "utf-8");
     const data = JSON.parse(content);
 
-    return c.json({
-      success: true,
-      data,
-    });
+    // フロントエンドが期待する形式で返す（successラッパーなし）
+    return c.json(data);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return c.json({ success: false, error: "Failed to get agent usage", details: message }, 500);

@@ -59,12 +59,14 @@ themeRoutes.post("/", async (c) => {
     const parsed = UpdateThemeSchema.safeParse(body);
 
     if (!parsed.success) {
-      console.error("[theme] Validation error:", parsed.error.errors);
+      // Zod v4 uses .issues instead of .errors
+      const issues = parsed.error.issues || [];
+      console.error("[theme] Validation error:", issues);
       return c.json(
         {
           success: false,
           error: "Invalid theme settings",
-          details: parsed.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')
+          details: issues.map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`).join(', ')
         },
         400
       );

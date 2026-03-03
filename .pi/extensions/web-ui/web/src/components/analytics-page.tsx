@@ -197,13 +197,16 @@ export function AnalyticsPage() {
       ]);
 
       if (summaryRes.ok) {
-        setSummary(await summaryRes.json());
+        const json = await summaryRes.json();
+        setSummary(json.data ?? json);
       }
       if (recordsRes.ok) {
-        setRecords(await recordsRes.json());
+        const json = await recordsRes.json();
+        setRecords(json.data ?? json);
       }
       if (aggregatesRes.ok) {
-        setAggregates(await aggregatesRes.json());
+        const json = await aggregatesRes.json();
+        setAggregates(json.data ?? json);
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : "Network error";

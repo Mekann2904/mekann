@@ -148,14 +148,7 @@ export function startUnifiedServer(
   // ============= API Routes =============
   // createApp() は src/server/app.ts で定義されたすべてのルートを含む
   const apiApp = createApp();
-  
-  // デバッグ: APIルートをログ出力
-  console.log("[web-ui] API app created, routes:");
-  try {
-    apiApp.showRoutes();
-  } catch {
-    console.log("[web-ui] Could not show routes (expected in production)");
-  }
+  console.log("[web-ui] API app created");
 
   // フロントエンドは /api/v2/* を使用
   app.route("/api/v2", apiApp);
@@ -164,10 +157,6 @@ export function startUnifiedServer(
   // 後方互換性のため /api/* もサポート（一時的）
   app.route("/api", apiApp);
   console.log("[web-ui] API routes also mounted at /api (for backward compatibility)");
-
-  // デバッグ: 登録されたルートをログ出力
-  console.log("[web-ui] Routes registered:");
-  app.showRoutes();
 
   // ============= SSE Events =============
   // SSEイベントをJotai atomsに統合するためのエンドポイント
