@@ -28,8 +28,11 @@ export type { StatsCardProps, SimpleStatsCardProps, StatsGridProps, StatsCardVar
 export { LoadingState, InlineLoading } from "./loading-state";
 export type { LoadingStateProps, InlineLoadingProps, LoadingSize } from "./loading-state";
 
+export { Skeleton, SkeletonCard, SkeletonList, SkeletonTable, SkeletonBoard } from "./loading-skeleton";
+export type { SkeletonProps, SkeletonCardProps, SkeletonListProps, SkeletonTableProps, SkeletonBoardProps } from "./loading-skeleton";
+
 export { ErrorBanner, InlineError } from "./error-banner";
-export type { ErrorBannerProps, InlineErrorProps } from "./error-banner";
+export type { ErrorBannerProps, InlineErrorProps, ErrorVariant } from "./error-banner";
 
 export { EmptyState, ChartEmptyState } from "./empty-state";
 export type { EmptyStateProps, ChartEmptyStateProps } from "./empty-state";

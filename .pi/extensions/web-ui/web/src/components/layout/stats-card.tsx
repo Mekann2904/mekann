@@ -17,6 +17,7 @@
  */
 
 import { h } from "preact";
+import { memo, useCallback, useMemo } from "preact/compat";
 import { Card, CardContent } from "../ui/card";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-preact";
@@ -49,7 +50,31 @@ export interface StatsCardProps {
  * @param props 統計カードのプロパティ
  * @returns 統一された統計カード
  */
-export function StatsCard({
+// Static variant classes (moved outside component to prevent recreation)
+const VARIANT_CLASSES: Record<StatsCardVariant, string> = {
+  default: "",
+  warning: "border-yellow-500/50",
+  success: "border-green-500/50",
+  destructive: "border-red-500/50",
+};
+
+function getProgressColorClass(variant: StatsCardVariant, progress: number | undefined): string {
+  if (variant !== "default") {
+    const progressColors: Record<StatsCardVariant, string> = {
+      default: "",
+      warning: "bg-yellow-500",
+      success: "bg-green-500",
+      destructive: "bg-red-500",
+    };
+    return progressColors[variant];
+  }
+  if (progress === undefined) return "bg-red-500";
+  if (progress >= 70) return "bg-green-500";
+  if (progress >= 40) return "bg-yellow-500";
+  return "bg-red-500";
+}
+
+function StatsCardInner({
   value,
   label,
   icon: Icon,
@@ -59,31 +84,22 @@ export function StatsCard({
   className,
   testId,
 }: StatsCardProps) {
-  const variantClasses: Record<StatsCardVariant, string> = {
-    default: "",
-    warning: "border-yellow-500/50",
-    success: "border-green-500/50",
-    destructive: "border-red-500/50",
-  };
+  const progressColorClass = useMemo(
+    () => getProgressColorClass(variant, progress),
+    [variant, progress]
+  );
 
-  const progressColorClasses: Record<StatsCardVariant, string> = {
-    default: progress !== undefined && progress >= 70
-      ? "bg-green-500"
-      : progress !== undefined && progress >= 40
-        ? "bg-yellow-500"
-        : "bg-red-500",
-    warning: "bg-yellow-500",
-    success: "bg-green-500",
-    destructive: "bg-red-500",
-  };
+  const handleClick = useCallback(() => {
+    onClick?.();
+  }, [onClick]);
 
   return (
     <Card
       class={cn(
-        variantClasses[variant],
+        VARIANT_CLASSES[variant],
         onClick && "cursor-pointer hover:bg-muted/50 transition-colors"
       )}
-      onClick={onClick}
+      onClick={handleClick}
       data-testid={testId}
     >
       <CardContent class="py-3">
@@ -102,7 +118,7 @@ export function StatsCard({
             <div
               class={cn(
                 "h-full rounded-full transition-all",
-                progressColorClasses[variant]
+                progressColorClass
               )}
               style={{ width: `${Math.min(100, progress)}%` }}
             />
@@ -112,6 +128,8 @@ export function StatsCard({
     </Card>
   );
 }
+
+export const StatsCard = memo(StatsCardInner);
 
 /** @summary シンプルな統計カード（中央揃え）のプロパティ */
 export interface SimpleStatsCardProps {
@@ -134,7 +152,7 @@ export interface SimpleStatsCardProps {
  * @param props プロパティ
  * @returns 中央揃えの統計カード
  */
-export function SimpleStatsCard({
+function SimpleStatsCardInner({
   value,
   label,
   subLabel,
@@ -154,6 +172,8 @@ export function SimpleStatsCard({
     </Card>
   );
 }
+
+export const SimpleStatsCard = memo(SimpleStatsCardInner);
 
 /** @summary グリッドの列数 */
 export type StatsGridCols = 2 | 3 | 4 | 6;
@@ -180,7 +200,7 @@ const COLS_CLASSES: Record<StatsGridCols, string> = {
  * @param props グリッドのプロパティ
  * @returns 統一されたグリッドレイアウト
  */
-export function StatsGrid({
+function StatsGridInner({
   children,
   cols = 4,
   className,
@@ -191,3 +211,5 @@ export function StatsGrid({
     </div>
   );
 }
+
+export const StatsGrid = memo(StatsGridInner);

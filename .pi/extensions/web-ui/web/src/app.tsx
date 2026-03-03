@@ -8,14 +8,15 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "preact/hooks";
 import { Router, route } from "preact-router";
 import { ThemePage, applyThemeToDOM, type Mode } from "./components/theme-page";
-import { DashboardPage } from "./components/dashboard-page";
 import { InstancesPage } from "./components/instances-page";
 import { McpPage } from "./components/mcp-page";
 import { TasksPage } from "./components/tasks-page";
 import { AnalyticsPage } from "./components/analytics-page";
 import { AgentUsagePage } from "./components/agent-usage-page";
+import { ToastProvider } from "./hooks/useToast";
+import { ToastContainer } from "./components/ui/toast";
+import { useGlobalShortcuts } from "./hooks/useKeyboardShortcuts";
 import {
-  Activity,
   Monitor,
   Palette,
   Loader2,
@@ -24,6 +25,7 @@ import {
   ListTodo,
   BarChart3,
   TrendingUp,
+  Keyboard,
 } from "lucide-preact";
 import { cn } from "@/lib/utils";
 import "./styles/globals.css";
@@ -236,6 +238,21 @@ export function App() {
   // Connect to SSE
   const { connected: sseConnected, reconnect: sseReconnect, exhausted: sseExhausted } = useSSE(handleSSEEvent);
 
+  // Global keyboard shortcuts
+  const [showShortcutHelp, setShowShortcutHelp] = useState(false);
+  
+  useGlobalShortcuts(
+    () => {
+      // Command palette: focus search or navigate
+      // For now, just navigate to tasks page
+      route("/tasks");
+    },
+    () => {
+      // Help: toggle shortcut help
+      setShowShortcutHelp(!showShortcutHelp);
+    }
+  );
+
   if (!themeLoaded) {
     return (
       <div class="flex h-screen items-center justify-center">
@@ -248,20 +265,54 @@ export function App() {
   }
 
   return (
-    <div class="flex h-screen bg-background">
-      <Sidebar sseConnected={sseConnected} sseExhausted={sseExhausted} onSseReconnect={sseReconnect} />
-      <main class="flex-1 overflow-hidden">
-        <Router>
-          <DashboardPage path="/" />
-          <InstancesPage path="/instances" />
-          <McpPage path="/mcp" />
-          <TasksPage path="/tasks" />
-          <AnalyticsPage path="/analytics" />
-          <AgentUsagePage path="/agent-usage" />
-          <ThemePage path="/theme" onThemeChange={applyTheme} />
-        </Router>
-      </main>
-    </div>
+    <ToastProvider>
+      <div class="flex h-screen bg-background">
+        <Sidebar sseConnected={sseConnected} sseExhausted={sseExhausted} onSseReconnect={sseReconnect} />
+        <main class="flex-1 overflow-hidden">
+          <Router>
+            <TasksPage path="/" />
+            <InstancesPage path="/instances" />
+            <McpPage path="/mcp" />
+            <AnalyticsPage path="/analytics" />
+            <AgentUsagePage path="/agent-usage" />
+            <ThemePage path="/theme" onThemeChange={applyTheme} />
+          </Router>
+        </main>
+      </div>
+      <ToastContainer />
+      
+      {/* Shortcut help modal */}
+      {showShortcutHelp && (
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowShortcutHelp(false)}>
+          <div class="bg-card border border-border rounded-lg shadow-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-lg font-semibold">キーボードショートカット</h2>
+              <button onClick={() => setShowShortcutHelp(false)} class="text-muted-foreground hover:text-foreground">
+                <Keyboard class="h-5 w-5" />
+              </button>
+            </div>
+            <div class="space-y-2">
+              <div class="flex justify-between text-sm">
+                <span class="text-muted-foreground">コマンドパレット</span>
+                <kbd class="px-2 py-0.5 bg-muted rounded text-xs">Ctrl+K</kbd>
+              </div>
+              <div class="flex justify-between text-sm">
+                <span class="text-muted-foreground">新規タスク作成</span>
+                <kbd class="px-2 py-0.5 bg-muted rounded text-xs">Ctrl+N</kbd>
+              </div>
+              <div class="flex justify-between text-sm">
+                <span class="text-muted-foreground">閉じる</span>
+                <kbd class="px-2 py-0.5 bg-muted rounded text-xs">Escape</kbd>
+              </div>
+              <div class="flex justify-between text-sm">
+                <span class="text-muted-foreground">ショートカットヘルプ</span>
+                <kbd class="px-2 py-0.5 bg-muted rounded text-xs">?</kbd>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </ToastProvider>
   );
 }
 
@@ -290,8 +341,7 @@ function Sidebar({ sseConnected, sseExhausted, onSseReconnect }: SidebarProps) {
   };
 
   const navItems = [
-    { path: "/", icon: Activity, label: "Dashboard" },
-    { path: "/tasks", icon: ListTodo, label: "Tasks" },
+    { path: "/", icon: ListTodo, label: "Tasks" },
     { path: "/analytics", icon: BarChart3, label: "Analytics" },
     { path: "/agent-usage", icon: TrendingUp, label: "Agent Usage" },
     { path: "/instances", icon: Monitor, label: "Instances" },

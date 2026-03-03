@@ -518,10 +518,10 @@ export function AnalyticsPage() {
                               <Cell fill="hsl(var(--chart-2))" />
                             </Pie>
                             <Tooltip
-                              content={({ active, payload }) => (
+                              content={({ active, payload }: { active?: boolean; payload?: Array<{ name?: string; value?: unknown }> }) => (
                                 <ChartTooltipContent
                                   active={active}
-                                  payload={payload?.map(p => ({
+                                  payload={payload?.map((p: { name?: string; value?: unknown }) => ({
                                     name: p.name ?? "",
                                     value: p.value as number,
                                     color: pieConfig[p.name ?? ""]?.color ?? "",

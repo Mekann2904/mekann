@@ -557,7 +557,22 @@ export class ComprehensiveLogger {
       },
     });
   }
-  
+
+  // ============================================
+  // 警告ログ
+  // ============================================
+
+  /**
+   * 警告ログを出力する
+   * @summary 警告ログ出力
+   * @param message 警告メッセージ
+   * @returns なし
+   */
+  warn(message: string): void {
+    // Output to console for immediate visibility
+    console.warn(`[comprehensive-logger] ${message}`);
+  }
+
   // ============================================
   // 内部メソッド
   // ============================================

@@ -18,7 +18,8 @@
  */
 
 import { h } from "preact";
-import { useState, useEffect, useRef } from "preact/hooks";
+import { useState, useEffect, useRef, useMemo, useCallback } from "preact/hooks";
+import { memo } from "preact/compat";
 import { X, Calendar, User, Tag, Trash2, CheckCircle2, Circle, Clock, AlertTriangle, Plus, ListChecks, FileText, Loader2 } from "lucide-preact";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -62,7 +63,7 @@ const PRIORITY_OPTIONS: { value: TaskPriority; label: string; color: string }[] 
   { value: "low", label: "Low", color: "#cfd3d7" },
 ];
 
-export function TaskDetailPanel({
+function TaskDetailPanelInner({
   task,
   allTasks,
   onClose,
@@ -88,10 +89,27 @@ export function TaskDetailPanel({
   // UL workflow tasks are read-only
   const isReadOnly = task.isUlWorkflow === true;
 
-  // Get subtasks
-  const subtasks = allTasks.filter((t) => t.parentTaskId === task.id);
-  const completedSubtasks = subtasks.filter((t) => t.status === "completed");
-  const subtaskProgress = subtasks.length > 0 ? `${completedSubtasks.length}/${subtasks.length}` : null;
+  // Get subtasks (memoized)
+  const subtasks = useMemo(
+    () => allTasks.filter((t) => t.parentTaskId === task.id),
+    [allTasks, task.id]
+  );
+  const completedSubtasks = useMemo(
+    () => subtasks.filter((t) => t.status === "completed"),
+    [subtasks]
+  );
+  const subtaskProgress = useMemo(
+    () => subtasks.length > 0 ? `${completedSubtasks.length}/${subtasks.length}` : null,
+    [subtasks.length, completedSubtasks.length]
+  );
+  const isOverdue = useMemo(
+    () =>
+      editedTask.dueDate &&
+      editedTask.status !== "completed" &&
+      editedTask.status !== "cancelled" &&
+      new Date(editedTask.dueDate) < new Date(),
+    [editedTask.dueDate, editedTask.status]
+  );
 
   // Sync with prop changes
   useEffect(() => {
@@ -138,46 +156,63 @@ export function TaskDetailPanel({
     fetchPlan();
   }, [task.id, task.isUlWorkflow]);
 
-  const updateField = <K extends keyof Task>(key: K, value: Task[K]) => {
-    const updated = { ...editedTask, [key]: value };
-    setEditedTask(updated);
-    onUpdate(updated);
-  };
+  // Callbacks (memoized)
+  const handleClose = useCallback(() => {
+    onClose();
+  }, [onClose]);
 
-  const addTag = () => {
-    const trimmed = newTag.trim();
-    if (trimmed && !editedTask.tags.includes(trimmed)) {
-      updateField("tags", [...editedTask.tags, trimmed]);
-      setNewTag("");
+  const handleDelete = useCallback(() => {
+    if (confirm("Delete this task?")) {
+      onDelete();
     }
-  };
+  }, [onDelete]);
 
-  const removeTag = (tag: string) => {
+  const updateField = useCallback(<K extends keyof Task>(key: K, value: Task[K]) => {
+    setEditedTask((prev) => {
+      const updated = { ...prev, [key]: value };
+      onUpdate(updated);
+      return updated;
+    });
+  }, [onUpdate]);
+
+  const addTag = useCallback(() => {
+    setNewTag((prev) => {
+      const trimmed = prev.trim();
+      if (trimmed && !editedTask.tags.includes(trimmed)) {
+        updateField("tags", [...editedTask.tags, trimmed]);
+        return "";
+      }
+      return prev;
+    });
+  }, [editedTask.tags, updateField]);
+
+  const removeTag = useCallback((tag: string) => {
     updateField(
       "tags",
       editedTask.tags.filter((t) => t !== tag)
     );
-  };
+  }, [editedTask.tags, updateField]);
 
-  const handleTitleBlur = () => {
+  const handleTitleBlur = useCallback(() => {
     setIsEditingTitle(false);
     if (editedTask.title.trim() !== task.title) {
       onUpdate(editedTask);
     }
-  };
+  }, [editedTask, task.title, onUpdate]);
 
-  const handleDescriptionBlur = () => {
+  const handleDescriptionBlur = useCallback(() => {
     setIsEditingDescription(false);
     if (editedTask.description !== task.description) {
       onUpdate(editedTask);
     }
-  };
+  }, [editedTask, task.description, onUpdate]);
 
-  const isOverdue =
-    editedTask.dueDate &&
-    editedTask.status !== "completed" &&
-    editedTask.status !== "cancelled" &&
-    new Date(editedTask.dueDate) < new Date();
+  const handleStatusChange = useCallback((status: TaskStatus) => {
+    if (!isReadOnly) {
+      updateField("status", status);
+      onStatusChange(status);
+    }
+  }, [isReadOnly, updateField, onStatusChange]);
 
   return (
     <div class="w-[360px] shrink-0 border-l border-border bg-background flex flex-col">
@@ -190,17 +225,13 @@ export function TaskDetailPanel({
               variant="ghost"
               size="icon"
               class="h-7 w-7 text-destructive hover:text-destructive"
-              onClick={() => {
-                if (confirm("Delete this task?")) {
-                  onDelete();
-                }
-              }}
+              onClick={handleDelete}
               title="Delete task"
             >
               <Trash2 class="h-3.5 w-3.5" />
             </Button>
           )}
-          <Button variant="ghost" size="icon" class="h-7 w-7" onClick={onClose}>
+          <Button variant="ghost" size="icon" class="h-7 w-7" onClick={handleClose}>
             <X class="h-4 w-4" />
           </Button>
         </div>
@@ -268,12 +299,7 @@ export function TaskDetailPanel({
                 <button
                   key={option.value}
                   disabled={isReadOnly}
-                  onClick={() => {
-                    if (!isReadOnly) {
-                      updateField("status", option.value);
-                      onStatusChange(option.value);
-                    }
-                  }}
+                  onClick={() => handleStatusChange(option.value)}
                   class={cn(
                     "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors",
                     isActive
@@ -598,3 +624,5 @@ export function TaskDetailPanel({
     </div>
   );
 }
+
+export const TaskDetailPanel = memo(TaskDetailPanelInner);

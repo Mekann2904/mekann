@@ -41,9 +41,10 @@ interface AlertDialogTriggerProps {
 
 export function AlertDialogTrigger({ children, asChild, onClick }: AlertDialogTriggerProps) {
   if (asChild && children && typeof children === "object" && "props" in children) {
-    const child = children as preact.VNode;
+    const child = children as preact.VNode<{ onClick?: (e: Event) => void }>;
+    const ChildComponent = child.type as preact.ComponentType<{ onClick?: (e: Event) => void }>;
     return (
-      <child.type
+      <ChildComponent
         {...child.props}
         onClick={(e: Event) => {
           onClick?.();
@@ -62,7 +63,7 @@ interface AlertDialogContentProps {
   onOpenChange?: (open: boolean) => void;
 }
 
-export function AlertDialogContent({ children, size = "default", open: boolean = true, onOpenChange }: AlertDialogContentProps) {
+export function AlertDialogContent({ children, size = "default", open = true, onOpenChange }: AlertDialogContentProps) {
   const handleBackdropClick = useCallback((e: Event) => {
     if (e.target === e.currentTarget) {
       onOpenChange?.(false);
@@ -75,8 +76,10 @@ export function AlertDialogContent({ children, size = "default", open: boolean =
     }
   }, [onOpenChange]);
 
+  const isOpen = open ?? true;
+
   useEffect(() => {
-    if (open) {
+    if (isOpen) {
       document.addEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "hidden";
     }
@@ -84,9 +87,9 @@ export function AlertDialogContent({ children, size = "default", open: boolean =
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "";
     };
-  }, [open, handleKeyDown]);
+  }, [isOpen, handleKeyDown]);
 
-  if (!open) return null;
+  if (!isOpen) return null;
 
   const sizeClasses = {
     sm: "max-w-sm",

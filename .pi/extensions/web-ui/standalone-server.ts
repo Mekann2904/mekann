@@ -1002,6 +1002,196 @@ function createApp(): Express {
     }
   });
 
+  /**
+   * GET /api/pi-usage - Get pi usage statistics (cost, models, daily activity, tokens, runs)
+   */
+  app.get("/api/pi-usage", (_req: Request, res: Response) => {
+    try {
+      // Parse session files directly to get all metrics including tokens and runs
+      const sessionsDir = path.join(homedir(), ".pi", "agent", "sessions");
+      
+      const byModel: Record<string, number> = {};
+      const byDate: Record<string, number> = {};
+      const byDateModel: Record<string, Record<string, number>> = {};
+      const byDateTokens: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {};
+      const byDateRuns: Record<string, number> = {};
+      const byModelTokens: Record<string, { input: number; output: number }> = {};
+
+      if (fs.existsSync(sessionsDir)) {
+        const dirs = fs.readdirSync(sessionsDir, { withFileTypes: true })
+          .filter((d) => d.isDirectory())
+          .map((d) => d.name);
+
+        for (const dir of dirs) {
+          const dirPath = path.join(sessionsDir, dir);
+          const files = fs.readdirSync(dirPath).filter((f) => f.endsWith(".jsonl"));
+
+          for (const file of files) {
+            const filePath = path.join(dirPath, file);
+            try {
+              const content = fs.readFileSync(filePath, "utf-8");
+              const lines = content.split("\n").slice(-1000);
+
+              for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                  const data = JSON.parse(line);
+                  if (data.type === "message" && data.message?.usage) {
+                    const date = data.timestamp?.slice(0, 10) || "unknown";
+                    const model = data.message.model || "unknown";
+                    const usage = data.message.usage;
+                    const cost = usage.cost?.total || 0;
+
+                    // Cost metrics
+                    if (cost > 0) {
+                      byModel[model] = (byModel[model] || 0) + cost;
+                      byDate[date] = (byDate[date] || 0) + cost;
+                      if (!byDateModel[date]) byDateModel[date] = {};
+                      byDateModel[date][model] = (byDateModel[date][model] || 0) + cost;
+                    }
+
+                    // Token metrics
+                    const input = usage.input || 0;
+                    const output = usage.output || 0;
+                    const cacheRead = usage.cacheRead || 0;
+                    const cacheWrite = usage.cacheWrite || 0;
+
+                    if (!byDateTokens[date]) {
+                      byDateTokens[date] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+                    }
+                    byDateTokens[date].input += input;
+                    byDateTokens[date].output += output;
+                    byDateTokens[date].cacheRead += cacheRead;
+                    byDateTokens[date].cacheWrite += cacheWrite;
+
+                    // Run count (assistant messages with usage)
+                    if (data.message.role === "assistant") {
+                      byDateRuns[date] = (byDateRuns[date] || 0) + 1;
+                    }
+
+                    // Model tokens
+                    if (!byModelTokens[model]) {
+                      byModelTokens[model] = { input: 0, output: 0 };
+                    }
+                    byModelTokens[model].input += input;
+                    byModelTokens[model].output += output;
+                  }
+                } catch {
+                  // Skip malformed JSON lines
+                }
+              }
+            } catch {
+              // Skip files that can't be read
+            }
+          }
+        }
+      }
+
+      const totalCost = Object.values(byModel).reduce((sum, c) => sum + c, 0);
+      const totalTokens = Object.values(byDateTokens).reduce(
+        (sum, t) => ({ input: sum.input + t.input, output: sum.output + t.output }),
+        { input: 0, output: 0 }
+      );
+      const totalRuns = Object.values(byDateRuns).reduce((sum, r) => sum + r, 0);
+
+      res.json({
+        success: true,
+        data: {
+          byModel,
+          byDate,
+          byDateModel,
+          totalCost,
+          byDateTokens,
+          byDateRuns,
+          byModelTokens,
+          totalTokens,
+          totalRuns,
+        },
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get pi usage", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/llm-usage - Get LLM usage statistics (cost, models, daily activity)
+   */
+  app.get("/api/llm-usage", async (_req: Request, res: Response) => {
+    try {
+      // Read llm-behavior aggregates
+      const dailyDir = path.join(process.cwd(), ".pi", "analytics", "llm-behavior", "aggregates", "daily");
+      const weeklyDir = path.join(process.cwd(), ".pi", "analytics", "llm-behavior", "aggregates", "weekly");
+
+      interface DailyAggregate {
+        period: string;
+        startTime: string;
+        endTime: string;
+        totals: {
+          runs: number;
+          errors: number;
+          totalPromptTokens: number;
+          totalOutputTokens: number;
+          totalThinkingTokens: number;
+          totalDurationMs: number;
+        };
+        averages: {
+          promptTokens: number;
+          outputTokens: number;
+          efficiency: number;
+          formatCompliance: number;
+          claimResultConsistency: number;
+          durationMs: number;
+        };
+        anomalies: unknown[];
+      }
+
+      const dailyData: DailyAggregate[] = [];
+      if (fs.existsSync(dailyDir)) {
+        const files = fs.readdirSync(dailyDir).filter(f => f.endsWith('.json'));
+        for (const file of files) {
+          const content = fs.readFileSync(path.join(dailyDir, file), 'utf-8');
+          dailyData.push(JSON.parse(content) as DailyAggregate);
+        }
+      }
+
+      // Calculate totals
+      const totals = {
+        runs: dailyData.reduce((sum, d) => sum + d.totals.runs, 0),
+        promptTokens: dailyData.reduce((sum, d) => sum + d.totals.totalPromptTokens, 0),
+        outputTokens: dailyData.reduce((sum, d) => sum + d.totals.totalOutputTokens, 0),
+        thinkingTokens: dailyData.reduce((sum, d) => sum + d.totals.totalThinkingTokens, 0),
+      };
+
+      // Generate daily activity for last 12 weeks (84 days)
+      const dailyActivity: Array<{ date: string; tokens: number; runs: number }> = [];
+      const today = new Date();
+      for (let i = 83; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        const dayData = dailyData.find(d => d.startTime?.split('T')[0] === dateStr);
+        dailyActivity.push({
+          date: dateStr ?? '',
+          tokens: (dayData?.totals?.totalPromptTokens ?? 0) + (dayData?.totals?.totalOutputTokens ?? 0),
+          runs: dayData?.totals?.runs ?? 0,
+        });
+      }
+
+      res.json({
+        success: true,
+        data: {
+          totals,
+          dailyActivity,
+          dailyData: dailyData.slice(-30), // Last 30 days
+        },
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Failed to get LLM usage", details: errorMessage });
+    }
+  });
+
   // ============= MCP API (Stub - requires pi instance) =============
 
   /**
@@ -1128,14 +1318,39 @@ function createApp(): Express {
   const distPath = path.join(__dirname, "dist");
   app.use(express.static(distPath));
 
+  // ============= API Proxy to pi runtime API (port 3457) =============
+  // This must come AFTER static files but BEFORE SPA fallback
+  // Only proxy requests that don't match any local route
+
+  const PI_RUNTIME_PORT = parseInt(process.env.PI_RUNTIME_PORT || "3457");
+
+  app.all("/api/*", async (req: Request, res: Response) => {
+    const proxyUrl = `http://localhost:${PI_RUNTIME_PORT}${req.originalUrl}`;
+
+    try {
+      const response = await fetch(proxyUrl, {
+        method: req.method,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: req.method !== "GET" && req.method !== "HEAD" ? JSON.stringify(req.body) : undefined,
+      });
+
+      const data = await response.json();
+      res.status(response.status).json(data);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(502).json({
+        error: "Proxy error",
+        details: errorMessage,
+        target: proxyUrl,
+      });
+    }
+  });
+
   // ============= SPA Fallback =============
 
   app.get("*", (req: Request, res: Response) => {
-    if (req.path.startsWith("/api/")) {
-      res.status(404).json({ error: "Not found" });
-      return;
-    }
-
     res.sendFile(path.join(distPath, "index.html"), (err) => {
       if (err) {
         res.status(404).send(`
