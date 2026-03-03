@@ -719,6 +719,17 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
     while (retryCount < maxRetries) {
       const attempt = retryCount + 1;
       this.nodeRetryCount.set(taskId, attempt);
+
+      // Exponential backoff: wait before retrying (starting at 100ms, max 2000ms)
+      // This prevents tight retry loops and gives transient issues time to resolve
+      if (retryCount > 0) {
+        const backoffMs = Math.min(100 * Math.pow(2, retryCount - 1), 2000);
+        console.log(
+          `[Local Replan] Waiting ${backoffMs}ms before retry ${attempt}/${maxRetries} for task ${taskId}`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      }
+
       console.log(
         `[Local Replan] Retrying task ${taskId} (attempt ${attempt}/${maxRetries})`,
       );
