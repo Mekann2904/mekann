@@ -1750,11 +1750,10 @@ export async function safeStealWork(): Promise<StealableQueueEntry | null> {
   }
 
   const startTime = currentTimeMs();
+  stealingStats.totalAttempts++;
+  stealingStats.lastAttemptAt = startTime;
 
   try {
-    stealingStats.totalAttempts++;
-    stealingStats.lastAttemptAt = startTime;
-
     // Get the stealable entry
     const entry = stealWork();
 
@@ -1774,6 +1773,12 @@ export async function safeStealWork(): Promise<StealableQueueEntry | null> {
     }
 
     return entry;
+  } catch (error) {
+    // Record failure on exception to ensure stats consistency
+    stealingStats.failedAttempts++;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logCoordinatorDebug(`safeStealWork failed: ${errorMessage}`);
+    throw error;
   } finally {
     releaseLock(lock);
   }
