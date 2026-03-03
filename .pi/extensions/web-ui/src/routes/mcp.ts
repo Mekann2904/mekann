@@ -55,39 +55,47 @@ mcpRoutes.get("/servers", (c) => {
     const configPath = getMcpConfigPath();
 
     if (!fs.existsSync(configPath)) {
-      return c.json<SuccessResponse<McpServerConfig[]>>({
+      return c.json({
         success: true,
-        data: [],
+        servers: [],
+        count: 0,
       });
     }
 
     const content = fs.readFileSync(configPath, "utf-8");
     const config: McpConfig = JSON.parse(content);
 
+    let servers: McpServerConfig[] = [];
+
     // 新形式: { servers: [...] }
     if (config.servers && Array.isArray(config.servers)) {
-      return c.json({
-        success: true,
-        data: config.servers,
-      });
+      servers = config.servers;
     }
-
     // 旧形式: { mcpServers: { ... } }
-    if (config.mcpServers) {
-      const servers = Object.entries(config.mcpServers).map(([id, server]) => ({
+    else if (config.mcpServers) {
+      servers = Object.entries(config.mcpServers).map(([id, server]) => ({
         ...server,
         id,
       }));
-      return c.json({
-        success: true,
-        data: servers,
-      });
     }
 
-    return c.json({
+    // フロントエンドが期待する形式に変換
+    const response = {
       success: true,
-      data: [],
-    });
+      servers: servers.map(s => ({
+        id: s.id,
+        name: s.name || s.id,
+        url: s.url || "",
+        description: s.description,
+        enabled: s.enabled ?? !s.disabled,
+        status: "disconnected" as const,
+        toolsCount: 0,
+        resourcesCount: 0,
+      })),
+      count: servers.length,
+    };
+
+    return c.json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return c.json({ success: false, error: "Failed to get MCP servers", details: message }, 500);
