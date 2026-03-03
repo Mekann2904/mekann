@@ -6,13 +6,13 @@
  * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/config.json, .pi/lib/circuit-breaker.ts
  * public_api: RetryJitterMode, RetryWithBackoffConfig, RetryWithBackoffOverrides, RetryAttemptContext, RateLimitGateSnapshot, RateLimitWaitContext, retryWithBackoff
  * invariants: リトライ遅延はinitialDelayMs以上maxDelayMs以下である。待機時間の計算にはnow()関数の結果を使用する。サーキットブレーカーがOPEN状態の場合はエラーをスローする。
- * side_effects: ファイルシステム（readFileSync, writeFileSync, mkdirSync）へのアクセスとファイルロックを行う。レートリミット状態を永続化する。サーキットブレーカー状態を更新する。
+ * side_effects: ファイルシステム（readFileSync, mkdirSync）へのアクセスとatomicWriteTextFileによる原子書き込みを行う。レートリミット状態を永続化する。サーキットブレーカー状態を更新する。
  * failure_modes: 設定値が不正な場合の挙動未定義、ファイルシステムへのアクセス権限がない場合のエラー、AbortSignalによる操作の中断、サーキットブレーカーOPEN時の即時エラー。
  * @abdd.explain
  * overview: LLM API等における一時的な障害やレート制限（429/5xx）に対し、指数バックオフおよびジッター機能を提供し、安定的な通信を実現するモジュール。サーキットブレーカーパターンと統合され、連続エラー時の早期検出と保護を提供。
  * what_it_does:
  *   - 指数バックオフアルゴリズムによる待機時間の計算とジッター（full/partial/none）の適用
- *   - ファイルロックを用いたレートリミット状態の永続化と共有
+ *   - Mutexによるメモリ状態の排他制御とatomicWriteTextFileによる原子ファイル書き込み
  *   - AbortSignalによるリトライ処理のキャンセル対応
  *   - リトライ判定ロジック（shouldRetry）とコールバック（onRetry, onRateLimitWait）の実行
  *   - サーキットブレーカーによる連続エラー検出と保護（OPEN状態でエラースロー）
@@ -32,12 +32,12 @@
 // Why: Keeps 429/5xx recovery policy in one place for subagents and agent teams.
 // Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/config.json
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Mutex } from "async-mutex";
 import { recordTotalLimitObservation } from "./adaptive-total-limit.js";
-import { withFileLock } from "./storage/storage-lock.js";
+import { atomicWriteTextFile, withFileLock } from "./storage/storage-lock.js";
 import {
   checkCircuitBreaker,
   recordCircuitBreakerSuccess,
@@ -404,6 +404,12 @@ function readPersistedRateLimitState(nowMs: number): Map<string, SharedRateLimit
   }
 }
 
+/**
+ * レートリミット状態を原子性を保って永続化する
+ * @summary 原子ファイル書き込み
+ * @param state - 永続化する状態
+ * @returns {void}
+ */
 function writePersistedRateLimitState(state: SharedRateLimitState): void {
   try {
     ensureRuntimeDir();
@@ -412,7 +418,8 @@ function writePersistedRateLimitState(state: SharedRateLimitState): void {
       updatedAt: new Date().toISOString(),
       entries: Object.fromEntries(state.entries.entries()),
     };
-    writeFileSync(RATE_LIMIT_STATE_FILE, JSON.stringify(payload, null, 2), "utf-8");
+    // BUG-007修正: atomicWriteTextFileを使用して原子性を保証
+    atomicWriteTextFile(RATE_LIMIT_STATE_FILE, JSON.stringify(payload, null, 2));
   } catch (error) {
     // Bug #8 fix: 永続化書き込みエラーをログに記録
     // Best effort only - 書き込み失敗してもメモリ状態は保持される

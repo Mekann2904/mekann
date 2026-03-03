@@ -18,6 +18,10 @@ import { randomUUID } from "crypto";
  */
 export const runtimeRoutes = new Hono();
 
+// メモリリーク修正: セッションTTL設定（デフォルト1時間）
+const SESSION_TTL_MS = parseInt(process.env.PI_SESSION_TTL_MS || "3600000", 10); // 1時間
+const SESSION_MAX_COUNT = parseInt(process.env.PI_SESSION_MAX_COUNT || "1000", 10); // 最大1000セッション
+
 // インメモリセッションストア（簡易版）
 const sessions = new Map<string, RuntimeSession>();
 
@@ -29,6 +33,41 @@ const sseClients = new Map<string, {
 
 // BUG-2修正: ハートビート参照を保持してクリーンアップ可能に
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+
+// メモリリーク修正: セッションクリーンアップタイマー
+let sessionCleanupInterval: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * 期限切れセッションをクリーンアップ（メモリリーク対策）
+ */
+function cleanupExpiredSessions(): void {
+  const now = Date.now();
+  let expiredCount = 0;
+
+  // TTLベースのクリーンアップ
+  sessions.forEach((session, id) => {
+    if (session.createdAt && now - session.createdAt > SESSION_TTL_MS) {
+      sessions.delete(id);
+      expiredCount++;
+    }
+  });
+
+  // 最大数超過時のクリーンアップ（古い順に削除）
+  if (sessions.size > SESSION_MAX_COUNT) {
+    const entries = [...sessions.entries()]
+      .sort((a, b) => (a[1].createdAt || 0) - (b[1].createdAt || 0));
+    
+    const toDelete = entries.slice(0, sessions.size - SESSION_MAX_COUNT);
+    for (const [id] of toDelete) {
+      sessions.delete(id);
+      expiredCount++;
+    }
+  }
+
+  if (expiredCount > 0) {
+    console.log(`[runtime] Cleaned up ${expiredCount} expired session(s)`);
+  }
+}
 
 /**
  * ハートビートを開始
@@ -50,6 +89,14 @@ function startHeartbeat(): void {
       }
     });
   }, 30000);
+
+  // メモリリーク修正: 定期的なセッションクリーンアップ（5分ごと）
+  if (!sessionCleanupInterval) {
+    sessionCleanupInterval = setInterval(cleanupExpiredSessions, 300000);
+    if (sessionCleanupInterval.unref) {
+      sessionCleanupInterval.unref();
+    }
+  }
 }
 
 /**
@@ -59,6 +106,10 @@ export function cleanupRuntimeSSE(): void {
   if (heartbeatInterval) {
     clearInterval(heartbeatInterval);
     heartbeatInterval = null;
+  }
+  if (sessionCleanupInterval) {
+    clearInterval(sessionCleanupInterval);
+    sessionCleanupInterval = null;
   }
   sseClients.clear();
   sessions.clear();
@@ -83,6 +134,7 @@ export interface RuntimeSession {
   taskDescription?: string;
   status: RuntimeSessionStatus;
   startedAt: number;
+  createdAt?: number; // メモリリーク修正: TTL管理用
   progress?: number;
   message?: string;
   completedAt?: number;
@@ -240,6 +292,7 @@ runtimeRoutes.post("/sessions", async (c) => {
       taskDescription: body.taskDescription,
       status: "starting",
       startedAt: Date.now(),
+      createdAt: Date.now(), // メモリリーク修正: TTL管理用
       ...body,
     };
 
