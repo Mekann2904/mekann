@@ -55,7 +55,7 @@ let globalTheme: ThemeSettings | null = null;
 // Get global theme from server
 async function fetchGlobalTheme(): Promise<ThemeSettings | null> {
   try {
-    const res = await fetch("/api/theme");
+    const res = await fetch("/api/v2/theme");
     if (res.ok) {
       return await res.json();
     }
@@ -68,7 +68,7 @@ async function fetchGlobalTheme(): Promise<ThemeSettings | null> {
 // Save global theme to server
 async function saveGlobalTheme(themeId: string, mode: Mode): Promise<boolean> {
   try {
-    const res = await fetch("/api/theme", {
+    const res = await fetch("/api/v2/theme", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ themeId, mode }),
@@ -131,7 +131,7 @@ function useSSE(
       }
 
       try {
-        eventSource = new EventSource("/api/events");
+        eventSource = new EventSource("/api/v2/sse");
 
         eventSource.onopen = () => {
           if (currentConnectionId !== connectionIdRef.current) {

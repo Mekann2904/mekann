@@ -75,9 +75,10 @@ export function ThemePage({ onThemeChange }: ThemePageProps) {
 
   // Load theme from server on mount
   useEffect(() => {
-    fetch("/api/theme")
+    fetch("/api/v2/theme")
       .then((res) => res.json())
-      .then((data) => {
+      .then((json) => {
+        const data = json.data || json;
         if (data.themeId && data.mode) {
           setSelectedId(data.themeId);
           setMode(data.mode);

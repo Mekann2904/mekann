@@ -191,8 +191,8 @@ export function AnalyticsPage() {
       const aggregateType = timeRange === "24h" ? "hourly" : timeRange === "7d" ? "daily" : "daily";
       
       const [summaryRes, recordsRes, aggregatesRes] = await Promise.all([
-        fetch("/api/analytics/summary"),
-        fetch("/api/analytics/records?limit=20"),
+        fetch("/api/v2/analytics/summary"),
+        fetch("/api/v2/analytics/records?limit=20"),
         fetch(`/api/analytics/aggregates?type=${aggregateType}&range=${timeRange}`),
       ]);
 
