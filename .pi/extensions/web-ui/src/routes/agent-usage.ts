@@ -47,7 +47,7 @@ agentUsageRoutes.get("/", (c) => {
     };
 
     // フロントエンドが期待する形式で返す（dataラッパー付き）
-    return c.json({ data });
+    return c.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return c.json({ success: false, error: "Failed to get agent usage", details: message }, 500);
