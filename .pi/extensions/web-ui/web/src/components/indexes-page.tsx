@@ -48,6 +48,7 @@ import {
 
 interface IndexStatus {
   exists: boolean;
+  enabled: boolean; // 設定による有効/無効
   nodeCount?: number;
   edgeCount?: number;
   fileCount?: number;
@@ -140,7 +141,9 @@ function IndexCard({
   const Icon = config.icon;
   const isBuilding = progress.index === indexKey && progress.status === "building";
   const isProgressForThis = progress.index === indexKey;
-  const isEnabled = status.exists;
+  // Toggleの状態は設定(enabled)、カードのアクティブ状態はexists && enabled
+  const isEnabled = status.enabled;
+  const isActive = status.exists && status.enabled;
 
   return (
     <Card class={cn(CARD_STYLES.base, "flex flex-col transition-all")}>
@@ -149,11 +152,11 @@ function IndexCard({
           <div class="flex items-start gap-3 min-w-0">
             <div class={cn(
               "p-2 rounded-md shrink-0",
-              isEnabled ? "bg-primary/10" : "bg-muted"
+              isActive ? "bg-primary/10" : "bg-muted"
             )}>
               <Icon class={cn(
                 "h-5 w-5",
-                isEnabled ? "text-primary" : "text-muted-foreground"
+                isActive ? "text-primary" : "text-muted-foreground"
               )} />
             </div>
             <div class="min-w-0">
@@ -229,7 +232,7 @@ function IndexCard({
             variant="outline"
             size="sm"
             onClick={() => onRebuild(false)}
-            disabled={isBuilding || !isEnabled}
+            disabled={isBuilding || !status.exists}
             class="flex-1"
           >
             {isBuilding ? (
@@ -257,7 +260,7 @@ function IndexCard({
             variant="ghost"
             size="sm"
             onClick={onDelete}
-            disabled={isBuilding || !isEnabled}
+            disabled={isBuilding || !status.exists}
             title="削除"
           >
             <Trash2 class="h-4 w-4" />
@@ -358,15 +361,32 @@ export function IndexesPage() {
     setConfirmAction(null);
   }, [confirmAction, executeRebuild, executeDelete]);
 
-  const handleToggle = useCallback((index: "locagent" | "repograph" | "semantic", enabled: boolean) => {
-    if (!enabled) {
-      // 無効化 = 削除確認
-      setConfirmAction({ type: "delete", index, force: false });
-    } else {
-      // 有効化 = 再構築確認
-      setConfirmAction({ type: "rebuild", index, force: false });
+  const executeToggle = useCallback(async (
+    index: "locagent" | "repograph" | "semantic",
+    enabled: boolean
+  ) => {
+    try {
+      const res = await fetch(`/api/v2/indexes/${index}/enabled`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+
+      await fetchStatuses();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "設定の更新に失敗しました");
     }
-  }, []);
+  }, [fetchStatuses]);
+
+  const handleToggle = useCallback((index: "locagent" | "repograph" | "semantic", enabled: boolean) => {
+    // Toggleは設定のみ更新（インデックスは削除しない）
+    executeToggle(index, enabled);
+  }, [executeToggle]);
 
   const rebuildAll = useCallback(async (force: boolean) => {
     for (const index of ["locagent", "repograph", "semantic"] as const) {
@@ -388,7 +408,7 @@ export function IndexesPage() {
 
   // Calculate stats
   const activeCount = statuses
-    ? [statuses.locagent, statuses.repograph, statuses.semantic].filter(s => s.exists).length
+    ? [statuses.locagent, statuses.repograph, statuses.semantic].filter(s => s.exists && s.enabled).length
     : 0;
   const totalSize = statuses
     ? (statuses.locagent.size || 0) + (statuses.repograph.size || 0) + (statuses.semantic.size || 0)

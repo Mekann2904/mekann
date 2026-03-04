@@ -2,8 +2,8 @@
  * @abdd.meta
  * @path .pi/extensions/web-ui/src/routes/indexes.ts
  * @role インデックス管理APIルート
- * @why LocAgent, RepoGraph, Semanticの状態取得・再構築
- * @related services/index-service.ts, schemas/index.schema.ts
+ * @why LocAgent, RepoGraph, Semanticの状態取得・再構築・設定管理
+ * @related services/index-settings-service.ts, schemas/index.schema.ts
  * @public_api indexesRoutes
  */
 
@@ -11,12 +11,24 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import type { SuccessResponse } from "../schemas/common.schema.js";
+import {
+  loadIndexSettings,
+  updateIndexEnabled,
+  type IndexSettings,
+} from "../services/index-settings-service.js";
 
 /**
  * 再構築リクエストスキーマ
  */
 const RebuildSchema = z.object({
   force: z.boolean().default(false),
+});
+
+/**
+ * 有効/無効更新スキーマ
+ */
+const EnabledSchema = z.object({
+  enabled: z.boolean(),
 });
 
 /**
@@ -161,19 +173,23 @@ export const indexesRoutes = new Hono();
 indexesRoutes.get("/", async (c) => {
   const cwd = process.cwd();
 
-  const [locagent, repograph, semantic] = await Promise.all([
+  const [locagent, repograph, semantic, settings] = await Promise.all([
     getIndexStatus("locagent", cwd),
     getIndexStatus("repograph", cwd),
     getIndexStatus("semantic", cwd),
+    loadIndexSettings(cwd),
   ]);
 
-  return c.json<SuccessResponse<{
-    locagent: typeof locagent;
-    repograph: typeof repograph;
-    semantic: typeof semantic;
-  }>>({
+  // 各インデックスの状態にenabledを追加
+  const data = {
+    locagent: { ...locagent, enabled: settings.locagent },
+    repograph: { ...repograph, enabled: settings.repograph },
+    semantic: { ...semantic, enabled: settings.semantic },
+  };
+
+  return c.json<SuccessResponse<typeof data>>({
     success: true,
-    data: { locagent, repograph, semantic },
+    data,
   });
 });
 
@@ -229,6 +245,31 @@ indexesRoutes.post(
     return c.json<SuccessResponse<typeof result>>({
       success: true,
       data: result,
+    });
+  }
+);
+
+/**
+ * PATCH /api/indexes/:type/enabled - インデックスの有効/無効を設定
+ * 注: インデックス自体は削除されず、設定のみ更新される
+ */
+indexesRoutes.patch(
+  "/:type/enabled",
+  zValidator(
+    "param",
+    z.object({ type: z.enum(["locagent", "repograph", "semantic"]) })
+  ),
+  zValidator("json", EnabledSchema),
+  async (c) => {
+    const { type } = c.req.valid("param");
+    const { enabled } = c.req.valid("json");
+    const cwd = process.cwd();
+
+    const settings = await updateIndexEnabled(cwd, type, enabled);
+
+    return c.json<SuccessResponse<{ type: typeof type; enabled: boolean; settings: IndexSettings }>>({
+      success: true,
+      data: { type, enabled, settings },
     });
   }
 );
