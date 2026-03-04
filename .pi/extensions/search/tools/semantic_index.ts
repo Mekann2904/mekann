@@ -442,21 +442,19 @@ export async function semanticIndex(
 		// Track expected dimensions from the selected provider
 		const expectedDimensions = selectedProvider.capabilities.dimensions;
 
-		// Load existing index and metadata for incremental update
-		const existingEmbeddings = loadExistingIndexAsMap(cwd);
-		const existingMeta = existsSync(getMetaPath(cwd))
+		// Load existing index and metadata for incremental update (skip if force)
+		const existingEmbeddings = force ? new Map<string, CodeEmbedding>() : loadExistingIndexAsMap(cwd);
+		const existingMeta = force ? null : (existsSync(getMetaPath(cwd))
 			? JSON.parse(readFileSync(getMetaPath(cwd), "utf-8")) as SemanticIndexMetadata
-			: null;
+			: null);
 
 		// Get current file mtimes
 		const currentMtimes = getFileMtimes(files, cwd);
 
-		// Detect changes
-		const { newFiles, changedFiles, deletedFiles, unchangedFiles } = detectFileChanges(
-			files,
-			currentMtimes,
-			existingMeta?.fileMtimes
-		);
+		// Detect changes (if force, treat all as new)
+		const { newFiles, changedFiles, deletedFiles, unchangedFiles } = force
+			? { newFiles: new Set<string>(files), changedFiles: new Set<string>(), deletedFiles: new Set<string>(), unchangedFiles: new Set<string>() }
+			: detectFileChanges(files, currentMtimes, existingMeta?.fileMtimes);
 
 		// If no changes and not forced, skip
 		if (!force && newFiles.size === 0 && changedFiles.size === 0 && deletedFiles.size === 0) {
@@ -497,7 +495,7 @@ export async function semanticIndex(
 		}
 
 		// Files that need embedding generation
-		const filesToProcess = [...newFiles, ...changedFiles];
+		const filesToProcess: string[] = [...newFiles, ...changedFiles];
 		let newChunks = 0;
 		let updatedChunks = 0;
 		let apiCalls = 0;
