@@ -1317,8 +1317,21 @@ export interface MergedResult {
 }
 
 /**
+ * 失敗したソースの情報
+ * @summary 失敗ソース情報
+ */
+export interface FailedSource {
+  /** Source type that failed */
+  type: SearchSourceType;
+  /** Error message */
+  error: string;
+  /** Query that was attempted */
+  query?: string;
+}
+
+/**
  * 統合検索の統計情報
- * @summary 統合統計
+ * @summary 統計統計
  */
 export interface MergeResultsStats {
   /** Total sources queried */
@@ -1327,6 +1340,8 @@ export interface MergeResultsStats {
   totalResults: number;
   /** Duplicates removed */
   duplicatesRemoved: number;
+  /** Sources that failed with errors */
+  failedSources?: FailedSource[];
 }
 
 /**

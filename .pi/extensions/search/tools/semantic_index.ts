@@ -136,10 +136,250 @@ function detectLanguage(filePath: string): string {
 }
 
 /**
+ * Detect symbol boundaries (function/class start lines) in code.
+ * @summary Symbol boundary detection
+ * @param lines - Source code lines
+ * @param language - Programming language
+ * @returns Array of symbol boundary information
+ */
+function detectSymbolBoundaries(
+	lines: string[],
+	language: string
+): Array<{ line: number; type: string; name: string; indent: number }> {
+	const boundaries: Array<{ line: number; type: string; name: string; indent: number }> = [];
+
+	// Language-specific patterns for symbol detection
+	const patterns: Record<string, RegExp[]> = {
+		typescript: [
+			/^\s*(?:export\s+)?(?:abstract\s+)?class\s+(\w+)/,
+			/^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)/,
+			/^\s*(?:export\s+)?(?:public|private|protected)?\s*(?:async\s+)?(\w+)\s*\([^)]*\)\s*(?::\s*\w+)?\s*\{/,
+			/^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:\([^)]*\)|[^=])\s*=>/,
+			/^\s*(?:export\s+)?interface\s+(\w+)/,
+			/^\s*(?:export\s+)?type\s+(\w+)\s*=/,
+		],
+		javascript: [
+			/^\s*(?:export\s+)?class\s+(\w+)/,
+			/^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)/,
+			/^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:\([^)]*\)|[^=])\s*=>/,
+		],
+		python: [
+			/^\s*class\s+(\w+)/,
+			/^\s*(?:async\s+)?def\s+(\w+)/,
+		],
+		go: [
+			/^\s*func\s+(?:\([^)]+\)\s+)?(\w+)/,
+			/^\s*type\s+(\w+)\s+struct/,
+		],
+		rust: [
+			/^\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)/,
+			/^\s*(?:pub\s+)?struct\s+(\w+)/,
+			/^\s*(?:pub\s+)?impl\s+(?:<[^>]+>\s+)?(\w+)/,
+		],
+		java: [
+			/^\s*(?:public|private|protected)?\s*(?:abstract\s+)?class\s+(\w+)/,
+			/^\s*(?:public|private|protected)?\s*(?:static\s+)?(?:\w+)\s+(\w+)\s*\([^)]*\)/,
+		],
+		c: [
+			/^\s*(?:\w+\s+)+(\w+)\s*\([^)]*\)\s*\{/,
+		],
+		cpp: [
+			/^\s*(?:\w+\s+)+(\w+)\s*\([^)]*\)\s*(?:const\s*)?\{/,
+			/^\s*class\s+(\w+)/,
+		],
+	};
+
+	const langPatterns = patterns[language] || patterns.typescript;
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		const indent = line.search(/\S/);
+
+		for (const pattern of langPatterns) {
+			const match = line.match(pattern);
+			if (match) {
+				boundaries.push({
+					line: i,
+					type: pattern.source.includes('class') ? 'class' :
+					      pattern.source.includes('function') || pattern.source.includes('def') || pattern.source.includes('fn') ? 'function' :
+					      'symbol',
+					name: match[1],
+					indent,
+				});
+				break;
+			}
+		}
+	}
+
+	return boundaries;
+}
+
+/**
  * Split code into chunks for embedding.
- * Uses simple line-based chunking with overlap.
+ * Uses symbol-aware chunking to avoid splitting functions/classes.
  */
 function chunkCode(
+	filePath: string,
+	content: string,
+	chunkSize: number,
+	chunkOverlap: number
+): CodeChunk[] {
+	const lines = content.split("\n");
+	const language = detectLanguage(filePath);
+	const relativePath = filePath;
+	const chunks: CodeChunk[] = [];
+
+	// Detect symbol boundaries
+	const boundaries = detectSymbolBoundaries(lines, language);
+
+	// If no boundaries detected, fall back to line-based chunking
+	if (boundaries.length === 0) {
+		return chunkCodeLineBased(filePath, content, chunkSize, chunkOverlap);
+	}
+
+	let chunkIndex = 0;
+	let currentLine = 0;
+
+	while (currentLine < lines.length) {
+		// Find the next symbol boundary at or after currentLine
+		const startBoundary = boundaries.find(b => b.line >= currentLine);
+
+		if (!startBoundary) {
+			// No more symbols, chunk the rest
+			if (currentLine < lines.length) {
+				const code = lines.slice(currentLine).join("\n");
+				if (code.trim()) {
+					const chunkId = createHash("md5")
+						.update(`${relativePath}:${currentLine}:${chunkIndex}`)
+						.digest("hex")
+						.slice(0, 12);
+
+					chunks.push({
+						id: chunkId,
+						file: relativePath,
+						line: currentLine + 1,
+						code,
+						language,
+						kind: "chunk",
+					});
+					chunkIndex++;
+				}
+			}
+			break;
+		}
+
+		// Include any non-symbol lines before the boundary
+		const preSymbolStart = currentLine;
+		const symbolStart = startBoundary.line;
+
+		// Find the end of this symbol (next boundary or end of file)
+		const nextBoundary = boundaries.find(b => b.line > symbolStart);
+		let symbolEnd = nextBoundary ? nextBoundary.line - 1 : lines.length - 1;
+
+		// Adjust symbol end based on brace/indent tracking for better boundary detection
+		if (language === "typescript" || language === "javascript") {
+			let braceDepth = 0;
+			let foundStart = false;
+
+			for (let i = symbolStart; i < lines.length; i++) {
+				const line = lines[i];
+
+				if (i === symbolStart) foundStart = true;
+
+				braceDepth += (line.match(/{/g) || []).length;
+				braceDepth -= (line.match(/}/g) || []).length;
+
+				if (foundStart && braceDepth === 0 && line.includes("}")) {
+					symbolEnd = i;
+					break;
+				}
+			}
+		} else if (language === "python") {
+			// Python uses indentation
+			const symbolIndent = startBoundary.indent;
+
+			for (let i = symbolStart + 1; i < lines.length; i++) {
+				const line = lines[i];
+				if (line.trim() === "") continue;
+
+				const currentIndent = line.search(/\S/);
+				if (currentIndent <= symbolIndent && i > symbolStart) {
+					symbolEnd = i - 1;
+					break;
+				}
+			}
+		}
+
+		// Calculate chunk size
+		const symbolCode = lines.slice(symbolStart, symbolEnd + 1).join("\n");
+		const symbolCharCount = symbolCode.length;
+
+		// If symbol is larger than chunk size, split it
+		if (symbolCharCount > chunkSize * 1.5) {
+			// Split large symbol into multiple chunks
+			let splitStart = symbolStart;
+
+			while (splitStart <= symbolEnd) {
+				let splitEnd = splitStart;
+				let charCount = 0;
+
+				while (splitEnd <= symbolEnd && charCount < chunkSize) {
+					charCount += lines[splitEnd].length + 1;
+					splitEnd++;
+				}
+
+				if (splitEnd > symbolEnd) splitEnd = symbolEnd + 1;
+
+				const code = lines.slice(splitStart, splitEnd).join("\n");
+				if (code.trim()) {
+					const chunkId = createHash("md5")
+						.update(`${relativePath}:${splitStart}:${chunkIndex}`)
+						.digest("hex")
+						.slice(0, 12);
+
+					chunks.push({
+						id: chunkId,
+						file: relativePath,
+						line: splitStart + 1,
+						code,
+						language,
+						symbol: startBoundary.name,
+						kind: symbolStart === splitStart ? (startBoundary.type as "function" | "class" | "variable") : "chunk",
+					});
+					chunkIndex++;
+				}
+
+				splitStart = splitEnd;
+			}
+		} else {
+			// Symbol fits in a single chunk
+			const chunkId = createHash("md5")
+				.update(`${relativePath}:${symbolStart}:${chunkIndex}`)
+				.digest("hex")
+				.slice(0, 12);
+
+			chunks.push({
+				id: chunkId,
+				file: relativePath,
+				line: symbolStart + 1,
+				code: symbolCode,
+				language,
+				symbol: startBoundary.name,
+				kind: startBoundary.type as "function" | "class" | "variable",
+			});
+			chunkIndex++;
+		}
+
+		currentLine = symbolEnd + 1;
+	}
+
+	return chunks;
+}
+
+/**
+ * Fallback line-based chunking for files without detectable symbols.
+ */
+function chunkCodeLineBased(
 	filePath: string,
 	content: string,
 	chunkSize: number,
@@ -154,7 +394,6 @@ function chunkCode(
 	let chunkIndex = 0;
 
 	while (currentLine < lines.length) {
-		// Collect lines until we reach chunk size
 		const startLine = currentLine;
 		const chunkLines: string[] = [];
 		let charCount = 0;
@@ -162,7 +401,7 @@ function chunkCode(
 		while (currentLine < lines.length && charCount < chunkSize) {
 			const line = lines[currentLine];
 			chunkLines.push(line);
-			charCount += line.length + 1; // +1 for newline
+			charCount += line.length + 1;
 			currentLine++;
 		}
 
@@ -174,7 +413,6 @@ function chunkCode(
 			.digest("hex")
 			.slice(0, 12);
 
-		// Simple symbol detection (could be enhanced with tree-sitter)
 		const symbolMatch = code.match(
 			/^\s*(?:export\s+)?(?:async\s+)?(?:function|class|const|let|var)\s+(\w+)/m
 		);
@@ -182,7 +420,7 @@ function chunkCode(
 		chunks.push({
 			id: chunkId,
 			file: relativePath,
-			line: startLine + 1, // 1-indexed
+			line: startLine + 1,
 			code,
 			language,
 			symbol: symbolMatch?.[1],
@@ -191,7 +429,6 @@ function chunkCode(
 
 		chunkIndex++;
 
-		// Apply overlap by stepping back
 		if (chunkOverlap > 0 && currentLine < lines.length) {
 			currentLine = Math.max(startLine + 1, currentLine - Math.floor(chunkOverlap / 50));
 		}

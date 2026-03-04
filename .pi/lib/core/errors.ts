@@ -664,6 +664,70 @@ export class StorageError extends PiError {
 }
 
 // ============================================================================
+// 状態管理エラー
+// ============================================================================
+
+/**
+ * 状態管理エラー
+ * @summary 状態管理エラー生成
+ * @description UIコンポーネントの状態管理で発生したエラーを表す
+ * 
+ * 使用例:
+ * ```typescript
+ * throw new StateManagementError("Paste buffer state lost during re-render", {
+ *   component: "question",
+ *   stateKey: "pasteBuffer"
+ * });
+ * ```
+ */
+export class StateManagementError extends PiError {
+  /** エラーが発生したコンポーネント名 */
+  public readonly component?: string;
+  /** エラーが発生した状態キー */
+  public readonly stateKey?: string;
+  /** 期待される状態値 */
+  public readonly expectedState?: string;
+  /** 実際の状態値 */
+  public readonly actualState?: string;
+
+  constructor(
+    message: string,
+    options?: {
+      component?: string;
+      stateKey?: string;
+      expectedState?: string;
+      actualState?: string;
+      cause?: Error;
+    },
+  ) {
+    super(message, "UNKNOWN_ERROR", {
+      retryable: true,
+      cause: options?.cause,
+    });
+    this.name = "StateManagementError";
+    this.component = options?.component;
+    this.stateKey = options?.stateKey;
+    this.expectedState = options?.expectedState;
+    this.actualState = options?.actualState;
+  }
+
+  /**
+   * JSON形式に変換
+   * @summary JSON形式変換
+   * @returns エラー情報オブジェクト
+   */
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      component: this.component,
+      stateKey: this.stateKey,
+      expectedState: this.expectedState,
+      actualState: this.actualState,
+    };
+  }
+}
+
+// ============================================================================
 // エラーユーティリティ
 // ============================================================================
 
@@ -800,6 +864,16 @@ export class TeamDefinitionError extends PiError {
  */
 export function isTeamDefinitionError(error: unknown): error is TeamDefinitionError {
   return error instanceof TeamDefinitionError;
+}
+
+/**
+ * 状態管理エラーか判定
+ * @summary StateManagementError型ガード
+ * @param error エラー对象
+ * @returns StateManagementErrorの場合true
+ */
+export function isStateManagementError(error: unknown): error is StateManagementError {
+  return error instanceof StateManagementError;
 }
 
 /**

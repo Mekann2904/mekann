@@ -32,7 +32,7 @@
  */
 
 import { readFile, readdir, stat } from "fs/promises";
-import { join, dirname, basename, extname } from "path";
+import { join, dirname, basename, extname, resolve, normalize } from "path";
 import type {
 	LocAgentGraph,
 	LocAgentNode,
@@ -43,6 +43,8 @@ import type {
 	LocAgentEdgeType,
 } from "./types.js";
 import { STANDARD_LIBS } from "../repograph/types.js";
+import { parseFile as parseFileTreeSitter } from "../repograph/parser.js";
+import { detectLanguage } from "../tree-sitter/loader.js";
 
 // ============================================================================
 // Constants
@@ -209,7 +211,53 @@ function generateFileId(filePath: string): string {
 }
 
 // ============================================================================
-// AST Parsing (Simple Regex-based for now)
+// Import Path Resolution
+// ============================================================================
+
+/**
+ * 相対importパスを絶対パスに解決
+ * @summary importパス解決
+ * @param importPath - import文のモジュールパス
+ * @param fromFile - import元のファイルパス
+ * @param cwd - 作業ディレクトリ
+ * @param allFiles - 全ソースファイルリスト
+ * @returns 解決済みファイルパス、または元のパス
+ */
+function resolveImportPath(
+	importPath: string,
+	fromFile: string,
+	cwd: string,
+	allFiles: string[]
+): string | null {
+	// 相対パスでない場合はそのまま返す
+	if (!importPath.startsWith(".") && !importPath.startsWith("..")) {
+		return null;
+	}
+
+	// import元ファイルのディレクトリを基準にパスを解決
+	const fromDir = dirname(fromFile);
+	const resolvedPath = normalize(join(fromDir, importPath));
+
+	// 可能性のある拡張子を試す
+	const extensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", "/index.ts", "/index.tsx", "/index.js"];
+
+	for (const ext of extensions) {
+		const candidatePath = resolvedPath + ext;
+		if (allFiles.includes(candidatePath)) {
+			return candidatePath;
+		}
+	}
+
+	// 拡張子なしでマッチするか確認
+	if (allFiles.includes(resolvedPath)) {
+		return resolvedPath;
+	}
+
+	return null;
+}
+
+// ============================================================================
+// AST Parsing (Tree-sitter based)
 // ============================================================================
 
 /**
@@ -553,15 +601,28 @@ function parsePython(content: string): ParseResult {
 }
 
 /**
- * ファイルを解析
+ * ファイルを解析（tree-sitterベース）
  * @summary ファイル解析
  * @param filePath - ファイルパス
  * @param content - ファイル内容
  * @returns 解析結果
  */
-function parseFile(filePath: string, content: string): ParseResult {
+async function parseFileAsync(filePath: string, content: string): Promise<ParseResult> {
 	const ext = extname(filePath);
+	const language = detectLanguage(filePath);
 
+	// tree-sitterサポート言語の場合はtree-sitterを使用
+	if (language) {
+		try {
+			const { nodes, edges } = await parseFileTreeSitter(content, filePath, language);
+			return convertTreeSitterResult(nodes, edges, content);
+		} catch (error) {
+			// tree-sitter解析に失敗した場合はフォールバック
+			console.warn(`[locagent] tree-sitter parse failed for ${filePath}, using fallback:`, error);
+		}
+	}
+
+	// フォールバック: 従来の正規表現ベース
 	switch (ext) {
 		case ".ts":
 		case ".tsx":
@@ -579,6 +640,163 @@ function parseFile(filePath: string, content: string): ParseResult {
 				imports: [],
 				invocations: [],
 			};
+	}
+}
+
+/**
+ * tree-sitter解析結果をLocAgent形式に変換
+ * @summary 結果変換
+ * @param nodes - RepoGraphノード配列
+ * @param edges - RepoGraphエッジ配列
+ * @param content - ソースコード内容
+ * @returns LocAgent解析結果
+ */
+function convertTreeSitterResult(
+	nodes: Array<{ id: string; file: string; line: number; nodeType: string; symbolName: string; symbolKind: string; text: string }>,
+	edges: Array<{ source: string; target: string; type: string; confidence: number }>,
+	content: string
+): ParseResult {
+	const result: ParseResult = {
+		classes: [],
+		functions: [],
+		imports: [],
+		invocations: [],
+	};
+
+	const lines = content.split("\n");
+	const classMap = new Map<string, ParseResult["classes"][0]>();
+
+	// ノードを処理
+	for (const node of nodes) {
+		if (node.nodeType === "def") {
+			if (node.symbolKind === "class" || node.symbolKind === "interface") {
+				const classInfo: ParseResult["classes"][0] = {
+					name: node.symbolName,
+					line: node.line,
+					endLine: node.line, // tree-sitterからは正確な終了行を取得できないため後で推定
+					methods: [],
+					properties: [],
+				};
+				result.classes.push(classInfo);
+				classMap.set(node.symbolName, classInfo);
+			} else if (node.symbolKind === "function" || node.symbolKind === "method") {
+				// メソッドか関数かを判定（簡易的に行番号からクラス内か判定）
+				let isMethod = false;
+				for (const cls of result.classes) {
+					if (node.line >= cls.line && node.line <= cls.endLine + 50) {
+						// クラス内の可能性が高い
+						cls.methods.push({
+							name: node.symbolName,
+							line: node.line,
+							endLine: node.line,
+							signature: node.text,
+							visibility: "public",
+						});
+						isMethod = true;
+						break;
+					}
+				}
+
+				if (!isMethod) {
+					result.functions.push({
+						name: node.symbolName,
+						line: node.line,
+						endLine: node.line,
+						signature: node.text,
+					});
+				}
+			}
+		} else if (node.nodeType === "import") {
+			// importノードからモジュール情報を抽出
+			const moduleMatch = node.text.match(/from\s+['"]([^'"]+)['"]/);
+			const moduleName = moduleMatch ? moduleMatch[1] : "";
+
+			result.imports.push({
+				module: moduleName,
+				symbols: [node.symbolName],
+				line: node.line,
+			});
+		}
+	}
+
+	// エッジから呼び出し関係を抽出
+	for (const edge of edges) {
+		if (edge.type === "invoke") {
+			// エッジのsourceから呼び出し元を特定
+			const sourceParts = edge.source.split(":");
+			const sourceLine = parseInt(sourceParts[1] || "0");
+			const callerScope = findCallerScope(sourceLine, result.functions, result.classes);
+
+			// targetから呼び出し先を特定
+			const targetParts = edge.target.split(":");
+			let calleeName = targetParts[targetParts.length - 1];
+			if (calleeName.startsWith("ref:")) {
+				calleeName = calleeName.replace("ref:", "");
+			}
+
+			if (callerScope && calleeName) {
+				result.invocations.push({
+					caller: callerScope,
+					callee: calleeName,
+					line: sourceLine,
+				});
+			}
+		}
+	}
+
+	// クラスと関数の終了行を推定
+	estimateEndLines(result, lines);
+
+	return result;
+}
+
+/**
+ * 終了行を推定
+ * @summary 終了行推定
+ * @param result - 解析結果
+ * @param lines - ソースコード行配列
+ */
+function estimateEndLines(result: ParseResult, lines: string[]): void {
+	// クラスの終了行を推定（ブレースベース）
+	for (const cls of result.classes) {
+		let braceDepth = 0;
+		let foundStart = false;
+
+		for (let i = cls.line - 1; i < lines.length; i++) {
+			const line = lines[i];
+
+			if (i === cls.line - 1) {
+				foundStart = true;
+			}
+
+			if (foundStart) {
+				braceDepth += (line.match(/{/g) || []).length;
+				braceDepth -= (line.match(/}/g) || []).length;
+
+				if (braceDepth === 0 && line.includes("}")) {
+					cls.endLine = i + 1;
+					break;
+				}
+			}
+		}
+
+		// メソッドの終了行を推定
+		for (let i = 0; i < cls.methods.length; i++) {
+			if (i < cls.methods.length - 1) {
+				cls.methods[i].endLine = cls.methods[i + 1].line - 1;
+			} else {
+				cls.methods[i].endLine = cls.endLine;
+			}
+		}
+	}
+
+	// 関数の終了行を推定
+	for (let i = 0; i < result.functions.length; i++) {
+		if (i < result.functions.length - 1) {
+			result.functions[i].endLine = result.functions[i + 1].line - 1;
+		} else {
+			result.functions[i].endLine = lines.length;
+		}
 	}
 }
 
@@ -680,7 +898,7 @@ export async function buildLocAgentGraph(
 		try {
 			const fullPath = join(cwd, file);
 			const content = await readFile(fullPath, "utf-8");
-			const parseResult = parseFile(file, content);
+			const parseResult = await parseFileAsync(file, content);
 
 			// クラスノードを作成
 			for (const cls of parseResult.classes) {
@@ -755,16 +973,42 @@ export async function buildLocAgentGraph(
 
 			// importエッジを作成
 			for (const imp of parseResult.imports) {
+				// 標準ライブラリをフィルタリング
 				if (!STANDARD_LIBS.has(imp.module)) {
+					// 相対importパスを解決
+					const resolvedModule = resolveImportPath(imp.module, file, cwd, files);
+
 					for (const symbol of imp.symbols) {
-						// インポートされたシンボルを検索
+						// 解決済みパスまたはシンボル名で検索
+						let found = false;
+
 						for (const [nodeId, node] of nodes) {
+							// シンボル名でマッチング
 							if (node.name === symbol && node.filePath !== file) {
+								// 解決済みパスがある場合は、同じファイルか確認
+								if (resolvedModule && node.filePath !== resolvedModule) {
+									continue;
+								}
+
 								edges.push({
 									source: fileId,
 									target: nodeId,
 									type: "import" as LocAgentEdgeType,
-									confidence: 0.8,
+									confidence: resolvedModule ? 1.0 : 0.8,
+								});
+								found = true;
+							}
+						}
+
+						// 解決済みパスがあるがシンボルが見つからない場合、ファイルレベルのエッジを作成
+						if (!found && resolvedModule) {
+							const targetFileId = generateFileId(resolvedModule);
+							if (nodes.has(targetFileId)) {
+								edges.push({
+									source: fileId,
+									target: targetFileId,
+									type: "import" as LocAgentEdgeType,
+									confidence: 0.6,
 								});
 							}
 						}

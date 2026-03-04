@@ -4,7 +4,7 @@
  * role: 検索結果の整形・省略・テキスト解析処理を行うユーティリティ
  * why: 検索ツール間で出力形式を統一し、大量データの表示制御と可読性向上を実現するため
  * related: .pi/extensions/search/utils/types.ts, .pi/extensions/search/utils/constants.ts, .pi/extensions/search/utils/metrics.js, .pi/lib/text-utils.ts
- * public_api: truncateResults, truncateHead, parseFdOutput, formatFileCandidates, truncateText
+ * public_api: truncateResults, truncateHead, paginateResults, scrollResults, wrapText, formatPaginatedFileCandidates, formatScrolledCodeSearch
  * invariants: 結果数が制限値を超える場合、必ずtotalとtruncatedフラグが設定される。空文字列入力時はparseFdOutputが空配列を返す。
  * side_effects: なし（純粋な関数群）
  * failure_modes: 不正な改行コードを含む入力によるparseFdOutputのパース失敗
@@ -12,16 +12,23 @@
  * overview: 検索ツール（fd, ripgrep等）の出力データを加工し、統一フォーマットで出力・省略する機能を提供する。
  * what_it_does:
  *   - 検索結果の配列を指定件数で切り捨てる（truncateResults, truncateHead）
+ *   - ページネーション付きで結果を取得する（paginateResults）
+ *   - スクロール形式で結果を取得する（scrollResults）
+ *   - テキストを指定幅で折り返す（wrapText, smartTruncateLine）
  *   - 標準出力文字列を解析し、FileCandidateオブジェクト配列に変換する（parseFdOutput）
  *   - FileCandidateの検索レスポンスを見やすい文字列形式に整形する（formatFileCandidates）
+ *   - ページネーション付きの検索結果を整形する（formatPaginatedFileCandidates）
+ *   - スクロール形式のコード検索結果を整形する（formatScrolledCodeSearch）
  *   - テキストの切り詰め機能を再エクスポートする（truncateText）
  * why_it_exists:
  *   - 複数の検索ロジック間で出力形式の一貫性を保つため
  *   - 画面表示やログ出力におけるデータ量の制御を容易にするため
+ *   - 長い行の折り返しとスマートな切り詰めにより可読性を向上させるため
+ *   - ページネーションとスクロール機能で大量データのナビゲーションを改善するため
  *   - 生のテキスト出力を構造化データとして扱うため
  * scope:
- *   in: 検索結果配列、標準出力文字列、制限数、ファイルタイプ
- *   out: SearchResponse<T>構造体, FileCandidate[], 整形済み文字列
+ *   in: 検索結果配列、標準出力文字列、制限数、ファイルタイプ、ページ番号、オフセット
+ *   out: SearchResponse<T>構造体, PaginatedSearchResponse<T>, FileCandidate[], 整形済み文字列
  */
 
 /**
@@ -51,6 +58,218 @@ import { truncateText } from "../../../lib/text-utils.js";
 
 // Re-export truncateText for backward compatibility
 export { truncateText };
+
+// ============================================
+// Pagination & Scrolling Support
+// ============================================
+
+/**
+ * ページネーション情報
+ * @summary ページネーション情報
+ */
+export interface PaginationInfo {
+  /** 現在のページ番号（1-based） */
+  currentPage: number;
+  /** 総ページ数 */
+  totalPages: number;
+  /** 1ページあたりの件数 */
+  pageSize: number;
+  /** 総件数 */
+  totalItems: number;
+  /** 次のページが存在するか */
+  hasNextPage: boolean;
+  /** 前のページが存在するか */
+  hasPrevPage: boolean;
+}
+
+/**
+ * ページネーション付き検索レスポンス
+ * @summary ページネーション付きレスポンス
+ */
+export interface PaginatedSearchResponse<T> extends SearchResponse<T> {
+  pagination: PaginationInfo;
+}
+
+/**
+ * 結果をページネーション付きで切り詰める
+ * @summary ページネーション付きで切り詰める
+ * @param results 検索結果の配列
+ * @param limit 1ページあたりの上限数
+ * @param page ページ番号（1-based、デフォルト: 1）
+ * @returns ページネーション付き検索レスポンス
+ */
+export function paginateResults<T>(
+  results: T[],
+  limit: number,
+  page: number = 1
+): PaginatedSearchResponse<T> {
+  const total = results.length;
+  const totalPages = Math.ceil(total / limit);
+  const currentPage = Math.max(1, Math.min(page, totalPages || 1));
+  const startIndex = (currentPage - 1) * limit;
+  const endIndex = Math.min(startIndex + limit, total);
+  const paginatedResults = results.slice(startIndex, endIndex);
+  const truncated = total > endIndex;
+
+  return {
+    total,
+    truncated,
+    results: paginatedResults,
+    pagination: {
+      currentPage,
+      totalPages,
+      pageSize: limit,
+      totalItems: total,
+      hasNextPage: currentPage < totalPages,
+      hasPrevPage: currentPage > 1,
+    },
+  };
+}
+
+/**
+ * スクロール形式で結果を取得（オフセットベース）
+ * @summary スクロール形式で結果を取得
+ * @param results 検索結果の配列
+ * @param limit 取得件数
+ * @param offset 開始位置（0-based）
+ * @returns 検索レスポンスと次のオフセット
+ */
+export function scrollResults<T>(
+  results: T[],
+  limit: number,
+  offset: number = 0
+): SearchResponse<T> & { nextOffset?: number; hasMore: boolean } {
+  const total = results.length;
+  const startIndex = Math.max(0, offset);
+  const endIndex = Math.min(startIndex + limit, total);
+  const scrolledResults = results.slice(startIndex, endIndex);
+  const hasMore = endIndex < total;
+
+  return {
+    total,
+    truncated: hasMore,
+    results: scrolledResults,
+    hasMore,
+    ...(hasMore && { nextOffset: endIndex }),
+  };
+}
+
+// ============================================
+// Text Wrapping Improvements
+// ============================================
+
+/** デフォルトの最大行幅 */
+export const DEFAULT_MAX_LINE_WIDTH = 120;
+
+/** 折り返しオプション */
+export interface WrapOptions {
+  /** 最大行幅 */
+  maxWidth: number;
+  /** インデント文字（折り返し行の先頭に追加） */
+  indent?: string;
+  /** 単語境界で折り返すか */
+  wordWrap?: boolean;
+  /** 長い行の切り詰めマーカー */
+  truncationMarker?: string;
+}
+
+/**
+ * テキストを指定幅で折り返す
+ * @summary テキストを折り返す
+ * @param text 対象のテキスト
+ * @param options 折り返しオプション
+ * @returns 折り返された行の配列
+ */
+export function wrapText(text: string, options: WrapOptions): string[] {
+  const { maxWidth, indent = "", wordWrap = true, truncationMarker = "..." } = options;
+  
+  if (text.length <= maxWidth) {
+    return [text];
+  }
+
+  const lines: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxWidth) {
+      lines.push(indent + remaining);
+      break;
+    }
+
+    let breakPoint = maxWidth;
+
+    if (wordWrap) {
+      // 単語境界を探す
+      const searchRange = remaining.slice(0, maxWidth + 1);
+      const lastSpace = searchRange.lastIndexOf(" ");
+      const lastTab = searchRange.lastIndexOf("\t");
+      const lastBreak = Math.max(lastSpace, lastTab);
+      
+      if (lastBreak > 0 && lastBreak > maxWidth * 0.5) {
+        breakPoint = lastBreak;
+      }
+    }
+
+    const line = remaining.slice(0, breakPoint);
+    lines.push(indent + line);
+    remaining = remaining.slice(breakPoint).replace(/^\s+/, "");
+  }
+
+  return lines;
+}
+
+/**
+ * 長い行をスマートに切り詰める
+ * @summary 長い行をスマートに切り詰める
+ * @param text 対象のテキスト
+ * @param maxWidth 最大幅
+ * @param preserveStart 先頭から保持する文字数
+ * @param preserveEnd 末尾から保持する文字数
+ * @returns 切り詰められたテキスト
+ */
+export function smartTruncateLine(
+  text: string,
+  maxWidth: number,
+  preserveStart: number = maxWidth * 0.6,
+  preserveEnd: number = maxWidth * 0.2
+): string {
+  if (text.length <= maxWidth) return text;
+
+  const marker = " ... ";
+  const availableWidth = maxWidth - marker.length;
+  const startLen = Math.floor(Math.min(preserveStart, availableWidth * 0.7));
+  const endLen = Math.floor(Math.min(preserveEnd, availableWidth - startLen));
+
+  return text.slice(0, startLen) + marker + text.slice(-endLen);
+}
+
+/**
+ * コード行を表示幅に合わせて整形
+ * @summary コード行を整形
+ * @param line コード行
+ * @param maxWidth 最大幅
+ * @param showLineNumbers 行番号を表示するか
+ * @param lineNumber 行番号
+ * @returns 整形された行
+ */
+export function formatCodeLine(
+  line: string,
+  maxWidth: number = DEFAULT_MAX_LINE_WIDTH,
+  showLineNumbers: boolean = false,
+  lineNumber?: number
+): string {
+  let prefix = "";
+  if (showLineNumbers && lineNumber !== undefined) {
+    prefix = `${lineNumber.toString().padStart(4, " ")}: `;
+  }
+
+  const availableWidth = maxWidth - prefix.length;
+  const content = line.length > availableWidth 
+    ? smartTruncateLine(line, availableWidth)
+    : line;
+
+  return prefix + content;
+}
 
 // ============================================
 // Result Truncation
@@ -403,6 +622,168 @@ export function formatSymbols(output: SearchResponse<SymbolDefinition>): string 
       lines.push(`    ${sym.file}:${sym.line}`);
     }
     lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
+// ============================================
+// Pagination-Aware Formatting
+// ============================================
+
+/**
+ * ページネーション情報をフォーマット
+ * @summary ページネーション情報をフォーマット
+ * @param pagination ページネーション情報
+ * @returns フォーマット済みの文字列
+ */
+export function formatPagination(pagination: PaginationInfo): string {
+  const lines: string[] = [];
+  lines.push(`--- Page ${pagination.currentPage}/${pagination.totalPages} ---`);
+  lines.push(`Showing ${pagination.pageSize} items per page (${pagination.totalItems} total)`);
+  
+  if (pagination.hasPrevPage || pagination.hasNextPage) {
+    const nav: string[] = [];
+    if (pagination.hasPrevPage) nav.push("← Previous");
+    if (pagination.hasNextPage) nav.push("Next →");
+    lines.push(`Navigation: ${nav.join(" | ")}`);
+  }
+  
+  return lines.join("\n");
+}
+
+/**
+ * スクロール情報をフォーマット
+ * @summary スクロール情報をフォーマット
+ * @param hasMore さらに結果があるか
+ * @param nextOffset 次のオフセット
+ * @param total 総件数
+ * @returns フォーマット済みの文字列
+ */
+export function formatScrollInfo(
+  hasMore: boolean,
+  nextOffset?: number,
+  total?: number
+): string {
+  if (!hasMore) return "--- End of results ---";
+  
+  const lines: string[] = [];
+  lines.push("--- More results available ---");
+  if (nextOffset !== undefined && total !== undefined) {
+    lines.push(`Progress: ${nextOffset}/${total} items`);
+    lines.push(`To continue: use offset=${nextOffset}`);
+  } else if (nextOffset !== undefined) {
+    lines.push(`To continue: use offset=${nextOffset}`);
+  }
+  
+  return lines.join("\n");
+}
+
+/**
+ * ページネーション付きファイル候補をフォーマット
+ * @summary ページネーション付きファイル候補をフォーマット
+ * @param output ページネーション付き検索レスポンス
+ * @param maxWidth 最大行幅
+ * @returns フォーマット済みの文字列
+ */
+export function formatPaginatedFileCandidates(
+  output: PaginatedSearchResponse<FileCandidate>,
+  maxWidth: number = DEFAULT_MAX_LINE_WIDTH
+): string {
+  const lines: string[] = [];
+
+  if (output.error) {
+    lines.push(`Error: ${output.error}`);
+    return lines.join("\n");
+  }
+
+  // Header
+  lines.push(`Found ${output.total} entries${output.truncated ? " (more available)" : ""}`);
+  lines.push("");
+
+  // Results with wrapping support
+  for (const entry of output.results) {
+    const prefix = entry.type === "dir" ? "[D]" : "[F]";
+    const line = `${prefix} ${entry.path}`;
+    if (line.length > maxWidth) {
+      lines.push(smartTruncateLine(line, maxWidth));
+    } else {
+      lines.push(line);
+    }
+  }
+
+  // Pagination footer
+  lines.push("");
+  lines.push(formatPagination(output.pagination));
+
+  return lines.join("\n");
+}
+
+/**
+ * スクロール形式のコード検索結果をフォーマット
+ * @summary スクロール形式のコード検索結果をフォーマット
+ * @param output コード検索出力とスクロール情報
+ * @param maxWidth 最大行幅
+ * @returns フォーマット済みの文字列
+ */
+export function formatScrolledCodeSearch(
+  output: CodeSearchOutput & { hasMore?: boolean; nextOffset?: number },
+  maxWidth: number = DEFAULT_MAX_LINE_WIDTH
+): string {
+  const lines: string[] = [];
+
+  if (output.error) {
+    lines.push(`Error: ${output.error}`);
+    return lines.join("\n");
+  }
+
+  // Header
+  lines.push(`Found ${output.total} matches in ${output.summary.length} files`);
+  lines.push("");
+
+  // Show summary by file (limited)
+  if (output.summary.length > 0) {
+    lines.push("Files:");
+    for (const { file, count } of output.summary.slice(0, 5)) {
+      const line = `  ${file}: ${count} match${count !== 1 ? "es" : ""}`;
+      lines.push(line.length > maxWidth ? smartTruncateLine(line, maxWidth) : line);
+    }
+    if (output.summary.length > 5) {
+      lines.push(`  ... and ${output.summary.length - 5} more files`);
+    }
+    lines.push("");
+  }
+
+  // Show actual matches with code wrapping
+  lines.push("Matches:");
+  for (const match of output.results) {
+    const header = `  ${match.file}:${match.line}:${match.column || 1}`;
+    lines.push(header.length > maxWidth ? smartTruncateLine(header, maxWidth) : header);
+    
+    // Wrap long code lines
+    const wrappedLines = wrapText(match.text, { 
+      maxWidth: maxWidth - 4, 
+      indent: "    ",
+      wordWrap: false 
+    });
+    lines.push(...wrappedLines);
+    
+    if (match.context && match.context.length > 0) {
+      for (const ctx of match.context) {
+        const wrappedCtx = wrapText(ctx, { 
+          maxWidth: maxWidth - 4, 
+          indent: "    ",
+          wordWrap: false 
+        });
+        lines.push(...wrappedCtx);
+      }
+    }
+  }
+
+  // Scroll footer
+  if (output.hasMore) {
+    lines.push("");
+    lines.push(formatScrollInfo(output.hasMore, output.nextOffset, output.total));
   }
 
   return lines.join("\n");

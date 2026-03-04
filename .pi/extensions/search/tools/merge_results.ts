@@ -40,6 +40,7 @@ import type {
 	MergeStrategy,
 	SymbolDefinition,
 	CodeSearchMatch,
+	FailedSource,
 } from "../types.js";
 import { symFind } from "./sym_find.js";
 import { codeSearch } from "./code_search.js";
@@ -73,12 +74,12 @@ interface InternalResult {
  * @summary ソース検索実行
  * @param source 検索ソース
  * @param cwd 作業ディレクトリ
- * @returns 内部結果配列
+ * @returns 内部結果配列とエラー情報
  */
 async function executeSource(
 	source: MergeSource,
 	cwd: string
-): Promise<InternalResult[]> {
+): Promise<{ results: InternalResult[]; error?: FailedSource }> {
 	const results: InternalResult[] = [];
 
 	try {
@@ -230,11 +231,20 @@ async function executeSource(
 			}
 		}
 	} catch (error) {
-		// Log error but continue with other sources
-		console.error(`merge_results: ${source.type} search failed:`, error);
+		// Return error information instead of just logging
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		console.error(`merge_results: ${source.type} search failed:`, errorMessage);
+		return {
+			results: [],
+			error: {
+				type: source.type,
+				error: errorMessage,
+				query: source.query,
+			},
+		};
 	}
 
-	return results;
+	return { results };
 }
 
 // ============================================
@@ -495,10 +505,15 @@ export async function mergeResults(
 	const sourcePromises = input.sources.map((source) => executeSource(source, cwd));
 	const sourceResults = await Promise.all(sourcePromises);
 
-	// Flatten all results
+	// Flatten all results and collect failed sources
 	const allResults: InternalResult[] = [];
-	for (const results of sourceResults) {
-		allResults.push(...results);
+	const failedSources: FailedSource[] = [];
+
+	for (const result of sourceResults) {
+		allResults.push(...result.results);
+		if (result.error) {
+			failedSources.push(result.error);
+		}
 	}
 
 	const totalResults = allResults.length;
@@ -548,6 +563,7 @@ export async function mergeResults(
 			totalSources: input.sources.length,
 			totalResults,
 			duplicatesRemoved,
+			failedSources: failedSources.length > 0 ? failedSources : undefined,
 		},
 	};
 }
@@ -571,6 +587,16 @@ export function formatMergeResults(result: MergeResultsResult): string {
 
 	lines.push(`Merged Results: ${result.merged.length} items`);
 	lines.push(`Sources: ${result.stats.totalSources}, Total: ${result.stats.totalResults}, Duplicates removed: ${result.stats.duplicatesRemoved}`);
+
+	// Display failed sources if any
+	if (result.stats.failedSources && result.stats.failedSources.length > 0) {
+		lines.push(`Failed Sources: ${result.stats.failedSources.length}`);
+		for (const failed of result.stats.failedSources) {
+			const queryInfo = failed.query ? ` (query: "${failed.query}")` : "";
+			lines.push(`  - ${failed.type}${queryInfo}: ${failed.error}`);
+		}
+	}
+
 	lines.push("");
 
 	for (let i = 0; i < result.merged.length; i++) {
