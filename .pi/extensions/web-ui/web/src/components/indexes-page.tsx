@@ -16,12 +16,12 @@ import {
   RefreshCw,
   CheckCircle,
   XCircle,
-  Clock,
   HardDrive,
   GitBranch,
   Search,
   Loader2,
 } from "lucide-preact";
+import type { LucideIcon } from "lucide-preact";
 import { cn } from "@/lib/utils";
 import {
   PageLayout,
@@ -97,7 +97,7 @@ function formatSize(bytes?: number): string {
 interface IndexCardProps {
   title: string;
   description: string;
-  icon: h.JSX.Element;
+  icon: preact.VNode;
   status: IndexStatus;
   progress: BuildProgress;
   onRebuild: (force: boolean) => void;
