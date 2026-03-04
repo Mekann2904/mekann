@@ -80,6 +80,7 @@ async function getIndexStatus(
       return {
         exists: true,
         entityCount: lines.length,
+        indexedAt: stats.mtimeMs,
         size: stats.size,
       };
     }
@@ -229,5 +230,47 @@ indexesRoutes.post(
       success: true,
       data: result,
     });
+  }
+);
+
+/**
+ * DELETE /api/indexes/:type - インデックス削除
+ */
+indexesRoutes.delete(
+  "/:type",
+  zValidator(
+    "param",
+    z.object({ type: z.enum(["locagent", "repograph", "semantic"]) })
+  ),
+  async (c) => {
+    const { type } = c.req.valid("param");
+    const cwd = process.cwd();
+    const { unlink } = await import("fs/promises");
+    const { join } = await import("path");
+
+    const indexPaths: Record<string, string> = {
+      locagent: join(cwd, ".pi/search/locagent/index.json"),
+      repograph: join(cwd, ".pi/search/repograph/index.json"),
+      semantic: join(cwd, ".pi/search/semantic-index.jsonl"),
+    };
+
+    const indexPath = indexPaths[type];
+
+    try {
+      await unlink(indexPath);
+      return c.json<SuccessResponse<{ deleted: true }>>({
+        success: true,
+        data: { deleted: true },
+      });
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      return c.json(
+        {
+          success: false,
+          error: `インデックスの削除に失敗: ${error}`,
+        },
+        500
+      );
+    }
   }
 );
