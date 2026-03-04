@@ -1508,6 +1508,154 @@ export default function (pi: ExtensionAPI) {
 				}
 			});
 		}
+
+		// ============================================
+		// Slash Commands
+		// ============================================
+
+		/**
+		 * /rebuild-embeddings - エンベディングインデックスを再構築
+		 * 使用方法:
+		 *   /rebuild-embeddings          - 差分更新（変更分のみ）
+		 *   /rebuild-embeddings --force  - 強制再構築（全ファイル）
+		 */
+		pi.registerCommand("rebuild-embeddings", {
+			description: "Rebuild embedding index (incremental by default, --force for full rebuild)",
+			handler: async (args, ctx) => {
+				const cwd = ctx?.cwd ?? process.cwd();
+				const force = args.includes("--force");
+
+				if (ctx?.ui) {
+					ctx.ui.notify(
+						`[embeddings] ${force ? "強制再構築" : "差分更新"}を開始します...`,
+						"info"
+					);
+				}
+
+				try {
+					const result = await semanticIndex({ path: cwd, force }, cwd);
+
+					if (result.error) {
+						if (ctx?.ui) {
+							ctx.ui.notify(`[embeddings] エラー: ${result.error}`, "error");
+						}
+						return;
+					}
+
+					if (ctx?.ui) {
+						ctx.ui.notify(
+							`[embeddings] 完了: ${result.indexed}チャンク、${result.files}ファイル`,
+							"info"
+						);
+					}
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					if (ctx?.ui) {
+						ctx.ui.notify(`[embeddings] エラー: ${errorMessage}`, "error");
+					}
+				}
+			},
+		});
+
+		/**
+		 * /rebuild-locagent - LocAgentインデックスを再構築
+		 * 使用方法:
+		 *   /rebuild-locagent              - 差分更新（変更分のみ）
+		 *   /rebuild-locagent --force      - 強制再構築（全ファイル）
+		 *   /rebuild-locagent --semantic   - セマンティックインデックスも構築
+		 */
+		pi.registerCommand("rebuild-locagent", {
+			description: "Rebuild LocAgent index (incremental by default, --force for full, --semantic for embeddings)",
+			handler: async (args, ctx) => {
+				const cwd = ctx?.cwd ?? process.cwd();
+				const force = args.includes("--force");
+				const buildSemantic = args.includes("--semantic");
+
+				if (ctx?.ui) {
+					ctx.ui.notify(
+						`[locagent] ${force ? "強制再構築" : "差分更新"}を開始します${buildSemantic ? "（セマンティック含む）" : ""}...`,
+						"info"
+					);
+				}
+
+				try {
+					const result = await locagentIndex({ force, buildSemantic }, cwd);
+
+					if (result.error) {
+						if (ctx?.ui) {
+							ctx.ui.notify(`[locagent] エラー: ${result.error}`, "error");
+						}
+						return;
+					}
+
+					if (ctx?.ui) {
+						const parts = [
+							`ノード: ${result.nodeCount}`,
+							`エッジ: ${result.edgeCount}`,
+						];
+						if (result.semanticIndex) {
+							parts.push(`セマンティック: ${result.semanticIndex.entityCount}エンティティ`);
+						}
+						ctx.ui.notify(`[locagent] 完了: ${parts.join(", ")}`, "info");
+					}
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					if (ctx?.ui) {
+						ctx.ui.notify(`[locagent] エラー: ${errorMessage}`, "error");
+					}
+				}
+			},
+		});
+
+		/**
+		 * /rebuild-all - すべてのインデックスを再構築
+		 * 使用方法:
+		 *   /rebuild-all          - 差分更新
+		 *   /rebuild-all --force  - 強制再構築
+		 */
+		pi.registerCommand("rebuild-all", {
+			description: "Rebuild all indexes (embeddings + locagent + repograph)",
+			handler: async (args, ctx) => {
+				const cwd = ctx?.cwd ?? process.cwd();
+				const force = args.includes("--force");
+
+				if (ctx?.ui) {
+					ctx.ui.notify(
+						`[indexes] 全インデックスの${force ? "強制再構築" : "差分更新"}を開始します...`,
+						"info"
+					);
+				}
+
+				try {
+					// 1. LocAgent index
+					if (ctx?.ui) ctx.ui.notify("[indexes] LocAgent構築中...", "info");
+					const locagentResult = await locagentIndex({ force, buildSemantic: true }, cwd);
+
+					// 2. RepoGraph index
+					if (ctx?.ui) ctx.ui.notify("[indexes] RepoGraph構築中...", "info");
+					const repographResult = await repographIndex({ force }, cwd);
+
+					// 3. Semantic index
+					if (ctx?.ui) ctx.ui.notify("[indexes] セマンティックインデックス構築中...", "info");
+					const semanticResult = await semanticIndex({ path: cwd, force }, cwd);
+
+					if (ctx?.ui) {
+						ctx.ui.notify(
+							`[indexes] 完了:\n` +
+							`  - LocAgent: ${locagentResult.nodeCount}ノード, ${locagentResult.edgeCount}エッジ\n` +
+							`  - RepoGraph: ${repographResult.nodeCount}ノード, ${repographResult.edgeCount}エッジ\n` +
+							`  - Semantic: ${semanticResult.indexed}チャンク`,
+							"info"
+						);
+					}
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					if (ctx?.ui) {
+						ctx.ui.notify(`[indexes] エラー: ${errorMessage}`, "error");
+					}
+				}
+			},
+		});
 	} catch (error) {
 		console.error("search extension error:", error);
 	}

@@ -826,6 +826,9 @@ export interface SemanticIndexMetadata {
 
   /** Version of the index format */
   version: number;
+
+  /** File modification times for incremental updates (relative path -> mtime) */
+  fileMtimes?: Record<string, number>;
 }
 
 // ============================================
