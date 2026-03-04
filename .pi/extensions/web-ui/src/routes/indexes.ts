@@ -194,6 +194,31 @@ indexesRoutes.get("/", async (c) => {
 });
 
 /**
+ * PATCH /api/indexes/:type/enabled - インデックスの有効/無効を設定
+ * 注: インデックス自体は削除されず、設定のみ更新される
+ */
+indexesRoutes.patch(
+  "/:type/enabled",
+  zValidator(
+    "param",
+    z.object({ type: z.enum(["locagent", "repograph", "semantic"]) })
+  ),
+  zValidator("json", EnabledSchema),
+  async (c) => {
+    const { type } = c.req.valid("param");
+    const { enabled } = c.req.valid("json");
+    const cwd = process.cwd();
+
+    const settings = await updateIndexEnabled(cwd, type, enabled);
+
+    return c.json<SuccessResponse<{ type: typeof type; enabled: boolean; settings: IndexSettings }>>({
+      success: true,
+      data: { type, enabled, settings },
+    });
+  }
+);
+
+/**
  * GET /api/indexes/:type - 特定インデックス状態
  */
 indexesRoutes.get(
@@ -245,31 +270,6 @@ indexesRoutes.post(
     return c.json<SuccessResponse<typeof result>>({
       success: true,
       data: result,
-    });
-  }
-);
-
-/**
- * PATCH /api/indexes/:type/enabled - インデックスの有効/無効を設定
- * 注: インデックス自体は削除されず、設定のみ更新される
- */
-indexesRoutes.patch(
-  "/:type/enabled",
-  zValidator(
-    "param",
-    z.object({ type: z.enum(["locagent", "repograph", "semantic"]) })
-  ),
-  zValidator("json", EnabledSchema),
-  async (c) => {
-    const { type } = c.req.valid("param");
-    const { enabled } = c.req.valid("json");
-    const cwd = process.cwd();
-
-    const settings = await updateIndexEnabled(cwd, type, enabled);
-
-    return c.json<SuccessResponse<{ type: typeof type; enabled: boolean; settings: IndexSettings }>>({
-      success: true,
-      data: { type, enabled, settings },
     });
   }
 );
