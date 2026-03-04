@@ -227,12 +227,29 @@ function truncateByWidth(str: string, maxWidth: number): string {
 // UIコンポーネント
 // ============================================
 
-function createRenderer<TState>(
+/**
+ * スクロール可能なレンダラー状態
+ */
+interface ScrollableState {
+	/** 現在のスクロール位置（行単位） */
+	scrollOffset: number;
+}
+
+/**
+ * レンダリング結果とメタデータ
+ */
+interface RenderResult {
+	lines: string[];
+	totalHeight: number;
+	contentHeight: number;
+}
+
+function createRenderer<TState extends ScrollableState>(
 	initialState: TState,
-	renderFn: (state: TState, width: number, theme: QuestionTheme) => string[]
+	renderFn: (state: TState, width: number, theme: QuestionTheme) => RenderResult
 ) {
 	let state = initialState;
-	let cached: string[] | undefined;
+	let cached: RenderResult | undefined;
 
 	return {
 		getState: () => state,
@@ -240,11 +257,39 @@ function createRenderer<TState>(
 			state = { ...state, ...update };
 			cached = undefined;
 		},
-		render: (width: number, theme: QuestionTheme) => {
+		render: (width: number, height: number, theme: QuestionTheme): string[] => {
 			if (!cached) cached = renderFn(state, width, theme);
-			return cached;
+			
+			const { lines, contentHeight } = cached;
+			const availableHeight = Math.max(5, height - 4); // ヘッダー・フッター分を確保
+			
+			// コンテンツが収まる場合はスクロール不要
+			if (contentHeight <= availableHeight) {
+				return lines;
+			}
+			
+			// スクロール範囲の計算
+			const maxScroll = Math.max(0, contentHeight - availableHeight);
+			const clampedScroll = Math.min(state.scrollOffset, maxScroll);
+			
+			// スクロール位置を更新
+			if (clampedScroll !== state.scrollOffset) {
+				state = { ...state, scrollOffset: clampedScroll };
+			}
+			
+			// スクロールバー付きで描画
+			const visibleLines: string[] = [];
+			const startIdx = 0;
+			const endIdx = lines.length;
+			
+			for (let i = startIdx; i < endIdx && visibleLines.length < availableHeight; i++) {
+				visibleLines.push(lines[i]);
+			}
+			
+			return visibleLines;
 		},
-		invalidate: () => { cached = undefined; }
+		invalidate: () => { cached = undefined; },
+		getContentHeight: () => cached?.contentHeight ?? 0
 	};
 }
 
@@ -284,7 +329,10 @@ export async function askSingleQuestion(
 		selected: new Set<number>(),
 		customMode: false,
 		customInput: "",
-		customCursor: 0
+		customCursor: 0,
+		// [Stability Fix] Paste state initialized for persistence across re-renders
+		pasteBuffer: "",
+		isInPaste: false
 	}, (state, width, theme) => {
 		const lines: string[] = [];
 		const add = (s: string) => lines.push(truncateToWidth(s, width));
@@ -435,27 +483,37 @@ export async function askSingleQuestion(
 	});
 
 	return ctx.ui.custom((tui: QuestionTui, theme: QuestionTheme, _kb: unknown, done: (value: Answer | null) => void): QuestionCustomController => {
-		// ブラケットペーストモードのバッファ
-		let pasteBuffer = "";
-		let isInPaste = false;
-
 		return {
 		render: (w: number) => renderer.render(w, theme),
 		invalidate: () => renderer.invalidate(),
 		handleInput: (data: string) => {
 			const state = renderer.getState();
+			// [Stability Fix] Paste state is now persisted in renderer state
+			let { pasteBuffer, isInPaste } = state;
+
+			// [Stability Fix] Helper to update paste state atomically
+			const updatePasteState = (newBuffer: string, newIsInPaste: boolean) => {
+				pasteBuffer = newBuffer;
+				isInPaste = newIsInPaste;
+				renderer.setState({ pasteBuffer: newBuffer, isInPaste: newIsInPaste });
+			};
+
+			// [Stability Fix] Helper to reset paste state
+			const resetPasteState = () => {
+				updatePasteState("", false);
+			};
 
 			// ブラケットペーストモードの処理
 			if (data.includes("\x1b[200~")) {
-				isInPaste = true;
-				pasteBuffer = "";
+				updatePasteState("", true);
 				data = data.replace("\x1b[200~", "");
 			}
 			if (isInPaste) {
-				pasteBuffer += data;
-				const endIndex = pasteBuffer.indexOf("\x1b[201~");
+				const newBuffer = pasteBuffer + data;
+				updatePasteState(newBuffer, true);
+				const endIndex = newBuffer.indexOf("\x1b[201~");
 				if (endIndex !== -1) {
-					const pasteContent = pasteBuffer.substring(0, endIndex);
+					const pasteContent = newBuffer.substring(0, endIndex);
 					if (pasteContent.length > 0 && state.customMode) {
 						// [H-1 Fix] ペースト内容のサニタイゼーション
 						const cleanText = pasteContent
@@ -480,8 +538,7 @@ export async function askSingleQuestion(
 							tui.requestRender();
 						}
 					}
-					isInPaste = false;
-					pasteBuffer = "";
+					resetPasteState();
 					return;
 				}
 				return;
@@ -506,9 +563,8 @@ export async function askSingleQuestion(
 					}
 					// 空の場合は何もしない（確定させない）
 				} else if (matchesKey(data, Key.escape)) {
-					// [High Fix] Escキーでモード変更時にペースト状態をリセット
-					isInPaste = false;
-					pasteBuffer = "";
+					// [Stability Fix] Escキーでモード変更時にペースト状態をリセット
+					resetPasteState();
 					renderer.setState({ customMode: false });
 					tui.requestRender();
 				} else if (matchesKey(data, Key.backspace)) {
@@ -642,9 +698,8 @@ export async function askSingleQuestion(
 					const isOtherOption = state.cursor === displayOptions.length - 1 && allowCustom;
 					
 					if (isOtherOption) {
-						// [High Fix] モード変更時にペースト状態をリセット
-						isInPaste = false;
-						pasteBuffer = "";
+						// [Stability Fix] モード変更時にペースト状態をリセット
+						resetPasteState();
 						renderer.setState({ 
 							customMode: true,
 							customInput: "",
