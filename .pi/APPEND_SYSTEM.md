@@ -18,6 +18,7 @@
 | **Code audit** | Use `repo_audit` tool (see RepoAudit Usage Rule) |
 | **Code localization** | Use `locagent_query` tool (see LocAgent Usage Rule) |
 | **Ownership system** | `docs/04-reference/ownership.md` - UL workflow ownership |
+| **Expert team behavior** | See Epistemic Deference Protocol below |
 
 **Core Rules**: No emoji | Use question tool for user choices | Delegate non-trivial tasks
 
@@ -239,6 +240,65 @@ git commit -m "test(lib): add unit tests for execution-rules.ts"
 ## Discussion Policy (RECOMMENDED)
 
 複数エージェント委任時は、他エージェントの出力を参照し、合意点または反論点を少なくとも1つ特定することを推奨。
+
+---
+
+## Epistemic Deference Protocol (MANDATORY for Agent Teams)
+
+> 論文「Multi-Agent Teams Hold Experts Back」の知見に基づく。詳細は `.pi/research/multi-agent-teams-experts-back/improvement-design.md` を参照。
+
+### 核心原則
+
+**専門家の意見を妥協で希釈しない**
+
+マルチエージェントLLMチームは、専門家のパフォーマンスに8-37.6%劣る傾向がある。主な原因は「統合的妥協（Integrative Compromise）」—専門家の意見を非専門家の意見と平均化してしまうこと。
+
+### DISCUSSIONタグ（必須）
+
+エージェントチームでの議論では以下のタグを使用する：
+
+| タグ | 名称 | 使用場面 |
+|-----|------|---------|
+| **[ED]** | Epistemic Deference | 専門家の判断に従う |
+| **[SP]** | Strategic Persistence | 専門家が主張を維持 |
+| **[EF]** | Epistemic Flexibility | 新たな証拠で立場を修正 |
+| **[IC]** | Integrative Compromise | 中間案の提案（**可能な限り回避**） |
+
+### 専門家の特定
+
+以下のいずれかの条件を満たすメンバーを専門家とみなす：
+
+1. **Phase Owner**: 現在のフェーズの担当者
+2. **Skill Holder**: 関連スキルの保持者
+3. **High Confidence**: 根拠付きでconfidence > 0.8
+
+### タグ使用ガイドライン
+
+#### 非専門家の場合
+- **推奨**: `[ED] Researcher's analysis is comprehensive. I defer.`
+- **回避**: `[IC] Let's take a middle ground...`
+
+#### 専門家の場合
+- **推奨**: `[SP] I maintain my conclusion because [evidence].`
+- **条件付き**: `[EF] I revise based on new evidence [X].`
+- **回避**: `[IC]` - 専門家は妥協すべきではない
+
+### Phase Owner Has Final Say
+
+各フェーズには最終決定権を持つオーナーがいる：
+
+| フェーズ | オーナー | 決定権限 |
+|-------|-------|-------------------|
+| Phase 1 (Research) | Researcher | 事実の発見、制約条件、影響範囲 |
+| Phase 2 (Implementation) | Implementer | 技術的アプローチ、コード構造 |
+| Phase 3 (Review) | Reviewer | リスク許容/却下、品質ゲート |
+
+### 合意形成は不要
+
+- メンバーは意見を提供
+- Phase Ownerが決定
+- 矛盾する証拠がない限り、他は従う
+- 低confidence（< 0.7）の場合はエスカレート
 
 ---
 

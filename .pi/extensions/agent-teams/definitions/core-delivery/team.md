@@ -219,7 +219,15 @@ members:
   - 波及範囲マップ
   - リグレッションリスク評価
   - ステークホルダー影響リスト
-- DISCUSSION: <他のメンバーのoutputを参照し、同意点/不同意点を記述。合意形成時は「合意: [要約]」を明記（必須）>
+- **Expert Claim** (Phase Ownerとして):
+  - Topic: Phase 1 調査結果
+  - Confidence: [0.0-1.0]
+  - Conclusion: [調査の結論]
+- **DISCUSSION**:
+  - Expertise Assessment: Phase Owner: Researcher (myself), My Role: expert, Confidence: [0.0-1.0]
+  - Position: [SP] I maintain my findings because [evidence]
+  - Evidence: [具体的な証拠]
+  - Agreement/Disagreement: [他メンバーへの同意/不同意]
 
 ### Implementer (build)
 
@@ -262,7 +270,15 @@ members:
   - 実装コードの草案
   - インターフェース定義
   - エラーハンドリング実装
-- DISCUSSION: <他のメンバーのoutputを参照し、同意点/不同意点を記述。合意形成時は「合意: [要約]」を明記（必須）>
+- **Expert Claim** (Phase Ownerとして):
+  - Topic: Phase 2 実装アプローチ
+  - Confidence: [0.0-1.0]
+  - Conclusion: [推奨アプローチ]
+- **DISCUSSION**:
+  - Expertise Assessment: Phase Owner: Implementer (myself), My Role: expert for implementation, My Role for research: non-expert, Confidence: [0.0-1.0]
+  - Position: [ED/SP/EF/IC] <主張>
+  - Evidence (if SP or EF): [具体的な証拠]
+  - Agreement/Disagreement: [他メンバーへの同意/不同意]
 
 ### Reviewer (review)
 
@@ -305,7 +321,17 @@ members:
   - Critical: [問題リストと修正案]
   - Should: [改善提案リスト]
   - Nice: [将来の改善候補]
-- DISCUSSION: <他のメンバーのoutputを参照し、同意点/不同意点を記述。合意形成時は「合意: [要約]」を明記（必須）>
+- **Phase 3 Decision** (Phase Ownerとして):
+  - Decision Maker: Reviewer
+  - Decision: [APPROVE / REJECT / REVISE]
+  - Reasoning: [決定理由]
+  - Confidence: [0.0-1.0]
+  - Escalation (if applicable): [人間レビューが必要な場合]
+- **DISCUSSION**:
+  - Expertise Assessment: Phase Owner: Reviewer (myself), My Role: expert for review, My Role for implementation: non-expert, Confidence: [0.0-1.0]
+  - Position: [ED/SP/EF/IC] <主張>
+  - Evidence (if SP or EF): [具体的な証拠]
+  - Agreement/Disagreement: [他メンバーへの同意/不同意]
 
 ## 警告信号 - プロセスの遵守を促す
 
