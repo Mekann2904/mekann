@@ -44,6 +44,8 @@ import type {
 import { symFind } from "./sym_find.js";
 import { codeSearch } from "./code_search.js";
 import { semanticSearch } from "./semantic_search.js";
+import { locagentQuery } from "./locagent_index.js";
+import { repographQuery } from "./repograph_index.js";
 
 // ============================================
 // Internal Result Types
@@ -150,6 +152,61 @@ async function executeSource(
 							sourceType: "code",
 							rank: i + 1,
 							score: 1.0 - (i / output.results.length) * 0.5, // Decay from 1.0 to 0.5
+						});
+					}
+				}
+				break;
+			}
+
+			case "locagent": {
+				// LocAgentからキーワード検索で候補を取得
+				const keywords = source.query.split(/[\s,]+/).filter(k => k.length > 0);
+				const output = await locagentQuery(
+					{
+						type: "search",
+						keywords,
+						limit: 30,
+					},
+					cwd
+				);
+
+				if (output.success && output.nodes) {
+					for (let i = 0; i < output.nodes.length; i++) {
+						const r = output.nodes[i];
+						results.push({
+							file: r.filePath ?? "",
+							line: r.line,
+							content: `${r.nodeType}: ${r.name}`,
+							sourceType: "locagent",
+							rank: i + 1,
+							score: 1.0 - (i / output.nodes.length) * 0.5,
+						});
+					}
+				}
+				break;
+			}
+
+			case "repograph": {
+				// RepoGraphからシンボル検索
+				const output = await repographQuery(
+					{
+						type: "symbol",
+						symbol: source.query,
+						limit: 30,
+					},
+					cwd
+				);
+
+				if (output.nodes) {
+					for (let i = 0; i < output.nodes.length; i++) {
+						const r = output.nodes[i];
+						results.push({
+							file: r.file,
+							line: r.line,
+							content: `${r.nodeType}: ${r.symbolName} (${r.symbolKind})`,
+							sourceType: "repograph",
+							rank: i + 1,
+							score: 1.0 - (i / output.nodes.length) * 0.5,
 						});
 					}
 				}

@@ -1263,7 +1263,7 @@ export interface AstSummaryResult {
  * 検索ソースの種類
  * @summary ソース種別
  */
-export type SearchSourceType = "semantic" | "symbol" | "code";
+export type SearchSourceType = "semantic" | "symbol" | "code" | "locagent" | "repograph";
 
 /**
  * マージ対象の検索ソース

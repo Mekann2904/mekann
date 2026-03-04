@@ -1164,7 +1164,7 @@ export default function (pi: ExtensionAPI) {
 			name: "merge_results",
 			label: "Merge Results",
 			description:
-				"Merge results from multiple search methods (semantic, symbol, code) with ranking improvements. Supports weighted, rank_fusion, and interleave strategies.",
+				"Merge results from multiple search methods (semantic, symbol, code, locagent, repograph) with ranking improvements. Supports weighted, rank_fusion, and interleave strategies. LocAgent and RepoGraph provide graph-based code localization.",
 			parameters: Type.Object({
 				sources: Type.Array(
 					Type.Object({
@@ -1173,6 +1173,8 @@ export default function (pi: ExtensionAPI) {
 								Type.Literal("semantic"),
 								Type.Literal("symbol"),
 								Type.Literal("code"),
+								Type.Literal("locagent"),
+								Type.Literal("repograph"),
 							],
 							{ description: "Source type" }
 						),
@@ -1219,7 +1221,7 @@ export default function (pi: ExtensionAPI) {
 					const result = await mergeResults(
 						{
 							sources: params.sources as Array<{
-								type: "semantic" | "symbol" | "code";
+								type: "semantic" | "symbol" | "code" | "locagent" | "repograph";
 								query: string;
 								weight?: number;
 							}>,
