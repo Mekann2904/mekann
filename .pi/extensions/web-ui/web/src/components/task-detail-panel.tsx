@@ -20,7 +20,7 @@
 import { h } from "preact";
 import { useState, useEffect, useRef, useMemo, useCallback } from "preact/hooks";
 import { memo } from "preact/compat";
-import { X, Calendar, User, Tag, Trash2, CheckCircle2, Circle, Clock, AlertTriangle, Plus, ListChecks, FileText, Loader2 } from "lucide-preact";
+import { X, Calendar, User, Tag, Trash2, CheckCircle2, Circle, Clock, AlertTriangle, Plus, ListChecks, FileText } from "lucide-preact";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { cn } from "@/lib/utils";
@@ -32,6 +32,7 @@ import {
   PATTERNS,
   SPACING,
   STATE_STYLES,
+  InlineLoading,
 } from "./layout";
 
 interface TaskDetailPanelProps {
@@ -599,7 +600,7 @@ function TaskDetailPanelInner({
             </div>
             {planLoading ? (
               <div class="flex items-center gap-2 text-muted-foreground text-xs">
-                <Loader2 class="h-3 w-3 animate-spin" />
+                <InlineLoading />
                 Loading plan...
               </div>
             ) : plan ? (

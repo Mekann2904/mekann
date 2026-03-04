@@ -20,7 +20,6 @@ import { useGlobalShortcuts } from "./hooks/useKeyboardShortcuts";
 import {
   Monitor,
   Palette,
-  Loader2,
   Server,
   AlertCircle,
   ListTodo,
@@ -29,6 +28,7 @@ import {
   Keyboard,
   Database,
 } from "lucide-preact";
+import { LoadingState, InlineLoading } from "@/components/layout";
 import { cn } from "@/lib/utils";
 import "./styles/globals.css";
 
@@ -259,10 +259,11 @@ export function App() {
   if (!themeLoaded) {
     return (
       <div class="flex h-screen items-center justify-center">
-        <div class="flex flex-col items-center gap-2">
-          <Loader2 class="h-6 w-6 animate-spin text-primary" />
-          <p class="text-sm text-muted-foreground">Loading...</p>
-        </div>
+        <LoadingState 
+          message="Loading..." 
+          size="lg" 
+          showCard={false} 
+        />
       </div>
     );
   }
@@ -388,7 +389,7 @@ function Sidebar({ sseConnected, sseExhausted, onSseReconnect }: SidebarProps) {
             class="flex h-8 w-8 items-center justify-center rounded-lg bg-yellow-500/20 text-yellow-500"
             title="SSE connecting..."
           >
-            <Loader2 class="h-4 w-4 animate-spin" />
+            <InlineLoading className="text-yellow-500" />
           </div>
         ) : (
           <div

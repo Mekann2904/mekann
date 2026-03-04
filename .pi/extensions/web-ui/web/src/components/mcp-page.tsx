@@ -374,7 +374,7 @@ function ToolsView({ servers }: { servers: McpServerInfo[] }) {
   if (loading) {
     return (
       <div class="flex items-center justify-center py-8">
-        <Loader2 class="h-6 w-6 animate-spin text-primary" />
+        <LoadingState message="Loading tools..." size="md" showCard={false} />
       </div>
     );
   }
@@ -476,7 +476,7 @@ function ResourcesView({ servers }: { servers: McpServerInfo[] }) {
   if (loading) {
     return (
       <div class="flex items-center justify-center py-8">
-        <Loader2 class="h-6 w-6 animate-spin text-primary" />
+        <LoadingState message="Loading resources..." size="md" showCard={false} />
       </div>
     );
   }
@@ -609,10 +609,7 @@ export function McpPage() {
   if (loading) {
     return (
       <div class="flex h-full items-center justify-center">
-        <div class="flex flex-col items-center gap-2">
-          <Loader2 class="h-6 w-6 animate-spin text-primary" />
-          <p class="text-sm text-muted-foreground">Loading MCP...</p>
-        </div>
+        <LoadingState message="Loading MCP..." size="md" showCard={false} />
       </div>
     );
   }
