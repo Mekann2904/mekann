@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
 import {
   PageLayout,
   PageHeader,
-  LoadingState,
+  SkeletonList,
   ErrorBanner,
   EmptyState,
   TYPOGRAPHY,
@@ -239,7 +239,11 @@ export function InstancesPage() {
       />
 
       {/* Loading */}
-      {loading && <LoadingState message="Loading instances..." />}
+      {loading && (
+        <div class="p-4">
+          <SkeletonList count={5} />
+        </div>
+      )}
 
       {/* Error */}
       {error && (

@@ -41,7 +41,7 @@ import { useTaskFilters } from "../hooks/useTaskFilters";
 import { cn } from "@/lib/utils";
 import {
   PageLayout,
-  LoadingState,
+  SkeletonBoard,
   ErrorBanner,
 } from "./layout";
 
@@ -319,8 +319,8 @@ export function TasksPage() {
 
         {/* Kanban board */}
         {loading ? (
-          <div class="flex-1 flex items-center justify-center">
-            <LoadingState message="Loading..." showCard={false} />
+          <div class="flex-1 p-4">
+            <SkeletonBoard columns={3} />
           </div>
         ) : (
           <div class="flex-1 overflow-x-auto p-4">

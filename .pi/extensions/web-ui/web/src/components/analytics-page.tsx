@@ -65,7 +65,7 @@ import {
   PageHeader,
   StatsCard,
   StatsGrid,
-  LoadingState,
+  SkeletonTable,
   ErrorBanner,
   EmptyState,
   ChartEmptyState,
@@ -321,7 +321,9 @@ export function AnalyticsPage() {
 
       {/* Loading */}
       {loading && !summary ? (
-        <LoadingState message="Loading analytics..." />
+        <div class="p-4">
+          <SkeletonTable rows={8} cols={5} />
+        </div>
       ) : (
         <>
           {/* Metrics Grid */}
