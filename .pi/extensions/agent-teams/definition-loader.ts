@@ -901,9 +901,9 @@ export function ensureDefaults(
   storage.teams = mergedTeams;
   storage.defaultsVersion = TEAM_DEFAULTS_VERSION;
 
-  if (!storage.currentTeamId || !storage.teams.some((team) => team.id === storage.currentTeamId)) {
-    storage.currentTeamId = defaults[0]?.id;
-  }
+  // デフォルトチームの自動設定は行わない
+  // ユーザーが明示的にagent_team_configureでsetCurrent=trueを指定した場合のみcurrentTeamIdを設定
+  // これにより、意図しないデフォルトチームの使用を防ぐ
 
   return storage;
 }
