@@ -171,7 +171,7 @@ export async function repographIndex(
 	params: RepographIndexInput,
 	cwd: string
 ): Promise<RepographIndexOutput> {
-	const targetPath = params.path ?? cwd;
+	const targetPath = params.path ?? ".";
 	const indexPath = getRepoGraphPath(cwd);
 
 	try {

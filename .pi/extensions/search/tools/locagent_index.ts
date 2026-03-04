@@ -198,7 +198,7 @@ export async function locagentIndex(
 	params: LocAgentIndexInput,
 	cwd: string
 ): Promise<LocAgentIndexOutput> {
-	const targetPath = params.path ?? cwd;
+	const targetPath = params.path ?? ".";
 	const indexPath = getLocAgentGraphPath(cwd);
 
 	try {
