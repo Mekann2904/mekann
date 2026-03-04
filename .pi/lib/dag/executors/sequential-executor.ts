@@ -31,7 +31,7 @@ export class SequentialExecutor extends BaseExecutor {
     const validation = this.validate(plan);
     if (!validation.valid) {
       return {
-        status: "failed",
+        status: "failure",
         outputs: [],
         error: `Validation failed: ${validation.errors.join("; ")}`,
       };
@@ -56,9 +56,9 @@ export class SequentialExecutor extends BaseExecutor {
         outputs.push(output);
         
         // 失敗チェック
-        if (output.status === "failed" && plan.abortOnFirstError !== false) {
+        if (output.status === "failure" && plan.abortOnFirstError !== false) {
           return {
-            status: "failed",
+            status: "failure",
             outputs,
             error: `Task ${task.id} failed: ${output.error}`,
           };
@@ -67,7 +67,7 @@ export class SequentialExecutor extends BaseExecutor {
         const errorMsg = error instanceof Error ? error.message : String(error);
         if (plan.abortOnFirstError !== false) {
           return {
-            status: "failed",
+            status: "failure",
             outputs,
             error: `Task ${task.id} error: ${errorMsg}`,
           };
@@ -76,7 +76,7 @@ export class SequentialExecutor extends BaseExecutor {
     }
     
     return {
-      status: outputs.every(o => o.status !== "failed") ? "success" : "partial",
+      status: outputs.every(o => o.status !== "failure") ? "success" : "partial",
       outputs,
       finalOutput: outputs[outputs.length - 1], // 最後の出力を最終成果とする
     };

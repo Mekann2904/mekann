@@ -15,7 +15,7 @@
  *   - maxConcurrency個のサブエージェントを同時起動
  * failure_modes:
  *   - 一部タスク失敗時も他タスクは継続
- *   - 全失敗時はexecutionResult.status = "failed"
+ *   - 全失敗時はexecutionResult.status = "failure"
  */
 
 import { BaseExecutor, ExecutionContext } from "./base-executor.js";
@@ -30,7 +30,7 @@ export class ParallelExecutor extends BaseExecutor {
     const validation = this.validate(plan);
     if (!validation.valid) {
       return {
-        status: "failed",
+        status: "failure",
         outputs: [],
         errors: validation.errors,
         metrics: { durationMs: 0, taskCount: plan.tasks.length },
@@ -87,7 +87,7 @@ export class ParallelExecutor extends BaseExecutor {
     );
     
     return {
-      status: errors.size === 0 ? "success" : (errors.size < plan.tasks.length ? "partial" : "failed"),
+      status: errors.size === 0 ? "success" : (errors.size < plan.tasks.length ? "partial" : "failure"),
       outputs,
       errors: errorList,
       metrics: {

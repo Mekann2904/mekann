@@ -135,7 +135,7 @@ export class TopologyAwareOrchestrator {
       }
       
       // Phase 6: 失敗時の修復ブランチ実行
-      if (executionResult.status === "failed" && this.config.enableRepairBranches) {
+      if (executionResult.status === "failure" && this.config.enableRepairBranches) {
         const repairResult = await this.attemptRepair(enrichedPlan, executionResult);
         if (repairResult) {
           return repairResult;
@@ -147,7 +147,7 @@ export class TopologyAwareOrchestrator {
       
       return {
         ...executionResult,
-        duration,
+        durationMs: duration,
       };
       
     } catch (error) {
@@ -310,7 +310,7 @@ export class TopologyAwareOrchestrator {
   ): Promise<ExecutionResult | null> {
     // 失敗したタスクを特定
     const failedTasks = failedResult.taskResults
-      ?.filter(r => r.status === "failed")
+      ?.filter(r => r.status === "failure")
       .map(r => r.taskId) ?? [];
     
     if (failedTasks.length === 0) return null;
@@ -352,14 +352,14 @@ export class TopologyAwareOrchestrator {
   private createErrorResult(
     plan: DAGPlan, 
     message: string, 
-    duration?: number
+    durationMs?: number
   ): ExecutionResult {
     return {
       planId: plan.id,
-      status: "failed",
+      status: "failure",
+      taskResults: [],
       outputs: [],
-      error: message,
-      duration,
+      durationMs: durationMs ?? 0,
     };
   }
   

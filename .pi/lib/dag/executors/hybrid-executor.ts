@@ -45,10 +45,11 @@ export class HybridExecutor extends BaseExecutor {
     
     if (!validation.valid) {
       return {
-        status: "failed",
+        planId: plan.id,
+        status: "failure",
+        taskResults: [],
         outputs: [],
-        errors: validation.errors,
-        metrics: { durationMs: 0 },
+        durationMs: 0,
       };
     }
     
@@ -77,37 +78,46 @@ export class HybridExecutor extends BaseExecutor {
         this.context.logger?.log(`[HybridExecutor] Layer ${layerIndex + 1} completed in ${layerDuration}ms`);
         
         // 失敗チェック
-        const failures = layerResults.filter(r => r.status === "failed");
+        const failures = layerResults.filter(r => r.status === "failure");
         if (failures.length > 0 && plan.abortOnFirstError !== false) {
           return {
-            status: "failed",
+            planId: plan.id,
+            status: "failure",
+            taskResults: layerResults.map(r => ({
+              taskId: r.taskId,
+              status: r.status,
+              error: r.error,
+              durationMs: 0,
+            })),
             outputs: Array.from(this.outputs.values()),
-            errors: failures.map(f => `Task ${f.taskId}: ${f.error}`),
-            metrics: { durationMs: Date.now() - startTime },
+            durationMs: Date.now() - startTime,
           };
         }
       }
       
       // 最終出力の特定（シンクノードまたは最後のレイヤー）
-      const finalOutputs = this.identifyFinalOutputs(plan, layers);
+      const finalOutput = this.identifyFinalOutput(plan, layers);
       
       return {
-        status: "completed",
+        planId: plan.id,
+        status: "success",
+        taskResults: plan.tasks.map(t => ({
+          taskId: t.id,
+          status: "success" as const,
+          durationMs: 0,
+        })),
         outputs: Array.from(this.outputs.values()),
-        finalOutputs,
-        metrics: {
-          durationMs: Date.now() - startTime,
-          completedTasks: this.outputs.size,
-          totalTasks: plan.tasks.length,
-        },
+        finalOutput,
+        durationMs: Date.now() - startTime,
       };
       
     } catch (error) {
       return {
-        status: "failed",
+        planId: plan.id,
+        status: "failure",
+        taskResults: [],
         outputs: Array.from(this.outputs.values()),
-        errors: [error instanceof Error ? error.message : String(error)],
-        metrics: { durationMs: Date.now() - startTime },
+        durationMs: Date.now() - startTime,
       };
     }
   }
@@ -119,12 +129,12 @@ export class HybridExecutor extends BaseExecutor {
     layer: DAGTask[],
     layerIndex: number,
     plan: DAGPlan
-  ): Promise<Array<{ taskId: string; status: "completed" | "failed"; output?: TaskOutput; error?: string }>> {
+  ): Promise<Array<{ taskId: string; status: "success" | "failure"; output?: TaskOutput; error?: string }>> {
     
     const maxConcurrency = plan.maxConcurrency || 3;
     
     // バッチ処理（並列度制限）
-    const results: Array<{ taskId: string; status: "completed" | "failed"; output?: TaskOutput; error?: string }> = [];
+    const results: Array<{ taskId: string; status: "success" | "failure"; output?: TaskOutput; error?: string }> = [];
     
     for (let i = 0; i < layer.length; i += maxConcurrency) {
       const batch = layer.slice(i, i + maxConcurrency);
@@ -140,13 +150,13 @@ export class HybridExecutor extends BaseExecutor {
           
           return {
             taskId: task.id,
-            status: "completed" as const,
+            status: "success" as const,
             output,
           };
         } catch (error) {
           return {
             taskId: task.id,
-            status: "failed" as const,
+            status: "failure" as const,
             error: error instanceof Error ? error.message : String(error),
           };
         }
@@ -170,7 +180,7 @@ export class HybridExecutor extends BaseExecutor {
     // デフォルト実装（プレースホルダー）
     return {
       taskId: task.id,
-      status: "completed",
+      status: "success",
       summary: `Executed: ${task.description}`,
       artifacts: [],
     };
@@ -179,7 +189,7 @@ export class HybridExecutor extends BaseExecutor {
   /**
    * @summary 最終出力を特定（シンクノードまたは最後のレイヤー）
    */
-  private identifyFinalOutputs(plan: DAGPlan, layers: DAGTask[][]): TaskOutput[] {
+  private identifyFinalOutput(plan: DAGPlan, layers: DAGTask[][]): TaskOutput {
     // シンクノード（他から参照されないタスク）を特定
     const allDepIds = new Set(plan.tasks.flatMap(t => t.dependencies));
     const sinkTaskIds = plan.tasks

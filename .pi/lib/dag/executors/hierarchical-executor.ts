@@ -103,23 +103,15 @@ export class HierarchicalExecutor extends BaseExecutor {
         status: this.state.failed.size > 0 ? "partial" : "success",
         outputs: Array.from(this.state.completed.values()),
         finalOutput,
-        metrics: {
-          duration: Date.now() - startTime,
-          completed: this.state.completed.size,
-          failed: this.state.failed.size,
-        },
+        durationMs: Date.now() - startTime,
       };
       
     } catch (error) {
       return {
-        status: "failed",
+        status: "failure",
         outputs: Array.from(this.state.completed.values()),
         error: error instanceof Error ? error.message : String(error),
-        metrics: {
-          duration: Date.now() - startTime,
-          completed: this.state.completed.size,
-          failed: this.state.failed.size + this.state.pending.size + this.state.inProgress.size,
-        },
+        durationMs: Date.now() - startTime,
       };
     }
   }

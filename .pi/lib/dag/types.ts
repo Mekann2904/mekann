@@ -89,7 +89,22 @@ export interface TaskEvaluation {
   onFailure?: string;
 }
 
-/** タスク出力定義 */
+/** タスク出力定義（単一タスク用） */
+export interface TaskOutput {
+  /** タスクID */
+  taskId: string;
+  
+  /** 実行結果サマリー */
+  summary: string;
+  
+  /** 生成・変更されたファイルパス */
+  files?: string[];
+
+  /** その他の成果物パス */
+  artifacts?: string[];
+}
+
+/** タスク出力定義（複合的な出力用） */
 export interface TaskOutputs {
   /** 生成・変更されたファイルパス */
   files?: string[];
@@ -218,15 +233,27 @@ export interface SynthesisResult {
   consistencyScore?: number;
 }
 
+/** 検証結果 */
+export interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
 /** 実行結果 */
 export interface ExecutionResult {
   planId: string;
   status: "success" | "failure" | "partial";
   taskResults: TaskResult[];
+  outputs: TaskOutput[];
   finalOutput?: TaskOutputs;
   synthesis?: SynthesisResult;
+  synthesisStrategy?: string;
+  consistencyScore?: number;
   durationMs: number;
   metrics?: DAGMetrics;
+  repaired?: boolean;
+  originalTopology?: string;
 }
 
 /** 実行コンテキスト */

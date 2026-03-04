@@ -209,10 +209,24 @@ export async function executeWithAdaptOrch<T = unknown>(
 }
 
 /**
+ * @summary 環境変数から初期状態を読み込み
+ */
+function loadInitialStateFromEnv(): boolean {
+  const envValue = process.env.PI_ADAPTORCH_ENABLED;
+  if (envValue === undefined) return false;
+  
+  const enabled = envValue === "true" || envValue === "1" || envValue === "yes";
+  if (enabled) {
+    console.log(`[AdaptOrch] Auto-enabled via environment variable PI_ADAPTORCH_ENABLED=${envValue}`);
+  }
+  return enabled;
+}
+
+/**
  * @summary グローバル設定でAdaptOrchを有効化
  * @description 全てのsubagent_run_dagで自動的にAdaptOrchを使用
  */
-let globalAdaptOrchEnabled = false;
+let globalAdaptOrchEnabled = loadInitialStateFromEnv();
 
 export function setGlobalAdaptOrchEnabled(enabled: boolean): void {
   globalAdaptOrchEnabled = enabled;
@@ -221,6 +235,39 @@ export function setGlobalAdaptOrchEnabled(enabled: boolean): void {
 
 export function isGlobalAdaptOrchEnabled(): boolean {
   return globalAdaptOrchEnabled;
+}
+
+/**
+ * @summary 設定ファイルからAdaptOrch設定を読み込む
+ * @param configPath - 設定ファイルパス（デフォルト: .pi/config.json）
+ */
+export async function loadAdaptOrchConfig(configPath?: string): Promise<void> {
+  const path = configPath || ".pi/config.json";
+  
+  try {
+    const fs = await import("node:fs");
+    
+    if (!fs.existsSync(path)) {
+      return; // 設定ファイルがない場合は何もしない
+    }
+    
+    const content = fs.readFileSync(path, "utf-8");
+    const config = JSON.parse(content);
+    
+    // dag.adaptOrch.enabled をチェック
+    if (config?.dag?.adaptOrch?.enabled === true) {
+      setGlobalAdaptOrchEnabled(true);
+      
+      // 閾値のカスタマイズ（オプション）
+      const thresholds = config.dag.adaptOrch.defaultThresholds;
+      if (thresholds) {
+        console.log(`[AdaptOrch] Custom thresholds loaded:`, thresholds);
+        // 必要に応じて THRESHOLDS を上書き
+      }
+    }
+  } catch (error) {
+    console.warn(`[AdaptOrch] Failed to load config from ${path}:`, error);
+  }
 }
 
 /**

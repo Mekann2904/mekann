@@ -356,6 +356,7 @@ import { generateDagFromTask, DagGenerationError } from "../lib/dag-generator.js
 import {
   executeWithAdaptOrch,
   isGlobalAdaptOrchEnabled,
+  loadAdaptOrchConfig,
 } from "../lib/dag/adaptorch-adapter.js";
 
 // Import types from lib/subagent-types.ts
@@ -2621,10 +2622,20 @@ ${allResults.map((r) => {
     saveStorage(ctx.cwd, storage);
     resetRuntimeTransientState();
     refreshRuntimeStatus(ctx);
-    ctx.ui.notify(
-      "Subagent extension loaded (subagent_list, subagent_run, subagent_run_parallel)",
-      "info",
-    );
+    
+    // AdaptOrch設定を読み込み
+    await loadAdaptOrchConfig();
+    if (isGlobalAdaptOrchEnabled()) {
+      ctx.ui.notify(
+        "Subagent extension loaded with AdaptOrch topology-aware orchestration ENABLED",
+        "success",
+      );
+    } else {
+      ctx.ui.notify(
+        "Subagent extension loaded (subagent_list, subagent_run, subagent_run_parallel). Enable AdaptOrch: PI_ADAPTORCH_ENABLED=1 or enableAdaptOrch: true",
+        "info",
+      );
+    }
   });
 
   // デフォルトでマルチエージェント委譲を積極化する。
