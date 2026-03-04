@@ -128,7 +128,7 @@ async function executeSource(
 							sourceType: "symbol",
 							rank: i + 1,
 							// 正規化: ランク1=1.0, ランクN=0.0 (0.0-1.0範囲)
-							score: 1.0 - (i / output.results.length),
+							score: 1.0 - (i / (output.results.length - 1 || 1)) * (output.results.length > 1 ? 1 : 0),
 						});
 					}
 				}
@@ -145,7 +145,8 @@ async function executeSource(
 				);
 
 				if (output.results && output.results.length > 0) {
-					for (let i = 0; i < output.results.length; i++) {
+					const resultCount = output.results.length;
+					for (let i = 0; i < resultCount; i++) {
 						const r = output.results[i];
 						results.push({
 							file: r.file,
@@ -154,7 +155,8 @@ async function executeSource(
 							sourceType: "code",
 							rank: i + 1,
 							// 正規化: ランク1=1.0, ランクN=0.0 (0.0-1.0範囲)
-							score: 1.0 - (i / output.results.length),
+							// resultCount >= 1 のため除算by zeroは発生しない
+							score: 1.0 - (i / (resultCount - 1 || 1)) * (resultCount > 1 ? 1 : 0),
 						});
 					}
 				}
@@ -185,7 +187,8 @@ async function executeSource(
 				}> | undefined;
 
 				if (output.success && searchResults && searchResults.length > 0) {
-					for (let i = 0; i < searchResults.length; i++) {
+					const resultCount = searchResults.length;
+					for (let i = 0; i < resultCount; i++) {
 						const r = searchResults[i];
 						results.push({
 							file: r.file ?? "",
@@ -194,7 +197,8 @@ async function executeSource(
 							sourceType: "locagent",
 							rank: i + 1,
 							// 正規化: ランク1=1.0, ランクN=0.0 (0.0-1.0範囲)
-							score: 1.0 - (i / searchResults.length),
+							// resultCount >= 1 のため除算by zeroは発生しない
+							score: 1.0 - (i / (resultCount - 1 || 1)) * (resultCount > 1 ? 1 : 0),
 						});
 					}
 				}
@@ -214,7 +218,8 @@ async function executeSource(
 
 				// RepoGraph nodes are directly in output.nodes
 				if (output.nodes && output.nodes.length > 0) {
-					for (let i = 0; i < output.nodes.length; i++) {
+					const resultCount = output.nodes.length;
+					for (let i = 0; i < resultCount; i++) {
 						const r = output.nodes[i];
 						results.push({
 							file: r.file,
@@ -223,7 +228,8 @@ async function executeSource(
 							sourceType: "repograph",
 							rank: i + 1,
 							// 正規化: ランク1=1.0, ランクN=0.0 (0.0-1.0範囲)
-							score: 1.0 - (i / output.nodes.length),
+							// resultCount >= 1 のため除算by zeroは発生しない
+							score: 1.0 - (i / (resultCount - 1 || 1)) * (resultCount > 1 ? 1 : 0),
 						});
 					}
 				}

@@ -250,18 +250,17 @@ export function traverseGraph(
 	const resultNodes: LocAgentNode[] = [];
 	const resultEdges: LocAgentEdge[] = [];
 
-	// BFSキュー
-	const queue: Array<{ nodeId: string; depth: number }> = startNodeIds
-		.filter((id) => graph.nodes.has(id))
-		.map((id) => ({ nodeId: id, depth: 0 }));
+	// BFSキューの初期化（開始ノードを事前にvisitedに追加）
+	const queue: Array<{ nodeId: string; depth: number }> = [];
+	for (const id of startNodeIds) {
+		if (graph.nodes.has(id) && !visitedNodes.has(id)) {
+			visitedNodes.add(id);
+			queue.push({ nodeId: id, depth: 0 });
+		}
+	}
 
 	while (queue.length > 0 && resultNodes.length < limit) {
 		const { nodeId, depth } = queue.shift()!;
-
-		if (visitedNodes.has(nodeId)) {
-			continue;
-		}
-		visitedNodes.add(nodeId);
 
 		const node = graph.nodes.get(nodeId)!;
 
