@@ -354,7 +354,6 @@ import {
 } from "../lib/dag-executor.js";
 import { generateDagFromTask, DagGenerationError } from "../lib/dag-generator.js";
 import {
-  executeWithAdaptOrch,
   isGlobalAdaptOrchEnabled,
   loadAdaptOrchConfig,
 } from "../lib/dag/adaptorch-adapter.js";
