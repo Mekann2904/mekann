@@ -99,10 +99,21 @@ analyticsRoutes.get("/aggregates", async (c) => {
     }
 
     const { loadAggregates } = await loadAnalyticsModules();
-    const { type } = query.data;
+    const { type, range } = query.data;
     const endDate = new Date();
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 7);
+
+    // rangeパラメータに基づいて期間を設定
+    if (range === "24h") {
+      startDate.setDate(startDate.getDate() - 1);
+    } else if (range === "7d") {
+      startDate.setDate(startDate.getDate() - 7);
+    } else if (range === "30d") {
+      startDate.setDate(startDate.getDate() - 30);
+    } else {
+      // デフォルトは7日
+      startDate.setDate(startDate.getDate() - 7);
+    }
 
     const aggregates = loadAggregates(type, startDate, endDate);
     return c.json({ success: true, data: aggregates });

@@ -224,10 +224,11 @@ export function AnalyticsPage() {
 
   const today = summary?.today;
   const last24Hours = summary?.last24Hours ?? [];
-  
-  // todayがない場合はlast24Hoursから集計値を計算
-  // last24Hours.lengthが0の場合はデフォルト値を使用（ゼロ除算回避）
+  const thisWeek = summary?.thisWeek;
+
+  // 優先順位: today > last24Hours > thisWeek > デフォルト値
   const displayData = today ?? (last24Hours.length > 0 ? {
+    // last24Hoursから集計値を計算
     totals: {
       runs: last24Hours.reduce((sum, h) => sum + h.totals.runs, 0),
       errors: last24Hours.reduce((sum, h) => sum + h.totals.errors, 0),
@@ -245,7 +246,7 @@ export function AnalyticsPage() {
       durationMs: last24Hours.reduce((sum, h) => sum + h.averages.durationMs, 0) / last24Hours.length,
     },
     anomalies: [],
-  } : {
+  } : thisWeek ?? {
     // デフォルト値（データがない場合）
     totals: {
       runs: 0,
