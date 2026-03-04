@@ -19,7 +19,7 @@
  */
 
 import { BaseExecutor, ExecutionContext } from "./base-executor.js";
-import { DAGPlan, DAGTask, ExecutionResult, TaskOutput } from "../types.js";
+import { DAGPlan, DAGTask, ExecutionResult, TaskOutput, TaskResult } from "../types.js";
 
 /**
  * @summary 並列エグゼキュータ（τ_P: Parallel Topology）
@@ -30,10 +30,12 @@ export class ParallelExecutor extends BaseExecutor {
     const validation = this.validate(plan);
     if (!validation.valid) {
       return {
+        planId: plan.id,
         status: "failure",
+        taskResults: [],
         outputs: [],
-        errors: validation.errors,
-        metrics: { durationMs: 0, taskCount: plan.tasks.length },
+        error: validation.errors.join("; "),
+        durationMs: 0,
       };
     }
     
@@ -86,16 +88,23 @@ export class ParallelExecutor extends BaseExecutor {
       `${id}: ${err.message}`
     );
     
+    const taskResults: TaskResult[] = plan.tasks.map(t => {
+      const hasError = errors.has(t.id);
+      return {
+        taskId: t.id,
+        status: hasError ? "failure" : "success",
+        error: hasError ? errors.get(t.id)?.message : undefined,
+        durationMs: 0,
+      };
+    });
+    
     return {
+      planId: plan.id,
       status: errors.size === 0 ? "success" : (errors.size < plan.tasks.length ? "partial" : "failure"),
+      taskResults,
       outputs,
-      errors: errorList,
-      metrics: {
-        durationMs,
-        taskCount: plan.tasks.length,
-        successCount: results.size,
-        failureCount: errors.size,
-      },
+      error: errorList.length > 0 ? errorList.join("; ") : undefined,
+      durationMs,
     };
   }
   

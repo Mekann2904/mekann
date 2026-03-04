@@ -98,18 +98,24 @@ export class HierarchicalExecutor extends BaseExecutor {
       
       // Phase 3: 最終統合
       const finalOutput = await this.leadSynthesize(plan);
+      const outputs = Array.from(this.state.completed.values());
       
       return {
+        planId: plan.id,
         status: this.state.failed.size > 0 ? "partial" : "success",
-        outputs: Array.from(this.state.completed.values()),
+        taskResults: outputs.map(o => ({ taskId: o.taskId, status: "success" as const, durationMs: 0 })),
+        outputs,
         finalOutput,
         durationMs: Date.now() - startTime,
       };
       
     } catch (error) {
+      const outputs = Array.from(this.state.completed.values());
       return {
+        planId: plan.id,
         status: "failure",
-        outputs: Array.from(this.state.completed.values()),
+        taskResults: outputs.map(o => ({ taskId: o.taskId, status: "success" as const, durationMs: 0 })),
+        outputs,
         error: error instanceof Error ? error.message : String(error),
         durationMs: Date.now() - startTime,
       };
@@ -194,7 +200,7 @@ export class HierarchicalExecutor extends BaseExecutor {
     return {
       taskId: task.id,
       summary: `Executed ${task.id}`,
-      timestamp: new Date().toISOString(),
+      timestamp: Date.now(),
     };
   }
   
@@ -217,7 +223,7 @@ export class HierarchicalExecutor extends BaseExecutor {
       taskId: "synthesis",
       summary: `Synthesized ${allOutputs.length} sub-task results`,
       artifacts: allOutputs.flatMap(o => o.artifacts || []),
-      timestamp: new Date().toISOString(),
+      timestamp: Date.now(),
     };
   }
   

@@ -18,7 +18,7 @@
  *   - 失敗しても継続するモードも提供（abortOnFirstError=false時）
  */
 
-import { DAGPlan, DAGTask, ExecutionResult, TaskOutput } from "../types.js";
+import { DAGPlan, DAGTask, ExecutionResult, TaskOutput, TaskResult } from "../types.js";
 import { BaseExecutor } from "./base-executor.js";
 import { topologicalLayers } from "../topology-router.js";
 
@@ -28,12 +28,16 @@ import { topologicalLayers } from "../topology-router.js";
  */
 export class SequentialExecutor extends BaseExecutor {
   async execute(plan: DAGPlan): Promise<ExecutionResult> {
+    const startTime = Date.now();
     const validation = this.validate(plan);
     if (!validation.valid) {
       return {
+        planId: plan.id,
         status: "failure",
+        taskResults: [],
         outputs: [],
         error: `Validation failed: ${validation.errors.join("; ")}`,
+        durationMs: 0,
       };
     }
     
@@ -42,9 +46,10 @@ export class SequentialExecutor extends BaseExecutor {
     const executionOrder = layers.flat();
     
     const outputs: TaskOutput[] = [];
-    const taskMap = new Map(plan.tasks.map(t => [t.id, t]));
+    const taskResults: TaskResult[] = [];
     
     for (const task of executionOrder) {
+      const taskStart = Date.now();
       try {
         // 依存タスクの出力を収集
         const depOutputs = task.dependencies
@@ -54,31 +59,52 @@ export class SequentialExecutor extends BaseExecutor {
         // タスク実行
         const output = await this.runTaskWithContext(task, depOutputs, outputs);
         outputs.push(output);
+        taskResults.push({
+          taskId: task.id,
+          status: output.status === "failure" ? "failure" : "success",
+          durationMs: Date.now() - taskStart,
+        });
         
         // 失敗チェック
         if (output.status === "failure" && plan.abortOnFirstError !== false) {
           return {
+            planId: plan.id,
             status: "failure",
+            taskResults,
             outputs,
             error: `Task ${task.id} failed: ${output.error}`,
+            durationMs: Date.now() - startTime,
           };
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
+        taskResults.push({
+          taskId: task.id,
+          status: "failure",
+          error: errorMsg,
+          durationMs: Date.now() - taskStart,
+        });
         if (plan.abortOnFirstError !== false) {
           return {
+            planId: plan.id,
             status: "failure",
+            taskResults,
             outputs,
             error: `Task ${task.id} error: ${errorMsg}`,
+            durationMs: Date.now() - startTime,
           };
         }
       }
     }
     
+    const allSuccess = outputs.every(o => o.status !== "failure");
     return {
-      status: outputs.every(o => o.status !== "failure") ? "success" : "partial",
+      planId: plan.id,
+      status: allSuccess ? "success" : "partial",
+      taskResults,
       outputs,
-      finalOutput: outputs[outputs.length - 1], // 最後の出力を最終成果とする
+      finalOutput: outputs[outputs.length - 1],
+      durationMs: Date.now() - startTime,
     };
   }
   

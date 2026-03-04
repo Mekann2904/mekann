@@ -96,12 +96,21 @@ export interface TaskOutput {
   
   /** 実行結果サマリー */
   summary: string;
+
+  /** ステータス */
+  status?: "success" | "failure" | "partial";
+  
+  /** エラーメッセージ */
+  error?: string;
   
   /** 生成・変更されたファイルパス */
   files?: string[];
 
   /** その他の成果物パス */
   artifacts?: string[];
+
+  /** タイムスタンプ */
+  timestamp?: number;
 }
 
 /** タスク出力定義（複合的な出力用） */
@@ -144,6 +153,9 @@ export interface DAGTask {
 
   /** タスク種別 */
   taskType?: TaskType;
+
+  /** 優先度 */
+  priority?: "critical" | "high" | "normal" | "low";
 
   /**
    * 書き込み領域（ファイルglobパターン）
@@ -247,6 +259,7 @@ export interface ExecutionResult {
   taskResults: TaskResult[];
   outputs: TaskOutput[];
   finalOutput?: TaskOutputs;
+  error?: string;
   synthesis?: SynthesisResult;
   synthesisStrategy?: string;
   consistencyScore?: number;

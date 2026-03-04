@@ -189,16 +189,18 @@ export class HybridExecutor extends BaseExecutor {
   /**
    * @summary 最終出力を特定（シンクノードまたは最後のレイヤー）
    */
-  private identifyFinalOutput(plan: DAGPlan, layers: DAGTask[][]): TaskOutput {
+  private identifyFinalOutput(plan: DAGPlan, layers: DAGTask[][]): TaskOutput | undefined {
     // シンクノード（他から参照されないタスク）を特定
     const allDepIds = new Set(plan.tasks.flatMap(t => t.dependencies));
     const sinkTaskIds = plan.tasks
       .filter(t => !allDepIds.has(t.id))
       .map(t => t.id);
     
-    // シンクノードの出力を返す
-    return sinkTaskIds
+    // シンクノードの出力を返す（最初の1つ）
+    const outputs = sinkTaskIds
       .map(id => this.outputs.get(id))
       .filter((o): o is TaskOutput => o !== undefined);
+    
+    return outputs[0];
   }
 }

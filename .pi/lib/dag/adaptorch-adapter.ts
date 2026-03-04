@@ -18,8 +18,16 @@
  *   - フォールバックして従来のexecuteDagを使用
  */
 
-import { TaskPlan, TaskNode, DagResult, DagExecutorOptions } from "../dag-executor.js";
+import { TaskPlan, TaskNode, DagResult } from "../dag-types.js";
 import { executeDag } from "../dag-executor.js";
+
+/** dag-executorからのオプション型 */
+interface DagExecutorOptions {
+  maxConcurrency?: number;
+  abortOnFirstError?: boolean;
+  signal?: AbortSignal;
+  onTaskError?: (taskId: string, error: Error) => void;
+}
 import { 
   DAGPlan, DAGTask, ExecutionResult, TopologyType 
 } from "./types.js";
@@ -79,13 +87,15 @@ function inferTaskType(description: string): DAGTask["taskType"] {
  * @summary 新ExecutionResultを旧DagResultに変換
  */
 function convertToOldResult<T>(newResult: ExecutionResult): DagResult<T> {
-  const taskResults = new Map<string, { status: "completed" | "failed"; output?: T; error?: Error }>();
+  const taskResults = new Map<string, { taskId: string; status: "completed" | "failed"; output?: T; error?: Error; durationMs: number }>();
   
   for (const tr of newResult.taskResults) {
     taskResults.set(tr.taskId, {
+      taskId: tr.taskId,
       status: tr.status === "success" ? "completed" : "failed",
       output: tr.outputs as T,
       error: tr.error ? new Error(tr.error) : undefined,
+      durationMs: tr.durationMs,
     });
   }
 
@@ -111,6 +121,7 @@ function convertToOldResult<T>(newResult: ExecutionResult): DagResult<T> {
   }
 
   return {
+    planId: newResult.planId,
     overallStatus,
     taskResults,
     completedTaskIds,
