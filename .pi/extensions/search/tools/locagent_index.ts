@@ -286,7 +286,7 @@ async function buildSemanticIndex(
 	apiCalls?: number;
 }> {
 	try {
-		const { generateEmbedding, embeddingRegistry } = await import("../../../lib/storage/embeddings/index.js");
+		const { generateEmbedding, generateEmbeddingsBatch, embeddingRegistry } = await import("../../../lib/storage/embeddings/index.js");
 		const { buildLocAgentSemanticIndex } = await import("../locagent/semantic.js");
 
 		const available = await embeddingRegistry.getAvailable();
@@ -302,7 +302,11 @@ async function buildSemanticIndex(
 			return result || [];
 		};
 
-		const result = await buildLocAgentSemanticIndex(graph, cwd, getEmbedding);
+		const getEmbeddingsBatch = async (texts: string[]): Promise<(number[] | null)[]> => {
+			return generateEmbeddingsBatch(texts);
+		};
+
+		const result = await buildLocAgentSemanticIndex(graph, cwd, getEmbedding, getEmbeddingsBatch);
 
 		return {
 			success: result.success,

@@ -220,13 +220,15 @@ function initIndexFile(cwd: string): void {
  * @summary セマンティックインデックス差分更新
  * @param graph - LocAgentグラフ
  * @param cwd - 作業ディレクトリ
- * @param getEmbedding - 埋め込み生成関数
+ * @param getEmbedding - 埋め込み生成関数（単件）
+ * @param getEmbeddingsBatch - 埋め込み生成関数（バッチ、オプション）
  * @returns 更新結果
  */
 export async function updateLocAgentSemanticIndex(
 	graph: LocAgentGraph,
 	cwd: string,
-	getEmbedding: (text: string) => Promise<number[]>
+	getEmbedding: (text: string) => Promise<number[]>,
+	getEmbeddingsBatch?: (texts: string[]) => Promise<(number[] | null)[]>
 ): Promise<IncrementalUpdateResult> {
 	// 既存インデックスを読み込み
 	const { embeddings, metadata } = loadSemanticIndex(cwd);
@@ -303,40 +305,109 @@ export async function updateLocAgentSemanticIndex(
 		appendEmbedding(emb, cwd);
 	}
 
-	// エンティティの埋め込みを生成（都度書き込み）
+	// エンティティの埋め込みを生成
 	let apiCalls = 0;
 	let newEntities = 0;
 	let updatedEntities = 0;
+	const BATCH_SIZE = 100;
 
+	// 更新対象のエンティティを収集
+	const nodesToUpdate: { entityId: string; node: LocAgentNode; text: string }[] = [];
 	for (const entityId of entitiesToUpdate) {
 		const node = graph.nodes.get(entityId);
 		if (!node) continue;
-
 		const text = extractEmbeddingText(node);
-		if (!text.trim()) continue;
+		if (text.trim()) {
+			nodesToUpdate.push({ entityId, node, text });
+		}
+	}
 
-		try {
-			const embedding = await getEmbedding(text);
-			apiCalls++;
+	// バッチ処理が利用可能な場合はバッチ処理
+	if (getEmbeddingsBatch && nodesToUpdate.length > 1) {
+		for (let i = 0; i < nodesToUpdate.length; i += BATCH_SIZE) {
+			const batch = nodesToUpdate.slice(i, i + BATCH_SIZE);
+			const texts = batch.map((item) => item.text);
 
-			const isNew = !embeddingsToKeep.has(entityId);
-			const embData: LocAgentEntityEmbedding = {
-				entityId: node.id,
-				text: text.substring(0, 1000),
-				embedding,
-			};
+			try {
+				const embeddings = await getEmbeddingsBatch(texts);
+				apiCalls++;
 
-			// 都度書き込み
-			appendEmbedding(embData, cwd);
-			embeddingsToKeep.set(entityId, embData);
+				for (let j = 0; j < batch.length; j++) {
+					const embedding = embeddings[j];
+					if (!embedding) continue;
 
-			if (isNew) {
-				newEntities++;
-			} else {
-				updatedEntities++;
+					const { entityId, node, text } = batch[j];
+					const isNew = !embeddingsToKeep.has(entityId);
+					const embData: LocAgentEntityEmbedding = {
+						entityId: node.id,
+						text: text.substring(0, 1000),
+						embedding,
+					};
+
+					appendEmbedding(embData, cwd);
+					embeddingsToKeep.set(entityId, embData);
+
+					if (isNew) {
+						newEntities++;
+					} else {
+						updatedEntities++;
+					}
+				}
+			} catch (error) {
+				console.error(`Batch embedding failed at index ${i}:`, error);
+				// フォールバック: 個別処理
+				for (const { entityId, node, text } of batch) {
+					try {
+						const embedding = await getEmbedding(text);
+						apiCalls++;
+						if (!embedding) continue;
+
+						const isNew = !embeddingsToKeep.has(entityId);
+						const embData: LocAgentEntityEmbedding = {
+							entityId: node.id,
+							text: text.substring(0, 1000),
+							embedding,
+						};
+
+						appendEmbedding(embData, cwd);
+						embeddingsToKeep.set(entityId, embData);
+
+						if (isNew) {
+							newEntities++;
+						} else {
+							updatedEntities++;
+						}
+					} catch (e) {
+						console.error(`Failed to embed entity ${entityId}:`, e);
+					}
+				}
 			}
-		} catch (error) {
-			console.error(`Failed to embed entity ${entityId}:`, error);
+		}
+	} else {
+		// 個別処理（フォールバック）
+		for (const { entityId, node, text } of nodesToUpdate) {
+			try {
+				const embedding = await getEmbedding(text);
+				apiCalls++;
+
+				const isNew = !embeddingsToKeep.has(entityId);
+				const embData: LocAgentEntityEmbedding = {
+					entityId: node.id,
+					text: text.substring(0, 1000),
+					embedding,
+				};
+
+				appendEmbedding(embData, cwd);
+				embeddingsToKeep.set(entityId, embData);
+
+				if (isNew) {
+					newEntities++;
+				} else {
+					updatedEntities++;
+				}
+			} catch (error) {
+				console.error(`Failed to embed entity ${entityId}:`, error);
+			}
 		}
 	}
 
@@ -367,17 +438,19 @@ export async function updateLocAgentSemanticIndex(
 
 /**
  * LocAgentエンティティのセマンティックインデックスを構築（フル構築）
- * ストリーミング書き込みでメモリ効率化
+ * バッチ処理+ストリーミング書き込みでメモリ効率化
  * @summary セマンティックインデックス構築
  * @param graph - LocAgentグラフ
  * @param cwd - 作業ディレクトリ
- * @param getEmbedding - 埋め込み生成関数
+ * @param getEmbedding - 埋め込み生成関数（単件）
+ * @param getEmbeddingsBatch - 埋め込み生成関数（バッチ、オプション）
  * @returns 構築結果
  */
 export async function buildLocAgentSemanticIndex(
 	graph: LocAgentGraph,
 	cwd: string,
-	getEmbedding: (text: string) => Promise<number[]>
+	getEmbedding: (text: string) => Promise<number[]>,
+	getEmbeddingsBatch?: (texts: string[]) => Promise<(number[] | null)[]>
 ): Promise<{
 	success: boolean;
 	error?: string;
@@ -386,6 +459,7 @@ export async function buildLocAgentSemanticIndex(
 	apiCalls: number;
 }> {
 	const indexPath = getLocAgentIndexPath(cwd);
+	const BATCH_SIZE = 100; // OpenAI推奨バッチサイズ
 
 	try {
 		// ディレクトリを作成
@@ -419,32 +493,76 @@ export async function buildLocAgentSemanticIndex(
 		// インデックスファイルを初期化
 		initIndexFile(cwd);
 
-		// エンティティごとに埋め込みを生成（都度書き込み）
+		// エンティティを収集
+		const nodesToEmbed: { node: LocAgentNode; text: string }[] = [];
 		for (const node of graph.nodes.values()) {
-			// directoryノードはスキップ
-			if (node.nodeType === "directory") {
-				continue;
-			}
-
+			if (node.nodeType === "directory") continue;
 			const text = extractEmbeddingText(node);
-			if (!text.trim()) {
-				continue;
+			if (text.trim()) {
+				nodesToEmbed.push({ node, text });
 			}
+		}
 
-			try {
-				const embedding = await getEmbedding(text);
-				apiCalls++;
+		// バッチ処理が利用可能な場合はバッチ処理
+		if (getEmbeddingsBatch && nodesToEmbed.length > 1) {
+			for (let i = 0; i < nodesToEmbed.length; i += BATCH_SIZE) {
+				const batch = nodesToEmbed.slice(i, i + BATCH_SIZE);
+				const texts = batch.map((item) => item.text);
 
-				// 都度書き込み（メモリに蓄積しない）
-				appendEmbedding({
-					entityId: node.id,
-					text: text.substring(0, 1000),
-					embedding,
-				}, cwd);
+				try {
+					const embeddings = await getEmbeddingsBatch(texts);
+					apiCalls++;
 
-				entityCount++;
-			} catch (error) {
-				console.error(`Failed to embed entity ${node.id}:`, error);
+					// 結果を都度書き込み
+					for (let j = 0; j < batch.length; j++) {
+						const embedding = embeddings[j];
+						if (embedding) {
+							appendEmbedding({
+								entityId: batch[j].node.id,
+								text: batch[j].text.substring(0, 1000),
+								embedding,
+							}, cwd);
+							entityCount++;
+						}
+					}
+				} catch (error) {
+					console.error(`Batch embedding failed at index ${i}:`, error);
+					// フォールバック: 個別処理
+					for (const item of batch) {
+						try {
+							const embedding = await getEmbedding(item.text);
+							apiCalls++;
+							if (embedding) {
+								appendEmbedding({
+									entityId: item.node.id,
+									text: item.text.substring(0, 1000),
+									embedding,
+								}, cwd);
+								entityCount++;
+							}
+						} catch (e) {
+							console.error(`Failed to embed entity ${item.node.id}:`, e);
+						}
+					}
+				}
+			}
+		} else {
+			// 個別処理（フォールバック）
+			for (const { node, text } of nodesToEmbed) {
+				try {
+					const embedding = await getEmbedding(text);
+					apiCalls++;
+
+					appendEmbedding({
+						entityId: node.id,
+						text: text.substring(0, 1000),
+						embedding,
+					}, cwd);
+
+					entityCount++;
+				} catch (error) {
+					console.error(`Failed to embed entity ${node.id}:`, error);
+				}
 			}
 		}
 
