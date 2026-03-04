@@ -95,7 +95,18 @@ export async function loadLanguage(lang: SupportedLanguage): Promise<Language> {
   const wasmUrl = getGrammarPath(lang);
 
   try {
-    const language = await Language.load(wasmUrl);
+    // Node.js環境ではfetchでダウンロードしてBufferとして渡す
+    let language: Language;
+    if (typeof window === "undefined" && wasmUrl.startsWith("http")) {
+      const response = await fetch(wasmUrl);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      language = await Language.load(new Uint8Array(arrayBuffer));
+    } else {
+      language = await Language.load(wasmUrl);
+    }
     loadedLanguages.set(lang, language);
     return language;
   } catch (error: unknown) {
@@ -122,7 +133,17 @@ export async function loadTypeScriptWithTsx(): Promise<Language> {
 
   try {
     // Load TSX grammar which includes TypeScript support
-    const language = await Language.load(TSX_GRAMMAR_URL);
+    let language: Language;
+    if (typeof window === "undefined" && TSX_GRAMMAR_URL.startsWith("http")) {
+      const response = await fetch(TSX_GRAMMAR_URL);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      language = await Language.load(new Uint8Array(arrayBuffer));
+    } else {
+      language = await Language.load(TSX_GRAMMAR_URL);
+    }
     loadedLanguages.set(cacheKey, language);
     return language;
   } catch {
