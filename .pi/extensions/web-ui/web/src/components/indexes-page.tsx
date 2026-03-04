@@ -349,16 +349,19 @@ export function IndexesPage() {
     }
   }, [fetchStatuses]);
 
-  const handleConfirmAction = useCallback(async () => {
+  const handleConfirmAction = useCallback(() => {
     if (!confirmAction) return;
 
-    if (confirmAction.type === "rebuild") {
-      await executeRebuild(confirmAction.index, confirmAction.force);
-    } else if (confirmAction.type === "delete") {
-      await executeDelete(confirmAction.index);
-    }
-
+    // 先にダイアログを閉じる
+    const action = confirmAction;
     setConfirmAction(null);
+
+    // その後で処理を実行
+    if (action.type === "rebuild") {
+      executeRebuild(action.index, action.force);
+    } else if (action.type === "delete") {
+      executeDelete(action.index);
+    }
   }, [confirmAction, executeRebuild, executeDelete]);
 
   const executeToggle = useCallback(async (
