@@ -255,6 +255,105 @@ async function loadExistingIndex(cwd: string): Promise<CodeEmbedding[]> {
 		.map((line) => JSON.parse(line) as CodeEmbedding);
 }
 
+/**
+ * Load existing index as a Map for efficient lookups.
+ */
+function loadExistingIndexAsMap(cwd: string): Map<string, CodeEmbedding> {
+	const indexPath = getIndexPath(cwd);
+	const embeddings = new Map<string, CodeEmbedding>();
+
+	if (!existsSync(indexPath)) {
+		return embeddings;
+	}
+
+	const content = readFileSync(indexPath, "utf-8");
+	const lines = content.trim().split("\n");
+
+	for (const line of lines) {
+		if (line.trim()) {
+			try {
+				const emb = JSON.parse(line) as CodeEmbedding;
+				embeddings.set(emb.id, emb);
+			} catch {
+				// Skip malformed entries
+			}
+		}
+	}
+
+	return embeddings;
+}
+
+/**
+ * Get modification times for a list of files.
+ */
+function getFileMtimes(files: string[], cwd: string): Record<string, number> {
+	const mtimes: Record<string, number> = {};
+
+	for (const file of files) {
+		try {
+			const stat = statSync(file);
+			const relativePath = relative(cwd, file);
+			mtimes[relativePath] = stat.mtimeMs;
+		} catch {
+			// Skip files that can't be accessed
+		}
+	}
+
+	return mtimes;
+}
+
+/**
+ * Detect changed, new, and deleted files based on mtimes.
+ */
+function detectFileChanges(
+	currentFiles: string[],
+	currentMtimes: Record<string, number>,
+	oldMtimes: Record<string, number> | undefined
+): {
+		newFiles: Set<string>;
+		changedFiles: Set<string>;
+		deletedFiles: Set<string>;
+		unchangedFiles: Set<string>;
+	} {
+	const newFiles = new Set<string>();
+	const changedFiles = new Set<string>();
+	const deletedFiles = new Set<string>();
+	const unchangedFiles = new Set<string>();
+
+	if (!oldMtimes || Object.keys(oldMtimes).length === 0) {
+		// No previous index, treat all as new
+		currentFiles.forEach((f) => newFiles.add(f));
+		return { newFiles, changedFiles, deletedFiles, unchangedFiles };
+	}
+
+	// Check current files
+	for (const file of currentFiles) {
+		const relativePath = relative(process.cwd(), file);
+		const normalizedPath = file.replace(/\\/g, "/");
+		const mtime = currentMtimes[normalizedPath] || currentMtimes[relativePath];
+
+		if (!(normalizedPath in oldMtimes) && !(relativePath in oldMtimes)) {
+			newFiles.add(file);
+		} else if (mtime && mtime > (oldMtimes[normalizedPath] || oldMtimes[relativePath] || 0)) {
+			changedFiles.add(file);
+		} else {
+			unchangedFiles.add(file);
+		}
+	}
+
+	// Check for deleted files
+	for (const oldPath of Object.keys(oldMtimes)) {
+		const found = currentFiles.some(
+			(f) => f.replace(/\\/g, "/") === oldPath || relative(process.cwd(), f) === oldPath
+		);
+		if (!found) {
+			deletedFiles.add(oldPath);
+		}
+	}
+
+	return { newFiles, changedFiles, deletedFiles, unchangedFiles };
+}
+
 async function saveIndex(
 	embeddings: CodeEmbedding[],
 	cwd: string
@@ -287,7 +386,7 @@ async function saveMetadata(
 // ============================================================================
 
 /**
- * 意味的索引を作成
+ * 意味的索引を作成（差分更新対応）
  * @summary 意味的索引作成
  * @param input 入力データ
  * @param cwd 作業ディレクトリパス
@@ -306,24 +405,10 @@ export async function semanticIndex(
 	} = input;
 
 	try {
-		// Check for existing index
-		if (!force && existsSync(getIndexPath(cwd))) {
-			const existingMeta = existsSync(getMetaPath(cwd))
-				? JSON.parse(readFileSync(getMetaPath(cwd), "utf-8"))
-				: null;
-
-			if (existingMeta) {
-				return {
-					indexed: existingMeta.totalEmbeddings,
-					files: existingMeta.totalFiles,
-					outputPath: getIndexPath(cwd),
-				};
-			}
-		}
-
 		// Import embeddings module
 		const {
 			generateEmbedding,
+			generateEmbeddingsBatch,
 			embeddingRegistry,
 		} = await import("../../../lib/storage/embeddings/index.js");
 
@@ -357,15 +442,74 @@ export async function semanticIndex(
 		// Track expected dimensions from the selected provider
 		const expectedDimensions = selectedProvider.capabilities.dimensions;
 
-		// Process files with batch size limit for memory efficiency
-		const BATCH_SIZE = 100; // Process files in batches to limit memory usage
-		const embeddings: CodeEmbedding[] = [];
+		// Load existing index and metadata for incremental update
+		const existingEmbeddings = loadExistingIndexAsMap(cwd);
+		const existingMeta = existsSync(getMetaPath(cwd))
+			? JSON.parse(readFileSync(getMetaPath(cwd), "utf-8")) as SemanticIndexMetadata
+			: null;
+
+		// Get current file mtimes
+		const currentMtimes = getFileMtimes(files, cwd);
+
+		// Detect changes
+		const { newFiles, changedFiles, deletedFiles, unchangedFiles } = detectFileChanges(
+			files,
+			currentMtimes,
+			existingMeta?.fileMtimes
+		);
+
+		// If no changes and not forced, skip
+		if (!force && newFiles.size === 0 && changedFiles.size === 0 && deletedFiles.size === 0) {
+			console.log(`[semantic-index] No changes detected, skipping update`);
+			return {
+				indexed: existingMeta!.totalEmbeddings,
+				files: files.length,
+				outputPath: getIndexPath(cwd),
+			};
+		}
+
+		console.log(
+			`[semantic-index] Changes: ${newFiles.size} new, ${changedFiles.size} changed, ` +
+			`${deletedFiles.size} deleted, ${unchangedFiles.size} unchanged`
+		);
+
+		// Remove embeddings for deleted files
+		let removedChunks = 0;
+		if (deletedFiles.size > 0) {
+			for (const [id, emb] of existingEmbeddings) {
+				const normalizedFile = emb.file.replace(/\\/g, "/");
+				if (deletedFiles.has(normalizedFile) || deletedFiles.has(emb.file)) {
+					existingEmbeddings.delete(id);
+					removedChunks++;
+				}
+			}
+			console.log(`[semantic-index] Removed ${removedChunks} chunks from deleted files`);
+		}
+
+		// Remove embeddings for changed files (will be regenerated)
+		if (changedFiles.size > 0) {
+			for (const [id, emb] of existingEmbeddings) {
+				const normalizedFile = emb.file.replace(/\\/g, "/");
+				if (changedFiles.has(normalizedFile) || changedFiles.has(emb.file)) {
+					existingEmbeddings.delete(id);
+				}
+			}
+		}
+
+		// Files that need embedding generation
+		const filesToProcess = [...newFiles, ...changedFiles];
+		let newChunks = 0;
+		let updatedChunks = 0;
+		let apiCalls = 0;
 		let processedChunks = 0;
 		let skippedChunks = 0;
 
-		for (let batchStart = 0; batchStart < files.length; batchStart += BATCH_SIZE) {
-			const batchEnd = Math.min(batchStart + BATCH_SIZE, files.length);
-			const batchFiles = files.slice(batchStart, batchEnd);
+		// Process files with batch size limit for memory efficiency
+		const BATCH_SIZE = 100;
+
+		for (let batchStart = 0; batchStart < filesToProcess.length; batchStart += BATCH_SIZE) {
+			const batchEnd = Math.min(batchStart + BATCH_SIZE, filesToProcess.length);
+			const batchFiles = filesToProcess.slice(batchStart, batchEnd);
 
 			for (let i = batchStart; i < batchEnd; i++) {
 				const file = batchFiles[i - batchStart];
@@ -383,12 +527,41 @@ export async function semanticIndex(
 				// Chunk the code
 				const chunks = chunkCode(relativePath, content, chunkSize, chunkOverlap);
 
-				// Generate embeddings for each chunk
+				// Collect chunks that need embedding (skip unchanged)
+				const chunksToEmbed: { chunk: typeof chunks[0]; text: string }[] = [];
 				for (const chunk of chunks) {
-					const text = buildChunkText(chunk);
-					const embedding = await generateEmbedding(text);
+					if (!existingEmbeddings.has(chunk.id)) {
+						chunksToEmbed.push({ chunk, text: buildChunkText(chunk) });
+					}
+				}
 
-					if (embedding) {
+				// Batch embed chunks (100 at a time)
+				const EMBED_BATCH_SIZE = 100;
+				for (let j = 0; j < chunksToEmbed.length; j += EMBED_BATCH_SIZE) {
+					const batch = chunksToEmbed.slice(j, j + EMBED_BATCH_SIZE);
+					const texts = batch.map((item) => item.text);
+
+					let embeddings: (number[] | null)[];
+					try {
+						embeddings = await generateEmbeddingsBatch(texts);
+						apiCalls++;
+					} catch {
+						// Fallback: process individually
+						embeddings = await Promise.all(
+							texts.map(async (text) => {
+								apiCalls++;
+								return generateEmbedding(text);
+							})
+						);
+					}
+
+					// Process results
+					for (let k = 0; k < batch.length; k++) {
+						const { chunk } = batch[k];
+						const embedding = embeddings[k];
+
+						if (!embedding) continue;
+
 						// Validate embedding dimensions to prevent mismatch
 						if (embedding.length !== expectedDimensions) {
 							console.warn(
@@ -399,7 +572,7 @@ export async function semanticIndex(
 							continue;
 						}
 
-						embeddings.push({
+						existingEmbeddings.set(chunk.id, {
 							id: chunk.id,
 							file: chunk.file,
 							line: chunk.line,
@@ -413,45 +586,64 @@ export async function semanticIndex(
 								model: selectedProvider.model,
 							},
 						});
-					}
 
-					processedChunks++;
-
-					// Progress logging every 50 chunks
-					if (processedChunks % 50 === 0) {
-						console.log(`[semantic-index] Processed ${processedChunks} chunks...`);
+						// Track if this is new or updated
+						if (newFiles.has(file)) {
+							newChunks++;
+						} else {
+							updatedChunks++;
+						}
 					}
+				}
+
+				processedChunks += chunksToEmbed.length;
+
+				// Progress logging every 50 chunks
+				if (processedChunks % 50 === 0) {
+					console.log(`[semantic-index] Processed ${processedChunks} chunks (${apiCalls} API calls)...`);
 				}
 			}
 
 			// Log batch completion
-			console.log(`[semantic-index] Batch ${Math.floor(batchEnd / BATCH_SIZE)}/${Math.ceil(files.length / BATCH_SIZE)} complete`);
+			if (filesToProcess.length > BATCH_SIZE) {
+				console.log(
+					`[semantic-index] Batch ${Math.floor(batchEnd / BATCH_SIZE)}/${Math.ceil(filesToProcess.length / BATCH_SIZE)} complete`
+				);
+			}
 		}
 
 		if (skippedChunks > 0) {
 			console.warn(`[semantic-index] Skipped ${skippedChunks} chunks due to dimension mismatch`);
 		}
 
+		// Convert Map back to array for saving
+		const finalEmbeddings = Array.from(existingEmbeddings.values());
+
 		// Save index and metadata
-		const outputPath = await saveIndex(embeddings, cwd);
+		const outputPath = await saveIndex(finalEmbeddings, cwd);
+		const now = Date.now();
 		await saveMetadata(
 			{
-				createdAt: Date.now(),
-				updatedAt: Date.now(),
+				createdAt: existingMeta?.createdAt || now,
+				updatedAt: now,
 				sourceDir: targetPath,
-				totalEmbeddings: embeddings.length,
+				totalEmbeddings: finalEmbeddings.length,
 				totalFiles: files.length,
-				model: available[0].model,
-				dimensions: available[0].capabilities.dimensions,
+				model: selectedProvider.model,
+				dimensions: expectedDimensions,
 				version: 1,
+				fileMtimes: currentMtimes,
 			},
 			cwd
 		);
 
-		console.log(`[semantic-index] Indexed ${embeddings.length} chunks from ${files.length} files`);
+		console.log(
+			`[semantic-index] Indexed ${finalEmbeddings.length} total chunks ` +
+			`(${newChunks} new, ${updatedChunks} updated, ${removedChunks} removed, ${apiCalls} API calls)`
+		);
 
 		return {
-			indexed: embeddings.length,
+			indexed: finalEmbeddings.length,
 			files: files.length,
 			outputPath,
 		};
