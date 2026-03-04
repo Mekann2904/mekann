@@ -31,7 +31,7 @@
  *   out: セマンティック検索インデックス
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, appendFileSync, unlinkSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { LocAgentGraph, LocAgentNode, LocAgentEntityEmbedding } from "./types.js";
 import { getLocAgentIndexPath } from "./storage.js";
@@ -166,32 +166,49 @@ function loadSemanticIndex(cwd: string): {
 }
 
 /**
- * セマンティックインデックスを保存
- * @summary インデックス保存
- * @param embeddings - エンベディングマップ
- * @param metadata - メタデータ
+ * エンベッディングをストリーミング書き込み（1件ずつ追記）
+ * @summary エンベッディング追記
+ * @param embedding - エンベッディングデータ
  * @param cwd - 作業ディレクトリ
  */
-function saveSemanticIndex(
-	embeddings: Map<string, LocAgentEntityEmbedding>,
-	metadata: SemanticIndexMetadata,
-	cwd: string
-): void {
+function appendEmbedding(embedding: LocAgentEntityEmbedding, cwd: string): void {
 	const indexPath = getLocAgentIndexPath(cwd);
-
-	// ディレクトリを作成
 	if (!existsSync(indexPath)) {
 		mkdirSync(indexPath, { recursive: true });
 	}
-
-	// インデックスを保存
 	const indexFilePath = join(indexPath, SEMANTIC_INDEX_FILE);
-	const lines = Array.from(embeddings.values()).map((e) => JSON.stringify(e));
-	writeFileSync(indexFilePath, lines.join("\n"), "utf-8");
+	appendFileSync(indexFilePath, JSON.stringify(embedding) + "\n", "utf-8");
+}
 
-	// メタデータを保存
+/**
+ * メタデータを保存
+ * @summary メタデータ保存
+ * @param metadata - メタデータ
+ * @param cwd - 作業ディレクトリ
+ */
+function saveMetadata(metadata: SemanticIndexMetadata, cwd: string): void {
+	const indexPath = getLocAgentIndexPath(cwd);
+	if (!existsSync(indexPath)) {
+		mkdirSync(indexPath, { recursive: true });
+	}
 	const metaFilePath = join(indexPath, SEMANTIC_META_FILE);
-	writeFileSync(metaFilePath, JSON.stringify(metadata, null, 2), "utf-8");
+	appendFileSync(metaFilePath, JSON.stringify(metadata, null, 2), "utf-8");
+}
+
+/**
+ * インデックスファイルを初期化
+ * @summary インデックス初期化
+ * @param cwd - 作業ディレクトリ
+ */
+function initIndexFile(cwd: string): void {
+	const indexPath = getLocAgentIndexPath(cwd);
+	if (!existsSync(indexPath)) {
+		mkdirSync(indexPath, { recursive: true });
+	}
+	const indexFilePath = join(indexPath, SEMANTIC_INDEX_FILE);
+	if (existsSync(indexFilePath)) {
+		unlinkSync(indexFilePath);
+	}
 }
 
 // ============================================================================
@@ -258,12 +275,14 @@ export async function updateLocAgentSemanticIndex(
 
 	// 削除されたファイルのエンティティをインデックスから削除
 	let removedEntities = 0;
+	const embeddingsToKeep = new Map<string, LocAgentEntityEmbedding>();
 	for (const [entityId, emb] of embeddings) {
 		// entityIdからファイルパスを抽出（形式: path/to/file.ts:entityName）
 		const filePath = entityId.substring(0, entityId.lastIndexOf(":"));
 		if (deletedFiles.has(filePath)) {
-			embeddings.delete(entityId);
 			removedEntities++;
+		} else {
+			embeddingsToKeep.set(entityId, emb);
 		}
 	}
 
@@ -278,7 +297,13 @@ export async function updateLocAgentSemanticIndex(
 		}
 	}
 
-	// エンティティの埋め込みを生成
+	// インデックスファイルを初期化して、保持するエンベッディングを書き込み
+	initIndexFile(cwd);
+	for (const emb of embeddingsToKeep.values()) {
+		appendEmbedding(emb, cwd);
+	}
+
+	// エンティティの埋め込みを生成（都度書き込み）
 	let apiCalls = 0;
 	let newEntities = 0;
 	let updatedEntities = 0;
@@ -294,12 +319,16 @@ export async function updateLocAgentSemanticIndex(
 			const embedding = await getEmbedding(text);
 			apiCalls++;
 
-			const isNew = !embeddings.has(entityId);
-			embeddings.set(entityId, {
+			const isNew = !embeddingsToKeep.has(entityId);
+			const embData: LocAgentEntityEmbedding = {
 				entityId: node.id,
 				text: text.substring(0, 1000),
 				embedding,
-			});
+			};
+
+			// 都度書き込み
+			appendEmbedding(embData, cwd);
+			embeddingsToKeep.set(entityId, embData);
 
 			if (isNew) {
 				newEntities++;
@@ -314,17 +343,17 @@ export async function updateLocAgentSemanticIndex(
 	// メタデータを更新
 	const newMetadata: SemanticIndexMetadata = {
 		indexedAt: Date.now(),
-		entityCount: embeddings.size,
+		entityCount: embeddingsToKeep.size,
 		model: "text-embedding-3-small",
 		fileMtimes: currentFileMtimes,
 	};
 
-	// 保存
-	saveSemanticIndex(embeddings, newMetadata, cwd);
+	// メタデータを保存
+	saveMetadata(newMetadata, cwd);
 
 	return {
 		success: true,
-		totalEntities: embeddings.size,
+		totalEntities: embeddingsToKeep.size,
 		newEntities,
 		updatedEntities,
 		removedEntities,
@@ -338,6 +367,7 @@ export async function updateLocAgentSemanticIndex(
 
 /**
  * LocAgentエンティティのセマンティックインデックスを構築（フル構築）
+ * ストリーミング書き込みでメモリ効率化
  * @summary セマンティックインデックス構築
  * @param graph - LocAgentグラフ
  * @param cwd - 作業ディレクトリ
@@ -363,7 +393,7 @@ export async function buildLocAgentSemanticIndex(
 			mkdirSync(indexPath, { recursive: true });
 		}
 
-		const embeddings = new Map<string, LocAgentEntityEmbedding>();
+		let entityCount = 0;
 		const fileMtimes: Record<string, number> = {};
 		let apiCalls = 0;
 
@@ -386,7 +416,10 @@ export async function buildLocAgentSemanticIndex(
 			}
 		}
 
-		// エンティティごとに埋め込みを生成
+		// インデックスファイルを初期化
+		initIndexFile(cwd);
+
+		// エンティティごとに埋め込みを生成（都度書き込み）
 		for (const node of graph.nodes.values()) {
 			// directoryノードはスキップ
 			if (node.nodeType === "directory") {
@@ -401,30 +434,33 @@ export async function buildLocAgentSemanticIndex(
 			try {
 				const embedding = await getEmbedding(text);
 				apiCalls++;
-				embeddings.set(node.id, {
+
+				// 都度書き込み（メモリに蓄積しない）
+				appendEmbedding({
 					entityId: node.id,
 					text: text.substring(0, 1000),
 					embedding,
-				});
+				}, cwd);
+
+				entityCount++;
 			} catch (error) {
 				console.error(`Failed to embed entity ${node.id}:`, error);
 			}
 		}
 
-		// メタデータを作成
+		// メタデータを作成して保存
 		const metadata: SemanticIndexMetadata = {
 			indexedAt: Date.now(),
-			entityCount: embeddings.size,
+			entityCount,
 			model: "text-embedding-3-small",
 			fileMtimes,
 		};
 
-		// 保存
-		saveSemanticIndex(embeddings, metadata, cwd);
+		saveMetadata(metadata, cwd);
 
 		return {
 			success: true,
-			entityCount: embeddings.size,
+			entityCount,
 			indexedAt: metadata.indexedAt,
 			apiCalls,
 		};
