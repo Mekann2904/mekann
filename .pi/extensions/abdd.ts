@@ -836,7 +836,78 @@ strict（厳格）: add-abdd-header --regenerate → add-jsdoc --regenerate → 
 		},
 	});
 
-	console.error("ABDD extension loaded: abdd_generate, abdd_jsdoc, abdd_review, abdd_analyze, abdd_workflow, abdd_spec_sync");
+	// Tool: abdd_compare_plan - plan.mdと実装の比較
+	pi.registerTool({
+		name: "abdd_compare_plan",
+		label: "ABDD Compare Plan",
+		description: `plan.md（意図記述）と実装コード（実態記述）を比較し、乖離を検出する。
+
+検出する乖離:
+- missing_implementation: 計画された変更が実装されていない
+- extra_implementation: planで言及されていない変更
+- incomplete_todo: 未完了のTodoアイテム
+- unaddressed_concern: 考慮事項が実装で反映されていない
+- scope_drift: plan外のファイルが変更された
+
+使用場面:
+- ULモードの実装完了後、planとの整合性確認
+- レビュー時の乖離チェック`,
+		parameters: Type.Object({
+			planPath: Type.String({ description: "plan.mdへのパス" }),
+			baseCommit: Type.Optional(Type.String({ description: "比較元コミット（省略時はHEAD~1）" })),
+			headCommit: Type.Optional(Type.String({ description: "比較先コミット（省略時はHEAD）" })),
+			verbose: Type.Optional(Type.Boolean({ description: "詳細ログ" })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+			const verbose = params.verbose === true;
+			const planPath = params.planPath;
+
+			// パスの正規化
+			const normalizedPath = planPath.startsWith("/")
+				? planPath
+				: path.join(ROOT_DIR, planPath);
+
+			if (!fs.existsSync(normalizedPath)) {
+				return {
+					content: [{ type: "text" as const, text: `エラー: plan.mdが見つかりません: ${normalizedPath}` }],
+					details: { success: false, error: "Plan not found" },
+				};
+			}
+
+			// 比較実行
+			try {
+				const { comparePlanWithImplementation, formatCompareResult } = await import(
+					"../lib/plan-comparator.js"
+				);
+
+				const result = comparePlanWithImplementation(normalizedPath, {
+					verbose,
+					baseCommit: params.baseCommit,
+					headCommit: params.headCommit,
+				});
+
+				const formatted = formatCompareResult(result);
+
+				return {
+					content: [{ type: "text" as const, text: formatted }],
+					details: {
+						success: true,
+						divergences: result.divergences,
+						summary: result.summary,
+						planPath: result.planPath,
+					},
+				};
+			} catch (error) {
+				const errorMsg = error instanceof Error ? error.message : String(error);
+				return {
+					content: [{ type: "text" as const, text: `比較エラー: ${errorMsg}` }],
+					details: { success: false, error: errorMsg },
+				};
+			}
+		},
+	});
+
+	console.error("ABDD extension loaded: abdd_generate, abdd_jsdoc, abdd_review, abdd_analyze, abdd_workflow, abdd_spec_sync, abdd_compare_plan");
 }
 
 // ============================================================================
