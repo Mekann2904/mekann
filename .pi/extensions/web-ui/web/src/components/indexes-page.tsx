@@ -242,8 +242,8 @@ export function IndexesPage() {
     try {
       const res = await fetch("/api/v2/indexes");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setStatuses(data);
+      const json = await res.json();
+      setStatuses(json.data);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to fetch indexes");
@@ -318,7 +318,7 @@ export function IndexesPage() {
       <PageHeader
         title="インデックス管理"
         description="LocAgent, RepoGraph, Semanticの3つのインデックスを管理"
-        icon={<Database class="h-6 w-6" />}
+        icon={Database}
         actions={
           <div class="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => rebuildAll(false)}>
