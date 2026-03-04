@@ -770,7 +770,73 @@ strict（厳格）: add-abdd-header --regenerate → add-jsdoc --regenerate → 
 		},
 	});
 
-	console.error("ABDD extension loaded: abdd_generate, abdd_jsdoc, abdd_review, abdd_analyze, abdd_workflow");
+	// Tool: abdd_spec_sync - spec-ai.md、contracts.md、invariants.md生成
+	pi.registerTool({
+		name: "abdd_spec_sync",
+		label: "ABDD Spec Sync",
+		description: `実装コードからspec-ai.md、contracts.md、invariants.mdを生成・更新する。
+
+生成されるファイル:
+- ABDD/as-built/spec-ai.md: 全体フロー・サブシステム一覧（Mermaid図付き）
+- ABDD/as-built/contracts.md: インターフェース契約
+- ABDD/as-built/invariants.md: 検出された不変条件
+
+トリガー:
+- code_change: 実装変更時（自動）
+- bug_fix: バグ修正後（学習）
+- test_failure: テスト失敗後（契約違反記録）`,
+		parameters: Type.Object({
+			dryRun: Type.Optional(Type.Boolean({ description: "ドライラン" })),
+			verbose: Type.Optional(Type.Boolean({ description: "詳細ログ" })),
+			trigger: Type.Optional(
+				Type.String({
+					description: "更新トリガー: code_change, bug_fix, test_failure",
+				})
+			),
+			source: Type.Optional(
+				Type.String({ description: "トリガーソース（issue番号など）" })
+			),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+			const verbose = params.verbose === true;
+			const dryRun = params.dryRun === true;
+
+			const scriptPath = path.join(SCRIPTS_DIR, "generate-spec-ai.ts");
+
+			// 引数を構築
+			const args: string[] = [];
+			if (dryRun) args.push("--dry-run");
+			if (verbose) args.push("--verbose");
+
+			const result = await runScriptAsync(scriptPath, args, { timeoutMs: DEFAULT_TIMEOUT_MS });
+
+			if (!result.success) {
+				const errorMsg = result.timedOut
+					? `タイムアウト (${DEFAULT_TIMEOUT_MS / 1000}秒)`
+					: result.stderr || `終了コード: ${result.exitCode}`;
+				return {
+					content: [{ type: "text" as const, text: `エラー: ${errorMsg}` }],
+					details: { success: false, error: errorMsg },
+				};
+			}
+
+			// 成功時の出力をパース（簡易）
+			const output = result.stdout;
+			const match = output.match(/Generated: (.+)/);
+
+			return {
+				content: [{ type: "text" as const, text: `spec-ai.md等の生成が完了しました\n\n${output}` }],
+				details: {
+					success: true,
+					outputPath: match ? match[1] : "unknown",
+					trigger: params.trigger,
+					source: params.source,
+				},
+			};
+		},
+	});
+
+	console.error("ABDD extension loaded: abdd_generate, abdd_jsdoc, abdd_review, abdd_analyze, abdd_workflow, abdd_spec_sync");
 }
 
 // ============================================================================
