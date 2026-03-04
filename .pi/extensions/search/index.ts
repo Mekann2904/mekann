@@ -1608,6 +1608,50 @@ export default function (pi: ExtensionAPI) {
 		});
 
 		/**
+		 * /rebuild-repograph - RepoGraphインデックスを再構築
+		 * 使用方法:
+		 *   /rebuild-repograph              - 差分更新（変更分のみ）
+		 *   /rebuild-repograph --force      - 強制再構築（全ファイル）
+		 */
+		pi.registerCommand("rebuild-repograph", {
+			description: "Rebuild RepoGraph index (incremental by default, --force for full rebuild)",
+			handler: async (args, ctx) => {
+				const cwd = ctx?.cwd ?? process.cwd();
+				const force = args.includes("--force");
+
+				if (ctx?.ui) {
+					ctx.ui.notify(
+						`[repograph] ${force ? "強制再構築" : "差分更新"}を開始します...`,
+						"info"
+					);
+				}
+
+				try {
+					const result = await repographIndex({ force }, cwd);
+
+					if (result.error) {
+						if (ctx?.ui) {
+							ctx.ui.notify(`[repograph] エラー: ${result.error}`, "error");
+						}
+						return;
+					}
+
+					if (ctx?.ui) {
+						ctx.ui.notify(
+							`[repograph] 完了: ${result.nodeCount}ノード, ${result.edgeCount}エッジ, ${result.fileCount}ファイル`,
+							"info"
+						);
+					}
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					if (ctx?.ui) {
+						ctx.ui.notify(`[repograph] エラー: ${errorMessage}`, "error");
+					}
+				}
+			},
+		});
+
+		/**
 		 * /rebuild-all - すべてのインデックスを再構築
 		 * 使用方法:
 		 *   /rebuild-all          - 差分更新
