@@ -1508,6 +1508,31 @@ export default function (pi: ExtensionAPI) {
 				if (ctx?.ui) {
 					ctx.ui.notify(message, "info");
 				}
+
+				// 起動時にLocAgentとRepoGraphのインデックスを更新（差分更新）
+				const cwd = ctx?.cwd ?? process.cwd();
+				try {
+					// LocAgentインデックス（差分更新）
+					const locagentResult = await locagentIndex({ force: false }, cwd);
+					if (locagentResult.success && ctx?.ui) {
+						ctx.ui.notify(
+							`[LocAgent] ${locagentResult.nodeCount}ノード, ${locagentResult.edgeCount}エッジ`,
+							"info"
+						);
+					}
+
+					// RepoGraphインデックス（差分更新）
+					const repographResult = await repographIndex({ force: false }, cwd);
+					if (repographResult.success && ctx?.ui) {
+						ctx.ui.notify(
+							`[RepoGraph] ${repographResult.nodeCount}ノード, ${repographResult.edgeCount}エッジ, ${repographResult.fileCount}ファイル`,
+							"info"
+						);
+					}
+				} catch (error) {
+					// インデックス更新エラーは通知のみ（起動は継続）
+					console.error("[search] Index update failed:", error);
+				}
 			});
 		}
 
