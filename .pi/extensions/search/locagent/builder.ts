@@ -255,6 +255,43 @@ interface ParseResult {
 }
 
 /**
+ * 行番号から現在のスコープ（関数/メソッド）を特定する
+ * @summary スコープ特定
+ * @param lineNum - 行番号
+ * @param functions - 関数リスト
+ * @param classes - クラスリスト
+ * @returns 呼び出し元文字列（例: "ClassName.methodName" または "functionName"）
+ */
+function findCallerScope(
+	lineNum: number,
+	functions: ParseResult["functions"],
+	classes: ParseResult["classes"]
+): string | null {
+	// まずクラス内メソッドをチェック
+	for (const cls of classes) {
+		if (lineNum >= cls.line && lineNum <= cls.endLine) {
+			for (const method of cls.methods) {
+				// メソッドのスコープ内にあるか（簡易: 開始行以降、次のメソッド開始前まで）
+				const methodEndLine = method.endLine || cls.endLine;
+				if (lineNum >= method.line && lineNum <= methodEndLine) {
+					return `${cls.name}.${method.name}`;
+				}
+			}
+		}
+	}
+
+	// クラス外の関数をチェック
+	for (const func of functions) {
+		// 関数のスコープ内にあるか（簡易: 開始行以降、終了行まで）
+		if (lineNum >= func.line && lineNum <= func.endLine) {
+			return func.name;
+		}
+	}
+
+	return null;
+}
+
+/**
  * TypeScriptファイルを解析（簡易正規表現ベース）
  * @summary TypeScript解析
  * @param content - ファイル内容
@@ -273,6 +310,7 @@ function parseTypeScript(content: string): ParseResult {
 	let currentClass: ParseResult["classes"][0] | null = null;
 	let braceDepth = 0;
 
+	// 第1パス: クラス、関数、メソッドの定義を収集（終了行を推定）
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
 		const lineNum = i + 1;
@@ -358,27 +396,67 @@ function parseTypeScript(content: string): ParseResult {
 			currentClass.endLine = lineNum;
 			currentClass = null;
 		}
+	}
+
+	// 終了行を推定: 次の同レベル要素の開始行-1、またはファイル終端
+	for (const cls of result.classes) {
+		// クラスの終了行は既にブレースカウントで設定済み
+		// メソッドの終了行を推定
+		for (let i = 0; i < cls.methods.length; i++) {
+			if (i < cls.methods.length - 1) {
+				cls.methods[i].endLine = cls.methods[i + 1].line - 1;
+			} else {
+				cls.methods[i].endLine = cls.endLine;
+			}
+		}
+	}
+
+	for (let i = 0; i < result.functions.length; i++) {
+		if (i < result.functions.length - 1) {
+			result.functions[i].endLine = result.functions[i + 1].line - 1;
+		} else {
+			result.functions[i].endLine = lines.length;
+		}
+	}
+
+	// 第2パス: 関数呼び出しを検出し、スコープを特定
+	currentClass = null;
+	braceDepth = 0;
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		const lineNum = i + 1;
+
+		// クラススコープ追跡
+		const classMatch = line.match(
+			/(?:export\s+)?(?:abstract\s+)?class\s+(\w+)/
+		);
+		if (classMatch) {
+			currentClass = result.classes.find(c => c.name === classMatch[1] && c.line === lineNum) || null;
+		}
+
+		braceDepth += (line.match(/{/g) || []).length;
+		braceDepth -= (line.match(/}/g) || []).length;
+
+		if (currentClass && braceDepth === 0 && line.includes("}")) {
+			currentClass = null;
+		}
 
 		// 関数呼び出し（簡易検出）
 		const callMatches = line.matchAll(/(\w+)\s*\(/g);
 		for (const callMatch of callMatches) {
-			if (currentClass) {
-				// クラス内の呼び出し
-				const lastMethod = currentClass.methods[currentClass.methods.length - 1];
-				if (lastMethod && callMatch[1] !== lastMethod.name) {
+			const calleeName = callMatch[1];
+
+			// 現在の行のスコープを特定
+			const callerScope = findCallerScope(lineNum, result.functions, result.classes);
+
+			if (callerScope) {
+				// 呼び出し元と呼び出し先が異なる場合のみ記録
+				const callerName = callerScope.includes(".") ? callerScope.split(".")[1] : callerScope;
+				if (calleeName !== callerName) {
 					result.invocations.push({
-						caller: `${currentClass.name}.${lastMethod.name}`,
-						callee: callMatch[1],
-						line: lineNum,
-					});
-				}
-			} else {
-				// クラス外の呼び出し
-				const lastFunc = result.functions[result.functions.length - 1];
-				if (lastFunc && callMatch[1] !== lastFunc.name) {
-					result.invocations.push({
-						caller: lastFunc.name,
-						callee: callMatch[1],
+						caller: callerScope,
+						callee: calleeName,
 						line: lineNum,
 					});
 				}

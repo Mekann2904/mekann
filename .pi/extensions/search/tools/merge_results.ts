@@ -117,7 +117,7 @@ async function executeSource(
 					cwd
 				);
 
-				if (output.results) {
+				if (output.results && output.results.length > 0) {
 					for (let i = 0; i < output.results.length; i++) {
 						const r = output.results[i];
 						results.push({
@@ -126,7 +126,8 @@ async function executeSource(
 							content: r.signature ?? `${r.kind} ${r.name}`,
 							sourceType: "symbol",
 							rank: i + 1,
-							score: 1.0 - (i / output.results.length) * 0.5, // Decay from 1.0 to 0.5
+							// 正規化: ランク1=1.0, ランクN=0.0 (0.0-1.0範囲)
+							score: 1.0 - (i / output.results.length),
 						});
 					}
 				}
@@ -142,7 +143,7 @@ async function executeSource(
 					cwd
 				);
 
-				if (output.results) {
+				if (output.results && output.results.length > 0) {
 					for (let i = 0; i < output.results.length; i++) {
 						const r = output.results[i];
 						results.push({
@@ -151,7 +152,8 @@ async function executeSource(
 							content: r.text,
 							sourceType: "code",
 							rank: i + 1,
-							score: 1.0 - (i / output.results.length) * 0.5, // Decay from 1.0 to 0.5
+							// 正規化: ランク1=1.0, ランクN=0.0 (0.0-1.0範囲)
+							score: 1.0 - (i / output.results.length),
 						});
 					}
 				}
@@ -170,16 +172,28 @@ async function executeSource(
 					cwd
 				);
 
-				if (output.success && output.nodes) {
-					for (let i = 0; i < output.nodes.length; i++) {
-						const r = output.nodes[i];
+				// LocAgentQueryOutput.results は検索結果の配列
+				const searchResults = output.results as Array<{
+					id: string;
+					name: string;
+					type: string;
+					file: string;
+					line: number;
+					score: number;
+					snippet: string;
+				}> | undefined;
+
+				if (output.success && searchResults && searchResults.length > 0) {
+					for (let i = 0; i < searchResults.length; i++) {
+						const r = searchResults[i];
 						results.push({
-							file: r.filePath ?? "",
+							file: r.file ?? "",
 							line: r.line,
-							content: `${r.nodeType}: ${r.name}`,
+							content: `${r.type}: ${r.name}`,
 							sourceType: "locagent",
 							rank: i + 1,
-							score: 1.0 - (i / output.nodes.length) * 0.5,
+							// 正規化: ランク1=1.0, ランクN=0.0 (0.0-1.0範囲)
+							score: 1.0 - (i / searchResults.length),
 						});
 					}
 				}
@@ -197,7 +211,8 @@ async function executeSource(
 					cwd
 				);
 
-				if (output.nodes) {
+				// RepoGraph nodes are directly in output.nodes
+				if (output.nodes && output.nodes.length > 0) {
 					for (let i = 0; i < output.nodes.length; i++) {
 						const r = output.nodes[i];
 						results.push({
@@ -206,7 +221,8 @@ async function executeSource(
 							content: `${r.nodeType}: ${r.symbolName} (${r.symbolKind})`,
 							sourceType: "repograph",
 							rank: i + 1,
-							score: 1.0 - (i / output.nodes.length) * 0.5,
+							// 正規化: ランク1=1.0, ランクN=0.0 (0.0-1.0範囲)
+							score: 1.0 - (i / output.nodes.length),
 						});
 					}
 				}
