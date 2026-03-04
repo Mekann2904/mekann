@@ -92,7 +92,7 @@ const REFERENCE_QUERIES: Record<SupportedLanguage, string> = {
   javascript: `
     (call_expression function: (identifier) @ref)
     (call_expression function: (member_expression property: (property_identifier) @ref))
-    (new_expression constructor: (identifier) @ref
+    (new_expression constructor: (identifier) @ref)
   `,
   python: `
     (call_expression function: (identifier) @ref)

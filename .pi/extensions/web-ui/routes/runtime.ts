@@ -201,7 +201,7 @@ export function registerRuntimeRoutes(app: Express): () => void {
   app.get("/api/context/current", async (_req: Request, res: Response) => {
     try {
       // Import getContext dynamically to avoid circular dependency
-      const { getContext } = await import("../server.js");
+      const { getContext } = await import("../unified-server.js");
       const ctx = getContext();
 
       if (!ctx) {

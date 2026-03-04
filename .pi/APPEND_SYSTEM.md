@@ -16,28 +16,11 @@
 | **Code review** | Load `skills/code-review/SKILL.md` |
 | **Architecture** | Load `skills/clean-architecture/SKILL.md` |
 | **Code audit** | Use `repo_audit` tool (see RepoAudit Usage Rule) |
+| **Code localization** | Use `locagent_query` tool (see LocAgent Usage Rule) |
 | **Ownership system** | `docs/04-reference/ownership.md` - UL workflow ownership |
+| **Expert team behavior** | See Epistemic Deference Protocol below |
 
 **Core Rules**: No emoji | Use question tool for user choices | Delegate non-trivial tasks
-
----
-
-# UL Mode Guideline
-
-基本フロー: Research → Plan → [ユーザーレビュー] → Implement → Commit
-
-> 拡張機能`inject-system-prompt`により、詳細なガイドラインが自動的にシステムプロンプトに注入されます。
-
----
-
-# DAG Execution Guide
-
-基本原則: 複雑なタスクはDAGで並列化し、レイテンシを削減する
-
-- `subagent_run_dag` - タスクをDAGに分解して並列実行
-- `agent_team_run_parallel` - 複数チームを並列実行
-
-> 拡張機能`inject-system-prompt`により、詳細なガイドラインが自動的にシステムプロンプトに注入されます。
 
 ---
 
@@ -260,6 +243,65 @@ git commit -m "test(lib): add unit tests for execution-rules.ts"
 
 ---
 
+## Epistemic Deference Protocol (MANDATORY for Agent Teams)
+
+> 論文「Multi-Agent Teams Hold Experts Back」の知見に基づく。詳細は `.pi/research/multi-agent-teams-experts-back/improvement-design.md` を参照。
+
+### 核心原則
+
+**専門家の意見を妥協で希釈しない**
+
+マルチエージェントLLMチームは、専門家のパフォーマンスに8-37.6%劣る傾向がある。主な原因は「統合的妥協（Integrative Compromise）」—専門家の意見を非専門家の意見と平均化してしまうこと。
+
+### DISCUSSIONタグ（必須）
+
+エージェントチームでの議論では以下のタグを使用する：
+
+| タグ | 名称 | 使用場面 |
+|-----|------|---------|
+| **[ED]** | Epistemic Deference | 専門家の判断に従う |
+| **[SP]** | Strategic Persistence | 専門家が主張を維持 |
+| **[EF]** | Epistemic Flexibility | 新たな証拠で立場を修正 |
+| **[IC]** | Integrative Compromise | 中間案の提案（**可能な限り回避**） |
+
+### 専門家の特定
+
+以下のいずれかの条件を満たすメンバーを専門家とみなす：
+
+1. **Phase Owner**: 現在のフェーズの担当者
+2. **Skill Holder**: 関連スキルの保持者
+3. **High Confidence**: 根拠付きでconfidence > 0.8
+
+### タグ使用ガイドライン
+
+#### 非専門家の場合
+- **推奨**: `[ED] Researcher's analysis is comprehensive. I defer.`
+- **回避**: `[IC] Let's take a middle ground...`
+
+#### 専門家の場合
+- **推奨**: `[SP] I maintain my conclusion because [evidence].`
+- **条件付き**: `[EF] I revise based on new evidence [X].`
+- **回避**: `[IC]` - 専門家は妥協すべきではない
+
+### Phase Owner Has Final Say
+
+各フェーズには最終決定権を持つオーナーがいる：
+
+| フェーズ | オーナー | 決定権限 |
+|-------|-------|-------------------|
+| Phase 1 (Research) | Researcher | 事実の発見、制約条件、影響範囲 |
+| Phase 2 (Implementation) | Implementer | 技術的アプローチ、コード構造 |
+| Phase 3 (Review) | Reviewer | リスク許容/却下、品質ゲート |
+
+### 合意形成は不要
+
+- メンバーは意見を提供
+- Phase Ownerが決定
+- 矛盾する証拠がない限り、他は従う
+- 低confidence（< 0.7）の場合はエスカレート
+
+---
+
 ## Token Efficiency (RECOMMENDED)
 
 エージェント間通信では英語・簡潔・構造化フォーマットを使用：
@@ -395,6 +437,120 @@ RepoAuditは以下の3層パイプラインで動作:
 | 軽量なコード検索 | `code_search`, `sym_find` |
 | 構造理解・ナビゲーション | `repograph_localize`, `context_explore` |
 | レビュー指摘の対応 | `skills/code-review/SKILL.md` |
+
+---
+
+## LocAgent Usage (RECOMMENDED)
+
+コードローカライゼーション（Issue/タスクから関連コードを特定）では、**積極的に`locagent_query`ツールを使用すること**。
+
+### 推奨される使用場面
+
+| 場面 | 実行例 |
+|------|--------|
+| GitHub Issue解決 | `locagent_query({ type: "search", keywords: ["issue関連キーワード"] })` |
+| バグ修正の調査 | `locagent_query({ type: "traverse", nodeIds: ["エラー発生箇所"] })` |
+| 依存関係調査 | `locagent_query({ type: "traverse", direction: "downstream", hops: 2 })` |
+| 影響範囲特定 | `locagent_query({ type: "traverse", direction: "upstream" })` |
+
+### 検出パターン（推奨実行トリガー）
+
+- キーワード: "localize", "find related code", "where is", "affected by", "depends on"
+- 日本語: "関連コード", "影響範囲", "依存関係", "どこで使われている", "原因特定"
+- アクション: Issue解決、バグ修正、リファクタリング準備、影響範囲調査
+
+### 使用例
+
+```typescript
+// キーワード検索で候補を絞り込み
+locagent_query({
+  type: "search",
+  keywords: ["error", "retry", "timeout"],
+  limit: 20
+})
+
+// 特定ノードから依存関係を探索
+locagent_query({
+  type: "traverse",
+  nodeIds: ["src/errors.ts:PiError"],
+  direction: "downstream",  // 呼び出し先へ
+  hops: 2,
+  limit: 50
+})
+
+// エンティティの詳細を取得
+locagent_query({
+  type: "retrieve",
+  nodeIds: ["src/config.ts:parseConfig"]
+})
+
+// グラフの統計を確認
+locagent_query({
+  type: "stats"
+})
+```
+
+### LocAgent vs 他ツール
+
+| 目的 | 使用ツール |
+|------|-----------|
+| 要素レベルのローカライゼーション | `locagent_query` |
+| 行レベルの詳細 | `repograph_query` |
+| 軽量なコード検索 | `code_search`, `sym_find` |
+| コード監査 | `repo_audit` |
+
+### LocAgent → RepoGraph 連携
+
+```
+1. LocAgentで候補を絞り込み
+   locagent_query({ type: "search", keywords: [...] })
+   
+2. RepoGraphで行レベル詳細を取得
+   repograph_query({ type: "file", file: "候補ファイル" })
+```
+
+### ノードタイプ
+
+| タイプ | 説明 | ID形式 |
+|--------|------|--------|
+| directory | ディレクトリ | `src/utils` |
+| file | ファイル | `src/utils.ts` |
+| class | クラス | `src/utils.ts:ConfigParser` |
+| function | 関数/メソッド | `src/utils.ts:parseConfig` |
+
+### エッジタイプ
+
+| タイプ | 説明 |
+|--------|------|
+| contain | 包含関係（directory→file, file→class, class→function） |
+| import | インポート関係（file→class/function） |
+| invoke | 呼び出し関係（function→function） |
+| inherit | 継承関係（class→class） |
+
+### 自動インデックス構築
+
+`locagent_query`実行時にインデックスが存在しない場合、**自動的に構築される**（約1秒）。ユーザーが明示的に`locagent_index`を実行する必要はない。
+
+### セマンティックインデックス（オプション）
+
+セマンティック検索を使用するには、明示的にセマンティックインデックスを構築する必要がある：
+
+```typescript
+// セマンティックインデックスを構築（OpenAI API使用、コスト発生）
+locagent_index({
+  path: "./src",
+  buildSemantic: true  // ← 明示的に指定
+})
+
+// セマンティック検索を実行
+locagent_query({
+  type: "semantic",
+  keywords: ["エラーをハンドリングする関数"],
+  limit: 10
+})
+```
+
+**コスト**: 初回約$0.10（295ファイル）、差分更新は変更ファイルのみ（約$0.002/5ファイル）
 
 ---
 

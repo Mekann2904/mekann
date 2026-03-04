@@ -409,6 +409,9 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
     const completedIds: string[] = [];
     const failedIds: string[] = [];
 
+    // Track first error for abortOnFirstError mode
+    let firstError: Error | undefined;
+
     for (const result of batchResults) {
       this.results.set(result.taskId, {
         taskId: result.taskId,
@@ -436,10 +439,18 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
         this.options.onTaskError?.(result.taskId, result.error!);
         failedIds.push(result.taskId);
 
-        if (this.options.abortOnFirstError) {
-          throw result.error;
+        if (this.options.abortOnFirstError && !firstError) {
+          // Store first error but continue processing all results
+          // to ensure state consistency before throwing
+          firstError = result.error;
         }
       }
+    }
+
+    // After processing all results, throw if abortOnFirstError is set
+    // This ensures all task states are properly recorded before aborting
+    if (firstError) {
+      throw firstError;
     }
 
     // TDP: Self-Revisionを実行
@@ -708,6 +719,17 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
     while (retryCount < maxRetries) {
       const attempt = retryCount + 1;
       this.nodeRetryCount.set(taskId, attempt);
+
+      // Exponential backoff: wait before retrying (starting at 100ms, max 2000ms)
+      // This prevents tight retry loops and gives transient issues time to resolve
+      if (retryCount > 0) {
+        const backoffMs = Math.min(100 * Math.pow(2, retryCount - 1), 2000);
+        console.log(
+          `[Local Replan] Waiting ${backoffMs}ms before retry ${attempt}/${maxRetries} for task ${taskId}`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      }
+
       console.log(
         `[Local Replan] Retrying task ${taskId} (attempt ${attempt}/${maxRetries})`,
       );

@@ -700,6 +700,230 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
     },
   });
 
+  // チーム推奨
+  pi.registerTool({
+    name: "agent_team_suggest",
+    label: "Agent Team Suggest",
+    description: "タスク内容に基づいて最適なエージェントチームを推奨する。teamIdが未指定の場合に使用する。",
+    parameters: Type.Object({
+      task: Type.String({ description: "推奨チームを決定するためのタスク説明" }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const nowIso = new Date().toISOString();
+      let storage = loadStorage(ctx.cwd);
+      storage = ensureDefaults(storage, nowIso, ctx.cwd);
+      saveStorage(ctx.cwd, storage);
+
+      const suggestions = suggestTeamsForTask(params.task, storage.teams);
+      
+      if (suggestions.length === 0) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: `推奨チームが見つかりませんでした。\n\n利用可能なチーム一覧:\n${storage.teams
+              .filter((t) => t.enabled === "enabled")
+              .map((t) => `  - ${t.id}: ${t.description.slice(0, 60)}...`)
+              .join("\n")}`,
+          }],
+          details: {
+            error: "no_suggestions",
+            availableTeams: storage.teams.filter((t) => t.enabled === "enabled").map((t) => t.id),
+          },
+        };
+      }
+
+      const lines: string[] = ["推奨チーム:"];
+      lines.push("");
+      
+      for (const suggestion of suggestions) {
+        const matchInfo = suggestion.matchedKeywords.length > 0
+          ? ` (キーワード: ${suggestion.matchedKeywords.join(", ")})`
+          : "";
+        lines.push(`## ${suggestion.team.id}${matchInfo}`);
+        lines.push(`  ${suggestion.team.name}`);
+        lines.push(`  ${suggestion.team.description}`);
+        lines.push("");
+        lines.push(`  推奨度: ${"★".repeat(Math.min(5, Math.ceil(suggestion.score)))}${"☆".repeat(5 - Math.min(5, Math.ceil(suggestion.score)))}`);
+        lines.push("");
+        lines.push(`  使用例:`);
+        lines.push(`    agent_team_run({ teamId: "${suggestion.team.id}", task: "..." })`);
+        lines.push("");
+      }
+
+      if (storage.currentTeamId) {
+        const currentTeam = storage.teams.find((t) => t.id === storage.currentTeamId);
+        lines.push("---");
+        lines.push(`現在のデフォルトチーム: ${storage.currentTeamId}`);
+        if (currentTeam) {
+          lines.push(`  ${currentTeam.name}`);
+        }
+      } else {
+        lines.push("---");
+        lines.push("デフォルトチームが設定されていません。");
+        lines.push("推奨チームをデフォルトにするには:");
+        lines.push(`  agent_team_configure({ teamId: "${suggestions[0].team.id}", setCurrent: true })`);
+      }
+
+      return {
+        content: [{ type: "text" as const, text: lines.join("\n") }],
+        details: {
+          suggestions: suggestions.map((s) => ({
+            teamId: s.team.id,
+            score: s.score,
+            matchedKeywords: s.matchedKeywords,
+          })),
+          currentTeamId: storage.currentTeamId,
+        },
+      };
+    },
+  });
+
+interface TeamSuggestion {
+  team: TeamDefinition;
+  score: number;
+  matchedKeywords: string[];
+}
+
+/**
+ * タスク内容に基づいてチームを推奨
+ * @summary チーム推奨ロジック
+ * @param task - タスク説明
+ * @param teams - 利用可能なチーム一覧
+ * @returns 推奨チームの配列（スコア順）
+ */
+function suggestTeamsForTask(task: string, teams: TeamDefinition[]): TeamSuggestion[] {
+  const taskLower = task.toLowerCase();
+  const suggestions: TeamSuggestion[] = [];
+
+  // チーム別キーワードマッピング
+  const teamKeywords: Record<string, { keywords: string[]; weight: number }> = {
+    "bug-war-room": {
+      keywords: ["バグ", "bug", "不具合", "エラー", "error", "例外", "exception", "原因調査", "根本原因", "クラッシュ", "crash", "デバッグ", "debug", "修正", "fix"],
+      weight: 1.5,
+    },
+    "code-excellence-team": {
+      keywords: ["レビュー", "review", "品質", "quality", "リファクタ", "refactor", "可読性", "コード改善", "コード品質"],
+      weight: 1.3,
+    },
+    "code-excellence-review-team": {
+      keywords: ["コードレビュー", "code review", "プルリクエスト", "pull request", "prレビュー"],
+      weight: 1.5,
+    },
+    "core-delivery-team": {
+      keywords: ["実装", "implement", "開発", "develop", "機能追加", "コーディング", "coding", "追加", "作成", "create"],
+      weight: 1.0,
+    },
+    "design-discovery-team": {
+      keywords: ["設計", "design", "アーキテクチャ", "architecture", "要件", "requirement", "仕様", "specification", "検討", "計画", "plan"],
+      weight: 1.4,
+    },
+    "docs-enablement-team": {
+      keywords: ["ドキュメント", "document", "readme", "説明", "ガイド", "guide", "文書化", "マニュアル", "manual"],
+      weight: 1.4,
+    },
+    "doc-gardening-team": {
+      keywords: ["ドキュメント更新", "古いドキュメント", "同期", "ドキュメント整理"],
+      weight: 1.5,
+    },
+    "refactor-migration-team": {
+      keywords: ["リファクタリング", "refactor", "移行", "migration", "マイグレーション", "書き換え", "再構築", "restructure"],
+      weight: 1.5,
+    },
+    "security-hardening-team": {
+      keywords: ["セキュリティ", "security", "脆弱性", "vulnerability", "認証", "auth", "攻撃", "attack", "脆弱", "監査", "audit"],
+      weight: 1.6,
+    },
+    "test-engineering-team": {
+      keywords: ["テスト", "test", "単体テスト", "unit test", "e2e", "統合テスト", "integration test", "テストケース", "test case"],
+      weight: 1.5,
+    },
+    "garbage-collection-team": {
+      keywords: ["技術的負債", "technical debt", "整理", "クリーンアップ", "cleanup", "削除", "delete", "不要", "負債解消"],
+      weight: 1.5,
+    },
+    "file-organizer-team": {
+      keywords: ["ファイル整理", "フォルダ", "folder", "ディレクトリ", "directory", "構造", "structure", "整理整頓"],
+      weight: 1.5,
+    },
+    "verification-phase-team": {
+      keywords: ["検証", "verify", "確認", "validate", "品質保証", "qa", "チェック", "check"],
+      weight: 1.4,
+    },
+    "mermaid-diagram-team": {
+      keywords: ["図", "diagram", "mermaid", "可視化", "visualize", "フローチャート", "シーケンス図", "sequence", "グラフ"],
+      weight: 1.6,
+    },
+    "skill-creation-team": {
+      keywords: ["スキル", "skill", "スキル作成", "新しいスキル"],
+      weight: 1.6,
+    },
+    "invariant-generation-team": {
+      keywords: ["インバリアント", "invariant", "形式仕様", "formal spec", "quint", "tla", "プロパティテスト", "property test"],
+      weight: 1.6,
+    },
+    "logical-analysis-team": {
+      keywords: ["論理", "logical", "分析", "analysis", "論文", "paper", "学術", "academic", "論証", "argument"],
+      weight: 1.5,
+    },
+    "research-team": {
+      keywords: ["研究", "research", "データ分析", "data analysis", "実験", "experiment", "統計", "statistics", "ml", "機械学習"],
+      weight: 1.5,
+    },
+    "rapid-swarm-team": {
+      keywords: ["迅速", "rapid", "高速", "fast", "スピード", "speed", "並列探索"],
+      weight: 1.4,
+    },
+  };
+
+  const enabledTeams = teams.filter((t) => t.enabled === "enabled");
+
+  for (const team of enabledTeams) {
+    const config = teamKeywords[team.id];
+    if (!config) {
+      // キーワード定義がないチームは低スコアで追加
+      suggestions.push({
+        team,
+        score: 0.5,
+        matchedKeywords: [],
+      });
+      continue;
+    }
+
+    const matchedKeywords: string[] = [];
+    let score = 0;
+
+    for (const keyword of config.keywords) {
+      if (taskLower.includes(keyword.toLowerCase())) {
+        matchedKeywords.push(keyword);
+        score += config.weight;
+      }
+    }
+
+    suggestions.push({
+      team,
+      score: Math.min(5, score),
+      matchedKeywords,
+    });
+  }
+
+  // スコア順にソート
+  suggestions.sort((a, b) => b.score - a.score);
+
+  // スコアが0より大きいチームのみ返す、またはトップ5を返す
+  const hasMatches = suggestions.some((s) => s.score > 0);
+  if (hasMatches) {
+    return suggestions.filter((s) => s.score > 0).slice(0, 5);
+  }
+  
+  // マッチがない場合は汎用チームを推奨
+  const coreDelivery = suggestions.find((s) => s.team.id === "core-delivery-team");
+  if (coreDelivery) {
+    coreDelivery.score = 1;
+    coreDelivery.matchedKeywords = ["汎用タスク"];
+  }
+  return suggestions.slice(0, 5);
+}
+
   // チーム作成
   pi.registerTool({
     name: "agent_team_create",
@@ -919,10 +1143,26 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
       const retryOverrides = toRetryOverrides(params.retry);
 
       if (!team) {
+        // デフォルトチームなし: agent_team_suggestの使用を促す
         return {
-          content: [{ type: "text" as const, text: "agent_team_run error: no available team." }],
+          content: [{
+            type: "text" as const,
+            text: `agent_team_run error: teamId が指定されていません。
+
+推奨チームを確認するには:
+  agent_team_suggest({ task: "..." })
+
+または直接チームを指定:
+  agent_team_run({ teamId: "core-delivery-team", task: "..." })
+
+デフォルトチームを設定するには:
+  agent_team_configure({ teamId: "xxx", setCurrent: true })`,
+          }],
           details: {
-            error: "missing_team",
+            error: "missing_team_id",
+            hint: "agent_team_suggest",
+            availableTeamIds: storage.teams.filter((t) => t.enabled === "enabled").map((t) => t.id),
+            currentTeamId: storage.currentTeamId,
             outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
             retryRecommended: false,
           },
@@ -1556,10 +1796,42 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
 
       const enabledTeams = selectedTeams.filter((team) => team.enabled === "enabled");
       if (enabledTeams.length === 0) {
+        // teamIdsが指定されなかった、またはデフォルトチームがない場合
+        if (requestedIds.length === 0) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: `agent_team_run_parallel error: teamIds が指定されていません。
+
+推奨チームを確認するには:
+  agent_team_suggest({ task: "..." })
+
+または直接チームを指定:
+  agent_team_run_parallel({ teamIds: ["core-delivery-team", "bug-war-room"], task: "..." })
+
+デフォルトチームを設定するには:
+  agent_team_configure({ teamId: "xxx", setCurrent: true })`,
+            }],
+            details: {
+              error: "missing_team_ids",
+              hint: "agent_team_suggest",
+              availableTeamIds: storage.teams.filter((t) => t.enabled === "enabled").map((t) => t.id),
+              currentTeamId: storage.currentTeamId,
+              outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+              retryRecommended: false,
+            },
+          };
+        }
+
+        // teamIdsが指定されたが、そのチームが無効
         return {
-          content: [{ type: "text" as const, text: "agent_team_run_parallel error: no enabled teams selected." }],
+          content: [{
+            type: "text" as const,
+            text: `agent_team_run_parallel error: 指定されたチームがすべて無効です: ${requestedIds.join(", ")}`,
+          }],
           details: {
             error: "no_enabled_teams",
+            requestedIds,
             outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
             retryRecommended: false,
           },

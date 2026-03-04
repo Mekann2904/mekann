@@ -344,7 +344,7 @@ export function AgentUsagePage() {
   const fetchData = useCallback(async () => {
     setError(null);
     try {
-      const res = await fetch("/api/agent-usage");
+      const res = await fetch("/api/v2/agent-usage");
       if (res.ok) {
         const json: AgentUsageResponse = await res.json();
         setData(json);

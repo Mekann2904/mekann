@@ -138,7 +138,7 @@ interface SSEEvent {
   timestamp: number;
 }
 
-const API_BASE = "";
+const API_BASE = "/api/v2";
 
 /**
  * Hook for runtime status with SSE real-time updates
@@ -158,7 +158,7 @@ export function useRuntimeStatus(): UseRuntimeStatusResult {
    */
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/runtime/status`);
+      const res = await fetch(`${API_BASE}/runtime/status`);
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
@@ -178,7 +178,7 @@ export function useRuntimeStatus(): UseRuntimeStatusResult {
    */
   const fetchSessions = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/runtime/sessions`);
+      const res = await fetch(`${API_BASE}/runtime/sessions`);
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
@@ -206,7 +206,7 @@ export function useRuntimeStatus(): UseRuntimeStatusResult {
       eventSourceRef.current.close();
     }
 
-    const eventSource = new EventSource(`${API_BASE}/api/runtime/stream`);
+    const eventSource = new EventSource(`${API_BASE}/runtime/stream`);
     eventSourceRef.current = eventSource;
 
     eventSource.onopen = () => {

@@ -20,7 +20,7 @@
 import { useState, useCallback, useEffect, useMemo } from "preact/hooks";
 import type { Task, TaskStatus, TaskPriority } from "../components/kanban-task-card";
 
-const API_BASE = "";
+const API_BASE = "/api/v2";
 
 export interface TaskStats {
   total: number;
@@ -59,8 +59,8 @@ export function useTaskData(pollInterval: number = 10000): UseTaskDataReturn {
     setError(null);
     try {
       const [regularRes, ulRes] = await Promise.all([
-        fetch(`${API_BASE}/api/tasks`),
-        fetch(`${API_BASE}/api/ul-workflow/tasks`),
+        fetch(`${API_BASE}/tasks`),
+        fetch(`${API_BASE}/ul-workflow/tasks`),
       ]);
 
       const regularData = regularRes.ok ? await regularRes.json() : { data: [] };
@@ -82,7 +82,7 @@ export function useTaskData(pollInterval: number = 10000): UseTaskDataReturn {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/tasks/stats`);
+      const res = await fetch(`${API_BASE}/tasks/stats`);
       if (res.ok) {
         const data = await res.json();
         setStats(data.data);
@@ -98,7 +98,7 @@ export function useTaskData(pollInterval: number = 10000): UseTaskDataReturn {
     priority: TaskPriority
   ): Promise<boolean> => {
     try {
-      const res = await fetch(`${API_BASE}/api/tasks`, {
+      const res = await fetch(`${API_BASE}/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -123,7 +123,7 @@ export function useTaskData(pollInterval: number = 10000): UseTaskDataReturn {
 
   const updateTask = useCallback(async (updatedTask: Task): Promise<boolean> => {
     try {
-      const res = await fetch(`${API_BASE}/api/tasks/${updatedTask.id}`, {
+      const res = await fetch(`${API_BASE}/tasks/${updatedTask.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -169,7 +169,7 @@ export function useTaskData(pollInterval: number = 10000): UseTaskDataReturn {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/api/tasks/${taskId}`, {
+      const res = await fetch(`${API_BASE}/tasks/${taskId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
@@ -190,7 +190,7 @@ export function useTaskData(pollInterval: number = 10000): UseTaskDataReturn {
 
   const deleteTask = useCallback(async (taskId: string): Promise<boolean> => {
     try {
-      const res = await fetch(`${API_BASE}/api/tasks/${taskId}`, {
+      const res = await fetch(`${API_BASE}/tasks/${taskId}`, {
         method: "DELETE",
       });
 
@@ -209,7 +209,7 @@ export function useTaskData(pollInterval: number = 10000): UseTaskDataReturn {
 
   const createSubtask = useCallback(async (parentId: string, title: string): Promise<boolean> => {
     try {
-      const res = await fetch(`${API_BASE}/api/tasks`, {
+      const res = await fetch(`${API_BASE}/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -235,7 +235,7 @@ export function useTaskData(pollInterval: number = 10000): UseTaskDataReturn {
 
   const updateSubtask = useCallback(async (subtask: Task): Promise<boolean> => {
     try {
-      const res = await fetch(`${API_BASE}/api/tasks/${subtask.id}`, {
+      const res = await fetch(`${API_BASE}/tasks/${subtask.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -259,7 +259,7 @@ export function useTaskData(pollInterval: number = 10000): UseTaskDataReturn {
 
   const deleteSubtask = useCallback(async (subtaskId: string): Promise<boolean> => {
     try {
-      const res = await fetch(`${API_BASE}/api/tasks/${subtaskId}`, {
+      const res = await fetch(`${API_BASE}/tasks/${subtaskId}`, {
         method: "DELETE",
       });
 
@@ -291,8 +291,8 @@ export function useTaskData(pollInterval: number = 10000): UseTaskDataReturn {
       setError(null);
       try {
         const [regularRes, ulRes] = await Promise.all([
-          fetch(`${API_BASE}/api/tasks`),
-          fetch(`${API_BASE}/api/ul-workflow/tasks`),
+          fetch(`${API_BASE}/tasks`),
+          fetch(`${API_BASE}/ul-workflow/tasks`),
         ]);
 
         const regularData = regularRes.ok ? await regularRes.json() : { data: [] };

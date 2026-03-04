@@ -312,7 +312,7 @@ describe('communication.ts - detectPartnerReferencesV2', () => {
 });
 
 describe('communication.ts - buildCommunicationContext', () => {
-  it('連携相手の要約を含める', () => {
+  it('連携相手の要約を含める', async () => {
     const team = createTestTeam('team-1', 'Team 1', 3);
     const member = team.members[0];
     const contextMap = buildPrecomputedContextMap([
@@ -320,7 +320,7 @@ describe('communication.ts - buildCommunicationContext', () => {
       createTestMemberResult('member-2', 'Role 2'),
     ]);
 
-    const context = buildCommunicationContext({
+    const context = await buildCommunicationContext({
       team,
       member: member!,
       round: 1,
@@ -332,14 +332,14 @@ describe('communication.ts - buildCommunicationContext', () => {
     expect(context).toContain('連携相手と要約:');
   });
 
-  it('連携指示を含める', () => {
+  it('連携指示を含める', async () => {
     const team = createTestTeam('team-1', 'Team 1', 2);
     const member = team.members[0];
     const contextMap = buildPrecomputedContextMap([
       createTestMemberResult('member-2', 'Role 2'),
     ]);
 
-    const context = buildCommunicationContext({
+    const context = await buildCommunicationContext({
       team,
       member: member!,
       round: 1,
@@ -351,12 +351,12 @@ describe('communication.ts - buildCommunicationContext', () => {
     expect(context).toContain('連携相手の主張に最低1件は明示的に言及すること。');
   });
 
-  it('連携相手がない場合のメッセージ', () => {
+  it('連携相手がない場合のメッセージ', async () => {
     const team = createTestTeam('team-1', 'Team 1', 1);
     const member = team.members[0];
     const contextMap = buildPrecomputedContextMap([]);
 
-    const context = buildCommunicationContext({
+    const context = await buildCommunicationContext({
       team,
       member: member!,
       round: 1,

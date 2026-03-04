@@ -18,7 +18,7 @@
  */
 
 import { h } from "preact";
-import { Activity, Users, Clock, Loader2, Wifi, WifiOff, RefreshCw, Cpu } from "lucide-preact";
+import { Activity, Users, Clock, Wifi, WifiOff, RefreshCw, Cpu } from "lucide-preact";
 import { useRuntimeStatus, type RuntimeSession } from "../hooks/useRuntimeStatus";
 import { ExecutionStatusIndicator } from "./execution-status-indicator";
 import { cn } from "@/lib/utils";
@@ -28,6 +28,7 @@ import {
   PATTERNS,
   SPACING,
   STATE_STYLES,
+  InlineLoading,
 } from "./layout";
 
 /**
@@ -98,7 +99,7 @@ export function RuntimeStatusPanel() {
   if (!status && !error) {
     return (
       <div class={cn("p-4 text-center", SPACING.element)}>
-        <Loader2 class="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
+        <InlineLoading className="mx-auto text-muted-foreground" />
         <p class={cn(TYPOGRAPHY.muted, "mt-2")}>Loading runtime status...</p>
       </div>
     );

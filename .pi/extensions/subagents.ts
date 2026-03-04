@@ -158,6 +158,12 @@ import {
   refreshRuntimeStatus as sharedRefreshRuntimeStatus,
 } from "./shared/runtime-helpers";
 
+// AdaptOrch topology-aware orchestration
+import { 
+  executeWithAdaptOrch,
+  type AdaptOrchOptions 
+} from "../lib/dag/adaptorch-adapter.js";
+
 import { SchemaValidationError } from "../lib/core/errors.js";
 import {
   generateSessionId,
@@ -347,6 +353,10 @@ import {
   buildSubagentPrompt,
 } from "../lib/dag-executor.js";
 import { generateDagFromTask, DagGenerationError } from "../lib/dag-generator.js";
+import {
+  isGlobalAdaptOrchEnabled,
+  loadAdaptOrchConfig,
+} from "../lib/dag/adaptorch-adapter.js";
 
 // Import types from lib/subagent-types.ts
 import {
@@ -2089,6 +2099,13 @@ ${allResults.map((r) => {
       abortOnFirstError: Type.Optional(Type.Boolean({ description: "Stop on first task failure (default: false)" })),
       timeoutMs: Type.Optional(Type.Number({ description: "Per-task timeout in ms (default: 300000)" })),
       ulTaskId: Type.Optional(Type.String({ description: "UL workflow task ID. If provided, checks ownership before execution." })),
+      // AdaptOrch拡張
+      enableAdaptOrch: Type.Optional(Type.Boolean({ 
+        description: "Enable AdaptOrch topology-aware orchestration (default: false)" 
+      })),
+      forceTopology: Type.Optional(Type.String({ 
+        description: "Force specific topology: parallel|sequential|hierarchical|hybrid" 
+      })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       // ULワークフロー所有権チェック
@@ -2301,8 +2318,22 @@ ${allResults.map((r) => {
         refreshRuntimeStatus(ctx);
         capacityReservation.consume();
 
-        // Execute DAG using DagExecutor
-        const dagResult = await executeDag<{ runRecord: SubagentRunRecord; output: string; prompt: string }>(
+        // Execute DAG using DagExecutor or AdaptOrch
+        const useAdaptOrch = params.enableAdaptOrch ?? isGlobalAdaptOrchEnabled();
+        
+        const dagExecuteFn = useAdaptOrch 
+          ? (plan: TaskPlan, executor: any, opts: any) => executeWithAdaptOrch(plan, executor, {
+              ...opts,
+              enableAdaptOrch: true,
+              forceTopology: params.forceTopology as any,
+            })
+          : executeDag;
+        
+        if (useAdaptOrch) {
+          console.log(`[subagent_run_dag] Using AdaptOrch topology-aware orchestration${params.forceTopology ? ` (forced: ${params.forceTopology})` : ""}`);
+        }
+        
+        const dagResult = await dagExecuteFn<{ runRecord: SubagentRunRecord; output: string; prompt: string }>(
           taskPlan,
           async (task, context) => {
             // Determine agent to use
@@ -2590,10 +2621,20 @@ ${allResults.map((r) => {
     saveStorage(ctx.cwd, storage);
     resetRuntimeTransientState();
     refreshRuntimeStatus(ctx);
-    ctx.ui.notify(
-      "Subagent extension loaded (subagent_list, subagent_run, subagent_run_parallel)",
-      "info",
-    );
+    
+    // AdaptOrch設定を読み込み
+    await loadAdaptOrchConfig();
+    if (isGlobalAdaptOrchEnabled()) {
+      ctx.ui.notify(
+        "Subagent extension loaded with AdaptOrch topology-aware orchestration ENABLED",
+        "success",
+      );
+    } else {
+      ctx.ui.notify(
+        "Subagent extension loaded (subagent_list, subagent_run, subagent_run_parallel). Enable AdaptOrch: PI_ADAPTORCH_ENABLED=1 or enableAdaptOrch: true",
+        "info",
+      );
+    }
   });
 
   // デフォルトでマルチエージェント委譲を積極化する。

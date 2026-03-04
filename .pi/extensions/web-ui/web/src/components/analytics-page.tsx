@@ -65,7 +65,7 @@ import {
   PageHeader,
   StatsCard,
   StatsGrid,
-  LoadingState,
+  SkeletonTable,
   ErrorBanner,
   EmptyState,
   ChartEmptyState,
@@ -191,19 +191,22 @@ export function AnalyticsPage() {
       const aggregateType = timeRange === "24h" ? "hourly" : timeRange === "7d" ? "daily" : "daily";
       
       const [summaryRes, recordsRes, aggregatesRes] = await Promise.all([
-        fetch("/api/analytics/summary"),
-        fetch("/api/analytics/records?limit=20"),
-        fetch(`/api/analytics/aggregates?type=${aggregateType}&range=${timeRange}`),
+        fetch("/api/v2/analytics/summary"),
+        fetch("/api/v2/analytics/records?limit=20"),
+        fetch(`/api/v2/analytics/aggregates?type=${aggregateType}&range=${timeRange}`),
       ]);
 
       if (summaryRes.ok) {
-        setSummary(await summaryRes.json());
+        const json = await summaryRes.json();
+        setSummary(json.data);
       }
       if (recordsRes.ok) {
-        setRecords(await recordsRes.json());
+        const json = await recordsRes.json();
+        setRecords(json.data);
       }
       if (aggregatesRes.ok) {
-        setAggregates(await aggregatesRes.json());
+        const json = await aggregatesRes.json();
+        setAggregates(json.data);
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : "Network error";
@@ -221,10 +224,11 @@ export function AnalyticsPage() {
 
   const today = summary?.today;
   const last24Hours = summary?.last24Hours ?? [];
-  
-  // todayがない場合はlast24Hoursから集計値を計算
-  // last24Hours.lengthが0の場合はデフォルト値を使用（ゼロ除算回避）
+  const thisWeek = summary?.thisWeek;
+
+  // 優先順位: today > last24Hours > thisWeek > デフォルト値
   const displayData = today ?? (last24Hours.length > 0 ? {
+    // last24Hoursから集計値を計算
     totals: {
       runs: last24Hours.reduce((sum, h) => sum + h.totals.runs, 0),
       errors: last24Hours.reduce((sum, h) => sum + h.totals.errors, 0),
@@ -242,7 +246,7 @@ export function AnalyticsPage() {
       durationMs: last24Hours.reduce((sum, h) => sum + h.averages.durationMs, 0) / last24Hours.length,
     },
     anomalies: [],
-  } : {
+  } : thisWeek ?? {
     // デフォルト値（データがない場合）
     totals: {
       runs: 0,
@@ -317,7 +321,9 @@ export function AnalyticsPage() {
 
       {/* Loading */}
       {loading && !summary ? (
-        <LoadingState message="Loading analytics..." />
+        <div class="p-4">
+          <SkeletonTable rows={8} cols={5} />
+        </div>
       ) : (
         <>
           {/* Metrics Grid */}

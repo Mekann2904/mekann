@@ -94,7 +94,6 @@ export {
 
 import { embeddingRegistry } from "./registry.js";
 import { openAIEmbeddingProvider } from "./providers/openai.js";
-import { createLocalEmbeddingProvider } from "./providers/local.js";
 
 /**
  * @summary モジュール初期化
@@ -103,7 +102,7 @@ import { createLocalEmbeddingProvider } from "./providers/local.js";
  */
 export async function initializeEmbeddingModule(): Promise<void> {
   embeddingRegistry.register(openAIEmbeddingProvider);
-  embeddingRegistry.register(createLocalEmbeddingProvider());
+  // Localプロバイダーは登録しない（OpenAIのみ使用）
 }
 
 /**
@@ -113,7 +112,7 @@ export async function initializeEmbeddingModule(): Promise<void> {
  */
 export function initializeEmbeddingModuleSync(): void {
   embeddingRegistry.register(openAIEmbeddingProvider);
-  embeddingRegistry.register(createLocalEmbeddingProvider());
+  // Localプロバイダーは登録しない（OpenAIのみ使用）
 }
 
 // Auto-initialize on import (sync version for backward compatibility)

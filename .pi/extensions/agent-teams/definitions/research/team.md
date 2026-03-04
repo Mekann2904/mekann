@@ -4,6 +4,28 @@ name: Research Team
 description: "データ分析・科学研究プロジェクトを効率的に遂行する専門チーム。研究計画から成果発表まで一貫したワークフローを提供し、成果物の品質と再現性を保証する。Phase 1で計画・設計、Phase 2でデータ準備、Phase 3で分析実行、Phase 4で統合・報告を行う。【例外 - このチームは9人の永続メンバーを持つ研究ワークフロー専用チームであり、フェーズ分割は意図的に行っていない。各メンバーが特定のフェーズに対応した専門性を持つため、チーム全体として4フェーズを順次実行する設計。】"
 enabled: enabled
 strategy: parallel
+deprecated_note: |
+  ## 推奨: サブチーム構造への移行
+  
+  チームサイズ最適化（論文「Multi-Agent Teams Hold Experts Back」の知見）に基づき、
+  以下のサブチーム構造への移行を推奨します：
+  
+  | サブチーム | メンバー数 | 目的 |
+  |-----------|-----------|------|
+  | research-planning-team | 4人 | 計画・設計 |
+  | research-analysis-team | 4人 | 分析実行 |
+  | research-synthesis-team | 3人 | 統合・報告 |
+  | research-review-team | 2人 | レビュー・品質保証 |
+  
+  **理由:** 大規模チーム（13人）は専門知識の希釈を引き起こす可能性があります。
+  
+  **移行方法:**
+  1. Phase 1 → research-planning-team
+  2. Phase 2 → research-analysis-team
+  3. Phase 3 → research-synthesis-team
+  4. Phase 4 → research-review-team
+  
+  **このチームは後方互換性のために維持されています。**
 skills:
   - research-critical        # チーム共通: 批判的思考・科学的評価
   - repograph-localization   # チーム共通: RepoGraphベースのコード位置特定

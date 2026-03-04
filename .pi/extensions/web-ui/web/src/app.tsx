@@ -13,20 +13,22 @@ import { McpPage } from "./components/mcp-page";
 import { TasksPage } from "./components/tasks-page";
 import { AnalyticsPage } from "./components/analytics-page";
 import { AgentUsagePage } from "./components/agent-usage-page";
+import { IndexesPage } from "./components/indexes-page";
 import { ToastProvider } from "./hooks/useToast";
 import { ToastContainer } from "./components/ui/toast";
 import { useGlobalShortcuts } from "./hooks/useKeyboardShortcuts";
 import {
   Monitor,
   Palette,
-  Loader2,
   Server,
   AlertCircle,
   ListTodo,
   BarChart3,
   TrendingUp,
   Keyboard,
+  Database,
 } from "lucide-preact";
+import { LoadingState, InlineLoading } from "@/components/layout";
 import { cn } from "@/lib/utils";
 import "./styles/globals.css";
 
@@ -55,9 +57,10 @@ let globalTheme: ThemeSettings | null = null;
 // Get global theme from server
 async function fetchGlobalTheme(): Promise<ThemeSettings | null> {
   try {
-    const res = await fetch("/api/theme");
+    const res = await fetch("/api/v2/theme");
     if (res.ok) {
-      return await res.json();
+      const json = await res.json();
+      return json.data;
     }
   } catch (e) {
     console.warn("Failed to fetch global theme:", e);
@@ -68,7 +71,7 @@ async function fetchGlobalTheme(): Promise<ThemeSettings | null> {
 // Save global theme to server
 async function saveGlobalTheme(themeId: string, mode: Mode): Promise<boolean> {
   try {
-    const res = await fetch("/api/theme", {
+    const res = await fetch("/api/v2/theme", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ themeId, mode }),
@@ -131,7 +134,7 @@ function useSSE(
       }
 
       try {
-        eventSource = new EventSource("/api/events");
+        eventSource = new EventSource("/api/v2/sse");
 
         eventSource.onopen = () => {
           if (currentConnectionId !== connectionIdRef.current) {
@@ -256,10 +259,11 @@ export function App() {
   if (!themeLoaded) {
     return (
       <div class="flex h-screen items-center justify-center">
-        <div class="flex flex-col items-center gap-2">
-          <Loader2 class="h-6 w-6 animate-spin text-primary" />
-          <p class="text-sm text-muted-foreground">Loading...</p>
-        </div>
+        <LoadingState 
+          message="Loading..." 
+          size="lg" 
+          showCard={false} 
+        />
       </div>
     );
   }
@@ -275,6 +279,7 @@ export function App() {
             <McpPage path="/mcp" />
             <AnalyticsPage path="/analytics" />
             <AgentUsagePage path="/agent-usage" />
+            <IndexesPage path="/indexes" />
             <ThemePage path="/theme" onThemeChange={applyTheme} />
           </Router>
         </main>
@@ -344,6 +349,7 @@ function Sidebar({ sseConnected, sseExhausted, onSseReconnect }: SidebarProps) {
     { path: "/", icon: ListTodo, label: "Tasks" },
     { path: "/analytics", icon: BarChart3, label: "Analytics" },
     { path: "/agent-usage", icon: TrendingUp, label: "Agent Usage" },
+    { path: "/indexes", icon: Database, label: "Indexes" },
     { path: "/instances", icon: Monitor, label: "Instances" },
     { path: "/mcp", icon: Server, label: "MCP" },
     { path: "/theme", icon: Palette, label: "Theme" },
@@ -383,7 +389,7 @@ function Sidebar({ sseConnected, sseExhausted, onSseReconnect }: SidebarProps) {
             class="flex h-8 w-8 items-center justify-center rounded-lg bg-yellow-500/20 text-yellow-500"
             title="SSE connecting..."
           >
-            <Loader2 class="h-4 w-4 animate-spin" />
+            <InlineLoading className="text-yellow-500" />
           </div>
         ) : (
           <div

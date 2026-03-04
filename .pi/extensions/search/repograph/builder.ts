@@ -157,14 +157,43 @@ export function shouldIncludeNode(node: RepoGraphNode): boolean {
 }
 
 /**
+ * Default minimum confidence threshold for edge inclusion.
+ * Rationale: 0.3 was chosen empirically to filter out spurious edges while retaining
+ * useful low-confidence relationships. Below 0.3, edges typically represent:
+ * - Heuristic matches (e.g., guessed invoke edges from text similarity)
+ * - Incomplete reference resolution (unresolved imports)
+ * - Noisy inferred relationships
+ * Above 0.3, edges include resolved references (0.8-1.0), structural containment (1.0),
+ * and reasonable invocation inferences (0.5-0.7). This threshold can be overridden
+ * via EDGE_CONFIDENCE_THRESHOLD environment variable for experimentation.
+ */
+const DEFAULT_EDGE_CONFIDENCE_THRESHOLD = 0.3;
+
+/**
+ * Get the edge confidence threshold from environment or use default.
+ * @summary Get confidence threshold
+ * @returns Minimum confidence for edge inclusion
+ */
+function getEdgeConfidenceThreshold(): number {
+	const envValue = process.env.EDGE_CONFIDENCE_THRESHOLD;
+	if (envValue) {
+		const parsed = parseFloat(envValue);
+		if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) {
+			return parsed;
+		}
+	}
+	return DEFAULT_EDGE_CONFIDENCE_THRESHOLD;
+}
+
+/**
  * Check if an edge should be included in the graph
  * @summary Filter edges for inclusion
  * @param edge - Edge to check
  * @returns True if edge should be included
  */
 function shouldIncludeEdge(edge: RepoGraphEdge): boolean {
-	// Filter out very low confidence edges
-	return edge.confidence >= 0.3;
+	const threshold = getEdgeConfidenceThreshold();
+	return edge.confidence >= threshold;
 }
 
 /**

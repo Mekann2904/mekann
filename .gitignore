@@ -167,3 +167,4 @@ philosophy.md
 
 # Runtime data (trajectory-reduction config, etc.)
 .pi/data/
+.pi/search/

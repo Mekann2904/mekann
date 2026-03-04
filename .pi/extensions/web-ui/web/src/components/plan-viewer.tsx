@@ -21,7 +21,8 @@ import { h } from "preact";
 import { useState, useEffect } from "preact/hooks";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 import { cn } from "@/lib/utils";
-import { FileText, Loader2 } from "lucide-preact";
+import { FileText } from "lucide-preact";
+import { LoadingState } from "./layout";
 
 interface PlanViewerProps {
   taskId: string | null;
@@ -227,8 +228,12 @@ export function PlanViewer({ taskId, className }: PlanViewerProps) {
     return (
       <Card class={cn("h-full flex items-center justify-center bg-zinc-900", className)}>
         <CardContent class="text-center py-8">
-          <Loader2 class="h-8 w-8 text-zinc-400 mx-auto mb-3 animate-spin" />
-          <p class="text-zinc-500 text-sm">Loading plan...</p>
+          <LoadingState 
+            message="Loading plan..." 
+            size="lg" 
+            showCard={false}
+            className="text-zinc-400" 
+          />
         </CardContent>
       </Card>
     );

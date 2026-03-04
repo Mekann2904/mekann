@@ -188,7 +188,7 @@ export async function semanticSearch(
 				total: 0,
 				truncated: false,
 				results: [],
-				error: "Failed to generate embedding for query. Check embedding provider availability.",
+				error: "OpenAI API key not configured. Set OPENAI_API_KEY environment variable or configure ~/.pi/agent/auth.json",
 			};
 		}
 

@@ -1,0 +1,13 @@
+{
+  "dag": {
+    "adaptOrch": {
+      "enabled": true,
+      "defaultThresholds": {
+        "omegaRatio": 0.5,
+        "couplingDensity": 0.6,
+        "minSubtasksForHierarchy": 5
+      },
+      "fallbackOnFailure": true
+    }
+  }
+}

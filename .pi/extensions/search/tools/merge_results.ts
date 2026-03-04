@@ -40,10 +40,13 @@ import type {
 	MergeStrategy,
 	SymbolDefinition,
 	CodeSearchMatch,
+	FailedSource,
 } from "../types.js";
 import { symFind } from "./sym_find.js";
 import { codeSearch } from "./code_search.js";
 import { semanticSearch } from "./semantic_search.js";
+import { locagentQuery } from "./locagent_index.js";
+import { repographQuery } from "./repograph_index.js";
 
 // ============================================
 // Internal Result Types
@@ -71,12 +74,12 @@ interface InternalResult {
  * @summary ソース検索実行
  * @param source 検索ソース
  * @param cwd 作業ディレクトリ
- * @returns 内部結果配列
+ * @returns 内部結果配列とエラー情報
  */
 async function executeSource(
 	source: MergeSource,
 	cwd: string
-): Promise<InternalResult[]> {
+): Promise<{ results: InternalResult[]; error?: FailedSource }> {
 	const results: InternalResult[] = [];
 
 	try {
@@ -115,7 +118,7 @@ async function executeSource(
 					cwd
 				);
 
-				if (output.results) {
+				if (output.results && output.results.length > 0) {
 					for (let i = 0; i < output.results.length; i++) {
 						const r = output.results[i];
 						results.push({
@@ -124,7 +127,8 @@ async function executeSource(
 							content: r.signature ?? `${r.kind} ${r.name}`,
 							sourceType: "symbol",
 							rank: i + 1,
-							score: 1.0 - (i / output.results.length) * 0.5, // Decay from 1.0 to 0.5
+							// 正規化: ランク1=1.0, ランクN=0.0 (0.0-1.0範囲)
+							score: 1.0 - (i / (output.results.length - 1 || 1)) * (output.results.length > 1 ? 1 : 0),
 						});
 					}
 				}
@@ -140,8 +144,9 @@ async function executeSource(
 					cwd
 				);
 
-				if (output.results) {
-					for (let i = 0; i < output.results.length; i++) {
+				if (output.results && output.results.length > 0) {
+					const resultCount = output.results.length;
+					for (let i = 0; i < resultCount; i++) {
 						const r = output.results[i];
 						results.push({
 							file: r.file,
@@ -149,7 +154,82 @@ async function executeSource(
 							content: r.text,
 							sourceType: "code",
 							rank: i + 1,
-							score: 1.0 - (i / output.results.length) * 0.5, // Decay from 1.0 to 0.5
+							// 正規化: ランク1=1.0, ランクN=0.0 (0.0-1.0範囲)
+							// resultCount >= 1 のため除算by zeroは発生しない
+							score: 1.0 - (i / (resultCount - 1 || 1)) * (resultCount > 1 ? 1 : 0),
+						});
+					}
+				}
+				break;
+			}
+
+			case "locagent": {
+				// LocAgentからキーワード検索で候補を取得
+				const keywords = source.query.split(/[\s,]+/).filter(k => k.length > 0);
+				const output = await locagentQuery(
+					{
+						type: "search",
+						keywords,
+						limit: 30,
+					},
+					cwd
+				);
+
+				// LocAgentQueryOutput.results は検索結果の配列
+				const searchResults = output.results as Array<{
+					id: string;
+					name: string;
+					type: string;
+					file: string;
+					line: number;
+					score: number;
+					snippet: string;
+				}> | undefined;
+
+				if (output.success && searchResults && searchResults.length > 0) {
+					const resultCount = searchResults.length;
+					for (let i = 0; i < resultCount; i++) {
+						const r = searchResults[i];
+						results.push({
+							file: r.file ?? "",
+							line: r.line,
+							content: `${r.type}: ${r.name}`,
+							sourceType: "locagent",
+							rank: i + 1,
+							// 正規化: ランク1=1.0, ランクN=0.0 (0.0-1.0範囲)
+							// resultCount >= 1 のため除算by zeroは発生しない
+							score: 1.0 - (i / (resultCount - 1 || 1)) * (resultCount > 1 ? 1 : 0),
+						});
+					}
+				}
+				break;
+			}
+
+			case "repograph": {
+				// RepoGraphからシンボル検索
+				const output = await repographQuery(
+					{
+						type: "symbol",
+						symbol: source.query,
+						limit: 30,
+					},
+					cwd
+				);
+
+				// RepoGraph nodes are directly in output.nodes
+				if (output.nodes && output.nodes.length > 0) {
+					const resultCount = output.nodes.length;
+					for (let i = 0; i < resultCount; i++) {
+						const r = output.nodes[i];
+						results.push({
+							file: r.file,
+							line: r.line,
+							content: `${r.nodeType}: ${r.symbolName} (${r.symbolKind})`,
+							sourceType: "repograph",
+							rank: i + 1,
+							// 正規化: ランク1=1.0, ランクN=0.0 (0.0-1.0範囲)
+							// resultCount >= 1 のため除算by zeroは発生しない
+							score: 1.0 - (i / (resultCount - 1 || 1)) * (resultCount > 1 ? 1 : 0),
 						});
 					}
 				}
@@ -157,11 +237,20 @@ async function executeSource(
 			}
 		}
 	} catch (error) {
-		// Log error but continue with other sources
-		console.error(`merge_results: ${source.type} search failed:`, error);
+		// Return error information instead of just logging
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		console.error(`merge_results: ${source.type} search failed:`, errorMessage);
+		return {
+			results: [],
+			error: {
+				type: source.type,
+				error: errorMessage,
+				query: source.query,
+			},
+		};
 	}
 
-	return results;
+	return { results };
 }
 
 // ============================================
@@ -422,10 +511,15 @@ export async function mergeResults(
 	const sourcePromises = input.sources.map((source) => executeSource(source, cwd));
 	const sourceResults = await Promise.all(sourcePromises);
 
-	// Flatten all results
+	// Flatten all results and collect failed sources
 	const allResults: InternalResult[] = [];
-	for (const results of sourceResults) {
-		allResults.push(...results);
+	const failedSources: FailedSource[] = [];
+
+	for (const result of sourceResults) {
+		allResults.push(...result.results);
+		if (result.error) {
+			failedSources.push(result.error);
+		}
 	}
 
 	const totalResults = allResults.length;
@@ -475,6 +569,7 @@ export async function mergeResults(
 			totalSources: input.sources.length,
 			totalResults,
 			duplicatesRemoved,
+			failedSources: failedSources.length > 0 ? failedSources : undefined,
 		},
 	};
 }
@@ -498,6 +593,16 @@ export function formatMergeResults(result: MergeResultsResult): string {
 
 	lines.push(`Merged Results: ${result.merged.length} items`);
 	lines.push(`Sources: ${result.stats.totalSources}, Total: ${result.stats.totalResults}, Duplicates removed: ${result.stats.duplicatesRemoved}`);
+
+	// Display failed sources if any
+	if (result.stats.failedSources && result.stats.failedSources.length > 0) {
+		lines.push(`Failed Sources: ${result.stats.failedSources.length}`);
+		for (const failed of result.stats.failedSources) {
+			const queryInfo = failed.query ? ` (query: "${failed.query}")` : "";
+			lines.push(`  - ${failed.type}${queryInfo}: ${failed.error}`);
+		}
+	}
+
 	lines.push("");
 
 	for (let i = 0; i < result.merged.length; i++) {

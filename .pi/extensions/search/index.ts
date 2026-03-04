@@ -80,6 +80,12 @@ import {
 	formatRepoGraphIndex,
 	formatRepoGraphQuery,
 } from "./tools/repograph_index.js";
+import {
+	locagentIndex,
+	locagentQuery,
+	formatLocAgentIndex,
+	formatLocAgentQuery,
+} from "./tools/locagent_index.js";
 import { checkToolAvailability } from "./utils/cli.js";
 import {
 	formatFileCandidates,
@@ -1158,7 +1164,7 @@ export default function (pi: ExtensionAPI) {
 			name: "merge_results",
 			label: "Merge Results",
 			description:
-				"Merge results from multiple search methods (semantic, symbol, code) with ranking improvements. Supports weighted, rank_fusion, and interleave strategies.",
+				"Merge results from multiple search methods (semantic, symbol, code, locagent, repograph) with ranking improvements. Supports weighted, rank_fusion, and interleave strategies. LocAgent and RepoGraph provide graph-based code localization.",
 			parameters: Type.Object({
 				sources: Type.Array(
 					Type.Object({
@@ -1167,6 +1173,8 @@ export default function (pi: ExtensionAPI) {
 								Type.Literal("semantic"),
 								Type.Literal("symbol"),
 								Type.Literal("code"),
+								Type.Literal("locagent"),
+								Type.Literal("repograph"),
 							],
 							{ description: "Source type" }
 						),
@@ -1213,7 +1221,7 @@ export default function (pi: ExtensionAPI) {
 					const result = await mergeResults(
 						{
 							sources: params.sources as Array<{
-								type: "semantic" | "symbol" | "code";
+								type: "semantic" | "symbol" | "code" | "locagent" | "repograph";
 								query: string;
 								weight?: number;
 							}>,
@@ -1368,6 +1376,118 @@ export default function (pi: ExtensionAPI) {
 		});
 
 		// ============================================
+		// Tool: locagent_index
+		// ============================================
+		pi.registerTool({
+			name: "locagent_index",
+			label: "LocAgent Index",
+			description:
+				"Build LocAgent heterogeneous graph index for code localization. Creates directory/file/class/function nodes with contain/import/invoke/inherit edges.",
+			parameters: Type.Object({
+				path: Type.Optional(
+					Type.String({ description: "Path to index (default: current directory)" })
+				),
+				force: Type.Optional(
+					Type.Boolean({ description: "Force rebuild even if index exists" })
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				try {
+					const result = await locagentIndex(params, cwd);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: formatLocAgentIndex(result),
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: { success: false, error: errorMessage, fileCount: 0, nodeCount: 0, edgeCount: 0, outputPath: "" },
+					};
+				}
+			},
+		});
+
+		// ============================================
+		// Tool: locagent_query
+		// ============================================
+		pi.registerTool({
+			name: "locagent_query",
+			label: "LocAgent Query",
+			description:
+				"Query LocAgent heterogeneous graph index. Supports: search (keyword search), traverse (BFS graph traversal), retrieve (entity details), symbol (symbol lookup), stats (graph statistics).",
+			parameters: Type.Object({
+				type: Type.Union(
+					[
+						Type.Literal("search"),
+						Type.Literal("traverse"),
+						Type.Literal("retrieve"),
+						Type.Literal("symbol"),
+						Type.Literal("stats"),
+					],
+					{ description: "Query type" }
+				),
+				keywords: Type.Optional(
+					Type.Array(Type.String(), { description: "Keywords for search/symbol queries" })
+				),
+				nodeIds: Type.Optional(
+					Type.Array(Type.String(), { description: "Node IDs for traverse/retrieve queries" })
+				),
+				nodeTypes: Type.Optional(
+					Type.Array(Type.String(), { description: "Filter by node types (directory/file/class/function)" })
+				),
+				edgeTypes: Type.Optional(
+					Type.Array(Type.String(), { description: "Filter by edge types (contain/import/invoke/inherit)" })
+				),
+				direction: Type.Optional(
+					Type.String({ description: "Traversal direction: upstream, downstream, both" })
+				),
+				hops: Type.Optional(
+					Type.Number({ description: "Number of hops for traversal (default: 2)" })
+				),
+				detailLevel: Type.Optional(
+					Type.String({ description: "Detail level for search: fold, preview, full" })
+				),
+				limit: Type.Optional(
+					Type.Number({ description: "Maximum results" })
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				try {
+					const result = await locagentQuery(params, cwd);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: formatLocAgentQuery(result),
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: { type: params.type, success: false, error: errorMessage },
+					};
+				}
+			},
+		});
+
+		// ============================================
 		// Session Start Notification
 		// ============================================
 		if (pi.on) {
@@ -1388,8 +1508,225 @@ export default function (pi: ExtensionAPI) {
 				if (ctx?.ui) {
 					ctx.ui.notify(message, "info");
 				}
+
+				// 起動時にLocAgentとRepoGraphのインデックスを更新（差分更新）
+				const cwd = ctx?.cwd ?? process.cwd();
+				try {
+					// LocAgentインデックス（差分更新）
+					const locagentResult = await locagentIndex({ force: false }, cwd);
+					if (locagentResult.success && ctx?.ui) {
+						ctx.ui.notify(
+							`[LocAgent] ${locagentResult.nodeCount}ノード, ${locagentResult.edgeCount}エッジ`,
+							"info"
+						);
+					}
+
+					// RepoGraphインデックス（差分更新）
+					const repographResult = await repographIndex({ force: false }, cwd);
+					if (repographResult.success && ctx?.ui) {
+						ctx.ui.notify(
+							`[RepoGraph] ${repographResult.nodeCount}ノード, ${repographResult.edgeCount}エッジ, ${repographResult.fileCount}ファイル`,
+							"info"
+						);
+					}
+				} catch (error) {
+					// インデックス更新エラーは通知のみ（起動は継続）
+					console.error("[search] Index update failed:", error);
+				}
 			});
 		}
+
+		// ============================================
+		// Slash Commands
+		// ============================================
+
+		/**
+		 * /rebuild-embeddings - エンベディングインデックスを再構築
+		 * 使用方法:
+		 *   /rebuild-embeddings          - 差分更新（変更分のみ）
+		 *   /rebuild-embeddings --force  - 強制再構築（全ファイル）
+		 */
+		pi.registerCommand("rebuild-embeddings", {
+			description: "Rebuild embedding index (incremental by default, --force for full rebuild)",
+			handler: async (args, ctx) => {
+				const cwd = ctx?.cwd ?? process.cwd();
+				const force = args.includes("--force");
+
+				if (ctx?.ui) {
+					ctx.ui.notify(
+						`[embeddings] ${force ? "強制再構築" : "差分更新"}を開始します...`,
+						"info"
+					);
+				}
+
+				try {
+					const result = await semanticIndex({ path: cwd, force }, cwd);
+
+					if (result.error) {
+						if (ctx?.ui) {
+							ctx.ui.notify(`[embeddings] エラー: ${result.error}`, "error");
+						}
+						return;
+					}
+
+					if (ctx?.ui) {
+						ctx.ui.notify(
+							`[embeddings] 完了: ${result.indexed}チャンク、${result.files}ファイル`,
+							"info"
+						);
+					}
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					if (ctx?.ui) {
+						ctx.ui.notify(`[embeddings] エラー: ${errorMessage}`, "error");
+					}
+				}
+			},
+		});
+
+		/**
+		 * /rebuild-locagent - LocAgentインデックスを再構築
+		 * 使用方法:
+		 *   /rebuild-locagent              - 差分更新（変更分のみ）
+		 *   /rebuild-locagent --force      - 強制再構築（全ファイル）
+		 *   /rebuild-locagent --semantic   - セマンティックインデックスも構築
+		 */
+		pi.registerCommand("rebuild-locagent", {
+			description: "Rebuild LocAgent index (incremental by default, --force for full, --semantic for embeddings)",
+			handler: async (args, ctx) => {
+				const cwd = ctx?.cwd ?? process.cwd();
+				const force = args.includes("--force");
+				const buildSemantic = args.includes("--semantic");
+
+				if (ctx?.ui) {
+					ctx.ui.notify(
+						`[locagent] ${force ? "強制再構築" : "差分更新"}を開始します${buildSemantic ? "（セマンティック含む）" : ""}...`,
+						"info"
+					);
+				}
+
+				try {
+					const result = await locagentIndex({ force, buildSemantic }, cwd);
+
+					if (result.error) {
+						if (ctx?.ui) {
+							ctx.ui.notify(`[locagent] エラー: ${result.error}`, "error");
+						}
+						return;
+					}
+
+					if (ctx?.ui) {
+						const parts = [
+							`ノード: ${result.nodeCount}`,
+							`エッジ: ${result.edgeCount}`,
+						];
+						if (result.semanticIndex) {
+							parts.push(`セマンティック: ${result.semanticIndex.entityCount}エンティティ`);
+						}
+						ctx.ui.notify(`[locagent] 完了: ${parts.join(", ")}`, "info");
+					}
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					if (ctx?.ui) {
+						ctx.ui.notify(`[locagent] エラー: ${errorMessage}`, "error");
+					}
+				}
+			},
+		});
+
+		/**
+		 * /rebuild-repograph - RepoGraphインデックスを再構築
+		 * 使用方法:
+		 *   /rebuild-repograph              - 差分更新（変更分のみ）
+		 *   /rebuild-repograph --force      - 強制再構築（全ファイル）
+		 */
+		pi.registerCommand("rebuild-repograph", {
+			description: "Rebuild RepoGraph index (incremental by default, --force for full rebuild)",
+			handler: async (args, ctx) => {
+				const cwd = ctx?.cwd ?? process.cwd();
+				const force = args.includes("--force");
+
+				if (ctx?.ui) {
+					ctx.ui.notify(
+						`[repograph] ${force ? "強制再構築" : "差分更新"}を開始します...`,
+						"info"
+					);
+				}
+
+				try {
+					const result = await repographIndex({ force }, cwd);
+
+					if (result.error) {
+						if (ctx?.ui) {
+							ctx.ui.notify(`[repograph] エラー: ${result.error}`, "error");
+						}
+						return;
+					}
+
+					if (ctx?.ui) {
+						ctx.ui.notify(
+							`[repograph] 完了: ${result.nodeCount}ノード, ${result.edgeCount}エッジ, ${result.fileCount}ファイル`,
+							"info"
+						);
+					}
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					if (ctx?.ui) {
+						ctx.ui.notify(`[repograph] エラー: ${errorMessage}`, "error");
+					}
+				}
+			},
+		});
+
+		/**
+		 * /rebuild-all - すべてのインデックスを再構築
+		 * 使用方法:
+		 *   /rebuild-all          - 差分更新
+		 *   /rebuild-all --force  - 強制再構築
+		 */
+		pi.registerCommand("rebuild-all", {
+			description: "Rebuild all indexes (embeddings + locagent + repograph)",
+			handler: async (args, ctx) => {
+				const cwd = ctx?.cwd ?? process.cwd();
+				const force = args.includes("--force");
+
+				if (ctx?.ui) {
+					ctx.ui.notify(
+						`[indexes] 全インデックスの${force ? "強制再構築" : "差分更新"}を開始します...`,
+						"info"
+					);
+				}
+
+				try {
+					// 1. LocAgent index
+					if (ctx?.ui) ctx.ui.notify("[indexes] LocAgent構築中...", "info");
+					const locagentResult = await locagentIndex({ force, buildSemantic: true }, cwd);
+
+					// 2. RepoGraph index
+					if (ctx?.ui) ctx.ui.notify("[indexes] RepoGraph構築中...", "info");
+					const repographResult = await repographIndex({ force }, cwd);
+
+					// 3. Semantic index
+					if (ctx?.ui) ctx.ui.notify("[indexes] セマンティックインデックス構築中...", "info");
+					const semanticResult = await semanticIndex({ path: cwd, force }, cwd);
+
+					if (ctx?.ui) {
+						ctx.ui.notify(
+							`[indexes] 完了:\n` +
+							`  - LocAgent: ${locagentResult.nodeCount}ノード, ${locagentResult.edgeCount}エッジ\n` +
+							`  - RepoGraph: ${repographResult.nodeCount}ノード, ${repographResult.edgeCount}エッジ\n` +
+							`  - Semantic: ${semanticResult.indexed}チャンク`,
+							"info"
+						);
+					}
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					if (ctx?.ui) {
+						ctx.ui.notify(`[indexes] エラー: ${errorMessage}`, "error");
+					}
+				}
+			},
+		});
 	} catch (error) {
 		console.error("search extension error:", error);
 	}

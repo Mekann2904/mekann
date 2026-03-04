@@ -85,6 +85,20 @@ interface SessionEntry {
   timestamp?: string | number;
 }
 
+interface SourceBreakdown {
+  systemPrompt: {
+    base: number;
+    appendSystem: number;
+    injectPrompt: number;
+    startupContext: number;
+  };
+  conversation: {
+    user: number;
+    assistant: number;
+    toolResults: number;
+  };
+}
+
 interface CurrentSnapshot {
   usage: ContextUsage | undefined;
   freeTokens: number | null;
@@ -95,6 +109,7 @@ interface CurrentSnapshot {
     tools: number;
     other: number;
   };
+  sourceBreakdown: SourceBreakdown;
   toolTokens: Map<string, number>;
   toolCalls: Map<string, number>;
 }

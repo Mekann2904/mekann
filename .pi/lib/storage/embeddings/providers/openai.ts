@@ -44,7 +44,7 @@ import type { EmbeddingProvider, ProviderCapabilities } from "../types.js";
 
 const AUTH_FILE_PATH = join(homedir(), ".pi", "agent", "auth.json");
 const DEFAULT_MODEL = "text-embedding-3-small";
-const DEFAULT_DIMENSIONS = 1536;
+const DEFAULT_DIMENSIONS = 256; // コスト効率と性能のバランス（1536→256でストレージ83%削減）
 
 // ============================================================================
 // Types
@@ -181,6 +181,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
         body: JSON.stringify({
           model: this.model,
           input: text.slice(0, 8000),
+          dimensions: DEFAULT_DIMENSIONS,
         }),
       });
 
@@ -217,6 +218,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
         body: JSON.stringify({
           model: this.model,
           input: texts.map((t) => t.slice(0, 8000)),
+          dimensions: DEFAULT_DIMENSIONS,
         }),
       });
 

@@ -29,6 +29,7 @@
  * Used by both subagents.ts and agent-teams.ts for consistent runtime behavior.
  */
 
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
   getRuntimeSnapshot,
   type RuntimeCapacityReservationLease,
@@ -199,7 +200,7 @@ export function startReservationHeartbeat(
  * @returns -
  */
 export function refreshRuntimeStatus(
-  ctx: any,
+  ctx: { hasUI?: boolean; ui?: { setStatus: (key: string, value: string) => void } },
   statusKey: "subagent-runtime" | "agent-team-runtime",
   primaryLabel: string,
   primaryActive: number,

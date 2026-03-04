@@ -75,9 +75,10 @@ export function ThemePage({ onThemeChange }: ThemePageProps) {
 
   // Load theme from server on mount
   useEffect(() => {
-    fetch("/api/theme")
+    fetch("/api/v2/theme")
       .then((res) => res.json())
-      .then((data) => {
+      .then((json) => {
+        const data = json.data;
         if (data.themeId && data.mode) {
           setSelectedId(data.themeId);
           setMode(data.mode);
@@ -138,6 +139,13 @@ export function ThemePage({ onThemeChange }: ThemePageProps) {
     applyThemeToDOM(id, targetMode);
     onThemeChange?.(id, targetMode);
 
+    // Save to server for persistence
+    fetch("/api/v2/theme", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ themeId: id, mode: targetMode }),
+    }).catch((e) => console.error("Failed to save theme:", e));
+
     // Also save to localStorage as backup
     localStorage.setItem("pi-theme-id", id);
     localStorage.setItem("pi-theme-mode", targetMode);
@@ -147,6 +155,14 @@ export function ThemePage({ onThemeChange }: ThemePageProps) {
     setMode(newMode);
     applyThemeToDOM(selectedId, newMode);
     onThemeChange?.(selectedId, newMode);
+
+    // Save to server for persistence
+    fetch("/api/v2/theme", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ themeId: selectedId, mode: newMode }),
+    }).catch((e) => console.error("Failed to save theme:", e));
+
     localStorage.setItem("pi-theme-mode", newMode);
   };
 

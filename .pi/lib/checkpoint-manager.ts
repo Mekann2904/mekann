@@ -234,7 +234,9 @@ let managerInitializing = false;
 function estimateCheckpointSize(checkpoint: Checkpoint): number {
   try {
     return JSON.stringify(checkpoint).length;
-  } catch {
+  } catch (error) {
+    // 循環参照などでシリアライズ失敗した場合はデフォルト値を返す
+    console.warn(`[checkpoint] Failed to estimate size for task ${checkpoint.taskId}:`, error);
     return 1024; // シリアライズ失敗時のデフォルト推定値
   }
 }
@@ -414,7 +416,7 @@ function findLatestCheckpointByTaskId(
   }
 
   candidates.sort((a, b) => b.createdAt - a.createdAt);
-  return candidates[0];
+  return candidates.length > 0 ? candidates[0] : null;
 }
 
 /**
@@ -425,7 +427,8 @@ function parseCheckpointFile(filePath: string): Checkpoint | null {
     const content = readFileSync(filePath, "utf-8");
     const parsed = JSON.parse(content) as Checkpoint;
     return parsed;
-  } catch {
+  } catch (error) {
+    console.warn(`Failed to parse checkpoint file: ${filePath}`, error);
     return null;
   }
 }
@@ -445,7 +448,8 @@ function getFileSizeBytes(filePath: string): number {
   try {
     const stats = statSync(filePath);
     return stats.size ?? 0;
-  } catch {
+  } catch (error) {
+    console.warn(`Failed to get file size: ${filePath}`, error);
     return 0;
   }
 }
@@ -599,11 +603,22 @@ async function saveCheckpoint(
     // Ensure directory exists before write
     ensureCheckpointDir(dir);
 
-    // Write checkpoint file
-    writeFileSync(filePath, JSON.stringify(fullCheckpoint, null, 2), "utf-8");
-
-    // キャッシュを更新
+    // 先にキャッシュを更新（ファイル書き込み失敗時のロールバック用）
+    const previousCached = getFromCache(fullCheckpoint.taskId);
     await setToCache(fullCheckpoint.taskId, fullCheckpoint);
+
+    try {
+      // Write checkpoint file
+      writeFileSync(filePath, JSON.stringify(fullCheckpoint, null, 2), "utf-8");
+    } catch (writeError) {
+      // ファイル書き込み失敗時はキャッシュを復元
+      if (previousCached) {
+        await setToCache(fullCheckpoint.taskId, previousCached);
+      } else {
+        deleteFromCache(fullCheckpoint.taskId);
+      }
+      throw writeError;
+    }
 
     // Enforce max checkpoints limit
     await enforceMaxCheckpoints();
@@ -715,8 +730,8 @@ async function deleteCheckpoint(taskId: string): Promise<boolean> {
       try {
         unlinkSync(join(dir, file));
         deleted = true;
-      } catch {
-        // Ignore deletion errors
+      } catch (error) {
+        console.warn(`Failed to delete checkpoint file: ${file}`, error);
       }
     }
   }
@@ -777,8 +792,8 @@ async function cleanupExpiredCheckpoints(): Promise<number> {
         unlinkSync(filePath);
         deletedCount++;
       }
-    } catch {
-      // Ignore deletion errors
+    } catch (error) {
+      console.warn(`Failed to delete expired checkpoint: ${checkpoint.id}`, error);
     }
   }
 
@@ -827,8 +842,8 @@ async function enforceMaxCheckpoints(): Promise<void> {
       unlinkSync(join(dir, file));
       // キャッシュからも削除
       deleteFromCache(checkpoint.taskId);
-    } catch {
-      // Ignore deletion errors
+    } catch (error) {
+      console.warn(`Failed to remove excess checkpoint: ${checkpoint.id}`, error);
     }
   }
 }

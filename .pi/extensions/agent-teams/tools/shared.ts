@@ -75,7 +75,7 @@ export function reportTeamExecutionFailure(
   scope: "agent_team_run" | "agent_team_run_parallel",
   teamId: string,
   errorMessage: string,
-  ctx: any,
+  ctx: Parameters<Parameters<ExtensionAPI["registerCommand"]>[1]["handler"]>[1],
   pi: ExtensionAPI
 ): void {
   const message = `${scope} failed [${teamId}]: ${errorMessage}`;

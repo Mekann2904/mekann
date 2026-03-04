@@ -48,6 +48,7 @@ import {
   getRuntimeConfig,
   type RuntimeConfig,
 } from "../runtime-config.js";
+import { withFileLock } from "../storage/storage-lock.js";
 import { getAdaptiveTotalMaxLlm } from "../adaptive-total-limit.js";
 
 // ============================================================================
@@ -246,6 +247,8 @@ function createDefaultMyInstanceInfo(): InstanceInfo | null {
 
 /**
  * Patch my lock-file state in one place to reduce accidental field loss.
+ * Uses file locking to prevent race conditions when multiple processes
+ * attempt to update the same lock file concurrently.
  */
 function patchMyInstanceInfo(mutator: (info: InstanceInfo) => void): void {
   if (!state) return;
@@ -254,35 +257,83 @@ function patchMyInstanceInfo(mutator: (info: InstanceInfo) => void): void {
   const fallback = createDefaultMyInstanceInfo();
   if (!lockFile || !fallback) return;
 
-  let info: InstanceInfo = { ...fallback };
+  // Use file lock to prevent race conditions during read-modify-write
+  withFileLock(
+    lockFile,
+    () => {
+      let info: InstanceInfo = { ...fallback };
 
-  if (existsSync(lockFile)) {
-    try {
-      const content = readFileSync(lockFile, "utf-8");
-      const parsed = JSON.parse(content) as InstanceInfo;
-      info = { ...fallback, ...parsed };
-      info.activeModels = Array.isArray(parsed.activeModels) ? parsed.activeModels : [];
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.debug(`[cross-instance-coordinator] Failed to parse lock file ${lockFile}: ${errorMessage}`);
-    }
-  }
+      if (existsSync(lockFile)) {
+        try {
+          const content = readFileSync(lockFile, "utf-8");
+          const parsed = JSON.parse(content) as InstanceInfo;
+          info = { ...fallback, ...parsed };
+          info.activeModels = Array.isArray(parsed.activeModels) ? parsed.activeModels : [];
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.debug(`[cross-instance-coordinator] Failed to parse lock file ${lockFile}: ${errorMessage}`);
+        }
+      }
 
-  try {
-    mutator(info);
-    info.instanceId = state.myInstanceId;
-    info.pid = pid;
-    info.sessionId = state.mySessionId;
-    info.startedAt = info.startedAt || state.myStartedAt;
-    info.cwd = info.cwd || process.cwd();
-    if (!Array.isArray(info.activeModels)) {
-      info.activeModels = [];
+      try {
+        mutator(info);
+        info.instanceId = state!.myInstanceId;
+        info.pid = pid;
+        info.sessionId = state!.mySessionId;
+        info.startedAt = info.startedAt || state!.myStartedAt;
+        info.cwd = info.cwd || process.cwd();
+        if (!Array.isArray(info.activeModels)) {
+          info.activeModels = [];
+        }
+        writeJsonFileAtomic(lockFile, info);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logCoordinatorDebug(`patchMyInstanceInfo write failed: ${errorMessage}`);
+      }
+    },
+    { maxWaitMs: 5000 }, // Wait up to 5 seconds for lock acquisition
+  );
+}
+
+/**
+ * Register process shutdown hooks to ensure final heartbeat is written.
+ * This prevents memory/file heartbeat inconsistency when the process exits.
+ */
+let shutdownHooksRegistered = false;
+
+function registerShutdownHooks(): void {
+  if (shutdownHooksRegistered) return;
+  shutdownHooksRegistered = true;
+
+  const forceHeartbeatWrite = (): void => {
+    if (!state) return;
+    // Force write heartbeat bypassing debounce
+    lastHeartbeatWrite = 0;
+    updateHeartbeat();
+  };
+
+  // Handle graceful shutdown signals
+  process.once("SIGTERM", () => {
+    logCoordinatorDebug("Received SIGTERM, writing final heartbeat");
+    forceHeartbeatWrite();
+    unregisterInstance();
+    process.exit(0);
+  });
+
+  process.once("SIGINT", () => {
+    logCoordinatorDebug("Received SIGINT, writing final heartbeat");
+    forceHeartbeatWrite();
+    unregisterInstance();
+    process.exit(0);
+  });
+
+  // Handle normal exit
+  process.once("beforeExit", () => {
+    if (state) {
+      logCoordinatorDebug("Process exiting, writing final heartbeat");
+      forceHeartbeatWrite();
     }
-    writeJsonFileAtomic(lockFile, info);
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logCoordinatorDebug(`patchMyInstanceInfo write failed: ${errorMessage}`);
-  }
+  });
 }
 
 function generateInstanceId(sessionId: string): string {
@@ -432,6 +483,11 @@ export function registerInstance(
       config,
       heartbeatTimer,
     };
+
+    // Register shutdown hooks to ensure final heartbeat is written
+    // This prevents other instances from incorrectly marking this instance as dead
+    // when the process exits gracefully or receives termination signals
+    registerShutdownHooks();
   } catch (error) {
     // Clean up timer on error to prevent leak (BUG-018)
     if (heartbeatTimer) {
@@ -623,7 +679,7 @@ export function getContendingInstanceCount(): number {
 
   const instances = getActiveInstances();
   const contending = instances.filter((inst) => isContendingInstance(inst));
-  const includesSelf = contending.some((inst) => inst.instanceId === state!.myInstanceId);
+  const includesSelf = contending.some((inst) => inst.instanceId === state.myInstanceId);
   if (!includesSelf) {
     return Math.max(1, contending.length + 1);
   }
@@ -723,7 +779,7 @@ export function getWorkStealingCandidates(topN: number = 3): string[] {
 
   // Filter out self and sort by pending tasks (descending)
   return instances
-    .filter((i) => i.instanceId !== state!.myInstanceId)
+    .filter((i) => i.instanceId !== state.myInstanceId)
     .filter((i) => (i.pendingTaskCount ?? 0) > 0)
     .sort((a, b) => (b.pendingTaskCount ?? 0) - (a.pendingTaskCount ?? 0))
     .slice(0, topN)
@@ -1416,7 +1472,7 @@ function ensureLockDir(): void {
 export function tryAcquireLock(
   resource: string,
   ttlMs: number = LOCK_TIMEOUT_MS,
-  maxRetries: number = 3,
+  _maxRetries: number = 0, // Deprecated: kept for API compatibility but ignored
 ): DistributedLock | null {
   if (!state) return null;
 
@@ -1425,58 +1481,67 @@ export function tryAcquireLock(
   const lockDir = getLockDir();
   const lockId = `${state.myInstanceId}-${currentTimeMs().toString(36)}`;
   const lockFile = join(lockDir, `${resource.replace(/[:/]/g, "_")}.lock`);
+  const nowMs = currentTimeMs();
+  const lock: DistributedLock = {
+    lockId,
+    acquiredAt: nowMs,
+    expiresAt: nowMs + ttlMs,
+    resource,
+  };
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const nowMs = currentTimeMs();
-    const lock: DistributedLock = {
-      lockId,
-      acquiredAt: nowMs,
-      expiresAt: nowMs + ttlMs,
-      resource,
-    };
+  // ATOMIC ACQUISITION: Try to create lock file with wx flag (O_EXCL)
+  // This ensures atomicity - either we create it or we don't
+  let fd: number | undefined;
+  try {
+    fd = openSync(lockFile, "wx");
+    const lockContent = JSON.stringify(lock, null, 2);
+    writeSync(fd, lockContent);
+    return lock;
+  } catch (error: unknown) {
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
 
-    // ATOMIC ACQUISITION: Try to create lock file with wx flag (O_EXCL)
-    // This is the primary path - if file doesn't exist, we acquire atomically
-    let fd: number | undefined;
-    try {
-      fd = openSync(lockFile, "wx");
-      const lockContent = JSON.stringify(lock, null, 2);
-      writeSync(fd, lockContent);
-      return lock;
-    } catch (error: unknown) {
-      const errorCode = (error as NodeJS.ErrnoException)?.code;
-
-      if (errorCode === "EEXIST") {
-        // File exists - check if we can clean up expired lock and retry
-        const cleaned = tryCleanupExpiredLock(lockFile, nowMs);
-        if (!cleaned) {
-          // Lock is still valid or cleanup failed, another instance holds it
-          return null;
-        }
-        // Lock was expired and cleaned up, retry acquisition
-        // Add exponential backoff delay to reduce TOCTOU race condition
-        if (attempt < maxRetries) {
-          const delayMs = Math.min(10 * Math.pow(2, attempt), 100);
-          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
-        }
-        continue;
+    // BUG-005 FIX: Close the first FD if it was opened before retrying
+    // to prevent file descriptor leak when writeSync fails after openSync succeeds
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        // Ignore close errors
       }
+      fd = undefined;
+    }
 
-      // Other errors (permissions, disk full, etc.) - don't retry
-      return null;
-    } finally {
-      if (fd !== undefined) {
-        try {
-          closeSync(fd);
-        } catch {
-          // Ignore close errors
-        }
+    if (errorCode === "EEXIST") {
+      // File exists - check if it's expired and try atomic cleanup + reacquisition
+      const cleaned = tryCleanupExpiredLock(lockFile, nowMs);
+      if (!cleaned) {
+        // Lock is still valid or cleanup failed, another instance holds it
+        return null;
+      }
+      // Lock was expired and cleaned up, immediately try to acquire without delay
+      // This is safe because tryCleanupExpiredLock uses atomic rename-then-unlink
+      try {
+        fd = openSync(lockFile, "wx");
+        const lockContent = JSON.stringify(lock, null, 2);
+        writeSync(fd, lockContent);
+        return lock;
+      } catch {
+        // Another instance acquired between cleanup and our attempt
+        return null;
+      }
+    }
+
+    // Other errors (permissions, disk full, etc.)
+    return null;
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        // Ignore close errors
       }
     }
   }
-
-  // Exhausted retries
-  return null;
 }
 
 /**
@@ -1634,7 +1699,7 @@ export function findStealCandidate(): InstanceInfo | null {
   // Filter to instances with excess work
   const candidates = instances.filter((inst) => {
     // Skip self
-    if (inst.instanceId === state!.myInstanceId) return false;
+    if (inst.instanceId === state.myInstanceId) return false;
 
     // Must have pending tasks
     if ((inst.pendingTaskCount ?? 0) <= 2) return false;
@@ -1642,7 +1707,7 @@ export function findStealCandidate(): InstanceInfo | null {
     // Must be alive
     const nowMs = currentTimeMs();
     const lastHeartbeat = new Date(inst.lastHeartbeat).getTime();
-    if (nowMs - lastHeartbeat > state!.config.heartbeatTimeoutMs) return false;
+    if (nowMs - lastHeartbeat > state.config.heartbeatTimeoutMs) return false;
 
     return true;
   });
@@ -1685,11 +1750,10 @@ export async function safeStealWork(): Promise<StealableQueueEntry | null> {
   }
 
   const startTime = currentTimeMs();
+  stealingStats.totalAttempts++;
+  stealingStats.lastAttemptAt = startTime;
 
   try {
-    stealingStats.totalAttempts++;
-    stealingStats.lastAttemptAt = startTime;
-
     // Get the stealable entry
     const entry = stealWork();
 
@@ -1709,6 +1773,12 @@ export async function safeStealWork(): Promise<StealableQueueEntry | null> {
     }
 
     return entry;
+  } catch (error) {
+    // Record failure on exception to ensure stats consistency
+    stealingStats.failedAttempts++;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logCoordinatorDebug(`safeStealWork failed: ${errorMessage}`);
+    throw error;
   } finally {
     releaseLock(lock);
   }

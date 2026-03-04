@@ -192,6 +192,195 @@ const phase3 = await agent_team_run({
 | IDにアンダースコア使用 | 一貫性がない | ハイフンを使用 |
 | フロントマターなし | パースエラー | ---で囲む |
 
+## エピステミック従順プロトコル（Epistemic Deference Protocol）
+
+> 論文「Multi-Agent Teams Hold Experts Back」の知見に基づく。詳細は `.pi/research/multi-agent-teams-experts-back/improvement-design.md` を参照。
+
+### 核心原則
+
+**専門家の意見を妥協で希釈しない**
+
+マルチエージェントLLMチームは、専門家のパフォーマンスに8-37.6%劣る傾向がある。主な原因は「統合的妥協（Integrative Compromise）」—専門家の意見を非専門家の意見と平均化してしまうこと。
+
+### DISCUSSIONタグ
+
+メンバー間の議論では以下のタグを使用する：
+
+| タグ | 名称 | 使用場面 |
+|-----|------|---------|
+| **[ED]** | Epistemic Deference | 専門家の判断に従う |
+| **[SP]** | Strategic Persistence | 専門家が主張を維持 |
+| **[EF]** | Epistemic Flexibility | 新たな証拠で立場を修正 |
+| **[IC]** | Integrative Compromise | 中間案の提案（**可能な限り回避**） |
+
+### 専門家の特定
+
+以下のいずれかの条件を満たすメンバーを専門家とみなす：
+
+1. **Phase Owner**: 現在のフェーズの担当者
+2. **Skill Holder**: 関連スキルの保持者
+3. **High Confidence**: 根拠付きでconfidence > 0.8
+
+### 出力フォーマット
+
+```markdown
+## Output
+
+[主要な出力]
+
+## DISCUSSION
+
+### Expertise Assessment
+- Phase Owner: [名前] (役割)
+- My Role: [expert/non-expert]
+- Confidence: [0.0-1.0]
+
+### Position
+[ED/SP/EF/IC] <主張>
+
+### Evidence (if SP or EF)
+- <具体的な証拠>
+
+### Agreement/Disagreement
+- Agree with: [メンバー] on [トピック] - [理由]
+- Disagree with: [メンバー] on [トピック] - [証拠付き理由]
+```
+
+### タグ使用ガイドライン
+
+#### 非専門家の場合
+- **推奨**: `[ED] Researcher's analysis is comprehensive. I defer.`
+- **回避**: `[IC] Let's take a middle ground...`
+
+#### 専門家の場合
+- **推奨**: `[SP] I maintain my conclusion because [evidence].`
+- **条件付き**: `[EF] I revise based on new evidence [X].`
+- **回避**: `[IC]` - 専門家は妥協すべきではない
+
+---
+
+## 専門家の戦略的持続性（Strategic Persistence）
+
+### 専門家のルール
+
+現在のフェーズ/トピックの専門家である場合：
+
+1. **専門性を明示**
+   ```markdown
+   ## Expert Claim
+   - **Topic**: [トピック]
+   - **My Role**: [なぜ専門家か]
+   - **Confidence**: [0.0-1.0]
+   - **Conclusion**: [結論]
+   ```
+
+2. **証拠を提示（意見ではなく）**
+   ```markdown
+   ## Evidence
+   - **File**: path/to/file.ts:42-58
+   - **Function**: functionName()
+   - **Documentation**: [リンクまたは引用]
+   ```
+
+3. **証拠なしの妥協に抵抗**
+   ```markdown
+   ## Response to [Member]
+   - **Their Proposal**: [要約]
+   - **My Position**: MAINTAIN
+   - **Reason**: No contradictory evidence presented.
+   ```
+
+4. **希釈せず、エスカレート**
+   ```markdown
+   ## Escalation
+   - **Issue**: [不和の説明]
+   - **Expert Position**: [専門家の立場]
+   - **Dissenting Position**: [反対立場]
+   - **Recommendation**: HUMAN_REVIEW_REQUIRED
+   ```
+
+### Confidence Threshold
+
+| Confidence | 行動 |
+|------------|------|
+| **0.9-1.0** | STRONGLY MAINTAIN - 強い証拠なしの反対にはエスカレート |
+| **0.7-0.89** | MAINTAIN - 矛盾する証拠があった場合のみ修正 |
+| **0.5-0.69** | TENTATIVE - 新情報に基づく修正を受け入れる |
+| **0.3-0.49** | UNCERTAIN - 追加の専門知識を求める |
+| **0.0-0.29** | DEFER - 他のメンバーがリードすべき |
+
+---
+
+## 意思決定プロトコル（Decision Protocol）
+
+### Phase Owner Has Final Say
+
+各フェーズには最終決定権を持つオーナーがいる：
+
+| フェーズ | オーナー | 決定権限 |
+|-------|-------|-------------------|
+| Phase 1 (Research) | Researcher | 事実の発見、制約条件、影響範囲 |
+| Phase 2 (Implementation) | Implementer | 技術的アプローチ、コード構造 |
+| Phase 3 (Review) | Reviewer | リスク許容/却下、品質ゲート |
+
+### 合意形成は不要
+
+- メンバーは意見を提供
+- Phase Ownerが決定
+- 矛盾する証拠がない限り、他は従う
+- 低confidenceの場合はエスカレート
+
+### 決定出力フォーマット
+
+```markdown
+## Phase [N] Decision
+
+### Decision Maker
+- **Role**: [Phase Owner Role]
+- **Member**: [名前]
+
+### Inputs Reviewed
+- [Member 1]: [position] - [key point]
+- [Member 2]: [position] - [key point]
+
+### Decision
+[最終決定]
+
+### Reasoning
+- [理由1]
+- [理由2]
+
+### Confidence
+- **Overall**: [0.0-1.0]
+- **Key Uncertainties**: [リスト]
+
+### Escalation (if applicable)
+- **Issue**: [説明]
+- **Recommendation**: HUMAN_REVIEW_REQUIRED
+```
+
+---
+
+## Decision Mode Selection
+
+| タスクタイプ | Decision Mode | 理由 |
+|-----------|--------------|--------|
+| コード実装 | Expert-decides | 品質重視 |
+| セキュリティ監査 | Majority-vote | ロバスト性重視 |
+| バグ調査 | Expert-decides | 正確性重視 |
+| ドキュメント | Consensus | バランス型 |
+| 外部入力処理 | Majority-vote | 敵対的入力のフィルタリング |
+
+### セキュリティクリティカルな決定
+
+セキュリティ関連の決定では **Majority-Vote with Veto** を使用：
+
+- 各メンバーが投票: APPROVE / REJECT / VETO
+- VETOは他のすべての票を無効化
+- VETOなしの場合: 単純多数決
+
+---
+
 ## クイックリファレンス
 
 | フェーズ | 主要活動 | 成功基準 |
@@ -199,3 +388,12 @@ const phase3 = await agent_team_run({
 | **Phase 1** | 担当領域の独立したスライスの分析 | 特定視点からの発見が明確 |
 | **Phase 2** | 実装・詳細設計の実行 | 計画に基づく実装が完了 |
 | **Phase 3** | 統合・レビュー・品質保証 | 実行可能な統合計画 |
+
+### エピステミック従順のクイックリファレンス
+
+| 状況 | 推奨アクション |
+|------|--------------|
+| 自分が専門家 | [SP] で主張を維持、証拠を提示 |
+| 他者が専門家 | [ED] で従う、または矛盾する証拠を提示 |
+| 証拠がない | [IC] は避ける、エスカレートを検討 |
+| Confidence < 0.7 | 人間レビューを推奨 |

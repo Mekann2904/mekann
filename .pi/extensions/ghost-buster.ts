@@ -18,7 +18,7 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
 
@@ -61,7 +61,7 @@ function isProcessRunning(pid: number): boolean {
  */
 function isPiProcess(pid: number): boolean {
 	try {
-		const output = execSync(`ps -p ${pid} -o comm= 2>/dev/null`, {
+		const output = execFileSync("ps", ["-p", String(pid), "-o", "comm="], {
 			encoding: "utf-8",
 		}).trim();
 		return output === "pi" || output.includes("node");
@@ -100,12 +100,8 @@ function cleanupGhostLocks(
 ): string[] {
 	if (!config.enabled) return [];
 
-	const instancesDir = path.join(
-		process.env.HOME || "~",
-		".pi",
-		"runtime",
-		"instances"
-	);
+	const homeDir = process.env.HOME || require("os").homedir();
+	const instancesDir = path.join(homeDir, ".pi", "runtime", "instances");
 
 	if (!fs.existsSync(instancesDir)) {
 		return [];

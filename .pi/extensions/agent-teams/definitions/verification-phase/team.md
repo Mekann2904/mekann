@@ -77,6 +77,21 @@ SUSPICION_LEVEL: low | medium | high
 SUMMARY: [検出事項の要約]
 
 RECOMMENDATION: [次に取るべきアクション]
+
+EXPERT_CLAIM:
+  Topic: 検出された不審パターン
+  Role: Inspector (パターン検出の専門家)
+  Confidence: [0.0-1.0]
+  Conclusion: [結論]
+
+DISCUSSION:
+  Expertise Assessment:
+    - Phase Owner: Inspector (inspector) for Phase 1
+    - My Role: expert for パターン検出
+    - Confidence: [0.0-1.0]
+  Position: [SP] I maintain my inspection findings because [evidence]
+  Evidence: [具体的な証拠]
+  Agreement/Disagreement: [Challengerへの同意/不同意]
 ```
 
 ### Phase 2: Challenge (Challenger)
@@ -181,15 +196,35 @@ SUGGESTED_REVISIONS:
 
 #### Output Format
 
-- **CHALLENGED_CLAIM**: チャレンジ対象の主張
-- **FLAW**: 特定した欠陥
-- **EVIDENCE_GAP**: 欠けている証拠
-- **ALTERNATIVE**: 代替解釈
-- **BOUNDARY_FAILURE**: 主張が成立しない条件
-- **SEVERITY**: minor/moderate/critical
-- **OVERALL_SEVERITY**: 全体的な深刻度
-- **SUGGESTED_REVISIONS**: 修正案
-- DISCUSSION: 他のメンバーのoutputを参照し、同意点/不同意点を記述
+```
+CHALLENGED_CLAIM: <具体的な主張>
+FLAW: <特定した欠陥>
+EVIDENCE_GAP: <欠けている証拠>
+ALTERNATIVE: <代替解釈>
+BOUNDARY_FAILURE: <主張が成立しない条件>
+SEVERITY: minor | moderate | critical
+
+OVERALL_SEVERITY: minor | moderate | critical
+SUMMARY: [チャレンジ内容の要約]
+SUGGESTED_REVISIONS:
+- [修正案1]
+- [修正案2]
+
+EXPERT_CLAIM:
+  Topic: Phase 2 チャレンジ
+  Role: Challenger (批判的レビューの専門家)
+  Confidence: [0.0-1.0]
+  Conclusion: [結論]
+
+DISCUSSION:
+  Expertise Assessment:
+    - Phase Owner: Challenger (challenger) for Phase 2
+    - My Role: expert for 批判的レビュー
+    - Confidence: [0.0-1.0]
+  Position: [SP] I maintain my challenge because [evidence]
+  Evidence: [具体的な証拠]
+  Response to Inspector: [Inspectorの指摘への対応]
+```
 
 ## 検証結果への対応
 

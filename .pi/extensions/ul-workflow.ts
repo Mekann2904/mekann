@@ -720,7 +720,7 @@ Task ID: ${taskId}
       const planPath = path.join(getTaskDir(taskId), "plan.md");
 
       // DAG-BASED EXECUTION FOR HIGH COMPLEXITY
-      if (strategy.useDag && (ctx as any).runSubagent) {
+      if (strategy.useDag && "runSubagent" in ctx) {
         console.log(`[ul_workflow_run] Using DAG execution for task: ${trimmedTask.slice(0, 50)}...`);
 
         try {

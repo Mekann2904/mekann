@@ -199,8 +199,18 @@ function hasCircularDependency(plan: Plan, newStepId: string, dependencies?: str
 	return false;
 }
 
-function addStepToPlan(plan: Plan, title: string, description?: string, dependencies?: string[]): PlanStep {
+function addStepToPlan(plan: Plan, title: string, description?: string, dependencies?: string[]): { step: PlanStep; warnings: string[] } {
 	const stepId = generateId();
+	const warnings: string[] = [];
+
+	// 依存関係の存在確認
+	if (dependencies && dependencies.length > 0) {
+		const existingStepIds = new Set(plan.steps.map(s => s.id));
+		const missingDeps = dependencies.filter(depId => !existingStepIds.has(depId));
+		if (missingDeps.length > 0) {
+			warnings.push(`Dependencies not found: ${missingDeps.join(", ")}. These dependencies will be ignored if steps are never added.`);
+		}
+	}
 
 	// 循環依存の検出
 	if (hasCircularDependency(plan, stepId, dependencies)) {
@@ -216,7 +226,7 @@ function addStepToPlan(plan: Plan, title: string, description?: string, dependen
 	};
 	plan.steps.push(step);
 	plan.updatedAt = new Date().toISOString();
-	return step;
+	return { step, warnings };
 }
 
 function updateStepStatus(plan: Plan, stepId: string, status: PlanStep["status"]): boolean {
@@ -242,6 +252,7 @@ function getReadySteps(plan: Plan): PlanStep[] {
 function formatPlanSummary(plan: Plan): string {
 	const lines: string[] = [];
 	lines.push(`## Plan: ${plan.name}`);
+	lines.push(`ID: ${plan.id}`);  // BUGFIX: プランIDを出力に含める
 	if (plan.description) {
 		lines.push(`\n${plan.description}`);
 	}
@@ -317,15 +328,10 @@ export default function (pi: ExtensionAPI) {
 
 	// ============================================
 	// Plan Mode (Read-only mode)
+	// NOTE: Tool restrictions are currently DISABLED.
+	// Previously defined: READ_ONLY_TOOLS, WRITE_TOOLS, PLAN_MODE_TOOLS, NORMAL_MODE_TOOLS
+	// To re-enable restrictions, uncomment the tool_call event handler and setActiveTools calls.
 	// ============================================
-
-	const READ_ONLY_TOOLS = ["read", "grep", "find", "ls"];
-	const WRITE_TOOLS = ["edit", "write"];
-
-	// Tools available in plan mode
-	const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls"];
-	// Tools available in normal mode
-	const NORMAL_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "edit", "write"];
 
 	// ============================================
 	// Plan Mode State Persistence
@@ -569,8 +575,11 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			let step: PlanStep;
+			let warnings: string[] = [];
 			try {
-				step = addStepToPlan(plan, params.title, params.description, params.dependencies);
+				const result = addStepToPlan(plan, params.title, params.description, params.dependencies);
+				step = result.step;
+				warnings = result.warnings;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				return {
@@ -588,9 +597,14 @@ export default function (pi: ExtensionAPI) {
 				toolCalls: 0,
 			});
 
+			let outputText = `Step added to plan "${plan.name}" (ID: ${plan.id}):\n\n• ${step.title} (Step ID: ${step.id})${step.description ? `\n  ${step.description}` : ""}`;
+			if (warnings.length > 0) {
+				outputText += `\n\n⚠ Warnings:\n${warnings.map(w => `  - ${w}`).join("\n")}`;
+			}
+
 			return {
-				content: [{ type: "text", text: `Step added to plan "${plan.name}":\n\n• ${step.title}${step.description ? `\n  ${step.description}` : ""}` }],
-				details: { planId: plan.id, stepId: step.id }
+				content: [{ type: "text", text: outputText }],
+				details: { planId: plan.id, stepId: step.id, warnings }
 			};
 		},
 	});
@@ -650,7 +664,7 @@ export default function (pi: ExtensionAPI) {
 			});
 
 			return {
-				content: [{ type: "text", text: `Step status updated:\n\n• ${step?.title} → ${params.status}` }],
+				content: [{ type: "text", text: `Step status updated (Plan: ${plan.id}):\n\n• ${step?.title} → ${params.status}` }],
 				details: { planId: plan.id, stepId: params.stepId, status: params.status }
 			};
 		},
@@ -684,9 +698,9 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			const lines: string[] = [`## Ready Steps (${readySteps.length})`];
+			const lines: string[] = [`## Ready Steps for "${plan.name}" (ID: ${plan.id}) - ${readySteps.length} steps`];
 			readySteps.forEach((step, idx) => {
-				lines.push(`\n${idx + 1}. ${step.title}`);
+				lines.push(`\n${idx + 1}. ${step.title} (Step ID: ${step.id})`);
 				if (step.description) {
 					lines.push(`   ${step.description}`);
 				}
@@ -714,16 +728,17 @@ export default function (pi: ExtensionAPI) {
 			});
 
 			const storage = loadStorage();
-			const initialCount = storage.plans.length;
-			storage.plans = storage.plans.filter(p => p.id !== params.planId);
+			const planToDelete = findPlanById(storage, params.planId);
 
-			if (storage.plans.length === initialCount) {
+			if (!planToDelete) {
 				return {
 					content: [{ type: "text", text: `Plan not found: ${params.planId}` }],
 					details: {}
 				};
 			}
 
+			const deletedPlanName = planToDelete.name;
+			storage.plans = storage.plans.filter(p => p.id !== params.planId);
 			saveStorage(storage);
 
 			logger.endOperation({
@@ -735,8 +750,8 @@ export default function (pi: ExtensionAPI) {
 			});
 
 			return {
-				content: [{ type: "text", text: `Plan deleted: ${params.planId}` }],
-				details: { deletedPlanId: params.planId }
+				content: [{ type: "text", text: `Plan deleted: "${deletedPlanName}" (ID: ${params.planId})` }],
+				details: { deletedPlanId: params.planId, deletedPlanName }
 			};
 		},
 	});
@@ -787,7 +802,7 @@ export default function (pi: ExtensionAPI) {
 			});
 
 			return {
-				content: [{ type: "text", text: `Plan "${plan.name}" status updated to: ${params.status}` }],
+				content: [{ type: "text", text: `Plan "${plan.name}" (ID: ${plan.id}) status updated to: ${params.status}` }],
 				details: { planId: plan.id, status: params.status }
 			};
 		},

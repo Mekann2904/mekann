@@ -36,6 +36,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { recordInjection } from "../lib/context-breakdown-utils.js";
 
 // パッケージルートを取得（このファイルから3階層上）
 const getPackageRoot = (): string => {
@@ -96,6 +97,9 @@ export default function (pi: ExtensionAPI) {
 
     // マーカー付きで追加（重複検出用）
     const markedContent = `\n\n<!-- APPEND_SYSTEM.md (from package) -->\n${appendContent}`;
+
+    // Record injection for context breakdown tracking
+    recordInjection('append-system', markedContent);
 
     return {
       systemPrompt: event.systemPrompt + markedContent,

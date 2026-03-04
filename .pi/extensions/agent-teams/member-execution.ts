@@ -505,9 +505,9 @@ export function buildTeamMemberPrompt(input: {
 
   // INTERNAL mode: Build English prompt with strict output control
   if (isInternal) {
-    lines.push(`You are a member of agent team "${input.team.id}".`);
-    lines.push(`Role: ${input.member.role}`);
-    lines.push(`Mission: ${input.member.description}`);
+    lines.push(`You are a member of agent team "${input.team?.id ?? "(no team)"}".`);
+    lines.push(`Role: ${input.member?.role ?? "(no role)"}`);
+    lines.push(`Mission: ${input.member?.description ?? "(no description)"}`);
     lines.push("");
     lines.push("TASK:");
     lines.push(input.task);
@@ -567,10 +567,10 @@ export function buildTeamMemberPrompt(input: {
   // USER-FACING mode: Original Japanese detailed prompt
   const phaseLabel = phase === "initial" ? "初期検討" : "コミュニケーション";
 
-  lines.push(`あなたはエージェントチーム ${input.team.name} (${input.team.id}) のメンバーです。`);
-  lines.push(`チームミッション: ${input.team.description}`);
-  lines.push(`あなたの役割: ${input.member.role} (${input.member.id})`);
-  lines.push(`役割目標: ${input.member.description}`);
+  lines.push(`あなたはエージェントチーム ${input.team?.name ?? "(no name)"} (${input.team?.id ?? "(no id)"}) のメンバーです。`);
+  lines.push(`チームミッション: ${input.team?.description ?? "(no description)"}`);
+  lines.push(`あなたの役割: ${input.member?.role ?? "(no role)"} (${input.member?.id ?? "(no id)"})`);
+  lines.push(`役割目標: ${input.member?.description ?? "(no description)"}`);
   lines.push(`現在フェーズ: ${phaseLabel}`);
 
   // Resolve and include skills (team common + member individual)
@@ -647,7 +647,7 @@ export function buildTeamMemberPrompt(input: {
 
   // 思考領域改善: 高リスクタスクでは自動的にhighに昇格
   // Note: INTERNAL mode already returned earlier, this is USER-FACING only
-  const baseThinkingLevel = input.member.thinkingLevel ?? input.team.thinkingLevel ?? "medium";
+  const baseThinkingLevel = input.member?.thinkingLevel ?? input.team?.thinkingLevel ?? "medium";
   const isHighStakes = isHighStakesTask(input.task);
   const effectiveThinkingLevel = isHighStakes && (baseThinkingLevel === "medium" || baseThinkingLevel === "low" || baseThinkingLevel === "minimal")
     ? "high"
@@ -791,8 +791,8 @@ export async function runMember(input: {
     relevantPatterns,
 
   });
-  const resolvedProvider = input.member.provider ?? input.fallbackProvider ?? "(session-default)";
-  const resolvedModel = input.member.model ?? input.fallbackModel ?? "(session-default)";
+  const resolvedProvider = input.member?.provider ?? input.fallbackProvider ?? "(session-default)";
+  const resolvedModel = input.member?.model ?? input.fallbackModel ?? "(session-default)";
   const rateLimitKey = buildRateLimitKey(resolvedProvider, resolvedModel);
   const retryOverrides: RetryWithBackoffOverrides = {
     maxRetries: STABLE_MAX_RETRIES,
@@ -807,8 +807,8 @@ export async function runMember(input: {
   input.onStart?.(input.member);
   try {
     try {
-      const provider = input.member.provider ?? input.fallbackProvider;
-      const model = input.member.model ?? input.fallbackModel;
+      const provider = input.member?.provider ?? input.fallbackProvider;
+      const model = input.member?.model ?? input.fallbackModel;
       let rateLimitGateLogged = false;
 
       const result = await retryWithBackoff(
@@ -849,16 +849,16 @@ export async function runMember(input: {
           // ループ完了後にcommandResultが未定義の場合は明示的にエラーをスロー
           if (!commandResult) {
             throw new ExecutionError(
-              `チームメンバー実行が再試行後に失敗しました (member=${input.member.id}, team=${input.team.id}, retries=${retryCount}): ${lastErrorMessage || "unknown error"}`,
+              `チームメンバー実行が再試行後に失敗しました (member=${input.member?.id ?? "(no id)"}, team=${input.team?.id ?? "(no id)"}, retries=${retryCount}): ${lastErrorMessage || "unknown error"}`,
               {
                 severity: "high",
                 context: {
                   operation: "team-member-execution",
                   component: "agent-teams",
                   metadata: {
-                    memberId: input.member.id,
-                    memberRole: input.member.role,
-                    teamId: input.team.id,
+                    memberId: input.member?.id ?? "(no id)",
+                    memberRole: input.member?.role ?? "(no role)",
+                    teamId: input.team?.id ?? "(no id)",
                     provider: provider || "(session-default)",
                     model: model || "(session-default)",
                     retryCount,
@@ -908,8 +908,8 @@ export async function runMember(input: {
           `output normalization failed: ${normalized.reason || "unknown"}`
         );
         return {
-          memberId: input.member.id,
-          role: input.member.role,
+          memberId: input.member?.id ?? "(no id)",
+          role: input.member?.role ?? "(no role)",
           summary: "(normalization failed)",
           output: result.output.slice(0, 500), // 生の出力を一部保持
           status: "failed",
@@ -949,7 +949,7 @@ export async function runMember(input: {
             },
             context: {
               task: input.task,
-              agentId: input.member.id,
+              agentId: input.member?.id ?? "(no id)",
             },
             cwd: input.cwd,
           });
@@ -959,8 +959,8 @@ export async function runMember(input: {
       }
 
       return {
-        memberId: input.member.id,
-        role: input.member.role,
+        memberId: input.member?.id ?? "(no id)",
+        role: input.member?.role ?? "(no role)",
         summary,
         output: normalized.output,
         status: "completed",
@@ -1008,7 +1008,7 @@ export async function runMember(input: {
             },
             context: {
               task: input.task,
-              agentId: input.member.id,
+              agentId: input.member?.id ?? "(no id)",
             },
             cwd: input.cwd,
           });
@@ -1018,8 +1018,8 @@ export async function runMember(input: {
       }
 
       return {
-        memberId: input.member.id,
-        role: input.member.role,
+        memberId: input.member?.id ?? "(no id)",
+        role: input.member?.role ?? "(no role)",
         summary: "(failed)",
         output: "",
         status: "failed",
