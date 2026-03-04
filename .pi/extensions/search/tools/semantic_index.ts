@@ -419,7 +419,7 @@ export async function semanticIndex(
 				indexed: 0,
 				files: 0,
 				outputPath: "",
-				error: "No embedding provider available. Configure OpenAI API key.",
+				error: "OpenAI API key not configured. Set OPENAI_API_KEY environment variable or configure ~/.pi/agent/auth.json",
 			};
 		}
 

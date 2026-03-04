@@ -293,7 +293,7 @@ async function buildSemanticIndex(
 		if (!available) {
 			return {
 				success: false,
-				error: "No embedding provider available. Configure OpenAI API key.",
+				error: "OpenAI API key not configured. Set OPENAI_API_KEY environment variable or configure ~/.pi/agent/auth.json",
 			};
 		}
 
@@ -571,7 +571,7 @@ export async function locagentQuery(
 						return {
 							type: params.type,
 							success: false,
-							error: "No embedding provider available. Configure OpenAI API key.",
+							error: "OpenAI API key not configured. Set OPENAI_API_KEY environment variable or configure ~/.pi/agent/auth.json",
 						};
 					}
 
