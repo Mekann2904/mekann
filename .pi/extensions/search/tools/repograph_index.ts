@@ -267,7 +267,23 @@ export async function repographQuery(
 	params: RepographQueryInput,
 	cwd: string
 ): Promise<RepographQueryOutput> {
-	const graph = await loadRepoGraph(cwd);
+	let graph = await loadRepoGraph(cwd);
+
+	// オンデマンド自動構築
+	if (!graph) {
+		console.log("[RepoGraph] Index not found. Building automatically...");
+		const indexResult = await repographIndex({ force: false }, cwd);
+		if (!indexResult.success) {
+			return {
+				type: params.type,
+				total: 0,
+				truncated: false,
+				nodes: [],
+				error: `Failed to build index: ${indexResult.error}`,
+			};
+		}
+		graph = await loadRepoGraph(cwd);
+	}
 
 	if (!graph) {
 		return {
