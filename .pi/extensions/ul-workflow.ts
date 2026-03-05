@@ -2070,7 +2070,7 @@ subagent_run(
   pi.registerTool({
     name: "ul_workflow_dag",
     label: "Preview UL Workflow DAG",
-    description: "タスクのDAG構造を生成して表示。実際の実行は行わない。並列実行する場合は ul_workflow_run({ mode: "parallel" }) を使用。",
+    description: "タスクのDAG構造を生成して表示。実際の実行は行わない。並列実行する場合は ul_workflow_run({ mode: 'parallel' }) を使用。",
     parameters: Type.Object({
       task: Type.String({ description: "分析するタスク" }),
       maxDepth: Type.Optional(Type.Number({ description: "最大探索深度（デフォルト: 4）" })),

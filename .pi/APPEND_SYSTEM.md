@@ -637,3 +637,110 @@ const stats = awo.getStats();
 | `traceCollection.retentionDays` | `30` | 保持期間（日） |
 | `extraction.threshold` | `5` | メタツール抽出閾値 |
 | `registry.autoRegister` | `false` | 自動登録（手動承認を推奨） |
+
+---
+
+# UL Mode Guideline
+
+`ul <task>` で呼び出される委任モード。調査・計画・実装を自律的に行う。
+
+## 基本原則
+
+> **エージェントにコードを書かせる前に、必ず文章化された計画をレビュー・承認する**
+
+## 推奨: 統合実行ツール
+
+ULモードは複雑度に応じて自動的に実行方法を選択:
+
+```typescript
+// 推奨: 自動選択実行（複雑度判定で逐次/並列を自動選択）
+ul_workflow_run({ task: "<タスク>" })
+
+// 明示的なモード指定も可能
+ul_workflow_run({ task: "<タスク>", mode: "sequential" })  // 強制的に逐次実行
+ul_workflow_run({ task: "<タスク>", mode: "parallel" })    // 強制的に並列実行
+ul_workflow_run({ task: "<タスク>", mode: "auto" })        // 自動選択（デフォルト）
+```
+
+### 3つの入口（簡素化済み）
+
+| 入口 | 用途 | 対象ユーザー |
+|------|------|-----------|
+| `ul_workflow_start` | 手動制御（Research→Plan→承認→Implement） | 詳細な計画レビューが必要な場合 |
+| `ul_workflow_run` | 自動実行（複雑度に応じて逐次/並列を自動選択） | 標準的な開発タスク |
+| `ul_workflow_dag` | DAG構造のプレビューのみ（実行は行わない） | 並列実行前の構造確認 |
+
+### 複雑度判定と自動選択
+
+| 複雑度 | 自動選択 | 理由 |
+|--------|---------|------|
+| Low | Sequential | 単純なタスクは逐次実行で十分 |
+| Medium | Sequential/DAG | 明示的なステップがある場合のみDAG |
+| High | DAG | 大規模タスクは並列実行で効率化 |
+
+### パラメータ
+
+```typescript
+ul_workflow_run({
+  task: string,           // 必須: 実行するタスク
+  mode?: "auto" | "sequential" | "parallel",  // オプション: 実行モード
+  maxConcurrency?: number // オプション: 並列数（デフォルト: 3）
+})
+```
+
+---
+
+## 従来のフロー（参考）
+
+```
+Research → Plan → [ユーザーレビュー] → Implement
+```
+
+### 第1段階：Research（調査）
+
+コードベースの該当部分を**徹底的に**理解する。
+
+```typescript
+ul_workflow_research({ task: "<タスク>", task_id: "<taskId>" })
+```
+
+### 第2段階：Plan（計画策定）
+
+詳細な実装計画を作成する。
+
+```typescript
+ul_workflow_plan({ task: "<タスク>", task_id: "<taskId>" })
+```
+
+### 第3段階：Annotation Cycle（ユーザーレビュー）
+
+plan.mdをエディタで開き、インライン注釈を追加する。
+
+```typescript
+ul_workflow_annotate()  // 注釈を検出・適用
+ul_workflow_approve()   // 承認して次へ進む
+```
+
+### 第4段階：Implement（実装）
+
+```typescript
+ul_workflow_implement({ task_id: "<taskId>" })
+```
+
+### 第5段階：Commit（コミット）
+
+```typescript
+ul_workflow_commit()
+```
+
+---
+
+## 判断の指針
+
+| 状況 | 推奨フロー |
+|------|-----------|
+| 重要な実装 | `ul_workflow_start` → Research → Plan → Annotation → Implement → Commit |
+| 標準的な開発 | `ul_workflow_run({ task: "..." })` |
+| 高複雑度タスク | `ul_workflow_run({ task: "...", mode: "parallel" })` |
+| 軽微な修正 | `ul_workflow_run` または直接編集 |
+| 調査のみ | `ul_workflow_research` |
