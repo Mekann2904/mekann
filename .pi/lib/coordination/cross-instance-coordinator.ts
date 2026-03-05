@@ -713,3 +713,149 @@ export function resetCoordinator(): void {
 export function resetHeartbeatDebounce(): void {
   // SQLite版では不要
 }
+
+// ============================================================================
+// Environment Overrides
+// ============================================================================
+
+/**
+ * 環境変数から設定オーバーライドを取得
+ * @summary 環境変数オーバーライド取得
+ * @returns 設定オーバーライド
+ */
+export function getEnvOverrides(): Partial<CoordinatorConfig> {
+  const overrides: Partial<CoordinatorConfig> = {};
+
+  const totalMaxLlm = process.env.PI_TOTAL_MAX_LLM;
+  if (totalMaxLlm) {
+    const parsed = parseInt(totalMaxLlm, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      overrides.totalMaxLlm = parsed;
+    }
+  }
+
+  const heartbeatIntervalMs = process.env.PI_HEARTBEAT_INTERVAL_MS;
+  if (heartbeatIntervalMs) {
+    const parsed = parseInt(heartbeatIntervalMs, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      overrides.heartbeatIntervalMs = parsed;
+    }
+  }
+
+  const heartbeatTimeoutMs = process.env.PI_HEARTBEAT_TIMEOUT_MS;
+  if (heartbeatTimeoutMs) {
+    const parsed = parseInt(heartbeatTimeoutMs, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      overrides.heartbeatTimeoutMs = parsed;
+    }
+  }
+
+  return overrides;
+}
+
+// ============================================================================
+// Model-specific Functions
+// ============================================================================
+
+/**
+ * 特定モデルのアクティブインスタンス数を取得
+ * @summary モデル別アクティブ数取得
+ * @param provider - プロバイダ名
+ * @param model - モデル名
+ * @returns アクティブインスタンス数
+ */
+function getActiveInstancesForModel(provider: string, model: string): number {
+  const instances = getActiveInstances();
+  let count = 0;
+  
+  for (const inst of instances) {
+    for (const active of inst.activeModels) {
+      if (matchesModelPattern(active.provider, provider) && 
+          matchesModelPattern(active.model, model)) {
+        count++;
+        break;
+      }
+    }
+  }
+  
+  return Math.max(1, count);
+}
+
+/**
+ * モデル名パターンが一致するかチェック
+ * @summary モデルパターンマッチ
+ * @param pattern - パターン
+ * @param value - 比較対象
+ * @returns 一致する場合はtrue
+ */
+function matchesModelPattern(pattern: string, value: string): boolean {
+  const normalizedPattern = pattern.toLowerCase();
+  const normalizedValue = value.toLowerCase();
+  
+  // Exact match
+  if (normalizedPattern === normalizedValue) return true;
+  
+  // Prefix match
+  if (normalizedValue.startsWith(normalizedPattern)) return true;
+  if (normalizedPattern.startsWith(normalizedValue)) return true;
+  
+  return false;
+}
+
+/**
+ * モデルごとの並列数制限を取得
+ * @summary モデル別並列数取得
+ * @param provider - プロバイダ名
+ * @param model - モデル名
+ * @param baseLimit - 基本制限値
+ * @returns モデル別並列数制限
+ */
+export function getModelParallelLimit(
+  provider: string,
+  model: string,
+  baseLimit: number,
+): number {
+  const activeCount = getActiveInstancesForModel(provider, model);
+  return Math.max(1, Math.floor(baseLimit / activeCount));
+}
+
+/**
+ * モデル使用状況サマリーを取得
+ * @summary モデル使用状況サマリー
+ * @returns モデル使用状況
+ */
+export function getModelUsageSummary(): {
+  models: Array<{
+    provider: string;
+    model: string;
+    instanceCount: number;
+  }>;
+  instances: InstanceInfo[];
+} {
+  const instances = getActiveInstances();
+  const modelMap = new Map<string, { provider: string; model: string; count: number }>();
+
+  for (const inst of instances) {
+    for (const active of inst.activeModels) {
+      const key = `${active.provider}:${active.model}`;
+      const existing = modelMap.get(key);
+      if (existing) {
+        existing.count++;
+      } else {
+        modelMap.set(key, {
+          provider: active.provider,
+          model: active.model,
+          count: 1,
+        });
+      }
+    }
+  }
+
+  const models = Array.from(modelMap.values()).map((m) => ({
+    provider: m.provider,
+    model: m.model,
+    instanceCount: m.count,
+  }));
+
+  return { models, instances };
+}
