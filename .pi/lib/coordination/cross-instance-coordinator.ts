@@ -696,6 +696,15 @@ export function isInitialized(): boolean {
 }
 
 /**
+ * コーディネータが初期化済みかどうか（エイリアス）
+ * @summary 初期化確認（エイリアス）
+ * @returns 初期化済みの場合はtrue
+ */
+export function isCoordinatorInitialized(): boolean {
+  return isInitialized();
+}
+
+/**
  * テスト用にコーディネータをリセット
  * @summary コーディネータリセット
  */

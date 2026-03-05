@@ -218,10 +218,10 @@ export function record429(provider: string, model: string, nowMs: number): void 
  * RPMスロットリング拡張機能
  * @summary RPMスロットリング拡張
  */
-export default function rpmThrottleExtension(api: ExtensionAPI) {
-  api.registerHook("before_agent_start", async (ctx) => {
-    const provider = String(ctx.toolContext?.provider || "").toLowerCase();
-    const model = String(ctx.toolContext?.model || "").toLowerCase();
+export default function rpmThrottleExtension(pi: ExtensionAPI) {
+  pi.on("before_agent_start", async (_event, ctx) => {
+    const provider = String(ctx.model?.provider || "").toLowerCase();
+    const model = String(ctx.model?.id || "").toLowerCase();
     
     if (!provider || !model) {
       return; // プロバイダまたはモデルが不明な場合はスロットリングしない
@@ -249,9 +249,7 @@ export default function rpmThrottleExtension(api: ExtensionAPI) {
     }
   });
   
-  api.onLoad?.(() => {
-    console.log("[rpm-throttle] Extension loaded (SQLite-based)");
-  });
+  console.log("[rpm-throttle] Extension loaded (SQLite-based)");
 }
 
 // ============================================================================
