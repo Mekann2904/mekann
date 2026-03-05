@@ -6,11 +6,13 @@
  * related:
  *   - .pi/lib/dag/executors/base-executor.ts
  *   - docs/research/adaptorch.md (hierarchical executor仕様)
+ *   - .pi/lib/coordination/cross-instance-coordinator.ts（動的並列数制御）
  * public_api:
  *   - HierarchicalExecutor.execute(DAGPlan): Promise<ExecutionResult>
  * invariants:
  *   - リードエージェントが常に存在し、進行状況を監視すること
  *   - サブエージェントはリードへの報告義務を持つこと
+ *   - 並列数はクロスインスタンスコーディネータから動的に取得される
  * side_effects:
  *   - リードエージェントによる動的タスク割り当て
  *   - 中間成果物の集約と再配布
@@ -22,6 +24,7 @@
 import { DAGPlan, DAGTask, ExecutionResult, TaskOutput } from "../types.js";
 import { BaseExecutor, ExecutionContext } from "./base-executor.js";
 import { topologicalLayers } from "../topology-router.js";
+import { getDynamicParallelLimit } from "../../coordination/cross-instance-coordinator.js";
 
 /**
  * @summary リードエージェントの状態管理
@@ -36,6 +39,8 @@ interface LeadAgentState {
 /**
  * @summary 階層型エグゼキュータ
  * @description リードエージェントが分解→割り当て→監視→統合を行う
+ * 並列数はクロスインスタンスコーディネータから動的に取得され、
+ * インスタンス間の負荷分散とレート制限に自動的に適応する。
  */
 export class HierarchicalExecutor extends BaseExecutor {
   private state: LeadAgentState;
@@ -58,6 +63,7 @@ export class HierarchicalExecutor extends BaseExecutor {
   async execute(plan: DAGPlan): Promise<ExecutionResult> {
     const startTime = Date.now();
     const taskMap = new Map(plan.tasks.map(t => [t.id, t]));
+    const fallbackConcurrency = plan.maxConcurrency || 3;
     
     // 初期化: すべてをpendingに
     for (const task of plan.tasks) {
@@ -78,8 +84,9 @@ export class HierarchicalExecutor extends BaseExecutor {
           throw new Error("Deadlock detected: no ready tasks but pending remains");
         }
         
-        // 並列度制限（maxConcurrency考慮）
-        const slots = (plan.maxConcurrency || 3) - this.state.inProgress.size;
+        // リアルタイムで並列数を取得（動的制限）
+        const currentLimit = this.getDynamicConcurrency(fallbackConcurrency);
+        const slots = currentLimit - this.state.inProgress.size;
         const toExecute = readyTasks.slice(0, Math.max(0, slots));
         
         // サブエージェントへの委譲（並列実行）
@@ -119,6 +126,24 @@ export class HierarchicalExecutor extends BaseExecutor {
         error: error instanceof Error ? error.message : String(error),
         durationMs: Date.now() - startTime,
       };
+    }
+  }
+  
+  /**
+   * @summary 動的並列数を取得
+   * @description クロスインスタンスコーディネータから現在の並列上限を取得。
+   * コーディネータが初期化されていない場合はフォールバック値を使用。
+   * @param fallback - コーディネータ未初期化時のフォールバック値
+   * @returns 現在の並列実行上限
+   */
+  private getDynamicConcurrency(fallback: number): number {
+    try {
+      // 保留中のタスク数を考慮して動的に並列数を計算
+      const dynamicLimit = getDynamicParallelLimit(this.state.pending.size);
+      return Math.max(1, Math.min(dynamicLimit, fallback));
+    } catch {
+      // コーディネータが初期化されていない場合はフォールバック
+      return fallback;
     }
   }
   

@@ -7,12 +7,14 @@
  *   - .pi/lib/dag/types.ts
  *   - .pi/lib/dag/topology-router.ts (レイヤー分割)
  *   - .pi/lib/dag/executors/base-executor.ts
+ *   - .pi/lib/coordination/cross-instance-coordinator.ts（動的並列数制御）
  * public_api:
  *   - HybridExecutor.execute(DAGPlan): Promise<ExecutionResult>
  * invariants:
  *   - 同一レイヤー内のタスクは並列実行
  *   - レイヤー間は依存関係に従って順次実行
  *   - 前レイヤーの出力が後続レイヤーの入力として渡される
+ *   - 並列数はクロスインスタンスコーディネータから動的に取得される
  * side_effects:
  *   - サブエージェントの並列・順次実行
  *   - コンテキストの累積伝播
@@ -24,10 +26,13 @@
 import { DAGPlan, DAGTask, ExecutionResult, TaskOutput } from "../types.js";
 import { BaseExecutor, ExecutionContext } from "./base-executor.js";
 import { topologicalLayers } from "../topology-router.js";
+import { getDynamicParallelLimit } from "../../coordination/cross-instance-coordinator.js";
 
 /**
  * @summary ハイブリッドエグゼキュータ（τ_X）
  * @description トポロジカルレイヤー内では並列、レイヤー間では順次実行
+ * 並列数はクロスインスタンスコーディネータから動的に取得され、
+ * インスタンス間の負荷分散とレート制限に自動的に適応する。
  */
 export class HybridExecutor extends BaseExecutor {
   private outputs = new Map<string, TaskOutput>();
@@ -71,7 +76,9 @@ export class HybridExecutor extends BaseExecutor {
         
         // 結果を記録
         for (const result of layerResults) {
-          this.outputs.set(result.taskId, result.output);
+          if (result.output) {
+            this.outputs.set(result.taskId, result.output);
+          }
         }
         
         const layerDuration = Date.now() - layerStart;
@@ -124,6 +131,7 @@ export class HybridExecutor extends BaseExecutor {
   
   /**
    * @summary 単一レイヤーを並列実行
+   * @description 動的並列数制御を使用してバッチ処理
    */
   private async executeLayer(
     layer: DAGTask[],
@@ -131,13 +139,18 @@ export class HybridExecutor extends BaseExecutor {
     plan: DAGPlan
   ): Promise<Array<{ taskId: string; status: "success" | "failure"; output?: TaskOutput; error?: string }>> {
     
-    const maxConcurrency = plan.maxConcurrency || 3;
+    const fallbackConcurrency = plan.maxConcurrency || 3;
     
-    // バッチ処理（並列度制限）
+    // バッチ処理（動的並列度制限）
     const results: Array<{ taskId: string; status: "success" | "failure"; output?: TaskOutput; error?: string }> = [];
     
-    for (let i = 0; i < layer.length; i += maxConcurrency) {
-      const batch = layer.slice(i, i + maxConcurrency);
+    let i = 0;
+    while (i < layer.length) {
+      // リアルタイムで並列数を取得
+      const currentLimit = this.getDynamicConcurrency(fallbackConcurrency);
+      
+      const batchSize = Math.min(currentLimit, layer.length - i);
+      const batch = layer.slice(i, i + batchSize);
       
       const batchPromises = batch.map(async task => {
         try {
@@ -164,9 +177,29 @@ export class HybridExecutor extends BaseExecutor {
       
       const batchResults = await Promise.all(batchPromises);
       results.push(...batchResults);
+      
+      i += batchSize;
     }
     
     return results;
+  }
+  
+  /**
+   * @summary 動的並列数を取得
+   * @description クロスインスタンスコーディネータから現在の並列上限を取得。
+   * コーディネータが初期化されていない場合はフォールバック値を使用。
+   * @param fallback - コーディネータ未初期化時のフォールバック値
+   * @returns 現在の並列実行上限
+   */
+  private getDynamicConcurrency(fallback: number): number {
+    try {
+      // 保留中のタスク数を考慮して動的に並列数を計算
+      const dynamicLimit = getDynamicParallelLimit(0);
+      return Math.max(1, Math.min(dynamicLimit, fallback));
+    } catch {
+      // コーディネータが初期化されていない場合はフォールバック
+      return fallback;
+    }
   }
   
   /**
