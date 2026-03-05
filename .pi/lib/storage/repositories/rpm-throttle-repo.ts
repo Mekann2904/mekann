@@ -25,6 +25,9 @@
 import type { PiDatabase } from "../sqlite-db.js";
 import { safeParseJson, safeStringifyJson, timestampMs } from "../sqlite-schema.js";
 
+// 遅延初期化用
+let getDatabaseImpl: (() => PiDatabase) | null = null;
+
 /**
  * バケット状態
  * @summary スロットル状態
@@ -341,6 +344,15 @@ export class RpmThrottleRepository {
 let instance: RpmThrottleRepository | null = null;
 
 /**
+ * getDatabase関数を登録（循環依存回避のため）
+ * @summary getDatabase登録
+ * @param fn - getDatabase関数
+ */
+export function setGetDatabase(fn: () => PiDatabase): void {
+  getDatabaseImpl = fn;
+}
+
+/**
  * RPMスロットルリポジトリを作成
  * @summary リポジトリ作成
  * @param db - データベースインスタンス（省略時はgetDatabase()を使用）
@@ -348,10 +360,13 @@ let instance: RpmThrottleRepository | null = null;
  */
 export function createRpmThrottleRepository(db?: PiDatabase): RpmThrottleRepository {
   if (!instance || db) {
-    // 循環依存を避けるため遅延インポート
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getDatabase } = require("../sqlite-db.js");
-    instance = new RpmThrottleRepository(db ?? getDatabase());
+    if (!db) {
+      if (!getDatabaseImpl) {
+        throw new Error("getDatabase not set. Call setGetDatabase() first.");
+      }
+      db = getDatabaseImpl();
+    }
+    instance = new RpmThrottleRepository(db);
   }
   return instance;
 }

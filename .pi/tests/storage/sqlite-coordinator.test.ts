@@ -3,7 +3,7 @@
  * path: .pi/tests/storage/sqlite-coordinator.test.ts
  * role: SQLiteコーディネータの単体テスト
  * why: SQLiteベースのインスタンス管理が正しく動作することを検証するため
- * related: .pi/lib/coordination/cross-instance-coordinator-sqlite.ts
+ * related: .pi/lib/coordination/cross-instance-coordinator.ts
  * public_api: なし（テストファイル）
  * invariants: テスト間でデータベースをクリーンアップする
  * side_effects: 一時的なSQLiteデータベースファイルの作成・削除
@@ -17,7 +17,7 @@
  * why_it_exists:
  *   - SQLite移行が正しく機能することを保証するため
  * scope:
- *   in: SQLiteCoordinatorクラス
+ *   in: Coordinatorクラス
  *   out: テスト結果
  */
 
@@ -37,8 +37,8 @@ async function importModules() {
   try {
     const betterSqlite3 = await import("better-sqlite3");
     const Database = betterSqlite3.default;
-    const { SQLiteCoordinator } = await import("../../lib/coordination/cross-instance-coordinator-sqlite.js");
-    return { Database, SQLiteCoordinator };
+    const { Coordinator } = await import("../../lib/coordination/cross-instance-coordinator.js");
+    return { Database, Coordinator };
   } catch (e) {
     console.log("SQLite modules not available, skipping tests:", (e as Error).message);
     return null;
@@ -72,7 +72,10 @@ function createTestSchema(db: DatabaseType): void {
 function createMockDb(db: DatabaseType) {
   return {
     prepare: (sql: string) => db.prepare(sql),
-    transaction: <T>(fn: () => T): T => db.transaction(fn)() as T,
+    transaction: <T>(fn: () => T): (() => T) => {
+      // better-sqlite3のtransactionは関数を返す
+      return () => db.transaction(fn)() as T;
+    },
     close: () => db.close(),
   } as unknown as import("../../lib/storage/sqlite-db.js").PiDatabase;
 }
@@ -151,7 +154,7 @@ describe("SQLite Coordinator", () => {
     createTestSchema(rawDb);
     
     const mockDb = createMockDb(rawDb);
-    const coordinator = new modules.SQLiteCoordinator(mockDb);
+    const coordinator = new modules.Coordinator(mockDb);
 
     // 初期状態では未登録
     expect(coordinator.isInitialized()).toBe(false);
@@ -175,7 +178,7 @@ describe("SQLite Coordinator", () => {
     createTestSchema(rawDb);
     
     const mockDb = createMockDb(rawDb);
-    const coordinator = new modules.SQLiteCoordinator(mockDb);
+    const coordinator = new modules.Coordinator(mockDb);
 
     // 未登録時は1を返す
     const limitBeforeRegister = coordinator.getMyParallelLimit();
@@ -204,7 +207,7 @@ describe("SQLite Coordinator", () => {
     createTestSchema(rawDb);
     
     const mockDb = createMockDb(rawDb);
-    const coordinator = new modules.SQLiteCoordinator(mockDb);
+    const coordinator = new modules.Coordinator(mockDb);
 
     // 未登録時は1（自分のみ想定）
     const countBeforeRegister = coordinator.getActiveInstanceCount();
@@ -229,7 +232,7 @@ describe("SQLite Coordinator", () => {
     createTestSchema(rawDb);
     
     const mockDb = createMockDb(rawDb);
-    const coordinator = new modules.SQLiteCoordinator(mockDb);
+    const coordinator = new modules.Coordinator(mockDb);
 
     coordinator.registerInstance("test-session-models", "/test/cwd");
 
@@ -255,7 +258,7 @@ describe("SQLite Coordinator", () => {
     createTestSchema(rawDb);
     
     const mockDb = createMockDb(rawDb);
-    const coordinator = new modules.SQLiteCoordinator(mockDb);
+    const coordinator = new modules.Coordinator(mockDb);
 
     coordinator.registerInstance("test-session-clear", "/test/cwd");
 

@@ -6,8 +6,8 @@
  * related: provider-limits.ts, cross-instance-coordinator.ts, runtime-config.ts
  * public_api: LearnedLimit, AdaptiveControllerState, getLimit, recordResult
  * invariants: concurrencyはoriginalConcurrency以下に保たれる、recoveryIntervalMs経過後にのみ制限値が増加する
- * side_effects: ファイルシステム（JSON）への状態書き込み、同時実行制限値の変更
- * failure_modes: ファイル書き込み失敗による状態破損、クロックずれによる回復タイミングの誤判定
+ * side_effects: SQLiteデータベースへの状態書き込み、同時実行制限値の変更
+ * failure_modes: データベース接続エラー時は例外をスロー
  * @abdd.explain
  * overview: 429エラーを学習して同時実行数を減らし、成功履歴に基づいて徐々に回復させるフィードバックループを実装する
  * what_it_does:
@@ -25,77 +25,17 @@
  *   out: 調整された同時実行制限値、永続化された状態データ
  */
 
-/**
- * Adaptive Rate Controller
- *
- * Learns from rate limit errors (429) and adjusts concurrency limits dynamically.
- * Works in conjunction with provider-limits.ts (presets) and cross-instance-coordinator.ts.
- *
- * Algorithm:
- * 1. Start with preset limits from provider-limits
- * 2. On 429 error, reduce limit by 30%
- * 3. After recovery period (5 min), gradually restore limit
- * 4. Track per provider/model for granular control
- * 5. NEW: Predictive scheduling based on historical patterns
- *
- * Configuration:
- * Uses centralized RuntimeConfig from runtime-config.ts for consistency.
- */
-
-import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import {
   getRuntimeConfig,
   type RuntimeConfig,
 } from "./runtime-config.js";
-import { withFileLock } from "./storage/storage-lock.js";
 import { Mutex } from "async-mutex";
-
-// ============================================================================
-// Feature Flag: SQLite Mode
-// ============================================================================
-
-/**
- * SQLiteベースの適応的制御を使用するかどうか
- * 環境変数 PI_USE_SQLITE=0 で無効化可能
- */
-const USE_SQLITE = process.env.PI_USE_SQLITE !== "0";
-
-/**
- * SQLiteが利用可能かどうかを確認
- */
-function isSQLiteAvailable(): boolean {
-  if (!USE_SQLITE) return false;
-  try {
-    require.resolve("better-sqlite3");
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// SQLite版の遅延ロード
-let _sqliteModule: {
-  AdaptiveLimitRepository: typeof import("./storage/repositories/adaptive-limit-repo.js").AdaptiveLimitRepository;
-  createAdaptiveLimitRepository: typeof import("./storage/repositories/adaptive-limit-repo.js").createAdaptiveLimitRepository;
-} | null = null;
-
-function getSQLiteModule() {
-  if (!_sqliteModule && isSQLiteAvailable()) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mod = require("./storage/repositories/adaptive-limit-repo.js");
-      _sqliteModule = {
-        AdaptiveLimitRepository: mod.AdaptiveLimitRepository,
-        createAdaptiveLimitRepository: mod.createAdaptiveLimitRepository,
-      };
-    } catch {
-      // SQLite版が利用できない場合はファイルベースを使用
-    }
-  }
-  return _sqliteModule;
-}
+import {
+  AdaptiveLimitRepository,
+  createAdaptiveLimitRepository,
+  type ProviderModelKey,
+} from "./storage/repositories/adaptive-limit-repo.js";
+import { getDatabase } from "./storage/sqlite-db.js";
 
 // ============================================================================
 // Types
@@ -213,43 +153,6 @@ export interface PredictiveAnalysis {
 // Constants
 // ============================================================================
 
-const RUNTIME_DIR = join(homedir(), ".pi", "runtime");
-const STATE_FILE = join(RUNTIME_DIR, "adaptive-limits.json");
-
-/**
- * Get default state from centralized RuntimeConfig.
- */
-function getDefaultState(): AdaptiveControllerState {
-  const config = getRuntimeConfig();
-  return {
-    version: 2,
-    lastUpdated: new Date().toISOString(),
-    limits: {},
-    globalMultiplier: 1.0,
-    recoveryIntervalMs: config.recoveryIntervalMs,
-    reductionFactor: config.reductionFactor,
-    recoveryFactor: config.recoveryFactor,
-    predictiveEnabled: config.predictiveEnabled,
-    predictiveThreshold: 0.15, // Proactively throttle if >15% 429 probability (reduced from 0.3)
-  };
-}
-
-/**
- * Legacy constant for migration purposes.
- * @deprecated Use getDefaultState() instead.
- */
-const DEFAULT_STATE: AdaptiveControllerState = {
-  version: 2,
-  lastUpdated: new Date().toISOString(),
-  limits: {},
-  globalMultiplier: 1.0,
-  recoveryIntervalMs: 2 * 60 * 1000, // 2 minutes
-  reductionFactor: 0.5, // 50% reduction on 429
-  recoveryFactor: 1.05, // 5% increase per recovery
-  predictiveEnabled: true,
-  predictiveThreshold: 0.15, // Proactively throttle if >15% 429 probability
-};
-
 const MIN_CONCURRENCY = 1;
 const MAX_CONCURRENCY = 16;
 const MAX_LEARNED_LIMITS = 512;
@@ -259,11 +162,6 @@ const VALID_PROVIDER_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const VALID_MODEL_RE = /^[a-z0-9][a-z0-9._/:-]{0,127}$/;
 
 const RECOVERY_CHECK_INTERVAL_MS = 60 * 1000; // Check every minute
-const STATE_LOCK_OPTIONS = {
-  maxWaitMs: 2_000,
-  pollMs: 25,
-  staleMs: 15_000,
-};
 
 // ============================================================================
 // State
@@ -272,9 +170,21 @@ const STATE_LOCK_OPTIONS = {
 // BUG-003修正: async-mutexで状態アクセスを保護
 const stateMutex = new Mutex();
 
-let state: AdaptiveControllerState | null = null;
+let repo: AdaptiveLimitRepository | null = null;
 let recoveryTimer: ReturnType<typeof setInterval> | null = null;
-let persistenceFailed = false;
+
+/**
+ * リポジトリを取得（遅延初期化）
+ * @summary リポジトリ取得
+ * @returns AdaptiveLimitRepositoryインスタンス
+ */
+function getRepo(): AdaptiveLimitRepository {
+  if (!repo) {
+    const db = getDatabase();
+    repo = createAdaptiveLimitRepository(db);
+  }
+  return repo;
+}
 
 /**
  * 状態をミューテックスで保護しながらアクセスする
@@ -323,941 +233,284 @@ function isValidLearnedLimitKey(key: string): boolean {
   return VALID_PROVIDER_RE.test(provider) && VALID_MODEL_RE.test(model);
 }
 
-function loadState(): AdaptiveControllerState {
-  if (state && persistenceFailed) {
-    return state;
-  }
-
-  const defaults = getDefaultState();
-
-  try {
-    if (existsSync(STATE_FILE)) {
-      const content = readFileSync(STATE_FILE, "utf-8");
-      const parsed = JSON.parse(content);
-      if (parsed && typeof parsed === "object" && parsed.version) {
-        return {
-          ...defaults,
-          ...parsed,
-          // Ensure new config values are used if not in file
-          recoveryIntervalMs: defaults.recoveryIntervalMs,
-          reductionFactor: defaults.reductionFactor,
-          recoveryFactor: defaults.recoveryFactor,
-          predictiveEnabled: parsed.predictiveEnabled ?? defaults.predictiveEnabled,
-        } as AdaptiveControllerState;
-      }
-    }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.debug(`[adaptive-rate-controller] Failed to load state, using defaults: ${errorMessage}`);
-  }
-  return { ...defaults };
-}
-
-function saveState(): void {
-  if (!state) return;
-
-  try {
-    if (!existsSync(RUNTIME_DIR)) {
-      mkdirSync(RUNTIME_DIR, { recursive: true });
-    }
-
-    state.lastUpdated = new Date().toISOString();
-    writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
-    persistenceFailed = false;
-  } catch {
-    // Keep adaptive throttling alive even if persistence is unavailable.
-    persistenceFailed = true;
-  }
-}
-
-function ensureState(): AdaptiveControllerState {
-  if (!state) {
-    state = loadState();
-    pruneLearnedLimits(state);
-  }
-  return state;
-}
-
-function withStateWriteLock<T>(mutator: (draft: AdaptiveControllerState) => T): T {
-  try {
-    return withFileLock(STATE_FILE, () => {
-      const draft = loadState();
-      pruneLearnedLimits(draft);
-      state = draft;
-      const result = mutator(draft);
-      pruneLearnedLimits(draft);
-      saveState();
-      return result;
-    }, STATE_LOCK_OPTIONS);
-  } catch {
-    // Locking is best-effort. Fall back to local mutation so restricted
-    // environments (tests/sandbox) keep working.
-    const draft = loadState();
-    pruneLearnedLimits(draft);
-    state = draft;
-    const result = mutator(draft);
-    pruneLearnedLimits(draft);
-    saveState();
-    return result;
-  }
-}
-
-function clampConcurrency(value: number): number {
-  return Math.max(MIN_CONCURRENCY, Math.min(MAX_CONCURRENCY, Math.floor(value)));
-}
-
-function toTimestampMs(value: string | null | undefined): number | undefined {
-  if (!value) return undefined;
-  const parsed = new Date(value).getTime();
-  if (!Number.isFinite(parsed)) return undefined;
-  return parsed;
-}
-
-function getLimitActivityMs(limit: LearnedLimit): number {
-  const last429Ms = toTimestampMs(limit.last429At) ?? 0;
-  const lastSuccessMs = toTimestampMs(limit.lastSuccessAt) ?? 0;
-  return Math.max(last429Ms, lastSuccessMs);
-}
-
-function pruneLearnedLimits(currentState: AdaptiveControllerState, nowMs = Date.now()): void {
-  const entries = Object.entries(currentState.limits);
-  if (entries.length === 0) {
-    return;
-  }
-
-  for (const [key] of entries) {
-    if (!isValidLearnedLimitKey(key)) {
-      delete currentState.limits[key];
-    }
-  }
-
-  for (const [key, limit] of entries) {
-    const isRecovering = limit.recoveryScheduled || limit.concurrency < limit.originalConcurrency;
-    if (isRecovering) continue;
-    const lastActivityMs = getLimitActivityMs(limit);
-    if (lastActivityMs > 0 && nowMs - lastActivityMs > LEARNED_LIMIT_STALE_MS) {
-      delete currentState.limits[key];
-    }
-  }
-
-  const afterTtlEntries = Object.entries(currentState.limits);
-  if (afterTtlEntries.length <= MAX_LEARNED_LIMITS) {
-    return;
-  }
-
-  const overflow = afterTtlEntries.length - MAX_LEARNED_LIMITS;
-  const byOldestActivity = afterTtlEntries
-    .map(([key, limit]) => {
-      const activityMs = getLimitActivityMs(limit);
-      return {
-        key,
-        // activity=0 (no history yet) should be treated as recent and pruned last.
-        activityMs: activityMs > 0 ? activityMs : Number.MAX_SAFE_INTEGER,
-      };
-    })
-    .sort((a, b) => a.activityMs - b.activityMs)
-    .slice(0, overflow);
-
-  for (const candidate of byOldestActivity) {
-    delete currentState.limits[candidate.key];
-  }
-}
-
-function scheduleRecovery(provider: string, model: string): void {
-  if (!state) return;
-
-  const key = tryBuildKey(provider, model);
-  if (!key) return;
-  const limit = state.limits[key];
-  if (!limit) return;
-
-  // Already at or above original, no recovery needed
-  if (limit.concurrency >= limit.originalConcurrency) {
-    limit.recoveryScheduled = false;
-    return;
-  }
-
-  limit.recoveryScheduled = true;
-}
-
-function processRecovery(): void {
-  withStateWriteLock((currentState) => {
-    let changed = false;
-
-    const now = Date.now();
-    const recoveryIntervalMs = currentState.recoveryIntervalMs;
-
-    for (const [, limit] of Object.entries(currentState.limits)) {
-      // Skip if not scheduled for recovery
-      if (!limit.recoveryScheduled) continue;
-
-      // Skip if below original
-      if (limit.concurrency >= limit.originalConcurrency) {
-        limit.recoveryScheduled = false;
-        continue;
-      }
-
-      // Check if enough time has passed since last 429
-      const last429 = limit.last429At ? new Date(limit.last429At).getTime() : 0;
-      if (now - last429 < recoveryIntervalMs) {
-        continue;
-      }
-
-      // Check if we've had recent successes
-      const lastSuccess = limit.lastSuccessAt ? new Date(limit.lastSuccessAt).getTime() : 0;
-      if (now - lastSuccess > recoveryIntervalMs) {
-        // No recent success, wait more
-        continue;
-      }
-
-      // Apply recovery
-      const newConcurrency = clampConcurrency(
-        Math.ceil(limit.concurrency * currentState.recoveryFactor)
-      );
-
-      if (newConcurrency > limit.concurrency) {
-        limit.concurrency = newConcurrency;
-        changed = true;
-
-        // Check if fully recovered
-        if (limit.concurrency >= limit.originalConcurrency) {
-          limit.concurrency = limit.originalConcurrency;
-          limit.recoveryScheduled = false;
-          limit.consecutive429Count = 0;
-        }
-      }
-    }
-
-    if (!changed) {
-      // Keep the fast path cheap when no update was needed.
-      return;
-    }
-  });
+function parseProviderModel(key: string): { provider: string; model: string } | null {
+  const index = key.indexOf(":");
+  if (index <= 0 || index >= key.length - 1) return null;
+  return {
+    provider: key.slice(0, index),
+    model: key.slice(index + 1),
+  };
 }
 
 // ============================================================================
-// Public API
+// Core Functions
 // ============================================================================
-
- /**
-  * アダプティブコントローラーを初期化する。
-  * @returns {void} 戻り値なし
-  */
-export function initAdaptiveController(): void {
-  if (state) return;
-
-  state = loadState();
-
-  // Start recovery timer
-  if (!recoveryTimer) {
-    recoveryTimer = setInterval(() => {
-      processRecovery();
-    }, RECOVERY_CHECK_INTERVAL_MS);
-    recoveryTimer.unref();
-  }
-}
 
 /**
- * コントローラーをシャットダウン
- * @summary シャットダウン
+ * 設定値を取得
+ * @summary 設定値取得
+ * @returns RuntimeConfigの設定値
  */
-export function shutdownAdaptiveController(): void {
-  if (recoveryTimer) {
-    clearInterval(recoveryTimer);
-    recoveryTimer = null;
-  }
-  state = null;
-  persistenceFailed = false;
+function getConfig(): RuntimeConfig {
+  return getRuntimeConfig();
 }
 
 /**
- * プロバイダーとモデルの有効な同時実行制限を取得
+ * 制限値を取得（外部公開API）
  * @summary 制限値取得
- * @param provider プロバイダ名
- * @param model モデル名
- * @param presetLimit 事前設定された制限値
- * @returns 有効な制限値
+ * @param provider - APIプロバイダー名
+ * @param model - モデル名
+ * @param defaultLimit - デフォルトの制限値
+ * @returns 現在の制限値（学習済みまたはデフォルト）
  */
-export function getEffectiveLimit(
+export function getLimit(
   provider: string,
   model: string,
-  presetLimit: number
+  defaultLimit: number,
 ): number {
   const key = tryBuildKey(provider, model);
-  if (!key) {
-    return clampConcurrency(presetLimit);
-  }
-  const currentState = ensureState();
+  if (!key) return Math.max(MIN_CONCURRENCY, Math.min(defaultLimit, MAX_CONCURRENCY));
 
-  // Check if we have a learned limit
-  const learned = currentState.limits[key];
-  if (learned) {
-    // Apply global multiplier
-    const adjusted = Math.floor(learned.concurrency * currentState.globalMultiplier);
-    return clampConcurrency(adjusted);
-  }
+  const parsed = parseProviderModel(key);
+  if (!parsed) return Math.max(MIN_CONCURRENCY, Math.min(defaultLimit, MAX_CONCURRENCY));
 
-  // Create initial entry with preset atomically to avoid lost updates across instances.
-  return withStateWriteLock((draft) => {
-    if (!draft.limits[key]) {
-      draft.limits[key] = {
-        concurrency: presetLimit,
-        originalConcurrency: presetLimit,
-        last429At: null,
-        consecutive429Count: 0,
-        total429Count: 0,
-        lastSuccessAt: null,
-        recoveryScheduled: false,
-      };
-    }
-    return clampConcurrency(Math.floor(draft.limits[key].concurrency * draft.globalMultiplier));
-  });
+  const r = getRepo();
+  const limit = r.getLimit(parsed.provider, parsed.model, defaultLimit);
+  
+  return Math.max(MIN_CONCURRENCY, Math.min(limit.concurrency, MAX_CONCURRENCY));
 }
 
 /**
- * レート制限イベントを記録
- * @summary イベント記録
- * @param event レート制限イベント
- */
-export function recordEvent(event: RateLimitEvent): void {
-  const key = tryBuildKey(event.provider, event.model);
-  if (!key) {
-    return;
-  }
-
-  withStateWriteLock((currentState) => {
-    // Ensure entry exists
-    if (!currentState.limits[key]) {
-      currentState.limits[key] = {
-        concurrency: 4, // Default, will be updated
-        originalConcurrency: 4,
-        last429At: null,
-        consecutive429Count: 0,
-        total429Count: 0,
-        lastSuccessAt: null,
-        recoveryScheduled: false,
-      };
-    }
-
-    const limit = currentState.limits[key];
-
-    switch (event.type) {
-      case "429": {
-        // Reduce concurrency aggressively
-        const newConcurrency = clampConcurrency(
-          Math.floor(limit.concurrency * currentState.reductionFactor)
-        );
-        limit.concurrency = newConcurrency;
-        limit.last429At = event.timestamp;
-        limit.consecutive429Count += 1;
-        limit.total429Count += 1;
-        limit.recoveryScheduled = false; // Reset recovery on new 429
-
-        // Update historical data for predictive analysis
-        updateHistorical429s(limit, event.provider, event.model);
-
-        // If multiple consecutive 429s, be more aggressive
-        if (limit.consecutive429Count >= 3) {
-          // 3回以上連続429の場合、さらに50%削減
-          limit.concurrency = clampConcurrency(Math.floor(limit.concurrency * 0.5));
-        }
-        if (limit.consecutive429Count >= 5) {
-          // 5回以上連続429の場合、最小値に
-          limit.concurrency = MIN_CONCURRENCY;
-        }
-
-        break;
-      }
-
-      case "success": {
-        limit.lastSuccessAt = event.timestamp;
-        // Reset consecutive count on success
-        limit.consecutive429Count = 0;
-
-        // Schedule recovery if below original
-        if (limit.concurrency < limit.originalConcurrency) {
-          scheduleRecovery(event.provider, event.model);
-        }
-        break;
-      }
-
-      case "timeout": {
-        // Timeout might indicate rate limiting without explicit 429
-        // Be conservative
-        if (limit.consecutive429Count > 0) {
-          limit.concurrency = clampConcurrency(
-            Math.floor(limit.concurrency * 0.9)
-          );
-        }
-        break;
-      }
-
-      case "error": {
-        // Non-rate-limit errors don't affect limits
-        break;
-      }
-    }
-  });
-}
-
-/**
- * 429エラーを記録
+ * 429エラーを記録して制限値を下げる
  * @summary 429エラー記録
- * @param provider プロバイダ名
- * @param model モデル名
- * @param details 詳細情報
+ * @param provider - APIプロバイダー名
+ * @param model - モデル名
+ * @param defaultLimit - デフォルトの制限値
  */
-export function record429(provider: string, model: string, details?: string): void {
-  recordEvent({
-    provider,
-    model,
-    type: "429",
-    timestamp: new Date().toISOString(),
-    details,
-  });
+export function record429(
+  provider: string,
+  model: string,
+  defaultLimit: number,
+): void {
+  const key = tryBuildKey(provider, model);
+  if (!key) return;
+
+  const parsed = parseProviderModel(key);
+  if (!parsed) return;
+
+  const config = getConfig();
+  const r = getRepo();
+  
+  r.record429(parsed.provider, parsed.model, defaultLimit, config.reductionFactor);
 }
 
 /**
  * 成功を記録
- * @summary 成功を記録
- * @param provider プロバイダ名
- * @param model モデル名
+ * @summary 成功記録
+ * @param provider - APIプロバイダー名
+ * @param model - モデル名
  */
 export function recordSuccess(provider: string, model: string): void {
-  recordEvent({
-    provider,
-    model,
-    type: "success",
-    timestamp: new Date().toISOString(),
-  });
-}
-
-/**
- * 適応制御の状態を取得する
- * @summary 状態取得
- * @returns {AdaptiveControllerState} 現在の状態オブジェクト
- */
-export function getAdaptiveState(): AdaptiveControllerState {
-  return { ...ensureState() };
-}
-
-/**
- * 学習した制限を取得する
- * @summary 制限取得
- * @param provider プロバイダ名
- * @param model モデル名
- * @returns {LearnedLimit | undefined} 学習した制限オブジェクト
- */
-export function getLearnedLimit(provider: string, model: string): LearnedLimit | undefined {
-  const key = tryBuildKey(provider, model);
-  if (!key) return undefined;
-  const currentState = ensureState();
-  return currentState.limits[key] ? { ...currentState.limits[key] } : undefined;
-}
-
-/**
- * 学習した制限をリセットする
- * @summary 制限リセット
- * @param provider プロバイダ名
- * @param model モデル名
- * @param {number} [newLimit] 新しい制限値（任意）
- * @returns {void}
- */
-export function resetLearnedLimit(provider: string, model: string, newLimit?: number): void {
   const key = tryBuildKey(provider, model);
   if (!key) return;
-  withStateWriteLock((currentState) => {
-    if (!currentState.limits[key]) return;
-    const limit = newLimit ?? currentState.limits[key].originalConcurrency;
-    currentState.limits[key] = {
-      concurrency: limit,
-      originalConcurrency: limit,
-      last429At: null,
-      consecutive429Count: 0,
-      total429Count: 0,
-      lastSuccessAt: null,
-      recoveryScheduled: false,
-    };
-  });
+
+  const parsed = parseProviderModel(key);
+  if (!parsed) return;
+
+  const r = getRepo();
+  r.recordSuccess(parsed.provider, parsed.model);
 }
 
 /**
- * 全ての学習制限をリセットする
- * @summary 全制限リセット
- * @returns {void}
+ * 結果を記録（統合API）
+ * @summary 結果記録
+ * @param provider - APIプロバイダー名
+ * @param model - モデル名
+ * @param defaultLimit - デフォルトの制限値
+ * @param success - 成功したかどうか
+ * @param is429 - 429エラーだったかどうか
  */
-export function resetAllLearnedLimits(): void {
-  withStateWriteLock((currentState) => {
-    currentState.limits = {};
-    currentState.globalMultiplier = 1.0;
-  });
-}
-
-/**
- * グローバル乗数を設定する
- * @summary グローバル乗数設定
- * @param multiplier 設定する乗数
- * @returns {void}
- */
-export function setGlobalMultiplier(multiplier: number): void {
-  withStateWriteLock((currentState) => {
-    // NaN ガード: NaNの場合は1.0（デフォルト）に設定
-    const safeMultiplier = Number.isFinite(multiplier) ? multiplier : 1.0;
-    currentState.globalMultiplier = Math.max(0.1, Math.min(2.0, safeMultiplier));
-  });
-}
-
-/**
- * 復元パラメータを設定
- * @summary 復元パラメータを設定
- * @param options 設定オプション
- * @param options.recoveryIntervalMs 復元間隔（ミリ秒）
- * @param options.reductionFactor 低減係数
- * @param options.recoveryFactor 復元係数
- * @returns なし
- */
-export function configureRecovery(options: {
-  recoveryIntervalMs?: number;
-  reductionFactor?: number;
-  recoveryFactor?: number;
-}): void {
-  withStateWriteLock((currentState) => {
-    if (options.recoveryIntervalMs !== undefined) {
-      currentState.recoveryIntervalMs = Math.max(60_000, options.recoveryIntervalMs);
-    }
-    if (options.reductionFactor !== undefined) {
-      currentState.reductionFactor = Math.max(0.3, Math.min(0.9, options.reductionFactor));
-    }
-    if (options.recoveryFactor !== undefined) {
-      currentState.recoveryFactor = Math.max(1.0, Math.min(1.5, options.recoveryFactor));
-    }
-  });
-}
-
-/**
- * レート制限エラー判定
- * @summary レート制限エラー判定
- * @param error エラーオブジェクト
- * @returns レート制限エラーの場合true
- */
-export function isRateLimitError(error: unknown): boolean {
-  if (!error) return false;
-
-  let message: string;
-  try {
-    message = String(error).toLowerCase();
-  } catch {
-    return false;
+export function recordResult(
+  provider: string,
+  model: string,
+  defaultLimit: number,
+  success: boolean,
+  is429: boolean,
+): void {
+  if (is429) {
+    record429(provider, model, defaultLimit);
+  } else if (success) {
+    recordSuccess(provider, model);
   }
-  const indicators = [
-    "429",
-    "rate limit",
-    "too many requests",
-    "quota exceeded",
-    "rate_limit",
-    "ratelimit",
-    "requests per",
-    "tokens per",
-    "capacity exceeded",
-    "throttl",
-  ];
-
-  return indicators.some((indicator) => message.includes(indicator));
 }
 
 /**
- * 適応サマリーを整形
- * @summary 適応サマリーを整形
- * @returns 整形されたサマリー文字列
+ * 全制限値を取得（デバッグ・監視用）
+ * @summary 全制限値取得
+ * @returns 全ての学習済み制限値
  */
-export function formatAdaptiveSummary(): string {
-  const currentState = ensureState();
-  const lines: string[] = [
-    `Adaptive Rate Controller`,
-    `========================`,
-    ``,
-    `Global Multiplier: ${currentState.globalMultiplier.toFixed(2)}`,
-    `Recovery Interval: ${Math.round(currentState.recoveryIntervalMs / 1000)}s`,
-    `Reduction Factor: ${currentState.reductionFactor.toFixed(2)}`,
-    `Recovery Factor: ${currentState.recoveryFactor.toFixed(2)}`,
-    `Predictive: ${currentState.predictiveEnabled ? "enabled" : "disabled"} (threshold: ${currentState.predictiveThreshold})`,
-    ``,
-    `Learned Limits:`,
-  ];
-
-  if (Object.keys(currentState.limits).length === 0) {
-    lines.push(`  (none yet)`);
-  } else {
-    const entries = Object.entries(currentState.limits)
-      .filter(([key]) => isValidLearnedLimitKey(key))
-      .sort((a, b) => a[0].localeCompare(b[0]));
-    const shown = entries.slice(0, MAX_SUMMARY_LEARNED_LIMITS);
-    const hidden = Math.max(0, entries.length - shown.length);
-    for (const [key, limit] of shown) {
-      const status =
-        limit.concurrency < limit.originalConcurrency
-          ? `REDUCED (${limit.concurrency}/${limit.originalConcurrency})`
-          : `OK (${limit.concurrency})`;
-      const recent429 = limit.last429At
-        ? `last429: ${Math.round((Date.now() - new Date(limit.last429At).getTime()) / 1000)}s ago`
-        : "no 429";
-      const prediction = limit.predicted429Probability
-        ? `, 429_prob: ${(limit.predicted429Probability * 100).toFixed(1)}%`
-        : "";
-      lines.push(`  ${key}: ${status}, ${recent429}, total: ${limit.total429Count}${prediction}`);
-    }
-    if (hidden > 0) {
-      lines.push(`  ... ${hidden} entries hidden`);
+export function getAllLimits(): Record<string, LearnedLimit> {
+  const r = getRepo();
+  const all = r.getAllLimits();
+  
+  const result: Record<string, LearnedLimit> = {};
+  for (const [key, limit] of Object.entries(all)) {
+    if (isValidLearnedLimitKey(key)) {
+      result[key] = limit;
     }
   }
-
-  return lines.join("\n");
+  
+  return result;
 }
 
-// ============================================================================
-// Predictive Scheduling
-// ============================================================================
-
 /**
- * 429確率を分析
- * @summary 429確率を分析
- * @param provider プロバイダ名
- * @param model モデル名
- * @returns 429エラーの確率
+ * 特定の制限値を取得
+ * @summary 制限値詳細取得
+ * @param provider - APIプロバイダー名
+ * @param model - モデル名
+ * @param defaultLimit - デフォルトの制限値
+ * @returns 学習済み制限値またはnull
  */
-export function analyze429Probability(provider: string, model: string): number {
+export function getLearnedLimit(
+  provider: string,
+  model: string,
+  defaultLimit: number,
+): LearnedLimit | null {
   const key = tryBuildKey(provider, model);
-  if (!key) return 0;
-  const currentState = ensureState();
-  const limit = currentState.limits[key];
+  if (!key) return null;
 
-  if (!limit || !limit.historical429s || limit.historical429s.length === 0) {
-    return 0;
-  }
+  const parsed = parseProviderModel(key);
+  if (!parsed) return null;
 
+  const r = getRepo();
+  return r.getLimit(parsed.provider, parsed.model, defaultLimit);
+}
+
+/**
+ * 古い制限値を削除
+ * @summary 古い制限値削除
+ * @param maxAgeMs - 最大経過時間（ミリ秒）
+ * @returns 削除されたエントリ数
+ */
+export function pruneOldLimits(maxAgeMs: number = LEARNED_LIMIT_STALE_MS): number {
+  const r = getRepo();
+  return r.pruneOldEntries(maxAgeMs);
+}
+
+/**
+ * 全制限値をクリア
+ * @summary 全制限値クリア
+ */
+export function clearAllLimits(): void {
+  const r = getRepo();
+  r.clearAll();
+}
+
+// ============================================================================
+// Recovery
+// ============================================================================
+
+/**
+ * 回復チェックを実行
+ * @summary 回復チェック実行
+ */
+function runRecoveryCheck(): void {
+  const config = getConfig();
+  const r = getRepo();
+  
+  const allLimits = r.getAllLimits();
   const now = Date.now();
-  const recentWindowMs = 10 * 60 * 1000; // 10 minutes
-  const mediumWindowMs = 30 * 60 * 1000; // 30 minutes
-  const hourWindowMs = 60 * 60 * 1000; // 1 hour
-
-  let recentCount = 0;
-  let mediumCount = 0;
-  let hourCount = 0;
-
-  for (const timestamp of limit.historical429s) {
-    const time = new Date(timestamp).getTime();
-    const age = now - time;
-
-    if (age < recentWindowMs) recentCount++;
-    if (age < mediumWindowMs) mediumCount++;
-    if (age < hourWindowMs) hourCount++;
+  
+  for (const [key, limit] of Object.entries(allLimits)) {
+    if (!limit.recoveryScheduled) continue;
+    if (!limit.last429At) continue;
+    
+    const last429Time = new Date(limit.last429At).getTime();
+    if (now - last429Time < config.recoveryIntervalMs) continue;
+    
+    const parsed = parseProviderModel(key);
+    if (!parsed) continue;
+    
+    // 回復を実行
+    r.updateLimit(parsed.provider, parsed.model, {
+      concurrency: Math.min(
+        Math.ceil(limit.concurrency * config.recoveryFactor),
+        limit.originalConcurrency,
+      ),
+      recoveryScheduled: false,
+    });
   }
-
-  // Weighted probability calculation
-  // Recent 429s have higher weight
-  const recentWeight = recentCount * 0.4;
-  const mediumWeight = mediumCount * 0.15;
-  const hourWeight = hourCount * 0.05;
-
-  // Also consider consecutive 429s
-  const consecutiveWeight = limit.consecutive429Count * 0.2;
-
-  // Calculate base probability
-  const probability = recentWeight + mediumWeight + hourWeight + consecutiveWeight;
-
-  // Cap at 1.0
-  return Math.min(1.0, probability);
 }
 
 /**
- * 予測分析を取得
- * @summary 予測分析を取得
- * @param provider プロバイダ名
- * @param model モデル名
- * @returns 予測分析結果
+ * 回復タイマーを開始
+ * @summary 回復タイマー開始
  */
-export function getPredictiveAnalysis(provider: string, model: string): PredictiveAnalysis {
-  const key = tryBuildKey(provider, model);
-  if (!key) {
-    return {
-      provider,
-      model,
-      predicted429Probability: 0,
-      shouldProactivelyThrottle: false,
-      recommendedConcurrency: 4,
-      confidence: 0,
-    };
-  }
-  const currentState = ensureState();
-  const limit = currentState.limits[key];
-
-  const probability = analyze429Probability(provider, model);
-  const shouldProactivelyThrottle =
-    currentState.predictiveEnabled &&
-    probability > currentState.predictiveThreshold;
-
-  // Calculate recommended concurrency
-  let recommendedConcurrency = limit?.concurrency ?? 4;
-
-  if (shouldProactivelyThrottle) {
-    // Reduce concurrency proportionally to probability
-    const reductionFactor = 1 - probability * 0.5; // Up to 50% reduction
-    recommendedConcurrency = Math.floor(recommendedConcurrency * reductionFactor);
-    recommendedConcurrency = Math.max(1, recommendedConcurrency);
-  }
-
-  // Determine next risk window based on historical patterns
-  let nextRiskWindow: { start: Date; end: Date } | undefined;
-  if (limit?.historical429s && limit.historical429s.length >= 3) {
-    // Find time intervals between 429s
-    const timestamps = limit.historical429s
-      .map((t) => new Date(t).getTime())
-      .sort((a, b) => a - b);
-
-    if (timestamps.length >= 2) {
-      const intervals: number[] = [];
-      for (let i = 1; i < timestamps.length; i++) {
-        intervals.push(timestamps[i] - timestamps[i - 1]);
-      }
-
-      const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-
-      // Predict next risk window
-      const last429Time = timestamps[timestamps.length - 1];
-      const nextPredicted429 = last429Time + avgInterval;
-
-      nextRiskWindow = {
-        start: new Date(nextPredicted429 - avgInterval * 0.2),
-        end: new Date(nextPredicted429 + avgInterval * 0.2),
-      };
-    }
-  }
-
-  // Calculate confidence based on data availability
-  const dataPoints = limit?.historical429s?.length ?? 0;
-  const confidence = Math.min(1.0, dataPoints / 10); // Full confidence at 10+ data points
-
-  return {
-    provider,
-    model,
-    predicted429Probability: probability,
-    shouldProactivelyThrottle,
-    recommendedConcurrency,
-    nextRiskWindow,
-    confidence,
-  };
+export function startRecoveryTimer(): void {
+  if (recoveryTimer) return;
+  
+  recoveryTimer = setInterval(() => {
+    void withStateMutex(async () => {
+      runRecoveryCheck();
+    });
+  }, RECOVERY_CHECK_INTERVAL_MS);
+  
+  // アンリファレンス防止
+  recoveryTimer.unref?.();
 }
 
 /**
- * スロットル要否判定
- * @summary 先制的スロットル判定
- * @param provider プロバイダ名
- * @param model モデル名
- * @returns スロットルすべきか
+ * 回復タイマーを停止
+ * @summary 回復タイマー停止
  */
-export function shouldProactivelyThrottle(provider: string, model: string): boolean {
-  const analysis = getPredictiveAnalysis(provider, model);
-  return analysis.shouldProactivelyThrottle;
-}
-
-/**
- * 予測並列数を取得
- * @summary 推奨並列数を取得
- * @param provider プロバイダ名
- * @param model モデル名
- * @param currentConcurrency 現在の並列数
- * @returns 推奨並列数
- */
-export function getPredictiveConcurrency(
-  provider: string,
-  model: string,
-  currentConcurrency: number
-): number {
-  const analysis = getPredictiveAnalysis(provider, model);
-
-  if (analysis.shouldProactivelyThrottle) {
-    return Math.min(currentConcurrency, analysis.recommendedConcurrency);
+export function stopRecoveryTimer(): void {
+  if (recoveryTimer) {
+    clearInterval(recoveryTimer);
+    recoveryTimer = null;
   }
-
-  return currentConcurrency;
-}
-
-/**
- * Update historical 429 data (called on 429 events).
- * @param limit - Learned limit object to update
- * @param provider - Provider name for probability analysis
- * @param model - Model name for probability analysis
- */
-function updateHistorical429s(limit: LearnedLimit, provider: string, model: string): void {
-  if (!limit.historical429s) {
-    limit.historical429s = [];
-  }
-
-  limit.historical429s.push(new Date().toISOString());
-
-  // Keep only last 50 entries to prevent unbounded growth
-  if (limit.historical429s.length > 50) {
-    limit.historical429s = limit.historical429s.slice(-50);
-  }
-
-  // Update predicted probability with correct provider/model
-  limit.predicted429Probability = analyze429Probability(provider, model);
-}
-
-/**
- * 予測機能の有効化
- * @summary 予測機能を有効化
- * @param enabled 有効化するか
- * @returns なし
- */
-export function setPredictiveEnabled(enabled: boolean): void {
-  withStateWriteLock((currentState) => {
-    currentState.predictiveEnabled = enabled;
-  });
-}
-
-/**
- * 予測閾値を設定
- * @summary 予測閾値を設定
- * @param threshold 設定する閾値
- * @returns なし
- */
-export function setPredictiveThreshold(threshold: number): void {
-  withStateWriteLock((currentState) => {
-    currentState.predictiveThreshold = Math.max(0, Math.min(1, threshold));
-  });
 }
 
 // ============================================================================
-// Dynamic Parallelism Integration
+// Initialization
+// ============================================================================
+
+// モジュール読み込み時に回復タイマーを自動開始
+startRecoveryTimer();
+
+// ============================================================================
+// Summary
 // ============================================================================
 
 /**
- * スケジューラ対応制限取得
- * @summary 同時実行制限を取得
- * @param provider プロバイダ名
- * @param model モデル名
- * @param baseLimit 基本制限値
- * @returns 計算された制限値
+ * 制限値サマリーを取得（ログ出力用）
+ * @summary 制限値サマリー取得
+ * @returns サマリー文字列
  */
-export function getSchedulerAwareLimit(
-  provider: string,
-  model: string,
-  baseLimit?: number
-): number {
-  // Get the effective limit from adaptive controller
-  const effectiveLimit = getEffectiveLimit(provider, model, baseLimit ?? 4);
-
-  // Apply predictive throttling
-  const predictiveLimit = getPredictiveConcurrency(provider, model, effectiveLimit);
-
-  return predictiveLimit;
-}
-
-/**
- * スケジューラに429エラーを通知する
- * @summary 429エラー通知
- * @param provider プロバイダ名
- * @param model モデル名
- * @param details 詳細情報（任意）
- * @returns なし
- */
-export function notifyScheduler429(
-  provider: string,
-  model: string,
-  details?: string
-): void {
-  record429(provider, model, details);
-
-  // Also update dynamic parallelism adjuster
-  try {
-    // Lazy import to avoid circular dependency
-    const { adjustForError } = require("./dynamic-parallelism");
-    adjustForError(provider, model, "429");
-  } catch {
-    // Ignore if dynamic-parallelism module not available
+export function getLimitsSummary(): string {
+  const r = getRepo();
+  const allLimits = r.getAllLimits();
+  const entries = Object.entries(allLimits);
+  
+  if (entries.length === 0) {
+    return "No learned limits yet.";
   }
-}
-
-/**
- * スケジューラにタイムアウトを通知する
- * @summary タイムアウト通知
- * @param provider プロバイダ名
- * @param model モデル名
- * @returns なし
- */
-export function notifySchedulerTimeout(provider: string, model: string): void {
-  recordEvent({
-    provider,
-    model,
-    type: "timeout",
-    timestamp: new Date().toISOString(),
-  });
-
-  // Also update dynamic parallelism adjuster
-  try {
-    const { adjustForError } = require("./dynamic-parallelism");
-    adjustForError(provider, model, "timeout");
-  } catch {
-    // Ignore if dynamic-parallelism module not available
+  
+  const lines: string[] = [];
+  lines.push(`Learned limits (${Math.min(entries.length, MAX_SUMMARY_LEARNED_LIMITS)}/${entries.length} shown):`);
+  
+  // Sort by total429Count desc
+  const sorted = entries
+    .sort((a, b) => (b[1].total429Count || 0) - (a[1].total429Count || 0))
+    .slice(0, MAX_SUMMARY_LEARNED_LIMITS);
+  
+  for (const [key, limit] of sorted) {
+    const indicator = limit.consecutive429Count > 0 ? "⚠️" : "✓";
+    lines.push(
+      `  ${indicator} ${key}: concurrency=${limit.concurrency}, ` +
+      `original=${limit.originalConcurrency}, ` +
+      `429s=${limit.total429Count}`,
+    );
   }
-}
-
-/**
- * スケジューラに成功を通知する
- * @summary 成功通知
- * @param provider プロバイダ名
- * @param model モデル名
- * @param responseMs レスポンス時間（任意）
- * @returns なし
- */
-export function notifySchedulerSuccess(
-  provider: string,
-  model: string,
-  responseMs?: number
-): void {
-  recordSuccess(provider, model);
-
-  // Also update dynamic parallelism adjuster
-  if (responseMs) {
-    try {
-      const { getParallelismAdjuster } = require("./dynamic-parallelism");
-      const adjuster = getParallelismAdjuster();
-      adjuster.recordSuccess(provider, model, responseMs);
-      adjuster.attemptRecovery(provider, model);
-    } catch {
-      // Ignore if dynamic-parallelism module not available
-    }
-  }
-}
-
-/**
- * レート制限の統合サマリを取得する
- * @summary 統合制限サマリ取得
- * @param provider プロバイダ名
- * @param model モデル名
- * @returns 適応制限、元制限、予測制限、429確率、スロットルフラグ、429回数
- */
-export function getCombinedRateControlSummary(
-  provider: string,
-  model: string
-): {
-  adaptiveLimit: number;
-  originalLimit: number;
-  predictiveLimit: number;
-  predicted429Probability: number;
-  shouldThrottle: boolean;
-  recent429Count: number;
-} {
-  const learnedLimit = getLearnedLimit(provider, model);
-  const analysis = getPredictiveAnalysis(provider, model);
-
-  return {
-    adaptiveLimit: learnedLimit?.concurrency ?? 4,
-    originalLimit: learnedLimit?.originalConcurrency ?? 4,
-    predictiveLimit: analysis.recommendedConcurrency,
-    predicted429Probability: analysis.predicted429Probability,
-    shouldThrottle: analysis.shouldProactivelyThrottle,
-    recent429Count: learnedLimit?.total429Count ?? 0,
-  };
+  
+  return lines.join("\n");
 }

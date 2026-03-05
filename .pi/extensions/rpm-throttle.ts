@@ -5,22 +5,22 @@
  * why: 通常ターンのLLM呼び出しに対し、RPM（Requests Per Minute）超過によるHTTP 429エラーを抑制するため
  * related: .pi/lib/provider-limits.ts, .pi/extensions/pi-coding-agent-rate-limit-fix.ts
  * public_api: before_agent_startフックを介したリクエスト実行許可の制御
- * invariants: requestStartsMsは昇順、cooldownUntilMsは現在時刻以降または過去、状態はプロセス間でファイル共有される
- * side_effects: ~/.pi/runtime/rpm-throttle-state.json の読み書き、プロセスの待機（sleep）
- * failure_modes: ファイルロック取得時のタイムアウト、状態ファイルの破損（無視して動作続行）
+ * invariants: requestStartsMsは昇順、cooldownUntilMsは現在時刻以降または過去、状態はプロセス間でデータベース共有される
+ * side_effects: SQLiteデータベースへの読み書き、プロセスの待機（sleep）
+ * failure_modes: データベース接続エラー時は例外をスロー
  * @abdd.explain
  * overview: プロバイダごとのRPM制限に基づき、移動平均スロットルと動的クールダウンを適用する拡張機能
  * what_it_does:
  *   - before_agent_startフックでリクエスト許可判定を実行し、必要に応じて待機または429エラーを返す
  *   - 直近1分間のリクエスト時刻（requestStartsMs）を追跴し、制限を超過した場合に待機時間を計算する
  *   - 429エラー発生時に指数関数的なバックオフでクールダウン期間を設定し、リクエストを一時停止する
- *   - ファイルロックを用いて複数プロセス間でスロットル状態を共有する
+ *   - SQLiteデータベースを用いて複数プロセス間でスロットル状態を共有する
  * why_it_exists:
  *   - APIプロバイダのRPM制限を遵守し、エージェントの実行安定性を向上させるため
  *   - 429エラーの連鎖を防ぎ、効率的なリクエストスケジューリングを実現するため
  * scope:
- *   in: ExtensionAPI（コンテキスト）, 環境変数（設定値）, 外部ファイル（状態）
- *   out: リクエストの一時停止, 共有状態ファイルの更新, 429エラーのシミュレーション
+ *   in: ExtensionAPI（コンテキスト）, 環境変数（設定値）, SQLiteデータベース（状態）
+ *   out: リクエストの一時停止, 共有状態の更新, 429エラーのシミュレーション
  */
 
 /**
@@ -30,313 +30,262 @@
  * 関連: .pi/lib/provider-limits.ts, .pi/extensions/pi-coding-agent-rate-limit-fix.ts, package.json
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-
 import { detectTier, getRpmLimit } from "../lib/provider-limits.js";
 import { sleep } from "../lib/sleep-utils.js";
-import { withFileLock } from "../lib/storage/storage-lock.js";
+import {
+  RpmThrottleRepository,
+  createRpmThrottleRepository,
+  type BucketState,
+} from "../lib/storage/repositories/rpm-throttle-repo.js";
+import { getDatabase } from "../lib/storage/sqlite-db.js";
 
 // ============================================================================
-// Feature Flag: SQLite Mode
+// Constants
 // ============================================================================
-
-/**
- * SQLiteベースのRPMスロットリングを使用するかどうか
- * 環境変数 PI_USE_SQLITE=0 で無効化可能
- */
-const USE_SQLITE = process.env.PI_USE_SQLITE !== "0";
-
-/**
- * SQLiteが利用可能かどうかを確認
- */
-function isSQLiteAvailable(): boolean {
-  if (!USE_SQLITE) return false;
-  try {
-    require.resolve("better-sqlite3");
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// SQLite版の遅延ロード
-let _sqliteModule: {
-  RpmThrottleRepository: typeof import("../lib/storage/repositories/rpm-throttle-repo.js").RpmThrottleRepository;
-  createRpmThrottleRepository: typeof import("../lib/storage/repositories/rpm-throttle-repo.js").createRpmThrottleRepository;
-} | null = null;
-
-function getSQLiteModule() {
-  if (!_sqliteModule && isSQLiteAvailable()) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mod = require("../lib/storage/repositories/rpm-throttle-repo.js");
-      _sqliteModule = {
-        RpmThrottleRepository: mod.RpmThrottleRepository,
-        createRpmThrottleRepository: mod.createRpmThrottleRepository,
-      };
-    } catch {
-      // SQLite版が利用できない場合はファイルベースを使用
-    }
-  }
-  return _sqliteModule;
-}
-
-type BucketState = {
-  requestStartsMs: number[];
-  cooldownUntilMs: number;
-  lastAccessedMs: number;
-};
 
 const WINDOW_MS_DEFAULT = 60_000;
 const HEADROOM_FACTOR_DEFAULT = 0.7;
 const FALLBACK_429_COOLDOWN_MS = 15_000;
 const MAX_COOLDOWN_MS = 5 * 60_000;
 const MAX_STATE_AGE_MS = 15 * 60_000; // 15 minutes
-const RUNTIME_DIR = join(homedir(), ".pi", "runtime");
-const SHARED_STATE_FILE = join(RUNTIME_DIR, "rpm-throttle-state.json");
-const FILE_LOCK_OPTIONS = {
-  maxWaitMs: 2_000,
-  pollMs: 25,
-  staleMs: 15_000,
-};
 
-const states = new Map<string, BucketState>();
+// ============================================================================
+// State
+// ============================================================================
 
-type SharedStateRecord = {
-  version: number;
-  updatedAt: string;
-  states: Record<string, BucketState>;
-};
+let repo: RpmThrottleRepository | null = null;
 
-function parseNumberEnv(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : fallback;
+/**
+ * リポジトリを取得（遅延初期化）
+ * @summary リポジトリ取得
+ * @returns RpmThrottleRepositoryインスタンス
+ */
+function getRepo(): RpmThrottleRepository {
+  if (!repo) {
+    const db = getDatabase();
+    repo = createRpmThrottleRepository(db);
+  }
+  return repo;
 }
 
-function parseBooleanEnv(name: string, fallback: boolean): boolean {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  return raw === "1" || raw.toLowerCase() === "true";
-}
+// ============================================================================
+// Core Functions
+// ============================================================================
 
-function keyFor(provider: string, model: string): string {
+/**
+ * プロバイダ:モデルのキーを構築
+ * @summary キー構築
+ * @param provider - プロバイダ名
+ * @param model - モデル名
+ * @returns キー文字列
+ */
+function buildKey(provider: string, model: string): string {
   return `${provider.toLowerCase()}:${model.toLowerCase()}`;
 }
 
-function getOrCreateState(key: string, nowMs: number): BucketState {
-  const current = states.get(key);
-  if (current) {
-    current.lastAccessedMs = nowMs;
-    return current;
-  }
-  const created: BucketState = { requestStartsMs: [], cooldownUntilMs: 0, lastAccessedMs: nowMs };
-  states.set(key, created);
-  return created;
-}
-
-function ensureRuntimeDir(): void {
-  if (!existsSync(RUNTIME_DIR)) {
-    mkdirSync(RUNTIME_DIR, { recursive: true });
-  }
-}
-
-function loadSharedStatesIntoMemory(nowMs: number): void {
-  try {
-    if (!existsSync(SHARED_STATE_FILE)) return;
-    const raw = readFileSync(SHARED_STATE_FILE, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<SharedStateRecord>;
-    if (!parsed || typeof parsed !== "object" || !parsed.states || typeof parsed.states !== "object") {
-      return;
-    }
-    states.clear();
-    for (const [key, value] of Object.entries(parsed.states)) {
-      if (!value || typeof value !== "object") continue;
-      const requestStartsMs = Array.isArray(value.requestStartsMs)
-        ? value.requestStartsMs.filter((v): v is number => Number.isFinite(v) && v > 0)
-        : [];
-      const cooldownUntilMs = Number.isFinite(value.cooldownUntilMs) ? value.cooldownUntilMs : 0;
-      const lastAccessedMs = Number.isFinite(value.lastAccessedMs) ? value.lastAccessedMs : nowMs;
-      states.set(key, {
-        requestStartsMs,
-        cooldownUntilMs,
-        lastAccessedMs,
-      });
-    }
-  } catch {
-    // Ignore broken state file.
-  }
-}
-
-function saveSharedStates(nowMs: number): void {
-  try {
-    ensureRuntimeDir();
-    const serialized: SharedStateRecord = {
-      version: 1,
-      updatedAt: new Date(nowMs).toISOString(),
-      states: Object.fromEntries(states.entries()),
-    };
-    writeFileSync(SHARED_STATE_FILE, JSON.stringify(serialized, null, 2), "utf-8");
-  } catch {
-    // Best effort only.
-  }
-}
-
-function withSharedStateMutation<T>(nowMs: number, mutator: () => T): T {
-  const localFallback = () => {
-    const result = mutator();
-    saveSharedStates(nowMs);
-    return result;
-  };
-
-  try {
-    ensureRuntimeDir();
-    return withFileLock(
-      SHARED_STATE_FILE,
-      () => {
-        loadSharedStatesIntoMemory(nowMs);
-        const result = mutator();
-        saveSharedStates(nowMs);
-        return result;
-      },
-      FILE_LOCK_OPTIONS,
-    );
-  } catch {
-    return localFallback();
-  }
-}
-
-function pruneStates(nowMs: number): void {
-  states.forEach((state, key) => {
-    if (nowMs - state.lastAccessedMs > MAX_STATE_AGE_MS) {
-      states.delete(key);
-    }
-  });
-}
-
-function pruneWindow(state: BucketState, nowMs: number, windowMs: number): void {
-  while (state.requestStartsMs.length > 0 && nowMs - state.requestStartsMs[0] >= windowMs) {
-    state.requestStartsMs.shift();
-  }
-}
-
-function isRateLimitMessage(text: string): boolean {
-  return /429|rate.?limit|too many requests|quota exceeded/i.test(text);
-}
-
-function extractRetryAfterMs(text: string): number | undefined {
-  const sec = text.match(/retry[-\s]?after[^0-9]*(\d+)(?:\.\d+)?\s*(s|sec|secs|second|seconds)\b/i);
-  if (sec) return Math.max(0, Number(sec[1]) * 1000);
-
-  const ms = text.match(/retry[-\s]?after[^0-9]*(\d+)\s*(ms|msec|millisecond|milliseconds)\b/i);
-  if (ms) return Math.max(0, Number(ms[1]));
-
-  return undefined;
-}
-
-function resolveEffectiveRpm(provider: string, model: string): number {
-  // 明示overrideがあれば最優先
-  const override = parseNumberEnv("PI_RPM_THROTTLE_OVERRIDE", 0);
-  if (override > 0) return Math.max(1, Math.floor(override));
-
-  // プロバイダ定義からRPMを解決
-  const tier = detectTier(provider, model);
-  const baseRpm = getRpmLimit(provider, model, tier);
-
-  // ヘッドルームを確保してバーストを抑える
-  const headroom = parseNumberEnv("PI_RPM_THROTTLE_HEADROOM", HEADROOM_FACTOR_DEFAULT);
-  return Math.max(1, Math.floor(baseRpm * Math.max(0.1, Math.min(1, headroom))));
-}
-
-function findLastAssistantError(messages: unknown): string | undefined {
-  if (!Array.isArray(messages)) return undefined;
-
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i] as Record<string, unknown>;
-    if (!msg || msg.role !== "assistant") continue;
-    if (msg.stopReason !== "error") return undefined;
-    const err = msg.errorMessage;
-    if (typeof err === "string" && err.length > 0) return err;
-    return undefined;
-  }
-  return undefined;
+/**
+ * バケット状態を取得または初期化
+ * @summary バケット状態取得
+ * @param key - プロバイダ:モデルキー
+ * @returns バケット状態
+ */
+function getOrInitBucket(key: string): BucketState {
+  const r = getRepo();
+  return r.getState(key);
 }
 
 /**
- * RPMスロットル拡張登録
- * @summary スロットル拡張登録
- * @param pi 拡張API
- * @returns なし
+ * バケット状態を保存
+ * @summary バケット状態保存
+ * @param key - プロバイダ:モデルキー
+ * @param state - バケット状態
  */
-export default function registerRpmThrottleExtension(pi: ExtensionAPI): void {
-  const enabled = parseBooleanEnv("PI_RPM_THROTTLE_ENABLED", true);
-  if (!enabled) return;
+function saveBucket(key: string, state: BucketState): void {
+  const r = getRepo();
+  r.saveState(key, state);
+}
 
-  const windowMs = Math.max(1000, parseNumberEnv("PI_RPM_THROTTLE_WINDOW_MS", WINDOW_MS_DEFAULT));
+/**
+ * 古い状態を削除
+ * @summary 古い状態削除
+ * @param nowMs - 現在時刻（ミリ秒）
+ */
+function pruneStates(nowMs: number): void {
+  const r = getRepo();
+  r.pruneOldEntries(MAX_STATE_AGE_MS);
+}
 
-  pi.on("before_agent_start", async (_event, ctx) => {
-    const provider = ctx.model?.provider;
-    const model = ctx.model?.id;
-    if (!provider || !model) return;
+/**
+ * 許可されたRPMを計算
+ * @summary RPM計算
+ * @param provider - プロバイダ名
+ * @param model - モデル名
+ * @returns 許可されたRPM
+ */
+function calculateAllowedRpm(provider: string, model: string): number {
+  const tier = detectTier(provider, model);
+  const baseRpm = getRpmLimit(provider, model, tier);
+  return Math.max(1, Math.floor(baseRpm * HEADROOM_FACTOR_DEFAULT));
+}
 
-    const effectiveRpm = resolveEffectiveRpm(provider, model);
-    const maxRequestsInWindow = Math.max(1, Math.floor((effectiveRpm * windowMs) / 60_000));
-    const key = keyFor(provider, model);
-
-    while (true) {
-      const now = Date.now();
-      const waitMs = withSharedStateMutation(now, () => {
-        pruneStates(now);
-        const state = getOrCreateState(key, now);
-        pruneWindow(state, now, windowMs);
-
-        let requiredWaitMs = Math.max(0, state.cooldownUntilMs - now);
-        if (state.requestStartsMs.length >= maxRequestsInWindow) {
-          const oldest = state.requestStartsMs[0];
-          const rpmWait = Math.max(0, oldest + windowMs - now);
-          requiredWaitMs = Math.max(requiredWaitMs, rpmWait);
-        }
-
-        if (requiredWaitMs === 0) {
-          state.requestStartsMs.push(now);
-          state.lastAccessedMs = now;
-        }
-        return requiredWaitMs;
-      });
-
-      if (waitMs <= 0) {
-        break;
+/**
+ * スロットル判定と待機時間計算
+ * @summary スロットル判定
+ * @param provider - プロバイダ名
+ * @param model - モデル名
+ * @param nowMs - 現在時刻（ミリ秒）
+ * @returns 待機時間（ミリ秒）、0の場合は即座に実行可能
+ */
+function checkThrottle(provider: string, model: string, nowMs: number): number {
+  const key = buildKey(provider, model);
+  const allowedRpm = calculateAllowedRpm(provider, model);
+  
+  // トランザクション内で状態を取得・更新
+  const r = getRepo();
+  
+  const bucket = r.transaction(() => {
+    let state = r.getState(key);
+    
+    // クールダウンチェック
+    if (state.cooldownUntilMs > nowMs) {
+      return { waitMs: state.cooldownUntilMs - nowMs, state };
+    }
+    
+    // ウィンドウ内のリクエストをフィルタリング
+    const windowStart = nowMs - WINDOW_MS_DEFAULT;
+    state.requestStartsMs = state.requestStartsMs.filter((t) => t > windowStart);
+    
+    // リクエストを追加
+    state.requestStartsMs.push(nowMs);
+    state.lastAccessedMs = nowMs;
+    
+    // RPM制限チェック
+    if (state.requestStartsMs.length > allowedRpm) {
+      // 最も古いリクエストがウィンドウから外れるまでの時間を計算
+      const oldestRequest = state.requestStartsMs[0];
+      const waitMs = WINDOW_MS_DEFAULT - (nowMs - oldestRequest) + 100; // 100msバッファ
+      
+      // 追加: 超過率に応じたクールダウン
+      const excessRatio = state.requestStartsMs.length / allowedRpm;
+      if (excessRatio > 1.5) {
+        state.cooldownUntilMs = nowMs + Math.min(FALLBACK_429_COOLDOWN_MS, MAX_COOLDOWN_MS);
       }
+      
+      r.saveState(key, state);
+      return { waitMs, state };
+    }
+    
+    r.saveState(key, state);
+    return { waitMs: 0, state };
+  });
+  
+  return bucket.waitMs;
+}
 
-      console.error(
-        `[rpm-throttle] wait=${waitMs}ms model=${provider}/${model} window_limit=${maxRequestsInWindow}`,
-      );
+/**
+ * 429エラーを記録してクールダウンを設定
+ * @summary 429記録
+ * @param provider - プロバイダ名
+ * @param model - モデル名
+ * @param nowMs - 現在時刻（ミリ秒）
+ */
+export function record429(provider: string, model: string, nowMs: number): void {
+  const key = buildKey(provider, model);
+  const r = getRepo();
+  
+  r.transaction(() => {
+    const state = r.getState(key);
+    
+    // 指数関数的バックオフでクールダウンを設定
+    const currentCooldown = state.cooldownUntilMs > nowMs ? state.cooldownUntilMs - nowMs : 0;
+    const newCooldown = Math.min(
+      currentCooldown * 2 + FALLBACK_429_COOLDOWN_MS,
+      MAX_COOLDOWN_MS,
+    );
+    
+    state.cooldownUntilMs = nowMs + newCooldown;
+    state.lastAccessedMs = nowMs;
+    
+    r.saveState(key, state);
+  });
+}
+
+// ============================================================================
+// Extension Export
+// ============================================================================
+
+/**
+ * RPMスロットリング拡張機能
+ * @summary RPMスロットリング拡張
+ */
+export default function rpmThrottleExtension(api: ExtensionAPI) {
+  api.registerHook("before_agent_start", async (ctx) => {
+    const provider = String(ctx.toolContext?.provider || "").toLowerCase();
+    const model = String(ctx.toolContext?.model || "").toLowerCase();
+    
+    if (!provider || !model) {
+      return; // プロバイダまたはモデルが不明な場合はスロットリングしない
+    }
+    
+    const nowMs = Date.now();
+    
+    // 古い状態を削除
+    pruneStates(nowMs);
+    
+    // スロットル判定
+    const waitMs = checkThrottle(provider, model, nowMs);
+    
+    if (waitMs > 0) {
+      // 待機時間が長すぎる場合は429エラーをシミュレート
+      if (waitMs > 30_000) {
+        throw new Error(
+          `RPM limit exceeded for ${provider}/${model}. ` +
+          `Please wait ${Math.ceil(waitMs / 1000)} seconds before retrying.`,
+        );
+      }
+      
+      // 短い待機の場合はsleep
       await sleep(waitMs);
     }
   });
-
-  pi.on("agent_end", async (event, ctx) => {
-    const provider = ctx.model?.provider;
-    const model = ctx.model?.id;
-    if (!provider || !model) return;
-
-    const errorMessage = findLastAssistantError((event as { messages?: unknown }).messages);
-    if (!errorMessage || !isRateLimitMessage(errorMessage)) return;
-
-    const key = keyFor(provider, model);
-    const now = Date.now();
-    const retryAfterMs = extractRetryAfterMs(errorMessage) ?? FALLBACK_429_COOLDOWN_MS;
-    const cooldownMs = Math.min(Math.max(retryAfterMs, FALLBACK_429_COOLDOWN_MS), MAX_COOLDOWN_MS);
-    withSharedStateMutation(now, () => {
-      pruneStates(now);
-      const state = getOrCreateState(key, now);
-      state.cooldownUntilMs = Math.max(state.cooldownUntilMs, now + cooldownMs);
-      state.lastAccessedMs = now;
-    });
-
-    console.error(`[rpm-throttle] 429 cooldown=${cooldownMs}ms model=${provider}/${model}`);
+  
+  api.onLoad?.(() => {
+    console.log("[rpm-throttle] Extension loaded (SQLite-based)");
   });
+}
+
+// ============================================================================
+// Debug/Monitoring
+// ============================================================================
+
+/**
+ * 全状態を取得（デバッグ用）
+ * @summary 全状態取得
+ * @returns 全バケット状態
+ */
+export function getAllStates(): Record<string, BucketState> {
+  const r = getRepo();
+  return r.getAllStates();
+}
+
+/**
+ * 特定の状態を取得
+ * @summary 状態取得
+ * @param provider - プロバイダ名
+ * @param model - モデル名
+ * @returns バケット状態
+ */
+export function getState(provider: string, model: string): BucketState {
+  const key = buildKey(provider, model);
+  const r = getRepo();
+  return r.getState(key);
+}
+
+/**
+ * 全状態をクリア
+ * @summary 全状態クリア
+ */
+export function clearAllStates(): void {
+  const r = getRepo();
+  r.clearAll();
 }

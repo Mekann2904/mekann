@@ -26,6 +26,9 @@ import type { PiDatabase } from "../sqlite-db.js";
 import { safeParseJson, safeStringifyJson, timestampNow } from "../sqlite-schema.js";
 import type { LearnedLimit } from "../../adaptive-rate-controller.js";
 
+// 遅延初期化用
+let getDatabaseImpl: (() => PiDatabase) | null = null;
+
 /**
  * プロバイダとモデルの複合キー
  */
@@ -361,6 +364,15 @@ export class AdaptiveLimitRepository {
 let instance: AdaptiveLimitRepository | null = null;
 
 /**
+ * getDatabase関数を登録（循環依存回避のため）
+ * @summary getDatabase登録
+ * @param fn - getDatabase関数
+ */
+export function setGetDatabase(fn: () => PiDatabase): void {
+  getDatabaseImpl = fn;
+}
+
+/**
  * 適応的制限リポジトリを作成
  * @summary リポジトリ作成
  * @param db - データベースインスタンス（省略時はgetDatabase()を使用）
@@ -368,10 +380,13 @@ let instance: AdaptiveLimitRepository | null = null;
  */
 export function createAdaptiveLimitRepository(db?: PiDatabase): AdaptiveLimitRepository {
   if (!instance || db) {
-    // 循環依存を避けるため遅延インポート
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getDatabase } = require("../sqlite-db.js");
-    instance = new AdaptiveLimitRepository(db ?? getDatabase());
+    if (!db) {
+      if (!getDatabaseImpl) {
+        throw new Error("getDatabase not set. Call setGetDatabase() first.");
+      }
+      db = getDatabaseImpl();
+    }
+    instance = new AdaptiveLimitRepository(db);
   }
   return instance;
 }
