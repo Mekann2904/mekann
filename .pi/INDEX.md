@@ -54,7 +54,6 @@ mekann/
 │   │   ├── self-improvement/ <-- 7 philosophical perspectives
 │   │   ├── self-reflection/  <-- Pre/post task self-check
 │   │   └── test-engineering/ <-- Comprehensive test strategy
-│   ├── agent-teams/          <-- Team definitions and runs
 │   ├── subagents/            <-- Subagent definitions and runs
 │   ├── memory/               <-- Semantic memory storage
 │   │   ├── confirmed-facts.json <-- Mediator confirmed facts
@@ -91,7 +90,6 @@ mekann/
 | mediator_interpret | `extensions/mediator.ts` | Intent clarification (arXiv:2602.07338v1) |
 | /mediator | `extensions/mediator.ts` | Mediator command interface |
 | subagent_* | `extensions/subagents.ts` | Sub-agent creation/execution |
-| agent_team_* | `extensions/agent-teams.ts` | Team orchestration |
 | plan_* | `extensions/plan.ts` | Plan management |
 | task_* | `extensions/task.ts` | Task management (create, list, complete) |
 | task_delegate | `extensions/task-flow.ts` | Delegate task to subagent with auto-complete |

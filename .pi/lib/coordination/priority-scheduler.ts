@@ -51,7 +51,6 @@ export type TaskType =
   | "write"
   | "subagent_single"
   | "subagent_parallel"
-  | "agent_team"
   | "question"
   | "unknown";
 
@@ -218,9 +217,6 @@ export function inferTaskType(toolName: string): TaskType {
   if (normalized === "subagent_run") return "subagent_single";
   if (normalized === "subagent_run_parallel") return "subagent_parallel";
 
-  // エージェントチーム
-  if (normalized.startsWith("agent_team")) return "agent_team";
-
   // 不明
   return "unknown";
 }
@@ -240,7 +236,6 @@ function getBaseRounds(taskType: TaskType): number {
     question: 1,
     subagent_single: 5,
     subagent_parallel: 8,
-    agent_team: 10,
     unknown: 3,
   };
   return baseRoundsMap[taskType];
@@ -267,7 +262,6 @@ function inferComplexity(
     question: "simple",
     subagent_single: "complex",
     subagent_parallel: "complex",
-    agent_team: "complex",
     unknown: "exploratory",
   };
   return complexityMap[taskType];
@@ -340,11 +334,10 @@ export function inferPriority(
   // questionツールはクリティカル
   if (normalized === "question") return "critical";
 
-  // サブエージェント・エージェントチームは高優先度
+  // サブエージェントは高優先度
   if (
     normalized === "subagent_run" ||
-    normalized === "subagent_run_parallel" ||
-    normalized.startsWith("agent_team")
+    normalized === "subagent_run_parallel"
   ) {
     return "high";
   }

@@ -1,7 +1,7 @@
 <!-- File: .pi/APPEND_SYSTEM.md -->
 <!-- Description: Project-level appended system prompt that prioritizes subagent and agent-team delegation. -->
 <!-- Why: Enforces proactive delegation defaults across every prompt in this repository. -->
-<!-- Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, README.md -->
+<!-- Related: .pi/extensions/subagents.ts, README.md -->
 
 # Quick Reference (READ FIRST)
 
@@ -11,7 +11,7 @@
 | **Task-to-Source** | `.pi/NAVIGATION.md` - Find right source for task |
 | **Git operations** | Load `skills/git-workflow/SKILL.md` FIRST |
 | **Browser/Site access** | Use `playwright_cli` tool (see Browser Automation Rule) |
-| **Delegate task** | Use `subagent_run` or `agent_team_run` |
+| **Delegate task** | Use `subagent_run` or `subagent_run_parallel` |
 | **Parallel execution** | Use `subagent_run_dag` (see DAG Execution Guide) |
 | **Code review** | Load `skills/code-review/SKILL.md` |
 | **Architecture** | Load `skills/clean-architecture/SKILL.md` |

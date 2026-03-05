@@ -1,9 +1,9 @@
 /**
  * @abdd.meta
  * @path .pi/lib/runtime-sessions.ts
- * @role Runtime session management for tracking active subagent/team executions
+ * @role Runtime session management for tracking active subagent executions
  * @why Provide real-time execution status for Web UI Kanban board
- * @related ../extensions/web-ui/server.ts, ../extensions/subagents.ts, ../extensions/agent-teams.ts
+ * @related ../extensions/web-ui/server.ts, ../extensions/subagents.ts
  * @public_api RuntimeSession, addSession, updateSession, removeSession, getActiveSessions, getSessionByTaskId, onSessionEvent
  * @invariants Sessions are automatically cleaned up after completion
  * @side_effects Emits events on session changes
@@ -13,14 +13,14 @@
  * @overview In-memory session store for tracking agent execution state
  * @what_it_does Manages lifecycle of execution sessions, provides query APIs, emits events
  * @why_it_exists Enables real-time UI updates for agent execution progress
- * @scope(in) Session lifecycle events from subagents.ts/agent-teams.ts
+ * @scope(in) Session lifecycle events from subagents.ts
  * @scope(out) Session queries, event emissions
  */
 
 /**
  * Session type discriminator
  */
-export type RuntimeSessionType = "subagent" | "agent-team";
+export type RuntimeSessionType = "subagent";
 
 /**
  * Session execution status
@@ -33,7 +33,7 @@ export type RuntimeSessionStatus = "starting" | "running" | "completed" | "faile
 export interface RuntimeSession {
   /** Unique session identifier */
   id: string;
-  /** Session type (subagent or agent-team) */
+  /** Session type (subagent) */
   type: RuntimeSessionType;
   /** Agent identifier (e.g., "implementer", "researcher") */
   agentId: string;
@@ -53,9 +53,9 @@ export interface RuntimeSession {
   message?: string;
   /** Unix timestamp when session completed (optional) */
   completedAt?: number;
-  /** Team ID for agent-team sessions (optional) */
+  /** Team ID (deprecated, kept for compatibility) */
   teamId?: string;
-  /** Number of teammates for agent-team sessions (optional) */
+  /** Number of teammates (deprecated, kept for compatibility) */
   teammateCount?: number;
 }
 

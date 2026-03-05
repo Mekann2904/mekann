@@ -30,7 +30,6 @@
 | Task | Primary Source | Key Tools |
 |------|---------------|-----------|
 | Delegate to subagent | `subagent_run`, `subagent_run_parallel` | `.pi/extensions/subagents.ts` |
-| Run agent team | `agent_team_run`, `agent_team_run_parallel` | `.pi/extensions/agent-teams.ts` |
 | Create plan | `plan_create` | `.pi/extensions/plan.ts` |
 | Autonomous loop | `loop_run` | `.pi/extensions/loop.ts` |
 

@@ -3,7 +3,7 @@
  * path: .pi/lib/concurrency.ts
  * role: 並列実行数制限付きワーカープール
  * why: 重複するプールロジックを削除し、キャンセル後の余分なタスク生成を防ぐため
- * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/extensions/agent-runtime.ts, .pi/lib/dag-weight-calculator.ts
+ * related: .pi/extensions/subagents.ts, .pi/extensions/agent-runtime.ts, .pi/lib/dag-weight-calculator.ts
  * public_api: runWithConcurrencyLimit, runWithEarlyStop, ConcurrencyRunOptions, EarlyStopOptions
  * invariants: limitは常に1以上でitemCount以下に正規化される
  * side_effects: abortOnError時、最初のエラー発生でプール全体を中止する
@@ -18,9 +18,9 @@
  *   - DynTaskMAS: 優先度ベーススケジューリング（usePriorityScheduling）をサポート
  *   - Early-stop条件による早期終了をサポートする
  * why_it_exists:
- *   - 複数箇所（subagents, agent-teams等）で必要となる並列実行処理を共通化する
+ *   - 複数箇所（subagents等）で必要となる並列実行処理を共通化する
  *   - キャンセル処理の不整合を防ぎ、リソースリーク（ダングリングワーカー）を回避する
- *   - DynTaskMAS統合によりエージェント/チームの専門性に基づく優先実行を可能にする
+ *   - DynTaskMAS統合によりエージェントの専門性に基づく優先実行を可能にする
  * scope:
  *   in: アイテム配列、同時実行数、ワーカー関数、実行オプション（優先度スケジューリング含む）
  *   out: 各アイテムの処理結果配列、または最初に発生したエラー
@@ -29,7 +29,7 @@
 // File: .pi/lib/concurrency.ts
 // Description: Provides a shared concurrency-limited worker pool with abort-aware scheduling.
 // Why: Removes duplicated pool logic and avoids spawning extra work after cancellation.
-// Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/extensions/agent-runtime.ts
+// Related: .pi/extensions/subagents.ts, .pi/extensions/agent-runtime.ts
 import { createChildAbortController } from "./abort-utils";
 
 /**

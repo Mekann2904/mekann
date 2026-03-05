@@ -2,8 +2,8 @@
  * @abdd.meta
  * path: .pi/lib/retry-with-backoff.ts
  * role: 一時的なLLMエラーに対処するための、指数バックオフとジッターを含むリトライロジックの共通実装。サーキットブレーカーパターンと統合され、連続エラー時の早期検出と保護を提供。
- * why: 429/5xxエラーからの回復ポリシーを単一の場所に集約し、サブエージェントとエージェントチームで再利用するため。サーキットブレーカーにより、連続するAPIエラーからシステムを保護する。
- * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/config.json, .pi/lib/circuit-breaker.ts
+ * why: 429/5xxエラーからの回復ポリシーを単一の場所に集約し、サブエージェントで再利用するため。サーキットブレーカーにより、連続するAPIエラーからシステムを保護する。
+ * related: .pi/extensions/subagents.ts, .pi/config.json, .pi/lib/circuit-breaker.ts
  * public_api: RetryJitterMode, RetryWithBackoffConfig, RetryWithBackoffOverrides, RetryAttemptContext, RateLimitGateSnapshot, RateLimitWaitContext, retryWithBackoff
  * invariants: リトライ遅延はinitialDelayMs以上maxDelayMs以下である。待機時間の計算にはnow()関数の結果を使用する。サーキットブレーカーがOPEN状態の場合はエラーをスローする。
  * side_effects: ファイルシステム（readFileSync, mkdirSync）へのアクセスとatomicWriteTextFileによる原子書き込みを行う。レートリミット状態を永続化する。サーキットブレーカー状態を更新する。
@@ -19,7 +19,7 @@
  *   - 成功/失敗時のサーキットブレーカー状態更新
  * why_it_exists:
  *   - 外部API呼び出しにおいて、ネットワークの一時的な障害や制限を透過的にハンドリングするため
- *   - サブエージェントやエージェントチーム間でリトライ戦略の一貫性を保つため
+ *   - サブエージェント間でリトライ戦略の一貫性を保つため
  *   - 分散環境でのレートリミット回避のためにプロセス間で状態を共有するため
  *   - 連続するAPIエラーからシステムを保護し、無駄なリトライを防ぐため
  * scope:
@@ -29,8 +29,8 @@
 
 // File: .pi/lib/retry-with-backoff.ts
 // Description: Shared retry helpers with exponential backoff and jitter for transient LLM failures.
-// Why: Keeps 429/5xx recovery policy in one place for subagents and agent teams.
-// Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/config.json
+// Why: Keeps 429/5xx recovery policy in one place for subagents.
+// Related: .pi/extensions/subagents.ts, .pi/config.json
 
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";

@@ -384,7 +384,6 @@ function resolveExtensionForTool(toolName: string, catalog: FeatureCatalog): str
   }
 
   if (toolName.startsWith("subagent_")) return "subagents";
-  if (toolName.startsWith("agent_team_")) return "agent-teams";
   if (toolName.startsWith("plan_")) return "plan";
   if (toolName === "loop_run") return "loop";
   if (toolName === "question") return "question";
