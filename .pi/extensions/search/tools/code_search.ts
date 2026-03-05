@@ -200,7 +200,7 @@ export async function nativeCodeSearch(
 				const line = lines[i];
 
 				// 1行内の全マッチを取得（matchAllを使用）
-				const matches = [...line.matchAll(pattern)];
+				const matches = Array.from(line.matchAll(pattern));
 
 				for (const match of matches) {
 					if (results.length >= limit * 2) break;
@@ -358,6 +358,15 @@ export async function codeSearch(
 ): Promise<CodeSearchOutput> {
 	const safeInput = normalizeCodeSearchInput(input);
 
+	// パストラバーサル攻撃を防止
+	if (!isPathSafe(safeInput.path, cwd)) {
+		throw parameterError(
+			"path",
+			"Path traversal detected: path contains forbidden patterns",
+			"Use a relative path without '..' or absolute path components"
+		);
+	}
+
 	if (!safeInput.pattern || safeInput.pattern.length === 0) {
 		throw parameterError("pattern", "Search pattern is required", "Provide a search pattern");
 	}
@@ -395,19 +404,34 @@ export async function codeSearch(
 			result = await nativeCodeSearch(safeInput, cwd);
 		}
 	} catch (error: unknown) {
-		// Wrap error in SearchToolError if not already
-		const toolError = isSearchToolError(error)
-			? error
-			: new SearchToolError(
-					getErrorMessage(error),
-					"execution",
-					"Try simplifying the search pattern or using literal mode"
-				);
+		// エラーを分類して、フォールバックの必要性を判断
+		const errorCategory = categorizeError(error);
 
-		// Fallback to native on error
+		// パターンエラーと権限エラーはフォールバックしても同じ結果になるためスキップ
+		if (errorCategory === "pattern") {
+			return createCodeSearchError(`Invalid regex pattern: ${error instanceof Error ? error.message : String(error)}`);
+		}
+
+		if (errorCategory === "permission") {
+			return createCodeSearchError(`Permission denied: ${error instanceof Error ? error.message : String(error)}`);
+		}
+
+		// タイムアウトはネイティブ実装が遅いため、フォールバックせずエラーを返す
+		if (errorCategory === "timeout") {
+			return createCodeSearchError(`Search timed out. Try narrowing the search scope or using a more specific pattern.`);
+		}
+
+		// 不明なエラーの場合のみフォールバックを試行
 		try {
 			result = await nativeCodeSearch(safeInput, cwd);
 		} catch (nativeError) {
+			const toolError = isSearchToolError(error)
+				? error
+				: new SearchToolError(
+						getErrorMessage(error),
+						"execution",
+						"Try simplifying the search pattern or using literal mode"
+					);
 			return createCodeSearchError(toolError.format());
 		}
 	}
