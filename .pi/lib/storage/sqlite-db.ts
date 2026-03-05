@@ -26,6 +26,7 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, mkdirSync } from "node:fs";
+import { createRequire } from "node:module";
 
 // 機能フラグ: SQLite使用可否
 export const USE_SQLITE = process.env.PI_USE_SQLITE !== "0";
@@ -62,8 +63,8 @@ async function loadSQLite(): Promise<boolean> {
 
 // 同期的なロード（初期化時）
 let sqliteAvailable = false;
+const require = createRequire(import.meta.url);
 try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const module = require("better-sqlite3");
   Database = module.default || module;
   sqliteAvailable = true;
