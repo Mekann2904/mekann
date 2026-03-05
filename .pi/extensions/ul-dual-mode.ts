@@ -51,8 +51,9 @@ const UL_TRIVIAL_PATTERNS = [
 const RECOMMENDED_SUBAGENT_IDS = ["researcher", "architect", "implementer"] as const;
 const RECOMMENDED_CORE_TEAM_ID = "core-delivery-team";
 const RECOMMENDED_REVIEWER_ID = "reviewer";
-const CLEAR_GOAL_SIGNAL =
-  /(達成条件|完了条件|成功条件|受け入れ条件|until|done when|all tests pass|tests pass|lint pass|build succeeds?|exit code 0|エラー0|テスト.*通る|lint.*通る|build.*成功)/i;
+// DISABLED: 自動検出を無効化（明示的な入口のみに絞る）
+// const CLEAR_GOAL_SIGNAL =
+//   /(達成条件|完了条件|成功条件|受け入れ条件|until|done when|all tests pass|tests pass|lint pass|build succeeds?|exit code 0|エラー0|テスト.*通る|lint.*通る|build.*成功)/i;
 
 /**
  * BUG-TS-004修正: ツール呼び出しイベントの型定義
@@ -278,10 +279,15 @@ function extractTextWithoutUlPrefix(text: string): string {
   return text.replace(UL_PREFIX, "").trimStart();
 }
 
-function looksLikeClearGoalTask(text: string): boolean {
-  const normalized = String(text || "").trim();
-  if (!normalized) return false;
-  return CLEAR_GOAL_SIGNAL.test(normalized);
+// DISABLED: 自動検出を無効化
+// function looksLikeClearGoalTask(text: string): boolean {
+//   const normalized = String(text || "").trim();
+//   if (!normalized) return false;
+//   return CLEAR_GOAL_SIGNAL.test(normalized);
+// }
+function looksLikeClearGoalTask(_text: string): boolean {
+  // 常にfalseを返す（自動検出無効）
+  return false;
 }
 
 /**
@@ -620,12 +626,12 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
   if (isInitialized) return;
   isInitialized = true;
 
-  // CLIフラグ: セッション全体でULモードを有効化
-  pi.registerFlag("ul", {
-    description: "Enable UL Dual-Orchestration Mode for entire session",
-    type: "boolean",
-    default: false,
-  });
+  // DISABLED: CLIフラグを無効化（明示的な入口のみに絞る）
+  // pi.registerFlag("ul", {
+  //   description: "Enable UL Dual-Orchestration Mode for entire session",
+  //   type: "boolean",
+  //   default: false,
+  // });
 
   // スラッシュコマンド: セッション中にULモードを切り替え
   pi.registerCommand("ulmode", {
@@ -678,20 +684,21 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       state.pendingUlMode = false;
       state.pendingGoalLoopMode = false;
 
-      const shouldAutoEnable =
-        looksLikeClearGoalTask(rawText);
-
-      if (!shouldAutoEnable) {
-        return { action: "continue" as const };
-      }
-
-      state.pendingUlMode = true;
-      state.pendingGoalLoopMode = true;
-      state.currentTask = rawText;  // 自動有効化の場合もタスクを保存
-
-      if (ctx?.hasUI && ctx?.ui) {
-        ctx.ui.notify("UL自動モード: 明確な達成条件を検知したため、UL+loop方針を適用します。", "info");
-      }
+      // DISABLED: 自動検出を無効化（明示的な入口のみに絞る）
+      // const shouldAutoEnable =
+      //   looksLikeClearGoalTask(rawText);
+      //
+      // if (!shouldAutoEnable) {
+      //   return { action: "continue" as const };
+      // }
+      //
+      // state.pendingUlMode = true;
+      // state.pendingGoalLoopMode = true;
+      // state.currentTask = rawText;  // 自動有効化の場合もタスクを保存
+      //
+      // if (ctx?.hasUI && ctx?.ui) {
+      //   ctx.ui.notify("UL自動モード: 明確な達成条件を検知したため、UL+loop方針を適用します。", "info");
+      // }
       return { action: "continue" as const };
     }
 
@@ -817,13 +824,15 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       };
     }
 
-    // デフォルト: ul <task> → 委任モード（エージェントが自律的に選択）
+    // デフォルト: ul <task> → セッション全体でULモード有効化
     state.pendingUlMode = true;
+    state.persistentUlMode = true;  // セッション全体に有効化
     state.pendingGoalLoopMode = looksLikeClearGoalTask(taskText);
     state.currentTask = taskText;
+    persistState(pi);  // セッションに保存
 
     if (ctx?.hasUI && ctx?.ui) {
-      ctx.ui.notify("UL Mode: エージェントが最適な進め方を選択", "info");
+      ctx.ui.notify("UL Mode: セッション全体で有効化しました。無効化するには /ulmode を実行。", "info");
     }
     return {
       action: "transform" as const,
@@ -1009,15 +1018,15 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     }
   });
 
-  // セッション開始時: フラグと保存状態から復元
+  // セッション開始時: 保存状態から復元のみ（CLIフラグは無効化）
   pi.on("session_start", async (_event, ctx) => {
     resetState();
 
-    // CLIフラグから復元
-    if (pi.getFlag("ul") === true) {
-      state.persistentUlMode = true;
-      state.activeUlMode = true;
-    }
+    // DISABLED: CLIフラグからの復元を無効化
+    // if (pi.getFlag("ul") === true) {
+    //   state.persistentUlMode = true;
+    //   state.activeUlMode = true;
+    // }
 
     // セッションエントリから復元
     const entries = ctx.sessionManager.getEntries();
