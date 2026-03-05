@@ -134,6 +134,18 @@ export class Coordinator {
     this.db = db ?? getDatabase();
   }
 
+  /**
+   * PiDatabase.transaction の互換ヘルパー
+   * SQLite移行時にテストモックが「関数を返す実装」を使っていても吸収する。
+   */
+  private inTransaction<T>(fn: () => T): T {
+    const result = this.db.transaction(fn) as T | (() => T);
+    if (typeof result === "function") {
+      return result();
+    }
+    return result;
+  }
+
   // =======================================================================
   // Public API
   // =======================================================================
@@ -168,9 +180,9 @@ export class Coordinator {
       activeModels: [],
     };
 
-    this.db.transaction(() => {
+    this.inTransaction(() => {
       this.upsertInstance(info);
-    })();
+    });
 
     // ハートビートタイマー開始
     const heartbeatTimer = setInterval(() => {
@@ -202,9 +214,9 @@ export class Coordinator {
       clearInterval(this.state.heartbeatTimer);
     }
 
-    this.db.transaction(() => {
+    this.inTransaction(() => {
       this.deleteInstance(this.state!.myInstanceId);
-    })();
+    });
 
     this.state = null;
   }
@@ -217,9 +229,9 @@ export class Coordinator {
     if (!this.state) return;
     
     const now = timestampNow();
-    this.db.transaction(() => {
+    this.inTransaction(() => {
       this.updateHeartbeatInternal(this.state!.myInstanceId, now);
-    })();
+    });
   }
 
   /**
@@ -229,9 +241,9 @@ export class Coordinator {
   cleanupDeadInstances(): void {
     if (!this.state) return;
     
-    this.db.transaction(() => {
+    this.inTransaction(() => {
       this.deleteExpiredInstances(this.state!.config.heartbeatTimeoutMs);
-    })();
+    });
   }
 
   /**
@@ -253,9 +265,9 @@ export class Coordinator {
     if (!this.state) return [];
     
     const cutoff = new Date(timestampMs() - this.state.config.heartbeatTimeoutMs).toISOString();
-    return this.db.transaction(() => {
+    return this.inTransaction(() => {
       return this.getActiveInstancesInternal(cutoff);
-    })();
+    });
   }
 
   /**
@@ -297,7 +309,7 @@ export class Coordinator {
     const normalizedProvider = provider.toLowerCase();
     const normalizedModel = model.toLowerCase();
     
-    this.db.transaction(() => {
+    this.inTransaction(() => {
       const current = this.getInstance(this.state!.myInstanceId);
       if (!current) return;
       
@@ -314,7 +326,7 @@ export class Coordinator {
       }
       
       this.updateActiveModels(this.state!.myInstanceId, current.activeModels);
-    })();
+    });
   }
 
   /**
@@ -327,7 +339,7 @@ export class Coordinator {
     const normalizedProvider = provider.toLowerCase();
     const normalizedModel = model.toLowerCase();
     
-    this.db.transaction(() => {
+    this.inTransaction(() => {
       const current = this.getInstance(this.state!.myInstanceId);
       if (!current) return;
       
@@ -336,7 +348,7 @@ export class Coordinator {
       );
       
       this.updateActiveModels(this.state!.myInstanceId, current.activeModels);
-    })();
+    });
   }
 
   /**

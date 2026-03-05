@@ -162,6 +162,10 @@ const VALID_PROVIDER_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const VALID_MODEL_RE = /^[a-z0-9][a-z0-9._/:-]{0,127}$/;
 
 const RECOVERY_CHECK_INTERVAL_MS = 60 * 1000; // Check every minute
+const GLOBAL_MULTIPLIER_MIN = 0.1;
+const GLOBAL_MULTIPLIER_MAX = 2.0;
+const DEFAULT_LIMIT_WHEN_UNKNOWN = 4;
+const PREDICTIVE_WINDOW_SIZE = 20;
 
 // ============================================================================
 // State
@@ -172,6 +176,10 @@ const stateMutex = new Mutex();
 
 let repo: AdaptiveLimitRepository | null = null;
 let recoveryTimer: ReturnType<typeof setInterval> | null = null;
+let globalMultiplier = 1.0;
+let recoveryIntervalOverrideMs: number | null = null;
+let reductionFactorOverride: number | null = null;
+let recoveryFactorOverride: number | null = null;
 
 /**
  * リポジトリを取得（遅延初期化）
@@ -242,6 +250,32 @@ function parseProviderModel(key: string): { provider: string; model: string } | 
   };
 }
 
+function clampConcurrency(value: number): number {
+  return Math.max(MIN_CONCURRENCY, Math.min(Math.floor(value), MAX_CONCURRENCY));
+}
+
+function clampMultiplier(value: number): number {
+  if (!Number.isFinite(value)) return 1.0;
+  return Math.max(GLOBAL_MULTIPLIER_MIN, Math.min(value, GLOBAL_MULTIPLIER_MAX));
+}
+
+function resolveDefaultLimit(
+  provider: string,
+  model: string,
+  defaultLimitOrDetail?: number | string,
+): number {
+  if (typeof defaultLimitOrDetail === "number" && Number.isFinite(defaultLimitOrDetail)) {
+    return clampConcurrency(defaultLimitOrDetail);
+  }
+
+  const existing = getRepo().getByKey(provider, model);
+  if (existing) {
+    return clampConcurrency(existing.originalConcurrency);
+  }
+
+  return clampConcurrency(DEFAULT_LIMIT_WHEN_UNKNOWN);
+}
+
 // ============================================================================
 // Core Functions
 // ============================================================================
@@ -252,7 +286,13 @@ function parseProviderModel(key: string): { provider: string; model: string } | 
  * @returns RuntimeConfigの設定値
  */
 function getConfig(): RuntimeConfig {
-  return getRuntimeConfig();
+  const base = getRuntimeConfig();
+  return {
+    ...base,
+    recoveryIntervalMs: recoveryIntervalOverrideMs ?? base.recoveryIntervalMs,
+    reductionFactor: reductionFactorOverride ?? base.reductionFactor,
+    recoveryFactor: recoveryFactorOverride ?? base.recoveryFactor,
+  };
 }
 
 /**
@@ -275,9 +315,24 @@ export function getLimit(
   if (!parsed) return Math.max(MIN_CONCURRENCY, Math.min(defaultLimit, MAX_CONCURRENCY));
 
   const r = getRepo();
+  // SQLite移行後の互換性維持のため、初回アクセス時に既定エントリを作成する。
+  if (!r.getByKey(parsed.provider, parsed.model)) {
+    r.upsert(parsed.provider, parsed.model, {
+      concurrency: clampConcurrency(defaultLimit),
+      originalConcurrency: clampConcurrency(defaultLimit),
+      last429At: null,
+      consecutive429Count: 0,
+      total429Count: 0,
+      lastSuccessAt: null,
+      recoveryScheduled: false,
+      historical429s: [],
+      predicted429Probability: 0,
+      rampUpSchedule: [],
+    });
+  }
   const limit = r.getLimit(parsed.provider, parsed.model, defaultLimit);
   
-  return Math.max(MIN_CONCURRENCY, Math.min(limit.concurrency, MAX_CONCURRENCY));
+  return clampConcurrency(limit.concurrency);
 }
 
 /**
@@ -293,7 +348,8 @@ export function getEffectiveLimit(
   model: string,
   presetLimit: number,
 ): number {
-  return getLimit(provider, model, presetLimit);
+  const base = getLimit(provider, model, presetLimit);
+  return clampConcurrency(base * globalMultiplier);
 }
 
 /**
@@ -315,6 +371,7 @@ export function isRateLimitError(error: unknown): boolean {
   const indicators = [
     "429",
     "rate limit",
+    "rate_limit",
     "too many requests",
     "throttled",
     "quota exceeded",
@@ -342,12 +399,20 @@ export function resetLearnedLimit(
   if (!parsed) return;
 
   const r = getRepo();
-  const current = r.getLimit(parsed.provider, parsed.model, newLimit ?? MIN_CONCURRENCY);
+  const current = r.getLimit(parsed.provider, parsed.model, newLimit ?? DEFAULT_LIMIT_WHEN_UNKNOWN);
+  const next = clampConcurrency(newLimit ?? current.originalConcurrency);
   
   r.updateLimit(parsed.provider, parsed.model, {
-    concurrency: newLimit ?? current.originalConcurrency,
+    concurrency: next,
+    originalConcurrency: next,
     last429At: null,
+    lastSuccessAt: null,
     consecutive429Count: 0,
+    total429Count: 0,
+    recoveryScheduled: false,
+    historical429s: [],
+    predicted429Probability: 0,
+    rampUpSchedule: [],
   });
 }
 
@@ -370,7 +435,7 @@ export function resetAllLearnedLimits(): void {
 export function record429(
   provider: string,
   model: string,
-  defaultLimit: number,
+  defaultLimitOrDetail?: number | string,
 ): void {
   const key = tryBuildKey(provider, model);
   if (!key) return;
@@ -380,6 +445,22 @@ export function record429(
 
   const config = getConfig();
   const r = getRepo();
+  const defaultLimit = resolveDefaultLimit(parsed.provider, parsed.model, defaultLimitOrDetail);
+
+  if (!r.getByKey(parsed.provider, parsed.model)) {
+    r.upsert(parsed.provider, parsed.model, {
+      concurrency: defaultLimit,
+      originalConcurrency: defaultLimit,
+      last429At: null,
+      consecutive429Count: 0,
+      total429Count: 0,
+      lastSuccessAt: null,
+      recoveryScheduled: false,
+      historical429s: [],
+      predicted429Probability: 0,
+      rampUpSchedule: [],
+    });
+  }
 
   r.record429(parsed.provider, parsed.model, config.reductionFactor, defaultLimit);
 }
@@ -399,7 +480,10 @@ export function recordSuccess(provider: string, model: string): void {
 
   const config = getConfig();
   const r = getRepo();
-  r.recordSuccess(parsed.provider, parsed.model, config.recoveryFactor);
+  const updated = r.recordSuccess(parsed.provider, parsed.model, config.recoveryFactor);
+  if (updated.concurrency < updated.originalConcurrency) {
+    r.setRecoveryScheduled(parsed.provider, parsed.model, true);
+  }
 }
 
 /**
@@ -455,7 +539,7 @@ export function getAllLimits(): Record<string, LearnedLimit> {
 export function getLearnedLimit(
   provider: string,
   model: string,
-  defaultLimit: number,
+  _defaultLimit: number = DEFAULT_LIMIT_WHEN_UNKNOWN,
 ): LearnedLimit | null {
   const key = tryBuildKey(provider, model);
   if (!key) return null;
@@ -464,7 +548,9 @@ export function getLearnedLimit(
   if (!parsed) return null;
 
   const r = getRepo();
-  return r.getLimit(parsed.provider, parsed.model, defaultLimit);
+  const existing = r.getByKey(parsed.provider, parsed.model);
+  if (existing) return existing;
+  return null;
 }
 
 /**
@@ -485,6 +571,136 @@ export function pruneOldLimits(maxAgeMs: number = LEARNED_LIMIT_STALE_MS): numbe
 export function clearAllLimits(): void {
   const r = getRepo();
   r.clearAll();
+}
+
+/**
+ * 現在の適応制御状態を取得
+ * @summary 状態取得
+ */
+export function getAdaptiveState(): AdaptiveControllerState {
+  const limits = getAllLimits();
+  return {
+    version: 1,
+    lastUpdated: new Date().toISOString(),
+    limits,
+    globalMultiplier,
+    recoveryIntervalMs: getConfig().recoveryIntervalMs,
+    reductionFactor: getConfig().reductionFactor,
+    recoveryFactor: getConfig().recoveryFactor,
+    predictiveEnabled: getConfig().predictiveEnabled,
+    predictiveThreshold: 0.7,
+  };
+}
+
+/**
+ * 全体倍率を設定
+ * @summary 全体倍率設定
+ */
+export function setGlobalMultiplier(multiplier: number): void {
+  globalMultiplier = clampMultiplier(multiplier);
+}
+
+/**
+ * 回復設定を上書き
+ * @summary 回復設定
+ */
+export function configureRecovery(options: {
+  recoveryIntervalMs?: number;
+  reductionFactor?: number;
+  recoveryFactor?: number;
+}): void {
+  if (typeof options.recoveryIntervalMs === "number" && Number.isFinite(options.recoveryIntervalMs)) {
+    recoveryIntervalOverrideMs = Math.max(1000, Math.floor(options.recoveryIntervalMs));
+  }
+  if (typeof options.reductionFactor === "number" && Number.isFinite(options.reductionFactor)) {
+    reductionFactorOverride = Math.max(0.1, Math.min(options.reductionFactor, 1.0));
+  }
+  if (typeof options.recoveryFactor === "number" && Number.isFinite(options.recoveryFactor)) {
+    recoveryFactorOverride = Math.max(1.0, Math.min(options.recoveryFactor, 2.0));
+  }
+}
+
+/**
+ * 429発生確率を推定
+ * @summary 429確率推定
+ */
+export function analyze429Probability(provider: string, model: string): number {
+  const learned = getLearnedLimit(provider, model);
+  if (!learned) return 0;
+
+  const history = learned.historical429s ?? [];
+  const recent = history.slice(-PREDICTIVE_WINDOW_SIZE);
+  if (recent.length === 0) return 0;
+
+  const ratio = Math.min(1, recent.length / PREDICTIVE_WINDOW_SIZE);
+  const consecutiveBoost = Math.min(1, learned.consecutive429Count / 5);
+  const result = Math.min(1, ratio * 0.7 + consecutiveBoost * 0.3);
+  return Math.max(0, result);
+}
+
+/**
+ * 予測分析を取得
+ * @summary 予測分析取得
+ */
+export function getPredictiveAnalysis(provider: string, model: string): PredictiveAnalysis {
+  const probability = analyze429Probability(provider, model);
+  const learned = getLearnedLimit(provider, model);
+  const baseline = learned?.concurrency ?? DEFAULT_LIMIT_WHEN_UNKNOWN;
+  const shouldThrottle = getConfig().predictiveEnabled && probability >= 0.7;
+  const recommended = shouldThrottle
+    ? clampConcurrency(Math.ceil(baseline * (1 - probability * 0.5)))
+    : clampConcurrency(baseline);
+
+  return {
+    provider,
+    model,
+    predicted429Probability: probability,
+    shouldProactivelyThrottle: shouldThrottle,
+    recommendedConcurrency: recommended,
+    confidence: Math.min(1, (learned?.historical429s?.length ?? 0) / PREDICTIVE_WINDOW_SIZE),
+  };
+}
+
+/**
+ * 予測的にスロットリングが必要か
+ * @summary 予測スロットリング判定
+ */
+export function shouldProactivelyThrottle(provider: string, model: string): boolean {
+  return getPredictiveAnalysis(provider, model).shouldProactivelyThrottle;
+}
+
+/**
+ * 予測を考慮した並列数
+ * @summary 予測並列数取得
+ */
+export function getPredictiveConcurrency(provider: string, model: string, currentConcurrency: number): number {
+  const analysis = getPredictiveAnalysis(provider, model);
+  if (!analysis.shouldProactivelyThrottle) return clampConcurrency(currentConcurrency);
+  return clampConcurrency(Math.min(currentConcurrency, analysis.recommendedConcurrency));
+}
+
+/**
+ * 統合サマリーを返す
+ * @summary 統合サマリー取得
+ */
+export function getCombinedRateControlSummary(provider: string, model: string): {
+  adaptiveLimit: number;
+  originalLimit: number;
+  predictiveLimit: number;
+  predicted429Probability: number;
+  shouldThrottle: boolean;
+  recent429Count: number;
+} {
+  const learned = getLearnedLimit(provider, model);
+  const analysis = getPredictiveAnalysis(provider, model);
+  return {
+    adaptiveLimit: learned?.concurrency ?? DEFAULT_LIMIT_WHEN_UNKNOWN,
+    originalLimit: learned?.originalConcurrency ?? DEFAULT_LIMIT_WHEN_UNKNOWN,
+    predictiveLimit: analysis.recommendedConcurrency,
+    predicted429Probability: analysis.predicted429Probability,
+    shouldThrottle: analysis.shouldProactivelyThrottle,
+    recent429Count: Math.min(PREDICTIVE_WINDOW_SIZE, learned?.historical429s?.length ?? 0),
+  };
 }
 
 // ============================================================================
@@ -579,6 +795,18 @@ export function initAdaptiveController(): void {
  */
 export function shutdownAdaptiveController(): void {
   stopRecoveryTimer();
+  if (process.env.VITEST === "true" || process.env.NODE_ENV === "test") {
+    try {
+      getRepo().clearAll();
+    } catch {
+      // no-op for teardown path
+    }
+  }
+  repo = null;
+  globalMultiplier = 1.0;
+  recoveryIntervalOverrideMs = null;
+  reductionFactorOverride = null;
+  recoveryFactorOverride = null;
   isInitialized = false;
 }
 
