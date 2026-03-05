@@ -38,6 +38,51 @@ import { detectTier, getRpmLimit } from "../lib/provider-limits.js";
 import { sleep } from "../lib/sleep-utils.js";
 import { withFileLock } from "../lib/storage/storage-lock.js";
 
+// ============================================================================
+// Feature Flag: SQLite Mode
+// ============================================================================
+
+/**
+ * SQLiteベースのRPMスロットリングを使用するかどうか
+ * 環境変数 PI_USE_SQLITE=0 で無効化可能
+ */
+const USE_SQLITE = process.env.PI_USE_SQLITE !== "0";
+
+/**
+ * SQLiteが利用可能かどうかを確認
+ */
+function isSQLiteAvailable(): boolean {
+  if (!USE_SQLITE) return false;
+  try {
+    require.resolve("better-sqlite3");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// SQLite版の遅延ロード
+let _sqliteModule: {
+  RpmThrottleRepository: typeof import("../lib/storage/repositories/rpm-throttle-repo.js").RpmThrottleRepository;
+  createRpmThrottleRepository: typeof import("../lib/storage/repositories/rpm-throttle-repo.js").createRpmThrottleRepository;
+} | null = null;
+
+function getSQLiteModule() {
+  if (!_sqliteModule && isSQLiteAvailable()) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require("../lib/storage/repositories/rpm-throttle-repo.js");
+      _sqliteModule = {
+        RpmThrottleRepository: mod.RpmThrottleRepository,
+        createRpmThrottleRepository: mod.createRpmThrottleRepository,
+      };
+    } catch {
+      // SQLite版が利用できない場合はファイルベースを使用
+    }
+  }
+  return _sqliteModule;
+}
+
 type BucketState = {
   requestStartsMs: number[];
   cooldownUntilMs: number;

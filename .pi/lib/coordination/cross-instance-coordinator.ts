@@ -52,6 +52,56 @@ import { withFileLock } from "../storage/storage-lock.js";
 import { getAdaptiveTotalMaxLlm } from "../adaptive-total-limit.js";
 
 // ============================================================================
+// Feature Flag: SQLite Mode
+// ============================================================================
+
+/**
+ * SQLiteベースのコーディネータを使用するかどうか
+ * 環境変数 PI_USE_SQLITE=0 で無効化可能
+ */
+const USE_SQLITE = process.env.PI_USE_SQLITE !== "0";
+
+/**
+ * SQLiteが利用可能かどうかを確認
+ */
+function isSQLiteAvailable(): boolean {
+  if (!USE_SQLITE) return false;
+  try {
+    // better-sqlite3の存在確認
+    require.resolve("better-sqlite3");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// SQLite版の遅延ロード
+let _sqliteModule: typeof import("./cross-instance-coordinator-sqlite.js") | null = null;
+let _sqliteCoordinator: import("./cross-instance-coordinator-sqlite.js").SQLiteCoordinator | null = null;
+
+function getSQLiteModule() {
+  if (!_sqliteModule && isSQLiteAvailable()) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      _sqliteModule = require("./cross-instance-coordinator-sqlite.js");
+    } catch {
+      // SQLite版が利用できない場合はファイルベースを使用
+    }
+  }
+  return _sqliteModule;
+}
+
+function getSQLiteCoordinator() {
+  if (!_sqliteCoordinator) {
+    const mod = getSQLiteModule();
+    if (mod) {
+      _sqliteCoordinator = mod.createSQLiteCoordinator();
+    }
+  }
+  return _sqliteCoordinator;
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -417,6 +467,16 @@ export function registerInstance(
   cwd: string,
   configOverrides?: Partial<CoordinatorConfig>,
 ): void {
+  // SQLite版が利用可能な場合はそちらを使用
+  if (isSQLiteAvailable()) {
+    const sqliteCoordinator = getSQLiteCoordinator();
+    if (sqliteCoordinator) {
+      sqliteCoordinator.registerInstance(sessionId, cwd, configOverrides);
+      return;
+    }
+  }
+
+  // 以下は従来のファイルベースの処理
   if (state) {
     // Already registered, just update heartbeat
     updateHeartbeat();
@@ -598,6 +658,14 @@ export function cleanupDeadInstances(): void {
  * @returns {number} アクティブなインスタンス数
  */
 export function getActiveInstanceCount(): number {
+  // SQLite版が利用可能な場合はそちらを使用
+  if (isSQLiteAvailable()) {
+    const sqliteCoordinator = getSQLiteCoordinator();
+    if (sqliteCoordinator) {
+      return sqliteCoordinator.getActiveInstanceCount();
+    }
+  }
+
   if (!state) {
     // Not registered yet, assume single instance
     return 1;
@@ -649,6 +717,14 @@ export function getActiveInstances(): InstanceInfo[] {
  * @returns 並列実行数の上限
  */
 export function getMyParallelLimit(): number {
+  // SQLite版が利用可能な場合はそちらを使用
+  if (isSQLiteAvailable()) {
+    const sqliteCoordinator = getSQLiteCoordinator();
+    if (sqliteCoordinator) {
+      return sqliteCoordinator.getMyParallelLimit();
+    }
+  }
+
   if (!state) {
     return 1;
   }

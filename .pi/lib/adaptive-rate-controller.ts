@@ -53,6 +53,51 @@ import { withFileLock } from "./storage/storage-lock.js";
 import { Mutex } from "async-mutex";
 
 // ============================================================================
+// Feature Flag: SQLite Mode
+// ============================================================================
+
+/**
+ * SQLiteベースの適応的制御を使用するかどうか
+ * 環境変数 PI_USE_SQLITE=0 で無効化可能
+ */
+const USE_SQLITE = process.env.PI_USE_SQLITE !== "0";
+
+/**
+ * SQLiteが利用可能かどうかを確認
+ */
+function isSQLiteAvailable(): boolean {
+  if (!USE_SQLITE) return false;
+  try {
+    require.resolve("better-sqlite3");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// SQLite版の遅延ロード
+let _sqliteModule: {
+  AdaptiveLimitRepository: typeof import("./storage/repositories/adaptive-limit-repo.js").AdaptiveLimitRepository;
+  createAdaptiveLimitRepository: typeof import("./storage/repositories/adaptive-limit-repo.js").createAdaptiveLimitRepository;
+} | null = null;
+
+function getSQLiteModule() {
+  if (!_sqliteModule && isSQLiteAvailable()) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require("./storage/repositories/adaptive-limit-repo.js");
+      _sqliteModule = {
+        AdaptiveLimitRepository: mod.AdaptiveLimitRepository,
+        createAdaptiveLimitRepository: mod.createAdaptiveLimitRepository,
+      };
+    } catch {
+      // SQLite版が利用できない場合はファイルベースを使用
+    }
+  }
+  return _sqliteModule;
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
