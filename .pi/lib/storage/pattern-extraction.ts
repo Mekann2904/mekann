@@ -39,6 +39,7 @@ import {
   type TaskType,
 } from "./run-index.js";
 import { atomicWriteTextFile } from "./storage-lock.js";
+import { readJsonState, writeJsonState } from "./sqlite-state-store.js";
 
 // ============================================================================
 // Types
@@ -365,27 +366,16 @@ export function getPatternStoragePath(cwd: string): string {
  * @returns {PatternStorage} 読み込まれたパターンストレージデータ
  */
 export function loadPatternStorage(cwd: string): PatternStorage {
-  const path = getPatternStoragePath(cwd);
-  if (!existsSync(path)) {
-    return {
+  return readJsonState<PatternStorage>({
+    stateKey: `memory_patterns:${cwd}`,
+    fallbackPath: getPatternStoragePath(cwd),
+    createDefault: () => ({
       version: PATTERN_STORAGE_VERSION,
       lastUpdated: new Date().toISOString(),
       patterns: [],
       patternsByTaskType: {} as Record<TaskType, string[]>,
-    };
-  }
-
-  try {
-    const content = readFileSync(path, "utf-8");
-    return JSON.parse(content);
-  } catch {
-    return {
-      version: PATTERN_STORAGE_VERSION,
-      lastUpdated: new Date().toISOString(),
-      patterns: [],
-      patternsByTaskType: {} as Record<TaskType, string[]>,
-    };
-  }
+    }),
+  });
 }
 
 /**
@@ -399,6 +389,11 @@ export function savePatternStorage(cwd: string, storage: PatternStorage): void {
   const path = getPatternStoragePath(cwd);
   ensureDir(join(cwd, ".pi", "memory"));
   storage.lastUpdated = new Date().toISOString();
+  writeJsonState({
+    stateKey: `memory_patterns:${cwd}`,
+    value: storage,
+    mirrorPath: path,
+  });
   atomicWriteTextFile(path, JSON.stringify(storage, null, 2));
 }
 

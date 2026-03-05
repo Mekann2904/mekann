@@ -26,7 +26,7 @@ import type { PiDatabase } from "./sqlite-db.js";
 import { setSchemaInitializer } from "./sqlite-db.js";
 
 // 現在のスキーマバージョン
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 // ============================================================================
 // スキーマ定義
@@ -167,6 +167,18 @@ CREATE TABLE IF NOT EXISTS distributed_locks (
 );
 `;
 
+/**
+ * 汎用JSON状態ストアテーブル
+ * 段階的移行で task/plan/web-ui/history/memory の状態を保持する
+ */
+const JSON_STATE_TABLE = `
+CREATE TABLE IF NOT EXISTS json_state (
+  state_key TEXT PRIMARY KEY,
+  value_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`;
+
 // ============================================================================
 // マイグレーション定義
 // ============================================================================
@@ -193,6 +205,13 @@ const MIGRATIONS: Migration[] = [
       QUEUE_STATES_TABLE,
       QUEUE_STATES_INDEX,
       DISTRIBUTED_LOCKS_TABLE,
+    ],
+  },
+  {
+    version: 2,
+    description: "Add generic json state table",
+    up: [
+      JSON_STATE_TABLE,
     ],
   },
 ];
@@ -259,6 +278,7 @@ export function runMigrations(db: PiDatabase, fromVersion: number): void {
  */
 export function dropAllTables(db: PiDatabase): void {
   const tables = [
+    "json_state",
     "distributed_locks",
     "queue_states",
     "total_limit",

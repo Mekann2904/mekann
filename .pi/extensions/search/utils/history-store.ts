@@ -30,6 +30,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { readJsonState, writeJsonState } from "../../../lib/storage/sqlite-state-store.js";
 
 // ============================================
 // Types
@@ -121,6 +122,7 @@ export class HistoryStore {
 	private entries: StoredHistoryEntry[] = [];
 	private currentSessionId: string;
 	private storagePath: string | null = null;
+	private stateKey: string;
 	private loaded = false;
 
 	/**
@@ -137,6 +139,7 @@ export class HistoryStore {
 		} else if (cwd) {
 			this.storagePath = path.join(cwd, ".pi", "cache", HISTORY_FILE_NAME);
 		}
+		this.stateKey = `search_history:${cwd || process.cwd()}`;
 	}
 
 	/**
@@ -301,22 +304,13 @@ export class HistoryStore {
 	 */
 	load(): void {
 		this.loaded = true;
-
-		if (!this.storagePath) {
-			return;
-		}
-
-		try {
-			if (fs.existsSync(this.storagePath)) {
-				const data = fs.readFileSync(this.storagePath, "utf-8");
-				const parsed = JSON.parse(data) as StoredHistoryEntry[];
-				if (Array.isArray(parsed)) {
-					this.entries = parsed;
-				}
-			}
-		} catch (error) {
-			// エラーは無視して空の状態で続行
-			console.error("Failed to load history:", error);
+		const loaded = readJsonState<StoredHistoryEntry[]>({
+			stateKey: this.stateKey,
+			fallbackPath: this.storagePath || undefined,
+			createDefault: () => [],
+		});
+		if (Array.isArray(loaded)) {
+			this.entries = loaded;
 		}
 	}
 
@@ -325,21 +319,11 @@ export class HistoryStore {
 	 * @summary 履歴保存
 	 */
 	save(): void {
-		if (!this.storagePath) {
-			return;
-		}
-
-		try {
-			// ディレクトリを作成
-			const dir = path.dirname(this.storagePath);
-			if (!fs.existsSync(dir)) {
-				fs.mkdirSync(dir, { recursive: true });
-			}
-
-			fs.writeFileSync(this.storagePath, JSON.stringify(this.entries, null, 2), "utf-8");
-		} catch (error) {
-			console.error("Failed to save history:", error);
-		}
+		writeJsonState({
+			stateKey: this.stateKey,
+			value: this.entries,
+			mirrorPath: this.storagePath || undefined,
+		});
 	}
 
 	// ============================================

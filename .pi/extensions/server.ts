@@ -43,6 +43,10 @@ import {
   getActiveUlWorkflowTask,
   invalidateCache,
 } from "./web-ui/lib/ul-workflow-reader.js";
+import {
+  loadTaskStorage as loadSharedTaskStorage,
+  saveTaskStorage as saveSharedTaskStorage,
+} from "../lib/storage/task-plan-store.js";
 
 const logger = getLogger();
 
@@ -172,36 +176,16 @@ interface ApiResponse {
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, rmSync } from "node:fs";
 import { join, isAbsolute } from "node:path";
 
-const TASK_DIR = ".pi/tasks";
-const STORAGE_FILE = join(TASK_DIR, "storage.json");
 const UL_WORKFLOW_DIR = ".pi/ul-workflow";
 const UL_TASKS_DIR = join(UL_WORKFLOW_DIR, "tasks");
 const UL_ACTIVE_FILE = join(UL_WORKFLOW_DIR, "active.json");
 
-function ensureTaskDir(): void {
-	if (!existsSync(TASK_DIR)) {
-		mkdirSync(TASK_DIR, { recursive: true });
-	}
-}
-
 function loadStorage(): TaskStorage {
-	ensureTaskDir();
-	if (!existsSync(STORAGE_FILE)) {
-		const empty: TaskStorage = { tasks: [] };
-		writeFileSync(STORAGE_FILE, JSON.stringify(empty, null, 2), "utf-8");
-		return empty;
-	}
-	try {
-		const content = readFileSync(STORAGE_FILE, "utf-8");
-		return JSON.parse(content);
-	} catch {
-		return { tasks: [] };
-	}
+	return loadSharedTaskStorage<TaskStorage>();
 }
 
 function saveStorage(storage: TaskStorage): void {
-	ensureTaskDir();
-	writeFileSync(STORAGE_FILE, JSON.stringify(storage, null, 2), "utf-8");
+	saveSharedTaskStorage(storage);
 }
 
 // ============================================

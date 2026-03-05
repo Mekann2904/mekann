@@ -27,6 +27,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { getRuntimeConfig } from "./runtime-config.js";
 import { withFileLock } from "./storage/storage-lock.js";
+import {
+  createTotalLimitRepository,
+  setGetDatabase as setTotalLimitRepoGetDatabase,
+} from "./storage/repositories/total-limit-repo.js";
+import { getDatabase, isSQLiteAvailable } from "./storage/sqlite-db.js";
 
 type ObservationKind = "success" | "rate_limit" | "timeout" | "error";
 
@@ -86,9 +91,16 @@ const STATE_LOCK_OPTIONS = {
 let stateCache: AdaptiveTotalLimitState | null = null;
 let persistenceFailed = false;
 let adaptiveNowProvider: () => number = () => Date.now();
+let sqliteRepoInitialized = false;
 
 function nowMs(): number {
   return adaptiveNowProvider();
+}
+
+function ensureTotalLimitRepo(): void {
+  if (sqliteRepoInitialized) return;
+  setTotalLimitRepoGetDatabase(getDatabase);
+  sqliteRepoInitialized = true;
 }
 
 function toFiniteInteger(value: unknown): number | undefined {
@@ -200,6 +212,30 @@ function safeParseState(raw: string): AdaptiveTotalLimitState | null {
 }
 
 function loadState(): AdaptiveTotalLimitState {
+  if (isSQLiteAvailable()) {
+    try {
+      ensureTotalLimitRepo();
+      const repo = createTotalLimitRepository();
+      const state = repo.getState();
+      const loaded: AdaptiveTotalLimitState = {
+        version: STATE_VERSION,
+        lastUpdated: state.lastUpdated,
+        baseLimit: state.baseLimit,
+        learnedLimit: state.learnedLimit,
+        hardMax: state.hardMax,
+        minLimit: state.minLimit,
+        lastDecisionAtMs: state.lastDecisionAtMs,
+        cooldownUntilMs: state.cooldownUntilMs,
+        lastReason: state.lastReason,
+        samples: Array.isArray(state.samples) ? state.samples : [],
+      };
+      stateCache = loaded;
+      return loaded;
+    } catch {
+      // JSONフォールバックへ継続
+    }
+  }
+
   if (stateCache && persistenceFailed) {
     return stateCache;
   }
@@ -222,6 +258,29 @@ function loadState(): AdaptiveTotalLimitState {
 }
 
 function saveState(state: AdaptiveTotalLimitState): void {
+  if (isSQLiteAvailable()) {
+    try {
+      ensureTotalLimitRepo();
+      const repo = createTotalLimitRepository();
+      state.lastUpdated = new Date().toISOString();
+      repo.updateState({
+        baseLimit: state.baseLimit,
+        learnedLimit: state.learnedLimit,
+        hardMax: state.hardMax,
+        minLimit: state.minLimit,
+        lastUpdated: state.lastUpdated,
+        lastDecisionAtMs: state.lastDecisionAtMs,
+        cooldownUntilMs: state.cooldownUntilMs,
+        lastReason: state.lastReason,
+        samples: state.samples,
+      });
+      persistenceFailed = false;
+      return;
+    } catch {
+      // JSONフォールバックへ継続
+    }
+  }
+
   try {
     ensureRuntimeDir();
     state.lastUpdated = new Date().toISOString();

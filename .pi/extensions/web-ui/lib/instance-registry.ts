@@ -21,6 +21,7 @@ import { homedir } from "os";
 import { join } from "path";
 import { mkdirSync, existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, renameSync } from "fs";
 import { spawn } from "child_process";
+import { readJsonState, writeJsonState } from "../../../lib/storage/sqlite-state-store.js";
 
 /**
  * Instance information stored in registry
@@ -68,6 +69,15 @@ const INSTANCES_FILE = join(SHARED_DIR, "instances.json");
 const SERVER_FILE = join(SHARED_DIR, "web-ui-server.json");
 const THEME_FILE = join(SHARED_DIR, "theme.json");
 const LOCK_FILE = join(SHARED_DIR, ".lock");
+
+function stateKeyFromPath(filePath: string): string | null {
+  if (filePath === INSTANCES_FILE) return "webui_instances";
+  if (filePath === SERVER_FILE) return "webui_server";
+  if (filePath === THEME_FILE) return "webui_theme";
+  const historyMatch = filePath.match(/context-history-(\d+)\.json$/);
+  if (historyMatch) return `webui_context_history:${historyMatch[1]}`;
+  return null;
+}
 
 /**
  * Ensure shared directory exists
@@ -148,6 +158,15 @@ const lock = new FileLock();
  * Read JSON file safely
  */
 function readJsonFile<T>(path: string, defaultValue: T): T {
+  const stateKey = stateKeyFromPath(path);
+  if (stateKey) {
+    return readJsonState<T>({
+      stateKey,
+      fallbackPath: path,
+      createDefault: () => defaultValue,
+    });
+  }
+
   try {
     if (!existsSync(path)) {
       return defaultValue;
@@ -163,6 +182,16 @@ function readJsonFile<T>(path: string, defaultValue: T): T {
  * Write JSON file atomically
  */
 function writeJsonFile<T>(path: string, data: T): void {
+  const stateKey = stateKeyFromPath(path);
+  if (stateKey) {
+    writeJsonState({
+      stateKey,
+      value: data,
+      mirrorPath: path,
+    });
+    return;
+  }
+
   ensureSharedDir();
   const tempPath = `${path}.tmp`;
   writeFileSync(tempPath, JSON.stringify(data, null, 2));

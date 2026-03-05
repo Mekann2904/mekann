@@ -30,6 +30,10 @@ import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { getInstanceId, isProcessAlive, extractPidFromInstanceId } from "./ul-workflow.js";
+import {
+	loadTaskStorage as loadSharedTaskStorage,
+	saveTaskStorage as saveSharedTaskStorage,
+} from "../lib/storage/task-plan-store.js";
 
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
@@ -77,7 +81,6 @@ interface AutoExecutorConfig {
 // ============================================
 
 const TASK_DIR = ".pi/tasks";
-const STORAGE_FILE = join(TASK_DIR, "storage.json");
 const CONFIG_FILE = join(TASK_DIR, "auto-executor-config.json");
 
 const PRIORITY_ORDER: Record<TaskPriority, number> = {
@@ -104,22 +107,11 @@ let lastNotifiedTaskId: string | null = null;
 // ============================================
 
 function loadStorage(): TaskStorage {
-	if (!existsSync(STORAGE_FILE)) {
-		return { tasks: [] };
-	}
-	try {
-		const data = readFileSync(STORAGE_FILE, "utf-8");
-		return JSON.parse(data);
-	} catch {
-		return { tasks: [] };
-	}
+	return loadSharedTaskStorage<TaskStorage>();
 }
 
 function saveStorage(storage: TaskStorage): void {
-	if (!existsSync(TASK_DIR)) {
-		mkdirSync(TASK_DIR, { recursive: true });
-	}
-	writeFileSync(STORAGE_FILE, JSON.stringify(storage, null, 2));
+	saveSharedTaskStorage(storage);
 }
 
 function loadConfig(): void {

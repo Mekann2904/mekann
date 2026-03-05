@@ -59,6 +59,7 @@ export interface TotalLimitState {
   lastDecisionAtMs: number;
   cooldownUntilMs: number;
   lastReason: string;
+  samples: ObservationSample[];
 }
 
 /**
@@ -74,6 +75,7 @@ interface TotalLimitRow {
   last_decision_at_ms: number;
   cooldown_until_ms: number;
   last_reason: string;
+  samples_json: string;
 }
 
 // ============================================================================
@@ -136,6 +138,7 @@ export class TotalLimitRepository {
         lastDecisionAtMs: Date.now(),
         cooldownUntilMs: 0,
         lastReason: "initialized",
+        samples: [],
       };
     }
     
@@ -149,6 +152,7 @@ export class TotalLimitRepository {
       lastDecisionAtMs: Date.now(),
       cooldownUntilMs: 0,
       lastReason: "initialized",
+      samples: [],
     };
   }
 
@@ -168,9 +172,9 @@ export class TotalLimitRepository {
     const stmt = this.db.prepare(
       `INSERT OR REPLACE INTO total_limit 
         (id, base_limit, learned_limit, hard_max, min_limit, last_updated,
-         last_decision_at_ms, cooldown_until_ms, last_reason)
+         last_decision_at_ms, cooldown_until_ms, last_reason, samples_json)
        VALUES (1, @baseLimit, @learnedLimit, @hardMax, @minLimit, @lastUpdated,
-               @lastDecisionAtMs, @cooldownUntilMs, @lastReason)`
+               @lastDecisionAtMs, @cooldownUntilMs, @lastReason, @samplesJson)`
     );
     
     stmt.run({
@@ -182,6 +186,7 @@ export class TotalLimitRepository {
       lastDecisionAtMs: newState.lastDecisionAtMs,
       cooldownUntilMs: newState.cooldownUntilMs,
       lastReason: newState.lastReason,
+      samplesJson: JSON.stringify(newState.samples ?? []),
     });
   }
 
@@ -231,6 +236,15 @@ export class TotalLimitRepository {
   // ========================================================================
 
   private rowToState(row: TotalLimitRow): TotalLimitState {
+    let samples: ObservationSample[] = [];
+    try {
+      const parsed = JSON.parse(row.samples_json || "[]") as ObservationSample[];
+      if (Array.isArray(parsed)) {
+        samples = parsed;
+      }
+    } catch {
+      samples = [];
+    }
     return {
       id: row.id,
       baseLimit: row.base_limit,
@@ -241,6 +255,7 @@ export class TotalLimitRepository {
       lastDecisionAtMs: row.last_decision_at_ms,
       cooldownUntilMs: row.cooldown_until_ms,
       lastReason: row.last_reason,
+      samples,
     };
   }
 }

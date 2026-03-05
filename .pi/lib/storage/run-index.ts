@@ -33,6 +33,7 @@ import { join } from "node:path";
 
 import { ensureDir } from "../core/fs-utils.js";
 import { atomicWriteTextFile } from "./storage-lock.js";
+import { readJsonState, writeJsonState } from "./sqlite-state-store.js";
 
 // ============================================================================
 // Types
@@ -429,15 +430,11 @@ export function getRunIndexPath(cwd: string): string {
  * @returns 読み込んだ実行インデックス。ファイルが存在しない場合はnull
  */
 export function loadRunIndex(cwd: string): RunIndex | null {
-  const path = getRunIndexPath(cwd);
-  if (!existsSync(path)) return null;
-
-  try {
-    const content = readFileSync(path, "utf-8");
-    return JSON.parse(content);
-  } catch {
-    return null;
-  }
+  return readJsonState<RunIndex | null>({
+    stateKey: `memory_run_index:${cwd}`,
+    fallbackPath: getRunIndexPath(cwd),
+    createDefault: () => null,
+  });
 }
 
 /**
@@ -450,6 +447,11 @@ export function saveRunIndex(cwd: string, index: RunIndex): void {
   const path = getRunIndexPath(cwd);
   ensureDir(join(cwd, ".pi", "memory"));
   index.lastUpdated = new Date().toISOString();
+  writeJsonState<RunIndex>({
+    stateKey: `memory_run_index:${cwd}`,
+    value: index,
+    mirrorPath: path,
+  });
   atomicWriteTextFile(path, JSON.stringify(index, null, 2));
 }
 

@@ -121,6 +121,10 @@ import {
   extractPidFromInstanceId,
 } from "./ul-workflow.js";
 import {
+	loadTaskStorage as loadSharedTaskStorage,
+	saveTaskStorage as saveSharedTaskStorage,
+} from "../lib/storage/task-plan-store.js";
+import {
 	isPlanModeActive,
 	PLAN_MODE_WARNING,
 } from "../lib/plan-mode-shared";
@@ -181,9 +185,6 @@ const logger = getLogger();
 // Task Storage Helpers (for auto in_progress status)
 // ============================================================================
 
-const TASK_DIR = ".pi/tasks";
-const TASK_STORAGE_FILE = join(process.cwd(), TASK_DIR, "storage.json");
-
 type TaskStatus = "todo" | "in_progress" | "completed" | "cancelled" | "failed";
 
 interface Task {
@@ -204,15 +205,7 @@ interface TaskStorage {
  * @summary タスクストレージ読込
  */
 function loadTaskStorage(): TaskStorage {
-	if (!existsSync(TASK_STORAGE_FILE)) {
-		return { tasks: [] };
-	}
-	try {
-		const content = readFileSync(TASK_STORAGE_FILE, "utf-8");
-		return JSON.parse(content);
-	} catch {
-		return { tasks: [] };
-	}
+	return loadSharedTaskStorage<TaskStorage>();
 }
 
 /**
@@ -221,12 +214,7 @@ function loadTaskStorage(): TaskStorage {
  */
 function saveTaskStorage(storage: TaskStorage): void {
 	try {
-		// Ensure directory exists
-		const dir = join(process.cwd(), TASK_DIR);
-		if (!existsSync(dir)) {
-			mkdirSync(dir, { recursive: true });
-		}
-		writeFileSync(TASK_STORAGE_FILE, JSON.stringify(storage, null, 2), "utf-8");
+		saveSharedTaskStorage(storage);
 	} catch (error) {
 		console.error(`[subagents] Failed to save task storage:`, error);
 	}

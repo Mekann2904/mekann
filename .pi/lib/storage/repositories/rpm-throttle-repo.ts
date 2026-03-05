@@ -272,11 +272,76 @@ export class RpmThrottleRepository {
   }
 
   // ========================================================================
+  // 互換API（既存拡張向け）
+  // ========================================================================
+
+  /**
+   * 互換: 旧APIのtransaction
+   */
+  transaction<T>(fn: () => T): T {
+    return this.db.transaction(fn);
+  }
+
+  /**
+   * 互換: 旧APIのgetState(key)
+   */
+  getState(key: string): BucketState {
+    const { provider, model } = this.parseKey(key);
+    return this.getByKey(provider, model) ?? {
+      requestStartsMs: [],
+      cooldownUntilMs: 0,
+      lastAccessedMs: timestampMs(),
+    };
+  }
+
+  /**
+   * 互換: 旧APIのsaveState(key, state)
+   */
+  saveState(key: string, state: BucketState): void {
+    const { provider, model } = this.parseKey(key);
+    this.upsert(provider, model, state);
+  }
+
+  /**
+   * 互換: 旧APIのpruneOldEntries(maxAgeMs)
+   */
+  pruneOldEntries(maxAgeMs: number): number {
+    return this.deleteExpired(maxAgeMs);
+  }
+
+  /**
+   * 互換: 旧APIのgetAllStates()
+   */
+  getAllStates(): Record<string, BucketState> {
+    const map = this.getAll();
+    const result: Record<string, BucketState> = {};
+    for (const [key, state] of map.entries()) {
+      result[key] = state;
+    }
+    return result;
+  }
+
+  /**
+   * 互換: 旧APIのclearAll()
+   */
+  clearAll(): void {
+    this.db.exec("DELETE FROM rpm_throttle");
+  }
+
+  // ========================================================================
   // プライベートメソッド
   // ========================================================================
 
   private makeKey(provider: string, model: string): ProviderModelKey {
     return `${provider.toLowerCase()}:${model.toLowerCase()}` as ProviderModelKey;
+  }
+
+  private parseKey(key: string): { provider: string; model: string } {
+    const [providerRaw, ...modelParts] = String(key).split(":");
+    return {
+      provider: (providerRaw || "unknown").toLowerCase(),
+      model: (modelParts.join(":") || "unknown").toLowerCase(),
+    };
   }
 
   private rowToBucketState(row: RpmThrottleRow): BucketState {
