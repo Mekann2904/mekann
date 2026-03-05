@@ -36,7 +36,6 @@ import { promises as fsPromises } from "fs";
 import { randomBytes } from "node:crypto";
 import { estimateTaskComplexity, type TaskComplexity } from "../lib/agent/agent-utils.js";
 import { withFileLock, atomicWriteTextFile } from "../lib/storage/storage-lock.js";
-import { askSingleQuestion, asQuestionContext, type QuestionInfo } from "./question";
 
 // ワークフローのフェーズ
 type WorkflowPhase = "idle" | "research" | "plan" | "annotate" | "implement" | "review" | "completed" | "aborted";
@@ -755,40 +754,12 @@ Task ID: ${taskId}
           const planContent = readPlanFile(taskId);
 
           // === ユーザーレビュー（Plan確認）===
-          let userApproved = false;
-          let modifications: string | null = null;
-
-          if (ctx.hasUI) {
-            const qctx = asQuestionContext(ctx);
-            const answer = await askSingleQuestion({
-              question: "この計画で実行しますか？",
-              header: "Plan確認",
-              options: [
-                { label: "実行", description: "このまま実装を開始" },
-                { label: "修正", description: "修正内容を記述" }
-              ],
-              multiple: false,
-              custom: true
-            }, qctx);
-
-            if (answer === null) {
-              return makeResult("Plan確認がキャンセルされました。", { taskId, phase: "plan", cancelled: true });
-            }
-
-            if (answer[0] === "実行") {
-              userApproved = true;
-            } else if (answer[0] === "修正") {
-              return makeResult(`## Plan修正\n\nplan.mdを修正するには:\n  ul_workflow_modify_plan({ modifications: "修正内容" })\n\nファイル: ${planPath}`, { taskId, phase: "plan", needsModification: true });
-            } else {
-              modifications = answer[0];
-            }
-          } else {
-            // UIがない場合はテキストベースの確認を返す
-            return {
-              content: [{ type: "text", text: `## Plan作成完了（レビュー待ち）
+          // UIの有無に関わらず、detailsベースで質問を返す
+          return {
+            content: [{ type: "text", text: `## Plan作成完了（レビュー待ち）
 
 Task: ${trimmedTask}
-Execution Mode: ${executionMode}
+Execution Mode: ${executionMode}（Research/Plan: 逐次、Implement: ${useDag ? "DAG並列" : "逐次"}）
 Strategy: ${strategy.strategy} (${strategy.reason})
 
 \`\`\`markdown
@@ -798,43 +769,28 @@ ${planContent}
 ### 次のステップ
 
 1. plan.mdを確認: ${planPath}
-2. 実装を開始: ul_workflow_execute_plan()
-3. または修正: ul_workflow_modify_plan({ modifications: "修正内容" })
+2. 実装を開始: \`ul_workflow_execute_plan()\`
+3. または修正: \`ul_workflow_modify_plan({ modifications: "修正内容" })\`
 ` }],
-              details: {
-                taskId,
-                phase: "plan",
-                executionMode,
-                strategy: strategy.strategy,
-                useDagForImplement: useDag,
-                askUser: true,
-                question: {
-                  question: "この計画で実行しますか？",
-                  header: "Plan確認",
-                  options: [
-                    { label: "実行", description: "このまま実装を開始" },
-                    { label: "修正", description: "修正内容を記述" }
-                  ],
-                  multiple: false,
-                  custom: true
-                }
+            details: {
+              taskId,
+              phase: "plan",
+              executionMode,
+              strategy: strategy.strategy,
+              useDagForImplement: useDag,
+              askUser: true,
+              question: {
+                question: "この計画で実行しますか？",
+                header: "Plan確認",
+                options: [
+                  { label: "実行", description: "このまま実装を開始" },
+                  { label: "修正", description: "修正内容を記述" }
+                ],
+                multiple: false,
+                custom: true
               }
-            };
-          }
-
-          // 修正が必要な場合
-          if (modifications) {
-            await (ctx as any).runSubagent({
-              subagentId: "architect",
-              task: `plan.md修正: ${modifications}\n\nファイル: ${planPath}`,
-              extraContext: "既存の内容を尊重しつつ修正してください。"
-            });
-            userApproved = true; // 修正後は自動的に進む
-          }
-
-          if (!userApproved) {
-            return makeResult("Planが承認されませんでした。", { taskId, phase: "plan", notApproved: true });
-          }
+            }
+          };
 
           // === PHASE 3: Implement（DAG並列または逐次）===
           currentWorkflow.approvedPhases.push("plan");
@@ -1013,85 +969,7 @@ ul_workflow_commit()
 
           const planContent = readPlanFile(taskId);
 
-          // UI経由でユーザー確認
-          if (ctx.hasUI) {
-            const qctx = asQuestionContext(ctx);
-            const answer = await askSingleQuestion({
-              question: "この計画で実行しますか？",
-              header: "Plan確認",
-              options: [
-                { label: "実行", description: "このまま実装を開始" },
-                { label: "修正", description: "修正内容を記述" }
-              ],
-              multiple: false,
-              custom: true
-            }, qctx);
-
-            if (answer === null) {
-              return makeResult("Plan確認がキャンセルされました。", { taskId, phase: "plan", cancelled: true });
-            }
-
-            if (answer[0] === "実行") {
-              currentWorkflow.approvedPhases.push("plan");
-              currentWorkflow.phase = "implement";
-              currentWorkflow.phaseIndex = 2;
-              currentWorkflow.updatedAt = new Date().toISOString();
-              saveState(currentWorkflow);
-
-              try {
-                await (ctx as any).runSubagent({
-                  subagentId: "implementer",
-                  task: `plan.mdを実装: ${planPath}`,
-                  extraContext: "機械的に実装してください。"
-                });
-
-                currentWorkflow.approvedPhases.push("implement");
-                currentWorkflow.phase = "completed";
-                currentWorkflow.phaseIndex = 3;
-                currentWorkflow.updatedAt = new Date().toISOString();
-                saveState(currentWorkflow);
-                setCurrentWorkflow(null);
-
-                return makeResult(`## 実装完了 (Sequential Mode)
-
-Task ID: ${taskId}
-Execution Mode: ${executionMode}
-
-ワークフローが完了しました。
-
-### 次のステップ: コミット
-
-以下を実行してコミットを作成してください:
-
-\`\`\`
-ul_workflow_commit()
-\`\`\`
-
-または手動でコミット:
-
-\`\`\`bash
-# 変更確認
-git status && git diff
-
-# ステージング（選択的）
-git add <変更したファイル>
-
-# コミット
-git commit -m "feat: ..."
-\`\`\`
-`, { taskId, phase: "completed", executionMode, suggestCommit: true });
-              } catch (implError) {
-                return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${implError}`, { error: "implement_error", details: String(implError) });
-              }
-            } else if (answer[0] === "修正") {
-              return makeResult(`## Plan修正\n\nplan.mdを修正するには:\n  ul_workflow_modify_plan({ modifications: "修正内容" })\n\nファイル: ${planPath}`, { taskId, phase: "plan", needsModification: true });
-            } else {
-              const modifications = answer[0];
-              return makeResult(`## Plan修正\n\n修正内容: ${modifications}\n\n以下を実行してください:\n  ul_workflow_modify_plan({ modifications: "${modifications.replace(/"/g, '\\"')}" })`, { taskId, phase: "plan", needsModification: true, modifications });
-            }
-          }
-
-          // UIがない場合はテキストベースの確認
+          // Plan確認を返す（detailsベース）
           return {
             content: [{ type: "text", text: `## Plan作成完了
 
@@ -1496,90 +1374,7 @@ ${annotations.map((a, i) => `  ${i + 1}. ${a}`).join("\n")}
 
       const taskId = currentWorkflow.taskId;
 
-      // 直接question UIを表示してユーザーに確認
-      if (ctx.hasUI) {
-        const qctx = asQuestionContext(ctx);
-        const answer = await askSingleQuestion({
-          question: "この計画で実行しますか？",
-          header: "Plan確認",
-          options: [
-            { label: "実行", description: "このまま実装を開始" },
-            { label: "修正", description: "修正内容を記述" }
-          ],
-          multiple: false,
-          custom: true
-        }, qctx);
-
-        if (answer === null) {
-          return makeResult("Plan確認がキャンセルされました。", { taskId, phase: "plan", cancelled: true });
-        }
-
-        if (answer[0] === "実行") {
-          // 実装フェーズへ進む
-          currentWorkflow.approvedPhases.push("plan");
-          currentWorkflow.phase = "implement";
-          currentWorkflow.phaseIndex = 2;
-          currentWorkflow.updatedAt = new Date().toISOString();
-          saveState(currentWorkflow);
-
-          // runSubagent APIが利用可能な場合は自動実行
-          if ((ctx as any).runSubagent) {
-            try {
-              await (ctx as any).runSubagent({
-                subagentId: "implementer",
-                task: `plan.mdを実装: ${planPath}`,
-                extraContext: "機械的に実装してください。"
-              });
-
-              currentWorkflow.approvedPhases.push("implement");
-              currentWorkflow.phase = "completed";
-              currentWorkflow.phaseIndex = 3;
-              currentWorkflow.updatedAt = new Date().toISOString();
-              saveState(currentWorkflow);
-              setCurrentWorkflow(null);
-
-              return makeResult(`## 実装完了
-
-Task ID: ${taskId}
-
-ワークフローが完了しました。
-
-### 次のステップ: コミット
-
-以下を実行してコミットを作成してください:
-
-\`\`\`
-ul_workflow_commit()
-\`\`\`
-
-または手動でコミット:
-
-\`\`\`bash
-# 変更確認
-git status && git diff
-
-# ステージング（選択的）
-git add <変更したファイル>
-
-# コミット
-git commit -m "feat: ..."
-\`\`\`
-`, { taskId, phase: "completed", suggestCommit: true });
-            } catch (implError) {
-              return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${implError}`, { error: "implement_error", details: String(implError) });
-            }
-          }
-
-          return makeResult(`## 実装フェーズ開始\n\n\`\`\`\nsubagent_run({ subagentId: "implementer", task: "plan.mdを実装: ${planPath}" })\n\`\`\``, { taskId, phase: "implement" });
-        } else if (answer[0] === "修正") {
-          return makeResult(`## Plan修正\n\nplan.mdを修正するには:\n  ul_workflow_modify_plan({ modifications: "修正内容" })`, { taskId, phase: "plan", needsModification: true });
-        } else {
-          // カスタム入力
-          return makeResult(`## Plan修正\n\n修正内容: ${answer[0]}\n\nul_workflow_modify_plan({ modifications: "${answer[0].replace(/"/g, '\\"')}" })`, { taskId, phase: "plan", needsModification: true, modifications: answer[0] });
-        }
-      }
-
-      // UIがない場合は従来通りテキストベースの確認
+      // detailsベースで質問を返す
       return {
         content: [{ type: "text", text: `## Plan確認
 
@@ -1754,85 +1549,7 @@ subagent_run({
 
           const planContent = readPlanFile(taskId);
 
-          // 直接question UIを表示してユーザーに確認
-          if (ctx.hasUI) {
-            const qctx = asQuestionContext(ctx);
-            const answer = await askSingleQuestion({
-              question: "この計画で実行しますか？",
-              header: "Plan確認",
-              options: [
-                { label: "実行", description: "このまま実装を開始" },
-                { label: "修正", description: "追加の修正内容を記述" }
-              ],
-              multiple: false,
-              custom: true
-            }, qctx);
-
-            if (answer === null) {
-              return makeResult("Plan確認がキャンセルされました。", { taskId, phase: "plan", cancelled: true });
-            }
-
-            if (answer[0] === "実行") {
-              // 実装フェーズへ進む
-              currentWorkflow.approvedPhases.push("plan");
-              currentWorkflow.phase = "implement";
-              currentWorkflow.phaseIndex = 2;
-              currentWorkflow.updatedAt = new Date().toISOString();
-              saveState(currentWorkflow);
-
-              try {
-                await (ctx as any).runSubagent({
-                  subagentId: "implementer",
-                  task: `plan.mdを実装: ${planPath}`,
-                  extraContext: "機械的に実装してください。"
-                });
-
-                currentWorkflow.approvedPhases.push("implement");
-                currentWorkflow.phase = "completed";
-                currentWorkflow.phaseIndex = 3;
-                currentWorkflow.updatedAt = new Date().toISOString();
-                saveState(currentWorkflow);
-                setCurrentWorkflow(null);
-
-                return makeResult(`## 実装完了
-
-Task ID: ${taskId}
-
-ワークフローが完了しました。
-
-### 次のステップ: コミット
-
-以下を実行してコミットを作成してください:
-
-\`\`\`
-ul_workflow_commit()
-\`\`\`
-
-または手動でコミット:
-
-\`\`\`bash
-# 変更確認
-git status && git diff
-
-# ステージング（選択的）
-git add <変更したファイル>
-
-# コミット
-git commit -m "feat: ..."
-\`\`\`
-`, { taskId, phase: "completed", suggestCommit: true });
-              } catch (implError) {
-                return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${implError}`, { error: "implement_error", details: String(implError) });
-              }
-            } else if (answer[0] === "修正") {
-              return makeResult(`## Plan修正\n\n追加の修正内容を入力してください:\n  ul_workflow_modify_plan({ modifications: "修正内容" })`, { taskId, phase: "plan", needsModification: true });
-            } else {
-              // カスタム入力
-              return makeResult(`## Plan修正\n\n修正内容: ${answer[0]}\n\nul_workflow_modify_plan({ modifications: "${answer[0].replace(/"/g, '\\"')}" })`, { taskId, phase: "plan", needsModification: true, modifications: answer[0] });
-            }
-          }
-
-          // UIがない場合は従来通りテキストベースの確認
+          // detailsベースで質問を返す
           return {
             content: [{ type: "text", text: `## Plan修正完了
 
@@ -2138,345 +1855,6 @@ subagent_run(
     },
   });
 
-  // 実装実行ツール（サブエージェント委任のヘルパー）
-  pi.registerTool({
-    name: "ul_workflow_implement",
-    label: "Execute UL Workflow Implement Phase",
-    description: "実装フェーズを実行。DAG並列実行をサポート。",
-    parameters: Type.Object({
-      task_id: Type.Optional(Type.String({ description: "タスクID（省略時は現在のワークフローを使用）" })),
-      useDag: Type.Optional(Type.Boolean({ description: "DAG並列実行を使用（デフォルト: true）" })),
-      maxConcurrency: Type.Optional(Type.Number({ description: "最大並列数（デフォルト: 3）" })),
-    }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const workflow = getCurrentWorkflow();
-      const taskId = params.task_id || workflow?.taskId;
-      const useDag = params.useDag !== false; // デフォルトtrue
-      const maxConcurrency = params.maxConcurrency ?? 3;
-
-      if (!taskId) {
-        return makeResult("エラー: task_id が指定されていません。", { error: "no_task_id" });
-      }
-
-      if (workflow) {
-        const ownership = checkOwnership(workflow);
-        if (!ownership.owned) {
-          return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
-        }
-      }
-      
-      if (!workflow?.approvedPhases.includes("plan") && !workflow?.approvedPhases.includes("annotate")) {
-        return makeResult(`エラー: plan フェーズが承認されていません。
-
-現在の承認済みフェーズ: ${workflow?.approvedPhases.join(", ") || "なし"}
-
-実装の前に:
-1. ul_workflow_confirm_plan() で plan を確認・承認
-`, { error: "plan_not_approved" });
-      }
-      
-      const planPath = path.join(getTaskDir(taskId), "plan.md");
-      const planContent = readPlanFile(taskId);
-
-      // runSubagent APIが利用可能な場合は自動実行
-      if ((ctx as any).runSubagent) {
-        // フェーズを進める
-        if (workflow) {
-          workflow.phase = "implement";
-          workflow.phaseIndex = workflow.phases.indexOf("implement");
-          workflow.updatedAt = new Date().toISOString();
-          saveState(workflow);
-          setCurrentWorkflow(workflow);
-        }
-
-        // DAG並列実行
-        if (useDag) {
-          console.log(`[ul_workflow_implement] Using DAG parallel execution (concurrency: ${maxConcurrency})`);
-          
-          try {
-            const { generateDagFromTask } = await import("../lib/dag-generator.js");
-            const { executeDag } = await import("../lib/dag-executor.js");
-
-            // plan.mdベースでDAG生成
-            const dagPlan = await generateDagFromTask(`plan.mdを実装: ${planPath}`, {
-              maxDepth: 3,
-              maxTasks: 6,
-            });
-
-            console.log(`[ul_workflow_implement] Generated DAG: ${dagPlan.id} (${dagPlan.tasks.length} tasks)`);
-
-            const dagResult = await executeDag<{ output: string; phase: string }>(
-              dagPlan,
-              async (task, _context) => {
-                let subagentId = "implementer";
-                const taskLower = task.description.toLowerCase();
-
-                if (taskLower.includes("test") || taskLower.includes("テスト")) {
-                  subagentId = "tester";
-                } else if (taskLower.includes("review") || taskLower.includes("レビュー")) {
-                  subagentId = "reviewer";
-                }
-
-                console.log(`[ul_workflow_implement] DAG task ${task.id} -> ${subagentId}`);
-
-                const result = await (ctx as any).runSubagent!({
-                  subagentId,
-                  task: task.description,
-                  extraContext: `Part of implementation workflow. Plan: ${planPath}`,
-                });
-
-                return {
-                  output: result?.content?.[0]?.text || "completed",
-                  phase: subagentId,
-                };
-              },
-              {
-                maxConcurrency,
-                abortOnFirstError: false,
-              },
-            );
-
-            const allResults = Array.from(dagResult.taskResults.values());
-            const failedTasks = allResults.filter((r) => r.status === "failed");
-
-            // 完了処理
-            if (workflow) {
-              workflow.approvedPhases.push("implement");
-              workflow.phase = "completed";
-              workflow.phaseIndex = workflow.phases.length - 1;
-              workflow.updatedAt = new Date().toISOString();
-              saveState(workflow);
-              setCurrentWorkflow(null);
-            }
-
-            const summary = `## 実装完了（DAG並列モード）
-
-Task ID: ${taskId}
-
-### DAG実行詳細
-- Plan ID: ${dagPlan.id}
-- タスク数: ${dagPlan.tasks.length}
-- 最大深度: ${dagPlan.metadata.maxDepth}
-- 並列数: ${maxConcurrency}
-
-### タスク結果
-${allResults.map((r) => {
-  const status = r.status === "completed" ? "DONE" : "FAIL";
-  const output = r.output as { phase?: string } | undefined;
-  return `- [${status}] ${r.taskId}: ${output?.phase || "unknown"}`;
-}).join("\n")}
-
-${failedTasks.length > 0 ? `\n### 失敗タスク\n${failedTasks.map((f) => `- ${f.taskId}: ${f.error}`).join("\n")}` : ""}
-
-### 次のステップ: コミット
-
-\`\`\`
-ul_workflow_commit()
-\`\`\`
-`;
-
-            return {
-              content: [{ type: "text", text: summary }],
-              details: {
-                taskId,
-                phase: "completed",
-                useDag: true,
-                dagPlanId: dagPlan.id,
-                taskCount: dagPlan.tasks.length,
-                succeededCount: allResults.length - failedTasks.length,
-                failedCount: failedTasks.length,
-                outcomeCode: failedTasks.length > 0 ? "PARTIAL_SUCCESS" : "SUCCESS",
-                suggestCommit: true,
-              },
-            };
-          } catch (dagError) {
-            console.log(`[ul_workflow_implement] DAG execution failed, falling back to sequential: ${dagError}`);
-            // Fall through to sequential
-          }
-        }
-
-        // 逐次実行
-        console.log(`[ul_workflow_implement] Using sequential execution`);
-        try {
-          await (ctx as any).runSubagent({
-            subagentId: "implementer",
-            task: `plan.mdを実装: ${planPath}`,
-            extraContext: "機械的に実装してください。"
-          });
-
-          if (workflow) {
-            workflow.approvedPhases.push("implement");
-            workflow.phase = "completed";
-            workflow.phaseIndex = workflow.phases.length - 1;
-            workflow.updatedAt = new Date().toISOString();
-            saveState(workflow);
-            setCurrentWorkflow(null);
-          }
-
-          return makeResult(`## 実装完了（逐次モード）
-
-Task ID: ${taskId}
-
-ワークフローが完了しました。
-
-### 次のステップ: コミット
-
-\`\`\`
-ul_workflow_commit()
-\`\`\`
-`, { taskId, phase: "completed", useDag: false, suggestCommit: true });
-        } catch (error) {
-          return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${error}`, { error: "implement_error", details: String(error) });
-        }
-      }
-
-      // runSubagent APIが利用できない場合は簡潔な指示生成モード
-      return makeResult(`実装フェーズの実行指示
-
-Task ID: ${taskId}
-
-以下の subagent_run を実行してください:
-
-\`\`\`
-subagent_run(
-  subagentId: "implementer",
-  task: "plan.md に記載されたすべての作業を実施してください。
-
-計画ファイル: ${planPath}
-
-実装要件:
-- すべてのタスクとフェーズを完了するまで作業を停止しない
-- タスクまたはフェーズが完了したら plan.md 内で完了済みとしてマーク
-",
-  extraContext: "実装は機械的な作業です。創造的な判断は計画段階で完了しています。",
-  ulTaskId: "${taskId}"
-)
-\`\`\`
-
-実装完了後:
-  ul_workflow_approve() でワークフロー完了
-`, { taskId, phase: "implement" });
-    },
-  });
-
-  // DAGプレビューツール（ul_workflow_run の並列実行を手動で呼び出すための補助）
-  // ul_workflow_run({ mode: "parallel" }) が推奨されるが、このツールでDAG構造を事前確認可能
-  pi.registerTool({
-    name: "ul_workflow_dag",
-    label: "Preview UL Workflow DAG",
-    description: "タスクのDAG構造をプレビュー。統合アプローチ（Research→Plan→Implement(DAG)）の実装フェーズで使用されるDAGを表示。実際の実行は ul_workflow_run または ul_workflow_implement を使用。",
-    parameters: Type.Object({
-      task: Type.String({ description: "分析するタスク" }),
-      maxDepth: Type.Optional(Type.Number({ description: "最大探索深度（デフォルト: 3）" })),
-      maxTasks: Type.Optional(Type.Number({ description: "最大タスク数（デフォルト: 6）" })),
-    }),
-    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      const { generateDagFromTask } = await import("../lib/dag-generator.js");
-      
-      const trimmedTask = String(params.task || "").trim();
-      if (!trimmedTask || trimmedTask.length < 5) {
-        return makeResult("エラー: 有効なタスク説明を入力してください（5文字以上）。", { error: "invalid_task" });
-      }
-
-      // 実行戦略を判定
-      const strategy = determineExecutionStrategy(trimmedTask);
-
-      // DAG生成
-      let plan;
-      try {
-        plan = await generateDagFromTask(trimmedTask, {
-          maxDepth: params.maxDepth ?? 3,
-          maxTasks: params.maxTasks ?? 6,
-        });
-      } catch (genError) {
-        return makeResult(`DAG生成に失敗しました: ${genError}\n\n逐次実行モードをお試しください:\n  ul_workflow_run({ task: "${trimmedTask.replace(/"/g, '\\"')}", mode: "sequential" })`, { error: "dag_generation_failed" });
-      }
-
-      // DAG構造の可視化
-      const taskSummary = plan.tasks.map((t) => {
-        const deps = t.dependencies.length > 0 ? ` (deps: ${t.dependencies.join(", ")})` : "";
-        const agent = t.assignedAgent ? ` [${t.assignedAgent}]` : "";
-        const desc = t.description.length > 50 ? t.description.slice(0, 50) + "..." : t.description;
-        return `  - ${t.id}${agent}${deps}: ${desc}`;
-      }).join("\n");
-
-      // 依存関係グラフの構築
-      const levels: string[][] = [];
-      const visited = new Set<string>();
-      
-      function getLevel(taskId: string): number {
-        if (visited.has(taskId)) return 0;
-        visited.add(taskId);
-        const task = plan.tasks.find(t => t.id === taskId);
-        if (!task || task.dependencies.length === 0) return 0;
-        const depLevels = task.dependencies.map(depId => getLevel(depId) + 1);
-        return Math.max(...depLevels);
-      }
-      
-      plan.tasks.forEach(t => {
-        visited.clear();
-        const level = getLevel(t.id);
-        if (!levels[level]) levels[level] = [];
-        levels[level].push(t.id);
-      });
-
-      const graphVisualization = levels.map((levelTasks, idx) => {
-        const indent = "  ".repeat(idx);
-        return levelTasks.map(tid => `${indent}[${tid}]`).join(" → ");
-      }).join("\n");
-
-      return makeResult(`## DAGプレビュー（統合アプローチ）
-
-Task: ${trimmedTask}
-Auto-selected Strategy: ${strategy.strategy}
-Reason: ${strategy.reason}
-
-### 統合アプローチの構成
-
-\`\`\`
-Research（逐次）→ Plan（逐次）→ [ユーザーレビュー] → Implement（DAG並列）
-\`\`\`
-
-- **Research/Plan**: 逐次実行で誤認識リスクを低減
-- **Implement**: DAG並列で高速化
-
-### DAG構造（Implementフェーズ用）
-
-\`\`\`
-${graphVisualization}
-\`\`\`
-
-### タスク詳細 (${plan.tasks.length} tasks, max depth: ${plan.metadata.maxDepth})
-${taskSummary}
-
-### 実行方法
-
-**推奨**: ul_workflow_run（統合モード）
-\`\`\`
-ul_workflow_run({ task: "${trimmedTask.replace(/"/g, '\\"')}" })
-\`\`\`
-
-これにより:
-1. Research → Plan（逐次実行）
-2. ユーザーレビュー
-3. Implement（DAG並列）
-
-が自動的に実行されます。
-
-**強制的に逐次実行**:
-\`\`\`
-ul_workflow_run({ task: "${trimmedTask.replace(/"/g, '\\"')}", mode: "sequential" })
-\`\`\`
-`, { 
-        strategy: strategy.strategy,
-        planId: plan.id,
-        taskCount: plan.tasks.length,
-        maxDepth: plan.metadata.maxDepth,
-        useDag: strategy.useDag,
-      });
-    },
-  });
-
   // コミット提案ツール（実装完了後のコミット支援）
   pi.registerTool({
     name: "ul_workflow_commit",
@@ -2523,43 +1901,9 @@ ul_workflow_run({ task: "${trimmedTask.replace(/"/g, '\\"')}", mode: "sequential
         suggestedMessage = `${type}: ${taskDesc.slice(0, 50)}${taskDesc.length > 50 ? "..." : ""}`;
       }
 
-      // question UIでユーザーに確認
-      if (ctx.hasUI) {
-        const qctx = asQuestionContext(ctx);
-        const answer = await askSingleQuestion({
-          question: `以下の内容でコミットしますか？\n\n【コミットメッセージ】\n${suggestedMessage}\n\n【変更内容】\n${taskDesc}\n\n【plan.md】\n${planPath}`,
-          header: "Git Commit",
-          options: [
-            { label: "Commit", description: "ステージング + コミットを実行" },
-            { label: "Edit", description: "メッセージを編集" },
-            { label: "Skip", description: "コミットせずに完了" }
-          ],
-          multiple: false,
-          custom: true
-        }, qctx);
-
-        if (answer === null || answer[0] === "Skip") {
-          return makeResult("コミットをスキップしました。", { taskId, phase: workflow.phase, committed: false });
-        }
-
-        if (answer[0] === "Edit" || !["Commit", "Edit", "Skip"].includes(answer[0])) {
-          // カスタムメッセージ
-          const customMessage = answer[0] === "Edit" ? answer[0] : answer[0];
-          return {
-            content: [{ type: "text", text: `## カスタムコミットメッセージ\n\n以下を実行してください:\n\n\`\`\`bash\n# 変更内容を確認\ngit status\ngit diff\n\n# ステージング（選択的）\ngit add <変更したファイル>\n\n# コミット\ngit commit -m "${customMessage.replace(/"/g, '\\"')}"\n\`\`\`\n\n**注意**: \`git add .\`は使用しないでください。自分が編集したファイルのみをステージングしてください。` }],
-            details: { taskId, phase: workflow.phase, committed: false, customMessage }
-          };
-        }
-
-        // Commit選択時の指示を生成
-        return {
-          content: [{ type: "text", text: `## コミット実行\n\n以下を実行してください:\n\n\`\`\`bash\n# 1. 変更内容を確認\ngit status\ngit diff\n\n# 2. ステージング（選択的 - 自分が編集したファイルのみ）\ngit add <変更したファイル>\n\n# 3. コミット（日本語・Body必須）\ngit commit -m "${suggestedMessage.replace(/"/g, '\\"')}" -m "\n## 背景\n${taskDesc}\n\n## 変更内容\nplan.mdに基づく実装\n\n## テスト方法\n動作確認済み\n"\n\`\`\`\n\n**重要**:\n- \`git add .\`や\`git add -A\`は使用しないでください\n- コミットメッセージは日本語で書いてください\n- Body（本文）を含めてください\n\n詳細はgit-workflowスキルを参照: ${skillPath}` }],
-          details: { taskId, phase: workflow.phase, committed: true, message: suggestedMessage }
-        };
-      }
-
-      // UIがない場合のテキストベースの指示
-      return makeResult(`## コミット提案
+      // detailsベースでユーザーに確認
+      return {
+        content: [{ type: "text", text: `## コミット提案
 
 Task: ${taskDesc}
 Suggested Message: ${suggestedMessage}
@@ -2571,17 +1915,48 @@ Suggested Message: ${suggestedMessage}
 git status
 git diff
 
-# 2. ステージング（選択的）
+# 2. ステージング（選択的 - 自分が編集したファイルのみ）
 git add <変更したファイル>
 
-# 3. コミット
-git commit -m "${suggestedMessage.replace(/"/g, '\\"')}" -m "Body: ${taskDesc.replace(/"/g, '\\"')}"
+# 3. コミット（日本語・Body必須）
+git commit -m "${suggestedMessage.replace(/"/g, '\\"')}" -m "
+## 背景
+${taskDesc}
+
+## 変更内容
+plan.mdに基づく実装
+
+## テスト方法
+動作確認済み
+"
 \`\`\`
 
-**注意**: \`git add .\`は使用しないでください。
+**重要**:
+- \`git add .\`や\`git add -A\`は使用しないでください
+- コミットメッセージは日本語で書いてください
+- Body（本文）を含めてください
 
-詳細: ${skillPath}
-`, { taskId, phase: workflow.phase, suggestedMessage });
+詳細はgit-workflowスキルを参照: ${skillPath}
+` }],
+        details: {
+          taskId,
+          phase: workflow.phase,
+          suggestCommit: true,
+          suggestedMessage,
+          askUser: true,
+          question: {
+            question: `以下の内容でコミットしますか？\n\n【コミットメッセージ】\n${suggestedMessage}\n\n【変更内容】\n${taskDesc}\n\n【plan.md】\n${planPath}`,
+            header: "Git Commit",
+            options: [
+              { label: "Commit", description: "ステージング + コミットを実行" },
+              { label: "Edit", description: "メッセージを編集" },
+              { label: "Skip", description: "コミットせずに完了" }
+            ],
+            multiple: false,
+            custom: true
+          }
+        }
+      };
     },
   });
 

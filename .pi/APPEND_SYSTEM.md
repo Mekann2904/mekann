@@ -648,99 +648,86 @@ const stats = awo.getStats();
 
 > **エージェントにコードを書かせる前に、必ず文章化された計画をレビュー・承認する**
 
-## 推奨: 統合実行ツール
-
-ULモードは複雑度に応じて自動的に実行方法を選択:
-
-```typescript
-// 推奨: 自動選択実行（複雑度判定で逐次/並列を自動選択）
-ul_workflow_run({ task: "<タスク>" })
-
-// 明示的なモード指定も可能
-ul_workflow_run({ task: "<タスク>", mode: "sequential" })  // 強制的に逐次実行
-ul_workflow_run({ task: "<タスク>", mode: "parallel" })    // 強制的に並列実行
-ul_workflow_run({ task: "<タスク>", mode: "auto" })        // 自動選択（デフォルト）
-```
-
-### 3つの入口（簡素化済み）
-
-| 入口 | 用途 | 対象ユーザー |
-|------|------|-----------|
-| `ul_workflow_start` | 手動制御（Research→Plan→承認→Implement） | 詳細な計画レビューが必要な場合 |
-| `ul_workflow_run` | 自動実行（複雑度に応じて逐次/並列を自動選択） | 標準的な開発タスク |
-| `ul_workflow_dag` | DAG構造のプレビューのみ（実行は行わない） | 並列実行前の構造確認 |
-
-### 複雑度判定と自動選択
-
-| 複雑度 | 自動選択 | 理由 |
-|--------|---------|------|
-| Low | Sequential | 単純なタスクは逐次実行で十分 |
-| Medium | Sequential/DAG | 明示的なステップがある場合のみDAG |
-| High | DAG | 大規模タスクは並列実行で効率化 |
-
-### パラメータ
+## 単一入口
 
 ```typescript
 ul_workflow_run({
-  task: string,           // 必須: 実行するタスク
-  mode?: "auto" | "sequential" | "parallel",  // オプション: 実行モード
-  maxConcurrency?: number // オプション: 並列数（デフォルト: 3）
+  task: string  // 必須: 実行するタスク
 })
 ```
 
+**内部で自動決定:**
+- DAG構造（タスクを依存関係を持つサブタスクに分解）
+- 並列数（APIレート制限とリソースから計算）
+- 実行順序
+
+## 統一フロー（必須）
+
+```
+Research (DAG並列) → Plan → [人間確認必須] → Implement (DAG並列) → Commit
+```
+
+**常に強制:**
+- DAGベースの並列実行
+- 人間によるplan確認
+- plan承認後の実装
+
 ---
 
-## 従来のフロー（参考）
+## フェーズ詳細
 
-```
-Research → Plan → [ユーザーレビュー] → Implement
-```
-
-### 第1段階：Research（調査）
+### 第1段階: Research（調査）
 
 コードベースの該当部分を**徹底的に**理解する。
 
-```typescript
-ul_workflow_research({ task: "<タスク>", task_id: "<taskId>" })
-```
+- 複数のresearcherエージェントが並列で調査
+- 調査結果は `.pi/ul-workflow/tasks/{taskId}/research.md` に保存
 
-### 第2段階：Plan（計画策定）
+### 第2段階: Plan（計画策定）
 
-詳細な実装計画を作成する。
+詳細な実装計画を `.pi/ul-workflow/tasks/{taskId}/plan.md` に作成する。
 
-```typescript
-ul_workflow_plan({ task: "<タスク>", task_id: "<taskId>" })
-```
+- 変更内容、手順、考慮事項、Todoを明記
+- コードスニペットも含める
 
-### 第3段階：Annotation Cycle（ユーザーレビュー）
+### 第3段階: 人間確認（必須）
 
-plan.mdをエディタで開き、インライン注釈を追加する。
+**ここはユーザーが主導する。**
 
-```typescript
-ul_workflow_annotate()  // 注釈を検出・適用
-ul_workflow_approve()   // 承認して次へ進む
-```
+1. plan.mdをエディタで開く
+2. インライン注釈（`<!-- NOTE: ... -->`）を追加
+3. `ul_workflow_annotate()` で注釈を検出・適用
+4. `ul_workflow_approve()` で承認して次へ進む
 
-### 第4段階：Implement（実装）
+ユーザーが満足するまで繰り返し。
 
-```typescript
-ul_workflow_implement({ task_id: "<taskId>" })
-```
+### 第4段階: Implement（実装）
 
-### 第5段階：Commit（コミット）
+計画に従って機械的に実装する。
 
-```typescript
-ul_workflow_commit()
-```
+- 複数のimplementerエージェントが並列で実装
+- **implement it all**: planのすべてを実行
+- **do not stop until completed**: 確認のために途中で停止しない
+
+### 第5段階: Commit（コミット）
+
+実装完了後、コミットを作成する。
+
+- **git-workflowスキル**をロードしてから実行
+- 日本語で詳細なコミットメッセージを作成
 
 ---
 
-## 判断の指針
+## 実行例
 
-| 状況 | 推奨フロー |
-|------|-----------|
-| 重要な実装 | `ul_workflow_start` → Research → Plan → Annotation → Implement → Commit |
-| 標準的な開発 | `ul_workflow_run({ task: "..." })` |
-| 高複雑度タスク | `ul_workflow_run({ task: "...", mode: "parallel" })` |
-| 軽微な修正 | `ul_workflow_run` または直接編集 |
-| 調査のみ | `ul_workflow_research` |
+```typescript
+// タスク実行
+ul_workflow_run({ task: "認証システムをJWTベースにリファクタリングする" })
+
+// 内部フロー:
+// 1. Research: 3つのresearcherが並列で調査（APIレート制限に基づき自動決定）
+// 2. Plan: architectが計画作成 → .pi/ul-workflow/tasks/xxx/plan.md
+// 3. 人間確認: ユーザーがplan.mdをレビュー・注釈追加・承認
+// 4. Implement: 2つのimplementerが並列で実装
+// 5. Commit: 日本語メッセージでコミット作成
+```
