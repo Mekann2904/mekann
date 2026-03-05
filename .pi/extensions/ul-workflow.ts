@@ -69,6 +69,7 @@ const UNIFIED_EXECUTION_CONFIG = {
   useDag: true,
   maxConcurrency: 3,
   requireHumanApproval: true,
+  subagentTimeoutMs: 5 * 60 * 1000, // 5 minutes default timeout
 } as const;
 
 // ワークフロー状態
@@ -186,6 +187,45 @@ function getRunSubagent(ctx: unknown): ((options: {
     }) => Promise<AgentToolResult<unknown>>;
   };
   return anyCtx.runSubagent;
+}
+
+/**
+ * サブエージェント実行にタイムアウト保護を追加する
+ * @summary タイムアウト付きサブエージェント実行
+ * @param ctx - 拡張コンテキスト
+ * @param options - サブエージェント実行オプション
+ * @param timeoutMs - タイムアウト時間（ミリ秒）、デフォルトは5分
+ * @returns サブエージェント実行結果
+ * @throws タイムアウト時はエラーをスロー
+ */
+async function runSubagentWithTimeout(
+  ctx: unknown,
+  options: {
+    subagentId: string;
+    task: string;
+    extraContext?: string;
+  },
+  timeoutMs: number = UNIFIED_EXECUTION_CONFIG.subagentTimeoutMs
+): Promise<AgentToolResult<unknown>> {
+  const runSubagent = getRunSubagent(ctx);
+  if (!runSubagent) {
+    throw new Error("runSubagent APIが利用できません");
+  }
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      reject(new Error(
+        `サブエージェント実行がタイムアウトしました（${timeoutMs}ms）\n` +
+        `サブエージェントID: ${options.subagentId}\n` +
+        `タスク: ${options.task.slice(0, 100)}...`
+      ));
+    }, timeoutMs);
+  });
+
+  return Promise.race([
+    runSubagent(options),
+    timeoutPromise
+  ]);
 }
 
 /**
@@ -698,7 +738,7 @@ Task ID: ${taskId}
           // === PHASE 1: Research（逐次）===
           console.log(`[ul_workflow_run] Phase 1: Research (sequential)`);
           const researchInstruction = generateResearchInstruction(trimmedTask, researchPath, taskId);
-          await (ctx as any).runSubagent({
+          await runSubagentWithTimeout(ctx, {
             subagentId: researchInstruction.subagentId,
             task: researchInstruction.task,
             extraContext: researchInstruction.extraContext,
@@ -707,7 +747,7 @@ Task ID: ${taskId}
           // === PHASE 2: Plan（逐次）===
           console.log(`[ul_workflow_run] Phase 2: Plan (sequential)`);
           const planInstruction = generatePlanInstruction(trimmedTask, researchPath, planPath, taskId);
-          await (ctx as any).runSubagent({
+          await runSubagentWithTimeout(ctx, {
             subagentId: planInstruction.subagentId,
             task: planInstruction.task,
             extraContext: planInstruction.extraContext,
@@ -721,27 +761,42 @@ Task ID: ${taskId}
 
           const planContent = readPlanFile(taskId);
 
-          // === ユーザーレビュー（Plan確認）===
+          // === PHASE 3: Annotate（ユーザーレビュー）===
+          // Plan承認後、自動的にannotateフェーズへ移行
+          currentWorkflow.approvedPhases.push("plan");
+          currentWorkflow.phase = "annotate";
+          currentWorkflow.phaseIndex = 2;
+          currentWorkflow.updatedAt = new Date().toISOString();
+          saveState(currentWorkflow);
+
+          // === ユーザーレビュー（Annotateフェーズ）===
           // UIの有無に関わらず、detailsベースで質問を返す
           return {
-            content: [{ type: "text", text: `## Plan作成完了（レビュー待ち）
+            content: [{ type: "text", text: `## Plan作成完了（レビュー待ち - Annotateフェーズ）
 
 Task: ${trimmedTask}
 Execution Mode: 統一フロー（Research/Plan: 逐次、Implement: DAG並列）
+Current Phase: annotate
 
 \`\`\`markdown
 ${planContent}
 \`\`\`
 
-### 次のステップ
+### 次のステップ（Annotateフェーズ）
 
 1. plan.mdを確認: ${planPath}
-2. 実装を開始: \`ul_workflow_execute_plan()\`
-3. または修正: \`ul_workflow_modify_plan({ modifications: "修正内容" })\`
+2. 必要に応じて注釈を追加:
+   - エディタでplan.mdを開く
+   - 注釈形式: \`<!-- NOTE: 注釈内容 -->\` または \`[注釈]: 注釈内容\`
+   - \`ul_workflow_annotate()\` で注釈を適用
+3. レビュー完了後、承認して実装へ:
+   - \`ul_workflow_approve()\` で実装フェーズへ進む
+4. または計画を修正:
+   - \`ul_workflow_modify_plan({ modifications: "修正内容" })\`
 ` }],
             details: {
               taskId,
-              phase: "plan",
+              phase: "annotate",
               executionMode: "unified-flow",
               useDagForImplement: true,
               askUser: true,
@@ -759,9 +814,13 @@ ${planContent}
           };
 
           // === PHASE 3: Implement（DAG並列または逐次）===
+          if (!currentWorkflow) {
+            return makeResult("エラー: ワークフロー状態が見つかりません", { error: "no_workflow" });
+          }
+          // TypeScript control flow: currentWorkflow is non-null after the check above
           currentWorkflow.approvedPhases.push("plan");
           currentWorkflow.phase = "implement";
-          currentWorkflow.phaseIndex = 2;
+          currentWorkflow.phaseIndex = 3;
           currentWorkflow.updatedAt = new Date().toISOString();
           saveState(currentWorkflow);
 
@@ -774,10 +833,7 @@ ${planContent}
               const { executeDag } = await import("../lib/dag-executor.js");
 
               // 実装フェーズ用のDAGを生成（plan.mdベース）
-              const dagPlan = await generateDagFromTask(`plan.mdを実装: ${planPath}`, {
-                maxDepth: 3,
-                maxTasks: 6,
-              });
+              const dagPlan = await generateDagFromTask(`plan.mdを実装: ${planPath}`);
 
               console.log(`[ul_workflow_run] Generated implementation DAG: ${dagPlan.id} (${dagPlan.tasks.length} tasks)`);
 
@@ -795,14 +851,16 @@ ${planContent}
 
                   console.log(`[ul_workflow_run] DAG task ${task.id} -> ${subagentId}`);
 
-                  const result = await (ctx as any).runSubagent!({
+                  const result = await runSubagentWithTimeout(ctx, {
                     subagentId,
                     task: task.description,
                     extraContext: `Part of implementation workflow. Plan: ${planPath}`,
                   });
 
+                  const contentItem = result?.content?.[0];
+                  const outputText = contentItem && 'text' in contentItem ? contentItem.text : "completed";
                   return {
-                    output: result?.content?.[0]?.text || "completed",
+                    output: outputText,
                     phase: subagentId,
                   };
                 },
@@ -815,11 +873,13 @@ ${planContent}
               const allResults = Array.from(dagResult.taskResults.values());
               const failedTasks = allResults.filter((r) => r.status === "failed");
 
-              currentWorkflow.phase = "completed";
-              currentWorkflow.phaseIndex = phases.length - 1;
-              currentWorkflow.approvedPhases.push("implement");
-              currentWorkflow.updatedAt = new Date().toISOString();
-              saveState(currentWorkflow);
+              if (currentWorkflow) {
+                currentWorkflow.phase = "completed";
+                currentWorkflow.phaseIndex = phases.length - 1;
+                currentWorkflow.approvedPhases.push("implement");
+                currentWorkflow.updatedAt = new Date().toISOString();
+                saveState(currentWorkflow);
+              }
               setCurrentWorkflow(null);
 
               const summary = `## UL Workflow完了（統合モード）
@@ -876,17 +936,19 @@ ul_workflow_commit()
 
           // 逐次実装（DAG失敗時）
           console.log(`[ul_workflow_run] Phase 3: Implement (sequential fallback)`);
-          await (ctx as any).runSubagent({
+          await runSubagentWithTimeout(ctx, {
             subagentId: "implementer",
             task: `plan.mdを実装: ${planPath}`,
             extraContext: "機械的に実装してください。"
           });
 
-          currentWorkflow.approvedPhases.push("implement");
-          currentWorkflow.phase = "completed";
-          currentWorkflow.phaseIndex = 3;
-          currentWorkflow.updatedAt = new Date().toISOString();
-          saveState(currentWorkflow);
+          if (currentWorkflow) {
+            currentWorkflow.approvedPhases.push("implement");
+            currentWorkflow.phase = "completed";
+            currentWorkflow.phaseIndex = 3;
+            currentWorkflow.updatedAt = new Date().toISOString();
+            saveState(currentWorkflow);
+          }
           setCurrentWorkflow(null);
 
           return makeResult(`## 実装完了（逐次フォールバック）
@@ -913,7 +975,7 @@ ul_workflow_commit()
       if ((ctx as any).runSubagent) {
         try {
           // Researchフェーズ実行
-          await (ctx as any).runSubagent({
+          await runSubagentWithTimeout(ctx, {
             subagentId: "researcher",
             task: `調査タスク: ${trimmedTask}\n\n保存先: ${researchPath}`,
             extraContext: "詳細に調査し、research.mdを作成してください。"
@@ -921,7 +983,7 @@ ul_workflow_commit()
 
           // Planフェーズ実行（詳細な指示を使用）
           const planInstruction = generatePlanInstruction(trimmedTask, researchPath, planPath, taskId);
-          await (ctx as any).runSubagent({
+          await runSubagentWithTimeout(ctx, {
             subagentId: planInstruction.subagentId,
             task: planInstruction.task,
             extraContext: planInstruction.extraContext,
@@ -1160,21 +1222,40 @@ ${phasesDisplay}
       saveState(currentWorkflow);
 
       // BUG FIX: 終了フェーズではアクティブ状態をクリア + タスクディレクトリ削除
+      let taskDirectoryDeleted: boolean | undefined;
+      let taskDirectoryError: string | undefined;
       if (nextPhase === "completed" || nextPhase === "aborted") {
         setCurrentWorkflow(null);
         // 完了/中止したタスクディレクトリを削除
         const taskDir = path.join(TASKS_DIR, currentWorkflow.taskId);
         try {
           await fsPromises.rm(taskDir, { recursive: true, force: true });
+          taskDirectoryDeleted = true;
         } catch (e) {
           // ディレクトリ削除に失敗してもクリティカルではない
           console.error(`Failed to remove task directory: ${taskDir}`, e);
+          taskDirectoryDeleted = false;
+          taskDirectoryError = e instanceof Error ? e.message : String(e);
         }
       } else {
         setCurrentWorkflow(currentWorkflow);
       }
 
-      return makeResult(text, { taskId: currentWorkflow.taskId, previousPhase, nextPhase });
+      const responseDetails: Record<string, unknown> = {
+        taskId: currentWorkflow.taskId,
+        previousPhase,
+        nextPhase
+      };
+
+      // Include deletion status in response
+      if (taskDirectoryDeleted !== undefined) {
+        responseDetails.taskDirectoryDeleted = taskDirectoryDeleted;
+        if (taskDirectoryError) {
+          responseDetails.taskDirectoryError = taskDirectoryError;
+        }
+      }
+
+      return makeResult(text, responseDetails);
     },
   });
 
@@ -1384,17 +1465,21 @@ ${planContent}
         return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
       }
 
-      if (currentWorkflow.phase !== "plan") {
-        return makeResult(`エラー: planフェーズではありません（現在: ${currentWorkflow.phase}）`, { error: "wrong_phase" });
+      if (currentWorkflow.phase !== "annotate") {
+        return makeResult(`エラー: annotateフェーズではありません（現在: ${currentWorkflow.phase}）\n\nul_workflow_run 完了後、自動的にannotateフェーズに移行します。`, { error: "wrong_phase" });
+      }
+
+      if (!currentWorkflow.approvedPhases.includes("plan")) {
+        return makeResult("エラー: planフェーズが承認されていません。先にplan.mdを承認してください。", { error: "plan_not_approved" });
       }
 
       const taskId = currentWorkflow.taskId;
       const planPath = path.join(getTaskDir(taskId), "plan.md");
 
-      // フェーズを進める
-      currentWorkflow.approvedPhases.push("plan");
+      // annotateフェーズを承認してimplementフェーズへ進む
+      currentWorkflow.approvedPhases.push("annotate");
       currentWorkflow.phase = "implement";
-      currentWorkflow.phaseIndex = 2;
+      currentWorkflow.phaseIndex = 3;
       currentWorkflow.updatedAt = new Date().toISOString();
       saveState(currentWorkflow);
       setCurrentWorkflow(currentWorkflow);
@@ -1402,7 +1487,7 @@ ${planContent}
       // runSubagent APIが利用可能な場合は自動実行
       if ((ctx as any).runSubagent) {
         try {
-          const implementResult = await (ctx as any).runSubagent({
+          const implementResult = await runSubagentWithTimeout(ctx, {
             subagentId: "implementer",
             task: `plan.mdを実装: ${planPath}`,
             extraContext: "機械的に実装してください。"
@@ -1505,7 +1590,7 @@ subagent_run({
       // runSubagent APIが利用可能な場合は自動実行
       if ((ctx as any).runSubagent) {
         try {
-          await (ctx as any).runSubagent({
+          await runSubagentWithTimeout(ctx, {
             subagentId: "architect",
             task: `plan.md修正: ${trimmedModifications}\n\nファイル: ${planPath}`,
             extraContext: "既存の内容を尊重しつつ修正してください。"
