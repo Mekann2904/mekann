@@ -380,8 +380,8 @@ export function record429(
 
   const config = getConfig();
   const r = getRepo();
-  
-  r.record429(parsed.provider, parsed.model, defaultLimit, config.reductionFactor);
+
+  r.record429(parsed.provider, parsed.model, config.reductionFactor, defaultLimit);
 }
 
 /**
@@ -397,8 +397,9 @@ export function recordSuccess(provider: string, model: string): void {
   const parsed = parseProviderModel(key);
   if (!parsed) return;
 
+  const config = getConfig();
   const r = getRepo();
-  r.recordSuccess(parsed.provider, parsed.model);
+  r.recordSuccess(parsed.provider, parsed.model, config.recoveryFactor);
 }
 
 /**
@@ -431,15 +432,15 @@ export function recordResult(
  */
 export function getAllLimits(): Record<string, LearnedLimit> {
   const r = getRepo();
-  const all = r.getAllLimits();
-  
+  const all = r.getAll();
+
   const result: Record<string, LearnedLimit> = {};
-  for (const [key, limit] of Object.entries(all)) {
+  for (const [key, limit] of Array.from(all)) {
     if (isValidLearnedLimitKey(key)) {
       result[key] = limit;
     }
   }
-  
+
   return result;
 }
 
@@ -497,11 +498,11 @@ export function clearAllLimits(): void {
 function runRecoveryCheck(): void {
   const config = getConfig();
   const r = getRepo();
-  
-  const allLimits = r.getAllLimits();
+
+  const allLimits = r.getAll();
   const now = Date.now();
-  
-  for (const [key, limit] of Object.entries(allLimits)) {
+
+  for (const [key, limit] of Array.from(allLimits)) {
     if (!limit.recoveryScheduled) continue;
     if (!limit.last429At) continue;
     
@@ -595,21 +596,21 @@ startRecoveryTimer();
  */
 export function getLimitsSummary(): string {
   const r = getRepo();
-  const allLimits = r.getAllLimits();
-  const entries = Object.entries(allLimits);
-  
+  const allLimits = r.getAll();
+  const entries = Array.from(allLimits);
+
   if (entries.length === 0) {
     return "No learned limits yet.";
   }
-  
+
   const lines: string[] = [];
   lines.push(`Learned limits (${Math.min(entries.length, MAX_SUMMARY_LEARNED_LIMITS)}/${entries.length} shown):`);
-  
+
   // Sort by total429Count desc
   const sorted = entries
     .sort((a, b) => (b[1].total429Count || 0) - (a[1].total429Count || 0))
     .slice(0, MAX_SUMMARY_LEARNED_LIMITS);
-  
+
   for (const [key, limit] of sorted) {
     const indicator = limit.consecutive429Count > 0 ? "⚠️" : "✓";
     lines.push(
@@ -630,9 +631,9 @@ export function getLimitsSummary(): string {
 export function formatAdaptiveSummary(): string {
   const config = getConfig();
   const r = getRepo();
-  const allLimits = r.getAllLimits();
-  const entries = Object.entries(allLimits);
-  
+  const allLimits = r.getAll();
+  const entries = Array.from(allLimits);
+
   const lines: string[] = [
     `Adaptive Rate Controller`,
     `========================`,
@@ -642,15 +643,15 @@ export function formatAdaptiveSummary(): string {
     `Recovery Factor: ${config.recoveryFactor.toFixed(2)}`,
     `Learned Limits: ${entries.length}`,
   ];
-  
+
   if (entries.length > 0) {
     lines.push(``);
     lines.push(`Top 5 by 429 count:`);
-    
+
     const sorted = entries
       .sort((a, b) => (b[1].total429Count || 0) - (a[1].total429Count || 0))
       .slice(0, 5);
-    
+
     for (const [key, limit] of sorted) {
       lines.push(
         `  ${key}: concurrency=${limit.concurrency}, ` +

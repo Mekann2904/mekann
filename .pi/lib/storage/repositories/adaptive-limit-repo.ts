@@ -144,19 +144,25 @@ export class AdaptiveLimitRepository {
    * @param provider - プロバイダ名
    * @param model - モデル名
    * @param reductionFactor - 低減係数
+   * @param defaultConcurrency - 新規作成時のデフォルト並列数
    */
-  record429(provider: string, model: string, reductionFactor: number): LearnedLimit {
+  record429(
+    provider: string,
+    model: string,
+    reductionFactor: number,
+    defaultConcurrency: number = 1,
+  ): LearnedLimit {
     const key = this.makeKey(provider, model);
     const now = timestampNow();
-    
+
     return this.db.transaction(() => {
       let current = this.getByKey(provider, model);
-      
+
       if (!current) {
-        // 新規作成（初期値は外部から取得する必要がある）
+        // 新規作成
         current = {
-          concurrency: 1,
-          originalConcurrency: 1,
+          concurrency: defaultConcurrency,
+          originalConcurrency: defaultConcurrency,
           last429At: now,
           consecutive429Count: 1,
           total429Count: 1,
@@ -170,7 +176,7 @@ export class AdaptiveLimitRepository {
         current.consecutive429Count++;
         current.total429Count++;
       }
-      
+
       // 履歴に追加
       const history = current.historical429s ?? [];
       history.push(now);
@@ -179,7 +185,7 @@ export class AdaptiveLimitRepository {
         history.shift();
       }
       current.historical429s = history;
-      
+
       this.upsert(provider, model, current);
       return current;
     });
@@ -278,6 +284,90 @@ export class AdaptiveLimitRepository {
       WHERE provider_model = @provider_model
     `);
     stmt.run({ provider_model: key, schedule: safeStringifyJson(schedule) });
+  }
+
+  // ========================================================================
+  // 便利メソッド（adaptive-rate-controller.ts用）
+  // ========================================================================
+
+  /**
+   * 制限値を取得（デフォルト値付き）
+   * @summary 制限値取得（デフォルト付き）
+   * @param provider - プロバイダ名
+   * @param model - モデル名
+   * @param defaultConcurrency - デフォルトの並列数
+   * @returns 制限値情報
+   */
+  getLimit(provider: string, model: string, defaultConcurrency: number): LearnedLimit {
+    const existing = this.getByKey(provider, model);
+    if (existing) return existing;
+
+    // 新規作成
+    return {
+      concurrency: defaultConcurrency,
+      originalConcurrency: defaultConcurrency,
+      last429At: null,
+      consecutive429Count: 0,
+      total429Count: 0,
+      lastSuccessAt: null,
+      recoveryScheduled: false,
+    };
+  }
+
+  /**
+   * 制限値を部分的に更新
+   * @summary 制限値部分更新
+   * @param provider - プロバイダ名
+   * @param model - モデル名
+   * @param partial - 更新するフィールド
+   */
+  updateLimit(
+    provider: string,
+    model: string,
+    partial: Partial<LearnedLimit> & { concurrency?: number },
+  ): void {
+    const existing = this.getByKey(provider, model);
+    if (existing) {
+      this.upsert(provider, model, { ...existing, ...partial });
+    } else {
+      // 新規作成
+      const newLimit: LearnedLimit = {
+        concurrency: partial.concurrency ?? 1,
+        originalConcurrency: partial.concurrency ?? 1,
+        last429At: partial.last429At ?? null,
+        consecutive429Count: partial.consecutive429Count ?? 0,
+        total429Count: partial.total429Count ?? 0,
+        lastSuccessAt: partial.lastSuccessAt ?? null,
+        recoveryScheduled: partial.recoveryScheduled ?? false,
+      };
+      this.upsert(provider, model, newLimit);
+    }
+  }
+
+  /**
+   * 全制限値をクリア
+   * @summary 全制限値クリア
+   */
+  clearAll(): void {
+    const stmt = this.db.prepare("DELETE FROM adaptive_limits");
+    stmt.run();
+  }
+
+  /**
+   * 古いエントリを削除
+   * @summary 古いエントリ削除
+   * @param maxAgeMs - 最大経過時間（ミリ秒）
+   * @returns 削除されたエントリ数
+   */
+  pruneOldEntries(maxAgeMs: number): number {
+    const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+    const stmt = this.db.prepare(`
+      DELETE FROM adaptive_limits
+      WHERE last_success_at < @cutoff
+        AND last_429_at < @cutoff
+    `);
+    const result = stmt.run({ cutoff });
+    return result.changes;
   }
 
   // ========================================================================
