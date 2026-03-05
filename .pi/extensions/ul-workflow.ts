@@ -257,6 +257,70 @@ function generateSubagentInstructionSimple(
  * @summary plan生成指示
  * @param task - タスク説明
  * @param researchPath - 調査結果のパス
+/**
+ * Research フェーズ用の指示を生成
+ * @summary Research指示生成
+ * @param task - タスク説明
+ * @param researchPath - research.md出力パス
+ * @param taskId - タスクID
+ * @returns サブエージェントへの指示オブジェクト
+ */
+function generateResearchInstruction(
+  task: string,
+  researchPath: string,
+  taskId: string
+): {
+  subagentId: string;
+  task: string;
+  extraContext: string;
+} {
+  return {
+    subagentId: "researcher",
+    task: `以下のタスクについてコードベースを徹底的に調査し、research.mdを作成してください。
+
+タスク: ${task}
+
+保存先: ${researchPath}
+
+調査要件:
+- 対象フォルダの内容を詳細に理解する
+- 仕組み、機能、すべての仕様を深く理解する
+- 関連するファイルパスを明記する
+- 依存関係を分析する
+
+強調すべき点:
+- 「深く」「詳細にわたって」「複雑な部分まで」「すべてを徹底的に」調査する
+- 表面的な読み取りでは不十分です
+- 関数のシグネチャレベルではなく、実際の動作を理解してください
+
+【高リスク判定】（MANDATORY）
+research.md の最後に以下のセクションを必ず含めてください:
+
+## 高リスク判定
+
+### 判定結果
+- [ ] high-risk（高リスク）
+- [ ] normal（通常）
+
+### 判定根拠
+以下のいずれかに該当する場合、high-risk と判定:
+- 認証・認可・パスワード・シークレットに関連する変更
+- データベーススキーマ・マイグレーション
+- 決済・課金機能
+- 本番環境へのデプロイ・リリース
+- データ削除・破壊的操作
+- セキュリティ脆弱性の修正
+- 暗号化・復号化処理
+`,
+    extraContext: `research.md は ${researchPath} に保存してください。永続的な成果物です。単なる要約ではなく、後で参照できる詳細なドキュメントを作成してください。高リスク判定は必ず含めてください。`,
+  };
+}
+
+/**
+ * Plan フェーズ用の指示を生成
+ * @summary Plan指示生成
+ * @param task - タスク説明
+ * @param researchPath - research.mdパス
  * @param planPath - plan出力パス
  * @param taskId - タスクID
  * @returns サブエージェントへの指示オブジェクト
@@ -633,10 +697,11 @@ Task ID: ${taskId}
         try {
           // === PHASE 1: Research（逐次）===
           console.log(`[ul_workflow_run] Phase 1: Research (sequential)`);
+          const researchInstruction = generateResearchInstruction(trimmedTask, researchPath, taskId);
           await (ctx as any).runSubagent({
-            subagentId: "researcher",
-            task: `調査タスク: ${trimmedTask}\n\n保存先: ${researchPath}`,
-            extraContext: "詳細に調査し、research.mdを作成してください。"
+            subagentId: researchInstruction.subagentId,
+            task: researchInstruction.task,
+            extraContext: researchInstruction.extraContext,
           });
 
           // === PHASE 2: Plan（逐次）===
