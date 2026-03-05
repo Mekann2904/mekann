@@ -175,9 +175,8 @@ function refreshStatus(ctx: ExtensionAPI["context"]): void {
     return;
   }
 
-  const team = state.usedAgentTeamRun ? "✓" : "…";
-  const loop = state.activeGoalLoopMode ? "✓" : "…";
-  ctx.ui.setStatus?.("ul-dual-mode", `UL mode | team:${team} loop:${loop}`);
+  // team/loop は廃止されたため、シンプルに「UL mode」とだけ表示
+  ctx.ui.setStatus?.("ul-dual-mode", "UL mode");
 }
 
 // 適応的スロットリング用の定数と状態
