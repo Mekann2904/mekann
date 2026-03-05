@@ -31,19 +31,14 @@
  * This module uses the embeddings/ submodule for actual embedding generation.
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import {
   generateEmbedding as embeddingsGenerateEmbedding,
   generateEmbeddingsBatch as embeddingsGenerateEmbeddingsBatch,
   cosineSimilarity,
   getEmbeddingProvider,
-  type EmbeddingProvider,
 } from "./embeddings/index.js";
-import { ensureDir } from "../core/fs-utils.js";
-import { type IndexedRun, type RunIndex, getOrBuildRunIndex } from "./run-index.js";
-import { atomicWriteTextFile } from "./storage-lock.js";
+import { type IndexedRun, getOrBuildRunIndex } from "./run-index.js";
+import { readStrictJsonState, writeStrictJsonState } from "./sqlite-state-store-strict.js";
 
 // ============================================================================
 // Types
@@ -162,7 +157,11 @@ export function findNearestNeighbors(
  * @returns メモリファイルの絶対パス
  */
 export function getSemanticMemoryPath(cwd: string): string {
-  return join(cwd, ".pi", "memory", "semantic-memory.json");
+  return `sqlite://json_state/${getSemanticMemoryStateKey(cwd)}`;
+}
+
+function getSemanticMemoryStateKey(cwd: string): string {
+  return `semantic_memory:${cwd}`;
 }
 
 /**
@@ -171,29 +170,15 @@ export function getSemanticMemoryPath(cwd: string): string {
  * @returns セマンティックメモリストレージ
  */
 export function loadSemanticMemory(cwd: string): SemanticMemoryStorage {
-  const path = getSemanticMemoryPath(cwd);
-  if (!existsSync(path)) {
-    return {
-      version: SEMANTIC_MEMORY_VERSION,
-      lastUpdated: new Date().toISOString(),
-      embeddings: [],
-      model: EMBEDDING_MODEL,
-      dimensions: EMBEDDING_DIMENSIONS,
-    };
-  }
-
-  try {
-    const content = readFileSync(path, "utf-8");
-    return JSON.parse(content);
-  } catch {
-    return {
-      version: SEMANTIC_MEMORY_VERSION,
-      lastUpdated: new Date().toISOString(),
-      embeddings: [],
-      model: EMBEDDING_MODEL,
-      dimensions: EMBEDDING_DIMENSIONS,
-    };
-  }
+  const loaded = readStrictJsonState<SemanticMemoryStorage>(getSemanticMemoryStateKey(cwd));
+  if (loaded) return loaded;
+  return {
+    version: SEMANTIC_MEMORY_VERSION,
+    lastUpdated: new Date().toISOString(),
+    embeddings: [],
+    model: EMBEDDING_MODEL,
+    dimensions: EMBEDDING_DIMENSIONS,
+  };
 }
 
 /**
@@ -204,10 +189,8 @@ export function loadSemanticMemory(cwd: string): SemanticMemoryStorage {
  * @returns なし
  */
 export function saveSemanticMemory(cwd: string, storage: SemanticMemoryStorage): void {
-  const path = getSemanticMemoryPath(cwd);
-  ensureDir(join(cwd, ".pi", "memory"));
   storage.lastUpdated = new Date().toISOString();
-  atomicWriteTextFile(path, JSON.stringify(storage, null, 2));
+  writeStrictJsonState(getSemanticMemoryStateKey(cwd), storage);
 }
 
 // ============================================================================
