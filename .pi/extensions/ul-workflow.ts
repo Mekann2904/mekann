@@ -664,16 +664,23 @@ Task ID: ${taskId}
     },
   });
 
-  // ワンフロー実行ツール（新規）
+  // 統合ワンフロー実行ツール
+  // ul_workflow_run と ul_workflow_dag を統合し、複雑度判定で自動選択
   pi.registerTool({
     name: "ul_workflow_run",
     label: "Run UL Workflow",
-    description: "Research-Plan-Implementを自動実行。plan確認のみインタラクティブ",
+    description: "Research-Plan-Implementを自動実行。複雑度に応じてシーケンシャルまたはDAG並列実行を自動選択。plan確認のみインタラクティブ。",
     parameters: Type.Object({
       task: Type.String({ description: "実行するタスク" }),
+      mode: Type.Optional(Type.Union([
+        Type.Literal("auto"),
+        Type.Literal("sequential"),
+        Type.Literal("parallel")
+      ], { description: "実行モード: auto=自動選択（デフォルト）, sequential=逐次実行, parallel=DAG並列実行" })),
+      maxConcurrency: Type.Optional(Type.Number({ description: "並列実行時の最大並列数（デフォルト: 3）" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { task } = params;
+      const { task, mode = "auto", maxConcurrency = 3 } = params;
       const instanceId = getInstanceId();
       const trimmedTask = String(task || "").trim();
 
@@ -685,17 +692,17 @@ Task ID: ${taskId}
         return makeResult(`エラー: タスク説明が短すぎます（現在: ${trimmedTask.length}文字）。`, { error: "task_too_short", length: trimmedTask.length });
       }
 
-      // REMOVED: Global single-active-workflow check
-      // Each instance can now start independent workflows.
-      // Ownership is tracked per-task in state.json and enforced by checkUlWorkflowOwnership()
-      // when delegation tools receive ulTaskId parameter.
-
       const taskId = generateTaskId(trimmedTask);
       const now = new Date().toISOString();
 
-      // Determine execution strategy - DEFAULT TO DAG FOR HIGH COMPLEXITY
+      // 実行戦略を決定
       const strategy = determineExecutionStrategy(trimmedTask);
-      console.log(`[ul_workflow_run] Strategy: ${strategy.strategy}, useDag: ${strategy.useDag}, reason: ${strategy.reason}`);
+      
+      // モードオーバーライド
+      const useDag = mode === "parallel" || (mode === "auto" && strategy.useDag);
+      const executionMode = useDag ? "parallel" : "sequential";
+      
+      console.log(`[ul_workflow_run] Mode: ${mode}, Execution: ${executionMode}, Strategy: ${strategy.strategy}, Reason: ${strategy.reason}`);
 
       const phases: WorkflowPhase[] = strategy.phases as WorkflowPhase[];
 
@@ -719,16 +726,14 @@ Task ID: ${taskId}
       const researchPath = path.join(getTaskDir(taskId), "research.md");
       const planPath = path.join(getTaskDir(taskId), "plan.md");
 
-      // DAG-BASED EXECUTION FOR HIGH COMPLEXITY
-      if (strategy.useDag && "runSubagent" in ctx) {
+      // PARALLEL/DAG EXECUTION
+      if (useDag && "runSubagent" in ctx) {
         console.log(`[ul_workflow_run] Using DAG execution for task: ${trimmedTask.slice(0, 50)}...`);
 
         try {
-          // Dynamically import DAG utilities
           const { generateDagFromTask } = await import("../lib/dag-generator.js");
           const { executeDag } = await import("../lib/dag-executor.js");
 
-          // Generate DAG plan
           const dagPlan = await generateDagFromTask(trimmedTask, {
             maxDepth: 4,
             maxTasks: 8,
@@ -736,11 +741,9 @@ Task ID: ${taskId}
 
           console.log(`[ul_workflow_run] Generated DAG: ${dagPlan.id} (${dagPlan.tasks.length} tasks)`);
 
-          // Execute DAG with UL-specific task executor
           const dagResult = await executeDag<{ output: string; phase: string }>(
             dagPlan,
             async (task, _context) => {
-              // Map task to appropriate subagent
               let subagentId = "implementer";
               const taskLower = task.description.toLowerCase();
 
@@ -768,12 +771,11 @@ Task ID: ${taskId}
               };
             },
             {
-              maxConcurrency: 2,
+              maxConcurrency,
               abortOnFirstError: false,
             },
           );
 
-          // Collect results from taskResults map
           const allResults = Array.from(dagResult.taskResults.values());
           const failedTasks = allResults.filter((r) => r.status === "failed");
 
@@ -783,13 +785,15 @@ Task ID: ${taskId}
           currentWorkflow.updatedAt = new Date().toISOString();
           saveState(currentWorkflow);
 
-          const summary = `## UL Workflow Completed (DAG Mode)
+          const summary = `## UL Workflow Completed (Parallel Mode)
 
 Task: ${trimmedTask}
+Execution Mode: ${executionMode}
+Auto-selected: ${mode === "auto" ? "Yes" : "No (forced)"}
 Strategy: ${strategy.strategy}
 Reason: ${strategy.reason}
 
-DAG: ${dagPlan.id} (${dagPlan.tasks.length} tasks, max depth: ${dagPlan.metadata.maxDepth})
+DAG: ${dagPlan.id} (${dagPlan.tasks.length} tasks, max depth: ${dagPlan.metadata.maxDepth}, concurrency: ${maxConcurrency})
 
 ### Results
 ${allResults.map((r) => {
@@ -827,6 +831,7 @@ git commit -m "feat: ..."
             details: {
               taskId,
               phase: "completed",
+              executionMode,
               strategy: strategy.strategy,
               dagPlanId: dagPlan.id,
               taskCount: dagPlan.tasks.length,
@@ -838,12 +843,11 @@ git commit -m "feat: ..."
           };
         } catch (dagError) {
           console.log(`[ul_workflow_run] DAG execution failed, falling back to sequential: ${dagError}`);
-          // Fall through to sequential execution below
+          // Fall through to sequential execution
         }
       }
 
       // SEQUENTIAL EXECUTION (low complexity or DAG failure fallback)
-      // runSubagent APIが利用可能な場合は自動実行
       if ((ctx as any).runSubagent) {
         try {
           // Researchフェーズ実行
@@ -860,7 +864,6 @@ git commit -m "feat: ..."
             extraContext: "plan.mdを作成してください。"
           });
 
-          // Plan完了、確認待ち
           currentWorkflow.approvedPhases.push("research", "plan");
           currentWorkflow.phase = "plan";
           currentWorkflow.phaseIndex = 1;
@@ -869,7 +872,7 @@ git commit -m "feat: ..."
 
           const planContent = readPlanFile(taskId);
 
-          // 直接question UIを表示してユーザーに確認
+          // UI経由でユーザー確認
           if (ctx.hasUI) {
             const qctx = asQuestionContext(ctx);
             const answer = await askSingleQuestion({
@@ -884,12 +887,10 @@ git commit -m "feat: ..."
             }, qctx);
 
             if (answer === null) {
-              // ユーザーがキャンセル
               return makeResult("Plan確認がキャンセルされました。", { taskId, phase: "plan", cancelled: true });
             }
 
             if (answer[0] === "実行") {
-              // 実装フェーズへ進む
               currentWorkflow.approvedPhases.push("plan");
               currentWorkflow.phase = "implement";
               currentWorkflow.phaseIndex = 2;
@@ -897,7 +898,7 @@ git commit -m "feat: ..."
               saveState(currentWorkflow);
 
               try {
-                const implementResult = await (ctx as any).runSubagent({
+                await (ctx as any).runSubagent({
                   subagentId: "implementer",
                   task: `plan.mdを実装: ${planPath}`,
                   extraContext: "機械的に実装してください。"
@@ -910,9 +911,10 @@ git commit -m "feat: ..."
                 saveState(currentWorkflow);
                 setCurrentWorkflow(null);
 
-                return makeResult(`## 実装完了
+                return makeResult(`## 実装完了 (Sequential Mode)
 
 Task ID: ${taskId}
+Execution Mode: ${executionMode}
 
 ワークフローが完了しました。
 
@@ -936,25 +938,24 @@ git add <変更したファイル>
 # コミット
 git commit -m "feat: ..."
 \`\`\`
-`, { taskId, phase: "completed", suggestCommit: true });
+`, { taskId, phase: "completed", executionMode, suggestCommit: true });
               } catch (implError) {
                 return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${implError}`, { error: "implement_error", details: String(implError) });
               }
             } else if (answer[0] === "修正") {
-              // 修正モード - カスタム入力から修正内容を取得
               return makeResult(`## Plan修正\n\nplan.mdを修正するには:\n  ul_workflow_modify_plan({ modifications: "修正内容" })\n\nファイル: ${planPath}`, { taskId, phase: "plan", needsModification: true });
             } else {
-              // カスタム入力（修正内容）
               const modifications = answer[0];
               return makeResult(`## Plan修正\n\n修正内容: ${modifications}\n\n以下を実行してください:\n  ul_workflow_modify_plan({ modifications: "${modifications.replace(/"/g, '\\"')}" })`, { taskId, phase: "plan", needsModification: true, modifications });
             }
           }
 
-          // UIがない場合は従来通りテキストベースの確認
+          // UIがない場合はテキストベースの確認
           return {
             content: [{ type: "text", text: `## Plan作成完了
 
 Task: ${trimmedTask}
+Execution Mode: ${executionMode}
 Strategy: ${strategy.strategy} (${strategy.reason})
 
 \`\`\`markdown
@@ -964,6 +965,7 @@ ${planContent}
             details: {
               taskId,
               phase: "plan",
+              executionMode,
               strategy: strategy.strategy,
               autoExecute: true,
               askUser: true,
@@ -984,11 +986,12 @@ ${planContent}
         }
       }
 
-      // runSubagent APIが利用できない場合は簡潔な指示生成モード
+      // runSubagent APIが利用できない場合
       return makeResult(`## UL Workflow開始
 
 Task: ${trimmedTask}
 ID: ${taskId}
+Execution Mode: ${executionMode} (manual)
 
 ### 手順1: Research
 \`\`\`
@@ -1012,7 +1015,7 @@ subagent_run({
 \`\`\`
 ul_workflow_confirm_plan()
 \`\`\`
-`, { taskId, phase: "research", nextPhase: "plan" });
+`, { taskId, phase: "research", nextPhase: "plan", executionMode });
     },
   });
 
@@ -2062,106 +2065,113 @@ subagent_run(
     },
   });
 
-  // DAG-based UL workflow execution
+  // DAGプレビューツール（ul_workflow_run の並列実行を手動で呼び出すための補助）
+  // ul_workflow_run({ mode: "parallel" }) が推奨されるが、このツールでDAG構造を事前確認可能
   pi.registerTool({
     name: "ul_workflow_dag",
-    label: "Run UL Workflow with DAG",
-    description: "Execute high-complexity task using DAG-based parallel execution. Automatically generates DAG and executes with dependency-aware parallelism.",
+    label: "Preview UL Workflow DAG",
+    description: "タスクのDAG構造を生成して表示。実際の実行は行わない。並列実行する場合は ul_workflow_run({ mode: "parallel" }) を使用。",
     parameters: Type.Object({
-      task: Type.String({ description: "Task to execute" }),
-      maxConcurrency: Type.Optional(Type.Number({ description: "Max parallel tasks (default: 3)" })),
+      task: Type.String({ description: "分析するタスク" }),
+      maxDepth: Type.Optional(Type.Number({ description: "最大探索深度（デフォルト: 4）" })),
+      maxTasks: Type.Optional(Type.Number({ description: "最大タスク数（デフォルト: 8）" })),
     }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const { generateDagFromTask } = await import("../lib/dag-generator.js");
-      const { determineExecutionStrategy } = await import("./ul-workflow.js");
-
-      // 現在のワークフローからtaskIdを取得
-      const currentWorkflow = getCurrentWorkflow();
-      const ulTaskId = currentWorkflow?.taskId;
-
-      // Determine execution strategy
-      const strategy = determineExecutionStrategy(params.task);
-
-      if (!strategy.useDag) {
-        // Fall back to simple execution for low/medium complexity
-        return {
-          content: [{
-            type: "text" as const,
-            text: `Task complexity suggests simple execution. Use ul_workflow_run instead.\n\nReason: ${strategy.reason}\n\nSuggested phases: ${strategy.phases.join(" -> ")}`,
-          }],
-          details: {
-            strategy: strategy.strategy,
-            phases: strategy.phases,
-            useDag: false,
-          },
-        };
+      
+      const trimmedTask = String(params.task || "").trim();
+      if (!trimmedTask || trimmedTask.length < 5) {
+        return makeResult("エラー: 有効なタスク説明を入力してください（5文字以上）。", { error: "invalid_task" });
       }
 
-      // Generate DAG plan
+      // 実行戦略を判定
+      const strategy = determineExecutionStrategy(trimmedTask);
+
+      // DAG生成
       let plan;
       try {
-        plan = await generateDagFromTask(params.task, {
-          maxDepth: 4,
-          maxTasks: 10,
+        plan = await generateDagFromTask(trimmedTask, {
+          maxDepth: params.maxDepth ?? 4,
+          maxTasks: params.maxTasks ?? 8,
         });
       } catch (genError) {
-        return {
-          content: [{
-            type: "text" as const,
-            text: `Failed to generate DAG: ${genError}\n\nFalling back to ul_workflow_run recommended.`,
-          }],
-          details: {
-            error: "dag_generation_failed",
-            outcomeCode: "NONRETRYABLE_FAILURE" as const,
-          },
-        };
+        return makeResult(`DAG生成に失敗しました: ${genError}\n\n逐次実行モードをお試しください:\n  ul_workflow_run({ task: "${trimmedTask.replace(/"/g, '\\"')}", mode: "sequential" })`, { error: "dag_generation_failed" });
       }
 
-      // Build execution summary
+      // DAG構造の可視化
       const taskSummary = plan.tasks.map((t) => {
         const deps = t.dependencies.length > 0 ? ` (deps: ${t.dependencies.join(", ")})` : "";
         const agent = t.assignedAgent ? ` [${t.assignedAgent}]` : "";
-        return `  - ${t.id}${agent}${deps}: ${t.description.slice(0, 60)}...`;
+        const desc = t.description.length > 50 ? t.description.slice(0, 50) + "..." : t.description;
+        return `  - ${t.id}${agent}${deps}: ${desc}`;
       }).join("\n");
 
-      return {
-        content: [{
-          type: "text" as const,
-          text: `DAG-based UL Workflow Execution
+      // 依存関係グラフの構築
+      const levels: string[][] = [];
+      const visited = new Set<string>();
+      
+      function getLevel(taskId: string): number {
+        if (visited.has(taskId)) return 0;
+        visited.add(taskId);
+        const task = plan.tasks.find(t => t.id === taskId);
+        if (!task || task.dependencies.length === 0) return 0;
+        const depLevels = task.dependencies.map(depId => getLevel(depId) + 1);
+        return Math.max(...depLevels);
+      }
+      
+      plan.tasks.forEach(t => {
+        visited.clear();
+        const level = getLevel(t.id);
+        if (!levels[level]) levels[level] = [];
+        levels[level].push(t.id);
+      });
 
-Task: ${params.task}
-Strategy: ${strategy.strategy}
+      const graphVisualization = levels.map((levelTasks, idx) => {
+        const indent = "  ".repeat(idx);
+        return levelTasks.map(tid => `${indent}[${tid}]`).join(" → ");
+      }).join("\n");
+
+      return makeResult(`## DAG Preview
+
+Task: ${trimmedTask}
+Auto-selected Strategy: ${strategy.strategy}
 Reason: ${strategy.reason}
 
-Generated DAG (${plan.tasks.length} tasks, max depth: ${plan.metadata.maxDepth}):
+### DAG Structure (${plan.tasks.length} tasks, max depth: ${plan.metadata.maxDepth})
+
+\`\`\`
+${graphVisualization}
+\`\`\`
+
+### Task Details
 ${taskSummary}
 
-Execute with:
+### 実行方法
+
+**推奨**: ul_workflow_run で自動選択実行
 \`\`\`
-subagent_run_dag({
-  task: "${params.task.replace(/"/g, '\\"')}",
-  maxConcurrency: ${params.maxConcurrency ?? 3}${ulTaskId ? `,\n  ulTaskId: "${ulTaskId}"` : ""}
-})
+ul_workflow_run({ task: "${trimmedTask.replace(/"/g, '\\"')}" })
 \`\`\`
 
-Or call directly:
+**強制的に並列実行**:
 \`\`\`
-ctx.callTool("subagent_run_dag", {
-  task: "${params.task.replace(/"/g, '\\"')}",
-  plan: ${JSON.stringify(plan)},
-  maxConcurrency: ${params.maxConcurrency ?? 3}${ulTaskId ? `,\n  ulTaskId: "${ulTaskId}"` : ""}
+ul_workflow_run({ task: "${trimmedTask.replace(/"/g, '\\"')}", mode: "parallel" })
+\`\`\`
+
+**直接 subagent_run_dag を使用**:
+\`\`\`
+subagent_run_dag({
+  task: "${trimmedTask.replace(/"/g, '\\"')}",
+  maxConcurrency: 3
 })
 \`\`\`
-`,
-        }],
-        details: {
-          strategy: strategy.strategy,
-          planId: plan.id,
-          taskCount: plan.tasks.length,
-          maxDepth: plan.metadata.maxDepth,
-          useDag: true,
-        },
-      };
+`, { 
+        strategy: strategy.strategy,
+        planId: plan.id,
+        taskCount: plan.tasks.length,
+        maxDepth: plan.metadata.maxDepth,
+        useDag: strategy.useDag,
+      });
     },
   });
 

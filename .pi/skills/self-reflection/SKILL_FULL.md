@@ -7,7 +7,7 @@ tags: [meta, reflection, cognitive-bias, deconstruction, self-awareness, checkli
 
 # Self-Reflection（自己点検）- 簡易チェックリスト
 
-タスク実行の前・中・後に実施する軽量な自己点検プロセス。詳細な理論的背景は `self-improvement` スキルを参照。
+タスク実行の前・中・後に実施する軽量な自己点検プロセス。認知バイアスの軽減と自己認識の向上を促進。
 
 ---
 
@@ -261,7 +261,7 @@ tags: [meta, reflection, cognitive-bias, deconstruction, self-awareness, checkli
 
 ## 5. 内なるファシズム検出メカニズム
 
-以下の傾向を検出した場合は警戒し、`self-improvement` スキルの詳細な分析を適用する：
+以下の傾向を検出した場合は警戒し、深い分析を適用する：
 
 ### 検出パターン
 
@@ -314,7 +314,6 @@ tags: [meta, reflection, cognitive-bias, deconstruction, self-awareness, checkli
 
 ## 関連スキル
 
-- **self-improvement**: 詳細な理論的背景と7つの哲学的視座の深掘り
 - **logical-analysis**: 論証の妥当性評価
 - **code-review**: コードレビューにおける批判的思考
 

@@ -109,10 +109,6 @@ export const SKILL_KEYWORDS: Record<string, string[]> = {
   ],
 
   // エージェント・自己改善
-  "self-improvement": [
-    "improve", "改善", "optimize", "最適化", "performance",
-    "自己改善", "iteration", "反復", "学習",
-  ],
   "self-reflection": [
     "reflect", "振り返り", "review", "評価", "assessment",
     "自己評価", "retrospective", "ふりかえり",

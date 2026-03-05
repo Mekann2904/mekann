@@ -51,7 +51,6 @@ mekann/
 │   │   ├── logical-analysis/
 │   │   ├── reasoning-bonds/  <-- CoT molecular analysis
 │   │   ├── search-tools/     <-- Code search tools usage
-│   │   ├── self-improvement/ <-- 7 philosophical perspectives
 │   │   ├── self-reflection/  <-- Pre/post task self-check
 │   │   └── test-engineering/ <-- Comprehensive test strategy
 │   ├── subagents/            <-- Subagent definitions and runs
@@ -128,7 +127,6 @@ mekann/
 | logical-analysis | `skills/logical-analysis/` | Text/document analysis |
 | reasoning-bonds | `skills/reasoning-bonds/` | CoT molecular analysis |
 | search-tools | `skills/search-tools/` | Code search tools usage |
-| self-improvement | `skills/self-improvement/` | 7 philosophical perspectives |
 | self-reflection | `skills/self-reflection/` | Pre/post task self-check |
 | test-engineering | `skills/test-engineering/` | Comprehensive test strategy |
 
