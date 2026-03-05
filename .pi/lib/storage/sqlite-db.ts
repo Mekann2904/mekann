@@ -114,7 +114,14 @@ export class PiDatabase {
    * @summary 接続を開始
    */
   connect(): void {
-    if (this.connected || !sqliteAvailable || !Database) return;
+    if (this.connected) return;
+    
+    if (!sqliteAvailable || !Database) {
+      throw new Error(
+        "[sqlite-db] Cannot connect: SQLite is not available. " +
+        "Please ensure better-sqlite3 is properly installed."
+      );
+    }
 
     const dir = join(homedir(), ".pi", "runtime");
     if (!existsSync(dir)) {
@@ -296,6 +303,12 @@ let instance: PiDatabase | null = null;
  */
 export function getDatabase(): PiDatabase {
   if (!instance) {
+    if (!isSQLiteAvailable()) {
+      throw new Error(
+        "[sqlite-db] SQLite is not available. " +
+        "Please ensure better-sqlite3 is properly installed."
+      );
+    }
     instance = new PiDatabase();
     instance.connect();
     
