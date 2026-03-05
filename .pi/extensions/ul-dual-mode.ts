@@ -548,36 +548,8 @@ function getUlPolicy(sessionWide: boolean, goalLoopMode: boolean): string {
   return policy;
 }
 
-function buildUlPolicyString(sessionWide: boolean, goalLoopMode: boolean): string {
-  const mode = sessionWide ? "UL SESSION" : "UL";
-  const scope = sessionWide ? "session is in" : "turn is in";
-
-  const loopSection = goalLoopMode
-    ? `
-Loop rule (clear completion criteria detected):
-- Call loop_run early with goal. Set verifyCommand if tests/build/lint apply.
-- Max iterations: 4-8. Rerun once if stagnation.`
-    : "- Use loop_run with goal if explicit completion criteria exist.";
-
-  return `
----
-## ${mode} (delegation-first)
-
-This ${scope} UL Adaptive Mode.
-
-Execution:
-- Use agent_team_run / agent_team_run_parallel as needed.
-- Phase count: LLM discretion (1-N, optimize for task scale).
-
-Patterns:
-1. Simple: direct execution
-2. Multi-perspective: agent_team_run(teamId: core-delivery-team, strategy: parallel)
-3. Complex: agent_team_run_parallel(teamIds: [...], strategy: parallel)
-
-Rules:
-- ${loopSection}
-- Direct edits allowed for trivial changes.
----`;
+function buildUlPolicyString(_sessionWide: boolean, _goalLoopMode: boolean): string {
+  return "";
 }
 
 /**
