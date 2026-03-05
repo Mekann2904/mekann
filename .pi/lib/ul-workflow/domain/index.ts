@@ -42,8 +42,14 @@ export {
   isCurrentOwner,
 } from "./ownership.js";
 
-// Execution Strategy
+// Execution Strategy (Unified Flow)
 export {
+  UNIFIED_PHASES,
+  DEFAULT_EXECUTION_CONFIG,
+  type UnifiedExecutionConfig,
+  getUnifiedPhases,
+  getExecutionConfig,
+  // Deprecated exports (for backward compatibility)
   type TaskComplexity,
   type ExecutionStrategy,
   type ExecutionStrategyResult,

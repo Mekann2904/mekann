@@ -1,271 +1,148 @@
 /**
  * @abdd.meta
  * path: .pi/lib/ul-workflow/domain/execution-strategy.ts
- * role: タスク実行戦略の決定ロジック
- * why: タスク複雑度に応じた最適な実行方法を選択するため
+ * role: 統一実行フローの定義
+ * why: すべてのタスクで一貫したフローを適用するため
  * related: ./workflow-state.ts
- * public_api: determineWorkflowPhases, determineExecutionStrategy, estimateTaskComplexity
- * invariants: 複雑度判定は一貫性がある
+ * public_api: UNIFIED_PHASES, UNIFIED_EXECUTION_CONFIG
+ * invariants: なし
  * side_effects: なし
  * failure_modes: なし
  * @abdd.explain
- * overview: 実行戦略決定の純粋関数
+ * overview: 統一実行フロー定数
  * what_it_does:
- *   - タスク複雑度の推定
- *   - フェーズ構成の決定
- *   - 実行戦略（simple/dag）の決定
- * why_it_exists: タスクに適した実行方法を自動選択するため
+ *   - 統一フェーズ構成を定義
+ *   - 常にDAG並列実行を使用
+ * why_it_exists: 複雑度ベースの条件分岐を廃止し、一貫したフローを提供
  * scope:
- *   in: タスク文字列
- *   out: application層
+ *   in: なし
+ *   out: application層、adapters層
  */
 
 import type { WorkflowPhase } from "./workflow-state.js";
 
 /**
- * タスク複雑度
- * @summary タスク複雑度
+ * 統一フェーズ構成
+ * @summary 統一フェーズ
+ * @description すべてのタスクで適用される統一フロー
+ * - Research (DAG並列): コードベースの深い理解
+ * - Plan: 詳細な実装計画の作成
+ * - Annotate: ユーザーによる計画レビュー（必須）
+ * - Implement (DAG並列): 計画に基づく実装
+ * - Completed: 完了
  */
-export type TaskComplexity = "low" | "medium" | "high";
+export const UNIFIED_PHASES: WorkflowPhase[] = [
+  "research",
+  "plan",
+  "annotate",
+  "implement",
+  "completed",
+];
 
 /**
- * 実行戦略の種類
- * @summary 実行戦略
+ * 統一実行設定
+ * @summary 実行設定
+ */
+export interface UnifiedExecutionConfig {
+  /** 常にDAG並列実行を使用 */
+  readonly useDag: true;
+  /** Research/Implementフェーズの最大並列数 */
+  readonly maxConcurrency: number;
+  /** 人間によるplan確認が必須 */
+  readonly requireHumanApproval: true;
+}
+
+/**
+ * デフォルト実行設定
+ * @summary デフォルト設定
+ */
+export const DEFAULT_EXECUTION_CONFIG: UnifiedExecutionConfig = {
+  useDag: true,
+  maxConcurrency: 3,
+  requireHumanApproval: true,
+} as const;
+
+/**
+ * 統一フェーズを取得
+ * @summary フェーズ取得
+ * @returns 統一フェーズ配列
+ */
+export function getUnifiedPhases(): WorkflowPhase[] {
+  return [...UNIFIED_PHASES];
+}
+
+/**
+ * 統一実行設定を取得
+ * @summary 設定取得
+ * @param overrideMaxConcurrency - 最大並列数のオーバーライド（省略時はデフォルト）
+ * @returns 実行設定
+ */
+export function getExecutionConfig(overrideMaxConcurrency?: number): UnifiedExecutionConfig {
+  if (overrideMaxConcurrency !== undefined) {
+    return {
+      useDag: true,
+      maxConcurrency: overrideMaxConcurrency,
+      requireHumanApproval: true,
+    };
+  }
+  return DEFAULT_EXECUTION_CONFIG;
+}
+
+// =============================================================================
+// 以下は後方互換性のためのdeprecatedエクスポート
+// =============================================================================
+
+/**
+ * @deprecated 統一フローを使用してください。getUnifiedPhases()を使用してください。
+ * @summary フェーズ取得（非推奨）
+ */
+export function determineWorkflowPhases(_task: string): WorkflowPhase[] {
+  return getUnifiedPhases();
+}
+
+/**
+ * @deprecated 統一フローを使用してください。getExecutionConfig()を使用してください。
+ * @summary 実行戦略（非推奨）
  */
 export type ExecutionStrategy = "simple" | "dag" | "full-workflow";
 
 /**
- * 実行戦略決定結果
- * @summary 実行戦略結果
+ * @deprecated 統一フローを使用してください。
+ */
+export type TaskComplexity = "low" | "medium" | "high";
+
+/**
+ * @deprecated 統一フローを使用してください。getExecutionConfig()を使用してください。
  */
 export interface ExecutionStrategyResult {
-  /** 選択された戦略 */
   strategy: ExecutionStrategy;
-  /** フェーズ構成 */
   phases: WorkflowPhase[];
-  /** DAGを使用するか */
   useDag: boolean;
-  /** 判定理由 */
   reason: string;
 }
 
 /**
- * DAG信号分析結果
- * @summary DAG信号
+ * @deprecated 統一フローを使用してください。
  */
-interface DagSignalAnalysis {
-  hasExplicitSteps: boolean;
-  hasMultipleFiles: boolean;
-  needsResearch: boolean;
-}
-
-/**
- * タスクの複雑度を推定
- * @summary 複雑度推定
- * @param task - タスク文字列
- * @returns 推定された複雑度
- */
-export function estimateTaskComplexity(task: string): TaskComplexity {
-  const normalized = String(task || "").trim().toLowerCase();
-  const wordCount = normalized.split(/\s+/).length;
-  const charCount = normalized.length;
-
-  // 高複雑度の指標
-  const highComplexityIndicators = [
-    /アーキテクチャ|architecture/i,
-    /リファクタ|refactor/i,
-    /マイグレーション|migration/i,
-    /統合|integration/i,
-    /複数|multiple|several/i,
-    /システム全体|entire system/i,
-    /再設計|redesign/i,
-  ];
-
-  // 中複雑度の指標
-  const mediumComplexityIndicators = [
-    /実装|implement/i,
-    /追加|add|追加する/i,
-    /修正|fix|modify/i,
-    /更新|update/i,
-    /変更|change/i,
-  ];
-
-  // 低複雑度の指標
-  const lowComplexityIndicators = [
-    /表示|show|display/i,
-    /確認|check|verify/i,
-    /取得|get|fetch/i,
-    /設定|set|config/i,
-  ];
-
-  // 高複雑度チェック
-  if (highComplexityIndicators.some((p) => p.test(normalized))) {
-    return "high";
-  }
-
-  // 文字数・単語数による判定
-  if (charCount > 200 || wordCount > 30) {
-    return "high";
-  }
-
-  // 中複雑度チェック
-  if (mediumComplexityIndicators.some((p) => p.test(normalized))) {
-    if (charCount > 100 || wordCount > 15) {
-      return "medium";
-    }
-    return "medium";
-  }
-
-  // 低複雑度チェック
-  if (lowComplexityIndicators.some((p) => p.test(normalized))) {
-    return "low";
-  }
-
-  // デフォルトは文字数で判定
-  if (charCount < 50 && wordCount < 10) {
-    return "low";
-  }
-
+export function estimateTaskComplexity(_task: string): TaskComplexity {
   return "medium";
 }
 
 /**
- * タスクが明確なゴールを持つかどうかを判定
- * @summary 明確ゴール判定
- * @param task - タスク文字列
- * @returns 明確なゴールがあるかどうか
+ * @deprecated 統一フローでは使用しません。
  */
-export function looksLikeClearGoalTask(task: string): boolean {
-  const normalized = String(task || "").trim().toLowerCase();
-
-  // 明確なゴールを示すパターン
-  const clearGoalPatterns = [
-    /^add\s+/i,
-    /^fix\s+/i,
-    /^update\s+/i,
-    /^implement\s+/i,
-    /^create\s+/i,
-    /^refactor\s+/i,
-    /^remove\s+/i,
-    /^rename\s+/i,
-  ];
-
-  // 曖昧なゴールを示すパターン
-  const ambiguousPatterns = [
-    /^investigate\s+/i,
-    /^analyze\s+/i,
-    /^review\s+/i,
-    /^improve\s+/i,
-    /^optimize\s+/i,
-    /^\?/,
-    /^how\s+/i,
-    /^what\s+/i,
-  ];
-
-  if (ambiguousPatterns.some((p) => p.test(normalized))) {
-    return false;
-  }
-
-  if (clearGoalPatterns.some((p) => p.test(normalized))) {
-    return true;
-  }
-
+export function looksLikeClearGoalTask(_task: string): boolean {
   return false;
 }
 
 /**
- * タスク規模に基づいてフェーズ構成を決定
- * @summary フェーズ決定
- * @param task - タスク文字列
- * @returns フェーズの配列
+ * @deprecated 統一フローを使用してください。getExecutionConfig()を使用してください。
  */
-export function determineWorkflowPhases(task: string): WorkflowPhase[] {
-  const complexity = estimateTaskComplexity(task);
-  const hasClearGoal = looksLikeClearGoalTask(task);
-
-  switch (complexity) {
-    case "low":
-      if (hasClearGoal) {
-        return ["research", "implement", "completed"];
-      }
-      return ["research", "plan", "implement", "completed"];
-
-    case "medium":
-      if (hasClearGoal) {
-        return ["research", "plan", "implement", "completed"];
-      }
-      return ["research", "plan", "annotate", "implement", "completed"];
-
-    case "high":
-      return ["research", "plan", "annotate", "implement", "completed"];
-  }
-}
-
-/**
- * DAG生成用のタスク信号分析
- * @summary DAG信号分析
- * @param task - タスク文字列
- * @returns 分析結果
- */
-function analyzeDagSignals(task: string): DagSignalAnalysis {
-  const normalized = task.trim();
-
-  const stepPatterns = [
-    /first.*then/i,
-    /after.*implement/i,
-    /\d+\.\s/,
-    /まず.*それから/,
-    /実装.*後/,
-  ];
-
-  const hasExplicitSteps = stepPatterns.some((p) => p.test(normalized));
-  const hasMultipleFiles = /multiple|several|複数|いくつか/i.test(normalized);
-  const needsResearch = /investigate|analyze|調査|分析|確認/i.test(normalized);
-
-  return { hasExplicitSteps, hasMultipleFiles, needsResearch };
-}
-
-/**
- * タスクの複雑度に基づいて実行戦略を決定
- * @summary 戦略決定
- * @param task - タスク文字列
- * @returns 実行戦略結果
- */
-export function determineExecutionStrategy(task: string): ExecutionStrategyResult {
-  const complexity = estimateTaskComplexity(task);
-  const signals = analyzeDagSignals(task);
-
-  switch (complexity) {
-    case "low":
-      return {
-        strategy: "simple",
-        phases: ["implement", "completed"],
-        useDag: false,
-        reason: "Low complexity task - simple execution sufficient",
-      };
-
-    case "medium":
-      if (signals.hasExplicitSteps || signals.hasMultipleFiles || signals.needsResearch) {
-        return {
-          strategy: "dag",
-          phases: ["research", "plan", "implement", "completed"],
-          useDag: true,
-          reason: "Medium complexity with multiple components - DAG execution recommended",
-        };
-      }
-      return {
-        strategy: "simple",
-        phases: ["research", "plan", "implement", "completed"],
-        useDag: false,
-        reason: "Medium complexity but straightforward - simple execution",
-      };
-
-    case "high":
-      return {
-        strategy: "dag",
-        phases: ["research", "plan", "implement", "review", "completed"],
-        useDag: true,
-        reason: "High complexity task - DAG-based parallel execution for efficiency",
-      };
-  }
+export function determineExecutionStrategy(_task: string): ExecutionStrategyResult {
+  return {
+    strategy: "dag",
+    phases: getUnifiedPhases(),
+    useDag: true,
+    reason: "Unified flow - always DAG-based parallel execution",
+  };
 }

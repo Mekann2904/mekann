@@ -279,14 +279,9 @@ function extractTextWithoutUlPrefix(text: string): string {
   return text.replace(UL_PREFIX, "").trimStart();
 }
 
-// DISABLED: 自動検出を無効化
-// function looksLikeClearGoalTask(text: string): boolean {
-//   const normalized = String(text || "").trim();
-//   if (!normalized) return false;
-//   return CLEAR_GOAL_SIGNAL.test(normalized);
-// }
+// 統一フローでは複雑度ベースの条件分岐を廃止
+// looksLikeClearGoalTask は常に false を返す
 function looksLikeClearGoalTask(_text: string): boolean {
-  // 常にfalseを返す（自動検出無効）
   return false;
 }
 
@@ -689,7 +684,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     if (UL_SUBCOMMANDS.fast.test(rawText)) {
       const task = rawText.replace(UL_SUBCOMMANDS.fast, "").trim();
       state.pendingUlMode = true;
-      state.pendingGoalLoopMode = looksLikeClearGoalTask(task);
+      state.pendingGoalLoopMode = false; // 統一フローでは常にfalse
       state.currentTask = task;
       
       if (ctx?.hasUI && ctx?.ui) {
@@ -799,7 +794,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     // デフォルト: ul <task> → セッション全体でULモード有効化
     state.pendingUlMode = true;
     state.persistentUlMode = true;  // セッション全体に有効化
-    state.pendingGoalLoopMode = looksLikeClearGoalTask(taskText);
+    state.pendingGoalLoopMode = false; // 統一フローでは常にfalse
     state.currentTask = taskText;
     persistState(pi);  // セッションに保存
 

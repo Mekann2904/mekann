@@ -45,6 +45,12 @@ export {
 } from "./domain/ownership.js";
 
 export {
+  UNIFIED_PHASES,
+  DEFAULT_EXECUTION_CONFIG,
+  type UnifiedExecutionConfig,
+  getUnifiedPhases,
+  getExecutionConfig,
+  // Deprecated exports (for backward compatibility)
   type TaskComplexity,
   type ExecutionStrategy,
   type ExecutionStrategyResult,

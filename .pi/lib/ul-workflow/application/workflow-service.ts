@@ -35,7 +35,7 @@ import {
   claimOwnership,
   isOwnerProcessDead,
 } from "../domain/ownership.js";
-import { determineWorkflowPhases } from "../domain/execution-strategy.js";
+import { getUnifiedPhases } from "../domain/execution-strategy.js";
 import type {
   IWorkflowRepository,
   WorkflowServiceDependencies,
@@ -100,7 +100,7 @@ export class WorkflowService {
     const taskId = generateTaskId(trimmedTask);
     const now = new Date().toISOString();
     const instanceId = getInstanceId();
-    const phases = determineWorkflowPhases(trimmedTask);
+    const phases = getUnifiedPhases();
 
     const state: WorkflowState = {
       taskId,

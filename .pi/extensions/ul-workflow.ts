@@ -34,11 +34,42 @@ import * as path from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { promises as fsPromises } from "fs";
 import { randomBytes } from "node:crypto";
-import { estimateTaskComplexity, type TaskComplexity } from "../lib/agent/agent-utils.js";
 import { withFileLock, atomicWriteTextFile } from "../lib/storage/storage-lock.js";
 
 // ワークフローのフェーズ
 type WorkflowPhase = "idle" | "research" | "plan" | "annotate" | "implement" | "review" | "completed" | "aborted";
+
+// =============================================================================
+// 統一フロー定義
+// =============================================================================
+
+/**
+ * 統一フェーズ構成
+ * @summary 統一フロー
+ * @description すべてのタスクで適用される統一フロー
+ * - Research (DAG並列): コードベースの深い理解
+ * - Plan: 詳細な実装計画の作成
+ * - Annotate: ユーザーによる計画レビュー（必須）
+ * - Implement (DAG並列): 計画に基づく実装
+ * - Completed: 完了
+ */
+const UNIFIED_PHASES: WorkflowPhase[] = [
+  "research",
+  "plan",
+  "annotate",
+  "implement",
+  "completed",
+];
+
+/**
+ * 統一実行設定
+ * @summary 実行設定
+ */
+const UNIFIED_EXECUTION_CONFIG = {
+  useDag: true,
+  maxConcurrency: 3,
+  requireHumanApproval: true,
+} as const;
 
 // ワークフロー状態
 interface WorkflowState {
@@ -206,176 +237,6 @@ function checkOwnership(state: WorkflowState | null, options?: { autoClaim?: boo
 let currentWorkflow: WorkflowState | null = null;
 
 /**
- * タスクが明確なゴールを持つかどうかを判定する
- * 明確なゴールがある場合は、planフェーズを省略できる可能性がある
- * @summary 明確なゴール判定
- * @param task - タスク文字列
- * @returns 明確なゴールがあるかどうか
- */
-function looksLikeClearGoalTask(task: string): boolean {
-  const normalized = String(task || "").trim().toLowerCase();
-
-  // 明確なゴールを示すパターン
-  const clearGoalPatterns = [
-    /^add\s+/i,           // "add feature X"
-    /^fix\s+/i,           // "fix bug in Y"
-    /^update\s+/i,        // "update component Z"
-    /^implement\s+/i,     // "implement API endpoint"
-    /^create\s+/i,        // "create new module"
-    /^refactor\s+/i,      // "refactor function"
-    /^remove\s+/i,        // "remove deprecated code"
-    /^rename\s+/i,        // "rename variable"
-  ];
-
-  // 曖昧なゴールを示すパターン
-  const ambiguousPatterns = [
-    /^investigate\s+/i,   // "investigate performance"
-    /^analyze\s+/i,       // "analyze architecture"
-    /^review\s+/i,        // "review codebase"
-    /^improve\s+/i,       // "improve performance" (何をどう改善するか不明)
-    /^optimize\s+/i,      // "optimize query" (具体的な目標が不明)
-    /^\?/,                // 疑問符開始
-    /^how\s+/i,           // "how to..."
-    /^what\s+/i,          // "what is..."
-  ];
-
-  if (ambiguousPatterns.some((p) => p.test(normalized))) {
-    return false;
-  }
-
-  if (clearGoalPatterns.some((p) => p.test(normalized))) {
-    return true;
-  }
-
-  // デフォルト: 明確でないと仮定
-  return false;
-}
-
-/**
- * 実行戦略の種類
- */
-export type ExecutionStrategy = "simple" | "dag" | "full-workflow";
-
-/**
- * 実行戦略決定結果
- */
-export interface ExecutionStrategyResult {
-  strategy: ExecutionStrategy;
-  phases: WorkflowPhase[];
-  useDag: boolean;
-  reason: string;
-}
-
-/**
- * タスク規模に基づいてフェーズ構成を決定する
- * 小規模タスクはフェーズを削減し、大規模タスクは全フェーズを実行
- * @summary 動的フェーズ決定
- * @param task - タスク文字列
- * @returns フェーズの配列
- */
-export function determineWorkflowPhases(task: string): WorkflowPhase[] {
-  const complexity = estimateTaskComplexity(task);
-  const hasClearGoal = looksLikeClearGoalTask(task);
-
-  switch (complexity) {
-    case "low":
-      if (hasClearGoal) {
-        // 小規模かつ明確なタスク: research + implement のみ
-        return ["research", "implement", "completed"];
-      }
-      // 小規模だが不明確: plan を含める
-      return ["research", "plan", "implement", "completed"];
-
-    case "medium":
-      // 中規模: annotate は省略可能
-      if (hasClearGoal) {
-        return ["research", "plan", "implement", "completed"];
-      }
-      return ["research", "plan", "annotate", "implement", "completed"];
-
-    case "high":
-      // 大規模: すべてのフェーズを実行
-      return ["research", "plan", "annotate", "implement", "completed"];
-  }
-}
-
-/**
- * タスクの複雑度に基づいて実行戦略を決定する
- * 高複雑度タスクではDAG実行を推奨
- * @summary 実行戦略決定
- * @param task - タスク文字列
- * @returns 実行戦略結果
- */
-export function determineExecutionStrategy(task: string): ExecutionStrategyResult {
-  const complexity = estimateTaskComplexity(task);
-  const signals = analyzeDagSignals(task);
-
-  switch (complexity) {
-    case "low":
-      return {
-        strategy: "simple",
-        phases: ["implement", "completed"],
-        useDag: false,
-        reason: "Low complexity task - simple execution sufficient",
-      };
-
-    case "medium":
-      if (signals.hasExplicitSteps || signals.hasMultipleFiles || signals.needsResearch) {
-        return {
-          strategy: "dag",
-          phases: ["research", "plan", "implement", "completed"],
-          useDag: true,
-          reason: "Medium complexity with multiple components - DAG execution recommended",
-        };
-      }
-      return {
-        strategy: "simple",
-        phases: ["research", "plan", "implement", "completed"],
-        useDag: false,
-        reason: "Medium complexity but straightforward - simple execution",
-      };
-
-    case "high":
-      // HIGH COMPLEXITY -> DAG EXECUTION
-      return {
-        strategy: "dag",
-        phases: ["research", "plan", "implement", "review", "completed"],
-        useDag: true,
-        reason: "High complexity task - DAG-based parallel execution for efficiency",
-      };
-  }
-}
-
-/**
- * DAG生成用のタスク信号分析（簡易版）
- * @summary DAG信号分析
- * @param task - タスク文字列
- * @returns 分析結果
- */
-function analyzeDagSignals(task: string): {
-  hasExplicitSteps: boolean;
-  hasMultipleFiles: boolean;
-  needsResearch: boolean;
-} {
-  const normalized = task.trim();
-  const lowerTask = normalized.toLowerCase();
-
-  const stepPatterns = [
-    /first.*then/i,
-    /after.*implement/i,
-    /\d+\.\s/,
-    /まず.*それから/,
-    /実装.*後/,
-  ];
-
-  const hasExplicitSteps = stepPatterns.some((p) => p.test(normalized));
-  const hasMultipleFiles = /multiple|several|複数|いくつか/i.test(normalized);
-  const needsResearch = /investigate|analyze|調査|分析|確認/i.test(normalized);
-
-  return { hasExplicitSteps, hasMultipleFiles, needsResearch };
-}
-
-/**
  * サブエージェント委任指示を生成するヘルパー（簡潔版）
  * @summary サブエージェント委任指示生成
  * @param subagentId - サブエージェントID
@@ -389,6 +250,51 @@ function generateSubagentInstructionSimple(
   outputPath: string
 ): string {
   return `subagent_run({ subagentId: "${subagentId}", task: "${task.replace(/"/g, '\\"')}" }) → ${outputPath}`;
+}
+
+/**
+ * plan生成指示を生成（共通）
+ * @summary plan生成指示
+ * @param task - タスク説明
+ * @param researchPath - 調査結果のパス
+ * @param planPath - plan出力パス
+ * @param taskId - タスクID
+ * @returns サブエージェントへの指示オブジェクト
+ */
+function generatePlanInstruction(
+  task: string,
+  researchPath: string,
+  planPath: string,
+  taskId: string
+): {
+  subagentId: string;
+  task: string;
+  extraContext: string;
+} {
+  return {
+    subagentId: "architect",
+    task: `以下のタスクの詳細な実装計画を作成し、plan.mdを生成してください。
+
+タスク: ${task}
+
+事前調査: ${researchPath}
+
+計画要件:
+- 詳細なアプローチの説明
+- 実際の変更内容を示すコードスニペット
+- 変更対象となるファイルパス
+- 考慮事項やトレードオフの分析
+- タスクリスト（チェックボックス形式）
+
+保存先: ${planPath}
+
+重要:
+- research.md の内容を十分に参照してください
+- 既存のコードパターンを尊重してください
+- コードスニペットは実際の変更を反映してください
+`,
+    extraContext: "plan.md はユーザーのレビュー対象です。後で注釈が追加されることを想定して構造化してください。",
+  };
 }
 
 /**
@@ -622,8 +528,8 @@ export default function registerUlWorkflowExtension(pi: ExtensionAPI) {
       const taskId = generateTaskId(trimmedTask);
       const now = new Date().toISOString();
 
-      // タスク規模に基づいてフェーズ構成を動的に決定
-      const phases = determineWorkflowPhases(trimmedTask);
+      // 統一フローを使用
+      const phases = [...UNIFIED_PHASES];
 
       currentWorkflow = {
         taskId,
@@ -694,16 +600,12 @@ Task ID: ${taskId}
       const taskId = generateTaskId(trimmedTask);
       const now = new Date().toISOString();
 
-      // 実行戦略を決定
-      const strategy = determineExecutionStrategy(trimmedTask);
+      // 統一フロー: 常にDAG並列実行
+      const useDag = UNIFIED_EXECUTION_CONFIG.useDag;
+      const effectiveConcurrency = maxConcurrency; // パラメータから取得（デフォルト3）
+      const phases: WorkflowPhase[] = [...UNIFIED_PHASES];
       
-      // モードオーバーライド
-      const useDag = mode === "parallel" || (mode === "auto" && strategy.useDag);
-      const executionMode = useDag ? "parallel" : "sequential";
-      
-      console.log(`[ul_workflow_run] Mode: ${mode}, Execution: ${executionMode}, Strategy: ${strategy.strategy}, Reason: ${strategy.reason}`);
-
-      const phases: WorkflowPhase[] = strategy.phases as WorkflowPhase[];
+      console.log(`[ul_workflow_run] Mode: ${mode}, Execution: unified-flow, DAG: ${useDag}, Concurrency: ${effectiveConcurrency}`);
 
       currentWorkflow = {
         taskId,
@@ -739,10 +641,11 @@ Task ID: ${taskId}
 
           // === PHASE 2: Plan（逐次）===
           console.log(`[ul_workflow_run] Phase 2: Plan (sequential)`);
+          const planInstruction = generatePlanInstruction(trimmedTask, researchPath, planPath, taskId);
           await (ctx as any).runSubagent({
-            subagentId: "architect",
-            task: `計画作成: ${trimmedTask}\n\n事前調査: ${researchPath}\n保存先: ${planPath}`,
-            extraContext: "plan.mdを作成してください。"
+            subagentId: planInstruction.subagentId,
+            task: planInstruction.task,
+            extraContext: planInstruction.extraContext,
           });
 
           currentWorkflow.approvedPhases.push("research", "plan");
@@ -759,8 +662,7 @@ Task ID: ${taskId}
             content: [{ type: "text", text: `## Plan作成完了（レビュー待ち）
 
 Task: ${trimmedTask}
-Execution Mode: ${executionMode}（Research/Plan: 逐次、Implement: ${useDag ? "DAG並列" : "逐次"}）
-Strategy: ${strategy.strategy} (${strategy.reason})
+Execution Mode: 統一フロー（Research/Plan: 逐次、Implement: DAG並列）
 
 \`\`\`markdown
 ${planContent}
@@ -775,9 +677,8 @@ ${planContent}
             details: {
               taskId,
               phase: "plan",
-              executionMode,
-              strategy: strategy.strategy,
-              useDagForImplement: useDag,
+              executionMode: "unified-flow",
+              useDagForImplement: true,
               askUser: true,
               question: {
                 question: "この計画で実行しますか？",
@@ -801,7 +702,7 @@ ${planContent}
 
           // DAG並列実行（useDag=trueの場合）
           if (useDag) {
-            console.log(`[ul_workflow_run] Phase 3: Implement (DAG parallel, concurrency: ${maxConcurrency})`);
+            console.log(`[ul_workflow_run] Phase 3: Implement (DAG parallel, concurrency: ${effectiveConcurrency})`);
             
             try {
               const { generateDagFromTask } = await import("../lib/dag-generator.js");
@@ -841,7 +742,7 @@ ${planContent}
                   };
                 },
                 {
-                  maxConcurrency,
+                  maxConcurrency: effectiveConcurrency,
                   abortOnFirstError: false,
                 },
               );
@@ -859,8 +760,7 @@ ${planContent}
               const summary = `## UL Workflow完了（統合モード）
 
 Task: ${trimmedTask}
-Execution Mode: ${executionMode}（Research/Plan: 逐次、Implement: DAG並列）
-Strategy: ${strategy.strategy}
+Execution Mode: 統一フロー（Research/Plan: 逐次、Implement: DAG並列）
 
 ### フェーズ実行結果
 - Research: 完了（逐次）
@@ -871,7 +771,7 @@ Strategy: ${strategy.strategy}
 - Plan ID: ${dagPlan.id}
 - タスク数: ${dagPlan.tasks.length}
 - 最大深度: ${dagPlan.metadata.maxDepth}
-- 並列数: ${maxConcurrency}
+- 並列数: ${effectiveConcurrency}
 
 ### タスク結果
 ${allResults.map((r) => {
@@ -894,8 +794,7 @@ ul_workflow_commit()
                 details: {
                   taskId,
                   phase: "completed",
-                  executionMode,
-                  strategy: strategy.strategy,
+                  executionMode: "unified-flow",
                   dagPlanId: dagPlan.id,
                   taskCount: dagPlan.tasks.length,
                   succeededCount: allResults.length - failedTasks.length,
@@ -910,8 +809,8 @@ ul_workflow_commit()
             }
           }
 
-          // 逐次実装（DAG失敗時またはuseDag=false）
-          console.log(`[ul_workflow_run] Phase 3: Implement (sequential)`);
+          // 逐次実装（DAG失敗時）
+          console.log(`[ul_workflow_run] Phase 3: Implement (sequential fallback)`);
           await (ctx as any).runSubagent({
             subagentId: "implementer",
             task: `plan.mdを実装: ${planPath}`,
@@ -925,10 +824,10 @@ ul_workflow_commit()
           saveState(currentWorkflow);
           setCurrentWorkflow(null);
 
-          return makeResult(`## 実装完了（逐次モード）
+          return makeResult(`## 実装完了（逐次フォールバック）
 
 Task ID: ${taskId}
-Execution Mode: ${executionMode}
+Execution Mode: unified-flow (sequential fallback)
 
 ワークフローが完了しました。
 
@@ -937,14 +836,15 @@ Execution Mode: ${executionMode}
 \`\`\`
 ul_workflow_commit()
 \`\`\`
-`, { taskId, phase: "completed", executionMode, suggestCommit: true });
+`, { taskId, phase: "completed", executionMode: "unified-flow", suggestCommit: true });
 
         } catch (error) {
           return makeResult(`エラー: サブエージェント実行中にエラーが発生しました。\n\n${error}`, { error: "subagent_error", details: String(error) });
         }
       }
 
-      // SEQUENTIAL EXECUTION (low complexity or DAG failure fallback)
+      // 手動実行モード（runSubagent APIが利用できない場合）
+      // 統一フロー: Research → Plan → [ユーザーレビュー] → Implement
       if ((ctx as any).runSubagent) {
         try {
           // Researchフェーズ実行
@@ -954,11 +854,12 @@ ul_workflow_commit()
             extraContext: "詳細に調査し、research.mdを作成してください。"
           });
 
-          // Planフェーズ実行
+          // Planフェーズ実行（詳細な指示を使用）
+          const planInstruction = generatePlanInstruction(trimmedTask, researchPath, planPath, taskId);
           await (ctx as any).runSubagent({
-            subagentId: "architect",
-            task: `計画作成: ${trimmedTask}\n\n事前調査: ${researchPath}\n保存先: ${planPath}`,
-            extraContext: "plan.mdを作成してください。"
+            subagentId: planInstruction.subagentId,
+            task: planInstruction.task,
+            extraContext: planInstruction.extraContext,
           });
 
           currentWorkflow.approvedPhases.push("research", "plan");
@@ -974,8 +875,7 @@ ul_workflow_commit()
             content: [{ type: "text", text: `## Plan作成完了
 
 Task: ${trimmedTask}
-Execution Mode: ${executionMode}
-Strategy: ${strategy.strategy} (${strategy.reason})
+Execution Mode: 統一フロー
 
 \`\`\`markdown
 ${planContent}
@@ -984,8 +884,7 @@ ${planContent}
             details: {
               taskId,
               phase: "plan",
-              executionMode,
-              strategy: strategy.strategy,
+              executionMode: "unified-flow",
               autoExecute: true,
               askUser: true,
               question: {
@@ -1010,7 +909,7 @@ ${planContent}
 
 Task: ${trimmedTask}
 ID: ${taskId}
-Execution Mode: ${executionMode} (manual)
+Execution Mode: unified-flow (manual)
 
 ### 手順1: Research
 \`\`\`
@@ -1034,7 +933,7 @@ subagent_run({
 \`\`\`
 ul_workflow_confirm_plan()
 \`\`\`
-`, { taskId, phase: "research", nextPhase: "plan", executionMode });
+`, { taskId, phase: "research", nextPhase: "plan", executionMode: "unified-flow" });
     },
   });
 
@@ -1980,8 +1879,8 @@ plan.mdに基づく実装
       const taskId = generateTaskId(task);
       const now = new Date().toISOString();
 
-      // タスク規模に基づいてフェーズ構成を動的に決定
-      const phases = determineWorkflowPhases(task);
+      // 統一フローを使用
+      const phases = [...UNIFIED_PHASES];
 
       const workflow: WorkflowState = {
         taskId,
