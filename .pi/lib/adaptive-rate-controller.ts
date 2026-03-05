@@ -281,6 +281,86 @@ export function getLimit(
 }
 
 /**
+ * 有効な制限値を取得（getLimitのエイリアス）
+ * @summary 有効制限値取得
+ * @param provider - APIプロバイダー名
+ * @param model - モデル名
+ * @param presetLimit - プリセット制限値
+ * @returns 現在の制限値
+ */
+export function getEffectiveLimit(
+  provider: string,
+  model: string,
+  presetLimit: number,
+): number {
+  return getLimit(provider, model, presetLimit);
+}
+
+/**
+ * レート制限エラー（429）かどうかを判定
+ * @summary レート制限エラー判定
+ * @param error - エラーオブジェクト
+ * @returns レート制限エラーの場合はtrue
+ */
+export function isRateLimitError(error: unknown): boolean {
+  if (!error) return false;
+
+  let message: string;
+  try {
+    message = String(error).toLowerCase();
+  } catch {
+    return false;
+  }
+  
+  const indicators = [
+    "429",
+    "rate limit",
+    "too many requests",
+    "throttled",
+    "quota exceeded",
+  ];
+  
+  return indicators.some((indicator) => message.includes(indicator));
+}
+
+/**
+ * 学習済み制限値をリセット
+ * @summary 制限値リセット
+ * @param provider - APIプロバイダー名
+ * @param model - モデル名
+ * @param newLimit - 新しい制限値（省略時は元の制限値）
+ */
+export function resetLearnedLimit(
+  provider: string,
+  model: string,
+  newLimit?: number,
+): void {
+  const key = tryBuildKey(provider, model);
+  if (!key) return;
+
+  const parsed = parseProviderModel(key);
+  if (!parsed) return;
+
+  const r = getRepo();
+  const current = r.getLimit(parsed.provider, parsed.model, newLimit ?? MIN_CONCURRENCY);
+  
+  r.updateLimit(parsed.provider, parsed.model, {
+    concurrency: newLimit ?? current.originalConcurrency,
+    last429At: null,
+    consecutive429Count: 0,
+  });
+}
+
+/**
+ * すべての学習済み制限値をリセット
+ * @summary 全制限値リセット
+ */
+export function resetAllLearnedLimits(): void {
+  const r = getRepo();
+  r.clearAll();
+}
+
+/**
  * 429エラーを記録して制限値を下げる
  * @summary 429エラー記録
  * @param provider - APIプロバイダー名
@@ -474,6 +554,33 @@ export function stopRecoveryTimer(): void {
 // Initialization
 // ============================================================================
 
+let isInitialized = false;
+
+/**
+ * 適応的レートコントローラーを初期化
+ * @summary コントローラー初期化
+ */
+export function initAdaptiveController(): void {
+  if (isInitialized) return;
+  
+  // リポジトリを初期化（getRepo呼び出しで初期化される）
+  getRepo();
+  
+  // 回復タイマーを開始
+  startRecoveryTimer();
+  
+  isInitialized = true;
+}
+
+/**
+ * 適応的レートコントローラーをシャットダウン
+ * @summary コントローラーシャットダウン
+ */
+export function shutdownAdaptiveController(): void {
+  stopRecoveryTimer();
+  isInitialized = false;
+}
+
 // モジュール読み込み時に回復タイマーを自動開始
 startRecoveryTimer();
 
@@ -510,6 +617,46 @@ export function getLimitsSummary(): string {
       `original=${limit.originalConcurrency}, ` +
       `429s=${limit.total429Count}`,
     );
+  }
+  
+  return lines.join("\n");
+}
+
+/**
+ * 適応的レートコントローラーのサマリーを整形して取得
+ * @summary コントローラーサマリー取得
+ * @returns 整形されたサマリー文字列
+ */
+export function formatAdaptiveSummary(): string {
+  const config = getConfig();
+  const r = getRepo();
+  const allLimits = r.getAllLimits();
+  const entries = Object.entries(allLimits);
+  
+  const lines: string[] = [
+    `Adaptive Rate Controller`,
+    `========================`,
+    ``,
+    `Recovery Interval: ${Math.round(config.recoveryIntervalMs / 1000)}s`,
+    `Reduction Factor: ${config.reductionFactor.toFixed(2)}`,
+    `Recovery Factor: ${config.recoveryFactor.toFixed(2)}`,
+    `Learned Limits: ${entries.length}`,
+  ];
+  
+  if (entries.length > 0) {
+    lines.push(``);
+    lines.push(`Top 5 by 429 count:`);
+    
+    const sorted = entries
+      .sort((a, b) => (b[1].total429Count || 0) - (a[1].total429Count || 0))
+      .slice(0, 5);
+    
+    for (const [key, limit] of sorted) {
+      lines.push(
+        `  ${key}: concurrency=${limit.concurrency}, ` +
+        `429s=${limit.total429Count}`,
+      );
+    }
   }
   
   return lines.join("\n");
