@@ -1040,6 +1040,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
   });
 
   // サブエージェント実行
+  pi.registerTool({
     name: "subagent_run_parallel",
     label: "Subagent Run Parallel",
     description:
