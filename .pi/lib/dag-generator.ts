@@ -1,73 +1,48 @@
 /**
  * @abdd.meta
  * path: .pi/lib/dag-generator.ts
- * role: Task-to-DAG conversion using task-planner skill logic
- * why: Enable automatic DAG generation when plan parameter is omitted
- * related: .pi/lib/dag-executor.ts, .pi/lib/dag-types.ts, .pi/skills/task-planner/SKILL.md
- * public_api: generateDagFromTask, analyzeTaskSignals, DagGenerationOptions
+ * role: LLM-based Task-to-DAG conversion via task-planner subagent
+ * why: Delegate deep reasoning to specialized agent for maximum parallelism
+ * related: .pi/lib/dag-executor.ts, .pi/lib/dag-types.ts, .pi/lib/dag-validator.ts, .pi/extensions/subagents.ts
+ * public_api: generateDagFromTask, DagGenerationOptions, DagGenerationError
  * invariants: Generated DAG must be valid (no cycles, all deps exist)
- * side_effects: None (pure function)
- * failure_modes: Invalid task description, timeout during generation
+ * side_effects: Subagent execution for DAG generation
+ * failure_modes: Subagent timeout, invalid JSON response, validation failure, max retries exceeded
  * @abdd.explain
- * overview: Converts natural language task into TaskPlan DAG
+ * overview: Delegates DAG generation to task-planner subagent for deep reasoning and maximum parallelism
  * what_it_does:
- *   - Analyzes task description for subtask indicators
- *   - Detects dependency patterns (sequential, parallel, fan-out, fan-in)
- *   - Assigns appropriate agent types based on task nature
- *   - Estimates duration based on task complexity
- * why_it_exists: Automate DAG creation for simpler workflows
+ *   - Delegates to task-planner subagent for intelligent task decomposition
+ *   - Generates maximally parallel DAGs with unlimited concurrency
+ *   - Validates and optimizes generated DAGs
+ *   - Retries on failure with exponential backoff
+ * why_it_exists: Rule-based generation is insufficient; LLM reasoning via subagent provides superior results
  * scope:
  *   in: Task description string, optional context
- *   out: TaskPlan object ready for DagExecutor
+ *   out: Optimized TaskPlan ready for DagExecutor
  */
 
 // File: .pi/lib/dag-generator.ts
-// Description: Task-to-DAG conversion for automatic plan generation.
-// Why: Enables subagent_run_dag to work without explicit plan parameter.
-// Related: .pi/lib/dag-executor.ts, .pi/lib/dag-types.ts, .pi/skills/task-planner/SKILL.md
+// Description: Subagent-based Task-to-DAG conversion with maximum parallelism.
+// Why: Deep reasoning requires specialized LLM agent; rules are insufficient.
+// Related: .pi/lib/dag-executor.ts, .pi/lib/dag-types.ts, .pi/lib/dag-validator.ts
 
 import { randomBytes } from "node:crypto";
-import { TaskPlan, TaskNode, TaskNodePriority, AgentType } from "./dag-types.js";
-import { validateTaskPlan, type ValidationResult } from "./dag-validator.js";
+import { TaskPlan, TaskNode, TaskNodePriority } from "./dag-types.js";
+import { validateTaskPlan } from "./dag-validator.js";
 
 /**
  * DAG生成オプション
  * @summary 生成オプション
  */
 export interface DagGenerationOptions {
-  /** 依存チェーンの最大深さ（デフォルト: 4） */
-  maxDepth?: number;
-  /** 生成するサブタスクの最大数（デフォルト: 10） */
-  maxTasks?: number;
-  /** フォールバック時のデフォルトエージェント */
-  defaultAgent?: string;
-  /** コンテキストとして考慮するファイル */
+  /** コンテキストとして考慮するファイルパス */
   contextFiles?: string[];
-  /** タイムアウト（ミリ秒、デフォルト: 5000） */
+  /** 追加のシステムコンテキスト */
+  extraContext?: string;
+  /** タイムアウト（ミリ秒、デフォルト: 120000） */
   timeoutMs?: number;
-}
-
-/**
- * タスク信号分析結果
- * @summary タスク信号
- */
-export interface TaskSignal {
-  /** 検出されたパターンタイプ */
-  type: "sequential" | "parallel" | "research-first" | "review-required" | "testing-required";
-  /** 抽出されたコンポーネント */
-  components: string[];
-  /** 複数ファイルに関連するか */
-  hasMultipleFiles: boolean;
-  /** 明示的なステップ指示があるか */
-  hasExplicitSteps: boolean;
-  /** 推定複雑度 */
-  estimatedComplexity: "low" | "medium" | "high";
-  /** 研究が必要か */
-  needsResearch: boolean;
-  /** レビューが必要か */
-  needsReview: boolean;
-  /** テストが必要か */
-  needsTesting: boolean;
+  /** 最大リトライ回数 */
+  maxRetries?: number;
 }
 
 /**
@@ -85,339 +60,288 @@ export class DagGenerationError extends Error {
 }
 
 /**
- * タスク記述からDAGを生成する
- * @summary Task-to-DAG変換
+ * タスク記述からDAGを生成する（task-plannerサブエージェント使用）
+ * @summary Subagent-based Task-to-DAG変換
  * @param task - タスク記述
  * @param options - 生成オプション
  * @returns 生成されたTaskPlan
  * @throws DagGenerationError 生成に失敗した場合
  * @example
  * const plan = await generateDagFromTask("認証システムを実装してテストを追加");
- * // Returns TaskPlan with research -> implement -> test tasks
  */
 export async function generateDagFromTask(
   task: string,
   options: DagGenerationOptions = {},
 ): Promise<TaskPlan> {
   const {
-    maxDepth = 4,
-    maxTasks = 10,
-    defaultAgent = "implementer",
+    timeoutMs = 120000,
+    maxRetries = 2,
   } = options;
 
-  // Step 1: タスク信号を分析
-  const signals = analyzeTaskSignals(task);
+  let lastError: Error | undefined;
 
-  // Step 2: 信号に基づいてサブタスクを生成
-  const subtasks = generateSubtasks(task, signals, { maxTasks, defaultAgent });
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      // Step 1: task-plannerサブエージェントに委任
+      const subagentResult = await delegateToTaskPlanner(task, options, timeoutMs);
 
-  // Step 3: サブタスク間の依存関係を推論
-  const tasksWithDeps = inferDependencies(subtasks, { maxDepth, signals });
+      // Step 2: レスポンスをパース
+      const parsedPlan = parseSubagentResponse(subagentResult);
 
-  // Step 4: エージェントと優先度を割り当て
-  const finalTasks = assignAgentsAndPriorities(tasksWithDeps, signals);
+      // Step 3: メタデータを付与
+      const plan = enrichPlanMetadata(parsedPlan, task);
 
-  // Step 5: TaskPlanを構築
-  const plan: TaskPlan = {
-    id: `auto-${Date.now()}-${hashTask(task)}`,
-    description: task,
-    tasks: finalTasks,
-    metadata: {
-      createdAt: Date.now(),
-      model: "dag-generator",
-      totalEstimatedMs: estimateTotalDuration(finalTasks),
-      maxDepth: calculateMaxDepth(finalTasks),
-    },
-  };
+      // Step 4: 厳格な検証
+      const validation = validateTaskPlan(plan);
+      if (!validation.valid) {
+        throw new DagGenerationError(
+          `Generated invalid plan: ${validation.errors.join(", ")}`,
+          "VALIDATION_FAILED",
+        );
+      }
 
-  // Step 6: 生成されたプランを検証
-  const validation = validateTaskPlan(plan);
+      // Step 5: 並列度最適化
+      return optimizeParallelism(plan);
 
-  if (!validation.valid) {
-    throw new DagGenerationError(
-      `Generated invalid plan: ${validation.errors.join(", ")}`,
-      "INVALID_GENERATED_PLAN",
-    );
-  }
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
 
-  return plan;
-}
-
-/**
- * タスク記述から信号を分析する
- * @summary タスク信号分析
- * @param task - タスク記述
- * @returns 分析結果
- */
-export function analyzeTaskSignals(task: string): TaskSignal {
-  const normalized = task.trim();
-  const lowerTask = normalized.toLowerCase();
-
-  // 明示的なステップ指示を検出
-  const stepPatterns = [
-    /first.*then/i,
-    /after.*implement/i,
-    /before.*deploy/i,
-    /\d+\.\s/,
-    /step\s+\d+/i,
-    /まず.*それから/,
-    /実装.*後/,
-    /作成.*次/,
-  ];
-  const hasExplicitSteps = stepPatterns.some((p) => p.test(normalized));
-
-  // 並列実行機会を検出
-  const parallelPatterns = [
-    /and\s+also/i,
-    /simultaneously/i,
-    /in\s+parallel/i,
-    /multiple\s+files/i,
-    /同時に/,
-    /並列/,
-    /複数の/,
-  ];
-  const hasParallel = parallelPatterns.some((p) => p.test(normalized));
-
-  // 研究必要性を検出
-  const researchPatterns = [
-    /investigate/i,
-    /analyze/i,
-    /understand/i,
-    /explore/i,
-    /figure\s+out/i,
-    /調査/,
-    /分析/,
-    /理解/,
-    /確認/,
-    /特定/,
-  ];
-  const needsResearch = researchPatterns.some((p) => p.test(normalized));
-
-  // レビュー必要性を検出
-  const reviewPatterns = [
-    /review/i,
-    /validate/i,
-    /verify/i,
-    /check\s+for/i,
-    /ensure/i,
-    /レビュー/,
-    /検証/,
-    /確認/,
-  ];
-  const needsReview = reviewPatterns.some((p) => p.test(normalized));
-
-  // テスト必要性を検出
-  const testingPatterns = [
-    /test/i,
-    /spec/i,
-    /unit\s+test/i,
-    /integration\s+test/i,
-    /テスト/,
-    /試験/,
-  ];
-  const needsTesting = testingPatterns.some((p) => p.test(normalized));
-
-  // 複数ファイル検出
-  const hasMultipleFiles =
-    /multiple|several|all\s+files|複数|いくつか/i.test(normalized);
-
-  // 複雑度推定
-  const estimatedComplexity = estimateSignalComplexity(normalized);
-
-  // タイプ決定
-  let type: TaskSignal["type"];
-  if (hasParallel) {
-    type = "parallel";
-  } else if (needsResearch) {
-    type = "research-first";
-  } else if (needsReview) {
-    type = "review-required";
-  } else if (needsTesting) {
-    type = "testing-required";
-  } else {
-    type = "sequential";
-  }
-
-  return {
-    type,
-    components: extractComponents(normalized),
-    hasMultipleFiles,
-    hasExplicitSteps,
-    estimatedComplexity,
-    needsResearch,
-    needsReview,
-    needsTesting,
-  };
-}
-
-/**
- * サブタスクを生成する
- * @summary サブタスク生成
- * @param task - 元タスク
- * @param signals - タスク信号
- * @param options - 生成オプション
- * @returns サブタスク配列（依存関係なし）
- */
-function generateSubtasks(
-  task: string,
-  signals: TaskSignal,
-  options: { maxTasks: number; defaultAgent: string },
-): Omit<TaskNode, "dependencies">[] {
-  const { maxTasks, defaultAgent } = options;
-  const subtasks: Omit<TaskNode, "dependencies">[] = [];
-
-  // 研究タスク
-  if (signals.needsResearch) {
-    subtasks.push({
-      id: "research",
-      description: `${task}に関連するコードベースを調査し、影響範囲と依存関係を特定する`,
-      assignedAgent: "researcher",
-      priority: "high",
-      estimatedDurationMs: 120000,
-    });
-  }
-
-  // 実装タスク
-  subtasks.push({
-    id: "implement",
-    description: task,
-    assignedAgent: defaultAgent,
-    priority: "critical",
-    estimatedDurationMs: estimateImplementationDuration(task, signals),
-  });
-
-  // テストタスク
-  if (signals.needsTesting) {
-    subtasks.push({
-      id: "test",
-      description: `${task}の単体テストと統合テストを作成・実行する`,
-      assignedAgent: "tester",
-      priority: "high",
-      estimatedDurationMs: 90000,
-    });
-  }
-
-  // レビュータスク
-  if (signals.needsReview) {
-    subtasks.push({
-      id: "review",
-      description: `${task}の実装をレビューし、品質とセキュリティを確認する`,
-      assignedAgent: "reviewer",
-      priority: "high",
-      estimatedDurationMs: 60000,
-    });
-  }
-
-  // 複数ファイルの場合、分割
-  if (signals.hasMultipleFiles && signals.components.length > 1) {
-    const implementIdx = subtasks.findIndex((s) => s.id === "implement");
-    if (implementIdx >= 0) {
-      subtasks.splice(implementIdx, 1);
-      signals.components.slice(0, maxTasks - subtasks.length).forEach((comp, i) => {
-        subtasks.push({
-          id: `implement-${i + 1}`,
-          description: `${comp}の実装`,
-          assignedAgent: defaultAgent,
-          priority: "high",
-          estimatedDurationMs: 120000,
-        });
-      });
-    }
-  }
-
-  return subtasks.slice(0, maxTasks);
-}
-
-/**
- * 依存関係を推論する
- * @summary 依存関係推論
- * @param tasks - サブタスク配列
- * @param options - 推論オプション
- * @returns 依存関係付きタスク配列
- */
-function inferDependencies(
-  tasks: Omit<TaskNode, "dependencies">[],
-  options: { maxDepth: number; signals: TaskSignal },
-): TaskNode[] {
-  const { signals } = options;
-  const result: TaskNode[] = [];
-  const taskIds = new Set(tasks.map((t) => t.id));
-
-  for (const task of tasks) {
-    // Rule 1: 研究タスクは依存なし
-    if (task.assignedAgent === "researcher") {
-      result.push({ ...task, dependencies: [] });
-      continue;
-    }
-
-    // Rule 2: テストタスクは実装に依存
-    if (task.assignedAgent === "tester") {
-      const implDeps = Array.from(taskIds).filter((id) =>
-        id.startsWith("implement")
-      );
-      result.push({ ...task, dependencies: implDeps, inputContext: implDeps });
-      continue;
-    }
-
-    // Rule 3: レビュータスクは実装に依存
-    if (task.assignedAgent === "reviewer") {
-      const implDeps = Array.from(taskIds).filter((id) =>
-        id.startsWith("implement")
-      );
-      result.push({ ...task, dependencies: implDeps, inputContext: implDeps });
-      continue;
-    }
-
-    // Rule 4: 実装タスクは研究に依存（研究がある場合）
-    if (task.assignedAgent === "implementer" || task.id.startsWith("implement")) {
-      const researchDep = taskIds.has("research") ? ["research"] : [];
-      result.push({
-        ...task,
-        dependencies: researchDep,
-        inputContext: researchDep.length > 0 ? researchDep : undefined,
-      });
-      continue;
-    }
-
-    // Default: 依存なし
-    result.push({ ...task, dependencies: [] });
-  }
-
-  return result;
-}
-
-/**
- * エージェントと優先度を割り当てる
- * @summary エージェント・優先度割り当て
- * @param tasks - タスク配列
- * @param signals - タスク信号
- * @returns 最終タスク配列
- */
-function assignAgentsAndPriorities(
-  tasks: TaskNode[],
-  signals: TaskSignal,
-): TaskNode[] {
-  return tasks.map((task) => {
-    // 優先度調整
-    let priority: TaskNodePriority = task.priority || "normal";
-
-    if (signals.estimatedComplexity === "high") {
-      if (task.assignedAgent === "implementer") {
-        priority = "critical";
-      } else if (task.assignedAgent === "reviewer") {
-        priority = "critical";
+      if (attempt < maxRetries) {
+        const delayMs = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s
+        console.log(`[dag-generator] Attempt ${attempt + 1} failed, retrying in ${delayMs}ms...`);
+        await sleep(delayMs);
       }
     }
+  }
 
-    return { ...task, priority };
+  throw new DagGenerationError(
+    `Failed to generate DAG after ${maxRetries + 1} attempts: ${lastError?.message}`,
+    "MAX_RETRIES_EXCEEDED",
+    lastError,
+  );
+}
+
+/**
+ * task-plannerサブエージェントに委任
+ * @summary サブエージェント委任
+ */
+async function delegateToTaskPlanner(
+  task: string,
+  options: DagGenerationOptions,
+  timeoutMs: number,
+): Promise<string> {
+  const contextSection = buildContextSection(options);
+
+  const subagentTask = `Generate a maximally parallel DAG for this task:
+
+## Task
+${task}
+
+${contextSection}
+
+Return ONLY valid JSON with the DAG structure. Ensure maximum parallelism by:
+1. Creating multiple independent research/analysis tasks when applicable
+2. Delaying integration points as much as possible
+3. Only adding dependencies when truly necessary
+4. Breaking down into fine-grained, independently executable units`;
+
+  // Dynamic import to avoid circular dependency
+  const { subagent_run } = await import("../extensions/subagents.js");
+
+  const result = await subagent_run({
+    subagentId: "task-planner",
+    task: subagentTask,
+    timeoutMs,
+  });
+
+  // Extract text content from result
+  if (typeof result === "string") {
+    return result;
+  }
+
+  if (result && typeof result === "object") {
+    // Handle MCP tool result format
+    const content = (result as any).content;
+    if (Array.isArray(content) && content[0]?.text) {
+      return content[0].text;
+    }
+    if ((result as any).text) {
+      return (result as any).text;
+    }
+    return JSON.stringify(result);
+  }
+
+  throw new DagGenerationError(
+    "Unexpected subagent response format",
+    "INVALID_RESPONSE_FORMAT",
+  );
+}
+
+/**
+ * コンテキストセクションを構築
+ * @summary コンテキスト構築
+ */
+function buildContextSection(options: DagGenerationOptions): string {
+  const sections: string[] = [];
+
+  if (options.contextFiles?.length) {
+    sections.push(`## Context Files\n${options.contextFiles.map(f => `- ${f}`).join("\n")}`);
+  }
+
+  if (options.extraContext) {
+    sections.push(`## Additional Context\n${options.extraContext}`);
+  }
+
+  return sections.join("\n\n");
+}
+
+/**
+ * サブエージェントレスポンスをパース
+ * @summary JSONパース
+ */
+function parseSubagentResponse(response: string): Partial<TaskPlan> {
+  // JSONブロックを抽出
+  const jsonMatch = response.match(/```json\s*([\s\S]*?)```/i) ||
+                    response.match(/```\s*([\s\S]*?)```/) ||
+                    response.match(/(\{[\s\S]*"tasks"[\s\S]*\})/);
+
+  const jsonStr = jsonMatch ? jsonMatch[1].trim() : response.trim();
+
+  try {
+    const parsed = JSON.parse(jsonStr);
+
+    // 必須フィールドの検証
+    if (!parsed.tasks || !Array.isArray(parsed.tasks)) {
+      throw new DagGenerationError(
+        "Invalid response: 'tasks' array is required",
+        "PARSE_ERROR",
+      );
+    }
+
+    if (parsed.tasks.length === 0) {
+      throw new DagGenerationError(
+        "Invalid response: 'tasks' array is empty",
+        "PARSE_ERROR",
+      );
+    }
+
+    return parsed;
+  } catch (error) {
+    if (error instanceof DagGenerationError) throw error;
+    throw new DagGenerationError(
+      `Failed to parse subagent response as JSON: ${error instanceof Error ? error.message : String(error)}`,
+      "PARSE_ERROR",
+      error,
+    );
+  }
+}
+
+/**
+ * プランにメタデータを付与
+ * @summary メタデータ付与
+ */
+function enrichPlanMetadata(
+  parsed: Partial<TaskPlan>,
+  originalTask: string,
+): TaskPlan {
+  const tasks = parsed.tasks || [];
+
+  return {
+    id: parsed.id || `llm-${Date.now()}-${hashTask(originalTask)}`,
+    description: parsed.description || originalTask,
+    tasks: tasks.map((t: Partial<TaskNode>): TaskNode => ({
+      id: t.id || `task-${randomBytes(4).toString("hex")}`,
+      description: t.description || "No description provided",
+      assignedAgent: t.assignedAgent,
+      dependencies: t.dependencies || [],
+      priority: (t.priority as TaskNodePriority) || "normal",
+      estimatedDurationMs: t.estimatedDurationMs || 120000,
+      inputContext: t.inputContext,
+    })),
+    metadata: {
+      createdAt: Date.now(),
+      model: "task-planner-subagent",
+      totalEstimatedMs: estimateTotalDuration(tasks as TaskNode[]),
+      maxDepth: calculateMaxDepth(tasks as TaskNode[]),
+    },
+  };
+}
+
+/**
+ * 並列度をさらに最適化
+ * @summary 並列度最適化
+ */
+function optimizeParallelism(plan: TaskPlan): TaskPlan {
+  const optimizedTasks = removeRedundantDependencies(plan.tasks);
+
+  return {
+    ...plan,
+    tasks: optimizedTasks,
+    metadata: {
+      ...plan.metadata,
+      totalEstimatedMs: estimateTotalDuration(optimizedTasks),
+      maxDepth: calculateMaxDepth(optimizedTasks),
+    },
+  };
+}
+
+/**
+ * 冗長な依存関係を削除（推移的簡約）
+ * @summary 依存関係最適化
+ */
+function removeRedundantDependencies(tasks: TaskNode[]): TaskNode[] {
+  const taskMap = new Map(tasks.map(t => [t.id, t]));
+
+  // 推移閉包を計算
+  const transitiveDeps = new Map<string, Set<string>>();
+
+  const getAllDeps = (taskId: string, visited = new Set<string>()): Set<string> => {
+    if (transitiveDeps.has(taskId)) {
+      return transitiveDeps.get(taskId)!;
+    }
+    if (visited.has(taskId)) {
+      return new Set();
+    }
+    visited.add(taskId);
+
+    const task = taskMap.get(taskId);
+    if (!task) {
+      return new Set();
+    }
+
+    const allDeps = new Set<string>();
+    for (const dep of task.dependencies) {
+      allDeps.add(dep);
+      const subDeps = getAllDeps(dep, visited);
+      subDeps.forEach(d => allDeps.add(d));
+    }
+
+    transitiveDeps.set(taskId, allDeps);
+    return allDeps;
+  };
+
+  // 各タスクの全依存を計算
+  tasks.forEach(t => getAllDeps(t.id));
+
+  // 冗長な直接依存を削除
+  return tasks.map(task => {
+    const minimalDeps = task.dependencies.filter(dep => {
+      // dep が他の依存の推移的依存でないかチェック
+      const otherDeps = task.dependencies.filter(d => d !== dep);
+      const otherTransitive = new Set<string>();
+      otherDeps.forEach(d => {
+        transitiveDeps.get(d)?.forEach(td => otherTransitive.add(td));
+      });
+      return !otherTransitive.has(dep);
+    });
+
+    return { ...task, dependencies: minimalDeps };
   });
 }
 
 /**
  * タスク文字列をハッシュ化
  * @summary タスクハッシュ
- * @param task - タスク文字列
- * @returns 8文字のハッシュ
  */
 function hashTask(task: string): string {
   const hash = task.slice(0, 30).toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -426,120 +350,77 @@ function hashTask(task: string): string {
 }
 
 /**
- * 信号から複雑度を推定
- * @summary 複雑度推定
- * @param task - タスク文字列
- * @returns 複雑度
+ * スリープ関数
+ * @summary 非同期待機
  */
-function estimateSignalComplexity(task: string): "low" | "medium" | "high" {
-  const highKeywords = [
-    "architecture", "refactor", "migrate", "security",
-    "アーキテクチャ", "リファクタ", "移行", "セキュリティ",
-    "redesign", "rewrite", "overhaul", "統合", "再設計",
-  ];
-
-  const mediumKeywords = [
-    "implement", "create", "build", "add",
-    "実装", "作成", "構築", "追加",
-    "feature", "module", "機能",
-  ];
-
-  const lowerTask = task.toLowerCase();
-
-  if (highKeywords.some((k) => lowerTask.includes(k.toLowerCase()))) {
-    return "high";
-  }
-  if (mediumKeywords.some((k) => lowerTask.includes(k.toLowerCase()))) {
-    return "medium";
-  }
-  if (task.length > 200 || task.split("\n").length > 5) {
-    return "medium";
-  }
-  return "low";
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
- * コンポーネントを抽出
- * @summary コンポーネント抽出
- * @param task - タスク文字列
- * @returns コンポーネント配列
- */
-function extractComponents(task: string): string[] {
-  // "XとY"、"X and Y" パターンを検出
-  const andPattern = /(.+?)(?:と|and|、)(.+?)(?:と|and|、|$)/g;
-  const components: string[] = [];
-
-  let match;
-  while ((match = andPattern.exec(task)) !== null) {
-    if (match[1]) components.push(match[1].trim());
-    if (match[2]) components.push(match[2].trim());
-  }
-
-  return [...new Set(components)].slice(0, 5);
-}
-
-/**
- * 実装時間を推定
- * @summary 実装時間推定
- * @param task - タスク文字列
- * @param signals - タスク信号
- * @returns 推定時間（ミリ秒）
- */
-function estimateImplementationDuration(
-  task: string,
-  signals: TaskSignal,
-): number {
-  const baseDuration = 180000; // 3分
-
-  if (signals.estimatedComplexity === "high") {
-    return baseDuration * 2; // 6分
-  }
-  if (signals.estimatedComplexity === "medium") {
-    return baseDuration * 1.5; // 4.5分
-  }
-  if (signals.hasMultipleFiles) {
-    return baseDuration * 1.3;
-  }
-  return baseDuration;
-}
-
-/**
- * 総実行時間を推定
+ * 総実行時間を推定（クリティカルパス）
  * @summary 総時間推定
- * @param tasks - タスク配列
- * @returns 推定総時間（ミリ秒）
  */
 function estimateTotalDuration(tasks: TaskNode[]): number {
-  // クリティカルパスを計算（簡易版：全タスクの合計）
-  return tasks.reduce((sum, t) => sum + (t.estimatedDurationMs || 120000), 0);
+  const taskMap = new Map(tasks.map(t => [t.id, t]));
+  const memo = new Map<string, number>();
+
+  const getPathDuration = (taskId: string): number => {
+    if (memo.has(taskId)) {
+      return memo.get(taskId)!;
+    }
+
+    const task = taskMap.get(taskId);
+    if (!task) {
+      return 0;
+    }
+
+    const ownDuration = task.estimatedDurationMs || 120000;
+
+    if (task.dependencies.length === 0) {
+      memo.set(taskId, ownDuration);
+      return ownDuration;
+    }
+
+    const maxDepDuration = Math.max(
+      ...task.dependencies.map(dep => getPathDuration(dep)),
+      0,
+    );
+
+    const total = ownDuration + maxDepDuration;
+    memo.set(taskId, total);
+    return total;
+  };
+
+  const criticalPathDuration = Math.max(...tasks.map(t => getPathDuration(t.id)), 0);
+  return criticalPathDuration;
 }
 
 /**
  * 最大深さを計算
  * @summary 最大深さ計算
- * @param tasks - タスク配列
- * @returns 最大深さ
  */
 function calculateMaxDepth(tasks: TaskNode[]): number {
   const depths = new Map<string, number>();
 
-  const getDepth = (taskId: string, visited: Set<string>): number => {
+  const getDepth = (taskId: string, visited = new Set<string>()): number => {
     if (depths.has(taskId)) {
       return depths.get(taskId)!;
     }
     if (visited.has(taskId)) {
-      return 0; // 循環参照防止
+      return 0;
     }
     visited.add(taskId);
 
-    const task = tasks.find((t) => t.id === taskId);
+    const task = tasks.find(t => t.id === taskId);
     if (!task || task.dependencies.length === 0) {
       depths.set(taskId, 0);
       return 0;
     }
 
     const maxDepDepth = Math.max(
-      ...task.dependencies.map((depId) => getDepth(depId, visited)),
+      ...task.dependencies.map(depId => getDepth(depId, visited)),
+      0,
     );
     const depth = maxDepDepth + 1;
     depths.set(taskId, depth);
@@ -548,7 +429,7 @@ function calculateMaxDepth(tasks: TaskNode[]): number {
 
   let maxDepth = 0;
   for (const task of tasks) {
-    maxDepth = Math.max(maxDepth, getDepth(task.id, new Set()));
+    maxDepth = Math.max(maxDepth, getDepth(task.id));
   }
 
   return maxDepth;

@@ -160,7 +160,7 @@ export type SubagentPaths = BaseStoragePaths;
 
 // Constants
 export const MAX_RUNS_TO_KEEP = 100;
-export const SUBAGENT_DEFAULTS_VERSION = 4;  // Updated: added challenger and inspector agents
+export const SUBAGENT_DEFAULTS_VERSION = 5;  // Updated: added task-planner agent
 
 // Use common path factory
 const getBasePaths = createPathsFactory("subagents");
@@ -265,6 +265,63 @@ export function createDefaultAgents(nowIso: string): SubagentDefinition[] {
         "(6) Confirmation bias patterns - only seeking supporting evidence. " +
         "Output format: INSPECTION_REPORT: <findings>, SUSPICION_LEVEL: low/medium/high, " +
         "RECOMMENDATION: proceed/challenge/reject, EVIDENCE: <specific file:line references for issues>.",
+      enabled: "enabled",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    },
+    {
+      id: "task-planner",
+      name: "Task Planner",
+      description: "Task decomposition specialist for maximum parallelism DAG generation. Creates highly parallel execution plans using deep reasoning.",
+      systemPrompt:
+        "You are an expert task decomposition specialist focused on maximizing parallelism.\n\n" +
+        "## Your Goal\n" +
+        "Break down complex tasks into maximally parallel DAGs (Directed Acyclic Graphs) of subtasks.\n\n" +
+        "## Core Principles\n\n" +
+        "1. **Aggressive Parallelization**: Create as many independent tasks as possible. Never sequentialize unless absolutely necessary.\n\n" +
+        "2. **Early Fan-out**: When research/analysis is needed, create multiple parallel research tasks from different angles simultaneously.\n" +
+        "   - Example: Instead of single \"research auth\", create:\n" +
+        "     - \"research-jwt-libraries\"\n" +
+        "     - \"research-oauth2-flows\"\n" +
+        "     - \"research-session-management\"\n" +
+        "     - \"research-security-best-practices\"\n\n" +
+        "3. **Late Fan-in**: Delay integration points as much as possible. Let independent work streams proceed in parallel until they truly need to merge.\n\n" +
+        "4. **Pipeline Exploitation**: Only use dataflow dependencies. If Task B doesn't explicitly need Task A's output, they run in parallel.\n\n" +
+        "5. **Speculative Execution**: For uncertain approaches, create parallel exploratory tasks.\n" +
+        "   - Example: \"explore-approach-A\", \"explore-approach-B\", \"explore-approach-C\"\n\n" +
+        "6. **Granular Decomposition**: Break into fine-grained, independently executable units. Prefer 10 small parallel tasks over 3 large sequential ones.\n\n" +
+        "7. **Agent Specialization**: Assign the most specific agent type:\n" +
+        "   - researcher: Investigation, analysis, information gathering\n" +
+        "   - architect: Design decisions, schema design, API design\n" +
+        "   - implementer: Code changes, file creation, implementation\n" +
+        "   - tester: Test creation, test execution, validation\n" +
+        "   - reviewer: Code review, security review, quality checks\n\n" +
+        "8. **Dependency Minimization**: Before adding any dependency, ask: \"Does this REALLY need to wait? Can it start earlier?\"\n\n" +
+        "## Output Format\n\n" +
+        "Return ONLY valid JSON:\n\n" +
+        "{\n" +
+        '  "id": "plan-<unique-id>",\n' +
+        '  "description": "<original task description>",\n' +
+        '  "tasks": [\n' +
+        "    {\n" +
+        '      "id": "<descriptive-task-id>",\n' +
+        '      "description": "<specific actionable instruction with clear success criteria>",\n' +
+        '      "assignedAgent": "<agent-type>",\n' +
+        '      "dependencies": ["<dep-task-id-1>"],\n' +
+        '      "priority": "critical|high|normal|low",\n' +
+        '      "estimatedDurationMs": <number>,\n' +
+        '      "inputContext": ["<task-id-to-include-output>"]\n' +
+        "    }\n" +
+        "  ]\n" +
+        "}\n\n" +
+        "## Quality Checklist\n\n" +
+        "Before outputting, verify:\n" +
+        "- [ ] Maximum parallel tasks created\n" +
+        "- [ ] No unnecessary sequential dependencies\n" +
+        "- [ ] All task IDs are descriptive and unique\n" +
+        "- [ ] Dependencies form a valid DAG (no cycles)\n" +
+        "- [ ] Agent assignments match task nature\n" +
+        "- [ ] Each task has clear, actionable description",
       enabled: "enabled",
       createdAt: nowIso,
       updatedAt: nowIso,
