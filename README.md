@@ -73,6 +73,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **ul-dual-mode** | `ul-dual-mode.ts` | デュアルモード強制実行 | [→](docs/02-user-guide/10-ul-dual-mode.md) |
 | **ul-workflow** | `ul-workflow.ts` | Research-Plan-Annotate-Implement ワークフロー（計画承認必須） | [→](docs/02-user-guide/16-ul-workflow.md) |
 | **cross-instance-runtime** | `cross-instance-runtime.ts` | 複数piインスタンス間の並列数自動調整（プロバイダー/モデル別） | [→](docs/02-user-guide/12-cross-instance-runtime.md) |
+| **autonomy-policy** | `autonomy-policy.ts` | permission bundle と gatekeeper を持つ高度自律実行 policy | README内の「Autonomy Policy」 |
 
 ### ユーティリティ
 
@@ -131,6 +132,49 @@ pi remove https://github.com/Mekann2904/mekann
 | **output-schema** | `lib/output-schema.ts` | 出力スキーマ（構造化出力の定義と検証） |
 | **text-parsing** | `lib/text-parsing.ts` | テキスト解析（構造化テキスト処理） |
 | **embeddings** | `lib/embeddings/` | エンベディングモジュール（ベクトル埋め込み生成） |
+
+## Autonomy Policy
+
+`autonomy-policy` を追加した。  
+
+この policy は 3 層です。  
+
+`profile` は `manual / balanced / high / yolo` の4段階です。  
+
+`mode` は `build / plan` の2段階です。  
+
+`gatekeeper` は `off / deterministic` の2段階です。  
+
+設計の意図:
+
+- Kilo のような permission bundle を持つ
+- Codex のように mode で実行範囲を切り替える
+- Droid のように危険操作には hard stop を残す
+- OpenCode のように config 保存で継続利用できる
+
+既定値:
+
+- `balanced`
+- `build`
+- `gatekeeper=deterministic`
+
+`yolo` は全 capability を `allow` にする master toggle です。  
+
+ただし gatekeeper が `deterministic` のままなら、`.env` 読み取り、破壊的 bash、外部ディレクトリ、command substitution、過大 loop は止まるか確認を要求します。  
+
+操作方法:
+
+- `/autonomy-policy show`
+- `/autonomy-policy manual`
+- `/autonomy-policy balanced`
+- `/autonomy-policy high`
+- `/autonomy-policy yolo`
+- `/autonomy-policy build`
+- `/autonomy-policy plan`
+- `/autonomy-policy gatekeeper on`
+- `/autonomy-policy gatekeeper off`
+
+LLM ツールからは `autonomy_policy` で同じ設定を変更できます。  
 
 ## スキル管理システム
 
