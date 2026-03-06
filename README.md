@@ -70,6 +70,8 @@ pi remove https://github.com/Mekann2904/mekann
 |---------|---------|------|------------|
 | **plan_*** | `plan.ts` | 計画管理とタスク追跡 | [→](docs/02-user-guide/07-plan.md) |
 | **subagent_*** | `subagents.ts` | サブエージェントの作成・実行 | [→](docs/02-user-guide/08-subagents.md) |
+| **task_*** | `task.ts` | 軽量タスク管理 | `.pi/INDEX.md` |
+| **task-flow** | `task-flow.ts` | タスク委任と plan 連携 | `.pi/NAVIGATION.md` |
 | **ul-dual-mode** | `ul-dual-mode.ts` | デュアルモード強制実行 | [→](docs/02-user-guide/10-ul-dual-mode.md) |
 | **ul-workflow** | `ul-workflow.ts` | Research-Plan-Annotate-Implement ワークフロー（計画承認必須） | [→](docs/02-user-guide/16-ul-workflow.md) |
 | **cross-instance-runtime** | `cross-instance-runtime.ts` | 複数piインスタンス間の並列数自動調整（プロバイダー/モデル別） | [→](docs/02-user-guide/12-cross-instance-runtime.md) |
@@ -89,8 +91,8 @@ pi remove https://github.com/Mekann2904/mekann
 | **dynamic-tools** | `dynamic-tools.ts` | 動的ツール生成・実行（create_tool, run_dynamic_tool, list_dynamic_tools, delete_dynamic_tool, tool_reflection） | [→](docs/02-user-guide/13-dynamic-tools.md) |
 | **invariant-pipeline** | `invariant-pipeline.ts` | 形式仕様からインバリアント、テストコード自動生成（generate_from_spec, verify_quint_spec, generate_invariant_macros, generate_property_tests, generate_mbt_driver） | [→](docs/02-user-guide/14-invariant-pipeline.md) |
 | **startup-context** | `startup-context.ts` | 初回プロンプト時のコンテキスト注入 | [→](docs/02-user-guide/01-extensions.md#スタートアップコンテキスト) |
-| **self-improvement-reflection** | `self-improvement-reflection.ts` | 自己改善データ基盤（データ収集、分析、哲学的考察、アクション可能な洞察） | [→](docs/02-user-guide/17-self-improvement.md) |
-| **self-improvement-dashboard** | `self-improvement-dashboard.ts` | 自己改善データのTUI可視化ダッシュボード | [→](docs/02-user-guide/17-self-improvement.md) |
+| **task-auto-executor** | `task-auto-executor.ts` | アイドル時のタスク自動実行 | `.pi/NAVIGATION.md` |
+| **web-ui** | `extensions/web-ui/` | ブラウザ監視UI | `.pi/extensions/web-ui/README.md` |
 | **live-monitor-base** | `lib/live-monitor-base.ts` | ライブモニターベース（エージェント/チームのリアルタイム監視） | [→](docs/02-user-guide/19-live-monitoring.md) |
 
 ### 共有ライブラリ
@@ -119,16 +121,15 @@ pi remove https://github.com/Mekann2904/mekann
 | **storage-base** | `lib/storage-base.ts` | ストレージベース |
 | **tui-utils** | `lib/tui-utils.ts` | TUIユーティリティ |
 | **validation-utils** | `lib/validation-utils.ts` | バリデーションユーティリティ |
-| **self-improvement-data-platform** | `lib/self-improvement-data-platform.ts` | 自己改善データ基盤（3層アーキテクチャ：データ・分析・気づき）（新規） |
+| **semantic-memory** | `lib/storage/semantic-memory.ts` | セマンティックメモリ（意味ベースの記憶管理） |
+| **run-index** | `lib/storage/run-index.ts` | 実行インデックス管理（エージェント実行履歴の検索） |
+| **pattern-extraction** | `lib/storage/pattern-extraction.ts` | パターン抽出（実行履歴からの知識抽出） |
 | **comprehensive-logger** | `lib/comprehensive-logger.ts` | 包括的ログ収集（構造化ログ、ストリーミング、設定可能な出力） |
 | **verification-workflow** | `lib/verification-workflow.ts` | Inspector/Challenger検証メカニズム（LLM出力品質検証） |
 | **context-engineering** | `lib/context-engineering.ts` | コンテキストエンジニアリング（プロンプト最適化） |
 | **execution-rules** | `lib/execution-rules.ts` | 実行ルール（タスク実行時の制約管理） |
-| **semantic-memory** | `lib/semantic-memory.ts` | セマンティックメモリ（意味ベースの記憶管理） |
 | **semantic-repetition** | `lib/semantic-repetition.ts` | セマンティック反復検出（重複内容の特定） |
 | **intent-aware-limits** | `lib/intent-aware-limits.ts` | 意図別予算制限（タスク種別のリソース制御） |
-| **run-index** | `lib/run-index.ts` | 実行インデックス管理（エージェント実行履歴の検索） |
-| **pattern-extraction** | `lib/pattern-extraction.ts` | パターン抽出（実行履歴からの知識抽出） |
 | **output-schema** | `lib/output-schema.ts` | 出力スキーマ（構造化出力の定義と検証） |
 | **text-parsing** | `lib/text-parsing.ts` | テキスト解析（構造化テキスト処理） |
 | **embeddings** | `lib/embeddings/` | エンベディングモジュール（ベクトル埋め込み生成） |

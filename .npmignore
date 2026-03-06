@@ -1,0 +1,90 @@
+# Runtime data
+.pi/agent-loop/
+.pi/analytics/
+.pi/cache-optimizer/
+.pi/checkpoints/
+.pi/data/
+.pi/logs/
+.pi/memory/
+.pi/metrics/
+.pi/reports/
+.pi/research/
+.pi/search/
+.pi/self-improvement-loop/
+.pi/tasks/
+.pi/tools/
+.pi/ul-workflow/tasks/
+.pi/plans/storage.json
+
+# Test files
+.pi/tests/
+.pi/lib/__tests__
+.pi/lib/**/__tests__
+__tests__
+.nyc_output/
+coverage/
+*.test.ts
+*.spec.ts
+
+# Development files
+.git/
+.github/
+.idea/
+.vscode/
+.tmp/
+.tmp-*/
+*.log
+*.tmp
+*.bak
+
+# Build artifacts
+*.tsbuildinfo
+dist/
+build/
+
+# Node modules (will be installed by npm)
+node_modules/
+
+# Web UI node_modules (large, should be installed)
+.pi/extensions/web-ui/node_modules/
+
+# Misc
+.DS_Store
+Thumbs.db
+.env
+.env.*
+*.pem
+!**/public-key.pem
+
+# Test directories
+tests/
+test/
+vitest.config.ts
+
+# Reports
+bug_report.md
+gh_search_check_summary.md
+nonsensical-implementations-report.md
+plan-failover.md
+coverage-report.json
+
+# Playwright
+.playwright/
+.playwright-cli/
+
+# Examples
+examples/
+
+# Patches
+patches/
+
+# Scripts (not needed at runtime)
+scripts/
+.factory/
+public/
+plans/
+report/
+tags
+user.jpg
+excalidraw.log
+philosophy.md
