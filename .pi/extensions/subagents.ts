@@ -1562,6 +1562,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             const dagPlan = await generateDagFromTask(params.task, {
               maxDepth: 4,
               maxTasks: activeAgents.length + 2,
+              preferredAgents: activeAgents.map((agent) => agent.id),
             });
 
             console.log(`[subagent_run_dag] Generated DAG: ${dagPlan.id} (${dagPlan.tasks.length} tasks)`);
