@@ -127,6 +127,13 @@ describe("buildUlWorkflowPrompt", () => {
 		expect(prompt).toContain("ul_workflow_modify_plan");
 		expect(prompt).toContain("再度 `question` ツールで確認する");
 	});
+
+	it("ABDD ツールを前提にしない", () => {
+		const prompt = buildUlWorkflowPrompt("通知バグ修正");
+
+		expect(prompt.toLowerCase()).not.toContain("abdd");
+		expect(prompt).not.toContain("abdd_compare_plan");
+	});
 });
 
 // ============================================================================

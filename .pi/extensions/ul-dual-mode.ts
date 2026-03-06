@@ -878,27 +878,6 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       changed = true;
     }
 
-    // ABDD自動検証: implementerサブエージェントの呼び出しを検知
-    // 完了後にplan.mdが存在する場合、乖離チェックを推奨
-    if (toolName === "subagent_run") {
-      const subagentId = normalizeId(input?.subagentId);
-      if (subagentId === "implementer") {
-        const taskContext = String(input?.task || "");
-        // plan.mdのパスを推測（ULワークフローのパターン）
-        const planPathMatch = taskContext.match(/\.pi\/ul-workflow\/tasks\/([^/]+)\/plan\.md/);
-        if (planPathMatch) {
-          const planPath = `.pi/ul-workflow/tasks/${planPathMatch[1]}/plan.md`;
-          // 通知: 完了後に乖離チェックを推奨
-          if (ctx?.hasUI && ctx?.ui) {
-            ctx.ui.notify(
-              `[ABDD] implementer完了後、plan.mdとの乖離チェックを推奨:\nabdd_compare_plan({ planPath: "${planPath}" })`,
-              "info"
-            );
-          }
-        }
-      }
-    }
-
     if (changed) {
       refreshStatusThrottled(ctx);  // 高頻度イベントではスロットリング
     }
@@ -915,52 +894,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     const missing = getMissingRequirements();
     if (missing.length === 0) {
       // reviewerが実行された（または必須でない）
-      
-      // ABDD自動検証: implementerが実行された場合、plan.mdとの乖離チェック
-      if (state.usedSubagentRun && ctx?.callTool) {
-        try {
-          // 現在のタスクからplan.mdのパスを推測
-          const taskMatch = state.currentTask.match(/\.pi\/ul-workflow\/tasks\/([^/]+)/);
-          if (taskMatch) {
-            const planPath = `.pi/ul-workflow/tasks/${taskMatch[1]}/plan.md`;
-            const fs = await import("node:fs");
-            if (fs.existsSync(planPath)) {
-              if (ctx?.hasUI && ctx?.ui) {
-                ctx.ui.notify(`[ABDD] plan.mdとの乖離を自動チェック中...`, "info");
-              }
-              
-              // abdd_compare_planを自動実行
-              const result = await ctx.callTool("abdd_compare_plan", {
-                planPath,
-                verbose: false,
-              });
-              
-              if (result && ctx?.hasUI && ctx?.ui) {
-                const summary = result?.details?.summary;
-                if (summary) {
-                  if (summary.high > 0) {
-                    ctx.ui.notify(
-                      `[ABDD] 乖離検出: 高${summary.high}件 中${summary.medium}件 低${summary.low}件\nカバレッジ: ${summary.coverage.toFixed(1)}%`,
-                      "warning"
-                    );
-                  } else if (summary.total > 0) {
-                    ctx.ui.notify(
-                      `[ABDD] 軽微な乖離: 中${summary.medium}件 低${summary.low}件\nカバレッジ: ${summary.coverage.toFixed(1)}%`,
-                      "info"
-                    );
-                  } else {
-                    ctx.ui.notify(`[ABDD] 乖離なし。カバレッジ: ${summary.coverage.toFixed(1)}%`, "info");
-                  }
-                }
-              }
-            }
-          }
-        } catch (e) {
-          // エラーは無視（ABDD検証はオプショナル）
-          console.error("[ABDD] Auto-verification error:", e);
-        }
-      }
-      
+
       if (state.persistentUlMode) {
         state.activeUlMode = true;
         state.activeGoalLoopMode = false;
