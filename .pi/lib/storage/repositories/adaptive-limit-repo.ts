@@ -52,6 +52,27 @@ interface AdaptiveLimitRow {
   notes: string | null;
 }
 
+const SQLITE_BUSY_RETRY_COUNT = 5;
+const SQLITE_BUSY_RETRY_BASE_MS = 25;
+
+function isBusyError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.message.includes("database is locked") || error.message.includes("SQLITE_BUSY");
+}
+
+function sleepSync(ms: number): void {
+  try {
+    const buffer = new SharedArrayBuffer(4);
+    const view = new Int32Array(buffer);
+    Atomics.wait(view, 0, 0, ms);
+  } catch {
+    // Atomics.wait が使えない環境では待機を諦める
+  }
+}
+
 /**
  * 適応的レート制限リポジトリ
  * @summary 適応的制限情報の永続化を管理
@@ -71,6 +92,25 @@ export class AdaptiveLimitRepository {
     this.db = db;
   }
 
+  private runWithBusyRetry<T>(fn: () => T): T {
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < SQLITE_BUSY_RETRY_COUNT; attempt++) {
+      try {
+        return fn();
+      } catch (error) {
+        if (!isBusyError(error) || attempt === SQLITE_BUSY_RETRY_COUNT - 1) {
+          throw error;
+        }
+
+        lastError = error;
+        sleepSync(SQLITE_BUSY_RETRY_BASE_MS * (attempt + 1));
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error("database is locked");
+  }
+
   /**
    * 制限値を登録または更新（upsert）
    * @summary 制限値登録
@@ -81,19 +121,21 @@ export class AdaptiveLimitRepository {
   upsert(provider: string, model: string, limit: LearnedLimit): void {
     const stmt = this.getStmtUpsert();
     const key = this.makeKey(provider, model);
-    stmt.run({
-      provider_model: key,
-      concurrency: limit.concurrency,
-      original_concurrency: limit.originalConcurrency,
-      last_429_at: limit.last429At,
-      consecutive_429_count: limit.consecutive429Count,
-      total_429_count: limit.total429Count,
-      last_success_at: limit.lastSuccessAt,
-      recovery_scheduled: limit.recoveryScheduled ? 1 : 0,
-      historical_429s_json: safeStringifyJson(limit.historical429s ?? []),
-      predicted_429_probability: limit.predicted429Probability ?? 0,
-      ramp_up_schedule_json: safeStringifyJson(limit.rampUpSchedule ?? []),
-      notes: limit.notes ?? null,
+    this.runWithBusyRetry(() => {
+      stmt.run({
+        provider_model: key,
+        concurrency: limit.concurrency,
+        original_concurrency: limit.originalConcurrency,
+        last_429_at: limit.last429At,
+        consecutive_429_count: limit.consecutive429Count,
+        total_429_count: limit.total429Count,
+        last_success_at: limit.lastSuccessAt,
+        recovery_scheduled: limit.recoveryScheduled ? 1 : 0,
+        historical_429s_json: safeStringifyJson(limit.historical429s ?? []),
+        predicted_429_probability: limit.predicted429Probability ?? 0,
+        ramp_up_schedule_json: safeStringifyJson(limit.rampUpSchedule ?? []),
+        notes: limit.notes ?? null,
+      });
     });
   }
 
@@ -135,7 +177,9 @@ export class AdaptiveLimitRepository {
   delete(provider: string, model: string): void {
     const stmt = this.getStmtDelete();
     const key = this.makeKey(provider, model);
-    stmt.run({ provider_model: key });
+    this.runWithBusyRetry(() => {
+      stmt.run({ provider_model: key });
+    });
   }
 
   /**
@@ -155,7 +199,7 @@ export class AdaptiveLimitRepository {
     const key = this.makeKey(provider, model);
     const now = timestampNow();
 
-    return this.db.transaction(() => {
+    return this.runWithBusyRetry(() => this.db.transaction(() => {
       let current = this.getByKey(provider, model);
 
       if (!current) {
@@ -188,7 +232,7 @@ export class AdaptiveLimitRepository {
 
       this.upsert(provider, model, current);
       return current;
-    });
+    }));
   }
 
   /**
@@ -202,7 +246,7 @@ export class AdaptiveLimitRepository {
     const key = this.makeKey(provider, model);
     const now = timestampNow();
     
-    return this.db.transaction(() => {
+    return this.runWithBusyRetry(() => this.db.transaction(() => {
       let current = this.getByKey(provider, model);
       
       if (!current) {
@@ -232,7 +276,7 @@ export class AdaptiveLimitRepository {
       
       this.upsert(provider, model, current);
       return current;
-    });
+    }));
   }
 
   /**
@@ -249,7 +293,9 @@ export class AdaptiveLimitRepository {
       SET recovery_scheduled = @scheduled
       WHERE provider_model = @provider_model
     `);
-    stmt.run({ provider_model: key, scheduled: scheduled ? 1 : 0 });
+    this.runWithBusyRetry(() => {
+      stmt.run({ provider_model: key, scheduled: scheduled ? 1 : 0 });
+    });
   }
 
   /**
@@ -266,7 +312,9 @@ export class AdaptiveLimitRepository {
       SET predicted_429_probability = @probability
       WHERE provider_model = @provider_model
     `);
-    stmt.run({ provider_model: key, probability });
+    this.runWithBusyRetry(() => {
+      stmt.run({ provider_model: key, probability });
+    });
   }
 
   /**
@@ -283,7 +331,9 @@ export class AdaptiveLimitRepository {
       SET ramp_up_schedule_json = @schedule
       WHERE provider_model = @provider_model
     `);
-    stmt.run({ provider_model: key, schedule: safeStringifyJson(schedule) });
+    this.runWithBusyRetry(() => {
+      stmt.run({ provider_model: key, schedule: safeStringifyJson(schedule) });
+    });
   }
 
   // ========================================================================
@@ -350,7 +400,9 @@ export class AdaptiveLimitRepository {
    */
   clearAll(): void {
     const stmt = this.db.prepare("DELETE FROM adaptive_limits");
-    stmt.run();
+    this.runWithBusyRetry(() => {
+      stmt.run();
+    });
   }
 
   /**
@@ -366,7 +418,7 @@ export class AdaptiveLimitRepository {
       WHERE last_success_at < @cutoff
         AND last_429_at < @cutoff
     `);
-    const result = stmt.run({ cutoff });
+    const result = this.runWithBusyRetry(() => stmt.run({ cutoff }));
     return result.changes;
   }
 
