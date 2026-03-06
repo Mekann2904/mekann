@@ -70,7 +70,6 @@ pi remove https://github.com/Mekann2904/mekann
 |---------|---------|------|------------|
 | **plan_*** | `plan.ts` | 計画管理とタスク追跡 | [→](docs/02-user-guide/07-plan.md) |
 | **subagent_*** | `subagents.ts` | サブエージェントの作成・実行 | [→](docs/02-user-guide/08-subagents.md) |
-| **agent_team_*** | `agent-teams.ts` | エージェントチームの作成・実行 | [→](docs/02-user-guide/09-agent-teams.md) |
 | **ul-dual-mode** | `ul-dual-mode.ts` | デュアルモード強制実行 | [→](docs/02-user-guide/10-ul-dual-mode.md) |
 | **ul-workflow** | `ul-workflow.ts` | Research-Plan-Annotate-Implement ワークフロー（計画承認必須） | [→](docs/02-user-guide/16-ul-workflow.md) |
 | **cross-instance-runtime** | `cross-instance-runtime.ts` | 複数piインスタンス間の並列数自動調整（プロバイダー/モデル別） | [→](docs/02-user-guide/12-cross-instance-runtime.md) |
@@ -309,13 +308,6 @@ mekann/
 | | `subagent_list` | 定義済みエージェント一覧 |
 | | `subagent_status` | 実行中のエージェント状態 |
 | | `subagent_runs` | 実行履歴の表示 |
-| **エージェントチーム** | `agent_team_create` | エージェントチームの定義作成 |
-| | `agent_team_run` | エージェントチームの実行 |
-| | `agent_team_run_parallel` | エージェントチームの並列実行 |
-| | `agent_team_configure` | チーム設定更新 |
-| | `agent_team_list` | 定義済みチーム一覧 |
-| | `agent_team_status` | 実行中のチーム状態 |
-| | `agent_team_runs` | 実行履歴の表示 |
 | **UL Dual-Orchestration** | `ulmode` | UL Dual-Orchestrationモードの切り替え |
 | **UL Workflow** | `ul_workflow_start` | Research-Plan-Annotate-Implement ワークフロー開始 |
 | | `ul_workflow_status` | ワークフローステータス表示 |
@@ -347,7 +339,7 @@ mekann/
 
 ## Runtime Load Guard
 
-2026-02-11 以降、`subagent_run` / `subagent_run_parallel` / `agent_team_run` / `agent_team_run_parallel` には実行上限ガードが実装されています。
+2026-02-11 以降、`subagent_run` / `subagent_run_parallel` には実行上限ガードが実装されています。
 
 ### デフォルト上限
 
@@ -356,14 +348,12 @@ mekann/
 | 総同時実行（LLM数） | 4 | 同時に実行可能なLLMの最大数 |
 | 総同時実行（request数） | 2 | 同時に実行可能なリクエストの最大数 |
 | サブエージェント並列数 | 2 | 1リクエスト内のサブエージェント並列数 |
-| チーム並列数 | 1 | 1リクエスト内のチーム並列数 |
-| チーム内メンバー並列数 | 3 | 1チーム内のメンバー並列数 |
 
 > **注**: このプロジェクトではStable Profileが有効になっています。環境変数で個別の上限値を上書きできます。
 
 ### 上限の確認
 
-`subagent_status` と `agent_team_status` で、現在値と上限値を確認できます。
+`subagent_status` で、現在値と上限値を確認できます。
 
 ### 上限の調整
 
@@ -394,8 +384,7 @@ PI_AGENT_CAPACITY_POLL_MS=250        # ポーリング間隔（デフォルト25
 **重要**: `.pi/APPEND_SYSTEM.md` では参照されていますが、ツールレベルでの強制は無効化されています（2026-02-11以降）。このポリシーは**ガイドライン**として機能します。
 
 推奨されるアプローチ:
-- 非自明なタスクは `subagent_run` または `subagent_run_parallel` を使用して委任する
-- 独立したタスクトラックは `agent_team_run` または `agent_team_run_parallel` で並列実行する
+- 非自明なタスクは `subagent_run_dag` を使用して委任する
 - 単一エージェントによる直接実行は、小さな単一ステップの編集に限定する
 
 詳細は [`.pi/APPEND_SYSTEM.md`](.pi/APPEND_SYSTEM.md) を参照してください。

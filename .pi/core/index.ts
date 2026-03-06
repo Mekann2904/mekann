@@ -23,5 +23,4 @@
 
 // Domain Models
 export * from "./domain/agent.js";
-export * from "./domain/team.js";
 export * from "./domain/plan.js";

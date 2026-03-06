@@ -58,8 +58,6 @@
       "./.pi/extensions/pi-coding-agent-lock-fix.ts",
       "./.pi/extensions/agent-idle-indicator.ts",
       "./.pi/extensions/agent-runtime.ts",
-      "./.pi/extensions/agent-teams/extension.ts",
-      "./.pi/extensions/agent-team-dag-wrapper.ts",
       "./.pi/extensions/agent-usage-tracker.ts",
       "./.pi/extensions/append-system-loader.ts",
       "./.pi/extensions/code-panel.ts",
