@@ -66,7 +66,6 @@ export {
   classifyTaskType,
   extractFiles,
   indexSubagentRun,
-  indexTeamRun,
   buildRunIndex,
   getRunIndexPath,
   loadRunIndex,

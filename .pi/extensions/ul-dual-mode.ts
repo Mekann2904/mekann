@@ -20,7 +20,7 @@
  *   - Reduce overhead on small tasks via conditional reviewer gating
  *   - Maintain session-wide state for complex workflows
  * scope:
- *   in: User text input, execution tool usage (subagent_run, agent_team_run), environment variables
+ *   in: User text input, execution tool usage (subagent_run), environment variables
  *   out: Tool invocations, UI status updates, session history entries
  */
 
@@ -49,7 +49,6 @@ const UL_TRIVIAL_PATTERNS = [
   /^find\s+/i,           // 検索系
 ];
 const RECOMMENDED_SUBAGENT_IDS = ["researcher", "architect", "implementer"] as const;
-const RECOMMENDED_CORE_TEAM_ID = "core-delivery-team";
 const RECOMMENDED_REVIEWER_ID = "reviewer";
 // DISABLED: 自動検出を無効化（明示的な入口のみに絞る）
 // const CLEAR_GOAL_SIGNAL =
@@ -69,11 +68,6 @@ const SUBAGENT_EXECUTION_TOOLS = new Set([
   "subagent_run_parallel",
 ]);
 
-const AGENT_TEAM_EXECUTION_TOOLS = new Set([
-  "agent_team_run",
-  "agent_team_run_parallel",
-]);
-
 // BUG-002修正: async-mutexで状態変更を保護
 const stateMutex = new Mutex();
 
@@ -84,9 +78,7 @@ const state = {
   pendingGoalLoopMode: false,
   activeGoalLoopMode: false,
   usedSubagentRun: false,
-  usedAgentTeamRun: false,
   completedRecommendedSubagentPhase: false,
-  completedRecommendedTeamPhase: false,
   completedRecommendedReviewerPhase: false,
   currentTask: "",  // 現在のタスク（reviewer要否判定用）
 };
@@ -135,9 +127,7 @@ function resetState(): void {
   state.pendingGoalLoopMode = false;
   state.activeGoalLoopMode = false;
   state.usedSubagentRun = false;
-  state.usedAgentTeamRun = false;
   state.completedRecommendedSubagentPhase = false;
-  state.completedRecommendedTeamPhase = false;
   state.completedRecommendedReviewerPhase = false;
   state.currentTask = "";
 }
@@ -153,9 +143,7 @@ async function resetStateAsync(): Promise<void> {
     pendingGoalLoopMode: false,
     activeGoalLoopMode: false,
     usedSubagentRun: false,
-    usedAgentTeamRun: false,
     completedRecommendedSubagentPhase: false,
-    completedRecommendedTeamPhase: false,
     completedRecommendedReviewerPhase: false,
     currentTask: "",
   });
@@ -393,31 +381,6 @@ function isRecommendedSubagentParallelCall(event: ToolCallEventLike): boolean {
 
 /**
  * BUG-TS-004修正: 型安全なイベントパラメータ
- * @summary 推奨コアチーム呼び出しかどうかを判定
- * @param event - ツール呼び出しイベント
- * @returns 推奨コアチーム呼び出しの場合true
- */
-function isRecommendedCoreTeamCall(event: ToolCallEventLike): boolean {
-  const toolName = normalizeId(event?.toolName);
-  const input = parseToolInput(event);
-
-  if (toolName === "agent_team_run") {
-    const teamId = normalizeId(input?.teamId);
-    if (teamId !== RECOMMENDED_CORE_TEAM_ID) return false;
-    const strategyRaw = normalizeId(input?.strategy);
-    return strategyRaw.length === 0 || strategyRaw === "parallel";
-  }
-
-  if (toolName === "agent_team_run_parallel") {
-    const teamIds = new Set(extractIdList(input?.teamIds));
-    return teamIds.has(RECOMMENDED_CORE_TEAM_ID);
-  }
-
-  return false;
-}
-
-/**
- * BUG-TS-004修正: 型安全なイベントパラメータ
  * @summary 推奨レビュアー呼び出しかどうかを判定
  * @param event - ツール呼び出しイベント
  * @returns 推奨レビュアー呼び出しの場合true
@@ -608,18 +571,14 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
         state.activeUlMode = true;
         state.activeGoalLoopMode = false;
         state.usedSubagentRun = false;
-        state.usedAgentTeamRun = false;
         state.completedRecommendedSubagentPhase = false;
-        state.completedRecommendedTeamPhase = false;
         state.completedRecommendedReviewerPhase = false;
         ctx.ui.notify("ULモード: セッション全体で有効です。", "info");
       } else {
         state.activeUlMode = false;
         state.activeGoalLoopMode = false;
         state.usedSubagentRun = false;
-        state.usedAgentTeamRun = false;
         state.completedRecommendedSubagentPhase = false;
-        state.completedRecommendedTeamPhase = false;
         state.completedRecommendedReviewerPhase = false;
         ctx.ui.notify("ULモード: 無効になりました。", "info");
       }
@@ -813,9 +772,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     state.pendingUlMode = false;
     state.pendingGoalLoopMode = false;
     state.usedSubagentRun = false;
-    state.usedAgentTeamRun = false;
     state.completedRecommendedSubagentPhase = false;
-    state.completedRecommendedTeamPhase = false;
     // 小規模タスクの場合はreviewer不要としてマーク
     state.completedRecommendedReviewerPhase = !shouldRequireReviewer(state.currentTask);
     refreshStatus(ctx);
@@ -846,11 +803,6 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
 
     if (SUBAGENT_EXECUTION_TOOLS.has(toolName) && !state.usedSubagentRun) {
       state.usedSubagentRun = true;
-      changed = true;
-    }
-
-    if (AGENT_TEAM_EXECUTION_TOOLS.has(toolName) && !state.usedAgentTeamRun) {
-      state.usedAgentTeamRun = true;
       changed = true;
     }
 
@@ -951,9 +903,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
         state.activeUlMode = true;
         state.activeGoalLoopMode = false;
         state.usedSubagentRun = false;
-        state.usedAgentTeamRun = false;
         state.completedRecommendedSubagentPhase = false;
-        state.completedRecommendedTeamPhase = false;
         state.completedRecommendedReviewerPhase = false;
         refreshStatus(ctx);
       } else {
@@ -973,9 +923,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       state.activeUlMode = true;
       state.activeGoalLoopMode = false;
       state.usedSubagentRun = false;
-      state.usedAgentTeamRun = false;
       state.completedRecommendedSubagentPhase = false;
-      state.completedRecommendedTeamPhase = false;
       state.completedRecommendedReviewerPhase = false;
       refreshStatus(ctx);
     } else {

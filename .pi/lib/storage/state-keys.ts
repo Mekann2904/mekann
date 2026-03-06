@@ -9,10 +9,6 @@ export function getSubagentStorageStateKey(cwd: string): string {
   return `subagents_storage:${cwd}`;
 }
 
-export function getAgentTeamStorageStateKey(cwd: string): string {
-  return `agent_teams_storage:${cwd}`;
-}
-
 export function getTaskStorageStateKey(cwd: string): string {
   return `task_storage:${cwd}`;
 }

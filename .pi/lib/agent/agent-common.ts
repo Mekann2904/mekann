@@ -4,7 +4,7 @@
  * role: サブエージェントおよびチームメンバー実行のための共通定数・型定義・ユーティリティの提供
  * why: subagents.ts間でコードを重複させず、実行プロファイルや設定を一元管理するため
  * related: .pi/lib/subagents.ts, .pi/lib/validation-utils.js
- * public_api: EntityType, EntityConfig, STABLE_RUNTIME_PROFILE, SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG, 各種定数
+ * public_api: EntityType, EntityConfig, STABLE_RUNTIME_PROFILE, SUBAGENT_CONFIG, 各種定数
  * invariants: STABLE_RUNTIME_PROFILEがtrueの場合、ADAPTIVE_PARALLEL_MAX_PENALTYは0となる
  * side_effects: なし
  * failure_modes: なし
@@ -127,17 +127,6 @@ export const SUBAGENT_CONFIG: EntityConfig = {
   label: "subagent",
   emptyOutputMessage: "subagent returned empty output",
   defaultSummaryFallback: "回答を整形しました。",
-};
-
-/**
- * Default team member configuration (deprecated, kept for compatibility).
- * @deprecated Use SUBAGENT_CONFIG instead
- */
-export const TEAM_MEMBER_CONFIG: EntityConfig = {
-  type: "team-member",
-  label: "team member",
-  emptyOutputMessage: "team member returned empty output",
-  defaultSummaryFallback: "情報を整理しました。",
 };
 
 // ============================================================================

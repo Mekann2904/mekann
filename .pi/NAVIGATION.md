@@ -89,7 +89,7 @@ Is this a git operation? --> YES --> Load skills/git-workflow/SKILL.md
   NO
   |
   v
-Is this non-trivial/coding? --> YES --> Use subagent_run or agent_team_run
+Is this non-trivial/coding? --> YES --> Use subagent_run
   |
   NO
   |

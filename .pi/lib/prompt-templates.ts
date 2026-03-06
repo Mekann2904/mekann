@@ -97,11 +97,9 @@ Delegation is not bureaucracy. It is quality assurance AND speed optimization co
 ### REQUIRED Execution Workflow
 
 1. Decompose request into 2-4 parallel tracks.
-2. Prefer \`agent_team_run_parallel\` with explicit \`teamIds\`.
-3. Use \`strategy: "parallel"\`, \`communicationRounds: 1\`, \`failedMemberRetryRounds: 1\` as baseline.
-4. If conflicts remain, run one additional focused team round.
-5. For subagents: \`subagent_run_parallel\` with 2-4 explicit \`subagentIds\`.
-6. If only one specialist is needed, use \`subagent_run\`.
+2. Use \`subagent_run_dag\` with explicit \`plan\` for dependency-aware execution.
+3. For simple parallel execution: \`subagent_run_parallel\` with 2-4 explicit \`subagentIds\`.
+4. If only one specialist is needed, use \`subagent_run\`.
 
 Do NOT skip orchestration because direct execution "seems faster". It is not.
 Only skip when the task is truly trivial (single obvious step, no architectural impact).`;

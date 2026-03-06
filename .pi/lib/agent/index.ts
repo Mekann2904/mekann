@@ -57,7 +57,6 @@ export {
   type EntityType,
   type EntityConfig,
   SUBAGENT_CONFIG,
-  TEAM_MEMBER_CONFIG,
   type NormalizedEntityOutput,
   type PickFieldCandidateOptions,
   pickFieldCandidate,
@@ -74,14 +73,11 @@ export {
 export {
   isRetryableEntityError,
   isRetryableSubagentError,
-  isRetryableTeamMemberError,
   resolveFailureOutcome,
   resolveSubagentFailureOutcome,
-  resolveTeamFailureOutcome,
   type EntityResultItem,
   resolveAggregateOutcome,
   resolveSubagentParallelOutcome,
-  resolveTeamMemberAggregateOutcome,
   trimErrorMessage,
   buildDiagnosticContext,
 } from "./agent-errors.js";
@@ -120,9 +116,7 @@ export {
 export {
   hasNonEmptyResultSection,
   validateSubagentOutput,
-  validateTeamMemberOutput,
   type SubagentValidationOptions,
-  type TeamMemberValidationOptions,
 } from "./output-validation.js";
 
 // Runtime utilities (Layer 1)
@@ -157,26 +151,6 @@ export {
   type PrintCommandResult,
 } from "./subagent-types.js";
 
-// Team types (Layer 1)
-export {
-  type TeamLivePhase,
-  type TeamLiveViewMode,
-  type TeamLiveItem,
-  type TeamMonitorLifecycle,
-  type TeamMonitorPhase,
-  type TeamMonitorEvents,
-  type TeamMonitorStream,
-  type TeamMonitorDiscussion,
-  type TeamMonitorResource,
-  type AgentTeamLiveMonitorController,
-  type TeamNormalizedOutputAPI,
-  type TeamParallelCapacityCandidate,
-  type TeamParallelCapacityResolution,
-  type TeamFrontmatter,
-  type TeamMemberFrontmatter,
-  type ParsedTeamMarkdown,
-} from "./team-types.js";
-
 // Structured Logger utilities (Layer 1)
 export {
   StructuredLogger,
@@ -196,7 +170,6 @@ export {
   resetDefaultLogger,
   createLogger,
   getSubagentLogger,
-  getAgentTeamsLogger,
   getStorageLogger,
   logInfo,
   logWarn,

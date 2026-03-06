@@ -4,7 +4,7 @@
  * role: サブエージェントおよびチームメンバーの出力文字列に対する構造バリデーションを行うユーティリティ
  * why: 出力形式の一貫性を担保し、後続処理でのエラーを防止するため
  * related: .pi/lib/output-schema.ts
- * public_api: hasNonEmptyResultSection, validateSubagentOutput, validateTeamMemberOutput, validateSubagentOutputEnhanced, validateTeamMemberOutputEnhanced, SubagentValidationOptions, TeamMemberValidationOptions
+ * public_api: hasNonEmptyResultSection, validateSubagentOutput, validateSubagentOutputEnhanced, SubagentValidationOptions
  * invariants: 必須ラベルがすべて存在する場合にのみtrueを返す、RESULTセクションの内容が空の場合はfalseを返す、strictモードでスキーマ検証失敗時はlegacy結果にフォールバック
  * side_effects: スキーマ違反の記録（recordSchemaViolation呼び出し）、console.warnによる差分ログ出力
  * failure_modes: 必須ラベルの欠如、文字数不足、RESULTセクションの欠損または空欄、スキーマ検証の利用不可（フォールバック付き）

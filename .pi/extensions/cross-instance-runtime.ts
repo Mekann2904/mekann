@@ -494,8 +494,6 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
     const isLlmTool = [
       "subagent_run",
       "subagent_run_parallel",
-      "agent_team_run",
-      "agent_team_run_parallel",
     ].includes(toolName);
 
     if (isLlmTool) {
