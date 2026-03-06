@@ -10,12 +10,18 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
+import { join } from "node:path";
 import type { SuccessResponse } from "../schemas/common.schema.js";
+import { getInstanceService } from "../services/instance-service.js";
+import { SHARED_DIR } from "../lib/storage.js";
 import {
   loadIndexSettings,
   updateIndexEnabled,
   type IndexSettings,
 } from "../services/index-settings-service.js";
+import {
+  readJsonState,
+} from "../../../../lib/storage/sqlite-state-store.js";
 import {
   readStrictJsonState,
   deleteStrictJsonState,
@@ -52,6 +58,30 @@ function getSemanticIndexStateKey(cwd: string): string {
 
 function getSemanticMetaStateKey(cwd: string): string {
   return `semantic_code_meta:${cwd}`;
+}
+
+/**
+ * インデックス対象の作業ディレクトリを解決
+ */
+function resolveIndexesCwd(): string {
+  const instances = getInstanceService().list();
+  if (instances.length > 0) {
+    // web-ui から見えている最新のアクティブインスタンスを優先する
+    const latest = [...instances].sort((a, b) => b.lastHeartbeat - a.lastHeartbeat)[0];
+    return latest.cwd || process.cwd();
+  }
+
+  // アクティブな instance が無い場合でも、最後に登録されていた cwd を使う
+  const knownInstances = readJsonState<Record<number, { cwd?: string; lastHeartbeat?: number }>>({
+    stateKey: "webui_instances",
+    fallbackPath: join(SHARED_DIR, "instances.json"),
+    createDefault: () => ({}),
+  });
+  const persisted = Object.values(knownInstances).sort(
+    (a, b) => (b.lastHeartbeat || 0) - (a.lastHeartbeat || 0)
+  )[0];
+
+  return persisted?.cwd || process.cwd();
 }
 
 /**
@@ -213,7 +243,7 @@ export const indexesRoutes = new Hono();
  * GET /api/indexes - 全インデックス状態
  */
 indexesRoutes.get("/", async (c) => {
-  const cwd = process.cwd();
+  const cwd = resolveIndexesCwd();
 
   const [locagent, repograph, semantic, settings] = await Promise.all([
     getIndexStatus("locagent", cwd),
@@ -249,7 +279,7 @@ indexesRoutes.patch(
   async (c) => {
     const { type } = c.req.valid("param");
     const { enabled } = c.req.valid("json");
-    const cwd = process.cwd();
+    const cwd = resolveIndexesCwd();
 
     const settings = await updateIndexEnabled(cwd, type, enabled);
 
@@ -271,7 +301,7 @@ indexesRoutes.get(
   ),
   async (c) => {
     const { type } = c.req.valid("param");
-    const cwd = process.cwd();
+    const cwd = resolveIndexesCwd();
 
     const status = await getIndexStatus(type, cwd);
 
@@ -295,7 +325,7 @@ indexesRoutes.post(
   async (c) => {
     const { type } = c.req.valid("param");
     const { force } = c.req.valid("json");
-    const cwd = process.cwd();
+    const cwd = resolveIndexesCwd();
 
     const result = await rebuildIndex(type, force, cwd);
 
@@ -327,7 +357,7 @@ indexesRoutes.delete(
   ),
   async (c) => {
     const { type } = c.req.valid("param");
-    const cwd = process.cwd();
+    const cwd = resolveIndexesCwd();
 
     try {
       if (type === "locagent") {

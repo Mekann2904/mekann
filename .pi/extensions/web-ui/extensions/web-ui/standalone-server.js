@@ -23,6 +23,7 @@ import * as fs from "fs";
 import { homedir } from "os";
 import { fileURLToPath } from "url";
 import { getAllUlWorkflowTasks, getUlWorkflowTask, getActiveUlWorkflowTask, } from "./lib/ul-workflow-reader.js";
+import { ensureTaskDir as ensureSharedTaskDir, loadTaskStorage as loadSharedTaskStorage, saveTaskStorage as saveSharedTaskStorage, } from "../../../../lib/storage/task-plan-store.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 // ============================================================================
@@ -373,31 +374,16 @@ function createApp() {
         req.socket.setKeepAlive(true);
     });
     // ============= Task API =============
-    const TASK_DIR = ".pi/tasks";
-    const TASK_STORAGE_FILE = path.join(TASK_DIR, "storage.json");
     function ensureTaskDir() {
-        if (!fs.existsSync(TASK_DIR)) {
-            fs.mkdirSync(TASK_DIR, { recursive: true });
-        }
+        ensureSharedTaskDir();
     }
     function loadTaskStorage() {
         ensureTaskDir();
-        if (!fs.existsSync(TASK_STORAGE_FILE)) {
-            return { tasks: [] };
-        }
-        try {
-            const data = fs.readFileSync(TASK_STORAGE_FILE, "utf-8");
-            return JSON.parse(data);
-        }
-        catch {
-            return { tasks: [] };
-        }
+        return loadSharedTaskStorage();
     }
     function saveTaskStorage(storage) {
         ensureTaskDir();
-        const tempFile = TASK_STORAGE_FILE + ".tmp";
-        fs.writeFileSync(tempFile, JSON.stringify(storage, null, 2));
-        fs.renameSync(tempFile, TASK_STORAGE_FILE);
+        saveSharedTaskStorage(storage);
     }
     /**
      * GET /api/tasks - List tasks with filters

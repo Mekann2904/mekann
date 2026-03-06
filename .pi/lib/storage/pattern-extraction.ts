@@ -28,18 +28,20 @@
  * Identifies success/failure patterns and task-specific approaches.
  */
 
-import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { ensureDir } from "../core/fs-utils.js";
 import {
   extractKeywords,
   classifyTaskType,
   extractFiles,
   type TaskType,
 } from "./run-index.js";
-import { atomicWriteTextFile } from "./storage-lock.js";
 import { readJsonState, writeJsonState } from "./sqlite-state-store.js";
+import {
+  getAgentTeamStorageStateKey,
+  getPatternStorageStateKey,
+  getSubagentStorageStateKey,
+} from "./state-keys.js";
 
 // ============================================================================
 // Types
@@ -356,7 +358,7 @@ function arePatternsSimilar(a: ExtractedPattern, b: ExtractedPattern): boolean {
  * @returns {string} パターン保存ファイルのパス
  */
 export function getPatternStoragePath(cwd: string): string {
-  return join(cwd, ".pi", "memory", "patterns.json");
+  return `sqlite://json_state/${getPatternStorageStateKey(cwd)}`;
 }
 
 /**
@@ -367,8 +369,8 @@ export function getPatternStoragePath(cwd: string): string {
  */
 export function loadPatternStorage(cwd: string): PatternStorage {
   return readJsonState<PatternStorage>({
-    stateKey: `memory_patterns:${cwd}`,
-    fallbackPath: getPatternStoragePath(cwd),
+    stateKey: getPatternStorageStateKey(cwd),
+    fallbackPath: join(cwd, ".pi", "memory", "patterns.json"),
     createDefault: () => ({
       version: PATTERN_STORAGE_VERSION,
       lastUpdated: new Date().toISOString(),
@@ -386,15 +388,11 @@ export function loadPatternStorage(cwd: string): PatternStorage {
  * @returns {void}
  */
 export function savePatternStorage(cwd: string, storage: PatternStorage): void {
-  const path = getPatternStoragePath(cwd);
-  ensureDir(join(cwd, ".pi", "memory"));
   storage.lastUpdated = new Date().toISOString();
   writeJsonState({
-    stateKey: `memory_patterns:${cwd}`,
+    stateKey: getPatternStorageStateKey(cwd),
     value: storage,
-    mirrorPath: path,
   });
-  atomicWriteTextFile(path, JSON.stringify(storage, null, 2));
 }
 
 /**
@@ -447,77 +445,74 @@ export function extractAllPatterns(cwd: string): PatternStorage {
   const storage = loadPatternStorage(cwd);
 
   // Read subagent runs
-  const subagentStoragePath = join(cwd, ".pi", "subagents", "storage.json");
-  if (existsSync(subagentStoragePath)) {
-    try {
-      const content = readFileSync(subagentStoragePath, "utf-8");
-      const subagentStorage = JSON.parse(content);
-      for (const run of subagentStorage.runs || []) {
-        const pattern = extractPatternFromRun({
-          runId: run.runId,
-          agentId: run.agentId,
-          task: run.task,
-          summary: run.summary,
-          status: run.status,
-          startedAt: run.startedAt,
-          finishedAt: run.finishedAt,
-          error: run.error,
-        });
-        if (pattern) {
-          // Check for similar existing pattern
-          let merged = false;
-          for (let i = 0; i < storage.patterns.length; i++) {
-            if (arePatternsSimilar(storage.patterns[i], pattern)) {
-              storage.patterns[i] = mergePatterns(storage.patterns[i], pattern);
-              merged = true;
-              break;
-            }
-          }
-          if (!merged) {
-            storage.patterns.push(pattern);
+  try {
+    const subagentStorage = readJsonState<{ runs?: RunData[] }>({
+      stateKey: getSubagentStorageStateKey(cwd),
+      fallbackPath: join(cwd, ".pi", "subagents", "storage.json"),
+      createDefault: () => ({ runs: [] }),
+    });
+    for (const run of subagentStorage.runs || []) {
+      const pattern = extractPatternFromRun({
+        runId: run.runId,
+        agentId: run.agentId,
+        task: run.task,
+        summary: run.summary,
+        status: run.status,
+        startedAt: run.startedAt,
+        finishedAt: run.finishedAt,
+        error: run.error,
+      });
+      if (pattern) {
+        let merged = false;
+        for (let i = 0; i < storage.patterns.length; i++) {
+          if (arePatternsSimilar(storage.patterns[i], pattern)) {
+            storage.patterns[i] = mergePatterns(storage.patterns[i], pattern);
+            merged = true;
+            break;
           }
         }
+        if (!merged) {
+          storage.patterns.push(pattern);
+        }
       }
-    } catch (error) {
-      console.error("Error reading subagent storage for pattern extraction:", error);
     }
+  } catch (error) {
+    console.error("Error reading subagent storage for pattern extraction:", error);
   }
 
-  // Read team runs
-  const teamStoragePath = join(cwd, ".pi", "agent-teams", "storage.json");
-  if (existsSync(teamStoragePath)) {
-    try {
-      const content = readFileSync(teamStoragePath, "utf-8");
-      const teamStorage = JSON.parse(content);
-      for (const run of teamStorage.runs || []) {
-        const pattern = extractPatternFromRun({
-          runId: run.runId,
-          teamId: run.teamId,
-          task: run.task,
-          summary: run.summary,
-          status: run.status,
-          startedAt: run.startedAt,
-          finishedAt: run.finishedAt,
-          error: run.error,
-        });
-        if (pattern) {
-          // Check for similar existing pattern
-          let merged = false;
-          for (let i = 0; i < storage.patterns.length; i++) {
-            if (arePatternsSimilar(storage.patterns[i], pattern)) {
-              storage.patterns[i] = mergePatterns(storage.patterns[i], pattern);
-              merged = true;
-              break;
-            }
-          }
-          if (!merged) {
-            storage.patterns.push(pattern);
+  try {
+    const teamStorage = readJsonState<{ runs?: RunData[] }>({
+      stateKey: getAgentTeamStorageStateKey(cwd),
+      fallbackPath: join(cwd, ".pi", "agent-teams", "storage.json"),
+      createDefault: () => ({ runs: [] }),
+    });
+    for (const run of teamStorage.runs || []) {
+      const pattern = extractPatternFromRun({
+        runId: run.runId,
+        teamId: run.teamId,
+        task: run.task,
+        summary: run.summary,
+        status: run.status,
+        startedAt: run.startedAt,
+        finishedAt: run.finishedAt,
+        error: run.error,
+      });
+      if (pattern) {
+        let merged = false;
+        for (let i = 0; i < storage.patterns.length; i++) {
+          if (arePatternsSimilar(storage.patterns[i], pattern)) {
+            storage.patterns[i] = mergePatterns(storage.patterns[i], pattern);
+            merged = true;
+            break;
           }
         }
+        if (!merged) {
+          storage.patterns.push(pattern);
+        }
       }
-    } catch (error) {
-      console.error("Error reading team storage for pattern extraction:", error);
     }
+  } catch (error) {
+    console.error("Error reading team storage for pattern extraction:", error);
   }
 
   // Rebuild task type index

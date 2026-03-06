@@ -48,7 +48,9 @@ export {
   createStorageSaver,
   toId,
   mergeSubagentStorageWithDisk,
+  mergeSubagentStorageState,
   mergeTeamStorageWithDisk,
+  mergeTeamStorageState,
 } from "./storage-base.js";
 
 // Run Index utilities (Layer 2)

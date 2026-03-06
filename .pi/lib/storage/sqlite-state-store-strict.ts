@@ -6,6 +6,7 @@
  */
 
 import { getDatabase, isSQLiteAvailable } from "./sqlite-db.js";
+import "./sqlite-schema.js";
 
 interface JsonStateRow {
   value_json: string;

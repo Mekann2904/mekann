@@ -9,6 +9,11 @@ import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { readJsonState, writeJsonState } from "./sqlite-state-store.js";
+import {
+  getPlanModeStateKey,
+  getPlanStorageStateKey,
+  getTaskStorageStateKey,
+} from "./state-keys.js";
 
 const TASK_DIR = join(process.cwd(), ".pi", "tasks");
 const PLAN_DIR = join(process.cwd(), ".pi", "plans");
@@ -16,9 +21,9 @@ const TASK_STORAGE_FILE = join(TASK_DIR, "storage.json");
 const PLAN_STORAGE_FILE = join(PLAN_DIR, "storage.json");
 const PLAN_MODE_STATE_FILE = join(PLAN_DIR, "plan-mode-state.json");
 
-const taskStateKey = `task_storage:${process.cwd()}`;
-const planStateKey = `plan_storage:${process.cwd()}`;
-const planModeStateKey = `plan_mode_state:${process.cwd()}`;
+const taskStateKey = getTaskStorageStateKey(process.cwd());
+const planStateKey = getPlanStorageStateKey(process.cwd());
+const planModeStateKey = getPlanModeStateKey(process.cwd());
 
 function ensureDir(path: string): void {
   if (!existsSync(path)) {
@@ -48,7 +53,6 @@ export function saveTaskStorage<T>(storage: T): void {
   writeJsonState<T>({
     stateKey: taskStateKey,
     value: storage,
-    mirrorPath: TASK_STORAGE_FILE,
   });
 }
 
@@ -66,7 +70,6 @@ export function savePlanStorage<T>(storage: T): void {
   writeJsonState<T>({
     stateKey: planStateKey,
     value: storage,
-    mirrorPath: PLAN_STORAGE_FILE,
   });
 }
 
@@ -84,6 +87,5 @@ export function savePlanModeState<T>(state: T): void {
   writeJsonState<T>({
     stateKey: planModeStateKey,
     value: state,
-    mirrorPath: PLAN_MODE_STATE_FILE,
   });
 }

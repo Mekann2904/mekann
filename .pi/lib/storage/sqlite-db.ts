@@ -23,7 +23,7 @@
  *   out: データベース接続、トランザクション機能
  */
 
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -124,7 +124,7 @@ export class PiDatabase {
       );
     }
 
-    const dir = join(homedir(), ".pi", "runtime");
+    const dir = dirname(DB_PATH);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }

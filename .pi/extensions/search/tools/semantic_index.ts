@@ -34,7 +34,7 @@
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { relative, extname } from "node:path";
+import { join, relative, extname } from "node:path";
 import { createHash } from "node:crypto";
 import type {
 	SemanticIndexInput,

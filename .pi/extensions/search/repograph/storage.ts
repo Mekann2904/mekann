@@ -91,13 +91,13 @@ export async function isRepoGraphStale(cwd: string, sourcePath?: string): Promis
   const graph = await loadRepoGraph(cwd);
   if (!graph) return true;
 
-  const generatedAt = Number(graph.metadata.generatedAt || 0);
-  if (!Number.isFinite(generatedAt) || generatedAt <= 0) {
+  const indexedAt = Number(graph.metadata.indexedAt || 0);
+  if (!Number.isFinite(indexedAt) || indexedAt <= 0) {
     return true;
   }
 
   const maxAge = 24 * 60 * 60 * 1000;
-  if (Date.now() - generatedAt > maxAge) {
+  if (Date.now() - indexedAt > maxAge) {
     return true;
   }
 
@@ -105,7 +105,7 @@ export async function isRepoGraphStale(cwd: string, sourcePath?: string): Promis
     const sourceDir = join(cwd, sourcePath);
     try {
       const sourceStat = await stat(sourceDir);
-      if (sourceStat.mtimeMs > generatedAt) {
+      if (sourceStat.mtimeMs > indexedAt) {
         return true;
       }
     } catch {

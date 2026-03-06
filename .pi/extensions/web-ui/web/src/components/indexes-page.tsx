@@ -144,6 +144,8 @@ function IndexCard({
   // Toggleの状態は設定(enabled)、カードのアクティブ状態はexists && enabled
   const isEnabled = status.enabled;
   const isActive = status.exists && status.enabled;
+  const primaryCountLabel = indexKey === "semantic" ? "埋め込み" : "ノード";
+  const primaryCountValue = indexKey === "semantic" ? status.entityCount : status.nodeCount;
 
   return (
     <Card class={cn(CARD_STYLES.base, "flex flex-col transition-all")}>
@@ -180,9 +182,9 @@ function IndexCard({
         {/* Stats Grid - Fixed layout */}
         <div class="grid grid-cols-2 gap-2 text-sm">
           <div class="flex justify-between py-1 px-2 bg-muted/50 rounded">
-            <span class="text-muted-foreground">ノード</span>
+            <span class="text-muted-foreground">{primaryCountLabel}</span>
             <span class="font-mono font-medium">
-              {status.nodeCount !== undefined ? status.nodeCount.toLocaleString() : "-"}
+              {primaryCountValue !== undefined ? primaryCountValue.toLocaleString() : "-"}
             </span>
           </div>
           <div class="flex justify-between py-1 px-2 bg-muted/50 rounded">

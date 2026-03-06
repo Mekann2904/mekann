@@ -20,8 +20,11 @@
 import type { InstanceInfo, ContextHistoryEntry, InstanceContextHistory } from "../schemas/instance.schema.js";
 import { SHARED_DIR } from "../lib/storage.js";
 import { join } from "path";
-import { readdirSync, readFileSync, existsSync, writeFileSync, renameSync, unlinkSync } from "fs";
-import { readJsonState, writeJsonState } from "../../../../lib/storage/sqlite-state-store.js";
+import {
+  listJsonStateKeys,
+  readJsonState,
+  writeJsonState,
+} from "../../../../lib/storage/sqlite-state-store.js";
 
 /**
  * ハートビート設定
@@ -191,11 +194,6 @@ export class ContextHistoryRepository {
    * 全インスタンスの履歴を取得
    */
   static getAllInstances(): InstanceContextHistory[] {
-    const files = readdirSync(SHARED_DIR);
-    const historyFiles = files.filter((f) =>
-      f.startsWith("context-history-") && f.endsWith(".json")
-    );
-
     const result: InstanceContextHistory[] = [];
     const knownInstances = readJsonState<Record<number, InstanceInfo>>({
       stateKey: "webui_instances",
@@ -203,29 +201,27 @@ export class ContextHistoryRepository {
       createDefault: () => ({}),
     });
     const knownPids = new Set<number>(Object.keys(knownInstances).map((pid) => Number(pid)));
+    const historyKeys = listJsonStateKeys("webui_context_history:");
 
-    for (const file of historyFiles) {
-      const match = file.match(/context-history-(\d+)\.json/);
+    for (const stateKey of historyKeys) {
+      const match = stateKey.match(/^webui_context_history:(\d+)$/);
       if (match) {
         const pid = parseInt(match[1], 10);
         knownPids.add(pid);
-        const filePath = join(SHARED_DIR, file);
-        
-        try {
-          const content = readFileSync(filePath, "utf-8");
-          const data = JSON.parse(content);
-          const history = data.history || [];
-
-          if (history.length > 0) {
-            result.push({
-              pid,
-              cwd: process.cwd(), // TODO: 実際の値を取得
-              model: "unknown", // TODO: 実際の値を取得
-              history,
-            });
-          }
-        } catch {
-          // 読み込み失敗時はスキップ
+        const historyData = readJsonState<{ history: ContextHistoryEntry[] }>({
+          stateKey,
+          fallbackPath: join(SHARED_DIR, `context-history-${pid}.json`),
+          createDefault: () => ({ history: [] }),
+        });
+        const history = historyData.history || [];
+        if (history.length > 0) {
+          const instance = knownInstances[pid];
+          result.push({
+            pid,
+            cwd: instance?.cwd || process.cwd(),
+            model: instance?.model || "unknown",
+            history,
+          });
         }
       }
     }

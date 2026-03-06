@@ -28,12 +28,14 @@
  * Enables semantic and keyword-based retrieval of past solutions.
  */
 
-import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { ensureDir } from "../core/fs-utils.js";
-import { atomicWriteTextFile } from "./storage-lock.js";
 import { readJsonState, writeJsonState } from "./sqlite-state-store.js";
+import {
+  getAgentTeamStorageStateKey,
+  getRunIndexStateKey,
+  getSubagentStorageStateKey,
+} from "./state-keys.js";
 
 // ============================================================================
 // Types
@@ -354,51 +356,46 @@ export function buildRunIndex(cwd: string): RunIndex {
   }
 
   // Read subagent runs
-  const subagentStoragePath = join(cwd, ".pi", "subagents", "storage.json");
-  if (existsSync(subagentStoragePath)) {
-    try {
-      const content = readFileSync(subagentStoragePath, "utf-8");
-      const storage = JSON.parse(content);
-      for (const run of storage.runs || []) {
-        const indexed = indexSubagentRun(run);
-        runs.push(indexed);
+  try {
+    const storage = readJsonState<{ runs?: Array<Parameters<typeof indexSubagentRun>[0]> }>({
+      stateKey: getSubagentStorageStateKey(cwd),
+      fallbackPath: join(cwd, ".pi", "subagents", "storage.json"),
+      createDefault: () => ({ runs: [] }),
+    });
+    for (const run of storage.runs || []) {
+      const indexed = indexSubagentRun(run);
+      runs.push(indexed);
 
-        // Update keyword index
-        for (const kw of indexed.keywords) {
-          if (!keywordIndex[kw]) keywordIndex[kw] = [];
-          keywordIndex[kw].push(run.runId);
-        }
-
-        // Update task type index
-        taskTypeIndex[indexed.taskType].push(run.runId);
+      for (const kw of indexed.keywords) {
+        if (!keywordIndex[kw]) keywordIndex[kw] = [];
+        keywordIndex[kw].push(run.runId);
       }
-    } catch (error) {
-      console.error("Error reading subagent storage:", error);
+
+      taskTypeIndex[indexed.taskType].push(run.runId);
     }
+  } catch (error) {
+    console.error("Error reading subagent storage:", error);
   }
 
-  // Read team runs
-  const teamStoragePath = join(cwd, ".pi", "agent-teams", "storage.json");
-  if (existsSync(teamStoragePath)) {
-    try {
-      const content = readFileSync(teamStoragePath, "utf-8");
-      const storage = JSON.parse(content);
-      for (const run of storage.runs || []) {
-        const indexed = indexTeamRun(run);
-        runs.push(indexed);
+  try {
+    const storage = readJsonState<{ runs?: Array<Parameters<typeof indexTeamRun>[0]> }>({
+      stateKey: getAgentTeamStorageStateKey(cwd),
+      fallbackPath: join(cwd, ".pi", "agent-teams", "storage.json"),
+      createDefault: () => ({ runs: [] }),
+    });
+    for (const run of storage.runs || []) {
+      const indexed = indexTeamRun(run);
+      runs.push(indexed);
 
-        // Update keyword index
-        for (const kw of indexed.keywords) {
-          if (!keywordIndex[kw]) keywordIndex[kw] = [];
-          keywordIndex[kw].push(run.runId);
-        }
-
-        // Update task type index
-        taskTypeIndex[indexed.taskType].push(run.runId);
+      for (const kw of indexed.keywords) {
+        if (!keywordIndex[kw]) keywordIndex[kw] = [];
+        keywordIndex[kw].push(run.runId);
       }
-    } catch (error) {
-      console.error("Error reading team storage:", error);
+
+      taskTypeIndex[indexed.taskType].push(run.runId);
     }
+  } catch (error) {
+    console.error("Error reading team storage:", error);
   }
 
   return {
@@ -421,7 +418,7 @@ export function buildRunIndex(cwd: string): RunIndex {
  * @returns ランインデックスファイルのパス
  */
 export function getRunIndexPath(cwd: string): string {
-  return join(cwd, ".pi", "memory", "run-index.json");
+  return `sqlite://json_state/${getRunIndexStateKey(cwd)}`;
 }
 
 /**
@@ -431,8 +428,8 @@ export function getRunIndexPath(cwd: string): string {
  */
 export function loadRunIndex(cwd: string): RunIndex | null {
   return readJsonState<RunIndex | null>({
-    stateKey: `memory_run_index:${cwd}`,
-    fallbackPath: getRunIndexPath(cwd),
+    stateKey: getRunIndexStateKey(cwd),
+    fallbackPath: join(cwd, ".pi", "memory", "run-index.json"),
     createDefault: () => null,
   });
 }
@@ -444,15 +441,11 @@ export function loadRunIndex(cwd: string): RunIndex | null {
  * @returns なし
  */
 export function saveRunIndex(cwd: string, index: RunIndex): void {
-  const path = getRunIndexPath(cwd);
-  ensureDir(join(cwd, ".pi", "memory"));
   index.lastUpdated = new Date().toISOString();
   writeJsonState<RunIndex>({
-    stateKey: `memory_run_index:${cwd}`,
+    stateKey: getRunIndexStateKey(cwd),
     value: index,
-    mirrorPath: path,
   });
-  atomicWriteTextFile(path, JSON.stringify(index, null, 2));
 }
 
 /**

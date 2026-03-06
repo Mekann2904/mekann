@@ -29,8 +29,7 @@
 // Related: .pi/extensions/plan.ts, .pi/extensions/subagents.ts
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { loadPlanModeState } from "./storage/task-plan-store.js";
 
 // ============================================
 // Constants
@@ -223,15 +222,9 @@ export function isPlanModeActive(): boolean {
 
 	// Defensive check: require persisted enabled state as well.
 	// This prevents stale PI_PLAN_MODE values from incorrectly enabling plan mode.
-	const stateFile = join(process.cwd(), ".pi", "plans", "plan-mode-state.json");
-	if (!existsSync(stateFile)) {
-		return false;
-	}
-
 	try {
-		const content = readFileSync(stateFile, "utf-8");
-		const state = JSON.parse(content) as PlanModeState;
-		return validatePlanModeState(state) && state.enabled === true;
+		const state = loadPlanModeState<PlanModeState>();
+		return state !== null && validatePlanModeState(state) && state.enabled === true;
 	} catch {
 		return false;
 	}

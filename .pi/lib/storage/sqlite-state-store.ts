@@ -1,25 +1,17 @@
 /**
  * path: .pi/lib/storage/sqlite-state-store.ts
- * role: SQLite上のJSON状態ストアを提供し、既存JSONファイルとの移行/互換を吸収する
- * why: 複数モジュールのJSON read-modify-write競合を減らし、段階的にSQLiteへ移行するため
+ * role: SQLite上のJSON状態ストアを提供し、旧JSONファイルからの読込移行を担う
+ * why: 完全SQLite移行後も既存データを安全に取り込めるようにするため
  * related: .pi/lib/storage/sqlite-db.ts, .pi/lib/storage/sqlite-schema.ts, .pi/lib/storage/task-plan-store.ts
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 
 import { getDatabase, isSQLiteAvailable } from "./sqlite-db.js";
+import "./sqlite-schema.js";
 
 interface JsonStateRow {
-  state_key: string;
   value_json: string;
-}
-
-function ensureParentDir(filePath: string): void {
-  const parent = dirname(filePath);
-  if (!existsSync(parent)) {
-    mkdirSync(parent, { recursive: true });
-  }
 }
 
 function safeParseJson<T>(raw: string): T | null {
@@ -40,15 +32,6 @@ function readJsonFile<T>(filePath: string): T | null {
   }
 }
 
-function writeJsonFile<T>(filePath: string, value: T): void {
-  try {
-    ensureParentDir(filePath);
-    writeFileSync(filePath, JSON.stringify(value, null, 2), "utf-8");
-  } catch {
-    // ベストエフォート
-  }
-}
-
 function ensureTable(): void {
   const db = getDatabase();
   db.exec(`
@@ -60,49 +43,57 @@ function ensureTable(): void {
   `);
 }
 
+function requireSQLite(): void {
+  if (!isSQLiteAvailable()) {
+    throw new Error("SQLite is required but not available");
+  }
+}
+
+function readStoredValue<T>(stateKey: string): T | null {
+  const db = getDatabase();
+  const row = db.prepare<[string], JsonStateRow>(
+    "SELECT value_json FROM json_state WHERE state_key = ?"
+  ).get(stateKey);
+
+  if (!row || typeof row.value_json !== "string") {
+    return null;
+  }
+
+  return safeParseJson<T>(row.value_json);
+}
+
+function readLegacyOrDefault<T>(input: {
+  fallbackPath?: string;
+  createDefault: () => T;
+}): T {
+  if (input.fallbackPath) {
+    const fromFile = readJsonFile<T>(input.fallbackPath);
+    if (fromFile !== null) {
+      return fromFile;
+    }
+  }
+  return input.createDefault();
+}
+
 export function readJsonState<T>(input: {
   stateKey: string;
   fallbackPath?: string;
   createDefault: () => T;
 }): T {
-  const fallback = (): T => {
-    if (input.fallbackPath) {
-      const fromFile = readJsonFile<T>(input.fallbackPath);
-      if (fromFile !== null) return fromFile;
-    }
-    return input.createDefault();
-  };
+  requireSQLite();
+  ensureTable();
 
-  if (!isSQLiteAvailable()) {
-    const value = fallback();
-    if (input.fallbackPath && !existsSync(input.fallbackPath)) {
-      writeJsonFile(input.fallbackPath, value);
-    }
-    return value;
+  const stored = readStoredValue<T>(input.stateKey);
+  if (stored !== null) {
+    return stored;
   }
 
-  try {
-    ensureTable();
-    const db = getDatabase();
-    const row = db.prepare<[string], JsonStateRow>(
-      "SELECT state_key, value_json FROM json_state WHERE state_key = ?"
-    ).get(input.stateKey);
-
-    if (row && typeof row.value_json === "string") {
-      const parsed = safeParseJson<T>(row.value_json);
-      if (parsed !== null) return parsed;
-    }
-
-    const loaded = fallback();
-    writeJsonState({
-      stateKey: input.stateKey,
-      value: loaded,
-      mirrorPath: input.fallbackPath,
-    });
-    return loaded;
-  } catch {
-    return fallback();
-  }
+  const migrated = readLegacyOrDefault(input);
+  writeJsonState({
+    stateKey: input.stateKey,
+    value: migrated,
+  });
+  return migrated;
 }
 
 export function writeJsonState<T>(input: {
@@ -110,27 +101,45 @@ export function writeJsonState<T>(input: {
   value: T;
   mirrorPath?: string;
 }): void {
-  if (isSQLiteAvailable()) {
-    try {
-      ensureTable();
-      const db = getDatabase();
-      db.prepare(
-        `INSERT INTO json_state (state_key, value_json, updated_at)
-         VALUES (@stateKey, @valueJson, @updatedAt)
-         ON CONFLICT(state_key) DO UPDATE SET
-           value_json = excluded.value_json,
-           updated_at = excluded.updated_at`
-      ).run({
-        stateKey: input.stateKey,
-        valueJson: JSON.stringify(input.value),
-        updatedAt: new Date().toISOString(),
-      });
-    } catch {
-      // SQLite失敗時はミラーファイルへフォールバック
-    }
+  requireSQLite();
+  ensureTable();
+
+  const db = getDatabase();
+  db.prepare(
+    `INSERT INTO json_state (state_key, value_json, updated_at)
+     VALUES (@stateKey, @valueJson, @updatedAt)
+     ON CONFLICT(state_key) DO UPDATE SET
+       value_json = excluded.value_json,
+       updated_at = excluded.updated_at`
+  ).run({
+    stateKey: input.stateKey,
+    valueJson: JSON.stringify(input.value),
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export function deleteJsonState(stateKey: string): void {
+  requireSQLite();
+  ensureTable();
+
+  const db = getDatabase();
+  db.prepare("DELETE FROM json_state WHERE state_key = ?").run(stateKey);
+}
+
+export function listJsonStateKeys(prefix?: string): string[] {
+  requireSQLite();
+  ensureTable();
+
+  const db = getDatabase();
+  if (prefix) {
+    const rows = db.prepare<[string], { state_key: string }>(
+      "SELECT state_key FROM json_state WHERE state_key LIKE ? ORDER BY state_key"
+    ).all(`${prefix}%`);
+    return rows.map((row) => row.state_key);
   }
 
-  if (input.mirrorPath) {
-    writeJsonFile(input.mirrorPath, input.value);
-  }
+  const rows = db.prepare<[], { state_key: string }>(
+    "SELECT state_key FROM json_state ORDER BY state_key"
+  ).all();
+  return rows.map((row) => row.state_key);
 }

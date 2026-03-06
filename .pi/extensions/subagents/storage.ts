@@ -31,17 +31,18 @@
  * to eliminate DRY violations with agent-teams/storage.ts.
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
 import {
   createPathsFactory,
   createEnsurePaths,
   pruneRunArtifacts,
-  mergeSubagentStorageWithDisk as mergeStorageWithDiskCommon,
+  mergeSubagentStorageState as mergeStorageWithStateCommon,
   createCorruptedBackup,
   type BaseStoragePaths,
 } from "../../lib/storage/storage-base.js";
-import { atomicWriteTextFile, withFileLock } from "../../lib/storage/storage-lock.js";
+import { withFileLock } from "../../lib/storage/storage-lock.js";
+import { readJsonState, writeJsonState } from "../../lib/storage/sqlite-state-store.js";
+import { getSubagentStorageStateKey } from "../../lib/storage/state-keys.js";
 import { getLogger } from "../../lib/comprehensive-logger.js";
 
 const logger = getLogger();
@@ -393,11 +394,11 @@ function ensureDefaults(storage: SubagentStorage, nowIso: string): SubagentStora
  * Uses common utility from lib/storage-base.ts.
  */
 function mergeSubagentStorageWithDisk(
-  storageFile: string,
+  current: Partial<SubagentStorage>,
   next: SubagentStorage,
 ): SubagentStorage {
-  return mergeStorageWithDiskCommon(
-    storageFile,
+  return mergeStorageWithStateCommon(
+    current,
     {
       agents: next.agents,
       runs: next.runs,
@@ -418,6 +419,7 @@ function mergeSubagentStorageWithDisk(
 export function loadStorage(cwd: string): SubagentStorage {
   const paths = ensurePaths(cwd);
   const nowIso = new Date().toISOString();
+  const stateKey = getSubagentStorageStateKey(cwd);
 
   const fallback: SubagentStorage = {
     agents: createDefaultAgents(nowIso),
@@ -426,14 +428,12 @@ export function loadStorage(cwd: string): SubagentStorage {
     defaultsVersion: SUBAGENT_DEFAULTS_VERSION,
   };
 
-  if (!existsSync(paths.storageFile)) {
-    saveStorage(cwd, fallback);
-    return fallback;
-  }
-
   try {
-    const rawContent = readFileSync(paths.storageFile, "utf-8");
-    const parsed = JSON.parse(rawContent) as Partial<SubagentStorage>;
+    const parsed = readJsonState<Partial<SubagentStorage>>({
+      stateKey,
+      fallbackPath: paths.storageFile,
+      createDefault: () => fallback,
+    });
     const storage: SubagentStorage = {
       agents: Array.isArray(parsed.agents) ? parsed.agents : [],
       runs: Array.isArray(parsed.runs) ? parsed.runs : [],
@@ -445,8 +445,9 @@ export function loadStorage(cwd: string): SubagentStorage {
     };
     return ensureDefaults(storage, nowIso);
   } catch (error: unknown) {
-    // Create backup of corrupted file before overwriting
-    createCorruptedBackup(paths.storageFile, "subagents");
+    if (existsSync(paths.storageFile)) {
+      createCorruptedBackup(paths.storageFile, "subagents");
+    }
 
     // Log warning about data loss
     console.warn(
@@ -468,22 +469,38 @@ export function loadStorage(cwd: string): SubagentStorage {
  */
 export function saveStorage(cwd: string, storage: SubagentStorage): void {
   const paths = ensurePaths(cwd);
+  const stateKey = getSubagentStorageStateKey(cwd);
   const normalized: SubagentStorage = {
     ...storage,
     runs: storage.runs.slice(-MAX_RUNS_TO_KEEP),
     defaultsVersion: SUBAGENT_DEFAULTS_VERSION,
   };
   withFileLock(paths.storageFile, () => {
-    const merged = mergeSubagentStorageWithDisk(paths.storageFile, normalized);
-    const content = JSON.stringify(merged, null, 2);
-    atomicWriteTextFile(paths.storageFile, content);
+    const current = readJsonState<Partial<SubagentStorage>>({
+      stateKey,
+      fallbackPath: paths.storageFile,
+      createDefault: () => ({
+        agents: [],
+        runs: [],
+        currentAgentId: undefined,
+        defaultsVersion: 0,
+      }),
+    });
+    const merged = ensureDefaults(
+      mergeSubagentStorageWithDisk(current, normalized),
+      new Date().toISOString(),
+    );
+    writeJsonState({
+      stateKey,
+      value: merged,
+    });
     
     // 状態変更をログ記録
     logger.logStateChange({
       entityType: 'storage',
-      entityPath: paths.storageFile,
-      changeType: existsSync(paths.storageFile) ? 'update' : 'create',
-      afterContent: content,
+      entityPath: `sqlite://json_state/${stateKey}`,
+      changeType: current.agents?.length || current.runs?.length ? 'update' : 'create',
+      afterContent: JSON.stringify(merged, null, 2),
     });
     
     pruneRunArtifacts(paths, merged.runs);

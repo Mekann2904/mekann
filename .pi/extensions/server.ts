@@ -796,6 +796,14 @@ function stopServer(): Promise<void> {
 
 		server.close((err) => {
 			if (err) {
+				if (
+					(typeof err === "object" && err !== null && "code" in err && err.code === "ERR_SERVER_NOT_RUNNING") ||
+					(err instanceof Error && err.message.includes("Server is not running"))
+				) {
+					server = null;
+					resolve();
+					return;
+				}
 				reject(err);
 			} else {
 				server = null;

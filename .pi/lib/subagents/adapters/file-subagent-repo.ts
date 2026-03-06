@@ -20,10 +20,10 @@
  *   out: ファイルシステム
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { ISubagentRepository } from "../application/interfaces.js";
 import type { SubagentStorage, SubagentRunRecord } from "../domain/subagent-definition.js";
+import { readJsonState, writeJsonState } from "../../storage/sqlite-state-store.js";
 
 /**
  * ファイルベースのサブエージェントリポジトリ
@@ -31,6 +31,7 @@ import type { SubagentStorage, SubagentRunRecord } from "../domain/subagent-defi
  */
 export class FileSubagentRepository implements ISubagentRepository {
   private readonly storagePath: string;
+  private readonly stateKey: string;
   private cache: SubagentStorage | null = null;
   private runRecords: SubagentRunRecord[] = [];
 
@@ -41,6 +42,7 @@ export class FileSubagentRepository implements ISubagentRepository {
    */
   constructor(private readonly cwd: string) {
     this.storagePath = join(cwd, ".pi/subagents/storage.json");
+    this.stateKey = `subagent_repository:${cwd}`;
   }
 
   /**
@@ -53,14 +55,12 @@ export class FileSubagentRepository implements ISubagentRepository {
       return this.cache;
     }
 
-    if (!existsSync(this.storagePath)) {
-      this.cache = this.createDefaultStorage();
-      return this.cache;
-    }
-
     try {
-      const content = readFileSync(this.storagePath, "utf-8");
-      const parsed = JSON.parse(content);
+      const parsed = readJsonState<Partial<SubagentStorage>>({
+        stateKey: this.stateKey,
+        fallbackPath: this.storagePath,
+        createDefault: () => this.createDefaultStorage(),
+      });
       this.cache = this.migrateStorage(parsed);
       return this.cache;
     } catch {
@@ -75,12 +75,10 @@ export class FileSubagentRepository implements ISubagentRepository {
    * @param storage - サブエージェントストレージ
    */
   async save(storage: SubagentStorage): Promise<void> {
-    const dir = join(this.cwd, ".pi/subagents");
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
-    }
-
-    writeFileSync(this.storagePath, JSON.stringify(storage, null, 2), "utf-8");
+    writeJsonState({
+      stateKey: this.stateKey,
+      value: storage,
+    });
     this.cache = storage;
   }
 

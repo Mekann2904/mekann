@@ -21,7 +21,12 @@ import { homedir } from "os";
 import { join } from "path";
 import { mkdirSync, existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, renameSync } from "fs";
 import { spawn } from "child_process";
-import { readJsonState, writeJsonState } from "../../../lib/storage/sqlite-state-store.js";
+import {
+  deleteJsonState,
+  listJsonStateKeys,
+  readJsonState,
+  writeJsonState,
+} from "../../../lib/storage/sqlite-state-store.js";
 
 /**
  * Instance information stored in registry
@@ -209,6 +214,19 @@ function writeJsonFile<T>(path: string, data: T): void {
   }
 }
 
+function deleteStateBackedFile(path: string): void {
+  const stateKey = stateKeyFromPath(path);
+  if (stateKey) {
+    deleteJsonState(stateKey);
+  }
+
+  try {
+    unlinkSync(path);
+  } catch {
+    // Ignore
+  }
+}
+
 /**
  * Instance Registry - manages pi instance registration
  */
@@ -360,11 +378,7 @@ export class ServerRegistry {
       return serverInfo;
     } catch {
       // Process not running, clean up
-      try {
-        unlinkSync(SERVER_FILE);
-      } catch {
-        // Ignore
-      }
+      deleteStateBackedFile(SERVER_FILE);
       return null;
     }
   }
@@ -385,11 +399,7 @@ export class ServerRegistry {
    * Unregister server
    */
   static unregister(): void {
-    try {
-      unlinkSync(SERVER_FILE);
-    } catch {
-      // Ignore
-    }
+    deleteStateBackedFile(SERVER_FILE);
   }
 }
 
@@ -614,20 +624,17 @@ export class ContextHistoryStorage {
   static getAllInstances(): Map<number, ContextHistoryEntry[]> {
     const result = new Map<number, ContextHistoryEntry[]>();
 
-    ensureSharedDir();
-
-    // ディレクトリ内の context-history-*.json ファイルを検索
-    const files = readdirSync(CONTEXT_HISTORY_DIR);
-    const historyFiles = files.filter((f: string) =>
-      f.startsWith("context-history-") && f.endsWith(".json")
-    );
-
-    for (const file of historyFiles) {
-      const match = file.match(/context-history-(\d+)\.json/);
+    const historyKeys = listJsonStateKeys("webui_context_history:");
+    for (const stateKey of historyKeys) {
+      const match = stateKey.match(/^webui_context_history:(\d+)$/);
       if (match) {
         const pid = parseInt(match[1], 10);
-        const filePath = join(CONTEXT_HISTORY_DIR, file);
-        const history = readJsonFile<ContextHistoryEntry[]>(filePath, []);
+        const historyWrapper = readJsonState<{ history: ContextHistoryEntry[] }>({
+          stateKey,
+          fallbackPath: join(CONTEXT_HISTORY_DIR, `context-history-${pid}.json`),
+          createDefault: () => ({ history: [] }),
+        });
+        const history = historyWrapper.history || [];
         if (history.length > 0) {
           result.set(pid, history);
         }
@@ -665,21 +672,15 @@ export class ContextHistoryStorage {
     const instances = InstanceRegistry.getAll();
     const activePids = new Set(instances.map((i) => i.pid));
 
-    ensureSharedDir();
-
-    const files = readdirSync(CONTEXT_HISTORY_DIR);
-    const historyFiles = files.filter((f: string) =>
-      f.startsWith("context-history-") && f.endsWith(".json")
-    );
-
-    for (const file of historyFiles) {
-      const match = file.match(/context-history-(\d+)\.json/);
+    const historyKeys = listJsonStateKeys("webui_context_history:");
+    for (const stateKey of historyKeys) {
+      const match = stateKey.match(/^webui_context_history:(\d+)$/);
       if (match) {
         const pid = parseInt(match[1], 10);
         if (!activePids.has(pid)) {
-          // アクティブでないインスタンスの履歴を削除
+          deleteJsonState(stateKey);
           try {
-            unlinkSync(join(CONTEXT_HISTORY_DIR, file));
+            unlinkSync(join(CONTEXT_HISTORY_DIR, `context-history-${pid}.json`));
           } catch {
             // Ignore errors
           }
