@@ -20,6 +20,7 @@
 import type { SuccessResponse, ErrorResponse } from "../../schemas/common.schema.js";
 import type { Task, TaskStats, CreateTaskInput, UpdateTaskInput, TaskFilter } from "../../schemas/task.schema.js";
 import type { InstanceInfo, InstanceStats, InstanceContextHistory } from "../../schemas/instance.schema.js";
+import type { BenchmarkStatusDto } from "../../schemas/benchmark.schema.js";
 
 /**
  * API基底URL
@@ -227,5 +228,17 @@ export const apiClient = {
      */
     broadcast: (type: string, data: unknown) =>
       post<{ broadcastedTo: number }>("/sse/broadcast", { type, data }),
+  },
+
+  benchmark: {
+    /**
+     * agent benchmark 状態を取得
+     */
+    status: (input?: { cwd?: string; limit?: number; variantId?: string }) =>
+      get<BenchmarkStatusDto>("/benchmark", {
+        cwd: input?.cwd || "",
+        limit: input?.limit ? String(input.limit) : "",
+        variantId: input?.variantId || "",
+      }),
   },
 };

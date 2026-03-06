@@ -1,0 +1,1 @@
+const o={backgroundColor:"hsl(var(--card))",border:"1px solid hsl(var(--border))",borderRadius:"6px",fontSize:"11px"};function t(r){return r===void 0||isNaN(r)?"0":r<1e3?String(r):r<1e6?`${(r/1e3).toFixed(1)}K`:`${(r/1e6).toFixed(1)}M`}export{o as C,t as f};

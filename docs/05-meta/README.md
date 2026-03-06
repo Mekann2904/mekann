@@ -19,6 +19,7 @@ pi拡張機能コレクションのメタドキュメントです。
 - [ドキュメント管理方針](./02-documentation-policy.md) - ドキュメント管理の方針
 - [ロードマップ](./03-roadmap.md) - 開発ロードマップ
 - [開発ワークフロー](./04-development-workflow.md) - AIエージェントによるドキュメント管理
+- [エージェント設計の厳密実装計画](./07-agent-architecture-hardening-plan.md) - 調査結果と段階的実装計画
 - [アーカイブ](./99-archive/) - 廃止・アーカイブされたドキュメント
 
 ## 変更履歴

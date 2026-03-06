@@ -44,7 +44,12 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { startSession, recordInjection } from "../lib/context-breakdown-utils.js";
+import { startSession } from "../lib/context-breakdown-utils.js";
+import { applyPromptStack, type PromptStackEntry } from "../lib/agent/prompt-stack.js";
+import {
+  createRuntimeNotification,
+  formatRuntimeNotificationBlock,
+} from "../lib/agent/runtime-notifications.js";
 import { getRuntimeEnvironmentCache } from "../lib/runtime-environment-cache.js";
 import {
   collectSessionStartContext,
@@ -93,13 +98,37 @@ export default function (pi: ExtensionAPI) {
         // シェル形式でフォーマット
         const formattedContext = formatSessionStartAsShell(context);
         const runtimeOptimizationSection = buildRuntimeOptimizationSection();
+        const runtimeNotification = createRuntimeNotification(
+          "startup-context",
+          runtimeOptimizationSection,
+          "info",
+          1,
+        );
+        const entries: PromptStackEntry[] = [
+          {
+            source: "startup-context-baseline",
+            recordSource: "startup-context-baseline",
+            layer: "startup-context",
+            markerId: "startup-context-baseline",
+            content: formattedContext,
+          },
+        ];
+        if (runtimeNotification) {
+          entries.push({
+            source: "startup-runtime-optimization",
+            recordSource: "startup-context-runtime",
+            layer: "runtime-notification",
+            markerId: "startup-runtime-optimization",
+            content: formatRuntimeNotificationBlock([runtimeNotification]),
+          });
+        }
+        const result = applyPromptStack(event.systemPrompt ?? "", entries);
+        if (result.appliedEntries.length === 0) {
+          return undefined;
+        }
 
-        // 注入を記録
-        recordInjection("startup-context-baseline", `${formattedContext}\n\n${runtimeOptimizationSection}`);
-
-        // システムプロンプトに追記
         return {
-          systemPrompt: `${event.systemPrompt}\n\n${formattedContext}\n\n${runtimeOptimizationSection}`,
+          systemPrompt: result.systemPrompt,
         };
       } else {
         // 2回目以降: 差分コンテキストを収集
@@ -115,9 +144,12 @@ export default function (pi: ExtensionAPI) {
         // 差分をフォーマット
         const formattedDelta = formatDeltaAsShell(delta);
         const runtimeOptimizationSection = buildRuntimeOptimizationSection();
-
-        // 注入を記録
-        recordInjection("startup-context-delta", `${formattedDelta}\n\n${runtimeOptimizationSection}`);
+        const runtimeNotification = createRuntimeNotification(
+          "startup-context-delta",
+          runtimeOptimizationSection,
+          "info",
+          1,
+        );
 
         // 現在の状態を更新
         const currentCwd = process.cwd();
@@ -125,10 +157,30 @@ export default function (pi: ExtensionAPI) {
           previousContext.user.cwd = currentCwd;
         }
 
-        // システムプロンプトに差分を追記（軽量な注入）
-        const deltaSection = `\n\n---\n\n# Context Delta\n\n${formattedDelta}`;
+        const entries: PromptStackEntry[] = [
+          {
+            source: "startup-context-delta",
+            recordSource: "startup-context-delta",
+            layer: "startup-context",
+            markerId: `startup-context-delta:${Date.now()}`,
+            content: `# Context Delta\n\n${formattedDelta}`,
+          },
+        ];
+        if (runtimeNotification) {
+          entries.push({
+            source: "startup-runtime-optimization-delta",
+            recordSource: "startup-context-runtime",
+            layer: "runtime-notification",
+            markerId: `startup-runtime-optimization-delta:${Date.now()}`,
+            content: formatRuntimeNotificationBlock([runtimeNotification]),
+          });
+        }
+        const result = applyPromptStack(event.systemPrompt ?? "", entries);
+        if (result.appliedEntries.length === 0) {
+          return undefined;
+        }
         return {
-          systemPrompt: `${event.systemPrompt}${deltaSection}\n\n${runtimeOptimizationSection}`,
+          systemPrompt: result.systemPrompt,
         };
       }
     } catch (error) {
@@ -182,7 +234,6 @@ function buildRuntimeOptimizationSection(): string {
   const telemetryHints = getToolTelemetryStore().buildPromptHints({ maxHints: 4 });
   const environmentSection = getRuntimeEnvironmentCache().formatForPrompt();
   const lines = [
-    "# Runtime Optimization",
     "prefer_cheap_probe_first=true",
     "avoid_duplicate_tool_calls=true",
     "narrow_large_outputs_before_reading=true",

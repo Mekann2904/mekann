@@ -82,6 +82,11 @@ import {
   estimateOutputBytes,
   summarizeOutput,
 } from "../lib/tool-telemetry.js";
+import {
+  createTargetSelectorSchema,
+  requireTargetSelector,
+  createBoundedOptionalNumberSchema,
+} from "../lib/tool-contracts.js";
 
 const logger = getLogger();
 
@@ -1061,20 +1066,24 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "run_dynamic_tool",
     label: "run_dynamic_tool",
-    description: "登録済みの動的ツールを実行します。tool_idまたはtool_nameでツールを指定します。",
+    description: "登録済みの動的ツールを実行します。",
     parameters: Type.Object({
-      tool_id: Type.Optional(Type.String({ description: "ツールID" })),
-      tool_name: Type.Optional(Type.String({ description: "ツール名（tool_idの代わりに使用可能）" })),
+      ...createTargetSelectorSchema({
+        idKey: "tool_id",
+        nameKey: "tool_name",
+        idDescription: "ツールID",
+        nameDescription: "ツール名",
+      }).properties,
       parameters: Type.Record(Type.String(), Type.Any(), { description: "ツールに渡すパラメータ" }),
-      timeout_ms: Type.Optional(Type.Number({ description: "タイムアウト時間（ミリ秒、デフォルト: 30000）" })),
+      timeout_ms: createBoundedOptionalNumberSchema("タイムアウト時間（ミリ秒）", 1_000, 120_000),
     }),
 
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const input = params as RunDynamicToolInput;
-      
-      if (!input.tool_id && !input.tool_name) {
+      const selectorCheck = requireTargetSelector(input, "tool_id", "tool_name", "run_dynamic_tool");
+      if (!selectorCheck.success) {
         return {
-          content: [{ type: "text", text: "エラー: tool_idまたはtool_nameを指定してください" }],
+          content: [{ type: "text", text: selectorCheck.error! }],
           details: {},
         };
       }
@@ -1091,12 +1100,12 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "list_dynamic_tools",
     label: "list_dynamic_tools",
-    description: "登録済みの動的ツール一覧を表示します。フィルタリングオプションを利用可能です。",
+    description: "登録済みの動的ツール一覧を表示します。",
     parameters: Type.Object({
       name: Type.Optional(Type.String({ description: "名前でフィルタ（部分一致）" })),
       tags: Type.Optional(Type.Array(Type.String(), { description: "タグでフィルタ" })),
       min_safety_score: Type.Optional(Type.Number({ description: "安全性スコアの最小値（0.0-1.0）" })),
-      limit: Type.Optional(Type.Number({ description: "最大表示件数（デフォルト: 20）" })),
+      limit: createBoundedOptionalNumberSchema("最大表示件数", 1, 100),
     }),
 
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
@@ -1112,19 +1121,23 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "delete_dynamic_tool",
     label: "delete_dynamic_tool",
-    description: "登録済みの動的ツールを削除します。confirm: true で削除を確定します。",
+    description: "登録済みの動的ツールを削除します。",
     parameters: Type.Object({
-      tool_id: Type.Optional(Type.String({ description: "ツールID" })),
-      tool_name: Type.Optional(Type.String({ description: "ツール名（tool_idの代わりに使用可能）" })),
+      ...createTargetSelectorSchema({
+        idKey: "tool_id",
+        nameKey: "tool_name",
+        idDescription: "ツールID",
+        nameDescription: "ツール名",
+      }).properties,
       confirm: Type.Optional(Type.Boolean({ description: "削除の確認（trueで削除実行）" })),
     }),
 
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const input = params as DeleteDynamicToolInput;
-      
-      if (!input.tool_id && !input.tool_name) {
+      const selectorCheck = requireTargetSelector(input, "tool_id", "tool_name", "delete_dynamic_tool");
+      if (!selectorCheck.success) {
         return {
-          content: [{ type: "text", text: "エラー: tool_idまたはtool_nameを指定してください" }],
+          content: [{ type: "text", text: selectorCheck.error! }],
           details: {},
         };
       }

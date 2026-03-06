@@ -36,7 +36,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { recordInjection } from "../lib/context-breakdown-utils.js";
+import { applyPromptStack } from "../lib/agent/prompt-stack.js";
 
 // パッケージルートを取得（このファイルから3階層上）
 const getPackageRoot = (): string => {
@@ -89,20 +89,20 @@ export default function (pi: ExtensionAPI) {
 
   // before_agent_startでシステムプロンプトに追加
   pi.on("before_agent_start", async (event, _ctx) => {
-    // 既存のシステムプロンプトに追加
-    // 重複追加を防ぐため、既に含まれている場合はスキップ
-    if (event.systemPrompt && event.systemPrompt.includes("<!-- APPEND_SYSTEM.md -->")) {
+    const result = applyPromptStack(event.systemPrompt ?? "", [
+      {
+        source: "append-system",
+        recordSource: "append-system",
+        layer: "system-policy",
+        markerId: "append-system-package",
+        content: appendContent,
+      },
+    ]);
+    if (result.appliedEntries.length === 0) {
       return;
     }
-
-    // マーカー付きで追加（重複検出用）
-    const markedContent = `\n\n<!-- APPEND_SYSTEM.md (from package) -->\n${appendContent}`;
-
-    // Record injection for context breakdown tracking
-    recordInjection('append-system', markedContent);
-
     return {
-      systemPrompt: event.systemPrompt + markedContent,
+      systemPrompt: result.systemPrompt,
     };
   });
 }

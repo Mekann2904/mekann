@@ -31,6 +31,15 @@
 
 import { ThinkingLevel } from "../../lib/agent/agent-types.js";
 import {
+  renderPromptStack,
+  type PromptStackEntry,
+} from "../../lib/agent/prompt-stack.js";
+import {
+  createRuntimeNotification,
+  formatRuntimeNotificationBlock,
+} from "../../lib/agent/runtime-notifications.js";
+import { resolveModelPromptAdapter } from "../../lib/agent/model-adapters.js";
+import {
   truncateTextWithMarker as truncateText,
   toPreview,
   normalizeOptionalText,
@@ -133,65 +142,122 @@ export function buildIterationPrompt(input: {
   previousOutput: string;
   validationFeedback: string[];
   relevantPatterns?: RelevantPattern[];
+  modelProvider?: string;
+  modelId?: string;
 }): string {
-  const lines: string[] = [];
+  return buildIterationPromptPackage(input).prompt;
+}
 
-  lines.push("You are executing an autonomous quality-improvement loop.");
-  lines.push(`Iteration ${input.iteration} of ${input.maxIterations}.`);
-  lines.push("");
-  lines.push("Task:");
-  lines.push(input.task);
-  lines.push("");
+export function buildIterationPromptPackage(input: {
+  task: string;
+  goal?: string;
+  verificationCommand?: string;
+  iteration: number;
+  maxIterations: number;
+  references: LoopReference[];
+  previousOutput: string;
+  validationFeedback: string[];
+  relevantPatterns?: RelevantPattern[];
+  modelProvider?: string;
+  modelId?: string;
+}): { prompt: string; entries: PromptStackEntry[]; runtimeNotificationCount: number } {
+  const adapter = resolveModelPromptAdapter(input.modelProvider, input.modelId);
+  const entries: PromptStackEntry[] = [
+    {
+      source: "loop-role",
+      layer: "system-policy",
+      content: [
+        "You are executing an autonomous quality-improvement loop.",
+        `Iteration ${input.iteration} of ${input.maxIterations}.`,
+        "",
+        "Task:",
+        input.task,
+      ].join("\n"),
+    },
+  ];
 
   if (input.goal?.trim()) {
-    lines.push("Completion goal:");
-    lines.push(input.goal.trim());
-    lines.push("");
+    entries.push({
+      source: "loop-goal",
+      layer: "system-policy",
+      content: ["Completion goal:", input.goal.trim()].join("\n"),
+    });
   }
 
   if (input.verificationCommand?.trim()) {
-    lines.push("Verification command (completion requires this to pass):");
-    lines.push(input.verificationCommand.trim());
-    lines.push("");
+    entries.push({
+      source: "loop-verification-command",
+      layer: "runtime-notification",
+      content: formatRuntimeNotificationBlock([
+        createRuntimeNotification(
+          "loop-verification",
+          `Verification command must pass before STATUS=done: ${input.verificationCommand.trim()}`,
+          "critical",
+          1,
+        )!,
+      ]),
+    });
   }
 
-  lines.push("Rules:");
-  lines.push("- Improve correctness and clarity relative to previous attempts.");
-  lines.push("- When references are provided, cite them inline as [R1], [R2], ...");
-  lines.push("- Do not invent reference IDs.");
-  lines.push("");
-  lines.push("Completion guidance:");
-  lines.push("- STATUS: done is appropriate when the task is genuinely complete.");
-  lines.push("- If verification has not passed, consider using STATUS: continue to keep exploring.");
-  lines.push("- When declaring done, include confidence_score (0.0-1.0) to express your certainty.");
-  lines.push("- Low confidence (< 0.7) with STATUS: done suggests more exploration may be valuable.");
-  lines.push("- Return the machine-readable contract in <LOOP_JSON>...</LOOP_JSON>.");
-  lines.push("");
+  entries.push({
+    source: "loop-rules",
+    layer: "system-policy",
+    content: [
+      "Rules:",
+      "- Improve correctness and clarity relative to previous attempts.",
+      "- When references are provided, cite them inline as [R1], [R2], ...",
+      "- Do not invent reference IDs.",
+      "",
+      "Completion guidance:",
+      "- STATUS: done is appropriate when the task is genuinely complete.",
+      "- If verification has not passed, consider using STATUS: continue to keep exploring.",
+      "- When declaring done, include confidence_score (0.0-1.0) to express your certainty.",
+      "- Low confidence (< 0.7) with STATUS: done suggests more exploration may be valuable.",
+      "- Return the machine-readable contract in <LOOP_JSON>...</LOOP_JSON>.",
+    ].join("\n"),
+  });
 
   if (input.references.length > 0) {
-    lines.push("Reference pack:");
-    lines.push(buildReferencePack(input.references));
-    lines.push("");
+    entries.push({
+      source: "loop-reference-pack",
+      layer: "startup-context",
+      content: ["Reference pack:", buildReferencePack(input.references)].join("\n"),
+    });
   }
 
   if (input.previousOutput.trim()) {
-    lines.push("Previous iteration output:");
-    lines.push(truncateText(input.previousOutput, LIMITS.maxPreviousOutputChars));
-    lines.push("");
+    entries.push({
+      source: "loop-previous-output",
+      layer: "startup-context",
+      content: [
+        "Previous iteration output:",
+        truncateText(input.previousOutput, LIMITS.maxPreviousOutputChars),
+      ].join("\n"),
+    });
   }
 
   if (input.validationFeedback.length > 0) {
-    lines.push("Fix these validation issues from the previous iteration:");
-    for (const issue of input.validationFeedback) {
-      lines.push(`- ${issue}`);
-    }
-    lines.push("");
+    entries.push({
+      source: "loop-validation-feedback",
+      layer: "runtime-notification",
+      content: formatRuntimeNotificationBlock([
+        createRuntimeNotification(
+          "loop-validation",
+          [
+            "Fix these validation issues from the previous iteration:",
+            ...input.validationFeedback.map((issue) => `- ${issue}`),
+          ].join("\n"),
+          "warning",
+          1,
+        )!,
+      ]),
+    });
   }
 
   // Add relevant patterns from past executions as dialogue partners, not constraints
   // This promotes deterritorialization (creative reconfiguration) rather than stagnation
   if (input.relevantPatterns && input.relevantPatterns.length > 0) {
-    lines.push("Patterns from past executions (dialogue partners, not constraints):");
+    const lines: string[] = ["Patterns from past executions (dialogue partners, not constraints):"];
     const successPatterns = input.relevantPatterns.filter(p => p.patternType === "success");
     const failurePatterns = input.relevantPatterns.filter(p => p.patternType === "failure");
     const approachPatterns = input.relevantPatterns.filter(p => p.patternType === "approach");
@@ -217,26 +283,43 @@ export function buildIterationPrompt(input: {
     // Promote creative transcendence (deterritorialization)
     lines.push("");
     lines.push("Consider: Do these patterns apply to THIS task? If not, why? What NEW approach might be needed?");
-    lines.push("");
+    entries.push({
+      source: "loop-relevant-patterns",
+      layer: "startup-context",
+      content: lines.join("\n"),
+    });
   }
 
-  lines.push("Output format (strict):");
-  lines.push(`<${LOOP_JSON_BLOCK_TAG}>`);
-  lines.push("{");
-  lines.push('  "status": "continue|done",');
-  lines.push('  "goal_status": "met|not_met|unknown",');
-  lines.push('  "goal_evidence": "short objective evidence or none",');
-  lines.push('  "summary": "1-3 lines",');
-  lines.push('  "next_actions": ["specific next step or none"],');
-  lines.push('  "citations": ["R1", "R2"],');
-  lines.push('  "confidence_score": 0.0-1.0  // Required when status=done');
-  lines.push("}");
-  lines.push(`</${LOOP_JSON_BLOCK_TAG}>`);
-  lines.push(`<${LOOP_RESULT_BLOCK_TAG}>`);
-  lines.push("<main answer>");
-  lines.push(`</${LOOP_RESULT_BLOCK_TAG}>`);
+  entries.push({
+    source: "loop-output-format",
+    layer: adapter.prefersStrictOutputTail ? "runtime-notification" : "system-policy",
+    content: [
+      "Output format (strict):",
+      `<${LOOP_JSON_BLOCK_TAG}>`,
+      "{",
+      '  "status": "continue|done",',
+      '  "goal_status": "met|not_met|unknown",',
+      '  "goal_evidence": "short objective evidence or none",',
+      '  "summary": "1-3 lines",',
+      '  "next_actions": ["specific next step or none"],',
+      '  "citations": ["R1", "R2"],',
+      '  "confidence_score": 0.0-1.0  // Required when status=done',
+      "}",
+      `</${LOOP_JSON_BLOCK_TAG}>`,
+      `<${LOOP_RESULT_BLOCK_TAG}>`,
+      "<main answer>",
+      `</${LOOP_RESULT_BLOCK_TAG}>`,
+    ].join("\n"),
+  });
 
-  return lines.join("\n");
+  const rendered = renderPromptStack(entries);
+  return {
+    prompt: rendered.prompt,
+    entries: rendered.renderedEntries,
+    runtimeNotificationCount: rendered.renderedEntries.filter(
+      (entry) => entry.layer === "runtime-notification",
+    ).length,
+  };
 }
 
  /**

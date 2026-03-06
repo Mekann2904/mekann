@@ -13,6 +13,7 @@ export default defineConfig({
         manualChunks: {
           'lucide': ['lucide-preact'],
           'preact': ['preact', 'preact/compat', 'preact/hooks'],
+          'charts': ['recharts'],
         },
       },
     },

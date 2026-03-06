@@ -32,3 +32,7 @@ export function getPatternStorageStateKey(cwd: string): string {
 export function getIndexSettingsStateKey(cwd: string): string {
   return `index_settings:${cwd}`;
 }
+
+export function getAgentBenchmarkStateKey(cwd: string): string {
+  return `agent_benchmark:${cwd}`;
+}
