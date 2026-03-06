@@ -800,6 +800,8 @@ async function runDagLocally(
       {
         maxConcurrency: effectiveConcurrency,
         abortOnFirstError: false,
+        nodeTimeoutMs: UNIFIED_EXECUTION_CONFIG.subagentTimeoutMs,
+        overallTimeoutMs: UNIFIED_EXECUTION_CONFIG.subagentTimeoutMs * Math.max(1, taskPlan.tasks.length),
         onTaskError: (taskId, error) => {
           liveMonitor.markFinished(taskId, "failed", error.message, error.message);
         },

@@ -419,6 +419,75 @@ describe("DagExecutor - 動的依存関係更新", () => {
   });
 });
 
+describe("DagExecutor - timeout controls", () => {
+  it("should_fail_node_on_hard_timeout", async () => {
+    const result = await executeDag(
+      {
+        id: "timeout-plan",
+        description: "single slow task",
+        tasks: [
+          { id: "slow", description: "Slow task", dependencies: [] },
+        ],
+        metadata: {
+          createdAt: Date.now(),
+          model: "test-model",
+          totalEstimatedMs: 1000,
+          maxDepth: 0,
+        },
+      },
+      async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return "done";
+      },
+      {
+        nodeTimeoutMs: 10,
+        enableLocalReplanning: false,
+        enableSelfRevision: false,
+      },
+    );
+
+    expect(result.failedTaskIds).toContain("slow");
+    expect(result.taskResults.get("slow")?.error?.message).toContain("hard timeout");
+  });
+
+  it("should_abort_entire_dag_on_overall_timeout", async () => {
+    const result = await executeDag(
+      {
+        id: "overall-timeout-plan",
+        description: "two slow tasks",
+        tasks: [
+          { id: "A", description: "Task A", dependencies: [] },
+          { id: "B", description: "Task B", dependencies: ["A"] },
+        ],
+        metadata: {
+          createdAt: Date.now(),
+          model: "test-model",
+          totalEstimatedMs: 1000,
+          maxDepth: 1,
+        },
+      },
+      async (_task, _context, signal) => {
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, 100);
+          signal?.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(new Error("aborted"));
+          }, { once: true });
+        });
+        return "done";
+      },
+      {
+        overallTimeoutMs: 20,
+        enableLocalReplanning: false,
+        enableSelfRevision: false,
+      },
+    );
+
+    expect(result.overallStatus).not.toBe("completed");
+    expect(result.completedTaskIds.length).toBeLessThan(2);
+  });
+});
+
 // ============================================================================
 // executeDag - 簡易関数
 // ============================================================================

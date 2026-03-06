@@ -97,6 +97,8 @@ export interface NodeExecutionContext {
  * @param enableLocalReplanning - Local Replanningを有効にするか
  * @param maxRetriesPerNode - ノードあたりの最大再試行回数
  * @param isRecoverableError - リカバリー可能エラー判定関数
+ * @param nodeTimeoutMs - ノードごとの hard timeout（0 で無効）
+ * @param overallTimeoutMs - DAG 全体の hard timeout（0 で無効）
  */
 export interface DagExecutorOptions {
   /** 中止シグナル */
@@ -127,6 +129,10 @@ export interface DagExecutorOptions {
   maxRetriesPerNode?: number;
   /** リカバリー可能エラー判定関数 */
   isRecoverableError?: (error: Error) => boolean;
+  /** ノードごとの hard timeout（ミリ秒、0 で無効） */
+  nodeTimeoutMs?: number;
+  /** DAG 全体の hard timeout（ミリ秒、0 で無効） */
+  overallTimeoutMs?: number;
 }
 
 /**
@@ -181,7 +187,7 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
   private results: Map<string, DagTaskResult<T>>;
   private plan: TaskPlan;
   private options: Required<
-    Pick<DagExecutorOptions, "maxConcurrency" | "abortOnFirstError" | "useWeightBasedScheduling" | "enableSelfRevision" | "enableLocalReplanning" | "maxRetriesPerNode">
+    Pick<DagExecutorOptions, "maxConcurrency" | "abortOnFirstError" | "useWeightBasedScheduling" | "enableSelfRevision" | "enableLocalReplanning" | "maxRetriesPerNode" | "nodeTimeoutMs" | "overallTimeoutMs">
   > &
     DagExecutorOptions;
   private startTime: number = 0;
@@ -215,6 +221,8 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
       enableSelfRevision: true,
       enableLocalReplanning: true,
       maxRetriesPerNode: 2,
+      nodeTimeoutMs: 0,
+      overallTimeoutMs: 0,
       ...options,
     };
 
@@ -326,6 +334,15 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
   async execute(executor: TaskExecutor<T>): Promise<DagResult<T>> {
     this.startTime = Date.now();
     const { controller, cleanup } = createChildAbortController(this.options.signal);
+    let overallTimeout: NodeJS.Timeout | undefined;
+    let overallTimedOut = false;
+
+    if (this.options.overallTimeoutMs > 0) {
+      overallTimeout = setTimeout(() => {
+        overallTimedOut = true;
+        controller.abort();
+      }, this.options.overallTimeoutMs);
+    }
 
     try {
       // 初期実行可能タスクを取得
@@ -338,7 +355,23 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
         }
 
         // 実行可能タスクを並列実行
-        await this.executeBatch(readyTasks, executor, controller.signal);
+        try {
+          await this.executeBatch(readyTasks, executor, controller.signal);
+        } catch (error) {
+          if (this.shouldFinalizeAbortedExecution(error, controller.signal)) {
+            this.finalizeAbortedTasks(
+              overallTimedOut
+                ? new Error(
+                    `DAG hard timeout after ${this.options.overallTimeoutMs}ms`,
+                  )
+                : error instanceof Error
+                  ? error
+                  : new Error(String(error)),
+            );
+            break;
+          }
+          throw error;
+        }
 
         // 次のバッチを取得
         readyTasks = this.graph.getReadyTasks();
@@ -346,7 +379,47 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
 
       return this.buildResult();
     } finally {
+      if (overallTimeout) {
+        clearTimeout(overallTimeout);
+      }
       cleanup();
+    }
+  }
+
+  private shouldFinalizeAbortedExecution(
+    error: unknown,
+    signal?: AbortSignal,
+  ): boolean {
+    if (!signal?.aborted) {
+      return false;
+    }
+
+    return (
+      error instanceof Error &&
+      (error.message === "concurrency pool aborted" ||
+        error.message === "aborted" ||
+        /timeout/i.test(error.message))
+    );
+  }
+
+  private finalizeAbortedTasks(error: Error): void {
+    for (const node of this.graph.getAllTasks()) {
+      if (node.status !== "running") {
+        continue;
+      }
+
+      this.graph.markFailed(node.id, error);
+      this.results.set(node.id, {
+        taskId: node.id,
+        status: "failed",
+        error,
+        durationMs: Math.max(
+          0,
+          node.startedAt ? Date.now() - node.startedAt : 0,
+        ),
+      });
+      this.options.onTaskError?.(node.id, error);
+      this.updateTaskWeight(node.id, "failed");
     }
   }
 
@@ -509,9 +582,10 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
         });
 
         try {
-          const output = await executor(
+          const output = await this.executeTaskWithTimeout(
             item.taskNode,
             item.context,
+            executor,
             workerSignal,
           );
           const durationMs = Date.now() - startMs;
@@ -570,6 +644,41 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
       },
       concurrencyOptions,
     );
+  }
+
+  private async executeTaskWithTimeout(
+    task: TaskNode,
+    context: string,
+    executor: TaskExecutor<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    if (this.options.nodeTimeoutMs <= 0) {
+      return executor(task, context, signal);
+    }
+
+    const { controller, cleanup } = createChildAbortController(signal);
+    let timeoutHandle: NodeJS.Timeout | undefined;
+
+    try {
+      return await Promise.race([
+        executor(task, context, controller.signal),
+        new Promise<T>((_, reject) => {
+          timeoutHandle = setTimeout(() => {
+            controller.abort();
+            reject(
+              new Error(
+                `Task ${task.id} hard timeout after ${this.options.nodeTimeoutMs}ms`,
+              ),
+            );
+          }, this.options.nodeTimeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+      cleanup();
+    }
   }
 
   /**

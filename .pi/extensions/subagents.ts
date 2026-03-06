@@ -1890,6 +1890,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             maxConcurrency,
             abortOnFirstError,
             signal: _signal,
+            nodeTimeoutMs: timeoutMs,
+            overallTimeoutMs: timeoutMs > 0 ? timeoutMs * Math.max(1, taskPlan.tasks.length) : 0,
             onTaskError: (taskId, error) => {
               liveMonitor?.markFinished(taskId, "failed", error.message, error.message);
             },

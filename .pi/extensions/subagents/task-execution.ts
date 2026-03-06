@@ -639,6 +639,19 @@ export function buildSubagentChildEnvOverrides(): NodeJS.ProcessEnv {
   };
 }
 
+function computeHardTimeoutMs(idleTimeoutMs: number): number {
+  if (idleTimeoutMs <= 0) {
+    return 0;
+  }
+
+  const override = Number(process.env.PI_SUBAGENT_HARD_TIMEOUT_MS ?? "");
+  if (Number.isFinite(override) && override > 0) {
+    return override;
+  }
+
+  return Math.max(idleTimeoutMs * 3, idleTimeoutMs + 60_000);
+}
+
 function buildInternalContextHandoff(extraContext?: string, maxLines = 12): string[] {
   const context = extraContext?.trim();
   if (!context) return [];
@@ -967,6 +980,7 @@ export async function runSubagentTask(input: {
                   noExtensions: !enableExtensions,
                   envOverrides: buildSubagentChildEnvOverrides(),
                   timeoutMs: input.timeoutMs,
+                  hardTimeoutMs: computeHardTimeoutMs(input.timeoutMs),
                   signal: input.signal,
                   onTextDelta: input.onTextDelta,
                   onStderrChunk: emitStderrChunk,
@@ -1013,6 +1027,7 @@ export async function runSubagentTask(input: {
             noExtensions: !enableExtensions,
             envOverrides: buildSubagentChildEnvOverrides(),
             timeoutMs: input.timeoutMs,
+            hardTimeoutMs: computeHardTimeoutMs(input.timeoutMs),
             signal: input.signal,
             onTextDelta: input.onTextDelta,
             onStderrChunk: emitStderrChunk,

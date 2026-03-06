@@ -313,6 +313,8 @@ export interface PrintExecutorOptions {
   envOverrides?: NodeJS.ProcessEnv;
   /** Idle timeout in milliseconds - resets on each output chunk (0 = disabled, default: 300000) */
   timeoutMs: number;
+  /** Hard timeout in milliseconds - absolute wall-clock cap (0 = disabled) */
+  hardTimeoutMs?: number;
   /** Optional abort signal for cancellation */
   signal?: AbortSignal;
   /** Optional callback for stdout chunks (raw JSON lines) */
@@ -500,8 +502,10 @@ export async function runPiPrintMode(
     let settled = false;
     let forceKillTimer: NodeJS.Timeout | undefined;
     let idleTimeout: NodeJS.Timeout | undefined;
+    let hardTimeout: NodeJS.Timeout | undefined;
     const startedAt = Date.now();
     const idleTimeoutMs = input.timeoutMs > 0 ? input.timeoutMs : DEFAULT_IDLE_TIMEOUT_MS;
+    const hardTimeoutMs = Math.max(0, input.hardTimeoutMs ?? 0);
 
     const child = spawn("pi", args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -555,10 +559,23 @@ export async function runPiPrintMode(
     if (timeoutEnabled) {
       resetIdleTimeout();
     }
+    if (hardTimeoutMs > 0) {
+      hardTimeout = setTimeout(() => {
+        timedOut = true;
+        killSafely("SIGTERM");
+        if (forceKillTimer) {
+          clearTimeout(forceKillTimer);
+        }
+        forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
+      }, hardTimeoutMs);
+    }
 
     const cleanup = () => {
       if (idleTimeout) {
         clearTimeout(idleTimeout);
+      }
+      if (hardTimeout) {
+        clearTimeout(hardTimeout);
       }
       if (forceKillTimer) {
         clearTimeout(forceKillTimer);
@@ -629,7 +646,12 @@ export async function runPiPrintMode(
     child.on("close", (code) => {
       finish(() => {
         if (timedOut) {
-          rejectPromise(new Error(`${entityLabel} idle timeout after ${idleTimeoutMs}ms of no output`));
+          const elapsedMs = Date.now() - startedAt;
+          rejectPromise(new Error(
+            hardTimeoutMs > 0 && elapsedMs >= hardTimeoutMs
+              ? `${entityLabel} hard timeout after ${hardTimeoutMs}ms`
+              : `${entityLabel} idle timeout after ${idleTimeoutMs}ms of no output`,
+          ));
           return;
         }
 
@@ -710,6 +732,8 @@ export interface CallModelViaPiOptions {
   prompt: string;
   /** Timeout in milliseconds (0 = disabled) */
   timeoutMs: number;
+  /** Hard timeout in milliseconds - absolute wall-clock cap (0 = disabled) */
+  hardTimeoutMs?: number;
   /** Optional abort signal for cancellation */
   signal?: AbortSignal;
   /** Optional callback for stdout chunks (raw JSON lines) */
@@ -727,7 +751,7 @@ export interface CallModelViaPiOptions {
  * @returns 生成テキスト
  */
 export async function callModelViaPi(options: CallModelViaPiOptions): Promise<string> {
-  const { model, prompt, timeoutMs, signal, onChunk, onTextDelta, entityLabel = "RSA" } = options;
+  const { model, prompt, timeoutMs, hardTimeoutMs, signal, onChunk, onTextDelta, entityLabel = "RSA" } = options;
 
   if (signal?.aborted) {
     throw new Error(`${entityLabel} aborted`);
@@ -762,7 +786,9 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
     let settled = false;
     let forceKillTimer: NodeJS.Timeout | undefined;
     let idleTimeout: NodeJS.Timeout | undefined;
+    let hardTimeout: NodeJS.Timeout | undefined;
     const idleTimeoutMs = timeoutMs > 0 ? timeoutMs : DEFAULT_IDLE_TIMEOUT_MS;
+    const absoluteTimeoutMs = Math.max(0, hardTimeoutMs ?? 0);
 
     const child = spawn("pi", args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -813,10 +839,23 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
     if (timeoutEnabled) {
       resetIdleTimeout();
     }
+    if (absoluteTimeoutMs > 0) {
+      hardTimeout = setTimeout(() => {
+        timedOut = true;
+        killSafely("SIGTERM");
+        if (forceKillTimer) {
+          clearTimeout(forceKillTimer);
+        }
+        forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
+      }, absoluteTimeoutMs);
+    }
 
     const cleanup = () => {
       if (idleTimeout) {
         clearTimeout(idleTimeout);
+      }
+      if (hardTimeout) {
+        clearTimeout(hardTimeout);
       }
       if (forceKillTimer) {
         clearTimeout(forceKillTimer);
@@ -882,7 +921,11 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
     child.on("close", (code) => {
       finish(() => {
         if (timedOut) {
-          rejectPromise(new Error(`pi --mode json idle timeout after ${idleTimeoutMs}ms of no output`));
+          rejectPromise(new Error(
+            absoluteTimeoutMs > 0
+              ? `pi --mode json hard timeout after ${absoluteTimeoutMs}ms`
+              : `pi --mode json idle timeout after ${idleTimeoutMs}ms of no output`,
+          ));
           return;
         }
 
