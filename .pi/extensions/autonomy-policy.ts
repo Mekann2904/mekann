@@ -29,8 +29,7 @@ function refreshStatus(ctx: ExtensionAPI["context"]): void {
     return;
   }
 
-  const yoloSuffix = currentConfig.profile === "yolo" ? " yolo" : "";
-  ctx.ui.setStatus("autonomy-policy", `auto:${currentConfig.mode}/${currentConfig.profile}${yoloSuffix}`);
+  ctx.ui.setStatus("autonomy-policy", `auto:${currentConfig.mode}/${currentConfig.profile}`);
 }
 
 function applyMode(pi: ExtensionAPI): void {

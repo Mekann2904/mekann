@@ -14,13 +14,13 @@ import {
 } from "../../lib/autonomy-policy.js";
 
 describe("autonomy policy", () => {
-  it("default config は balanced profile を使う", () => {
+  it("default config は yolo profile を使う", () => {
     const config = createAutonomyPolicyConfig();
 
-    expect(config.profile).toBe("balanced");
+    expect(config.profile).toBe("yolo");
     expect(config.permissions.read).toBe("allow");
-    expect(config.permissions.command).toBe("ask");
-    expect(config.gatekeeper).toBe("deterministic");
+    expect(config.permissions.command).toBe("allow");
+    expect(config.gatekeeper).toBe("off");
   });
 
   it("yolo profile は全 bundle を allow にする", () => {
@@ -59,7 +59,10 @@ describe("autonomy policy", () => {
   });
 
   it("destructive bash は deny される", () => {
-    const config = createAutonomyPolicyConfig("yolo");
+    const config = normalizeAutonomyPolicyConfig({
+      ...createAutonomyPolicyConfig("yolo"),
+      gatekeeper: "deterministic",
+    });
     const decision = resolveAutonomyDecision(config, {
       toolName: "bash",
       input: { command: "rm -rf /tmp/demo" },

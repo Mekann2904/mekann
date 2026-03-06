@@ -154,13 +154,15 @@ pi remove https://github.com/Mekann2904/mekann
 
 既定値:
 
-- `balanced`
+- `yolo`
 - `build`
-- `gatekeeper=deterministic`
+- `gatekeeper=off`
 
 `yolo` は全 capability を `allow` にする master toggle です。  
 
-ただし gatekeeper が `deterministic` のままなら、`.env` 読み取り、破壊的 bash、外部ディレクトリ、command substitution、過大 loop は止まるか確認を要求します。  
+人間の介入を減らすため、初期状態では gatekeeper も `off` です。  
+
+安全側に戻したい場合だけ `manual` や `balanced`、または `gatekeeper on` を使います。  
 
 操作方法:
 

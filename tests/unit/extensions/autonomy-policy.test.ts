@@ -6,11 +6,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const policyMocks = vi.hoisted(() => ({
-  createAutonomyPolicyConfig: vi.fn((profile = "balanced") => ({
+  createAutonomyPolicyConfig: vi.fn((profile = "yolo") => ({
     enabled: true,
     profile,
     mode: "build",
-    gatekeeper: "deterministic",
+    gatekeeper: profile === "yolo" ? "off" : "deterministic",
     permissions: {
       read: "allow",
       write: "allow",
@@ -128,7 +128,7 @@ describe("autonomy-policy extension", () => {
     await pi.handlers.get("session_start")?.({}, pi.ctx);
 
     expect(pi.setActiveTools).toHaveBeenCalledWith(["read", "subagent_run"]);
-    expect(pi.ctx.ui.setStatus).toHaveBeenCalledWith("autonomy-policy", "auto:plan/balanced");
+    expect(pi.ctx.ui.setStatus).toHaveBeenCalledWith("autonomy-policy", "auto:plan/yolo");
   });
 
   it("deny decision は tool_call を block する", async () => {

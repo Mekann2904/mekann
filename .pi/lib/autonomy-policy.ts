@@ -229,13 +229,13 @@ function cloneBundle(bundle: PermissionBundle): PermissionBundle {
 }
 
 export function createAutonomyPolicyConfig(
-  profile: AutonomyProfile = "balanced"
+  profile: AutonomyProfile = "yolo"
 ): AutonomyPolicyConfig {
   return {
     enabled: true,
     profile,
     mode: "build",
-    gatekeeper: "deterministic",
+    gatekeeper: profile === "yolo" ? "off" : "deterministic",
     permissions: cloneBundle(DEFAULT_PERMISSION_BUNDLES[profile]),
     updatedAt: new Date().toISOString(),
   };
