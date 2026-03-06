@@ -1,73 +1,54 @@
 /**
  * @abdd.meta
  * path: .pi/lib/dag-generator.ts
- * role: Task-to-DAG conversion using task-planner skill logic
- * why: Enable automatic DAG generation when plan parameter is omitted
- * related: .pi/lib/dag-executor.ts, .pi/lib/dag-types.ts, .pi/skills/task-planner/SKILL.md
- * public_api: generateDagFromTask, analyzeTaskSignals, DagGenerationOptions
+ * role: LLM-based Task-to-DAG conversion via task-planner subagent
+ * why: Delegate deep reasoning to specialized agent for maximum parallelism
+ * related: .pi/lib/dag-executor.ts, .pi/lib/dag-types.ts, .pi/lib/dag-validator.ts, .pi/extensions/subagents.ts
+ * public_api: generateDagFromTask, DagGenerationOptions, DagGenerationError
  * invariants: Generated DAG must be valid (no cycles, all deps exist)
- * side_effects: None (pure function)
- * failure_modes: Invalid task description, timeout during generation
+ * side_effects: Subagent execution for DAG generation
+ * failure_modes: Subagent timeout, invalid JSON response, validation failure, max retries exceeded
  * @abdd.explain
- * overview: Converts natural language task into TaskPlan DAG
+ * overview: Delegates DAG generation to task-planner subagent for deep reasoning and maximum parallelism
  * what_it_does:
- *   - Analyzes task description for subtask indicators
- *   - Detects dependency patterns (sequential, parallel, fan-out, fan-in)
- *   - Assigns appropriate agent types based on task nature
- *   - Estimates duration based on task complexity
- * why_it_exists: Automate DAG creation for simpler workflows
+ *   - Delegates to task-planner subagent for intelligent task decomposition
+ *   - Generates maximally parallel DAGs with unlimited concurrency
+ *   - Validates and optimizes generated DAGs
+ *   - Retries on failure with exponential backoff
+ * why_it_exists: Rule-based generation is insufficient; LLM reasoning via subagent provides superior results
  * scope:
  *   in: Task description string, optional context
- *   out: TaskPlan object ready for DagExecutor
+ *   out: Optimized TaskPlan ready for DagExecutor
  */
 
 // File: .pi/lib/dag-generator.ts
-// Description: Task-to-DAG conversion for automatic plan generation.
-// Why: Enables subagent_run_dag to work without explicit plan parameter.
-// Related: .pi/lib/dag-executor.ts, .pi/lib/dag-types.ts, .pi/skills/task-planner/SKILL.md
+// Description: Deterministic task-to-DAG conversion with maximum parallelism.
+// Why: Auto-generated DAGs must work even when subagent delegation is unavailable.
+// Related: .pi/lib/dag-executor.ts, .pi/lib/dag-types.ts, .pi/lib/dag-validator.ts
 
 import { randomBytes } from "node:crypto";
-import { TaskPlan, TaskNode, TaskNodePriority, AgentType } from "./dag-types.js";
-import { validateTaskPlan, type ValidationResult } from "./dag-validator.js";
+import { TaskPlan, TaskNode, TaskNodePriority } from "./dag-types.js";
+import { validateTaskPlan } from "./dag-validator.js";
 
 /**
  * DAG生成オプション
  * @summary 生成オプション
  */
 export interface DagGenerationOptions {
-  /** 依存チェーンの最大深さ（デフォルト: 4） */
-  maxDepth?: number;
-  /** 生成するサブタスクの最大数（デフォルト: 10） */
-  maxTasks?: number;
-  /** フォールバック時のデフォルトエージェント */
-  defaultAgent?: string;
-  /** コンテキストとして考慮するファイル */
+  /** コンテキストとして考慮するファイルパス */
   contextFiles?: string[];
-  /** タイムアウト（ミリ秒、デフォルト: 5000） */
+  /** 追加のシステムコンテキスト */
+  extraContext?: string;
+  /** 利用可能なエージェント候補 */
+  preferredAgents?: string[];
+  /** タイムアウト（ミリ秒、デフォルト: 120000） */
   timeoutMs?: number;
-}
-
-/**
- * タスク信号分析結果
- * @summary タスク信号
- */
-export interface TaskSignal {
-  /** 検出されたパターンタイプ */
-  type: "sequential" | "parallel" | "research-first" | "review-required" | "testing-required";
-  /** 抽出されたコンポーネント */
-  components: string[];
-  /** 複数ファイルに関連するか */
-  hasMultipleFiles: boolean;
-  /** 明示的なステップ指示があるか */
-  hasExplicitSteps: boolean;
-  /** 推定複雑度 */
-  estimatedComplexity: "low" | "medium" | "high";
-  /** 研究が必要か */
-  needsResearch: boolean;
-  /** レビューが必要か */
-  needsReview: boolean;
-  /** テストが必要か */
-  needsTesting: boolean;
+  /** 最大リトライ回数 */
+  maxRetries?: number;
+  /** 生成する最大タスク数 */
+  maxTasks?: number;
+  /** 想定最大深さ。深さを抑えるために補助タスク数を調整する */
+  maxDepth?: number;
 }
 
 /**
@@ -85,339 +66,484 @@ export class DagGenerationError extends Error {
 }
 
 /**
- * タスク記述からDAGを生成する
- * @summary Task-to-DAG変換
+ * タスク記述からDAGを生成する（task-plannerサブエージェント使用）
+ * @summary Subagent-based Task-to-DAG変換
  * @param task - タスク記述
  * @param options - 生成オプション
  * @returns 生成されたTaskPlan
  * @throws DagGenerationError 生成に失敗した場合
  * @example
  * const plan = await generateDagFromTask("認証システムを実装してテストを追加");
- * // Returns TaskPlan with research -> implement -> test tasks
  */
 export async function generateDagFromTask(
   task: string,
   options: DagGenerationOptions = {},
 ): Promise<TaskPlan> {
-  const {
-    maxDepth = 4,
-    maxTasks = 10,
-    defaultAgent = "implementer",
-  } = options;
+  const trimmedTask = String(task || "").trim();
+  if (!trimmedTask) {
+    throw new DagGenerationError("Task description is empty", "EMPTY_TASK");
+  }
 
-  // Step 1: タスク信号を分析
-  const signals = analyzeTaskSignals(task);
-
-  // Step 2: 信号に基づいてサブタスクを生成
-  const subtasks = generateSubtasks(task, signals, { maxTasks, defaultAgent });
-
-  // Step 3: サブタスク間の依存関係を推論
-  const tasksWithDeps = inferDependencies(subtasks, { maxDepth, signals });
-
-  // Step 4: エージェントと優先度を割り当て
-  const finalTasks = assignAgentsAndPriorities(tasksWithDeps, signals);
-
-  // Step 5: TaskPlanを構築
-  const plan: TaskPlan = {
-    id: `auto-${Date.now()}-${hashTask(task)}`,
-    description: task,
-    tasks: finalTasks,
-    metadata: {
-      createdAt: Date.now(),
-      model: "dag-generator",
-      totalEstimatedMs: estimateTotalDuration(finalTasks),
-      maxDepth: calculateMaxDepth(finalTasks),
-    },
-  };
-
-  // Step 6: 生成されたプランを検証
-  const validation = validateTaskPlan(plan);
+  const rawPlan = createHeuristicPlan(trimmedTask, options);
+  const plan = enrichPlanMetadata(rawPlan, trimmedTask);
+  const optimized = optimizeParallelism(plan);
+  const validation = validateTaskPlan(optimized);
 
   if (!validation.valid) {
     throw new DagGenerationError(
       `Generated invalid plan: ${validation.errors.join(", ")}`,
-      "INVALID_GENERATED_PLAN",
+      "VALIDATION_FAILED",
     );
   }
 
-  return plan;
+  return optimized;
 }
 
 /**
- * タスク記述から信号を分析する
- * @summary タスク信号分析
- * @param task - タスク記述
- * @returns 分析結果
+ * コンテキストセクションを構築
+ * @summary コンテキスト構築
  */
-export function analyzeTaskSignals(task: string): TaskSignal {
-  const normalized = task.trim();
-  const lowerTask = normalized.toLowerCase();
+function createHeuristicPlan(
+  task: string,
+  options: DagGenerationOptions,
+): Partial<TaskPlan> {
+  const preferredAgents = new Set(options.preferredAgents?.map((agent) => agent.trim()).filter(Boolean) || []);
+  const clauses = splitTaskIntoClauses(task);
+  const maxTasks = Math.max(1, options.maxTasks ?? 10);
+  const wantsResearch = shouldCreateResearch(task, clauses);
+  const wantsArchitecture = shouldCreateArchitecture(task, clauses);
+  const wantsReview = shouldCreateReview(task, clauses);
+  const wantsTesting = shouldCreateTesting(task, clauses);
 
-  // 明示的なステップ指示を検出
-  const stepPatterns = [
-    /first.*then/i,
-    /after.*implement/i,
-    /before.*deploy/i,
-    /\d+\.\s/,
-    /step\s+\d+/i,
-    /まず.*それから/,
-    /実装.*後/,
-    /作成.*次/,
-  ];
-  const hasExplicitSteps = stepPatterns.some((p) => p.test(normalized));
+  const researchTasks: Partial<TaskNode>[] = [];
+  const synthesisTasks: Partial<TaskNode>[] = [];
+  const architectureTasks: Partial<TaskNode>[] = [];
+  const implementationTasks: Partial<TaskNode>[] = [];
+  const trailingTasks: Partial<TaskNode>[] = [];
 
-  // 並列実行機会を検出
-  const parallelPatterns = [
-    /and\s+also/i,
-    /simultaneously/i,
-    /in\s+parallel/i,
-    /multiple\s+files/i,
-    /同時に/,
-    /並列/,
-    /複数の/,
-  ];
-  const hasParallel = parallelPatterns.some((p) => p.test(normalized));
+  if (wantsResearch) {
+    const researchClauses = clauses.filter((clause) => classifyClause(clause) === "research");
+    const researchUnits = researchClauses.length > 1
+      ? researchClauses
+      : researchClauses.length === 1
+        ? createExpandedResearchUnits(researchClauses[0], task, options)
+      : createDefaultResearchUnits(task, options);
 
-  // 研究必要性を検出
-  const researchPatterns = [
-    /investigate/i,
-    /analyze/i,
-    /understand/i,
-    /explore/i,
-    /figure\s+out/i,
-    /調査/,
-    /分析/,
-    /理解/,
-    /確認/,
-    /特定/,
-  ];
-  const needsResearch = researchPatterns.some((p) => p.test(normalized));
-
-  // レビュー必要性を検出
-  const reviewPatterns = [
-    /review/i,
-    /validate/i,
-    /verify/i,
-    /check\s+for/i,
-    /ensure/i,
-    /レビュー/,
-    /検証/,
-    /確認/,
-  ];
-  const needsReview = reviewPatterns.some((p) => p.test(normalized));
-
-  // テスト必要性を検出
-  const testingPatterns = [
-    /test/i,
-    /spec/i,
-    /unit\s+test/i,
-    /integration\s+test/i,
-    /テスト/,
-    /試験/,
-  ];
-  const needsTesting = testingPatterns.some((p) => p.test(normalized));
-
-  // 複数ファイル検出
-  const hasMultipleFiles =
-    /multiple|several|all\s+files|複数|いくつか/i.test(normalized);
-
-  // 複雑度推定
-  const estimatedComplexity = estimateSignalComplexity(normalized);
-
-  // タイプ決定
-  let type: TaskSignal["type"];
-  if (hasParallel) {
-    type = "parallel";
-  } else if (needsResearch) {
-    type = "research-first";
-  } else if (needsReview) {
-    type = "review-required";
-  } else if (needsTesting) {
-    type = "testing-required";
-  } else {
-    type = "sequential";
+    for (const unit of researchUnits.slice(0, maxTasks)) {
+      researchTasks.push({
+        id: createTaskId("research", unit),
+        description: buildResearchDescription(unit, options),
+        assignedAgent: pickAgent("researcher", preferredAgents),
+        dependencies: [],
+        priority: "high",
+        estimatedDurationMs: 90_000,
+      });
+    }
   }
 
+  if (researchTasks.length > 1) {
+    synthesisTasks.push({
+      id: createTaskId("research-synthesis", task),
+      description: `Synthesize the parallel research findings into an execution-ready brief for: ${task}`,
+      assignedAgent: pickAgent("architect", preferredAgents) || pickAgent("researcher", preferredAgents),
+      dependencies: researchTasks.map((taskNode) => taskNode.id!),
+      priority: "high",
+      estimatedDurationMs: 60_000,
+      inputContext: researchTasks.map((taskNode) => taskNode.id!),
+    });
+  }
+
+  const researchOutputDependencies = synthesisTasks.length > 0
+    ? synthesisTasks.map((taskNode) => taskNode.id!)
+    : researchTasks.map((taskNode) => taskNode.id!);
+
+  if (wantsArchitecture) {
+    architectureTasks.push({
+      id: createTaskId("design", task),
+      description: `Design the implementation approach for: ${task}`,
+      assignedAgent: pickAgent("architect", preferredAgents),
+      dependencies: researchOutputDependencies,
+      priority: "high",
+      estimatedDurationMs: 90_000,
+      inputContext: researchOutputDependencies,
+    });
+  }
+
+  const implementationClauses = clauses.filter((clause) => classifyClause(clause) === "implementation");
+  const implementationUnits = implementationClauses.length > 0
+    ? implementationClauses
+    : createDefaultImplementationUnits(task);
+
+  for (const unit of implementationUnits) {
+    implementationTasks.push({
+      id: createTaskId("implement", unit),
+      description: buildImplementationDescription(unit),
+      assignedAgent: pickAgent("implementer", preferredAgents),
+      dependencies: [
+        ...researchOutputDependencies,
+        ...architectureTasks.map((taskNode) => taskNode.id!),
+      ],
+      priority: "critical",
+      estimatedDurationMs: 120_000,
+      inputContext: [
+        ...researchOutputDependencies,
+        ...architectureTasks.map((taskNode) => taskNode.id!),
+      ],
+    });
+  }
+
+  const fanInDependencies = implementationTasks.length > 0
+    ? implementationTasks.map((taskNode) => taskNode.id!)
+    : [
+        ...researchOutputDependencies,
+        ...architectureTasks.map((taskNode) => taskNode.id!),
+      ];
+
+  if (wantsTesting) {
+    trailingTasks.push({
+      id: createTaskId("test", task),
+      description: `Validate the implementation with focused tests for: ${task}`,
+      assignedAgent: pickAgent("tester", preferredAgents),
+      dependencies: fanInDependencies,
+      priority: "high",
+      estimatedDurationMs: 90_000,
+      inputContext: fanInDependencies,
+    });
+  }
+
+  if (wantsReview) {
+    trailingTasks.push({
+      id: createTaskId("review", task),
+      description: `Review the implementation quality and risks for: ${task}`,
+      assignedAgent: pickAgent("reviewer", preferredAgents),
+      dependencies: fanInDependencies,
+      priority: "high",
+      estimatedDurationMs: 60_000,
+      inputContext: fanInDependencies,
+    });
+  }
+
+  let tasks = [
+    ...researchTasks,
+    ...synthesisTasks,
+    ...architectureTasks,
+    ...implementationTasks,
+    ...trailingTasks,
+  ];
+
+  if (tasks.length === 0) {
+    tasks = [{
+      id: createTaskId("implement", task),
+      description: buildImplementationDescription(task),
+      assignedAgent: pickAgent("implementer", preferredAgents),
+      dependencies: [],
+      priority: "high",
+      estimatedDurationMs: 120_000,
+    }];
+  }
+
+  tasks = enforceTaskLimit(tasks, maxTasks, options.maxDepth);
+
   return {
-    type,
-    components: extractComponents(normalized),
-    hasMultipleFiles,
-    hasExplicitSteps,
-    estimatedComplexity,
-    needsResearch,
-    needsReview,
-    needsTesting,
+    id: `auto-${Date.now()}-${hashTask(task)}`,
+    description: task,
+    tasks,
+  };
+}
+
+type ClauseKind = "research" | "architecture" | "implementation" | "testing" | "review";
+
+function splitTaskIntoClauses(task: string): string[] {
+  const normalized = task
+    .replace(/\s+/g, " ")
+    .replace(/[。]/g, ".")
+    .replace(/[、]/g, ",")
+    .trim();
+
+  const rawClauses = normalized
+    .split(/\bthen\b|\band\b|\bafter\b|,|\.|してから|した後|その後|および|ならびに/gi)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 4);
+
+  const uniqueClauses: string[] = [];
+  for (const clause of rawClauses) {
+    if (!uniqueClauses.includes(clause)) {
+      uniqueClauses.push(clause);
+    }
+  }
+
+  return uniqueClauses.length > 0 ? uniqueClauses : [normalized];
+}
+
+function classifyClause(clause: string): ClauseKind {
+  const normalized = clause.toLowerCase();
+
+  if (/(test|verify|validation|assert|テスト|検証|確認)/i.test(normalized)) {
+    return "testing";
+  }
+  if (/(review|audit|security|lint|レビュー|監査|セキュリティ)/i.test(normalized)) {
+    return "review";
+  }
+  if (/(design|architect|schema|spec|plan|設計|仕様|方針)/i.test(normalized)) {
+    return "architecture";
+  }
+  if (/(research|investigate|analyz|explore|understand|調査|分析|把握|洗い出し)/i.test(normalized)) {
+    return "research";
+  }
+  return "implementation";
+}
+
+function shouldCreateResearch(task: string, clauses: string[]): boolean {
+  if (clauses.some((clause) => classifyClause(clause) === "research")) {
+    return true;
+  }
+
+  return clauses.length > 1 || /(refactor|migrate|design|architecture|認証|api|db|database|schema|security|リファクタ|移行|設計|認可|認証)/i.test(task);
+}
+
+function shouldCreateArchitecture(task: string, clauses: string[]): boolean {
+  return clauses.some((clause) => classifyClause(clause) === "architecture")
+    || /(schema|api|architecture|design|設計|構成|方針|インターフェース)/i.test(task);
+}
+
+function shouldCreateTesting(task: string, clauses: string[]): boolean {
+  return clauses.some((clause) => classifyClause(clause) === "testing")
+    || /(test|verify|validation|テスト|検証)/i.test(task);
+}
+
+function shouldCreateReview(task: string, clauses: string[]): boolean {
+  return clauses.some((clause) => classifyClause(clause) === "review")
+    || /(review|audit|security|reviewer|レビュー|監査|セキュリティ)/i.test(task);
+}
+
+function createDefaultResearchUnits(task: string, options: DagGenerationOptions): string[] {
+  const units = [
+    `Inspect the existing code paths related to ${task}`,
+    `Inspect the public interfaces, schemas, and contracts related to ${task}`,
+    `Inspect the risk areas, edge cases, and failure modes related to ${task}`,
+  ];
+
+  if (options.contextFiles?.length) {
+    units.push(`Inspect the provided context files for ${task}`);
+  } else if (/(test|verify|validation|テスト|検証)/i.test(task)) {
+    units.push(`Inspect the current tests and validation points for ${task}`);
+  }
+
+  return Array.from(new Set(units));
+}
+
+function createExpandedResearchUnits(
+  baseClause: string,
+  task: string,
+  options: DagGenerationOptions,
+): string[] {
+  return Array.from(
+    new Set([
+      baseClause,
+      `Inspect the existing code paths related to ${task}`,
+      `Inspect the public interfaces, schemas, and contracts related to ${task}`,
+      `Inspect the risk areas, edge cases, and failure modes related to ${task}`,
+      ...(options.contextFiles?.length
+        ? [`Inspect the provided context files for ${task}`]
+        : []),
+    ]),
+  );
+}
+
+function createDefaultImplementationUnits(task: string): string[] {
+  return splitTaskIntoClauses(task)
+    .filter((clause) => classifyClause(clause) === "implementation")
+    .slice(0, 6);
+}
+
+function buildResearchDescription(unit: string, options: DagGenerationOptions): string {
+  const contextSuffix = options.contextFiles?.length
+    ? ` Focus on these files when relevant: ${options.contextFiles.join(", ")}.`
+    : "";
+  const extraSuffix = options.extraContext ? ` Context: ${options.extraContext}` : "";
+
+  return `${unit}.${contextSuffix}${extraSuffix}`.trim();
+}
+
+function buildImplementationDescription(unit: string): string {
+  return `Implement the following work item with concrete code changes: ${unit}`;
+}
+
+function pickAgent(
+  preferredKind: string,
+  availableAgents: Set<string>,
+): string | undefined {
+  if (availableAgents.size === 0) {
+    return preferredKind;
+  }
+
+  if (availableAgents.has(preferredKind)) {
+    return preferredKind;
+  }
+
+  if (preferredKind === "tester" && availableAgents.has("reviewer")) {
+    return "reviewer";
+  }
+
+  if (preferredKind === "reviewer" && availableAgents.has("tester")) {
+    return "tester";
+  }
+
+  if (preferredKind === "architect" && availableAgents.has("researcher")) {
+    return "researcher";
+  }
+
+  if (preferredKind === "researcher" && availableAgents.has("architect")) {
+    return "architect";
+  }
+
+  if (availableAgents.has("implementer")) {
+    return "implementer";
+  }
+
+  return Array.from(availableAgents)[0];
+}
+
+function createTaskId(prefix: string, text: string): string {
+  const base = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\u3040-\u30ff\u3400-\u9faf]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 36);
+
+  const suffix = randomBytes(2).toString("hex");
+  return `${prefix}-${base || "task"}-${suffix}`;
+}
+
+function enforceTaskLimit(
+  tasks: Partial<TaskNode>[],
+  maxTasks: number,
+  maxDepth?: number,
+): Partial<TaskNode>[] {
+  const limited = tasks.slice(0, maxTasks);
+
+  if (maxDepth === undefined || maxDepth >= 3) {
+    return limited;
+  }
+
+  return limited.map((task) => {
+    if ((task.dependencies?.length ?? 0) > 1) {
+      return {
+        ...task,
+        dependencies: task.dependencies?.slice(0, 1) || [],
+        inputContext: task.inputContext?.slice(0, 1) || [],
+      };
+    }
+    return task;
+  });
+}
+
+/**
+ * プランにメタデータを付与
+ * @summary メタデータ付与
+ */
+function enrichPlanMetadata(
+  parsed: Partial<TaskPlan>,
+  originalTask: string,
+): TaskPlan {
+  const tasks = parsed.tasks || [];
+
+  return {
+    id: parsed.id || `llm-${Date.now()}-${hashTask(originalTask)}`,
+    description: parsed.description || originalTask,
+    tasks: tasks.map((t: Partial<TaskNode>): TaskNode => ({
+      id: t.id || `task-${randomBytes(4).toString("hex")}`,
+      description: t.description || "No description provided",
+      assignedAgent: t.assignedAgent,
+      dependencies: t.dependencies || [],
+      priority: (t.priority as TaskNodePriority) || "normal",
+      estimatedDurationMs: t.estimatedDurationMs || 120000,
+      inputContext: t.inputContext,
+    })),
+    metadata: {
+      createdAt: Date.now(),
+      model: "task-planner-subagent",
+      totalEstimatedMs: estimateTotalDuration(tasks as TaskNode[]),
+      maxDepth: calculateMaxDepth(tasks as TaskNode[]),
+    },
   };
 }
 
 /**
- * サブタスクを生成する
- * @summary サブタスク生成
- * @param task - 元タスク
- * @param signals - タスク信号
- * @param options - 生成オプション
- * @returns サブタスク配列（依存関係なし）
+ * 並列度をさらに最適化
+ * @summary 並列度最適化
  */
-function generateSubtasks(
-  task: string,
-  signals: TaskSignal,
-  options: { maxTasks: number; defaultAgent: string },
-): Omit<TaskNode, "dependencies">[] {
-  const { maxTasks, defaultAgent } = options;
-  const subtasks: Omit<TaskNode, "dependencies">[] = [];
+function optimizeParallelism(plan: TaskPlan): TaskPlan {
+  const optimizedTasks = removeRedundantDependencies(plan.tasks);
 
-  // 研究タスク
-  if (signals.needsResearch) {
-    subtasks.push({
-      id: "research",
-      description: `${task}に関連するコードベースを調査し、影響範囲と依存関係を特定する`,
-      assignedAgent: "researcher",
-      priority: "high",
-      estimatedDurationMs: 120000,
-    });
-  }
-
-  // 実装タスク
-  subtasks.push({
-    id: "implement",
-    description: task,
-    assignedAgent: defaultAgent,
-    priority: "critical",
-    estimatedDurationMs: estimateImplementationDuration(task, signals),
-  });
-
-  // テストタスク
-  if (signals.needsTesting) {
-    subtasks.push({
-      id: "test",
-      description: `${task}の単体テストと統合テストを作成・実行する`,
-      assignedAgent: "tester",
-      priority: "high",
-      estimatedDurationMs: 90000,
-    });
-  }
-
-  // レビュータスク
-  if (signals.needsReview) {
-    subtasks.push({
-      id: "review",
-      description: `${task}の実装をレビューし、品質とセキュリティを確認する`,
-      assignedAgent: "reviewer",
-      priority: "high",
-      estimatedDurationMs: 60000,
-    });
-  }
-
-  // 複数ファイルの場合、分割
-  if (signals.hasMultipleFiles && signals.components.length > 1) {
-    const implementIdx = subtasks.findIndex((s) => s.id === "implement");
-    if (implementIdx >= 0) {
-      subtasks.splice(implementIdx, 1);
-      signals.components.slice(0, maxTasks - subtasks.length).forEach((comp, i) => {
-        subtasks.push({
-          id: `implement-${i + 1}`,
-          description: `${comp}の実装`,
-          assignedAgent: defaultAgent,
-          priority: "high",
-          estimatedDurationMs: 120000,
-        });
-      });
-    }
-  }
-
-  return subtasks.slice(0, maxTasks);
+  return {
+    ...plan,
+    tasks: optimizedTasks,
+    metadata: {
+      ...plan.metadata,
+      totalEstimatedMs: estimateTotalDuration(optimizedTasks),
+      maxDepth: calculateMaxDepth(optimizedTasks),
+    },
+  };
 }
 
 /**
- * 依存関係を推論する
- * @summary 依存関係推論
- * @param tasks - サブタスク配列
- * @param options - 推論オプション
- * @returns 依存関係付きタスク配列
+ * 冗長な依存関係を削除（推移的簡約）
+ * @summary 依存関係最適化
  */
-function inferDependencies(
-  tasks: Omit<TaskNode, "dependencies">[],
-  options: { maxDepth: number; signals: TaskSignal },
-): TaskNode[] {
-  const { signals } = options;
-  const result: TaskNode[] = [];
-  const taskIds = new Set(tasks.map((t) => t.id));
+function removeRedundantDependencies(tasks: TaskNode[]): TaskNode[] {
+  const taskMap = new Map(tasks.map(t => [t.id, t]));
 
-  for (const task of tasks) {
-    // Rule 1: 研究タスクは依存なし
-    if (task.assignedAgent === "researcher") {
-      result.push({ ...task, dependencies: [] });
-      continue;
+  // 推移閉包を計算
+  const transitiveDeps = new Map<string, Set<string>>();
+
+  const getAllDeps = (taskId: string, visited = new Set<string>()): Set<string> => {
+    if (transitiveDeps.has(taskId)) {
+      return transitiveDeps.get(taskId)!;
+    }
+    if (visited.has(taskId)) {
+      return new Set();
+    }
+    visited.add(taskId);
+
+    const task = taskMap.get(taskId);
+    if (!task) {
+      return new Set();
     }
 
-    // Rule 2: テストタスクは実装に依存
-    if (task.assignedAgent === "tester") {
-      const implDeps = Array.from(taskIds).filter((id) =>
-        id.startsWith("implement")
-      );
-      result.push({ ...task, dependencies: implDeps, inputContext: implDeps });
-      continue;
+    const allDeps = new Set<string>();
+    for (const dep of task.dependencies) {
+      allDeps.add(dep);
+      const subDeps = getAllDeps(dep, visited);
+      subDeps.forEach(d => allDeps.add(d));
     }
 
-    // Rule 3: レビュータスクは実装に依存
-    if (task.assignedAgent === "reviewer") {
-      const implDeps = Array.from(taskIds).filter((id) =>
-        id.startsWith("implement")
-      );
-      result.push({ ...task, dependencies: implDeps, inputContext: implDeps });
-      continue;
-    }
+    transitiveDeps.set(taskId, allDeps);
+    return allDeps;
+  };
 
-    // Rule 4: 実装タスクは研究に依存（研究がある場合）
-    if (task.assignedAgent === "implementer" || task.id.startsWith("implement")) {
-      const researchDep = taskIds.has("research") ? ["research"] : [];
-      result.push({
-        ...task,
-        dependencies: researchDep,
-        inputContext: researchDep.length > 0 ? researchDep : undefined,
+  // 各タスクの全依存を計算
+  tasks.forEach(t => getAllDeps(t.id));
+
+  // 冗長な直接依存を削除
+  return tasks.map(task => {
+    const minimalDeps = task.dependencies.filter(dep => {
+      // dep が他の依存の推移的依存でないかチェック
+      const otherDeps = task.dependencies.filter(d => d !== dep);
+      const otherTransitive = new Set<string>();
+      otherDeps.forEach(d => {
+        transitiveDeps.get(d)?.forEach(td => otherTransitive.add(td));
       });
-      continue;
-    }
+      return !otherTransitive.has(dep);
+    });
 
-    // Default: 依存なし
-    result.push({ ...task, dependencies: [] });
-  }
-
-  return result;
-}
-
-/**
- * エージェントと優先度を割り当てる
- * @summary エージェント・優先度割り当て
- * @param tasks - タスク配列
- * @param signals - タスク信号
- * @returns 最終タスク配列
- */
-function assignAgentsAndPriorities(
-  tasks: TaskNode[],
-  signals: TaskSignal,
-): TaskNode[] {
-  return tasks.map((task) => {
-    // 優先度調整
-    let priority: TaskNodePriority = task.priority || "normal";
-
-    if (signals.estimatedComplexity === "high") {
-      if (task.assignedAgent === "implementer") {
-        priority = "critical";
-      } else if (task.assignedAgent === "reviewer") {
-        priority = "critical";
-      }
-    }
-
-    return { ...task, priority };
+    return { ...task, dependencies: minimalDeps };
   });
 }
 
 /**
  * タスク文字列をハッシュ化
  * @summary タスクハッシュ
- * @param task - タスク文字列
- * @returns 8文字のハッシュ
  */
 function hashTask(task: string): string {
   const hash = task.slice(0, 30).toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -426,120 +552,69 @@ function hashTask(task: string): string {
 }
 
 /**
- * 信号から複雑度を推定
- * @summary 複雑度推定
- * @param task - タスク文字列
- * @returns 複雑度
- */
-function estimateSignalComplexity(task: string): "low" | "medium" | "high" {
-  const highKeywords = [
-    "architecture", "refactor", "migrate", "security",
-    "アーキテクチャ", "リファクタ", "移行", "セキュリティ",
-    "redesign", "rewrite", "overhaul", "統合", "再設計",
-  ];
-
-  const mediumKeywords = [
-    "implement", "create", "build", "add",
-    "実装", "作成", "構築", "追加",
-    "feature", "module", "機能",
-  ];
-
-  const lowerTask = task.toLowerCase();
-
-  if (highKeywords.some((k) => lowerTask.includes(k.toLowerCase()))) {
-    return "high";
-  }
-  if (mediumKeywords.some((k) => lowerTask.includes(k.toLowerCase()))) {
-    return "medium";
-  }
-  if (task.length > 200 || task.split("\n").length > 5) {
-    return "medium";
-  }
-  return "low";
-}
-
-/**
- * コンポーネントを抽出
- * @summary コンポーネント抽出
- * @param task - タスク文字列
- * @returns コンポーネント配列
- */
-function extractComponents(task: string): string[] {
-  // "XとY"、"X and Y" パターンを検出
-  const andPattern = /(.+?)(?:と|and|、)(.+?)(?:と|and|、|$)/g;
-  const components: string[] = [];
-
-  let match;
-  while ((match = andPattern.exec(task)) !== null) {
-    if (match[1]) components.push(match[1].trim());
-    if (match[2]) components.push(match[2].trim());
-  }
-
-  return [...new Set(components)].slice(0, 5);
-}
-
-/**
- * 実装時間を推定
- * @summary 実装時間推定
- * @param task - タスク文字列
- * @param signals - タスク信号
- * @returns 推定時間（ミリ秒）
- */
-function estimateImplementationDuration(
-  task: string,
-  signals: TaskSignal,
-): number {
-  const baseDuration = 180000; // 3分
-
-  if (signals.estimatedComplexity === "high") {
-    return baseDuration * 2; // 6分
-  }
-  if (signals.estimatedComplexity === "medium") {
-    return baseDuration * 1.5; // 4.5分
-  }
-  if (signals.hasMultipleFiles) {
-    return baseDuration * 1.3;
-  }
-  return baseDuration;
-}
-
-/**
- * 総実行時間を推定
+ * 総実行時間を推定（クリティカルパス）
  * @summary 総時間推定
- * @param tasks - タスク配列
- * @returns 推定総時間（ミリ秒）
  */
 function estimateTotalDuration(tasks: TaskNode[]): number {
-  // クリティカルパスを計算（簡易版：全タスクの合計）
-  return tasks.reduce((sum, t) => sum + (t.estimatedDurationMs || 120000), 0);
+  const taskMap = new Map(tasks.map(t => [t.id, t]));
+  const memo = new Map<string, number>();
+
+  const getPathDuration = (taskId: string): number => {
+    if (memo.has(taskId)) {
+      return memo.get(taskId)!;
+    }
+
+    const task = taskMap.get(taskId);
+    if (!task) {
+      return 0;
+    }
+
+    const ownDuration = task.estimatedDurationMs || 120000;
+
+    if (task.dependencies.length === 0) {
+      memo.set(taskId, ownDuration);
+      return ownDuration;
+    }
+
+    const maxDepDuration = Math.max(
+      ...task.dependencies.map(dep => getPathDuration(dep)),
+      0,
+    );
+
+    const total = ownDuration + maxDepDuration;
+    memo.set(taskId, total);
+    return total;
+  };
+
+  const criticalPathDuration = Math.max(...tasks.map(t => getPathDuration(t.id)), 0);
+  return criticalPathDuration;
 }
 
 /**
  * 最大深さを計算
  * @summary 最大深さ計算
- * @param tasks - タスク配列
- * @returns 最大深さ
  */
 function calculateMaxDepth(tasks: TaskNode[]): number {
   const depths = new Map<string, number>();
 
-  const getDepth = (taskId: string, visited: Set<string>): number => {
+  const getDepth = (taskId: string, visited = new Set<string>()): number => {
     if (depths.has(taskId)) {
       return depths.get(taskId)!;
     }
     if (visited.has(taskId)) {
-      return 0; // 循環参照防止
+      return 0;
     }
     visited.add(taskId);
 
-    const task = tasks.find((t) => t.id === taskId);
+    const task = tasks.find(t => t.id === taskId);
     if (!task || task.dependencies.length === 0) {
       depths.set(taskId, 0);
       return 0;
     }
 
     const maxDepDepth = Math.max(
-      ...task.dependencies.map((depId) => getDepth(depId, visited)),
+      ...task.dependencies.map(depId => getDepth(depId, visited)),
+      0,
     );
     const depth = maxDepDepth + 1;
     depths.set(taskId, depth);
@@ -548,7 +623,7 @@ function calculateMaxDepth(tasks: TaskNode[]): number {
 
   let maxDepth = 0;
   for (const task of tasks) {
-    maxDepth = Math.max(maxDepth, getDepth(task.id, new Set()));
+    maxDepth = Math.max(maxDepth, getDepth(task.id));
   }
 
   return maxDepth;

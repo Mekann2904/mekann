@@ -58,8 +58,10 @@ import { getSearchCache, getCacheKey } from "../utils/cache.js";
 import { getSearchHistory, extractQuery } from "../utils/history.js";
 
 /**
- * Clamp code_search input values to safe bounds.
- * This prevents oversized responses that can bloat model context.
+ * 入力値を安全な範囲に正規化
+ * @summary 入力値を正規化
+ * @param input コード検索入力
+ * @returns 正規化された入力
  */
 function normalizeCodeSearchInput(input: CodeSearchInput): CodeSearchInput {
 	const limit = Math.max(
@@ -82,6 +84,67 @@ function normalizeCodeSearchInput(input: CodeSearchInput): CodeSearchInput {
 	};
 }
 
+/**
+ * パストラバーサル攻撃を防止
+ * @summary パスを検証
+ * @param path 検証対象のパス
+ * @param cwd 基準ディレクトリ
+ * @returns 検証結果（true: 安全, false: 危険）
+ */
+function isPathSafe(path: string | undefined, cwd: string): boolean {
+	if (!path) return true;
+
+	// 絶対パスへのアクセスを禁止（cwd外へのアクセス防止）
+	if (path.startsWith("/")) return false;
+
+	// Windowsの絶対パスも禁止
+	if (/^[a-zA-Z]:/.test(path)) return false;
+
+	// 親ディレクトリへの参照を禁止
+	if (path.includes("..")) return false;
+
+	// nullバイト攻撃を防止
+	if (path.includes("\0")) return false;
+
+	return true;
+}
+
+/**
+ * エラーの種類を分類
+ * @summary エラーを分類
+ * @param error エラーオブジェクト
+ * @returns エラーカテゴリ
+ */
+function categorizeError(error: unknown): "pattern" | "permission" | "timeout" | "unknown" {
+	if (!(error instanceof Error)) return "unknown";
+
+	const message = error.message.toLowerCase();
+
+	// 正規表現パターンエラー（フォールバックしても同じエラーになる）
+	if (message.includes("invalid pattern") ||
+	    message.includes("invalid regex") ||
+	    message.includes("syntax error") ||
+	    message.includes("unterminated")) {
+		return "pattern";
+	}
+
+	// 権限エラー（フォールバックしても同じエラーになる可能性が高い）
+	if (message.includes("permission denied") ||
+	    message.includes("eacces") ||
+	    message.includes("access is denied")) {
+		return "permission";
+	}
+
+	// タイムアウト（ネイティブ実装は遅いのでフォールバックしない方が良い）
+	if (message.includes("timeout") ||
+	    message.includes("timed out") ||
+	    message.includes("etimedout")) {
+		return "timeout";
+	}
+
+	return "unknown";
+}
+
 // ============================================
 // Native Fallback Implementation
 // ============================================
@@ -98,6 +161,12 @@ export async function nativeCodeSearch(
 	cwd: string
 ): Promise<CodeSearchOutput> {
 	const safeInput = normalizeCodeSearchInput(input);
+
+	// パストラバーサル攻撃を防止
+	if (!isPathSafe(safeInput.path, cwd)) {
+		return createCodeSearchError("Path traversal detected: path contains forbidden patterns");
+	}
+
 	const { readdir, readFile } = await import("node:fs/promises");
 	const { join, relative } = await import("node:path");
 
@@ -129,14 +198,18 @@ export async function nativeCodeSearch(
 				if (results.length >= limit * 2) break;
 
 				const line = lines[i];
-				const match = pattern.exec(line);
 
-				if (match) {
+				// 1行内の全マッチを取得（matchAllを使用）
+				const matches = Array.from(line.matchAll(pattern));
+
+				for (const match of matches) {
+					if (results.length >= limit * 2) break;
+
 					const relPath = relative(cwd, filePath);
 					const result: CodeSearchMatch = {
 						file: relPath,
 						line: i + 1,
-						column: match.index + 1,
+						column: match.index! + 1,
 						text: line.trimEnd(),
 					};
 
@@ -150,9 +223,6 @@ export async function nativeCodeSearch(
 					results.push(result);
 					summary.set(relPath, (summary.get(relPath) || 0) + 1);
 				}
-
-				// Reset regex lastIndex for global flag
-				pattern.lastIndex = 0;
 			}
 		} catch {
 			// Skip files that can't be read
@@ -186,6 +256,9 @@ export async function nativeCodeSearch(
 				: DEFAULT_EXCLUDES;
 
 			for (const entry of entries) {
+				// limit * 2 まで収集する理由:
+				// - truncateResultsでlimit件に切り詰める際、ファイル単位の要約情報を保持するため
+				// - limitに達する前に収集を停止すると、サマリー情報が不正確になる
 				if (results.length >= limit * 2) break;
 
 				// Skip hidden files and exclude patterns
@@ -211,6 +284,7 @@ export async function nativeCodeSearch(
 		}
 	}
 
+	// パストラバーサル検証済みの安全なパスを使用
 	const searchPath = safeInput.path ? join(cwd, safeInput.path) : cwd;
 	await scanDir(searchPath);
 
@@ -284,6 +358,15 @@ export async function codeSearch(
 ): Promise<CodeSearchOutput> {
 	const safeInput = normalizeCodeSearchInput(input);
 
+	// パストラバーサル攻撃を防止
+	if (!isPathSafe(safeInput.path, cwd)) {
+		throw parameterError(
+			"path",
+			"Path traversal detected: path contains forbidden patterns",
+			"Use a relative path without '..' or absolute path components"
+		);
+	}
+
 	if (!safeInput.pattern || safeInput.pattern.length === 0) {
 		throw parameterError("pattern", "Search pattern is required", "Provide a search pattern");
 	}
@@ -321,19 +404,34 @@ export async function codeSearch(
 			result = await nativeCodeSearch(safeInput, cwd);
 		}
 	} catch (error: unknown) {
-		// Wrap error in SearchToolError if not already
-		const toolError = isSearchToolError(error)
-			? error
-			: new SearchToolError(
-					getErrorMessage(error),
-					"execution",
-					"Try simplifying the search pattern or using literal mode"
-				);
+		// エラーを分類して、フォールバックの必要性を判断
+		const errorCategory = categorizeError(error);
 
-		// Fallback to native on error
+		// パターンエラーと権限エラーはフォールバックしても同じ結果になるためスキップ
+		if (errorCategory === "pattern") {
+			return createCodeSearchError(`Invalid regex pattern: ${error instanceof Error ? error.message : String(error)}`);
+		}
+
+		if (errorCategory === "permission") {
+			return createCodeSearchError(`Permission denied: ${error instanceof Error ? error.message : String(error)}`);
+		}
+
+		// タイムアウトはネイティブ実装が遅いため、フォールバックせずエラーを返す
+		if (errorCategory === "timeout") {
+			return createCodeSearchError(`Search timed out. Try narrowing the search scope or using a more specific pattern.`);
+		}
+
+		// 不明なエラーの場合のみフォールバックを試行
 		try {
 			result = await nativeCodeSearch(safeInput, cwd);
 		} catch (nativeError) {
+			const toolError = isSearchToolError(error)
+				? error
+				: new SearchToolError(
+						getErrorMessage(error),
+						"execution",
+						"Try simplifying the search pattern or using literal mode"
+					);
 			return createCodeSearchError(toolError.format());
 		}
 	}

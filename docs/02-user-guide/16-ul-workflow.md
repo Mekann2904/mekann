@@ -20,15 +20,16 @@ Claude Code Workflowに基づく委任モード。調査・計画・実装を自
 ## フロー
 
 ```
-Research → Plan → [ユーザーレビュー] → Implement
+Research (DAG並列) → Plan → [Questionで人間確認] → Implement (DAG並列) → Commit
 ```
 
 | フェーズ | 実行者 | 成果物 |
 |---------|--------|--------|
 | Research | エージェント | research.md |
 | Plan | エージェント | plan.md |
-| Review | **ユーザー** | 注釈付きplan.md |
+| Review | **ユーザー** | Questionによる承認または修正指示 |
 | Implement | エージェント | コード変更 |
+| Commit | エージェント | Git commit |
 
 ---
 
@@ -67,7 +68,11 @@ subagent_run({ subagentId: "architect", task: "..." })
 
 ### 3. Review（ユーザーレビュー）
 
-**ユーザーが主導**。plan.mdに注釈を追加し、エージェントが更新。
+**ユーザーが主導**。`question` 拡張で承認か修正かを選ぶ。
+
+修正したい場合は `Type something.` で修正内容を書く。
+
+エージェントはその内容を `ul_workflow_modify_plan(...)` に渡して、再度確認を求める。
 
 ```markdown
 <!-- NOTE: use drizzle:generate, not raw SQL -->
@@ -84,13 +89,19 @@ subagent_run({ subagentId: "architect", task: "..." })
 subagent_run({ subagentId: "implementer", task: "plan.mdを実装" })
 ```
 
+### 5. Commit
+
+実装完了後は `ul_workflow_commit()` でコミット確認まで進む。
+
 ---
 
 ## コマンド
 
 ```
-ul <task>                # 委任モード
+ul <task>                # Research → Plan → Question確認 → Implement → Commit
 ul status                # ステータス表示
+ul approve               # 現在フェーズの承認
+ul annotate              # plan.md の注釈適用
 ul abort                 # 中止
 ul_workflow_force_claim  # 所有権を強制取得
 ```

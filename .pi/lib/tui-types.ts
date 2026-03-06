@@ -113,7 +113,7 @@ export interface TuiUI {
 /**
  * ライブモニター用コンテキストの最小限の型定義
  * @summary ライブモニターコンテキスト型
- * @description createSubagentLiveMonitor/createAgentTeamLiveMonitorで使用されるctxパラメータの型
+ * @description createSubagentLiveMonitorで使用されるctxパラメータの型
  */
 export interface LiveMonitorContext {
   /** UIが利用可能かどうか */

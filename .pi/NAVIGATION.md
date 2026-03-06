@@ -30,7 +30,6 @@
 | Task | Primary Source | Key Tools |
 |------|---------------|-----------|
 | Delegate to subagent | `subagent_run`, `subagent_run_parallel` | `.pi/extensions/subagents.ts` |
-| Run agent team | `agent_team_run`, `agent_team_run_parallel` | `.pi/extensions/agent-teams.ts` |
 | Create plan | `plan_create` | `.pi/extensions/plan.ts` |
 | Autonomous loop | `loop_run` | `.pi/extensions/loop.ts` |
 
@@ -90,7 +89,7 @@ Is this a git operation? --> YES --> Load skills/git-workflow/SKILL.md
   NO
   |
   v
-Is this non-trivial/coding? --> YES --> Use subagent_run or agent_team_run
+Is this non-trivial/coding? --> YES --> Use subagent_run
   |
   NO
   |

@@ -17,8 +17,11 @@
  * @scope(out) JSON file on disk
  */
 
-import fs from "fs";
-import path from "path";
+import {
+  ensureTaskDir as ensureSharedTaskDir,
+  loadTaskStorage as loadSharedTaskStorage,
+  saveTaskStorage as saveSharedTaskStorage,
+} from "../../../lib/storage/task-plan-store.js";
 
 /**
  * @summary Task entity
@@ -46,16 +49,11 @@ export interface TaskStorage {
   currentTaskId?: string;
 }
 
-const TASK_DIR = ".pi/tasks";
-const TASK_STORAGE_FILE = path.join(TASK_DIR, "storage.json");
-
 /**
  * @summary Ensure task directory exists
  */
 export function ensureTaskDir(): void {
-  if (!fs.existsSync(TASK_DIR)) {
-    fs.mkdirSync(TASK_DIR, { recursive: true });
-  }
+  ensureSharedTaskDir();
 }
 
 /**
@@ -63,16 +61,7 @@ export function ensureTaskDir(): void {
  * @returns Task storage object, or empty storage if file doesn't exist
  */
 export function loadTaskStorage(): TaskStorage {
-  ensureTaskDir();
-  if (!fs.existsSync(TASK_STORAGE_FILE)) {
-    return { tasks: [] };
-  }
-  try {
-    const data = fs.readFileSync(TASK_STORAGE_FILE, "utf-8");
-    return JSON.parse(data) as TaskStorage;
-  } catch {
-    return { tasks: [] };
-  }
+  return loadSharedTaskStorage<TaskStorage>();
 }
 
 /**
@@ -80,8 +69,5 @@ export function loadTaskStorage(): TaskStorage {
  * @param storage - Task storage object to save
  */
 export function saveTaskStorage(storage: TaskStorage): void {
-  ensureTaskDir();
-  const tempFile = TASK_STORAGE_FILE + ".tmp";
-  fs.writeFileSync(tempFile, JSON.stringify(storage, null, 2));
-  fs.renameSync(tempFile, TASK_STORAGE_FILE);
+  saveSharedTaskStorage(storage);
 }

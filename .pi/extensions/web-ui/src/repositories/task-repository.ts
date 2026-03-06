@@ -18,43 +18,10 @@
  */
 
 import type { Task, TaskStats } from "../schemas/task.schema.js";
-import { JsonStorage } from "../lib/storage.js";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
-import { existsSync } from "fs";
-
-// tasks/storage.jsonが存在する.piディレクトリを探す
-function findPiDir(): string {
-  const __dirname = dirname(fileURLToPath(import.meta.url));
-  
-  // 上位ディレクトリを順に探索
-  let current = __dirname;
-  for (let i = 0; i < 10; i++) {
-    const tasksFile = join(current, ".pi", "tasks", "storage.json");
-    if (existsSync(tasksFile)) {
-      return join(current, ".pi");
-    }
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  
-  // cwdから探索
-  current = process.cwd();
-  for (let i = 0; i < 10; i++) {
-    const tasksFile = join(current, ".pi", "tasks", "storage.json");
-    if (existsSync(tasksFile)) {
-      return join(current, ".pi");
-    }
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  
-  throw new Error("Could not find .pi/tasks/storage.json");
-}
-
-const PI_DIR = findPiDir();
+import {
+  loadTaskStorage as loadSharedTaskStorage,
+  saveTaskStorage as saveSharedTaskStorage,
+} from "../../../../lib/storage/task-plan-store.js";
 
 /**
  * タスクストレージのデータ構造
@@ -75,28 +42,34 @@ export interface TaskStorage {
  * ```
  */
 export class TaskRepository {
-  private readonly storage: JsonStorage<TaskStorage>;
+  constructor() {}
 
-  constructor() {
-    this.storage = new JsonStorage<TaskStorage>(
-      "tasks/storage.json",
-      { tasks: [], version: 1 },
-      { dataDir: PI_DIR }
-    );
+  private readStorage(): TaskStorage {
+    const loaded = loadSharedTaskStorage<{ tasks: Task[]; currentTaskId?: string }>();
+    return {
+      tasks: loaded.tasks || [],
+      version: 1,
+    };
+  }
+
+  private writeStorage(data: TaskStorage): void {
+    saveSharedTaskStorage({
+      tasks: data.tasks,
+    });
   }
 
   /**
    * 全タスクを取得
    */
   findAll(): Task[] {
-    return this.storage.read().tasks;
+    return this.readStorage().tasks;
   }
 
   /**
    * IDでタスクを検索
    */
   findById(id: string): Task | undefined {
-    const { tasks } = this.storage.read();
+    const { tasks } = this.readStorage();
     return tasks.find((t) => t.id === id);
   }
 
@@ -104,7 +77,7 @@ export class TaskRepository {
    * 条件でタスクをフィルタリング
    */
   filter(predicate: (task: Task) => boolean): Task[] {
-    const { tasks } = this.storage.read();
+    const { tasks } = this.readStorage();
     return tasks.filter(predicate);
   }
 
@@ -112,7 +85,7 @@ export class TaskRepository {
    * タスクを保存（新規作成または更新）
    */
   save(task: Task): void {
-    const data = this.storage.read();
+    const data = this.readStorage();
     const index = data.tasks.findIndex((t) => t.id === task.id);
 
     if (index >= 0) {
@@ -121,14 +94,14 @@ export class TaskRepository {
       data.tasks.push(task);
     }
 
-    this.storage.write(data);
+    this.writeStorage(data);
   }
 
   /**
    * 複数タスクを一括保存
    */
   saveAll(tasks: Task[]): void {
-    const data = this.storage.read();
+    const data = this.readStorage();
     const taskMap = new Map(data.tasks.map((t) => [t.id, t]));
 
     for (const task of tasks) {
@@ -136,14 +109,14 @@ export class TaskRepository {
     }
 
     data.tasks = Array.from(taskMap.values());
-    this.storage.write(data);
+    this.writeStorage(data);
   }
 
   /**
    * タスクを削除
    */
   delete(id: string): boolean {
-    const data = this.storage.read();
+    const data = this.readStorage();
     const index = data.tasks.findIndex((t) => t.id === id);
 
     if (index < 0) {
@@ -152,7 +125,7 @@ export class TaskRepository {
 
     // サブタスクも削除
     data.tasks = data.tasks.filter((t) => t.id !== id && t.parentTaskId !== id);
-    this.storage.write(data);
+    this.writeStorage(data);
     return true;
   }
 
@@ -160,14 +133,14 @@ export class TaskRepository {
    * タスク数を取得
    */
   count(): number {
-    return this.storage.read().tasks.length;
+    return this.readStorage().tasks.length;
   }
 
   /**
    * 統計情報を取得
    */
   getStats(): TaskStats {
-    const { tasks } = this.storage.read();
+    const { tasks } = this.readStorage();
     const now = new Date();
 
     return {
@@ -196,7 +169,7 @@ export class TaskRepository {
    * ストレージをクリア（テスト用）
    */
   clear(): void {
-    this.storage.write({ tasks: [], version: 1 });
+    this.writeStorage({ tasks: [], version: 1 });
   }
 }
 

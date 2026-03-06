@@ -94,6 +94,15 @@ export interface AddTaskOptions {
 }
 
 /**
+ * タスク再キュー設定
+ * @summary タスク再キュー設定
+ */
+export interface ResetTaskOptions {
+  /** 下流タスクも再キューするか */
+  includeDependents?: boolean;
+}
+
+/**
  * @summary 循環検出結果を保持
  * @param hasCycle - 循環があるかどうか
  * @param cyclePath - 循環パス（存在しない場合はnull）
@@ -188,6 +197,16 @@ export class TaskDependencyGraph {
     for (const depOfId of Array.from(node.dependents)) {
       const depOfNode = this.nodes.get(depOfId);
       depOfNode?.dependencies.delete(id);
+      if (
+        depOfNode &&
+        depOfNode.status === "pending" &&
+        this.isTaskReady(depOfId)
+      ) {
+        depOfNode.status = "ready";
+        if (!this.readyQueue.includes(depOfId)) {
+          this.readyQueue.push(depOfId);
+        }
+      }
     }
 
     // Remove from ready queue
@@ -198,6 +217,62 @@ export class TaskDependencyGraph {
 
     this.nodes.delete(id);
     return true;
+  }
+
+  /**
+   * タスクを再キューする
+   * @summary タスク再キュー
+   * @param id タスクID
+   * @param options 再キュー設定
+   */
+  resetTask(id: string, options: ResetTaskOptions = {}): void {
+    const node = this.nodes.get(id);
+    if (!node) {
+      throw new Error(`Task "${id}" does not exist`);
+    }
+
+    const { includeDependents = false } = options;
+    const visited = new Set<string>();
+
+    const resetNode = (taskId: string): void => {
+      if (visited.has(taskId)) {
+        return;
+      }
+      visited.add(taskId);
+
+      const current = this.nodes.get(taskId);
+      if (!current) {
+        return;
+      }
+
+      current.startedAt = undefined;
+      current.completedAt = undefined;
+      current.error = undefined;
+
+      const nextStatus: TaskDependencyStatus = this.isTaskReady(taskId)
+        ? "ready"
+        : "pending";
+      current.status = nextStatus;
+
+      if (nextStatus === "ready") {
+        if (!this.readyQueue.includes(taskId)) {
+          this.readyQueue.push(taskId);
+        }
+      } else {
+        const readyIndex = this.readyQueue.indexOf(taskId);
+        if (readyIndex >= 0) {
+          this.readyQueue.splice(readyIndex, 1);
+        }
+      }
+
+      if (includeDependents) {
+        for (const dependentId of Array.from(current.dependents)) {
+          resetNode(dependentId);
+        }
+      }
+    };
+
+    resetNode(id);
   }
 
   /**

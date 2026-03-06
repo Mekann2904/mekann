@@ -31,17 +31,25 @@
  *   out: セマンティック検索インデックス
  */
 
-import { existsSync, mkdirSync, readFileSync, appendFileSync, unlinkSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { LocAgentGraph, LocAgentNode, LocAgentEntityEmbedding } from "./types.js";
-import { getLocAgentIndexPath } from "./storage.js";
+import {
+	readStrictJsonState,
+	writeStrictJsonState,
+} from "../../../lib/storage/sqlite-state-store-strict.js";
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const SEMANTIC_INDEX_FILE = "semantic-index.jsonl";
-const SEMANTIC_META_FILE = "semantic-meta.json";
+function getLocAgentSemanticIndexKey(cwd: string): string {
+	return `locagent_semantic_index:${cwd}`;
+}
+
+function getLocAgentSemanticMetaKey(cwd: string): string {
+	return `locagent_semantic_meta:${cwd}`;
+}
 
 // ============================================================================
 // Types
@@ -130,85 +138,26 @@ function loadSemanticIndex(cwd: string): {
 	embeddings: Map<string, LocAgentEntityEmbedding>;
 	metadata: SemanticIndexMetadata | null;
 } {
-	const indexPath = getLocAgentIndexPath(cwd);
-	const indexFilePath = join(indexPath, SEMANTIC_INDEX_FILE);
-	const metaFilePath = join(indexPath, SEMANTIC_META_FILE);
-
 	const embeddings = new Map<string, LocAgentEntityEmbedding>();
-	let metadata: SemanticIndexMetadata | null = null;
-
-	// インデックスを読み込み
-	if (existsSync(indexFilePath)) {
-		try {
-			const content = readFileSync(indexFilePath, "utf-8");
-			const lines = content.trim().split("\n");
-			for (const line of lines) {
-				if (!line.trim()) continue;
-				const emb = JSON.parse(line) as LocAgentEntityEmbedding;
-				embeddings.set(emb.entityId, emb);
-			}
-		} catch {
-			// 読み込みエラーは無視
-		}
+	const embeddingList =
+		readStrictJsonState<LocAgentEntityEmbedding[]>(getLocAgentSemanticIndexKey(cwd)) || [];
+	for (const emb of embeddingList) {
+		embeddings.set(emb.entityId, emb);
 	}
-
-	// メタデータを読み込み
-	if (existsSync(metaFilePath)) {
-		try {
-			const content = readFileSync(metaFilePath, "utf-8");
-			metadata = JSON.parse(content) as SemanticIndexMetadata;
-		} catch {
-			// 読み込みエラーは無視
-		}
-	}
-
+	const metadata = readStrictJsonState<SemanticIndexMetadata>(getLocAgentSemanticMetaKey(cwd));
 	return { embeddings, metadata };
 }
 
-/**
- * エンベッディングをストリーミング書き込み（1件ずつ追記）
- * @summary エンベッディング追記
- * @param embedding - エンベッディングデータ
- * @param cwd - 作業ディレクトリ
- */
-function appendEmbedding(embedding: LocAgentEntityEmbedding, cwd: string): void {
-	const indexPath = getLocAgentIndexPath(cwd);
-	if (!existsSync(indexPath)) {
-		mkdirSync(indexPath, { recursive: true });
-	}
-	const indexFilePath = join(indexPath, SEMANTIC_INDEX_FILE);
-	appendFileSync(indexFilePath, JSON.stringify(embedding) + "\n", "utf-8");
-}
-
-/**
- * メタデータを保存
- * @summary メタデータ保存
- * @param metadata - メタデータ
- * @param cwd - 作業ディレクトリ
- */
-function saveMetadata(metadata: SemanticIndexMetadata, cwd: string): void {
-	const indexPath = getLocAgentIndexPath(cwd);
-	if (!existsSync(indexPath)) {
-		mkdirSync(indexPath, { recursive: true });
-	}
-	const metaFilePath = join(indexPath, SEMANTIC_META_FILE);
-	appendFileSync(metaFilePath, JSON.stringify(metadata, null, 2), "utf-8");
-}
-
-/**
- * インデックスファイルを初期化
- * @summary インデックス初期化
- * @param cwd - 作業ディレクトリ
- */
-function initIndexFile(cwd: string): void {
-	const indexPath = getLocAgentIndexPath(cwd);
-	if (!existsSync(indexPath)) {
-		mkdirSync(indexPath, { recursive: true });
-	}
-	const indexFilePath = join(indexPath, SEMANTIC_INDEX_FILE);
-	if (existsSync(indexFilePath)) {
-		unlinkSync(indexFilePath);
-	}
+function saveSemanticIndex(
+	cwd: string,
+	embeddings: Map<string, LocAgentEntityEmbedding>,
+	metadata: SemanticIndexMetadata
+): void {
+	writeStrictJsonState(
+		getLocAgentSemanticIndexKey(cwd),
+		Array.from(embeddings.values())
+	);
+	writeStrictJsonState(getLocAgentSemanticMetaKey(cwd), metadata);
 }
 
 // ============================================================================
@@ -299,12 +248,6 @@ export async function updateLocAgentSemanticIndex(
 		}
 	}
 
-	// インデックスファイルを初期化して、保持するエンベッディングを書き込み
-	initIndexFile(cwd);
-	for (const emb of embeddingsToKeep.values()) {
-		appendEmbedding(emb, cwd);
-	}
-
 	// エンティティの埋め込みを生成
 	let apiCalls = 0;
 	let newEntities = 0;
@@ -344,7 +287,6 @@ export async function updateLocAgentSemanticIndex(
 						embedding,
 					};
 
-					appendEmbedding(embData, cwd);
 					embeddingsToKeep.set(entityId, embData);
 
 					if (isNew) {
@@ -369,7 +311,6 @@ export async function updateLocAgentSemanticIndex(
 							embedding,
 						};
 
-						appendEmbedding(embData, cwd);
 						embeddingsToKeep.set(entityId, embData);
 
 						if (isNew) {
@@ -397,7 +338,6 @@ export async function updateLocAgentSemanticIndex(
 					embedding,
 				};
 
-				appendEmbedding(embData, cwd);
 				embeddingsToKeep.set(entityId, embData);
 
 				if (isNew) {
@@ -419,8 +359,7 @@ export async function updateLocAgentSemanticIndex(
 		fileMtimes: currentFileMtimes,
 	};
 
-	// メタデータを保存
-	saveMetadata(newMetadata, cwd);
+	saveSemanticIndex(cwd, embeddingsToKeep, newMetadata);
 
 	return {
 		success: true,
@@ -458,18 +397,13 @@ export async function buildLocAgentSemanticIndex(
 	indexedAt: number;
 	apiCalls: number;
 }> {
-	const indexPath = getLocAgentIndexPath(cwd);
 	const BATCH_SIZE = 100; // OpenAI推奨バッチサイズ
 
 	try {
-		// ディレクトリを作成
-		if (!existsSync(indexPath)) {
-			mkdirSync(indexPath, { recursive: true });
-		}
-
 		let entityCount = 0;
 		const fileMtimes: Record<string, number> = {};
 		let apiCalls = 0;
+		const newEmbeddings = new Map<string, LocAgentEntityEmbedding>();
 
 		// ファイルごとのmtimeを記録
 		const filesWithEntities = new Set<string>();
@@ -489,9 +423,6 @@ export async function buildLocAgentSemanticIndex(
 				// ファイルアクセスエラーは無視
 			}
 		}
-
-		// インデックスファイルを初期化
-		initIndexFile(cwd);
 
 		// エンティティを収集
 		const nodesToEmbed: { node: LocAgentNode; text: string }[] = [];
@@ -517,11 +448,11 @@ export async function buildLocAgentSemanticIndex(
 					for (let j = 0; j < batch.length; j++) {
 						const embedding = embeddings[j];
 						if (embedding) {
-							appendEmbedding({
+							newEmbeddings.set(batch[j].node.id, {
 								entityId: batch[j].node.id,
 								text: batch[j].text.substring(0, 1000),
 								embedding,
-							}, cwd);
+							});
 							entityCount++;
 						}
 					}
@@ -533,11 +464,11 @@ export async function buildLocAgentSemanticIndex(
 							const embedding = await getEmbedding(item.text);
 							apiCalls++;
 							if (embedding) {
-								appendEmbedding({
+								newEmbeddings.set(item.node.id, {
 									entityId: item.node.id,
 									text: item.text.substring(0, 1000),
 									embedding,
-								}, cwd);
+								});
 								entityCount++;
 							}
 						} catch (e) {
@@ -553,11 +484,11 @@ export async function buildLocAgentSemanticIndex(
 					const embedding = await getEmbedding(text);
 					apiCalls++;
 
-					appendEmbedding({
+					newEmbeddings.set(node.id, {
 						entityId: node.id,
 						text: text.substring(0, 1000),
 						embedding,
-					}, cwd);
+					});
 
 					entityCount++;
 				} catch (error) {
@@ -574,7 +505,7 @@ export async function buildLocAgentSemanticIndex(
 			fileMtimes,
 		};
 
-		saveMetadata(metadata, cwd);
+		saveSemanticIndex(cwd, newEmbeddings, metadata);
 
 		return {
 			success: true,
@@ -622,19 +553,11 @@ export async function searchLocAgentEntities(
 	score: number;
 }>> {
 	const { nodeTypes, limit = 10, threshold = 0.5 } = options;
-	const indexPath = getLocAgentIndexPath(cwd);
-	const indexFilePath = join(indexPath, SEMANTIC_INDEX_FILE);
-
-	if (!existsSync(indexFilePath)) {
-		return [];
-	}
+	const { embeddings: embeddingMap } = loadSemanticIndex(cwd);
+	const embeddings = Array.from(embeddingMap.values());
+	if (embeddings.length === 0) return [];
 
 	try {
-		// インデックスを読み込み
-		const content = readFileSync(indexFilePath, "utf-8");
-		const lines = content.trim().split("\n");
-		const embeddings: LocAgentEntityEmbedding[] = lines.map((line) => JSON.parse(line));
-
 		// クエリの埋め込みを生成
 		const queryEmbedding = await getEmbedding(query);
 
@@ -676,9 +599,8 @@ export async function searchLocAgentEntities(
  * @returns 存在する場合はtrue
  */
 export function hasSemanticIndex(cwd: string): boolean {
-	const indexPath = getLocAgentIndexPath(cwd);
-	const indexFilePath = join(indexPath, SEMANTIC_INDEX_FILE);
-	return existsSync(indexFilePath);
+	const { embeddings } = loadSemanticIndex(cwd);
+	return embeddings.size > 0;
 }
 
 /**
@@ -693,25 +615,16 @@ export function getSemanticIndexStats(cwd: string): {
 	indexedAt?: number;
 	model?: string;
 } {
-	const indexPath = getLocAgentIndexPath(cwd);
-	const metaFilePath = join(indexPath, SEMANTIC_META_FILE);
-
-	if (!existsSync(metaFilePath)) {
+	const { metadata } = loadSemanticIndex(cwd);
+	if (!metadata) {
 		return { exists: false };
 	}
-
-	try {
-		const content = readFileSync(metaFilePath, "utf-8");
-		const metadata = JSON.parse(content) as SemanticIndexMetadata;
-		return {
-			exists: true,
-			entityCount: metadata.entityCount,
-			indexedAt: metadata.indexedAt,
-			model: metadata.model,
-		};
-	} catch {
-		return { exists: false };
-	}
+	return {
+		exists: true,
+		entityCount: metadata.entityCount,
+		indexedAt: metadata.indexedAt,
+		model: metadata.model,
+	};
 }
 
 // ============================================================================

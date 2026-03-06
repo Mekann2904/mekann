@@ -367,7 +367,7 @@ async function executeCode(code: string): Promise<ToolExecutionResult> {
 async function handleCreateTool(
   input: CreateToolInput
 ): Promise<string> {
-  const operationId = logger.startOperation("direct" as OperationType, `create_tool:${input.name}`, {
+  logger.startOperation("direct" as OperationType, `create_tool:${input.name}`, {
     task: `動的ツール生成: ${input.name}`,
     params: { name: input.name, description: input.description },
   });
@@ -555,7 +555,7 @@ async function handleRunDynamicTool(
   input: RunDynamicToolInput
 ): Promise<string> {
   const targetName = input.tool_id || input.tool_name || "unknown";
-  const operationId = logger.startOperation("direct" as OperationType, `run_dynamic_tool:${targetName}`, {
+  logger.startOperation("direct" as OperationType, `run_dynamic_tool:${targetName}`, {
     task: `動的ツール実行: ${targetName}`,
     params: { tool_id: input.tool_id, tool_name: input.tool_name, parameters: input.parameters },
   });
@@ -746,7 +746,7 @@ async function handleDeleteDynamicTool(
   input: DeleteDynamicToolInput
 ): Promise<string> {
   const targetName = input.tool_id || input.tool_name || "unknown";
-  const operationId = logger.startOperation("direct" as OperationType, `delete_dynamic_tool:${targetName}`, {
+  logger.startOperation("direct" as OperationType, `delete_dynamic_tool:${targetName}`, {
     task: `動的ツール削除: ${targetName}`,
     params: { tool_id: input.tool_id, tool_name: input.tool_name, confirm: input.confirm },
   });

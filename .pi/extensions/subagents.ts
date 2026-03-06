@@ -30,7 +30,7 @@
 // Related: .pi/extensions/agent-teams.ts, .pi/extensions/question.ts, README.md
 
 import { readdirSync, unlinkSync, writeFileSync, existsSync, readFileSync, mkdirSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { Type } from "@mariozechner/pi-ai";
 import {
@@ -121,6 +121,10 @@ import {
   extractPidFromInstanceId,
 } from "./ul-workflow.js";
 import {
+	loadTaskStorage as loadSharedTaskStorage,
+	saveTaskStorage as saveSharedTaskStorage,
+} from "../lib/storage/task-plan-store.js";
+import {
 	isPlanModeActive,
 	PLAN_MODE_WARNING,
 } from "../lib/plan-mode-shared";
@@ -164,6 +168,30 @@ import {
   type AdaptOrchOptions 
 } from "../lib/dag/adaptorch-adapter.js";
 
+function extractDagTaskOutput(result: unknown): string {
+  if (!result || typeof result !== "object") {
+    return "";
+  }
+
+  const maybeOutput = (result as { output?: unknown }).output;
+  return typeof maybeOutput === "string" ? maybeOutput.trim() : "";
+}
+
+function persistDagArtifactFile(
+  artifactPath: string | undefined,
+  artifactContent: string,
+): void {
+  const normalizedPath = typeof artifactPath === "string" ? artifactPath.trim() : "";
+  const normalizedContent = artifactContent.trim();
+
+  if (!normalizedPath || !normalizedContent) {
+    return;
+  }
+
+  mkdirSync(dirname(normalizedPath), { recursive: true });
+  writeFileSync(normalizedPath, `${normalizedContent}\n`, "utf-8");
+}
+
 import { SchemaValidationError } from "../lib/core/errors.js";
 import {
   generateSessionId,
@@ -180,9 +208,6 @@ const logger = getLogger();
 // ============================================================================
 // Task Storage Helpers (for auto in_progress status)
 // ============================================================================
-
-const TASK_DIR = ".pi/tasks";
-const TASK_STORAGE_FILE = join(process.cwd(), TASK_DIR, "storage.json");
 
 type TaskStatus = "todo" | "in_progress" | "completed" | "cancelled" | "failed";
 
@@ -204,15 +229,7 @@ interface TaskStorage {
  * @summary タスクストレージ読込
  */
 function loadTaskStorage(): TaskStorage {
-	if (!existsSync(TASK_STORAGE_FILE)) {
-		return { tasks: [] };
-	}
-	try {
-		const content = readFileSync(TASK_STORAGE_FILE, "utf-8");
-		return JSON.parse(content);
-	} catch {
-		return { tasks: [] };
-	}
+	return loadSharedTaskStorage<TaskStorage>();
 }
 
 /**
@@ -221,12 +238,7 @@ function loadTaskStorage(): TaskStorage {
  */
 function saveTaskStorage(storage: TaskStorage): void {
 	try {
-		// Ensure directory exists
-		const dir = join(process.cwd(), TASK_DIR);
-		if (!existsSync(dir)) {
-			mkdirSync(dir, { recursive: true });
-		}
-		writeFileSync(TASK_STORAGE_FILE, JSON.stringify(storage, null, 2), "utf-8");
+		saveSharedTaskStorage(storage);
 	} catch (error) {
 		console.error(`[subagents] Failed to save task storage:`, error);
 	}
@@ -907,6 +919,10 @@ export function resetForTesting(): void {
 }
 
 export default function registerSubagentExtension(pi: ExtensionAPI) {
+  if (process.env.PI_CHILD_DISABLE_ORCHESTRATION === "1") {
+    return;
+  }
+
   if (isInitialized) return;
   isInitialized = true;
 
@@ -1039,371 +1055,98 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
     },
   });
 
-  // サブエージェント実行
-  pi.registerTool({
-    name: "subagent_run",
-    label: "Subagent Run",
-    description:
-      "Run one focused delegated task with one subagent. Use this as a single-specialist fallback when subagent_run_parallel with 2+ specialists is not needed.",
-    parameters: Type.Object({
-      task: Type.String({ description: "Task for the delegated subagent" }),
-      subagentId: Type.Optional(Type.String({ description: "Target subagent id. Defaults to current subagent" })),
-      extraContext: Type.Optional(Type.String({ description: "Optional supplemental context" })),
-      timeoutMs: Type.Optional(Type.Number({ description: "Idle timeout in ms - resets on each LLM output (default: 300000). Use 0 to disable." })),
-      retry: createRetrySchema(),
-      ulTaskId: Type.Optional(Type.String({ description: "UL workflow task ID. If provided, checks ownership before execution." })),
-    }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      // ULワークフロー所有権チェック
-      if (params.ulTaskId) {
-        const ownership = checkUlWorkflowOwnership(params.ulTaskId);
-        if (!ownership.owned) {
-          return {
-            content: [{ type: "text" as const, text: `subagent_run error: UL workflow ${params.ulTaskId} is owned by another instance (${ownership.ownerInstanceId}).` }],
-            details: {
-              error: "ul_workflow_not_owned",
-              ulTaskId: params.ulTaskId,
-              ownerInstanceId: ownership.ownerInstanceId,
-              ownerPid: ownership.ownerPid,
-              outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
-              retryRecommended: false,
-            },
-          };
-        }
-      }
+  /**
+   * Parallel実行モードのヘルパー関数
+   * subagent_run_dagから呼び出される
+   */
+  async function executeParallelMode(args: {
+    activeAgents: SubagentDefinition[];
+    cachedByAgentId: Map<string, { runRecord: SubagentRunRecord; output: string; cacheAgeMs: number }>;
+    params: {
+      task: string;
+      extraContext?: string;
+      timeoutMs?: number;
+      ulTaskId?: string;
+    };
+    storage: SubagentStorage;
+    snapshot: ReturnType<typeof getRuntimeSnapshot>;
+    timeoutMs: number;
+    retryOverrides?: Partial<{ maxRetries: number; initialDelayMs: number; maxDelayMs: number; multiplier: number; jitter: "full" | "partial" | "none" }>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ctx: any;
+    _signal?: AbortSignal;
+  }): Promise<{ content: { type: "text"; text: string }[]; details: Record<string, unknown> }> {
+    const { activeAgents, cachedByAgentId, params, storage, snapshot, timeoutMs, retryOverrides, ctx, _signal } = args;
 
-      // タスクを in_progress に設定
-      if (params.ulTaskId) {
-        setTaskInProgress(params.ulTaskId);
-      }
-
-      const storage = loadStorage(ctx.cwd);
-      const agent = pickAgent(storage, params.subagentId);
-      const retryOverrides = toRetryOverrides(params.retry);
-
-      if (!agent) {
-        return {
-          content: [{ type: "text" as const, text: "subagent_run error: no available subagent." }],
-          details: {
-            error: "missing_subagent",
-            outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
-            retryRecommended: false,
-          },
-        };
-      }
-
-      if (agent.enabled !== "enabled") {
-        return {
-          content: [{ type: "text" as const, text: `subagent_run error: subagent is disabled (${agent.id}).` }],
-          details: {
-            error: "subagent_disabled",
-            subagentId: agent.id,
-            outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
-            retryRecommended: false,
-          },
-        };
-      }
-
-      const reusable = findReusableSubagentRun({
-        storage,
-        agentId: agent.id,
-        task: params.task,
-        extraContext: params.extraContext,
-      });
-      if (reusable) {
-        const ageSec = Math.floor(reusable.cacheAgeMs / 1000);
-        return {
-          content: [{
-            type: "text" as const,
-            text: `[cache-hit] Reused subagent result (${reusable.runRecord.runId}, age=${ageSec}s)\n\n${reusable.output}`,
-          }],
-          details: {
-            runRecord: reusable.runRecord,
-            subagentId: agent.id,
-            cached: true,
-            cacheAgeMs: reusable.cacheAgeMs,
-            cacheWindowMs: RESULT_REUSE_WINDOW_MS,
-            outcomeCode: "SUCCESS" as RunOutcomeCode,
-            retryRecommended: false,
-          },
-        };
-      }
-
-      // Phase 3: Semantic cache lookup for similar tasks
-      if (SEMANTIC_CACHE_ENABLED) {
-        try {
-          const semanticMatch = await semanticCache.findSimilar(
-            params.task,
-            agent.id,
-            {}, // Empty file hashes for now - can be enhanced with actual file tracking
-          );
-          if (semanticMatch) {
-            const ageSec = Math.floor((Date.now() - semanticMatch.timestamp) / 1000);
-            const similarity = semanticMatch.embedding ? 
-              await (async () => {
-                const queryEmbedding = await getEmbedding(params.task);
-                const cached = semanticMatch.embedding!;
-                let dot = 0, normA = 0, normB = 0;
-                for (let i = 0; i < queryEmbedding.length; i++) {
-                  dot += queryEmbedding[i]! * (cached[i] || 0);
-                  normA += queryEmbedding[i]! * queryEmbedding[i]!;
-                  normB += (cached[i] || 0) * (cached[i] || 0);
-                }
-                return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-              })() : 0;
-            console.log(`[semantic-cache] Hit for task "${params.task.slice(0, 50)}..." similarity=${(similarity * 100).toFixed(1)}% age=${ageSec}s`);
-            return {
-              content: [{
-                type: "text" as const,
-                text: `[semantic-cache-hit] Similar task result (similarity=${(similarity * 100).toFixed(1)}%, age=${ageSec}s)\n\n${JSON.stringify(semanticMatch.result)}`,
-              }],
-              details: {
-                subagentId: agent.id,
-                cached: true,
-                semanticCache: true,
-                similarity,
-                cacheAgeMs: Date.now() - semanticMatch.timestamp,
-                outcomeCode: "SUCCESS" as RunOutcomeCode,
-                retryRecommended: false,
-              },
-            };
-          }
-        } catch (error) {
-          // Semantic cache lookup failed - log and continue with normal execution
-          console.debug(`[semantic-cache] Lookup failed: ${error}`);
-        }
-      }
-
-      // Synchronous execution (matching agent_team_run behavior)
-      logger.startOperation("subagent_run" as OperationType, agent.id, {
+    logger.startOperation(
+      "subagent_run" as OperationType,
+      activeAgents.map((agent) => agent.id).join(","),
+      {
         task: params.task,
         params: {
-          subagentId: agent.id,
+          subagentIds: activeAgents.map((agent) => agent.id),
           extraContext: params.extraContext,
           timeoutMs: params.timeoutMs,
         },
+      },
+    );
+
+    const executableAgents = activeAgents.filter((agent) => !cachedByAgentId.has(agent.id));
+    const cachedResults: { runRecord: SubagentRunRecord; output: string; prompt: string }[] = activeAgents
+      .filter((agent) => cachedByAgentId.has(agent.id))
+      .map((agent) => {
+        const reusable = cachedByAgentId.get(agent.id)!;
+        return {
+          runRecord: reusable.runRecord,
+          output: reusable.output,
+          prompt: "[cache-hit]",
+        };
       });
 
-      let capacityReservation: RuntimeCapacityReservationLease | undefined;
-      let stopReservationHeartbeat: (() => void) | undefined;
-      let liveMonitor: SubagentLiveMonitorController | undefined;
-      // Create session ID before try for catch access
-      let sessionId = generateSessionId();
-      try {
-        const queueSnapshot = getRuntimeSnapshot();
-        const dispatchPermit = await acquireRuntimeDispatchPermit({
-          toolName: "subagent_run",
-          candidate: {
-            additionalRequests: 1,
-            additionalLlm: 1,
-          },
-          tenantKey: agent.id,
-          source: "scheduled",
-          estimatedDurationMs: 45_000,
-          estimatedRounds: 1,
-          maxWaitMs: queueSnapshot.limits.capacityWaitMs,
-          pollIntervalMs: queueSnapshot.limits.capacityPollMs,
-          signal: _signal,
-        });
-        if (!dispatchPermit.allowed || !dispatchPermit.lease) {
-          const errorMessage = buildRuntimeLimitError("subagent_run", dispatchPermit.reasons, {
-            waitedMs: dispatchPermit.waitedMs,
-            timedOut: dispatchPermit.timedOut,
-          });
-          logger.endOperation({
-            status: "failure",
-            tokensUsed: 0,
-            outputLength: 0,
-            childOperations: 0,
-            toolCalls: 0,
-            error: {
-              type: "capacity_error",
-              message: errorMessage,
-              stack: "",
-            },
-          });
-          const capacityOutcome: RunOutcomeSignal = dispatchPermit.aborted
-            ? { outcomeCode: "CANCELLED", retryRecommended: false }
-            : dispatchPermit.timedOut
-              ? { outcomeCode: "TIMEOUT", retryRecommended: true }
-              : { outcomeCode: "RETRYABLE_FAILURE", retryRecommended: true };
-          return {
-            content: [{ type: "text" as const, text: errorMessage }],
-            details: {
-              error: dispatchPermit.aborted ? "runtime_dispatch_aborted" : "runtime_dispatch_blocked",
-              reasons: dispatchPermit.reasons,
-              waitedMs: dispatchPermit.waitedMs,
-              timedOut: dispatchPermit.timedOut,
-              aborted: dispatchPermit.aborted,
-              outcomeCode: capacityOutcome.outcomeCode,
-              retryRecommended: capacityOutcome.retryRecommended,
-            },
-          };
-        }
-        capacityReservation = dispatchPermit.lease;
-        stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
+    let capacityReservation: RuntimeCapacityReservationLease | undefined;
+    let stopReservationHeartbeat: (() => void) | undefined;
+    let liveMonitor: SubagentLiveMonitorController | undefined;
 
-        const timeoutMs = resolveEffectiveTimeoutMs(
-          params.timeoutMs,
-          ctx.model?.id,
-          DEFAULT_AGENT_TIMEOUT_MS,
-        );
+    try {
+      const configuredParallelLimit = toConcurrencyLimit(
+        snapshot.limits.maxParallelSubagentsPerRun,
+        1,
+      );
+      const baselineParallelism = Math.max(
+        1,
+        Math.min(
+          configuredParallelLimit,
+          Math.max(1, executableAgents.length),
+          Math.max(1, snapshot.limits.maxTotalActiveLlm),
+          resolveProviderConcurrencyCap(
+            executableAgents,
+            ctx.model?.provider,
+            ctx.model?.id,
+          ),
+        ),
+      );
+      const effectiveParallelism = adaptivePenalty.applyLimit(baselineParallelism);
 
-        const costEstimate = getCostEstimator().estimate(
-          "subagent_run",
-          ctx.model?.provider,
-          ctx.model?.id,
-          params.task,
-        );
-        debugCostEstimation("subagent_run", {
-          agent: agent.id,
-          estimated_ms: costEstimate.estimatedDurationMs,
-          estimated_tokens: costEstimate.estimatedTokens,
-          confidence: costEstimate.confidence.toFixed(2),
-          method: costEstimate.method,
-        });
+      const dispatchPermit = await acquireRuntimeDispatchPermit({
+        toolName: "subagent_run_dag",
+        candidate: {
+          additionalRequests: 1,
+          additionalLlm: Math.min(effectiveParallelism, snapshot.limits.maxParallelSubagentsPerRun),
+        },
+        tenantKey: executableAgents.map((entry) => entry.id).join(","),
+        source: "scheduled",
+        estimatedDurationMs: 60_000,
+        estimatedRounds: Math.max(1, executableAgents.length),
+        maxWaitMs: snapshot.limits.capacityWaitMs,
+        pollIntervalMs: snapshot.limits.capacityPollMs,
+        signal: _signal,
+      });
 
-        liveMonitor = createSubagentLiveMonitor(ctx, {
-          title: `Subagent Run: ${agent.id}`,
-          items: [{ id: agent.id, name: agent.name }],
-        });
-
-        // Create runtime session for tracking
-        const runtimeSession: RuntimeSession = {
-          id: sessionId,
-          type: "subagent",
-          agentId: agent.id,
-          taskId: params.ulTaskId,  // UL workflow task ID for Web UI tracking
-          taskTitle: params.task.slice(0, 50),
-          taskDescription: params.task,
-          status: "starting",
-          startedAt: Date.now(),
-        };
-        addSession(runtimeSession);
-
-        runtimeState.activeRunRequests += 1;
-        notifyRuntimeCapacityChanged();
-        refreshRuntimeStatus(ctx);
-        capacityReservation.consume();
-
-        const result = await runSubagentTask({
-          agent,
-          task: params.task,
-          extraContext: params.extraContext,
-          timeoutMs,
-          cwd: ctx.cwd,
-          retryOverrides,
-          modelProvider: ctx.model?.provider,
-          modelId: ctx.model?.id,
-          onStart: () => {
-            liveMonitor?.markStarted(agent.id);
-            runtimeState.activeAgents += 1;
-            notifyRuntimeCapacityChanged();
-            refreshRuntimeStatus(ctx);
-            // Update session status to running
-            updateSession(sessionId, { status: "running" });
-          },
-          onEnd: () => {
-            runtimeState.activeAgents = Math.max(0, runtimeState.activeAgents - 1);
-            notifyRuntimeCapacityChanged();
-            refreshRuntimeStatus(ctx);
-          },
-          onTextDelta: (delta) => {
-            liveMonitor?.appendChunk(agent.id, "stdout", delta);
-          },
-          onStderrChunk: (chunk) => {
-            liveMonitor?.appendChunk(agent.id, "stderr", chunk);
-          },
-        });
-
-        // Update session with final status
-        updateSession(sessionId, {
-          status: result.runRecord.status === "failed" ? "failed" : "completed",
-          completedAt: Date.now(),
-          message: result.runRecord.summary || result.runRecord.error,
-        });
-
-        liveMonitor?.markFinished(
-          agent.id,
-          result.runRecord.status,
-          result.runRecord.summary,
-          result.runRecord.error,
-        );
-
-        storage.runs.push(result.runRecord);
-        await saveStorageWithPatterns(ctx.cwd, storage);
-        pi.appendEntry("subagent-run", result.runRecord);
-
-        if (result.runRecord.status === "failed") {
-          const pressureError = classifyPressureError(result.runRecord.error || "");
-          if (pressureError !== "other" && pressureError !== "cancelled") {
-            adaptivePenalty.raise(pressureError);
-          }
-          const errorMessage = result.runRecord.error || "subagent run failed";
-          logger.endOperation({
-            status: "failure",
-            tokensUsed: 0,
-            outputLength: result.output?.length ?? 0,
-            outputFile: result.runRecord.outputFile,
-            childOperations: 0,
-            toolCalls: 0,
-            error: {
-              type: "subagent_error",
-              message: errorMessage,
-              stack: "",
-            },
-          });
-          return {
-            content: [{ type: "text" as const, text: errorMessage }],
-            details: {
-              runRecord: result.runRecord,
-              subagentId: agent.id,
-              outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
-              retryRecommended: false,
-            },
-          };
-        } else {
-          adaptivePenalty.lower();
-          
-          // Phase 3: Add result to semantic cache
-          if (SEMANTIC_CACHE_ENABLED && result.output) {
-            try {
-              await semanticCache.add(
-                params.task,
-                agent.id,
-                { output: result.output, summary: result.runRecord.summary },
-                {}, // Empty file hashes for now
-              );
-            } catch {
-              // Cache add failed - non-critical
-            }
-          }
-          
-          logger.endOperation({
-            status: "success",
-            tokensUsed: 0,
-            outputLength: result.output?.length ?? 0,
-            outputFile: result.runRecord.outputFile,
-            childOperations: 0,
-            toolCalls: 0,
-          });
-          return {
-            content: [{ type: "text" as const, text: result.output || result.runRecord.summary }],
-            details: {
-              runRecord: result.runRecord,
-              subagentId: agent.id,
-              outcomeCode: "SUCCESS" as RunOutcomeCode,
-              retryRecommended: false,
-            },
-          };
-        }
-      } catch (error) {
-        const errorMessage = toErrorMessage(error);
-        // Update session to failed status
-        updateSession(sessionId, {
-          status: "failed",
-          completedAt: Date.now(),
-          message: errorMessage,
+      if (!dispatchPermit.allowed || !dispatchPermit.lease) {
+        adaptivePenalty.raise("capacity");
+        const errorText = buildRuntimeLimitError("subagent_run_dag", dispatchPermit.reasons, {
+          waitedMs: dispatchPermit.waitedMs,
+          timedOut: dispatchPermit.timedOut,
         });
         logger.endOperation({
           status: "failure",
@@ -1411,671 +1154,284 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           outputLength: 0,
           childOperations: 0,
           toolCalls: 0,
-          error: {
-            type: "subagent_error",
-            message: errorMessage,
-            stack: "",
-          },
+          error: { type: "capacity_error", message: errorText, stack: "" },
         });
+        const capacityOutcome: RunOutcomeSignal = dispatchPermit.aborted
+          ? { outcomeCode: "CANCELLED", retryRecommended: false }
+          : dispatchPermit.timedOut
+            ? { outcomeCode: "TIMEOUT", retryRecommended: true }
+            : { outcomeCode: "RETRYABLE_FAILURE", retryRecommended: true };
         return {
-          content: [{ type: "text" as const, text: errorMessage }],
+          content: [{ type: "text" as const, text: errorText }],
           details: {
-            error: "execution_error",
-            subagentId: agent.id,
-            outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
-            retryRecommended: false,
+            error: dispatchPermit.aborted ? "runtime_dispatch_aborted" : "runtime_dispatch_blocked",
+            reasons: dispatchPermit.reasons,
+            waitedMs: dispatchPermit.waitedMs,
+            timedOut: dispatchPermit.timedOut,
+            aborted: dispatchPermit.aborted,
+            outcomeCode: capacityOutcome.outcomeCode,
+            retryRecommended: capacityOutcome.retryRecommended,
           },
         };
-      } finally {
-        runtimeState.activeRunRequests = Math.max(0, runtimeState.activeRunRequests - 1);
-        notifyRuntimeCapacityChanged();
-        refreshRuntimeStatus(ctx);
-        liveMonitor?.close();
-        await liveMonitor?.wait();
-        stopReservationHeartbeat?.();
-        capacityReservation?.release();
-        refreshRuntimeStatus(ctx);
       }
-    },
-  });
 
-  // サブエージェント並列実行
-  pi.registerTool({
-    name: "subagent_run_parallel",
-    label: "Subagent Run Parallel",
-    description:
-      "Run selected subagents in parallel. Strongly recommended when using subagents; pass explicit subagentIds with 2+ specialists for meaningful fan-out.",
-    parameters: Type.Object({
-      task: Type.String({ description: "Task delegated to all selected subagents" }),
-      subagentIds: Type.Optional(Type.Array(Type.String({ description: "Subagent id list" }))),
-      extraContext: Type.Optional(Type.String({ description: "Optional shared context" })),
-      timeoutMs: Type.Optional(Type.Number({ description: "Idle timeout in ms - resets on each LLM output (default: 300000). Use 0 to disable." })),
-      retry: createRetrySchema(),
-      ulTaskId: Type.Optional(Type.String({ description: "UL workflow task ID. If provided, checks ownership before execution." })),
-    }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      // ULワークフロー所有権チェック
-      if (params.ulTaskId) {
-        const ownership = checkUlWorkflowOwnership(params.ulTaskId);
-        if (!ownership.owned) {
-          return {
-            content: [{ type: "text" as const, text: `subagent_run_parallel error: UL workflow ${params.ulTaskId} is owned by another instance (${ownership.ownerInstanceId}).` }],
-            details: {
-              error: "ul_workflow_not_owned",
-              ulTaskId: params.ulTaskId,
-              ownerInstanceId: ownership.ownerInstanceId,
-              ownerPid: ownership.ownerPid,
-              outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
-              retryRecommended: false,
+      capacityReservation = dispatchPermit.lease;
+      stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
+
+      const costEstimate = getCostEstimator().estimate(
+        "subagent_run",
+        ctx.model?.provider,
+        ctx.model?.id,
+        params.task,
+      );
+      debugCostEstimation("subagent_run_dag", {
+        estimated_ms: costEstimate.estimatedDurationMs,
+        estimated_tokens: costEstimate.estimatedTokens,
+        agents: activeAgents.length,
+        applied_parallelism: Math.max(1, effectiveParallelism),
+        confidence: costEstimate.confidence.toFixed(2),
+        method: costEstimate.method,
+      });
+
+      liveMonitor = createSubagentLiveMonitor(ctx, {
+        title: `Subagent Run DAG (Parallel Mode)`,
+        items: activeAgents.map((agent) => ({ id: agent.id, name: agent.name })),
+      });
+
+      runtimeState.activeRunRequests += 1;
+      notifyRuntimeCapacityChanged();
+      refreshRuntimeStatus(ctx);
+      capacityReservation.consume();
+
+      // DynTaskMAS: エージェントの重みを計算（専門性ベース）
+      const agentWeights = new Map<string, number>();
+      for (const agent of executableAgents) {
+        const weight = getAgentSpecializationWeight(agent.id);
+        agentWeights.set(agent.id, weight);
+      }
+
+      // Create runtime session for parallel execution tracking
+      const parallelSessionId = generateSessionId();
+      const parallelSession: RuntimeSession = {
+        id: parallelSessionId,
+        type: "subagent",
+        agentId: activeAgents.map((a) => a.id).join(","),
+        taskId: params.ulTaskId,
+        taskTitle: params.task.slice(0, 50),
+        taskDescription: params.task,
+        status: "starting",
+        startedAt: Date.now(),
+        teammateCount: activeAgents.length,
+      };
+      addSession(parallelSession);
+
+      // Promise.allSettledパターンで部分失敗を許容
+      type SubagentTaskResult = { runRecord: SubagentRunRecord; output: string; prompt: string };
+      type SettledTaskResult = { status: 'fulfilled' | 'rejected'; value?: SubagentTaskResult; reason?: unknown; index: number };
+
+      const settledResults = await runWithConcurrencyLimit(
+        executableAgents,
+        Math.max(1, effectiveParallelism),
+        async (agent): Promise<SubagentTaskResult> => {
+          const result = await runSubagentTask({
+            agent,
+            task: params.task,
+            extraContext: params.extraContext,
+            timeoutMs,
+            cwd: ctx.cwd,
+            retryOverrides,
+            modelProvider: ctx.model?.provider,
+            modelId: ctx.model?.id,
+            onStart: () => {
+              liveMonitor?.markStarted(agent.id);
+              runtimeState.activeAgents += 1;
+              notifyRuntimeCapacityChanged();
+              refreshRuntimeStatus(ctx);
             },
-          };
+            onEnd: () => {
+              runtimeState.activeAgents = Math.max(0, runtimeState.activeAgents - 1);
+              notifyRuntimeCapacityChanged();
+              refreshRuntimeStatus(ctx);
+            },
+            onTextDelta: (delta) => {
+              liveMonitor?.appendChunk(agent.id, "stdout", delta);
+            },
+            onStderrChunk: (chunk) => {
+              liveMonitor?.appendChunk(agent.id, "stderr", chunk);
+            },
+          });
+          liveMonitor?.markFinished(
+            result.runRecord.agentId,
+            result.runRecord.status,
+            result.runRecord.summary,
+            result.runRecord.error,
+          );
+          return result;
+        },
+        {
+          signal: _signal,
+          usePriorityScheduling: true,
+          itemWeights: agentWeights,
+          getItemId: (agent: SubagentDefinition) => agent.id,
+          settleMode: 'allSettled',
+          abortOnError: false,
+        },
+      ) as unknown as SettledTaskResult[];
+
+      // allSettled結果を分類
+      const succeededResults = settledResults
+        .filter((r) => r.status === 'fulfilled' && r.value)
+        .map((r) => r.value as SubagentTaskResult);
+
+      const rejectedResults = settledResults.filter((r) => r.status === 'rejected');
+
+      // 結果を統合（成功したもののみ）
+      const results = [...cachedResults, ...succeededResults];
+
+      // 拒否されたタスクをエージェントIDと共に記録
+      const rejectedDetails = rejectedResults.map((r) => {
+        const agent = executableAgents[r.index];
+        return {
+          agentId: agent?.id ?? `unknown-${r.index}`,
+          error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+        };
+      });
+
+      for (const result of results) {
+        storage.runs.push(result.runRecord);
+        pi.appendEntry("subagent-run", result.runRecord);
+      }
+      await saveStorageWithPatterns(ctx.cwd, storage);
+
+      // Include rejected results in failure count
+      const failed = results.filter((result) => result.runRecord.status === "failed");
+      const totalFailed = failed.length + rejectedResults.length;
+
+      // Update session with final status
+      updateSession(parallelSessionId, {
+        status: totalFailed === 0 ? "completed" : (totalFailed < activeAgents.length ? "completed" : "failed"),
+        completedAt: Date.now(),
+        message: `${results.length - failed.length}/${activeAgents.length} agents completed`,
+      });
+
+      if (totalFailed > 0) {
+        const pressureSignals = failed
+          .map((result) => classifyPressureError(result.runRecord.error || ""))
+          .filter((signal): signal is "rate_limit" | "capacity" => signal !== "other");
+        if (pressureSignals.length > 0) {
+          const hasRateLimit = pressureSignals.includes("rate_limit");
+          adaptivePenalty.raise(hasRateLimit ? "rate_limit" : "capacity");
         }
-      }
-
-      // タスクを in_progress に設定
-      if (params.ulTaskId) {
-        setTaskInProgress(params.ulTaskId);
-      }
-
-      const storage = loadStorage(ctx.cwd);
-      const retryOverrides = toRetryOverrides(params.retry);
-      const requestedIds = Array.isArray(params.subagentIds)
-        ? Array.from(new Set(params.subagentIds.map((id) => String(id).trim()).filter(Boolean)))
-        : [];
-
-      const selectedAgents =
-        requestedIds.length > 0
-          ? requestedIds
-              .map((id) => storage.agents.find((agent) => agent.id === id))
-              .filter((agent): agent is SubagentDefinition => Boolean(agent))
-          : pickDefaultParallelAgents(storage);
-
-      const missingIds =
-        requestedIds.length > 0
-          ? requestedIds.filter((id) => !storage.agents.some((agent) => agent.id === id))
-          : [];
-
-      if (missingIds.length > 0) {
-        return {
-          content: [{ type: "text" as const, text: `subagent_run_parallel error: unknown ids: ${missingIds.join(", ")}` }],
-          details: {
-            error: "unknown_ids",
-            missingIds,
-            outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
-            retryRecommended: false,
-          },
-        };
-      }
-
-      const activeAgents = selectedAgents.filter((agent) => agent.enabled === "enabled");
-      if (activeAgents.length === 0) {
-        return {
-          content: [{ type: "text" as const, text: "subagent_run_parallel error: no enabled subagents selected." }],
-          details: {
-            error: "no_enabled_subagents",
-            outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
-            retryRecommended: false,
-          },
-        };
-      }
-
-      const cachedByAgentId = new Map<string, { runRecord: SubagentRunRecord; output: string; cacheAgeMs: number }>();
-      for (const agent of activeAgents) {
-        const reusable = findReusableSubagentRun({
-          storage,
-          agentId: agent.id,
-          task: params.task,
-          extraContext: params.extraContext,
+        logger.endOperation({
+          status: "partial",
+          tokensUsed: 0,
+          outputLength: 0,
+          childOperations: results.length,
+          toolCalls: 0,
         });
-        if (reusable) {
-          cachedByAgentId.set(agent.id, reusable);
-        }
-      }
-
-      if (cachedByAgentId.size === activeAgents.length) {
-        const aggregatedOutput = activeAgents
-          .map((agent) => {
-            const reusable = cachedByAgentId.get(agent.id)!;
-            const ageSec = Math.floor(reusable.cacheAgeMs / 1000);
-            return `## ${agent.id}\nStatus: SUCCESS (cache-hit, age=${ageSec}s)\n${reusable.output || reusable.runRecord.summary || ""}`;
+        // Build aggregated output
+        const aggregatedOutput = results
+          .map((result) => {
+            const status = result.runRecord.status === "completed" ? "SUCCESS" : "FAILED";
+            return `## ${result.runRecord.agentId}\nStatus: ${status}\n${result.output || result.runRecord.summary || ""}`;
           })
           .join("\n\n");
-
+        const failedMemberIds = [...failed.map((result) => result.runRecord.agentId), ...rejectedDetails.map(r => r.agentId)];
         return {
           content: [{ type: "text" as const, text: aggregatedOutput }],
           details: {
-            results: activeAgents.map((agent) => {
-              const reusable = cachedByAgentId.get(agent.id)!;
-              return {
-                agentId: agent.id,
-                status: reusable.runRecord.status,
-                summary: reusable.runRecord.summary,
-                output: reusable.output,
-                cached: true,
-                cacheAgeMs: reusable.cacheAgeMs,
-              };
-            }),
-            successCount: activeAgents.length,
+            results: results.map((result) => ({
+              agentId: result.runRecord.agentId,
+              status: result.runRecord.status,
+              summary: result.runRecord.summary,
+              error: result.runRecord.error,
+            })),
+            rejectedResults: rejectedDetails,
+            failedMemberIds,
+            successCount: results.length - failed.length,
             totalCount: activeAgents.length,
-            cachedCount: activeAgents.length,
+            outcomeCode: totalFailed === activeAgents.length ? "NONRETRYABLE_FAILURE" as RunOutcomeCode : "PARTIAL_SUCCESS" as RunOutcomeCode,
+            retryRecommended: totalFailed > 0,
+          },
+        };
+      } else {
+        adaptivePenalty.lower();
+        logger.endOperation({
+          status: "success",
+          tokensUsed: 0,
+          outputLength: 0,
+          childOperations: results.length,
+          toolCalls: 0,
+        });
+        // Build aggregated output
+        const aggregatedOutput = results
+          .map((result) => {
+            return `## ${result.runRecord.agentId}\nStatus: SUCCESS\n${result.output || result.runRecord.summary || ""}`;
+          })
+          .join("\n\n");
+        return {
+          content: [{ type: "text" as const, text: aggregatedOutput }],
+          details: {
+            results: results.map((result) => ({
+              agentId: result.runRecord.agentId,
+              status: result.runRecord.status,
+              summary: result.runRecord.summary,
+              output: result.output,
+            })),
+            successCount: results.length,
+            totalCount: results.length,
             outcomeCode: "SUCCESS" as RunOutcomeCode,
             retryRecommended: false,
           },
         };
       }
-
-      // Synchronous execution (matching agent_team_run behavior)
-      logger.startOperation(
-        "subagent_run_parallel" as OperationType,
-        activeAgents.map((agent) => agent.id).join(","),
-        {
-          task: params.task,
-          params: {
-            subagentIds: activeAgents.map((agent) => agent.id),
-            extraContext: params.extraContext,
-            timeoutMs: params.timeoutMs,
-          },
+    } catch (error) {
+      const errorMessage = toErrorMessage(error);
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: 0,
+        childOperations: 0,
+        toolCalls: 0,
+        error: {
+          type: "subagent_parallel_error",
+          message: errorMessage,
+          stack: "",
         },
-      );
+      });
+      return {
+        content: [{ type: "text" as const, text: errorMessage }],
+        details: {
+          error: "execution_error",
+          outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+          retryRecommended: false,
+        },
+      };
+    } finally {
+      runtimeState.activeRunRequests = Math.max(0, runtimeState.activeRunRequests - 1);
+      notifyRuntimeCapacityChanged();
+      refreshRuntimeStatus(ctx);
+      liveMonitor?.close();
+      await liveMonitor?.wait();
+      stopReservationHeartbeat?.();
+      capacityReservation?.release();
+      refreshRuntimeStatus(ctx);
+    }
+  }
 
-      const executableAgents = activeAgents.filter((agent) => !cachedByAgentId.has(agent.id));
-      const cachedResults: { runRecord: SubagentRunRecord; output: string; prompt: string }[] = activeAgents
-        .filter((agent) => cachedByAgentId.has(agent.id))
-        .map((agent) => {
-          const reusable = cachedByAgentId.get(agent.id)!;
-          return {
-            runRecord: reusable.runRecord,
-            output: reusable.output,
-            prompt: "[cache-hit]",
-          };
-        });
-
-      let capacityReservation: RuntimeCapacityReservationLease | undefined;
-      let stopReservationHeartbeat: (() => void) | undefined;
-      let liveMonitor: SubagentLiveMonitorController | undefined;
-      try {
-        const snapshot = getRuntimeSnapshot();
-        const configuredParallelLimit = toConcurrencyLimit(
-          snapshot.limits.maxParallelSubagentsPerRun,
-          1,
-        );
-        const baselineParallelism = Math.max(
-          1,
-          Math.min(
-            configuredParallelLimit,
-            Math.max(1, executableAgents.length),
-            Math.max(1, snapshot.limits.maxTotalActiveLlm),
-            resolveProviderConcurrencyCap(
-              executableAgents,
-              ctx.model?.provider,
-              ctx.model?.id,
-            ),
-          ),
-        );
-        const effectiveParallelism = adaptivePenalty.applyLimit(baselineParallelism);
-        const dispatchPermit = await acquireRuntimeDispatchPermit({
-          toolName: "subagent_run_parallel",
-          candidate: {
-            additionalRequests: 1,
-            additionalLlm: Math.min(effectiveParallelism, snapshot.limits.maxParallelSubagentsPerRun),
-          },
-          tenantKey: executableAgents.map((entry) => entry.id).join(","),
-          source: "scheduled",
-          estimatedDurationMs: 60_000,
-          estimatedRounds: Math.max(1, executableAgents.length),
-          maxWaitMs: snapshot.limits.capacityWaitMs,
-          pollIntervalMs: snapshot.limits.capacityPollMs,
-          signal: _signal,
-        });
-        if (!dispatchPermit.allowed || !dispatchPermit.lease) {
-          adaptivePenalty.raise("capacity");
-          const errorText = buildRuntimeLimitError("subagent_run_parallel", dispatchPermit.reasons, {
-            waitedMs: dispatchPermit.waitedMs,
-            timedOut: dispatchPermit.timedOut,
-          });
-          logger.endOperation({
-            status: "failure",
-            tokensUsed: 0,
-            outputLength: 0,
-            childOperations: 0,
-            toolCalls: 0,
-            error: {
-              type: "capacity_error",
-              message: errorText,
-              stack: "",
-            },
-          });
-          const capacityOutcome: RunOutcomeSignal = dispatchPermit.aborted
-            ? { outcomeCode: "CANCELLED", retryRecommended: false }
-            : dispatchPermit.timedOut
-              ? { outcomeCode: "TIMEOUT", retryRecommended: true }
-              : { outcomeCode: "RETRYABLE_FAILURE", retryRecommended: true };
-          return {
-            content: [{ type: "text" as const, text: errorText }],
-            details: {
-              error: dispatchPermit.aborted ? "runtime_dispatch_aborted" : "runtime_dispatch_blocked",
-              reasons: dispatchPermit.reasons,
-              waitedMs: dispatchPermit.waitedMs,
-              timedOut: dispatchPermit.timedOut,
-              aborted: dispatchPermit.aborted,
-              outcomeCode: capacityOutcome.outcomeCode,
-              retryRecommended: capacityOutcome.retryRecommended,
-            },
-          };
-        }
-
-        capacityReservation = dispatchPermit.lease;
-        stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
-
-        const timeoutMs = resolveEffectiveTimeoutMs(
-          params.timeoutMs,
-          ctx.model?.id,
-          DEFAULT_AGENT_TIMEOUT_MS,
-        );
-
-        const costEstimate = getCostEstimator().estimate(
-          "subagent_run_parallel",
-          ctx.model?.provider,
-          ctx.model?.id,
-          params.task,
-        );
-        debugCostEstimation("subagent_run_parallel", {
-          estimated_ms: costEstimate.estimatedDurationMs,
-          estimated_tokens: costEstimate.estimatedTokens,
-          agents: activeAgents.length,
-          applied_parallelism: Math.max(1, effectiveParallelism),
-          confidence: costEstimate.confidence.toFixed(2),
-          method: costEstimate.method,
-        });
-
-        liveMonitor = createSubagentLiveMonitor(ctx, {
-          title: `Subagent Run Parallel`,
-          items: activeAgents.map((agent) => ({ id: agent.id, name: agent.name })),
-        });
-
-        // Dependency inference for parallel execution - AUTO DAG FALLBACK
-        const inferredDeps = inferSubagentDependencies(activeAgents, params.task);
-        if (inferredDeps.hasDependencies) {
-          // Auto-switch to DAG execution instead of returning recommendation
-          console.log("[subagent_run_parallel] Auto-switching to DAG execution due to detected dependencies");
-          console.log(`[subagent_run_parallel] Detected: ${inferredDeps.description}`);
-
-          try {
-            // Generate DAG plan from task
-            const dagPlan = await generateDagFromTask(params.task, {
-              maxDepth: 4,
-              maxTasks: activeAgents.length + 2,
-            });
-
-            console.log(`[subagent_run_parallel] Generated DAG: ${dagPlan.id} (${dagPlan.tasks.length} tasks)`);
-
-            // Create live monitor items from DAG tasks
-            const monitorItems = dagPlan.tasks.map((t) => ({
-              id: t.id,
-              name: t.description.slice(0, 50),
-            }));
-
-            liveMonitor = createSubagentLiveMonitor(ctx, {
-              title: `Subagent Run Parallel (DAG): ${dagPlan.id}`,
-              items: monitorItems,
-            });
-
-            // Create runtime session for DAG auto-execution tracking
-            const autoDagSessionId = generateSessionId();
-            const autoDagSession: RuntimeSession = {
-              id: autoDagSessionId,
-              type: "subagent",
-              agentId: "dag-auto-executor",
-              taskId: params.ulTaskId,  // UL workflow task ID for Web UI tracking
-              taskTitle: params.task.slice(0, 50),
-              taskDescription: params.task,
-              status: "starting",
-              startedAt: Date.now(),
-              teammateCount: dagPlan.tasks.length,
-            };
-            addSession(autoDagSession);
-
-            // Execute DAG
-            const dagResult = await executeDag<{ runRecord: SubagentRunRecord; output: string; prompt: string }>(
-              dagPlan,
-              async (task, _context) => {
-                const agentId = task.assignedAgent ?? storage.currentAgentId;
-                const agent = agentId
-                  ? storage.agents.find((a) => a.id === agentId)
-                  : pickAgent(storage);
-
-                if (!agent) {
-                  throw new Error(`No subagent found for task ${task.id}`);
-                }
-
-                liveMonitor?.markStarted(task.id);
-
-                const result = await runSubagentTask({
-                  agent,
-                  task: buildSubagentPrompt(task, _context),
-                  extraContext: params.extraContext,
-                  timeoutMs,
-                  cwd: ctx.cwd,
-                  modelProvider: ctx.model?.provider,
-                  modelId: ctx.model?.id,
-                  onTextDelta: (delta) => {
-                    liveMonitor?.appendChunk(task.id, "stdout", delta);
-                  },
-                });
-
-                liveMonitor?.markFinished(
-                  task.id,
-                  result.runRecord.status,
-                  result.runRecord.summary,
-                  result.runRecord.error,
-                );
-
-                return result;
-              },
-              {
-                maxConcurrency: Math.max(1, effectiveParallelism),
-                abortOnFirstError: false,
-              },
-            );
-
-            // Collect results from taskResults map
-            const allResults = Array.from(dagResult.taskResults.values());
-            for (const taskResult of allResults) {
-              if (taskResult.output && typeof taskResult.output === "object" && "runRecord" in taskResult.output) {
-                const output = taskResult.output as { runRecord: SubagentRunRecord };
-                storage.runs.push(output.runRecord);
-                pi.appendEntry("subagent-run", output.runRecord);
-              }
-            }
-            await saveStorageWithPatterns(ctx.cwd, storage);
-
-            const failedTasks = allResults.filter((r) => r.status === "failed");
-
-            // Update session with final status
-            updateSession(autoDagSessionId, {
-              status: failedTasks.length === 0 ? "completed" : "failed",
-              completedAt: Date.now(),
-              progress: 100,
-              message: `${allResults.length - failedTasks.length}/${dagPlan.tasks.length} tasks completed`,
-            });
-
-            const dagSummary = `[DAG Auto-Execution] ${dagPlan.tasks.length} tasks, ${allResults.length - failedTasks.length} succeeded, ${failedTasks.length} failed`;
-
-            logger.endOperation({
-              status: failedTasks.length > 0 ? "partial" : "success",
-              tokensUsed: 0,
-              outputLength: dagSummary.length,
-              childOperations: allResults.length,
-              toolCalls: 0,
-            });
-
-            return {
-              content: [{
-                type: "text" as const,
-                text: `${dagSummary}
-
-Auto-switched to DAG execution due to detected dependencies:
-${inferredDeps.description}
-
-${allResults.map((r) => {
-  const status = r.status === "completed" ? "DONE" : "FAIL";
-  const output = r.output as { runRecord?: SubagentRunRecord } | undefined;
-  return `[${status}] ${r.taskId}: ${output?.runRecord?.summary?.slice(0, 100) || r.error || "completed"}`;
-}).join("\n")}
-`,
-              }],
-              details: {
-                dagPlanId: dagPlan.id,
-                taskCount: dagPlan.tasks.length,
-                succeededCount: allResults.length - failedTasks.length,
-                failedCount: failedTasks.length,
-                inferredDependencies: inferredDeps.dependencies,
-                autoSwitched: true,
-                outcomeCode: failedTasks.length > 0 ? "PARTIAL_SUCCESS" as RunOutcomeCode : "SUCCESS" as RunOutcomeCode,
-              },
-            };
-          } catch (dagError) {
-            // DAG generation/execution failed - fallback to parallel execution
-            console.log(`[subagent_run_parallel] DAG execution failed, falling back to parallel: ${dagError}`);
-            // Continue to normal parallel execution below
-          }
-        }
-
-        runtimeState.activeRunRequests += 1;
-        notifyRuntimeCapacityChanged();
-        refreshRuntimeStatus(ctx);
-        capacityReservation.consume();
-
-        // DynTaskMAS: エージェントの重みを計算（専門性ベース）
-        // 重みが大きい（専門性が高い）エージェントを優先的に実行
-        const agentWeights = new Map<string, number>();
-        for (const agent of executableAgents) {
-          const weight = getAgentSpecializationWeight(agent.id);
-          agentWeights.set(agent.id, weight);
-        }
-
-        // Create runtime session for parallel execution tracking
-        const parallelSessionId = generateSessionId();
-        const parallelSession: RuntimeSession = {
-          id: parallelSessionId,
-          type: "subagent",
-          agentId: activeAgents.map((a) => a.id).join(","),  // Multiple agent IDs
-          taskId: params.ulTaskId,  // UL workflow task ID for Web UI tracking
-          taskTitle: params.task.slice(0, 50),
-          taskDescription: params.task,
-          status: "starting",
-          startedAt: Date.now(),
-          teammateCount: activeAgents.length,
-        };
-        addSession(parallelSession);
-
-        // Promise.allSettledパターンで部分失敗を許容
-        type SubagentTaskResult = { runRecord: SubagentRunRecord; output: string; prompt: string };
-        type SettledTaskResult = { status: 'fulfilled' | 'rejected'; value?: SubagentTaskResult; reason?: unknown; index: number };
-
-        const settledResults = await runWithConcurrencyLimit(
-          executableAgents,
-          Math.max(1, effectiveParallelism),
-          async (agent): Promise<SubagentTaskResult> => {
-            const result = await runSubagentTask({
-              agent,
-              task: params.task,
-              extraContext: params.extraContext,
-              timeoutMs,
-              cwd: ctx.cwd,
-              retryOverrides,
-              modelProvider: ctx.model?.provider,
-              modelId: ctx.model?.id,
-              onStart: () => {
-                liveMonitor?.markStarted(agent.id);
-                runtimeState.activeAgents += 1;
-                notifyRuntimeCapacityChanged();
-                refreshRuntimeStatus(ctx);
-              },
-              onEnd: () => {
-                runtimeState.activeAgents = Math.max(0, runtimeState.activeAgents - 1);
-                notifyRuntimeCapacityChanged();
-                refreshRuntimeStatus(ctx);
-              },
-              onTextDelta: (delta) => {
-                liveMonitor?.appendChunk(agent.id, "stdout", delta);
-              },
-              onStderrChunk: (chunk) => {
-                liveMonitor?.appendChunk(agent.id, "stderr", chunk);
-              },
-            });
-            liveMonitor?.markFinished(
-              result.runRecord.agentId,
-              result.runRecord.status,
-              result.runRecord.summary,
-              result.runRecord.error,
-            );
-            return result;
-          },
-          {
-            signal: _signal,
-            usePriorityScheduling: true,
-            itemWeights: agentWeights,
-            getItemId: (agent: SubagentDefinition) => agent.id,
-            settleMode: 'allSettled',
-            abortOnError: false,
-          },
-        ) as unknown as SettledTaskResult[];
-
-        // allSettled結果を分類
-        const succeededResults = settledResults
-          .filter((r) => r.status === 'fulfilled' && r.value)
-          .map((r) => r.value as SubagentTaskResult);
-
-        const rejectedResults = settledResults.filter((r) => r.status === 'rejected');
-
-        // 結果を統合（成功したもののみ）
-        const results = [...cachedResults, ...succeededResults];
-
-        // 拒否されたタスクをエージェントIDと共に記録
-        const rejectedDetails = rejectedResults.map((r) => {
-          const agent = executableAgents[r.index];
-          return {
-            agentId: agent?.id ?? `unknown-${r.index}`,
-            error: r.reason instanceof Error ? r.reason.message : String(r.reason),
-          };
-        });
-
-        for (const result of results) {
-          storage.runs.push(result.runRecord);
-          pi.appendEntry("subagent-run", result.runRecord);
-        }
-        await saveStorageWithPatterns(ctx.cwd, storage);
-
-        // Include rejected results in failure count
-        const failed = results.filter((result) => result.runRecord.status === "failed");
-        const totalFailed = failed.length + rejectedResults.length;
-
-        // Update session with final status
-        updateSession(parallelSessionId, {
-          status: totalFailed === 0 ? "completed" : (totalFailed < activeAgents.length ? "completed" : "failed"),
-          completedAt: Date.now(),
-          message: `${results.length - failed.length}/${activeAgents.length} agents completed`,
-        });
-
-        if (totalFailed > 0) {
-          const pressureSignals = failed
-            .map((result) => classifyPressureError(result.runRecord.error || ""))
-            .filter((signal): signal is "rate_limit" | "capacity" => signal !== "other");
-          if (pressureSignals.length > 0) {
-            const hasRateLimit = pressureSignals.includes("rate_limit");
-            adaptivePenalty.raise(hasRateLimit ? "rate_limit" : "capacity");
-          }
-          const errorMessage = [
-            ...failed.map((result) => `${result.runRecord.agentId}:${result.runRecord.error}`),
-            ...rejectedDetails.map((r) => `${r.agentId}:${r.error}`),
-          ].join(" | ");
-          logger.endOperation({
-            status: "partial",
-            tokensUsed: 0,
-            outputLength: 0,
-            childOperations: results.length,
-            toolCalls: 0,
-          });
-          // Build aggregated output similar to agent-teams
-          const aggregatedOutput = results
-            .map((result) => {
-              const status = result.runRecord.status === "completed" ? "SUCCESS" : "FAILED";
-              return `## ${result.runRecord.agentId}\nStatus: ${status}\n${result.output || result.runRecord.summary || ""}`;
-            })
-            .join("\n\n");
-          const failedMemberIds = [...failed.map((result) => result.runRecord.agentId), ...rejectedDetails.map(r => r.agentId)];
-          return {
-            content: [{ type: "text" as const, text: aggregatedOutput }],
-            details: {
-              results: results.map((result) => ({
-                agentId: result.runRecord.agentId,
-                status: result.runRecord.status,
-                summary: result.runRecord.summary,
-                error: result.runRecord.error,
-              })),
-              rejectedResults: rejectedDetails,
-              failedMemberIds,
-              successCount: results.length - failed.length,
-              totalCount: activeAgents.length,
-              outcomeCode: totalFailed === activeAgents.length ? "NONRETRYABLE_FAILURE" as RunOutcomeCode : "PARTIAL_SUCCESS" as RunOutcomeCode,
-              retryRecommended: totalFailed > 0,
-            },
-          };
-        } else {
-          adaptivePenalty.lower();
-          logger.endOperation({
-            status: "success",
-            tokensUsed: 0,
-            outputLength: 0,
-            childOperations: results.length,
-            toolCalls: 0,
-          });
-          // Build aggregated output
-          const aggregatedOutput = results
-            .map((result) => {
-              return `## ${result.runRecord.agentId}\nStatus: SUCCESS\n${result.output || result.runRecord.summary || ""}`;
-            })
-            .join("\n\n");
-          return {
-            content: [{ type: "text" as const, text: aggregatedOutput }],
-            details: {
-              results: results.map((result) => ({
-                agentId: result.runRecord.agentId,
-                status: result.runRecord.status,
-                summary: result.runRecord.summary,
-                output: result.output,
-              })),
-              successCount: results.length,
-              totalCount: results.length,
-              outcomeCode: "SUCCESS" as RunOutcomeCode,
-              retryRecommended: false,
-            },
-          };
-        }
-      } catch (error) {
-        const errorMessage = toErrorMessage(error);
-        logger.endOperation({
-          status: "failure",
-          tokensUsed: 0,
-          outputLength: 0,
-          childOperations: 0,
-          toolCalls: 0,
-          error: {
-            type: "subagent_parallel_error",
-            message: errorMessage,
-            stack: "",
-          },
-        });
-        return {
-          content: [{ type: "text" as const, text: errorMessage }],
-          details: {
-            error: "execution_error",
-            outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
-            retryRecommended: false,
-          },
-        };
-      } finally {
-        runtimeState.activeRunRequests = Math.max(0, runtimeState.activeRunRequests - 1);
-        notifyRuntimeCapacityChanged();
-        refreshRuntimeStatus(ctx);
-        liveMonitor?.close();
-        await liveMonitor?.wait();
-        stopReservationHeartbeat?.();
-        capacityReservation?.release();
-        refreshRuntimeStatus(ctx);
-      }
-    },
-  });
-
-  // DAG-based subagent execution
+  // 統合サブエージェント実行（parallel + DAG）
   pi.registerTool({
     name: "subagent_run_dag",
     label: "Subagent Run DAG",
     description:
-      "Run tasks with dependency-aware parallel execution. Decomposes a task into a DAG of subtasks and executes them in parallel where dependencies allow. Plan auto-generated when omitted.",
+      "Unified subagent execution tool. Supports three modes: (1) Parallel: specify subagentIds for multi-agent parallel execution, (2) DAG: specify plan for dependency-aware execution, (3) Auto: omit both for automatic DAG generation from task.",
     parameters: Type.Object({
-      task: Type.String({ description: "Task to decompose and execute" }),
+      task: Type.String({ description: "Task to execute (used in all modes)" }),
+      // Parallel mode parameters
+      subagentIds: Type.Optional(Type.Array(Type.String({ description: "Subagent IDs for parallel execution mode. When specified, runs selected agents in parallel." }))),
+      extraContext: Type.Optional(Type.String({ description: "Optional shared context for all subagents (parallel mode)" })),
+      retry: createRetrySchema(),
+      // DAG mode parameters
       plan: Type.Optional(
         Type.Object({
           id: Type.String(),
@@ -2093,18 +1449,21 @@ ${allResults.map((r) => {
         }),
       ),
       autoGenerate: Type.Optional(Type.Boolean({
-        description: "Auto-generate DAG when plan omitted (default: true)"
+        description: "Auto-generate DAG when plan and subagentIds omitted (default: true)"
       })),
+      // Common parameters
       maxConcurrency: Type.Optional(Type.Number({ description: "Maximum parallel tasks (default: 3)" })),
       abortOnFirstError: Type.Optional(Type.Boolean({ description: "Stop on first task failure (default: false)" })),
       timeoutMs: Type.Optional(Type.Number({ description: "Per-task timeout in ms (default: 300000)" })),
       ulTaskId: Type.Optional(Type.String({ description: "UL workflow task ID. If provided, checks ownership before execution." })),
+      artifactPath: Type.Optional(Type.String({ description: "Optional file path to persist the final DAG artifact." })),
+      artifactTaskId: Type.Optional(Type.String({ description: "Preferred task ID whose output should be written to artifactPath." })),
       // AdaptOrch拡張
-      enableAdaptOrch: Type.Optional(Type.Boolean({ 
-        description: "Enable AdaptOrch topology-aware orchestration (default: false)" 
+      enableAdaptOrch: Type.Optional(Type.Boolean({
+        description: "Enable AdaptOrch topology-aware orchestration (default: false)"
       })),
-      forceTopology: Type.Optional(Type.String({ 
-        description: "Force specific topology: parallel|sequential|hierarchical|hybrid" 
+      forceTopology: Type.Optional(Type.String({
+        description: "Force specific topology: parallel|sequential|hierarchical|hybrid"
       })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -2133,17 +1492,156 @@ ${allResults.map((r) => {
 
       const storage = loadStorage(ctx.cwd);
       const snapshot = getRuntimeSnapshot();
-      // maxConcurrencyをruntime-configの制限内に収める
-      const maxConcurrency = Math.min(
-        params.maxConcurrency ?? 3,
-        snapshot.limits.maxParallelSubagentsPerRun,
-      );
-      const abortOnFirstError = params.abortOnFirstError ?? false;
       const timeoutMs = resolveEffectiveTimeoutMs(
         params.timeoutMs,
         ctx.model?.id,
         DEFAULT_AGENT_TIMEOUT_MS,
       );
+
+      // ========================================
+      // PARALLEL MODE: subagentIdsが指定された場合
+      // ========================================
+      if (params.subagentIds && params.subagentIds.length > 0) {
+        const retryOverrides = toRetryOverrides(params.retry);
+        const requestedIds = Array.from(new Set(params.subagentIds.map((id) => String(id).trim()).filter(Boolean)));
+
+        const selectedAgents = requestedIds
+          .map((id) => storage.agents.find((agent) => agent.id === id))
+          .filter((agent): agent is SubagentDefinition => Boolean(agent));
+
+        const missingIds = requestedIds.filter((id) => !storage.agents.some((agent) => agent.id === id));
+
+        if (missingIds.length > 0) {
+          return {
+            content: [{ type: "text" as const, text: `subagent_run_dag error: unknown ids: ${missingIds.join(", ")}` }],
+            details: {
+              error: "unknown_ids",
+              missingIds,
+              outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+              retryRecommended: false,
+            },
+          };
+        }
+
+        const activeAgents = selectedAgents.filter((agent) => agent.enabled === "enabled");
+        if (activeAgents.length === 0) {
+          return {
+            content: [{ type: "text" as const, text: "subagent_run_dag error: no enabled subagents selected." }],
+            details: {
+              error: "no_enabled_subagents",
+              outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+              retryRecommended: false,
+            },
+          };
+        }
+
+        // キャッシュチェック
+        const cachedByAgentId = new Map<string, { runRecord: SubagentRunRecord; output: string; cacheAgeMs: number }>();
+        for (const agent of activeAgents) {
+          const reusable = findReusableSubagentRun({
+            storage,
+            agentId: agent.id,
+            task: params.task,
+            extraContext: params.extraContext,
+          });
+          if (reusable) {
+            cachedByAgentId.set(agent.id, reusable);
+          }
+        }
+
+        // 全キャッシュヒット時は即座に返す
+        if (cachedByAgentId.size === activeAgents.length) {
+          const aggregatedOutput = activeAgents
+            .map((agent) => {
+              const reusable = cachedByAgentId.get(agent.id)!;
+              const ageSec = Math.floor(reusable.cacheAgeMs / 1000);
+              return `## ${agent.id}\nStatus: SUCCESS (cache-hit, age=${ageSec}s)\n${reusable.output || reusable.runRecord.summary || ""}`;
+            })
+            .join("\n\n");
+
+          return {
+            content: [{ type: "text" as const, text: aggregatedOutput }],
+            details: {
+              results: activeAgents.map((agent) => {
+                const reusable = cachedByAgentId.get(agent.id)!;
+                return {
+                  agentId: agent.id,
+                  status: reusable.runRecord.status,
+                  summary: reusable.runRecord.summary,
+                  output: reusable.output,
+                  cached: true,
+                  cacheAgeMs: reusable.cacheAgeMs,
+                };
+              }),
+              successCount: activeAgents.length,
+              totalCount: activeAgents.length,
+              cachedCount: activeAgents.length,
+              outcomeCode: "SUCCESS" as RunOutcomeCode,
+              retryRecommended: false,
+            },
+          };
+        }
+
+        // 依存関係推論 → 必要ならDAG実行へ自動切り替え
+        const inferredDeps = inferSubagentDependencies(activeAgents, params.task);
+        if (inferredDeps.hasDependencies) {
+          console.log("[subagent_run_dag] Parallel mode: auto-switching to DAG execution due to dependencies");
+          console.log(`[subagent_run_dag] Detected: ${inferredDeps.description}`);
+
+          try {
+            const dagPlan = await generateDagFromTask(params.task, {
+              maxDepth: 4,
+              maxTasks: activeAgents.length + 2,
+              preferredAgents: activeAgents.map((agent) => agent.id),
+            });
+
+            console.log(`[subagent_run_dag] Generated DAG: ${dagPlan.id} (${dagPlan.tasks.length} tasks)`);
+
+            // DAG実行にフォールスルー（下のDAGロジックを使用）
+            params.plan = {
+              id: dagPlan.id,
+              description: dagPlan.description,
+              tasks: dagPlan.tasks.map((t) => ({
+                id: t.id,
+                description: t.description,
+                assignedAgent: t.assignedAgent,
+                dependencies: t.dependencies,
+                priority: t.priority,
+                inputContext: t.inputContext,
+              })),
+            };
+            // DAGモードへ進む
+          } catch (dagError) {
+            console.log(`[subagent_run_dag] DAG generation failed, continuing with parallel: ${dagError}`);
+            // parallel実行を継続
+          }
+        }
+
+        // parallel実行が確定した場合（DAGに切り替えなかった場合）
+        if (!params.plan) {
+          // parallel実行ロジックを実行してreturn
+          return await executeParallelMode({
+            activeAgents,
+            cachedByAgentId,
+            params,
+            storage,
+            snapshot,
+            timeoutMs,
+            retryOverrides,
+            ctx,
+            _signal,
+          });
+        }
+      }
+
+      // ========================================
+      // DAG MODE: plan指定 または 自動生成
+      // ========================================
+      const maxConcurrency = Math.min(
+        params.maxConcurrency ?? 3,
+        snapshot.limits.maxParallelSubagentsPerRun,
+      );
+      const abortOnFirstError = params.abortOnFirstError ?? false;
 
       // Build or use provided plan
       let taskPlan: TaskPlan;
@@ -2229,7 +1727,7 @@ ${allResults.map((r) => {
         };
       }
 
-      logger.startOperation("subagent_run_dag" as OperationType, taskPlan.id, {
+      logger.startOperation("subagent_run" as OperationType, taskPlan.id, {
         task: params.task,
         params: { taskCount: taskPlan.tasks.length, maxConcurrency },
       });
@@ -2392,6 +1890,8 @@ ${allResults.map((r) => {
             maxConcurrency,
             abortOnFirstError,
             signal: _signal,
+            nodeTimeoutMs: timeoutMs,
+            overallTimeoutMs: timeoutMs > 0 ? timeoutMs * Math.max(1, taskPlan.tasks.length) : 0,
             onTaskError: (taskId, error) => {
               liveMonitor?.markFinished(taskId, "failed", error.message, error.message);
             },
@@ -2423,6 +1923,25 @@ ${allResults.map((r) => {
           })
           .join("\n\n");
 
+        const preferredArtifactTaskId = typeof params.artifactTaskId === "string"
+          ? params.artifactTaskId.trim()
+          : "";
+        const preferredArtifactOutput = preferredArtifactTaskId
+          ? extractDagTaskOutput(dagResult.taskResults.get(preferredArtifactTaskId)?.output)
+          : "";
+        const completedOutputs = Array.from(dagResult.taskResults.values())
+          .filter((result) => result.status === "completed")
+          .map((result) => extractDagTaskOutput(result.output))
+          .filter(Boolean);
+        const artifactContent = preferredArtifactOutput
+          || completedOutputs[completedOutputs.length - 1]
+          || aggregatedOutput;
+
+        persistDagArtifactFile(
+          typeof params.artifactPath === "string" ? params.artifactPath : undefined,
+          artifactContent,
+        );
+
         logger.endOperation({
           status: dagResult.overallStatus === "completed" ? "success" : dagResult.overallStatus === "partial" ? "partial" : "failure",
           tokensUsed: 0,
@@ -2442,6 +1961,8 @@ ${allResults.map((r) => {
             skippedTaskIds: dagResult.skippedTaskIds,
             successCount: completedCount,
             failureCount: failedCount,
+            artifactPath: params.artifactPath,
+            artifactTaskId: preferredArtifactTaskId || undefined,
             outcomeCode:
               dagResult.overallStatus === "completed"
                 ? ("SUCCESS" as RunOutcomeCode)

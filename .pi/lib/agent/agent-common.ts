@@ -2,9 +2,9 @@
  * @abdd.meta
  * path: .pi/lib/agent-common.ts
  * role: サブエージェントおよびチームメンバー実行のための共通定数・型定義・ユーティリティの提供
- * why: subagents.tsとagent-teams.ts間でコードを重複させず、実行プロファイルや設定を一元管理するため
- * related: .pi/lib/subagents.ts, .pi/lib/agent-teams.ts, .pi/lib/validation-utils.js
- * public_api: EntityType, EntityConfig, STABLE_RUNTIME_PROFILE, SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG, 各種定数
+ * why: subagents.ts間でコードを重複させず、実行プロファイルや設定を一元管理するため
+ * related: .pi/lib/subagents.ts, .pi/lib/validation-utils.js
+ * public_api: EntityType, EntityConfig, STABLE_RUNTIME_PROFILE, SUBAGENT_CONFIG, 各種定数
  * invariants: STABLE_RUNTIME_PROFILEがtrueの場合、ADAPTIVE_PARALLEL_MAX_PENALTYは0となる
  * side_effects: なし
  * failure_modes: なし
@@ -17,7 +17,6 @@
  * why_it_exists:
  *   - 実行時の挙動を決定する設定値を複数のファイルで重複定義することを避けるため
  *   - 本番環境での信頼性確保と開発モードでの挙動を切り替えるためのフラグ管理が必要なため
- *   - エンティティごとの設定差分を明確にし、型安全に取り扱うため
  * scope:
  *   in: validation-utils.js
  *   out: 定数、型定数、インターフェース定義
@@ -25,8 +24,8 @@
 
 /**
  * Shared agent common utilities.
- * Provides unified constants and functions for subagent and team member execution.
- * Eliminates code duplication between subagents.ts and agent-teams.ts.
+ * Provides unified constants and functions for subagent execution.
+ * Eliminates code duplication between subagents files.
  *
  * Layer: 1 (depends on Layer 0: error-utils, validation-utils, format-utils)
  */
@@ -44,7 +43,7 @@ import { toFiniteNumberWithDefault } from "../core/validation-utils.js";
  * - Uses fixed default retry/timeout parameters
  * - Prevents unpredictable fan-out behavior
  *
- * Both subagents.ts and agent-teams.ts should use this unified constant.
+ * Both subagents files should use this unified constant.
  */
 export const STABLE_RUNTIME_PROFILE = true;
 
@@ -128,16 +127,6 @@ export const SUBAGENT_CONFIG: EntityConfig = {
   label: "subagent",
   emptyOutputMessage: "subagent returned empty output",
   defaultSummaryFallback: "回答を整形しました。",
-};
-
-/**
- * Default team member configuration.
- */
-export const TEAM_MEMBER_CONFIG: EntityConfig = {
-  type: "team-member",
-  label: "team member",
-  emptyOutputMessage: "agent team member returned empty output",
-  defaultSummaryFallback: "情報を整理しました。",
 };
 
 // ============================================================================

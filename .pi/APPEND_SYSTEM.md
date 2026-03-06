@@ -1,7 +1,7 @@
 <!-- File: .pi/APPEND_SYSTEM.md -->
 <!-- Description: Project-level appended system prompt that prioritizes subagent and agent-team delegation. -->
 <!-- Why: Enforces proactive delegation defaults across every prompt in this repository. -->
-<!-- Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, README.md -->
+<!-- Related: .pi/extensions/subagents.ts, README.md -->
 
 # Quick Reference (READ FIRST)
 
@@ -11,7 +11,7 @@
 | **Task-to-Source** | `.pi/NAVIGATION.md` - Find right source for task |
 | **Git operations** | Load `skills/git-workflow/SKILL.md` FIRST |
 | **Browser/Site access** | Use `playwright_cli` tool (see Browser Automation Rule) |
-| **Delegate task** | Use `subagent_run` or `agent_team_run` |
+| **Delegate task** | Use `subagent_run` or `subagent_run_parallel` |
 | **Parallel execution** | Use `subagent_run_dag` (see DAG Execution Guide) |
 | **Code review** | Load `skills/code-review/SKILL.md` |
 | **Architecture** | Load `skills/clean-architecture/SKILL.md` |
@@ -558,25 +558,11 @@ locagent_query({
 
 エージェントの学習・最適化機能を活用し、**継続的な効率改善**を行う。
 
-### 2つのメモリシステム
+### メモリ最適化システム
 
 | システム | 場所 | 目的 | 使用タイミング |
 |---------|------|------|---------------|
-| **agent-memory** | `.pi/lib/agent/agent-memory.ts` | 探索結果のキャッシュ・再利用 | RepoAudit実行時 |
 | **AWO** | `.pi/lib/awo/` | 実行パターンの最適化・メタツール生成 | 定期的な分析時 |
-
-### agent-memory（探索キャッシュ）
-
-RepoAuditの需要駆動探索で使用されるセマンティックキャッシュ。
-
-**使用場面**:
-- 同じクエリを繰り返し実行する場合
-- 類似コードの探索を行う場合
-- RepoAuditのExplorerフェーズ
-
-**効果**:
-- 重複探索の回避
-- レスポンス時間の短縮
 
 ### AWO（Agent Workflow Optimization）
 
@@ -637,3 +623,97 @@ const stats = awo.getStats();
 | `traceCollection.retentionDays` | `30` | 保持期間（日） |
 | `extraction.threshold` | `5` | メタツール抽出閾値 |
 | `registry.autoRegister` | `false` | 自動登録（手動承認を推奨） |
+
+---
+
+# UL Mode Guideline
+
+`ul <task>` で呼び出される委任モード。調査・計画・実装を自律的に行う。
+
+## 基本原則
+
+> **エージェントにコードを書かせる前に、必ず文章化された計画をレビュー・承認する**
+
+## 単一入口
+
+```typescript
+ul_workflow_run({
+  task: string  // 必須: 実行するタスク
+})
+```
+
+**内部で自動決定:**
+- DAG構造（タスクを依存関係を持つサブタスクに分解）
+- 並列数（APIレート制限とリソースから計算）
+- 実行順序
+
+## 統一フロー（必須）
+
+```
+Research (DAG並列) → Plan → [人間確認必須] → Implement (DAG並列) → Commit
+```
+
+**常に強制:**
+- DAGベースの並列実行
+- 人間によるplan確認
+- plan承認後の実装
+
+---
+
+## フェーズ詳細
+
+### 第1段階: Research（調査）
+
+コードベースの該当部分を**徹底的に**理解する。
+
+- 複数のresearcherエージェントが並列で調査
+- 調査結果は `.pi/ul-workflow/tasks/{taskId}/research.md` に保存
+
+### 第2段階: Plan（計画策定）
+
+詳細な実装計画を `.pi/ul-workflow/tasks/{taskId}/plan.md` に作成する。
+
+- 変更内容、手順、考慮事項、Todoを明記
+- コードスニペットも含める
+
+### 第3段階: 人間確認（必須）
+
+**ここはユーザーが主導する。**
+
+1. plan.mdをエディタで開く
+2. インライン注釈（`<!-- NOTE: ... -->`）を追加
+3. `ul_workflow_annotate()` で注釈を検出・適用
+4. `ul_workflow_approve()` で承認して次へ進む
+
+ユーザーが満足するまで繰り返し。
+
+### 第4段階: Implement（実装）
+
+計画に従って機械的に実装する。
+
+- 複数のimplementerエージェントが並列で実装
+- **implement it all**: planのすべてを実行
+- **do not stop until completed**: 確認のために途中で停止しない
+
+### 第5段階: Commit（コミット）
+
+実装完了後、コミットを作成する。
+
+- **git-workflowスキル**をロードしてから実行
+- 日本語で詳細なコミットメッセージを作成
+
+---
+
+## 実行例
+
+```typescript
+// タスク実行
+ul_workflow_run({ task: "認証システムをJWTベースにリファクタリングする" })
+
+// 内部フロー:
+// 1. Research: 3つのresearcherが並列で調査（APIレート制限に基づき自動決定）
+// 2. Plan: architectが計画作成 → .pi/ul-workflow/tasks/xxx/plan.md
+// 3. 人間確認: ユーザーがplan.mdをレビュー・注釈追加・承認
+// 4. Implement: 2つのimplementerが並列で実装
+// 5. Commit: 日本語メッセージでコミット作成
+```

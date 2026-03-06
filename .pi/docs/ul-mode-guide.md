@@ -175,23 +175,30 @@ subagent_run({
 })
 ```
 
-### アクション（エージェントチーム - 並列実行）
+### アクション（DAG並列実行 - 推奨）
 
-```
-agent_team_run({
-  teamId: "core-delivery-team",
+```typescript
+subagent_run_dag({
   task: "plan.mdの以下のタスクを並列で実装してください: <タスク>",
-  sharedContext: "plan.mdの場所: .pi/ul-workflow/tasks/<taskId>/plan.md",
-  strategy: "parallel"
+  plan: {
+    id: "implementation-phase",
+    description: "実装フェーズ",
+    tasks: [
+      { id: "impl-core", description: "コア実装", assignedAgent: "implementer", dependencies: [] },
+      { id: "impl-tests", description: "テスト実装", assignedAgent: "tester", dependencies: ["impl-core"] },
+      { id: "review", description: "コードレビュー", assignedAgent: "reviewer", dependencies: ["impl-core"] }
+    ]
+  },
+  maxConcurrency: 3
 })
 ```
 
-### エージェントチームを使用する場面
+### 並列実行を使用する場面
 
 | 場面 | 推奨 |
 |------|------|
 | 単一ファイルの変更 | `subagent_run({ subagentId: "implementer" })` |
-| 複数の独立したファイル変更 | `agent_team_run_parallel` または `subagent_run_dag` |
+| 複数の独立したファイル変更 | `subagent_run_dag` または `subagent_run_parallel` |
 | 実装 + レビューを同時 | `subagent_run_dag` で依存関係を指定 |
 
 ### 実装の原則

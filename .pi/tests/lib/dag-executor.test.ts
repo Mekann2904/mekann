@@ -80,6 +80,89 @@ describe("DagExecutor - 動的依存関係更新", () => {
     executor = new DagExecutor(plan);
   });
 
+  describe("動的ノード更新", () => {
+    it("should_add_node_and_dependency_dynamically", () => {
+      executor.addNode({
+        id: "D",
+        description: "Task D",
+        dependencies: ["A"],
+        assignedAgent: "implementer",
+      });
+
+      expect(executor.hasTask("D")).toBe(true);
+      expect(executor.getTask("D")?.dependencies).toContain("A");
+      expect(executor.getStats().total).toBe(4);
+    });
+
+    it("should_remove_node_and_unblock_dependents", async () => {
+      executor.addDependency("C", "B");
+
+      const removed = executor.removeNode("B");
+
+      expect(removed).toBe(true);
+      expect(executor.hasTask("B")).toBe(false);
+      expect(executor.getTask("C")?.dependencies).not.toContain("B");
+
+      const order: string[] = [];
+      const result = await executor.execute(async (task) => {
+        order.push(task.id);
+        return `done:${task.id}`;
+      });
+
+      expect(result.overallStatus).toBe("completed");
+      expect(result.completedTaskIds).toContain("C");
+      expect(order).toContain("C");
+    });
+
+    it("should_requeue_failed_task_after_adding_prerequisite", async () => {
+      const revisionExecutor = new DagExecutor(
+        {
+          id: "self-revision-plan",
+          description: "Self revision dynamic DAG plan",
+          tasks: [
+            {
+              id: "main",
+              description: "Main task",
+              dependencies: [],
+              assignedAgent: "implementer",
+            },
+          ],
+          metadata: {
+            createdAt: Date.now(),
+            model: "test-model",
+            totalEstimatedMs: 100,
+            maxDepth: 0,
+          },
+        },
+        {
+          enableSelfRevision: true,
+          enableLocalReplanning: false,
+        },
+      );
+
+      const attempts = new Map<string, number>();
+      const executed: string[] = [];
+
+      const result = await revisionExecutor.execute(async (task) => {
+        executed.push(task.id);
+        const attempt = (attempts.get(task.id) ?? 0) + 1;
+        attempts.set(task.id, attempt);
+
+        if (task.id === "main" && attempt === 1) {
+          throw new Error("Resource not found");
+        }
+
+        return `done:${task.id}:${attempt}`;
+      });
+
+      expect(result.overallStatus).toBe("completed");
+      expect(result.completedTaskIds).toContain("main");
+      expect(result.completedTaskIds).toContain("main-prereq");
+      expect(executed).toEqual(["main", "main-prereq", "main"]);
+      expect(attempts.get("main")).toBe(2);
+    });
+  });
+
   // ========================================
   // addDependency
   // ========================================
@@ -333,6 +416,75 @@ describe("DagExecutor - 動的依存関係更新", () => {
       expect(taskC?.dependencies).toContain("A");
       expect(taskC?.dependencies).not.toContain("B");
     });
+  });
+});
+
+describe("DagExecutor - timeout controls", () => {
+  it("should_fail_node_on_hard_timeout", async () => {
+    const result = await executeDag(
+      {
+        id: "timeout-plan",
+        description: "single slow task",
+        tasks: [
+          { id: "slow", description: "Slow task", dependencies: [] },
+        ],
+        metadata: {
+          createdAt: Date.now(),
+          model: "test-model",
+          totalEstimatedMs: 1000,
+          maxDepth: 0,
+        },
+      },
+      async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return "done";
+      },
+      {
+        nodeTimeoutMs: 10,
+        enableLocalReplanning: false,
+        enableSelfRevision: false,
+      },
+    );
+
+    expect(result.failedTaskIds).toContain("slow");
+    expect(result.taskResults.get("slow")?.error?.message).toContain("hard timeout");
+  });
+
+  it("should_abort_entire_dag_on_overall_timeout", async () => {
+    const result = await executeDag(
+      {
+        id: "overall-timeout-plan",
+        description: "two slow tasks",
+        tasks: [
+          { id: "A", description: "Task A", dependencies: [] },
+          { id: "B", description: "Task B", dependencies: ["A"] },
+        ],
+        metadata: {
+          createdAt: Date.now(),
+          model: "test-model",
+          totalEstimatedMs: 1000,
+          maxDepth: 1,
+        },
+      },
+      async (_task, _context, signal) => {
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, 100);
+          signal?.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(new Error("aborted"));
+          }, { once: true });
+        });
+        return "done";
+      },
+      {
+        overallTimeoutMs: 20,
+        enableLocalReplanning: false,
+        enableSelfRevision: false,
+      },
+    );
+
+    expect(result.overallStatus).not.toBe("completed");
+    expect(result.completedTaskIds.length).toBeLessThan(2);
   });
 });
 

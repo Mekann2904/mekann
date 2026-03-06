@@ -45,9 +45,7 @@ import { Mutex } from "async-mutex";
  */
 export type CheckpointSource =
   | "subagent_run"
-  | "subagent_run_parallel"
-  | "agent_team_run"
-  | "agent_team_run_parallel";
+  | "subagent_run_parallel";
 
 /**
  * チェックポイント優先度定義
@@ -867,8 +865,6 @@ function getCheckpointStats(): CheckpointStats {
     bySource: {
       subagent_run: 0,
       subagent_run_parallel: 0,
-      agent_team_run: 0,
-      agent_team_run_parallel: 0,
     },
     byPriority: {
       critical: 0,

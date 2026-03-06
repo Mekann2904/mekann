@@ -31,32 +31,20 @@ import { Text } from "@mariozechner/pi-tui";
 import {
   type MediatorInput,
   type MediatorOutput,
-  type StructuredIntent,
-  type MediatorQuestion,
-  DEFAULT_MEDIATOR_CONFIG,
   generateSessionId,
   getCurrentTimestamp,
   structuredIntentToPrompt,
 } from "../lib/mediator-types.js";
 import {
   mediate,
-  mediateWithAnswers,
-  createMediatorSession,
-  type MediatorSession,
   type LlmCallFunction,
 } from "../lib/intent-mediator.js";
 import {
   loadConfirmedFacts,
   saveConfirmedFacts,
-  appendFact,
-  getRecentFacts,
-  loadConversationSummary,
-  appendSummarySection,
   getHistoryStats,
 } from "../lib/mediator-history.js";
-import { formatMediatorResult, isMediatorEnabled } from "../lib/mediator-integration.js";
 import { toErrorMessage } from "../lib/core/error-utils.js";
-import { toPreview } from "../lib/text-utils.js";
 
 // ============================================================================
 // 定数
@@ -441,17 +429,11 @@ function createLlmCallFromContext(ctx: MediatorContext): LlmCallFunction {
       throw new Error("No active model");
     }
 
-    const fullPrompt = [
-      systemPrompt,
-      "",
-      "---",
-      "",
-      userPrompt,
-    ].join("\n");
-
     // プレースホルダー: 実際のモデル呼び出し
     // 本来は pi-core の executeModel などを使用
-    const timeoutMs = options?.timeoutMs ?? 30000;
+    void systemPrompt;
+    void userPrompt;
+    void options;
     
     // 簡易的な応答を返す（実際の統合時には置き換える）
     console.warn("[mediator] Using placeholder LLM call - integrate with pi-core for production");

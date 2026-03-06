@@ -559,8 +559,6 @@ export function getToolCriticality(toolName: string): ToolCriticality {
   const criticalTools = [
     "write",
     "edit",
-    "agent_team_run",
-    "agent_team_run_parallel",
     "subagent_run",
     "subagent_run_parallel",
     "create_tool",

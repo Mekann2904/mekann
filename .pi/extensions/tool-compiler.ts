@@ -4,7 +4,7 @@
  * role: pi SDKとの統合・Tool Compilerツール公開
  * why: エージェントからTool Compiler機能を利用可能にし、ツール呼び出しの並列化とトークン節約を実現するため
  * related: .pi/lib/tool-fuser.ts, .pi/lib/tool-executor.ts, .pi/lib/tool-compiler-types.ts
- * public_api: compile_tools, execute_compiled, integrateWithSubagents, integrateWithTeamExecution
+ * public_api: compile_tools, execute_compiled, integrateWithSubagents, integrateWithParallelExecution
  * invariants: pi SDKツールとして登録済み、コンパイル結果は一時ストレージに保存される
  * side_effects: ツール実行、LLM呼び出し、ファイルI/O（ストレージ）
  * failure_modes: ツール登録失敗、実行エラー、ストレージ書き込みエラー
@@ -14,10 +14,9 @@
  *   - compile_tools: ツールセットを分析し、類似ツールを融合して並列実行可能な操作を生成
  *   - execute_compiled: 融合された操作を実行し、元のツールに分解して並列/順次実行
  *   - subagent_run/parallelとの統合フックを提供
- *   - agent_team_runとの統合フックを提供
  * why_it_exists:
  *   - エージェントからTool Compiler機能を透過的に利用可能にするため
- *   - 既存のsubagent/agent-teamsシステムへの統合ポイントを提供するため
+ *   - 既存のsubagentシステムへの統合ポイントを提供するため
  * scope:
  *   in: ツール定義配列、設定オプション
  *   out: pi SDKツール定義、統合フック関数
@@ -125,14 +124,14 @@ export function integrateWithSubagents(
 }
 
 /**
- * agent_team_runへの統合フック
- * チーム実行でのツール融合を行う
+ * subagent_run_parallelへの統合フック
+ * サブエージェント並列実行でのツール融合を行う
  * @param memberTools - メンバーIDとツール定義のマップ
  * @param fuserConfig - 融合設定（オプション）
  * @returns メンバーIDとコンパイル結果のマップ
- * @summary チーム実行統合フック
+ * @summary 並列実行統合フック
  */
-export function integrateWithTeamExecution(
+export function integrateWithParallelExecution(
   memberTools: Map<string, ToolCall[]>,
   fuserConfig?: Partial<FusionConfig>
 ): Map<string, CompilationResult> {

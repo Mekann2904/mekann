@@ -97,6 +97,8 @@ export interface NodeExecutionContext {
  * @param enableLocalReplanning - Local Replanningを有効にするか
  * @param maxRetriesPerNode - ノードあたりの最大再試行回数
  * @param isRecoverableError - リカバリー可能エラー判定関数
+ * @param nodeTimeoutMs - ノードごとの hard timeout（0 で無効）
+ * @param overallTimeoutMs - DAG 全体の hard timeout（0 で無効）
  */
 export interface DagExecutorOptions {
   /** 中止シグナル */
@@ -127,6 +129,10 @@ export interface DagExecutorOptions {
   maxRetriesPerNode?: number;
   /** リカバリー可能エラー判定関数 */
   isRecoverableError?: (error: Error) => boolean;
+  /** ノードごとの hard timeout（ミリ秒、0 で無効） */
+  nodeTimeoutMs?: number;
+  /** DAG 全体の hard timeout（ミリ秒、0 で無効） */
+  overallTimeoutMs?: number;
 }
 
 /**
@@ -181,7 +187,7 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
   private results: Map<string, DagTaskResult<T>>;
   private plan: TaskPlan;
   private options: Required<
-    Pick<DagExecutorOptions, "maxConcurrency" | "abortOnFirstError" | "useWeightBasedScheduling" | "enableSelfRevision" | "enableLocalReplanning" | "maxRetriesPerNode">
+    Pick<DagExecutorOptions, "maxConcurrency" | "abortOnFirstError" | "useWeightBasedScheduling" | "enableSelfRevision" | "enableLocalReplanning" | "maxRetriesPerNode" | "nodeTimeoutMs" | "overallTimeoutMs">
   > &
     DagExecutorOptions;
   private startTime: number = 0;
@@ -215,6 +221,8 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
       enableSelfRevision: true,
       enableLocalReplanning: true,
       maxRetriesPerNode: 2,
+      nodeTimeoutMs: 0,
+      overallTimeoutMs: 0,
       ...options,
     };
 
@@ -326,6 +334,15 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
   async execute(executor: TaskExecutor<T>): Promise<DagResult<T>> {
     this.startTime = Date.now();
     const { controller, cleanup } = createChildAbortController(this.options.signal);
+    let overallTimeout: NodeJS.Timeout | undefined;
+    let overallTimedOut = false;
+
+    if (this.options.overallTimeoutMs > 0) {
+      overallTimeout = setTimeout(() => {
+        overallTimedOut = true;
+        controller.abort();
+      }, this.options.overallTimeoutMs);
+    }
 
     try {
       // 初期実行可能タスクを取得
@@ -338,7 +355,23 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
         }
 
         // 実行可能タスクを並列実行
-        await this.executeBatch(readyTasks, executor, controller.signal);
+        try {
+          await this.executeBatch(readyTasks, executor, controller.signal);
+        } catch (error) {
+          if (this.shouldFinalizeAbortedExecution(error, controller.signal)) {
+            this.finalizeAbortedTasks(
+              overallTimedOut
+                ? new Error(
+                    `DAG hard timeout after ${this.options.overallTimeoutMs}ms`,
+                  )
+                : error instanceof Error
+                  ? error
+                  : new Error(String(error)),
+            );
+            break;
+          }
+          throw error;
+        }
 
         // 次のバッチを取得
         readyTasks = this.graph.getReadyTasks();
@@ -346,7 +379,47 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
 
       return this.buildResult();
     } finally {
+      if (overallTimeout) {
+        clearTimeout(overallTimeout);
+      }
       cleanup();
+    }
+  }
+
+  private shouldFinalizeAbortedExecution(
+    error: unknown,
+    signal?: AbortSignal,
+  ): boolean {
+    if (!signal?.aborted) {
+      return false;
+    }
+
+    return (
+      error instanceof Error &&
+      (error.message === "concurrency pool aborted" ||
+        error.message === "aborted" ||
+        /timeout/i.test(error.message))
+    );
+  }
+
+  private finalizeAbortedTasks(error: Error): void {
+    for (const node of this.graph.getAllTasks()) {
+      if (node.status !== "running") {
+        continue;
+      }
+
+      this.graph.markFailed(node.id, error);
+      this.results.set(node.id, {
+        taskId: node.id,
+        status: "failed",
+        error,
+        durationMs: Math.max(
+          0,
+          node.startedAt ? Date.now() - node.startedAt : 0,
+        ),
+      });
+      this.options.onTaskError?.(node.id, error);
+      this.updateTaskWeight(node.id, "failed");
     }
   }
 
@@ -509,9 +582,10 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
         });
 
         try {
-          const output = await executor(
+          const output = await this.executeTaskWithTimeout(
             item.taskNode,
             item.context,
+            executor,
             workerSignal,
           );
           const durationMs = Date.now() - startMs;
@@ -570,6 +644,41 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
       },
       concurrencyOptions,
     );
+  }
+
+  private async executeTaskWithTimeout(
+    task: TaskNode,
+    context: string,
+    executor: TaskExecutor<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    if (this.options.nodeTimeoutMs <= 0) {
+      return executor(task, context, signal);
+    }
+
+    const { controller, cleanup } = createChildAbortController(signal);
+    let timeoutHandle: NodeJS.Timeout | undefined;
+
+    try {
+      return await Promise.race([
+        executor(task, context, controller.signal),
+        new Promise<T>((_, reject) => {
+          timeoutHandle = setTimeout(() => {
+            controller.abort();
+            reject(
+              new Error(
+                `Task ${task.id} hard timeout after ${this.options.nodeTimeoutMs}ms`,
+              ),
+            );
+          }, this.options.nodeTimeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+      cleanup();
+    }
   }
 
   /**
@@ -959,6 +1068,158 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
       const weight = calculateTotalTaskWeight(taskNode, this.taskNodes, weightConfig);
       this.taskWeights.set(taskId, weight);
     }
+  }
+
+  /**
+   * タスクノードを動的に追加する
+   * @summary ノード追加
+   * @param task 追加するタスク
+   */
+  addNode(task: TaskNode): void {
+    const nextTask: TaskNode = {
+      ...task,
+      dependencies: [...task.dependencies],
+      inputContext: task.inputContext ? [...task.inputContext] : undefined,
+    };
+
+    this.graph.addTask(nextTask.id, {
+      name: nextTask.description,
+      dependencies: nextTask.dependencies,
+      priority: nextTask.priority,
+      estimatedDurationMs: nextTask.estimatedDurationMs,
+    });
+
+    this.taskNodes.set(nextTask.id, nextTask);
+    this.plan.tasks.push(nextTask);
+    this.syncPlanMetadata();
+
+    if (this.options.useWeightBasedScheduling) {
+      this.calculateAllTaskWeights();
+    }
+  }
+
+  /**
+   * タスクノードを動的に削除する
+   * @summary ノード削除
+   * @param taskId 削除するタスクID
+   * @returns 削除成功時はtrue
+   */
+  removeNode(taskId: string): boolean {
+    const removed = this.graph.removeTask(taskId);
+    if (!removed) {
+      return false;
+    }
+
+    this.taskNodes.delete(taskId);
+    this.results.delete(taskId);
+    this.nodeExecutionTraces.delete(taskId);
+    this.nodeRetryCount.delete(taskId);
+    this.taskWeights.delete(taskId);
+
+    this.plan.tasks = this.plan.tasks.filter((task) => task.id !== taskId);
+
+    for (const task of this.taskNodes.values()) {
+      task.dependencies = task.dependencies.filter((dependencyId) => dependencyId !== taskId);
+      if (task.inputContext) {
+        task.inputContext = task.inputContext.filter((contextId) => contextId !== taskId);
+      }
+    }
+
+    this.syncPlanMetadata();
+
+    if (this.options.useWeightBasedScheduling) {
+      this.calculateAllTaskWeights();
+    }
+
+    return true;
+  }
+
+  /**
+   * タスクを再キューして再実行可能にする
+   * @summary タスク再キュー
+   * @param taskId 対象タスクID
+   * @param includeDependents 下流タスクも再キューするか
+   */
+  requeueTask(taskId: string, includeDependents: boolean = false): void {
+    const task = this.taskNodes.get(taskId);
+    if (!task) {
+      throw new Error(`Task "${taskId}" does not exist`);
+    }
+
+    const targets = new Set<string>();
+    const collectTargets = (currentId: string): void => {
+      if (targets.has(currentId)) {
+        return;
+      }
+      targets.add(currentId);
+
+      if (!includeDependents) {
+        return;
+      }
+
+      const node = this.graph.getTask(currentId);
+      if (!node) {
+        return;
+      }
+
+      for (const dependentId of Array.from(node.dependents)) {
+        collectTargets(dependentId);
+      }
+    };
+
+    collectTargets(taskId);
+
+    for (const targetId of targets) {
+      this.results.delete(targetId);
+      this.nodeRetryCount.delete(targetId);
+    }
+
+    this.graph.resetTask(taskId, { includeDependents });
+  }
+
+  /**
+   * プランメタデータを現在のタスク集合に合わせる
+   * @summary メタデータ同期
+   */
+  private syncPlanMetadata(): void {
+    this.plan.metadata.totalEstimatedMs = this.plan.tasks.reduce(
+      (total, task) => total + (task.estimatedDurationMs ?? 0),
+      0,
+    );
+    this.plan.metadata.maxDepth = this.computePlanDepth();
+  }
+
+  /**
+   * 現在のプラン深さを計算する
+   * @summary 深さ計算
+   * @returns 最大深さ
+   */
+  private computePlanDepth(): number {
+    const depthCache = new Map<string, number>();
+
+    const getDepth = (taskId: string): number => {
+      const cached = depthCache.get(taskId);
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      const task = this.taskNodes.get(taskId);
+      if (!task || task.dependencies.length === 0) {
+        depthCache.set(taskId, 0);
+        return 0;
+      }
+
+      const depth =
+        Math.max(...task.dependencies.map((dependencyId) => getDepth(dependencyId))) + 1;
+      depthCache.set(taskId, depth);
+      return depth;
+    };
+
+    if (this.plan.tasks.length === 0) {
+      return 0;
+    }
+
+    return Math.max(...this.plan.tasks.map((task) => getDepth(task.id)));
   }
 }
 

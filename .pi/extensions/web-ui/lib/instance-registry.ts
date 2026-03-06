@@ -19,8 +19,14 @@
 
 import { homedir } from "os";
 import { join } from "path";
-import { mkdirSync, existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, renameSync } from "fs";
+import { mkdirSync, existsSync, writeFileSync, unlinkSync } from "fs";
 import { spawn } from "child_process";
+import {
+  deleteJsonState,
+  listJsonStateKeys,
+  readJsonState,
+  writeJsonState,
+} from "../../../lib/storage/sqlite-state-store.js";
 
 /**
  * Instance information stored in registry
@@ -64,10 +70,10 @@ export interface ThemeSettings {
  * Shared storage paths
  */
 const SHARED_DIR = join(homedir(), ".pi-shared");
-const INSTANCES_FILE = join(SHARED_DIR, "instances.json");
-const SERVER_FILE = join(SHARED_DIR, "web-ui-server.json");
-const THEME_FILE = join(SHARED_DIR, "theme.json");
 const LOCK_FILE = join(SHARED_DIR, ".lock");
+const WEBUI_INSTANCES_STATE_KEY = "webui_instances";
+const WEBUI_SERVER_STATE_KEY = "webui_server";
+const WEBUI_THEME_STATE_KEY = "webui_theme";
 
 /**
  * Ensure shared directory exists
@@ -147,37 +153,25 @@ const lock = new FileLock();
 /**
  * Read JSON file safely
  */
-function readJsonFile<T>(path: string, defaultValue: T): T {
-  try {
-    if (!existsSync(path)) {
-      return defaultValue;
-    }
-    const content = readFileSync(path, "utf-8");
-    return JSON.parse(content);
-  } catch {
-    return defaultValue;
-  }
+function readRegistryState<T>(stateKey: string, defaultValue: T): T {
+  return readJsonState<T>({
+    stateKey,
+    createDefault: () => defaultValue,
+  });
 }
 
 /**
- * Write JSON file atomically
+ * Write registry state
  */
-function writeJsonFile<T>(path: string, data: T): void {
-  ensureSharedDir();
-  const tempPath = `${path}.tmp`;
-  writeFileSync(tempPath, JSON.stringify(data, null, 2));
-  // Atomic rename
-  try {
-    renameSync(tempPath, path);
-  } catch {
-    // Fallback for cross-device links
-    writeFileSync(path, JSON.stringify(data, null, 2));
-    try {
-      unlinkSync(tempPath);
-    } catch {
-      // Ignore
-    }
-  }
+function writeRegistryState<T>(stateKey: string, data: T): void {
+  writeJsonState({
+    stateKey,
+    value: data,
+  });
+}
+
+function deleteRegistryState(stateKey: string): void {
+  deleteJsonState(stateKey);
 }
 
 /**
@@ -213,7 +207,7 @@ export class InstanceRegistry {
     }
 
     lock.withLock(() => {
-      const instances = readJsonFile<Record<number, InstanceInfo>>(INSTANCES_FILE, {});
+      const instances = readRegistryState<Record<number, InstanceInfo>>(WEBUI_INSTANCES_STATE_KEY, {});
 
       instances[this.pid] = {
         pid: this.pid,
@@ -223,7 +217,7 @@ export class InstanceRegistry {
         lastHeartbeat: Date.now(),
       };
 
-      writeJsonFile(INSTANCES_FILE, instances);
+      writeRegistryState(WEBUI_INSTANCES_STATE_KEY, instances);
     });
 
     // Start heartbeat
@@ -242,12 +236,12 @@ export class InstanceRegistry {
    */
   private updateHeartbeat(): void {
     lock.withLock(() => {
-      const instances = readJsonFile<Record<number, InstanceInfo>>(INSTANCES_FILE, {});
+      const instances = readRegistryState<Record<number, InstanceInfo>>(WEBUI_INSTANCES_STATE_KEY, {});
 
       if (instances[this.pid]) {
         instances[this.pid].lastHeartbeat = Date.now();
         instances[this.pid].model = this.model;
-        writeJsonFile(INSTANCES_FILE, instances);
+        writeRegistryState(WEBUI_INSTANCES_STATE_KEY, instances);
       }
     });
   }
@@ -262,9 +256,9 @@ export class InstanceRegistry {
     }
 
     lock.withLock(() => {
-      const instances = readJsonFile<Record<number, InstanceInfo>>(INSTANCES_FILE, {});
+      const instances = readRegistryState<Record<number, InstanceInfo>>(WEBUI_INSTANCES_STATE_KEY, {});
       delete instances[this.pid];
-      writeJsonFile(INSTANCES_FILE, instances);
+      writeRegistryState(WEBUI_INSTANCES_STATE_KEY, instances);
     });
   }
 
@@ -273,7 +267,7 @@ export class InstanceRegistry {
    */
   static getAll(): InstanceInfo[] {
     return lock.withLock(() => {
-      const instances = readJsonFile<Record<number, InstanceInfo>>(INSTANCES_FILE, {});
+      const instances = readRegistryState<Record<number, InstanceInfo>>(WEBUI_INSTANCES_STATE_KEY, {});
       const now = Date.now();
 
       const STALE_THRESHOLD_MS = 60000; // 60 seconds (12 missed heartbeats at 5s interval)
@@ -295,7 +289,7 @@ export class InstanceRegistry {
       }
 
       if (hasStale) {
-        writeJsonFile(INSTANCES_FILE, instances);
+        writeRegistryState(WEBUI_INSTANCES_STATE_KEY, instances);
       }
 
       return activeInstances;
@@ -318,7 +312,7 @@ export class ServerRegistry {
    * Check if a server is already running
    */
   static isRunning(): ServerInfo | null {
-    const serverInfo = readJsonFile<ServerInfo | null>(SERVER_FILE, null);
+    const serverInfo = readRegistryState<ServerInfo | null>(WEBUI_SERVER_STATE_KEY, null);
 
     if (!serverInfo) {
       return null;
@@ -331,11 +325,7 @@ export class ServerRegistry {
       return serverInfo;
     } catch {
       // Process not running, clean up
-      try {
-        unlinkSync(SERVER_FILE);
-      } catch {
-        // Ignore
-      }
+      deleteRegistryState(WEBUI_SERVER_STATE_KEY);
       return null;
     }
   }
@@ -349,18 +339,14 @@ export class ServerRegistry {
       port,
       startedAt: Date.now(),
     };
-    writeJsonFile(SERVER_FILE, serverInfo);
+    writeRegistryState(WEBUI_SERVER_STATE_KEY, serverInfo);
   }
 
   /**
    * Unregister server
    */
   static unregister(): void {
-    try {
-      unlinkSync(SERVER_FILE);
-    } catch {
-      // Ignore
-    }
+    deleteRegistryState(WEBUI_SERVER_STATE_KEY);
   }
 }
 
@@ -372,7 +358,7 @@ export class ThemeStorage {
    * Get theme settings
    */
   static get(): ThemeSettings {
-    return readJsonFile<ThemeSettings>(THEME_FILE, {
+    return readRegistryState<ThemeSettings>(WEBUI_THEME_STATE_KEY, {
       themeId: "blue",
       mode: "dark",
     });
@@ -382,7 +368,7 @@ export class ThemeStorage {
    * Save theme settings
    */
   static set(settings: ThemeSettings): void {
-    writeJsonFile(THEME_FILE, settings);
+    writeRegistryState(WEBUI_THEME_STATE_KEY, settings);
   }
 }
 
@@ -414,7 +400,6 @@ export interface InstanceContextHistory {
   history: ContextHistoryEntry[];
 }
 
-const CONTEXT_HISTORY_DIR = SHARED_DIR;
 const MAX_CONTEXT_HISTORY = 100;
 
 /**
@@ -439,7 +424,7 @@ export class ContextHistoryStorage {
   private maxBufferSize: number;
   private flushIntervalMs: number;
   private isChildProcess: boolean;
-  private historyFile: string;
+  private historyStateKey: string;
   private flushHandler: () => void;
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private isDisposed = false;
@@ -454,7 +439,7 @@ export class ContextHistoryStorage {
     // タイムアウトベースのフラッシュ（子プロセス向けには短めに）
     this.flushIntervalMs = options.flushIntervalMs ?? (this.isChildProcess ? 1000 : 5000);
 
-    this.historyFile = join(CONTEXT_HISTORY_DIR, `context-history-${pid}.json`);
+    this.historyStateKey = `webui_context_history:${pid}`;
 
     // プロセス終了時にバッファをフラッシュ
     this.flushHandler = () => this.flush();
@@ -553,7 +538,11 @@ export class ContextHistoryStorage {
     ensureSharedDir();
 
     // 既存の履歴を読み込み
-    const existing = readJsonFile<ContextHistoryEntry[]>(this.historyFile, []);
+    const existingWrapper = readRegistryState<{ history: ContextHistoryEntry[] }>(
+      this.historyStateKey,
+      { history: [] },
+    );
+    const existing = Array.isArray(existingWrapper.history) ? existingWrapper.history : [];
 
     // 新しいエントリを追加
     const updated = [...existing, ...this.buffer];
@@ -561,7 +550,7 @@ export class ContextHistoryStorage {
     // 最大件数に制限
     const trimmed = updated.slice(-MAX_CONTEXT_HISTORY);
 
-    writeJsonFile(this.historyFile, trimmed);
+    writeRegistryState(this.historyStateKey, { history: trimmed });
     this.buffer = [];
   }
 
@@ -585,20 +574,16 @@ export class ContextHistoryStorage {
   static getAllInstances(): Map<number, ContextHistoryEntry[]> {
     const result = new Map<number, ContextHistoryEntry[]>();
 
-    ensureSharedDir();
-
-    // ディレクトリ内の context-history-*.json ファイルを検索
-    const files = readdirSync(CONTEXT_HISTORY_DIR);
-    const historyFiles = files.filter((f: string) =>
-      f.startsWith("context-history-") && f.endsWith(".json")
-    );
-
-    for (const file of historyFiles) {
-      const match = file.match(/context-history-(\d+)\.json/);
+    const historyKeys = listJsonStateKeys("webui_context_history:");
+    for (const stateKey of historyKeys) {
+      const match = stateKey.match(/^webui_context_history:(\d+)$/);
       if (match) {
         const pid = parseInt(match[1], 10);
-        const filePath = join(CONTEXT_HISTORY_DIR, file);
-        const history = readJsonFile<ContextHistoryEntry[]>(filePath, []);
+        const historyWrapper = readJsonState<{ history: ContextHistoryEntry[] }>({
+          stateKey,
+          createDefault: () => ({ history: [] }),
+        });
+        const history = historyWrapper.history || [];
         if (history.length > 0) {
           result.set(pid, history);
         }
@@ -636,24 +621,13 @@ export class ContextHistoryStorage {
     const instances = InstanceRegistry.getAll();
     const activePids = new Set(instances.map((i) => i.pid));
 
-    ensureSharedDir();
-
-    const files = readdirSync(CONTEXT_HISTORY_DIR);
-    const historyFiles = files.filter((f: string) =>
-      f.startsWith("context-history-") && f.endsWith(".json")
-    );
-
-    for (const file of historyFiles) {
-      const match = file.match(/context-history-(\d+)\.json/);
+    const historyKeys = listJsonStateKeys("webui_context_history:");
+    for (const stateKey of historyKeys) {
+      const match = stateKey.match(/^webui_context_history:(\d+)$/);
       if (match) {
         const pid = parseInt(match[1], 10);
         if (!activePids.has(pid)) {
-          // アクティブでないインスタンスの履歴を削除
-          try {
-            unlinkSync(join(CONTEXT_HISTORY_DIR, file));
-          } catch {
-            // Ignore errors
-          }
+          deleteJsonState(stateKey);
         }
       }
     }

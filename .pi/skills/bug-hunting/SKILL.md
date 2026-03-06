@@ -5,7 +5,7 @@ license: MIT
 tags: [debugging, root-cause-analysis, cognitive-bias, causal-chain, bug-hunting]
 metadata:
   skill-version: "1.0.0"
-  created-by: self-improvement-loop
+  created-by: harness-engineering
   theoretical-foundation: "Five Whys, Ishikawa Diagram, Swiss Cheese Model, Cognitive Bias Research"
 ---
 

@@ -6,39 +6,41 @@
  * related: .pi/extensions/web-ui/server.ts, .pi/extensions/cross-instance-runtime.ts, .pi/lib/runtime-sessions.ts
  * public_api: ContextEntry, reportContextUsage, getParentPid, MAX_HISTORY, SHARED_DIR
  * invariants:
- *   - 履歴ファイルは常にMAX_HISTORY件以下を保持する
- *   - ファイル書き込みは原子的に行われる
+ *   - 履歴は常にMAX_HISTORY件以下を保持する
+ *   - 書き込みは SQLite json_state に対して行われる
  *   - 親PIDが取得できない場合はppidにフォールバックする
  * side_effects:
- *   - ~/.pi-shared/ ディレクトリの作成
- *   - context-history-{pid}.json ファイルへの書き込み
+ *   - SQLite json_state への書き込み
  * failure_modes:
- *   - ディスク容量不足による書き込み失敗
- *   - ファイルロック競合によるデータ破損（原子的書き込みで緩和）
+ *   - SQLite が利用できない場合の書き込み失敗
  * @abdd.explain
- * overview: 子プロセスから親プロセスのコンテキスト履歴ファイルへ安全に書き込む軽量モジュール
+ * overview: 子プロセスから親プロセスのコンテキスト履歴 state へ安全に書き込む軽量モジュール
  * what_it_does:
  *   - 親PIDを環境変数またはppidから特定する
- *   - コンテキスト使用量エントリを親の履歴ファイルに追記する
+ *   - コンテキスト使用量エントリを親の履歴 state に追記する
  *   - 履歴サイズがMAX_HISTORYを超えた場合、古いエントリを削除する
  * why_it_exists:
  *   - 子プロセスは--no-extensionsフラグで実行され、web-ui拡張が読み込まれない
  *   - ダッシュボードが全プロセスのコンテキスト履歴を統合表示するために必要
  * scope:
  *   in: タイムスタンプ、入出力トークン数
- *   out: ~/.pi-shared/context-history-{parentPid}.json への書き込み
+ *   out: json_state の webui_context_history:{parentPid} への書き込み
  */
 
 /**
  * Lightweight Context Reporter for Child Processes
  *
- * Writes context history to parent's file without requiring web-ui extension.
+ * Writes context history to parent's SQLite state without requiring web-ui extension.
  * Enables dashboard to show context usage from all child processes.
  */
 
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { mkdirSync, existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import {
+  deleteJsonState,
+  readJsonState,
+  writeJsonState,
+} from "./storage/sqlite-state-store.js";
 
 // ============================================================================
 // Constants
@@ -112,7 +114,7 @@ export function getParentPid(): number {
 
 /**
  * 親プロセスの履歴ファイルパスを取得
- * @summary 履歴ファイルパスを生成
+ * @summary デバッグ用の履歴パス文字列を生成
  * @param parentPid - 親プロセスのPID
  * @returns 履歴ファイルのフルパス
  * @internal
@@ -122,73 +124,20 @@ function getHistoryFilePath(parentPid: number): string {
 }
 
 /**
- * 共有ディレクトリを確保
- * @summary ディレクトリが存在しない場合は作成
+ * 親プロセスの履歴 state key を取得
+ * @summary state key を生成
  * @internal
  */
-function ensureSharedDir(): void {
-  if (!existsSync(SHARED_DIR)) {
-    mkdirSync(SHARED_DIR, { recursive: true });
-  }
+function getHistoryStateKey(parentPid: number): string {
+  return `webui_context_history:${parentPid}`;
 }
 
 /**
- * 履歴ファイルを読み込む
- * @summary JSONファイルから履歴配列を読み込む
- * @param filePath - ファイルパス
- * @returns 履歴配列（ファイルが存在しない、または読み込みエラー時は空配列）
- * @internal
- */
-function readHistoryFile(filePath: string): ContextEntry[] {
-  try {
-    if (existsSync(filePath)) {
-      const content = readFileSync(filePath, "utf-8");
-      const parsed = JSON.parse(content);
-      if (Array.isArray(parsed)) {
-        return parsed;
-      }
-    }
-  } catch {
-    // File corruption or parse error - start fresh
-  }
-  return [];
-}
-
-/**
- * 履歴をトリムして保存
- * @summary 履歴をMAX_HISTORY件に制限して保存
- * @param filePath - ファイルパス
- * @param history - 履歴配列
- * @internal
- */
-function writeHistoryFile(filePath: string, history: ContextEntry[]): void {
-  // Trim to max size
-  const trimmed = history.length > MAX_HISTORY
-    ? history.slice(-MAX_HISTORY)
-    : history;
-
-  // Write atomically using temp file pattern
-  const tempFile = `${filePath}.tmp`;
-
-  try {
-    writeFileSync(tempFile, JSON.stringify(trimmed, null, 2));
-    writeFileSync(filePath, JSON.stringify(trimmed, null, 2));
-  } finally {
-    // Clean up temp file
-    try {
-      unlinkSync(tempFile);
-    } catch {
-      // Ignore cleanup errors
-    }
-  }
-}
-
-/**
- * コンテキスト使用量を親プロセスの履歴ファイルに記録
+ * コンテキスト使用量を親プロセスの履歴 state に記録
  * @summary コンテキスト使用量を報告
  * @param entry - タイムスタンプ、入力トークン数、出力トークン数を含むエントリ
  * @description
- *   子プロセスから呼び出され、親プロセスのコンテキスト履歴ファイルに
+ *   子プロセスから呼び出され、親プロセスのコンテキスト履歴 state に
  *   使用量を追記する。親PIDは環境変数PI_PARENT_PIDまたはppidから自動取得される。
  *   履歴は最大MAX_HISTORY件まで保持され、超過分は古い順に削除される。
  *
@@ -206,13 +155,12 @@ function writeHistoryFile(filePath: string, history: ContextEntry[]): void {
  */
 export function reportContextUsage(entry: ContextEntryInput): void {
   const parentPid = getParentPid();
-  const historyFile = getHistoryFilePath(parentPid);
-
-  // Ensure directory exists
-  ensureSharedDir();
-
-  // Read existing history
-  const history = readHistoryFile(historyFile);
+  const stateKey = getHistoryStateKey(parentPid);
+  const stored = readJsonState<{ history: ContextEntry[] }>({
+    stateKey,
+    createDefault: () => ({ history: [] }),
+  });
+  const history = Array.isArray(stored.history) ? stored.history : [];
 
   // Add new entry with child PID metadata
   const fullEntry: ContextEntry = {
@@ -223,8 +171,14 @@ export function reportContextUsage(entry: ContextEntryInput): void {
 
   history.push(fullEntry);
 
-  // Write with trimming
-  writeHistoryFile(historyFile, history);
+  const trimmed = history.length > MAX_HISTORY
+    ? history.slice(-MAX_HISTORY)
+    : history;
+
+  writeJsonState({
+    stateKey,
+    value: { history: trimmed },
+  });
 }
 
 /**
@@ -238,18 +192,10 @@ export function getCurrentHistoryFilePath(): string {
 
 /**
  * 履歴をクリア（テスト用）
- * @summary 履歴ファイルを削除
+ * @summary 履歴 state を削除
  * @param parentPid - 削除対象の親PID（省略時は現在の親PID）
  */
 export function clearHistory(parentPid?: number): void {
   const pid = parentPid ?? getParentPid();
-  const filePath = getHistoryFilePath(pid);
-
-  try {
-    if (existsSync(filePath)) {
-      unlinkSync(filePath);
-    }
-  } catch {
-    // Ignore errors
-  }
+  deleteJsonState(getHistoryStateKey(pid));
 }

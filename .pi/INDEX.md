@@ -51,10 +51,8 @@ mekann/
 │   │   ├── logical-analysis/
 │   │   ├── reasoning-bonds/  <-- CoT molecular analysis
 │   │   ├── search-tools/     <-- Code search tools usage
-│   │   ├── self-improvement/ <-- 7 philosophical perspectives
 │   │   ├── self-reflection/  <-- Pre/post task self-check
 │   │   └── test-engineering/ <-- Comprehensive test strategy
-│   ├── agent-teams/          <-- Team definitions and runs
 │   ├── subagents/            <-- Subagent definitions and runs
 │   ├── memory/               <-- Semantic memory storage
 │   │   ├── confirmed-facts.json <-- Mediator confirmed facts
@@ -91,7 +89,6 @@ mekann/
 | mediator_interpret | `extensions/mediator.ts` | Intent clarification (arXiv:2602.07338v1) |
 | /mediator | `extensions/mediator.ts` | Mediator command interface |
 | subagent_* | `extensions/subagents.ts` | Sub-agent creation/execution |
-| agent_team_* | `extensions/agent-teams.ts` | Team orchestration |
 | plan_* | `extensions/plan.ts` | Plan management |
 | task_* | `extensions/task.ts` | Task management (create, list, complete) |
 | task_delegate | `extensions/task-flow.ts` | Delegate task to subagent with auto-complete |
@@ -130,7 +127,6 @@ mekann/
 | logical-analysis | `skills/logical-analysis/` | Text/document analysis |
 | reasoning-bonds | `skills/reasoning-bonds/` | CoT molecular analysis |
 | search-tools | `skills/search-tools/` | Code search tools usage |
-| self-improvement | `skills/self-improvement/` | 7 philosophical perspectives |
 | self-reflection | `skills/self-reflection/` | Pre/post task self-check |
 | test-engineering | `skills/test-engineering/` | Comprehensive test strategy |
 

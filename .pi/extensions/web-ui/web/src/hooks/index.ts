@@ -18,7 +18,6 @@ export {
 } from "./useKeyboardShortcuts";
 export type {
   ShortcutConfig,
-  ShortcutCategory,
 } from "./useKeyboardShortcuts";
 
 export { useVisualFeedback } from "./useVisualFeedback";

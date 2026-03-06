@@ -28,14 +28,16 @@
 // Why: Enables lightweight task tracking with priority, tags, and due dates
 // Related: README.md, .pi/extensions/plan.ts
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
-import { join } from "node:path";
-
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
+import {
+	ensureTaskDir as ensureSharedTaskDir,
+	loadTaskStorage as loadSharedTaskStorage,
+	saveTaskStorage as saveSharedTaskStorage,
+} from "../lib/storage/task-plan-store.js";
 
 const logger = getLogger();
 
@@ -91,42 +93,25 @@ interface TaskStorage {
 // Storage Management
 // ============================================
 
-const TASK_DIR = ".pi/tasks";
-const STORAGE_FILE = join(TASK_DIR, "storage.json");
-
 /**
  * タスクディレクトリを確保
  */
 function ensureTaskDir(): void {
-	if (!existsSync(TASK_DIR)) {
-		mkdirSync(TASK_DIR, { recursive: true });
-	}
+	ensureSharedTaskDir();
 }
 
 /**
  * ストレージからタスクを読み込み
  */
 function loadStorage(): TaskStorage {
-	ensureTaskDir();
-	if (!existsSync(STORAGE_FILE)) {
-		const empty: TaskStorage = { tasks: [] };
-		writeFileSync(STORAGE_FILE, JSON.stringify(empty, null, 2), "utf-8");
-		return empty;
-	}
-	try {
-		const content = readFileSync(STORAGE_FILE, "utf-8");
-		return JSON.parse(content);
-	} catch {
-		return { tasks: [] };
-	}
+	return loadSharedTaskStorage<TaskStorage>();
 }
 
 /**
  * ストレージにタスクを保存
  */
 function saveStorage(storage: TaskStorage): void {
-	ensureTaskDir();
-	writeFileSync(STORAGE_FILE, JSON.stringify(storage, null, 2), "utf-8");
+	saveSharedTaskStorage(storage);
 }
 
 /**

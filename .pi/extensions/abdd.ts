@@ -1435,7 +1435,7 @@ export class ASTDivergenceDetector {
 
 		// メソッド内かどうか
 		if (ts.isMethodDeclaration(node)) {
-			const methodName = (node.name as ts.Identifier).text;
+			const methodName = this.getCallableName(node.name);
 			newContext.parentFunctionName = methodName;
 			newContext.isInTest = this.isTestFunction(methodName);
 		}
@@ -1465,9 +1465,29 @@ export class ASTDivergenceDetector {
 	}
 
 	/**
+	 * 関数名として扱える文字列を安全に取り出す。
+	 * 計算プロパティや文字列リテラル名では null を返してスキップする。
+	 */
+	private getCallableName(nodeName: ts.DeclarationName | ts.PropertyName | undefined): string | null {
+		if (!nodeName) {
+			return null;
+		}
+		if (ts.isIdentifier(nodeName)) {
+			return nodeName.text;
+		}
+		if (ts.isStringLiteral(nodeName) || ts.isNumericLiteral(nodeName)) {
+			return nodeName.text;
+		}
+		return null;
+	}
+
+	/**
 	 * テスト関数かどうか判定
 	 */
-	private isTestFunction(name: string): boolean {
+	private isTestFunction(name: string | null | undefined): boolean {
+		if (typeof name !== "string" || name.length === 0) {
+			return false;
+		}
 		return TEST_FUNCTION_PATTERNS.some(
 			(pattern) =>
 				name === pattern ||

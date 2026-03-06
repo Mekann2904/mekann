@@ -1,7 +1,7 @@
 {
   "name": "@mekann/pi-config",
   "version": "0.1.0",
-  "description": "Custom pi configuration with UL Mode, DAG Execution, subagents, agent-teams, and more",
+  "description": "Custom pi configuration with UL Mode, DAG Execution, subagents, and more",
   "keywords": ["pi-package"],
   "type": "module",
   "pi": {
@@ -15,7 +15,6 @@
     "themes",
     "docs",
     "lib",
-    "agent-teams",
     "subagents",
     "adapters",
     "agent-loop",

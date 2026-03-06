@@ -3,7 +3,7 @@
  * path: .pi/lib/cost-estimator.ts
  * role: タスクスケジューリングのためのコスト（実行時間とトークン消費量）推定エンジン
  * why: 過去の実績とデフォルト値に基づき、精度の高いスケジューリング判定を可能にするため
- * related: .pi/lib/task-scheduler.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
+ * related: .pi/lib/task-scheduler.ts, .pi/extensions/subagents.ts
  * public_api: CostEstimationMethod, CostEstimation, ExecutionHistoryEntry, SourceStatistics, CostEstimatorConfig
  * invariants: confidenceは0.0から1.0の範囲, durationとtokensは正の数, successRateは0.0から1.0の範囲
  * side_effects: 履歴データの記録・更新による統計情報の変化
@@ -26,7 +26,7 @@
 // File: .pi/lib/cost-estimator.ts
 // Description: Cost estimation for task scheduling with historical learning support.
 // Why: Enables accurate scheduling decisions based on estimated duration and token consumption.
-// Related: .pi/lib/task-scheduler.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
+// Related: .pi/lib/task-scheduler.ts, .pi/extensions/subagents.ts
 
 import type { TaskSource } from "./coordination/task-scheduler.js";
 
@@ -125,14 +125,10 @@ export interface CostEstimatorConfig {
  * Based on typical execution patterns:
  * - Single subagent: 30s, 4000 tokens
  * - Parallel subagents: 45s, 8000 tokens (overhead + concurrent execution)
- * - Single team: 60s, 12000 tokens (coordination overhead)
- * - Parallel teams: 90s, 24000 tokens (maximum coordination)
  */
 const DEFAULT_ESTIMATES: Record<TaskSource, { durationMs: number; tokens: number }> = {
   subagent_run: { durationMs: 30_000, tokens: 4000 },
   subagent_run_parallel: { durationMs: 45_000, tokens: 8000 },
-  agent_team_run: { durationMs: 60_000, tokens: 12_000 },
-  agent_team_run_parallel: { durationMs: 90_000, tokens: 24_000 },
 };
 
 const DEFAULT_CONFIG: CostEstimatorConfig = {

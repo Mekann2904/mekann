@@ -20,57 +20,27 @@ import express from "express";
 import { createServer } from "http";
 import * as path from "path";
 import * as fs from "fs";
-import { homedir } from "os";
 import { fileURLToPath } from "url";
 import { getAllUlWorkflowTasks, getUlWorkflowTask, getActiveUlWorkflowTask, } from "./lib/ul-workflow-reader.js";
+import { ensureTaskDir as ensureSharedTaskDir, loadTaskStorage as loadSharedTaskStorage, saveTaskStorage as saveSharedTaskStorage, } from "../../../../lib/storage/task-plan-store.js";
+import { deleteJsonState, listJsonStateKeys, readJsonState, writeJsonState, } from "../../../../lib/storage/sqlite-state-store.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-// ============================================================================
-// Shared Storage (duplicated from instance-registry.ts)
-// ============================================================================
-const SHARED_DIR = path.join(homedir(), ".pi-shared");
-const INSTANCES_FILE = path.join(SHARED_DIR, "instances.json");
-const SERVER_FILE = path.join(SHARED_DIR, "web-ui-server.json");
-const THEME_FILE = path.join(SHARED_DIR, "theme.json");
-const LOCK_FILE = path.join(SHARED_DIR, ".lock");
-function ensureSharedDir() {
-    if (!fs.existsSync(SHARED_DIR)) {
-        fs.mkdirSync(SHARED_DIR, { recursive: true });
-    }
-}
-function readJsonFile(filePath, defaultValue) {
-    try {
-        if (!fs.existsSync(filePath)) {
-            return defaultValue;
-        }
-        const content = fs.readFileSync(filePath, "utf-8");
-        return JSON.parse(content);
-    }
-    catch {
-        return defaultValue;
-    }
-}
-function writeJsonFile(filePath, data) {
-    ensureSharedDir();
-    const tempPath = `${filePath}.tmp`;
-    fs.writeFileSync(tempPath, JSON.stringify(data, null, 2));
-    try {
-        fs.renameSync(tempPath, filePath);
-    }
-    catch {
-        fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-        try {
-            fs.unlinkSync(tempPath);
-        }
-        catch { }
-    }
+const WEBUI_INSTANCES_STATE_KEY = "webui_instances";
+const WEBUI_SERVER_STATE_KEY = "webui_server";
+const WEBUI_THEME_STATE_KEY = "webui_theme";
+function getContextHistoryStateKey(pid) {
+    return `webui_context_history:${pid}`;
 }
 // ============================================================================
 // Instance Registry (read-only for standalone server)
 // ============================================================================
 class InstanceRegistry {
     static getAll() {
-        const instances = readJsonFile(INSTANCES_FILE, {});
+        const instances = readJsonState({
+            stateKey: WEBUI_INSTANCES_STATE_KEY,
+            createDefault: () => ({}),
+        });
         const now = Date.now();
         const STALE_THRESHOLD_MS = 60000; // 60 seconds
         const activeInstances = Object.values(instances).filter((info) => now - info.lastHeartbeat < STALE_THRESHOLD_MS);
@@ -84,7 +54,10 @@ class InstanceRegistry {
             }
         }
         if (hasStale) {
-            writeJsonFile(INSTANCES_FILE, instances);
+            writeJsonState({
+                stateKey: WEBUI_INSTANCES_STATE_KEY,
+                value: instances,
+            });
         }
         return activeInstances;
     }
@@ -102,16 +75,19 @@ class ServerRegistry {
             port,
             startedAt: Date.now(),
         };
-        writeJsonFile(SERVER_FILE, serverInfo);
+        writeJsonState({
+            stateKey: WEBUI_SERVER_STATE_KEY,
+            value: serverInfo,
+        });
     }
     static unregister() {
-        try {
-            fs.unlinkSync(SERVER_FILE);
-        }
-        catch { }
+        deleteJsonState(WEBUI_SERVER_STATE_KEY);
     }
     static isRunning() {
-        const serverInfo = readJsonFile(SERVER_FILE, null);
+        const serverInfo = readJsonState({
+            stateKey: WEBUI_SERVER_STATE_KEY,
+            createDefault: () => null,
+        });
         if (!serverInfo) {
             return null;
         }
@@ -120,10 +96,7 @@ class ServerRegistry {
             return serverInfo;
         }
         catch {
-            try {
-                fs.unlinkSync(SERVER_FILE);
-            }
-            catch { }
+            deleteJsonState(WEBUI_SERVER_STATE_KEY);
             return null;
         }
     }
@@ -133,13 +106,19 @@ class ServerRegistry {
 // ============================================================================
 class ThemeStorage {
     static get() {
-        return readJsonFile(THEME_FILE, {
-            themeId: "blue",
-            mode: "dark",
+        return readJsonState({
+            stateKey: WEBUI_THEME_STATE_KEY,
+            createDefault: () => ({
+                themeId: "blue",
+                mode: "dark",
+            }),
         });
     }
     static set(settings) {
-        writeJsonFile(THEME_FILE, settings);
+        writeJsonState({
+            stateKey: WEBUI_THEME_STATE_KEY,
+            value: settings,
+        });
     }
 }
 // ============================================================================
@@ -148,15 +127,16 @@ class ThemeStorage {
 class ContextHistoryStorage {
     static getAllInstances() {
         const result = new Map();
-        ensureSharedDir();
-        const files = fs.readdirSync(SHARED_DIR);
-        const historyFiles = files.filter((f) => f.startsWith("context-history-") && f.endsWith(".json"));
-        for (const file of historyFiles) {
-            const match = file.match(/context-history-(\d+)\.json/);
+        const historyKeys = listJsonStateKeys("webui_context_history:");
+        for (const stateKey of historyKeys) {
+            const match = stateKey.match(/^webui_context_history:(\d+)$/);
             if (match) {
                 const pid = parseInt(match[1], 10);
-                const filePath = path.join(SHARED_DIR, file);
-                const history = readJsonFile(filePath, []);
+                const loaded = readJsonState({
+                    stateKey,
+                    createDefault: () => ({ history: [] }),
+                });
+                const history = Array.isArray(loaded.history) ? loaded.history : [];
                 if (history.length > 0) {
                     result.set(pid, history);
                 }
@@ -182,18 +162,13 @@ class ContextHistoryStorage {
     static cleanup() {
         const instances = InstanceRegistry.getAll();
         const activePids = new Set(instances.map((i) => i.pid));
-        ensureSharedDir();
-        const files = fs.readdirSync(SHARED_DIR);
-        const historyFiles = files.filter((f) => f.startsWith("context-history-") && f.endsWith(".json"));
-        for (const file of historyFiles) {
-            const match = file.match(/context-history-(\d+)\.json/);
+        const historyKeys = listJsonStateKeys("webui_context_history:");
+        for (const stateKey of historyKeys) {
+            const match = stateKey.match(/^webui_context_history:(\d+)$/);
             if (match) {
                 const pid = parseInt(match[1], 10);
                 if (!activePids.has(pid)) {
-                    try {
-                        fs.unlinkSync(path.join(SHARED_DIR, file));
-                    }
-                    catch { }
+                    deleteJsonState(getContextHistoryStateKey(pid));
                 }
             }
         }
@@ -373,31 +348,16 @@ function createApp() {
         req.socket.setKeepAlive(true);
     });
     // ============= Task API =============
-    const TASK_DIR = ".pi/tasks";
-    const TASK_STORAGE_FILE = path.join(TASK_DIR, "storage.json");
     function ensureTaskDir() {
-        if (!fs.existsSync(TASK_DIR)) {
-            fs.mkdirSync(TASK_DIR, { recursive: true });
-        }
+        ensureSharedTaskDir();
     }
     function loadTaskStorage() {
         ensureTaskDir();
-        if (!fs.existsSync(TASK_STORAGE_FILE)) {
-            return { tasks: [] };
-        }
-        try {
-            const data = fs.readFileSync(TASK_STORAGE_FILE, "utf-8");
-            return JSON.parse(data);
-        }
-        catch {
-            return { tasks: [] };
-        }
+        return loadSharedTaskStorage();
     }
     function saveTaskStorage(storage) {
         ensureTaskDir();
-        const tempFile = TASK_STORAGE_FILE + ".tmp";
-        fs.writeFileSync(tempFile, JSON.stringify(storage, null, 2));
-        fs.renameSync(tempFile, TASK_STORAGE_FILE);
+        saveSharedTaskStorage(storage);
     }
     /**
      * GET /api/tasks - List tasks with filters

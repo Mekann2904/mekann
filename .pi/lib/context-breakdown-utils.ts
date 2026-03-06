@@ -856,6 +856,11 @@ const sessionTrackedSources = new Map<string, TrackedSource[]>();
 /** 現在のアクティブセッションID */
 let currentSessionId: string | null = null;
 
+/** 注入ログを表示するか（デフォルト: false） */
+function shouldLogInjection(): boolean {
+  return String(process.env.PI_CONTEXT_BREAKDOWN_LOG || "0") === "1";
+}
+
 /**
  * @summary セッションIDを取得または生成
  * @param ctx ExtensionAPIコンテキスト
@@ -915,8 +920,10 @@ export function recordInjection(source: string, content: string): void {
     timestamp: Date.now(),
   });
   
-  const tokenEstimate = Math.ceil(content.length / 4);
-  console.log(`[context-breakdown] Injection recorded: ${source} (~${tokenEstimate} tokens) [session: ${sessionId.slice(0, 8)}...]`);
+  if (shouldLogInjection()) {
+    const tokenEstimate = Math.ceil(content.length / 4);
+    console.log(`[context-breakdown] Injection recorded: ${source} (~${tokenEstimate} tokens) [session: ${sessionId.slice(0, 8)}...]`);
+  }
 }
 
 /**

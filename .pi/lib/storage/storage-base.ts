@@ -555,6 +555,36 @@ export function mergeSubagentStorageWithDisk(
     disk = {};
   }
 
+  return mergeSubagentStorageState(disk, next, defaultsVersion, maxRuns);
+}
+
+/**
+ * サブエージェントストレージと現在状態をマージ
+ * @summary ストレージ状態をマージ
+ * @param current 現在の状態
+ * @param next マージする次の状態
+ * @param defaultsVersion デフォルトバージョン
+ * @param maxRuns 最大実行回数
+ * @returns マージ後の状態
+ */
+export function mergeSubagentStorageState(
+  current: Partial<{
+    agents: Array<{ id: string }>;
+    runs: Array<{ runId: string; startedAt?: string; finishedAt?: string }>;
+    currentAgentId?: string;
+    defaultsVersion?: number;
+  }>,
+  next: {
+    agents: Array<{ id: string }>;
+    runs: Array<{ runId: string; startedAt?: string; finishedAt?: string }>;
+    currentAgentId?: string;
+    defaultsVersion?: number;
+  },
+  defaultsVersion: number,
+  maxRuns: number,
+): typeof next {
+  const disk = current;
+
   const mergedAgents = mergeEntitiesById(
     Array.isArray(disk.agents) ? disk.agents : [],
     Array.isArray(next.agents) ? next.agents : [],
@@ -608,6 +638,36 @@ export function mergeTeamStorageWithDisk(
   } catch {
     disk = {};
   }
+
+  return mergeTeamStorageState(disk, next, defaultsVersion, maxRuns);
+}
+
+/**
+ * チームストレージと現在状態をマージする。
+ * @summary ストレージ状態をマージ
+ * @param current 現在の状態
+ * @param next マージする次の状態
+ * @param defaultsVersion デフォルトバージョン
+ * @param maxRuns 最大実行回数
+ * @returns マージ後の状態
+ */
+export function mergeTeamStorageState(
+  current: Partial<{
+    teams: Array<{ id: string }>;
+    runs: Array<{ runId: string; startedAt?: string; finishedAt?: string }>;
+    currentTeamId?: string;
+    defaultsVersion?: number;
+  }>,
+  next: {
+    teams: Array<{ id: string }>;
+    runs: Array<{ runId: string; startedAt?: string; finishedAt?: string }>;
+    currentTeamId?: string;
+    defaultsVersion?: number;
+  },
+  defaultsVersion: number,
+  maxRuns: number,
+): typeof next {
+  const disk = current;
 
   const mergedTeams = mergeEntitiesById(
     Array.isArray(disk.teams) ? disk.teams : [],

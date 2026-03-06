@@ -35,33 +35,20 @@
  */
 
 import { spawn } from "child_process";
-import { homedir } from "os";
 import { closeSync, existsSync, openSync, writeSync } from "fs";
-import { extname, isAbsolute, resolve } from "path";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // kitty用のエスケープシーケンス
 const OSC = "\x1b]";
 const ST = "\x07";
-const KITTY_GRAPHICS_BEGIN = "\x1b_G";
-const KITTY_GRAPHICS_END = "\x1b\\";
-
-const SUPPORTED_IMAGE_EXTENSIONS = new Set([
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".webp",
-  ".bmp",
-]);
 
 let terminalFd: number | undefined;
 
 function wrapForTmuxPassthrough(data: string): string {
   // tmux passthrough: ESC は二重化して DCS で包む
   // 形式: ESC P tmux; <ESCを二重化したペイロード> ESC \
-  const escaped = data.replace(/\x1b/g, "\x1b\x1b");
+  const escaped = data.split("\x1b").join("\x1b\x1b");
   return `\x1bPtmux;${escaped}\x1b\\`;
 }
 
@@ -174,7 +161,7 @@ export function playSound(soundPath: string): void {
           detached: true,
           stdio: "ignore"
         }).unref();
-      } catch (error: unknown) {
+      } catch {
         // サウンド再生失敗時はターミナルベルをフォールバック
         process.stdout.write('\u0007');
       }
@@ -213,15 +200,6 @@ function notify(text: string, duration = 0, title = "pi", isError = false): void
     const soundPath = isError ? notifyOptions.errorSound : notifyOptions.successSound;
     playSound(soundPath);
   }
-}
-
-function emitKittyGraphics(control: string, payload = ""): void {
-  writeToTerminal(`${KITTY_GRAPHICS_BEGIN}${control};${payload}${KITTY_GRAPHICS_END}`);
-}
-
-function clearKittyImages(): void {
-  // d=A はこの端末内の表示中画像をすべて削除する
-  emitKittyGraphics("a=d,d=A");
 }
 
 // 元のタイトルを保存

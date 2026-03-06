@@ -1,9 +1,9 @@
 /**
  * @abdd.meta
  * @path .pi/lib/runtime-sessions.ts
- * @role Runtime session management for tracking active subagent/team executions
+ * @role Runtime session management for tracking active subagent executions
  * @why Provide real-time execution status for Web UI Kanban board
- * @related ../extensions/web-ui/server.ts, ../extensions/subagents.ts, ../extensions/agent-teams.ts
+ * @related ../extensions/web-ui/server.ts, ../extensions/subagents.ts
  * @public_api RuntimeSession, addSession, updateSession, removeSession, getActiveSessions, getSessionByTaskId, onSessionEvent
  * @invariants Sessions are automatically cleaned up after completion
  * @side_effects Emits events on session changes
@@ -13,14 +13,14 @@
  * @overview In-memory session store for tracking agent execution state
  * @what_it_does Manages lifecycle of execution sessions, provides query APIs, emits events
  * @why_it_exists Enables real-time UI updates for agent execution progress
- * @scope(in) Session lifecycle events from subagents.ts/agent-teams.ts
+ * @scope(in) Session lifecycle events from subagents.ts
  * @scope(out) Session queries, event emissions
  */
 
 /**
  * Session type discriminator
  */
-export type RuntimeSessionType = "subagent" | "agent-team";
+export type RuntimeSessionType = "subagent";
 
 /**
  * Session execution status
@@ -33,7 +33,7 @@ export type RuntimeSessionStatus = "starting" | "running" | "completed" | "faile
 export interface RuntimeSession {
   /** Unique session identifier */
   id: string;
-  /** Session type (subagent or agent-team) */
+  /** Session type (subagent) */
   type: RuntimeSessionType;
   /** Agent identifier (e.g., "implementer", "researcher") */
   agentId: string;
@@ -53,9 +53,9 @@ export interface RuntimeSession {
   message?: string;
   /** Unix timestamp when session completed (optional) */
   completedAt?: number;
-  /** Team ID for agent-team sessions (optional) */
+  /** Team ID (deprecated, kept for compatibility) */
   teamId?: string;
-  /** Number of teammates for agent-team sessions (optional) */
+  /** Number of teammates (deprecated, kept for compatibility) */
   teammateCount?: number;
 }
 
@@ -104,6 +104,32 @@ const eventListeners = new Set<SessionEventListener>();
  */
 let sessionCounter = 0;
 
+const COMPLETED_SESSION_MAX_AGE_MS = 5 * 60 * 1000;
+const MAX_COMPLETED_SESSIONS = 200;
+
+function trimCompletedSessions(now: number = Date.now()): void {
+  cleanupCompletedSessions(COMPLETED_SESSION_MAX_AGE_MS);
+
+  const completedSessions = Array.from(activeSessions.entries())
+    .filter(([, session]) => session.status === "completed" || session.status === "failed")
+    .sort((a, b) => (a[1].completedAt ?? a[1].startedAt) - (b[1].completedAt ?? b[1].startedAt));
+
+  const overflow = completedSessions.length - MAX_COMPLETED_SESSIONS;
+  if (overflow <= 0) {
+    return;
+  }
+
+  for (const [id] of completedSessions.slice(0, overflow)) {
+    activeSessions.delete(id);
+  }
+
+  emitSessionEvent({
+    type: "sessions_cleaned",
+    data: { removed: overflow },
+    timestamp: now,
+  });
+}
+
 /**
  * Generate a unique session ID
  * @summary セッションID生成
@@ -145,6 +171,7 @@ function emitSessionEvent(event: SessionEvent): void {
  * @returns 追加されたセッション
  */
 export function addSession(session: RuntimeSession): RuntimeSession {
+  trimCompletedSessions();
   activeSessions.set(session.id, session);
   emitSessionEvent({
     type: "session_added",
@@ -165,6 +192,7 @@ export function updateSession(
   id: string,
   update: Partial<RuntimeSession>
 ): RuntimeSession | undefined {
+  trimCompletedSessions();
   const session = activeSessions.get(id);
   if (!session) {
     return undefined;

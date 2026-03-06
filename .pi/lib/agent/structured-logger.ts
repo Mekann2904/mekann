@@ -53,7 +53,6 @@ export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
  */
 export type LogContext =
   | "subagents"
-  | "agent-teams"
   | "scheduler"
   | "storage"
   | "metrics"
@@ -631,15 +630,6 @@ export function createLogger(
  */
 export function getSubagentLogger(): StructuredLogger {
   return createLogger("subagents");
-}
-
-/**
- * AgentTeamsロガー取得
- * @summary ロガー取得
- * @returns 構造化ロガーインスタンス
- */
-export function getAgentTeamsLogger(): StructuredLogger {
-  return createLogger("agent-teams");
 }
 
 /**

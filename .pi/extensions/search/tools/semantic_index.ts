@@ -33,7 +33,7 @@
  *   semantic_index({ path: "./src", force: true })
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, extname } from "node:path";
 import { createHash } from "node:crypto";
 import type {
@@ -42,17 +42,15 @@ import type {
 	SemanticIndexMetadata,
 	CodeEmbedding,
 } from "../types.js";
+import { DEFAULT_EXCLUDES } from "../utils/constants.js";
 import {
-	INDEX_DIR_NAME,
-	DEFAULT_EXCLUDES,
-} from "../utils/constants.js";
+	readStrictJsonState,
+	writeStrictJsonState,
+} from "../../../lib/storage/sqlite-state-store-strict.js";
 
 // ============================================================================
 // Constants
 // ============================================================================
-
-const SEMANTIC_INDEX_FILE = "semantic-index.jsonl";
-const SEMANTIC_META_FILE = "semantic-meta.json";
 
 const DEFAULT_EXTENSIONS = ["ts", "tsx", "js", "jsx", "py", "go", "rs", "java", "c", "cpp", "h", "hpp"];
 const DEFAULT_CHUNK_SIZE = 500;
@@ -466,57 +464,24 @@ function buildChunkText(chunk: CodeChunk): string {
 // Index Storage
 // ============================================================================
 
-function getIndexDir(cwd: string): string {
-	return _getIndexDir(cwd);
-}
-
 function getIndexPath(cwd: string): string {
-	return _getIndexPath(cwd);
+	return `sqlite://json_state/${getIndexStateKey(cwd)}`;
 }
 
-function getMetaPath(cwd: string): string {
-	return _getMetaPath(cwd);
+function getIndexStateKey(cwd: string): string {
+	return `semantic_code_index:${cwd}`;
 }
 
-async function loadExistingIndex(cwd: string): Promise<CodeEmbedding[]> {
-	const indexPath = getIndexPath(cwd);
-	if (!existsSync(indexPath)) {
-		return [];
-	}
-
-	const content = readFileSync(indexPath, "utf-8");
-	const lines = content.trim().split("\n");
-
-	return lines
-		.filter((line) => line.trim())
-		.map((line) => JSON.parse(line) as CodeEmbedding);
+function getMetaStateKey(cwd: string): string {
+	return `semantic_code_meta:${cwd}`;
 }
 
-/**
- * Load existing index as a Map for efficient lookups.
- */
 function loadExistingIndexAsMap(cwd: string): Map<string, CodeEmbedding> {
-	const indexPath = getIndexPath(cwd);
 	const embeddings = new Map<string, CodeEmbedding>();
-
-	if (!existsSync(indexPath)) {
-		return embeddings;
+	const index = readStrictJsonState<CodeEmbedding[]>(getIndexStateKey(cwd)) || [];
+	for (const emb of index) {
+		embeddings.set(emb.id, emb);
 	}
-
-	const content = readFileSync(indexPath, "utf-8");
-	const lines = content.trim().split("\n");
-
-	for (const line of lines) {
-		if (line.trim()) {
-			try {
-				const emb = JSON.parse(line) as CodeEmbedding;
-				embeddings.set(emb.id, emb);
-			} catch {
-				// Skip malformed entries
-			}
-		}
-	}
-
 	return embeddings;
 }
 
@@ -591,31 +556,13 @@ function detectFileChanges(
 	return { newFiles, changedFiles, deletedFiles, unchangedFiles };
 }
 
-async function saveIndex(
-	embeddings: CodeEmbedding[],
-	cwd: string
-): Promise<string> {
-	const indexDir = getIndexDir(cwd);
-	const indexPath = getIndexPath(cwd);
-
-	// Ensure directory exists
-	if (!existsSync(indexDir)) {
-		mkdirSync(indexDir, { recursive: true });
-	}
-
-	// Write embeddings as JSONL
-	const lines = embeddings.map((e) => JSON.stringify(e));
-	writeFileSync(indexPath, lines.join("\n") + "\n", "utf-8");
-
-	return indexPath;
+async function saveIndex(embeddings: CodeEmbedding[], cwd: string): Promise<string> {
+	writeStrictJsonState(getIndexStateKey(cwd), embeddings);
+	return getIndexPath(cwd);
 }
 
-async function saveMetadata(
-	metadata: SemanticIndexMetadata,
-	cwd: string
-): Promise<void> {
-	const metaPath = getMetaPath(cwd);
-	writeFileSync(metaPath, JSON.stringify(metadata, null, 2), "utf-8");
+async function saveMetadata(metadata: SemanticIndexMetadata, cwd: string): Promise<void> {
+	writeStrictJsonState(getMetaStateKey(cwd), metadata);
 }
 
 // ============================================================================
@@ -681,9 +628,9 @@ export async function semanticIndex(
 
 		// Load existing index and metadata for incremental update (skip if force)
 		const existingEmbeddings = force ? new Map<string, CodeEmbedding>() : loadExistingIndexAsMap(cwd);
-		const existingMeta = force ? null : (existsSync(getMetaPath(cwd))
-			? JSON.parse(readFileSync(getMetaPath(cwd), "utf-8")) as SemanticIndexMetadata
-			: null);
+		const existingMeta = force
+			? null
+			: (readStrictJsonState<SemanticIndexMetadata>(getMetaStateKey(cwd)) || null);
 
 		// Get current file mtimes
 		const currentMtimes = getFileMtimes(files, cwd);
@@ -893,8 +840,3 @@ export async function semanticIndex(
 		};
 	}
 }
-
-// Helper paths (these need to be defined before used)
-const _getIndexDir = (cwd: string): string => join(cwd, INDEX_DIR_NAME);
-const _getIndexPath = (cwd: string): string => join(_getIndexDir(cwd), SEMANTIC_INDEX_FILE);
-const _getMetaPath = (cwd: string): string => join(_getIndexDir(cwd), SEMANTIC_META_FILE);

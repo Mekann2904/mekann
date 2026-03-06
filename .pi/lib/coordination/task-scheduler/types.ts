@@ -32,9 +32,7 @@ import type { TaskPriority } from '../priority-scheduler.js';
  */
 export type TaskSource =
   | "subagent_run"
-  | "subagent_run_parallel"
-  | "agent_team_run"
-  | "agent_team_run_parallel";
+  | "subagent_run_parallel";
 
 // ============================================================================
 // コスト見積もり

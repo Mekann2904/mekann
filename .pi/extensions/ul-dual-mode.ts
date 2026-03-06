@@ -20,7 +20,7 @@
  *   - Reduce overhead on small tasks via conditional reviewer gating
  *   - Maintain session-wide state for complex workflows
  * scope:
- *   in: User text input, execution tool usage (subagent_run, agent_team_run), environment variables
+ *   in: User text input, execution tool usage (subagent_run), environment variables
  *   out: Tool invocations, UI status updates, session history entries
  */
 
@@ -49,10 +49,10 @@ const UL_TRIVIAL_PATTERNS = [
   /^find\s+/i,           // 検索系
 ];
 const RECOMMENDED_SUBAGENT_IDS = ["researcher", "architect", "implementer"] as const;
-const RECOMMENDED_CORE_TEAM_ID = "core-delivery-team";
 const RECOMMENDED_REVIEWER_ID = "reviewer";
-const CLEAR_GOAL_SIGNAL =
-  /(達成条件|完了条件|成功条件|受け入れ条件|until|done when|all tests pass|tests pass|lint pass|build succeeds?|exit code 0|エラー0|テスト.*通る|lint.*通る|build.*成功)/i;
+// DISABLED: 自動検出を無効化（明示的な入口のみに絞る）
+// const CLEAR_GOAL_SIGNAL =
+//   /(達成条件|完了条件|成功条件|受け入れ条件|until|done when|all tests pass|tests pass|lint pass|build succeeds?|exit code 0|エラー0|テスト.*通る|lint.*通る|build.*成功)/i;
 
 /**
  * BUG-TS-004修正: ツール呼び出しイベントの型定義
@@ -68,11 +68,6 @@ const SUBAGENT_EXECUTION_TOOLS = new Set([
   "subagent_run_parallel",
 ]);
 
-const AGENT_TEAM_EXECUTION_TOOLS = new Set([
-  "agent_team_run",
-  "agent_team_run_parallel",
-]);
-
 // BUG-002修正: async-mutexで状態変更を保護
 const stateMutex = new Mutex();
 
@@ -83,9 +78,7 @@ const state = {
   pendingGoalLoopMode: false,
   activeGoalLoopMode: false,
   usedSubagentRun: false,
-  usedAgentTeamRun: false,
   completedRecommendedSubagentPhase: false,
-  completedRecommendedTeamPhase: false,
   completedRecommendedReviewerPhase: false,
   currentTask: "",  // 現在のタスク（reviewer要否判定用）
 };
@@ -134,9 +127,7 @@ function resetState(): void {
   state.pendingGoalLoopMode = false;
   state.activeGoalLoopMode = false;
   state.usedSubagentRun = false;
-  state.usedAgentTeamRun = false;
   state.completedRecommendedSubagentPhase = false;
-  state.completedRecommendedTeamPhase = false;
   state.completedRecommendedReviewerPhase = false;
   state.currentTask = "";
 }
@@ -152,9 +143,7 @@ async function resetStateAsync(): Promise<void> {
     pendingGoalLoopMode: false,
     activeGoalLoopMode: false,
     usedSubagentRun: false,
-    usedAgentTeamRun: false,
     completedRecommendedSubagentPhase: false,
-    completedRecommendedTeamPhase: false,
     completedRecommendedReviewerPhase: false,
     currentTask: "",
   });
@@ -174,9 +163,8 @@ function refreshStatus(ctx: ExtensionAPI["context"]): void {
     return;
   }
 
-  const team = state.usedAgentTeamRun ? "✓" : "…";
-  const loop = state.activeGoalLoopMode ? "✓" : "…";
-  ctx.ui.setStatus?.("ul-dual-mode", `UL mode | team:${team} loop:${loop}`);
+  // team/loop は廃止されたため、シンプルに「UL mode」とだけ表示
+  ctx.ui.setStatus?.("ul-dual-mode", "UL mode");
 }
 
 // 適応的スロットリング用の定数と状態
@@ -278,10 +266,10 @@ function extractTextWithoutUlPrefix(text: string): string {
   return text.replace(UL_PREFIX, "").trimStart();
 }
 
-function looksLikeClearGoalTask(text: string): boolean {
-  const normalized = String(text || "").trim();
-  if (!normalized) return false;
-  return CLEAR_GOAL_SIGNAL.test(normalized);
+// 統一フローでは複雑度ベースの条件分岐を廃止
+// looksLikeClearGoalTask は常に false を返す
+function looksLikeClearGoalTask(_text: string): boolean {
+  return false;
 }
 
 /**
@@ -393,31 +381,6 @@ function isRecommendedSubagentParallelCall(event: ToolCallEventLike): boolean {
 
 /**
  * BUG-TS-004修正: 型安全なイベントパラメータ
- * @summary 推奨コアチーム呼び出しかどうかを判定
- * @param event - ツール呼び出しイベント
- * @returns 推奨コアチーム呼び出しの場合true
- */
-function isRecommendedCoreTeamCall(event: ToolCallEventLike): boolean {
-  const toolName = normalizeId(event?.toolName);
-  const input = parseToolInput(event);
-
-  if (toolName === "agent_team_run") {
-    const teamId = normalizeId(input?.teamId);
-    if (teamId !== RECOMMENDED_CORE_TEAM_ID) return false;
-    const strategyRaw = normalizeId(input?.strategy);
-    return strategyRaw.length === 0 || strategyRaw === "parallel";
-  }
-
-  if (toolName === "agent_team_run_parallel") {
-    const teamIds = new Set(extractIdList(input?.teamIds));
-    return teamIds.has(RECOMMENDED_CORE_TEAM_ID);
-  }
-
-  return false;
-}
-
-/**
- * BUG-TS-004修正: 型安全なイベントパラメータ
  * @summary 推奨レビュアー呼び出しかどうかを判定
  * @param event - ツール呼び出しイベント
  * @returns 推奨レビュアー呼び出しの場合true
@@ -440,10 +403,72 @@ function buildUlTransformedInput(task: string, goalLoopMode: boolean): string {
   const goalHint = goalLoopMode
     ? "\n\n[GOAL_LOOP] 明確な達成条件あり。実装後に検証コマンドを実行。"
     : "";
-  return `[UL_MODE] Research → Plan → [ユーザーレビュー] → Implement のフローで進めよ。詳細は UL Mode Guideline を参照。${goalHint}
+  return `${buildUlWorkflowPrompt(task)}${goalHint}`;
+}
 
-タスク:
-${task}`;
+/**
+ * ULワークフロー用の実行プロンプトを生成する
+ * `ul <task>` から常に同じ段取りで進めるため、曖昧な方針文ではなく
+ * 実行順序を固定した具体的な指示を返す。
+ */
+export function buildUlWorkflowPrompt(task: string): string {
+  return `[UL_MODE] 以下の固定フローを止まらずに進めてください。
+
+フロー:
+1. Research
+2. Plan
+3. Question拡張で人間確認
+4. 承認された場合のみ Implement
+5. Commit
+
+厳守事項:
+- コードを書く前に、必ず文章化された計画を人間確認にかけること
+- 人間確認では必ず \`question\` ツールを使うこと
+- Research と Plan は自律的に進めること
+- Question で承認されるまでは実装しないこと
+- 承認後は Implement と Commit まで続けること
+
+実行するタスク:
+${task}
+
+実行手順:
+1. \`ul_workflow_start({ task: ${JSON.stringify(task)} })\` を呼ぶ
+2. \`ul_workflow_status()\` で taskId を確認する
+3. \`ul_workflow_research({ task: ${JSON.stringify(task)} })\` を呼ぶ
+4. \`ul_workflow_approve()\` で Plan フェーズへ進む
+5. \`ul_workflow_plan({ task: ${JSON.stringify(task)} })\` を呼ぶ
+6. 生成された \`.pi/ul-workflow/tasks/{taskId}/plan.md\` を要約して示す
+7. 次に必ず \`question\` ツールを以下の形で呼ぶ
+
+\`\`\`json
+{
+  "tool": "question",
+  "arguments": {
+    "question": "plan.md を確認してください。この計画で実装を続行しますか？ 修正したい場合は Type something. を選んで修正内容を書いてください。",
+    "options": [
+      { "label": "承認して続行", "description": "Implement と Commit まで進む" },
+      { "label": "中止", "description": "今回は進めない" }
+    ]
+  }
+}
+\`\`\`
+
+8. 回答が「承認して続行」なら:
+   - \`ul_workflow_approve()\` を呼ぶ
+   - \`ul_workflow_execute_plan()\` を呼ぶ
+   - \`ul_workflow_commit()\` を呼ぶ
+   - コミット候補を要約して、必要なら追加で \`question\` で確認する
+9. 回答が「中止」なら:
+   - \`ul_workflow_abort()\` を呼ぶ
+10. 回答が自由入力なら:
+   - その内容を修正指示として \`ul_workflow_modify_plan({ modifications: "..." })\` に渡す
+   - 更新後の plan.md を再要約する
+   - 再度 \`question\` ツールで確認する
+
+出力ルール:
+- 各フェーズで何をしたかを短く報告する
+- 生成物のパスを明示する
+- 実装前には必ず Question の結果を明示する`;
 }
 
 // ポリシーキャッシュ（4通りの組み合わせのみ、防御的に上限設定）
@@ -542,36 +567,8 @@ function getUlPolicy(sessionWide: boolean, goalLoopMode: boolean): string {
   return policy;
 }
 
-function buildUlPolicyString(sessionWide: boolean, goalLoopMode: boolean): string {
-  const mode = sessionWide ? "UL SESSION" : "UL";
-  const scope = sessionWide ? "session is in" : "turn is in";
-
-  const loopSection = goalLoopMode
-    ? `
-Loop rule (clear completion criteria detected):
-- Call loop_run early with goal. Set verifyCommand if tests/build/lint apply.
-- Max iterations: 4-8. Rerun once if stagnation.`
-    : "- Use loop_run with goal if explicit completion criteria exist.";
-
-  return `
----
-## ${mode} (delegation-first)
-
-This ${scope} UL Adaptive Mode.
-
-Execution:
-- Use agent_team_run / agent_team_run_parallel as needed.
-- Phase count: LLM discretion (1-N, optimize for task scale).
-
-Patterns:
-1. Simple: direct execution
-2. Multi-perspective: agent_team_run(teamId: core-delivery-team, strategy: parallel)
-3. Complex: agent_team_run_parallel(teamIds: [...], strategy: parallel)
-
-Rules:
-- ${loopSection}
-- Direct edits allowed for trivial changes.
----`;
+function buildUlPolicyString(_sessionWide: boolean, _goalLoopMode: boolean): string {
+  return "";
 }
 
 /**
@@ -620,12 +617,12 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
   if (isInitialized) return;
   isInitialized = true;
 
-  // CLIフラグ: セッション全体でULモードを有効化
-  pi.registerFlag("ul", {
-    description: "Enable UL Dual-Orchestration Mode for entire session",
-    type: "boolean",
-    default: false,
-  });
+  // DISABLED: CLIフラグを無効化（明示的な入口のみに絞る）
+  // pi.registerFlag("ul", {
+  //   description: "Enable UL Dual-Orchestration Mode for entire session",
+  //   type: "boolean",
+  //   default: false,
+  // });
 
   // スラッシュコマンド: セッション中にULモードを切り替え
   pi.registerCommand("ulmode", {
@@ -636,18 +633,14 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
         state.activeUlMode = true;
         state.activeGoalLoopMode = false;
         state.usedSubagentRun = false;
-        state.usedAgentTeamRun = false;
         state.completedRecommendedSubagentPhase = false;
-        state.completedRecommendedTeamPhase = false;
         state.completedRecommendedReviewerPhase = false;
         ctx.ui.notify("ULモード: セッション全体で有効です。", "info");
       } else {
         state.activeUlMode = false;
         state.activeGoalLoopMode = false;
         state.usedSubagentRun = false;
-        state.usedAgentTeamRun = false;
         state.completedRecommendedSubagentPhase = false;
-        state.completedRecommendedTeamPhase = false;
         state.completedRecommendedReviewerPhase = false;
         ctx.ui.notify("ULモード: 無効になりました。", "info");
       }
@@ -678,20 +671,21 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       state.pendingUlMode = false;
       state.pendingGoalLoopMode = false;
 
-      const shouldAutoEnable =
-        looksLikeClearGoalTask(rawText);
-
-      if (!shouldAutoEnable) {
-        return { action: "continue" as const };
-      }
-
-      state.pendingUlMode = true;
-      state.pendingGoalLoopMode = true;
-      state.currentTask = rawText;  // 自動有効化の場合もタスクを保存
-
-      if (ctx?.hasUI && ctx?.ui) {
-        ctx.ui.notify("UL自動モード: 明確な達成条件を検知したため、UL+loop方針を適用します。", "info");
-      }
+      // DISABLED: 自動検出を無効化（明示的な入口のみに絞る）
+      // const shouldAutoEnable =
+      //   looksLikeClearGoalTask(rawText);
+      //
+      // if (!shouldAutoEnable) {
+      //   return { action: "continue" as const };
+      // }
+      //
+      // state.pendingUlMode = true;
+      // state.pendingGoalLoopMode = true;
+      // state.currentTask = rawText;  // 自動有効化の場合もタスクを保存
+      //
+      // if (ctx?.hasUI && ctx?.ui) {
+      //   ctx.ui.notify("UL自動モード: 明確な達成条件を検知したため、UL+loop方針を適用します。", "info");
+      // }
       return { action: "continue" as const };
     }
 
@@ -710,7 +704,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     if (UL_SUBCOMMANDS.fast.test(rawText)) {
       const task = rawText.replace(UL_SUBCOMMANDS.fast, "").trim();
       state.pendingUlMode = true;
-      state.pendingGoalLoopMode = looksLikeClearGoalTask(task);
+      state.pendingGoalLoopMode = false; // 統一フローでは常にfalse
       state.currentTask = task;
       
       if (ctx?.hasUI && ctx?.ui) {
@@ -752,7 +746,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
         text: `まず、以下の質問を使ってユーザーに確認してください:
 
 \`\`\`json
-{ "tool": "question", "arguments": { "questions": [{ "question": "${questionText}", "header": "承認確認", "options": [{ "label": "Yes", "description": "承認して次のフェーズへ" }, { "label": "No", "description": "キャンセル" }] }] } }
+{ "tool": "question", "arguments": { "question": "${questionText}", "options": [{ "label": "Yes", "description": "承認して次のフェーズへ" }, { "label": "No", "description": "キャンセル" }] } }
 \`\`\`
 
 ユーザーが「Yes」を選択した場合のみ、以下のツールを呼び出してください:
@@ -771,7 +765,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
         text: `まず、以下の質問を使ってユーザーに確認してください:
 
 \`\`\`json
-{ "tool": "question", "arguments": { "questions": [{ "question": "plan.mdの注釈を適用しますか？", "header": "注釈適用", "options": [{ "label": "Yes", "description": "注釈を検出・適用" }, { "label": "No", "description": "キャンセル" }] }] } }
+{ "tool": "question", "arguments": { "question": "plan.mdの注釈を適用しますか？", "options": [{ "label": "Yes", "description": "注釈を検出・適用" }, { "label": "No", "description": "キャンセル" }] } }
 \`\`\`
 
 ユーザーが「Yes」を選択した場合のみ、以下のツールを呼び出してください:
@@ -790,7 +784,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
         text: `まず、以下の質問を使ってユーザーに確認してください:
 
 \`\`\`json
-{ "tool": "question", "arguments": { "questions": [{ "question": "本当にワークフローを中止しますか？\\n中止すると、現在の進捗が中断されます。", "header": "中止確認", "options": [{ "label": "Yes", "description": "中止する" }, { "label": "No", "description": "キャンセル" }] }] } }
+{ "tool": "question", "arguments": { "question": "本当にワークフローを中止しますか？\\n中止すると、現在の進捗が中断されます。", "options": [{ "label": "Yes", "description": "中止する" }, { "label": "No", "description": "キャンセル" }] } }
 \`\`\`
 
 ユーザーが「Yes」を選択した場合のみ、以下のツールを呼び出してください:
@@ -817,13 +811,15 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       };
     }
 
-    // デフォルト: ul <task> → 委任モード（エージェントが自律的に選択）
+    // デフォルト: ul <task> → セッション全体でULモード有効化
     state.pendingUlMode = true;
-    state.pendingGoalLoopMode = looksLikeClearGoalTask(taskText);
+    state.persistentUlMode = true;  // セッション全体に有効化
+    state.pendingGoalLoopMode = false; // 統一フローでは常にfalse
     state.currentTask = taskText;
+    persistState(pi);  // セッションに保存
 
     if (ctx?.hasUI && ctx?.ui) {
-      ctx.ui.notify("UL Mode: エージェントが最適な進め方を選択", "info");
+      ctx.ui.notify("UL Mode: セッション全体で有効化しました。無効化するには /ulmode を実行。", "info");
     }
     return {
       action: "transform" as const,
@@ -838,9 +834,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     state.pendingUlMode = false;
     state.pendingGoalLoopMode = false;
     state.usedSubagentRun = false;
-    state.usedAgentTeamRun = false;
     state.completedRecommendedSubagentPhase = false;
-    state.completedRecommendedTeamPhase = false;
     // 小規模タスクの場合はreviewer不要としてマーク
     state.completedRecommendedReviewerPhase = !shouldRequireReviewer(state.currentTask);
     refreshStatus(ctx);
@@ -874,11 +868,6 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       changed = true;
     }
 
-    if (AGENT_TEAM_EXECUTION_TOOLS.has(toolName) && !state.usedAgentTeamRun) {
-      state.usedAgentTeamRun = true;
-      changed = true;
-    }
-
     // reviewer検出（フェーズ数に関わらず常にチェック）
     if (
       UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL &&
@@ -887,27 +876,6 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     ) {
       state.completedRecommendedReviewerPhase = true;
       changed = true;
-    }
-
-    // ABDD自動検証: implementerサブエージェントの呼び出しを検知
-    // 完了後にplan.mdが存在する場合、乖離チェックを推奨
-    if (toolName === "subagent_run") {
-      const subagentId = normalizeId(input?.subagentId);
-      if (subagentId === "implementer") {
-        const taskContext = String(input?.task || "");
-        // plan.mdのパスを推測（ULワークフローのパターン）
-        const planPathMatch = taskContext.match(/\.pi\/ul-workflow\/tasks\/([^/]+)\/plan\.md/);
-        if (planPathMatch) {
-          const planPath = `.pi/ul-workflow/tasks/${planPathMatch[1]}/plan.md`;
-          // 通知: 完了後に乖離チェックを推奨
-          if (ctx?.hasUI && ctx?.ui) {
-            ctx.ui.notify(
-              `[ABDD] implementer完了後、plan.mdとの乖離チェックを推奨:\nabdd_compare_plan({ planPath: "${planPath}" })`,
-              "info"
-            );
-          }
-        }
-      }
     }
 
     if (changed) {
@@ -926,59 +894,12 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     const missing = getMissingRequirements();
     if (missing.length === 0) {
       // reviewerが実行された（または必須でない）
-      
-      // ABDD自動検証: implementerが実行された場合、plan.mdとの乖離チェック
-      if (state.usedSubagentRun && ctx?.callTool) {
-        try {
-          // 現在のタスクからplan.mdのパスを推測
-          const taskMatch = state.currentTask.match(/\.pi\/ul-workflow\/tasks\/([^/]+)/);
-          if (taskMatch) {
-            const planPath = `.pi/ul-workflow/tasks/${taskMatch[1]}/plan.md`;
-            const fs = await import("node:fs");
-            if (fs.existsSync(planPath)) {
-              if (ctx?.hasUI && ctx?.ui) {
-                ctx.ui.notify(`[ABDD] plan.mdとの乖離を自動チェック中...`, "info");
-              }
-              
-              // abdd_compare_planを自動実行
-              const result = await ctx.callTool("abdd_compare_plan", {
-                planPath,
-                verbose: false,
-              });
-              
-              if (result && ctx?.hasUI && ctx?.ui) {
-                const summary = result?.details?.summary;
-                if (summary) {
-                  if (summary.high > 0) {
-                    ctx.ui.notify(
-                      `[ABDD] 乖離検出: 高${summary.high}件 中${summary.medium}件 低${summary.low}件\nカバレッジ: ${summary.coverage.toFixed(1)}%`,
-                      "warning"
-                    );
-                  } else if (summary.total > 0) {
-                    ctx.ui.notify(
-                      `[ABDD] 軽微な乖離: 中${summary.medium}件 低${summary.low}件\nカバレッジ: ${summary.coverage.toFixed(1)}%`,
-                      "info"
-                    );
-                  } else {
-                    ctx.ui.notify(`[ABDD] 乖離なし。カバレッジ: ${summary.coverage.toFixed(1)}%`, "info");
-                  }
-                }
-              }
-            }
-          }
-        } catch (e) {
-          // エラーは無視（ABDD検証はオプショナル）
-          console.error("[ABDD] Auto-verification error:", e);
-        }
-      }
-      
+
       if (state.persistentUlMode) {
         state.activeUlMode = true;
         state.activeGoalLoopMode = false;
         state.usedSubagentRun = false;
-        state.usedAgentTeamRun = false;
         state.completedRecommendedSubagentPhase = false;
-        state.completedRecommendedTeamPhase = false;
         state.completedRecommendedReviewerPhase = false;
         refreshStatus(ctx);
       } else {
@@ -998,9 +919,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       state.activeUlMode = true;
       state.activeGoalLoopMode = false;
       state.usedSubagentRun = false;
-      state.usedAgentTeamRun = false;
       state.completedRecommendedSubagentPhase = false;
-      state.completedRecommendedTeamPhase = false;
       state.completedRecommendedReviewerPhase = false;
       refreshStatus(ctx);
     } else {
@@ -1009,15 +928,15 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     }
   });
 
-  // セッション開始時: フラグと保存状態から復元
+  // セッション開始時: 保存状態から復元のみ（CLIフラグは無効化）
   pi.on("session_start", async (_event, ctx) => {
     resetState();
 
-    // CLIフラグから復元
-    if (pi.getFlag("ul") === true) {
-      state.persistentUlMode = true;
-      state.activeUlMode = true;
-    }
+    // DISABLED: CLIフラグからの復元を無効化
+    // if (pi.getFlag("ul") === true) {
+    //   state.persistentUlMode = true;
+    //   state.activeUlMode = true;
+    // }
 
     // セッションエントリから復元
     const entries = ctx.sessionManager.getEntries();

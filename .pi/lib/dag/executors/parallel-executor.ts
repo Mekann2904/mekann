@@ -6,13 +6,15 @@
  * related:
  *   - .pi/lib/dag/executors/base-executor.ts
  *   - .pi/lib/dag/topology-router.ts（parallel選択時に使用）
+ *   - .pi/lib/coordination/cross-instance-coordinator.ts（動的並列数制御）
  * public_api:
  *   - ParallelExecutor.execute(DAGPlan): ExecutionResult
  * invariants:
  *   - 全タスクは独立したコンテキストで同時実行される
  *   - write_set交差がある場合は警告を出力（実行は継続）
+ *   - 並列数はクロスインスタンスコーディネータから動的に取得される
  * side_effects:
- *   - maxConcurrency個のサブエージェントを同時起動
+ *   - 動的並列数制御に従ってサブエージェントを同時起動
  * failure_modes:
  *   - 一部タスク失敗時も他タスクは継続
  *   - 全失敗時はexecutionResult.status = "failure"
@@ -20,10 +22,13 @@
 
 import { BaseExecutor, ExecutionContext } from "./base-executor.js";
 import { DAGPlan, DAGTask, ExecutionResult, TaskOutput, TaskResult } from "../types.js";
+import { getDynamicParallelLimit } from "../../coordination/cross-instance-coordinator.js";
 
 /**
  * @summary 並列エグゼキュータ（τ_P: Parallel Topology）
  * @description Claude Code Agent Teams方式：各サブエージェントを独立して同時起動
+ * 並列数はクロスインスタンスコーディネータから動的に取得され、
+ * インスタンス間の負荷分散とレート制限に自動的に適応する。
  */
 export class ParallelExecutor extends BaseExecutor {
   async execute(plan: DAGPlan): Promise<ExecutionResult> {
@@ -40,23 +45,28 @@ export class ParallelExecutor extends BaseExecutor {
     }
     
     const startTime = Date.now();
-    const maxConcurrency = plan.maxConcurrency || 3;
+    // プランのmaxConcurrencyをフォールバックとして使用
+    const fallbackConcurrency = plan.maxConcurrency || 3;
     
     // write_set警告をログ出力
     if (validation.warnings.length > 0) {
       this.context.logger?.warn("Parallel execution warnings:", validation.warnings);
     }
     
-    // 全タスクを同時に起動（制限付き）
+    // 全タスクを同時に起動（動的制限付き）
     const executing = new Map<string, Promise<TaskOutput>>();
     const results = new Map<string, TaskOutput>();
     const errors = new Map<string, Error>();
     
     // 依存関係を無視して全タスクを並列実行（前提：routerが適切に選択）
     for (const task of plan.tasks) {
-      while (executing.size >= maxConcurrency) {
+      // リアルタイムで並列数を取得（インスタンス間負荷分散・レート制限に適応）
+      const currentLimit = this.getDynamicConcurrency(fallbackConcurrency);
+      
+      while (executing.size >= currentLimit) {
         // スロットが空くまで待機
         await Promise.race(executing.values());
+        // 待機後に再度並列数を取得（状況が変化している可能性）
       }
       
       const promise = this.runTask(task, []);
@@ -106,6 +116,24 @@ export class ParallelExecutor extends BaseExecutor {
       error: errorList.length > 0 ? errorList.join("; ") : undefined,
       durationMs,
     };
+  }
+  
+  /**
+   * @summary 動的並列数を取得
+   * @description クロスインスタンスコーディネータから現在の並列上限を取得。
+   * コーディネータが初期化されていない場合はフォールバック値を使用。
+   * @param fallback - コーディネータ未初期化時のフォールバック値
+   * @returns 現在の並列実行上限
+   */
+  private getDynamicConcurrency(fallback: number): number {
+    try {
+      // 保留中のタスク数を考慮して動的に並列数を計算
+      const dynamicLimit = getDynamicParallelLimit(0);
+      return Math.max(1, Math.min(dynamicLimit, fallback));
+    } catch {
+      // コーディネータが初期化されていない場合はフォールバック
+      return fallback;
+    }
   }
   
   /**

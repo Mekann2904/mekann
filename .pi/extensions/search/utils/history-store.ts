@@ -28,8 +28,7 @@
  * Persistent storage for search history across sessions.
  */
 
-import * as fs from "fs";
-import * as path from "path";
+import { readJsonState, writeJsonState } from "../../../lib/storage/sqlite-state-store.js";
 
 // ============================================
 // Types
@@ -86,15 +85,12 @@ export interface HistorySession {
  * @summary ストア設定
  * @param maxEntries 最大エントリ数
  * @param maxSessions 最大セッション数
- * @param storagePath ストレージパス
  */
 export interface HistoryStoreConfig {
 	/** Maximum entries to keep (default: 1000) */
 	maxEntries: number;
 	/** Maximum sessions to keep (default: 10) */
 	maxSessions: number;
-	/** Storage file path */
-	storagePath?: string;
 }
 
 // ============================================
@@ -105,8 +101,6 @@ const DEFAULT_CONFIG: HistoryStoreConfig = {
 	maxEntries: 1000,
 	maxSessions: 10,
 };
-
-const HISTORY_FILE_NAME = "search-history.json";
 
 // ============================================
 // History Store Class
@@ -120,7 +114,7 @@ export class HistoryStore {
 	private config: HistoryStoreConfig;
 	private entries: StoredHistoryEntry[] = [];
 	private currentSessionId: string;
-	private storagePath: string | null = null;
+	private stateKey: string;
 	private loaded = false;
 
 	/**
@@ -131,12 +125,7 @@ export class HistoryStore {
 	constructor(config: Partial<HistoryStoreConfig> = {}, cwd?: string) {
 		this.config = { ...DEFAULT_CONFIG, ...config };
 		this.currentSessionId = this.generateSessionId();
-
-		if (this.config.storagePath) {
-			this.storagePath = this.config.storagePath;
-		} else if (cwd) {
-			this.storagePath = path.join(cwd, ".pi", "cache", HISTORY_FILE_NAME);
-		}
+		this.stateKey = `search_history:${cwd || process.cwd()}`;
 	}
 
 	/**
@@ -301,22 +290,12 @@ export class HistoryStore {
 	 */
 	load(): void {
 		this.loaded = true;
-
-		if (!this.storagePath) {
-			return;
-		}
-
-		try {
-			if (fs.existsSync(this.storagePath)) {
-				const data = fs.readFileSync(this.storagePath, "utf-8");
-				const parsed = JSON.parse(data) as StoredHistoryEntry[];
-				if (Array.isArray(parsed)) {
-					this.entries = parsed;
-				}
-			}
-		} catch (error) {
-			// エラーは無視して空の状態で続行
-			console.error("Failed to load history:", error);
+		const loaded = readJsonState<StoredHistoryEntry[]>({
+			stateKey: this.stateKey,
+			createDefault: () => [],
+		});
+		if (Array.isArray(loaded)) {
+			this.entries = loaded;
 		}
 	}
 
@@ -325,21 +304,10 @@ export class HistoryStore {
 	 * @summary 履歴保存
 	 */
 	save(): void {
-		if (!this.storagePath) {
-			return;
-		}
-
-		try {
-			// ディレクトリを作成
-			const dir = path.dirname(this.storagePath);
-			if (!fs.existsSync(dir)) {
-				fs.mkdirSync(dir, { recursive: true });
-			}
-
-			fs.writeFileSync(this.storagePath, JSON.stringify(this.entries, null, 2), "utf-8");
-		} catch (error) {
-			console.error("Failed to save history:", error);
-		}
+		writeJsonState({
+			stateKey: this.stateKey,
+			value: this.entries,
+		});
 	}
 
 	// ============================================

@@ -48,7 +48,7 @@ const GRAMMAR_URLS: Record<SupportedLanguage, string> = {
   javascript:
     "https://cdn.jsdelivr.net/npm/tree-sitter-javascript@0.23.1/tree-sitter-javascript.wasm",
   python:
-    "https://cdn.jsdelivr.net/npm/tree-sitter-python@0.23.0/tree-sitter-python.wasm",
+    "https://cdn.jsdelivr.net/npm/tree-sitter-python@0.23.4/tree-sitter-python.wasm",
 };
 
 /**

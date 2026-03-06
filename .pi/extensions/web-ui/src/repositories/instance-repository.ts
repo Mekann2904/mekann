@@ -18,9 +18,11 @@
  */
 
 import type { InstanceInfo, ContextHistoryEntry, InstanceContextHistory } from "../schemas/instance.schema.js";
-import { SHARED_DIR } from "../lib/storage.js";
-import { join } from "path";
-import { readdirSync, readFileSync, existsSync, writeFileSync, renameSync, unlinkSync } from "fs";
+import {
+  listJsonStateKeys,
+  readJsonState,
+  writeJsonState,
+} from "../../../../lib/storage/sqlite-state-store.js";
 
 /**
  * ハートビート設定
@@ -34,42 +36,24 @@ const HEARTBEAT_STALE_MS = 60000; // 60秒
  * ファイル形式: Record<number, InstanceInfo> (直接レコード、ラッパーなし)
  */
 export class InstanceRepository {
-  private readonly filePath: string;
-
-  constructor() {
-    this.filePath = join(SHARED_DIR, "instances.json");
-  }
-
   /**
    * ファイルから直接読み込む
    */
   private readAll(): Record<number, InstanceInfo> {
-    try {
-      if (!existsSync(this.filePath)) {
-        return {};
-      }
-      const content = readFileSync(this.filePath, "utf-8");
-      return JSON.parse(content);
-    } catch (error) {
-      console.error(`[instance-repo] Failed to read ${this.filePath}:`, error);
-      return {};
-    }
+    return readJsonState<Record<number, InstanceInfo>>({
+      stateKey: "webui_instances",
+      createDefault: () => ({}),
+    });
   }
 
   /**
    * ファイルへ書き込む
    */
   private writeAll(instances: Record<number, InstanceInfo>): void {
-    const tempPath = `${this.filePath}.tmp`;
-    writeFileSync(tempPath, JSON.stringify(instances, null, 2), "utf-8");
-    try {
-      renameSync(tempPath, this.filePath);
-    } catch {
-      writeFileSync(this.filePath, JSON.stringify(instances, null, 2), "utf-8");
-      try {
-        unlinkSync(tempPath);
-      } catch {}
-    }
+    writeJsonState({
+      stateKey: "webui_instances",
+      value: instances,
+    });
   }
 
   /**
@@ -147,25 +131,25 @@ export class InstanceRepository {
  * コンテキスト履歴リポジトリ
  */
 export class ContextHistoryRepository {
-  private readonly filePath: string;
+  private readonly pid: number;
 
   constructor(pid: number) {
-    this.filePath = join(SHARED_DIR, `context-history-${pid}.json`);
+    this.pid = pid;
+  }
+
+  private historyStateKey(pid: number): string {
+    return `webui_context_history:${pid}`;
   }
 
   /**
    * 履歴を追加
    */
   add(entry: Omit<ContextHistoryEntry, "pid">, pid: number): void {
-    let history: ContextHistoryEntry[] = [];
-    
-    try {
-      if (existsSync(this.filePath)) {
-        const content = readFileSync(this.filePath, "utf-8");
-        const data = JSON.parse(content);
-        history = data.history || [];
-      }
-    } catch {}
+    const loaded = readJsonState<{ history: ContextHistoryEntry[] }>({
+      stateKey: this.historyStateKey(pid),
+      createDefault: () => ({ history: [] }),
+    });
+    let history = loaded.history || [];
 
     history.push({ ...entry, pid });
 
@@ -174,57 +158,72 @@ export class ContextHistoryRepository {
       history = history.slice(-100);
     }
 
-    writeFileSync(this.filePath, JSON.stringify({ history }, null, 2), "utf-8");
+    writeJsonState({
+      stateKey: this.historyStateKey(pid),
+      value: { history },
+    });
   }
 
   /**
    * 履歴を取得
    */
   getAll(): ContextHistoryEntry[] {
-    try {
-      if (!existsSync(this.filePath)) {
-        return [];
-      }
-      const content = readFileSync(this.filePath, "utf-8");
-      const data = JSON.parse(content);
-      return data.history || [];
-    } catch {
-      return [];
-    }
+    const loaded = readJsonState<{ history: ContextHistoryEntry[] }>({
+      stateKey: this.historyStateKey(this.pid),
+      createDefault: () => ({ history: [] }),
+    });
+    return loaded.history || [];
   }
 
   /**
    * 全インスタンスの履歴を取得
    */
   static getAllInstances(): InstanceContextHistory[] {
-    const files = readdirSync(SHARED_DIR);
-    const historyFiles = files.filter((f) =>
-      f.startsWith("context-history-") && f.endsWith(".json")
-    );
-
     const result: InstanceContextHistory[] = [];
+    const knownInstances = readJsonState<Record<number, InstanceInfo>>({
+      stateKey: "webui_instances",
+      createDefault: () => ({}),
+    });
+    const knownPids = new Set<number>(Object.keys(knownInstances).map((pid) => Number(pid)));
+    const historyKeys = listJsonStateKeys("webui_context_history:");
 
-    for (const file of historyFiles) {
-      const match = file.match(/context-history-(\d+)\.json/);
+    for (const stateKey of historyKeys) {
+      const match = stateKey.match(/^webui_context_history:(\d+)$/);
       if (match) {
         const pid = parseInt(match[1], 10);
-        const filePath = join(SHARED_DIR, file);
-        
-        try {
-          const content = readFileSync(filePath, "utf-8");
-          const data = JSON.parse(content);
-          const history = data.history || [];
-
-          if (history.length > 0) {
-            result.push({
-              pid,
-              cwd: process.cwd(), // TODO: 実際の値を取得
-              model: "unknown", // TODO: 実際の値を取得
-              history,
-            });
-          }
-        } catch {}
+        knownPids.add(pid);
+        const historyData = readJsonState<{ history: ContextHistoryEntry[] }>({
+          stateKey,
+          createDefault: () => ({ history: [] }),
+        });
+        const history = historyData.history || [];
+        if (history.length > 0) {
+          const instance = knownInstances[pid];
+          result.push({
+            pid,
+            cwd: instance?.cwd || process.cwd(),
+            model: instance?.model || "unknown",
+            history,
+          });
+        }
       }
+    }
+
+    for (const pid of knownPids) {
+      if (result.some((entry) => entry.pid === pid)) continue;
+      const historyData = readJsonState<{ history: ContextHistoryEntry[] }>({
+        stateKey: `webui_context_history:${pid}`,
+        createDefault: () => ({ history: [] }),
+      });
+      const history = historyData.history || [];
+      if (history.length === 0) continue;
+      const instance = knownInstances[pid];
+      result.push({
+        pid,
+        cwd: instance?.cwd || process.cwd(),
+        model: instance?.model || "unknown",
+        history,
+      });
     }
 
     return result;

@@ -3,7 +3,7 @@
  * path: .pi/lib/plan-mode-shared.ts
  * role: プランモードにおけるコマンド実行ポリシーと状態定義の共通ライブラリ
  * why: 全拡張機能間でプランモードの挙動を一貫させ、定義の重複や矛盾を防ぐため
- * related: .pi/extensions/plan.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
+ * related: .pi/extensions/plan.ts, .pi/extensions/subagents.ts
  * public_api: READ_ONLY_COMMANDS, DESTRUCTIVE_COMMANDS, PlanModeState, PLAN_MODE_POLICY
  * invariants: 定数セットはコマンド実行許可の拒否リストとして機能し、PlanModeStateは有効状態とチェックサムを持つ
  * side_effects: なし（定数および静的な定義のみ）
@@ -26,11 +26,10 @@
 // File: .pi/extensions/plan-mode-shared.ts
 // Description: Shared constants and utilities for plan mode across all extensions
 // Why: Ensures consistent plan mode behavior and prevents duplicate/contradictory definitions
-// Related: .pi/extensions/plan.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
+// Related: .pi/extensions/plan.ts, .pi/extensions/subagents.ts
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { loadPlanModeState } from "./storage/task-plan-store.js";
 
 // ============================================
 // Constants
@@ -223,15 +222,9 @@ export function isPlanModeActive(): boolean {
 
 	// Defensive check: require persisted enabled state as well.
 	// This prevents stale PI_PLAN_MODE values from incorrectly enabling plan mode.
-	const stateFile = join(process.cwd(), ".pi", "plans", "plan-mode-state.json");
-	if (!existsSync(stateFile)) {
-		return false;
-	}
-
 	try {
-		const content = readFileSync(stateFile, "utf-8");
-		const state = JSON.parse(content) as PlanModeState;
-		return validatePlanModeState(state) && state.enabled === true;
+		const state = loadPlanModeState<PlanModeState>();
+		return state !== null && validatePlanModeState(state) && state.enabled === true;
 	} catch {
 		return false;
 	}

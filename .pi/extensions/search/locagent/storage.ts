@@ -1,57 +1,60 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/locagent/storage.ts
- * role: LocAgentグラフの保存・読み込み
- * why: 異種グラフの永続化とキャッシュ管理
+ * role: LocAgentグラフの保存・読み込み（SQLite永続化）
+ * why: 異種グラフをSQLiteへ保存し、再構築コストを削減する
  * related: .pi/extensions/search/locagent/builder.ts, .pi/extensions/search/locagent/types.ts
  * public_api: saveLocAgentGraph, loadLocAgentGraph, isLocAgentGraphStale, getLocAgentGraphPath
  * invariants:
- * - グラフは.pi/search/locagent/に保存
+ * - グラフはSQLite json_stateへ保存
  * - 古いインデックスは自動的に再構築
  * side_effects:
- * - ファイルシステムへの書き込み
- * - ディレクトリ作成
+ * - SQLiteへの書き込み
  * failure_modes:
- * - ディスク容量不足
- * - 権限エラー
+ * - SQLite未初期化
+ * - 破損データの復元失敗
  * @abdd.explain
  * overview: LocAgentグラフの永続化モジュール
  * what_it_does:
- *   - グラフをJSON形式で保存
- *   - 保存されたグラフを読み込み
+ *   - グラフをSQLite json_stateへ保存
+ *   - 保存されたグラフを読み込み復元
  *   - インデックスの鮮度をチェック
- *   - インデックスパスを管理
+ *   - SQLite URI形式の保存先を管理
  * why_it_exists:
  *   - インデックス構築のオーバーヘッドを回避
  *   - 高速なグラフ読み込みを実現
  * scope:
  *   in: LocAgentGraph, 作業ディレクトリ
- *   out: 保存されたグラフファイル
+ *   out: SQLiteに保存されたグラフ
  */
 
-import { readFile, writeFile, mkdir, stat } from "fs/promises";
+import { stat } from "fs/promises";
 import { join } from "path";
 import type { LocAgentGraph, LocAgentNode, LocAgentMetadata } from "./types.js";
+import {
+	readStrictJsonState,
+	writeStrictJsonState,
+} from "../../../lib/storage/sqlite-state-store-strict.js";
 
 // ============================================================================
 // Constants
 // ============================================================================
 
 /**
- * インデックスの保存ディレクトリ
- */
-const INDEX_DIR = ".pi/search/locagent";
-
-/**
- * インデックスファイル名
- */
-const INDEX_FILE = "index.json";
-
-/**
  * インデックスの有効期限（ミリ秒）
  * 24時間 = 86400000ms
  */
 const INDEX_TTL = 86400000;
+
+function getLocAgentStateKey(cwd: string): string {
+	return `locagent:index:${cwd}`;
+}
+
+interface SerializableLocAgentGraph {
+	nodes: Array<[string, LocAgentNode]>;
+	edges: LocAgentGraph["edges"];
+	metadata: LocAgentMetadata;
+}
 
 // ============================================================================
 // Path Helpers
@@ -64,7 +67,7 @@ const INDEX_TTL = 86400000;
  * @returns インデックスディレクトリの絶対パス
  */
 export function getLocAgentIndexPath(cwd: string): string {
-	return join(cwd, INDEX_DIR);
+	return `sqlite://json_state/${getLocAgentStateKey(cwd)}`;
 }
 
 /**
@@ -74,7 +77,7 @@ export function getLocAgentIndexPath(cwd: string): string {
  * @returns インデックスファイルの絶対パス
  */
 export function getLocAgentGraphPath(cwd: string): string {
-	return join(cwd, INDEX_DIR, INDEX_FILE);
+	return getLocAgentIndexPath(cwd);
 }
 
 // ============================================================================
@@ -87,7 +90,7 @@ export function getLocAgentGraphPath(cwd: string): string {
  * @param graph - LocAgentグラフ
  * @returns JSONシリアライズ可能なオブジェクト
  */
-function serializeGraph(graph: LocAgentGraph): object {
+function serializeGraph(graph: LocAgentGraph): SerializableLocAgentGraph {
 	return {
 		nodes: Array.from(graph.nodes.entries()),
 		edges: graph.edges,
@@ -128,20 +131,8 @@ export async function saveLocAgentGraph(
 	graph: LocAgentGraph,
 	cwd: string
 ): Promise<boolean> {
-	const indexPath = getLocAgentIndexPath(cwd);
-	const graphPath = getLocAgentGraphPath(cwd);
-
 	try {
-		// ディレクトリを作成
-		await mkdir(indexPath, { recursive: true });
-
-		// グラフをシリアライズ
-		const serialized = serializeGraph(graph);
-		const json = JSON.stringify(serialized, null, 2);
-
-		// ファイルに保存
-		await writeFile(graphPath, json, "utf-8");
-
+		writeStrictJsonState(getLocAgentStateKey(cwd), serializeGraph(graph));
 		return true;
 	} catch (error: unknown) {
 		console.error("Failed to save LocAgent graph:", error);
@@ -158,11 +149,9 @@ export async function saveLocAgentGraph(
 export async function loadLocAgentGraph(
 	cwd: string
 ): Promise<LocAgentGraph | null> {
-	const graphPath = getLocAgentGraphPath(cwd);
-
 	try {
-		const json = await readFile(graphPath, "utf-8");
-		const data = JSON.parse(json);
+		const data = readStrictJsonState<SerializableLocAgentGraph>(getLocAgentStateKey(cwd));
+		if (!data) return null;
 		return deserializeGraph(data);
 	} catch {
 		return null;
@@ -184,12 +173,14 @@ export async function isLocAgentGraphStale(
 	cwd: string,
 	sourcePath: string
 ): Promise<boolean> {
-	const graphPath = getLocAgentGraphPath(cwd);
-
 	try {
-		// インデックスファイルのstatsを取得
-		const indexStats = await stat(graphPath);
-		const indexTime = indexStats.mtimeMs;
+		const graph = await loadLocAgentGraph(cwd);
+		if (!graph) return true;
+
+		const indexTime = Number(graph.metadata.indexedAt || 0);
+		if (!Number.isFinite(indexTime) || indexTime <= 0) {
+			return true;
+		}
 
 		// TTLチェック
 		if (Date.now() - indexTime > INDEX_TTL) {

@@ -36,38 +36,24 @@ import { Mutex } from "async-mutex";
 
 import {
   getEffectiveLimit,
-  getSchedulerAwareLimit,
 } from "../lib/adaptive-rate-controller";
 import {
   getMyParallelLimit,
   isCoordinatorInitialized,
   getModelParallelLimit,
-  getActiveInstancesForModel,
-  getStealingStats,
-  isIdle,
-  findStealCandidate,
-  safeStealWork,
-  enhancedHeartbeat,
 } from "../lib/coordination/cross-instance-coordinator.js";
 import * as crossInstanceCoordinator from "../lib/coordination/cross-instance-coordinator.js";
-import {
-  broadcastQueueState,
-  getWorkStealingSummary,
-} from "../lib/coordination/cross-instance-coordinator.js";
 import {
   getParallelismAdjuster,
   getParallelism as getDynamicParallelism,
 } from "../lib/coordination/dynamic-parallelism.js";
 import {
-  PriorityTaskQueue,
   inferPriority,
   comparePriority,
-  formatPriorityQueueStats,
   type PriorityQueueEntry,
 } from "../lib/coordination/priority-scheduler.js";
 import type {
   TaskPriority,
-  PriorityTaskMetadata,
   AgentRuntimeLimits,
   RuntimeQueueClass,
   RuntimeQueueEntry,
@@ -87,22 +73,18 @@ import type {
   RuntimeOrchestrationWaitInput,
   RuntimeOrchestrationLease,
   RuntimeOrchestrationWaitResult,
-  RuntimeDispatchCandidate,
   RuntimeDispatchPermitInput,
   RuntimeDispatchPermitLease,
   RuntimeDispatchPermitResult,
 } from "../lib/runtime-types";
 import {
   getConcurrencyLimit,
-  resolveLimits,
   detectTier,
 } from "../lib/provider-limits";
 import {
   getScheduler,
   createTaskId,
   type ScheduledTask,
-  type TaskResult,
-  type TaskSource,
 } from "../lib/coordination/task-scheduler.js";
 import {
   setRuntimeSnapshotProvider,
@@ -110,7 +92,6 @@ import {
 import {
   getRuntimeConfig,
   isStableProfile,
-  type RuntimeConfig,
 } from "../lib/runtime-config";
 import { getAdaptiveTotalMaxLlm } from "../lib/adaptive-total-limit.js";
 import {
@@ -181,16 +162,12 @@ export type {
  */
 class GlobalRuntimeStateProvider implements RuntimeStateProvider {
   private readonly globalScope: GlobalScopeWithRuntime;
-  private initializationPromise: Promise<void> | null = null;
-  /** BUG-RC-001修正: 初期化の競合状態を防ぐためのMutex */
-  private readonly initMutex = new Mutex();
 
   /**
    * Symbol.forを使用して一意の初期化済みフラグキーを作成
    * プロセス全体で一意であることを保証
    */
   private static readonly INIT_KEY = Symbol.for('__PI_SHARED_AGENT_RUNTIME_STATE__');
-  private static readonly INIT_FLAG_KEY = Symbol.for('__PI_SHARED_AGENT_RUNTIME_STATE_INITIALIZED__');
 
   constructor() {
     this.globalScope = globalThis as GlobalScopeWithRuntime;
@@ -263,7 +240,6 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
       configurable: true,
       enumerable: false,
     });
-    this.initializationPromise = null;
   }
 }
 
@@ -303,14 +279,12 @@ export function getRuntimeStateProvider(): RuntimeStateProvider {
  */
 
 // Constants now come from centralized runtime-config
-const DEFAULT_MAX_CONCURRENT_ORCHESTRATIONS = 4;
 const DEFAULT_RESERVATION_SWEEP_MS = 5_000;
 const DEFAULT_MAX_PENDING_QUEUE_ENTRIES = 1_000;
 const MIN_RESERVATION_TTL_MS = 2_000;
 const MAX_RESERVATION_TTL_MS = 10 * 60 * 1_000;
 const BACKOFF_MAX_FACTOR = 8;
 const BACKOFF_JITTER_RATIO = 0.2;
-const STRICT_LIMITS_ENV = "PI_AGENT_RUNTIME_STRICT_LIMITS";
 const DEBUG_RUNTIME_QUEUE =
   process.env.PI_DEBUG_RUNTIME_QUEUE === "1" ||
   process.env.PI_DEBUG_RUNTIME === "1";
@@ -485,12 +459,10 @@ async function waitForRuntimeCapacityEvent(
 
   return await new Promise((resolve) => {
     let settled = false;
-    let timeout: NodeJS.Timeout | undefined;
 
     const onEvent = () => {
       if (settled) return;
       settled = true;
-      if (timeout) clearTimeout(timeout);
       cleanup();
       resolve("event");
     };
@@ -498,17 +470,17 @@ async function waitForRuntimeCapacityEvent(
     const onAbort = () => {
       if (settled) return;
       settled = true;
-      if (timeout) clearTimeout(timeout);
       cleanup();
       resolve("aborted");
     };
 
     const cleanup = () => {
+      clearTimeout(timeout);
       runtimeCapacityEventTarget.removeEventListener("capacity-changed", onEvent);
       signal?.removeEventListener("abort", onAbort);
     };
 
-    timeout = setTimeout(() => {
+    const timeout = setTimeout(() => {
       if (settled) return;
       settled = true;
       cleanup();
@@ -766,10 +738,6 @@ function ensureRuntimeStateShape(runtime: AgentRuntimeState): AgentRuntimeState 
     runtime.limitsVersion = serializeRuntimeLimits(runtime.limits);
   }
   return runtime;
-}
-
-function isStrictRuntimeLimitMode(): boolean {
-  return process.env[STRICT_LIMITS_ENV] !== "0";
 }
 
 function enforceRuntimeLimitConsistency(runtime: AgentRuntimeState): void {
@@ -1604,7 +1572,7 @@ async function schedulerBasedWait(
       attempts,
       timedOut: result.timedOut || (runtimeNow() - startedAt >= maxWaitMs && !check.allowed),
     };
-  } catch (error) {
+  } catch {
     // Fallback to existing logic on scheduler error (graceful degradation)
     const check = checkRuntimeCapacity(input);
     return {
@@ -2200,14 +2168,14 @@ export function getModelAwareParallelLimit(provider: string, model: string): num
   const tier = detectTier(provider, model);
   const presetLimit = getConcurrencyLimit(provider, model, tier);
 
-  // Apply scheduler-aware limit (includes adaptive learning + predictive throttling)
-  const schedulerLimit = getSchedulerAwareLimit(provider, model, presetLimit);
+  // Adaptive controller is the current source of truth for model-aware limits.
+  const adaptiveLimit = getEffectiveLimit(provider, model, presetLimit);
 
   // Apply dynamic parallelism adjuster
   const dynamicLimit = getDynamicParallelism(provider, model);
 
-  // Take the minimum of scheduler limit and dynamic limit
-  let effectiveLimit = Math.min(schedulerLimit, dynamicLimit);
+  // Take the minimum of adaptive limit and dynamic limit
+  let effectiveLimit = Math.min(adaptiveLimit, dynamicLimit);
 
   // Distribute across instances using the same model
   if (isCoordinatorInitialized()) {
@@ -2241,67 +2209,6 @@ export function shouldAllowParallelForModel(
  * @param {string} [model] モデル
  * @returns {string} サマリ文字列
  */
-export function getLimitsSummary(provider?: string, model?: string): string {
-  const lines: string[] = [];
-  const snapshot = getRuntimeSnapshot();
-
-  lines.push("Runtime Limits:");
-  lines.push(`  maxTotalActiveLlm: ${snapshot.limits.maxTotalActiveLlm}`);
-  lines.push(`  maxParallelSubagentsPerRun: ${snapshot.limits.maxParallelSubagentsPerRun}`);
-  lines.push(`  maxParallelTeamsPerRun: ${snapshot.limits.maxParallelTeamsPerRun}`);
-
-  if (provider && model) {
-    const modelLimit = getModelAwareParallelLimit(provider, model);
-    const instances = isCoordinatorInitialized() ? getActiveInstancesForModel(provider, model) : 1;
-    const dynamicLimit = getDynamicParallelism(provider, model);
-    lines.push("");
-    lines.push(`Model-Specific (${provider}/${model}):`);
-    lines.push(`  effective_limit: ${modelLimit}`);
-    lines.push(`  dynamic_limit: ${dynamicLimit}`);
-    lines.push(`  instances_using: ${instances}`);
-  }
-
-  lines.push("");
-  lines.push("Current State:");
-  lines.push(`  activeSubagentAgents: ${snapshot.subagentActiveAgents}`);
-  lines.push(`  activeTeamRuns: ${snapshot.teamActiveRuns}`);
-  lines.push(`  activeReservations: ${snapshot.activeReservations}`);
-
-  // Work stealing summary
-  if (isCoordinatorInitialized()) {
-    const stealingSummary = getWorkStealingSummary();
-    lines.push("");
-    lines.push("Work Stealing:");
-    lines.push(`  remote_instances: ${stealingSummary.remoteInstances}`);
-    lines.push(`  total_pending_tasks: ${stealingSummary.totalPendingTasks}`);
-    lines.push(`  stealable_tasks: ${stealingSummary.stealableTasks}`);
-    lines.push(`  idle_instances: ${stealingSummary.idleInstances}`);
-  }
-
-  return lines.join("\n");
-}
-
-/**
- * キュー状態を配信
- * @summary キュー状態を配信
- * @returns {void}
- */
-export function broadcastCurrentQueueState(): void {
-  const snapshot = getRuntimeSnapshot();
-
-  broadcastQueueState({
-    pendingTaskCount: snapshot.queuedOrchestrations,
-    activeOrchestrations: snapshot.activeOrchestrations,
-    stealableEntries: snapshot.queuedTools.slice(0, 10).map((tool) => ({
-      id: `entry-${runtimeNow()}-${Math.random().toString(36).slice(2, 8)}`,
-      toolName: validateToolName(tool.split(":")[0]),
-      priority: tool.split(":")[1] ?? "normal",
-      instanceId: "self",
-      enqueuedAt: new Date().toISOString(),
-    })),
-  });
-}
-
 // ============================================================================
 // Checkpoint Manager Integration
 // ============================================================================
@@ -2438,108 +2345,6 @@ export function getCheckpointStats(): CheckpointStats | null {
     return manager.getStats();
   }
   return null;
-}
-
-/**
- * ワークスチーリングを試行
- * @summary ワークスチーリング試行
- * @returns 盗まれたキューのエントリ、またはnull
- */
-export async function attemptWorkStealing(): Promise<import("../lib/coordination/cross-instance-coordinator.js").StealableQueueEntry | null> {
-  if (!ENABLE_WORK_STEALING) return null;
-
-  // Only steal if we're idle
-  if (!isIdle()) return null;
-
-  const entry = await safeStealWork();
-
-  if (entry) {
-    recordWorkStealEvent(entry.instanceId, entry.id);
-  }
-
-  return entry;
-}
-
-/**
- * ランタイム包括ステータス取得
- * @summary ステータス取得
- * @returns ランタイムスナップショット、メトリクス、チェックポイント、スチーリング統計、および機能フラグを含むオブジェクト
- */
-export function getComprehensiveRuntimeStatus(): {
-  runtime: AgentRuntimeSnapshot;
-  metrics: SchedulerMetrics | null;
-  checkpoints: CheckpointStats | null;
-  stealing: import("../lib/coordination/cross-instance-coordinator.js").StealingStats | null;
-  features: {
-    preemption: boolean;
-    workStealing: boolean;
-    checkpoints: boolean;
-    metrics: boolean;
-  };
-} {
-  return {
-    runtime: getRuntimeSnapshot(),
-    metrics: getSchedulerMetrics(),
-    checkpoints: getCheckpointStats(),
-    stealing: isCoordinatorInitialized() ? getStealingStats() : null,
-    features: {
-      preemption: ENABLE_PREEMPTION,
-      workStealing: ENABLE_WORK_STEALING,
-      checkpoints: ENABLE_CHECKPOINTS,
-      metrics: ENABLE_METRICS,
-    },
-  };
-}
-
-/**
- * ランタイム状態を整形
- * @summary ランタイム状態を整形
- * @returns 整形されたステータス文字列
- */
-export function formatComprehensiveRuntimeStatus(): string {
-  const status = getComprehensiveRuntimeStatus();
-  const lines: string[] = [];
-
-  lines.push("Runtime Status:");
-  lines.push(`  Active LLM: ${status.runtime.totalActiveLlm}`);
-  lines.push(`  Active Requests: ${status.runtime.totalActiveRequests}`);
-  lines.push(`  Queue: active=${status.runtime.activeOrchestrations}, queued=${status.runtime.queuedOrchestrations}`);
-
-  lines.push("");
-  lines.push("Feature Flags:");
-  lines.push(`  Preemption: ${status.features.preemption ? "enabled" : "disabled"}`);
-  lines.push(`  Work Stealing: ${status.features.workStealing ? "enabled" : "disabled"}`);
-  lines.push(`  Checkpoints: ${status.features.checkpoints ? "enabled" : "disabled"}`);
-  lines.push(`  Metrics: ${status.features.metrics ? "enabled" : "disabled"}`);
-
-  if (status.metrics) {
-    lines.push("");
-    lines.push("Metrics:");
-    lines.push(`  Queue Depth: ${status.metrics.queueDepth}`);
-    lines.push(`  Avg Wait: ${status.metrics.avgWaitMs}ms`);
-    lines.push(`  P99 Wait: ${status.metrics.p99WaitMs}ms`);
-    lines.push(`  Throughput: ${status.metrics.tasksCompletedPerMin}/min`);
-    lines.push(`  Preemptions: ${status.metrics.preemptCount}`);
-    lines.push(`  Steals: ${status.metrics.stealCount}`);
-  }
-
-  if (status.checkpoints) {
-    lines.push("");
-    lines.push("Checkpoints:");
-    lines.push(`  Total: ${status.checkpoints.totalCount}`);
-    lines.push(`  Expired: ${status.checkpoints.expiredCount}`);
-    lines.push(`  Size: ${Math.round(status.checkpoints.totalSizeBytes / 1024)}KB`);
-  }
-
-  if (status.stealing) {
-    lines.push("");
-    lines.push("Work Stealing Stats:");
-    lines.push(`  Attempts: ${status.stealing.totalAttempts}`);
-    lines.push(`  Success: ${status.stealing.successfulSteals}`);
-    lines.push(`  Success Rate: ${Math.round(status.stealing.successRate * 100)}%`);
-  }
-
-  return lines.join("\n");
 }
 
  /**

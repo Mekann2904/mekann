@@ -244,7 +244,6 @@ export interface IRuntimeSnapshotProvider {
 // ============================================================================
 
 import type { AgentId, AgentDefinition, AgentRunRecord } from "../../core/domain/agent.js";
-import type { TeamId, TeamDefinition, TeamRunRecord } from "../../core/domain/team.js";
 import type { PlanId, PlanDefinition } from "../../core/domain/plan.js";
 
 /**
@@ -264,25 +263,6 @@ export interface IAgentRepository {
   saveRunRecord(record: AgentRunRecord): Promise<void>;
   /** 実行記録を取得 */
   getRunRecords(agentId: AgentId, limit?: number): Promise<AgentRunRecord[]>;
-}
-
-/**
- * チームリポジトリポート
- * @summary チームリポジトリ
- */
-export interface ITeamRepository {
-  /** 全チーム定義を取得 */
-  findAll(): Promise<TeamDefinition[]>;
-  /** IDでチーム定義を取得 */
-  findById(id: TeamId): Promise<TeamDefinition | null>;
-  /** チーム定義を保存 */
-  save(definition: TeamDefinition): Promise<void>;
-  /** チーム定義を削除 */
-  delete(id: TeamId): Promise<void>;
-  /** 実行記録を保存 */
-  saveRunRecord(record: TeamRunRecord): Promise<void>;
-  /** 実行記録を取得 */
-  getRunRecords(teamId: TeamId, limit?: number): Promise<TeamRunRecord[]>;
 }
 
 /**

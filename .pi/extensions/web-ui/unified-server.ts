@@ -46,7 +46,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const sseEventBus = new SSEEventBus();
 let contextCleanupInterval: ReturnType<typeof setInterval> | null = null;
 let ulTaskCleanupInterval: ReturnType<typeof setInterval> | null = null;
+let idleShutdownInterval: ReturnType<typeof setInterval> | null = null;
 let contextHistoryStorage: ContextHistoryStorage | null = null;
+let zeroInstanceSince = 0;
 
 /**
  * コンテキスト履歴を追加してSSEでブロードキャスト
@@ -266,6 +268,36 @@ export function startUnifiedServer(
     }
   }, config.ulTaskCleanupInterval);
 
+  if (idleShutdownInterval) {
+    clearInterval(idleShutdownInterval);
+  }
+  idleShutdownInterval = setInterval(() => {
+    import("./lib/instance-registry.js").then(({ InstanceRegistry }) => {
+      const instanceCount = InstanceRegistry.getCount();
+      if (instanceCount > 0) {
+        zeroInstanceSince = 0;
+        return;
+      }
+
+      if (zeroInstanceSince === 0) {
+        zeroInstanceSince = Date.now();
+        return;
+      }
+
+      if (Date.now() - zeroInstanceSince < 15000) {
+        return;
+      }
+
+      console.log("[web-ui] No active PI instances remain, stopping unified server...");
+      stopUnifiedServer();
+    }).catch((error) => {
+      console.error("[web-ui] Failed to evaluate instance count for idle shutdown:", error);
+    });
+  }, 5000);
+  if (idleShutdownInterval.unref) {
+    idleShutdownInterval.unref();
+  }
+
   console.log(`[web-ui] Unified server started on port ${config.port}`);
 
   return state.server;
@@ -295,6 +327,11 @@ export function stopUnifiedServer(): void {
       clearInterval(ulTaskCleanupInterval);
       ulTaskCleanupInterval = null;
     }
+    if (idleShutdownInterval) {
+      clearInterval(idleShutdownInterval);
+      idleShutdownInterval = null;
+    }
+    zeroInstanceSince = 0;
 
     // Node.jsのサーバーを閉じる
     state.server.close();

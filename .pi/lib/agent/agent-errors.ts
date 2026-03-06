@@ -35,7 +35,7 @@
  * New error types: SCHEMA_VIOLATION, LOW_SUBSTANCE, EMPTY_OUTPUT
  */
 
-import { type EntityType, type EntityConfig, SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG } from "./agent-common.js";
+import { type EntityType, type EntityConfig, SUBAGENT_CONFIG } from "./agent-common.js";
 import { type RunOutcomeCode, type RunOutcomeSignal } from "./agent-types.js";
 import {
   classifyPressureError,
@@ -296,19 +296,6 @@ export function isRetryableSubagentError(
   return isRetryableEntityError(error, statusCode, SUBAGENT_CONFIG);
 }
 
-/**
- * @summary リトライ可否判定
- * @param error - 判定対象のエラー
- * @param statusCode - HTTPステータスコード（任意）
- * @returns リトライ可能な場合はtrue
- */
-export function isRetryableTeamMemberError(
-  error: unknown,
-  statusCode?: number,
-): boolean {
-  return isRetryableEntityError(error, statusCode, TEAM_MEMBER_CONFIG);
-}
-
 // ============================================================================
 // Failure Outcome Resolution
 // ============================================================================
@@ -361,25 +348,17 @@ export function resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal 
   return resolveFailureOutcome(error, SUBAGENT_CONFIG);
 }
 
-/**
- * サブエージェント失敗時の結果解決
- * @summary 失敗結果を解決
- * @param error 不明なエラーオブジェクト
- * @returns 実行結果シグナル
- */
-export function resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal {
-  return resolveFailureOutcome(error, TEAM_MEMBER_CONFIG);
-}
-
 // ============================================================================
 // Aggregate Outcome Resolution
 // ============================================================================
 
 /**
- * チーム失敗時の結果解決
- * @summary 失敗結果を解決
- * @param error 不明なエラーオブジェクト
- * @returns 実行結果シグナル
+ * エンティティ結果アイテム
+ * @summary 結果アイテム定義
+ * @param status ステータス
+ * @param error エラーメッセージ
+ * @param summary サマリー
+ * @param entityId エンティティID
  */
 export interface EntityResultItem {
   status: "completed" | "failed";
@@ -461,29 +440,6 @@ export function resolveSubagentParallelOutcome(
   return {
     ...outcome,
     failedSubagentIds: outcome.failedEntityIds,
-  };
-}
-
-/**
- * チームメンバー集計結果解決
- * @summary チーム結果集計
- * @param memberResults - チームメンバーの実行結果リスト
- * @returns 失敗したメンバーIDを含む集計結果シグナル
- */
-export function resolveTeamMemberAggregateOutcome(
-  memberResults: Array<{ status: "completed" | "failed"; error?: string; summary?: string; memberId: string }>,
-): RunOutcomeSignal & { failedMemberIds: string[] } {
-  const mappedResults: EntityResultItem[] = memberResults.map((r) => ({
-    status: r.status,
-    error: r.error,
-    summary: r.summary,
-    entityId: r.memberId,
-  }));
-
-  const outcome = resolveAggregateOutcome(mappedResults, resolveTeamFailureOutcome);
-  return {
-    ...outcome,
-    failedMemberIds: outcome.failedEntityIds,
   };
 }
 
@@ -657,8 +613,6 @@ export type ToolCriticalityLevel = "critical" | "non-critical" | "informational"
 const CRITICAL_TOOLS: ReadonlySet<string> = new Set([
   "write",
   "edit",
-  "agent_team_run",
-  "agent_team_run_parallel",
   "subagent_run",
   "subagent_run_parallel",
   "create_tool",

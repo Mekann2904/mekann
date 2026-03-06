@@ -1,14 +1,12 @@
 /**
- * @abdd.meta
- * @path .pi/extensions/web-ui/src/services/index-settings-service.ts
- * @role インデックス設定管理サービス
- * @why LocAgent, RepoGraph, Semanticの有効/無効状態を永続化
- * @related routes/indexes.ts
- * @public_api IndexSettingsService
+ * path: .pi/extensions/web-ui/src/services/index-settings-service.ts
+ * role: インデックス設定を SQLite json_state に保存する
+ * why: インデックス設定の保存先を SQLite に統一するため
+ * related: .pi/extensions/web-ui/src/routes/indexes.ts, .pi/lib/storage/sqlite-state-store.ts, .pi/lib/storage/state-keys.ts
  */
 
-import { readFile, writeFile, mkdir } from "fs/promises";
-import { join } from "path";
+import { readJsonState, writeJsonState } from "../../../../lib/storage/sqlite-state-store.js";
+import { getIndexSettingsStateKey } from "../../../../lib/storage/state-keys.js";
 
 /**
  * インデックス設定
@@ -20,13 +18,6 @@ export interface IndexSettings {
 }
 
 /**
- * 設定ファイルのパス
- */
-function getSettingsPath(cwd: string): string {
-  return join(cwd, ".pi/search/index-settings.json");
-}
-
-/**
  * デフォルト設定（全て有効）
  */
 const DEFAULT_SETTINGS: IndexSettings = {
@@ -35,37 +26,22 @@ const DEFAULT_SETTINGS: IndexSettings = {
   semantic: true,
 };
 
-/**
- * 設定ディレクトリを確保
- */
-async function ensureSettingsDir(cwd: string): Promise<void> {
-  const dir = join(cwd, ".pi/search");
-  try {
-    await mkdir(dir, { recursive: true });
-  } catch {
-    // ディレクトリが既に存在する場合は無視
-  }
+function normalizeSettings(settings: Partial<IndexSettings> | null | undefined): IndexSettings {
+  return {
+    ...DEFAULT_SETTINGS,
+    ...(settings || {}),
+  };
 }
 
 /**
  * インデックス設定を読み込み
  */
 export async function loadIndexSettings(cwd: string): Promise<IndexSettings> {
-  const path = getSettingsPath(cwd);
-  
-  try {
-    const content = await readFile(path, "utf-8");
-    const settings = JSON.parse(content) as Partial<IndexSettings>;
-    
-    // デフォルト値で埋める
-    return {
-      ...DEFAULT_SETTINGS,
-      ...settings,
-    };
-  } catch {
-    // ファイルが存在しない場合はデフォルト設定を返す
-    return { ...DEFAULT_SETTINGS };
-  }
+  const settings = readJsonState<IndexSettings>({
+    stateKey: getIndexSettingsStateKey(cwd),
+    createDefault: () => ({ ...DEFAULT_SETTINGS }),
+  });
+  return normalizeSettings(settings);
 }
 
 /**
@@ -75,9 +51,10 @@ export async function saveIndexSettings(
   cwd: string,
   settings: IndexSettings
 ): Promise<void> {
-  await ensureSettingsDir(cwd);
-  const path = getSettingsPath(cwd);
-  await writeFile(path, JSON.stringify(settings, null, 2), "utf-8");
+  writeJsonState({
+    stateKey: getIndexSettingsStateKey(cwd),
+    value: normalizeSettings(settings),
+  });
 }
 
 /**

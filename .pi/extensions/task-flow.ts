@@ -30,9 +30,6 @@
 // Why: Enables seamless workflow integration between tasks, plans, and subagent execution
 // Related: .pi/extensions/task.ts, .pi/extensions/plan.ts, .pi/extensions/subagents/task-execution.ts
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
-
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
@@ -40,6 +37,11 @@ import { runSubagentTask } from "./subagents/task-execution";
 import { loadStorage as loadSubagentStorage } from "./subagents/storage";
 import type { SubagentDefinition } from "./subagents/storage";
 import { getInstanceId } from "./ul-workflow.js";
+import {
+	loadTaskStorage as loadSharedTaskStorage,
+	saveTaskStorage as saveSharedTaskStorage,
+	loadPlanStorage as loadSharedPlanStorage,
+} from "../lib/storage/task-plan-store.js";
 
 // ============================================
 // Type Definitions (local copies for type safety)
@@ -125,32 +127,7 @@ interface PlanStorage {
 // Storage Management
 // ============================================
 
-const TASK_DIR = ".pi/tasks";
-const TASK_STORAGE_FILE = join(TASK_DIR, "storage.json");
-const PLAN_DIR = ".pi/plans";
-const PLAN_STORAGE_FILE = join(PLAN_DIR, "storage.json");
-
 let taskIdSequence = 0;
-
-/**
- * タスクディレクトリを確保
- * @summary タスクディレクトリ作成
- */
-function ensureTaskDir(): void {
-	if (!existsSync(TASK_DIR)) {
-		mkdirSync(TASK_DIR, { recursive: true });
-	}
-}
-
-/**
- * プランディレクトリを確保
- * @summary プランディレクトリ作成
- */
-function ensurePlanDir(): void {
-	if (!existsSync(PLAN_DIR)) {
-		mkdirSync(PLAN_DIR, { recursive: true });
-	}
-}
 
 /**
  * タスクストレージを読み込み
@@ -158,18 +135,7 @@ function ensurePlanDir(): void {
  * @returns タスクストレージオブジェクト
  */
 function loadTaskStorage(): TaskStorage {
-	ensureTaskDir();
-	if (!existsSync(TASK_STORAGE_FILE)) {
-		const empty: TaskStorage = { tasks: [] };
-		writeFileSync(TASK_STORAGE_FILE, JSON.stringify(empty, null, 2), "utf-8");
-		return empty;
-	}
-	try {
-		const content = readFileSync(TASK_STORAGE_FILE, "utf-8");
-		return JSON.parse(content);
-	} catch {
-		return { tasks: [] };
-	}
+	return loadSharedTaskStorage<TaskStorage>();
 }
 
 /**
@@ -179,20 +145,11 @@ function loadTaskStorage(): TaskStorage {
  * @throws バックアップ保存も失敗した場合はエラーログのみ出力
  */
 function saveTaskStorage(storage: TaskStorage): void {
-	ensureTaskDir();
 	try {
-		writeFileSync(TASK_STORAGE_FILE, JSON.stringify(storage, null, 2), "utf-8");
+		saveSharedTaskStorage(storage);
 	} catch (error) {
 		console.error(`[task-flow] Failed to save task storage:`, error);
-		// Attempt backup save
-		const backupFile = `${TASK_STORAGE_FILE}.backup-${Date.now()}`;
-		try {
-			writeFileSync(backupFile, JSON.stringify(storage, null, 2), "utf-8");
-			console.error(`[task-flow] Backup saved to: ${backupFile}`);
-		} catch {
-			// Final fallback - data loss is possible
-			console.error(`[task-flow] CRITICAL: Could not save backup either`);
-		}
+		console.error(`[task-flow] CRITICAL: Could not save storage`);
 	}
 }
 
@@ -202,18 +159,7 @@ function saveTaskStorage(storage: TaskStorage): void {
  * @returns プランストレージオブジェクト
  */
 function loadPlanStorage(): PlanStorage {
-	ensurePlanDir();
-	if (!existsSync(PLAN_STORAGE_FILE)) {
-		const empty: PlanStorage = { plans: [] };
-		writeFileSync(PLAN_STORAGE_FILE, JSON.stringify(empty, null, 2), "utf-8");
-		return empty;
-	}
-	try {
-		const content = readFileSync(PLAN_STORAGE_FILE, "utf-8");
-		return JSON.parse(content);
-	} catch {
-		return { plans: [] };
-	}
+	return loadSharedPlanStorage<PlanStorage>();
 }
 
 /**

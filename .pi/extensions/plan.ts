@@ -28,9 +28,6 @@
 // Why: Enables structured task planning with step-by-step execution
 // Related: README.md, .pi/extensions/loop.ts
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
-import { join } from "node:path";
-
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
@@ -51,6 +48,13 @@ import {
 	PLAN_MODE_ENV_VAR,
 	type PlanModeState,
 } from "../lib/plan-mode-shared";
+import {
+	ensurePlanDir as ensureSharedPlanDir,
+	loadPlanStorage as loadSharedPlanStorage,
+	savePlanStorage as saveSharedPlanStorage,
+	loadPlanModeState as loadSharedPlanModeState,
+	savePlanModeState as saveSharedPlanModeState,
+} from "../lib/storage/task-plan-store.js";
 
 // ============================================
 // Global State
@@ -99,33 +103,16 @@ interface PlanStorage {
 // Storage Management
 // ============================================
 
-const PLAN_DIR = ".pi/plans";
-const STORAGE_FILE = join(PLAN_DIR, "storage.json");
-
 function ensurePlanDir(): void {
-	if (!existsSync(PLAN_DIR)) {
-		mkdirSync(PLAN_DIR, { recursive: true });
-	}
+	ensureSharedPlanDir();
 }
 
 function loadStorage(): PlanStorage {
-	ensurePlanDir();
-	if (!existsSync(STORAGE_FILE)) {
-		const empty: PlanStorage = { plans: [] };
-		writeFileSync(STORAGE_FILE, JSON.stringify(empty, null, 2), "utf-8");
-		return empty;
-	}
-	try {
-		const content = readFileSync(STORAGE_FILE, "utf-8");
-		return JSON.parse(content);
-	} catch {
-		return { plans: [] };
-	}
+	return loadSharedPlanStorage<PlanStorage>();
 }
 
 function saveStorage(storage: PlanStorage): void {
-	ensurePlanDir();
-	writeFileSync(STORAGE_FILE, JSON.stringify(storage, null, 2), "utf-8");
+	saveSharedPlanStorage(storage);
 }
 
 function generateId(): string {
@@ -337,8 +324,6 @@ export default function (pi: ExtensionAPI) {
 	// Plan Mode State Persistence
 	// ============================================
 
-	const PLAN_STATE_FILE = join(PLAN_DIR, "plan-mode-state.json");
-
 	function syncPlanModeEnv(enabled: boolean): void {
 		if (enabled) {
 			process.env[PLAN_MODE_ENV_VAR] = "1";
@@ -348,26 +333,20 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	function savePlanModeState(enabled: boolean): void {
-		ensurePlanDir();
-
-		// Use atomic write via temp file
-		const tempFile = `${PLAN_STATE_FILE}.tmp`;
 		const state = createPlanModeState(enabled);
-		writeFileSync(tempFile, JSON.stringify(state, null, 2), "utf-8");
-		renameSync(tempFile, PLAN_STATE_FILE); // Atomic on POSIX
+		saveSharedPlanModeState(state);
 
 		// Keep env flag in sync so other extensions see the real plan mode state.
 		syncPlanModeEnv(enabled);
 	}
 
 	function loadPlanModeState(): boolean {
-		if (!existsSync(PLAN_STATE_FILE)) {
-			syncPlanModeEnv(false);
-			return false;
-		}
 		try {
-			const content = readFileSync(PLAN_STATE_FILE, "utf-8");
-			const state: PlanModeState = JSON.parse(content);
+			const state = loadSharedPlanModeState<PlanModeState>();
+			if (!state) {
+				syncPlanModeEnv(false);
+				return false;
+			}
 
 			// Validate checksum to detect corruption/tampering
 			if (!validatePlanModeState(state)) {

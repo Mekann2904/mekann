@@ -31,7 +31,6 @@ import {
   type VerificationStatus,
   type SafetyIssueType,
   type AuditAction,
-  type PerformanceThresholds,
 } from '@lib/dynamic-tools/types';
 
 describe('getDynamicToolsPaths', () => {
