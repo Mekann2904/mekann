@@ -12,7 +12,7 @@ vi.mock("@mariozechner/pi-coding-agent", () => ({
 }));
 
 // モック後にインポート
-import ulDualMode from "../../../.pi/extensions/ul-dual-mode.js";
+import ulDualMode, { buildUlWorkflowPrompt } from "../../../.pi/extensions/ul-dual-mode.js";
 
 // ============================================================================
 // エクスポート確認テスト
@@ -94,6 +94,38 @@ describe("extractTextWithoutUlPrefix関数", () => {
 
 	it("ulのみの場合は空文字列", () => {
 		expect(extractTextWithoutUlPrefix("ul")).toBe("");
+	});
+});
+
+// ============================================================================
+// ワークフロープロンプト生成のテスト
+// ============================================================================
+
+describe("buildUlWorkflowPrompt", () => {
+	it("ResearchからCommitまでの固定フローを含む", () => {
+		const prompt = buildUlWorkflowPrompt("認証フローのバグを修正");
+
+		expect(prompt).toContain("1. Research");
+		expect(prompt).toContain("2. Plan");
+		expect(prompt).toContain("3. Question拡張で人間確認");
+		expect(prompt).toContain("4. 承認された場合のみ Implement");
+		expect(prompt).toContain("5. Commit");
+	});
+
+	it("questionツールの実際の引数形式を使う", () => {
+		const prompt = buildUlWorkflowPrompt("通知バグ修正");
+
+		expect(prompt).toContain('"tool": "question"');
+		expect(prompt).toContain('"question": "plan.md を確認してください。');
+		expect(prompt).toContain('"options": [');
+		expect(prompt).not.toContain('"questions": [');
+	});
+
+	it("修正要求時に modify_plan を再実行する指示を含む", () => {
+		const prompt = buildUlWorkflowPrompt("通知バグ修正");
+
+		expect(prompt).toContain("ul_workflow_modify_plan");
+		expect(prompt).toContain("再度 `question` ツールで確認する");
 	});
 });
 

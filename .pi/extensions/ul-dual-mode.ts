@@ -403,10 +403,72 @@ function buildUlTransformedInput(task: string, goalLoopMode: boolean): string {
   const goalHint = goalLoopMode
     ? "\n\n[GOAL_LOOP] 明確な達成条件あり。実装後に検証コマンドを実行。"
     : "";
-  return `[UL_MODE] Research → Plan → [ユーザーレビュー] → Implement のフローで進めよ。詳細は UL Mode Guideline を参照。${goalHint}
+  return `${buildUlWorkflowPrompt(task)}${goalHint}`;
+}
 
-タスク:
-${task}`;
+/**
+ * ULワークフロー用の実行プロンプトを生成する
+ * `ul <task>` から常に同じ段取りで進めるため、曖昧な方針文ではなく
+ * 実行順序を固定した具体的な指示を返す。
+ */
+export function buildUlWorkflowPrompt(task: string): string {
+  return `[UL_MODE] 以下の固定フローを止まらずに進めてください。
+
+フロー:
+1. Research
+2. Plan
+3. Question拡張で人間確認
+4. 承認された場合のみ Implement
+5. Commit
+
+厳守事項:
+- コードを書く前に、必ず文章化された計画を人間確認にかけること
+- 人間確認では必ず \`question\` ツールを使うこと
+- Research と Plan は自律的に進めること
+- Question で承認されるまでは実装しないこと
+- 承認後は Implement と Commit まで続けること
+
+実行するタスク:
+${task}
+
+実行手順:
+1. \`ul_workflow_start({ task: ${JSON.stringify(task)} })\` を呼ぶ
+2. \`ul_workflow_status()\` で taskId を確認する
+3. \`ul_workflow_research({ task: ${JSON.stringify(task)} })\` を呼ぶ
+4. \`ul_workflow_approve()\` で Plan フェーズへ進む
+5. \`ul_workflow_plan({ task: ${JSON.stringify(task)} })\` を呼ぶ
+6. 生成された \`.pi/ul-workflow/tasks/{taskId}/plan.md\` を要約して示す
+7. 次に必ず \`question\` ツールを以下の形で呼ぶ
+
+\`\`\`json
+{
+  "tool": "question",
+  "arguments": {
+    "question": "plan.md を確認してください。この計画で実装を続行しますか？ 修正したい場合は Type something. を選んで修正内容を書いてください。",
+    "options": [
+      { "label": "承認して続行", "description": "Implement と Commit まで進む" },
+      { "label": "中止", "description": "今回は進めない" }
+    ]
+  }
+}
+\`\`\`
+
+8. 回答が「承認して続行」なら:
+   - \`ul_workflow_approve()\` を呼ぶ
+   - \`ul_workflow_execute_plan()\` を呼ぶ
+   - \`ul_workflow_commit()\` を呼ぶ
+   - コミット候補を要約して、必要なら追加で \`question\` で確認する
+9. 回答が「中止」なら:
+   - \`ul_workflow_abort()\` を呼ぶ
+10. 回答が自由入力なら:
+   - その内容を修正指示として \`ul_workflow_modify_plan({ modifications: "..." })\` に渡す
+   - 更新後の plan.md を再要約する
+   - 再度 \`question\` ツールで確認する
+
+出力ルール:
+- 各フェーズで何をしたかを短く報告する
+- 生成物のパスを明示する
+- 実装前には必ず Question の結果を明示する`;
 }
 
 // ポリシーキャッシュ（4通りの組み合わせのみ、防御的に上限設定）
@@ -684,7 +746,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
         text: `まず、以下の質問を使ってユーザーに確認してください:
 
 \`\`\`json
-{ "tool": "question", "arguments": { "questions": [{ "question": "${questionText}", "header": "承認確認", "options": [{ "label": "Yes", "description": "承認して次のフェーズへ" }, { "label": "No", "description": "キャンセル" }] }] } }
+{ "tool": "question", "arguments": { "question": "${questionText}", "options": [{ "label": "Yes", "description": "承認して次のフェーズへ" }, { "label": "No", "description": "キャンセル" }] } }
 \`\`\`
 
 ユーザーが「Yes」を選択した場合のみ、以下のツールを呼び出してください:
@@ -703,7 +765,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
         text: `まず、以下の質問を使ってユーザーに確認してください:
 
 \`\`\`json
-{ "tool": "question", "arguments": { "questions": [{ "question": "plan.mdの注釈を適用しますか？", "header": "注釈適用", "options": [{ "label": "Yes", "description": "注釈を検出・適用" }, { "label": "No", "description": "キャンセル" }] }] } }
+{ "tool": "question", "arguments": { "question": "plan.mdの注釈を適用しますか？", "options": [{ "label": "Yes", "description": "注釈を検出・適用" }, { "label": "No", "description": "キャンセル" }] } }
 \`\`\`
 
 ユーザーが「Yes」を選択した場合のみ、以下のツールを呼び出してください:
@@ -722,7 +784,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
         text: `まず、以下の質問を使ってユーザーに確認してください:
 
 \`\`\`json
-{ "tool": "question", "arguments": { "questions": [{ "question": "本当にワークフローを中止しますか？\\n中止すると、現在の進捗が中断されます。", "header": "中止確認", "options": [{ "label": "Yes", "description": "中止する" }, { "label": "No", "description": "キャンセル" }] }] } }
+{ "tool": "question", "arguments": { "question": "本当にワークフローを中止しますか？\\n中止すると、現在の進捗が中断されます。", "options": [{ "label": "Yes", "description": "中止する" }, { "label": "No", "description": "キャンセル" }] } }
 \`\`\`
 
 ユーザーが「Yes」を選択した場合のみ、以下のツールを呼び出してください:
