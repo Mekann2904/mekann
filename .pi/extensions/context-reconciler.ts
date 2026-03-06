@@ -220,14 +220,15 @@ export default function (pi: ExtensionAPI) {
 function createSessionContext(ctx: ExtensionAPI["context"]): {
   sessionManager?: { getSessionFile?: () => string };
 } | undefined {
-  const getSessionFile = ctx.sessionManager?.getSessionFile;
-  if (typeof getSessionFile !== "function") {
+  const sessionManager = ctx.sessionManager;
+  if (!sessionManager || typeof sessionManager.getSessionFile !== "function") {
     return undefined;
   }
 
   return {
     sessionManager: {
-      getSessionFile: () => getSessionFile() ?? "",
+      // sessionManagerのthis束縛を維持して内部状態へ安全にアクセスする
+      getSessionFile: () => sessionManager.getSessionFile() ?? "",
     },
   };
 }
