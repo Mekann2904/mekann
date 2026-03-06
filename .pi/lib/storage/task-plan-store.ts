@@ -15,71 +15,78 @@ import {
   getTaskStorageStateKey,
 } from "./state-keys.js";
 
-const TASK_DIR = join(process.cwd(), ".pi", "tasks");
-const PLAN_DIR = join(process.cwd(), ".pi", "plans");
-
-const taskStateKey = getTaskStorageStateKey(process.cwd());
-const planStateKey = getPlanStorageStateKey(process.cwd());
-const planModeStateKey = getPlanModeStateKey(process.cwd());
-
 function ensureDir(path: string): void {
   if (!existsSync(path)) {
     mkdirSync(path, { recursive: true });
   }
 }
 
-export function ensureTaskDir(): void {
-  ensureDir(TASK_DIR);
+function getTaskDir(cwd: string): string {
+  return join(cwd, ".pi", "tasks");
 }
 
-export function ensurePlanDir(): void {
-  ensureDir(PLAN_DIR);
+function getPlanDir(cwd: string): string {
+  return join(cwd, ".pi", "plans");
 }
 
-export function loadTaskStorage<T extends { tasks: unknown[] } = { tasks: unknown[] }>(): T {
-  ensureTaskDir();
+export function ensureTaskDir(cwd: string = process.cwd()): void {
+  ensureDir(getTaskDir(cwd));
+}
+
+export function ensurePlanDir(cwd: string = process.cwd()): void {
+  ensureDir(getPlanDir(cwd));
+}
+
+export function loadTaskStorage<T extends { tasks: unknown[] } = { tasks: unknown[] }>(
+  cwd: string = process.cwd(),
+): T {
+  ensureTaskDir(cwd);
   return readJsonState<T>({
-    stateKey: taskStateKey,
+    stateKey: getTaskStorageStateKey(cwd),
     createDefault: () => ({ tasks: [] } as unknown as T),
   });
 }
 
-export function saveTaskStorage<T>(storage: T): void {
-  ensureTaskDir();
+export function saveTaskStorage<T>(storage: T, cwd: string = process.cwd()): void {
+  ensureTaskDir(cwd);
   writeJsonState<T>({
-    stateKey: taskStateKey,
+    stateKey: getTaskStorageStateKey(cwd),
     value: storage,
   });
 }
 
-export function loadPlanStorage<T extends { plans: unknown[] } = { plans: unknown[] }>(): T {
-  ensurePlanDir();
+export function loadPlanStorage<T extends { plans: unknown[] } = { plans: unknown[] }>(
+  cwd: string = process.cwd(),
+): T {
+  ensurePlanDir(cwd);
   return readJsonState<T>({
-    stateKey: planStateKey,
+    stateKey: getPlanStorageStateKey(cwd),
     createDefault: () => ({ plans: [] } as unknown as T),
   });
 }
 
-export function savePlanStorage<T>(storage: T): void {
-  ensurePlanDir();
+export function savePlanStorage<T>(storage: T, cwd: string = process.cwd()): void {
+  ensurePlanDir(cwd);
   writeJsonState<T>({
-    stateKey: planStateKey,
+    stateKey: getPlanStorageStateKey(cwd),
     value: storage,
   });
 }
 
-export function loadPlanModeState<T extends { enabled: boolean } = { enabled: boolean }>(): T | null {
-  ensurePlanDir();
+export function loadPlanModeState<T extends { enabled: boolean } = { enabled: boolean }>(
+  cwd: string = process.cwd(),
+): T | null {
+  ensurePlanDir(cwd);
   return readJsonState<T | null>({
-    stateKey: planModeStateKey,
+    stateKey: getPlanModeStateKey(cwd),
     createDefault: () => null,
   });
 }
 
-export function savePlanModeState<T>(state: T): void {
-  ensurePlanDir();
+export function savePlanModeState<T>(state: T, cwd: string = process.cwd()): void {
+  ensurePlanDir(cwd);
   writeJsonState<T>({
-    stateKey: planModeStateKey,
+    stateKey: getPlanModeStateKey(cwd),
     value: state,
   });
 }

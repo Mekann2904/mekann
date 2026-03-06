@@ -4,7 +4,7 @@
  * 関連ファイル: .pi/extensions/plan.ts, .pi/lib/storage-lock.ts
  */
 
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -49,6 +49,16 @@ function createFakePi() {
 			for (const handler of handlers) {
 				await handler(event, ctx);
 			}
+		},
+	};
+}
+
+function createExecutionContext(cwd: string) {
+	return {
+		cwd,
+		ui: {
+			notify: vi.fn(),
+			setStatus: vi.fn(),
 		},
 	};
 }
@@ -103,6 +113,10 @@ describe("plan extension integration tests", () => {
 
 		it("plan_update_statusツールが登録されている", () => {
 			expect(fakePi.tools.has("plan_update_status")).toBe(true);
+		});
+
+		it("plan_run_nextツールが登録されている", () => {
+			expect(fakePi.tools.has("plan_run_next")).toBe(true);
 		});
 	});
 
@@ -338,6 +352,150 @@ describe("plan extension integration tests", () => {
 				// 結果が返されることを確認
 				expect(result).toBeDefined();
 			}
+		});
+	});
+
+	describe("高度な計画運用", () => {
+		it("plan_create が durable plan 文書を生成する", async () => {
+			const tool = fakePi.tools.get("plan_create");
+			const ctx = createExecutionContext(tmpDir);
+
+			const result = await tool!.execute(
+				"tc-create",
+				{
+					name: "Hybrid Plan",
+					description: "Track live checklist and durable plan together",
+					goal: "Keep a single current step while preserving a durable plan file.",
+					acceptanceCriteria: ["Only one in_progress step exists", "plans/*.md stays in sync"],
+					implementationOrder: ["Design", "Implement", "Verify"],
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			const documentPath = result.details.documentPath as string;
+			expect(documentPath).toBeTruthy();
+
+			const absoluteDocumentPath = join(tmpDir, documentPath);
+			expect(existsSync(absoluteDocumentPath)).toBe(true);
+
+			const content = readFileSync(absoluteDocumentPath, "utf-8");
+			expect(content).toContain("# Goal");
+			expect(content).toContain("# Live Checklist");
+			expect(content).toContain("Initial plan created");
+		});
+
+		it("plan_update_step は単一の in_progress を維持し、完了時に次の ready step を前に出す", async () => {
+			const createTool = fakePi.tools.get("plan_create");
+			const addStepTool = fakePi.tools.get("plan_add_step");
+			const updateStepTool = fakePi.tools.get("plan_update_step");
+			const showTool = fakePi.tools.get("plan_show");
+			const ctx = createExecutionContext(tmpDir);
+
+			const created = await createTool!.execute(
+				"tc-plan",
+				{ name: "Execution Plan", description: "Advanced step transitions" },
+				undefined,
+				undefined,
+				ctx,
+			);
+			const planId = created.details.planId as string;
+
+			const step1 = await addStepTool!.execute("tc-step-1", {
+				planId,
+				title: "Spec",
+			}, undefined, undefined, ctx);
+			const step2 = await addStepTool!.execute("tc-step-2", {
+				planId,
+				title: "Build",
+				dependencies: [step1.details.stepId],
+			}, undefined, undefined, ctx);
+			const step3 = await addStepTool!.execute("tc-step-3", {
+				planId,
+				title: "Verify",
+			}, undefined, undefined, ctx);
+
+			await updateStepTool!.execute("tc-start-1", {
+				planId,
+				stepId: step1.details.stepId,
+				status: "in_progress",
+				actor: "executor",
+			}, undefined, undefined, ctx);
+
+			const switched = await updateStepTool!.execute("tc-start-3", {
+				planId,
+				stepId: step3.details.stepId,
+				status: "in_progress",
+				actor: "executor",
+			}, undefined, undefined, ctx);
+
+			expect(switched.details.currentStepId).toBe(step3.details.stepId);
+
+			await updateStepTool!.execute("tc-reset-3", {
+				planId,
+				stepId: step3.details.stepId,
+				status: "pending",
+				actor: "executor",
+			}, undefined, undefined, ctx);
+
+			const completed = await updateStepTool!.execute("tc-complete-1", {
+				planId,
+				stepId: step1.details.stepId,
+				status: "completed",
+				actor: "executor",
+				progressNote: "spec approved",
+				activateNext: true,
+			}, undefined, undefined, ctx);
+
+			expect(completed.details.currentStepId).toBe(step2.details.stepId);
+
+			const shown = await showTool!.execute("tc-show", { planId }, undefined, undefined, ctx);
+			expect(shown.details.currentStepId).toBe(step2.details.stepId);
+
+			const documentPath = created.details.documentPath as string;
+			const content = readFileSync(join(tmpDir, documentPath), "utf-8");
+			expect(content).toContain(`[x] Spec (${step1.details.stepId})`);
+			expect(content).toContain(`[-] Build (${step2.details.stepId})`);
+			expect(content).not.toContain(`[-] Verify (${step3.details.stepId})`);
+			expect(content).toContain("spec approved");
+		});
+
+		it("plan_run_next が次の ready step を atomic に claim する", async () => {
+			const createTool = fakePi.tools.get("plan_create");
+			const addStepTool = fakePi.tools.get("plan_add_step");
+			const runNextTool = fakePi.tools.get("plan_run_next");
+			const ctx = createExecutionContext(tmpDir);
+
+			const created = await createTool!.execute(
+				"tc-plan-run-next",
+				{ name: "Queue Plan" },
+				undefined,
+				undefined,
+				ctx,
+			);
+			const planId = created.details.planId as string;
+
+			const step1 = await addStepTool!.execute("tc-queue-1", {
+				planId,
+				title: "First",
+			}, undefined, undefined, ctx);
+			await addStepTool!.execute("tc-queue-2", {
+				planId,
+				title: "Second",
+				dependencies: [step1.details.stepId],
+			}, undefined, undefined, ctx);
+
+			const runNext = await runNextTool!.execute("tc-run-next", {
+				planId,
+				actor: "executor",
+			}, undefined, undefined, ctx);
+
+			expect(runNext.details.currentStepId).toBe(step1.details.stepId);
+
+			const documentPath = created.details.documentPath as string;
+			const content = readFileSync(join(tmpDir, documentPath), "utf-8");
+			expect(content).toContain(`[-] First (${step1.details.stepId})`);
 		});
 	});
 });

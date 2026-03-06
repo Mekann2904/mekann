@@ -167,6 +167,7 @@ const TODO_TOOLS = new Set([
   "plan_update",
   "plan_add_step",
   "plan_update_step",
+  "plan_run_next",
 ]);
 
 const PATH_KEYS = new Set([

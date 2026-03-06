@@ -178,6 +178,42 @@ pi remove https://github.com/Mekann2904/mekann
 
 LLM ツールからは `autonomy_policy` で同じ設定を変更できます。  
 
+## 計画運用
+
+このリポジトリでは、既存の `plan_*` と外部エージェント運用を組み合わせる二層計画を採用できます。  
+
+短い進捗は live todo で持ちます。  
+
+長い判断と受け入れ条件は `plans/*.md` に残します。  
+
+`plan_create` は durable な `plans/*.md` を自動生成します。  
+
+`plan_update_step` は 1 件だけ `in_progress` を保ちます。  
+
+完了時は次の ready step を前に出せます。  
+
+`plan_run_next` は ready な次ステップを atomic に開始します。  
+
+追加した足場:
+
+- `AGENTS.md`: 計画運用ポリシー
+- `.factory/droids/planner.md`: 仕様と受け入れ条件の作成担当
+- `.factory/droids/executor.md`: 承認済み計画の実装担当
+- `.factory/droids/verifier.md`: 計画と実装の整合確認担当
+- `plans/feature-template.md`: 長い計画文書のテンプレート
+
+基本の流れ:
+
+1. `planner` が仕様、受け入れ条件、実装順序を固める
+2. live todo は 5〜9 件で維持し、`in_progress` は常に 1 件だけにする
+3. 長い判断は `plans/*.md` に残す
+4. `executor` が承認済み計画に従って実装する
+5. `verifier` が受け入れ条件ベースで確認する
+
+この運用は、既存の `plan_*` を置き換えません。  
+
+`plan_*` は作業計画の保存と状態更新に使い、`plans/*.md` は durable な仕様書として使います。  
+
 ## スキル管理システム
 
 このプロジェクトには、サブエージェントやチームメンバーに割り当て可能なスキル管理システムが含まれています。
@@ -342,6 +378,7 @@ mekann/
 | | `plan_show` | プランの詳細表示 |
 | | `plan_add_step` | プランへのステップ追加 |
 | | `plan_update_step` | ステップの状態更新 |
+| | `plan_run_next` | 次の ready step を `in_progress` に移す |
 | | `plan_update_status` | プランの状態更新 |
 | | `plan_list` | プラン一覧の表示 |
 | | `plan_delete` | プランの削除 |
