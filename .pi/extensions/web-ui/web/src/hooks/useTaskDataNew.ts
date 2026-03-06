@@ -48,6 +48,13 @@ export interface UseTaskDataReturn {
 
 const API_BASE = "/api/v2";
 
+export function buildDeleteTaskEndpoint(taskId: string): string {
+  if (taskId.startsWith("ul-")) {
+    return `${API_BASE}/ul-workflow/tasks/${taskId}`;
+  }
+  return `${API_BASE}/tasks/${taskId}`;
+}
+
 /**
  * 新しいAPI（/api/v2）を使用するタスクデータフック
  * 既存のuseTaskDataと同じインターフェースを提供
@@ -192,7 +199,7 @@ export function useTaskDataNew(pollInterval: number = 10000): UseTaskDataReturn 
 
   const deleteTask = useCallback(async (taskId: string): Promise<boolean> => {
     try {
-      const res = await fetch(`${API_BASE}/tasks/${taskId}`, {
+      const res = await fetch(buildDeleteTaskEndpoint(taskId), {
         method: "DELETE",
       });
 
