@@ -60,6 +60,7 @@
       "./.pi/extensions/agent-runtime.ts",
       "./.pi/extensions/agent-usage-tracker.ts",
       "./.pi/extensions/append-system-loader.ts",
+      "./.pi/extensions/autonomy-policy.ts",
       "./.pi/extensions/code-panel.ts",
       "./.pi/extensions/code-structure-analyzer/extension.ts",
       "./.pi/extensions/code-viewer.ts",

@@ -90,6 +90,23 @@ describe("buildSubagentPrompt", () => {
     expect(prompt).toContain("code_search");
     expect(prompt).toContain("sym_find");
   });
+
+  it("plan mode では runtime notification を prompt に含める", () => {
+    const prompt = buildSubagentPrompt({
+      agent: {
+        id: "implementer",
+        name: "Implementer",
+        description: "Implements code changes",
+        systemPrompt: "Keep the implementation minimal.",
+      } as any,
+      task: "この関数を修正して",
+      enforcePlanMode: true,
+    });
+
+    expect(prompt).toContain("# Runtime Notifications");
+    expect(prompt).toContain("plan-mode");
+    expect(prompt).toContain("PLAN MODE");
+  });
 });
 
 describe("child orchestration guard", () => {

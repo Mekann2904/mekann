@@ -73,6 +73,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **ul-dual-mode** | `ul-dual-mode.ts` | デュアルモード強制実行 | [→](docs/02-user-guide/10-ul-dual-mode.md) |
 | **ul-workflow** | `ul-workflow.ts` | Research-Plan-Annotate-Implement ワークフロー（計画承認必須） | [→](docs/02-user-guide/16-ul-workflow.md) |
 | **cross-instance-runtime** | `cross-instance-runtime.ts` | 複数piインスタンス間の並列数自動調整（プロバイダー/モデル別） | [→](docs/02-user-guide/12-cross-instance-runtime.md) |
+| **autonomy-policy** | `autonomy-policy.ts` | permission bundle と gatekeeper を持つ高度自律実行 policy | README内の「Autonomy Policy」 |
 
 ### ユーティリティ
 
@@ -131,6 +132,87 @@ pi remove https://github.com/Mekann2904/mekann
 | **output-schema** | `lib/output-schema.ts` | 出力スキーマ（構造化出力の定義と検証） |
 | **text-parsing** | `lib/text-parsing.ts` | テキスト解析（構造化テキスト処理） |
 | **embeddings** | `lib/embeddings/` | エンベディングモジュール（ベクトル埋め込み生成） |
+
+## Autonomy Policy
+
+`autonomy-policy` を追加した。  
+
+この policy は 3 層です。  
+
+`profile` は `manual / balanced / high / yolo` の4段階です。  
+
+`mode` は `build / plan` の2段階です。  
+
+`gatekeeper` は `off / deterministic` の2段階です。  
+
+設計の意図:
+
+- Kilo のような permission bundle を持つ
+- Codex のように mode で実行範囲を切り替える
+- Droid のように危険操作には hard stop を残す
+- OpenCode のように config 保存で継続利用できる
+
+既定値:
+
+- `yolo`
+- `build`
+- `gatekeeper=off`
+
+`yolo` は全 capability を `allow` にする master toggle です。  
+
+人間の介入を減らすため、初期状態では gatekeeper も `off` です。  
+
+安全側に戻したい場合だけ `manual` や `balanced`、または `gatekeeper on` を使います。  
+
+操作方法:
+
+- `/autonomy-policy show`
+- `/autonomy-policy manual`
+- `/autonomy-policy balanced`
+- `/autonomy-policy high`
+- `/autonomy-policy yolo`
+- `/autonomy-policy build`
+- `/autonomy-policy plan`
+- `/autonomy-policy gatekeeper on`
+- `/autonomy-policy gatekeeper off`
+
+LLM ツールからは `autonomy_policy` で同じ設定を変更できます。  
+
+## 計画運用
+
+このリポジトリでは、既存の `plan_*` と外部エージェント運用を組み合わせる二層計画を採用できます。  
+
+短い進捗は live todo で持ちます。  
+
+長い判断と受け入れ条件は `plans/*.md` に残します。  
+
+`plan_create` は durable な `plans/*.md` を自動生成します。  
+
+`plan_update_step` は 1 件だけ `in_progress` を保ちます。  
+
+完了時は次の ready step を前に出せます。  
+
+`plan_run_next` は ready な次ステップを atomic に開始します。  
+
+追加した足場:
+
+- `AGENTS.md`: 計画運用ポリシー
+- `.factory/droids/planner.md`: 仕様と受け入れ条件の作成担当
+- `.factory/droids/executor.md`: 承認済み計画の実装担当
+- `.factory/droids/verifier.md`: 計画と実装の整合確認担当
+- `plans/feature-template.md`: 長い計画文書のテンプレート
+
+基本の流れ:
+
+1. `planner` が仕様、受け入れ条件、実装順序を固める
+2. live todo は 5〜9 件で維持し、`in_progress` は常に 1 件だけにする
+3. 長い判断は `plans/*.md` に残す
+4. `executor` が承認済み計画に従って実装する
+5. `verifier` が受け入れ条件ベースで確認する
+
+この運用は、既存の `plan_*` を置き換えません。  
+
+`plan_*` は作業計画の保存と状態更新に使い、`plans/*.md` は durable な仕様書として使います。  
 
 ## スキル管理システム
 
@@ -296,6 +378,7 @@ mekann/
 | | `plan_show` | プランの詳細表示 |
 | | `plan_add_step` | プランへのステップ追加 |
 | | `plan_update_step` | ステップの状態更新 |
+| | `plan_run_next` | 次の ready step を `in_progress` に移す |
 | | `plan_update_status` | プランの状態更新 |
 | | `plan_list` | プラン一覧の表示 |
 | | `plan_delete` | プランの削除 |

@@ -6,14 +6,9 @@
  */
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "preact/hooks";
+import { lazy, Suspense } from "preact/compat";
 import { Router, route } from "preact-router";
 import { ThemePage, applyThemeToDOM, type Mode } from "./components/theme-page";
-import { InstancesPage } from "./components/instances-page";
-import { McpPage } from "./components/mcp-page";
-import { TasksPage } from "./components/tasks-page";
-import { AnalyticsPage } from "./components/analytics-page";
-import { AgentUsagePage } from "./components/agent-usage-page";
-import { IndexesPage } from "./components/indexes-page";
 import { ToastProvider } from "./hooks/useToast";
 import { ToastContainer } from "./components/ui/toast";
 import { useGlobalShortcuts } from "./hooks/useKeyboardShortcuts";
@@ -27,6 +22,7 @@ import {
   TrendingUp,
   Keyboard,
   Database,
+  FlaskConical,
 } from "lucide-preact";
 import { LoadingState, InlineLoading } from "@/components/layout";
 import { cn } from "@/lib/utils";
@@ -49,6 +45,53 @@ interface SSEEvent {
   type: SSEEventType;
   data: Record<string, unknown>;
   timestamp: number;
+}
+
+const TasksPage = lazy(async () => {
+  const module = await import("./components/tasks-page");
+  return { default: module.TasksPage };
+});
+
+const InstancesPage = lazy(async () => {
+  const module = await import("./components/instances-page");
+  return { default: module.InstancesPage };
+});
+
+const McpPage = lazy(async () => {
+  const module = await import("./components/mcp-page");
+  return { default: module.McpPage };
+});
+
+const AnalyticsPage = lazy(async () => {
+  const module = await import("./components/analytics-page");
+  return { default: module.AnalyticsPage };
+});
+
+const AgentUsagePage = lazy(async () => {
+  const module = await import("./components/agent-usage-page");
+  return { default: module.AgentUsagePage };
+});
+
+const BenchmarkPage = lazy(async () => {
+  const module = await import("./components/benchmark-page");
+  return { default: module.BenchmarkPage };
+});
+
+const IndexesPage = lazy(async () => {
+  const module = await import("./components/indexes-page");
+  return { default: module.IndexesPage };
+});
+
+function RouteFallback() {
+  return (
+    <div class="flex h-full items-center justify-center">
+      <LoadingState
+        message="Page を読み込んでいます"
+        size="lg"
+        showCard={false}
+      />
+    </div>
+  );
 }
 
 // Global theme state (fetched from server)
@@ -273,15 +316,19 @@ export function App() {
       <div class="flex h-screen bg-background">
         <Sidebar sseConnected={sseConnected} sseExhausted={sseExhausted} onSseReconnect={sseReconnect} />
         <main class="flex-1 overflow-hidden">
-          <Router>
-            <TasksPage path="/" />
-            <InstancesPage path="/instances" />
-            <McpPage path="/mcp" />
-            <AnalyticsPage path="/analytics" />
-            <AgentUsagePage path="/agent-usage" />
-            <IndexesPage path="/indexes" />
-            <ThemePage path="/theme" onThemeChange={applyTheme} />
-          </Router>
+          <Suspense fallback={<RouteFallback />}>
+            <Router>
+              <TasksPage path="/" />
+              <TasksPage path="/tasks" />
+              <InstancesPage path="/instances" />
+              <McpPage path="/mcp" />
+              <AnalyticsPage path="/analytics" />
+              <AgentUsagePage path="/agent-usage" />
+              <BenchmarkPage path="/benchmark" />
+              <IndexesPage path="/indexes" />
+              <ThemePage path="/theme" onThemeChange={applyTheme} />
+            </Router>
+          </Suspense>
         </main>
       </div>
       <ToastContainer />
@@ -349,6 +396,7 @@ function Sidebar({ sseConnected, sseExhausted, onSseReconnect }: SidebarProps) {
     { path: "/", icon: ListTodo, label: "Tasks" },
     { path: "/analytics", icon: BarChart3, label: "Analytics" },
     { path: "/agent-usage", icon: TrendingUp, label: "Agent Usage" },
+    { path: "/benchmark", icon: FlaskConical, label: "Benchmark" },
     { path: "/indexes", icon: Database, label: "Indexes" },
     { path: "/instances", icon: Monitor, label: "Instances" },
     { path: "/mcp", icon: Server, label: "MCP" },

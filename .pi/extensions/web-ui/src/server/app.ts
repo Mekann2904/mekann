@@ -33,6 +33,7 @@ import { mcpRoutes } from "../routes/mcp.js";
 import { ulWorkflowRoutes } from "../routes/ul-workflow.js";
 import { runtimeRoutes } from "../routes/runtime.js";
 import { indexesRoutes } from "../routes/indexes.js";
+import { benchmarkRoutes } from "../routes/benchmark.js";
 
 /**
  * アプリケーションコンテキスト型
@@ -79,6 +80,7 @@ export function createApp(): Hono<AppContext> {
   app.route("/ul-workflow", ulWorkflowRoutes);
   app.route("/runtime", runtimeRoutes);
   app.route("/indexes", indexesRoutes);
+  app.route("/benchmark", benchmarkRoutes);
 
   // 404 ハンドラー
   app.notFound(notFoundHandler);

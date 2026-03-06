@@ -28,6 +28,9 @@
 // Why: Enables structured task planning with step-by-step execution
 // Related: README.md, .pi/extensions/loop.ts
 
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
@@ -40,7 +43,6 @@ const logger = getLogger();
 // Import shared plan mode constants and utilities
 import {
 	PLAN_MODE_POLICY,
-	isBashCommandAllowed,
 	validatePlanModeState,
 	createPlanModeState,
 	PLAN_MODE_CONTEXT_TYPE,
@@ -55,6 +57,12 @@ import {
 	loadPlanModeState as loadSharedPlanModeState,
 	savePlanModeState as saveSharedPlanModeState,
 } from "../lib/storage/task-plan-store.js";
+import { applyPromptStack } from "../lib/agent/prompt-stack.js";
+import type { PromptStackEntry } from "../lib/agent/prompt-stack.js";
+import {
+	createRuntimeNotification,
+	formatRuntimeNotificationBlock,
+} from "../lib/agent/runtime-notifications.js";
 
 // ============================================
 // Global State
@@ -75,11 +83,14 @@ function isCustomMessage(msg: AgentMessage): msg is AgentMessage & { customType:
   return "customType" in msg;
 }
 
+type PlanStepStatus = "pending" | "in_progress" | "completed" | "blocked";
+type PlanStatus = "draft" | "active" | "completed" | "cancelled";
+
 interface PlanStep {
 	id: string;
 	title: string;
 	description?: string;
-	status: "pending" | "in_progress" | "completed" | "blocked";
+	status: PlanStepStatus;
 	estimatedTime?: number; // minutes
 	dependencies?: string[]; // step IDs
 }
@@ -90,8 +101,20 @@ interface Plan {
 	description?: string;
 	createdAt: string;
 	updatedAt: string;
-	status: "draft" | "active" | "completed" | "cancelled";
+	status: PlanStatus;
 	steps: PlanStep[];
+	goal?: string;
+	nonGoals: string[];
+	acceptanceCriteria: string[];
+	constraints: string[];
+	fileModuleImpact: string[];
+	implementationOrder: string[];
+	testVerification: string[];
+	risksRollback: string[];
+	progressLog: string[];
+	currentStepId?: string;
+	documentPath?: string;
+	documentSlug?: string;
 }
 
 interface PlanStorage {
@@ -99,20 +122,117 @@ interface PlanStorage {
 	currentPlanId?: string;
 }
 
+interface CreatePlanOptions {
+	description?: string;
+	goal?: string;
+	nonGoals?: string[];
+	acceptanceCriteria?: string[];
+	constraints?: string[];
+	fileModuleImpact?: string[];
+	implementationOrder?: string[];
+	testVerification?: string[];
+	risksRollback?: string[];
+	documentSlug?: string;
+}
+
+interface StepTransitionResult {
+	autoActivatedStep?: PlanStep;
+	demotedStepIds: string[];
+}
+
+const VALID_STEP_STATUSES: PlanStepStatus[] = ["pending", "in_progress", "completed", "blocked"];
+const VALID_PLAN_STATUSES: PlanStatus[] = ["draft", "active", "completed", "cancelled"];
+
 // ============================================
 // Storage Management
 // ============================================
 
-function ensurePlanDir(): void {
-	ensureSharedPlanDir();
+function resolveWorkspaceRoot(ctx?: unknown): string {
+	if (ctx && typeof ctx === "object" && "cwd" in ctx) {
+		const cwd = (ctx as { cwd?: unknown }).cwd;
+		if (typeof cwd === "string" && cwd.trim().length > 0) {
+			return cwd;
+		}
+	}
+	return process.cwd();
 }
 
-function loadStorage(): PlanStorage {
-	return loadSharedPlanStorage<PlanStorage>();
+function ensurePlanDir(cwd: string = process.cwd()): void {
+	ensureSharedPlanDir(cwd);
 }
 
-function saveStorage(storage: PlanStorage): void {
-	saveSharedPlanStorage(storage);
+function normalizeStringArray(input: unknown): string[] {
+	if (!Array.isArray(input)) {
+		return [];
+	}
+
+	return input
+		.filter((value): value is string => typeof value === "string")
+		.map(value => value.trim())
+		.filter(Boolean);
+}
+
+function normalizeStep(input: PlanStep): PlanStep {
+	return {
+		id: input.id,
+		title: input.title,
+		description: input.description,
+		status: VALID_STEP_STATUSES.includes(input.status) ? input.status : "pending",
+		estimatedTime: input.estimatedTime,
+		dependencies: normalizeStringArray(input.dependencies),
+	};
+}
+
+function normalizePlan(input: Plan): Plan {
+	const steps = Array.isArray(input.steps) ? input.steps.map(step => normalizeStep(step)) : [];
+	const inProgressSteps = steps.filter(step => step.status === "in_progress");
+	const currentStepId = typeof input.currentStepId === "string"
+		&& inProgressSteps.some(step => step.id === input.currentStepId)
+		? input.currentStepId
+		: inProgressSteps[0]?.id;
+
+	for (const step of inProgressSteps.slice(1)) {
+		if (step.id !== currentStepId) {
+			step.status = "pending";
+		}
+	}
+
+	return {
+		id: input.id,
+		name: input.name,
+		description: input.description,
+		createdAt: input.createdAt,
+		updatedAt: input.updatedAt,
+		status: VALID_PLAN_STATUSES.includes(input.status) ? input.status : "draft",
+		steps,
+		goal: typeof input.goal === "string" ? input.goal : input.description,
+		nonGoals: normalizeStringArray(input.nonGoals),
+		acceptanceCriteria: normalizeStringArray(input.acceptanceCriteria),
+		constraints: normalizeStringArray(input.constraints),
+		fileModuleImpact: normalizeStringArray(input.fileModuleImpact),
+		implementationOrder: normalizeStringArray(input.implementationOrder),
+		testVerification: normalizeStringArray(input.testVerification),
+		risksRollback: normalizeStringArray(input.risksRollback),
+		progressLog: normalizeStringArray(input.progressLog),
+		currentStepId,
+		documentPath: typeof input.documentPath === "string" ? input.documentPath : undefined,
+		documentSlug: typeof input.documentSlug === "string" ? input.documentSlug : undefined,
+	};
+}
+
+function normalizeStorage(storage: PlanStorage): PlanStorage {
+	return {
+		plans: Array.isArray(storage.plans) ? storage.plans.map(plan => normalizePlan(plan as Plan)) : [],
+		currentPlanId: storage.currentPlanId,
+	};
+}
+
+function loadStorage(cwd: string = process.cwd()): PlanStorage {
+	return normalizeStorage(loadSharedPlanStorage<PlanStorage>(cwd));
+}
+
+function saveStorage(storage: PlanStorage, cwd: string = process.cwd()): void {
+	saveSharedPlanStorage(normalizeStorage(storage), cwd);
 }
 
 function generateId(): string {
@@ -124,15 +244,30 @@ function generateId(): string {
 // Plan Operations
 // ============================================
 
-function createPlan(name: string, description?: string): Plan {
+function createPlan(name: string, descriptionOrOptions?: string | CreatePlanOptions): Plan {
+	const options: CreatePlanOptions = typeof descriptionOrOptions === "string"
+		? { description: descriptionOrOptions }
+		: (descriptionOrOptions ?? {});
+	const safeName = typeof name === "string" && name.trim().length > 0 ? name.trim() : "Untitled Plan";
+
 	const plan: Plan = {
 		id: generateId(),
-		name,
-		description,
+		name: safeName,
+		description: options.description,
 		createdAt: new Date().toISOString(),
 		updatedAt: new Date().toISOString(),
 		status: "draft",
-		steps: []
+		steps: [],
+		goal: options.goal ?? options.description,
+		nonGoals: normalizeStringArray(options.nonGoals),
+		acceptanceCriteria: normalizeStringArray(options.acceptanceCriteria),
+		constraints: normalizeStringArray(options.constraints),
+		fileModuleImpact: normalizeStringArray(options.fileModuleImpact),
+		implementationOrder: normalizeStringArray(options.implementationOrder),
+		testVerification: normalizeStringArray(options.testVerification),
+		risksRollback: normalizeStringArray(options.risksRollback),
+		progressLog: [],
+		documentSlug: options.documentSlug?.trim() || undefined,
 	};
 	return plan;
 }
@@ -216,15 +351,179 @@ function addStepToPlan(plan: Plan, title: string, description?: string, dependen
 	return { step, warnings };
 }
 
-function updateStepStatus(plan: Plan, stepId: string, status: PlanStep["status"]): boolean {
+function getCurrentStep(plan: Plan): PlanStep | undefined {
+	if (plan.currentStepId) {
+		const current = findStepById(plan, plan.currentStepId);
+		if (current?.status === "in_progress") {
+			return current;
+		}
+	}
+
+	return plan.steps.find(step => step.status === "in_progress");
+}
+
+function getUnmetDependencyIds(plan: Plan, step: PlanStep): string[] {
+	if (!step.dependencies || step.dependencies.length === 0) {
+		return [];
+	}
+
+	const completedStepIds = new Set(
+		plan.steps.filter(candidate => candidate.status === "completed").map(candidate => candidate.id)
+	);
+
+	return step.dependencies.filter(depId => !completedStepIds.has(depId));
+}
+
+function appendProgressLog(plan: Plan, actor: string, message: string): void {
+	const entry = `${new Date().toISOString()} ${actor}: ${message}`;
+	plan.progressLog.push(entry);
+}
+
+function syncCurrentStep(plan: Plan): string[] {
+	const inProgressSteps = plan.steps.filter(step => step.status === "in_progress");
+	if (inProgressSteps.length === 0) {
+		plan.currentStepId = undefined;
+		return [];
+	}
+
+	const preferredStep = plan.currentStepId
+		? inProgressSteps.find(step => step.id === plan.currentStepId)
+		: undefined;
+	const activeStep = preferredStep ?? inProgressSteps[0];
+	plan.currentStepId = activeStep.id;
+
+	const demoted: string[] = [];
+	for (const step of inProgressSteps) {
+		if (step.id !== activeStep.id) {
+			step.status = "pending";
+			demoted.push(step.id);
+		}
+	}
+
+	return demoted;
+}
+
+function getNextReadyStep(plan: Plan): PlanStep | undefined {
+	return getReadySteps(plan)[0];
+}
+
+function activateStep(plan: Plan, stepId: string): StepTransitionResult {
 	const step = findStepById(plan, stepId);
-	if (!step) return false;
+	if (!step) {
+		return { demotedStepIds: [] };
+	}
+
+	const demotedStepIds: string[] = [];
+	for (const candidate of plan.steps) {
+		if (candidate.id !== stepId && candidate.status === "in_progress") {
+			candidate.status = "pending";
+			demotedStepIds.push(candidate.id);
+		}
+	}
+
+	step.status = "in_progress";
+	plan.currentStepId = stepId;
+	plan.status = plan.status === "completed" || plan.status === "cancelled" ? plan.status : "active";
+	plan.updatedAt = new Date().toISOString();
+
+	return { demotedStepIds };
+}
+
+function activateNextReadyStep(plan: Plan): PlanStep | undefined {
+	if (getCurrentStep(plan)) {
+		return undefined;
+	}
+
+	const nextStep = getNextReadyStep(plan);
+	if (!nextStep) {
+		return undefined;
+	}
+
+	nextStep.status = "in_progress";
+	plan.currentStepId = nextStep.id;
+	plan.status = "active";
+	plan.updatedAt = new Date().toISOString();
+	return nextStep;
+}
+
+function updateStepStatus(
+	plan: Plan,
+	stepId: string,
+	status: PlanStepStatus,
+	options?: { actor?: string; note?: string; activateNext?: boolean },
+): { ok: boolean; error?: string; details?: Record<string, unknown> } {
+	if (plan.status === "cancelled") {
+		return { ok: false, error: "plan_cancelled" };
+	}
+
+	const step = findStepById(plan, stepId);
+	if (!step) {
+		return { ok: false, error: "step_not_found" };
+	}
+
+	const actor = options?.actor?.trim() || "executor";
+	const noteSuffix = options?.note?.trim() ? `: ${options.note.trim()}` : "";
+
+	if (status === "in_progress") {
+		const unmetDependencyIds = getUnmetDependencyIds(plan, step);
+		if (unmetDependencyIds.length > 0) {
+			return {
+				ok: false,
+				error: "dependencies_unmet",
+				details: { unmetDependencyIds },
+			};
+		}
+
+		const transition = activateStep(plan, stepId);
+		appendProgressLog(plan, actor, `Started "${step.title}"${noteSuffix}`);
+		if (transition.demotedStepIds.length > 0) {
+			appendProgressLog(plan, actor, `Paused competing in-progress steps: ${transition.demotedStepIds.join(", ")}`);
+		}
+		return { ok: true, details: { demotedStepIds: transition.demotedStepIds } };
+	}
+
 	step.status = status;
 	plan.updatedAt = new Date().toISOString();
-	return true;
+
+	if (plan.currentStepId === step.id) {
+		plan.currentStepId = undefined;
+	}
+
+	if (status === "completed") {
+		appendProgressLog(plan, actor, `Completed "${step.title}"${noteSuffix}`);
+		if (plan.status === "draft") {
+			plan.status = "active";
+		}
+
+		const autoActivatedStep = options?.activateNext === false ? undefined : activateNextReadyStep(plan);
+		if (autoActivatedStep) {
+			appendProgressLog(plan, actor, `Auto-started "${autoActivatedStep.title}" after completion`);
+		}
+
+		if (plan.steps.length > 0 && plan.steps.every(candidate => candidate.status === "completed")) {
+			plan.status = "completed";
+			plan.currentStepId = undefined;
+			appendProgressLog(plan, actor, "Marked plan completed");
+		}
+
+		return { ok: true, details: { autoActivatedStepId: autoActivatedStep?.id } };
+	}
+
+	if (status === "blocked") {
+		appendProgressLog(plan, actor, `Blocked "${step.title}"${noteSuffix}`);
+		return { ok: true };
+	}
+
+	appendProgressLog(plan, actor, `Reset "${step.title}" to pending${noteSuffix}`);
+	syncCurrentStep(plan);
+	return { ok: true };
 }
 
 function getReadySteps(plan: Plan): PlanStep[] {
+	if (plan.status === "cancelled") {
+		return [];
+	}
+
 	const completedStepIds = new Set(
 		plan.steps.filter(s => s.status === "completed").map(s => s.id)
 	);
@@ -236,16 +535,146 @@ function getReadySteps(plan: Plan): PlanStep[] {
 	});
 }
 
+function slugifyPlanName(input: string): string {
+	const safeInput = typeof input === "string" && input.trim().length > 0 ? input : "plan";
+	return safeInput
+		.toLowerCase()
+		.trim()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "") || "plan";
+}
+
+function ensureProjectPlansDir(workspaceRoot: string): string {
+	const plansDir = join(workspaceRoot, "plans");
+	if (!existsSync(plansDir)) {
+		mkdirSync(plansDir, { recursive: true });
+	}
+	return plansDir;
+}
+
+function ensurePlanDocumentPath(plan: Plan, workspaceRoot: string): string {
+	if (plan.documentPath) {
+		return plan.documentPath;
+	}
+
+	const plansDir = ensureProjectPlansDir(workspaceRoot);
+	const baseSlug = plan.documentSlug || slugifyPlanName(plan.name);
+	const shortId = plan.id.split("-").at(-1) ?? plan.id;
+	let relativePath = `plans/${baseSlug}.md`;
+	let absolutePath = join(workspaceRoot, relativePath);
+
+	if (existsSync(absolutePath)) {
+		relativePath = `plans/${baseSlug}-${shortId}.md`;
+		absolutePath = join(workspaceRoot, relativePath);
+	}
+
+	plan.documentSlug = baseSlug;
+	plan.documentPath = relativePath;
+	return plan.documentPath;
+}
+
+function renderSection(title: string, items: string[], fallback: string): string[] {
+	if (items.length === 0) {
+		return [`# ${title}`, fallback];
+	}
+
+	return [`# ${title}`, ...items.map(item => `- ${item}`)];
+}
+
+function renderChecklistSection(title: string, items: string[], fallback: string): string[] {
+	if (items.length === 0) {
+		return [`# ${title}`, fallback];
+	}
+
+	return [`# ${title}`, ...items.map(item => `- [ ] ${item}`)];
+}
+
+function getStepMarker(status: PlanStepStatus): string {
+	switch (status) {
+		case "completed":
+			return "x";
+		case "in_progress":
+			return "-";
+		case "blocked":
+			return "!";
+		default:
+			return " ";
+	}
+}
+
+function formatPlanDocument(plan: Plan): string {
+	const lines: string[] = [
+		`<!-- ${plan.documentPath ?? `plans/${slugifyPlanName(plan.name)}.md`} -->`,
+		"<!-- このファイルは、長い実行計画と live checklist を一緒に追跡する durable plan です。 -->",
+		"<!-- なぜ存在するか: 会話だけでは崩れやすい判断理由と進捗を、後続セッションでも再利用するためです。 -->",
+		`<!-- 関連ファイル: AGENTS.md, .factory/droids/planner.md, .factory/droids/executor.md, .factory/droids/verifier.md -->`,
+		"",
+		"# Goal",
+		plan.goal?.trim() || plan.description?.trim() || "未記入",
+		"",
+		...renderSection("Non-goals", plan.nonGoals, "- まだ未記入"),
+		"",
+		...renderChecklistSection("Acceptance Criteria", plan.acceptanceCriteria, "- [ ] まだ未記入"),
+		"",
+		...renderSection("Constraints", plan.constraints, "- まだ未記入"),
+		"",
+		...renderSection("File/Module Impact", plan.fileModuleImpact, "- まだ未記入"),
+		"",
+		...renderSection("Implementation Order", plan.implementationOrder, "- まだ未記入"),
+		"",
+		"# Live Checklist",
+	];
+
+	if (plan.steps.length === 0) {
+		lines.push("- [ ] まだ未記入");
+	} else {
+		for (const step of plan.steps) {
+			const suffix = step.id === plan.currentStepId ? " <-- current" : "";
+			lines.push(`- [${getStepMarker(step.status)}] ${step.title} (${step.id})${suffix}`);
+		}
+	}
+
+	lines.push(
+		"",
+		...renderSection("Test & Verification", plan.testVerification, "- まだ未記入"),
+		"",
+		...renderSection("Risks / Rollback", plan.risksRollback, "- まだ未記入"),
+		"",
+		"# Progress Log",
+	);
+
+	if (plan.progressLog.length === 0) {
+		lines.push("- まだ履歴はありません");
+	} else {
+		for (const entry of plan.progressLog) {
+			lines.push(`- ${entry}`);
+		}
+	}
+
+	return `${lines.join("\n")}\n`;
+}
+
+function syncPlanDocument(plan: Plan, workspaceRoot: string): string {
+	const relativePath = ensurePlanDocumentPath(plan, workspaceRoot);
+	const absolutePath = join(workspaceRoot, relativePath);
+	ensureProjectPlansDir(workspaceRoot);
+	writeFileSync(absolutePath, formatPlanDocument(plan), "utf-8");
+	return relativePath;
+}
+
 function formatPlanSummary(plan: Plan): string {
 	const lines: string[] = [];
 	lines.push(`## Plan: ${plan.name}`);
-	lines.push(`ID: ${plan.id}`);  // BUGFIX: プランIDを出力に含める
+	lines.push(`ID: ${plan.id}`);
 	if (plan.description) {
 		lines.push(`\n${plan.description}`);
 	}
 	lines.push(`\nStatus: ${plan.status}`);
 	lines.push(`Created: ${new Date(plan.createdAt).toLocaleString()}`);
 	lines.push(`Updated: ${new Date(plan.updatedAt).toLocaleString()}`);
+	if (plan.documentPath) {
+		lines.push(`Document: ${plan.documentPath}`);
+	}
 
 	const statusCounts = {
 		pending: plan.steps.filter(s => s.status === "pending").length,
@@ -256,6 +685,16 @@ function formatPlanSummary(plan: Plan): string {
 
 	lines.push(`\nProgress: ${statusCounts.completed}/${plan.steps.length} steps completed`);
 	lines.push(`  Pending: ${statusCounts.pending} | In Progress: ${statusCounts.in_progress} | Completed: ${statusCounts.completed} | Blocked: ${statusCounts.blocked}`);
+
+	const currentStep = getCurrentStep(plan);
+	if (currentStep) {
+		lines.push(`Current Focus: ${currentStep.title} (${currentStep.id})`);
+	}
+
+	const readySteps = getReadySteps(plan);
+	if (readySteps.length > 0) {
+		lines.push(`Up Next: ${readySteps.slice(0, 3).map(step => `${step.title} (${step.id})`).join(" | ")}`);
+	}
 
 	if (plan.steps.length > 0) {
 		lines.push("\n### Steps:");
@@ -269,6 +708,13 @@ function formatPlanSummary(plan: Plan): string {
 				lines.push(`   Depends on: ${step.dependencies.join(", ")}`);
 			}
 		});
+	}
+
+	if (plan.progressLog.length > 0) {
+		lines.push("\n### Recent Progress:");
+		for (const entry of plan.progressLog.slice(-3)) {
+			lines.push(`- ${entry}`);
+		}
 	}
 
 	return lines.join("\n");
@@ -287,6 +733,13 @@ function formatPlanList(plans: Plan[]): string {
 		lines.push(`\n### ${plan.name}`);
 		lines.push(`ID: ${plan.id}`);
 		lines.push(`Status: ${plan.status} | Progress: ${progress}`);
+		if (plan.documentPath) {
+			lines.push(`Document: ${plan.documentPath}`);
+		}
+		const currentStep = getCurrentStep(plan);
+		if (currentStep) {
+			lines.push(`Current: ${currentStep.title} (${currentStep.id})`);
+		}
 		if (plan.description) {
 			lines.push(`Description: ${plan.description}`);
 		}
@@ -332,17 +785,17 @@ export default function (pi: ExtensionAPI) {
 		delete process.env[PLAN_MODE_ENV_VAR];
 	}
 
-	function savePlanModeState(enabled: boolean): void {
+	function savePlanModeState(enabled: boolean, cwd: string = process.cwd()): void {
 		const state = createPlanModeState(enabled);
-		saveSharedPlanModeState(state);
+		saveSharedPlanModeState(state, cwd);
 
 		// Keep env flag in sync so other extensions see the real plan mode state.
 		syncPlanModeEnv(enabled);
 	}
 
-	function loadPlanModeState(): boolean {
+	function loadPlanModeState(cwd: string = process.cwd()): boolean {
 		try {
-			const state = loadSharedPlanModeState<PlanModeState>();
+			const state = loadSharedPlanModeState<PlanModeState>(cwd);
 			if (!state) {
 				syncPlanModeEnv(false);
 				return false;
@@ -368,8 +821,9 @@ export default function (pi: ExtensionAPI) {
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Context type is complex and varies by call site
 	function togglePlanMode(ctx: any) {
+		const workspaceRoot = resolveWorkspaceRoot(ctx);
 		planModeEnabled = !planModeEnabled;
-		savePlanModeState(planModeEnabled);
+		savePlanModeState(planModeEnabled, workspaceRoot);
 
 		if (planModeEnabled) {
 			// NOTE: Tool restriction DISABLED - all tools available
@@ -391,8 +845,37 @@ export default function (pi: ExtensionAPI) {
 	pi.on("before_agent_start", async (event, _ctx) => {
 		if (!planModeEnabled) return;
 
+		const notification = createRuntimeNotification(
+			"plan-mode",
+			"PLAN MODE is active. Restrictions are disabled and all tools are available.",
+			"warning",
+			1,
+		);
+		const entries: PromptStackEntry[] = [
+			{
+				source: "plan-mode-policy",
+				recordSource: "plan-mode-policy",
+				layer: "system-policy",
+				markerId: "plan-mode-policy",
+				content: PLAN_MODE_POLICY,
+			},
+		];
+		if (notification) {
+			entries.push({
+				source: "plan-mode-notification",
+				recordSource: "plan-mode-notification",
+				layer: "runtime-notification",
+				markerId: "plan-mode-notification",
+				content: formatRuntimeNotificationBlock([notification]),
+			});
+		}
+		const result = applyPromptStack(event.systemPrompt ?? "", entries);
+		if (result.appliedEntries.length === 0) {
+			return;
+		}
+
 		return {
-			systemPrompt: `${event.systemPrompt}\n\n${PLAN_MODE_POLICY}`,
+			systemPrompt: result.systemPrompt,
 			message: {
 				customType: PLAN_MODE_CONTEXT_TYPE,
 				content: "PLAN MODE is active. Restrictions are disabled and all tools are available.",
@@ -454,10 +937,19 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "plan_create",
 		label: "Create Plan",
-		description: "Create a new task plan with a name and optional description",
+		description: "Create a new task plan with a live checklist and durable markdown document",
 		parameters: Type.Object({
 			name: Type.String({ description: "Name of the plan" }),
 			description: Type.Optional(Type.String({ description: "Description of the plan" })),
+			goal: Type.Optional(Type.String({ description: "Main outcome for the plan document" })),
+			nonGoals: Type.Optional(Type.Array(Type.String({ description: "Out-of-scope items" }))),
+			acceptanceCriteria: Type.Optional(Type.Array(Type.String({ description: "Acceptance criteria checklist items" }))),
+			constraints: Type.Optional(Type.Array(Type.String({ description: "Constraints to preserve" }))),
+			fileModuleImpact: Type.Optional(Type.Array(Type.String({ description: "Files or modules expected to change" }))),
+			implementationOrder: Type.Optional(Type.Array(Type.String({ description: "Ordered implementation phases" }))),
+			testVerification: Type.Optional(Type.Array(Type.String({ description: "Tests and manual verification points" }))),
+			risksRollback: Type.Optional(Type.Array(Type.String({ description: "Risks and rollback notes" }))),
+			documentSlug: Type.Optional(Type.String({ description: "Optional slug for plans/<slug>.md" })),
 		}),
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			const _operationId = logger.startOperation("plan_create" as OperationType, params.name, {
@@ -465,10 +957,25 @@ export default function (pi: ExtensionAPI) {
 				params: { name: params.name, description: params.description },
 			});
 
-			const storage = loadStorage();
-			const plan = createPlan(params.name, params.description);
+			const workspaceRoot = resolveWorkspaceRoot(ctx);
+			const storage = loadStorage(workspaceRoot);
+			const plan = createPlan(params.name, {
+				description: params.description,
+				goal: params.goal,
+				nonGoals: params.nonGoals,
+				acceptanceCriteria: params.acceptanceCriteria,
+				constraints: params.constraints,
+				fileModuleImpact: params.fileModuleImpact,
+				implementationOrder: params.implementationOrder,
+				testVerification: params.testVerification,
+				risksRollback: params.risksRollback,
+				documentSlug: params.documentSlug,
+			});
+			appendProgressLog(plan, "planner", "Initial plan created");
+			syncPlanDocument(plan, workspaceRoot);
 			storage.plans.push(plan);
-			saveStorage(storage);
+			storage.currentPlanId = plan.id;
+			saveStorage(storage, workspaceRoot);
 
 			logger.endOperation({
 				status: "success",
@@ -480,7 +987,10 @@ export default function (pi: ExtensionAPI) {
 
 			return {
 				content: [{ type: "text", text: `Plan created:\n\n${formatPlanSummary(plan)}` }],
-				details: { planId: plan.id }
+				details: { planId: plan.id, documentPath: plan.documentPath, currentStepId: plan.currentStepId },
+				id: plan.id,
+				planId: plan.id,
+				documentPath: plan.documentPath,
 			};
 		},
 	});
@@ -492,7 +1002,7 @@ export default function (pi: ExtensionAPI) {
 		description: "List all existing plans",
 		parameters: Type.Object({}),
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
-			const storage = loadStorage();
+			const storage = loadStorage(resolveWorkspaceRoot(ctx));
 			return {
 				content: [{ type: "text", text: formatPlanList(storage.plans) }],
 				details: { count: storage.plans.length }
@@ -509,7 +1019,7 @@ export default function (pi: ExtensionAPI) {
 			planId: Type.String({ description: "ID of the plan to show" }),
 		}),
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
-			const storage = loadStorage();
+			const storage = loadStorage(resolveWorkspaceRoot(ctx));
 			const plan = findPlanById(storage, params.planId);
 
 			if (!plan) {
@@ -521,7 +1031,14 @@ export default function (pi: ExtensionAPI) {
 
 			return {
 				content: [{ type: "text", text: formatPlanSummary(plan) }],
-				details: { planId: plan.id, stepCount: plan.steps.length }
+				details: {
+					planId: plan.id,
+					stepCount: plan.steps.length,
+					currentStepId: plan.currentStepId,
+					documentPath: plan.documentPath,
+				},
+				id: plan.id,
+				planId: plan.id,
 			};
 		},
 	});
@@ -543,7 +1060,8 @@ export default function (pi: ExtensionAPI) {
 				params: { planId: params.planId, title: params.title },
 			});
 
-			const storage = loadStorage();
+			const workspaceRoot = resolveWorkspaceRoot(ctx);
+			const storage = loadStorage(workspaceRoot);
 			const plan = findPlanById(storage, params.planId);
 
 			if (!plan) {
@@ -566,7 +1084,9 @@ export default function (pi: ExtensionAPI) {
 					details: { error: "circular_dependency" }
 				};
 			}
-			saveStorage(storage);
+			appendProgressLog(plan, "planner", `Added step "${step.title}"`);
+			syncPlanDocument(plan, workspaceRoot);
+			saveStorage(storage, workspaceRoot);
 
 			logger.endOperation({
 				status: "success",
@@ -583,7 +1103,9 @@ export default function (pi: ExtensionAPI) {
 
 			return {
 				content: [{ type: "text", text: outputText }],
-				details: { planId: plan.id, stepId: step.id, warnings }
+				details: { planId: plan.id, stepId: step.id, warnings, documentPath: plan.documentPath },
+				planId: plan.id,
+				stepId: step.id,
 			};
 		},
 	});
@@ -592,11 +1114,14 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "plan_update_step",
 		label: "Update Step Status",
-		description: "Update the status of a step (pending, in_progress, completed, blocked)",
+		description: "Update a step and keep a single current in-progress item with optional auto-advance",
 		parameters: Type.Object({
 			planId: Type.String({ description: "ID of the plan" }),
 			stepId: Type.String({ description: "ID of the step to update" }),
 			status: Type.String({ description: "New status: pending, in_progress, completed, or blocked" }),
+			actor: Type.Optional(Type.String({ description: "Who is performing the update, e.g. planner/executor/verifier" })),
+			progressNote: Type.Optional(Type.String({ description: "Reason or verification note to append to the progress log" })),
+			activateNext: Type.Optional(Type.Boolean({ description: "When completing a step, automatically move the next ready step to in_progress" })),
 		}),
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			const _operationId = logger.startOperation("plan_update_step" as OperationType, params.stepId, {
@@ -604,7 +1129,8 @@ export default function (pi: ExtensionAPI) {
 				params: { planId: params.planId, stepId: params.stepId, status: params.status },
 			});
 
-			const storage = loadStorage();
+			const workspaceRoot = resolveWorkspaceRoot(ctx);
+			const storage = loadStorage(workspaceRoot);
 			const plan = findPlanById(storage, params.planId);
 
 			if (!plan) {
@@ -614,25 +1140,41 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			const validStatuses = ["pending", "in_progress", "completed", "blocked"];
-			if (!validStatuses.includes(params.status)) {
+			if (!VALID_STEP_STATUSES.includes(params.status as PlanStepStatus)) {
 				return {
-					content: [{ type: "text", text: `Invalid status. Must be one of: ${validStatuses.join(", ")}` }],
+					content: [{ type: "text", text: `Invalid status. Must be one of: ${VALID_STEP_STATUSES.join(", ")}` }],
 					details: {}
 				};
 			}
 
-			const success = updateStepStatus(plan, params.stepId, params.status as PlanStep["status"]);
-
-			if (!success) {
+			const updateResult = updateStepStatus(plan, params.stepId, params.status as PlanStepStatus, {
+				actor: params.actor,
+				note: params.progressNote,
+				activateNext: params.activateNext,
+			});
+			if (!updateResult.ok) {
+				const unmetDependencyIds = Array.isArray(updateResult.details?.unmetDependencyIds)
+					? updateResult.details.unmetDependencyIds.join(", ")
+					: "";
 				return {
-					content: [{ type: "text", text: `Step not found: ${params.stepId}` }],
-					details: {}
+					content: [{
+						type: "text",
+						text: updateResult.error === "dependencies_unmet"
+							? `Step cannot start yet. Unmet dependencies: ${unmetDependencyIds}`
+							: updateResult.error === "plan_cancelled"
+								? "Cancelled plans cannot update steps."
+							: `Step not found: ${params.stepId}`,
+					}],
+					details: updateResult.details ?? {}
 				};
 			}
 
-			saveStorage(storage);
+			syncCurrentStep(plan);
+			syncPlanDocument(plan, workspaceRoot);
+			saveStorage(storage, workspaceRoot);
 			const step = findStepById(plan, params.stepId);
+			const currentStep = getCurrentStep(plan);
+			const nextReadyStep = getNextReadyStep(plan);
 
 			logger.endOperation({
 				status: "success",
@@ -643,8 +1185,86 @@ export default function (pi: ExtensionAPI) {
 			});
 
 			return {
-				content: [{ type: "text", text: `Step status updated (Plan: ${plan.id}):\n\n• ${step?.title} → ${params.status}` }],
-				details: { planId: plan.id, stepId: params.stepId, status: params.status }
+				content: [{
+					type: "text",
+					text: [
+						`Step status updated (Plan: ${plan.id}):`,
+						"",
+						`• ${step?.title} → ${params.status}`,
+						currentStep ? `• Current focus: ${currentStep.title} (${currentStep.id})` : "• Current focus: none",
+						nextReadyStep ? `• Up next: ${nextReadyStep.title} (${nextReadyStep.id})` : "• Up next: none",
+						"",
+						formatPlanSummary(plan),
+					].join("\n"),
+				}],
+				details: {
+					planId: plan.id,
+					stepId: params.stepId,
+					status: params.status,
+					currentStepId: currentStep?.id,
+					nextStepId: nextReadyStep?.id,
+					documentPath: plan.documentPath,
+					...updateResult.details,
+				},
+				planId: plan.id,
+				stepId: params.stepId,
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "plan_run_next",
+		label: "Run Next Plan Step",
+		description: "Move the next ready pending step to in_progress and surface the current focus",
+		parameters: Type.Object({
+			planId: Type.String({ description: "ID of the plan" }),
+			actor: Type.Optional(Type.String({ description: "Who is claiming the next step" })),
+			progressNote: Type.Optional(Type.String({ description: "Optional note to append when the next step starts" })),
+		}),
+		async execute(toolCallId, params, signal, onUpdate, ctx) {
+			const workspaceRoot = resolveWorkspaceRoot(ctx);
+			const storage = loadStorage(workspaceRoot);
+			const plan = findPlanById(storage, params.planId);
+
+			if (!plan) {
+				return {
+					content: [{ type: "text", text: `Plan not found: ${params.planId}` }],
+					details: {}
+				};
+			}
+
+			if (plan.status === "cancelled") {
+				return {
+					content: [{ type: "text", text: "Cancelled plans cannot start new steps." }],
+					details: { planId: plan.id }
+				};
+			}
+
+			const currentStep = getCurrentStep(plan);
+			if (currentStep) {
+				return {
+					content: [{ type: "text", text: `A step is already in progress:\n\n• ${currentStep.title} (${currentStep.id})` }],
+					details: { planId: plan.id, currentStepId: currentStep.id, documentPath: plan.documentPath },
+				};
+			}
+
+			const nextStep = activateNextReadyStep(plan);
+			if (!nextStep) {
+				return {
+					content: [{ type: "text", text: "No ready pending steps found." }],
+					details: { planId: plan.id, count: 0 }
+				};
+			}
+
+			appendProgressLog(plan, params.actor?.trim() || "executor", `Started "${nextStep.title}"${params.progressNote ? `: ${params.progressNote}` : ""}`);
+			syncPlanDocument(plan, workspaceRoot);
+			saveStorage(storage, workspaceRoot);
+
+			return {
+				content: [{ type: "text", text: `Current focus updated:\n\n• ${nextStep.title} (${nextStep.id})\n\n${formatPlanSummary(plan)}` }],
+				details: { planId: plan.id, stepId: nextStep.id, currentStepId: nextStep.id, documentPath: plan.documentPath },
+				planId: plan.id,
+				stepId: nextStep.id,
 			};
 		},
 	});
@@ -658,7 +1278,7 @@ export default function (pi: ExtensionAPI) {
 			planId: Type.String({ description: "ID of the plan" }),
 		}),
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
-			const storage = loadStorage();
+			const storage = loadStorage(resolveWorkspaceRoot(ctx));
 			const plan = findPlanById(storage, params.planId);
 
 			if (!plan) {
@@ -687,7 +1307,7 @@ export default function (pi: ExtensionAPI) {
 
 			return {
 				content: [{ type: "text", text: lines.join("\n") }],
-				details: { count: readySteps.length, stepIds: readySteps.map(s => s.id) }
+				details: { count: readySteps.length, stepIds: readySteps.map(s => s.id), currentStepId: plan.currentStepId }
 			};
 		},
 	});
@@ -706,7 +1326,8 @@ export default function (pi: ExtensionAPI) {
 				params: { planId: params.planId },
 			});
 
-			const storage = loadStorage();
+			const workspaceRoot = resolveWorkspaceRoot(ctx);
+			const storage = loadStorage(workspaceRoot);
 			const planToDelete = findPlanById(storage, params.planId);
 
 			if (!planToDelete) {
@@ -718,7 +1339,7 @@ export default function (pi: ExtensionAPI) {
 
 			const deletedPlanName = planToDelete.name;
 			storage.plans = storage.plans.filter(p => p.id !== params.planId);
-			saveStorage(storage);
+			saveStorage(storage, workspaceRoot);
 
 			logger.endOperation({
 				status: "success",
@@ -750,7 +1371,8 @@ export default function (pi: ExtensionAPI) {
 				params: { planId: params.planId, status: params.status },
 			});
 
-			const storage = loadStorage();
+			const workspaceRoot = resolveWorkspaceRoot(ctx);
+			const storage = loadStorage(workspaceRoot);
 			const plan = findPlanById(storage, params.planId);
 
 			if (!plan) {
@@ -760,17 +1382,33 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			const validStatuses = ["draft", "active", "completed", "cancelled"];
-			if (!validStatuses.includes(params.status)) {
+			if (!VALID_PLAN_STATUSES.includes(params.status as PlanStatus)) {
 				return {
-					content: [{ type: "text", text: `Invalid status. Must be one of: ${validStatuses.join(", ")}` }],
+					content: [{ type: "text", text: `Invalid status. Must be one of: ${VALID_PLAN_STATUSES.join(", ")}` }],
 					details: {}
 				};
 			}
 
-			plan.status = params.status as Plan["status"];
+			if (params.status === "completed" && plan.steps.some(step => step.status !== "completed")) {
+				return {
+					content: [{ type: "text", text: "Plan cannot be marked completed while unfinished steps remain." }],
+					details: { unfinishedStepIds: plan.steps.filter(step => step.status !== "completed").map(step => step.id) }
+				};
+			}
+
+			plan.status = params.status as PlanStatus;
 			plan.updatedAt = new Date().toISOString();
-			saveStorage(storage);
+			if (plan.status === "cancelled") {
+				for (const step of plan.steps) {
+					if (step.status === "in_progress") {
+						step.status = "pending";
+					}
+				}
+				plan.currentStepId = undefined;
+			}
+			appendProgressLog(plan, "planner", `Plan status changed to ${plan.status}`);
+			syncPlanDocument(plan, workspaceRoot);
+			saveStorage(storage, workspaceRoot);
 
 			logger.endOperation({
 				status: "success",
@@ -782,7 +1420,7 @@ export default function (pi: ExtensionAPI) {
 
 			return {
 				content: [{ type: "text", text: `Plan "${plan.name}" (ID: ${plan.id}) status updated to: ${params.status}` }],
-				details: { planId: plan.id, status: params.status }
+				details: { planId: plan.id, status: params.status, documentPath: plan.documentPath }
 			};
 		},
 	});
@@ -794,22 +1432,26 @@ export default function (pi: ExtensionAPI) {
 			if (!args || args === "help" || args === "") {
 				ctx.ui.notify("Plan commands: list, create <name>, show <id>", "info");
 			} else if (args === "list") {
-				const storage = loadStorage();
+				const storage = loadStorage(resolveWorkspaceRoot(ctx));
 				ctx.ui.notify(formatPlanList(storage.plans), "info");
 			} else if (args.startsWith("create ")) {
 				const name = args.substring(7).trim();
 				if (name) {
-					const storage = loadStorage();
+					const workspaceRoot = resolveWorkspaceRoot(ctx);
+					const storage = loadStorage(workspaceRoot);
 					const plan = createPlan(name);
+					appendProgressLog(plan, "planner", "Initial plan created");
+					syncPlanDocument(plan, workspaceRoot);
 					storage.plans.push(plan);
-					saveStorage(storage);
-					ctx.ui.notify(`Created plan: ${plan.id}`, "success");
+					storage.currentPlanId = plan.id;
+					saveStorage(storage, workspaceRoot);
+					ctx.ui.notify(`Created plan: ${plan.id}`, "info");
 				} else {
 					ctx.ui.notify("Usage: /plan create <name>", "error");
 				}
 			} else if (args.startsWith("show ")) {
 				const planId = args.substring(5).trim();
-				const storage = loadStorage();
+				const storage = loadStorage(resolveWorkspaceRoot(ctx));
 				const plan = findPlanById(storage, planId);
 				if (plan) {
 					ctx.ui.notify(formatPlanSummary(plan), "info");
@@ -833,7 +1475,7 @@ export default function (pi: ExtensionAPI) {
 	// Extension loaded notification
 	pi.on("session_start", async (_event, ctx) => {
 		// Load plan mode state from file
-		planModeEnabled = loadPlanModeState();
+		planModeEnabled = loadPlanModeState(resolveWorkspaceRoot(ctx));
 
 		ctx.ui.notify("Plan Extension loaded (restrictions disabled)", "info");
 		if (planModeEnabled) {

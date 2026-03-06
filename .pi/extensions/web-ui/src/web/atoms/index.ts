@@ -22,6 +22,7 @@ import { atomWithStorage } from "jotai/utils";
 import type { Task, TaskStats, TaskFilter } from "../../schemas/task.schema.js";
 import type { InstanceInfo, InstanceStats, InstanceContextHistory } from "../../schemas/instance.schema.js";
 import type { ThemeSettings } from "../../schemas/theme.schema.js";
+import type { BenchmarkStatusDto } from "../../schemas/benchmark.schema.js";
 
 // ============================================================================
 // インスタンス関連 atoms
@@ -41,6 +42,11 @@ export const instanceStatsAtom = atom<InstanceStats | null>(null);
  * コンテキスト履歴
  */
 export const contextHistoryAtom = atom<InstanceContextHistory[]>([]);
+
+/**
+ * agent benchmark 状態
+ */
+export const benchmarkStatusAtom = atom<BenchmarkStatusDto | null>(null);
 
 /**
  * 選択中のインスタンスPID

@@ -202,6 +202,18 @@ import {
 } from "../lib/runtime-sessions.js";
 import { getCostEstimator, type ExecutionHistoryEntry } from "../lib/cost-estimator";
 import { detectTier, getConcurrencyLimit } from "../lib/provider-limits";
+import {
+  createBoundedOptionalNumberSchema,
+  createOptionalEnumStringSchema,
+  createOptionalStringArraySchema,
+} from "../lib/tool-contracts.js";
+import { createSubagentBenchmarkRun } from "../lib/agent/benchmark-harness.js";
+import { mergePromptStackBenchmarkSummaries } from "../lib/agent/benchmark-harness.js";
+import {
+  loadAgentBenchmarkComparison,
+  loadAgentBenchmarkStore,
+  recordAgentBenchmarkRun,
+} from "../lib/agent/benchmark-store.js";
 
 const logger = getLogger();
 
@@ -840,6 +852,45 @@ function formatRecentRuns(storage: SubagentStorage, limit = 10): string {
   return lines.join("\n");
 }
 
+function formatAgentBenchmarkStatus(args: {
+  variants: ReturnType<typeof loadAgentBenchmarkComparison>["variants"];
+  runs: ReturnType<typeof loadAgentBenchmarkStore>["runs"];
+  limit: number;
+  variantFilter?: string;
+}): string {
+  const filteredVariants = args.variantFilter
+    ? args.variants.filter((item) => item.variantId.includes(args.variantFilter!))
+    : args.variants;
+  const filteredRuns = args.variantFilter
+    ? args.runs.filter((item) => item.variantId.includes(args.variantFilter!))
+    : args.runs;
+
+  if (filteredRuns.length === 0) {
+    return "No agent benchmark runs recorded yet.";
+  }
+
+  const lines: string[] = ["Agent benchmark summary:"];
+  if (filteredVariants.length > 0) {
+    const best = filteredVariants[0]!;
+    lines.push(
+      `Best: ${best.variantId} | completion=${(best.completionRate * 100).toFixed(1)}% | tool-failure=${(best.toolFailureRate * 100).toFixed(1)}% | turns=${best.averageTurns.toFixed(1)} | runtime-notices=${best.averageRuntimeNotificationCount.toFixed(1)}`,
+    );
+    lines.push(
+      `Layer tokens(avg): tools=${best.averagePromptLayerTokens["tool-description"].toFixed(1)} policy=${best.averagePromptLayerTokens["system-policy"].toFixed(1)} context=${best.averagePromptLayerTokens["startup-context"].toFixed(1)} runtime=${best.averagePromptLayerTokens["runtime-notification"].toFixed(1)}`,
+    );
+  }
+
+  lines.push("");
+  lines.push("Recent runs:");
+  for (const run of filteredRuns.slice(-args.limit).reverse()) {
+    lines.push(
+      `- ${run.variantId} | ${run.scenarioId} | completed=${run.completed ? "yes" : "no"} | failures=${run.toolFailures}/${run.toolCalls} | turns=${run.turns}`,
+    );
+  }
+
+  return lines.join("\n");
+}
+
 // Note: Background job system removed - subagent_run and subagent_run_parallel
 // now execute synchronously like agent_team_run for consistent behavior.
 
@@ -1226,7 +1277,13 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       addSession(parallelSession);
 
       // Promise.allSettledパターンで部分失敗を許容
-      type SubagentTaskResult = { runRecord: SubagentRunRecord; output: string; prompt: string };
+      type SubagentTaskResult = {
+        runRecord: SubagentRunRecord;
+        output: string;
+        prompt: string;
+        promptStackSummary: import("../lib/agent/benchmark-harness.js").PromptStackBenchmarkSummary;
+        runtimeNotificationCount: number;
+      };
       type SettledTaskResult = { status: 'fulfilled' | 'rejected'; value?: SubagentTaskResult; reason?: unknown; index: number };
 
       const settledResults = await runWithConcurrencyLimit(
@@ -1337,6 +1394,27 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           })
           .join("\n\n");
         const failedMemberIds = [...failed.map((result) => result.runRecord.agentId), ...rejectedDetails.map(r => r.agentId)];
+        const executedPromptChars = succeededResults.reduce((sum, result) => sum + result.prompt.length, 0);
+        const benchmarkRun = createSubagentBenchmarkRun({
+          provider: ctx.model?.provider,
+          model: ctx.model?.id,
+          task: params.task,
+          successCount: results.length - failed.length,
+          failureCount: totalFailed,
+          promptChars: executedPromptChars,
+          promptStackSummary: mergePromptStackBenchmarkSummaries(
+            succeededResults.map((result) => result.promptStackSummary),
+          ),
+          runtimeNotificationCount: succeededResults.reduce(
+            (sum, result) => sum + result.runtimeNotificationCount,
+            0,
+          ),
+        });
+        try {
+          recordAgentBenchmarkRun(ctx.cwd, benchmarkRun);
+        } catch {
+          // benchmark 保存失敗は本体処理を止めない
+        }
         return {
           content: [{ type: "text" as const, text: aggregatedOutput }],
           details: {
@@ -1352,6 +1430,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             totalCount: activeAgents.length,
             outcomeCode: totalFailed === activeAgents.length ? "NONRETRYABLE_FAILURE" as RunOutcomeCode : "PARTIAL_SUCCESS" as RunOutcomeCode,
             retryRecommended: totalFailed > 0,
+            benchmarkRun,
           },
         };
       } else {
@@ -1369,6 +1448,26 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             return `## ${result.runRecord.agentId}\nStatus: SUCCESS\n${result.output || result.runRecord.summary || ""}`;
           })
           .join("\n\n");
+        const benchmarkRun = createSubagentBenchmarkRun({
+          provider: ctx.model?.provider,
+          model: ctx.model?.id,
+          task: params.task,
+          successCount: results.length,
+          failureCount: 0,
+          promptChars: succeededResults.reduce((sum, result) => sum + result.prompt.length, 0),
+          promptStackSummary: mergePromptStackBenchmarkSummaries(
+            succeededResults.map((result) => result.promptStackSummary),
+          ),
+          runtimeNotificationCount: succeededResults.reduce(
+            (sum, result) => sum + result.runtimeNotificationCount,
+            0,
+          ),
+        });
+        try {
+          recordAgentBenchmarkRun(ctx.cwd, benchmarkRun);
+        } catch {
+          // benchmark 保存失敗は本体処理を止めない
+        }
         return {
           content: [{ type: "text" as const, text: aggregatedOutput }],
           details: {
@@ -1382,6 +1481,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             totalCount: results.length,
             outcomeCode: "SUCCESS" as RunOutcomeCode,
             retryRecommended: false,
+            benchmarkRun,
           },
         };
       }
@@ -1428,7 +1528,9 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
     parameters: Type.Object({
       task: Type.String({ description: "Task to execute (used in all modes)" }),
       // Parallel mode parameters
-      subagentIds: Type.Optional(Type.Array(Type.String({ description: "Subagent IDs for parallel execution mode. When specified, runs selected agents in parallel." }))),
+      subagentIds: createOptionalStringArraySchema(
+        "Subagent IDs for parallel execution mode. When specified, runs selected agents in parallel.",
+      ),
       extraContext: Type.Optional(Type.String({ description: "Optional shared context for all subagents (parallel mode)" })),
       retry: createRetrySchema(),
       // DAG mode parameters
@@ -1452,9 +1554,9 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         description: "Auto-generate DAG when plan and subagentIds omitted (default: true)"
       })),
       // Common parameters
-      maxConcurrency: Type.Optional(Type.Number({ description: "Maximum parallel tasks (default: 3)" })),
+      maxConcurrency: createBoundedOptionalNumberSchema("Maximum parallel tasks (default: 3)", 1, 16),
       abortOnFirstError: Type.Optional(Type.Boolean({ description: "Stop on first task failure (default: false)" })),
-      timeoutMs: Type.Optional(Type.Number({ description: "Per-task timeout in ms (default: 300000)" })),
+      timeoutMs: createBoundedOptionalNumberSchema("Per-task timeout in ms (default: 300000)", 1_000, 3_600_000),
       ulTaskId: Type.Optional(Type.String({ description: "UL workflow task ID. If provided, checks ownership before execution." })),
       artifactPath: Type.Optional(Type.String({ description: "Optional file path to persist the final DAG artifact." })),
       artifactTaskId: Type.Optional(Type.String({ description: "Preferred task ID whose output should be written to artifactPath." })),
@@ -1462,9 +1564,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       enableAdaptOrch: Type.Optional(Type.Boolean({
         description: "Enable AdaptOrch topology-aware orchestration (default: false)"
       })),
-      forceTopology: Type.Optional(Type.String({
-        description: "Force specific topology: parallel|sequential|hierarchical|hybrid"
-      })),
+      forceTopology: createOptionalEnumStringSchema(
+        "Force specific topology: parallel|sequential|hierarchical|hybrid",
+        ["parallel", "sequential", "hierarchical", "hybrid"],
+      ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       // ULワークフロー所有権チェック
@@ -1559,6 +1662,20 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             })
             .join("\n\n");
 
+          const benchmarkRun = createSubagentBenchmarkRun({
+            provider: ctx.model?.provider,
+            model: ctx.model?.id,
+            task: params.task,
+            successCount: activeAgents.length,
+            failureCount: 0,
+            promptChars: 0,
+            runtimeNotificationCount: 0,
+          });
+          try {
+            recordAgentBenchmarkRun(ctx.cwd, benchmarkRun);
+          } catch {
+            // benchmark 保存失敗は本体処理を止めない
+          }
           return {
             content: [{ type: "text" as const, text: aggregatedOutput }],
             details: {
@@ -1578,6 +1695,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               cachedCount: activeAgents.length,
               outcomeCode: "SUCCESS" as RunOutcomeCode,
               retryRecommended: false,
+              benchmarkRun,
             },
           };
         }
@@ -1833,7 +1951,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         
         const dagResult = await dagExecuteFn<{ runRecord: SubagentRunRecord; output: string; prompt: string }>(
           taskPlan,
-          async (task, context) => {
+          async (task: TaskNode, context: string) => {
             // Determine agent to use
             const agentId = task.assignedAgent ?? storage.currentAgentId;
             const agent = agentId
@@ -1892,7 +2010,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             signal: _signal,
             nodeTimeoutMs: timeoutMs,
             overallTimeoutMs: timeoutMs > 0 ? timeoutMs * Math.max(1, taskPlan.tasks.length) : 0,
-            onTaskError: (taskId, error) => {
+            onTaskError: (taskId: string, error: Error) => {
               liveMonitor?.markFinished(taskId, "failed", error.message, error.message);
             },
           },
@@ -1950,6 +2068,41 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           toolCalls: 0,
         });
 
+        const benchmarkRun = createSubagentBenchmarkRun({
+          provider: ctx.model?.provider,
+          model: ctx.model?.id,
+          task: params.task,
+          successCount: completedCount,
+          failureCount: failedCount,
+          promptChars: Array.from(dagResult.taskResults.values()).reduce((sum, result) => {
+            if (result.status !== "completed") {
+              return sum;
+            }
+            const value = result.output as { prompt?: string } | undefined;
+            return sum + (typeof value?.prompt === "string" ? value.prompt.length : 0);
+          }, 0),
+          promptStackSummary: mergePromptStackBenchmarkSummaries(
+            Array.from(dagResult.taskResults.values()).flatMap((result) => {
+              if (result.status !== "completed") {
+                return [];
+              }
+              const value = result.output as { promptStackSummary?: import("../lib/agent/benchmark-harness.js").PromptStackBenchmarkSummary } | undefined;
+              return value?.promptStackSummary ? [value.promptStackSummary] : [];
+            }),
+          ),
+          runtimeNotificationCount: Array.from(dagResult.taskResults.values()).reduce((sum, result) => {
+            if (result.status !== "completed") {
+              return sum;
+            }
+            const value = result.output as { runtimeNotificationCount?: number } | undefined;
+            return sum + (value?.runtimeNotificationCount ?? 0);
+          }, 0),
+        });
+        try {
+          recordAgentBenchmarkRun(ctx.cwd, benchmarkRun);
+        } catch {
+          // benchmark 保存失敗は本体処理を止めない
+        }
         return {
           content: [{ type: "text" as const, text: aggregatedOutput }],
           details: {
@@ -1970,6 +2123,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
                   ? ("PARTIAL_SUCCESS" as RunOutcomeCode)
                   : ("NONRETRYABLE_FAILURE" as RunOutcomeCode),
             retryRecommended: failedCount > 0,
+            benchmarkRun,
           },
         };
       } catch (error) {
@@ -2054,7 +2208,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
     label: "Subagent Runs",
     description: "Show recent subagent run history.",
     parameters: Type.Object({
-      limit: Type.Optional(Type.Number({ description: "Number of runs to return", minimum: 1, maximum: 50 })),
+      limit: createBoundedOptionalNumberSchema("Number of runs to return", 1, 50),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const storage = loadStorage(ctx.cwd);
@@ -2070,6 +2224,41 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
     },
   });
 
+  pi.registerTool({
+    name: "agent_benchmark_status",
+    label: "Agent Benchmark Status",
+    description: "Show stored benchmark comparison for loop and subagent runs.",
+    parameters: Type.Object({
+      limit: createBoundedOptionalNumberSchema("Number of recent runs to show", 1, 20),
+      variantId: Type.Optional(Type.String({ description: "Optional variant filter (provider/model)" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const limitRaw = Number(params.limit ?? 10);
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(20, Math.trunc(limitRaw))) : 10;
+      const variantFilter = typeof params.variantId === "string" ? params.variantId.trim() : "";
+      const store = loadAgentBenchmarkStore(ctx.cwd);
+      const comparison = loadAgentBenchmarkComparison(ctx.cwd);
+      const text = formatAgentBenchmarkStatus({
+        variants: comparison.variants,
+        runs: store.runs,
+        limit,
+        variantFilter: variantFilter || undefined,
+      });
+
+      return {
+        content: [{ type: "text" as const, text }],
+        details: {
+          variants: variantFilter
+            ? comparison.variants.filter((item) => item.variantId.includes(variantFilter))
+            : comparison.variants,
+          runs: variantFilter
+            ? store.runs.filter((item) => item.variantId.includes(variantFilter)).slice(-limit)
+            : store.runs.slice(-limit),
+        },
+      };
+    },
+  });
+
   // スラッシュコマンド（最小構成）
   pi.registerCommand("subagent", {
     description: "Manage and run subagents (list, runs, status, default, enable, disable)",
@@ -2078,7 +2267,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       const storage = loadStorage(ctx.cwd);
 
       if (!input || input === "help") {
-        ctx.ui.notify("/subagent list | /subagent runs | /subagent status | /subagent default <id> | /subagent enable <id> | /subagent disable <id>", "info");
+        ctx.ui.notify("/subagent list | /subagent runs | /subagent benchmark [variant] | /subagent status | /subagent default <id> | /subagent enable <id> | /subagent disable <id>", "info");
         return;
       }
 
@@ -2089,6 +2278,31 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
 
       if (input === "runs") {
         pi.sendMessage({ customType: "subagent-runs", content: formatRecentRuns(storage), display: true });
+        return;
+      }
+
+      if (input === "benchmark" || input.startsWith("benchmark ")) {
+        const variantFilter = input.startsWith("benchmark ") ? input.slice("benchmark ".length).trim() : "";
+        const benchmarkStore = loadAgentBenchmarkStore(ctx.cwd);
+        const comparison = loadAgentBenchmarkComparison(ctx.cwd);
+        pi.sendMessage({
+          customType: "agent-benchmark-status",
+          content: formatAgentBenchmarkStatus({
+            variants: comparison.variants,
+            runs: benchmarkStore.runs,
+            limit: 10,
+            variantFilter: variantFilter || undefined,
+          }),
+          display: true,
+          details: {
+            variants: variantFilter
+              ? comparison.variants.filter((item) => item.variantId.includes(variantFilter))
+              : comparison.variants,
+            runs: variantFilter
+              ? benchmarkStore.runs.filter((item) => item.variantId.includes(variantFilter)).slice(-10)
+              : benchmarkStore.runs.slice(-10),
+          },
+        });
         return;
       }
 

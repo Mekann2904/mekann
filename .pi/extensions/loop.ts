@@ -39,6 +39,14 @@ import { Text } from "@mariozechner/pi-tui";
 import { formatDuration } from "../lib/core/format-utils.js";
 import { toErrorMessage } from "../lib/core/error-utils.js";
 import { toBoundedInteger, toBoundedFloat } from "../lib/core/validation-utils.js";
+import { createBoundedOptionalNumberSchema } from "../lib/tool-contracts.js";
+import { createLoopBenchmarkRun } from "../lib/agent/benchmark-harness.js";
+import {
+  mergePromptStackBenchmarkSummaries,
+  summarizePromptStackForBenchmark,
+  type PromptStackBenchmarkSummary,
+} from "../lib/agent/benchmark-harness.js";
+import { recordAgentBenchmarkRun } from "../lib/agent/benchmark-store.js";
 import {
   toPreview,
   normalizeOptionalText,
@@ -107,6 +115,7 @@ import {
   type LoopGoalStatus,
   type RelevantPattern,
   buildIterationPrompt,
+  buildIterationPromptPackage,
   buildReferencePack,
   buildIterationFocus,
   buildLoopCommandPreview,
@@ -258,6 +267,9 @@ interface LoopRunOutput {
   summary: LoopRunSummary;
   finalOutput: string;
   iterations: LoopIterationResult[];
+  totalPromptChars: number;
+  promptStackSummary: PromptStackBenchmarkSummary;
+  runtimeNotificationCount: number;
 }
 
 interface LoopRunInput {
@@ -400,26 +412,20 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
       task: Type.String({
         description: "Task to execute in iterative loop mode",
       }),
-      maxIterations: Type.Optional(
-        Type.Number({
-          description: "Maximum number of loop iterations",
-          minimum: LIMITS.minIterations,
-          maximum: LIMITS.maxIterations,
-        }),
+      maxIterations: createBoundedOptionalNumberSchema(
+        "最大イテレーション回数",
+        LIMITS.minIterations,
+        LIMITS.maxIterations,
       ),
-      timeoutMs: Type.Optional(
-        Type.Number({
-          description: "Timeout per iteration model call in milliseconds",
-          minimum: LIMITS.minTimeoutMs,
-          maximum: LIMITS.maxTimeoutMs,
-        }),
+      timeoutMs: createBoundedOptionalNumberSchema(
+        "各イテレーションのモデル呼び出しタイムアウト（ms）",
+        LIMITS.minTimeoutMs,
+        LIMITS.maxTimeoutMs,
       ),
-      verificationTimeoutMs: Type.Optional(
-        Type.Number({
-          description: "Timeout per verification command execution in milliseconds",
-          minimum: LIMITS.minVerificationTimeoutMs,
-          maximum: LIMITS.maxVerificationTimeoutMs,
-        }),
+      verificationTimeoutMs: createBoundedOptionalNumberSchema(
+        "検証コマンドのタイムアウト（ms）",
+        LIMITS.minVerificationTimeoutMs,
+        LIMITS.maxVerificationTimeoutMs,
       ),
       requireCitation: Type.Optional(
         Type.Boolean({
@@ -451,12 +457,10 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
           description: "Enable semantic-based stagnation detection using embeddings (requires OPENAI_API_KEY). Based on 'Agentic Search in the Wild' paper findings.",
         }),
       ),
-      semanticRepetitionThreshold: Type.Optional(
-        Type.Number({
-          description: "Semantic similarity threshold for repetition detection (0.7-0.95, default: 0.85). Higher values require closer match.",
-          minimum: LIMITS.minSemanticRepetitionThreshold,
-          maximum: LIMITS.maxSemanticRepetitionThreshold,
-        }),
+      semanticRepetitionThreshold: createBoundedOptionalNumberSchema(
+        "意味的反復検知の閾値",
+        LIMITS.minSemanticRepetitionThreshold,
+        LIMITS.maxSemanticRepetitionThreshold,
       ),
       enableMediator: Type.Optional(
         Type.Boolean({
@@ -585,6 +589,25 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
         });
 
         const text = formatLoopResultText(run.summary, run.finalOutput, loadedReferences.warnings);
+        const benchmarkRun = createLoopBenchmarkRun({
+          provider: ctx.model.provider,
+          model: ctx.model.id,
+          task,
+          completed: run.summary.completed,
+          iterations: run.iterations.length,
+          verificationFailures: run.iterations.filter(
+            (item) => item.verification && item.verification.passed === false,
+          ).length,
+          emptyOutputs: run.iterations.filter((item) => item.output.trim().length === 0).length,
+          promptChars: run.totalPromptChars,
+          promptStackSummary: run.promptStackSummary,
+          runtimeNotificationCount: run.runtimeNotificationCount,
+        });
+        try {
+          recordAgentBenchmarkRun(ctx.cwd, benchmarkRun);
+        } catch {
+          // benchmark 保存失敗は本体処理を止めない
+        }
         return {
           content: [{ type: "text" as const, text }],
           details: {
@@ -597,6 +620,7 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
               title: item.title,
             })),
             referenceWarnings: loadedReferences.warnings,
+            benchmarkRun,
           },
         };
       } catch (error: unknown) {
@@ -753,6 +777,28 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
               title: item.title,
             })),
             referenceWarnings: loadedReferences.warnings,
+            benchmarkRun: (() => {
+              const runRecord = createLoopBenchmarkRun({
+                provider: ctx.model.provider,
+                model: ctx.model.id,
+                task: parsed.task,
+              completed: run.summary.completed,
+              iterations: run.iterations.length,
+              verificationFailures: run.iterations.filter(
+                (item) => item.verification && item.verification.passed === false,
+              ).length,
+              emptyOutputs: run.iterations.filter((item) => item.output.trim().length === 0).length,
+              promptChars: run.totalPromptChars,
+              promptStackSummary: run.promptStackSummary,
+              runtimeNotificationCount: run.runtimeNotificationCount,
+              });
+              try {
+                recordAgentBenchmarkRun(ctx.cwd, runRecord);
+              } catch {
+                // benchmark 保存失敗は本体処理を止めない
+              }
+              return runRecord;
+            })(),
           },
         });
         ctx.ui.notify("Loop run completed", "info");
@@ -887,6 +933,9 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
   let stopReason: LoopRunSummary["stopReason"] = "max_iterations";
   let finalOutput = "";
   let validationFeedback: string[] = [];
+  let totalPromptChars = 0;
+  let totalRuntimeNotificationCount = 0;
+  const promptStackSummaries: PromptStackBenchmarkSummary[] = [];
   const verificationPolicy = resolveVerificationPolicy();
 
   // Intent classification for intent-aware resource allocation
@@ -964,7 +1013,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
 
     // Each iteration gets the previous output and validation feedback.
     // On first iteration, also include relevant patterns from past executions.
-    const prompt = buildIterationPrompt({
+    const promptPackage = buildIterationPromptPackage({
       task: clarifiedTask,  // Use clarified task
       goal: input.goal,
       verificationCommand: input.verificationCommand,
@@ -974,7 +1023,13 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
       previousOutput,
       validationFeedback,
       relevantPatterns: iteration === 1 ? relevantPatterns : undefined,  // Only on first iteration
+      modelProvider: input.model.provider,
+      modelId: input.model.id,
     });
+    const prompt = promptPackage.prompt;
+    totalPromptChars += prompt.length;
+    totalRuntimeNotificationCount += promptPackage.runtimeNotificationCount;
+    promptStackSummaries.push(summarizePromptStackForBenchmark(promptPackage.entries));
 
     const started = Date.now();
     let output = "";
@@ -1328,6 +1383,9 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     summary,
     finalOutput,
     iterations,
+    totalPromptChars,
+    promptStackSummary: mergePromptStackBenchmarkSummaries(promptStackSummaries),
+    runtimeNotificationCount: totalRuntimeNotificationCount,
   };
 }
 

@@ -24,6 +24,11 @@ export {
   useDeleteInstance,
 } from "./use-instances.js";
 
+// benchmark 関連
+export {
+  useBenchmarkStatus,
+} from "./use-benchmark.js";
+
 // タスク関連
 export {
   useTasks,

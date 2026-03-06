@@ -87,6 +87,19 @@ import {
 	isPlanModeActive,
 	PLAN_MODE_WARNING,
 } from "../../lib/plan-mode-shared";
+import {
+  renderPromptStack,
+  type PromptStackEntry,
+} from "../../lib/agent/prompt-stack.js";
+import {
+  summarizePromptStackForBenchmark,
+  type PromptStackBenchmarkSummary,
+} from "../../lib/agent/benchmark-harness.js";
+import {
+  createRuntimeNotification,
+  formatRuntimeNotificationBlock,
+} from "../../lib/agent/runtime-notifications.js";
+import { resolveModelPromptAdapter } from "../../lib/agent/model-adapters.js";
 import { getSubagentExecutionRules, getExecutionRulesForProfile, getLightweightExecutionRules } from "../../lib/execution-rules";
 import { getProfileForTask, type PerformanceProfile } from "../../lib/performance-profiles";
 import {
@@ -699,66 +712,129 @@ export function buildSubagentPrompt(input: {
   parentSkills?: string[];
   profileId?: string;
   relevantPatterns?: ExtractedPattern[];
+  modelProvider?: string;
+  modelId?: string;
 }): string {
+  return buildSubagentPromptPackage(input).prompt;
+}
+
+export function buildSubagentPromptPackage(input: {
+  agent: SubagentDefinition;
+  task: string;
+  extraContext?: string;
+  enforcePlanMode?: boolean;
+  parentSkills?: string[];
+  profileId?: string;
+  relevantPatterns?: ExtractedPattern[];
+  modelProvider?: string;
+  modelId?: string;
+}): {
+  prompt: string;
+  entries: PromptStackEntry[];
+  runtimeNotificationCount: number;
+} {
   // Parse directives from extraContext and task (auto-detect research tasks)
   const directives = parseSubagentDirectives(input.extraContext, input.task);
   const isInternal = directives.outputMode === "internal";
+  const adapter = resolveModelPromptAdapter(
+    input.agent.provider ?? input.modelProvider,
+    input.agent.model ?? input.modelId,
+  );
+  const allSkills = resolveEffectiveSkills(input.agent, input.parentSkills) ?? [];
+  const effectiveSkills = filterSkillsByRelevance(input.task, allSkills);
 
   // INTERNAL mode: Build compact English prompt
   if (isInternal) {
-    const lines: string[] = [];
-    lines.push(`Subagent: ${input.agent.id}`);
-    lines.push(`Role: ${input.agent.description}`);
-    lines.push("");
-    lines.push("TASK:");
-    lines.push(input.task);
-    
-    // Minimal skills (8.4最適化: 関連スキルのみ)
-    const allSkills = resolveEffectiveSkills(input.agent, input.parentSkills) ?? [];
-    const effectiveSkills = filterSkillsByRelevance(input.task, allSkills);
-    if (effectiveSkills.length > 0) {
-      lines.push("");
-      lines.push(`Skills: ${effectiveSkills.join(", ")}`);
-    }
+    const contextHandoff = buildInternalContextHandoff(
+      input.extraContext,
+      adapter.internalContextHandoffLines,
+    );
+    const runtimeNotifications = [
+      createRuntimeNotification(
+        "subagent-output",
+        `MAX TOKENS: ${directives.maxTokens}. English only. Output labels only. No markdown, no internal monologue.`,
+        "critical",
+        1,
+      ),
+    ].filter((notification): notification is NonNullable<typeof notification> => Boolean(notification));
 
-    const contextHandoff = buildInternalContextHandoff(input.extraContext);
+    const entries: PromptStackEntry[] = [
+      {
+        source: "subagent-role",
+        layer: "system-policy",
+        content: [
+          `Subagent: ${input.agent.id}`,
+          `Role: ${input.agent.description}`,
+          "",
+          "TASK:",
+          input.task,
+          effectiveSkills.length > 0 ? `\nSkills: ${effectiveSkills.join(", ")}` : "",
+        ].filter(Boolean).join("\n"),
+      },
+    ];
+
     if (contextHandoff.length > 0) {
-      lines.push("");
-      lines.push("CONTEXT HANDOFF:");
-      lines.push(...contextHandoff);
-      lines.push("Context policy: Reuse known_facts first. Investigate open_questions first. Expand search only when evidence is missing or conflicting.");
+      entries.push({
+        source: "subagent-context-handoff",
+        layer: "startup-context",
+        content: [
+          "CONTEXT HANDOFF:",
+          ...contextHandoff,
+          "Context policy: Reuse known_facts first. Investigate open_questions first. Expand search only when evidence is missing or conflicting.",
+        ].join("\n"),
+      });
     }
 
     if (shouldEnableSubagentExtensions(input.task, input.extraContext)) {
-      lines.push(buildResearchTaskGuidelines());
+      entries.push({
+        source: "subagent-research-guidelines",
+        layer: "tool-description",
+        content: buildResearchTaskGuidelines(),
+      });
     }
-    
-    // CRITICAL output format at the END
-    lines.push("");
-    lines.push("=".repeat(60));
-    lines.push("CRITICAL OUTPUT REQUIREMENTS (STRICT COMPLIANCE):");
-    lines.push("=".repeat(60));
-    lines.push(`MAX TOKENS: ${directives.maxTokens}`);
-    lines.push("LANGUAGE: English ONLY");
-    lines.push("FORMAT: Structured, concise");
-    lines.push("");
-    lines.push("REQUIRED OUTPUT:");
-    lines.push("[CLAIM] <one sentence>");
-    lines.push("[EVIDENCE]");
-    lines.push("- <item 1>");
-    lines.push("- <item 2>");
-    lines.push("[CONFIDENCE] <0.0-1.0>");
-    lines.push("[ACTION] <next|done>");
-    lines.push("");
-    lines.push("PROHIBITED:");
-    lines.push("- Japanese language (use English only)");
-    lines.push("- Long explanations (be concise)");
-    lines.push("- [Thinking] blocks (output structured format directly)");
-    lines.push("- Internal monologue (go straight to output)");
-    lines.push("- Markdown formatting (use labels only)");
-    lines.push("=".repeat(60));
-    
-    return lines.join("\n");
+
+    entries.push({
+      source: "subagent-output-requirements",
+      layer: adapter.noticePlacement === "inline" ? "system-policy" : "runtime-notification",
+      content: [
+        "CRITICAL OUTPUT REQUIREMENTS (STRICT COMPLIANCE):",
+        `MAX TOKENS: ${directives.maxTokens}`,
+        "LANGUAGE: English ONLY",
+        "FORMAT: Structured, concise",
+        "",
+        "REQUIRED OUTPUT:",
+        "[CLAIM] <one sentence>",
+        "[EVIDENCE]",
+        "- <item 1>",
+        "- <item 2>",
+        "[CONFIDENCE] <0.0-1.0>",
+        "[ACTION] <next|done>",
+        "",
+        "PROHIBITED:",
+        "- Japanese language (use English only)",
+        "- Long explanations (be concise)",
+        "- [Thinking] blocks (output structured format directly)",
+        "- Internal monologue (go straight to output)",
+        "- Markdown formatting (use labels only)",
+      ].join("\n"),
+    });
+
+    if (runtimeNotifications.length > 0 && adapter.noticePlacement === "tail") {
+      entries.push({
+        source: "subagent-runtime-notifications",
+        layer: "runtime-notification",
+        content: formatRuntimeNotificationBlock(runtimeNotifications),
+      });
+    }
+
+    const rendered = renderPromptStack(entries);
+    return {
+      prompt: rendered.prompt,
+      entries: rendered.renderedEntries,
+      runtimeNotificationCount: rendered.renderedEntries.filter(
+        (entry) => entry.layer === "runtime-notification",
+      ).length,
+    };
   }
 
   // USER-FACING mode: Original detailed prompt
@@ -768,88 +844,131 @@ export function buildSubagentPrompt(input: {
     : getProfileForTask(input.task, { isHighRisk: isHighRiskTask(input.task) });
   const effectiveProfileId = input.profileId ?? profile?.id ?? 'standard';
   
-  const lines: string[] = [];
-  lines.push(`You are running as delegated subagent: ${input.agent.name} (${input.agent.id}).`);
-  lines.push(`Role description: ${input.agent.description}`);
-  lines.push("");
-  lines.push("Subagent operating instructions:");
-  lines.push(input.agent.systemPrompt);
-
-  // Resolve and include skills (8.4最適化: 関連スキルのみ)
-  const allSkills = resolveEffectiveSkills(input.agent, input.parentSkills) ?? [];
-  const effectiveSkills = filterSkillsByRelevance(input.task, allSkills);
   const skillsSection = formatSkillsSection(effectiveSkills);
+  const entries: PromptStackEntry[] = [
+    {
+      source: "subagent-role",
+      layer: "system-policy",
+      content: [
+        `You are running as delegated subagent: ${input.agent.name} (${input.agent.id}).`,
+        `Role description: ${input.agent.description}`,
+        "",
+        "Subagent operating instructions:",
+        input.agent.systemPrompt,
+      ].join("\n"),
+    },
+  ];
+
   if (skillsSection) {
-    lines.push("");
-    lines.push("Assigned skills:");
-    lines.push(skillsSection);
+    entries.push({
+      source: "subagent-skills",
+      layer: "tool-description",
+      content: ["Assigned skills:", skillsSection].join("\n"),
+    });
   }
 
-  lines.push("");
-  lines.push("Task from lead agent:");
-  lines.push(input.task);
+  entries.push({
+    source: "subagent-task",
+    layer: "system-policy",
+    content: ["Task from lead agent:", input.task].join("\n"),
+  });
 
   if (input.extraContext?.trim()) {
-    lines.push("");
-    lines.push("Extra context:");
-    lines.push(input.extraContext.trim());
-    lines.push("Context policy:");
-    lines.push("- Reuse known_facts as baseline and verify contradictions.");
-    lines.push("- Prioritize open_questions before broad repository scans.");
-    lines.push("- Use evidence_snippets first; expand exploration only when needed.");
+    entries.push({
+      source: "subagent-extra-context",
+      layer: "startup-context",
+      content: [
+        "Extra context:",
+        input.extraContext.trim(),
+        "Context policy:",
+        "- Reuse known_facts as baseline and verify contradictions.",
+        "- Prioritize open_questions before broad repository scans.",
+        "- Use evidence_snippets first; expand exploration only when needed.",
+      ].join("\n"),
+    });
   }
 
   // Add relevant patterns from past executions as dialogue partners (not constraints)
   // This promotes deterritorialization (creative reconfiguration) rather than stagnation
   if (input.relevantPatterns && input.relevantPatterns.length > 0) {
-    lines.push("");
-    lines.push("Patterns from past executions (dialogue partners, not constraints):");
+    const patternLines: string[] = ["Patterns from past executions (dialogue partners, not constraints):"];
     const successPatterns = input.relevantPatterns.filter(p => p.patternType === "success");
     const failurePatterns = input.relevantPatterns.filter(p => p.patternType === "failure");
     const approachPatterns = input.relevantPatterns.filter(p => p.patternType === "approach");
 
     if (successPatterns.length > 0) {
-      lines.push("Previously successful:");
+      patternLines.push("Previously successful:");
       for (const p of successPatterns.slice(0, 2)) {
-        lines.push(`- [${p.agentOrTeam}] ${p.description.slice(0, 80)}`);
+        patternLines.push(`- [${p.agentOrTeam}] ${p.description.slice(0, 80)}`);
       }
     }
     if (failurePatterns.length > 0) {
-      lines.push("Previously challenging:");
+      patternLines.push("Previously challenging:");
       for (const p of failurePatterns.slice(0, 2)) {
-        lines.push(`- ${p.description.slice(0, 70)}`);
+        patternLines.push(`- ${p.description.slice(0, 70)}`);
       }
     }
     if (approachPatterns.length > 0) {
-      lines.push("Relevant approaches:");
+      patternLines.push("Relevant approaches:");
       for (const p of approachPatterns.slice(0, 2)) {
-        lines.push(`- [${p.agentOrTeam}] ${p.description.slice(0, 70)}`);
+        patternLines.push(`- [${p.agentOrTeam}] ${p.description.slice(0, 70)}`);
       }
     }
-    lines.push("");
-    lines.push("Consider: Do these patterns apply to THIS task? If not, why? What NEW approach might be needed?");
+    patternLines.push("");
+    patternLines.push("Consider: Do these patterns apply to THIS task? If not, why? What NEW approach might be needed?");
+    entries.push({
+      source: "subagent-relevant-patterns",
+      layer: "startup-context",
+      content: patternLines.join("\n"),
+    });
   }
 
   // Subagent plan mode enforcement
   if (input.enforcePlanMode) {
-    lines.push("");
-    lines.push(PLAN_MODE_WARNING);
+    const notification = createRuntimeNotification(
+      "plan-mode",
+      PLAN_MODE_WARNING,
+      "warning",
+      1,
+    );
+    if (notification) {
+      entries.push({
+        source: "subagent-plan-mode-notification",
+        layer: "runtime-notification",
+        content: formatRuntimeNotificationBlock([notification]),
+      });
+    }
   }
 
-  lines.push("");
-  lines.push(getExecutionRulesForProfile(effectiveProfileId, true));
+  entries.push({
+    source: "subagent-execution-rules",
+    layer: "system-policy",
+    content: getExecutionRulesForProfile(effectiveProfileId, true),
+  });
 
-  lines.push("");
-  lines.push("Output format (strict):");
-  lines.push("SUMMARY: <short summary>");
-  lines.push("CLAIM: <1-sentence core claim (optional, for research/analysis tasks)>");
-  lines.push("EVIDENCE: <comma-separated evidence with file:line references where possible (optional)>");
-  lines.push("DISCUSSION: <when working with other agents: references to their outputs, agreements/disagreements, consensus (optional)>");
-  lines.push("RESULT:");
-  lines.push("<main answer>");
-  lines.push("NEXT_STEP: <specific next action or none>");
+  entries.push({
+    source: "subagent-output-format",
+    layer: adapter.prefersStrictOutputTail ? "runtime-notification" : "system-policy",
+    content: [
+      "Output format (strict):",
+      "SUMMARY: <short summary>",
+      "CLAIM: <1-sentence core claim (optional, for research/analysis tasks)>",
+      "EVIDENCE: <comma-separated evidence with file:line references where possible (optional)>",
+      "DISCUSSION: <when working with other agents: references to their outputs, agreements/disagreements, consensus (optional)>",
+      "RESULT:",
+      "<main answer>",
+      "NEXT_STEP: <specific next action or none>",
+    ].join("\n"),
+  });
 
-  return lines.join("\n");
+  const rendered = renderPromptStack(entries);
+  return {
+    prompt: rendered.prompt,
+    entries: rendered.renderedEntries,
+    runtimeNotificationCount: rendered.renderedEntries.filter(
+      (entry) => entry.layer === "runtime-notification",
+    ).length,
+  };
 }
 
 // ============================================================================
@@ -861,7 +980,9 @@ async function runPiPrintMode(input: {
   model?: string;
   prompt: string;
   noExtensions?: boolean;
+  envOverrides?: NodeJS.ProcessEnv;
   timeoutMs: number;
+  hardTimeoutMs?: number;
   signal?: AbortSignal;
   onTextDelta?: (delta: string) => void;
   onStderrChunk?: (chunk: string) => void;
@@ -906,7 +1027,13 @@ export async function runSubagentTask(input: {
   onEnd?: () => void;
   onTextDelta?: (delta: string) => void;
   onStderrChunk?: (chunk: string) => void;
-}): Promise<{ runRecord: SubagentRunRecord; output: string; prompt: string }> {
+}): Promise<{
+  runRecord: SubagentRunRecord;
+  output: string;
+  prompt: string;
+  promptStackSummary: PromptStackBenchmarkSummary;
+  runtimeNotificationCount: number;
+}> {
   const runId = createRunId();
   const startedAtMs = Date.now();
   const startedAt = new Date().toISOString();
@@ -924,14 +1051,18 @@ export async function runSubagentTask(input: {
     // Pattern loading failure should not block execution
   }
 
-  const prompt = buildSubagentPrompt({
+  const promptPackage = buildSubagentPromptPackage({
     agent: input.agent,
     task: input.task,
     extraContext: input.extraContext,
     enforcePlanMode: planModeActive,
     parentSkills: input.parentSkills,
     relevantPatterns,
+    modelProvider: input.modelProvider,
+    modelId: input.modelId,
   });
+  const prompt = promptPackage.prompt;
+  const promptStackSummary = summarizePromptStackForBenchmark(promptPackage.entries);
   const resolvedProvider = input.agent.provider ?? input.modelProvider ?? "(session-default)";
   const resolvedModel = input.agent.model ?? input.modelId ?? "(session-default)";
   const rateLimitKey = buildRateLimitKey(resolvedProvider, resolvedModel);
@@ -1165,6 +1296,8 @@ export async function runSubagentTask(input: {
         runRecord,
         output: commandResult.output,
         prompt,
+        promptStackSummary,
+        runtimeNotificationCount: promptPackage.runtimeNotificationCount,
       };
     } catch (error: unknown) {
       let message = toErrorMessage(error);
@@ -1260,6 +1393,8 @@ export async function runSubagentTask(input: {
         runRecord,
         output: "",
         prompt,
+        promptStackSummary,
+        runtimeNotificationCount: promptPackage.runtimeNotificationCount,
       };
     }
   } finally {

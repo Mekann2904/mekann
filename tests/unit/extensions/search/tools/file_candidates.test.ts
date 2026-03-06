@@ -41,6 +41,7 @@ vi.mock("@ext/search/utils/history.js", () => ({
 import { fileCandidates } from "@ext/search/tools/file_candidates.js";
 import { readdir, stat } from "node:fs/promises";
 import { execute, checkToolAvailability } from "@ext/search/utils/cli.js";
+import { getToolTelemetryStore, resetToolTelemetryStore } from "../../../../../.pi/lib/tool-telemetry-store.js";
 
 describe("file_candidates", () => {
 	const mockCwd = "/test/project";
@@ -48,6 +49,7 @@ describe("file_candidates", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.stubEnv("PATH", "/usr/bin:/bin");
+		resetToolTelemetryStore();
 	});
 
 	afterEach(() => {
@@ -418,6 +420,84 @@ describe("file_candidates", () => {
 
 			// キャッシュ関数が呼ばれていることを確認
 			expect(execute).toHaveBeenCalled();
+		});
+	});
+
+	describe("probe/full-run", () => {
+		it("probeで十分な場合はfdを1回だけ実行する", async () => {
+			const input: FileCandidatesInput = {
+				limit: 100,
+			};
+
+			vi.mocked(checkToolAvailability).mockResolvedValue({ fd: true });
+			vi.mocked(execute).mockResolvedValue({
+				code: 0,
+				stdout: "src/a.ts\nsrc/b.ts\n",
+				stderr: "",
+			});
+
+			const result = await fileCandidates(input, mockCwd);
+
+			expect(result.results.length).toBe(2);
+			expect(execute).toHaveBeenCalledTimes(1);
+			expect(vi.mocked(execute).mock.calls[0]?.[2]).toMatchObject({ executionMode: "probe" });
+		});
+
+		it("probeが切り捨てられた場合はfdをfull-runする", async () => {
+			const input: FileCandidatesInput = {
+				limit: 100,
+			};
+
+			vi.mocked(checkToolAvailability).mockResolvedValue({ fd: true });
+			vi.mocked(execute)
+				.mockResolvedValueOnce({
+					code: 0,
+					stdout: Array.from({ length: 21 }, (_, index) => `src/file-${index}.ts`).join("\n"),
+					stderr: "",
+				})
+				.mockResolvedValueOnce({
+					code: 0,
+					stdout: "src/final.ts\n",
+					stderr: "",
+				});
+
+			await fileCandidates(input, mockCwd);
+
+			expect(execute).toHaveBeenCalledTimes(2);
+			expect(vi.mocked(execute).mock.calls[0]?.[2]).toMatchObject({ executionMode: "probe" });
+			expect(vi.mocked(execute).mock.calls[1]?.[2]).toMatchObject({ executionMode: "full" });
+		});
+	});
+
+	describe("native telemetry", () => {
+		it("native列挙を telemetry に記録する", async () => {
+			const input: FileCandidatesInput = {};
+
+			vi.mocked(checkToolAvailability).mockResolvedValue({ fd: false });
+			vi.mocked(readdir as any).mockImplementation(async () => [
+				{ name: "file.ts", isFile: () => true, isDirectory: () => false },
+			]);
+
+			await fileCandidates(input, mockCwd);
+
+			const records = getToolTelemetryStore().getRecentRecords(5);
+			expect(records.some((record) => record.toolName === "native_file_candidates")).toBe(true);
+		});
+
+		it("同一native列挙を再実行すると結果を再利用する", async () => {
+			const input: FileCandidatesInput = {};
+
+			vi.mocked(checkToolAvailability).mockResolvedValue({ fd: false });
+			vi.mocked(readdir as any).mockImplementation(async () => [
+				{ name: "file.ts", isFile: () => true, isDirectory: () => false },
+			]);
+
+			await fileCandidates(input, mockCwd);
+			await fileCandidates(input, mockCwd);
+
+			expect(vi.mocked(readdir as any)).toHaveBeenCalledTimes(1);
+			const records = getToolTelemetryStore().getRecentRecords(5);
+			expect(records.some((record) => record.reusedPreviousResult)).toBe(true);
 		});
 	});
 });

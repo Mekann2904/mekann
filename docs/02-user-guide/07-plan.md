@@ -35,6 +35,7 @@ related: [../README.md, ./01-extensions.md]
 | `plan_show` | プランの詳細表示 |
 | `plan_add_step` | プランへのステップ追加 |
 | `plan_update_step` | ステップの状態更新 |
+| `plan_run_next` | 次の ready step を `in_progress` に移す |
 | `plan_ready_steps` | 実行可能なステップ取得 |
 | `plan_delete` | プランの削除 |
 | `plan_update_status` | プランの状態更新 |
@@ -49,7 +50,16 @@ related: [../README.md, ./01-extensions.md]
 // プランの作成
 plan_create({
   name: "API Authentication Implementation",
-  description: "Implement JWT-based authentication for REST API"
+  description: "Implement JWT-based authentication for REST API",
+  acceptanceCriteria: [
+    "Only one step stays in_progress",
+    "plans/*.md stays in sync with the live checklist"
+  ],
+  implementationOrder: [
+    "Design",
+    "Implement",
+    "Verify"
+  ]
 })
 
 // ステップの追加
@@ -69,7 +79,16 @@ plan_add_step({
 plan_update_step({
   planId: "20260211-103045-a1b2c3",
   stepId: "step-123",
-  status: "completed"
+  status: "completed",
+  actor: "executor",
+  progressNote: "unit tests passed",
+  activateNext: true
+})
+
+// 次の ready step を開始
+plan_run_next({
+  planId: "20260211-103045-a1b2c3",
+  actor: "executor"
 })
 
 // 実行可能なステップ取得
@@ -332,6 +351,31 @@ Ctrl+Shift+P
 | **ON** | プランモード | すべてのツールが利用可能（制限無効化） |
 
 > **注意**: 現在の実装では、プランモードでもツール制限は無効化されています。
+
+### 二層運用の推奨
+
+このリポジトリでは、`plan_*` に加えて長い計画文書を分けて持つ運用を推奨します。
+
+- live な進捗更新: `plan_*`
+- 長い仕様、受け入れ条件、判断理由: `plans/*.md`
+
+短い進捗は `plan_*` で更新します。
+
+長い判断は `plans/feature-template.md` を複製して残します。
+
+現在の `plan_create` は durable plan 文書も自動生成します。
+
+その後の `plan_add_step`、`plan_update_step`、`plan_update_status` でも内容を同期します。
+
+また、Factory を使う場合は次の役割分離をそのまま使えます。
+
+- `.factory/droids/planner.md`
+- `.factory/droids/executor.md`
+- `.factory/droids/verifier.md`
+
+この運用では、live todo の項目数を 5〜9 件に保ちます。
+
+同時に `in_progress` にするステップは 1 件だけにします。
 
 ---
 

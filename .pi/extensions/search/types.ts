@@ -365,6 +365,8 @@ export interface CliOptions {
   cwd?: string;
   /** Timeout in milliseconds */
   timeout?: number;
+  /** Execution mode for telemetry */
+  executionMode?: "probe" | "full";
   /** Abort signal for cancellation */
   signal?: AbortSignal;
   /** Maximum output size in bytes */
@@ -388,6 +390,10 @@ export interface CliResult {
   timedOut: boolean;
   /** Whether the command was killed by signal */
   killed: boolean;
+  /** Whether a previous result was reused */
+  reusedPreviousResult?: boolean;
+  /** Runtime policy warnings */
+  policyWarnings?: string[];
 }
 
 /**

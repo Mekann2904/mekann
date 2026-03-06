@@ -56,6 +56,18 @@ import {
 } from "../utils/constants.js";
 import { getSearchCache, getCacheKey } from "../utils/cache.js";
 import { getSearchHistory, extractQuery } from "../utils/history.js";
+import { resolveProbeLimit } from "../../../lib/tool-policy-engine.js";
+import { getToolTelemetryStore } from "../../../lib/tool-telemetry-store.js";
+import {
+	buildInputFingerprint,
+	buildNormalizedSignature,
+	createTelemetryId,
+	estimateOutputBytes,
+	summarizeOutput,
+} from "../../../lib/tool-telemetry.js";
+
+const CODE_SEARCH_PROBE_LIMIT = 20;
+const NATIVE_CODE_SEARCH_TOOL_NAME = "native_code_search";
 
 /**
  * 入力値を安全な範囲に正規化
@@ -158,13 +170,101 @@ function categorizeError(error: unknown): "pattern" | "permission" | "timeout" |
  */
 export async function nativeCodeSearch(
 	input: CodeSearchInput,
-	cwd: string
+	cwd: string,
+	executionMode: "probe" | "full" = "full"
 ): Promise<CodeSearchOutput> {
 	const safeInput = normalizeCodeSearchInput(input);
+	const telemetry = getToolTelemetryStore();
+	const telemetryPayload = { ...safeInput, cwd };
+	const inputFingerprint = buildInputFingerprint(NATIVE_CODE_SEARCH_TOOL_NAME, telemetryPayload);
+	const normalizedSignature = buildNormalizedSignature(
+		NATIVE_CODE_SEARCH_TOOL_NAME,
+		telemetryPayload,
+		["limit"]
+	);
+	const duplicate = telemetry.findRecentExactDuplicate(inputFingerprint);
+
+	if (duplicate?.success && duplicate.metadata?.result) {
+		const reusedResult = duplicate.metadata.result as CodeSearchOutput;
+		telemetry.finish({
+			id: createTelemetryId(`${NATIVE_CODE_SEARCH_TOOL_NAME}-reuse`),
+			toolName: NATIVE_CODE_SEARCH_TOOL_NAME,
+			startedAtMs: Date.now(),
+			finishedAtMs: Date.now(),
+			durationMs: 0,
+			timeoutMs: 0,
+			success: true,
+			timedOut: false,
+			aborted: false,
+			retryCount: 0,
+			outputBytes: estimateOutputBytes(reusedResult),
+			inputFingerprint,
+			normalizedSignature,
+			duplicateOfId: duplicate.id,
+			reusedPreviousResult: true,
+			executionMode,
+			resultSummary: summarizeOutput(reusedResult),
+			metadata: {
+				cwd,
+				result: reusedResult,
+			},
+		});
+		return reusedResult;
+	}
+
+	const pending = telemetry.start({
+		id: createTelemetryId(NATIVE_CODE_SEARCH_TOOL_NAME),
+		toolName: NATIVE_CODE_SEARCH_TOOL_NAME,
+		startedAtMs: Date.now(),
+		timeoutMs: 0,
+		retryCount: 0,
+		inputFingerprint,
+		normalizedSignature,
+		executionMode,
+		metadata: { cwd, input: safeInput },
+	});
+
+	function finishNativeExecution(
+		result: CodeSearchOutput,
+		success: boolean,
+		errorType?: "validation" | "execution" | "permission" | "unknown",
+		errorMessage?: string
+	): CodeSearchOutput {
+		telemetry.finish({
+			id: pending.id,
+			toolName: NATIVE_CODE_SEARCH_TOOL_NAME,
+			startedAtMs: pending.startedAtMs,
+			finishedAtMs: Date.now(),
+			durationMs: Date.now() - pending.startedAtMs,
+			timeoutMs: 0,
+			success,
+			timedOut: false,
+			aborted: false,
+			retryCount: 0,
+			outputBytes: estimateOutputBytes(result),
+			inputFingerprint,
+			normalizedSignature,
+			executionMode,
+			resultSummary: summarizeOutput(result),
+			errorType,
+			errorMessage,
+			metadata: {
+				cwd,
+				input: safeInput,
+				result,
+			},
+		});
+		return result;
+	}
 
 	// パストラバーサル攻撃を防止
 	if (!isPathSafe(safeInput.path, cwd)) {
-		return createCodeSearchError("Path traversal detected: path contains forbidden patterns");
+		return finishNativeExecution(
+			createCodeSearchError("Path traversal detected: path contains forbidden patterns"),
+			false,
+			"validation",
+			"Path traversal detected"
+		);
 	}
 
 	const { readdir, readFile } = await import("node:fs/promises");
@@ -186,7 +286,12 @@ export async function nativeCodeSearch(
 			pattern = new RegExp(safeInput.pattern, flags);
 		}
 	} catch (e) {
-		return createCodeSearchError(`Invalid pattern: ${e}`);
+		return finishNativeExecution(
+			createCodeSearchError(`Invalid pattern: ${e}`),
+			false,
+			"validation",
+			String(e)
+		);
 	}
 
 	async function searchFile(filePath: string): Promise<void> {
@@ -289,12 +394,12 @@ export async function nativeCodeSearch(
 	await scanDir(searchPath);
 
 	const truncated = truncateResults(results, limit);
-	return {
+	return finishNativeExecution({
 		total: truncated.total,
 		truncated: truncated.truncated,
 		summary: summarizeResults(summary),
 		results: truncated.results,
-	};
+	}, true);
 }
 
 // ============================================
@@ -306,13 +411,14 @@ export async function nativeCodeSearch(
  */
 async function useRgCommand(
 	input: CodeSearchInput,
-	cwd: string
+	cwd: string,
+	executionMode: "probe" | "full" = "full"
 ): Promise<CodeSearchOutput> {
 	const safeInput = normalizeCodeSearchInput(input);
 	const args = buildRgArgs(safeInput);
 	const limit = safeInput.limit ?? DEFAULT_CODE_SEARCH_LIMIT;
 
-	const result = await execute("rg", args, { cwd });
+	const result = await execute("rg", args, { cwd, executionMode });
 
 	if (result.code !== 0 && result.code !== 1) {
 		// exitCode 1 means no matches, which is fine
@@ -339,6 +445,54 @@ async function useRgCommand(
  */
 function extractResultPaths(results: CodeSearchMatch[]): string[] {
 	return results.map((r) => r.file).filter(Boolean);
+}
+
+/**
+ * まず小さいlimitで探索し、全量実行が本当に必要な時だけ再実行する。
+ */
+function buildProbeCodeSearchInput(input: CodeSearchInput): CodeSearchInput | null {
+	const requestedLimit = input.limit ?? DEFAULT_CODE_SEARCH_LIMIT;
+	const probeLimit = resolveProbeLimit({
+		toolName: "rg",
+		requestedLimit,
+		minimumProbeLimit: 5,
+		maximumProbeLimit: CODE_SEARCH_PROBE_LIMIT,
+		metadata: {
+			outputSizeEstimate: input.context && input.context > 0 ? "large" : "medium",
+			requiresProbe: true,
+		},
+	});
+
+	if (requestedLimit <= probeLimit) {
+		return null;
+	}
+
+	return {
+		...input,
+		limit: probeLimit,
+	};
+}
+
+/**
+ * probe結果が完全なら、そのまま返してよい。
+ */
+function shouldRunFullCodeSearch(
+	probeResult: CodeSearchOutput,
+	requestedInput: CodeSearchInput,
+	probeInput: CodeSearchInput
+): boolean {
+	const requestedLimit = requestedInput.limit ?? DEFAULT_CODE_SEARCH_LIMIT;
+	const probeLimit = probeInput.limit ?? CODE_SEARCH_PROBE_LIMIT;
+
+	if (probeResult.error) {
+		return false;
+	}
+
+	if (requestedLimit <= probeLimit) {
+		return false;
+	}
+
+	return probeResult.truncated;
 }
 
 // ============================================
@@ -397,11 +551,30 @@ export async function codeSearch(
 	let result: CodeSearchOutput;
 	try {
 		const availability = await checkToolAvailability();
+		const probeInput = buildProbeCodeSearchInput(safeInput);
 
 		if (availability.rg) {
-			result = await useRgCommand({ ...safeInput, cwd }, cwd);
+			if (probeInput) {
+				const probeResult = await useRgCommand({ ...probeInput, cwd }, cwd, "probe");
+				if (!shouldRunFullCodeSearch(probeResult, safeInput, probeInput)) {
+					result = probeResult;
+				} else {
+					result = await useRgCommand({ ...safeInput, cwd }, cwd, "full");
+				}
+			} else {
+				result = await useRgCommand({ ...safeInput, cwd }, cwd, "full");
+			}
 		} else {
-			result = await nativeCodeSearch(safeInput, cwd);
+			if (probeInput) {
+				const probeResult = await nativeCodeSearch(probeInput, cwd, "probe");
+				if (!shouldRunFullCodeSearch(probeResult, safeInput, probeInput)) {
+					result = probeResult;
+				} else {
+					result = await nativeCodeSearch(safeInput, cwd, "full");
+				}
+			} else {
+				result = await nativeCodeSearch(safeInput, cwd, "full");
+			}
 		}
 	} catch (error: unknown) {
 		// エラーを分類して、フォールバックの必要性を判断
@@ -423,7 +596,7 @@ export async function codeSearch(
 
 		// 不明なエラーの場合のみフォールバックを試行
 		try {
-			result = await nativeCodeSearch(safeInput, cwd);
+			result = await nativeCodeSearch(safeInput, cwd, "full");
 		} catch (nativeError) {
 			const toolError = isSearchToolError(error)
 				? error

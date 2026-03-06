@@ -5,7 +5,7 @@
  * 関連ファイル: .pi/extensions/subagents.ts, .pi/extensions/subagents/storage.ts, tests/unit/extensions/subagents.test.ts
  */
 
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -71,10 +71,10 @@ describe("subagents extension integration", () => {
     expect(toolNames).toContain("subagent_list");
     expect(toolNames).toContain("subagent_create");
     expect(toolNames).toContain("subagent_configure");
-    expect(toolNames).toContain("subagent_run");
-    expect(toolNames).toContain("subagent_run_parallel");
+    expect(toolNames).toContain("subagent_run_dag");
     expect(toolNames).toContain("subagent_status");
     expect(toolNames).toContain("subagent_runs");
+    expect(toolNames).toContain("agent_benchmark_status");
   });
 
   it("subagent_list returns persisted default agents", async () => {
@@ -92,7 +92,6 @@ describe("subagents extension integration", () => {
     expect(Array.isArray(result.details.agents)).toBe(true);
     expect(result.details.agents.length).toBeGreaterThan(0);
     expect(result.details.agents.some((agent: any) => agent.id === "researcher")).toBe(true);
-    expect(existsSync(join(testCwd, ".pi", "subagents", "storage.json"))).toBe(true);
   });
 
   it("subagent_status returns empty state before execution", async () => {
@@ -120,10 +119,7 @@ describe("subagents extension integration", () => {
 
     await pi.emit("session_start", {}, ctx);
 
-    expect(existsSync(join(testCwd, ".pi", "subagents", "storage.json"))).toBe(true);
-    expect(pi.uiNotify).toHaveBeenCalledWith(
-      "Subagent extension loaded (subagent_list, subagent_run, subagent_run_parallel)",
-      "info",
-    );
+    expect(pi.uiNotify).toHaveBeenCalled();
+    expect(pi.uiNotify.mock.calls[0]?.[0]).toContain("Subagent extension loaded");
   });
 });

@@ -41,7 +41,22 @@ interface QuestionDetails {
 	question: string;
 	options: string[];
 	answer: string | null;
+	answers?: string[];
+	multiple?: boolean;
 	wasCustom?: boolean;
+}
+
+interface QuestionSelectionResult {
+	answers: string[];
+	selectedIndexes: number[];
+	wasCustom: boolean;
+}
+
+type QuestionThemeColor = "accent" | "dim" | "muted" | "text" | "warning";
+
+interface QuestionThemeLike {
+	fg: (color: QuestionThemeColor, text: string) => string;
+	bold: (text: string) => string;
 }
 
 // Options with labels and optional descriptions
@@ -55,6 +70,54 @@ const QuestionParams = Type.Object({
 	options: Type.Array(OptionSchema, { description: "Options for the user to choose from" }),
 	multiple: Type.Optional(Type.Boolean({ description: "Allow multiple selections" })),
 });
+
+/**
+ * 質問の選択済み回答を組み立てる
+ * @param options - 表示中の選択肢
+ * @param selectedIndexes - 選択済みインデックス
+ * @param customAnswers - 自由入力回答
+ * @returns 整形済み回答配列
+ */
+export function buildQuestionAnswers(
+	options: DisplayOption[],
+	selectedIndexes: Iterable<number>,
+	customAnswers: string[],
+): string[] {
+	const labels = [...selectedIndexes]
+		.sort((left, right) => left - right)
+		.map((index) => options[index])
+		.filter((option): option is DisplayOption => Boolean(option && !option.isOther))
+		.map((option) => option.label.trim())
+		.filter((label) => label.length > 0);
+
+	const extraAnswers = customAnswers
+		.map((answer) => answer.trim())
+		.filter((answer) => answer.length > 0);
+
+	return [...labels, ...extraAnswers];
+}
+
+/**
+ * 質問結果テキストを整形する
+ * @param selection - 選択結果
+ * @param multiple - 複数選択かどうか
+ * @returns 表示用テキスト
+ */
+export function formatQuestionResultText(
+	selection: QuestionSelectionResult | null,
+	multiple: boolean,
+): string {
+	if (!selection || selection.answers.length === 0) {
+		return "User cancelled the selection";
+	}
+
+	if (selection.wasCustom && !multiple && selection.answers.length === 1) {
+		return `User wrote: ${selection.answers[0]}`;
+	}
+
+	const prefix = multiple ? "User selected" : "User selected";
+	return `${prefix}: ${selection.answers.join(", ")}`;
+}
 
 /**
  * テキストを指定幅で折り返す
@@ -135,7 +198,7 @@ function parseTableRow(line: string): string[] {
  * @param theme - テーマ関数
  * @returns 表示用行の配ライン
  */
-function formatMarkdownText(text: string, width: number, theme: ExtensionAPI["ui"]["theme"]): string[] {
+function formatMarkdownText(text: string, width: number, theme: QuestionThemeLike): string[] {
 	const lines: string[] = [];
 	const inputLines = text.split("\n");
 	let inTable = false;
@@ -246,12 +309,15 @@ export default function question(pi: ExtensionAPI) {
 			}
 
 			const allOptions: DisplayOption[] = [...params.options, { label: "Type something.", isOther: true }];
+			const allowMultiple = params.multiple === true;
 
-			const result = await ctx.ui.custom<{ answer: string; wasCustom: boolean; index?: number } | null>(
+			const result = await ctx.ui.custom<QuestionSelectionResult | null>(
 				(tui, theme, _kb, done) => {
 					let optionIndex = 0;
 					let editMode = false;
 					let cachedLines: string[] | undefined;
+					const selectedIndexes = new Set<number>();
+					const customAnswers: string[] = [];
 
 					const editorTheme: EditorTheme = {
 						borderColor: (s) => theme.fg("accent", s),
@@ -265,10 +331,54 @@ export default function question(pi: ExtensionAPI) {
 					};
 					const editor = new Editor(tui, editorTheme);
 
+					function finalizeSelection() {
+						const answers = buildQuestionAnswers(allOptions, selectedIndexes, customAnswers);
+						if (allowMultiple && answers.length === 0 && !allOptions[optionIndex]?.isOther) {
+							selectedIndexes.add(optionIndex);
+						}
+
+						const normalizedAnswers = buildQuestionAnswers(allOptions, selectedIndexes, customAnswers);
+						if (normalizedAnswers.length === 0) {
+							done(null);
+							return;
+						}
+
+						done({
+							answers: normalizedAnswers,
+							selectedIndexes: [...selectedIndexes].sort((left, right) => left - right),
+							wasCustom: customAnswers.length > 0,
+						});
+					}
+
+					function toggleSelectedOption(index: number) {
+						const selected = allOptions[index];
+						if (!selected || selected.isOther) {
+							return;
+						}
+
+						if (selectedIndexes.has(index)) {
+							selectedIndexes.delete(index);
+						} else {
+							selectedIndexes.add(index);
+						}
+					}
+
 					editor.onSubmit = (value) => {
 						const trimmed = value.trim();
 						if (trimmed) {
-							done({ answer: trimmed, wasCustom: true });
+							if (allowMultiple) {
+								customAnswers.push(trimmed);
+								editMode = false;
+								editor.setText("");
+								refresh();
+								return;
+							}
+
+							done({
+								answers: [trimmed],
+								selectedIndexes: [],
+								wasCustom: true,
+							});
 						} else {
 							editMode = false;
 							editor.setText("");
@@ -305,13 +415,27 @@ export default function question(pi: ExtensionAPI) {
 							return;
 						}
 
+						if (allowMultiple && data === " ") {
+							toggleSelectedOption(optionIndex);
+							refresh();
+							return;
+						}
+
 						if (matchesKey(data, Key.enter)) {
 							const selected = allOptions[optionIndex];
 							if (selected.isOther) {
 								editMode = true;
 								refresh();
 							} else {
-								done({ answer: selected.label, wasCustom: false, index: optionIndex + 1 });
+								if (allowMultiple) {
+									finalizeSelection();
+								} else {
+									done({
+										answers: [selected.label],
+										selectedIndexes: [optionIndex],
+										wasCustom: false,
+									});
+								}
 							}
 							return;
 						}
@@ -326,11 +450,15 @@ export default function question(pi: ExtensionAPI) {
 
 						const lines: string[] = [];
 						const add = (s: string) => lines.push(truncateToWidth(s, width));
+						const markdownTheme: QuestionThemeLike = {
+							fg: (color, text) => theme.fg(color, text),
+							bold: (text) => theme.bold(text),
+						};
 
 						add(theme.fg("accent", "─".repeat(width)));
 
 						// 質問文を折り返して表示（マークダウン対応）
-						const questionLines = formatMarkdownText(params.question, width - 2, theme);
+						const questionLines = formatMarkdownText(params.question, width - 2, markdownTheme);
 						for (const line of questionLines) {
 							add(" " + line);
 						}
@@ -344,13 +472,16 @@ export default function question(pi: ExtensionAPI) {
 							const selected = i === optionIndex;
 							const isOther = opt.isOther === true;
 							const prefix = selected ? theme.fg("accent", "> ") : "  ";
+							const checked = allowMultiple && !isOther
+								? (selectedIndexes.has(i) ? "[x] " : "[ ] ")
+								: "";
 
 							if (isOther && editMode) {
 								add(prefix + theme.fg("accent", `${i + 1}. ${opt.label} ✎`));
 							} else if (selected) {
-								add(prefix + theme.fg("accent", `${i + 1}. ${opt.label}`));
+								add(prefix + theme.fg("accent", `${i + 1}. ${checked}${opt.label}`));
 							} else {
-								add(`  ${theme.fg("text", `${i + 1}. ${opt.label}`)}`);
+								add(`  ${theme.fg("text", `${i + 1}. ${checked}${opt.label}`)}`);
 							}
 
 							// 説明文を折り返して表示
@@ -358,6 +489,12 @@ export default function question(pi: ExtensionAPI) {
 								const descLines = wrapText(opt.description, width - 6);
 								for (const descLine of descLines) {
 									add(`     ${theme.fg("muted", descLine)}`);
+								}
+							}
+
+							if (isOther && customAnswers.length > 0) {
+								for (const customAnswer of customAnswers) {
+									add(`     ${theme.fg("accent", `+ ${customAnswer}`)}`);
 								}
 							}
 						}
@@ -372,9 +509,16 @@ export default function question(pi: ExtensionAPI) {
 
 						lines.push("");
 						if (editMode) {
-							add(theme.fg("dim", " Enter to submit • Esc to go back"));
+							add(theme.fg("dim", allowMultiple ? " Enter to add • Esc to go back" : " Enter to submit • Esc to go back"));
 						} else {
-							add(theme.fg("dim", " ↑↓ navigate • Enter to select • Esc to cancel"));
+							add(
+								theme.fg(
+									"dim",
+									allowMultiple
+										? " ↑↓ navigate • Space to toggle • Enter to submit • Esc to cancel"
+										: " ↑↓ navigate • Enter to select • Esc to cancel",
+								),
+							);
 						}
 						add(theme.fg("accent", "─".repeat(width)));
 
@@ -397,29 +541,40 @@ export default function question(pi: ExtensionAPI) {
 
 			if (!result) {
 				return {
-					content: [{ type: "text", text: "User cancelled the selection" }],
-					details: { question: params.question, options: simpleOptions, answer: null } as QuestionDetails,
-				};
-			}
-
-			if (result.wasCustom) {
-				return {
-					content: [{ type: "text", text: `User wrote: ${result.answer}` }],
+					content: [{ type: "text", text: formatQuestionResultText(null, allowMultiple) }],
 					details: {
 						question: params.question,
 						options: simpleOptions,
-						answer: result.answer,
+						answer: null,
+						answers: [],
+						multiple: allowMultiple,
+					} as QuestionDetails,
+				};
+			}
+
+			const answerText = result.answers.join(", ");
+			if (result.wasCustom && !allowMultiple && result.answers.length === 1) {
+				return {
+					content: [{ type: "text", text: formatQuestionResultText(result, allowMultiple) }],
+					details: {
+						question: params.question,
+						options: simpleOptions,
+						answer: result.answers[0] ?? null,
+						answers: result.answers,
+						multiple: allowMultiple,
 						wasCustom: true,
 					} as QuestionDetails,
 				};
 			}
 			return {
-				content: [{ type: "text", text: `User selected: ${result.index}. ${result.answer}` }],
+				content: [{ type: "text", text: formatQuestionResultText(result, allowMultiple) }],
 				details: {
 					question: params.question,
 					options: simpleOptions,
-					answer: result.answer,
-					wasCustom: false,
+					answer: answerText,
+					answers: result.answers,
+					multiple: allowMultiple,
+					wasCustom: result.wasCustom,
 				} as QuestionDetails,
 			};
 		},
@@ -444,6 +599,15 @@ export default function question(pi: ExtensionAPI) {
 
 			if (details.answer === null) {
 				return new Text(theme.fg("warning", "Cancelled"), 0, 0);
+			}
+
+			if (details.multiple) {
+				const display = (details.answers ?? []).join(", ");
+				return new Text(
+					theme.fg("success", "✓ ") + theme.fg("accent", display),
+					0,
+					0,
+				);
 			}
 
 			if (details.wasCustom) {

@@ -100,6 +100,37 @@ export interface ToolParameterDefinition {
 }
 
 /**
+ * ツール実行コストのメタデータ
+ * @summary コストメタデータ
+ */
+export interface ToolCostMetadata {
+  /** 典型的なレイテンシ */
+  typicalLatencyMs?: number;
+  /** 95パーセンタイルのレイテンシ */
+  p95LatencyMs?: number;
+  /** 起動コスト */
+  startupCostMs?: number;
+  /** 出力サイズの概算 */
+  outputSizeEstimate?: "small" | "medium" | "large";
+  /** 並列実行に向いているか */
+  supportsParallel?: boolean;
+  /** ストリーミング可能か */
+  supportsStreaming?: boolean;
+  /** デフォルトタイムアウト */
+  defaultTimeoutMs?: number;
+  /** 最大タイムアウト */
+  maxTimeoutMs?: number;
+  /** 向いている用途 */
+  preferredUseCase?: string[];
+  /** より安い代替ツール */
+  cheaperAlternative?: string;
+  /** 高コストになりやすい条件 */
+  expensiveIf?: string[];
+  /** probe を優先すべきか */
+  requiresProbe?: boolean;
+}
+
+/**
  * 動的ツールの定義
  * @summary ツール定義を取得
  */
@@ -134,6 +165,8 @@ export interface DynamicToolDefinition {
   tags: string[];
   /** 作成者（エージェントID等） */
   createdBy: string;
+  /** 実行コストメタデータ */
+  costMetadata?: ToolCostMetadata;
 }
 
 /**
@@ -224,6 +257,8 @@ export interface DynamicToolRegistrationRequest {
   tags?: string[];
   /** 作成者 */
   createdBy?: string;
+  /** 実行コストメタデータ */
+  costMetadata?: ToolCostMetadata;
 }
 
 /**
