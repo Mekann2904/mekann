@@ -18,6 +18,24 @@
 import { Hono } from "hono";
 import { z } from "zod";
 
+interface AnalyticsModules {
+  getStorageStats: (cwd?: string) => unknown;
+  loadRecentRecords: (limit: number, cwd?: string) => unknown[];
+  loadBehaviorRecords: (startDate: Date, endDate: Date, cwd?: string) => unknown[];
+  getAggregationSummary: (cwd?: string) => unknown;
+  loadAggregates: (
+    period: "hourly" | "daily" | "weekly",
+    startDate: Date,
+    endDate: Date,
+    cwd?: string,
+  ) => unknown[];
+  calculateAggregates: (
+    records: unknown[],
+    period?: "hour" | "day" | "week",
+  ) => unknown;
+  getAnomalySummary: (cwd?: string) => unknown;
+}
+
 /**
  * クエリパラメータスキーマ
  */
@@ -41,15 +59,159 @@ export const analyticsRoutes = new Hono();
 async function loadAnalyticsModules() {
   const [
     { getStorageStats, loadRecentRecords },
+    { loadBehaviorRecords },
     { getAggregationSummary, loadAggregates },
+    { calculateAggregates },
     { getAnomalySummary },
   ] = await Promise.all([
     import("../../lib/analytics/behavior-storage.js"),
+    import("../../lib/analytics/behavior-storage.js"),
     import("../../lib/analytics/aggregator.js"),
+    import("../../lib/analytics/efficiency-analyzer.js"),
     import("../../lib/analytics/anomaly-detector.js"),
   ]);
 
-  return { getStorageStats, loadRecentRecords, getAggregationSummary, loadAggregates, getAnomalySummary };
+  return {
+    getStorageStats,
+    loadRecentRecords,
+    loadBehaviorRecords,
+    getAggregationSummary,
+    loadAggregates,
+    calculateAggregates,
+    getAnomalySummary,
+  } satisfies AnalyticsModules;
+}
+
+function resolveRange(range: string | undefined): { startDate: Date; endDate: Date } {
+  const endDate = new Date();
+  const startDate = new Date(endDate);
+
+  if (range === "24h") {
+    startDate.setHours(startDate.getHours() - 24);
+    return { startDate, endDate };
+  }
+
+  if (range === "30d") {
+    startDate.setDate(startDate.getDate() - 30);
+    return { startDate, endDate };
+  }
+
+  startDate.setDate(startDate.getDate() - 7);
+  return { startDate, endDate };
+}
+
+function getBucketPeriod(type: "hourly" | "daily" | "weekly"): "hour" | "day" | "week" {
+  if (type === "hourly") return "hour";
+  if (type === "weekly") return "week";
+  return "day";
+}
+
+function createBucketStart(date: Date, type: "hourly" | "daily" | "weekly"): Date {
+  const bucketStart = new Date(date);
+
+  if (type === "hourly") {
+    bucketStart.setMinutes(0, 0, 0);
+    return bucketStart;
+  }
+
+  if (type === "daily") {
+    bucketStart.setHours(0, 0, 0, 0);
+    return bucketStart;
+  }
+
+  const dayOfWeek = bucketStart.getDay();
+  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  bucketStart.setDate(bucketStart.getDate() + diff);
+  bucketStart.setHours(0, 0, 0, 0);
+  return bucketStart;
+}
+
+function advanceBucket(date: Date, type: "hourly" | "daily" | "weekly"): Date {
+  const next = new Date(date);
+
+  if (type === "hourly") {
+    next.setHours(next.getHours() + 1);
+    return next;
+  }
+
+  if (type === "daily") {
+    next.setDate(next.getDate() + 1);
+    return next;
+  }
+
+  next.setDate(next.getDate() + 7);
+  return next;
+}
+
+function buildLiveAggregates(
+  modules: AnalyticsModules,
+  type: "hourly" | "daily" | "weekly",
+  startDate: Date,
+  endDate: Date,
+): unknown[] {
+  const records = modules.loadBehaviorRecords(startDate, endDate);
+  if (records.length === 0) {
+    return [];
+  }
+
+  const bucketPeriod = getBucketPeriod(type);
+  const aggregates: unknown[] = [];
+  let bucketStart = createBucketStart(startDate, type);
+
+  while (bucketStart <= endDate) {
+    const bucketEnd = advanceBucket(bucketStart, type);
+    const bucketRecords = records.filter((record) => {
+      const maybeTimestamp =
+        typeof record === "object" &&
+        record !== null &&
+        "timestamp" in record &&
+        typeof (record as { timestamp?: unknown }).timestamp === "string"
+          ? (record as { timestamp: string }).timestamp
+          : null;
+
+      if (!maybeTimestamp) return false;
+      const timestamp = new Date(maybeTimestamp);
+      return timestamp >= bucketStart && timestamp < bucketEnd;
+    });
+
+    if (bucketRecords.length > 0) {
+      const aggregate = modules.calculateAggregates(bucketRecords, bucketPeriod);
+      if (aggregate) {
+        aggregates.push(aggregate);
+      }
+    }
+
+    bucketStart = bucketEnd;
+  }
+
+  return aggregates;
+}
+
+function buildLiveSummary(modules: AnalyticsModules): {
+  today: unknown | null;
+  thisWeek: unknown | null;
+  last24Hours: unknown[];
+} {
+  const now = new Date();
+
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+
+  const weekStart = new Date(now);
+  weekStart.setDate(weekStart.getDate() - 7);
+
+  const last24HoursStart = new Date(now);
+  last24HoursStart.setHours(last24HoursStart.getHours() - 24);
+
+  const todayRecords = modules.loadBehaviorRecords(todayStart, now);
+  const weekRecords = modules.loadBehaviorRecords(weekStart, now);
+  const last24Hours = buildLiveAggregates(modules, "hourly", last24HoursStart, now);
+
+  return {
+    today: modules.calculateAggregates(todayRecords, "day"),
+    thisWeek: modules.calculateAggregates(weekRecords, "week"),
+    last24Hours,
+  };
 }
 
 /**
@@ -98,24 +260,14 @@ analyticsRoutes.get("/aggregates", async (c) => {
       return c.json({ success: false, error: "Invalid query", details: query.error.message }, 400);
     }
 
-    const { loadAggregates } = await loadAnalyticsModules();
+    const modules = await loadAnalyticsModules();
     const { type, range } = query.data;
-    const endDate = new Date();
-    const startDate = new Date();
+    const { startDate, endDate } = resolveRange(range);
 
-    // rangeパラメータに基づいて期間を設定
-    if (range === "24h") {
-      startDate.setDate(startDate.getDate() - 1);
-    } else if (range === "7d") {
-      startDate.setDate(startDate.getDate() - 7);
-    } else if (range === "30d") {
-      startDate.setDate(startDate.getDate() - 30);
-    } else {
-      // デフォルトは7日
-      startDate.setDate(startDate.getDate() - 7);
-    }
+    const storedAggregates = modules.loadAggregates(type, startDate, endDate);
+    const liveAggregates = buildLiveAggregates(modules, type, startDate, endDate);
+    const aggregates = liveAggregates.length > 0 ? liveAggregates : storedAggregates;
 
-    const aggregates = loadAggregates(type, startDate, endDate);
     return c.json({ success: true, data: aggregates });
   } catch (error) {
     console.error("[analytics] Error in /aggregates:", error);
@@ -129,8 +281,19 @@ analyticsRoutes.get("/aggregates", async (c) => {
  */
 analyticsRoutes.get("/summary", async (c) => {
   try {
-    const { getAggregationSummary } = await loadAnalyticsModules();
-    const summary = getAggregationSummary();
+    const modules = await loadAnalyticsModules();
+    const storedSummary = modules.getAggregationSummary();
+    const liveSummary = buildLiveSummary(modules);
+
+    const summary = {
+      today: liveSummary.today ?? (storedSummary as { today?: unknown } | null)?.today ?? null,
+      thisWeek: liveSummary.thisWeek ?? (storedSummary as { thisWeek?: unknown } | null)?.thisWeek ?? null,
+      last24Hours:
+        liveSummary.last24Hours.length > 0
+          ? liveSummary.last24Hours
+          : ((storedSummary as { last24Hours?: unknown[] } | null)?.last24Hours ?? []),
+    };
+
     return c.json({ success: true, data: summary });
   } catch (error) {
     console.error("[analytics] Error in /summary:", error);
