@@ -30,7 +30,7 @@
 // Related: .pi/extensions/agent-teams.ts, .pi/extensions/question.ts, README.md
 
 import { readdirSync, unlinkSync, writeFileSync, existsSync, readFileSync, mkdirSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { Type } from "@mariozechner/pi-ai";
 import {
@@ -167,6 +167,30 @@ import {
   executeWithAdaptOrch,
   type AdaptOrchOptions 
 } from "../lib/dag/adaptorch-adapter.js";
+
+function extractDagTaskOutput(result: unknown): string {
+  if (!result || typeof result !== "object") {
+    return "";
+  }
+
+  const maybeOutput = (result as { output?: unknown }).output;
+  return typeof maybeOutput === "string" ? maybeOutput.trim() : "";
+}
+
+function persistDagArtifactFile(
+  artifactPath: string | undefined,
+  artifactContent: string,
+): void {
+  const normalizedPath = typeof artifactPath === "string" ? artifactPath.trim() : "";
+  const normalizedContent = artifactContent.trim();
+
+  if (!normalizedPath || !normalizedContent) {
+    return;
+  }
+
+  mkdirSync(dirname(normalizedPath), { recursive: true });
+  writeFileSync(normalizedPath, `${normalizedContent}\n`, "utf-8");
+}
 
 import { SchemaValidationError } from "../lib/core/errors.js";
 import {
@@ -895,6 +919,10 @@ export function resetForTesting(): void {
 }
 
 export default function registerSubagentExtension(pi: ExtensionAPI) {
+  if (process.env.PI_CHILD_DISABLE_ORCHESTRATION === "1") {
+    return;
+  }
+
   if (isInitialized) return;
   isInitialized = true;
 
@@ -1428,6 +1456,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       abortOnFirstError: Type.Optional(Type.Boolean({ description: "Stop on first task failure (default: false)" })),
       timeoutMs: Type.Optional(Type.Number({ description: "Per-task timeout in ms (default: 300000)" })),
       ulTaskId: Type.Optional(Type.String({ description: "UL workflow task ID. If provided, checks ownership before execution." })),
+      artifactPath: Type.Optional(Type.String({ description: "Optional file path to persist the final DAG artifact." })),
+      artifactTaskId: Type.Optional(Type.String({ description: "Preferred task ID whose output should be written to artifactPath." })),
       // AdaptOrch拡張
       enableAdaptOrch: Type.Optional(Type.Boolean({
         description: "Enable AdaptOrch topology-aware orchestration (default: false)"
@@ -1891,6 +1921,25 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           })
           .join("\n\n");
 
+        const preferredArtifactTaskId = typeof params.artifactTaskId === "string"
+          ? params.artifactTaskId.trim()
+          : "";
+        const preferredArtifactOutput = preferredArtifactTaskId
+          ? extractDagTaskOutput(dagResult.taskResults.get(preferredArtifactTaskId)?.output)
+          : "";
+        const completedOutputs = Array.from(dagResult.taskResults.values())
+          .filter((result) => result.status === "completed")
+          .map((result) => extractDagTaskOutput(result.output))
+          .filter(Boolean);
+        const artifactContent = preferredArtifactOutput
+          || completedOutputs[completedOutputs.length - 1]
+          || aggregatedOutput;
+
+        persistDagArtifactFile(
+          typeof params.artifactPath === "string" ? params.artifactPath : undefined,
+          artifactContent,
+        );
+
         logger.endOperation({
           status: dagResult.overallStatus === "completed" ? "success" : dagResult.overallStatus === "partial" ? "partial" : "failure",
           tokensUsed: 0,
@@ -1910,6 +1959,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             skippedTaskIds: dagResult.skippedTaskIds,
             successCount: completedCount,
             failureCount: failedCount,
+            artifactPath: params.artifactPath,
+            artifactTaskId: preferredArtifactTaskId || undefined,
             outcomeCode:
               dagResult.overallStatus === "completed"
                 ? ("SUCCESS" as RunOutcomeCode)

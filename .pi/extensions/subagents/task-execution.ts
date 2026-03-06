@@ -625,6 +625,20 @@ function parseSubagentDirectives(extraContext?: string, task?: string): Subagent
   };
 }
 
+/**
+ * Research-oriented delegated runs need repository search tools.
+ * Keep regular delegated runs deterministic by leaving extensions off.
+ */
+export function shouldEnableSubagentExtensions(task: string, extraContext?: string): boolean {
+  return parseSubagentDirectives(extraContext, task).outputMode === "internal";
+}
+
+export function buildSubagentChildEnvOverrides(): NodeJS.ProcessEnv {
+  return {
+    PI_CHILD_DISABLE_ORCHESTRATION: "1",
+  };
+}
+
 function buildInternalContextHandoff(extraContext?: string, maxLines = 12): string[] {
   const context = extraContext?.trim();
   if (!context) return [];
@@ -700,6 +714,10 @@ export function buildSubagentPrompt(input: {
       lines.push("CONTEXT HANDOFF:");
       lines.push(...contextHandoff);
       lines.push("Context policy: Reuse known_facts first. Investigate open_questions first. Expand search only when evidence is missing or conflicting.");
+    }
+
+    if (shouldEnableSubagentExtensions(input.task, input.extraContext)) {
+      lines.push(buildResearchTaskGuidelines());
     }
     
     // CRITICAL output format at the END
@@ -829,6 +847,7 @@ async function runPiPrintMode(input: {
   provider?: string;
   model?: string;
   prompt: string;
+  noExtensions?: boolean;
   timeoutMs: number;
   signal?: AbortSignal;
   onTextDelta?: (delta: string) => void;
@@ -933,6 +952,7 @@ export async function runSubagentTask(input: {
     try {
       // Layer 1統合: 高リスクタスクの場合のみ再生成メカニズムを使用
       const useLayer1Enforcement = isHighRiskTask(input.task);
+      const enableExtensions = shouldEnableSubagentExtensions(input.task, input.extraContext);
 
       const commandResult = await retryWithBackoff(
         async () => {
@@ -944,6 +964,8 @@ export async function runSubagentTask(input: {
                   provider: input.agent.provider ?? input.modelProvider,
                   model: input.agent.model ?? input.modelId,
                   prompt,
+                  noExtensions: !enableExtensions,
+                  envOverrides: buildSubagentChildEnvOverrides(),
                   timeoutMs: input.timeoutMs,
                   signal: input.signal,
                   onTextDelta: input.onTextDelta,
@@ -988,6 +1010,8 @@ export async function runSubagentTask(input: {
             provider: input.agent.provider ?? input.modelProvider,
             model: input.agent.model ?? input.modelId,
             prompt,
+            noExtensions: !enableExtensions,
+            envOverrides: buildSubagentChildEnvOverrides(),
             timeoutMs: input.timeoutMs,
             signal: input.signal,
             onTextDelta: input.onTextDelta,
