@@ -2,114 +2,172 @@
  * @abdd.meta
  * path: .pi/extensions/startup-context.ts
  * role: セッション開始時のシステムプロンプト拡張モジュール
- * why: AIエージェントが現在のリポジトリ状態を認識するための動的コンテキスト（Git履歴）を自動的に注入するため
- * related: @mariozechner/pi-coding-agent, node:child_process
+ * why: AIエージェントが現在のリポジトリ状態を認識するための動的コンテキスト（20層の環境情報）を自動的に注入するため
+ * related: @mariozechner/pi-coding-agent, .pi/lib/startup-context-types.ts, .pi/lib/startup-context-collectors.ts
  * public_api: 関数 (pi: ExtensionAPI) => void
- * invariants: セッション開始時に `isFirstPrompt` はtrueであり、`before_agent_start` イベント時に1回のみコンテキストが注入される
- * side_effects: システムプロンプトの書き換え、子プロセス実行
- * failure_modes: Gitコマンド実行時のタイムアウト、非Gitリポジトリ環境でのエラー（いずれも無視して処理続行）
+ * invariants:
+ *   - セッション開始時に `isFirstPrompt` はtrue
+ *   - `before_agent_start` イベント時にコンテキストが注入される
+ * side_effects:
+ *   - システムプロンプトの書き換え
+ *   - 子プロセス実行（各種コマンド）
+ *   - ファイルシステム読み取り
+ * failure_modes:
+ *   - コマンド実行時のタイムアウト
+ *   - 非Unix環境でのコマンド不在
+ *   - 権限不足による情報取得失敗
  * @abdd.explain
- * overview: セッションの最初のプロンプト送信前に、Gitの最近のコミットログをシステムプロンプトへ追記するエクステンション
+ * overview: セッションの各ターン開始前に環境情報をシステムプロンプトへ追記するエクステンション
  * what_it_does:
- *   - `session_start` イベントで初回フラグを立てる
- *   - `before_agent_start` イベントで初回のみ以下の処理を実行する
- *   - カレントワーキングディレクトリのパスを取得する
- *   - `git log` を実行し直近10件のコミットメッセージを取得する
- *   - 収集した情報を整形し、イベントの `systemPrompt` に結合して返す
+ *   - `session_start` イベントでセッションを初期化
+ *   - `before_agent_start` イベントでベースライン/差分コンテキストを注入
+ *   - 収集した情報をシェルコマンド形式でフォーマット
  * why_it_exists:
- *   - 最近の変更（Git Log）をエージェントに即座に伝えるため
- *   - エージェントのファイル操作パス解釈を正確にするため
+ *   - エージェントが環境情報を重複収集することを防ぐ
+ *   - トークン効率の良い情報提供を実現
+ *   - トラブルシューティングの成功率を向上
  * scope:
  *   in: ExtensionAPIイベントオブジェクト, コンテキストオブジェクト
  *   out: systemPromptが追記されたイベントオブジェクト
  */
 
 /**
- * Startup Context Extension
+ * Startup Context Extension (Enhanced)
  *
- * Injects dynamic context information on the first prompt of each session:
- * - Last 10 git commit messages (title only)
- * - Current working directory path
+ * Injects comprehensive environment context on each turn:
+ * - First turn: Full baseline (20 layers)
+ * - Subsequent turns: Delta only
  *
- * Each section includes usage guidance to help the agent understand
- * how to utilize this context effectively.
+ * Collection Policy:
+ * - Turn 1: Layers 1,2,3,4,5,6,8,9,10a,11,12,14,15,16,19
+ * - Turn 2+: Layers 2,4,5,11 (delta only)
  */
-
-import { execSync } from "node:child_process";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { startSession, recordInjection } from "../lib/context-breakdown-utils.js";
+import {
+  collectSessionStartContext,
+  collectUserPromptDelta,
+  formatSessionStartAsShell,
+  formatDeltaAsShell,
+} from "../lib/startup-context-collectors.js";
+import type { SessionStartContext, UserPromptSubmitDelta } from "../lib/startup-context-types.js";
 
 // モジュールレベルのフラグ（reload時のリスナー重複登録防止）
 let isInitialized = false;
+
+/** 前回のコンテキスト（差分計算用） */
+let previousContext: SessionStartContext | null = null;
+
+/** 初回ターンかどうか */
+let isFirstTurn = true;
+
+/** セッション開始時刻 */
+let sessionStartTime = 0;
 
 export default function (pi: ExtensionAPI) {
   if (isInitialized) return;
   isInitialized = true;
 
-  let isFirstPrompt = true;
-
-  pi.on("session_start", async (_event, ctx) => {
-    isFirstPrompt = true;
-    startSession(ctx);
+  // セッション開始イベント
+  pi.on("session_start", async (_event, _ctx) => {
+    isFirstTurn = true;
+    sessionStartTime = Date.now();
+    previousContext = null;
+    startSession();
   });
 
+  // エージェント開始前イベント（毎ターン実行）
   pi.on("before_agent_start", async (event, _ctx) => {
-    if (!isFirstPrompt) return;
-    isFirstPrompt = false;
-
-    const contextParts: string[] = [];
-
-    // Current working directory
-    const cwd = process.cwd();
-    contextParts.push(
-      `## Current Working Directory\n` +
-        `\`${cwd}\`\n\n` +
-        `> Use this as the base path for all file operations. When referencing files, ` +
-        `use paths relative to this directory.`
-    );
-
-    // Last 10 git commits (title only)
     try {
-      const gitLog = execSync(
-        'git log -10 --pretty=format:"%h %s" --no-merges 2>/dev/null',
-        { encoding: "utf-8", timeout: 5000, cwd }
-      ).trim();
-      if (gitLog) {
-        contextParts.push(
-          `## Recent Git Commits (Last 10)\n` +
-            `\`\`\`\n${gitLog}\n\`\`\`\n\n` +
-            `> These commits show the recent development activity. Use this context to ` +
-            `understand what has been recently worked on, identify related changes, or ` +
-            `avoid breaking recent modifications.`
-        );
+      if (isFirstTurn) {
+        // 初回ターン: ベースラインコンテキストを収集
+        isFirstTurn = false;
+        const context = collectSessionStartContext();
+        previousContext = context;
+
+        // シェル形式でフォーマット
+        const formattedContext = formatSessionStartAsShell(context);
+
+        // 注入を記録
+        recordInjection("startup-context-baseline", formattedContext);
+
+        // システムプロンプトに追記
+        return {
+          systemPrompt: `${event.systemPrompt}\n\n${formattedContext}`,
+        };
+      } else {
+        // 2回目以降: 差分コンテキストを収集
+        if (!previousContext) return undefined;
+
+        const delta = collectUserPromptDelta(previousContext);
+
+        // 有意な差分がない場合はスキップ
+        if (!hasSignificantDelta(delta)) {
+          return undefined;
+        }
+
+        // 差分をフォーマット
+        const formattedDelta = formatDeltaAsShell(delta);
+
+        // 注入を記録
+        recordInjection("startup-context-delta", formattedDelta);
+
+        // 現在の状態を更新
+        const currentCwd = process.cwd();
+        if (previousContext.user.cwd !== currentCwd) {
+          previousContext.user.cwd = currentCwd;
+        }
+
+        // システムプロンプトに差分を追記（軽量な注入）
+        const deltaSection = `\n\n---\n\n# Context Delta\n\n${formattedDelta}`;
+        return {
+          systemPrompt: `${event.systemPrompt}${deltaSection}`,
+        };
       }
-    } catch {
-      // Not a git repository or git not available
+    } catch (error) {
+      // エラー時は何もしない（セッションを継続）
+      console.error("[startup-context] Failed to collect context:", error);
+      return undefined;
     }
-
-    if (contextParts.length === 0) return;
-
-    const injectedContext =
-      `# Session Startup Context\n\n` +
-      `This context is automatically injected at session start to help you understand ` +
-      `the project's current state, recent changes, and overall structure.\n\n` +
-      `${contextParts.join("\n\n")}\n\n` +
-      `---\n` +
-      `_End of startup context._`;
-
-    // Record injection for context breakdown tracking
-    recordInjection('startup-context', injectedContext);
-
-    // Append to system prompt instead of injecting a user message
-    // This way it's sent to LLM but not displayed in TUI
-    return {
-      systemPrompt: `${event.systemPrompt}\n\n${injectedContext}`,
-    };
   });
 
-  // セッション終了時にリスナー重複登録防止フラグをリセット
+  // セッション終了イベント
   pi.on("session_shutdown", async () => {
     isInitialized = false;
+    previousContext = null;
+    isFirstTurn = true;
+    sessionStartTime = 0;
   });
+}
+
+/**
+ * @summary 有意な差分があるかどうかを判定
+ * @param delta 差分コンテキスト
+ * @returns 有意な差分がある場合true
+ */
+function hasSignificantDelta(delta: UserPromptSubmitDelta): boolean {
+  // CWDの変更
+  if (delta.cwd_changed) return true;
+
+  // 環境変数の変更
+  if (delta.env_delta) {
+    if (Object.keys(delta.env_delta.changed).length > 0) return true;
+    if (delta.env_delta.added.length > 0) return true;
+    if (delta.env_delta.removed.length > 0) return true;
+  }
+
+  // Git差分
+  if (delta.git_delta) {
+    if (delta.git_delta.branch_changed) return true;
+    if (delta.git_delta.commits_since_last > 0) return true;
+    if (delta.git_delta.dirty_state.staged > 0) return true;
+    if (delta.git_delta.dirty_state.modified > 0) return true;
+    if (delta.git_delta.dirty_state.untracked > 0) return true;
+  }
+
+  // 失敗シグナル
+  if (delta.failure_signals?.detected) return true;
+
+  return false;
 }
