@@ -115,6 +115,18 @@ function safeExec(command: string, options?: ExecSyncOptions): string {
 }
 
 /**
+ * @summary CPUコア数取得コマンドをOSごとに返す
+ * @returns CPUコア数取得用コマンド
+ */
+function getCpuCoreCountCommand(): string {
+  if (process.platform === "darwin") {
+    return "sysctl -n hw.ncpu";
+  }
+
+  return "nproc";
+}
+
+/**
  * @summary 秘密情報かどうかを判定
  * @param key 環境変数名
  * @returns 秘密情報の場合true
@@ -306,7 +318,8 @@ function collectDateTimeInfo(): DateTimeInfo {
  * @summary 層6: CPU/Memory/Disk情報を収集（要約）
  */
 function collectResourceInfo(): ResourceInfo {
-  const cpuCores = Number.parseInt(safeExec("nproc") || safeExec("sysctl -n hw.ncpu") || "1", 10);
+  const cpuCoreCountCommand = getCpuCoreCountCommand();
+  const cpuCores = Number.parseInt(safeExec(cpuCoreCountCommand) || "1", 10);
 
   // メモリ情報
   let memoryTotal = "unknown";
@@ -1328,7 +1341,9 @@ Locale=${datetime.locale}`;
 }
 
 function formatResourceSection(resources: ResourceInfo): string {
-  return `$ nproc
+  const cpuCoreCountCommand = getCpuCoreCountCommand();
+
+  return `$ ${cpuCoreCountCommand}
 ${resources.cpu_cores}
 
 $ free -h 2>/dev/null || vm_stat
