@@ -87,10 +87,17 @@ interface WorkflowState {
 }
 
 // Active workflow registry for cross-instance coordination
+export interface ActiveWorkflowRegistryEntry {
+  activeTaskId: string | null;
+  ownerInstanceId: string | null;
+  updatedAt: string;
+}
+
 interface ActiveWorkflowRegistry {
   activeTaskId: string | null;
   ownerInstanceId: string | null;
   updatedAt: string;
+  activeByInstance?: Record<string, ActiveWorkflowRegistryEntry>;
 }
 
 // ディレクトリパス
@@ -109,35 +116,133 @@ export function getInstanceId(): string {
   return `${process.env.PI_SESSION_ID || "default"}-${process.pid}`;
 }
 
-// File-based workflow access (replaces memory variable)
-function getCurrentWorkflow(): WorkflowState | null {
+function createEmptyActiveWorkflowRegistry(): ActiveWorkflowRegistry {
+  return {
+    activeTaskId: null,
+    ownerInstanceId: null,
+    updatedAt: new Date().toISOString(),
+    activeByInstance: {},
+  };
+}
+
+function readActiveWorkflowRegistry(): ActiveWorkflowRegistry {
   try {
-    if (!fs.existsSync(ACTIVE_FILE)) return null;
+    if (!fs.existsSync(ACTIVE_FILE)) {
+      return createEmptyActiveWorkflowRegistry();
+    }
+
     const raw = readFileSync(ACTIVE_FILE, "utf-8");
-    const registry: ActiveWorkflowRegistry = JSON.parse(raw);
-    if (!registry.activeTaskId) return null;
-    return loadState(registry.activeTaskId);
+    const parsed = JSON.parse(raw) as Partial<ActiveWorkflowRegistry>;
+    return {
+      activeTaskId: parsed.activeTaskId ?? null,
+      ownerInstanceId: parsed.ownerInstanceId ?? null,
+      updatedAt: parsed.updatedAt ?? new Date().toISOString(),
+      activeByInstance: parsed.activeByInstance ?? {},
+    };
+  } catch {
+    return createEmptyActiveWorkflowRegistry();
+  }
+}
+
+function resolveGlobalActiveEntry(
+  registry: ActiveWorkflowRegistry,
+): ActiveWorkflowRegistryEntry {
+  const entries = Object.values(registry.activeByInstance ?? {}).filter(
+    (entry) => entry.activeTaskId,
+  );
+
+  if (entries.length === 0) {
+    return {
+      activeTaskId: null,
+      ownerInstanceId: null,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  entries.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+  return entries[0];
+}
+
+export function resolveInstanceActiveTaskId(
+  registry: ActiveWorkflowRegistry,
+  instanceId: string,
+): string | null {
+  const instanceEntry = registry.activeByInstance?.[instanceId];
+  const fallbackToLegacyEntry = registry.ownerInstanceId === instanceId;
+  return instanceEntry?.activeTaskId
+    ?? (fallbackToLegacyEntry ? registry.activeTaskId : null);
+}
+
+export function updateActiveWorkflowRegistryForInstance(
+  registry: ActiveWorkflowRegistry,
+  instanceId: string,
+  state: WorkflowState | null,
+): ActiveWorkflowRegistry {
+  const nextRegistry: ActiveWorkflowRegistry = {
+    activeTaskId: registry.activeTaskId,
+    ownerInstanceId: registry.ownerInstanceId,
+    updatedAt: registry.updatedAt,
+    activeByInstance: { ...(registry.activeByInstance ?? {}) },
+  };
+
+  if (state) {
+    nextRegistry.activeByInstance![instanceId] = {
+      activeTaskId: state.taskId,
+      ownerInstanceId: state.ownerInstanceId,
+      updatedAt: new Date().toISOString(),
+    };
+  } else {
+    delete nextRegistry.activeByInstance![instanceId];
+  }
+
+  const globalEntry = resolveGlobalActiveEntry(nextRegistry);
+  nextRegistry.activeTaskId = globalEntry.activeTaskId;
+  nextRegistry.ownerInstanceId = globalEntry.ownerInstanceId;
+  nextRegistry.updatedAt = globalEntry.updatedAt;
+
+  return nextRegistry;
+}
+
+function writeActiveWorkflowRegistry(registry: ActiveWorkflowRegistry): void {
+  if (!fs.existsSync(WORKFLOW_DIR)) {
+    fs.mkdirSync(WORKFLOW_DIR, { recursive: true });
+  }
+
+  const nextRegistry = { ...registry };
+  const globalEntry = resolveGlobalActiveEntry(nextRegistry);
+  nextRegistry.activeTaskId = globalEntry.activeTaskId;
+  nextRegistry.ownerInstanceId = globalEntry.ownerInstanceId;
+  nextRegistry.updatedAt = globalEntry.updatedAt;
+
+  atomicWriteTextFile(ACTIVE_FILE, JSON.stringify(nextRegistry, null, 2));
+}
+
+// File-based workflow access (replaces memory variable)
+export function getCurrentWorkflow(): WorkflowState | null {
+  try {
+    const registry = readActiveWorkflowRegistry();
+    const instanceId = getInstanceId();
+    const taskId = resolveInstanceActiveTaskId(registry, instanceId);
+
+    if (!taskId) {
+      return null;
+    }
+
+    return loadState(taskId);
   } catch {
     return null;
   }
 }
 
-function setCurrentWorkflow(state: WorkflowState | null): void {
-  if (!fs.existsSync(WORKFLOW_DIR)) {
-    fs.mkdirSync(WORKFLOW_DIR, { recursive: true });
-  }
-
-  const registry: ActiveWorkflowRegistry = state ? {
-    activeTaskId: state.taskId,
-    ownerInstanceId: state.ownerInstanceId,
-    updatedAt: new Date().toISOString(),
-  } : {
-    activeTaskId: null,
-    ownerInstanceId: null,
-    updatedAt: new Date().toISOString(),
-  };
-
-  atomicWriteTextFile(ACTIVE_FILE, JSON.stringify(registry, null, 2));
+export function setCurrentWorkflow(state: WorkflowState | null): void {
+  const instanceId = getInstanceId();
+  const registry = readActiveWorkflowRegistry();
+  const nextRegistry = updateActiveWorkflowRegistryForInstance(
+    registry,
+    instanceId,
+    state,
+  );
+  writeActiveWorkflowRegistry(nextRegistry);
 }
 
 /**
@@ -436,7 +541,7 @@ function getTaskDir(taskId: string): string {
 /**
  * 状態を保存
  */
-function saveState(state: WorkflowState): void {
+export function saveState(state: WorkflowState): void {
   const taskDir = getTaskDir(state.taskId);
   const statusPath = path.join(taskDir, "status.json");
 
