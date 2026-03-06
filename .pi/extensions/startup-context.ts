@@ -45,6 +45,7 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { startSession, recordInjection } from "../lib/context-breakdown-utils.js";
+import { getRuntimeEnvironmentCache } from "../lib/runtime-environment-cache.js";
 import {
   collectSessionStartContext,
   collectUserPromptDelta,
@@ -52,6 +53,7 @@ import {
   formatDeltaAsShell,
 } from "../lib/startup-context-collectors.js";
 import type { SessionStartContext, UserPromptSubmitDelta } from "../lib/startup-context-types.js";
+import { getToolTelemetryStore, resetToolTelemetryStore } from "../lib/tool-telemetry-store.js";
 
 // モジュールレベルのフラグ（reload時のリスナー重複登録防止）
 let isInitialized = false;
@@ -75,6 +77,8 @@ export default function (pi: ExtensionAPI) {
     sessionStartTime = Date.now();
     previousContext = null;
     startSession();
+    resetToolTelemetryStore();
+    getRuntimeEnvironmentCache().reset();
   });
 
   // エージェント開始前イベント（毎ターン実行）
@@ -88,13 +92,14 @@ export default function (pi: ExtensionAPI) {
 
         // シェル形式でフォーマット
         const formattedContext = formatSessionStartAsShell(context);
+        const runtimeOptimizationSection = buildRuntimeOptimizationSection();
 
         // 注入を記録
-        recordInjection("startup-context-baseline", formattedContext);
+        recordInjection("startup-context-baseline", `${formattedContext}\n\n${runtimeOptimizationSection}`);
 
         // システムプロンプトに追記
         return {
-          systemPrompt: `${event.systemPrompt}\n\n${formattedContext}`,
+          systemPrompt: `${event.systemPrompt}\n\n${formattedContext}\n\n${runtimeOptimizationSection}`,
         };
       } else {
         // 2回目以降: 差分コンテキストを収集
@@ -109,9 +114,10 @@ export default function (pi: ExtensionAPI) {
 
         // 差分をフォーマット
         const formattedDelta = formatDeltaAsShell(delta);
+        const runtimeOptimizationSection = buildRuntimeOptimizationSection();
 
         // 注入を記録
-        recordInjection("startup-context-delta", formattedDelta);
+        recordInjection("startup-context-delta", `${formattedDelta}\n\n${runtimeOptimizationSection}`);
 
         // 現在の状態を更新
         const currentCwd = process.cwd();
@@ -122,7 +128,7 @@ export default function (pi: ExtensionAPI) {
         // システムプロンプトに差分を追記（軽量な注入）
         const deltaSection = `\n\n---\n\n# Context Delta\n\n${formattedDelta}`;
         return {
-          systemPrompt: `${event.systemPrompt}${deltaSection}`,
+          systemPrompt: `${event.systemPrompt}${deltaSection}\n\n${runtimeOptimizationSection}`,
         };
       }
     } catch (error) {
@@ -170,4 +176,25 @@ function hasSignificantDelta(delta: UserPromptSubmitDelta): boolean {
   if (delta.failure_signals?.detected) return true;
 
   return false;
+}
+
+function buildRuntimeOptimizationSection(): string {
+  const telemetryHints = getToolTelemetryStore().buildPromptHints({ maxHints: 4 });
+  const environmentSection = getRuntimeEnvironmentCache().formatForPrompt();
+  const lines = [
+    "# Runtime Optimization",
+    "prefer_cheap_probe_first=true",
+    "avoid_duplicate_tool_calls=true",
+    "narrow_large_outputs_before_reading=true",
+    environmentSection,
+  ];
+
+  if (telemetryHints.length > 0) {
+    lines.push("# Recent Runtime Hints");
+    for (const hint of telemetryHints) {
+      lines.push(`- ${hint}`);
+    }
+  }
+
+  return lines.join("\n");
 }

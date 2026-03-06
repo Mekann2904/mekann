@@ -44,12 +44,15 @@ import {
 	MAX_CODE_SEARCH_LIMIT,
 } from "../../../../../.pi/extensions/search/utils/constants.js";
 import { readdir, readFile } from "node:fs/promises";
+import { execute, checkToolAvailability } from "@ext/search/utils/cli.js";
+import { getToolTelemetryStore, resetToolTelemetryStore } from "../../../../../.pi/lib/tool-telemetry-store.js";
 
 describe("nativeCodeSearch", () => {
 	const mockCwd = "/test/project";
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		resetToolTelemetryStore();
 	});
 
 	describe("基本的なコード検索", () => {
@@ -635,6 +638,100 @@ test
 
 			// 3つのマッチがあるはず
 			expect(result.results.length).toBe(3);
+		});
+	});
+
+	describe("probe/full-run", () => {
+		it("probeで十分な場合はrgを1回だけ実行する", async () => {
+			const input: CodeSearchInput = {
+				pattern: "target",
+				limit: 50,
+			};
+
+			vi.mocked(checkToolAvailability).mockResolvedValue({ rg: true });
+			vi.mocked(execute).mockResolvedValue({
+				code: 0,
+				stdout: "",
+				stderr: "",
+			});
+
+			const result = await codeSearch(input, mockCwd);
+
+			expect(result.total).toBe(0);
+			expect(execute).toHaveBeenCalledTimes(1);
+			expect(vi.mocked(execute).mock.calls[0]?.[2]).toMatchObject({ executionMode: "probe" });
+		});
+
+		it("probeが切り捨てられた場合はrgをfull-runする", async () => {
+			const input: CodeSearchInput = {
+				pattern: "target",
+				limit: 50,
+			};
+
+			vi.mocked(checkToolAvailability).mockResolvedValue({ rg: true });
+			vi.mocked(execute)
+				.mockResolvedValueOnce({
+					code: 0,
+					stdout: Array.from({ length: 21 }, (_, index) =>
+						JSON.stringify({
+							type: "match",
+							data: {
+								path: { text: `src/file-${index}.ts` },
+								line_number: index + 1,
+								lines: { text: `target ${index}` },
+								submatches: [{ start: 0, end: 6, match: { text: "target" } }],
+							},
+						})
+					).join("\n"),
+					stderr: "",
+				})
+				.mockResolvedValueOnce({
+					code: 0,
+					stdout: "",
+					stderr: "",
+				});
+
+			await codeSearch(input, mockCwd);
+
+			expect(execute).toHaveBeenCalledTimes(2);
+			expect(vi.mocked(execute).mock.calls[0]?.[2]).toMatchObject({ executionMode: "probe" });
+			expect(vi.mocked(execute).mock.calls[1]?.[2]).toMatchObject({ executionMode: "full" });
+		});
+	});
+
+	describe("native telemetry", () => {
+		it("native実行を telemetry に記録する", async () => {
+			const input: CodeSearchInput = {
+				pattern: "target",
+			};
+
+			vi.mocked(readFile).mockResolvedValue("target");
+			vi.mocked(readdir as any).mockImplementation(async () => [
+				{ name: "file.ts", isFile: () => true, isDirectory: () => false },
+			]);
+
+			await nativeCodeSearch(input, mockCwd);
+
+			const records = getToolTelemetryStore().getRecentRecords(5);
+			expect(records.some((record) => record.toolName === "native_code_search")).toBe(true);
+		});
+
+		it("同一native検索を再実行すると結果を再利用する", async () => {
+			const input: CodeSearchInput = {
+				pattern: "target",
+			};
+
+			vi.mocked(readFile).mockResolvedValue("target");
+			vi.mocked(readdir as any).mockImplementation(async () => [
+				{ name: "file.ts", isFile: () => true, isDirectory: () => false },
+			]);
+
+			await nativeCodeSearch(input, mockCwd);
+			await nativeCodeSearch(input, mockCwd);
+
+			expect(readFile).toHaveBeenCalledTimes(1);
+			const records = getToolTelemetryStore().getRecentRecords(5);
+			expect(records.some((record) => record.reusedPreviousResult)).toBe(true);
 		});
 	});
 });

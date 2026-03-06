@@ -45,6 +45,18 @@ import { SearchToolError, isSearchToolError, getErrorMessage } from "../utils/er
 import { DEFAULT_LIMIT, DEFAULT_EXCLUDES } from "../utils/constants.js";
 import { getSearchCache, getCacheKey } from "../utils/cache.js";
 import { getSearchHistory, extractQuery } from "../utils/history.js";
+import { resolveProbeLimit } from "../../../lib/tool-policy-engine.js";
+import { getToolTelemetryStore } from "../../../lib/tool-telemetry-store.js";
+import {
+	buildInputFingerprint,
+	buildNormalizedSignature,
+	createTelemetryId,
+	estimateOutputBytes,
+	summarizeOutput,
+} from "../../../lib/tool-telemetry.js";
+
+const FILE_CANDIDATES_PROBE_LIMIT = 20;
+const NATIVE_FILE_CANDIDATES_TOOL_NAME = "native_file_candidates";
 
 /**
  * Check if a name should be excluded based on exclude patterns.
@@ -73,8 +85,92 @@ function shouldExclude(name: string, excludes: readonly string[]): boolean {
  */
 async function nativeFileCandidates(
 	input: FileCandidatesInput,
-	cwd: string
+	cwd: string,
+	executionMode: "probe" | "full" = "full"
 ): Promise<FileCandidatesOutput> {
+	const telemetry = getToolTelemetryStore();
+	const telemetryPayload = { ...input, cwd };
+	const inputFingerprint = buildInputFingerprint(NATIVE_FILE_CANDIDATES_TOOL_NAME, telemetryPayload);
+	const normalizedSignature = buildNormalizedSignature(
+		NATIVE_FILE_CANDIDATES_TOOL_NAME,
+		telemetryPayload,
+		["limit"]
+	);
+	const duplicate = telemetry.findRecentExactDuplicate(inputFingerprint);
+
+	if (duplicate?.success && duplicate.metadata?.result) {
+		const reusedResult = duplicate.metadata.result as FileCandidatesOutput;
+		telemetry.finish({
+			id: createTelemetryId(`${NATIVE_FILE_CANDIDATES_TOOL_NAME}-reuse`),
+			toolName: NATIVE_FILE_CANDIDATES_TOOL_NAME,
+			startedAtMs: Date.now(),
+			finishedAtMs: Date.now(),
+			durationMs: 0,
+			timeoutMs: 0,
+			success: true,
+			timedOut: false,
+			aborted: false,
+			retryCount: 0,
+			outputBytes: estimateOutputBytes(reusedResult),
+			inputFingerprint,
+			normalizedSignature,
+			duplicateOfId: duplicate.id,
+			reusedPreviousResult: true,
+			executionMode,
+			resultSummary: summarizeOutput(reusedResult),
+			metadata: {
+				cwd,
+				result: reusedResult,
+			},
+		});
+		return reusedResult;
+	}
+
+	const pending = telemetry.start({
+		id: createTelemetryId(NATIVE_FILE_CANDIDATES_TOOL_NAME),
+		toolName: NATIVE_FILE_CANDIDATES_TOOL_NAME,
+		startedAtMs: Date.now(),
+		timeoutMs: 0,
+		retryCount: 0,
+		inputFingerprint,
+		normalizedSignature,
+		executionMode,
+		metadata: { cwd, input },
+	});
+
+	function finishNativeExecution(
+		result: FileCandidatesOutput,
+		success: boolean,
+		errorType?: "validation" | "execution" | "permission" | "unknown",
+		errorMessage?: string
+	): FileCandidatesOutput {
+		telemetry.finish({
+			id: pending.id,
+			toolName: NATIVE_FILE_CANDIDATES_TOOL_NAME,
+			startedAtMs: pending.startedAtMs,
+			finishedAtMs: Date.now(),
+			durationMs: Date.now() - pending.startedAtMs,
+			timeoutMs: 0,
+			success,
+			timedOut: false,
+			aborted: false,
+			retryCount: 0,
+			outputBytes: estimateOutputBytes(result),
+			inputFingerprint,
+			normalizedSignature,
+			executionMode,
+			resultSummary: summarizeOutput(result),
+			errorType,
+			errorMessage,
+			metadata: {
+				cwd,
+				input,
+				result,
+			},
+		});
+		return result;
+	}
+
 	const { readdir, stat } = await import("node:fs/promises");
 	const { join } = await import("node:path");
 
@@ -145,8 +241,17 @@ async function nativeFileCandidates(
 		}
 	}
 
-	await scan(cwd, 0);
-	return truncateResults(results, limit);
+	try {
+		await scan(cwd, 0);
+		return finishNativeExecution(truncateResults(results, limit), true);
+	} catch (error) {
+		return finishNativeExecution(
+			createErrorResponse<FileCandidate>(getErrorMessage(error)),
+			false,
+			"execution",
+			getErrorMessage(error)
+		);
+	}
 }
 
 // ============================================
@@ -158,7 +263,8 @@ async function nativeFileCandidates(
  */
 async function useFdCommand(
 	input: FileCandidatesInput,
-	cwd: string
+	cwd: string,
+	executionMode: "probe" | "full" = "full"
 ): Promise<FileCandidatesOutput> {
 	const args = buildFdArgs(input);
 	const limit = input.limit ?? DEFAULT_LIMIT;
@@ -166,7 +272,7 @@ async function useFdCommand(
 	// Use input.cwd as search directory, fallback to cwd parameter
 	const searchDir = input.cwd || cwd;
 
-	const result = await execute("fd", args, { cwd: searchDir });
+	const result = await execute("fd", args, { cwd: searchDir, executionMode });
 
 	if (result.code !== 0) {
 		throw new Error(`fd command failed: ${result.stderr}`);
@@ -185,6 +291,54 @@ async function useFdCommand(
  */
 function extractResultPaths(results: FileCandidate[]): string[] {
 	return results.map((r) => r.path).filter(Boolean);
+}
+
+/**
+ * 大きい列挙は先に小さいlimitで様子を見る。
+ */
+function buildProbeFileCandidatesInput(input: FileCandidatesInput): FileCandidatesInput | null {
+	const requestedLimit = input.limit ?? DEFAULT_LIMIT;
+	const probeLimit = resolveProbeLimit({
+		toolName: "fd",
+		requestedLimit,
+		minimumProbeLimit: 5,
+		maximumProbeLimit: FILE_CANDIDATES_PROBE_LIMIT,
+		metadata: {
+			outputSizeEstimate: input.type === "dir" ? "medium" : "small",
+			requiresProbe: true,
+		},
+	});
+
+	if (requestedLimit <= probeLimit) {
+		return null;
+	}
+
+	return {
+		...input,
+		limit: probeLimit,
+	};
+}
+
+/**
+ * probeが切り捨てられていないなら、その結果は完全とみなせる。
+ */
+function shouldRunFullFileCandidates(
+	probeResult: FileCandidatesOutput,
+	requestedInput: FileCandidatesInput,
+	probeInput: FileCandidatesInput
+): boolean {
+	const requestedLimit = requestedInput.limit ?? DEFAULT_LIMIT;
+	const probeLimit = probeInput.limit ?? FILE_CANDIDATES_PROBE_LIMIT;
+
+	if (probeResult.error) {
+		return false;
+	}
+
+	if (requestedLimit <= probeLimit) {
+		return false;
+	}
+
+	return probeResult.truncated;
 }
 
 // ============================================
@@ -228,11 +382,30 @@ export async function fileCandidates(
 	let result: FileCandidatesOutput;
 	try {
 		const availability = await checkToolAvailability();
+		const probeInput = buildProbeFileCandidatesInput(input);
 
 		if (availability.fd) {
-			result = await useFdCommand({ ...input, cwd }, cwd);
+			if (probeInput) {
+				const probeResult = await useFdCommand({ ...probeInput, cwd }, cwd, "probe");
+				if (!shouldRunFullFileCandidates(probeResult, input, probeInput)) {
+					result = probeResult;
+				} else {
+					result = await useFdCommand({ ...input, cwd }, cwd, "full");
+				}
+			} else {
+				result = await useFdCommand({ ...input, cwd }, cwd, "full");
+			}
 		} else {
-			result = await nativeFileCandidates(input, cwd);
+			if (probeInput) {
+				const probeResult = await nativeFileCandidates(probeInput, cwd, "probe");
+				if (!shouldRunFullFileCandidates(probeResult, input, probeInput)) {
+					result = probeResult;
+				} else {
+					result = await nativeFileCandidates(input, cwd, "full");
+				}
+			} else {
+				result = await nativeFileCandidates(input, cwd, "full");
+			}
 		}
 	} catch (error) {
 		// Wrap error in SearchToolError if not already
@@ -246,7 +419,7 @@ export async function fileCandidates(
 
 		// Fallback to native on error
 		try {
-			result = await nativeFileCandidates(input, cwd);
+			result = await nativeFileCandidates(input, cwd, "full");
 		} catch (nativeError) {
 			return createErrorResponse<FileCandidate>(toolError.format());
 		}

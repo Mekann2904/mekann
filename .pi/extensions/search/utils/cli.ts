@@ -37,6 +37,16 @@
 import { spawn } from "node:child_process";
 import type { CliOptions, CliResult, CliError, ToolAvailability, ToolVersion } from "../types";
 import { DEFAULT_EXCLUDES, DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_IGNORE_CASE } from "./constants.js";
+import { getRuntimeEnvironmentCache } from "../../../lib/runtime-environment-cache.js";
+import { resolveToolExecutionPolicy } from "../../../lib/tool-policy-engine.js";
+import { getToolTelemetryStore } from "../../../lib/tool-telemetry-store.js";
+import {
+  buildInputFingerprint,
+  buildNormalizedSignature,
+  createTelemetryId,
+  estimateOutputBytes,
+  summarizeOutput,
+} from "../../../lib/tool-telemetry.js";
 
 // Default timeout: 30 seconds
 const DEFAULT_TIMEOUT = 30_000;
@@ -58,9 +68,85 @@ export async function execute(
   args: string[] = [],
   options: CliOptions = {}
 ): Promise<CliResult> {
+  const telemetry = getToolTelemetryStore();
+  const environmentCache = getRuntimeEnvironmentCache();
+  const cwd = options.cwd ?? process.cwd();
+  const input = { command, args, cwd };
+  const inputFingerprint = buildInputFingerprint(command, input);
+  const normalizedSignature = buildNormalizedSignature(command, input, ["limit", "maxResults"]);
+  const policy = resolveToolExecutionPolicy({
+    toolName: command,
+    inputFingerprint,
+    inputSignature: normalizedSignature,
+    requestedTimeoutMs: options.timeout,
+    defaultTimeoutMs: DEFAULT_TIMEOUT,
+    executionMode: options.executionMode ?? "full",
+    canReuseDuplicateResult: true,
+    metadata: {
+      typicalLatencyMs: 300,
+      p95LatencyMs: 2_000,
+      startupCostMs: 100,
+      outputSizeEstimate: "medium",
+      supportsParallel: true,
+      supportsStreaming: false,
+      defaultTimeoutMs: DEFAULT_TIMEOUT,
+      maxTimeoutMs: 120_000,
+      preferredUseCase: ["read-only-search", "filesystem-probe"],
+      cheaperAlternative: command === "grep" ? "rg" : undefined,
+      expensiveIf: ["broad-path", "large-output"],
+      requiresProbe: ["rg", "fd", "ctags"].includes(command),
+    },
+  });
+
+  if (policy.reusedDuplicateRecordId) {
+    const duplicate = telemetry.findRecentExactDuplicate(inputFingerprint);
+    if (duplicate?.metadata?.stdout !== undefined || duplicate?.metadata?.stderr !== undefined) {
+      telemetry.finish({
+        id: createTelemetryId(`${command}-reuse`),
+        toolName: command,
+        startedAtMs: Date.now(),
+        finishedAtMs: Date.now(),
+        durationMs: 0,
+        timeoutMs: policy.timeoutMs,
+        success: true,
+        timedOut: false,
+        aborted: false,
+        retryCount: 0,
+        outputBytes: estimateOutputBytes(duplicate.metadata?.stdout) + estimateOutputBytes(duplicate.metadata?.stderr),
+        inputFingerprint,
+        normalizedSignature,
+        duplicateOfId: duplicate.id,
+        reusedPreviousResult: true,
+        executionMode: options.executionMode ?? "full",
+        resultSummary: summarizeOutput(duplicate.metadata?.stdout ?? duplicate.metadata?.stderr),
+        metadata: duplicate.metadata,
+      });
+      return {
+        code: Number(duplicate.metadata?.code ?? 0),
+        stdout: String(duplicate.metadata?.stdout ?? ""),
+        stderr: String(duplicate.metadata?.stderr ?? ""),
+        timedOut: false,
+        killed: false,
+        reusedPreviousResult: true,
+        policyWarnings: policy.duplicateWarning ? [policy.duplicateWarning] : [],
+      };
+    }
+  }
+
+  const pending = telemetry.start({
+    id: createTelemetryId(command),
+    toolName: command,
+    startedAtMs: Date.now(),
+    timeoutMs: policy.timeoutMs,
+    retryCount: 0,
+    inputFingerprint,
+    normalizedSignature,
+    executionMode: options.executionMode ?? "full",
+    metadata: { cwd, args },
+  });
+
   const {
-    cwd = process.cwd(),
-    timeout = DEFAULT_TIMEOUT,
+    timeout = policy.timeoutMs,
     signal,
     maxOutputSize = DEFAULT_MAX_OUTPUT_SIZE,
     env = {},
@@ -87,6 +173,26 @@ export async function execute(
 
     if (signal) {
       if (signal.aborted) {
+        telemetry.finish({
+          id: pending.id,
+          toolName: command,
+          startedAtMs: pending.startedAtMs,
+          finishedAtMs: Date.now(),
+          durationMs: Date.now() - pending.startedAtMs,
+          timeoutMs: policy.timeoutMs,
+          success: false,
+          timedOut: false,
+          aborted: true,
+          retryCount: 0,
+          outputBytes: 0,
+          inputFingerprint,
+          normalizedSignature,
+          executionMode: options.executionMode ?? "full",
+          resultSummary: "Operation aborted",
+          errorType: "aborted",
+          errorMessage: "Operation aborted",
+          metadata: { cwd, args },
+        });
         proc.kill("SIGTERM");
         resolve({
           code: 1,
@@ -137,14 +243,45 @@ export async function execute(
       if (signal) {
         signal.removeEventListener("abort", abortHandler);
       }
-
-      resolve({
+      const result: CliResult = {
         code: code ?? 1,
         stdout,
         stderr,
         timedOut,
         killed,
+        policyWarnings: policy.duplicateWarning ? [policy.duplicateWarning] : undefined,
+      };
+      telemetry.finish({
+        id: pending.id,
+        toolName: command,
+        startedAtMs: pending.startedAtMs,
+        finishedAtMs: Date.now(),
+        durationMs: Date.now() - pending.startedAtMs,
+        timeoutMs: policy.timeoutMs,
+        success: (code ?? 1) === 0 && !timedOut && !killed,
+        timedOut,
+        aborted: killed && !timedOut,
+        retryCount: 0,
+        outputBytes: estimateOutputBytes(stdout) + estimateOutputBytes(stderr),
+        inputFingerprint,
+        normalizedSignature,
+        duplicateOfId: policy.reusedDuplicateRecordId,
+        executionMode: options.executionMode ?? "full",
+        resultSummary: summarizeOutput(stdout || stderr),
+        errorType: timedOut ? "timeout" : (code ?? 1) === 0 ? undefined : "execution",
+        errorMessage: timedOut ? `timed out after ${policy.timeoutMs}ms` : ((code ?? 1) === 0 ? undefined : stderr),
+        metadata: {
+          cwd,
+          args,
+          code: code ?? 1,
+          stdout,
+          stderr,
+        },
       });
+      if ((code ?? 1) === 0) {
+        environmentCache.rememberSuccessfulCommand(command, `${command} ${args.join(" ")}`.trim());
+      }
+      resolve(result);
     });
 
     // Handle process error
@@ -154,12 +291,33 @@ export async function execute(
         signal.removeEventListener("abort", abortHandler);
       }
 
+      telemetry.finish({
+        id: pending.id,
+        toolName: command,
+        startedAtMs: pending.startedAtMs,
+        finishedAtMs: Date.now(),
+        durationMs: Date.now() - pending.startedAtMs,
+        timeoutMs: policy.timeoutMs,
+        success: false,
+        timedOut: false,
+        aborted: false,
+        retryCount: 0,
+        outputBytes: estimateOutputBytes(stdout) + estimateOutputBytes(err.message),
+        inputFingerprint,
+        normalizedSignature,
+        executionMode: options.executionMode ?? "full",
+        resultSummary: summarizeOutput(err.message),
+        errorType: "execution",
+        errorMessage: err.message,
+        metadata: { cwd, args, stdout, stderr: err.message },
+      });
       resolve({
         code: 1,
         stdout,
         stderr: err.message,
         timedOut: false,
         killed: false,
+        policyWarnings: policy.duplicateWarning ? [policy.duplicateWarning] : undefined,
       });
     });
   });

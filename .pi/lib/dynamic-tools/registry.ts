@@ -43,6 +43,7 @@ import {
   type DynamicToolRegistrationRequest,
   type DynamicToolRegistrationResult,
   type DynamicToolListOptions,
+  type ToolCostMetadata,
   type VerificationStatus,
   type DynamicToolsPaths,
   getDynamicToolsPaths,
@@ -136,6 +137,7 @@ export interface RegisterToolOptions {
   parameters?: ToolParameterSchema;
   tags?: string[];
   generatedFrom?: string;
+  costMetadata?: ToolCostMetadata;
 }
 
 /**
@@ -200,7 +202,53 @@ const DynamicToolDefinitionSchema = Type.Object({
   ]),
   tags: Type.Array(Type.String()),
   createdBy: Type.String({ minLength: 1 }),
+  costMetadata: Type.Optional(Type.Object({
+    typicalLatencyMs: Type.Optional(Type.Number()),
+    p95LatencyMs: Type.Optional(Type.Number()),
+    startupCostMs: Type.Optional(Type.Number()),
+    outputSizeEstimate: Type.Optional(Type.Union([
+      Type.Literal("small"),
+      Type.Literal("medium"),
+      Type.Literal("large"),
+    ])),
+    supportsParallel: Type.Optional(Type.Boolean()),
+    supportsStreaming: Type.Optional(Type.Boolean()),
+    defaultTimeoutMs: Type.Optional(Type.Number()),
+    maxTimeoutMs: Type.Optional(Type.Number()),
+    preferredUseCase: Type.Optional(Type.Array(Type.String())),
+    cheaperAlternative: Type.Optional(Type.String()),
+    expensiveIf: Type.Optional(Type.Array(Type.String())),
+    requiresProbe: Type.Optional(Type.Boolean()),
+  })),
 });
+
+function inferDefaultCostMetadata(mode: DynamicToolDefinition["mode"]): ToolCostMetadata {
+  if (mode === "bash") {
+    return {
+      typicalLatencyMs: 400,
+      p95LatencyMs: 2_500,
+      startupCostMs: 100,
+      outputSizeEstimate: "medium",
+      supportsParallel: true,
+      defaultTimeoutMs: 15_000,
+      maxTimeoutMs: 120_000,
+      preferredUseCase: ["filesystem-read", "lightweight-shell"],
+      requiresProbe: true,
+    };
+  }
+
+  return {
+    typicalLatencyMs: 150,
+    p95LatencyMs: 1_500,
+    startupCostMs: 50,
+    outputSizeEstimate: "small",
+    supportsParallel: false,
+    defaultTimeoutMs: 10_000,
+    maxTimeoutMs: 60_000,
+    preferredUseCase: ["transform", "validation"],
+    requiresProbe: false,
+  };
+}
 
 function parseDynamicToolDefinition(content: string): DynamicToolDefinition | null {
   let parsed: unknown;
@@ -523,6 +571,7 @@ export async function registerDynamicTool(
     verificationStatus: (safetyResult?.isSafe ?? false) ? "passed" : "unverified",
     tags: request.tags ?? [],
     createdBy: request.createdBy ?? actor,
+    costMetadata: request.costMetadata ?? inferDefaultCostMetadata(request.mode),
   };
 
   // 保存
@@ -908,6 +957,7 @@ export class DynamicToolRegistry {
       verificationStatus: safetyScore >= 0.5 ? "passed" : "unverified",
       tags: options.tags ?? [],
       createdBy: "extension",
+      costMetadata: options.costMetadata ?? inferDefaultCostMetadata("function"),
     };
 
     // メモリに保存

@@ -68,9 +68,20 @@ import {
 } from "../lib/dynamic-tools/quality.js";
 import type {
   DynamicToolDefinition,
+  ToolCostMetadata,
 } from "../lib/dynamic-tools/types.js";
 import type { ToolExecutionResult } from "../lib/dynamic-tools/registry.js";
 import { isHighStakesTask } from "../lib/verification-high-stakes.js";
+import { resolveToolExecutionPolicy } from "../lib/tool-policy-engine.js";
+import { getRuntimeEnvironmentCache } from "../lib/runtime-environment-cache.js";
+import { getToolTelemetryStore } from "../lib/tool-telemetry-store.js";
+import {
+  buildInputFingerprint,
+  buildNormalizedSignature,
+  createTelemetryId,
+  estimateOutputBytes,
+  summarizeOutput,
+} from "../lib/tool-telemetry.js";
 
 const logger = getLogger();
 
@@ -107,6 +118,7 @@ interface CreateToolInput {
   }>;
   tags?: string[];
   generated_from?: string;
+  cost_metadata?: ToolCostMetadata;
 }
 
 interface RunDynamicToolInput {
@@ -461,6 +473,7 @@ async function handleCreateTool(
       required,
     },
     tags: input.tags || [],
+    costMetadata: input.cost_metadata,
   });
 
   // 監査ログに記録
@@ -562,6 +575,8 @@ async function handleRunDynamicTool(
 
   try {
     const registry = getRegistry();
+    const telemetry = getToolTelemetryStore();
+    const environmentCache = getRuntimeEnvironmentCache();
 
     // ツールを検索
     let tool: DynamicToolDefinition | undefined;
@@ -602,9 +617,57 @@ async function handleRunDynamicTool(
       return `エラー: 必須パラメータが不足しています: ${missingParams.join(", ")}`;
     }
 
+    const inputFingerprint = buildInputFingerprint(tool.name, input.parameters);
+    const normalizedSignature = buildNormalizedSignature(tool.name, input.parameters);
+    const policy = resolveToolExecutionPolicy({
+      toolName: tool.name,
+      inputSignature: normalizedSignature,
+      requestedTimeoutMs: input.timeout_ms,
+      defaultTimeoutMs: 10_000,
+      metadata: tool.costMetadata,
+      executionMode: tool.costMetadata?.requiresProbe ? "probe" : "full",
+      canReuseDuplicateResult: false,
+    });
+    const pending = telemetry.start({
+      id: createTelemetryId(tool.name),
+      toolName: tool.name,
+      startedAtMs: Date.now(),
+      timeoutMs: policy.timeoutMs,
+      retryCount: 0,
+      inputFingerprint,
+      normalizedSignature,
+      executionMode: tool.costMetadata?.requiresProbe ? "probe" : "full",
+      metadata: {
+        toolId: tool.id,
+        parameters: input.parameters,
+      },
+    });
+
     // ツールを実行
-    const timeoutMs = input.timeout_ms || 30000;
-    const result = await executeDynamicTool(tool, input.parameters, timeoutMs);
+    const result = await executeDynamicTool(tool, input.parameters, policy.timeoutMs);
+    telemetry.finish({
+      id: pending.id,
+      toolName: tool.name,
+      startedAtMs: pending.startedAtMs,
+      finishedAtMs: Date.now(),
+      durationMs: Date.now() - pending.startedAtMs,
+      timeoutMs: policy.timeoutMs,
+      success: result.success,
+      timedOut: result.error === "実行タイムアウト",
+      aborted: false,
+      retryCount: 0,
+      outputBytes: estimateOutputBytes(result.result ?? result.error),
+      inputFingerprint,
+      normalizedSignature,
+      executionMode: pending.executionMode,
+      resultSummary: summarizeOutput(result.result ?? result.error),
+      errorType: result.success ? undefined : (result.error === "実行タイムアウト" ? "timeout" : "execution"),
+      errorMessage: result.error,
+      metadata: {
+        toolId: tool.id,
+        parameters: input.parameters,
+      },
+    });
 
     // 使用を記録
     registry.recordUsage(tool.id);
@@ -636,7 +699,8 @@ async function handleRunDynamicTool(
 ツール「${tool.name}」の実行に失敗しました。
 
 実行時間: ${result.executionTimeMs}ms
-エラー: ${result.error}
+適用タイムアウト: ${policy.timeoutMs}ms
+${policy.duplicateWarning ? `警告: ${policy.duplicateWarning}\n` : ""}エラー: ${result.error}
 `;
       logger.endOperation({
         status: "failure",
@@ -661,10 +725,14 @@ async function handleRunDynamicTool(
 ツール「${tool.name}」の実行が完了しました。
 
 実行時間: ${result.executionTimeMs}ms
+適用タイムアウト: ${policy.timeoutMs}ms
+${policy.duplicateWarning ? `警告: ${policy.duplicateWarning}\n` : ""}
 
 結果:
 ${resultText}
 `;
+
+    environmentCache.rememberSuccessfulCommand(tool.name, `run_dynamic_tool:${tool.name}`);
 
     logger.endOperation({
       status: "success",
@@ -960,6 +1028,24 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
       )),
       tags: Type.Optional(Type.Array(Type.String(), { description: "ツールのタグ（カテゴリ分類用）" })),
       generated_from: Type.Optional(Type.String({ description: "ツールの生成元（タスク説明など）" })),
+      cost_metadata: Type.Optional(Type.Object({
+        typicalLatencyMs: Type.Optional(Type.Number()),
+        p95LatencyMs: Type.Optional(Type.Number()),
+        startupCostMs: Type.Optional(Type.Number()),
+        outputSizeEstimate: Type.Optional(Type.Union([
+          Type.Literal("small"),
+          Type.Literal("medium"),
+          Type.Literal("large"),
+        ])),
+        supportsParallel: Type.Optional(Type.Boolean()),
+        supportsStreaming: Type.Optional(Type.Boolean()),
+        defaultTimeoutMs: Type.Optional(Type.Number()),
+        maxTimeoutMs: Type.Optional(Type.Number()),
+        preferredUseCase: Type.Optional(Type.Array(Type.String())),
+        cheaperAlternative: Type.Optional(Type.String()),
+        expensiveIf: Type.Optional(Type.Array(Type.String())),
+        requiresProbe: Type.Optional(Type.Boolean()),
+      })),
     }),
 
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
