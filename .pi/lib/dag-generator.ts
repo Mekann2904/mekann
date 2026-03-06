@@ -116,14 +116,17 @@ function createHeuristicPlan(
   const wantsTesting = shouldCreateTesting(task, clauses);
 
   const researchTasks: Partial<TaskNode>[] = [];
+  const synthesisTasks: Partial<TaskNode>[] = [];
   const architectureTasks: Partial<TaskNode>[] = [];
   const implementationTasks: Partial<TaskNode>[] = [];
   const trailingTasks: Partial<TaskNode>[] = [];
 
   if (wantsResearch) {
     const researchClauses = clauses.filter((clause) => classifyClause(clause) === "research");
-    const researchUnits = researchClauses.length > 0
+    const researchUnits = researchClauses.length > 1
       ? researchClauses
+      : researchClauses.length === 1
+        ? createExpandedResearchUnits(researchClauses[0], task, options)
       : createDefaultResearchUnits(task, options);
 
     for (const unit of researchUnits.slice(0, maxTasks)) {
@@ -138,15 +141,31 @@ function createHeuristicPlan(
     }
   }
 
+  if (researchTasks.length > 1) {
+    synthesisTasks.push({
+      id: createTaskId("research-synthesis", task),
+      description: `Synthesize the parallel research findings into an execution-ready brief for: ${task}`,
+      assignedAgent: pickAgent("architect", preferredAgents) || pickAgent("researcher", preferredAgents),
+      dependencies: researchTasks.map((taskNode) => taskNode.id!),
+      priority: "high",
+      estimatedDurationMs: 60_000,
+      inputContext: researchTasks.map((taskNode) => taskNode.id!),
+    });
+  }
+
+  const researchOutputDependencies = synthesisTasks.length > 0
+    ? synthesisTasks.map((taskNode) => taskNode.id!)
+    : researchTasks.map((taskNode) => taskNode.id!);
+
   if (wantsArchitecture) {
     architectureTasks.push({
       id: createTaskId("design", task),
       description: `Design the implementation approach for: ${task}`,
       assignedAgent: pickAgent("architect", preferredAgents),
-      dependencies: researchTasks.map((taskNode) => taskNode.id!),
+      dependencies: researchOutputDependencies,
       priority: "high",
       estimatedDurationMs: 90_000,
-      inputContext: researchTasks.map((taskNode) => taskNode.id!),
+      inputContext: researchOutputDependencies,
     });
   }
 
@@ -161,13 +180,13 @@ function createHeuristicPlan(
       description: buildImplementationDescription(unit),
       assignedAgent: pickAgent("implementer", preferredAgents),
       dependencies: [
-        ...researchTasks.map((taskNode) => taskNode.id!),
+        ...researchOutputDependencies,
         ...architectureTasks.map((taskNode) => taskNode.id!),
       ],
       priority: "critical",
       estimatedDurationMs: 120_000,
       inputContext: [
-        ...researchTasks.map((taskNode) => taskNode.id!),
+        ...researchOutputDependencies,
         ...architectureTasks.map((taskNode) => taskNode.id!),
       ],
     });
@@ -176,7 +195,7 @@ function createHeuristicPlan(
   const fanInDependencies = implementationTasks.length > 0
     ? implementationTasks.map((taskNode) => taskNode.id!)
     : [
-        ...researchTasks.map((taskNode) => taskNode.id!),
+        ...researchOutputDependencies,
         ...architectureTasks.map((taskNode) => taskNode.id!),
       ];
 
@@ -206,6 +225,7 @@ function createHeuristicPlan(
 
   let tasks = [
     ...researchTasks,
+    ...synthesisTasks,
     ...architectureTasks,
     ...implementationTasks,
     ...trailingTasks,
@@ -299,6 +319,8 @@ function shouldCreateReview(task: string, clauses: string[]): boolean {
 function createDefaultResearchUnits(task: string, options: DagGenerationOptions): string[] {
   const units = [
     `Inspect the existing code paths related to ${task}`,
+    `Inspect the public interfaces, schemas, and contracts related to ${task}`,
+    `Inspect the risk areas, edge cases, and failure modes related to ${task}`,
   ];
 
   if (options.contextFiles?.length) {
@@ -307,7 +329,25 @@ function createDefaultResearchUnits(task: string, options: DagGenerationOptions)
     units.push(`Inspect the current tests and validation points for ${task}`);
   }
 
-  return units;
+  return Array.from(new Set(units));
+}
+
+function createExpandedResearchUnits(
+  baseClause: string,
+  task: string,
+  options: DagGenerationOptions,
+): string[] {
+  return Array.from(
+    new Set([
+      baseClause,
+      `Inspect the existing code paths related to ${task}`,
+      `Inspect the public interfaces, schemas, and contracts related to ${task}`,
+      `Inspect the risk areas, edge cases, and failure modes related to ${task}`,
+      ...(options.contextFiles?.length
+        ? [`Inspect the provided context files for ${task}`]
+        : []),
+    ]),
+  );
 }
 
 function createDefaultImplementationUnits(task: string): string[] {

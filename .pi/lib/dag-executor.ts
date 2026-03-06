@@ -960,6 +960,158 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
       this.taskWeights.set(taskId, weight);
     }
   }
+
+  /**
+   * タスクノードを動的に追加する
+   * @summary ノード追加
+   * @param task 追加するタスク
+   */
+  addNode(task: TaskNode): void {
+    const nextTask: TaskNode = {
+      ...task,
+      dependencies: [...task.dependencies],
+      inputContext: task.inputContext ? [...task.inputContext] : undefined,
+    };
+
+    this.graph.addTask(nextTask.id, {
+      name: nextTask.description,
+      dependencies: nextTask.dependencies,
+      priority: nextTask.priority,
+      estimatedDurationMs: nextTask.estimatedDurationMs,
+    });
+
+    this.taskNodes.set(nextTask.id, nextTask);
+    this.plan.tasks.push(nextTask);
+    this.syncPlanMetadata();
+
+    if (this.options.useWeightBasedScheduling) {
+      this.calculateAllTaskWeights();
+    }
+  }
+
+  /**
+   * タスクノードを動的に削除する
+   * @summary ノード削除
+   * @param taskId 削除するタスクID
+   * @returns 削除成功時はtrue
+   */
+  removeNode(taskId: string): boolean {
+    const removed = this.graph.removeTask(taskId);
+    if (!removed) {
+      return false;
+    }
+
+    this.taskNodes.delete(taskId);
+    this.results.delete(taskId);
+    this.nodeExecutionTraces.delete(taskId);
+    this.nodeRetryCount.delete(taskId);
+    this.taskWeights.delete(taskId);
+
+    this.plan.tasks = this.plan.tasks.filter((task) => task.id !== taskId);
+
+    for (const task of this.taskNodes.values()) {
+      task.dependencies = task.dependencies.filter((dependencyId) => dependencyId !== taskId);
+      if (task.inputContext) {
+        task.inputContext = task.inputContext.filter((contextId) => contextId !== taskId);
+      }
+    }
+
+    this.syncPlanMetadata();
+
+    if (this.options.useWeightBasedScheduling) {
+      this.calculateAllTaskWeights();
+    }
+
+    return true;
+  }
+
+  /**
+   * タスクを再キューして再実行可能にする
+   * @summary タスク再キュー
+   * @param taskId 対象タスクID
+   * @param includeDependents 下流タスクも再キューするか
+   */
+  requeueTask(taskId: string, includeDependents: boolean = false): void {
+    const task = this.taskNodes.get(taskId);
+    if (!task) {
+      throw new Error(`Task "${taskId}" does not exist`);
+    }
+
+    const targets = new Set<string>();
+    const collectTargets = (currentId: string): void => {
+      if (targets.has(currentId)) {
+        return;
+      }
+      targets.add(currentId);
+
+      if (!includeDependents) {
+        return;
+      }
+
+      const node = this.graph.getTask(currentId);
+      if (!node) {
+        return;
+      }
+
+      for (const dependentId of Array.from(node.dependents)) {
+        collectTargets(dependentId);
+      }
+    };
+
+    collectTargets(taskId);
+
+    for (const targetId of targets) {
+      this.results.delete(targetId);
+      this.nodeRetryCount.delete(targetId);
+    }
+
+    this.graph.resetTask(taskId, { includeDependents });
+  }
+
+  /**
+   * プランメタデータを現在のタスク集合に合わせる
+   * @summary メタデータ同期
+   */
+  private syncPlanMetadata(): void {
+    this.plan.metadata.totalEstimatedMs = this.plan.tasks.reduce(
+      (total, task) => total + (task.estimatedDurationMs ?? 0),
+      0,
+    );
+    this.plan.metadata.maxDepth = this.computePlanDepth();
+  }
+
+  /**
+   * 現在のプラン深さを計算する
+   * @summary 深さ計算
+   * @returns 最大深さ
+   */
+  private computePlanDepth(): number {
+    const depthCache = new Map<string, number>();
+
+    const getDepth = (taskId: string): number => {
+      const cached = depthCache.get(taskId);
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      const task = this.taskNodes.get(taskId);
+      if (!task || task.dependencies.length === 0) {
+        depthCache.set(taskId, 0);
+        return 0;
+      }
+
+      const depth =
+        Math.max(...task.dependencies.map((dependencyId) => getDepth(dependencyId))) + 1;
+      depthCache.set(taskId, depth);
+      return depth;
+    };
+
+    if (this.plan.tasks.length === 0) {
+      return 0;
+    }
+
+    return Math.max(...this.plan.tasks.map((task) => getDepth(task.id)));
+  }
 }
 
 /**

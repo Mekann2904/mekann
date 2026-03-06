@@ -80,6 +80,89 @@ describe("DagExecutor - 動的依存関係更新", () => {
     executor = new DagExecutor(plan);
   });
 
+  describe("動的ノード更新", () => {
+    it("should_add_node_and_dependency_dynamically", () => {
+      executor.addNode({
+        id: "D",
+        description: "Task D",
+        dependencies: ["A"],
+        assignedAgent: "implementer",
+      });
+
+      expect(executor.hasTask("D")).toBe(true);
+      expect(executor.getTask("D")?.dependencies).toContain("A");
+      expect(executor.getStats().total).toBe(4);
+    });
+
+    it("should_remove_node_and_unblock_dependents", async () => {
+      executor.addDependency("C", "B");
+
+      const removed = executor.removeNode("B");
+
+      expect(removed).toBe(true);
+      expect(executor.hasTask("B")).toBe(false);
+      expect(executor.getTask("C")?.dependencies).not.toContain("B");
+
+      const order: string[] = [];
+      const result = await executor.execute(async (task) => {
+        order.push(task.id);
+        return `done:${task.id}`;
+      });
+
+      expect(result.overallStatus).toBe("completed");
+      expect(result.completedTaskIds).toContain("C");
+      expect(order).toContain("C");
+    });
+
+    it("should_requeue_failed_task_after_adding_prerequisite", async () => {
+      const revisionExecutor = new DagExecutor(
+        {
+          id: "self-revision-plan",
+          description: "Self revision dynamic DAG plan",
+          tasks: [
+            {
+              id: "main",
+              description: "Main task",
+              dependencies: [],
+              assignedAgent: "implementer",
+            },
+          ],
+          metadata: {
+            createdAt: Date.now(),
+            model: "test-model",
+            totalEstimatedMs: 100,
+            maxDepth: 0,
+          },
+        },
+        {
+          enableSelfRevision: true,
+          enableLocalReplanning: false,
+        },
+      );
+
+      const attempts = new Map<string, number>();
+      const executed: string[] = [];
+
+      const result = await revisionExecutor.execute(async (task) => {
+        executed.push(task.id);
+        const attempt = (attempts.get(task.id) ?? 0) + 1;
+        attempts.set(task.id, attempt);
+
+        if (task.id === "main" && attempt === 1) {
+          throw new Error("Resource not found");
+        }
+
+        return `done:${task.id}:${attempt}`;
+      });
+
+      expect(result.overallStatus).toBe("completed");
+      expect(result.completedTaskIds).toContain("main");
+      expect(result.completedTaskIds).toContain("main-prereq");
+      expect(executed).toEqual(["main", "main-prereq", "main"]);
+      expect(attempts.get("main")).toBe(2);
+    });
+  });
+
   // ========================================
   // addDependency
   // ========================================

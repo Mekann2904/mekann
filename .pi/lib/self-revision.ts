@@ -52,8 +52,11 @@ export interface RevisionResult {
  * @summary リビジョンモジュールインターフェース
  */
 export interface RevisionExecutor {
+  addNode(node: TaskNode): void;
+  removeNode(nodeId: string): boolean;
   addDependency(taskId: string, dependencyId: string): void;
   removeDependency(taskId: string, dependencyId: string): boolean;
+  requeueTask(taskId: string, includeDependents?: boolean): void;
   getTask(taskId: string): TaskNode | undefined;
   detectCycle(): { hasCycle: boolean; cyclePath: string[] | null };
 }
@@ -238,6 +241,7 @@ export class SelfRevisionModule {
       case "add_dependency":
         try {
           this.executor.addDependency(action.taskId, action.dependencyId);
+          this.executor.requeueTask(action.taskId, true);
         } catch {
           // 依存関係の追加に失敗した場合は無視
         }
@@ -255,9 +259,11 @@ export class SelfRevisionModule {
         break;
 
       case "add_node":
+        this.executor.addNode(action.node);
+        break;
+
       case "remove_node":
-        // DagExecutorにはノード追加APIがないため、
-        // 必要に応じて拡張が必要
+        this.executor.removeNode(action.nodeId);
         break;
     }
   }

@@ -338,6 +338,32 @@ export interface PrintCommandResult {
 }
 
 /**
+ * Build CLI args for `pi --mode json -p`.
+ * Kept separate so extension enablement stays testable.
+ */
+export function buildPiPrintModeArgs(
+  input: Pick<PrintExecutorOptions, "provider" | "model" | "prompt" | "noExtensions">,
+): string[] {
+  const disableExtensions = input.noExtensions ?? true;
+  const args = ["--mode", "json", "-p"];
+
+  if (disableExtensions) {
+    args.push("--no-extensions");
+  }
+
+  if (input.provider) {
+    args.push("--provider", input.provider);
+  }
+
+  if (input.model) {
+    args.push("--model", input.model);
+  }
+
+  args.push(input.prompt);
+  return args;
+}
+
+/**
  * Trims error messages to a reasonable length for display.
  */
 function trimForError(text: string, maxLength = 200): string {
@@ -462,21 +488,7 @@ export async function runPiPrintMode(
 
   // Use JSON mode for streaming output.
   // Keep extensions disabled by default for deterministic child behavior.
-  const disableExtensions = input.noExtensions ?? true;
-  const args = ["--mode", "json", "-p"];
-  if (disableExtensions) {
-    args.push("--no-extensions");
-  }
-
-  if (input.provider) {
-    args.push("--provider", input.provider);
-  }
-
-  if (input.model) {
-    args.push("--model", input.model);
-  }
-
-  args.push(input.prompt);
+  const args = buildPiPrintModeArgs(input);
 
   return await new Promise<PrintCommandResult>((resolvePromise, rejectPromise) => {
     let stderr = "";
