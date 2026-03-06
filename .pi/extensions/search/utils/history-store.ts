@@ -28,8 +28,6 @@
  * Persistent storage for search history across sessions.
  */
 
-import * as fs from "fs";
-import * as path from "path";
 import { readJsonState, writeJsonState } from "../../../lib/storage/sqlite-state-store.js";
 
 // ============================================
@@ -87,15 +85,12 @@ export interface HistorySession {
  * @summary ストア設定
  * @param maxEntries 最大エントリ数
  * @param maxSessions 最大セッション数
- * @param storagePath ストレージパス
  */
 export interface HistoryStoreConfig {
 	/** Maximum entries to keep (default: 1000) */
 	maxEntries: number;
 	/** Maximum sessions to keep (default: 10) */
 	maxSessions: number;
-	/** Storage file path */
-	storagePath?: string;
 }
 
 // ============================================
@@ -106,8 +101,6 @@ const DEFAULT_CONFIG: HistoryStoreConfig = {
 	maxEntries: 1000,
 	maxSessions: 10,
 };
-
-const HISTORY_FILE_NAME = "search-history.json";
 
 // ============================================
 // History Store Class
@@ -121,7 +114,6 @@ export class HistoryStore {
 	private config: HistoryStoreConfig;
 	private entries: StoredHistoryEntry[] = [];
 	private currentSessionId: string;
-	private storagePath: string | null = null;
 	private stateKey: string;
 	private loaded = false;
 
@@ -133,12 +125,6 @@ export class HistoryStore {
 	constructor(config: Partial<HistoryStoreConfig> = {}, cwd?: string) {
 		this.config = { ...DEFAULT_CONFIG, ...config };
 		this.currentSessionId = this.generateSessionId();
-
-		if (this.config.storagePath) {
-			this.storagePath = this.config.storagePath;
-		} else if (cwd) {
-			this.storagePath = path.join(cwd, ".pi", "cache", HISTORY_FILE_NAME);
-		}
 		this.stateKey = `search_history:${cwd || process.cwd()}`;
 	}
 
@@ -306,7 +292,6 @@ export class HistoryStore {
 		this.loaded = true;
 		const loaded = readJsonState<StoredHistoryEntry[]>({
 			stateKey: this.stateKey,
-			fallbackPath: this.storagePath || undefined,
 			createDefault: () => [],
 		});
 		if (Array.isArray(loaded)) {
@@ -322,7 +307,6 @@ export class HistoryStore {
 		writeJsonState({
 			stateKey: this.stateKey,
 			value: this.entries,
-			mirrorPath: this.storagePath || undefined,
 		});
 	}
 

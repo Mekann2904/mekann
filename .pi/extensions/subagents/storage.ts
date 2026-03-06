@@ -431,7 +431,6 @@ export function loadStorage(cwd: string): SubagentStorage {
   try {
     const parsed = readJsonState<Partial<SubagentStorage>>({
       stateKey,
-      fallbackPath: paths.storageFile,
       createDefault: () => fallback,
     });
     const storage: SubagentStorage = {
@@ -478,7 +477,6 @@ export function saveStorage(cwd: string, storage: SubagentStorage): void {
   withFileLock(paths.storageFile, () => {
     const current = readJsonState<Partial<SubagentStorage>>({
       stateKey,
-      fallbackPath: paths.storageFile,
       createDefault: () => ({
         agents: [],
         runs: [],

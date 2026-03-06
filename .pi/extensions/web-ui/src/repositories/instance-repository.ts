@@ -18,8 +18,6 @@
  */
 
 import type { InstanceInfo, ContextHistoryEntry, InstanceContextHistory } from "../schemas/instance.schema.js";
-import { SHARED_DIR } from "../lib/storage.js";
-import { join } from "path";
 import {
   listJsonStateKeys,
   readJsonState,
@@ -38,19 +36,12 @@ const HEARTBEAT_STALE_MS = 60000; // 60秒
  * ファイル形式: Record<number, InstanceInfo> (直接レコード、ラッパーなし)
  */
 export class InstanceRepository {
-  private readonly filePath: string;
-
-  constructor() {
-    this.filePath = join(SHARED_DIR, "instances.json");
-  }
-
   /**
    * ファイルから直接読み込む
    */
   private readAll(): Record<number, InstanceInfo> {
     return readJsonState<Record<number, InstanceInfo>>({
       stateKey: "webui_instances",
-      fallbackPath: this.filePath,
       createDefault: () => ({}),
     });
   }
@@ -62,7 +53,6 @@ export class InstanceRepository {
     writeJsonState({
       stateKey: "webui_instances",
       value: instances,
-      mirrorPath: this.filePath,
     });
   }
 
@@ -141,10 +131,10 @@ export class InstanceRepository {
  * コンテキスト履歴リポジトリ
  */
 export class ContextHistoryRepository {
-  private readonly filePath: string;
+  private readonly pid: number;
 
   constructor(pid: number) {
-    this.filePath = join(SHARED_DIR, `context-history-${pid}.json`);
+    this.pid = pid;
   }
 
   private historyStateKey(pid: number): string {
@@ -157,7 +147,6 @@ export class ContextHistoryRepository {
   add(entry: Omit<ContextHistoryEntry, "pid">, pid: number): void {
     const loaded = readJsonState<{ history: ContextHistoryEntry[] }>({
       stateKey: this.historyStateKey(pid),
-      fallbackPath: this.filePath,
       createDefault: () => ({ history: [] }),
     });
     let history = loaded.history || [];
@@ -172,7 +161,6 @@ export class ContextHistoryRepository {
     writeJsonState({
       stateKey: this.historyStateKey(pid),
       value: { history },
-      mirrorPath: this.filePath,
     });
   }
 
@@ -180,11 +168,8 @@ export class ContextHistoryRepository {
    * 履歴を取得
    */
   getAll(): ContextHistoryEntry[] {
-    const pidMatch = this.filePath.match(/context-history-(\d+)\.json$/);
-    const pid = pidMatch ? parseInt(pidMatch[1], 10) : 0;
     const loaded = readJsonState<{ history: ContextHistoryEntry[] }>({
-      stateKey: this.historyStateKey(pid),
-      fallbackPath: this.filePath,
+      stateKey: this.historyStateKey(this.pid),
       createDefault: () => ({ history: [] }),
     });
     return loaded.history || [];
@@ -197,7 +182,6 @@ export class ContextHistoryRepository {
     const result: InstanceContextHistory[] = [];
     const knownInstances = readJsonState<Record<number, InstanceInfo>>({
       stateKey: "webui_instances",
-      fallbackPath: join(SHARED_DIR, "instances.json"),
       createDefault: () => ({}),
     });
     const knownPids = new Set<number>(Object.keys(knownInstances).map((pid) => Number(pid)));
@@ -210,7 +194,6 @@ export class ContextHistoryRepository {
         knownPids.add(pid);
         const historyData = readJsonState<{ history: ContextHistoryEntry[] }>({
           stateKey,
-          fallbackPath: join(SHARED_DIR, `context-history-${pid}.json`),
           createDefault: () => ({ history: [] }),
         });
         const history = historyData.history || [];
@@ -230,7 +213,6 @@ export class ContextHistoryRepository {
       if (result.some((entry) => entry.pid === pid)) continue;
       const historyData = readJsonState<{ history: ContextHistoryEntry[] }>({
         stateKey: `webui_context_history:${pid}`,
-        fallbackPath: join(SHARED_DIR, `context-history-${pid}.json`),
         createDefault: () => ({ history: [] }),
       });
       const history = historyData.history || [];

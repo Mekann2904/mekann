@@ -28,8 +28,6 @@
  * Identifies success/failure patterns and task-specific approaches.
  */
 
-import { join } from "node:path";
-
 import {
   extractKeywords,
   classifyTaskType,
@@ -38,7 +36,6 @@ import {
 } from "./run-index.js";
 import { readJsonState, writeJsonState } from "./sqlite-state-store.js";
 import {
-  getAgentTeamStorageStateKey,
   getPatternStorageStateKey,
   getSubagentStorageStateKey,
 } from "./state-keys.js";
@@ -370,7 +367,6 @@ export function getPatternStoragePath(cwd: string): string {
 export function loadPatternStorage(cwd: string): PatternStorage {
   return readJsonState<PatternStorage>({
     stateKey: getPatternStorageStateKey(cwd),
-    fallbackPath: join(cwd, ".pi", "memory", "patterns.json"),
     createDefault: () => ({
       version: PATTERN_STORAGE_VERSION,
       lastUpdated: new Date().toISOString(),
@@ -448,7 +444,6 @@ export function extractAllPatterns(cwd: string): PatternStorage {
   try {
     const subagentStorage = readJsonState<{ runs?: RunData[] }>({
       stateKey: getSubagentStorageStateKey(cwd),
-      fallbackPath: join(cwd, ".pi", "subagents", "storage.json"),
       createDefault: () => ({ runs: [] }),
     });
     for (const run of subagentStorage.runs || []) {
@@ -478,41 +473,6 @@ export function extractAllPatterns(cwd: string): PatternStorage {
     }
   } catch (error) {
     console.error("Error reading subagent storage for pattern extraction:", error);
-  }
-
-  try {
-    const teamStorage = readJsonState<{ runs?: RunData[] }>({
-      stateKey: getAgentTeamStorageStateKey(cwd),
-      fallbackPath: join(cwd, ".pi", "agent-teams", "storage.json"),
-      createDefault: () => ({ runs: [] }),
-    });
-    for (const run of teamStorage.runs || []) {
-      const pattern = extractPatternFromRun({
-        runId: run.runId,
-        teamId: run.teamId,
-        task: run.task,
-        summary: run.summary,
-        status: run.status,
-        startedAt: run.startedAt,
-        finishedAt: run.finishedAt,
-        error: run.error,
-      });
-      if (pattern) {
-        let merged = false;
-        for (let i = 0; i < storage.patterns.length; i++) {
-          if (arePatternsSimilar(storage.patterns[i], pattern)) {
-            storage.patterns[i] = mergePatterns(storage.patterns[i], pattern);
-            merged = true;
-            break;
-          }
-        }
-        if (!merged) {
-          storage.patterns.push(pattern);
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Error reading team storage for pattern extraction:", error);
   }
 
   // Rebuild task type index

@@ -1,11 +1,9 @@
 /**
  * path: .pi/lib/storage/sqlite-state-store.ts
- * role: SQLite上のJSON状態ストアを提供し、旧JSONファイルからの読込移行を担う
- * why: 完全SQLite移行後も既存データを安全に取り込めるようにするため
+ * role: SQLite 上の JSON 状態ストアを提供する
+ * why: 状態保存を SQLite に一本化して実装を単純化するため
  * related: .pi/lib/storage/sqlite-db.ts, .pi/lib/storage/sqlite-schema.ts, .pi/lib/storage/task-plan-store.ts
  */
-
-import { existsSync, readFileSync } from "node:fs";
 
 import { getDatabase, isSQLiteAvailable } from "./sqlite-db.js";
 import "./sqlite-schema.js";
@@ -17,16 +15,6 @@ interface JsonStateRow {
 function safeParseJson<T>(raw: string): T | null {
   try {
     return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
-}
-
-function readJsonFile<T>(filePath: string): T | null {
-  if (!existsSync(filePath)) return null;
-  try {
-    const raw = readFileSync(filePath, "utf-8");
-    return safeParseJson<T>(raw);
   } catch {
     return null;
   }
@@ -62,22 +50,8 @@ function readStoredValue<T>(stateKey: string): T | null {
   return safeParseJson<T>(row.value_json);
 }
 
-function readLegacyOrDefault<T>(input: {
-  fallbackPath?: string;
-  createDefault: () => T;
-}): T {
-  if (input.fallbackPath) {
-    const fromFile = readJsonFile<T>(input.fallbackPath);
-    if (fromFile !== null) {
-      return fromFile;
-    }
-  }
-  return input.createDefault();
-}
-
 export function readJsonState<T>(input: {
   stateKey: string;
-  fallbackPath?: string;
   createDefault: () => T;
 }): T {
   requireSQLite();
@@ -88,18 +62,17 @@ export function readJsonState<T>(input: {
     return stored;
   }
 
-  const migrated = readLegacyOrDefault(input);
+  const initialValue = input.createDefault();
   writeJsonState({
     stateKey: input.stateKey,
-    value: migrated,
+    value: initialValue,
   });
-  return migrated;
+  return initialValue;
 }
 
 export function writeJsonState<T>(input: {
   stateKey: string;
   value: T;
-  mirrorPath?: string;
 }): void {
   requireSQLite();
   ensureTable();

@@ -28,11 +28,8 @@
  * Enables semantic and keyword-based retrieval of past solutions.
  */
 
-import { join } from "node:path";
-
 import { readJsonState, writeJsonState } from "./sqlite-state-store.js";
 import {
-  getAgentTeamStorageStateKey,
   getRunIndexStateKey,
   getSubagentStorageStateKey,
 } from "./state-keys.js";
@@ -297,49 +294,6 @@ export function indexSubagentRun(
 }
 
 /**
- * チーム実行をインデックス化
- * @summary チーム実行インデックス化
- * @param run 実行記録
- * @param run.runId 実行ID
- * @param run.teamId チームID
- * @param run.task タスク内容
- * @param run.summary 実行の要約
- * @param run.status ステータス
- * @param run.startedAt 開始日時
- * @param run.finishedAt 終了日時
- * @returns インデックス化された実行情報
- */
-export function indexTeamRun(
-  run: {
-    runId: string;
-    teamId: string;
-    task: string;
-    summary: string;
-    status: "completed" | "failed";
-    startedAt: string;
-    finishedAt: string;
-  }
-): IndexedRun {
-  const text = `${run.task} ${run.summary}`;
-  const keywords = extractKeywords(text);
-  const taskType = classifyTaskType(run.task, run.summary);
-  const files = extractFiles(text);
-
-  return {
-    runId: run.runId,
-    source: "agent-team",
-    teamId: run.teamId,
-    task: run.task,
-    summary: run.summary,
-    status: run.status,
-    keywords,
-    taskType,
-    files,
-    timestamp: run.startedAt,
-  };
-}
-
-/**
  * 実行インデックスを構築
  * @summary インデックス構築
  * @param cwd 作業ディレクトリ
@@ -359,7 +313,6 @@ export function buildRunIndex(cwd: string): RunIndex {
   try {
     const storage = readJsonState<{ runs?: Array<Parameters<typeof indexSubagentRun>[0]> }>({
       stateKey: getSubagentStorageStateKey(cwd),
-      fallbackPath: join(cwd, ".pi", "subagents", "storage.json"),
       createDefault: () => ({ runs: [] }),
     });
     for (const run of storage.runs || []) {
@@ -375,27 +328,6 @@ export function buildRunIndex(cwd: string): RunIndex {
     }
   } catch (error) {
     console.error("Error reading subagent storage:", error);
-  }
-
-  try {
-    const storage = readJsonState<{ runs?: Array<Parameters<typeof indexTeamRun>[0]> }>({
-      stateKey: getAgentTeamStorageStateKey(cwd),
-      fallbackPath: join(cwd, ".pi", "agent-teams", "storage.json"),
-      createDefault: () => ({ runs: [] }),
-    });
-    for (const run of storage.runs || []) {
-      const indexed = indexTeamRun(run);
-      runs.push(indexed);
-
-      for (const kw of indexed.keywords) {
-        if (!keywordIndex[kw]) keywordIndex[kw] = [];
-        keywordIndex[kw].push(run.runId);
-      }
-
-      taskTypeIndex[indexed.taskType].push(run.runId);
-    }
-  } catch (error) {
-    console.error("Error reading team storage:", error);
   }
 
   return {
@@ -429,7 +361,6 @@ export function getRunIndexPath(cwd: string): string {
 export function loadRunIndex(cwd: string): RunIndex | null {
   return readJsonState<RunIndex | null>({
     stateKey: getRunIndexStateKey(cwd),
-    fallbackPath: join(cwd, ".pi", "memory", "run-index.json"),
     createDefault: () => null,
   });
 }

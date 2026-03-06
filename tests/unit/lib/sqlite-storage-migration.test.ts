@@ -1,16 +1,16 @@
 /**
- * tests/unit/lib/sqlite-storage-migration.test.ts
- * SQLite 移行後の共通ストレージ動作を検証する。
- * 旧 JSON からの読込移行と、移行後に SQLite が唯一の保存先になることを確認する。
- * 関連ファイル: .pi/lib/storage/sqlite-state-store.ts, .pi/extensions/subagents/storage.ts, .pi/lib/storage/run-index.ts, .pi/lib/storage/pattern-extraction.ts
+ * path: tests/unit/lib/sqlite-storage-migration.test.ts
+ * role: SQLite 専用ストレージの共通動作を検証する
+ * why: JSON 後方互換を捨てた後も主要ストアが正しく動くことを保証するため
+ * related: .pi/lib/storage/sqlite-state-store.ts, .pi/extensions/subagents/storage.ts, .pi/lib/storage/run-index.ts, .pi/lib/storage/pattern-extraction.ts
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-describe("SQLite storage migration", () => {
+describe("SQLite storage", () => {
   let runtimeDir: string;
   let testCwd: string;
   let originalRuntimeDir: string | undefined;
@@ -43,31 +43,20 @@ describe("SQLite storage migration", () => {
     }
   });
 
-  it("readJsonState migrates a legacy JSON file once and stops mirroring writes", async () => {
-    const legacyFile = join(testCwd, ".pi", "tasks", "storage.json");
-    mkdirSync(join(testCwd, ".pi", "tasks"), { recursive: true });
-    writeFileSync(legacyFile, JSON.stringify({ tasks: [{ id: "legacy-task" }] }, null, 2), "utf-8");
-
+  it("readJsonState stores defaults in SQLite and reloads updated values", async () => {
     const { readJsonState, writeJsonState } = await import("../../../.pi/lib/storage/sqlite-state-store.js");
     const { closeDatabase } = await import("../../../.pi/lib/storage/sqlite-db.js");
 
-    const migrated = readJsonState<{ tasks: Array<{ id: string }> }>({
+    const initial = readJsonState<{ tasks: Array<{ id: string }> }>({
       stateKey: "task_storage:test",
-      fallbackPath: legacyFile,
       createDefault: () => ({ tasks: [] }),
     });
 
-    expect(migrated.tasks).toHaveLength(1);
-    expect(migrated.tasks[0].id).toBe("legacy-task");
+    expect(initial.tasks).toEqual([]);
 
     writeJsonState({
       stateKey: "task_storage:test",
       value: { tasks: [{ id: "sqlite-task" }] },
-      mirrorPath: legacyFile,
-    });
-
-    expect(JSON.parse(readFileSync(legacyFile, "utf-8"))).toEqual({
-      tasks: [{ id: "legacy-task" }],
     });
 
     closeDatabase();
@@ -75,7 +64,6 @@ describe("SQLite storage migration", () => {
     const { readJsonState: readAgain } = await import("../../../.pi/lib/storage/sqlite-state-store.js");
     const reloaded = readAgain<{ tasks: Array<{ id: string }> }>({
       stateKey: "task_storage:test",
-      fallbackPath: legacyFile,
       createDefault: () => ({ tasks: [] }),
     });
 
@@ -117,15 +105,7 @@ describe("SQLite storage migration", () => {
     expect(persisted.currentAgentId).toBe(customAgent.id);
   });
 
-  it("index settings migrate once from legacy JSON and persist only in SQLite", async () => {
-    const legacyFile = join(testCwd, ".pi", "search", "index-settings.json");
-    mkdirSync(join(testCwd, ".pi", "search"), { recursive: true });
-    writeFileSync(
-      legacyFile,
-      JSON.stringify({ locagent: false, repograph: true }, null, 2),
-      "utf-8"
-    );
-
+  it("index settings persist only in SQLite", async () => {
     const {
       loadIndexSettings,
       saveIndexSettings,
@@ -136,7 +116,7 @@ describe("SQLite storage migration", () => {
 
     const migrated = await loadIndexSettings(testCwd);
     expect(migrated).toEqual({
-      locagent: false,
+      locagent: true,
       repograph: true,
       semantic: true,
     });
@@ -145,11 +125,6 @@ describe("SQLite storage migration", () => {
       locagent: true,
       repograph: false,
       semantic: false,
-    });
-
-    expect(JSON.parse(readFileSync(legacyFile, "utf-8"))).toEqual({
-      locagent: false,
-      repograph: true,
     });
 
     const updated = await updateIndexEnabled(testCwd, "semantic", true);

@@ -10,10 +10,8 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { join } from "node:path";
 import type { SuccessResponse } from "../schemas/common.schema.js";
 import { getInstanceService } from "../services/instance-service.js";
-import { SHARED_DIR } from "../lib/storage.js";
 import {
   loadIndexSettings,
   updateIndexEnabled,
@@ -74,7 +72,6 @@ function resolveIndexesCwd(): string {
   // アクティブな instance が無い場合でも、最後に登録されていた cwd を使う
   const knownInstances = readJsonState<Record<number, { cwd?: string; lastHeartbeat?: number }>>({
     stateKey: "webui_instances",
-    fallbackPath: join(SHARED_DIR, "instances.json"),
     createDefault: () => ({}),
   });
   const persisted = Object.values(knownInstances).sort(

@@ -1,11 +1,10 @@
 /**
- * .pi/extensions/web-ui/src/services/index-settings-service.ts
- * インデックス設定を SQLite json_state に保存する。
- * 旧 index-settings.json から一度だけ移行し、その後は SQLite を唯一の保存先にする。
- * 関連ファイル: .pi/extensions/web-ui/src/routes/indexes.ts, .pi/lib/storage/sqlite-state-store.ts, .pi/lib/storage/state-keys.ts
+ * path: .pi/extensions/web-ui/src/services/index-settings-service.ts
+ * role: インデックス設定を SQLite json_state に保存する
+ * why: インデックス設定の保存先を SQLite に統一するため
+ * related: .pi/extensions/web-ui/src/routes/indexes.ts, .pi/lib/storage/sqlite-state-store.ts, .pi/lib/storage/state-keys.ts
  */
 
-import { join } from "node:path";
 import { readJsonState, writeJsonState } from "../../../../lib/storage/sqlite-state-store.js";
 import { getIndexSettingsStateKey } from "../../../../lib/storage/state-keys.js";
 
@@ -16,10 +15,6 @@ export interface IndexSettings {
   locagent: boolean;
   repograph: boolean;
   semantic: boolean;
-}
-
-function getLegacySettingsPath(cwd: string): string {
-  return join(cwd, ".pi/search/index-settings.json");
 }
 
 /**
@@ -44,7 +39,6 @@ function normalizeSettings(settings: Partial<IndexSettings> | null | undefined):
 export async function loadIndexSettings(cwd: string): Promise<IndexSettings> {
   const settings = readJsonState<IndexSettings>({
     stateKey: getIndexSettingsStateKey(cwd),
-    fallbackPath: getLegacySettingsPath(cwd),
     createDefault: () => ({ ...DEFAULT_SETTINGS }),
   });
   return normalizeSettings(settings);

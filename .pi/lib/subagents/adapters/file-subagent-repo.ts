@@ -20,7 +20,6 @@
  *   out: ファイルシステム
  */
 
-import { join } from "node:path";
 import type { ISubagentRepository } from "../application/interfaces.js";
 import type { SubagentStorage, SubagentRunRecord } from "../domain/subagent-definition.js";
 import { readJsonState, writeJsonState } from "../../storage/sqlite-state-store.js";
@@ -30,7 +29,6 @@ import { readJsonState, writeJsonState } from "../../storage/sqlite-state-store.
  * @summary ファイルリポジトリ
  */
 export class FileSubagentRepository implements ISubagentRepository {
-  private readonly storagePath: string;
   private readonly stateKey: string;
   private cache: SubagentStorage | null = null;
   private runRecords: SubagentRunRecord[] = [];
@@ -41,7 +39,6 @@ export class FileSubagentRepository implements ISubagentRepository {
    * @param cwd - 作業ディレクトリ
    */
   constructor(private readonly cwd: string) {
-    this.storagePath = join(cwd, ".pi/subagents/storage.json");
     this.stateKey = `subagent_repository:${cwd}`;
   }
 
@@ -58,7 +55,6 @@ export class FileSubagentRepository implements ISubagentRepository {
     try {
       const parsed = readJsonState<Partial<SubagentStorage>>({
         stateKey: this.stateKey,
-        fallbackPath: this.storagePath,
         createDefault: () => this.createDefaultStorage(),
       });
       this.cache = this.migrateStorage(parsed);
