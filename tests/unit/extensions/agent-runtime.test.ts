@@ -13,23 +13,10 @@ vi.mock("../../pi/lib/cross-instance-coordinator", () => ({
   isCoordinatorInitialized: vi.fn(() => false),
   getModelParallelLimit: vi.fn((_p: string, _m: string, limit: number) => limit),
   getActiveInstancesForModel: vi.fn(() => 1),
-  getStealingStats: vi.fn(() => null),
-  isIdle: vi.fn(() => false),
-  findStealCandidate: vi.fn(() => null),
-  safeStealWork: vi.fn(async () => null),
-  enhancedHeartbeat: vi.fn(),
-  broadcastQueueState: vi.fn(),
-  getWorkStealingSummary: vi.fn(() => ({
-    remoteInstances: 0,
-    totalPendingTasks: 0,
-    stealableTasks: 0,
-    idleInstances: 0,
-  })),
 }));
 
 vi.mock("../../pi/lib/adaptive-rate-controller", () => ({
   getEffectiveLimit: vi.fn((_p: string, _m: string, limit: number) => limit),
-  getSchedulerAwareLimit: vi.fn((_p: string, _m: string, limit: number) => limit),
 }));
 
 vi.mock("../../pi/lib/dynamic-parallelism", () => ({

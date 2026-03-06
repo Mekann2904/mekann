@@ -36,24 +36,14 @@ import { Mutex } from "async-mutex";
 
 import {
   getEffectiveLimit,
-  getSchedulerAwareLimit,
 } from "../lib/adaptive-rate-controller";
 import {
   getMyParallelLimit,
   isCoordinatorInitialized,
   getModelParallelLimit,
   getActiveInstancesForModel,
-  getStealingStats,
-  isIdle,
-  findStealCandidate,
-  safeStealWork,
-  enhancedHeartbeat,
 } from "../lib/coordination/cross-instance-coordinator.js";
 import * as crossInstanceCoordinator from "../lib/coordination/cross-instance-coordinator.js";
-import {
-  broadcastQueueState,
-  getWorkStealingSummary,
-} from "../lib/coordination/cross-instance-coordinator.js";
 import {
   getParallelismAdjuster,
   getParallelism as getDynamicParallelism,
@@ -2200,14 +2190,14 @@ export function getModelAwareParallelLimit(provider: string, model: string): num
   const tier = detectTier(provider, model);
   const presetLimit = getConcurrencyLimit(provider, model, tier);
 
-  // Apply scheduler-aware limit (includes adaptive learning + predictive throttling)
-  const schedulerLimit = getSchedulerAwareLimit(provider, model, presetLimit);
+  // Adaptive controller is the current source of truth for model-aware limits.
+  const adaptiveLimit = getEffectiveLimit(provider, model, presetLimit);
 
   // Apply dynamic parallelism adjuster
   const dynamicLimit = getDynamicParallelism(provider, model);
 
-  // Take the minimum of scheduler limit and dynamic limit
-  let effectiveLimit = Math.min(schedulerLimit, dynamicLimit);
+  // Take the minimum of adaptive limit and dynamic limit
+  let effectiveLimit = Math.min(adaptiveLimit, dynamicLimit);
 
   // Distribute across instances using the same model
   if (isCoordinatorInitialized()) {
@@ -2267,17 +2257,6 @@ export function getLimitsSummary(provider?: string, model?: string): string {
   lines.push(`  activeTeamRuns: ${snapshot.teamActiveRuns}`);
   lines.push(`  activeReservations: ${snapshot.activeReservations}`);
 
-  // Work stealing summary
-  if (isCoordinatorInitialized()) {
-    const stealingSummary = getWorkStealingSummary();
-    lines.push("");
-    lines.push("Work Stealing:");
-    lines.push(`  remote_instances: ${stealingSummary.remoteInstances}`);
-    lines.push(`  total_pending_tasks: ${stealingSummary.totalPendingTasks}`);
-    lines.push(`  stealable_tasks: ${stealingSummary.stealableTasks}`);
-    lines.push(`  idle_instances: ${stealingSummary.idleInstances}`);
-  }
-
   return lines.join("\n");
 }
 
@@ -2287,19 +2266,8 @@ export function getLimitsSummary(provider?: string, model?: string): string {
  * @returns {void}
  */
 export function broadcastCurrentQueueState(): void {
-  const snapshot = getRuntimeSnapshot();
-
-  broadcastQueueState({
-    pendingTaskCount: snapshot.queuedOrchestrations,
-    activeOrchestrations: snapshot.activeOrchestrations,
-    stealableEntries: snapshot.queuedTools.slice(0, 10).map((tool) => ({
-      id: `entry-${runtimeNow()}-${Math.random().toString(36).slice(2, 8)}`,
-      toolName: validateToolName(tool.split(":")[0]),
-      priority: tool.split(":")[1] ?? "normal",
-      instanceId: "self",
-      enqueuedAt: new Date().toISOString(),
-    })),
-  });
+  // Work stealing coordination has been removed from the coordinator module.
+  // Keep this entry point as a no-op for callers that still invoke it.
 }
 
 // ============================================================================
@@ -2445,20 +2413,15 @@ export function getCheckpointStats(): CheckpointStats | null {
  * @summary ワークスチーリング試行
  * @returns 盗まれたキューのエントリ、またはnull
  */
-export async function attemptWorkStealing(): Promise<import("../lib/coordination/cross-instance-coordinator.js").StealableQueueEntry | null> {
-  if (!ENABLE_WORK_STEALING) return null;
-
-  // Only steal if we're idle
-  if (!isIdle()) return null;
-
-  const entry = await safeStealWork();
-
-  if (entry) {
-    recordWorkStealEvent(entry.instanceId, entry.id);
-  }
-
-  return entry;
+export async function attemptWorkStealing(): Promise<null> {
+  return null;
 }
+
+type RuntimeStealingStats = {
+  totalAttempts: number;
+  successfulSteals: number;
+  successRate: number;
+};
 
 /**
  * ランタイム包括ステータス取得
@@ -2469,7 +2432,7 @@ export function getComprehensiveRuntimeStatus(): {
   runtime: AgentRuntimeSnapshot;
   metrics: SchedulerMetrics | null;
   checkpoints: CheckpointStats | null;
-  stealing: import("../lib/coordination/cross-instance-coordinator.js").StealingStats | null;
+  stealing: RuntimeStealingStats | null;
   features: {
     preemption: boolean;
     workStealing: boolean;
@@ -2481,7 +2444,7 @@ export function getComprehensiveRuntimeStatus(): {
     runtime: getRuntimeSnapshot(),
     metrics: getSchedulerMetrics(),
     checkpoints: getCheckpointStats(),
-    stealing: isCoordinatorInitialized() ? getStealingStats() : null,
+    stealing: null,
     features: {
       preemption: ENABLE_PREEMPTION,
       workStealing: ENABLE_WORK_STEALING,

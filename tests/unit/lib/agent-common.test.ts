@@ -23,7 +23,6 @@ import {
   STABLE_MAX_RATE_LIMIT_RETRIES,
   STABLE_MAX_RATE_LIMIT_WAIT_MS,
   SUBAGENT_CONFIG,
-  TEAM_MEMBER_CONFIG,
   pickFieldCandidate,
   pickSummaryCandidate,
   pickClaimCandidate,
@@ -93,15 +92,6 @@ describe("SUBAGENT_CONFIG", () => {
     expect(SUBAGENT_CONFIG.label).toBe("subagent");
     expect(SUBAGENT_CONFIG.emptyOutputMessage).toBe("subagent returned empty output");
     expect(SUBAGENT_CONFIG.defaultSummaryFallback).toBe("回答を整形しました。");
-  });
-});
-
-describe("TEAM_MEMBER_CONFIG", () => {
-  it("正しい設定を持つ", () => {
-    expect(TEAM_MEMBER_CONFIG.type).toBe("team-member");
-    expect(TEAM_MEMBER_CONFIG.label).toBe("team member");
-    expect(TEAM_MEMBER_CONFIG.emptyOutputMessage).toBe("agent team member returned empty output");
-    expect(TEAM_MEMBER_CONFIG.defaultSummaryFallback).toBe("情報を整理しました。");
   });
 });
 

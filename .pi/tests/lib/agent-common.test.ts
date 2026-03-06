@@ -13,7 +13,6 @@ import {
 	STABLE_INITIAL_DELAY_MS,
 	STABLE_MAX_DELAY_MS,
 	SUBAGENT_CONFIG,
-	TEAM_MEMBER_CONFIG,
 	type EntityType,
 	type EntityConfig,
 	type NormalizedEntityOutput,
@@ -75,13 +74,6 @@ describe("EntityConfig", () => {
 			expect(SUBAGENT_CONFIG.label).toBe("subagent");
 			expect(SUBAGENT_CONFIG.emptyOutputMessage).toBeDefined();
 			expect(SUBAGENT_CONFIG.defaultSummaryFallback).toBeDefined();
-		});
-
-		it("should have valid TEAM_MEMBER_CONFIG", () => {
-			expect(TEAM_MEMBER_CONFIG.type).toBe("team-member");
-			expect(TEAM_MEMBER_CONFIG.label).toBe("team member");
-			expect(TEAM_MEMBER_CONFIG.emptyOutputMessage).toBeDefined();
-			expect(TEAM_MEMBER_CONFIG.defaultSummaryFallback).toBeDefined();
 		});
 	});
 });
