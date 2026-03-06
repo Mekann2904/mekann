@@ -34,13 +34,28 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { ContextBreakdown, ContextSourceInfo } from "../lib/types.js";
 import { 
   getTrackedSources, 
   clearTrackedSources, 
   startSession, 
   endSession 
 } from "../lib/context-breakdown-utils.js";
+
+interface ContextSourceInfo {
+  source: string;
+  charCount: number;
+  injectedContent?: string;
+}
+
+interface ContextBreakdown {
+  timestamp: number;
+  totalTokens: number;
+  sources: Array<{
+    source: string;
+    tokens: number;
+    percentage: number;
+  }>;
+}
 
 /** 最後の照合結果を保持 */
 let lastReconciliation: ContextBreakdown | null = null;
@@ -170,7 +185,7 @@ export default function (pi: ExtensionAPI) {
 
   // セッション開始時に追跡状態を初期化
   pi.on("session_start", async (_event, ctx) => {
-    startSession(ctx);
+    startSession(createSessionContext(ctx));
   });
 
   // agent_endイベントでトークン使用量を照合
@@ -200,4 +215,19 @@ export default function (pi: ExtensionAPI) {
     lastReconciliation = null;
     isInitialized = false;
   });
+}
+
+function createSessionContext(ctx: ExtensionAPI["context"]): {
+  sessionManager?: { getSessionFile?: () => string };
+} | undefined {
+  const getSessionFile = ctx.sessionManager?.getSessionFile;
+  if (typeof getSessionFile !== "function") {
+    return undefined;
+  }
+
+  return {
+    sessionManager: {
+      getSessionFile: () => getSessionFile() ?? "",
+    },
+  };
 }

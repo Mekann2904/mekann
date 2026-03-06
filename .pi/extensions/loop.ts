@@ -29,11 +29,8 @@
 // Why: Enables repeated model iterations with citation checks and reproducible run logs.
 // Related: README.md, .pi/extensions/rsa.ts, .pi/extensions/question.ts
 
-import { spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { lookup as dnsLookup } from "node:dns/promises";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -43,7 +40,6 @@ import { formatDuration } from "../lib/core/format-utils.js";
 import { toErrorMessage } from "../lib/core/error-utils.js";
 import { toBoundedInteger, toBoundedFloat } from "../lib/core/validation-utils.js";
 import {
-  truncateTextWithMarker,
   toPreview,
   normalizeOptionalText,
   throwIfAborted,
@@ -63,14 +59,10 @@ import {
 } from "../lib/intent-aware-limits";
 import {
   detectSemanticRepetition,
-  type SemanticRepetitionResult,
 } from "../lib/storage/semantic-repetition.js";
 import { atomicWriteTextFile, withFileLock } from "../lib/storage/storage-lock.js";
 import {
   findRelevantPatterns,
-  getTopSuccessPatterns,
-  getFailurePatternsToAvoid,
-  type ExtractedPattern,
 } from "../lib/storage/pattern-extraction.js";
 
 import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor";
@@ -100,13 +92,6 @@ import {
   type ParsedVerificationCommand,
   type VerificationPolicyMode,
   type VerificationPolicyConfig,
-  VERIFICATION_ALLOWLIST_ENV,
-  VERIFICATION_ALLOWLIST_ADDITIONAL_ENV,
-  VERIFICATION_POLICY_ENV,
-  VERIFICATION_POLICY_EVERY_N_ENV,
-  DEFAULT_VERIFICATION_POLICY_MODE,
-  DEFAULT_VERIFICATION_POLICY_EVERY_N,
-  DEFAULT_VERIFICATION_ALLOWLIST_PREFIXES,
   resolveVerificationPolicy,
   shouldRunVerificationCommand,
   runVerificationCommand,
@@ -120,7 +105,6 @@ import {
   LOOP_RESULT_BLOCK_TAG,
   type LoopStatus,
   type LoopGoalStatus,
-  type ParsedLoopContract,
   type RelevantPattern,
   buildIterationPrompt,
   buildReferencePack,
@@ -553,7 +537,7 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
       const thinkingLevel = (pi.getThinkingLevel() || "off") as ThinkingLevel;
       const indicator = startLoopActivityIndicator(ctx, normalized.config.maxIterations);
 
-      const _operationId = logger.startOperation("loop_run" as OperationType, task.slice(0, 60), {
+      logger.startOperation("loop_run" as OperationType, task.slice(0, 60), {
         task: params.task,
         params: {
           maxIterations: normalized.config.maxIterations,
@@ -845,7 +829,6 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
   } | undefined;
 
   if (input.config.enableMediator) {
-    const mediatorStartTime = Date.now();
     try {
       const { runMediatorPhase } = await import("../lib/mediator-integration.js");
       const { createLlmCallFunction } = await import("../lib/mediator-integration.js");
@@ -1912,37 +1895,6 @@ function appendJsonl(path: string, value: unknown) {
     appendFileSync(path, `${JSON.stringify(value)}\n`, "utf-8");
   });
 }
-
-function normalizeRefSpec(value: string): string {
-  const trimmed = String(value ?? "").trim();
-  if (!trimmed) return "";
-  if (trimmed.startsWith("@")) return trimmed.slice(1).trim();
-  return trimmed;
-}
-
-function resolvePath(cwd: string, pathLike: string): string {
-  if (isAbsolute(pathLike)) return pathLike;
-  return resolve(cwd, pathLike);
-}
-
-function looksLikeUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value);
-}
-
-function looksLikeHtml(value: string): boolean {
-  return /<html[\s>]|<!doctype html/i.test(value);
-}
-
-function htmlToText(value: string): string {
-  const withoutScripts = value
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ");
-  const withoutTags = withoutScripts.replace(/<[^>]+>/g, " ");
-  return withoutTags.replace(/\s+/g, " ").trim();
-}
-
-// Re-export truncateTextWithMarker as truncateText for backward compatibility within this module
-const truncateText = truncateTextWithMarker;
 
 /**
  * 十分条件を評価する

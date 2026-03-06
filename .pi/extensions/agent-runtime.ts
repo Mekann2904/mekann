@@ -41,7 +41,6 @@ import {
   getMyParallelLimit,
   isCoordinatorInitialized,
   getModelParallelLimit,
-  getActiveInstancesForModel,
 } from "../lib/coordination/cross-instance-coordinator.js";
 import * as crossInstanceCoordinator from "../lib/coordination/cross-instance-coordinator.js";
 import {
@@ -49,15 +48,12 @@ import {
   getParallelism as getDynamicParallelism,
 } from "../lib/coordination/dynamic-parallelism.js";
 import {
-  PriorityTaskQueue,
   inferPriority,
   comparePriority,
-  formatPriorityQueueStats,
   type PriorityQueueEntry,
 } from "../lib/coordination/priority-scheduler.js";
 import type {
   TaskPriority,
-  PriorityTaskMetadata,
   AgentRuntimeLimits,
   RuntimeQueueClass,
   RuntimeQueueEntry,
@@ -77,22 +73,18 @@ import type {
   RuntimeOrchestrationWaitInput,
   RuntimeOrchestrationLease,
   RuntimeOrchestrationWaitResult,
-  RuntimeDispatchCandidate,
   RuntimeDispatchPermitInput,
   RuntimeDispatchPermitLease,
   RuntimeDispatchPermitResult,
 } from "../lib/runtime-types";
 import {
   getConcurrencyLimit,
-  resolveLimits,
   detectTier,
 } from "../lib/provider-limits";
 import {
   getScheduler,
   createTaskId,
   type ScheduledTask,
-  type TaskResult,
-  type TaskSource,
 } from "../lib/coordination/task-scheduler.js";
 import {
   setRuntimeSnapshotProvider,
@@ -100,7 +92,6 @@ import {
 import {
   getRuntimeConfig,
   isStableProfile,
-  type RuntimeConfig,
 } from "../lib/runtime-config";
 import { getAdaptiveTotalMaxLlm } from "../lib/adaptive-total-limit.js";
 import {
@@ -171,16 +162,12 @@ export type {
  */
 class GlobalRuntimeStateProvider implements RuntimeStateProvider {
   private readonly globalScope: GlobalScopeWithRuntime;
-  private initializationPromise: Promise<void> | null = null;
-  /** BUG-RC-001修正: 初期化の競合状態を防ぐためのMutex */
-  private readonly initMutex = new Mutex();
 
   /**
    * Symbol.forを使用して一意の初期化済みフラグキーを作成
    * プロセス全体で一意であることを保証
    */
   private static readonly INIT_KEY = Symbol.for('__PI_SHARED_AGENT_RUNTIME_STATE__');
-  private static readonly INIT_FLAG_KEY = Symbol.for('__PI_SHARED_AGENT_RUNTIME_STATE_INITIALIZED__');
 
   constructor() {
     this.globalScope = globalThis as GlobalScopeWithRuntime;
@@ -253,7 +240,6 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
       configurable: true,
       enumerable: false,
     });
-    this.initializationPromise = null;
   }
 }
 
@@ -293,14 +279,12 @@ export function getRuntimeStateProvider(): RuntimeStateProvider {
  */
 
 // Constants now come from centralized runtime-config
-const DEFAULT_MAX_CONCURRENT_ORCHESTRATIONS = 4;
 const DEFAULT_RESERVATION_SWEEP_MS = 5_000;
 const DEFAULT_MAX_PENDING_QUEUE_ENTRIES = 1_000;
 const MIN_RESERVATION_TTL_MS = 2_000;
 const MAX_RESERVATION_TTL_MS = 10 * 60 * 1_000;
 const BACKOFF_MAX_FACTOR = 8;
 const BACKOFF_JITTER_RATIO = 0.2;
-const STRICT_LIMITS_ENV = "PI_AGENT_RUNTIME_STRICT_LIMITS";
 const DEBUG_RUNTIME_QUEUE =
   process.env.PI_DEBUG_RUNTIME_QUEUE === "1" ||
   process.env.PI_DEBUG_RUNTIME === "1";
@@ -475,12 +459,10 @@ async function waitForRuntimeCapacityEvent(
 
   return await new Promise((resolve) => {
     let settled = false;
-    let timeout: NodeJS.Timeout | undefined;
 
     const onEvent = () => {
       if (settled) return;
       settled = true;
-      if (timeout) clearTimeout(timeout);
       cleanup();
       resolve("event");
     };
@@ -488,17 +470,17 @@ async function waitForRuntimeCapacityEvent(
     const onAbort = () => {
       if (settled) return;
       settled = true;
-      if (timeout) clearTimeout(timeout);
       cleanup();
       resolve("aborted");
     };
 
     const cleanup = () => {
+      clearTimeout(timeout);
       runtimeCapacityEventTarget.removeEventListener("capacity-changed", onEvent);
       signal?.removeEventListener("abort", onAbort);
     };
 
-    timeout = setTimeout(() => {
+    const timeout = setTimeout(() => {
       if (settled) return;
       settled = true;
       cleanup();
@@ -756,10 +738,6 @@ function ensureRuntimeStateShape(runtime: AgentRuntimeState): AgentRuntimeState 
     runtime.limitsVersion = serializeRuntimeLimits(runtime.limits);
   }
   return runtime;
-}
-
-function isStrictRuntimeLimitMode(): boolean {
-  return process.env[STRICT_LIMITS_ENV] !== "0";
 }
 
 function enforceRuntimeLimitConsistency(runtime: AgentRuntimeState): void {
@@ -1594,7 +1572,7 @@ async function schedulerBasedWait(
       attempts,
       timedOut: result.timedOut || (runtimeNow() - startedAt >= maxWaitMs && !check.allowed),
     };
-  } catch (error) {
+  } catch {
     // Fallback to existing logic on scheduler error (graceful degradation)
     const check = checkRuntimeCapacity(input);
     return {
