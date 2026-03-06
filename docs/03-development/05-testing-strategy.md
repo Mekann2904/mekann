@@ -103,7 +103,6 @@ related: [./04-testing.md, ../02-user-guide/01-extensions.md]
 | .pi/lib/comprehensive-logger-types.ts | 型定義のみ |
 | .pi/lib/dynamic-tools/types.ts | 型定義のみ |
 | .pi/lib/embeddings/types.ts | 型定義のみ |
-| .pi/extensions/code-panel.ts | UI表示（E2Eテストで対応） |
 | .pi/extensions/code-viewer.ts | UI表示（E2Eテストで対応） |
 
 ## テストレイヤー詳細

@@ -266,7 +266,7 @@ graph TD
     Y[mcp_*] --> Z[mcp-client.ts]
     AA[repo_audit] --> BB[repo-audit-orchestrator.ts]
     CC[loop_run] --> DD[loop.ts]
-    EE[self_reflect] --> FF[self-improvement-reflection.ts]
+    EE[task_*] --> FF[task.ts / task-flow.ts]
 ```
 
 ## スキル呼び出しフロー

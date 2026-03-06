@@ -5,6 +5,20 @@
   "engines": {
     "node": ">=20.18.1"
   },
+  "files": [
+    ".pi/extensions",
+    "!.pi/extensions/web-ui/node_modules",
+    ".pi/lib",
+    ".pi/skills",
+    ".pi/APPEND_SYSTEM.md",
+    ".pi/INDEX.md",
+    ".pi/NAVIGATION.md",
+    ".pi/themes",
+    "AGENTS.md",
+    "docs",
+    "LICENSE",
+    "README.md"
+  ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@sinclair/typebox": "^0.34.48",
@@ -61,7 +75,6 @@
       "./.pi/extensions/agent-usage-tracker.ts",
       "./.pi/extensions/append-system-loader.ts",
       "./.pi/extensions/autonomy-policy.ts",
-      "./.pi/extensions/code-panel.ts",
       "./.pi/extensions/code-structure-analyzer/extension.ts",
       "./.pi/extensions/code-viewer.ts",
       "./.pi/extensions/context-usage-dashboard.ts",
@@ -76,12 +89,6 @@
       "./.pi/extensions/loop.ts",
       "./.pi/extensions/mcp-client.ts",
       "./.pi/extensions/mediator.ts",
-      "./.pi/extensions/self-improvement-loop.ts",
-      "./.pi/extensions/self-improvement-dashboard.ts",
-      "./.pi/extensions/self-improvement-reflection.ts",
-      "./.pi/extensions/self-improvement-dev-analyzer.ts",
-      "./.pi/extensions/self-improvement-output.ts",
-      "./.pi/extensions/self-improvement-pipeline.ts",
       "./.pi/extensions/plan.ts",
       "./.pi/extensions/question.ts",
       "./.pi/extensions/rate-limit-retry-budget.ts",
@@ -91,12 +98,16 @@
       "./.pi/extensions/skill-inspector.ts",
       "./.pi/extensions/startup-context.ts",
       "./.pi/extensions/subagents.ts",
+      "./.pi/extensions/task.ts",
+      "./.pi/extensions/task-flow.ts",
+      "./.pi/extensions/task-auto-executor.ts",
       "./.pi/extensions/rpm-throttle.ts",
       "./.pi/extensions/tool-compiler.ts",
       "./.pi/extensions/ul-diagnostic.ts",
       "./.pi/extensions/ul-dual-mode.ts",
       "./.pi/extensions/ul-workflow.ts",
-      "./.pi/extensions/usage-tracker.ts"
+      "./.pi/extensions/usage-tracker.ts",
+      "./.pi/extensions/web-ui/index.ts"
     ],
     "skills": [
       "./.pi/skills"
