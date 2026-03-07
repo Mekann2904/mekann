@@ -99,12 +99,17 @@ npx vitest run tests/unit/...
 # 次に必要な横断チェックを実行
 npx eslint .
 npx tsc -p tsconfig-check.json --noEmit
+npm run verify:workspace
 
 # 必要なら既存スクリプトも実行
 ./scripts/test-kitty-extension.sh
 ```
 
 変更範囲が広い場合は、integration や e2e まで広げます。
+
+PR を出す前は、`verify:workspace` を基準の quality gate と考えてください。
+
+これは GitHub Actions の `quality-gates` と同じ入口です。
 
 ### 5. コミットの作成
 
@@ -124,6 +129,11 @@ git push origin feature/your-feature-name
 
 # GitHubでプルリクエストを作成
 ```
+
+`main` / `master` の branch protection では、少なくとも次を required status checks にしてください。
+
+- `quality-gates`
+- `security`
 
 ## コーディング規約
 
@@ -164,6 +174,8 @@ async function askQuestions(questions: Question[]): Promise<Answer[]> {
 - verify していない部分は、未検証として明記する
 - UI や操作フローを変えたら、手動確認手順も書く
 - review では bugs、security、regression、test gaps を先に見る
+- 同じ失敗が続くなら、修復方針を更新してから再実行する
+- eval case や verification artifact が残る変更では、その保存先も共有する
 
 ## 拡張機能の追加
 

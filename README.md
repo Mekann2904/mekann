@@ -236,6 +236,8 @@ background_process_start(
 
 直近の書き込みより新しい成功検証がない場合は、`task_complete` と `plan_update_step(status=completed)` を止めます。  
 
+同じ失敗が繰り返された場合は、`workspace_verify_replan` で修復方針を記録するまで mutation も止めます。
+
 この拡張は `package.json`、`AGENTS.md`、`README.md`、`plans/*.md` を読んで runbook を推定します。  
 
 次を自動抽出します。  
@@ -271,6 +273,10 @@ profile も自動推定します。
 - `summary.md`
 - step ごとの `.log`
 
+繰り返し失敗したケースは `.pi/evals/workspace-verification/` に保存されます。
+
+継続ループ用の状態は `.pi/workspace-verification/continuity.json` に保存されます。
+
 完了ゲートは 3 段階です。  
 
 - `soft`: 完了ブロックなし
@@ -282,6 +288,8 @@ profile も自動推定します。
 - `workspace_verify`
 - `workspace_verify_status`
 - `workspace_verify_plan`
+- `workspace_verify_ack`
+- `workspace_verify_replan`
 - `workspace_verification_config`
 
 初期状態の確認:
@@ -325,6 +333,31 @@ workspace_verification_config(
   artifactRetentionRuns=30
 )
 ```
+
+anti-loop と eval corpus を有効にしたまま threshold を変える例:
+
+```text
+workspace_verification_config(
+  action="update",
+  requireReplanOnRepeatedFailure=true,
+  enableEvalCorpus=true,
+  antiLoopThreshold=3
+)
+```
+
+CI から同じ runbook を実行する例:
+
+```bash
+npm run verify:workspace
+```
+
+この script は changed files を見て、CI では近い verification から先に回します。
+
+たとえば lint は changed TS/JS files を優先し、typecheck / test / build は変更種類に応じて relevant steps だけを残します。
+
+GitHub Actions では `quality-gates` job がこの script を実行し、`.pi/verification-runs/`、`.pi/evals/workspace-verification/`、`.pi/workspace-verification/continuity.json` を artifact として残します。
+
+`main` / `master` を保護する場合は、required status checks に少なくとも `quality-gates` と `security` を入れてください。
 
 自動推定ではなく固定 profile で運用する例:
 
@@ -632,7 +665,11 @@ PI_AGENT_CAPACITY_POLL_MS=250        # ポーリング間隔（デフォルト25
 
 ### Plan Mode
 
-Plan Mode（計画モード）は現在、制限なしで使用可能です。ツールレベルでのブロック機能は無効化されています。
+Plan Mode（計画モード）は `Spec-first read-only` です。
+
+有効中は `edit` / `write` / `patch` と write-capable な `bash` を止めます。
+
+通常モードでも、複雑変更の mutation は execution-ready な plan がないと止まります。
 
 ### 定義済みサブエージェント
 

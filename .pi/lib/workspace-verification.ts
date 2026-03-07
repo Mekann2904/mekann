@@ -1575,7 +1575,7 @@ function computeFailureFingerprint(run: WorkspaceVerificationRunRecord): string 
 
 function loadCurrentPlanSnapshot(cwd: string): WorkspaceVerificationPlanSnapshot {
   try {
-    const storage = loadPlanStorage<{ plans?: Array<Record<string, unknown>>; currentPlanId?: string }>(cwd);
+    const storage = loadPlanStorage<{ plans: Array<Record<string, unknown>>; currentPlanId?: string }>(cwd);
     const plans = Array.isArray(storage.plans) ? storage.plans : [];
     const current = plans.find((plan) => plan.id === storage.currentPlanId)
       ?? [...plans].reverse().find((plan) => plan.status === "active" || plan.status === "draft");
@@ -1614,7 +1614,7 @@ function loadCurrentPlanSnapshot(cwd: string): WorkspaceVerificationPlanSnapshot
 
 function appendRepairStrategyToCurrentPlan(cwd: string, strategy: string): void {
   try {
-    const storage = loadPlanStorage<{ plans?: Array<Record<string, unknown>>; currentPlanId?: string }>(cwd);
+    const storage = loadPlanStorage<{ plans: Array<Record<string, unknown>>; currentPlanId?: string }>(cwd);
     const plans = Array.isArray(storage.plans) ? storage.plans : [];
     const target = plans.find((plan) => plan.id === storage.currentPlanId)
       ?? [...plans].reverse().find((plan) => plan.status === "active" || plan.status === "draft");

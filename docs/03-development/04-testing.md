@@ -81,6 +81,7 @@ npx vitest run tests/integration/...
 npx vitest run tests/e2e/...
 npx eslint .
 npx tsc -p tsconfig-check.json --noEmit
+npm run verify:workspace
 ```
 
 変更範囲が小さいときは、まず関連テストだけを回します。
@@ -218,31 +219,45 @@ echo "=========================================="
 
 ## CI/CDでのテスト実行
 
-将来的にGitHub ActionsなどのCI/CDパイプラインで自動テストを実行することを想定しています。
+mekann では、GitHub Actions の `quality-gates` job で repo-level verification を回します。
 
-将来の CI でも、考え方は同じです。
+この job は `npm run verify:workspace` を実行します。
 
-速いチェックを先に回し、失敗したらその証拠を残し、修復後に再実行します。
+ここでは runbook を再利用しつつ、CI で再現しやすい `lint / typecheck / test / build` を優先して回します。
+
+さらに changed files を見て、関連が薄い step は落とします。
+
+これで legacy debt が大きいリポジトリでも、relevant verification を先に強制できます。
+
+artifact は次に保存されます。
+
+- `.pi/verification-runs/`
+- `.pi/evals/workspace-verification/`
+- `.pi/workspace-verification/continuity.json`
 
 ### 推奨CI設定
 
 ```yaml
-# .github/workflows/test.yml（将来実装予定）
-name: Test
+# .github/workflows/test.yml
+name: CI
 
 on: [push, pull_request]
 
 jobs:
-  test:
+  quality-gates:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm install -g @mariozechner/pi-coding-agent
-      - run: ./scripts/test-kitty-extension.sh
+      - run: npm ci
+      - run: npm run verify:workspace
 ```
+
+branch protection を使う場合は、`quality-gates` を required check にします。
+
+`security` も一緒に required にするのが基本です。
 
 ## トラブルシューティング
 
@@ -261,6 +276,10 @@ jobs:
 次に、壊れている層を 1 つに絞ります。
 
 修復後は、落ちたテストと近接する回帰テストを再実行します。
+
+同じ失敗が続くなら、`workspace_verify_replan` 相当の考え方で修復方針を変えます。
+
+闇雲に実装を増やしてはいけません。
 
 ## 関連トピック
 
