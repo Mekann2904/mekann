@@ -95,13 +95,72 @@ describe("workspace-verification library", () => {
         startedAt: "2026-03-07T00:00:00.000Z",
         finishedAt: "2026-03-07T00:00:10.000Z",
         success: true,
+        artifactDir: "/repo/.pi/verification-runs/latest",
         stepResults: [],
       },
     });
 
     const finalState = loadWorkspaceVerificationState("/repo");
     expect(finalState.dirty).toBe(false);
+    expect(finalState.pendingProofReview).toBe(true);
     expect(finalState.lastVerifiedAt).toBe("2026-03-07T00:00:10.000Z");
+  });
+
+  it("requires proof review after a successful verification until artifacts are acknowledged", async () => {
+    const {
+      createWorkspaceVerificationConfig,
+      finalizeVerificationRun,
+      acknowledgeVerificationArtifacts,
+      isCompletionBlocked,
+      loadWorkspaceVerificationState,
+    } = await import("../../../.pi/lib/workspace-verification.js");
+
+    const config = createWorkspaceVerificationConfig();
+
+    finalizeVerificationRun({
+      cwd: "/repo",
+      run: {
+        trigger: "manual",
+        startedAt: "2026-03-07T00:00:00.000Z",
+        finishedAt: "2026-03-07T00:00:10.000Z",
+        success: true,
+        artifactDir: "/repo/.pi/verification-runs/latest",
+        resolvedPlan: {
+          profile: "library",
+          commands: {},
+          runtime: {
+            enabled: false,
+            command: "",
+            label: "workspace-dev-server",
+            startupTimeoutMs: 1000,
+            keepAliveOnShutdown: true,
+          },
+          ui: {
+            enabled: false,
+            timeoutMs: 1000,
+            commands: [],
+          },
+          acceptanceCriteria: [],
+          validationCommands: [],
+          recommendedSteps: ["lint", "typecheck", "test"],
+          reasons: [],
+          proofArtifacts: ["verification summary"],
+          sources: [],
+        },
+        stepResults: [],
+      },
+    });
+
+    let state = loadWorkspaceVerificationState("/repo");
+    expect(state.pendingProofReview).toBe(true);
+    expect(isCompletionBlocked(config, state)).toBe(true);
+
+    acknowledgeVerificationArtifacts({ cwd: "/repo" });
+
+    state = loadWorkspaceVerificationState("/repo");
+    expect(state.pendingProofReview).toBe(false);
+    expect(state.lastReviewedArtifactDir).toBe("/repo/.pi/verification-runs/latest");
+    expect(isCompletionBlocked(config, state)).toBe(false);
   });
 
   it("auto-runs only when the last write is newer than the last run", async () => {
@@ -176,10 +235,44 @@ describe("workspace-verification library", () => {
     expect(runbook.runtime.enabled).toBe(true);
     expect(runbook.runtime.readyPort).toBe(4173);
     expect(runbook.ui.enabled).toBe(true);
+    expect(runbook.recommendedSteps).toEqual(["lint", "typecheck", "test", "runtime", "ui"]);
+    expect(runbook.proofArtifacts).toContain("browser evidence");
 
     const resolved = resolveWorkspaceVerificationPlan(createWorkspaceVerificationConfig(), "/repo");
     expect(Boolean(resolved.commands.build)).toBe(true);
     expect(resolved.sources.length).toBeGreaterThan(0);
+  });
+
+  it("adds build-oriented verification when file impact mentions config and packaging", async () => {
+    mockState.files.set("/repo/package.json", JSON.stringify({
+      scripts: {
+        lint: "eslint .",
+        typecheck: "tsc --noEmit",
+        test: "vitest run",
+        build: "vite build",
+      },
+      devDependencies: {
+        vite: "^6.0.0",
+      },
+    }));
+    mockState.files.set("/repo/README.md", [
+      "# Changed Files",
+      "- package.json",
+      "- vite.config.ts",
+      "",
+      "# Test & Verification",
+      "- `npm run build`",
+      "- `npm test`",
+      "- review security and coverage",
+    ].join("\n"));
+
+    const { buildWorkspaceVerificationRunbook } = await import("../../../.pi/lib/workspace-verification.js");
+    const runbook = buildWorkspaceVerificationRunbook("/repo");
+
+    expect(runbook.recommendedSteps).toContain("build");
+    expect(runbook.reasons).toContain("Build or packaging impact detected");
+    expect(runbook.proofArtifacts).toContain("build output");
+    expect(runbook.proofArtifacts).toContain("review notes");
   });
 
   it("persists verification artifacts", async () => {
@@ -210,6 +303,9 @@ describe("workspace-verification library", () => {
         },
         acceptanceCriteria: [],
         validationCommands: [],
+        recommendedSteps: ["lint", "typecheck", "test"],
+        reasons: [],
+        proofArtifacts: ["verification summary"],
         sources: [],
       },
       stepResults: [{

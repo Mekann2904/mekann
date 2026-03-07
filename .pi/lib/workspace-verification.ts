@@ -83,6 +83,9 @@ export interface WorkspaceVerificationResolvedPlan {
   ui: WorkspaceVerificationUiConfig;
   acceptanceCriteria: string[];
   validationCommands: string[];
+  recommendedSteps: WorkspaceVerificationStep[];
+  reasons: string[];
+  proofArtifacts: string[];
   sources: string[];
 }
 
@@ -102,6 +105,9 @@ export interface WorkspaceVerificationConfig {
   autoDetectRunbook: boolean;
   autoRunOnTurnEnd: boolean;
   gateMode: WorkspaceVerificationGateMode;
+  requireProofReview: boolean;
+  checkpointOnMutation: boolean;
+  checkpointOnFailure: boolean;
   commandTimeoutMs: number;
   artifactRetentionRuns: number;
   enabledSteps: Record<WorkspaceVerificationStep, boolean>;
@@ -121,6 +127,9 @@ export interface WorkspaceVerificationConfigPatch {
   autoDetectRunbook?: boolean;
   autoRunOnTurnEnd?: boolean;
   gateMode?: WorkspaceVerificationGateMode;
+  requireProofReview?: boolean;
+  checkpointOnMutation?: boolean;
+  checkpointOnFailure?: boolean;
   commandTimeoutMs?: number;
   artifactRetentionRuns?: number;
   enabledSteps?: Partial<Record<WorkspaceVerificationStep, boolean>>;
@@ -132,10 +141,15 @@ export interface WorkspaceVerificationConfigPatch {
 export interface WorkspaceVerificationState {
   dirty: boolean;
   running: boolean;
+  pendingProofReview: boolean;
   writeCount: number;
   lastWriteAt?: string;
   lastWriteTool?: string;
   lastVerifiedAt?: string;
+  lastReviewedAt?: string;
+  lastReviewedArtifactDir?: string;
+  lastMutationCheckpointId?: string;
+  lastFailureCheckpointId?: string;
   lastRun?: WorkspaceVerificationRunRecord;
 }
 
@@ -162,6 +176,7 @@ interface ExtractedRunbookHints {
   ui: Partial<WorkspaceVerificationUiConfig>;
   acceptanceCriteria: string[];
   validationCommands: string[];
+  fileModuleImpact: string[];
   sources: string[];
 }
 
@@ -262,6 +277,9 @@ export function createWorkspaceVerificationConfig(): WorkspaceVerificationConfig
     autoDetectRunbook: true,
     autoRunOnTurnEnd: true,
     gateMode: "strict",
+    requireProofReview: true,
+    checkpointOnMutation: true,
+    checkpointOnFailure: true,
     commandTimeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
     artifactRetentionRuns: DEFAULT_ARTIFACT_RETENTION,
     enabledSteps: createDefaultEnabledSteps(),
@@ -290,6 +308,7 @@ export function createWorkspaceVerificationState(): WorkspaceVerificationState {
   return {
     dirty: false,
     running: false,
+    pendingProofReview: false,
     writeCount: 0,
   };
 }
@@ -312,6 +331,9 @@ export function normalizeWorkspaceVerificationConfig(input: unknown): WorkspaceV
     autoDetectRunbook: normalizeBoolean(record.autoDetectRunbook, fallback.autoDetectRunbook),
     autoRunOnTurnEnd: normalizeBoolean(record.autoRunOnTurnEnd, fallback.autoRunOnTurnEnd),
     gateMode: normalizeGateMode(record.gateMode, fallback.gateMode),
+    requireProofReview: normalizeBoolean(record.requireProofReview, fallback.requireProofReview),
+    checkpointOnMutation: normalizeBoolean(record.checkpointOnMutation, fallback.checkpointOnMutation),
+    checkpointOnFailure: normalizeBoolean(record.checkpointOnFailure, fallback.checkpointOnFailure),
     commandTimeoutMs: normalizeInteger(record.commandTimeoutMs, fallback.commandTimeoutMs, 1_000, 600_000),
     artifactRetentionRuns: normalizeInteger(record.artifactRetentionRuns, fallback.artifactRetentionRuns, 1, 200),
     enabledSteps: {
@@ -392,10 +414,15 @@ export function normalizeWorkspaceVerificationState(input: unknown): WorkspaceVe
   return {
     dirty: normalizeBoolean(record.dirty, fallback.dirty),
     running: normalizeBoolean(record.running, fallback.running),
+    pendingProofReview: normalizeBoolean(record.pendingProofReview, fallback.pendingProofReview),
     writeCount: normalizeInteger(record.writeCount, fallback.writeCount, 0, 1_000_000),
     lastWriteAt: normalizeOptionalString(record.lastWriteAt),
     lastWriteTool: normalizeOptionalString(record.lastWriteTool),
     lastVerifiedAt: normalizeOptionalString(record.lastVerifiedAt),
+    lastReviewedAt: normalizeOptionalString(record.lastReviewedAt),
+    lastReviewedArtifactDir: normalizeOptionalString(record.lastReviewedArtifactDir),
+    lastMutationCheckpointId: normalizeOptionalString(record.lastMutationCheckpointId),
+    lastFailureCheckpointId: normalizeOptionalString(record.lastFailureCheckpointId),
     lastRun,
   };
 }
@@ -418,6 +445,9 @@ function createEmptyResolvedPlan(): WorkspaceVerificationResolvedPlan {
     },
     acceptanceCriteria: [],
     validationCommands: [],
+    recommendedSteps: ["lint", "typecheck", "test"],
+    reasons: [],
+    proofArtifacts: ["verification summary"],
     sources: [],
   };
 }
@@ -461,6 +491,11 @@ function normalizeResolvedPlan(input: unknown): WorkspaceVerificationResolvedPla
     },
     acceptanceCriteria: normalizeStringArray(record.acceptanceCriteria),
     validationCommands: normalizeStringArray(record.validationCommands),
+    recommendedSteps: normalizeStringArray(record.recommendedSteps)
+      .filter((step): step is WorkspaceVerificationStep =>
+        step === "lint" || step === "typecheck" || step === "test" || step === "build" || step === "runtime" || step === "ui"),
+    reasons: normalizeStringArray(record.reasons),
+    proofArtifacts: normalizeStringArray(record.proofArtifacts),
     sources: normalizeStringArray(record.sources),
   };
 }
@@ -543,6 +578,7 @@ export function markWorkspaceDirty(input?: { cwd?: string; toolName?: string }):
     ...current,
     dirty: true,
     running: false,
+    pendingProofReview: false,
     writeCount: current.writeCount + 1,
     lastWriteAt: nowIso(),
     lastWriteTool: input?.toolName?.trim() || current.lastWriteTool,
@@ -565,8 +601,24 @@ export function finalizeVerificationRun(input: { cwd?: string; run: WorkspaceVer
     ...current,
     running: false,
     dirty: input.run.success ? false : current.dirty,
+    pendingProofReview: input.run.success ? Boolean(input.run.artifactDir) : current.pendingProofReview,
     lastVerifiedAt: input.run.success ? input.run.finishedAt : current.lastVerifiedAt,
+    lastReviewedAt: input.run.success ? undefined : current.lastReviewedAt,
+    lastReviewedArtifactDir: input.run.success ? undefined : current.lastReviewedArtifactDir,
     lastRun: input.run,
+  });
+}
+
+export function acknowledgeVerificationArtifacts(input: { cwd?: string; artifactDir?: string }): WorkspaceVerificationState {
+  const targetCwd = normalizeCwd(input.cwd);
+  const current = loadWorkspaceVerificationState(targetCwd);
+  const artifactDir = input.artifactDir?.trim() || current.lastRun?.artifactDir;
+
+  return saveWorkspaceVerificationState(targetCwd, {
+    ...current,
+    pendingProofReview: false,
+    lastReviewedAt: nowIso(),
+    lastReviewedArtifactDir: artifactDir,
   });
 }
 
@@ -606,6 +658,10 @@ export function isCompletionBlocked(
 ): boolean {
   if (!config.enabled || config.gateMode === "soft") {
     return false;
+  }
+
+  if (config.requireProofReview && state.pendingProofReview) {
+    return true;
   }
 
   if (!state.dirty) {
@@ -984,6 +1040,33 @@ function extractAcceptanceCriteria(content: string): string[] {
   return results;
 }
 
+function extractSectionItems(content: string, headingPattern: RegExp): string[] {
+  const lines = content.split(/\r?\n/);
+  const results: string[] = [];
+  let inSection = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (headingPattern.test(trimmed)) {
+      inSection = true;
+      continue;
+    }
+    if (inSection && /^#+\s+/.test(trimmed)) {
+      break;
+    }
+    if (!inSection) {
+      continue;
+    }
+
+    const match = line.match(/^\s*[-*]\s+\[?\s*[x !-]?\s*\]?\s*(.+)$/);
+    if (match?.[1]) {
+      results.push(match[1].trim());
+    }
+  }
+
+  return results;
+}
+
 function extractCommands(content: string): string[] {
   const matches = content.match(COMMAND_PATTERN) ?? [];
   return Array.from(new Set(matches.map((item) => item.trim()).filter(Boolean)));
@@ -1019,6 +1102,7 @@ function mergeRunbookHints(target: ExtractedRunbookHints, source: ExtractedRunbo
     },
     acceptanceCriteria: Array.from(new Set([...source.acceptanceCriteria, ...target.acceptanceCriteria])),
     validationCommands: Array.from(new Set([...source.validationCommands, ...target.validationCommands])),
+    fileModuleImpact: Array.from(new Set([...source.fileModuleImpact, ...target.fileModuleImpact])),
     sources: Array.from(new Set([...source.sources, ...target.sources])),
   };
 }
@@ -1035,6 +1119,7 @@ function extractHintsFromMarkdown(path: string, content: string): ExtractedRunbo
     ui: {},
     acceptanceCriteria,
     validationCommands: commands,
+    fileModuleImpact: extractSectionItems(body, /^#+\s+(File\/Module Impact|Impact|Changed Files)/i),
     sources: [path],
   };
 
@@ -1081,6 +1166,7 @@ function extractHintsFromPackageJson(cwd: string, pkg: Record<string, unknown>):
     ui: {},
     acceptanceCriteria: [],
     validationCommands: [],
+    fileModuleImpact: [],
     sources: [join(cwd, "package.json")],
   };
 
@@ -1109,6 +1195,83 @@ function extractHintsFromPackageJson(cwd: string, pkg: Record<string, unknown>):
   }
 
   return hints;
+}
+
+function inferRelevantVerification(
+  profile: WorkspaceVerificationProfile,
+  hints: ExtractedRunbookHints,
+  runtime: WorkspaceVerificationRuntimeConfig,
+  ui: WorkspaceVerificationUiConfig,
+): {
+  recommendedSteps: WorkspaceVerificationStep[];
+  reasons: string[];
+  proofArtifacts: string[];
+} {
+  const haystack = [
+    ...hints.acceptanceCriteria,
+    ...hints.validationCommands,
+    ...hints.fileModuleImpact,
+    runtime.command,
+    ui.baseUrl,
+    ...ui.commands,
+  ].join("\n").toLowerCase();
+
+  const fileImpact = hints.fileModuleImpact.join("\n").toLowerCase();
+  const recommended = new Set<WorkspaceVerificationStep>(["lint", "typecheck", "test"]);
+  const reasons: string[] = [];
+  const proofArtifacts = new Set<string>(["verification summary", "step logs"]);
+
+  const pushReason = (reason: string) => {
+    if (!reasons.includes(reason)) {
+      reasons.push(reason);
+    }
+  };
+
+  if (profile === "web-app" || /\b(ui|frontend|browser|page|component|css|html|localhost|screenshot)\b/.test(haystack)) {
+    if (runtime.enabled) {
+      recommended.add("runtime");
+    }
+    if (ui.enabled) {
+      recommended.add("ui");
+    }
+    pushReason("UI or browser-facing change detected");
+    proofArtifacts.add("browser evidence");
+  }
+
+  if (/\b(api|backend|server|route|endpoint|http)\b/.test(haystack)) {
+    if (runtime.enabled) {
+      recommended.add("runtime");
+    }
+    pushReason("Runtime-facing change detected");
+    proofArtifacts.add("runtime logs");
+  }
+
+  if (/\b(build|bundle|vite|webpack|rollup|package\.json|config)\b/.test(haystack) || /package\.json|vite\.config|webpack|rollup/.test(fileImpact)) {
+    recommended.add("build");
+    pushReason("Build or packaging impact detected");
+    proofArtifacts.add("build output");
+  }
+
+  if (/\b(type|tsconfig|schema|interface|typing)\b/.test(haystack) || /\.ts\b/.test(fileImpact)) {
+    recommended.add("typecheck");
+    pushReason("Type-sensitive change detected");
+  }
+
+  if (/\b(test|regression|invariant|property|behavior|workflow)\b/.test(haystack)) {
+    recommended.add("test");
+    pushReason("Behavioral regression risk detected");
+    proofArtifacts.add("test results");
+  }
+
+  if (/\b(review|security|coverage)\b/.test(haystack)) {
+    proofArtifacts.add("review notes");
+  }
+
+  return {
+    recommendedSteps: [...recommended],
+    reasons,
+    proofArtifacts: [...proofArtifacts],
+  };
 }
 
 export function buildWorkspaceVerificationRunbook(cwd?: string): WorkspaceVerificationResolvedPlan {
@@ -1156,6 +1319,8 @@ export function buildWorkspaceVerificationRunbook(cwd?: string): WorkspaceVerifi
       : (baseUrl ? ["open ${baseUrl}", "snapshot"] : []),
   };
 
+  const relevant = inferRelevantVerification(profile, hints, runtime, ui);
+
   return {
     profile,
     commands: hints.commands,
@@ -1163,6 +1328,9 @@ export function buildWorkspaceVerificationRunbook(cwd?: string): WorkspaceVerifi
     ui,
     acceptanceCriteria: hints.acceptanceCriteria,
     validationCommands: hints.validationCommands,
+    recommendedSteps: relevant.recommendedSteps,
+    reasons: relevant.reasons,
+    proofArtifacts: relevant.proofArtifacts,
     sources: hints.sources,
   };
 }
@@ -1202,6 +1370,9 @@ export function resolveWorkspaceVerificationPlan(
     },
     acceptanceCriteria: detected.acceptanceCriteria,
     validationCommands: detected.validationCommands,
+    recommendedSteps: detected.recommendedSteps,
+    reasons: detected.reasons,
+    proofArtifacts: detected.proofArtifacts,
     sources: detected.sources,
   };
 }
@@ -1220,7 +1391,7 @@ export function resolveEnabledSteps(
 ): WorkspaceVerificationStep[] {
   const selected = requested && requested.length > 0
     ? requested
-    : ["lint", "typecheck", "test", "build", "runtime", "ui"];
+    : resolvedPlan.recommendedSteps;
 
   const flags: Record<WorkspaceVerificationStep, boolean> = {
     lint: config.enabledSteps.lint,
@@ -1253,6 +1424,13 @@ function formatRunSummary(run: WorkspaceVerificationRunRecord): string {
   if (run.resolvedPlan.acceptanceCriteria.length > 0) {
     lines.push("", "acceptance_criteria:");
     for (const item of run.resolvedPlan.acceptanceCriteria) {
+      lines.push(`- ${item}`);
+    }
+  }
+
+  if (run.resolvedPlan.proofArtifacts.length > 0) {
+    lines.push("", "proof_artifacts:");
+    for (const item of run.resolvedPlan.proofArtifacts) {
       lines.push(`- ${item}`);
     }
   }
@@ -1360,8 +1538,12 @@ export function formatWorkspaceVerificationStatus(
     `auto_detect_runbook=${config.autoDetectRunbook}`,
     `auto_run=${config.autoRunOnTurnEnd}`,
     `gate_mode=${config.gateMode}`,
+    `require_proof_review=${config.requireProofReview}`,
+    `checkpoint_on_mutation=${config.checkpointOnMutation}`,
+    `checkpoint_on_failure=${config.checkpointOnFailure}`,
     `dirty=${state.dirty}`,
     `running=${state.running}`,
+    `pending_proof_review=${state.pendingProofReview}`,
     `write_count=${state.writeCount}`,
     `last_write_at=${state.lastWriteAt ?? "-"}`,
     `last_write_tool=${state.lastWriteTool ?? "-"}`,
@@ -1376,6 +1558,7 @@ export function formatWorkspaceVerificationStatus(
       `runtime_command=${resolvedPlan.runtime.command || "-"}`,
       `ui_enabled=${resolvedPlan.ui.enabled}`,
       `ui_base_url=${resolvedPlan.ui.baseUrl || "-"}`,
+      `recommended_steps=${resolvedPlan.recommendedSteps.join(",") || "-"}`,
     );
   }
 
@@ -1386,6 +1569,33 @@ export function formatWorkspaceVerificationStatus(
       `last_run_finished_at=${state.lastRun.finishedAt}`,
       `last_run_artifact_dir=${state.lastRun.artifactDir ?? "-"}`,
     );
+  }
+
+  if (state.lastReviewedAt) {
+    lines.push(`last_reviewed_at=${state.lastReviewedAt}`);
+  }
+  if (state.lastReviewedArtifactDir) {
+    lines.push(`last_reviewed_artifact_dir=${state.lastReviewedArtifactDir}`);
+  }
+  if (state.lastMutationCheckpointId) {
+    lines.push(`last_mutation_checkpoint=${state.lastMutationCheckpointId}`);
+  }
+  if (state.lastFailureCheckpointId) {
+    lines.push(`last_failure_checkpoint=${state.lastFailureCheckpointId}`);
+  }
+
+  if (resolvedPlan?.reasons.length) {
+    lines.push("relevant_verification_reasons:");
+    for (const item of resolvedPlan.reasons) {
+      lines.push(`- ${item}`);
+    }
+  }
+
+  if (resolvedPlan?.proofArtifacts.length) {
+    lines.push("required_proof_artifacts:");
+    for (const item of resolvedPlan.proofArtifacts) {
+      lines.push(`- ${item}`);
+    }
   }
 
   return lines.join("\n");

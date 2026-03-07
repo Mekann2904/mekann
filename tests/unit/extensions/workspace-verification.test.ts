@@ -17,6 +17,9 @@ const mockApi = vi.hoisted(() => ({
     autoDetectRunbook: true,
     autoRunOnTurnEnd: true,
     gateMode: "strict",
+    requireProofReview: true,
+    checkpointOnMutation: true,
+    checkpointOnFailure: true,
     commandTimeoutMs: 120000,
     artifactRetentionRuns: 20,
     enabledSteps: {
@@ -70,18 +73,27 @@ const mockApi = vi.hoisted(() => ({
     },
     acceptanceCriteria: ["UI が壊れていないこと"],
     validationCommands: ["npm run lint", "npm run typecheck", "npm test"],
+    recommendedSteps: ["lint", "typecheck", "test", "runtime", "ui"],
+    reasons: ["UI or browser-facing change detected"],
+    proofArtifacts: ["verification summary", "step logs", "browser evidence"],
     sources: ["/repo/AGENTS.md"],
   },
   state: {
     dirty: false,
     running: false,
+    pendingProofReview: false,
     writeCount: 0,
     lastWriteAt: undefined,
     lastWriteTool: undefined,
     lastVerifiedAt: undefined,
+    lastReviewedAt: undefined,
+    lastReviewedArtifactDir: undefined,
+    lastMutationCheckpointId: undefined,
+    lastFailureCheckpointId: undefined,
     lastRun: undefined,
   },
   runCalls: [] as Array<{ trigger: string; steps?: string[] }>,
+  checkpoints: [] as Array<{ priority: string; metadata?: Record<string, unknown>; state?: Record<string, unknown> }>,
 }));
 
 vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
@@ -89,6 +101,15 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
   loadWorkspaceVerificationConfig: vi.fn(() => mockApi.config),
   loadWorkspaceVerificationState: vi.fn(() => mockApi.state),
   resolveWorkspaceVerificationPlan: vi.fn(() => mockApi.resolvedPlan),
+  acknowledgeVerificationArtifacts: vi.fn(({ artifactDir }) => {
+    mockApi.state = {
+      ...mockApi.state,
+      pendingProofReview: false,
+      lastReviewedAt: "2026-03-07T00:05:00.000Z",
+      lastReviewedArtifactDir: artifactDir ?? mockApi.state.lastRun?.artifactDir,
+    };
+    return mockApi.state;
+  }),
   saveWorkspaceVerificationConfig: vi.fn((_cwd, next) => {
     mockApi.config = {
       ...mockApi.config,
@@ -105,6 +126,7 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
       ...mockApi.state,
       dirty: true,
       running: false,
+      pendingProofReview: false,
       writeCount: mockApi.state.writeCount + 1,
       lastWriteAt: "2026-03-07T00:00:00.000Z",
       lastWriteTool: toolName,
@@ -125,13 +147,20 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
       ...mockApi.state,
       dirty: !run.success,
       running: false,
+      pendingProofReview: Boolean(run.success && run.artifactDir),
       lastVerifiedAt: run.success ? run.finishedAt : mockApi.state.lastVerifiedAt,
+      lastReviewedAt: run.success ? undefined : mockApi.state.lastReviewedAt,
+      lastReviewedArtifactDir: run.success ? undefined : mockApi.state.lastReviewedArtifactDir,
       lastRun: run,
     };
     return mockApi.state;
   }),
   shouldAutoRunVerification: vi.fn(() => mockApi.state.dirty && !mockApi.state.running),
-  isCompletionBlocked: vi.fn((_config, state) => Boolean(state.dirty)),
+  saveWorkspaceVerificationState: vi.fn((_cwd, next) => {
+    mockApi.state = next;
+    return mockApi.state;
+  }),
+  isCompletionBlocked: vi.fn((config, state) => Boolean(state.dirty || (config.requireProofReview && state.pendingProofReview))),
   getResolvedCommandForStep: vi.fn((_plan, step) => mockApi.resolvedPlan.commands[step] ?? ""),
   resolveEnabledSteps: vi.fn(() => ["lint", "typecheck", "test", "runtime", "ui"]),
   runWorkspaceCommand: vi.fn(async () => ({
@@ -147,6 +176,15 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
   parseWorkspaceCommand: vi.fn((command: string) => ({
     executable: command.split(/\s+/)[0],
     args: command.split(/\s+/).slice(1),
+  })),
+}));
+
+vi.mock("../../../.pi/lib/checkpoint-manager.js", () => ({
+  getCheckpointManager: vi.fn(() => ({
+    save: vi.fn(async (payload) => {
+      mockApi.checkpoints.push(payload);
+      return { success: true, checkpointId: `cp-${mockApi.checkpoints.length}` };
+    }),
   })),
 }));
 
@@ -173,12 +211,18 @@ function createPiMock() {
   mockApi.state = {
     dirty: false,
     running: false,
+    pendingProofReview: false,
     writeCount: 0,
     lastWriteAt: undefined,
     lastWriteTool: undefined,
     lastVerifiedAt: undefined,
+    lastReviewedAt: undefined,
+    lastReviewedArtifactDir: undefined,
+    lastMutationCheckpointId: undefined,
+    lastFailureCheckpointId: undefined,
     lastRun: undefined,
   };
+  mockApi.checkpoints = [];
 
   return {
     registerTool: vi.fn((tool) => {
@@ -215,6 +259,7 @@ describe("workspace-verification extension", () => {
       "workspace_verify",
       "workspace_verify_status",
       "workspace_verify_plan",
+      "workspace_verify_ack",
       "workspace_verification_config",
     ]);
   });
@@ -237,6 +282,8 @@ describe("workspace-verification extension", () => {
 
     expect(mockApi.state.dirty).toBe(true);
     expect(mockApi.state.lastWriteTool).toBe("edit");
+    expect(mockApi.state.lastMutationCheckpointId).toBe("cp-1");
+    expect(mockApi.checkpoints[0]?.metadata?.kind).toBe("mutation");
   });
 
   it("blocks task completion while verification is stale", async () => {
@@ -254,6 +301,23 @@ describe("workspace-verification extension", () => {
 
     expect(result?.block).toBe(true);
     expect(String(result?.reason)).toContain("workspace_verify");
+  });
+
+  it("blocks task completion until proof artifacts are acknowledged", async () => {
+    const extension = (await import("../../../.pi/extensions/workspace-verification.js")).default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    mockApi.state.pendingProofReview = true;
+
+    const handler = mockApi.handlers.get("tool_call");
+    const result = await handler?.(
+      { toolName: "task_complete", input: {} },
+      { cwd: "/repo" },
+    );
+
+    expect(result?.block).toBe(true);
+    expect(String(result?.reason)).toContain("workspace_verify_ack");
   });
 
   it("auto-runs verification on turn end when the workspace is dirty", async () => {
@@ -276,6 +340,42 @@ describe("workspace-verification extension", () => {
     expect(mockApi.state.lastRun?.artifactDir).toContain("verification-runs");
   });
 
+  it("saves a failure checkpoint when verification fails", async () => {
+    const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
+    const extension = extensionModule.default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    mockApi.config = {
+      ...mockApi.config,
+      checkpointOnFailure: true,
+    };
+
+    const workspaceCommandModule = await import("../../../.pi/lib/workspace-verification.js");
+    vi.mocked(workspaceCommandModule.runWorkspaceCommand).mockResolvedValueOnce({
+      command: "npm run lint",
+      success: false,
+      exitCode: 1,
+      timedOut: false,
+      durationMs: 25,
+      stdout: "",
+      stderr: "lint failed",
+      error: "lint failed",
+    });
+
+    const tool = mockApi.tools.find((item) => item.name === "workspace_verify");
+    const result = await tool?.execute("tool-1", { trigger: "manual", steps: ["lint"] }, undefined, undefined, {
+      cwd: "/repo",
+      ui: {
+        notify: (message: string, level: string) => mockApi.notifications.push({ message, level }),
+      },
+    });
+
+    expect(result?.details.success).toBe(false);
+    expect(mockApi.state.lastFailureCheckpointId).toBe("cp-1");
+    expect(mockApi.checkpoints[0]?.metadata?.kind).toBe("verification-failure");
+  });
+
   it("shows the resolved verification plan", async () => {
     const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
     const extension = extensionModule.default;
@@ -286,5 +386,29 @@ describe("workspace-verification extension", () => {
     const result = await tool?.execute("tool-1", {}, undefined, undefined, { cwd: "/repo" });
 
     expect(result?.content[0]?.text).toContain("\"profile\": \"web-app\"");
+  });
+
+  it("acknowledges the latest proof artifacts", async () => {
+    const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
+    const extension = extensionModule.default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    mockApi.state.pendingProofReview = true;
+    mockApi.state.lastRun = {
+      trigger: "manual",
+      startedAt: "2026-03-07T00:00:00.000Z",
+      finishedAt: "2026-03-07T00:00:10.000Z",
+      success: true,
+      artifactDir: "/repo/.pi/verification-runs/latest",
+      resolvedPlan: mockApi.resolvedPlan,
+      stepResults: [],
+    };
+
+    const tool = mockApi.tools.find((item) => item.name === "workspace_verify_ack");
+    const result = await tool?.execute("tool-1", {}, undefined, undefined, { cwd: "/repo" });
+
+    expect(mockApi.state.pendingProofReview).toBe(false);
+    expect(result?.content[0]?.text).toContain("/repo/.pi/verification-runs/latest");
   });
 });

@@ -19,6 +19,7 @@ import {
   waitForBackgroundProcessReady,
 } from "../lib/background-processes.js";
 import {
+  acknowledgeVerificationArtifacts,
   createWorkspaceVerificationConfig,
   finalizeVerificationRun,
   formatWorkspaceVerificationStatus,
@@ -32,6 +33,7 @@ import {
   persistWorkspaceVerificationArtifacts,
   resolveEnabledSteps,
   resolveWorkspaceVerificationPlan,
+  saveWorkspaceVerificationState,
   saveWorkspaceVerificationConfig,
   shouldAutoRunVerification,
   type WorkspaceVerificationConfig,
@@ -43,6 +45,7 @@ import {
   type WorkspaceVerificationTrigger,
   runWorkspaceCommand,
 } from "../lib/workspace-verification.js";
+import { getCheckpointManager } from "../lib/checkpoint-manager.js";
 import { buildPlaywrightCliArgs } from "./playwright-cli.js";
 
 const execFileAsync = promisify(execFile);
@@ -63,6 +66,33 @@ interface WorkspaceVerificationContext {
 
 function buildVerificationMarker(): string {
   return "<!-- WORKSPACE_VERIFICATION_STATUS -->";
+}
+
+async function saveWorkspaceCheckpoint(
+  cwd: string,
+  kind: "mutation" | "verification-failure",
+  payload: Record<string, unknown>,
+): Promise<string | undefined> {
+  try {
+    const manager = getCheckpointManager();
+    const result = await manager.save({
+      taskId: `workspace-verification:${cwd}`,
+      source: "subagent_run",
+      provider: "internal",
+      model: "workspace-verification",
+      priority: kind === "verification-failure" ? "high" : "normal",
+      state: payload,
+      progress: kind === "verification-failure" ? 0.9 : 0.25,
+      metadata: {
+        kind,
+        cwd,
+      },
+      ttlMs: 7 * 24 * 60 * 60 * 1000,
+    });
+    return result.success ? result.checkpointId : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function buildStatusBlock(
@@ -99,6 +129,17 @@ function buildStatusBlock(
     }
   }
 
+  if (resolvedPlan.recommendedSteps.length > 0) {
+    lines.push("", `Recommended Steps: ${resolvedPlan.recommendedSteps.join(", ")}`);
+  }
+
+  if (resolvedPlan.proofArtifacts.length > 0) {
+    lines.push("", "Required Proof Artifacts:");
+    for (const item of resolvedPlan.proofArtifacts.slice(0, 6)) {
+      lines.push(`- ${item}`);
+    }
+  }
+
   if (state.lastRun && !state.lastRun.success) {
     lines.push("", "直近の検証は失敗している。artifact を読んで直してから進むこと。");
     if (state.lastRun.artifactDir) {
@@ -108,6 +149,10 @@ function buildStatusBlock(
 
   if (state.dirty) {
     lines.push("", "未検証の変更が残っている。`workspace_verify` または自動検証の成功まで完了を止めること。");
+  }
+
+  if (config.requireProofReview && state.pendingProofReview) {
+    lines.push("", "直近の成功検証は未レビュー。artifact を見たら `workspace_verify_ack` を実行すること。");
   }
 
   return lines.join("\n");
@@ -124,8 +169,11 @@ function shouldBlockTool(
   }
 
   const toolName = typeof event.toolName === "string" ? event.toolName : "";
+  const reasonCore = config.requireProofReview && state.pendingProofReview
+    ? "A successful verification exists, but its proof artifacts have not been acknowledged. Run workspace_verify_ack after inspecting the latest artifacts."
+    : "Workspace verification is stale. Run workspace_verify and inspect the latest artifacts.";
   if (toolName === "task_complete") {
-    return "Workspace verification is stale. Run workspace_verify and inspect the latest artifacts before task_complete.";
+    return `${reasonCore} before task_complete.`;
   }
 
   if (toolName === "plan_update_step") {
@@ -133,7 +181,7 @@ function shouldBlockTool(
       ? event.input as Record<string, unknown>
       : {};
     if (input.status === "completed") {
-      return "Workspace verification is stale. Run workspace_verify before marking a plan step completed.";
+      return `${reasonCore} before marking a plan step completed.`;
     }
   }
 
@@ -428,6 +476,30 @@ export async function runWorkspaceVerification(
   const persistedRun = persistWorkspaceVerificationArtifacts(cwd, config, bareRun);
   finalizeVerificationRun({ cwd, run: persistedRun });
 
+  if (!persistedRun.success && config.checkpointOnFailure) {
+    const checkpointId = await saveWorkspaceCheckpoint(cwd, "verification-failure", {
+      artifactDir: persistedRun.artifactDir,
+      trigger: persistedRun.trigger,
+      profile: persistedRun.resolvedPlan.profile,
+      stepResults: persistedRun.stepResults.map((item) => ({
+        step: item.step,
+        success: item.success,
+        skipped: item.skipped,
+        command: item.command,
+        error: item.error,
+        artifactPath: item.artifactPath,
+      })),
+    });
+
+    if (checkpointId) {
+      const state = loadWorkspaceVerificationState(cwd);
+      saveWorkspaceVerificationState(cwd, {
+        ...state,
+        lastFailureCheckpointId: checkpointId,
+      });
+    }
+  }
+
   if (ctx.ui?.notify) {
     ctx.ui.notify(
       persistedRun.success
@@ -520,7 +592,21 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
       : false;
 
     if (WRITE_TOOLS.has(toolName) && !isError) {
-      markWorkspaceDirty({ cwd: ctx.cwd, toolName });
+      const config = loadWorkspaceVerificationConfig(ctx.cwd);
+      const dirtyState = markWorkspaceDirty({ cwd: ctx.cwd, toolName });
+      if (config.checkpointOnMutation) {
+        const checkpointId = await saveWorkspaceCheckpoint(ctx.cwd, "mutation", {
+          toolName,
+          writeCount: dirtyState.writeCount,
+          lastWriteAt: dirtyState.lastWriteAt,
+        });
+        if (checkpointId) {
+          saveWorkspaceVerificationState(ctx.cwd, {
+            ...dirtyState,
+            lastMutationCheckpointId: checkpointId,
+          });
+        }
+      }
       ctx.ui?.notify?.("Workspace marked dirty. Verification is now required.", "info");
     }
   });
@@ -552,6 +638,13 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
         "warning",
       );
       return;
+    }
+
+    if (config.requireProofReview && state.pendingProofReview) {
+      ctx.ui?.notify?.(
+        "Successful verification artifacts are waiting for review. Run workspace_verify_ack after inspection.",
+        "warning",
+      );
     }
 
     if (config.enabled) {
@@ -623,6 +716,26 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    name: "workspace_verify_ack",
+    label: "Workspace Verify Ack",
+    description: "Acknowledge that the latest verification artifacts have been inspected.",
+    parameters: Type.Object({
+      artifactDir: Type.Optional(Type.String()),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const state = acknowledgeVerificationArtifacts({
+        cwd: ctx.cwd,
+        artifactDir: params.artifactDir,
+      });
+
+      return {
+        content: [{ type: "text", text: `Proof artifacts acknowledged: ${state.lastReviewedArtifactDir ?? "-"}` }],
+        details: state,
+      };
+    },
+  });
+
+  pi.registerTool({
     name: "workspace_verification_config",
     label: "Workspace Verification Config",
     description: "Show or update workspace verification settings.",
@@ -638,6 +751,9 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
       ])),
       autoDetectRunbook: Type.Optional(Type.Boolean()),
       autoRunOnTurnEnd: Type.Optional(Type.Boolean()),
+      requireProofReview: Type.Optional(Type.Boolean()),
+      checkpointOnMutation: Type.Optional(Type.Boolean()),
+      checkpointOnFailure: Type.Optional(Type.Boolean()),
       gateMode: Type.Optional(Type.Union([
         Type.Literal("soft"),
         Type.Literal("strict"),
@@ -682,6 +798,9 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
           profile: params.profile,
           autoDetectRunbook: params.autoDetectRunbook,
           autoRunOnTurnEnd: params.autoRunOnTurnEnd,
+          requireProofReview: params.requireProofReview,
+          checkpointOnMutation: params.checkpointOnMutation,
+          checkpointOnFailure: params.checkpointOnFailure,
           gateMode: params.gateMode,
           commandTimeoutMs: params.commandTimeoutMs,
           artifactRetentionRuns: params.artifactRetentionRuns,
