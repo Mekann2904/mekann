@@ -30,3 +30,9 @@ tools: ["Read", "LS", "Grep", "Glob", "WebSearch"]
 4. 不明点があれば、先に制約として列挙する
 5. 既存の `AGENTS.md` と既存実装パターンを必ず参照する
 6. 最終的に `plans/<feature-name>.md` に保存する前提で、再利用しやすい文章にする
+7. 重要な判断は semi-formal reasoning で整理する
+   - DEFINITIONS: 何を満たせば成功か
+   - PREMISES: 読んだファイルから確認した事実
+   - TRACE: 現状フローや依存の追跡
+   - COUNTEREXAMPLE: 別解や破綻ケース
+   - CONCLUSION: 受け入れ条件と実装順序への結論
