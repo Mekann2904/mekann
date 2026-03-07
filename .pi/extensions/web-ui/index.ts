@@ -20,8 +20,10 @@
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { exec, spawn, type ChildProcess } from "child_process";
+import { request } from "http";
 import { promisify } from "util";
 import { join } from "path";
+import { setTimeout as delay } from "timers/promises";
 import {
   InstanceRegistry,
   ServerRegistry,
@@ -50,8 +52,9 @@ function startUnifiedServerProcess(port: number): ChildProcess | null {
   // サーバースクリプトのパスを取得
   const serverScript = join(import.meta.dirname, "unified-server.ts");
 
-  // tsxを使用してTypeScriptを直接実行
-  const child = spawn("npx", ["tsx", serverScript], {
+  // npx tsx は環境によって IPC 初期化で失敗しやすいので、
+  // Node 本体に tsx ローダーを差し込んで直接起動する。
+  const child = spawn(process.execPath, ["--import", "tsx", serverScript], {
     detached: true, // 親プロセスが終了しても生き残る
     stdio: "ignore", // 親プロセスと標準入出力を共有しない
     env: {
@@ -68,6 +71,51 @@ function startUnifiedServerProcess(port: number): ChildProcess | null {
   });
 
   return child;
+}
+
+/**
+ * サーバーのヘルスチェック
+ */
+async function isServerReady(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = request(
+      {
+        host: "127.0.0.1",
+        port,
+        path: "/api/v2/health",
+        method: "GET",
+        timeout: 1000,
+      },
+      (res) => {
+        res.resume();
+        resolve((res.statusCode ?? 500) < 500);
+      }
+    );
+
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(false);
+    });
+
+    req.end();
+  });
+}
+
+/**
+ * サーバーが応答可能になるまで待機
+ */
+async function waitForServerReady(port: number, timeoutMs = 10000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (await isServerReady(port)) {
+      return true;
+    }
+    await delay(250);
+  }
+
+  return false;
 }
 
 /**
@@ -190,7 +238,18 @@ export default function (pi: ExtensionAPI) {
           break;
 
         case "open":
-          const serverUrl = getServerUrl();
+          const serverInfo = ServerRegistry.isRunning();
+          const serverUrl = serverInfo
+            ? `http://localhost:${serverInfo.port}`
+            : `http://localhost:${DEFAULT_PORT}`;
+          const ready = await waitForServerReady(serverInfo?.port ?? DEFAULT_PORT, 2000);
+          if (!ready) {
+            ctx.ui.notify(
+              `Web UI server is not responding yet. Start it with /web-ui start and retry. Expected URL: ${serverUrl}`,
+              "warning"
+            );
+            break;
+          }
           const opened = await openBrowser(serverUrl);
           if (opened) {
             ctx.ui.notify(`Opening Web UI: ${serverUrl}`, "info");
@@ -217,11 +276,18 @@ export default function (pi: ExtensionAPI) {
           const portNum = parseInt(process.env.PI_WEB_UI_PORT || "") || DEFAULT_PORT;
           try {
             startUnifiedServerProcess(portNum);
+            const readyAfterStart = await waitForServerReady(portNum);
+
+            if (!readyAfterStart) {
+              ctx.ui.notify(
+                `Web UI start command was sent, but the server did not become ready. Check dependencies and retry. Expected URL: http://localhost:${portNum}`,
+                "warning"
+              );
+              return;
+            }
+
             ctx.ui.notify(`Web UI started: http://localhost:${portNum}`, "info");
-            // サーバー起動後にブラウザを開く（少し待機してサーバーの準備を待つ）
-            setTimeout(async () => {
-              await openBrowser(`http://localhost:${portNum}`);
-            }, 1000);
+            await openBrowser(`http://localhost:${portNum}`);
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             ctx.ui.notify(`Failed to start Web UI: ${message}`, "error");
@@ -346,7 +412,12 @@ export default function (pi: ExtensionAPI) {
     const portNum = parseInt(process.env.PI_WEB_UI_PORT || "") || DEFAULT_PORT;
     try {
       startUnifiedServerProcess(portNum);
-      ctx.ui.notify(`Web UI auto-started: http://localhost:${portNum}`, "info");
+      const ready = await waitForServerReady(portNum, 5000);
+      if (ready) {
+        ctx.ui.notify(`Web UI auto-started: http://localhost:${portNum}`, "info");
+      } else {
+        ctx.ui.notify(`Web UI auto-start did not become ready on http://localhost:${portNum}`, "warning");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       ctx.ui.notify(`Web UI auto-start failed: ${message}`, "warning");
