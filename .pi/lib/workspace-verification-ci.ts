@@ -10,11 +10,13 @@ import { existsSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
+  acknowledgeReviewArtifact,
   createWorkspaceVerificationConfig,
   finalizeVerificationRun,
   getResolvedCommandForStep,
   persistWorkspaceVerificationArtifacts,
   persistWorkspaceVerificationContinuityPack,
+  persistWorkspaceReviewArtifact,
   resolveEnabledSteps,
   resolveWorkspaceVerificationPlan,
   runWorkspaceCommand,
@@ -94,7 +96,13 @@ function readChangedFiles(cwd: string): string[] {
 }
 
 function toLintableFiles(changedFiles: string[]): string[] {
-  return changedFiles.filter((file) => /\.(?:[cm]?[jt]sx?)$/u.test(file));
+  return changedFiles.filter((file) => {
+    if (!/\.(?:[cm]?[jt]sx?)$/u.test(file)) {
+      return false;
+    }
+    const normalized = normalizePathForMatch(file);
+    return normalized.startsWith(".pi/extensions/") || normalized.startsWith(".pi/lib/");
+  });
 }
 
 function toRelevantTestFiles(changedFiles: string[]): string[] {
@@ -347,7 +355,22 @@ export async function runWorkspaceVerificationCi(
   };
 
   const persistedRun = persistWorkspaceVerificationArtifacts(cwd, config, run);
-  const state = finalizeVerificationRun({ cwd, run: persistedRun });
+  let state = finalizeVerificationRun({ cwd, run: persistedRun });
+  if (persistedRun.success) {
+    const reviewArtifact = persistWorkspaceReviewArtifact({
+      cwd,
+      run: persistedRun,
+    });
+    state = saveWorkspaceVerificationState(cwd, {
+      ...state,
+      pendingReviewArtifact: false,
+      lastReviewArtifactPath: reviewArtifact.path,
+    });
+    state = acknowledgeReviewArtifact({
+      cwd,
+      path: reviewArtifact.path,
+    });
+  }
   const continuityPath = persistWorkspaceVerificationContinuityPack(cwd, state, resolvedPlan);
   saveWorkspaceVerificationState(cwd, {
     ...state,

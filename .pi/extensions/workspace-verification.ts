@@ -20,6 +20,7 @@ import {
 } from "../lib/background-processes.js";
 import {
   acknowledgeReplanDecision,
+  acknowledgeReviewArtifact,
   acknowledgeVerificationArtifacts,
   createWorkspaceVerificationConfig,
   finalizeVerificationRun,
@@ -33,10 +34,12 @@ import {
   parseWorkspaceCommand,
   persistWorkspaceVerificationArtifacts,
   persistWorkspaceVerificationContinuityPack,
+  persistWorkspaceReviewArtifact,
   resolveEnabledSteps,
   resolveWorkspaceVerificationPlan,
   saveWorkspaceVerificationState,
   saveWorkspaceVerificationConfig,
+  shouldRequireReviewArtifact,
   shouldAutoRunVerification,
   type WorkspaceVerificationConfig,
   type WorkspaceVerificationResolvedPlan,
@@ -102,6 +105,7 @@ function buildStatusBlock(
   state: WorkspaceVerificationState,
   resolvedPlan: WorkspaceVerificationResolvedPlan,
 ): string {
+  const reviewArtifactRequired = shouldRequireReviewArtifact(config, resolvedPlan);
   const lines = [
     "## Workspace Verification",
     "",
@@ -157,6 +161,10 @@ function buildStatusBlock(
     lines.push("", "直近の成功検証は未レビュー。artifact を見たら `workspace_verify_ack` を実行すること。");
   }
 
+  if (reviewArtifactRequired && state.pendingReviewArtifact) {
+    lines.push("", "review artifact が未承認。`workspace_verify_review` と `workspace_verify_review_ack` を完了させること。");
+  }
+
   if (config.requireReplanOnRepeatedFailure && state.replanRequired) {
     lines.push("", `同じ失敗が繰り返されている。plan を更新し、新しい修復方針を ` + "`workspace_verify_replan`" + " で記録すること。");
     if (state.replanReason) {
@@ -178,8 +186,11 @@ function shouldBlockTool(
   }
 
   const toolName = typeof event.toolName === "string" ? event.toolName : "";
+  const reviewArtifactRequired = shouldRequireReviewArtifact(config, resolvedPlan);
   const reasonCore = config.requireReplanOnRepeatedFailure && state.replanRequired
     ? `Repeated verification failures require a new repair strategy. Update the plan and run workspace_verify_replan. ${state.replanReason ?? ""}`.trim()
+    : reviewArtifactRequired && state.pendingReviewArtifact
+      ? "A review artifact is required before completion. Run workspace_verify_review and acknowledge it with workspace_verify_review_ack."
     : config.requireProofReview && state.pendingProofReview
       ? "A successful verification exists, but its proof artifacts have not been acknowledged. Run workspace_verify_ack after inspecting the latest artifacts."
       : "Workspace verification is stale. Run workspace_verify and inspect the latest artifacts.";
@@ -491,7 +502,19 @@ export async function runWorkspaceVerification(
   };
 
   const persistedRun = persistWorkspaceVerificationArtifacts(cwd, config, bareRun);
-  finalizeVerificationRun({ cwd, run: persistedRun });
+  const finalizedState = finalizeVerificationRun({ cwd, run: persistedRun });
+  if (shouldRequireReviewArtifact(config, persistedRun.resolvedPlan) && persistedRun.success) {
+    const reviewArtifact = persistWorkspaceReviewArtifact({
+      cwd,
+      run: persistedRun,
+    });
+    saveWorkspaceVerificationState(cwd, {
+      ...finalizedState,
+      pendingReviewArtifact: true,
+      lastReviewArtifactPath: reviewArtifact.path,
+      lastReviewArtifactAt: undefined,
+    });
+  }
 
   if (!persistedRun.success && config.checkpointOnFailure) {
     const checkpointId = await saveWorkspaceCheckpoint(cwd, "verification-failure", {
@@ -788,6 +811,79 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    name: "workspace_verify_review",
+    label: "Workspace Verify Review",
+    description: "Generate a structured review artifact for bugs, security, regression, test gaps, and rollback risk.",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      const state = loadWorkspaceVerificationState(ctx.cwd);
+      const run = state.lastRun;
+      if (!run) {
+        throw new Error("no verification run available");
+      }
+
+      const config = loadWorkspaceVerificationConfig(ctx.cwd);
+      if (!shouldRequireReviewArtifact(config, run.resolvedPlan)) {
+        throw new Error("review artifact is not required for the latest verification run");
+      }
+
+      const artifact = persistWorkspaceReviewArtifact({
+        cwd: ctx.cwd,
+        run,
+      });
+      const nextState = saveWorkspaceVerificationState(ctx.cwd, {
+        ...state,
+        pendingReviewArtifact: true,
+        lastReviewArtifactPath: artifact.path,
+      });
+      const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
+      const continuityPath = persistWorkspaceVerificationContinuityPack(ctx.cwd, nextState, resolvedPlan);
+      saveWorkspaceVerificationState(ctx.cwd, {
+        ...nextState,
+        continuityPath,
+      });
+
+      return {
+        content: [{ type: "text", text: `Review artifact generated: ${artifact.path}` }],
+        details: {
+          ...artifact,
+          continuityPath,
+        },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "workspace_verify_review_ack",
+    label: "Workspace Verify Review Ack",
+    description: "Acknowledge that the latest review artifact has been inspected.",
+    parameters: Type.Object({
+      path: Type.Optional(Type.String()),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const state = acknowledgeReviewArtifact({
+        cwd: ctx.cwd,
+        path: params.path,
+      });
+      const config = loadWorkspaceVerificationConfig(ctx.cwd);
+      const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
+      const continuityPath = persistWorkspaceVerificationContinuityPack(ctx.cwd, state, resolvedPlan);
+      saveWorkspaceVerificationState(ctx.cwd, {
+        ...state,
+        continuityPath,
+      });
+
+      return {
+        content: [{ type: "text", text: `Review artifact acknowledged: ${state.lastReviewArtifactPath ?? "-"}` }],
+        details: {
+          ...state,
+          continuityPath,
+        },
+      };
+    },
+  });
+
+  pi.registerTool({
     name: "workspace_verify_replan",
     label: "Workspace Verify Replan",
     description: "Record a new repair strategy after repeated verification failures and release the replan gate.",
@@ -834,6 +930,8 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
       autoDetectRunbook: Type.Optional(Type.Boolean()),
       autoRunOnTurnEnd: Type.Optional(Type.Boolean()),
       requireProofReview: Type.Optional(Type.Boolean()),
+      requireReviewArtifact: Type.Optional(Type.Boolean()),
+      autoRequireReviewArtifact: Type.Optional(Type.Boolean()),
       requireReplanOnRepeatedFailure: Type.Optional(Type.Boolean()),
       enableEvalCorpus: Type.Optional(Type.Boolean()),
       checkpointOnMutation: Type.Optional(Type.Boolean()),
@@ -884,6 +982,8 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
           autoDetectRunbook: params.autoDetectRunbook,
           autoRunOnTurnEnd: params.autoRunOnTurnEnd,
           requireProofReview: params.requireProofReview,
+          requireReviewArtifact: params.requireReviewArtifact,
+          autoRequireReviewArtifact: params.autoRequireReviewArtifact,
           requireReplanOnRepeatedFailure: params.requireReplanOnRepeatedFailure,
           enableEvalCorpus: params.enableEvalCorpus,
           checkpointOnMutation: params.checkpointOnMutation,

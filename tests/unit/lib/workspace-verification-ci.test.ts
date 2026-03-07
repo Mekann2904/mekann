@@ -38,6 +38,8 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
     autoRunOnTurnEnd: true,
     gateMode: "strict",
     requireProofReview: true,
+    requireReviewArtifact: false,
+    autoRequireReviewArtifact: true,
     requireReplanOnRepeatedFailure: true,
     enableEvalCorpus: true,
     checkpointOnMutation: true,
@@ -123,10 +125,34 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
       artifactPath: `/repo/.pi/verification-runs/latest/${index + 1}-${item.step}.log`,
     })),
   })),
+  persistWorkspaceReviewArtifact: vi.fn(() => ({
+    path: "/repo/.pi/workspace-verification/reviews/latest-review.md",
+    review: {
+      findings: {
+        bugs: [],
+        security: [],
+        regression: [],
+        testGaps: [],
+        rollback: [],
+      },
+    },
+  })),
+  acknowledgeReviewArtifact: vi.fn(() => ({
+    dirty: false,
+    running: false,
+    pendingProofReview: false,
+    pendingReviewArtifact: false,
+    replanRequired: false,
+    writeCount: 0,
+    repeatedFailureCount: 0,
+    lastReviewArtifactAt: "2026-03-07T00:07:00.000Z",
+    lastReviewArtifactPath: "/repo/.pi/workspace-verification/reviews/latest-review.md",
+  })),
   finalizeVerificationRun: vi.fn(({ run }) => ({
     dirty: !run.success,
     running: false,
     pendingProofReview: false,
+    pendingReviewArtifact: false,
     replanRequired: false,
     writeCount: 0,
     repeatedFailureCount: run.success ? 0 : 1,
@@ -151,7 +177,7 @@ describe("workspace-verification-ci", () => {
     const result = await runWorkspaceVerificationCi({ cwd: "/repo" });
 
     expect(mockState.commands).toEqual([
-      "npx eslint \".pi/lib/workspace-verification-ci.ts\" \"tests/unit/lib/workspace-verification-ci.test.ts\" --max-warnings=0",
+      "npx eslint \".pi/lib/workspace-verification-ci.ts\" --max-warnings=0",
       "npm run typecheck",
       "npx vitest run \"tests/unit/lib/workspace-verification-ci.test.ts\"",
     ]);

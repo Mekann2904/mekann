@@ -108,6 +108,8 @@ export interface WorkspaceVerificationConfig {
   autoRunOnTurnEnd: boolean;
   gateMode: WorkspaceVerificationGateMode;
   requireProofReview: boolean;
+  requireReviewArtifact: boolean;
+  autoRequireReviewArtifact: boolean;
   requireReplanOnRepeatedFailure: boolean;
   enableEvalCorpus: boolean;
   checkpointOnMutation: boolean;
@@ -133,6 +135,8 @@ export interface WorkspaceVerificationConfigPatch {
   autoRunOnTurnEnd?: boolean;
   gateMode?: WorkspaceVerificationGateMode;
   requireProofReview?: boolean;
+  requireReviewArtifact?: boolean;
+  autoRequireReviewArtifact?: boolean;
   requireReplanOnRepeatedFailure?: boolean;
   enableEvalCorpus?: boolean;
   checkpointOnMutation?: boolean;
@@ -150,6 +154,7 @@ export interface WorkspaceVerificationState {
   dirty: boolean;
   running: boolean;
   pendingProofReview: boolean;
+  pendingReviewArtifact: boolean;
   replanRequired: boolean;
   writeCount: number;
   repeatedFailureCount: number;
@@ -158,6 +163,8 @@ export interface WorkspaceVerificationState {
   lastVerifiedAt?: string;
   lastReviewedAt?: string;
   lastReviewedArtifactDir?: string;
+  lastReviewArtifactAt?: string;
+  lastReviewArtifactPath?: string;
   lastReplanAt?: string;
   lastRepairStrategy?: string;
   lastMutationCheckpointId?: string;
@@ -198,6 +205,32 @@ interface WorkspaceVerificationEvalCase {
     error?: string;
     artifactPath?: string;
   }>;
+}
+
+interface WorkspaceVerificationReviewArtifact {
+  savedAt: string;
+  profile: WorkspaceVerificationProfile;
+  artifactDir?: string;
+  fileModuleImpact: string[];
+  acceptanceCriteria: string[];
+  verificationSummary: {
+    success: boolean;
+    executedSteps: Array<{
+      step: WorkspaceVerificationStep;
+      success: boolean;
+      skipped: boolean;
+      command?: string;
+      error?: string;
+      artifactPath?: string;
+    }>;
+  };
+  findings: {
+    bugs: string[];
+    security: string[];
+    regression: string[];
+    testGaps: string[];
+    rollback: string[];
+  };
 }
 
 export interface ParsedWorkspaceCommand {
@@ -343,6 +376,8 @@ export function createWorkspaceVerificationConfig(): WorkspaceVerificationConfig
     autoRunOnTurnEnd: true,
     gateMode: "strict",
     requireProofReview: true,
+    requireReviewArtifact: false,
+    autoRequireReviewArtifact: true,
     requireReplanOnRepeatedFailure: true,
     enableEvalCorpus: true,
     checkpointOnMutation: true,
@@ -377,6 +412,7 @@ export function createWorkspaceVerificationState(): WorkspaceVerificationState {
     dirty: false,
     running: false,
     pendingProofReview: false,
+    pendingReviewArtifact: false,
     replanRequired: false,
     writeCount: 0,
     repeatedFailureCount: 0,
@@ -402,6 +438,8 @@ export function normalizeWorkspaceVerificationConfig(input: unknown): WorkspaceV
     autoRunOnTurnEnd: normalizeBoolean(record.autoRunOnTurnEnd, fallback.autoRunOnTurnEnd),
     gateMode: normalizeGateMode(record.gateMode, fallback.gateMode),
     requireProofReview: normalizeBoolean(record.requireProofReview, fallback.requireProofReview),
+    requireReviewArtifact: normalizeBoolean(record.requireReviewArtifact, fallback.requireReviewArtifact),
+    autoRequireReviewArtifact: normalizeBoolean(record.autoRequireReviewArtifact, fallback.autoRequireReviewArtifact),
     requireReplanOnRepeatedFailure: normalizeBoolean(
       record.requireReplanOnRepeatedFailure,
       fallback.requireReplanOnRepeatedFailure,
@@ -491,6 +529,7 @@ export function normalizeWorkspaceVerificationState(input: unknown): WorkspaceVe
     dirty: normalizeBoolean(record.dirty, fallback.dirty),
     running: normalizeBoolean(record.running, fallback.running),
     pendingProofReview: normalizeBoolean(record.pendingProofReview, fallback.pendingProofReview),
+    pendingReviewArtifact: normalizeBoolean(record.pendingReviewArtifact, fallback.pendingReviewArtifact),
     replanRequired: normalizeBoolean(record.replanRequired, fallback.replanRequired),
     writeCount: normalizeInteger(record.writeCount, fallback.writeCount, 0, 1_000_000),
     repeatedFailureCount: normalizeInteger(record.repeatedFailureCount, fallback.repeatedFailureCount, 0, 1_000),
@@ -499,6 +538,8 @@ export function normalizeWorkspaceVerificationState(input: unknown): WorkspaceVe
     lastVerifiedAt: normalizeOptionalString(record.lastVerifiedAt),
     lastReviewedAt: normalizeOptionalString(record.lastReviewedAt),
     lastReviewedArtifactDir: normalizeOptionalString(record.lastReviewedArtifactDir),
+    lastReviewArtifactAt: normalizeOptionalString(record.lastReviewArtifactAt),
+    lastReviewArtifactPath: normalizeOptionalString(record.lastReviewArtifactPath),
     lastReplanAt: normalizeOptionalString(record.lastReplanAt),
     lastRepairStrategy: normalizeOptionalString(record.lastRepairStrategy),
     lastMutationCheckpointId: normalizeOptionalString(record.lastMutationCheckpointId),
@@ -663,6 +704,7 @@ export function markWorkspaceDirty(input?: { cwd?: string; toolName?: string }):
     dirty: true,
     running: false,
     pendingProofReview: false,
+    pendingReviewArtifact: false,
     writeCount: current.writeCount + 1,
     lastWriteAt: nowIso(),
     lastWriteTool: input?.toolName?.trim() || current.lastWriteTool,
@@ -705,6 +747,7 @@ export function finalizeVerificationRun(input: { cwd?: string; run: WorkspaceVer
     running: false,
     dirty: input.run.success ? false : current.dirty,
     pendingProofReview: input.run.success ? Boolean(input.run.artifactDir) : current.pendingProofReview,
+    pendingReviewArtifact: input.run.success ? current.pendingReviewArtifact : false,
     replanRequired: input.run.success ? false : replanRequired,
     repeatedFailureCount: input.run.success ? 0 : repeatedFailureCount,
     lastVerifiedAt: input.run.success ? input.run.finishedAt : current.lastVerifiedAt,
@@ -717,6 +760,21 @@ export function finalizeVerificationRun(input: { cwd?: string; run: WorkspaceVer
   });
 }
 
+export function shouldRequireReviewArtifact(
+  config: WorkspaceVerificationConfig,
+  resolvedPlan?: WorkspaceVerificationResolvedPlan,
+): boolean {
+  if (config.requireReviewArtifact) {
+    return true;
+  }
+
+  if (!config.autoRequireReviewArtifact || !resolvedPlan) {
+    return false;
+  }
+
+  return resolvedPlan.proofArtifacts.includes("review notes");
+}
+
 export function acknowledgeVerificationArtifacts(input: { cwd?: string; artifactDir?: string }): WorkspaceVerificationState {
   const targetCwd = normalizeCwd(input.cwd);
   const current = loadWorkspaceVerificationState(targetCwd);
@@ -727,6 +785,153 @@ export function acknowledgeVerificationArtifacts(input: { cwd?: string; artifact
     pendingProofReview: false,
     lastReviewedAt: nowIso(),
     lastReviewedArtifactDir: artifactDir,
+  });
+}
+
+function inferReviewFindings(
+  run: WorkspaceVerificationRunRecord,
+  plan: WorkspaceVerificationPlanSnapshot,
+): WorkspaceVerificationReviewArtifact["findings"] {
+  const haystack = [
+    ...plan.fileModuleImpact,
+    ...plan.acceptanceCriteria,
+    ...run.resolvedPlan.acceptanceCriteria,
+    ...run.resolvedPlan.validationCommands,
+  ].join("\n").toLowerCase();
+  const failedSteps = run.stepResults.filter((item) => !item.success && !item.skipped);
+  const findings: WorkspaceVerificationReviewArtifact["findings"] = {
+    bugs: [],
+    security: [],
+    regression: [],
+    testGaps: [],
+    rollback: [],
+  };
+
+  if (failedSteps.length > 0) {
+    findings.bugs.push(`Verification failures remain in: ${failedSteps.map((item) => item.step).join(", ")}`);
+    findings.regression.push("A previously expected verification step is failing and may indicate a behavior regression.");
+  }
+
+  if (/\b(auth|security|token|secret|credential|permission|role|policy)\b/.test(haystack)) {
+    findings.security.push("Security-sensitive surface changed. Confirm auth, permissions, and secret handling before completion.");
+  }
+
+  if (/\b(api|schema|migration|contract|public|interface|workflow)\b/.test(haystack)) {
+    findings.regression.push("Public or workflow-facing behavior may have changed. Reconfirm backward compatibility and edge cases.");
+  }
+
+  if (!run.stepResults.some((item) => item.step === "test" && item.success)) {
+    findings.testGaps.push("No passing automated test evidence was recorded for this change.");
+  }
+
+  if (plan.fileModuleImpact.length === 0) {
+    findings.testGaps.push("File/module impact is not documented in the current plan.");
+  }
+
+  if (!/\b(rollback|revert|fallback|checkpoint)\b/.test(haystack)) {
+    findings.rollback.push("Rollback path is not explicit. Document revert or checkpoint strategy before release.");
+  }
+
+  return findings;
+}
+
+function renderReviewArtifactMarkdown(review: WorkspaceVerificationReviewArtifact): string {
+  const lines = [
+    "# Workspace Review Artifact",
+    "",
+    `saved_at: ${review.savedAt}`,
+    `profile: ${review.profile}`,
+    `artifact_dir: ${review.artifactDir ?? "-"}`,
+    "",
+    "## Scope",
+  ];
+
+  if (review.fileModuleImpact.length > 0) {
+    for (const item of review.fileModuleImpact) {
+      lines.push(`- ${item}`);
+    }
+  } else {
+    lines.push("- not documented");
+  }
+
+  lines.push("", "## Acceptance Criteria");
+  if (review.acceptanceCriteria.length > 0) {
+    for (const item of review.acceptanceCriteria) {
+      lines.push(`- ${item}`);
+    }
+  } else {
+    lines.push("- not documented");
+  }
+
+  lines.push("", "## Verification Summary");
+  lines.push(`- success: ${review.verificationSummary.success}`);
+  for (const item of review.verificationSummary.executedSteps) {
+    lines.push(`- ${item.step}: success=${item.success} skipped=${item.skipped}${item.error ? ` error=${item.error}` : ""}`);
+  }
+
+  for (const [section, items] of Object.entries(review.findings)) {
+    lines.push("", `## ${section}`);
+    if (items.length === 0) {
+      lines.push("- none");
+      continue;
+    }
+    for (const item of items) {
+      lines.push(`- ${item}`);
+    }
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
+export function persistWorkspaceReviewArtifact(input: {
+  cwd?: string;
+  run: WorkspaceVerificationRunRecord;
+}): { path: string; review: WorkspaceVerificationReviewArtifact } {
+  const cwd = normalizeCwd(input.cwd);
+  const plan = loadCurrentPlanSnapshot(cwd);
+  const review: WorkspaceVerificationReviewArtifact = {
+    savedAt: nowIso(),
+    profile: input.run.resolvedPlan.profile,
+    artifactDir: input.run.artifactDir,
+    fileModuleImpact: plan.fileModuleImpact,
+    acceptanceCriteria: plan.acceptanceCriteria.length > 0 ? plan.acceptanceCriteria : input.run.resolvedPlan.acceptanceCriteria,
+    verificationSummary: {
+      success: input.run.success,
+      executedSteps: input.run.stepResults.map((item) => ({
+        step: item.step,
+        success: item.success,
+        skipped: item.skipped,
+        command: item.command,
+        error: item.error,
+        artifactPath: item.artifactPath,
+      })),
+    },
+    findings: inferReviewFindings(input.run, plan),
+  };
+  const dir = join(ensureVerificationWorkspaceDir(cwd), "reviews");
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  const path = join(dir, `${input.run.finishedAt.slice(0, 19).replace(/[:T]/g, "-")}-review.md`);
+  const jsonPath = path.replace(/\.md$/u, ".json");
+  writeFileSync(path, renderReviewArtifactMarkdown(review), "utf-8");
+  writeFileSync(jsonPath, `${JSON.stringify(review, null, 2)}\n`, "utf-8");
+  return { path, review };
+}
+
+export function acknowledgeReviewArtifact(input: {
+  cwd?: string;
+  path?: string;
+}): WorkspaceVerificationState {
+  const cwd = normalizeCwd(input.cwd);
+  const current = loadWorkspaceVerificationState(cwd);
+  const path = input.path?.trim() || current.lastReviewArtifactPath;
+
+  return saveWorkspaceVerificationState(cwd, {
+    ...current,
+    pendingReviewArtifact: false,
+    lastReviewArtifactAt: nowIso(),
+    lastReviewArtifactPath: path,
   });
 }
 
@@ -792,6 +997,10 @@ export function isCompletionBlocked(
   }
 
   if (config.requireProofReview && state.pendingProofReview) {
+    return true;
+  }
+
+  if (shouldRequireReviewArtifact(config, resolvedPlan) && state.pendingReviewArtifact) {
     return true;
   }
 
@@ -1398,7 +1607,15 @@ function inferRelevantVerification(
     proofArtifacts.add("test results");
   }
 
-  if (/\b(review|security|coverage)\b/.test(haystack)) {
+  if (/\b(review|security|coverage|auth|token|secret|permission|role)\b/.test(haystack)) {
+    proofArtifacts.add("review notes");
+  }
+
+  if (/\b(api|schema|migration|contract|public|interface|workflow)\b/.test(haystack)) {
+    proofArtifacts.add("review notes");
+  }
+
+  if (/\b(build|bundle|release|deploy|ci|package\.json|config)\b/.test(haystack) || /package\.json|vite\.config|webpack|rollup/.test(fileImpact)) {
     proofArtifacts.add("review notes");
   }
 
@@ -1855,6 +2072,8 @@ export function formatWorkspaceVerificationStatus(
     `auto_run=${config.autoRunOnTurnEnd}`,
     `gate_mode=${config.gateMode}`,
     `require_proof_review=${config.requireProofReview}`,
+    `require_review_artifact=${config.requireReviewArtifact}`,
+    `auto_require_review_artifact=${config.autoRequireReviewArtifact}`,
     `require_replan_on_repeated_failure=${config.requireReplanOnRepeatedFailure}`,
     `enable_eval_corpus=${config.enableEvalCorpus}`,
     `checkpoint_on_mutation=${config.checkpointOnMutation}`,
@@ -1863,6 +2082,7 @@ export function formatWorkspaceVerificationStatus(
     `dirty=${state.dirty}`,
     `running=${state.running}`,
     `pending_proof_review=${state.pendingProofReview}`,
+    `pending_review_artifact=${state.pendingReviewArtifact}`,
     `replan_required=${state.replanRequired}`,
     `write_count=${state.writeCount}`,
     `repeated_failure_count=${state.repeatedFailureCount}`,
@@ -1897,6 +2117,12 @@ export function formatWorkspaceVerificationStatus(
   }
   if (state.lastReviewedArtifactDir) {
     lines.push(`last_reviewed_artifact_dir=${state.lastReviewedArtifactDir}`);
+  }
+  if (state.lastReviewArtifactAt) {
+    lines.push(`last_review_artifact_at=${state.lastReviewArtifactAt}`);
+  }
+  if (state.lastReviewArtifactPath) {
+    lines.push(`last_review_artifact_path=${state.lastReviewArtifactPath}`);
   }
   if (state.lastReplanAt) {
     lines.push(`last_replan_at=${state.lastReplanAt}`);

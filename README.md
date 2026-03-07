@@ -289,6 +289,8 @@ profile も自動推定します。
 - `workspace_verify_status`
 - `workspace_verify_plan`
 - `workspace_verify_ack`
+- `workspace_verify_review`
+- `workspace_verify_review_ack`
 - `workspace_verify_replan`
 - `workspace_verification_config`
 
@@ -344,6 +346,23 @@ workspace_verification_config(
   antiLoopThreshold=3
 )
 ```
+
+review artifact を必須にする例:
+
+```text
+workspace_verification_config(
+  action="update",
+  requireReviewArtifact=true
+)
+```
+
+この設定では、成功 verification のあとに review artifact を生成し、`workspace_verify_review_ack` まで完了しないと task completion を止めます。
+
+既定では `autoRequireReviewArtifact=true` です。
+
+そのため `requireReviewArtifact=true` を手で入れなくても、`review notes` が推論された高リスク変更では review gate が自動で閉じます。
+
+対象は `security`、`auth`、`api`、`schema`、`migration`、`workflow`、`build/package` 影響などです。
 
 CI から同じ runbook を実行する例:
 

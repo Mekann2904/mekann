@@ -172,9 +172,14 @@ mekann/
 - 実行コマンド
 - 成功 / 失敗の結果
 - 必要ならログやスクリーンショット
+- 必要なら review artifact
 - 未実施の検証と理由
 
 これで、あとから同じ品質判断を再現できます。
+
+`workspace-verification` では、`review notes` が推論された高リスク変更に対して review artifact を自動で必須化します。
+
+つまり `security`、`api`、`migration`、`workflow`、`build/package` 系の変更は、手動設定がなくても review gate が閉じます。
 
 ### テストスクリプトのテンプレート
 

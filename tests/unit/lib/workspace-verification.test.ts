@@ -179,6 +179,64 @@ describe("workspace-verification library", () => {
     expect(isCompletionBlocked(config, state)).toBe(false);
   });
 
+  it("auto-requires a review artifact for risky verification plans", async () => {
+    const {
+      createWorkspaceVerificationConfig,
+      shouldRequireReviewArtifact,
+    } = await import("../../../.pi/lib/workspace-verification.js");
+
+    const config = createWorkspaceVerificationConfig();
+
+    expect(shouldRequireReviewArtifact(config, {
+      profile: "backend",
+      commands: {},
+      runtime: {
+        enabled: false,
+        command: "",
+        label: "workspace-dev-server",
+        startupTimeoutMs: 1000,
+        keepAliveOnShutdown: true,
+      },
+      ui: {
+        enabled: false,
+        timeoutMs: 1000,
+        commands: [],
+      },
+      acceptanceCriteria: [],
+      validationCommands: [],
+      recommendedSteps: ["lint", "typecheck", "test"],
+      reasons: ["Build or packaging impact detected"],
+      proofArtifacts: ["verification summary", "review notes"],
+      sources: [],
+    })).toBe(true);
+
+    expect(shouldRequireReviewArtifact({
+      ...config,
+      autoRequireReviewArtifact: false,
+    }, {
+      profile: "library",
+      commands: {},
+      runtime: {
+        enabled: false,
+        command: "",
+        label: "workspace-dev-server",
+        startupTimeoutMs: 1000,
+        keepAliveOnShutdown: true,
+      },
+      ui: {
+        enabled: false,
+        timeoutMs: 1000,
+        commands: [],
+      },
+      acceptanceCriteria: [],
+      validationCommands: [],
+      recommendedSteps: ["lint"],
+      reasons: [],
+      proofArtifacts: ["verification summary", "review notes"],
+      sources: [],
+    })).toBe(false);
+  });
+
   it("requires replanning after repeated identical failures and records an eval case", async () => {
     const {
       createWorkspaceVerificationConfig,
@@ -267,6 +325,85 @@ describe("workspace-verification library", () => {
     expect(state.lastRepairStrategy).toContain("src/app.ts");
     expect(Array.isArray(mockState.planStorage.plans[0]?.progressLog)).toBe(true);
     expect(String(mockState.planStorage.plans[0]?.progressLog?.[0])).toContain("Replan strategy recorded");
+  });
+
+  it("persists a structured review artifact and can acknowledge it", async () => {
+    const {
+      persistWorkspaceReviewArtifact,
+      acknowledgeReviewArtifact,
+      loadWorkspaceVerificationState,
+      saveWorkspaceVerificationState,
+      createWorkspaceVerificationState,
+    } = await import("../../../.pi/lib/workspace-verification.js");
+
+    mockState.planStorage = {
+      currentPlanId: "plan-1",
+      plans: [{
+        id: "plan-1",
+        name: "Review scope",
+        status: "active",
+        acceptanceCriteria: ["test が通ること"],
+        fileModuleImpact: ["src/auth.ts"],
+        testVerification: ["npm test"],
+        progressLog: ["2026-03-07T00:00:00.000Z planner: Started"],
+      }],
+    };
+
+    const artifact = persistWorkspaceReviewArtifact({
+      cwd: "/repo",
+      run: {
+        trigger: "manual",
+        startedAt: "2026-03-07T00:00:00.000Z",
+        finishedAt: "2026-03-07T00:00:10.000Z",
+        success: true,
+        artifactDir: "/repo/.pi/verification-runs/latest",
+        resolvedPlan: {
+          profile: "backend",
+          commands: {},
+          runtime: {
+            enabled: false,
+            command: "",
+            label: "workspace-dev-server",
+            startupTimeoutMs: 1000,
+            keepAliveOnShutdown: true,
+          },
+          ui: {
+            enabled: false,
+            timeoutMs: 1000,
+            commands: [],
+          },
+          acceptanceCriteria: ["auth が壊れていないこと"],
+          validationCommands: ["npm test"],
+          recommendedSteps: ["test"],
+          reasons: [],
+          proofArtifacts: ["verification summary"],
+          sources: [],
+        },
+        stepResults: [{
+          step: "test",
+          success: true,
+          skipped: false,
+          durationMs: 10,
+          command: "npm test",
+        }],
+      },
+    });
+
+    expect(artifact.path).toContain(".pi/workspace-verification/reviews/");
+    expect(mockState.files.get(artifact.path)).toContain("security");
+
+    saveWorkspaceVerificationState("/repo", {
+      ...createWorkspaceVerificationState(),
+      pendingReviewArtifact: true,
+      lastReviewArtifactPath: artifact.path,
+    });
+
+    const acknowledged = acknowledgeReviewArtifact({ cwd: "/repo" });
+    expect(acknowledged.pendingReviewArtifact).toBe(false);
+    expect(acknowledged.lastReviewArtifactPath).toBe(artifact.path);
+
+    const state = loadWorkspaceVerificationState("/repo");
+    expect(state.lastReviewArtifactAt).toBeDefined();
   });
 
   it("auto-runs only when the last write is newer than the last run", async () => {
