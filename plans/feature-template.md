@@ -14,6 +14,12 @@
 - [ ] 条件 2
 - [ ] 条件 3
 
+# Quality Loop Strategy
+- 実行ループ: どういう最小反復で進めるか。
+- 検証ループ: `test` / `lint` / 型検査 / browser / review のどれを回すか。
+- 継続ループ: live todo、progress log、checkpoint をどう保つか。
+- Stop rule: どの状態なら反復を止めて再計画するか。
+
 # Constraints
 - 技術制約
 - 既存規約
@@ -35,6 +41,20 @@
 - 自動テスト:
 - 手動確認:
 - 回帰確認:
+- Proof artifacts:
+- Verified reality の判定条件:
+- 未検証の残り:
+
+# Observe & Repair Notes
+- 失敗または観測結果:
+- 原因仮説:
+- 次の修復:
+
+# Continuity Notes
+- 現在の in_progress:
+- 次にやること:
+- 作業中ファイル:
+- 保留判断:
 
 # Risks / Rollback
 - 主なリスク:

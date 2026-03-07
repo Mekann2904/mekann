@@ -148,6 +148,7 @@ describe("buildSubagentPrompt", () => {
     expect(prompt).toContain("# Runtime Notifications");
     expect(prompt).toContain("plan-mode");
     expect(prompt).toContain("PLAN MODE");
+    expect(prompt).toContain("Read-only restrictions");
     expect(prompt).toContain("respect_cwd_as_workspace_anchor=true");
   });
 });

@@ -2,7 +2,7 @@
 title: plan_* - 計画管理
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-11
+last_updated: 2026-03-07
 tags: [plan, task-management, planning]
 related: [../README.md, ./01-extensions.md]
 ---
@@ -13,7 +13,13 @@ related: [../README.md, ./01-extensions.md]
 
 ## 概要
 
-`plan_*` 拡張機能は、タスクの計画・管理・追跡を提供します。ステップごとの実行計画を作成し、進捗を管理できます。
+`plan_*` 拡張機能は、タスクの計画・管理・追跡を提供します。
+
+ステップごとの実行計画を作成し、進捗を管理できます。
+
+mekann では、plan は単なる todo ではありません。
+
+実行ループ、検証ループ、継続ループを支える中核です。
 
 ### 主な機能
 
@@ -23,6 +29,14 @@ related: [../README.md, ./01-extensions.md]
 - **進捗追跡**: ステップの状態（pending/in_progress/completed/blocked）を管理
 - **実行可能なステップ**: 依存関係が満たされたステップを取得
 - **プランモード**: 読み取り専用モードでの計画作成（制限無効化）
+
+### 品質ループとの関係
+
+- 実行ループ: 何を次に実装するかを固定する
+- 検証ループ: 各 step に verify 条件をひも付ける
+- 継続ループ: 文脈圧縮後も次の一手を残す
+
+`plan_*` は、「今どこにいるか」と「何を verify したら閉じられるか」を外部化するために使います。
 
 ---
 
@@ -259,6 +273,15 @@ plan_update_step({
   status: "completed"
 })
 
+// 検証結果を progressNote に残す
+plan_update_step({
+  planId: "<plan-id>",
+  stepId: "<step-2-id>",
+  status: "completed",
+  actor: "verifier",
+  progressNote: "npx vitest run tests/integration/... passed"
+})
+
 // プランをアクティブに変更
 plan_update_status({
   planId: "<plan-id>",
@@ -266,7 +289,28 @@ plan_update_status({
 })
 ```
 
-### 例2: 複雑な依存関係を持つプラン
+### 例2: 品質ループを含むプラン
+
+```typescript
+plan_create({
+  name: "Workspace verification hardening",
+  description: "実行・検証・継続ループを強化する",
+  acceptanceCriteria: [
+    "変更後に verify 手順が記録される",
+    "proof artifacts が plan に残る",
+    "次の一手が live todo で追える"
+  ],
+  implementationOrder: [
+    "Plan",
+    "Quick prototype",
+    "Verification",
+    "Observe and repair",
+    "Docs sync"
+  ]
+})
+```
+
+### 例3: 複雑な依存関係を持つプラン
 
 ```typescript
 // プラン作成
@@ -300,7 +344,7 @@ await plan_add_step({
 })
 ```
 
-### 例3: ステータス追跡
+### 例4: ステータス追跡
 
 ```typescript
 // プランの詳細表示

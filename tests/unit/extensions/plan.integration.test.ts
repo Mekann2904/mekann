@@ -19,10 +19,14 @@ type RegisteredTool = {
 
 function createFakePi() {
 	const tools = new Map<string, RegisteredTool>();
+	const commands = new Map<string, any>();
 	const events = new Map<string, Array<(event: any, ctx: any) => Promise<any> | any>>();
+	let activeTools: string[] = [];
 
 	return {
 		tools,
+		commands,
+		activeTools,
 		uiNotify: vi.fn(),
 		sendMessage: vi.fn(),
 		appendEntry: vi.fn(),
@@ -30,11 +34,26 @@ function createFakePi() {
 		registerTool(def: any) {
 			tools.set(def.name, def as RegisteredTool);
 		},
-		registerCommand(_name: string, _def: any) {
-			// no-op
+		registerCommand(name: string, def: any) {
+			commands.set(name, def);
 		},
 		registerShortcut(_shortcut: string, _def: any) {
 			// no-op
+		},
+		getAllTools() {
+			return [
+				{ name: "read" },
+				{ name: "bash" },
+				{ name: "edit" },
+				{ name: "write" },
+				{ name: "patch" },
+				{ name: "plan_create" },
+				{ name: "plan_update_step" },
+			];
+		},
+		setActiveTools(next: string[]) {
+			activeTools = [...next];
+			this.activeTools = [...next];
 		},
 		on(eventName: string, handler: (event: any, ctx: any) => Promise<any> | any) {
 			const handlers = events.get(eventName) ?? [];
@@ -44,11 +63,13 @@ function createFakePi() {
 		events: {
 			emit: vi.fn(),
 		},
-		async emit(eventName: string, event: any, ctx: any): Promise<void> {
+		async emit(eventName: string, event: any, ctx: any): Promise<any> {
 			const handlers = events.get(eventName) ?? [];
+			let lastResult;
 			for (const handler of handlers) {
-				await handler(event, ctx);
+				lastResult = await handler(event, ctx);
 			}
+			return lastResult;
 		},
 	};
 }
@@ -496,6 +517,85 @@ describe("plan extension integration tests", () => {
 			const documentPath = created.details.documentPath as string;
 			const content = readFileSync(join(tmpDir, documentPath), "utf-8");
 			expect(content).toContain(`[-] First (${step1.details.stepId})`);
+		});
+
+		it("plan mode では edit を hard block する", async () => {
+			const ctx = createExecutionContext(tmpDir);
+			const planmode = fakePi.commands.get("planmode");
+			expect(planmode).toBeDefined();
+
+			await planmode.handler("", ctx);
+
+			const result = await fakePi.emit("tool_call", { toolName: "edit", input: {} }, ctx);
+			expect(fakePi.activeTools).not.toContain("edit");
+			expect(result).toEqual({
+				block: true,
+				reason: "PLAN MODE: edit is blocked. Stay in read-only exploration or exit plan mode to implement.",
+			});
+		});
+
+		it("plan mode では write-capable bash を hard block する", async () => {
+			const ctx = createExecutionContext(tmpDir);
+			const planmode = fakePi.commands.get("planmode");
+			await planmode.handler("", ctx);
+
+			const result = await fakePi.emit(
+				"tool_call",
+				{ toolName: "bash", input: { command: "npm test" } },
+				ctx,
+			);
+
+			expect(result?.block).toBe(true);
+			expect(String(result?.reason)).toContain("write-capable bash command blocked");
+		});
+
+		it("plan がない状態では edit を hard block する", async () => {
+			const ctx = createExecutionContext(tmpDir);
+
+			const result = await fakePi.emit("tool_call", { toolName: "edit", input: {} }, ctx);
+
+			expect(result).toEqual({
+				block: true,
+				reason: "SPEC-FIRST: no active plan found. Create a plan with plan_create before mutating the workspace.",
+			});
+		});
+
+		it("薄い plan では edit を hard block する", async () => {
+			const createTool = fakePi.tools.get("plan_create");
+			const ctx = createExecutionContext(tmpDir);
+
+			await createTool!.execute(
+				"tc-thin-plan",
+				{ name: "Thin Plan", description: "missing execution details" },
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			const result = await fakePi.emit("tool_call", { toolName: "edit", input: {} }, ctx);
+
+			expect(result?.block).toBe(true);
+			expect(String(result?.reason)).toContain("is not execution-ready");
+		});
+
+		it("受け入れ条件と実装順序がある plan では edit を許可する", async () => {
+			const createTool = fakePi.tools.get("plan_create");
+			const ctx = createExecutionContext(tmpDir);
+
+			await createTool!.execute(
+				"tc-ready-plan",
+				{
+					name: "Ready Plan",
+					acceptanceCriteria: ["tests pass"],
+					implementationOrder: ["spec", "build", "verify"],
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			const result = await fakePi.emit("tool_call", { toolName: "edit", input: {} }, ctx);
+			expect(result).toBeUndefined();
 		});
 	});
 });

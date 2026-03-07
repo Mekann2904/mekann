@@ -77,6 +77,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **cross-instance-runtime** | `cross-instance-runtime.ts` | 複数piインスタンス間の並列数自動調整（プロバイダー/モデル別） | [→](docs/02-user-guide/12-cross-instance-runtime.md) |
 | **autonomy-policy** | `autonomy-policy.ts` | permission bundle と gatekeeper を持つ高度自律実行 policy | README内の「Autonomy Policy」 |
 | **background-process** | `background-process.ts` | 長時間実行プロセスの起動、追跡、停止、ready判定 | README内の「Background Process Support」 |
+| **workspace-verification** | `workspace-verification.ts` | 書き込み後の自動検証、runtime/UI smoke check、完了ゲート | README内の「Workspace Verification」 |
 
 ### ユーティリティ
 
@@ -220,6 +221,118 @@ background_process_start(
   command="npm run dev",
   readyPort=3000,
   startupTimeoutMs=20000
+)
+```
+
+## Workspace Verification
+
+`workspace-verification` は、コード変更後の検証を標準ループに戻す拡張です。  
+
+狙いは単純です。  
+
+`edit` / `write` / `patch` が成功したらワークスペースを `dirty` にします。  
+
+その後、ターン終了時に runbook を解決して自動検証を走らせます。  
+
+直近の書き込みより新しい成功検証がない場合は、`task_complete` と `plan_update_step(status=completed)` を止めます。  
+
+この拡張は `package.json`、`AGENTS.md`、`README.md`、`plans/*.md` を読んで runbook を推定します。  
+
+次を自動抽出します。  
+
+- `lint` / `typecheck` / `test` / `build` のコマンド
+- `dev server` の起動コマンド
+- `localhost` / `127.0.0.1` の URL
+- acceptance criteria と validation commands
+
+profile も自動推定します。  
+
+- `web-app`
+- `library`
+- `backend`
+- `cli`
+
+`web-app` と判定された場合は、runtime と UI を連鎖させやすい形で runbook を組みます。  
+
+標準の検証レイヤー:
+
+- `lint`
+- `typecheck`
+- `test`
+- `build`
+- `runtime`: `background-process` で dev server を起動し、`readyPort` / `readyPattern` で待つ
+- `ui`: `playwright-cli` で `open` / `snapshot` などの smoke check を行う
+
+各検証 run の証跡は `.pi/verification-runs/` に保存されます。  
+
+保存内容:
+
+- `summary.json`
+- `summary.md`
+- step ごとの `.log`
+
+完了ゲートは 3 段階です。  
+
+- `soft`: 完了ブロックなし
+- `strict`: 未検証の変更があれば完了を止める
+- `release`: `strict` に加え、要求された runtime / UI 成功も必須にする
+
+主なツール:
+
+- `workspace_verify`
+- `workspace_verify_status`
+- `workspace_verify_plan`
+- `workspace_verification_config`
+
+初期状態の確認:
+
+```text
+workspace_verify_status()
+workspace_verify_plan()
+workspace_verification_config(action="show")
+```
+
+`workspace_verify_plan` は、現在のワークスペースから解決した runbook をそのまま返します。  
+
+runtime を有効化する例:
+
+```text
+workspace_verification_config(
+  action="update",
+  enableRuntime=true,
+  runtimeCommand="npm run dev",
+  runtimeReadyPort=3000
+)
+```
+
+UI smoke check を有効化する例:
+
+```text
+workspace_verification_config(
+  action="update",
+  enableUi=true,
+  uiBaseUrl="http://127.0.0.1:3000",
+  uiCommands=["open ${baseUrl}", "snapshot"]
+)
+```
+
+release 相当の厳格モードへ上げる例:
+
+```text
+workspace_verification_config(
+  action="update",
+  gateMode="release",
+  artifactRetentionRuns=30
+)
+```
+
+自動推定ではなく固定 profile で運用する例:
+
+```text
+workspace_verification_config(
+  action="update",
+  profile="web-app",
+  autoDetectRunbook=true
 )
 ```
 

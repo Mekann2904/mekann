@@ -26,3 +26,9 @@ tools: ["Read", "Execute", "Grep", "Glob", "LS"]
    - Regression Risks
    - Required Follow-ups
 4. `fail` または `partial` の場合、TodoWrite に戻すべきタスクを短く提案する
+5. 検証では semi-formal reasoning を使う
+   - DEFINITIONS: 合格条件を明示
+   - PREMISES: 変更差分、テスト結果、読んだコード上の事実
+   - TRACE: 条件ごとの確認経路
+   - COUNTEREXAMPLE: 合格しない具体例、または NO COUNTEREXAMPLE FOUND
+   - CONCLUSION: Verdict を根拠付きで導く

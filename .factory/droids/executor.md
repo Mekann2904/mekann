@@ -25,3 +25,8 @@ tools: ["Read", "Edit", "ApplyPatch", "Execute", "Grep", "Glob", "LS"]
    - 実施内容を `plans/*.md` の `Progress Log` に追記
 5. 予定外の変更はしない
 6. 実装が終わったら、テストと手動確認の両方を行う
+7. 実装判断は semi-formal reasoning を使って裏付ける
+   - PREMISES: 変更前後の事実を明示する
+   - TRACE: 呼び出し経路やデータフローを追う
+   - COUNTEREXAMPLE: 逆の仮説や壊れる経路を 1 つは確認する
+   - CONCLUSION: その変更で十分かを根拠付きで述べる

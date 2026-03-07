@@ -2,7 +2,7 @@
 title: 貢献
 category: development
 audience: contributor
-last_updated: 2026-02-20
+last_updated: 2026-03-07
 tags: [contributing, guide]
 related: [../README.md, ./01-getting-started.md]
 ---
@@ -11,7 +11,13 @@ related: [../README.md, ./01-getting-started.md]
 
 > パンくず: [Home](../../README.md) > [Developer Guide](./) > 貢献
 
-このドキュメントでは、mekannプロジェクトへの貢献方法について説明します。
+このドキュメントでは、mekannプロジェクトへの貢献方法を説明します。
+
+このリポジトリでは、変更の質は loop の運用で上げます。
+
+重要なのは、一度で正解を書くことではありません。
+
+計画し、最小変更を入れ、verify し、観測し、直して、記録を残すことです。
 
 ## 貢献の種類
 
@@ -50,13 +56,55 @@ git checkout -b docs/your-docs-update
 - コードはTypeScriptで記述
 - 日本語のコメントとJSDocを使用
 - 絵文字は使用しない
+- 複雑な変更は、先に `AGENTS.md` と `plans/*.md` に沿って計画する
+- 実装は小さな反復で進める
+
+### 3.1 推奨ループ
+
+貢献時は、次のループを基本にします。
+
+1. `plan`
+2. `edit`
+3. `test/build/lint`
+4. `observe`
+5. `repair`
+6. `repeat`
+
+止める条件も先に決めます。
+
+同じ種類の失敗が続くなら、実装を増やす前に仮説を見直します。
+
+### 3.2 3つの品質ループ
+
+| ループ | 目的 | 主な道具 |
+|-------|------|---------|
+| 実行ループ | 変更を前に進める | plan, edit, observe, repair |
+| 検証ループ | 品質を証拠で確認する | test, lint, typecheck, browser, review |
+| 継続ループ | 長い作業を壊さない | todo, plans, progress log, checkpoints |
+
+### 3.3 Proof Artifacts
+
+高精度に動く変更では、証拠を残します。
+
+最低でも、実行した検証コマンドと結果は残してください。
+
+可能なら、ログ、スクリーンショット、再現手順、coverage も残します。
 
 ### 4. テストの実行
 
 ```bash
-# 関連するテストスクリプトを実行
+# まず関連テストを実行
+npx vitest run tests/unit/...
+
+# 次に必要な横断チェックを実行
+npx eslint .
+npx tsc -p tsconfig-check.json --noEmit
+
+# 必要なら既存スクリプトも実行
 ./scripts/test-kitty-extension.sh
 ```
+
+変更範囲が広い場合は、integration や e2e まで広げます。
 
 ### 5. コミットの作成
 
@@ -109,6 +157,13 @@ async function askQuestions(questions: Question[]): Promise<Answer[]> {
 - ユーザーに分かりやすいエラーメッセージを提供
 - エラーは適切にログに記録
 - 復旧可能なエラーは自動リトライを検討
+
+### 検証規約
+
+- 完了報告には、何を verify したかを書く
+- verify していない部分は、未検証として明記する
+- UI や操作フローを変えたら、手動確認手順も書く
+- review では bugs、security、regression、test gaps を先に見る
 
 ## 拡張機能の追加
 
@@ -177,6 +232,7 @@ export default function (pi: ExtensionAPI) {
 2. `last_updated` 日付を更新
 3. 関連リンクを確認・追加
 4. プレビューで確認
+5. 必要なら plan と verification 記録も更新
 
 ## コミットメッセージ規約
 

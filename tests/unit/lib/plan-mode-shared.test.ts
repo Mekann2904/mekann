@@ -98,11 +98,13 @@ describe("Constants", () => {
 		it("PLAN_MODE_POLICY should_be_non_empty_string", () => {
 			expect(typeof PLAN_MODE_POLICY).toBe("string");
 			expect(PLAN_MODE_POLICY.length).toBeGreaterThan(0);
+			expect(PLAN_MODE_POLICY).toContain("READ-ONLY MODE");
 		});
 
 		it("PLAN_MODE_WARNING should_be_non_empty_string", () => {
 			expect(typeof PLAN_MODE_WARNING).toBe("string");
 			expect(PLAN_MODE_WARNING.length).toBeGreaterThan(0);
+			expect(PLAN_MODE_WARNING).toContain("Read-only restrictions");
 		});
 
 		it("PLAN_MODE_CONTEXT_TYPE should_be_defined", () => {

@@ -1,3 +1,7 @@
+// /Users/mekann/github/pi-plugin/mekann/.pi/lib/prompt-templates.ts
+// このファイルは、エージェントへ自動注入する共通プロンプトテンプレートを定義します。
+// なぜ存在するか: 推論の型を共通化し、トークン効率を保ちながら判断品質を上げるためです。
+// 関連ファイル: /Users/mekann/github/pi-plugin/mekann/.pi/extensions/subagents.ts, /Users/mekann/github/pi-plugin/mekann/.factory/droids/planner.md, /Users/mekann/github/pi-plugin/mekann/.factory/droids/verifier.md
 /**
  * @abdd.meta
  * path: .pi/lib/prompt-templates.ts
@@ -134,6 +138,35 @@ Be aware of these biases during execution:
 4. **Anchoring Bias**: Re-evaluate initial estimates with new information`;
 
 /**
+ * Semi-formal reasoning テンプレート
+ * @summary 構造化推論
+ */
+const SEMI_FORMAL_REASONING_CONTENT = `## Semi-formal Reasoning Policy (MANDATORY)
+
+Do not jump from a diff, symbol name, or intuition to a conclusion.
+
+For code reasoning, review, debugging, verification, and planning tasks, structure your reasoning as a lightweight certificate:
+
+1. **DEFINITIONS**: State the exact success condition or equivalence condition.
+2. **PREMISES**: List the concrete facts you verified from files, with file paths or symbols.
+3. **TRACE**: Walk the relevant execution path, control flow, or data flow step by step.
+4. **ALTERNATIVE / COUNTEREXAMPLE**: Check at least one opposing hypothesis or failing path.
+5. **CONCLUSION**: Derive the result only from the premises and trace.
+
+Rules:
+- If behavior depends on another function, read that function before claiming behavior.
+- If you claim two implementations are equivalent, explain why no observed test or caller sees a difference.
+- If you claim something breaks, name the concrete caller, test, or path that breaks.
+- Mark uncertainty explicitly when source evidence is incomplete.
+
+Preferred output labels when the task is analysis-heavy:
+- DEFINITIONS
+- PREMISES
+- TRACE
+- COUNTEREXAMPLE or NO COUNTEREXAMPLE FOUND
+- CONCLUSION`;
+
+/**
  * 出力フォーマット要件テンプレート
  * @summary 出力フォーマット
  */
@@ -180,6 +213,16 @@ export const PROMPT_TEMPLATES: Map<string, PromptTemplate> = new Map([
     },
   ],
   [
+    "semi-formal-reasoning",
+    {
+      id: "semi-formal-reasoning",
+      hash: computeHash(SEMI_FORMAL_REASONING_CONTENT),
+      content: SEMI_FORMAL_REASONING_CONTENT,
+      category: "instruction",
+      estimatedTokens: 220,
+    },
+  ],
+  [
     "output-format",
     {
       id: "output-format",
@@ -197,17 +240,17 @@ export const PROMPT_TEMPLATES: Map<string, PromptTemplate> = new Map([
  */
 const AGENT_TEMPLATE_MAP: Record<string, string[]> = {
   // デフォルト: 全エージェント共通
-  default: ["proactive-delegation", "quality-checklist"],
+  default: ["proactive-delegation", "quality-checklist", "semi-formal-reasoning"],
   // 実装エージェント: 品質重視
-  implementer: ["proactive-delegation", "quality-checklist", "output-format"],
+  implementer: ["proactive-delegation", "quality-checklist", "semi-formal-reasoning", "output-format"],
   // レビューアー: バイアス防止重視
-  reviewer: ["cognitive-bias-prevention", "quality-checklist", "output-format"],
+  reviewer: ["cognitive-bias-prevention", "quality-checklist", "semi-formal-reasoning", "output-format"],
   // アナリスト: バイアス防止重視
-  analyst: ["cognitive-bias-prevention", "output-format"],
+  analyst: ["cognitive-bias-prevention", "semi-formal-reasoning", "output-format"],
   // プランナー: 委譲重視
-  planner: ["proactive-delegation", "cognitive-bias-prevention"],
+  planner: ["proactive-delegation", "cognitive-bias-prevention", "semi-formal-reasoning"],
   // テスター: 品質重視
-  tester: ["quality-checklist", "output-format"],
+  tester: ["quality-checklist", "semi-formal-reasoning", "output-format"],
 };
 
 /**

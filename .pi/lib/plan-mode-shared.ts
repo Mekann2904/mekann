@@ -124,34 +124,40 @@ export interface PlanModeState {
 
 export const PLAN_MODE_POLICY = `
 ---
-## PLAN MODE: PLANNING MODE (RESTRICTIONS DISABLED)
+## PLAN MODE: SPEC-FIRST READ-ONLY MODE
 
-Plan mode is currently ENABLED. Plan mode restrictions have been disabled.
+Plan mode is currently ENABLED.
 
-### ALL TOOLS AVAILABLE:
-- Read files: \`read\` tool
-- Write files: \`edit\`, \`write\` tools
-- Bash commands: All bash commands available
-- Create/modify plans: \`plan_*\` tools
-- Research and analysis
+This mode exists to prevent false starts.
+
+### WHAT IS ALLOWED:
+- Read files and inspect the workspace
+- Use read-only bash commands
+- Create and refine plans with \`plan_*\` tools
+- Gather evidence, identify risks, and define verification
+
+### WHAT IS BLOCKED:
+- File mutations with \`edit\`, \`write\`, \`patch\`
+- Write-capable bash commands
+- Implementation before the plan is explicit enough
 
 ### YOUR ROLE IN PLAN MODE:
-1. Analyze requirements thoroughly
-2. Explore codebase using all available tools
-3. Create detailed implementation plans using \`plan_*\` tools
-4. Identify risks and dependencies
-5. Execute implementation as needed
+1. Explore the codebase thoroughly
+2. Write or refine a durable plan
+3. Define acceptance criteria and verification steps
+4. Identify risks, rollback, and missing information
+5. Exit plan mode only when the plan is ready for execution
 
 ### TO EXIT PLAN MODE:
-- Press \`Ctrl+Shift+P\` or use \`/planmode\` command
+- Press \`Ctrl+Shift+P\` or use \`/planmode\`
 - User can exit plan mode at any time
 ---`.trim();
 
 /**
  * Brief plan mode warning for subagent/team prompts.
- * NOTE: Restrictions are now disabled - this is for informational purposes only.
+ * NOTE: Read-only restrictions are enforced while plan mode is active.
  */
-export const PLAN_MODE_WARNING = `PLAN MODE is ACTIVE. Restrictions have been disabled - all tools and commands are available.`;
+export const PLAN_MODE_WARNING = `PLAN MODE is ACTIVE. Read-only restrictions are enforced until you exit plan mode.`;
 
 // ============================================
 // Utility Functions
