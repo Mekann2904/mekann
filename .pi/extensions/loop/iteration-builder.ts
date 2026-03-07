@@ -38,6 +38,10 @@ import {
   createRuntimeNotification,
   formatRuntimeNotificationBlock,
 } from "../../lib/agent/runtime-notifications.js";
+import {
+  buildTurnExecutionRuntimeSection,
+  formatTurnExecutionContextBlock,
+} from "../../lib/agent/turn-context-builder.js";
 import { resolveModelPromptAdapter } from "../../lib/agent/model-adapters.js";
 import {
   truncateTextWithMarker as truncateText,
@@ -45,6 +49,7 @@ import {
   normalizeOptionalText,
 } from "../../lib/text-utils.js";
 import type { LoopReference } from "./reference-loader";
+import type { TurnExecutionContext } from "../../lib/agent/turn-context.js";
 
 // ============================================================================
 // Constants
@@ -144,6 +149,7 @@ export function buildIterationPrompt(input: {
   relevantPatterns?: RelevantPattern[];
   modelProvider?: string;
   modelId?: string;
+  turnContext?: TurnExecutionContext;
 }): string {
   return buildIterationPromptPackage(input).prompt;
 }
@@ -160,6 +166,7 @@ export function buildIterationPromptPackage(input: {
   relevantPatterns?: RelevantPattern[];
   modelProvider?: string;
   modelId?: string;
+  turnContext?: TurnExecutionContext;
 }): { prompt: string; entries: PromptStackEntry[]; runtimeNotificationCount: number } {
   const adapter = resolveModelPromptAdapter(input.modelProvider, input.modelId);
   const entries: PromptStackEntry[] = [
@@ -175,6 +182,28 @@ export function buildIterationPromptPackage(input: {
       ].join("\n"),
     },
   ];
+
+  if (input.turnContext) {
+    entries.push({
+      source: "loop-turn-context",
+      layer: "startup-context",
+      content: formatTurnExecutionContextBlock(input.turnContext),
+    });
+
+    const notification = createRuntimeNotification(
+      "turn-context",
+      buildTurnExecutionRuntimeSection(input.turnContext),
+      "info",
+      1,
+    );
+    if (notification) {
+      entries.push({
+        source: "loop-turn-context-runtime",
+        layer: "runtime-notification",
+        content: formatRuntimeNotificationBlock([notification]),
+      });
+    }
+  }
 
   if (input.goal?.trim()) {
     entries.push({

@@ -50,6 +50,11 @@ import {
   createRuntimeNotification,
   formatRuntimeNotificationBlock,
 } from "../lib/agent/runtime-notifications.js";
+import {
+  buildTurnExecutionContext,
+  buildTurnExecutionRuntimeSection,
+  formatTurnExecutionContextBlock,
+} from "../lib/agent/turn-context-builder.js";
 import { getRuntimeEnvironmentCache } from "../lib/runtime-environment-cache.js";
 import {
   collectSessionStartContext,
@@ -58,7 +63,7 @@ import {
   formatDeltaAsShell,
 } from "../lib/startup-context-collectors.js";
 import type { SessionStartContext, UserPromptSubmitDelta } from "../lib/startup-context-types.js";
-import { getToolTelemetryStore, resetToolTelemetryStore } from "../lib/tool-telemetry-store.js";
+import { resetToolTelemetryStore } from "../lib/tool-telemetry-store.js";
 
 // モジュールレベルのフラグ（reload時のリスナー重複登録防止）
 let isInitialized = false;
@@ -97,7 +102,14 @@ export default function (pi: ExtensionAPI) {
 
         // シェル形式でフォーマット
         const formattedContext = formatSessionStartAsShell(context);
-        const runtimeOptimizationSection = buildRuntimeOptimizationSection();
+        const turnContext = buildTurnExecutionContext({
+          availableToolNames: pi.getAllTools().map((tool) => tool.name),
+          startupKind: "baseline",
+          isFirstTurn: true,
+          previousContextAvailable: false,
+          sessionElapsedMs: Date.now() - sessionStartTime,
+        });
+        const runtimeOptimizationSection = buildTurnExecutionRuntimeSection(turnContext);
         const runtimeNotification = createRuntimeNotification(
           "startup-context",
           runtimeOptimizationSection,
@@ -111,6 +123,13 @@ export default function (pi: ExtensionAPI) {
             layer: "startup-context",
             markerId: "startup-context-baseline",
             content: formattedContext,
+          },
+          {
+            source: "turn-execution-context-baseline",
+            recordSource: "turn-execution-context",
+            layer: "startup-context",
+            markerId: "turn-execution-context-baseline",
+            content: formatTurnExecutionContextBlock(turnContext),
           },
         ];
         if (runtimeNotification) {
@@ -143,7 +162,14 @@ export default function (pi: ExtensionAPI) {
 
         // 差分をフォーマット
         const formattedDelta = formatDeltaAsShell(delta);
-        const runtimeOptimizationSection = buildRuntimeOptimizationSection();
+        const turnContext = buildTurnExecutionContext({
+          availableToolNames: pi.getAllTools().map((tool) => tool.name),
+          startupKind: "delta",
+          isFirstTurn: false,
+          previousContextAvailable: previousContext !== null,
+          sessionElapsedMs: Date.now() - sessionStartTime,
+        });
+        const runtimeOptimizationSection = buildTurnExecutionRuntimeSection(turnContext);
         const runtimeNotification = createRuntimeNotification(
           "startup-context-delta",
           runtimeOptimizationSection,
@@ -164,6 +190,13 @@ export default function (pi: ExtensionAPI) {
             layer: "startup-context",
             markerId: `startup-context-delta:${Date.now()}`,
             content: `# Context Delta\n\n${formattedDelta}`,
+          },
+          {
+            source: "turn-execution-context-delta",
+            recordSource: "turn-execution-context",
+            layer: "startup-context",
+            markerId: `turn-execution-context-delta:${Date.now()}`,
+            content: formatTurnExecutionContextBlock(turnContext),
           },
         ];
         if (runtimeNotification) {
@@ -228,24 +261,4 @@ function hasSignificantDelta(delta: UserPromptSubmitDelta): boolean {
   if (delta.failure_signals?.detected) return true;
 
   return false;
-}
-
-function buildRuntimeOptimizationSection(): string {
-  const telemetryHints = getToolTelemetryStore().buildPromptHints({ maxHints: 4 });
-  const environmentSection = getRuntimeEnvironmentCache().formatForPrompt();
-  const lines = [
-    "prefer_cheap_probe_first=true",
-    "avoid_duplicate_tool_calls=true",
-    "narrow_large_outputs_before_reading=true",
-    environmentSection,
-  ];
-
-  if (telemetryHints.length > 0) {
-    lines.push("# Recent Runtime Hints");
-    for (const hint of telemetryHints) {
-      lines.push(`- ${hint}`);
-    }
-  }
-
-  return lines.join("\n");
 }

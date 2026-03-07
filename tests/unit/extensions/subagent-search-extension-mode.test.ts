@@ -15,6 +15,7 @@ import {
   buildSubagentPrompt,
   shouldEnableSubagentExtensions,
 } from "../../../.pi/extensions/subagents/task-execution";
+import { buildTurnExecutionContext } from "../../../.pi/lib/agent/turn-context-builder.js";
 
 function createFakePi() {
   const tools = new Map<string, any>();
@@ -50,6 +51,28 @@ describe("shouldEnableSubagentExtensions", () => {
   it("通常の実装タスクでは拡張を無効のままにする", () => {
     expect(shouldEnableSubagentExtensions("この関数を修正してテストも更新して")).toBe(false);
   });
+
+  it("plan mode の turn context では調査タスクでも拡張を有効化しない", () => {
+    const baseContext = buildTurnExecutionContext({
+      cwd: "/repo",
+      availableToolNames: ["file_candidates", "code_search", "edit"],
+      startupKind: "delta",
+      isFirstTurn: false,
+      previousContextAvailable: true,
+      sessionElapsedMs: 50,
+    });
+    const turnContext = {
+      ...baseContext,
+      policy: {
+        ...baseContext.policy,
+        mode: "plan" as const,
+      },
+    };
+
+    expect(
+      shouldEnableSubagentExtensions("この不具合の原因を検索して調査して", undefined, turnContext),
+    ).toBe(false);
+  });
 });
 
 describe("buildPiPrintModeArgs", () => {
@@ -76,6 +99,14 @@ describe("buildPiPrintModeArgs", () => {
 
 describe("buildSubagentPrompt", () => {
   it("research タスクでは search ツールのガイドラインを含める", () => {
+    const turnContext = buildTurnExecutionContext({
+      cwd: "/repo",
+      availableToolNames: ["read", "code_search"],
+      startupKind: "baseline",
+      isFirstTurn: true,
+      previousContextAvailable: false,
+      sessionElapsedMs: 10,
+    });
     const prompt = buildSubagentPrompt({
       agent: {
         id: "researcher",
@@ -84,14 +115,24 @@ describe("buildSubagentPrompt", () => {
         systemPrompt: "Inspect the repository carefully.",
       } as any,
       task: "この機能の関連ファイルを検索して調査して",
+      turnContext,
     });
 
     expect(prompt).toContain("file_candidates");
     expect(prompt).toContain("code_search");
     expect(prompt).toContain("sym_find");
+    expect(prompt).toContain("# Turn Execution Context");
   });
 
   it("plan mode では runtime notification を prompt に含める", () => {
+    const turnContext = buildTurnExecutionContext({
+      cwd: "/repo",
+      availableToolNames: ["read", "edit"],
+      startupKind: "delta",
+      isFirstTurn: false,
+      previousContextAvailable: true,
+      sessionElapsedMs: 40,
+    });
     const prompt = buildSubagentPrompt({
       agent: {
         id: "implementer",
@@ -101,11 +142,13 @@ describe("buildSubagentPrompt", () => {
       } as any,
       task: "この関数を修正して",
       enforcePlanMode: true,
+      turnContext,
     });
 
     expect(prompt).toContain("# Runtime Notifications");
     expect(prompt).toContain("plan-mode");
     expect(prompt).toContain("PLAN MODE");
+    expect(prompt).toContain("respect_cwd_as_workspace_anchor=true");
   });
 });
 

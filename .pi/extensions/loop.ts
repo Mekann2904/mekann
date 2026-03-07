@@ -42,6 +42,21 @@ import { toBoundedInteger, toBoundedFloat } from "../lib/core/validation-utils.j
 import { createBoundedOptionalNumberSchema } from "../lib/tool-contracts.js";
 import { createLoopBenchmarkRun } from "../lib/agent/benchmark-harness.js";
 import {
+  buildTurnExecutionContext,
+  deriveTurnExecutionDecisions,
+} from "../lib/agent/turn-context-builder.js";
+import {
+  applyReplayDecisionConstraints,
+  applyReplayToolConstraints,
+  createTurnExecutionSnapshot,
+  type TurnExecutionSnapshot,
+} from "../lib/agent/turn-context-snapshot.js";
+import {
+  formatTurnExecutionSnapshot,
+  loadLoopReplayInput,
+  loadLoopTurnContextSnapshots,
+} from "../lib/agent/turn-context-inspector.js";
+import {
   mergePromptStackBenchmarkSummaries,
   summarizePromptStackForBenchmark,
   type PromptStackBenchmarkSummary,
@@ -284,6 +299,7 @@ interface LoopRunInput {
     thinkingLevel: ThinkingLevel;
   };
   cwd: string;
+  replaySnapshot?: TurnExecutionSnapshot;
   signal?: AbortSignal;
   onProgress?: (progress: LoopProgress) => void;
 }
@@ -672,6 +688,132 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
     },
   });
 
+  pi.registerTool({
+    name: "loop_inspect_run",
+    label: "Loop Inspect Run",
+    description: "Load persisted turn execution snapshots for a loop run summary.",
+    parameters: Type.Object({
+      summaryFile: Type.Optional(Type.String({ description: "Loop summary file path. Uses latest-summary.json when omitted." })),
+      iteration: Type.Optional(Type.Number({ description: "Optional iteration number to inspect." })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const summaryFile = typeof params.summaryFile === "string" && params.summaryFile.trim()
+        ? params.summaryFile.trim()
+        : join(ctx.cwd, ".pi", "agent-loop", "latest-summary.json");
+      const entries = loadLoopTurnContextSnapshots(summaryFile);
+      const requestedIteration = Number.isFinite(Number(params.iteration)) ? Math.trunc(Number(params.iteration)) : undefined;
+      const selected = requestedIteration
+        ? entries.find((entry) => entry.iteration === requestedIteration)
+        : entries[entries.length - 1];
+
+      if (!selected) {
+        throw new Error(`loop iteration snapshot not found: iteration=${requestedIteration}`);
+      }
+
+      return {
+        content: [{ type: "text" as const, text: formatTurnExecutionSnapshot(selected.snapshot) }],
+        details: {
+          summaryFile,
+          iteration: selected.iteration,
+          snapshot: selected.snapshot,
+          availableIterations: entries.map((entry) => entry.iteration),
+        },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "loop_replay_run",
+    label: "Loop Replay Run",
+    description: "Replay a persisted loop run from its summary. Use prepareOnly to inspect reconstructed input without executing.",
+    parameters: Type.Object({
+      summaryFile: Type.Optional(Type.String({ description: "Loop summary file path. Uses latest-summary.json when omitted." })),
+      prepareOnly: Type.Optional(Type.Boolean({ description: "Only reconstruct replay input without executing." })),
+    }),
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      const summaryFile = typeof params.summaryFile === "string" && params.summaryFile.trim()
+        ? params.summaryFile.trim()
+        : join(ctx.cwd, ".pi", "agent-loop", "latest-summary.json");
+      const replay = loadLoopReplayInput(summaryFile);
+      const latestSnapshot = replay.snapshots[replay.snapshots.length - 1];
+
+      if (!replay.summary.task || !replay.summary.config) {
+        throw new Error("loop replay artifact is missing task or config");
+      }
+
+      if (params.prepareOnly === true) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: [
+              "Loop Replay Input:",
+              `Task: ${replay.summary.task}`,
+              `Goal: ${replay.summary.goal ?? "(none)"}`,
+              `Verification: ${replay.summary.verificationCommand ?? "(none)"}`,
+              `References: ${replay.references.length}`,
+              "",
+              latestSnapshot ? formatTurnExecutionSnapshot(latestSnapshot.snapshot) : "No snapshot available.",
+            ].join("\n"),
+          }],
+          details: {
+            summaryFile,
+            replay,
+            prepared: true,
+          },
+        };
+      }
+
+      if (!ctx.model) {
+        return {
+          content: [{ type: "text" as const, text: "loop_replay_run error: no active model." }],
+          details: { error: "missing_model" },
+        };
+      }
+
+      const normalized = normalizeLoopConfig(replay.summary.config as Partial<LoopConfig>);
+      if (!normalized.ok) {
+        return {
+          content: [{ type: "text" as const, text: `loop_replay_run config error: ${normalized.error}` }],
+          details: { error: normalized.error },
+        };
+      }
+
+      const references = replay.references
+        .filter((item) => typeof item.source === "string" && item.source.trim().length > 0)
+        .map((item, index) => ({
+          id: item.id ?? `R${index + 1}`,
+          title: item.title ?? item.source!,
+          source: item.source!,
+          content: "",
+        }));
+
+      const run = await runLoop({
+        task: replay.summary.task,
+        goal: replay.summary.goal,
+        verificationCommand: replay.summary.verificationCommand,
+        config: normalized.config,
+        references,
+        model: {
+          provider: ctx.model.provider,
+          id: ctx.model.id,
+          thinkingLevel: (pi.getThinkingLevel() || "off") as ThinkingLevel,
+        },
+        cwd: latestSnapshot?.snapshot.workspace.cwd || ctx.cwd,
+        replaySnapshot: latestSnapshot?.snapshot,
+        signal,
+      });
+
+      return {
+        content: [{ type: "text" as const, text: formatLoopResultText(run.summary, run.finalOutput, []) }],
+        details: {
+          replayedFrom: summaryFile,
+          originalRunId: replay.summary.runId,
+          summary: run.summary,
+        },
+      };
+    },
+  });
+
   pi.registerCommand("loop", {
     description: "Run autonomous loop execution with optional references",
     handler: async (args, ctx) => {
@@ -937,6 +1079,41 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
   let totalRuntimeNotificationCount = 0;
   const promptStackSummaries: PromptStackBenchmarkSummary[] = [];
   const verificationPolicy = resolveVerificationPolicy();
+  const liveBaselineTurnContext = buildTurnExecutionContext({
+    cwd: input.cwd,
+    startupKind: "baseline",
+    isFirstTurn: true,
+    previousContextAvailable: false,
+    sessionElapsedMs: 0,
+  });
+  const baselineTurnContext = applyReplayToolConstraints(
+    liveBaselineTurnContext,
+    input.replaySnapshot,
+  );
+  const liveBaselineTurnDecisions = deriveTurnExecutionDecisions(baselineTurnContext, {
+    taskKind: "loop",
+    wantsCommandExecution: Boolean(input.verificationCommand),
+    taskText: input.task,
+  });
+  const baselineTurnDecisions = applyReplayDecisionConstraints(
+    liveBaselineTurnDecisions,
+    input.replaySnapshot,
+  );
+  const effectiveMaxIterations = Math.min(
+    input.config.maxIterations,
+    baselineTurnDecisions.maxLoopIterations,
+  );
+
+  if (effectiveMaxIterations < input.config.maxIterations) {
+    appendJsonl(logFile, {
+      type: "turn_policy_cap",
+      runId,
+      requestedMaxIterations: input.config.maxIterations,
+      effectiveMaxIterations,
+      policyProfile: baselineTurnContext.policy.profile,
+      policyMode: baselineTurnContext.policy.mode,
+    });
+  }
 
   // Intent classification for intent-aware resource allocation
   let intentClassification: IntentClassificationResult | undefined;
@@ -985,6 +1162,10 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     method: "exact" as "embedding" | "exact" | "unavailable",
     similarities: [] as number[],
   };
+  const turnSnapshots: Array<{
+    iteration: number;
+    snapshot: ReturnType<typeof createTurnExecutionSnapshot>;
+  }> = [];
 
   // Trajectory Reduction: リデューサーを作成
   const trajectoryConfig: TrajectoryReductionConfig = {
@@ -997,7 +1178,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
   };
   const trajectoryReducer = createTrajectoryReducer(runId, trajectoryConfig, callLLMForReduction);
 
-  for (let iteration = 1; iteration <= input.config.maxIterations; iteration++) {
+  for (let iteration = 1; iteration <= effectiveMaxIterations; iteration++) {
     throwIfAborted(input.signal);
 
     // Show what this iteration is trying to do so users can follow progress.
@@ -1006,25 +1187,46 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     input.onProgress?.({
       type: "iteration_start",
       iteration,
-      maxIterations: input.config.maxIterations,
+      maxIterations: effectiveMaxIterations,
       taskPreview: toPreview(clarifiedTask, 120),
       focusPreview: toPreview(focusPreview, 140),
     });
 
     // Each iteration gets the previous output and validation feedback.
     // On first iteration, also include relevant patterns from past executions.
+    const liveTurnContext = buildTurnExecutionContext({
+      cwd: input.cwd,
+      startupKind: previousOutput.trim() ? "delta" : "baseline",
+      isFirstTurn: iteration === 1,
+      previousContextAvailable: Boolean(previousOutput.trim()),
+      sessionElapsedMs: 0,
+    });
+    const turnContext = applyReplayToolConstraints(liveTurnContext, input.replaySnapshot);
+    const liveTurnDecisions = deriveTurnExecutionDecisions(turnContext, {
+      taskKind: "loop",
+      wantsCommandExecution: Boolean(input.verificationCommand),
+      taskText: clarifiedTask,
+    });
+    const turnDecisions = applyReplayDecisionConstraints(liveTurnDecisions, input.replaySnapshot);
+    const turnSnapshot = createTurnExecutionSnapshot(turnContext, turnDecisions);
+    turnSnapshots.push({
+      iteration,
+      snapshot: turnSnapshot,
+    });
+
     const promptPackage = buildIterationPromptPackage({
       task: clarifiedTask,  // Use clarified task
       goal: input.goal,
       verificationCommand: input.verificationCommand,
       iteration,
-      maxIterations: input.config.maxIterations,
+      maxIterations: effectiveMaxIterations,
       references: input.references,
       previousOutput,
       validationFeedback,
       relevantPatterns: iteration === 1 ? relevantPatterns : undefined,  // Only on first iteration
       modelProvider: input.model.provider,
       modelId: input.model.id,
+      turnContext,
     });
     const prompt = promptPackage.prompt;
     totalPromptChars += prompt.length;
@@ -1074,9 +1276,10 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
 
       if (
         input.verificationCommand &&
+        turnDecisions.allowCommandExecution &&
         shouldRunVerificationCommand({
           iteration,
-          maxIterations: input.config.maxIterations,
+          maxIterations: effectiveMaxIterations,
           status,
           policy: verificationPolicy,
         })
@@ -1090,6 +1293,8 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
         if (!verification.passed) {
           validationErrors.push(...buildVerificationValidationFeedback(verification));
         }
+      } else if (input.verificationCommand && !turnDecisions.allowCommandExecution) {
+        validationErrors.push("Verification skipped because command execution is blocked by the current autonomy mode.");
       }
 
       if (status === "done" && validationErrors.length > 0) {
@@ -1122,13 +1327,14 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
         timeoutHint,
       ]);
 
-      appendJsonl(logFile, {
-        type: "iteration_error",
-        runId,
-        iteration,
-        latencyMs,
-        error: message,
-      });
+        appendJsonl(logFile, {
+          type: "iteration_error",
+          runId,
+          iteration,
+          turnContext: turnSnapshot,
+          latencyMs,
+          error: message,
+        });
     }
 
     const iterationResult: LoopIterationResult = {
@@ -1179,6 +1385,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
       type: "iteration",
       runId,
       iteration,
+      turnContext: turnSnapshot,
       latencyMs,
       status,
       goalStatus,
@@ -1192,7 +1399,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     input.onProgress?.({
       type: "iteration_done",
       iteration,
-      maxIterations: input.config.maxIterations,
+      maxIterations: effectiveMaxIterations,
       status,
       latencyMs,
       validationErrors,
@@ -1289,7 +1496,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     : 0;
 
   // Assess sufficiency based on self-reflection skill criteria
-  const sufficiencyAssessment = assessSufficiency(iterations, input.config.maxIterations);
+  const sufficiencyAssessment = assessSufficiency(iterations, effectiveMaxIterations);
 
   const summary: LoopRunSummary = {
     runId,
@@ -1299,7 +1506,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     completed,
     stopReason,
     iterationCount: iterations.length,
-    maxIterations: input.config.maxIterations,
+    maxIterations: effectiveMaxIterations,
     referenceCount: input.references.length,
     goal: input.goal,
     verificationCommand: input.verificationCommand,
@@ -1361,6 +1568,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
       validationErrors: item.validationErrors,
       outputPreview: toPreview(item.output, 240),
     })),
+    turnContexts: turnSnapshots,
   };
 
   const summaryPayloadText = JSON.stringify(summaryPayload, null, 2);
@@ -1376,7 +1584,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
 
   input.onProgress?.({
     type: "run_done",
-    maxIterations: input.config.maxIterations,
+    maxIterations: effectiveMaxIterations,
   });
 
   return {

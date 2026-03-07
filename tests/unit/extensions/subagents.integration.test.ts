@@ -5,7 +5,7 @@
  * 関連ファイル: .pi/extensions/subagents.ts, .pi/extensions/subagents/storage.ts, tests/unit/extensions/subagents.test.ts
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -74,6 +74,8 @@ describe("subagents extension integration", () => {
     expect(toolNames).toContain("subagent_run_dag");
     expect(toolNames).toContain("subagent_status");
     expect(toolNames).toContain("subagent_runs");
+    expect(toolNames).toContain("subagent_inspect_run");
+    expect(toolNames).toContain("subagent_replay_run");
     expect(toolNames).toContain("agent_benchmark_status");
   });
 
@@ -121,5 +123,67 @@ describe("subagents extension integration", () => {
 
     expect(pi.uiNotify).toHaveBeenCalled();
     expect(pi.uiNotify.mock.calls[0]?.[0]).toContain("Subagent extension loaded");
+  });
+
+  it("subagent_inspect_run reads turn context from artifact file", async () => {
+    const tool = pi.tools.get("subagent_inspect_run");
+    expect(tool).toBeDefined();
+
+    const artifactPath = join(testCwd, "artifact.json");
+    writeFileSync(artifactPath, JSON.stringify({
+      turnContext: {
+        capturedAt: "2026-03-07T00:00:00.000Z",
+        workspace: { cwd: "/repo/app", workspaceRoot: "/repo" },
+        policy: { profile: "high", mode: "build", gatekeeper: "deterministic", updatedAt: "2026-03-07T00:00:00.000Z" },
+        tools: { availableToolNames: ["read"], activeToolNames: ["read"], dynamicToolNames: [] },
+        continuation: { isFirstTurn: false, startupKind: "delta", previousContextAvailable: true, sessionElapsedMs: 10 },
+        runtimeEnvironment: { repoRoot: "/repo", mainLanguage: "typescript", packageManager: "npm", testFramework: "vitest", frequentFiles: [], largeDirectoriesToAvoid: [] },
+        runtimeHints: [],
+      },
+    }, null, 2));
+
+    const ctx = {
+      cwd: testCwd,
+      model: undefined,
+      ui: { notify: pi.uiNotify },
+    };
+    const result = await tool!.execute("tc-3", { outputFile: artifactPath }, undefined, undefined, ctx);
+
+    expect(result.content[0].text).toContain("Turn Execution Snapshot");
+    expect(result.details.snapshot.workspace.cwd).toBe("/repo/app");
+  });
+
+  it("subagent_replay_run prepares replay input from artifact file", async () => {
+    const tool = pi.tools.get("subagent_replay_run");
+    expect(tool).toBeDefined();
+
+    const artifactPath = join(testCwd, "artifact-replay.json");
+    writeFileSync(artifactPath, JSON.stringify({
+      run: {
+        runId: "run-1",
+        agentId: "researcher",
+        task: "Investigate the parser behavior",
+      },
+      turnContext: {
+        capturedAt: "2026-03-07T00:00:00.000Z",
+        workspace: { cwd: "/repo/app", workspaceRoot: "/repo" },
+        policy: { profile: "high", mode: "build", gatekeeper: "deterministic", updatedAt: "2026-03-07T00:00:00.000Z" },
+        tools: { availableToolNames: ["read"], activeToolNames: ["read"], dynamicToolNames: [] },
+        continuation: { isFirstTurn: false, startupKind: "delta", previousContextAvailable: true, sessionElapsedMs: 10 },
+        runtimeEnvironment: { repoRoot: "/repo", mainLanguage: "typescript", packageManager: "npm", testFramework: "vitest", frequentFiles: [], largeDirectoriesToAvoid: [] },
+        runtimeHints: [],
+      },
+    }, null, 2));
+
+    const ctx = {
+      cwd: testCwd,
+      model: undefined,
+      ui: { notify: pi.uiNotify },
+    };
+    const result = await tool!.execute("tc-4", { outputFile: artifactPath, prepareOnly: true }, undefined, undefined, ctx);
+
+    expect(result.content[0].text).toContain("Subagent Replay Input");
+    expect(result.content[0].text).toContain("Investigate the parser behavior");
+    expect(result.details.prepared).toBe(true);
   });
 });

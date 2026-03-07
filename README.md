@@ -76,6 +76,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **ul-workflow** | `ul-workflow.ts` | Research-Plan-Annotate-Implement ワークフロー（計画承認必須） | [→](docs/02-user-guide/16-ul-workflow.md) |
 | **cross-instance-runtime** | `cross-instance-runtime.ts` | 複数piインスタンス間の並列数自動調整（プロバイダー/モデル別） | [→](docs/02-user-guide/12-cross-instance-runtime.md) |
 | **autonomy-policy** | `autonomy-policy.ts` | permission bundle と gatekeeper を持つ高度自律実行 policy | README内の「Autonomy Policy」 |
+| **background-process** | `background-process.ts` | 長時間実行プロセスの起動、追跡、停止、ready判定 | README内の「Background Process Support」 |
 
 ### ユーティリティ
 
@@ -178,6 +179,49 @@ pi remove https://github.com/Mekann2904/mekann
 - `/autonomy-policy gatekeeper off`
 
 LLM ツールからは `autonomy_policy` で同じ設定を変更できます。  
+
+## Background Process Support
+
+`background-process` は、pi のセッション終了後も残せる長時間実行プロセスを扱います。  
+
+主な用途:
+
+- 開発サーバーの起動
+- ローカルAPIの常駐
+- 後続テストまで維持したい補助サービス
+
+特徴:
+
+- ワークスペース単位で `enabled` を設定できる
+- SQLite に状態を保存する
+- 危険コマンドと明らかな無限ループをブロックする
+- `readyPort` または `readyPattern` で起動完了を待てる
+- `stop_all` で一括終了できる
+
+主なツール:
+
+- `background_process_config`
+- `background_process_start`
+- `background_process_list`
+- `background_process_log`
+- `background_process_stop`
+- `background_process_stop_all`
+
+最初に有効化:
+
+```text
+background_process_config(action="update", enabled=true)
+```
+
+開発サーバーの起動例:
+
+```text
+background_process_start(
+  command="npm run dev",
+  readyPort=3000,
+  startupTimeoutMs=20000
+)
+```
 
 ## 計画運用
 
