@@ -5,15 +5,17 @@
  * related: .pi/lib/workspace-verification.ts, scripts/run-workspace-verification-ci.ts, .github/workflows/test.yml, tests/unit/lib/workspace-verification-ci.test.ts
  */
 
-import { execFileSync } from "node:child_process";
-import { existsSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
   acknowledgeReviewArtifact,
+  appendWorkspaceVerificationTrajectoryEvent,
   createWorkspaceVerificationConfig,
   finalizeVerificationRun,
   getResolvedCommandForStep,
+  parseWorkspaceCommand,
   persistWorkspaceVerificationArtifacts,
   persistWorkspaceVerificationContinuityPack,
   persistWorkspaceReviewArtifact,
@@ -47,6 +49,10 @@ export interface WorkspaceVerificationCiResult {
   changedFiles: string[];
 }
 
+interface WorkspaceVerificationSeverityPolicy {
+  failOnHighSeverity: boolean;
+}
+
 function makeSkippedStep(step: WorkspaceVerificationStep, reason: string): WorkspaceVerificationStepResult {
   return {
     step,
@@ -71,6 +77,86 @@ function resolveCiUiCommand(baseUrl?: string): string | undefined {
     return undefined;
   }
   return baseUrl ? template.replaceAll("${baseUrl}", baseUrl) : template;
+}
+
+function resolveCiPreviewCommand(cwd: string): string | undefined {
+  const explicit = process.env.CI_WORKSPACE_VERIFY_PREVIEW_COMMAND?.trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  const packageJsonPath = resolve(cwd, "package.json");
+  if (!existsSync(packageJsonPath)) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as Record<string, unknown>;
+    const scripts = typeof parsed.scripts === "object" && parsed.scripts ? parsed.scripts as Record<string, unknown> : {};
+    return typeof scripts.preview === "string" && scripts.preview.trim().length > 0
+      ? "npm run preview"
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function loadSeverityPolicy(): WorkspaceVerificationSeverityPolicy {
+  return {
+    failOnHighSeverity: process.env.CI_WORKSPACE_VERIFY_FAIL_ON_HIGH_SEVERITY !== "false",
+  };
+}
+
+async function waitForPreviewReady(baseUrl: string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(baseUrl, {
+        method: "GET",
+        headers: { "user-agent": "workspace-verification-ci" },
+      });
+      if (response.ok || response.status < 500) {
+        return;
+      }
+    } catch {
+      // retry
+    }
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 1000));
+  }
+  throw new Error(`preview server did not become ready: ${baseUrl}`);
+}
+
+async function withPreviewServer<T>(input: {
+  cwd: string;
+  command: string;
+  baseUrl: string;
+  timeoutMs: number;
+  run: () => Promise<T>;
+}): Promise<T> {
+  const parsed = parseWorkspaceCommand(input.command);
+  if (parsed.error) {
+    throw new Error(parsed.error);
+  }
+
+  const child = spawn(parsed.executable, parsed.args, {
+    cwd: input.cwd,
+    stdio: "ignore",
+    env: process.env,
+  });
+
+  try {
+    await waitForPreviewReady(input.baseUrl, input.timeoutMs);
+    return await input.run();
+  } finally {
+    if (!child.killed) {
+      child.kill("SIGTERM");
+      setTimeout(() => {
+        if (!child.killed) {
+          child.kill("SIGKILL");
+        }
+      }, 2000).unref();
+    }
+  }
 }
 
 function buildCiConfig(options: WorkspaceVerificationCiOptions): WorkspaceVerificationConfig {
@@ -304,6 +390,33 @@ function renderSummary(input: {
   return `${lines.join("\n")}\n`;
 }
 
+function refreshPersistedRunArtifacts(run: WorkspaceVerificationRunRecord): void {
+  if (!run.artifactDir) {
+    return;
+  }
+
+  writeFileSync(resolve(run.artifactDir, "summary.json"), `${JSON.stringify(run, null, 2)}\n`, "utf-8");
+  const lines = [
+    `trigger: ${run.trigger}`,
+    `success: ${run.success}`,
+    `started_at: ${run.startedAt}`,
+    `finished_at: ${run.finishedAt}`,
+    `profile: ${run.resolvedPlan.profile}`,
+    "",
+    "steps:",
+  ];
+  for (const step of run.stepResults) {
+    lines.push(`- ${step.step}: success=${step.success} skipped=${step.skipped} duration_ms=${step.durationMs}`);
+    if (step.error) {
+      lines.push(`  error: ${step.error}`);
+    }
+    if (step.artifactPath) {
+      lines.push(`  artifact: ${step.artifactPath}`);
+    }
+  }
+  writeFileSync(resolve(run.artifactDir, "summary.md"), `${lines.join("\n")}\n`, "utf-8");
+}
+
 export async function runWorkspaceVerificationCi(
   options: WorkspaceVerificationCiOptions = {},
 ): Promise<WorkspaceVerificationCiResult> {
@@ -314,7 +427,9 @@ export async function runWorkspaceVerificationCi(
   const changedFiles = readChangedFiles(cwd);
   const relevantSelected = selectRelevantCiSteps(selected, changedFiles);
   const executedSteps = relevantSelected.filter((step): step is WorkspaceVerificationStep => COMMAND_STEPS.includes(step));
-  const uiEvidenceCommand = selected.includes("ui") ? resolveCiUiCommand(resolveCiUiBaseUrl(resolvedPlan)) : undefined;
+  const uiBaseUrl = resolveCiUiBaseUrl(resolvedPlan);
+  const uiEvidenceCommand = selected.includes("ui") ? resolveCiUiCommand(uiBaseUrl) : undefined;
+  const previewCommand = selected.includes("ui") && uiEvidenceCommand ? resolveCiPreviewCommand(cwd) : undefined;
   const skippedInteractiveSteps = selected.filter((step) => {
     if (step === "ui" && uiEvidenceCommand) {
       return false;
@@ -364,26 +479,41 @@ export async function runWorkspaceVerificationCi(
   for (const step of selected) {
     if (step === "runtime" || step === "ui") {
       if (step === "ui" && uiEvidenceCommand) {
-        const result = await runWorkspaceCommand({
-          command: uiEvidenceCommand,
-          cwd,
-          timeoutMs: config.commandTimeoutMs,
-        });
-        stepResults.push({
-          step: "ui",
-          success: result.success,
-          skipped: false,
-          durationMs: result.durationMs,
-          command: uiEvidenceCommand,
-          stdout: result.stdout,
-          stderr: result.stderr,
-          error: result.error,
-          metadata: {
-            ciUiBaseUrl: resolveCiUiBaseUrl(resolvedPlan),
-            ciBrowserEvidence: true,
-          },
-        });
-        if (!result.success) {
+        const runUiEvidence = async () => {
+          const result = await runWorkspaceCommand({
+            command: uiEvidenceCommand,
+            cwd,
+            timeoutMs: config.commandTimeoutMs,
+          });
+          stepResults.push({
+            step: "ui",
+            success: result.success,
+            skipped: false,
+            durationMs: result.durationMs,
+            command: uiEvidenceCommand,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            error: result.error,
+            metadata: {
+              ciUiBaseUrl: uiBaseUrl,
+              ciBrowserEvidence: true,
+              previewCommand,
+            },
+          });
+          return result.success;
+        };
+
+        const uiSuccess = previewCommand && uiBaseUrl
+          ? await withPreviewServer({
+              cwd,
+              command: previewCommand,
+              baseUrl: uiBaseUrl,
+              timeoutMs: config.commandTimeoutMs,
+              run: runUiEvidence,
+            })
+          : await runUiEvidence();
+
+        if (!uiSuccess) {
           break;
         }
         continue;
@@ -403,11 +533,31 @@ export async function runWorkspaceVerificationCi(
 
   const persistedRun = persistWorkspaceVerificationArtifacts(cwd, config, run);
   let state = finalizeVerificationRun({ cwd, run: persistedRun });
+  let reviewSeverityHighest: string | undefined;
+  let reviewSeverityBlocked = false;
   if (persistedRun.success) {
     const reviewArtifact = persistWorkspaceReviewArtifact({
       cwd,
       run: persistedRun,
     });
+    reviewSeverityHighest = reviewArtifact.review.severity.highest;
+    const severityPolicy = loadSeverityPolicy();
+    reviewSeverityBlocked = severityPolicy.failOnHighSeverity && reviewArtifact.review.severity.highest === "high";
+    persistedRun.stepResults.push({
+      step: "review",
+      success: !reviewSeverityBlocked,
+      skipped: false,
+      durationMs: 0,
+      error: reviewSeverityBlocked
+        ? "severity policy blocked this change because the review artifact highest severity is high"
+        : undefined,
+      artifactPath: reviewArtifact.path,
+      metadata: {
+        reviewSeverityHighest,
+        failOnHighSeverity: severityPolicy.failOnHighSeverity,
+      },
+    });
+    persistedRun.success = persistedRun.stepResults.every((item) => item.success || item.skipped);
     state = saveWorkspaceVerificationState(cwd, {
       ...state,
       pendingReviewArtifact: false,
@@ -419,11 +569,41 @@ export async function runWorkspaceVerificationCi(
       decision: "accept",
       rationale: "CI-generated review artifact acknowledged after successful non-interactive verification.",
     });
+    if (reviewSeverityBlocked) {
+      state = saveWorkspaceVerificationState(cwd, {
+        ...state,
+        dirty: true,
+      });
+    }
+    refreshPersistedRunArtifacts(persistedRun);
   }
   const continuityPath = persistWorkspaceVerificationContinuityPack(cwd, state, resolvedPlan);
   saveWorkspaceVerificationState(cwd, {
     ...state,
     continuityPath,
+  });
+  appendWorkspaceVerificationTrajectoryEvent({
+    cwd,
+    entry: {
+      kind: "verification_run",
+      summary: persistedRun.success
+        ? `ci verification passed (${executedSteps.join(", ")})`
+        : `ci verification failed (${persistedRun.stepResults.find((item) => !item.success && !item.skipped)?.step ?? "unknown"})`,
+      state: {
+        dirty: state.dirty,
+        pendingProofReview: state.pendingProofReview,
+        pendingReviewArtifact: state.pendingReviewArtifact,
+        replanRequired: state.replanRequired,
+        repeatedFailureCount: state.repeatedFailureCount,
+      },
+      details: {
+        artifactDir: persistedRun.artifactDir,
+        changedFiles,
+        continuityPath,
+        reviewSeverityHighest,
+        reviewSeverityBlocked,
+      },
+    },
   });
 
   const summaryText = renderSummary({

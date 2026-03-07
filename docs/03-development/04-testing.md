@@ -240,10 +240,17 @@ artifact は次に保存されます。
 - `.pi/evals/workspace-verification/`
 - `.pi/workspace-verification/reviews/`
 - `.pi/workspace-verification/continuity.json`
+- `.pi/workspace-verification/trajectory.json`
 
 high severity の review artifact は、`decision` と `rationale` を付けて acknowledge する必要があります。
 
-preview URL を持つプロジェクトでは、`CI_WORKSPACE_VERIFY_UI_BASE_URL` と `CI_WORKSPACE_VERIFY_UI_COMMAND` を CI に渡すと browser evidence も保存できます。
+preview URL を持つプロジェクトでは、`CI_WORKSPACE_VERIFY_PREVIEW_COMMAND`、`CI_WORKSPACE_VERIFY_UI_BASE_URL`、`CI_WORKSPACE_VERIFY_UI_COMMAND` を CI に渡すと browser evidence も保存できます。
+
+`workspace_verify_trajectory` を使うと、どの mutation と verification がどの順で起きたかを replay しやすい形で確認できます。
+
+`workspace_verify_replay` は、failed step から verification を再開する executor です。
+
+proof review / review / replan が必要な場合は、その phase を返して停止します。
 
 ### 推奨CI設定
 
@@ -262,12 +269,19 @@ jobs:
         with:
           node-version: '20'
       - run: npm ci
+      - run: npm run policy:workspace
       - run: npm run verify:workspace
 ```
 
 branch protection を使う場合は、`quality-gates` を required check にします。
 
 `security` も一緒に required にするのが基本です。
+
+admin token がある環境では、次で branch protection を同期できます。
+
+```bash
+GITHUB_TOKEN=... GITHUB_REPOSITORY=owner/repo npm run policy:apply-branch-protection
+```
 
 ## トラブルシューティング
 

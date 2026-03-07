@@ -22,8 +22,11 @@ import {
   acknowledgeReplanDecision,
   acknowledgeReviewArtifact,
   acknowledgeVerificationArtifacts,
+  appendWorkspaceVerificationTrajectoryEvent,
   createWorkspaceVerificationConfig,
+  createWorkspaceVerificationReplayInput,
   finalizeVerificationRun,
+  formatWorkspaceVerificationTrajectory,
   formatWorkspaceVerificationStatus,
   getResolvedCommandForStep,
   isCompletionBlocked,
@@ -36,6 +39,7 @@ import {
   persistWorkspaceVerificationContinuityPack,
   persistWorkspaceReviewArtifact,
   resolveEnabledSteps,
+  resolveWorkspaceVerificationResumePlan,
   resolveWorkspaceVerificationPlan,
   saveWorkspaceVerificationState,
   saveWorkspaceVerificationConfig,
@@ -547,6 +551,27 @@ export async function runWorkspaceVerification(
     ...latestState,
     continuityPath,
   });
+  appendWorkspaceVerificationTrajectoryEvent({
+    cwd,
+    entry: {
+      kind: "verification_run",
+      summary: persistedRun.success
+        ? `verification passed (${persistedRun.stepResults.map((item) => item.step).join(", ")})`
+        : `verification failed (${persistedRun.stepResults.find((item) => !item.success && !item.skipped)?.step ?? "unknown"})`,
+      state: {
+        dirty: latestState.dirty,
+        pendingProofReview: latestState.pendingProofReview,
+        pendingReviewArtifact: latestState.pendingReviewArtifact,
+        replanRequired: latestState.replanRequired,
+        repeatedFailureCount: latestState.repeatedFailureCount,
+      },
+      details: {
+        artifactDir: persistedRun.artifactDir,
+        success: persistedRun.success,
+        continuityPath,
+      },
+    },
+  });
 
   if (ctx.ui?.notify) {
     ctx.ui.notify(
@@ -661,6 +686,24 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
         ...latestState,
         continuityPath,
       });
+      appendWorkspaceVerificationTrajectoryEvent({
+        cwd: ctx.cwd,
+        entry: {
+          kind: "mutation",
+          summary: `${toolName} marked the workspace dirty`,
+          state: {
+            dirty: latestState.dirty,
+            pendingProofReview: latestState.pendingProofReview,
+            pendingReviewArtifact: latestState.pendingReviewArtifact,
+            replanRequired: latestState.replanRequired,
+            repeatedFailureCount: latestState.repeatedFailureCount,
+          },
+          details: {
+            toolName,
+            continuityPath,
+          },
+        },
+      });
       ctx.ui?.notify?.("Workspace marked dirty. Verification is now required.", "info");
     }
   });
@@ -767,6 +810,71 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    name: "workspace_verify_trajectory",
+    label: "Workspace Verify Trajectory",
+    description: "Show the latest workspace verification trajectory and replay input.",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      const config = loadWorkspaceVerificationConfig(ctx.cwd);
+      const state = loadWorkspaceVerificationState(ctx.cwd);
+      const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
+      const replay = createWorkspaceVerificationReplayInput(ctx.cwd, state, resolvedPlan);
+      return {
+        content: [{ type: "text", text: formatWorkspaceVerificationTrajectory(replay) }],
+        details: replay,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "workspace_verify_replay",
+    label: "Workspace Verify Replay",
+    description: "Resume workspace verification from the last durable replay point.",
+    parameters: Type.Object({
+      execute: Type.Optional(Type.Boolean()),
+    }),
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      const config = loadWorkspaceVerificationConfig(ctx.cwd);
+      const state = loadWorkspaceVerificationState(ctx.cwd);
+      const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
+      const resume = resolveWorkspaceVerificationResumePlan(state, resolvedPlan);
+      const replay = createWorkspaceVerificationReplayInput(ctx.cwd, state, resolvedPlan);
+
+      if (params.execute === false || resume.phase !== "verification" || resume.requestedSteps.length === 0) {
+        return {
+          content: [{
+            type: "text",
+            text: `${formatWorkspaceVerificationTrajectory(replay)}\nresume_reason: ${resume.reason}\nrequested_steps: ${resume.requestedSteps.join(", ") || "-"}`,
+          }],
+          details: {
+            replay,
+            resume,
+          },
+        };
+      }
+
+      const runRecord = await runWorkspaceVerification(
+        config,
+        { ...ctx, signal },
+        "manual",
+        resume.requestedSteps,
+      );
+
+      return {
+        content: [{
+          type: "text",
+          text: `${summarizeRun(runRecord)}\n\nresume_reason: ${resume.reason}`,
+        }],
+        details: {
+          replay,
+          resume,
+          runRecord,
+        },
+      };
+    },
+  });
+
+  pi.registerTool({
     name: "workspace_verify_plan",
     label: "Workspace Verify Plan",
     description: "Show the resolved verification runbook extracted from the workspace.",
@@ -799,6 +907,24 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
       saveWorkspaceVerificationState(ctx.cwd, {
         ...state,
         continuityPath,
+      });
+      appendWorkspaceVerificationTrajectoryEvent({
+        cwd: ctx.cwd,
+        entry: {
+          kind: "proof_ack",
+          summary: "proof artifacts acknowledged",
+          state: {
+            dirty: state.dirty,
+            pendingProofReview: state.pendingProofReview,
+            pendingReviewArtifact: state.pendingReviewArtifact,
+            replanRequired: state.replanRequired,
+            repeatedFailureCount: state.repeatedFailureCount,
+          },
+          details: {
+            artifactDir: state.lastReviewedArtifactDir,
+            continuityPath,
+          },
+        },
       });
 
       return {
@@ -843,6 +969,24 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
         ...nextState,
         continuityPath,
       });
+      appendWorkspaceVerificationTrajectoryEvent({
+        cwd: ctx.cwd,
+        entry: {
+          kind: "verification_run",
+          summary: "review artifact generated from latest verification run",
+          state: {
+            dirty: nextState.dirty,
+            pendingProofReview: nextState.pendingProofReview,
+            pendingReviewArtifact: nextState.pendingReviewArtifact,
+            replanRequired: nextState.replanRequired,
+            repeatedFailureCount: nextState.repeatedFailureCount,
+          },
+          details: {
+            reviewArtifactPath: artifact.path,
+            continuityPath,
+          },
+        },
+      });
 
       return {
         content: [{ type: "text", text: `Review artifact generated: ${artifact.path}` }],
@@ -877,6 +1021,25 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
         ...state,
         continuityPath,
       });
+      appendWorkspaceVerificationTrajectoryEvent({
+        cwd: ctx.cwd,
+        entry: {
+          kind: "review_ack",
+          summary: "review artifact acknowledged",
+          state: {
+            dirty: state.dirty,
+            pendingProofReview: state.pendingProofReview,
+            pendingReviewArtifact: state.pendingReviewArtifact,
+            replanRequired: state.replanRequired,
+            repeatedFailureCount: state.repeatedFailureCount,
+          },
+          details: {
+            reviewArtifactPath: state.lastReviewArtifactPath,
+            decision: state.lastReviewDecision,
+            continuityPath,
+          },
+        },
+      });
 
       return {
         content: [{ type: "text", text: `Review artifact acknowledged: ${state.lastReviewArtifactPath ?? "-"}` }],
@@ -906,6 +1069,24 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
       saveWorkspaceVerificationState(ctx.cwd, {
         ...state,
         continuityPath,
+      });
+      appendWorkspaceVerificationTrajectoryEvent({
+        cwd: ctx.cwd,
+        entry: {
+          kind: "replan_ack",
+          summary: "replan strategy acknowledged",
+          state: {
+            dirty: state.dirty,
+            pendingProofReview: state.pendingProofReview,
+            pendingReviewArtifact: state.pendingReviewArtifact,
+            replanRequired: state.replanRequired,
+            repeatedFailureCount: state.repeatedFailureCount,
+          },
+          details: {
+            strategy: state.lastRepairStrategy,
+            continuityPath,
+          },
+        },
       });
 
       return {

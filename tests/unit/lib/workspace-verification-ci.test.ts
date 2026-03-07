@@ -15,6 +15,10 @@ const mockState = vi.hoisted(() => ({
 
 vi.mock("node:child_process", () => ({
   execFileSync: vi.fn(() => `${mockState.changedFiles.join("\n")}\n`),
+  spawn: vi.fn(() => ({
+    killed: false,
+    kill: vi.fn(),
+  })),
 }));
 
 vi.mock("node:fs", async () => {
@@ -103,6 +107,11 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
     sources: ["/repo/README.md"],
   })),
   resolveEnabledSteps: vi.fn((_config, _plan, requested) => requested ?? ["lint", "typecheck", "test", "runtime", "ui"]),
+  shouldRequireReviewArtifact: vi.fn(() => true),
+  parseWorkspaceCommand: vi.fn((command: string) => ({
+    executable: command.split(/\s+/)[0],
+    args: command.split(/\s+/).slice(1),
+  })),
   getResolvedCommandForStep: vi.fn((plan, step) => plan.commands[step] ?? ""),
   runWorkspaceCommand: vi.fn(async ({ command }) => {
     mockState.commands.push(command);
@@ -135,7 +144,17 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
         testGaps: [],
         rollback: [],
       },
+      severity: {
+        highest: "medium",
+        requiresExplicitDecision: true,
+        blockingCategories: [],
+        summary: [],
+      },
     },
+  })),
+  appendWorkspaceVerificationTrajectoryEvent: vi.fn(() => ({
+    path: "/repo/.pi/workspace-verification/trajectory.json",
+    entries: [],
   })),
   acknowledgeReviewArtifact: vi.fn(() => ({
     dirty: false,
@@ -171,6 +190,9 @@ describe("workspace-verification-ci", () => {
     mockState.savedStates = [];
     delete process.env.CI_WORKSPACE_VERIFY_UI_BASE_URL;
     delete process.env.CI_WORKSPACE_VERIFY_UI_COMMAND;
+    delete process.env.CI_WORKSPACE_VERIFY_PREVIEW_COMMAND;
+    delete process.env.CI_WORKSPACE_VERIFY_FAIL_ON_HIGH_SEVERITY;
+    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200 })) as typeof fetch;
     vi.restoreAllMocks();
   });
 
@@ -242,6 +264,7 @@ describe("workspace-verification-ci", () => {
   it("runs optional UI browser evidence in CI when a command is provided", async () => {
     process.env.CI_WORKSPACE_VERIFY_UI_BASE_URL = "https://preview.example.test";
     process.env.CI_WORKSPACE_VERIFY_UI_COMMAND = "playwright-cli snapshot ${baseUrl}";
+    process.env.CI_WORKSPACE_VERIFY_PREVIEW_COMMAND = "npm run preview";
 
     const verificationModule = await import("../../../.pi/lib/workspace-verification.js");
     vi.mocked(verificationModule.runWorkspaceCommand)
@@ -289,5 +312,33 @@ describe("workspace-verification-ci", () => {
     expect(result.stepResults.find((item) => item.step === "ui")?.command).toBe(
       "playwright-cli snapshot https://preview.example.test",
     );
+  });
+
+  it("fails the CI gate when severity policy blocks a high-severity review artifact", async () => {
+    const verificationModule = await import("../../../.pi/lib/workspace-verification.js");
+    vi.mocked(verificationModule.persistWorkspaceReviewArtifact).mockReturnValueOnce({
+      path: "/repo/.pi/workspace-verification/reviews/high-review.md",
+      review: {
+        findings: {
+          bugs: [],
+          security: ["Security-sensitive surface changed."],
+          regression: [],
+          testGaps: [],
+          rollback: [],
+        },
+        severity: {
+          highest: "high",
+          requiresExplicitDecision: true,
+          blockingCategories: ["security"],
+          summary: ["Security-sensitive surface changed."],
+        },
+      },
+    } as never);
+
+    const { runWorkspaceVerificationCi } = await import("../../../.pi/lib/workspace-verification-ci.js");
+    const result = await runWorkspaceVerificationCi({ cwd: "/repo" });
+
+    expect(result.run.success).toBe(false);
+    expect(result.stepResults.find((item) => item.step === "review")?.error).toContain("severity policy blocked");
   });
 });

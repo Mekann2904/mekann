@@ -287,6 +287,8 @@ profile も自動推定します。
 
 - `workspace_verify`
 - `workspace_verify_status`
+- `workspace_verify_trajectory`
+- `workspace_verify_replay`
 - `workspace_verify_plan`
 - `workspace_verify_ack`
 - `workspace_verify_review`
@@ -303,6 +305,8 @@ workspace_verification_config(action="show")
 ```
 
 `workspace_verify_plan` は、現在のワークスペースから解決した runbook をそのまま返します。  
+
+`workspace_verify_replay` は、durable resume point から次に再開すべき phase を見て、再実行できる場合は関連 step だけを replay します。
 
 runtime を有効化する例:
 
@@ -376,9 +380,25 @@ npm run verify:workspace
 
 たとえば lint は changed TS/JS files を優先し、typecheck / test / build は変更種類に応じて relevant steps だけを残します。
 
-GitHub Actions では `quality-gates` job がこの script を実行し、`.pi/verification-runs/`、`.pi/evals/workspace-verification/`、`.pi/workspace-verification/reviews/`、`.pi/workspace-verification/continuity.json` を artifact として残します。
+GitHub Actions では `quality-gates` job がこの script を実行し、`.pi/verification-runs/`、`.pi/evals/workspace-verification/`、`.pi/workspace-verification/reviews/`、`.pi/workspace-verification/continuity.json`、`.pi/workspace-verification/trajectory.json` を artifact として残します。
 
-preview URL があるプロジェクトでは、`CI_WORKSPACE_VERIFY_UI_BASE_URL` と `CI_WORKSPACE_VERIFY_UI_COMMAND` を与えると、CI でも browser evidence を追加できます。
+`workspace_verify_trajectory` を使うと、mutation、verification、ack、replan の流れを replay input として確認できます。
+
+`workspace_verify_replay` を使うと、直近の failed step から verification を再開できます。proof review / review / replan が必要な場合は、その phase を返して止まります。
+
+preview URL があるプロジェクトでは、`CI_WORKSPACE_VERIFY_PREVIEW_COMMAND`、`CI_WORKSPACE_VERIFY_UI_BASE_URL`、`CI_WORKSPACE_VERIFY_UI_COMMAND` を与えると、CI でも `preview build -> browser evidence` を自動で追加できます。
+
+repo 内 policy の確認:
+
+```bash
+npm run policy:workspace
+```
+
+admin token がある場合は、branch protection も script で同期できます。
+
+```bash
+GITHUB_TOKEN=... GITHUB_REPOSITORY=owner/repo npm run policy:apply-branch-protection
+```
 
 `main` / `master` を保護する場合は、required status checks に少なくとも `quality-gates` と `security` を入れてください。
 

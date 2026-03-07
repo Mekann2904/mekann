@@ -112,6 +112,7 @@ const mockApi = vi.hoisted(() => ({
   },
   runCalls: [] as Array<{ trigger: string; steps?: string[] }>,
   checkpoints: [] as Array<{ priority: string; metadata?: Record<string, unknown>; state?: Record<string, unknown> }>,
+  trajectoryEvents: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
@@ -153,6 +154,49 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
     };
     return mockApi.state;
   }),
+  appendWorkspaceVerificationTrajectoryEvent: vi.fn(({ entry }) => {
+    mockApi.trajectoryEvents.push(entry);
+    return {
+      path: "/repo/.pi/workspace-verification/trajectory.json",
+      entries: mockApi.trajectoryEvents,
+    };
+  }),
+  createWorkspaceVerificationReplayInput: vi.fn((_cwd, state, resolvedPlan) => ({
+    summary: {
+      profile: resolvedPlan?.profile,
+      currentStep: "Repair UI",
+      nextSuggestedAction: "Run workspace_verify against the relevant verification steps.",
+      resumePhase: "verification",
+      resumeStep: "test",
+      artifactDir: state.lastRun?.artifactDir,
+      continuityPath: state.continuityPath,
+      trajectoryPath: "/repo/.pi/workspace-verification/trajectory.json",
+    },
+    plan: {
+      currentStep: "Repair UI",
+      acceptanceCriteria: [],
+      fileModuleImpact: [],
+      testVerification: [],
+      recentProgress: [],
+    },
+    state,
+    resolvedPlan,
+    trajectory: mockApi.trajectoryEvents,
+  })),
+  resolveWorkspaceVerificationResumePlan: vi.fn((state) => ({
+    phase: state.replanRequired
+      ? "replan"
+      : state.pendingReviewArtifact
+        ? "review"
+        : state.pendingProofReview
+          ? "proof_review"
+          : state.dirty
+            ? "verification"
+            : "clear",
+    requestedSteps: state.dirty ? ["test"] : [],
+    reason: state.dirty ? "Resume verification from the failed step: test." : "Workspace verification is clear.",
+    resumeStep: state.dirty ? "test" : undefined,
+  })),
   saveWorkspaceVerificationConfig: vi.fn((_cwd, next) => {
     mockApi.config = {
       ...mockApi.config,
@@ -251,6 +295,7 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
     stderr: "",
   })),
   formatWorkspaceVerificationStatus: vi.fn(() => "status"),
+  formatWorkspaceVerificationTrajectory: vi.fn(() => "trajectory"),
   parseWorkspaceCommand: vi.fn((command: string) => ({
     executable: command.split(/\s+/)[0],
     args: command.split(/\s+/).slice(1),
@@ -314,6 +359,7 @@ function createPiMock() {
     lastRun: undefined,
   };
   mockApi.checkpoints = [];
+  mockApi.trajectoryEvents = [];
 
   return {
     registerTool: vi.fn((tool) => {
@@ -349,6 +395,8 @@ describe("workspace-verification extension", () => {
     expect(mockApi.tools.map((tool) => tool.name)).toEqual([
       "workspace_verify",
       "workspace_verify_status",
+      "workspace_verify_trajectory",
+      "workspace_verify_replay",
       "workspace_verify_plan",
       "workspace_verify_ack",
       "workspace_verify_review",
@@ -517,6 +565,38 @@ describe("workspace-verification extension", () => {
     const result = await tool?.execute("tool-1", {}, undefined, undefined, { cwd: "/repo" });
 
     expect(result?.content[0]?.text).toContain("\"profile\": \"web-app\"");
+  });
+
+  it("shows the workspace verification trajectory", async () => {
+    const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
+    const extension = extensionModule.default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    const tool = mockApi.tools.find((item) => item.name === "workspace_verify_trajectory");
+    const result = await tool?.execute("tool-1", {}, undefined, undefined, { cwd: "/repo" });
+
+    expect(result?.content[0]?.text).toContain("trajectory");
+  });
+
+  it("replays verification from the durable resume point", async () => {
+    const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
+    const extension = extensionModule.default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    mockApi.state.dirty = true;
+
+    const tool = mockApi.tools.find((item) => item.name === "workspace_verify_replay");
+    const result = await tool?.execute("tool-1", {}, undefined, undefined, {
+      cwd: "/repo",
+      ui: {
+        notify: (message: string, level: string) => mockApi.notifications.push({ message, level }),
+      },
+    });
+
+    expect(mockApi.state.lastRun?.success).toBe(true);
+    expect(result?.content[0]?.text).toContain("resume_reason");
   });
 
   it("acknowledges the latest proof artifacts", async () => {

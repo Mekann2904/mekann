@@ -714,4 +714,99 @@ describe("workspace-verification library", () => {
     expect(mockState.files.get(continuityPath)).toContain("workspace_verify_replan");
     expect(mockState.files.get(continuityPath)).toContain("src/app.tsx");
   });
+
+  it("appends trajectory events and builds replay input", async () => {
+    const {
+      appendWorkspaceVerificationTrajectoryEvent,
+      createWorkspaceVerificationReplayInput,
+      createWorkspaceVerificationState,
+      resolveWorkspaceVerificationResumePlan,
+    } = await import("../../../.pi/lib/workspace-verification.js");
+
+    mockState.planStorage = {
+      currentPlanId: "plan-1",
+      plans: [{
+        id: "plan-1",
+        name: "Trajectory test",
+        status: "active",
+        acceptanceCriteria: ["lint passes"],
+        fileModuleImpact: ["src/app.ts"],
+        testVerification: ["npm run lint"],
+        progressLog: ["2026-03-07T00:00:00.000Z planner: Started"],
+        steps: [{ title: "Repair lint", status: "in_progress" }],
+      }],
+    };
+
+    appendWorkspaceVerificationTrajectoryEvent({
+      cwd: "/repo",
+      entry: {
+        kind: "mutation",
+        summary: "edit marked the workspace dirty",
+        state: {
+          dirty: true,
+          pendingProofReview: false,
+          pendingReviewArtifact: false,
+          replanRequired: false,
+          repeatedFailureCount: 0,
+        },
+        details: { toolName: "edit" },
+      },
+    });
+
+    const replay = createWorkspaceVerificationReplayInput("/repo", {
+      ...createWorkspaceVerificationState(),
+      dirty: true,
+      trajectoryPath: "/repo/.pi/workspace-verification/trajectory.json",
+      continuityPath: "/repo/.pi/workspace-verification/continuity.json",
+    }, {
+      profile: "library",
+      commands: {},
+      runtime: {
+        enabled: false,
+        command: "",
+        label: "workspace-dev-server",
+        startupTimeoutMs: 1000,
+        keepAliveOnShutdown: true,
+      },
+      ui: {
+        enabled: false,
+        timeoutMs: 1000,
+        commands: [],
+      },
+      acceptanceCriteria: [],
+      validationCommands: [],
+      recommendedSteps: ["lint"],
+      reasons: [],
+      proofArtifacts: ["verification summary"],
+      sources: [],
+    });
+
+    expect(replay.trajectory).toHaveLength(1);
+    expect(replay.trajectory[0]?.summary).toContain("workspace dirty");
+    expect(replay.summary.currentStep).toBe("Repair lint");
+    expect(replay.summary.resumePhase).toBe("verification");
+    expect(resolveWorkspaceVerificationResumePlan(replay.state, {
+      profile: "library",
+      commands: {},
+      runtime: {
+        enabled: false,
+        command: "",
+        label: "workspace-dev-server",
+        startupTimeoutMs: 1000,
+        keepAliveOnShutdown: true,
+      },
+      ui: {
+        enabled: false,
+        timeoutMs: 1000,
+        commands: [],
+      },
+      acceptanceCriteria: [],
+      validationCommands: [],
+      recommendedSteps: ["lint"],
+      reasons: [],
+      proofArtifacts: ["verification summary"],
+      sources: [],
+    }).phase).toBe("verification");
+    expect(mockState.files.get("/repo/.pi/workspace-verification/trajectory.json")).toContain("mutation");
+  });
 });

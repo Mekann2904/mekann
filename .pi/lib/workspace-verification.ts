@@ -34,7 +34,8 @@ export type WorkspaceVerificationStep =
   | "test"
   | "build"
   | "runtime"
-  | "ui";
+  | "ui"
+  | "review";
 
 export type WorkspaceVerificationTrigger = "manual" | "auto";
 export type WorkspaceVerificationProfile = "auto" | "web-app" | "library" | "backend" | "cli";
@@ -175,7 +176,47 @@ export interface WorkspaceVerificationState {
   replanReason?: string;
   lastEvalCasePath?: string;
   continuityPath?: string;
+  trajectoryPath?: string;
+  lastTrajectoryEventAt?: string;
   lastRun?: WorkspaceVerificationRunRecord;
+}
+
+export interface WorkspaceVerificationTrajectoryEntry {
+  timestamp: string;
+  kind: "mutation" | "verification_run" | "proof_ack" | "review_ack" | "replan_ack";
+  summary: string;
+  state: {
+    dirty: boolean;
+    pendingProofReview: boolean;
+    pendingReviewArtifact: boolean;
+    replanRequired: boolean;
+    repeatedFailureCount: number;
+  };
+  details?: Record<string, unknown>;
+}
+
+export interface WorkspaceVerificationReplayInput {
+  summary: {
+    profile?: WorkspaceVerificationProfile;
+    currentStep?: string;
+    nextSuggestedAction: string;
+    resumePhase: "verification" | "proof_review" | "review" | "replan" | "clear";
+    resumeStep?: WorkspaceVerificationStep;
+    artifactDir?: string;
+    continuityPath?: string;
+    trajectoryPath?: string;
+  };
+  plan: WorkspaceVerificationPlanSnapshot;
+  state: WorkspaceVerificationState;
+  resolvedPlan?: Pick<WorkspaceVerificationResolvedPlan, "profile" | "recommendedSteps" | "proofArtifacts" | "reasons">;
+  trajectory: WorkspaceVerificationTrajectoryEntry[];
+}
+
+export interface WorkspaceVerificationResumePlan {
+  phase: "verification" | "proof_review" | "review" | "replan" | "clear";
+  requestedSteps: WorkspaceVerificationStep[];
+  reason: string;
+  resumeStep?: WorkspaceVerificationStep;
 }
 
 interface WorkspaceVerificationPlanSnapshot {
@@ -324,6 +365,11 @@ function ensureVerificationEvalDir(cwd?: string): string {
   return dir;
 }
 
+function getWorkspaceVerificationTrajectoryPath(cwd?: string): string {
+  const targetCwd = normalizeCwd(cwd);
+  return join(ensureVerificationWorkspaceDir(targetCwd), "trajectory.json");
+}
+
 function normalizeBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
@@ -373,6 +419,7 @@ function createDefaultEnabledSteps(): Record<WorkspaceVerificationStep, boolean>
     build: false,
     runtime: false,
     ui: false,
+    review: false,
   };
 }
 
@@ -465,6 +512,7 @@ export function normalizeWorkspaceVerificationConfig(input: unknown): WorkspaceV
       build: normalizeBoolean(enabledSteps.build, fallback.enabledSteps.build),
       runtime: normalizeBoolean(enabledSteps.runtime, fallback.enabledSteps.runtime),
       ui: normalizeBoolean(enabledSteps.ui, fallback.enabledSteps.ui),
+      review: normalizeBoolean(enabledSteps.review, fallback.enabledSteps.review),
     },
     commands: {
       lint: normalizeString(commands.lint, fallback.commands.lint),
@@ -558,6 +606,8 @@ export function normalizeWorkspaceVerificationState(input: unknown): WorkspaceVe
     replanReason: normalizeOptionalString(record.replanReason),
     lastEvalCasePath: normalizeOptionalString(record.lastEvalCasePath),
     continuityPath: normalizeOptionalString(record.continuityPath),
+    trajectoryPath: normalizeOptionalString(record.trajectoryPath),
+    lastTrajectoryEventAt: normalizeOptionalString(record.lastTrajectoryEventAt),
     lastRun,
   };
 }
@@ -628,7 +678,7 @@ function normalizeResolvedPlan(input: unknown): WorkspaceVerificationResolvedPla
     validationCommands: normalizeStringArray(record.validationCommands),
     recommendedSteps: normalizeStringArray(record.recommendedSteps)
       .filter((step): step is WorkspaceVerificationStep =>
-        step === "lint" || step === "typecheck" || step === "test" || step === "build" || step === "runtime" || step === "ui"),
+        step === "lint" || step === "typecheck" || step === "test" || step === "build" || step === "runtime" || step === "ui" || step === "review"),
     reasons: normalizeStringArray(record.reasons),
     proofArtifacts: normalizeStringArray(record.proofArtifacts),
     sources: normalizeStringArray(record.sources),
@@ -704,6 +754,65 @@ export function saveWorkspaceVerificationState(
     });
     return normalized;
   });
+}
+
+export function loadWorkspaceVerificationTrajectory(cwd?: string): WorkspaceVerificationTrajectoryEntry[] {
+  const path = getWorkspaceVerificationTrajectoryPath(cwd);
+  if (!existsSync(path)) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf-8")) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+      .map((item) => {
+        const state = typeof item.state === "object" && item.state ? item.state as Record<string, unknown> : {};
+        return {
+          timestamp: normalizeString(item.timestamp, nowIso()),
+          kind: normalizeString(item.kind, "mutation") as WorkspaceVerificationTrajectoryEntry["kind"],
+          summary: normalizeString(item.summary, "workspace verification event"),
+          state: {
+            dirty: normalizeBoolean(state.dirty, false),
+            pendingProofReview: normalizeBoolean(state.pendingProofReview, false),
+            pendingReviewArtifact: normalizeBoolean(state.pendingReviewArtifact, false),
+            replanRequired: normalizeBoolean(state.replanRequired, false),
+            repeatedFailureCount: normalizeInteger(state.repeatedFailureCount, 0, 0, 1_000),
+          },
+          details: typeof item.details === "object" && item.details ? item.details as Record<string, unknown> : undefined,
+        };
+      });
+  } catch {
+    return [];
+  }
+}
+
+export function appendWorkspaceVerificationTrajectoryEvent(input: {
+  cwd?: string;
+  entry: Omit<WorkspaceVerificationTrajectoryEntry, "timestamp"> & { timestamp?: string };
+}): { path: string; entries: WorkspaceVerificationTrajectoryEntry[] } {
+  const cwd = normalizeCwd(input.cwd);
+  const path = getWorkspaceVerificationTrajectoryPath(cwd);
+  const existing = loadWorkspaceVerificationTrajectory(cwd);
+  const entry: WorkspaceVerificationTrajectoryEntry = {
+    ...input.entry,
+    timestamp: input.entry.timestamp ?? nowIso(),
+  };
+  const entries = [...existing, entry].slice(-50);
+  writeFileSync(path, `${JSON.stringify(entries, null, 2)}\n`, "utf-8");
+
+  const state = loadWorkspaceVerificationState(cwd);
+  saveWorkspaceVerificationState(cwd, {
+    ...state,
+    trajectoryPath: path,
+    lastTrajectoryEventAt: entry.timestamp,
+  });
+
+  return { path, entries };
 }
 
 export function markWorkspaceDirty(input?: { cwd?: string; toolName?: string }): WorkspaceVerificationState {
@@ -805,8 +914,7 @@ function inferReviewFindings(
   const haystack = [
     ...plan.fileModuleImpact,
     ...plan.acceptanceCriteria,
-    ...run.resolvedPlan.acceptanceCriteria,
-    ...run.resolvedPlan.validationCommands,
+    ...run.resolvedPlan.reasons,
   ].join("\n").toLowerCase();
   const failedSteps = run.stepResults.filter((item) => !item.success && !item.skipped);
   const findings: WorkspaceVerificationReviewArtifact["findings"] = {
@@ -929,9 +1037,14 @@ function inferReviewSeverity(
   }
 
   if (findings.testGaps.length > 0) {
-    blockingCategories.push("testGaps");
+    const missingEvidence = findings.testGaps.some((item) => item.includes("No passing automated test evidence"));
     summary.push("Test coverage evidence is incomplete for the current change.");
-    raise("high");
+    if (missingEvidence) {
+      blockingCategories.push("testGaps");
+      raise("high");
+    } else {
+      raise("medium");
+    }
   }
 
   if (findings.regression.length > 0) {
@@ -1851,11 +1964,12 @@ export function resolveEnabledSteps(
     build: config.enabledSteps.build || Boolean(resolvedPlan.commands.build),
     runtime: config.enabledSteps.runtime || resolvedPlan.runtime.enabled,
     ui: config.enabledSteps.ui || resolvedPlan.ui.enabled,
+    review: shouldRequireReviewArtifact(config, resolvedPlan),
   };
 
   return selected
     .filter((item): item is WorkspaceVerificationStep =>
-      item === "lint" || item === "typecheck" || item === "test" || item === "build" || item === "runtime" || item === "ui")
+      item === "lint" || item === "typecheck" || item === "test" || item === "build" || item === "runtime" || item === "ui" || item === "review")
     .filter((step) => flags[step]);
 }
 
@@ -1953,6 +2067,9 @@ function deriveNextSuggestedAction(state: WorkspaceVerificationState): string {
   if (state.replanRequired) {
     return "Update the plan with a new repair strategy, then run workspace_verify_replan.";
   }
+  if (state.pendingReviewArtifact) {
+    return "Inspect the latest review artifact, record a decision, then run workspace_verify_review_ack.";
+  }
   if (state.pendingProofReview) {
     return "Inspect the latest verification artifacts, then run workspace_verify_ack.";
   }
@@ -1960,6 +2077,57 @@ function deriveNextSuggestedAction(state: WorkspaceVerificationState): string {
     return "Run workspace_verify against the relevant verification steps.";
   }
   return "Workspace verification is clear. Continue with the next planned step.";
+}
+
+export function resolveWorkspaceVerificationResumePlan(
+  state: WorkspaceVerificationState,
+  resolvedPlan?: WorkspaceVerificationResolvedPlan,
+): WorkspaceVerificationResumePlan {
+  if (state.replanRequired) {
+    return {
+      phase: "replan",
+      requestedSteps: [],
+      reason: state.replanReason ?? "Repeated verification failures require a new repair strategy.",
+    };
+  }
+
+  if (state.pendingReviewArtifact) {
+    return {
+      phase: "review",
+      requestedSteps: [],
+      reason: "A review artifact is pending acknowledgement.",
+    };
+  }
+
+  if (state.pendingProofReview) {
+    return {
+      phase: "proof_review",
+      requestedSteps: [],
+      reason: "Verification artifacts are waiting for proof acknowledgement.",
+    };
+  }
+
+  if (state.dirty) {
+    const failedStep = state.lastRun?.stepResults.find((item) => !item.success && !item.skipped)?.step;
+    const recommended = resolvedPlan?.recommendedSteps ?? state.lastRun?.resolvedPlan.recommendedSteps ?? ["lint", "typecheck", "test"];
+    const requestedSteps = failedStep
+      ? recommended.slice(Math.max(0, recommended.indexOf(failedStep)))
+      : recommended;
+    return {
+      phase: "verification",
+      requestedSteps,
+      reason: failedStep
+        ? `Resume verification from the failed step: ${failedStep}.`
+        : "Workspace changes are dirty and need verification.",
+      resumeStep: failedStep,
+    };
+  }
+
+  return {
+    phase: "clear",
+    requestedSteps: [],
+    reason: "Workspace verification is clear.",
+  };
 }
 
 function persistWorkspaceVerificationEvalCase(
@@ -2005,6 +2173,7 @@ export function persistWorkspaceVerificationContinuityPack(
   resolvedPlan?: WorkspaceVerificationResolvedPlan,
 ): string {
   const plan = loadCurrentPlanSnapshot(cwd);
+  const resume = resolveWorkspaceVerificationResumePlan(state, resolvedPlan);
   const unresolvedFailures = (state.lastRun?.stepResults ?? [])
     .filter((item) => !item.success && !item.skipped)
     .map((item) => ({
@@ -2015,6 +2184,7 @@ export function persistWorkspaceVerificationContinuityPack(
   const payload = {
     updatedAt: nowIso(),
     nextSuggestedAction: deriveNextSuggestedAction(state),
+    resume,
     state: {
       dirty: state.dirty,
       pendingProofReview: state.pendingProofReview,
@@ -2033,6 +2203,8 @@ export function persistWorkspaceVerificationContinuityPack(
       lastEvalCasePath: state.lastEvalCasePath,
       lastMutationCheckpointId: state.lastMutationCheckpointId,
       lastFailureCheckpointId: state.lastFailureCheckpointId,
+      trajectoryPath: state.trajectoryPath,
+      lastTrajectoryEventAt: state.lastTrajectoryEventAt,
     },
     plan,
     resolvedPlan: resolvedPlan ? {
@@ -2046,6 +2218,61 @@ export function persistWorkspaceVerificationContinuityPack(
   const path = join(ensureVerificationWorkspaceDir(cwd), "continuity.json");
   writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
   return path;
+}
+
+export function createWorkspaceVerificationReplayInput(
+  cwd: string,
+  state: WorkspaceVerificationState,
+  resolvedPlan?: WorkspaceVerificationResolvedPlan,
+): WorkspaceVerificationReplayInput {
+  const plan = loadCurrentPlanSnapshot(cwd);
+  const resume = resolveWorkspaceVerificationResumePlan(state, resolvedPlan);
+  return {
+    summary: {
+      profile: resolvedPlan?.profile ?? state.lastRun?.resolvedPlan.profile,
+      currentStep: plan.currentStep,
+      nextSuggestedAction: deriveNextSuggestedAction(state),
+      resumePhase: resume.phase,
+      resumeStep: resume.resumeStep,
+      artifactDir: state.lastRun?.artifactDir,
+      continuityPath: state.continuityPath,
+      trajectoryPath: state.trajectoryPath,
+    },
+    plan,
+    state,
+    resolvedPlan: resolvedPlan ? {
+      profile: resolvedPlan.profile,
+      recommendedSteps: resolvedPlan.recommendedSteps,
+      proofArtifacts: resolvedPlan.proofArtifacts,
+      reasons: resolvedPlan.reasons,
+    } : undefined,
+    trajectory: loadWorkspaceVerificationTrajectory(cwd),
+  };
+}
+
+export function formatWorkspaceVerificationTrajectory(
+  replay: WorkspaceVerificationReplayInput,
+): string {
+  const lines = [
+    "# Workspace Verification Trajectory",
+    "",
+    `profile: ${replay.summary.profile ?? "-"}`,
+    `current_step: ${replay.summary.currentStep ?? "-"}`,
+    `next_action: ${replay.summary.nextSuggestedAction}`,
+    `resume_phase: ${replay.summary.resumePhase}`,
+    `resume_step: ${replay.summary.resumeStep ?? "-"}`,
+    `artifact_dir: ${replay.summary.artifactDir ?? "-"}`,
+    `continuity_path: ${replay.summary.continuityPath ?? "-"}`,
+    `trajectory_path: ${replay.summary.trajectoryPath ?? "-"}`,
+    "",
+    "events:",
+  ];
+
+  for (const entry of replay.trajectory.slice(-10)) {
+    lines.push(`- ${entry.timestamp} [${entry.kind}] ${entry.summary}`);
+  }
+
+  return `${lines.join("\n")}\n`;
 }
 
 function formatRunSummary(run: WorkspaceVerificationRunRecord): string {
@@ -2168,6 +2395,7 @@ export function formatWorkspaceVerificationStatus(
   state: WorkspaceVerificationState,
   resolvedPlan?: WorkspaceVerificationResolvedPlan,
 ): string {
+  const resume = resolveWorkspaceVerificationResumePlan(state, resolvedPlan);
   const lines = [
     `enabled=${config.enabled}`,
     `profile=${config.profile}`,
@@ -2187,6 +2415,8 @@ export function formatWorkspaceVerificationStatus(
     `pending_proof_review=${state.pendingProofReview}`,
     `pending_review_artifact=${state.pendingReviewArtifact}`,
     `replan_required=${state.replanRequired}`,
+    `resume_phase=${resume.phase}`,
+    `resume_step=${resume.resumeStep ?? "-"}`,
     `write_count=${state.writeCount}`,
     `repeated_failure_count=${state.repeatedFailureCount}`,
     `last_write_at=${state.lastWriteAt ?? "-"}`,
@@ -2256,6 +2486,12 @@ export function formatWorkspaceVerificationStatus(
   }
   if (state.continuityPath) {
     lines.push(`continuity_path=${state.continuityPath}`);
+  }
+  if (state.trajectoryPath) {
+    lines.push(`trajectory_path=${state.trajectoryPath}`);
+  }
+  if (state.lastTrajectoryEventAt) {
+    lines.push(`last_trajectory_event_at=${state.lastTrajectoryEventAt}`);
   }
 
   if (resolvedPlan?.reasons.length) {

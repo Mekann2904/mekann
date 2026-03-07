@@ -25,8 +25,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify workspace quality policy
+        run: npm run policy:workspace
+
       - name: Run workspace verification gate
+        env:
+          CI_WORKSPACE_VERIFY_PREVIEW_COMMAND: ${{ vars.CI_WORKSPACE_VERIFY_PREVIEW_COMMAND }}
+          CI_WORKSPACE_VERIFY_UI_BASE_URL: ${{ vars.CI_WORKSPACE_VERIFY_UI_BASE_URL }}
+          CI_WORKSPACE_VERIFY_UI_COMMAND: ${{ vars.CI_WORKSPACE_VERIFY_UI_COMMAND }}
+          CI_WORKSPACE_VERIFY_FAIL_ON_HIGH_SEVERITY: "true"
         run: npm run ci:workspace-verification
+
+      - name: Apply branch protection policy
+        if: github.event_name == 'push' && github.ref_name == 'main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.BRANCH_PROTECTION_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_PROTECTED_BRANCHES: main,master
+        run: npm run policy:apply-branch-protection
 
       - name: Upload workspace verification artifacts
         if: always()
@@ -38,6 +54,7 @@ jobs:
             .pi/evals/workspace-verification/
             .pi/workspace-verification/reviews/
             .pi/workspace-verification/continuity.json
+            .pi/workspace-verification/trajectory.json
           if-no-files-found: ignore
 
   compatibility:
