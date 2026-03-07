@@ -36,3 +36,11 @@ export function getIndexSettingsStateKey(cwd: string): string {
 export function getAgentBenchmarkStateKey(cwd: string): string {
   return `agent_benchmark:${cwd}`;
 }
+
+export function getBackgroundProcessStateKey(cwd: string): string {
+  return `background_processes:${cwd}`;
+}
+
+export function getBackgroundProcessConfigStateKey(cwd: string): string {
+  return `background_process_config:${cwd}`;
+}
