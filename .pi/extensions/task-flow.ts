@@ -38,6 +38,10 @@ import { loadStorage as loadSubagentStorage } from "./subagents/storage";
 import type { SubagentDefinition } from "./subagents/storage";
 import { getInstanceId } from "./ul-workflow.js";
 import {
+  buildTurnExecutionContext,
+  deriveTurnExecutionDecisions,
+} from "../lib/agent/turn-context-builder.js";
+import {
 	loadTaskStorage as loadSharedTaskStorage,
 	saveTaskStorage as saveSharedTaskStorage,
 	loadPlanStorage as loadSharedPlanStorage,
@@ -186,6 +190,44 @@ const STATUS_MAP: Record<PlanStep["status"], TaskStatus> = {
 	blocked: "todo",
 };
 
+type TaskDelegateKind = "planning" | "research" | "review" | "implementation";
+
+export function inferTaskDelegateKind(task: Task): TaskDelegateKind {
+	const haystack = [task.title, task.description ?? "", task.tags.join(" ")]
+		.join(" ")
+		.toLowerCase();
+
+	if (/\b(plan|design|architecture|migration|strategy)\b/.test(haystack)) {
+		return "planning";
+	}
+	if (/\b(review|audit|risk|inspect|qa)\b/.test(haystack)) {
+		return "review";
+	}
+	if (/\b(research|investigate|analyze|search|read|explore)\b/.test(haystack)) {
+		return "research";
+	}
+	return "implementation";
+}
+
+export function selectTaskDelegateAgent(
+	agents: SubagentDefinition[],
+	preferredSubagentIds: string[],
+): SubagentDefinition | undefined {
+	const enabledAgents = agents.filter((agent) => agent.enabled === "enabled");
+	if (enabledAgents.length === 0) {
+		return undefined;
+	}
+
+	for (const preferredId of preferredSubagentIds) {
+		const matched = enabledAgents.find((agent) => agent.id === preferredId);
+		if (matched) {
+			return matched;
+		}
+	}
+
+	return enabledAgents[0];
+}
+
 // ============================================
 // Extension Registration
 // ============================================
@@ -238,9 +280,35 @@ export default function (pi: ExtensionAPI) {
 
 			// Load subagent
 			const subagentStorage = loadSubagentStorage(ctx.cwd);
+			const delegateKind = inferTaskDelegateKind(task);
+			const taskContent = task.description
+				? `${task.title}\n\n${task.description}`
+				: task.title;
+			const turnContext = buildTurnExecutionContext({
+				cwd: ctx.cwd,
+				startupKind: params.extraContext?.trim() ? "delta" : "baseline",
+				isFirstTurn: false,
+				previousContextAvailable: Boolean(params.extraContext?.trim()),
+				sessionElapsedMs: 0,
+			});
+			const turnDecisions = deriveTurnExecutionDecisions(turnContext, {
+				taskKind: delegateKind,
+				taskText: taskContent,
+			});
+
+			if (!params.subagentId && !turnDecisions.allowSubtaskDelegation) {
+				task.status = "failed";
+				task.updatedAt = new Date().toISOString();
+				saveTaskStorage(storage);
+				return {
+					content: [{ type: "text", text: "Task delegation blocked by the current autonomy policy" }],
+					details: { error: "subtask_delegation_blocked", turnDecisions }
+				};
+			}
+
 			const agent = params.subagentId
 				? subagentStorage.agents.find(a => a.id === params.subagentId && a.enabled === "enabled")
-				: subagentStorage.agents.find(a => a.enabled === "enabled");
+				: selectTaskDelegateAgent(subagentStorage.agents, turnDecisions.preferredSubagentIds);
 
 			if (!agent) {
 				task.status = "failed";
@@ -251,10 +319,6 @@ export default function (pi: ExtensionAPI) {
 					details: { error: "no_subagent" }
 				};
 			}
-
-			const taskContent = task.description
-				? `${task.title}\n\n${task.description}`
-				: task.title;
 
 			try {
 				const result = await runSubagentTask({
@@ -291,7 +355,8 @@ export default function (pi: ExtensionAPI) {
 					details: {
 						taskId: task.id,
 						subagentId: agent.id,
-						runRecord: result.runRecord
+						runRecord: result.runRecord,
+						turnDecisions,
 					}
 				};
 			} catch (error) {

@@ -341,6 +341,19 @@ import {
   saveStorage,
   saveStorageWithPatterns,
 } from "./subagents/storage";
+import {
+  formatTurnExecutionSnapshot,
+  loadSubagentReplayInput,
+  loadSubagentTurnContextSnapshot,
+} from "../lib/agent/turn-context-inspector.js";
+import {
+  buildTurnExecutionContext,
+  deriveTurnExecutionDecisions,
+} from "../lib/agent/turn-context-builder.js";
+import type {
+  TurnExecutionContext,
+  TurnExecutionDecisions,
+} from "../lib/agent/turn-context.js";
 
 // Import live-monitor module (extracted for SRP compliance)
 import {
@@ -914,6 +927,76 @@ async function runPiPrintMode(input: {
   });
 }
 
+type DelegationTaskKind = "research" | "implementation" | "planning" | "review";
+
+export function inferDelegationTaskKind(task: string, extraContext?: string): DelegationTaskKind {
+  const normalized = [task, extraContext ?? ""].join(" ").toLowerCase();
+
+  if (/\b(plan|design|architecture|migration|spec|strategy)\b/.test(normalized)) {
+    return "planning";
+  }
+  if (/\b(review|audit|risk|security|inspect|qa)\b/.test(normalized)) {
+    return "review";
+  }
+  if (/\b(research|investigate|analyz|search|read|explore|understand)\b/.test(normalized)) {
+    return "research";
+  }
+  return "implementation";
+}
+
+function resolveSubagentTurnPolicy(input: {
+  cwd: string;
+  task: string;
+  extraContext?: string;
+}): {
+  turnContext: TurnExecutionContext;
+  turnDecisions: TurnExecutionDecisions;
+} {
+  const turnContext = buildTurnExecutionContext({
+    cwd: input.cwd,
+    startupKind: input.extraContext?.trim() ? "delta" : "baseline",
+    isFirstTurn: false,
+    previousContextAvailable: Boolean(input.extraContext?.trim()),
+    sessionElapsedMs: 0,
+  });
+  const turnDecisions = deriveTurnExecutionDecisions(turnContext, {
+    taskKind: inferDelegationTaskKind(input.task, input.extraContext),
+    taskText: input.task,
+  });
+
+  return { turnContext, turnDecisions };
+}
+
+export function selectPreferredAgents(
+  storage: SubagentStorage,
+  preferredSubagentIds: string[],
+): SubagentDefinition[] {
+  const enabledAgents = storage.agents.filter((agent) => agent.enabled === "enabled");
+  if (enabledAgents.length === 0) {
+    return [];
+  }
+
+  const selected: SubagentDefinition[] = [];
+  const seen = new Set<string>();
+
+  for (const preferredId of preferredSubagentIds) {
+    const matched = enabledAgents.find((agent) => agent.id === preferredId);
+    if (matched && !seen.has(matched.id)) {
+      selected.push(matched);
+      seen.add(matched.id);
+    }
+  }
+
+  for (const agent of enabledAgents) {
+    if (!seen.has(agent.id)) {
+      selected.push(agent);
+      seen.add(agent.id);
+    }
+  }
+
+  return selected;
+}
+
 function pickAgent(storage: SubagentStorage, requestedId?: string): SubagentDefinition | undefined {
   if (requestedId) {
     return storage.agents.find((agent) => agent.id === requestedId);
@@ -927,8 +1010,11 @@ function pickAgent(storage: SubagentStorage, requestedId?: string): SubagentDefi
   return storage.agents.find((agent) => agent.enabled === "enabled");
 }
 
-function pickDefaultParallelAgents(storage: SubagentStorage): SubagentDefinition[] {
-  const enabledAgents = storage.agents.filter((agent) => agent.enabled === "enabled");
+function pickDefaultParallelAgents(
+  storage: SubagentStorage,
+  preferredSubagentIds: string[] = [],
+): SubagentDefinition[] {
+  const enabledAgents = selectPreferredAgents(storage, preferredSubagentIds);
   if (enabledAgents.length === 0) return [];
 
   // Default changed from "current" to "all" to promote parallel execution
@@ -947,6 +1033,32 @@ function pickDefaultParallelAgents(storage: SubagentStorage): SubagentDefinition
   }
 
   return enabledAgents.slice(0, 1);
+}
+
+export function resolveTurnParallelism(input: {
+  requestedMaxConcurrency?: number;
+  runtimeParallelLimit: number;
+  taskCount: number;
+  providerParallelLimit?: number;
+  policyParallelLimit: number;
+}): number {
+  const requested = Number.isFinite(input.requestedMaxConcurrency)
+    ? Math.max(1, Math.trunc(input.requestedMaxConcurrency as number))
+    : input.runtimeParallelLimit;
+  const providerLimit = Number.isFinite(input.providerParallelLimit)
+    ? Math.max(1, Math.trunc(input.providerParallelLimit as number))
+    : Number.POSITIVE_INFINITY;
+
+  return Math.max(
+    1,
+    Math.min(
+      requested,
+      Math.max(1, input.runtimeParallelLimit),
+      Math.max(1, input.taskCount),
+      Math.max(1, input.policyParallelLimit),
+      providerLimit,
+    ),
+  );
 }
 
 // Note: runSubagentTask is now imported from ./subagents/task-execution
@@ -1113,6 +1225,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
   async function executeParallelMode(args: {
     activeAgents: SubagentDefinition[];
     cachedByAgentId: Map<string, { runRecord: SubagentRunRecord; output: string; cacheAgeMs: number }>;
+    turnDecisions: TurnExecutionDecisions;
     params: {
       task: string;
       extraContext?: string;
@@ -1127,7 +1240,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
     ctx: any;
     _signal?: AbortSignal;
   }): Promise<{ content: { type: "text"; text: string }[]; details: Record<string, unknown> }> {
-    const { activeAgents, cachedByAgentId, params, storage, snapshot, timeoutMs, retryOverrides, ctx, _signal } = args;
+    const { activeAgents, cachedByAgentId, turnDecisions, params, storage, snapshot, timeoutMs, retryOverrides, ctx, _signal } = args;
 
     logger.startOperation(
       "subagent_run" as OperationType,
@@ -1159,23 +1272,20 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
     let liveMonitor: SubagentLiveMonitorController | undefined;
 
     try {
-      const configuredParallelLimit = toConcurrencyLimit(
-        snapshot.limits.maxParallelSubagentsPerRun,
-        1,
+      const providerParallelLimit = resolveProviderConcurrencyCap(
+        executableAgents,
+        ctx.model?.provider,
+        ctx.model?.id,
       );
-      const baselineParallelism = Math.max(
-        1,
-        Math.min(
-          configuredParallelLimit,
-          Math.max(1, executableAgents.length),
+      const baselineParallelism = resolveTurnParallelism({
+        runtimeParallelLimit: Math.min(
+          toConcurrencyLimit(snapshot.limits.maxParallelSubagentsPerRun, 1),
           Math.max(1, snapshot.limits.maxTotalActiveLlm),
-          resolveProviderConcurrencyCap(
-            executableAgents,
-            ctx.model?.provider,
-            ctx.model?.id,
-          ),
         ),
-      );
+        taskCount: executableAgents.length,
+        providerParallelLimit,
+        policyParallelLimit: turnDecisions.maxParallelSubagents,
+      });
       const effectiveParallelism = adaptivePenalty.applyLimit(baselineParallelism);
 
       const dispatchPermit = await acquireRuntimeDispatchPermit({
@@ -1570,6 +1680,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const { turnDecisions } = resolveSubagentTurnPolicy({
+        cwd: ctx.cwd,
+        task: params.task,
+        extraContext: typeof params.extraContext === "string" ? params.extraContext : undefined,
+      });
+
       // ULワークフロー所有権チェック
       if (params.ulTaskId) {
         const ownership = checkUlWorkflowOwnership(params.ulTaskId);
@@ -1600,6 +1716,18 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         ctx.model?.id,
         DEFAULT_AGENT_TIMEOUT_MS,
       );
+
+      if (!turnDecisions.allowSubtaskDelegation) {
+        return {
+          content: [{ type: "text" as const, text: "subagent_run_dag error: subtask delegation is blocked by the current autonomy policy." }],
+          details: {
+            error: "subtask_delegation_blocked",
+            preferredSubagentIds: turnDecisions.preferredSubagentIds,
+            outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+            retryRecommended: false,
+          },
+        };
+      }
 
       // ========================================
       // PARALLEL MODE: subagentIdsが指定された場合
@@ -1710,7 +1838,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             const dagPlan = await generateDagFromTask(params.task, {
               maxDepth: 4,
               maxTasks: activeAgents.length + 2,
-              preferredAgents: activeAgents.map((agent) => agent.id),
+              preferredAgents: [
+                ...activeAgents.map((agent) => agent.id),
+                ...turnDecisions.preferredSubagentIds,
+              ],
             });
 
             console.log(`[subagent_run_dag] Generated DAG: ${dagPlan.id} (${dagPlan.tasks.length} tasks)`);
@@ -1741,6 +1872,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           return await executeParallelMode({
             activeAgents,
             cachedByAgentId,
+            turnDecisions,
             params,
             storage,
             snapshot,
@@ -1755,10 +1887,21 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       // ========================================
       // DAG MODE: plan指定 または 自動生成
       // ========================================
-      const maxConcurrency = Math.min(
-        params.maxConcurrency ?? 3,
-        snapshot.limits.maxParallelSubagentsPerRun,
+      const providerParallelLimit = resolveProviderConcurrencyCap(
+        storage.agents,
+        ctx.model?.provider,
+        ctx.model?.id,
       );
+      const maxConcurrency = resolveTurnParallelism({
+        requestedMaxConcurrency: typeof params.maxConcurrency === "number" ? params.maxConcurrency : undefined,
+        runtimeParallelLimit: Math.min(
+          snapshot.limits.maxParallelSubagentsPerRun,
+          Math.max(1, snapshot.limits.maxTotalActiveLlm),
+        ),
+        taskCount: params.plan?.tasks?.length ?? Math.max(1, turnDecisions.maxLoopIterations),
+        providerParallelLimit,
+        policyParallelLimit: turnDecisions.maxParallelSubagents,
+      });
       const abortOnFirstError = params.abortOnFirstError ?? false;
 
       // Build or use provided plan
@@ -1788,8 +1931,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         // AUTO-GENERATE DAG
         try {
           taskPlan = await generateDagFromTask(params.task, {
-            maxDepth: 4,
-            maxTasks: 10,
+            maxDepth: turnDecisions.maxLoopIterations <= 2 ? 2 : 4,
+            maxTasks: Math.max(4, turnDecisions.maxLoopIterations * 2),
+            preferredAgents: turnDecisions.preferredSubagentIds,
+            extraContext: typeof params.extraContext === "string" ? params.extraContext : undefined,
           });
 
           // Log auto-generation success
@@ -1956,7 +2101,22 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             const agentId = task.assignedAgent ?? storage.currentAgentId;
             const agent = agentId
               ? storage.agents.find((a) => a.id === agentId)
-              : pickAgent(storage);
+              : selectPreferredAgents(
+                  storage,
+                  deriveTurnExecutionDecisions(
+                    buildTurnExecutionContext({
+                      cwd: ctx.cwd,
+                      startupKind: context.trim() ? "delta" : "baseline",
+                      isFirstTurn: false,
+                      previousContextAvailable: Boolean(context.trim()),
+                      sessionElapsedMs: 0,
+                    }),
+                    {
+                      taskKind: inferDelegationTaskKind(task.description, context),
+                      taskText: task.description,
+                    },
+                  ).preferredSubagentIds,
+                )[0] ?? pickAgent(storage);
 
             if (!agent) {
               throw new Error(`No subagent found for task ${task.id}`);
@@ -2225,6 +2385,123 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    name: "subagent_inspect_run",
+    label: "Subagent Inspect Run",
+    description: "Load the persisted turn execution snapshot for a subagent run.",
+    parameters: Type.Object({
+      runId: Type.Optional(Type.String({ description: "Run ID to inspect. Uses latest run when omitted." })),
+      outputFile: Type.Optional(Type.String({ description: "Direct path to a subagent run artifact JSON." })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const storage = loadStorage(ctx.cwd);
+      const outputFile = typeof params.outputFile === "string" && params.outputFile.trim()
+        ? params.outputFile.trim()
+        : (() => {
+            const runId = typeof params.runId === "string" ? params.runId.trim() : "";
+            const run = runId
+              ? storage.runs.find((item) => item.runId === runId)
+              : storage.runs[storage.runs.length - 1];
+            if (!run?.outputFile) {
+              throw new Error("subagent run artifact not found");
+            }
+            return run.outputFile;
+          })();
+
+      const snapshot = loadSubagentTurnContextSnapshot(outputFile);
+
+      return {
+        content: [{ type: "text" as const, text: formatTurnExecutionSnapshot(snapshot) }],
+        details: {
+          outputFile,
+          snapshot,
+        },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "subagent_replay_run",
+    label: "Subagent Replay Run",
+    description: "Replay a persisted subagent run from its artifact. Use prepareOnly to inspect reconstructed input without executing.",
+    parameters: Type.Object({
+      runId: Type.Optional(Type.String({ description: "Run ID to replay. Uses latest run when omitted." })),
+      outputFile: Type.Optional(Type.String({ description: "Direct path to a subagent run artifact JSON." })),
+      prepareOnly: Type.Optional(Type.Boolean({ description: "Only reconstruct replay input without executing." })),
+    }),
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      const storage = loadStorage(ctx.cwd);
+      const outputFile = typeof params.outputFile === "string" && params.outputFile.trim()
+        ? params.outputFile.trim()
+        : (() => {
+            const runId = typeof params.runId === "string" ? params.runId.trim() : "";
+            const run = runId
+              ? storage.runs.find((item) => item.runId === runId)
+              : storage.runs[storage.runs.length - 1];
+            if (!run?.outputFile) {
+              throw new Error("subagent run artifact not found");
+            }
+            return run.outputFile;
+          })();
+
+      const replay = loadSubagentReplayInput(outputFile);
+      if (!replay.run.agentId || !replay.run.task) {
+        throw new Error("subagent replay artifact is missing agentId or task");
+      }
+
+      const agent = storage.agents.find((item) => item.id === replay.run.agentId);
+      if (!agent) {
+        throw new Error(`subagent not found for replay: ${replay.run.agentId}`);
+      }
+
+      if (params.prepareOnly === true) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: [
+              "Subagent Replay Input:",
+              `Agent: ${replay.run.agentId}`,
+              `Task: ${replay.run.task}`,
+              `CWD: ${replay.snapshot.workspace.cwd}`,
+              "",
+              formatTurnExecutionSnapshot(replay.snapshot),
+            ].join("\n"),
+          }],
+          details: {
+            outputFile,
+            replay,
+            prepared: true,
+          },
+        };
+      }
+
+      const timeoutMs = resolveEffectiveTimeoutMs(
+        undefined,
+        ctx.model?.id,
+        DEFAULT_AGENT_TIMEOUT_MS,
+      );
+      const result = await runSubagentTask({
+        agent,
+        task: replay.run.task,
+        timeoutMs,
+        cwd: replay.snapshot.workspace.cwd || ctx.cwd,
+        modelProvider: ctx.model?.provider,
+        modelId: ctx.model?.id,
+        replaySnapshot: replay.snapshot,
+        signal,
+      });
+
+      return {
+        content: [{ type: "text" as const, text: result.output || result.runRecord.summary }],
+        details: {
+          replayedFrom: outputFile,
+          originalRunId: replay.run.runId,
+          replayRunRecord: result.runRecord,
+        },
+      };
+    },
+  });
+
+  pi.registerTool({
     name: "agent_benchmark_status",
     label: "Agent Benchmark Status",
     description: "Show stored benchmark comparison for loop and subagent runs.",
@@ -2267,7 +2544,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       const storage = loadStorage(ctx.cwd);
 
       if (!input || input === "help") {
-        ctx.ui.notify("/subagent list | /subagent runs | /subagent benchmark [variant] | /subagent status | /subagent default <id> | /subagent enable <id> | /subagent disable <id>", "info");
+        ctx.ui.notify("/subagent list | /subagent runs | /subagent inspect [runId] | /subagent benchmark [variant] | /subagent status | /subagent default <id> | /subagent enable <id> | /subagent disable <id>", "info");
         return;
       }
 
@@ -2278,6 +2555,33 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
 
       if (input === "runs") {
         pi.sendMessage({ customType: "subagent-runs", content: formatRecentRuns(storage), display: true });
+        return;
+      }
+
+      if (input === "inspect" || input.startsWith("inspect ")) {
+        const runId = input.startsWith("inspect ") ? input.slice("inspect ".length).trim() : "";
+        const run = runId
+          ? storage.runs.find((item) => item.runId === runId)
+          : storage.runs[storage.runs.length - 1];
+        if (!run?.outputFile) {
+          ctx.ui.notify("No subagent run artifact found.", "warning");
+          return;
+        }
+        try {
+          const snapshot = loadSubagentTurnContextSnapshot(run.outputFile);
+          pi.sendMessage({
+            customType: "subagent-inspect-run",
+            content: formatTurnExecutionSnapshot(snapshot),
+            display: true,
+            details: {
+              runId: run.runId,
+              outputFile: run.outputFile,
+              snapshot,
+            },
+          });
+        } catch (error) {
+          ctx.ui.notify(`Failed to inspect subagent run: ${toErrorMessage(error)}`, "error");
+        }
         return;
       }
 

@@ -133,6 +133,39 @@ export {
 // Runtime error builders (Layer 1)
 export { resolveEffectiveTimeoutMs } from "./runtime-error-builders.js";
 
+// Turn execution context utilities (Layer 1)
+export {
+  type TurnExecutionContext,
+  type TurnExecutionDecisions,
+  type BuildTurnExecutionContextOptions,
+  type TurnExecutionContinuation,
+  type TurnExecutionPolicySnapshot,
+  type TurnExecutionToolAvailability,
+  type TurnExecutionWorkspace,
+} from "./turn-context.js";
+export {
+  buildTurnExecutionContext,
+  deriveTurnExecutionDecisions,
+  formatTurnExecutionContextBlock,
+  buildTurnExecutionRuntimeSection,
+} from "./turn-context-builder.js";
+export {
+  type TurnExecutionSnapshot,
+  applyReplayToolConstraints,
+  createTurnExecutionSnapshot,
+  applyReplayDecisionConstraints,
+} from "./turn-context-snapshot.js";
+export {
+  type LoopTurnContextEntry,
+  type SubagentReplayInput,
+  type LoopReplayInput,
+  loadSubagentTurnContextSnapshot,
+  loadLoopTurnContextSnapshots,
+  loadSubagentReplayInput,
+  loadLoopReplayInput,
+  formatTurnExecutionSnapshot,
+} from "./turn-context-inspector.js";
+
 // Process utilities (Layer 1)
 export { GRACEFUL_SHUTDOWN_DELAY_MS } from "../process-utils.js";
 

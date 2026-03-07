@@ -99,6 +99,18 @@ import {
   createRuntimeNotification,
   formatRuntimeNotificationBlock,
 } from "../../lib/agent/runtime-notifications.js";
+import {
+  buildTurnExecutionContext,
+  buildTurnExecutionRuntimeSection,
+  deriveTurnExecutionDecisions,
+  formatTurnExecutionContextBlock,
+} from "../../lib/agent/turn-context-builder.js";
+import {
+  applyReplayDecisionConstraints,
+  applyReplayToolConstraints,
+  createTurnExecutionSnapshot,
+  type TurnExecutionSnapshot,
+} from "../../lib/agent/turn-context-snapshot.js";
 import { resolveModelPromptAdapter } from "../../lib/agent/model-adapters.js";
 import { getSubagentExecutionRules, getExecutionRulesForProfile, getLightweightExecutionRules } from "../../lib/execution-rules";
 import { getProfileForTask, type PerformanceProfile } from "../../lib/performance-profiles";
@@ -119,6 +131,7 @@ import { runPiPrintMode as sharedRunPiPrintMode, type PrintCommandResult } from 
 
 import type { SubagentDefinition, SubagentRunRecord, SubagentPaths } from "./storage";
 import { ensurePaths } from "./storage";
+import type { TurnExecutionContext } from "../../lib/agent/turn-context.js";
 
 // Re-export types
 export type { RunOutcomeCode, RunOutcomeSignal };
@@ -642,8 +655,22 @@ function parseSubagentDirectives(extraContext?: string, task?: string): Subagent
  * Research-oriented delegated runs need repository search tools.
  * Keep regular delegated runs deterministic by leaving extensions off.
  */
-export function shouldEnableSubagentExtensions(task: string, extraContext?: string): boolean {
-  return parseSubagentDirectives(extraContext, task).outputMode === "internal";
+export function shouldEnableSubagentExtensions(
+  task: string,
+  extraContext?: string,
+  turnContext?: TurnExecutionContext,
+): boolean {
+  const wantsResearchMode = parseSubagentDirectives(extraContext, task).outputMode === "internal";
+  if (!wantsResearchMode) {
+    return false;
+  }
+  if (!turnContext) {
+    return true;
+  }
+  return deriveTurnExecutionDecisions(turnContext, {
+    taskKind: "research",
+    taskText: task,
+  }).allowSearchExtensions;
 }
 
 export function buildSubagentChildEnvOverrides(): NodeJS.ProcessEnv {
@@ -714,6 +741,7 @@ export function buildSubagentPrompt(input: {
   relevantPatterns?: ExtractedPattern[];
   modelProvider?: string;
   modelId?: string;
+  turnContext?: TurnExecutionContext;
 }): string {
   return buildSubagentPromptPackage(input).prompt;
 }
@@ -728,6 +756,7 @@ export function buildSubagentPromptPackage(input: {
   relevantPatterns?: ExtractedPattern[];
   modelProvider?: string;
   modelId?: string;
+  turnContext?: TurnExecutionContext;
 }): {
   prompt: string;
   entries: PromptStackEntry[];
@@ -742,6 +771,13 @@ export function buildSubagentPromptPackage(input: {
   );
   const allSkills = resolveEffectiveSkills(input.agent, input.parentSkills) ?? [];
   const effectiveSkills = filterSkillsByRelevance(input.task, allSkills);
+  const turnContext = input.turnContext;
+  const turnDecisions = turnContext
+    ? deriveTurnExecutionDecisions(turnContext, {
+        taskKind: isInternal ? "research" : "implementation",
+        taskText: input.task,
+      })
+    : undefined;
 
   // INTERNAL mode: Build compact English prompt
   if (isInternal) {
@@ -773,6 +809,22 @@ export function buildSubagentPromptPackage(input: {
       },
     ];
 
+    if (turnContext) {
+      entries.push({
+        source: "subagent-turn-context",
+        layer: "startup-context",
+        content: formatTurnExecutionContextBlock(turnContext),
+      });
+      runtimeNotifications.push(
+        createRuntimeNotification(
+          "turn-context",
+          buildTurnExecutionRuntimeSection(turnContext),
+          "info",
+          1,
+        )!,
+      );
+    }
+
     if (contextHandoff.length > 0) {
       entries.push({
         source: "subagent-context-handoff",
@@ -785,7 +837,7 @@ export function buildSubagentPromptPackage(input: {
       });
     }
 
-    if (shouldEnableSubagentExtensions(input.task, input.extraContext)) {
+    if (shouldEnableSubagentExtensions(input.task, input.extraContext, turnContext)) {
       entries.push({
         source: "subagent-research-guidelines",
         layer: "tool-description",
@@ -858,6 +910,27 @@ export function buildSubagentPromptPackage(input: {
       ].join("\n"),
     },
   ];
+
+  if (turnContext) {
+    entries.push({
+      source: "subagent-turn-context",
+      layer: "startup-context",
+      content: formatTurnExecutionContextBlock(turnContext),
+    });
+    const notification = createRuntimeNotification(
+      "turn-context",
+      buildTurnExecutionRuntimeSection(turnContext),
+      "info",
+      1,
+    );
+    if (notification) {
+      entries.push({
+        source: "subagent-turn-context-runtime",
+        layer: "runtime-notification",
+        content: formatRuntimeNotificationBlock([notification]),
+      });
+    }
+  }
 
   if (skillsSection) {
     entries.push({
@@ -1022,6 +1095,7 @@ export async function runSubagentTask(input: {
   modelProvider?: string;
   modelId?: string;
   parentSkills?: string[];
+  replaySnapshot?: TurnExecutionSnapshot;
   signal?: AbortSignal;
   onStart?: () => void;
   onEnd?: () => void;
@@ -1051,6 +1125,21 @@ export async function runSubagentTask(input: {
     // Pattern loading failure should not block execution
   }
 
+  const liveTurnContext = buildTurnExecutionContext({
+    cwd: input.cwd,
+    startupKind: "delta",
+    isFirstTurn: false,
+    previousContextAvailable: Boolean(input.extraContext?.trim()),
+    sessionElapsedMs: 0,
+  });
+  const turnContext = applyReplayToolConstraints(liveTurnContext, input.replaySnapshot);
+  const liveTurnDecisions = deriveTurnExecutionDecisions(turnContext, {
+    taskKind: shouldEnableSubagentExtensions(input.task, input.extraContext) ? "research" : "implementation",
+    taskText: input.task,
+  });
+  const turnDecisions = applyReplayDecisionConstraints(liveTurnDecisions, input.replaySnapshot);
+  const turnSnapshot = createTurnExecutionSnapshot(turnContext, turnDecisions);
+
   const promptPackage = buildSubagentPromptPackage({
     agent: input.agent,
     task: input.task,
@@ -1060,6 +1149,7 @@ export async function runSubagentTask(input: {
     relevantPatterns,
     modelProvider: input.modelProvider,
     modelId: input.modelId,
+    turnContext,
   });
   const prompt = promptPackage.prompt;
   const promptStackSummary = summarizePromptStackForBenchmark(promptPackage.entries);
@@ -1068,9 +1158,9 @@ export async function runSubagentTask(input: {
   const rateLimitKey = buildRateLimitKey(resolvedProvider, resolvedModel);
   // Stable retry defaults keep delegated runs resilient to transient 429/5xx.
   const retryOverrides: RetryWithBackoffOverrides = {
-    maxRetries: STABLE_MAX_RETRIES,
-    initialDelayMs: STABLE_INITIAL_DELAY_MS,
-    maxDelayMs: STABLE_MAX_DELAY_MS,
+    maxRetries: turnDecisions?.retryOverrides.maxRetries ?? STABLE_MAX_RETRIES,
+    initialDelayMs: turnDecisions?.retryOverrides.initialDelayMs ?? STABLE_INITIAL_DELAY_MS,
+    maxDelayMs: turnDecisions?.retryOverrides.maxDelayMs ?? STABLE_MAX_DELAY_MS,
     ...(input.retryOverrides ?? {}),
   };
   let retryCount = 0;
@@ -1096,7 +1186,7 @@ export async function runSubagentTask(input: {
     try {
       // Layer 1統合: 高リスクタスクの場合のみ再生成メカニズムを使用
       const useLayer1Enforcement = isHighRiskTask(input.task);
-      const enableExtensions = shouldEnableSubagentExtensions(input.task, input.extraContext);
+      const enableExtensions = shouldEnableSubagentExtensions(input.task, input.extraContext, turnContext);
 
       const commandResult = await retryWithBackoff(
         async () => {
@@ -1258,6 +1348,7 @@ export async function runSubagentTask(input: {
         JSON.stringify(
           {
             run: runRecord,
+            turnContext: turnSnapshot,
             prompt,
             output: commandResult.output,
           },
@@ -1354,6 +1445,7 @@ export async function runSubagentTask(input: {
         JSON.stringify(
           {
             run: runRecord,
+            turnContext: turnSnapshot,
             prompt,
             output: "",
             error: message,
