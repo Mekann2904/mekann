@@ -364,6 +364,8 @@ workspace_verification_config(
 
 対象は `security`、`auth`、`api`、`schema`、`migration`、`workflow`、`build/package` 影響などです。
 
+high severity の review artifact は、`workspace_verify_review_ack` 時に `decision` と `rationale` を要求します。
+
 CI から同じ runbook を実行する例:
 
 ```bash
@@ -374,7 +376,9 @@ npm run verify:workspace
 
 たとえば lint は changed TS/JS files を優先し、typecheck / test / build は変更種類に応じて relevant steps だけを残します。
 
-GitHub Actions では `quality-gates` job がこの script を実行し、`.pi/verification-runs/`、`.pi/evals/workspace-verification/`、`.pi/workspace-verification/continuity.json` を artifact として残します。
+GitHub Actions では `quality-gates` job がこの script を実行し、`.pi/verification-runs/`、`.pi/evals/workspace-verification/`、`.pi/workspace-verification/reviews/`、`.pi/workspace-verification/continuity.json` を artifact として残します。
+
+preview URL があるプロジェクトでは、`CI_WORKSPACE_VERIFY_UI_BASE_URL` と `CI_WORKSPACE_VERIFY_UI_COMMAND` を与えると、CI でも browser evidence を追加できます。
 
 `main` / `master` を保護する場合は、required status checks に少なくとも `quality-gates` と `security` を入れてください。
 

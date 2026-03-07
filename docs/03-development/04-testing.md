@@ -238,7 +238,12 @@ artifact は次に保存されます。
 
 - `.pi/verification-runs/`
 - `.pi/evals/workspace-verification/`
+- `.pi/workspace-verification/reviews/`
 - `.pi/workspace-verification/continuity.json`
+
+high severity の review artifact は、`decision` と `rationale` を付けて acknowledge する必要があります。
+
+preview URL を持つプロジェクトでは、`CI_WORKSPACE_VERIFY_UI_BASE_URL` と `CI_WORKSPACE_VERIFY_UI_COMMAND` を CI に渡すと browser evidence も保存できます。
 
 ### 推奨CI設定
 

@@ -36,6 +36,7 @@ jobs:
           path: |
             .pi/verification-runs/
             .pi/evals/workspace-verification/
+            .pi/workspace-verification/reviews/
             .pi/workspace-verification/continuity.json
           if-no-files-found: ignore
 

@@ -165,6 +165,8 @@ export interface WorkspaceVerificationState {
   lastReviewedArtifactDir?: string;
   lastReviewArtifactAt?: string;
   lastReviewArtifactPath?: string;
+  lastReviewDecision?: string;
+  lastReviewRationale?: string;
   lastReplanAt?: string;
   lastRepairStrategy?: string;
   lastMutationCheckpointId?: string;
@@ -230,6 +232,12 @@ interface WorkspaceVerificationReviewArtifact {
     regression: string[];
     testGaps: string[];
     rollback: string[];
+  };
+  severity: {
+    highest: "low" | "medium" | "high";
+    requiresExplicitDecision: boolean;
+    blockingCategories: string[];
+    summary: string[];
   };
 }
 
@@ -540,6 +548,8 @@ export function normalizeWorkspaceVerificationState(input: unknown): WorkspaceVe
     lastReviewedArtifactDir: normalizeOptionalString(record.lastReviewedArtifactDir),
     lastReviewArtifactAt: normalizeOptionalString(record.lastReviewArtifactAt),
     lastReviewArtifactPath: normalizeOptionalString(record.lastReviewArtifactPath),
+    lastReviewDecision: normalizeOptionalString(record.lastReviewDecision),
+    lastReviewRationale: normalizeOptionalString(record.lastReviewRationale),
     lastReplanAt: normalizeOptionalString(record.lastReplanAt),
     lastRepairStrategy: normalizeOptionalString(record.lastRepairStrategy),
     lastMutationCheckpointId: normalizeOptionalString(record.lastMutationCheckpointId),
@@ -869,6 +879,16 @@ function renderReviewArtifactMarkdown(review: WorkspaceVerificationReviewArtifac
     lines.push(`- ${item.step}: success=${item.success} skipped=${item.skipped}${item.error ? ` error=${item.error}` : ""}`);
   }
 
+  lines.push("", "## Severity");
+  lines.push(`- highest: ${review.severity.highest}`);
+  lines.push(`- requires_explicit_decision: ${review.severity.requiresExplicitDecision}`);
+  if (review.severity.blockingCategories.length > 0) {
+    lines.push(`- blocking_categories: ${review.severity.blockingCategories.join(", ")}`);
+  }
+  for (const item of review.severity.summary) {
+    lines.push(`- ${item}`);
+  }
+
   for (const [section, items] of Object.entries(review.findings)) {
     lines.push("", `## ${section}`);
     if (items.length === 0) {
@@ -881,6 +901,55 @@ function renderReviewArtifactMarkdown(review: WorkspaceVerificationReviewArtifac
   }
 
   return `${lines.join("\n")}\n`;
+}
+
+function inferReviewSeverity(
+  findings: WorkspaceVerificationReviewArtifact["findings"],
+): WorkspaceVerificationReviewArtifact["severity"] {
+  const blockingCategories: string[] = [];
+  const summary: string[] = [];
+  let highest: "low" | "medium" | "high" = "low";
+
+  const raise = (level: "medium" | "high") => {
+    if (level === "high" || highest === "low") {
+      highest = level;
+    }
+  };
+
+  if (findings.bugs.length > 0) {
+    blockingCategories.push("bugs");
+    summary.push("Unresolved bug risk was detected from the latest verification results.");
+    raise("high");
+  }
+
+  if (findings.security.length > 0) {
+    blockingCategories.push("security");
+    summary.push("Security-sensitive surface changed and needs an explicit review decision.");
+    raise("high");
+  }
+
+  if (findings.testGaps.length > 0) {
+    blockingCategories.push("testGaps");
+    summary.push("Test coverage evidence is incomplete for the current change.");
+    raise("high");
+  }
+
+  if (findings.regression.length > 0) {
+    summary.push("Regression-sensitive behavior changed and should be explicitly reviewed.");
+    raise("medium");
+  }
+
+  if (findings.rollback.length > 0) {
+    summary.push("Rollback path is weak or undocumented.");
+    raise("medium");
+  }
+
+  return {
+    highest,
+    requiresExplicitDecision: highest !== "low",
+    blockingCategories,
+    summary,
+  };
 }
 
 export function persistWorkspaceReviewArtifact(input: {
@@ -907,7 +976,14 @@ export function persistWorkspaceReviewArtifact(input: {
       })),
     },
     findings: inferReviewFindings(input.run, plan),
+    severity: {
+      highest: "low",
+      requiresExplicitDecision: false,
+      blockingCategories: [],
+      summary: [],
+    },
   };
+  review.severity = inferReviewSeverity(review.findings);
   const dir = join(ensureVerificationWorkspaceDir(cwd), "reviews");
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
@@ -922,16 +998,39 @@ export function persistWorkspaceReviewArtifact(input: {
 export function acknowledgeReviewArtifact(input: {
   cwd?: string;
   path?: string;
+  decision?: string;
+  rationale?: string;
 }): WorkspaceVerificationState {
   const cwd = normalizeCwd(input.cwd);
   const current = loadWorkspaceVerificationState(cwd);
   const path = input.path?.trim() || current.lastReviewArtifactPath;
+  const jsonPath = path?.replace(/\.md$/u, ".json");
+  let review: WorkspaceVerificationReviewArtifact | undefined;
+  if (jsonPath && existsSync(jsonPath)) {
+    try {
+      review = JSON.parse(readFileSync(jsonPath, "utf-8")) as WorkspaceVerificationReviewArtifact;
+    } catch {
+      review = undefined;
+    }
+  }
+  const decision = normalizeOptionalString(input.decision);
+  const rationale = normalizeOptionalString(input.rationale);
+
+  if (review?.severity.requiresExplicitDecision && !decision) {
+    throw new Error("review decision is required for this artifact");
+  }
+
+  if ((review?.severity.highest === "high" || decision === "mitigate") && !rationale) {
+    throw new Error("review rationale is required for high-severity findings");
+  }
 
   return saveWorkspaceVerificationState(cwd, {
     ...current,
     pendingReviewArtifact: false,
     lastReviewArtifactAt: nowIso(),
     lastReviewArtifactPath: path,
+    lastReviewDecision: decision,
+    lastReviewRationale: rationale,
   });
 }
 
@@ -1919,11 +2018,15 @@ export function persistWorkspaceVerificationContinuityPack(
     state: {
       dirty: state.dirty,
       pendingProofReview: state.pendingProofReview,
+      pendingReviewArtifact: state.pendingReviewArtifact,
       replanRequired: state.replanRequired,
       repeatedFailureCount: state.repeatedFailureCount,
       lastWriteAt: state.lastWriteAt,
       lastVerifiedAt: state.lastVerifiedAt,
       lastReviewedAt: state.lastReviewedAt,
+      lastReviewArtifactAt: state.lastReviewArtifactAt,
+      lastReviewArtifactPath: state.lastReviewArtifactPath,
+      lastReviewDecision: state.lastReviewDecision,
       lastArtifactDir: state.lastRun?.artifactDir,
       lastFailureFingerprint: state.lastFailureFingerprint,
       replanReason: state.replanReason,
@@ -2123,6 +2226,12 @@ export function formatWorkspaceVerificationStatus(
   }
   if (state.lastReviewArtifactPath) {
     lines.push(`last_review_artifact_path=${state.lastReviewArtifactPath}`);
+  }
+  if (state.lastReviewDecision) {
+    lines.push(`last_review_decision=${state.lastReviewDecision}`);
+  }
+  if (state.lastReviewRationale) {
+    lines.push(`last_review_rationale=${state.lastReviewRationale}`);
   }
   if (state.lastReplanAt) {
     lines.push(`last_replan_at=${state.lastReplanAt}`);

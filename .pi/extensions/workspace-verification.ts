@@ -163,6 +163,7 @@ function buildStatusBlock(
 
   if (reviewArtifactRequired && state.pendingReviewArtifact) {
     lines.push("", "review artifact が未承認。`workspace_verify_review` と `workspace_verify_review_ack` を完了させること。");
+    lines.push("高リスク review では decision と rationale を明示すること。");
   }
 
   if (config.requireReplanOnRepeatedFailure && state.replanRequired) {
@@ -859,11 +860,15 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
     description: "Acknowledge that the latest review artifact has been inspected.",
     parameters: Type.Object({
       path: Type.Optional(Type.String()),
+      decision: Type.Optional(Type.Union([Type.Literal("accept"), Type.Literal("mitigate")])),
+      rationale: Type.Optional(Type.String()),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const state = acknowledgeReviewArtifact({
         cwd: ctx.cwd,
         path: params.path,
+        decision: params.decision,
+        rationale: params.rationale,
       });
       const config = loadWorkspaceVerificationConfig(ctx.cwd);
       const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);

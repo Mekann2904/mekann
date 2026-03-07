@@ -169,6 +169,8 @@ describe("workspace-verification-ci", () => {
   beforeEach(() => {
     mockState.commands = [];
     mockState.savedStates = [];
+    delete process.env.CI_WORKSPACE_VERIFY_UI_BASE_URL;
+    delete process.env.CI_WORKSPACE_VERIFY_UI_COMMAND;
     vi.restoreAllMocks();
   });
 
@@ -235,5 +237,57 @@ describe("workspace-verification-ci", () => {
     expect(result.run.success).toBe(true);
     expect(result.stepResults.find((item) => item.step === "typecheck")?.error).toContain("legacy typecheck diagnostics");
     expect(result.stepResults.find((item) => item.step === "test")?.command).toBe("npx vitest run \"tests/unit/lib/workspace-verification-ci.test.ts\"");
+  });
+
+  it("runs optional UI browser evidence in CI when a command is provided", async () => {
+    process.env.CI_WORKSPACE_VERIFY_UI_BASE_URL = "https://preview.example.test";
+    process.env.CI_WORKSPACE_VERIFY_UI_COMMAND = "playwright-cli snapshot ${baseUrl}";
+
+    const verificationModule = await import("../../../.pi/lib/workspace-verification.js");
+    vi.mocked(verificationModule.runWorkspaceCommand)
+      .mockResolvedValueOnce({
+        command: "npx eslint \".pi/lib/workspace-verification-ci.ts\" --max-warnings=0",
+        success: true,
+        exitCode: 0,
+        timedOut: false,
+        durationMs: 10,
+        stdout: "ok",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        command: "npm run typecheck",
+        success: true,
+        exitCode: 0,
+        timedOut: false,
+        durationMs: 10,
+        stdout: "ok",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        command: "npx vitest run \"tests/unit/lib/workspace-verification-ci.test.ts\"",
+        success: true,
+        exitCode: 0,
+        timedOut: false,
+        durationMs: 10,
+        stdout: "ok",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        command: "playwright-cli snapshot https://preview.example.test",
+        success: true,
+        exitCode: 0,
+        timedOut: false,
+        durationMs: 10,
+        stdout: "snapshot saved",
+        stderr: "",
+      });
+
+    const { runWorkspaceVerificationCi } = await import("../../../.pi/lib/workspace-verification-ci.js");
+    const result = await runWorkspaceVerificationCi({ cwd: "/repo" });
+
+    expect(result.skippedInteractiveSteps).toEqual(["runtime"]);
+    expect(result.stepResults.find((item) => item.step === "ui")?.command).toBe(
+      "playwright-cli snapshot https://preview.example.test",
+    );
   });
 });

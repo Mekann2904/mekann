@@ -391,6 +391,7 @@ describe("workspace-verification library", () => {
 
     expect(artifact.path).toContain(".pi/workspace-verification/reviews/");
     expect(mockState.files.get(artifact.path)).toContain("security");
+    expect(artifact.review.severity.highest).toBe("high");
 
     saveWorkspaceVerificationState("/repo", {
       ...createWorkspaceVerificationState(),
@@ -398,12 +399,90 @@ describe("workspace-verification library", () => {
       lastReviewArtifactPath: artifact.path,
     });
 
-    const acknowledged = acknowledgeReviewArtifact({ cwd: "/repo" });
+    const acknowledged = acknowledgeReviewArtifact({
+      cwd: "/repo",
+      decision: "accept",
+      rationale: "Security-sensitive scope was manually reviewed.",
+    });
     expect(acknowledged.pendingReviewArtifact).toBe(false);
     expect(acknowledged.lastReviewArtifactPath).toBe(artifact.path);
+    expect(acknowledged.lastReviewDecision).toBe("accept");
 
     const state = loadWorkspaceVerificationState("/repo");
     expect(state.lastReviewArtifactAt).toBeDefined();
+  });
+
+  it("requires explicit rationale for high-severity review artifacts", async () => {
+    const {
+      persistWorkspaceReviewArtifact,
+      acknowledgeReviewArtifact,
+      saveWorkspaceVerificationState,
+      createWorkspaceVerificationState,
+    } = await import("../../../.pi/lib/workspace-verification.js");
+
+    mockState.planStorage = {
+      currentPlanId: "plan-1",
+      plans: [{
+        id: "plan-1",
+        name: "Security review",
+        status: "active",
+        acceptanceCriteria: ["token rotation is safe"],
+        fileModuleImpact: ["auth workflow"],
+        testVerification: ["npm test"],
+        progressLog: [],
+      }],
+    };
+
+    const artifact = persistWorkspaceReviewArtifact({
+      cwd: "/repo",
+      run: {
+        trigger: "manual",
+        startedAt: "2026-03-07T00:00:00.000Z",
+        finishedAt: "2026-03-07T00:00:10.000Z",
+        success: true,
+        artifactDir: "/repo/.pi/verification-runs/latest",
+        resolvedPlan: {
+          profile: "backend",
+          commands: {},
+          runtime: {
+            enabled: false,
+            command: "",
+            label: "workspace-dev-server",
+            startupTimeoutMs: 1000,
+            keepAliveOnShutdown: true,
+          },
+          ui: {
+            enabled: false,
+            timeoutMs: 1000,
+            commands: [],
+          },
+          acceptanceCriteria: ["token rotation is safe"],
+          validationCommands: ["npm test"],
+          recommendedSteps: ["test"],
+          reasons: ["Security-sensitive change detected"],
+          proofArtifacts: ["verification summary", "review notes"],
+          sources: [],
+        },
+        stepResults: [{
+          step: "test",
+          success: true,
+          skipped: false,
+          durationMs: 10,
+          command: "npm test",
+        }],
+      },
+    });
+
+    saveWorkspaceVerificationState("/repo", {
+      ...createWorkspaceVerificationState(),
+      pendingReviewArtifact: true,
+      lastReviewArtifactPath: artifact.path,
+    });
+
+    expect(() => acknowledgeReviewArtifact({
+      cwd: "/repo",
+      decision: "accept",
+    })).toThrow("review rationale");
   });
 
   it("auto-runs only when the last write is newer than the last run", async () => {

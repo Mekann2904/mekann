@@ -98,6 +98,8 @@ const mockApi = vi.hoisted(() => ({
     lastReviewedArtifactDir: undefined,
     lastReviewArtifactAt: undefined,
     lastReviewArtifactPath: undefined,
+    lastReviewDecision: undefined,
+    lastReviewRationale: undefined,
     lastReplanAt: undefined,
     lastRepairStrategy: undefined,
     lastMutationCheckpointId: undefined,
@@ -129,6 +131,8 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
       pendingReviewArtifact: false,
       lastReviewArtifactAt: "2026-03-07T00:07:00.000Z",
       lastReviewArtifactPath: path ?? mockApi.state.lastReviewArtifactPath,
+      lastReviewDecision: "accept",
+      lastReviewRationale: "Reviewed manually",
     };
     return mockApi.state;
   }),
@@ -216,6 +220,12 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
         testGaps: [],
         rollback: [],
       },
+      severity: {
+        highest: "high",
+        requiresExplicitDecision: true,
+        blockingCategories: ["security"],
+        summary: ["Security-sensitive surface changed."],
+      },
     },
   })),
   shouldAutoRunVerification: vi.fn(() => mockApi.state.dirty && !mockApi.state.running),
@@ -291,6 +301,8 @@ function createPiMock() {
     lastReviewedArtifactDir: undefined,
     lastReviewArtifactAt: undefined,
     lastReviewArtifactPath: undefined,
+    lastReviewDecision: undefined,
+    lastReviewRationale: undefined,
     lastReplanAt: undefined,
     lastRepairStrategy: undefined,
     lastMutationCheckpointId: undefined,
@@ -577,9 +589,13 @@ describe("workspace-verification extension", () => {
     expect(reviewResult?.content[0]?.text).toContain("Review artifact generated");
 
     const ackTool = mockApi.tools.find((item) => item.name === "workspace_verify_review_ack");
-    const ackResult = await ackTool?.execute("tool-1", {}, undefined, undefined, { cwd: "/repo" });
+    const ackResult = await ackTool?.execute("tool-1", {
+      decision: "accept",
+      rationale: "Manual security review completed",
+    }, undefined, undefined, { cwd: "/repo" });
 
     expect(mockApi.state.pendingReviewArtifact).toBe(false);
     expect(ackResult?.content[0]?.text).toContain("Review artifact acknowledged");
+    expect(mockApi.state.lastReviewDecision).toBe("accept");
   });
 });

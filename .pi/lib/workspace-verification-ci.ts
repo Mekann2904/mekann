@@ -57,6 +57,22 @@ function makeSkippedStep(step: WorkspaceVerificationStep, reason: string): Works
   };
 }
 
+function resolveCiUiBaseUrl(resolvedPlan: WorkspaceVerificationRunRecord["resolvedPlan"]): string | undefined {
+  const explicit = process.env.CI_WORKSPACE_VERIFY_UI_BASE_URL?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  return resolvedPlan.ui.baseUrl;
+}
+
+function resolveCiUiCommand(baseUrl?: string): string | undefined {
+  const template = process.env.CI_WORKSPACE_VERIFY_UI_COMMAND?.trim();
+  if (!template) {
+    return undefined;
+  }
+  return baseUrl ? template.replaceAll("${baseUrl}", baseUrl) : template;
+}
+
 function buildCiConfig(options: WorkspaceVerificationCiOptions): WorkspaceVerificationConfig {
   const base = createWorkspaceVerificationConfig();
   return {
@@ -298,7 +314,13 @@ export async function runWorkspaceVerificationCi(
   const changedFiles = readChangedFiles(cwd);
   const relevantSelected = selectRelevantCiSteps(selected, changedFiles);
   const executedSteps = relevantSelected.filter((step): step is WorkspaceVerificationStep => COMMAND_STEPS.includes(step));
-  const skippedInteractiveSteps = selected.filter((step) => step === "runtime" || step === "ui");
+  const uiEvidenceCommand = selected.includes("ui") ? resolveCiUiCommand(resolveCiUiBaseUrl(resolvedPlan)) : undefined;
+  const skippedInteractiveSteps = selected.filter((step) => {
+    if (step === "ui" && uiEvidenceCommand) {
+      return false;
+    }
+    return step === "runtime" || step === "ui";
+  });
 
   if (options.failOnInteractiveRecommendations && skippedInteractiveSteps.length > 0) {
     throw new Error(`interactive verification recommended in CI: ${skippedInteractiveSteps.join(", ")}`);
@@ -341,6 +363,31 @@ export async function runWorkspaceVerificationCi(
 
   for (const step of selected) {
     if (step === "runtime" || step === "ui") {
+      if (step === "ui" && uiEvidenceCommand) {
+        const result = await runWorkspaceCommand({
+          command: uiEvidenceCommand,
+          cwd,
+          timeoutMs: config.commandTimeoutMs,
+        });
+        stepResults.push({
+          step: "ui",
+          success: result.success,
+          skipped: false,
+          durationMs: result.durationMs,
+          command: uiEvidenceCommand,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          error: result.error,
+          metadata: {
+            ciUiBaseUrl: resolveCiUiBaseUrl(resolvedPlan),
+            ciBrowserEvidence: true,
+          },
+        });
+        if (!result.success) {
+          break;
+        }
+        continue;
+      }
       stepResults.push(makeSkippedStep(step, "interactive verification is skipped in CI"));
     }
   }
@@ -369,6 +416,8 @@ export async function runWorkspaceVerificationCi(
     state = acknowledgeReviewArtifact({
       cwd,
       path: reviewArtifact.path,
+      decision: "accept",
+      rationale: "CI-generated review artifact acknowledged after successful non-interactive verification.",
     });
   }
   const continuityPath = persistWorkspaceVerificationContinuityPack(cwd, state, resolvedPlan);
