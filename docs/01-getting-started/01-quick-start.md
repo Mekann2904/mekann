@@ -2,7 +2,7 @@
 title: クイックスタート
 category: getting-started
 audience: new-user
-last_updated: 2026-02-12
+last_updated: 2026-03-08
 tags: [quick-start, installation]
 related: [./02-installation.md, ./03-first-steps.md]
 ---

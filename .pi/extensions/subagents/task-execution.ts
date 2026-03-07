@@ -119,6 +119,12 @@ import {
   retryWithBackoff,
   type RetryWithBackoffOverrides,
 } from "../../lib/retry-with-backoff.js";
+import {
+  finalizeActiveSubagentRun,
+  heartbeatActiveSubagentRun,
+  recordLongRunningEvent,
+  registerActiveSubagentRun,
+} from "../../lib/long-running-supervisor.js";
 import { getRateLimitGateSnapshot } from "../../lib/retry-with-backoff.js";
 import {
   STABLE_MAX_RETRIES,
@@ -1170,7 +1176,18 @@ export async function runSubagentTask(input: {
   let lastRateLimitHits = 0;
   let rateLimitGateLogged = false;
   let rateLimitStderrLogged = false;
+  const heartbeat = () => {
+    heartbeatActiveSubagentRun({
+      cwd: input.cwd,
+      runId,
+    });
+  };
+  const emitTextDelta = (delta: string) => {
+    heartbeat();
+    input.onTextDelta?.(delta);
+  };
   const emitStderrChunk = (chunk: string) => {
+    heartbeat();
     const isRateLimitChunk = /429|rate\s*limit|too many requests/i.test(chunk);
     if (isRateLimitChunk) {
       if (rateLimitStderrLogged) {
@@ -1181,6 +1198,12 @@ export async function runSubagentTask(input: {
     input.onStderrChunk?.(chunk);
   };
 
+  registerActiveSubagentRun({
+    cwd: input.cwd,
+    runId,
+    agentId: input.agent.id,
+    task: input.task,
+  });
   input.onStart?.();
   try {
     try {
@@ -1203,7 +1226,7 @@ export async function runSubagentTask(input: {
                   timeoutMs: input.timeoutMs,
                   hardTimeoutMs: computeHardTimeoutMs(input.timeoutMs),
                   signal: input.signal,
-                  onTextDelta: input.onTextDelta,
+                  onTextDelta: emitTextDelta,
                   onStderrChunk: emitStderrChunk,
                 });
                 return result.output;
@@ -1250,7 +1273,7 @@ export async function runSubagentTask(input: {
             timeoutMs: input.timeoutMs,
             hardTimeoutMs: computeHardTimeoutMs(input.timeoutMs),
             signal: input.signal,
-            onTextDelta: input.onTextDelta,
+            onTextDelta: emitTextDelta,
             onStderrChunk: emitStderrChunk,
           });
           const normalized = normalizeSubagentOutput(result.output);
@@ -1319,6 +1342,21 @@ export async function runSubagentTask(input: {
         latencyMs: commandResult.latencyMs,
         outputFile,
       };
+      finalizeActiveSubagentRun({
+        cwd: input.cwd,
+        runId,
+        success: true,
+      });
+      recordLongRunningEvent(input.cwd, {
+        type: "subagent_run",
+        summary: `subagent artifact persisted: ${input.agent.id}`,
+        success: true,
+        details: {
+          runId,
+          outputFile,
+          status: runRecord.status,
+        },
+      });
 
       // 思考領域改善: サブエージェント実行後の簡易検証（同期）
       // 高リスクタスク時のみ検証を実行（Ralph Wiggum Loopの条件付き適用）
@@ -1439,6 +1477,25 @@ export async function runSubagentTask(input: {
         outputFile,
         error: effectiveStatus === "failed" ? message : undefined,
       };
+      finalizeActiveSubagentRun({
+        cwd: input.cwd,
+        runId,
+        success: effectiveStatus === "completed",
+        error: effectiveStatus === "failed" ? message : undefined,
+      });
+      recordLongRunningEvent(input.cwd, {
+        type: "subagent_run",
+        summary: effectiveStatus === "completed"
+          ? `subagent completed with downgraded warning: ${input.agent.id}`
+          : `subagent execution failed: ${input.agent.id}`,
+        success: effectiveStatus === "completed",
+        details: {
+          runId,
+          outputFile,
+          status: effectiveStatus,
+          error: effectiveStatus === "failed" ? message : undefined,
+        },
+      });
 
       writeFileSync(
         outputFile,
@@ -1490,6 +1547,12 @@ export async function runSubagentTask(input: {
       };
     }
   } finally {
+    finalizeActiveSubagentRun({
+      cwd: input.cwd,
+      runId,
+      success: false,
+      error: "subagent execution interrupted before completion",
+    });
     input.onEnd?.();
   }
 }

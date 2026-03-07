@@ -2,7 +2,7 @@
 title: subagents - サブエージェント
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-25
+last_updated: 2026-03-08
 tags: [subagent, orchestration, delegation, dag]
 related: [../README.md, ./01-extensions.md, ./09-agent-teams.md]
 ---

@@ -2,7 +2,7 @@
 title: データ保存場所
 category: reference
 audience: daily-user, developer
-last_updated: 2026-02-12
+last_updated: 2026-03-08
 tags: [reference, storage]
 related: [./01-configuration.md, ./03-troubleshooting.md]
 ---

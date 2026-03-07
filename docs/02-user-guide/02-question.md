@@ -2,7 +2,7 @@
 title: question - インタラクティブUI
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-25
+last_updated: 2026-03-08
 tags: [extension, ui, interaction]
 related: [./01-extensions.md, ./06-abbr.md]
 ---

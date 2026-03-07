@@ -2,7 +2,7 @@
 title: Dynamic Tools
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-25
+last_updated: 2026-03-08
 tags: [dynamic-tools, runtime, security, code-generation]
 related: [./01-extensions.md, ./08-subagents.md, ./09-agent-teams.md]
 ---
@@ -654,50 +654,23 @@ if (reflection.qualityScore < 0.9) {
 }
 ```
 
-### 監査ログ
+### 使用統計
 
-全ツール操作はログに記録されます:
+ツールの使用統計はagent_usage_statsツールで確認できます:
 
 ```typescript
-// 監査ログを取得
-const auditLog = await get_tool_audit_log({
-  toolName: "my_tool",
-  since: "2026-02-24"
-});
+// 使用統計を取得
+const stats = await agent_usage_stats({ action: "summary" });
 
 /*
-[
-  {
-    timestamp: "2026-02-25T02:00:00Z",
-    operation: "CREATE",
-    userId: "user@example.com",
-    details: {
-      name: "my_tool",
-      safetyLevel: 1,
-      initialQualityScore: 0.85
-    }
-  },
-  {
-    timestamp: "2026-02-25T02:05:00Z",
-    operation: "EXECUTE",
-    userId: "user@example.com",
-    details: {
-      parameters: { /* ... */ },
-      result: { /* ... */ },
-      executionTime: 1.2
-    }
-  },
-  {
-    timestamp: "2026-02-25T02:10:00Z",
-    operation: "EXECUTE",
-    userId: "user@example.com",
-    details: {
-      parameters: { /* ... */ },
-      error: "Invalid input",
-      executionTime: 0.1
-    }
-  }
-]
+{
+  totalCalls: 1234,
+  errorRate: 0.02,
+  topTools: [
+    { name: "my_tool", calls: 456, avgLatency: 1.2 },
+    { name: "another_tool", calls: 123, avgLatency: 0.8 }
+  ]
+}
 */
 ```
 

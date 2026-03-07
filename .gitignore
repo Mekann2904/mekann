@@ -58,6 +58,7 @@ coverage/
 .pi/plans/storage.json
 .pi/logs/
 plans/untitled-plan*.md
+plans/*.md
 
 # UL Workflow runtime data (task files generated during workflow execution)
 .pi/ul-workflow/tasks/*

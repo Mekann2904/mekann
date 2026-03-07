@@ -2,7 +2,7 @@
 title: DAG Execution
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-25
+last_updated: 2026-03-08
 tags: [dag, parallel, subagent, task-planning]
 related: [./01-extensions.md, ./08-subagents.md, ./09-agent-teams.md]
 ---

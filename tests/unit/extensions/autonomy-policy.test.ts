@@ -29,12 +29,82 @@ const policyMocks = vi.hoisted(() => ({
   saveAutonomyPolicyConfig: vi.fn((config) => config),
 }));
 
+const supervisorMocks = vi.hoisted(() => ({
+  runLongRunningPreflight: vi.fn(() => ({
+    ok: false,
+    blockers: ["non-interactive execution cannot satisfy command permission is ask"],
+    warnings: [],
+    requiredPermissions: ["write", "command"],
+    missingPermissions: ["command"],
+    workspaceVerificationPhase: "clear",
+    runtimeNeedsBackgroundProcess: false,
+  })),
+  formatLongRunningPreflight: vi.fn(() => "# Long-Running Preflight\nok: false"),
+  createLongRunningReplay: vi.fn(() => ({
+    session: { id: "lr-1", status: "crashed" },
+    resumeReason: "Previous session ended without a clean shutdown.",
+    nextAction: "Resume verification from the failed step: test.",
+    workspaceVerification: {
+      phase: "verification",
+      reason: "Resume verification from test.",
+      requestedSteps: ["test"],
+    },
+    checkpointPath: "/tmp/checkpoint.json",
+    journalPath: "/tmp/journal.jsonl",
+    continuityPath: undefined,
+    trajectoryPath: undefined,
+    plan: {
+      acceptanceCriteria: [],
+      fileModuleImpact: [],
+      recentProgress: [],
+    },
+    recentEvents: [],
+    backgroundProcesses: [],
+    warnings: [],
+  })),
+  formatLongRunningReplay: vi.fn(() => "Long-running resume prompt"),
+  loadLatestLongRunningSession: vi.fn(() => ({
+    id: "lr-1",
+    status: "active",
+  })),
+  loadLongRunningJournal: vi.fn(() => [
+    { timestamp: "2026-03-07T00:00:00.000Z", type: "tool_call", summary: "Tool call started: loop_run" },
+  ]),
+  runLongRunningSupervisorSweep: vi.fn(async () => ({
+    warnings: [],
+    recoveredSessionId: "lr-old",
+    background: {
+      runningCount: 0,
+      orphanedCount: 1,
+      reclaimedCount: 1,
+      running: [],
+      orphaned: [],
+      reclaimed: [],
+    },
+    subagents: {
+      activeCount: 1,
+      orphanedCount: 1,
+      staleCount: 1,
+      recoveredCount: 1,
+      active: [],
+      orphaned: [],
+      stale: [],
+      recovered: [],
+    },
+  })),
+  recordLongRunningEvent: vi.fn(),
+}));
+
 vi.mock("@mariozechner/pi-ai", () => ({
   Type: {
     Object: (value: unknown) => value,
     Optional: (value: unknown) => value,
     Union: (value: unknown) => value,
     Literal: (value: unknown) => value,
+    Array: (value: unknown) => value,
+    String: (value: unknown) => value,
+    Boolean: (value: unknown) => value,
+    Integer: (value: unknown) => value,
   },
 }));
 
@@ -58,6 +128,17 @@ vi.mock("../../../.pi/lib/autonomy-policy.js", () => ({
   resolveAutonomyDecision: policyMocks.resolveAutonomyDecision,
   saveAutonomyPolicyConfig: policyMocks.saveAutonomyPolicyConfig,
   summarizePolicy: vi.fn((config) => `profile=${config.profile}\nmode=${config.mode}`),
+}));
+
+vi.mock("../../../.pi/lib/long-running-supervisor.js", () => ({
+  runLongRunningPreflight: supervisorMocks.runLongRunningPreflight,
+  formatLongRunningPreflight: supervisorMocks.formatLongRunningPreflight,
+  createLongRunningReplay: supervisorMocks.createLongRunningReplay,
+  formatLongRunningReplay: supervisorMocks.formatLongRunningReplay,
+  loadLatestLongRunningSession: supervisorMocks.loadLatestLongRunningSession,
+  loadLongRunningJournal: supervisorMocks.loadLongRunningJournal,
+  runLongRunningSupervisorSweep: supervisorMocks.runLongRunningSupervisorSweep,
+  recordLongRunningEvent: supervisorMocks.recordLongRunningEvent,
 }));
 
 import registerAutonomyPolicy from "../../../.pi/extensions/autonomy-policy.js";
@@ -151,6 +232,7 @@ describe("autonomy-policy extension", () => {
       block: true,
       reason: "policy=allow, capability=command, gatekeeper=destructive command pattern blocked",
     });
+    expect(supervisorMocks.recordLongRunningEvent).toHaveBeenCalled();
   });
 
   it("ask decision は confirm を使う", async () => {
@@ -206,5 +288,46 @@ describe("autonomy-policy extension", () => {
     expect(policyMocks.saveAutonomyPolicyConfig).toHaveBeenCalled();
     const saved = policyMocks.saveAutonomyPolicyConfig.mock.calls.at(-1)?.[0];
     expect(saved.profile).toBe("yolo");
+  });
+
+  it("autonomy_preflight tool returns blocker summary", async () => {
+    const pi = createMockPi();
+    activePi = pi;
+
+    registerAutonomyPolicy(pi as any);
+    const tool = pi.tools.find((entry) => entry.name === "autonomy_preflight");
+    expect(tool).toBeDefined();
+
+    const result = await tool.execute("call-2", { nonInteractive: true }, undefined, undefined, pi.ctx);
+
+    expect(String(result.content[0].text)).toContain("Long-Running Preflight");
+    expect(supervisorMocks.runLongRunningPreflight).toHaveBeenCalled();
+  });
+
+  it("autonomy_resume tool exposes resume prompt", async () => {
+    const pi = createMockPi();
+    activePi = pi;
+
+    registerAutonomyPolicy(pi as any);
+    const tool = pi.tools.find((entry) => entry.name === "autonomy_resume");
+    expect(tool).toBeDefined();
+
+    const result = await tool.execute("call-3", {}, undefined, undefined, pi.ctx);
+
+    expect(result.content[0].text).toBe("Long-running resume prompt");
+  });
+
+  it("autonomy_supervisor tool exposes unified supervisor sweep", async () => {
+    const pi = createMockPi();
+    activePi = pi;
+
+    registerAutonomyPolicy(pi as any);
+    const tool = pi.tools.find((entry) => entry.name === "autonomy_supervisor");
+    expect(tool).toBeDefined();
+
+    const result = await tool.execute("call-4", { action: "recover" }, undefined, undefined, pi.ctx);
+
+    expect(String(result.content[0].text)).toContain("recovered_subagent_runs=1");
+    expect(supervisorMocks.runLongRunningSupervisorSweep).toHaveBeenCalled();
   });
 });

@@ -2,7 +2,7 @@
 title: loop_run - 自律ループ実行
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-11
+last_updated: 2026-03-08
 tags: [loop-run, orchestration, iteration]
 related: [../README.md, ./01-extensions.md]
 ---

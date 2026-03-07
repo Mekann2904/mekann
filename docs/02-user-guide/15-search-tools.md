@@ -2,7 +2,7 @@
 title: 検索ツール
 category: user-guide
 audience: daily-user, developer
-last_updated: 2026-02-25
+last_updated: 2026-03-08
 tags: [search, code-search, symbol-index, file-candidates, repograph]
 related: [./01-extensions.md, ../../.pi/skills/search-tools/SKILL.md]
 ---
@@ -493,7 +493,7 @@ sequenceDiagram
     RI-->>Agent: インデックス構築結果
 
     Note over Agent,FS: RepoGraph検索
-    Agent->>RS: repograph_search("authentication")
+    Agent->>RS: repograph_query({ type: "search", keywords: ["authentication"] })
     RS->>Cache: グラフ検索
     Cache-->>RS: 依存情報
     RS->>RS: スコア計算

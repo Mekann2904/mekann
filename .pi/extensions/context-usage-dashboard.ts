@@ -388,6 +388,19 @@ function collectCurrentSnapshot(ctx: ExtensionAPI["context"]): CurrentSnapshot {
       tools: toolTokensRaw * scale,
       other: otherTokens * scale,
     },
+    sourceBreakdown: {
+      systemPrompt: {
+        base: 0,
+        appendSystem: 0,
+        injectPrompt: 0,
+        startupContext: 0,
+      },
+      conversation: {
+        user: userTokens * scale,
+        assistant: assistantTokens * scale,
+        toolResults: toolTokensRaw * scale,
+      },
+    },
     toolTokens,
     toolCalls: toolCallsMap,
   };
