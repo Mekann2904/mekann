@@ -3,6 +3,8 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
     "baseUrl": ".",
     "paths": {
       "@sinclair/typebox": [
@@ -10,6 +12,9 @@
       ],
       "@sinclair/typebox/*": [
         "node_modules/@mariozechner/pi-ai/node_modules/@sinclair/typebox/*"
+      ],
+      "@/*": [
+        ".pi/extensions/web-ui/web/src/*"
       ]
     },
     "strict": true,
@@ -23,7 +28,10 @@
   },
   "include": [
     ".pi/lib/**/*.ts",
-    ".pi/extensions/**/*.ts"
+    ".pi/lib/**/*.d.ts",
+    ".pi/extensions/**/*.ts",
+    ".pi/extensions/**/*.tsx",
+    ".pi/extensions/**/*.d.ts"
   ],
   "exclude": ["node_modules"]
 }

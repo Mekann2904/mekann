@@ -84,6 +84,7 @@
       "./.pi/extensions/append-system-loader.ts",
       "./.pi/extensions/autonomy-policy.ts",
       "./.pi/extensions/background-process.ts",
+      "./.pi/extensions/long-running-supervisor.ts",
       "./.pi/extensions/code-structure-analyzer/extension.ts",
       "./.pi/extensions/code-viewer.ts",
       "./.pi/extensions/context-usage-dashboard.ts",

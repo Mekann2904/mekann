@@ -139,11 +139,11 @@ export class Coordinator {
    * SQLite移行時にテストモックが「関数を返す実装」を使っていても吸収する。
    */
   private inTransaction<T>(fn: () => T): T {
-    const result = this.db.transaction(fn) as T | (() => T);
+    const result = this.db.transaction(fn) as unknown;
     if (typeof result === "function") {
-      return result();
+      return (result as () => T)();
     }
-    return result;
+    return result as T;
   }
 
   // =======================================================================
@@ -664,6 +664,10 @@ export function getActiveInstances(): InstanceInfo[] {
 }
 
 export function getMyParallelLimit(): number {
+  return getCoordinator().getMyParallelLimit();
+}
+
+export function getDynamicParallelLimit(_pendingTaskCount: number = 0): number {
   return getCoordinator().getMyParallelLimit();
 }
 

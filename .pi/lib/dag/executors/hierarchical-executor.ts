@@ -180,7 +180,7 @@ export class HierarchicalExecutor extends BaseExecutor {
     
     // 優先度順にソート
     return ready.sort((a, b) => {
-      const prio = { high: 3, medium: 2, low: 1 };
+      const prio = { critical: 4, high: 3, medium: 2, normal: 2, low: 1 };
       return (prio[b.priority || "medium"] || 2) - (prio[a.priority || "medium"] || 2);
     });
   }

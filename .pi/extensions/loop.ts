@@ -97,6 +97,10 @@ import {
   type ReductionStats,
   DEFAULT_TRAJECTORY_REDUCTION_CONFIG,
 } from "../lib/trajectory-reduction/index.js";
+import {
+  recordLongRunningEvent,
+  runLongRunningPreflight,
+} from "../lib/long-running-supervisor.js";
 
 // Import extracted modules for SSRF protection, reference loading, verification, and iteration building
 import {
@@ -527,6 +531,17 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
         };
       }
 
+      const preflight = runLongRunningPreflight(ctx.cwd);
+      if (!preflight.ok) {
+        return {
+          content: [{ type: "text" as const, text: `loop_run blocked by long-running preflight: ${preflight.blockers.join(" | ")}` }],
+          details: {
+            error: "long_running_preflight_blocked",
+            preflight,
+          },
+        };
+      }
+
       const normalized = normalizeLoopConfig({
         maxIterations: params.maxIterations,
         timeoutMs: params.timeoutMs,
@@ -856,6 +871,12 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
         return;
       }
 
+      const preflight = runLongRunningPreflight(ctx.cwd);
+      if (!preflight.ok) {
+        ctx.ui.notify(`loop blocked by long-running preflight: ${preflight.blockers.join(" | ")}`, "warning");
+        return;
+      }
+
       const normalized = normalizeLoopConfig(parsed.configOverrides);
       if (!normalized.ok) {
         pi.sendMessage({
@@ -997,6 +1018,17 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     config: input.config,
     model: input.model,
     referenceCount: input.references.length,
+  });
+  recordLongRunningEvent(input.cwd, {
+    type: "loop_run",
+    summary: `loop run started: ${toPreview(input.task, 120)}`,
+    success: true,
+    details: {
+      runId,
+      maxIterations: input.config.maxIterations,
+      goal: input.goal,
+      verificationCommand: input.verificationCommand,
+    },
   });
 
   input.onProgress?.({
@@ -1395,6 +1427,19 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
       validationErrors,
       output,
     });
+    recordLongRunningEvent(input.cwd, {
+      type: "loop_iteration",
+      summary: `loop iteration ${iteration} finished with ${status}`,
+      success: !callFailed,
+      details: {
+        runId,
+        iteration,
+        status,
+        goalStatus,
+        validationErrors,
+        verificationPassed: verification?.passed,
+      },
+    });
 
     input.onProgress?.({
       type: "iteration_done",
@@ -1580,6 +1625,21 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     runId,
     finishedAt,
     summary,
+  });
+  recordLongRunningEvent(input.cwd, {
+    type: "loop_run",
+    summary: completed
+      ? `loop run completed after ${iterations.length} iteration(s)`
+      : `loop run stopped: ${stopReason}`,
+    success: completed,
+    details: {
+      runId,
+      completed,
+      stopReason,
+      iterationCount: iterations.length,
+      lastGoalStatus: lastIteration?.goalStatus,
+      lastVerificationPassed: lastIteration?.verification?.passed,
+    },
   });
 
   input.onProgress?.({

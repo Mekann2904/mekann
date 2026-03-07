@@ -20,6 +20,16 @@ import {
   saveAutonomyPolicyConfig,
   summarizePolicy,
 } from "../lib/autonomy-policy.js";
+import {
+  createLongRunningReplay,
+  formatLongRunningPreflight,
+  formatLongRunningReplay,
+  loadLatestLongRunningSession,
+  loadLongRunningJournal,
+  recordLongRunningEvent,
+  runLongRunningPreflight,
+  runLongRunningSupervisorSweep,
+} from "../lib/long-running-supervisor.js";
 
 let isInitialized = false;
 let currentConfig: AutonomyPolicyConfig = createAutonomyPolicyConfig();
@@ -71,14 +81,19 @@ export default function registerAutonomyPolicy(pi: ExtensionAPI) {
   isInitialized = true;
 
   pi.on("session_start", async (_event, ctx) => {
-    currentConfig = loadAutonomyPolicyConfig();
+    currentConfig = loadAutonomyPolicyConfig(ctx.cwd);
     applyMode(pi);
     refreshStatus(ctx);
     ctx.ui?.notify?.("Autonomy policy loaded", "info");
   });
 
   pi.on("tool_call", async (event, ctx) => {
-    const decision = resolveAutonomyDecision(currentConfig, event);
+    const toolName = typeof event?.toolName === "string" ? event.toolName : "unknown";
+    const toolCallId = typeof event === "object" && event !== null && "toolCallId" in event
+      ? String((event as { toolCallId?: unknown }).toolCallId ?? "")
+      : "";
+    const decision = resolveAutonomyDecision(currentConfig, event, ctx.cwd);
+
     if (decision.finalDecision === "allow") {
       return;
     }
@@ -86,6 +101,18 @@ export default function registerAutonomyPolicy(pi: ExtensionAPI) {
     const reason = decision.matchedPath
       ? `${decision.reason}, path=${decision.matchedPath}`
       : decision.reason;
+
+    recordLongRunningEvent(ctx.cwd, {
+      type: "tool_call",
+      toolName,
+      summary: `autonomy policy blocked tool call: ${toolName}`,
+      success: false,
+      details: {
+        toolCallId,
+        finalDecision: decision.finalDecision,
+        reason,
+      },
+    });
 
     if (decision.finalDecision === "deny") {
       return { block: true, reason };
@@ -106,7 +133,6 @@ export default function registerAutonomyPolicy(pi: ExtensionAPI) {
 
     return;
   });
-
   pi.on("session_shutdown", async () => {
     isInitialized = false;
   });
@@ -240,6 +266,95 @@ export default function registerAutonomyPolicy(pi: ExtensionAPI) {
       return {
         content: [{ type: "text", text: summarizePolicy(currentConfig) }],
         details: currentConfig,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "autonomy_preflight",
+    label: "Autonomy Preflight",
+    description: "Check whether an unattended run can finish under the current autonomy policy and verification gates.",
+    parameters: Type.Object({
+      task: Type.Optional(Type.String({ description: "Optional root task summary" })),
+      requestedTools: Type.Optional(Type.Array(Type.String({ description: "Optional tool names expected during the run" }))),
+      nonInteractive: Type.Optional(Type.Boolean({ description: "Treat ask decisions as blockers" })),
+      requireVerification: Type.Optional(Type.Boolean({ description: "Include workspace verification gates" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const report = runLongRunningPreflight({
+        cwd: ctx.cwd,
+        task: params.task,
+        requestedTools: params.requestedTools,
+        nonInteractive: params.nonInteractive,
+        requireVerification: params.requireVerification,
+      });
+      return {
+        content: [{ type: "text", text: formatLongRunningPreflight(report) }],
+        details: report,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "autonomy_resume",
+    label: "Autonomy Resume",
+    description: "Show the latest crash-resume state across session journal, checkpoints, verification, and background processes.",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      const report = createLongRunningReplay(ctx.cwd);
+      return {
+        content: [{ type: "text", text: formatLongRunningReplay(report) }],
+        details: report,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "autonomy_journal",
+    label: "Autonomy Journal",
+    description: "Read the latest long-running execution journal entries.",
+    parameters: Type.Object({
+      maxEntries: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const latest = loadLatestLongRunningSession(ctx.cwd);
+      const entries = latest
+        ? loadLongRunningJournal(ctx.cwd, latest.id).slice(-(params.maxEntries ?? 20))
+        : [];
+      const text = entries.length === 0
+        ? "No long-running journal entries."
+        : entries.map((entry) => `${entry.timestamp} [${entry.type}] ${entry.summary}`).join("\n");
+      return {
+        content: [{ type: "text", text }],
+        details: { count: entries.length, entries },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "autonomy_supervisor",
+    label: "Autonomy Supervisor",
+    description: "Inspect or run supervisor recovery for long-running unattended sessions.",
+    parameters: Type.Object({
+      action: Type.Optional(Type.Union([Type.Literal("status"), Type.Literal("recover")])),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const action = params.action === "recover" ? "recover" : "status";
+      const recovery = await runLongRunningSupervisorSweep({
+        cwd: ctx.cwd,
+        reclaimBackgroundOrphans: action === "recover",
+      });
+      const lines = [
+        `action=${action}`,
+        `recovered_session=${recovery.recoveredSessionId ?? "-"}`,
+        `background_orphans=${recovery.background.orphanedCount}`,
+        `background_reclaimed=${recovery.background.reclaimedCount}`,
+        `active_subagent_runs=${recovery.subagents.activeCount}`,
+        `recovered_subagent_runs=${recovery.subagents.recoveredCount}`,
+      ];
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        details: recovery,
       };
     },
   });

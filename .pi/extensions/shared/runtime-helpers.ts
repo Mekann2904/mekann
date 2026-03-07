@@ -29,7 +29,6 @@
  * Used by both subagents.ts and agent-teams.ts for consistent runtime behavior.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
   getRuntimeSnapshot,
   type RuntimeCapacityReservationLease,
@@ -216,7 +215,7 @@ export function refreshRuntimeStatus(
     snapshot.activeOrchestrations <= 0 &&
     snapshot.queuedOrchestrations <= 0
   ) {
-    ctx.ui.setStatus?.(statusKey, undefined);
+    ctx.ui.setStatus?.(statusKey, "");
     return;
   }
 

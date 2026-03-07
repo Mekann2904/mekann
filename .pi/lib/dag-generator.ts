@@ -106,7 +106,11 @@ export async function generateDagFromTask(
 function createHeuristicPlan(
   task: string,
   options: DagGenerationOptions,
-): Partial<TaskPlan> {
+): {
+  id: string;
+  description: string;
+  tasks: Partial<TaskNode>[];
+} {
   const preferredAgents = new Set(options.preferredAgents?.map((agent) => agent.trim()).filter(Boolean) || []);
   const clauses = splitTaskIntoClauses(task);
   const maxTasks = Math.max(1, options.maxTasks ?? 10);
@@ -443,7 +447,11 @@ function enforceTaskLimit(
  * @summary メタデータ付与
  */
 function enrichPlanMetadata(
-  parsed: Partial<TaskPlan>,
+  parsed: {
+    id?: string;
+    description?: string;
+    tasks?: Partial<TaskNode>[];
+  },
   originalTask: string,
 ): TaskPlan {
   const tasks = parsed.tasks || [];

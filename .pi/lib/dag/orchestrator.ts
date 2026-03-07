@@ -119,9 +119,10 @@ export class TopologyAwareOrchestrator {
       
       // Phase 5: 出力の合成（複数タスクの場合）
       if (enrichedPlan.tasks.length > 1 && executionResult.outputs.length > 0) {
+        const synthesisTopology = enrichedPlan.topology ?? "hybrid";
         const synthesis = await synthesizeOutputs(
           executionResult.outputs,
-          enrichedPlan.topology,
+          synthesisTopology,
           { consistencyThreshold: this.config.consistencyThreshold }
         );
         
@@ -283,7 +284,7 @@ export class TopologyAwareOrchestrator {
   /**
    * @summary トポロジー別エグゼキュータを生成
    */
-  private createExecutor(topology: TopologyType): BaseExecutor {
+  private createExecutor(topology: TopologyType | undefined): BaseExecutor {
     switch (topology) {
       case "parallel":
         return new ParallelExecutor(this.context);
@@ -318,7 +319,7 @@ export class TopologyAwareOrchestrator {
     this.log("info", `Attempting repair for failed tasks: ${failedTasks.join(", ")}`);
     
     // 修復戦略: より厳密なトポロジーへ再試行
-    const currentTopology = plan.topology;
+    const currentTopology = plan.topology ?? "hybrid";
     const proposedTopology = proposeRerouting(currentTopology, "low_consistency");
     
     if (proposedTopology !== currentTopology) {

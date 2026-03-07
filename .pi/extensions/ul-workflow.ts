@@ -747,9 +747,9 @@ async function runDagLocally(
     teammateCount: taskPlan.tasks.length,
   });
 
-  runtimeState.activeRunRequests += 1;
+  runtimeState.subagents.activeRunRequests += 1;
   notifyRuntimeCapacityChanged();
-  refreshRuntimeStatus(ctx as never, "subagent-runtime", "Sub", runtimeState.activeAgents, "Team", 0);
+  refreshRuntimeStatus(ctx as never, "subagent-runtime", "Sub", runtimeState.subagents.activeAgents, "Team", 0);
   dispatchPermit.lease.consume();
 
   let dagResult;
@@ -763,14 +763,14 @@ async function runDagLocally(
           throw new Error(`subagent が見つかりません: ${assignedAgentId}`);
         }
 
-        liveMonitor.markStarted(task.id);
+        liveMonitor?.markStarted(task.id);
         updateSession(dagSessionId, {
           status: "running",
           message: `${task.id} running`,
         });
-        runtimeState.activeAgents += 1;
+        runtimeState.subagents.activeAgents += 1;
         notifyRuntimeCapacityChanged();
-        refreshRuntimeStatus(ctx as never, "subagent-runtime", "Sub", runtimeState.activeAgents, "Team", 0);
+        refreshRuntimeStatus(ctx as never, "subagent-runtime", "Sub", runtimeState.subagents.activeAgents, "Team", 0);
 
         try {
           const result = await runSubagentTask({
@@ -782,19 +782,19 @@ async function runDagLocally(
             modelProvider,
             modelId,
             onTextDelta: (delta) => {
-              liveMonitor.appendChunk(task.id, "stdout", delta);
+              liveMonitor?.appendChunk(task.id, "stdout", delta);
             },
             onStderrChunk: (chunk) => {
-              liveMonitor.appendChunk(task.id, "stderr", chunk);
+              liveMonitor?.appendChunk(task.id, "stderr", chunk);
             },
           });
 
-          liveMonitor.markFinished(task.id, "completed", result.runRecord.summary, result.runRecord.error);
+          liveMonitor?.markFinished(task.id, "completed", result.runRecord.summary, result.runRecord.error);
           return { output: result.output };
         } finally {
-          runtimeState.activeAgents = Math.max(0, runtimeState.activeAgents - 1);
+          runtimeState.subagents.activeAgents = Math.max(0, runtimeState.subagents.activeAgents - 1);
           notifyRuntimeCapacityChanged();
-          refreshRuntimeStatus(ctx as never, "subagent-runtime", "Sub", runtimeState.activeAgents, "Team", 0);
+          refreshRuntimeStatus(ctx as never, "subagent-runtime", "Sub", runtimeState.subagents.activeAgents, "Team", 0);
         }
       },
       {
@@ -803,18 +803,18 @@ async function runDagLocally(
         nodeTimeoutMs: UNIFIED_EXECUTION_CONFIG.subagentTimeoutMs,
         overallTimeoutMs: UNIFIED_EXECUTION_CONFIG.subagentTimeoutMs * Math.max(1, taskPlan.tasks.length),
         onTaskError: (taskId, error) => {
-          liveMonitor.markFinished(taskId, "failed", error.message, error.message);
+          liveMonitor?.markFinished(taskId, "failed", error.message, error.message);
         },
       },
     );
   } finally {
-    runtimeState.activeRunRequests = Math.max(0, runtimeState.activeRunRequests - 1);
+    runtimeState.subagents.activeRunRequests = Math.max(0, runtimeState.subagents.activeRunRequests - 1);
     notifyRuntimeCapacityChanged();
-    refreshRuntimeStatus(ctx as never, "subagent-runtime", "Sub", runtimeState.activeAgents, "Team", 0);
+    refreshRuntimeStatus(ctx as never, "subagent-runtime", "Sub", runtimeState.subagents.activeAgents, "Team", 0);
     stopReservationHeartbeat();
     dispatchPermit.lease.release();
-    liveMonitor.close();
-    await liveMonitor.wait();
+    liveMonitor?.close();
+    await liveMonitor?.wait();
   }
 
   const preferredArtifactTaskId = typeof dagParams.artifactTaskId === "string"
@@ -1538,12 +1538,12 @@ ${planContent}
         if (!currentWorkflow) {
           return makeResult("エラー: ワークフロー状態が見つかりません", { error: "no_workflow" });
         }
-        // TypeScript control flow: currentWorkflow is non-null after the check above
-        currentWorkflow.approvedPhases.push("plan");
-        currentWorkflow.phase = "implement";
-        currentWorkflow.phaseIndex = 3;
-        currentWorkflow.updatedAt = new Date().toISOString();
-        saveState(currentWorkflow);
+        const workflow = currentWorkflow as WorkflowState;
+        workflow.approvedPhases.push("plan");
+        workflow.phase = "implement";
+        workflow.phaseIndex = 3;
+        workflow.updatedAt = new Date().toISOString();
+        saveState(workflow);
 
         // DAG並列実行（useDag=trueの場合）
         if (useDag) {
@@ -1596,11 +1596,12 @@ ${planContent}
             const failedTasks = allResults.filter((r) => r.status === "failed");
 
             if (currentWorkflow) {
-              currentWorkflow.phase = "completed";
-              currentWorkflow.phaseIndex = phases.length - 1;
-              currentWorkflow.approvedPhases.push("implement");
-              currentWorkflow.updatedAt = new Date().toISOString();
-              saveState(currentWorkflow);
+              const workflow = currentWorkflow as WorkflowState;
+              workflow.phase = "completed";
+              workflow.phaseIndex = phases.length - 1;
+              workflow.approvedPhases.push("implement");
+              workflow.updatedAt = new Date().toISOString();
+              saveState(workflow);
             }
             setCurrentWorkflow(null);
 
@@ -1666,11 +1667,12 @@ ul_workflow_commit()
         });
 
         if (currentWorkflow) {
-          currentWorkflow.approvedPhases.push("implement");
-          currentWorkflow.phase = "completed";
-          currentWorkflow.phaseIndex = 3;
-          currentWorkflow.updatedAt = new Date().toISOString();
-          saveState(currentWorkflow);
+          const workflow = currentWorkflow as WorkflowState;
+          workflow.approvedPhases.push("implement");
+          workflow.phase = "completed";
+          workflow.phaseIndex = 3;
+          workflow.updatedAt = new Date().toISOString();
+          saveState(workflow);
         }
         setCurrentWorkflow(null);
 

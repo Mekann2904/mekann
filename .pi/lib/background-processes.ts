@@ -658,6 +658,57 @@ export async function stopAllBackgroundProcesses(input?: {
   return stopped;
 }
 
+export async function sweepBackgroundProcesses(input?: {
+  cwd?: string;
+  reclaimOrphans?: boolean;
+}): Promise<{
+  running: BackgroundProcessRecord[];
+  orphaned: BackgroundProcessRecord[];
+  reclaimed: BackgroundProcessRecord[];
+}> {
+  const cwd = normalizeCwd(input?.cwd);
+  const reclaimOrphans = input?.reclaimOrphans !== false;
+  const running = listBackgroundProcesses({
+    cwd,
+    includeExited: false,
+  });
+  const orphaned = running.filter((record) => {
+    if (record.ownerPid <= 0) {
+      return false;
+    }
+    return !isProcessAlive(record.ownerPid);
+  });
+  const reclaimed: BackgroundProcessRecord[] = [];
+
+  if (!reclaimOrphans) {
+    return { running, orphaned, reclaimed };
+  }
+
+  for (const record of orphaned) {
+    // 非永続プロセスだけ自動回収する。persistent は状態観測だけに留める。
+    if (record.keepAliveOnShutdown) {
+      continue;
+    }
+
+    const stopped = await stopBackgroundProcess({
+      id: record.id,
+      cwd: record.cwd,
+    });
+    if (stopped) {
+      reclaimed.push(stopped.record);
+    }
+  }
+
+  return {
+    running: listBackgroundProcesses({
+      cwd,
+      includeExited: false,
+    }),
+    orphaned,
+    reclaimed,
+  };
+}
+
 export function readBackgroundProcessLog(input: {
   cwd?: string;
   id: string;

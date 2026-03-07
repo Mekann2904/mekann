@@ -77,6 +77,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **cross-instance-runtime** | `cross-instance-runtime.ts` | 複数piインスタンス間の並列数自動調整（プロバイダー/モデル別） | [→](docs/02-user-guide/12-cross-instance-runtime.md) |
 | **autonomy-policy** | `autonomy-policy.ts` | permission bundle と gatekeeper を持つ高度自律実行 policy | README内の「Autonomy Policy」 |
 | **background-process** | `background-process.ts` | 長時間実行プロセスの起動、追跡、停止、ready判定 | README内の「Background Process Support」 |
+| **long-running-supervisor** | `long-running-supervisor.ts` | root task journal、crash-resume、unattended preflight、orphan sweep | README内の「Long-Running Supervisor」 |
 | **workspace-verification** | `workspace-verification.ts` | 書き込み後の自動検証、runtime/UI smoke check、完了ゲート | README内の「Workspace Verification」 |
 
 ### ユーティリティ
@@ -178,13 +179,21 @@ pi remove https://github.com/Mekann2904/mekann
 
 自律実行ポリシー。profile（manual/balanced/high/yolo）、mode（build/plan）、gatekeeper（off/deterministic）の3層構造。
 
-詳細: `.pi/extensions/autonomy-policy.ts` | ツール: `autonomy_policy`
+`autonomy_preflight`、`autonomy_resume`、`autonomy_journal`、`autonomy_supervisor` は、内部では long-running supervisor の durable backend を使う互換エイリアスです。
+
+詳細: `.pi/extensions/autonomy-policy.ts` | ツール: `autonomy_policy`, `autonomy_preflight`, `autonomy_resume`, `autonomy_journal`, `autonomy_supervisor`
 
 ## Background Process Support
 
 長時間実行プロセスの管理。開発サーバー、APIサーバー等の起動・追跡・停止。
 
 詳細: `.pi/extensions/background-process.ts` | ツール: `background_process_start`, `background_process_stop`
+
+## Long-Running Supervisor
+
+長時間自走の統合回復層。root task 全体の journal / checkpoint を `.pi/long-running/` に保存し、session crash 後の replay、unattended preflight、orphan background process の sweep をまとめて扱う。
+
+詳細: `.pi/extensions/long-running-supervisor.ts`, `.pi/lib/long-running-supervisor.ts` | ツール: `long_running_status`, `long_running_preflight`, `long_running_resume`, `long_running_supervisor`
 
 ## Workspace Verification
 
@@ -271,6 +280,10 @@ mekann/
 | | `subagent_list` | 定義済みエージェント一覧 |
 | | `subagent_status` | 実行中のエージェント状態 |
 | | `subagent_runs` | 実行履歴の表示 |
+| **長時間自走** | `long_running_status` | 最新の durable replay / checkpoint / warnings を表示 |
+| | `long_running_preflight` | unattended 実行の blocker、permission、verification gate を表示 |
+| | `long_running_resume` | 最新の root replay / checkpoint / verification resume を表示 |
+| | `long_running_supervisor` | stale session / orphan process の recovery sweep を実行または確認 |
 | **UL Workflow** | `ul_workflow_start` | Research-Plan-Annotate-Implement ワークフロー開始 |
 | | `ul_workflow_status` | ワークフローステータス表示 |
 | | `ul_workflow_approve` | 現在のフェーズを承認 |
