@@ -43,6 +43,7 @@ const logger = getLogger();
 // Import shared plan mode constants and utilities
 import {
 	PLAN_MODE_POLICY,
+	isBashCommandAllowed,
 	validatePlanModeState,
 	createPlanModeState,
 	PLAN_MODE_CONTEXT_TYPE,
@@ -70,6 +71,15 @@ import {
 
 let planModeEnabled = false;
 let planIdSequence = 0;
+
+const WRITE_TOOLS = new Set(["edit", "write", "patch"]);
+const EXECUTION_BASH_TOOL = "bash";
+const PLAN_REQUIRED_MUTATION_TOOLS = new Set([
+	"edit",
+	"write",
+	"patch",
+	"bash",
+]);
 
 // ============================================
 // Type Definitions
@@ -274,6 +284,92 @@ function createPlan(name: string, descriptionOrOptions?: string | CreatePlanOpti
 
 function findPlanById(storage: PlanStorage, planId: string): Plan | undefined {
 	return storage.plans.find(p => p.id === planId);
+}
+
+function getCurrentPlan(storage: PlanStorage): Plan | undefined {
+	if (storage.currentPlanId) {
+		const current = findPlanById(storage, storage.currentPlanId);
+		if (current) {
+			return current;
+		}
+	}
+
+	return [...storage.plans]
+		.reverse()
+		.find(plan => plan.status === "active" || plan.status === "draft");
+}
+
+function isPlanReadyForExecution(plan: Plan): boolean {
+	if (plan.status === "completed" || plan.status === "cancelled") {
+		return false;
+	}
+
+	const hasAcceptanceCriteria = plan.acceptanceCriteria.length > 0;
+	const hasExecutionOutline = plan.steps.length > 0
+		|| plan.implementationOrder.length > 0
+		|| plan.testVerification.length > 0;
+
+	return hasAcceptanceCriteria && hasExecutionOutline;
+}
+
+function getPlanExecutionReadiness(
+	storage: PlanStorage,
+): { plan?: Plan; ready: boolean; reason?: string } {
+	const currentPlan = getCurrentPlan(storage);
+	if (!currentPlan) {
+		return {
+			ready: false,
+			reason: "SPEC-FIRST: no active plan found. Create a plan with plan_create before mutating the workspace.",
+		};
+	}
+
+	if (!isPlanReadyForExecution(currentPlan)) {
+		return {
+			plan: currentPlan,
+			ready: false,
+			reason: `SPEC-FIRST: current plan ${currentPlan.id} is not execution-ready. Add acceptance criteria and implementation/verification steps before mutating the workspace.`,
+		};
+	}
+
+	return {
+		plan: currentPlan,
+		ready: true,
+	};
+}
+
+function getBashCommandFromToolInput(input: unknown): string {
+	if (!input || typeof input !== "object") {
+		return "";
+	}
+
+	const record = input as Record<string, unknown>;
+	for (const key of ["command", "cmd"]) {
+		const value = record[key];
+		if (typeof value === "string" && value.trim().length > 0) {
+			return value.trim();
+		}
+	}
+
+	return "";
+}
+
+function applyPlanModeToolFilter(pi: ExtensionAPI, enabled: boolean): void {
+	if (typeof pi.getAllTools !== "function" || typeof pi.setActiveTools !== "function") {
+		return;
+	}
+
+	try {
+		const allTools = pi.getAllTools().map(tool => tool.name);
+		if (!enabled) {
+			pi.setActiveTools(allTools);
+			return;
+		}
+
+		const allowed = allTools.filter(name => !WRITE_TOOLS.has(name) && name !== EXECUTION_BASH_TOOL);
+		pi.setActiveTools(allowed);
+	} catch {
+		// tool_call gate remains the source of truth
+	}
 }
 
 function findStepById(plan: Plan, stepId: string): PlanStep | undefined {
@@ -760,18 +856,18 @@ let isInitialized = false;
  */
 export function resetForTesting(): void {
   isInitialized = false;
+	planModeEnabled = false;
+	delete process.env[PLAN_MODE_ENV_VAR];
 }
 
 export default function (pi: ExtensionAPI) {
 	if (isInitialized) return;
 	isInitialized = true;
 
-	// ============================================
-	// Plan Mode (Read-only mode)
-	// NOTE: Tool restrictions are currently DISABLED.
-	// Previously defined: READ_ONLY_TOOLS, WRITE_TOOLS, PLAN_MODE_TOOLS, NORMAL_MODE_TOOLS
-	// To re-enable restrictions, uncomment the tool_call event handler and setActiveTools calls.
-	// ============================================
+		// ============================================
+		// Plan Mode (Spec-first read-only mode)
+		// Mutating tools are blocked until the user exits plan mode.
+		// ============================================
 
 	// ============================================
 	// Plan Mode State Persistence
@@ -819,24 +915,22 @@ export default function (pi: ExtensionAPI) {
 		}
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Context type is complex and varies by call site
-	function togglePlanMode(ctx: any) {
-		const workspaceRoot = resolveWorkspaceRoot(ctx);
-		planModeEnabled = !planModeEnabled;
-		savePlanModeState(planModeEnabled, workspaceRoot);
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Context type is complex and varies by call site
+		function togglePlanMode(ctx: any) {
+			const workspaceRoot = resolveWorkspaceRoot(ctx);
+			planModeEnabled = !planModeEnabled;
+			savePlanModeState(planModeEnabled, workspaceRoot);
 
-		if (planModeEnabled) {
-			// NOTE: Tool restriction DISABLED - all tools available
-			// pi.setActiveTools(PLAN_MODE_TOOLS);
-			ctx.ui.notify("PLAN MODE: Read-only enabled (no restrictions)", "info");
-			ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, "PLAN MODE");
-		} else {
-			// NOTE: No restriction changes needed
-			// pi.setActiveTools(NORMAL_MODE_TOOLS);
-			ctx.ui.notify("PLAN MODE: Disabled", "info");
-			ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, undefined);
+			if (planModeEnabled) {
+				applyPlanModeToolFilter(pi, true);
+				ctx.ui.notify("PLAN MODE: Spec-first read-only restrictions enabled", "warning");
+				ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, "PLAN MODE");
+			} else {
+				applyPlanModeToolFilter(pi, false);
+				ctx.ui.notify("PLAN MODE: Disabled", "info");
+				ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, undefined);
+			}
 		}
-	}
 
 	// ============================================
 	// P0: Context Injection via before_agent_start
@@ -845,12 +939,12 @@ export default function (pi: ExtensionAPI) {
 	pi.on("before_agent_start", async (event, _ctx) => {
 		if (!planModeEnabled) return;
 
-		const notification = createRuntimeNotification(
-			"plan-mode",
-			"PLAN MODE is active. Restrictions are disabled and all tools are available.",
-			"warning",
-			1,
-		);
+			const notification = createRuntimeNotification(
+				"plan-mode",
+				"PLAN MODE is active. Read-only restrictions are enforced until you exit plan mode.",
+				"warning",
+				1,
+			);
 		const entries: PromptStackEntry[] = [
 			{
 				source: "plan-mode-policy",
@@ -874,15 +968,15 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 
-		return {
-			systemPrompt: result.systemPrompt,
-			message: {
-				customType: PLAN_MODE_CONTEXT_TYPE,
-				content: "PLAN MODE is active. Restrictions are disabled and all tools are available.",
-				display: false,
-			},
-		};
-	});
+			return {
+				systemPrompt: result.systemPrompt,
+				message: {
+					customType: PLAN_MODE_CONTEXT_TYPE,
+					content: "PLAN MODE is active. Read-only restrictions are enforced until you exit plan mode.",
+					display: false,
+				},
+			};
+		});
 
 	// ============================================
 	// P2: Context Cleanup via context event
@@ -901,29 +995,51 @@ export default function (pi: ExtensionAPI) {
 		};
 	});
 
-	// NOTE: Plan mode tool_call blocking DISABLED to allow normal bash command operation
-	// Block write operations in plan mode
-	// pi.on("tool_call", async (event, ctx) => {
-	// 	if (planModeEnabled) {
-	// 		// Check bash commands with enhanced filtering
-	// 		if (event.toolName === "bash") {
-	// 			const command = (event.input as any)?.command;
-	// 			if (command && !isBashCommandAllowed(command)) {
-	// 				return {
-	// 					block: true,
-	// 					reason: `PLAN MODE: Command blocked in plan mode. Command: ${command}\nExit plan mode to make changes.`
-	// 				};
-	// 			}
-	// 		}
-	// 		// Block write tools
-	// 		else if (WRITE_TOOLS.includes(event.toolName)) {
-	// 			return {
-	// 				block: true,
-	// 				reason: `PLAN MODE: ${event.toolName} tool disabled in plan mode.\nExit plan mode to make changes.`
-	// 			};
-	// 		}
-	// 	}
-	// });
+		pi.on("tool_call", async (event, ctx) => {
+			const toolName = typeof event.toolName === "string" ? event.toolName : "";
+			const command = toolName === EXECUTION_BASH_TOOL
+				? getBashCommandFromToolInput(event.input)
+				: "";
+			const isReadOnlyBash = toolName === EXECUTION_BASH_TOOL && command.length > 0 && isBashCommandAllowed(command);
+			const requiresPlan = PLAN_REQUIRED_MUTATION_TOOLS.has(toolName) && !isReadOnlyBash;
+
+			if (planModeEnabled) {
+				if (toolName === EXECUTION_BASH_TOOL && command && !isReadOnlyBash) {
+					return {
+						block: true,
+						reason: `PLAN MODE: write-capable bash command blocked. Command: ${command}\nStay in read-only exploration or exit plan mode to implement.`,
+					};
+				}
+
+				if (WRITE_TOOLS.has(toolName)) {
+					return {
+						block: true,
+						reason: `PLAN MODE: ${toolName} is blocked. Stay in read-only exploration or exit plan mode to implement.`,
+					};
+				}
+
+				return;
+			}
+
+			if (!requiresPlan) {
+				return;
+			}
+
+			const workspaceRoot = resolveWorkspaceRoot(ctx);
+			const storage = loadStorage(workspaceRoot);
+			const readiness = getPlanExecutionReadiness(storage);
+			if (readiness.ready) {
+				return;
+			}
+
+			const suffix = readiness.plan
+				? ` Current plan: ${readiness.plan.name} (${readiness.plan.id}).`
+				: "";
+			return {
+				block: true,
+				reason: `${readiness.reason}${suffix}`,
+			};
+		});
 
 	// Slash command to toggle plan mode
 	pi.registerCommand("planmode", {
@@ -1473,16 +1589,15 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	// Extension loaded notification
-	pi.on("session_start", async (_event, ctx) => {
+		pi.on("session_start", async (_event, ctx) => {
 		// Load plan mode state from file
 		planModeEnabled = loadPlanModeState(resolveWorkspaceRoot(ctx));
 
-		ctx.ui.notify("Plan Extension loaded (restrictions disabled)", "info");
+		ctx.ui.notify("Plan Extension loaded", "info");
 		if (planModeEnabled) {
-			// NOTE: Tool restrictions DISABLED
-			// pi.setActiveTools(PLAN_MODE_TOOLS);
+			applyPlanModeToolFilter(pi, true);
 			ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, "PLAN MODE");
-			ctx.ui.notify("PLAN MODE restored from saved state (no restrictions)", "info");
+			ctx.ui.notify("PLAN MODE restored with spec-first read-only restrictions", "warning");
 			return;
 		}
 		ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, undefined);
