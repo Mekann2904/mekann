@@ -362,9 +362,15 @@ workspace_verification_config(
 
 この設定では、成功 verification のあとに review artifact を生成し、`workspace_verify_review_ack` まで完了しないと task completion を止めます。
 
-既定では `autoRequireReviewArtifact=true` です。
+既定では、workspace verification の強制機能は無効です。
 
-そのため `requireReviewArtifact=true` を手で入れなくても、`review notes` が推論された高リスク変更では review gate が自動で閉じます。
+まず `workspace_verification_config(action="update", enabled=true, ...)` で明示的に有効化してください。
+
+既定では `autoRequireReviewArtifact=false` です。
+
+そのため、高リスク変更でも review gate は自動では閉じません。
+
+必要なら `autoRequireReviewArtifact=true` か `requireReviewArtifact=true` を明示的に有効化してください。
 
 対象は `security`、`auth`、`api`、`schema`、`migration`、`workflow`、`build/package` 影響などです。
 
@@ -380,7 +386,9 @@ npm run verify:workspace
 
 たとえば lint は changed TS/JS files を優先し、typecheck / test / build は変更種類に応じて relevant steps だけを残します。
 
-GitHub Actions では `quality-gates` job がこの script を実行し、`.pi/verification-runs/`、`.pi/evals/workspace-verification/`、`.pi/workspace-verification/reviews/`、`.pi/workspace-verification/continuity.json`、`.pi/workspace-verification/trajectory.json` を artifact として残します。
+GitHub Actions の `quality-gates` job も既定では無効です。
+
+Repo Variables の `ENABLE_WORKSPACE_QUALITY_GATES=true` を設定したときだけ、この script を実行し、`.pi/verification-runs/`、`.pi/evals/workspace-verification/`、`.pi/workspace-verification/reviews/`、`.pi/workspace-verification/continuity.json`、`.pi/workspace-verification/trajectory.json` を artifact として残します。
 
 `workspace_verify_trajectory` を使うと、mutation、verification、ack、replan の流れを replay input として確認できます。
 
@@ -400,7 +408,9 @@ admin token がある場合は、branch protection も script で同期できま
 GITHUB_TOKEN=... GITHUB_REPOSITORY=owner/repo npm run policy:apply-branch-protection
 ```
 
-`main` / `master` を保護する場合は、required status checks に少なくとも `quality-gates` と `security` を入れてください。
+`main` / `master` を保護する場合は、既定では `compatibility` と `security` を required status checks にします。
+
+`ENABLE_WORKSPACE_QUALITY_GATES=true` で quality gate を有効化したときだけ、`quality-gates` も required に追加してください。
 
 自動推定ではなく固定 profile で運用する例:
 

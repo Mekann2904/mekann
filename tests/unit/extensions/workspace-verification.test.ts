@@ -428,11 +428,36 @@ describe("workspace-verification extension", () => {
     expect(mockApi.checkpoints[0]?.metadata?.kind).toBe("mutation");
   });
 
+  it("does not auto-hook writes when workspace verification is disabled", async () => {
+    const extension = (await import("../../../.pi/extensions/workspace-verification.js")).default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    mockApi.config = {
+      ...mockApi.config,
+      enabled: false,
+    };
+
+    const handler = mockApi.handlers.get("tool_result");
+    await handler?.(
+      { toolName: "edit", isError: false },
+      { cwd: "/repo", ui: { notify: (message: string, level: string) => mockApi.notifications.push({ message, level }) } },
+    );
+
+    expect(mockApi.state.dirty).toBe(false);
+    expect(mockApi.checkpoints).toHaveLength(0);
+    expect(mockApi.notifications).toHaveLength(0);
+  });
+
   it("blocks task completion while verification is stale", async () => {
     const extension = (await import("../../../.pi/extensions/workspace-verification.js")).default;
     const pi = createPiMock();
     extension(pi as never);
 
+    mockApi.config = {
+      ...mockApi.config,
+      enabled: true,
+    };
     mockApi.state.dirty = true;
 
     const handler = mockApi.handlers.get("tool_call");
@@ -450,6 +475,11 @@ describe("workspace-verification extension", () => {
     const pi = createPiMock();
     extension(pi as never);
 
+    mockApi.config = {
+      ...mockApi.config,
+      enabled: true,
+      requireProofReview: true,
+    };
     mockApi.state.pendingProofReview = true;
 
     const handler = mockApi.handlers.get("tool_call");
@@ -467,6 +497,11 @@ describe("workspace-verification extension", () => {
     const pi = createPiMock();
     extension(pi as never);
 
+    mockApi.config = {
+      ...mockApi.config,
+      enabled: true,
+      autoRequireReviewArtifact: true,
+    };
     mockApi.state.pendingReviewArtifact = true;
 
     const handler = mockApi.handlers.get("tool_call");
@@ -484,6 +519,11 @@ describe("workspace-verification extension", () => {
     const pi = createPiMock();
     extension(pi as never);
 
+    mockApi.config = {
+      ...mockApi.config,
+      enabled: true,
+      requireReplanOnRepeatedFailure: true,
+    };
     mockApi.state.replanRequired = true;
     mockApi.state.replanReason = "Repeated verification failure";
 
@@ -503,6 +543,11 @@ describe("workspace-verification extension", () => {
     const pi = createPiMock();
     extension(pi as never);
 
+    mockApi.config = {
+      ...mockApi.config,
+      enabled: true,
+      autoRunOnTurnEnd: true,
+    };
     mockApi.state.dirty = true;
 
     const handler = mockApi.handlers.get("turn_end");

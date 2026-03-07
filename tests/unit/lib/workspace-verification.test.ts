@@ -131,7 +131,11 @@ describe("workspace-verification library", () => {
       loadWorkspaceVerificationState,
     } = await import("../../../.pi/lib/workspace-verification.js");
 
-    const config = createWorkspaceVerificationConfig();
+    const config = {
+      ...createWorkspaceVerificationConfig(),
+      enabled: true,
+      requireProofReview: true,
+    };
 
     finalizeVerificationRun({
       cwd: "/repo",
@@ -185,7 +189,10 @@ describe("workspace-verification library", () => {
       shouldRequireReviewArtifact,
     } = await import("../../../.pi/lib/workspace-verification.js");
 
-    const config = createWorkspaceVerificationConfig();
+    const config = {
+      ...createWorkspaceVerificationConfig(),
+      autoRequireReviewArtifact: true,
+    };
 
     expect(shouldRequireReviewArtifact(config, {
       profile: "backend",
@@ -244,6 +251,7 @@ describe("workspace-verification library", () => {
       loadWorkspaceVerificationState,
       isCompletionBlocked,
       acknowledgeReplanDecision,
+      saveWorkspaceVerificationConfig,
     } = await import("../../../.pi/lib/workspace-verification.js");
 
     mockState.planStorage = {
@@ -256,7 +264,12 @@ describe("workspace-verification library", () => {
       }],
     };
 
-    const config = createWorkspaceVerificationConfig();
+    const config = saveWorkspaceVerificationConfig("/repo", {
+      ...createWorkspaceVerificationConfig(),
+      enabled: true,
+      requireReplanOnRepeatedFailure: true,
+      enableEvalCorpus: true,
+    });
     const failedRun = {
       trigger: "manual" as const,
       startedAt: "2026-03-07T00:00:00.000Z",
@@ -494,7 +507,11 @@ describe("workspace-verification library", () => {
       loadWorkspaceVerificationState,
     } = await import("../../../.pi/lib/workspace-verification.js");
 
-    const config = createWorkspaceVerificationConfig();
+    const config = {
+      ...createWorkspaceVerificationConfig(),
+      enabled: true,
+      autoRunOnTurnEnd: true,
+    };
     markWorkspaceDirty({ cwd: "/repo", toolName: "write" });
 
     let state = loadWorkspaceVerificationState("/repo");
@@ -563,6 +580,21 @@ describe("workspace-verification library", () => {
     const resolved = resolveWorkspaceVerificationPlan(createWorkspaceVerificationConfig(), "/repo");
     expect(Boolean(resolved.commands.build)).toBe(true);
     expect(resolved.sources.length).toBeGreaterThan(0);
+  });
+
+  it("defaults workspace verification features to opt-in", async () => {
+    const { createWorkspaceVerificationConfig } = await import("../../../.pi/lib/workspace-verification.js");
+
+    const config = createWorkspaceVerificationConfig();
+
+    expect(config.enabled).toBe(false);
+    expect(config.autoRunOnTurnEnd).toBe(false);
+    expect(config.requireProofReview).toBe(false);
+    expect(config.autoRequireReviewArtifact).toBe(false);
+    expect(config.requireReplanOnRepeatedFailure).toBe(false);
+    expect(config.enableEvalCorpus).toBe(false);
+    expect(config.checkpointOnMutation).toBe(false);
+    expect(config.checkpointOnFailure).toBe(false);
   });
 
   it("adds build-oriented verification when file impact mentions config and packaging", async () => {

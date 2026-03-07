@@ -5,11 +5,18 @@
  * related: scripts/verify-workspace-policy.ts, .github/workflows/test.yml, README.md, docs/03-development/04-testing.md
  */
 
-const REQUIRED_CHECKS = [
-  "quality-gates",
-  "compatibility",
-  "security",
-];
+function resolveRequiredChecks(): string[] {
+  const checks = [
+    "compatibility",
+    "security",
+  ];
+
+  if (process.env.ENABLE_WORKSPACE_QUALITY_GATES?.trim() === "true") {
+    checks.unshift("quality-gates");
+  }
+
+  return checks;
+}
 
 async function applyBranchProtection(
   token: string,
@@ -28,7 +35,7 @@ async function applyBranchProtection(
     body: JSON.stringify({
       required_status_checks: {
         strict: true,
-        contexts: REQUIRED_CHECKS,
+        contexts: resolveRequiredChecks(),
       },
       enforce_admins: true,
       required_pull_request_reviews: {
@@ -71,7 +78,7 @@ async function main(): Promise<void> {
     await applyBranchProtection(token, owner, repo, branch);
   }
 
-  process.stdout.write(`applied branch protection to ${branches.join(", ")}\n`);
+  process.stdout.write(`applied branch protection to ${branches.join(", ")} with checks: ${resolveRequiredChecks().join(", ")}\n`);
 }
 
 main().catch((error) => {

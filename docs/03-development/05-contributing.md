@@ -107,9 +107,9 @@ npm run verify:workspace
 
 変更範囲が広い場合は、integration や e2e まで広げます。
 
-PR を出す前は、`verify:workspace` を基準の quality gate と考えてください。
+PR を出す前は、必要に応じて `verify:workspace` を quality gate として使ってください。
 
-これは GitHub Actions の `quality-gates` と同じ入口です。
+これは opt-in の GitHub Actions `quality-gates` と同じ入口です。
 
 ### 5. コミットの作成
 
@@ -130,10 +130,12 @@ git push origin feature/your-feature-name
 # GitHubでプルリクエストを作成
 ```
 
-`main` / `master` の branch protection では、少なくとも次を required status checks にしてください。
+`main` / `master` の branch protection では、既定では次を required status checks にしてください。
 
-- `quality-gates`
 - `security`
+- `compatibility`
+
+`ENABLE_WORKSPACE_QUALITY_GATES=true` を有効化した場合だけ、`quality-gates` も追加します。
 
 ## コーディング規約
 

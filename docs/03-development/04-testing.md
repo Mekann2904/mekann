@@ -224,9 +224,11 @@ echo "=========================================="
 
 ## CI/CDでのテスト実行
 
-mekann では、GitHub Actions の `quality-gates` job で repo-level verification を回します。
+mekann では、GitHub Actions の `quality-gates` job を opt-in で使えます。
 
-この job は `npm run verify:workspace` を実行します。
+既定では無効です。
+
+Repo Variables の `ENABLE_WORKSPACE_QUALITY_GATES=true` を設定したときだけ、この job は `npm run verify:workspace` を実行します。
 
 ここでは runbook を再利用しつつ、CI で再現しやすい `lint / typecheck / test / build` を優先して回します。
 
@@ -273,9 +275,9 @@ jobs:
       - run: npm run verify:workspace
 ```
 
-branch protection を使う場合は、`quality-gates` を required check にします。
+branch protection を使う場合は、既定では `compatibility` と `security` を required check にします。
 
-`security` も一緒に required にするのが基本です。
+`ENABLE_WORKSPACE_QUALITY_GATES=true` で quality gate を有効化した場合だけ、`quality-gates` も required にします。
 
 admin token がある環境では、次で branch protection を同期できます。
 

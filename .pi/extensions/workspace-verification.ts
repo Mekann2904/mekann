@@ -644,6 +644,9 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
 
   pi.on("before_agent_start", async (event, ctx) => {
     const config = loadWorkspaceVerificationConfig(ctx.cwd);
+    if (!config.enabled) {
+      return;
+    }
     const state = loadWorkspaceVerificationState(ctx.cwd);
     const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
     const marker = buildVerificationMarker();
@@ -666,6 +669,9 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
 
     if (WRITE_TOOLS.has(toolName) && !isError) {
       const config = loadWorkspaceVerificationConfig(ctx.cwd);
+      if (!config.enabled) {
+        return;
+      }
       const dirtyState = markWorkspaceDirty({ cwd: ctx.cwd, toolName });
       if (config.checkpointOnMutation) {
         const checkpointId = await saveWorkspaceCheckpoint(ctx.cwd, "mutation", {
@@ -710,6 +716,9 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
 
   pi.on("tool_call", async (event, ctx) => {
     const config = loadWorkspaceVerificationConfig(ctx.cwd);
+    if (!config.enabled) {
+      return;
+    }
     const state = loadWorkspaceVerificationState(ctx.cwd);
     const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
     const reason = shouldBlockTool(event, config, state, resolvedPlan);
@@ -721,11 +730,17 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
   });
 
   pi.on("turn_end", async (_event, ctx) => {
+    if (!loadWorkspaceVerificationConfig(ctx.cwd).enabled) {
+      return;
+    }
     await maybeRunAutoVerification(ctx);
   });
 
   pi.on("session_start", async (_event, ctx) => {
     const config = loadWorkspaceVerificationConfig(ctx.cwd);
+    if (!config.enabled) {
+      return;
+    }
     const state = loadWorkspaceVerificationState(ctx.cwd);
     const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
 
