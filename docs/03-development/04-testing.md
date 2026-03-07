@@ -81,6 +81,7 @@ npx vitest run tests/integration/...
 npx vitest run tests/e2e/...
 npx eslint .
 npx tsc -p tsconfig-check.json --noEmit
+npm run verify:workspace
 ```
 
 変更範囲が小さいときは、まず関連テストだけを回します。
@@ -171,9 +172,14 @@ mekann/
 - 実行コマンド
 - 成功 / 失敗の結果
 - 必要ならログやスクリーンショット
+- 必要なら review artifact
 - 未実施の検証と理由
 
 これで、あとから同じ品質判断を再現できます。
+
+`workspace-verification` では、`review notes` が推論された高リスク変更に対して review artifact を自動で必須化します。
+
+つまり `security`、`api`、`migration`、`workflow`、`build/package` 系の変更は、手動設定がなくても review gate が閉じます。
 
 ### テストスクリプトのテンプレート
 
@@ -218,30 +224,67 @@ echo "=========================================="
 
 ## CI/CDでのテスト実行
 
-将来的にGitHub ActionsなどのCI/CDパイプラインで自動テストを実行することを想定しています。
+mekann では、GitHub Actions の `quality-gates` job を opt-in で使えます。
 
-将来の CI でも、考え方は同じです。
+既定では無効です。
 
-速いチェックを先に回し、失敗したらその証拠を残し、修復後に再実行します。
+Repo Variables の `ENABLE_WORKSPACE_QUALITY_GATES=true` を設定したときだけ、この job は `npm run verify:workspace` を実行します。
+
+ここでは runbook を再利用しつつ、CI で再現しやすい `lint / typecheck / test / build` を優先して回します。
+
+さらに changed files を見て、関連が薄い step は落とします。
+
+これで legacy debt が大きいリポジトリでも、relevant verification を先に強制できます。
+
+artifact は次に保存されます。
+
+- `.pi/verification-runs/`
+- `.pi/evals/workspace-verification/`
+- `.pi/workspace-verification/reviews/`
+- `.pi/workspace-verification/continuity.json`
+- `.pi/workspace-verification/trajectory.json`
+
+high severity の review artifact は、`decision` と `rationale` を付けて acknowledge する必要があります。
+
+preview URL を持つプロジェクトでは、`CI_WORKSPACE_VERIFY_PREVIEW_COMMAND`、`CI_WORKSPACE_VERIFY_UI_BASE_URL`、`CI_WORKSPACE_VERIFY_UI_COMMAND` を CI に渡すと browser evidence も保存できます。
+
+`workspace_verify_trajectory` を使うと、どの mutation と verification がどの順で起きたかを replay しやすい形で確認できます。
+
+`workspace_verify_replay` は、failed step から verification を再開する executor です。
+
+proof review / review / replan が必要な場合は、その phase を返して停止します。
 
 ### 推奨CI設定
 
 ```yaml
-# .github/workflows/test.yml（将来実装予定）
-name: Test
+# .github/workflows/test.yml
+name: CI
 
 on: [push, pull_request]
 
 jobs:
-  test:
+  quality-gates:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm install -g @mariozechner/pi-coding-agent
-      - run: ./scripts/test-kitty-extension.sh
+      - run: npm ci
+      - run: npm run policy:workspace
+      - run: npm run verify:workspace
+```
+
+branch protection を使う場合も、既定では required check は追加しません。
+
+`ENABLE_STANDARD_CI_GATES=true` を有効化した場合だけ、`compatibility` と `security` を required にします。
+
+`ENABLE_WORKSPACE_QUALITY_GATES=true` を有効化した場合だけ、`quality-gates` も required にします。
+
+admin token がある環境では、次で branch protection を同期できます。
+
+```bash
+GITHUB_TOKEN=... GITHUB_REPOSITORY=owner/repo npm run policy:apply-branch-protection
 ```
 
 ## トラブルシューティング
@@ -261,6 +304,10 @@ jobs:
 次に、壊れている層を 1 つに絞ります。
 
 修復後は、落ちたテストと近接する回帰テストを再実行します。
+
+同じ失敗が続くなら、`workspace_verify_replan` 相当の考え方で修復方針を変えます。
+
+闇雲に実装を増やしてはいけません。
 
 ## 関連トピック
 

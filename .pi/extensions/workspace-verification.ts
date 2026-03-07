@@ -20,9 +20,13 @@ import {
 } from "../lib/background-processes.js";
 import {
   acknowledgeReplanDecision,
+  acknowledgeReviewArtifact,
   acknowledgeVerificationArtifacts,
+  appendWorkspaceVerificationTrajectoryEvent,
   createWorkspaceVerificationConfig,
+  createWorkspaceVerificationReplayInput,
   finalizeVerificationRun,
+  formatWorkspaceVerificationTrajectory,
   formatWorkspaceVerificationStatus,
   getResolvedCommandForStep,
   isCompletionBlocked,
@@ -33,10 +37,13 @@ import {
   parseWorkspaceCommand,
   persistWorkspaceVerificationArtifacts,
   persistWorkspaceVerificationContinuityPack,
+  persistWorkspaceReviewArtifact,
   resolveEnabledSteps,
+  resolveWorkspaceVerificationResumePlan,
   resolveWorkspaceVerificationPlan,
   saveWorkspaceVerificationState,
   saveWorkspaceVerificationConfig,
+  shouldRequireReviewArtifact,
   shouldAutoRunVerification,
   type WorkspaceVerificationConfig,
   type WorkspaceVerificationResolvedPlan,
@@ -102,6 +109,7 @@ function buildStatusBlock(
   state: WorkspaceVerificationState,
   resolvedPlan: WorkspaceVerificationResolvedPlan,
 ): string {
+  const reviewArtifactRequired = shouldRequireReviewArtifact(config, resolvedPlan);
   const lines = [
     "## Workspace Verification",
     "",
@@ -157,6 +165,11 @@ function buildStatusBlock(
     lines.push("", "直近の成功検証は未レビュー。artifact を見たら `workspace_verify_ack` を実行すること。");
   }
 
+  if (reviewArtifactRequired && state.pendingReviewArtifact) {
+    lines.push("", "review artifact が未承認。`workspace_verify_review` と `workspace_verify_review_ack` を完了させること。");
+    lines.push("高リスク review では decision と rationale を明示すること。");
+  }
+
   if (config.requireReplanOnRepeatedFailure && state.replanRequired) {
     lines.push("", `同じ失敗が繰り返されている。plan を更新し、新しい修復方針を ` + "`workspace_verify_replan`" + " で記録すること。");
     if (state.replanReason) {
@@ -178,8 +191,11 @@ function shouldBlockTool(
   }
 
   const toolName = typeof event.toolName === "string" ? event.toolName : "";
+  const reviewArtifactRequired = shouldRequireReviewArtifact(config, resolvedPlan);
   const reasonCore = config.requireReplanOnRepeatedFailure && state.replanRequired
     ? `Repeated verification failures require a new repair strategy. Update the plan and run workspace_verify_replan. ${state.replanReason ?? ""}`.trim()
+    : reviewArtifactRequired && state.pendingReviewArtifact
+      ? "A review artifact is required before completion. Run workspace_verify_review and acknowledge it with workspace_verify_review_ack."
     : config.requireProofReview && state.pendingProofReview
       ? "A successful verification exists, but its proof artifacts have not been acknowledged. Run workspace_verify_ack after inspecting the latest artifacts."
       : "Workspace verification is stale. Run workspace_verify and inspect the latest artifacts.";
@@ -491,7 +507,19 @@ export async function runWorkspaceVerification(
   };
 
   const persistedRun = persistWorkspaceVerificationArtifacts(cwd, config, bareRun);
-  finalizeVerificationRun({ cwd, run: persistedRun });
+  const finalizedState = finalizeVerificationRun({ cwd, run: persistedRun });
+  if (shouldRequireReviewArtifact(config, persistedRun.resolvedPlan) && persistedRun.success) {
+    const reviewArtifact = persistWorkspaceReviewArtifact({
+      cwd,
+      run: persistedRun,
+    });
+    saveWorkspaceVerificationState(cwd, {
+      ...finalizedState,
+      pendingReviewArtifact: true,
+      lastReviewArtifactPath: reviewArtifact.path,
+      lastReviewArtifactAt: undefined,
+    });
+  }
 
   if (!persistedRun.success && config.checkpointOnFailure) {
     const checkpointId = await saveWorkspaceCheckpoint(cwd, "verification-failure", {
@@ -522,6 +550,27 @@ export async function runWorkspaceVerification(
   saveWorkspaceVerificationState(cwd, {
     ...latestState,
     continuityPath,
+  });
+  appendWorkspaceVerificationTrajectoryEvent({
+    cwd,
+    entry: {
+      kind: "verification_run",
+      summary: persistedRun.success
+        ? `verification passed (${persistedRun.stepResults.map((item) => item.step).join(", ")})`
+        : `verification failed (${persistedRun.stepResults.find((item) => !item.success && !item.skipped)?.step ?? "unknown"})`,
+      state: {
+        dirty: latestState.dirty,
+        pendingProofReview: latestState.pendingProofReview,
+        pendingReviewArtifact: latestState.pendingReviewArtifact,
+        replanRequired: latestState.replanRequired,
+        repeatedFailureCount: latestState.repeatedFailureCount,
+      },
+      details: {
+        artifactDir: persistedRun.artifactDir,
+        success: persistedRun.success,
+        continuityPath,
+      },
+    },
   });
 
   if (ctx.ui?.notify) {
@@ -595,6 +644,9 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
 
   pi.on("before_agent_start", async (event, ctx) => {
     const config = loadWorkspaceVerificationConfig(ctx.cwd);
+    if (!config.enabled) {
+      return;
+    }
     const state = loadWorkspaceVerificationState(ctx.cwd);
     const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
     const marker = buildVerificationMarker();
@@ -617,6 +669,9 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
 
     if (WRITE_TOOLS.has(toolName) && !isError) {
       const config = loadWorkspaceVerificationConfig(ctx.cwd);
+      if (!config.enabled) {
+        return;
+      }
       const dirtyState = markWorkspaceDirty({ cwd: ctx.cwd, toolName });
       if (config.checkpointOnMutation) {
         const checkpointId = await saveWorkspaceCheckpoint(ctx.cwd, "mutation", {
@@ -637,12 +692,33 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
         ...latestState,
         continuityPath,
       });
+      appendWorkspaceVerificationTrajectoryEvent({
+        cwd: ctx.cwd,
+        entry: {
+          kind: "mutation",
+          summary: `${toolName} marked the workspace dirty`,
+          state: {
+            dirty: latestState.dirty,
+            pendingProofReview: latestState.pendingProofReview,
+            pendingReviewArtifact: latestState.pendingReviewArtifact,
+            replanRequired: latestState.replanRequired,
+            repeatedFailureCount: latestState.repeatedFailureCount,
+          },
+          details: {
+            toolName,
+            continuityPath,
+          },
+        },
+      });
       ctx.ui?.notify?.("Workspace marked dirty. Verification is now required.", "info");
     }
   });
 
   pi.on("tool_call", async (event, ctx) => {
     const config = loadWorkspaceVerificationConfig(ctx.cwd);
+    if (!config.enabled) {
+      return;
+    }
     const state = loadWorkspaceVerificationState(ctx.cwd);
     const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
     const reason = shouldBlockTool(event, config, state, resolvedPlan);
@@ -654,11 +730,17 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
   });
 
   pi.on("turn_end", async (_event, ctx) => {
+    if (!loadWorkspaceVerificationConfig(ctx.cwd).enabled) {
+      return;
+    }
     await maybeRunAutoVerification(ctx);
   });
 
   pi.on("session_start", async (_event, ctx) => {
     const config = loadWorkspaceVerificationConfig(ctx.cwd);
+    if (!config.enabled) {
+      return;
+    }
     const state = loadWorkspaceVerificationState(ctx.cwd);
     const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
 
@@ -743,6 +825,71 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    name: "workspace_verify_trajectory",
+    label: "Workspace Verify Trajectory",
+    description: "Show the latest workspace verification trajectory and replay input.",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      const config = loadWorkspaceVerificationConfig(ctx.cwd);
+      const state = loadWorkspaceVerificationState(ctx.cwd);
+      const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
+      const replay = createWorkspaceVerificationReplayInput(ctx.cwd, state, resolvedPlan);
+      return {
+        content: [{ type: "text", text: formatWorkspaceVerificationTrajectory(replay) }],
+        details: replay,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "workspace_verify_replay",
+    label: "Workspace Verify Replay",
+    description: "Resume workspace verification from the last durable replay point.",
+    parameters: Type.Object({
+      execute: Type.Optional(Type.Boolean()),
+    }),
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      const config = loadWorkspaceVerificationConfig(ctx.cwd);
+      const state = loadWorkspaceVerificationState(ctx.cwd);
+      const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
+      const resume = resolveWorkspaceVerificationResumePlan(state, resolvedPlan);
+      const replay = createWorkspaceVerificationReplayInput(ctx.cwd, state, resolvedPlan);
+
+      if (params.execute === false || resume.phase !== "verification" || resume.requestedSteps.length === 0) {
+        return {
+          content: [{
+            type: "text",
+            text: `${formatWorkspaceVerificationTrajectory(replay)}\nresume_reason: ${resume.reason}\nrequested_steps: ${resume.requestedSteps.join(", ") || "-"}`,
+          }],
+          details: {
+            replay,
+            resume,
+          },
+        };
+      }
+
+      const runRecord = await runWorkspaceVerification(
+        config,
+        { ...ctx, signal },
+        "manual",
+        resume.requestedSteps,
+      );
+
+      return {
+        content: [{
+          type: "text",
+          text: `${summarizeRun(runRecord)}\n\nresume_reason: ${resume.reason}`,
+        }],
+        details: {
+          replay,
+          resume,
+          runRecord,
+        },
+      };
+    },
+  });
+
+  pi.registerTool({
     name: "workspace_verify_plan",
     label: "Workspace Verify Plan",
     description: "Show the resolved verification runbook extracted from the workspace.",
@@ -776,9 +923,141 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
         ...state,
         continuityPath,
       });
+      appendWorkspaceVerificationTrajectoryEvent({
+        cwd: ctx.cwd,
+        entry: {
+          kind: "proof_ack",
+          summary: "proof artifacts acknowledged",
+          state: {
+            dirty: state.dirty,
+            pendingProofReview: state.pendingProofReview,
+            pendingReviewArtifact: state.pendingReviewArtifact,
+            replanRequired: state.replanRequired,
+            repeatedFailureCount: state.repeatedFailureCount,
+          },
+          details: {
+            artifactDir: state.lastReviewedArtifactDir,
+            continuityPath,
+          },
+        },
+      });
 
       return {
         content: [{ type: "text", text: `Proof artifacts acknowledged: ${state.lastReviewedArtifactDir ?? "-"}` }],
+        details: {
+          ...state,
+          continuityPath,
+        },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "workspace_verify_review",
+    label: "Workspace Verify Review",
+    description: "Generate a structured review artifact for bugs, security, regression, test gaps, and rollback risk.",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      const state = loadWorkspaceVerificationState(ctx.cwd);
+      const run = state.lastRun;
+      if (!run) {
+        throw new Error("no verification run available");
+      }
+
+      const config = loadWorkspaceVerificationConfig(ctx.cwd);
+      if (!shouldRequireReviewArtifact(config, run.resolvedPlan)) {
+        throw new Error("review artifact is not required for the latest verification run");
+      }
+
+      const artifact = persistWorkspaceReviewArtifact({
+        cwd: ctx.cwd,
+        run,
+      });
+      const nextState = saveWorkspaceVerificationState(ctx.cwd, {
+        ...state,
+        pendingReviewArtifact: true,
+        lastReviewArtifactPath: artifact.path,
+      });
+      const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
+      const continuityPath = persistWorkspaceVerificationContinuityPack(ctx.cwd, nextState, resolvedPlan);
+      saveWorkspaceVerificationState(ctx.cwd, {
+        ...nextState,
+        continuityPath,
+      });
+      appendWorkspaceVerificationTrajectoryEvent({
+        cwd: ctx.cwd,
+        entry: {
+          kind: "verification_run",
+          summary: "review artifact generated from latest verification run",
+          state: {
+            dirty: nextState.dirty,
+            pendingProofReview: nextState.pendingProofReview,
+            pendingReviewArtifact: nextState.pendingReviewArtifact,
+            replanRequired: nextState.replanRequired,
+            repeatedFailureCount: nextState.repeatedFailureCount,
+          },
+          details: {
+            reviewArtifactPath: artifact.path,
+            continuityPath,
+          },
+        },
+      });
+
+      return {
+        content: [{ type: "text", text: `Review artifact generated: ${artifact.path}` }],
+        details: {
+          ...artifact,
+          continuityPath,
+        },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "workspace_verify_review_ack",
+    label: "Workspace Verify Review Ack",
+    description: "Acknowledge that the latest review artifact has been inspected.",
+    parameters: Type.Object({
+      path: Type.Optional(Type.String()),
+      decision: Type.Optional(Type.Union([Type.Literal("accept"), Type.Literal("mitigate")])),
+      rationale: Type.Optional(Type.String()),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const state = acknowledgeReviewArtifact({
+        cwd: ctx.cwd,
+        path: params.path,
+        decision: params.decision,
+        rationale: params.rationale,
+      });
+      const config = loadWorkspaceVerificationConfig(ctx.cwd);
+      const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
+      const continuityPath = persistWorkspaceVerificationContinuityPack(ctx.cwd, state, resolvedPlan);
+      saveWorkspaceVerificationState(ctx.cwd, {
+        ...state,
+        continuityPath,
+      });
+      appendWorkspaceVerificationTrajectoryEvent({
+        cwd: ctx.cwd,
+        entry: {
+          kind: "review_ack",
+          summary: "review artifact acknowledged",
+          state: {
+            dirty: state.dirty,
+            pendingProofReview: state.pendingProofReview,
+            pendingReviewArtifact: state.pendingReviewArtifact,
+            replanRequired: state.replanRequired,
+            repeatedFailureCount: state.repeatedFailureCount,
+          },
+          details: {
+            reviewArtifactPath: state.lastReviewArtifactPath,
+            decision: state.lastReviewDecision,
+            continuityPath,
+          },
+        },
+      });
+
+      return {
+        content: [{ type: "text", text: `Review artifact acknowledged: ${state.lastReviewArtifactPath ?? "-"}` }],
         details: {
           ...state,
           continuityPath,
@@ -805,6 +1084,24 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
       saveWorkspaceVerificationState(ctx.cwd, {
         ...state,
         continuityPath,
+      });
+      appendWorkspaceVerificationTrajectoryEvent({
+        cwd: ctx.cwd,
+        entry: {
+          kind: "replan_ack",
+          summary: "replan strategy acknowledged",
+          state: {
+            dirty: state.dirty,
+            pendingProofReview: state.pendingProofReview,
+            pendingReviewArtifact: state.pendingReviewArtifact,
+            replanRequired: state.replanRequired,
+            repeatedFailureCount: state.repeatedFailureCount,
+          },
+          details: {
+            strategy: state.lastRepairStrategy,
+            continuityPath,
+          },
+        },
       });
 
       return {
@@ -834,6 +1131,8 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
       autoDetectRunbook: Type.Optional(Type.Boolean()),
       autoRunOnTurnEnd: Type.Optional(Type.Boolean()),
       requireProofReview: Type.Optional(Type.Boolean()),
+      requireReviewArtifact: Type.Optional(Type.Boolean()),
+      autoRequireReviewArtifact: Type.Optional(Type.Boolean()),
       requireReplanOnRepeatedFailure: Type.Optional(Type.Boolean()),
       enableEvalCorpus: Type.Optional(Type.Boolean()),
       checkpointOnMutation: Type.Optional(Type.Boolean()),
@@ -884,6 +1183,8 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
           autoDetectRunbook: params.autoDetectRunbook,
           autoRunOnTurnEnd: params.autoRunOnTurnEnd,
           requireProofReview: params.requireProofReview,
+          requireReviewArtifact: params.requireReviewArtifact,
+          autoRequireReviewArtifact: params.autoRequireReviewArtifact,
           requireReplanOnRepeatedFailure: params.requireReplanOnRepeatedFailure,
           enableEvalCorpus: params.enableEvalCorpus,
           checkpointOnMutation: params.checkpointOnMutation,

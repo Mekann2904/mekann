@@ -63,7 +63,11 @@
     "typecheck": "tsc --noEmit --project tsconfig-check.json",
     "lint": "eslint .pi/extensions .pi/lib --max-warnings=0",
     "lint:fix": "eslint .pi/extensions .pi/lib --fix",
+    "verify:workspace": "node --import tsx scripts/run-workspace-verification-ci.ts",
+    "policy:workspace": "node --import tsx scripts/verify-workspace-policy.ts",
+    "policy:apply-branch-protection": "node --import tsx scripts/apply-github-branch-protection.ts",
     "ci": "npm run typecheck && npm run lint && npm run test",
+    "ci:workspace-verification": "npm run verify:workspace",
     "generate-abdd": "npx tsx scripts/generate-abdd.ts",
     "add-abdd-header": "npx tsx scripts/add-abdd-header.ts"
   },

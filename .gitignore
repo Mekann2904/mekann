@@ -79,6 +79,12 @@ plans/untitled-plan*.md
 # Task API storage (runtime data)
 .pi/tasks/
 
+# Workspace verification runtime artifacts
+.pi/verification-runs/
+.pi/workspace-verification/
+.pi/evals/workspace-verification/
+.pi/runtime/
+
 # Agent-generated reports
 .pi/reports/
 

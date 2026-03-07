@@ -18,6 +18,8 @@ const mockApi = vi.hoisted(() => ({
     autoRunOnTurnEnd: true,
     gateMode: "strict",
     requireProofReview: true,
+    requireReviewArtifact: false,
+    autoRequireReviewArtifact: true,
     requireReplanOnRepeatedFailure: true,
     enableEvalCorpus: true,
     checkpointOnMutation: true,
@@ -78,13 +80,14 @@ const mockApi = vi.hoisted(() => ({
     validationCommands: ["npm run lint", "npm run typecheck", "npm test"],
     recommendedSteps: ["lint", "typecheck", "test", "runtime", "ui"],
     reasons: ["UI or browser-facing change detected"],
-    proofArtifacts: ["verification summary", "step logs", "browser evidence"],
+    proofArtifacts: ["verification summary", "step logs", "browser evidence", "review notes"],
     sources: ["/repo/AGENTS.md"],
   },
   state: {
     dirty: false,
     running: false,
     pendingProofReview: false,
+    pendingReviewArtifact: false,
     replanRequired: false,
     writeCount: 0,
     repeatedFailureCount: 0,
@@ -93,6 +96,10 @@ const mockApi = vi.hoisted(() => ({
     lastVerifiedAt: undefined,
     lastReviewedAt: undefined,
     lastReviewedArtifactDir: undefined,
+    lastReviewArtifactAt: undefined,
+    lastReviewArtifactPath: undefined,
+    lastReviewDecision: undefined,
+    lastReviewRationale: undefined,
     lastReplanAt: undefined,
     lastRepairStrategy: undefined,
     lastMutationCheckpointId: undefined,
@@ -105,6 +112,7 @@ const mockApi = vi.hoisted(() => ({
   },
   runCalls: [] as Array<{ trigger: string; steps?: string[] }>,
   checkpoints: [] as Array<{ priority: string; metadata?: Record<string, unknown>; state?: Record<string, unknown> }>,
+  trajectoryEvents: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
@@ -118,10 +126,25 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
     };
     return mockApi.state;
   }),
+  acknowledgeReviewArtifact: vi.fn(({ path }) => {
+    mockApi.state = {
+      ...mockApi.state,
+      pendingReviewArtifact: false,
+      lastReviewArtifactAt: "2026-03-07T00:07:00.000Z",
+      lastReviewArtifactPath: path ?? mockApi.state.lastReviewArtifactPath,
+      lastReviewDecision: "accept",
+      lastReviewRationale: "Reviewed manually",
+    };
+    return mockApi.state;
+  }),
   createWorkspaceVerificationConfig: vi.fn(() => mockApi.config),
   loadWorkspaceVerificationConfig: vi.fn(() => mockApi.config),
   loadWorkspaceVerificationState: vi.fn(() => mockApi.state),
   resolveWorkspaceVerificationPlan: vi.fn(() => mockApi.resolvedPlan),
+  shouldRequireReviewArtifact: vi.fn((config, resolvedPlan) => Boolean(
+    config.requireReviewArtifact
+    || (config.autoRequireReviewArtifact && resolvedPlan?.proofArtifacts?.includes("review notes"))
+  )),
   acknowledgeVerificationArtifacts: vi.fn(({ artifactDir }) => {
     mockApi.state = {
       ...mockApi.state,
@@ -131,6 +154,49 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
     };
     return mockApi.state;
   }),
+  appendWorkspaceVerificationTrajectoryEvent: vi.fn(({ entry }) => {
+    mockApi.trajectoryEvents.push(entry);
+    return {
+      path: "/repo/.pi/workspace-verification/trajectory.json",
+      entries: mockApi.trajectoryEvents,
+    };
+  }),
+  createWorkspaceVerificationReplayInput: vi.fn((_cwd, state, resolvedPlan) => ({
+    summary: {
+      profile: resolvedPlan?.profile,
+      currentStep: "Repair UI",
+      nextSuggestedAction: "Run workspace_verify against the relevant verification steps.",
+      resumePhase: "verification",
+      resumeStep: "test",
+      artifactDir: state.lastRun?.artifactDir,
+      continuityPath: state.continuityPath,
+      trajectoryPath: "/repo/.pi/workspace-verification/trajectory.json",
+    },
+    plan: {
+      currentStep: "Repair UI",
+      acceptanceCriteria: [],
+      fileModuleImpact: [],
+      testVerification: [],
+      recentProgress: [],
+    },
+    state,
+    resolvedPlan,
+    trajectory: mockApi.trajectoryEvents,
+  })),
+  resolveWorkspaceVerificationResumePlan: vi.fn((state) => ({
+    phase: state.replanRequired
+      ? "replan"
+      : state.pendingReviewArtifact
+        ? "review"
+        : state.pendingProofReview
+          ? "proof_review"
+          : state.dirty
+            ? "verification"
+            : "clear",
+    requestedSteps: state.dirty ? ["test"] : [],
+    reason: state.dirty ? "Resume verification from the failed step: test." : "Workspace verification is clear.",
+    resumeStep: state.dirty ? "test" : undefined,
+  })),
   saveWorkspaceVerificationConfig: vi.fn((_cwd, next) => {
     mockApi.config = {
       ...mockApi.config,
@@ -169,11 +235,16 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
       dirty: !run.success,
       running: false,
       pendingProofReview: Boolean(run.success && run.artifactDir),
+      pendingReviewArtifact: Boolean(
+        run.success
+        && (mockApi.config.requireReviewArtifact || (mockApi.config.autoRequireReviewArtifact && run.resolvedPlan?.proofArtifacts?.includes("review notes")))
+      ),
       replanRequired: Boolean(!run.success && mockApi.state.repeatedFailureCount + 1 >= mockApi.config.antiLoopThreshold),
       repeatedFailureCount: run.success ? 0 : mockApi.state.repeatedFailureCount + 1,
       lastVerifiedAt: run.success ? run.finishedAt : mockApi.state.lastVerifiedAt,
       lastReviewedAt: run.success ? undefined : mockApi.state.lastReviewedAt,
       lastReviewedArtifactDir: run.success ? undefined : mockApi.state.lastReviewedArtifactDir,
+      lastReviewArtifactAt: run.success ? undefined : mockApi.state.lastReviewArtifactAt,
       lastEvalCasePath: run.success ? mockApi.state.lastEvalCasePath : "/repo/.pi/evals/workspace-verification/case.json",
       replanReason: !run.success && mockApi.state.repeatedFailureCount + 1 >= mockApi.config.antiLoopThreshold
         ? "Repeated verification failure"
@@ -183,6 +254,24 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
     return mockApi.state;
   }),
   persistWorkspaceVerificationContinuityPack: vi.fn(() => "/repo/.pi/workspace-verification/continuity.json"),
+  persistWorkspaceReviewArtifact: vi.fn(() => ({
+    path: "/repo/.pi/workspace-verification/reviews/latest-review.md",
+    review: {
+      findings: {
+        bugs: [],
+        security: [],
+        regression: [],
+        testGaps: [],
+        rollback: [],
+      },
+      severity: {
+        highest: "high",
+        requiresExplicitDecision: true,
+        blockingCategories: ["security"],
+        summary: ["Security-sensitive surface changed."],
+      },
+    },
+  })),
   shouldAutoRunVerification: vi.fn(() => mockApi.state.dirty && !mockApi.state.running),
   saveWorkspaceVerificationState: vi.fn((_cwd, next) => {
     mockApi.state = next;
@@ -191,6 +280,7 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
   isCompletionBlocked: vi.fn((config, state) => Boolean(
     state.dirty
     || (config.requireProofReview && state.pendingProofReview)
+    || ((config.requireReviewArtifact || config.autoRequireReviewArtifact) && state.pendingReviewArtifact)
     || (config.requireReplanOnRepeatedFailure && state.replanRequired)
   )),
   getResolvedCommandForStep: vi.fn((_plan, step) => mockApi.resolvedPlan.commands[step] ?? ""),
@@ -205,6 +295,7 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
     stderr: "",
   })),
   formatWorkspaceVerificationStatus: vi.fn(() => "status"),
+  formatWorkspaceVerificationTrajectory: vi.fn(() => "trajectory"),
   parseWorkspaceCommand: vi.fn((command: string) => ({
     executable: command.split(/\s+/)[0],
     args: command.split(/\s+/).slice(1),
@@ -244,6 +335,7 @@ function createPiMock() {
     dirty: false,
     running: false,
     pendingProofReview: false,
+    pendingReviewArtifact: false,
     replanRequired: false,
     writeCount: 0,
     repeatedFailureCount: 0,
@@ -252,6 +344,10 @@ function createPiMock() {
     lastVerifiedAt: undefined,
     lastReviewedAt: undefined,
     lastReviewedArtifactDir: undefined,
+    lastReviewArtifactAt: undefined,
+    lastReviewArtifactPath: undefined,
+    lastReviewDecision: undefined,
+    lastReviewRationale: undefined,
     lastReplanAt: undefined,
     lastRepairStrategy: undefined,
     lastMutationCheckpointId: undefined,
@@ -263,6 +359,7 @@ function createPiMock() {
     lastRun: undefined,
   };
   mockApi.checkpoints = [];
+  mockApi.trajectoryEvents = [];
 
   return {
     registerTool: vi.fn((tool) => {
@@ -298,8 +395,12 @@ describe("workspace-verification extension", () => {
     expect(mockApi.tools.map((tool) => tool.name)).toEqual([
       "workspace_verify",
       "workspace_verify_status",
+      "workspace_verify_trajectory",
+      "workspace_verify_replay",
       "workspace_verify_plan",
       "workspace_verify_ack",
+      "workspace_verify_review",
+      "workspace_verify_review_ack",
       "workspace_verify_replan",
       "workspace_verification_config",
     ]);
@@ -327,11 +428,36 @@ describe("workspace-verification extension", () => {
     expect(mockApi.checkpoints[0]?.metadata?.kind).toBe("mutation");
   });
 
+  it("does not auto-hook writes when workspace verification is disabled", async () => {
+    const extension = (await import("../../../.pi/extensions/workspace-verification.js")).default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    mockApi.config = {
+      ...mockApi.config,
+      enabled: false,
+    };
+
+    const handler = mockApi.handlers.get("tool_result");
+    await handler?.(
+      { toolName: "edit", isError: false },
+      { cwd: "/repo", ui: { notify: (message: string, level: string) => mockApi.notifications.push({ message, level }) } },
+    );
+
+    expect(mockApi.state.dirty).toBe(false);
+    expect(mockApi.checkpoints).toHaveLength(0);
+    expect(mockApi.notifications).toHaveLength(0);
+  });
+
   it("blocks task completion while verification is stale", async () => {
     const extension = (await import("../../../.pi/extensions/workspace-verification.js")).default;
     const pi = createPiMock();
     extension(pi as never);
 
+    mockApi.config = {
+      ...mockApi.config,
+      enabled: true,
+    };
     mockApi.state.dirty = true;
 
     const handler = mockApi.handlers.get("tool_call");
@@ -349,6 +475,11 @@ describe("workspace-verification extension", () => {
     const pi = createPiMock();
     extension(pi as never);
 
+    mockApi.config = {
+      ...mockApi.config,
+      enabled: true,
+      requireProofReview: true,
+    };
     mockApi.state.pendingProofReview = true;
 
     const handler = mockApi.handlers.get("tool_call");
@@ -361,11 +492,38 @@ describe("workspace-verification extension", () => {
     expect(String(result?.reason)).toContain("workspace_verify_ack");
   });
 
+  it("blocks completion until review artifact is acknowledged", async () => {
+    const extension = (await import("../../../.pi/extensions/workspace-verification.js")).default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    mockApi.config = {
+      ...mockApi.config,
+      enabled: true,
+      autoRequireReviewArtifact: true,
+    };
+    mockApi.state.pendingReviewArtifact = true;
+
+    const handler = mockApi.handlers.get("tool_call");
+    const result = await handler?.(
+      { toolName: "task_complete", input: {} },
+      { cwd: "/repo" },
+    );
+
+    expect(result?.block).toBe(true);
+    expect(String(result?.reason)).toContain("workspace_verify_review");
+  });
+
   it("blocks further mutations when replanning is required", async () => {
     const extension = (await import("../../../.pi/extensions/workspace-verification.js")).default;
     const pi = createPiMock();
     extension(pi as never);
 
+    mockApi.config = {
+      ...mockApi.config,
+      enabled: true,
+      requireReplanOnRepeatedFailure: true,
+    };
     mockApi.state.replanRequired = true;
     mockApi.state.replanReason = "Repeated verification failure";
 
@@ -385,6 +543,11 @@ describe("workspace-verification extension", () => {
     const pi = createPiMock();
     extension(pi as never);
 
+    mockApi.config = {
+      ...mockApi.config,
+      enabled: true,
+      autoRunOnTurnEnd: true,
+    };
     mockApi.state.dirty = true;
 
     const handler = mockApi.handlers.get("turn_end");
@@ -449,6 +612,38 @@ describe("workspace-verification extension", () => {
     expect(result?.content[0]?.text).toContain("\"profile\": \"web-app\"");
   });
 
+  it("shows the workspace verification trajectory", async () => {
+    const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
+    const extension = extensionModule.default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    const tool = mockApi.tools.find((item) => item.name === "workspace_verify_trajectory");
+    const result = await tool?.execute("tool-1", {}, undefined, undefined, { cwd: "/repo" });
+
+    expect(result?.content[0]?.text).toContain("trajectory");
+  });
+
+  it("replays verification from the durable resume point", async () => {
+    const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
+    const extension = extensionModule.default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    mockApi.state.dirty = true;
+
+    const tool = mockApi.tools.find((item) => item.name === "workspace_verify_replay");
+    const result = await tool?.execute("tool-1", {}, undefined, undefined, {
+      cwd: "/repo",
+      ui: {
+        notify: (message: string, level: string) => mockApi.notifications.push({ message, level }),
+      },
+    });
+
+    expect(mockApi.state.lastRun?.success).toBe(true);
+    expect(result?.content[0]?.text).toContain("resume_reason");
+  });
+
   it("acknowledges the latest proof artifacts", async () => {
     const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
     const extension = extensionModule.default;
@@ -494,5 +689,38 @@ describe("workspace-verification extension", () => {
     expect(mockApi.state.replanRequired).toBe(false);
     expect(mockApi.state.lastRepairStrategy).toContain("lint");
     expect(result?.content[0]?.text).toContain("Replan acknowledged");
+  });
+
+  it("generates and acknowledges a review artifact", async () => {
+    const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
+    const extension = extensionModule.default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    mockApi.state.lastRun = {
+      trigger: "manual",
+      startedAt: "2026-03-07T00:00:00.000Z",
+      finishedAt: "2026-03-07T00:00:10.000Z",
+      success: true,
+      artifactDir: "/repo/.pi/verification-runs/latest",
+      resolvedPlan: mockApi.resolvedPlan,
+      stepResults: [],
+    };
+
+    const reviewTool = mockApi.tools.find((item) => item.name === "workspace_verify_review");
+    const reviewResult = await reviewTool?.execute("tool-1", {}, undefined, undefined, { cwd: "/repo" });
+
+    expect(mockApi.state.pendingReviewArtifact).toBe(true);
+    expect(reviewResult?.content[0]?.text).toContain("Review artifact generated");
+
+    const ackTool = mockApi.tools.find((item) => item.name === "workspace_verify_review_ack");
+    const ackResult = await ackTool?.execute("tool-1", {
+      decision: "accept",
+      rationale: "Manual security review completed",
+    }, undefined, undefined, { cwd: "/repo" });
+
+    expect(mockApi.state.pendingReviewArtifact).toBe(false);
+    expect(ackResult?.content[0]?.text).toContain("Review artifact acknowledged");
+    expect(mockApi.state.lastReviewDecision).toBe("accept");
   });
 });

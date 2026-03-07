@@ -236,6 +236,8 @@ background_process_start(
 
 直近の書き込みより新しい成功検証がない場合は、`task_complete` と `plan_update_step(status=completed)` を止めます。  
 
+同じ失敗が繰り返された場合は、`workspace_verify_replan` で修復方針を記録するまで mutation も止めます。
+
 この拡張は `package.json`、`AGENTS.md`、`README.md`、`plans/*.md` を読んで runbook を推定します。  
 
 次を自動抽出します。  
@@ -271,6 +273,10 @@ profile も自動推定します。
 - `summary.md`
 - step ごとの `.log`
 
+繰り返し失敗したケースは `.pi/evals/workspace-verification/` に保存されます。
+
+継続ループ用の状態は `.pi/workspace-verification/continuity.json` に保存されます。
+
 完了ゲートは 3 段階です。  
 
 - `soft`: 完了ブロックなし
@@ -281,7 +287,13 @@ profile も自動推定します。
 
 - `workspace_verify`
 - `workspace_verify_status`
+- `workspace_verify_trajectory`
+- `workspace_verify_replay`
 - `workspace_verify_plan`
+- `workspace_verify_ack`
+- `workspace_verify_review`
+- `workspace_verify_review_ack`
+- `workspace_verify_replan`
 - `workspace_verification_config`
 
 初期状態の確認:
@@ -293,6 +305,8 @@ workspace_verification_config(action="show")
 ```
 
 `workspace_verify_plan` は、現在のワークスペースから解決した runbook をそのまま返します。  
+
+`workspace_verify_replay` は、durable resume point から次に再開すべき phase を見て、再実行できる場合は関連 step だけを replay します。
 
 runtime を有効化する例:
 
@@ -325,6 +339,80 @@ workspace_verification_config(
   artifactRetentionRuns=30
 )
 ```
+
+anti-loop と eval corpus を有効にしたまま threshold を変える例:
+
+```text
+workspace_verification_config(
+  action="update",
+  requireReplanOnRepeatedFailure=true,
+  enableEvalCorpus=true,
+  antiLoopThreshold=3
+)
+```
+
+review artifact を必須にする例:
+
+```text
+workspace_verification_config(
+  action="update",
+  requireReviewArtifact=true
+)
+```
+
+この設定では、成功 verification のあとに review artifact を生成し、`workspace_verify_review_ack` まで完了しないと task completion を止めます。
+
+既定では、workspace verification の強制機能は無効です。
+
+まず `workspace_verification_config(action="update", enabled=true, ...)` で明示的に有効化してください。
+
+既定では `autoRequireReviewArtifact=false` です。
+
+そのため、高リスク変更でも review gate は自動では閉じません。
+
+必要なら `autoRequireReviewArtifact=true` か `requireReviewArtifact=true` を明示的に有効化してください。
+
+対象は `security`、`auth`、`api`、`schema`、`migration`、`workflow`、`build/package` 影響などです。
+
+high severity の review artifact は、`workspace_verify_review_ack` 時に `decision` と `rationale` を要求します。
+
+CI から同じ runbook を実行する例:
+
+```bash
+npm run verify:workspace
+```
+
+この script は changed files を見て、CI では近い verification から先に回します。
+
+たとえば lint は changed TS/JS files を優先し、typecheck / test / build は変更種類に応じて relevant steps だけを残します。
+
+GitHub Actions の `quality-gates` job も既定では無効です。
+
+Repo Variables の `ENABLE_WORKSPACE_QUALITY_GATES=true` を設定したときだけ、この script を実行し、`.pi/verification-runs/`、`.pi/evals/workspace-verification/`、`.pi/workspace-verification/reviews/`、`.pi/workspace-verification/continuity.json`、`.pi/workspace-verification/trajectory.json` を artifact として残します。
+
+`workspace_verify_trajectory` を使うと、mutation、verification、ack、replan の流れを replay input として確認できます。
+
+`workspace_verify_replay` を使うと、直近の failed step から verification を再開できます。proof review / review / replan が必要な場合は、その phase を返して止まります。
+
+preview URL があるプロジェクトでは、`CI_WORKSPACE_VERIFY_PREVIEW_COMMAND`、`CI_WORKSPACE_VERIFY_UI_BASE_URL`、`CI_WORKSPACE_VERIFY_UI_COMMAND` を与えると、CI でも `preview build -> browser evidence` を自動で追加できます。
+
+repo 内 policy の確認:
+
+```bash
+npm run policy:workspace
+```
+
+admin token がある場合は、branch protection も script で同期できます。
+
+```bash
+GITHUB_TOKEN=... GITHUB_REPOSITORY=owner/repo npm run policy:apply-branch-protection
+```
+
+`main` / `master` を保護する場合も、既定では required status checks は追加しません。
+
+`ENABLE_STANDARD_CI_GATES=true` を有効化したときだけ、`compatibility` と `security` を required に追加します。
+
+`ENABLE_WORKSPACE_QUALITY_GATES=true` も有効化したときだけ、`quality-gates` も追加してください。
 
 自動推定ではなく固定 profile で運用する例:
 
@@ -632,7 +720,11 @@ PI_AGENT_CAPACITY_POLL_MS=250        # ポーリング間隔（デフォルト25
 
 ### Plan Mode
 
-Plan Mode（計画モード）は現在、制限なしで使用可能です。ツールレベルでのブロック機能は無効化されています。
+Plan Mode（計画モード）は `Spec-first read-only` です。
+
+有効中は `edit` / `write` / `patch` と write-capable な `bash` を止めます。
+
+通常モードでも、複雑変更の mutation は execution-ready な plan がないと止まります。
 
 ### 定義済みサブエージェント
 
