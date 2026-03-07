@@ -108,6 +108,7 @@
       "./.pi/extensions/task-auto-executor.ts",
       "./.pi/extensions/rpm-throttle.ts",
       "./.pi/extensions/tool-compiler.ts",
+      "./.pi/extensions/workspace-verification.ts",
       "./.pi/extensions/ul-diagnostic.ts",
       "./.pi/extensions/ul-dual-mode.ts",
       "./.pi/extensions/ul-workflow.ts",

@@ -44,3 +44,11 @@ export function getBackgroundProcessStateKey(cwd: string): string {
 export function getBackgroundProcessConfigStateKey(cwd: string): string {
   return `background_process_config:${cwd}`;
 }
+
+export function getWorkspaceVerificationStateKey(cwd: string): string {
+  return `workspace_verification_state:${cwd}`;
+}
+
+export function getWorkspaceVerificationConfigStateKey(cwd: string): string {
+  return `workspace_verification_config:${cwd}`;
+}

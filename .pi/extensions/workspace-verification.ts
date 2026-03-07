@@ -1,0 +1,734 @@
+/**
+ * path: .pi/extensions/workspace-verification.ts
+ * role: 書き込み後の自動検証、runbook解決、証跡保存、完了ゲートをワークスペース全体へ追加する
+ * why: Droid / Kilo に近い検証運用を標準ループへ載せ、実装だけで終わる流れを止めるため
+ * related: .pi/lib/workspace-verification.ts, .pi/extensions/background-process.ts, .pi/extensions/playwright-cli.ts, tests/unit/extensions/workspace-verification.test.ts
+ */
+
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+import { Type } from "@mariozechner/pi-ai";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
+import {
+  listBackgroundProcesses,
+  loadBackgroundProcessConfig,
+  saveBackgroundProcessConfig,
+  startBackgroundProcess,
+  waitForBackgroundProcessReady,
+} from "../lib/background-processes.js";
+import {
+  createWorkspaceVerificationConfig,
+  finalizeVerificationRun,
+  formatWorkspaceVerificationStatus,
+  getResolvedCommandForStep,
+  isCompletionBlocked,
+  loadWorkspaceVerificationConfig,
+  loadWorkspaceVerificationState,
+  markVerificationRunning,
+  markWorkspaceDirty,
+  parseWorkspaceCommand,
+  persistWorkspaceVerificationArtifacts,
+  resolveEnabledSteps,
+  resolveWorkspaceVerificationPlan,
+  saveWorkspaceVerificationConfig,
+  shouldAutoRunVerification,
+  type WorkspaceVerificationConfig,
+  type WorkspaceVerificationResolvedPlan,
+  type WorkspaceVerificationRunRecord,
+  type WorkspaceVerificationState,
+  type WorkspaceVerificationStep,
+  type WorkspaceVerificationStepResult,
+  type WorkspaceVerificationTrigger,
+  runWorkspaceCommand,
+} from "../lib/workspace-verification.js";
+import { buildPlaywrightCliArgs } from "./playwright-cli.js";
+
+const execFileAsync = promisify(execFile);
+const WRITE_TOOLS = new Set(["edit", "write", "patch"]);
+const COMMAND_STEPS: WorkspaceVerificationStep[] = ["lint", "typecheck", "test", "build"];
+let isInitialized = false;
+let autoRunInFlight: Promise<void> | null = null;
+
+type WorkspaceVerificationNotifyLevel = "info" | "warning" | "error" | "success";
+
+interface WorkspaceVerificationContext {
+  cwd: string;
+  signal?: AbortSignal;
+  ui?: {
+    notify?: (message: string, level?: WorkspaceVerificationNotifyLevel) => void;
+  };
+}
+
+function buildVerificationMarker(): string {
+  return "<!-- WORKSPACE_VERIFICATION_STATUS -->";
+}
+
+function buildStatusBlock(
+  config: WorkspaceVerificationConfig,
+  state: WorkspaceVerificationState,
+  resolvedPlan: WorkspaceVerificationResolvedPlan,
+): string {
+  const lines = [
+    "## Workspace Verification",
+    "",
+    "コードを書いた後は、検証成功前に完了扱いへ進まないこと。",
+    "runbook と acceptance criteria を見て、必要な validation commands を全部回すこと。",
+    "",
+    `configured_profile: ${config.profile}`,
+    `resolved_profile: ${resolvedPlan.profile}`,
+    `gate_mode: ${config.gateMode}`,
+    `dirty: ${state.dirty}`,
+    `running: ${state.running}`,
+    `last_write_at: ${state.lastWriteAt ?? "-"}`,
+    `last_verified_at: ${state.lastVerifiedAt ?? "-"}`,
+  ];
+
+  if (resolvedPlan.acceptanceCriteria.length > 0) {
+    lines.push("", "Acceptance Criteria:");
+    for (const item of resolvedPlan.acceptanceCriteria.slice(0, 6)) {
+      lines.push(`- ${item}`);
+    }
+  }
+
+  if (resolvedPlan.validationCommands.length > 0) {
+    lines.push("", "Validation Commands:");
+    for (const command of resolvedPlan.validationCommands.slice(0, 6)) {
+      lines.push(`- ${command}`);
+    }
+  }
+
+  if (state.lastRun && !state.lastRun.success) {
+    lines.push("", "直近の検証は失敗している。artifact を読んで直してから進むこと。");
+    if (state.lastRun.artifactDir) {
+      lines.push(`artifact_dir: ${state.lastRun.artifactDir}`);
+    }
+  }
+
+  if (state.dirty) {
+    lines.push("", "未検証の変更が残っている。`workspace_verify` または自動検証の成功まで完了を止めること。");
+  }
+
+  return lines.join("\n");
+}
+
+function shouldBlockTool(
+  event: { toolName?: unknown; input?: unknown },
+  config: WorkspaceVerificationConfig,
+  state: WorkspaceVerificationState,
+  resolvedPlan: WorkspaceVerificationResolvedPlan,
+): string | null {
+  if (!isCompletionBlocked(config, state, resolvedPlan)) {
+    return null;
+  }
+
+  const toolName = typeof event.toolName === "string" ? event.toolName : "";
+  if (toolName === "task_complete") {
+    return "Workspace verification is stale. Run workspace_verify and inspect the latest artifacts before task_complete.";
+  }
+
+  if (toolName === "plan_update_step") {
+    const input = typeof event.input === "object" && event.input !== null
+      ? event.input as Record<string, unknown>
+      : {};
+    if (input.status === "completed") {
+      return "Workspace verification is stale. Run workspace_verify before marking a plan step completed.";
+    }
+  }
+
+  return null;
+}
+
+function makeSkippedStep(step: WorkspaceVerificationStep, reason: string): WorkspaceVerificationStepResult {
+  return {
+    step,
+    success: false,
+    skipped: true,
+    durationMs: 0,
+    error: reason,
+  };
+}
+
+async function runRuntimeVerification(
+  resolvedPlan: WorkspaceVerificationResolvedPlan,
+  cwd: string,
+): Promise<WorkspaceVerificationStepResult> {
+  const startedAt = Date.now();
+  const runtimeConfig = resolvedPlan.runtime;
+
+  if (!runtimeConfig.enabled) {
+    return makeSkippedStep("runtime", "runtime verification is disabled");
+  }
+
+  if (!runtimeConfig.command.trim()) {
+    return makeSkippedStep("runtime", "runtime command is empty");
+  }
+
+  const backgroundConfig = loadBackgroundProcessConfig(cwd);
+  if (!backgroundConfig.enabled) {
+    saveBackgroundProcessConfig(cwd, { enabled: true });
+  }
+
+  const existing = listBackgroundProcesses({ cwd, includeExited: false }).find((record) => {
+    return record.label === runtimeConfig.label || record.command === runtimeConfig.command;
+  });
+
+  try {
+    if (existing) {
+      const readiness = await waitForBackgroundProcessReady({
+        cwd,
+        id: existing.id,
+        timeoutMs: runtimeConfig.startupTimeoutMs,
+      });
+
+      return {
+        step: "runtime",
+        success: Boolean(readiness?.ready),
+        skipped: false,
+        durationMs: Date.now() - startedAt,
+        command: existing.command,
+        metadata: {
+          reused: true,
+          processId: existing.id,
+          pid: existing.pid,
+          readiness: readiness?.record.readinessStatus ?? existing.readinessStatus,
+        },
+        error: readiness?.ready ? undefined : "background process did not become ready",
+      };
+    }
+
+    const result = await startBackgroundProcess({
+      command: runtimeConfig.command,
+      cwd: runtimeConfig.cwd ?? cwd,
+      label: runtimeConfig.label,
+      readyPort: runtimeConfig.readyPort,
+      readyPattern: runtimeConfig.readyPattern,
+      startupTimeoutMs: runtimeConfig.startupTimeoutMs,
+      keepAliveOnShutdown: runtimeConfig.keepAliveOnShutdown,
+    });
+
+    return {
+      step: "runtime",
+      success: result.ready,
+      skipped: false,
+      durationMs: Date.now() - startedAt,
+      command: runtimeConfig.command,
+      metadata: {
+        reused: false,
+        processId: result.record.id,
+        pid: result.record.pid,
+        readiness: result.record.readinessStatus,
+      },
+      error: result.ready ? undefined : "background process started but readiness was not confirmed",
+    };
+  } catch (error) {
+    return {
+      step: "runtime",
+      success: false,
+      skipped: false,
+      durationMs: Date.now() - startedAt,
+      command: runtimeConfig.command,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function resolveUiCommands(resolvedPlan: WorkspaceVerificationResolvedPlan): string[] {
+  if (resolvedPlan.ui.commands.length > 0) {
+    return resolvedPlan.ui.commands;
+  }
+
+  if (!resolvedPlan.ui.baseUrl) {
+    return [];
+  }
+
+  return ["open ${baseUrl}", "snapshot"];
+}
+
+async function runPlaywrightCommand(
+  resolvedPlan: WorkspaceVerificationResolvedPlan,
+  cwd: string,
+  commandLine: string,
+): Promise<{ success: boolean; stdout: string; stderr: string; error?: string; durationMs: number; args: string[] }> {
+  const startedAt = Date.now();
+  const hydrated = resolvedPlan.ui.baseUrl
+    ? commandLine.replaceAll("${baseUrl}", resolvedPlan.ui.baseUrl)
+    : commandLine;
+  const parsed = parseWorkspaceCommand(hydrated);
+
+  if (parsed.error) {
+    return {
+      success: false,
+      stdout: "",
+      stderr: "",
+      error: parsed.error,
+      durationMs: Date.now() - startedAt,
+      args: [],
+    };
+  }
+
+  const args = buildPlaywrightCliArgs({
+    command: parsed.executable,
+    args: parsed.args,
+    session: resolvedPlan.ui.session,
+    config: resolvedPlan.ui.config,
+  });
+
+  try {
+    const { stdout, stderr } = await execFileAsync("playwright-cli", args, {
+      cwd,
+      timeout: resolvedPlan.ui.timeoutMs,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    return {
+      success: true,
+      stdout: stdout.trim(),
+      stderr: stderr.trim(),
+      durationMs: Date.now() - startedAt,
+      args,
+    };
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException & { stdout?: string; stderr?: string };
+    return {
+      success: false,
+      stdout: (err.stdout ?? "").trim(),
+      stderr: (err.stderr ?? "").trim(),
+      error: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - startedAt,
+      args,
+    };
+  }
+}
+
+async function runUiVerification(
+  resolvedPlan: WorkspaceVerificationResolvedPlan,
+  cwd: string,
+): Promise<WorkspaceVerificationStepResult> {
+  const startedAt = Date.now();
+
+  if (!resolvedPlan.ui.enabled) {
+    return makeSkippedStep("ui", "ui verification is disabled");
+  }
+
+  const commands = resolveUiCommands(resolvedPlan);
+  if (commands.length === 0) {
+    return makeSkippedStep("ui", "ui commands are empty");
+  }
+
+  const summaries: string[] = [];
+  for (const commandLine of commands) {
+    const result = await runPlaywrightCommand(resolvedPlan, cwd, commandLine);
+    summaries.push(`${commandLine}: ${result.success ? "ok" : "failed"}`);
+    if (!result.success) {
+      return {
+        step: "ui",
+        success: false,
+        skipped: false,
+        durationMs: Date.now() - startedAt,
+        command: commandLine,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        error: result.error,
+        metadata: { args: result.args, baseUrl: resolvedPlan.ui.baseUrl },
+      };
+    }
+  }
+
+  return {
+    step: "ui",
+    success: true,
+    skipped: false,
+    durationMs: Date.now() - startedAt,
+    command: summaries.join(" | "),
+  };
+}
+
+export async function runWorkspaceVerification(
+  config: WorkspaceVerificationConfig,
+  ctx: WorkspaceVerificationContext,
+  trigger: WorkspaceVerificationTrigger,
+  requestedSteps?: string[],
+): Promise<WorkspaceVerificationRunRecord> {
+  const cwd = ctx.cwd;
+  const resolvedPlan = resolveWorkspaceVerificationPlan(config, cwd);
+  markVerificationRunning({ cwd });
+  const startedAt = new Date().toISOString();
+  const stepResults: WorkspaceVerificationStepResult[] = [];
+  let shouldSkipRemaining = false;
+
+  for (const step of resolveEnabledSteps(config, resolvedPlan, requestedSteps)) {
+    if (shouldSkipRemaining) {
+      stepResults.push(makeSkippedStep(step, "skipped after previous verification failure"));
+      continue;
+    }
+
+    if (COMMAND_STEPS.includes(step)) {
+      const command = getResolvedCommandForStep(
+        resolvedPlan,
+        step as "lint" | "typecheck" | "test" | "build",
+      );
+
+      if (!command) {
+        stepResults.push(makeSkippedStep(step, "no command resolved for this step"));
+        continue;
+      }
+
+      const commandResult = await runWorkspaceCommand({
+        command,
+        cwd,
+        timeoutMs: config.commandTimeoutMs,
+        signal: ctx.signal,
+      });
+
+      const stepResult: WorkspaceVerificationStepResult = {
+        step,
+        success: commandResult.success,
+        skipped: false,
+        durationMs: commandResult.durationMs,
+        command,
+        stdout: commandResult.stdout,
+        stderr: commandResult.stderr,
+        error: commandResult.error,
+      };
+      stepResults.push(stepResult);
+      if (!stepResult.success) {
+        shouldSkipRemaining = true;
+      }
+      continue;
+    }
+
+    if (step === "runtime") {
+      const stepResult = await runRuntimeVerification(resolvedPlan, cwd);
+      stepResults.push(stepResult);
+      if (!stepResult.success && !stepResult.skipped) {
+        shouldSkipRemaining = true;
+      }
+      continue;
+    }
+
+    if (step === "ui") {
+      const stepResult = await runUiVerification(resolvedPlan, cwd);
+      stepResults.push(stepResult);
+      if (!stepResult.success && !stepResult.skipped) {
+        shouldSkipRemaining = true;
+      }
+    }
+  }
+
+  const bareRun: WorkspaceVerificationRunRecord = {
+    trigger,
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    success: stepResults.every((item) => item.success || item.skipped),
+    stepResults,
+    resolvedPlan,
+  };
+
+  const persistedRun = persistWorkspaceVerificationArtifacts(cwd, config, bareRun);
+  finalizeVerificationRun({ cwd, run: persistedRun });
+
+  if (ctx.ui?.notify) {
+    ctx.ui.notify(
+      persistedRun.success
+        ? `Workspace verification passed. Artifacts: ${persistedRun.artifactDir ?? "-"}`
+        : `Workspace verification failed. Artifacts: ${persistedRun.artifactDir ?? "-"}`,
+      persistedRun.success ? "success" : "warning",
+    );
+  }
+
+  return persistedRun;
+}
+
+function summarizeRun(runRecord: WorkspaceVerificationRunRecord): string {
+  const lines = [
+    `trigger=${runRecord.trigger}`,
+    `success=${runRecord.success}`,
+    `started_at=${runRecord.startedAt}`,
+    `finished_at=${runRecord.finishedAt}`,
+    `profile=${runRecord.resolvedPlan.profile}`,
+    `artifact_dir=${runRecord.artifactDir ?? "-"}`,
+  ];
+
+  if (runRecord.resolvedPlan.sources.length > 0) {
+    lines.push(`runbook_sources=${runRecord.resolvedPlan.sources.join(", ")}`);
+  }
+
+  if (runRecord.resolvedPlan.acceptanceCriteria.length > 0) {
+    lines.push("acceptance_criteria:");
+    for (const item of runRecord.resolvedPlan.acceptanceCriteria) {
+      lines.push(`- ${item}`);
+    }
+  }
+
+  for (const step of runRecord.stepResults) {
+    lines.push(
+      `[${step.step}] success=${step.success} skipped=${step.skipped} duration_ms=${step.durationMs}${step.error ? ` error=${step.error}` : ""}${step.artifactPath ? ` artifact=${step.artifactPath}` : ""}`,
+    );
+  }
+
+  return lines.join("\n");
+}
+
+async function maybeRunAutoVerification(ctx: ExtensionAPI["context"]): Promise<void> {
+  const config = loadWorkspaceVerificationConfig(ctx.cwd);
+  const state = loadWorkspaceVerificationState(ctx.cwd);
+
+  if (!shouldAutoRunVerification(config, state)) {
+    return;
+  }
+
+  if (autoRunInFlight) {
+    return;
+  }
+
+  autoRunInFlight = runWorkspaceVerification(config, ctx, "auto")
+    .then(() => undefined)
+    .finally(() => {
+      autoRunInFlight = null;
+    });
+
+  await autoRunInFlight;
+}
+
+export default function registerWorkspaceVerification(pi: ExtensionAPI) {
+  if (isInitialized) {
+    return;
+  }
+  isInitialized = true;
+
+  pi.on("before_agent_start", async (event, ctx) => {
+    const config = loadWorkspaceVerificationConfig(ctx.cwd);
+    const state = loadWorkspaceVerificationState(ctx.cwd);
+    const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
+    const marker = buildVerificationMarker();
+    const currentPrompt = event.systemPrompt ?? "";
+
+    if (currentPrompt.includes(marker)) {
+      return;
+    }
+
+    return {
+      systemPrompt: `${currentPrompt}\n\n${marker}\n${buildStatusBlock(config, state, resolvedPlan)}`.trim(),
+    };
+  });
+
+  pi.on("tool_result", async (event, ctx) => {
+    const toolName = typeof event.toolName === "string" ? event.toolName : "";
+    const isError = event && typeof event === "object" && "isError" in event
+      ? Boolean((event as { isError?: unknown }).isError)
+      : false;
+
+    if (WRITE_TOOLS.has(toolName) && !isError) {
+      markWorkspaceDirty({ cwd: ctx.cwd, toolName });
+      ctx.ui?.notify?.("Workspace marked dirty. Verification is now required.", "info");
+    }
+  });
+
+  pi.on("tool_call", async (event, ctx) => {
+    const config = loadWorkspaceVerificationConfig(ctx.cwd);
+    const state = loadWorkspaceVerificationState(ctx.cwd);
+    const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
+    const reason = shouldBlockTool(event, config, state, resolvedPlan);
+    if (!reason) {
+      return;
+    }
+
+    return { block: true, reason };
+  });
+
+  pi.on("turn_end", async (_event, ctx) => {
+    await maybeRunAutoVerification(ctx);
+  });
+
+  pi.on("session_start", async (_event, ctx) => {
+    const config = loadWorkspaceVerificationConfig(ctx.cwd);
+    const state = loadWorkspaceVerificationState(ctx.cwd);
+    const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
+
+    if (state.dirty) {
+      ctx.ui?.notify?.(
+        "Unverified workspace changes detected. Completion is gated until verification passes.",
+        "warning",
+      );
+      return;
+    }
+
+    if (config.enabled) {
+      ctx.ui?.notify?.(
+        `Workspace verification loaded (${resolvedPlan.profile}). Runtime=${resolvedPlan.runtime.enabled} UI=${resolvedPlan.ui.enabled}`,
+        "info",
+      );
+    }
+  });
+
+  pi.on("session_shutdown", async () => {
+    isInitialized = false;
+    autoRunInFlight = null;
+  });
+
+  pi.registerTool({
+    name: "workspace_verify",
+    label: "Workspace Verify",
+    description: "Run the resolved workspace verification pipeline with artifact capture.",
+    parameters: Type.Object({
+      trigger: Type.Optional(Type.Union([Type.Literal("manual"), Type.Literal("auto")])),
+      steps: Type.Optional(Type.Array(Type.String({ description: "subset of steps: lint,typecheck,test,build,runtime,ui" }))),
+    }),
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      const config = loadWorkspaceVerificationConfig(ctx.cwd);
+      const runRecord = await runWorkspaceVerification(
+        config,
+        { ...ctx, signal },
+        params.trigger === "auto" ? "auto" : "manual",
+        params.steps,
+      );
+
+      return {
+        content: [{ type: "text", text: summarizeRun(runRecord) }],
+        details: runRecord,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "workspace_verify_status",
+    label: "Workspace Verify Status",
+    description: "Show current workspace verification state and resolved runbook.",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      const config = loadWorkspaceVerificationConfig(ctx.cwd);
+      const state = loadWorkspaceVerificationState(ctx.cwd);
+      const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
+      return {
+        content: [{ type: "text", text: formatWorkspaceVerificationStatus(config, state, resolvedPlan) }],
+        details: { config, state, resolvedPlan },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "workspace_verify_plan",
+    label: "Workspace Verify Plan",
+    description: "Show the resolved verification runbook extracted from the workspace.",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      const config = loadWorkspaceVerificationConfig(ctx.cwd);
+      const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
+      return {
+        content: [{ type: "text", text: JSON.stringify(resolvedPlan, null, 2) }],
+        details: resolvedPlan,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "workspace_verification_config",
+    label: "Workspace Verification Config",
+    description: "Show or update workspace verification settings.",
+    parameters: Type.Object({
+      action: Type.Union([Type.Literal("show"), Type.Literal("update"), Type.Literal("reset")]),
+      enabled: Type.Optional(Type.Boolean()),
+      profile: Type.Optional(Type.Union([
+        Type.Literal("auto"),
+        Type.Literal("web-app"),
+        Type.Literal("library"),
+        Type.Literal("backend"),
+        Type.Literal("cli"),
+      ])),
+      autoDetectRunbook: Type.Optional(Type.Boolean()),
+      autoRunOnTurnEnd: Type.Optional(Type.Boolean()),
+      gateMode: Type.Optional(Type.Union([
+        Type.Literal("soft"),
+        Type.Literal("strict"),
+        Type.Literal("release"),
+      ])),
+      commandTimeoutMs: Type.Optional(Type.Integer({ minimum: 1000, maximum: 600000 })),
+      artifactRetentionRuns: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+      enableLint: Type.Optional(Type.Boolean()),
+      enableTypecheck: Type.Optional(Type.Boolean()),
+      enableTest: Type.Optional(Type.Boolean()),
+      enableBuild: Type.Optional(Type.Boolean()),
+      enableRuntime: Type.Optional(Type.Boolean()),
+      enableUi: Type.Optional(Type.Boolean()),
+      lintCommand: Type.Optional(Type.String()),
+      typecheckCommand: Type.Optional(Type.String()),
+      testCommand: Type.Optional(Type.String()),
+      buildCommand: Type.Optional(Type.String()),
+      runtimeCommand: Type.Optional(Type.String()),
+      runtimeLabel: Type.Optional(Type.String()),
+      runtimeReadyPort: Type.Optional(Type.Integer({ minimum: 1, maximum: 65535 })),
+      runtimeReadyPattern: Type.Optional(Type.String()),
+      runtimeStartupTimeoutMs: Type.Optional(Type.Integer({ minimum: 0, maximum: 300000 })),
+      runtimeKeepAliveOnShutdown: Type.Optional(Type.Boolean()),
+      uiSession: Type.Optional(Type.String()),
+      uiConfig: Type.Optional(Type.String()),
+      uiBaseUrl: Type.Optional(Type.String()),
+      uiTimeoutMs: Type.Optional(Type.Integer({ minimum: 1000, maximum: 300000 })),
+      uiCommands: Type.Optional(Type.Array(Type.String())),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (params.action === "reset") {
+        const reset = saveWorkspaceVerificationConfig(ctx.cwd, createWorkspaceVerificationConfig());
+        return {
+          content: [{ type: "text", text: JSON.stringify(reset, null, 2) }],
+          details: reset,
+        };
+      }
+
+      if (params.action === "update") {
+        const updated = saveWorkspaceVerificationConfig(ctx.cwd, {
+          enabled: params.enabled,
+          profile: params.profile,
+          autoDetectRunbook: params.autoDetectRunbook,
+          autoRunOnTurnEnd: params.autoRunOnTurnEnd,
+          gateMode: params.gateMode,
+          commandTimeoutMs: params.commandTimeoutMs,
+          artifactRetentionRuns: params.artifactRetentionRuns,
+          enabledSteps: {
+            lint: params.enableLint,
+            typecheck: params.enableTypecheck,
+            test: params.enableTest,
+            build: params.enableBuild,
+            runtime: params.enableRuntime,
+            ui: params.enableUi,
+          },
+          commands: {
+            lint: params.lintCommand,
+            typecheck: params.typecheckCommand,
+            test: params.testCommand,
+            build: params.buildCommand,
+          },
+          runtime: {
+            enabled: params.enableRuntime,
+            command: params.runtimeCommand,
+            label: params.runtimeLabel,
+            readyPort: params.runtimeReadyPort,
+            readyPattern: params.runtimeReadyPattern,
+            startupTimeoutMs: params.runtimeStartupTimeoutMs,
+            keepAliveOnShutdown: params.runtimeKeepAliveOnShutdown,
+          },
+          ui: {
+            enabled: params.enableUi,
+            session: params.uiSession,
+            config: params.uiConfig,
+            baseUrl: params.uiBaseUrl,
+            timeoutMs: params.uiTimeoutMs,
+            commands: params.uiCommands,
+          },
+        });
+
+        return {
+          content: [{ type: "text", text: JSON.stringify(updated, null, 2) }],
+          details: updated,
+        };
+      }
+
+      const current = loadWorkspaceVerificationConfig(ctx.cwd);
+      return {
+        content: [{ type: "text", text: JSON.stringify(current, null, 2) }],
+        details: current,
+      };
+    },
+  });
+}
