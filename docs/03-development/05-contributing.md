@@ -130,10 +130,9 @@ git push origin feature/your-feature-name
 # GitHubでプルリクエストを作成
 ```
 
-`main` / `master` の branch protection では、既定では次を required status checks にしてください。
+`main` / `master` の branch protection も、既定では required status checks を追加しません。
 
-- `security`
-- `compatibility`
+`ENABLE_STANDARD_CI_GATES=true` を有効化した場合だけ、`security` と `compatibility` を追加します。
 
 `ENABLE_WORKSPACE_QUALITY_GATES=true` を有効化した場合だけ、`quality-gates` も追加します。
 

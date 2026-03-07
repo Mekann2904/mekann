@@ -275,9 +275,11 @@ jobs:
       - run: npm run verify:workspace
 ```
 
-branch protection を使う場合は、既定では `compatibility` と `security` を required check にします。
+branch protection を使う場合も、既定では required check は追加しません。
 
-`ENABLE_WORKSPACE_QUALITY_GATES=true` で quality gate を有効化した場合だけ、`quality-gates` も required にします。
+`ENABLE_STANDARD_CI_GATES=true` を有効化した場合だけ、`compatibility` と `security` を required にします。
+
+`ENABLE_WORKSPACE_QUALITY_GATES=true` を有効化した場合だけ、`quality-gates` も required にします。
 
 admin token がある環境では、次で branch protection を同期できます。
 

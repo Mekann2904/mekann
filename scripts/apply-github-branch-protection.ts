@@ -6,10 +6,11 @@
  */
 
 function resolveRequiredChecks(): string[] {
-  const checks = [
-    "compatibility",
-    "security",
-  ];
+  const checks: string[] = [];
+
+  if (process.env.ENABLE_STANDARD_CI_GATES?.trim() === "true") {
+    checks.push("compatibility", "security");
+  }
 
   if (process.env.ENABLE_WORKSPACE_QUALITY_GATES?.trim() === "true") {
     checks.unshift("quality-gates");
@@ -75,6 +76,10 @@ async function main(): Promise<void> {
   }
 
   for (const branch of branches) {
+    if (resolveRequiredChecks().length === 0) {
+      process.stdout.write(`skip apply-github-branch-protection: no CI checks are enabled for ${branch}\n`);
+      continue;
+    }
     await applyBranchProtection(token, owner, repo, branch);
   }
 

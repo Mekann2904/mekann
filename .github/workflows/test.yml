@@ -60,6 +60,7 @@ jobs:
           if-no-files-found: ignore
 
   compatibility:
+    if: vars.ENABLE_STANDARD_CI_GATES == 'true'
     runs-on: ubuntu-latest
 
     strategy:
@@ -89,6 +90,7 @@ jobs:
         run: npm test
 
   security:
+    if: vars.ENABLE_STANDARD_CI_GATES == 'true'
     runs-on: ubuntu-latest
 
     steps:

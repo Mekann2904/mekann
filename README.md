@@ -408,9 +408,11 @@ admin token がある場合は、branch protection も script で同期できま
 GITHUB_TOKEN=... GITHUB_REPOSITORY=owner/repo npm run policy:apply-branch-protection
 ```
 
-`main` / `master` を保護する場合は、既定では `compatibility` と `security` を required status checks にします。
+`main` / `master` を保護する場合も、既定では required status checks は追加しません。
 
-`ENABLE_WORKSPACE_QUALITY_GATES=true` で quality gate を有効化したときだけ、`quality-gates` も required に追加してください。
+`ENABLE_STANDARD_CI_GATES=true` を有効化したときだけ、`compatibility` と `security` を required に追加します。
+
+`ENABLE_WORKSPACE_QUALITY_GATES=true` も有効化したときだけ、`quality-gates` も追加してください。
 
 自動推定ではなく固定 profile で運用する例:
 
