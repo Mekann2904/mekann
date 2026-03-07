@@ -203,8 +203,8 @@ pi remove https://github.com/Mekann2904/mekann
 ```
 mekann/
 ├── .pi/
-│   ├── extensions/          # 拡張機能（32個）
-│   ├── lib/                 # 共有ライブラリ
+│   ├── extensions/          # 拡張機能（19個の主要ツール + サブモジュール）
+│   ├── lib/                 # 共有ライブラリ（13個のコアモジュール）
 │   ├── skills/              # スキル定義（24個）
 │   └── APPEND_SYSTEM.md     # プロジェクトレベルシステムプロンプト
 ├── docs/                    # ドキュメント

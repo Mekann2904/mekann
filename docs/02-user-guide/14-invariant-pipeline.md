@@ -2,7 +2,7 @@
 title: Invariant Validation Pipeline
 category: user-guide
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-03-08
 tags: [invariant, formal-methods, testing, quint, rust]
 related: [08-subagents.md, 09-agent-teams.md]
 ---

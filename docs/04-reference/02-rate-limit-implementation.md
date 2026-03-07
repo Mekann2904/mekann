@@ -32,17 +32,9 @@ flowchart TB
         PL --> |ティア判定| Tier[pro/max/free]
     end
 
-    subgraph Layer3["第3層: Cross-Instance Coordinator"]
-        CI[cross-instance-coordinator.ts]
-        CI --> |インスタンス検出| Register[登録/ハートビート]
-        CI --> |負荷分散| Distribute[並列数分散]
-        CI --> |ワークスチーリング| Steal[タスク横取り]
-    end
-
     Request[APIリクエスト] --> AC
     AC --> PL
-    PL --> CI
-    CI --> LLM[LLM呼び出し]
+    PL --> LLM[LLM呼び出し]
 ```
 
 ## 429検知〜回復フロー
@@ -87,7 +79,6 @@ flowchart TD
 |---------|------|--------|
 | `.pi/lib/adaptive-rate-controller.ts` | 429学習エンジン | `record429`, `recordSuccess`, `getEffectiveLimit` |
 | `.pi/lib/provider-limits.ts` | プロバイダー制限定義 | `resolveLimits`, `getConcurrencyLimit`, `getRpmLimit` |
-| `.pi/lib/cross-instance-coordinator.ts` | インスタンス間協調 | `registerInstance`, `getMyParallelLimit`, `safeStealWork` |
 | `.pi/lib/runtime-config.ts` | 設定値の一元管理 | `getRuntimeConfig` |
 | `.pi/extensions/cross-instance-runtime.ts` | 拡張機能 | `pi_instance_status`, `pi_model_limits` |
 | `.pi/extensions/pi-coding-agent-rate-limit-fix.ts` | パッチ | Retry-After解析 |
@@ -306,48 +297,6 @@ if (analysis.shouldProactivelyThrottle) {
     console.log(`Risk window: ${analysis.nextRiskWindow.start} - ${analysis.nextRiskWindow.end}`);
   }
 }
-```
-
-### クロスインスタンス協調
-
-```typescript
-import {
-  registerInstance,
-  getMyParallelLimit,
-  updateWorkloadInfo,
-} from "./cross-instance-coordinator";
-
-// インスタンス登録
-registerInstance(sessionId, process.cwd());
-
-// 並列数取得
-const myLimit = getMyParallelLimit();
-console.log(`My parallel limit: ${myLimit}`);
-
-// ワークロード更新
-updateWorkloadInfo(pendingTasks.length, avgLatencyMs);
-```
-
-### ワークスチーリング
-
-```typescript
-import {
-  shouldAttemptWorkStealing,
-  safeStealWork,
-  getStealingStats,
-} from "./cross-instance-coordinator";
-
-// スチーリング判定
-if (shouldAttemptWorkStealing()) {
-  const entry = await safeStealWork();
-  if (entry) {
-    console.log(`Stole task: ${entry.id} from ${entry.instanceId}`);
-  }
-}
-
-// 統計取得
-const stats = getStealingStats();
-console.log(`Success rate: ${(stats.successRate * 100).toFixed(1)}%`);
 ```
 
 ## 状態確認

@@ -2,7 +2,7 @@
 title: 開発者向けGetting Started
 category: development
 audience: developer
-last_updated: 2026-02-12
+last_updated: 2026-03-08
 tags: [development, setup]
 related: [./03-api-reference.md, ../01-getting-started/02-installation.md]
 ---

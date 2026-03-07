@@ -2,7 +2,7 @@
 title: abbr - 略語管理
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-11
+last_updated: 2026-03-08
 tags: [abbr, abbreviation, productivity]
 related: [../README.md, ./01-extensions.md]
 ---

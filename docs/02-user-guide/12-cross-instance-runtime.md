@@ -2,7 +2,7 @@
 title: Cross-Instance Runtime
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-25
+last_updated: 2026-03-08
 tags: [runtime, multi-instance, coordination, limits]
 related: [./01-extensions.md, ./08-subagents.md, ./09-agent-teams.md]
 ---

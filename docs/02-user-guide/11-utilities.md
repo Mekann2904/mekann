@@ -2,7 +2,7 @@
 title: ユーティリティ
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-14
+last_updated: 2026-03-08
 tags: [utilities, monitoring, analytics, status]
 related: [../README.md, ./01-extensions.md]
 ---

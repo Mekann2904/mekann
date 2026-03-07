@@ -2,7 +2,7 @@
 title: 拡張機能一覧
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-25
+last_updated: 2026-03-08
 tags: [extensions, overview]
 related: [./02-question.md, ./08-subagents.md, ./09-agent-teams.md]
 ---

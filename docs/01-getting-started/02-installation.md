@@ -2,7 +2,7 @@
 title: インストールガイド
 category: getting-started
 audience: new-user
-last_updated: 2026-02-12
+last_updated: 2026-03-08
 tags: [installation, setup]
 related: [./01-quick-start.md, ./03-first-steps.md]
 ---

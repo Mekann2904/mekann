@@ -2,7 +2,7 @@
 title: UL Dual Mode
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-15
+last_updated: 2026-03-08
 tags: [ul-dual-mode, orchestration, adaptive]
 related: [../README.md, ./01-extensions.md, ./08-subagents.md, ./09-agent-teams.md]
 ---

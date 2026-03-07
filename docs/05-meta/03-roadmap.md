@@ -2,7 +2,7 @@
 title: ロードマップ
 category: meta
 audience: new-user, daily-user, developer, contributor
-last_updated: 2026-02-11
+last_updated: 2026-03-08
 tags: [roadmap]
 related: [./01-changelog.md, ./02-documentation-policy.md]
 ---
