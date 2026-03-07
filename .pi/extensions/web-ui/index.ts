@@ -21,6 +21,7 @@ import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { exec, spawn, type ChildProcess } from "child_process";
 import { request } from "http";
+import { createRequire } from "module";
 import { promisify } from "util";
 import { join } from "path";
 import { setTimeout as delay } from "timers/promises";
@@ -35,6 +36,7 @@ import {
 } from "../server.js";
 
 const execAsync = promisify(exec);
+const require = createRequire(import.meta.url);
 
 const DEFAULT_PORT = 3000;
 
@@ -51,10 +53,11 @@ let contextHistoryStorage: ContextHistoryStorage | null = null;
 function startUnifiedServerProcess(port: number): ChildProcess | null {
   // サーバースクリプトのパスを取得
   const serverScript = join(import.meta.dirname, "unified-server.ts");
+  const tsxLoaderPath = require.resolve("tsx");
 
-  // npx tsx は環境によって IPC 初期化で失敗しやすいので、
-  // Node 本体に tsx ローダーを差し込んで直接起動する。
-  const child = spawn(process.execPath, ["--import", "tsx", serverScript], {
+  // --import に渡すローダーは、ユーザーの cwd ではなく
+  // このパッケージ配下の node_modules から絶対パスで解決する。
+  const child = spawn(process.execPath, ["--import", tsxLoaderPath, serverScript], {
     detached: true, // 親プロセスが終了しても生き残る
     stdio: "ignore", // 親プロセスと標準入出力を共有しない
     env: {
