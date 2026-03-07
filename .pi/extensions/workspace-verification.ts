@@ -19,6 +19,7 @@ import {
   waitForBackgroundProcessReady,
 } from "../lib/background-processes.js";
 import {
+  acknowledgeReplanDecision,
   acknowledgeVerificationArtifacts,
   createWorkspaceVerificationConfig,
   finalizeVerificationRun,
@@ -31,6 +32,7 @@ import {
   markWorkspaceDirty,
   parseWorkspaceCommand,
   persistWorkspaceVerificationArtifacts,
+  persistWorkspaceVerificationContinuityPack,
   resolveEnabledSteps,
   resolveWorkspaceVerificationPlan,
   saveWorkspaceVerificationState,
@@ -155,6 +157,13 @@ function buildStatusBlock(
     lines.push("", "直近の成功検証は未レビュー。artifact を見たら `workspace_verify_ack` を実行すること。");
   }
 
+  if (config.requireReplanOnRepeatedFailure && state.replanRequired) {
+    lines.push("", `同じ失敗が繰り返されている。plan を更新し、新しい修復方針を ` + "`workspace_verify_replan`" + " で記録すること。");
+    if (state.replanReason) {
+      lines.push(`replan_reason: ${state.replanReason}`);
+    }
+  }
+
   return lines.join("\n");
 }
 
@@ -169,9 +178,11 @@ function shouldBlockTool(
   }
 
   const toolName = typeof event.toolName === "string" ? event.toolName : "";
-  const reasonCore = config.requireProofReview && state.pendingProofReview
-    ? "A successful verification exists, but its proof artifacts have not been acknowledged. Run workspace_verify_ack after inspecting the latest artifacts."
-    : "Workspace verification is stale. Run workspace_verify and inspect the latest artifacts.";
+  const reasonCore = config.requireReplanOnRepeatedFailure && state.replanRequired
+    ? `Repeated verification failures require a new repair strategy. Update the plan and run workspace_verify_replan. ${state.replanReason ?? ""}`.trim()
+    : config.requireProofReview && state.pendingProofReview
+      ? "A successful verification exists, but its proof artifacts have not been acknowledged. Run workspace_verify_ack after inspecting the latest artifacts."
+      : "Workspace verification is stale. Run workspace_verify and inspect the latest artifacts.";
   if (toolName === "task_complete") {
     return `${reasonCore} before task_complete.`;
   }
@@ -183,6 +194,12 @@ function shouldBlockTool(
     if (input.status === "completed") {
       return `${reasonCore} before marking a plan step completed.`;
     }
+  }
+
+  if ((toolName === "edit" || toolName === "write" || toolName === "patch" || toolName === "bash")
+    && config.requireReplanOnRepeatedFailure
+    && state.replanRequired) {
+    return `${reasonCore} before further workspace mutations.`;
   }
 
   return null;
@@ -500,6 +517,13 @@ export async function runWorkspaceVerification(
     }
   }
 
+  const latestState = loadWorkspaceVerificationState(cwd);
+  const continuityPath = persistWorkspaceVerificationContinuityPack(cwd, latestState, persistedRun.resolvedPlan);
+  saveWorkspaceVerificationState(cwd, {
+    ...latestState,
+    continuityPath,
+  });
+
   if (ctx.ui?.notify) {
     ctx.ui.notify(
       persistedRun.success
@@ -607,6 +631,12 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
           });
         }
       }
+      const latestState = loadWorkspaceVerificationState(ctx.cwd);
+      const continuityPath = persistWorkspaceVerificationContinuityPack(ctx.cwd, latestState, resolveWorkspaceVerificationPlan(config, ctx.cwd));
+      saveWorkspaceVerificationState(ctx.cwd, {
+        ...latestState,
+        continuityPath,
+      });
       ctx.ui?.notify?.("Workspace marked dirty. Verification is now required.", "info");
     }
   });
@@ -647,7 +677,19 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
       );
     }
 
+    if (config.requireReplanOnRepeatedFailure && state.replanRequired) {
+      ctx.ui?.notify?.(
+        "Repeated verification failures require replanning. Update the plan and run workspace_verify_replan.",
+        "warning",
+      );
+    }
+
     if (config.enabled) {
+      const continuityPath = persistWorkspaceVerificationContinuityPack(ctx.cwd, state, resolvedPlan);
+      saveWorkspaceVerificationState(ctx.cwd, {
+        ...state,
+        continuityPath,
+      });
       ctx.ui?.notify?.(
         `Workspace verification loaded (${resolvedPlan.profile}). Runtime=${resolvedPlan.runtime.enabled} UI=${resolvedPlan.ui.enabled}`,
         "info",
@@ -727,10 +769,50 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
         cwd: ctx.cwd,
         artifactDir: params.artifactDir,
       });
+      const config = loadWorkspaceVerificationConfig(ctx.cwd);
+      const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
+      const continuityPath = persistWorkspaceVerificationContinuityPack(ctx.cwd, state, resolvedPlan);
+      saveWorkspaceVerificationState(ctx.cwd, {
+        ...state,
+        continuityPath,
+      });
 
       return {
         content: [{ type: "text", text: `Proof artifacts acknowledged: ${state.lastReviewedArtifactDir ?? "-"}` }],
-        details: state,
+        details: {
+          ...state,
+          continuityPath,
+        },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "workspace_verify_replan",
+    label: "Workspace Verify Replan",
+    description: "Record a new repair strategy after repeated verification failures and release the replan gate.",
+    parameters: Type.Object({
+      strategy: Type.String({ description: "Concrete repair strategy to try next" }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const state = acknowledgeReplanDecision({
+        cwd: ctx.cwd,
+        strategy: params.strategy,
+      });
+      const config = loadWorkspaceVerificationConfig(ctx.cwd);
+      const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
+      const continuityPath = persistWorkspaceVerificationContinuityPack(ctx.cwd, state, resolvedPlan);
+      saveWorkspaceVerificationState(ctx.cwd, {
+        ...state,
+        continuityPath,
+      });
+
+      return {
+        content: [{ type: "text", text: `Replan acknowledged: ${params.strategy}` }],
+        details: {
+          ...state,
+          continuityPath,
+        },
       };
     },
   });
@@ -752,8 +834,11 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
       autoDetectRunbook: Type.Optional(Type.Boolean()),
       autoRunOnTurnEnd: Type.Optional(Type.Boolean()),
       requireProofReview: Type.Optional(Type.Boolean()),
+      requireReplanOnRepeatedFailure: Type.Optional(Type.Boolean()),
+      enableEvalCorpus: Type.Optional(Type.Boolean()),
       checkpointOnMutation: Type.Optional(Type.Boolean()),
       checkpointOnFailure: Type.Optional(Type.Boolean()),
+      antiLoopThreshold: Type.Optional(Type.Integer({ minimum: 2, maximum: 10 })),
       gateMode: Type.Optional(Type.Union([
         Type.Literal("soft"),
         Type.Literal("strict"),
@@ -799,8 +884,11 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
           autoDetectRunbook: params.autoDetectRunbook,
           autoRunOnTurnEnd: params.autoRunOnTurnEnd,
           requireProofReview: params.requireProofReview,
+          requireReplanOnRepeatedFailure: params.requireReplanOnRepeatedFailure,
+          enableEvalCorpus: params.enableEvalCorpus,
           checkpointOnMutation: params.checkpointOnMutation,
           checkpointOnFailure: params.checkpointOnFailure,
+          antiLoopThreshold: params.antiLoopThreshold,
           gateMode: params.gateMode,
           commandTimeoutMs: params.commandTimeoutMs,
           artifactRetentionRuns: params.artifactRetentionRuns,

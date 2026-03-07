@@ -11,6 +11,10 @@ const mockState = vi.hoisted(() => ({
   storage: new Map<string, unknown>(),
   files: new Map<string, string>(),
   dirs: new Set<string>(),
+  planStorage: {
+    plans: [] as Array<Record<string, unknown>>,
+    currentPlanId: undefined as string | undefined,
+  },
 }));
 
 vi.mock("../../../.pi/lib/storage/sqlite-state-store.js", () => ({
@@ -27,6 +31,13 @@ vi.mock("../../../.pi/lib/storage/sqlite-state-store.js", () => ({
 
 vi.mock("../../../.pi/lib/storage/storage-lock.js", () => ({
   withFileLock: vi.fn((_target: string, fn: () => unknown) => fn()),
+}));
+
+vi.mock("../../../.pi/lib/storage/task-plan-store.js", () => ({
+  loadPlanStorage: vi.fn(() => mockState.planStorage),
+  savePlanStorage: vi.fn((storage) => {
+    mockState.planStorage = storage;
+  }),
 }));
 
 vi.mock("node:fs", () => ({
@@ -49,6 +60,7 @@ vi.mock("node:fs", () => ({
     mtimeMs: Date.now(),
     isDirectory: () => true,
   })),
+  rmSync: vi.fn(),
   writeFileSync: vi.fn((path: string, content: string) => {
     mockState.files.set(path, content);
   }),
@@ -59,6 +71,10 @@ describe("workspace-verification library", () => {
     mockState.storage.clear();
     mockState.files.clear();
     mockState.dirs.clear();
+    mockState.planStorage = {
+      plans: [],
+      currentPlanId: undefined,
+    };
     vi.restoreAllMocks();
   });
 
@@ -161,6 +177,96 @@ describe("workspace-verification library", () => {
     expect(state.pendingProofReview).toBe(false);
     expect(state.lastReviewedArtifactDir).toBe("/repo/.pi/verification-runs/latest");
     expect(isCompletionBlocked(config, state)).toBe(false);
+  });
+
+  it("requires replanning after repeated identical failures and records an eval case", async () => {
+    const {
+      createWorkspaceVerificationConfig,
+      finalizeVerificationRun,
+      loadWorkspaceVerificationState,
+      isCompletionBlocked,
+      acknowledgeReplanDecision,
+    } = await import("../../../.pi/lib/workspace-verification.js");
+
+    mockState.planStorage = {
+      currentPlanId: "plan-1",
+      plans: [{
+        id: "plan-1",
+        name: "Repair failing lint",
+        status: "active",
+        progressLog: [],
+      }],
+    };
+
+    const config = createWorkspaceVerificationConfig();
+    const failedRun = {
+      trigger: "manual" as const,
+      startedAt: "2026-03-07T00:00:00.000Z",
+      finishedAt: "2026-03-07T00:00:10.000Z",
+      success: false,
+      artifactDir: "/repo/.pi/verification-runs/latest",
+      resolvedPlan: {
+        profile: "web-app" as const,
+        commands: { lint: "npm run lint" },
+        runtime: {
+          enabled: false,
+          command: "",
+          label: "workspace-dev-server",
+          startupTimeoutMs: 1000,
+          keepAliveOnShutdown: true,
+        },
+        ui: {
+          enabled: false,
+          timeoutMs: 1000,
+          commands: [],
+        },
+        acceptanceCriteria: ["lint が通ること"],
+        validationCommands: ["npm run lint"],
+        recommendedSteps: ["lint"],
+        reasons: ["Behavioral regression risk detected"],
+        proofArtifacts: ["verification summary"],
+        sources: [],
+      },
+      stepResults: [{
+        step: "lint" as const,
+        success: false,
+        skipped: false,
+        durationMs: 10,
+        command: "npm run lint",
+        stderr: "lint failed in /repo/src/app.ts",
+        error: "lint failed in /repo/src/app.ts",
+      }],
+    };
+
+    finalizeVerificationRun({ cwd: "/repo", run: failedRun });
+    finalizeVerificationRun({
+      cwd: "/repo",
+      run: {
+        ...failedRun,
+        finishedAt: "2026-03-07T00:00:20.000Z",
+      },
+    });
+    finalizeVerificationRun({
+      cwd: "/repo",
+      run: {
+        ...failedRun,
+        finishedAt: "2026-03-07T00:00:30.000Z",
+      },
+    });
+
+    let state = loadWorkspaceVerificationState("/repo");
+    expect(state.replanRequired).toBe(true);
+    expect(state.repeatedFailureCount).toBe(3);
+    expect(state.lastEvalCasePath).toContain(".pi/evals/workspace-verification");
+    expect(isCompletionBlocked(config, state)).toBe(true);
+
+    acknowledgeReplanDecision({ cwd: "/repo", strategy: "lint 対象を src/app.ts に絞って修正する" });
+
+    state = loadWorkspaceVerificationState("/repo");
+    expect(state.replanRequired).toBe(false);
+    expect(state.lastRepairStrategy).toContain("src/app.ts");
+    expect(Array.isArray(mockState.planStorage.plans[0]?.progressLog)).toBe(true);
+    expect(String(mockState.planStorage.plans[0]?.progressLog?.[0])).toContain("Replan strategy recorded");
   });
 
   it("auto-runs only when the last write is newer than the last run", async () => {
@@ -322,5 +428,74 @@ describe("workspace-verification library", () => {
     expect(run.artifactDir).toContain(".pi/verification-runs");
     expect([...mockState.files.keys()].some((path) => path.endsWith("summary.json"))).toBe(true);
     expect(run.stepResults[0]?.artifactPath).toContain(".log");
+  });
+
+  it("persists a continuity pack with next suggested action", async () => {
+    const {
+      persistWorkspaceVerificationContinuityPack,
+      createWorkspaceVerificationState,
+    } = await import("../../../.pi/lib/workspace-verification.js");
+
+    mockState.planStorage = {
+      currentPlanId: "plan-1",
+      plans: [{
+        id: "plan-1",
+        name: "Continuity test",
+        status: "active",
+        acceptanceCriteria: ["UI が壊れていないこと"],
+        fileModuleImpact: ["src/app.tsx"],
+        testVerification: ["npm test"],
+        progressLog: ["2026-03-07T00:00:00.000Z planner: Started"],
+        steps: [{ title: "Repair UI", status: "in_progress" }],
+      }],
+    };
+
+    const state = {
+      ...createWorkspaceVerificationState(),
+      replanRequired: true,
+      replanReason: "Repeated verification failure",
+      lastRun: {
+        trigger: "manual" as const,
+        startedAt: "2026-03-07T00:00:00.000Z",
+        finishedAt: "2026-03-07T00:00:10.000Z",
+        success: false,
+        artifactDir: "/repo/.pi/verification-runs/latest",
+        resolvedPlan: {
+          profile: "web-app" as const,
+          commands: {},
+          runtime: {
+            enabled: false,
+            command: "",
+            label: "workspace-dev-server",
+            startupTimeoutMs: 1000,
+            keepAliveOnShutdown: true,
+          },
+          ui: {
+            enabled: false,
+            timeoutMs: 1000,
+            commands: [],
+          },
+          acceptanceCriteria: [],
+          validationCommands: [],
+          recommendedSteps: ["test"],
+          reasons: [],
+          proofArtifacts: ["verification summary"],
+          sources: [],
+        },
+        stepResults: [{
+          step: "test" as const,
+          success: false,
+          skipped: false,
+          durationMs: 10,
+          error: "test failed",
+        }],
+      },
+    };
+
+    const continuityPath = persistWorkspaceVerificationContinuityPack("/repo", state, state.lastRun?.resolvedPlan);
+
+    expect(continuityPath).toContain(".pi/workspace-verification/continuity.json");
+    expect(mockState.files.get(continuityPath)).toContain("workspace_verify_replan");
+    expect(mockState.files.get(continuityPath)).toContain("src/app.tsx");
   });
 });

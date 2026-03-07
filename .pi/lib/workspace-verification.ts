@@ -15,9 +15,11 @@ import {
   writeFileSync,
 } from "node:fs";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 
 import { parseFrontmatter } from "./frontmatter.js";
+import { loadPlanStorage, savePlanStorage } from "./storage/task-plan-store.js";
 import { truncateTextWithMarker } from "./text-utils.js";
 import { withFileLock } from "./storage/storage-lock.js";
 import { readJsonState, writeJsonState } from "./storage/sqlite-state-store.js";
@@ -106,8 +108,11 @@ export interface WorkspaceVerificationConfig {
   autoRunOnTurnEnd: boolean;
   gateMode: WorkspaceVerificationGateMode;
   requireProofReview: boolean;
+  requireReplanOnRepeatedFailure: boolean;
+  enableEvalCorpus: boolean;
   checkpointOnMutation: boolean;
   checkpointOnFailure: boolean;
+  antiLoopThreshold: number;
   commandTimeoutMs: number;
   artifactRetentionRuns: number;
   enabledSteps: Record<WorkspaceVerificationStep, boolean>;
@@ -128,8 +133,11 @@ export interface WorkspaceVerificationConfigPatch {
   autoRunOnTurnEnd?: boolean;
   gateMode?: WorkspaceVerificationGateMode;
   requireProofReview?: boolean;
+  requireReplanOnRepeatedFailure?: boolean;
+  enableEvalCorpus?: boolean;
   checkpointOnMutation?: boolean;
   checkpointOnFailure?: boolean;
+  antiLoopThreshold?: number;
   commandTimeoutMs?: number;
   artifactRetentionRuns?: number;
   enabledSteps?: Partial<Record<WorkspaceVerificationStep, boolean>>;
@@ -142,15 +150,54 @@ export interface WorkspaceVerificationState {
   dirty: boolean;
   running: boolean;
   pendingProofReview: boolean;
+  replanRequired: boolean;
   writeCount: number;
+  repeatedFailureCount: number;
   lastWriteAt?: string;
   lastWriteTool?: string;
   lastVerifiedAt?: string;
   lastReviewedAt?: string;
   lastReviewedArtifactDir?: string;
+  lastReplanAt?: string;
+  lastRepairStrategy?: string;
   lastMutationCheckpointId?: string;
   lastFailureCheckpointId?: string;
+  lastFailureFingerprint?: string;
+  replanReason?: string;
+  lastEvalCasePath?: string;
+  continuityPath?: string;
   lastRun?: WorkspaceVerificationRunRecord;
+}
+
+interface WorkspaceVerificationPlanSnapshot {
+  planId?: string;
+  name?: string;
+  documentPath?: string;
+  currentStep?: string;
+  acceptanceCriteria: string[];
+  fileModuleImpact: string[];
+  testVerification: string[];
+  recentProgress: string[];
+}
+
+interface WorkspaceVerificationEvalCase {
+  savedAt: string;
+  fingerprint: string;
+  repeatedFailureCount: number;
+  replanRequired: boolean;
+  replanReason?: string;
+  artifactDir?: string;
+  profile: WorkspaceVerificationProfile;
+  recommendedSteps: WorkspaceVerificationStep[];
+  acceptanceCriteria: string[];
+  proofArtifacts: string[];
+  fileModuleImpact: string[];
+  failedSteps: Array<{
+    step: WorkspaceVerificationStep;
+    command?: string;
+    error?: string;
+    artifactPath?: string;
+  }>;
 }
 
 export interface ParsedWorkspaceCommand {
@@ -218,6 +265,24 @@ export function ensureVerificationArtifactsDir(cwd?: string): string {
   return dir;
 }
 
+function ensureVerificationWorkspaceDir(cwd?: string): string {
+  const targetCwd = normalizeCwd(cwd);
+  const dir = join(targetCwd, ".pi", "workspace-verification");
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}
+
+function ensureVerificationEvalDir(cwd?: string): string {
+  const targetCwd = normalizeCwd(cwd);
+  const dir = join(targetCwd, ".pi", "evals", "workspace-verification");
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}
+
 function normalizeBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
@@ -278,8 +343,11 @@ export function createWorkspaceVerificationConfig(): WorkspaceVerificationConfig
     autoRunOnTurnEnd: true,
     gateMode: "strict",
     requireProofReview: true,
+    requireReplanOnRepeatedFailure: true,
+    enableEvalCorpus: true,
     checkpointOnMutation: true,
     checkpointOnFailure: true,
+    antiLoopThreshold: 3,
     commandTimeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
     artifactRetentionRuns: DEFAULT_ARTIFACT_RETENTION,
     enabledSteps: createDefaultEnabledSteps(),
@@ -309,7 +377,9 @@ export function createWorkspaceVerificationState(): WorkspaceVerificationState {
     dirty: false,
     running: false,
     pendingProofReview: false,
+    replanRequired: false,
     writeCount: 0,
+    repeatedFailureCount: 0,
   };
 }
 
@@ -332,8 +402,14 @@ export function normalizeWorkspaceVerificationConfig(input: unknown): WorkspaceV
     autoRunOnTurnEnd: normalizeBoolean(record.autoRunOnTurnEnd, fallback.autoRunOnTurnEnd),
     gateMode: normalizeGateMode(record.gateMode, fallback.gateMode),
     requireProofReview: normalizeBoolean(record.requireProofReview, fallback.requireProofReview),
+    requireReplanOnRepeatedFailure: normalizeBoolean(
+      record.requireReplanOnRepeatedFailure,
+      fallback.requireReplanOnRepeatedFailure,
+    ),
+    enableEvalCorpus: normalizeBoolean(record.enableEvalCorpus, fallback.enableEvalCorpus),
     checkpointOnMutation: normalizeBoolean(record.checkpointOnMutation, fallback.checkpointOnMutation),
     checkpointOnFailure: normalizeBoolean(record.checkpointOnFailure, fallback.checkpointOnFailure),
+    antiLoopThreshold: normalizeInteger(record.antiLoopThreshold, fallback.antiLoopThreshold, 2, 10),
     commandTimeoutMs: normalizeInteger(record.commandTimeoutMs, fallback.commandTimeoutMs, 1_000, 600_000),
     artifactRetentionRuns: normalizeInteger(record.artifactRetentionRuns, fallback.artifactRetentionRuns, 1, 200),
     enabledSteps: {
@@ -415,14 +491,22 @@ export function normalizeWorkspaceVerificationState(input: unknown): WorkspaceVe
     dirty: normalizeBoolean(record.dirty, fallback.dirty),
     running: normalizeBoolean(record.running, fallback.running),
     pendingProofReview: normalizeBoolean(record.pendingProofReview, fallback.pendingProofReview),
+    replanRequired: normalizeBoolean(record.replanRequired, fallback.replanRequired),
     writeCount: normalizeInteger(record.writeCount, fallback.writeCount, 0, 1_000_000),
+    repeatedFailureCount: normalizeInteger(record.repeatedFailureCount, fallback.repeatedFailureCount, 0, 1_000),
     lastWriteAt: normalizeOptionalString(record.lastWriteAt),
     lastWriteTool: normalizeOptionalString(record.lastWriteTool),
     lastVerifiedAt: normalizeOptionalString(record.lastVerifiedAt),
     lastReviewedAt: normalizeOptionalString(record.lastReviewedAt),
     lastReviewedArtifactDir: normalizeOptionalString(record.lastReviewedArtifactDir),
+    lastReplanAt: normalizeOptionalString(record.lastReplanAt),
+    lastRepairStrategy: normalizeOptionalString(record.lastRepairStrategy),
     lastMutationCheckpointId: normalizeOptionalString(record.lastMutationCheckpointId),
     lastFailureCheckpointId: normalizeOptionalString(record.lastFailureCheckpointId),
+    lastFailureFingerprint: normalizeOptionalString(record.lastFailureFingerprint),
+    replanReason: normalizeOptionalString(record.replanReason),
+    lastEvalCasePath: normalizeOptionalString(record.lastEvalCasePath),
+    continuityPath: normalizeOptionalString(record.continuityPath),
     lastRun,
   };
 }
@@ -597,14 +681,38 @@ export function markVerificationRunning(input: { cwd?: string }): WorkspaceVerif
 export function finalizeVerificationRun(input: { cwd?: string; run: WorkspaceVerificationRunRecord }): WorkspaceVerificationState {
   const targetCwd = normalizeCwd(input.cwd);
   const current = loadWorkspaceVerificationState(targetCwd);
+  const failureFingerprint = input.run.success ? undefined : computeFailureFingerprint(input.run);
+  const repeatedFailureCount = failureFingerprint && failureFingerprint === current.lastFailureFingerprint
+    ? current.repeatedFailureCount + 1
+    : failureFingerprint
+      ? 1
+      : 0;
+  const config = loadWorkspaceVerificationConfig(targetCwd);
+  const replanRequired = Boolean(
+    !input.run.success
+    && config.requireReplanOnRepeatedFailure
+    && repeatedFailureCount >= config.antiLoopThreshold,
+  );
+  const replanReason = replanRequired
+    ? `Repeated verification failure (${repeatedFailureCount}x) for ${failureFingerprint ?? "unknown failure"}. Update the plan with a new repair strategy before continuing.`
+    : undefined;
+  const evalCasePath = !input.run.success && config.enableEvalCorpus
+    ? persistWorkspaceVerificationEvalCase(targetCwd, input.run, repeatedFailureCount, replanRequired, replanReason)
+    : current.lastEvalCasePath;
+
   return saveWorkspaceVerificationState(targetCwd, {
     ...current,
     running: false,
     dirty: input.run.success ? false : current.dirty,
     pendingProofReview: input.run.success ? Boolean(input.run.artifactDir) : current.pendingProofReview,
+    replanRequired: input.run.success ? false : replanRequired,
+    repeatedFailureCount: input.run.success ? 0 : repeatedFailureCount,
     lastVerifiedAt: input.run.success ? input.run.finishedAt : current.lastVerifiedAt,
     lastReviewedAt: input.run.success ? undefined : current.lastReviewedAt,
     lastReviewedArtifactDir: input.run.success ? undefined : current.lastReviewedArtifactDir,
+    lastFailureFingerprint: input.run.success ? undefined : failureFingerprint,
+    replanReason: input.run.success ? undefined : replanReason,
+    lastEvalCasePath: input.run.success ? current.lastEvalCasePath : evalCasePath,
     lastRun: input.run,
   });
 }
@@ -619,6 +727,29 @@ export function acknowledgeVerificationArtifacts(input: { cwd?: string; artifact
     pendingProofReview: false,
     lastReviewedAt: nowIso(),
     lastReviewedArtifactDir: artifactDir,
+  });
+}
+
+export function acknowledgeReplanDecision(input: {
+  cwd?: string;
+  strategy: string;
+}): WorkspaceVerificationState {
+  const targetCwd = normalizeCwd(input.cwd);
+  const current = loadWorkspaceVerificationState(targetCwd);
+  const strategy = input.strategy.trim();
+
+  if (strategy.length === 0) {
+    throw new Error("repair strategy is required");
+  }
+
+  appendRepairStrategyToCurrentPlan(targetCwd, strategy);
+
+  return saveWorkspaceVerificationState(targetCwd, {
+    ...current,
+    replanRequired: false,
+    replanReason: undefined,
+    lastReplanAt: nowIso(),
+    lastRepairStrategy: strategy,
   });
 }
 
@@ -661,6 +792,10 @@ export function isCompletionBlocked(
   }
 
   if (config.requireProofReview && state.pendingProofReview) {
+    return true;
+  }
+
+  if (config.requireReplanOnRepeatedFailure && state.replanRequired) {
     return true;
   }
 
@@ -1412,6 +1547,187 @@ function sanitizeSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "run";
 }
 
+function normalizeFailureText(value?: string): string {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/\b\d+\b/g, "#")
+    .replace(/\/[a-z0-9._/-]+/gi, "<path>")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 240);
+}
+
+function computeFailureFingerprint(run: WorkspaceVerificationRunRecord): string {
+  const resolvedPlan = run.resolvedPlan ?? createEmptyResolvedPlan();
+  const failed = run.stepResults.find((item) => !item.success && !item.skipped);
+  if (!failed) {
+    return `${resolvedPlan.profile}:unknown-failure`;
+  }
+
+  const normalized = normalizeFailureText(failed.error ?? failed.stderr ?? failed.stdout);
+  const digest = createHash("sha256")
+    .update(`${resolvedPlan.profile}:${failed.step}:${normalized}`)
+    .digest("hex")
+    .slice(0, 12);
+
+  return `${resolvedPlan.profile}:${failed.step}:${digest}`;
+}
+
+function loadCurrentPlanSnapshot(cwd: string): WorkspaceVerificationPlanSnapshot {
+  try {
+    const storage = loadPlanStorage<{ plans?: Array<Record<string, unknown>>; currentPlanId?: string }>(cwd);
+    const plans = Array.isArray(storage.plans) ? storage.plans : [];
+    const current = plans.find((plan) => plan.id === storage.currentPlanId)
+      ?? [...plans].reverse().find((plan) => plan.status === "active" || plan.status === "draft");
+
+    if (!current) {
+      return {
+        acceptanceCriteria: [],
+        fileModuleImpact: [],
+        testVerification: [],
+        recentProgress: [],
+      };
+    }
+
+    const steps = Array.isArray(current.steps) ? current.steps : [];
+    const currentStep = steps.find((step) => step && typeof step === "object" && step.status === "in_progress");
+
+    return {
+      planId: typeof current.id === "string" ? current.id : undefined,
+      name: typeof current.name === "string" ? current.name : undefined,
+      documentPath: typeof current.documentPath === "string" ? current.documentPath : undefined,
+      currentStep: currentStep && typeof currentStep.title === "string" ? currentStep.title : undefined,
+      acceptanceCriteria: normalizeStringArray(current.acceptanceCriteria),
+      fileModuleImpact: normalizeStringArray(current.fileModuleImpact),
+      testVerification: normalizeStringArray(current.testVerification),
+      recentProgress: normalizeStringArray(current.progressLog).slice(-5),
+    };
+  } catch {
+    return {
+      acceptanceCriteria: [],
+      fileModuleImpact: [],
+      testVerification: [],
+      recentProgress: [],
+    };
+  }
+}
+
+function appendRepairStrategyToCurrentPlan(cwd: string, strategy: string): void {
+  try {
+    const storage = loadPlanStorage<{ plans?: Array<Record<string, unknown>>; currentPlanId?: string }>(cwd);
+    const plans = Array.isArray(storage.plans) ? storage.plans : [];
+    const target = plans.find((plan) => plan.id === storage.currentPlanId)
+      ?? [...plans].reverse().find((plan) => plan.status === "active" || plan.status === "draft");
+
+    if (!target) {
+      return;
+    }
+
+    const progressLog = normalizeStringArray(target.progressLog);
+    progressLog.push(`${nowIso()} verifier: Replan strategy recorded: ${strategy}`);
+    target.progressLog = progressLog;
+    target.updatedAt = nowIso();
+    savePlanStorage(storage, cwd);
+  } catch {
+    // noop
+  }
+}
+
+function deriveNextSuggestedAction(state: WorkspaceVerificationState): string {
+  if (state.replanRequired) {
+    return "Update the plan with a new repair strategy, then run workspace_verify_replan.";
+  }
+  if (state.pendingProofReview) {
+    return "Inspect the latest verification artifacts, then run workspace_verify_ack.";
+  }
+  if (state.dirty) {
+    return "Run workspace_verify against the relevant verification steps.";
+  }
+  return "Workspace verification is clear. Continue with the next planned step.";
+}
+
+function persistWorkspaceVerificationEvalCase(
+  cwd: string,
+  run: WorkspaceVerificationRunRecord,
+  repeatedFailureCount: number,
+  replanRequired: boolean,
+  replanReason?: string,
+): string {
+  const plan = loadCurrentPlanSnapshot(cwd);
+  const failedSteps = run.stepResults
+    .filter((item) => !item.success && !item.skipped)
+    .map((item) => ({
+      step: item.step,
+      command: item.command,
+      error: item.error,
+      artifactPath: item.artifactPath,
+    }));
+  const fingerprint = computeFailureFingerprint(run);
+  const record: WorkspaceVerificationEvalCase = {
+    savedAt: nowIso(),
+    fingerprint,
+    repeatedFailureCount,
+    replanRequired,
+    replanReason,
+    artifactDir: run.artifactDir,
+    profile: (run.resolvedPlan ?? createEmptyResolvedPlan()).profile,
+    recommendedSteps: (run.resolvedPlan ?? createEmptyResolvedPlan()).recommendedSteps,
+    acceptanceCriteria: (run.resolvedPlan ?? createEmptyResolvedPlan()).acceptanceCriteria,
+    proofArtifacts: (run.resolvedPlan ?? createEmptyResolvedPlan()).proofArtifacts,
+    fileModuleImpact: plan.fileModuleImpact.length > 0 ? plan.fileModuleImpact : (run.resolvedPlan ?? createEmptyResolvedPlan()).acceptanceCriteria,
+    failedSteps,
+  };
+  const evalDir = ensureVerificationEvalDir(cwd);
+  const path = join(evalDir, `${run.finishedAt.slice(0, 19).replace(/[:T]/g, "-")}-${sanitizeSegment(fingerprint)}.json`);
+  writeFileSync(path, `${JSON.stringify(record, null, 2)}\n`, "utf-8");
+  return path;
+}
+
+export function persistWorkspaceVerificationContinuityPack(
+  cwd: string,
+  state: WorkspaceVerificationState,
+  resolvedPlan?: WorkspaceVerificationResolvedPlan,
+): string {
+  const plan = loadCurrentPlanSnapshot(cwd);
+  const unresolvedFailures = (state.lastRun?.stepResults ?? [])
+    .filter((item) => !item.success && !item.skipped)
+    .map((item) => ({
+      step: item.step,
+      error: item.error,
+      artifactPath: item.artifactPath,
+    }));
+  const payload = {
+    updatedAt: nowIso(),
+    nextSuggestedAction: deriveNextSuggestedAction(state),
+    state: {
+      dirty: state.dirty,
+      pendingProofReview: state.pendingProofReview,
+      replanRequired: state.replanRequired,
+      repeatedFailureCount: state.repeatedFailureCount,
+      lastWriteAt: state.lastWriteAt,
+      lastVerifiedAt: state.lastVerifiedAt,
+      lastReviewedAt: state.lastReviewedAt,
+      lastArtifactDir: state.lastRun?.artifactDir,
+      lastFailureFingerprint: state.lastFailureFingerprint,
+      replanReason: state.replanReason,
+      lastEvalCasePath: state.lastEvalCasePath,
+      lastMutationCheckpointId: state.lastMutationCheckpointId,
+      lastFailureCheckpointId: state.lastFailureCheckpointId,
+    },
+    plan,
+    resolvedPlan: resolvedPlan ? {
+      profile: resolvedPlan.profile,
+      recommendedSteps: resolvedPlan.recommendedSteps,
+      proofArtifacts: resolvedPlan.proofArtifacts,
+      reasons: resolvedPlan.reasons,
+    } : undefined,
+    unresolvedFailures,
+  };
+  const path = join(ensureVerificationWorkspaceDir(cwd), "continuity.json");
+  writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
+  return path;
+}
+
 function formatRunSummary(run: WorkspaceVerificationRunRecord): string {
   const lines = [
     `trigger: ${run.trigger}`,
@@ -1539,12 +1855,17 @@ export function formatWorkspaceVerificationStatus(
     `auto_run=${config.autoRunOnTurnEnd}`,
     `gate_mode=${config.gateMode}`,
     `require_proof_review=${config.requireProofReview}`,
+    `require_replan_on_repeated_failure=${config.requireReplanOnRepeatedFailure}`,
+    `enable_eval_corpus=${config.enableEvalCorpus}`,
     `checkpoint_on_mutation=${config.checkpointOnMutation}`,
     `checkpoint_on_failure=${config.checkpointOnFailure}`,
+    `anti_loop_threshold=${config.antiLoopThreshold}`,
     `dirty=${state.dirty}`,
     `running=${state.running}`,
     `pending_proof_review=${state.pendingProofReview}`,
+    `replan_required=${state.replanRequired}`,
     `write_count=${state.writeCount}`,
+    `repeated_failure_count=${state.repeatedFailureCount}`,
     `last_write_at=${state.lastWriteAt ?? "-"}`,
     `last_write_tool=${state.lastWriteTool ?? "-"}`,
     `last_verified_at=${state.lastVerifiedAt ?? "-"}`,
@@ -1577,11 +1898,29 @@ export function formatWorkspaceVerificationStatus(
   if (state.lastReviewedArtifactDir) {
     lines.push(`last_reviewed_artifact_dir=${state.lastReviewedArtifactDir}`);
   }
+  if (state.lastReplanAt) {
+    lines.push(`last_replan_at=${state.lastReplanAt}`);
+  }
+  if (state.lastRepairStrategy) {
+    lines.push(`last_repair_strategy=${state.lastRepairStrategy}`);
+  }
   if (state.lastMutationCheckpointId) {
     lines.push(`last_mutation_checkpoint=${state.lastMutationCheckpointId}`);
   }
   if (state.lastFailureCheckpointId) {
     lines.push(`last_failure_checkpoint=${state.lastFailureCheckpointId}`);
+  }
+  if (state.lastFailureFingerprint) {
+    lines.push(`last_failure_fingerprint=${state.lastFailureFingerprint}`);
+  }
+  if (state.replanReason) {
+    lines.push(`replan_reason=${state.replanReason}`);
+  }
+  if (state.lastEvalCasePath) {
+    lines.push(`last_eval_case=${state.lastEvalCasePath}`);
+  }
+  if (state.continuityPath) {
+    lines.push(`continuity_path=${state.continuityPath}`);
   }
 
   if (resolvedPlan?.reasons.length) {
