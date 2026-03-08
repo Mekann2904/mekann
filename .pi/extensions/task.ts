@@ -91,6 +91,9 @@ interface Task {
 	completionGateBlockers?: string[];
 	proofArtifacts?: string[];
 	verifiedCommands?: string[];
+	progressEvidence?: string[];
+	verificationEvidence?: string[];
+	reviewEvidence?: string[];
 }
 
 /**

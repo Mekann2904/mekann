@@ -9,6 +9,10 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 
 export interface SymphonySnapshot {
   generatedAt: string;
+  health: {
+    trackerStatus: "ok" | "error";
+    lastTrackerError: string | null;
+  };
   workflow: {
     exists: boolean;
     path: string;
@@ -93,6 +97,11 @@ export interface SymphonySnapshot {
       status: string;
       eligible: boolean;
       reason: string;
+      blockedBy?: Array<{
+        id: string | null;
+        identifier: string | null;
+        state: string | null;
+      }>;
     }>;
   };
   orchestration: {
@@ -123,12 +132,28 @@ export interface SymphonySnapshot {
   } | null;
 }
 
+interface SymphonyActionResponse {
+  success?: boolean;
+  error?: {
+    code?: string;
+    message?: string;
+  };
+  data?: {
+    snapshot?: SymphonySnapshot;
+    health?: {
+      trackerStatus: "ok" | "error";
+      lastTrackerError: string | null;
+    };
+  };
+}
+
 const API_BASE = "/api/v2/runtime";
 
 export function useSymphonyStatus(pollInterval: number = 10000) {
   const [snapshot, setSnapshot] = useState<SymphonySnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const fetchSnapshot = useCallback(async () => {
     try {
@@ -146,23 +171,51 @@ export function useSymphonyStatus(pollInterval: number = 10000) {
     }
   }, []);
 
+  const handleActionResponse = useCallback(async (response: Response) => {
+    const payload = await response.json().catch(() => null) as SymphonyActionResponse | null;
+
+    if (!response.ok || payload?.success === false) {
+      const nextSnapshot = payload?.data?.snapshot ?? null;
+      if (nextSnapshot) {
+        setSnapshot(nextSnapshot);
+      }
+
+      const message = payload?.error?.message
+        ?? payload?.data?.health?.lastTrackerError
+        ?? `HTTP ${response.status}`;
+      setActionError(message);
+      return;
+    }
+
+    if (payload?.data?.snapshot) {
+      setSnapshot(payload.data.snapshot);
+    }
+    setActionError(null);
+  }, []);
+
   const refresh = useCallback(async () => {
-    await fetch(`${API_BASE}/symphony/refresh`, {
+    const response = await fetch(`${API_BASE}/symphony/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",
-    }).catch(() => undefined);
+    }).catch(() => null);
+    if (response) {
+      await handleActionResponse(response);
+    }
     await fetchSnapshot();
-  }, [fetchSnapshot]);
+  }, [fetchSnapshot, handleActionResponse]);
 
   const runLoopAction = useCallback(async (path: string) => {
-    await fetch(`${API_BASE}${path}`, {
+    const response = await fetch(`${API_BASE}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",
-    }).catch(() => undefined);
+    }).catch(() => null);
+    if (response) {
+      await handleActionResponse(response);
+    }
     await fetchSnapshot();
-  }, [fetchSnapshot]);
+  }, [fetchSnapshot, handleActionResponse]);
 
   const startOrchestrator = useCallback(async () => {
     await runLoopAction("/symphony/orchestrator/start");
@@ -186,6 +239,7 @@ export function useSymphonyStatus(pollInterval: number = 10000) {
     snapshot,
     loading,
     error,
+    actionError,
     refresh,
     startOrchestrator,
     stopOrchestrator,

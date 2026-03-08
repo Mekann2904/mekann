@@ -43,7 +43,11 @@ vi.mock("../../../.pi/lib/symphony-tracker.js", () => ({
       branch_name: null,
       url: null,
       labels: [],
-      blocked_by: [],
+      blocked_by: [{
+        id: "task-99",
+        identifier: "task-99",
+        state: "In Progress",
+      }],
       created_at: "2026-03-08T00:00:00.000Z",
       updated_at: "2026-03-08T00:00:00.000Z",
     },
@@ -183,9 +187,22 @@ describe("symphony-scheduler", () => {
   it("eligible task を優先順で返す", async () => {
     const snapshot = await refreshSymphonyScheduler("/repo", []);
 
-    expect(snapshot.eligibleCount).toBe(1);
-    expect(snapshot.nextEligibleTask?.id).toBe("task-1");
+    expect(snapshot.eligibleCount).toBe(0);
+    expect(snapshot.nextEligibleTask).toBeNull();
     expect(snapshot.candidates[0]?.id).toBe("task-2");
+  });
+
+  it("Todo task に active blocker があれば eligible にしない", async () => {
+    const snapshot = await refreshSymphonyScheduler("/repo", []);
+    const blocked = snapshot.candidates.find((item) => item.id === "task-1");
+
+    expect(blocked?.eligible).toBe(false);
+    expect(blocked?.reason).toBe("blocked-by-active-issue");
+    expect(blocked?.blockedBy).toEqual([{
+      id: "task-99",
+      identifier: "task-99",
+      state: "In Progress",
+    }]);
   });
 
   it("retry_at が未来なら eligible にしない", async () => {

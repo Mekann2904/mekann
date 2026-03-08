@@ -344,6 +344,9 @@ describe("task-auto-executor workpad", () => {
     expect(savedAfterComplete.tasks[0].completionGateMessage).toBe("completion gate passed");
     expect(savedAfterComplete.tasks[0].proofArtifacts).toContain("summary");
     expect(savedAfterComplete.tasks[0].verifiedCommands).toContain("npm run ci");
+    expect(savedAfterComplete.tasks[0].progressEvidence).toContain("- changed files");
+    expect(savedAfterComplete.tasks[0].verificationEvidence).toContain("- workspace_verify passed");
+    expect(savedAfterComplete.tasks[0].reviewEvidence).toContain("- reviewer acknowledged");
     expect(workflowMocks.updateWorkpad).toHaveBeenCalledWith(process.cwd(), {
       id: "wp-1",
       section: "verification",

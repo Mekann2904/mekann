@@ -9,6 +9,7 @@ import { loadTaskStorage } from "../../../lib/storage/task-plan-store.js";
 import { loadSymphonyConfig } from "../../../lib/symphony-config.js";
 import { getSymphonyOrchestratorLoopState, type SymphonyOrchestratorLoopState } from "../../../lib/symphony-orchestrator-loop.js";
 import { refreshSymphonyScheduler, type SymphonySchedulerSnapshot } from "../../../lib/symphony-scheduler.js";
+import { SymphonyTrackerError } from "../../../lib/symphony-tracker.js";
 import { getSymphonyWorkspaceInfo } from "../../../lib/symphony-workspace-manager.js";
 import { loadWorkflowDocument } from "../../../lib/workflow-workpad.js";
 import {
@@ -43,6 +44,9 @@ interface StoredTask {
   completionGateBlockers?: string[];
   proofArtifacts?: string[];
   verifiedCommands?: string[];
+  progressEvidence?: string[];
+  verificationEvidence?: string[];
+  reviewEvidence?: string[];
 }
 
 export interface SymphonyRuntimeSummary {
@@ -72,6 +76,10 @@ export interface SymphonyRuntimeSessionSummary {
 
 export interface SymphonySnapshot {
   generatedAt: string;
+  health: {
+    trackerStatus: "ok" | "error";
+    lastTrackerError: string | null;
+  };
   workflow: {
     exists: boolean;
     path: string;
@@ -130,20 +138,51 @@ export interface SymphonySnapshot {
   runtime: SymphonyRuntimeSummary | null;
 }
 
+function emptySchedulerSnapshot(): SymphonySchedulerSnapshot {
+  return {
+    generatedAt: new Date().toISOString(),
+    eligibleCount: 0,
+    blockedCount: 0,
+    terminalCount: 0,
+    nextEligibleTask: null,
+    candidates: [],
+  };
+}
+
+function formatTrackerError(error: unknown): string {
+  if (error instanceof SymphonyTrackerError) {
+    return error.message === error.code ? error.code : `${error.code}: ${error.message}`;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
 export interface SymphonyIssueSnapshot {
   id: string;
   title: string;
   status: string;
   priority: string;
   source: "task" | "ul-workflow";
+  health: {
+    trackerStatus: "ok" | "error";
+    lastTrackerError: string | null;
+  };
   queue: {
     position: number | null;
     isNext: boolean;
     totalPending: number;
     blockedReason: string | null;
+    blockedBy: Array<{
+      id: string | null;
+      identifier: string | null;
+      state: string | null;
+    }>;
     retryAt: string | null;
     retryCount: number;
     lastError: string | null;
+    candidateReason: string | null;
   };
   runtime: {
     activeSession: SymphonyRuntimeSessionSummary | null;
@@ -178,6 +217,9 @@ export interface SymphonyIssueSnapshot {
     entrypoints: string[];
     requiredCommands: string[];
     verifiedCommands: string[];
+    progressEvidence: string[];
+    verificationEvidence: string[];
+    reviewEvidence: string[];
   };
   workspace: {
     path: string;
@@ -235,7 +277,17 @@ export async function buildSymphonySnapshot(
   const ulTasks = getAllUlWorkflowTasks();
   const activeUlTask = getActiveUlWorkflowTask();
   const workpads = getAllWorkpads(cwd);
-  const scheduler = await refreshSymphonyScheduler(cwd);
+  let scheduler = emptySchedulerSnapshot();
+  let trackerStatus: "ok" | "error" = "ok";
+  let lastTrackerError: string | null = null;
+
+  try {
+    scheduler = await refreshSymphonyScheduler(cwd);
+  } catch (error) {
+    trackerStatus = "error";
+    lastTrackerError = formatTrackerError(error);
+  }
+
   const orchestrationStates = listSymphonyIssueStates(cwd);
   const workspaceRoot = getSymphonyWorkspaceInfo({
     cwd,
@@ -255,6 +307,10 @@ export async function buildSymphonySnapshot(
 
   return {
     generatedAt: new Date().toISOString(),
+    health: {
+      trackerStatus,
+      lastTrackerError,
+    },
     workflow: {
       exists: workflow.exists,
       path: workflow.path,
@@ -377,14 +433,20 @@ export function buildSymphonyIssueSnapshot(
     status: baseTask.status,
     priority: "priority" in baseTask ? String(baseTask.priority) : "medium",
     source: regularTask ? "task" : "ul-workflow",
+    health: {
+      trackerStatus: "ok",
+      lastTrackerError: null,
+    },
     queue: {
       position: queueIndex >= 0 ? queueIndex + 1 : null,
       isNext: queueIndex === 0,
       totalPending: pendingTasks.length,
       blockedReason,
+      blockedBy: [],
       retryAt: regularTask?.nextRetryAt ?? null,
       retryCount: regularTask?.retryCount ?? 0,
       lastError: regularTask?.lastError ?? null,
+      candidateReason: null,
     },
     runtime: {
       activeSession,
@@ -413,10 +475,45 @@ export function buildSymphonyIssueSnapshot(
       entrypoints: workflow.frontmatter.entrypoints ?? [],
       requiredCommands: workflow.frontmatter.verification?.required_commands ?? [],
       verifiedCommands: regularTask?.verifiedCommands ?? [],
+      progressEvidence: regularTask?.progressEvidence ?? [],
+      verificationEvidence: regularTask?.verificationEvidence ?? [],
+      reviewEvidence: regularTask?.reviewEvidence ?? [],
     },
     workspace: {
       path: workspace.path,
       exists: workspace.exists,
     },
   };
+}
+
+export async function hydrateSymphonyIssueSnapshot(
+  snapshot: SymphonyIssueSnapshot,
+  cwd: string = process.cwd(),
+  runtimeSessions: SymphonyRuntimeSessionSummary[] = [],
+): Promise<SymphonyIssueSnapshot> {
+  try {
+    const scheduler = await refreshSymphonyScheduler(cwd, runtimeSessions);
+    const candidate = scheduler.candidates.find((item) => item.id === snapshot.id) ?? null;
+    if (!candidate) {
+      return snapshot;
+    }
+
+    return {
+      ...snapshot,
+      queue: {
+        ...snapshot.queue,
+        blockedReason: snapshot.queue.blockedReason ?? candidate.reason ?? null,
+        blockedBy: candidate.blockedBy ?? snapshot.queue.blockedBy,
+        candidateReason: candidate.reason ?? null,
+      },
+    };
+  } catch (error) {
+    return {
+      ...snapshot,
+      health: {
+        trackerStatus: "error",
+        lastTrackerError: formatTrackerError(error),
+      },
+    };
+  }
 }

@@ -56,6 +56,12 @@ const configMocks = vi.hoisted(() => ({
 
 vi.mock("../../../.pi/lib/symphony-config.js", () => configMocks);
 
+const orchestratorStateMocks = vi.hoisted(() => ({
+  repairSymphonyOrchestratorState: vi.fn(() => []),
+}));
+
+vi.mock("../../../.pi/lib/symphony-orchestrator-state.js", () => orchestratorStateMocks);
+
 describe("symphony-orchestrator-loop", () => {
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -86,6 +92,10 @@ describe("symphony-orchestrator-loop", () => {
 
     expect(started.running).toBe(true);
     expect(started.pollIntervalMs).toBe(1234);
+    expect(orchestratorStateMocks.repairSymphonyOrchestratorState).toHaveBeenCalledWith(
+      "/repo",
+      [{ taskId: "task-1", status: "running" }],
+    );
     expect(schedulerMocks.runSymphonyStartupTerminalCleanup).toHaveBeenCalledWith("/repo");
 
     vi.advanceTimersByTime(1234);

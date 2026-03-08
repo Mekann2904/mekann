@@ -81,6 +81,9 @@ interface Task {
 	completionGateBlockers?: string[];
 	proofArtifacts?: string[];
 	verifiedCommands?: string[];
+	progressEvidence?: string[];
+	verificationEvidence?: string[];
+	reviewEvidence?: string[];
 }
 
 interface TaskStorage {
@@ -120,6 +123,9 @@ interface TaskEvidenceSnapshot {
 	proofArtifacts: string[];
 	verifiedCommands: string[];
 	hasWorkspaceVerification: boolean;
+	progressEvidence: string[];
+	verificationEvidence: string[];
+	reviewEvidence: string[];
 }
 
 // ============================================
@@ -357,6 +363,15 @@ function extractProofArtifactsFromText(text: string | undefined): string[] {
 	return [...matches];
 }
 
+function summarizeEvidenceLines(text: string | undefined): string[] {
+	return String(text ?? "")
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.filter((line) => line !== "- pending" && line !== "- created")
+		.slice(0, 20);
+}
+
 function collectVerifiedCommands(
 	verificationSection: string,
 	requiredCommands: string[],
@@ -397,6 +412,9 @@ function collectTaskEvidence(cwd: string, taskId: string): TaskEvidenceSnapshot 
 			|| compactVerification.includes("workspace_verify passed")
 			|| compactVerification.includes("verify:workspace")
 			|| compactVerification.includes("workspace verification passed"),
+		progressEvidence: summarizeEvidenceLines(progressSection),
+		verificationEvidence: summarizeEvidenceLines(verificationSection),
+		reviewEvidence: summarizeEvidenceLines(reviewSection),
 	};
 }
 
@@ -413,6 +431,9 @@ function syncTaskProofState(
 	const task = storage.tasks[taskIndex];
 	task.proofArtifacts = evidence.proofArtifacts;
 	task.verifiedCommands = evidence.verifiedCommands;
+	task.progressEvidence = evidence.progressEvidence;
+	task.verificationEvidence = evidence.verificationEvidence;
+	task.reviewEvidence = evidence.reviewEvidence;
 	task.updatedAt = new Date().toISOString();
 	saveStorage(storage);
 	return task;

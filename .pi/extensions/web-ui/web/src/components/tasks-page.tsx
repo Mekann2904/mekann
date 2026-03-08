@@ -17,8 +17,7 @@
  * @scope(out) API calls, rendered Kanban board
  */
 
-import { h } from "preact";
-import { useState, useMemo } from "preact/hooks";
+import { useState, useMemo, useEffect } from "preact/hooks";
 import { Search, X, Trash2, Filter, ChevronDown, Check } from "lucide-preact";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -70,7 +69,6 @@ export function TasksPage() {
     toggleStatusFilter,
     setPriorityFilter,
     tasksByColumn,
-    hasActiveFilters,
   } = useTaskFilters(tasks);
 
   // UI state
@@ -88,6 +86,19 @@ export function TasksPage() {
     if (!selectedTaskId) return null;
     return tasks.find(t => t.id === selectedTaskId) || null;
   }, [selectedTaskId, tasks]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const taskId = new URLSearchParams(window.location.search).get("taskId");
+    if (!taskId) {
+      return;
+    }
+
+    setSelectedTaskId(taskId);
+  }, []);
 
   // Keyboard shortcuts
   useKeyboardShortcuts([

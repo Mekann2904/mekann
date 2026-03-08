@@ -29,9 +29,17 @@ import {
 import {
   buildSymphonyIssueSnapshot,
   buildSymphonySnapshot,
+  hydrateSymphonyIssueSnapshot,
   type SymphonyRuntimeSessionSummary,
   type SymphonyRuntimeSummary,
 } from "../../lib/symphony-reader.js";
+
+function formatRouteError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
 
 /**
  * Runtimeルート
@@ -339,41 +347,89 @@ runtimeRoutes.post("/symphony/orchestrator/stop", (c) => {
 });
 
 runtimeRoutes.post("/symphony/orchestrator/tick", async (c) => {
-  const scheduler = await tickSymphonyOrchestrator(process.cwd());
-  return c.json({
-    success: true,
-    data: {
-      loop: getSymphonyOrchestratorLoopState(),
-      scheduler,
-    },
-  });
+  try {
+    const scheduler = await tickSymphonyOrchestrator(process.cwd());
+    return c.json({
+      success: true,
+      data: {
+        loop: getSymphonyOrchestratorLoopState(),
+        scheduler,
+        health: {
+          trackerStatus: "ok",
+          lastTrackerError: null,
+        },
+      },
+    });
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: {
+        code: "tracker_refresh_failed",
+        message: formatRouteError(error),
+      },
+      data: {
+        loop: getSymphonyOrchestratorLoopState(),
+        scheduler: null,
+        health: {
+          trackerStatus: "error",
+          lastTrackerError: formatRouteError(error),
+        },
+      },
+    }, 503);
+  }
 });
 
 runtimeRoutes.post("/symphony/refresh", async (_c) => {
-  const runtimeSessions = getRuntimeSessionSnapshots();
-  const scheduler = await refreshSymphonyScheduler(process.cwd(), runtimeSessions, {
-    reconcile: true,
-  });
-  const snapshot = await buildSymphonySnapshot(process.cwd(), getSymphonyRuntimeSummary());
-  return _c.json({
-    success: true,
-    data: {
-      queued: true,
-      coalesced: false,
-      requestedAt: new Date().toISOString(),
-      scheduler,
-      snapshot,
-    },
-  }, 202);
+  try {
+    const runtimeSessions = getRuntimeSessionSnapshots();
+    const scheduler = await refreshSymphonyScheduler(process.cwd(), runtimeSessions, {
+      reconcile: true,
+    });
+    const snapshot = await buildSymphonySnapshot(process.cwd(), getSymphonyRuntimeSummary());
+    return _c.json({
+      success: true,
+      data: {
+        queued: true,
+        coalesced: false,
+        requestedAt: new Date().toISOString(),
+        scheduler,
+        snapshot,
+        health: {
+          trackerStatus: "ok",
+          lastTrackerError: null,
+        },
+      },
+    }, 202);
+  } catch (error) {
+    const snapshot = await buildSymphonySnapshot(process.cwd(), getSymphonyRuntimeSummary());
+    return _c.json({
+      success: false,
+      error: {
+        code: "tracker_refresh_failed",
+        message: formatRouteError(error),
+      },
+      data: {
+        queued: false,
+        coalesced: false,
+        requestedAt: new Date().toISOString(),
+        scheduler: null,
+        snapshot,
+        health: {
+          trackerStatus: "error",
+          lastTrackerError: formatRouteError(error),
+        },
+      },
+    }, 503);
+  }
 });
 
-runtimeRoutes.get("/symphony/issues/:id", (c) => {
-  const snapshot = buildSymphonyIssueSnapshot(
+runtimeRoutes.get("/symphony/issues/:id", async (c) => {
+  const baseSnapshot = buildSymphonyIssueSnapshot(
     c.req.param("id"),
     process.cwd(),
     getRuntimeSessionSnapshots(),
   );
-  if (!snapshot) {
+  if (!baseSnapshot) {
     return c.json({
       success: false,
       error: {
@@ -382,16 +438,21 @@ runtimeRoutes.get("/symphony/issues/:id", (c) => {
       },
     }, 404);
   }
+  const snapshot = await hydrateSymphonyIssueSnapshot(
+    baseSnapshot,
+    process.cwd(),
+    getRuntimeSessionSnapshots(),
+  );
   return c.json({ success: true, data: snapshot });
 });
 
-runtimeRoutes.get("/symphony/issues/:id/debug", (c) => {
-  const snapshot = buildSymphonyIssueSnapshot(
+runtimeRoutes.get("/symphony/issues/:id/debug", async (c) => {
+  const baseSnapshot = buildSymphonyIssueSnapshot(
     c.req.param("id"),
     process.cwd(),
     getRuntimeSessionSnapshots(),
   );
-  if (!snapshot) {
+  if (!baseSnapshot) {
     return c.json({
       success: false,
       error: {
@@ -400,11 +461,17 @@ runtimeRoutes.get("/symphony/issues/:id/debug", (c) => {
       },
     }, 404);
   }
+  const snapshot = await hydrateSymphonyIssueSnapshot(
+    baseSnapshot,
+    process.cwd(),
+    getRuntimeSessionSnapshots(),
+  );
 
   return c.json({
     success: true,
     data: {
       issueId: snapshot.id,
+      health: snapshot.health,
       title: snapshot.title,
       queue: snapshot.queue,
       verification: snapshot.verification,
