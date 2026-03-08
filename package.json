@@ -3,7 +3,7 @@
   "version": "0.3.1",
   "description": "mekann extensions package for pi",
   "engines": {
-    "node": ">=20.18.1"
+    "node": ">=22.12.0 <23"
   },
   "files": [
     ".pi/extensions",
@@ -14,6 +14,8 @@
     ".pi/INDEX.md",
     ".pi/NAVIGATION.md",
     ".pi/themes",
+    "scripts/ensure-node-for-pi.js",
+    "scripts/rebuild-better-sqlite3-for-pi.js",
     "AGENTS.md",
     "docs",
     "LICENSE",
@@ -51,6 +53,7 @@
     "minimatch": "^10.2.1"
   },
   "scripts": {
+    "preinstall": "node scripts/ensure-node-for-pi.js",
     "postinstall": "echo \"postinstall patching disabled\"",
     "build": "vitest run",
     "test": "vitest run",
@@ -70,6 +73,7 @@
     "policy:apply-branch-protection": "node --import tsx scripts/apply-github-branch-protection.ts",
     "ci": "npm run typecheck && npm run lint && npm run test",
     "ci:workspace-verification": "npm run verify:workspace",
+    "rebuild:better-sqlite3": "node scripts/rebuild-better-sqlite3-for-pi.js",
     "generate-abdd": "npx tsx scripts/generate-abdd.ts",
     "add-abdd-header": "npx tsx scripts/add-abdd-header.ts"
   },
@@ -119,6 +123,7 @@
       "./.pi/extensions/task-auto-executor.ts",
       "./.pi/extensions/rpm-throttle.ts",
       "./.pi/extensions/tool-compiler.ts",
+      "./.pi/extensions/trajectory-reduction.ts",
       "./.pi/extensions/workspace-verification.ts",
       "./.pi/extensions/ul-diagnostic.ts",
       "./.pi/extensions/ul-dual-mode.ts",

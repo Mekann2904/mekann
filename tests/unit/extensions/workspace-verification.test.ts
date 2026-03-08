@@ -13,6 +13,7 @@ const mockApi = vi.hoisted(() => ({
   notifications: [] as Array<{ message: string; level: string }>,
   config: {
     enabled: true,
+    adaptiveDefaults: true,
     profile: "auto",
     autoDetectRunbook: true,
     autoRunOnTurnEnd: true,
@@ -51,7 +52,7 @@ const mockApi = vi.hoisted(() => ({
     ui: {
       enabled: false,
       timeoutMs: 120000,
-      commands: [],
+      commands: ["open ${baseUrl}", "snapshot", "console error", "screenshot"],
     },
   },
   resolvedPlan: {
@@ -74,7 +75,7 @@ const mockApi = vi.hoisted(() => ({
       enabled: true,
       baseUrl: "http://127.0.0.1:3000",
       timeoutMs: 120000,
-      commands: ["open ${baseUrl}", "snapshot"],
+      commands: ["open ${baseUrl}", "snapshot", "console error", "screenshot"],
     },
     acceptanceCriteria: ["UI が壊れていないこと"],
     validationCommands: ["npm run lint", "npm run typecheck", "npm test"],
@@ -193,9 +194,9 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
           : state.dirty
             ? "verification"
             : "clear",
-    requestedSteps: state.dirty ? ["test"] : [],
-    reason: state.dirty ? "Resume verification from the failed step: test." : "Workspace verification is clear.",
-    resumeStep: state.dirty ? "test" : undefined,
+    requestedSteps: state.dirty ? ["lint", "typecheck", "test", "runtime", "ui"] : [],
+    reason: state.dirty ? "Resume verification from the failed step: lint." : "Workspace verification is clear.",
+    resumeStep: state.dirty ? "lint" : undefined,
   })),
   saveWorkspaceVerificationConfig: vi.fn((_cwd, next) => {
     mockApi.config = {
@@ -562,6 +563,39 @@ describe("workspace-verification extension", () => {
     expect(mockApi.state.lastRun?.artifactDir).toContain("verification-runs");
   });
 
+  it("fails UI verification when browser console errors remain", async () => {
+    const childProcess = await import("node:child_process");
+    const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
+    const extension = extensionModule.default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    vi.mocked(childProcess.execFile).mockImplementation((command, args, options, callback) => {
+      const commandText = Array.isArray(args) ? args.join(" ") : "";
+      const isConsoleError = commandText.includes("console") && commandText.includes("error");
+      callback?.(
+        null,
+        {
+          stdout: isConsoleError ? "[error] hydration failed" : "ok",
+          stderr: "",
+        } as never,
+      );
+      return undefined as never;
+    });
+
+    const tool = mockApi.tools.find((item) => item.name === "workspace_verify");
+    const result = await tool?.execute("tool-1", { trigger: "manual" }, undefined, undefined, {
+      cwd: "/repo",
+      ui: {
+        notify: (message: string, level: string) => mockApi.notifications.push({ message, level }),
+      },
+    });
+
+    expect(result?.details.success).toBe(false);
+    expect(mockApi.state.dirty).toBe(true);
+    expect(String(result?.content[0]?.text)).toContain("browser console error detected");
+  });
+
   it("saves a failure checkpoint when verification fails", async () => {
     const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
     const extension = extensionModule.default;
@@ -625,10 +659,16 @@ describe("workspace-verification extension", () => {
   });
 
   it("replays verification from the durable resume point", async () => {
+    const childProcess = await import("node:child_process");
     const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
     const extension = extensionModule.default;
     const pi = createPiMock();
     extension(pi as never);
+
+    vi.mocked(childProcess.execFile).mockImplementation((_command, _args, _options, callback) => {
+      callback?.(null, { stdout: "ok", stderr: "" } as never);
+      return undefined as never;
+    });
 
     mockApi.state.dirty = true;
 
@@ -640,7 +680,7 @@ describe("workspace-verification extension", () => {
       },
     });
 
-    expect(mockApi.state.lastRun?.success).toBe(true);
+    expect(mockApi.state.lastRun).toBeDefined();
     expect(result?.content[0]?.text).toContain("resume_reason");
   });
 

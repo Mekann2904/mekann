@@ -104,6 +104,7 @@ export interface WorkspaceVerificationRunRecord {
 
 export interface WorkspaceVerificationConfig {
   enabled: boolean;
+  adaptiveDefaults: boolean;
   profile: WorkspaceVerificationProfile;
   autoDetectRunbook: boolean;
   autoRunOnTurnEnd: boolean;
@@ -131,6 +132,7 @@ export interface WorkspaceVerificationConfig {
 
 export interface WorkspaceVerificationConfigPatch {
   enabled?: boolean;
+  adaptiveDefaults?: boolean;
   profile?: WorkspaceVerificationProfile;
   autoDetectRunbook?: boolean;
   autoRunOnTurnEnd?: boolean;
@@ -426,6 +428,7 @@ function createDefaultEnabledSteps(): Record<WorkspaceVerificationStep, boolean>
 export function createWorkspaceVerificationConfig(): WorkspaceVerificationConfig {
   return {
     enabled: false,
+    adaptiveDefaults: true,
     profile: "auto",
     autoDetectRunbook: true,
     autoRunOnTurnEnd: false,
@@ -488,6 +491,7 @@ export function normalizeWorkspaceVerificationConfig(input: unknown): WorkspaceV
 
   return {
     enabled: normalizeBoolean(record.enabled, fallback.enabled),
+    adaptiveDefaults: normalizeBoolean(record.adaptiveDefaults, fallback.adaptiveDefaults),
     profile: normalizeProfile(record.profile, fallback.profile),
     autoDetectRunbook: normalizeBoolean(record.autoDetectRunbook, fallback.autoDetectRunbook),
     autoRunOnTurnEnd: normalizeBoolean(record.autoRunOnTurnEnd, fallback.autoRunOnTurnEnd),
@@ -637,6 +641,82 @@ function createEmptyResolvedPlan(): WorkspaceVerificationResolvedPlan {
   };
 }
 
+function createDefaultUiCommands(baseUrl?: string): string[] {
+  void baseUrl;
+  return [
+    "open ${baseUrl}",
+    "snapshot",
+    "console error",
+    "screenshot",
+  ];
+}
+
+function applyAdaptiveWorkspaceVerificationDefaults(
+  config: WorkspaceVerificationConfig,
+  cwd: string,
+): WorkspaceVerificationConfig {
+  if (!config.adaptiveDefaults) {
+    return config;
+  }
+
+  const detected = buildWorkspaceVerificationRunbook(cwd);
+  if (detected.profile !== "web-app") {
+    return config;
+  }
+
+  const uiCommands = config.ui.commands.length > 0
+    ? config.ui.commands
+    : createDefaultUiCommands(detected.ui.baseUrl);
+
+  return normalizeWorkspaceVerificationConfig({
+    ...config,
+    enabled: true,
+    gateMode: "release",
+    autoRunOnTurnEnd: true,
+    requireProofReview: true,
+    autoRequireReviewArtifact: true,
+    requireReplanOnRepeatedFailure: true,
+    checkpointOnMutation: true,
+    checkpointOnFailure: true,
+    enabledSteps: {
+      ...config.enabledSteps,
+      runtime: true,
+      ui: true,
+    },
+    ui: {
+      ...config.ui,
+      commands: uiCommands,
+    },
+  });
+}
+
+function didRunCoverRequiredSteps(
+  config: WorkspaceVerificationConfig,
+  run: WorkspaceVerificationRunRecord,
+): boolean {
+  if (!run.success) {
+    return false;
+  }
+
+  if (!run.resolvedPlan) {
+    return true;
+  }
+
+  const requiredSteps = resolveEnabledSteps(config, run.resolvedPlan);
+  if (requiredSteps.length === 0) {
+    return true;
+  }
+
+  const executed = new Map(
+    run.stepResults.map((step) => [step.step, step]),
+  );
+
+  return requiredSteps.every((step) => {
+    const result = executed.get(step);
+    return Boolean(result?.success) && !result?.skipped;
+  });
+}
+
 function normalizeResolvedPlan(input: unknown): WorkspaceVerificationResolvedPlan {
   const fallback = createEmptyResolvedPlan();
   if (!input || typeof input !== "object") {
@@ -687,12 +767,13 @@ function normalizeResolvedPlan(input: unknown): WorkspaceVerificationResolvedPla
 
 export function loadWorkspaceVerificationConfig(cwd?: string): WorkspaceVerificationConfig {
   const targetCwd = normalizeCwd(cwd);
-  return normalizeWorkspaceVerificationConfig(
+  const config = normalizeWorkspaceVerificationConfig(
     readJsonState({
       stateKey: getWorkspaceVerificationConfigStateKey(targetCwd),
       createDefault: createWorkspaceVerificationConfig,
     }),
   );
+  return applyAdaptiveWorkspaceVerificationDefaults(config, targetCwd);
 }
 
 export function saveWorkspaceVerificationConfig(
@@ -842,13 +923,14 @@ export function markVerificationRunning(input: { cwd?: string }): WorkspaceVerif
 export function finalizeVerificationRun(input: { cwd?: string; run: WorkspaceVerificationRunRecord }): WorkspaceVerificationState {
   const targetCwd = normalizeCwd(input.cwd);
   const current = loadWorkspaceVerificationState(targetCwd);
+  const config = loadWorkspaceVerificationConfig(targetCwd);
+  const verificationSatisfied = didRunCoverRequiredSteps(config, input.run);
   const failureFingerprint = input.run.success ? undefined : computeFailureFingerprint(input.run);
   const repeatedFailureCount = failureFingerprint && failureFingerprint === current.lastFailureFingerprint
     ? current.repeatedFailureCount + 1
     : failureFingerprint
       ? 1
       : 0;
-  const config = loadWorkspaceVerificationConfig(targetCwd);
   const replanRequired = Boolean(
     !input.run.success
     && config.requireReplanOnRepeatedFailure
@@ -864,14 +946,14 @@ export function finalizeVerificationRun(input: { cwd?: string; run: WorkspaceVer
   return saveWorkspaceVerificationState(targetCwd, {
     ...current,
     running: false,
-    dirty: input.run.success ? false : current.dirty,
-    pendingProofReview: input.run.success ? Boolean(input.run.artifactDir) : current.pendingProofReview,
+    dirty: verificationSatisfied ? false : current.dirty,
+    pendingProofReview: verificationSatisfied ? Boolean(input.run.artifactDir) : current.pendingProofReview,
     pendingReviewArtifact: input.run.success ? current.pendingReviewArtifact : false,
     replanRequired: input.run.success ? false : replanRequired,
     repeatedFailureCount: input.run.success ? 0 : repeatedFailureCount,
-    lastVerifiedAt: input.run.success ? input.run.finishedAt : current.lastVerifiedAt,
-    lastReviewedAt: input.run.success ? undefined : current.lastReviewedAt,
-    lastReviewedArtifactDir: input.run.success ? undefined : current.lastReviewedArtifactDir,
+    lastVerifiedAt: verificationSatisfied ? input.run.finishedAt : current.lastVerifiedAt,
+    lastReviewedAt: verificationSatisfied ? undefined : current.lastReviewedAt,
+    lastReviewedArtifactDir: verificationSatisfied ? undefined : current.lastReviewedArtifactDir,
     lastFailureFingerprint: input.run.success ? undefined : failureFingerprint,
     replanReason: input.run.success ? undefined : replanReason,
     lastEvalCasePath: input.run.success ? current.lastEvalCasePath : evalCasePath,
@@ -1745,7 +1827,7 @@ function extractHintsFromPackageJson(cwd: string, pkg: Record<string, unknown>):
     };
     hints.ui = {
       enabled: true,
-      commands: ["open ${baseUrl}", "snapshot"],
+      commands: createDefaultUiCommands(),
       timeoutMs: 120_000,
     };
   }
@@ -1880,7 +1962,7 @@ export function buildWorkspaceVerificationRunbook(cwd?: string): WorkspaceVerifi
     timeoutMs: hints.ui.timeoutMs ?? 120_000,
     commands: hints.ui.commands && hints.ui.commands.length > 0
       ? hints.ui.commands
-      : (baseUrl ? ["open ${baseUrl}", "snapshot"] : []),
+      : createDefaultUiCommands(baseUrl),
   };
 
   const relevant = inferRelevantVerification(profile, hints, runtime, ui);
@@ -2398,6 +2480,7 @@ export function formatWorkspaceVerificationStatus(
   const resume = resolveWorkspaceVerificationResumePlan(state, resolvedPlan);
   const lines = [
     `enabled=${config.enabled}`,
+    `adaptive_defaults=${config.adaptiveDefaults}`,
     `profile=${config.profile}`,
     `auto_detect_runbook=${config.autoDetectRunbook}`,
     `auto_run=${config.autoRunOnTurnEnd}`,

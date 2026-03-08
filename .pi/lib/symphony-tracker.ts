@@ -52,6 +52,18 @@ interface LinearIssueNode {
   labels?: {
     nodes?: Array<{ name?: string | null }>;
   } | null;
+  inverseRelations?: {
+    nodes?: Array<{
+      type?: string | null;
+      issue?: {
+        id?: string | null;
+        identifier?: string | null;
+        state?: {
+          name?: string | null;
+        } | null;
+      } | null;
+    }>;
+  } | null;
 }
 
 interface LinearCandidateIssuesResponse {
@@ -87,6 +99,16 @@ export interface SymphonyTrackerIssue {
   retry_count?: number;
   retry_at: string | null;
   last_error?: string | null;
+}
+
+export class SymphonyTrackerError extends Error {
+  code: string;
+
+  constructor(code: string, message?: string) {
+    super(message ?? code);
+    this.name = "SymphonyTrackerError";
+    this.code = code;
+  }
 }
 
 function mapTaskPriority(priority: TaskPriority): number {
@@ -178,32 +200,44 @@ async function fetchLinearGraphQL<T>(
   variables: Record<string, unknown>,
 ): Promise<T> {
   if (!config.tracker.apiKey) {
-    throw new Error("missing_tracker_api_key");
+    throw new SymphonyTrackerError("missing_tracker_api_key");
   }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30_000);
   try {
-    const response = await fetch(config.tracker.endpoint, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: config.tracker.apiKey,
-      },
-      body: JSON.stringify({ query, variables }),
-      signal: controller.signal,
-    });
+    let response: Response;
+    try {
+      response = await fetch(config.tracker.endpoint, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: config.tracker.apiKey,
+        },
+        body: JSON.stringify({ query, variables }),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      const code = error instanceof DOMException && error.name === "AbortError"
+        ? "linear_api_request"
+        : "linear_api_request";
+      const message = error instanceof Error ? error.message : String(error);
+      throw new SymphonyTrackerError(code, message);
+    }
 
     if (!response.ok) {
-      throw new Error(`linear_api_status:${response.status}`);
+      throw new SymphonyTrackerError("linear_api_status", String(response.status));
     }
 
     const payload = await response.json() as { data?: T; errors?: Array<{ message?: string }> };
     if (Array.isArray(payload.errors) && payload.errors.length > 0) {
-      throw new Error(`linear_graphql_errors:${payload.errors.map((item) => item.message || "unknown").join(" | ")}`);
+      throw new SymphonyTrackerError(
+        "linear_graphql_errors",
+        payload.errors.map((item) => item.message || "unknown").join(" | "),
+      );
     }
     if (!payload.data) {
-      throw new Error("linear_unknown_payload");
+      throw new SymphonyTrackerError("linear_unknown_payload");
     }
     return payload.data;
   } finally {
@@ -216,6 +250,20 @@ function normalizeLinearIssue(issue: LinearIssueNode): SymphonyTrackerIssue | nu
     return null;
   }
 
+  const labels = new Set(
+    (issue.labels?.nodes ?? [])
+      .map((label) => String(label.name ?? "").trim().toLowerCase())
+      .filter(Boolean),
+  );
+
+  const blockedBy = (issue.inverseRelations?.nodes ?? [])
+    .filter((relation) => String(relation.type ?? "").trim().toLowerCase() === "blocks")
+    .map((relation) => ({
+      id: relation.issue?.id ?? null,
+      identifier: relation.issue?.identifier ?? null,
+      state: relation.issue?.state?.name ?? null,
+    }));
+
   return {
     id: issue.id,
     identifier: issue.identifier,
@@ -225,10 +273,8 @@ function normalizeLinearIssue(issue: LinearIssueNode): SymphonyTrackerIssue | nu
     state: issue.state.name,
     branch_name: issue.branchName ?? null,
     url: issue.url ?? null,
-    labels: (issue.labels?.nodes ?? [])
-      .map((label) => String(label.name ?? "").trim().toLowerCase())
-      .filter(Boolean),
-    blocked_by: [],
+    labels: [...labels],
+    blocked_by: blockedBy,
     created_at: issue.createdAt ?? null,
     updated_at: issue.updatedAt ?? null,
     retry_count: 0,
@@ -239,7 +285,7 @@ function normalizeLinearIssue(issue: LinearIssueNode): SymphonyTrackerIssue | nu
 
 async function fetchLinearCandidateIssues(config: SymphonyEffectiveConfig): Promise<SymphonyTrackerIssue[]> {
   if (!config.tracker.projectSlug) {
-    throw new Error("missing_tracker_project_slug");
+    throw new SymphonyTrackerError("missing_tracker_project_slug");
   }
 
   const query = `
@@ -264,6 +310,16 @@ async function fetchLinearCandidateIssues(config: SymphonyEffectiveConfig): Prom
           updatedAt
           state { name }
           labels { nodes { name } }
+          inverseRelations {
+            nodes {
+              type
+              issue {
+                id
+                identifier
+                state { name }
+              }
+            }
+          }
         }
         pageInfo {
           hasNextPage
@@ -298,7 +354,7 @@ async function fetchLinearCandidateIssues(config: SymphonyEffectiveConfig): Prom
 
     after = page.pageInfo.endCursor ?? null;
     if (!after) {
-      throw new Error("linear_missing_end_cursor");
+      throw new SymphonyTrackerError("linear_missing_end_cursor");
     }
   }
 
@@ -328,6 +384,16 @@ async function fetchLinearIssuesByIds(
           updatedAt
           state { name }
           labels { nodes { name } }
+          inverseRelations {
+            nodes {
+              type
+              issue {
+                id
+                identifier
+                state { name }
+              }
+            }
+          }
         }
       }
     }
@@ -376,8 +442,14 @@ export async function fetchSymphonyIssueStatesByIds(
   }
 
   const tasks = loadTaskStorage<{ tasks: StoredTask[] }>(cwd).tasks ?? [];
+  const ulTasks = getAllUlWorkflowTasks() as StoredUlTask[];
   const idSet = new Set(issueIds);
-  return tasks
-    .filter((task) => idSet.has(task.id))
-    .map(normalizeTaskIssue);
+  return [
+    ...tasks
+      .filter((task) => idSet.has(task.id))
+      .map(normalizeTaskIssue),
+    ...ulTasks
+      .filter((task) => idSet.has(task.id))
+      .map(normalizeUlWorkflowIssue),
+  ];
 }

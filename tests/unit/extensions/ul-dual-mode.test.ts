@@ -11,6 +11,13 @@ vi.mock("@mariozechner/pi-coding-agent", () => ({
 	ExtensionAPI: vi.fn(),
 }));
 
+vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
+	isCompletionBlocked: vi.fn(() => false),
+	loadWorkspaceVerificationConfig: vi.fn(() => ({ enabled: false })),
+	loadWorkspaceVerificationState: vi.fn(() => ({})),
+	resolveWorkspaceVerificationPlan: vi.fn(() => ({})),
+}));
+
 // モック後にインポート
 import ulDualMode, { buildUlWorkflowPrompt } from "../../../.pi/extensions/ul-dual-mode.js";
 
@@ -109,7 +116,8 @@ describe("buildUlWorkflowPrompt", () => {
 		expect(prompt).toContain("2. Plan");
 		expect(prompt).toContain("3. Question拡張で人間確認");
 		expect(prompt).toContain("4. 承認された場合のみ Implement");
-		expect(prompt).toContain("5. Commit");
+		expect(prompt).toContain("5. Verify");
+		expect(prompt).toContain("6. Commit");
 	});
 
 	it("questionツールの実際の引数形式を使う", () => {
@@ -126,6 +134,15 @@ describe("buildUlWorkflowPrompt", () => {
 
 		expect(prompt).toContain("ul_workflow_modify_plan");
 		expect(prompt).toContain("再度 `question` ツールで確認する");
+	});
+
+	it("verify-first の closeout 条件を含む", () => {
+		const prompt = buildUlWorkflowPrompt("通知バグ修正");
+
+		expect(prompt).toContain("workspace_verify");
+		expect(prompt).toContain("console error");
+		expect(prompt).toContain("workspace_verify_ack");
+		expect(prompt).toContain("verify が通る前に Commit しない");
 	});
 
 	it("ABDD ツールを前提にしない", () => {

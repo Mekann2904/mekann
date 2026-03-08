@@ -31,6 +31,12 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Mutex } from "async-mutex";
+import {
+  isCompletionBlocked,
+  loadWorkspaceVerificationConfig,
+  loadWorkspaceVerificationState,
+  resolveWorkspaceVerificationPlan,
+} from "../lib/workspace-verification.js";
 
 const UL_PREFIX = /^\s*ul(?:\s+|$)/i;
 const STABLE_UL_PROFILE = true;
@@ -307,12 +313,23 @@ function shouldRequireReviewer(task: string): boolean {
   return !isTrivialTask(task);
 }
 
-function getMissingRequirements(): string[] {
+function getMissingRequirements(cwd?: string): string[] {
   const missing: string[] = [];
 
   // reviewer必須チェック（小規模タスクは条件付きでスキップ可能）
   if (shouldRequireReviewer(state.currentTask) && !state.completedRecommendedReviewerPhase) {
     missing.push(`subagent_run (subagentId: ${RECOMMENDED_REVIEWER_ID}) - 完了前の品質レビュー`);
+  }
+
+  if (cwd) {
+    const verificationConfig = loadWorkspaceVerificationConfig(cwd);
+    if (verificationConfig.enabled) {
+      const verificationState = loadWorkspaceVerificationState(cwd);
+      const verificationPlan = resolveWorkspaceVerificationPlan(verificationConfig, cwd);
+      if (isCompletionBlocked(verificationConfig, verificationState, verificationPlan)) {
+        missing.push("workspace_verify / workspace_verify_ack / workspace_verify_review_ack - 検証ゲートの完了");
+      }
+    }
   }
 
   return missing;
@@ -419,14 +436,19 @@ export function buildUlWorkflowPrompt(task: string): string {
 2. Plan
 3. Question拡張で人間確認
 4. 承認された場合のみ Implement
-5. Commit
+5. Verify
+6. Commit
 
 厳守事項:
 - コードを書く前に、必ず文章化された計画を人間確認にかけること
 - 人間確認では必ず \`question\` ツールを使うこと
 - Research と Plan は自律的に進めること
 - Question で承認されるまでは実装しないこと
-- 承認後は Implement と Commit まで続けること
+- 承認後は Implement のあとに必ず \`workspace_verify\` を実行すること
+- webアプリやサイトを触った場合は runtime / ui を含めて検証し、browser evidence を残すこと
+- \`console error\` が1件でも残るなら未完了として扱うこと
+- proof artifact や review artifact が必要な場合は \`workspace_verify_ack\` / \`workspace_verify_review_ack\` まで終えること
+- verify が通る前に Commit しないこと
 
 実行するタスク:
 ${task}
@@ -446,7 +468,7 @@ ${task}
   "arguments": {
     "question": "plan.md を確認してください。この計画で実装を続行しますか？ 修正したい場合は Type something. を選んで修正内容を書いてください。",
     "options": [
-      { "label": "承認して続行", "description": "Implement と Commit まで進む" },
+      { "label": "承認して続行", "description": "Implement と Verify と Commit まで進む" },
       { "label": "中止", "description": "今回は進めない" }
     ]
   }
@@ -456,7 +478,9 @@ ${task}
 8. 回答が「承認して続行」なら:
    - \`ul_workflow_approve()\` を呼ぶ
    - \`ul_workflow_execute_plan()\` を呼ぶ
-   - \`ul_workflow_commit()\` を呼ぶ
+   - \`workspace_verify()\` を呼ぶ
+   - 必要なら \`workspace_verify_ack()\` と \`workspace_verify_review_ack()\` を呼ぶ
+   - すべての verification gate が閉じたことを確認してから \`ul_workflow_commit()\` を呼ぶ
    - コミット候補を要約して、必要なら追加で \`question\` で確認する
 9. 回答が「中止」なら:
    - \`ul_workflow_abort()\` を呼ぶ
@@ -468,7 +492,8 @@ ${task}
 出力ルール:
 - 各フェーズで何をしたかを短く報告する
 - 生成物のパスを明示する
-- 実装前には必ず Question の結果を明示する`;
+- 実装前には必ず Question の結果を明示する
+- 完了報告には、何を verify したか、何が未検証かを必ず書く`;
 }
 
 // ポリシーキャッシュ（4通りの組み合わせのみ、防御的に上限設定）
@@ -891,7 +916,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       return;
     }
 
-    const missing = getMissingRequirements();
+    const missing = getMissingRequirements(ctx?.cwd);
     if (missing.length === 0) {
       // reviewerが実行された（または必須でない）
 

@@ -52,14 +52,24 @@ interface WorkflowWorkpad {
 
 interface SymphonyIssueDetail {
   source: "task" | "ul-workflow";
+  health: {
+    trackerStatus: "ok" | "error";
+    lastTrackerError: string | null;
+  };
   queue: {
     position: number | null;
     isNext: boolean;
     totalPending: number;
     blockedReason: string | null;
+    blockedBy: Array<{
+      id: string | null;
+      identifier: string | null;
+      state: string | null;
+    }>;
     retryAt: string | null;
     retryCount: number;
     lastError: string | null;
+    candidateReason: string | null;
   };
   runtime: {
     activeSession: {
@@ -113,6 +123,9 @@ interface SymphonyIssueDetail {
     entrypoints: string[];
     requiredCommands: string[];
     verifiedCommands: string[];
+    progressEvidence: string[];
+    verificationEvidence: string[];
+    reviewEvidence: string[];
   };
   workspace: {
     path: string;
@@ -826,10 +839,32 @@ function TaskDetailPanelInner({
                   blocked: {issueDetail.queue.blockedReason || "-"}
                 </div>
               </div>
+              {issueDetail.queue.candidateReason && (
+                <div class="rounded border border-border/60 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
+                  candidate_reason: {issueDetail.queue.candidateReason}
+                </div>
+              )}
               {issueDetail.queue.retryAt && (
                 <div class="rounded border border-border/60 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
                   retry_at: {issueDetail.queue.retryAt}
                   {issueDetail.queue.lastError ? ` · last_error: ${issueDetail.queue.lastError}` : ""}
+                </div>
+              )}
+              {issueDetail.health.trackerStatus === "error" && issueDetail.health.lastTrackerError && (
+                <div class="rounded border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-500">
+                  tracker_error: {issueDetail.health.lastTrackerError}
+                </div>
+              )}
+              {issueDetail.queue.blockedBy.length > 0 && (
+                <div>
+                  <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Blockers</p>
+                  <div class="mt-1 space-y-1">
+                    {issueDetail.queue.blockedBy.map((blocker) => (
+                      <p key={`${blocker.identifier ?? blocker.id ?? "blocker"}`} class="text-xs text-muted-foreground">
+                        - {blocker.identifier ?? blocker.id ?? "unknown"}{blocker.state ? ` (${blocker.state})` : ""}
+                      </p>
+                    ))}
+                  </div>
                 </div>
               )}
               <div>
@@ -878,6 +913,29 @@ function TaskDetailPanelInner({
                 ) : (
                   <p class="mt-1 text-sm text-muted-foreground">No structured proof artifacts</p>
                 )}
+              </div>
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Structured Evidence</p>
+                <div class="mt-1 space-y-2">
+                  <div>
+                    <p class="text-[11px] text-muted-foreground">progress</p>
+                    {issueDetail.workflow.progressEvidence.length > 0 ? issueDetail.workflow.progressEvidence.map((line) => (
+                      <p key={`progress-${line}`} class="text-xs text-muted-foreground">- {line}</p>
+                    )) : <p class="text-xs text-muted-foreground">-</p>}
+                  </div>
+                  <div>
+                    <p class="text-[11px] text-muted-foreground">verification</p>
+                    {issueDetail.workflow.verificationEvidence.length > 0 ? issueDetail.workflow.verificationEvidence.map((line) => (
+                      <p key={`verification-${line}`} class="text-xs text-muted-foreground">- {line}</p>
+                    )) : <p class="text-xs text-muted-foreground">-</p>}
+                  </div>
+                  <div>
+                    <p class="text-[11px] text-muted-foreground">review</p>
+                    {issueDetail.workflow.reviewEvidence.length > 0 ? issueDetail.workflow.reviewEvidence.map((line) => (
+                      <p key={`review-${line}`} class="text-xs text-muted-foreground">- {line}</p>
+                    )) : <p class="text-xs text-muted-foreground">-</p>}
+                  </div>
+                </div>
               </div>
               <div>
                 <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Durable State</p>

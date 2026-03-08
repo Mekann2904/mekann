@@ -181,6 +181,20 @@ let recoveryIntervalOverrideMs: number | null = null;
 let reductionFactorOverride: number | null = null;
 let recoveryFactorOverride: number | null = null;
 
+function isDatabaseDisconnectedError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("[sqlite-db] Database not connected");
+}
+
+function resetRecoveryLoopAfterDisconnect(error: unknown): boolean {
+  if (!isDatabaseDisconnectedError(error)) {
+    return false;
+  }
+
+  stopRecoveryTimer();
+  repo = null;
+  return true;
+}
+
 /**
  * リポジトリを取得（遅延初期化）
  * @summary リポジトリ取得
@@ -749,6 +763,11 @@ export function startRecoveryTimer(): void {
   recoveryTimer = setInterval(() => {
     void withStateMutex(async () => {
       runRecoveryCheck();
+    }).catch((error) => {
+      if (resetRecoveryLoopAfterDisconnect(error)) {
+        return;
+      }
+      console.error("[adaptive-rate-controller] Recovery check failed:", error);
     });
   }, RECOVERY_CHECK_INTERVAL_MS);
   
@@ -809,9 +828,6 @@ export function shutdownAdaptiveController(): void {
   recoveryFactorOverride = null;
   isInitialized = false;
 }
-
-// モジュール読み込み時に回復タイマーを自動開始
-startRecoveryTimer();
 
 // ============================================================================
 // Summary

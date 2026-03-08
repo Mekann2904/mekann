@@ -1,4 +1,5 @@
 .pi/agent-loop
+.pi/long-running/
 .pi/node_modules/
 node_modules
 

@@ -6,6 +6,7 @@
  */
 
 import { RefreshCw, Waypoints, FileText, ListTodo, Bot, CheckCircle2 } from "lucide-preact";
+import { route } from "preact-router";
 import { Button } from "./ui/button";
 import {
   PageLayout,
@@ -28,16 +29,90 @@ function BoolRow({ label, value }: { label: string; value: boolean }) {
   );
 }
 
+function buildCandidateReasonCounts(
+  candidates: Array<{
+    reason: string;
+    eligible: boolean;
+    blockedBy?: Array<{
+      id: string | null;
+      identifier: string | null;
+      state: string | null;
+    }>;
+  }>,
+): Array<{ reason: string; count: number }> {
+  const counts = new Map<string, number>();
+
+  for (const candidate of candidates) {
+    if (candidate.eligible) {
+      continue;
+    }
+    counts.set(candidate.reason, (counts.get(candidate.reason) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((left, right) => right.count - left.count || left.reason.localeCompare(right.reason));
+}
+
+function buildBlockerCounts(
+  candidates: Array<{
+    reason: string;
+    blockedBy?: Array<{
+      id: string | null;
+      identifier: string | null;
+      state: string | null;
+    }>;
+  }>,
+): Array<{ key: string; label: string; state: string | null; count: number }> {
+  const counts = new Map<string, { key: string; label: string; state: string | null; count: number }>();
+
+  for (const candidate of candidates) {
+    if (candidate.reason !== "blocked-by-active-issue") {
+      continue;
+    }
+
+    for (const blocker of candidate.blockedBy ?? []) {
+      const key = blocker.identifier ?? blocker.id ?? "unknown";
+      const existing = counts.get(key);
+      if (existing) {
+        existing.count += 1;
+        continue;
+      }
+
+      counts.set(key, {
+        key,
+        label: blocker.identifier ?? blocker.id ?? "unknown",
+        state: blocker.state ?? null,
+        count: 1,
+      });
+    }
+  }
+
+  return Array.from(counts.values())
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label))
+    .slice(0, 5);
+}
+
 export function SymphonyPage() {
   const {
     snapshot,
     loading,
     error,
+    actionError,
     refresh,
     startOrchestrator,
     stopOrchestrator,
     tickOrchestrator,
   } = useSymphonyStatus();
+  const candidateReasonCounts = buildCandidateReasonCounts(snapshot?.scheduler.candidates ?? []);
+  const blockerCounts = buildBlockerCounts(snapshot?.scheduler.candidates ?? []);
+
+  const navigateToTask = (taskId: string | null) => {
+    if (!taskId) {
+      return;
+    }
+    route(`/tasks?taskId=${encodeURIComponent(taskId)}`);
+  };
 
   if (loading && !snapshot) {
     return (
@@ -88,6 +163,14 @@ export function SymphonyPage() {
       />
 
       {error && <ErrorBanner message={error} onRetry={refresh} onDismiss={() => undefined} />}
+      {actionError && <ErrorBanner message={`action: ${actionError}`} onRetry={refresh} onDismiss={() => undefined} />}
+      {snapshot.health.trackerStatus === "error" && snapshot.health.lastTrackerError && (
+        <ErrorBanner
+          message={`tracker: ${snapshot.health.lastTrackerError}`}
+          onRetry={refresh}
+          onDismiss={() => undefined}
+        />
+      )}
 
       <StatsGrid cols={4}>
         <StatsCard label="Orchestrator" value={snapshot.orchestrator.running ? "running" : "stopped"} />
@@ -109,6 +192,14 @@ export function SymphonyPage() {
               tracker: {snapshot.workflow.trackerKind}
               {snapshot.workflow.trackerProjectSlug ? ` (${snapshot.workflow.trackerProjectSlug})` : ""}
             </p>
+            <p class="text-sm text-muted-foreground">
+              tracker_status: {snapshot.health.trackerStatus}
+            </p>
+            {snapshot.health.lastTrackerError && (
+              <p class="text-sm text-red-600 dark:text-red-400">
+                tracker_error: {snapshot.health.lastTrackerError}
+              </p>
+            )}
             <p class="text-sm text-muted-foreground">runtime: {snapshot.workflow.runtimeKind}</p>
             <p class="text-sm">{snapshot.workflow.bodyPreview || "No prompt body"}</p>
             <div class="rounded-lg border border-border/60 p-3 text-sm">
@@ -150,13 +241,48 @@ export function SymphonyPage() {
             <div class="rounded-lg bg-muted/30 p-3">verify_failed: {snapshot.taskQueue.workspaceVerificationFailed}</div>
             <div class="rounded-lg bg-muted/30 p-3">gate_blocked: {snapshot.taskQueue.completionGateBlocked}</div>
           </div>
-            <div class="rounded-lg border border-border/60 p-3">
-              <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Scheduler</p>
+          <div class="rounded-lg border border-border/60 p-3">
+            <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Scheduler</p>
             <div class="mt-2 grid grid-cols-2 gap-2 text-sm xl:grid-cols-4">
               <div class="rounded bg-muted/30 px-3 py-2">eligible: {snapshot.scheduler.eligibleCount}</div>
               <div class="rounded bg-muted/30 px-3 py-2">blocked: {snapshot.scheduler.blockedCount}</div>
               <div class="rounded bg-muted/30 px-3 py-2">terminal: {snapshot.scheduler.terminalCount}</div>
               <div class="rounded bg-muted/30 px-3 py-2">retry_wait: {snapshot.taskQueue.retryScheduled}</div>
+            </div>
+            <div class="mt-3">
+              <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Blocked Reasons</p>
+              {candidateReasonCounts.length > 0 ? (
+                <div class="mt-2 flex flex-wrap gap-2">
+                  {candidateReasonCounts.map((item) => (
+                    <div key={item.reason} class="rounded bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
+                      {item.reason}: {item.count}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p class="mt-2 text-sm text-muted-foreground">No blocked candidates</p>
+              )}
+            </div>
+            <div class="mt-3">
+              <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Top Blockers</p>
+              {blockerCounts.length > 0 ? (
+                <div class="mt-2 space-y-2">
+                  {blockerCounts.map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      class="w-full rounded bg-muted/30 px-3 py-2 text-left text-xs text-muted-foreground hover:bg-muted/50"
+                      onClick={() => navigateToTask(item.key)}
+                    >
+                      {item.label}
+                      {item.state ? ` (${item.state})` : ""}
+                      {`: ${item.count}`}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p class="mt-2 text-sm text-muted-foreground">No blocker bottleneck</p>
+              )}
             </div>
           </div>
           <div class="rounded-lg border border-border/60 p-3">
@@ -258,6 +384,15 @@ export function SymphonyPage() {
                     {item.id} · {item.priority} · {item.status} · {item.eligible ? "eligible" : "blocked"}
                   </p>
                   <p class="mt-1 text-xs text-muted-foreground">{item.reason}</p>
+                  {item.blockedBy && item.blockedBy.length > 0 && (
+                    <div class="mt-2 space-y-1">
+                      {item.blockedBy.map((blocker) => (
+                        <p key={`${item.id}-${blocker.identifier ?? blocker.id ?? "blocker"}`} class="text-[11px] text-muted-foreground">
+                          blocked by: {blocker.identifier ?? blocker.id ?? "unknown"}{blocker.state ? ` (${blocker.state})` : ""}
+                        </p>
+                      ))}
+                    </div>
+                  )}
                   {item.reason === "retry-delayed" && (
                     <p class="mt-1 text-[11px] text-muted-foreground">
                       waiting for retry window

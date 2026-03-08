@@ -6,6 +6,7 @@
  */
 
 import { loadSymphonyConfig } from "./symphony-config.js";
+import { repairSymphonyOrchestratorState } from "./symphony-orchestrator-state.js";
 import {
   refreshSymphonyScheduler,
   runSymphonyStartupTerminalCleanup,
@@ -103,6 +104,14 @@ export function startSymphonyOrchestratorLoop(options: StartOptions = {}): Symph
 
   if (startupCleanupCwd !== currentCwd) {
     startupCleanupCwd = currentCwd;
+    try {
+      repairSymphonyOrchestratorState(currentCwd, getRuntimeSessions());
+    } catch (error) {
+      state = {
+        ...state,
+        lastError: error instanceof Error ? error.message : "resume repair failed",
+      };
+    }
     void runSymphonyStartupTerminalCleanup(currentCwd).catch((error) => {
       state = {
         ...state,

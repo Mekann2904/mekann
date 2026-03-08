@@ -32,6 +32,11 @@ export interface SymphonySchedulerCandidate {
   status: string;
   eligible: boolean;
   reason: string;
+  blockedBy?: Array<{
+    id: string | null;
+    identifier: string | null;
+    state: string | null;
+  }>;
 }
 
 export interface SymphonySchedulerSnapshot {
@@ -78,6 +83,7 @@ function buildCandidate(
   const orchestration = getSymphonyIssueState(cwd, issue.id);
   const activeRuntime = hasActiveRuntimeSession(issue.id, runtimeSessions);
   const normalizedState = normalizeSymphonyStateName(issue.state);
+  const terminalStateNames = new Set(config.tracker.terminalStates.map(normalizeSymphonyStateName));
   const isTerminal = config.tracker.terminalStates
     .map(normalizeSymphonyStateName)
     .includes(normalizedState);
@@ -155,6 +161,26 @@ function buildCandidate(
       status: issue.state,
       eligible: false,
       reason: "retry-delayed",
+    };
+  }
+
+  const isTodo = normalizedState === normalizeSymphonyStateName("Todo");
+  const hasNonTerminalBlocker = issue.blocked_by.some((blocker) => {
+    const blockerState = normalizeSymphonyStateName(String(blocker.state ?? ""));
+    return blockerState && !terminalStateNames.has(blockerState);
+  });
+  if (isTodo && hasNonTerminalBlocker) {
+    return {
+      id: issue.id,
+      title: issue.title,
+      priority: issue.priority,
+      status: issue.state,
+      eligible: false,
+      reason: "blocked-by-active-issue",
+      blockedBy: issue.blocked_by.filter((blocker) => {
+        const blockerState = normalizeSymphonyStateName(String(blocker.state ?? ""));
+        return blockerState && !terminalStateNames.has(blockerState);
+      }),
     };
   }
 

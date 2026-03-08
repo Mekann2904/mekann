@@ -29,6 +29,9 @@ vi.mock("../../../../.pi/lib/storage/task-plan-store.js", () => ({
         completionGateBlockers: ["verification command not confirmed: npm test"],
         proofArtifacts: ["structured artifact"],
         verifiedCommands: ["npm test"],
+        progressEvidence: ["- progress evidence"],
+        verificationEvidence: ["- verification evidence"],
+        reviewEvidence: ["- review evidence"],
       },
       {
         id: "task-2",
@@ -170,7 +173,9 @@ vi.mock("../../../../.pi/lib/symphony-orchestrator-loop.js", () => ({
 import {
   buildSymphonyIssueSnapshot,
   buildSymphonySnapshot,
+  hydrateSymphonyIssueSnapshot,
 } from "../../../../.pi/extensions/web-ui/lib/symphony-reader.js";
+import { refreshSymphonyScheduler } from "../../../../.pi/lib/symphony-scheduler.js";
 
 describe("symphony-reader", () => {
   it("workflow, queue, workpad を 1 つの snapshot に束ねる", async () => {
@@ -188,6 +193,8 @@ describe("symphony-reader", () => {
     });
 
     expect(snapshot.workflow.exists).toBe(true);
+    expect(snapshot.health.trackerStatus).toBe("ok");
+    expect(snapshot.health.lastTrackerError).toBeNull();
     expect(snapshot.workflow.workspaceRoot).toBe("/repo/.pi/workspaces");
     expect(snapshot.workflow.trackerKind).toBe("task_queue");
     expect(snapshot.workflow.runtimeKind).toBe("pi-mono-extension");
@@ -216,10 +223,13 @@ describe("symphony-reader", () => {
     }]);
 
     expect(detail?.id).toBe("task-1");
+    expect(detail?.health.trackerStatus).toBe("ok");
     expect(detail?.orchestration?.runState).toBe("running");
     expect(detail?.runtime.activeSession?.id).toBe("session-1");
     expect(detail?.queue.position).toBeNull();
     expect(detail?.queue.blockedReason).toBe("retry-delayed");
+    expect(detail?.queue.blockedBy).toEqual([]);
+    expect(detail?.queue.candidateReason).toBeNull();
     expect(detail?.queue.retryAt).toBe("2099-01-01T00:00:00.000Z");
     expect(detail?.queue.lastError).toBe("transient failure");
     expect(detail?.verification.status).toBe("failed");
@@ -233,7 +243,66 @@ describe("symphony-reader", () => {
     expect(detail?.debug.relatedSessions).toHaveLength(1);
     expect(detail?.debug.recentEvents[0]?.action).toBe("running");
     expect(detail?.workflow.verifiedCommands).toContain("npm test");
+    expect(detail?.workflow.progressEvidence).toContain("- progress evidence");
+    expect(detail?.workflow.verificationEvidence).toContain("- verification evidence");
+    expect(detail?.workflow.reviewEvidence).toContain("- review evidence");
     expect(detail?.workflow.entrypoints).toContain("task_run_next");
     expect(detail?.workspace.path).toContain("/repo/.pi/workspaces/task-1");
+  });
+
+  it("issue detail を scheduler 情報で hydrate する", async () => {
+    vi.mocked(refreshSymphonyScheduler).mockResolvedValueOnce({
+      generatedAt: "2026-03-08T03:00:00.000Z",
+      eligibleCount: 0,
+      blockedCount: 1,
+      terminalCount: 0,
+      nextEligibleTask: null,
+      candidates: [
+        {
+          id: "task-1",
+          title: "Implement runner",
+          priority: "high",
+          status: "todo",
+          eligible: false,
+          reason: "blocked-by-active-issue",
+          blockedBy: [{
+            id: "task-9",
+            identifier: "task-9",
+            state: "In Progress",
+          }],
+        },
+      ],
+    });
+
+    const detail = buildSymphonyIssueSnapshot("task-1", "/repo", []);
+    const hydrated = await hydrateSymphonyIssueSnapshot(detail!, "/repo", []);
+
+    expect(hydrated.queue.candidateReason).toBe("blocked-by-active-issue");
+    expect(hydrated.queue.blockedReason).toBe("retry-delayed");
+    expect(hydrated.queue.blockedBy).toEqual([{
+      id: "task-9",
+      identifier: "task-9",
+      state: "In Progress",
+    }]);
+  });
+
+  it("issue detail hydrate で tracker error を health に載せる", async () => {
+    vi.mocked(refreshSymphonyScheduler).mockRejectedValueOnce(new Error("linear_graphql_errors: denied"));
+
+    const detail = buildSymphonyIssueSnapshot("task-1", "/repo", []);
+    const hydrated = await hydrateSymphonyIssueSnapshot(detail!, "/repo", []);
+
+    expect(hydrated.health.trackerStatus).toBe("error");
+    expect(hydrated.health.lastTrackerError).toContain("linear_graphql_errors: denied");
+  });
+
+  it("tracker refresh error を health に載せて snapshot を返す", async () => {
+    vi.mocked(refreshSymphonyScheduler).mockRejectedValueOnce(new Error("linear_api_status:500"));
+
+    const snapshot = await buildSymphonySnapshot("/repo", null);
+
+    expect(snapshot.health.trackerStatus).toBe("error");
+    expect(snapshot.health.lastTrackerError).toContain("linear_api_status:500");
+    expect(snapshot.scheduler.candidates).toEqual([]);
   });
 });

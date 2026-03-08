@@ -53,6 +53,11 @@ interface MutationInput {
   workpadId?: string;
 }
 
+interface RuntimeSessionLike {
+  taskId?: string;
+  status: string;
+}
+
 const STATE_DIR = ".pi/symphony";
 const STATE_FILE = "orchestrator-state.json";
 const MAX_EVENTS = 200;
@@ -235,4 +240,39 @@ export function releaseSymphonyIssue(input: MutationInput): SymphonyIssueState {
     sessionId: input.sessionId ?? previous?.sessionId,
     workpadId: input.workpadId ?? previous?.workpadId,
   }));
+}
+
+export function repairSymphonyOrchestratorState(
+  cwd: string = process.cwd(),
+  runtimeSessions: RuntimeSessionLike[] = [],
+): SymphonyIssueState[] {
+  const repaired: SymphonyIssueState[] = [];
+  const activeRuntimeIssueIds = new Set(
+    runtimeSessions
+      .filter((session) => session.taskId && (session.status === "starting" || session.status === "running"))
+      .map((session) => String(session.taskId)),
+  );
+
+  for (const issue of listSymphonyIssueStates(cwd)) {
+    if (issue.runState !== "claimed" && issue.runState !== "running") {
+      continue;
+    }
+
+    if (activeRuntimeIssueIds.has(issue.issueId)) {
+      continue;
+    }
+
+    repaired.push(queueSymphonyIssueRetry({
+      cwd,
+      issueId: issue.issueId,
+      title: issue.title,
+      source: "symphony-orchestrator-repair",
+      reason: `resume repair: stale ${issue.runState} without active runtime session`,
+      retryAttempt: issue.retryAttempt ?? 1,
+      sessionId: issue.sessionId,
+      workpadId: issue.workpadId,
+    }));
+  }
+
+  return repaired;
 }

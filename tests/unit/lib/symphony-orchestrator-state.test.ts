@@ -16,6 +16,7 @@ import {
   getSymphonyIssueState,
   listSymphonyIssueStates,
   queueSymphonyIssueRetry,
+  repairSymphonyOrchestratorState,
   releaseSymphonyIssue,
   startSymphonyIssueRun,
 } from "../../../.pi/lib/symphony-orchestrator-state.js";
@@ -68,5 +69,29 @@ describe("symphony-orchestrator-state", () => {
     expect(state?.retryAttempt).toBe(2);
     expect(state?.workpadId).toBe("wp-1");
     expect(listSymphonyIssueStates(cwd)).toHaveLength(1);
+  });
+
+  it("resume repair で stale claimed/running を retrying に寄せる", () => {
+    const cwd = createTempRepo();
+
+    claimSymphonyIssue({
+      cwd,
+      issueId: "task-1",
+      title: "Claimed task",
+      source: "task-auto-executor",
+    });
+    startSymphonyIssueRun({
+      cwd,
+      issueId: "task-2",
+      title: "Running task",
+      source: "long-running-supervisor",
+      sessionId: "session-2",
+    });
+
+    const repaired = repairSymphonyOrchestratorState(cwd, []);
+
+    expect(repaired).toHaveLength(2);
+    expect(getSymphonyIssueState(cwd, "task-1")?.runState).toBe("retrying");
+    expect(getSymphonyIssueState(cwd, "task-2")?.runState).toBe("retrying");
   });
 });
