@@ -381,6 +381,14 @@ export interface ProjectContextInfo {
   db_migration_required?: boolean;
   /** 必須SDK */
   required_sdks?: string[];
+  /** agent-first workflow が存在するか */
+  workflow_defined?: boolean;
+  /** workflow の entrypoints */
+  workflow_entrypoints?: string[];
+  /** workpad 件数 */
+  workpad_count?: number;
+  /** 最新 workpad の更新時刻 */
+  latest_workpad_updated_at?: string;
   /** カスタムノート */
   custom_notes?: string[];
   /** 情報源（"explicit" | "inferred" | "mixed"） */

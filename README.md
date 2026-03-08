@@ -195,6 +195,8 @@ pi remove https://github.com/Mekann2904/mekann
 
 詳細: `.pi/extensions/long-running-supervisor.ts`, `.pi/lib/long-running-supervisor.ts` | ツール: `long_running_status`, `long_running_preflight`, `long_running_resume`, `long_running_supervisor`
 
+推奨運用: `docs/05-meta/08-autonomous-harness-playbook.md`
+
 ## Workspace Verification
 
 コード変更後の自動検証。lint/typecheck/test/build/runtime/uiの標準レイヤー。
@@ -234,6 +236,7 @@ mekann/
 - [Developer Guide](docs/03-development/) - 拡張機能開発とAPI
 - [Reference](docs/04-reference/) - 設定とトラブルシューティング
 - [Meta](docs/05-meta/) - 変更履歴、ロードマップ、ドキュメントポリシー
+- [自走ハーネス運用ガイド](docs/05-meta/08-autonomous-harness-playbook.md) - 小反復と強いフィードバックループの標準運用
 - [コードレビューレポート](docs/06-code-review-report/) - アーキテクチャ分析、判断基準、改善推奨事項
 
 ### コードレビューレポート

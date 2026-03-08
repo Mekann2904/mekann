@@ -34,6 +34,18 @@ import {
 	loadTaskStorage as loadSharedTaskStorage,
 	saveTaskStorage as saveSharedTaskStorage,
 } from "../lib/storage/task-plan-store.js";
+import {
+	createWorkpad,
+	loadWorkpad,
+	loadWorkflowDocument,
+	updateWorkpad,
+} from "../lib/workflow-workpad.js";
+import {
+	claimSymphonyIssue,
+	getSymphonyIssueState,
+	releaseSymphonyIssue,
+} from "../lib/symphony-orchestrator-state.js";
+import { onSessionEvent } from "../lib/runtime-sessions.js";
 
 // ============================================
 // Types
@@ -57,6 +69,18 @@ interface Task {
 	parentTaskId?: string;
 	ownerInstanceId?: string; // 所有するpiインスタンスID（sessionId-pid形式）
 	claimedAt?: string;       // 所有取得時刻
+	retryCount?: number;
+	nextRetryAt?: string;
+	lastError?: string;
+	workspaceVerificationStatus?: "passed" | "failed";
+	workspaceVerifiedAt?: string;
+	workspaceVerificationMessage?: string;
+	completionGateStatus?: "clear" | "blocked";
+	completionGateUpdatedAt?: string;
+	completionGateMessage?: string;
+	completionGateBlockers?: string[];
+	proofArtifacts?: string[];
+	verifiedCommands?: string[];
 }
 
 interface TaskStorage {
@@ -86,12 +110,26 @@ interface AutoExecutorConfig {
 	maxRetries: number;
 }
 
+interface TaskEvidenceSnapshot {
+	workflowExists: boolean;
+	completionGate: Record<string, unknown>;
+	requiredCommands: string[];
+	verificationSection: string;
+	reviewSection: string;
+	progressSection: string;
+	proofArtifacts: string[];
+	verifiedCommands: string[];
+	hasWorkspaceVerification: boolean;
+}
+
 // ============================================
 // Constants
 // ============================================
 
 const TASK_DIR = ".pi/tasks";
 const CONFIG_FILE = join(TASK_DIR, "auto-executor-config.json");
+const DEFAULT_RETRY_DELAY_MS = 10_000;
+const MAX_RETRY_DELAY_MS = 5 * 60 * 1000;
 
 const PRIORITY_ORDER: Record<TaskPriority, number> = {
 	urgent: 4,
@@ -120,6 +158,12 @@ let autoExecutorConfig: AutoExecutorConfig = {
 };
 
 let lastNotifiedTaskId: string | null = null;
+let sessionEventUnsubscribe: (() => void) | null = null;
+
+type ToolExecutor = (
+	toolName: string,
+	params: Record<string, unknown>,
+) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
 
 // ============================================
 // Storage Functions
@@ -150,6 +194,592 @@ function saveConfig(): void {
 		mkdirSync(TASK_DIR, { recursive: true });
 	}
 	writeFileSync(CONFIG_FILE, JSON.stringify(autoExecutorConfig, null, 2));
+}
+
+function startTaskWorkpad(cwd: string, task: Task): string | null {
+  const workflow = loadWorkflowDocument(cwd);
+  if (!workflow.exists) {
+    return null;
+  }
+
+  const record = createWorkpad(cwd, {
+    task: task.title,
+    source: "auto:task_run_next",
+    issueId: task.id,
+  });
+
+  updateWorkpad(cwd, {
+    id: record.metadata.id,
+    section: "progress",
+    content: `- task claimed automatically from queue: ${task.id}`,
+    mode: "append",
+  });
+  updateWorkpad(cwd, {
+    id: record.metadata.id,
+    section: "next",
+    content: "- inspect related files, implement the smallest working slice, then verify locally",
+    mode: "replace",
+  });
+
+  return record.metadata.id;
+}
+
+function getToolExecutor(ctx: unknown): ToolExecutor | undefined {
+	const anyCtx = ctx as {
+		callTool?: (
+			toolName: string,
+			params: Record<string, unknown>,
+		) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
+		executeTool?: (options: {
+			toolName: string;
+			params: Record<string, unknown>;
+		}) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
+	};
+
+	if (typeof anyCtx.callTool === "function") {
+		const callTool = anyCtx.callTool;
+		return (toolName, params) => callTool(toolName, params);
+	}
+
+	if (typeof anyCtx.executeTool === "function") {
+		const executeTool = anyCtx.executeTool;
+		return (toolName, params) => executeTool({ toolName, params });
+	}
+
+	return undefined;
+}
+
+function releaseClaimedTask(taskId: string): Task | null {
+	const storage = loadStorage();
+	const taskIndex = storage.tasks.findIndex((task) => task.id === taskId);
+	if (taskIndex < 0) {
+		return null;
+	}
+
+	const task = storage.tasks[taskIndex];
+	task.status = "todo";
+	delete task.ownerInstanceId;
+	delete task.claimedAt;
+	task.updatedAt = new Date().toISOString();
+	saveStorage(storage);
+
+	if (autoExecutorConfig.currentTaskId === taskId) {
+		delete autoExecutorConfig.currentTaskId;
+		saveConfig();
+	}
+
+	return task;
+}
+
+function computeRetryDelayMs(retryAttempt: number): number {
+	const exponent = Math.max(0, retryAttempt - 1);
+	return Math.min(DEFAULT_RETRY_DELAY_MS * (2 ** exponent), MAX_RETRY_DELAY_MS);
+}
+
+function scheduleTaskRetry(taskId: string, message?: string): { task: Task | null; delayMs: number } {
+	const storage = loadStorage();
+	const taskIndex = storage.tasks.findIndex((task) => task.id === taskId);
+	if (taskIndex < 0) {
+		return { task: null, delayMs: DEFAULT_RETRY_DELAY_MS };
+	}
+
+	const task = storage.tasks[taskIndex];
+	const retryCount = (task.retryCount ?? 0) + 1;
+	const delayMs = computeRetryDelayMs(retryCount);
+	task.status = "todo";
+	task.retryCount = retryCount;
+	task.nextRetryAt = new Date(Date.now() + delayMs).toISOString();
+	task.lastError = message;
+	task.updatedAt = new Date().toISOString();
+	delete task.ownerInstanceId;
+	delete task.claimedAt;
+	delete task.completedAt;
+	saveStorage(storage);
+
+	if (autoExecutorConfig.currentTaskId === taskId) {
+		delete autoExecutorConfig.currentTaskId;
+		saveConfig();
+	}
+
+	return { task, delayMs };
+}
+
+function updateTaskWorkspaceVerification(
+	taskId: string,
+	status: "passed" | "failed",
+	message?: string,
+): Task | null {
+	const storage = loadStorage();
+	const taskIndex = storage.tasks.findIndex((task) => task.id === taskId);
+	if (taskIndex < 0) {
+		return null;
+	}
+
+	const task = storage.tasks[taskIndex];
+	task.workspaceVerificationStatus = status;
+	task.workspaceVerifiedAt = new Date().toISOString();
+	task.workspaceVerificationMessage = message;
+	task.updatedAt = new Date().toISOString();
+	saveStorage(storage);
+	return task;
+}
+
+function updateTaskCompletionGate(
+	taskId: string,
+	status: "clear" | "blocked",
+	message?: string,
+	blockers?: string[],
+): Task | null {
+	const storage = loadStorage();
+	const taskIndex = storage.tasks.findIndex((task) => task.id === taskId);
+	if (taskIndex < 0) {
+		return null;
+	}
+
+	const task = storage.tasks[taskIndex];
+	task.completionGateStatus = status;
+	task.completionGateUpdatedAt = new Date().toISOString();
+	task.completionGateMessage = message;
+	task.completionGateBlockers = blockers?.length ? [...blockers] : [];
+	task.updatedAt = new Date().toISOString();
+	saveStorage(storage);
+	return task;
+}
+
+function extractProofArtifactsFromText(text: string | undefined): string[] {
+	const matches = new Set<string>();
+	for (const line of String(text ?? "").split("\n")) {
+		const match = line.match(/^\s*[-*]?\s*proof artifact:\s*(.+)\s*$/i);
+		if (match?.[1]) {
+			matches.add(match[1].trim());
+		}
+	}
+	return [...matches];
+}
+
+function collectVerifiedCommands(
+	verificationSection: string,
+	requiredCommands: string[],
+): string[] {
+	return requiredCommands.filter((command) => commandSatisfied(verificationSection, command));
+}
+
+function collectTaskEvidence(cwd: string, taskId: string): TaskEvidenceSnapshot {
+	const issueState = getSymphonyIssueState(cwd, taskId);
+	const workpad = issueState?.workpadId ? loadWorkpad(cwd, issueState.workpadId) : null;
+	const workflow = loadWorkflowDocument(cwd);
+	const verificationSection = workpad?.sections.verification ?? "";
+	const reviewSection = workpad?.sections.review ?? "";
+	const progressSection = workpad?.sections.progress ?? "";
+	const proofArtifacts = [
+		...extractProofArtifactsFromText(progressSection),
+		...extractProofArtifactsFromText(verificationSection),
+		...extractProofArtifactsFromText(reviewSection),
+	].filter((value, index, array) => array.indexOf(value) === index);
+	const verifiedCommands = collectVerifiedCommands(
+		verificationSection,
+		workflow.frontmatter.verification?.required_commands ?? [],
+	);
+	const storage = loadStorage();
+	const task = storage.tasks.find((item) => item.id === taskId);
+	const compactVerification = verificationSection.toLowerCase();
+
+	return {
+		workflowExists: workflow.exists,
+		completionGate: workflow.frontmatter.completion_gate ?? {},
+		requiredCommands: workflow.frontmatter.verification?.required_commands ?? [],
+		verificationSection,
+		reviewSection,
+		progressSection,
+		proofArtifacts,
+		verifiedCommands,
+		hasWorkspaceVerification: task?.workspaceVerificationStatus === "passed"
+			|| compactVerification.includes("workspace_verify passed")
+			|| compactVerification.includes("verify:workspace")
+			|| compactVerification.includes("workspace verification passed"),
+	};
+}
+
+function syncTaskProofState(
+	taskId: string,
+	evidence: TaskEvidenceSnapshot,
+): Task | null {
+	const storage = loadStorage();
+	const taskIndex = storage.tasks.findIndex((task) => task.id === taskId);
+	if (taskIndex < 0) {
+		return null;
+	}
+
+	const task = storage.tasks[taskIndex];
+	task.proofArtifacts = evidence.proofArtifacts;
+	task.verifiedCommands = evidence.verifiedCommands;
+	task.updatedAt = new Date().toISOString();
+	saveStorage(storage);
+	return task;
+}
+
+function finalizeTaskStatus(
+	taskId: string,
+	status: "completed" | "failed",
+): Task | null {
+	const storage = loadStorage();
+	const taskIndex = storage.tasks.findIndex((task) => task.id === taskId);
+	if (taskIndex < 0) {
+		return null;
+	}
+
+	const task = storage.tasks[taskIndex];
+	if (task.status === status) {
+		return task;
+	}
+
+	task.status = status;
+	task.updatedAt = new Date().toISOString();
+	task.completedAt = status === "completed" ? new Date().toISOString() : undefined;
+	if (status === "completed") {
+		delete task.nextRetryAt;
+		delete task.lastError;
+		delete task.retryCount;
+		task.completionGateStatus = "clear";
+		task.completionGateUpdatedAt = new Date().toISOString();
+		task.completionGateMessage = "completion gate passed";
+		task.completionGateBlockers = [];
+	}
+	saveStorage(storage);
+
+	if (autoExecutorConfig.currentTaskId === taskId) {
+		delete autoExecutorConfig.currentTaskId;
+		saveConfig();
+	}
+
+	return task;
+}
+
+function syncTaskOutcomeToWorkpad(
+	cwd: string,
+	taskId: string,
+	status: "completed" | "failed" | "retrying",
+	message?: string,
+): void {
+	const issueState = getSymphonyIssueState(cwd, taskId);
+	if (!issueState?.workpadId) {
+		return;
+	}
+
+	if (status === "completed") {
+		updateWorkpad(cwd, {
+			id: issueState.workpadId,
+			section: "verification",
+			content: `- auto-run session completed${message ? `: ${message}` : ""}`,
+			mode: "append",
+		});
+		updateWorkpad(cwd, {
+			id: issueState.workpadId,
+			section: "next",
+			content: "- no further action required",
+			mode: "replace",
+		});
+		return;
+	}
+
+	if (status === "retrying") {
+		updateWorkpad(cwd, {
+			id: issueState.workpadId,
+			section: "verification",
+			content: `- auto-run session failed, retry scheduled${message ? `: ${message}` : ""}`,
+			mode: "append",
+		});
+		updateWorkpad(cwd, {
+			id: issueState.workpadId,
+			section: "next",
+			content: "- wait for retry window, then resume the same task automatically",
+			mode: "replace",
+		});
+		return;
+	}
+
+	updateWorkpad(cwd, {
+		id: issueState.workpadId,
+		section: "verification",
+		content: `- auto-run session failed${message ? `: ${message}` : ""}`,
+		mode: "append",
+	});
+	updateWorkpad(cwd, {
+		id: issueState.workpadId,
+		section: "next",
+		content: "- inspect the failure, repair the smallest broken slice, then rerun the task",
+		mode: "replace",
+	});
+}
+
+function hasMeaningfulEvidence(text: string | undefined): boolean {
+	const normalized = String(text ?? "").trim();
+	if (!normalized) {
+		return false;
+	}
+
+	const compact = normalized.toLowerCase();
+	if (
+		compact === "- pending"
+		|| compact === "- created"
+		|| compact === "- no required commands declared"
+	) {
+		return false;
+	}
+
+	const lines = normalized
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean);
+
+	return lines.some((line) => !line.startsWith("- [ ]"));
+}
+
+function commandSatisfied(verificationSection: string, command: string): boolean {
+	const normalizedSection = verificationSection.toLowerCase();
+	const normalizedCommand = command.trim().toLowerCase();
+	if (!normalizedCommand) {
+		return true;
+	}
+
+	if (normalizedSection.includes(`- [ ] ${normalizedCommand}`)) {
+		return false;
+	}
+
+	if (normalizedSection.includes(`- [x] ${normalizedCommand}`)) {
+		return true;
+	}
+
+	return normalizedSection.includes(normalizedCommand);
+}
+
+function evaluateCompletionGate(
+	cwd: string,
+	taskId: string,
+	evidence?: TaskEvidenceSnapshot,
+): { ok: boolean; blockers: string[] } {
+	const snapshot = evidence ?? collectTaskEvidence(cwd, taskId);
+	if (!snapshot.workflowExists) {
+		return { ok: true, blockers: [] };
+	}
+
+	const completionGate = snapshot.completionGate;
+	const blockers: string[] = [];
+
+	if (completionGate.require_single_in_progress_step !== false) {
+		const storage = loadStorage();
+		const inProgressCount = storage.tasks.filter((task) => task.status === "in_progress").length;
+		if (inProgressCount > 1) {
+			blockers.push(`multiple in_progress tasks remain (${inProgressCount})`);
+		}
+	}
+
+	for (const command of snapshot.requiredCommands) {
+		if (!commandSatisfied(snapshot.verificationSection, command)) {
+			blockers.push(`verification command not confirmed: ${command}`);
+		}
+	}
+
+	if (completionGate.require_proof_artifacts !== false) {
+		const hasProofArtifacts = snapshot.proofArtifacts.length > 0
+			|| hasMeaningfulEvidence(snapshot.verificationSection)
+			|| hasMeaningfulEvidence(snapshot.reviewSection)
+			|| hasMeaningfulEvidence(snapshot.progressSection);
+		if (!hasProofArtifacts) {
+			blockers.push("proof artifacts are missing from workpad");
+		}
+	}
+
+	if (completionGate.require_workspace_verification !== false) {
+		if (!snapshot.hasWorkspaceVerification) {
+			blockers.push("workspace verification proof is missing");
+		}
+	}
+
+	return {
+		ok: blockers.length === 0,
+		blockers,
+	};
+}
+
+function handleRuntimeSessionOutcome(event: {
+	type: string;
+	data: unknown;
+}): void {
+	if (event.type !== "session_updated") {
+		return;
+	}
+
+	const session = event.data as {
+		taskId?: string;
+		status?: string;
+		message?: string;
+	};
+
+	if (!session.taskId) {
+		return;
+	}
+
+	const evidence = collectTaskEvidence(process.cwd(), session.taskId);
+
+	if (session.status === "completed") {
+		const gate = evaluateCompletionGate(process.cwd(), session.taskId, evidence);
+		if (!gate.ok) {
+			const gateMessage = `completion gate blocked: ${gate.blockers.join(" | ")}`;
+			updateTaskCompletionGate(
+				session.taskId,
+				"blocked",
+				gateMessage,
+				gate.blockers,
+			);
+			const issueState = getSymphonyIssueState(process.cwd(), session.taskId);
+			const retryAttempt = (issueState?.retryAttempt ?? 0) + 1;
+			if (retryAttempt <= autoExecutorConfig.maxRetries) {
+				const { delayMs } = scheduleTaskRetry(session.taskId, gateMessage);
+				syncTaskProofState(session.taskId, evidence);
+				syncTaskOutcomeToWorkpad(
+					process.cwd(),
+					session.taskId,
+					"retrying",
+					`${gateMessage} (retry ${retryAttempt}/${autoExecutorConfig.maxRetries}, in ${Math.ceil(delayMs / 1000)}s)`,
+				);
+				return;
+			}
+
+			finalizeTaskStatus(session.taskId, "failed");
+			syncTaskProofState(session.taskId, evidence);
+			syncTaskOutcomeToWorkpad(
+				process.cwd(),
+				session.taskId,
+				"failed",
+				`completion gate blocked: ${gate.blockers.join(" | ")} (retry budget exhausted)`,
+			);
+			return;
+		}
+
+		updateTaskCompletionGate(session.taskId, "clear", "completion gate passed", []);
+		finalizeTaskStatus(session.taskId, "completed");
+		syncTaskProofState(session.taskId, evidence);
+		syncTaskOutcomeToWorkpad(process.cwd(), session.taskId, "completed", session.message);
+		return;
+	}
+
+	if (session.status === "failed") {
+		const issueState = getSymphonyIssueState(process.cwd(), session.taskId);
+		const retryAttempt = (issueState?.retryAttempt ?? 0) + 1;
+		if (retryAttempt <= autoExecutorConfig.maxRetries) {
+			const { delayMs } = scheduleTaskRetry(session.taskId, session.message);
+			syncTaskProofState(session.taskId, evidence);
+			syncTaskOutcomeToWorkpad(
+				process.cwd(),
+				session.taskId,
+				"retrying",
+				`${session.message ?? "unknown error"} (retry ${retryAttempt}/${autoExecutorConfig.maxRetries}, in ${Math.ceil(delayMs / 1000)}s)`,
+			);
+			return;
+		}
+
+		finalizeTaskStatus(session.taskId, "failed");
+		syncTaskProofState(session.taskId, evidence);
+		syncTaskOutcomeToWorkpad(
+			process.cwd(),
+			session.taskId,
+			"failed",
+			`${session.message ?? "unknown error"} (retry budget exhausted)`,
+		);
+	}
+}
+
+async function autoRunNextTask(ctx: {
+	cwd: string;
+	ui?: ExtensionAPI["context"]["ui"];
+	callTool?: (
+		toolName: string,
+		params: Record<string, unknown>,
+	) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
+	executeTool?: (options: {
+		toolName: string;
+		params: Record<string, unknown>;
+	}) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
+}): Promise<void> {
+	const executeTool = getToolExecutor(ctx);
+	if (!executeTool) {
+		ctx.ui?.notify("自動実行を開始できません。tool executor が見つかりません。", "warning");
+		return;
+	}
+
+	const nextTaskResult = await executeTool("task_run_next", {});
+	const details = (nextTaskResult.details ?? {}) as Record<string, unknown>;
+	const taskId = typeof details.taskId === "string" ? details.taskId : null;
+	const title = typeof details.title === "string" ? details.title : null;
+	const description = typeof details.description === "string" ? details.description : "";
+	const workpadId = typeof details.workpadId === "string" ? details.workpadId : null;
+	const kind = typeof details.kind === "string" ? details.kind : "other";
+	const reason = typeof details.reason === "string" ? details.reason : "auto dispatch from idle loop";
+
+	if (!taskId || !title) {
+		ctx.ui?.notify("次タスクの自動取得に失敗しました。", "warning");
+		return;
+	}
+
+	const taskBody = description ? `${title}\n\n詳細: ${description}` : title;
+	const extraContext = [
+		"## Auto Execution Context",
+		"",
+		`- taskId: ${taskId}`,
+		`- kind: ${kind}`,
+		`- reason: ${reason}`,
+		workpadId ? `- workpadId: ${workpadId}` : null,
+		"- まず関連ファイルを読んで、最小の working slice を実装すること。",
+		"- 完了後は task_complete でこの taskId を完了すること。",
+	].filter(Boolean).join("\n");
+
+	if (workpadId) {
+		updateWorkpad(ctx.cwd, {
+			id: workpadId,
+			section: "progress",
+			content: "- auto-run dispatch started via task_auto_executor",
+			mode: "append",
+		});
+	}
+
+	try {
+		await executeTool("subagent_run_dag", {
+			task: taskBody,
+			taskId,
+			extraContext,
+			autoGenerate: true,
+		});
+		ctx.ui?.notify(`自動実行を開始しました: ${title}`, "info");
+	} catch (error) {
+		const restoredTask = releaseClaimedTask(taskId);
+		releaseSymphonyIssue({
+			cwd: ctx.cwd,
+			issueId: taskId,
+			title: restoredTask?.title ?? title,
+			source: "task-auto-executor",
+			reason: `auto-run dispatch failed: ${error instanceof Error ? error.message : String(error)}`,
+			workpadId: workpadId ?? undefined,
+		});
+		if (workpadId) {
+			updateWorkpad(ctx.cwd, {
+				id: workpadId,
+				section: "verification",
+				content: `- auto-run dispatch failed: ${error instanceof Error ? error.message : String(error)}`,
+				mode: "append",
+			});
+			updateWorkpad(ctx.cwd, {
+				id: workpadId,
+				section: "next",
+				content: "- inspect the runner failure, then retry auto dispatch or execute manually",
+				mode: "replace",
+			});
+		}
+		ctx.ui?.notify(
+			`自動実行の起動に失敗しました: ${title}`,
+			"warning",
+		);
+	}
 }
 
 // ============================================
@@ -211,7 +841,12 @@ export function selectNextLoopTask(storage: TaskStorage): RalphLoopSelection | n
 	// 候補となるタスクを抽出
 	const candidates = storage.tasks.filter(t => {
 		// todoタスクは常に候補
-		if (t.status === "todo") return true;
+		if (t.status === "todo") {
+			if (t.nextRetryAt && Date.parse(t.nextRetryAt) > Date.now()) {
+				return false;
+			}
+			return true;
+		}
 		
 		// in_progressタスクは所有者チェック
 		if (t.status === "in_progress") {
@@ -304,6 +939,9 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 	isInitialized = true;
 
 	loadConfig();
+	if (!sessionEventUnsubscribe) {
+		sessionEventUnsubscribe = onSessionEvent(handleRuntimeSessionOutcome);
+	}
 
 	// Tool: Run next pending task
 	pi.registerTool({
@@ -311,7 +949,7 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 		label: "Run Next Pending Task",
 		description: "Execute the next pending task from the task queue (highest priority first)",
 		parameters: Type.Object({}),
-		async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
 			const storage = loadStorage();
 			const selection = selectNextLoopTask(storage);
 			const nextTask = selection?.task ?? null;
@@ -334,6 +972,15 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 
 			autoExecutorConfig.currentTaskId = nextTask.id;
 			saveConfig();
+			const workpadId = startTaskWorkpad(ctx.cwd, nextTask);
+			claimSymphonyIssue({
+				cwd: ctx.cwd,
+				issueId: nextTask.id,
+				title: nextTask.title,
+				source: "task-auto-executor",
+				reason: "claimed from task_run_next",
+				workpadId: workpadId ?? undefined,
+			});
 
 			// Build task description for execution
 			const taskDescription = nextTask.description
@@ -350,6 +997,7 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 **タイトル**: ${nextTask.title}
 **優先度**: ${nextTask.priority}
 **ステータス**: in_progress
+${workpadId ? `**WORKPAD**: ${workpadId}` : ""}
 
 ---
 
@@ -372,6 +1020,7 @@ ${taskDescription}
 					description: nextTask.description,
 					kind: selection?.kind,
 					reason: selection?.reason,
+					workpadId,
 				}
 			};
 		},
@@ -543,6 +1192,11 @@ ${taskDescription}
 			ctx.ui.theme.fg("warning", `次のタスク: ${nextTask.title.slice(0, 25)}...`)
 		);
 
+		if (autoExecutorConfig.autoRun) {
+			await autoRunNextTask(ctx as never);
+			return;
+		}
+
 		// Notify about the next task
 		ctx.ui.notify(
 			`[アイドル] 次のタスク: ${nextTask.title} (${nextTask.priority}, ${selection?.kind ?? "other"})\n${selection?.reason ?? ""}\n「次のタスクを実行して」と言うと実行します。`,
@@ -558,6 +1212,43 @@ ${taskDescription}
 		}
 		ctx.ui.setStatus("auto-executor", undefined);
 		lastNotifiedTaskId = null; // Reset notification tracking
+	});
+
+	pi.on("tool_result", async (event, ctx) => {
+		const anyEvent = event as {
+			toolName?: string;
+			isError?: boolean;
+			result?: unknown;
+			error?: unknown;
+		};
+		if (anyEvent.toolName !== "workspace_verify") {
+			return;
+		}
+
+		const taskId = autoExecutorConfig.currentTaskId;
+		if (!taskId) {
+			return;
+		}
+
+		const message = typeof (anyEvent.result as { summary?: unknown } | undefined)?.summary === "string"
+			? String((anyEvent.result as { summary?: string }).summary)
+			: typeof anyEvent.error === "string"
+				? anyEvent.error
+				: anyEvent.isError
+					? "workspace verification failed"
+					: "workspace verification passed";
+
+		const status = anyEvent.isError ? "failed" : "passed";
+		updateTaskWorkspaceVerification(taskId, status, message);
+		const issueState = getSymphonyIssueState(ctx.cwd, taskId);
+		if (issueState?.workpadId) {
+			updateWorkpad(ctx.cwd, {
+				id: issueState.workpadId,
+				section: "verification",
+				content: `- workspace_verify ${status}: ${message}`,
+				mode: "append",
+			});
+		}
 	});
 
 	// Event: Session start
@@ -622,6 +1313,8 @@ ${taskDescription}
 
 	// セッション終了時にリスナー重複登録防止フラグをリセット
 	pi.on("session_shutdown", async () => {
+		sessionEventUnsubscribe?.();
+		sessionEventUnsubscribe = null;
 		isInitialized = false;
 	});
 }

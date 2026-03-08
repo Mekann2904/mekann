@@ -1061,6 +1061,20 @@ export function resolveTurnParallelism(input: {
   );
 }
 
+const HEAVY_VALIDATION_PATTERN = /\b(test|tests|build|lint|typecheck|type-check|compile|verification|verify|smoke)\b|テスト|ビルド|型検査|検証|スモーク/i;
+
+function isHeavyValidationText(value: string | undefined): boolean {
+  return typeof value === "string" && HEAVY_VALIDATION_PATTERN.test(value);
+}
+
+function shouldSerializeHeavyValidation(task: string, extraTexts: string[] = []): boolean {
+  if (isHeavyValidationText(task)) {
+    return true;
+  }
+
+  return extraTexts.some((entry) => isHeavyValidationText(entry));
+}
+
 // Note: runSubagentTask is now imported from ./subagents/task-execution
 
 /**
@@ -1230,6 +1244,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       task: string;
       extraContext?: string;
       timeoutMs?: number;
+      taskId?: string;
       ulTaskId?: string;
     };
     storage: SubagentStorage;
@@ -1241,6 +1256,9 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
     _signal?: AbortSignal;
   }): Promise<{ content: { type: "text"; text: string }[]; details: Record<string, unknown> }> {
     const { activeAgents, cachedByAgentId, turnDecisions, params, storage, snapshot, timeoutMs, retryOverrides, ctx, _signal } = args;
+    const trackedTaskId = typeof params.taskId === "string" && params.taskId.trim()
+      ? params.taskId.trim()
+      : params.ulTaskId;
 
     logger.startOperation(
       "subagent_run" as OperationType,
@@ -1286,13 +1304,20 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         providerParallelLimit,
         policyParallelLimit: turnDecisions.maxParallelSubagents,
       });
-      const effectiveParallelism = adaptivePenalty.applyLimit(baselineParallelism);
+      const requestedHeavyValidation = shouldSerializeHeavyValidation(
+        params.task,
+        [params.extraContext ?? ""],
+      );
+      const effectiveParallelism = requestedHeavyValidation
+        ? 1
+        : adaptivePenalty.applyLimit(baselineParallelism);
 
       const dispatchPermit = await acquireRuntimeDispatchPermit({
         toolName: "subagent_run_dag",
         candidate: {
           additionalRequests: 1,
           additionalLlm: Math.min(effectiveParallelism, snapshot.limits.maxParallelSubagentsPerRun),
+          workloadClass: requestedHeavyValidation ? "heavy-validation" : "default",
         },
         tenantKey: executableAgents.map((entry) => entry.id).join(","),
         source: "scheduled",
@@ -1377,7 +1402,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         id: parallelSessionId,
         type: "subagent",
         agentId: activeAgents.map((a) => a.id).join(","),
-        taskId: params.ulTaskId,
+        taskId: trackedTaskId,
         taskTitle: params.task.slice(0, 50),
         taskDescription: params.task,
         status: "starting",
@@ -1667,6 +1692,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       maxConcurrency: createBoundedOptionalNumberSchema("Maximum parallel tasks (default: 3)", 1, 16),
       abortOnFirstError: Type.Optional(Type.Boolean({ description: "Stop on first task failure (default: false)" })),
       timeoutMs: createBoundedOptionalNumberSchema("Per-task timeout in ms (default: 300000)", 1_000, 3_600_000),
+      taskId: Type.Optional(Type.String({ description: "Task queue task ID. If provided, runtime session tracking binds to this task." })),
       ulTaskId: Type.Optional(Type.String({ description: "UL workflow task ID. If provided, checks ownership before execution." })),
       artifactPath: Type.Optional(Type.String({ description: "Optional file path to persist the final DAG artifact." })),
       artifactTaskId: Type.Optional(Type.String({ description: "Preferred task ID whose output should be written to artifactPath." })),
@@ -1680,6 +1706,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const trackedTaskId = typeof params.taskId === "string" && params.taskId.trim()
+        ? params.taskId.trim()
+        : params.ulTaskId;
+
       const { turnDecisions } = resolveSubagentTurnPolicy({
         cwd: ctx.cwd,
         task: params.task,
@@ -1892,7 +1922,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         ctx.model?.provider,
         ctx.model?.id,
       );
-      const maxConcurrency = resolveTurnParallelism({
+      const baselineMaxConcurrency = resolveTurnParallelism({
         requestedMaxConcurrency: typeof params.maxConcurrency === "number" ? params.maxConcurrency : undefined,
         runtimeParallelLimit: Math.min(
           snapshot.limits.maxParallelSubagentsPerRun,
@@ -1990,6 +2020,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         };
       }
 
+      const requestedHeavyValidation = shouldSerializeHeavyValidation(
+        params.task,
+        taskPlan.tasks.map((task) => task.description),
+      );
+      const maxConcurrency = requestedHeavyValidation ? 1 : baselineMaxConcurrency;
+
       logger.startOperation("subagent_run" as OperationType, taskPlan.id, {
         task: params.task,
         params: { taskCount: taskPlan.tasks.length, maxConcurrency },
@@ -2006,6 +2042,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           candidate: {
             additionalRequests: 1,
             additionalLlm: Math.min(maxConcurrency, taskPlan.tasks.length, snapshot.limits.maxParallelSubagentsPerRun),
+            workloadClass: requestedHeavyValidation ? "heavy-validation" : "default",
           },
           tenantKey: taskPlan.id,
           source: "scheduled",
@@ -2065,7 +2102,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           id: dagSessionId,
           type: "subagent",
           agentId: "dag-executor",
-          taskId: params.ulTaskId,  // UL workflow task ID for Web UI tracking
+          taskId: trackedTaskId,
           taskTitle: params.task.slice(0, 50),
           taskDescription: params.task,
           status: "starting",

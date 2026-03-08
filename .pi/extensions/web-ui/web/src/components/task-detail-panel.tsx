@@ -17,7 +17,6 @@
  * @scope(out) Rendered panel with edit forms and subtask list
  */
 
-import { h } from "preact";
 import { useState, useEffect, useRef, useMemo, useCallback } from "preact/hooks";
 import { memo } from "preact/compat";
 import { X, Calendar, User, Tag, Trash2, CheckCircle2, Circle, Clock, AlertTriangle, Plus, ListChecks, FileText } from "lucide-preact";
@@ -26,12 +25,6 @@ import { Input } from "./ui/input";
 import { cn } from "@/lib/utils";
 import type { Task, TaskStatus, TaskPriority } from "./kanban-task-card";
 import {
-  TYPOGRAPHY,
-  CARD_STYLES,
-  FORM_STYLES,
-  PATTERNS,
-  SPACING,
-  STATE_STYLES,
   InlineLoading,
 } from "./layout";
 
@@ -45,6 +38,86 @@ interface TaskDetailPanelProps {
   onCreateSubtask: (parentId: string, title: string) => void;
   onUpdateSubtask: (subtask: Task) => void;
   onDeleteSubtask: (subtaskId: string) => void;
+}
+
+interface WorkflowWorkpad {
+  id: string;
+  updatedAt?: string;
+  sections?: {
+    progress?: string;
+    verification?: string;
+    next?: string;
+  };
+}
+
+interface SymphonyIssueDetail {
+  source: "task" | "ul-workflow";
+  queue: {
+    position: number | null;
+    isNext: boolean;
+    totalPending: number;
+    blockedReason: string | null;
+    retryAt: string | null;
+    retryCount: number;
+    lastError: string | null;
+  };
+  runtime: {
+    activeSession: {
+      id: string;
+      status: string;
+      agentId?: string;
+      progress?: number;
+      message?: string;
+    } | null;
+  };
+  verification: {
+    status: "passed" | "failed" | "missing";
+    verifiedAt: string | null;
+    message: string | null;
+  };
+  completionGate: {
+    status: "clear" | "blocked" | "missing";
+    updatedAt: string | null;
+    message: string | null;
+    blockers: string[];
+  };
+  proofArtifacts: string[];
+  debug: {
+    recentEvents: Array<{
+      at: string;
+      action: string;
+      reason?: string;
+      source?: string;
+      sessionId?: string;
+    }>;
+    relatedSessions: Array<{
+      id: string;
+      status: string;
+      agentId?: string;
+      progress?: number;
+      message?: string;
+      startedAt: number;
+      type?: string;
+    }>;
+  };
+  orchestration: {
+    runState: "claimed" | "running" | "retrying" | "released";
+    updatedAt: string;
+    reason?: string;
+    retryAttempt?: number;
+    workpadId?: string;
+  } | null;
+  workflow: {
+    exists: boolean;
+    workspaceRoot: string;
+    entrypoints: string[];
+    requiredCommands: string[];
+    verifiedCommands: string[];
+  };
+  workspace: {
+    path: string;
+    exists: boolean;
+  };
 }
 
 // Status options
@@ -83,6 +156,10 @@ function TaskDetailPanelInner({
   const [isAddingSubtask, setIsAddingSubtask] = useState(false);
   const [plan, setPlan] = useState<string | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
+  const [workpad, setWorkpad] = useState<WorkflowWorkpad | null>(null);
+  const [workpadLoading, setWorkpadLoading] = useState(false);
+  const [issueDetail, setIssueDetail] = useState<SymphonyIssueDetail | null>(null);
+  const [issueDetailLoading, setIssueDetailLoading] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const subtaskInputRef = useRef<HTMLInputElement>(null);
@@ -156,6 +233,76 @@ function TaskDetailPanelInner({
 
     fetchPlan();
   }, [task.id, task.isUlWorkflow]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchWorkpad = async () => {
+      setWorkpadLoading(true);
+      try {
+        const params = new URLSearchParams({
+          task: task.title,
+          issueId: task.id,
+        });
+        const response = await fetch(`/api/v2/workpads/match?${params.toString()}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = await response.json();
+        if (!cancelled) {
+          setWorkpad(Array.isArray(payload?.data) ? payload.data[0] ?? null : null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Failed to fetch workpad:", error);
+          setWorkpad(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setWorkpadLoading(false);
+        }
+      }
+    };
+
+    fetchWorkpad();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [task.id, task.title]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchIssueDetail = async () => {
+      setIssueDetailLoading(true);
+      try {
+        const response = await fetch(`/api/v2/runtime/symphony/issues/${task.id}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = await response.json();
+        if (!cancelled) {
+          setIssueDetail(payload?.data ?? null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Failed to fetch Symphony issue detail:", error);
+          setIssueDetail(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIssueDetailLoading(false);
+        }
+      }
+    };
+
+    fetchIssueDetail();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [task.id]);
 
   // Callbacks (memoized)
   const handleClose = useCallback(() => {
@@ -615,6 +762,220 @@ function TaskDetailPanelInner({
             )}
           </div>
         )}
+
+        <div class="px-4 py-3 border-t border-border">
+          <div class="flex items-center gap-2 mb-2">
+            <FileText class="h-4 w-4 text-muted-foreground" />
+            <span class="text-sm font-medium">Workflow Workpad</span>
+          </div>
+          {workpadLoading ? (
+            <div class="flex items-center gap-2 text-muted-foreground text-xs">
+              <InlineLoading />
+              Loading workpad...
+            </div>
+          ) : workpad ? (
+            <div class="bg-muted/30 rounded-md p-3 space-y-3">
+              <p class="text-[10px] font-mono text-muted-foreground">
+                {workpad.id} · {workpad.updatedAt || "updated_at unknown"}
+              </p>
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Progress</p>
+                <div class="mt-1 whitespace-pre-wrap text-sm text-foreground">
+                  {workpad.sections?.progress || "-"}
+                </div>
+              </div>
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Verification</p>
+                <div class="mt-1 whitespace-pre-wrap text-sm text-foreground">
+                  {workpad.sections?.verification || "-"}
+                </div>
+              </div>
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Next</p>
+                <div class="mt-1 whitespace-pre-wrap text-sm text-foreground">
+                  {workpad.sections?.next || "-"}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p class="text-xs text-muted-foreground">No durable workpad found for this task yet</p>
+          )}
+        </div>
+
+        <div class="px-4 py-3 border-t border-border">
+          <div class="flex items-center gap-2 mb-2">
+            <Clock class="h-4 w-4 text-muted-foreground" />
+            <span class="text-sm font-medium">Symphony Orchestration</span>
+          </div>
+          {issueDetailLoading ? (
+            <div class="flex items-center gap-2 text-muted-foreground text-xs">
+              <InlineLoading />
+              Loading orchestration...
+            </div>
+          ) : issueDetail ? (
+            <div class="bg-muted/30 rounded-md p-3 space-y-3">
+              <div class="grid grid-cols-2 gap-2 text-xs">
+                <div class="rounded bg-background/60 px-2 py-1">source: {issueDetail.source}</div>
+                <div class="rounded bg-background/60 px-2 py-1">
+                  queue: {issueDetail.queue.position ? `${issueDetail.queue.position}/${issueDetail.queue.totalPending}` : "-"}
+                </div>
+                <div class="rounded bg-background/60 px-2 py-1">
+                  retry_count: {issueDetail.queue.retryCount}
+                </div>
+                <div class="rounded bg-background/60 px-2 py-1">
+                  blocked: {issueDetail.queue.blockedReason || "-"}
+                </div>
+              </div>
+              {issueDetail.queue.retryAt && (
+                <div class="rounded border border-border/60 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
+                  retry_at: {issueDetail.queue.retryAt}
+                  {issueDetail.queue.lastError ? ` · last_error: ${issueDetail.queue.lastError}` : ""}
+                </div>
+              )}
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Verification State</p>
+                <div class="mt-1 text-sm">
+                  <p>{issueDetail.verification.status}</p>
+                  {issueDetail.verification.verifiedAt && (
+                    <p class="text-xs text-muted-foreground">{issueDetail.verification.verifiedAt}</p>
+                  )}
+                  {issueDetail.verification.message && (
+                    <p class="mt-1 text-xs text-muted-foreground">{issueDetail.verification.message}</p>
+                  )}
+                </div>
+              </div>
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Completion Gate</p>
+                <div class="mt-1 text-sm">
+                  <p>{issueDetail.completionGate.status}</p>
+                  {issueDetail.completionGate.updatedAt && (
+                    <p class="text-xs text-muted-foreground">{issueDetail.completionGate.updatedAt}</p>
+                  )}
+                  {issueDetail.completionGate.message && (
+                    <p class="mt-1 text-xs text-muted-foreground">{issueDetail.completionGate.message}</p>
+                  )}
+                  {issueDetail.completionGate.blockers.length > 0 && (
+                    <div class="mt-2 space-y-1">
+                      {issueDetail.completionGate.blockers.map((blocker) => (
+                        <p key={blocker} class="text-xs text-muted-foreground">
+                          - {blocker}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Proof Artifacts</p>
+                {issueDetail.proofArtifacts.length > 0 ? (
+                  <div class="mt-1 space-y-1">
+                    {issueDetail.proofArtifacts.map((artifact) => (
+                      <p key={artifact} class="text-xs text-muted-foreground">
+                        - {artifact}
+                      </p>
+                    ))}
+                  </div>
+                ) : (
+                  <p class="mt-1 text-sm text-muted-foreground">No structured proof artifacts</p>
+                )}
+              </div>
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Durable State</p>
+                {issueDetail.orchestration ? (
+                  <div class="mt-1 text-sm">
+                    <p>{issueDetail.orchestration.runState}</p>
+                    <p class="text-xs text-muted-foreground">{issueDetail.orchestration.updatedAt}</p>
+                    {typeof issueDetail.orchestration.retryAttempt === "number" && (
+                      <p class="text-xs text-muted-foreground">retry_attempt: {issueDetail.orchestration.retryAttempt}</p>
+                    )}
+                    {issueDetail.orchestration.reason && (
+                      <p class="mt-1 text-xs text-muted-foreground">{issueDetail.orchestration.reason}</p>
+                    )}
+                  </div>
+                ) : (
+                  <p class="mt-1 text-sm text-muted-foreground">No durable orchestration state</p>
+                )}
+              </div>
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Runtime</p>
+                {issueDetail.runtime.activeSession ? (
+                  <div class="mt-1 text-sm">
+                    <p>{issueDetail.runtime.activeSession.status} · {issueDetail.runtime.activeSession.agentId || "agent"}</p>
+                    {typeof issueDetail.runtime.activeSession.progress === "number" && (
+                      <p class="text-xs text-muted-foreground">progress: {issueDetail.runtime.activeSession.progress}%</p>
+                    )}
+                    {issueDetail.runtime.activeSession.message && (
+                      <p class="mt-1 text-xs text-muted-foreground">{issueDetail.runtime.activeSession.message}</p>
+                    )}
+                  </div>
+                ) : (
+                  <p class="mt-1 text-sm text-muted-foreground">No active runtime session</p>
+                )}
+              </div>
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Session History</p>
+                {issueDetail.debug.relatedSessions.length > 0 ? (
+                  <div class="mt-1 space-y-2">
+                    {issueDetail.debug.relatedSessions.map((session) => (
+                      <div key={session.id} class="rounded border border-border/60 bg-background/40 px-3 py-2">
+                        <p class="text-sm">{session.status} · {session.agentId || "agent"}</p>
+                        <p class="text-xs text-muted-foreground">{new Date(session.startedAt).toLocaleString()}</p>
+                        {session.message && (
+                          <p class="mt-1 text-xs text-muted-foreground">{session.message}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p class="mt-1 text-sm text-muted-foreground">No related runtime sessions</p>
+                )}
+              </div>
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Recent Events</p>
+                {issueDetail.debug.recentEvents.length > 0 ? (
+                  <div class="mt-1 space-y-2">
+                    {issueDetail.debug.recentEvents.map((event) => (
+                      <div key={`${event.at}-${event.action}`} class="rounded border border-border/60 bg-background/40 px-3 py-2">
+                        <p class="text-sm">{event.action}</p>
+                        <p class="text-xs text-muted-foreground">{event.at}</p>
+                        {event.reason && (
+                          <p class="mt-1 text-xs text-muted-foreground">{event.reason}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p class="mt-1 text-sm text-muted-foreground">No orchestration events</p>
+                )}
+              </div>
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Workspace</p>
+                <p class="mt-1 break-all text-sm">{issueDetail.workspace.path}</p>
+                <p class="text-xs text-muted-foreground">{issueDetail.workspace.exists ? "ready" : "not created yet"}</p>
+              </div>
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Workflow Entry</p>
+                <p class="mt-1 text-sm">{issueDetail.workflow.entrypoints.join(", ") || "-"}</p>
+              </div>
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Required Commands</p>
+                <p class="mt-1 text-sm">{issueDetail.workflow.requiredCommands.join(", ") || "-"}</p>
+                {issueDetail.workflow.verifiedCommands.length > 0 && (
+                  <div class="mt-2 space-y-1">
+                    {issueDetail.workflow.verifiedCommands.map((command) => (
+                      <p key={command} class="text-xs text-muted-foreground">
+                        - verified: {command}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                <p class="mt-1 break-all text-xs text-muted-foreground">root: {issueDetail.workflow.workspaceRoot}</p>
+              </div>
+            </div>
+          ) : (
+            <p class="text-xs text-muted-foreground">No orchestration detail found for this task</p>
+          )}
+        </div>
       </div>
 
       {/* Footer */}

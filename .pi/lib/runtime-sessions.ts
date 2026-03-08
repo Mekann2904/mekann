@@ -17,6 +17,18 @@
  * @scope(out) Session queries, event emissions
  */
 
+import {
+  claimSymphonyIssue,
+  getSymphonyIssueState,
+  queueSymphonyIssueRetry,
+  releaseSymphonyIssue,
+  startSymphonyIssueRun,
+} from "./symphony-orchestrator-state.js";
+import {
+  ensureSymphonyWorkspace,
+  runSymphonyWorkspaceHook,
+} from "./symphony-workspace-manager.js";
+
 /**
  * Session type discriminator
  */
@@ -107,6 +119,109 @@ let sessionCounter = 0;
 const COMPLETED_SESSION_MAX_AGE_MS = 5 * 60 * 1000;
 const MAX_COMPLETED_SESSIONS = 200;
 
+function shouldSyncSymphonyIssueState(): boolean {
+  if (process.env.PI_DISABLE_RUNTIME_SESSION_ORCHESTRATION_SYNC === "1") {
+    return false;
+  }
+  if (process.env.VITEST && process.env.PI_ENABLE_RUNTIME_SESSION_ORCHESTRATION_SYNC_TEST !== "1") {
+    return false;
+  }
+  return true;
+}
+
+function syncSymphonyIssueState(session: RuntimeSession): void {
+  if (!shouldSyncSymphonyIssueState()) {
+    return;
+  }
+  if (!session.taskId) {
+    return;
+  }
+
+  const cwd = process.cwd();
+  if (session.status === "starting") {
+    claimSymphonyIssue({
+      cwd,
+      issueId: session.taskId,
+      title: session.taskTitle,
+      source: "runtime-sessions",
+      reason: session.message || `session starting: ${session.agentId}`,
+      sessionId: session.id,
+    });
+    return;
+  }
+
+  if (session.status === "running") {
+    startSymphonyIssueRun({
+      cwd,
+      issueId: session.taskId,
+      title: session.taskTitle,
+      source: "runtime-sessions",
+      reason: session.message || `session running: ${session.agentId}`,
+      sessionId: session.id,
+    });
+    return;
+  }
+
+  if (session.status === "failed") {
+    const previous = getSymphonyIssueState(cwd, session.taskId);
+    queueSymphonyIssueRetry({
+      cwd,
+      issueId: session.taskId,
+      title: session.taskTitle,
+      source: "runtime-sessions",
+      reason: session.message || `session failed: ${session.agentId}`,
+      retryAttempt: (previous?.retryAttempt ?? 0) + 1,
+      sessionId: session.id,
+    });
+    return;
+  }
+
+  if (session.status === "completed") {
+    releaseSymphonyIssue({
+      cwd,
+      issueId: session.taskId,
+      title: session.taskTitle,
+      source: "runtime-sessions",
+      reason: session.message || `session completed: ${session.agentId}`,
+      sessionId: session.id,
+    });
+  }
+}
+
+async function syncSymphonyWorkspaceLifecycle(session: RuntimeSession): Promise<void> {
+  if (!shouldSyncSymphonyIssueState()) {
+    return;
+  }
+  if (!session.taskId) {
+    return;
+  }
+
+  if (session.status === "starting") {
+    await ensureSymphonyWorkspace({
+      cwd: process.cwd(),
+      issueId: session.taskId,
+    });
+    await runSymphonyWorkspaceHook({
+      cwd: process.cwd(),
+      issueId: session.taskId,
+      hook: "before_run",
+    });
+    return;
+  }
+
+  if (session.status === "completed" || session.status === "failed") {
+    try {
+      await runSymphonyWorkspaceHook({
+        cwd: process.cwd(),
+        issueId: session.taskId,
+        hook: "after_run",
+      });
+    } catch {
+      // after_run は best-effort に留める。
+    }
+  }
+}
+
 function trimCompletedSessions(now: number = Date.now()): void {
   cleanupCompletedSessions(COMPLETED_SESSION_MAX_AGE_MS);
 
@@ -173,6 +288,8 @@ function emitSessionEvent(event: SessionEvent): void {
 export function addSession(session: RuntimeSession): RuntimeSession {
   trimCompletedSessions();
   activeSessions.set(session.id, session);
+  syncSymphonyIssueState(session);
+  void syncSymphonyWorkspaceLifecycle(session);
   emitSessionEvent({
     type: "session_added",
     data: session,
@@ -200,6 +317,8 @@ export function updateSession(
 
   const updated = { ...session, ...update };
   activeSessions.set(id, updated);
+  syncSymphonyIssueState(updated);
+  void syncSymphonyWorkspaceLifecycle(updated);
   emitSessionEvent({
     type: "session_updated",
     data: updated,

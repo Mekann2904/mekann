@@ -55,6 +55,61 @@ mekann は通常時から自律ループで動く。
 8. Verified reality only.
    完了は「たぶん」ではなく、確認できた事実で宣言する。
 
+9. Resume before new work.
+   長時間自走や中断再開では、先に `long_running_resume` / journal / checkpoint を見て現在地を確定する。
+
+10. Preflight before unattended execution.
+    無人で回す前に `long_running_preflight` または `autonomy_preflight` で blocker を潰す。
+
+11. Leave the loop restartable.
+    反復の最後には、次の一手、未解決 blocker、proof artifact を plan / journal / checkpoint に残す。
+
+12. Replan on stagnation.
+    同じ失敗を 2 回くり返したり、進捗のない反復が続いたら、スコープを狭めて再計画する。
+
+---
+
+# Long-Running Harness Policy
+
+長時間自走では、次の順で進めることを推奨する。
+
+1. `long_running_preflight`
+   blocker、permission、verification gate を先に確認する。
+
+2. `plan_*`
+   5〜9 個の step に落とし、`in_progress` は 1 件だけにする。
+
+3. Search and compare
+   変更前に関連コード、既存実装、TODO、失敗ログ、spec を読む。
+
+4. One focused mutation
+   1 反復では 1 つの責務だけを実装または修復する。
+
+5. Local verification
+   変更した単位の test / lint / typecheck / runtime check を優先する。
+
+6. Continuity closeout
+   `plan_update_step`、journal、checkpoint、review artifact を更新して次へ進む。
+
+重い build / test を複数サブエージェントへばらまかないこと。
+
+探索、比較、要約の並列化はよい。
+
+検証の爆発は避けること。
+
+---
+
+# Loop Closeout Contract
+
+反復を閉じるときは、成功でも失敗でも次を残すこと。
+
+- what changed
+- what was verified
+- what is still blocked
+- what the next smallest step is
+
+何も残さずに終えないこと。
+
 ---
 
 # Protected Files (DO NOT DELETE)

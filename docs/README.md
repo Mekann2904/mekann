@@ -41,6 +41,7 @@ pi拡張機能コレクションのドキュメントへようこそ。
 | [cross-instance-runtime](./02-user-guide/12-cross-instance-runtime.md) | クロスインスタンス協調・レート制限 | [完了] 完了 |
 | [invariant-pipeline](./02-user-guide/14-invariant-pipeline.md) | インバリアント生成パイプライン | [完了] 完了 |
 | [search-tools](./02-user-guide/15-search-tools.md) | 高速検索ツール群 | [完了] 完了 |
+| [long-running runtime](./02-user-guide/25-long-running-runtime.md) | 長時間自走の回復と再開 | [完了] 完了 |
 
 ### 開発者ガイド
 
@@ -76,6 +77,7 @@ pi拡張機能コレクションのドキュメントへようこそ。
 |---------|------|
 | [ユーティリティ](./02-user-guide/11-utilities.md) | kitty統合などのユーティリティ |
 | [開発ワークフロー](./05-meta/04-development-workflow.md) | AIエージェントによるドキュメント管理 |
+| [自走ハーネス運用ガイド](./05-meta/08-autonomous-harness-playbook.md) | 小反復と強いフィードバックループの標準運用 |
 | [パッチ管理](./patches/README.md) | patch-packageによる依存パッケージ修正 |
 | [シーケンス図集](./subagents-agent-teams-sequence-diagrams.md) | 実行フローの詳細可視化 |
 

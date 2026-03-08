@@ -61,6 +61,7 @@ export interface AgentRuntimeLimits {
  * @summary キュー分類
  */
 export type RuntimeQueueClass = "interactive" | "standard" | "batch";
+export type RuntimeWorkloadClass = "default" | "heavy-validation";
 
 /**
  * ランタイムキューエントリ
@@ -69,6 +70,7 @@ export type RuntimeQueueClass = "interactive" | "standard" | "batch";
  */
 export interface RuntimeQueueEntry extends PriorityTaskMetadata {
   queueClass: RuntimeQueueClass;
+  workloadClass: RuntimeWorkloadClass;
   tenantKey: string;
   additionalRequests: number;
   additionalLlm: number;
@@ -117,6 +119,7 @@ export interface AgentRuntimeState {
   };
   queue: {
     activeOrchestrations: number;
+    activeHeavyValidationOrchestrations: number;
     pending: RuntimeQueueEntry[];
     lastDispatchedTenantKey?: string;
     consecutiveDispatchesByTenant: number;
@@ -169,6 +172,7 @@ export interface AgentRuntimeSnapshot {
   /** 消費済み予約のLLM数 */
   consumedLlm: number;
   activeOrchestrations: number;
+  activeHeavyValidationOrchestrations: number;
   queuedOrchestrations: number;
   queuedTools: string[];
   queueEvictions: number;
@@ -342,6 +346,7 @@ export interface RuntimeOrchestrationWaitResult {
 export interface RuntimeDispatchCandidate {
   additionalRequests: number;
   additionalLlm: number;
+  workloadClass?: RuntimeWorkloadClass;
 }
 
 /**
