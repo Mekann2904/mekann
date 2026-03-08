@@ -175,7 +175,7 @@ const KIND_ORDER: Record<RalphLoopTaskKind, number> = {
 
 let autoExecutorConfig: AutoExecutorConfig = {
 	enabled: true,
-	autoRun: false, // デフォルトは通知のみ
+	autoRun: true, // デフォルトは planner-led continuous execution
 	maxRetries: 2,
 };
 
@@ -269,6 +269,78 @@ function getToolExecutor(ctx: unknown): ToolExecutor | undefined {
 	}
 
 	return undefined;
+}
+
+function buildPlannerWorkerExecutionContext(input: {
+	taskId: string;
+	kind: string;
+	reason: string;
+	workpadId: string | null;
+}): string {
+	return [
+		"## Continuous Executor Contract",
+		"",
+		"- この実行は mekann の既定 long-running mode です。",
+		"- 進行責任は root planner が持ち、個々の worker は割り当てタスクだけに集中します。",
+		"- worker 同士は直接調整しません。共有ロック前提の協調は禁止です。",
+		"- 必要な分解は planner が行い、worker は handoff を planner 側へ返します。",
+		"- 各反復は fresh context を前提にし、 durable state は task / workpad / workflow artifact に残します。",
+		"- 巨大な静的計画に固定せず、観測結果に応じて task DAG を更新して構いません。",
+		"- 小さく安全な変更だけで逃げず、担当タスクの完了責任を持って前に進めます。",
+		"",
+		"## Auto Execution Context",
+		"",
+		`- taskId: ${input.taskId}`,
+		`- kind: ${input.kind}`,
+		`- reason: ${input.reason}`,
+		input.workpadId ? `- workpadId: ${input.workpadId}` : null,
+		"- まず関連ファイルを読んで、最小の working slice を実装すること。",
+		"- planner は research / implement / validate / review を必要最小限で fan-out してよい。",
+		"- worker は他ワーカーの担当や大局を気にせず、自分のタスクだけ終わらせること。",
+		"- 完了後は task_complete でこの taskId を完了すること。",
+	].filter(Boolean).join("\n");
+}
+
+function hasBlockingForeignInProgressTask(storage: TaskStorage): boolean {
+	const instanceId = getInstanceId();
+
+	return storage.tasks.some((task) => {
+		if (task.status !== "in_progress") {
+			return false;
+		}
+
+		if (!task.ownerInstanceId) {
+			return false;
+		}
+
+		if (task.ownerInstanceId === instanceId) {
+			return false;
+		}
+
+		const pid = extractPidFromInstanceId(task.ownerInstanceId);
+		if (!pid) {
+			return false;
+		}
+
+		return isProcessAlive(pid);
+	});
+}
+
+function resolveNextAutoDispatch(storage: TaskStorage): {
+	selection: RalphLoopSelection | null;
+	blockedReason: string | null;
+} {
+	if (hasBlockingForeignInProgressTask(storage)) {
+		return {
+			selection: null,
+			blockedReason: "another active in_progress task is owned by a live instance",
+		};
+	}
+
+	return {
+		selection: selectNextLoopTask(storage),
+		blockedReason: null,
+	};
 }
 
 function releaseClaimedTask(taskId: string): Task | null {
@@ -780,16 +852,12 @@ async function autoRunNextTask(ctx: {
 	}
 
 	const taskBody = description ? `${title}\n\n詳細: ${description}` : title;
-	const extraContext = [
-		"## Auto Execution Context",
-		"",
-		`- taskId: ${taskId}`,
-		`- kind: ${kind}`,
-		`- reason: ${reason}`,
-		workpadId ? `- workpadId: ${workpadId}` : null,
-		"- まず関連ファイルを読んで、最小の working slice を実装すること。",
-		"- 完了後は task_complete でこの taskId を完了すること。",
-	].filter(Boolean).join("\n");
+	const extraContext = buildPlannerWorkerExecutionContext({
+		taskId,
+		kind,
+		reason,
+		workpadId,
+	});
 
 	if (workpadId) {
 		updateWorkpad(ctx.cwd, {
@@ -1177,12 +1245,12 @@ ${taskDescription}
 			return {
 				content: [{
 					type: "text",
-					text: `## 自動タスク実行設定
+			text: `## 自動タスク実行設定
 
 - **有効**: ${previousEnabled ? "有効" : "無効"} → ${autoExecutorConfig.enabled ? "有効" : "無効"}
 - **自動実行**: ${previousAutoRun ? "有効" : "無効"} → ${autoExecutorConfig.autoRun ? "有効" : "無効"}
 
-※ 自動実行が無効の場合、アイドル時に次のタスクを通知のみ行います。`,
+※ 自動実行が有効な場合、planner-led DAG 実行を自動で開始します。`,
 				}],
 				details: {
 					enabled: autoExecutorConfig.enabled,
@@ -1229,11 +1297,17 @@ ${taskDescription}
 		}
 
 		const storage = loadStorage();
-		const selection = selectNextLoopTask(storage);
+		const { selection, blockedReason } = resolveNextAutoDispatch(storage);
 		const nextTask = selection?.task ?? null;
 
 		if (!nextTask) {
 			ctx.ui.setStatus("auto-executor", undefined);
+			if (blockedReason) {
+				ctx.ui.setStatus(
+					"auto-executor",
+					ctx.ui.theme.fg("warning", "他インスタンスの実行中タスクを優先")
+				);
+			}
 			return;
 		}
 
@@ -1306,27 +1380,52 @@ ${taskDescription}
 	// Event: Session start
 	pi.on("session_start", async (_event, ctx) => {
 		loadConfig();
-
-		// guard: ctx or ctx.ui may be undefined in some contexts
-		if (!ctx?.ui) {
-			return;
-		}
-
 		const storage = loadStorage();
-		const pendingCount = storage.tasks.filter(t => t.status === "todo").length;
+		const { selection, blockedReason } = resolveNextAutoDispatch(storage);
+		const nextTask = selection?.task ?? null;
+		const runnableCount = selection ? 1 : 0;
+		const todoCount = storage.tasks.filter(t => t.status === "todo").length;
+		const reclaimableInProgressCount = storage.tasks.filter((task) => {
+			if (task.status !== "in_progress") {
+				return false;
+			}
+			if (!task.ownerInstanceId) {
+				return true;
+			}
+			if (task.ownerInstanceId === getInstanceId()) {
+				return true;
+			}
+			const pid = extractPidFromInstanceId(task.ownerInstanceId);
+			return Boolean(pid && !isProcessAlive(pid));
+		}).length;
 
-		if (pendingCount > 0) {
-			const nextTask = getNextPendingTask(storage);
+		if (ctx?.ui && (todoCount > 0 || reclaimableInProgressCount > 0 || blockedReason)) {
 			ctx.ui.notify(
-				`[自動実行] ${pendingCount}件のタスクが待機中。${autoExecutorConfig.enabled ? "アイドル時に通知します。" : ""}`,
+				blockedReason
+					? `[自動実行] 他インスタンスの実行中タスクを優先するため、新規自動起動は保留します。`
+					: `[自動実行] todo=${todoCount}件 / reclaimable=${reclaimableInProgressCount}件。${autoExecutorConfig.enabled ? (autoExecutorConfig.autoRun ? "planner-led 自動実行を継続します。" : "アイドル時に通知します。") : ""}`,
 				"info"
 			);
 			if (nextTask) {
 				ctx.ui.setStatus(
 					"auto-executor",
-					ctx.ui.theme.fg("warning", `待機中: ${pendingCount}タスク`)
+					ctx.ui.theme.fg("warning", `待機中: ${nextTask.title.slice(0, 25)}...`)
+				);
+			} else if (blockedReason) {
+				ctx.ui.setStatus(
+					"auto-executor",
+					ctx.ui.theme.fg("warning", "他インスタンスの実行中タスクを優先")
 				);
 			}
+		}
+
+		if (
+			autoExecutorConfig.enabled
+			&& autoExecutorConfig.autoRun
+			&& !autoExecutorConfig.currentTaskId
+			&& runnableCount > 0
+		) {
+			await autoRunNextTask(ctx as never);
 		}
 	});
 
@@ -1337,7 +1436,7 @@ ${taskDescription}
 			if (args === "status") {
 				const status = getAutoExecutorStatus();
 				ctx.ui.notify(
-					`自動実行: ${status.enabled ? "有効" : "無効"} | 自動Run: ${status.autoRun ? "有効" : "無効"} | 待機中: ${status.pendingCount}件`,
+					`自動実行: ${status.enabled ? "有効" : "無効"} | planner-led autoRun: ${status.autoRun ? "有効" : "無効"} | 待機中: ${status.pendingCount}件`,
 					"info"
 				);
 			} else if (args === "on" || args === "enable") {

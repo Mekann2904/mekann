@@ -6,12 +6,15 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { writeFileSync } from "node:fs";
 
-vi.mock("../../../.pi/extensions/ul-workflow.js", () => ({
+const ulWorkflowMocks = vi.hoisted(() => ({
   getInstanceId: vi.fn(() => "instance-1-123"),
   isProcessAlive: vi.fn(() => true),
   extractPidFromInstanceId: vi.fn(() => 123),
 }));
+
+vi.mock("../../../.pi/extensions/ul-workflow.js", () => ulWorkflowMocks);
 
 const storageMocks = vi.hoisted(() => ({
   state: {
@@ -140,6 +143,9 @@ describe("task-auto-executor workpad", () => {
     vi.resetModules();
     vi.clearAllMocks();
     storageMocks.reset();
+    ulWorkflowMocks.getInstanceId.mockReturnValue("instance-1-123");
+    ulWorkflowMocks.isProcessAlive.mockReturnValue(true);
+    ulWorkflowMocks.extractPidFromInstanceId.mockReturnValue(123);
   });
 
   it("task_run_next で workpad を自動作成する", async () => {
@@ -225,7 +231,7 @@ describe("task-auto-executor workpad", () => {
       params: {
         task: "Implement orchestration\n\n詳細: wire runner and queue",
         taskId: "task-1",
-        extraContext: expect.stringContaining("taskId: task-1"),
+        extraContext: expect.stringContaining("root planner"),
         autoGenerate: true,
       },
     });
@@ -236,6 +242,266 @@ describe("task-auto-executor workpad", () => {
       mode: "append",
     });
     expect(notify).toHaveBeenCalledWith("自動実行を開始しました: Implement orchestration", "info");
+  });
+
+  it("session_start で autoRun 既定値のまま pending task を自動起動する", async () => {
+    writeFileSync(".pi/tasks/auto-executor-config.json", JSON.stringify({
+      enabled: true,
+      autoRun: true,
+      maxRetries: 2,
+    }, null, 2));
+
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+
+    extension(pi as never);
+
+    const sessionStartHandler = pi.handlers.get("session_start");
+    const notify = vi.fn();
+    const setStatus = vi.fn();
+    const executeTool = vi.fn(async ({ toolName }: { toolName: string; params: Record<string, unknown> }) => {
+      if (toolName === "task_run_next") {
+        return {
+          content: [{ type: "text", text: "claimed" }],
+          details: {
+            taskId: "task-1",
+            title: "Implement orchestration",
+            description: "wire runner and queue",
+            kind: "implementation",
+            reason: "one thing per loop",
+            workpadId: "wp-1",
+          },
+        };
+      }
+
+      if (toolName === "subagent_run_dag") {
+        return {
+          content: [{ type: "text", text: "started" }],
+          details: { outcomeCode: "SUCCESS" },
+        };
+      }
+
+      throw new Error(`unexpected tool: ${toolName}`);
+    });
+
+    await sessionStartHandler?.({}, {
+      cwd: "/repo",
+      executeTool,
+      ui: {
+        notify,
+        setStatus,
+        theme: {
+          fg: (_tone: string, text: string) => text,
+        },
+      },
+    });
+
+    expect(executeTool).toHaveBeenNthCalledWith(1, {
+      toolName: "task_run_next",
+      params: {},
+    });
+    expect(executeTool).toHaveBeenNthCalledWith(2, {
+      toolName: "subagent_run_dag",
+      params: {
+        task: "Implement orchestration\n\n詳細: wire runner and queue",
+        taskId: "task-1",
+        extraContext: expect.stringContaining("root planner"),
+        autoGenerate: true,
+      },
+    });
+  });
+
+  it("session_start は UI がなくても自動起動できる", async () => {
+    writeFileSync(".pi/tasks/auto-executor-config.json", JSON.stringify({
+      enabled: true,
+      autoRun: true,
+      maxRetries: 2,
+    }, null, 2));
+
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+
+    extension(pi as never);
+
+    const sessionStartHandler = pi.handlers.get("session_start");
+    const executeTool = vi.fn(async ({ toolName }: { toolName: string; params: Record<string, unknown> }) => {
+      if (toolName === "task_run_next") {
+        return {
+          content: [{ type: "text", text: "claimed" }],
+          details: {
+            taskId: "task-1",
+            title: "Implement orchestration",
+            description: "wire runner and queue",
+            kind: "implementation",
+            reason: "one thing per loop",
+            workpadId: "wp-1",
+          },
+        };
+      }
+
+      if (toolName === "subagent_run_dag") {
+        return {
+          content: [{ type: "text", text: "started" }],
+          details: { outcomeCode: "SUCCESS" },
+        };
+      }
+
+      throw new Error(`unexpected tool: ${toolName}`);
+    });
+
+    await sessionStartHandler?.({}, {
+      cwd: "/repo",
+      executeTool,
+    });
+
+    expect(executeTool).toHaveBeenCalledTimes(2);
+    expect(executeTool).toHaveBeenNthCalledWith(1, {
+      toolName: "task_run_next",
+      params: {},
+    });
+  });
+
+  it("session_start は reclaimable な in_progress task を自動再開する", async () => {
+    storageMocks.state = {
+      tasks: [{
+        id: "task-1",
+        title: "Resume orchestration",
+        description: "recover stale worker",
+        status: "in_progress",
+        priority: "high",
+        tags: [],
+        createdAt: "2026-03-08T00:00:00.000Z",
+        updatedAt: "2026-03-08T00:00:00.000Z",
+        ownerInstanceId: "other-999",
+        retryCount: 0,
+        completionGateStatus: "clear",
+      }],
+    };
+    ulWorkflowMocks.extractPidFromInstanceId.mockReturnValue(999);
+    ulWorkflowMocks.isProcessAlive.mockReturnValue(false);
+
+    writeFileSync(".pi/tasks/auto-executor-config.json", JSON.stringify({
+      enabled: true,
+      autoRun: true,
+      maxRetries: 2,
+    }, null, 2));
+
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+
+    extension(pi as never);
+
+    const sessionStartHandler = pi.handlers.get("session_start");
+    const executeTool = vi.fn(async ({ toolName }: { toolName: string; params: Record<string, unknown> }) => {
+      if (toolName === "task_run_next") {
+        return {
+          content: [{ type: "text", text: "claimed" }],
+          details: {
+            taskId: "task-1",
+            title: "Resume orchestration",
+            description: "recover stale worker",
+            kind: "implementation",
+            reason: "one thing per loop",
+            workpadId: "wp-1",
+          },
+        };
+      }
+
+      if (toolName === "subagent_run_dag") {
+        return {
+          content: [{ type: "text", text: "started" }],
+          details: { outcomeCode: "SUCCESS" },
+        };
+      }
+
+      throw new Error(`unexpected tool: ${toolName}`);
+    });
+
+    await sessionStartHandler?.({}, {
+      cwd: "/repo",
+      executeTool,
+      ui: {
+        notify: vi.fn(),
+        setStatus: vi.fn(),
+        theme: {
+          fg: (_tone: string, text: string) => text,
+        },
+      },
+    });
+
+    expect(executeTool).toHaveBeenCalledTimes(2);
+    expect(executeTool).toHaveBeenNthCalledWith(1, {
+      toolName: "task_run_next",
+      params: {},
+    });
+  });
+
+  it("他インスタンスの live な in_progress task があると session_start は新規自動起動しない", async () => {
+    storageMocks.state = {
+      tasks: [
+        {
+          id: "task-live",
+          title: "Live orchestration",
+          description: "owned elsewhere",
+          status: "in_progress",
+          priority: "high",
+          tags: [],
+          createdAt: "2026-03-08T00:00:00.000Z",
+          updatedAt: "2026-03-08T00:00:00.000Z",
+          ownerInstanceId: "other-999",
+          retryCount: 0,
+          completionGateStatus: "clear",
+        },
+        {
+          id: "task-todo",
+          title: "Implement orchestration",
+          description: "wire runner and queue",
+          status: "todo",
+          priority: "high",
+          tags: [],
+          createdAt: "2026-03-08T00:00:00.000Z",
+          updatedAt: "2026-03-08T00:00:00.000Z",
+          retryCount: 0,
+          completionGateStatus: "clear",
+        },
+      ],
+    };
+    ulWorkflowMocks.extractPidFromInstanceId.mockReturnValue(999);
+    ulWorkflowMocks.isProcessAlive.mockReturnValue(true);
+
+    writeFileSync(".pi/tasks/auto-executor-config.json", JSON.stringify({
+      enabled: true,
+      autoRun: true,
+      maxRetries: 2,
+    }, null, 2));
+
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+
+    extension(pi as never);
+
+    const sessionStartHandler = pi.handlers.get("session_start");
+    const executeTool = vi.fn();
+    const notify = vi.fn();
+    const setStatus = vi.fn();
+
+    await sessionStartHandler?.({}, {
+      cwd: "/repo",
+      executeTool,
+      ui: {
+        notify,
+        setStatus,
+        theme: {
+          fg: (_tone: string, text: string) => text,
+        },
+      },
+    });
+
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(
+      expect.stringContaining("他インスタンスの実行中タスクを優先"),
+      "info",
+    );
   });
 
   it("workspace_verify の結果を task verification state に反映する", async () => {
