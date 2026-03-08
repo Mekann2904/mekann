@@ -201,7 +201,7 @@ sequenceDiagram
 
 | エージェントID | 名前 | 説明 |
 |-------------|------|------|
-| **researcher** | Researcher | コードとドキュメントの調査専門家。発見と事実収集に最適 |
+| **researcher** | Researcher | 要求解釈、外部調査、コードとドキュメント確認を担うビジネスアナリスト役 |
 | **architect** | Architect | 設計重視のヘルパー。分解、制約、移行計画を得意とする |
 | **implementer** | Implementer | スコープ内のコーディングタスクと修正の実装ヘルパー |
 | **reviewer** | Reviewer | リスクチェック、テスト、品質フィードバックの読み取り専用レビュー担当者 |
@@ -810,7 +810,7 @@ research │              ├── review
 [subagent_run_dag] Auto-generated plan: auto-1708800000-abc123 (3 tasks, max depth: 2)
 
 Tasks:
-  - research [researcher]: 認証システムに関連するコードベースを調査...
+  - research [researcher]: 認証要求を解釈し、必要な外部調査とコード確認を行う...
   - implement [implementer] (deps: research): 認証システムを実装してテストを追加
   - test [tester] (deps: implement): 単体テストと統合テストを作成...
 

@@ -147,7 +147,7 @@ const result = await subagent_run_dag({
 
 | エージェント | 依存先 | 理由 |
 |-------------|--------|------|
-| `implementer` | `researcher` | 調査結果が実装に必要 |
+| `implementer` | `researcher` | 要求解釈と調査結果が実装に必要 |
 | `reviewer` | `implementer` | 実装後にレビュー |
 | `tester` | `implementer` | 実装後にテスト |
 

@@ -35,7 +35,24 @@ Research → Plan → [ユーザーレビュー] → Implement (DAG)
 
 ## 第1段階：Research（調査）
 
-コードベースの該当部分を**徹底的に**理解する。調査結果は必ず `.pi/ul-workflow/tasks/{taskId}/research.md` に記述する。
+Research はコード棚卸しではない。
+
+まず、ユーザ入力を顧客要求として解釈する。
+
+その後、agent はビジネスアナリストとして次を整理する。
+
+- ユーザが本当に欲しい成果
+- 成功条件
+- 制約
+- plan 前に調べるべき不明点
+
+新規構築、複合技術、未知ライブラリ、表現品質が重要なタスクでは、web 検索を強く優先する。
+
+外部調査では、公式ドキュメント、一次情報、信頼できる技術資料を優先する。
+
+ローカルコード確認はその後に行う。
+
+調査結果は必ず `.pi/ul-workflow/tasks/{taskId}/research.md` に記述する。
 
 ### アクション（推奨：専用ツールを使用）
 
@@ -48,24 +65,26 @@ ul_workflow_research({ task: "<タスク>", task_id: "<taskId>" })
 ```
 subagent_run({
   subagentId: "researcher",
-  task: "このフォルダの内容を徹底的に調査し、その仕組み、機能、およびすべての仕様を深く理解してください。調査が完了したら、得られた知見と学習内容を詳細にまとめたレポートを「.pi/ul-workflow/tasks/<taskId>/research.md」ファイルに作成してください。"
+  task: "このタスクを顧客要求として解釈し、必要なら web 検索で外部知識を集め、その後でローカル実装を確認してください。調査が完了したら、plan に反映できる research.md を「.pi/ul-workflow/tasks/<taskId>/research.md」に作成してください。"
 })
 ```
 
-### 重要な表現
+### research.md に含めたい内容
 
-- **「深く」**
-- **「詳細にわたって」**
-- **「複雑な部分まで」**
-- **「すべてを徹底的に」**
-
-これらの言葉がないと、表面的な読み取りしか行わない。
+- User Intent
+- Requested Outcome
+- Constraints
+- Unknowns
+- External Research Findings
+- Local Codebase Findings
+- Plan Inputs
 
 ### research.mdの目的
 
 - ユーザーのレビュー用資料
-- エージェントがシステムを正しく理解しているか確認
-- 誤解があれば計画段階前に修正
+- 顧客要求を agent がどう解釈したか確認する
+- 外部調査の知見を plan にどう反映するか確認する
+- 誤解があれば計画段階前に修正する
 - 保存場所: `.pi/ul-workflow/tasks/{taskId}/research.md`
 
 ---
@@ -73,6 +92,8 @@ subagent_run({
 ## 第2段階：Plan（計画策定）
 
 詳細な実装計画を `.pi/ul-workflow/tasks/{taskId}/plan.md` に作成する。
+
+plan は、顧客要求を開発実装へ翻訳した成果物である。
 
 ### アクション（推奨：専用ツールを使用）
 
@@ -85,7 +106,7 @@ ul_workflow_plan({ task: "<タスク>", task_id: "<taskId>" })
 ```
 subagent_run({
   subagentId: "architect",
-  task: "以下のタスクの詳細な実装計画をplan.mdに作成してください。コードスニペットも必ず含めてください。\n\nタスク: <task>\n\n保存先: .pi/ul-workflow/tasks/<taskId>/plan.md"
+  task: "research.md にある要求解釈をもとに、User Intent と Analyst Interpretation が分かる plan.md を作成してください。コードスニペットも必ず含めてください。\n\nタスク: <task>\n\n保存先: .pi/ul-workflow/tasks/<taskId>/plan.md"
 })
 ```
 
@@ -96,8 +117,14 @@ subagent_run({
 ```markdown
 # 実装計画: <タスク名>
 
-## 目的
+## Goal
 <何を実現するか>
+
+## User Intent
+<顧客としてのユーザが何を求めているか>
+
+## Analyst Interpretation
+<要求をどう解釈したか>
 
 ## 変更内容
 1. <ファイルA>: <変更内容>

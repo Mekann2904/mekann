@@ -388,47 +388,49 @@ function buildResearchDagParams(
     planDescription: "UL research phase with parallel fan-out and synthesis",
     tasks: [
       {
-        id: "research-codepaths",
+        id: "research-requirements",
         description: `調査対象: ${task}
 
 観点:
-- 関連するコードパスと主要モジュールを特定する
-- 実際の制御フローと依存関係を追跡する
-- 関連ファイルパスを明記する
+- ユーザ入力を顧客要求として解釈する
+- ユーザが本当に欲しい成果、成功条件、制約、不明点を整理する
+- 新規構築か既存改修かを判定する
+- plan に必要な要求の粒度まで落とす
 
 出力:
-- 箇条書きではなく後で統合しやすい調査メモ
-- 推測ではなくコードベース上の根拠を示す`,
+- 後で統合しやすい要求分析メモ
+- 推測ではなく、与えられた要求文から根拠を示す`,
         assignedAgent: "researcher",
         dependencies: [],
         priority: "high",
       },
       {
-        id: "research-interfaces",
+        id: "research-external",
         description: `調査対象: ${task}
 
 観点:
-- 公開インターフェース、設定、スキーマ、契約を洗い出す
-- フェーズ遷移やツール連携の入出力を確認する
-- 実装と期待される利用方法のズレを探す
+- 実装に必要な外部知識を洗い出す
+- 公式ドキュメント、一次情報、信頼できる技術資料を web で調べる
+- ライブラリの使い方、制約、既知の落とし穴、推奨構成を確認する
+- 調査結果を plan にどう反映するかまで整理する
 
 出力:
-- 関連ファイルパスとともに構造を説明する調査メモ`,
+- 外部調査の要点と plan への反映方針をまとめた調査メモ`,
         assignedAgent: "researcher",
         dependencies: [],
         priority: "high",
       },
       {
-        id: "research-risks",
+        id: "research-codebase",
         description: `調査対象: ${task}
 
 観点:
-- 失敗モード、レース、所有権競合、成果物欠落の経路を探す
-- 並列実行時に壊れやすい箇所を洗い出す
-- エラーハンドリングと再実行時の挙動を確認する
+- 既存コードがある場合だけ、関連ファイルと流用可能な実装を確認する
+- 現在の制約、既存パターン、壊しやすい点を洗い出す
+- ローカル実装の確認結果を要求解釈と外部調査に接続する
 
 出力:
-- 根拠付きのリスク調査メモ`,
+- 根拠付きのローカル調査メモ`,
         assignedAgent: "researcher",
         dependencies: [],
         priority: "high",
@@ -442,8 +444,12 @@ function buildResearchDagParams(
 
 必須要件:
 - 調査結果を後で参照できる文書として整理する
+- User Intent, Requested Outcome, Constraints, Unknowns を整理する
+- 外部調査で何を見て、何を plan に反映するかを書く
+- ローカルコードの確認結果は、外部調査と要求解釈の後に整理する
+- 最後に Plan Inputs を整理し、plan に渡す判断材料を明示する
 - 関連ファイルパスを明記する
-- 仕組み、依存、リスク、並列実行上の論点を整理する
+- inventory で終わらず、plan に渡す設計材料までまとめる
 - 最後に必ず次のセクションを含める
 
 ## 高リスク判定
@@ -459,8 +465,8 @@ function buildResearchDagParams(
 - 出力はそのまま research.md として保存できる完成形の Markdown のみ
 - 依存タスクの内容を要約統合し、重複を除く`,
         assignedAgent: "researcher",
-        dependencies: ["research-codepaths", "research-interfaces", "research-risks"],
-        inputContext: ["research-codepaths", "research-interfaces", "research-risks"],
+        dependencies: ["research-requirements", "research-external", "research-codebase"],
+        inputContext: ["research-requirements", "research-external", "research-codebase"],
         priority: "critical",
       },
     ],
@@ -490,7 +496,8 @@ function buildPlanDagParams(
 前提資料: ${researchPath}
 
 観点:
-- research.md を読み、問題の根本原因候補を整理する
+- research.md から顧客要求の解釈を抽出する
+- 何を作れば成功かを受け入れ条件へ変換する
 - 優先度、依存関係、危険箇所を明確にする
 - 実装前に確認すべき前提を列挙する
 
@@ -510,6 +517,7 @@ function buildPlanDagParams(
 - 変更対象ファイル候補を洗い出す
 - 具体的な実装方針とコードスニペット案を作る
 - 並列実装しやすい単位へ分解する
+- 要求解釈と設計判断がどうつながるかを明示する
 
 出力:
 - ファイルパスと変更内容中心の計画メモ`,
@@ -543,6 +551,7 @@ function buildPlanDagParams(
 保存先: ${planPath}
 
 必須要件:
+- User Intent と Analyst Interpretation が分かること
 - 詳細なアプローチの説明
 - 実際の変更内容を示すコードスニペット
 - 変更対象となるファイルパス
@@ -967,22 +976,36 @@ function generateResearchInstruction(
 } {
   return {
     subagentId: "researcher",
-    task: `以下のタスクについてコードベースを徹底的に調査し、research.mdを作成してください。
+    task: `以下のタスクについて、ビジネスアナリストとして research.md を作成してください。
 
 タスク: ${task}
 
 保存先: ${researchPath}
 
 調査要件:
-- 対象フォルダの内容を詳細に理解する
-- 仕組み、機能、すべての仕様を深く理解する
+- まずユーザ入力を顧客要求として解釈する
+- ユーザが欲しい成果、成功条件、制約、不明点を整理する
+- 必要に応じて web 検索で外部知識を集める
+- その後でローカルコードや関連ファイルを確認する
 - 関連するファイルパスを明記する
-- 依存関係を分析する
+- 外部調査で見たことを、plan にどう反映するかまで書く
 
 強調すべき点:
-- 「深く」「詳細にわたって」「複雑な部分まで」「すべてを徹底的に」調査する
+- research は単なるコード棚卸しではありません
+- 新規構築、複合技術、未知ライブラリ、表現品質が重要なタスクでは web 検索を強く優先してください
 - 表面的な読み取りでは不十分です
-- 関数のシグネチャレベルではなく、実際の動作を理解してください
+- 調査結果は plan を深くするための材料でなければなりません
+
+推奨セクション:
+- Task Understanding
+- User Intent
+- Requested Outcome
+- Constraints
+- Unknowns
+- External Research Findings
+- Local Codebase Findings
+- Risks
+- Plan Inputs
 
 【高リスク判定】（MANDATORY）
 research.md の最後に以下のセクションを必ず含めてください:
@@ -1003,7 +1026,7 @@ research.md の最後に以下のセクションを必ず含めてください:
 - セキュリティ脆弱性の修正
 - 暗号化・復号化処理
 `,
-    extraContext: `research.md は ${researchPath} に保存してください。永続的な成果物です。単なる要約ではなく、後で参照できる詳細なドキュメントを作成してください。高リスク判定は必ず含めてください。`,
+    extraContext: `research.md は ${researchPath} に保存してください。永続的な成果物です。単なる要約ではなく、後で参照できる詳細なドキュメントを作成してください。顧客要求の解釈、外部調査、ローカル確認、plan への反映をつなげて書いてください。高リスク判定は必ず含めてください。`,
   };
 }
 
@@ -1035,6 +1058,8 @@ function generatePlanInstruction(
 事前調査: ${researchPath}
 
 計画要件:
+- research.md にある顧客要求の解釈を明示する
+- 要求から受け入れ条件、設計、実装順序への橋渡しを書く
 - 詳細なアプローチの説明
 - 実際の変更内容を示すコードスニペット
 - 変更対象となるファイルパス
@@ -1048,7 +1073,7 @@ function generatePlanInstruction(
 - 既存のコードパターンを尊重してください
 - コードスニペットは実際の変更を反映してください
 `,
-    extraContext: "plan.md はユーザーのレビュー対象です。後で注釈が追加されることを想定して構造化してください。",
+    extraContext: "plan.md はユーザーのレビュー対象です。ユーザーは顧客でもあり開発者でもあります。レビューしやすいように、User Intent、Analyst Interpretation、Acceptance Criteria、Implementation Order のつながりが分かる構造にしてください。",
   };
 }
 
@@ -1383,9 +1408,10 @@ Task ID: ${taskId}
 現在のフェーズ: ${phases[0].toUpperCase()}
 
 次のステップ:
-1. researcher サブエージェントが調査を実行します
-2. 調査結果は .pi/ul-workflow/tasks/${taskId}/research.md に保存されます
-3. 調査が完了したら ul_workflow_approve で次のフェーズへ進みます
+1. researcher サブエージェントが、顧客要求の解釈と必要な調査を実行します
+2. 必要に応じて web 検索で外部知識を集め、research.md に整理します
+3. research.md は .pi/ul-workflow/tasks/${taskId}/research.md に保存されます
+4. 調査が完了したら ul_workflow_approve で次のフェーズへ進みます
 
 調査を実行するには:
   ul_workflow_research({ task: "${task}", task_id: "${taskId}" })
@@ -1703,7 +1729,7 @@ Execution Mode: unified-flow (manual)
 subagent_run_dag(${JSON.stringify(buildSingleAgentDagParams({
   subagentId: "researcher",
   task: `調査タスク: ${trimmedTask}\n\n保存先: ${researchPath}`,
-  extraContext: "詳細に調査し、research.mdを作成してください。",
+  extraContext: "顧客要求として解釈し、必要なら web 検索で外部知識を集め、その後で research.md を作成してください。",
   ulTaskId: taskId,
 }), null, 2)})
 \`\`\`
@@ -1713,7 +1739,7 @@ subagent_run_dag(${JSON.stringify(buildSingleAgentDagParams({
 subagent_run_dag(${JSON.stringify(buildSingleAgentDagParams({
   subagentId: "architect",
   task: `計画作成: ${trimmedTask}\n\n事前調査: ${researchPath}\n\n保存先: ${planPath}`,
-  extraContext: "既存のコードパターンを尊重した plan.md を作成してください。",
+  extraContext: "research.md の要求解釈をもとに、User Intent と Analyst Interpretation が分かる plan.md を作成してください。",
   ulTaskId: taskId,
 }), null, 2)})
 \`\`\`

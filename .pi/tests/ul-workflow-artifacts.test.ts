@@ -75,6 +75,24 @@ describe("UL workflow artifacts", () => {
     expect(content).toContain("高リスク判定");
   });
 
+  it("explains research as requirement analysis at workflow start", async () => {
+    const startTool = pi.tools.get("ul_workflow_start");
+    expect(startTool).toBeDefined();
+
+    const startResult = await startTool!.execute(
+      "tc-start-copy",
+      { task: "新規プロダクトの要求を整理して計画を作る" },
+      undefined,
+      undefined,
+      {},
+    );
+
+    const text = startResult.content[0].text as string;
+    expect(text).toContain("顧客要求の解釈");
+    expect(text).toContain("web 検索");
+    expect(text).toContain("research.md");
+  });
+
   it("creates plan.md during ul_workflow_plan", async () => {
     const startTool = pi.tools.get("ul_workflow_start");
     const researchTool = pi.tools.get("ul_workflow_research");
@@ -196,10 +214,89 @@ describe("UL workflow artifacts", () => {
     const dagPlan = capturedParams?.plan as { tasks: Array<{ id: string; dependencies: string[] }> };
     expect(dagPlan.tasks.length).toBeGreaterThanOrEqual(4);
     expect(dagPlan.tasks.some((task) => task.id === "research-synthesis")).toBe(true);
+    expect(dagPlan.tasks.some((task) => task.id === "research-requirements")).toBe(true);
+    expect(dagPlan.tasks.some((task) => task.id === "research-external")).toBe(true);
+    expect(dagPlan.tasks.some((task) => task.id === "research-codebase")).toBe(true);
 
     const researchPath = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId, "research.md");
     const content = readFileSync(researchPath, "utf-8");
     expect(content).toContain("DAG経由の調査結果");
+  });
+
+  it("builds research DAG around requirements and external investigation", async () => {
+    const startTool = pi.tools.get("ul_workflow_start");
+    const researchTool = pi.tools.get("ul_workflow_research");
+    expect(startTool && researchTool).toBeDefined();
+
+    const startResult = await startTool!.execute(
+      "tc-start-business-analyst",
+      { task: "Astro と three.js を使う実験的な新規サイトの要求を整理し、実装計画の材料を集めてください" },
+      undefined,
+      undefined,
+      {},
+    );
+    const taskId = startResult.details.taskId as string;
+    createdTaskIds.push(taskId);
+
+    let capturedParams: Record<string, unknown> | undefined;
+    const ctx = {
+      executeTool: async ({ toolName, params }: { toolName: string; params: Record<string, unknown> }) => {
+        expect(toolName).toBe("subagent_run_dag");
+        capturedParams = params;
+        const artifactPath = path.join(process.cwd(), String(params.artifactPath));
+        mkdirSync(path.dirname(artifactPath), { recursive: true });
+        writeFileSync(
+          artifactPath,
+          [
+            "# Research",
+            "",
+            "## User Intent",
+            "新規サイトの体験価値を定義する。",
+            "",
+            "## External Research Findings",
+            "Astro と three.js の統合パターンを確認する。",
+            "",
+            "## Plan Inputs",
+            "初手は quick prototype にする。",
+            "",
+            "## 高リスク判定",
+            "",
+            "### 判定結果",
+            "- [ ] normal（通常）",
+            "",
+          ].join("\n"),
+          "utf-8",
+        );
+        return {
+          content: [{ type: "text", text: "# Research\n\nBusiness analysis complete." }],
+        };
+      },
+    };
+
+    await researchTool!.execute(
+      "tc-research-business-analyst",
+      { task: "Astro と three.js を使う実験的な新規サイトの要求を整理し、実装計画の材料を集めてください", task_id: taskId },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    const dagPlan = capturedParams?.plan as { tasks: Array<{ id: string; description: string }> };
+    const requirementTask = dagPlan.tasks.find((task) => task.id === "research-requirements");
+    const externalTask = dagPlan.tasks.find((task) => task.id === "research-external");
+    const synthesisTask = dagPlan.tasks.find((task) => task.id === "research-synthesis");
+
+    expect(requirementTask?.description).toContain("顧客要求");
+    expect(externalTask?.description).toContain("web");
+    expect(externalTask?.description).toContain("公式ドキュメント");
+    expect(synthesisTask?.description).toContain("User Intent");
+    expect(synthesisTask?.description).toContain("Plan Inputs");
+
+    const researchPath = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId, "research.md");
+    const content = readFileSync(researchPath, "utf-8");
+    expect(content).toContain("## User Intent");
+    expect(content).toContain("## External Research Findings");
+    expect(content).toContain("## Plan Inputs");
   });
 
   it("returns subagent_run_dag instructions when no execution API is available", async () => {
@@ -279,6 +376,95 @@ describe("UL workflow artifacts", () => {
     const content = readFileSync(planPath, "utf-8");
     expect(content).toContain("ローカルDAGで計画を保存する");
     expect(result.content[0].text).toContain("Planフェーズ完了");
+  });
+
+  it("builds plan DAG around user intent and analyst interpretation", async () => {
+    const startTool = pi.tools.get("ul_workflow_start");
+    const approveTool = pi.tools.get("ul_workflow_approve");
+    const planTool = pi.tools.get("ul_workflow_plan");
+    expect(startTool && approveTool && planTool).toBeDefined();
+
+    const startResult = await startTool!.execute(
+      "tc-start-plan-structure",
+      { task: "ブランドサイト構築の計画を作ってください" },
+      undefined,
+      undefined,
+      {},
+    );
+    const taskId = startResult.details.taskId as string;
+    createdTaskIds.push(taskId);
+
+    const researchPath = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId, "research.md");
+    writeFileSync(
+      researchPath,
+      [
+        "# Research",
+        "",
+        "## User Intent",
+        "顧客は作品性の高いブランドサイトを求めている。",
+        "",
+        "## Analyst Interpretation",
+        "まず没入感の核を試作すべきである。",
+        "",
+        "## Plan Inputs",
+        "Astro islands と WebGL の境界を先に決める。",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+    await approveTool!.execute("tc-approve-plan-structure", {}, undefined, undefined, {});
+
+    let capturedParams: Record<string, unknown> | undefined;
+    const ctx = {
+      executeTool: async ({ toolName, params }: { toolName: string; params: Record<string, unknown> }) => {
+        expect(toolName).toBe("subagent_run_dag");
+        capturedParams = params;
+        const artifactPath = path.join(process.cwd(), String(params.artifactPath));
+        mkdirSync(path.dirname(artifactPath), { recursive: true });
+        writeFileSync(
+          artifactPath,
+          [
+            "# Plan",
+            "",
+            "## User Intent",
+            "作品性の高いブランドサイトを作る。",
+            "",
+            "## Analyst Interpretation",
+            "核となる描画体験から組み立てる。",
+            "",
+            "- [ ] quick prototype を作る",
+            "",
+          ].join("\n"),
+          "utf-8",
+        );
+        return {
+          content: [{ type: "text", text: "# Plan\n\nPlanning complete." }],
+        };
+      },
+    };
+
+    await planTool!.execute(
+      "tc-plan-structure",
+      { task: "ブランドサイト構築の計画を作ってください", task_id: taskId },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    const dagPlan = capturedParams?.plan as { tasks: Array<{ id: string; description: string }> };
+    const findingsTask = dagPlan.tasks.find((task) => task.id === "plan-findings");
+    const changesTask = dagPlan.tasks.find((task) => task.id === "plan-changes");
+    const synthesisTask = dagPlan.tasks.find((task) => task.id === "plan-synthesis");
+
+    expect(findingsTask?.description).toContain("顧客要求");
+    expect(changesTask?.description).toContain("要求解釈");
+    expect(synthesisTask?.description).toContain("User Intent");
+    expect(synthesisTask?.description).toContain("Analyst Interpretation");
+
+    const planPath = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId, "plan.md");
+    const content = readFileSync(planPath, "utf-8");
+    expect(content).toContain("## User Intent");
+    expect(content).toContain("## Analyst Interpretation");
   });
 
   it("blocks approval until the current phase artifact exists", async () => {

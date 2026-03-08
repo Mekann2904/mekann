@@ -58,7 +58,7 @@ Break down complex tasks into a directed acyclic graph (DAG) of subtasks with ex
 
 | Type | Best For |
 |------|----------|
-| `researcher` | Investigation, codebase analysis, information gathering |
+| `researcher` | Requirements interpretation, external research, codebase analysis |
 | `implementer` | Code changes, file creation, implementation work |
 | `reviewer` | Code review, validation, quality assurance |
 | `architect` | Design, planning, architecture decisions |
@@ -105,7 +105,7 @@ Break down complex tasks into a directed acyclic graph (DAG) of subtasks with ex
   "tasks": [
     {
       "id": "research-oauth",
-      "description": "Research OAuth2 best practices and existing library options",
+      "description": "Interpret the authentication requirement, research OAuth2 best practices, and identify viable library options",
       "dependencies": [],
       "assignedAgent": "researcher",
       "priority": "high",
@@ -166,7 +166,7 @@ Break down complex tasks into a directed acyclic graph (DAG) of subtasks with ex
   "tasks": [
     {
       "id": "investigate-leak",
-      "description": "Profile and identify the source of memory leak",
+      "description": "Clarify the bug symptoms, identify unknowns, and profile the source of memory leak",
       "dependencies": [],
       "assignedAgent": "researcher",
       "priority": "critical",
@@ -211,7 +211,7 @@ Break down complex tasks into a directed acyclic graph (DAG) of subtasks with ex
   "tasks": [
     {
       "id": "identify-changes",
-      "description": "Identify all API changes between v1 and v2",
+      "description": "Interpret the documentation update request and identify all API changes between v1 and v2",
       "dependencies": [],
       "assignedAgent": "researcher",
       "priority": "high",
