@@ -235,6 +235,16 @@ function makeSkippedStep(step: WorkspaceVerificationStep, reason: string): Works
   };
 }
 
+function makeFailedStep(step: WorkspaceVerificationStep, reason: string): WorkspaceVerificationStepResult {
+  return {
+    step,
+    success: false,
+    skipped: false,
+    durationMs: 0,
+    error: reason,
+  };
+}
+
 async function runRuntimeVerification(
   resolvedPlan: WorkspaceVerificationResolvedPlan,
   cwd: string,
@@ -429,7 +439,7 @@ async function runUiVerification(
 
   const commands = resolveUiCommands(resolvedPlan);
   if (commands.length === 0) {
-    return makeSkippedStep("ui", "ui commands are empty");
+    return makeFailedStep("ui", "ui verification is enabled but no ui commands or baseUrl are configured");
   }
 
   const summaries: string[] = [];
@@ -519,9 +529,6 @@ export async function runWorkspaceVerification(
     if (step === "runtime") {
       const stepResult = await runRuntimeVerification(resolvedPlan, cwd);
       stepResults.push(stepResult);
-      if (!stepResult.success && !stepResult.skipped) {
-        shouldSkipRemaining = true;
-      }
       continue;
     }
 

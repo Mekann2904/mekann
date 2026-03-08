@@ -285,7 +285,7 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
     || (config.requireReplanOnRepeatedFailure && state.replanRequired)
   )),
   getResolvedCommandForStep: vi.fn((_plan, step) => mockApi.resolvedPlan.commands[step] ?? ""),
-  resolveEnabledSteps: vi.fn(() => ["lint", "typecheck", "test", "runtime", "ui"]),
+  resolveEnabledSteps: vi.fn((_config, _resolvedPlan, requested) => requested ?? ["lint", "typecheck", "test", "runtime", "ui"]),
   runWorkspaceCommand: vi.fn(async () => ({
     command: "npm test",
     success: true,
@@ -615,6 +615,67 @@ describe("workspace-verification extension", () => {
     expect(result?.details.success).toBe(false);
     expect(mockApi.state.dirty).toBe(true);
     expect(String(result?.content[0]?.text)).toContain("browser console error detected");
+  });
+
+  it("runs ui verification even when runtime verification fails", async () => {
+    const backgroundProcesses = await import("../../../.pi/lib/background-processes.js");
+    const childProcess = await import("node:child_process");
+    const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
+    const extension = extensionModule.default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    vi.mocked(backgroundProcesses.startBackgroundProcess).mockResolvedValueOnce({
+      ready: false,
+      record: { id: "bg-1", pid: 1001, readinessStatus: "timeout" },
+    } as never);
+    vi.mocked(childProcess.execFile).mockImplementation((_command, args, _options, callback) => {
+      const commandText = Array.isArray(args) ? args.join(" ") : "";
+      const isConsoleError = commandText.includes("console") && commandText.includes("error");
+      callback?.(null, { stdout: isConsoleError ? "" : "ok", stderr: "" } as never);
+      return undefined as never;
+    });
+
+    const tool = mockApi.tools.find((item) => item.name === "workspace_verify");
+    const result = await tool?.execute("tool-1", { trigger: "manual", steps: ["runtime", "ui"] }, undefined, undefined, {
+      cwd: "/repo",
+      ui: {
+        notify: (message: string, level: string) => mockApi.notifications.push({ message, level }),
+      },
+    });
+
+    const stepResults = result?.details.stepResults ?? [];
+    expect(stepResults.find((item: any) => item.step === "runtime")?.success).toBe(false);
+    expect(stepResults.find((item: any) => item.step === "ui")?.success).toBe(true);
+  });
+
+  it("fails ui verification when enabled but no commands or baseUrl are configured", async () => {
+    const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
+    const extension = extensionModule.default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    mockApi.resolvedPlan = {
+      ...mockApi.resolvedPlan,
+      ui: {
+        enabled: true,
+        timeoutMs: 120000,
+        commands: [],
+      },
+    };
+
+    const tool = mockApi.tools.find((item) => item.name === "workspace_verify");
+    const result = await tool?.execute("tool-1", { trigger: "manual", steps: ["ui"] }, undefined, undefined, {
+      cwd: "/repo",
+      ui: {
+        notify: (message: string, level: string) => mockApi.notifications.push({ message, level }),
+      },
+    });
+
+    expect(result?.details.success).toBe(false);
+    expect(result?.details.stepResults[0]?.step).toBe("ui");
+    expect(result?.details.stepResults[0]?.skipped).toBe(false);
+    expect(String(result?.content[0]?.text)).toContain("no ui commands or baseUrl are configured");
   });
 
   it("saves a failure checkpoint when verification fails", async () => {
