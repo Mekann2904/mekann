@@ -1,13 +1,13 @@
 ---
-title: UL Mode - Claude Code Workflow
+title: UL Workflow
 category: user-guide
 audience: daily-user
-last_updated: 2026-03-08
-tags: [ul-mode, workflow, claude-code, dag]
+last_updated: 2026-03-09
+tags: [ul-workflow, workflow, approval]
 related: [docs/02-user-guide/08-subagents.md]
 ---
 
-# UL Mode
+# UL Workflow
 
 Claude Code Workflowに基づく委任モード。調査・計画・実装を自律的に行う。
 
@@ -132,11 +132,29 @@ subagent_run({ subagentId: "implementer", task: "plan.mdを実装" })
 
 ```
 ul <task>                # Research → Plan → Question確認 → Implement → Commit
+ul help                  # ヘルプ
 ul status                # ステータス表示
 ul approve               # 現在フェーズの承認
 ul annotate              # plan.md の注釈適用
 ul abort                 # 中止
+ul resume <taskId>       # 中止した task を再開
 ul_workflow_force_claim  # 所有権を強制取得
+```
+
+## 主要ツール
+
+```
+ul_workflow_start({ task })
+ul_workflow_research({ task, task_id? })
+ul_workflow_plan({ task, task_id? })
+ul_workflow_approve()
+ul_workflow_annotate()
+ul_workflow_modify_plan({ modifications })
+ul_workflow_execute_plan()
+ul_workflow_commit()
+ul_workflow_abort()
+ul_workflow_resume({ task_id })
+ul_workflow_force_claim()
 ```
 
 ---
@@ -200,66 +218,42 @@ ul status
 
 ---
 
-## 複雑度ベースの実行戦略
+## 実行モデル
 
-タスクの複雑度に応じて、実行戦略が自動的に選択されます。
+現行の UL workflow は、Research と Plan を先に作り、人間確認のあとで Implement に進みます。
 
-### 複雑度判定
+内部では `subagent_run_dag` を使うことがありますが、ユーザー向け API として `ul_workflow_dag` や `determineExecutionStrategy()` は公開されていません。
 
-| 複雑度 | 条件 | 実行戦略 |
-|--------|------|---------|
-| **低** | 単純な変更、明確なゴール | シンプル実行 |
-| **中** | 複数コンポーネント、ステップ指示あり | DAG実行推奨 |
-| **高** | アーキテクチャ変更、リファクタリング | DAG実行 |
+`ul_workflow_run` は存在しますが、主な入口は `ul <task>` です。
 
-### 実行戦略の決定
+## 代表的な操作例
 
-```typescript
-determineExecutionStrategy("ボタンを追加")
-// -> { strategy: "simple", useDag: false }
+### 1. 通常開始
 
-determineExecutionStrategy("認証システムをリファクタリング")
-// -> { strategy: "dag", useDag: true }
+```bash
+ul 認証フローのバグを修正
 ```
 
----
+### 2. plan を修正
 
-## ul_workflow_dag - DAGベース実行
-
-高複雑度タスク向けのDAGベース並列実行ツール。
-
-### 使用方法
-
-```typescript
-ul_workflow_dag({
-  task: "認証システムをリファクタリング",
-  maxConcurrency: 3
-})
+```bash
+ul annotate
+ul approve
+# ではなく、修正内容がある場合は
+ul_workflow_modify_plan({ modifications: "PATCH に変更する" })
 ```
 
-### 動作
+### 3. implement 実行
 
-1. タスク複雑度を分析
-2. DAGプランを自動生成
-3. 依存関係に基づいて並列実行
-
-### 出力例
-
+```bash
+ul_workflow_execute_plan()
 ```
-DAG-based UL Workflow Execution
 
-Task: 認証システムをリファクタリング
-Strategy: dag
-Reason: High complexity task - DAG-based parallel execution for efficiency
+### 4. 中止後に再開
 
-Generated DAG (4 tasks, max depth: 2):
-  - research [researcher]: 認証要求を解釈し、必要な外部調査とコード確認を行う...
-  - implement [implementer] (deps: research): 認証システムをリファクタリング
-  - test [tester] (deps: implement): 単体テストと統合テストを作成...
-  - review [reviewer] (deps: implement): 実装をレビューし品質確認...
-
-Execute with:
-subagent_run_dag({ task: "...", maxConcurrency: 3 })
+```bash
+ul abort
+ul resume 2026-03-08T10-00-00-sample-1234abcd
 ```
 
 ---
@@ -273,7 +267,6 @@ subagent_run_dag({ task: "...", maxConcurrency: 3 })
 | `plan` | 計画フェーズ - 詳細な実装計画の作成 |
 | `annotate` | 注釈フェーズ - ユーザーによる計画のレビューと修正 |
 | `implement` | 実装フェーズ - 計画に基づくコード実装 |
-| `review` | レビューフェーズ - 実装の品質確認 |
 | `completed` | 完了 |
 | `aborted` | 中止 |
 

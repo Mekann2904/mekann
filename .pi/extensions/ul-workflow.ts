@@ -1078,20 +1078,6 @@ function generatePlanInstruction(
 }
 
 /**
- * WorkflowRunResult - ul_workflow_runの実行結果
- */
-interface WorkflowRunResult {
-  taskId: string;
-  phase: WorkflowPhase;
-  planContent?: string;
-  needsConfirmation: boolean;
-  nextAction?: {
-    tool: string;
-    description: string;
-  };
-}
-
-/**
  * タスクIDを生成する
  * BUG-003 FIX: ランダムサフィックス追加で衝突回避
  */
@@ -1419,20 +1405,20 @@ Task ID: ${taskId}
     },
   });
 
-  // 統合ワンフロー実行ツール
-  // ul_workflow_run と ul_workflow_dag を統合し、複雑度判定で自動選択
+  // 互換用の統合実行ツール
+  // 現在は Research / Plan を実行し、annotate でユーザー確認を返す。
   pi.registerTool({
     name: "ul_workflow_run",
     label: "Run UL Workflow",
-    description: "Research-Plan-Implementを自動実行。複雑度に応じてシーケンシャルまたはDAG並列実行を自動選択。plan確認のみインタラクティブ。",
+    description: "互換用ヘルパー。現在は Research / Plan を実行して annotate で停止する。mode は互換入力として受け取るが、挙動は unified-flow に固定。",
     parameters: Type.Object({
       task: Type.String({ description: "実行するタスク" }),
       mode: Type.Optional(Type.Union([
         Type.Literal("auto"),
         Type.Literal("sequential"),
         Type.Literal("parallel")
-      ], { description: "実行モード: auto=自動選択（デフォルト）, sequential=逐次実行, parallel=DAG並列実行" })),
-      maxConcurrency: Type.Optional(Type.Number({ description: "並列実行時の最大並列数（デフォルト: 3）" })),
+      ], { description: "互換入力。現在の挙動は unified-flow 固定" })),
+      maxConcurrency: Type.Optional(Type.Number({ description: "互換入力。将来の並列実行制御用" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const { task, mode = "auto", maxConcurrency = 3 } = params;
@@ -1450,12 +1436,10 @@ Task ID: ${taskId}
       const taskId = generateTaskId(trimmedTask);
       const now = new Date().toISOString();
 
-      // 統一フロー: 常にDAG並列実行
-      const useDag = UNIFIED_EXECUTION_CONFIG.useDag;
-      const effectiveConcurrency = maxConcurrency; // パラメータから取得（デフォルト3）
+      const effectiveConcurrency = maxConcurrency;
       const phases: WorkflowPhase[] = [...UNIFIED_PHASES];
       
-      console.log(`[ul_workflow_run] Mode: ${mode}, Execution: unified-flow, DAG: ${useDag}, Concurrency: ${effectiveConcurrency}`);
+      console.log(`[ul_workflow_run] Mode input: ${mode}, Execution: unified-flow, Concurrency hint: ${effectiveConcurrency}`);
 
       currentWorkflow = {
         taskId,
@@ -1509,8 +1493,7 @@ Task ID: ${taskId}
         const planContent = readPlanFile(taskId);
 
         // === PHASE 3: Annotate（ユーザーレビュー）===
-        // Plan承認後、自動的にannotateフェーズへ移行
-        currentWorkflow.approvedPhases.push("plan");
+        // Plan作成後、自動的にannotateフェーズへ移行
         currentWorkflow.phase = "annotate";
         currentWorkflow.phaseIndex = 2;
         currentWorkflow.updatedAt = new Date().toISOString();
@@ -1522,7 +1505,7 @@ Task ID: ${taskId}
           content: [{ type: "text", text: `## Plan作成完了（レビュー待ち - Annotateフェーズ）
 
 Task: ${trimmedTask}
-Execution Mode: 統一フロー（Research/Plan: 逐次、Implement: DAG並列）
+Execution Mode: 統一フロー（Research/Plan 実行後に annotate で停止）
 Current Phase: annotate
 
 \`\`\`markdown
@@ -1545,7 +1528,8 @@ ${planContent}
               taskId,
               phase: "annotate",
               executionMode: "unified-flow",
-              useDagForImplement: true,
+              modeInput: mode,
+              concurrencyHint: effectiveConcurrency,
               askUser: true,
               question: {
                 question: "この計画で実行しますか？",
@@ -1559,162 +1543,6 @@ ${planContent}
               }
             }
         };
-
-        // === PHASE 3: Implement（DAG並列または逐次）===
-        if (!currentWorkflow) {
-          return makeResult("エラー: ワークフロー状態が見つかりません", { error: "no_workflow" });
-        }
-        const workflow = currentWorkflow as WorkflowState;
-        workflow.approvedPhases.push("plan");
-        workflow.phase = "implement";
-        workflow.phaseIndex = 3;
-        workflow.updatedAt = new Date().toISOString();
-        saveState(workflow);
-
-        // DAG並列実行（useDag=trueの場合）
-        if (useDag) {
-          console.log(`[ul_workflow_run] Phase 3: Implement (DAG parallel, concurrency: ${effectiveConcurrency})`);
-          
-          try {
-            const { generateDagFromTask } = await import("../lib/dag-generator.js");
-            const { executeDag } = await import("../lib/dag-executor.js");
-
-            // 実装フェーズ用のDAGを生成（plan.mdベース）
-            const dagPlan = await generateDagFromTask(`plan.mdを実装: ${planPath}`);
-
-            console.log(`[ul_workflow_run] Generated implementation DAG: ${dagPlan.id} (${dagPlan.tasks.length} tasks)`);
-
-            const dagResult = await executeDag<{ output: string; phase: string }>(
-              dagPlan,
-              async (task, _context) => {
-                let subagentId = "implementer";
-                const taskLower = task.description.toLowerCase();
-
-                if (taskLower.includes("test") || taskLower.includes("テスト")) {
-                  subagentId = "tester";
-                } else if (taskLower.includes("review") || taskLower.includes("レビュー")) {
-                  subagentId = "reviewer";
-                }
-
-                console.log(`[ul_workflow_run] DAG task ${task.id} -> ${subagentId}`);
-
-                const result = await runUlDelegatedTask(ctx, {
-                  subagentId,
-                  task: task.description,
-                  extraContext: `Part of implementation workflow. Plan: ${planPath}`,
-                  ulTaskId: taskId,
-                });
-
-                const contentItem = result?.content?.[0];
-                const outputText = contentItem && 'text' in contentItem ? contentItem.text : "completed";
-                return {
-                  output: outputText,
-                  phase: subagentId,
-                };
-              },
-              {
-                maxConcurrency: effectiveConcurrency,
-                abortOnFirstError: false,
-              },
-            );
-
-            const allResults = Array.from(dagResult.taskResults.values());
-            const failedTasks = allResults.filter((r) => r.status === "failed");
-
-            if (currentWorkflow) {
-              const workflow = currentWorkflow as WorkflowState;
-              workflow.phase = "completed";
-              workflow.phaseIndex = phases.length - 1;
-              workflow.approvedPhases.push("implement");
-              workflow.updatedAt = new Date().toISOString();
-              saveState(workflow);
-            }
-            setCurrentWorkflow(null);
-
-            const summary = `## UL Workflow完了（統合モード）
-
-Task: ${trimmedTask}
-Execution Mode: 統一フロー（Research/Plan: 逐次、Implement: DAG並列）
-
-### フェーズ実行結果
-- Research: 完了（逐次）
-- Plan: 完了（逐次 + ユーザーレビュー）
-- Implement: 完了（DAG並列）
-
-### DAG実行詳細
-- Plan ID: ${dagPlan.id}
-- タスク数: ${dagPlan.tasks.length}
-- 最大深度: ${dagPlan.metadata.maxDepth}
-- 並列数: ${effectiveConcurrency}
-
-### タスク結果
-${allResults.map((r) => {
-const status = r.status === "completed" ? "DONE" : "FAIL";
-const output = r.output as { phase?: string } | undefined;
-return `- [${status}] ${r.taskId}: ${output?.phase || "unknown"}`;
-}).join("\n")}
-
-${failedTasks.length > 0 ? `\n### 失敗タスク\n${failedTasks.map((f) => `- ${f.taskId}: ${f.error}`).join("\n")}` : ""}
-
-### 次のステップ: コミット
-
-\`\`\`
-ul_workflow_commit()
-\`\`\`
-`;
-
-            return {
-              content: [{ type: "text", text: summary }],
-              details: {
-                taskId,
-                phase: "completed",
-                executionMode: "unified-flow",
-                dagPlanId: dagPlan.id,
-                taskCount: dagPlan.tasks.length,
-                succeededCount: allResults.length - failedTasks.length,
-                failedCount: failedTasks.length,
-                outcomeCode: failedTasks.length > 0 ? "PARTIAL_SUCCESS" : "SUCCESS",
-                suggestCommit: true,
-              },
-            };
-          } catch (dagError) {
-            console.log(`[ul_workflow_run] DAG execution failed, falling back to sequential implement: ${dagError}`);
-            // Fall through to sequential implement
-          }
-        }
-
-        // 逐次実装（DAG失敗時）
-        console.log(`[ul_workflow_run] Phase 3: Implement (sequential fallback)`);
-        await runUlDelegatedTask(ctx, {
-          subagentId: "implementer",
-          task: `plan.mdを実装: ${planPath}`,
-          extraContext: "機械的に実装してください。",
-          ulTaskId: taskId,
-        });
-
-        if (currentWorkflow) {
-          const workflow = currentWorkflow as WorkflowState;
-          workflow.approvedPhases.push("implement");
-          workflow.phase = "completed";
-          workflow.phaseIndex = 3;
-          workflow.updatedAt = new Date().toISOString();
-          saveState(workflow);
-        }
-        setCurrentWorkflow(null);
-
-        return makeResult(`## 実装完了（逐次フォールバック）
-
-Task ID: ${taskId}
-Execution Mode: unified-flow (sequential fallback)
-
-ワークフローが完了しました。
-
-### 次のステップ: コミット
-
-\`\`\`
-ul_workflow_commit()
-\`\`\`
-`, { taskId, phase: "completed", executionMode: "unified-flow", suggestCommit: true });
 
       } catch (error) {
         if (String(error).includes("subagent_run_dag APIが利用できません")) {
@@ -1872,11 +1700,6 @@ ${phasesDisplay}
       
       const previousPhase = currentWorkflow.phase;
 
-      // BEGIN FIX: BUG-002 事前状態保存
-      // approvedPhasesを変更する前に、現在の状態を保存
-      const preApprovalState = JSON.parse(JSON.stringify(currentWorkflow));
-      // END FIX
-      
       currentWorkflow.approvedPhases.push(previousPhase);
       
       // ガード: planが承認されていない場合は実装フェーズに進めない
@@ -1902,7 +1725,7 @@ ${phasesDisplay}
       } else if (nextPhase === "annotate") {
         text += `\nplan.md をエディタで開いて注釈を追加してください:\n  .pi/ul-workflow/tasks/${currentWorkflow.taskId}/plan.md\n\n注釈形式:\n  <!-- NOTE: ここに注釈を記述 -->\n  または\n  [注釈]: ここに注釈を記述\n`;
       } else if (nextPhase === "implement") {
-        text += `\n実装を開始するには:\n  ul_workflow_implement({ task_id: "${currentWorkflow.taskId}" })\n`;
+        text += `\n実装を開始するには:\n  ul_workflow_execute_plan()\n`;
       } else if (nextPhase === "completed") {
         text += `\nワークフローが完了しました。\n\n`;
         text += `### 次のステップ: コミット\n\n`;
@@ -1925,22 +1748,9 @@ ${phasesDisplay}
       // Sync to file
       saveState(currentWorkflow);
 
-      // BUG FIX: 終了フェーズではアクティブ状態をクリア + タスクディレクトリ削除
-      let taskDirectoryDeleted: boolean | undefined;
-      let taskDirectoryError: string | undefined;
+      // 完了後も成果物を保持する。commit 支援と事後確認で参照するため。
       if (nextPhase === "completed" || nextPhase === "aborted") {
         setCurrentWorkflow(null);
-        // 完了/中止したタスクディレクトリを削除
-        const taskDir = path.join(TASKS_DIR, currentWorkflow.taskId);
-        try {
-          await fsPromises.rm(taskDir, { recursive: true, force: true });
-          taskDirectoryDeleted = true;
-        } catch (e) {
-          // ディレクトリ削除に失敗してもクリティカルではない
-          console.error(`Failed to remove task directory: ${taskDir}`, e);
-          taskDirectoryDeleted = false;
-          taskDirectoryError = e instanceof Error ? e.message : String(e);
-        }
       } else {
         setCurrentWorkflow(currentWorkflow);
       }
@@ -1950,14 +1760,6 @@ ${phasesDisplay}
         previousPhase,
         nextPhase
       };
-
-      // Include deletion status in response
-      if (taskDirectoryDeleted !== undefined) {
-        responseDetails.taskDirectoryDeleted = taskDirectoryDeleted;
-        if (taskDirectoryError) {
-          responseDetails.taskDirectoryError = taskDirectoryError;
-        }
-      }
 
       return makeResult(text, responseDetails);
     },
@@ -2169,8 +1971,8 @@ ${planContent}
         return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
       }
 
-      if (currentWorkflow.phase !== "annotate") {
-        return makeResult(`エラー: annotateフェーズではありません（現在: ${currentWorkflow.phase}）\n\nul_workflow_run 完了後、自動的にannotateフェーズに移行します。`, { error: "wrong_phase" });
+      if (currentWorkflow.phase !== "annotate" && currentWorkflow.phase !== "implement") {
+        return makeResult(`エラー: annotate / implement フェーズではありません（現在: ${currentWorkflow.phase}）`, { error: "wrong_phase" });
       }
 
       if (!currentWorkflow.approvedPhases.includes("plan")) {
@@ -2180,13 +1982,15 @@ ${planContent}
       const taskId = currentWorkflow.taskId;
       const planPath = path.join(getTaskDir(taskId), "plan.md");
 
-      // annotateフェーズを承認してimplementフェーズへ進む
-      currentWorkflow.approvedPhases.push("annotate");
-      currentWorkflow.phase = "implement";
-      currentWorkflow.phaseIndex = 3;
-      currentWorkflow.updatedAt = new Date().toISOString();
-      saveState(currentWorkflow);
-      setCurrentWorkflow(currentWorkflow);
+      // annotate から呼ばれた場合だけ implement へ進める。
+      if (currentWorkflow.phase === "annotate") {
+        currentWorkflow.approvedPhases.push("annotate");
+        currentWorkflow.phase = "implement";
+        currentWorkflow.phaseIndex = 3;
+        currentWorkflow.updatedAt = new Date().toISOString();
+        saveState(currentWorkflow);
+        setCurrentWorkflow(currentWorkflow);
+      }
 
       try {
         await runUlDelegatedTask(ctx, {
@@ -2271,8 +2075,8 @@ subagent_run_dag(${JSON.stringify(buildSingleAgentDagParams({
         return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
       }
 
-      if (currentWorkflow.phase !== "plan") {
-        return makeResult(`エラー: planフェーズではありません（現在: ${currentWorkflow.phase}）`, { error: "wrong_phase" });
+      if (currentWorkflow.phase !== "plan" && currentWorkflow.phase !== "annotate") {
+        return makeResult(`エラー: plan / annotate フェーズではありません（現在: ${currentWorkflow.phase}）`, { error: "wrong_phase" });
       }
 
       const { modifications } = params;
@@ -2312,7 +2116,7 @@ ${planContent}
 ` }],
             details: {
               taskId,
-              phase: "plan",
+              phase: currentWorkflow.phase,
               autoExecute: true,
               askUser: true,
               question: {
