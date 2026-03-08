@@ -72,7 +72,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **subagent_*** | `subagents.ts` | サブエージェントの作成・実行 | [→](docs/02-user-guide/08-subagents.md) |
 | **task_*** | `task.ts` | 軽量タスク管理 | `.pi/INDEX.md` |
 | **task-flow** | `task-flow.ts` | タスク委任と plan 連携 | `.pi/NAVIGATION.md` |
-| **ul-dual-mode** | `ul-dual-mode.ts` | デュアルモード強制実行 | [→](docs/02-user-guide/10-ul-dual-mode.md) |
+| **ul-dual-mode** | `ul-dual-mode.ts` | `ul` 入力を UL workflow に変換し、セッション切り替えも担う入口 | [→](docs/02-user-guide/10-ul-dual-mode.md) |
 | **ul-workflow** | `ul-workflow.ts` | Research-Plan-Annotate-Implement ワークフロー（計画承認必須） | [→](docs/02-user-guide/16-ul-workflow.md) |
 | **cross-instance-runtime** | `cross-instance-runtime.ts` | 複数piインスタンス間の並列数自動調整（プロバイダー/モデル別） | [→](docs/02-user-guide/12-cross-instance-runtime.md) |
 | **autonomy-policy** | `autonomy-policy.ts` | permission bundle と gatekeeper を持つ高度自律実行 policy | README内の「Autonomy Policy」 |
@@ -319,11 +319,14 @@ npm run rebuild:better-sqlite3
 | | `ul_workflow_status` | ワークフローステータス表示 |
 | | `ul_workflow_approve` | 現在のフェーズを承認 |
 | | `ul_workflow_annotate` | plan.mdの注釈を適用 |
+| | `ul_workflow_modify_plan` | plan.md の修正を依頼 |
+| | `ul_workflow_execute_plan` | 承認済み plan を実装 |
 | | `ul_workflow_abort` | ワークフロー中止 |
 | | `ul_workflow_resume` | 中止したワークフローを再開 |
+| | `ul_workflow_force_claim` | 終了した所有者から所有権を引き継ぐ |
 | **ULプレフィックス** | `ul <task>` | ワークフローモードで実行 |
 | | `ul fast <task>` | 高速委任モードで実行 |
-| | `ul status` / `approve` / `annotate` / `abort` | ワークフロー操作 |
+| | `ul help` / `status` / `approve` / `annotate` / `abort` / `resume` | ワークフロー操作 |
 | **検索** | `file_candidates` | ファイル候補検索（あいまい検索） |
 | | `code_search` | コード内容の全文検索（ripgrep） |
 | | `sym_index` | シンボルインデックス構築（ctags） |

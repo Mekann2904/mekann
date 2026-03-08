@@ -31,10 +31,14 @@ import ulDualMode, { buildUlWorkflowPrompt } from "../../../.pi/extensions/ul-du
 
 function createMockPi() {
 	const handlers = new Map<string, (event: any, ctx: any) => Promise<any> | any>();
+	const commands = new Map<string, (args: string, ctx: any) => Promise<any> | any>();
 	return {
 		handlers,
+		commands,
 		appendEntry: vi.fn(),
-		registerCommand: vi.fn(),
+		registerCommand: vi.fn((name: string, def: { handler: (args: string, ctx: any) => Promise<any> | any }) => {
+			commands.set(name, def.handler);
+		}),
 		on: vi.fn((name: string, handler: any) => handlers.set(name, handler)),
 	};
 }
@@ -485,7 +489,7 @@ describe("承認前実装ゲート", () => {
 		await pi.handlers.get("session_shutdown")?.({}, ctx);
 	});
 
-	it("edit以外のツールは通常どおり通す", async () => {
+	it("annotateフェーズではwriteもブロックする", async () => {
 		const pi = createMockPi();
 		ulDualMode(pi as any);
 
@@ -511,13 +515,222 @@ describe("承認前実装ゲート", () => {
 			toolName: "write",
 			input: { path: "src/new-file.ts" },
 		}, ctx);
+		expect(writeResult?.block).toBe(true);
+		expect(writeResult?.reason).toContain("`edit` / `write`");
+
+		await pi.handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("annotateフェーズでもplan.mdへのwriteは許可する", async () => {
+		const pi = createMockPi();
+		ulDualMode(pi as any);
+
+		const ctx = {
+			hasUI: false,
+			ui: {
+				notify: vi.fn(),
+				setStatus: vi.fn(),
+			},
+			sessionManager: { getEntries: () => [] },
+		};
+
+		await pi.handlers.get("input")?.({ source: "user", text: "ul 認証バグを修正" }, ctx);
+		await pi.handlers.get("before_agent_start")?.({ systemPrompt: "base" }, ctx);
+
+		ulWorkflowMocks.getCurrentWorkflow.mockReturnValue({
+			taskId: "task-2",
+			phase: "annotate",
+			approvedPhases: ["research", "plan"],
+		});
+
+		const writeResult = await pi.handlers.get("tool_call")?.({
+			toolName: "write",
+			input: { path: ".pi/ul-workflow/tasks/task-2/plan.md" },
+		}, ctx);
 		expect(writeResult).toBeUndefined();
+
+		await pi.handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("承認系ツールは通常どおり通す", async () => {
+		const pi = createMockPi();
+		ulDualMode(pi as any);
+
+		const ctx = {
+			hasUI: false,
+			ui: {
+				notify: vi.fn(),
+				setStatus: vi.fn(),
+			},
+			sessionManager: { getEntries: () => [] },
+		};
+
+		await pi.handlers.get("input")?.({ source: "user", text: "ul 認証バグを修正" }, ctx);
+		await pi.handlers.get("before_agent_start")?.({ systemPrompt: "base" }, ctx);
+
+		ulWorkflowMocks.getCurrentWorkflow.mockReturnValue({
+			taskId: "task-2",
+			phase: "annotate",
+			approvedPhases: ["research", "plan"],
+		});
 
 		const approveResult = await pi.handlers.get("tool_call")?.({
 			toolName: "ul_workflow_approve",
 			input: {},
 		}, ctx);
 		expect(approveResult).toBeUndefined();
+
+		await pi.handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("implementフェーズでは通常コードへのeditを許可する", async () => {
+		const pi = createMockPi();
+		ulDualMode(pi as any);
+
+		const ctx = {
+			hasUI: false,
+			ui: {
+				notify: vi.fn(),
+				setStatus: vi.fn(),
+			},
+			sessionManager: { getEntries: () => [] },
+		};
+
+		await pi.handlers.get("input")?.({ source: "user", text: "ul 認証バグを修正" }, ctx);
+		await pi.handlers.get("before_agent_start")?.({ systemPrompt: "base" }, ctx);
+
+		ulWorkflowMocks.getCurrentWorkflow.mockReturnValue({
+			taskId: "task-3",
+			phase: "implement",
+		});
+
+		const editResult = await pi.handlers.get("tool_call")?.({
+			toolName: "edit",
+			input: { path: "src/auth.ts" },
+		}, ctx);
+		expect(editResult).toBeUndefined();
+
+		await pi.handlers.get("session_shutdown")?.({}, ctx);
+	});
+});
+
+describe("UL コマンド動作", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		ulWorkflowMocks.getCurrentWorkflow.mockReturnValue(null);
+	});
+
+	it("ul <task> は1ターンだけ有効化する", async () => {
+		const pi = createMockPi();
+		ulDualMode(pi as any);
+
+		const ctx = {
+			hasUI: true,
+			ui: {
+				notify: vi.fn(),
+				setStatus: vi.fn(),
+			},
+			sessionManager: { getEntries: () => [] },
+		};
+
+		const inputResult = await pi.handlers.get("input")?.({ source: "user", text: "ul 通知バグを修正" }, ctx);
+		expect(inputResult?.action).toBe("transform");
+		expect(String(inputResult?.text)).toContain("ul_workflow_start");
+		expect(pi.appendEntry).not.toHaveBeenCalled();
+
+		await pi.handlers.get("before_agent_start")?.({ systemPrompt: "base" }, ctx);
+		await pi.handlers.get("agent_end")?.({}, ctx);
+
+		const plainResult = await pi.handlers.get("input")?.({ source: "user", text: "普通の依頼" }, ctx);
+		expect(plainResult?.action).toBe("continue");
+
+		await pi.handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("/ulmode on と off を明示指定できる", async () => {
+		const pi = createMockPi();
+		ulDualMode(pi as any);
+
+		const ctx = {
+			hasUI: true,
+			ui: {
+				notify: vi.fn(),
+				setStatus: vi.fn(),
+			},
+			sessionManager: { getEntries: () => [] },
+		};
+
+		await pi.commands.get("ulmode")?.("on", ctx);
+		expect(ctx.ui.notify).toHaveBeenLastCalledWith("ULモード: セッション全体で有効です。", "info");
+		expect(pi.appendEntry).toHaveBeenLastCalledWith("ul-mode-state", { enabled: true });
+
+		await pi.commands.get("ulmode")?.("off", ctx);
+		expect(ctx.ui.notify).toHaveBeenLastCalledWith("ULモード: 無効になりました。", "info");
+		expect(pi.appendEntry).toHaveBeenLastCalledWith("ul-mode-state", { enabled: false });
+
+		await pi.handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("/ulmode status は状態だけを通知する", async () => {
+		const pi = createMockPi();
+		ulDualMode(pi as any);
+
+		const ctx = {
+			hasUI: true,
+			ui: {
+				notify: vi.fn(),
+				setStatus: vi.fn(),
+			},
+			sessionManager: { getEntries: () => [] },
+		};
+
+		await pi.commands.get("ulmode")?.("status", ctx);
+		expect(ctx.ui.notify).toHaveBeenCalledWith("ULモード: 無効です。", "info");
+		expect(pi.appendEntry).not.toHaveBeenCalled();
+
+		await pi.handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("ul help はヘルプを表示して実行を変換しない", async () => {
+		const pi = createMockPi();
+		ulDualMode(pi as any);
+
+		const ctx = {
+			hasUI: true,
+			ui: {
+				notify: vi.fn(),
+				setStatus: vi.fn(),
+			},
+			sessionManager: { getEntries: () => [] },
+		};
+
+		const result = await pi.handlers.get("input")?.({ source: "user", text: "ul help" }, ctx);
+		expect(result?.action).toBe("handled");
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("ULコマンド:"),
+			"info",
+		);
+
+		await pi.handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("ul help はUIがない場合はテキスト応答へ変換する", async () => {
+		const pi = createMockPi();
+		ulDualMode(pi as any);
+
+		const ctx = {
+			hasUI: false,
+			ui: {
+				notify: vi.fn(),
+				setStatus: vi.fn(),
+			},
+			sessionManager: { getEntries: () => [] },
+		};
+
+		const result = await pi.handlers.get("input")?.({ source: "user", text: "ul help" }, ctx);
+		expect(result?.action).toBe("transform");
+		expect(String(result?.text)).toContain("ULコマンド:");
+		expect(String(result?.text)).toContain("そのままユーザーに表示してください");
 
 		await pi.handlers.get("session_shutdown")?.({}, ctx);
 	});

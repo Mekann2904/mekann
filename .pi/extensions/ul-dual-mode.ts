@@ -1,33 +1,33 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/ul-dual-mode.ts
- * role: "ul" prefix mode and session-wide persistent UL mode controller
- * why: Enables efficient execution with flexible phase counts and conditional reviewer quality gates
- * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, docs/extensions.md
+ * role: "ul" prefix handler and session-wide UL workflow toggle
+ * why: Routes `ul ...` inputs into the UL workflow prompt and enforces pre-approval edit/write guards
+ * related: .pi/extensions/ul-workflow.ts, .pi/extensions/subagents.ts, docs/02-user-guide/10-ul-dual-mode.md
  * public_api: Extension init function via `registerExtension`
  * invariants: UL_PREFIX must match start of command for prefix activation; state flags reflect actual execution history
  * side_effects: Updates `ul-mode-state` entry in session history; modifies UI status label
  * failure_modes: Reviewer skip occurs if task length threshold misconfigured; status update may fail if UI context missing
  * @abdd.explain
- * overview: Prefix-triggered mode ("ul") or persistent mode for adaptive orchestration and delegation
+ * overview: Prefix-triggered UL workflow entrypoint with optional session-wide toggle
  * what_it_does:
- *   - Activates UL mode on "ul" prefix or persistent state
- *   - Delegates tasks to subagents or agent teams (researcher, architect, implementer)
- *   - Skips reviewer phase for trivial tasks based on patterns or length
- *   - Throttles UI status updates to reduce overhead
+ *   - Activates UL mode on `ul` prefix or persistent session state
+ *   - Rewrites task input into the fixed UL workflow prompt
+ *   - Blocks edit/write outside workflow artifacts before implement phase
+ *   - Tracks verification gate completion and updates status UI
  * why_it_exists:
- *   - Provide high-quality execution with flexible LLM-driven phase counts
- *   - Reduce overhead on small tasks via conditional reviewer gating
- *   - Maintain session-wide state for complex workflows
+ *   - Keep plan approval mandatory before implementation
+ *   - Provide a simple `ul` entrypoint for the workflow
+ *   - Maintain optional session-wide UL mode across turns
  * scope:
  *   in: User text input, execution tool usage (subagent_run), environment variables
  *   out: Tool invocations, UI status updates, session history entries
  */
 
 // File: .pi/extensions/ul-dual-mode.ts
-// Description: Adds an "ul" prefix mode and session-wide persistent UL mode with adaptive delegation.
-// Why: Enables efficient, high-quality execution with flexible phase count and mandatory reviewer quality gate.
-// Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, docs/extensions.md
+// Description: Handles `ul` inputs, session-wide UL toggles, and pre-approval write guards.
+// Why: Gives users a simple UL workflow entrypoint while keeping implementation locked until plan approval.
+// Related: .pi/extensions/ul-workflow.ts, .pi/extensions/subagents.ts, docs/02-user-guide/10-ul-dual-mode.md
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Mutex } from "async-mutex";
@@ -72,17 +72,9 @@ interface ToolCallEventLike {
   input?: unknown;
 }
 
-interface ToolResultEventLike {
-  toolName?: unknown;
-  input?: unknown;
-  result?: unknown;
-  isError?: unknown;
-}
-
 interface UlWorkflowStateLike {
   taskId: string;
   phase: string;
-  approvedPhases?: string[];
 }
 
 const SUBAGENT_EXECUTION_TOOLS = new Set([
@@ -103,7 +95,6 @@ const state = {
   completedRecommendedSubagentPhase: false,
   completedRecommendedReviewerPhase: false,
   currentTask: "",  // 現在のタスク（reviewer要否判定用）
-  planApprovedTaskId: null as string | null,
 };
 
 /**
@@ -153,7 +144,6 @@ function resetState(): void {
   state.completedRecommendedSubagentPhase = false;
   state.completedRecommendedReviewerPhase = false;
   state.currentTask = "";
-  state.planApprovedTaskId = null;
 }
 
 /**
@@ -170,7 +160,6 @@ async function resetStateAsync(): Promise<void> {
     completedRecommendedSubagentPhase: false,
     completedRecommendedReviewerPhase: false,
     currentTask: "",
-    planApprovedTaskId: null,
   });
 }
 
@@ -431,25 +420,14 @@ function getCurrentUlWorkflow(): UlWorkflowStateLike | null {
     return {
       taskId,
       phase,
-      approvedPhases: Array.isArray((workflow as { approvedPhases?: unknown }).approvedPhases)
-        ? (workflow as { approvedPhases: string[] }).approvedPhases
-        : [],
     };
   } catch {
     return null;
   }
 }
 
-function hasExplicitPlanApproval(taskId: string | null | undefined): boolean {
-  return Boolean(taskId && state.planApprovedTaskId === taskId);
-}
-
 function canStartImplementation(workflow: UlWorkflowStateLike | null): boolean {
-  return Boolean(
-    workflow
-    && workflow.phase === "implement"
-    && hasExplicitPlanApproval(workflow.taskId)
-  );
+  return workflow?.phase === "implement";
 }
 
 function isUlWorkflowArtifactPath(targetPath: string, workflow: UlWorkflowStateLike | null): boolean {
@@ -473,7 +451,7 @@ function isUlWorkflowArtifactPath(targetPath: string, workflow: UlWorkflowStateL
 
 function getUlPreApprovalBlockReason(event: ToolCallEventLike): string | undefined {
   const toolName = normalizeId(event?.toolName);
-  if (toolName !== "edit") {
+  if (toolName !== "edit" && toolName !== "write") {
     return undefined;
   }
 
@@ -484,43 +462,7 @@ function getUlPreApprovalBlockReason(event: ToolCallEventLike): string | undefin
     return undefined;
   }
 
-  return "UL MODE: plan 承認前はワークフロー成果物以外への `edit` を実行できません。`research.md` / `plan.md` は編集できます。";
-}
-
-function extractResultDetails(event: ToolResultEventLike): Record<string, unknown> | undefined {
-  const result = toObjectLike(event?.result);
-  if (!result) {
-    return undefined;
-  }
-
-  const details = toObjectLike(result.details);
-  return details ?? result;
-}
-
-function isPlanApprovalQuestion(question: string): boolean {
-  return /plan\.md|この計画で実行しますか|計画で実装を続行しますか/i.test(question);
-}
-
-function getQuestionAnswers(details: Record<string, unknown>): string[] {
-  if (Array.isArray(details.answers)) {
-    return details.answers
-      .filter((value): value is string => typeof value === "string")
-      .map((value) => value.trim())
-      .filter(Boolean);
-  }
-
-  if (typeof details.answer === "string" && details.answer.trim().length > 0) {
-    return [details.answer.trim()];
-  }
-
-  return [];
-}
-
-function isExplicitApprovalAnswer(answer: string): boolean {
-  const normalized = normalizeId(answer);
-  return normalized === "承認して続行"
-    || normalized === "yes"
-    || normalized === "実行";
+  return "UL MODE: plan 承認前はワークフロー成果物以外への `edit` / `write` を実行できません。`research.md` / `plan.md` は編集できます。";
 }
 
 /**
@@ -744,6 +686,20 @@ function buildUlPolicyString(_sessionWide: boolean, _goalLoopMode: boolean): str
   return "";
 }
 
+function buildUlHelpText(): string {
+  return `ULコマンド:
+- ul <task>
+- ul workflow <task>
+- ul fast <task>
+- ul help
+- ul status
+- ul approve
+- ul annotate
+- ul abort
+- ul resume <taskId>
+- /ulmode [on|off|toggle|status]`;
+}
+
 /**
  * トークン効率的な内部通信フォーマット
  * エージェント間通信では英語・構造化フォーマットを使用し、トークン消費を削減する
@@ -800,8 +756,26 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
   // スラッシュコマンド: セッション中にULモードを切り替え
   pi.registerCommand("ulmode", {
     description: "Toggle UL Dual-Orchestration Mode for entire session",
-    handler: async (_args, ctx) => {
-      state.persistentUlMode = !state.persistentUlMode;
+    handler: async (args, ctx) => {
+      const mode = String(args || "").trim().toLowerCase();
+
+      if (mode === "status") {
+        ctx.ui.notify(
+          state.persistentUlMode ? "ULモード: セッション全体で有効です。" : "ULモード: 無効です。",
+          "info",
+        );
+        refreshStatus(ctx);
+        return;
+      }
+
+      if (mode === "on") {
+        state.persistentUlMode = true;
+      } else if (mode === "off") {
+        state.persistentUlMode = false;
+      } else {
+        state.persistentUlMode = !state.persistentUlMode;
+      }
+
       if (state.persistentUlMode) {
         state.activeUlMode = true;
         state.activeGoalLoopMode = false;
@@ -825,6 +799,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
   // サブコマンドパターン
   const UL_SUBCOMMANDS = {
     fast: /^\s*ul\s+fast\s+/i,
+    help: /^\s*ul\s+help\s*$/i,
     workflow: /^\s*ul\s+workflow\s+/i,
     status: /^\s*ul\s+status\s*$/i,
     approve: /^\s*ul\s+approve\s*$/i,
@@ -843,7 +818,6 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     if (!UL_PREFIX.test(rawText)) {
       state.pendingUlMode = false;
       state.pendingGoalLoopMode = false;
-      state.planApprovedTaskId = null;
 
       // DISABLED: 自動検出を無効化（明示的な入口のみに絞る）
       // const shouldAutoEnable =
@@ -869,9 +843,21 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       state.pendingUlMode = false;
       state.pendingGoalLoopMode = false;
       if (ctx?.hasUI && ctx?.ui) {
-        ctx.ui.notify("`ul` の後に実行内容を入力してください。\n使い方: ul <task> | ul fast <task> | ul status | ul approve | ul annotate | ul abort", "warning");
+        ctx.ui.notify("`ul` の後に実行内容を入力してください。\n使い方: ul <task> | ul fast <task> | ul help | ul status | ul approve | ul annotate | ul abort | ul resume <taskId>", "warning");
       }
       return { action: "handled" as const };
+    }
+
+    if (UL_SUBCOMMANDS.help.test(rawText)) {
+      const helpText = buildUlHelpText();
+      if (ctx?.hasUI && ctx?.ui) {
+        ctx.ui.notify(helpText, "info");
+        return { action: "handled" as const };
+      }
+      return {
+        action: "transform" as const,
+        text: `${helpText}\n\nこの内容をそのままユーザーに表示してください。`,
+      };
     }
 
     // ul fast <task> → 既存の委任モード
@@ -880,7 +866,6 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       state.pendingUlMode = true;
       state.pendingGoalLoopMode = false; // 統一フローでは常にfalse
       state.currentTask = task;
-      state.planApprovedTaskId = null;
       
       if (ctx?.hasUI && ctx?.ui) {
         ctx.ui.notify("UL Fast モード: 委任優先で実行します。", "info");
@@ -986,16 +971,13 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       };
     }
 
-    // デフォルト: ul <task> → セッション全体でULモード有効化
+    // デフォルト: ul <task> → 1ターン限定で UL モード有効化
     state.pendingUlMode = true;
-    state.persistentUlMode = true;  // セッション全体に有効化
     state.pendingGoalLoopMode = false; // 統一フローでは常にfalse
     state.currentTask = taskText;
-    state.planApprovedTaskId = null;
-    persistState(pi);  // セッションに保存
 
     if (ctx?.hasUI && ctx?.ui) {
-      ctx.ui.notify("UL Mode: セッション全体で有効化しました。無効化するには /ulmode を実行。", "info");
+      ctx.ui.notify("UL Mode: このターンのみ有効です。セッション全体で使うには /ulmode on を実行。", "info");
     }
     return {
       action: "transform" as const,
@@ -1064,48 +1046,6 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
 
     if (changed) {
       refreshStatusThrottled(ctx);  // 高頻度イベントではスロットリング
-    }
-  });
-
-  pi.on("tool_result", async (event) => {
-    if (!state.activeUlMode || event?.isError) {
-      return;
-    }
-
-    const toolName = normalizeId(event?.toolName);
-    if (!toolName) {
-      return;
-    }
-
-    if (toolName === "ul_workflow_start" || toolName === "ul_workflow_plan" || toolName === "ul_workflow_modify_plan" || toolName === "ul_workflow_abort") {
-      state.planApprovedTaskId = null;
-      return;
-    }
-
-    if (toolName !== "question") {
-      return;
-    }
-
-    const details = extractResultDetails(event);
-    const question = typeof details?.question === "string" ? details.question : "";
-    if (!question || !isPlanApprovalQuestion(question)) {
-      return;
-    }
-
-    const workflow = getCurrentUlWorkflow();
-    if (!workflow) {
-      state.planApprovedTaskId = null;
-      return;
-    }
-
-    const answers = getQuestionAnswers(details);
-    if (answers.some((answer) => isExplicitApprovalAnswer(answer))) {
-      state.planApprovedTaskId = workflow.taskId;
-      return;
-    }
-
-    if (state.planApprovedTaskId === workflow.taskId) {
-      state.planApprovedTaskId = null;
     }
   });
 

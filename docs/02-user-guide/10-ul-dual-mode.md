@@ -2,9 +2,9 @@
 title: UL Dual Mode
 category: user-guide
 audience: daily-user
-last_updated: 2026-03-08
-tags: [ul-dual-mode, orchestration, adaptive]
-related: [../README.md, ./01-extensions.md, ./08-subagents.md, ./09-agent-teams.md]
+last_updated: 2026-03-09
+tags: [ul-dual-mode, orchestration, workflow]
+related: [../README.md, ./01-extensions.md, ./08-subagents.md, ./16-ul-workflow.md]
 ---
 
 # UL Dual Mode
@@ -13,354 +13,127 @@ related: [../README.md, ./01-extensions.md, ./08-subagents.md, ./09-agent-teams.
 
 ## 概要
 
-`ul-dual-mode` 拡張機能は、サブエージェントとエージェントチームを使った**委任優先・効率的な実行**を提供します。LLMの裁量でフェーズ数を決定し、workspace verification を完了ゲートとして使えます。
+`ul-dual-mode` は `ul ...` 入力を UL ワークフロー向けの固定プロンプトへ変換する入口です。
 
-### 主な特徴
+現在の実装は、以前の adaptive / agent-team 中心モードではありません。
 
-- **適応型実行**: フェーズ数はLLMの裁量（最小1、上限なし）
-- **委任優先**: subagent_run_parallel / agent_team_run 等を積極的に活用
-- **verification 優先**: web app / site では `workspace_verify` が runtime / ui を含む完了ゲートになります
-- **柔軟なパターン**: タスク規模に応じて最適な実行パターンを選択
+役割は次の2つです。
 
-## 使用方法
+- `ul <task>` を 1ターン限定の UL ワークフロー実行に変換する
+- `/ulmode` でセッション全体の UL モードを切り替える
 
-### 基本的な使い方
+## 使い方
+
+### 1ターンだけ使う
 
 ```bash
-# ULモードの有効化（セッション全体）
-/ulmode
+ul 認証フローのバグを修正
+ul workflow 通知バグを調査して直す
+ul fast READMEの説明を整理する
+```
 
-# ULモードの無効化
+`ul <task>` と `ul workflow <task>` は、そのターンだけ UL モードを有効にします。
+
+次の通常プロンプトには引き継がれません。
+
+### セッション全体で使う
+
+```bash
+/ulmode on
+```
+
+無効化:
+
+```bash
 /ulmode off
-
-# プレフィックスで有効化（1ターンのみ）
-ul このプロジェクトの品質を向上させてください
-
-# ヘルプ
-ul help
 ```
 
-### ULモードの有効化方法
-
-| 方法 | 説明 | 範囲 |
-|------|------|------|
-| `/ulmode` | スラッシュコマンドで切り替え | セッション全体 |
-| `--ul` フラグ | pi起動時のCLIフラグ | セッション全体 |
-| `ul ` プレフィックス | 入力の先頭に `ul ` を追加 | 1ターンのみ |
-
-## 動作
-
-ULモードが有効な場合、以下のポリシーで実行されます：
-
-### 実行ポリシー
-
-1. **委任優先**: subagent_run_parallel / agent_team_run 等を必要に応じて使用
-2. **フェーズ数はLLM裁量**: 最小1フェーズ、上限なし（タスク規模に合わせて最適化）
-3. **品質保証**: reviewer は任意。完了前の verification gate は別です
-
-### Reviewerガードレールの設定
-
-Reviewerガードレールはデフォルトで無効になっています。品質レビューを必須にする場合は、以下の環境変数を設定します：
+状態確認:
 
 ```bash
-export UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL=true
+/ulmode status
 ```
 
-または、`.pi/extensions/ul-dual-mode.ts` の設定を直接変更します：
+引数なしの `/ulmode` は toggle です。
 
-```typescript
-const UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL = true;
+## `ul` サブコマンド
+
+```bash
+ul help
+ul status
+ul approve
+ul annotate
+ul abort
+ul resume <taskId>
 ```
 
-**注意**: これは reviewer だけの設定です。
+意味:
 
-web app / site の closeout では、reviewer の有無に関係なく `workspace_verify` が優先されます。
+- `ul help`: 使い方を表示
+- `ul status`: `ul_workflow_status` を呼ぶ
+- `ul approve`: 確認後に `ul_workflow_approve` を呼ぶ
+- `ul annotate`: 確認後に `ul_workflow_annotate` を呼ぶ
+- `ul abort`: 確認後に `ul_workflow_abort` を呼ぶ
+- `ul resume <taskId>`: `ul_workflow_resume` を呼ぶ
 
-### 推奨パターン
+## 実際の動作
 
-| タスク規模 | 推奨パターン |
-|-----------|-------------|
-| 小規模 | `subagent_run` または直接実行 |
-| 中規模 | `subagent_run_parallel(subagentIds: researcher, architect, implementer)` |
-| 大規模 | `agent_team_run(teamId: core-delivery-team, strategy: parallel)` |
+`ul <task>` は、内部では UL workflow 用の固定フロー指示に変換されます。
 
-### 実行ルール
+流れは次です。
 
-- 完了と判断する前に `workspace_verify` を実行する
-- web app / site を触った場合は runtime / ui を含める
-- `console error` が残る場合は未完了として扱う
-- reviewerガードレールが有効な場合だけ reviewer も追加で実行する
-- 完了条件が明確な場合は `loop_run` を使用
-- 明示的にreviewerを実行することも可能：
+1. `ul_workflow_start`
+2. `ul_workflow_status`
+3. `ul_workflow_research`
+4. `ul_workflow_approve`
+5. `ul_workflow_plan`
+6. `question` で人間確認
+7. 承認後に `ul_workflow_execute_plan`
+8. `workspace_verify`
+9. 必要なら verification ack
+10. `ul_workflow_commit`
 
-```typescript
-await subagent_run({
-  subagentId: "reviewer",
-  task: "実装の品質と正確性をレビューしてください"
-})
-```
+つまり、UL dual mode 自体が実装を持つのではなく、UL workflow へ入るための薄い制御層です。
 
-### 入力変換
+## 承認前ガード
 
-`ul ` プレフィックス付きの入力は以下のように変換されます：
+UL モード中、plan 承認前は通常ファイルへの `edit` / `write` を止めます。
 
-**入力:**
-```
-ul このコードの品質を向上させてください
-```
+ただし、次のワークフロー成果物は編集できます。
 
-**変換後:**
-```
-[UL_MODE_ADAPTIVE]
-委任優先で効率的に実行すること。
+- `.pi/ul-workflow/tasks/<taskId>/research.md`
+- `.pi/ul-workflow/tasks/<taskId>/plan.md`
+- `.pi/ul-workflow/tasks/<taskId>/task.md`
+- `.pi/ul-workflow/tasks/<taskId>/status.json`
 
-実行ルール:
-- subagent_run_parallel / agent_team_run 等を必要に応じて使用する。
-- フェーズ数はLLMの裁量（最小1、上限なし）。タスク規模に合わせて最適化する。
-- 完了と判断する前に必ず subagent_run(subagentId: reviewer) を実行し、品質を確認すること。
-...
-
-タスク:
-このコードの品質を向上させてください
-```
-
-## パラメータ/オプション
-
-### CLIフラグ
-
-| フラグ | 説明 | デフォルト |
-|------|------|----------|
-| `--ul` | ULモードをセッション全体で有効化 | `false` |
-
-### コマンド
-
-| コマンド | 説明 |
-|---------|------|
-| `/ulmode` | ULモードを切り替え |
+実装フェーズに入った後は通常ファイルの編集を許可します。
 
 ## ステータス表示
 
-ULモードが有効な場合、ステータスバーに以下が表示されます：
+UL モードが有効なとき、ステータスバーには単に次が表示されます。
 
-```
-UL mode | subagent:✓ team:…
-```
-
-各項目の意味：
-
-| 項目 | 説明 |
-|------|------|
-| `subagent:✓` | サブエージェント実行完了 |
-| `subagent:…` | サブエージェント未実行 |
-| `team:✓` | エージェントチーム実行完了 |
-| `team:…` | エージェントチーム未実行 |
-
-## 使用例
-
-### 例1: セッション全体でULモード有効
-
-```bash
-/ulmode
-# → "ULモード: セッション全体で有効です。"
+```text
+UL mode
 ```
 
-その後の全てのプロンプトでULモードが適用されます。
+以前の `subagent:✓` や `team:✓` のような詳細表示は、現行実装にはありません。
 
-### 例2: プレフィックスで1ターンのみ有効
+## Reviewer と verification
 
-```bash
-ul この機能を実装してください
-```
+reviewer ガードレールは既定で無効です。
 
-このリクエストのみULモードで実行されます。
+`PI_UL_SKIP_REVIEWER_FOR_TRIVIAL` と `UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL` の設定は残っていますが、現行の主な完了ゲートは reviewer ではなく `workspace_verify` です。
 
-### 例3: セッション全体有効 + CLIフラグ
-
-```bash
-pi --ul
-```
-
-piの起動からセッション終了までULモードが有効になります。
-
-### 例4: 指定のツールを使用したULモード
-
-ULモードが有効な場合、自動的に以下が実行されます：
-
-```json
-{
-  "subagentIds": ["researcher", "architect", "implementer"],
-  "task": "..."
-}
-```
-
-```json
-{
-  "teamId": "core-delivery-team",
-  "task": "..."
-}
-```
-
-### 例5: 未達成時の警告
-
-片方しか実行されなかった場合：
-
-```
-ULモード未達: agent_team_run / agent_team_run_parallel が未実行です。
-```
-
-## セッション間の状態永続化
-
-ULモードの状態はセッションエントリに保存され、復元されます。
-
-```bash
-# セッション1: ULモード有効
-/ulmode
-
-# セッション2: 状態を復元
-pi --continue  # 前回のセッションから継続
-# → ULモードが自動的に有効
-```
-
-## 出力フォーマット
-
-### システムプロンプトへの追加
-
-ULモードが有効な場合、以下がシステムプロンプトに追加されます：
-
-```
----
-## UL Adaptive Mode
-
-Execution policy (delegation-first, efficient, high quality):
-- Use subagent_run_parallel, agent_team_run, etc. as needed.
-- Phase count is at LLM's discretion (minimum 1, no maximum).
-- Quality check with reviewer is available when UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL is true.
-
-Recommended patterns:
-1. Simple tasks: single `subagent_run` or direct execution
-2. Multi-perspective tasks: `subagent_run_parallel(subagentIds: researcher, architect, implementer)`
-3. Complex implementation: `agent_team_run(teamId: core-delivery-team, strategy: parallel)`
-
-Optional quality check:
-- Run `subagent_run(subagentId: "reviewer")` before finishing to ensure quality
----
-```
-
-**注意**: `UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL` 環境変数が `true` に設定されている場合のみ、reviewerの実行が必須になります。デフォルトでは `false` です。
-
-ただし verification gate は別です。
-
-`workspace verification` が有効で dirty / pending proof / pending review artifact のどれかが残っている場合、closeout は blocked 扱いです。
-
-## CLEAR_GOAL_SIGNAL
-
-ULモードでは、明確な達成条件が検出された際に「ゴールループ（goal loop）」モードへ自動的に切り替わります。
-
-### 検知パターン
-
-以下のパターンを検知した場合、ゴールループモードに切り替わります：
-
-| パターン種別 | 検知文字列 |
-|-------------|-----------|
-| 達成条件 | 達成条件 |
-| 完了条件 | 完了条件 |
-| 成功条件 | 成功条件 |
-| テスト | テスト.*通る |
-| Lint | lint.*通る |
-| Build | build.*成功 |
-| Exit code | exit code 0 |
-
-### 動作
-
-- 明確な達成条件（「テストが通る」「lintが通る」「exit code 0」など）を検知
-- 目標ループ（goal loop）モードへ自動切り替え
-- 検知された条件を満たすまで反復実行
-
-### 使用例
-
-```
-ul テストが通るようにコードを修正してください
-→ ゴールループモードで実行
-→ テストが通るまで反復
-```
-
-```
-ul buildが成功するように設定を修正してください
-→ ゴールループモードで実行
-→ build成功条件を満たすまで反復
-```
-
-## 使用上のヒント
-
-### いつULモードを使うべきか
-
-- **効率的な実行が必要な場合**: タスク規模に応じて最適なツールを選択
-- **品質保証が必要な場合**: 完了前のreviewerチェックで品質を担保（環境変数設定で有効化）
-- **複雑なタスク**: 複数の視点や多角的な実装が必要な場合
-
-### 推奨パターンの選び方
-
-| タスク | 推奨パターン |
-|-------|-------------|
-| バグ修正 | `subagent_run(researcher)` → 直接修正 → `reviewer` |
-| 機能追加 | `subagent_run_parallel(researcher, architect, implementer)` → `reviewer` |
-| リファクタリング | `agent_team_run(core-delivery-team)` → `reviewer` |
-| ドキュメント作成 | `subagent_run(implementer)` → `reviewer` |
-
-### セッション全体モード vs 1ターンモード
-
-| モード | 有効化方法 | 範囲 | 主な用途 |
-|------|----------|------|----------|
-| セッション全体 | `/ulmode` または `--ul` | セッション中の全リクエスト | 継続的な開発作業 |
-| 1ターン限定 | `ul ` プレフィックス | 現在のリクエストのみ | 特定タスクでのみULモードが必要な場合 |
-
-## トラブルシューティング
-
-### ULモードが有効にならない
-
-- `/ulmode` が正しく入力されているか確認
-- `ul ` プレフィックスにスペースが含まれているか確認
-- `--ul` フラグが正しく指定されているか確認
-
-### 実行が遅い
-
-ULモードは2つのオーケストレーションを並列で実行するため、以下を確認：
-
-- ランタイム制限に達していないか（`subagent_status` / `agent_team_status` で確認）
-- `memberParallelLimit` などを調整して並列数を最適化
-
-### 未達成の警告が出る
-
-以下を確認：
-
-- 両方のツールが実行されているか
-- 片方が失敗していないか
-- 誤ったツール名を使用していないか
-
-### 無効化できない
-
-```bash
-/ulmode off
-```
-
-または新しいpiセッションを開始してください。
+特に web app / site を触った場合は、runtime / ui 検証と `console error` の確認が重要です。
 
 ## 制限事項
 
-- **reviewerガードレール**: 現在も warning 中心です
-- **verification gate**: `workspace verification` が有効な場合は completion tool を block します
-- **reviewerガードレール**: デフォルトでは無効（`UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL=false`）
-- **エラー時の継続**: 一部のツールが失敗しても、他のツールは実行を継続します
+- `--ul` CLI フラグは現行実装では無効です
+- CLEAR_GOAL_SIGNAL による自動 goal loop 切り替えも無効です
+- `ul fast <task>` は通知文が軽量寄りなだけで、別エンジンではありません
+- policy string 注入の内部フックはありますが、現状は空です
 
-### Reviewerガードレールの動作
+## 関連
 
-| 設定 | 動作 |
-|------|------|
-| `false` (デフォルト) | reviewerの実行は任意。明示的に呼び出した場合のみ実行 |
-| `true` | 完了前に必ずreviewerが実行されます。実行されない場合は警告が表示されます |
-
-## 関連トピック
-
-- [拡張機能一覧](./01-extensions.md) - 全拡張機能の概要
-- [subagents](./08-subagents.md) - サブエージェントの詳細
-- [agent-teams](./09-agent-teams.md) - エージェントチームの詳細
+- [UL Workflow](./16-ul-workflow.md)
+- [Subagents](./08-subagents.md)
