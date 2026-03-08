@@ -50,6 +50,7 @@
     "vitest": "^3.2.4"
   },
   "overrides": {
+    "eslint-visitor-keys": "4.2.1",
     "minimatch": "^10.2.1"
   },
   "scripts": {
