@@ -91,6 +91,7 @@ import {
   renderPromptStack,
   type PromptStackEntry,
 } from "../../lib/agent/prompt-stack.js";
+import { buildAutonomousLoopPolicy } from "../../lib/agent/autonomous-loop-policy.js";
 import {
   summarizePromptStackForBenchmark,
   type PromptStackBenchmarkSummary,
@@ -813,6 +814,11 @@ export function buildSubagentPromptPackage(input: {
           effectiveSkills.length > 0 ? `\nSkills: ${effectiveSkills.join(", ")}` : "",
         ].filter(Boolean).join("\n"),
       },
+      {
+        source: "subagent-autonomous-loop-policy",
+        layer: "system-policy",
+        content: buildAutonomousLoopPolicy("internal"),
+      },
     ];
 
     if (turnContext) {
@@ -914,6 +920,11 @@ export function buildSubagentPromptPackage(input: {
         "Subagent operating instructions:",
         input.agent.systemPrompt,
       ].join("\n"),
+    },
+    {
+      source: "subagent-autonomous-loop-policy",
+      layer: "system-policy",
+      content: buildAutonomousLoopPolicy("delegated"),
     },
   ];
 

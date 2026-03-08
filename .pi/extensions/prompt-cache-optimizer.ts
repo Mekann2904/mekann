@@ -53,7 +53,7 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync, appendFileSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 // ============================================================================
@@ -149,7 +149,7 @@ const METRICS_DIR = ".pi/cache-optimizer";
 // 動的要素のパターン
 const DYNAMIC_PATTERNS: { pattern: RegExp; type: string; recommendation: string }[] = [
   {
-    pattern: /\d{4}[-\/]\d{2}[-\/]\d{2}/g,
+    pattern: /\d{4}[-/]\d{2}[-/]\d{2}/g,
     type: "date",
     recommendation: "Remove dates from system prompt or use placeholder",
   },

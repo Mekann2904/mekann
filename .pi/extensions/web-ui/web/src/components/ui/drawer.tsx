@@ -15,9 +15,11 @@
  * @why_it_exists モーダルの代わりにスライドイン panel を提供するため
  */
 
-import { h } from "preact";
 import { ComponentChildren } from "preact";
 import { Drawer as VaulDrawer } from "vaul";
+
+export const DrawerPortal = VaulDrawer.Portal;
+export const DrawerOverlay = VaulDrawer.Overlay;
 
 interface DrawerProps {
   children?: ComponentChildren;

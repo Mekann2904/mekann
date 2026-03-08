@@ -43,6 +43,12 @@ export const LIVE_TAIL_LIMIT = 40_000;
 /** Minimum width for markdown preview rendering */
 export const LIVE_MARKDOWN_PREVIEW_MIN_WIDTH = 24;
 
+const ANSI_ESCAPE_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
+const DISALLOWED_PREVIEW_CONTROL_PATTERN = new RegExp(
+  `[${String.fromCharCode(0)}-${String.fromCharCode(8)}${String.fromCharCode(11)}${String.fromCharCode(12)}${String.fromCharCode(14)}-${String.fromCharCode(31)}${String.fromCharCode(127)}-${String.fromCharCode(159)}]`,
+  "g",
+);
+
 /**
  * ANSIエスケープや制御文字を除去してプレビュー描画を安定化させる。
  * Markdownレンダラが制御シーケンスで失敗するケースを防ぐ。
@@ -50,10 +56,10 @@ export const LIVE_MARKDOWN_PREVIEW_MIN_WIDTH = 24;
 function sanitizePreviewText(input: string): string {
   if (!input) return "";
   // ANSI escape sequence
-  const withoutAnsi = input.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
+  const withoutAnsi = input.replace(ANSI_ESCAPE_PATTERN, "");
   // 画面描画を崩す制御文字のみ除去（改行・タブとUnicode文字は保持）
   // C0/C1 制御文字を除去し、非ASCII（例: 日本語）を消さないようにする。
-  return withoutAnsi.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "");
+  return withoutAnsi.replace(DISALLOWED_PREVIEW_CONTROL_PATTERN, "");
 }
 
 /**

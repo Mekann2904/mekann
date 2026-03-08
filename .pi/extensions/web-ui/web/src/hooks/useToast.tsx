@@ -44,7 +44,7 @@ export interface Toast {
 /**
  * Context value type
  */
-interface ToastContextValue {
+export interface ToastContextValue {
   /** Current toasts */
   toasts: Toast[];
   /** Show a new toast */

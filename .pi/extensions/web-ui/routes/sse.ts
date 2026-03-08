@@ -51,6 +51,8 @@ export function registerSSERoutes(app: Express, sseEventBus: SSEEventBus): void 
     });
 
     // Keep connection alive
-    req.socket.setKeepAlive(true);
+    if ("setKeepAlive" in req.socket && typeof req.socket.setKeepAlive === "function") {
+      req.socket.setKeepAlive(true);
+    }
   });
 }

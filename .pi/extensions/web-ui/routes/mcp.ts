@@ -22,6 +22,21 @@ import path from "path";
 import { getMcpManager, normalizeMcpAuth, type McpServerConfig } from "../lib/mcp-helpers.js";
 
 /**
+ * @summary ルートIDパラメータを必須文字列として取り出す
+ * @param req - Express request
+ * @param res - Express response
+ * @returns 正常時はserver id、欠落時はundefined
+ */
+function getRequiredServerId(req: Request, res: Response): string | undefined {
+  const serverId = req.params.id;
+  if (serverId) {
+    return serverId;
+  }
+  res.status(400).json({ error: "Server id is required" });
+  return undefined;
+}
+
+/**
  * @summary Register MCP routes on Express app
  * @param app - Express application instance
  */
@@ -61,9 +76,13 @@ export function registerMcpRoutes(app: Express): void {
    */
   app.get("/api/mcp/connection/:id", async (req: Request, res: Response) => {
     try {
+      const serverId = getRequiredServerId(req, res);
+      if (!serverId) {
+        return;
+      }
       const mcpManager = await getMcpManager();
 
-      const conn = mcpManager.getConnection(req.params.id);
+      const conn = mcpManager.getConnection(serverId);
       if (!conn) {
         res.status(404).json({ error: "Connection not found" });
         return;
@@ -93,9 +112,13 @@ export function registerMcpRoutes(app: Express): void {
    */
   app.get("/api/mcp/tools/:id", async (req: Request, res: Response) => {
     try {
+      const serverId = getRequiredServerId(req, res);
+      if (!serverId) {
+        return;
+      }
       const mcpManager = await getMcpManager();
 
-      const tools = await mcpManager.listAllTools(req.params.id);
+      const tools = await mcpManager.listAllTools(serverId);
       res.json({ tools: tools ?? [], count: tools?.length ?? 0 });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -114,9 +137,13 @@ export function registerMcpRoutes(app: Express): void {
    */
   app.get("/api/mcp/resources/:id", async (req: Request, res: Response) => {
     try {
+      const serverId = getRequiredServerId(req, res);
+      if (!serverId) {
+        return;
+      }
       const mcpManager = await getMcpManager();
 
-      const result = await mcpManager.listResourcesPaginated(req.params.id);
+      const result = await mcpManager.listResourcesPaginated(serverId);
       res.json({ resources: result?.resources ?? [], nextCursor: result?.nextCursor });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -135,9 +162,13 @@ export function registerMcpRoutes(app: Express): void {
    */
   app.post("/api/mcp/ping/:id", async (req: Request, res: Response) => {
     try {
+      const serverId = getRequiredServerId(req, res);
+      if (!serverId) {
+        return;
+      }
       const mcpManager = await getMcpManager();
 
-      const result = await mcpManager.ping(req.params.id);
+      const result = await mcpManager.ping(serverId);
       res.json({ success: result });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -202,7 +233,10 @@ export function registerMcpRoutes(app: Express): void {
     try {
       const fs = await import('fs');
       const configPath = path.join(process.cwd(), '.pi', 'mcp-servers.json');
-      const serverId = req.params.id;
+      const serverId = getRequiredServerId(req, res);
+      if (!serverId) {
+        return;
+      }
 
       // Load server config
       if (!fs.existsSync(configPath)) {
@@ -250,7 +284,10 @@ export function registerMcpRoutes(app: Express): void {
    */
   app.post("/api/mcp/disconnect/:id", async (req: Request, res: Response) => {
     try {
-      const serverId = req.params.id;
+      const serverId = getRequiredServerId(req, res);
+      if (!serverId) {
+        return;
+      }
       const mcpManager = await getMcpManager();
 
       // Check if connected

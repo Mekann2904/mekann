@@ -21,6 +21,63 @@ import type { Express, Request, Response } from "express";
 import { loadTaskStorage, saveTaskStorage, type Task } from "../lib/task-storage.js";
 
 /**
+ * @summary 生のbodyを安全なオブジェクトへ正規化する
+ * @param body - Express request body
+ * @returns キー参照可能なオブジェクト
+ */
+function normalizeTaskBody(body: unknown): Record<string, unknown> {
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    return body as Record<string, unknown>;
+  }
+  return {};
+}
+
+/**
+ * @summary 任意値を文字列へ正規化する
+ * @param value - 入力値
+ * @returns 文字列またはundefined
+ */
+function toOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * @summary 任意値を文字列配列へ正規化する
+ * @param value - 入力値
+ * @returns 文字列配列
+ */
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+/**
+ * @summary 任意値をTask statusへ正規化する
+ * @param value - 入力値
+ * @param fallback - 不正値時の既定値
+ * @returns 安全なstatus
+ */
+function toTaskStatus(value: unknown, fallback: Task["status"]): Task["status"] {
+  return value === "todo" || value === "in_progress" || value === "completed" || value === "cancelled"
+    ? value
+    : fallback;
+}
+
+/**
+ * @summary 任意値をTask priorityへ正規化する
+ * @param value - 入力値
+ * @param fallback - 不正値時の既定値
+ * @returns 安全なpriority
+ */
+function toTaskPriority(value: unknown, fallback: Task["priority"]): Task["priority"] {
+  return value === "low" || value === "medium" || value === "high" || value === "urgent"
+    ? value
+    : fallback;
+}
+
+/**
  * @summary Register task routes on Express app
  * @param app - Express application instance
  */
@@ -145,17 +202,19 @@ export function registerTaskRoutes(app: Express): void {
     try {
       const storage = loadTaskStorage();
       const now = new Date().toISOString();
+      const body = normalizeTaskBody(req.body);
+      const title = toOptionalString(body.title);
 
       const newTask: Task = {
         id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        title: req.body.title || "Untitled",
-        description: req.body.description,
-        status: req.body.status || "todo",
-        priority: req.body.priority || "medium",
-        tags: req.body.tags || [],
-        dueDate: req.body.dueDate,
-        assignee: req.body.assignee,
-        parentTaskId: req.body.parentTaskId,
+        title: title || "Untitled",
+        description: toOptionalString(body.description),
+        status: toTaskStatus(body.status, "todo"),
+        priority: toTaskPriority(body.priority, "medium"),
+        tags: toStringArray(body.tags),
+        dueDate: toOptionalString(body.dueDate),
+        assignee: toOptionalString(body.assignee),
+        parentTaskId: toOptionalString(body.parentTaskId),
         createdAt: now,
         updatedAt: now,
       };
@@ -177,6 +236,7 @@ export function registerTaskRoutes(app: Express): void {
     try {
       const storage = loadTaskStorage();
       const taskIndex = storage.tasks.findIndex((t) => t.id === req.params.id);
+      const body = normalizeTaskBody(req.body);
 
       if (taskIndex === -1) {
         res.status(404).json({ success: false, error: "Task not found" });
@@ -184,15 +244,19 @@ export function registerTaskRoutes(app: Express): void {
       }
 
       const task = storage.tasks[taskIndex];
+      const nextTitle = toOptionalString(body.title);
+      const nextDescription = toOptionalString(body.description);
+      const nextDueDate = toOptionalString(body.dueDate);
+      const nextAssignee = toOptionalString(body.assignee);
       const updatedTask: Task = {
         ...task,
-        title: req.body.title ?? task.title,
-        description: req.body.description ?? task.description,
-        status: req.body.status ?? task.status,
-        priority: req.body.priority ?? task.priority,
-        tags: req.body.tags ?? task.tags,
-        dueDate: req.body.dueDate ?? task.dueDate,
-        assignee: req.body.assignee ?? task.assignee,
+        title: nextTitle ?? task.title,
+        description: nextDescription ?? task.description,
+        status: body.status === undefined ? task.status : toTaskStatus(body.status, task.status),
+        priority: body.priority === undefined ? task.priority : toTaskPriority(body.priority, task.priority),
+        tags: body.tags === undefined ? task.tags : toStringArray(body.tags),
+        dueDate: nextDueDate ?? task.dueDate,
+        assignee: nextAssignee ?? task.assignee,
         updatedAt: new Date().toISOString(),
       };
 

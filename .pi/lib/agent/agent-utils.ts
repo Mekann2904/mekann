@@ -100,7 +100,7 @@ export function estimateTaskComplexity(task: string): TaskComplexity {
   ];
 
   // 複数ファイル操作の検出
-  const hasMultipleFiles = /files?[:\[]|[①②③④⑤]/.test(normalized);
+  const hasMultipleFiles = /files?[:[]|[①②③④⑤]/.test(normalized);
 
   // 高複雑度キーワードの検出
   const hasHighComplexityKeyword = highComplexityKeywords.some((kw) =>

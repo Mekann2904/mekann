@@ -251,12 +251,13 @@ export class SelfRevisionModule {
         this.executor.removeDependency(action.taskId, action.dependencyId);
         break;
 
-      case "update_spec":
+      case "update_spec": {
         const task = this.executor.getTask(action.nodeId);
         if (task) {
           task.description = action.newDescription;
         }
         break;
+      }
 
       case "add_node":
         this.executor.addNode(action.node);

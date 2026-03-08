@@ -17,13 +17,12 @@
  * @scope(out) Rendered help dialog
  */
 
-import { h } from "preact";
 import { useState, useMemo } from "preact/hooks";
 import { X, Search, Keyboard, Command, Navigation, CheckSquare, Eye } from "lucide-preact";
 import { cn } from "@/lib/utils";
 import type { ShortcutConfig, ShortcutCategory } from "../../hooks/useKeyboardShortcuts";
 
-interface ShortcutHelpDialogProps {
+export interface ShortcutHelpDialogProps {
   /** Whether dialog is visible */
   open: boolean;
   /** Callback when dialog should close */

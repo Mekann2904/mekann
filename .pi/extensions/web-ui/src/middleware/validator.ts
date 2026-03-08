@@ -55,7 +55,7 @@ export function validateBody<T>(schema: ZodSchema<T>): MiddlewareHandler {
       const body = await c.req.json();
       const parsed = schema.parse(body);
       c.set("validatedBody", parsed);
-      await next();
+      return await next();
     } catch (error) {
       if (error instanceof ZodError) {
         return validationError(c, error);
@@ -82,7 +82,7 @@ export function validateQuery<T>(schema: ZodSchema<T>): MiddlewareHandler {
       // クエリは文字列のRecordなので変換が必要な場合がある
       const parsed = schema.parse(query);
       c.set("validatedQuery", parsed);
-      await next();
+      return await next();
     } catch (error) {
       if (error instanceof ZodError) {
         return validationError(c, error);
@@ -108,7 +108,7 @@ export function validateParams<T>(schema: ZodSchema<T>): MiddlewareHandler {
       const params = c.req.param();
       const parsed = schema.parse(params);
       c.set("validatedParams", parsed);
-      await next();
+      return await next();
     } catch (error) {
       if (error instanceof ZodError) {
         return validationError(c, error);

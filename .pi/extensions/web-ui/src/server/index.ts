@@ -18,11 +18,10 @@
  */
 
 import { createServer } from "http";
-import { createServer as createSecureServer } from "https";
 import { existsSync, unlinkSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
-import { serve } from "@hono/node-server";
+import { getRequestListener, serve } from "@hono/node-server";
 import { createApp } from "./app.js";
 
 /**
@@ -79,7 +78,7 @@ export function startServer(config: ServerConfig = {}): void {
     }
 
     // Unix Socket でリッスン
-    const httpServer = createServer(app.fetch.bind(app));
+    const httpServer = createServer(getRequestListener(app.fetch));
     
     httpServer.listen(socketPath, () => {
       console.log(`[server] Listening on Unix Socket: ${socketPath}`);

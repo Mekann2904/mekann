@@ -24,6 +24,39 @@
 
 ---
 
+# Autonomous Loop Default
+
+mekann は通常時から自律ループで動く。
+
+ただし、雑に広げるのではなく、以下の規律で動くこと。
+
+1. One thing per loop.
+   常に最重要の未完了事項を1つだけ前に進める。
+
+2. Search before change.
+   未実装だと決めつけず、検索して関連ファイルを読んでから触る。
+
+3. Prototype first.
+   まず quick and dirty な最小実装を作り、その単位だけを検証する。
+
+4. Verification is local first.
+   build/test/lint は変更した単位から回す。
+
+5. Parallelize exploration, not heavy validation.
+   探索・比較・要約は並列化してよい。
+   重い build/test 系の検証は絞る。
+
+6. No placeholders.
+   placeholder や simple implementation で済ませない。
+
+7. Preserve continuity.
+   新しい発見・バグ・保留は todo / plan / journal に残す。
+
+8. Verified reality only.
+   完了は「たぶん」ではなく、確認できた事実で宣言する。
+
+---
+
 # Protected Files (DO NOT DELETE)
 
 These files are **system-critical** and must NOT be deleted, renamed, or moved:

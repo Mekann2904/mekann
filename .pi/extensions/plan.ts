@@ -150,6 +150,16 @@ interface StepTransitionResult {
 	demotedStepIds: string[];
 }
 
+interface PlanLoopFocusSnapshot {
+	planId?: string;
+	planName?: string;
+	currentStepTitle?: string;
+	currentStepId?: string;
+	nextStepTitle?: string;
+	nextStepId?: string;
+	recentProgress: string[];
+}
+
 const VALID_STEP_STATUSES: PlanStepStatus[] = ["pending", "in_progress", "completed", "blocked"];
 const VALID_PLAN_STATUSES: PlanStatus[] = ["draft", "active", "completed", "cancelled"];
 
@@ -456,6 +466,68 @@ function getCurrentStep(plan: Plan): PlanStep | undefined {
 	}
 
 	return plan.steps.find(step => step.status === "in_progress");
+}
+
+function resolveCurrentPlan(storage: PlanStorage): Plan | undefined {
+	if (storage.currentPlanId) {
+		const current = findPlanById(storage, storage.currentPlanId);
+		if (current) {
+			return current;
+		}
+	}
+
+	return [...storage.plans].reverse().find(plan => plan.status === "active" || plan.status === "draft");
+}
+
+function createPlanLoopFocusSnapshot(plan: Plan | undefined): PlanLoopFocusSnapshot | null {
+	if (!plan) {
+		return null;
+	}
+
+	const currentStep = getCurrentStep(plan);
+	const nextStep = currentStep ? undefined : getNextReadyStep(plan);
+
+	return {
+		planId: plan.id,
+		planName: plan.name,
+		currentStepTitle: currentStep?.title,
+		currentStepId: currentStep?.id,
+		nextStepTitle: nextStep?.title,
+		nextStepId: nextStep?.id,
+		recentProgress: plan.progressLog.slice(-3),
+	};
+}
+
+export function buildPlanLoopFocusBlock(snapshot: PlanLoopFocusSnapshot | null): string {
+	if (!snapshot) {
+		return "";
+	}
+
+	const lines = [
+		"# Current Plan Focus",
+		"",
+		`Plan: ${snapshot.planName ?? "unknown"} (${snapshot.planId ?? "unknown"})`,
+		snapshot.currentStepTitle
+			? `Current focus: ${snapshot.currentStepTitle} (${snapshot.currentStepId ?? "unknown"})`
+			: "Current focus: none",
+		snapshot.nextStepTitle
+			? `Up next: ${snapshot.nextStepTitle} (${snapshot.nextStepId ?? "unknown"})`
+			: "Up next: none",
+		"",
+		"Loop discipline:",
+		"- One thing per loop. Advance only the current focus.",
+		"- If you need to edit, search and read adjacent files first.",
+		"- Verify the touched unit before widening the scope.",
+	];
+
+	if (snapshot.recentProgress.length > 0) {
+		lines.push("", "Recent progress:");
+		for (const entry of snapshot.recentProgress) {
+			lines.push(`- ${entry}`);
+		}
+	}
+
+	return lines.join("\n");
 }
 
 function getUnmetDependencyIds(plan: Plan, step: PlanStep): string[] {
@@ -936,47 +1008,68 @@ export default function (pi: ExtensionAPI) {
 	// P0: Context Injection via before_agent_start
 	// ============================================
 
-	pi.on("before_agent_start", async (event, _ctx) => {
-		if (!planModeEnabled) return;
+	pi.on("before_agent_start", async (event, ctx) => {
+		const workspaceRoot = resolveWorkspaceRoot(ctx);
+		const storage = loadStorage(workspaceRoot);
+		const currentPlan = resolveCurrentPlan(storage);
+		const focusBlock = buildPlanLoopFocusBlock(createPlanLoopFocusSnapshot(currentPlan));
+		const entries: PromptStackEntry[] = [];
 
+		if (focusBlock) {
+			entries.push({
+				source: "plan-current-focus",
+				recordSource: "plan-current-focus",
+				layer: "startup-context",
+				markerId: `plan-current-focus:${currentPlan?.id ?? "none"}`,
+				content: focusBlock,
+			});
+		}
+
+		if (planModeEnabled) {
 			const notification = createRuntimeNotification(
 				"plan-mode",
 				"PLAN MODE is active. Read-only restrictions are enforced until you exit plan mode.",
 				"warning",
 				1,
 			);
-		const entries: PromptStackEntry[] = [
-			{
+			entries.push({
 				source: "plan-mode-policy",
 				recordSource: "plan-mode-policy",
 				layer: "system-policy",
 				markerId: "plan-mode-policy",
 				content: PLAN_MODE_POLICY,
-			},
-		];
-		if (notification) {
-			entries.push({
-				source: "plan-mode-notification",
-				recordSource: "plan-mode-notification",
-				layer: "runtime-notification",
-				markerId: "plan-mode-notification",
-				content: formatRuntimeNotificationBlock([notification]),
 			});
+			if (notification) {
+				entries.push({
+					source: "plan-mode-notification",
+					recordSource: "plan-mode-notification",
+					layer: "runtime-notification",
+					markerId: "plan-mode-notification",
+					content: formatRuntimeNotificationBlock([notification]),
+				});
+			}
 		}
+
+		if (entries.length === 0) {
+			return;
+		}
+
 		const result = applyPromptStack(event.systemPrompt ?? "", entries);
 		if (result.appliedEntries.length === 0) {
 			return;
 		}
 
-			return {
-				systemPrompt: result.systemPrompt,
-				message: {
+		return {
+			systemPrompt: result.systemPrompt,
+			message: planModeEnabled
+				? {
 					customType: PLAN_MODE_CONTEXT_TYPE,
 					content: "PLAN MODE is active. Read-only restrictions are enforced until you exit plan mode.",
 					display: false,
-				},
-			};
-		});
+				}
+				: undefined,
+		};
+	});
 
 	// ============================================
 	// P2: Context Cleanup via context event

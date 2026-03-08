@@ -449,14 +449,14 @@ export const FALLACY_PATTERNS = [
  * @summary 二項対立検出パターン
  */
 export const BINARY_OPPOSITION_PATTERNS = [
-  { pattern: /正しい\s*[\/／]\s*間違い/g, type: 'truth-binary', confidence: 0.5 },
-  { pattern: /right\s*[\/／]\s*wrong/gi, type: 'truth-binary', confidence: 0.5 },
-  { pattern: /成功\s*[\/／]\s*失敗/g, type: 'success-binary', confidence: 0.5 },
-  { pattern: /success\s*[\/／]\s*fail/gi, type: 'success-binary', confidence: 0.5 },
-  { pattern: /良い\s*[\/／]\s*悪い/g, type: 'moral-binary', confidence: 0.5 },
-  { pattern: /good\s*[\/／]\s*bad/gi, type: 'moral-binary', confidence: 0.5 },
-  { pattern: /正解\s*[\/／]\s*不正解/g, type: 'correctness-binary', confidence: 0.5 },
-  { pattern: /完全\s*[\/／]\s*不完全/g, type: 'completeness-binary', confidence: 0.5 }
+  { pattern: /正しい\s*[/／]\s*間違い/g, type: 'truth-binary', confidence: 0.5 },
+  { pattern: /right\s*[/／]\s*wrong/gi, type: 'truth-binary', confidence: 0.5 },
+  { pattern: /成功\s*[/／]\s*失敗/g, type: 'success-binary', confidence: 0.5 },
+  { pattern: /success\s*[/／]\s*fail/gi, type: 'success-binary', confidence: 0.5 },
+  { pattern: /良い\s*[/／]\s*悪い/g, type: 'moral-binary', confidence: 0.5 },
+  { pattern: /good\s*[/／]\s*bad/gi, type: 'moral-binary', confidence: 0.5 },
+  { pattern: /正解\s*[/／]\s*不正解/g, type: 'correctness-binary', confidence: 0.5 },
+  { pattern: /完全\s*[/／]\s*不完全/g, type: 'completeness-binary', confidence: 0.5 }
 ];
 
 /**

@@ -32,7 +32,7 @@ const buttonVariants = cva(
   }
 );
 
-interface ButtonProps extends VariantProps<typeof buttonVariants> {
+export interface ButtonProps extends VariantProps<typeof buttonVariants> {
   children: ComponentChildren;
   class?: string;
   onClick?: () => void;

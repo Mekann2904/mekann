@@ -35,11 +35,6 @@ import {
 	saveTaskStorage as saveSharedTaskStorage,
 } from "../lib/storage/task-plan-store.js";
 
-import { getLogger } from "../lib/comprehensive-logger";
-import type { OperationType } from "../lib/comprehensive-logger-types";
-
-const logger = getLogger();
-
 // ============================================
 // Types
 // ============================================
@@ -69,6 +64,21 @@ interface TaskStorage {
 	currentTaskId?: string;
 }
 
+type RalphLoopTaskKind =
+	| "implementation"
+	| "research"
+	| "planning"
+	| "validation"
+	| "documentation"
+	| "other";
+
+interface RalphLoopSelection {
+	task: Task;
+	kind: RalphLoopTaskKind;
+	reason: string;
+	validationLaneLimited: boolean;
+}
+
 interface AutoExecutorConfig {
 	enabled: boolean;
 	autoRun: boolean; // 自動実行するか、通知のみか
@@ -88,6 +98,15 @@ const PRIORITY_ORDER: Record<TaskPriority, number> = {
 	high: 3,
 	medium: 2,
 	low: 1,
+};
+
+const KIND_ORDER: Record<RalphLoopTaskKind, number> = {
+	implementation: 6,
+	research: 5,
+	planning: 4,
+	documentation: 3,
+	other: 2,
+	validation: 1,
 };
 
 // ============================================
@@ -138,6 +157,55 @@ function saveConfig(): void {
 // ============================================
 
 function getNextPendingTask(storage: TaskStorage): Task | null {
+	const selection = selectNextLoopTask(storage);
+	return selection?.task ?? null;
+}
+
+function buildTaskSearchText(task: Task): string {
+	return [
+		task.title,
+		task.description ?? "",
+		task.tags.join(" "),
+	].join("\n").toLowerCase();
+}
+
+export function classifyRalphLoopTaskKind(task: Task): RalphLoopTaskKind {
+	const haystack = buildTaskSearchText(task);
+
+	if (/(lint|typecheck|test|verify|verification|build|smoke|regression|coverage|検証|テスト|型検査|ビルド)/i.test(haystack)) {
+		return "validation";
+	}
+
+	if (/(implement|fix|refactor|code|patch|repair|migration|実装|修正|変更|追加|移行)/i.test(haystack)) {
+		return "implementation";
+	}
+
+	if (/(research|investigate|analyze|search|audit|explore|調査|分析|検索|監査)/i.test(haystack)) {
+		return "research";
+	}
+
+	if (/(plan|spec|design|todo|roadmap|計画|仕様|設計)/i.test(haystack)) {
+		return "planning";
+	}
+
+	if (/(docs|document|readme|comment|documentation|ドキュメント|コメント|readme)/i.test(haystack)) {
+		return "documentation";
+	}
+
+	return "other";
+}
+
+function compareLoopTasks(left: Task, right: Task): number {
+	const priorityDiff = PRIORITY_ORDER[right.priority] - PRIORITY_ORDER[left.priority];
+	if (priorityDiff !== 0) return priorityDiff;
+
+	const kindDiff = KIND_ORDER[classifyRalphLoopTaskKind(right)] - KIND_ORDER[classifyRalphLoopTaskKind(left)];
+	if (kindDiff !== 0) return kindDiff;
+
+	return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+}
+
+export function selectNextLoopTask(storage: TaskStorage): RalphLoopSelection | null {
 	const instanceId = getInstanceId();
 	
 	// 候補となるタスクを抽出
@@ -168,14 +236,41 @@ function getNextPendingTask(storage: TaskStorage): Task | null {
 		return null;
 	}
 
-	// Sort by priority (highest first), then by creation date (oldest first)
-	candidates.sort((a, b) => {
-		const priorityDiff = PRIORITY_ORDER[b.priority] - PRIORITY_ORDER[a.priority];
-		if (priorityDiff !== 0) return priorityDiff;
-		return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-	});
+	candidates.sort(compareLoopTasks);
 
-	return candidates[0];
+	const nonValidationCandidates = candidates.filter(task => classifyRalphLoopTaskKind(task) !== "validation");
+	const selected = nonValidationCandidates[0] ?? candidates[0];
+	const kind = classifyRalphLoopTaskKind(selected);
+	const validationLaneLimited = nonValidationCandidates.length > 0;
+	const reason = validationLaneLimited
+		? `one thing per loop: implementation/research lane preferred over validation lane (${kind})`
+		: `one thing per loop: best available pending task (${kind})`;
+
+	return {
+		task: selected,
+		kind,
+		reason,
+		validationLaneLimited,
+	};
+}
+
+export function buildRalphLoopExecutionBrief(selection: RalphLoopSelection): string {
+	const validationNote = selection.validationLaneLimited
+		? "- Validation lane は1本に絞る。実装や調査が残っている間は、この1件以外の検証仕事を並列に増やさない。"
+		: "- このタスクが現時点の最重要項目です。これ1件だけを前に進める。";
+
+	return [
+		"## Ralph Loop Execution Brief",
+		"",
+		`- **選定理由**: ${selection.reason}`,
+		`- **タスク種別**: ${selection.kind}`,
+		"- **基本方針**: One thing per loop. このタスクだけを進める。",
+		"- **変更前**: 未実装だと決めつけず、関連コードを検索して読んでから触る。",
+		"- **実装順序**: quick and dirty prototype -> 局所検証 -> 観測した失敗だけ修復。",
+		"- **品質**: placeholder 実装は禁止。足りない機能は仕様どおりに埋める。",
+		validationNote,
+		"- **継続性**: 新しい発見や別件バグは todo / plan / journal に残してから進む。",
+	].join("\n");
 }
 
 // ============================================
@@ -216,9 +311,10 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 		label: "Run Next Pending Task",
 		description: "Execute the next pending task from the task queue (highest priority first)",
 		parameters: Type.Object({}),
-		async execute(toolCallId, params, signal, onUpdate, ctx) {
+		async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
 			const storage = loadStorage();
-			const nextTask = getNextPendingTask(storage);
+			const selection = selectNextLoopTask(storage);
+			const nextTask = selection?.task ?? null;
 
 			if (!nextTask) {
 				return {
@@ -243,6 +339,7 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 			const taskDescription = nextTask.description
 				? `${nextTask.title}\n\n詳細: ${nextTask.description}`
 				: nextTask.title;
+			const executionBrief = selection ? buildRalphLoopExecutionBrief(selection) : "";
 
 			return {
 				content: [{
@@ -253,6 +350,10 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 **タイトル**: ${nextTask.title}
 **優先度**: ${nextTask.priority}
 **ステータス**: in_progress
+
+---
+
+${executionBrief}
 
 ---
 
@@ -268,7 +369,9 @@ ${taskDescription}
 					taskId: nextTask.id,
 					title: nextTask.title,
 					priority: nextTask.priority,
-					description: nextTask.description
+					description: nextTask.description,
+					kind: selection?.kind,
+					reason: selection?.reason,
 				}
 			};
 		},
@@ -280,7 +383,7 @@ ${taskDescription}
 		label: "Show Task Queue",
 		description: "Display the current task queue with priorities and counts",
 		parameters: Type.Object({}),
-		async execute(toolCallId, params, signal, onUpdate, ctx) {
+		async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
 			const storage = loadStorage();
 			const todoTasks = storage.tasks.filter(t => t.status === "todo");
 
@@ -317,9 +420,12 @@ ${taskDescription}
 				}
 			});
 
-			const nextTask = getNextPendingTask(storage);
+			const nextSelection = selectNextLoopTask(storage);
+			const nextTask = nextSelection?.task ?? null;
 			if (nextTask) {
-				output += `---\n**次に実行**: [${nextTask.id}] ${nextTask.title} (${nextTask.priority})`;
+				output += `---\n**次に実行**: [${nextTask.id}] ${nextTask.title} (${nextTask.priority})\n`;
+				output += `**種別**: ${nextSelection?.kind ?? "other"}\n`;
+				output += `**理由**: ${nextSelection?.reason ?? "priority order"}`;
 			}
 
 			return {
@@ -346,7 +452,7 @@ ${taskDescription}
 			enabled: Type.Optional(Type.Boolean({ description: "Enable (true) or disable (false). Omit to toggle." })),
 			autoRun: Type.Optional(Type.Boolean({ description: "Also enable automatic execution (not just notification)" })),
 		}),
-		async execute(toolCallId, params, signal, onUpdate, ctx) {
+		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
 			const previousEnabled = autoExecutorConfig.enabled;
 			const previousAutoRun = autoExecutorConfig.autoRun;
 
@@ -386,7 +492,7 @@ ${taskDescription}
 		label: "Task Auto Executor Status",
 		description: "Show current auto executor configuration and status",
 		parameters: Type.Object({}),
-		async execute(toolCallId, params, signal, onUpdate, ctx) {
+		async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
 			const status = getAutoExecutorStatus();
 
 			return {
@@ -417,7 +523,8 @@ ${taskDescription}
 		}
 
 		const storage = loadStorage();
-		const nextTask = getNextPendingTask(storage);
+		const selection = selectNextLoopTask(storage);
+		const nextTask = selection?.task ?? null;
 
 		if (!nextTask) {
 			ctx.ui.setStatus("auto-executor", undefined);
@@ -438,7 +545,7 @@ ${taskDescription}
 
 		// Notify about the next task
 		ctx.ui.notify(
-			`[アイドル] 次のタスク: ${nextTask.title} (${nextTask.priority})\n「次のタスクを実行して」と言うと実行します。`,
+			`[アイドル] 次のタスク: ${nextTask.title} (${nextTask.priority}, ${selection?.kind ?? "other"})\n${selection?.reason ?? ""}\n「次のタスクを実行して」と言うと実行します。`,
 			"info"
 		);
 	});

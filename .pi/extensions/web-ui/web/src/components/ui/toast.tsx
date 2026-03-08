@@ -17,7 +17,6 @@
  * @scope(out) Rendered toast notifications
  */
 
-import { h } from "preact";
 import { CheckCircle2, AlertTriangle, XCircle, Info, X } from "lucide-preact";
 import { cn } from "@/lib/utils";
 import { useToast, type ToastType, type Toast } from "../../hooks/useToast";
@@ -58,7 +57,7 @@ const TOAST_CONFIG: Record<
 /**
  * Props for ToastItem component
  */
-interface ToastItemProps {
+export interface ToastItemProps {
   toast: Toast;
   onDismiss: (id: string) => void;
 }
@@ -67,7 +66,7 @@ interface ToastItemProps {
  * Individual toast notification component
  * @summary トーストアイテム
  */
-function ToastItem({ toast, onDismiss }: ToastItemProps) {
+export function ToastItem({ toast, onDismiss }: ToastItemProps) {
   const config = TOAST_CONFIG[toast.type];
   const Icon = config.icon;
 

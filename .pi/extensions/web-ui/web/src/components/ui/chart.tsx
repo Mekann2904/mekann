@@ -17,7 +17,7 @@
  * @scope(out) Rendered chart components
  */
 
-import { h, FunctionalComponent } from "preact";
+import { FunctionalComponent } from "preact";
 import { cn } from "@/lib/utils";
 
 /**
@@ -29,6 +29,8 @@ export type ChartConfig = {
     color?: string;
   };
 };
+
+export type ChartStyle = Record<string, string>;
 
 /**
  * @summary Chart container props
@@ -53,7 +55,7 @@ export const ChartContainer: FunctionalComponent<ChartContainerProps> = ({
       acc[`--color-${key}`] = value.color;
     }
     return acc;
-  }, {} as Record<string, string>);
+  }, {} as ChartStyle);
 
   return (
     <div

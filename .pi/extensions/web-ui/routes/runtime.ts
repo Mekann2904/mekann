@@ -258,7 +258,16 @@ export function registerRuntimeRoutes(app: Express): () => void {
    */
   app.get("/api/runtime/sessions/task/:taskId", (req: Request, res: Response) => {
     try {
-      const session = getSessionByTaskId(req.params.taskId);
+      const taskId = req.params.taskId;
+      if (!taskId) {
+        res.status(400).json({
+          success: false,
+          error: "Task id is required",
+        });
+        return;
+      }
+
+      const session = getSessionByTaskId(taskId);
 
       if (!session) {
         res.status(404).json({

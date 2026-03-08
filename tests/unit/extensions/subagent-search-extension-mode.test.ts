@@ -122,6 +122,8 @@ describe("buildSubagentPrompt", () => {
     expect(prompt).toContain("code_search");
     expect(prompt).toContain("sym_find");
     expect(prompt).toContain("# Turn Execution Context");
+    expect(prompt).toContain("Autonomous Loop Rules (INTERNAL MODE)");
+    expect(prompt).toContain("single highest-priority unfinished item");
   });
 
   it("plan mode では runtime notification を prompt に含める", () => {
@@ -150,6 +152,8 @@ describe("buildSubagentPrompt", () => {
     expect(prompt).toContain("PLAN MODE");
     expect(prompt).toContain("Read-only restrictions");
     expect(prompt).toContain("respect_cwd_as_workspace_anchor=true");
+    expect(prompt).toContain("Delegated Autonomous Loop Rules");
+    expect(prompt).toContain("最重要の1インクリメント");
   });
 });
 
