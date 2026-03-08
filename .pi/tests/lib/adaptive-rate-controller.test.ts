@@ -20,7 +20,7 @@
  *   out: テスト結果
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   initAdaptiveController,
   shutdownAdaptiveController,
@@ -37,6 +37,7 @@ import {
   setGlobalMultiplier,
   configureRecovery,
 } from "@lib/adaptive-rate-controller.js";
+import { closeDatabase } from "@lib/storage/sqlite-db.js";
 
 describe("adaptive-rate-controller", () => {
   beforeEach(() => {
@@ -250,6 +251,27 @@ describe("adaptive-rate-controller", () => {
       
       // Configuration should be applied without error
       // Actual effect would be tested in integration tests
+    });
+  });
+
+  describe("recovery timer lifecycle", () => {
+    it("should ignore a closed database without unhandled rejection", async () => {
+      shutdownAdaptiveController();
+      vi.useFakeTimers();
+      initAdaptiveController();
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      closeDatabase();
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+        "[adaptive-rate-controller] Recovery check failed:",
+        expect.anything(),
+      );
+
+      consoleErrorSpy.mockRestore();
+      shutdownAdaptiveController();
+      vi.useRealTimers();
     });
   });
 });

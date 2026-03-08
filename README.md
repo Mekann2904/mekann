@@ -251,11 +251,33 @@ mekann/
 
 ## 前提条件
 
-- **Node.js v20.18.1以上** - piと依存関係の実行要件
+- **Node.js 22.x（推奨: 22.12.0）** - pi が使う Node ABI と `better-sqlite3` を一致させるため
 - **ターミナル実行環境**
 - **kitty (オプション)** - kitty-status-integration拡張機能で使用
 
 詳しくは [インストールガイド](docs/01-getting-started/02-installation.md) を参照してください。
+
+### Node / SQLite の重要な注意
+
+`mekann` は `better-sqlite3` を使います。
+
+`pi` 本体が Node 22 で動いている環境では、依存関係も Node 22 で install / rebuild する必要があります。
+
+Node 24 など別 major で `npm install` すると、`better-sqlite3` が別 ABI でビルドされ、起動時に SQLite が壊れます。
+
+推奨手順:
+
+```bash
+nvm use 22.12.0
+npm install
+```
+
+ABI 不一致を直すとき:
+
+```bash
+nvm use 22.12.0
+npm run rebuild:better-sqlite3
+```
 
 ## 主要機能
 
