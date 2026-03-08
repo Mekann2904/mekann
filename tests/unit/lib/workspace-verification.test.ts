@@ -112,7 +112,35 @@ describe("workspace-verification library", () => {
         finishedAt: "2026-03-07T00:00:10.000Z",
         success: true,
         artifactDir: "/repo/.pi/verification-runs/latest",
-        stepResults: [],
+        resolvedPlan: {
+          profile: "library",
+          commands: {},
+          runtime: {
+            enabled: false,
+            command: "",
+            label: "workspace-dev-server",
+            startupTimeoutMs: 1000,
+            keepAliveOnShutdown: true,
+          },
+          ui: {
+            enabled: false,
+            timeoutMs: 1000,
+            commands: [],
+          },
+          acceptanceCriteria: [],
+          validationCommands: [],
+          recommendedSteps: ["lint"],
+          reasons: [],
+          proofArtifacts: ["verification summary"],
+          sources: [],
+        },
+        stepResults: [{
+          step: "lint",
+          success: true,
+          skipped: false,
+          durationMs: 10,
+          command: "npm run lint",
+        }],
       },
     });
 
@@ -165,9 +193,27 @@ describe("workspace-verification library", () => {
           recommendedSteps: ["lint", "typecheck", "test"],
           reasons: [],
           proofArtifacts: ["verification summary"],
-          sources: [],
-        },
-        stepResults: [],
+        sources: [],
+      },
+        stepResults: [{
+          step: "lint",
+          success: true,
+          skipped: false,
+          durationMs: 10,
+          command: "npm run lint",
+        }, {
+          step: "typecheck",
+          success: true,
+          skipped: false,
+          durationMs: 10,
+          command: "npm run typecheck",
+        }, {
+          step: "test",
+          success: true,
+          skipped: false,
+          durationMs: 10,
+          command: "npm test",
+        }],
       },
     });
 
@@ -537,6 +583,77 @@ describe("workspace-verification library", () => {
     expect(shouldAutoRunVerification(config, state)).toBe(false);
   });
 
+  it("keeps the workspace dirty when verification covers only part of the required web steps", async () => {
+    const {
+      createWorkspaceVerificationConfig,
+      finalizeVerificationRun,
+      loadWorkspaceVerificationState,
+      markWorkspaceDirty,
+      saveWorkspaceVerificationConfig,
+    } = await import("../../../.pi/lib/workspace-verification.js");
+
+    markWorkspaceDirty({ cwd: "/repo", toolName: "edit" });
+    saveWorkspaceVerificationConfig("/repo", {
+      ...createWorkspaceVerificationConfig(),
+      enabled: true,
+      adaptiveDefaults: false,
+      enabledSteps: {
+        lint: true,
+        typecheck: false,
+        test: false,
+        build: false,
+        runtime: true,
+        ui: true,
+        review: false,
+      },
+    });
+
+    finalizeVerificationRun({
+      cwd: "/repo",
+      run: {
+        trigger: "manual",
+        startedAt: "2026-03-07T00:00:00.000Z",
+        finishedAt: "2026-03-07T00:00:10.000Z",
+        success: true,
+        artifactDir: "/repo/.pi/verification-runs/latest",
+        resolvedPlan: {
+          profile: "web-app",
+          commands: { lint: "npm run lint" },
+          runtime: {
+            enabled: true,
+            command: "npm run dev",
+            label: "workspace-dev-server",
+            startupTimeoutMs: 1000,
+            keepAliveOnShutdown: true,
+          },
+          ui: {
+            enabled: true,
+            baseUrl: "http://127.0.0.1:3000",
+            timeoutMs: 1000,
+            commands: ["open ${baseUrl}", "snapshot", "console error", "screenshot"],
+          },
+          acceptanceCriteria: [],
+          validationCommands: [],
+          recommendedSteps: ["lint", "runtime", "ui"],
+          reasons: ["UI or browser-facing change detected"],
+          proofArtifacts: ["verification summary", "browser evidence"],
+          sources: [],
+        },
+        stepResults: [{
+          step: "lint",
+          success: true,
+          skipped: false,
+          durationMs: 10,
+          command: "npm run lint",
+        }],
+      },
+    });
+
+    const state = loadWorkspaceVerificationState("/repo");
+    expect(state.dirty).toBe(true);
+    expect(state.lastVerifiedAt).toBeUndefined();
+  });
+
   it("extracts a web-app runbook from package.json and plans", async () => {
     mockState.files.set("/repo/package.json", JSON.stringify({
       scripts: {
@@ -574,6 +691,7 @@ describe("workspace-verification library", () => {
     expect(runbook.runtime.enabled).toBe(true);
     expect(runbook.runtime.readyPort).toBe(4173);
     expect(runbook.ui.enabled).toBe(true);
+    expect(runbook.ui.commands).toEqual(["open ${baseUrl}", "snapshot", "console error", "screenshot"]);
     expect(runbook.recommendedSteps).toEqual(["lint", "typecheck", "test", "runtime", "ui"]);
     expect(runbook.proofArtifacts).toContain("browser evidence");
 
@@ -588,6 +706,7 @@ describe("workspace-verification library", () => {
     const config = createWorkspaceVerificationConfig();
 
     expect(config.enabled).toBe(false);
+    expect(config.adaptiveDefaults).toBe(true);
     expect(config.autoRunOnTurnEnd).toBe(false);
     expect(config.requireProofReview).toBe(false);
     expect(config.autoRequireReviewArtifact).toBe(false);

@@ -324,7 +324,38 @@ function resolveUiCommands(resolvedPlan: WorkspaceVerificationResolvedPlan): str
     return [];
   }
 
-  return ["open ${baseUrl}", "snapshot"];
+  return ["open ${baseUrl}", "snapshot", "console error", "screenshot"];
+}
+
+function classifyUiCommand(commandLine: string): { command: string; args: string[] } {
+  const parsed = parseWorkspaceCommand(commandLine);
+  if (parsed.error) {
+    return { command: "", args: [] };
+  }
+
+  return {
+    command: parsed.executable.toLowerCase(),
+    args: parsed.args.map((item) => item.toLowerCase()),
+  };
+}
+
+function getUiCommandFailure(
+  commandLine: string,
+  result: { success: boolean; stdout: string; stderr: string; error?: string },
+): string | null {
+  if (!result.success) {
+    return result.error ?? "playwright ui command failed";
+  }
+
+  const command = classifyUiCommand(commandLine);
+  if (command.command === "console" && command.args[0] === "error") {
+    const hasConsoleErrors = result.stdout.trim().length > 0 || result.stderr.trim().length > 0;
+    if (hasConsoleErrors) {
+      return "browser console error detected";
+    }
+  }
+
+  return null;
 }
 
 async function runPlaywrightCommand(
@@ -400,8 +431,9 @@ async function runUiVerification(
   const summaries: string[] = [];
   for (const commandLine of commands) {
     const result = await runPlaywrightCommand(resolvedPlan, cwd, commandLine);
-    summaries.push(`${commandLine}: ${result.success ? "ok" : "failed"}`);
-    if (!result.success) {
+    const failure = getUiCommandFailure(commandLine, result);
+    summaries.push(`${commandLine}: ${failure ? "failed" : "ok"}`);
+    if (failure) {
       return {
         step: "ui",
         success: false,
@@ -410,7 +442,7 @@ async function runUiVerification(
         command: commandLine,
         stdout: result.stdout,
         stderr: result.stderr,
-        error: result.error,
+        error: failure,
         metadata: { args: result.args, baseUrl: resolvedPlan.ui.baseUrl },
       };
     }
@@ -433,6 +465,7 @@ export async function runWorkspaceVerification(
 ): Promise<WorkspaceVerificationRunRecord> {
   const cwd = ctx.cwd;
   const resolvedPlan = resolveWorkspaceVerificationPlan(config, cwd);
+  const requiredSteps = resolveEnabledSteps(config, resolvedPlan);
   markVerificationRunning({ cwd });
   const startedAt = new Date().toISOString();
   const stepResults: WorkspaceVerificationStepResult[] = [];
@@ -497,18 +530,22 @@ export async function runWorkspaceVerification(
     }
   }
 
+  const executedSteps = new Map(
+    stepResults.map((item) => [item.step, item]),
+  );
+  const coveredRequiredSteps = requiredSteps.every((step) => Boolean(executedSteps.get(step)?.success));
   const bareRun: WorkspaceVerificationRunRecord = {
     trigger,
     startedAt,
     finishedAt: new Date().toISOString(),
-    success: stepResults.every((item) => item.success || item.skipped),
+    success: stepResults.every((item) => item.success || item.skipped) && coveredRequiredSteps,
     stepResults,
     resolvedPlan,
   };
 
   const persistedRun = persistWorkspaceVerificationArtifacts(cwd, config, bareRun);
   const finalizedState = finalizeVerificationRun({ cwd, run: persistedRun });
-  if (shouldRequireReviewArtifact(config, persistedRun.resolvedPlan) && persistedRun.success) {
+  if (shouldRequireReviewArtifact(config, persistedRun.resolvedPlan) && persistedRun.success && !finalizedState.dirty) {
     const reviewArtifact = persistWorkspaceReviewArtifact({
       cwd,
       run: persistedRun,
@@ -1121,6 +1158,7 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
     parameters: Type.Object({
       action: Type.Union([Type.Literal("show"), Type.Literal("update"), Type.Literal("reset")]),
       enabled: Type.Optional(Type.Boolean()),
+      adaptiveDefaults: Type.Optional(Type.Boolean()),
       profile: Type.Optional(Type.Union([
         Type.Literal("auto"),
         Type.Literal("web-app"),
@@ -1179,6 +1217,7 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
       if (params.action === "update") {
         const updated = saveWorkspaceVerificationConfig(ctx.cwd, {
           enabled: params.enabled,
+          adaptiveDefaults: params.adaptiveDefaults,
           profile: params.profile,
           autoDetectRunbook: params.autoDetectRunbook,
           autoRunOnTurnEnd: params.autoRunOnTurnEnd,
