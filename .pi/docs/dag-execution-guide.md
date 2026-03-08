@@ -26,7 +26,7 @@ subagent_run_dag({
     id: "api-refactor",
     description: "APIリファクタリング",
     tasks: [
-      { id: "research", description: "調査", assignedAgent: "researcher", dependencies: [] },
+      { id: "research", description: "要求解釈と必要な調査", assignedAgent: "researcher", dependencies: [] },
       { id: "impl-auth", description: "認証実装", assignedAgent: "implementer", dependencies: ["research"] },
       { id: "impl-users", description: "ユーザー実装", assignedAgent: "implementer", dependencies: ["research"] },
       { id: "review", description: "レビュー", assignedAgent: "reviewer", dependencies: ["impl-auth", "impl-users"] }
@@ -111,7 +111,7 @@ Fan-out + Fan-inの組み合わせ。**最も一般的なパターン**。
 [subagent_run_dag] Auto-generated plan: auto-xxx (4 tasks, max depth: 2)
 
 Tasks:
-  - research [researcher]: 調査...
+  - research [researcher]: 要求解釈と必要な調査...
   - implement [implementer] (deps: research): 実装...
   - test [tester] (deps: implement): テスト...
   - review [reviewer] (deps: implement): レビュー...

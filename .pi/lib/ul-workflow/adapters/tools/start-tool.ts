@@ -83,9 +83,10 @@ Task ID: ${result.taskId}
 現在のフェーズ: ${result.phases![0]}
 
 次のステップ:
-1. researcher サブエージェントが調査を実行します
-2. 調査結果は .pi/ul-workflow/tasks/${result.taskId}/research.md に保存されます
-3. 調査が完了したら ul_workflow_approve で次のフェーズへ進みます
+1. researcher サブエージェントが、顧客要求の解釈と必要な調査を実行します
+2. 必要に応じて web 検索で外部知識を集め、research.md に整理します
+3. research.md は .pi/ul-workflow/tasks/${result.taskId}/research.md に保存されます
+4. 調査が完了したら ul_workflow_approve で次のフェーズへ進みます
 
 調査を実行するには:
   ul_workflow_research({ task: "${task}", task_id: "${result.taskId}" })

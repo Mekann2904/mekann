@@ -752,7 +752,11 @@ Research (DAG並列) → Plan → [人間確認必須] → Implement (DAG並列)
 
 ### 第1段階: Research（調査）
 
-コードベースの該当部分を**徹底的に**理解する。
+まず、ユーザ入力を顧客要求として解釈する。
+
+その後、必要なら web 検索で外部知識を集める。
+
+ローカルコードの確認はその後に行う。
 
 - 複数のresearcherエージェントが並列で調査
 - 調査結果は `.pi/ul-workflow/tasks/{taskId}/research.md` に保存
@@ -761,6 +765,7 @@ Research (DAG並列) → Plan → [人間確認必須] → Implement (DAG並列)
 
 詳細な実装計画を `.pi/ul-workflow/tasks/{taskId}/plan.md` に作成する。
 
+- plan は、顧客要求を実装計画へ翻訳した成果物として書く
 - 変更内容、手順、考慮事項、Todoを明記
 - コードスニペットも含める
 
