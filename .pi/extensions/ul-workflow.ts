@@ -35,6 +35,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { promises as fsPromises } from "fs";
 import { randomBytes } from "node:crypto";
 import { withFileLock, atomicWriteTextFile } from "../lib/storage/storage-lock.js";
+import {
+  isCompletionBlocked,
+  loadWorkspaceVerificationConfig,
+  loadWorkspaceVerificationState,
+  resolveWorkspaceVerificationPlan,
+} from "../lib/workspace-verification.js";
 
 // ワークフローのフェーズ
 type WorkflowPhase = "idle" | "research" | "plan" | "annotate" | "implement" | "review" | "completed" | "aborted";
@@ -58,6 +64,7 @@ const UNIFIED_PHASES: WorkflowPhase[] = [
   "plan",
   "annotate",
   "implement",
+  "review",
   "completed",
 ];
 
@@ -312,6 +319,33 @@ async function assertPhaseArtifactReady(taskId: string, phase: WorkflowPhase): P
   if (!content.trim()) {
     throw new Error(`${phase}.md がまだ生成されていません: ${artifactPath}`);
   }
+}
+
+function getVerificationGateReason(cwd: string): string | null {
+  const config = loadWorkspaceVerificationConfig(cwd);
+  if (!config.enabled) {
+    return null;
+  }
+
+  const state = loadWorkspaceVerificationState(cwd);
+  const resolvedPlan = resolveWorkspaceVerificationPlan(config, cwd);
+  if (!isCompletionBlocked(config, state, resolvedPlan)) {
+    return null;
+  }
+
+  if (config.requireReplanOnRepeatedFailure && state.replanRequired) {
+    return "workspace_verify_replan で修復方針を記録してください。";
+  }
+
+  if (config.requireProofReview && state.pendingProofReview) {
+    return "workspace_verify_ack で proof artifact を承認してください。";
+  }
+
+  if (state.pendingReviewArtifact) {
+    return "workspace_verify_review と workspace_verify_review_ack を完了してください。";
+  }
+
+  return "workspace_verify を成功させてください。";
 }
 
 type UlDagTask = {
@@ -1709,6 +1743,17 @@ ${phasesDisplay}
         // END FIX
         return makeResult("エラー: plan フェーズが承認されていません。先に plan.md を承認してください。", { error: "plan_not_approved" });
       }
+
+      if (previousPhase === "review") {
+        const verificationGateReason = getVerificationGateReason(process.cwd());
+        if (verificationGateReason) {
+          currentWorkflow.approvedPhases.pop();
+          return makeResult(
+            `エラー: verify が未完了です。${verificationGateReason}`,
+            { error: "verification_not_cleared", taskId: currentWorkflow.taskId, phase: previousPhase },
+          );
+        }
+      }
       
       // BEGIN FIX: BUG-002 原子的状態更新
       // フェーズ進行前に状態を永続化
@@ -1726,6 +1771,9 @@ ${phasesDisplay}
         text += `\nplan.md をエディタで開いて注釈を追加してください:\n  .pi/ul-workflow/tasks/${currentWorkflow.taskId}/plan.md\n\n注釈形式:\n  <!-- NOTE: ここに注釈を記述 -->\n  または\n  [注釈]: ここに注釈を記述\n`;
       } else if (nextPhase === "implement") {
         text += `\n実装を開始するには:\n  ul_workflow_execute_plan()\n`;
+      } else if (nextPhase === "review") {
+        text += `\nverify を完了してください:\n  workspace_verify()\n`;
+        text += `\n必要なら ack まで完了後、次へ進みます:\n  ul_workflow_approve()\n`;
       } else if (nextPhase === "completed") {
         text += `\nワークフローが完了しました。\n\n`;
         text += `### 次のステップ: コミット\n\n`;
@@ -2000,41 +2048,42 @@ ${planContent}
           ulTaskId: taskId,
         });
 
-        // 完了
+        // 実装後は review フェーズへ進み、verify 完了を待つ
         currentWorkflow.approvedPhases.push("implement");
-        currentWorkflow.phase = "completed";
-        currentWorkflow.phaseIndex = 3;
+        currentWorkflow.phase = "review";
+        currentWorkflow.phaseIndex = currentWorkflow.phases.indexOf("review");
         currentWorkflow.updatedAt = new Date().toISOString();
         saveState(currentWorkflow);
-        setCurrentWorkflow(null);  // Clear active registry
+        setCurrentWorkflow(currentWorkflow);
 
         return makeResult(`## 実装完了
 
 Task ID: ${taskId}
 
-ワークフローが完了しました。
+実装は完了しました。まだ verify が必要です。
 
-### 次のステップ: コミット
+### 次のステップ: Verify
 
-以下を実行してコミットを作成してください:
+以下を実行して verify を完了してください:
 
 \`\`\`
-ul_workflow_commit()
+workspace_verify()
 \`\`\`
 
-または手動でコミット:
+必要なら続けて:
 
-\`\`\`bash
-# 変更確認
-git status && git diff
-
-# ステージング（選択的）
-git add <変更したファイル>
-
-# コミット
-git commit -m "feat: ..."
 \`\`\`
-`, { taskId, phase: "completed", suggestCommit: true });
+workspace_verify_ack()
+workspace_verify_review()
+workspace_verify_review_ack()
+\`\`\`
+
+verify 完了後:
+
+\`\`\`
+ul_workflow_approve()
+\`\`\`
+`, { taskId, phase: "review", suggestVerify: true });
       } catch (error) {
         if (String(error).includes("subagent_run_dag APIが利用できません")) {
           return makeResult(`## 実装フェーズ開始
@@ -2617,7 +2666,9 @@ plan.mdに基づく実装
       const phaseStr = workflow.phases
         .map((p, i) => (i === workflow.phaseIndex ? `[${p.toUpperCase()}]` : p.toUpperCase()))
         .join(" -> ");
-      ctx.ui.notify(`Task: ${workflow.taskId}\nPhases: ${phaseStr}\nApproved: ${workflow.approvedPhases.join(", ") || "none"}`, "info");
+      const instanceId = getInstanceId();
+      const ownershipStatus = workflow.ownerInstanceId === instanceId ? "所有中" : `所有者: ${workflow.ownerInstanceId}`;
+      ctx.ui.notify(`Task: ${workflow.taskId}\nPhases: ${phaseStr}\nApproved: ${workflow.approvedPhases.join(", ") || "none"}\n${ownershipStatus}`, "info");
     },
   });
 
@@ -2629,18 +2680,32 @@ plan.mdに基づく実装
         ctx.ui.notify("エラー: アクティブなワークフローがありません", "warning");
         return;
       }
-      
+
+      // 所有権チェック
+      const ownership = checkOwnership(workflow);
+      if (!ownership.owned) {
+        ctx.ui.notify(`エラー: このワークフローは他のインスタンスが所有しています (${workflow.ownerInstanceId})`, "warning");
+        return;
+      }
+
       if (workflow.phase === "completed" || workflow.phase === "aborted") {
         ctx.ui.notify(`エラー: ワークフローは既に${workflow.phase === "completed" ? "完了" : "中止"}しています`, "warning");
         return;
       }
-      
+
       const previousPhase = workflow.phase;
+
+      // BUG FIX: planが承認されていない場合は実装フェーズに進めない
+      if (previousPhase === "annotate" && !workflow.approvedPhases.includes("plan")) {
+        ctx.ui.notify("エラー: planフェーズが承認されていません。先にplan.mdを承認してください。", "warning");
+        return;
+      }
+
       workflow.approvedPhases.push(previousPhase);
       const nextPhase = advancePhase(workflow);
       saveState(workflow);
       setCurrentWorkflow(workflow);
-      
+
       ctx.ui.notify(`${previousPhase.toUpperCase()} 承認 → ${nextPhase.toUpperCase()}`, "info");
     },
   });
@@ -2653,19 +2718,32 @@ plan.mdに基づく実装
         ctx.ui.notify("エラー: アクティブなワークフローがありません", "warning");
         return;
       }
-      
+
+      // 所有権チェック
+      const ownership = checkOwnership(workflow);
+      if (!ownership.owned) {
+        ctx.ui.notify(`エラー: このワークフローは他のインスタンスが所有しています (${workflow.ownerInstanceId})`, "warning");
+        return;
+      }
+
+      // フェーズチェック
+      if (workflow.phase !== "annotate" && workflow.phase !== "plan") {
+        ctx.ui.notify(`エラー: annotate/planフェーズではありません（現在: ${workflow.phase}）`, "warning");
+        return;
+      }
+
       const planContent = readPlanFile(workflow.taskId);
       if (!planContent) {
         ctx.ui.notify("エラー: plan.md が見つかりません", "warning");
         return;
       }
-      
+
       const annotations = extractAnnotations(planContent);
       workflow.annotationCount = annotations.length;
       workflow.updatedAt = new Date().toISOString();
       saveState(workflow);
       setCurrentWorkflow(workflow);
-      
+
       ctx.ui.notify(`${annotations.length} 件の注釈を検出`, "info");
     },
   });
@@ -2678,13 +2756,20 @@ plan.mdに基づく実装
         ctx.ui.notify("エラー: アクティブなワークフローがありません", "warning");
         return;
       }
-      
+
+      // 所有権チェック
+      const ownership = checkOwnership(workflow);
+      if (!ownership.owned) {
+        ctx.ui.notify(`エラー: このワークフローは他のインスタンスが所有しています (${workflow.ownerInstanceId})`, "warning");
+        return;
+      }
+
       const taskId = workflow.taskId;
       workflow.phase = "aborted";
       workflow.updatedAt = new Date().toISOString();
       saveState(workflow);
       setCurrentWorkflow(null);
-      
+
       ctx.ui.notify(`ワークフロー中止: ${taskId}`, "info");
     },
   });

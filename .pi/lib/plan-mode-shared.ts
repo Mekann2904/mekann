@@ -159,6 +159,50 @@ This mode exists to prevent false starts.
  */
 export const PLAN_MODE_WARNING = `PLAN MODE is ACTIVE. Read-only restrictions are enforced until you exit plan mode.`;
 
+function getCommandBasename(command: string): string {
+	const normalized = command.trim().replace(/\\+/g, "/");
+	const parts = normalized.split("/");
+	return parts[parts.length - 1] ?? normalized;
+}
+
+function getCommandWords(command: string): string[] {
+	return command
+		.trim()
+		.split(/\s+/)
+		.map((word) => word.trim())
+		.filter(Boolean);
+}
+
+function isReadOnlyGitCommand(words: string[]): boolean {
+	const executable = getCommandBasename(words[0] ?? "");
+	if (executable !== "git") {
+		return false;
+	}
+
+	const gitArgs = words.slice(1).filter((word) => !word.startsWith("-"));
+	const subcommand = gitArgs[0];
+	if (!subcommand) {
+		return false;
+	}
+
+	return GIT_READONLY_SUBCOMMANDS.has(subcommand);
+}
+
+function isWriteGitCommand(words: string[]): boolean {
+	const executable = getCommandBasename(words[0] ?? "");
+	if (executable !== "git") {
+		return false;
+	}
+
+	const gitArgs = words.slice(1).filter((word) => !word.startsWith("-"));
+	const subcommand = gitArgs[0];
+	if (!subcommand) {
+		return true;
+	}
+
+	return GIT_WRITE_SUBCOMMANDS.has(subcommand) || !GIT_READONLY_SUBCOMMANDS.has(subcommand);
+}
+
 // ============================================
 // Utility Functions
 // ============================================
@@ -172,6 +216,8 @@ export const PLAN_MODE_WARNING = `PLAN MODE is ACTIVE. Read-only restrictions ar
 export function isBashCommandAllowed(command: string): boolean {
 	const trimmed = command.trim();
 	if (!trimmed) return false;
+	const words = getCommandWords(trimmed);
+	const firstWord = getCommandBasename(words[0] ?? "");
 
 	// 1. Block any form of output redirection
 	// >, >>, 2>, 2>>, &>, &>>
@@ -185,10 +231,12 @@ export function isBashCommandAllowed(command: string): boolean {
 	if (/\|/.test(trimmed)) {
 		const pipeCommands = trimmed.split(/\|/);
 		for (const cmd of pipeCommands) {
-			const firstWord = cmd.trim().split(/\s+/)[0];
-			if (WRITE_BASH_COMMANDS.has(firstWord) ||
-				ADDITIONAL_WRITE_COMMANDS.has(firstWord) ||
-				['tee', 'dd', 'nc', 'nmap', 'tar', 'zip'].includes(firstWord)) {
+			const pipeWords = getCommandWords(cmd);
+			const pipeFirstWord = getCommandBasename(pipeWords[0] ?? "");
+			if (WRITE_BASH_COMMANDS.has(pipeFirstWord) ||
+				ADDITIONAL_WRITE_COMMANDS.has(pipeFirstWord) ||
+				WRITE_COMMANDS.has(pipeFirstWord) ||
+				isWriteGitCommand(pipeWords)) {
 				return false;
 			}
 		}
@@ -201,7 +249,6 @@ export function isBashCommandAllowed(command: string): boolean {
 	}
 
 	// 4. Block explicit shell invocation
-	const firstWord = trimmed.split(/\s+/)[0];
 	if (ADDITIONAL_WRITE_COMMANDS.has(firstWord)) {
 		return false;
 	}
@@ -209,6 +256,14 @@ export function isBashCommandAllowed(command: string): boolean {
 	// 5. Block write commands
 	if (WRITE_BASH_COMMANDS.has(firstWord)) {
 		return false;
+	}
+
+	if (isWriteGitCommand(words)) {
+		return false;
+	}
+
+	if (isReadOnlyGitCommand(words)) {
+		return true;
 	}
 
 	// 6. Allow only if in read-only allowlist

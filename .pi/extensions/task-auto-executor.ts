@@ -45,6 +45,7 @@ import {
 	getSymphonyIssueState,
 	releaseSymphonyIssue,
 } from "../lib/symphony-orchestrator-state.js";
+import { createLongRunningReplay } from "../lib/long-running-supervisor.js";
 import { onSessionEvent } from "../lib/runtime-sessions.js";
 
 // ============================================
@@ -113,6 +114,34 @@ interface AutoExecutorConfig {
 	maxRetries: number;
 }
 
+type AutoExecutorCheckpointStatus =
+	| "claimed"
+	| "dispatched"
+	| "interrupted"
+	| "completed"
+	| "failed";
+
+interface AutoExecutorCheckpoint {
+	taskId: string;
+	title: string;
+	description?: string;
+	kind: RalphLoopTaskKind;
+	reason: string;
+	workpadId?: string;
+	status: AutoExecutorCheckpointStatus;
+	ownerInstanceId?: string;
+	ownerPid?: number;
+	attemptCount: number;
+	resumeCount: number;
+	createdAt: string;
+	updatedAt: string;
+	lastError?: string;
+}
+
+interface AutoExecutorRuntimeState {
+	checkpoints: AutoExecutorCheckpoint[];
+}
+
 interface TaskEvidenceSnapshot {
 	workflowExists: boolean;
 	completionGate: Record<string, unknown>;
@@ -128,12 +157,29 @@ interface TaskEvidenceSnapshot {
 	reviewEvidence: string[];
 }
 
+interface WorkspaceVerifyToolEvent {
+	toolName?: string;
+	isError?: boolean;
+	result?: {
+		summary?: unknown;
+		details?: {
+			success?: unknown;
+		};
+		success?: unknown;
+	};
+	error?: unknown;
+	details?: {
+		success?: unknown;
+	};
+}
+
 // ============================================
 // Constants
 // ============================================
 
 const TASK_DIR = ".pi/tasks";
 const CONFIG_FILE = join(TASK_DIR, "auto-executor-config.json");
+const RUNTIME_FILE = join(TASK_DIR, "auto-executor-runtime.json");
 const DEFAULT_RETRY_DELAY_MS = 10_000;
 const MAX_RETRY_DELAY_MS = 5 * 60 * 1000;
 
@@ -159,7 +205,7 @@ const KIND_ORDER: Record<RalphLoopTaskKind, number> = {
 
 let autoExecutorConfig: AutoExecutorConfig = {
 	enabled: true,
-	autoRun: false, // デフォルトは通知のみ
+	autoRun: true, // デフォルトは planner-led continuous execution
 	maxRetries: 2,
 };
 
@@ -170,6 +216,15 @@ type ToolExecutor = (
 	toolName: string,
 	params: Record<string, unknown>,
 ) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
+
+interface AutoDispatchTarget {
+	task: Task;
+	kind: RalphLoopTaskKind;
+	reason: string;
+	workpadId: string | null;
+	mode: "fresh" | "resume";
+	checkpoint: AutoExecutorCheckpoint | null;
+}
 
 // ============================================
 // Storage Functions
@@ -202,6 +257,71 @@ function saveConfig(): void {
 	writeFileSync(CONFIG_FILE, JSON.stringify(autoExecutorConfig, null, 2));
 }
 
+function loadRuntimeState(): AutoExecutorRuntimeState {
+	if (!existsSync(RUNTIME_FILE)) {
+		return { checkpoints: [] };
+	}
+	try {
+		const data = readFileSync(RUNTIME_FILE, "utf-8");
+		const parsed = JSON.parse(data) as Partial<AutoExecutorRuntimeState>;
+		return {
+			checkpoints: Array.isArray(parsed.checkpoints) ? parsed.checkpoints : [],
+		};
+	} catch {
+		return { checkpoints: [] };
+	}
+}
+
+function saveRuntimeState(runtime: AutoExecutorRuntimeState): void {
+	if (!existsSync(TASK_DIR)) {
+		mkdirSync(TASK_DIR, { recursive: true });
+	}
+	writeFileSync(RUNTIME_FILE, JSON.stringify(runtime, null, 2));
+}
+
+function upsertCheckpoint(
+	taskId: string,
+	update: Partial<AutoExecutorCheckpoint> & Pick<AutoExecutorCheckpoint, "title" | "kind" | "reason">,
+): AutoExecutorCheckpoint {
+	const runtime = loadRuntimeState();
+	const now = new Date().toISOString();
+	const existingIndex = runtime.checkpoints.findIndex((item) => item.taskId === taskId);
+	const existing = existingIndex >= 0 ? runtime.checkpoints[existingIndex] : null;
+	const next: AutoExecutorCheckpoint = {
+		taskId,
+		title: update.title,
+		description: update.description ?? existing?.description,
+		kind: update.kind ?? existing?.kind ?? "other",
+		reason: update.reason ?? existing?.reason ?? "durable auto executor state",
+		workpadId: update.workpadId ?? existing?.workpadId,
+		status: update.status ?? existing?.status ?? "claimed",
+		ownerInstanceId: update.ownerInstanceId ?? existing?.ownerInstanceId,
+		ownerPid: update.ownerPid ?? existing?.ownerPid,
+		attemptCount: update.attemptCount ?? existing?.attemptCount ?? 0,
+		resumeCount: update.resumeCount ?? existing?.resumeCount ?? 0,
+		createdAt: existing?.createdAt ?? now,
+		updatedAt: now,
+		lastError: update.lastError ?? existing?.lastError,
+	};
+
+	if (existingIndex >= 0) {
+		runtime.checkpoints[existingIndex] = next;
+	} else {
+		runtime.checkpoints.push(next);
+	}
+
+	saveRuntimeState(runtime);
+	return next;
+}
+
+function getCheckpoint(taskId: string): AutoExecutorCheckpoint | null {
+	return loadRuntimeState().checkpoints.find((item) => item.taskId === taskId) ?? null;
+}
+
+function isActiveCheckpointStatus(status: AutoExecutorCheckpointStatus): boolean {
+	return status === "claimed" || status === "dispatched" || status === "interrupted";
+}
+
 function startTaskWorkpad(cwd: string, task: Task): string | null {
   const workflow = loadWorkflowDocument(cwd);
   if (!workflow.exists) {
@@ -230,6 +350,26 @@ function startTaskWorkpad(cwd: string, task: Task): string | null {
   return record.metadata.id;
 }
 
+function reclaimTaskOwnership(taskId: string): Task | null {
+	const storage = loadStorage();
+	const taskIndex = storage.tasks.findIndex((task) => task.id === taskId);
+	if (taskIndex < 0) {
+		return null;
+	}
+
+	const task = storage.tasks[taskIndex];
+	task.status = "in_progress";
+	task.ownerInstanceId = getInstanceId();
+	task.claimedAt = new Date().toISOString();
+	task.updatedAt = new Date().toISOString();
+	saveStorage(storage);
+
+	autoExecutorConfig.currentTaskId = task.id;
+	saveConfig();
+
+	return task;
+}
+
 function getToolExecutor(ctx: unknown): ToolExecutor | undefined {
 	const anyCtx = ctx as {
 		callTool?: (
@@ -253,6 +393,170 @@ function getToolExecutor(ctx: unknown): ToolExecutor | undefined {
 	}
 
 	return undefined;
+}
+
+function buildPlannerWorkerExecutionContext(input: {
+	taskId: string;
+	kind: string;
+	reason: string;
+	workpadId: string | null;
+}): string {
+	return [
+		"## Continuous Executor Contract",
+		"",
+		"- この実行は mekann の既定 long-running mode です。",
+		"- 進行責任は root planner が持ち、個々の worker は割り当てタスクだけに集中します。",
+		"- worker 同士は直接調整しません。共有ロック前提の協調は禁止です。",
+		"- 必要な分解は planner が行い、worker は handoff を planner 側へ返します。",
+		"- 各反復は fresh context を前提にし、 durable state は task / workpad / workflow artifact に残します。",
+		"- 巨大な静的計画に固定せず、観測結果に応じて task DAG を更新して構いません。",
+		"- 小さく安全な変更だけで逃げず、担当タスクの完了責任を持って前に進めます。",
+		"",
+		"## Auto Execution Context",
+		"",
+		`- taskId: ${input.taskId}`,
+		`- kind: ${input.kind}`,
+		`- reason: ${input.reason}`,
+		input.workpadId ? `- workpadId: ${input.workpadId}` : null,
+		"- まず関連ファイルを読んで、最小の working slice を実装すること。",
+		"- planner は research / implement / validate / review を必要最小限で fan-out してよい。",
+		"- worker は他ワーカーの担当や大局を気にせず、自分のタスクだけ終わらせること。",
+		"- 完了後は task_complete でこの taskId を完了すること。",
+	].filter(Boolean).join("\n");
+}
+
+function buildDurableResumeContext(input: {
+	cwd: string;
+	workpadId: string | null;
+	checkpoint: AutoExecutorCheckpoint | null;
+}): string {
+	const replay = createLongRunningReplay(input.cwd);
+	const recentEvents = replay.recentEvents
+		.slice(-5)
+		.map((event) => `- ${event.type}: ${event.summary}`);
+	const warnings = replay.warnings.slice(0, 5).map((warning) => `- ${warning}`);
+
+	return [
+		"## Durability Resume Contract",
+		"",
+		"- この実行は crash / timeout / interrupt 後の resume です。",
+		"- 途中まで進んだ副作用をやみくもに再実行しないこと。",
+		"- 最初に workpad / journal / git diff / verification artifact を読んで、現在地を再構成すること。",
+		"- すでに終わっている手順は繰り返さず、未完了の最小 slice だけを再開すること。",
+		input.workpadId ? `- durable workpadId: ${input.workpadId}` : "- durable workpadId: unavailable",
+		input.checkpoint ? `- previous checkpoint status: ${input.checkpoint.status}` : null,
+		input.checkpoint?.lastError ? `- previous interruption: ${input.checkpoint.lastError}` : null,
+		`- long-running next action: ${replay.nextAction}`,
+		`- long-running resume reason: ${replay.resumeReason}`,
+		warnings.length > 0 ? "### Recovery Warnings" : null,
+		...warnings,
+		recentEvents.length > 0 ? "### Recent Durable Events" : null,
+		...recentEvents,
+	].filter(Boolean).join("\n");
+}
+
+function hasBlockingForeignInProgressTask(storage: TaskStorage): boolean {
+	const instanceId = getInstanceId();
+
+	return storage.tasks.some((task) => {
+		if (task.status !== "in_progress") {
+			return false;
+		}
+
+		if (!task.ownerInstanceId) {
+			return false;
+		}
+
+		if (task.ownerInstanceId === instanceId) {
+			return false;
+		}
+
+		const pid = extractPidFromInstanceId(task.ownerInstanceId);
+		if (!pid) {
+			return false;
+		}
+
+		return isProcessAlive(pid);
+	});
+}
+
+function resolveNextAutoDispatch(storage: TaskStorage, cwd: string = process.cwd()): {
+	target: AutoDispatchTarget | null;
+	blockedReason: string | null;
+} {
+	if (hasBlockingForeignInProgressTask(storage)) {
+		return {
+			target: null,
+			blockedReason: "another active in_progress task is owned by a live instance",
+		};
+	}
+
+	const runtime = loadRuntimeState();
+	const resumableTasks = storage.tasks
+		.filter((task) => task.status === "in_progress")
+		.map((task) => ({
+			task,
+			checkpoint: runtime.checkpoints.find((item) => item.taskId === task.id) ?? null,
+		}))
+		.filter(({ task, checkpoint }) => {
+			if (!checkpoint || !isActiveCheckpointStatus(checkpoint.status)) {
+				return false;
+			}
+			if (!task.ownerInstanceId) {
+				return true;
+			}
+			if (task.ownerInstanceId === getInstanceId()) {
+				return true;
+			}
+			const pid = extractPidFromInstanceId(task.ownerInstanceId);
+			return Boolean(pid && !isProcessAlive(pid));
+		})
+		.sort((left, right) => compareLoopTasks(left.task, right.task));
+
+	const resumable = resumableTasks[0];
+	if (resumable) {
+		return {
+			target: {
+				task: resumable.task,
+				kind: resumable.checkpoint?.kind ?? classifyRalphLoopTaskKind(resumable.task),
+				reason: "resume from durable checkpoint after interrupted auto-run",
+				workpadId: resumable.checkpoint?.workpadId
+					?? getSymphonyIssueState(cwd, resumable.task.id)?.workpadId
+					?? null,
+				mode: "resume",
+				checkpoint: resumable.checkpoint,
+			},
+			blockedReason: null,
+		};
+	}
+
+	const selection = selectNextLoopTask(storage);
+	return {
+		target: selection
+			? {
+				task: selection.task,
+				kind: selection.kind,
+				reason: selection.reason,
+				workpadId: getSymphonyIssueState(cwd, selection.task.id)?.workpadId ?? null,
+				mode: "fresh",
+				checkpoint: getCheckpoint(selection.task.id),
+			}
+			: null,
+		blockedReason: null,
+	};
+}
+
+function reconcileDurableAutoExecutorState(storage: TaskStorage): void {
+	const currentTaskId = autoExecutorConfig.currentTaskId;
+	if (!currentTaskId) {
+		return;
+	}
+
+	const task = storage.tasks.find((item) => item.id === currentTaskId);
+	if (!task || task.status !== "in_progress" || task.ownerInstanceId !== getInstanceId()) {
+		delete autoExecutorConfig.currentTaskId;
+		saveConfig();
+	}
 }
 
 function releaseClaimedTask(taskId: string): Task | null {
@@ -370,6 +674,26 @@ function summarizeEvidenceLines(text: string | undefined): string[] {
 		.filter(Boolean)
 		.filter((line) => line !== "- pending" && line !== "- created")
 		.slice(0, 20);
+}
+
+function extractWorkspaceVerifyPassed(event: WorkspaceVerifyToolEvent): boolean {
+	if (event.isError) {
+		return false;
+	}
+
+	const candidates = [
+		event.details?.success,
+		event.result?.details?.success,
+		event.result?.success,
+	];
+
+	for (const candidate of candidates) {
+		if (typeof candidate === "boolean") {
+			return candidate;
+		}
+	}
+
+	return !event.isError;
 }
 
 function collectVerifiedCommands(
@@ -642,6 +966,8 @@ function handleRuntimeSessionOutcome(event: {
 	}
 
 	const evidence = collectTaskEvidence(process.cwd(), session.taskId);
+	const runtimeTask = loadStorage().tasks.find((task) => task.id === session.taskId);
+	const checkpoint = getCheckpoint(session.taskId);
 
 	if (session.status === "completed") {
 		const gate = evaluateCompletionGate(process.cwd(), session.taskId, evidence);
@@ -657,6 +983,19 @@ function handleRuntimeSessionOutcome(event: {
 			const retryAttempt = (issueState?.retryAttempt ?? 0) + 1;
 			if (retryAttempt <= autoExecutorConfig.maxRetries) {
 				const { delayMs } = scheduleTaskRetry(session.taskId, gateMessage);
+				upsertCheckpoint(session.taskId, {
+					title: runtimeTask?.title ?? session.taskId,
+					description: runtimeTask?.description,
+					kind: checkpoint?.kind ?? "other",
+					reason: checkpoint?.reason ?? "completion gate blocked",
+					workpadId: checkpoint?.workpadId,
+					status: "interrupted",
+					ownerInstanceId: getInstanceId(),
+					ownerPid: process.pid,
+					attemptCount: checkpoint?.attemptCount ?? 1,
+					resumeCount: checkpoint?.resumeCount ?? 0,
+					lastError: gateMessage,
+				});
 				syncTaskProofState(session.taskId, evidence);
 				syncTaskOutcomeToWorkpad(
 					process.cwd(),
@@ -668,6 +1007,19 @@ function handleRuntimeSessionOutcome(event: {
 			}
 
 			finalizeTaskStatus(session.taskId, "failed");
+			upsertCheckpoint(session.taskId, {
+				title: runtimeTask?.title ?? session.taskId,
+				description: runtimeTask?.description,
+				kind: checkpoint?.kind ?? "other",
+				reason: checkpoint?.reason ?? "completion gate blocked",
+				workpadId: checkpoint?.workpadId,
+				status: "failed",
+				ownerInstanceId: getInstanceId(),
+				ownerPid: process.pid,
+				attemptCount: checkpoint?.attemptCount ?? 1,
+				resumeCount: checkpoint?.resumeCount ?? 0,
+				lastError: gateMessage,
+			});
 			syncTaskProofState(session.taskId, evidence);
 			syncTaskOutcomeToWorkpad(
 				process.cwd(),
@@ -680,6 +1032,19 @@ function handleRuntimeSessionOutcome(event: {
 
 		updateTaskCompletionGate(session.taskId, "clear", "completion gate passed", []);
 		finalizeTaskStatus(session.taskId, "completed");
+		upsertCheckpoint(session.taskId, {
+			title: runtimeTask?.title ?? session.taskId,
+			description: runtimeTask?.description,
+			kind: checkpoint?.kind ?? "other",
+			reason: checkpoint?.reason ?? "runtime session completed",
+			workpadId: checkpoint?.workpadId,
+			status: "completed",
+			ownerInstanceId: getInstanceId(),
+			ownerPid: process.pid,
+			attemptCount: checkpoint?.attemptCount ?? 1,
+			resumeCount: checkpoint?.resumeCount ?? 0,
+			lastError: undefined,
+		});
 		syncTaskProofState(session.taskId, evidence);
 		syncTaskOutcomeToWorkpad(process.cwd(), session.taskId, "completed", session.message);
 		return;
@@ -690,6 +1055,19 @@ function handleRuntimeSessionOutcome(event: {
 		const retryAttempt = (issueState?.retryAttempt ?? 0) + 1;
 		if (retryAttempt <= autoExecutorConfig.maxRetries) {
 			const { delayMs } = scheduleTaskRetry(session.taskId, session.message);
+			upsertCheckpoint(session.taskId, {
+				title: runtimeTask?.title ?? session.taskId,
+				description: runtimeTask?.description,
+				kind: checkpoint?.kind ?? "other",
+				reason: checkpoint?.reason ?? "runtime session failed",
+				workpadId: checkpoint?.workpadId,
+				status: "interrupted",
+				ownerInstanceId: getInstanceId(),
+				ownerPid: process.pid,
+				attemptCount: checkpoint?.attemptCount ?? 1,
+				resumeCount: checkpoint?.resumeCount ?? 0,
+				lastError: session.message,
+			});
 			syncTaskProofState(session.taskId, evidence);
 			syncTaskOutcomeToWorkpad(
 				process.cwd(),
@@ -701,6 +1079,19 @@ function handleRuntimeSessionOutcome(event: {
 		}
 
 		finalizeTaskStatus(session.taskId, "failed");
+		upsertCheckpoint(session.taskId, {
+			title: runtimeTask?.title ?? session.taskId,
+			description: runtimeTask?.description,
+			kind: checkpoint?.kind ?? "other",
+			reason: checkpoint?.reason ?? "runtime session failed",
+			workpadId: checkpoint?.workpadId,
+			status: "failed",
+			ownerInstanceId: getInstanceId(),
+			ownerPid: process.pid,
+			attemptCount: checkpoint?.attemptCount ?? 1,
+			resumeCount: checkpoint?.resumeCount ?? 0,
+			lastError: session.message,
+		});
 		syncTaskProofState(session.taskId, evidence);
 		syncTaskOutcomeToWorkpad(
 			process.cwd(),
@@ -722,21 +1113,65 @@ async function autoRunNextTask(ctx: {
 		toolName: string;
 		params: Record<string, unknown>;
 	}) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
-}): Promise<void> {
+}, target?: AutoDispatchTarget): Promise<void> {
 	const executeTool = getToolExecutor(ctx);
 	if (!executeTool) {
 		ctx.ui?.notify("自動実行を開始できません。tool executor が見つかりません。", "warning");
 		return;
 	}
 
-	const nextTaskResult = await executeTool("task_run_next", {});
-	const details = (nextTaskResult.details ?? {}) as Record<string, unknown>;
-	const taskId = typeof details.taskId === "string" ? details.taskId : null;
-	const title = typeof details.title === "string" ? details.title : null;
-	const description = typeof details.description === "string" ? details.description : "";
-	const workpadId = typeof details.workpadId === "string" ? details.workpadId : null;
-	const kind = typeof details.kind === "string" ? details.kind : "other";
-	const reason = typeof details.reason === "string" ? details.reason : "auto dispatch from idle loop";
+	let taskId: string | null = null;
+	let title: string | null = null;
+	let description = "";
+	let workpadId: string | null = null;
+	let kind: RalphLoopTaskKind = "other";
+	let reason = "auto dispatch from idle loop";
+	let checkpoint = target?.checkpoint ?? null;
+
+	if (target?.mode === "resume") {
+		const reclaimed = reclaimTaskOwnership(target.task.id);
+		if (!reclaimed) {
+			ctx.ui?.notify("resume 対象タスクの所有権復旧に失敗しました。", "warning");
+			return;
+		}
+
+		taskId = reclaimed.id;
+		title = reclaimed.title;
+		description = reclaimed.description ?? "";
+		workpadId = target.workpadId;
+		kind = target.kind;
+		reason = target.reason;
+		checkpoint = upsertCheckpoint(reclaimed.id, {
+			title: reclaimed.title,
+			description: reclaimed.description,
+			kind: target.kind,
+			reason: target.reason,
+			workpadId: workpadId ?? undefined,
+			status: "interrupted",
+			ownerInstanceId: getInstanceId(),
+			ownerPid: process.pid,
+			attemptCount: (checkpoint?.attemptCount ?? 0) + 1,
+			resumeCount: (checkpoint?.resumeCount ?? 0) + 1,
+			lastError: checkpoint?.lastError,
+		});
+		claimSymphonyIssue({
+			cwd: ctx.cwd,
+			issueId: reclaimed.id,
+			title: reclaimed.title,
+			source: "task-auto-executor",
+			reason: "durable resume claimed existing in_progress task",
+			workpadId: workpadId ?? undefined,
+		});
+	} else {
+		const nextTaskResult = await executeTool("task_run_next", {});
+		const details = (nextTaskResult.details ?? {}) as Record<string, unknown>;
+		taskId = typeof details.taskId === "string" ? details.taskId : null;
+		title = typeof details.title === "string" ? details.title : null;
+		description = typeof details.description === "string" ? details.description : "";
+		workpadId = typeof details.workpadId === "string" ? details.workpadId : null;
+		kind = typeof details.kind === "string" ? details.kind as RalphLoopTaskKind : "other";
+		reason = typeof details.reason === "string" ? details.reason : "auto dispatch from idle loop";
+	}
 
 	if (!taskId || !title) {
 		ctx.ui?.notify("次タスクの自動取得に失敗しました。", "warning");
@@ -745,21 +1180,44 @@ async function autoRunNextTask(ctx: {
 
 	const taskBody = description ? `${title}\n\n詳細: ${description}` : title;
 	const extraContext = [
-		"## Auto Execution Context",
-		"",
-		`- taskId: ${taskId}`,
-		`- kind: ${kind}`,
-		`- reason: ${reason}`,
-		workpadId ? `- workpadId: ${workpadId}` : null,
-		"- まず関連ファイルを読んで、最小の working slice を実装すること。",
-		"- 完了後は task_complete でこの taskId を完了すること。",
-	].filter(Boolean).join("\n");
+		buildPlannerWorkerExecutionContext({
+			taskId,
+			kind,
+			reason,
+			workpadId,
+		}),
+		target?.mode === "resume"
+			? buildDurableResumeContext({
+				cwd: ctx.cwd,
+				workpadId,
+				checkpoint,
+			})
+			: null,
+	].filter(Boolean).join("\n\n");
+
+	checkpoint = upsertCheckpoint(taskId, {
+		title,
+		description,
+		kind,
+		reason,
+		workpadId: workpadId ?? undefined,
+		status: "dispatched",
+		ownerInstanceId: getInstanceId(),
+		ownerPid: process.pid,
+		attemptCount: target?.mode === "resume"
+			? (checkpoint?.attemptCount ?? 1)
+			: (checkpoint?.attemptCount ?? 0) + 1,
+		resumeCount: checkpoint?.resumeCount ?? 0,
+		lastError: undefined,
+	});
 
 	if (workpadId) {
 		updateWorkpad(ctx.cwd, {
 			id: workpadId,
 			section: "progress",
-			content: "- auto-run dispatch started via task_auto_executor",
+			content: target?.mode === "resume"
+				? "- durable auto-run resume started via task_auto_executor"
+				: "- auto-run dispatch started via task_auto_executor",
 			mode: "append",
 		});
 	}
@@ -774,6 +1232,19 @@ async function autoRunNextTask(ctx: {
 		ctx.ui?.notify(`自動実行を開始しました: ${title}`, "info");
 	} catch (error) {
 		const restoredTask = releaseClaimedTask(taskId);
+		upsertCheckpoint(taskId, {
+			title: restoredTask?.title ?? title,
+			description: restoredTask?.description ?? description,
+			kind,
+			reason,
+			workpadId: workpadId ?? undefined,
+			status: "interrupted",
+			ownerInstanceId: getInstanceId(),
+			ownerPid: process.pid,
+			attemptCount: checkpoint?.attemptCount ?? 1,
+			resumeCount: checkpoint?.resumeCount ?? 0,
+			lastError: error instanceof Error ? error.message : String(error),
+		});
 		releaseSymphonyIssue({
 			cwd: ctx.cwd,
 			issueId: taskId,
@@ -960,6 +1431,7 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 	isInitialized = true;
 
 	loadConfig();
+	reconcileDurableAutoExecutorState(loadStorage());
 	if (!sessionEventUnsubscribe) {
 		sessionEventUnsubscribe = onSessionEvent(handleRuntimeSessionOutcome);
 	}
@@ -994,6 +1466,19 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 			autoExecutorConfig.currentTaskId = nextTask.id;
 			saveConfig();
 			const workpadId = startTaskWorkpad(ctx.cwd, nextTask);
+			upsertCheckpoint(nextTask.id, {
+				title: nextTask.title,
+				description: nextTask.description,
+				kind: selection?.kind ?? classifyRalphLoopTaskKind(nextTask),
+				reason: selection?.reason ?? "claimed from task_run_next",
+				workpadId: workpadId ?? undefined,
+				status: "claimed",
+				ownerInstanceId: instanceId,
+				ownerPid: process.pid,
+				attemptCount: 0,
+				resumeCount: 0,
+				lastError: undefined,
+			});
 			claimSymphonyIssue({
 				cwd: ctx.cwd,
 				issueId: nextTask.id,
@@ -1141,12 +1626,12 @@ ${taskDescription}
 			return {
 				content: [{
 					type: "text",
-					text: `## 自動タスク実行設定
+			text: `## 自動タスク実行設定
 
 - **有効**: ${previousEnabled ? "有効" : "無効"} → ${autoExecutorConfig.enabled ? "有効" : "無効"}
 - **自動実行**: ${previousAutoRun ? "有効" : "無効"} → ${autoExecutorConfig.autoRun ? "有効" : "無効"}
 
-※ 自動実行が無効の場合、アイドル時に次のタスクを通知のみ行います。`,
+※ 自動実行が有効な場合、planner-led DAG 実行を自動で開始します。`,
 				}],
 				details: {
 					enabled: autoExecutorConfig.enabled,
@@ -1193,11 +1678,17 @@ ${taskDescription}
 		}
 
 		const storage = loadStorage();
-		const selection = selectNextLoopTask(storage);
-		const nextTask = selection?.task ?? null;
+		const { target, blockedReason } = resolveNextAutoDispatch(storage, ctx.cwd);
+		const nextTask = target?.task ?? null;
 
 		if (!nextTask) {
 			ctx.ui.setStatus("auto-executor", undefined);
+			if (blockedReason) {
+				ctx.ui.setStatus(
+					"auto-executor",
+					ctx.ui.theme.fg("warning", "他インスタンスの実行中タスクを優先")
+				);
+			}
 			return;
 		}
 
@@ -1214,13 +1705,13 @@ ${taskDescription}
 		);
 
 		if (autoExecutorConfig.autoRun) {
-			await autoRunNextTask(ctx as never);
+			await autoRunNextTask(ctx as never, target ?? undefined);
 			return;
 		}
 
 		// Notify about the next task
 		ctx.ui.notify(
-			`[アイドル] 次のタスク: ${nextTask.title} (${nextTask.priority}, ${selection?.kind ?? "other"})\n${selection?.reason ?? ""}\n「次のタスクを実行して」と言うと実行します。`,
+			`[アイドル] 次のタスク: ${nextTask.title} (${nextTask.priority}, ${target?.kind ?? "other"})\n${target?.reason ?? ""}\n「次のタスクを実行して」と言うと実行します。`,
 			"info"
 		);
 	});
@@ -1236,12 +1727,7 @@ ${taskDescription}
 	});
 
 	pi.on("tool_result", async (event, ctx) => {
-		const anyEvent = event as {
-			toolName?: string;
-			isError?: boolean;
-			result?: unknown;
-			error?: unknown;
-		};
+		const anyEvent = event as WorkspaceVerifyToolEvent;
 		if (anyEvent.toolName !== "workspace_verify") {
 			return;
 		}
@@ -1251,15 +1737,15 @@ ${taskDescription}
 			return;
 		}
 
-		const message = typeof (anyEvent.result as { summary?: unknown } | undefined)?.summary === "string"
-			? String((anyEvent.result as { summary?: string }).summary)
+		const message = typeof anyEvent.result?.summary === "string"
+			? String(anyEvent.result.summary)
 			: typeof anyEvent.error === "string"
 				? anyEvent.error
 				: anyEvent.isError
 					? "workspace verification failed"
 					: "workspace verification passed";
 
-		const status = anyEvent.isError ? "failed" : "passed";
+		const status = extractWorkspaceVerifyPassed(anyEvent) ? "passed" : "failed";
 		updateTaskWorkspaceVerification(taskId, status, message);
 		const issueState = getSymphonyIssueState(ctx.cwd, taskId);
 		if (issueState?.workpadId) {
@@ -1275,27 +1761,53 @@ ${taskDescription}
 	// Event: Session start
 	pi.on("session_start", async (_event, ctx) => {
 		loadConfig();
-
-		// guard: ctx or ctx.ui may be undefined in some contexts
-		if (!ctx?.ui) {
-			return;
-		}
-
 		const storage = loadStorage();
-		const pendingCount = storage.tasks.filter(t => t.status === "todo").length;
+		reconcileDurableAutoExecutorState(storage);
+		const { target, blockedReason } = resolveNextAutoDispatch(storage, ctx.cwd);
+		const nextTask = target?.task ?? null;
+		const runnableCount = target ? 1 : 0;
+		const todoCount = storage.tasks.filter(t => t.status === "todo").length;
+		const reclaimableInProgressCount = storage.tasks.filter((task) => {
+			if (task.status !== "in_progress") {
+				return false;
+			}
+			if (!task.ownerInstanceId) {
+				return true;
+			}
+			if (task.ownerInstanceId === getInstanceId()) {
+				return true;
+			}
+			const pid = extractPidFromInstanceId(task.ownerInstanceId);
+			return Boolean(pid && !isProcessAlive(pid));
+		}).length;
 
-		if (pendingCount > 0) {
-			const nextTask = getNextPendingTask(storage);
+		if (ctx?.ui && (todoCount > 0 || reclaimableInProgressCount > 0 || blockedReason)) {
 			ctx.ui.notify(
-				`[自動実行] ${pendingCount}件のタスクが待機中。${autoExecutorConfig.enabled ? "アイドル時に通知します。" : ""}`,
+				blockedReason
+					? `[自動実行] 他インスタンスの実行中タスクを優先するため、新規自動起動は保留します。`
+					: `[自動実行] todo=${todoCount}件 / reclaimable=${reclaimableInProgressCount}件。${autoExecutorConfig.enabled ? (autoExecutorConfig.autoRun ? "planner-led 自動実行を継続します。" : "アイドル時に通知します。") : ""}`,
 				"info"
 			);
 			if (nextTask) {
 				ctx.ui.setStatus(
 					"auto-executor",
-					ctx.ui.theme.fg("warning", `待機中: ${pendingCount}タスク`)
+					ctx.ui.theme.fg("warning", `待機中: ${nextTask.title.slice(0, 25)}...`)
+				);
+			} else if (blockedReason) {
+				ctx.ui.setStatus(
+					"auto-executor",
+					ctx.ui.theme.fg("warning", "他インスタンスの実行中タスクを優先")
 				);
 			}
+		}
+
+		if (
+			autoExecutorConfig.enabled
+			&& autoExecutorConfig.autoRun
+			&& !autoExecutorConfig.currentTaskId
+			&& runnableCount > 0
+		) {
+			await autoRunNextTask(ctx as never, target ?? undefined);
 		}
 	});
 
@@ -1306,7 +1818,7 @@ ${taskDescription}
 			if (args === "status") {
 				const status = getAutoExecutorStatus();
 				ctx.ui.notify(
-					`自動実行: ${status.enabled ? "有効" : "無効"} | 自動Run: ${status.autoRun ? "有効" : "無効"} | 待機中: ${status.pendingCount}件`,
+					`自動実行: ${status.enabled ? "有効" : "無効"} | planner-led autoRun: ${status.autoRun ? "有効" : "無効"} | 待機中: ${status.pendingCount}件`,
 					"info"
 				);
 			} else if (args === "on" || args === "enable") {
@@ -1334,6 +1846,25 @@ ${taskDescription}
 
 	// セッション終了時にリスナー重複登録防止フラグをリセット
 	pi.on("session_shutdown", async () => {
+		if (autoExecutorConfig.currentTaskId) {
+			const task = loadStorage().tasks.find((item) => item.id === autoExecutorConfig.currentTaskId);
+			if (task && task.status === "in_progress") {
+				const checkpoint = getCheckpoint(task.id);
+				upsertCheckpoint(task.id, {
+					title: task.title,
+					description: task.description,
+					kind: checkpoint?.kind ?? classifyRalphLoopTaskKind(task),
+					reason: checkpoint?.reason ?? "session shutdown interrupted auto-run",
+					workpadId: checkpoint?.workpadId,
+					status: "interrupted",
+					ownerInstanceId: task.ownerInstanceId,
+					ownerPid: checkpoint?.ownerPid ?? process.pid,
+					attemptCount: checkpoint?.attemptCount ?? 1,
+					resumeCount: checkpoint?.resumeCount ?? 0,
+					lastError: checkpoint?.lastError ?? "session shutdown before task completion",
+				});
+			}
+		}
 		sessionEventUnsubscribe?.();
 		sessionEventUnsubscribe = null;
 		isInitialized = false;

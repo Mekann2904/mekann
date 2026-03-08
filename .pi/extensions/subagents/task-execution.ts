@@ -46,7 +46,6 @@ import {
   createRunId,
 } from "../../lib/agent/agent-utils.js";
 import {
-  type ThinkingLevel,
   type RunOutcomeCode,
   type RunOutcomeSignal,
 } from "../../lib/agent/agent-types.js";
@@ -72,11 +71,9 @@ import {
 } from "../../lib/storage/pattern-extraction.js";
 import {
   type SchemaViolation,
-  type RegenerationConfig,
   SCHEMAS,
   validateSubagentOutputWithSchema,
   generateWithSchemaEnforcement,
-  buildRegenerationPrompt,
 } from "../../lib/output-schema.js";
 import {
   applyOutputTemplate,
@@ -113,8 +110,8 @@ import {
   type TurnExecutionSnapshot,
 } from "../../lib/agent/turn-context-snapshot.js";
 import { resolveModelPromptAdapter } from "../../lib/agent/model-adapters.js";
-import { getSubagentExecutionRules, getExecutionRulesForProfile, getLightweightExecutionRules } from "../../lib/execution-rules";
-import { getProfileForTask, type PerformanceProfile } from "../../lib/performance-profiles";
+import { getExecutionRulesForProfile } from "../../lib/execution-rules";
+import { getProfileForTask } from "../../lib/performance-profiles";
 import {
   isNetworkErrorRetryable,
   retryWithBackoff,
@@ -136,7 +133,7 @@ import {
 } from "../../lib/agent/agent-common.js";
 import { runPiPrintMode as sharedRunPiPrintMode, type PrintCommandResult } from "../shared/pi-print-executor";
 
-import type { SubagentDefinition, SubagentRunRecord, SubagentPaths } from "./storage";
+import type { SubagentDefinition, SubagentRunRecord } from "./storage";
 import { ensurePaths } from "./storage";
 import type { TurnExecutionContext } from "../../lib/agent/turn-context.js";
 
@@ -779,7 +776,7 @@ export function buildSubagentPromptPackage(input: {
   const allSkills = resolveEffectiveSkills(input.agent, input.parentSkills) ?? [];
   const effectiveSkills = filterSkillsByRelevance(input.task, allSkills);
   const turnContext = input.turnContext;
-  const turnDecisions = turnContext
+  const _turnDecisions = turnContext
     ? deriveTurnExecutionDecisions(turnContext, {
         taskKind: isInternal ? "research" : "implementation",
         taskText: input.task,
@@ -827,14 +824,15 @@ export function buildSubagentPromptPackage(input: {
         layer: "startup-context",
         content: formatTurnExecutionContextBlock(turnContext),
       });
-      runtimeNotifications.push(
-        createRuntimeNotification(
-          "turn-context",
-          buildTurnExecutionRuntimeSection(turnContext),
-          "info",
-          1,
-        )!,
+      const notification = createRuntimeNotification(
+        "turn-context",
+        buildTurnExecutionRuntimeSection(turnContext),
+        "info",
+        1,
       );
+      if (notification) {
+        runtimeNotifications.push(notification);
+      }
     }
 
     if (contextHandoff.length > 0) {
@@ -1384,7 +1382,7 @@ export async function runSubagentTask(input: {
             }
           );
           if (verificationResult.triggered && verificationResult.result) {
-            // eslint-disable-next-line no-console
+            // Console logging is intentional for debugging purposes
             console.log(`[RalphWiggum] ${input.agent.id}: ${verificationResult.result.issues.length} issues, verdict=${verificationResult.result.verdict}`);
           }
         } catch {

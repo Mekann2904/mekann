@@ -44,7 +44,7 @@ const REQUIRED_RUNTIME_EXTENSIONS = [
   "./.pi/extensions/autonomy-policy.ts",
   "./.pi/extensions/long-running-supervisor.ts",
   "./.pi/extensions/workspace-verification.ts",
-  "./.pi/extensions/ralph-loop-guard.ts",
+  "./.pi/extensions/ralph-loop.ts",
   "./.pi/extensions/task-auto-executor.ts",
   "./.pi/extensions/workflow-workpad.ts",
 ] as const;
@@ -171,9 +171,13 @@ drop-in の外部仕様ではなく、mekann が自分のハーネスを回す�
 ## Loop
 
 1. search before change
-2. quick and dirty prototype first
-3. local verification before closeout
-4. proof artifact と next step を残す
+2. planner owns direction, workers own completion
+3. workers do not coordinate with each other directly
+4. quick and dirty prototype first
+5. local verification before closeout
+6. proof artifact と next step を残す
+
+各反復は fresh context を前提にし、継続状態は workpad / workflow artifacts / git に残す。
 
 ## Verify
 

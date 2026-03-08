@@ -29,8 +29,8 @@
 // Why: Enables proactive task delegation to focused helper agents as a default workflow.
 // Related: .pi/extensions/agent-teams.ts, .pi/extensions/question.ts, README.md
 
-import { readdirSync, unlinkSync, writeFileSync, existsSync, readFileSync, mkdirSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { writeFileSync, existsSync, readFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
 import { Type } from "@mariozechner/pi-ai";
 import {
@@ -39,81 +39,33 @@ import {
 } from "../lib/prompt-templates.js";
 import { integrateWithSubagents } from "./tool-compiler.js";
 import type { ToolCall } from "../lib/tool-compiler-types.js";
-import { getMarkdownTheme, isToolCallEventType, type ExtensionAPI, type ToolCallEvent } from "@mariozechner/pi-coding-agent";
-import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
-
-
-import { ensureDir } from "../lib/core/fs-utils.js";
+import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
-  formatDurationMs,
-  formatBytes,
-  formatClockTime,
-} from "../lib/core/format-utils.js";
-import {
-  getLiveStatusGlyph,
-  isEnterInput,
-  finalizeLiveLines,
-  type LiveStatus,
-} from "../lib/agent/live-view-utils.js";
-import {
-  toTailLines,
-  looksLikeMarkdown,
-  appendTail,
-  countOccurrences,
-  estimateLineCount,
-  renderPreviewWithMarkdown,
-  LIVE_TAIL_LIMIT,
-  LIVE_MARKDOWN_PREVIEW_MIN_WIDTH,
-} from "../lib/tui/tui-utils.js";
-import {
-  extractStatusCodeFromMessage,
   classifyPressureError,
-  isCancelledErrorMessage,
-  isTimeoutErrorMessage,
   toErrorMessage,
 } from "../lib/core/error-utils.js";
 import { setupGlobalErrorHandlers } from "../lib/global-error-handler.js";
-import { createRunId, computeLiveWindow } from "../lib/agent/agent-utils.js";
+
 import {
-  ThinkingLevel,
   RunOutcomeCode,
   RunOutcomeSignal,
   DEFAULT_AGENT_TIMEOUT_MS,
 } from "../lib/agent/agent-types.js";
-import { computeModelTimeoutMs } from "../lib/agent/model-timeouts.js";
-import { hasNonEmptyResultSection, validateSubagentOutput } from "../lib/agent/output-validation.js";
-import { trimForError, buildRateLimitKey, createRetrySchema, toConcurrencyLimit } from "../lib/agent/runtime-utils.js";
+
+import { createRetrySchema, toConcurrencyLimit } from "../lib/agent/runtime-utils.js";
 import { resolveEffectiveTimeoutMs } from "../lib/agent/runtime-error-builders.js";
 import {
   createProviderIsolatedPenaltyController,
-  extractProviderFromModel,
-  type ProviderIsolatedPenaltyController,
 } from "../lib/agent/adaptive-penalty.js";
 import {
   STABLE_RUNTIME_PROFILE,
   ADAPTIVE_PARALLEL_MAX_PENALTY as SHARED_ADAPTIVE_PARALLEL_MAX_PENALTY,
   ADAPTIVE_PARALLEL_DECAY_MS as SHARED_ADAPTIVE_PARALLEL_DECAY_MS,
-  STABLE_MAX_RETRIES,
-  STABLE_INITIAL_DELAY_MS,
-  STABLE_MAX_DELAY_MS,
-  STABLE_MAX_RATE_LIMIT_RETRIES,
-  STABLE_MAX_RATE_LIMIT_WAIT_MS,
-  SUBAGENT_CONFIG,
-  buildFailureSummary as sharedBuildFailureSummary,
 } from "../lib/agent/agent-common.js";
-import {
-  isRetryableSubagentError as sharedIsRetryableSubagentError,
-  resolveSubagentFailureOutcome as sharedResolveSubagentFailureOutcome,
-  trimErrorMessage as sharedTrimErrorMessage,
-  buildDiagnosticContext as sharedBuildDiagnosticContext,
-} from "../lib/agent/agent-errors.js";
 import { getAgentSpecializationWeight } from "../lib/dag-weight-calculator.js";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
 import { runWithConcurrencyLimit } from "../lib/concurrency";
-import {
-  getSubagentExecutionRules,
-} from "../lib/execution-rules";
 import {
   getInstanceId,
   loadState,
@@ -124,10 +76,7 @@ import {
 	loadTaskStorage as loadSharedTaskStorage,
 	saveTaskStorage as saveSharedTaskStorage,
 } from "../lib/storage/task-plan-store.js";
-import {
-	isPlanModeActive,
-	PLAN_MODE_WARNING,
-} from "../lib/plan-mode-shared";
+
 import {
   acquireRuntimeDispatchPermit,
   formatRuntimeStatusLine,
@@ -140,21 +89,14 @@ import {
 
 // Import shared plan mode utilities
 import {
-  getRateLimitGateSnapshot,
-  isNetworkErrorRetryable,
-  retryWithBackoff,
   type RetryWithBackoffOverrides,
 } from "../lib/retry-with-backoff.js";
 import {
-  SemanticCache,
   getSharedSemanticCache,
-  type SemanticCacheConfig,
-  type CacheEntry,
 } from "../lib/semantic-cache.js";
 
 import {
   runPiPrintMode as sharedRunPiPrintMode,
-  type PrintExecutorOptions,
 } from "./shared/pi-print-executor";
 import {
   buildRuntimeLimitError,
@@ -165,7 +107,6 @@ import {
 // AdaptOrch topology-aware orchestration
 import { 
   executeWithAdaptOrch,
-  type AdaptOrchOptions 
 } from "../lib/dag/adaptorch-adapter.js";
 
 function extractDagTaskOutput(result: unknown): string {
@@ -192,15 +133,13 @@ function persistDagArtifactFile(
   writeFileSync(normalizedPath, `${normalizedContent}\n`, "utf-8");
 }
 
-import { SchemaValidationError } from "../lib/core/errors.js";
 import {
   generateSessionId,
   addSession,
   updateSession,
-  removeSession,
   type RuntimeSession,
 } from "../lib/runtime-sessions.js";
-import { getCostEstimator, type ExecutionHistoryEntry } from "../lib/cost-estimator";
+import { getCostEstimator } from "../lib/cost-estimator";
 import { detectTier, getConcurrencyLimit } from "../lib/provider-limits";
 import {
   createBoundedOptionalNumberSchema,
@@ -295,7 +234,7 @@ function isToolCompilerEnabled(): boolean {
  * @param tools - ツール呼び出し配列
  * @returns 融合されたツール定義（融合が有益な場合）、または空配列
  */
-function fuseToolsIfEnabled(
+function _fuseToolsIfEnabled(
   tools: Array<{ name: string; arguments: Record<string, unknown> }>
 ): Array<{ name: string; description: string; parameters: Record<string, unknown> }> {
   if (!isToolCompilerEnabled() || tools.length < 2) {
@@ -330,13 +269,6 @@ import {
   type SubagentDefinition,
   type SubagentRunRecord,
   type SubagentStorage,
-  type SubagentPaths,
-  type AgentEnabledState,
-  MAX_RUNS_TO_KEEP,
-  SUBAGENT_DEFAULTS_VERSION,
-  getPaths,
-  ensurePaths,
-  createDefaultAgents,
   loadStorage,
   saveStorage,
   saveStorageWithPatterns,
@@ -357,35 +289,21 @@ import type {
 
 // Import live-monitor module (extracted for SRP compliance)
 import {
-  renderSubagentLiveView,
   createSubagentLiveMonitor,
 } from "./subagents/live-monitor";
 
 // Import task-execution module (extracted for SRP compliance)
 import {
-  type SubagentExecutionResult,
-  normalizeSubagentOutput,
-  buildSubagentPrompt as buildSubagentTaskPrompt,
   runSubagentTask,
-  isRetryableSubagentError,
-  buildFailureSummary,
-  resolveSubagentFailureOutcome,
-  mergeSkillArrays,
-  resolveEffectiveSkills,
-  formatSkillsSection,
-  extractSummary,
 } from "./subagents/task-execution";
 
 // Import DAG execution types and utilities
 import {
   type TaskPlan,
   type TaskNode,
-  type DagResult,
-  type DagTaskResult,
 } from "../lib/dag-types.js";
 import { validateTaskPlan } from "../lib/dag-validator.js";
 import {
-  DagExecutor,
   executeDag,
   buildSubagentPrompt,
 } from "../lib/dag-executor.js";
@@ -397,18 +315,9 @@ import {
 
 // Import types from lib/subagent-types.ts
 import {
-  type SubagentLiveItem,
-  type SubagentMonitorLifecycle,
-  type SubagentMonitorStream,
-  type SubagentMonitorResource,
   type SubagentLiveMonitorController,
   type PrintCommandResult,
-  type LiveStreamView,
-  type LiveViewMode,
 } from "../lib/agent/subagent-types.js";
-
-const LIVE_PREVIEW_LINE_LIMIT = 36;
-const LIVE_LIST_WINDOW_SIZE = 20;
 
 // Use unified stable runtime constants directly from lib/agent-common.ts
 // (Local aliases removed for DRY compliance)
@@ -474,7 +383,7 @@ async function getEmbedding(text: string): Promise<number[]> {
 }
 
 // Initialize semantic cache
-const semanticCache = getSharedSemanticCache(
+const _semanticCache = getSharedSemanticCache(
   {
     enabled: SEMANTIC_CACHE_ENABLED,
     similarityThreshold: SEMANTIC_CACHE_THRESHOLD,
@@ -629,7 +538,7 @@ export function checkUlWorkflowOwnership(taskId: string): UlWorkflowOwnershipRes
  */
 function inferSubagentDependencies(
   agents: SubagentDefinition[],
-  task: string,
+  _task: string,
 ): { hasDependencies: boolean; dependencies: Map<string, string[]>; description: string } {
   const deps = new Map<string, string[]>();
   const agentIds = new Set(agents.map((a) => a.id));
@@ -912,7 +821,7 @@ function formatAgentBenchmarkStatus(args: {
  * - Empty array [] is treated as unspecified (ignored)
  * - Non-empty arrays are merged with deduplication
  */
-async function runPiPrintMode(input: {
+async function _runPiPrintMode(input: {
   provider?: string;
   model?: string;
   prompt: string;
@@ -1010,7 +919,7 @@ function pickAgent(storage: SubagentStorage, requestedId?: string): SubagentDefi
   return storage.agents.find((agent) => agent.enabled === "enabled");
 }
 
-function pickDefaultParallelAgents(
+function _pickDefaultParallelAgents(
   storage: SubagentStorage,
   preferredSubagentIds: string[] = [],
 ): SubagentDefinition[] {

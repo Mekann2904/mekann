@@ -46,19 +46,11 @@ import {
   renderPreviewWithMarkdown,
 } from "../../lib/tui/tui-utils.js";
 import {
-  toTailLines,
-  looksLikeMarkdown,
-} from "../../lib/agent/live-view-utils.js";
-import {
-  computeLiveWindow,
-} from "../../lib/agent/agent-utils.js";
-import {
   getLiveStatusGlyph,
   getLiveStatusColor,
   getActivityIndicator,
   isEnterInput,
   finalizeLiveLines,
-  type LiveStatus,
 } from "../../lib/agent/live-view-utils.js";
 import {
   renderGanttView,
@@ -82,7 +74,7 @@ export type { SubagentLiveItem, SubagentLiveMonitorController, LiveStreamView, L
 // ============================================================================
 
 const LIVE_PREVIEW_LINE_LIMIT = 36;
-const LIVE_LIST_WINDOW_SIZE = 20;
+const _LIVE_LIST_WINDOW_SIZE = 20;
 
 // ポーリング間隔（ストリーミングがない期間もUIを更新して「動いている」ことを示す）
 const LIVE_POLL_INTERVAL_MS = 500;

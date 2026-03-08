@@ -146,6 +146,12 @@ describe("isBashCommandAllowed", () => {
 			expect(isBashCommandAllowed("uptime")).toBe(true);
 			expect(isBashCommandAllowed("env")).toBe(true);
 		});
+
+		it("should_allow_readonly_git_commands", () => {
+			expect(isBashCommandAllowed("git status --short")).toBe(true);
+			expect(isBashCommandAllowed("git diff")).toBe(true);
+			expect(isBashCommandAllowed("/usr/bin/git show HEAD")).toBe(true);
+		});
 	});
 
 	describe("ブロック: 出力リダイレクト", () => {
@@ -206,6 +212,17 @@ describe("isBashCommandAllowed", () => {
 		it("should_block_write_commands_from_additional_set", () => {
 			expect(isBashCommandAllowed("bash")).toBe(false);
 			expect(isBashCommandAllowed("sh")).toBe(false);
+		});
+
+		it("should_block_git_write_commands", () => {
+			expect(isBashCommandAllowed("git add file.ts")).toBe(false);
+			expect(isBashCommandAllowed("git commit -m test")).toBe(false);
+			expect(isBashCommandAllowed("/usr/bin/git add file.ts")).toBe(false);
+		});
+
+		it("should_block_unknown_git_subcommands", () => {
+			expect(isBashCommandAllowed("git worktree list")).toBe(false);
+			expect(isBashCommandAllowed("/usr/bin/git maintenance run")).toBe(false);
 		});
 	});
 
