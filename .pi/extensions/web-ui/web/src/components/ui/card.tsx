@@ -2,7 +2,7 @@ import { type ComponentChildren } from "preact";
 import { cn } from "@/lib/utils";
 import type { h } from "preact";
 
-interface CardProps {
+export interface CardProps {
   children: ComponentChildren;
   class?: string;
   style?: h.JSX.CSSProperties;

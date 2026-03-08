@@ -146,7 +146,7 @@ export class InquiryLibrary {
 	// --- プライベートメソッド ---
 
 	private extractCommonWords(text1: string, text2: string): string[] {
-		const stopWords = new Set([
+const stopWords = new Set([
 			"の",
 			"に",
 			"は",
@@ -200,16 +200,17 @@ export class InquiryLibrary {
 			"could",
 			"should",
 		]);
+		const wordSplitPattern = /[\s\-—–,.!?;:'"(){}[\]「」『』【】]/;
 
 		const words1 = new Set(
 			text1
 				.toLowerCase()
-				.split(/[\s\-—–,.!?;:'"()\[\]{}「」『』【】]/)
+				.split(wordSplitPattern)
 				.filter((w) => w.length > 1 && !stopWords.has(w))
 		);
 		const words2 = text2
 			.toLowerCase()
-			.split(/[\s\-—–,.!?;:'"()\[\]{}「」『』【】]/)
+			.split(wordSplitPattern)
 			.filter((w) => w.length > 1 && !stopWords.has(w));
 
 		return words2.filter((w) => words1.has(w));

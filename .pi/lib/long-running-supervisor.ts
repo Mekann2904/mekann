@@ -157,6 +157,13 @@ export interface LongRunningPreflightInput {
   requireVerification?: boolean;
 }
 
+interface LongRunningNextActionInput {
+  workspaceResume: WorkspaceVerificationResumePlan;
+  activeSubagentRuns: LongRunningActiveSubagentRun[];
+  pendingToolName?: string;
+  plan: LongRunningPlanSnapshot;
+}
+
 type ToolCallLike = {
   toolName?: unknown;
   input?: unknown;
@@ -305,6 +312,26 @@ function resolvePlanSnapshot(cwd: string): LongRunningPlanSnapshot {
       recentProgress: [],
     };
   }
+}
+
+export function buildLongRunningNextAction(input: LongRunningNextActionInput): string {
+  if (input.workspaceResume.phase !== "clear") {
+    return input.workspaceResume.reason;
+  }
+
+  if (input.activeSubagentRuns.length > 0) {
+    return "Inspect or recover active subagent runs before resuming.";
+  }
+
+  if (input.pendingToolName) {
+    return `Investigate the interrupted tool call: ${input.pendingToolName}.`;
+  }
+
+  if (input.plan.currentStep) {
+    return `Resume the single highest-priority plan step: ${input.plan.currentStep}.`;
+  }
+
+  return "Resume from the latest journal event and choose only one concrete next step.";
 }
 
 function normalizeStringArray(value: unknown): string[] {
@@ -955,15 +982,12 @@ export function createLongRunningReplay(cwdInput?: string, sessionId?: string): 
     warnings.push(`Active subagent runs detected: ${activeSubagentRuns.length}`);
   }
 
-  const nextAction = workspaceResume.phase !== "clear"
-    ? workspaceResume.reason
-    : activeSubagentRuns.length > 0
-      ? "Inspect or recover active subagent runs before resuming."
-    : session?.pendingToolName
-      ? `Investigate the interrupted tool call: ${session.pendingToolName}.`
-      : session?.plan.currentStep
-        ? `Resume plan step: ${session.plan.currentStep}.`
-        : "Resume from the latest journal event.";
+  const nextAction = buildLongRunningNextAction({
+    workspaceResume,
+    activeSubagentRuns,
+    pendingToolName: session?.pendingToolName,
+    plan: session?.plan ?? resolvePlanSnapshot(cwd),
+  });
 
   const resumeReason = session?.status === "crashed"
     ? "Previous session ended without a clean shutdown."

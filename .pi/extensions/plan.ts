@@ -150,6 +150,25 @@ interface StepTransitionResult {
 	demotedStepIds: string[];
 }
 
+interface PlanLoopFocusSnapshot {
+	planId?: string;
+	planName?: string;
+	currentStepTitle?: string;
+	currentStepId?: string;
+	nextStepTitle?: string;
+	nextStepId?: string;
+	recentProgress: string[];
+}
+
+interface PlanLedgerEnforcementResult {
+	currentPlan?: Plan;
+	currentStep?: PlanStep;
+	nextReadyStep?: PlanStep;
+	repaired: boolean;
+	messages: string[];
+	touchedPlanIds: string[];
+}
+
 const VALID_STEP_STATUSES: PlanStepStatus[] = ["pending", "in_progress", "completed", "blocked"];
 const VALID_PLAN_STATUSES: PlanStatus[] = ["draft", "active", "completed", "cancelled"];
 
@@ -315,7 +334,7 @@ function isPlanReadyForExecution(plan: Plan): boolean {
 function getPlanExecutionReadiness(
 	storage: PlanStorage,
 ): { plan?: Plan; ready: boolean; reason?: string } {
-	const currentPlan = getCurrentPlan(storage);
+	const currentPlan = resolveCurrentPlan(storage);
 	if (!currentPlan) {
 		return {
 			ready: false,
@@ -328,6 +347,32 @@ function getPlanExecutionReadiness(
 			plan: currentPlan,
 			ready: false,
 			reason: `SPEC-FIRST: current plan ${currentPlan.id} is not execution-ready. Add acceptance criteria and implementation/verification steps before mutating the workspace.`,
+		};
+	}
+
+	if (currentPlan.steps.length === 0) {
+		return {
+			plan: currentPlan,
+			ready: false,
+			reason: `SPEC-FIRST: current plan ${currentPlan.id} has no loop ledger steps yet. Add steps with plan_add_step before mutating the workspace.`,
+		};
+	}
+
+	const currentStep = getCurrentStep(currentPlan);
+	if (!currentStep) {
+		const readySteps = getReadySteps(currentPlan);
+		if (readySteps.length > 0) {
+			return {
+				plan: currentPlan,
+				ready: false,
+				reason: `SPEC-FIRST: current plan ${currentPlan.id} has no active in_progress step. Claim exactly one ready step with plan_run_next before mutating the workspace.`,
+			};
+		}
+
+		return {
+			plan: currentPlan,
+			ready: false,
+			reason: `SPEC-FIRST: current plan ${currentPlan.id} has no executable in_progress step. Unblock dependencies or add the next concrete step before mutating the workspace.`,
 		};
 	}
 
@@ -458,6 +503,68 @@ function getCurrentStep(plan: Plan): PlanStep | undefined {
 	return plan.steps.find(step => step.status === "in_progress");
 }
 
+function resolveCurrentPlan(storage: PlanStorage): Plan | undefined {
+	if (storage.currentPlanId) {
+		const current = findPlanById(storage, storage.currentPlanId);
+		if (current) {
+			return current;
+		}
+	}
+
+	return [...storage.plans].reverse().find(plan => plan.status === "active" || plan.status === "draft");
+}
+
+function createPlanLoopFocusSnapshot(plan: Plan | undefined): PlanLoopFocusSnapshot | null {
+	if (!plan) {
+		return null;
+	}
+
+	const currentStep = getCurrentStep(plan);
+	const nextStep = currentStep ? undefined : getNextReadyStep(plan);
+
+	return {
+		planId: plan.id,
+		planName: plan.name,
+		currentStepTitle: currentStep?.title,
+		currentStepId: currentStep?.id,
+		nextStepTitle: nextStep?.title,
+		nextStepId: nextStep?.id,
+		recentProgress: plan.progressLog.slice(-3),
+	};
+}
+
+export function buildPlanLoopFocusBlock(snapshot: PlanLoopFocusSnapshot | null): string {
+	if (!snapshot) {
+		return "";
+	}
+
+	const lines = [
+		"# Current Plan Focus",
+		"",
+		`Plan: ${snapshot.planName ?? "unknown"} (${snapshot.planId ?? "unknown"})`,
+		snapshot.currentStepTitle
+			? `Current focus: ${snapshot.currentStepTitle} (${snapshot.currentStepId ?? "unknown"})`
+			: "Current focus: none",
+		snapshot.nextStepTitle
+			? `Up next: ${snapshot.nextStepTitle} (${snapshot.nextStepId ?? "unknown"})`
+			: "Up next: none",
+		"",
+		"Loop discipline:",
+		"- One thing per loop. Advance only the current focus.",
+		"- If you need to edit, search and read adjacent files first.",
+		"- Verify the touched unit before widening the scope.",
+	];
+
+	if (snapshot.recentProgress.length > 0) {
+		lines.push("", "Recent progress:");
+		for (const entry of snapshot.recentProgress) {
+			lines.push(`- ${entry}`);
+		}
+	}
+
+	return lines.join("\n");
+}
+
 function getUnmetDependencyIds(plan: Plan, step: PlanStep): string[] {
 	if (!step.dependencies || step.dependencies.length === 0) {
 		return [];
@@ -540,6 +647,98 @@ function activateNextReadyStep(plan: Plan): PlanStep | undefined {
 	plan.status = "active";
 	plan.updatedAt = new Date().toISOString();
 	return nextStep;
+}
+
+function enforcePlanLoopLedger(
+	storage: PlanStorage,
+	options?: { autoActivateCurrent?: boolean },
+): PlanLedgerEnforcementResult {
+	const messages: string[] = [];
+	const touchedPlanIds = new Set<string>();
+	let repaired = false;
+	const currentPlan = resolveCurrentPlan(storage);
+
+	if (currentPlan && storage.currentPlanId !== currentPlan.id) {
+		storage.currentPlanId = currentPlan.id;
+		repaired = true;
+		messages.push(`Normalized current plan to ${currentPlan.name} (${currentPlan.id}).`);
+	}
+
+	for (const plan of storage.plans) {
+		const demotedStepIds = syncCurrentStep(plan);
+		if (demotedStepIds.length > 0) {
+			repaired = true;
+			touchedPlanIds.add(plan.id);
+			messages.push(`Collapsed competing in_progress steps in ${plan.name}: ${demotedStepIds.join(", ")}`);
+		}
+	}
+
+	if (!currentPlan) {
+		return {
+			repaired,
+			messages,
+			touchedPlanIds: [...touchedPlanIds],
+		};
+	}
+
+	for (const plan of storage.plans) {
+		if (plan.id === currentPlan.id) {
+			continue;
+		}
+
+		const foreignInProgress = plan.steps.filter(step => step.status === "in_progress");
+		if (foreignInProgress.length === 0) {
+			continue;
+		}
+
+		for (const step of foreignInProgress) {
+			step.status = "pending";
+		}
+		plan.currentStepId = undefined;
+		plan.updatedAt = new Date().toISOString();
+		repaired = true;
+		touchedPlanIds.add(plan.id);
+		messages.push(`Demoted non-current plan focus in ${plan.name}: ${foreignInProgress.map(step => step.id).join(", ")}`);
+	}
+
+	let currentStep = getCurrentStep(currentPlan);
+	if (!currentStep && options?.autoActivateCurrent !== false) {
+		const autoActivatedStep = activateNextReadyStep(currentPlan);
+		if (autoActivatedStep) {
+			repaired = true;
+			touchedPlanIds.add(currentPlan.id);
+			appendProgressLog(currentPlan, "planner", `Auto-started "${autoActivatedStep.title}" to restore single loop focus`);
+			messages.push(`Auto-started current focus: ${autoActivatedStep.title} (${autoActivatedStep.id})`);
+			currentStep = autoActivatedStep;
+		}
+	}
+
+	return {
+		currentPlan,
+		currentStep,
+		nextReadyStep: currentStep ? undefined : getNextReadyStep(currentPlan),
+		repaired,
+		messages,
+		touchedPlanIds: [...touchedPlanIds],
+	};
+}
+
+function persistPlanLedgerIfNeeded(
+	storage: PlanStorage,
+	workspaceRoot: string,
+	result: PlanLedgerEnforcementResult,
+): void {
+	if (!result.repaired) {
+		return;
+	}
+
+	for (const planId of result.touchedPlanIds) {
+		const plan = findPlanById(storage, planId);
+		if (plan) {
+			syncPlanDocument(plan, workspaceRoot);
+		}
+	}
+	saveStorage(storage, workspaceRoot);
 }
 
 function updateStepStatus(
@@ -936,47 +1135,88 @@ export default function (pi: ExtensionAPI) {
 	// P0: Context Injection via before_agent_start
 	// ============================================
 
-	pi.on("before_agent_start", async (event, _ctx) => {
-		if (!planModeEnabled) return;
+	pi.on("before_agent_start", async (event, ctx) => {
+		const workspaceRoot = resolveWorkspaceRoot(ctx);
+		const storage = loadStorage(workspaceRoot);
+		const ledgerResult = enforcePlanLoopLedger(storage, { autoActivateCurrent: true });
+		persistPlanLedgerIfNeeded(storage, workspaceRoot, ledgerResult);
+		const currentPlan = ledgerResult.currentPlan;
+		const focusBlock = buildPlanLoopFocusBlock(createPlanLoopFocusSnapshot(currentPlan));
+		const entries: PromptStackEntry[] = [];
 
+		if (focusBlock) {
+			entries.push({
+				source: "plan-current-focus",
+				recordSource: "plan-current-focus",
+				layer: "startup-context",
+				markerId: `plan-current-focus:${currentPlan?.id ?? "none"}`,
+				content: focusBlock,
+			});
+		}
+
+		if (planModeEnabled) {
 			const notification = createRuntimeNotification(
 				"plan-mode",
 				"PLAN MODE is active. Read-only restrictions are enforced until you exit plan mode.",
 				"warning",
 				1,
 			);
-		const entries: PromptStackEntry[] = [
-			{
+			entries.push({
 				source: "plan-mode-policy",
 				recordSource: "plan-mode-policy",
 				layer: "system-policy",
 				markerId: "plan-mode-policy",
 				content: PLAN_MODE_POLICY,
-			},
-		];
-		if (notification) {
-			entries.push({
-				source: "plan-mode-notification",
-				recordSource: "plan-mode-notification",
-				layer: "runtime-notification",
-				markerId: "plan-mode-notification",
-				content: formatRuntimeNotificationBlock([notification]),
 			});
+			if (notification) {
+				entries.push({
+					source: "plan-mode-notification",
+					recordSource: "plan-mode-notification",
+					layer: "runtime-notification",
+					markerId: "plan-mode-notification",
+					content: formatRuntimeNotificationBlock([notification]),
+				});
+			}
 		}
+
+		if (ledgerResult.messages.length > 0) {
+			const notification = createRuntimeNotification(
+				"plan-loop-ledger",
+				ledgerResult.messages.join(" | "),
+				ledgerResult.currentStep ? "warning" : "critical",
+				1,
+			);
+			if (notification) {
+				entries.push({
+					source: "plan-loop-ledger-notification",
+					recordSource: "plan-loop-ledger-notification",
+					layer: "runtime-notification",
+					markerId: `plan-loop-ledger:${currentPlan?.id ?? "none"}:${ledgerResult.currentStep?.id ?? "none"}`,
+					content: formatRuntimeNotificationBlock([notification]),
+				});
+			}
+		}
+
+		if (entries.length === 0) {
+			return;
+		}
+
 		const result = applyPromptStack(event.systemPrompt ?? "", entries);
 		if (result.appliedEntries.length === 0) {
 			return;
 		}
 
-			return {
-				systemPrompt: result.systemPrompt,
-				message: {
+		return {
+			systemPrompt: result.systemPrompt,
+			message: planModeEnabled
+				? {
 					customType: PLAN_MODE_CONTEXT_TYPE,
 					content: "PLAN MODE is active. Read-only restrictions are enforced until you exit plan mode.",
 					display: false,
-				},
-			};
-		});
+				}
+				: undefined,
+		};
+	});
 
 	// ============================================
 	// P2: Context Cleanup via context event
@@ -1027,6 +1267,8 @@ export default function (pi: ExtensionAPI) {
 
 			const workspaceRoot = resolveWorkspaceRoot(ctx);
 			const storage = loadStorage(workspaceRoot);
+			const ledgerResult = enforcePlanLoopLedger(storage, { autoActivateCurrent: true });
+			persistPlanLedgerIfNeeded(storage, workspaceRoot, ledgerResult);
 			const readiness = getPlanExecutionReadiness(storage);
 			if (readiness.ready) {
 				return;
@@ -1285,12 +1527,15 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			syncCurrentStep(plan);
+			const ledgerResult = enforcePlanLoopLedger(storage, { autoActivateCurrent: true });
 			syncPlanDocument(plan, workspaceRoot);
-			saveStorage(storage, workspaceRoot);
+			persistPlanLedgerIfNeeded(storage, workspaceRoot, ledgerResult);
+			if (!ledgerResult.repaired) {
+				saveStorage(storage, workspaceRoot);
+			}
 			const step = findStepById(plan, params.stepId);
-			const currentStep = getCurrentStep(plan);
-			const nextReadyStep = getNextReadyStep(plan);
+			const currentStep = ledgerResult.currentStep ?? getCurrentStep(plan);
+			const nextReadyStep = ledgerResult.nextReadyStep ?? getNextReadyStep(plan);
 
 			logger.endOperation({
 				status: "success",
@@ -1373,8 +1618,12 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			appendProgressLog(plan, params.actor?.trim() || "executor", `Started "${nextStep.title}"${params.progressNote ? `: ${params.progressNote}` : ""}`);
+			const ledgerResult = enforcePlanLoopLedger(storage, { autoActivateCurrent: false });
 			syncPlanDocument(plan, workspaceRoot);
-			saveStorage(storage, workspaceRoot);
+			persistPlanLedgerIfNeeded(storage, workspaceRoot, ledgerResult);
+			if (!ledgerResult.repaired) {
+				saveStorage(storage, workspaceRoot);
+			}
 
 			return {
 				content: [{ type: "text", text: `Current focus updated:\n\n• ${nextStep.title} (${nextStep.id})\n\n${formatPlanSummary(plan)}` }],
@@ -1523,8 +1772,12 @@ export default function (pi: ExtensionAPI) {
 				plan.currentStepId = undefined;
 			}
 			appendProgressLog(plan, "planner", `Plan status changed to ${plan.status}`);
+			const ledgerResult = enforcePlanLoopLedger(storage, { autoActivateCurrent: true });
 			syncPlanDocument(plan, workspaceRoot);
-			saveStorage(storage, workspaceRoot);
+			persistPlanLedgerIfNeeded(storage, workspaceRoot, ledgerResult);
+			if (!ledgerResult.repaired) {
+				saveStorage(storage, workspaceRoot);
+			}
 
 			logger.endOperation({
 				status: "success",
@@ -1591,9 +1844,16 @@ export default function (pi: ExtensionAPI) {
 	// Extension loaded notification
 		pi.on("session_start", async (_event, ctx) => {
 		// Load plan mode state from file
-		planModeEnabled = loadPlanModeState(resolveWorkspaceRoot(ctx));
+		const workspaceRoot = resolveWorkspaceRoot(ctx);
+		planModeEnabled = loadPlanModeState(workspaceRoot);
+		const storage = loadStorage(workspaceRoot);
+		const ledgerResult = enforcePlanLoopLedger(storage, { autoActivateCurrent: true });
+		persistPlanLedgerIfNeeded(storage, workspaceRoot, ledgerResult);
 
 		ctx.ui.notify("Plan Extension loaded", "info");
+		if (ledgerResult.messages.length > 0) {
+			ctx.ui.notify(`Plan loop ledger repaired: ${ledgerResult.messages.join(" | ")}`, "warning");
+		}
 		if (planModeEnabled) {
 			applyPlanModeToolFilter(pi, true);
 			ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, "PLAN MODE");

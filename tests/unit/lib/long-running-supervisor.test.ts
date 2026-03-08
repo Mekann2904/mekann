@@ -317,6 +317,18 @@ describe("long-running-supervisor lib", () => {
     expect(replay.nextAction).toBe("Inspect or recover active subagent runs before resuming.");
   });
 
+  it("resume replay が current plan step を single next action として返す", async () => {
+    const {
+      beginLongRunningSession,
+      createLongRunningReplay,
+    } = await import("../../../.pi/lib/long-running-supervisor.js");
+
+    await beginLongRunningSession({ cwd });
+    const replay = createLongRunningReplay(cwd);
+
+    expect(replay.nextAction).toBe("Resume the single highest-priority plan step: Resume root task.");
+  });
+
   it("preflight が active subagent run を unattended blocker にする", async () => {
     const {
       beginLongRunningSession,

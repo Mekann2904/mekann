@@ -60,9 +60,15 @@ export function registerUlWorkflowRoutes(app: Express): void {
    */
   app.get("/api/ul-workflow/tasks/:id", (req: Request, res: Response) => {
     try {
-      const taskId = req.params.id.startsWith("ul-")
-        ? req.params.id.slice(3)
-        : req.params.id;
+      const rawTaskId = req.params.id;
+      if (!rawTaskId) {
+        res.status(400).json({ success: false, error: "Task id is required" });
+        return;
+      }
+
+      const taskId = rawTaskId.startsWith("ul-")
+        ? rawTaskId.slice(3)
+        : rawTaskId;
       const task = getUlWorkflowTask(taskId);
       if (!task) {
         res.status(404).json({ success: false, error: "Task not found" });

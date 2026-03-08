@@ -16,7 +16,6 @@
  * scope(in/out): in=message, icon, action / out=統一された空状態UI
  */
 
-import { h } from "preact";
 import { Inbox } from "lucide-preact";
 import { Card, CardContent } from "../ui/card";
 import { cn } from "@/lib/utils";
@@ -24,6 +23,10 @@ import type { LucideIcon } from "lucide-preact";
 
 /** @summary EmptyStateのプロパティ */
 export interface EmptyStateProps {
+  /** タイトル */
+  title?: string;
+  /** 補足説明 */
+  description?: string;
   /** メッセージ */
   message?: string;
   /** アイコン */
@@ -44,6 +47,8 @@ export interface EmptyStateProps {
  * @returns 統一された空状態表示
  */
 export function EmptyState({
+  title,
+  description,
   message = "No data available",
   icon: Icon = Inbox,
   action,
@@ -57,7 +62,12 @@ export function EmptyState({
       data-testid={testId}
     >
       <Icon class="h-8 w-8 text-muted-foreground/50" />
-      <p class="text-sm text-muted-foreground">{message}</p>
+      <div class="space-y-1 text-center">
+        <p class="text-sm text-foreground">{title ?? message}</p>
+        {(description || (!title && message)) && (
+          <p class="text-sm text-muted-foreground">{description ?? (title ? message : undefined)}</p>
+        )}
+      </div>
       {action && <div class="mt-2">{action}</div>}
     </div>
   );

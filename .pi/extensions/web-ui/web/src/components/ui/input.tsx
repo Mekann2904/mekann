@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { JSX } from "preact";
 
-interface InputProps {
+export interface InputProps {
   type?: string;
   value?: string;
   onInput?: (e: JSX.TargetedEvent<HTMLInputElement>) => void;

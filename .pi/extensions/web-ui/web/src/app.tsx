@@ -23,6 +23,7 @@ import {
   Keyboard,
   Database,
   FlaskConical,
+  Waypoints,
 } from "lucide-preact";
 import { LoadingState, InlineLoading } from "@/components/layout";
 import { cn } from "@/lib/utils";
@@ -82,6 +83,11 @@ const IndexesPage = lazy(async () => {
   return { default: module.IndexesPage };
 });
 
+const SymphonyPage = lazy(async () => {
+  const module = await import("./components/symphony-page");
+  return { default: module.SymphonyPage };
+});
+
 function RouteFallback() {
   return (
     <div class="flex h-full items-center justify-center">
@@ -93,9 +99,6 @@ function RouteFallback() {
     </div>
   );
 }
-
-// Global theme state (fetched from server)
-let globalTheme: ThemeSettings | null = null;
 
 // Get global theme from server
 async function fetchGlobalTheme(): Promise<ThemeSettings | null> {
@@ -131,7 +134,6 @@ async function initializeTheme(): Promise<ThemeSettings> {
   // Try to get global theme first
   const theme = await fetchGlobalTheme();
   if (theme) {
-    globalTheme = theme;
     applyThemeToDOM(theme.themeId, theme.mode);
     return theme;
   }
@@ -147,7 +149,6 @@ async function initializeTheme(): Promise<ThemeSettings> {
 export function applyTheme(themeId: string, mode: Mode): void {
   applyThemeToDOM(themeId, mode);
   saveGlobalTheme(themeId, mode);
-  globalTheme = { themeId, mode };
 }
 
 /**
@@ -326,6 +327,7 @@ export function App() {
               <AgentUsagePage path="/agent-usage" />
               <BenchmarkPage path="/benchmark" />
               <IndexesPage path="/indexes" />
+              <SymphonyPage path="/symphony" />
               <ThemePage path="/theme" onThemeChange={applyTheme} />
             </Router>
           </Suspense>
@@ -398,6 +400,7 @@ function Sidebar({ sseConnected, sseExhausted, onSseReconnect }: SidebarProps) {
     { path: "/agent-usage", icon: TrendingUp, label: "Agent Usage" },
     { path: "/benchmark", icon: FlaskConical, label: "Benchmark" },
     { path: "/indexes", icon: Database, label: "Indexes" },
+    { path: "/symphony", icon: Waypoints, label: "Symphony" },
     { path: "/instances", icon: Monitor, label: "Instances" },
     { path: "/mcp", icon: Server, label: "MCP" },
     { path: "/theme", icon: Palette, label: "Theme" },

@@ -79,6 +79,18 @@ interface Task {
 	parentTaskId?: string; // For subtasks
 	ownerInstanceId?: string; // 所有するpiインスタンスID
 	claimedAt?: string;       // 所有取得時刻
+	retryCount?: number;
+	nextRetryAt?: string;
+	lastError?: string;
+	workspaceVerificationStatus?: "passed" | "failed";
+	workspaceVerifiedAt?: string;
+	workspaceVerificationMessage?: string;
+	completionGateStatus?: "clear" | "blocked";
+	completionGateUpdatedAt?: string;
+	completionGateMessage?: string;
+	completionGateBlockers?: string[];
+	proofArtifacts?: string[];
+	verifiedCommands?: string[];
 }
 
 /**
@@ -315,6 +327,18 @@ function formatTaskDetails(task: Task): string {
 
 	if (task.completedAt) {
 		lines.push(`Completed: ${new Date(task.completedAt).toLocaleString()}`);
+	}
+
+	if (typeof task.retryCount === "number" && task.retryCount > 0) {
+		lines.push(`Retry Count: ${task.retryCount}`);
+	}
+
+	if (task.nextRetryAt) {
+		lines.push(`Next Retry: ${new Date(task.nextRetryAt).toLocaleString()}`);
+	}
+
+	if (task.lastError) {
+		lines.push(`Last Error: ${task.lastError}`);
 	}
 
 	return lines.join("\n");

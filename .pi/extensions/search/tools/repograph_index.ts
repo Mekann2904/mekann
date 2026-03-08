@@ -347,7 +347,7 @@ export async function repographQuery(
 				}
 				break;
 
-			case "related":
+			case "related": {
 				if (!params.nodeId) {
 					return {
 						type: params.type,
@@ -364,8 +364,9 @@ export async function repographQuery(
 				);
 				nodes = related.nodes;
 				break;
+			}
 
-			case "stats":
+			case "stats": {
 				const stats = getGraphStats(graph);
 				return {
 					type: params.type,
@@ -383,6 +384,7 @@ export async function repographQuery(
 						},
 					],
 				};
+			}
 
 			default:
 				return {

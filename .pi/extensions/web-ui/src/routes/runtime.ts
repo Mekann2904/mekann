@@ -12,6 +12,26 @@
 
 import { Hono } from "hono";
 import { randomUUID } from "crypto";
+import {
+  getSymphonyOrchestratorLoopState,
+  startSymphonyOrchestratorLoop,
+  stopSymphonyOrchestratorLoop,
+  tickSymphonyOrchestrator,
+} from "../../../../lib/symphony-orchestrator-loop.js";
+import { refreshSymphonyScheduler } from "../../../../lib/symphony-scheduler.js";
+import { listSymphonyIssueStates, type SymphonyIssueState } from "../../../../lib/symphony-orchestrator-state.js";
+import {
+  getActiveSessions as getSharedRuntimeSessions,
+  getSession as getSharedRuntimeSession,
+  onSessionEvent,
+  type RuntimeSession as SharedRuntimeSession,
+} from "../../../../lib/runtime-sessions.js";
+import {
+  buildSymphonyIssueSnapshot,
+  buildSymphonySnapshot,
+  type SymphonyRuntimeSessionSummary,
+  type SymphonyRuntimeSummary,
+} from "../../lib/symphony-reader.js";
 
 /**
  * Runtimeルート
@@ -24,6 +44,7 @@ const SESSION_MAX_COUNT = parseInt(process.env.PI_SESSION_MAX_COUNT || "1000", 1
 
 // インメモリセッションストア（簡易版）
 const sessions = new Map<string, RuntimeSession>();
+let runtimeSessionEventSubscribed = false;
 
 // SSEクライアント管理
 const sseClients = new Map<string, {
@@ -118,6 +139,11 @@ export function cleanupRuntimeSSE(): void {
 
 // モジュール読み込み時にハートビートを開始
 startHeartbeat();
+ensureRuntimeSessionEventSubscription();
+startSymphonyOrchestratorLoop({
+  cwd: process.cwd(),
+  runtimeSessions: () => getRuntimeSessionSnapshots(),
+});
 
 /**
  * Runtime session type
@@ -171,15 +197,42 @@ export interface RuntimeStatus {
   warning?: string;
 }
 
-/**
- * GET /status - ランタイム状態を取得
- */
-runtimeRoutes.get("/status", (c) => {
-  const activeSessions = Array.from(sessions.values()).filter(
+function getAllRuntimeSessions(): RuntimeSession[] {
+  const merged = new Map<string, RuntimeSession>();
+
+  for (const session of getSharedRuntimeSessions() as SharedRuntimeSession[]) {
+    merged.set(session.id, session as RuntimeSession);
+  }
+
+  for (const [id, session] of sessions.entries()) {
+    merged.set(id, session);
+  }
+
+  return Array.from(merged.values());
+}
+
+function ensureRuntimeSessionEventSubscription(): void {
+  if (runtimeSessionEventSubscribed) {
+    return;
+  }
+
+  onSessionEvent((event) => {
+    broadcastToSSEClients(event.type, event.data);
+  });
+  runtimeSessionEventSubscribed = true;
+}
+
+function buildRuntimeStatusSnapshot(): RuntimeStatus {
+  const allSessions = getAllRuntimeSessions();
+  const activeSessions = allSessions.filter(
     s => s.status === "running" || s.status === "starting"
   );
+  const orchestrationStates = listSymphonyIssueStates(process.cwd());
+  const queuedOrchestrations = orchestrationStates.filter(
+    (item: SymphonyIssueState) => item.runState === "claimed" || item.runState === "retrying",
+  ).length;
 
-  const status: RuntimeStatus = {
+  return {
     activeLlm: activeSessions.length,
     activeRequests: activeSessions.length,
     limits: {
@@ -192,17 +245,51 @@ runtimeRoutes.get("/status", (c) => {
       capacityWaitMs: 1000,
       capacityPollMs: 100,
     },
-    queuedOrchestrations: 0,
+    queuedOrchestrations,
     priorityStats: null,
     sessions: {
-      total: sessions.size,
+      total: allSessions.length,
       starting: activeSessions.filter(s => s.status === "starting").length,
       running: activeSessions.filter(s => s.status === "running").length,
-      completed: Array.from(sessions.values()).filter(s => s.status === "completed").length,
-      failed: Array.from(sessions.values()).filter(s => s.status === "failed").length,
+      completed: allSessions.filter(s => s.status === "completed").length,
+      failed: allSessions.filter(s => s.status === "failed").length,
     },
   };
+}
 
+export function getRuntimeStatusSnapshot(): RuntimeStatus {
+  return buildRuntimeStatusSnapshot();
+}
+
+export function getSymphonyRuntimeSummary(): SymphonyRuntimeSummary {
+  const status = buildRuntimeStatusSnapshot();
+  return {
+    activeLlm: status.activeLlm,
+    activeRequests: status.activeRequests,
+    queuedOrchestrations: status.queuedOrchestrations,
+    sessions: status.sessions,
+  };
+}
+
+export function getRuntimeSessionSnapshots(): SymphonyRuntimeSessionSummary[] {
+  return getAllRuntimeSessions().map((session) => ({
+    id: session.id,
+    taskId: session.taskId,
+    taskTitle: session.taskTitle,
+    status: session.status,
+    startedAt: session.startedAt,
+    message: session.message,
+    progress: session.progress,
+    agentId: session.agentId,
+    type: session.type,
+  }));
+}
+
+/**
+ * GET /status - ランタイム状態を取得
+ */
+runtimeRoutes.get("/status", (c) => {
+  const status = buildRuntimeStatusSnapshot();
   return c.json({ success: true, data: status });
 });
 
@@ -210,7 +297,7 @@ runtimeRoutes.get("/status", (c) => {
  * GET /sessions - セッション一覧を取得
  */
 runtimeRoutes.get("/sessions", (c) => {
-  const activeSessions = Array.from(sessions.values()).filter(
+  const activeSessions = getAllRuntimeSessions().filter(
     s => s.status === "running" || s.status === "starting"
   );
 
@@ -223,10 +310,122 @@ runtimeRoutes.get("/sessions", (c) => {
   });
 });
 
+runtimeRoutes.get("/symphony", async (c) => {
+  const snapshot = await buildSymphonySnapshot(process.cwd(), getSymphonyRuntimeSummary());
+  return c.json({ success: true, data: snapshot });
+});
+
+runtimeRoutes.get("/symphony/orchestrator", (c) => {
+  return c.json({
+    success: true,
+    data: getSymphonyOrchestratorLoopState(),
+  });
+});
+
+runtimeRoutes.post("/symphony/orchestrator/start", (c) => {
+  const loopState = startSymphonyOrchestratorLoop({
+    cwd: process.cwd(),
+    runtimeSessions: () => getRuntimeSessionSnapshots(),
+    forceRestart: true,
+  });
+  return c.json({ success: true, data: loopState });
+});
+
+runtimeRoutes.post("/symphony/orchestrator/stop", (c) => {
+  return c.json({
+    success: true,
+    data: stopSymphonyOrchestratorLoop(),
+  });
+});
+
+runtimeRoutes.post("/symphony/orchestrator/tick", async (c) => {
+  const scheduler = await tickSymphonyOrchestrator(process.cwd());
+  return c.json({
+    success: true,
+    data: {
+      loop: getSymphonyOrchestratorLoopState(),
+      scheduler,
+    },
+  });
+});
+
+runtimeRoutes.post("/symphony/refresh", async (_c) => {
+  const runtimeSessions = getRuntimeSessionSnapshots();
+  const scheduler = await refreshSymphonyScheduler(process.cwd(), runtimeSessions, {
+    reconcile: true,
+  });
+  const snapshot = await buildSymphonySnapshot(process.cwd(), getSymphonyRuntimeSummary());
+  return _c.json({
+    success: true,
+    data: {
+      queued: true,
+      coalesced: false,
+      requestedAt: new Date().toISOString(),
+      scheduler,
+      snapshot,
+    },
+  }, 202);
+});
+
+runtimeRoutes.get("/symphony/issues/:id", (c) => {
+  const snapshot = buildSymphonyIssueSnapshot(
+    c.req.param("id"),
+    process.cwd(),
+    getRuntimeSessionSnapshots(),
+  );
+  if (!snapshot) {
+    return c.json({
+      success: false,
+      error: {
+        code: "issue_not_found",
+        message: `No Symphony issue found for ${c.req.param("id")}`,
+      },
+    }, 404);
+  }
+  return c.json({ success: true, data: snapshot });
+});
+
+runtimeRoutes.get("/symphony/issues/:id/debug", (c) => {
+  const snapshot = buildSymphonyIssueSnapshot(
+    c.req.param("id"),
+    process.cwd(),
+    getRuntimeSessionSnapshots(),
+  );
+  if (!snapshot) {
+    return c.json({
+      success: false,
+      error: {
+        code: "issue_not_found",
+        message: `No Symphony issue found for ${c.req.param("id")}`,
+      },
+    }, 404);
+  }
+
+  return c.json({
+    success: true,
+    data: {
+      issueId: snapshot.id,
+      title: snapshot.title,
+      queue: snapshot.queue,
+      verification: snapshot.verification,
+      completionGate: snapshot.completionGate,
+      proofArtifacts: snapshot.proofArtifacts,
+      workpadId: snapshot.workpad?.id ?? null,
+      workspace: snapshot.workspace,
+      orchestration: snapshot.orchestration,
+      runtime: {
+        activeSession: snapshot.runtime.activeSession,
+        relatedSessions: snapshot.debug.relatedSessions,
+      },
+      recentEvents: snapshot.debug.recentEvents,
+    },
+  });
+});
+
 /**
  * GET /stream - SSEストリーム
  */
-runtimeRoutes.get("/stream", (c) => {
+runtimeRoutes.get("/stream", (_c) => {
   const clientId = randomUUID();
   const encoder = new TextEncoder();
 
@@ -242,7 +441,7 @@ runtimeRoutes.get("/stream", (c) => {
       controller.enqueue(encoder.encode(connectMsg));
 
       // 現在のセッションスナップショット
-      const snapshotMsg = `event: status_snapshot\ndata: ${JSON.stringify([])}\n\n`;
+      const snapshotMsg = `event: status_snapshot\ndata: ${JSON.stringify(getAllRuntimeSessions())}\n\n`;
       controller.enqueue(encoder.encode(snapshotMsg));
 
       console.log(`[runtime] SSE client ${clientId} connected`);
@@ -268,7 +467,7 @@ runtimeRoutes.get("/stream", (c) => {
  */
 runtimeRoutes.get("/sessions/:id", (c) => {
   const { id } = c.req.param();
-  const session = sessions.get(id);
+  const session = sessions.get(id) ?? (getSharedRuntimeSession(id) as RuntimeSession | undefined);
 
   if (!session) {
     return c.json({ success: false, error: "Session not found" }, 404);

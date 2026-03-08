@@ -89,7 +89,7 @@ function tokenize(text: string): string[] {
   
   // Split by whitespace and punctuation (ASCII only for compatibility)
   const tokens = normalized
-    .split(/[\s.,!?;:'"()\[\]{}<>@#$%^&*+=|\\/_~`-]+/)
+    .split(/[\s.,!?;:'"(){}[\]<>@#$%^&*+=|\\/_~`-]+/)
     .filter(t => t.length > 0 && !STOP_WORDS.has(t));
   
   // For Japanese: also include character n-grams

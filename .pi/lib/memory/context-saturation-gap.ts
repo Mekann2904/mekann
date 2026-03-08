@@ -110,7 +110,12 @@ export interface PerformanceEvaluator {
  */
 export function estimateTokens(text: string): number {
   // 簡易推定: 英語は約4文字=1トークン、日本語は約2文字=1トークン
-  const asciiCount = (text.match(/[\x00-\x7F]/g) || []).length;
+  let asciiCount = 0;
+  for (const char of text) {
+    if (char.charCodeAt(0) <= 0x7f) {
+      asciiCount += 1;
+    }
+  }
   const nonAsciiCount = text.length - asciiCount;
   return Math.ceil(asciiCount / 4 + nonAsciiCount / 2);
 }

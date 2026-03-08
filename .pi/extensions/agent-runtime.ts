@@ -56,6 +56,7 @@ import type {
   TaskPriority,
   AgentRuntimeLimits,
   RuntimeQueueClass,
+  RuntimeWorkloadClass,
   RuntimeQueueEntry,
   RuntimeCapacityReservationRecord,
   AgentRuntimeState,
@@ -116,6 +117,7 @@ export type {
   PriorityTaskMetadata,
   AgentRuntimeLimits,
   RuntimeQueueClass,
+  RuntimeWorkloadClass,
   RuntimeQueueEntry,
   RuntimeCapacityReservationRecord,
   RuntimePriorityStats,
@@ -658,6 +660,7 @@ function createInitialRuntimeState(): AgentRuntimeState {
     },
     queue: {
       activeOrchestrations: 0,
+      activeHeavyValidationOrchestrations: 0,
       pending: [],
       consecutiveDispatchesByTenant: 0,
       evictedEntries: 0,
@@ -713,10 +716,14 @@ function ensureRuntimeStateShape(runtime: AgentRuntimeState): AgentRuntimeState 
   if (!runtime.queue) {
     runtime.queue = {
       activeOrchestrations: 0,
+      activeHeavyValidationOrchestrations: 0,
       pending: [],
       consecutiveDispatchesByTenant: 0,
       evictedEntries: 0,
     };
+  }
+  if (!Number.isFinite(runtime.queue.activeHeavyValidationOrchestrations)) {
+    runtime.queue.activeHeavyValidationOrchestrations = 0;
   }
   if (!Array.isArray(runtime.queue.pending)) {
     runtime.queue.pending = [];
@@ -852,6 +859,10 @@ export function getRuntimeSnapshot(): AgentRuntimeSnapshot {
   }
 
   const activeOrchestrations = Math.max(0, runtime.queue.activeOrchestrations);
+  const activeHeavyValidationOrchestrations = Math.max(
+    0,
+    runtime.queue.activeHeavyValidationOrchestrations,
+  );
   const queuedOrchestrations = Math.max(0, runtime.queue.pending.length);
 
   // Include priority in queued tools display
@@ -883,6 +894,7 @@ export function getRuntimeSnapshot(): AgentRuntimeSnapshot {
     consumedRequests,
     consumedLlm,
     activeOrchestrations,
+    activeHeavyValidationOrchestrations,
     queuedOrchestrations,
     queuedTools,
     queueEvictions: Math.max(0, Math.trunc(runtime.queue.evictedEntries || 0)),
@@ -939,6 +951,11 @@ export function formatRuntimeStatusLine(options: RuntimeStatusLineOptions = {}):
   lines.push(
     `- オーケストレーションキュー: active=${snapshot.activeOrchestrations}/${snapshot.limits.maxConcurrentOrchestrations}, queued=${snapshot.queuedOrchestrations}`,
   );
+  if (snapshot.activeHeavyValidationOrchestrations > 0) {
+    lines.push(
+      `  - heavy_validation_active=${snapshot.activeHeavyValidationOrchestrations}/1`,
+    );
+  }
   lines.push(`  - queue_evictions_total: ${snapshot.queueEvictions}`);
   if (snapshot.queuedTools.length > 0) {
     lines.push(`  - queued_tools: ${snapshot.queuedTools.join(", ")}`);
@@ -1231,6 +1248,12 @@ function findDispatchableQueueEntry(
     );
     const check = checkRuntimeCapacity({ additionalRequests, additionalLlm });
     if (!check.allowed) continue;
+    if (
+      entry.workloadClass === "heavy-validation"
+      && runtime.queue.activeHeavyValidationOrchestrations >= 1
+    ) {
+      continue;
+    }
 
     const tenant = ((entry as RuntimeQueueEntry & { tenantKey?: string }).tenantKey ?? "default");
     const shouldThrottleTenant =
@@ -1685,6 +1708,7 @@ export async function waitForRuntimeOrchestrationTurn(
     deadlineMs: input.deadlineMs,
     source: input.source,
     queueClass: input.source === "user-interactive" ? "interactive" : input.source === "background" ? "batch" : "standard",
+    workloadClass: "default",
     tenantKey: "legacy",
     additionalRequests: 0,
     additionalLlm: 0,
@@ -1938,6 +1962,7 @@ export async function acquireRuntimeDispatchPermit(
     deadlineMs: input.deadlineMs,
     source: input.source,
     queueClass: toQueueClass(input),
+    workloadClass: input.candidate.workloadClass ?? "default",
     tenantKey: String(input.tenantKey || input.toolName || "default"),
     additionalRequests,
     additionalLlm,
@@ -1990,6 +2015,9 @@ export async function acquireRuntimeDispatchPermit(
       if (reservationAttempt.allowed && reservationAttempt.reservation) {
         removeQueuedEntry(runtime, entryId);
         runtime.queue.activeOrchestrations += 1;
+        if (entry.workloadClass === "heavy-validation") {
+          runtime.queue.activeHeavyValidationOrchestrations += 1;
+        }
         const tenant = String((entry as RuntimeQueueEntry & { tenantKey?: string }).tenantKey || "default");
         if (runtime.queue.lastDispatchedTenantKey === tenant) {
           runtime.queue.consecutiveDispatchesByTenant += 1;
@@ -2021,6 +2049,12 @@ export async function acquireRuntimeDispatchPermit(
             if (released) return;
             released = true;
             runtime.queue.activeOrchestrations = Math.max(0, runtime.queue.activeOrchestrations - 1);
+            if (entry.workloadClass === "heavy-validation") {
+              runtime.queue.activeHeavyValidationOrchestrations = Math.max(
+                0,
+                runtime.queue.activeHeavyValidationOrchestrations - 1,
+              );
+            }
             reservationAttempt.reservation?.release();
             notifyRuntimeCapacityChanged();
           },
@@ -2144,6 +2178,7 @@ export function resetRuntimeTransientState(): void {
   runtime.teams.activeTeamRuns = 0;
   runtime.teams.activeTeammates = 0;
   runtime.queue.activeOrchestrations = 0;
+  runtime.queue.activeHeavyValidationOrchestrations = 0;
   runtime.queue.pending = [];
   runtime.queue.lastDispatchedTenantKey = undefined;
   runtime.queue.consecutiveDispatchesByTenant = 0;

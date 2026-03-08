@@ -30,6 +30,8 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 
+const ANSI_SIMPLE_ESCAPE_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+
 interface OptionWithDesc {
 	label: string;
 	description?: string;
@@ -158,7 +160,7 @@ function wrapText(text: string, width: number): string[] {
 
 			const testLine = currentLine + word;
 			// 表示幅を計算（ANSIコードを除いた実際の文字数）
-			const visibleLength = testLine.replace(/\x1b\[[0-9;]*m/g, "").length;
+				const visibleLength = testLine.replace(ANSI_SIMPLE_ESCAPE_PATTERN, "").length;
 
 			if (visibleLength <= width) {
 				currentLine = testLine;

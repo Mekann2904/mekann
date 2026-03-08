@@ -19,6 +19,8 @@
 
 import { useEffect, useCallback, useRef } from "preact/hooks";
 
+export type ShortcutCategory = "general" | "navigation" | "task" | "view";
+
 /**
  * Keyboard shortcut configuration
  */
@@ -35,6 +37,8 @@ export interface ShortcutConfig {
   action: () => void;
   /** Description for help display */
   description: string;
+  /** Category for help dialog grouping */
+  category?: ShortcutCategory;
   /** Whether to prevent default behavior */
   preventDefault?: boolean;
 }

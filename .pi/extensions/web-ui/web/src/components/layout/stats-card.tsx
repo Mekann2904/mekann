@@ -16,7 +16,6 @@
  * scope(in/out): in=value, label, icon, progress等 / out=統一された統計カード
  */
 
-import { h } from "preact";
 import { memo, useCallback, useMemo } from "preact/compat";
 import { Card, CardContent } from "../ui/card";
 import { cn } from "@/lib/utils";
@@ -31,6 +30,8 @@ export interface StatsCardProps {
   value: string | number;
   /** ラベル */
   label: string;
+  /** 値の後ろに付ける短い接尾辞 */
+  suffix?: string;
   /** アイコン（オプション） */
   icon?: LucideIcon;
   /** 進捗バー（0-100） */
@@ -77,6 +78,7 @@ function getProgressColorClass(variant: StatsCardVariant, progress: number | und
 function StatsCardInner({
   value,
   label,
+  suffix,
   icon: Icon,
   progress,
   variant = "default",
@@ -97,7 +99,8 @@ function StatsCardInner({
     <Card
       class={cn(
         VARIANT_CLASSES[variant],
-        onClick && "cursor-pointer hover:bg-muted/50 transition-colors"
+        onClick && "cursor-pointer hover:bg-muted/50 transition-colors",
+        className,
       )}
       onClick={handleClick}
       data-testid={testId}
@@ -112,7 +115,10 @@ function StatsCardInner({
         {!Icon && (
           <div class="text-xs text-muted-foreground mb-1">{label}</div>
         )}
-        <div class="text-lg font-bold">{value}</div>
+        <div class="text-lg font-bold">
+          {value}
+          {suffix ? <span class="ml-1 text-sm font-medium text-muted-foreground">{suffix}</span> : null}
+        </div>
         {progress !== undefined && (
           <div class="mt-1.5 h-1.5 w-full bg-muted rounded-full overflow-hidden">
             <div
@@ -186,6 +192,8 @@ export interface StatsGridProps {
   cols?: StatsGridCols;
   /** カスタムクラス名 */
   className?: string;
+  /** Preact JSX の class 互換 */
+  class?: string;
 }
 
 const COLS_CLASSES: Record<StatsGridCols, string> = {
@@ -204,9 +212,10 @@ function StatsGridInner({
   children,
   cols = 4,
   className,
+  class: classAlias,
 }: StatsGridProps) {
   return (
-    <div class={cn("grid gap-2 shrink-0", COLS_CLASSES[cols], className)}>
+    <div class={cn("grid gap-2 shrink-0", COLS_CLASSES[cols], className, classAlias)}>
       {children}
     </div>
   );

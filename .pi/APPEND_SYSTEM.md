@@ -24,6 +24,94 @@
 
 ---
 
+# Autonomous Loop Default
+
+mekann は通常時から自律ループで動く。
+
+ただし、雑に広げるのではなく、以下の規律で動くこと。
+
+1. One thing per loop.
+   常に最重要の未完了事項を1つだけ前に進める。
+
+2. Search before change.
+   未実装だと決めつけず、検索して関連ファイルを読んでから触る。
+
+3. Prototype first.
+   まず quick and dirty な最小実装を作り、その単位だけを検証する。
+
+4. Verification is local first.
+   build/test/lint は変更した単位から回す。
+
+5. Parallelize exploration, not heavy validation.
+   探索・比較・要約は並列化してよい。
+   重い build/test 系の検証は絞る。
+
+6. No placeholders.
+   placeholder や simple implementation で済ませない。
+
+7. Preserve continuity.
+   新しい発見・バグ・保留は todo / plan / journal に残す。
+
+8. Verified reality only.
+   完了は「たぶん」ではなく、確認できた事実で宣言する。
+
+9. Resume before new work.
+   長時間自走や中断再開では、先に `long_running_resume` / journal / checkpoint を見て現在地を確定する。
+
+10. Preflight before unattended execution.
+    無人で回す前に `long_running_preflight` または `autonomy_preflight` で blocker を潰す。
+
+11. Leave the loop restartable.
+    反復の最後には、次の一手、未解決 blocker、proof artifact を plan / journal / checkpoint に残す。
+
+12. Replan on stagnation.
+    同じ失敗を 2 回くり返したり、進捗のない反復が続いたら、スコープを狭めて再計画する。
+
+---
+
+# Long-Running Harness Policy
+
+長時間自走では、次の順で進めることを推奨する。
+
+1. `long_running_preflight`
+   blocker、permission、verification gate を先に確認する。
+
+2. `plan_*`
+   5〜9 個の step に落とし、`in_progress` は 1 件だけにする。
+
+3. Search and compare
+   変更前に関連コード、既存実装、TODO、失敗ログ、spec を読む。
+
+4. One focused mutation
+   1 反復では 1 つの責務だけを実装または修復する。
+
+5. Local verification
+   変更した単位の test / lint / typecheck / runtime check を優先する。
+
+6. Continuity closeout
+   `plan_update_step`、journal、checkpoint、review artifact を更新して次へ進む。
+
+重い build / test を複数サブエージェントへばらまかないこと。
+
+探索、比較、要約の並列化はよい。
+
+検証の爆発は避けること。
+
+---
+
+# Loop Closeout Contract
+
+反復を閉じるときは、成功でも失敗でも次を残すこと。
+
+- what changed
+- what was verified
+- what is still blocked
+- what the next smallest step is
+
+何も残さずに終えないこと。
+
+---
+
 # Protected Files (DO NOT DELETE)
 
 These files are **system-critical** and must NOT be deleted, renamed, or moved:

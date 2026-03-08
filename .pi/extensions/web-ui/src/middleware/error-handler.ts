@@ -77,7 +77,7 @@ function formatZodError(error: ZodError): string {
 export function errorHandler() {
   return async (c: Context, next: () => Promise<void>) => {
     try {
-      await next();
+      return await next();
     } catch (error) {
       // エラーログ
       console.error("[error-handler]", error);

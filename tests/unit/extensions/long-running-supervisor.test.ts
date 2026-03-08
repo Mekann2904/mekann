@@ -88,6 +88,31 @@ const libMocks = vi.hoisted(() => ({
 
 vi.mock("../../../.pi/lib/long-running-supervisor.js", () => libMocks);
 
+const workpadMocks = vi.hoisted(() => ({
+  loadWorkflowDocument: vi.fn(() => ({
+    exists: true,
+    path: "/repo/WORKFLOW.md",
+    frontmatter: {},
+    body: "# WORKFLOW",
+  })),
+  createWorkpad: vi.fn(() => ({
+    metadata: {
+      id: "wp-1",
+    },
+  })),
+  updateWorkpad: vi.fn(),
+}));
+
+vi.mock("../../../.pi/lib/workflow-workpad.js", () => workpadMocks);
+
+const orchestrationMocks = vi.hoisted(() => ({
+  startSymphonyIssueRun: vi.fn(),
+  queueSymphonyIssueRetry: vi.fn(),
+  releaseSymphonyIssue: vi.fn(),
+}));
+
+vi.mock("../../../.pi/lib/symphony-orchestrator-state.js", () => orchestrationMocks);
+
 function createPiMock() {
   const handlers = new Map<string, (event: any, ctx: any) => Promise<any> | any>();
   const tools: any[] = [];
@@ -138,6 +163,8 @@ describe("long-running-supervisor extension", () => {
     expect(String(result?.systemPrompt)).toContain("LONG_RUNNING_SUPERVISOR");
     expect(String(result?.systemPrompt)).toContain("Long-Running Replay");
     expect(String(result?.systemPrompt)).toContain("Long-Running Preflight");
+    expect(String(result?.systemPrompt)).toContain("Runtime Notifications");
+    expect(String(result?.systemPrompt)).toContain("long-running-preflight");
   });
 
   it("tool_call / tool_result / session_shutdown を lib へ forwarding する", async () => {
@@ -155,16 +182,66 @@ describe("long-running-supervisor extension", () => {
     expect(libMocks.finalizeLongRunningSession).toHaveBeenCalledWith("/repo", "lr-1", "clean_shutdown");
   });
 
+  it("execution tool で workpad を自動作成し、verification を記録する", async () => {
+    const extension = (await import("../../../.pi/extensions/long-running-supervisor.js")).default;
+    const pi = createPiMock();
+    libMocks.runLongRunningPreflight.mockReturnValue({
+      ok: true,
+      blockers: [],
+      warnings: [],
+      requiredPermissions: ["read", "write"],
+      missingPermissions: [],
+      workspaceVerificationPhase: "verification",
+      runtimeNeedsBackgroundProcess: false,
+    });
+
+    extension(pi as never);
+    await pi.handlers.get("session_start")?.({}, { cwd: "/repo", ui: { notify: vi.fn() } });
+    await pi.handlers.get("tool_call")?.({
+      toolName: "subagent_run",
+      input: { task: "Implement Symphony orchestration", issue_id: "task-1" },
+    }, { cwd: "/repo" });
+    await pi.handlers.get("tool_result")?.({
+      toolName: "workspace_verify",
+      isError: false,
+      result: { summary: "ok" },
+    }, { cwd: "/repo" });
+
+    expect(workpadMocks.createWorkpad).toHaveBeenCalledWith("/repo", {
+      task: "Implement Symphony orchestration",
+      source: "auto:subagent_run",
+      issueId: "task-1",
+    });
+    expect(orchestrationMocks.startSymphonyIssueRun).toHaveBeenCalledWith(expect.objectContaining({
+      cwd: "/repo",
+      issueId: "task-1",
+      source: "long-running-supervisor",
+    }));
+    expect(orchestrationMocks.releaseSymphonyIssue).toHaveBeenCalledWith(expect.objectContaining({
+      cwd: "/repo",
+      issueId: "task-1",
+      reason: "workspace_verify passed",
+    }));
+    expect(workpadMocks.updateWorkpad).toHaveBeenCalledWith("/repo", expect.objectContaining({
+      id: "wp-1",
+      section: "verification",
+    }));
+  });
+
   it("execution tool を preflight blocker で止める", async () => {
     const extension = (await import("../../../.pi/extensions/long-running-supervisor.js")).default;
     const pi = createPiMock();
 
     extension(pi as never);
     await pi.handlers.get("session_start")?.({}, { cwd: "/repo", ui: { notify: vi.fn() } });
-    const result = await pi.handlers.get("tool_call")?.({ toolName: "loop_run", input: { task: "demo" } }, { cwd: "/repo" });
+    const result = await pi.handlers.get("tool_call")?.({ toolName: "loop_run", input: { task: "demo", issue_id: "task-2" } }, { cwd: "/repo" });
 
     expect(result?.block).toBe(true);
     expect(String(result?.reason)).toContain("long-running preflight blocked loop_run");
+    expect(orchestrationMocks.queueSymphonyIssueRetry).toHaveBeenCalledWith(expect.objectContaining({
+      cwd: "/repo",
+      issueId: "task-2",
+    }));
     expect(libMocks.recordLongRunningEvent).toHaveBeenCalled();
   });
 });

@@ -33,7 +33,7 @@
 
 import { execSync, type ExecSyncOptions } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 import type {
   SessionStartContext,
@@ -61,6 +61,7 @@ import type {
   ProcessInfo,
   FailureTracesInfo,
 } from "./startup-context-types.js";
+import { loadWorkflowDocument, listWorkpads } from "./workflow-workpad.js";
 import {
   MASK_PATTERNS,
   SAFE_ENV_VARS,
@@ -863,6 +864,14 @@ function collectProjectContext(): ProjectContextInfo | undefined {
     inferred.required_sdks = requiredSdks;
   }
 
+  const workflow = loadWorkflowDocument(cwd);
+  inferred.workflow_defined = workflow.exists;
+  inferred.workflow_entrypoints = workflow.frontmatter.entrypoints ?? [];
+
+  const workpads = listWorkpads(cwd);
+  inferred.workpad_count = workpads.length;
+  inferred.latest_workpad_updated_at = workpads[0]?.metadata.updatedAt;
+
   return inferred;
 }
 
@@ -1506,6 +1515,18 @@ function formatProjectContextSection(context: ProjectContextInfo): string {
   }
   if (context.required_sdks && context.required_sdks.length > 0) {
     lines.push(`# Required SDKs: ${context.required_sdks.join(", ")}`);
+  }
+  if (context.workflow_defined !== undefined) {
+    lines.push(`# Workflow Defined: ${context.workflow_defined}`);
+  }
+  if (context.workflow_entrypoints && context.workflow_entrypoints.length > 0) {
+    lines.push(`# Workflow Entry Points: ${context.workflow_entrypoints.join(", ")}`);
+  }
+  if (context.workpad_count !== undefined) {
+    lines.push(`# Workpad Count: ${context.workpad_count}`);
+  }
+  if (context.latest_workpad_updated_at) {
+    lines.push(`# Latest Workpad Updated At: ${context.latest_workpad_updated_at}`);
   }
   if (context.custom_notes && context.custom_notes.length > 0) {
     lines.push(`# Notes:`);

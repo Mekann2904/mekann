@@ -13,11 +13,9 @@
 import { Hono } from "hono";
 import fs from "fs";
 import path from "path";
-import type { SuccessResponse } from "../schemas/common.schema.js";
 
 // MCP接続マネージャーをインポート
 import { mcpManager } from "../../../../lib/mcp/connection-manager.js";
-import { loadMcpConfig, getEnabledServers } from "../../../../lib/mcp/config-loader.js";
 
 /**
  * MCPルート
@@ -80,6 +78,18 @@ interface McpResource {
 interface McpConfig {
   servers?: McpServerConfig[];
   mcpServers?: Record<string, McpServerConfig>;  // 旧形式（後方互換性）
+}
+
+/**
+ * 旧形式サーバー設定からid重複を避けてレスポンスを作る
+ */
+function withServerId(serverId: string, server: McpServerConfig) {
+  const { id: ignoredId, ...serverData } = server;
+  void ignoredId;
+  return {
+    ...serverData,
+    id: serverId,
+  };
 }
 
 /**
@@ -176,7 +186,7 @@ mcpRoutes.get("/servers/:id", (c) => {
 
     return c.json({
       success: true,
-      data: { id: serverId, ...server },
+      data: withServerId(serverId, server),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -221,14 +231,15 @@ mcpRoutes.post("/connect/:id", async (c) => {
       return c.json({ success: false, error: "Server not found" }, 404);
     }
 
+    if (!server.url) {
+      return c.json({ success: false, error: "Server URL is required" }, 400);
+    }
+
     // MCP接続を試行
     await mcpManager.connect({
       id: serverId,
       url: server.url,
       type: server.url?.startsWith("http") ? "http" : "stdio",
-      command: server.command,
-      args: server.args,
-      env: server.env,
     });
 
     return c.json({ success: true, message: `Connected to ${serverId}` });

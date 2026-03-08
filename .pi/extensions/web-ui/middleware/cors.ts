@@ -49,6 +49,21 @@ export function isCorsAllowed(origin: string | undefined): boolean {
 }
 
 /**
+ * @summary ExpressのOriginヘッダーを単一文字列へ正規化する
+ * @param originHeader - 生のOriginヘッダー
+ * @returns 検証に使える単一Origin
+ */
+function normalizeOriginHeader(originHeader: string | string[] | undefined): string | undefined {
+	if (typeof originHeader === "string") {
+		return originHeader;
+	}
+	if (Array.isArray(originHeader)) {
+		return originHeader[0];
+	}
+	return undefined;
+}
+
+/**
  * @summary セキュリティヘッダーを設定するミドルウェア（簡易helmet）
  * @param _req - リクエスト
  * @param res - レスポンス
@@ -77,7 +92,7 @@ export function securityHeaders(_req: Request, res: Response, next: () => void):
  * @param next - 次のミドルウェア
  */
 export function corsMiddleware(req: Request, res: Response, next: () => void): void {
-	const origin = req.headers.origin;
+	const origin = normalizeOriginHeader(req.headers.origin);
 	if (!isCorsAllowed(origin)) {
 		res.status(403).json({ error: "CORS policy blocked" });
 		return;

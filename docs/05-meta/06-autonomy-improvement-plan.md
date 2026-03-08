@@ -9,6 +9,10 @@ related: [README.md, docs/05-meta/03-roadmap.md, docs/05-meta/04-development-wor
 
 # エージェント自走力とコーディング性能向上計画
 
+> 2026-03-08 追記:
+> 実運用の標準ループは [自走ハーネス運用ガイド](./08-autonomous-harness-playbook.md) に切り出しました。
+> この文書は「何を実装するか」の計画として扱い、日々の回し方は runbook 側を正とします。
+
 本計画は、mekann拡張機能を通じたコーディング性能とエージェント自走力の向上方法をまとめたものです。
 
 ## 概要
@@ -320,6 +324,18 @@ function recommendAgentForTask(task: string): string
 3. 統合テスト
    - 既存機能との互換性確認
    - 性能指標の測定
+
+## 運用ポリシーの更新
+
+Ralph 系の知見を踏まえ、mekann の実運用では次を標準にします。
+
+- 1 反復 1 焦点
+- 探索は並列、重い検証は絞る
+- 停滞時は scope を縮めて再計画する
+- 毎反復で plan / journal / proof artifact を残す
+- unattended 実行前は preflight、再開時は resume を必須に近い運用で扱う
+
+実装計画は、この運用ポリシーを壊さない形で進めます。
 
 ## 参考情報
 

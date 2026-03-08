@@ -165,22 +165,6 @@ const openBrowser = async (url: string): Promise<boolean> => {
   }
 };
 
-/**
- * サーバーのURLを取得する
- * @summary サーバーURL取得
- * @description レジストリからサーバー情報を取得し、URLを返す
- * サーバーが実行中でない場合はデフォルトポートのURLを返す（TOCTOU問題を回避）
- * @returns サーバーのURL（常に有効なURLを返す）
- */
-function getServerUrl(): string {
-  const registryServer = ServerRegistry.isRunning();
-  if (registryServer) {
-    return `http://localhost:${registryServer.port}`;
-  }
-  // Fallback to default port - avoids TOCTOU issues by always returning a valid URL
-  return `http://localhost:${DEFAULT_PORT}`;
-}
-
 export default function (pi: ExtensionAPI) {
   const registry = new InstanceRegistry(process.cwd());
 
@@ -222,14 +206,15 @@ export default function (pi: ExtensionAPI) {
       const subcommand = args.trim().toLowerCase();
 
       switch (subcommand) {
-        case "stop":
+        case "stop": {
           // 強制停止（スタンドアロンサーバーを停止）
           stopUnifiedServerProcess();
           ensureUnregistered();
           ctx.ui.notify("Web UI stopped", "info");
           break;
+        }
 
-        case "status":
+        case "status": {
           const existingServer = ServerRegistry.isRunning();
           const instances = InstanceRegistry.getAll();
           ctx.ui.notify(
@@ -239,8 +224,9 @@ export default function (pi: ExtensionAPI) {
             "info"
           );
           break;
+        }
 
-        case "open":
+        case "open": {
           const serverInfo = ServerRegistry.isRunning();
           const serverUrl = serverInfo
             ? `http://localhost:${serverInfo.port}`
@@ -260,9 +246,10 @@ export default function (pi: ExtensionAPI) {
             ctx.ui.notify(`Web UI available at ${serverUrl} (could not open browser automatically)`, "warning");
           }
           break;
+        }
 
         case "start":
-        default:
+        default: {
           ensureRegistered(ctx.model?.id);
 
           const existingServerForStart = ServerRegistry.isRunning();
@@ -296,6 +283,7 @@ export default function (pi: ExtensionAPI) {
             ctx.ui.notify(`Failed to start Web UI: ${message}`, "error");
           }
           break;
+        }
       }
     },
   });
