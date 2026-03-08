@@ -53,7 +53,7 @@ describe("harness-engineering lib", () => {
             "./.pi/extensions/autonomy-policy.ts",
             "./.pi/extensions/long-running-supervisor.ts",
             "./.pi/extensions/workspace-verification.ts",
-            "./.pi/extensions/ralph-loop-guard.ts",
+            "./.pi/extensions/ralph-loop.ts",
             "./.pi/extensions/task-auto-executor.ts",
             "./.pi/extensions/playwright-cli.ts",
             "./.pi/extensions/background-process.ts",

@@ -90,7 +90,7 @@
       "./.pi/extensions/agent-usage-tracker.ts",
       "./.pi/extensions/append-system-loader.ts",
       "./.pi/extensions/autonomous-loop-prompt.ts",
-      "./.pi/extensions/ralph-loop-guard.ts",
+      "./.pi/extensions/ralph-loop.ts",
       "./.pi/extensions/autonomy-policy.ts",
       "./.pi/extensions/background-process.ts",
       "./.pi/extensions/long-running-supervisor.ts",

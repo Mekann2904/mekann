@@ -44,7 +44,7 @@ const REQUIRED_RUNTIME_EXTENSIONS = [
   "./.pi/extensions/autonomy-policy.ts",
   "./.pi/extensions/long-running-supervisor.ts",
   "./.pi/extensions/workspace-verification.ts",
-  "./.pi/extensions/ralph-loop-guard.ts",
+  "./.pi/extensions/ralph-loop.ts",
   "./.pi/extensions/task-auto-executor.ts",
   "./.pi/extensions/workflow-workpad.ts",
 ] as const;
