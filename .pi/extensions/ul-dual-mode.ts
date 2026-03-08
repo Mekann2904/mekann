@@ -37,6 +37,9 @@ import {
   loadWorkspaceVerificationState,
   resolveWorkspaceVerificationPlan,
 } from "../lib/workspace-verification.js";
+import {
+  getCurrentWorkflow,
+} from "./ul-workflow.js";
 
 const UL_PREFIX = /^\s*ul(?:\s+|$)/i;
 const STABLE_UL_PROFILE = true;
@@ -69,6 +72,19 @@ interface ToolCallEventLike {
   input?: unknown;
 }
 
+interface ToolResultEventLike {
+  toolName?: unknown;
+  input?: unknown;
+  result?: unknown;
+  isError?: unknown;
+}
+
+interface UlWorkflowStateLike {
+  taskId: string;
+  phase: string;
+  approvedPhases?: string[];
+}
+
 const SUBAGENT_EXECUTION_TOOLS = new Set([
   "subagent_run",
   "subagent_run_parallel",
@@ -87,6 +103,7 @@ const state = {
   completedRecommendedSubagentPhase: false,
   completedRecommendedReviewerPhase: false,
   currentTask: "",  // 現在のタスク（reviewer要否判定用）
+  planApprovedTaskId: null as string | null,
 };
 
 /**
@@ -136,6 +153,7 @@ function resetState(): void {
   state.completedRecommendedSubagentPhase = false;
   state.completedRecommendedReviewerPhase = false;
   state.currentTask = "";
+  state.planApprovedTaskId = null;
 }
 
 /**
@@ -152,6 +170,7 @@ async function resetStateAsync(): Promise<void> {
     completedRecommendedSubagentPhase: false,
     completedRecommendedReviewerPhase: false,
     currentTask: "",
+    planApprovedTaskId: null,
   });
 }
 
@@ -373,6 +392,135 @@ function extractIdList(value: unknown): string[] {
   return value
     .map((entry) => normalizeId(entry))
     .filter(Boolean);
+}
+
+function extractToolTargetPath(input: unknown): string {
+  const record = toObjectLike(input);
+  if (!record) {
+    return "";
+  }
+
+  for (const key of ["path", "file", "filePath", "targetFile", "filename"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+
+  return "";
+}
+
+function getCurrentUlWorkflow(): UlWorkflowStateLike | null {
+  try {
+    const workflow = getCurrentWorkflow();
+    if (!workflow || typeof workflow !== "object") {
+      return null;
+    }
+
+    const taskId = typeof (workflow as { taskId?: unknown }).taskId === "string"
+      ? String((workflow as { taskId: string }).taskId)
+      : "";
+    const phase = typeof (workflow as { phase?: unknown }).phase === "string"
+      ? String((workflow as { phase: string }).phase)
+      : "";
+
+    if (!taskId || !phase) {
+      return null;
+    }
+
+    return {
+      taskId,
+      phase,
+      approvedPhases: Array.isArray((workflow as { approvedPhases?: unknown }).approvedPhases)
+        ? (workflow as { approvedPhases: string[] }).approvedPhases
+        : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function hasExplicitPlanApproval(taskId: string | null | undefined): boolean {
+  return Boolean(taskId && state.planApprovedTaskId === taskId);
+}
+
+function canStartImplementation(workflow: UlWorkflowStateLike | null): boolean {
+  return Boolean(
+    workflow
+    && workflow.phase === "implement"
+    && hasExplicitPlanApproval(workflow.taskId)
+  );
+}
+
+function isUlWorkflowArtifactPath(targetPath: string, workflow: UlWorkflowStateLike | null): boolean {
+  const normalized = targetPath.replace(/\\/g, "/");
+  if (!normalized) {
+    return false;
+  }
+
+  const artifactPattern = /\/?\.pi\/ul-workflow\/tasks\/[^/]+\/(task\.md|research\.md|plan\.md|status\.json)$/i;
+  if (!artifactPattern.test(normalized)) {
+    return false;
+  }
+
+  if (!workflow?.taskId) {
+    return true;
+  }
+
+  return normalized.includes(`/.pi/ul-workflow/tasks/${workflow.taskId}/`)
+    || normalized.startsWith(`.pi/ul-workflow/tasks/${workflow.taskId}/`);
+}
+
+function getUlPreApprovalBlockReason(event: ToolCallEventLike): string | undefined {
+  const toolName = normalizeId(event?.toolName);
+  if (toolName !== "edit") {
+    return undefined;
+  }
+
+  const workflow = getCurrentUlWorkflow();
+  const implementationUnlocked = canStartImplementation(workflow);
+  const targetPath = extractToolTargetPath(event.input);
+  if (isUlWorkflowArtifactPath(targetPath, workflow) || implementationUnlocked) {
+    return undefined;
+  }
+
+  return "UL MODE: plan 承認前はワークフロー成果物以外への `edit` を実行できません。`research.md` / `plan.md` は編集できます。";
+}
+
+function extractResultDetails(event: ToolResultEventLike): Record<string, unknown> | undefined {
+  const result = toObjectLike(event?.result);
+  if (!result) {
+    return undefined;
+  }
+
+  const details = toObjectLike(result.details);
+  return details ?? result;
+}
+
+function isPlanApprovalQuestion(question: string): boolean {
+  return /plan\.md|この計画で実行しますか|計画で実装を続行しますか/i.test(question);
+}
+
+function getQuestionAnswers(details: Record<string, unknown>): string[] {
+  if (Array.isArray(details.answers)) {
+    return details.answers
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim())
+      .filter(Boolean);
+  }
+
+  if (typeof details.answer === "string" && details.answer.trim().length > 0) {
+    return [details.answer.trim()];
+  }
+
+  return [];
+}
+
+function isExplicitApprovalAnswer(answer: string): boolean {
+  const normalized = normalizeId(answer);
+  return normalized === "承認して続行"
+    || normalized === "yes"
+    || normalized === "実行";
 }
 
 /**
@@ -695,6 +843,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     if (!UL_PREFIX.test(rawText)) {
       state.pendingUlMode = false;
       state.pendingGoalLoopMode = false;
+      state.planApprovedTaskId = null;
 
       // DISABLED: 自動検出を無効化（明示的な入口のみに絞る）
       // const shouldAutoEnable =
@@ -731,6 +880,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       state.pendingUlMode = true;
       state.pendingGoalLoopMode = false; // 統一フローでは常にfalse
       state.currentTask = task;
+      state.planApprovedTaskId = null;
       
       if (ctx?.hasUI && ctx?.ui) {
         ctx.ui.notify("UL Fast モード: 委任優先で実行します。", "info");
@@ -841,6 +991,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     state.persistentUlMode = true;  // セッション全体に有効化
     state.pendingGoalLoopMode = false; // 統一フローでは常にfalse
     state.currentTask = taskText;
+    state.planApprovedTaskId = null;
     persistState(pi);  // セッションに保存
 
     if (ctx?.hasUI && ctx?.ui) {
@@ -884,6 +1035,14 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       return;
     }
 
+    const blockReason = getUlPreApprovalBlockReason(event);
+    if (blockReason) {
+      return {
+        block: true,
+        reason: blockReason,
+      };
+    }
+
     const toolName = String(event?.toolName || "").toLowerCase();
     const input = parseToolInput(event);
     let changed = false;
@@ -905,6 +1064,48 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
 
     if (changed) {
       refreshStatusThrottled(ctx);  // 高頻度イベントではスロットリング
+    }
+  });
+
+  pi.on("tool_result", async (event) => {
+    if (!state.activeUlMode || event?.isError) {
+      return;
+    }
+
+    const toolName = normalizeId(event?.toolName);
+    if (!toolName) {
+      return;
+    }
+
+    if (toolName === "ul_workflow_start" || toolName === "ul_workflow_plan" || toolName === "ul_workflow_modify_plan" || toolName === "ul_workflow_abort") {
+      state.planApprovedTaskId = null;
+      return;
+    }
+
+    if (toolName !== "question") {
+      return;
+    }
+
+    const details = extractResultDetails(event);
+    const question = typeof details?.question === "string" ? details.question : "";
+    if (!question || !isPlanApprovalQuestion(question)) {
+      return;
+    }
+
+    const workflow = getCurrentUlWorkflow();
+    if (!workflow) {
+      state.planApprovedTaskId = null;
+      return;
+    }
+
+    const answers = getQuestionAnswers(details);
+    if (answers.some((answer) => isExplicitApprovalAnswer(answer))) {
+      state.planApprovedTaskId = workflow.taskId;
+      return;
+    }
+
+    if (state.planApprovedTaskId === workflow.taskId) {
+      state.planApprovedTaskId = null;
     }
   });
 

@@ -11,6 +11,10 @@ vi.mock("@mariozechner/pi-coding-agent", () => ({
 	ExtensionAPI: vi.fn(),
 }));
 
+const ulWorkflowMocks = vi.hoisted(() => ({
+	getCurrentWorkflow: vi.fn(() => null),
+}));
+
 vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
 	isCompletionBlocked: vi.fn(() => false),
 	loadWorkspaceVerificationConfig: vi.fn(() => ({ enabled: false })),
@@ -18,8 +22,22 @@ vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
 	resolveWorkspaceVerificationPlan: vi.fn(() => ({})),
 }));
 
+vi.mock("../../../.pi/extensions/ul-workflow.js", () => ({
+	getCurrentWorkflow: ulWorkflowMocks.getCurrentWorkflow,
+}));
+
 // モック後にインポート
 import ulDualMode, { buildUlWorkflowPrompt } from "../../../.pi/extensions/ul-dual-mode.js";
+
+function createMockPi() {
+	const handlers = new Map<string, (event: any, ctx: any) => Promise<any> | any>();
+	return {
+		handlers,
+		appendEntry: vi.fn(),
+		registerCommand: vi.fn(),
+		on: vi.fn((name: string, handler: any) => handlers.set(name, handler)),
+	};
+}
 
 // ============================================================================
 // エクスポート確認テスト
@@ -398,5 +416,109 @@ describe("エッジケース", () => {
 			const UL_PREFIX = /^\s*ul(?:\s+|$)/i;
 			expect(UL_PREFIX.test(task)).toBe(true);
 		});
+	});
+});
+
+describe("承認前実装ゲート", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		ulWorkflowMocks.getCurrentWorkflow.mockReturnValue(null);
+	});
+
+	it("annotateフェーズではeditをブロックする", async () => {
+		const pi = createMockPi();
+		ulDualMode(pi as any);
+
+		const ctx = {
+			hasUI: false,
+			ui: {
+				notify: vi.fn(),
+				setStatus: vi.fn(),
+			},
+			sessionManager: { getEntries: () => [] },
+		};
+
+		await pi.handlers.get("input")?.({ source: "user", text: "ul 通知バグを修正" }, ctx);
+		await pi.handlers.get("before_agent_start")?.({ systemPrompt: "base" }, ctx);
+
+		ulWorkflowMocks.getCurrentWorkflow.mockReturnValue({
+			taskId: "task-1",
+			phase: "annotate",
+			approvedPhases: ["research", "plan"],
+		});
+
+		const result = await pi.handlers.get("tool_call")?.({ toolName: "edit", input: { file: "a.ts" } }, ctx);
+		expect(result?.block).toBe(true);
+		expect(result?.reason).toContain("plan 承認前");
+
+		await pi.handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("annotateフェーズでもplan.mdの編集は許可する", async () => {
+		const pi = createMockPi();
+		ulDualMode(pi as any);
+
+		const ctx = {
+			hasUI: false,
+			ui: {
+				notify: vi.fn(),
+				setStatus: vi.fn(),
+			},
+			sessionManager: { getEntries: () => [] },
+		};
+
+		await pi.handlers.get("input")?.({ source: "user", text: "ul 通知バグを修正" }, ctx);
+		await pi.handlers.get("before_agent_start")?.({ systemPrompt: "base" }, ctx);
+
+		ulWorkflowMocks.getCurrentWorkflow.mockReturnValue({
+			taskId: "task-1",
+			phase: "annotate",
+			approvedPhases: ["research", "plan"],
+		});
+
+		const result = await pi.handlers.get("tool_call")?.({
+			toolName: "edit",
+			input: { path: ".pi/ul-workflow/tasks/task-1/plan.md" },
+		}, ctx);
+		expect(result).toBeUndefined();
+
+		await pi.handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("edit以外のツールは通常どおり通す", async () => {
+		const pi = createMockPi();
+		ulDualMode(pi as any);
+
+		const ctx = {
+			hasUI: false,
+			ui: {
+				notify: vi.fn(),
+				setStatus: vi.fn(),
+			},
+			sessionManager: { getEntries: () => [] },
+		};
+
+		await pi.handlers.get("input")?.({ source: "user", text: "ul 認証バグを修正" }, ctx);
+		await pi.handlers.get("before_agent_start")?.({ systemPrompt: "base" }, ctx);
+
+		ulWorkflowMocks.getCurrentWorkflow.mockReturnValue({
+			taskId: "task-2",
+			phase: "annotate",
+			approvedPhases: ["research", "plan"],
+		});
+
+		const writeResult = await pi.handlers.get("tool_call")?.({
+			toolName: "write",
+			input: { path: "src/new-file.ts" },
+		}, ctx);
+		expect(writeResult).toBeUndefined();
+
+		const approveResult = await pi.handlers.get("tool_call")?.({
+			toolName: "ul_workflow_approve",
+			input: {},
+		}, ctx);
+		expect(approveResult).toBeUndefined();
+
+		await pi.handlers.get("session_shutdown")?.({}, ctx);
 	});
 });
