@@ -6,7 +6,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 
 const ulWorkflowMocks = vi.hoisted(() => ({
   getInstanceId: vi.fn(() => "instance-1-123"),
@@ -96,6 +96,27 @@ const orchestrationMocks = vi.hoisted(() => ({
 
 vi.mock("../../../.pi/lib/symphony-orchestrator-state.js", () => orchestrationMocks);
 
+const longRunningMocks = vi.hoisted(() => ({
+  createLongRunningReplay: vi.fn(() => ({
+    session: {
+      id: "lr-1",
+      status: "crashed",
+    },
+    nextAction: "Resume the smallest unfinished slice.",
+    resumeReason: "Interrupted tool call detected.",
+    recentEvents: [
+      { type: "tool_call", summary: "tool call started: subagent_run_dag" },
+      { type: "tool_result", summary: "tool failed: subagent_run_dag" },
+    ],
+    warnings: ["Latest session crashed: lr-1"],
+    workspaceVerification: { phase: "clear", requestedSteps: [], reason: "clear" },
+    backgroundProcesses: [],
+    plan: { acceptanceCriteria: [], fileModuleImpact: [], recentProgress: [] },
+  })),
+}));
+
+vi.mock("../../../.pi/lib/long-running-supervisor.js", () => longRunningMocks);
+
 const runtimeSessionMocks = vi.hoisted(() => {
   let listener: ((event: { type: string; data: unknown }) => void) | null = null;
   return {
@@ -143,9 +164,26 @@ describe("task-auto-executor workpad", () => {
     vi.resetModules();
     vi.clearAllMocks();
     storageMocks.reset();
+    rmSync(".pi/tasks/auto-executor-config.json", { force: true });
+    rmSync(".pi/tasks/auto-executor-runtime.json", { force: true });
     ulWorkflowMocks.getInstanceId.mockReturnValue("instance-1-123");
     ulWorkflowMocks.isProcessAlive.mockReturnValue(true);
     ulWorkflowMocks.extractPidFromInstanceId.mockReturnValue(123);
+    longRunningMocks.createLongRunningReplay.mockReturnValue({
+      session: {
+        id: "lr-1",
+        status: "crashed",
+      },
+      nextAction: "Resume the smallest unfinished slice.",
+      resumeReason: "Interrupted tool call detected.",
+      recentEvents: [
+        { type: "tool_call", summary: "tool call started: subagent_run_dag" },
+      ],
+      warnings: ["Latest session crashed: lr-1"],
+      workspaceVerification: { phase: "clear", requestedSteps: [], reason: "clear" },
+      backgroundProcesses: [],
+      plan: { acceptanceCriteria: [], fileModuleImpact: [], recentProgress: [] },
+    });
   });
 
   it("task_run_next で workpad を自動作成する", async () => {
@@ -171,6 +209,25 @@ describe("task-auto-executor workpad", () => {
     });
     expect(result.content[0].text).toContain("WORKPAD");
     expect(result.details.workpadId).toBe("wp-1");
+  });
+
+  it("task_run_next は durable checkpoint を保存する", async () => {
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+
+    extension(pi as never);
+    const tool = pi.tools.find((entry) => entry.name === "task_run_next");
+    await tool.execute("t1", {}, undefined, undefined, { cwd: "/repo" });
+
+    const runtimeState = JSON.parse(readFileSync(".pi/tasks/auto-executor-runtime.json", "utf-8"));
+    expect(runtimeState.checkpoints).toEqual([
+      expect.objectContaining({
+        taskId: "task-1",
+        title: "Implement orchestration",
+        status: "claimed",
+        workpadId: "wp-1",
+      }),
+    ]);
   });
 
   it("autoRun 有効時は agent_end から既存ツール経由で自動実行する", async () => {
@@ -433,6 +490,97 @@ describe("task-auto-executor workpad", () => {
     expect(executeTool).toHaveBeenNthCalledWith(1, {
       toolName: "task_run_next",
       params: {},
+    });
+  });
+
+  it("durable checkpoint がある stale in_progress task は task_run_next を使わずに resume する", async () => {
+    storageMocks.state = {
+      tasks: [{
+        id: "task-1",
+        title: "Resume orchestration",
+        description: "recover stale worker",
+        status: "in_progress",
+        priority: "high",
+        tags: [],
+        createdAt: "2026-03-08T00:00:00.000Z",
+        updatedAt: "2026-03-08T00:00:00.000Z",
+        ownerInstanceId: "other-999",
+        retryCount: 0,
+        completionGateStatus: "clear",
+      }],
+    };
+    ulWorkflowMocks.extractPidFromInstanceId.mockReturnValue(999);
+    ulWorkflowMocks.isProcessAlive.mockReturnValue(false);
+
+    writeFileSync(".pi/tasks/auto-executor-config.json", JSON.stringify({
+      enabled: true,
+      autoRun: true,
+      currentTaskId: "task-1",
+      maxRetries: 2,
+    }, null, 2));
+    writeFileSync(".pi/tasks/auto-executor-runtime.json", JSON.stringify({
+      checkpoints: [{
+        taskId: "task-1",
+        title: "Resume orchestration",
+        description: "recover stale worker",
+        kind: "implementation",
+        reason: "durable checkpoint",
+        workpadId: "wp-1",
+        status: "interrupted",
+        ownerInstanceId: "other-999",
+        ownerPid: 999,
+        attemptCount: 1,
+        resumeCount: 0,
+        createdAt: "2026-03-08T00:00:00.000Z",
+        updatedAt: "2026-03-08T00:00:00.000Z",
+        lastError: "tool timed out",
+      }],
+    }, null, 2));
+
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+
+    extension(pi as never);
+
+    const sessionStartHandler = pi.handlers.get("session_start");
+    const executeTool = vi.fn(async ({ toolName }: { toolName: string; params: Record<string, unknown> }) => {
+      if (toolName === "subagent_run_dag") {
+        return {
+          content: [{ type: "text", text: "resumed" }],
+          details: { outcomeCode: "SUCCESS" },
+        };
+      }
+
+      throw new Error(`unexpected tool: ${toolName}`);
+    });
+
+    await sessionStartHandler?.({}, {
+      cwd: "/repo",
+      executeTool,
+      ui: {
+        notify: vi.fn(),
+        setStatus: vi.fn(),
+        theme: {
+          fg: (_tone: string, text: string) => text,
+        },
+      },
+    });
+
+    expect(executeTool).toHaveBeenCalledTimes(1);
+    expect(executeTool).toHaveBeenNthCalledWith(1, {
+      toolName: "subagent_run_dag",
+      params: {
+        task: "Resume orchestration\n\n詳細: recover stale worker",
+        taskId: "task-1",
+        extraContext: expect.stringContaining("Durability Resume Contract"),
+        autoGenerate: true,
+      },
+    });
+    expect(workflowMocks.updateWorkpad).toHaveBeenCalledWith("/repo", {
+      id: "wp-1",
+      section: "progress",
+      content: "- durable auto-run resume started via task_auto_executor",
+      mode: "append",
     });
   });
 
