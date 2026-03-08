@@ -1047,6 +1047,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     if (changed) {
       refreshStatusThrottled(ctx);  // 高頻度イベントではスロットリング
     }
+    return;
   });
 
   // 1リクエスト終了時の処理（セッション永続モードなら状態を維持）
