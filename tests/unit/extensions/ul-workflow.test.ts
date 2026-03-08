@@ -9,6 +9,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as fs from "fs";
 import * as path from "node:path";
 
+const verificationMockState = vi.hoisted(() => ({
+  config: {
+    enabled: true,
+    requireProofReview: false,
+    requireReplanOnRepeatedFailure: false,
+  },
+  state: {
+    dirty: false,
+    pendingProofReview: false,
+    pendingReviewArtifact: false,
+    replanRequired: false,
+  },
+  resolvedPlan: {
+    runtime: { enabled: false },
+    ui: { enabled: false },
+  },
+}));
+
 vi.mock("@mariozechner/pi-ai", () => ({
   Type: {
     String: (value?: unknown) => value,
@@ -145,6 +163,15 @@ vi.mock("../../../.pi/lib/storage/storage-lock.js", () => ({
   },
 }));
 
+vi.mock("../../../.pi/lib/workspace-verification.js", () => ({
+  isCompletionBlocked: vi.fn((config, state) => Boolean(
+    config.enabled && (state.dirty || state.pendingProofReview || state.pendingReviewArtifact || state.replanRequired)
+  )),
+  loadWorkspaceVerificationConfig: vi.fn(() => verificationMockState.config),
+  loadWorkspaceVerificationState: vi.fn(() => verificationMockState.state),
+  resolveWorkspaceVerificationPlan: vi.fn(() => verificationMockState.resolvedPlan),
+}));
+
 function createPiMock() {
   const tools = new Map<string, any>();
   const commands = new Map<string, any>();
@@ -173,6 +200,21 @@ describe("ul-workflow", () => {
     vi.clearAllMocks();
     (fs as unknown as { __reset: () => void }).__reset();
     process.env.PI_SESSION_ID = "test-session";
+    verificationMockState.config = {
+      enabled: true,
+      requireProofReview: false,
+      requireReplanOnRepeatedFailure: false,
+    };
+    verificationMockState.state = {
+      dirty: false,
+      pendingProofReview: false,
+      pendingReviewArtifact: false,
+      replanRequired: false,
+    };
+    verificationMockState.resolvedPlan = {
+      runtime: { enabled: false },
+      ui: { enabled: false },
+    };
   });
 
   it("annotate フェーズでも plan 修正を受け付ける", async () => {
@@ -273,8 +315,8 @@ describe("ul-workflow", () => {
     const result = await executePlanTool.execute("execute", {}, undefined, undefined, { executeTool });
 
     expect(executeTool).toHaveBeenCalledTimes(1);
-    expect(result.details.phase).toBe("completed");
-    expect(result.content[0].text).toContain("ul_workflow_commit()");
+    expect(result.details.phase).toBe("review");
+    expect(result.content[0].text).toContain("workspace_verify()");
   });
 
   it("implement 完了後も task ディレクトリを保持する", async () => {
@@ -296,9 +338,38 @@ describe("ul-workflow", () => {
     const approveTool = pi.tools.get("ul_workflow_approve");
     const result = await approveTool.execute("approve", {}, undefined, undefined, {});
 
-    expect(result.details.nextPhase).toBe("completed");
+    expect(result.details.nextPhase).toBe("review");
     expect(fs.existsSync(path.join(".pi", "ul-workflow", "tasks", taskId, "status.json"))).toBe(true);
     expect(fs.existsSync(path.join(".pi", "ul-workflow", "tasks", taskId, "task.md"))).toBe(true);
+  });
+
+  it("review フェーズでは verify が通るまで completed に進めない", async () => {
+    const extension = (await import("../../../.pi/extensions/ul-workflow.js")).default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    const startTool = pi.tools.get("ul_workflow_start");
+    const startResult = await startTool.execute("start", { task: "公開前チェックを修正する" }, undefined, undefined, {});
+    const taskId = startResult.details.taskId;
+
+    updateWorkflowState(taskId, (state) => ({
+      ...state,
+      phase: "review",
+      phaseIndex: 4,
+      approvedPhases: ["research", "plan", "annotate", "implement"],
+    }));
+    verificationMockState.state = {
+      dirty: true,
+      pendingProofReview: false,
+      pendingReviewArtifact: false,
+      replanRequired: false,
+    };
+
+    const approveTool = pi.tools.get("ul_workflow_approve");
+    const result = await approveTool.execute("approve", {}, undefined, undefined, {});
+
+    expect(result.details.error).toBe("verification_not_cleared");
+    expect(result.content[0].text).toContain("workspace_verify");
   });
 
   it("ul_workflow_run は annotate で止まり approvedPhases を重複させない", async () => {

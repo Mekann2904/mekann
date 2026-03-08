@@ -471,6 +471,27 @@ describe("workspace-verification extension", () => {
     expect(String(result?.reason)).toContain("workspace_verify");
   });
 
+  it("blocks ul_workflow_commit while verification is stale", async () => {
+    const extension = (await import("../../../.pi/extensions/workspace-verification.js")).default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    mockApi.config = {
+      ...mockApi.config,
+      enabled: true,
+    };
+    mockApi.state.dirty = true;
+
+    const handler = mockApi.handlers.get("tool_call");
+    const result = await handler?.(
+      { toolName: "ul_workflow_commit", input: {} },
+      { cwd: "/repo" },
+    );
+
+    expect(result?.block).toBe(true);
+    expect(String(result?.reason)).toContain("ul_workflow_commit");
+  });
+
   it("blocks task completion until proof artifacts are acknowledged", async () => {
     const extension = (await import("../../../.pi/extensions/workspace-verification.js")).default;
     const pi = createPiMock();
@@ -708,6 +729,29 @@ describe("workspace-verification extension", () => {
     expect(result?.content[0]?.text).toContain("/repo/.pi/verification-runs/latest");
   });
 
+  it("rejects proof acknowledgement for a failed verification run", async () => {
+    const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
+    const extension = extensionModule.default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    mockApi.state.pendingProofReview = true;
+    mockApi.state.lastRun = {
+      trigger: "manual",
+      startedAt: "2026-03-07T00:00:00.000Z",
+      finishedAt: "2026-03-07T00:00:10.000Z",
+      success: false,
+      artifactDir: "/repo/.pi/verification-runs/latest",
+      resolvedPlan: mockApi.resolvedPlan,
+      stepResults: [],
+    };
+
+    const tool = mockApi.tools.find((item) => item.name === "workspace_verify_ack");
+
+    await expect(tool?.execute("tool-1", {}, undefined, undefined, { cwd: "/repo" }))
+      .rejects.toThrow("failed or missing verification run");
+  });
+
   it("acknowledges a new repair strategy after repeated failures", async () => {
     const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
     const extension = extensionModule.default;
@@ -762,5 +806,41 @@ describe("workspace-verification extension", () => {
     expect(mockApi.state.pendingReviewArtifact).toBe(false);
     expect(ackResult?.content[0]?.text).toContain("Review artifact acknowledged");
     expect(mockApi.state.lastReviewDecision).toBe("accept");
+  });
+
+  it("rejects review artifact generation for a failed verification run", async () => {
+    const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
+    const extension = extensionModule.default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    mockApi.state.lastRun = {
+      trigger: "manual",
+      startedAt: "2026-03-07T00:00:00.000Z",
+      finishedAt: "2026-03-07T00:00:10.000Z",
+      success: false,
+      artifactDir: "/repo/.pi/verification-runs/latest",
+      resolvedPlan: mockApi.resolvedPlan,
+      stepResults: [],
+    };
+
+    const reviewTool = mockApi.tools.find((item) => item.name === "workspace_verify_review");
+
+    await expect(reviewTool?.execute("tool-1", {}, undefined, undefined, { cwd: "/repo" }))
+      .rejects.toThrow("successful verification run");
+  });
+
+  it("rejects review acknowledgement when no review artifact is pending", async () => {
+    const extensionModule = await import("../../../.pi/extensions/workspace-verification.js");
+    const extension = extensionModule.default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    mockApi.state.pendingReviewArtifact = false;
+
+    const ackTool = mockApi.tools.find((item) => item.name === "workspace_verify_review_ack");
+
+    await expect(ackTool?.execute("tool-1", { decision: "accept" }, undefined, undefined, { cwd: "/repo" }))
+      .rejects.toThrow("no pending review artifact");
   });
 });

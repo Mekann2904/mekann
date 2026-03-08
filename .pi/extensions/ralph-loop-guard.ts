@@ -52,6 +52,19 @@ interface RalphLoopSessionState {
   pendingVerification: boolean;
 }
 
+interface ToolResultEnvelope {
+  details?: {
+    success?: unknown;
+  };
+  result?: {
+    details?: {
+      success?: unknown;
+    };
+    success?: unknown;
+  };
+  success?: unknown;
+}
+
 const MUTATION_TOOLS = new Set(["edit", "write", "patch"]);
 const SEARCH_TOOLS = new Set([
   "read",
@@ -120,6 +133,40 @@ function isSearchEvidenceTool(toolName: string, command: string): boolean {
 function isVerificationTool(toolName: string, command: string): boolean {
   return toolName === "workspace_verify"
     || (toolName === "bash" && Boolean(command) && isVerificationBash(command));
+}
+
+function extractWorkspaceVerifySuccess(event: unknown): boolean | undefined {
+  if (!event || typeof event !== "object") {
+    return undefined;
+  }
+
+  const payload = event as ToolResultEnvelope;
+  const candidates = [
+    payload.details?.success,
+    payload.result?.details?.success,
+    payload.result?.success,
+    payload.success,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "boolean") {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+function didVerificationSucceed(event: { toolName?: unknown; isError?: unknown }, command: string): boolean {
+  if (event.isError) {
+    return false;
+  }
+
+  if (event.toolName === "workspace_verify") {
+    return extractWorkspaceVerifySuccess(event) === true;
+  }
+
+  return true;
 }
 
 function resetTurnState(): void {
@@ -292,7 +339,11 @@ export default function registerRalphLoopGuard(pi: ExtensionAPI): void {
     const toolName = typeof event.toolName === "string" ? event.toolName : "";
     const command = toolName === "bash" ? getBashCommand(event.input) : "";
 
-    if (!isVerificationTool(toolName, command) || event.isError) {
+    if (!isVerificationTool(toolName, command)) {
+      return;
+    }
+
+    if (!didVerificationSucceed(event, command)) {
       return;
     }
 

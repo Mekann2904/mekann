@@ -264,6 +264,37 @@ describe("task-auto-executor workpad", () => {
     });
   });
 
+  it("workspace_verify details.success=false を failed として反映する", async () => {
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+
+    extension(pi as never);
+    const taskRunNextTool = pi.tools.find((entry) => entry.name === "task_run_next");
+    await taskRunNextTool.execute("t1", {}, undefined, undefined, { cwd: "/repo" });
+
+    const toolResultHandler = pi.handlers.get("tool_result");
+    await toolResultHandler?.({
+      toolName: "workspace_verify",
+      isError: false,
+      result: {
+        summary: "runtime timed out",
+        details: {
+          success: false,
+        },
+      },
+    }, { cwd: "/repo" });
+
+    const savedAfterVerify = storageMocks.saveTaskStorage.mock.calls.at(-1)?.[0];
+    expect(savedAfterVerify.tasks[0].workspaceVerificationStatus).toBe("failed");
+    expect(savedAfterVerify.tasks[0].workspaceVerificationMessage).toBe("runtime timed out");
+    expect(workflowMocks.updateWorkpad).toHaveBeenCalledWith("/repo", {
+      id: "wp-1",
+      section: "verification",
+      content: "- workspace_verify failed: runtime timed out",
+      mode: "append",
+    });
+  });
+
   it("autoRun 起動失敗時は claim を戻して orchestration を release する", async () => {
     const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
     const pi = createPiMock();

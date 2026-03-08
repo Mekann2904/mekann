@@ -203,6 +203,10 @@ function shouldBlockTool(
     return `${reasonCore} before task_complete.`;
   }
 
+  if (toolName === "ul_workflow_commit") {
+    return `${reasonCore} before ul_workflow_commit.`;
+  }
+
   if (toolName === "plan_update_step") {
     const input = typeof event.input === "object" && event.input !== null
       ? event.input as Record<string, unknown>
@@ -949,6 +953,14 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
       artifactDir: Type.Optional(Type.String()),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const currentState = loadWorkspaceVerificationState(ctx.cwd);
+      if (!currentState.lastRun?.success) {
+        throw new Error("cannot acknowledge proof artifacts for a failed or missing verification run");
+      }
+      if (!currentState.pendingProofReview) {
+        throw new Error("no pending proof artifacts require acknowledgement");
+      }
+
       const state = acknowledgeVerificationArtifacts({
         cwd: ctx.cwd,
         artifactDir: params.artifactDir,
@@ -1005,6 +1017,9 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
       if (!shouldRequireReviewArtifact(config, run.resolvedPlan)) {
         throw new Error("review artifact is not required for the latest verification run");
       }
+      if (!run.success) {
+        throw new Error("review artifact can only be generated from a successful verification run");
+      }
 
       const artifact = persistWorkspaceReviewArtifact({
         cwd: ctx.cwd,
@@ -1060,6 +1075,11 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
       rationale: Type.Optional(Type.String()),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const currentState = loadWorkspaceVerificationState(ctx.cwd);
+      if (!currentState.pendingReviewArtifact) {
+        throw new Error("no pending review artifact requires acknowledgement");
+      }
+
       const state = acknowledgeReviewArtifact({
         cwd: ctx.cwd,
         path: params.path,

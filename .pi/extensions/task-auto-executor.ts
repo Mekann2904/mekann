@@ -128,6 +128,22 @@ interface TaskEvidenceSnapshot {
 	reviewEvidence: string[];
 }
 
+interface WorkspaceVerifyToolEvent {
+	toolName?: string;
+	isError?: boolean;
+	result?: {
+		summary?: unknown;
+		details?: {
+			success?: unknown;
+		};
+		success?: unknown;
+	};
+	error?: unknown;
+	details?: {
+		success?: unknown;
+	};
+}
+
 // ============================================
 // Constants
 // ============================================
@@ -370,6 +386,26 @@ function summarizeEvidenceLines(text: string | undefined): string[] {
 		.filter(Boolean)
 		.filter((line) => line !== "- pending" && line !== "- created")
 		.slice(0, 20);
+}
+
+function extractWorkspaceVerifyPassed(event: WorkspaceVerifyToolEvent): boolean {
+	if (event.isError) {
+		return false;
+	}
+
+	const candidates = [
+		event.details?.success,
+		event.result?.details?.success,
+		event.result?.success,
+	];
+
+	for (const candidate of candidates) {
+		if (typeof candidate === "boolean") {
+			return candidate;
+		}
+	}
+
+	return !event.isError;
 }
 
 function collectVerifiedCommands(
@@ -1236,12 +1272,7 @@ ${taskDescription}
 	});
 
 	pi.on("tool_result", async (event, ctx) => {
-		const anyEvent = event as {
-			toolName?: string;
-			isError?: boolean;
-			result?: unknown;
-			error?: unknown;
-		};
+		const anyEvent = event as WorkspaceVerifyToolEvent;
 		if (anyEvent.toolName !== "workspace_verify") {
 			return;
 		}
@@ -1251,15 +1282,15 @@ ${taskDescription}
 			return;
 		}
 
-		const message = typeof (anyEvent.result as { summary?: unknown } | undefined)?.summary === "string"
-			? String((anyEvent.result as { summary?: string }).summary)
+		const message = typeof anyEvent.result?.summary === "string"
+			? String(anyEvent.result.summary)
 			: typeof anyEvent.error === "string"
 				? anyEvent.error
 				: anyEvent.isError
 					? "workspace verification failed"
 					: "workspace verification passed";
 
-		const status = anyEvent.isError ? "failed" : "passed";
+		const status = extractWorkspaceVerifyPassed(anyEvent) ? "passed" : "failed";
 		updateTaskWorkspaceVerification(taskId, status, message);
 		const issueState = getSymphonyIssueState(ctx.cwd, taskId);
 		if (issueState?.workpadId) {

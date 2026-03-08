@@ -85,6 +85,11 @@ describe("ralph-loop-guard extension", () => {
       toolName: "workspace_verify",
       input: {},
       isError: false,
+      result: {
+        details: {
+          success: true,
+        },
+      },
     }, {
       ui: { notify: (message: string, level: string) => notifications.push({ message, level }) },
     });
@@ -96,5 +101,35 @@ describe("ralph-loop-guard extension", () => {
 
     expect(closeoutResult).toBeUndefined();
     expect(notifications.some((entry) => entry.message.includes("verification succeeded"))).toBe(true);
+  });
+
+  it("失敗した workspace_verify では closeout を許可しない", async () => {
+    const extension = (await import("../../../.pi/extensions/ralph-loop-guard.js")).default;
+    const pi = createPiMock();
+
+    extension(pi as never);
+    await pi.handlers.get("session_start")?.({}, { ui: { notify: vi.fn() } });
+    await pi.handlers.get("before_agent_start")?.({ systemPrompt: "base" }, {});
+    await pi.handlers.get("tool_call")?.({ toolName: "code_search", input: { query: "demo" } }, {});
+    await pi.handlers.get("tool_call")?.({ toolName: "edit", input: { path: "a.ts" } }, {});
+    await pi.handlers.get("tool_call")?.({ toolName: "workspace_verify", input: {} }, {});
+    await pi.handlers.get("tool_result")?.({
+      toolName: "workspace_verify",
+      input: {},
+      isError: false,
+      result: {
+        details: {
+          success: false,
+        },
+      },
+    }, { ui: { notify: vi.fn() } });
+
+    const closeoutBlocked = await pi.handlers.get("tool_call")?.({
+      toolName: "plan_update_step",
+      input: { status: "completed" },
+    }, {});
+
+    expect(closeoutBlocked?.block).toBe(true);
+    expect(String(closeoutBlocked?.reason)).toContain("plan step completed");
   });
 });
