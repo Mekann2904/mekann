@@ -6,6 +6,7 @@
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { join, resolve } from "node:path";
 
 import {
@@ -70,6 +71,7 @@ export interface LongRunningSessionState {
   id: string;
   cwd: string;
   ownerPid: number;
+  ownerInstanceId?: string; // 複数インスタンス環境での識別用
   startedAt: string;
   updatedAt: string;
   status: LongRunningSessionStatus;
@@ -184,10 +186,32 @@ const CHECKPOINT_FILE = "checkpoint.json";
 const JOURNAL_FILE = "journal.jsonl";
 const ACTIVE_SUBAGENT_RUNS_FILE = "active-subagent-runs.json";
 const SUBAGENT_STALE_THRESHOLD_MS = 2 * 60 * 1000;
-const SESSION_STALE_THRESHOLD_MS = 2 * 60 * 1000;
+// セッションがstaleと判定されるまでの閾値（ミリ秒）
+// LLM呼び出し等の長時間処理を考慮し、10分に設定
+// 複数インスタンス環境では、ownerInstanceIdベースの判定で誤クラッシュを防ぐ
+const SESSION_STALE_THRESHOLD_MS = 10 * 60 * 1000;
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/**
+ * 現在のプロセス用の一意なインスタンスIDを生成する
+ * 複数piインスタンス環境でセッションの所有者を識別するために使用
+ */
+function generateInstanceId(): string {
+  const random = randomBytes(8).toString("hex");
+  return `pi-${process.pid}-${Date.now()}-${random}`;
+}
+
+// 現在のプロセスのインスタンスID（一度生成したら固定）
+let _currentInstanceId: string | undefined;
+
+function getCurrentInstanceId(): string {
+  if (!_currentInstanceId) {
+    _currentInstanceId = generateInstanceId();
+  }
+  return _currentInstanceId;
 }
 
 function normalizeCwd(cwd?: string): string {
@@ -631,17 +655,28 @@ export async function runLongRunningSupervisorSweep(input?: {
   const latest = loadLatestLongRunningSession(cwd);
   let recoveredSessionId: string | undefined;
 
+  // 現在のプロセスのインスタンスIDを取得
+  const currentInstanceId = getCurrentInstanceId();
+
   const latestUpdatedAtMs = latest ? Date.parse(latest.updatedAt) : Number.NaN;
   const latestSessionStale = latest
     && latest.status === "active"
     && Number.isFinite(latestUpdatedAtMs)
     && Date.now() - latestUpdatedAtMs > SESSION_STALE_THRESHOLD_MS;
+
+  // 複数インスタンス環境での競合を防ぐ:
+  // - ownerInstanceIdが一致するセッションのみをクラッシュ判定対象にする
+  // - ownerInstanceIdがない古いセッションは従来のロジックで判定
+  const isOwnSession = latest
+    && (latest.ownerInstanceId === currentInstanceId
+      || latest.ownerInstanceId === undefined);
   const latestSessionDead = latest
     && latest.status === "active"
+    && isOwnSession
     && latest.ownerPid !== process.pid
     && !isProcessAlive(latest.ownerPid);
 
-  if (latest && (latestSessionDead || latestSessionStale)) {
+  if (latest && isOwnSession && (latestSessionDead || latestSessionStale)) {
     recoveredSessionId = latest.id;
     const crashedSession = saveLongRunningSession(cwd, {
       ...latest,
@@ -662,6 +697,7 @@ export async function runLongRunningSupervisorSweep(input?: {
       success: false,
       details: {
         ownerPid: latest.ownerPid,
+        ownerInstanceId: latest.ownerInstanceId,
         updatedAt: latest.updatedAt,
       },
     });
@@ -746,10 +782,12 @@ export async function beginLongRunningSession(input?: {
   const index = loadIndex(cwd);
   const previous = sweep.recoveredSessionId ? loadLongRunningSession(cwd, sweep.recoveredSessionId) : null;
   const id = createSessionId();
+  const ownerInstanceId = getCurrentInstanceId();
   const session: LongRunningSessionState = saveLongRunningSession(cwd, {
     id,
     cwd,
     ownerPid: process.pid,
+    ownerInstanceId,
     startedAt: nowIso(),
     updatedAt: nowIso(),
     status: "active",
@@ -786,10 +824,12 @@ export function beginLongRunningSessionSync(input?: {
   const index = loadIndex(cwd);
   const previous = index.activeSessionId ? loadLongRunningSession(cwd, index.activeSessionId) : null;
   const id = createSessionId();
+  const ownerInstanceId = getCurrentInstanceId();
   const session: LongRunningSessionState = saveLongRunningSession(cwd, {
     id,
     cwd,
     ownerPid: process.pid,
+    ownerInstanceId,
     startedAt: nowIso(),
     updatedAt: nowIso(),
     status: "active",

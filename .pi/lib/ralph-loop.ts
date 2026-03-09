@@ -256,13 +256,17 @@ async function spawnLoopCommand(input: SpawnCommandInput): Promise<{
   stderr: string;
   exitCode: number;
 }> {
-  const command = buildRuntimeCommand(input.runtime, input.prompt);
+  // Use provided executable/args, fallback to runtime-based command
+  const runtimeCommand = buildRuntimeCommand(input.runtime, input.prompt);
+  const executable = input.executable || runtimeCommand.executable;
+  const args = input.args.length > 0 ? input.args : runtimeCommand.args;
+  const stdinText = input.args.length > 0 ? undefined : runtimeCommand.stdinText;
 
   return await new Promise((resolvePromise, rejectPromise) => {
     let stdout = "";
     let stderr = "";
 
-    const child = spawn(command.executable, command.args, {
+    const child = spawn(executable, args, {
       cwd: input.cwd,
       env: process.env,
       stdio: ["pipe", "pipe", "pipe"],
@@ -285,8 +289,8 @@ async function spawnLoopCommand(input: SpawnCommandInput): Promise<{
       });
     });
 
-    if (command.stdinText) {
-      child.stdin.write(command.stdinText);
+    if (stdinText) {
+      child.stdin.write(stdinText);
     }
     child.stdin.end();
   });
