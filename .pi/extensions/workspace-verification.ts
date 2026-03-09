@@ -954,7 +954,7 @@ export default function registerWorkspaceVerification(pi: ExtensionAPI) {
       const config = loadWorkspaceVerificationConfig(ctx.cwd);
       const state = loadWorkspaceVerificationState(ctx.cwd);
       const resolvedPlan = resolveWorkspaceVerificationPlan(config, ctx.cwd);
-      const resume = resolveWorkspaceVerificationResumePlan(state, resolvedPlan);
+      const resume = resolveWorkspaceVerificationResumePlan(state, resolvedPlan, ctx.cwd);
       const replay = createWorkspaceVerificationReplayInput(ctx.cwd, state, resolvedPlan);
 
       if (params.execute === false || resume.phase !== "verification" || resume.requestedSteps.length === 0) {

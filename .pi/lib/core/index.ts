@@ -105,5 +105,17 @@ export {
   normalizeForSingleLine,
 } from "./format-utils.js";
 
+// Ownership utilities (Layer 0)
+export {
+  getInstanceId,
+  extractPidFromInstanceId,
+  isProcessAlive,
+  isOwnerProcessDead,
+  checkOwnership,
+  isCurrentOwner,
+  resetInstanceIdCache,
+  type OwnershipResult,
+} from "./ownership.js";
+
 // Re-export from Layer 1 for backward compatibility
 export { isRetryableError } from "../retry-with-backoff.js";

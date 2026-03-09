@@ -951,14 +951,13 @@ export function recordLongRunningToolResult(
   const isError = Boolean(event.isError);
   const errorSummary = summarizeUnknown(event.error)
     ?? summarizeUnknown(event.message)
-    ?? summarizeUnknown(event.output)
     ?? summarizeUnknown(event.result);
   const next = saveLongRunningSession(cwd, {
     ...session,
     updatedAt: nowIso(),
     pendingToolName: undefined,
     lastToolName: toolName,
-    lastError: isError ? (errorSummary ?? `tool failed: ${toolName}`) : session.lastError,
+    lastError: isError ? (errorSummary ?? `tool failed: ${toolName}`) : undefined,
     plan: resolvePlanSnapshot(cwd),
   });
   appendJournalEvent(cwd, next, {
@@ -1047,7 +1046,7 @@ export function createLongRunningReplay(cwdInput?: string, sessionId?: string): 
   const workspaceConfig = loadWorkspaceVerificationConfig(cwd);
   const workspaceState = loadWorkspaceVerificationState(cwd);
   const resolvedPlan = resolveWorkspaceVerificationPlan(workspaceConfig, cwd);
-  const workspaceResume = resolveWorkspaceVerificationResumePlan(workspaceState, resolvedPlan);
+  const workspaceResume = resolveWorkspaceVerificationResumePlan(workspaceState, resolvedPlan, cwd);
   const recentEvents = session ? loadLongRunningJournal(cwd, session.id).slice(-12) : [];
   const backgroundProcesses = listBackgroundProcesses({
     cwd,
@@ -1137,7 +1136,7 @@ export function runLongRunningPreflight(input?: string | LongRunningPreflightInp
   const workspaceConfig = loadWorkspaceVerificationConfig(cwd);
   const workspaceState = loadWorkspaceVerificationState(cwd);
   const resolvedPlan = resolveWorkspaceVerificationPlan(workspaceConfig, cwd);
-  const workspaceResume = resolveWorkspaceVerificationResumePlan(workspaceState, resolvedPlan);
+  const workspaceResume = resolveWorkspaceVerificationResumePlan(workspaceState, resolvedPlan, cwd);
   const backgroundConfig = loadBackgroundProcessConfig(cwd);
   const plan = resolvePlanSnapshot(cwd);
   const activeSubagentRuns = loadActiveSubagentRuns(cwd);

@@ -27,6 +27,7 @@ import {
   getWorkspaceVerificationConfigStateKey,
   getWorkspaceVerificationStateKey,
 } from "./storage/state-keys.js";
+import { loadAutonomyPolicyConfig } from "./autonomy-policy.js";
 
 export type WorkspaceVerificationStep =
   | "lint"
@@ -958,6 +959,7 @@ export function finalizeVerificationRun(input: { cwd?: string; run: WorkspaceVer
   const targetCwd = normalizeCwd(input.cwd);
   const current = loadWorkspaceVerificationState(targetCwd);
   const config = loadWorkspaceVerificationConfig(targetCwd);
+  const autonomyConfig = loadAutonomyPolicyConfig(targetCwd);
   const verificationSatisfied = didRunCoverRequiredSteps(config, input.run);
   const failureFingerprint = input.run.success ? undefined : computeFailureFingerprint(input.run);
   const repeatedFailureCount = failureFingerprint && failureFingerprint === current.lastFailureFingerprint
@@ -977,11 +979,17 @@ export function finalizeVerificationRun(input: { cwd?: string; run: WorkspaceVer
     ? persistWorkspaceVerificationEvalCase(targetCwd, input.run, repeatedFailureCount, replanRequired, replanReason)
     : current.lastEvalCasePath;
 
+  // 自律モード（yolo/high）の場合はProof Reviewを自動スキップ
+  const isAutonomousMode = autonomyConfig.profile === "yolo" || autonomyConfig.profile === "high";
+  const shouldPendingProofReview = verificationSatisfied
+    ? (Boolean(input.run.artifactDir) && config.requireProofReview && !isAutonomousMode)
+    : current.pendingProofReview;
+
   return saveWorkspaceVerificationState(targetCwd, {
     ...current,
     running: false,
     dirty: verificationSatisfied ? false : current.dirty,
-    pendingProofReview: verificationSatisfied ? Boolean(input.run.artifactDir) : current.pendingProofReview,
+    pendingProofReview: shouldPendingProofReview,
     pendingReviewArtifact: input.run.success ? current.pendingReviewArtifact : false,
     replanRequired: input.run.success ? false : replanRequired,
     repeatedFailureCount: input.run.success ? 0 : repeatedFailureCount,
@@ -1899,7 +1907,27 @@ function inferRelevantVerification(
     }
   };
 
-  if (profile === "web-app" || /\b(ui|frontend|browser|page|component|css|html|localhost|screenshot)\b/.test(haystack)) {
+  // UI変更判定: ファイルパスベースで厳密に判定
+  const uiFilePathPatterns = [
+    /\.(tsx|jsx|vue|svelte|css|scss|less|html)$/i,
+    /\/(components?|pages?|views?|layouts?|styles?|assets?)\//i,
+    /\/(app|src|client|frontend)\//i,
+    /_app\.(tsx|jsx|ts|js)$/i,
+    /_layout\.(tsx|jsx|ts|js)$/i,
+    /tailwind|styled|emotion/i,
+  ];
+  const hasUIFilePath = hints.fileModuleImpact.some(path =>
+    uiFilePathPatterns.some(pattern => pattern.test(path))
+  );
+
+  // 文脈内のUI関連キーワード（ファイルパス以外も含む）
+  const hasUIKeywords = /\b(ui|frontend|browser|page|component|css|html|localhost|screenshot)\b/.test(haystack);
+
+  // profileがweb-app または UIファイルパスまたはUI関連キーワードがある場合
+  // ただし、ファイルパスベースの判定を優先（誤検出削減）
+  const isUIChange = profile === "web-app" || hasUIFilePath || (hasUIKeywords && hints.fileModuleImpact.length > 0);
+
+  if (isUIChange) {
     if (runtime.enabled) {
       recommended.add("runtime");
     }
@@ -2198,7 +2226,43 @@ function deriveNextSuggestedAction(state: WorkspaceVerificationState): string {
 export function resolveWorkspaceVerificationResumePlan(
   state: WorkspaceVerificationState,
   resolvedPlan?: WorkspaceVerificationResolvedPlan,
+  cwd?: string,
 ): WorkspaceVerificationResumePlan {
+  const targetCwd = cwd ?? process.cwd();
+
+  // 自律モード（yolo/high）の場合はProof Reviewを自動スキップ
+  const autonomyConfig = loadAutonomyPolicyConfig(targetCwd);
+  const isAutonomousMode = autonomyConfig.profile === "yolo" || autonomyConfig.profile === "high";
+
+  // 自律モード時にpendingProofReviewが残っている場合は自動的にクリア
+  if (state.pendingProofReview && isAutonomousMode) {
+    saveWorkspaceVerificationState(targetCwd, {
+      ...state,
+      pendingProofReview: false,
+      lastReviewedAt: nowIso(),
+      lastReviewedArtifactDir: state.lastRun?.artifactDir,
+    });
+    // クリア後は次のフェーズへ進む
+    if (state.dirty) {
+      const failedStep = state.lastRun?.stepResults.find((item) => !item.success && !item.skipped)?.step;
+      const recommended = resolvedPlan?.recommendedSteps ?? state.lastRun?.resolvedPlan.recommendedSteps ?? ["lint", "typecheck", "test"];
+      const requestedSteps = failedStep
+        ? recommended.slice(Math.max(0, recommended.indexOf(failedStep)))
+        : recommended;
+      return {
+        phase: "verification",
+        requestedSteps,
+        reason: "[Autonomous mode] Proof review auto-acknowledged. Resume verification.",
+        resumeStep: failedStep,
+      };
+    }
+    return {
+      phase: "clear",
+      requestedSteps: [],
+      reason: "[Autonomous mode] Proof review auto-acknowledged. Workspace verification is clear.",
+    };
+  }
+
   if (state.replanRequired) {
     return {
       phase: "replan",
@@ -2289,7 +2353,7 @@ export function persistWorkspaceVerificationContinuityPack(
   resolvedPlan?: WorkspaceVerificationResolvedPlan,
 ): string {
   const plan = loadCurrentPlanSnapshot(cwd);
-  const resume = resolveWorkspaceVerificationResumePlan(state, resolvedPlan);
+  const resume = resolveWorkspaceVerificationResumePlan(state, resolvedPlan, cwd);
   const unresolvedFailures = (state.lastRun?.stepResults ?? [])
     .filter((item) => !item.success && !item.skipped)
     .map((item) => ({
@@ -2342,7 +2406,7 @@ export function createWorkspaceVerificationReplayInput(
   resolvedPlan?: WorkspaceVerificationResolvedPlan,
 ): WorkspaceVerificationReplayInput {
   const plan = loadCurrentPlanSnapshot(cwd);
-  const resume = resolveWorkspaceVerificationResumePlan(state, resolvedPlan);
+  const resume = resolveWorkspaceVerificationResumePlan(state, resolvedPlan, cwd);
   return {
     summary: {
       profile: resolvedPlan?.profile ?? state.lastRun?.resolvedPlan.profile,
@@ -2510,8 +2574,9 @@ export function formatWorkspaceVerificationStatus(
   config: WorkspaceVerificationConfig,
   state: WorkspaceVerificationState,
   resolvedPlan?: WorkspaceVerificationResolvedPlan,
+  cwd?: string,
 ): string {
-  const resume = resolveWorkspaceVerificationResumePlan(state, resolvedPlan);
+  const resume = resolveWorkspaceVerificationResumePlan(state, resolvedPlan, cwd);
   const lines = [
     `enabled=${config.enabled}`,
     `adaptive_defaults=${config.adaptiveDefaults}`,

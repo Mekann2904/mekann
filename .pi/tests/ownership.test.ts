@@ -12,6 +12,7 @@ import {
   checkOwnership,
   claimOwnership,
   isCurrentOwner,
+  resetInstanceIdCache,
   type OwnershipResult,
 } from "../lib/ul-workflow/domain/ownership.js";
 import type { WorkflowState } from "../lib/ul-workflow/domain/workflow-state.js";
@@ -42,8 +43,14 @@ function createTestState(overrides?: Partial<WorkflowState>): WorkflowState {
 describe("ownership module", () => {
   const originalSessionId = process.env.PI_SESSION_ID;
 
+  beforeEach(() => {
+    // 各テスト前にキャッシュをリセット
+    resetInstanceIdCache();
+  });
+
   afterEach(() => {
     // 環境変数をリセット
+    resetInstanceIdCache();
     if (originalSessionId === undefined) {
       delete process.env.PI_SESSION_ID;
     } else {
@@ -241,14 +248,14 @@ describe("ownership module", () => {
       expect(result.owned).toBe(false);
     });
 
-    it("should include current instance ID in error message", () => {
+    it("should include owner instance ID in error message", () => {
       const state = createTestState({
         ownerInstanceId: "other-99999",
       });
       process.env.PI_SESSION_ID = "my-session";
       const result = checkOwnership(state);
 
-      expect(result.error).toContain("current: my-session");
+      expect(result.error).toContain("other-99999");
     });
   });
 
@@ -285,6 +292,7 @@ describe("ownership module", () => {
 
       // Change session to get different instance ID
       process.env.PI_SESSION_ID = "new-session";
+      resetInstanceIdCache();
       claimOwnership(state);
 
       expect(state.ownerInstanceId).not.toBe(originalOwnerId);
@@ -308,9 +316,11 @@ describe("ownership module", () => {
       const state = createTestState();
 
       process.env.PI_SESSION_ID = "different-session";
+      resetInstanceIdCache();
       expect(isCurrentOwner(state)).toBe(false);
 
       delete process.env.PI_SESSION_ID;
+      resetInstanceIdCache();
       expect(isCurrentOwner(state)).toBe(true);
     });
   });
@@ -356,9 +366,11 @@ describe("ownership module", () => {
     it("should handle concurrent session IDs correctly", () => {
       // Simulate two different sessions
       process.env.PI_SESSION_ID = "session-a";
+      resetInstanceIdCache();
       const idA = getInstanceId();
 
       process.env.PI_SESSION_ID = "session-b";
+      resetInstanceIdCache();
       const idB = getInstanceId();
 
       expect(idA).not.toBe(idB);
@@ -371,6 +383,7 @@ describe("ownership module", () => {
     it("should handle very long session IDs", () => {
       const longSession = "a".repeat(1000);
       process.env.PI_SESSION_ID = longSession;
+      resetInstanceIdCache();
 
       const id = getInstanceId();
       expect(id).toContain(longSession);
@@ -378,6 +391,7 @@ describe("ownership module", () => {
 
     it("should handle special characters in session ID", () => {
       process.env.PI_SESSION_ID = "session-with_special.chars-2024";
+      resetInstanceIdCache();
       const id = getInstanceId();
 
       expect(id).toContain("session-with_special.chars-2024");
@@ -397,6 +411,7 @@ describe("ownership module", () => {
 
     it("should handle Unicode in session ID", () => {
       process.env.PI_SESSION_ID = "セッション-123";
+      resetInstanceIdCache();
       const id = getInstanceId();
 
       expect(id).toContain("セッション-123");
@@ -544,7 +559,7 @@ describe("subagents/domain/ownership", () => {
       expect(receivedTaskId).toBe("my-task-123");
     });
 
-    it("should include current instance in error message", () => {
+    it("should include owner instance ID in error message", () => {
       process.env.PI_SESSION_ID = "current-session";
 
       // Use current process PID to ensure owner is alive (no autoClaim)
@@ -553,7 +568,7 @@ describe("subagents/domain/ownership", () => {
       }));
 
       expect(result.error).toBeDefined();
-      expect(result.error).toContain("current: current-session");
+      expect(result.error).toContain("other-session");
     });
   });
 

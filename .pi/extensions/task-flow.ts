@@ -36,7 +36,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { runSubagentTask } from "./subagents/task-execution";
 import { loadStorage as loadSubagentStorage } from "./subagents/storage";
 import type { SubagentDefinition } from "./subagents/storage";
-import { getInstanceId } from "./ul-workflow.js";
+import { getInstanceId } from "../lib/core/ownership.js";
 import {
   buildTurnExecutionContext,
   deriveTurnExecutionDecisions,
