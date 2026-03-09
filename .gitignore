@@ -49,6 +49,15 @@ coverage/
 .pi/subagents/runs/
 .pi/subagents/storage.json
 
+# Ralph Loop runtime state
+.pi/ralph/
+
+# Symphony orchestrator runtime state
+.pi/symphony/
+
+# Workpads (runtime work documents)
+.pi/workpads/
+
 # Analytics data
 .pi/analytics/
 
