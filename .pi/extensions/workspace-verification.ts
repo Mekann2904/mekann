@@ -104,6 +104,55 @@ async function saveWorkspaceCheckpoint(
   }
 }
 
+/**
+ * エラーログから要約を抽出する
+ * 最初の数行（重要なエラー情報）を抽出し、最大文字数で制限する
+ */
+function summarizeError(error: string | undefined, maxLines = 5, maxChars = 500): string {
+  if (!error) return "";
+  const lines = error.split("\n").filter((line) => line.trim().length > 0);
+  const summary = lines.slice(0, maxLines).join("\n");
+  if (summary.length > maxChars) {
+    return summary.slice(0, maxChars) + "...";
+  }
+  return summary;
+}
+
+/**
+ * 失敗したステップの要約を生成する
+ */
+function buildFailureSummary(state: WorkspaceVerificationState): string {
+  if (!state.lastRun || state.lastRun.success) return "";
+
+  const failedSteps = state.lastRun.stepResults.filter((r) => !r.success && !r.skipped);
+  if (failedSteps.length === 0) return "";
+
+  const lines: string[] = ["", "## 検証失敗の詳細", ""];
+
+  for (const step of failedSteps) {
+    lines.push(`### ${step.step} 失敗`);
+    if (step.command) {
+      lines.push(`コマンド: ${step.command}`);
+    }
+    if (step.error) {
+      const summary = summarizeError(step.error);
+      lines.push("エラー要約:");
+      lines.push("```");
+      lines.push(summary);
+      lines.push("```");
+    }
+    if (step.artifactPath) {
+      lines.push(`詳細ログ: ${step.artifactPath}`);
+    }
+    lines.push("");
+  }
+
+  lines.push("上記のエラーを修正し、再度 `workspace_verify` を実行すること。");
+  lines.push("詳細は artifact ファイル（*.log）を read ツールで確認すること。");
+
+  return lines.join("\n");
+}
+
 function buildStatusBlock(
   config: WorkspaceVerificationConfig,
   state: WorkspaceVerificationState,
@@ -151,9 +200,14 @@ function buildStatusBlock(
   }
 
   if (state.lastRun && !state.lastRun.success) {
-    lines.push("", "直近の検証は失敗している。artifact を読んで直してから進むこと。");
+    lines.push("", "直近の検証は失敗している。以下の詳細を確認して修正すること。");
     if (state.lastRun.artifactDir) {
       lines.push(`artifact_dir: ${state.lastRun.artifactDir}`);
+    }
+    // 失敗したステップの詳細を表示
+    const failureSummary = buildFailureSummary(state);
+    if (failureSummary) {
+      lines.push(failureSummary);
     }
   }
 

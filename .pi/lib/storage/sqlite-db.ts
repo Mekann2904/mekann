@@ -87,7 +87,7 @@ export function isSQLiteAvailable(): boolean {
 export interface DatabaseOptions {
   /** WALモードを有効にするか（デフォルト: true） */
   walMode?: boolean;
-  /** busy_timeout（ミリ秒、デフォルト: 5000） */
+  /** busy_timeout（ミリ秒、デフォルト: 10000） */
   busyTimeoutMs?: number;
   /** synchronous設定（デフォルト: NORMAL） */
   synchronous?: "OFF" | "NORMAL" | "FULL";
@@ -105,7 +105,7 @@ export class PiDatabase {
   constructor(options?: DatabaseOptions) {
     this.options = {
       walMode: options?.walMode ?? true,
-      busyTimeoutMs: options?.busyTimeoutMs ?? 5000,
+      busyTimeoutMs: options?.busyTimeoutMs ?? 10000,
       synchronous: options?.synchronous ?? "NORMAL",
     };
   }

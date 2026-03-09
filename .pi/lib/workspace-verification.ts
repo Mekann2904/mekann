@@ -358,6 +358,11 @@ function ensureVerificationWorkspaceDir(cwd?: string): string {
   return dir;
 }
 
+function getConfigFilePath(cwd?: string): string {
+  const targetCwd = normalizeCwd(cwd);
+  return join(ensureVerificationWorkspaceDir(targetCwd), "config.json");
+}
+
 function ensureVerificationEvalDir(cwd?: string): string {
   const targetCwd = normalizeCwd(cwd);
   const dir = join(targetCwd, ".pi", "evals", "workspace-verification");
@@ -767,6 +772,21 @@ function normalizeResolvedPlan(input: unknown): WorkspaceVerificationResolvedPla
 
 export function loadWorkspaceVerificationConfig(cwd?: string): WorkspaceVerificationConfig {
   const targetCwd = normalizeCwd(cwd);
+  
+  // ファイルベースの設定を優先
+  const configPath = getConfigFilePath(targetCwd);
+  if (existsSync(configPath)) {
+    try {
+      const fileContent = readFileSync(configPath, "utf-8");
+      const parsed = JSON.parse(fileContent);
+      const config = normalizeWorkspaceVerificationConfig(parsed);
+      return applyAdaptiveWorkspaceVerificationDefaults(config, targetCwd);
+    } catch {
+      // ファイル読み込み失敗時はSQLiteから読み込む
+    }
+  }
+  
+  // SQLiteから読み込み
   const config = normalizeWorkspaceVerificationConfig(
     readJsonState({
       stateKey: getWorkspaceVerificationConfigStateKey(targetCwd),
@@ -804,10 +824,24 @@ export function saveWorkspaceVerificationConfig(
       },
     });
 
-    writeJsonState({
-      stateKey: getWorkspaceVerificationConfigStateKey(targetCwd),
-      value: merged,
-    });
+    // SQLiteに保存（フォールバック）
+    try {
+      writeJsonState({
+        stateKey: getWorkspaceVerificationConfigStateKey(targetCwd),
+        value: merged,
+      });
+    } catch {
+      // SQLiteが使えない場合はスキップ
+    }
+
+    // ファイルに保存（優先）
+    const configPath = getConfigFilePath(targetCwd);
+    try {
+      writeFileSync(configPath, JSON.stringify(merged, null, 2), "utf-8");
+    } catch {
+      // ファイル書き込み失敗時はスキップ
+    }
+
     return merged;
   });
 }
