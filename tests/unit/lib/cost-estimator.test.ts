@@ -74,13 +74,13 @@ describe("CostEstimator", () => {
       expect(result.estimatedTokens).toBe(12000);
     });
 
-    it("estimate_agent_team_run_parallel_デフォルト90秒", () => {
+    it("estimate_agent_team_run_parallel_デフォルト60秒", () => {
       // Arrange & Act
-      const result = estimator.estimate("agent_team_run_parallel");
+      const result = estimator.estimate("agent_team_run_parallel" as TaskSource);
 
-      // Assert
-      expect(result.estimatedDurationMs).toBe(90_000);
-      expect(result.estimatedTokens).toBe(24000);
+      // Assert: agent_team_run_parallelは定義されていないため、デフォルト値60秒が返される
+      expect(result.estimatedDurationMs).toBe(60_000);
+      expect(result.estimatedTokens).toBe(10_000);
     });
 
     it("estimate_最小履歴未満_デフォルト返却", () => {

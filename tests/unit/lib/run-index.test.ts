@@ -15,7 +15,6 @@ import {
   classifyTaskType,
   extractFiles,
   indexSubagentRun,
-  indexTeamRun,
   RUN_INDEX_VERSION,
   type IndexedRun,
   type TaskType,
@@ -387,7 +386,7 @@ describe("indexSubagentRun", () => {
 // ============================================================================
 
 describe("indexTeamRun", () => {
-  it("indexTeamRun_基本_インデックス化", () => {
+  it("indexSubagentRun_チーム実行_インデックス化", () => {
     // Arrange
     const run = {
       runId: "run-123",
@@ -400,22 +399,20 @@ describe("indexTeamRun", () => {
     };
 
     // Act
-    const result = indexTeamRun(run);
+    const result = indexSubagentRun(run);
 
     // Assert
     expect(result.runId).toBe("run-123");
-    expect(result.source).toBe("agent-team");
-    expect(result.teamId).toBe("team-456");
+    expect(result.source).toBe("subagent");
     expect(result.task).toBe("Review code changes");
     expect(result.status).toBe("completed");
     expect(result.taskType).toBe("code-review");
   });
 
-  it("indexTeamRun_ファイル抽出_正常", () => {
+  it("indexSubagentRun_ファイル抽出_正常", () => {
     // Arrange
     const run = {
       runId: "run-123",
-      teamId: "team-456",
       task: "Fix bug in src/auth.ts",
       summary: "Modified src/auth.ts and tests/auth.test.ts",
       status: "completed" as const,
@@ -424,7 +421,7 @@ describe("indexTeamRun", () => {
     };
 
     // Act
-    const result = indexTeamRun(run);
+    const result = indexSubagentRun(run);
 
     // Assert
     expect(result.files).toContain("src/auth.ts");

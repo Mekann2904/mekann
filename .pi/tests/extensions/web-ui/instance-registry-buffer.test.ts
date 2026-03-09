@@ -17,15 +17,54 @@ import {
   type ContextHistoryEntry,
 } from "../../../extensions/web-ui/lib/instance-registry.js";
 
+// SQLiteストレージヘルパーをインポート
+import {
+  readJsonState,
+  deleteJsonState,
+} from "../../../lib/storage/sqlite-state-store.js";
+
 // ============================================================================
 // Helpers
 // ============================================================================
 
-const SHARED_DIR = path.join(os.homedir(), ".pi-shared");
-const getTestHistoryPath = (pid: number) =>
-  path.join(SHARED_DIR, `context-history-${pid}.json`);
-
 const TEST_PID = 99999;
+
+/**
+ * テスト用の履歴データが保存されているか確認（SQLiteベース）
+ */
+function hasHistoryData(pid: number): boolean {
+  try {
+    const data = readJsonState<{ history: ContextHistoryEntry[] }>({
+      stateKey: `webui_context_history:${pid}`,
+      createDefault: () => ({ history: [] }),
+    });
+    return data.history.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * テスト用の履歴データを取得
+ */
+function getHistoryData(pid: number): ContextHistoryEntry[] {
+  const data = readJsonState<{ history: ContextHistoryEntry[] }>({
+    stateKey: `webui_context_history:${pid}`,
+    createDefault: () => ({ history: [] }),
+  });
+  return data.history;
+}
+
+/**
+ * テスト用の履歴データを削除
+ */
+function cleanupHistoryData(pid: number): void {
+  try {
+    deleteJsonState(`webui_context_history:${pid}`);
+  } catch {
+    // Ignore
+  }
+}
 
 // ============================================================================
 // ContextHistoryStorage - Child Process Mode
@@ -33,31 +72,18 @@ const TEST_PID = 99999;
 
 describe("ContextHistoryStorage - Child Process Mode", () => {
   let storage: ContextHistoryStorage;
-  const testFile = getTestHistoryPath(TEST_PID);
 
   beforeEach(() => {
-    // テスト用ファイルをクリーンアップ
-    try {
-      if (fs.existsSync(testFile)) {
-        fs.unlinkSync(testFile);
-      }
-    } catch {
-      // Ignore
-    }
+    // テスト用データをクリーンアップ
+    cleanupHistoryData(TEST_PID);
   });
 
   afterEach(() => {
     if (storage) {
       storage.dispose();
     }
-    // テスト用ファイルをクリーンアップ
-    try {
-      if (fs.existsSync(testFile)) {
-        fs.unlinkSync(testFile);
-      }
-    } catch {
-      // Ignore
-    }
+    // テスト用データをクリーンアップ
+    cleanupHistoryData(TEST_PID);
   });
 
   describe("子プロセスモードの設定", () => {
@@ -84,7 +110,7 @@ describe("ContextHistoryStorage - Child Process Mode", () => {
       storage.add({ timestamp: "2025-01-01T00:00:00Z", input: 100, output: 50 });
 
       expect(storage.getBufferSize()).toBe(0); // フラッシュ済み
-      expect(fs.existsSync(testFile)).toBe(true);
+      expect(hasHistoryData(TEST_PID)).toBe(true);
     });
   });
 
@@ -100,13 +126,13 @@ describe("ContextHistoryStorage - Child Process Mode", () => {
       storage.add({ timestamp: "2025-01-01T00:00:02Z", input: 100, output: 50 });
 
       // バッファサイズ未満なのでまだ書き込まれない
-      expect(fs.existsSync(testFile)).toBe(false);
+      expect(hasHistoryData(TEST_PID)).toBe(false);
       expect(storage.getBufferSize()).toBe(2);
 
       // 3件目でフラッシュ
       storage.add({ timestamp: "2025-01-01T00:00:03Z", input: 100, output: 50 });
 
-      expect(fs.existsSync(testFile)).toBe(true);
+      expect(hasHistoryData(TEST_PID)).toBe(true);
       expect(storage.getBufferSize()).toBe(0);
     });
 
@@ -119,13 +145,12 @@ describe("ContextHistoryStorage - Child Process Mode", () => {
 
       storage.add({ timestamp: "2025-01-01T00:00:01Z", input: 100, output: 50 });
 
-      expect(fs.existsSync(testFile)).toBe(false);
+      expect(hasHistoryData(TEST_PID)).toBe(false);
 
       storage.dispose();
 
-      expect(fs.existsSync(testFile)).toBe(true);
-      const content = fs.readFileSync(testFile, "utf-8");
-      const history = JSON.parse(content) as ContextHistoryEntry[];
+      expect(hasHistoryData(TEST_PID)).toBe(true);
+      const history = getHistoryData(TEST_PID);
       expect(history).toHaveLength(1);
     });
   });
@@ -140,12 +165,12 @@ describe("ContextHistoryStorage - Child Process Mode", () => {
 
       storage.add({ timestamp: "2025-01-01T00:00:01Z", input: 100, output: 50 });
 
-      expect(fs.existsSync(testFile)).toBe(false);
+      expect(hasHistoryData(TEST_PID)).toBe(false);
 
       // タイムアウト待機
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
-      expect(fs.existsSync(testFile)).toBe(true);
+      expect(hasHistoryData(TEST_PID)).toBe(true);
       expect(storage.getBufferSize()).toBe(0);
     });
 
@@ -160,8 +185,8 @@ describe("ContextHistoryStorage - Child Process Mode", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      // ファイルは作成されない
-      expect(fs.existsSync(testFile)).toBe(false);
+      // データは作成されない
+      expect(hasHistoryData(TEST_PID)).toBe(false);
     });
   });
 });
@@ -171,30 +196,17 @@ describe("ContextHistoryStorage - Child Process Mode", () => {
 // ============================================================================
 
 describe("createChildProcessStorage", () => {
-  const testFile = getTestHistoryPath(TEST_PID);
   let storage: ContextHistoryStorage;
 
   beforeEach(() => {
-    try {
-      if (fs.existsSync(testFile)) {
-        fs.unlinkSync(testFile);
-      }
-    } catch {
-      // Ignore
-    }
+    cleanupHistoryData(TEST_PID);
   });
 
   afterEach(() => {
     if (storage) {
       storage.dispose();
     }
-    try {
-      if (fs.existsSync(testFile)) {
-        fs.unlinkSync(testFile);
-      }
-    } catch {
-      // Ignore
-    }
+    cleanupHistoryData(TEST_PID);
   });
 
   it("should_create_storage_with_child_process_defaults", () => {
@@ -210,10 +222,10 @@ describe("createChildProcessStorage", () => {
     // 1件でフラッシュ
     storage.add({ timestamp: "2025-01-01T00:00:00Z", input: 100, output: 50 });
 
-    expect(fs.existsSync(testFile)).toBe(true);
+    expect(hasHistoryData(TEST_PID)).toBe(true);
   });
 
-  it("should_allow_custom_flush_interval", () => {
+  it("should_allow_custom_flush_interval", async () => {
     storage = createChildProcessStorage(TEST_PID, {
       maxBufferSize: 10,
       flushIntervalMs: 30,
@@ -221,15 +233,12 @@ describe("createChildProcessStorage", () => {
 
     storage.add({ timestamp: "2025-01-01T00:00:00Z", input: 100, output: 50 });
 
-    expect(fs.existsSync(testFile)).toBe(false);
+    expect(hasHistoryData(TEST_PID)).toBe(false);
 
-    // タイムアウト待機
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        expect(fs.existsSync(testFile)).toBe(true);
-        resolve();
-      }, 50);
-    });
+    // タイムアウト待機（より長く待機して確実にフラッシュされるように）
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(hasHistoryData(TEST_PID)).toBe(true);
   });
 });
 
@@ -240,7 +249,6 @@ describe("createChildProcessStorage", () => {
 describe("dispose idempotency", () => {
   it("should_be_safe_to_call_dispose_multiple_times", () => {
     const testPid = 88881;
-    const testFile = getTestHistoryPath(testPid);
 
     try {
       const storage = new ContextHistoryStorage(testPid, { flushIntervalMs: 0 });
@@ -253,16 +261,10 @@ describe("dispose idempotency", () => {
         storage.dispose();
       }).not.toThrow();
 
-      // ファイルが正しく書き込まれる
-      expect(fs.existsSync(testFile)).toBe(true);
+      // データが正しく書き込まれる
+      expect(hasHistoryData(testPid)).toBe(true);
     } finally {
-      try {
-        if (fs.existsSync(testFile)) {
-          fs.unlinkSync(testFile);
-        }
-      } catch {
-        // Ignore
-      }
+      cleanupHistoryData(testPid);
     }
   });
 });

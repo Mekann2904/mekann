@@ -140,12 +140,67 @@ describe("context-repository", () => {
       repository.addContext("task-1", "Content");
       repository.setEmbedding("task-1", [1, 0, 0]);
 
-      // Query exactly at threshold boundary
-      const queryEmbedding = [0.8, 0.6, 0]; // Cosine similarity = 0.8
+      // Query with similarity above threshold
+      // Cosine similarity = 0.8 >= RELEVANCE_THRESHOLD (0.65)
+      const queryEmbedding = [0.8, 0.6, 0];
       const results = repository.getRelevantContext(queryEmbedding);
 
-      // Should use RELEVANCE_THRESHOLD (0.65)
-      expect(results.length).toBeGreaterThanOrEqual(0);
+      expect(results.length).toBe(1);
+      expect(results[0].metadata.taskId).toBe("task-1");
+    });
+
+    it("getRelevantContext_atExactThreshold_boundaryValue", () => {
+      repository.addContext("task-1", "Content");
+      // Embedding that gives exactly threshold similarity
+      // cos([0.65, sqrt(1-0.65^2), 0], [1, 0, 0]) = 0.65
+      const embedding = [0.65, Math.sqrt(1 - 0.65 * 0.65), 0];
+      repository.setEmbedding("task-1", embedding);
+
+      const queryEmbedding = [1, 0, 0];
+      const results = repository.getRelevantContext(queryEmbedding);
+
+      // At exact threshold, should be included (>= threshold)
+      expect(results.length).toBe(1);
+      expect(results[0].metadata.taskId).toBe("task-1");
+      expect(results[0].metadata.relevance).toBeCloseTo(0.65, 5);
+    });
+
+    it("getRelevantContext_justBelowThreshold_excluded", () => {
+      repository.addContext("task-1", "Content");
+      // Embedding that gives just below threshold similarity
+      // cos([0.649, sqrt(1-0.649^2), 0], [1, 0, 0]) ≈ 0.649
+      const embedding = [0.649, Math.sqrt(1 - 0.649 * 0.649), 0];
+      repository.setEmbedding("task-1", embedding);
+
+      const queryEmbedding = [1, 0, 0];
+      const results = repository.getRelevantContext(queryEmbedding);
+
+      // Just below threshold, should be excluded
+      expect(results.length).toBe(0);
+    });
+
+    it("getRelevantContext_zeroEmbedding_returnsEmptyArray", () => {
+      repository.addContext("task-1", "Content");
+      // Zero embedding has no direction, similarity is 0
+      repository.setEmbedding("task-1", [0, 0, 0]);
+
+      const queryEmbedding = [1, 0, 0];
+      const results = repository.getRelevantContext(queryEmbedding);
+
+      // Zero vector similarity is 0, below threshold
+      expect(results.length).toBe(0);
+    });
+
+    it("getRelevantContext_negativeSimilarity_excluded", () => {
+      repository.addContext("task-1", "Content");
+      // Opposite direction gives negative similarity
+      repository.setEmbedding("task-1", [-1, 0, 0]);
+
+      const queryEmbedding = [1, 0, 0];
+      const results = repository.getRelevantContext(queryEmbedding);
+
+      // Negative similarity, below threshold
+      expect(results.length).toBe(0);
     });
 
     it("getRelevantContext_sortsByRelevance", () => {

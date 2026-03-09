@@ -221,16 +221,16 @@ export function routeTopology(plan: DAGPlan): TopologyType {
   // 依存なし（完全並列）
   if (metrics.edgeCount === 0) return "parallel";
   
-  // 完全順次（並列性なし）
-  if (metrics.parallelismWidth === 1) return "sequential";
-  
   // 並列化率
   const r = metrics.parallelismWidth / metrics.nodeCount;
   
-  // 高結合かつ大規模 → 階層型
+  // 高結合かつ大規模 → 階層型（優先度: 高結合の管理が必要な場合）
   if (metrics.couplingDensity > COUPLING_DENSITY && metrics.nodeCount > MIN_SUBTASKS_FOR_HIERARCHY) {
     return "hierarchical";
   }
+  
+  // 完全順次（並列性なし）
+  if (metrics.parallelismWidth === 1) return "sequential";
   
   // 広い並列性かつ低結合 → 並列型
   if (r > OMEGA_RATIO && metrics.couplingDensity <= COUPLING_DENSITY) {

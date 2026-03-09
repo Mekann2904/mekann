@@ -149,6 +149,16 @@ export function integrateWithParallelExecution(
 }
 
 /**
+ * integrateWithParallelExecutionのエイリアス
+ * チーム実行コンテキストでの統合フック
+ * @param memberTools - メンバーIDとツール定義のマップ
+ * @param fuserConfig - 融合設定（オプション）
+ * @returns メンバーIDとコンパイル結果のマップ
+ * @summary チーム実行統合フック
+ */
+export const integrateWithTeamExecution = integrateWithParallelExecution;
+
+/**
  * 複数のツール定義を融合して、LLMに提示するツールセットを最適化
  * @param toolDefinitions - 元のツール定義配列
  * @param config - 融合設定

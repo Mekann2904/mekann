@@ -259,9 +259,14 @@ export class SelfRevisionModule {
         break;
       }
 
-      case "add_node":
-        this.executor.addNode(action.node);
+      case "add_node": {
+        // 既存タスクの重複を防ぐ
+        const existingTask = this.executor.getTask(action.node.id);
+        if (!existingTask) {
+          this.executor.addNode(action.node);
+        }
         break;
+      }
 
       case "remove_node":
         this.executor.removeNode(action.nodeId);

@@ -92,7 +92,7 @@ describe("plan-mode-shared", () => {
 
 		it("PLAN_MODE_POLICY_should_be_defined", () => {
 			expect(PLAN_MODE_POLICY).toContain("PLAN MODE");
-			expect(PLAN_MODE_POLICY).toContain("PLANNING MODE");
+			expect(PLAN_MODE_POLICY).toContain("SPEC-FIRST READ-ONLY MODE");
 		});
 
 		it("PLAN_MODE_WARNING_should_be_defined", () => {
