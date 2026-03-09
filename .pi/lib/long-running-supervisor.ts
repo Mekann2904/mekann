@@ -191,6 +191,51 @@ const SUBAGENT_STALE_THRESHOLD_MS = 2 * 60 * 1000;
 // 複数インスタンス環境では、ownerInstanceIdベースの判定で誤クラッシュを防ぐ
 const SESSION_STALE_THRESHOLD_MS = 10 * 60 * 1000;
 
+/**
+ * セッションが現在のインスタンスに関連するかどうかを判定する
+ *
+ * 目的: 新しいpiインスタンスが古いセッションのコンテキストを引き継がないようにする
+ *
+ * 判定ロジック:
+ * 1. 完了状態(clean_shutdown, superseded)のセッションは無視
+ * 2. TTL切れ(10分)のセッションは無視
+ * 3. ownerInstanceIdが一致する場合: 自分のセッション
+ * 4. ownerInstanceIdがない古い形式のセッション: プロセスが生きていれば自分のセッション
+ *
+ * @param session - チェック対象のセッション
+ * @returns 現在のインスタンスに関連する場合はtrue
+ */
+function isRelevantSession(session: LongRunningSessionState | null): boolean {
+  if (!session) {
+    return false;
+  }
+
+  // 完了状態のセッションは無視
+  if (session.status === "clean_shutdown" || session.status === "superseded") {
+    return false;
+  }
+
+  // TTL切れのセッションは無視
+  const updatedAtMs = Date.parse(session.updatedAt);
+  if (Number.isFinite(updatedAtMs) && Date.now() - updatedAtMs > SESSION_STALE_THRESHOLD_MS) {
+    return false;
+  }
+
+  const currentInstanceId = getCurrentInstanceId();
+
+  // ownerInstanceIdがない古い形式のセッションは互換性のため自分のセッションとみなす
+  // ただし、ownerPidが現在のプロセスと異なり、かつプロセスが死んでいる場合は無視
+  if (!session.ownerInstanceId) {
+    if (session.ownerPid !== process.pid && !isProcessAlive(session.ownerPid)) {
+      return false;
+    }
+    return true;
+  }
+
+  // ownerInstanceIdが一致する場合のみ自分のセッション
+  return session.ownerInstanceId === currentInstanceId;
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -991,9 +1036,14 @@ export function finalizeLongRunningSession(
 
 export function createLongRunningReplay(cwdInput?: string, sessionId?: string): LongRunningReplay {
   const cwd = normalizeCwd(cwdInput);
-  const session = sessionId
+  const rawSession = sessionId
     ? loadLongRunningSession(cwd, sessionId)
     : loadLatestLongRunningSession(cwd);
+
+  // 自分のインスタンスに関連するセッションのみを使用
+  // これにより、新しいpiインスタンスが古いセッションのコンテキストを引き継がない
+  const session = isRelevantSession(rawSession) ? rawSession : null;
+
   const workspaceConfig = loadWorkspaceVerificationConfig(cwd);
   const workspaceState = loadWorkspaceVerificationState(cwd);
   const resolvedPlan = resolveWorkspaceVerificationPlan(workspaceConfig, cwd);
