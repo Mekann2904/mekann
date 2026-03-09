@@ -115,7 +115,7 @@ export class ToolExecutor {
     try {
       const fusedResults: FusedExecutionResult[] = [];
       const allToolResults = new Map<string, ToolExecutionResult>();
-      let totalParallelTime = 0;
+      const totalParallelTime = 0;
 
       // 依存関係に基づいて段階的に実行
       const executed = new Set<string>();

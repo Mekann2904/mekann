@@ -411,7 +411,7 @@ export async function checkToolAvailability(force = false): Promise<ToolAvailabi
     execute("which", ["ctags"], { timeout: 5000 }),
   ]);
 
-  let ctags = ctagsPath.code === 0;
+  const ctags = ctagsPath.code === 0;
   let ctagsJson = false;
 
   // Check if ctags supports JSON output (universal-ctags)

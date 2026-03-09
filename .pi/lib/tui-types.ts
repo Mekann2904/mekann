@@ -97,7 +97,7 @@ export type TuiCustomCallback = (
  */
 export interface TuiUI {
   /** カスタムオーバーレイを表示 */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ExtensionContext.ui.custom has complex generic signature
+   
   custom: (
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ExtensionContext.ui.custom has complex generic signature
     callback: any,

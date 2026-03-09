@@ -571,7 +571,7 @@ export function generateQuestion(gap: InformationGap): MediatorQuestion {
   const template = getQuestionTemplate(gap.type);
   
   // テンプレートの変数を置換
-  let questionText = template.questionTemplate.replace("{term}", gap.term);
+  const questionText = template.questionTemplate.replace("{term}", gap.term);
   
   // 候補がある場合は選択肢に追加
   let options = [...template.optionTemplates];

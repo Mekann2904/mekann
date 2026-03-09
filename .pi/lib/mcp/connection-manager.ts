@@ -1266,7 +1266,7 @@ export class McpConnectionManager {
  * これにより、古いモジュールのクラス定義との不整合によるクラッシュを防ぐ。
  */
 declare global {
-  // eslint-disable-next-line no-var
+   
   var __mcpManager: McpConnectionManager | undefined;
 }
 

@@ -205,7 +205,7 @@ function getCachedRuntimeSnapshot(): { totalActiveLlm: number; limits: { maxTota
 
   // Dynamic import to avoid circular dependency
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     const { getRuntimeSnapshot } = require("./agent-runtime") as typeof import("./agent-runtime");
     const snapshot = getRuntimeSnapshot();
     cachedRuntimeSnapshot = {
