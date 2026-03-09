@@ -186,3 +186,6 @@ philosophy.md
 # Runtime data (trajectory-reduction config, etc.)
 .pi/data/
 .pi/search/
+
+# SQLite state database (runtime)
+.pi/state.db
