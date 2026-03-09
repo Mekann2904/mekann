@@ -64,6 +64,12 @@ import {
 	createRuntimeNotification,
 	formatRuntimeNotificationBlock,
 } from "../lib/agent/runtime-notifications.js";
+import {
+	loadWorkspaceVerificationConfig,
+	loadWorkspaceVerificationState,
+	resolveWorkspaceVerificationPlan,
+	isCompletionBlocked,
+} from "../lib/workspace-verification.js";
 
 // ============================================
 // Global State
@@ -1503,6 +1509,24 @@ export default function (pi: ExtensionAPI) {
 					content: [{ type: "text", text: `Invalid status. Must be one of: ${VALID_STEP_STATUSES.join(", ")}` }],
 					details: {}
 				};
+			}
+
+			// Workspace verification check for completed status
+			if (params.status === "completed") {
+				const wvConfig = loadWorkspaceVerificationConfig(workspaceRoot);
+				const wvState = loadWorkspaceVerificationState(workspaceRoot);
+				const wvResolvedPlan = resolveWorkspaceVerificationPlan(wvConfig, workspaceRoot);
+				if (isCompletionBlocked(wvConfig, wvState, wvResolvedPlan)) {
+					const reason = wvConfig.requireReplanOnRepeatedFailure && wvState.replanRequired
+						? `Repeated verification failures require a new repair strategy. Update the plan and run workspace_verify_replan. ${wvState.replanReason ?? ""}`.trim()
+						: wvConfig.requireProofReview && wvState.pendingProofReview
+							? "A successful verification exists, but its proof artifacts have not been acknowledged. Run workspace_verify_ack after inspecting the latest artifacts."
+							: "Workspace verification is stale. Run workspace_verify and inspect the latest artifacts.";
+					return {
+						content: [{ type: "text", text: `${reason} before marking a plan step completed.` }],
+						details: {}
+					};
+				}
 			}
 
 			const updateResult = updateStepStatus(plan, params.stepId, params.status as PlanStepStatus, {

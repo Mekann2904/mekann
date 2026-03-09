@@ -14,7 +14,7 @@ const ulWorkflowMocks = vi.hoisted(() => ({
   extractPidFromInstanceId: vi.fn(() => 123),
 }));
 
-vi.mock("../../../.pi/extensions/ul-workflow.js", () => ulWorkflowMocks);
+vi.mock("../../../.pi/lib/core/ownership.js", () => ulWorkflowMocks);
 
 const storageMocks = vi.hoisted(() => ({
   state: {

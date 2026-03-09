@@ -34,6 +34,12 @@ describe("SelfRevisionModule", () => {
     dependencies = new Map();
 
     mockExecutor = {
+      addNode: (node: TaskNode) => {
+        tasks.set(node.id, node);
+      },
+      removeNode: (nodeId: string) => {
+        return tasks.delete(nodeId);
+      },
       addDependency: (taskId: string, dependencyId: string) => {
         const deps = dependencies.get(taskId) || new Set();
         deps.add(dependencyId);
@@ -46,6 +52,10 @@ describe("SelfRevisionModule", () => {
           return true;
         }
         return false;
+      },
+      requeueTask: (taskId: string, includeDependents?: boolean) => {
+        void taskId;
+        void includeDependents;
       },
       getTask: (taskId: string) => tasks.get(taskId),
       detectCycle: () => ({ hasCycle: false, cyclePath: null }),
@@ -199,7 +209,12 @@ describe("SelfRevisionModule", () => {
     it("should detect cycle and return infeasible", async () => {
       // 循環を検出するモック
       const cycleMockExecutor: RevisionExecutor = {
-        ...mockExecutor,
+        addNode: mockExecutor.addNode,
+        removeNode: mockExecutor.removeNode,
+        addDependency: mockExecutor.addDependency,
+        removeDependency: mockExecutor.removeDependency,
+        requeueTask: mockExecutor.requeueTask,
+        getTask: mockExecutor.getTask,
         detectCycle: () => ({
           hasCycle: true,
           cyclePath: ["task-1", "task-2", "task-1"],

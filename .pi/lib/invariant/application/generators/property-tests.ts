@@ -141,7 +141,7 @@ function translatePostconditionToTypeScript(
     const [, varName, expression] = primedMatch;
     const isStateVar = states.some(s => s.name === varName);
     if (isStateVar) {
-      let translatedExpr = translateConditionToTypeScript(expression, states)
+      const translatedExpr = translateConditionToTypeScript(expression, states)
         .replace(/obj\./g, 'model.')
         .replace(/===/g, '=');
       return { code: `newModel.${varName} = ${translatedExpr};` };

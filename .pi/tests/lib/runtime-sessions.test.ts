@@ -23,6 +23,7 @@ import {
   updateSession,
   removeSession,
   getSession,
+  _addSessionForTest,
   getActiveSessions,
   getSessionByTaskId,
   getSessionsByAgentId,
@@ -422,13 +423,15 @@ describe("runtime-sessions", () => {
       const now = Date.now();
       const oldTime = now - 10 * 60 * 1000; // 10 minutes ago
 
+      // addSessionを使うとtrimCompletedSessionsが自動実行されるため、
+      // テスト用ヘルパーで直接セッションを追加
       const sessions: RuntimeSession[] = [
         { id: "s1", type: "subagent", agentId: "a1", status: "completed", startedAt: oldTime, completedAt: oldTime },
         { id: "s2", type: "subagent", agentId: "a2", status: "completed", startedAt: now, completedAt: now },
         { id: "s3", type: "subagent", agentId: "a3", status: "running", startedAt: oldTime },
       ];
 
-      sessions.forEach(addSession);
+      sessions.forEach(_addSessionForTest);
 
       const removed = cleanupCompletedSessions(5 * 60 * 1000);
 

@@ -228,7 +228,7 @@ export function selectMode(
   const phaseBelief = selector.phaseBeliefs.get(context.phase) || selector.modeBelief;
 
   // ベイズ推定に基づく選択
-  let distribution = phaseBelief.posterior;
+  const distribution = phaseBelief.posterior;
 
   // コンテキスト特徴量で調整
   const adjustedDistribution = adjustDistributionByContext(distribution, features, context);

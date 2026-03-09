@@ -469,3 +469,13 @@ export function cleanupCompletedSessions(maxAgeMs: number = 5 * 60 * 1000): numb
 export function clearAllSessions(): void {
   activeSessions.clear();
 }
+
+/**
+ * Add a session directly without triggering cleanup (for testing only)
+ * @summary テスト用: クリーンアップなしでセッション追加
+ * @param session - 追加するセッション
+ * @internal
+ */
+export function _addSessionForTest(session: RuntimeSession): void {
+  activeSessions.set(session.id, session);
+}

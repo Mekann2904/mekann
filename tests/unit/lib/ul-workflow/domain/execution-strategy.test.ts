@@ -28,131 +28,131 @@ describe("estimateTaskComplexity", () => {
   // ==========================================================================
 
   describe("境界値テスト", () => {
-    it("空文字列_low返却_文字数0かつ単語数1のため", () => {
+    it("空文字列_medium返却_統一フローでは常にmedium", () => {
       // Arrange
       const task = "";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert: charCount=0 < 50 && wordCount=1 < 10 → low
-      expect(result).toBe("low");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("null入力_low返却_空文字と同様に処理", () => {
+    it("null入力_medium返却_統一フローでは常にmedium", () => {
       // Arrange
       const task = null as unknown as string;
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert: String(null || "") → ""
-      expect(result).toBe("low");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("undefined入力_low返却_空文字と同様に処理", () => {
+    it("undefined入力_medium返却_統一フローでは常にmedium", () => {
       // Arrange
       const task = undefined as unknown as string;
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert: String(undefined || "") → ""
-      expect(result).toBe("low");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("空白のみ_low返却_trim後空文字のため", () => {
+    it("空白のみ_medium返却_統一フローでは常にmedium", () => {
       // Arrange
       const task = "   ";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert: "   ".trim() → ""
-      expect(result).toBe("low");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
   });
 
   // ==========================================================================
-  // 低複雑度テスト
+  // 低複雑度テスト - 統一フローでは常にmediumを返す
   // ==========================================================================
 
-  describe("低複雑度", () => {
-    it("短いタスク_低複雑度", () => {
+  describe("低複雑度（統一フローでは常にmedium）", () => {
+    it("短いタスク_統一フローではmedium", () => {
       // Arrange
       const task = "show version";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert
-      expect(result).toBe("low");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("確認タスク_低複雑度", () => {
+    it("確認タスク_統一フローではmedium", () => {
       // Arrange
       const task = "check the configuration";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert
-      expect(result).toBe("low");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("設定タスク_低複雑度", () => {
+    it("設定タスク_統一フローではmedium", () => {
       // Arrange
       const task = "set config value";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert
-      expect(result).toBe("low");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("取得タスク_低複雑度", () => {
+    it("取得タスク_統一フローではmedium", () => {
       // Arrange
       const task = "fetch data from API";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert
-      expect(result).toBe("low");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("表示タスク_日本語_低複雑度", () => {
+    it("表示タスク_日本語_統一フローではmedium", () => {
       // Arrange
       const task = "バージョンを表示";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert
-      expect(result).toBe("low");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("50文字未満_低複雑度", () => {
+    it("50文字未満_統一フローではmedium", () => {
       // Arrange
       const task = "simple task";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert
-      expect(result).toBe("low");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("10単語未満_低複雑度", () => {
+    it("10単語未満_統一フローではmedium", () => {
       // Arrange
       const task = "one two three four five six seven eight nine";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert
-      expect(result).toBe("low");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
   });
 
@@ -251,118 +251,118 @@ describe("estimateTaskComplexity", () => {
   });
 
   // ==========================================================================
-  // 高複雑度テスト
+  // 高複雑度テスト - 統一フローでは常にmediumを返す
   // ==========================================================================
 
-  describe("高複雑度", () => {
-    it("アーキテクチャタスク_高複雑度", () => {
+  describe("高複雑度（統一フローでは常にmedium）", () => {
+    it("アーキテクチャタスク_統一フローではmedium", () => {
       // Arrange
       const task = "design new architecture";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert
-      expect(result).toBe("high");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("リファクタリングタスク_高複雑度", () => {
+    it("リファクタリングタスク_統一フローではmedium", () => {
       // Arrange
       const task = "refactor legacy code";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert
-      expect(result).toBe("high");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("マイグレーションタスク_高複雑度", () => {
+    it("マイグレーションタスク_統一フローではmedium", () => {
       // Arrange
       const task = "database migration";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert
-      expect(result).toBe("high");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("統合タスク_高複雑度", () => {
+    it("統合タスク_統一フローではmedium", () => {
       // Arrange
       const task = "integration with external API";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert
-      expect(result).toBe("high");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("複数ファイルタスク_高複雑度", () => {
+    it("複数ファイルタスク_統一フローではmedium", () => {
       // Arrange
       const task = "update multiple files";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert
-      expect(result).toBe("high");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("システム全体タスク_高複雑度", () => {
+    it("システム全体タスク_統一フローではmedium", () => {
       // Arrange
       const task = "redesign entire system";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert
-      expect(result).toBe("high");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("日本語_アーキテクチャ_高複雑度", () => {
+    it("日本語_アーキテクチャ_統一フローではmedium", () => {
       // Arrange
       const task = "アーキテクチャを設計";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert
-      expect(result).toBe("high");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("日本語_リファクタ_高複雑度", () => {
+    it("日本語_リファクタ_統一フローではmedium", () => {
       // Arrange
       const task = "リファクタリングを実施";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert
-      expect(result).toBe("high");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("200文字超過_高複雑度", () => {
+    it("200文字超過_統一フローではmedium", () => {
       // Arrange
       const task = "a".repeat(201);
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert
-      expect(result).toBe("high");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("30単語超過_高複雑度", () => {
+    it("30単語超過_統一フローではmedium", () => {
       // Arrange
       const words = Array(31).fill("word").join(" ");
 
       // Act
       const result = estimateTaskComplexity(words);
 
-      // Assert
-      expect(result).toBe("high");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
   });
 
@@ -371,15 +371,15 @@ describe("estimateTaskComplexity", () => {
   // ==========================================================================
 
   describe("大文字小文字", () => {
-    it("大文字_ARCHITECTURE_高複雑度", () => {
+    it("大文字_ARCHITECTURE_統一フローではmedium", () => {
       // Arrange
       const task = "ARCHITECTURE design";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert
-      expect(result).toBe("high");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
     it("混在_Implement_中複雑度", () => {
@@ -399,26 +399,26 @@ describe("estimateTaskComplexity", () => {
   // ==========================================================================
 
   describe("優先度テスト", () => {
-    it("高複雑度指標が低複雑度指標より優先", () => {
+    it("高複雑度指標が低複雑度指標より優先_統一フローではmedium", () => {
       // Arrange - "show architecture" has both low and high indicators
       const task = "show architecture design";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert - high should win
-      expect(result).toBe("high");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
 
-    it("高複雑度指標が中複雑度指標より優先", () => {
+    it("高複雑度指標が中複雑度指標より優先_統一フローではmedium", () => {
       // Arrange - "implement migration" has both medium and high indicators
       const task = "implement migration plan";
 
       // Act
       const result = estimateTaskComplexity(task);
 
-      // Assert - high should win
-      expect(result).toBe("high");
+      // Assert: 統一フローでは常に"medium"を返す
+      expect(result).toBe("medium");
     });
   });
 });
@@ -433,36 +433,36 @@ describe("looksLikeClearGoalTask", () => {
   // ==========================================================================
 
   describe("明確なゴール", () => {
-    it("add開始_明確ゴール", () => {
-      expect(looksLikeClearGoalTask("add new feature")).toBe(true);
+    it("add開始_統一フローでは常にfalse", () => {
+      expect(looksLikeClearGoalTask("add new feature")).toBe(false);
     });
 
-    it("fix開始_明確ゴール", () => {
-      expect(looksLikeClearGoalTask("fix the bug")).toBe(true);
+    it("fix開始_統一フローでは常にfalse", () => {
+      expect(looksLikeClearGoalTask("fix the bug")).toBe(false);
     });
 
-    it("update開始_明確ゴール", () => {
-      expect(looksLikeClearGoalTask("update config")).toBe(true);
+    it("update開始_統一フローでは常にfalse", () => {
+      expect(looksLikeClearGoalTask("update config")).toBe(false);
     });
 
-    it("implement開始_明確ゴール", () => {
-      expect(looksLikeClearGoalTask("implement feature")).toBe(true);
+    it("implement開始_統一フローでは常にfalse", () => {
+      expect(looksLikeClearGoalTask("implement feature")).toBe(false);
     });
 
-    it("create開始_明確ゴール", () => {
-      expect(looksLikeClearGoalTask("create new file")).toBe(true);
+    it("create開始_統一フローでは常にfalse", () => {
+      expect(looksLikeClearGoalTask("create new file")).toBe(false);
     });
 
-    it("refactor開始_明確ゴール", () => {
-      expect(looksLikeClearGoalTask("refactor code")).toBe(true);
+    it("refactor開始_統一フローでは常にfalse", () => {
+      expect(looksLikeClearGoalTask("refactor code")).toBe(false);
     });
 
-    it("remove開始_明確ゴール", () => {
-      expect(looksLikeClearGoalTask("remove unused code")).toBe(true);
+    it("remove開始_統一フローでは常にfalse", () => {
+      expect(looksLikeClearGoalTask("remove unused code")).toBe(false);
     });
 
-    it("rename開始_明確ゴール", () => {
-      expect(looksLikeClearGoalTask("rename variable")).toBe(true);
+    it("rename開始_統一フローでは常にfalse", () => {
+      expect(looksLikeClearGoalTask("rename variable")).toBe(false);
     });
   });
 
@@ -530,8 +530,8 @@ describe("looksLikeClearGoalTask", () => {
       expect(looksLikeClearGoalTask("please add feature")).toBe(false);
     });
 
-    it("大文字_ADD_明確ゴール", () => {
-      expect(looksLikeClearGoalTask("ADD feature")).toBe(true);
+    it("大文字_ADD_統一フローでは常にfalse", () => {
+      expect(looksLikeClearGoalTask("ADD feature")).toBe(false);
     });
   });
 
@@ -554,69 +554,69 @@ describe("looksLikeClearGoalTask", () => {
 
 describe("determineWorkflowPhases", () => {
   // ==========================================================================
-  // 低複雑度
+  // 低複雑度 - 統一フローでは常に5フェーズ
   // ==========================================================================
 
   describe("低複雑度フェーズ", () => {
-    it("低複雑度_明確ゴール_createパターン_3フェーズ", () => {
-      // Arrange: "create show function" → low (show含む) + clear goal (create開始)
+    it("低複雑度_明確ゴール_createパターン_統一フローでは5フェーズ", () => {
+      // Arrange: "create show function"
       const task = "create show function";
 
       // Act
       const phases = determineWorkflowPhases(task);
 
-      // Assert: low + clear goal → ["research", "implement", "completed"]
-      expect(phases).toEqual(["research", "implement", "completed"]);
+      // Assert: 統一フローでは常に5フェーズ
+      expect(phases).toEqual(["research", "plan", "annotate", "implement", "completed"]);
     });
 
-    it("低複雑度_明確ゴール_renameパターン_3フェーズ", () => {
-      // Arrange: "rename get function" → low (get含む) + clear goal (rename開始)
+    it("低複雑度_明確ゴール_renameパターン_統一フローでは5フェーズ", () => {
+      // Arrange: "rename get function"
       const task = "rename get function";
 
       // Act
       const phases = determineWorkflowPhases(task);
 
-      // Assert: low + clear goal → ["research", "implement", "completed"]
-      expect(phases).toEqual(["research", "implement", "completed"]);
+      // Assert: 統一フローでは常に5フェーズ
+      expect(phases).toEqual(["research", "plan", "annotate", "implement", "completed"]);
     });
 
-    it("低複雑度_不明確ゴール_showパターン_4フェーズ", () => {
-      // Arrange: "show version" → low + clear goalなし (showは明確ゴールパターンに含まれない)
+    it("低複雑度_不明確ゴール_showパターン_統一フローでは5フェーズ", () => {
+      // Arrange: "show version"
       const task = "show version";
 
       // Act
       const phases = determineWorkflowPhases(task);
 
-      // Assert: low + no clear goal → ["research", "plan", "implement", "completed"]
-      expect(phases).toEqual(["research", "plan", "implement", "completed"]);
+      // Assert: 統一フローでは常に5フェーズ
+      expect(phases).toEqual(["research", "plan", "annotate", "implement", "completed"]);
     });
 
-    it("低複雑度_不明確ゴール_4フェーズ", () => {
+    it("低複雑度_不明確ゴール_統一フローでは5フェーズ", () => {
       // Arrange
       const task = "check configuration settings";
 
       // Act
       const phases = determineWorkflowPhases(task);
 
-      // Assert
-      expect(phases).toEqual(["research", "plan", "implement", "completed"]);
+      // Assert: 統一フローでは常に5フェーズ
+      expect(phases).toEqual(["research", "plan", "annotate", "implement", "completed"]);
     });
   });
 
   // ==========================================================================
-  // 中複雑度
+  // 中複雑度 - 統一フローでは常に5フェーズ
   // ==========================================================================
 
   describe("中複雑度フェーズ", () => {
-    it("中複雑度_明確ゴール_4フェーズ", () => {
+    it("中複雑度_明確ゴール_統一フローでは5フェーズ", () => {
       // Arrange
       const task = "implement new feature";
 
       // Act
       const phases = determineWorkflowPhases(task);
 
-      // Assert
-      expect(phases).toEqual(["research", "plan", "implement", "completed"]);
+      // Assert: 統一フローでは常に5フェーズ
+      expect(phases).toEqual(["research", "plan", "annotate", "implement", "completed"]);
     });
 
     it("中複雑度_不明確ゴール_5フェーズ", () => {
@@ -770,42 +770,42 @@ describe("determineExecutionStrategy", () => {
   });
 
   // ==========================================================================
-  // 低複雑度戦略
+  // 低複雑度戦略 - 統一フローでは常にdag戦略と5フェーズ
   // ==========================================================================
 
   describe("低複雑度戦略", () => {
-    it("低複雑度_simple戦略", () => {
+    it("低複雑度_統一フローではdag戦略", () => {
       // Arrange
       const task = "show version";
 
       // Act
       const result = determineExecutionStrategy(task);
 
-      // Assert
-      expect(result.strategy).toBe("simple");
-      expect(result.useDag).toBe(false);
+      // Assert: 統一フローでは常にdag
+      expect(result.strategy).toBe("dag");
+      expect(result.useDag).toBe(true);
     });
 
-    it("低複雑度_2フェーズ", () => {
+    it("低複雑度_統一フローでは5フェーズ", () => {
       // Arrange
       const task = "get data";
 
       // Act
       const result = determineExecutionStrategy(task);
 
-      // Assert
-      expect(result.phases).toEqual(["implement", "completed"]);
+      // Assert: 統一フローでは常に5フェーズ
+      expect(result.phases).toEqual(["research", "plan", "annotate", "implement", "completed"]);
     });
 
-    it("低複雑度_理由にLow complexity含む", () => {
+    it("低複雑度_統一フローの理由を含む", () => {
       // Arrange
       const task = "set config";
 
       // Act
       const result = determineExecutionStrategy(task);
 
-      // Assert
-      expect(result.reason).toContain("Low complexity");
+      // Assert: 統一フローの理由を含む
+      expect(result.reason).toContain("Unified flow");
     });
   });
 
@@ -850,16 +850,16 @@ describe("determineExecutionStrategy", () => {
       expect(result.useDag).toBe(true);
     });
 
-    it("中複雑度_シンプルタスク_simple戦略", () => {
+    it("中複雑度_シンプルタスク_統一フローではdag戦略", () => {
       // Arrange
       const task = "add new button";
 
       // Act
       const result = determineExecutionStrategy(task);
 
-      // Assert
-      expect(result.strategy).toBe("simple");
-      expect(result.useDag).toBe(false);
+      // Assert: 統一フローでは常にdag
+      expect(result.strategy).toBe("dag");
+      expect(result.useDag).toBe(true);
     });
 
     it("中複雑度_dag_理由にDAG含む", () => {
@@ -891,43 +891,43 @@ describe("determineExecutionStrategy", () => {
       expect(result.useDag).toBe(true);
     });
 
-    it("高複雑度_5フェーズ", () => {
+    it("高複雑度_統一フローでは5フェーズ", () => {
       // Arrange
       const task = "migration entire system";
 
       // Act
       const result = determineExecutionStrategy(task);
 
-      // Assert
+      // Assert: 統一フローでは常に5フェーズ（annotateを含む）
       expect(result.phases).toEqual([
         "research",
         "plan",
+        "annotate",
         "implement",
-        "review",
         "completed",
       ]);
     });
 
-    it("高複雑度_理由にHigh complexity含む", () => {
+    it("高複雑度_統一フローの理由を含む", () => {
       // Arrange
       const task = "refactor architecture";
 
       // Act
       const result = determineExecutionStrategy(task);
 
-      // Assert
-      expect(result.reason).toContain("High complexity");
+      // Assert: 統一フローの理由を含む
+      expect(result.reason).toContain("Unified flow");
     });
 
-    it("高複雑度_reviewフェーズ含む", () => {
+    it("高複雑度_annotateフェーズ含む", () => {
       // Arrange
       const task = "integration with external system";
 
       // Act
       const result = determineExecutionStrategy(task);
 
-      // Assert
-      expect(result.phases).toContain("review");
+      // Assert: 統一フローではannotateフェーズを含む
+      expect(result.phases).toContain("annotate");
     });
   });
 
@@ -984,20 +984,24 @@ describe("determineExecutionStrategy", () => {
   // ==========================================================================
 
   describe("境界値", () => {
-    it("空文字列_デフォルト戦略", () => {
+    it("空文字列_統一フローではdag戦略", () => {
       const result = determineExecutionStrategy("");
-      expect(result.strategy).toBe("simple");
+      // 統一フローでは常にdagを返す
+      expect(result.strategy).toBe("dag");
     });
 
-    it("null入力_例外発生_実装が非nullを期待", () => {
-      // Arrange & Act & Assert
-      // analyzeDagSignalsがtask.trim()を呼ぶため、null/undefinedは例外となる
-      expect(() => determineExecutionStrategy(null as unknown as string)).toThrow();
+    it("null入力_統一フローでは例外を投げない_dag返却", () => {
+      // Arrange & Act
+      const result = determineExecutionStrategy(null as unknown as string);
+      // Assert: 統一フローではnull/undefinedでも例外を投げずにdagを返す
+      expect(result.strategy).toBe("dag");
     });
 
-    it("undefined入力_例外発生_実装が非nullを期待", () => {
-      // Arrange & Act & Assert
-      expect(() => determineExecutionStrategy(undefined as unknown as string)).toThrow();
+    it("undefined入力_統一フローでは例外を投げない_dag返却", () => {
+      // Arrange & Act
+      const result = determineExecutionStrategy(undefined as unknown as string);
+      // Assert: 統一フローではnull/undefinedでも例外を投げずにdagを返す
+      expect(result.strategy).toBe("dag");
     });
   });
 });
@@ -1007,17 +1011,18 @@ describe("determineExecutionStrategy", () => {
 // ============================================================================
 
 describe("統合テスト", () => {
-  it("複雑度から戦略まで一貫性がある", () => {
+  it("複雑度から戦略まで一貫性がある_統一フロー", () => {
     const testCases = [
-      { task: "show version", expectedComplexity: "low" as TaskComplexity, expectedStrategy: "simple" as ExecutionStrategy },
-      { task: "implement feature", expectedComplexity: "medium" as TaskComplexity, expectedStrategy: "simple" as ExecutionStrategy },
-      { task: "architecture redesign", expectedComplexity: "high" as TaskComplexity, expectedStrategy: "dag" as ExecutionStrategy },
+      { task: "show version", expectedComplexity: "medium" as TaskComplexity, expectedStrategy: "dag" as ExecutionStrategy },
+      { task: "implement feature", expectedComplexity: "medium" as TaskComplexity, expectedStrategy: "dag" as ExecutionStrategy },
+      { task: "architecture redesign", expectedComplexity: "medium" as TaskComplexity, expectedStrategy: "dag" as ExecutionStrategy },
     ];
 
     testCases.forEach(({ task, expectedComplexity, expectedStrategy }) => {
       const complexity = estimateTaskComplexity(task);
       const strategyResult = determineExecutionStrategy(task);
 
+      // 統一フローでは常にmediumとdagを返す
       expect(complexity).toBe(expectedComplexity);
       expect(strategyResult.strategy).toBe(expectedStrategy);
     });
@@ -1028,22 +1033,23 @@ describe("統合テスト", () => {
     const phases = determineWorkflowPhases(task);
     const strategyResult = determineExecutionStrategy(task);
 
-    // Both should recognize high complexity
+    // 統一フローでは常に5フェーズ
     expect(phases.length).toBe(5);
     expect(strategyResult.phases.length).toBe(5);
   });
 
-  it("タスクタイプによる一貫した分類", () => {
+  it("タスクタイプによる一貫した分類_統一フローでは常にmedium", () => {
     const tasks = {
       low: ["show data", "get config", "set value"],
       medium: ["add feature", "fix bug", "update code"],
       high: ["refactor system", "architecture change", "migration task"],
     };
 
-    Object.entries(tasks).forEach(([complexity, taskList]) => {
+    Object.entries(tasks).forEach(([_complexity, taskList]) => {
       taskList.forEach((task) => {
         const result = estimateTaskComplexity(task);
-        expect(result).toBe(complexity);
+        // 統一フローでは常に"medium"を返す
+        expect(result).toBe("medium");
       });
     });
   });

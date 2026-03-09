@@ -29,7 +29,7 @@ import { join } from "node:path";
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { getInstanceId, isProcessAlive, extractPidFromInstanceId } from "./ul-workflow.js";
+import { getInstanceId, isProcessAlive, extractPidFromInstanceId } from "../lib/core/ownership.js";
 import {
 	loadTaskStorage as loadSharedTaskStorage,
 	saveTaskStorage as saveSharedTaskStorage,

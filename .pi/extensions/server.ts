@@ -257,7 +257,7 @@ async function serveStatic(
 	res: ServerResponse
 ): Promise<boolean> {
 	// Normalize path - serve index.html for root
-	let filePath = urlPath === "/" ? "/index.html" : urlPath;
+	const filePath = urlPath === "/" ? "/index.html" : urlPath;
 	
 	// Security: prevent directory traversal
 	// Check for path traversal attempts: "..", null bytes, and absolute paths

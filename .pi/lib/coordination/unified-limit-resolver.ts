@@ -177,7 +177,7 @@ let _getRuntimeSnapshot: RuntimeSnapshotProvider | null = null;
 /**
  * Track initialization state for diagnostics.
  */
-let _initializationState: {
+const _initializationState: {
   snapshotProviderSet: boolean;
   setAt: string | null;
   warningsLogged: string[];

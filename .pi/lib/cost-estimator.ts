@@ -129,6 +129,7 @@ export interface CostEstimatorConfig {
 const DEFAULT_ESTIMATES: Record<TaskSource, { durationMs: number; tokens: number }> = {
   subagent_run: { durationMs: 30_000, tokens: 4000 },
   subagent_run_parallel: { durationMs: 45_000, tokens: 8000 },
+  agent_team_run: { durationMs: 60_000, tokens: 12_000 },
 };
 
 const DEFAULT_CONFIG: CostEstimatorConfig = {

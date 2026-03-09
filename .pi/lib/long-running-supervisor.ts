@@ -6,6 +6,7 @@
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { join, resolve } from "node:path";
 
 import {
@@ -70,6 +71,7 @@ export interface LongRunningSessionState {
   id: string;
   cwd: string;
   ownerPid: number;
+  ownerInstanceId?: string; // 複数インスタンス環境での識別用
   startedAt: string;
   updatedAt: string;
   status: LongRunningSessionStatus;
@@ -184,10 +186,77 @@ const CHECKPOINT_FILE = "checkpoint.json";
 const JOURNAL_FILE = "journal.jsonl";
 const ACTIVE_SUBAGENT_RUNS_FILE = "active-subagent-runs.json";
 const SUBAGENT_STALE_THRESHOLD_MS = 2 * 60 * 1000;
-const SESSION_STALE_THRESHOLD_MS = 2 * 60 * 1000;
+// セッションがstaleと判定されるまでの閾値（ミリ秒）
+// LLM呼び出し等の長時間処理を考慮し、10分に設定
+// 複数インスタンス環境では、ownerInstanceIdベースの判定で誤クラッシュを防ぐ
+const SESSION_STALE_THRESHOLD_MS = 10 * 60 * 1000;
+
+/**
+ * セッションが現在のインスタンスに関連するかどうかを判定する
+ *
+ * 目的: 新しいpiインスタンスが古いセッションのコンテキストを引き継がないようにする
+ *
+ * 判定ロジック:
+ * 1. 完了状態(clean_shutdown, superseded)のセッションは無視
+ * 2. TTL切れ(10分)のセッションは無視
+ * 3. ownerInstanceIdが一致する場合: 自分のセッション
+ * 4. ownerInstanceIdがない古い形式のセッション: プロセスが生きていれば自分のセッション
+ *
+ * @param session - チェック対象のセッション
+ * @returns 現在のインスタンスに関連する場合はtrue
+ */
+function isRelevantSession(session: LongRunningSessionState | null): boolean {
+  if (!session) {
+    return false;
+  }
+
+  // 完了状態のセッションは無視
+  if (session.status === "clean_shutdown" || session.status === "superseded") {
+    return false;
+  }
+
+  // TTL切れのセッションは無視
+  const updatedAtMs = Date.parse(session.updatedAt);
+  if (Number.isFinite(updatedAtMs) && Date.now() - updatedAtMs > SESSION_STALE_THRESHOLD_MS) {
+    return false;
+  }
+
+  const currentInstanceId = getCurrentInstanceId();
+
+  // ownerInstanceIdがない古い形式のセッションは互換性のため自分のセッションとみなす
+  // ただし、ownerPidが現在のプロセスと異なり、かつプロセスが死んでいる場合は無視
+  if (!session.ownerInstanceId) {
+    if (session.ownerPid !== process.pid && !isProcessAlive(session.ownerPid)) {
+      return false;
+    }
+    return true;
+  }
+
+  // ownerInstanceIdが一致する場合のみ自分のセッション
+  return session.ownerInstanceId === currentInstanceId;
+}
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/**
+ * 現在のプロセス用の一意なインスタンスIDを生成する
+ * 複数piインスタンス環境でセッションの所有者を識別するために使用
+ */
+function generateInstanceId(): string {
+  const random = randomBytes(8).toString("hex");
+  return `pi-${process.pid}-${Date.now()}-${random}`;
+}
+
+// 現在のプロセスのインスタンスID（一度生成したら固定）
+let _currentInstanceId: string | undefined;
+
+function getCurrentInstanceId(): string {
+  if (!_currentInstanceId) {
+    _currentInstanceId = generateInstanceId();
+  }
+  return _currentInstanceId;
 }
 
 function normalizeCwd(cwd?: string): string {
@@ -631,17 +700,28 @@ export async function runLongRunningSupervisorSweep(input?: {
   const latest = loadLatestLongRunningSession(cwd);
   let recoveredSessionId: string | undefined;
 
+  // 現在のプロセスのインスタンスIDを取得
+  const currentInstanceId = getCurrentInstanceId();
+
   const latestUpdatedAtMs = latest ? Date.parse(latest.updatedAt) : Number.NaN;
   const latestSessionStale = latest
     && latest.status === "active"
     && Number.isFinite(latestUpdatedAtMs)
     && Date.now() - latestUpdatedAtMs > SESSION_STALE_THRESHOLD_MS;
+
+  // 複数インスタンス環境での競合を防ぐ:
+  // - ownerInstanceIdが一致するセッションのみをクラッシュ判定対象にする
+  // - ownerInstanceIdがない古いセッションは従来のロジックで判定
+  const isOwnSession = latest
+    && (latest.ownerInstanceId === currentInstanceId
+      || latest.ownerInstanceId === undefined);
   const latestSessionDead = latest
     && latest.status === "active"
+    && isOwnSession
     && latest.ownerPid !== process.pid
     && !isProcessAlive(latest.ownerPid);
 
-  if (latest && (latestSessionDead || latestSessionStale)) {
+  if (latest && isOwnSession && (latestSessionDead || latestSessionStale)) {
     recoveredSessionId = latest.id;
     const crashedSession = saveLongRunningSession(cwd, {
       ...latest,
@@ -662,6 +742,7 @@ export async function runLongRunningSupervisorSweep(input?: {
       success: false,
       details: {
         ownerPid: latest.ownerPid,
+        ownerInstanceId: latest.ownerInstanceId,
         updatedAt: latest.updatedAt,
       },
     });
@@ -746,10 +827,12 @@ export async function beginLongRunningSession(input?: {
   const index = loadIndex(cwd);
   const previous = sweep.recoveredSessionId ? loadLongRunningSession(cwd, sweep.recoveredSessionId) : null;
   const id = createSessionId();
+  const ownerInstanceId = getCurrentInstanceId();
   const session: LongRunningSessionState = saveLongRunningSession(cwd, {
     id,
     cwd,
     ownerPid: process.pid,
+    ownerInstanceId,
     startedAt: nowIso(),
     updatedAt: nowIso(),
     status: "active",
@@ -786,10 +869,12 @@ export function beginLongRunningSessionSync(input?: {
   const index = loadIndex(cwd);
   const previous = index.activeSessionId ? loadLongRunningSession(cwd, index.activeSessionId) : null;
   const id = createSessionId();
+  const ownerInstanceId = getCurrentInstanceId();
   const session: LongRunningSessionState = saveLongRunningSession(cwd, {
     id,
     cwd,
     ownerPid: process.pid,
+    ownerInstanceId,
     startedAt: nowIso(),
     updatedAt: nowIso(),
     status: "active",
@@ -866,14 +951,13 @@ export function recordLongRunningToolResult(
   const isError = Boolean(event.isError);
   const errorSummary = summarizeUnknown(event.error)
     ?? summarizeUnknown(event.message)
-    ?? summarizeUnknown(event.output)
     ?? summarizeUnknown(event.result);
   const next = saveLongRunningSession(cwd, {
     ...session,
     updatedAt: nowIso(),
     pendingToolName: undefined,
     lastToolName: toolName,
-    lastError: isError ? (errorSummary ?? `tool failed: ${toolName}`) : session.lastError,
+    lastError: isError ? (errorSummary ?? `tool failed: ${toolName}`) : undefined,
     plan: resolvePlanSnapshot(cwd),
   });
   appendJournalEvent(cwd, next, {
@@ -951,13 +1035,18 @@ export function finalizeLongRunningSession(
 
 export function createLongRunningReplay(cwdInput?: string, sessionId?: string): LongRunningReplay {
   const cwd = normalizeCwd(cwdInput);
-  const session = sessionId
+  const rawSession = sessionId
     ? loadLongRunningSession(cwd, sessionId)
     : loadLatestLongRunningSession(cwd);
+
+  // 自分のインスタンスに関連するセッションのみを使用
+  // これにより、新しいpiインスタンスが古いセッションのコンテキストを引き継がない
+  const session = isRelevantSession(rawSession) ? rawSession : null;
+
   const workspaceConfig = loadWorkspaceVerificationConfig(cwd);
   const workspaceState = loadWorkspaceVerificationState(cwd);
   const resolvedPlan = resolveWorkspaceVerificationPlan(workspaceConfig, cwd);
-  const workspaceResume = resolveWorkspaceVerificationResumePlan(workspaceState, resolvedPlan);
+  const workspaceResume = resolveWorkspaceVerificationResumePlan(workspaceState, resolvedPlan, cwd);
   const recentEvents = session ? loadLongRunningJournal(cwd, session.id).slice(-12) : [];
   const backgroundProcesses = listBackgroundProcesses({
     cwd,
@@ -1047,7 +1136,7 @@ export function runLongRunningPreflight(input?: string | LongRunningPreflightInp
   const workspaceConfig = loadWorkspaceVerificationConfig(cwd);
   const workspaceState = loadWorkspaceVerificationState(cwd);
   const resolvedPlan = resolveWorkspaceVerificationPlan(workspaceConfig, cwd);
-  const workspaceResume = resolveWorkspaceVerificationResumePlan(workspaceState, resolvedPlan);
+  const workspaceResume = resolveWorkspaceVerificationResumePlan(workspaceState, resolvedPlan, cwd);
   const backgroundConfig = loadBackgroundProcessConfig(cwd);
   const plan = resolvePlanSnapshot(cwd);
   const activeSubagentRuns = loadActiveSubagentRuns(cwd);

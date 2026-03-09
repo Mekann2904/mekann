@@ -561,6 +561,7 @@ export function getToolCriticality(toolName: string): ToolCriticality {
     "edit",
     "subagent_run",
     "subagent_run_parallel",
+    "agent_team_run",
     "create_tool",
     "delete_dynamic_tool",
   ];

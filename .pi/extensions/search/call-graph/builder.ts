@@ -215,7 +215,7 @@ async function extractFunctionBody(
 
 	// Find the definition line and extract body
 	const lines = result.stdout.trim().split("\n");
-	let bodyStartLine = def.line;
+	const bodyStartLine = def.line;
 	let bodyEndLine = def.line;
 
 	// Simple heuristic: get content until next function definition or class

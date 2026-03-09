@@ -132,7 +132,7 @@ export class ComprehensiveLogger {
   private startFlushTimer(): void {
     this.flushTimer = setInterval(() => {
       this.flush().catch(err => {
-        // eslint-disable-next-line no-console
+         
         console.error('[comprehensive-logger] Flush error:', err);
       });
     }, this.config.flushIntervalMs);
@@ -600,7 +600,7 @@ export class ComprehensiveLogger {
     
     if (this.buffer.length >= this.config.bufferSize) {
       this.flush().catch(err => {
-        // eslint-disable-next-line no-console
+         
         console.error('[comprehensive-logger] Flush error:', err);
       });
     }

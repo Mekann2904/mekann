@@ -3,11 +3,29 @@
  * role: Ralph loop 拡張の tool 登録と委譲を検証する
  * why: pi-mono から file-based Ralph loop を正しい入口で使えるようにするため
  * related: .pi/extensions/ralph-loop.ts, .pi/lib/ralph-loop.ts, tests/unit/lib/ralph-loop.test.ts, package.json
+ *
+ * @summary Ralph Loop拡張機能のユニットテスト
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockLib = vi.hoisted(() => ({
+  initRalphLoop: vi.fn(() => ({
+    paths: {
+      rootDir: "/repo/.pi/ralph",
+      prdPath: "/repo/.pi/ralph/prd.json",
+      progressPath: "/repo/.pi/ralph/progress.txt",
+      promptPath: "/repo/.pi/ralph/PI.md",
+      archiveDir: "/repo/.pi/ralph/archive",
+      lastBranchPath: "/repo/.pi/ralph/.last-branch",
+    },
+    created: {
+      prd: true,
+      prompt: true,
+      progress: true,
+    },
+    message: "ファイルを作成しました",
+  })),
   inspectRalphLoop: vi.fn(() => ({
     runtime: "pi",
     activeBranch: "feature-one",
@@ -20,15 +38,12 @@ const mockLib = vi.hoisted(() => ({
       rootDir: "/repo/.pi/ralph",
       prdPath: "/repo/.pi/ralph/prd.json",
       progressPath: "/repo/.pi/ralph/progress.txt",
+      promptPath: "/repo/.pi/ralph/PI.md",
       archiveDir: "/repo/.pi/ralph/archive",
       lastBranchPath: "/repo/.pi/ralph/.last-branch",
-      promptPath: "/repo/.pi/ralph/PI.md",
     },
   })),
   runRalphLoop: vi.fn(async () => ({
-    completed: true,
-    stopReason: "complete",
-    iterations: [{ iteration: 1, stdout: "COMPLETE", stderr: "", exitCode: 0, completed: true }],
     status: {
       runtime: "pi",
       activeBranch: "feature-one",
@@ -41,23 +56,15 @@ const mockLib = vi.hoisted(() => ({
         rootDir: "/repo/.pi/ralph",
         prdPath: "/repo/.pi/ralph/prd.json",
         progressPath: "/repo/.pi/ralph/progress.txt",
+        promptPath: "/repo/.pi/ralph/PI.md",
         archiveDir: "/repo/.pi/ralph/archive",
         lastBranchPath: "/repo/.pi/ralph/.last-branch",
-        promptPath: "/repo/.pi/ralph/PI.md",
       },
     },
+    completed: true,
+    stopReason: "complete",
+    iterations: [{ iteration: 1, stdout: "COMPLETE", stderr: "", exitCode: 0, completed: true }],
   })),
-}));
-
-vi.mock("@mariozechner/pi-ai", () => ({
-  Type: {
-    Object: (value: unknown) => value,
-    Optional: (value: unknown) => value,
-    Union: (value: unknown) => value,
-    Literal: (value: unknown) => value,
-    String: (value: unknown) => value,
-    Integer: (value: unknown) => value,
-  },
 }));
 
 vi.mock("../../../.pi/lib/ralph-loop.js", () => mockLib);
@@ -72,20 +79,67 @@ function createPiMock() {
 
   return {
     tools,
-    handlers,
-    registerTool: vi.fn((tool: any) => tools.push(tool)),
-    on: vi.fn((name: string, handler: Function) => handlers.set(name, handler)),
+    cwd: "/repo",
+    registerTool: vi.fn((tool) => {
+      tools.push(tool);
+    }),
+    on: vi.fn((event, handler) => {
+      handlers.set(event, handler);
+    }),
+    emit: vi.fn((event, ...args) => {
+      const handler = handlers.get(event);
+      return handler?.(...args);
+    }),
   };
 }
 
 describe("ralph-loop extension", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    activePi = null;
   });
 
   afterEach(async () => {
-    await activePi?.handlers.get("session_shutdown")?.({}, {});
-    activePi = null;
+    if (activePi) {
+      await activePi.emit("session_shutdown");
+    }
+  });
+
+  it("3つのツールを登録する", () => {
+    const pi = createPiMock();
+    activePi = pi;
+    registerRalphLoop(pi as never);
+
+    const toolNames = pi.tools.map((t: any) => t.name);
+    expect(toolNames).toContain("ralph_loop_init");
+    expect(toolNames).toContain("ralph_loop_status");
+    expect(toolNames).toContain("ralph_loop_run");
+    expect(pi.tools).toHaveLength(3);
+  });
+
+  it("init tool は lib.initRalphLoop を呼ぶ", async () => {
+    const pi = createPiMock();
+    activePi = pi;
+    registerRalphLoop(pi as never);
+
+    const tool = pi.tools.find((entry) => entry.name === "ralph_loop_init");
+    const result = await tool.execute(
+      "tool-0",
+      { runtime: "pi", force: true },
+      undefined,
+      undefined,
+      { cwd: "/repo" }
+    );
+
+    expect(mockLib.initRalphLoop).toHaveBeenCalledWith({
+      cwd: "/repo",
+      runtime: "pi",
+      stateDir: undefined,
+      promptPath: undefined,
+      force: true,
+    });
+    expect(result.content[0].text).toContain("Ralph Loop を初期化しました");
+    expect(result.content[0].text).toContain("prd.json");
   });
 
   it("status tool は lib.inspectRalphLoop を呼ぶ", async () => {
@@ -99,7 +153,7 @@ describe("ralph-loop extension", () => {
       { runtime: "pi" },
       undefined,
       undefined,
-      { cwd: "/repo" },
+      { cwd: "/repo" }
     );
 
     expect(mockLib.inspectRalphLoop).toHaveBeenCalledWith({
@@ -122,7 +176,7 @@ describe("ralph-loop extension", () => {
       { runtime: "pi", max_iterations: 3, sleep_ms: 0 },
       undefined,
       undefined,
-      { cwd: "/repo" },
+      { cwd: "/repo" }
     );
 
     expect(mockLib.runRalphLoop).toHaveBeenCalledWith({
@@ -134,5 +188,28 @@ describe("ralph-loop extension", () => {
       promptPath: undefined,
     });
     expect(result.content[0].text).toContain("completed: true");
+  });
+
+  it("2回目の登録は無視される", () => {
+    const pi = createPiMock();
+    activePi = pi;
+    registerRalphLoop(pi as never);
+    registerRalphLoop(pi as never);
+
+    expect(pi.registerTool).toHaveBeenCalledTimes(3);
+  });
+
+  it("session_shutdown でリセットされる", async () => {
+    const pi = createPiMock();
+    activePi = pi;
+    registerRalphLoop(pi as never);
+
+    expect(pi.registerTool).toHaveBeenCalledTimes(3);
+
+    await pi.emit("session_shutdown");
+
+    // 再登録可能になる
+    registerRalphLoop(pi as never);
+    expect(pi.registerTool).toHaveBeenCalledTimes(6);
   });
 });

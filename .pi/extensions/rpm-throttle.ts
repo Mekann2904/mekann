@@ -144,7 +144,7 @@ function checkThrottle(provider: string, model: string, nowMs: number): number {
   const r = getRepo();
   
   const bucket = r.transaction(() => {
-    let state = r.getState(key);
+    const state = r.getState(key);
     
     // クールダウンチェック
     if (state.cooldownUntilMs > nowMs) {

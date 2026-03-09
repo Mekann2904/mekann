@@ -133,7 +133,7 @@ function MarkdownRenderer({ content }: { content: string }) {
     flushList();
     
     // インラインコード
-    let processedLine = line;
+    const processedLine = line;
     const codeMatches = processedLine.match(/`([^`]+)`/g);
     if (codeMatches) {
       const parts: (string | h.JSX.Element)[] = [];

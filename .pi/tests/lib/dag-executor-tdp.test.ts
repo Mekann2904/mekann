@@ -248,7 +248,8 @@ describe("DagExecutor - TDP Integration", () => {
       const result = await executor.execute(taskExecutor);
 
       // task-1が失敗し、task-2はスキップされる
-      expect(result.overallStatus).toBe("failed");
+      // abortOnFirstError: falseなのでpartialステータスになる
+      expect(result.overallStatus).toBe("partial");
       expect(result.failedTaskIds).toContain("task-1");
     });
   });

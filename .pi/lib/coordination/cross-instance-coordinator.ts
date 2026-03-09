@@ -137,13 +137,34 @@ export class Coordinator {
   /**
    * PiDatabase.transaction の互換ヘルパー
    * SQLite移行時にテストモックが「関数を返す実装」を使っていても吸収する。
+   * database is locked エラー時は自動リトライを行う。
    */
-  private inTransaction<T>(fn: () => T): T {
-    const result = this.db.transaction(fn) as unknown;
-    if (typeof result === "function") {
-      return (result as () => T)();
+  private inTransaction<T>(fn: () => T, maxRetries = 3): T {
+    let lastError: Error | null = null;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const result = this.db.transaction(fn) as unknown;
+        if (typeof result === "function") {
+          return (result as () => T)();
+        }
+        return result as T;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (errorMessage.includes("database is locked") && attempt < maxRetries - 1) {
+          // Exponential backoff: 50ms, 100ms, 200ms
+          const delayMs = 50 * Math.pow(2, attempt);
+          console.warn(`[Coordinator] Database locked, retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+          // Synchronous sleep using Atomics.wait
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+          lastError = error instanceof Error ? error : new Error(String(error));
+          continue;
+        }
+        throw error;
+      }
     }
-    return result as T;
+    
+    throw lastError;
   }
 
   // =======================================================================

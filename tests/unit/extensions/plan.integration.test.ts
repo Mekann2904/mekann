@@ -580,9 +580,10 @@ describe("plan extension integration tests", () => {
 
 		it("受け入れ条件と実装順序がある plan では edit を許可する", async () => {
 			const createTool = fakePi.tools.get("plan_create");
+			const addStepTool = fakePi.tools.get("plan_add_step");
 			const ctx = createExecutionContext(tmpDir);
 
-			await createTool!.execute(
+			const created = await createTool!.execute(
 				"tc-ready-plan",
 				{
 					name: "Ready Plan",
@@ -593,6 +594,17 @@ describe("plan extension integration tests", () => {
 				undefined,
 				ctx,
 			);
+
+			// execution-readyになるにはステップも必要
+			if (created.details.planId) {
+				await addStepTool!.execute(
+					"tc-step",
+					{ planId: created.details.planId, title: "First Step" },
+					undefined,
+					undefined,
+					ctx,
+				);
+			}
 
 			const result = await fakePi.emit("tool_call", { toolName: "edit", input: {} }, ctx);
 			expect(result).toBeUndefined();

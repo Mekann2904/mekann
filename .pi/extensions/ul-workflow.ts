@@ -113,15 +113,23 @@ const TASKS_DIR = path.join(WORKFLOW_DIR, "tasks");
 const TEMPLATES_DIR = path.join(WORKFLOW_DIR, "templates");
 const ACTIVE_FILE = path.join(WORKFLOW_DIR, "active.json");
 
-// Generate unique instance ID matching cross-instance coordinator format
-/**
- * インスタンスIDを取得
- * @summary ID取得
- * @returns インスタンスID文字列
- */
-export function getInstanceId(): string {
-  return `${process.env.PI_SESSION_ID || "default"}-${process.pid}`;
-}
+// 所有権管理ユーティリティをインポート（内部使用）
+import {
+  getInstanceId,
+  extractPidFromInstanceId,
+  isProcessAlive,
+  isOwnerProcessDead,
+  type OwnershipResult,
+} from "../lib/core/ownership.js";
+
+// 他モジュール向けに再エクスポート（subagents.ts等で利用）
+export {
+  getInstanceId,
+  extractPidFromInstanceId,
+  isProcessAlive,
+  isOwnerProcessDead,
+  type OwnershipResult,
+};
 
 function createEmptyActiveWorkflowRegistry(): ActiveWorkflowRegistry {
   return {
@@ -250,34 +258,6 @@ export function setCurrentWorkflow(state: WorkflowState | null): void {
     state,
   );
   writeActiveWorkflowRegistry(nextRegistry);
-}
-
-/**
- * プロセスが生存しているかどうかを確認する
- * @summary プロセス生存確認
- * @param pid - プロセスID
- * @returns プロセスが生存している場合true
- */
-export function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * インスタンスIDからPIDを抽出する
- * @summary PID抽出
- * @param instanceId - インスタンスID（例: "default-34147"）
- * @returns プロセスID（抽出できない場合はnull）
- */
-export function extractPidFromInstanceId(instanceId: string): number | null {
-  const match = instanceId.match(/-(\d+)$/);
-  if (!match) return null;
-  const pid = Number(match[1]);
-  return Number.isInteger(pid) && pid > 0 ? pid : null;
 }
 
 function getToolExecutor(ctx: unknown):
@@ -920,28 +900,6 @@ async function runUlDelegatedTask(
     return runSubagentViaDagTool(ctx, { ...options, dagParams });
   }
   return runDagLocally(ctx, dagParams);
-}
-
-/**
- * 以前の所有者のプロセスが終了しているかどうかを確認する
- * @summary 古い所有者の終了確認
- * @param ownerInstanceId - 所有者のインスタンスID
- * @returns プロセスが終了している場合true
- */
-function isOwnerProcessDead(ownerInstanceId: string): boolean {
-  const pid = extractPidFromInstanceId(ownerInstanceId);
-  if (!pid) return false;
-  return !isProcessAlive(pid);
-}
-
-/**
- * 所有権チェック結果
- */
-interface OwnershipResult {
-  owned: boolean;
-  error?: string;
-  autoClaim?: boolean;
-  previousOwner?: string;
 }
 
 // Ownership check helper with process liveness check
