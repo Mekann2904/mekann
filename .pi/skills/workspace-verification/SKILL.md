@@ -1,3 +1,13 @@
+---
+name: workspace-verification
+description: コード変更後の品質検証パイプライン。lint、typecheck、test、build、runtime、UI検証を自動化。失敗時のエラー要約と再実行機能を提供。
+license: MIT
+tags: [verification, testing, quality-gate, pipeline]
+metadata:
+  skill-version: "1.0.0"
+  created-by: pi-skill-system
+---
+
 # Workspace Verification スキル
 
 ## 概要
