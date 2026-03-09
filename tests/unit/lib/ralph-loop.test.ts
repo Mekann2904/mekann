@@ -79,6 +79,15 @@ describe("ralph-loop lib", () => {
         sleepMs: 0,
         spawnCommand,
         resolveCurrentBranch: () => "feature-one",
+        subagentConfig: {
+          maxParallelExplore: 100,
+          maxParallelImplement: 10,
+          maxParallelBuild: 1,
+          maxParallelTest: 1,
+          maxParallelReview: 3,
+          backpressureTypes: ["build", "test", "lint"],
+          rateLimitMs: 0, // テスト用にレート制限を無効化
+        },
       });
 
       expect(result.completed).toBe(true);
@@ -249,6 +258,61 @@ describe("ralph-loop lib", () => {
       expect(message).toContain("プロンプトファイルが見つかりません");
       expect(message).toContain("PI.md");
       expect(message).toContain("ralph_loop_init");
+    });
+  });
+
+  describe("バックプレッシャー制御", () => {
+    it("タスク種別に応じた並列数を取得する", async () => {
+      const { getMaxParallelForTaskType, DEFAULT_SUBAGENT_CONFIG } = await import("../../../.pi/lib/ralph-loop.js");
+
+      expect(getMaxParallelForTaskType("explore", DEFAULT_SUBAGENT_CONFIG)).toBe(100);
+      expect(getMaxParallelForTaskType("implement", DEFAULT_SUBAGENT_CONFIG)).toBe(10);
+      expect(getMaxParallelForTaskType("build", DEFAULT_SUBAGENT_CONFIG)).toBe(1);
+      expect(getMaxParallelForTaskType("test", DEFAULT_SUBAGENT_CONFIG)).toBe(1);
+      expect(getMaxParallelForTaskType("review", DEFAULT_SUBAGENT_CONFIG)).toBe(3);
+    });
+  });
+
+  describe("プレースホルダー検出", () => {
+    it("TODOコメントを検出する", async () => {
+      const { detectPlaceholders, DEFAULT_PLACEHOLDER_PATTERNS } = await import("../../../.pi/lib/ralph-loop.js");
+
+      const content = "// TODO: 後で実装する\nfunction foo() {}";
+      const result = detectPlaceholders(content, "test.ts", DEFAULT_PLACEHOLDER_PATTERNS);
+
+      expect(result.detected.length).toBeGreaterThan(0);
+      expect(result.detected[0].pattern.name).toBe("TODO_COMMENT");
+    });
+
+    it("PLACEHOLDERキーワードを検出する", async () => {
+      const { detectPlaceholders, DEFAULT_PLACEHOLDER_PATTERNS } = await import("../../../.pi/lib/ralph-loop.js");
+
+      const content = "const x = placeholder;";
+      const result = detectPlaceholders(content, "test.ts", DEFAULT_PLACEHOLDER_PATTERNS);
+
+      const placeholderResult = result.detected.find(d => d.pattern.name === "PLACEHOLDER_KEYWORD");
+      expect(placeholderResult).toBeDefined();
+    });
+  });
+
+  describe("検索ログ", () => {
+    it("検索エントリを記録して読み込む", async () => {
+      const { logSearchEntry, readSearchLog } = await import("../../../.pi/lib/ralph-loop.js");
+      const cwd = createRepo();
+      const searchLogPath = join(cwd, "search-log.json");
+
+      logSearchEntry({
+        timestamp: new Date().toISOString(),
+        query: "test query",
+        type: "code",
+        resultsFound: 5,
+        filesChecked: ["file1.ts", "file2.ts"],
+      }, searchLogPath);
+
+      const entries = readSearchLog(searchLogPath);
+      expect(entries.length).toBe(1);
+      expect(entries[0].query).toBe("test query");
+      expect(entries[0].resultsFound).toBe(5);
     });
   });
 });

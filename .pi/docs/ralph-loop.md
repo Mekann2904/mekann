@@ -3,7 +3,7 @@ title: Ralph Loop
 category: reference
 audience: developer
 last_updated: 2026-03-09
-tags: [ralph-loop, orchestration, workflow]
+tags: [ralph-loop, orchestration, workflow, ralph-wiggum]
 related:
   - .pi/lib/ralph-loop.ts
   - .pi/extensions/ralph-loop.ts
@@ -14,6 +14,8 @@ related:
 
 Ralph Loopは、fresh processを反復起動しつつ状態をファイルベースで管理する最小オーケストレーションシステムです。
 
+**Ralph Wiggum Technique**（https://ghuntley.com/ralph-wiggum/）に基づき設計されています。
+
 ## 概要
 
 Ralph Loopは以下の特徴を持ちます：
@@ -22,6 +24,9 @@ Ralph Loopは以下の特徴を持ちます：
 - **Branch-aware archiving**: ブランチ変更時に自動的に状態をアーカイブ
 - **Fresh process execution**: 各イテレーションで新しいプロセスを起動
 - **Multiple runtime support**: pi, amp, claudeの3つのランタイムをサポート
+- **Backpressure control**: ビルド・テストの並列数制御（Ralph記事の重要概念）
+- **Placeholder detection**: 簡易実装・プレースホルダーの検出
+- **Search before change**: 未実装断定禁止フロー
 
 ## アーキテクチャ
 
@@ -29,15 +34,32 @@ Ralph Loopは以下の特徴を持ちます：
 .pi/ralph/
 ├── prd.json          # タスク定義とブランチ情報
 ├── progress.txt      # 進捗ログ
+├── fix_plan.md       # 優先順位付きTODOリスト（Ralph記事: fix_plan.md）
+├── AGENT.md          # ビルド・実行方法の説明（Ralph記事: AGENT.md）
 ├── PI.md             # エージェントへのプロンプト（pi用）
 ├── CLAUDE.md         # エージェントへのプロンプト（claude用）
 ├── prompt.md         # エージェントへのプロンプト（amp用）
+├── search-log.json   # 検索ログ（未実装断定の根拠記録）
 ├── .last-branch      # 前回のブランチ名
+├── specs/            # 仕様書ディレクトリ（Ralph記事: specs/*）
 └── archive/          # アーカイブディレクトリ
     └── YYYY-MM-DD-branch-name/
         ├── prd.json
         └── progress.txt
 ```
+
+## Ralph Wiggum Technique の実装状況
+
+| 記事の概念 | 実装状況 | 説明 |
+|-----------|---------|------|
+| `fix_plan.md` | 実装済み | 優先順位付きTODOリスト |
+| `AGENT.md` | 実装済み | ビルド・実行方法の説明 |
+| `specs/` | 実装済み | 仕様書ディレクトリ |
+| バックプレッシャー制御 | 実装済み | ビルド/テストの並列数制限 |
+| プレースホルダー検出 | 実装済み | TODO/FIXME/placeholder検出 |
+| 未実装断定禁止 | 実装済み | 検索ログ機能 |
+| コンテキスト使用量監視 | 実装済み | 出力サイズ制限（50KB） |
+| 1ループ1タスク | 実装済み | プロンプトテンプレートに記載 |
 
 ## API Reference
 
@@ -265,3 +287,107 @@ const stdinText = input.args.length > 0 ? undefined : runtimeCommand.stdinText;
 ```
 
 これにより、カスタム実行可能ファイルと引数の指定が可能になりました。
+
+## Backpressure Control (バックプレッシャー制御)
+
+Ralph記事の重要な概念: "You may use up to 500 parallel subagents for all operations but only 1 subagent for build/tests."
+
+### SubagentConfig
+
+```typescript
+interface SubagentConfig {
+  maxParallelExplore: number;    // 探索・検索の最大並列数（デフォルト: 100）
+  maxParallelImplement: number;  // 実装の最大並列数（デフォルト: 10）
+  maxParallelBuild: number;      // ビルドの最大並列数（デフォルト: 1）
+  maxParallelTest: number;       // テストの最大並列数（デフォルト: 1）
+  maxParallelReview: number;     // レビューの最大並列数（デフォルト: 3）
+  backpressureTypes: Array<"explore" | "build" | "test" | "lint">;
+  rateLimitMs?: number;          // レート制限（ミリ秒）
+}
+```
+
+### 使用例
+
+```typescript
+import { runRalphLoop, DEFAULT_SUBAGENT_CONFIG } from "./lib/ralph-loop.js";
+
+const result = await runRalphLoop({
+  cwd: process.cwd(),
+  subagentConfig: {
+    ...DEFAULT_SUBAGENT_CONFIG,
+    maxParallelBuild: 1,  // ビルドは直列
+    maxParallelTest: 1,   // テストも直列
+    maxParallelExplore: 500,  // 探索は大量並列
+  },
+});
+```
+
+## Placeholder Detection (プレースホルダー検出)
+
+Ralph記事: "DO NOT IMPLEMENT PLACEHOLDER OR SIMPLE IMPLEMENTATIONS."
+
+### デフォルト検出パターン
+
+| パターン名 | 正規表現 | 重大度 |
+|-----------|---------|--------|
+| TODO_COMMENT | `//\s*TODO:` | warning |
+| FIXME_COMMENT | `//\s*FIXME:` | warning |
+| PLACEHOLDER_KEYWORD | `placeholder` | error |
+| SIMPLE_IMPLEMENTATION | `simple\s+implementation` | warning |
+| NOT_IMPLEMENTED | `throw\s+new\s+Error\s*\(\s*["']Not implemented` | error |
+| STUB_FUNCTION | `//\s*stub` | warning |
+
+### 使用例
+
+```typescript
+import { detectPlaceholders, DEFAULT_PLACEHOLDER_PATTERNS } from "./lib/ralph-loop.js";
+
+const result = detectPlaceholders(
+  sourceCode,
+  "path/to/file.ts",
+  DEFAULT_PLACEHOLDER_PATTERNS
+);
+
+console.log(result.errors);    // エラーメッセージ
+console.log(result.warnings);  // 警告メッセージ
+console.log(result.detected);  // 検出されたパターン
+```
+
+## Search Before Change (未実装断定禁止)
+
+Ralph記事: "Before making changes search codebase (don't assume an item is not implemented)."
+
+### 検索ログ機能
+
+```typescript
+import { logSearchEntry, logNotImplementedReason } from "./lib/ralph-loop.js";
+
+// 検索実行を記録
+logSearchEntry({
+  timestamp: new Date().toISOString(),
+  query: "authentication",
+  type: "code",
+  resultsFound: 3,
+  filesChecked: ["src/auth.ts", "src/middleware.ts"],
+}, searchLogPath);
+
+// 未実装と判断した理由を記録
+logNotImplementedReason(
+  "JWT authentication",
+  "auth.tsにJWT実装がないことを確認",
+  ["src/auth.ts", "src/lib/"],
+  searchLogPath
+);
+```
+
+## Context Usage Monitor (コンテキスト使用量監視)
+
+Ralph記事の出力サイズ制限（50KB）を実装:
+
+```typescript
+interface ContextUsageMonitor {
+  maxOutputBytes: number;       // 出力サイズ制限（デフォルト: 50KB）
+  warnThresholdRatio: number;   // 警告閾値（デフォルト: 0.8）
+  truncateMessage: string;      // 切り捨て時のメッセージ
+}
+```

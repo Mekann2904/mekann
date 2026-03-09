@@ -32,12 +32,16 @@ function formatStatusLines(result: ReturnType<typeof inspectRalphLoop>): string 
     `prd: ${result.paths.prdPath}`,
     `progress: ${result.paths.progressPath}`,
     `prompt: ${result.paths.promptPath}`,
+    `fix_plan: ${result.paths.fixPlanPath}`,
+    `specs: ${result.paths.specsDir}`,
     `archive: ${result.paths.archiveDir}`,
     `previous_branch: ${result.previousBranch ?? "-"}`,
     `archived_to: ${result.archivedTo ?? "-"}`,
     `prompt_exists: ${result.promptExists}`,
     `prd_exists: ${result.prdExists}`,
     `progress_exists: ${result.progressExists}`,
+    `fix_plan_exists: ${result.fixPlanExists}`,
+    `specs_exists: ${result.specsExists}`,
   ].join("\n");
 }
 
@@ -72,13 +76,17 @@ function formatInitResult(result: ReturnType<typeof initRalphLoop>): string {
     `prd: ${result.paths.prdPath} (${result.created.prd ? "作成済み" : "既存"})`,
     `prompt: ${result.paths.promptPath} (${result.created.prompt ? "作成済み" : "既存"})`,
     `progress: ${result.paths.progressPath} (${result.created.progress ? "作成済み" : "既存"})`,
+    `fix_plan: ${result.paths.fixPlanPath} (${result.created.fixPlan ? "作成済み" : "既存"})`,
+    `specs: ${result.paths.specsDir} (${result.created.specs ? "作成済み" : "既存"})`,
     "",
     result.message,
     "",
     "次のステップ:",
     "1. prd.json を編集してタスクを定義してください",
-    "2. プロンプトファイルを必要に応じてカスタマイズしてください",
-    "3. ralph_loop_run でループを開始してください",
+    "2. fix_plan.md に優先度付きTODOリストを記載してください",
+    "3. specs/ ディレクトリに仕様書を配置してください",
+    "4. プロンプトファイルを必要に応じてカスタマイズしてください",
+    "5. ralph_loop_run でループを開始してください",
   ];
 
   return lines.join("\n");
