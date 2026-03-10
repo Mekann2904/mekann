@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 export type RalphLoopRuntime = "pi" | "amp" | "claude";
+export type RalphLoopMode = "build" | "plan" | "plan-work";
 
 // ============================================================================
 // Subagent Control Types (Ralph Wiggum Technique)
@@ -201,11 +202,16 @@ export interface RalphLoopPaths {
   archiveDir: string;
   lastBranchPath: string;
   promptPath: string;
+  promptPlanPath: string;
+  promptBuildPath: string;
+  promptPlanWorkPath: string;
   /** 検索ログパス */
   searchLogPath: string;
-  /** fix_plan.mdパス（Ralph記事: 優先順位付きTODOリスト） */
+  /** implementation plan パス */
+  implementationPlanPath: string;
+  /** 互換用途の別名 */
   fixPlanPath: string;
-  /** AGENT.mdパス（Ralph記事: ビルド・実行方法を記述） */
+  /** AGENTS.mdパス（Ralph記事: ビルド・実行方法を記述） */
   agentMdPath: string;
   /** specs/ディレクトリパス（Ralph記事: 仕様書を格納） */
   specsDir: string;
@@ -281,14 +287,20 @@ export interface FixPlanEntry {
 export interface RalphLoopStatus {
   paths: RalphLoopPaths;
   runtime: RalphLoopRuntime;
+  mode: RalphLoopMode;
   activeBranch: string;
   previousBranch: string | null;
   archivedTo: string | null;
   promptExists: boolean;
+  promptPlanExists: boolean;
+  promptBuildExists: boolean;
+  promptPlanWorkExists: boolean;
   prdExists: boolean;
   progressExists: boolean;
   /** fix_plan.mdが存在するか（Ralph記事: TODOリスト管理） */
   fixPlanExists: boolean;
+  implementationPlanExists: boolean;
+  agentMdExists: boolean;
   /** specs/ディレクトリが存在するか（Ralph記事: 仕様書ディレクトリ） */
   specsExists: boolean;
 }
@@ -303,6 +315,9 @@ export interface RalphLoopIterationResult {
 
 export interface RalphLoopRunResult {
   status: RalphLoopStatus;
+  mode: RalphLoopMode;
+  promptPathUsed: string;
+  workScope?: string;
   completed: boolean;
   stopReason: "complete" | "max_iterations";
   iterations: RalphLoopIterationResult[];
@@ -323,6 +338,8 @@ interface SpawnCommandInput {
 export interface RalphLoopOptions {
   cwd: string;
   runtime?: RalphLoopRuntime;
+  mode?: RalphLoopMode;
+  workScope?: string;
   maxIterations?: number;
   sleepMs?: number;
   stateDir?: string;
@@ -342,6 +359,7 @@ const DEFAULT_STATE_DIR = ".pi/ralph";
 const DEFAULT_MAX_ITERATIONS = 10;
 const DEFAULT_SLEEP_MS = 2_000;
 const COMPLETE_SIGNAL = "COMPLETE";
+const DEFAULT_PLAN_WORK_MAX_ITERATIONS = 5;
 
 function sleep(delayMs: number): Promise<void> {
   return new Promise((resolvePromise) => {
@@ -369,14 +387,20 @@ function slugify(value: string): string {
     .slice(0, 48) || "branch";
 }
 
-function defaultPromptFileName(runtime: RalphLoopRuntime): string {
-  if (runtime === "claude") {
-    return "CLAUDE.md";
+function defaultPromptFileName(mode: RalphLoopMode): string {
+  switch (mode) {
+    case "plan":
+      return "PROMPT_plan.md";
+    case "plan-work":
+      return "PROMPT_plan_work.md";
+    case "build":
+    default:
+      return "PROMPT_build.md";
   }
-  if (runtime === "amp") {
-    return "prompt.md";
-  }
-  return "PI.md";
+}
+
+function resolveMode(options: Pick<RalphLoopOptions, "mode">): RalphLoopMode {
+  return options.mode ?? "build";
 }
 
 function readPrd(path: string): RalphLoopPrd | null {
@@ -404,8 +428,12 @@ function resolveGitBranch(cwd: string): string {
 }
 
 function buildPaths(options: RalphLoopOptions): RalphLoopPaths {
-  const runtime = options.runtime ?? "pi";
   const rootDir = resolve(options.cwd, options.stateDir ?? DEFAULT_STATE_DIR);
+  const mode = resolveMode(options);
+  const promptPlanPath = join(rootDir, defaultPromptFileName("plan"));
+  const promptBuildPath = join(rootDir, defaultPromptFileName("build"));
+  const promptPlanWorkPath = join(rootDir, defaultPromptFileName("plan-work"));
+  const implementationPlanPath = join(rootDir, "IMPLEMENTATION_PLAN.md");
 
   return {
     rootDir,
@@ -415,10 +443,14 @@ function buildPaths(options: RalphLoopOptions): RalphLoopPaths {
     lastBranchPath: join(rootDir, ".last-branch"),
     promptPath: options.promptPath
       ? resolve(options.cwd, options.promptPath)
-      : join(rootDir, defaultPromptFileName(runtime)),
+      : join(rootDir, defaultPromptFileName(mode)),
+    promptPlanPath,
+    promptBuildPath,
+    promptPlanWorkPath,
     searchLogPath: join(rootDir, "search-log.json"),
-    fixPlanPath: join(rootDir, "fix_plan.md"),
-    agentMdPath: join(rootDir, "AGENT.md"),
+    implementationPlanPath,
+    fixPlanPath: implementationPlanPath,
+    agentMdPath: join(rootDir, "AGENTS.md"),
     specsDir: join(rootDir, "specs"),
   };
 }
@@ -435,8 +467,23 @@ function archiveCurrentState(input: {
 }): string | null {
   const hasPrd = existsSync(input.paths.prdPath);
   const hasProgress = existsSync(input.paths.progressPath);
+  const hasImplementationPlan = existsSync(input.paths.implementationPlanPath);
+  const hasAgentMd = existsSync(input.paths.agentMdPath);
+  const hasSearchLog = existsSync(input.paths.searchLogPath);
+  const hasPromptPlan = existsSync(input.paths.promptPlanPath);
+  const hasPromptBuild = existsSync(input.paths.promptBuildPath);
+  const hasPromptPlanWork = existsSync(input.paths.promptPlanWorkPath);
 
-  if (!hasPrd && !hasProgress) {
+  if (
+    !hasPrd &&
+    !hasProgress &&
+    !hasImplementationPlan &&
+    !hasAgentMd &&
+    !hasSearchLog &&
+    !hasPromptPlan &&
+    !hasPromptBuild &&
+    !hasPromptPlanWork
+  ) {
     return null;
   }
 
@@ -449,12 +496,37 @@ function archiveCurrentState(input: {
   if (hasProgress) {
     writeText(join(archiveDir, "progress.txt"), readTextIfExists(input.paths.progressPath));
   }
+  if (hasImplementationPlan) {
+    writeText(
+      join(archiveDir, "IMPLEMENTATION_PLAN.md"),
+      readTextIfExists(input.paths.implementationPlanPath),
+    );
+  }
+  if (hasAgentMd) {
+    writeText(join(archiveDir, "AGENTS.md"), readTextIfExists(input.paths.agentMdPath));
+  }
+  if (hasSearchLog) {
+    writeText(join(archiveDir, "search-log.json"), readTextIfExists(input.paths.searchLogPath));
+  }
+  if (hasPromptPlan) {
+    writeText(join(archiveDir, "PROMPT_plan.md"), readTextIfExists(input.paths.promptPlanPath));
+  }
+  if (hasPromptBuild) {
+    writeText(join(archiveDir, "PROMPT_build.md"), readTextIfExists(input.paths.promptBuildPath));
+  }
+  if (hasPromptPlanWork) {
+    writeText(
+      join(archiveDir, "PROMPT_plan_work.md"),
+      readTextIfExists(input.paths.promptPlanWorkPath),
+    );
+  }
 
   return archiveDir;
 }
 
 export function inspectRalphLoop(options: RalphLoopOptions): RalphLoopStatus {
   const runtime = options.runtime ?? "pi";
+  const mode = resolveMode(options);
   const paths = buildPaths(options);
   ensureStateDirs(paths);
 
@@ -473,6 +545,8 @@ export function inspectRalphLoop(options: RalphLoopOptions): RalphLoopStatus {
       dateStamp,
     });
     writeText(paths.progressPath, "");
+    writeText(paths.implementationPlanPath, DEFAULT_IMPLEMENTATION_PLAN_TEMPLATE);
+    writeText(paths.searchLogPath, "");
   } else if (!existsSync(paths.progressPath)) {
     writeText(paths.progressPath, "");
   }
@@ -482,15 +556,33 @@ export function inspectRalphLoop(options: RalphLoopOptions): RalphLoopStatus {
   return {
     paths,
     runtime,
+    mode,
     activeBranch,
     previousBranch,
     archivedTo,
     promptExists: existsSync(paths.promptPath),
+    promptPlanExists: existsSync(paths.promptPlanPath),
+    promptBuildExists: existsSync(paths.promptBuildPath),
+    promptPlanWorkExists: existsSync(paths.promptPlanWorkPath),
     prdExists: existsSync(paths.prdPath),
     progressExists: existsSync(paths.progressPath),
     fixPlanExists: existsSync(paths.fixPlanPath),
+    implementationPlanExists: existsSync(paths.implementationPlanPath),
+    agentMdExists: existsSync(paths.agentMdPath),
     specsExists: existsSync(paths.specsDir),
   };
+}
+
+function resolvePromptPathForMode(paths: RalphLoopPaths, mode: RalphLoopMode): string {
+  switch (mode) {
+    case "plan":
+      return paths.promptPlanPath;
+    case "plan-work":
+      return paths.promptPlanWorkPath;
+    case "build":
+    default:
+      return paths.promptBuildPath;
+  }
 }
 
 function buildRuntimeCommand(
@@ -658,22 +750,43 @@ async function executeSingleWithBackpressure(
 
 export async function runRalphLoop(options: RalphLoopOptions): Promise<RalphLoopRunResult> {
   const runtime = options.runtime ?? "pi";
+  const mode = resolveMode(options);
   const status = inspectRalphLoop({ ...options, runtime });
-  const prompt = readTextIfExists(status.paths.promptPath).trim();
+  const promptPath = options.promptPath
+    ? status.paths.promptPath
+    : resolvePromptPathForMode(status.paths, mode);
 
   if (!status.prdExists) {
     throw new Error(buildMissingFileMessage("prd", status.paths.prdPath, runtime));
   }
-  if (!prompt) {
-    throw new Error(buildMissingFileMessage("prompt", status.paths.promptPath, runtime));
+  if (mode === "plan-work") {
+    const branch = status.activeBranch;
+    if (!options.workScope?.trim()) {
+      throw new Error("plan-work を実行するには workScope が必要です");
+    }
+    if (branch === "main" || branch === "master") {
+      throw new Error("plan-work は main/master ではなく作業ブランチで実行してください");
+    }
   }
 
-  const maxIterations = options.maxIterations ?? DEFAULT_MAX_ITERATIONS;
+  const maxIterations =
+    options.maxIterations ??
+    (mode === "plan-work" ? DEFAULT_PLAN_WORK_MAX_ITERATIONS : DEFAULT_MAX_ITERATIONS);
   const sleepMs = options.sleepMs ?? DEFAULT_SLEEP_MS;
   const subagentConfig = options.subagentConfig ?? DEFAULT_SUBAGENT_CONFIG;
   const iterations: RalphLoopIterationResult[] = [];
 
   for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
+    const rawPrompt = readTextIfExists(promptPath).trim();
+    const prompt =
+      mode === "plan-work"
+        ? rawPrompt.replaceAll("${WORK_SCOPE}", options.workScope?.trim() ?? "")
+        : rawPrompt;
+
+    if (!prompt) {
+      throw new Error(buildMissingFileMessage("prompt", promptPath, runtime));
+    }
+
     // バックプレッシャー制御付きで実行
     const result = await executeSingleWithBackpressure(
       {
@@ -700,6 +813,9 @@ export async function runRalphLoop(options: RalphLoopOptions): Promise<RalphLoop
     if (completed) {
       return {
         status,
+        mode,
+        promptPathUsed: promptPath,
+        workScope: options.workScope?.trim() || undefined,
         completed: true,
         stopReason: "complete",
         iterations,
@@ -713,6 +829,9 @@ export async function runRalphLoop(options: RalphLoopOptions): Promise<RalphLoop
 
   return {
     status,
+    mode,
+    promptPathUsed: promptPath,
+    workScope: options.workScope?.trim() || undefined,
     completed: false,
     stopReason: "max_iterations",
     iterations,
@@ -741,137 +860,124 @@ const DEFAULT_PRD_TEMPLATE = {
 };
 
 /**
- * デフォルトのfix_plan.mdテンプレート
- *
- * Ralph記事: "study @fix_plan.md and choose the most important thing"
- * 参考: https://ghuntley.com/ralph-wiggum/
+ * デフォルトの IMPLEMENTATION_PLAN.md テンプレート
  */
-const DEFAULT_FIX_PLAN_TEMPLATE = `# Fix Plan
+const DEFAULT_IMPLEMENTATION_PLAN_TEMPLATE = `<!-- .pi/ralph/IMPLEMENTATION_PLAN.md -->
+<!-- このファイルは、Ralph loop の共有状態となる優先度付き実装計画を保持します。 -->
+<!-- なぜ存在するか: 各 iteration が同じ plan を読み、最重要の 1 件だけを確実に進めるためです。 -->
+<!-- 関連ファイル: .pi/ralph/PROMPT_plan.md, .pi/ralph/PROMPT_build.md, .pi/ralph/AGENTS.md, .pi/ralph/specs/ -->
 
-このファイルはRalph LoopのTODOリストです。
-各ループで最も重要なタスクを1つ選んで実行します。
+# IMPLEMENTATION_PLAN
 
-## 優先度の高いタスク
+## Release Summary
 
-- [ ] タスク1: 説明をここに記載
-- [ ] タスク2: 説明をここに記載
-- [ ] タスク3: 説明をここに記載
+- Scope: 未定
+- Why now: 未定
 
-## 完了したタスク
+## Prioritized Tasks
 
-- [x] 完了したタスク（日付を記載）
+- [ ] Task 1
+  - Why: ここに理由を書く
+  - Required tests: ここに acceptance-driven backpressure を書く
 
-## バグ・問題メモ
+## Risks / Discoveries
 
-- 発見したバグや問題があればここに記載
-
-## 学習メモ
-
-- ビルド・実行方法の学習内容があればここに記載
+- なし
 `;
 
 /**
- * デフォルトのプロンプトテンプレート（pi用）
- *
- * ドキュメント「Ralph Wiggum Technique」に基づく設計
- * 参考: https://ghuntley.com/ralph-wiggum/
+ * デフォルトの AGENTS.md テンプレート
  */
-const DEFAULT_PI_PROMPT_TEMPLATE = `# Ralph Loop プロンプト
+const DEFAULT_AGENT_MD_TEMPLATE = `<!-- .pi/ralph/AGENTS.md -->
+<!-- このファイルは、Ralph loop が毎回読む短い運用メモを保持します。 -->
+<!-- なぜ存在するか: build / test / lint の実コマンドと運用上の学びを context に安定注入するためです。 -->
+<!-- 関連ファイル: .pi/ralph/IMPLEMENTATION_PLAN.md, .pi/ralph/PROMPT_build.md, package.json, AGENTS.md -->
 
-## 役割
-あなたはRalph Loopのエージェントです。以下のルールに従って自律的にタスクを実行してください。
+# Ralph Loop AGENTS
 
-## 基本ルール（最重要）
-1. **1ループ1タスク**: 各ループで最重要の未完了タスクを1つだけ進める
-2. **検索してから変更**: 未実装と決めつけず、必ず検索してから実装する
-3. **検証は局所的に**: 変更した単位のテスト/lint/型検査を実行する
-4. **プレースホルダー禁止**: 簡易実装やplaceholderで済ませない
-5. **仕様書を参照**: specs/* ディレクトリがあれば参照して実装する
+## Build & Run
 
-## タスク管理
-- prd.json の tasks 配列を参照して、status: "pending" のタスクを処理する
-- タスク完了時は prd.json の status を "completed" に更新する
-- progress.txt に進捗を追記する
-- AGENT.md がある場合は、ビルド・実行方法を参照する
+- 作業対象の最小単位で build / test / lint / typecheck を回す
 
-## 終了条件
-すべてのタスクが完了したら、出力に \`COMPLETE\` という文字列を含めてください。
+## Validation
 
-## 重要な注意事項
-- テストが失敗した場合、関連するテストも修正する責任がある
-- 機能が不足している場合は、仕様書に従って追加する責任がある
-- バグを発見した場合は、現在の作業と無関係でも文書化する
+- Tests: npm run test:unit -- <target>
+- Typecheck: npm run typecheck
+- Lint: npm run lint
+- Workspace gate: npm run verify:workspace -- --fail-on-interactive
 
-## ファイルの場所
-- PRD: .pi/ralph/prd.json
-- 進捗: .pi/ralph/progress.txt
-- 仕様書: specs/* (存在する場合)
-- AGENT.md: .pi/ralph/AGENT.md (存在する場合)
+## Notes
 
-## 最初のタスク
-prd.jsonを確認し、最初のタスクを特定して実行を開始してください。
+- ここには運用上の学びだけを短く残す
 `;
 
 /**
- * Claude用プロンプトテンプレート
- *
- * ドキュメント「Ralph Wiggum Technique」に基づく設計
+ * デフォルトの planning prompt
  */
-const DEFAULT_CLAUDE_PROMPT_TEMPLATE = `# Ralph Loop for Claude
+const DEFAULT_PLAN_PROMPT_TEMPLATE = `<!-- .pi/ralph/PROMPT_plan.md -->
+<!-- このファイルは、Ralph loop の planning mode を定義します。 -->
+<!-- なぜ存在するか: build より前に specs と code の gap を整理し、共有 plan だけを更新するためです。 -->
+<!-- 関連ファイル: .pi/ralph/IMPLEMENTATION_PLAN.md, .pi/ralph/PROMPT_build.md, .pi/ralph/specs/, .pi/ralph/AGENTS.md -->
 
-## Instructions
-You are a Ralph Loop agent. Follow these rules to execute tasks autonomously.
+0a. Study \`.pi/ralph/specs/*\` with parallel subagents to learn the application specifications.
+0b. Study @.pi/ralph/IMPLEMENTATION_PLAN.md if present.
+0c. Study \`src/*\` or the main source locations in this repository. Do not assume functionality is missing without code search first.
 
-## Core Rules (CRITICAL)
-1. **One task per loop**: Process only the most important pending task each iteration
-2. **Search before change**: Always search before assuming something is not implemented
-3. **Local verification**: Run tests/lint/typecheck only on changed units
-4. **No placeholders**: Never use placeholder or simple implementations
-5. **Reference specs**: Check specs/* directory if it exists
+1. Create or update @.pi/ralph/IMPLEMENTATION_PLAN.md only. Compare specs and code, then write a prioritized bullet list of not-yet-implemented work.
+2. For each task, derive required tests from acceptance criteria. Required tests describe what must be verified, not how to implement it.
+3. Keep the plan concise. Mark completed items clearly and remove stale clutter when helpful.
 
-## Task Management
-- Read prd.json to find tasks with status: "pending"
-- Update task status to "completed" when done
-- Append progress to progress.txt
-- Check AGENT.md for build/run instructions if it exists
-
-## Important Notes
-- If tests fail, you are responsible for fixing related tests
-- If functionality is missing, add it according to specifications
-- If you discover a bug, document it even if unrelated to current task
-
-## Completion
-When all tasks are complete, include \`COMPLETE\` in your output.
-
-## Files
-- PRD: .pi/ralph/prd.json
-- Progress: .pi/ralph/progress.txt
-- Specs: specs/* (if exists)
-- AGENT.md: .pi/ralph/AGENT.md (if exists)
-
-Start by reading prd.json and identifying the first task.
+IMPORTANT:
+- Plan only. Do not implement code.
+- Prefer one coherent next release or slice over a giant backlog.
+- Treat @.pi/ralph/AGENTS.md as operational notes only.
+- If specs are inconsistent, record the issue in the plan.
 `;
 
 /**
- * AMP用プロンプトテンプレート
+ * デフォルトの build prompt
  */
-const DEFAULT_AMP_PROMPT_TEMPLATE = `# Ralph Loop for AMP
+const DEFAULT_BUILD_PROMPT_TEMPLATE = `<!-- .pi/ralph/PROMPT_build.md -->
+<!-- このファイルは、Ralph loop の building mode を定義します。 -->
+<!-- なぜ存在するか: 共有 plan から 1 task だけ選び、検証付きで実装を進めるためです。 -->
+<!-- 関連ファイル: .pi/ralph/IMPLEMENTATION_PLAN.md, .pi/ralph/PROMPT_plan.md, .pi/ralph/specs/, .pi/ralph/AGENTS.md -->
 
-## Instructions
-Execute tasks autonomously following Ralph Loop methodology.
+0a. Study \`.pi/ralph/specs/*\` to understand requirements.
+0b. Study @.pi/ralph/IMPLEMENTATION_PLAN.md and choose the single most important unfinished item.
+0c. Search the codebase before changing anything. Do not assume the task is not implemented.
 
-## Rules
-1. One task per iteration
-2. Search before implementing
-3. Verify changes locally
-4. No placeholder implementations
+1. Implement one task from @.pi/ralph/IMPLEMENTATION_PLAN.md.
+2. Run the required tests listed in the task definition. Required tests are part of the task scope.
+3. Update @.pi/ralph/IMPLEMENTATION_PLAN.md with discoveries, completion state, and any newly found bugs.
+4. Keep @.pi/ralph/AGENTS.md operational only. Put status and discoveries in @.pi/ralph/IMPLEMENTATION_PLAN.md.
+5. When all planned work is complete, include \`COMPLETE\` in your output.
 
-## Completion
-Output \`COMPLETE\` when all tasks are done.
+IMPORTANT:
+- Use acceptance-driven backpressure. A task is not done until the required tests exist and pass.
+- Prefer quick and dirty prototype first, then tighten with targeted verification.
+- No placeholders, no stubbed success.
+`;
 
-## Files
-- .pi/ralph/prd.json
-- .pi/ralph/progress.txt
+/**
+ * デフォルトの scoped planning prompt
+ */
+const DEFAULT_PLAN_WORK_PROMPT_TEMPLATE = `<!-- .pi/ralph/PROMPT_plan_work.md -->
+<!-- このファイルは、Ralph loop の scoped planning mode を定義します。 -->
+<!-- なぜ存在するか: 作業ブランチごとに narrow な plan を作り、build 時の曖昧な task filtering を避けるためです。 -->
+<!-- 関連ファイル: .pi/ralph/IMPLEMENTATION_PLAN.md, .pi/ralph/PROMPT_plan.md, .pi/ralph/specs/, .pi/ralph/AGENTS.md -->
+
+0a. Study \`.pi/ralph/specs/*\` with parallel subagents to learn the application specifications.
+0b. Study @.pi/ralph/IMPLEMENTATION_PLAN.md if present.
+0c. Study the current source code. Search before assuming missing functionality.
+
+1. Create or update a scoped @.pi/ralph/IMPLEMENTATION_PLAN.md for this work only: "\${WORK_SCOPE}".
+2. Include only tasks directly related to the work scope. If uncertain, exclude the task.
+3. For each task, derive required tests from acceptance criteria.
+
+IMPORTANT:
+- Plan only. Do not implement code.
+- Keep the plan tightly scoped to "\${WORK_SCOPE}".
+- If the branch is wrong or the scope is unclear, fail fast instead of producing a broad plan.
 `;
 
 /**
@@ -881,10 +987,15 @@ export interface RalphLoopInitResult {
   paths: RalphLoopPaths;
   created: {
     prd: boolean;
-    prompt: boolean;
     progress: boolean;
-    /** fix_plan.mdが作成されたか */
+    promptPlan: boolean;
+    promptBuild: boolean;
+    promptPlanWork: boolean;
+    /** implementation plan が作成されたか */
+    implementationPlan: boolean;
+    /** 互換用途の別名 */
     fixPlan: boolean;
+    agentMd: boolean;
     /** specs/ディレクトリが作成されたか */
     specs: boolean;
   };
@@ -897,6 +1008,7 @@ export interface RalphLoopInitResult {
 export interface RalphLoopInitOptions {
   cwd: string;
   runtime?: RalphLoopRuntime;
+  mode?: RalphLoopMode;
   stateDir?: string;
   promptPath?: string;
   prdContent?: Partial<typeof DEFAULT_PRD_TEMPLATE>;
@@ -907,17 +1019,18 @@ export interface RalphLoopInitOptions {
 
 /**
  * プロンプトテンプレートを取得する
- * @param runtime - ランタイム種別
+ * @param mode - ループモード
  * @returns プロンプトテンプレート
  */
-function getPromptTemplate(runtime: RalphLoopRuntime): string {
-  switch (runtime) {
-    case "claude":
-      return DEFAULT_CLAUDE_PROMPT_TEMPLATE;
-    case "amp":
-      return DEFAULT_AMP_PROMPT_TEMPLATE;
+function getPromptTemplate(mode: RalphLoopMode): string {
+  switch (mode) {
+    case "plan":
+      return DEFAULT_PLAN_PROMPT_TEMPLATE;
+    case "plan-work":
+      return DEFAULT_PLAN_WORK_PROMPT_TEMPLATE;
+    case "build":
     default:
-      return DEFAULT_PI_PROMPT_TEMPLATE;
+      return DEFAULT_BUILD_PROMPT_TEMPLATE;
   }
 }
 
@@ -944,15 +1057,18 @@ function getPromptTemplate(runtime: RalphLoopRuntime): string {
  * ```
  */
 export function initRalphLoop(options: RalphLoopInitOptions): RalphLoopInitResult {
-  const runtime = options.runtime ?? "pi";
   const paths = buildPaths(options);
   ensureStateDirs(paths);
 
   const created = {
     prd: false,
-    prompt: false,
     progress: false,
+    promptPlan: false,
+    promptBuild: false,
+    promptPlanWork: false,
+    implementationPlan: false,
     fixPlan: false,
+    agentMd: false,
     specs: false,
   };
 
@@ -975,11 +1091,27 @@ export function initRalphLoop(options: RalphLoopInitOptions): RalphLoopInitResul
     created.prd = true;
   }
 
-  // プロンプトファイルの作成
-  if (!existsSync(paths.promptPath) || options.force) {
-    const promptContent = options.promptContent ?? getPromptTemplate(runtime);
+  // プロンプトファイル群の作成
+  if (!existsSync(paths.promptPlanPath) || options.force) {
+    writeText(paths.promptPlanPath, getPromptTemplate("plan"));
+    created.promptPlan = true;
+  }
+  if (!existsSync(paths.promptBuildPath) || options.force) {
+    const promptContent = options.promptContent ?? getPromptTemplate("build");
+    writeText(paths.promptBuildPath, promptContent);
+    created.promptBuild = true;
+  }
+  if (!existsSync(paths.promptPlanWorkPath) || options.force) {
+    writeText(paths.promptPlanWorkPath, getPromptTemplate("plan-work"));
+    created.promptPlanWork = true;
+  }
+  if (
+    options.promptPath &&
+    paths.promptPath !== paths.promptBuildPath &&
+    (!existsSync(paths.promptPath) || options.force)
+  ) {
+    const promptContent = options.promptContent ?? getPromptTemplate(resolveMode(options));
     writeText(paths.promptPath, promptContent);
-    created.prompt = true;
   }
 
   // progress.txt の作成
@@ -988,10 +1120,17 @@ export function initRalphLoop(options: RalphLoopInitOptions): RalphLoopInitResul
     created.progress = true;
   }
 
-  // fix_plan.md の作成（Ralph記事: TODOリスト管理）
-  if (!existsSync(paths.fixPlanPath) || options.force) {
-    writeText(paths.fixPlanPath, DEFAULT_FIX_PLAN_TEMPLATE);
+  // IMPLEMENTATION_PLAN.md の作成
+  if (!existsSync(paths.implementationPlanPath) || options.force) {
+    writeText(paths.implementationPlanPath, DEFAULT_IMPLEMENTATION_PLAN_TEMPLATE);
+    created.implementationPlan = true;
     created.fixPlan = true;
+  }
+
+  // AGENTS.md の作成
+  if (!existsSync(paths.agentMdPath) || options.force) {
+    writeText(paths.agentMdPath, DEFAULT_AGENT_MD_TEMPLATE);
+    created.agentMd = true;
   }
 
   // specs/ ディレクトリの作成（Ralph記事: 仕様書ディレクトリ）
@@ -1005,17 +1144,26 @@ export function initRalphLoop(options: RalphLoopInitOptions): RalphLoopInitResul
   if (created.prd) {
     messages.push(`prd.json を作成しました: ${paths.prdPath}`);
   }
-  if (created.prompt) {
-    messages.push(`プロンプトファイルを作成しました: ${paths.promptPath}`);
-  }
   if (created.progress) {
     messages.push(`progress.txt を作成しました: ${paths.progressPath}`);
   }
-  if (created.fixPlan) {
-    messages.push(`fix_plan.md を作成しました: ${paths.fixPlanPath}`);
+  if (created.promptPlan) {
+    messages.push(`PROMPT_plan.md を作成しました: ${paths.promptPlanPath}`);
+  }
+  if (created.promptBuild) {
+    messages.push(`PROMPT_build.md を作成しました: ${paths.promptBuildPath}`);
+  }
+  if (created.promptPlanWork) {
+    messages.push(`PROMPT_plan_work.md を作成しました: ${paths.promptPlanWorkPath}`);
+  }
+  if (created.implementationPlan) {
+    messages.push(`IMPLEMENTATION_PLAN.md を作成しました: ${paths.implementationPlanPath}`);
+  }
+  if (created.agentMd) {
+    messages.push(`AGENTS.md を作成しました: ${paths.agentMdPath}`);
   }
   if (created.specs) {
-    messages.push(`specs/ ディレクトリを作成しました: ${paths.specsDir}`);
+    messages.push(`.pi/ralph/specs/ ディレクトリを作成しました: ${paths.specsDir}`);
   }
 
   if (messages.length === 0) {
@@ -1039,7 +1187,7 @@ export function initRalphLoop(options: RalphLoopInitOptions): RalphLoopInitResul
 export function buildMissingFileMessage(
   missingFile: "prd" | "prompt",
   path: string,
-  runtime: RalphLoopRuntime,
+  _runtime: RalphLoopRuntime,
 ): string {
   if (missingFile === "prd") {
     return [
@@ -1061,7 +1209,6 @@ export function buildMissingFileMessage(
     ].join("\n");
   }
 
-  const promptFileName = defaultPromptFileName(runtime);
   return [
     `プロンプトファイルが見つかりません: ${path}`,
     "",
@@ -1069,7 +1216,7 @@ export function buildMissingFileMessage(
     "",
     "  ralph_loop_init を実行",
     "",
-    `または、手動で ${promptFileName} を作成してください。`,
+    "または、手動で PROMPT_build.md / PROMPT_plan.md / PROMPT_plan_work.md のいずれかを作成してください。",
     "",
     "プロンプトファイルには、エージェントへの指示を記載します。",
     "例: タスクの説明、実行ルール、終了条件など",
@@ -1856,4 +2003,3 @@ export function isAllVerificationPassed(result: WorkspaceVerifyResult): boolean 
 
   return definedChecks.length > 0 && definedChecks.every((c) => c === true);
 }
-
