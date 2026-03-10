@@ -218,10 +218,11 @@ ${description}
     const taskDir = getTaskDir(state.taskId);
     const statusPath = path.join(taskDir, "status.json");
 
+    if (!fs.existsSync(taskDir)) {
+      fs.mkdirSync(taskDir, { recursive: true });
+    }
+
     withFileLock(statusPath, () => {
-      if (!fs.existsSync(taskDir)) {
-        fs.mkdirSync(taskDir, { recursive: true });
-      }
       atomicWriteTextFile(statusPath, JSON.stringify(state, null, 2));
     });
   }
