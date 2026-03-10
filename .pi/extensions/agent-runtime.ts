@@ -623,7 +623,7 @@ async function ensureReservationSweeper(): Promise<void> {
 /**
  * 同期版ensureReservationSweeper（後方互換性のため）
  * 非同期版を呼び出すが、結果を待機しない
- * @deprecated ensureReservationSweeperAsync()の使用を推奨
+ * @deprecated ensureReservationSweeper()の使用を推奨
  */
 function ensureReservationSweeperSync(): void {
   // 既に初期化済みまたは初期化中の場合は即座にreturn

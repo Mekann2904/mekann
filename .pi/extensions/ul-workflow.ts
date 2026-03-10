@@ -925,7 +925,8 @@ function checkOwnership(state: WorkflowState | null, options?: { autoClaim?: boo
   return { owned: true };
 }
 
-// 現在のワークフロー状態（セッション内）- DEPRECATED: Use getCurrentWorkflow()
+// 現在のワークフロー状態（セッション内）
+// 注: ファイルベースの永続化を優先するが、パフォーマンスのためセッション内キャッシュとして使用
 let currentWorkflow: WorkflowState | null = null;
 
 /**
