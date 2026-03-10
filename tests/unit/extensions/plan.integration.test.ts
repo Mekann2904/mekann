@@ -560,6 +560,23 @@ describe("plan extension integration tests", () => {
 			});
 		});
 
+		it("plan がない状態では write / patch / bash も hard block する", async () => {
+			const ctx = createExecutionContext(tmpDir);
+
+			const writeResult = await fakePi.emit("tool_call", { toolName: "write", input: { path: "src/new.ts" } }, ctx);
+			const patchResult = await fakePi.emit("tool_call", { toolName: "patch", input: { path: "src/new.ts" } }, ctx);
+			const bashResult = await fakePi.emit("tool_call", { toolName: "bash", input: { command: "npm test" } }, ctx);
+
+			expect(writeResult?.block).toBe(true);
+			expect(String(writeResult?.reason)).toContain("SPEC-FIRST: no active plan found");
+
+			expect(patchResult?.block).toBe(true);
+			expect(String(patchResult?.reason)).toContain("SPEC-FIRST: no active plan found");
+
+			expect(bashResult?.block).toBe(true);
+			expect(String(bashResult?.reason)).toContain("SPEC-FIRST: no active plan found");
+		});
+
 		it("薄い plan では edit を hard block する", async () => {
 			const createTool = fakePi.tools.get("plan_create");
 			const ctx = createExecutionContext(tmpDir);
@@ -608,6 +625,42 @@ describe("plan extension integration tests", () => {
 
 			const result = await fakePi.emit("tool_call", { toolName: "edit", input: {} }, ctx);
 			expect(result).toBeUndefined();
+		});
+
+		it("execution-ready な plan では write / patch / bash も許可する", async () => {
+			const createTool = fakePi.tools.get("plan_create");
+			const addStepTool = fakePi.tools.get("plan_add_step");
+			const ctx = createExecutionContext(tmpDir);
+
+			const created = await createTool!.execute(
+				"tc-ready-plan-all-tools",
+				{
+					name: "Ready Plan For All Tools",
+					acceptanceCriteria: ["tests pass"],
+					implementationOrder: ["spec", "build", "verify"],
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			if (created.details.planId) {
+				await addStepTool!.execute(
+					"tc-step-all-tools",
+					{ planId: created.details.planId, title: "First Step" },
+					undefined,
+					undefined,
+					ctx,
+				);
+			}
+
+			const writeResult = await fakePi.emit("tool_call", { toolName: "write", input: { path: "src/new.ts" } }, ctx);
+			const patchResult = await fakePi.emit("tool_call", { toolName: "patch", input: { path: "src/new.ts" } }, ctx);
+			const bashResult = await fakePi.emit("tool_call", { toolName: "bash", input: { command: "npm test" } }, ctx);
+
+			expect(writeResult).toBeUndefined();
+			expect(patchResult).toBeUndefined();
+			expect(bashResult).toBeUndefined();
 		});
 	});
 });

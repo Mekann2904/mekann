@@ -185,11 +185,9 @@ export class WorkflowService {
 
     await this.repository.save(state);
 
-    // BUG FIX: 終了フェーズではアクティブ状態をクリア + タスクディレクトリ削除
+    // 完了後も成果物を残し、commit支援と事後確認で参照できるようにする
     if (isTerminalPhase(nextPhase)) {
       await this.repository.setCurrent(null);
-      // 完了/中止したタスクディレクトリを削除
-      await this.repository.delete(state.taskId);
     } else {
       await this.repository.setCurrent(state);
     }
@@ -198,7 +196,7 @@ export class WorkflowService {
     if (nextPhase === "plan") {
       nextAction = `ul_workflow_plan({ task: "${state.taskDescription}", task_id: "${state.taskId}" })`;
     } else if (nextPhase === "implement") {
-      nextAction = `ul_workflow_implement({ task_id: "${state.taskId}" })`;
+      nextAction = "ul_workflow_execute_plan()";
     } else if (nextPhase === "completed") {
       nextAction = "ul_workflow_commit()";
     }
