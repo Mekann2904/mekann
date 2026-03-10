@@ -224,9 +224,9 @@ Effective Skills: ["research-literature", "research-critical"]
 
 ### Current Implementation Status
 
-**IMPORTANT**: As of 2026-02-14, `skill-registry.ts` is NOT integrated with `subagents.ts` or `agent-teams.ts`. Both extensions have their own inline implementations for skill handling.
+**IMPORTANT**: As of 2026-03-10, `skill-registry.ts` is fully tested (22 tests) and ready for future integration with `subagents.ts` or `agent-teams.ts`. Currently, both extensions have their own inline implementations for skill handling.
 
-The `skill-registry.ts` module is available for future integration but is currently unused. The documentation below describes the actual implementation in each extension.
+The `skill-registry.ts` module provides a centralized, well-tested skill resolution engine that can be integrated when needed. The documentation below describes the actual implementation in each extension.
 
 ### subagents.ts Integration
 

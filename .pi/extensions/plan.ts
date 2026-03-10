@@ -348,6 +348,14 @@ function getPlanExecutionReadiness(
 		};
 	}
 
+	// Completed or cancelled plans are always execution-ready (SPEC-FIRST guard bypass)
+	if (currentPlan.status === "completed" || currentPlan.status === "cancelled") {
+		return {
+			plan: currentPlan,
+			ready: true,
+		};
+	}
+
 	if (!isPlanReadyForExecution(currentPlan)) {
 		return {
 			plan: currentPlan,
@@ -512,7 +520,7 @@ function getCurrentStep(plan: Plan): PlanStep | undefined {
 function resolveCurrentPlan(storage: PlanStorage): Plan | undefined {
 	if (storage.currentPlanId) {
 		const current = findPlanById(storage, storage.currentPlanId);
-		if (current) {
+		if (current && current.status !== "cancelled" && current.status !== "completed") {
 			return current;
 		}
 	}

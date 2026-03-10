@@ -216,7 +216,6 @@ web-ui/
 
 ### 環境変数の変更
 
-- `PI_RUNTIME_PORT` - 廃止（使用されなくなりました）
 - `PI_WEB_UI_PORT` - 変更なし（デフォルト3000）
 - `PI_WEB_UI_AUTO_START` - 変更なし
 

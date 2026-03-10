@@ -40,6 +40,7 @@ describe("ralph-loop lib", () => {
         JSON.stringify({ branchName: "feature-two" }, null, 2)
       );
       writeFileSync(join(stateDir, "progress.txt"), "old progress");
+      writeFileSync(join(stateDir, "IMPLEMENTATION_PLAN.md"), "# old plan");
       writeFileSync(join(stateDir, ".last-branch"), "feature-one\n");
 
       const status = inspectRalphLoop({
@@ -49,8 +50,12 @@ describe("ralph-loop lib", () => {
 
       expect(status.archivedTo).toContain("2026-03-09-feature-one");
       expect(readFileSync(join(stateDir, "progress.txt"), "utf-8")).toBe("");
+      expect(readFileSync(join(stateDir, "IMPLEMENTATION_PLAN.md"), "utf-8")).toContain(
+        "# IMPLEMENTATION_PLAN"
+      );
       expect(readFileSync(join(stateDir, ".last-branch"), "utf-8").trim()).toBe("feature-two");
       expect(readFileSync(join(status.archivedTo!, "progress.txt"), "utf-8")).toBe("old progress");
+      expect(readFileSync(join(status.archivedTo!, "IMPLEMENTATION_PLAN.md"), "utf-8")).toBe("# old plan");
     });
   });
 
@@ -65,7 +70,7 @@ describe("ralph-loop lib", () => {
         JSON.stringify({ branchName: "feature-one" }, null, 2)
       );
       writeFileSync(join(stateDir, "progress.txt"), "");
-      writeFileSync(join(stateDir, "PI.md"), "run the task");
+      writeFileSync(join(stateDir, "PROMPT_build.md"), "run the task");
 
       const spawnCommand = vi
         .fn()
@@ -91,9 +96,42 @@ describe("ralph-loop lib", () => {
       });
 
       expect(result.completed).toBe(true);
+      expect(result.mode).toBe("build");
+      expect(result.promptPathUsed).toContain("PROMPT_build.md");
       expect(result.stopReason).toBe("complete");
       expect(result.iterations).toHaveLength(2);
       expect(spawnCommand).toHaveBeenCalledTimes(2);
+    });
+
+    it("各 iteration ごとに prompt を読み直す", async () => {
+      const cwd = createRepo();
+      const stateDir = join(cwd, ".pi", "ralph");
+      mkdirSync(stateDir, { recursive: true });
+
+      writeFileSync(join(stateDir, "prd.json"), JSON.stringify({ branchName: "feature-one" }, null, 2));
+      writeFileSync(join(stateDir, "progress.txt"), "");
+      writeFileSync(join(stateDir, "PROMPT_build.md"), "first prompt");
+
+      const seenPrompts: string[] = [];
+      const spawnCommand = vi.fn(async (input: { prompt: string }) => {
+        seenPrompts.push(input.prompt);
+        if (seenPrompts.length === 1) {
+          writeFileSync(join(stateDir, "PROMPT_build.md"), "second prompt");
+          return { stdout: "continue", stderr: "", exitCode: 0 };
+        }
+        return { stdout: "COMPLETE", stderr: "", exitCode: 0 };
+      });
+
+      await runRalphLoop({
+        cwd,
+        runtime: "pi",
+        maxIterations: 3,
+        sleepMs: 0,
+        spawnCommand,
+        resolveCurrentBranch: () => "feature-one",
+      });
+
+      expect(seenPrompts).toEqual(["first prompt", "second prompt"]);
     });
 
     it("prd.json がない場合、親切なエラーメッセージを投げる", async () => {
@@ -123,6 +161,23 @@ describe("ralph-loop lib", () => {
         })
       ).rejects.toThrow("プロンプトファイルが見つかりません");
     });
+
+    it("plan-work は workScope が必須", async () => {
+      const cwd = createRepo();
+      const stateDir = join(cwd, ".pi", "ralph");
+      mkdirSync(stateDir, { recursive: true });
+
+      writeFileSync(join(stateDir, "prd.json"), JSON.stringify({ branchName: "feature-scope" }, null, 2));
+      writeFileSync(join(stateDir, "PROMPT_plan_work.md"), "scope=${WORK_SCOPE}");
+
+      await expect(
+        runRalphLoop({
+          cwd,
+          mode: "plan-work",
+          resolveCurrentBranch: () => "feature-scope",
+        })
+      ).rejects.toThrow("workScope");
+    });
   });
 
   describe("initRalphLoop", () => {
@@ -136,12 +191,21 @@ describe("ralph-loop lib", () => {
       });
 
       expect(result.created.prd).toBe(true);
-      expect(result.created.prompt).toBe(true);
       expect(result.created.progress).toBe(true);
+      expect(result.created.promptPlan).toBe(true);
+      expect(result.created.promptBuild).toBe(true);
+      expect(result.created.promptPlanWork).toBe(true);
+      expect(result.created.implementationPlan).toBe(true);
+      expect(result.created.agentMd).toBe(true);
 
       expect(existsSync(result.paths.prdPath)).toBe(true);
-      expect(existsSync(result.paths.promptPath)).toBe(true);
       expect(existsSync(result.paths.progressPath)).toBe(true);
+      expect(existsSync(result.paths.promptPlanPath)).toBe(true);
+      expect(existsSync(result.paths.promptBuildPath)).toBe(true);
+      expect(existsSync(result.paths.promptPlanWorkPath)).toBe(true);
+      expect(existsSync(result.paths.implementationPlanPath)).toBe(true);
+      expect(existsSync(result.paths.agentMdPath)).toBe(true);
+      expect(result.paths.agentMdPath).toContain("AGENTS.md");
 
       // prd.jsonの内容を確認
       const prd = JSON.parse(readFileSync(result.paths.prdPath, "utf-8"));
@@ -223,9 +287,9 @@ describe("ralph-loop lib", () => {
         resolveCurrentBranch: () => "main",
       });
 
-      expect(result.paths.promptPath).toContain("CLAUDE.md");
-      const prompt = readFileSync(result.paths.promptPath, "utf-8");
-      expect(prompt).toContain("Claude");
+      expect(result.paths.promptBuildPath).toContain("PROMPT_build.md");
+      const prompt = readFileSync(result.paths.promptBuildPath, "utf-8");
+      expect(prompt).toContain("IMPLEMENTATION_PLAN");
     });
 
     it("AMP用のプロンプトファイルを作成する", () => {
@@ -237,9 +301,9 @@ describe("ralph-loop lib", () => {
         resolveCurrentBranch: () => "main",
       });
 
-      expect(result.paths.promptPath).toContain("prompt.md");
-      const prompt = readFileSync(result.paths.promptPath, "utf-8");
-      expect(prompt).toContain("AMP");
+      expect(result.paths.promptBuildPath).toContain("PROMPT_build.md");
+      const prompt = readFileSync(result.paths.promptBuildPath, "utf-8");
+      expect(prompt).toContain("required tests");
     });
   });
 
@@ -253,10 +317,10 @@ describe("ralph-loop lib", () => {
     });
 
     it("プロンプトファイル用のメッセージを生成する", () => {
-      const message = buildMissingFileMessage("prompt", "/path/to/PI.md", "pi");
+      const message = buildMissingFileMessage("prompt", "/path/to/PROMPT_build.md", "pi");
 
       expect(message).toContain("プロンプトファイルが見つかりません");
-      expect(message).toContain("PI.md");
+      expect(message).toContain("PROMPT_build.md");
       expect(message).toContain("ralph_loop_init");
     });
   });

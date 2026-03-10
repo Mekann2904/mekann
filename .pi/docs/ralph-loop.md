@@ -2,7 +2,7 @@
 title: Ralph Loop
 category: reference
 audience: developer
-last_updated: 2026-03-09
+last_updated: 2026-03-10
 tags: [ralph-loop, orchestration, workflow, ralph-wiggum]
 related:
   - .pi/lib/ralph-loop.ts
@@ -20,13 +20,15 @@ Ralph Loopは、fresh processを反復起動しつつ状態をファイルベー
 
 Ralph Loopは以下の特徴を持ちます：
 
-- **File-based state management**: prd.jsonとprogress.txtで状態を永続化
+- **File-based shared state**: `IMPLEMENTATION_PLAN.md` を中心に状態を永続化
 - **Branch-aware archiving**: ブランチ変更時に自動的に状態をアーカイブ
 - **Fresh process execution**: 各イテレーションで新しいプロセスを起動
-- **Multiple runtime support**: pi, amp, claudeの3つのランタイムをサポート
+- **Three loop modes**: `build` / `plan` / `plan-work`
+- **Scoped planning**: `plan-work` で branch ごとの作業スコープを扱える
 - **Backpressure control**: ビルド・テストの並列数制御（Ralph記事の重要概念）
 - **Placeholder detection**: 簡易実装・プレースホルダーの検出
 - **Search before change**: 未実装断定禁止フロー
+- **Acceptance-driven prompts**: task に required tests を持たせる前提を prompt に組み込む
 
 ## アーキテクチャ
 
@@ -34,14 +36,14 @@ Ralph Loopは以下の特徴を持ちます：
 .pi/ralph/
 ├── prd.json          # タスク定義とブランチ情報
 ├── progress.txt      # 進捗ログ
-├── fix_plan.md       # 優先順位付きTODOリスト（Ralph記事: fix_plan.md）
-├── AGENT.md          # ビルド・実行方法の説明（Ralph記事: AGENT.md）
-├── PI.md             # エージェントへのプロンプト（pi用）
-├── CLAUDE.md         # エージェントへのプロンプト（claude用）
-├── prompt.md         # エージェントへのプロンプト（amp用）
+├── IMPLEMENTATION_PLAN.md  # 優先順位付き実装計画
+├── AGENTS.md         # ビルド・実行方法の説明（Ralph記事: AGENTS.md）
+├── PROMPT_plan.md    # planning 用 prompt
+├── PROMPT_build.md   # building 用 prompt
+├── PROMPT_plan_work.md # scoped planning 用 prompt
 ├── search-log.json   # 検索ログ（未実装断定の根拠記録）
 ├── .last-branch      # 前回のブランチ名
-├── specs/            # 仕様書ディレクトリ（Ralph記事: specs/*）
+├── specs/            # 仕様書ディレクトリ（実体は .pi/ralph/specs/*）
 └── archive/          # アーカイブディレクトリ
     └── YYYY-MM-DD-branch-name/
         ├── prd.json
@@ -52,14 +54,17 @@ Ralph Loopは以下の特徴を持ちます：
 
 | 記事の概念 | 実装状況 | 説明 |
 |-----------|---------|------|
-| `fix_plan.md` | 実装済み | 優先順位付きTODOリスト |
-| `AGENT.md` | 実装済み | ビルド・実行方法の説明 |
-| `specs/` | 実装済み | 仕様書ディレクトリ |
+| `IMPLEMENTATION_PLAN.md` | 実装済み | 優先順位付きTODOリスト |
+| `AGENTS.md` | 実装済み | ビルド・実行方法の説明 |
+| `.pi/ralph/specs/` | 実装済み | 仕様書ディレクトリ |
 | バックプレッシャー制御 | 実装済み | ビルド/テストの並列数制限 |
 | プレースホルダー検出 | 実装済み | TODO/FIXME/placeholder検出 |
 | 未実装断定禁止 | 実装済み | 検索ログ機能 |
 | コンテキスト使用量監視 | 実装済み | 出力サイズ制限（50KB） |
 | 1ループ1タスク | 実装済み | プロンプトテンプレートに記載 |
+| plan/build 二相 | 実装済み | mode で prompt を切り替える |
+| plan-work scoped planning | 実装済み | `${WORK_SCOPE}` を prompt に注入する |
+| acceptance-driven backpressure | 実装済み | required tests を plan/build prompt に明示 |
 
 ## API Reference
 
@@ -75,6 +80,7 @@ import { initRalphLoop } from "./lib/ralph-loop.js";
 const result = initRalphLoop({
   cwd: process.cwd(),
   runtime: "pi", // "pi" | "amp" | "claude"
+  mode: "build", // "build" | "plan" | "plan-work"
   stateDir: ".pi/ralph", // オプション
   force: false, // 既存ファイルを上書きする場合はtrue
 });
@@ -106,6 +112,7 @@ import { runRalphLoop } from "./lib/ralph-loop.js";
 const result = await runRalphLoop({
   cwd: process.cwd(),
   runtime: "pi",
+  mode: "build",
   maxIterations: 10,
   sleepMs: 2000, // イテレーション間の待機時間（ms）
 });
@@ -123,6 +130,7 @@ Ralph Loopを初期化します。
 
 **Parameters:**
 - `runtime`: "pi" | "amp" | "claude" (optional, default: "pi")
+- `mode`: "build" | "plan" | "plan-work" (optional, default: "build")
 - `state_dir`: 状態ディレクトリのパス (optional, default: ".pi/ralph")
 - `prompt_path`: プロンプトファイルのカスタムパス (optional)
 - `force`: 既存ファイルを上書きするかどうか (optional, default: false)
@@ -131,6 +139,7 @@ Ralph Loopを初期化します。
 ```json
 {
   "runtime": "pi",
+  "mode": "build",
   "state_dir": ".pi/ralph",
   "force": false
 }
@@ -142,17 +151,23 @@ Ralph Loopを初期化します。
 
 **Parameters:**
 - `runtime`: "pi" | "amp" | "claude" (optional)
+- `mode`: "build" | "plan" | "plan-work" (optional)
 - `state_dir`: 状態ディレクトリのパス (optional)
 - `prompt_path`: プロンプトファイルのカスタムパス (optional)
 
 **Returns:**
 ```
 runtime: pi
+mode: build
 branch: feature/my-branch
 state_dir: /path/to/.pi/ralph
 prd: /path/to/.pi/ralph/prd.json
 progress: /path/to/.pi/ralph/progress.txt
-prompt: /path/to/.pi/ralph/PI.md
+prompt: /path/to/.pi/ralph/PROMPT_build.md
+prompt_plan: /path/to/.pi/ralph/PROMPT_plan.md
+prompt_build: /path/to/.pi/ralph/PROMPT_build.md
+prompt_plan_work: /path/to/.pi/ralph/PROMPT_plan_work.md
+implementation_plan: /path/to/.pi/ralph/IMPLEMENTATION_PLAN.md
 archive: /path/to/.pi/ralph/archive
 previous_branch: feature/previous-branch
 archived_to: /path/to/.pi/ralph/archive/2026-03-09-feature-previous-branch
@@ -167,6 +182,8 @@ Ralph Loopを実行します。
 
 **Parameters:**
 - `runtime`: "pi" | "amp" | "claude" (optional, default: "pi")
+- `mode`: "build" | "plan" | "plan-work" (optional, default: "build")
+- `work_scope`: plan-work で使う自然言語スコープ (optional)
 - `max_iterations`: 最大イテレーション数 (optional, default: 10, max: 100)
 - `sleep_ms`: イテレーション間の待機時間（ms）(optional, default: 2000, max: 60000)
 - `state_dir`: 状態ディレクトリのパス (optional)
@@ -176,10 +193,29 @@ Ralph Loopを実行します。
 ```json
 {
   "runtime": "pi",
+  "mode": "plan",
   "max_iterations": 5,
   "sleep_ms": 1000
 }
 ```
+
+## Modes
+
+### `build`
+
+- `PROMPT_build.md` を使う
+- `IMPLEMENTATION_PLAN.md` の最重要タスクを1つ実装する
+
+### `plan`
+
+- `PROMPT_plan.md` を使う
+- 実装せず、`IMPLEMENTATION_PLAN.md` だけを更新する
+
+### `plan-work`
+
+- `PROMPT_plan_work.md` を使う
+- `${WORK_SCOPE}` を埋め込んだ scoped plan を作る
+- `main` / `master` では実行できない
 
 ## prd.json Schema
 
@@ -201,20 +237,9 @@ Ralph Loopを実行します。
 
 ## Runtime Modes
 
-### pi (default)
-
-- コマンド: `pi -p <prompt>`
-- プロンプトファイル: `PI.md`
-
-### amp
-
-- コマンド: `amp`（stdin経由でプロンプトを渡す）
-- プロンプトファイル: `prompt.md`
-
-### claude
-
-- コマンド: `claude`（stdin経由でプロンプトを渡す）
-- プロンプトファイル: `CLAUDE.md`
+- `pi`: `pi -p <prompt>`
+- `amp`: stdin 経由で prompt を渡す
+- `claude`: stdin 経由で prompt を渡す
 
 ## Branch Archiving
 
@@ -223,7 +248,7 @@ Ralph Loopを実行します。
 1. 前回のブランチ名を`.last-branch`から読み込む
 2. ブランチが変更されていれば、現在の状態をアーカイブ
 3. アーカイブ先: `.pi/ralph/archive/YYYY-MM-DD-branch-name/`
-4. progress.txtを空にして新しいブランチ用に初期化
+4. `progress.txt` と `IMPLEMENTATION_PLAN.md` を新しいブランチ向けに初期化
 
 ## Completion Signal
 
@@ -244,7 +269,7 @@ Ralph Loop を開始するには、以下のコマンドで初期化してくだ
 ### Missing prompt file
 
 ```
-プロンプトファイルが見つかりません: /path/to/.pi/ralph/PI.md
+プロンプトファイルが見つかりません: /path/to/.pi/ralph/PROMPT_build.md
 
 Ralph Loop を開始するには、以下のコマンドで初期化してください:
 
