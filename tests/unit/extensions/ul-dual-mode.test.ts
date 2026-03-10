@@ -612,6 +612,36 @@ describe("承認前実装ゲート", () => {
 
 		await pi.handlers.get("session_shutdown")?.({}, ctx);
 	});
+
+	it("implementフェーズでは通常コードへのwriteも許可する", async () => {
+		const pi = createMockPi();
+		ulDualMode(pi as any);
+
+		const ctx = {
+			hasUI: false,
+			ui: {
+				notify: vi.fn(),
+				setStatus: vi.fn(),
+			},
+			sessionManager: { getEntries: () => [] },
+		};
+
+		await pi.handlers.get("input")?.({ source: "user", text: "ul 認証バグを修正" }, ctx);
+		await pi.handlers.get("before_agent_start")?.({ systemPrompt: "base" }, ctx);
+
+		ulWorkflowMocks.getCurrentWorkflow.mockReturnValue({
+			taskId: "task-4",
+			phase: "implement",
+		});
+
+		const writeResult = await pi.handlers.get("tool_call")?.({
+			toolName: "write",
+			input: { path: "src/auth.ts" },
+		}, ctx);
+		expect(writeResult).toBeUndefined();
+
+		await pi.handlers.get("session_shutdown")?.({}, ctx);
+	});
 });
 
 describe("UL コマンド動作", () => {

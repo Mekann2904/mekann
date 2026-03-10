@@ -308,15 +308,58 @@ describe("ul-workflow", () => {
     }));
 
     const executePlanTool = pi.tools.get("ul_workflow_execute_plan");
+    const calledTools: string[] = [];
     const executeTool = vi.fn(async ({ toolName }: { toolName: string; params: Record<string, unknown> }) => {
-      expect(toolName).toBe("subagent_run_dag");
-      return { content: [{ type: "text", text: "implemented" }] };
+      calledTools.push(toolName);
+      if (toolName === "plan_create") {
+        return { content: [{ type: "text", text: "plan created" }], details: { planId: "ul-plan-1" } };
+      }
+      if (toolName === "plan_add_step" || toolName === "plan_update_status") {
+        return { content: [{ type: "text", text: `${toolName} ok` }], details: {} };
+      }
+      if (toolName === "subagent_run_dag") {
+        return { content: [{ type: "text", text: "implemented" }] };
+      }
+      throw new Error(`unexpected tool: ${toolName}`);
     });
     const result = await executePlanTool.execute("execute", {}, undefined, undefined, { executeTool });
 
-    expect(executeTool).toHaveBeenCalledTimes(1);
+    expect(calledTools).toEqual([
+      "plan_create",
+      "plan_add_step",
+      "plan_update_status",
+      "subagent_run_dag",
+    ]);
     expect(result.details.phase).toBe("review");
     expect(result.content[0].text).toContain("workspace_verify()");
+  });
+
+  it("annotate フェーズから execute_plan を直接実行できない", async () => {
+    const extension = (await import("../../../.pi/extensions/ul-workflow.js")).default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    const startTool = pi.tools.get("ul_workflow_start");
+    const startResult = await startTool.execute("start", { task: "直接実装を防ぐ" }, undefined, undefined, {});
+    const taskId = startResult.details.taskId;
+
+    fs.writeFileSync(
+      path.join(".pi", "ul-workflow", "tasks", taskId, "plan.md"),
+      "# Plan\n\n承認待ち\n",
+      "utf-8",
+    );
+    updateWorkflowState(taskId, (state) => ({
+      ...state,
+      phase: "annotate",
+      phaseIndex: 2,
+      approvedPhases: ["research", "plan"],
+    }));
+
+    const executePlanTool = pi.tools.get("ul_workflow_execute_plan");
+    const result = await executePlanTool.execute("execute", {}, undefined, undefined, {});
+
+    expect(result.details.error).toBe("wrong_phase");
+    expect(result.content[0].text).toContain("ul_workflow_approve()");
   });
 
   it("implement 完了後も task ディレクトリを保持する", async () => {

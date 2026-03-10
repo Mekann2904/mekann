@@ -91,6 +91,7 @@ interface WorkflowState {
   approvedPhases: string[];
   annotationCount: number;
   ownerInstanceId: string;  // {sessionId}-{pid} format for multi-instance safety
+  executionPlanId?: string;
 }
 
 // Active workflow registry for cross-instance coordination
@@ -1095,10 +1096,11 @@ export function saveState(state: WorkflowState): void {
   const taskDir = getTaskDir(state.taskId);
   const statusPath = path.join(taskDir, "status.json");
 
+  if (!fs.existsSync(taskDir)) {
+    fs.mkdirSync(taskDir, { recursive: true });
+  }
+
   withFileLock(statusPath, () => {
-    if (!fs.existsSync(taskDir)) {
-      fs.mkdirSync(taskDir, { recursive: true });
-    }
     atomicWriteTextFile(statusPath, JSON.stringify(state, null, 2));
   });
 }
@@ -1311,6 +1313,67 @@ async function ensureWorkflowArtifact(
   await fsPromises.mkdir(path.dirname(artifactPath), { recursive: true });
   await fsPromises.writeFile(artifactPath, `${normalized}\n`, "utf-8");
   return { created: true, content: normalized };
+}
+
+async function ensureUlExecutionPlan(
+  ctx: unknown,
+  workflow: WorkflowState,
+  planPath: string,
+): Promise<string> {
+  const executeTool = getToolExecutor(ctx);
+  if (!executeTool) {
+    throw new Error("plan_create APIが利用できません");
+  }
+
+  if (workflow.executionPlanId) {
+    await executeTool("plan_update_status", {
+      planId: workflow.executionPlanId,
+      status: "active",
+    });
+    return workflow.executionPlanId;
+  }
+
+  const planName = `UL Execute: ${workflow.taskDescription.slice(0, 40)}`;
+  const createResult = await executeTool("plan_create", {
+    name: planName,
+    description: `UL workflow implement phase for ${workflow.taskId}`,
+    goal: "plan.md の内容を実装し、verify まで進められる状態を作る",
+    acceptanceCriteria: [
+      "plan.md に記載された実装方針が反映される",
+      "workspace_verify に進める状態になる",
+    ],
+    implementationOrder: [
+      "plan.md を読んで実装する",
+      "必要な修正を反映する",
+      "workspace_verify へ進む",
+    ],
+    testVerification: [
+      "workspace_verify を実行する",
+      "必要なら workspace_verify_ack / workspace_verify_review_ack を完了する",
+    ],
+    fileModuleImpact: [planPath],
+    documentSlug: `ul-${workflow.taskId}`,
+  });
+
+  const planId = typeof createResult?.details === "object" && createResult?.details !== null
+    ? String((createResult.details as { planId?: unknown }).planId ?? "")
+    : "";
+  if (!planId) {
+    throw new Error("UL execution plan の planId を取得できませんでした");
+  }
+
+  await executeTool("plan_add_step", {
+    planId,
+    title: "plan.md に沿って実装する",
+    description: `対象: ${planPath}`,
+  });
+  await executeTool("plan_update_status", {
+    planId,
+    status: "active",
+  });
+
+  workflow.executionPlanId = planId;
+  return planId;
 }
 
 /**
@@ -1582,7 +1645,7 @@ ul_workflow_confirm_plan()
     label: "UL Workflow Status",
     description: "現在のワークフローステータスを表示",
     parameters: Type.Object({}),
-    async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
       const workflow = getCurrentWorkflow();
       if (!workflow) {
         return makeResult(`アクティブなワークフローはありません。
@@ -1663,7 +1726,7 @@ ${phasesDisplay}
     label: "Approve UL Workflow Phase",
     description: "現在のフェーズを承認して次へ進む",
     parameters: Type.Object({}),
-    async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
       const currentWorkflow = getCurrentWorkflow();
       if (!currentWorkflow) {
         return makeResult("エラー: アクティブなワークフローがありません。", { error: "no_active_workflow" });
@@ -1704,7 +1767,10 @@ ${phasesDisplay}
       }
 
       if (previousPhase === "review") {
-        const verificationGateReason = getVerificationGateReason(process.cwd());
+        const verificationCwd = typeof (ctx as { cwd?: unknown })?.cwd === "string"
+          ? String((ctx as { cwd: string }).cwd)
+          : process.cwd();
+        const verificationGateReason = getVerificationGateReason(verificationCwd);
         if (verificationGateReason) {
           currentWorkflow.approvedPhases.pop();
           return makeResult(
@@ -1978,8 +2044,8 @@ ${planContent}
         return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
       }
 
-      if (currentWorkflow.phase !== "annotate" && currentWorkflow.phase !== "implement") {
-        return makeResult(`エラー: annotate / implement フェーズではありません（現在: ${currentWorkflow.phase}）`, { error: "wrong_phase" });
+      if (currentWorkflow.phase !== "implement") {
+        return makeResult(`エラー: implement フェーズではありません（現在: ${currentWorkflow.phase}）。先に ul_workflow_approve() で実装フェーズへ進んでください。`, { error: "wrong_phase" });
       }
 
       if (!currentWorkflow.approvedPhases.includes("plan")) {
@@ -1989,17 +2055,12 @@ ${planContent}
       const taskId = currentWorkflow.taskId;
       const planPath = path.join(getTaskDir(taskId), "plan.md");
 
-      // annotate から呼ばれた場合だけ implement へ進める。
-      if (currentWorkflow.phase === "annotate") {
-        currentWorkflow.approvedPhases.push("annotate");
-        currentWorkflow.phase = "implement";
-        currentWorkflow.phaseIndex = 3;
+      try {
+        await ensureUlExecutionPlan(ctx, currentWorkflow, planPath);
         currentWorkflow.updatedAt = new Date().toISOString();
         saveState(currentWorkflow);
         setCurrentWorkflow(currentWorkflow);
-      }
 
-      try {
         await runUlDelegatedTask(ctx, {
           subagentId: "implementer",
           task: `plan.mdを実装: ${planPath}`,
