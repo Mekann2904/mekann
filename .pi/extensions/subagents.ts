@@ -142,6 +142,30 @@ type PlanFollowupDecision = {
   rationale: string;
 };
 
+type DynamicImplementConfig = {
+  task: string;
+  gapTaskId: string;
+  synthesisTaskId: string;
+};
+
+type ImplementFollowupDecision = {
+  needsFixupDeepDive: boolean;
+  needsVerificationDeepDive: boolean;
+  rationale: string;
+};
+
+type DynamicReviewConfig = {
+  task: string;
+  gapTaskId: string;
+  synthesisTaskId: string;
+};
+
+type ReviewFollowupDecision = {
+  needsRiskDeepDive: boolean;
+  needsVerificationDeepDive: boolean;
+  rationale: string;
+};
+
 function extractDagTaskSection(output: string, taskId: string): string {
   const normalized = String(output || "");
   const pattern = new RegExp(`## ${taskId}\\nStatus: [^\\n]*\\n([\\s\\S]*?)(?=\\n## [^\\n]+\\nStatus:|$)`);
@@ -204,6 +228,58 @@ function decidePlanFollowups(baseOutput: string): PlanFollowupDecision {
   return {
     needsChangesDeepDive: !noDive && /(change|file|implementation|snippet|scope|dependency)/i.test(gapSection),
     needsValidationDeepDive: !noDive && /(validation|verify|test|risk|rollback|acceptance)/i.test(gapSection),
+    rationale,
+  };
+}
+
+function decideImplementFollowups(baseOutput: string): ImplementFollowupDecision {
+  const gapSection = extractDagTaskSection(baseOutput, "implement-gap-check");
+  const fixupMatch = gapSection.match(/DEEP_DIVE_FIXUP:\s*([^\n]+)/i);
+  const verificationMatch = gapSection.match(/DEEP_DIVE_VERIFICATION:\s*([^\n]+)/i);
+  const rationaleMatch = gapSection.match(/RATIONALE:\s*([\s\S]*?)$/i);
+
+  const explicitFixup = fixupMatch ? normalizeGapDecision(fixupMatch[1]) : null;
+  const explicitVerification = verificationMatch ? normalizeGapDecision(verificationMatch[1]) : null;
+  const rationale = rationaleMatch?.[1]?.trim() || "implement gap-check output did not provide an explicit rationale";
+
+  if (explicitFixup !== null || explicitVerification !== null) {
+    return {
+      needsFixupDeepDive: explicitFixup ?? false,
+      needsVerificationDeepDive: explicitVerification ?? false,
+      rationale,
+    };
+  }
+
+  const noDive = /no additional deep dive needed|no deep dive needed|ready for review/i.test(gapSection);
+  return {
+    needsFixupDeepDive: !noDive && /(fix|implementation|bug|regression|follow-up|adjust)/i.test(gapSection),
+    needsVerificationDeepDive: !noDive && /(verification|verify|test|proof|artifact|review)/i.test(gapSection),
+    rationale,
+  };
+}
+
+function decideReviewFollowups(baseOutput: string): ReviewFollowupDecision {
+  const gapSection = extractDagTaskSection(baseOutput, "review-gap-check");
+  const riskMatch = gapSection.match(/DEEP_DIVE_RISK:\s*([^\n]+)/i);
+  const verificationMatch = gapSection.match(/DEEP_DIVE_VERIFICATION:\s*([^\n]+)/i);
+  const rationaleMatch = gapSection.match(/RATIONALE:\s*([\s\S]*?)$/i);
+
+  const explicitRisk = riskMatch ? normalizeGapDecision(riskMatch[1]) : null;
+  const explicitVerification = verificationMatch ? normalizeGapDecision(verificationMatch[1]) : null;
+  const rationale = rationaleMatch?.[1]?.trim() || "review gap-check output did not provide an explicit rationale";
+
+  if (explicitRisk !== null || explicitVerification !== null) {
+    return {
+      needsRiskDeepDive: explicitRisk ?? false,
+      needsVerificationDeepDive: explicitVerification ?? false,
+      rationale,
+    };
+  }
+
+  const noDive = /no additional deep dive needed|no deep dive needed|ready for workspace verify/i.test(gapSection);
+  return {
+    needsRiskDeepDive: !noDive && /(risk|security|regression|rollback|impact)/i.test(gapSection),
+    needsVerificationDeepDive: !noDive && /(verification|verify|test|artifact|proof|review)/i.test(gapSection),
     rationale,
   };
 }
@@ -1716,6 +1792,20 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           synthesisTaskId: Type.String(),
         }),
       ),
+      dynamicImplement: Type.Optional(
+        Type.Object({
+          task: Type.String(),
+          gapTaskId: Type.String(),
+          synthesisTaskId: Type.String(),
+        }),
+      ),
+      dynamicReview: Type.Optional(
+        Type.Object({
+          task: Type.String(),
+          gapTaskId: Type.String(),
+          synthesisTaskId: Type.String(),
+        }),
+      ),
       // AdaptOrch拡張
       enableAdaptOrch: Type.Optional(Type.Boolean({
         description: "Enable AdaptOrch topology-aware orchestration (default: false)"
@@ -1963,6 +2053,16 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           ? params.dynamicPlan as DynamicPlanConfig
           : null
       );
+      const dynamicImplementConfig = (
+        params.dynamicImplement && typeof params.dynamicImplement === "object"
+          ? params.dynamicImplement as DynamicImplementConfig
+          : null
+      );
+      const dynamicReviewConfig = (
+        params.dynamicReview && typeof params.dynamicReview === "object"
+          ? params.dynamicReview as DynamicReviewConfig
+          : null
+      );
 
       // Build or use provided plan
       let taskPlan: TaskPlan;
@@ -2147,7 +2247,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         capacityReservation.consume();
 
         // Execute DAG using DagExecutor or AdaptOrch
-        const useAdaptOrch = !dynamicResearchConfig && !dynamicPlanConfig && (params.enableAdaptOrch ?? isGlobalAdaptOrchEnabled());
+        const useAdaptOrch = !dynamicResearchConfig && !dynamicPlanConfig && !dynamicImplementConfig && !dynamicReviewConfig && (params.enableAdaptOrch ?? isGlobalAdaptOrchEnabled());
         
         const dagExecuteFn = useAdaptOrch 
           ? (plan: TaskPlan, executor: any, opts: any) => executeWithAdaptOrch(plan, executor, {
@@ -2161,9 +2261,11 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           console.log(`[subagent_run_dag] Using AdaptOrch topology-aware orchestration${params.forceTopology ? ` (forced: ${params.forceTopology})` : ""}`);
         }
         
-        let followupDecision: ResearchFollowupDecision | PlanFollowupDecision | undefined;
+        let followupDecision: ResearchFollowupDecision | PlanFollowupDecision | ImplementFollowupDecision | ReviewFollowupDecision | undefined;
         let dynamicResearchApplied = false;
         let dynamicPlanApplied = false;
+        let dynamicImplementApplied = false;
+        let dynamicReviewApplied = false;
         const dagResult = await dagExecuteFn<{ runRecord: SubagentRunRecord; output: string; prompt: string }>(
           taskPlan,
           async (task: TaskNode, context: string) => {
@@ -2382,7 +2484,133 @@ ${baseContext}`,
                     api.addInputContext(synthesisTaskId, "plan-deep-dive-validation");
                   }
                 }
-                : undefined,
+                : dynamicImplementConfig
+                  ? (api) => {
+                    const gapTaskId = dynamicImplementConfig.gapTaskId?.trim() || "implement-gap-check";
+                    const synthesisTaskId = dynamicImplementConfig.synthesisTaskId?.trim() || "implement-synthesis";
+                    if (dynamicImplementApplied || !api.completedTaskIds.includes(gapTaskId)) {
+                      return;
+                    }
+
+                    dynamicImplementApplied = true;
+                    const outputByTaskId = new Map<string, string>();
+                    for (const [taskId, result] of Array.from(api.results.entries())) {
+                      if (result.status !== "completed") {
+                        continue;
+                      }
+                      outputByTaskId.set(taskId, extractDagTaskOutput(result.output));
+                    }
+
+                    const aggregatedBaseOutput = Array.from(outputByTaskId.entries())
+                      .map(([taskId, output]) => `## ${taskId}\nStatus: COMPLETED\n${output}`)
+                      .join("\n\n");
+                    followupDecision = decideImplementFollowups(aggregatedBaseOutput);
+                    const decision = followupDecision as ImplementFollowupDecision;
+                    const baseContext = buildDynamicResearchBaseContext(outputByTaskId, decision.rationale);
+
+                    if (decision.needsFixupDeepDive) {
+                      api.addNode({
+                        id: "implement-deep-dive-fixup",
+                        description: `タスク: ${dynamicImplementConfig.task}
+
+Stage 3 conditional deep dive: Fixup
+- gap check が fixup deep dive を要求したため、追加修正を入れて review に進める状態にする
+- 残っている実装の粗さや危険箇所を潰す
+
+前提:
+${baseContext}`,
+                        assignedAgent: "implementer",
+                        dependencies: [gapTaskId],
+                        inputContext: [gapTaskId],
+                        priority: "high",
+                      });
+                      api.addDependency(synthesisTaskId, "implement-deep-dive-fixup");
+                      api.addInputContext(synthesisTaskId, "implement-deep-dive-fixup");
+                    }
+
+                    if (decision.needsVerificationDeepDive) {
+                      api.addNode({
+                        id: "implement-deep-dive-verification",
+                        description: `タスク: ${dynamicImplementConfig.task}
+
+Stage 3 conditional deep dive: Verification
+- gap check が verification deep dive を要求したため、verify 手順、proof artifact、確認観点を追加で具体化する
+- review フェーズで迷わない粒度まで整理する
+
+前提:
+${baseContext}`,
+                        assignedAgent: "implementer",
+                        dependencies: [gapTaskId],
+                        inputContext: [gapTaskId],
+                        priority: "high",
+                      });
+                      api.addDependency(synthesisTaskId, "implement-deep-dive-verification");
+                      api.addInputContext(synthesisTaskId, "implement-deep-dive-verification");
+                    }
+                  }
+                  : dynamicReviewConfig
+                    ? (api) => {
+                      const gapTaskId = dynamicReviewConfig.gapTaskId?.trim() || "review-gap-check";
+                      const synthesisTaskId = dynamicReviewConfig.synthesisTaskId?.trim() || "review-synthesis";
+                      if (dynamicReviewApplied || !api.completedTaskIds.includes(gapTaskId)) {
+                        return;
+                      }
+
+                      dynamicReviewApplied = true;
+                      const outputByTaskId = new Map<string, string>();
+                      for (const [taskId, result] of Array.from(api.results.entries())) {
+                        if (result.status !== "completed") {
+                          continue;
+                        }
+                        outputByTaskId.set(taskId, extractDagTaskOutput(result.output));
+                      }
+
+                      const aggregatedBaseOutput = Array.from(outputByTaskId.entries())
+                        .map(([taskId, output]) => `## ${taskId}\nStatus: COMPLETED\n${output}`)
+                        .join("\n\n");
+                      followupDecision = decideReviewFollowups(aggregatedBaseOutput);
+                      const decision = followupDecision as ReviewFollowupDecision;
+                      const baseContext = buildDynamicResearchBaseContext(outputByTaskId, decision.rationale);
+
+                      if (decision.needsRiskDeepDive) {
+                        api.addNode({
+                          id: "review-deep-dive-risk",
+                          description: `タスク: ${dynamicReviewConfig.task}
+
+Stage 3 conditional deep dive: Risk
+- gap check が risk deep dive を要求したため、高リスク箇所、回帰、ロールバック観点を追加で具体化する
+
+前提:
+${baseContext}`,
+                          assignedAgent: "reviewer",
+                          dependencies: [gapTaskId],
+                          inputContext: [gapTaskId],
+                          priority: "high",
+                        });
+                        api.addDependency(synthesisTaskId, "review-deep-dive-risk");
+                        api.addInputContext(synthesisTaskId, "review-deep-dive-risk");
+                      }
+
+                      if (decision.needsVerificationDeepDive) {
+                        api.addNode({
+                          id: "review-deep-dive-verification",
+                          description: `タスク: ${dynamicReviewConfig.task}
+
+Stage 3 conditional deep dive: Verification
+- gap check が verification deep dive を要求したため、workspace_verify 手順、proof artifact、review artifact 観点を追加で具体化する
+
+前提:
+${baseContext}`,
+                          assignedAgent: "reviewer",
+                          dependencies: [gapTaskId],
+                          inputContext: [gapTaskId],
+                          priority: "high",
+                        });
+                        api.addDependency(synthesisTaskId, "review-deep-dive-verification");
+                        api.addInputContext(synthesisTaskId, "review-deep-dive-verification");
+                      }
+                    }
+                    : undefined,
             onTaskError: (taskId: string, error: Error) => {
               liveMonitor?.markFinished(taskId, "failed", error.message, error.message);
             },

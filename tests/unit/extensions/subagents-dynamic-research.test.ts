@@ -366,4 +366,198 @@ describe("subagent_run_dag dynamic research", () => {
       rationale: "implementation scope is still vague",
     });
   });
+
+  it("dynamicImplement 指定時は legacy executeDag で implement fixup を差し込む", async () => {
+    executeDagMock.mockImplementation(async (_plan, _executor, options) => {
+      await options.onBatchSettled?.(
+        {
+          results: new Map([
+            ["implement-core", { status: "completed", output: { output: "core done" } }],
+            ["implement-gap-check", {
+              status: "completed",
+              output: {
+                output: [
+                  "DEEP_DIVE_FIXUP: yes",
+                  "DEEP_DIVE_VERIFICATION: no",
+                  "RATIONALE: one more fixup pass is needed",
+                ].join("\n"),
+              },
+            }],
+          ]),
+          completedTaskIds: ["implement-gap-check"],
+          failedTaskIds: [],
+          getStats: () => ({ total: 2, completed: 2, failed: 0, pending: 0, running: 0 }),
+          addNode: addNodeMock,
+          removeNode: vi.fn(),
+          addDependency: addDependencyMock,
+          addInputContext: addInputContextMock,
+          removeDependency: vi.fn(),
+          requeueTask: vi.fn(),
+          getTask: vi.fn(),
+        },
+        {
+          completedTaskIds: ["implement-gap-check"],
+          failedTaskIds: [],
+          results: [],
+        },
+      );
+
+      return {
+        planId: "ul-implement-dynamic-dag",
+        overallStatus: "completed",
+        totalDurationMs: 1,
+        completedTaskIds: ["implement-gap-check", "implement-synthesis"],
+        failedTaskIds: [],
+        skippedTaskIds: [],
+        taskResults: new Map([
+          ["implement-gap-check", { taskId: "implement-gap-check", status: "completed", output: { output: "gap done" }, durationMs: 1 }],
+          ["implement-synthesis", { taskId: "implement-synthesis", status: "completed", output: { output: "implemented" }, durationMs: 1 }],
+        ]),
+      };
+    });
+
+    const registerSubagentExtension = (await import("../../../.pi/extensions/subagents.js")).default;
+    const pi = createFakePi();
+    registerSubagentExtension(pi as any);
+
+    const tool = pi.tools.get("subagent_run_dag");
+    const result = await tool.execute(
+      "tc-3",
+      {
+        task: "通知基盤を実装する",
+        autoGenerate: false,
+        plan: {
+          id: "ul-implement-dynamic-dag",
+          description: "dynamic implement",
+          tasks: [
+            { id: "implement-core", description: "core", assignedAgent: "implementer", dependencies: [] },
+            { id: "implement-gap-check", description: "gap", assignedAgent: "implementer", dependencies: ["implement-core"] },
+            { id: "implement-synthesis", description: "synthesis", assignedAgent: "implementer", dependencies: ["implement-gap-check"] },
+          ],
+        },
+        dynamicImplement: {
+          task: "通知基盤を実装する",
+          gapTaskId: "implement-gap-check",
+          synthesisTaskId: "implement-synthesis",
+        },
+      },
+      undefined,
+      undefined,
+      {
+        cwd: "/tmp/subagents-dynamic",
+        model: { id: "gpt-test", provider: "openai" },
+      },
+    );
+
+    expect(executeDagMock).toHaveBeenCalledTimes(1);
+    expect(executeWithAdaptOrchMock).not.toHaveBeenCalled();
+    expect(addNodeMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: "implement-deep-dive-fixup",
+      assignedAgent: "implementer",
+    }));
+    expect(addDependencyMock).toHaveBeenCalledWith("implement-synthesis", "implement-deep-dive-fixup");
+    expect(addInputContextMock).toHaveBeenCalledWith("implement-synthesis", "implement-deep-dive-fixup");
+    expect(result.details.followupDecision).toEqual({
+      needsFixupDeepDive: true,
+      needsVerificationDeepDive: false,
+      rationale: "one more fixup pass is needed",
+    });
+  });
+
+  it("dynamicReview 指定時は legacy executeDag で review deep-dive を差し込む", async () => {
+    executeDagMock.mockImplementation(async (_plan, _executor, options) => {
+      await options.onBatchSettled?.(
+        {
+          results: new Map([
+            ["review-readout", { status: "completed", output: { output: "readout" } }],
+            ["review-gap-check", {
+              status: "completed",
+              output: {
+                output: [
+                  "DEEP_DIVE_RISK: yes",
+                  "DEEP_DIVE_VERIFICATION: no",
+                  "RATIONALE: security review needs more detail",
+                ].join("\n"),
+              },
+            }],
+          ]),
+          completedTaskIds: ["review-gap-check"],
+          failedTaskIds: [],
+          getStats: () => ({ total: 2, completed: 2, failed: 0, pending: 0, running: 0 }),
+          addNode: addNodeMock,
+          removeNode: vi.fn(),
+          addDependency: addDependencyMock,
+          addInputContext: addInputContextMock,
+          removeDependency: vi.fn(),
+          requeueTask: vi.fn(),
+          getTask: vi.fn(),
+        },
+        {
+          completedTaskIds: ["review-gap-check"],
+          failedTaskIds: [],
+          results: [],
+        },
+      );
+
+      return {
+        planId: "ul-review-dynamic-dag",
+        overallStatus: "completed",
+        totalDurationMs: 1,
+        completedTaskIds: ["review-gap-check", "review-synthesis"],
+        failedTaskIds: [],
+        skippedTaskIds: [],
+        taskResults: new Map([
+          ["review-gap-check", { taskId: "review-gap-check", status: "completed", output: { output: "gap done" }, durationMs: 1 }],
+          ["review-synthesis", { taskId: "review-synthesis", status: "completed", output: { output: "# Review\n\nfinal doc" }, durationMs: 1 }],
+        ]),
+      };
+    });
+
+    const registerSubagentExtension = (await import("../../../.pi/extensions/subagents.js")).default;
+    const pi = createFakePi();
+    registerSubagentExtension(pi as any);
+
+    const tool = pi.tools.get("subagent_run_dag");
+    const result = await tool.execute(
+      "tc-4",
+      {
+        task: "通知基盤をレビューする",
+        autoGenerate: false,
+        plan: {
+          id: "ul-review-dynamic-dag",
+          description: "dynamic review",
+          tasks: [
+            { id: "review-readout", description: "readout", assignedAgent: "reviewer", dependencies: [] },
+            { id: "review-gap-check", description: "gap", assignedAgent: "reviewer", dependencies: ["review-readout"] },
+            { id: "review-synthesis", description: "synthesis", assignedAgent: "reviewer", dependencies: ["review-gap-check"] },
+          ],
+        },
+        dynamicReview: {
+          task: "通知基盤をレビューする",
+          gapTaskId: "review-gap-check",
+          synthesisTaskId: "review-synthesis",
+        },
+      },
+      undefined,
+      undefined,
+      {
+        cwd: "/tmp/subagents-dynamic",
+        model: { id: "gpt-test", provider: "openai" },
+      },
+    );
+
+    expect(executeDagMock).toHaveBeenCalledTimes(1);
+    expect(executeWithAdaptOrchMock).not.toHaveBeenCalled();
+    expect(addNodeMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: "review-deep-dive-risk",
+      assignedAgent: "reviewer",
+    }));
+    expect(addDependencyMock).toHaveBeenCalledWith("review-synthesis", "review-deep-dive-risk");
+    expect(addInputContextMock).toHaveBeenCalledWith("review-synthesis", "review-deep-dive-risk");
+    expect(result.details.followupDecision).toEqual({
+      needsRiskDeepDive: true,
+      needsVerificationDeepDive: false,
+      rationale: "security review needs more detail",
+    });
+  });
 });
