@@ -474,6 +474,7 @@ import { validateTaskPlan } from "../lib/dag-validator.js";
 import {
   executeDag,
   buildSubagentPrompt,
+  type DagBatchMutationApi,
 } from "../lib/dag-executor.js";
 import { generateDagFromTask, DagGenerationError } from "../lib/dag-generator.js";
 import {
@@ -2338,7 +2339,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             nodeTimeoutMs: timeoutMs,
             overallTimeoutMs: timeoutMs > 0 ? timeoutMs * Math.max(1, taskPlan.tasks.length) : 0,
             onBatchSettled: dynamicResearchConfig
-              ? (api) => {
+              ? (api: DagBatchMutationApi) => {
                 const gapTaskId = dynamicResearchConfig.gapTaskId?.trim() || "research-gap-check";
                 const synthesisTaskId = dynamicResearchConfig.synthesisTaskId?.trim() || "research-synthesis";
                 if (dynamicResearchApplied || !api.completedTaskIds.includes(gapTaskId)) {
@@ -2416,7 +2417,7 @@ ${baseContext}
                 }
               }
               : dynamicPlanConfig
-                ? (api) => {
+                ? (api: DagBatchMutationApi) => {
                   const gapTaskId = dynamicPlanConfig.gapTaskId?.trim() || "plan-gap-check";
                   const synthesisTaskId = dynamicPlanConfig.synthesisTaskId?.trim() || "plan-synthesis";
                   if (dynamicPlanApplied || !api.completedTaskIds.includes(gapTaskId)) {
@@ -2480,7 +2481,7 @@ ${baseContext}`,
                   }
                 }
                 : dynamicImplementConfig
-                  ? (api) => {
+                  ? (api: DagBatchMutationApi) => {
                     const gapTaskId = dynamicImplementConfig.gapTaskId?.trim() || "implement-gap-check";
                     const synthesisTaskId = dynamicImplementConfig.synthesisTaskId?.trim() || "implement-synthesis";
                     if (dynamicImplementApplied || !api.completedTaskIds.includes(gapTaskId)) {
@@ -2544,7 +2545,7 @@ ${baseContext}`,
                     }
                   }
                   : dynamicReviewConfig
-                    ? (api) => {
+                    ? (api: DagBatchMutationApi) => {
                       const gapTaskId = dynamicReviewConfig.gapTaskId?.trim() || "review-gap-check";
                       const synthesisTaskId = dynamicReviewConfig.synthesisTaskId?.trim() || "review-synthesis";
                       if (dynamicReviewApplied || !api.completedTaskIds.includes(gapTaskId)) {
