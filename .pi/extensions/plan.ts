@@ -432,7 +432,7 @@ function isPlanReadyForExecution(plan: Plan): boolean {
 function getPlanExecutionReadiness(
 	storage: PlanStorage,
 ): { plan?: Plan; ready: boolean; reason?: string } {
-	const currentPlan = resolveCurrentPlan(storage);
+	const currentPlan = getCurrentPlan(storage);
 	if (!currentPlan) {
 		return {
 			ready: false,
