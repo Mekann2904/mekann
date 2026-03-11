@@ -108,6 +108,7 @@
       "./.pi/extensions/invariant-pipeline.ts",
       "./.pi/extensions/kitty-status-integration.ts",
       "./.pi/extensions/loop.ts",
+      "./.pi/extensions/bug-hunt/index.ts",
       "./.pi/extensions/mcp-client.ts",
       "./.pi/extensions/mediator.ts",
       "./.pi/extensions/plan.ts",
