@@ -158,10 +158,10 @@ export function TasksPage() {
         {/* Header */}
         <div class="shrink-0 flex items-center justify-between p-4 border-b border-border bg-background">
           <div class="flex items-center gap-4">
-            <h1 class="text-lg font-semibold">Tasks</h1>
+            <h1 class="text-lg font-semibold">Tickets</h1>
             {stats && (
               <span class="text-sm text-muted-foreground">
-                {stats.total} tasks
+                {stats.total} tickets
                 {stats.overdue > 0 && (
                   <span class="text-red-500 ml-1">({stats.overdue} overdue)</span>
                 )}
@@ -298,7 +298,7 @@ export function TasksPage() {
                 type="text"
                 value={searchQuery}
                 onInput={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
-                placeholder="Search tasks..."
+                placeholder="Search tickets..."
                 class="h-8 w-48 pl-8 text-sm"
               />
             </div>
@@ -379,10 +379,10 @@ export function TasksPage() {
               <div class="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10 text-destructive">
                 <Trash2 class="h-5 w-5" />
               </div>
-              <AlertDialogTitle>タスクを削除しますか？</AlertDialogTitle>
+              <AlertDialogTitle>チケットを削除しますか？</AlertDialogTitle>
             </div>
             <AlertDialogDescription>
-              この操作は取り消せません。タスクとすべてのサブタスクが完全に削除されます。
+              この操作は取り消せません。チケットとすべてのサブチケットが完全に削除されます。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -411,10 +411,10 @@ export function TasksPage() {
               <div class="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10 text-destructive">
                 <Trash2 class="h-5 w-5" />
               </div>
-              <AlertDialogTitle>サブタスクを削除しますか？</AlertDialogTitle>
+              <AlertDialogTitle>サブチケットを削除しますか？</AlertDialogTitle>
             </div>
             <AlertDialogDescription>
-              この操作は取り消せません。サブタスクが完全に削除されます。
+              この操作は取り消せません。サブチケットが完全に削除されます。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

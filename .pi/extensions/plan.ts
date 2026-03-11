@@ -151,6 +151,11 @@ interface CreatePlanOptions {
 	documentSlug?: string;
 }
 
+interface StarterStepDraft {
+	title: string;
+	description?: string;
+}
+
 interface StepTransitionResult {
 	autoActivatedStep?: PlanStep;
 	demotedStepIds: string[];
@@ -305,6 +310,93 @@ function createPlan(name: string, descriptionOrOptions?: string | CreatePlanOpti
 		documentSlug: options.documentSlug?.trim() || undefined,
 	};
 	return plan;
+}
+
+function buildStarterStepDrafts(plan: Plan): StarterStepDraft[] {
+	const drafts: StarterStepDraft[] = [];
+	const seenTitles = new Set<string>();
+
+	const pushDraft = (title: string, description: string) => {
+		const normalizedTitle = title.trim();
+		if (normalizedTitle.length === 0 || seenTitles.has(normalizedTitle)) {
+			return;
+		}
+
+		drafts.push({
+			title: normalizedTitle,
+			description,
+		});
+		seenTitles.add(normalizedTitle);
+	};
+
+	for (const phase of plan.implementationOrder) {
+		pushDraft(phase, "Auto-generated from implementationOrder");
+	}
+
+	for (const verification of plan.testVerification) {
+		const verificationTitle = verification.toLowerCase().startsWith("verify")
+			? verification
+			: `Verify: ${verification}`;
+		pushDraft(verificationTitle, "Auto-generated from testVerification");
+	}
+
+	return drafts;
+}
+
+function bootstrapPlanSteps(plan: Plan): { createdSteps: PlanStep[]; autoStartedStep?: PlanStep } {
+	if (plan.steps.length > 0) {
+		return { createdSteps: [] };
+	}
+
+	const drafts = buildStarterStepDrafts(plan);
+	if (drafts.length === 0) {
+		return { createdSteps: [] };
+	}
+
+	const createdSteps: PlanStep[] = [];
+	let previousStepId: string | undefined;
+	for (const draft of drafts) {
+		const { step } = addStepToPlan(
+			plan,
+			draft.title,
+			draft.description,
+			previousStepId ? [previousStepId] : undefined,
+		);
+		createdSteps.push(step);
+		previousStepId = step.id;
+	}
+
+	appendProgressLog(plan, "planner", `Bootstrapped ${createdSteps.length} starter steps from plan metadata`);
+	const autoStartedStep = activateNextReadyStep(plan);
+	if (autoStartedStep) {
+		appendProgressLog(plan, "planner", `Auto-started "${autoStartedStep.title}" from bootstrapped plan`);
+	}
+
+	return { createdSteps, autoStartedStep };
+}
+
+function buildPlanRecoveryHint(
+	readiness: { plan?: Plan; reason?: string },
+): string {
+	if (!readiness.plan) {
+		return " Next: call plan_create with acceptanceCriteria and implementationOrder. plan_create now bootstraps starter steps and current focus automatically.";
+	}
+
+	const currentPlan = readiness.plan;
+	if (!isPlanReadyForExecution(currentPlan)) {
+		return " Next: add acceptanceCriteria and implementationOrder/testVerification to the current plan so it becomes execution-ready.";
+	}
+
+	if (currentPlan.steps.length === 0) {
+		return " Next: add at least one concrete step with plan_add_step, or recreate the plan with implementationOrder/testVerification so starter steps are bootstrapped automatically.";
+	}
+
+	const readySteps = getReadySteps(currentPlan);
+	if (readySteps.length > 0 && !getCurrentStep(currentPlan)) {
+		return " Next: call plan_run_next to claim exactly one current focus.";
+	}
+
+	return " Next: unblock dependencies or add the next concrete step, then resume execution.";
 }
 
 function findPlanById(storage: PlanStorage, planId: string): Plan | undefined {
@@ -1291,9 +1383,10 @@ export default function (pi: ExtensionAPI) {
 			const suffix = readiness.plan
 				? ` Current plan: ${readiness.plan.name} (${readiness.plan.id}).`
 				: "";
+			const hint = buildPlanRecoveryHint(readiness);
 			return {
 				block: true,
-				reason: `${readiness.reason}${suffix}`,
+				reason: `${readiness.reason}${suffix}${hint}`,
 			};
 		});
 
@@ -1344,6 +1437,7 @@ export default function (pi: ExtensionAPI) {
 				documentSlug: params.documentSlug,
 			});
 			appendProgressLog(plan, "planner", "Initial plan created");
+			const bootstrapResult = bootstrapPlanSteps(plan);
 			syncPlanDocument(plan, workspaceRoot);
 			storage.plans.push(plan);
 			storage.currentPlanId = plan.id;
@@ -1358,8 +1452,28 @@ export default function (pi: ExtensionAPI) {
 			});
 
 			return {
-				content: [{ type: "text", text: `Plan created:\n\n${formatPlanSummary(plan)}` }],
-				details: { planId: plan.id, documentPath: plan.documentPath, currentStepId: plan.currentStepId },
+				content: [{
+					type: "text",
+					text: [
+						"Plan created:",
+						"",
+						bootstrapResult.createdSteps.length > 0
+							? `Bootstrapped ${bootstrapResult.createdSteps.length} starter steps from plan metadata.`
+							: "No starter steps were bootstrapped.",
+						bootstrapResult.autoStartedStep
+							? `Current focus auto-started: ${bootstrapResult.autoStartedStep.title} (${bootstrapResult.autoStartedStep.id})`
+							: "Current focus auto-started: none",
+						"",
+						formatPlanSummary(plan),
+					].join("\n"),
+				}],
+				details: {
+					planId: plan.id,
+					documentPath: plan.documentPath,
+					currentStepId: plan.currentStepId,
+					bootstrappedStepIds: bootstrapResult.createdSteps.map(step => step.id),
+					autoBootstrapped: bootstrapResult.createdSteps.length > 0,
+				},
 				id: plan.id,
 				planId: plan.id,
 				documentPath: plan.documentPath,

@@ -24,11 +24,12 @@ mekann では、plan は単なる todo ではありません。
 ### 主な機能
 
 - **プランの作成**: タスク計画を作成して保存
+- **自動ブートストラップ**: `implementationOrder` / `testVerification` から starter step を自動生成
 - **ステップ管理**: プランにステップを追加・更新
 - **依存関係の管理**: ステップ間の依存関係を定義
 - **進捗追跡**: ステップの状態（pending/in_progress/completed/blocked）を管理
 - **実行可能なステップ**: 依存関係が満たされたステップを取得
-- **プランモード**: 読み取り専用モードでの計画作成（制限無効化）
+- **プランモード**: 読み取り専用で探索と計画に集中するガード
 
 ### 品質ループとの関係
 
@@ -37,6 +38,8 @@ mekann では、plan は単なる todo ではありません。
 - 継続ループ: 文脈圧縮後も次の一手を残す
 
 `plan_*` は、「今どこにいるか」と「何を verify したら閉じられるか」を外部化するために使います。
+
+execution-ready な入力で `plan_create` を呼ぶと、starter step と current focus まで自動で立ち上がります。
 
 ---
 
@@ -75,6 +78,9 @@ plan_create({
     "Verify"
   ]
 })
+
+// この入力なら starter step が自動生成され、
+// 最初の step は in_progress で始まる
 
 // ステップの追加
 plan_add_step({
@@ -178,6 +184,9 @@ interface PlanStep {
 |-----------|--------|------|------|
 | `name` | string | 必須 | プラン名 |
 | `description` | string | 省略可 | プランの説明 |
+| `acceptanceCriteria` | string[] | 省略可 | 実行可能判定に使う受け入れ条件 |
+| `implementationOrder` | string[] | 省略可 | starter step 自動生成の元になる実装順序 |
+| `testVerification` | string[] | 省略可 | verification step 自動生成の元になる検証項目 |
 
 ### plan_list
 
@@ -308,6 +317,9 @@ plan_create({
     "Docs sync"
   ]
 })
+
+// ここでは Plan / Quick prototype / Verification / Observe and repair / Docs sync
+// の starter step が自動で作られる
 ```
 
 ### 例3: 複雑な依存関係を持つプラン
@@ -392,9 +404,9 @@ Ctrl+Shift+P
 | モード | 説明 | 制限 |
 |--------|------|------|
 | **OFF** | 通常モード | すべてのツールが利用可能 |
-| **ON** | プランモード | すべてのツールが利用可能（制限無効化） |
+| **ON** | プランモード | `edit` / `write` / `patch` / 書き込み系 `bash` をブロック |
 
-> **注意**: 現在の実装では、プランモードでもツール制限は無効化されています。
+> **注意**: プランモード中は読み取り専用です。実装に入るには `/planmode` で終了してください。
 
 ### 二層運用の推奨
 
@@ -408,6 +420,9 @@ Ctrl+Shift+P
 長い判断は `plans/feature-template.md` を複製して残します。
 
 現在の `plan_create` は durable plan 文書も自動生成します。
+
+さらに `acceptanceCriteria` と `implementationOrder` か `testVerification` が入っていれば、
+live checklist の starter step と current focus も自動生成します。
 
 その後の `plan_add_step`、`plan_update_step`、`plan_update_status` でも内容を同期します。
 

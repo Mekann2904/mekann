@@ -291,7 +291,7 @@ export function App() {
   useGlobalShortcuts(
     () => {
       // Command palette: focus search or navigate
-      // For now, just navigate to tasks page
+      // For now, just navigate to the tickets page
       route("/tasks");
     },
     () => {
@@ -351,7 +351,7 @@ export function App() {
                 <kbd class="px-2 py-0.5 bg-muted rounded text-xs">Ctrl+K</kbd>
               </div>
               <div class="flex justify-between text-sm">
-                <span class="text-muted-foreground">新規タスク作成</span>
+                <span class="text-muted-foreground">新規チケット作成</span>
                 <kbd class="px-2 py-0.5 bg-muted rounded text-xs">Ctrl+N</kbd>
               </div>
               <div class="flex justify-between text-sm">
@@ -395,7 +395,7 @@ function Sidebar({ sseConnected, sseExhausted, onSseReconnect }: SidebarProps) {
   };
 
   const navItems = [
-    { path: "/", icon: ListTodo, label: "Tasks" },
+    { path: "/", icon: ListTodo, label: "Tickets" },
     { path: "/analytics", icon: BarChart3, label: "Analytics" },
     { path: "/agent-usage", icon: TrendingUp, label: "Agent Usage" },
     { path: "/benchmark", icon: FlaskConical, label: "Benchmark" },

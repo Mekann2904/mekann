@@ -312,9 +312,17 @@ describe("ul-workflow", () => {
     const executeTool = vi.fn(async ({ toolName }: { toolName: string; params: Record<string, unknown> }) => {
       calledTools.push(toolName);
       if (toolName === "plan_create") {
-        return { content: [{ type: "text", text: "plan created" }], details: { planId: "ul-plan-1" } };
+        return {
+          content: [{ type: "text", text: "plan created" }],
+          details: {
+            planId: "ul-plan-1",
+            autoBootstrapped: true,
+            bootstrappedStepIds: ["step-1", "step-2"],
+            currentStepId: "step-1",
+          },
+        };
       }
-      if (toolName === "plan_add_step" || toolName === "plan_update_status") {
+      if (toolName === "plan_update_status") {
         return { content: [{ type: "text", text: `${toolName} ok` }], details: {} };
       }
       if (toolName === "subagent_run_dag") {
@@ -326,7 +334,6 @@ describe("ul-workflow", () => {
 
     expect(calledTools).toEqual([
       "plan_create",
-      "plan_add_step",
       "plan_update_status",
       "subagent_run_dag",
     ]);

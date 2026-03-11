@@ -165,6 +165,38 @@ describe("plan extension integration tests", () => {
 			// 結果が返されることを確認
 			expect(result).toBeDefined();
 		});
+
+		it("execution-ready な入力では starter steps と current focus を自動生成する", async () => {
+			const tool = fakePi.tools.get("plan_create");
+			const ctx = createExecutionContext(tmpDir);
+
+			const result = await tool!.execute(
+				"tc-bootstrap",
+				{
+					name: "Bootstrapped Plan",
+					acceptanceCriteria: ["tests pass"],
+					implementationOrder: ["Spec", "Build"],
+					testVerification: ["npm run test:unit"],
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			expect(result.details.autoBootstrapped).toBe(true);
+			expect(result.details.bootstrappedStepIds).toHaveLength(3);
+			expect(result.details.currentStepId).toBe(result.details.bootstrappedStepIds[0]);
+
+			const showTool = fakePi.tools.get("plan_show");
+			const shown = await showTool!.execute(
+				"tc-bootstrap-show",
+				{ planId: result.details.planId },
+				undefined,
+				undefined,
+				ctx,
+			);
+			expect(shown.details.currentStepId).toBe(result.details.bootstrappedStepIds[0]);
+		});
 	});
 
 	describe("plan_listツール", () => {
@@ -554,10 +586,10 @@ describe("plan extension integration tests", () => {
 
 			const result = await fakePi.emit("tool_call", { toolName: "edit", input: {} }, ctx);
 
-			expect(result).toEqual({
-				block: true,
-				reason: "SPEC-FIRST: no active plan found. Create a plan with plan_create before mutating the workspace.",
-			});
+			expect(result?.block).toBe(true);
+			expect(String(result?.reason)).toContain("SPEC-FIRST: no active plan found");
+			expect(String(result?.reason)).toContain("plan_create");
+			expect(String(result?.reason)).toContain("bootstraps starter steps");
 		});
 
 		it("plan がない状態では write / patch / bash も hard block する", async () => {
