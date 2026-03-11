@@ -3886,8 +3886,12 @@ subagent_run_dag(${JSON.stringify(dagParams, null, 2)})
         return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
       }
 
-      // git-workflowスキルの読み込みを促す
-      const skillPath = ".pi/skills/git-workflow/SKILL.md";
+      // git-workflowスキルは workspace ごとに配置揺れがあるため、
+      // 2つの候補パスを案内する。
+      const skillPaths = [
+        ".pi/skills/git-workflow/SKILL.md",
+        ".pi/lib/skills/git-workflow/SKILL.md",
+      ];
 
       // 変更内容を確認するための指示を生成
       const taskId = workflow.taskId;
@@ -3947,7 +3951,10 @@ plan.mdに基づく実装
 - コミットメッセージは日本語で書いてください
 - Body（本文）を含めてください
 
-詳細はgit-workflowスキルを参照: ${skillPath}
+詳細はgit-workflowスキルを参照:
+- ${skillPaths[0]}
+- ${skillPaths[1]}
+- 両方なければ、この workspace にはスキル未配置です
 ` }],
         details: {
           taskId,

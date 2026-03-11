@@ -9,7 +9,7 @@
 |------|-------|
 | **Navigation** | `.pi/INDEX.md` - Repository structure map |
 | **Task-to-Source** | `.pi/NAVIGATION.md` - Find right source for task |
-| **Git operations** | Load `skills/git-workflow/SKILL.md` FIRST |
+| **Git operations** | Load `git-workflow` skill FIRST (`.pi/skills/...` or `.pi/lib/skills/...`) |
 | **Browser/Site access** | Use `playwright_cli` tool (see Browser Automation Rule) |
 | **Delegate task** | Use `subagent_run` or `subagent_run_parallel` |
 | **Parallel execution** | Use `subagent_run_dag` (see DAG Execution Guide) |
@@ -234,8 +234,11 @@ If code was changed without comment updates, STOP and fix comments first before 
 ### REQUIRED behavior
 
 1. When the task involves ANY git-related operation, you MUST read and follow the git-workflow skill BEFORE taking action.
-2. Load command: `read tool with path: .pi/skills/git-workflow/SKILL.md`
-3. The skill MUST be loaded BEFORE planning or executing ANY git-related operation.
+2. Try these paths in order:
+   - `read tool with path: .pi/skills/git-workflow/SKILL.md`
+   - if missing: `read tool with path: .pi/lib/skills/git-workflow/SKILL.md`
+3. If both paths are missing, continue without blocking and briefly note that the skill is not installed in the current workspace.
+4. The skill MUST be loaded BEFORE planning or executing ANY git-related operation when the file exists.
 
 ### Detection patterns (MANDATORY load trigger)
 
