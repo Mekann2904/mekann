@@ -348,6 +348,11 @@ function buildDagToolParams(options: {
     gapTaskId: string;
     synthesisTaskId: string;
   };
+  dynamicPlan?: {
+    task: string;
+    gapTaskId: string;
+    synthesisTaskId: string;
+  };
   planId: string;
   planDescription: string;
   tasks: UlDagTask[];
@@ -358,6 +363,7 @@ function buildDagToolParams(options: {
     artifactPath: options.artifactPath,
     artifactTaskId: options.artifactTaskId,
     dynamicResearch: options.dynamicResearch,
+    dynamicPlan: options.dynamicPlan,
     autoGenerate: false,
     plan: {
       id: options.planId,
@@ -410,6 +416,12 @@ type ResearchFollowupDecision = {
   rationale: string;
 };
 
+type PlanFollowupDecision = {
+  needsChangesDeepDive: boolean;
+  needsValidationDeepDive: boolean;
+  rationale: string;
+};
+
 function extractDagTaskSection(output: string, taskId: string): string {
   const normalized = String(output || "");
   const pattern = new RegExp(`## ${taskId}\\nStatus: [^\\n]*\\n([\\s\\S]*?)(?=\\n## [^\\n]+\\nStatus:|$)`);
@@ -446,6 +458,32 @@ function decideResearchFollowups(baseOutput: string): ResearchFollowupDecision {
   return {
     needsExternalDeepDive: !noDive && /(external|official docs|reference|api surface|library|spec)/i.test(gapSection),
     needsCodebaseDeepDive: !noDive && /(codebase|risk|file|implementation|constraint|reuse)/i.test(gapSection),
+    rationale,
+  };
+}
+
+function decidePlanFollowups(baseOutput: string): PlanFollowupDecision {
+  const gapSection = extractDagTaskSection(baseOutput, "plan-gap-check");
+  const changesMatch = gapSection.match(/DEEP_DIVE_CHANGES:\s*([^\n]+)/i);
+  const validationMatch = gapSection.match(/DEEP_DIVE_VALIDATION:\s*([^\n]+)/i);
+  const rationaleMatch = gapSection.match(/RATIONALE:\s*([\s\S]*?)$/i);
+
+  const explicitChanges = changesMatch ? normalizeGapDecision(changesMatch[1]) : null;
+  const explicitValidation = validationMatch ? normalizeGapDecision(validationMatch[1]) : null;
+  const rationale = rationaleMatch?.[1]?.trim() || "plan gap-check output did not provide an explicit rationale";
+
+  if (explicitChanges !== null || explicitValidation !== null) {
+    return {
+      needsChangesDeepDive: explicitChanges ?? false,
+      needsValidationDeepDive: explicitValidation ?? false,
+      rationale,
+    };
+  }
+
+  const noDive = /no additional deep dive needed|no deep dive needed|plan ready/i.test(gapSection);
+  return {
+    needsChangesDeepDive: !noDive && /(change|file|implementation|snippet|scope|dependency)/i.test(gapSection),
+    needsValidationDeepDive: !noDive && /(validation|verify|test|risk|rollback|acceptance)/i.test(gapSection),
     rationale,
   };
 }
@@ -938,6 +976,116 @@ function buildPlanDagParams(
   });
 }
 
+function buildDynamicPlanDagParams(
+  task: string,
+  researchPath: string,
+  planPath: string,
+  taskId: string,
+): Record<string, unknown> {
+  return buildDagToolParams({
+    task: `UL dynamic plan phase for: ${task}`,
+    ulTaskId: taskId,
+    artifactPath: planPath,
+    artifactTaskId: "plan-synthesis",
+    dynamicPlan: {
+      task,
+      gapTaskId: "plan-gap-check",
+      synthesisTaskId: "plan-synthesis",
+    },
+    planId: "ul-plan-dynamic-dag",
+    planDescription: "UL plan phase with dynamic deep-dive insertion",
+    tasks: [
+      {
+        id: "plan-findings",
+        description: `タスク: ${task}
+
+前提資料: ${researchPath}
+
+Stage 0:
+- research.md から顧客要求の解釈を抽出する
+- 何を作れば成功かを受け入れ条件へ変換する
+- 優先度、依存関係、危険箇所を明確にする
+- 実装前に確認すべき前提を列挙する`,
+        assignedAgent: "architect",
+        dependencies: [],
+        priority: "high",
+      },
+      {
+        id: "plan-changes",
+        description: `タスク: ${task}
+
+前提資料: ${researchPath}
+
+Stage 1 parallel:
+- 変更対象ファイル候補を洗い出す
+- 具体的な実装方針とコードスニペット案を作る
+- 並列実装しやすい単位へ分解する
+- 要求解釈と設計判断がどうつながるかを明示する`,
+        assignedAgent: "architect",
+        dependencies: [],
+        priority: "high",
+      },
+      {
+        id: "plan-validation",
+        description: `タスク: ${task}
+
+前提資料: ${researchPath}
+
+Stage 1 parallel:
+- 検証方法、回帰テスト、確認手順を整理する
+- トレードオフ、ロールバック観点、未解決リスクをまとめる
+- 実装後に何をもって完了とみなすかを明確にする`,
+        assignedAgent: "architect",
+        dependencies: [],
+        priority: "high",
+      },
+      {
+        id: "plan-gap-check",
+        description: `タスク: ${task}
+
+Stage 2:
+- findings / changes / validation の結果を読み、plan.md を完成させるのに不足があるか判定する
+- 追加深掘りが必要なら、changes か validation に絞る
+- 明示的に次の行を出力する
+  DEEP_DIVE_CHANGES: yes|no
+  DEEP_DIVE_VALIDATION: yes|no
+  RATIONALE: <reason>
+- 不足がなければ "no additional deep dive needed" と明記する`,
+        assignedAgent: "architect",
+        dependencies: ["plan-findings", "plan-changes", "plan-validation"],
+        inputContext: ["plan-findings", "plan-changes", "plan-validation"],
+        priority: "critical",
+      },
+      {
+        id: "plan-synthesis",
+        description: `依存タスクの内容を統合し、最終的な plan.md を Markdown で完成させてください。
+
+タスク: ${task}
+事前調査: ${researchPath}
+保存先: ${planPath}
+
+必須要件:
+- User Intent と Analyst Interpretation が分かること
+- 詳細なアプローチの説明
+- 実際の変更内容を示すコードスニペット
+- 変更対象となるファイルパス
+- 考慮事項やトレードオフ
+- タスクリスト（チェックボックス形式）
+- ユーザーがレビューしやすい構造
+- Gap Check の結論と deep dive の要否を反映する
+
+出力ルール:
+- 出力はそのまま plan.md として保存できる完成形の Markdown のみ
+- 実装前レビュー用の文書として、簡潔かつ具体的にまとめる`,
+        assignedAgent: "architect",
+        dependencies: ["plan-gap-check"],
+        inputContext: ["plan-findings", "plan-changes", "plan-validation", "plan-gap-check"],
+        priority: "critical",
+      },
+    ],
+  });
+}
+
 /**
  * サブエージェント実行にタイムアウト保護を追加する
  * @summary タイムアウト付きサブエージェント実行
@@ -1047,6 +1195,15 @@ async function runDagLocally(
       }
       : null
   );
+  const dynamicPlanConfig = (
+    dagParams.dynamicPlan && typeof dagParams.dynamicPlan === "object"
+      ? dagParams.dynamicPlan as {
+        task?: string;
+        gapTaskId?: string;
+        synthesisTaskId?: string;
+      }
+      : null
+  );
 
   if (!planInput?.tasks?.length) {
     throw new Error("DAG plan が空です");
@@ -1138,8 +1295,9 @@ async function runDagLocally(
   dispatchPermit.lease.consume();
 
   let dagResult;
-  let followupDecision: ResearchFollowupDecision | undefined;
+  let followupDecision: ResearchFollowupDecision | PlanFollowupDecision | undefined;
   let dynamicResearchApplied = false;
+  let dynamicPlanApplied = false;
   try {
     dagResult = await executeDag<{ output: string }>(
       taskPlan,
@@ -1268,7 +1426,72 @@ ${baseContext}
               api.addInputContext(synthesisTaskId, "research-deep-dive-codebase");
             }
           }
-          : undefined,
+          : dynamicPlanConfig
+            ? (api) => {
+              const gapTaskId = dynamicPlanConfig.gapTaskId?.trim() || "plan-gap-check";
+              const synthesisTaskId = dynamicPlanConfig.synthesisTaskId?.trim() || "plan-synthesis";
+              if (dynamicPlanApplied || !api.completedTaskIds.includes(gapTaskId)) {
+                return;
+              }
+
+              dynamicPlanApplied = true;
+              const baseOutput = Array.from(api.results.entries())
+                .map(([taskId, result]) => {
+                  const status = result.status.toUpperCase();
+                  const output =
+                    result.status === "completed"
+                      ? ((result.output as { output?: string } | undefined)?.output ?? "")
+                      : result.error?.message ?? "";
+                  return `## ${taskId}\nStatus: ${status}\n${output}`;
+                })
+                .join("\n\n");
+
+              followupDecision = decidePlanFollowups(baseOutput);
+              const decision = followupDecision as PlanFollowupDecision;
+              const taskLabel = dynamicPlanConfig.task?.trim() || String(dagParams.task ?? taskPlan.description);
+              const baseContext = `Base plan findings:\n${baseOutput.trim() || "No base output captured."}\n\nGap-check rationale:\n${decision.rationale}`;
+
+              if (decision.needsChangesDeepDive) {
+                api.addNode({
+                  id: "plan-deep-dive-changes",
+                  description: `タスク: ${taskLabel}
+
+Stage 3 conditional deep dive: Changes
+- gap check が changes deep dive を要求したため、変更対象ファイル、実装順序、コードスニペットを追加で具体化する
+- 実装時に迷わない粒度まで plan を深掘りする
+
+前提:
+${baseContext}`,
+                  assignedAgent: "architect",
+                  dependencies: [gapTaskId],
+                  inputContext: [gapTaskId],
+                  priority: "high",
+                });
+                api.addDependency(synthesisTaskId, "plan-deep-dive-changes");
+                api.addInputContext(synthesisTaskId, "plan-deep-dive-changes");
+              }
+
+              if (decision.needsValidationDeepDive) {
+                api.addNode({
+                  id: "plan-deep-dive-validation",
+                  description: `タスク: ${taskLabel}
+
+Stage 3 conditional deep dive: Validation
+- gap check が validation deep dive を要求したため、verify 手順、回帰、受け入れ条件、ロールバック観点を追加で具体化する
+- 完了判定を曖昧にしない粒度まで plan を深掘りする
+
+前提:
+${baseContext}`,
+                  assignedAgent: "architect",
+                  dependencies: [gapTaskId],
+                  inputContext: [gapTaskId],
+                  priority: "high",
+                });
+                api.addDependency(synthesisTaskId, "plan-deep-dive-validation");
+                api.addInputContext(synthesisTaskId, "plan-deep-dive-validation");
+              }
+            }
+            : undefined,
         onTaskError: (taskId, error) => {
           liveMonitor?.markFinished(taskId, "failed", error.message, error.message);
         },
@@ -1412,6 +1635,37 @@ async function executeResearchWorkflow(
     baseResult,
     followupResult,
     decision,
+  };
+}
+
+async function executePlanWorkflow(
+  ctx: unknown,
+  options: {
+    task: string;
+    taskId: string;
+    researchPath: string;
+    planPath: string;
+    instruction: { subagentId: string; task: string; extraContext: string };
+  },
+): Promise<{
+  result: AgentToolResult<unknown>;
+  decision: PlanFollowupDecision | null;
+}> {
+  const dagParams = buildDynamicPlanDagParams(
+    options.task,
+    options.researchPath,
+    options.planPath,
+    options.taskId,
+  );
+  const result = await runUlDelegatedTask(ctx, {
+    ...options.instruction,
+    ulTaskId: options.taskId,
+    dagParams,
+  });
+
+  return {
+    result,
+    decision: (result.details as { followupDecision?: PlanFollowupDecision } | undefined)?.followupDecision ?? null,
   };
 }
 
@@ -2044,12 +2298,14 @@ Task ID: ${taskId}
         // === PHASE 2: Plan（逐次）===
         console.log(`[ul_workflow_run] Phase 2: Plan (sequential)`);
         const planInstruction = generatePlanInstruction(trimmedTask, researchPath, planPath, taskId);
-        const planResult = await runUlDelegatedTask(ctx, {
-          ...planInstruction,
-          ulTaskId: taskId,
-          dagParams: buildPlanDagParams(trimmedTask, researchPath, planPath, taskId),
+        const planRun = await executePlanWorkflow(ctx, {
+          task: trimmedTask,
+          taskId,
+          researchPath,
+          planPath,
+          instruction: planInstruction,
         });
-        await ensureWorkflowArtifact(planPath, extractTextFromToolResult(planResult));
+        await ensureWorkflowArtifact(planPath, extractTextFromToolResult(planRun.result));
 
         currentWorkflow.approvedPhases.push("research", "plan");
         currentWorkflow.phase = "plan";
@@ -2951,17 +3207,18 @@ subagent_run_dag(${JSON.stringify(dynamicDagParams, null, 2)})
       const planPath = path.join(getTaskDir(taskId), "plan.md");
       const state = loadState(taskId);
       const instruction = generatePlanInstruction(params.task, researchPath, planPath, taskId);
-      const dagParams = buildPlanDagParams(params.task, researchPath, planPath, taskId);
 
       try {
-        const result = await runUlDelegatedTask(ctx, {
-          ...instruction,
-          ulTaskId: taskId,
-          dagParams,
+        const planRun = await executePlanWorkflow(ctx, {
+          task: params.task,
+          taskId,
+          researchPath,
+          planPath,
+          instruction,
         });
         const artifact = await ensureWorkflowArtifact(
           planPath,
-          extractTextFromToolResult(result),
+          extractTextFromToolResult(planRun.result),
         );
 
         if (state) {
@@ -2995,9 +3252,11 @@ Task ID: ${taskId}
             phase: "plan",
             artifactPath: planPath,
             artifactCreated: artifact.created,
+            followupDecision: planRun.decision,
           });
       } catch (error) {
         if (String(error).includes("subagent_run_dag APIが利用できません")) {
+          const dagParams = buildDynamicPlanDagParams(params.task, researchPath, planPath, taskId);
           return makeResult(`計画フェーズの実行指示
 
 Task ID: ${taskId}
@@ -3008,7 +3267,7 @@ subagent_run_dag(${JSON.stringify(dagParams, null, 2)})
 \`\`\`
 
 完了後は ${planPath} を確認し、question ツールで承認を取ってください。
-`, { taskId, phase: "plan", artifactPath: planPath, requiresDagExecution: true });
+`, { taskId, phase: "plan", artifactPath: planPath, requiresDagExecution: true, dynamicPlan: true });
         }
 
         return makeResult(`エラー: plan フェーズの実行に失敗しました。\n\n${error}`, {

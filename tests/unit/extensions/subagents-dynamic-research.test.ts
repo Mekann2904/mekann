@@ -161,12 +161,16 @@ function createFakePi() {
 }
 
 describe("subagent_run_dag dynamic research", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     executeDagMock.mockReset();
     executeWithAdaptOrchMock.mockReset();
     addNodeMock.mockReset();
     addDependencyMock.mockReset();
     addInputContextMock.mockReset();
+    const subagentsModule = await import("../../../.pi/extensions/subagents.js");
+    if (typeof subagentsModule.resetForTesting === "function") {
+      subagentsModule.resetForTesting();
+    }
   });
 
   it("dynamicResearch 指定時は legacy executeDag で deep-dive を差し込む", async () => {
@@ -263,6 +267,103 @@ describe("subagent_run_dag dynamic research", () => {
       needsExternalDeepDive: true,
       needsCodebaseDeepDive: false,
       rationale: "external docs are still unclear",
+    });
+  });
+
+  it("dynamicPlan 指定時は legacy executeDag で plan deep-dive を差し込む", async () => {
+    executeDagMock.mockImplementation(async (_plan, _executor, options) => {
+      await options.onBatchSettled?.(
+        {
+          results: new Map([
+            ["plan-findings", { status: "completed", output: { output: "findings" } }],
+            ["plan-gap-check", {
+              status: "completed",
+              output: {
+                output: [
+                  "DEEP_DIVE_CHANGES: yes",
+                  "DEEP_DIVE_VALIDATION: no",
+                  "RATIONALE: implementation scope is still vague",
+                ].join("\n"),
+              },
+            }],
+          ]),
+          completedTaskIds: ["plan-gap-check"],
+          failedTaskIds: [],
+          getStats: () => ({ total: 2, completed: 2, failed: 0, pending: 0, running: 0 }),
+          addNode: addNodeMock,
+          removeNode: vi.fn(),
+          addDependency: addDependencyMock,
+          addInputContext: addInputContextMock,
+          removeDependency: vi.fn(),
+          requeueTask: vi.fn(),
+          getTask: vi.fn(),
+        },
+        {
+          completedTaskIds: ["plan-gap-check"],
+          failedTaskIds: [],
+          results: [],
+        },
+      );
+
+      return {
+        planId: "ul-plan-dynamic-dag",
+        overallStatus: "completed",
+        totalDurationMs: 1,
+        completedTaskIds: ["plan-gap-check", "plan-synthesis"],
+        failedTaskIds: [],
+        skippedTaskIds: [],
+        taskResults: new Map([
+          ["plan-gap-check", { taskId: "plan-gap-check", status: "completed", output: { output: "gap done" }, durationMs: 1 }],
+          ["plan-synthesis", { taskId: "plan-synthesis", status: "completed", output: { output: "# Plan\n\nfinal doc" }, durationMs: 1 }],
+        ]),
+      };
+    });
+
+    const registerSubagentExtension = (await import("../../../.pi/extensions/subagents.js")).default;
+    const pi = createFakePi();
+    registerSubagentExtension(pi as any);
+
+    const tool = pi.tools.get("subagent_run_dag");
+    const result = await tool.execute(
+      "tc-2",
+      {
+        task: "通知基盤の plan を作る",
+        autoGenerate: false,
+        plan: {
+          id: "ul-plan-dynamic-dag",
+          description: "dynamic plan",
+          tasks: [
+            { id: "plan-findings", description: "findings", assignedAgent: "architect", dependencies: [] },
+            { id: "plan-gap-check", description: "gap", assignedAgent: "architect", dependencies: ["plan-findings"] },
+            { id: "plan-synthesis", description: "synthesis", assignedAgent: "architect", dependencies: ["plan-gap-check"] },
+          ],
+        },
+        dynamicPlan: {
+          task: "通知基盤の plan を作る",
+          gapTaskId: "plan-gap-check",
+          synthesisTaskId: "plan-synthesis",
+        },
+      },
+      undefined,
+      undefined,
+      {
+        cwd: "/tmp/subagents-dynamic",
+        model: { id: "gpt-test", provider: "openai" },
+      },
+    );
+
+    expect(executeDagMock).toHaveBeenCalledTimes(1);
+    expect(executeWithAdaptOrchMock).not.toHaveBeenCalled();
+    expect(addNodeMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: "plan-deep-dive-changes",
+      assignedAgent: "architect",
+    }));
+    expect(addDependencyMock).toHaveBeenCalledWith("plan-synthesis", "plan-deep-dive-changes");
+    expect(addInputContextMock).toHaveBeenCalledWith("plan-synthesis", "plan-deep-dive-changes");
+    expect(result.details.followupDecision).toEqual({
+      needsChangesDeepDive: true,
+      needsValidationDeepDive: false,
+      rationale: "implementation scope is still vague",
     });
   });
 });

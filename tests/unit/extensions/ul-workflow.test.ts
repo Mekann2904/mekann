@@ -621,4 +621,58 @@ describe("ul-workflow", () => {
       rationale: "external docs are still unclear",
     });
   });
+
+  it("plan フェーズは単一の dynamic DAG を使う", async () => {
+    const extension = (await import("../../../.pi/extensions/ul-workflow.js")).default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    const startTool = pi.tools.get("ul_workflow_start");
+    const startResult = await startTool.execute("start", { task: "通知基盤を設計する" }, undefined, undefined, {});
+    const taskId = startResult.details.taskId;
+    updateWorkflowState(taskId, (state) => ({
+      ...state,
+      phase: "plan",
+      phaseIndex: 1,
+      approvedPhases: ["research"],
+    }));
+
+    const capturedPlans: any[] = [];
+    const planTool = pi.tools.get("ul_workflow_plan");
+    const result = await planTool.execute(
+      "plan",
+      { task: "通知基盤を設計する", task_id: taskId },
+      undefined,
+      undefined,
+      {
+        executeTool: vi.fn(async ({ toolName, params }: { toolName: string; params: Record<string, unknown> }) => {
+          expect(toolName).toBe("subagent_run_dag");
+          capturedPlans.push(params);
+          return {
+            content: [{ type: "text", text: "# Plan\n\nfinal dynamic plan doc" }],
+            details: {
+              followupDecision: {
+                needsChangesDeepDive: true,
+                needsValidationDeepDive: false,
+                rationale: "implementation scope is still vague",
+              },
+            },
+          };
+        }),
+      },
+    );
+
+    expect(capturedPlans).toHaveLength(1);
+    expect(capturedPlans[0]?.plan?.id).toBe("ul-plan-dynamic-dag");
+    expect(capturedPlans[0]?.dynamicPlan).toEqual({
+      task: "通知基盤を設計する",
+      gapTaskId: "plan-gap-check",
+      synthesisTaskId: "plan-synthesis",
+    });
+    expect(result.details.followupDecision).toEqual({
+      needsChangesDeepDive: true,
+      needsValidationDeepDive: false,
+      rationale: "implementation scope is still vague",
+    });
+  });
 });
