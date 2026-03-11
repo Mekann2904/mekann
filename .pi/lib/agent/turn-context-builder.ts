@@ -46,7 +46,7 @@ function buildRuntimeHints(): string[] {
   return uniqueSorted(telemetryHints);
 }
 
-const SEARCH_TOOL_NAMES = new Set([
+const REPOSITORY_RESEARCH_TOOL_NAMES = new Set([
   "file_candidates",
   "code_search",
   "sym_find",
@@ -57,8 +57,21 @@ const SEARCH_TOOL_NAMES = new Set([
   "enhanced_read",
 ]);
 
-function hasSearchTools(context: TurnExecutionContext): boolean {
-  return context.tools.activeToolNames.some((toolName) => SEARCH_TOOL_NAMES.has(toolName));
+const EXTERNAL_RESEARCH_TOOL_NAMES = new Set([
+  "web_search",
+  "browser",
+  "playwright",
+  "fetch",
+  "fetch_url",
+  "open_url",
+  "mcp_list_resources",
+  "mcp_read_resource",
+]);
+
+function hasResearchTools(context: TurnExecutionContext): boolean {
+  return context.tools.activeToolNames.some((toolName) =>
+    REPOSITORY_RESEARCH_TOOL_NAMES.has(toolName) || EXTERNAL_RESEARCH_TOOL_NAMES.has(toolName),
+  );
 }
 
 function inferPreferredSubagentIds(
@@ -220,7 +233,7 @@ export function deriveTurnExecutionDecisions(
   const allowSearchExtensions =
     input.taskKind === "research" &&
     context.policy.mode !== "plan" &&
-    hasSearchTools(context);
+    hasResearchTools(context);
   const allowSubtaskDelegation =
     context.policy.mode !== "plan" &&
     context.policy.permissions.subtasks === "allow";

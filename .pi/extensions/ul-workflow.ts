@@ -425,12 +425,15 @@ function buildResearchDagParams(
 
 観点:
 - 実装に必要な外部知識を洗い出す
+- 採用している技術スタック、関連ライブラリ、API surface を特定する
 - 公式ドキュメント、一次情報、信頼できる技術資料を web で調べる
 - ライブラリの使い方、制約、既知の落とし穴、推奨構成を確認する
+- 使った参考文献を source / title / URL 単位で残す
+- 外部調査ツールが使えない場合は、その制約自体を明記する
 - 調査結果を plan にどう反映するかまで整理する
 
 出力:
-- 外部調査の要点と plan への反映方針をまとめた調査メモ`,
+- 外部調査の要点、参考文献、plan への反映方針をまとめた調査メモ`,
         assignedAgent: "researcher",
         dependencies: [],
         priority: "high",
@@ -460,7 +463,10 @@ function buildResearchDagParams(
 必須要件:
 - 調査結果を後で参照できる文書として整理する
 - User Intent, Requested Outcome, Constraints, Unknowns を整理する
+- 調査対象の技術スタック、関連ライブラリ、API surface を整理する
 - 外部調査で何を見て、何を plan に反映するかを書く
+- References セクションを作り、使った公式ドキュメントや資料を列挙する
+- 外部調査をしなかった場合は、なぜ不要だったか、またはなぜ実行できなかったかを書く
 - ローカルコードの確認結果は、外部調査と要求解釈の後に整理する
 - 最後に Plan Inputs を整理し、plan に渡す判断材料を明示する
 - 関連ファイルパスを明記する
@@ -987,6 +993,7 @@ function generateResearchInstruction(
 強調すべき点:
 - research は単なるコード棚卸しではありません
 - 新規構築、複合技術、未知ライブラリ、表現品質が重要なタスクでは web 検索を強く優先してください
+- 採用技術スタックや依存ライブラリに関わる場合は、コードベースだけで結論を出さないでください
 - 表面的な読み取りでは不十分です
 - 調査結果は plan を深くするための材料でなければなりません
 
@@ -996,7 +1003,9 @@ function generateResearchInstruction(
 - Requested Outcome
 - Constraints
 - Unknowns
+- Tech Stack / APIs To Check
 - External Research Findings
+- References
 - Local Codebase Findings
 - Risks
 - Plan Inputs
@@ -1020,7 +1029,7 @@ research.md の最後に以下のセクションを必ず含めてください:
 - セキュリティ脆弱性の修正
 - 暗号化・復号化処理
 `,
-    extraContext: `research.md は ${researchPath} に保存してください。永続的な成果物です。単なる要約ではなく、後で参照できる詳細なドキュメントを作成してください。顧客要求の解釈、外部調査、ローカル確認、plan への反映をつなげて書いてください。高リスク判定は必ず含めてください。`,
+    extraContext: `research.md は ${researchPath} に保存してください。永続的な成果物です。単なる要約ではなく、後で参照できる詳細なドキュメントを作成してください。顧客要求の解釈、技術スタック調査、外部調査、ローカル確認、plan への反映をつなげて書いてください。References セクションを必ず含めてください。高リスク判定は必ず含めてください。`,
   };
 }
 

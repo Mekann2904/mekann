@@ -121,6 +121,9 @@ describe("buildSubagentPrompt", () => {
     expect(prompt).toContain("file_candidates");
     expect(prompt).toContain("code_search");
     expect(prompt).toContain("sym_find");
+    expect(prompt).toContain("公式ドキュメント");
+    expect(prompt).toContain("References");
+    expect(prompt).toContain("技術スタック");
     expect(prompt).toContain("# Turn Execution Context");
     expect(prompt).toContain("Autonomous Loop Rules (INTERNAL MODE)");
     expect(prompt).toContain("single highest-priority unfinished item");
