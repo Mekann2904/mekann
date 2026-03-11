@@ -1362,11 +1362,6 @@ async function ensureUlExecutionPlan(
     throw new Error("UL execution plan の planId を取得できませんでした");
   }
 
-  await executeTool("plan_add_step", {
-    planId,
-    title: "plan.md に沿って実装する",
-    description: `対象: ${planPath}`,
-  });
   await executeTool("plan_update_status", {
     planId,
     status: "active",
