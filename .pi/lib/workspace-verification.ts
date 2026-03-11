@@ -1764,6 +1764,20 @@ function extractUrls(content: string): Array<{ url: string; port?: number }> {
   return results;
 }
 
+function isBrowserBaseUrlCandidate(url: string): boolean {
+  const normalized = url.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return !(
+    normalized.includes("/mcp")
+    || normalized.includes("/sse")
+    || normalized.includes("/api/")
+    || normalized.endsWith("/api")
+  );
+}
+
 function mergeRunbookHints(target: ExtractedRunbookHints, source: ExtractedRunbookHints): ExtractedRunbookHints {
   return {
     commands: {
@@ -1775,10 +1789,12 @@ function mergeRunbookHints(target: ExtractedRunbookHints, source: ExtractedRunbo
     runtime: {
       ...source.runtime,
       ...target.runtime,
+      readyPort: source.runtime.readyPort ?? target.runtime.readyPort,
     },
     ui: {
       ...source.ui,
       ...target.ui,
+      baseUrl: source.ui.baseUrl ?? target.ui.baseUrl,
     },
     acceptanceCriteria: Array.from(new Set([...source.acceptanceCriteria, ...target.acceptanceCriteria])),
     validationCommands: Array.from(new Set([...source.validationCommands, ...target.validationCommands])),
@@ -1791,6 +1807,7 @@ function extractHintsFromMarkdown(path: string, content: string): ExtractedRunbo
   const { body } = parseFrontmatter<Record<string, unknown>>(content);
   const commands = extractCommands(body);
   const urls = extractUrls(body);
+  const browserUrls = urls.filter((item) => isBrowserBaseUrlCandidate(item.url));
   const acceptanceCriteria = extractAcceptanceCriteria(body);
 
   const hints: ExtractedRunbookHints = {
@@ -1823,10 +1840,10 @@ function extractHintsFromMarkdown(path: string, content: string): ExtractedRunbo
     }
   }
 
-  if (urls[0]?.url) {
+  if (browserUrls[0]?.url) {
     hints.ui.enabled = true;
-    hints.ui.baseUrl = urls[0].url;
-    hints.runtime.readyPort = hints.runtime.readyPort ?? urls[0].port;
+    hints.ui.baseUrl = browserUrls[0].url;
+    hints.runtime.readyPort = hints.runtime.readyPort ?? browserUrls[0].port;
   }
 
   return hints;
@@ -2015,7 +2032,11 @@ export function buildWorkspaceVerificationRunbook(cwd?: string): WorkspaceVerifi
     keepAliveOnShutdown: hints.runtime.keepAliveOnShutdown ?? true,
   };
 
-  const baseUrl = hints.ui.baseUrl ?? (runtime.readyPort ? `http://127.0.0.1:${runtime.readyPort}` : undefined);
+  // 実際に起動するランタイムのポートが分かる場合は、それを最優先に使う。
+  // README や plan に残った別用途の localhost URL より、検証対象に近いから。
+  const baseUrl = runtime.readyPort
+    ? `http://127.0.0.1:${runtime.readyPort}`
+    : hints.ui.baseUrl;
   const ui: WorkspaceVerificationUiConfig = {
     enabled: hints.ui.enabled === true || Boolean(baseUrl && profile === "web-app"),
     session: hints.ui.session,
