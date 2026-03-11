@@ -6,16 +6,34 @@
 import { setTimeout as delay } from "node:timers/promises";
 
 import { callModelViaPi } from "../shared/pi-print-executor.js";
-import { buildBugHuntPrompt, parseBugHuntModelOutput } from "./reporting.js";
+import {
+  buildBugHuntHypothesisPrompt,
+  buildBugHuntInvestigationPrompt,
+  buildBugHuntObserverPrompt,
+  buildBugHuntQueryPrompt,
+  parseBugHuntHypothesisOutput,
+  parseBugHuntInvestigationOutput,
+  parseBugHuntModelOutput,
+  parseBugHuntQueryOutput,
+} from "./reporting.js";
+import {
+  buildBugHuntInvestigationContext,
+  collectBugHuntCandidates,
+  summarizeCandidatesForState,
+  validateBugHuntReportEvidence,
+} from "./localization.js";
 import {
   appendBugHuntReportTask,
+  buildBugHuntSemanticDedupeKey,
   createBugHuntFingerprint,
   createDefaultBugHuntState,
   hasBugHuntFingerprint,
+  listRecentBugHuntDedupeKeys,
   listRecentBugHuntTitles,
   loadBugHuntState,
   saveBugHuntState,
 } from "./storage.js";
+import type { BugHuntStage, BugHuntState } from "./types.js";
 
 function readArgs(argv: string[]): Record<string, string> {
   const args: Record<string, string> = {};
@@ -61,6 +79,21 @@ function saveHeartbeat(summary?: string): void {
   }, cwd);
 }
 
+function saveStage(stage: BugHuntStage, summary?: string, patch: Partial<BugHuntState> = {}): void {
+  const current = loadBugHuntState(cwd);
+  if (current.runId !== runId) {
+    return;
+  }
+
+  saveBugHuntState({
+    ...current,
+    ...patch,
+    currentStage: stage,
+    lastHeartbeatAt: new Date().toISOString(),
+    lastSummary: summary ?? current.lastSummary,
+  }, cwd);
+}
+
 function requestStop(reason: string): void {
   stopping = true;
   activeController?.abort();
@@ -100,11 +133,44 @@ function finalizeState(status: "stopped" | "failed", summary: string, lastError?
     ...current,
     status,
     stopRequested: status !== "failed",
+    currentStage: "idle",
     stoppedAt: new Date().toISOString(),
     lastHeartbeatAt: new Date().toISOString(),
     lastSummary: summary,
     lastError: lastError ?? (status === "failed" ? summary : null),
   }, cwd);
+}
+
+function ensureRemainingBudget(deadline: number, stage: string): number {
+  const remaining = deadline - Date.now();
+  if (remaining < 5_000) {
+    throw new Error(`iteration budget exhausted before ${stage}`);
+  }
+  return remaining;
+}
+
+async function callStageModel(
+  state: BugHuntState,
+  prompt: string,
+  deadline: number,
+  entityLabel: string,
+): Promise<string> {
+  if (!state.model) {
+    throw new Error("bug-hunt model config is missing");
+  }
+  const timeoutMs = Math.min(state.timeoutMs, ensureRemainingBudget(deadline, entityLabel));
+  activeController = new AbortController();
+  try {
+    return await callModelViaPi({
+      model: state.model,
+      prompt,
+      timeoutMs,
+      signal: activeController.signal,
+      entityLabel,
+    });
+  } finally {
+    activeController = null;
+  }
 }
 
 async function runIteration(): Promise<void> {
@@ -116,25 +182,33 @@ async function runIteration(): Promise<void> {
     throw new Error("bug-hunt model config is missing");
   }
 
-  const prompt = buildBugHuntPrompt({
+  const deadline = Date.now() + state.timeoutMs;
+  const knownDedupeKeys = Array.from(new Set([
+    ...state.reportedDedupeKeys,
+    ...listRecentBugHuntDedupeKeys(cwd),
+  ])).slice(-20);
+  const recentTitles = listRecentBugHuntTitles(cwd);
+
+  saveStage("retrieve", "planning bug-hunt query");
+  const queryPrompt = buildBugHuntQueryPrompt({
     taskPrompt: state.taskPrompt,
     cwd,
     iteration: state.iterationCount + 1,
-    knownFingerprints: state.reportedFingerprints,
-    recentTitles: listRecentBugHuntTitles(cwd),
+    knownDedupeKeys,
+    recentTitles,
+    seenFiles: state.seenFiles,
+  });
+  const rawQuery = await callStageModel(state, queryPrompt, deadline, "bug-hunt-query");
+  const queryPlan = parseBugHuntQueryOutput(rawQuery);
+
+  saveStage("retrieve", `retrieving candidates for: ${queryPlan.query}`);
+  const candidates = await collectBugHuntCandidates({
+    cwd,
+    query: queryPlan.query,
+    keywords: queryPlan.keywords,
+    limit: 8,
   });
 
-  activeController = new AbortController();
-  const raw = await callModelViaPi({
-    model: state.model,
-    prompt,
-    timeoutMs: state.timeoutMs,
-    signal: activeController.signal,
-    entityLabel: "bug-hunt",
-  });
-  activeController = null;
-
-  const parsed = parseBugHuntModelOutput(raw);
   const latest = loadBugHuntState(cwd);
   if (latest.runId !== runId) {
     return;
@@ -146,38 +220,152 @@ async function runIteration(): Promise<void> {
     lastHeartbeatAt: new Date().toISOString(),
     lastIterationAt: new Date().toISOString(),
     lastError: null,
+    seenFiles: Array.from(new Set([...latest.seenFiles, ...candidates.map((candidate) => candidate.file)])).slice(-256),
+    lastCandidates: summarizeCandidatesForState(candidates),
   };
+
+  if (candidates.length === 0) {
+    saveBugHuntState({
+      ...nextState,
+      currentStage: "sleeping",
+      lastObserverDecision: "no candidates found",
+      lastSummary: `no new bug: no localization candidates for "${queryPlan.query}"`,
+    }, cwd);
+    return;
+  }
+
+  saveStage("hypothesis", `scoring ${candidates.length} candidates`, {
+    ...nextState,
+  });
+  const rawHypotheses = await callStageModel(state, buildBugHuntHypothesisPrompt({
+    queryPlan,
+    candidates,
+  }), deadline, "bug-hunt-hypothesis");
+  const hypotheses = parseBugHuntHypothesisOutput(rawHypotheses)
+    .filter((hypothesis) => candidates.some((candidate) => candidate.id === hypothesis.candidateId))
+    .sort((left, right) => right.confidence - left.confidence)
+    .slice(0, 3);
+
+  if (hypotheses.length === 0) {
+    saveBugHuntState({
+      ...nextState,
+      currentStage: "sleeping",
+      lastObserverDecision: "observer skipped because no hypothesis survived",
+      lastSummary: "no new bug: hypothesis stage rejected all candidates",
+    }, cwd);
+    return;
+  }
+
+  const investigations = [];
+  const rejectedHypotheses = [...nextState.rejectedHypotheses];
+
+  for (const hypothesis of hypotheses) {
+    const candidate = candidates.find((entry) => entry.id === hypothesis.candidateId);
+    if (!candidate) {
+      continue;
+    }
+
+    saveStage("investigate", `investigating ${candidate.file}${candidate.line ? `:${candidate.line}` : ""}`);
+    const context = await buildBugHuntInvestigationContext({
+      cwd,
+      candidate,
+    });
+    const rawInvestigation = await callStageModel(state, buildBugHuntInvestigationPrompt({
+      queryPlan,
+      candidate,
+      hypothesis,
+      context,
+      rejectedHypotheses,
+    }), deadline, "bug-hunt-investigation");
+    const investigation = parseBugHuntInvestigationOutput(rawInvestigation);
+    investigations.push({
+      ...investigation,
+      hypothesisId: hypothesis.id,
+      candidateId: candidate.id,
+    });
+
+    if (investigation.status === "rejected") {
+      rejectedHypotheses.push(hypothesis.hypothesis);
+    }
+  }
+
+  if (investigations.length === 0) {
+    saveBugHuntState({
+      ...nextState,
+      rejectedHypotheses: rejectedHypotheses.slice(-256),
+      currentStage: "sleeping",
+      lastObserverDecision: "investigation produced no usable result",
+      lastSummary: "no new bug: investigations did not complete",
+    }, cwd);
+    return;
+  }
+
+  saveStage("observe", "observer reranking investigation results", {
+    rejectedHypotheses: rejectedHypotheses.slice(-256),
+  });
+  const rawObserver = await callStageModel(state, buildBugHuntObserverPrompt({
+    taskPrompt: state.taskPrompt,
+    queryPlan,
+    investigations,
+    knownDedupeKeys,
+    recentTitles,
+  }), deadline, "bug-hunt-observer");
+  const parsed = parseBugHuntModelOutput(rawObserver);
 
   if (parsed.status === "no_bug") {
     saveBugHuntState({
       ...nextState,
+      currentStage: "sleeping",
+      rejectedHypotheses: rejectedHypotheses.slice(-256),
+      lastObserverDecision: parsed.reason,
       lastSummary: `no new bug: ${parsed.reason}`,
     }, cwd);
     return;
   }
 
-  const fingerprint = createBugHuntFingerprint(parsed.report.dedupeKey);
+  saveStage("report", `validating report: ${parsed.report.title}`);
+  const validation = await validateBugHuntReportEvidence(parsed.report, cwd);
+  if (!validation.valid || !validation.report) {
+    saveBugHuntState({
+      ...nextState,
+      currentStage: "sleeping",
+      rejectedHypotheses: rejectedHypotheses.slice(-256),
+      lastObserverDecision: validation.issues.join("; "),
+      lastSummary: `observer rejected invalid evidence: ${validation.issues.join("; ")}`,
+    }, cwd);
+    return;
+  }
+
+  const semanticKey = buildBugHuntSemanticDedupeKey(validation.report);
+  const fingerprint = createBugHuntFingerprint(semanticKey);
   if (
     nextState.reportedFingerprints.includes(fingerprint)
     || hasBugHuntFingerprint(fingerprint, cwd)
   ) {
     saveBugHuntState({
       ...nextState,
-      lastSummary: `duplicate skipped: ${parsed.report.title}`,
+      currentStage: "sleeping",
+      reportedDedupeKeys: Array.from(new Set([...nextState.reportedDedupeKeys, validation.report.dedupeKey])).slice(-256),
+      lastObserverDecision: `duplicate skipped: ${validation.report.title}`,
+      lastSummary: `duplicate skipped: ${validation.report.title}`,
     }, cwd);
     return;
   }
 
-  const task = appendBugHuntReportTask(parsed.report, {
+  const task = appendBugHuntReportTask(validation.report, {
     cwd,
     runId,
   });
 
   saveBugHuntState({
     ...nextState,
+    currentStage: "sleeping",
     reportedCount: nextState.reportedCount + 1,
     reportedFingerprints: [...nextState.reportedFingerprints, fingerprint],
-    lastSummary: `reported ${task.id}: ${parsed.report.title}`,
+    reportedDedupeKeys: Array.from(new Set([...nextState.reportedDedupeKeys, validation.report.dedupeKey])).slice(-256),
+    rejectedHypotheses: rejectedHypotheses.slice(-256),
+    lastObserverDecision: `reported ${validation.report.title}`,
+    lastSummary: `reported ${task.id}: ${validation.report.title}`,
   }, cwd);
 }
 
@@ -198,6 +386,7 @@ async function main(): Promise<void> {
   saveBugHuntState({
     ...normalized,
     status: "running",
+    currentStage: "booting",
     stopRequested: false,
     stoppedAt: null,
     lastHeartbeatAt: new Date().toISOString(),

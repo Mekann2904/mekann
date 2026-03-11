@@ -48,6 +48,7 @@ function formatState(state: BugHuntState, processRecord: BackgroundProcessRecord
     "# Bug Hunt Status",
     "",
     `status: ${state.status}`,
+    `current_stage: ${state.currentStage}`,
     `run_id: ${state.runId ?? "-"}`,
     `background_process_id: ${state.backgroundProcessId ?? "-"}`,
     `background_process_status: ${processRecord?.status ?? "-"}`,
@@ -62,8 +63,13 @@ function formatState(state: BugHuntState, processRecord: BackgroundProcessRecord
     `interval_ms: ${state.intervalMs}`,
     `timeout_ms: ${state.timeoutMs}`,
     `last_summary: ${state.lastSummary ?? "-"}`,
+    `last_observer_decision: ${state.lastObserverDecision ?? "-"}`,
     `last_error: ${state.lastError ?? "-"}`,
   ];
+
+  if (state.lastCandidates.length > 0) {
+    lines.push(`last_candidates: ${state.lastCandidates.join(" | ")}`);
+  }
 
   if (processRecord) {
     lines.push(`log: ${processRecord.logPath}`);
@@ -128,6 +134,7 @@ function buildRunningStatePatch(input: {
     ...input.previous,
     runId: createBugHuntRunId(),
     status: "running",
+    currentStage: "booting",
     backgroundProcessId: null,
     startedAt: new Date().toISOString(),
     stoppedAt: null,
@@ -264,6 +271,7 @@ export default function registerBugHuntExtension(pi: ExtensionAPI): void {
           ...loadBugHuntState(cwd),
           runId: nextState.runId,
           status: "failed",
+          currentStage: "idle",
           backgroundProcessId: null,
           startedAt: nextState.startedAt,
           stoppedAt: new Date().toISOString(),
@@ -323,6 +331,7 @@ export default function registerBugHuntExtension(pi: ExtensionAPI): void {
         const stopped = saveBugHuntState({
           ...current,
           status: "stopped",
+          currentStage: "idle",
           stopRequested: true,
           stoppedAt: new Date().toISOString(),
           lastSummary: "no active bug-hunt run",
@@ -355,6 +364,7 @@ export default function registerBugHuntExtension(pi: ExtensionAPI): void {
       const stoppedState = saveBugHuntState({
         ...loadBugHuntState(cwd),
         status: "stopped",
+        currentStage: "idle",
         stopRequested: true,
         stoppedAt: new Date().toISOString(),
         lastSummary: stoppedProcess
@@ -397,6 +407,7 @@ export default function registerBugHuntExtension(pi: ExtensionAPI): void {
           saveBugHuntState({
             ...loadBugHuntState(cwd),
             status: "stopped",
+            currentStage: "idle",
             stopRequested: true,
             stoppedAt: new Date().toISOString(),
             lastSummary: "stopped from slash command",

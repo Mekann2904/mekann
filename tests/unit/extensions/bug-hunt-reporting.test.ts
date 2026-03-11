@@ -5,22 +5,146 @@
 
 import { describe, expect, it } from "vitest";
 
-import { buildBugHuntPrompt, parseBugHuntModelOutput } from "../../../.pi/extensions/bug-hunt/reporting.js";
+import {
+  buildBugHuntHypothesisPrompt,
+  buildBugHuntInvestigationPrompt,
+  buildBugHuntQueryPrompt,
+  parseBugHuntHypothesisOutput,
+  parseBugHuntInvestigationOutput,
+  parseBugHuntModelOutput,
+  parseBugHuntQueryOutput,
+} from "../../../.pi/extensions/bug-hunt/reporting.js";
 
 describe("bug-hunt reporting helpers", () => {
-  it("prompt に mission と重複回避情報を含める", () => {
-    const prompt = buildBugHuntPrompt({
+  it("query prompt に mission と重複回避情報を含める", () => {
+    const prompt = buildBugHuntQueryPrompt({
       cwd: "/repo",
       iteration: 3,
       taskPrompt: "Find lifecycle bugs",
-      knownFingerprints: ["abc", "def"],
+      knownDedupeKeys: ["abc", "def"],
       recentTitles: ["old title"],
+      seenFiles: ["src/old.ts"],
     });
 
     expect(prompt).toContain("Find lifecycle bugs");
     expect(prompt).toContain("Known dedupe keys: abc, def");
     expect(prompt).toContain("Recent bug titles: old title");
-    expect(prompt).toContain('"status": "bug_found" | "no_bug"');
+    expect(prompt).toContain("Recently seen files: src/old.ts");
+    expect(prompt).toContain('"query": "short localized investigation query"');
+  });
+
+  it("query plan JSON を正規化できる", () => {
+    const result = parseBugHuntQueryOutput(`
+{
+  "query": "Timer leak during repeated startup",
+  "keywords": ["timer", "startup", "cleanup"],
+  "bugSignals": ["resource leak"],
+  "areasToAvoid": ["already reported timer bug"],
+  "confidence": 0.77
+}
+    `);
+
+    expect(result.query).toBe("Timer leak during repeated startup");
+    expect(result.keywords).toEqual(["timer", "startup", "cleanup"]);
+    expect(result.bugSignals).toEqual(["resource leak"]);
+  });
+
+  it("hypothesis prompt と parser が候補を扱える", () => {
+    const prompt = buildBugHuntHypothesisPrompt({
+      queryPlan: {
+        query: "Timer leak during startup",
+        keywords: ["timer", "startup"],
+        bugSignals: ["resource leak"],
+        areasToAvoid: [],
+        confidence: 0.8,
+      },
+      candidates: [{
+        id: "candidate:src/app.ts|10|startTimer",
+        file: "src/app.ts",
+        line: 10,
+        symbolName: "startTimer",
+        sources: ["locagent"],
+        score: 2.4,
+        summary: "setInterval is created in startup",
+        snippet: "10: const id = setInterval(...)",
+      }],
+    });
+
+    expect(prompt).toContain("candidate:src/app.ts|10|startTimer");
+
+    const hypotheses = parseBugHuntHypothesisOutput(`
+{
+  "hypotheses": [
+    {
+      "id": "hyp-1",
+      "candidateId": "candidate:src/app.ts|10|startTimer",
+      "titleHint": "Timer is never cleared",
+      "hypothesis": "The startup path allocates a timer without cleanup.",
+      "severity": "high",
+      "confidence": 0.88,
+      "focus": ["shutdown path", "cleanup"]
+    }
+  ]
+}
+    `);
+
+    expect(hypotheses).toHaveLength(1);
+    expect(hypotheses[0]?.candidateId).toBe("candidate:src/app.ts|10|startTimer");
+    expect(hypotheses[0]?.severity).toBe("high");
+  });
+
+  it("investigation JSON を正規化できる", () => {
+    const prompt = buildBugHuntInvestigationPrompt({
+      queryPlan: {
+        query: "Timer leak during startup",
+        keywords: ["timer"],
+        bugSignals: ["resource leak"],
+        areasToAvoid: [],
+        confidence: 0.7,
+      },
+      candidate: {
+        id: "candidate:src/app.ts|10|startTimer",
+        file: "src/app.ts",
+        line: 10,
+        symbolName: "startTimer",
+        sources: ["locagent"],
+        score: 2.4,
+        summary: "setInterval is created in startup",
+      },
+      hypothesis: {
+        id: "hyp-1",
+        candidateId: "candidate:src/app.ts|10|startTimer",
+        titleHint: "Timer leak",
+        hypothesis: "The timer is never cleared on shutdown.",
+        severity: "high",
+        confidence: 0.8,
+        focus: ["shutdown"],
+      },
+      context: "Snippet...",
+      rejectedHypotheses: [],
+    });
+
+    expect(prompt).toContain('"status": "supported|rejected|inconclusive"');
+
+    const result = parseBugHuntInvestigationOutput(`
+{
+  "candidateId": "candidate:src/app.ts|10|startTimer",
+  "hypothesisId": "hyp-1",
+  "status": "supported",
+  "confidence": 0.84,
+  "title": "Timer leak on repeated startup",
+  "summary": "A timer is created during startup and never cleared.",
+  "why": "The cleanup path is missing a clearInterval call.",
+  "chain": ["startTimer", "shutdown"],
+  "evidence": [
+    { "file": "src/app.ts", "line": 10, "reason": "Timer allocation" }
+  ]
+}
+    `);
+
+    expect(result.status).toBe("supported");
+    expect(result.chain).toEqual(["startTimer", "shutdown"]);
+    expect(result.evidence[0]?.file).toBe("src/app.ts");
   });
 
   it("bug_found JSON を正規化できる", () => {

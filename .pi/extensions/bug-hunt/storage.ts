@@ -32,6 +32,25 @@ interface TaskStorageRecord {
 const DEFAULT_INTERVAL_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 180_000;
 const MAX_FINGERPRINTS = 256;
+const MAX_TRACKED_VALUES = 256;
+
+function uniqueTrimmed(values: unknown, limit: number = MAX_TRACKED_VALUES): string[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(values.filter((value): value is string => typeof value === "string" && value.trim().length > 0).map((value) => value.trim())),
+  ).slice(-limit);
+}
+
+function normalizeKeyText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9./:_-]+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 export function getDefaultBugHuntPrompt(): string {
   return [
@@ -43,9 +62,10 @@ export function getDefaultBugHuntPrompt(): string {
 
 export function createDefaultBugHuntState(): BugHuntState {
   return {
-    version: 1,
+    version: 2,
     runId: null,
     status: "idle",
+    currentStage: "idle",
     backgroundProcessId: null,
     startedAt: null,
     stoppedAt: null,
@@ -61,6 +81,11 @@ export function createDefaultBugHuntState(): BugHuntState {
     taskPrompt: getDefaultBugHuntPrompt(),
     model: null,
     reportedFingerprints: [],
+    reportedDedupeKeys: [],
+    seenFiles: [],
+    rejectedHypotheses: [],
+    lastCandidates: [],
+    lastObserverDecision: null,
   };
 }
 
@@ -73,9 +98,11 @@ export function loadBugHuntState(cwd: string = process.cwd()): BugHuntState {
   return {
     ...createDefaultBugHuntState(),
     ...raw,
-    reportedFingerprints: Array.isArray(raw.reportedFingerprints)
-      ? raw.reportedFingerprints.filter((value): value is string => typeof value === "string" && value.length > 0)
-      : [],
+    reportedFingerprints: uniqueTrimmed(raw.reportedFingerprints, MAX_FINGERPRINTS),
+    reportedDedupeKeys: uniqueTrimmed(raw.reportedDedupeKeys),
+    seenFiles: uniqueTrimmed(raw.seenFiles),
+    rejectedHypotheses: uniqueTrimmed(raw.rejectedHypotheses),
+    lastCandidates: uniqueTrimmed(raw.lastCandidates, 32),
   };
 }
 
@@ -83,9 +110,11 @@ export function saveBugHuntState(state: BugHuntState, cwd: string = process.cwd(
   const normalized: BugHuntState = {
     ...createDefaultBugHuntState(),
     ...state,
-    reportedFingerprints: Array.from(
-      new Set((state.reportedFingerprints ?? []).filter((value) => typeof value === "string" && value.length > 0)),
-    ).slice(-MAX_FINGERPRINTS),
+    reportedFingerprints: uniqueTrimmed(state.reportedFingerprints, MAX_FINGERPRINTS),
+    reportedDedupeKeys: uniqueTrimmed(state.reportedDedupeKeys),
+    seenFiles: uniqueTrimmed(state.seenFiles),
+    rejectedHypotheses: uniqueTrimmed(state.rejectedHypotheses),
+    lastCandidates: uniqueTrimmed(state.lastCandidates, 32),
   };
 
   writeJsonState({
@@ -102,6 +131,19 @@ export function createBugHuntRunId(): string {
 
 export function createBugHuntFingerprint(value: string): string {
   return createHash("sha1").update(value).digest("hex").slice(0, 12);
+}
+
+export function buildBugHuntSemanticDedupeKey(report: Pick<BugHuntReport, "title" | "why" | "dedupeKey" | "evidence">): string {
+  const evidenceKey = report.evidence
+    .map((entry) => `${normalizeKeyText(entry.file)}:${entry.line ?? 0}`)
+    .sort()
+    .join("|");
+
+  const primaryKey = normalizeKeyText(report.dedupeKey || "");
+  const titleKey = normalizeKeyText(report.title).slice(0, 160);
+  const whyKey = normalizeKeyText(report.why).slice(0, 160);
+
+  return [primaryKey, titleKey, whyKey, evidenceKey].filter((value) => value.length > 0).join("|");
 }
 
 export function buildBugHuntFingerprintTag(fingerprint: string): string {
@@ -189,6 +231,25 @@ export function listRecentBugHuntTitles(cwd: string = process.cwd(), limit: numb
     .map((task) => task.title);
 }
 
+export function listRecentBugHuntDedupeKeys(cwd: string = process.cwd(), limit: number = 20): string[] {
+  const results: string[] = [];
+
+  for (const task of loadBugHuntTasks(cwd)
+    .filter((task) => Array.isArray(task.tags) && task.tags.includes("bug-hunt"))
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))) {
+    const match = task.description?.match(/^Dedupe:\s*(.+)$/m);
+    if (!match?.[1]) {
+      continue;
+    }
+    results.push(match[1].trim());
+    if (results.length >= Math.max(1, limit)) {
+      break;
+    }
+  }
+
+  return results;
+}
+
 export function appendBugHuntReportTask(
   report: BugHuntReport,
   input: {
@@ -199,7 +260,7 @@ export function appendBugHuntReportTask(
   const cwd = input.cwd ?? process.cwd();
   const storage = loadTaskStorage<TaskStorageRecord>(cwd);
   const now = new Date().toISOString();
-  const fingerprint = createBugHuntFingerprint(report.dedupeKey);
+  const fingerprint = createBugHuntFingerprint(buildBugHuntSemanticDedupeKey(report));
 
   const task: TaskRecord = {
     id: createTaskId(),

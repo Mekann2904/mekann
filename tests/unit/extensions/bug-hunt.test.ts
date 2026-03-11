@@ -7,9 +7,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockState = vi.hoisted(() => ({
   state: {
-    version: 1,
+    version: 2,
     runId: null,
     status: "idle",
+    currentStage: "idle",
     backgroundProcessId: null,
     startedAt: null,
     stoppedAt: null,
@@ -25,6 +26,11 @@ const mockState = vi.hoisted(() => ({
     taskPrompt: "default task",
     model: null,
     reportedFingerprints: [],
+    reportedDedupeKeys: [],
+    seenFiles: [],
+    rejectedHypotheses: [],
+    lastCandidates: [],
+    lastObserverDecision: null,
   },
   processes: [] as Array<{
     id: string;
@@ -36,9 +42,10 @@ const mockState = vi.hoisted(() => ({
 vi.mock("../../../.pi/extensions/bug-hunt/storage.js", () => ({
   createBugHuntRunId: vi.fn(() => "bug-hunt-run-1"),
   createDefaultBugHuntState: vi.fn(() => ({
-    version: 1,
+    version: 2,
     runId: null,
     status: "idle",
+    currentStage: "idle",
     backgroundProcessId: null,
     startedAt: null,
     stoppedAt: null,
@@ -54,6 +61,11 @@ vi.mock("../../../.pi/extensions/bug-hunt/storage.js", () => ({
     taskPrompt: "default task",
     model: null,
     reportedFingerprints: [],
+    reportedDedupeKeys: [],
+    seenFiles: [],
+    rejectedHypotheses: [],
+    lastCandidates: [],
+    lastObserverDecision: null,
   })),
   loadBugHuntState: vi.fn(() => ({ ...mockState.state })),
   saveBugHuntState: vi.fn((state) => {
@@ -118,9 +130,10 @@ describe("bug-hunt extension", () => {
   beforeEach(() => {
     vi.resetModules();
     mockState.state = {
-      version: 1,
+      version: 2,
       runId: null,
       status: "idle",
+      currentStage: "idle",
       backgroundProcessId: null,
       startedAt: null,
       stoppedAt: null,
@@ -136,6 +149,11 @@ describe("bug-hunt extension", () => {
       taskPrompt: "default task",
       model: null,
       reportedFingerprints: [],
+      reportedDedupeKeys: [],
+      seenFiles: [],
+      rejectedHypotheses: [],
+      lastCandidates: [],
+      lastObserverDecision: null,
     };
     mockState.processes = [];
   });
@@ -175,6 +193,7 @@ describe("bug-hunt extension", () => {
 
     expect(result.content[0].text).toContain("bug-hunt started");
     expect(mockState.state.status).toBe("running");
+    expect(mockState.state.currentStage).toBe("booting");
     expect(mockState.state.runId).toBe("bug-hunt-run-1");
     expect(mockState.state.backgroundProcessId).toBe("bg-1");
   });
@@ -212,6 +231,7 @@ describe("bug-hunt extension", () => {
     });
 
     expect(result.content[0].text).toContain("already running");
+    expect(result.content[0].text).toContain("current_stage:");
   });
 
   it("bug_hunt_stop が stopRequested を立てる", async () => {

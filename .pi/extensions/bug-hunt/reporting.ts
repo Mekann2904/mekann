@@ -3,7 +3,17 @@
 // Why: runner の I/O を純粋関数へ分離してテストしやすくするため
 // Related: .pi/extensions/bug-hunt/runner.ts, .pi/extensions/bug-hunt/storage.ts, tests/unit/extensions/bug-hunt-reporting.test.ts
 
-import type { BugHuntEvidence, BugHuntModelResult, BugHuntReport, BugHuntSeverity } from "./types.js";
+import type {
+  BugHuntCandidate,
+  BugHuntEvidence,
+  BugHuntHypothesis,
+  BugHuntInvestigationResult,
+  BugHuntInvestigationStatus,
+  BugHuntModelResult,
+  BugHuntQueryPlan,
+  BugHuntReport,
+  BugHuntSeverity,
+} from "./types.js";
 
 function clampConfidence(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -35,8 +45,26 @@ function normalizeOptionalText(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function normalizeEvidence(value: unknown): BugHuntEvidence[] {
+function normalizeStringArray(value: unknown, limit: number = 12): string[] {
   if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0),
+    ),
+  ).slice(0, limit);
+}
+
+function normalizeEvidence(value: unknown, allowEmpty: boolean = false): BugHuntEvidence[] {
+  if (!Array.isArray(value)) {
+    if (allowEmpty) {
+      return [];
+    }
     throw new Error("evidence must be an array");
   }
 
@@ -64,7 +92,7 @@ function normalizeEvidence(value: unknown): BugHuntEvidence[] {
     });
   }
 
-  if (evidence.length === 0) {
+  if (!allowEmpty && evidence.length === 0) {
     throw new Error("at least one evidence entry is required");
   }
 
@@ -103,6 +131,98 @@ function normalizeBugReport(value: unknown): BugHuntReport {
   };
 }
 
+function normalizeCandidateId(value: unknown, fieldName: string = "candidateId"): string {
+  const raw = normalizeText(value, fieldName);
+  return raw.slice(0, 200);
+}
+
+function normalizeQueryPlan(value: unknown): BugHuntQueryPlan {
+  if (!value || typeof value !== "object") {
+    throw new Error("query plan payload must be an object");
+  }
+
+  const record = value as Record<string, unknown>;
+  const query = normalizeText(record.query, "query");
+  const keywords = normalizeStringArray(record.keywords, 16);
+
+  return {
+    query,
+    keywords: keywords.length > 0 ? keywords : query.split(/\s+/).slice(0, 8),
+    bugSignals: normalizeStringArray(record.bugSignals, 12),
+    areasToAvoid: normalizeStringArray(record.areasToAvoid, 12),
+    confidence: clampConfidence(record.confidence),
+  };
+}
+
+function normalizeHypotheses(value: unknown): BugHuntHypothesis[] {
+  if (!value || typeof value !== "object") {
+    throw new Error("hypothesis payload must be an object");
+  }
+
+  const entries = Array.isArray((value as { hypotheses?: unknown }).hypotheses)
+    ? (value as { hypotheses: unknown[] }).hypotheses
+    : [];
+
+  const hypotheses: BugHuntHypothesis[] = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const record = entry as Record<string, unknown>;
+    const candidateId = normalizeOptionalText(record.candidateId);
+    const hypothesis = normalizeOptionalText(record.hypothesis);
+    if (!candidateId || !hypothesis) {
+      continue;
+    }
+
+    hypotheses.push({
+      id: normalizeOptionalText(record.id) ?? `hypothesis-${index + 1}`,
+      candidateId: normalizeCandidateId(candidateId),
+      titleHint: normalizeOptionalText(record.titleHint) ?? hypothesis.slice(0, 120),
+      hypothesis,
+      severity: normalizeSeverity(record.severity),
+      confidence: clampConfidence(record.confidence),
+      focus: normalizeStringArray(record.focus, 8),
+    });
+  }
+
+  return hypotheses;
+}
+
+function normalizeInvestigationStatus(value: unknown): BugHuntInvestigationStatus {
+  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (raw === "supported" || raw === "rejected" || raw === "inconclusive") {
+    return raw;
+  }
+  return "inconclusive";
+}
+
+function normalizeInvestigation(value: unknown): BugHuntInvestigationResult {
+  if (!value || typeof value !== "object") {
+    throw new Error("investigation payload must be an object");
+  }
+
+  const record = value as Record<string, unknown>;
+  const title = normalizeOptionalText(record.title) ?? "Unconfirmed bug candidate";
+  const summary = normalizeOptionalText(record.summary) ?? title;
+  const why = normalizeOptionalText(record.why) ?? "The evidence is not yet conclusive.";
+
+  return {
+    hypothesisId: normalizeOptionalText(record.hypothesisId) ?? "unknown-hypothesis",
+    candidateId: normalizeCandidateId(record.candidateId),
+    status: normalizeInvestigationStatus(record.status),
+    confidence: clampConfidence(record.confidence),
+    title,
+    summary,
+    why,
+    evidence: normalizeEvidence(record.evidence, true),
+    chain: normalizeStringArray(record.chain, 12),
+    reproduction: normalizeOptionalText(record.reproduction),
+    suggestedFix: normalizeOptionalText(record.suggestedFix),
+  };
+}
+
 function extractJsonBlock(raw: string): string {
   const fencedMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fencedMatch?.[1]) {
@@ -118,28 +238,161 @@ function extractJsonBlock(raw: string): string {
   throw new Error("JSON object not found in model output");
 }
 
-export function buildBugHuntPrompt(input: {
+function formatCandidate(candidate: BugHuntCandidate): string {
+  const location = candidate.line ? `${candidate.file}:${candidate.line}` : candidate.file;
+  const sourceLabel = candidate.sources.join("+");
+  const snippet = candidate.snippet ? `\nSnippet:\n${candidate.snippet}` : "";
+
+  return [
+    `- id: ${candidate.id}`,
+    `  location: ${location}`,
+    `  symbol: ${candidate.symbolName ?? "(file-level)"}`,
+    `  sources: ${sourceLabel}`,
+    `  score: ${candidate.score.toFixed(2)}`,
+    `  summary: ${candidate.summary}`,
+    snippet ? `  details: ${snippet.replace(/\n/g, "\n  ")}` : "",
+  ].filter((line) => line.length > 0).join("\n");
+}
+
+export function buildBugHuntQueryPrompt(input: {
   taskPrompt: string;
   cwd: string;
   iteration: number;
-  knownFingerprints: string[];
+  knownDedupeKeys: string[];
   recentTitles: string[];
+  seenFiles: string[];
 }): string {
-  const knownFingerprints = input.knownFingerprints.slice(-20).join(", ") || "(none)";
+  const knownFingerprints = input.knownDedupeKeys.slice(-20).join(", ") || "(none)";
   const recentTitles = input.recentTitles.slice(0, 12).join(" | ") || "(none)";
+  const seenFiles = input.seenFiles.slice(-20).join(", ") || "(none)";
 
   return [
-    "You are a bug-hunting agent for a TypeScript-heavy pi extension repository.",
-    "Find at most one distinct, credible bug in the current workspace.",
-    "Only report issues that have concrete file evidence.",
-    "Prefer correctness, lifecycle, concurrency, data integrity, and error-handling bugs.",
-    "Avoid duplicates that match known dedupe keys or recent titles.",
+    "You are preparing a bug-hunting search query for a TypeScript-heavy repository.",
+    "Rewrite the mission into a short, concrete investigation query.",
+    "Extract keywords and symptom signals that help code localization.",
+    "Avoid duplicates that match known dedupe keys, recent titles, or already-seen files.",
     "",
     `Workspace: ${input.cwd}`,
     `Iteration: ${input.iteration}`,
     `Mission: ${input.taskPrompt}`,
     `Known dedupe keys: ${knownFingerprints}`,
     `Recent bug titles: ${recentTitles}`,
+    `Recently seen files: ${seenFiles}`,
+    "",
+    "Return JSON only.",
+    "",
+    "{",
+    '  "query": "short localized investigation query",',
+    '  "keywords": ["identifier", "keyword"],',
+    '  "bugSignals": ["symptom or failure signal"],',
+    '  "areasToAvoid": ["duplicate or irrelevant area"],',
+    '  "confidence": 0.0',
+    "}",
+  ].join("\n");
+}
+
+export function buildBugHuntHypothesisPrompt(input: {
+  queryPlan: BugHuntQueryPlan;
+  candidates: BugHuntCandidate[];
+}): string {
+  return [
+    "You are the hypothesis agent for bug-hunt.",
+    "Review the candidate locations and propose the strongest root-cause hypotheses.",
+    "Prefer correctness, lifecycle, concurrency, data integrity, and error handling bugs.",
+    "Choose at most 3 candidates worth deeper investigation.",
+    "",
+    `Query: ${input.queryPlan.query}`,
+    `Keywords: ${input.queryPlan.keywords.join(", ") || "(none)"}`,
+    `Bug signals: ${input.queryPlan.bugSignals.join(", ") || "(none)"}`,
+    "",
+    "Candidates:",
+    ...input.candidates.map((candidate) => formatCandidate(candidate)),
+    "",
+    "Return JSON only.",
+    "",
+    "{",
+    '  "hypotheses": [',
+    "    {",
+    '      "id": "hyp-1",',
+    '      "candidateId": "candidate id from above",',
+    '      "titleHint": "short bug title",',
+    '      "hypothesis": "what is likely wrong and why",',
+    '      "severity": "low|medium|high|critical",',
+    '      "confidence": 0.0,',
+    '      "focus": ["specific branch or behavior to inspect"]',
+    "    }",
+    "  ]",
+    "}",
+  ].join("\n");
+}
+
+export function buildBugHuntInvestigationPrompt(input: {
+  queryPlan: BugHuntQueryPlan;
+  candidate: BugHuntCandidate;
+  hypothesis: BugHuntHypothesis;
+  context: string;
+  rejectedHypotheses: string[];
+}): string {
+  const rejected = input.rejectedHypotheses.slice(-8).join(" | ") || "(none)";
+
+  return [
+    "You are the investigation agent for bug-hunt.",
+    "Test the hypothesis against the provided local context only.",
+    "Do not invent files or lines that are not present in the context.",
+    "If the evidence is weak, return rejected or inconclusive.",
+    "",
+    `Query: ${input.queryPlan.query}`,
+    `Candidate: ${formatCandidate(input.candidate)}`,
+    `Hypothesis: ${input.hypothesis.hypothesis}`,
+    `Rejected hypotheses to avoid repeating: ${rejected}`,
+    "",
+    "Local context:",
+    input.context,
+    "",
+    "Return JSON only.",
+    "",
+    "{",
+    '  "candidateId": "same candidate id",',
+    '  "hypothesisId": "same hypothesis id",',
+    '  "status": "supported|rejected|inconclusive",',
+    '  "confidence": 0.0,',
+    '  "title": "short title for the bug if supported",',
+    '  "summary": "short summary",',
+    '  "why": "reasoning grounded in the provided context",',
+    '  "reproduction": "optional",',
+    '  "suggestedFix": "optional",',
+    '  "chain": ["symbol or file path that forms the causal path"],',
+    '  "evidence": [',
+    '    { "file": "path/to/file.ts", "line": 123, "reason": "why this line matters" }',
+    "  ]",
+    "}",
+  ].join("\n");
+}
+
+export function buildBugHuntObserverPrompt(input: {
+  taskPrompt: string;
+  queryPlan: BugHuntQueryPlan;
+  investigations: BugHuntInvestigationResult[];
+  knownDedupeKeys: string[];
+  recentTitles: string[];
+}): string {
+  const investigations = input.investigations
+    .map((investigation) => JSON.stringify(investigation, null, 2))
+    .join("\n\n");
+
+  return [
+    "You are the observer agent for bug-hunt.",
+    "Review all investigation results and decide whether to report one new bug.",
+    "Only report when the evidence is concrete, non-duplicate, and grounded in the investigation results.",
+    "If no candidate is credible enough, return status=no_bug.",
+    "",
+    `Mission: ${input.taskPrompt}`,
+    `Query: ${input.queryPlan.query}`,
+    `Known dedupe keys: ${input.knownDedupeKeys.slice(-20).join(", ") || "(none)"}`,
+    `Recent bug titles: ${input.recentTitles.slice(0, 12).join(" | ") || "(none)"}`,
+    "",
+    "Investigation results:",
+    investigations || "(none)",
     "",
     "Return JSON only.",
     "",
@@ -158,13 +411,44 @@ export function buildBugHuntPrompt(input: {
     '    { "file": "path/to/file.ts", "line": 123, "reason": "why this location matters" }',
     "  ]",
     "}",
-    "",
-    "If you cannot find a new credible bug, return status=no_bug.",
   ].join("\n");
 }
 
+export function buildBugHuntPrompt(input: {
+  taskPrompt: string;
+  cwd: string;
+  iteration: number;
+  knownFingerprints: string[];
+  recentTitles: string[];
+}): string {
+  return buildBugHuntQueryPrompt({
+    taskPrompt: input.taskPrompt,
+    cwd: input.cwd,
+    iteration: input.iteration,
+    knownDedupeKeys: input.knownFingerprints,
+    recentTitles: input.recentTitles,
+    seenFiles: [],
+  });
+}
+
+function parseJsonRecord(raw: string): Record<string, unknown> {
+  return JSON.parse(extractJsonBlock(raw)) as Record<string, unknown>;
+}
+
+export function parseBugHuntQueryOutput(raw: string): BugHuntQueryPlan {
+  return normalizeQueryPlan(parseJsonRecord(raw));
+}
+
+export function parseBugHuntHypothesisOutput(raw: string): BugHuntHypothesis[] {
+  return normalizeHypotheses(parseJsonRecord(raw));
+}
+
+export function parseBugHuntInvestigationOutput(raw: string): BugHuntInvestigationResult {
+  return normalizeInvestigation(parseJsonRecord(raw));
+}
+
 export function parseBugHuntModelOutput(raw: string): BugHuntModelResult {
-  const parsed = JSON.parse(extractJsonBlock(raw)) as Record<string, unknown>;
+  const parsed = parseJsonRecord(raw);
   const status = String(parsed.status ?? "").trim().toLowerCase();
 
   if (status === "no_bug" || status === "none" || status === "no_bug_found") {
