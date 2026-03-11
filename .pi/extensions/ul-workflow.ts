@@ -35,6 +35,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { promises as fsPromises } from "fs";
 import { randomBytes } from "node:crypto";
 import { withFileLock, atomicWriteTextFile } from "../lib/storage/storage-lock.js";
+import { selectArtifactContent } from "../lib/artifact-output.js";
 import {
   isCompletionBlocked,
   loadWorkspaceVerificationConfig,
@@ -1901,9 +1902,6 @@ ${baseContext}`,
   const preferredArtifactTaskId = typeof dagParams.artifactTaskId === "string"
     ? dagParams.artifactTaskId.trim()
     : "";
-  const preferredArtifactOutput = preferredArtifactTaskId
-    ? ((dagResult.taskResults.get(preferredArtifactTaskId)?.output as { output?: string } | undefined)?.output ?? "").trim()
-    : "";
   const aggregatedOutput = Array.from(dagResult.taskResults.entries())
     .map(([taskId, result]) => {
       const status = result.status.toUpperCase();
@@ -1915,7 +1913,11 @@ ${baseContext}`,
     })
     .join("\n\n");
 
-  const artifactContent = preferredArtifactOutput || aggregatedOutput;
+  const artifactContent = selectArtifactContent(
+    dagResult.taskResults.entries(),
+    preferredArtifactTaskId,
+    aggregatedOutput,
+  );
   const artifactPath = typeof dagParams.artifactPath === "string" ? dagParams.artifactPath.trim() : "";
   if (artifactPath && artifactContent.trim()) {
     await fsPromises.mkdir(path.dirname(artifactPath), { recursive: true });

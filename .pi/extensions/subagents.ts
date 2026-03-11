@@ -108,15 +108,10 @@ import {
 import { 
   executeWithAdaptOrch,
 } from "../lib/dag/adaptorch-adapter.js";
-
-function extractDagTaskOutput(result: unknown): string {
-  if (!result || typeof result !== "object") {
-    return "";
-  }
-
-  const maybeOutput = (result as { output?: unknown }).output;
-  return typeof maybeOutput === "string" ? maybeOutput.trim() : "";
-}
+import {
+  extractDagTaskOutput,
+  selectArtifactContent,
+} from "../lib/artifact-output.js";
 
 type DynamicResearchConfig = {
   task: string;
@@ -2645,16 +2640,11 @@ ${baseContext}`,
         const preferredArtifactTaskId = typeof params.artifactTaskId === "string"
           ? params.artifactTaskId.trim()
           : "";
-        const preferredArtifactOutput = preferredArtifactTaskId
-          ? extractDagTaskOutput(dagResult.taskResults.get(preferredArtifactTaskId)?.output)
-          : "";
-        const completedOutputs = Array.from(dagResult.taskResults.values())
-          .filter((result) => result.status === "completed")
-          .map((result) => extractDagTaskOutput(result.output))
-          .filter(Boolean);
-        const artifactContent = preferredArtifactOutput
-          || completedOutputs[completedOutputs.length - 1]
-          || aggregatedOutput;
+        const artifactContent = selectArtifactContent(
+          dagResult.taskResults.entries(),
+          preferredArtifactTaskId,
+          aggregatedOutput,
+        );
 
         persistDagArtifactFile(
           typeof params.artifactPath === "string" ? params.artifactPath : undefined,
