@@ -144,7 +144,7 @@ export function TaskKanban({
             class="h-6 w-6 opacity-0 hover:opacity-100 data-[show]:opacity-100"
             data-show={isAdding ? "" : undefined}
             onClick={() => setAddingToColumn(column.id)}
-            title="Add task"
+            title="Add ticket"
           >
             <Plus class="h-3.5 w-3.5" />
           </Button>
@@ -188,7 +188,7 @@ export function TaskKanban({
           })}
         </div>
 
-        {/* Add task form at bottom - GitHub style */}
+        {/* Add ticket form at bottom - GitHub style */}
         {isAdding ? (
           <div class="p-2 border-t border-border/50">
             <form
@@ -204,7 +204,7 @@ export function TaskKanban({
                 }}
                 value={newTaskTitle}
                 onInput={(e) => setNewTaskTitle((e.target as HTMLTextAreaElement).value)}
-                placeholder="Add a task... (⌘+Enter to add)"
+                placeholder="Add a ticket... (⌘+Enter to add)"
                 rows={2}
                 class={cn(
                   "w-full px-2.5 py-1.5 text-sm rounded-md border border-input bg-background",
@@ -244,7 +244,7 @@ export function TaskKanban({
             onClick={() => setAddingToColumn(column.id)}
           >
             <Plus class="h-4 w-4" />
-            <span>Add task</span>
+            <span>Add ticket</span>
           </button>
         )}
       </div>

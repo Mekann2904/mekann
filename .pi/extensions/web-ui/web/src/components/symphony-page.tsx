@@ -230,7 +230,7 @@ export function SymphonyPage() {
         <section class="rounded-xl border border-border/60 bg-card p-4 space-y-4">
           <div class="flex items-center gap-2">
             <ListTodo class="h-4 w-4 text-primary" />
-            <h2 class="text-base font-semibold">Task Queue</h2>
+            <h2 class="text-base font-semibold">Ticket Queue</h2>
           </div>
           <div class="grid grid-cols-2 gap-2 text-sm">
             <div class="rounded-lg bg-muted/30 p-3">todo: {snapshot.taskQueue.todo}</div>
@@ -286,7 +286,7 @@ export function SymphonyPage() {
             </div>
           </div>
           <div class="rounded-lg border border-border/60 p-3">
-            <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Next Task</p>
+            <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Next Ticket</p>
             {snapshot.scheduler.nextEligibleTask ? (
               <div class="mt-2">
                 <p class="font-medium">{snapshot.scheduler.nextEligibleTask.title}</p>
@@ -295,7 +295,7 @@ export function SymphonyPage() {
                 </p>
               </div>
             ) : (
-              <p class="mt-2 text-sm text-muted-foreground">No queued task</p>
+              <p class="mt-2 text-sm text-muted-foreground">No queued ticket</p>
             )}
           </div>
           <div class="rounded-lg border border-border/60 p-3">
@@ -410,7 +410,7 @@ export function SymphonyPage() {
               <p class="text-sm font-medium">Operator posture</p>
             </div>
             <p class="mt-2 text-sm text-muted-foreground">
-              This page is read-only. It shows the mekann extension contract for pi-mono, current task queue, runtime load, and durable workpads in one place.
+              This page is read-only. It shows the mekann extension contract for pi-mono, current ticket queue, runtime load, and durable workpads in one place.
             </p>
           </div>
         </section>

@@ -323,7 +323,7 @@ function TaskDetailPanelInner({
   }, [onClose]);
 
   const handleDelete = useCallback(() => {
-    if (confirm("Delete this task?")) {
+    if (confirm("Delete this ticket?")) {
       onDelete();
     }
   }, [onDelete]);
@@ -387,7 +387,7 @@ function TaskDetailPanelInner({
               size="icon"
               class="h-7 w-7 text-destructive hover:text-destructive"
               onClick={handleDelete}
-              title="Delete task"
+              title="Delete ticket"
             >
               <Trash2 class="h-3.5 w-3.5" />
             </Button>
@@ -401,9 +401,9 @@ function TaskDetailPanelInner({
       {/* Read-only notice for UL workflow tasks */}
       {isReadOnly && (
         <div class="mx-4 mt-4 bg-purple-500/10 border border-purple-500/20 rounded-md p-3">
-          <p class="text-sm text-purple-400 font-medium">UL Workflow Task</p>
+          <p class="text-sm text-purple-400 font-medium">UL Workflow Ticket</p>
           <p class="text-xs text-muted-foreground mt-1">
-            This task is managed by UL Workflow. View only - modifications must be made through the workflow system.
+            This ticket is managed by UL Workflow. View only - modifications must be made through the workflow system.
           </p>
           {task.phase && (
             <p class="text-xs text-muted-foreground mt-1">
@@ -520,7 +520,7 @@ function TaskDetailPanelInner({
             disabled={isReadOnly}
           />
           {isOverdue && (
-            <p class="text-xs text-red-500 mt-1">This task is overdue</p>
+            <p class="text-xs text-red-500 mt-1">This ticket is overdue</p>
           )}
         </div>
 
@@ -627,7 +627,7 @@ function TaskDetailPanelInner({
           <div>
             <label class="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
               <ListChecks class="h-3 w-3" />
-              Subtasks
+              Subtickets
               {subtaskProgress && (
                 <span class="ml-auto text-[10px] bg-muted px-1.5 py-0.5 rounded">
                   {subtaskProgress} done
@@ -670,7 +670,7 @@ function TaskDetailPanelInner({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (confirm("Delete this subtask?")) {
+                      if (confirm("Delete this subticket?")) {
                         onDeleteSubtask(subtask.id);
                       }
                     }}
@@ -690,7 +690,7 @@ function TaskDetailPanelInner({
                   type="text"
                   value={newSubtaskTitle}
                   onInput={(e) => setNewSubtaskTitle((e.target as HTMLInputElement).value)}
-                  placeholder="Subtask title..."
+                  placeholder="Subticket title..."
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -745,7 +745,7 @@ function TaskDetailPanelInner({
                 class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 <Plus class="h-3.5 w-3.5" />
-                Add subtask
+                Add subticket
               </button>
             )}
           </div>
@@ -811,7 +811,7 @@ function TaskDetailPanelInner({
               </div>
             </div>
           ) : (
-            <p class="text-xs text-muted-foreground">No durable workpad found for this task yet</p>
+            <p class="text-xs text-muted-foreground">No durable workpad found for this ticket yet</p>
           )}
         </div>
 
@@ -1031,7 +1031,7 @@ function TaskDetailPanelInner({
               </div>
             </div>
           ) : (
-            <p class="text-xs text-muted-foreground">No orchestration detail found for this task</p>
+            <p class="text-xs text-muted-foreground">No orchestration detail found for this ticket</p>
           )}
         </div>
       </div>
