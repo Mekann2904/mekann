@@ -2894,19 +2894,19 @@ Task ID: ${taskId}
           });
       } catch (error) {
         if (String(error).includes("subagent_run_dag APIが利用できません")) {
-          const baseDagParams = buildResearchBaseDagParams(params.task, taskId);
+          const dynamicDagParams = buildDynamicResearchDagParams(params.task, researchPath, taskId);
           return makeResult(`研究フェーズの実行指示
 
 Task ID: ${taskId}
 タスク: ${params.task}
 
 \`\`\`
-subagent_run_dag(${JSON.stringify(baseDagParams, null, 2)})
+subagent_run_dag(${JSON.stringify(dynamicDagParams, null, 2)})
 \`\`\`
 
-gap-check の結果を見て、続けて follow-up DAG を実行してください。
+単一の dynamic research DAG として実行してください。
 最後に ${researchPath} が生成されていることを確認し、ul_workflow_approve() で次に進んでください。
-`, { taskId, phase: "research", artifactPath: researchPath, requiresDagExecution: true, stagedResearch: true });
+`, { taskId, phase: "research", artifactPath: researchPath, requiresDagExecution: true, dynamicResearch: true });
         }
 
         return makeResult(`エラー: research フェーズの実行に失敗しました。\n\n${error}`, {
