@@ -175,6 +175,7 @@ describe("bug-hunt extension", () => {
 
   it("bug_hunt_start が state を running にして background runner を起動する", async () => {
     const { default: extension, resetForTesting } = await import("../../../.pi/extensions/bug-hunt/index.js");
+    const { startBackgroundProcess } = await import("../../../.pi/lib/background-processes.js");
     resetForTesting();
     const pi = createPiMock();
 
@@ -196,6 +197,10 @@ describe("bug-hunt extension", () => {
     expect(mockState.state.currentStage).toBe("booting");
     expect(mockState.state.runId).toBe("bug-hunt-run-1");
     expect(mockState.state.backgroundProcessId).toBe("bg-1");
+    expect(startBackgroundProcess).toHaveBeenCalledWith(expect.objectContaining({
+      waitForReady: false,
+      readyPattern: "BUG_HUNT_READY",
+    }));
   });
 
   it("既に動作中なら bug_hunt_start は再起動しない", async () => {

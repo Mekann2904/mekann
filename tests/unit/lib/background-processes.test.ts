@@ -259,4 +259,24 @@ describe("background-processes", () => {
     expect(result.record.readinessStatus).toBe("ready");
     expect(result.record.readyPattern).toBe("server ready");
   });
+
+  it("can skip ready wait and keep readiness pending", async () => {
+    const {
+      startBackgroundProcess,
+      saveBackgroundProcessConfig,
+    } = await import("../../../.pi/lib/background-processes.js");
+    saveBackgroundProcessConfig("/repo", { enabled: true, defaultStartupTimeoutMs: 100 });
+
+    const result = await startBackgroundProcess({
+      command: "node server.js",
+      cwd: "/repo",
+      readyPattern: "server ready",
+      waitForReady: false,
+    });
+
+    expect(result.ready).toBe(false);
+    expect(result.record.status).toBe("running");
+    expect(result.record.readinessStatus).toBe("pending");
+    expect(result.record.readyPattern).toBe("server ready");
+  });
 });

@@ -239,6 +239,7 @@ export default function registerBugHuntExtension(pi: ExtensionAPI): void {
           keepAliveOnShutdown: true,
           startupTimeoutMs: 5_000,
           readyPattern: "BUG_HUNT_READY",
+          waitForReady: false,
         });
 
         const runningState = saveBugHuntState({
