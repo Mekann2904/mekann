@@ -168,4 +168,41 @@ describe("turn-context-builder", () => {
     expect(decisions.maxParallelSubagents).toBe(1);
     expect(decisions.retryOverrides.maxRetries).toBe(0);
   });
+
+  it("research task では web_search だけでも research tools を有効扱いにする", () => {
+    mocks.loadAutonomyPolicyConfig.mockReturnValue({
+      enabled: true,
+      profile: "high",
+      mode: "default",
+      gatekeeper: "deterministic",
+      permissions: {
+        read: "allow",
+        write: "allow",
+        command: "allow",
+        browser: "allow",
+        mcp: "allow",
+        mode_switch: "allow",
+        subtasks: "allow",
+        follow_up: "allow",
+        todo: "allow",
+      },
+      updatedAt: "2026-03-07T00:00:00.000Z",
+    });
+
+    const context = buildTurnExecutionContext({
+      cwd: "/repo",
+      availableToolNames: ["read", "web_search"],
+      startupKind: "delta",
+      isFirstTurn: false,
+      previousContextAvailable: true,
+      sessionElapsedMs: 500,
+    });
+
+    const decisions = deriveTurnExecutionDecisions(context, {
+      taskKind: "research",
+      taskText: "調査して",
+    });
+
+    expect(decisions.allowSearchExtensions).toBe(true);
+  });
 });
