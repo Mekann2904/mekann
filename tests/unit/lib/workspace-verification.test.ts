@@ -716,6 +716,33 @@ describe("workspace-verification library", () => {
     expect(resolved.sources.length).toBeGreaterThan(0);
   });
 
+  it("prefers the runtime port over unrelated documented localhost urls", async () => {
+    mockState.files.set("/repo/package.json", JSON.stringify({
+      scripts: {
+        lint: "eslint .",
+        typecheck: "tsc --noEmit",
+        test: "vitest run",
+        build: "vite build",
+        dev: "vite --port 4173",
+      },
+      devDependencies: {
+        vite: "^6.0.0",
+        react: "^19.0.0",
+      },
+    }));
+    mockState.files.set("/repo/README.md", [
+      "# Verification Notes",
+      "- MCP endpoint: http://localhost:3000/mcp",
+      "- Legacy demo: http://localhost:3456",
+    ].join("\n"));
+
+    const { buildWorkspaceVerificationRunbook } = await import("../../../.pi/lib/workspace-verification.js");
+    const runbook = buildWorkspaceVerificationRunbook("/repo");
+
+    expect(runbook.runtime.readyPort).toBe(4173);
+    expect(runbook.ui.baseUrl).toBe("http://127.0.0.1:4173");
+  });
+
   it("defaults workspace verification features to opt-in", async () => {
     const { createWorkspaceVerificationConfig } = await import("../../../.pi/lib/workspace-verification.js");
 
