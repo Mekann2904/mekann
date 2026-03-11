@@ -11,7 +11,7 @@
 | Agent orchestration | `.pi/extensions/subagents.ts` | `docs/02-user-guide/08-subagents.md` |
 | Task management | `.pi/extensions/task-flow.ts` | `.pi/extensions/task.ts` |
 | Intent clarification | `.pi/lib/intent-mediator.ts` | `.pi/extensions/mediator.ts` |
-| Skill usage | `.pi/skills/*/SKILL.md` | `docs/02-user-guide/11-utilities.md` |
+| Skill usage | `.pi/skills/*/SKILL.md` or `.pi/lib/skills/*/SKILL.md` | `docs/02-user-guide/11-utilities.md` |
 | Code search | `.pi/extensions/search/` | `docs/02-user-guide/01-extensions.md` |
 | Dynamic tools | `.pi/extensions/dynamic-tools.ts` | `docs/02-user-guide/01-extensions.md` |
 | Troubleshooting | `docs/04-reference/03-troubleshooting.md` | `CHANGELOG.md` |
@@ -175,7 +175,7 @@ mekann/
 ## Rules Summary
 
 1. **Delegation-First**: Use subagents for non-trivial tasks
-2. **Git Operations**: Load git-workflow skill first
+2. **Git Operations**: Load git-workflow skill first (`.pi/skills` fallback `.pi/lib/skills`)
 3. **Output Format**: No emoji, Markdown only
 4. **Verification**: Self-check CLAIM-RESULT consistency
 

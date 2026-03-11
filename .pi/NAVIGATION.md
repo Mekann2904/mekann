@@ -38,15 +38,15 @@
 | Task | Primary Source | Key Files |
 |------|---------------|-----------|
 | Analyze codebase | `subagent_run` with researcher agent | `.pi/subagents/definitions/` |
-| Review code quality | `skills/code-review/SKILL.md` | Load skill first |
-| Architecture review | `skills/clean-architecture/SKILL.md` | Load skill first |
-| Document analysis | `skills/logical-analysis/SKILL.md` | Load skill first |
+| Review code quality | `skills/code-review/SKILL.md` | Load skill first (`.pi/skills` or `.pi/lib/skills`) |
+| Architecture review | `skills/clean-architecture/SKILL.md` | Load skill first (`.pi/skills` or `.pi/lib/skills`) |
+| Document analysis | `skills/logical-analysis/SKILL.md` | Load skill first (`.pi/skills` or `.pi/lib/skills`) |
 
 ### Git Tasks
 
 | Task | Required Action | Source |
 |------|-----------------|--------|
-| Any git operation | Load git-workflow skill FIRST | `skills/git-workflow/SKILL.md` |
+| Any git operation | Load git-workflow skill FIRST | `.pi/skills/...` then `.pi/lib/skills/...` |
 | Commit changes | After loading skill | Follow skill instructions |
 | Branch management | After loading skill | Follow skill instructions |
 
@@ -56,7 +56,7 @@
 |------|---------------|-----------|
 | Generate as-built docs | `scripts/generate-abdd.ts` | `npx tsx scripts/generate-abdd.ts` |
 | Add JSDoc | `scripts/add-jsdoc.ts` | `npx tsx scripts/add-jsdoc.ts --dry-run` |
-| Review intention vs implementation | `skills/abdd/SKILL.md` | Load skill first |
+| Review intention vs implementation | `skills/abdd/SKILL.md` | Load skill first (`.pi/skills` or `.pi/lib/skills`) |
 | Update philosophy | `philosophy.md` | Manual update |
 | Update spec | `ABDD/spec.md` | Manual update |
 
@@ -84,7 +84,7 @@
 START
   |
   v
-Is this a git operation? --> YES --> Load skills/git-workflow/SKILL.md
+Is this a git operation? --> YES --> Try .pi/skills/git-workflow/SKILL.md, then .pi/lib/skills/git-workflow/SKILL.md
   |
   NO
   |
@@ -104,11 +104,11 @@ Consult INDEX.md for source navigation
 
 ## Mandatory Pre-Actions
 
-1. **Before git operations**: Read `skills/git-workflow/SKILL.md`
-2. **Before code review**: Read `skills/code-review/SKILL.md`
-3. **Before architecture work**: Read `skills/clean-architecture/SKILL.md`
-4. **Before document analysis**: Read `skills/logical-analysis/SKILL.md`
-5. **Before documentation review**: Read `skills/abdd/SKILL.md`
+1. **Before git operations**: Read `.pi/skills/git-workflow/SKILL.md`, or fallback to `.pi/lib/skills/git-workflow/SKILL.md`
+2. **Before code review**: Read `.pi/skills/code-review/SKILL.md`, or fallback to `.pi/lib/skills/code-review/SKILL.md`
+3. **Before architecture work**: Read `.pi/skills/clean-architecture/SKILL.md`, or fallback to `.pi/lib/skills/clean-architecture/SKILL.md`
+4. **Before document analysis**: Read `.pi/skills/logical-analysis/SKILL.md`, or fallback to `.pi/lib/skills/logical-analysis/SKILL.md`
+5. **Before documentation review**: Read `.pi/skills/abdd/SKILL.md`, or fallback to `.pi/lib/skills/abdd/SKILL.md`
 
 ## Common Patterns
 

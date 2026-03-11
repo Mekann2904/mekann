@@ -260,6 +260,8 @@ subagent_run_dag({
 
 ```
 read tool: .pi/skills/git-workflow/SKILL.md
+# missing の場合
+read tool: .pi/lib/skills/git-workflow/SKILL.md
 ```
 
 #### 統合コミット（推奨）

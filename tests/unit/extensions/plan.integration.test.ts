@@ -4,13 +4,18 @@
  * 関連ファイル: .pi/extensions/plan.ts, .pi/lib/storage-lock.ts
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import registerPlanExtension, { resetForTesting } from "../../../.pi/extensions/plan.js";
+import {
+	loadWorkspaceVerificationState,
+	saveWorkspaceVerificationConfig,
+	saveWorkspaceVerificationState,
+} from "../../../.pi/lib/workspace-verification.js";
 
 type RegisteredTool = {
 	name: string;
@@ -81,6 +86,44 @@ function createExecutionContext(cwd: string) {
 			notify: vi.fn(),
 			setStatus: vi.fn(),
 		},
+	};
+}
+
+function createUlWorkflowState(
+	cwd: string,
+	options?: { phase?: string; taskId?: string },
+) {
+	const taskId = options?.taskId ?? "2026-03-11T12-07-41--987f5082";
+	const phase = options?.phase ?? "annotate";
+	const activePath = join(cwd, ".pi/ul-workflow/active.json");
+	const statusPath = join(cwd, ".pi/ul-workflow/tasks", taskId, "status.json");
+	const planPath = join(cwd, ".pi/ul-workflow/tasks", taskId, "plan.md");
+
+	mkdirSync(join(cwd, ".pi/ul-workflow/tasks", taskId), { recursive: true });
+	writeFileSync(activePath, JSON.stringify({
+		activeTaskId: taskId,
+		ownerInstanceId: "test-owner",
+		updatedAt: new Date().toISOString(),
+		activeByInstance: {},
+	}, null, 2));
+	writeFileSync(statusPath, JSON.stringify({
+		taskId,
+		taskDescription: "UL workflow test",
+		phase,
+		phases: ["research", "plan", "annotate", "implement", "review", "completed"],
+		phaseIndex: 2,
+		createdAt: new Date().toISOString(),
+		updatedAt: new Date().toISOString(),
+		approvedPhases: ["research", "plan"],
+		annotationCount: 0,
+		ownerInstanceId: "test-owner",
+	}, null, 2));
+	writeFileSync(planPath, "# Test Plan\n", "utf-8");
+
+	return {
+		taskId,
+		planPath,
+		relativePlanPath: `.pi/ul-workflow/tasks/${taskId}/plan.md`,
 	};
 }
 
@@ -609,6 +652,47 @@ describe("plan extension integration tests", () => {
 			expect(String(bashResult?.reason)).toContain("SPEC-FIRST: no active plan found");
 		});
 
+		it("UL workflow の annotate 中は active な plan.md への write を許可する", async () => {
+			const ctx = createExecutionContext(tmpDir);
+			const ul = createUlWorkflowState(tmpDir, { phase: "annotate" });
+
+			const writeResult = await fakePi.emit(
+				"tool_call",
+				{ toolName: "write", input: { path: ul.relativePlanPath } },
+				ctx,
+			);
+
+			expect(writeResult).toBeUndefined();
+		});
+
+		it("UL workflow の annotate 中でも別ファイルへの write は hard block する", async () => {
+			const ctx = createExecutionContext(tmpDir);
+			createUlWorkflowState(tmpDir, { phase: "annotate" });
+
+			const writeResult = await fakePi.emit(
+				"tool_call",
+				{ toolName: "write", input: { path: ".pi/ul-workflow/tasks/other-task/plan.md" } },
+				ctx,
+			);
+
+			expect(writeResult?.block).toBe(true);
+			expect(String(writeResult?.reason)).toContain("SPEC-FIRST: no active plan found");
+		});
+
+		it("UL workflow が implement に進んだ後は plan.md への write を許可しない", async () => {
+			const ctx = createExecutionContext(tmpDir);
+			const ul = createUlWorkflowState(tmpDir, { phase: "implement" });
+
+			const writeResult = await fakePi.emit(
+				"tool_call",
+				{ toolName: "write", input: { path: ul.relativePlanPath } },
+				ctx,
+			);
+
+			expect(writeResult?.block).toBe(true);
+			expect(String(writeResult?.reason)).toContain("SPEC-FIRST: no active plan found");
+		});
+
 		it("薄い plan では edit を hard block する", async () => {
 			const createTool = fakePi.tools.get("plan_create");
 			const ctx = createExecutionContext(tmpDir);
@@ -750,6 +834,50 @@ describe("plan extension integration tests", () => {
 
 			const result = await fakePi.emit("tool_call", { toolName: "edit", input: {} }, ctx);
 			expect(result).toBeUndefined();
+		});
+
+		it("plan_update_step は pending review artifact を stale ではなく review として案内する", async () => {
+			const createTool = fakePi.tools.get("plan_create");
+			const updateStepTool = fakePi.tools.get("plan_update_step");
+			const ctx = createExecutionContext(tmpDir);
+
+			const created = await createTool!.execute(
+				"tc-review-artifact-block",
+				{
+					name: "Review Artifact Block",
+					acceptanceCriteria: ["review artifact acknowledged"],
+					implementationOrder: ["Implement"],
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			saveWorkspaceVerificationConfig(tmpDir, {
+				enabled: true,
+				requireReviewArtifact: true,
+			});
+			saveWorkspaceVerificationState(tmpDir, {
+				...loadWorkspaceVerificationState(tmpDir),
+				pendingReviewArtifact: true,
+				dirty: false,
+			});
+
+			const result = await updateStepTool!.execute(
+				"tc-review-artifact-block-step",
+				{
+					planId: created.details.planId,
+					stepId: created.details.currentStepId,
+					status: "completed",
+					actor: "executor",
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			expect(String(result.content[0].text)).toContain("workspace_verify_review");
+			expect(String(result.content[0].text)).not.toContain("Workspace verification is stale");
 		});
 
 		it("completed の plan に step を追加して active に戻すと current focus を自動回復する", async () => {
