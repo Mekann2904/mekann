@@ -35,9 +35,10 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { detectTier, getRpmLimit } from "../../lib/provider-limits.js";
 import { sleep } from "../../lib/sleep-utils.js";
 import { withFileLock } from "../../lib/storage/storage-lock.js";
@@ -51,6 +52,9 @@ const PRINT_THROTTLE_MAX_COOLDOWN_MS = 5 * 60_000;
 const PRINT_THROTTLE_MAX_STATE_AGE_MS = 15 * 60_000;
 const PRINT_THROTTLE_RUNTIME_DIR = join(homedir(), ".pi", "runtime");
 const PRINT_THROTTLE_STATE_FILE = join(PRINT_THROTTLE_RUNTIME_DIR, "pi-print-rpm-throttle-state.json");
+const PI_CHILD_AGENT_DIR = join(process.cwd(), ".pi", "runtime", "pi-print-agent");
+const PI_CHILD_AGENT_SYNC_FILES = ["auth.json", "models.json"] as const;
+const PI_CHILD_AGENT_DISABLED_RESOURCE_KEYS = ["packages", "extensions", "skills", "prompts", "themes"] as const;
 const PRINT_THROTTLE_FILE_LOCK_OPTIONS = {
   maxWaitMs: 2_000,
   pollMs: 25,
@@ -99,6 +103,80 @@ function parseBooleanEnv(name: string, fallback: boolean): boolean {
   const raw = process.env[name];
   if (!raw) return fallback;
   return raw === "1" || raw.toLowerCase() === "true";
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readJsonRecord(filePath: string): Record<string, unknown> | null {
+  if (!existsSync(filePath)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(filePath, "utf-8")) as unknown;
+    return isPlainRecord(parsed) ? parsed : null;
+  } catch (error) {
+    console.error("[pi-print-executor] Failed to read JSON file:", filePath, error);
+    return null;
+  }
+}
+
+export function sanitizePiChildAgentSettings(settings: Record<string, unknown>): Record<string, unknown> {
+  const nextSettings = { ...settings };
+
+  // Internal print-mode children must not auto-install user packages.
+  for (const key of PI_CHILD_AGENT_DISABLED_RESOURCE_KEYS) {
+    nextSettings[key] = [];
+  }
+
+  return nextSettings;
+}
+
+export function preparePiChildAgentDir(sourceAgentDir: string, childAgentDir = PI_CHILD_AGENT_DIR): string {
+  mkdirSync(childAgentDir, { recursive: true });
+
+  const sourceSettingsPath = join(sourceAgentDir, "settings.json");
+  const sanitizedSettings = sanitizePiChildAgentSettings(readJsonRecord(sourceSettingsPath) ?? {});
+  writeFileSync(join(childAgentDir, "settings.json"), `${JSON.stringify(sanitizedSettings, null, 2)}\n`, "utf-8");
+
+  for (const fileName of PI_CHILD_AGENT_SYNC_FILES) {
+    const sourcePath = join(sourceAgentDir, fileName);
+    if (!existsSync(sourcePath)) {
+      continue;
+    }
+
+    copyFileSync(sourcePath, join(childAgentDir, fileName));
+  }
+
+  return childAgentDir;
+}
+
+export function buildPiChildEnv(envOverrides?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  if (envOverrides?.PI_CODING_AGENT_DIR) {
+    return {
+      ...process.env,
+      ...envOverrides,
+    };
+  }
+
+  const sourceAgentDir = process.env.PI_CODING_AGENT_DIR || getAgentDir();
+
+  try {
+    const childAgentDir = preparePiChildAgentDir(sourceAgentDir);
+    return {
+      ...process.env,
+      PI_CODING_AGENT_DIR: childAgentDir,
+      ...(envOverrides || {}),
+    };
+  } catch (error) {
+    console.error("[pi-print-executor] Failed to prepare isolated pi agent dir:", error);
+    return {
+      ...process.env,
+      ...(envOverrides || {}),
+    };
+  }
 }
 
 function getPrintThrottleKey(provider: string, model: string): string {
@@ -509,10 +587,7 @@ export async function runPiPrintMode(
 
     const child = spawn("pi", args, {
       stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        ...(input.envOverrides || {}),
-      },
+      env: buildPiChildEnv(input.envOverrides),
     });
 
     const finish = (fn: () => void) => {
@@ -792,7 +867,7 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
 
     const child = spawn("pi", args, {
       stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
+      env: buildPiChildEnv(),
     });
 
     const finish = (fn: () => void) => {
