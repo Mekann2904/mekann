@@ -28,8 +28,8 @@
 // Why: Enables structured task planning with step-by-step execution
 // Related: README.md, .pi/extensions/loop.ts
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -86,6 +86,7 @@ const PLAN_REQUIRED_MUTATION_TOOLS = new Set([
 	"patch",
 	"bash",
 ]);
+const UL_WORKFLOW_WRITABLE_PHASES = new Set(["plan", "annotate"]);
 
 // ============================================
 // Type Definitions
@@ -502,6 +503,77 @@ function getBashCommandFromToolInput(input: unknown): string {
 	}
 
 	return "";
+}
+
+function getMutationTargetPath(input: unknown): string | undefined {
+	if (!input || typeof input !== "object") {
+		return undefined;
+	}
+
+	const record = input as Record<string, unknown>;
+	for (const key of ["path", "filePath", "targetPath"]) {
+		const value = record[key];
+		if (typeof value === "string" && value.trim().length > 0) {
+			return value.trim();
+		}
+	}
+
+	return undefined;
+}
+
+function isActiveUlWorkflowPlanMutationAllowed(
+	toolName: string,
+	input: unknown,
+	workspaceRoot: string,
+): boolean {
+	if (toolName !== "write" && toolName !== "patch") {
+		return false;
+	}
+
+	const targetPath = getMutationTargetPath(input);
+	if (!targetPath) {
+		return false;
+	}
+
+	try {
+		const activePath = join(workspaceRoot, ".pi/ul-workflow/active.json");
+		if (!existsSync(activePath)) {
+			return false;
+		}
+
+		const activeRaw = readFileSync(activePath, "utf-8");
+		const activeRegistry = JSON.parse(activeRaw) as {
+			activeTaskId?: unknown;
+		};
+		const activeTaskId = typeof activeRegistry.activeTaskId === "string"
+			? activeRegistry.activeTaskId.trim()
+			: "";
+		if (!activeTaskId) {
+			return false;
+		}
+
+		const statusPath = join(workspaceRoot, ".pi/ul-workflow/tasks", activeTaskId, "status.json");
+		if (!existsSync(statusPath)) {
+			return false;
+		}
+
+		const statusRaw = readFileSync(statusPath, "utf-8");
+		const workflowState = JSON.parse(statusRaw) as {
+			phase?: unknown;
+		};
+		const phase = typeof workflowState.phase === "string"
+			? workflowState.phase.trim()
+			: "";
+		if (!UL_WORKFLOW_WRITABLE_PHASES.has(phase)) {
+			return false;
+		}
+
+		const expectedPlanPath = resolve(workspaceRoot, ".pi/ul-workflow/tasks", activeTaskId, "plan.md");
+		const resolvedTargetPath = resolve(workspaceRoot, targetPath);
+		return resolvedTargetPath === expectedPlanPath;
+	} catch {
+		return false;
+	}
 }
 
 function applyPlanModeToolFilter(pi: ExtensionAPI, enabled: boolean): void {
@@ -1372,6 +1444,9 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const workspaceRoot = resolveWorkspaceRoot(ctx);
+			if (isActiveUlWorkflowPlanMutationAllowed(toolName, event.input, workspaceRoot)) {
+				return;
+			}
 			const storage = loadStorage(workspaceRoot);
 			const ledgerResult = enforcePlanLoopLedger(storage, { autoActivateCurrent: true });
 			persistPlanLedgerIfNeeded(storage, workspaceRoot, ledgerResult);
