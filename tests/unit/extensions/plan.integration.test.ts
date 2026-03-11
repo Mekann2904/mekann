@@ -11,6 +11,11 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import registerPlanExtension, { resetForTesting } from "../../../.pi/extensions/plan.js";
+import {
+	loadWorkspaceVerificationState,
+	saveWorkspaceVerificationConfig,
+	saveWorkspaceVerificationState,
+} from "../../../.pi/lib/workspace-verification.js";
 
 type RegisteredTool = {
 	name: string;
@@ -829,6 +834,50 @@ describe("plan extension integration tests", () => {
 
 			const result = await fakePi.emit("tool_call", { toolName: "edit", input: {} }, ctx);
 			expect(result).toBeUndefined();
+		});
+
+		it("plan_update_step は pending review artifact を stale ではなく review として案内する", async () => {
+			const createTool = fakePi.tools.get("plan_create");
+			const updateStepTool = fakePi.tools.get("plan_update_step");
+			const ctx = createExecutionContext(tmpDir);
+
+			const created = await createTool!.execute(
+				"tc-review-artifact-block",
+				{
+					name: "Review Artifact Block",
+					acceptanceCriteria: ["review artifact acknowledged"],
+					implementationOrder: ["Implement"],
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			saveWorkspaceVerificationConfig(tmpDir, {
+				enabled: true,
+				requireReviewArtifact: true,
+			});
+			saveWorkspaceVerificationState(tmpDir, {
+				...loadWorkspaceVerificationState(tmpDir),
+				pendingReviewArtifact: true,
+				dirty: false,
+			});
+
+			const result = await updateStepTool!.execute(
+				"tc-review-artifact-block-step",
+				{
+					planId: created.details.planId,
+					stepId: created.details.currentStepId,
+					status: "completed",
+					actor: "executor",
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			expect(String(result.content[0].text)).toContain("workspace_verify_review");
+			expect(String(result.content[0].text)).not.toContain("Workspace verification is stale");
 		});
 
 		it("completed の plan に step を追加して active に戻すと current focus を自動回復する", async () => {
