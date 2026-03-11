@@ -454,4 +454,171 @@ describe("ul-workflow", () => {
     expect(savedState.phase).toBe("annotate");
     expect(savedState.approvedPhases).toEqual(["research", "plan"]);
   });
+
+  it("research フェーズは base DAG の後に gap-check 結果で follow-up DAG を動的に組む", async () => {
+    const extension = (await import("../../../.pi/extensions/ul-workflow.js")).default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    const startTool = pi.tools.get("ul_workflow_start");
+    const startResult = await startTool.execute("start", { task: "新規の通知機能を設計する" }, undefined, undefined, {});
+    const taskId = startResult.details.taskId;
+
+    const capturedPlans: any[] = [];
+    const executeTool = vi.fn(async ({ toolName, params }: { toolName: string; params: Record<string, unknown> }) => {
+      expect(toolName).toBe("subagent_run_dag");
+      capturedPlans.push(params.plan);
+      if (capturedPlans.length === 1) {
+        return {
+          content: [{
+            type: "text",
+            text: [
+              "## research-gap-check",
+              "Status: COMPLETED",
+              "DEEP_DIVE_EXTERNAL: yes",
+              "DEEP_DIVE_CODEBASE: no",
+              "RATIONALE: external docs are still unclear",
+            ].join("\n"),
+          }],
+        };
+      }
+      return { content: [{ type: "text", text: "research done" }] };
+    });
+
+    const researchTool = pi.tools.get("ul_workflow_research");
+    const result = await researchTool.execute(
+      "research",
+      { task: "新規の通知機能を設計する", task_id: taskId },
+      undefined,
+      undefined,
+      { executeTool },
+    );
+
+    expect(result.details.phase).toBe("research");
+    expect(capturedPlans).toHaveLength(2);
+    expect(capturedPlans[0]?.id).toBe("ul-research-base-dag");
+    expect(capturedPlans[1]?.id).toBe("ul-research-followup-dag");
+
+    const baseTaskIds = capturedPlans[0].tasks.map((task: { id: string }) => task.id);
+    expect(baseTaskIds).toEqual([
+      "research-intent",
+      "research-external",
+      "research-codebase",
+      "research-risk",
+      "research-gap-check",
+    ]);
+
+    const gapCheck = capturedPlans[0].tasks.find((task: { id: string }) => task.id === "research-gap-check");
+    expect(gapCheck.dependencies).toEqual(["research-external", "research-codebase", "research-risk"]);
+
+    const followupTaskIds = capturedPlans[1].tasks.map((task: { id: string }) => task.id);
+    expect(followupTaskIds).toEqual([
+      "research-deep-dive-external",
+      "research-synthesis",
+    ]);
+    expect(result.details.followupDecision).toEqual({
+      needsExternalDeepDive: true,
+      needsCodebaseDeepDive: false,
+      rationale: "external docs are still unclear",
+    });
+  });
+
+  it("gap-check が no/no を返した場合は synthesis だけを follow-up で実行する", async () => {
+    const extension = (await import("../../../.pi/extensions/ul-workflow.js")).default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    const startTool = pi.tools.get("ul_workflow_start");
+    const startResult = await startTool.execute("start", { task: "既存の文言を整理する" }, undefined, undefined, {});
+    const taskId = startResult.details.taskId;
+
+    const capturedPlans: any[] = [];
+    const executeTool = vi.fn(async ({ toolName, params }: { toolName: string; params: Record<string, unknown> }) => {
+      expect(toolName).toBe("subagent_run_dag");
+      capturedPlans.push(params.plan);
+      if (capturedPlans.length === 1) {
+        return {
+          content: [{
+            type: "text",
+            text: [
+              "## research-gap-check",
+              "Status: COMPLETED",
+              "DEEP_DIVE_EXTERNAL: no",
+              "DEEP_DIVE_CODEBASE: no",
+              "RATIONALE: plan ready",
+            ].join("\n"),
+          }],
+        };
+      }
+      return { content: [{ type: "text", text: "final research doc" }] };
+    });
+
+    const researchTool = pi.tools.get("ul_workflow_research");
+    const result = await researchTool.execute(
+      "research",
+      { task: "既存の文言を整理する", task_id: taskId },
+      undefined,
+      undefined,
+      { executeTool },
+    );
+
+    expect(capturedPlans).toHaveLength(2);
+    expect(capturedPlans[1].tasks.map((task: { id: string }) => task.id)).toEqual(["research-synthesis"]);
+    expect(result.details.followupDecision).toEqual({
+      needsExternalDeepDive: false,
+      needsCodebaseDeepDive: false,
+      rationale: "plan ready",
+    });
+  });
+
+  it("ローカル実行では research を単一の dynamic DAG で流す", async () => {
+    const extension = (await import("../../../.pi/extensions/ul-workflow.js")).default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    const startTool = pi.tools.get("ul_workflow_start");
+    const startResult = await startTool.execute("start", { task: "通知配信基盤を新規設計する" }, undefined, undefined, {});
+    const taskId = startResult.details.taskId;
+
+    const capturedDagParams: any[] = [];
+    const researchTool = pi.tools.get("ul_workflow_research");
+    const result = await researchTool.execute(
+      "research",
+      { task: "通知配信基盤を新規設計する", task_id: taskId },
+      undefined,
+      undefined,
+      {
+        localDagExecutor: vi.fn(async (params: Record<string, unknown>) => {
+          capturedDagParams.push(params);
+          return {
+            content: [{ type: "text", text: "# Research\n\nfinal dynamic research doc" }],
+            details: {
+              planId: "ul-research-dynamic-dag",
+              overallStatus: "completed",
+              completedTaskIds: ["research-intent", "research-gap-check", "research-synthesis"],
+              failedTaskIds: [],
+              followupDecision: {
+                needsExternalDeepDive: true,
+                needsCodebaseDeepDive: false,
+                rationale: "external docs are still unclear",
+              },
+            },
+          };
+        }),
+      },
+    );
+
+    expect(capturedDagParams).toHaveLength(1);
+    expect(capturedDagParams[0]?.plan?.id).toBe("ul-research-dynamic-dag");
+    expect(capturedDagParams[0]?.dynamicResearch).toEqual({
+      task: "通知配信基盤を新規設計する",
+      gapTaskId: "research-gap-check",
+      synthesisTaskId: "research-synthesis",
+    });
+    expect(result.details.followupDecision).toEqual({
+      needsExternalDeepDive: true,
+      needsCodebaseDeepDive: false,
+      rationale: "external docs are still unclear",
+    });
+  });
 });

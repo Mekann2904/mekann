@@ -118,6 +118,65 @@ function extractDagTaskOutput(result: unknown): string {
   return typeof maybeOutput === "string" ? maybeOutput.trim() : "";
 }
 
+type DynamicResearchConfig = {
+  task: string;
+  gapTaskId: string;
+  synthesisTaskId: string;
+};
+
+type ResearchFollowupDecision = {
+  needsExternalDeepDive: boolean;
+  needsCodebaseDeepDive: boolean;
+  rationale: string;
+};
+
+function extractDagTaskSection(output: string, taskId: string): string {
+  const normalized = String(output || "");
+  const pattern = new RegExp(`## ${taskId}\\nStatus: [^\\n]*\\n([\\s\\S]*?)(?=\\n## [^\\n]+\\nStatus:|$)`);
+  const match = normalized.match(pattern);
+  return match?.[1]?.trim() ?? "";
+}
+
+function normalizeGapDecision(value: string): boolean | null {
+  const normalized = value.trim().toLowerCase();
+  if (["yes", "true", "required", "needed"].includes(normalized)) return true;
+  if (["no", "false", "none", "not_needed", "not-needed"].includes(normalized)) return false;
+  return null;
+}
+
+function decideResearchFollowups(baseOutput: string): ResearchFollowupDecision {
+  const gapSection = extractDagTaskSection(baseOutput, "research-gap-check");
+  const externalMatch = gapSection.match(/DEEP_DIVE_EXTERNAL:\s*([^\n]+)/i);
+  const codebaseMatch = gapSection.match(/DEEP_DIVE_CODEBASE:\s*([^\n]+)/i);
+  const rationaleMatch = gapSection.match(/RATIONALE:\s*([\s\S]*?)$/i);
+
+  const explicitExternal = externalMatch ? normalizeGapDecision(externalMatch[1]) : null;
+  const explicitCodebase = codebaseMatch ? normalizeGapDecision(codebaseMatch[1]) : null;
+  const rationale = rationaleMatch?.[1]?.trim() || "gap-check output did not provide an explicit rationale";
+
+  if (explicitExternal !== null || explicitCodebase !== null) {
+    return {
+      needsExternalDeepDive: explicitExternal ?? false,
+      needsCodebaseDeepDive: explicitCodebase ?? false,
+      rationale,
+    };
+  }
+
+  const noDive = /no additional deep dive needed|no deep dive needed|plan ready/i.test(gapSection);
+  return {
+    needsExternalDeepDive: !noDive && /(external|official docs|reference|api surface|library|spec)/i.test(gapSection),
+    needsCodebaseDeepDive: !noDive && /(codebase|risk|file|implementation|constraint|reuse)/i.test(gapSection),
+    rationale,
+  };
+}
+
+function buildDynamicResearchBaseContext(outputByTaskId: Map<string, string>, rationale: string): string {
+  const baseOutput = Array.from(outputByTaskId.entries())
+    .map(([taskId, output]) => `## ${taskId}\nStatus: COMPLETED\n${output}`)
+    .join("\n\n");
+  return `Base research findings:\n${baseOutput.trim() || "No base output captured."}\n\nGap-check rationale:\n${rationale}`;
+}
+
 function persistDagArtifactFile(
   artifactPath: string | undefined,
   artifactContent: string,
@@ -1605,6 +1664,13 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       ulTaskId: Type.Optional(Type.String({ description: "UL workflow task ID. If provided, checks ownership before execution." })),
       artifactPath: Type.Optional(Type.String({ description: "Optional file path to persist the final DAG artifact." })),
       artifactTaskId: Type.Optional(Type.String({ description: "Preferred task ID whose output should be written to artifactPath." })),
+      dynamicResearch: Type.Optional(
+        Type.Object({
+          task: Type.String(),
+          gapTaskId: Type.String(),
+          synthesisTaskId: Type.String(),
+        }),
+      ),
       // AdaptOrch拡張
       enableAdaptOrch: Type.Optional(Type.Boolean({
         description: "Enable AdaptOrch topology-aware orchestration (default: false)"
@@ -1842,6 +1908,11 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         policyParallelLimit: turnDecisions.maxParallelSubagents,
       });
       const abortOnFirstError = params.abortOnFirstError ?? false;
+      const dynamicResearchConfig = (
+        params.dynamicResearch && typeof params.dynamicResearch === "object"
+          ? params.dynamicResearch as DynamicResearchConfig
+          : null
+      );
 
       // Build or use provided plan
       let taskPlan: TaskPlan;
@@ -2026,7 +2097,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         capacityReservation.consume();
 
         // Execute DAG using DagExecutor or AdaptOrch
-        const useAdaptOrch = params.enableAdaptOrch ?? isGlobalAdaptOrchEnabled();
+        const useAdaptOrch = !dynamicResearchConfig && (params.enableAdaptOrch ?? isGlobalAdaptOrchEnabled());
         
         const dagExecuteFn = useAdaptOrch 
           ? (plan: TaskPlan, executor: any, opts: any) => executeWithAdaptOrch(plan, executor, {
@@ -2040,6 +2111,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           console.log(`[subagent_run_dag] Using AdaptOrch topology-aware orchestration${params.forceTopology ? ` (forced: ${params.forceTopology})` : ""}`);
         }
         
+        let followupDecision: ResearchFollowupDecision | undefined;
+        let dynamicResearchApplied = false;
         const dagResult = await dagExecuteFn<{ runRecord: SubagentRunRecord; output: string; prompt: string }>(
           taskPlan,
           async (task: TaskNode, context: string) => {
@@ -2116,6 +2189,85 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             signal: _signal,
             nodeTimeoutMs: timeoutMs,
             overallTimeoutMs: timeoutMs > 0 ? timeoutMs * Math.max(1, taskPlan.tasks.length) : 0,
+            onBatchSettled: dynamicResearchConfig
+              ? (api) => {
+                const gapTaskId = dynamicResearchConfig.gapTaskId?.trim() || "research-gap-check";
+                const synthesisTaskId = dynamicResearchConfig.synthesisTaskId?.trim() || "research-synthesis";
+                if (dynamicResearchApplied || !api.completedTaskIds.includes(gapTaskId)) {
+                  return;
+                }
+
+                dynamicResearchApplied = true;
+                const outputByTaskId = new Map<string, string>();
+                for (const [taskId, result] of Array.from(api.results.entries())) {
+                  if (result.status !== "completed") {
+                    continue;
+                  }
+                  outputByTaskId.set(taskId, extractDagTaskOutput(result.output));
+                }
+
+                const aggregatedBaseOutput = Array.from(outputByTaskId.entries())
+                  .map(([taskId, output]) => `## ${taskId}\nStatus: COMPLETED\n${output}`)
+                  .join("\n\n");
+                followupDecision = decideResearchFollowups(aggregatedBaseOutput);
+                const decision = followupDecision;
+                const baseContext = buildDynamicResearchBaseContext(outputByTaskId, decision.rationale);
+
+                if (decision.needsExternalDeepDive) {
+                  api.addNode({
+                    id: "research-deep-dive-external",
+                    description: `調査対象: ${dynamicResearchConfig.task}
+
+Stage 3 conditional deep dive: External
+- gap check が external deep dive を要求したため、追加で必要な公式 docs、仕様、参考実装を集める
+- 技術スタック、ライブラリ、API surface の不確実性を減らす
+
+前提:
+${baseContext}
+
+出力フォーマット:
+- findings: 事実
+- evidence: 根拠
+- open_questions: 未解決論点
+- plan_impact: plan にどう効くか
+- confidence: 0.0-1.0`,
+                    assignedAgent: "researcher",
+                    dependencies: [gapTaskId],
+                    inputContext: [gapTaskId],
+                    priority: "high",
+                  });
+                  api.addDependency(synthesisTaskId, "research-deep-dive-external");
+                  api.addInputContext(synthesisTaskId, "research-deep-dive-external");
+                }
+
+                if (decision.needsCodebaseDeepDive) {
+                  api.addNode({
+                    id: "research-deep-dive-codebase",
+                    description: `調査対象: ${dynamicResearchConfig.task}
+
+Stage 3 conditional deep dive: Codebase and risk
+- gap check が codebase / risk deep dive を要求したため、追加で読むべきファイル、再利用候補、危険箇所を絞る
+- 実装候補と壊しやすい点を plan へ渡せる粒度まで掘る
+
+前提:
+${baseContext}
+
+出力フォーマット:
+- findings: 事実
+- evidence: 根拠
+- open_questions: 未解決論点
+- plan_impact: plan にどう効くか
+- confidence: 0.0-1.0`,
+                    assignedAgent: "researcher",
+                    dependencies: [gapTaskId],
+                    inputContext: [gapTaskId],
+                    priority: "high",
+                  });
+                  api.addDependency(synthesisTaskId, "research-deep-dive-codebase");
+                  api.addInputContext(synthesisTaskId, "research-deep-dive-codebase");
+                }
+              }
+              : undefined,
             onTaskError: (taskId: string, error: Error) => {
               liveMonitor?.markFinished(taskId, "failed", error.message, error.message);
             },
@@ -2222,6 +2374,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             failureCount: failedCount,
             artifactPath: params.artifactPath,
             artifactTaskId: preferredArtifactTaskId || undefined,
+            followupDecision,
             outcomeCode:
               dagResult.overallStatus === "completed"
                 ? ("SUCCESS" as RunOutcomeCode)

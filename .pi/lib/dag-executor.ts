@@ -81,6 +81,56 @@ export interface NodeExecutionContext {
 }
 
 /**
+ * バッチ完了時に利用できる DAG 更新 API
+ * @summary 動的更新 API
+ */
+export interface DagBatchMutationApi<T = unknown> {
+  /** 現在のプラン */
+  readonly plan: TaskPlan;
+  /** 現在の結果 */
+  readonly results: ReadonlyMap<string, DagTaskResult<T>>;
+  /** 今回のバッチで完了したタスクID */
+  readonly completedTaskIds: readonly string[];
+  /** 今回のバッチで失敗したタスクID */
+  readonly failedTaskIds: readonly string[];
+  /** 実行統計 */
+  getStats(): {
+    total: number;
+    completed: number;
+    failed: number;
+    pending: number;
+    running: number;
+  };
+  /** ノード追加 */
+  addNode(task: TaskNode): void;
+  /** ノード削除 */
+  removeNode(taskId: string): boolean;
+  /** 依存追加 */
+  addDependency(taskId: string, dependencyId: string): void;
+  /** 入力コンテキスト追加 */
+  addInputContext(taskId: string, contextTaskId: string): void;
+  /** 依存削除 */
+  removeDependency(taskId: string, dependencyId: string): boolean;
+  /** 再キュー */
+  requeueTask(taskId: string, includeDependents?: boolean): void;
+  /** タスク取得 */
+  getTask(taskId: string): TaskNode | undefined;
+}
+
+/**
+ * バッチ完了の要約
+ * @summary バッチ結果要約
+ */
+export interface DagBatchSettlement<T = unknown> {
+  /** 今回のバッチで完了したタスクID */
+  completedTaskIds: string[];
+  /** 今回のバッチで失敗したタスクID */
+  failedTaskIds: string[];
+  /** 今回のバッチ結果 */
+  results: BatchResult<T>[];
+}
+
+/**
  * DAG実行のオプション
  * @summary 実行オプション
  * @param signal - 中止シグナル
@@ -99,6 +149,7 @@ export interface NodeExecutionContext {
  * @param isRecoverableError - リカバリー可能エラー判定関数
  * @param nodeTimeoutMs - ノードごとの hard timeout（0 で無効）
  * @param overallTimeoutMs - DAG 全体の hard timeout（0 で無効）
+ * @param onBatchSettled - バッチ完了後の動的更新フック
  */
 export interface DagExecutorOptions {
   /** 中止シグナル */
@@ -133,6 +184,8 @@ export interface DagExecutorOptions {
   nodeTimeoutMs?: number;
   /** DAG 全体の hard timeout（ミリ秒、0 で無効） */
   overallTimeoutMs?: number;
+  /** バッチ完了後の動的更新フック */
+  onBatchSettled?: (api: DagBatchMutationApi, settlement: DagBatchSettlement) => Promise<void> | void;
 }
 
 /**
@@ -356,7 +409,8 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
 
         // 実行可能タスクを並列実行
         try {
-          await this.executeBatch(readyTasks, executor, controller.signal);
+          const settlement = await this.executeBatch(readyTasks, executor, controller.signal);
+          await this.options.onBatchSettled?.(this.createBatchMutationApi(settlement), settlement);
         } catch (error) {
           if (this.shouldFinalizeAbortedExecution(error, controller.signal)) {
             this.finalizeAbortedTasks(
@@ -436,7 +490,7 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
     tasks: TaskDependencyNode[],
     executor: TaskExecutor<T>,
     signal?: AbortSignal,
-  ): Promise<void> {
+  ): Promise<DagBatchSettlement<T>> {
     // DynTaskMAS: 重みベーススケジューリングを適用
     let orderedTasks = tasks;
     if (this.options.useWeightBasedScheduling && this.scheduler) {
@@ -546,6 +600,12 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
         );
       }
     }
+
+    return {
+      completedTaskIds: completedIds,
+      failedTaskIds: failedIds,
+      results: batchResults,
+    };
   }
 
   /**
@@ -941,6 +1001,29 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
   }
 
   /**
+   * バッチ完了後フック向けの更新 API を構築
+   * @summary バッチ更新 API 作成
+   */
+  private createBatchMutationApi(
+    settlement: DagBatchSettlement<T>,
+  ): DagBatchMutationApi<T> {
+    return {
+      plan: this.plan,
+      results: this.results,
+      completedTaskIds: settlement.completedTaskIds,
+      failedTaskIds: settlement.failedTaskIds,
+      getStats: () => this.getStats(),
+      addNode: (task) => this.addNode(task),
+      removeNode: (taskId) => this.removeNode(taskId),
+      addDependency: (taskId, dependencyId) => this.addDependency(taskId, dependencyId),
+      addInputContext: (taskId, contextTaskId) => this.addInputContext(taskId, contextTaskId),
+      removeDependency: (taskId, dependencyId) => this.removeDependency(taskId, dependencyId),
+      requeueTask: (taskId, includeDependents = false) => this.requeueTask(taskId, includeDependents),
+      getTask: (taskId) => this.getTask(taskId),
+    };
+  }
+
+  /**
    * 現在の実行統計を取得
    * @summary 統計取得
    * @returns 実行統計
@@ -992,6 +1075,32 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
     if (this.options.useWeightBasedScheduling) {
       this.recalculateTaskWeight(taskId);
     }
+  }
+
+  /**
+   * タスクの入力コンテキストを動的に追加する
+   * @summary 入力コンテキスト追加
+   * @param taskId - 対象タスクID
+   * @param contextTaskId - 追加するコンテキスト元タスクID
+   */
+  addInputContext(taskId: string, contextTaskId: string): void {
+    const taskNode = this.taskNodes.get(taskId);
+    if (!taskNode) {
+      throw new Error(`Task "${taskId}" does not exist`);
+    }
+    if (!this.taskNodes.has(contextTaskId)) {
+      throw new Error(`Context task "${contextTaskId}" does not exist`);
+    }
+
+    const nextInputContext = taskNode.inputContext
+      ? [...taskNode.inputContext]
+      : [...taskNode.dependencies];
+
+    if (!nextInputContext.includes(contextTaskId)) {
+      nextInputContext.push(contextTaskId);
+    }
+
+    taskNode.inputContext = nextInputContext;
   }
 
   /**
