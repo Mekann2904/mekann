@@ -694,5 +694,134 @@ describe("plan extension integration tests", () => {
 			expect(patchResult).toBeUndefined();
 			expect(bashResult).toBeUndefined();
 		});
+
+		it("completed の current plan は SPEC-FIRST で mutation を block しない", async () => {
+			const createTool = fakePi.tools.get("plan_create");
+			const addStepTool = fakePi.tools.get("plan_add_step");
+			const updateStepTool = fakePi.tools.get("plan_update_step");
+			const ctx = createExecutionContext(tmpDir);
+
+			const created = await createTool!.execute(
+				"tc-completed-plan",
+				{
+					name: "Completed Plan",
+					acceptanceCriteria: ["done"],
+					implementationOrder: ["Implement"],
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			const extraStep = await addStepTool!.execute(
+				"tc-completed-extra-step",
+				{ planId: created.details.planId, title: "Finalize" },
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			await updateStepTool!.execute(
+				"tc-completed-step-1",
+				{
+					planId: created.details.planId,
+					stepId: created.details.currentStepId,
+					status: "completed",
+					actor: "executor",
+					activateNext: false,
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			await updateStepTool!.execute(
+				"tc-completed-step-2",
+				{
+					planId: created.details.planId,
+					stepId: extraStep.details.stepId,
+					status: "completed",
+					actor: "executor",
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			const result = await fakePi.emit("tool_call", { toolName: "edit", input: {} }, ctx);
+			expect(result).toBeUndefined();
+		});
+
+		it("completed の plan に step を追加して active に戻すと current focus を自動回復する", async () => {
+			const createTool = fakePi.tools.get("plan_create");
+			const updateStepTool = fakePi.tools.get("plan_update_step");
+			const addStepTool = fakePi.tools.get("plan_add_step");
+			const updateStatusTool = fakePi.tools.get("plan_update_status");
+			const showTool = fakePi.tools.get("plan_show");
+			const ctx = createExecutionContext(tmpDir);
+
+			const created = await createTool!.execute(
+				"tc-reopen-plan",
+				{
+					name: "Reopen Plan",
+					acceptanceCriteria: ["done"],
+					implementationOrder: ["Implement"],
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			await updateStepTool!.execute(
+				"tc-finish-reopen-plan",
+				{
+					planId: created.details.planId,
+					stepId: created.details.currentStepId,
+					status: "completed",
+					actor: "executor",
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			const commitStep = await addStepTool!.execute(
+				"tc-add-commit-step",
+				{
+					planId: created.details.planId,
+					title: "コミット作成",
+					description: "aurelia ディレクトリの変更をコミット",
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			const statusResult = await updateStatusTool!.execute(
+				"tc-reactivate-plan",
+				{
+					planId: created.details.planId,
+					status: "active",
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			expect(statusResult).toBeDefined();
+
+			const shown = await showTool!.execute(
+				"tc-show-reactivated-plan",
+				{ planId: created.details.planId },
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			expect(shown.details.currentStepId).toBe(commitStep.details.stepId);
+
+			const editResult = await fakePi.emit("tool_call", { toolName: "edit", input: {} }, ctx);
+			expect(editResult).toBeUndefined();
+		});
 	});
 });
