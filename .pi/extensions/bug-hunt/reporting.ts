@@ -60,6 +60,41 @@ function normalizeStringArray(value: unknown, limit: number = 12): string[] {
   ).slice(0, limit);
 }
 
+function normalizeCandidateReference(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^candidate:/, "")
+    .replace(/\\/g, "/")
+    .replace(/\s+/g, "")
+    .replace(/[|@#]+/g, ":")
+    .replace(/:+/g, ":")
+    .replace(/^:/, "")
+    .replace(/:$/, "");
+}
+
+function buildCandidateReferenceAliases(candidate: BugHuntCandidate): string[] {
+  const file = candidate.file.replace(/\\/g, "/");
+  const line = candidate.line ? String(candidate.line) : "";
+  const symbol = candidate.symbolName?.trim() || "";
+  const aliases = [
+    candidate.id,
+    candidate.id.replace(/^candidate:/i, ""),
+    file,
+    line ? `${file}:${line}` : "",
+    line && symbol ? `${file}:${line}:${symbol}` : "",
+    symbol,
+  ];
+
+  return Array.from(
+    new Set(
+      aliases
+        .filter((value) => value.length > 0)
+        .map((value) => normalizeCandidateReference(value)),
+    ),
+  );
+}
+
 function normalizeEvidence(value: unknown, allowEmpty: boolean = false): BugHuntEvidence[] {
   if (!Array.isArray(value)) {
     if (allowEmpty) {
@@ -441,6 +476,41 @@ export function parseBugHuntQueryOutput(raw: string): BugHuntQueryPlan {
 
 export function parseBugHuntHypothesisOutput(raw: string): BugHuntHypothesis[] {
   return normalizeHypotheses(parseJsonRecord(raw));
+}
+
+export function resolveBugHuntCandidateReference(
+  reference: string,
+  candidates: BugHuntCandidate[],
+): string | null {
+  const normalizedReference = normalizeCandidateReference(reference);
+  if (!normalizedReference) {
+    return null;
+  }
+
+  const exactMatches = candidates.filter((candidate) =>
+    buildCandidateReferenceAliases(candidate).includes(normalizedReference),
+  );
+  if (exactMatches.length === 1) {
+    return exactMatches[0].id;
+  }
+  if (exactMatches.length > 1) {
+    return null;
+  }
+
+  if (!normalizedReference.includes("/")) {
+    return null;
+  }
+
+  const fuzzyMatches = candidates.filter((candidate) =>
+    buildCandidateReferenceAliases(candidate).some((alias) =>
+      alias.startsWith(normalizedReference) || normalizedReference.startsWith(alias),
+    ),
+  );
+  if (fuzzyMatches.length === 1) {
+    return fuzzyMatches[0].id;
+  }
+
+  return null;
 }
 
 export function parseBugHuntInvestigationOutput(raw: string): BugHuntInvestigationResult {

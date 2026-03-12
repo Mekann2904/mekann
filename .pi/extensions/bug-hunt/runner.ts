@@ -5,6 +5,11 @@
 
 import { setTimeout as delay } from "node:timers/promises";
 
+import {
+  allocateBugHuntStageTimeout,
+  hasBudgetForBugHuntStage,
+  type BugHuntModelStage,
+} from "./budget.js";
 import { callModelViaPi } from "../shared/pi-print-executor.js";
 import {
   buildBugHuntHypothesisPrompt,
@@ -15,6 +20,7 @@ import {
   parseBugHuntInvestigationOutput,
   parseBugHuntModelOutput,
   parseBugHuntQueryOutput,
+  resolveBugHuntCandidateReference,
 } from "./reporting.js";
 import {
   buildBugHuntInvestigationContext,
@@ -153,12 +159,16 @@ async function callStageModel(
   state: BugHuntState,
   prompt: string,
   deadline: number,
+  stage: BugHuntModelStage,
   entityLabel: string,
 ): Promise<string> {
   if (!state.model) {
     throw new Error("bug-hunt model config is missing");
   }
-  const timeoutMs = Math.min(state.timeoutMs, ensureRemainingBudget(deadline, entityLabel));
+  const timeoutMs = Math.min(
+    state.timeoutMs,
+    allocateBugHuntStageTimeout(stage, ensureRemainingBudget(deadline, entityLabel)),
+  );
   activeController = new AbortController();
   try {
     return await callModelViaPi({
@@ -198,7 +208,7 @@ async function runIteration(): Promise<void> {
     recentTitles,
     seenFiles: state.seenFiles,
   });
-  const rawQuery = await callStageModel(state, queryPrompt, deadline, "bug-hunt-query");
+  const rawQuery = await callStageModel(state, queryPrompt, deadline, "query", "bug-hunt-query");
   const queryPlan = parseBugHuntQueryOutput(rawQuery);
 
   saveStage("retrieve", `retrieving candidates for: ${queryPlan.query}`);
@@ -206,7 +216,7 @@ async function runIteration(): Promise<void> {
     cwd,
     query: queryPlan.query,
     keywords: queryPlan.keywords,
-    limit: 8,
+    limit: 12,
   });
 
   const latest = loadBugHuntState(cwd);
@@ -240,11 +250,21 @@ async function runIteration(): Promise<void> {
   const rawHypotheses = await callStageModel(state, buildBugHuntHypothesisPrompt({
     queryPlan,
     candidates,
-  }), deadline, "bug-hunt-hypothesis");
+  }), deadline, "hypothesis", "bug-hunt-hypothesis");
   const hypotheses = parseBugHuntHypothesisOutput(rawHypotheses)
-    .filter((hypothesis) => candidates.some((candidate) => candidate.id === hypothesis.candidateId))
+    .map((hypothesis) => {
+      const resolvedCandidateId = resolveBugHuntCandidateReference(hypothesis.candidateId, candidates);
+      if (!resolvedCandidateId) {
+        return null;
+      }
+      return {
+        ...hypothesis,
+        candidateId: resolvedCandidateId,
+      };
+    })
+    .filter((hypothesis): hypothesis is NonNullable<typeof hypothesis> => Boolean(hypothesis))
     .sort((left, right) => right.confidence - left.confidence)
-    .slice(0, 3);
+    .slice(0, 4);
 
   if (hypotheses.length === 0) {
     saveBugHuntState({
@@ -260,6 +280,10 @@ async function runIteration(): Promise<void> {
   const rejectedHypotheses = [...nextState.rejectedHypotheses];
 
   for (const hypothesis of hypotheses) {
+    if (!hasBudgetForBugHuntStage("investigation", deadline - Date.now())) {
+      break;
+    }
+
     const candidate = candidates.find((entry) => entry.id === hypothesis.candidateId);
     if (!candidate) {
       continue;
@@ -276,7 +300,7 @@ async function runIteration(): Promise<void> {
       hypothesis,
       context,
       rejectedHypotheses,
-    }), deadline, "bug-hunt-investigation");
+    }), deadline, "investigation", "bug-hunt-investigation");
     const investigation = parseBugHuntInvestigationOutput(rawInvestigation);
     investigations.push({
       ...investigation,
@@ -309,7 +333,7 @@ async function runIteration(): Promise<void> {
     investigations,
     knownDedupeKeys,
     recentTitles,
-  }), deadline, "bug-hunt-observer");
+  }), deadline, "observer", "bug-hunt-observer");
   const parsed = parseBugHuntModelOutput(rawObserver);
 
   if (parsed.status === "no_bug") {

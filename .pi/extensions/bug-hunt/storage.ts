@@ -30,7 +30,7 @@ interface TaskStorageRecord {
 }
 
 const DEFAULT_INTERVAL_MS = 30_000;
-const DEFAULT_TIMEOUT_MS = 180_000;
+const DEFAULT_TIMEOUT_MS = 600_000;
 const MAX_FINGERPRINTS = 256;
 const MAX_TRACKED_VALUES = 256;
 

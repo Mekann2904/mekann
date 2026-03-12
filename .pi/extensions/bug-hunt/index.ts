@@ -150,6 +150,18 @@ function buildRunningStatePatch(input: {
   };
 }
 
+function resolvePreferredBugHuntTimeoutMs(
+  requestedTimeoutMs: number | undefined,
+  previous: BugHuntState,
+): number {
+  if (typeof requestedTimeoutMs === "number") {
+    return requestedTimeoutMs;
+  }
+
+  const defaultTimeoutMs = createDefaultBugHuntState().timeoutMs;
+  return Math.max(previous.timeoutMs ?? 0, defaultTimeoutMs);
+}
+
 export function resetForTesting(): void {
   isInitialized = false;
 }
@@ -227,7 +239,7 @@ export default function registerBugHuntExtension(pi: ExtensionAPI): void {
         model,
         taskPrompt: params.task?.trim() || current.taskPrompt || createDefaultBugHuntState().taskPrompt,
         intervalMs: params.intervalMs ?? current.intervalMs ?? createDefaultBugHuntState().intervalMs,
-        timeoutMs: params.timeoutMs ?? current.timeoutMs ?? createDefaultBugHuntState().timeoutMs,
+        timeoutMs: resolvePreferredBugHuntTimeoutMs(params.timeoutMs, current),
       });
       saveBugHuntState(nextState, cwd);
 

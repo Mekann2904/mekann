@@ -241,7 +241,7 @@ export async function collectBugHuntCandidates(input: {
     const locagentResults = searchEntities(resources.locagent, keywords, {
       nodeTypes: ["function", "class", "file"],
       detailLevel: "preview",
-      limit: 12,
+      limit: 16,
     });
 
     for (const result of locagentResults) {
@@ -272,11 +272,11 @@ export async function collectBugHuntCandidates(input: {
   }
 
   const repoResult = await repographLocalize(input.query, input.cwd, {
-    k: 2,
-    maxNodes: 20,
+    k: 4,
+    maxNodes: 40,
   });
   if (repoResult.success) {
-    for (const location of repoResult.locations.slice(0, 12)) {
+    for (const location of repoResult.locations.slice(0, 16)) {
       upsertCandidate(registry, {
         source: "repograph",
         file: location.file,

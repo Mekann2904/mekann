@@ -13,6 +13,7 @@ import {
   parseBugHuntInvestigationOutput,
   parseBugHuntModelOutput,
   parseBugHuntQueryOutput,
+  resolveBugHuntCandidateReference,
 } from "../../../.pi/extensions/bug-hunt/reporting.js";
 
 describe("bug-hunt reporting helpers", () => {
@@ -91,6 +92,25 @@ describe("bug-hunt reporting helpers", () => {
     expect(hypotheses).toHaveLength(1);
     expect(hypotheses[0]?.candidateId).toBe("candidate:src/app.ts|10|startTimer");
     expect(hypotheses[0]?.severity).toBe("high");
+  });
+
+  it("candidate 参照は file:line:symbol 形式でも解決できる", () => {
+    const candidates = [{
+      id: "candidate:src/app.ts|10|startTimer",
+      file: "src/app.ts",
+      line: 10,
+      symbolName: "startTimer",
+      sources: ["locagent"] as const,
+      score: 2.4,
+      summary: "setInterval is created in startup",
+    }];
+
+    expect(resolveBugHuntCandidateReference("src/app.ts:10:startTimer", candidates)).toBe(
+      "candidate:src/app.ts|10|startTimer",
+    );
+    expect(resolveBugHuntCandidateReference("src/app.ts:10", candidates)).toBe(
+      "candidate:src/app.ts|10|startTimer",
+    );
   });
 
   it("investigation JSON を正規化できる", () => {

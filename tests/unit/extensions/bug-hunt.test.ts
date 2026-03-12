@@ -22,7 +22,7 @@ const mockState = vi.hoisted(() => ({
     iterationCount: 0,
     reportedCount: 0,
     intervalMs: 30000,
-    timeoutMs: 180000,
+    timeoutMs: 600000,
     taskPrompt: "default task",
     model: null,
     reportedFingerprints: [],
@@ -57,7 +57,7 @@ vi.mock("../../../.pi/extensions/bug-hunt/storage.js", () => ({
     iterationCount: 0,
     reportedCount: 0,
     intervalMs: 30000,
-    timeoutMs: 180000,
+    timeoutMs: 600000,
     taskPrompt: "default task",
     model: null,
     reportedFingerprints: [],
@@ -145,7 +145,7 @@ describe("bug-hunt extension", () => {
       iterationCount: 0,
       reportedCount: 0,
       intervalMs: 30000,
-      timeoutMs: 180000,
+      timeoutMs: 600000,
       taskPrompt: "default task",
       model: null,
       reportedFingerprints: [],
@@ -197,10 +197,37 @@ describe("bug-hunt extension", () => {
     expect(mockState.state.currentStage).toBe("booting");
     expect(mockState.state.runId).toBe("bug-hunt-run-1");
     expect(mockState.state.backgroundProcessId).toBe("bg-1");
+    expect(mockState.state.timeoutMs).toBe(600000);
     expect(startBackgroundProcess).toHaveBeenCalledWith(expect.objectContaining({
       waitForReady: false,
       readyPattern: "BUG_HUNT_READY",
     }));
+  });
+
+  it("bug_hunt_start は古い timeout を品質優先の既定値へ引き上げる", async () => {
+    mockState.state = {
+      ...mockState.state,
+      timeoutMs: 180000,
+    };
+
+    const { default: extension, resetForTesting } = await import("../../../.pi/extensions/bug-hunt/index.js");
+    resetForTesting();
+    const pi = createPiMock();
+
+    extension(pi as never);
+
+    const tool = pi.tools.get("bug_hunt_start");
+    await tool.execute("call-1", {
+      task: "Find task bugs",
+    }, undefined, undefined, {
+      cwd: "/repo",
+      model: {
+        provider: "openai",
+        id: "gpt-5",
+      },
+    });
+
+    expect(mockState.state.timeoutMs).toBe(600000);
   });
 
   it("既に動作中なら bug_hunt_start は再起動しない", async () => {
