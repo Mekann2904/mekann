@@ -63,6 +63,7 @@ export interface StartBackgroundProcessInput {
   startupTimeoutMs?: number;
   readyPattern?: string;
   readyPort?: number;
+  waitForReady?: boolean;
 }
 
 export interface StopBackgroundProcessResult {
@@ -510,6 +511,10 @@ export async function startBackgroundProcess(input: StartBackgroundProcessInput)
       closeSync(stderrFd);
     }
   });
+
+  if (input.waitForReady === false) {
+    return { record, ready: false };
+  }
 
   return (
     await waitForBackgroundProcessReady({

@@ -207,8 +207,8 @@ describe("ralph-loop", () => {
 
       it("should throw error when prompt file is missing", async () => {
         initRalphLoop({ cwd: tempDir });
-        // Remove prompt file
-        const promptPath = join(tempDir, stateDir, "PI.md");
+        // Remove prompt file (PROMPT_build.md is used for build mode)
+        const promptPath = join(tempDir, stateDir, "PROMPT_build.md");
         rmSync(promptPath);
 
         await expect(runRalphLoop({ cwd: tempDir })).rejects.toThrow(/プロンプト/);

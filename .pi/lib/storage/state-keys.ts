@@ -45,6 +45,10 @@ export function getBackgroundProcessConfigStateKey(cwd: string): string {
   return `background_process_config:${cwd}`;
 }
 
+export function getBugHuntStateKey(cwd: string): string {
+  return `bug_hunt_state:${cwd}`;
+}
+
 export function getWorkspaceVerificationStateKey(cwd: string): string {
   return `workspace_verification_state:${cwd}`;
 }

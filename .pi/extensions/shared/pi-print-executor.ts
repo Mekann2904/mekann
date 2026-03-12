@@ -35,9 +35,10 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { detectTier, getRpmLimit } from "../../lib/provider-limits.js";
 import { sleep } from "../../lib/sleep-utils.js";
 import { withFileLock } from "../../lib/storage/storage-lock.js";
@@ -51,6 +52,11 @@ const PRINT_THROTTLE_MAX_COOLDOWN_MS = 5 * 60_000;
 const PRINT_THROTTLE_MAX_STATE_AGE_MS = 15 * 60_000;
 const PRINT_THROTTLE_RUNTIME_DIR = join(homedir(), ".pi", "runtime");
 const PRINT_THROTTLE_STATE_FILE = join(PRINT_THROTTLE_RUNTIME_DIR, "pi-print-rpm-throttle-state.json");
+const PI_CHILD_AGENT_DIR = join(process.cwd(), ".pi", "runtime", "pi-print-agent");
+const PI_CHILD_AGENT_SYNC_FILES = ["auth.json", "models.json"] as const;
+const PI_CHILD_AGENT_DISABLED_RESOURCE_KEYS = ["packages", "extensions", "skills", "prompts", "themes"] as const;
+const PI_PRINT_TRANSIENT_RETRY_LIMIT = 2;
+const PI_PRINT_TRANSIENT_RETRY_BASE_DELAY_MS = 1_000;
 const PRINT_THROTTLE_FILE_LOCK_OPTIONS = {
   maxWaitMs: 2_000,
   pollMs: 25,
@@ -99,6 +105,80 @@ function parseBooleanEnv(name: string, fallback: boolean): boolean {
   const raw = process.env[name];
   if (!raw) return fallback;
   return raw === "1" || raw.toLowerCase() === "true";
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readJsonRecord(filePath: string): Record<string, unknown> | null {
+  if (!existsSync(filePath)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(filePath, "utf-8")) as unknown;
+    return isPlainRecord(parsed) ? parsed : null;
+  } catch (error) {
+    console.error("[pi-print-executor] Failed to read JSON file:", filePath, error);
+    return null;
+  }
+}
+
+export function sanitizePiChildAgentSettings(settings: Record<string, unknown>): Record<string, unknown> {
+  const nextSettings = { ...settings };
+
+  // Internal print-mode children must not auto-install user packages.
+  for (const key of PI_CHILD_AGENT_DISABLED_RESOURCE_KEYS) {
+    nextSettings[key] = [];
+  }
+
+  return nextSettings;
+}
+
+export function preparePiChildAgentDir(sourceAgentDir: string, childAgentDir = PI_CHILD_AGENT_DIR): string {
+  mkdirSync(childAgentDir, { recursive: true });
+
+  const sourceSettingsPath = join(sourceAgentDir, "settings.json");
+  const sanitizedSettings = sanitizePiChildAgentSettings(readJsonRecord(sourceSettingsPath) ?? {});
+  writeFileSync(join(childAgentDir, "settings.json"), `${JSON.stringify(sanitizedSettings, null, 2)}\n`, "utf-8");
+
+  for (const fileName of PI_CHILD_AGENT_SYNC_FILES) {
+    const sourcePath = join(sourceAgentDir, fileName);
+    if (!existsSync(sourcePath)) {
+      continue;
+    }
+
+    copyFileSync(sourcePath, join(childAgentDir, fileName));
+  }
+
+  return childAgentDir;
+}
+
+export function buildPiChildEnv(envOverrides?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  if (envOverrides?.PI_CODING_AGENT_DIR) {
+    return {
+      ...process.env,
+      ...envOverrides,
+    };
+  }
+
+  const sourceAgentDir = process.env.PI_CODING_AGENT_DIR || getAgentDir();
+
+  try {
+    const childAgentDir = preparePiChildAgentDir(sourceAgentDir);
+    return {
+      ...process.env,
+      PI_CODING_AGENT_DIR: childAgentDir,
+      ...(envOverrides || {}),
+    };
+  } catch (error) {
+    console.error("[pi-print-executor] Failed to prepare isolated pi agent dir:", error);
+    return {
+      ...process.env,
+      ...(envOverrides || {}),
+    };
+  }
 }
 
 function getPrintThrottleKey(provider: string, model: string): string {
@@ -206,6 +286,10 @@ function isRateLimitMessage(text: string): boolean {
 
 function isUnhandledAbortStopReasonMessage(text: string): boolean {
   return /unhandled stop reason:\s*abort/i.test(text);
+}
+
+export function isRetryablePiChildErrorMessage(text: string): boolean {
+  return /overloaded|rate.?limit|too many requests|429|500|502|503|504|service.?unavailable|server error|internal error|unknown error(?: occurred)?|connection.?error|connection.?refused|other side closed|fetch failed|upstream.?connect|reset before headers|terminated|retry delay/i.test(text);
 }
 
 function extractRetryAfterMs(text: string): number | undefined {
@@ -423,7 +507,12 @@ function parseJsonStreamLine(line: string): { type: string; textDelta?: string; 
 /**
  * Extract final text from agent_end message.
  */
-function extractFinalText(line: string): { text: string | null; thinking: string | null } {
+function extractFinalText(line: string): {
+  text: string | null;
+  thinking: string | null;
+  stopReason?: string;
+  errorMessage?: string;
+} {
   try {
     const obj = JSON.parse(line);
     if (obj.type === "agent_end" && obj.messages) {
@@ -434,6 +523,8 @@ function extractFinalText(line: string): { text: string | null; thinking: string
         return {
           text: textBlock?.text || null,
           thinking: thinkingBlock?.thinking || null,
+          stopReason: typeof lastMessage.stopReason === "string" ? lastMessage.stopReason : undefined,
+          errorMessage: typeof lastMessage.errorMessage === "string" ? lastMessage.errorMessage : undefined,
         };
       }
     }
@@ -468,6 +559,34 @@ function combineTextAndThinking(text: string, thinking: string): string {
   return parts.join("\n");
 }
 
+async function retryPiChildExecution<T>(input: {
+  run: () => Promise<T>;
+  signal?: AbortSignal;
+}): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= PI_PRINT_TRANSIENT_RETRY_LIMIT; attempt += 1) {
+    try {
+      return await input.run();
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      const shouldRetry =
+        attempt < PI_PRINT_TRANSIENT_RETRY_LIMIT
+        && !input.signal?.aborted
+        && isRetryablePiChildErrorMessage(message);
+
+      if (!shouldRetry) {
+        throw error;
+      }
+
+      await sleepWithAbort(PI_PRINT_TRANSIENT_RETRY_BASE_DELAY_MS * (attempt + 1), input.signal);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 /**
  * Pi印刷モード実行
  * @summary 印刷を実行する
@@ -492,207 +611,222 @@ export async function runPiPrintMode(
   // Keep extensions disabled by default for deterministic child behavior.
   const args = buildPiPrintModeArgs(input);
 
-  return await new Promise<PrintCommandResult>((resolvePromise, rejectPromise) => {
-    let stderr = "";
-    let textContent = "";
-    let thinkingContent = "";
-    let finalText = "";
-    let finalThinking = "";
-    let timedOut = false;
-    let settled = false;
-    let forceKillTimer: NodeJS.Timeout | undefined;
-    let idleTimeout: NodeJS.Timeout | undefined;
-    let hardTimeout: NodeJS.Timeout | undefined;
-    const startedAt = Date.now();
-    const idleTimeoutMs = input.timeoutMs > 0 ? input.timeoutMs : DEFAULT_IDLE_TIMEOUT_MS;
-    const hardTimeoutMs = Math.max(0, input.hardTimeoutMs ?? 0);
+  return await retryPiChildExecution({
+    signal: input.signal,
+    run: async () => {
+      return await new Promise<PrintCommandResult>((resolvePromise, rejectPromise) => {
+        let stderr = "";
+        let textContent = "";
+        let thinkingContent = "";
+        let finalText = "";
+        let finalThinking = "";
+        let finalStopReason = "";
+        let finalErrorMessage = "";
+        let timedOut = false;
+        let settled = false;
+        let forceKillTimer: NodeJS.Timeout | undefined;
+        let idleTimeout: NodeJS.Timeout | undefined;
+        let hardTimeout: NodeJS.Timeout | undefined;
+        const startedAt = Date.now();
+        const idleTimeoutMs = input.timeoutMs > 0 ? input.timeoutMs : DEFAULT_IDLE_TIMEOUT_MS;
+        const hardTimeoutMs = Math.max(0, input.hardTimeoutMs ?? 0);
 
-    const child = spawn("pi", args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        ...(input.envOverrides || {}),
-      },
-    });
+        const child = spawn("pi", args, {
+          stdio: ["ignore", "pipe", "pipe"],
+          env: buildPiChildEnv(input.envOverrides),
+        });
 
-    const finish = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      fn();
-    };
+        const finish = (fn: () => void) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          fn();
+        };
 
-    const killSafely = (sig: NodeJS.Signals) => {
-      if (!child.killed) {
-        try {
-          child.kill(sig);
-        } catch {
-          // noop
-        }
-      }
-    };
-
-    const resetIdleTimeout = () => {
-      if (idleTimeout) {
-        clearTimeout(idleTimeout);
-      }
-      idleTimeout = setTimeout(() => {
-        timedOut = true;
-        killSafely("SIGTERM");
-        if (forceKillTimer) {
-          clearTimeout(forceKillTimer);
-        }
-        forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
-      }, idleTimeoutMs);
-    };
-
-    const onAbort = () => {
-      killSafely("SIGTERM");
-      if (forceKillTimer) {
-        clearTimeout(forceKillTimer);
-      }
-      forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
-      finish(() => rejectPromise(new Error(`${entityLabel} run aborted`)));
-    };
-
-    const timeoutEnabled = input.timeoutMs !== 0;
-    if (timeoutEnabled) {
-      resetIdleTimeout();
-    }
-    if (hardTimeoutMs > 0) {
-      hardTimeout = setTimeout(() => {
-        timedOut = true;
-        killSafely("SIGTERM");
-        if (forceKillTimer) {
-          clearTimeout(forceKillTimer);
-        }
-        forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
-      }, hardTimeoutMs);
-    }
-
-    const cleanup = () => {
-      if (idleTimeout) {
-        clearTimeout(idleTimeout);
-      }
-      if (hardTimeout) {
-        clearTimeout(hardTimeout);
-      }
-      if (forceKillTimer) {
-        clearTimeout(forceKillTimer);
-      }
-      input.signal?.removeEventListener("abort", onAbort);
-    };
-
-    input.signal?.addEventListener("abort", onAbort, { once: true });
-
-    // Buffer for incomplete JSON lines
-    let lineBuffer = "";
-
-    child.stdout.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      input.onStdoutChunk?.(text);
-
-      // Reset idle timeout on any output
-      if (timeoutEnabled) {
-        resetIdleTimeout();
-      }
-
-      // Process complete lines
-      lineBuffer += text;
-      const lines = lineBuffer.split("\n");
-      lineBuffer = lines.pop() || "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-
-        const parsed = parseJsonStreamLine(trimmed);
-        if (parsed?.type === "text_delta" && parsed.textDelta) {
-          textContent += parsed.textDelta;
-          input.onTextDelta?.(parsed.textDelta);
-        }
-
-        if (parsed?.type === "thinking_delta" && parsed.thinkingDelta) {
-          thinkingContent += parsed.thinkingDelta;
-          // Don't show thinking in preview - only in final output
-        }
-
-        // Try to extract final text from agent_end
-        if (parsed?.isEnd) {
-          const extracted = extractFinalText(trimmed);
-          if (extracted.text) {
-            finalText = extracted.text;
+        const killSafely = (sig: NodeJS.Signals) => {
+          if (!child.killed) {
+            try {
+              child.kill(sig);
+            } catch {
+              // noop
+            }
           }
-          if (extracted.thinking) {
-            finalThinking = extracted.thinking;
+        };
+
+        const resetIdleTimeout = () => {
+          if (idleTimeout) {
+            clearTimeout(idleTimeout);
           }
+          idleTimeout = setTimeout(() => {
+            timedOut = true;
+            killSafely("SIGTERM");
+            if (forceKillTimer) {
+              clearTimeout(forceKillTimer);
+            }
+            forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
+          }, idleTimeoutMs);
+        };
+
+        const onAbort = () => {
+          killSafely("SIGTERM");
+          if (forceKillTimer) {
+            clearTimeout(forceKillTimer);
+          }
+          forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
+          finish(() => rejectPromise(new Error(`${entityLabel} run aborted`)));
+        };
+
+        const timeoutEnabled = input.timeoutMs !== 0;
+        if (timeoutEnabled) {
+          resetIdleTimeout();
         }
-      }
-    });
-
-    child.stderr.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stderr = appendWithCap(stderr, text, MAX_CAPTURED_STDERR_CHARS);
-      input.onStderrChunk?.(text);
-      if (timeoutEnabled) {
-        resetIdleTimeout();
-      }
-    });
-
-    child.on("error", (error) => {
-      finish(() => rejectPromise(error));
-    });
-
-    child.on("close", (code) => {
-      finish(() => {
-        if (timedOut) {
-          const elapsedMs = Date.now() - startedAt;
-          rejectPromise(new Error(
-            hardTimeoutMs > 0 && elapsedMs >= hardTimeoutMs
-              ? `${entityLabel} hard timeout after ${hardTimeoutMs}ms`
-              : `${entityLabel} idle timeout after ${idleTimeoutMs}ms of no output`,
-          ));
-          return;
+        if (hardTimeoutMs > 0) {
+          hardTimeout = setTimeout(() => {
+            timedOut = true;
+            killSafely("SIGTERM");
+            if (forceKillTimer) {
+              clearTimeout(forceKillTimer);
+            }
+            forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
+          }, hardTimeoutMs);
         }
 
-        if (code !== 0) {
-          recordPrintRateLimitCooldown({
-            provider: input.provider,
-            model: input.model,
-            stderr,
+        const cleanup = () => {
+          if (idleTimeout) {
+            clearTimeout(idleTimeout);
+          }
+          if (hardTimeout) {
+            clearTimeout(hardTimeout);
+          }
+          if (forceKillTimer) {
+            clearTimeout(forceKillTimer);
+          }
+          input.signal?.removeEventListener("abort", onAbort);
+        };
+
+        input.signal?.addEventListener("abort", onAbort, { once: true });
+
+        // Buffer for incomplete JSON lines
+        let lineBuffer = "";
+
+        child.stdout.on("data", (chunk: Buffer | string) => {
+          const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
+          input.onStdoutChunk?.(text);
+
+          // Reset idle timeout on any output
+          if (timeoutEnabled) {
+            resetIdleTimeout();
+          }
+
+          // Process complete lines
+          lineBuffer += text;
+          const lines = lineBuffer.split("\n");
+          lineBuffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+
+            const parsed = parseJsonStreamLine(trimmed);
+            if (parsed?.type === "text_delta" && parsed.textDelta) {
+              textContent += parsed.textDelta;
+              input.onTextDelta?.(parsed.textDelta);
+            }
+
+            if (parsed?.type === "thinking_delta" && parsed.thinkingDelta) {
+              thinkingContent += parsed.thinkingDelta;
+              // Don't show thinking in preview - only in final output
+            }
+
+            // Try to extract final text from agent_end
+            if (parsed?.isEnd) {
+              const extracted = extractFinalText(trimmed);
+              if (extracted.text) {
+                finalText = extracted.text;
+              }
+              if (extracted.thinking) {
+                finalThinking = extracted.thinking;
+              }
+              if (extracted.stopReason) {
+                finalStopReason = extracted.stopReason;
+              }
+              if (extracted.errorMessage) {
+                finalErrorMessage = extracted.errorMessage;
+              }
+            }
+          }
+        });
+
+        child.stderr.on("data", (chunk: Buffer | string) => {
+          const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
+          stderr = appendWithCap(stderr, text, MAX_CAPTURED_STDERR_CHARS);
+          input.onStderrChunk?.(text);
+          if (timeoutEnabled) {
+            resetIdleTimeout();
+          }
+        });
+
+        child.on("error", (error) => {
+          finish(() => rejectPromise(error));
+        });
+
+        child.on("close", (code) => {
+          finish(() => {
+            if (timedOut) {
+              const elapsedMs = Date.now() - startedAt;
+              rejectPromise(new Error(
+                hardTimeoutMs > 0 && elapsedMs >= hardTimeoutMs
+                  ? `${entityLabel} hard timeout after ${hardTimeoutMs}ms`
+                  : `${entityLabel} idle timeout after ${idleTimeoutMs}ms of no output`,
+              ));
+              return;
+            }
+
+            if (code !== 0) {
+              recordPrintRateLimitCooldown({
+                provider: input.provider,
+                model: input.model,
+                stderr,
+              });
+              const errorMessage = stderr.trim() || `${entityLabel} exited with code ${code}`;
+              if (isUnhandledAbortStopReasonMessage(errorMessage)) {
+                rejectPromise(new Error(`${entityLabel} run aborted`));
+                return;
+              }
+              rejectPromise(new Error(errorMessage));
+              return;
+            }
+
+            // Prefer final text/thinking from agent_end, fallback to collected deltas
+            const outputText = finalText || textContent;
+            const outputThinking = finalThinking || thinkingContent;
+            const output = combineTextAndThinking(outputText, outputThinking);
+
+            if (finalStopReason === "error") {
+              rejectPromise(new Error(finalErrorMessage || `${entityLabel} returned stopReason=error`));
+              return;
+            }
+
+            if (!output) {
+              const stderrMessage = trimForError(stderr);
+              rejectPromise(
+                new Error(
+                  stderrMessage
+                    ? `${entityLabel} returned empty output; stderr=${stderrMessage}`
+                    : `${entityLabel} returned empty output`,
+                ),
+              );
+              return;
+            }
+
+            resolvePromise({
+              output,
+              latencyMs: Date.now() - startedAt,
+            });
           });
-          const errorMessage = stderr.trim() || `${entityLabel} exited with code ${code}`;
-          if (isUnhandledAbortStopReasonMessage(errorMessage)) {
-            rejectPromise(new Error(`${entityLabel} run aborted`));
-            return;
-          }
-          rejectPromise(new Error(errorMessage));
-          return;
-        }
-
-        // Prefer final text/thinking from agent_end, fallback to collected deltas
-        const outputText = finalText || textContent;
-        const outputThinking = finalThinking || thinkingContent;
-        const output = combineTextAndThinking(outputText, outputThinking);
-
-        if (!output) {
-          const stderrMessage = trimForError(stderr);
-          rejectPromise(
-            new Error(
-              stderrMessage
-                ? `${entityLabel} returned empty output; stderr=${stderrMessage}`
-                : `${entityLabel} returned empty output`,
-            ),
-          );
-          return;
-        }
-
-        resolvePromise({
-          output,
-          latencyMs: Date.now() - startedAt,
         });
       });
-    });
+    },
   });
 }
 
@@ -776,186 +910,204 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
 
   args.push(prompt);
 
-  return await new Promise<string>((resolvePromise, rejectPromise) => {
-    let stderr = "";
-    let textContent = "";
-    let thinkingContent = "";
-    let finalText = "";
-    let finalThinking = "";
-    let timedOut = false;
-    let settled = false;
-    let forceKillTimer: NodeJS.Timeout | undefined;
-    let idleTimeout: NodeJS.Timeout | undefined;
-    let hardTimeout: NodeJS.Timeout | undefined;
-    const idleTimeoutMs = timeoutMs > 0 ? timeoutMs : DEFAULT_IDLE_TIMEOUT_MS;
-    const absoluteTimeoutMs = Math.max(0, hardTimeoutMs ?? 0);
+  return await retryPiChildExecution({
+    signal,
+    run: async () => {
+      return await new Promise<string>((resolvePromise, rejectPromise) => {
+        let stderr = "";
+        let textContent = "";
+        let thinkingContent = "";
+        let finalText = "";
+        let finalThinking = "";
+        let finalStopReason = "";
+        let finalErrorMessage = "";
+        let timedOut = false;
+        let settled = false;
+        let forceKillTimer: NodeJS.Timeout | undefined;
+        let idleTimeout: NodeJS.Timeout | undefined;
+        let hardTimeout: NodeJS.Timeout | undefined;
+        const idleTimeoutMs = timeoutMs > 0 ? timeoutMs : DEFAULT_IDLE_TIMEOUT_MS;
+        const absoluteTimeoutMs = Math.max(0, hardTimeoutMs ?? 0);
 
-    const child = spawn("pi", args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
-    });
+        const child = spawn("pi", args, {
+          stdio: ["ignore", "pipe", "pipe"],
+          env: buildPiChildEnv(),
+        });
 
-    const finish = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      fn();
-    };
+        const finish = (fn: () => void) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          fn();
+        };
 
-    const killSafely = (sig: NodeJS.Signals) => {
-      if (!child.killed) {
-        try {
-          child.kill(sig);
-        } catch {
-          // noop
-        }
-      }
-    };
-
-    const resetIdleTimeout = () => {
-      if (idleTimeout) {
-        clearTimeout(idleTimeout);
-      }
-      idleTimeout = setTimeout(() => {
-        timedOut = true;
-        killSafely("SIGTERM");
-        if (forceKillTimer) {
-          clearTimeout(forceKillTimer);
-        }
-        forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
-      }, idleTimeoutMs);
-    };
-
-    const onAbort = () => {
-      killSafely("SIGTERM");
-      if (forceKillTimer) {
-        clearTimeout(forceKillTimer);
-      }
-      forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
-      finish(() => rejectPromise(new Error(`${entityLabel} aborted`)));
-    };
-
-    const timeoutEnabled = timeoutMs !== 0;
-    if (timeoutEnabled) {
-      resetIdleTimeout();
-    }
-    if (absoluteTimeoutMs > 0) {
-      hardTimeout = setTimeout(() => {
-        timedOut = true;
-        killSafely("SIGTERM");
-        if (forceKillTimer) {
-          clearTimeout(forceKillTimer);
-        }
-        forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
-      }, absoluteTimeoutMs);
-    }
-
-    const cleanup = () => {
-      if (idleTimeout) {
-        clearTimeout(idleTimeout);
-      }
-      if (hardTimeout) {
-        clearTimeout(hardTimeout);
-      }
-      if (forceKillTimer) {
-        clearTimeout(forceKillTimer);
-      }
-      signal?.removeEventListener("abort", onAbort);
-    };
-
-    signal?.addEventListener("abort", onAbort, { once: true });
-
-    let lineBuffer = "";
-
-    child.stdout.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      onChunk?.(text);
-
-      if (timeoutEnabled) {
-        resetIdleTimeout();
-      }
-
-      lineBuffer += text;
-      const lines = lineBuffer.split("\n");
-      lineBuffer = lines.pop() || "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-
-        const parsed = parseJsonStreamLine(trimmed);
-        if (parsed?.type === "text_delta" && parsed.textDelta) {
-          textContent += parsed.textDelta;
-          onTextDelta?.(parsed.textDelta);
-        }
-
-        if (parsed?.type === "thinking_delta" && parsed.thinkingDelta) {
-          thinkingContent += parsed.thinkingDelta;
-          // Don't show thinking in preview - only in final output
-        }
-
-        if (parsed?.isEnd) {
-          const extracted = extractFinalText(trimmed);
-          if (extracted.text) {
-            finalText = extracted.text;
+        const killSafely = (sig: NodeJS.Signals) => {
+          if (!child.killed) {
+            try {
+              child.kill(sig);
+            } catch {
+              // noop
+            }
           }
-          if (extracted.thinking) {
-            finalThinking = extracted.thinking;
+        };
+
+        const resetIdleTimeout = () => {
+          if (idleTimeout) {
+            clearTimeout(idleTimeout);
           }
+          idleTimeout = setTimeout(() => {
+            timedOut = true;
+            killSafely("SIGTERM");
+            if (forceKillTimer) {
+              clearTimeout(forceKillTimer);
+            }
+            forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
+          }, idleTimeoutMs);
+        };
+
+        const onAbort = () => {
+          killSafely("SIGTERM");
+          if (forceKillTimer) {
+            clearTimeout(forceKillTimer);
+          }
+          forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
+          finish(() => rejectPromise(new Error(`${entityLabel} aborted`)));
+        };
+
+        const timeoutEnabled = timeoutMs !== 0;
+        if (timeoutEnabled) {
+          resetIdleTimeout();
         }
-      }
-    });
-
-    child.stderr.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stderr = appendWithCap(stderr, text, MAX_CAPTURED_STDERR_CHARS);
-      if (timeoutEnabled) {
-        resetIdleTimeout();
-      }
-    });
-
-    child.on("error", (error) => {
-      finish(() => rejectPromise(error));
-    });
-
-    child.on("close", (code) => {
-      finish(() => {
-        if (timedOut) {
-          rejectPromise(new Error(
-            absoluteTimeoutMs > 0
-              ? `pi --mode json hard timeout after ${absoluteTimeoutMs}ms`
-              : `pi --mode json idle timeout after ${idleTimeoutMs}ms of no output`,
-          ));
-          return;
+        if (absoluteTimeoutMs > 0) {
+          hardTimeout = setTimeout(() => {
+            timedOut = true;
+            killSafely("SIGTERM");
+            if (forceKillTimer) {
+              clearTimeout(forceKillTimer);
+            }
+            forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
+          }, absoluteTimeoutMs);
         }
 
-        if (code !== 0) {
-          recordPrintRateLimitCooldown({
-            provider: model.provider,
-            model: model.id,
-            stderr,
+        const cleanup = () => {
+          if (idleTimeout) {
+            clearTimeout(idleTimeout);
+          }
+          if (hardTimeout) {
+            clearTimeout(hardTimeout);
+          }
+          if (forceKillTimer) {
+            clearTimeout(forceKillTimer);
+          }
+          signal?.removeEventListener("abort", onAbort);
+        };
+
+        signal?.addEventListener("abort", onAbort, { once: true });
+
+        let lineBuffer = "";
+
+        child.stdout.on("data", (chunk: Buffer | string) => {
+          const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
+          onChunk?.(text);
+
+          if (timeoutEnabled) {
+            resetIdleTimeout();
+          }
+
+          lineBuffer += text;
+          const lines = lineBuffer.split("\n");
+          lineBuffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+
+            const parsed = parseJsonStreamLine(trimmed);
+            if (parsed?.type === "text_delta" && parsed.textDelta) {
+              textContent += parsed.textDelta;
+              onTextDelta?.(parsed.textDelta);
+            }
+
+            if (parsed?.type === "thinking_delta" && parsed.thinkingDelta) {
+              thinkingContent += parsed.thinkingDelta;
+              // Don't show thinking in preview - only in final output
+            }
+
+            if (parsed?.isEnd) {
+              const extracted = extractFinalText(trimmed);
+              if (extracted.text) {
+                finalText = extracted.text;
+              }
+              if (extracted.thinking) {
+                finalThinking = extracted.thinking;
+              }
+              if (extracted.stopReason) {
+                finalStopReason = extracted.stopReason;
+              }
+              if (extracted.errorMessage) {
+                finalErrorMessage = extracted.errorMessage;
+              }
+            }
+          }
+        });
+
+        child.stderr.on("data", (chunk: Buffer | string) => {
+          const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
+          stderr = appendWithCap(stderr, text, MAX_CAPTURED_STDERR_CHARS);
+          if (timeoutEnabled) {
+            resetIdleTimeout();
+          }
+        });
+
+        child.on("error", (error) => {
+          finish(() => rejectPromise(error));
+        });
+
+        child.on("close", (code) => {
+          finish(() => {
+            if (timedOut) {
+              rejectPromise(new Error(
+                absoluteTimeoutMs > 0
+                  ? `pi --mode json hard timeout after ${absoluteTimeoutMs}ms`
+                  : `pi --mode json idle timeout after ${idleTimeoutMs}ms of no output`,
+              ));
+              return;
+            }
+
+            if (code !== 0) {
+              recordPrintRateLimitCooldown({
+                provider: model.provider,
+                model: model.id,
+                stderr,
+              });
+              const message = stderr.trim() || `exit code ${code}`;
+              if (isUnhandledAbortStopReasonMessage(message)) {
+                rejectPromise(new Error(`${entityLabel} aborted`));
+                return;
+              }
+              rejectPromise(new Error(`pi --mode json failed: ${message}`));
+              return;
+            }
+
+            // Prefer final text/thinking from agent_end, fallback to collected deltas
+            const outputText = finalText || textContent;
+            const outputThinking = finalThinking || thinkingContent;
+            const output = combineTextAndThinking(outputText, outputThinking);
+
+            if (finalStopReason === "error") {
+              rejectPromise(new Error(finalErrorMessage || "pi --mode json returned stopReason=error"));
+              return;
+            }
+
+            if (!output) {
+              rejectPromise(new Error("pi --mode json returned empty output"));
+              return;
+            }
+
+            resolvePromise(output);
           });
-          const message = stderr.trim() || `exit code ${code}`;
-          if (isUnhandledAbortStopReasonMessage(message)) {
-            rejectPromise(new Error(`${entityLabel} aborted`));
-            return;
-          }
-          rejectPromise(new Error(`pi --mode json failed: ${message}`));
-          return;
-        }
-
-        // Prefer final text/thinking from agent_end, fallback to collected deltas
-        const outputText = finalText || textContent;
-        const outputThinking = finalThinking || thinkingContent;
-        const output = combineTextAndThinking(outputText, outputThinking);
-
-        if (!output) {
-          rejectPromise(new Error("pi --mode json returned empty output"));
-          return;
-        }
-
-        resolvePromise(output);
+        });
       });
-    });
+    },
   });
 }
