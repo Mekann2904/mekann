@@ -388,19 +388,8 @@ function slugify(value: string): string {
 }
 
 function defaultPromptFileName(mode: RalphLoopMode, runtime?: RalphLoopRuntime): string {
-  // runtime が指定されている場合は runtime ベースのファイル名
-  if (runtime) {
-    switch (runtime) {
-      case "claude":
-        return "CLAUDE.md";
-      case "amp":
-        return "prompt.md";
-      case "pi":
-      default:
-        return "PI.md";
-    }
-  }
-  // mode ベースのファイル名（デフォルト）
+  // 常に mode ベースのファイル名を使用
+  // runtime は promptPath (PI.md / CLAUDE.md / prompt.md) の解決にのみ使用
   switch (mode) {
     case "plan":
       return "PROMPT_plan.md";
@@ -409,6 +398,23 @@ function defaultPromptFileName(mode: RalphLoopMode, runtime?: RalphLoopRuntime):
     case "build":
     default:
       return "PROMPT_build.md";
+  }
+}
+
+/**
+ * ランタイム固有のプロンプトファイル名を取得する
+ * @param runtime - ランタイム種別
+ * @returns ランタイム固有のプロンプトファイル名
+ */
+function runtimePromptFileName(runtime: RalphLoopRuntime): string {
+  switch (runtime) {
+    case "claude":
+      return "CLAUDE.md";
+    case "amp":
+      return "prompt.md";
+    case "pi":
+    default:
+      return "PI.md";
   }
 }
 
@@ -457,7 +463,7 @@ function buildPaths(options: RalphLoopOptions): RalphLoopPaths {
     lastBranchPath: join(rootDir, ".last-branch"),
     promptPath: options.promptPath
       ? resolve(options.cwd, options.promptPath)
-      : join(rootDir, defaultPromptFileName(mode, runtime)),
+      : join(rootDir, runtimePromptFileName(runtime)),
     promptPlanPath,
     promptBuildPath,
     promptPlanWorkPath,
@@ -1122,8 +1128,9 @@ export function initRalphLoop(options: RalphLoopInitOptions): RalphLoopInitResul
     writeText(paths.promptPlanWorkPath, getPromptTemplate("plan-work"));
     created.promptPlanWork = true;
   }
+  // promptPath (PI.md / CLAUDE.md / prompt.md) の作成
+  // promptBuildPath (PROMPT_build.md) と異なる場合のみ作成
   if (
-    options.promptPath &&
     paths.promptPath !== paths.promptBuildPath &&
     (!existsSync(paths.promptPath) || options.force)
   ) {

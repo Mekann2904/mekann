@@ -7,12 +7,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   allocateBugHuntStageTimeout,
+  buildBugHuntStageTimeouts,
+  getMinimumBugHuntIterationTimeoutMs,
   hasBudgetForBugHuntStage,
 } from "../../../.pi/extensions/bug-hunt/budget.js";
 
 describe("bug-hunt budget", () => {
   it("query では後段のための tail budget を予約する", () => {
-    expect(allocateBugHuntStageTimeout("query", 600_000)).toBe(60_000);
+    expect(allocateBugHuntStageTimeout("query", 600_000)).toBe(180_000);
   });
 
   it("investigation は observer/report を残せないと開始しない", () => {
@@ -28,5 +30,16 @@ describe("bug-hunt budget", () => {
     expect(() => allocateBugHuntStageTimeout("hypothesis", 189_999)).toThrow(
       "iteration budget exhausted before hypothesis",
     );
+  });
+
+  it("bug_hunt の stage timeout は idle ではなく hard cap で管理する", () => {
+    expect(buildBugHuntStageTimeouts("hypothesis", 400_000)).toEqual({
+      idleTimeoutMs: 0,
+      hardTimeoutMs: 180_000,
+    });
+  });
+
+  it("1 iteration を成立させる最小 timeout を公開する", () => {
+    expect(getMinimumBugHuntIterationTimeoutMs()).toBe(235_000);
   });
 });

@@ -230,6 +230,28 @@ describe("bug-hunt extension", () => {
     expect(mockState.state.timeoutMs).toBe(600000);
   });
 
+  it("bug_hunt_start は危険な低 timeout 指定を品質優先の既定値へ引き上げる", async () => {
+    const { default: extension, resetForTesting } = await import("../../../.pi/extensions/bug-hunt/index.js");
+    resetForTesting();
+    const pi = createPiMock();
+
+    extension(pi as never);
+
+    const tool = pi.tools.get("bug_hunt_start");
+    await tool.execute("call-1", {
+      task: "Find task bugs",
+      timeoutMs: 120000,
+    }, undefined, undefined, {
+      cwd: "/repo",
+      model: {
+        provider: "openai",
+        id: "gpt-5",
+      },
+    });
+
+    expect(mockState.state.timeoutMs).toBe(600000);
+  });
+
   it("既に動作中なら bug_hunt_start は再起動しない", async () => {
     mockState.state = {
       ...mockState.state,

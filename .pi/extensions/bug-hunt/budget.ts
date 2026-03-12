@@ -12,10 +12,10 @@ const RESERVED_HYPOTHESIS_MS = 45_000;
 const RESERVED_INVESTIGATION_MS = 120_000;
 
 const STAGE_TIMEOUT_CAP_MS: Record<BugHuntModelStage, number> = {
-  query: 60_000,
-  hypothesis: 60_000,
-  investigation: 90_000,
-  observer: 60_000,
+  query: 180_000,
+  hypothesis: 180_000,
+  investigation: 180_000,
+  observer: 120_000,
 };
 
 function getReservedTailMs(stage: BugHuntModelStage): number {
@@ -44,4 +44,23 @@ export function allocateBugHuntStageTimeout(stage: BugHuntModelStage, remainingM
   }
 
   return Math.min(usableBudget, STAGE_TIMEOUT_CAP_MS[stage]);
+}
+
+export function buildBugHuntStageTimeouts(stage: BugHuntModelStage, remainingMs: number): {
+  idleTimeoutMs: number;
+  hardTimeoutMs: number;
+} {
+  return {
+    // GLM 系は長時間無出力のまま考えることがあるので、idle では落とさない。
+    idleTimeoutMs: 0,
+    hardTimeoutMs: allocateBugHuntStageTimeout(stage, remainingMs),
+  };
+}
+
+export function getMinimumBugHuntIterationTimeoutMs(): number {
+  return RESERVED_HYPOTHESIS_MS
+    + RESERVED_INVESTIGATION_MS
+    + RESERVED_OBSERVER_MS
+    + RESERVED_REPORT_MS
+    + MIN_STAGE_TIMEOUT_MS;
 }

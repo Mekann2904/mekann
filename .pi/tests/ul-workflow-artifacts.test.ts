@@ -244,11 +244,11 @@ describe("UL workflow artifacts", () => {
     const taskId = startResult.details.taskId as string;
     createdTaskIds.push(taskId);
 
-    let capturedParams: Record<string, unknown> | undefined;
+    const capturedParamsList: Record<string, unknown>[] = [];
     const ctx = {
       executeTool: async ({ toolName, params }: { toolName: string; params: Record<string, unknown> }) => {
         expect(toolName).toBe("subagent_run_dag");
-        capturedParams = params;
+        capturedParamsList.push(params);
         const artifactPath = path.join(process.cwd(), String(params.artifactPath));
         mkdirSync(path.dirname(artifactPath), { recursive: true });
         writeFileSync(
@@ -287,20 +287,24 @@ describe("UL workflow artifacts", () => {
       ctx,
     );
 
-    const dagPlan = capturedParams?.plan as { tasks: Array<{ id: string; description: string }> } | undefined;
-    // デバッグ: 実際のパラメータを確認
-    if (!dagPlan || !dagPlan.tasks) {
-      throw new Error(`dagPlan is missing or invalid. capturedParams keys: ${Object.keys(capturedParams || {}).join(", ")}. plan type: ${typeof capturedParams?.plan}`);
+    // 最初の呼び出し（baseDagParams）を検証
+    expect(capturedParamsList.length).toBeGreaterThanOrEqual(1);
+    const baseDagPlan = capturedParamsList[0]?.plan as { tasks: Array<{ id: string; description: string }> } | undefined;
+    if (!baseDagPlan || !baseDagPlan.tasks) {
+      throw new Error(`baseDagPlan is missing or invalid. capturedParamsList length: ${capturedParamsList.length}`);
     }
-    const intentTask = dagPlan?.tasks?.find((task) => task.id === "research-intent");
-    const externalTask = dagPlan?.tasks?.find((task) => task.id === "research-external");
-    const synthesisTask = dagPlan?.tasks?.find((task) => task.id === "research-synthesis");
+    const intentTask = baseDagPlan?.tasks?.find((task) => task.id === "research-intent");
+    const externalTask = baseDagPlan?.tasks?.find((task) => task.id === "research-external");
 
     // research-intent が顧客要求を含むことを確認
     expect(intentTask?.description).toBeTruthy();
     expect(intentTask?.description).toContain("顧客要求");
     expect(externalTask?.description).toContain("web");
     expect(externalTask?.description).toContain("公式ドキュメント");
+
+    // synthesis は followup DAG から確認
+    const followupDagPlan = capturedParamsList[capturedParamsList.length - 1]?.plan as { tasks: Array<{ id: string; description: string }> } | undefined;
+    const synthesisTask = followupDagPlan?.tasks?.find((task) => task.id === "research-synthesis");
     expect(synthesisTask?.description).toContain("User Intent");
     expect(synthesisTask?.description).toContain("Plan Inputs");
 

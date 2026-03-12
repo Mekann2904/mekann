@@ -6,7 +6,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 
 import {
-  allocateBugHuntStageTimeout,
+  buildBugHuntStageTimeouts,
   hasBudgetForBugHuntStage,
   type BugHuntModelStage,
 } from "./budget.js";
@@ -165,16 +165,14 @@ async function callStageModel(
   if (!state.model) {
     throw new Error("bug-hunt model config is missing");
   }
-  const timeoutMs = Math.min(
-    state.timeoutMs,
-    allocateBugHuntStageTimeout(stage, ensureRemainingBudget(deadline, entityLabel)),
-  );
+  const stageTimeouts = buildBugHuntStageTimeouts(stage, ensureRemainingBudget(deadline, entityLabel));
   activeController = new AbortController();
   try {
     return await callModelViaPi({
       model: state.model,
       prompt,
-      timeoutMs,
+      timeoutMs: stageTimeouts.idleTimeoutMs,
+      hardTimeoutMs: stageTimeouts.hardTimeoutMs,
       signal: activeController.signal,
       entityLabel,
     });

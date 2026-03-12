@@ -322,6 +322,67 @@ function isActiveCheckpointStatus(status: AutoExecutorCheckpointStatus): boolean
 	return status === "claimed" || status === "dispatched" || status === "interrupted";
 }
 
+function inferRecoveredTaskPriority(checkpoint: AutoExecutorCheckpoint): TaskPriority {
+	switch (checkpoint.kind) {
+		case "validation":
+		case "documentation":
+			return "medium";
+		case "implementation":
+		case "research":
+		case "planning":
+		case "other":
+		default:
+			return "high";
+	}
+}
+
+function restoreTasksFromActiveCheckpoints(storage: TaskStorage): TaskStorage {
+	const runtime = loadRuntimeState();
+	const knownTaskIds = new Set(storage.tasks.map((task) => task.id));
+	let changed = false;
+	const nextTasks = [...storage.tasks];
+
+	for (const checkpoint of runtime.checkpoints) {
+		if (!isActiveCheckpointStatus(checkpoint.status)) {
+			continue;
+		}
+
+		if (knownTaskIds.has(checkpoint.taskId)) {
+			continue;
+		}
+
+		const recoveredTask: Task = {
+			id: checkpoint.taskId,
+			title: checkpoint.title || checkpoint.taskId,
+			description: checkpoint.description,
+			status: "in_progress",
+			priority: inferRecoveredTaskPriority(checkpoint),
+			tags: ["durable-resume"],
+			createdAt: checkpoint.createdAt,
+			updatedAt: checkpoint.updatedAt,
+			ownerInstanceId: checkpoint.ownerInstanceId,
+			claimedAt: checkpoint.updatedAt,
+			lastError: checkpoint.lastError,
+			completionGateStatus: "clear",
+		};
+
+		nextTasks.push(recoveredTask);
+		knownTaskIds.add(checkpoint.taskId);
+		changed = true;
+	}
+
+	if (!changed) {
+		return storage;
+	}
+
+	const nextStorage: TaskStorage = {
+		...storage,
+		tasks: nextTasks,
+	};
+	saveStorage(nextStorage);
+	return nextStorage;
+}
+
 function startTaskWorkpad(cwd: string, task: Task): string | null {
   const workflow = loadWorkflowDocument(cwd);
   if (!workflow.exists) {
@@ -393,6 +454,10 @@ function getToolExecutor(ctx: unknown): ToolExecutor | undefined {
 	}
 
 	return undefined;
+}
+
+function canAutoRunInContext(ctx: unknown): boolean {
+	return Boolean(getToolExecutor(ctx));
 }
 
 function buildPlannerWorkerExecutionContext(input: {
@@ -484,7 +549,9 @@ function resolveNextAutoDispatch(storage: TaskStorage, cwd: string = process.cwd
 	target: AutoDispatchTarget | null;
 	blockedReason: string | null;
 } {
-	if (hasBlockingForeignInProgressTask(storage)) {
+	const effectiveStorage = restoreTasksFromActiveCheckpoints(storage);
+
+	if (hasBlockingForeignInProgressTask(effectiveStorage)) {
 		return {
 			target: null,
 			blockedReason: "another active in_progress task is owned by a live instance",
@@ -492,7 +559,7 @@ function resolveNextAutoDispatch(storage: TaskStorage, cwd: string = process.cwd
 	}
 
 	const runtime = loadRuntimeState();
-	const resumableTasks = storage.tasks
+	const resumableTasks = effectiveStorage.tasks
 		.filter((task) => task.status === "in_progress")
 		.map((task) => ({
 			task,
@@ -530,7 +597,7 @@ function resolveNextAutoDispatch(storage: TaskStorage, cwd: string = process.cwd
 		};
 	}
 
-	const selection = selectNextLoopTask(storage);
+	const selection = selectNextLoopTask(effectiveStorage);
 	return {
 		target: selection
 			? {
@@ -546,17 +613,19 @@ function resolveNextAutoDispatch(storage: TaskStorage, cwd: string = process.cwd
 	};
 }
 
-function reconcileDurableAutoExecutorState(storage: TaskStorage): void {
+function reconcileDurableAutoExecutorState(storage: TaskStorage): TaskStorage {
+	const effectiveStorage = restoreTasksFromActiveCheckpoints(storage);
 	const currentTaskId = autoExecutorConfig.currentTaskId;
 	if (!currentTaskId) {
-		return;
+		return effectiveStorage;
 	}
 
-	const task = storage.tasks.find((item) => item.id === currentTaskId);
+	const task = effectiveStorage.tasks.find((item) => item.id === currentTaskId);
 	if (!task || task.status !== "in_progress" || task.ownerInstanceId !== getInstanceId()) {
 		delete autoExecutorConfig.currentTaskId;
 		saveConfig();
 	}
+	return effectiveStorage;
 }
 
 function releaseClaimedTask(taskId: string): Task | null {
@@ -1704,16 +1773,18 @@ ${taskDescription}
 			ctx.ui.theme.fg("warning", `次のタスク: ${nextTask.title.slice(0, 25)}...`)
 		);
 
-		if (autoExecutorConfig.autoRun) {
+		if (autoExecutorConfig.autoRun && canAutoRunInContext(ctx)) {
 			await autoRunNextTask(ctx as never, target ?? undefined);
 			return;
 		}
 
 		// Notify about the next task
-		ctx.ui.notify(
+		if (!autoExecutorConfig.autoRun) {
+			ctx.ui.notify(
 			`[アイドル] 次のタスク: ${nextTask.title} (${nextTask.priority}, ${target?.kind ?? "other"})\n${target?.reason ?? ""}\n「次のタスクを実行して」と言うと実行します。`,
 			"info"
-		);
+			);
+		}
 	});
 
 	// Event: Agent starts - clear idle indicator
@@ -1761,8 +1832,7 @@ ${taskDescription}
 	// Event: Session start
 	pi.on("session_start", async (_event, ctx) => {
 		loadConfig();
-		const storage = loadStorage();
-		reconcileDurableAutoExecutorState(storage);
+		const storage = reconcileDurableAutoExecutorState(loadStorage());
 		const { target, blockedReason } = resolveNextAutoDispatch(storage, ctx.cwd);
 		const nextTask = target?.task ?? null;
 		const runnableCount = target ? 1 : 0;
@@ -1806,6 +1876,7 @@ ${taskDescription}
 			&& autoExecutorConfig.autoRun
 			&& !autoExecutorConfig.currentTaskId
 			&& runnableCount > 0
+			&& canAutoRunInContext(ctx)
 		) {
 			await autoRunNextTask(ctx as never, target ?? undefined);
 		}

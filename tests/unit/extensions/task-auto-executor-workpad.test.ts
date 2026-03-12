@@ -301,6 +301,37 @@ describe("task-auto-executor workpad", () => {
     expect(notify).toHaveBeenCalledWith("自動実行を開始しました: Implement orchestration", "info");
   });
 
+  it("autoRun 有効でも agent_end の ctx に tool executor がなければ warning を出さない", async () => {
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+
+    extension(pi as never);
+
+    const toggleTool = pi.tools.find((entry) => entry.name === "task_auto_executor_toggle");
+    await toggleTool.execute("toggle", { enabled: true, autoRun: true }, undefined, undefined, {});
+
+    const agentEndHandler = pi.handlers.get("agent_end");
+    const notify = vi.fn();
+    const setStatus = vi.fn();
+
+    await agentEndHandler?.({}, {
+      cwd: "/repo",
+      ui: {
+        notify,
+        setStatus,
+        theme: {
+          fg: (_tone: string, text: string) => text,
+        },
+      },
+    });
+
+    expect(notify).not.toHaveBeenCalledWith(
+      "自動実行を開始できません。tool executor が見つかりません。",
+      "warning",
+    );
+    expect(setStatus).toHaveBeenCalledWith("auto-executor", "次のタスク: Implement orchestration...");
+  });
+
   it("session_start で autoRun 既定値のまま pending task を自動起動する", async () => {
     writeFileSync(".pi/tasks/auto-executor-config.json", JSON.stringify({
       enabled: true,
@@ -416,6 +447,40 @@ describe("task-auto-executor workpad", () => {
       toolName: "task_run_next",
       params: {},
     });
+  });
+
+  it("session_start の ctx に tool executor がなければ autoRun を誤起動しない", async () => {
+    writeFileSync(".pi/tasks/auto-executor-config.json", JSON.stringify({
+      enabled: true,
+      autoRun: true,
+      maxRetries: 2,
+    }, null, 2));
+
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+
+    extension(pi as never);
+
+    const sessionStartHandler = pi.handlers.get("session_start");
+    const notify = vi.fn();
+    const setStatus = vi.fn();
+
+    await sessionStartHandler?.({}, {
+      cwd: "/repo",
+      ui: {
+        notify,
+        setStatus,
+        theme: {
+          fg: (_tone: string, text: string) => text,
+        },
+      },
+    });
+
+    expect(notify).not.toHaveBeenCalledWith(
+      "自動実行を開始できません。tool executor が見つかりません。",
+      "warning",
+    );
+    expect(setStatus).toHaveBeenCalledWith("auto-executor", "待機中: Implement orchestration...");
   });
 
   it("session_start は reclaimable な in_progress task を自動再開する", async () => {
@@ -582,6 +647,86 @@ describe("task-auto-executor workpad", () => {
       content: "- durable auto-run resume started via task_auto_executor",
       mode: "append",
     });
+  });
+
+  it("task storage から消えた interrupted checkpoint task も agent_end から復元して resume する", async () => {
+    storageMocks.state = {
+      tasks: [],
+    };
+    ulWorkflowMocks.extractPidFromInstanceId.mockReturnValue(999);
+    ulWorkflowMocks.isProcessAlive.mockReturnValue(false);
+
+    writeFileSync(".pi/tasks/auto-executor-config.json", JSON.stringify({
+      enabled: true,
+      autoRun: true,
+      maxRetries: 2,
+    }, null, 2));
+    writeFileSync(".pi/tasks/auto-executor-runtime.json", JSON.stringify({
+      checkpoints: [{
+        taskId: "task-1",
+        title: "Resume orchestration",
+        description: "recover stale worker",
+        kind: "implementation",
+        reason: "durable checkpoint",
+        workpadId: "wp-1",
+        status: "interrupted",
+        ownerInstanceId: "other-999",
+        ownerPid: 999,
+        attemptCount: 1,
+        resumeCount: 0,
+        createdAt: "2026-03-08T00:00:00.000Z",
+        updatedAt: "2026-03-08T00:00:00.000Z",
+        lastError: "tool timed out",
+      }],
+    }, null, 2));
+
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+
+    extension(pi as never);
+
+    const agentEndHandler = pi.handlers.get("agent_end");
+    const executeTool = vi.fn(async ({ toolName }: { toolName: string; params: Record<string, unknown> }) => {
+      if (toolName === "subagent_run_dag") {
+        return {
+          content: [{ type: "text", text: "resumed" }],
+          details: { outcomeCode: "SUCCESS" },
+        };
+      }
+
+      throw new Error(`unexpected tool: ${toolName}`);
+    });
+
+    await agentEndHandler?.({}, {
+      cwd: "/repo",
+      executeTool,
+      ui: {
+        notify: vi.fn(),
+        setStatus: vi.fn(),
+        theme: {
+          fg: (_tone: string, text: string) => text,
+        },
+      },
+    });
+
+    expect(executeTool).toHaveBeenCalledTimes(1);
+    expect(executeTool).toHaveBeenNthCalledWith(1, {
+      toolName: "subagent_run_dag",
+      params: {
+        task: "Resume orchestration\n\n詳細: recover stale worker",
+        taskId: "task-1",
+        extraContext: expect.stringContaining("Durability Resume Contract"),
+        autoGenerate: true,
+      },
+    });
+    expect(storageMocks.state.tasks).toEqual([
+      expect.objectContaining({
+        id: "task-1",
+        title: "Resume orchestration",
+        status: "in_progress",
+        priority: "high",
+      }),
+    ]);
   });
 
   it("他インスタンスの live な in_progress task があると session_start は新規自動起動しない", async () => {

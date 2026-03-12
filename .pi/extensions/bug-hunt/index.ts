@@ -22,6 +22,7 @@ import {
   loadBugHuntState,
   saveBugHuntState,
 } from "./storage.js";
+import { getMinimumBugHuntIterationTimeoutMs } from "./budget.js";
 import type { BugHuntModelConfig, BugHuntState } from "./types.js";
 
 const require = createRequire(import.meta.url);
@@ -154,12 +155,14 @@ function resolvePreferredBugHuntTimeoutMs(
   requestedTimeoutMs: number | undefined,
   previous: BugHuntState,
 ): number {
+  const minimumTimeoutMs = getMinimumBugHuntIterationTimeoutMs();
+  const defaultTimeoutMs = createDefaultBugHuntState().timeoutMs;
+
   if (typeof requestedTimeoutMs === "number") {
-    return requestedTimeoutMs;
+    return Math.max(requestedTimeoutMs, minimumTimeoutMs, defaultTimeoutMs);
   }
 
-  const defaultTimeoutMs = createDefaultBugHuntState().timeoutMs;
-  return Math.max(previous.timeoutMs ?? 0, defaultTimeoutMs);
+  return Math.max(previous.timeoutMs ?? 0, minimumTimeoutMs, defaultTimeoutMs);
 }
 
 export function resetForTesting(): void {
