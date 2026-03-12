@@ -387,7 +387,20 @@ function slugify(value: string): string {
     .slice(0, 48) || "branch";
 }
 
-function defaultPromptFileName(mode: RalphLoopMode): string {
+function defaultPromptFileName(mode: RalphLoopMode, runtime?: RalphLoopRuntime): string {
+  // runtime が指定されている場合は runtime ベースのファイル名
+  if (runtime) {
+    switch (runtime) {
+      case "claude":
+        return "CLAUDE.md";
+      case "amp":
+        return "prompt.md";
+      case "pi":
+      default:
+        return "PI.md";
+    }
+  }
+  // mode ベースのファイル名（デフォルト）
   switch (mode) {
     case "plan":
       return "PROMPT_plan.md";
@@ -430,9 +443,10 @@ function resolveGitBranch(cwd: string): string {
 function buildPaths(options: RalphLoopOptions): RalphLoopPaths {
   const rootDir = resolve(options.cwd, options.stateDir ?? DEFAULT_STATE_DIR);
   const mode = resolveMode(options);
-  const promptPlanPath = join(rootDir, defaultPromptFileName("plan"));
-  const promptBuildPath = join(rootDir, defaultPromptFileName("build"));
-  const promptPlanWorkPath = join(rootDir, defaultPromptFileName("plan-work"));
+  const runtime = options.runtime ?? "pi";
+  const promptPlanPath = join(rootDir, defaultPromptFileName("plan", runtime));
+  const promptBuildPath = join(rootDir, defaultPromptFileName("build", runtime));
+  const promptPlanWorkPath = join(rootDir, defaultPromptFileName("plan-work", runtime));
   const implementationPlanPath = join(rootDir, "IMPLEMENTATION_PLAN.md");
 
   return {
@@ -443,7 +457,7 @@ function buildPaths(options: RalphLoopOptions): RalphLoopPaths {
     lastBranchPath: join(rootDir, ".last-branch"),
     promptPath: options.promptPath
       ? resolve(options.cwd, options.promptPath)
-      : join(rootDir, defaultPromptFileName(mode)),
+      : join(rootDir, defaultPromptFileName(mode, runtime)),
     promptPlanPath,
     promptBuildPath,
     promptPlanWorkPath,
@@ -988,6 +1002,8 @@ export interface RalphLoopInitResult {
   created: {
     prd: boolean;
     progress: boolean;
+    /** デフォルトモードのプロンプトファイルが作成されたか（promptBuildのエイリアス） */
+    prompt: boolean;
     promptPlan: boolean;
     promptBuild: boolean;
     promptPlanWork: boolean;
@@ -1063,6 +1079,7 @@ export function initRalphLoop(options: RalphLoopInitOptions): RalphLoopInitResul
   const created = {
     prd: false,
     progress: false,
+    prompt: false,
     promptPlan: false,
     promptBuild: false,
     promptPlanWork: false,
@@ -1169,6 +1186,9 @@ export function initRalphLoop(options: RalphLoopInitOptions): RalphLoopInitResul
   if (messages.length === 0) {
     messages.push("すべてのファイルが既に存在します。force: true で上書きできます。");
   }
+
+  // promptはpromptBuildのエイリアス（後方互換性のため）
+  created.prompt = created.promptBuild;
 
   return {
     paths,

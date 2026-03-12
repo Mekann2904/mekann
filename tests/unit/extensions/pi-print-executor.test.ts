@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   buildPiChildEnv,
+  isRetryablePiChildErrorMessage,
   preparePiChildAgentDir,
   sanitizePiChildAgentSettings,
 } from "../../../.pi/extensions/shared/pi-print-executor.js";
@@ -88,5 +89,15 @@ describe("buildPiChildEnv", () => {
 
     expect(env.PI_CODING_AGENT_DIR).toBe("/tmp/custom-agent");
     expect(env.PI_CHILD_DISABLE_ORCHESTRATION).toBe("1");
+  });
+});
+
+describe("isRetryablePiChildErrorMessage", () => {
+  it("unknown error を transient error として扱う", () => {
+    expect(isRetryablePiChildErrorMessage("An unknown error occurred")).toBe(true);
+  });
+
+  it("恒久エラーは retry 対象にしない", () => {
+    expect(isRetryablePiChildErrorMessage("Invalid API key")).toBe(false);
   });
 });
