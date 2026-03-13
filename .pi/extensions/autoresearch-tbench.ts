@@ -9,6 +9,7 @@ import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 
 import {
+  autoAutoresearchTbench,
   baselineAutoresearchTbench,
   formatAutoresearchTbenchScore,
   getAutoresearchTbenchStatus,
@@ -26,7 +27,7 @@ import type { LiveMonitorContext } from "../lib/tui-types.js";
 let isInitialized = false;
 
 interface ParsedCommand {
-  action: "help" | "init" | "baseline" | "run" | "status" | "stop" | "error";
+  action: "help" | "init" | "baseline" | "run" | "auto" | "status" | "stop" | "error";
   options: Record<string, string>;
   error?: string;
 }
@@ -40,7 +41,7 @@ function parseCommand(rawArgs: string): ParsedCommand {
   const tokens = trimmed.split(/\s+/);
   const [actionToken, ...rest] = tokens;
   const action = actionToken.toLowerCase();
-  if (!["init", "baseline", "run", "status", "stop", "help"].includes(action)) {
+  if (!["init", "baseline", "run", "auto", "status", "stop", "help"].includes(action)) {
     return {
       action: "error",
       options: {},
@@ -107,6 +108,7 @@ function buildHelpText(): string {
     "Use /autoresearch-tbench init selection=easy=2,medium=2,hard=2 tag=mekann-tbench",
     "Use /autoresearch-tbench baseline label=baseline",
     "Use /autoresearch-tbench run label=try-adaptorch prefer_ms=1200000",
+    "Use /autoresearch-tbench auto label=auto iterations=3",
     "Use /autoresearch-tbench stop",
     "Use /autoresearch-tbench status",
     "You can also use /autoresearch as an alias.",
@@ -122,6 +124,21 @@ function summarizeRun(action: "baseline" | "run", result: Awaited<ReturnType<typ
     `job_dir=${result.run.jobDir ?? "-"}`,
     `result_path=${result.run.resultPath ?? "-"}`,
     `log_path=${result.run.artifacts.logPath}`,
+  ].join("\n");
+}
+
+function summarizeAuto(result: Awaited<ReturnType<typeof autoAutoresearchTbench>>): string {
+  const finalStep = result.steps.at(-1);
+  const finalBenchmark = finalStep?.benchmark;
+  return [
+    "action=auto",
+    `stopped=${result.stopped}`,
+    `iterations=${result.steps.length}`,
+    `best_score=${result.state.bestScore ? formatAutoresearchTbenchScore(result.state.bestScore) : "no-score"}`,
+    `last_outcome=${finalBenchmark?.outcome ?? "no-benchmark"}`,
+    `last_commit=${finalBenchmark?.commit ?? result.state.bestCommit}`,
+    `last_job_dir=${finalBenchmark?.run.jobDir ?? "-"}`,
+    `last_result_path=${finalBenchmark?.run.resultPath ?? "-"}`,
   ].join("\n");
 }
 
@@ -226,6 +243,24 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
       return;
     }
 
+    if (parsed.action === "auto") {
+      const result = await runWithMonitor(ctx, parsed.options.label ?? "auto", (hooks) => autoAutoresearchTbench(ctx.cwd, {
+        label: parsed.options.label,
+        iterations: parseNumber(parsed.options.iterations),
+        timeoutMs: parseNumber(parsed.options.timeout_ms),
+        preferMs: parseNumber(parsed.options.prefer_ms),
+        improvementTimeoutMs: parseNumber(parsed.options.improvement_timeout_ms),
+        maxStalledIterations: parseNumber(parsed.options.max_stalled_iterations),
+        commitMessage: parsed.options.commit_message,
+        provider: parsed.options.provider,
+        model: parsed.options.model,
+        onSnapshot: hooks.onSnapshot,
+        onTextUpdate: hooks.onTextUpdate,
+      }));
+      ctx.ui?.notify?.(summarizeAuto(result), "info");
+      return;
+    }
+
     if (parsed.action === "stop") {
       const result = requestStopAutoresearchTbench(ctx.cwd);
       ctx.ui?.notify?.(`requested=${result.requested}\nreason=${result.reason}`, "info");
@@ -239,7 +274,7 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
   pi.registerCommand("autoresearch-tbench", {
     description: "Manage terminal-bench autoresearch sessions (init|baseline|run|stop|status)",
     getArgumentCompletions: (prefix: string) => {
-      const items = ["init", "baseline", "run", "stop", "status", "help"]
+      const items = ["init", "baseline", "run", "auto", "stop", "status", "help"]
         .filter((entry) => entry.startsWith(prefix))
         .map((entry) => ({ value: entry, label: entry }));
       return items.length > 0 ? items : null;
@@ -250,7 +285,7 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
   pi.registerCommand("autoresearch", {
     description: "Alias for terminal-bench autoresearch (init|baseline|run|stop|status)",
     getArgumentCompletions: (prefix: string) => {
-      const items = ["init", "baseline", "run", "stop", "status", "help"]
+      const items = ["init", "baseline", "run", "auto", "stop", "status", "help"]
         .filter((entry) => entry.startsWith(prefix))
         .map((entry) => ({ value: entry, label: entry }));
       return items.length > 0 ? items : null;
@@ -267,6 +302,7 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
         Type.Literal("init"),
         Type.Literal("baseline"),
         Type.Literal("run"),
+        Type.Literal("auto"),
         Type.Literal("stop"),
         Type.Literal("status"),
       ]),
@@ -275,13 +311,17 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
       tag: Type.Optional(Type.String()),
       git: Type.Optional(Type.Boolean()),
       label: Type.Optional(Type.String()),
+      iterations: Type.Optional(Type.Number()),
       timeout_ms: Type.Optional(Type.Number()),
       prefer_ms: Type.Optional(Type.Number()),
+      improvement_timeout_ms: Type.Optional(Type.Number()),
+      max_stalled_iterations: Type.Optional(Type.Number()),
       commit_message: Type.Optional(Type.String()),
       dataset: Type.Optional(Type.String()),
       dataset_path: Type.Optional(Type.String()),
       agent: Type.Optional(Type.String()),
       agent_import_path: Type.Optional(Type.String()),
+      provider: Type.Optional(Type.String()),
       model: Type.Optional(Type.String()),
       n_concurrent: Type.Optional(Type.Number()),
       jobs_dir: Type.Optional(Type.String()),
@@ -366,6 +406,37 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
 
         return {
           content: [{ type: "text", text: summarizeRun("run", result) }],
+          details: result,
+        };
+      }
+
+      if (action === "auto") {
+        const result = await autoAutoresearchTbench(ctx.cwd, {
+          label: typeof params.label === "string" ? params.label : undefined,
+          iterations: typeof params.iterations === "number" ? params.iterations : undefined,
+          timeoutMs: typeof params.timeout_ms === "number" ? params.timeout_ms : undefined,
+          preferMs: typeof params.prefer_ms === "number" ? params.prefer_ms : undefined,
+          improvementTimeoutMs: typeof params.improvement_timeout_ms === "number" ? params.improvement_timeout_ms : undefined,
+          maxStalledIterations: typeof params.max_stalled_iterations === "number" ? params.max_stalled_iterations : undefined,
+          commitMessage: typeof params.commit_message === "string" ? params.commit_message : undefined,
+          provider: typeof params.provider === "string" ? params.provider : undefined,
+          model: typeof params.model === "string" ? params.model : undefined,
+          onSnapshot: (snapshot) => {
+            onUpdate?.({
+              content: [{
+                type: "text",
+                text: `${snapshot.statusLine}\n${snapshot.trials
+                  .slice(0, 6)
+                  .map((trial) => `${trial.taskName}: ${trial.phase} - ${trial.activity}`)
+                  .join("\n")}`,
+              }],
+              details: snapshot,
+            });
+          },
+        });
+
+        return {
+          content: [{ type: "text", text: summarizeAuto(result) }],
           details: result,
         };
       }

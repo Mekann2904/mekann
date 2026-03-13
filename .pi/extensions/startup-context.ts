@@ -68,6 +68,7 @@ import {
   type UserPromptSubmitDelta,
 } from "../lib/startup-context-types.js";
 import { resetToolTelemetryStore } from "../lib/tool-telemetry-store.js";
+import { isTerminalBenchMode } from "../lib/tbench-mode.js";
 
 // モジュールレベルのフラグ（reload時のリスナー重複登録防止）
 let isInitialized = false;
@@ -93,6 +94,59 @@ function getDeltaCollectionIntervalMs(): number {
   return USER_PROMPT_TTL_SECONDS * 1000;
 }
 
+function buildTerminalBenchStartupEntries(pi: ExtensionAPI): PromptStackEntry[] {
+  const availableToolNames = pi.getAllTools().map((tool) => tool.name);
+  const turnContext = buildTurnExecutionContext({
+    availableToolNames,
+    startupKind: "baseline",
+    isFirstTurn: true,
+    previousContextAvailable: false,
+    sessionElapsedMs: Date.now() - sessionStartTime,
+  });
+  const runtimeOptimizationSection = buildTurnExecutionRuntimeSection(turnContext);
+  const runtimeNotification = createRuntimeNotification(
+    "startup-context-tbench",
+    runtimeOptimizationSection,
+    "info",
+    1,
+  );
+  const entries: PromptStackEntry[] = [
+    {
+      source: "startup-context-terminal-bench",
+      recordSource: "startup-context-terminal-bench",
+      layer: "startup-context",
+      markerId: "startup-context-terminal-bench",
+      content: [
+        "# Terminal Bench Mode",
+        "",
+        "Heavy startup probes are disabled for this benchmark run.",
+        "mekann extensions remain loaded.",
+        `cwd=${process.cwd()}`,
+        `tool_count=${availableToolNames.length}`,
+      ].join("\n"),
+    },
+    {
+      source: "turn-execution-context-terminal-bench",
+      recordSource: "turn-execution-context",
+      layer: "startup-context",
+      markerId: "turn-execution-context-terminal-bench",
+      content: formatTurnExecutionContextBlock(turnContext),
+    },
+  ];
+
+  if (runtimeNotification) {
+    entries.push({
+      source: "startup-runtime-optimization-terminal-bench",
+      recordSource: "startup-context-runtime",
+      layer: "runtime-notification",
+      markerId: "startup-runtime-optimization-terminal-bench",
+      content: formatRuntimeNotificationBlock([runtimeNotification]),
+    });
+  }
+
+  return entries;
+}
+
 export default function (pi: ExtensionAPI) {
   if (isInitialized) return;
   isInitialized = true;
@@ -111,6 +165,26 @@ export default function (pi: ExtensionAPI) {
   // エージェント開始前イベント（毎ターン実行）
   pi.on("before_agent_start", async (event, _ctx) => {
     try {
+      if (isTerminalBenchMode()) {
+        if (!isFirstTurn) {
+          return undefined;
+        }
+
+        isFirstTurn = false;
+        const result = applyPromptStack(
+          event.systemPrompt ?? "",
+          buildTerminalBenchStartupEntries(pi),
+        );
+
+        if (result.appliedEntries.length === 0) {
+          return undefined;
+        }
+
+        return {
+          systemPrompt: result.systemPrompt,
+        };
+      }
+
       if (isFirstTurn) {
         // 初回ターン: ベースラインコンテキストを収集
         isFirstTurn = false;

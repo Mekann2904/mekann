@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  baselineAutoresearchTbench,
   compareAutoresearchTbenchScores,
   determineAutoresearchTbenchOutcome,
   formatAutoresearchTbenchScore,
@@ -285,8 +286,42 @@ describe("autoresearch-tbench", () => {
     const nextState = readAutoresearchTbenchState(cwd);
 
     expect(result.requested).toBe(true);
-    expect(result.reason).toContain("stop requested for pid=5252");
+    expect(result.reason).toContain("SIGTERM sent for pid=5252");
     expect(nextState?.activeRun?.pid).toBe(5252);
     expect(typeof nextState?.stopRequestedAt).toBe("string");
+    expect(process.kill).toHaveBeenCalledWith(5252, 0);
+    expect(process.kill).toHaveBeenCalledWith(5252, "SIGTERM");
+  });
+
+  it("active run が生きている間は baseline を新規開始しない", async () => {
+    const cwd = createTempRepo();
+    tempDirs.push(cwd);
+    writeAutoresearchTbenchState(cwd, {
+      ...createState(),
+      bestScore: {
+        successCount: 1,
+        completedTrials: 2,
+        totalTrials: 2,
+        errorCount: 0,
+        meanReward: 0.5,
+        elapsedMs: 1000,
+      },
+      activeRun: {
+        pid: 7777,
+        label: "baseline-v2",
+        startedAt: "2026-03-14T01:00:00.000Z",
+      },
+    });
+
+    vi.spyOn(process, "kill").mockImplementation(((pid: number, signal?: number | NodeJS.Signals) => {
+      if (pid === 7777 && signal === 0) {
+        return true;
+      }
+      return true;
+    }) as typeof process.kill);
+
+    await expect(baselineAutoresearchTbench(cwd)).rejects.toThrow(
+      "another autoresearch-tbench run is active",
+    );
   });
 });

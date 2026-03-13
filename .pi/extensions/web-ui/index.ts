@@ -34,11 +34,20 @@ import {
   startServer as startApiServer,
   isApiServerRunning,
 } from "../server.js";
+import { isTerminalBenchMode } from "../../lib/tbench-mode.js";
 
 const execAsync = promisify(exec);
 const require = createRequire(import.meta.url);
 
 const DEFAULT_PORT = 3000;
+
+function shouldAutoStartWebUi(): boolean {
+  if (isTerminalBenchMode()) {
+    return false;
+  }
+
+  return process.env.PI_WEB_UI_AUTO_START !== "false";
+}
 
 /**
  * コンテキスト履歴ストレージのインスタンス
@@ -290,6 +299,10 @@ export default function (pi: ExtensionAPI) {
 
   // コンテキスト履歴を記録（turn_endイベント）
   pi.on("turn_end", async (_event, ctx) => {
+    if (isTerminalBenchMode()) {
+      return;
+    }
+
     const contextUsage = ctx.getContextUsage();
 
     if (contextUsage?.tokens && contextHistoryStorage) {
@@ -383,7 +396,7 @@ export default function (pi: ExtensionAPI) {
 
   // Auto-start server on session start (can be disabled via PI_WEB_UI_AUTO_START=false)
   pi.on("session_start", async (_event, ctx) => {
-    const autoStart = process.env.PI_WEB_UI_AUTO_START !== "false";
+    const autoStart = shouldAutoStartWebUi();
 
     if (!autoStart) {
       return;

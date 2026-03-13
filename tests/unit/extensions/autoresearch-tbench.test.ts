@@ -55,6 +55,36 @@ const mockLib = vi.hoisted(() => ({
       },
     },
   })),
+  autoAutoresearchTbench: vi.fn(async () => ({
+    stopped: false,
+    state: {
+      bestCommit: "def456",
+      bestScore: {
+        successCount: 2,
+        completedTrials: 2,
+        totalTrials: 2,
+        errorCount: 0,
+        meanReward: 1,
+        elapsedMs: 900,
+      },
+    },
+    steps: [{
+      iteration: 1,
+      label: "auto-1",
+      changedFiles: ["bench/tbench_pi_agent/harbor_pi_agent.py"],
+      improver: {
+        exitCode: 0,
+      },
+      benchmark: {
+        outcome: "improved",
+        commit: "def456",
+        run: {
+          jobDir: "/repo/.pi/autoresearch/tbench/jobs/job-3",
+          resultPath: "/repo/.pi/autoresearch/tbench/jobs/job-3/result.json",
+        },
+      },
+    }],
+  })),
   requestStopAutoresearchTbench: vi.fn(() => ({
     requested: true,
     state: {
@@ -196,6 +226,27 @@ describe("autoresearch-tbench extension", () => {
       label: "try-adaptorch",
     }));
     expect(notify).toHaveBeenCalledWith(expect.stringContaining("outcome=improved"), "info");
+  });
+
+  it("slash command auto は lib の auto を呼び、結果を通知する", async () => {
+    const pi = createMockPi();
+    activePi = pi;
+    registerAutoresearchTbench(pi as any);
+
+    const command = pi.commands.get("autoresearch-tbench");
+    const notify = vi.fn();
+
+    await command.handler("auto label=auto iterations=2 improvement_timeout_ms=1000", {
+      cwd: "/repo",
+      ui: { notify },
+    });
+
+    expect(mockLib.autoAutoresearchTbench).toHaveBeenCalledWith("/repo", expect.objectContaining({
+      label: "auto",
+      iterations: 2,
+      improvementTimeoutMs: 1000,
+    }));
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("action=auto"), "info");
   });
 
   it("live monitor がある時は裏の setStatus を更新しない", async () => {

@@ -6,6 +6,7 @@
  */
 
 import {
+  autoAutoresearchTbench,
   baselineAutoresearchTbench,
   getAutoresearchTbenchStatus,
   initAutoresearchTbench,
@@ -19,14 +20,18 @@ interface CliOptions {
   taskNames?: string[];
   tag?: string;
   label?: string;
+  iterations?: number;
   timeoutMs?: number;
   preferMs?: number;
+  improvementTimeoutMs?: number;
+  maxStalledIterations?: number;
   commitMessage?: string;
   git: boolean;
   dataset?: string;
   datasetPath?: string;
   agent?: string;
   agentImportPath?: string;
+  provider?: string;
   model?: string;
   nConcurrent?: number;
   jobsDir?: string;
@@ -78,6 +83,11 @@ function parseArgs(argv: string[]): { subcommand: string; options: CliOptions } 
       index += 1;
       continue;
     }
+    if (token === "--iterations" && next) {
+      options.iterations = Number(next);
+      index += 1;
+      continue;
+    }
     if (token === "--timeout-ms" && next) {
       options.timeoutMs = Number(next);
       index += 1;
@@ -85,6 +95,16 @@ function parseArgs(argv: string[]): { subcommand: string; options: CliOptions } 
     }
     if (token === "--prefer-ms" && next) {
       options.preferMs = Number(next);
+      index += 1;
+      continue;
+    }
+    if (token === "--improvement-timeout-ms" && next) {
+      options.improvementTimeoutMs = Number(next);
+      index += 1;
+      continue;
+    }
+    if (token === "--max-stalled-iterations" && next) {
+      options.maxStalledIterations = Number(next);
       index += 1;
       continue;
     }
@@ -110,6 +130,11 @@ function parseArgs(argv: string[]): { subcommand: string; options: CliOptions } 
     }
     if (token === "--agent-import-path" && next) {
       options.agentImportPath = next;
+      index += 1;
+      continue;
+    }
+    if (token === "--provider" && next) {
+      options.provider = next;
       index += 1;
       continue;
     }
@@ -237,6 +262,36 @@ async function main(): Promise<void> {
       jobDir: result.run.jobDir,
       resultPath: result.run.resultPath,
       logPath: result.run.artifacts.logPath,
+    }, options.json);
+    return;
+  }
+
+  if (subcommand === "auto") {
+    const result = await autoAutoresearchTbench(cwd, {
+      label: options.label,
+      iterations: options.iterations,
+      timeoutMs: options.timeoutMs,
+      preferMs: options.preferMs,
+      improvementTimeoutMs: options.improvementTimeoutMs,
+      maxStalledIterations: options.maxStalledIterations,
+      commitMessage: options.commitMessage,
+      provider: options.provider,
+      model: options.model,
+    });
+    printOutput({
+      action: "auto",
+      stopped: result.stopped,
+      iterations: result.steps.length,
+      bestCommit: result.state.bestCommit,
+      bestScore: result.state.bestScore ?? null,
+      steps: result.steps.map((step) => ({
+        iteration: step.iteration,
+        label: step.label,
+        changedFiles: step.changedFiles,
+        improverExitCode: step.improver.exitCode,
+        benchmarkOutcome: step.benchmark?.outcome ?? null,
+        benchmarkScore: step.benchmark?.score ?? null,
+      })),
     }, options.json);
     return;
   }
