@@ -1,7 +1,7 @@
 /**
  * path: scripts/autoresearch-tbench.ts
- * role: terminal-bench 向け autoresearch の init/baseline/run/status CLI を提供する
- * why: pi 拡張と通常 CLI の両方から、同じ比較ロジックで改善ループを回せるようにするため
+ * role: terminal-bench 向け autoresearch の init/baseline/run/stop/status CLI を提供する
+ * why: pi 拡張と通常 CLI の両方から、同じ比較ロジックと停止操作で改善ループを回せるようにするため
  * related: .pi/lib/autoresearch-tbench.ts, .pi/extensions/autoresearch-tbench.ts, scripts/run-terminal-bench.sh, package.json
  */
 
@@ -9,6 +9,7 @@ import {
   baselineAutoresearchTbench,
   getAutoresearchTbenchStatus,
   initAutoresearchTbench,
+  requestStopAutoresearchTbench,
   renderAutoresearchTbenchStatus,
   runAutoresearchTbench,
 } from "../.pi/lib/autoresearch-tbench.js";
@@ -246,6 +247,15 @@ async function main(): Promise<void> {
       action: "status",
       ...result,
     } : renderAutoresearchTbenchStatus(result), options.json);
+    return;
+  }
+
+  if (subcommand === "stop") {
+    const result = requestStopAutoresearchTbench(cwd);
+    printOutput({
+      action: "stop",
+      ...result,
+    }, options.json);
     return;
   }
 

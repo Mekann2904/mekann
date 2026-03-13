@@ -13,14 +13,20 @@ import {
   formatAutoresearchTbenchScore,
   getAutoresearchTbenchStatus,
   initAutoresearchTbench,
+  requestStopAutoresearchTbench,
   renderAutoresearchTbenchStatus,
   runAutoresearchTbench,
 } from "../lib/autoresearch-tbench.js";
+import {
+  createAutoresearchTbenchLiveMonitor,
+  type AutoresearchTbenchLiveSnapshot,
+} from "../lib/autoresearch-tbench-live-monitor.js";
+import type { LiveMonitorContext } from "../lib/tui-types.js";
 
 let isInitialized = false;
 
 interface ParsedCommand {
-  action: "help" | "init" | "baseline" | "run" | "status" | "error";
+  action: "help" | "init" | "baseline" | "run" | "status" | "stop" | "error";
   options: Record<string, string>;
   error?: string;
 }
@@ -34,7 +40,7 @@ function parseCommand(rawArgs: string): ParsedCommand {
   const tokens = trimmed.split(/\s+/);
   const [actionToken, ...rest] = tokens;
   const action = actionToken.toLowerCase();
-  if (!["init", "baseline", "run", "status", "help"].includes(action)) {
+  if (!["init", "baseline", "run", "status", "stop", "help"].includes(action)) {
     return {
       action: "error",
       options: {},
@@ -101,6 +107,7 @@ function buildHelpText(): string {
     "Use /autoresearch-tbench init selection=easy=2,medium=2,hard=2 tag=mekann-tbench",
     "Use /autoresearch-tbench baseline label=baseline",
     "Use /autoresearch-tbench run label=try-adaptorch prefer_ms=1200000",
+    "Use /autoresearch-tbench stop",
     "Use /autoresearch-tbench status",
     "You can also use /autoresearch as an alias.",
   ].join("\n");
@@ -116,6 +123,32 @@ function summarizeRun(action: "baseline" | "run", result: Awaited<ReturnType<typ
     `result_path=${result.run.resultPath ?? "-"}`,
     `log_path=${result.run.artifacts.logPath}`,
   ].join("\n");
+}
+
+async function runWithMonitor<T>(
+  ctx: ExtensionCommandContext,
+  title: string,
+  runner: (hooks: {
+    onSnapshot: (snapshot: AutoresearchTbenchLiveSnapshot) => void;
+    onTextUpdate: (text: string) => void;
+  }) => Promise<T>,
+): Promise<T> {
+  const liveMonitor = createAutoresearchTbenchLiveMonitor(ctx as unknown as LiveMonitorContext, title);
+
+  try {
+    return await runner({
+      onSnapshot: (snapshot) => {
+        ctx.ui?.setStatus?.("autoresearch-tbench", snapshot.statusLine);
+        liveMonitor?.update(snapshot);
+      },
+      onTextUpdate: (text) => {
+        ctx.ui?.setStatus?.("autoresearch-tbench", text);
+      },
+    });
+  } finally {
+    ctx.ui?.setStatus?.("autoresearch-tbench", undefined);
+    liveMonitor?.close();
+  }
 }
 
 export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
@@ -160,23 +193,33 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
     }
 
     if (parsed.action === "baseline") {
-      const result = await baselineAutoresearchTbench(ctx.cwd, {
+      const result = await runWithMonitor(ctx, "baseline", (hooks) => baselineAutoresearchTbench(ctx.cwd, {
         label: parsed.options.label,
         timeoutMs: parseNumber(parsed.options.timeout_ms),
         preferMs: parseNumber(parsed.options.prefer_ms),
-      });
+        onSnapshot: hooks.onSnapshot,
+        onTextUpdate: hooks.onTextUpdate,
+      }));
       ctx.ui?.notify?.(summarizeRun("baseline", result), "info");
       return;
     }
 
     if (parsed.action === "run") {
-      const result = await runAutoresearchTbench(ctx.cwd, {
+      const result = await runWithMonitor(ctx, parsed.options.label ?? "run", (hooks) => runAutoresearchTbench(ctx.cwd, {
         label: parsed.options.label,
         timeoutMs: parseNumber(parsed.options.timeout_ms),
         preferMs: parseNumber(parsed.options.prefer_ms),
         commitMessage: parsed.options.commit_message,
-      });
+        onSnapshot: hooks.onSnapshot,
+        onTextUpdate: hooks.onTextUpdate,
+      }));
       ctx.ui?.notify?.(summarizeRun("run", result), "info");
+      return;
+    }
+
+    if (parsed.action === "stop") {
+      const result = requestStopAutoresearchTbench(ctx.cwd);
+      ctx.ui?.notify?.(`requested=${result.requested}\nreason=${result.reason}`, "info");
       return;
     }
 
@@ -185,9 +228,9 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
   };
 
   pi.registerCommand("autoresearch-tbench", {
-    description: "Manage terminal-bench autoresearch sessions (init|baseline|run|status)",
+    description: "Manage terminal-bench autoresearch sessions (init|baseline|run|stop|status)",
     getArgumentCompletions: (prefix: string) => {
-      const items = ["init", "baseline", "run", "status", "help"]
+      const items = ["init", "baseline", "run", "stop", "status", "help"]
         .filter((entry) => entry.startsWith(prefix))
         .map((entry) => ({ value: entry, label: entry }));
       return items.length > 0 ? items : null;
@@ -196,9 +239,9 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("autoresearch", {
-    description: "Alias for terminal-bench autoresearch (init|baseline|run|status)",
+    description: "Alias for terminal-bench autoresearch (init|baseline|run|stop|status)",
     getArgumentCompletions: (prefix: string) => {
-      const items = ["init", "baseline", "run", "status", "help"]
+      const items = ["init", "baseline", "run", "stop", "status", "help"]
         .filter((entry) => entry.startsWith(prefix))
         .map((entry) => ({ value: entry, label: entry }));
       return items.length > 0 ? items : null;
@@ -209,12 +252,13 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "autoresearch_tbench",
     label: "Autoresearch Tbench",
-    description: "Run terminal-bench autoresearch init/baseline/run/status with a fixed task set per session.",
+    description: "Run terminal-bench autoresearch init/baseline/run/stop/status with a fixed task set per session.",
     parameters: Type.Object({
       action: Type.Union([
         Type.Literal("init"),
         Type.Literal("baseline"),
         Type.Literal("run"),
+        Type.Literal("stop"),
         Type.Literal("status"),
       ]),
       selection: Type.Optional(Type.String()),
@@ -236,7 +280,7 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
       force_build: Type.Optional(Type.Boolean()),
       exclude_task_names: Type.Optional(Type.Array(Type.String())),
     }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, onUpdate, ctx) {
       const action = String(params.action);
 
       if (action === "init") {
@@ -271,6 +315,18 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
           label: typeof params.label === "string" ? params.label : undefined,
           timeoutMs: typeof params.timeout_ms === "number" ? params.timeout_ms : undefined,
           preferMs: typeof params.prefer_ms === "number" ? params.prefer_ms : undefined,
+          onSnapshot: (snapshot) => {
+            onUpdate?.({
+              content: [{
+                type: "text",
+                text: `${snapshot.statusLine}\n${snapshot.trials
+                  .slice(0, 6)
+                  .map((trial) => `${trial.taskName}: ${trial.phase} - ${trial.activity}`)
+                  .join("\n")}`,
+              }],
+              details: snapshot,
+            });
+          },
         });
 
         return {
@@ -285,10 +341,30 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
           timeoutMs: typeof params.timeout_ms === "number" ? params.timeout_ms : undefined,
           preferMs: typeof params.prefer_ms === "number" ? params.prefer_ms : undefined,
           commitMessage: typeof params.commit_message === "string" ? params.commit_message : undefined,
+          onSnapshot: (snapshot) => {
+            onUpdate?.({
+              content: [{
+                type: "text",
+                text: `${snapshot.statusLine}\n${snapshot.trials
+                  .slice(0, 6)
+                  .map((trial) => `${trial.taskName}: ${trial.phase} - ${trial.activity}`)
+                  .join("\n")}`,
+              }],
+              details: snapshot,
+            });
+          },
         });
 
         return {
           content: [{ type: "text", text: summarizeRun("run", result) }],
+          details: result,
+        };
+      }
+
+      if (action === "stop") {
+        const result = requestStopAutoresearchTbench(ctx.cwd);
+        return {
+          content: [{ type: "text", text: `requested=${result.requested}\nreason=${result.reason}` }],
           details: result,
         };
       }

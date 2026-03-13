@@ -6,7 +6,7 @@
 title: Autoresearch Tbench Loop
 category: user-guide
 audience: developer
-last_updated: 2026-03-13
+last_updated: 2026-03-14
 tags: [autoresearch, terminal-bench, benchmark, pi]
 related: [./26-autoresearch-e2e.md, ../03-development/06-terminal-bench.md, ../../scripts/autoresearch-tbench.ts, ../../scripts/run-terminal-bench.sh]
 ---
@@ -43,6 +43,7 @@ difficulty selector を毎回引き直すと、比較対象が変わります。
 /autoresearch-tbench init selection=easy=2,medium=2,hard=2 tag=mekann-tbench
 /autoresearch-tbench baseline label=baseline
 /autoresearch-tbench run label=try-adaptorch
+/autoresearch-tbench stop
 /autoresearch-tbench status
 ```
 
@@ -54,8 +55,27 @@ difficulty selector を毎回引き直すと、比較対象が変わります。
 npm run autoresearch:init -- --selection easy=2,medium=2,hard=2 --tag mekann-tbench
 npm run autoresearch:baseline -- --label baseline
 npm run autoresearch:run -- --label try-adaptorch
+npm run autoresearch:stop
 npm run autoresearch:status
 ```
+
+## 途中停止
+
+`baseline` と `run` は途中で止められます。
+
+止めると state に stop 要求を書き、実行中の `terminal-bench` process に `SIGTERM` を送ります。
+
+5 秒たっても残っていた場合だけ `SIGKILL` に切り替えます。
+
+```text
+/autoresearch-tbench stop
+```
+
+```bash
+npm run autoresearch:stop
+```
+
+停止した実験は `outcome=stopped` で記録されます。
 
 ## 判定ルール
 

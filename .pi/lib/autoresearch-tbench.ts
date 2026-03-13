@@ -9,6 +9,11 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statS
 import { dirname, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 
+import {
+  collectAutoresearchTbenchLiveSnapshot,
+  type AutoresearchTbenchLiveSnapshot,
+} from "./autoresearch-tbench-live-monitor.js";
+
 export interface AutoresearchTbenchScore {
   successCount: number;
   completedTrials: number;
@@ -31,7 +36,8 @@ export type AutoresearchTbenchOutcome =
   | "equal"
   | "regressed"
   | "crash"
-  | "timeout";
+  | "timeout"
+  | "stopped";
 
 export interface AutoresearchTbenchRunConfig {
   taskSelector: string | null;
@@ -64,6 +70,12 @@ export interface AutoresearchTbenchState {
   lastLogPath?: string;
   lastJobDir?: string;
   lastResultPath?: string;
+  activeRun?: {
+    pid: number;
+    label: string;
+    startedAt: string;
+  };
+  stopRequestedAt?: string;
 }
 
 export interface AutoresearchTbenchPaths {
@@ -96,6 +108,12 @@ export interface AutoresearchTbenchRunOptions {
   timeoutMs?: number;
   preferMs?: number;
   commitMessage?: string;
+  onSnapshot?: (snapshot: AutoresearchTbenchLiveSnapshot) => void;
+  onTextUpdate?: (text: string) => void;
+}
+
+interface RunControlState {
+  stopRequested: boolean;
 }
 
 export interface AutoresearchTbenchRunArtifacts {
@@ -110,6 +128,7 @@ export interface AutoresearchTbenchExecutedRun {
   stderr: string;
   exitCode: number | null;
   timedOut: boolean;
+  stopped: boolean;
   artifacts: AutoresearchTbenchRunArtifacts;
   jobDir: string | null;
   resultPath: string | null;
@@ -127,6 +146,12 @@ export interface AutoresearchTbenchStatusResult {
   paths: AutoresearchTbenchPaths;
 }
 
+export interface AutoresearchTbenchStopResult {
+  requested: boolean;
+  state: AutoresearchTbenchState | null;
+  reason: string;
+}
+
 export interface AutoresearchTbenchRunResult {
   outcome: AutoresearchTbenchOutcome;
   score: AutoresearchTbenchScore | null;
@@ -141,6 +166,7 @@ interface SpawnCaptureResult {
   stderr: string;
   exitCode: number | null;
   timedOut: boolean;
+  stopped: boolean;
 }
 
 interface JobReportLike {
@@ -226,6 +252,19 @@ function parseBooleanEnv(value: string | undefined): boolean | null {
 
 function sanitizeLabel(label: string): string {
   return label.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "experiment";
+}
+
+function isProcessAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function parseDurationMs(startedAt: unknown, finishedAt: unknown): number {
@@ -380,6 +419,64 @@ export function writeAutoresearchTbenchState(cwd: string, state: AutoresearchTbe
   writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf-8");
 }
 
+function markActiveRun(cwd: string, state: AutoresearchTbenchState, label: string, pid: number): AutoresearchTbenchState {
+  const nextState = cloneState(state);
+  nextState.updatedAt = nowIso();
+  nextState.activeRun = {
+    pid,
+    label,
+    startedAt: nowIso(),
+  };
+  delete nextState.stopRequestedAt;
+  writeAutoresearchTbenchState(cwd, nextState);
+  return nextState;
+}
+
+function clearActiveRun(cwd: string, state: AutoresearchTbenchState): AutoresearchTbenchState {
+  const nextState = cloneState(state);
+  nextState.updatedAt = nowIso();
+  delete nextState.activeRun;
+  delete nextState.stopRequestedAt;
+  writeAutoresearchTbenchState(cwd, nextState);
+  return nextState;
+}
+
+function isStopRequested(cwd: string): boolean {
+  const state = readAutoresearchTbenchState(cwd);
+  return typeof state?.stopRequestedAt === "string";
+}
+
+export function requestStopAutoresearchTbench(cwd: string): AutoresearchTbenchStopResult {
+  const state = readAutoresearchTbenchState(cwd);
+  if (!state) {
+    return {
+      requested: false,
+      state: null,
+      reason: "state not initialized",
+    };
+  }
+
+  if (!state.activeRun || !isProcessAlive(state.activeRun.pid)) {
+    const cleared = clearActiveRun(cwd, state);
+    return {
+      requested: false,
+      state: cleared,
+      reason: "no active autoresearch-tbench run",
+    };
+  }
+
+  const nextState = cloneState(state);
+  nextState.updatedAt = nowIso();
+  nextState.stopRequestedAt = nowIso();
+  writeAutoresearchTbenchState(cwd, nextState);
+
+  return {
+    requested: true,
+    state: nextState,
+    reason: `stop requested for pid=${state.activeRun.pid}`,
+  };
+}
+
 function ensureResultsHeader(cwd: string): void {
   const { resultsTsvPath } = getAutoresearchTbenchPaths(cwd);
   if (existsSync(resultsTsvPath)) {
@@ -433,6 +530,8 @@ async function spawnAndCapture(
     env?: NodeJS.ProcessEnv;
     timeoutMs?: number;
     logPath?: string;
+    controlState?: RunControlState;
+    onSpawn?: (child: { pid?: number | undefined }) => void;
   },
 ): Promise<SpawnCaptureResult> {
   const timeoutMs = options.timeoutMs ?? 0;
@@ -443,10 +542,12 @@ async function spawnAndCapture(
       env: options.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
+    options.onSpawn?.(child);
 
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let stopped = false;
 
     if (options.logPath) {
       ensureParentDir(options.logPath);
@@ -481,11 +582,15 @@ async function spawnAndCapture(
       if (timer) {
         clearTimeout(timer);
       }
+      if (options.controlState?.stopRequested) {
+        stopped = true;
+      }
       resolvePromise({
         stdout,
         stderr,
         exitCode,
         timedOut,
+        stopped,
       });
     });
   });
@@ -641,22 +746,79 @@ async function executeTerminalBenchRun(
   label: string,
   config: AutoresearchTbenchRunConfig,
   timeoutMs: number,
+  hooks?: {
+    onSnapshot?: (snapshot: AutoresearchTbenchLiveSnapshot) => void;
+    onTextUpdate?: (text: string) => void;
+  },
 ): Promise<AutoresearchTbenchExecutedRun> {
   const artifacts = createRunArtifacts(cwd, label);
   const command = "bash scripts/run-terminal-bench.sh";
   const startedAtMs = Date.now();
+  const controlState: RunControlState = { stopRequested: false };
+  let childPid = 0;
+  const pollTimer = setInterval(() => {
+    emitSnapshot();
+    if (!controlState.stopRequested && isStopRequested(cwd) && childPid > 0) {
+      controlState.stopRequested = true;
+      hooks?.onTextUpdate?.("stop requested; terminating terminal-bench run");
+      try {
+        process.kill(childPid, "SIGTERM");
+        setTimeout(() => {
+          if (isProcessAlive(childPid)) {
+            process.kill(childPid, "SIGKILL");
+          }
+        }, 5_000).unref();
+      } catch {
+        // best effort only
+      }
+    }
+  }, 500);
+
+  const emitSnapshot = () => {
+    hooks?.onSnapshot?.(collectAutoresearchTbenchLiveSnapshot({
+      label,
+      jobsDir: config.jobsDir,
+      taskNames: config.taskNames,
+      startedAtMs,
+    }));
+  };
+
+  emitSnapshot();
   const result = await spawnAndCapture("/bin/zsh", ["-lc", command], {
     cwd,
     env: buildRunEnv(config),
     timeoutMs,
     logPath: artifacts.logPath,
+    controlState,
+    onSpawn: (child) => {
+      childPid = child.pid ?? 0;
+      const currentState = readAutoresearchTbenchState(cwd);
+      if (currentState && childPid > 0) {
+        markActiveRun(cwd, currentState, label, childPid);
+      }
+    },
   });
+  clearInterval(pollTimer);
+  const currentState = readAutoresearchTbenchState(cwd);
+  if (currentState) {
+    clearActiveRun(cwd, currentState);
+  }
 
   const combinedOutput = `${result.stdout}\n${result.stderr}`;
   const resultPath = parseResultPathFromOutput(combinedOutput)
     ?? findLatestResultPath(config.jobsDir, startedAtMs);
   const summary = readSummaryFromResultPath(resultPath);
   const jobDir = resultPath ? dirname(resultPath) : null;
+  emitSnapshot();
+
+  hooks?.onTextUpdate?.([
+    `command=${command}`,
+    `job_dir=${jobDir ?? "-"}`,
+    `result_path=${resultPath ?? "-"}`,
+    `exit_code=${result.exitCode ?? "-"}`,
+    `timed_out=${result.timedOut ? "true" : "false"}`,
+    `stopped=${result.stopped ? "true" : "false"}`,
+  ].join("\n"));
 
   writeFileSync(
     artifacts.summaryPath,
@@ -665,6 +827,7 @@ async function executeTerminalBenchRun(
       command,
       exitCode: result.exitCode,
       timedOut: result.timedOut,
+      stopped: result.stopped,
       jobDir,
       resultPath,
       score: summary?.score ?? null,
@@ -680,6 +843,7 @@ async function executeTerminalBenchRun(
     stderr: result.stderr,
     exitCode: result.exitCode,
     timedOut: result.timedOut,
+    stopped: result.stopped,
     artifacts,
     jobDir,
     resultPath,
@@ -787,7 +951,32 @@ async function runBaselineLike(
   const label = options.label ?? "baseline";
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const commit = await getHeadCommit(cwd);
-  const run = await executeTerminalBenchRun(cwd, `${label}-baseline`, state.runConfig, timeoutMs);
+  const run = await executeTerminalBenchRun(cwd, `${label}-baseline`, state.runConfig, timeoutMs, {
+    onSnapshot: options.onSnapshot,
+    onTextUpdate: options.onTextUpdate,
+  });
+
+  if (run.stopped) {
+    const nextState = cloneState(state);
+    nextState.updatedAt = nowIso();
+    nextState.experimentCount += 1;
+    nextState.lastOutcome = "stopped";
+    nextState.lastLabel = label;
+    nextState.lastLogPath = run.artifacts.logPath;
+    nextState.lastJobDir = run.jobDir ?? undefined;
+    nextState.lastResultPath = run.resultPath ?? undefined;
+    writeAutoresearchTbenchState(cwd, nextState);
+    appendResultRow(cwd, label, "stopped", null, commit, run);
+
+    return {
+      outcome: "stopped",
+      score: null,
+      state: nextState,
+      run,
+      commit,
+      preferredBudgetExceeded: false,
+    };
+  }
 
   if (run.timedOut) {
     throw new Error("baseline timed out");
@@ -848,12 +1037,17 @@ export async function runAutoresearchTbench(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const preferMs = options.preferMs ?? DEFAULT_PREFER_MS;
   const candidateBaseCommit = await getHeadCommit(cwd);
-  const run = await executeTerminalBenchRun(cwd, label, state.runConfig, timeoutMs);
+  const run = await executeTerminalBenchRun(cwd, label, state.runConfig, timeoutMs, {
+    onSnapshot: options.onSnapshot,
+    onTextUpdate: options.onTextUpdate,
+  });
 
   let outcome: AutoresearchTbenchOutcome = "crash";
   let score: AutoresearchTbenchScore | null = null;
 
-  if (run.timedOut) {
+  if (run.stopped) {
+    outcome = "stopped";
+  } else if (run.timedOut) {
     outcome = "timeout";
   } else if (run.summary) {
     score = run.summary.score;
@@ -925,6 +1119,8 @@ export function renderAutoresearchTbenchStatus(result: AutoresearchTbenchStatusR
     `experiments=${state.experimentCount}`,
     `last_outcome=${state.lastOutcome ?? "-"}`,
     `last_label=${state.lastLabel ?? "-"}`,
+    `active_run=${state.activeRun ? `${state.activeRun.label}:${state.activeRun.pid}` : "-"}`,
+    `stop_requested_at=${state.stopRequestedAt ?? "-"}`,
     `best_score=${state.bestScore ? formatAutoresearchTbenchScore(state.bestScore) : "-"}`,
     `task_selector=${state.runConfig.taskSelector ?? "-"}`,
     `task_count=${state.runConfig.taskNames.length}`,

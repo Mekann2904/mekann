@@ -68,6 +68,7 @@
     "autoresearch:init": "node --import tsx scripts/autoresearch-tbench.ts init",
     "autoresearch:baseline": "node --import tsx scripts/autoresearch-tbench.ts baseline",
     "autoresearch:run": "node --import tsx scripts/autoresearch-tbench.ts run",
+    "autoresearch:stop": "node --import tsx scripts/autoresearch-tbench.ts stop",
     "autoresearch:status": "node --import tsx scripts/autoresearch-tbench.ts status",
     "autoresearch:e2e:init": "node --import tsx scripts/autoresearch-e2e.ts init",
     "autoresearch:e2e:baseline": "node --import tsx scripts/autoresearch-e2e.ts baseline",

@@ -55,6 +55,18 @@ const mockLib = vi.hoisted(() => ({
       },
     },
   })),
+  requestStopAutoresearchTbench: vi.fn(() => ({
+    requested: true,
+    state: {
+      activeRun: {
+        pid: 1234,
+        label: "baseline",
+        startedAt: "2026-03-14T00:00:00.000Z",
+      },
+      stopRequestedAt: "2026-03-14T00:01:00.000Z",
+    },
+    reason: "stop requested for pid=1234",
+  })),
   getAutoresearchTbenchStatus: vi.fn(async () => ({
     state: {
       tag: "mekann-tbench",
@@ -180,6 +192,23 @@ describe("autoresearch-tbench extension", () => {
     expect(notify).toHaveBeenCalledWith(expect.stringContaining("outcome=improved"), "info");
   });
 
+  it("slash command stop は lib の stop を呼び、理由を通知する", async () => {
+    const pi = createMockPi();
+    activePi = pi;
+    registerAutoresearchTbench(pi as any);
+
+    const command = pi.commands.get("autoresearch-tbench");
+    const notify = vi.fn();
+
+    await command.handler("stop", {
+      cwd: "/repo",
+      ui: { notify },
+    });
+
+    expect(mockLib.requestStopAutoresearchTbench).toHaveBeenCalledWith("/repo");
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("requested=true"), "info");
+  });
+
   it("status tool は render 済みテキストを返す", async () => {
     const pi = createMockPi();
     activePi = pi;
@@ -196,5 +225,23 @@ describe("autoresearch-tbench extension", () => {
 
     expect(mockLib.getAutoresearchTbenchStatus).toHaveBeenCalledWith("/repo");
     expect(result.content[0].text).toBe("tag=mekann-tbench");
+  });
+
+  it("tool stop は stop 結果を返す", async () => {
+    const pi = createMockPi();
+    activePi = pi;
+    registerAutoresearchTbench(pi as any);
+
+    const tool = pi.tools.find((entry) => entry.name === "autoresearch_tbench");
+    const result = await tool.execute(
+      "tool-3",
+      { action: "stop" },
+      undefined,
+      undefined,
+      { cwd: "/repo" },
+    );
+
+    expect(mockLib.requestStopAutoresearchTbench).toHaveBeenCalledWith("/repo");
+    expect(result.content[0].text).toContain("stop requested for pid=1234");
   });
 });

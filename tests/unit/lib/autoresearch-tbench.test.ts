@@ -1,20 +1,67 @@
 /**
  * path: tests/unit/lib/autoresearch-tbench.test.ts
- * role: terminal-bench autoresearch の score 比較と result 正規化を検証する
- * why: keep/drop 判定が固定 task 集合に対して安定し、速さ優先の tie-break も壊れないようにするため
+ * role: terminal-bench autoresearch の score 比較、result 正規化、stop 状態更新を検証する
+ * why: keep/drop 判定と途中停止の制御が壊れず、比較ループを安全に回せるようにするため
  * related: .pi/lib/autoresearch-tbench.ts, scripts/autoresearch-tbench.ts, tests/unit/lib/autoresearch-e2e.test.ts, scripts/run-terminal-bench.sh
  */
 
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   compareAutoresearchTbenchScores,
   determineAutoresearchTbenchOutcome,
   formatAutoresearchTbenchScore,
   parseTerminalBenchJobReport,
+  readAutoresearchTbenchState,
+  requestStopAutoresearchTbench,
+  writeAutoresearchTbenchState,
 } from "../../../.pi/lib/autoresearch-tbench.js";
 
+function createTempRepo(): string {
+  return mkdtempSync(join(tmpdir(), "autoresearch-tbench-test-"));
+}
+
+function createState() {
+  return {
+    version: 1,
+    createdAt: "2026-03-14T00:00:00.000Z",
+    updatedAt: "2026-03-14T00:00:00.000Z",
+    tag: "mekann-tbench",
+    gitEnabled: false,
+    bestCommit: "abc123",
+    baselineCommit: "abc123",
+    experimentCount: 0,
+    runConfig: {
+      taskSelector: "easy=2",
+      taskNames: ["task-a", "task-b"],
+      dataset: "terminal-bench@2.0",
+      datasetPath: null,
+      agent: "pi",
+      agentImportPath: null,
+      model: null,
+      nConcurrent: 2,
+      jobsDir: "/tmp/jobs",
+      agentSetupTimeoutMultiplier: 4,
+      forceBuild: null,
+      excludeTaskNames: [],
+    },
+  };
+}
+
 describe("autoresearch-tbench", () => {
+  const tempDirs: string[] = [];
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    for (const dir of tempDirs.splice(0, tempDirs.length)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("success 数が増えた候補を improved と判定する", () => {
     const outcome = determineAutoresearchTbenchOutcome(
       {
@@ -122,5 +169,72 @@ describe("autoresearch-tbench", () => {
     });
     expect(parsed.exceptionBuckets.AgentTimeoutError).toEqual(["task-f"]);
     expect(formatAutoresearchTbenchScore(parsed.score)).toContain("success=4");
+  });
+
+  it("state が無いと stop を受け付けない", () => {
+    const cwd = createTempRepo();
+    tempDirs.push(cwd);
+
+    const result = requestStopAutoresearchTbench(cwd);
+
+    expect(result.requested).toBe(false);
+    expect(result.reason).toBe("state not initialized");
+    expect(result.state).toBeNull();
+  });
+
+  it("active run が死んでいたら stale state を掃除する", () => {
+    const cwd = createTempRepo();
+    tempDirs.push(cwd);
+    writeAutoresearchTbenchState(cwd, {
+      ...createState(),
+      activeRun: {
+        pid: 4242,
+        label: "baseline",
+        startedAt: "2026-03-14T00:01:00.000Z",
+      },
+    });
+
+    vi.spyOn(process, "kill").mockImplementation(((pid: number, signal?: number | NodeJS.Signals) => {
+      if (pid === 4242 && signal === 0) {
+        throw new Error("ESRCH");
+      }
+      return true;
+    }) as typeof process.kill);
+
+    const result = requestStopAutoresearchTbench(cwd);
+    const nextState = readAutoresearchTbenchState(cwd);
+
+    expect(result.requested).toBe(false);
+    expect(result.reason).toBe("no active autoresearch-tbench run");
+    expect(nextState?.activeRun).toBeUndefined();
+    expect(nextState?.stopRequestedAt).toBeUndefined();
+  });
+
+  it("active run が生きていたら stopRequestedAt を残す", () => {
+    const cwd = createTempRepo();
+    tempDirs.push(cwd);
+    writeAutoresearchTbenchState(cwd, {
+      ...createState(),
+      activeRun: {
+        pid: 5252,
+        label: "experiment",
+        startedAt: "2026-03-14T00:02:00.000Z",
+      },
+    });
+
+    vi.spyOn(process, "kill").mockImplementation(((pid: number, signal?: number | NodeJS.Signals) => {
+      if (pid === 5252 && signal === 0) {
+        return true;
+      }
+      return true;
+    }) as typeof process.kill);
+
+    const result = requestStopAutoresearchTbench(cwd);
+    const nextState = readAutoresearchTbenchState(cwd);
+
+    expect(result.requested).toBe(true);
+    expect(result.reason).toContain("stop requested for pid=5252");
+    expect(nextState?.activeRun?.pid).toBe(5252);
+    expect(typeof nextState?.stopRequestedAt).toBe("string");
   });
 });
