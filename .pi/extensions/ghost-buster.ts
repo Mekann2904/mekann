@@ -51,7 +51,18 @@ function isProcessRunning(pid: number): boolean {
 		// macOS/Linux: kill -0 はシグナルを送らず存在確認のみ
 		process.kill(pid, 0);
 		return true;
-	} catch {
+	} catch (e: unknown) {
+		// ESRCH: プロセスが存在しない
+		// EPERM: プロセスは存在するがシグナル権限がない
+		const errorCode = (e as NodeJS.ErrnoException)?.code;
+		if (errorCode === "ESRCH") {
+			return false;
+		}
+		if (errorCode === "EPERM") {
+			// プロセスは存在するがシグナル権限がない
+			return true;
+		}
+		// その他のエラーは false を返す（安全側）
 		return false;
 	}
 }
