@@ -82,3 +82,37 @@ bash scripts/run-terminal-bench.sh
 - benchmark 環境の中で `mekann` repo を展開し、`pi --mode json --print` を実行します
 - Harbor と terminal-bench は repo ローカルの `.venv-tbench` に入っています
 - 実行結果は git 管理外の `.pi/benchmarks/terminal-bench/` に出ます
+
+## Cleanup
+
+benchmark を何度も回すと 2 つが膨らみます。
+
+- repo 内の `.pi/benchmarks/terminal-bench/jobs` と `.pi/autoresearch/tbench/jobs`
+- Colima / Docker の build cache と未使用 image / volume
+
+サイズ確認:
+
+```bash
+bash scripts/check-terminal-bench.sh
+```
+
+安全側の掃除:
+
+```bash
+bash scripts/clean-terminal-bench.sh --dry-run
+bash scripts/clean-terminal-bench.sh --keep-benchmark-jobs 3 --keep-autoresearch-jobs 3
+```
+
+Docker build cache まで掃除したい場合:
+
+```bash
+bash scripts/clean-terminal-bench.sh --docker-builder-prune
+```
+
+Docker の未使用 image / layer / volume まで全掃除したい場合:
+
+```bash
+bash scripts/clean-terminal-bench.sh --docker-system-prune
+```
+
+`docker_storage	corrupt` が出る場合は、Docker / Colima 側の blob store が壊れている可能性があります。

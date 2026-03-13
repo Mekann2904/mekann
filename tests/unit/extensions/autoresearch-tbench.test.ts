@@ -55,6 +55,48 @@ const mockLib = vi.hoisted(() => ({
       },
     },
   })),
+  autoAutoresearchTbench: vi.fn(async () => ({
+    stopped: false,
+    state: {
+      bestCommit: "def456",
+      bestScore: {
+        successCount: 2,
+        completedTrials: 2,
+        totalTrials: 2,
+        errorCount: 0,
+        meanReward: 1,
+        elapsedMs: 900,
+      },
+    },
+    steps: [{
+      iteration: 1,
+      label: "auto-1",
+      changedFiles: ["bench/tbench_pi_agent/harbor_pi_agent.py"],
+      improver: {
+        exitCode: 0,
+      },
+      benchmark: {
+        outcome: "improved",
+        commit: "def456",
+        run: {
+          jobDir: "/repo/.pi/autoresearch/tbench/jobs/job-3",
+          resultPath: "/repo/.pi/autoresearch/tbench/jobs/job-3/result.json",
+        },
+      },
+    }],
+  })),
+  requestStopAutoresearchTbench: vi.fn(() => ({
+    requested: true,
+    state: {
+      activeRun: {
+        pid: 1234,
+        label: "baseline",
+        startedAt: "2026-03-14T00:00:00.000Z",
+      },
+      stopRequestedAt: "2026-03-14T00:01:00.000Z",
+    },
+    reason: "stop requested for pid=1234",
+  })),
   getAutoresearchTbenchStatus: vi.fn(async () => ({
     state: {
       tag: "mekann-tbench",
@@ -92,6 +134,10 @@ const mockLib = vi.hoisted(() => ({
   formatAutoresearchTbenchScore: vi.fn(() => "success=2 completed=2/2 mean_reward=1.0000 errors=0 elapsed_ms=900"),
 }));
 
+const mockLiveMonitor = vi.hoisted(() => ({
+  createAutoresearchTbenchLiveMonitor: vi.fn(() => undefined as unknown),
+}));
+
 vi.mock("@mariozechner/pi-ai", () => ({
   Type: {
     Object: (value: unknown) => value,
@@ -106,6 +152,7 @@ vi.mock("@mariozechner/pi-ai", () => ({
 }));
 
 vi.mock("../../../.pi/lib/autoresearch-tbench.js", () => mockLib);
+vi.mock("../../../.pi/lib/autoresearch-tbench-live-monitor.js", () => mockLiveMonitor);
 
 import registerAutoresearchTbench from "../../../.pi/extensions/autoresearch-tbench.js";
 
@@ -129,6 +176,7 @@ describe("autoresearch-tbench extension", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLiveMonitor.createAutoresearchTbenchLiveMonitor.mockReturnValue(undefined);
   });
 
   afterEach(async () => {
@@ -180,6 +228,117 @@ describe("autoresearch-tbench extension", () => {
     expect(notify).toHaveBeenCalledWith(expect.stringContaining("outcome=improved"), "info");
   });
 
+  it("slash command auto は lib の auto を呼び、結果を通知する", async () => {
+    const pi = createMockPi();
+    activePi = pi;
+    registerAutoresearchTbench(pi as any);
+
+    const command = pi.commands.get("autoresearch-tbench");
+    const notify = vi.fn();
+
+    await command.handler("auto label=auto iterations=2 improvement_timeout_ms=1000", {
+      cwd: "/repo",
+      ui: { notify },
+    });
+
+    expect(mockLib.autoAutoresearchTbench).toHaveBeenCalledWith("/repo", expect.objectContaining({
+      label: "auto",
+      iterations: 2,
+      improvementTimeoutMs: 1000,
+    }));
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("action=auto"), "info");
+  });
+
+  it("live monitor がある時は裏の setStatus を更新しない", async () => {
+    const pi = createMockPi();
+    activePi = pi;
+    registerAutoresearchTbench(pi as any);
+
+    mockLib.runAutoresearchTbench.mockImplementationOnce(async (_cwd: string, options: any) => {
+      options?.onSnapshot?.({
+        label: "try-adaptorch",
+        startedAtMs: 0,
+        elapsedMs: 1000,
+        jobsDir: "/repo/.pi/autoresearch/tbench/jobs",
+        jobDir: "/repo/.pi/autoresearch/tbench/jobs/job-2",
+        totalTrials: 2,
+        completedTrials: 0,
+        successCount: 0,
+        failedCount: 0,
+        runningCount: 1,
+        setupCount: 1,
+        pendingCount: 0,
+        statusLine: "job=job-2  done=0/2  ok=0  fail=0  run=1  setup=1",
+        trials: [],
+      });
+      options?.onTextUpdate?.("setup running");
+
+      return {
+        outcome: "improved",
+        score: {
+          successCount: 2,
+          completedTrials: 2,
+          totalTrials: 2,
+          errorCount: 0,
+          meanReward: 1,
+          elapsedMs: 900,
+        },
+        commit: "def456",
+        run: {
+          jobDir: "/repo/.pi/autoresearch/tbench/jobs/job-2",
+          resultPath: "/repo/.pi/autoresearch/tbench/jobs/job-2/result.json",
+          artifacts: {
+            logPath: "/repo/.pi/autoresearch/tbench/experiments/run-2.log",
+          },
+        },
+      };
+    });
+
+    const update = vi.fn();
+    const close = vi.fn();
+    mockLiveMonitor.createAutoresearchTbenchLiveMonitor.mockReturnValue({
+      update,
+      close,
+      wait: async () => undefined,
+    });
+
+    const command = pi.commands.get("autoresearch-tbench");
+    const notify = vi.fn();
+    const setStatus = vi.fn();
+
+    await command.handler("run label=try-adaptorch", {
+      cwd: "/repo",
+      hasUI: true,
+      ui: {
+        notify,
+        setStatus,
+        custom: vi.fn(),
+      },
+    });
+
+    expect(update).toHaveBeenCalled();
+    expect(close).toHaveBeenCalled();
+    expect(setStatus).toHaveBeenCalledTimes(1);
+    expect(setStatus).toHaveBeenLastCalledWith("autoresearch-tbench", undefined);
+  });
+
+  it("slash command stop は lib の stop を呼び、理由を通知する", async () => {
+    const pi = createMockPi();
+    activePi = pi;
+    registerAutoresearchTbench(pi as any);
+
+    const command = pi.commands.get("autoresearch-tbench");
+    const notify = vi.fn();
+
+    await command.handler("stop", {
+      cwd: "/repo",
+      ui: { notify },
+    });
+
+    expect(mockLib.requestStopAutoresearchTbench).toHaveBeenCalledWith("/repo");
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("requested=true"), "info");
+  });
+
   it("status tool は render 済みテキストを返す", async () => {
     const pi = createMockPi();
     activePi = pi;
@@ -196,5 +355,23 @@ describe("autoresearch-tbench extension", () => {
 
     expect(mockLib.getAutoresearchTbenchStatus).toHaveBeenCalledWith("/repo");
     expect(result.content[0].text).toBe("tag=mekann-tbench");
+  });
+
+  it("tool stop は stop 結果を返す", async () => {
+    const pi = createMockPi();
+    activePi = pi;
+    registerAutoresearchTbench(pi as any);
+
+    const tool = pi.tools.find((entry) => entry.name === "autoresearch_tbench");
+    const result = await tool.execute(
+      "tool-3",
+      { action: "stop" },
+      undefined,
+      undefined,
+      { cwd: "/repo" },
+    );
+
+    expect(mockLib.requestStopAutoresearchTbench).toHaveBeenCalledWith("/repo");
+    expect(result.content[0].text).toContain("stop requested for pid=1234");
   });
 });

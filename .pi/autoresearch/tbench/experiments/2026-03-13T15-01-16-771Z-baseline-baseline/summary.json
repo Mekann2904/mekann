@@ -1,0 +1,33 @@
+{
+  "label": "baseline-baseline",
+  "command": "bash scripts/run-terminal-bench.sh",
+  "exitCode": 0,
+  "timedOut": false,
+  "jobDir": "/Users/mekann/github/pi-plugin/mekann/.pi/autoresearch/tbench/jobs/2026-03-14__00-01-22",
+  "resultPath": "/Users/mekann/github/pi-plugin/mekann/.pi/autoresearch/tbench/jobs/2026-03-14__00-01-22/result.json",
+  "score": {
+    "successCount": 0,
+    "completedTrials": 1,
+    "totalTrials": 6,
+    "errorCount": 6,
+    "meanReward": 0,
+    "elapsedMs": 1317232
+  },
+  "rewardBuckets": {
+    "0.0": [
+      "break-filter-js-from-html__Qt8bAM8"
+    ]
+  },
+  "exceptionBuckets": {
+    "AgentTimeoutError": [
+      "break-filter-js-from-html__Qt8bAM8"
+    ],
+    "RuntimeError": [
+      "adaptive-rejection-sampler__7WS25ym",
+      "cobol-modernization__DFwFTrk",
+      "fix-git__frYu74p",
+      "cancel-async-tasks__2QVT98J",
+      "bn-fit-modify__3D9mhyN"
+    ]
+  }
+}

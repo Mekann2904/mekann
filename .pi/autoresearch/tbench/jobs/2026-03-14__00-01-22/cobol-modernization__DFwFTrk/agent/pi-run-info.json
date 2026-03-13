@@ -1,0 +1,8 @@
+{
+  "provider": "zai",
+  "model": "glm-5",
+  "baseUrl": "https://api.z.ai/api/coding/paas/v4",
+  "sourceAgentDir": "/Users/mekann/github/pi-plugin/mekann/.pi/local-agent",
+  "authSourceDir": "/Users/mekann/.pi/agent",
+  "sessionDir": "/logs/agent/pi-sessions"
+}

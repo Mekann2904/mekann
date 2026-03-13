@@ -663,6 +663,8 @@ EOF
             "set -euo pipefail",
             f"export PI_CODING_AGENT_DIR={shlex.quote(CONTAINER_AGENT_DIR)}",
             f"export PI_RUNTIME_DIR={shlex.quote(CONTAINER_RUNTIME_DIR)}",
+            "export PI_TBENCH_MODE=1",
+            "export PI_WEB_UI_AUTO_START=false",
             f"export ZAI_API_KEY={shlex.quote(api_key)}",
             f'export PATH="{CONTAINER_NODE_DIR}/bin:$PATH"',
             f"test -x {shlex.quote(CONTAINER_PI_BIN)}",

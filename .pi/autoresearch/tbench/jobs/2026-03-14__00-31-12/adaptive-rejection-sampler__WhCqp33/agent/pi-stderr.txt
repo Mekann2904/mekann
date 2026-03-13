@@ -1,0 +1,59 @@
+[invariant-pipeline] Extension loading...
+Warning: Could not read append system prompt file /opt/mekann/repo/.pi/APPEND_SYSTEM.md: Error: EIO: i/o error, open '/opt/mekann/repo/.pi/APPEND_SYSTEM.md'
+Failed to load extension "/opt/mekann/repo/.pi/extensions/server.ts": Failed to load extension: EIO: i/o error, open '/opt/mekann/repo/.pi/lib/storage/sqlite-db.ts'
+Failed to load extension "/opt/mekann/repo/.pi/extensions/skill-inspector.ts": Failed to load extension: Cannot find module '/opt/mekann/repo/.pi/extensions/skill-inspector.ts'
+Require stack:
+- /opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/loader.js
+Failed to load extension "/opt/mekann/repo/.pi/extensions/startup-context.ts": Failed to load extension: Cannot find module '/opt/mekann/repo/.pi/extensions/startup-context.ts'
+Require stack:
+- /opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/loader.js
+Failed to load extension "/opt/mekann/repo/.pi/extensions/subagents.ts": Failed to load extension: EIO: i/o error, open '/opt/mekann/repo/.pi/extensions/subagents.ts'
+Failed to load extension "/opt/mekann/repo/.pi/extensions/task-auto-executor.ts": Failed to load extension: Cannot find module '/opt/mekann/repo/.pi/extensions/task-auto-executor.ts'
+Require stack:
+- /opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/loader.js
+Failed to load extension "/opt/mekann/repo/.pi/extensions/task-flow.ts": Failed to load extension: Cannot find module '/opt/mekann/repo/.pi/extensions/task-flow.ts'
+Require stack:
+- /opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/loader.js
+Failed to load extension "/opt/mekann/repo/.pi/extensions/task.ts": Failed to load extension: Cannot find module '/opt/mekann/repo/.pi/extensions/task.ts'
+Require stack:
+- /opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/loader.js
+Failed to load extension "/opt/mekann/repo/.pi/extensions/tool-compiler.ts": Failed to load extension: EIO: i/o error, open '/opt/mekann/repo/.pi/extensions/tool-compiler.ts'
+Failed to load extension "/opt/mekann/repo/.pi/extensions/trajectory-reduction.ts": Failed to load extension: Cannot find module '/opt/mekann/repo/.pi/extensions/trajectory-reduction.ts'
+Require stack:
+- /opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/loader.js
+Failed to load extension "/opt/mekann/repo/.pi/extensions/ul-diagnostic.ts": Failed to load extension: Cannot find module '/opt/mekann/repo/.pi/extensions/ul-diagnostic.ts'
+Require stack:
+- /opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/loader.js
+Failed to load extension "/opt/mekann/repo/.pi/extensions/ul-dual-mode.ts": Failed to load extension: Cannot find module '/opt/mekann/repo/.pi/extensions/ul-dual-mode.ts'
+Require stack:
+- /opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/loader.js
+Failed to load extension "/opt/mekann/repo/.pi/extensions/ul-workflow.ts": Failed to load extension: EIO: i/o error, open '/opt/mekann/repo/.pi/extensions/ul-workflow.ts'
+Failed to load extension "/opt/mekann/repo/.pi/extensions/usage-tracker.ts": Failed to load extension: Cannot find module '/opt/mekann/repo/.pi/extensions/usage-tracker.ts'
+Require stack:
+- /opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/loader.js
+Failed to load extension "/opt/mekann/repo/.pi/extensions/web-ui/index.ts": Failed to load extension: EIO: i/o error, open '/opt/mekann/repo/.pi/extensions/web-ui/index.ts'
+Failed to load extension "/opt/mekann/repo/.pi/extensions/workflow-workpad.ts": Failed to load extension: Cannot find module '/opt/mekann/repo/.pi/extensions/workflow-workpad.ts'
+Require stack:
+- /opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/loader.js
+Failed to load extension "/opt/mekann/repo/.pi/extensions/workspace-verification.ts": Failed to load extension: Cannot find module '/opt/mekann/repo/.pi/extensions/workspace-verification.ts'
+Require stack:
+- /opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/loader.js
+node:fs:441
+    return binding.readFileUtf8(path, stringToFlags(options.flag));
+                   ^
+
+Error: EIO: i/o error, open '/opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive/theme/dark.json'
+    at Module.readFileSync (node:fs:441:20)
+    at getBuiltinThemes (file:///opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive/theme/theme.js:341:33)
+    at loadThemeJson (file:///opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive/theme/theme.js:429:27)
+    at loadTheme (file:///opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive/theme/theme.js:485:23)
+    at initTheme (file:///opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive/theme/theme.js:555:24)
+    at main (file:///opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/main.js:554:5)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+  errno: -5,
+  code: 'EIO',
+  syscall: 'open',
+  path: '/opt/mekann/repo/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive/theme/dark.json'
+}
+
+Node.js v22.12.0

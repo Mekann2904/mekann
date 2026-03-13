@@ -9,6 +9,20 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statS
 import { dirname, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 
+import {
+  collectAutoresearchTbenchLiveSnapshot,
+  type AutoresearchTbenchLiveSnapshot,
+} from "./autoresearch-tbench-live-monitor.js";
+import {
+  buildAutoresearchTbenchImprovementPrompt,
+  readAutoresearchTbenchFailureDigest,
+  type AutoresearchTbenchFailureDigest,
+} from "./autoresearch-tbench-improver.js";
+import {
+  collectPiImprovementReport,
+  renderPiImprovementBrief,
+} from "./pi-improvement.js";
+
 export interface AutoresearchTbenchScore {
   successCount: number;
   completedTrials: number;
@@ -31,7 +45,8 @@ export type AutoresearchTbenchOutcome =
   | "equal"
   | "regressed"
   | "crash"
-  | "timeout";
+  | "timeout"
+  | "stopped";
 
 export interface AutoresearchTbenchRunConfig {
   taskSelector: string | null;
@@ -64,6 +79,12 @@ export interface AutoresearchTbenchState {
   lastLogPath?: string;
   lastJobDir?: string;
   lastResultPath?: string;
+  activeRun?: {
+    pid: number;
+    label: string;
+    startedAt: string;
+  };
+  stopRequestedAt?: string;
 }
 
 export interface AutoresearchTbenchPaths {
@@ -96,6 +117,50 @@ export interface AutoresearchTbenchRunOptions {
   timeoutMs?: number;
   preferMs?: number;
   commitMessage?: string;
+  onSnapshot?: (snapshot: AutoresearchTbenchLiveSnapshot) => void;
+  onTextUpdate?: (text: string) => void;
+}
+
+export interface AutoresearchTbenchAutoOptions extends AutoresearchTbenchRunOptions {
+  iterations?: number;
+  improvementTimeoutMs?: number;
+  maxStalledIterations?: number;
+  provider?: string;
+  model?: string;
+}
+
+export interface AutoresearchTbenchImproverRun {
+  label: string;
+  command: string;
+  promptPath: string;
+  eventLogPath: string;
+  stderrPath: string;
+  outputPath: string;
+  logPath: string;
+  sessionDir: string;
+  exitCode: number | null;
+  timedOut: boolean;
+  stopped: boolean;
+  changedFiles: string[];
+}
+
+export interface AutoresearchTbenchAutoStep {
+  iteration: number;
+  label: string;
+  promptSummary: string;
+  changedFiles: string[];
+  improver: AutoresearchTbenchImproverRun;
+  benchmark: AutoresearchTbenchRunResult | null;
+}
+
+export interface AutoresearchTbenchAutoResult {
+  state: AutoresearchTbenchState;
+  steps: AutoresearchTbenchAutoStep[];
+  stopped: boolean;
+}
+
+interface RunControlState {
+  stopRequested: boolean;
 }
 
 export interface AutoresearchTbenchRunArtifacts {
@@ -110,6 +175,7 @@ export interface AutoresearchTbenchExecutedRun {
   stderr: string;
   exitCode: number | null;
   timedOut: boolean;
+  stopped: boolean;
   artifacts: AutoresearchTbenchRunArtifacts;
   jobDir: string | null;
   resultPath: string | null;
@@ -127,6 +193,12 @@ export interface AutoresearchTbenchStatusResult {
   paths: AutoresearchTbenchPaths;
 }
 
+export interface AutoresearchTbenchStopResult {
+  requested: boolean;
+  state: AutoresearchTbenchState | null;
+  reason: string;
+}
+
 export interface AutoresearchTbenchRunResult {
   outcome: AutoresearchTbenchOutcome;
   score: AutoresearchTbenchScore | null;
@@ -141,6 +213,7 @@ interface SpawnCaptureResult {
   stderr: string;
   exitCode: number | null;
   timedOut: boolean;
+  stopped: boolean;
 }
 
 interface JobReportLike {
@@ -164,6 +237,11 @@ interface JobReportLike {
 
 const DEFAULT_TIMEOUT_MS = 45 * 60 * 1000;
 const DEFAULT_PREFER_MS = 20 * 60 * 1000;
+const DEFAULT_AUTO_ITERATIONS = 3;
+const DEFAULT_MAX_STALLED_ITERATIONS = 2;
+const DEFAULT_IMPROVEMENT_TIMEOUT_MS = 15 * 60 * 1000;
+const DEFAULT_IMPROVER_PROVIDER = "zai";
+const DEFAULT_IMPROVER_MODEL = "glm-5";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -228,6 +306,19 @@ function sanitizeLabel(label: string): string {
   return label.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "experiment";
 }
 
+function isProcessAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function parseDurationMs(startedAt: unknown, finishedAt: unknown): number {
   if (typeof startedAt !== "string" || typeof finishedAt !== "string") {
     return 0;
@@ -285,7 +376,10 @@ export function parseTerminalBenchJobReport(raw: string): AutoresearchTbenchRepo
 
   const score: AutoresearchTbenchScore = {
     successCount,
-    completedTrials: toNonNegativeInteger(primaryEval?.n_trials ?? parsed.stats?.n_trials),
+    completedTrials: Math.max(
+      toNonNegativeInteger(primaryEval?.n_trials),
+      toNonNegativeInteger(parsed.stats?.n_trials),
+    ),
     totalTrials: toNonNegativeInteger(parsed.n_total_trials),
     errorCount: toNonNegativeInteger(primaryEval?.n_errors ?? parsed.stats?.n_errors),
     meanReward: toNumberOrNull(primaryEval?.metrics?.[0]?.mean) ?? 0,
@@ -308,16 +402,16 @@ export function compareAutoresearchTbenchScores(
     return candidate.successCount > incumbent.successCount ? 1 : -1;
   }
 
+  if (candidate.completedTrials !== incumbent.completedTrials) {
+    return candidate.completedTrials > incumbent.completedTrials ? 1 : -1;
+  }
+
   if (candidate.meanReward !== incumbent.meanReward) {
     return candidate.meanReward > incumbent.meanReward ? 1 : -1;
   }
 
   if (candidate.errorCount !== incumbent.errorCount) {
     return candidate.errorCount < incumbent.errorCount ? 1 : -1;
-  }
-
-  if (candidate.completedTrials !== incumbent.completedTrials) {
-    return candidate.completedTrials > incumbent.completedTrials ? 1 : -1;
   }
 
   if (candidate.elapsedMs !== incumbent.elapsedMs) {
@@ -380,6 +474,99 @@ export function writeAutoresearchTbenchState(cwd: string, state: AutoresearchTbe
   writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf-8");
 }
 
+function markActiveRun(cwd: string, state: AutoresearchTbenchState, label: string, pid: number): AutoresearchTbenchState {
+  const nextState = cloneState(state);
+  nextState.updatedAt = nowIso();
+  nextState.activeRun = {
+    pid,
+    label,
+    startedAt: nowIso(),
+  };
+  delete nextState.stopRequestedAt;
+  writeAutoresearchTbenchState(cwd, nextState);
+  return nextState;
+}
+
+function clearActiveRun(cwd: string, state: AutoresearchTbenchState): AutoresearchTbenchState {
+  const nextState = cloneState(state);
+  nextState.updatedAt = nowIso();
+  delete nextState.activeRun;
+  delete nextState.stopRequestedAt;
+  writeAutoresearchTbenchState(cwd, nextState);
+  return nextState;
+}
+
+function ensureNoActiveRun(cwd: string, state: AutoresearchTbenchState): AutoresearchTbenchState {
+  if (!state.activeRun) {
+    return state;
+  }
+
+  if (!isProcessAlive(state.activeRun.pid)) {
+    return clearActiveRun(cwd, state);
+  }
+
+  throw new Error(
+    `another autoresearch-tbench run is active: label=${state.activeRun.label} pid=${state.activeRun.pid}`,
+  );
+}
+
+function isStopRequested(cwd: string): boolean {
+  const state = readAutoresearchTbenchState(cwd);
+  return typeof state?.stopRequestedAt === "string";
+}
+
+export function requestStopAutoresearchTbench(cwd: string): AutoresearchTbenchStopResult {
+  const state = readAutoresearchTbenchState(cwd);
+  if (!state) {
+    return {
+      requested: false,
+      state: null,
+      reason: "state not initialized",
+    };
+  }
+
+  if (!state.activeRun || !isProcessAlive(state.activeRun.pid)) {
+    const cleared = clearActiveRun(cwd, state);
+    return {
+      requested: false,
+      state: cleared,
+      reason: "no active autoresearch-tbench run",
+    };
+  }
+
+  const nextState = cloneState(state);
+  nextState.updatedAt = nowIso();
+  nextState.stopRequestedAt = nowIso();
+  writeAutoresearchTbenchState(cwd, nextState);
+
+  try {
+    process.kill(state.activeRun.pid, "SIGTERM");
+  } catch {
+    const cleared = clearActiveRun(cwd, nextState);
+    return {
+      requested: false,
+      state: cleared,
+      reason: "active run disappeared before SIGTERM",
+    };
+  }
+
+  setTimeout(() => {
+    try {
+      if (isProcessAlive(state.activeRun!.pid)) {
+        process.kill(state.activeRun!.pid, "SIGKILL");
+      }
+    } catch {
+      // best effort only
+    }
+  }, 5_000).unref();
+
+  return {
+    requested: true,
+    state: nextState,
+    reason: `stop requested and SIGTERM sent for pid=${state.activeRun.pid}`,
+  };
+}
+
 function ensureResultsHeader(cwd: string): void {
   const { resultsTsvPath } = getAutoresearchTbenchPaths(cwd);
   if (existsSync(resultsTsvPath)) {
@@ -433,6 +620,8 @@ async function spawnAndCapture(
     env?: NodeJS.ProcessEnv;
     timeoutMs?: number;
     logPath?: string;
+    controlState?: RunControlState;
+    onSpawn?: (child: { pid?: number | undefined }) => void;
   },
 ): Promise<SpawnCaptureResult> {
   const timeoutMs = options.timeoutMs ?? 0;
@@ -443,10 +632,12 @@ async function spawnAndCapture(
       env: options.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
+    options.onSpawn?.(child);
 
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let stopped = false;
 
     if (options.logPath) {
       ensureParentDir(options.logPath);
@@ -481,11 +672,15 @@ async function spawnAndCapture(
       if (timer) {
         clearTimeout(timer);
       }
+      if (options.controlState?.stopRequested) {
+        stopped = true;
+      }
       resolvePromise({
         stdout,
         stderr,
         exitCode,
         timedOut,
+        stopped,
       });
     });
   });
@@ -636,27 +831,234 @@ function buildRunEnv(config: AutoresearchTbenchRunConfig): NodeJS.ProcessEnv {
   return env;
 }
 
+async function listChangedFiles(cwd: string): Promise<string[]> {
+  const status = await runGit(cwd, ["status", "--porcelain"]);
+  return status
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.slice(3).trim())
+    .filter(Boolean);
+}
+
+function summarizePromptDigest(digest: AutoresearchTbenchFailureDigest | null): string {
+  if (!digest) {
+    return "no benchmark digest";
+  }
+
+  const topException = digest.topExceptionTypes[0];
+  return [
+    `success=${digest.successCount}`,
+    `completed=${digest.completedTrials}/${digest.totalTrials}`,
+    `errors=${digest.errorCount}`,
+    topException ? `top_exception=${topException.name}` : "top_exception=-",
+  ].join(" ");
+}
+
+function createImproverArtifacts(cwd: string, label: string) {
+  const paths = getAutoresearchTbenchPaths(cwd);
+  const stamp = nowIso().replace(/[:.]/g, "-");
+  const experimentDir = join(paths.experimentsDir, `${stamp}-${sanitizeLabel(label)}-improver`);
+  ensureDir(experimentDir);
+
+  return {
+    experimentDir,
+    promptPath: join(experimentDir, "prompt.txt"),
+    eventLogPath: join(experimentDir, "pi-events.jsonl"),
+    stderrPath: join(experimentDir, "pi-stderr.txt"),
+    outputPath: join(experimentDir, "pi-output.txt"),
+    logPath: join(experimentDir, "run.log"),
+    sessionDir: join(experimentDir, "sessions"),
+  };
+}
+
+async function executePiImprovementRun(
+  cwd: string,
+  state: AutoresearchTbenchState,
+  label: string,
+  prompt: string,
+  timeoutMs: number,
+  options?: {
+    provider?: string;
+    model?: string;
+    onTextUpdate?: (text: string) => void;
+  },
+): Promise<AutoresearchTbenchImproverRun> {
+  const artifacts = createImproverArtifacts(cwd, label);
+  writeFileSync(artifacts.promptPath, `${prompt}\n`, "utf-8");
+
+  const provider = options?.provider ?? process.env.PI_TBENCH_PROVIDER ?? DEFAULT_IMPROVER_PROVIDER;
+  const model = options?.model ?? state.runConfig.model ?? process.env.PI_TBENCH_MODEL ?? DEFAULT_IMPROVER_MODEL;
+  const command = [
+    "cat",
+    JSON.stringify(artifacts.promptPath),
+    "|",
+    "bash",
+    "scripts/run-pi-local.sh",
+    "--mode",
+    "json",
+    "--print",
+    "--session-dir",
+    JSON.stringify(artifacts.sessionDir),
+    "--provider",
+    JSON.stringify(provider),
+    "--model",
+    JSON.stringify(model),
+    ">",
+    JSON.stringify(artifacts.eventLogPath),
+    "2>",
+    JSON.stringify(artifacts.stderrPath),
+  ].join(" ");
+
+  const controlState: RunControlState = { stopRequested: false };
+  let childPid = 0;
+  const currentState = readAutoresearchTbenchState(cwd);
+  if (currentState) {
+    options?.onTextUpdate?.(`starting improvement agent: ${label}`);
+  }
+
+  const pollTimer = setInterval(() => {
+    if (!controlState.stopRequested && isStopRequested(cwd) && childPid > 0) {
+      controlState.stopRequested = true;
+      options?.onTextUpdate?.("stop requested; terminating improvement agent");
+      try {
+        process.kill(childPid, "SIGTERM");
+        setTimeout(() => {
+          if (isProcessAlive(childPid)) {
+            process.kill(childPid, "SIGKILL");
+          }
+        }, 5_000).unref();
+      } catch {
+        // best effort only
+      }
+    }
+  }, 500);
+
+  const result = await spawnAndCapture("/bin/zsh", ["-lc", command], {
+    cwd,
+    env: {
+      ...process.env,
+      PI_TBENCH_MODE: "1",
+      PI_WEB_UI_AUTO_START: "false",
+    },
+    timeoutMs,
+    logPath: artifacts.logPath,
+    controlState,
+    onSpawn: (child) => {
+      childPid = child.pid ?? 0;
+      const latestState = readAutoresearchTbenchState(cwd);
+      if (latestState && childPid > 0) {
+        markActiveRun(cwd, latestState, label, childPid);
+      }
+    },
+  });
+  clearInterval(pollTimer);
+
+  const latestState = readAutoresearchTbenchState(cwd);
+  if (latestState) {
+    clearActiveRun(cwd, latestState);
+  }
+
+  const changedFiles = state.gitEnabled ? await listChangedFiles(cwd) : [];
+  const outputText = existsSync(artifacts.eventLogPath)
+    ? readFileSync(artifacts.eventLogPath, "utf-8")
+    : "";
+  writeFileSync(artifacts.outputPath, outputText, "utf-8");
+
+  return {
+    label,
+    command,
+    promptPath: artifacts.promptPath,
+    eventLogPath: artifacts.eventLogPath,
+    stderrPath: artifacts.stderrPath,
+    outputPath: artifacts.outputPath,
+    logPath: artifacts.logPath,
+    sessionDir: artifacts.sessionDir,
+    exitCode: result.exitCode,
+    timedOut: result.timedOut,
+    stopped: result.stopped,
+    changedFiles,
+  };
+}
+
 async function executeTerminalBenchRun(
   cwd: string,
   label: string,
   config: AutoresearchTbenchRunConfig,
   timeoutMs: number,
+  hooks?: {
+    onSnapshot?: (snapshot: AutoresearchTbenchLiveSnapshot) => void;
+    onTextUpdate?: (text: string) => void;
+  },
 ): Promise<AutoresearchTbenchExecutedRun> {
   const artifacts = createRunArtifacts(cwd, label);
   const command = "bash scripts/run-terminal-bench.sh";
   const startedAtMs = Date.now();
+  const controlState: RunControlState = { stopRequested: false };
+  let childPid = 0;
+  const pollTimer = setInterval(() => {
+    emitSnapshot();
+    if (!controlState.stopRequested && isStopRequested(cwd) && childPid > 0) {
+      controlState.stopRequested = true;
+      hooks?.onTextUpdate?.("stop requested; terminating terminal-bench run");
+      try {
+        process.kill(childPid, "SIGTERM");
+        setTimeout(() => {
+          if (isProcessAlive(childPid)) {
+            process.kill(childPid, "SIGKILL");
+          }
+        }, 5_000).unref();
+      } catch {
+        // best effort only
+      }
+    }
+  }, 500);
+
+  const emitSnapshot = () => {
+    hooks?.onSnapshot?.(collectAutoresearchTbenchLiveSnapshot({
+      label,
+      jobsDir: config.jobsDir,
+      taskNames: config.taskNames,
+      startedAtMs,
+    }));
+  };
+
+  emitSnapshot();
   const result = await spawnAndCapture("/bin/zsh", ["-lc", command], {
     cwd,
     env: buildRunEnv(config),
     timeoutMs,
     logPath: artifacts.logPath,
+    controlState,
+    onSpawn: (child) => {
+      childPid = child.pid ?? 0;
+      const currentState = readAutoresearchTbenchState(cwd);
+      if (currentState && childPid > 0) {
+        markActiveRun(cwd, currentState, label, childPid);
+      }
+    },
   });
+  clearInterval(pollTimer);
+  const currentState = readAutoresearchTbenchState(cwd);
+  if (currentState) {
+    clearActiveRun(cwd, currentState);
+  }
 
   const combinedOutput = `${result.stdout}\n${result.stderr}`;
   const resultPath = parseResultPathFromOutput(combinedOutput)
     ?? findLatestResultPath(config.jobsDir, startedAtMs);
   const summary = readSummaryFromResultPath(resultPath);
   const jobDir = resultPath ? dirname(resultPath) : null;
+  emitSnapshot();
+
+  hooks?.onTextUpdate?.([
+    `command=${command}`,
+    `job_dir=${jobDir ?? "-"}`,
+    `result_path=${resultPath ?? "-"}`,
+    `exit_code=${result.exitCode ?? "-"}`,
+    `timed_out=${result.timedOut ? "true" : "false"}`,
+    `stopped=${result.stopped ? "true" : "false"}`,
+  ].join("\n"));
 
   writeFileSync(
     artifacts.summaryPath,
@@ -665,6 +1067,7 @@ async function executeTerminalBenchRun(
       command,
       exitCode: result.exitCode,
       timedOut: result.timedOut,
+      stopped: result.stopped,
       jobDir,
       resultPath,
       score: summary?.score ?? null,
@@ -680,6 +1083,7 @@ async function executeTerminalBenchRun(
     stderr: result.stderr,
     exitCode: result.exitCode,
     timedOut: result.timedOut,
+    stopped: result.stopped,
     artifacts,
     jobDir,
     resultPath,
@@ -787,7 +1191,32 @@ async function runBaselineLike(
   const label = options.label ?? "baseline";
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const commit = await getHeadCommit(cwd);
-  const run = await executeTerminalBenchRun(cwd, `${label}-baseline`, state.runConfig, timeoutMs);
+  const run = await executeTerminalBenchRun(cwd, `${label}-baseline`, state.runConfig, timeoutMs, {
+    onSnapshot: options.onSnapshot,
+    onTextUpdate: options.onTextUpdate,
+  });
+
+  if (run.stopped) {
+    const nextState = cloneState(state);
+    nextState.updatedAt = nowIso();
+    nextState.experimentCount += 1;
+    nextState.lastOutcome = "stopped";
+    nextState.lastLabel = label;
+    nextState.lastLogPath = run.artifacts.logPath;
+    nextState.lastJobDir = run.jobDir ?? undefined;
+    nextState.lastResultPath = run.resultPath ?? undefined;
+    writeAutoresearchTbenchState(cwd, nextState);
+    appendResultRow(cwd, label, "stopped", null, commit, run);
+
+    return {
+      outcome: "stopped",
+      score: null,
+      state: nextState,
+      run,
+      commit,
+      preferredBudgetExceeded: false,
+    };
+  }
 
   if (run.timedOut) {
     throw new Error("baseline timed out");
@@ -829,7 +1258,7 @@ export async function baselineAutoresearchTbench(
   if (!state) {
     throw new Error("state not initialized. Run init first.");
   }
-  return await runBaselineLike(cwd, state, options);
+  return await runBaselineLike(cwd, ensureNoActiveRun(cwd, state), options);
 }
 
 export async function runAutoresearchTbench(
@@ -840,7 +1269,8 @@ export async function runAutoresearchTbench(
   if (!state) {
     throw new Error("state not initialized. Run init first.");
   }
-  if (!state.bestScore) {
+  const safeState = ensureNoActiveRun(cwd, state);
+  if (!safeState.bestScore) {
     throw new Error("baseline missing. Run baseline first.");
   }
 
@@ -848,19 +1278,24 @@ export async function runAutoresearchTbench(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const preferMs = options.preferMs ?? DEFAULT_PREFER_MS;
   const candidateBaseCommit = await getHeadCommit(cwd);
-  const run = await executeTerminalBenchRun(cwd, label, state.runConfig, timeoutMs);
+  const run = await executeTerminalBenchRun(cwd, label, safeState.runConfig, timeoutMs, {
+    onSnapshot: options.onSnapshot,
+    onTextUpdate: options.onTextUpdate,
+  });
 
   let outcome: AutoresearchTbenchOutcome = "crash";
   let score: AutoresearchTbenchScore | null = null;
 
-  if (run.timedOut) {
+  if (run.stopped) {
+    outcome = "stopped";
+  } else if (run.timedOut) {
     outcome = "timeout";
   } else if (run.summary) {
     score = run.summary.score;
-    outcome = determineAutoresearchTbenchOutcome(score, state.bestScore);
+    outcome = determineAutoresearchTbenchOutcome(score, safeState.bestScore);
   }
 
-  const nextState = cloneState(state);
+  const nextState = cloneState(safeState);
   nextState.updatedAt = nowIso();
   nextState.experimentCount += 1;
   nextState.lastOutcome = outcome;
@@ -894,8 +1329,8 @@ export async function runAutoresearchTbench(
   }
 
   if (state.gitEnabled) {
-    await resetToCommit(cwd, state.bestCommit);
-    commit = state.bestCommit;
+    await resetToCommit(cwd, safeState.bestCommit);
+    commit = safeState.bestCommit;
   }
 
   writeAutoresearchTbenchState(cwd, nextState);
@@ -908,6 +1343,155 @@ export async function runAutoresearchTbench(
     run,
     commit,
     preferredBudgetExceeded: preferMs > 0 && !!score && score.elapsedMs > preferMs,
+  };
+}
+
+export async function autoAutoresearchTbench(
+  cwd: string,
+  options: AutoresearchTbenchAutoOptions = {},
+): Promise<AutoresearchTbenchAutoResult> {
+  let state = readAutoresearchTbenchState(cwd);
+  if (!state) {
+    throw new Error("state not initialized. Run init first.");
+  }
+  if (!state.bestScore) {
+    throw new Error("baseline missing. Run baseline first.");
+  }
+  state = ensureNoActiveRun(cwd, state);
+
+  const iterations = Math.max(1, Math.trunc(options.iterations ?? DEFAULT_AUTO_ITERATIONS));
+  const improvementTimeoutMs = options.improvementTimeoutMs ?? DEFAULT_IMPROVEMENT_TIMEOUT_MS;
+  const maxStalledIterations = Math.max(1, Math.trunc(options.maxStalledIterations ?? DEFAULT_MAX_STALLED_ITERATIONS));
+  const labelPrefix = sanitizeLabel(options.label ?? "auto");
+  const steps: AutoresearchTbenchAutoStep[] = [];
+  let stalledIterations = 0;
+  let stopped = false;
+
+  for (let iteration = 1; iteration <= iterations; iteration += 1) {
+    state = readAutoresearchTbenchState(cwd) ?? state;
+    if (isStopRequested(cwd)) {
+      stopped = true;
+      break;
+    }
+
+    const failureDigest = readAutoresearchTbenchFailureDigest(state.lastResultPath ?? null);
+    const piImprovementBrief = renderPiImprovementBrief(collectPiImprovementReport(cwd));
+    const prompt = buildAutoresearchTbenchImprovementPrompt({
+      taskNames: state.runConfig.taskNames,
+      bestScoreLine: state.bestScore ? formatAutoresearchTbenchScore(state.bestScore) : "best_score=missing",
+      lastScoreLine: failureDigest
+        ? [
+          `success=${failureDigest.successCount}`,
+          `completed=${failureDigest.completedTrials}/${failureDigest.totalTrials}`,
+          `mean_reward=${failureDigest.meanReward.toFixed(4)}`,
+          `errors=${failureDigest.errorCount}`,
+          `elapsed_ms=${failureDigest.elapsedMs}`,
+        ].join(" ")
+        : (state.bestScore ? formatAutoresearchTbenchScore(state.bestScore) : "last_score=missing"),
+      failureDigest,
+      piImprovementBrief,
+    });
+
+    const stepLabel = `${labelPrefix}-${iteration}`;
+    options.onTextUpdate?.([
+      `iteration ${iteration}/${iterations}`,
+      `phase=improve`,
+      `digest=${summarizePromptDigest(failureDigest)}`,
+    ].join("\n"));
+
+    const improver = await executePiImprovementRun(
+      cwd,
+      state,
+      `${stepLabel}-improve`,
+      prompt,
+      improvementTimeoutMs,
+      {
+        provider: options.provider,
+        model: options.model,
+        onTextUpdate: options.onTextUpdate,
+      },
+    );
+
+    const promptSummary = summarizePromptDigest(failureDigest);
+    if (improver.stopped) {
+      steps.push({
+        iteration,
+        label: stepLabel,
+        promptSummary,
+        changedFiles: improver.changedFiles,
+        improver,
+        benchmark: null,
+      });
+      stopped = true;
+      break;
+    }
+
+    if (state.gitEnabled && improver.changedFiles.length === 0) {
+      steps.push({
+        iteration,
+        label: stepLabel,
+        promptSummary,
+        changedFiles: improver.changedFiles,
+        improver,
+        benchmark: null,
+      });
+      stalledIterations += 1;
+      options.onTextUpdate?.([
+        `iteration ${iteration}/${iterations}`,
+        "phase=skip-benchmark",
+        "reason=no code changes produced",
+      ].join("\n"));
+      if (stalledIterations >= maxStalledIterations) {
+        break;
+      }
+      continue;
+    }
+
+    options.onTextUpdate?.([
+      `iteration ${iteration}/${iterations}`,
+      "phase=benchmark",
+      `changed_files=${improver.changedFiles.length}`,
+    ].join("\n"));
+
+    const benchmark = await runAutoresearchTbench(cwd, {
+      label: stepLabel,
+      timeoutMs: options.timeoutMs,
+      preferMs: options.preferMs,
+      commitMessage: options.commitMessage,
+      onSnapshot: options.onSnapshot,
+      onTextUpdate: options.onTextUpdate,
+    });
+
+    steps.push({
+      iteration,
+      label: stepLabel,
+      promptSummary,
+      changedFiles: improver.changedFiles,
+      improver,
+      benchmark,
+    });
+
+    state = benchmark.state;
+    if (benchmark.outcome === "stopped") {
+      stopped = true;
+      break;
+    }
+
+    if (benchmark.outcome === "improved") {
+      stalledIterations = 0;
+    } else {
+      stalledIterations += 1;
+    }
+
+    if (stalledIterations >= maxStalledIterations) {
+      break;
+    }
+  }
+
+  return {
+    state,
+    steps,
+    stopped,
   };
 }
 
@@ -925,6 +1509,8 @@ export function renderAutoresearchTbenchStatus(result: AutoresearchTbenchStatusR
     `experiments=${state.experimentCount}`,
     `last_outcome=${state.lastOutcome ?? "-"}`,
     `last_label=${state.lastLabel ?? "-"}`,
+    `active_run=${state.activeRun ? `${state.activeRun.label}:${state.activeRun.pid}` : "-"}`,
+    `stop_requested_at=${state.stopRequestedAt ?? "-"}`,
     `best_score=${state.bestScore ? formatAutoresearchTbenchScore(state.bestScore) : "-"}`,
     `task_selector=${state.runConfig.taskSelector ?? "-"}`,
     `task_count=${state.runConfig.taskNames.length}`,
