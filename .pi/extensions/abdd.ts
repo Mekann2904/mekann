@@ -918,12 +918,25 @@ strict（厳格）: add-abdd-header --regenerate → add-jsdoc --regenerate → 
  */
 function findAllMdFiles(dir: string): string[] {
 	const files: string[] = [];
-	const entries = fs.readdirSync(dir, { withFileTypes: true });
+	let entries: fs.Dirent[];
+	
+	try {
+		entries = fs.readdirSync(dir, { withFileTypes: true });
+	} catch (e) {
+		// ディレクトリ読み込みエラーは空配列を返して処理を継続
+		console.error(`[abdd] ディレクトリ読み込みエラー: ${dir}`, e);
+		return files;
+	}
 
 	for (const entry of entries) {
 		const fullPath = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
-			files.push(...findAllMdFiles(fullPath));
+			try {
+				files.push(...findAllMdFiles(fullPath));
+			} catch (e) {
+				// 再帰呼び出しのエラーはログして継続
+				console.error(`[abdd] サブディレクトリ探索エラー: ${fullPath}`, e);
+			}
 		} else if (entry.isFile() && entry.name.endsWith(".md")) {
 			files.push(fullPath);
 		}
