@@ -2411,7 +2411,15 @@ function findLatestWorkflowForInstance(options?: { includeCompleted?: boolean })
       .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 
     return states[0] ?? null;
-  } catch {
+  } catch (error) {
+    // 予期せぬエラー（EACCES, EIO等）はログに出力
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    if (errorCode === "ENOENT") {
+      // ディレクトリが存在しないのは正常ケース
+      return null;
+    }
+    // 権限エラーやI/Oエラーは警告を出力
+    console.error(`findLatestWorkflowForInstance: Failed to read workflow directory: ${errorCode ?? "unknown"}`, error);
     return null;
   }
 }
