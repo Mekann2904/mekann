@@ -63,6 +63,11 @@ export const DEFAULT_EXCLUDES = [
 	// Language-specific
 	"vendor",        // PHP, Go
 	"__pycache__",   // Python
+	".venv",
+	".venv*",
+	"venv",
+	"venv*",
+	"site-packages",
 	".cache",        // Various
 
 	// Minified files (usually not useful to search)

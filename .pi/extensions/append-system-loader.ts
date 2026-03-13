@@ -53,6 +53,8 @@ const APPEND_SYSTEM_PATH = join(PACKAGE_ROOT, ".pi", "APPEND_SYSTEM.md");
 let cachedContent: string | null = null;
 let cacheLoaded = false;
 
+const shouldLogAppendSystemLoader = (): boolean => process.env.PI_STARTUP_DEBUG === "1";
+
 /**
  * APPEND_SYSTEM.mdの内容を読み込む
  */
@@ -64,17 +66,21 @@ const loadAppendSystemContent = (): string | null => {
   cacheLoaded = true;
 
   if (!existsSync(APPEND_SYSTEM_PATH)) {
-    console.log("[append-system-loader] APPEND_SYSTEM.md not found at:", APPEND_SYSTEM_PATH);
+    if (shouldLogAppendSystemLoader()) {
+      console.error("[append-system-loader] APPEND_SYSTEM.md not found at:", APPEND_SYSTEM_PATH);
+    }
     return null;
   }
 
   try {
     const content = readFileSync(APPEND_SYSTEM_PATH, "utf-8");
     cachedContent = content.trim();
-    console.log("[append-system-loader] Loaded APPEND_SYSTEM.md from package:", APPEND_SYSTEM_PATH);
+    if (shouldLogAppendSystemLoader()) {
+      console.error("[append-system-loader] Loaded APPEND_SYSTEM.md from package:", APPEND_SYSTEM_PATH);
+    }
     return cachedContent;
   } catch (error: unknown) {
-    console.warn("[append-system-loader] Failed to read APPEND_SYSTEM.md:", error instanceof Error ? error.message : String(error));
+    console.error("[append-system-loader] Failed to read APPEND_SYSTEM.md:", error instanceof Error ? error.message : String(error));
     return null;
   }
 };

@@ -524,11 +524,6 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
     clearActiveModel(ctx.model.provider, ctx.model.id);
   });
 
-  // Log initialization
-  console.error("[cross-instance-runtime] Extension loaded.");
-  console.error("[cross-instance-runtime] Commands: /pi-instances, /pi-limits, /pi-limits-reset");
-  console.error("[cross-instance-runtime] Tools: pi_instance_status, pi_model_limits");
-
   // セッション終了時にリスナー重複登録防止フラグをリセット
   pi.on("session_shutdown", async () => {
     isInitialized = false;

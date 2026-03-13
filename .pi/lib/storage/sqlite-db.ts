@@ -41,6 +41,59 @@ const DB_PATH = resolveDbPath();
 
 // better-sqlite3の動的インポート（失敗時はnull）
 let Database: typeof import("better-sqlite3") | null = null;
+let sqliteDisableReason: string | null = null;
+let sqliteCapabilityChecked = false;
+let sqliteDisableLogged = false;
+
+function isNativeModuleMismatch(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("NODE_MODULE_VERSION")
+    || message.includes("ERR_DLOPEN_FAILED")
+    || message.includes("was compiled against a different Node.js version")
+    || message.includes("Could not locate the bindings file")
+    || message.includes("slice is not valid mach-o file");
+}
+
+function disableSQLite(reason: string, error?: unknown): void {
+  const nextReason = reason.trim() || "unknown sqlite initialization failure";
+  const shouldLog = !sqliteDisableLogged || sqliteDisableReason !== nextReason;
+
+  sqliteAvailable = false;
+  Database = null;
+  sqliteDisableReason = nextReason;
+  sqliteCapabilityChecked = true;
+
+  if (!shouldLog) {
+    return;
+  }
+
+  sqliteDisableLogged = true;
+  console.warn("[sqlite-db] SQLite disabled, falling back to JSON state store:", nextReason);
+  if (error instanceof Error && error.message !== nextReason) {
+    console.warn("[sqlite-db] Original SQLite error:", error.message);
+  }
+}
+
+function probeSQLiteCapability(): boolean {
+  if (!USE_SQLITE || !sqliteAvailable || !Database) {
+    return false;
+  }
+
+  if (sqliteCapabilityChecked) {
+    return sqliteAvailable;
+  }
+
+  sqliteCapabilityChecked = true;
+
+  try {
+    const probe = new Database(":memory:");
+    probe.close();
+    return true;
+  } catch (error) {
+    disableSQLite(error instanceof Error ? error.message : String(error), error);
+    return false;
+  }
+}
 
 /**
  * better-sqlite3のロードを試行
@@ -68,8 +121,10 @@ try {
   const module = require("better-sqlite3");
   Database = module.default || module;
   sqliteAvailable = true;
-} catch {
+} catch (error) {
   sqliteAvailable = false;
+  sqliteDisableReason = error instanceof Error ? error.message : String(error);
+  sqliteCapabilityChecked = true;
 }
 
 /**
@@ -77,7 +132,11 @@ try {
  * @summary SQLite利用可否
  */
 export function isSQLiteAvailable(): boolean {
-  return USE_SQLITE && sqliteAvailable;
+  return USE_SQLITE && probeSQLiteCapability();
+}
+
+export function getSQLiteDisableReason(): string | null {
+  return sqliteDisableReason;
 }
 
 /**
@@ -117,10 +176,9 @@ export class PiDatabase {
   connect(): void {
     if (this.connected) return;
     
-    if (!sqliteAvailable || !Database) {
+    if (!isSQLiteAvailable() || !Database) {
       throw new Error(
-        "[sqlite-db] Cannot connect: SQLite is not available. " +
-        "Please ensure better-sqlite3 is properly installed."
+        `[sqlite-db] Cannot connect: SQLite is not available. ${sqliteDisableReason ? `Reason: ${sqliteDisableReason}` : "Please ensure better-sqlite3 is properly installed."}`
       );
     }
 
@@ -144,7 +202,13 @@ export class PiDatabase {
       
       this.connected = true;
     } catch (error) {
-      console.error("[sqlite-db] Failed to connect:", error);
+      if (isNativeModuleMismatch(error)) {
+        const reason = error instanceof Error ? error.message : "native module mismatch";
+        disableSQLite(reason, error);
+        throw new Error(`[sqlite-db] Cannot connect: SQLite is not available. Reason: ${reason}`);
+      } else {
+        console.error("[sqlite-db] Failed to connect:", error);
+      }
       throw error;
     }
   }
@@ -305,13 +369,16 @@ let instance: PiDatabase | null = null;
 export function getDatabase(): PiDatabase {
   if (!instance) {
     if (!isSQLiteAvailable()) {
-      throw new Error(
-        "[sqlite-db] SQLite is not available. " +
-        "Please ensure better-sqlite3 is properly installed."
-      );
+      instance = new PiDatabase();
+      return instance;
     }
     instance = new PiDatabase();
-    instance.connect();
+    try {
+      instance.connect();
+    } catch (error) {
+      instance = null;
+      throw error;
+    }
     
     // スキーマ初期化
     initializeSchema(instance);

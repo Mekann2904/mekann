@@ -83,6 +83,13 @@ const EXCLUDE_DIRS = new Set([
 	"obj",
 ]);
 
+function shouldExcludeDirectory(name: string): boolean {
+	return EXCLUDE_DIRS.has(name)
+		|| name.startsWith(".venv")
+		|| name.startsWith("venv")
+		|| name === "site-packages";
+}
+
 /**
  * Detect language from file extension
  * @summary Detect language from file path
@@ -118,7 +125,7 @@ export async function getSourceFiles(
 				const fullPath = join(dir, entry.name);
 
 				if (entry.isDirectory()) {
-					if (!EXCLUDE_DIRS.has(entry.name)) {
+					if (!shouldExcludeDirectory(entry.name)) {
 						await walk(fullPath);
 					}
 				} else if (entry.isFile()) {
@@ -356,7 +363,7 @@ export async function buildRepoGraph(
 		nodeCount: nodes.size,
 		edgeCount: edges.length,
 		language: "multi",
-		version: 1,
+		version: 2,
 	};
 
 	return {
@@ -416,7 +423,7 @@ export async function buildFileRepoGraph(
 				nodeCount: nodes.size,
 				edgeCount: edges.length,
 				language,
-				version: 1,
+				version: 2,
 			},
 		};
 	} catch {

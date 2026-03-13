@@ -2,6 +2,7 @@
 .pi/long-running/
 .pi/node_modules/
 node_modules
+.venv-tbench/
 
 # OS
 .DS_Store
@@ -95,9 +96,11 @@ plans/*.md
 .pi/workspace-verification/
 .pi/evals/workspace-verification/
 .pi/runtime/
+.pi/benchmarks/
 
 # Agent-generated reports
 .pi/reports/
+.harbor/
 
 # Agent-generated research
 .pi/research/
@@ -189,3 +192,11 @@ philosophy.md
 
 # SQLite state database (runtime)
 .pi/state.db
+
+# Local pi agent sandbox/runtime data
+.pi/local-agent/
+.pi/state/
+
+# Python cache
+__pycache__/
+*.pyc

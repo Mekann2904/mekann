@@ -44,6 +44,7 @@ const defaultLog: LogFunction = (message, ...args) => {
 
 /** カスタムロガー（必要に応じて差し替え可能） */
 let logger: LogFunction = defaultLog;
+const shouldLogLifecycle = (): boolean => process.env.PI_STARTUP_DEBUG === "1";
 
 /**
  * グローバルエラーハンドラの設定オプション
@@ -111,7 +112,9 @@ function handleUncaughtException(error: Error, origin: NodeJS.UncaughtExceptionO
  */
 export function setupGlobalErrorHandlers(options: GlobalErrorHandlerOptions = {}): boolean {
   if (isSetup) {
-    logger("Global error handlers already setup, skipping.");
+    if (shouldLogLifecycle()) {
+      logger("Global error handlers already setup, skipping.");
+    }
     return false;
   }
 
@@ -140,7 +143,9 @@ export function setupGlobalErrorHandlers(options: GlobalErrorHandlerOptions = {}
   process.on("uncaughtException", exceptionHandler);
 
   isSetup = true;
-  logger("Global error handlers setup complete.");
+  if (shouldLogLifecycle()) {
+    logger("Global error handlers setup complete.");
+  }
 
   return true;
 }

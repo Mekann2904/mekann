@@ -907,7 +907,6 @@ strict（厳格）: add-abdd-header --regenerate → add-jsdoc --regenerate → 
 		},
 	});
 
-	console.error("ABDD extension loaded: abdd_generate, abdd_jsdoc, abdd_review, abdd_analyze, abdd_workflow, abdd_spec_sync, abdd_compare_plan");
 }
 
 // ============================================================================
