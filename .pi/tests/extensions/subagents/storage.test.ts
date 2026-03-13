@@ -245,3 +245,161 @@ describe("SubagentDefinition type", () => {
     expect(definition.skills).toEqual(["git-workflow", "code-review"]);
   });
 });
+
+describe("saveStorageWithPatterns", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = join(tmpdir(), `subagent-storage-pattern-test-${Date.now()}`);
+    mkdirSync(tempDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("should save storage and not throw on pattern extraction", async () => {
+    const { saveStorageWithPatterns } = await import(
+      "../../../extensions/subagents/storage.js"
+    );
+
+    const storage: SubagentStorage = {
+      version: SUBAGENT_DEFAULTS_VERSION,
+      agents: createDefaultAgents("2024-01-01T00:00:00Z"),
+      runs: [
+        {
+          runId: "test-run-1",
+          agentId: "implementer",
+          task: "テストタスク",
+          summary: "テスト完了",
+          status: "completed",
+          startedAt: "2024-01-01T00:00:00Z",
+          finishedAt: "2024-01-01T00:01:00Z",
+          error: null,
+        },
+      ],
+      customAgents: [],
+    };
+
+    // Should not throw even if pattern extraction has issues
+    await expect(saveStorageWithPatterns(tempDir, storage)).resolves.not.toThrow();
+  });
+
+  it("should handle empty runs array", async () => {
+    const { saveStorageWithPatterns } = await import(
+      "../../../extensions/subagents/storage.js"
+    );
+
+    const storage: SubagentStorage = {
+      version: SUBAGENT_DEFAULTS_VERSION,
+      agents: createDefaultAgents("2024-01-01T00:00:00Z"),
+      runs: [],
+      customAgents: [],
+    };
+
+    await expect(saveStorageWithPatterns(tempDir, storage)).resolves.not.toThrow();
+  });
+
+  it("should handle runs with missing fields gracefully", async () => {
+    const { saveStorageWithPatterns } = await import(
+      "../../../extensions/subagents/storage.js"
+    );
+
+    const storage: SubagentStorage = {
+      version: SUBAGENT_DEFAULTS_VERSION,
+      agents: createDefaultAgents("2024-01-01T00:00:00Z"),
+      runs: [
+        {
+          runId: "incomplete-run",
+          agentId: "implementer",
+          task: "タスク",
+          summary: null,
+          status: "failed",
+          startedAt: "2024-01-01T00:00:00Z",
+          finishedAt: null,
+          error: "エラー",
+        },
+      ],
+      customAgents: [],
+    };
+
+    await expect(saveStorageWithPatterns(tempDir, storage)).resolves.not.toThrow();
+  });
+
+  it("should persist storage even if pattern extraction fails", async () => {
+    const { saveStorageWithPatterns } = await import(
+      "../../../extensions/subagents/storage.js"
+    );
+
+    const storage: SubagentStorage = {
+      version: SUBAGENT_DEFAULTS_VERSION,
+      agents: createDefaultAgents("2024-01-01T00:00:00Z"),
+      runs: [
+        {
+          runId: "run-persist-test",
+          agentId: "implementer",
+          task: "永続化テスト",
+          summary: "テスト",
+          status: "completed",
+          startedAt: "2024-01-01T00:00:00Z",
+          finishedAt: "2024-01-01T00:01:00Z",
+          error: null,
+        },
+      ],
+      customAgents: [],
+    };
+
+    await saveStorageWithPatterns(tempDir, storage);
+
+    // Verify storage was saved
+    const loaded = loadStorage(tempDir);
+    expect(loaded.runs.length).toBe(1);
+    expect(loaded.runs[0].runId).toBe("run-persist-test");
+  });
+
+  it("should handle multiple recent runs", async () => {
+    const { saveStorageWithPatterns } = await import(
+      "../../../extensions/subagents/storage.js"
+    );
+
+    const storage: SubagentStorage = {
+      version: SUBAGENT_DEFAULTS_VERSION,
+      agents: createDefaultAgents("2024-01-01T00:00:00Z"),
+      runs: [
+        {
+          runId: "run-1",
+          agentId: "implementer",
+          task: "タスク1",
+          summary: "完了1",
+          status: "completed",
+          startedAt: "2024-01-01T00:00:00Z",
+          finishedAt: "2024-01-01T00:01:00Z",
+          error: null,
+        },
+        {
+          runId: "run-2",
+          agentId: "researcher",
+          task: "タスク2",
+          summary: "完了2",
+          status: "completed",
+          startedAt: "2024-01-01T00:02:00Z",
+          finishedAt: "2024-01-01T00:03:00Z",
+          error: null,
+        },
+        {
+          runId: "run-3",
+          agentId: "reviewer",
+          task: "タスク3",
+          summary: "完了3",
+          status: "completed",
+          startedAt: "2024-01-01T00:04:00Z",
+          finishedAt: "2024-01-01T00:05:00Z",
+          error: null,
+        },
+      ],
+      customAgents: [],
+    };
+
+    await expect(saveStorageWithPatterns(tempDir, storage)).resolves.not.toThrow();
+  });
+});
