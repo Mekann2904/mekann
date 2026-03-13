@@ -324,7 +324,10 @@ export function parseTerminalBenchJobReport(raw: string): AutoresearchTbenchRepo
 
   const score: AutoresearchTbenchScore = {
     successCount,
-    completedTrials: toNonNegativeInteger(primaryEval?.n_trials ?? parsed.stats?.n_trials),
+    completedTrials: Math.max(
+      toNonNegativeInteger(primaryEval?.n_trials),
+      toNonNegativeInteger(parsed.stats?.n_trials),
+    ),
     totalTrials: toNonNegativeInteger(parsed.n_total_trials),
     errorCount: toNonNegativeInteger(primaryEval?.n_errors ?? parsed.stats?.n_errors),
     meanReward: toNumberOrNull(primaryEval?.metrics?.[0]?.mean) ?? 0,
@@ -347,16 +350,16 @@ export function compareAutoresearchTbenchScores(
     return candidate.successCount > incumbent.successCount ? 1 : -1;
   }
 
+  if (candidate.completedTrials !== incumbent.completedTrials) {
+    return candidate.completedTrials > incumbent.completedTrials ? 1 : -1;
+  }
+
   if (candidate.meanReward !== incumbent.meanReward) {
     return candidate.meanReward > incumbent.meanReward ? 1 : -1;
   }
 
   if (candidate.errorCount !== incumbent.errorCount) {
     return candidate.errorCount < incumbent.errorCount ? 1 : -1;
-  }
-
-  if (candidate.completedTrials !== incumbent.completedTrials) {
-    return candidate.completedTrials > incumbent.completedTrials ? 1 : -1;
   }
 
   if (candidate.elapsedMs !== incumbent.elapsedMs) {

@@ -139,8 +139,6 @@ async function runWithMonitor<T>(
   try {
     if (useStatusFallback) {
       ctx.ui?.setStatus?.("autoresearch-tbench", "starting live monitor");
-    } else {
-      ctx.ui?.setStatus?.("autoresearch-tbench", undefined);
     }
 
     return await runner({

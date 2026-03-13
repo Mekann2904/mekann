@@ -108,6 +108,29 @@ describe("autoresearch-tbench", () => {
     expect(result).toBe(1);
   });
 
+  it("成功数が同じなら completed trial 数を mean reward と error より優先する", () => {
+    const result = compareAutoresearchTbenchScores(
+      {
+        successCount: 0,
+        completedTrials: 3,
+        totalTrials: 6,
+        errorCount: 3,
+        meanReward: 0,
+        elapsedMs: 120_000,
+      },
+      {
+        successCount: 0,
+        completedTrials: 1,
+        totalTrials: 6,
+        errorCount: 1,
+        meanReward: 0,
+        elapsedMs: 30_000,
+      },
+    );
+
+    expect(result).toBe(1);
+  });
+
   it("完全同点なら elapsed が短い候補を優先する", () => {
     const result = compareAutoresearchTbenchScores(
       {
@@ -169,6 +192,35 @@ describe("autoresearch-tbench", () => {
     });
     expect(parsed.exceptionBuckets.AgentTimeoutError).toEqual(["task-f"]);
     expect(formatAutoresearchTbenchScore(parsed.score)).toContain("success=4");
+  });
+
+  it("eval の n_trials が 0 でも stats.n_trials から completed trial 数を拾う", () => {
+    const parsed = parseTerminalBenchJobReport(JSON.stringify({
+      started_at: "2026-03-14T00:31:14.200280",
+      finished_at: null,
+      n_total_trials: 6,
+      stats: {
+        n_trials: 3,
+        n_errors: 3,
+        evals: {
+          "pi__terminal-bench": {
+            n_trials: 0,
+            n_errors: 3,
+            metrics: [{ mean: 0.0 }],
+            reward_stats: {
+              reward: {},
+            },
+            exception_stats: {
+              RuntimeError: ["task-a", "task-b", "task-c"],
+            },
+          },
+        },
+      },
+    }));
+
+    expect(parsed.score.completedTrials).toBe(3);
+    expect(parsed.score.errorCount).toBe(3);
+    expect(parsed.score.totalTrials).toBe(6);
   });
 
   it("state が無いと stop を受け付けない", () => {
