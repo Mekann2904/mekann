@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/Users/mekann/github/pi-plugin/mekann/.venv-tbench/lib/python3.12/site-packages/harbor/trial/trial.py", line 483, in run
+    await self._execute_agent()
+  File "/Users/mekann/github/pi-plugin/mekann/.venv-tbench/lib/python3.12/site-packages/harbor/trial/trial.py", line 259, in _execute_agent
+    await asyncio.wait_for(
+  File "/Users/mekann/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/Users/mekann/github/pi-plugin/mekann/bench/tbench_pi_agent/harbor_pi_agent.py", line 697, in run
+    raise RuntimeError(
+RuntimeError: pi agent run failed with exit code 137. stopReason=None excerpt=

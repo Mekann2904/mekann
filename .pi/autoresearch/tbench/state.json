@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "createdAt": "2026-03-13T15:00:22.858Z",
+  "updatedAt": "2026-03-13T15:34:54.333Z",
+  "tag": "mekann-tbench",
+  "gitEnabled": true,
+  "bestCommit": "8ae604dec8d271e659d1aa746c82a16048395e9c",
+  "baselineCommit": "8ae604dec8d271e659d1aa746c82a16048395e9c",
+  "runConfig": {
+    "taskSelector": "easy=2,medium=2,hard=2",
+    "taskNames": [
+      "cobol-modernization",
+      "fix-git",
+      "adaptive-rejection-sampler",
+      "break-filter-js-from-html",
+      "bn-fit-modify",
+      "cancel-async-tasks"
+    ],
+    "dataset": "terminal-bench@2.0",
+    "datasetPath": null,
+    "agent": "pi",
+    "agentImportPath": "bench.tbench_pi_agent.harbor_pi_agent:HarborPiAgent",
+    "model": null,
+    "nConcurrent": 2,
+    "jobsDir": "/Users/mekann/github/pi-plugin/mekann/.pi/autoresearch/tbench/jobs",
+    "agentSetupTimeoutMultiplier": 4,
+    "forceBuild": true,
+    "excludeTaskNames": [
+      "gpt2-codegolf"
+    ]
+  },
+  "experimentCount": 1,
+  "bestScore": {
+    "successCount": 0,
+    "completedTrials": 1,
+    "totalTrials": 6,
+    "errorCount": 6,
+    "meanReward": 0,
+    "elapsedMs": 1317232
+  },
+  "lastOutcome": "baseline",
+  "lastLabel": "baseline",
+  "lastLogPath": "/Users/mekann/github/pi-plugin/mekann/.pi/autoresearch/tbench/experiments/2026-03-13T15-01-16-771Z-baseline-baseline/run.log",
+  "lastJobDir": "/Users/mekann/github/pi-plugin/mekann/.pi/autoresearch/tbench/jobs/2026-03-14__00-01-22",
+  "lastResultPath": "/Users/mekann/github/pi-plugin/mekann/.pi/autoresearch/tbench/jobs/2026-03-14__00-01-22/result.json"
+}

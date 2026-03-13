@@ -1,0 +1,4 @@
+[sqlite-schema] Creating initial schema
+[API] Server started on port 3456
+[AdaptOrch] Globally enabled
+[AdaptOrch] Custom thresholds loaded: { omegaRatio: 0.5, couplingDensity: 0.6, minSubtasksForHierarchy: 5 }

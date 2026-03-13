@@ -1,0 +1,111 @@
+{
+    "id": "afe9897a-2fd0-46a8-8094-8a7fdf61afb4",
+    "task_name": "fix-git",
+    "trial_name": "fix-git__frYu74p",
+    "trial_uri": "file:///Users/mekann/github/pi-plugin/mekann/.pi/autoresearch/tbench/jobs/2026-03-14__00-01-22/fix-git__frYu74p",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+        "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "fix-git"
+    },
+    "source": "terminal-bench",
+    "task_checksum": "7fa0a681f751d73f290d862522a82a5e448fa529834987ee1b80e5665c51aa7e",
+    "config": {
+        "task": {
+            "path": "fix-git",
+            "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+            "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench"
+        },
+        "trial_name": "fix-git__frYu74p",
+        "trials_dir": "/Users/mekann/github/pi-plugin/mekann/.pi/autoresearch/tbench/jobs/2026-03-14__00-01-22",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": 4.0,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "bench.tbench_pi_agent.harbor_pi_agent:HarborPiAgent",
+            "model_name": "glm-5",
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "kwargs": {},
+            "env": {}
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": true,
+            "delete": true,
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "suppress_override_warnings": false,
+            "kwargs": {}
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "job_id": "6c428e0c-fcbf-4486-a305-5bff5b5e88bc"
+    },
+    "agent_info": {
+        "name": "pi",
+        "version": "0.3.1",
+        "model_info": null
+    },
+    "agent_result": {
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": {
+            "provider": "zai",
+            "model": "glm-5",
+            "baseUrl": "https://api.z.ai/api/coding/paas/v4",
+            "exitCode": 137,
+            "eventCount": 177,
+            "toolCalls": [
+                "bash",
+                "bash",
+                "bash",
+                "bash",
+                "bash"
+            ],
+            "stopReason": null,
+            "eventLog": "/Users/mekann/github/pi-plugin/mekann/.pi/autoresearch/tbench/jobs/2026-03-14__00-01-22/fix-git__frYu74p/agent/pi-events.jsonl",
+            "stderrLog": "/Users/mekann/github/pi-plugin/mekann/.pi/autoresearch/tbench/jobs/2026-03-14__00-01-22/fix-git__frYu74p/agent/pi-stderr.txt",
+            "outputLog": "/Users/mekann/github/pi-plugin/mekann/.pi/autoresearch/tbench/jobs/2026-03-14__00-01-22/fix-git__frYu74p/agent/pi-output.txt"
+        }
+    },
+    "verifier_result": null,
+    "exception_info": {
+        "exception_type": "RuntimeError",
+        "exception_message": "pi agent run failed with exit code 137. stopReason=None excerpt=Let me help you find your changes. I'll check the git state to see where your changes might be.",
+        "exception_traceback": "Traceback (most recent call last):\n  File \"/Users/mekann/github/pi-plugin/mekann/.venv-tbench/lib/python3.12/site-packages/harbor/trial/trial.py\", line 483, in run\n    await self._execute_agent()\n  File \"/Users/mekann/github/pi-plugin/mekann/.venv-tbench/lib/python3.12/site-packages/harbor/trial/trial.py\", line 259, in _execute_agent\n    await asyncio.wait_for(\n  File \"/Users/mekann/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/tasks.py\", line 520, in wait_for\n    return await fut\n           ^^^^^^^^^\n  File \"/Users/mekann/github/pi-plugin/mekann/bench/tbench_pi_agent/harbor_pi_agent.py\", line 697, in run\n    raise RuntimeError(\nRuntimeError: pi agent run failed with exit code 137. stopReason=None excerpt=Let me help you find your changes. I'll check the git state to see where your changes might be.\n",
+        "occurred_at": "2026-03-14T00:07:59.312187"
+    },
+    "started_at": "2026-03-13T15:06:32.414618Z",
+    "finished_at": "2026-03-13T15:08:11.898710Z",
+    "environment_setup": {
+        "started_at": "2026-03-13T15:06:32.417478Z",
+        "finished_at": "2026-03-13T15:06:35.431326Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-03-13T15:06:35.431405Z",
+        "finished_at": "2026-03-13T15:07:31.410833Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-03-13T15:07:31.413378Z",
+        "finished_at": "2026-03-13T15:07:59.306076Z"
+    },
+    "verifier": null
+}

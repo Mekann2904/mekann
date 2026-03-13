@@ -1,0 +1,40 @@
+{
+    "id": "6c428e0c-fcbf-4486-a305-5bff5b5e88bc",
+    "started_at": "2026-03-14T00:01:24.381707",
+    "finished_at": "2026-03-14T00:23:21.613607",
+    "n_total_trials": 6,
+    "stats": {
+        "n_trials": 6,
+        "n_errors": 6,
+        "evals": {
+            "pi__terminal-bench": {
+                "n_trials": 1,
+                "n_errors": 6,
+                "metrics": [
+                    {
+                        "mean": 0.0
+                    }
+                ],
+                "reward_stats": {
+                    "reward": {
+                        "0.0": [
+                            "break-filter-js-from-html__Qt8bAM8"
+                        ]
+                    }
+                },
+                "exception_stats": {
+                    "AgentTimeoutError": [
+                        "break-filter-js-from-html__Qt8bAM8"
+                    ],
+                    "RuntimeError": [
+                        "adaptive-rejection-sampler__7WS25ym",
+                        "cobol-modernization__DFwFTrk",
+                        "fix-git__frYu74p",
+                        "cancel-async-tasks__2QVT98J",
+                        "bn-fit-modify__3D9mhyN"
+                    ]
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,32 @@
+{
+    "id": "7ca00744-cf64-4fc7-8895-98dc786afa89",
+    "started_at": "2026-03-14T00:31:14.200280",
+    "finished_at": null,
+    "n_total_trials": 6,
+    "stats": {
+        "n_trials": 3,
+        "n_errors": 3,
+        "evals": {
+            "pi__terminal-bench": {
+                "n_trials": 0,
+                "n_errors": 3,
+                "metrics": [
+                    {
+                        "mean": 0.0
+                    }
+                ],
+                "reward_stats": {},
+                "exception_stats": {
+                    "RuntimeError": [
+                        "adaptive-rejection-sampler__WhCqp33",
+                        "break-filter-js-from-html__pKhf9z7"
+                    ],
+                    "CancelledError": [
+                        "cobol-modernization__ZsEx6bu"
+                    ]
+                }
+            }
+        }
+    },
+    "trial_results": []
+}

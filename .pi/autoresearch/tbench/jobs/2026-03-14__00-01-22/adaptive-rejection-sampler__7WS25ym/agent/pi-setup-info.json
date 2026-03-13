@@ -1,0 +1,8 @@
+{
+  "pi_bin": "/opt/mekann/repo/node_modules/.bin/pi",
+  "provider": "zai",
+  "model": "glm-5",
+  "base_url": "https://api.z.ai/api/coding/paas/v4",
+  "node_dir": "/opt/mekann/node",
+  "npm_debug_log": "/logs/agent/npm-debug.log"
+}

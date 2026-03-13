@@ -1,0 +1,15 @@
+[invariant-pipeline] Extension loading...
+[pi-coding-agent-rate-limit-fix] skipped (target changed or not found)
+[rate-limit-retry-budget] skipped (target changed or not found)
+/bin/sh: 1: python3: not found
+/bin/sh: 1: go: not found
+/bin/sh: 1: rustc: not found
+/bin/sh: 1: pnpm: not found
+/bin/sh: 1: yarn: not found
+/bin/sh: 1: pip: not found
+/bin/sh: 1: pip3: not found
+/bin/sh: 1: cargo: not found
+/bin/sh: 1: cmake: not found
+/bin/sh: 1: clang: not found
+/bin/sh: 1: docker: not found
+fatal: not a git repository (or any of the parent directories): .git

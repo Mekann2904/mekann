@@ -1,0 +1,2 @@
+bash: line 8:  4294 Done                    cat /logs/agent/instruction.txt
+      4295 Killed                  | /opt/mekann/repo/node_modules/.bin/pi --mode json --print --session-dir /logs/agent/pi-sessions --provider zai --model glm-5 > /logs/agent/pi-events.jsonl 2> /logs/agent/pi-stderr.txt

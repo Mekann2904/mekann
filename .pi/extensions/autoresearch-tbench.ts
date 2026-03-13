@@ -134,15 +134,26 @@ async function runWithMonitor<T>(
   }) => Promise<T>,
 ): Promise<T> {
   const liveMonitor = createAutoresearchTbenchLiveMonitor(ctx as unknown as LiveMonitorContext, title);
+  const useStatusFallback = !liveMonitor;
 
   try {
+    if (useStatusFallback) {
+      ctx.ui?.setStatus?.("autoresearch-tbench", "starting live monitor");
+    } else {
+      ctx.ui?.setStatus?.("autoresearch-tbench", undefined);
+    }
+
     return await runner({
       onSnapshot: (snapshot) => {
-        ctx.ui?.setStatus?.("autoresearch-tbench", snapshot.statusLine);
+        if (useStatusFallback) {
+          ctx.ui?.setStatus?.("autoresearch-tbench", snapshot.statusLine);
+        }
         liveMonitor?.update(snapshot);
       },
       onTextUpdate: (text) => {
-        ctx.ui?.setStatus?.("autoresearch-tbench", text);
+        if (useStatusFallback) {
+          ctx.ui?.setStatus?.("autoresearch-tbench", text);
+        }
       },
     });
   } finally {

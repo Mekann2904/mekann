@@ -1,0 +1,109 @@
+{
+    "id": "c7753668-057e-4111-a80e-d51ccce2867d",
+    "task_name": "cobol-modernization",
+    "trial_name": "cobol-modernization__DFwFTrk",
+    "trial_uri": "file:///Users/mekann/github/pi-plugin/mekann/.pi/autoresearch/tbench/jobs/2026-03-14__00-01-22/cobol-modernization__DFwFTrk",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+        "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "cobol-modernization"
+    },
+    "source": "terminal-bench",
+    "task_checksum": "f8220a33bf193106989df1a28e4806985b12e5f93dcf07efb86acd8dbbc44f6a",
+    "config": {
+        "task": {
+            "path": "cobol-modernization",
+            "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+            "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench"
+        },
+        "trial_name": "cobol-modernization__DFwFTrk",
+        "trials_dir": "/Users/mekann/github/pi-plugin/mekann/.pi/autoresearch/tbench/jobs/2026-03-14__00-01-22",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": 4.0,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "bench.tbench_pi_agent.harbor_pi_agent:HarborPiAgent",
+            "model_name": "glm-5",
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "kwargs": {},
+            "env": {}
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": true,
+            "delete": true,
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "suppress_override_warnings": false,
+            "kwargs": {}
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "job_id": "6c428e0c-fcbf-4486-a305-5bff5b5e88bc"
+    },
+    "agent_info": {
+        "name": "pi",
+        "version": "0.3.1",
+        "model_info": null
+    },
+    "agent_result": {
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": {
+            "provider": "zai",
+            "model": "glm-5",
+            "baseUrl": "https://api.z.ai/api/coding/paas/v4",
+            "exitCode": 137,
+            "eventCount": 164,
+            "toolCalls": [
+                "read",
+                "read",
+                "ls"
+            ],
+            "stopReason": null,
+            "eventLog": "/Users/mekann/github/pi-plugin/mekann/.pi/autoresearch/tbench/jobs/2026-03-14__00-01-22/cobol-modernization__DFwFTrk/agent/pi-events.jsonl",
+            "stderrLog": "/Users/mekann/github/pi-plugin/mekann/.pi/autoresearch/tbench/jobs/2026-03-14__00-01-22/cobol-modernization__DFwFTrk/agent/pi-stderr.txt",
+            "outputLog": "/Users/mekann/github/pi-plugin/mekann/.pi/autoresearch/tbench/jobs/2026-03-14__00-01-22/cobol-modernization__DFwFTrk/agent/pi-output.txt"
+        }
+    },
+    "verifier_result": null,
+    "exception_info": {
+        "exception_type": "RuntimeError",
+        "exception_message": "pi agent run failed with exit code 137. stopReason=None excerpt=I'll analyze the COBOL program and create an equivalent Python implementation. Let me start by reading the source files.",
+        "exception_traceback": "Traceback (most recent call last):\n  File \"/Users/mekann/github/pi-plugin/mekann/.venv-tbench/lib/python3.12/site-packages/harbor/trial/trial.py\", line 483, in run\n    await self._execute_agent()\n  File \"/Users/mekann/github/pi-plugin/mekann/.venv-tbench/lib/python3.12/site-packages/harbor/trial/trial.py\", line 259, in _execute_agent\n    await asyncio.wait_for(\n  File \"/Users/mekann/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/tasks.py\", line 520, in wait_for\n    return await fut\n           ^^^^^^^^^\n  File \"/Users/mekann/github/pi-plugin/mekann/bench/tbench_pi_agent/harbor_pi_agent.py\", line 697, in run\n    raise RuntimeError(\nRuntimeError: pi agent run failed with exit code 137. stopReason=None excerpt=I'll analyze the COBOL program and create an equivalent Python implementation. Let me start by reading the source files.\n",
+        "occurred_at": "2026-03-14T00:06:20.747854"
+    },
+    "started_at": "2026-03-13T15:05:03.752089Z",
+    "finished_at": "2026-03-13T15:06:32.400253Z",
+    "environment_setup": {
+        "started_at": "2026-03-13T15:05:03.755226Z",
+        "finished_at": "2026-03-13T15:05:06.630724Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-03-13T15:05:06.630812Z",
+        "finished_at": "2026-03-13T15:05:50.658902Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-03-13T15:05:50.659162Z",
+        "finished_at": "2026-03-13T15:06:20.743610Z"
+    },
+    "verifier": null
+}
