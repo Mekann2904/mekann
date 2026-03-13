@@ -45,6 +45,8 @@ describe("DEFAULT_EXCLUDES", () => {
 	it("should include language-specific directories", () => {
 		expect(DEFAULT_EXCLUDES).toContain("vendor");
 		expect(DEFAULT_EXCLUDES).toContain("__pycache__");
+		expect(DEFAULT_EXCLUDES).toContain(".venv*");
+		expect(DEFAULT_EXCLUDES).toContain("site-packages");
 	});
 
 	it("should include minified file patterns", () => {

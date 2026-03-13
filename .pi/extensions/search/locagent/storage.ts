@@ -45,6 +45,7 @@ import {
  * 24時間 = 86400000ms
  */
 const INDEX_TTL = 86400000;
+const CURRENT_LOCAGENT_INDEX_VERSION = 2;
 
 function getLocAgentStateKey(cwd: string): string {
 	return `locagent:index:${cwd}`;
@@ -179,6 +180,10 @@ export async function isLocAgentGraphStale(
 
 		const indexTime = Number(graph.metadata.indexedAt || 0);
 		if (!Number.isFinite(indexTime) || indexTime <= 0) {
+			return true;
+		}
+
+		if (graph.metadata.version !== CURRENT_LOCAGENT_INDEX_VERSION) {
 			return true;
 		}
 

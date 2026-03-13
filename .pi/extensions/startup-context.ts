@@ -62,7 +62,11 @@ import {
   formatSessionStartAsShell,
   formatDeltaAsShell,
 } from "../lib/startup-context-collectors.js";
-import type { SessionStartContext, UserPromptSubmitDelta } from "../lib/startup-context-types.js";
+import {
+  USER_PROMPT_TTL_SECONDS,
+  type SessionStartContext,
+  type UserPromptSubmitDelta,
+} from "../lib/startup-context-types.js";
 import { resetToolTelemetryStore } from "../lib/tool-telemetry-store.js";
 
 // モジュールレベルのフラグ（reload時のリスナー重複登録防止）
@@ -77,6 +81,18 @@ let isFirstTurn = true;
 /** セッション開始時刻 */
 let sessionStartTime = 0;
 
+/** 差分コンテキストを最後に収集した時刻 */
+let lastDeltaCollectedAt = 0;
+
+function getDeltaCollectionIntervalMs(): number {
+  const raw = process.env.PI_STARTUP_CONTEXT_DELTA_MIN_INTERVAL_MS;
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  if (Number.isFinite(parsed) && parsed >= 0) {
+    return parsed;
+  }
+  return USER_PROMPT_TTL_SECONDS * 1000;
+}
+
 export default function (pi: ExtensionAPI) {
   if (isInitialized) return;
   isInitialized = true;
@@ -89,6 +105,7 @@ export default function (pi: ExtensionAPI) {
     startSession();
     resetToolTelemetryStore();
     getRuntimeEnvironmentCache().reset();
+    lastDeltaCollectedAt = 0;
   });
 
   // エージェント開始前イベント（毎ターン実行）
@@ -153,7 +170,23 @@ export default function (pi: ExtensionAPI) {
         // 2回目以降: 差分コンテキストを収集
         if (!previousContext) return undefined;
 
+        const now = Date.now();
+        const nextCwd = process.cwd();
+        const cwdChanged = previousContext.user.cwd !== nextCwd;
+        const deltaCollectionIntervalMs = getDeltaCollectionIntervalMs();
+
+        // Git/環境差分の収集は高コストなので、短時間の連続入力では省略する。
+        // ただし cwd が変わった場合は即時反映する。
+        if (
+          !cwdChanged &&
+          lastDeltaCollectedAt > 0 &&
+          now - lastDeltaCollectedAt < deltaCollectionIntervalMs
+        ) {
+          return undefined;
+        }
+
         const delta = collectUserPromptDelta(previousContext);
+        lastDeltaCollectedAt = now;
 
         // 有意な差分がない場合はスキップ
         if (!hasSignificantDelta(delta)) {
@@ -178,9 +211,8 @@ export default function (pi: ExtensionAPI) {
         );
 
         // 現在の状態を更新
-        const currentCwd = process.cwd();
-        if (previousContext.user.cwd !== currentCwd) {
-          previousContext.user.cwd = currentCwd;
+        if (previousContext.user.cwd !== nextCwd) {
+          previousContext.user.cwd = nextCwd;
         }
 
         const entries: PromptStackEntry[] = [
@@ -229,6 +261,7 @@ export default function (pi: ExtensionAPI) {
     previousContext = null;
     isFirstTurn = true;
     sessionStartTime = 0;
+    lastDeltaCollectedAt = 0;
   });
 }
 

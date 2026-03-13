@@ -109,6 +109,7 @@ export interface BugHuntState {
   reportedCount: number;
   intervalMs: number;
   timeoutMs: number;
+  investigationParallelism: number;
   taskPrompt: string;
   model: BugHuntModelConfig | null;
   reportedFingerprints: string[];

@@ -64,14 +64,16 @@ const NATIVE_FILE_CANDIDATES_TOOL_NAME = "native_file_candidates";
  */
 function shouldExclude(name: string, excludes: readonly string[]): boolean {
 	for (const exc of excludes) {
-		if (exc.startsWith("*.")) {
-			// Glob pattern: match extension
-			const ext = exc.slice(1); // *.min.js -> .min.js
-			if (name.endsWith(ext)) return true;
-		} else {
-			// Exact or substring match
-			if (name === exc || name.includes(exc)) return true;
+		if (exc.includes("*")) {
+			const pattern = exc
+				.replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+				.replace(/\*/g, ".*");
+			if (new RegExp(`^${pattern}$`).test(name)) return true;
+			continue;
 		}
+
+		// Exact or substring match
+		if (name === exc || name.includes(exc)) return true;
 	}
 	return false;
 }

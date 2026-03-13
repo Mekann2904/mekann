@@ -31,6 +31,7 @@ interface TaskStorageRecord {
 
 const DEFAULT_INTERVAL_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 600_000;
+const DEFAULT_INVESTIGATION_PARALLELISM = 1;
 const MAX_FINGERPRINTS = 256;
 const MAX_TRACKED_VALUES = 256;
 
@@ -78,6 +79,7 @@ export function createDefaultBugHuntState(): BugHuntState {
     reportedCount: 0,
     intervalMs: DEFAULT_INTERVAL_MS,
     timeoutMs: DEFAULT_TIMEOUT_MS,
+    investigationParallelism: DEFAULT_INVESTIGATION_PARALLELISM,
     taskPrompt: getDefaultBugHuntPrompt(),
     model: null,
     reportedFingerprints: [],

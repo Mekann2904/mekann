@@ -254,6 +254,37 @@ describe("file_candidates", () => {
 			expect(result.results.find((r) => r.path === "app.js")).toBeDefined();
 		});
 
+		it(".venv プレフィックスのディレクトリが既定除外される", async () => {
+			const input: FileCandidatesInput = {};
+
+			vi.mocked(checkToolAvailability).mockResolvedValue({ fd: false });
+
+			vi.mocked(readdir as any).mockImplementation(async (path: string) => {
+				if (path === mockCwd) {
+					return [
+						{ name: ".venv-tbench", isFile: () => false, isDirectory: () => true },
+						{ name: "src", isFile: () => false, isDirectory: () => true },
+					];
+				}
+				if (path === `${mockCwd}/src`) {
+					return [
+						{ name: "app.ts", isFile: () => true, isDirectory: () => false },
+					];
+				}
+				if (path === `${mockCwd}/.venv-tbench`) {
+					return [
+						{ name: "bad.py", isFile: () => true, isDirectory: () => false },
+					];
+				}
+				return [];
+			});
+
+			const result = await fileCandidates(input, mockCwd);
+
+			expect(result.results.find((r) => r.path.includes(".venv-tbench"))).toBeUndefined();
+			expect(result.results.find((r) => r.path === "src/app.ts")).toBeDefined();
+		});
+
 		it("hiddenファイルが除外される", async () => {
 			const input: FileCandidatesInput = {};
 

@@ -249,7 +249,6 @@ export default function rpmThrottleExtension(pi: ExtensionAPI) {
     }
   });
   
-  console.log("[rpm-throttle] Extension loaded (SQLite-based)");
 }
 
 // ============================================================================

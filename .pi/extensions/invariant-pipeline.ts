@@ -376,7 +376,4 @@ export default (api: ExtensionAPI) => {
     },
   } as unknown as ToolDefinition);
 
-  console.error("[invariant-pipeline] Extension loaded", {
-    tools: ["generate_from_spec", "verify_quint_spec", "generate_invariant_macros", "generate_property_tests", "generate_mbt_driver"],
-  });
 };

@@ -88,6 +88,13 @@ const EXCLUDE_DIRS = new Set([
 	"obj",
 ]);
 
+function shouldExcludeDirectory(name: string): boolean {
+	return EXCLUDE_DIRS.has(name)
+		|| name.startsWith(".venv")
+		|| name.startsWith("venv")
+		|| name === "site-packages";
+}
+
 // ============================================================================
 // File System Helpers
 // ============================================================================
@@ -114,7 +121,7 @@ export async function getLocAgentSourceFiles(
 				const fullPath = join(dir, entry.name);
 
 				if (entry.isDirectory()) {
-					if (!EXCLUDE_DIRS.has(entry.name)) {
+					if (!shouldExcludeDirectory(entry.name)) {
 						await walk(fullPath);
 					}
 				} else if (entry.isFile()) {
@@ -154,7 +161,7 @@ async function getDirectories(path: string, cwd: string): Promise<string[]> {
 			const entries = await readdir(dir, { withFileTypes: true });
 
 			for (const entry of entries) {
-				if (entry.isDirectory() && !EXCLUDE_DIRS.has(entry.name)) {
+				if (entry.isDirectory() && !shouldExcludeDirectory(entry.name)) {
 					await walk(join(dir, entry.name));
 				}
 			}
@@ -1072,7 +1079,7 @@ export async function buildLocAgentGraph(
 		nodeCount: nodes.size,
 		edgeCount: edges.length,
 		language: "multi",
-		version: 1,
+		version: 2,
 	};
 
 	return {

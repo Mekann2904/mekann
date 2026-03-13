@@ -43,6 +43,8 @@ import {
   deleteStrictJsonState,
 } from "../../../lib/storage/sqlite-state-store-strict.js";
 
+const CURRENT_REPOGRAPH_INDEX_VERSION = 2;
+
 interface SerializableRepoGraph {
   nodes: [string, RepoGraphNode][];
   edges: RepoGraphEdge[];
@@ -93,6 +95,10 @@ export async function isRepoGraphStale(cwd: string, sourcePath?: string): Promis
 
   const indexedAt = Number(graph.metadata.indexedAt || 0);
   if (!Number.isFinite(indexedAt) || indexedAt <= 0) {
+    return true;
+  }
+
+  if (graph.metadata.version !== CURRENT_REPOGRAPH_INDEX_VERSION) {
     return true;
   }
 

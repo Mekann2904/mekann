@@ -23,6 +23,7 @@ const mockState = vi.hoisted(() => ({
     reportedCount: 0,
     intervalMs: 30000,
     timeoutMs: 600000,
+    investigationParallelism: 1,
     taskPrompt: "default task",
     model: null,
     reportedFingerprints: [],
@@ -59,6 +60,7 @@ vi.mock("../../../.pi/extensions/bug-hunt/storage.js", () => ({
     reportedCount: 0,
     intervalMs: 30000,
     timeoutMs: 600000,
+    investigationParallelism: 1,
     taskPrompt: "default task",
     model: null,
     reportedFingerprints: [],
@@ -148,6 +150,7 @@ describe("bug-hunt extension", () => {
       reportedCount: 0,
       intervalMs: 30000,
       timeoutMs: 600000,
+      investigationParallelism: 1,
       taskPrompt: "default task",
       model: null,
       reportedFingerprints: [],
@@ -201,6 +204,7 @@ describe("bug-hunt extension", () => {
     expect(mockState.state.runId).toBe("bug-hunt-run-1");
     expect(mockState.state.backgroundProcessId).toBe("bg-1");
     expect(mockState.state.timeoutMs).toBe(600000);
+    expect(mockState.state.investigationParallelism).toBe(1);
     expect(startBackgroundProcess).toHaveBeenCalledWith(expect.objectContaining({
       waitForReady: false,
       readyPattern: "BUG_HUNT_READY",
@@ -253,6 +257,27 @@ describe("bug-hunt extension", () => {
     });
 
     expect(mockState.state.timeoutMs).toBe(600000);
+  });
+
+  it("bug_hunt_start は investigation の parallelism を保存する", async () => {
+    const { default: extension, resetForTesting } = await import("../../../.pi/extensions/bug-hunt/index.js");
+    resetForTesting();
+    const pi = createPiMock();
+
+    extension(pi as never);
+
+    const tool = pi.tools.get("bug_hunt_start");
+    await tool.execute("call-1", {
+      parallelism: 3,
+    }, undefined, undefined, {
+      cwd: "/repo",
+      model: {
+        provider: "openai",
+        id: "gpt-5",
+      },
+    });
+
+    expect(mockState.state.investigationParallelism).toBe(3);
   });
 
   it("既に動作中なら bug_hunt_start は再起動しない", async () => {
@@ -322,5 +347,29 @@ describe("bug-hunt extension", () => {
     expect(result.content[0].text).toContain("status: stopped");
     expect(mockState.state.stopRequested).toBe(true);
     expect(mockState.state.status).toBe("stopped");
+  });
+
+  it("slash command で /bug-hunt start 3 を受け付ける", async () => {
+    const { default: extension, resetForTesting } = await import("../../../.pi/extensions/bug-hunt/index.js");
+    resetForTesting();
+    const pi = createPiMock();
+    const notify = vi.fn();
+
+    extension(pi as never);
+
+    const command = pi.commands.get("bug-hunt");
+    await command.handler("start 3", {
+      cwd: "/repo",
+      model: {
+        provider: "openai",
+        id: "gpt-5",
+      },
+      ui: {
+        notify,
+      },
+    });
+
+    expect(mockState.state.investigationParallelism).toBe(3);
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("investigation_parallelism: 3"), "info");
   });
 });

@@ -63,6 +63,7 @@ function formatState(state: BugHuntState, processRecord: BackgroundProcessRecord
     `stop_requested: ${state.stopRequested}`,
     `interval_ms: ${state.intervalMs}`,
     `timeout_ms: ${state.timeoutMs}`,
+    `investigation_parallelism: ${state.investigationParallelism}`,
     `last_summary: ${state.lastSummary ?? "-"}`,
     `last_observer_decision: ${state.lastObserverDecision ?? "-"}`,
     `last_error: ${state.lastError ?? "-"}`,
@@ -129,6 +130,7 @@ function buildRunningStatePatch(input: {
   taskPrompt: string;
   intervalMs: number;
   timeoutMs: number;
+  investigationParallelism: number;
 }): BugHuntState {
   return {
     ...createDefaultBugHuntState(),
@@ -146,6 +148,7 @@ function buildRunningStatePatch(input: {
     stopRequested: false,
     intervalMs: input.intervalMs,
     timeoutMs: input.timeoutMs,
+    investigationParallelism: input.investigationParallelism,
     taskPrompt: input.taskPrompt,
     model: input.model,
   };
@@ -163,6 +166,282 @@ function resolvePreferredBugHuntTimeoutMs(
   }
 
   return Math.max(previous.timeoutMs ?? 0, minimumTimeoutMs, defaultTimeoutMs);
+}
+
+function tokenizeBugHuntArgs(input: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  let escaping = false;
+
+  for (const ch of input) {
+    if (escaping) {
+      current += ch;
+      escaping = false;
+      continue;
+    }
+
+    if (quote) {
+      if (ch === "\\") {
+        escaping = true;
+        continue;
+      }
+      if (ch === quote) {
+        quote = null;
+        continue;
+      }
+      current += ch;
+      continue;
+    }
+
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      continue;
+    }
+
+    if (/\s/.test(ch)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += ch;
+  }
+
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+
+  return tokens;
+}
+
+function clampBugHuntParallelism(value: number): number {
+  const normalized = Math.floor(value);
+  if (!Number.isFinite(normalized)) {
+    return createDefaultBugHuntState().investigationParallelism;
+  }
+  return Math.max(1, Math.min(6, normalized));
+}
+
+function resolveBugHuntParallelism(
+  requestedParallelism: number | undefined,
+  previous: BugHuntState,
+): number {
+  if (typeof requestedParallelism === "number") {
+    return clampBugHuntParallelism(requestedParallelism);
+  }
+
+  return clampBugHuntParallelism(previous.investigationParallelism ?? createDefaultBugHuntState().investigationParallelism);
+}
+
+type BugHuntCommandParseResult =
+  | { mode: "help" }
+  | { mode: "status" }
+  | { mode: "stop" }
+  | { mode: "start"; task?: string; parallelism?: number }
+  | { mode: "error"; error: string };
+
+function parseBugHuntCommand(args: string | undefined): BugHuntCommandParseResult {
+  const raw = (args ?? "").trim();
+  if (!raw) {
+    return { mode: "help" };
+  }
+
+  const tokens = tokenizeBugHuntArgs(raw);
+  if (tokens.length === 0) {
+    return { mode: "help" };
+  }
+
+  const head = tokens[0].toLowerCase();
+  if (head === "help" || head === "--help" || head === "-h") {
+    return { mode: "help" };
+  }
+  if (head === "status") {
+    return tokens.length === 1 ? { mode: "status" } : { mode: "error", error: "status does not take extra arguments" };
+  }
+  if (head === "stop") {
+    return tokens.length === 1 ? { mode: "stop" } : { mode: "error", error: "stop does not take extra arguments" };
+  }
+
+  let cursor = head === "start" ? 1 : 0;
+  const taskTokens: string[] = [];
+  let parallelism: number | undefined;
+
+  for (; cursor < tokens.length; cursor += 1) {
+    const token = tokens[cursor];
+    const lower = token.toLowerCase();
+
+    if (lower === "--parallel" || lower === "--parallelism" || lower === "-p") {
+      const next = tokens[cursor + 1];
+      if (!next) {
+        return { mode: "error", error: `missing value for ${token}` };
+      }
+      parallelism = Number(next);
+      cursor += 1;
+      continue;
+    }
+
+    if (lower.startsWith("--parallel=") || lower.startsWith("--parallelism=")) {
+      parallelism = Number(token.slice(token.indexOf("=") + 1));
+      continue;
+    }
+
+    if (lower.startsWith("parallel=") || lower.startsWith("parallelism=")) {
+      parallelism = Number(token.slice(token.indexOf("=") + 1));
+      continue;
+    }
+
+    if (/^\d+(?:並列)?$/.test(token)) {
+      parallelism = Number(token.replace(/並列$/, ""));
+      continue;
+    }
+
+    taskTokens.push(token);
+  }
+
+  if (parallelism !== undefined && !Number.isFinite(parallelism)) {
+    return { mode: "error", error: "parallelism must be a number" };
+  }
+
+  return {
+    mode: "start",
+    task: taskTokens.join(" ").trim() || undefined,
+    parallelism,
+  };
+}
+
+async function startBugHuntRun(
+  params: {
+    task?: string;
+    intervalMs?: number;
+    timeoutMs?: number;
+    parallelism?: number;
+    provider?: string;
+    model?: string;
+    thinkingLevel?: string;
+    restartIfRunning?: boolean;
+  },
+  ctx: {
+    cwd: string;
+    model?: {
+      provider?: string;
+      id?: string;
+      thinkingLevel?: string;
+    };
+  },
+) {
+  const cwd = ctx.cwd;
+  const current = loadBugHuntState(cwd);
+  const currentProcess = resolveActiveProcess(current, cwd);
+
+  if (currentProcess?.status === "running" && !params.restartIfRunning) {
+    return {
+      content: [{
+        type: "text" as const,
+        text: `bug-hunt is already running.\n\n${formatState(current, currentProcess)}`,
+      }],
+      details: {
+        state: current,
+        process: currentProcess,
+      },
+    };
+  }
+
+  if (currentProcess?.status === "running" && params.restartIfRunning) {
+    await stopBackgroundProcess({
+      cwd,
+      id: currentProcess.id,
+    });
+  }
+
+  const model = resolveModelConfig(params, ctx);
+  if (!model) {
+    return {
+      content: [{
+        type: "text" as const,
+        text: "Could not resolve provider/model. Pass provider/model explicitly or run from a session with an active model.",
+      }],
+      details: {},
+    };
+  }
+
+  saveBackgroundProcessConfig(cwd, {
+    enabled: true,
+    defaultKeepAliveOnShutdown: true,
+  });
+
+  const nextState = buildRunningStatePatch({
+    previous: current,
+    model,
+    taskPrompt: params.task?.trim() || current.taskPrompt || createDefaultBugHuntState().taskPrompt,
+    intervalMs: params.intervalMs ?? current.intervalMs ?? createDefaultBugHuntState().intervalMs,
+    timeoutMs: resolvePreferredBugHuntTimeoutMs(params.timeoutMs, current),
+    investigationParallelism: resolveBugHuntParallelism(params.parallelism, current),
+  });
+  saveBugHuntState(nextState, cwd);
+
+  try {
+    const result = await startBackgroundProcess({
+      cwd,
+      command: buildRunnerCommand(cwd, nextState.runId as string),
+      label: "bug-hunt",
+      keepAliveOnShutdown: true,
+      startupTimeoutMs: 5_000,
+      readyPattern: "BUG_HUNT_READY",
+      waitForReady: false,
+    });
+
+    const runningState = saveBugHuntState({
+      ...loadBugHuntState(cwd),
+      runId: nextState.runId,
+      status: "running",
+      backgroundProcessId: result.record.id,
+      startedAt: nextState.startedAt,
+      lastSummary: result.ready ? "bug-hunt runner started" : "bug-hunt runner booting",
+    }, cwd);
+
+    return {
+      content: [{
+        type: "text" as const,
+        text: [
+          `bug-hunt started (${result.ready ? "ready" : "booting"}).`,
+          "",
+          formatState(runningState, result.record),
+        ].join("\n"),
+      }],
+      details: {
+        state: runningState,
+        process: result.record,
+        ready: result.ready,
+      },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const failedState = saveBugHuntState({
+      ...loadBugHuntState(cwd),
+      runId: nextState.runId,
+      status: "failed",
+      currentStage: "idle",
+      backgroundProcessId: null,
+      startedAt: nextState.startedAt,
+      stoppedAt: new Date().toISOString(),
+      lastError: message,
+      lastSummary: `failed to start bug-hunt runner: ${message}`,
+    }, cwd);
+
+    return {
+      content: [{
+        type: "text" as const,
+        text: formatState(failedState, null),
+      }],
+      details: {
+        state: failedState,
+        process: null,
+      },
+    };
+  }
 }
 
 export function resetForTesting(): void {
@@ -191,121 +470,18 @@ export default function registerBugHuntExtension(pi: ExtensionAPI): void {
         maximum: 900_000,
         description: "Per-iteration model timeout",
       })),
+      parallelism: Type.Optional(Type.Integer({
+        minimum: 1,
+        maximum: 6,
+        description: "Maximum concurrent investigations per iteration",
+      })),
       provider: Type.Optional(Type.String({ description: "Provider override" })),
       model: Type.Optional(Type.String({ description: "Model override" })),
       thinkingLevel: Type.Optional(Type.String({ description: "Thinking level override" })),
       restartIfRunning: Type.Optional(Type.Boolean({ description: "Restart the current run if one is already active" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const cwd = ctx.cwd;
-      const current = loadBugHuntState(cwd);
-      const currentProcess = resolveActiveProcess(current, cwd);
-
-      if (currentProcess?.status === "running" && !params.restartIfRunning) {
-        return {
-          content: [{
-            type: "text",
-            text: `bug-hunt is already running.\n\n${formatState(current, currentProcess)}`,
-          }],
-          details: {
-            state: current,
-            process: currentProcess,
-          },
-        };
-      }
-
-      if (currentProcess?.status === "running" && params.restartIfRunning) {
-        await stopBackgroundProcess({
-          cwd,
-          id: currentProcess.id,
-        });
-      }
-
-      const model = resolveModelConfig(params, ctx);
-      if (!model) {
-        return {
-          content: [{
-            type: "text",
-            text: "Could not resolve provider/model. Pass provider/model explicitly or run from a session with an active model.",
-          }],
-          details: {},
-        };
-      }
-
-      saveBackgroundProcessConfig(cwd, {
-        enabled: true,
-        defaultKeepAliveOnShutdown: true,
-      });
-
-      const nextState = buildRunningStatePatch({
-        previous: current,
-        model,
-        taskPrompt: params.task?.trim() || current.taskPrompt || createDefaultBugHuntState().taskPrompt,
-        intervalMs: params.intervalMs ?? current.intervalMs ?? createDefaultBugHuntState().intervalMs,
-        timeoutMs: resolvePreferredBugHuntTimeoutMs(params.timeoutMs, current),
-      });
-      saveBugHuntState(nextState, cwd);
-
-      try {
-        const result = await startBackgroundProcess({
-          cwd,
-          command: buildRunnerCommand(cwd, nextState.runId as string),
-          label: "bug-hunt",
-          keepAliveOnShutdown: true,
-          startupTimeoutMs: 5_000,
-          readyPattern: "BUG_HUNT_READY",
-          waitForReady: false,
-        });
-
-        const runningState = saveBugHuntState({
-          ...loadBugHuntState(cwd),
-          runId: nextState.runId,
-          status: "running",
-          backgroundProcessId: result.record.id,
-          startedAt: nextState.startedAt,
-          lastSummary: result.ready ? "bug-hunt runner started" : "bug-hunt runner booting",
-        }, cwd);
-
-        return {
-          content: [{
-            type: "text",
-            text: [
-              `bug-hunt started (${result.ready ? "ready" : "booting"}).`,
-              "",
-              formatState(runningState, result.record),
-            ].join("\n"),
-          }],
-          details: {
-            state: runningState,
-            process: result.record,
-            ready: result.ready,
-          },
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const failedState = saveBugHuntState({
-          ...loadBugHuntState(cwd),
-          runId: nextState.runId,
-          status: "failed",
-          currentStage: "idle",
-          backgroundProcessId: null,
-          startedAt: nextState.startedAt,
-          stoppedAt: new Date().toISOString(),
-          lastError: message,
-          lastSummary: `failed to start bug-hunt runner: ${message}`,
-        }, cwd);
-
-        return {
-          content: [{
-            type: "text",
-            text: formatState(failedState, null),
-          }],
-          details: {
-            state: failedState,
-            process: null,
-          },
-        };
-      }
+      return await startBugHuntRun(params, ctx);
     },
   });
 
@@ -402,10 +578,21 @@ export default function registerBugHuntExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("bug-hunt", {
-    description: "Control the persistent bug hunt loop (start|status|stop)",
+    description: "Control the persistent bug hunt loop (start|status|stop). Supports /bug-hunt start 3 or /bug-hunt start parallel=3.",
     handler: async (args, ctx) => {
-      const command = args.trim().toLowerCase();
-      if (command === "stop") {
+      const parsed = parseBugHuntCommand(args);
+
+      if (parsed.mode === "help") {
+        ctx.ui?.notify?.("Use /bug-hunt start [parallel=3] [task...], /bug-hunt status, or /bug-hunt stop.", "info");
+        return;
+      }
+
+      if (parsed.mode === "error") {
+        ctx.ui?.notify?.(`bug-hunt argument error: ${parsed.error}`, "error");
+        return;
+      }
+
+      if (parsed.mode === "stop") {
         const cwd = ctx.cwd;
         const state = loadBugHuntState(cwd);
         const processRecord = resolveActiveProcess(state, cwd);
@@ -433,13 +620,17 @@ export default function registerBugHuntExtension(pi: ExtensionAPI): void {
         return;
       }
 
-      if (command === "status") {
+      if (parsed.mode === "status") {
         const state = loadBugHuntState(ctx.cwd);
         ctx.ui?.notify?.(formatState(state, resolveActiveProcess(state, ctx.cwd)), "info");
         return;
       }
 
-      ctx.ui?.notify?.("Use bug_hunt_start for full options, or /bug-hunt status|stop.", "info");
+      const result = await startBugHuntRun({
+        task: parsed.task,
+        parallelism: parsed.parallelism,
+      }, ctx);
+      ctx.ui?.notify?.(result.content[0]?.text ?? "bug-hunt start completed", "info");
     },
   });
 
