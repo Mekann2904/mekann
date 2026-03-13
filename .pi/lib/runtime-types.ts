@@ -281,6 +281,8 @@ export interface RuntimeCapacityReserveResult extends RuntimeCapacityCheck {
   attempts: number;
   timedOut: boolean;
   aborted: boolean;
+  /** 予期せぬシステムエラーが発生した場合のエラーメッセージ（AbortSignalによるキャンセル以外） */
+  error?: string;
   reservation?: RuntimeCapacityReservationLease;
 }
 
