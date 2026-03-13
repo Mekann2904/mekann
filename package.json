@@ -77,6 +77,7 @@
     "tbench": "bash scripts/tb.sh",
     "harbor": "bash scripts/harbor.sh",
     "tbench:check": "bash scripts/check-terminal-bench.sh",
+    "tbench:clean": "bash scripts/clean-terminal-bench.sh",
     "tbench:terminal-bench2": "bash scripts/run-terminal-bench.sh",
     "tbench:status": "bash scripts/tb.sh --help",
     "typecheck": "tsc --noEmit --project tsconfig-check.json",

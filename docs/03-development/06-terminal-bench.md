@@ -6,7 +6,7 @@
 title: Terminal Bench Integration
 category: development
 audience: developer
-last_updated: 2026-03-13
+last_updated: 2026-03-14
 tags: [terminal-bench, harbor, benchmark, autoresearch]
 related: [../../bench/terminal-bench/README.md, ../../scripts/run-terminal-bench.sh, ../../tests/e2e/README.md, ../05-meta/08-autonomous-harness-playbook.md]
 ---
@@ -333,6 +333,96 @@ bash scripts/harbor.sh run \
 UV_CACHE_DIR=/tmp/uv-cache \
 uv pip install --python .venv-tbench/bin/python harbor terminal-bench
 ```
+
+## Disk Cleanup
+
+benchmark を回し続けると、容量を食う場所は主に 2 つです。
+
+- repo 内の job artifact
+  - `.pi/benchmarks/terminal-bench/jobs`
+  - `.pi/autoresearch/tbench/jobs`
+- Colima / Docker 側の build cache と未使用 image / volume
+
+特に長く詰まった task は `agent/pi-events.jsonl` が数百 MB から数 GB まで膨らみます。
+
+まず現状を見ます。
+
+```bash
+bash scripts/check-terminal-bench.sh
+```
+
+ここでは次も見えます。
+
+- `tbench_jobs_kb`
+- `autoresearch_jobs_kb`
+- `docker_storage`
+
+`docker_storage	corrupt` が出る場合は、今回のように containerd blob store 自体が壊れている可能性があります。
+
+### Repo 内 job artifact を掃除する
+
+まず dry-run で確認します。
+
+```bash
+bash scripts/clean-terminal-bench.sh --dry-run
+```
+
+既定では benchmark job と autoresearch job をそれぞれ最新 3 件だけ残します。
+
+実行:
+
+```bash
+bash scripts/clean-terminal-bench.sh
+```
+
+件数を変えたい場合:
+
+```bash
+bash scripts/clean-terminal-bench.sh \
+  --keep-benchmark-jobs 5 \
+  --keep-autoresearch-jobs 5
+```
+
+### Docker build cache だけ掃除する
+
+これは比較的安全です。
+
+```bash
+bash scripts/clean-terminal-bench.sh --docker-builder-prune
+```
+
+実行されるのは `docker builder prune -af` です。
+
+### Docker の未使用 image / layer / volume まで掃除する
+
+これは広く消します。
+
+```bash
+bash scripts/clean-terminal-bench.sh --docker-system-prune
+```
+
+実行されるのは `docker system prune -af --volumes` です。
+
+他の作業で使っていない未使用 Docker 資産も消えるので注意してください。
+
+### Colima storage が壊れている場合
+
+今回の実環境では `docker system df -v` 自体が次で落ちました。
+
+```text
+input/output error
+```
+
+この場合は単なる容量超過ではなく、Colima VM 内の Docker storage が壊れている可能性があります。
+
+その場合は prune では直らず、最終的に次が必要になることがあります。
+
+```bash
+colima delete --force
+colima start
+```
+
+これは Colima 内の image / container / volume を全部消します。
 
 ## autoresearch との関係
 
