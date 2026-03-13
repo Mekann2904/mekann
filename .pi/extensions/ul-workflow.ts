@@ -2373,11 +2373,9 @@ export function saveState(state: WorkflowState): void {
  * @param state - ワークフロー状態
  */
 async function saveStateAsync(state: WorkflowState): Promise<void> {
-  const taskDir = getTaskDir(state.taskId);
-  const statusPath = path.join(taskDir, "status.json");
-
-  await fsPromises.mkdir(taskDir, { recursive: true });
-  await fsPromises.writeFile(statusPath, JSON.stringify(state, null, 2), "utf-8");
+  // 同期版のsaveStateを使用してファイルロックとatomic writeを保証
+  // 非同期関数として公開することで呼び出し元のAPIを維持
+  saveState(state);
 }
 
 /**
