@@ -67,7 +67,7 @@ const args = readArgs(process.argv.slice(2));
 const cwd = args.cwd ?? process.cwd();
 const runId = args["run-id"] ?? "";
 
-let activeController: AbortController | null = null;
+const activeControllers = new Set<AbortController>();
 let stopping = false;
 
 async function verifyMissionTarget(cwdPath: string, target: string): Promise<string> {
@@ -149,7 +149,9 @@ function saveStage(stage: BugHuntStage, summary?: string, patch: Partial<BugHunt
 
 function requestStop(reason: string): void {
   stopping = true;
-  activeController?.abort();
+  for (const controller of activeControllers) {
+    controller.abort();
+  }
 
   const current = loadBugHuntState(cwd);
   if (current.runId !== runId) {
@@ -213,19 +215,31 @@ async function callStageModel(
     throw new Error("bug-hunt model config is missing");
   }
   const stageTimeouts = buildBugHuntStageTimeouts(stage, ensureRemainingBudget(deadline, entityLabel));
-  activeController = new AbortController();
+  const controller = new AbortController();
+  activeControllers.add(controller);
   try {
     return await callModelViaPi({
       model: state.model,
       prompt,
       timeoutMs: stageTimeouts.idleTimeoutMs,
       hardTimeoutMs: stageTimeouts.hardTimeoutMs,
-      signal: activeController.signal,
+      signal: controller.signal,
       entityLabel,
     });
   } finally {
-    activeController = null;
+    activeControllers.delete(controller);
   }
+}
+
+function chunkHypotheses<T>(items: T[], chunkSize: number): T[][] {
+  const normalizedChunkSize = Math.max(1, Math.floor(chunkSize));
+  const chunks: T[][] = [];
+
+  for (let index = 0; index < items.length; index += normalizedChunkSize) {
+    chunks.push(items.slice(index, index + normalizedChunkSize));
+  }
+
+  return chunks;
 }
 
 async function runIteration(): Promise<void> {
@@ -337,39 +351,74 @@ async function runIteration(): Promise<void> {
 
   const investigations = [];
   const rejectedHypotheses = [...nextState.rejectedHypotheses];
+  const investigationParallelism = Math.max(1, state.investigationParallelism ?? 1);
 
-  for (const hypothesis of hypotheses) {
+  for (const hypothesisChunk of chunkHypotheses(hypotheses, investigationParallelism)) {
     if (!hasBudgetForBugHuntStage("investigation", deadline - Date.now())) {
       break;
     }
 
-    const candidate = candidates.find((entry) => entry.id === hypothesis.candidateId);
-    if (!candidate) {
+    const scheduled = hypothesisChunk
+      .map((hypothesis) => {
+        const candidate = candidates.find((entry) => entry.id === hypothesis.candidateId);
+        if (!candidate) {
+          return null;
+        }
+        return {
+          hypothesis,
+          candidate,
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+
+    if (scheduled.length === 0) {
       continue;
     }
 
-    saveStage("investigate", `investigating ${candidate.file}${candidate.line ? `:${candidate.line}` : ""}`);
-    const context = await buildBugHuntInvestigationContext({
-      cwd,
-      candidate,
-    });
-    const rawInvestigation = await callStageModel(state, buildBugHuntInvestigationPrompt({
-      queryPlan,
-      candidate,
-      hypothesis,
-      context,
-      rejectedHypotheses,
-      missionVerificationSummary,
-    }), deadline, "investigation", "bug-hunt-investigation");
-    const investigation = parseBugHuntInvestigationOutput(rawInvestigation);
-    investigations.push({
-      ...investigation,
-      hypothesisId: hypothesis.id,
-      candidateId: candidate.id,
-    });
+    saveStage("investigate", [
+      `investigating ${scheduled.length} candidate${scheduled.length === 1 ? "" : "s"}`,
+      `(parallelism ${investigationParallelism})`,
+    ].join(" "));
 
-    if (investigation.status === "rejected") {
-      rejectedHypotheses.push(hypothesis.hypothesis);
+    const results = await Promise.allSettled(scheduled.map(async ({ hypothesis, candidate }) => {
+      const context = await buildBugHuntInvestigationContext({
+        cwd,
+        candidate,
+      });
+      const rawInvestigation = await callStageModel(state, buildBugHuntInvestigationPrompt({
+        queryPlan,
+        candidate,
+        hypothesis,
+        context,
+        rejectedHypotheses,
+        missionVerificationSummary,
+      }), deadline, "investigation", "bug-hunt-investigation");
+      const investigation = parseBugHuntInvestigationOutput(rawInvestigation);
+      return {
+        hypothesis,
+        candidate,
+        investigation,
+      };
+    }));
+
+    for (const result of results) {
+      if (result.status === "rejected") {
+        const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
+        if (stopRequested() || /aborted/i.test(message)) {
+          throw new Error(message);
+        }
+        continue;
+      }
+
+      investigations.push({
+        ...result.value.investigation,
+        hypothesisId: result.value.hypothesis.id,
+        candidateId: result.value.candidate.id,
+      });
+
+      if (result.value.investigation.status === "rejected") {
+        rejectedHypotheses.push(result.value.hypothesis.hypothesis);
+      }
     }
   }
 
