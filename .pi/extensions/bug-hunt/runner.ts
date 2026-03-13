@@ -250,7 +250,10 @@ async function runIteration(): Promise<void> {
   ])).slice(-20);
   const recentTitles = listRecentBugHuntTitles(cwd);
 
-  saveStage("retrieve", "planning bug-hunt query");
+  saveStage("retrieve", "planning bug-hunt query", {
+    lastError: null,
+    lastObserverDecision: null,
+  });
   const queryPrompt = buildBugHuntQueryPrompt({
     taskPrompt: state.taskPrompt,
     cwd,
