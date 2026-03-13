@@ -15,6 +15,7 @@ AGENT="${TBENCH_AGENT:-pi}"
 PI_AGENT_IMPORT_PATH="${TBENCH_AGENT_IMPORT_PATH:-bench.tbench_pi_agent.harbor_pi_agent:HarborPiAgent}"
 MODEL="${TBENCH_MODEL:-$PI_TBENCH_MODEL}"
 JOBS_DIR="${TBENCH_JOBS_DIR:-$ROOT_DIR/.pi/benchmarks/terminal-bench/jobs}"
+N_CONCURRENT="${TBENCH_N_CONCURRENT:-2}"
 AGENT_SETUP_TIMEOUT_MULTIPLIER="${TBENCH_AGENT_SETUP_TIMEOUT_MULTIPLIER:-4}"
 FORCE_BUILD="${TBENCH_FORCE_BUILD:-}"
 EXCLUDE_TASK_NAMES="${TBENCH_EXCLUDE_TASK_NAMES:-gpt2-codegolf}"
@@ -26,6 +27,13 @@ fi
 if ! command -v docker >/dev/null 2>&1; then
   printf '%s\n' "docker is required for terminal-bench runs." \
     "Install Docker Desktop or use another Harbor environment explicitly." >&2
+  exit 1
+fi
+
+if ! docker info >/dev/null 2>&1; then
+  printf '%s\n' "docker daemon is not reachable for terminal-bench runs." \
+    "Current socket: ${DOCKER_HOST:-unix:///Users/$USER/.colima/default/docker.sock}" \
+    "Start Docker or Colima first, then rerun: bash scripts/check-terminal-bench.sh" >&2
   exit 1
 fi
 
@@ -47,6 +55,10 @@ if [ "$AGENT" = "codex" ]; then
 fi
 
 set -- --jobs-dir "$JOBS_DIR" --agent-setup-timeout-multiplier "$AGENT_SETUP_TIMEOUT_MULTIPLIER" "$@"
+
+if [ -n "$N_CONCURRENT" ]; then
+  set -- "$@" --n-concurrent "$N_CONCURRENT"
+fi
 
 if [ "$AGENT" = "pi" ]; then
   set -- --agent-import-path "$PI_AGENT_IMPORT_PATH" "$@"

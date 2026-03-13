@@ -45,6 +45,10 @@ CLI は repo ローカルの `.venv-tbench` に入っています。
 bash scripts/check-terminal-bench.sh
 ```
 
+`docker` が入っていても daemon が落ちていると実行できません。
+
+`docker_daemon	ok` が出ることを確認してください。
+
 ## Official dataset を走らせる
 
 ```bash
@@ -59,6 +63,7 @@ bash scripts/run-terminal-bench.sh
 - provider: `zai` from pi auth
 - model: `glm-5`
 - agent setup timeout multiplier: `4`
+- concurrent trials: `2`
 - `Darwin arm64` では `--force-build` が既定です
 - API-only 既定 denylist: `gpt2-codegolf`
 
@@ -133,6 +138,147 @@ npm run tbench:status
 この環境では benchmark 本体は動きません。
 
 まず Docker を入れてください。
+
+### Docker daemon に繋がらない
+
+今回の失敗はこれです。
+
+`docker` コマンドがあっても、Colima か Docker Desktop が起動していないと Harbor が全 task を即失敗させます。
+
+先に次を確認してください。
+
+```bash
+bash scripts/check-terminal-bench.sh
+docker info
+```
+
+`docker_daemon	unreachable` が出る場合は、Docker Desktop を起動するか Colima を起動してから再実行してください。
+
+Colima が壊れた状態で残っていると、`colima start` 自体が失敗することがあります。
+
+今回の実例では次の流れで復旧しました。
+
+```bash
+colima delete --force
+colima start
+colima ssh -- sudo systemctl restart docker
+colima ssh -- sudo chmod 666 /run/docker.sock
+docker info
+```
+
+補足:
+
+- `colima delete --force` は Colima VM 内の image と container を消します
+- 今回は guest 内 Docker は起動していたのに、host 側 socket 転送が `EOF` のまま残りました
+- そのため一時対応として `/run/docker.sock` の権限を広げて host 側接続を復旧しました
+- この権限変更は再起動で戻る可能性があります
+
+### Colima の DNS が壊れている
+
+今回の benchmark 失敗の主因はこれでした。
+
+症状は 2 つに見えます。
+
+```text
+Temporary failure resolving 'deb.debian.org'
+lookup registry-1.docker.io on [::1]:53: read udp ... connection refused
+```
+
+つまり task container から Debian mirror と Docker Hub を引けず、environment build と agent setup の両方が落ちます。
+
+確認:
+
+```bash
+docker info
+colima ssh -- bash -lc 'cat /etc/resolv.conf'
+colima ssh -- bash -lc 'getent hosts deb.debian.org'
+colima ssh -- bash -lc 'getent hosts registry-1.docker.io'
+```
+
+今回の根因は、Colima VM 内の `/etc/resolv.conf` が壊れた link になっていたことでした。
+
+恒久対策:
+
+- Colima 設定の `network.dns` を固定値にする
+- `provision` で `/etc/resolv.conf` を毎回補正する
+
+現在は `~/.colima/default/colima.yaml` に次を入れてあります。
+
+```yaml
+network:
+  dns:
+    - 1.1.1.1
+    - 8.8.8.8
+
+provision:
+  - mode: system
+    script: |
+      rm -f /etc/resolv.conf
+      cat >/etc/resolv.conf <<'EOF'
+      nameserver 1.1.1.1
+      nameserver 8.8.8.8
+      options edns0
+      EOF
+```
+
+反映:
+
+```bash
+colima stop
+colima start
+```
+
+この修正後は `deb.debian.org` と `registry-1.docker.io` の名前解決が通ることを確認済みです。
+
+### pi agent setup が `nvm install` で詰まる
+
+DNS 復旧後も、`pi agent setup` が長時間止まる場合があります。
+
+今回の実例では `nvm install 22` が `iojs.org/dist/index.tab` 周辺で張り付きました。
+
+対策として、Harbor custom agent は `nvm` を使わず、Node 22.12.0 の公式 tarball を直接入れる方式へ変更しました。
+
+実装箇所:
+
+- `bench/tbench_pi_agent/harbor_pi_agent.py`
+
+今の setup 方針:
+
+1. `apt-get install` で最小依存だけ入れる
+2. `https://nodejs.org/dist/v22.12.0/...tar.xz` を直接取得する
+3. `/opt/mekann/node` に展開する
+4. `PATH` に `/opt/mekann/node/bin` を追加して `npm ci` と `pi` 実行に使う
+
+つまり再発時は `nvm` を疑う必要はほぼありません。
+
+確認したい場合:
+
+```bash
+python3 -m py_compile bench/tbench_pi_agent/harbor_pi_agent.py
+docker top <task-container-name>
+```
+
+`docker top` に `nvm install` ではなく、`curl https://nodejs.org/dist/v22.12.0/...` が見えれば新しい setup が使われています。
+
+### 再発時の最短チェックリスト
+
+次に同じ事故が起きたら、まずこの順で見てください。
+
+```bash
+bash scripts/check-terminal-bench.sh
+docker info
+colima ssh -- bash -lc 'cat /etc/resolv.conf'
+colima ssh -- bash -lc 'getent hosts deb.debian.org'
+colima ssh -- bash -lc 'getent hosts registry-1.docker.io'
+```
+
+次に 1 task だけ再検証します。
+
+```bash
+bash scripts/run-terminal-bench.sh --n-concurrent 1 --task-name log-summary-date-ranges
+```
+
+この single-task が通れば、full run に戻してよいです。
 
 ### API key がない
 

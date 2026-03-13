@@ -5,10 +5,13 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import shlex
+import shutil
 import tarfile
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -22,9 +25,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROVIDER = "zai"
 DEFAULT_MODEL = "glm-5"
 DEFAULT_NODE_MAJOR = "22"
+DEFAULT_NODE_VERSION = "22.12.0"
 DEFAULT_ZAI_BASE_URL = "https://api.z.ai/api/coding/paas/v4"
 ARCHIVE_ROOT = "/opt/mekann"
 ARCHIVE_PATH = "/tmp/mekann-repo.tar.gz"
+CONTAINER_NODE_DIR = f"{ARCHIVE_ROOT}/node"
 CONTAINER_AGENT_DIR = f"{EnvironmentPaths.agent_dir}/pi-agent"
 CONTAINER_RUNTIME_DIR = f"{EnvironmentPaths.agent_dir}/pi-runtime"
 CONTAINER_SESSION_DIR = f"{EnvironmentPaths.agent_dir}/pi-sessions"
@@ -37,6 +42,7 @@ CONTAINER_SETUP_INFO_PATH = f"{EnvironmentPaths.agent_dir}/pi-setup-info.json"
 CONTAINER_NPM_DEBUG_LOG = f"{EnvironmentPaths.agent_dir}/npm-debug.log"
 CONTAINER_REPO_DIR = f"{ARCHIVE_ROOT}/repo"
 CONTAINER_PI_BIN = f"{CONTAINER_REPO_DIR}/node_modules/.bin/pi"
+MAX_EVENT_LOG_BYTES = 512 * 1024
 
 ARCHIVE_INCLUDE_PATHS = (
     ".pi",
@@ -119,6 +125,7 @@ class HarborPiAgent(BaseAgent):
         default_model: str | None = None,
         base_url: str | None = None,
         node_major: str = DEFAULT_NODE_MAJOR,
+        node_version: str = DEFAULT_NODE_VERSION,
         *args,
         **kwargs,
     ):
@@ -138,6 +145,7 @@ class HarborPiAgent(BaseAgent):
         self._model_override = default_model or DEFAULT_MODEL
         self._base_url_override = base_url or DEFAULT_ZAI_BASE_URL
         self._node_major = node_major
+        self._node_version = node_version
         self._source_config = self._load_source_config()
 
     @staticmethod
@@ -214,7 +222,13 @@ class HarborPiAgent(BaseAgent):
         )
 
     def _create_repo_archive(self) -> Path:
-        archive_path = self.logs_dir / "mekann-repo.tar.gz"
+        temp_file = tempfile.NamedTemporaryFile(
+            prefix="mekann-repo-",
+            suffix=".tar.gz",
+            delete=False,
+        )
+        temp_file.close()
+        archive_path = Path(temp_file.name)
         with tarfile.open(archive_path, "w:gz") as tar:
             for relative_path in ARCHIVE_INCLUDE_PATHS:
                 source_path = self._repo_root / relative_path
@@ -279,8 +293,11 @@ class HarborPiAgent(BaseAgent):
 
     async def setup(self, environment: BaseEnvironment) -> None:
         archive_path = self._create_repo_archive()
-        await self._upload_pi_agent_files(environment)
-        await environment.upload_file(archive_path, ARCHIVE_PATH)
+        try:
+            await self._upload_pi_agent_files(environment)
+            await environment.upload_file(archive_path, ARCHIVE_PATH)
+        finally:
+            archive_path.unlink(missing_ok=True)
 
         setup_info = {
             "repoRoot": str(self._repo_root),
@@ -289,6 +306,7 @@ class HarborPiAgent(BaseAgent):
             "model": self._source_config.model,
             "baseUrl": self._source_config.base_url,
             "nodeMajor": self._node_major,
+            "nodeVersion": self._node_version,
         }
         self._write_json(self.logs_dir / "pi-setup-info.json", setup_info)
 
@@ -298,27 +316,34 @@ export DEBIAN_FRONTEND=noninteractive
 if ! command -v curl >/dev/null 2>&1 || \
    ! command -v git >/dev/null 2>&1 || \
    ! command -v make >/dev/null 2>&1 || \
-   ! command -v g++ >/dev/null 2>&1; then
+   ! command -v g++ >/dev/null 2>&1 || \
+   ! command -v xz >/dev/null 2>&1; then
   apt-get update
-  apt-get install -y curl git make g++
+  apt-get install -y ca-certificates curl git make g++ xz-utils
 fi
-export NVM_DIR="$HOME/.nvm"
-if [ ! -s "$NVM_DIR/nvm.sh" ]; then
-  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
+NODE_ARCH="$(uname -m)"
+case "$NODE_ARCH" in
+  x86_64) NODE_ARCH="x64" ;;
+  aarch64|arm64) NODE_ARCH="arm64" ;;
+  *)
+    echo "unsupported node architecture: $NODE_ARCH" >&2
+    exit 1
+    ;;
+esac
+NODE_VERSION="{self._node_version}"
+NODE_URL="https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-$NODE_ARCH.tar.xz"
+if [ ! -x "{CONTAINER_NODE_DIR}/bin/node" ]; then
+  rm -rf {shlex.quote(CONTAINER_NODE_DIR)}
+  mkdir -p {shlex.quote(CONTAINER_NODE_DIR)}
+  curl -fsSL "$NODE_URL" -o /tmp/node.tar.xz
+  tar -xJf /tmp/node.tar.xz --strip-components=1 -C {shlex.quote(CONTAINER_NODE_DIR)}
 fi
-. "$NVM_DIR/nvm.sh" || true
-command -v nvm >/dev/null 2>&1
-NEED_NODE=1
-if command -v node >/dev/null 2>&1; then
-  CURRENT_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
-  if [ "$CURRENT_MAJOR" = "{self._node_major}" ]; then
-    NEED_NODE=0
-  fi
+export PATH="{CONTAINER_NODE_DIR}/bin:$PATH"
+CURRENT_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
+if [ "$CURRENT_MAJOR" != "{self._node_major}" ]; then
+  echo "expected node major {self._node_major}, got $CURRENT_MAJOR" >&2
+  exit 1
 fi
-if [ "$NEED_NODE" = "1" ]; then
-  nvm install {self._node_major}
-fi
-nvm use {self._node_major}
 rm -rf {shlex.quote(CONTAINER_REPO_DIR)}
 mkdir -p {shlex.quote(CONTAINER_REPO_DIR)}
 tar -xzf {shlex.quote(ARCHIVE_PATH)} -C {shlex.quote(CONTAINER_REPO_DIR)}
@@ -337,6 +362,7 @@ cat > {shlex.quote(CONTAINER_SETUP_INFO_PATH)} <<'EOF'
   "provider": "{self._source_config.provider}",
   "model": "{self._source_config.model}",
   "base_url": "{self._source_config.base_url}",
+  "node_dir": "{CONTAINER_NODE_DIR}",
   "npm_debug_log": "{CONTAINER_NPM_DEBUG_LOG}"
 }}
 EOF
@@ -351,6 +377,44 @@ EOF
             raise RuntimeError(
                 "pi agent setup failed. See setup-stdout.txt and setup-stderr.txt in the trial agent logs."
             )
+
+    def _trim_event_log(self, event_log_path: Path) -> None:
+        file_size = event_log_path.stat().st_size
+        if file_size <= MAX_EVENT_LOG_BYTES:
+            return
+
+        head_limit = MAX_EVENT_LOG_BYTES // 2
+        tail_limit = MAX_EVENT_LOG_BYTES - head_limit
+
+        with event_log_path.open("rb") as stream:
+            head_bytes = stream.read(head_limit)
+            if len(head_bytes) == head_limit:
+                head_bytes = head_bytes.rsplit(b"\n", 1)[0] + b"\n"
+
+            stream.seek(max(file_size - tail_limit, 0))
+            tail_bytes = stream.read()
+            newline_index = tail_bytes.find(b"\n")
+            if newline_index >= 0:
+                tail_bytes = tail_bytes[newline_index + 1 :]
+
+        trimmed = io.BytesIO()
+        trimmed.write(head_bytes)
+        trimmed.write(
+            (
+                f'{{"type":"log_truncated","omittedBytes":{file_size - len(head_bytes) - len(tail_bytes)}}}\n'
+            ).encode()
+        )
+        trimmed.write(tail_bytes)
+        event_log_path.write_bytes(trimmed.getvalue())
+
+    def _cleanup_large_artifacts(self) -> None:
+        sessions_dir = self.logs_dir / "pi-sessions"
+        if sessions_dir.exists():
+            shutil.rmtree(sessions_dir, ignore_errors=True)
+
+        event_log_path = self.logs_dir / "pi-events.jsonl"
+        if event_log_path.exists():
+            self._trim_event_log(event_log_path)
 
     def _parse_event_log(self) -> dict[str, Any]:
         event_log_path = self.logs_dir / "pi-events.jsonl"
@@ -470,9 +534,7 @@ EOF
             f"export PI_CODING_AGENT_DIR={shlex.quote(CONTAINER_AGENT_DIR)}",
             f"export PI_RUNTIME_DIR={shlex.quote(CONTAINER_RUNTIME_DIR)}",
             f"export ZAI_API_KEY={shlex.quote(api_key)}",
-            'export NVM_DIR="$HOME/.nvm"',
-            '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"',
-            f"nvm use {self._node_major} >/dev/null",
+            f'export PATH="{CONTAINER_NODE_DIR}/bin:$PATH"',
             f"test -x {shlex.quote(CONTAINER_PI_BIN)}",
             f"cat {shlex.quote(CONTAINER_INSTRUCTION_PATH)} | {pi_command} > "
             f"{shlex.quote(CONTAINER_EVENT_LOG)} 2> {shlex.quote(CONTAINER_STDERR_LOG)}",
@@ -500,7 +562,10 @@ EOF
 
         if result.return_code != 0:
             final_excerpt = parsed["finalText"][:500] if parsed["finalText"] else ""
+            self._cleanup_large_artifacts()
             raise RuntimeError(
                 "pi agent run failed with exit code "
                 f"{result.return_code}. stopReason={parsed['stopReason']} excerpt={final_excerpt}"
             )
+
+        self._cleanup_large_artifacts()

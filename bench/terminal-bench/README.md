@@ -24,6 +24,7 @@ bash scripts/run-terminal-bench.sh
 - provider: `zai`
 - model: `glm-5`
 - jobs dir: `.pi/benchmarks/terminal-bench/jobs`
+- concurrent trials: `2`
 - `Darwin arm64` では task image を `--force-build` します
 - API-only 既定 denylist: `gpt2-codegolf`
 
@@ -52,6 +53,7 @@ bash scripts/run-terminal-bench.sh
 ## Notes
 
 - Docker が必要です
+- Docker daemon も起動済みである必要があります
 - `pi` の `~/.pi/agent/auth.json` にある `zai` API key を使います
 - benchmark 環境の中で `mekann` repo を展開し、`pi --mode json --print` を実行します
 - Harbor と terminal-bench は repo ローカルの `.venv-tbench` に入っています
