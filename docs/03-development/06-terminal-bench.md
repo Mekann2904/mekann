@@ -92,6 +92,30 @@ TBENCH_EXCLUDE_TASK_NAMES=gpt2-codegolf bash scripts/run-terminal-bench.sh
 TBENCH_EXCLUDE_TASK_NAMES= bash scripts/run-terminal-bench.sh
 ```
 
+difficulty ごとに件数で絞りたい場合:
+
+```bash
+TBENCH_DIFFICULTY_COUNTS=easy=2,medium=3,hard \
+bash scripts/run-terminal-bench.sh
+```
+
+- `easy=2`: easy を 2 件だけ実行
+- `medium=3`: medium を 3 件だけ実行
+- `hard`: hard を全件実行
+- 件数を省略した difficulty は全件実行
+- 既定では task cache の `task.toml` にある `metadata.difficulty` を使います
+
+固定した task 名だけで回したい場合:
+
+```bash
+TBENCH_TASK_NAMES=break-filter-js-from-html,llm-inference-batching-scheduler \
+bash scripts/run-terminal-bench.sh
+```
+
+- `TBENCH_TASK_NAMES` は `--task-name` をそのまま固定します
+- `TBENCH_DIFFICULTY_COUNTS` と同時指定はできません
+- autoresearch-tbench は `init` 時に difficulty selector を concrete task list に解決し、その固定 list を以後ずっと使います
+
 つまり benchmark は `codex` shim ではなく、実際の `pi` フローで動きます。
 
 model を明示したい場合:
@@ -322,3 +346,18 @@ uv pip install --python .venv-tbench/bin/python harbor terminal-bench
 4. 改善時だけ keep
 
 このための benchmark 土台として今回の導入を使います。
+
+今の既定ループは `autoresearch-tbench` です。
+
+`pi` の中から次を使えます。
+
+```text
+/autoresearch-tbench init selection=easy=2,medium=2,hard=2 tag=mekann-tbench
+/autoresearch-tbench baseline label=baseline
+/autoresearch-tbench run label=try-adaptorch
+/autoresearch-tbench status
+```
+
+重要なのは `init` で固定した task list を、その session 中ずっと使うことです。
+
+これで評価のぶれを防ぎ、成功率と時間の差分を同じ母集団で比較できます。

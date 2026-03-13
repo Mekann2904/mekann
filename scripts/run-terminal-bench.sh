@@ -19,6 +19,8 @@ N_CONCURRENT="${TBENCH_N_CONCURRENT:-2}"
 AGENT_SETUP_TIMEOUT_MULTIPLIER="${TBENCH_AGENT_SETUP_TIMEOUT_MULTIPLIER:-4}"
 FORCE_BUILD="${TBENCH_FORCE_BUILD:-}"
 EXCLUDE_TASK_NAMES="${TBENCH_EXCLUDE_TASK_NAMES:-gpt2-codegolf}"
+DIFFICULTY_COUNTS="${TBENCH_DIFFICULTY_COUNTS:-}"
+TASK_NAMES="${TBENCH_TASK_NAMES:-}"
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   exec bash "$ROOT_DIR/scripts/harbor.sh" run --help
@@ -80,6 +82,43 @@ if [ -n "$EXCLUDE_TASK_NAMES" ]; then
   for task_name in $EXCLUDE_TASK_NAMES; do
     if [ -n "$task_name" ]; then
       set -- "$@" --exclude-task-name "$task_name"
+    fi
+  done
+  IFS="${OLD_IFS}"
+fi
+
+if [ -n "$DIFFICULTY_COUNTS" ]; then
+  if [ -n "$TASK_NAMES" ]; then
+    printf '%s\n' "TBENCH_TASK_NAMES and TBENCH_DIFFICULTY_COUNTS cannot be used together." >&2
+    exit 1
+  fi
+
+  if [ -n "$DATASET_PATH" ]; then
+    SELECTED_TASK_NAMES="$(python3 "$ROOT_DIR/scripts/resolve-terminal-bench-tasks.py" \
+      --selection "$DIFFICULTY_COUNTS" \
+      --dataset-path "$DATASET_PATH")"
+  else
+    SELECTED_TASK_NAMES="$(python3 "$ROOT_DIR/scripts/resolve-terminal-bench-tasks.py" \
+      --selection "$DIFFICULTY_COUNTS")"
+  fi
+
+  OLD_IFS="${IFS}"
+  IFS='
+'
+  for task_name in $SELECTED_TASK_NAMES; do
+    if [ -n "$task_name" ]; then
+      set -- "$@" --task-name "$task_name"
+    fi
+  done
+  IFS="${OLD_IFS}"
+fi
+
+if [ -n "$TASK_NAMES" ]; then
+  OLD_IFS="${IFS}"
+  IFS=','
+  for task_name in $TASK_NAMES; do
+    if [ -n "$task_name" ]; then
+      set -- "$@" --task-name "$task_name"
     fi
   done
   IFS="${OLD_IFS}"

@@ -50,6 +50,30 @@ TBENCH_EXCLUDE_TASK_NAMES=gpt2-codegolf \
 bash scripts/run-terminal-bench.sh
 ```
 
+difficulty ごとに件数で絞る:
+
+```bash
+TBENCH_DIFFICULTY_COUNTS=easy=2,medium=3,hard \
+bash scripts/run-terminal-bench.sh
+```
+
+- `easy=2`: easy を先頭 2 件だけ実行
+- `medium=3`: medium を先頭 3 件だけ実行
+- `hard`: hard を全件実行
+- 件数を省略した difficulty は全件実行
+- task 順は task 名の昇順です
+
+固定した task 名だけで実行する:
+
+```bash
+TBENCH_TASK_NAMES=break-filter-js-from-html,llm-inference-batching-scheduler \
+bash scripts/run-terminal-bench.sh
+```
+
+- `TBENCH_TASK_NAMES` は `--task-name` を固定列挙します
+- `TBENCH_DIFFICULTY_COUNTS` とは同時に使えません
+- autoresearch では `init` 時に一度だけこの固定 list を決めます
+
 ## Notes
 
 - Docker が必要です

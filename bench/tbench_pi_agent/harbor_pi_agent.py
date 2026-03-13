@@ -22,6 +22,8 @@ from harbor.models.agent.context import AgentContext
 from harbor.models.trial.paths import EnvironmentPaths
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_LOCAL_AGENT_DIR = REPO_ROOT / ".pi" / "local-agent"
+DEFAULT_GLOBAL_AGENT_DIR = Path.home() / ".pi" / "agent"
 DEFAULT_PROVIDER = "zai"
 DEFAULT_MODEL = "glm-5"
 DEFAULT_NODE_MAJOR = "22"
@@ -42,6 +44,7 @@ CONTAINER_SETUP_INFO_PATH = f"{EnvironmentPaths.agent_dir}/pi-setup-info.json"
 CONTAINER_NPM_DEBUG_LOG = f"{EnvironmentPaths.agent_dir}/npm-debug.log"
 CONTAINER_REPO_DIR = f"{ARCHIVE_ROOT}/repo"
 CONTAINER_PI_BIN = f"{CONTAINER_REPO_DIR}/node_modules/.bin/pi"
+CONTAINER_AGENT_RESOURCES_ARCHIVE = "/tmp/pi-agent-resources.tar.gz"
 MAX_EVENT_LOG_BYTES = 512 * 1024
 
 ARCHIVE_INCLUDE_PATHS = (
@@ -72,21 +75,15 @@ ARCHIVE_EXCLUDE_PREFIXES = (
     ".pi/logs/",
 )
 
-SETTINGS_RESOURCE_KEYS = ("packages", "extensions", "skills", "prompts", "themes")
-SETTING_KEYS_TO_COPY = (
-    "defaultProvider",
-    "defaultModel",
-    "defaultThinkingLevel",
-    "transport",
-    "steeringMode",
-    "followUpMode",
-    "blockImages",
-)
+LOCAL_RESOURCE_SETTING_KEYS = ("extensions", "skills", "prompts", "themes")
+AGENT_RESOURCE_DIR_NAMES = ("extensions", "skills", "prompts", "themes")
 
 
 @dataclass
 class PiSourceConfig:
     source_agent_dir: Path
+    auth_source_dir: Path
+    models_source_dir: Path | None
     auth_payload: dict[str, Any]
     settings_payload: dict[str, Any]
     models_payload: dict[str, Any] | None
@@ -109,6 +106,73 @@ def _read_json_file(path: Path) -> dict[str, Any] | None:
 
 def _shell_join(parts: list[str]) -> str:
     return " ".join(shlex.quote(part) for part in parts)
+
+
+def _sanitize_resource_entries(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+
+    sanitized: list[str] = []
+    for entry in value:
+        if not isinstance(entry, str) or not entry:
+            continue
+
+        marker = entry[0] if entry[:1] in {"!", "+", "-"} else ""
+        candidate = entry[1:] if marker else entry
+        if Path(candidate).is_absolute():
+            continue
+
+        sanitized.append(entry)
+
+    return sanitized
+
+
+def _sanitize_package_entries(value: Any) -> list[Any]:
+    if not isinstance(value, list):
+        return []
+
+    sanitized: list[Any] = []
+    for entry in value:
+        if isinstance(entry, str):
+            if Path(entry).is_absolute():
+                continue
+            sanitized.append(entry)
+            continue
+
+        if not isinstance(entry, dict):
+            continue
+
+        source = entry.get("source")
+        if not isinstance(source, str) or not source or Path(source).is_absolute():
+            continue
+
+        sanitized_entry = dict(entry)
+        for key_name in LOCAL_RESOURCE_SETTING_KEYS:
+            if key_name in sanitized_entry:
+                sanitized_entry[key_name] = _sanitize_resource_entries(
+                    sanitized_entry.get(key_name)
+                )
+        sanitized.append(sanitized_entry)
+
+    return sanitized
+
+
+def _sanitize_settings_payload(
+    settings_payload: dict[str, Any],
+    provider: str,
+    model: str,
+) -> dict[str, Any]:
+    sanitized_settings = json.loads(json.dumps(settings_payload))
+    sanitized_settings["defaultProvider"] = provider
+    sanitized_settings["defaultModel"] = model
+    sanitized_settings["packages"] = _sanitize_package_entries(
+        sanitized_settings.get("packages")
+    )
+    for key_name in LOCAL_RESOURCE_SETTING_KEYS:
+        sanitized_settings[key_name] = _sanitize_resource_entries(
+            sanitized_settings.get(key_name)
+        )
+    return sanitized_settings
 
 
 class HarborPiAgent(BaseAgent):
@@ -137,10 +201,11 @@ class HarborPiAgent(BaseAgent):
             else Path(
                 os.environ.get(
                     "PI_CODING_AGENT_DIR",
-                    str(Path.home() / ".pi" / "agent"),
+                    str(DEFAULT_LOCAL_AGENT_DIR),
                 )
             ).expanduser().resolve()
         )
+        self._fallback_agent_dir = DEFAULT_GLOBAL_AGENT_DIR.expanduser().resolve()
         self._provider_override = provider or DEFAULT_PROVIDER
         self._model_override = default_model or DEFAULT_MODEL
         self._base_url_override = base_url or DEFAULT_ZAI_BASE_URL
@@ -170,10 +235,14 @@ class HarborPiAgent(BaseAgent):
         auth_path = self._source_agent_dir / "auth.json"
         settings_path = self._source_agent_dir / "settings.json"
         models_path = self._source_agent_dir / "models.json"
+        fallback_auth_path = self._fallback_agent_dir / "auth.json"
+        fallback_models_path = self._fallback_agent_dir / "models.json"
 
         auth_payload = _read_json_file(auth_path) or {}
         settings_payload = _read_json_file(settings_path) or {}
         models_payload = _read_json_file(models_path)
+        auth_source_dir = self._source_agent_dir
+        models_source_dir: Path | None = self._source_agent_dir if models_payload else None
 
         default_provider = settings_payload.get("defaultProvider")
         provider = (
@@ -191,28 +260,38 @@ class HarborPiAgent(BaseAgent):
 
         provider_auth = auth_payload.get(provider)
         if not isinstance(provider_auth, dict):
-            raise ValueError(
-                f"pi auth is missing provider '{provider}' in {auth_path}"
-            )
+            fallback_auth_payload = _read_json_file(fallback_auth_path) or {}
+            provider_auth = fallback_auth_payload.get(provider)
+            if not isinstance(provider_auth, dict):
+                raise ValueError(
+                    "pi auth is missing provider "
+                    f"'{provider}' in {auth_path} and {fallback_auth_path}"
+                )
+            auth_source_dir = self._fallback_agent_dir
 
         api_key = provider_auth.get("key") or provider_auth.get("apiKey")
         if not isinstance(api_key, str) or not api_key:
             raise ValueError(
-                f"pi auth for provider '{provider}' has no API key in {auth_path}"
+                "pi auth for provider "
+                f"'{provider}' has no API key in {auth_source_dir / 'auth.json'}"
             )
 
-        sanitized_settings: dict[str, Any] = {}
-        for key_name in SETTING_KEYS_TO_COPY:
-            value = settings_payload.get(key_name)
-            if value is not None:
-                sanitized_settings[key_name] = value
-        sanitized_settings["defaultProvider"] = provider
-        sanitized_settings["defaultModel"] = model
-        for key_name in SETTINGS_RESOURCE_KEYS:
-            sanitized_settings[key_name] = []
+        if models_payload is None:
+            fallback_models_payload = _read_json_file(fallback_models_path)
+            if fallback_models_payload is not None:
+                models_payload = fallback_models_payload
+                models_source_dir = self._fallback_agent_dir
+
+        sanitized_settings = _sanitize_settings_payload(
+            settings_payload=settings_payload,
+            provider=provider,
+            model=model,
+        )
 
         return PiSourceConfig(
             source_agent_dir=self._source_agent_dir,
+            auth_source_dir=auth_source_dir,
+            models_source_dir=models_source_dir,
             auth_payload={provider: provider_auth},
             settings_payload=sanitized_settings,
             models_payload=models_payload,
@@ -256,6 +335,31 @@ class HarborPiAgent(BaseAgent):
     def _write_json(path: Path, payload: dict[str, Any]) -> None:
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
 
+    def _create_agent_resources_archive(self) -> Path | None:
+        temp_file = tempfile.NamedTemporaryFile(
+            prefix="mekann-agent-resources-",
+            suffix=".tar.gz",
+            delete=False,
+        )
+        temp_file.close()
+        archive_path = Path(temp_file.name)
+        added = False
+
+        with tarfile.open(archive_path, "w:gz") as tar:
+            for directory_name in AGENT_RESOURCE_DIR_NAMES:
+                source_path = self._source_config.source_agent_dir / directory_name
+                if not source_path.exists():
+                    continue
+
+                tar.add(source_path, arcname=directory_name)
+                added = True
+
+        if added:
+            return archive_path
+
+        archive_path.unlink(missing_ok=True)
+        return None
+
     async def _upload_pi_agent_files(self, environment: BaseEnvironment) -> None:
         temp_dir = self.logs_dir / "pi-agent-source"
         temp_dir.mkdir(parents=True, exist_ok=True)
@@ -282,6 +386,25 @@ class HarborPiAgent(BaseAgent):
                 target_path=f"{CONTAINER_AGENT_DIR}/{file_path.name}",
             )
 
+        resources_archive = self._create_agent_resources_archive()
+        if resources_archive is None:
+            return
+
+        try:
+            await environment.upload_file(
+                source_path=resources_archive,
+                target_path=CONTAINER_AGENT_RESOURCES_ARCHIVE,
+            )
+            await environment.exec(
+                command=(
+                    f"tar -xzf {shlex.quote(CONTAINER_AGENT_RESOURCES_ARCHIVE)} "
+                    f"-C {shlex.quote(CONTAINER_AGENT_DIR)}"
+                ),
+                timeout_sec=30,
+            )
+        finally:
+            resources_archive.unlink(missing_ok=True)
+
     def _write_exec_artifacts(self, prefix: str, result: ExecResult) -> None:
         (self.logs_dir / f"{prefix}-return-code.txt").write_text(
             str(result.return_code)
@@ -302,6 +425,12 @@ class HarborPiAgent(BaseAgent):
         setup_info = {
             "repoRoot": str(self._repo_root),
             "sourceAgentDir": str(self._source_config.source_agent_dir),
+            "authSourceDir": str(self._source_config.auth_source_dir),
+            "modelsSourceDir": (
+                str(self._source_config.models_source_dir)
+                if self._source_config.models_source_dir is not None
+                else None
+            ),
             "provider": self._source_config.provider,
             "model": self._source_config.model,
             "baseUrl": self._source_config.base_url,
@@ -506,6 +635,7 @@ EOF
             "model": model,
             "baseUrl": self._source_config.base_url,
             "sourceAgentDir": str(self._source_config.source_agent_dir),
+            "authSourceDir": str(self._source_config.auth_source_dir),
             "sessionDir": CONTAINER_SESSION_DIR,
         }
         self._write_json(self.logs_dir / "pi-run-info.json", run_info)
@@ -536,6 +666,7 @@ EOF
             f"export ZAI_API_KEY={shlex.quote(api_key)}",
             f'export PATH="{CONTAINER_NODE_DIR}/bin:$PATH"',
             f"test -x {shlex.quote(CONTAINER_PI_BIN)}",
+            f"cd {shlex.quote(CONTAINER_REPO_DIR)}",
             f"cat {shlex.quote(CONTAINER_INSTRUCTION_PATH)} | {pi_command} > "
             f"{shlex.quote(CONTAINER_EVENT_LOG)} 2> {shlex.quote(CONTAINER_STDERR_LOG)}",
         ]
