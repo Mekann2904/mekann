@@ -86,6 +86,7 @@ export function createDefaultBugHuntState(): BugHuntState {
     rejectedHypotheses: [],
     lastCandidates: [],
     lastObserverDecision: null,
+    missionVerificationSummary: null,
   };
 }
 

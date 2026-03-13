@@ -3,6 +3,7 @@
 // Why: ユーザが止めるまで bug report task を追加し続けるため
 // Related: .pi/extensions/bug-hunt/index.ts, .pi/extensions/bug-hunt/reporting.ts, .pi/extensions/shared/pi-print-executor.ts
 
+import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 
 import {
@@ -16,6 +17,7 @@ import {
   buildBugHuntInvestigationPrompt,
   buildBugHuntObserverPrompt,
   buildBugHuntQueryPrompt,
+  extractBugHuntMissionBrief,
   parseBugHuntHypothesisOutput,
   parseBugHuntInvestigationOutput,
   parseBugHuntModelOutput,
@@ -25,6 +27,7 @@ import {
 import {
   buildBugHuntInvestigationContext,
   collectBugHuntCandidates,
+  expandBugHuntPreferredFiles,
   summarizeCandidatesForState,
   validateBugHuntReportEvidence,
 } from "./localization.js";
@@ -66,6 +69,50 @@ const runId = args["run-id"] ?? "";
 
 let activeController: AbortController | null = null;
 let stopping = false;
+
+async function verifyMissionTarget(cwdPath: string, target: string): Promise<string> {
+  return await new Promise((resolvePromise) => {
+    const child = spawn("npx", ["vitest", "run", target], {
+      cwd: cwdPath,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: process.env,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+    }, 90_000);
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      const combined = [stdout, stderr].join("\n");
+      if (code === 0) {
+        resolvePromise(`Verified by running vitest on ${target}: passing in current workspace.`);
+        return;
+      }
+      if (/ERR_REQUIRE_ESM/i.test(combined)) {
+        resolvePromise(`Verified by running vitest on ${target}: execution failed with ERR_REQUIRE_ESM.`);
+        return;
+      }
+      if (/failed|FAIL/i.test(combined)) {
+        resolvePromise(`Verified by running vitest on ${target}: failing in current workspace.`);
+        return;
+      }
+      resolvePromise(`Attempted vitest on ${target}, but verification was inconclusive (exit=${code ?? -1}).`);
+    });
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolvePromise(`Attempted vitest on ${target}, but the command could not be started.`);
+    });
+  });
+}
 
 function stopRequested(): boolean {
   const state = loadBugHuntState(cwd);
@@ -191,13 +238,22 @@ async function runIteration(): Promise<void> {
   }
 
   const deadline = Date.now() + state.timeoutMs;
+  const missionBrief = extractBugHuntMissionBrief(state.taskPrompt);
+  const missionVerificationSummary = state.missionVerificationSummary
+    ?? (missionBrief.verificationTarget
+      ? await verifyMissionTarget(cwd, missionBrief.verificationTarget)
+      : null);
+  const preferredFiles = await expandBugHuntPreferredFiles(cwd, missionBrief.focusFiles);
   const knownDedupeKeys = Array.from(new Set([
     ...state.reportedDedupeKeys,
     ...listRecentBugHuntDedupeKeys(cwd),
   ])).slice(-20);
   const recentTitles = listRecentBugHuntTitles(cwd);
 
-  saveStage("retrieve", "planning bug-hunt query");
+  saveStage("retrieve", "planning bug-hunt query", {
+    lastError: null,
+    lastObserverDecision: null,
+  });
   const queryPrompt = buildBugHuntQueryPrompt({
     taskPrompt: state.taskPrompt,
     cwd,
@@ -205,6 +261,8 @@ async function runIteration(): Promise<void> {
     knownDedupeKeys,
     recentTitles,
     seenFiles: state.seenFiles,
+    missionBrief,
+    missionVerificationSummary,
   });
   const rawQuery = await callStageModel(state, queryPrompt, deadline, "query", "bug-hunt-query");
   const queryPlan = parseBugHuntQueryOutput(rawQuery);
@@ -214,7 +272,8 @@ async function runIteration(): Promise<void> {
     cwd,
     query: queryPlan.query,
     keywords: queryPlan.keywords,
-    limit: 12,
+    limit: preferredFiles.length > 0 ? 8 : 12,
+    preferredFiles,
   });
 
   const latest = loadBugHuntState(cwd);
@@ -228,6 +287,7 @@ async function runIteration(): Promise<void> {
     lastHeartbeatAt: new Date().toISOString(),
     lastIterationAt: new Date().toISOString(),
     lastError: null,
+    missionVerificationSummary,
     seenFiles: Array.from(new Set([...latest.seenFiles, ...candidates.map((candidate) => candidate.file)])).slice(-256),
     lastCandidates: summarizeCandidatesForState(candidates),
   };
@@ -248,6 +308,7 @@ async function runIteration(): Promise<void> {
   const rawHypotheses = await callStageModel(state, buildBugHuntHypothesisPrompt({
     queryPlan,
     candidates,
+    missionVerificationSummary,
   }), deadline, "hypothesis", "bug-hunt-hypothesis");
   const hypotheses = parseBugHuntHypothesisOutput(rawHypotheses)
     .map((hypothesis) => {
@@ -262,7 +323,7 @@ async function runIteration(): Promise<void> {
     })
     .filter((hypothesis): hypothesis is NonNullable<typeof hypothesis> => Boolean(hypothesis))
     .sort((left, right) => right.confidence - left.confidence)
-    .slice(0, 4);
+    .slice(0, preferredFiles.length > 0 ? 2 : 4);
 
   if (hypotheses.length === 0) {
     saveBugHuntState({
@@ -298,6 +359,7 @@ async function runIteration(): Promise<void> {
       hypothesis,
       context,
       rejectedHypotheses,
+      missionVerificationSummary,
     }), deadline, "investigation", "bug-hunt-investigation");
     const investigation = parseBugHuntInvestigationOutput(rawInvestigation);
     investigations.push({
@@ -331,6 +393,7 @@ async function runIteration(): Promise<void> {
     investigations,
     knownDedupeKeys,
     recentTitles,
+    missionVerificationSummary,
   }), deadline, "observer", "bug-hunt-observer");
   const parsed = parseBugHuntModelOutput(rawObserver);
 

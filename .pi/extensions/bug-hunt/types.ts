@@ -36,6 +36,12 @@ export interface BugHuntQueryPlan {
   confidence: number;
 }
 
+export interface BugHuntMissionBrief {
+  focusFiles: string[];
+  runtimeClaims: string[];
+  verificationTarget: string | null;
+}
+
 export interface BugHuntCandidate {
   id: string;
   sources: BugHuntCandidateSource[];
@@ -111,6 +117,7 @@ export interface BugHuntState {
   rejectedHypotheses: string[];
   lastCandidates: string[];
   lastObserverDecision: string | null;
+  missionVerificationSummary: string | null;
 }
 
 export type BugHuntModelResult =

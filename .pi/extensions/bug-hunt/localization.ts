@@ -4,7 +4,7 @@
 // Related: .pi/extensions/bug-hunt/runner.ts, .pi/extensions/bug-hunt/types.ts, .pi/extensions/search/locagent/index.ts, .pi/extensions/repograph-localization/index.ts
 
 import { access, readFile } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, isAbsolute, posix, relative, resolve } from "node:path";
 
 import { repographLocalize } from "../repograph-localization/index.js";
 import {
@@ -232,9 +232,11 @@ export async function collectBugHuntCandidates(input: {
   query: string;
   keywords: string[];
   limit?: number;
+  preferredFiles?: string[];
 }): Promise<BugHuntCandidate[]> {
   const resources = await ensureLocalizationResources(input.cwd);
   const keywords = tokenizeKeywords(input.query, input.keywords);
+  const preferredFiles = new Set((input.preferredFiles ?? []).map((entry) => entry.replace(/\\/g, "/")));
   const registry = new Map<string, MutableCandidate>();
 
   if (resources.locagent && keywords.length > 0) {
@@ -295,6 +297,9 @@ export async function collectBugHuntCandidates(input: {
         const stats = getNodeStats(resources.callGraph, candidate.symbolName);
         candidate.score += Math.min(1.2, ((stats.directCallers + stats.directCallees) / 10));
       }
+      if (preferredFiles.has(candidate.file.replace(/\\/g, "/"))) {
+        candidate.score += 2.5;
+      }
 
       return {
         ...candidate,
@@ -311,6 +316,61 @@ export async function collectBugHuntCandidates(input: {
   }
 
   return ranked;
+}
+
+function normalizeWorkspacePath(pathValue: string): string {
+  return pathValue.replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
+function resolveRelativeImportPath(fromFile: string, specifier: string): string[] {
+  const normalizedFrom = normalizeWorkspacePath(fromFile);
+  const fromDir = dirname(normalizedFrom);
+  const basePath = normalizeWorkspacePath(posix.normalize(posix.join(fromDir, specifier)));
+  const candidates = [
+    basePath,
+    `${basePath}.ts`,
+    `${basePath}.tsx`,
+    `${basePath}.js`,
+    `${basePath}.jsx`,
+    basePath.replace(/\.js$/i, ".ts"),
+    basePath.replace(/\.js$/i, ".tsx"),
+  ];
+  return Array.from(new Set(candidates.map((entry) => normalizeWorkspacePath(entry))));
+}
+
+export async function expandBugHuntPreferredFiles(cwd: string, focusFiles: string[]): Promise<string[]> {
+  const expanded = new Set<string>();
+
+  for (const focusFile of focusFiles) {
+    const normalizedFocusFile = normalizeWorkspacePath(focusFile);
+    expanded.add(normalizedFocusFile);
+
+    const absolutePath = resolve(cwd, normalizedFocusFile);
+    if (!(await fileExists(absolutePath))) {
+      continue;
+    }
+
+    try {
+      const content = await readFile(absolutePath, "utf8");
+      const importMatches = content.matchAll(/from\s+["'](\.[^"']+)["']|import\s+["'](\.[^"']+)["']/g);
+      for (const match of importMatches) {
+        const specifier = match[1] || match[2];
+        if (!specifier) {
+          continue;
+        }
+        for (const candidate of resolveRelativeImportPath(normalizedFocusFile, specifier)) {
+          const candidateAbsolutePath = resolve(cwd, candidate);
+          if (await fileExists(candidateAbsolutePath)) {
+            expanded.add(candidate);
+          }
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return Array.from(expanded).slice(0, 16);
 }
 
 export async function buildBugHuntInvestigationContext(input: {
