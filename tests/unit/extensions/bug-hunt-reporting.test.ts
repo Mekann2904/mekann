@@ -8,7 +8,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildBugHuntHypothesisPrompt,
   buildBugHuntInvestigationPrompt,
+  buildBugHuntObserverPrompt,
   buildBugHuntQueryPrompt,
+  extractBugHuntMissionBrief,
   parseBugHuntHypothesisOutput,
   parseBugHuntInvestigationOutput,
   parseBugHuntModelOutput,
@@ -21,17 +23,31 @@ describe("bug-hunt reporting helpers", () => {
     const prompt = buildBugHuntQueryPrompt({
       cwd: "/repo",
       iteration: 3,
-      taskPrompt: "Find lifecycle bugs",
+      taskPrompt: "Find lifecycle bugs in .pi/tests/ul-workflow-artifacts.test.ts",
       knownDedupeKeys: ["abc", "def"],
       recentTitles: ["old title"],
       seenFiles: ["src/old.ts"],
+      missionBrief: extractBugHuntMissionBrief("Find lifecycle bugs in .pi/tests/ul-workflow-artifacts.test.ts"),
+      missionVerificationSummary: "Verified by running vitest on .pi/tests/ul-workflow-artifacts.test.ts: passing in current workspace.",
     });
 
     expect(prompt).toContain("Find lifecycle bugs");
+    expect(prompt).toContain("Mission focus files: .pi/tests/ul-workflow-artifacts.test.ts");
+    expect(prompt).toContain("passing in current workspace");
     expect(prompt).toContain("Known dedupe keys: abc, def");
     expect(prompt).toContain("Recent bug titles: old title");
     expect(prompt).toContain("Recently seen files: src/old.ts");
     expect(prompt).toContain('"query": "short localized investigation query"');
+  });
+
+  it("mission から focus file と verification target を抽出できる", () => {
+    const result = extractBugHuntMissionBrief(
+      "未カバー領域のテスト追加。現在 .pi/tests/ul-workflow-artifacts.test.ts に1つの失敗テストがある。",
+    );
+
+    expect(result.focusFiles).toContain(".pi/tests/ul-workflow-artifacts.test.ts");
+    expect(result.verificationTarget).toBe(".pi/tests/ul-workflow-artifacts.test.ts");
+    expect(result.runtimeClaims[0]).toContain("失敗テスト");
   });
 
   it("query plan JSON を正規化できる", () => {
@@ -142,9 +158,11 @@ describe("bug-hunt reporting helpers", () => {
       },
       context: "Snippet...",
       rejectedHypotheses: [],
+      missionVerificationSummary: "Verified by running vitest on src/app.test.ts: failing in current workspace.",
     });
 
     expect(prompt).toContain('"status": "supported|rejected|inconclusive"');
+    expect(prompt).toContain("failing in current workspace");
 
     const result = parseBugHuntInvestigationOutput(`
 {
@@ -206,5 +224,25 @@ describe("bug-hunt reporting helpers", () => {
       status: "no_bug",
       reason: "No new credible bug after checking the remaining files.",
     });
+  });
+
+  it("observer prompt に mission verification を含める", () => {
+    const prompt = buildBugHuntObserverPrompt({
+      taskPrompt: "Investigate failing test",
+      queryPlan: {
+        query: "failing ul workflow test",
+        keywords: ["ul", "workflow"],
+        bugSignals: ["test failure"],
+        areasToAvoid: [],
+        confidence: 0.7,
+      },
+      investigations: [],
+      knownDedupeKeys: [],
+      recentTitles: [],
+      missionVerificationSummary: "Verified by running vitest on .pi/tests/ul-workflow-artifacts.test.ts: passing in current workspace.",
+    });
+
+    expect(prompt).toContain("Mission verification:");
+    expect(prompt).toContain("passing in current workspace");
   });
 });

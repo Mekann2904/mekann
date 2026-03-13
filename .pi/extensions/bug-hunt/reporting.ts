@@ -8,6 +8,7 @@ import type {
   BugHuntEvidence,
   BugHuntHypothesis,
   BugHuntInvestigationResult,
+  BugHuntMissionBrief,
   BugHuntInvestigationStatus,
   BugHuntModelResult,
   BugHuntQueryPlan,
@@ -289,6 +290,35 @@ function formatCandidate(candidate: BugHuntCandidate): string {
   ].filter((line) => line.length > 0).join("\n");
 }
 
+function extractMissionSentences(taskPrompt: string): string[] {
+  return taskPrompt
+    .split(/[\n。!?]+/g)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+export function extractBugHuntMissionBrief(taskPrompt: string): BugHuntMissionBrief {
+  const fileMatches = taskPrompt.match(/(?:^|[\s(])([./A-Za-z0-9_-]+(?:\/[A-Za-z0-9._-]+)+\.(?:test|spec)\.[cm]?[jt]sx?|[./A-Za-z0-9_-]+(?:\/[A-Za-z0-9._-]+)+\.[cm]?[jt]sx?)/g) ?? [];
+  const focusFiles = Array.from(new Set(
+    fileMatches
+      .map((entry) => entry.trim().replace(/^[\s(]+/, ""))
+      .map((entry) => entry.replace(/[),.:]+$/, ""))
+      .filter((entry) => entry.includes("/")),
+  )).slice(0, 8);
+
+  const runtimeClaims = extractMissionSentences(taskPrompt)
+    .filter((entry) => /(fail|failing|timeout|error|esm|require_esm|broken|失敗|落ちる|タイムアウト|エラー)/i.test(entry))
+    .slice(0, 4);
+
+  const verificationTarget = focusFiles.find((entry) => /\.(test|spec)\.[cm]?[jt]sx?$/i.test(entry)) ?? null;
+
+  return {
+    focusFiles,
+    runtimeClaims,
+    verificationTarget,
+  };
+}
+
 export function buildBugHuntQueryPrompt(input: {
   taskPrompt: string;
   cwd: string;
@@ -296,20 +326,29 @@ export function buildBugHuntQueryPrompt(input: {
   knownDedupeKeys: string[];
   recentTitles: string[];
   seenFiles: string[];
+  missionBrief?: BugHuntMissionBrief;
+  missionVerificationSummary?: string | null;
 }): string {
   const knownFingerprints = input.knownDedupeKeys.slice(-20).join(", ") || "(none)";
   const recentTitles = input.recentTitles.slice(0, 12).join(" | ") || "(none)";
   const seenFiles = input.seenFiles.slice(-20).join(", ") || "(none)";
+  const missionFocusFiles = input.missionBrief?.focusFiles.slice(0, 8).join(", ") || "(none)";
+  const missionRuntimeClaims = input.missionBrief?.runtimeClaims.slice(0, 4).join(" | ") || "(none)";
 
   return [
     "You are preparing a bug-hunting search query for a TypeScript-heavy repository.",
     "Rewrite the mission into a short, concrete investigation query.",
     "Extract keywords and symptom signals that help code localization.",
+    "Prioritize mission focus files and their adjacent implementation files when they exist.",
     "Avoid duplicates that match known dedupe keys, recent titles, or already-seen files.",
+    "Do not treat mission runtime claims as facts unless the verification summary or local context confirms them.",
     "",
     `Workspace: ${input.cwd}`,
     `Iteration: ${input.iteration}`,
     `Mission: ${input.taskPrompt}`,
+    `Mission focus files: ${missionFocusFiles}`,
+    `Mission runtime claims: ${missionRuntimeClaims}`,
+    `Mission verification: ${input.missionVerificationSummary ?? "(not verified)"}`,
     `Known dedupe keys: ${knownFingerprints}`,
     `Recent bug titles: ${recentTitles}`,
     `Recently seen files: ${seenFiles}`,
@@ -329,16 +368,19 @@ export function buildBugHuntQueryPrompt(input: {
 export function buildBugHuntHypothesisPrompt(input: {
   queryPlan: BugHuntQueryPlan;
   candidates: BugHuntCandidate[];
+  missionVerificationSummary?: string | null;
 }): string {
   return [
     "You are the hypothesis agent for bug-hunt.",
     "Review the candidate locations and propose the strongest root-cause hypotheses.",
     "Prefer correctness, lifecycle, concurrency, data integrity, and error handling bugs.",
+    "Prefer candidates that match the verified mission context over generic code smells.",
     "Choose at most 3 candidates worth deeper investigation.",
     "",
     `Query: ${input.queryPlan.query}`,
     `Keywords: ${input.queryPlan.keywords.join(", ") || "(none)"}`,
     `Bug signals: ${input.queryPlan.bugSignals.join(", ") || "(none)"}`,
+    `Mission verification: ${input.missionVerificationSummary ?? "(not verified)"}`,
     "",
     "Candidates:",
     ...input.candidates.map((candidate) => formatCandidate(candidate)),
@@ -367,6 +409,7 @@ export function buildBugHuntInvestigationPrompt(input: {
   hypothesis: BugHuntHypothesis;
   context: string;
   rejectedHypotheses: string[];
+  missionVerificationSummary?: string | null;
 }): string {
   const rejected = input.rejectedHypotheses.slice(-8).join(" | ") || "(none)";
 
@@ -379,6 +422,7 @@ export function buildBugHuntInvestigationPrompt(input: {
     `Query: ${input.queryPlan.query}`,
     `Candidate: ${formatCandidate(input.candidate)}`,
     `Hypothesis: ${input.hypothesis.hypothesis}`,
+    `Mission verification: ${input.missionVerificationSummary ?? "(not verified)"}`,
     `Rejected hypotheses to avoid repeating: ${rejected}`,
     "",
     "Local context:",
@@ -410,6 +454,7 @@ export function buildBugHuntObserverPrompt(input: {
   investigations: BugHuntInvestigationResult[];
   knownDedupeKeys: string[];
   recentTitles: string[];
+  missionVerificationSummary?: string | null;
 }): string {
   const investigations = input.investigations
     .map((investigation) => JSON.stringify(investigation, null, 2))
@@ -423,6 +468,7 @@ export function buildBugHuntObserverPrompt(input: {
     "",
     `Mission: ${input.taskPrompt}`,
     `Query: ${input.queryPlan.query}`,
+    `Mission verification: ${input.missionVerificationSummary ?? "(not verified)"}`,
     `Known dedupe keys: ${input.knownDedupeKeys.slice(-20).join(", ") || "(none)"}`,
     `Recent bug titles: ${input.recentTitles.slice(0, 12).join(" | ") || "(none)"}`,
     "",

@@ -31,6 +31,7 @@ const mockState = vi.hoisted(() => ({
     rejectedHypotheses: [],
     lastCandidates: [],
     lastObserverDecision: null,
+    missionVerificationSummary: null,
   },
   processes: [] as Array<{
     id: string;
@@ -66,6 +67,7 @@ vi.mock("../../../.pi/extensions/bug-hunt/storage.js", () => ({
     rejectedHypotheses: [],
     lastCandidates: [],
     lastObserverDecision: null,
+    missionVerificationSummary: null,
   })),
   loadBugHuntState: vi.fn(() => ({ ...mockState.state })),
   saveBugHuntState: vi.fn((state) => {
@@ -154,6 +156,7 @@ describe("bug-hunt extension", () => {
       rejectedHypotheses: [],
       lastCandidates: [],
       lastObserverDecision: null,
+      missionVerificationSummary: null,
     };
     mockState.processes = [];
   });
