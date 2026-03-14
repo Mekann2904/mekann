@@ -686,8 +686,10 @@ export function shouldEnableSubagentExtensions(
   if (!wantsResearchMode) {
     return false;
   }
+  // If turnContext is undefined, we cannot safely determine if extensions are supported.
+  // Default to false for safety - caller must provide turnContext for extensions.
   if (!turnContext) {
-    return true;
+    return false;
   }
   return deriveTurnExecutionDecisions(turnContext, {
     taskKind: "research",
