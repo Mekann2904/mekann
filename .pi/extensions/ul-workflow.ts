@@ -2408,7 +2408,15 @@ function findLatestWorkflowForInstance(options?: { includeCompleted?: boolean })
       .filter((state): state is WorkflowState => !!state)
       .filter((state) => state.ownerInstanceId === instanceId)
       .filter((state) => options?.includeCompleted ? true : state.phase !== "completed")
-      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+      .sort((a, b) => {
+        const da = Date.parse(a.updatedAt);
+        const db = Date.parse(b.updatedAt);
+        // NaNチェック: 不正なタイムスタンプは後ろに配置
+        if (isNaN(da) || isNaN(db)) {
+          return isNaN(da) ? 1 : -1;
+        }
+        return db - da;
+      });
 
     return states[0] ?? null;
   } catch (error) {
