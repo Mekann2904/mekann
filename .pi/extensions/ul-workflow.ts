@@ -1921,7 +1921,7 @@ ${baseContext}`,
   const artifactPath = typeof dagParams.artifactPath === "string" ? dagParams.artifactPath.trim() : "";
   if (artifactPath && artifactContent.trim()) {
     await fsPromises.mkdir(path.dirname(artifactPath), { recursive: true });
-    await fsPromises.writeFile(artifactPath, `${artifactContent.trim()}\n`, "utf-8");
+    await atomicWriteTextFile(artifactPath, `${artifactContent.trim()}\n`);
   }
 
   updateSession(dagSessionId, {
@@ -2586,7 +2586,7 @@ async function ensureWorkflowArtifact(
 
   const normalized = fallbackContent.trim() || "_No content generated._";
   await fsPromises.mkdir(path.dirname(artifactPath), { recursive: true });
-  await fsPromises.writeFile(artifactPath, `${normalized}\n`, "utf-8");
+  atomicWriteTextFile(artifactPath, `${normalized}\n`);
   return { created: true, content: normalized };
 }
 
