@@ -2942,11 +2942,11 @@ ul_workflow_confirm_plan()
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
       const workflow = getCurrentWorkflow();
       if (!workflow) {
-        return makeResult(`アクティブなワークフローはありません。
+        return makeResult(`エラー: アクティブなワークフローがありません。
 
 新しいワークフローを開始するには:
   ul_workflow_start({ task: "タスク説明" })
-`, { active: false });
+`, { error: "no_active_workflow" });
       }
 
       const phaseDescriptions: Record<WorkflowPhase, string> = {
