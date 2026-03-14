@@ -25,11 +25,14 @@
  *   out: 集計メトリクス、時系列データ
  */
 
-import { existsSync, mkdirSync, appendFileSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { appendFileSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { getLogger } from "./unified-logger.js";
 import { getCurrentTraceContext } from "./async-context.js";
+import { percentile, getDateStr, ensureDir, average } from "./utils.js";
+import { getModelCost } from "./config.js";
+import type { CostConfig } from "./types.js";
 
 // ============================================================================
 // Types
@@ -54,11 +57,11 @@ export interface LLMCallEvent {
   outputTokens: number;
   /** 合計トークン数 */
   totalTokens: number;
-  /** レイテンシ（ミリ秒） */
+  /** レイテンシ（ミリ秒) */
   latencyMs: number;
   /** 成功フラグ */
   success: boolean;
-  /** エラータイプ（失敗時） */
+  /** エラータイプ（失敗時) */
   errorType?: string;
   /** キャッシュヒットフラグ */
   cacheHit?: boolean;
@@ -85,13 +88,13 @@ export interface LLMMetrics {
   failedCalls: number;
   /** 成功率 */
   successRate: number;
-  /** 平均レイテンシ（ミリ秒） */
+  /** 平均レイテンシ（ミリ秒) */
   avgLatencyMs: number;
-  /** P50レイテンシ（ミリ秒） */
+  /** P50レイテンシ(ミリ秒) */
   p50LatencyMs: number;
-  /** P95レイテンシ（ミリ秒） */
+  /** P95レイテンシ(ミリ秒) */
   p95LatencyMs: number;
-  /** P99レイテンシ（ミリ秒） */
+  /** P99レイテンシ(ミリ秒) */
   p99LatencyMs: number;
   /** 総入力トークン数 */
   totalInputTokens: number;
@@ -107,7 +110,7 @@ export interface LLMMetrics {
   cacheHits: number;
   /** キャッシュヒット率 */
   cacheHitRate: number;
-  /** 推定コスト（USD） */
+  /** 推定コスト（USD) */
   estimatedCostUSD: number;
   /** プロバイダ別統計 */
   byProvider: Record<string, ProviderMetrics>;
@@ -124,11 +127,11 @@ export interface ProviderMetrics {
   calls: number;
   /** 成功率 */
   successRate: number;
-  /** 平均レイテンシ（ミリ秒） */
+  /** 平均レイテンシ(ミリ秒) */
   avgLatencyMs: number;
   /** 総トークン数 */
   totalTokens: number;
-  /** 推定コスト（USD） */
+  /** 推定コスト（USD) */
   estimatedCostUSD: number;
 }
 
@@ -141,40 +144,17 @@ export interface ModelMetrics {
   calls: number;
   /** 成功率 */
   successRate: number;
-  /** 平均レイテンシ（ミリ秒） */
+  /** 平均レイテンシ(ミリ秒) */
   avgLatencyMs: number;
   /** 総トークン数 */
   totalTokens: number;
-  /** 推定コスト（USD） */
+  /** 推定コスト（USD) */
   estimatedCostUSD: number;
-}
-
-/**
- * コスト設定
- * @summary 価格定義
- */
-export interface CostConfig {
-  /** 入力トークン単価（USD/1K tokens） */
-  inputCostPer1K: number;
-  /** 出力トークン単価（USD/1K tokens） */
-  outputCostPer1K: number;
 }
 
 // ============================================================================
 // Constants
 // ============================================================================
-
-/** デフォルトの価格設定（2024年時点の概算） */
-const DEFAULT_COSTS: Record<string, CostConfig> = {
-  // Anthropic
-  "claude-3-5-sonnet": { inputCostPer1K: 0.003, outputCostPer1K: 0.015 },
-  "claude-3-opus": { inputCostPer1K: 0.015, outputCostPer1K: 0.075 },
-  "claude-3-haiku": { inputCostPer1K: 0.00025, outputCostPer1K: 0.00125 },
-  // OpenAI
-  "gpt-4o": { inputCostPer1K: 0.0025, outputCostPer1K: 0.01 },
-  "gpt-4-turbo": { inputCostPer1K: 0.01, outputCostPer1K: 0.03 },
-  "gpt-3.5-turbo": { inputCostPer1K: 0.0005, outputCostPer1K: 0.0015 },
-};
 
 const DEFAULT_METRICS_DIR = join(homedir(), ".pi-metrics");
 const MAX_EVENTS = 10000;
@@ -196,12 +176,11 @@ export class LLMMetricsCollector {
   /**
    * コレクターを初期化
    * @summary 初期化
-   * @param metricsDir メトリクス保存ディレクトリ
-   */
+   * @param metricsDir メトリクス保存ディレクトリ */
   constructor(metricsDir: string = DEFAULT_METRICS_DIR) {
     this.metricsDir = metricsDir;
-    this.currentDate = this.getDateStr();
-    this.ensureMetricsDir();
+    this.currentDate = getDateStr();
+    ensureDir(metricsDir);
     this.startFlushTimer();
   }
 
@@ -228,20 +207,17 @@ export class LLMMetricsCollector {
       latencyMs: event.latencyMs,
       success: event.success,
     });
-
     // 日付が変わったらフラッシュ
-    const currentDate = this.getDateStr();
+    const currentDate = getDateStr();
     if (currentDate !== this.currentDate) {
       this.flush();
       this.currentDate = currentDate;
     }
-
     // 最大件数制限
     if (this.events.length > MAX_EVENTS) {
       this.flush();
     }
   }
-
   /**
    * 成功したLLM呼び出しを記録
    * @summary 成功記録
@@ -262,7 +238,6 @@ export class LLMMetricsCollector {
       success: true,
     });
   }
-
   /**
    * 失敗したLLM呼び出しを記録
    * @summary 失敗記録
@@ -282,11 +257,10 @@ export class LLMMetricsCollector {
       success: false,
     });
   }
-
   /**
    * 期間内のメトリクスを取得
    * @summary メトリクス取得
-   * @param periodMs 期間（ミリ秒）
+   * @param periodMs 期間（ミリ秒)
    * @returns 集計メトリクス
    */
   getMetrics(periodMs: number = 3600000): LLMMetrics {
@@ -300,7 +274,6 @@ export class LLMMetricsCollector {
 
     return this.aggregateMetrics(recentEvents, periodStart, periodEnd);
   }
-
   /**
    * メトリクスをフラッシュ
    * @summary フラッシュ
@@ -320,7 +293,6 @@ export class LLMMetricsCollector {
       getLogger().error("Failed to flush LLM metrics", err as Error);
     }
   }
-
   /**
    * コレクターをシャットダウン
    * @summary シャットダウン
@@ -332,7 +304,6 @@ export class LLMMetricsCollector {
       this.flushTimer = null;
     }
   }
-
   // ============================================
   // Private Methods
   // ============================================
@@ -403,15 +374,30 @@ export class LLMMetricsCollector {
       model.estimatedCostUSD += this.calculateCost(event);
     }
 
-    // 平均値計算
-    for (const provider of Object.values(byProvider)) {
-      provider.successRate = provider.calls > 0 ? 1 : 0; // 簡易版
+    // 平均値と成功率を計算
+    for (const [providerName, provider] of Object.entries(byProvider)) {
+      const providerEvents = events.filter((e) => e.provider === providerName);
+      const providerSuccesses = providerEvents.filter((e) => e.success).length;
+      provider.successRate = providerEvents.length > 0 
+        ? providerSuccesses / providerEvents.length 
+        : 0;
+      const providerLatencies = providerEvents.map((e) => e.latencyMs);
+      provider.avgLatencyMs = providerLatencies.length > 0
+        ? Math.round(average(providerLatencies))
+        : 0;
     }
 
-    for (const model of Object.values(byModel)) {
-      model.successRate = model.calls > 0 ? 1 : 0; // 簡易版
+    for (const [modelKey, model] of Object.entries(byModel)) {
+      const modelEvents = events.filter((e) => `${e.provider}/${e.model}` === modelKey);
+      const modelSuccesses = modelEvents.filter((e) => e.success).length;
+      model.successRate = modelEvents.length > 0 
+        ? modelSuccesses / modelEvents.length
+        : 0;
+      const modelLatencies = modelEvents.map((e) => e.latencyMs);
+      model.avgLatencyMs = modelLatencies.length > 0
+        ? Math.round(average(modelLatencies))
+        : 0;
     }
-
     return {
       periodStart,
       periodEnd,
@@ -420,9 +406,9 @@ export class LLMMetricsCollector {
       failedCalls,
       successRate,
       avgLatencyMs: Math.round(avgLatencyMs),
-      p50LatencyMs: this.percentile(latencies, 50),
-      p95LatencyMs: this.percentile(latencies, 95),
-      p99LatencyMs: this.percentile(latencies, 99),
+      p50LatencyMs: percentile(latencies, 50),
+      p95LatencyMs: percentile(latencies, 95),
+      p99LatencyMs: percentile(latencies, 99),
       totalInputTokens,
       totalOutputTokens,
       totalTokens,
@@ -437,42 +423,15 @@ export class LLMMetricsCollector {
   }
 
   private calculateCost(event: LLMCallEvent): number {
-    const costConfig = DEFAULT_COSTS[event.model] ?? {
-      inputCostPer1K: 0.001,
-      outputCostPer1K: 0.002,
-    };
-
+    const costConfig = getModelCost(event.model);
     const inputCost = (event.inputTokens / 1000) * costConfig.inputCostPer1K;
     const outputCost = (event.outputTokens / 1000) * costConfig.outputCostPer1K;
-
     return inputCost + outputCost;
-  }
-
-  private percentile(sortedValues: number[], p: number): number {
-    if (sortedValues.length === 0) return 0;
-    if (sortedValues.length === 1) return sortedValues[0];
-
-    const index = Math.min(
-      sortedValues.length - 1,
-      Math.floor((p / 100) * sortedValues.length)
-    );
-    return sortedValues[index] ?? 0;
-  }
-
-  private ensureMetricsDir(): void {
-    if (!existsSync(this.metricsDir)) {
-      mkdirSync(this.metricsDir, { recursive: true });
-    }
   }
 
   private getMetricsFilePath(): string {
     return join(this.metricsDir, `llm-metrics-${this.currentDate}.jsonl`);
   }
-
-  private getDateStr(): string {
-    return new Date().toISOString().slice(0, 10);
-  }
-
   private startFlushTimer(): void {
     this.flushTimer = setInterval(() => {
       this.flush();
@@ -501,7 +460,7 @@ export function getLLMMetricsCollector(): LLMMetricsCollector {
   return globalCollector;
 }
 
-/**
+ /**
  * コレクターをリセット
  * @summary リセット
  */

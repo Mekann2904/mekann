@@ -94,11 +94,14 @@ export {
   type LLMMetrics,
   type ProviderMetrics,
   type ModelMetrics,
-  type CostConfig,
+  // CostConfig is now exported from types.ts
   LLMMetricsCollector,
   getLLMMetricsCollector,
   resetLLMMetricsCollector,
 } from "./llm-metrics.js";
+
+// Add CostConfig from types.ts
+export { type CostConfig } from "./types.js";
 
 // ============================================================================
 // Subagent Metrics
@@ -367,3 +370,32 @@ export function getContextSummary(): string {
 
   return parts.length > 0 ? `[${parts.join(" | ")}]` : "[no context]";
 }
+
+// ============================================================================
+// Shared Utilities (from utils.ts)
+// ============================================================================
+
+export {
+  percentile,
+  calculatePercentiles,
+  getDateStr,
+  getTimestamp,
+  ensureDir,
+  average,
+  sum,
+  successRate,
+  sanitizeResult,
+} from "./utils.js";
+
+// ============================================================================
+// Configuration (from config.ts)
+// ============================================================================
+
+export {
+  DEFAULT_LOG_DIR,
+  DEFAULT_METRICS_DIR,
+  DEFAULT_CORRELATION_DIR,
+  LLM_COSTS,
+  getModelCost,
+  getObservabilityConfig,
+} from "./config.js";

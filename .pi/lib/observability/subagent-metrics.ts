@@ -25,11 +25,13 @@
  *   out: 集計メトリクス、時系列データ
  */
 
-import { existsSync, mkdirSync, appendFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { appendFileSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { getLogger } from "./unified-logger.js";
 import { getCurrentTraceContext } from "./async-context.js";
+import { percentile, getDateStr, ensureDir, average, successRate } from "./utils.js";
+import { DEFAULT_METRICS_DIR } from "./config.js";
 
 // ============================================================================
 // Types
@@ -149,7 +151,6 @@ export interface PatternMetrics {
 // Constants
 // ============================================================================
 
-const DEFAULT_METRICS_DIR = join(homedir(), ".pi-metrics");
 const MAX_EVENTS = 10000;
 
 // ============================================================================
@@ -173,8 +174,8 @@ export class SubagentMetricsCollector {
    */
   constructor(metricsDir: string = DEFAULT_METRICS_DIR) {
     this.metricsDir = metricsDir;
-    this.currentDate = this.getDateStr();
-    this.ensureMetricsDir();
+    this.currentDate = getDateStr();
+    ensureDir(metricsDir);
     this.startFlushTimer();
   }
 
@@ -204,7 +205,7 @@ export class SubagentMetricsCollector {
     });
 
     // 日付が変わったらフラッシュ
-    const currentDate = this.getDateStr();
+    const currentDate = getDateStr();
     if (currentDate !== this.currentDate) {
       this.flush();
       this.currentDate = currentDate;
@@ -423,9 +424,9 @@ export class SubagentMetricsCollector {
       failedExecutions,
       successRate,
       avgDurationMs: Math.round(avgDurationMs),
-      p50DurationMs: this.percentile(durations, 50),
-      p95DurationMs: this.percentile(durations, 95),
-      p99DurationMs: this.percentile(durations, 99),
+      p50DurationMs: percentile(durations, 50),
+      p95DurationMs: percentile(durations, 95),
+      p99DurationMs: percentile(durations, 99),
       totalTokens,
       avgTokens: Math.round(avgTokens),
       avgRetryCount: Math.round(avgRetryCount * 10) / 10,
@@ -435,29 +436,8 @@ export class SubagentMetricsCollector {
     };
   }
 
-  private percentile(sortedValues: number[], p: number): number {
-    if (sortedValues.length === 0) return 0;
-    if (sortedValues.length === 1) return sortedValues[0];
-
-    const index = Math.min(
-      sortedValues.length - 1,
-      Math.floor((p / 100) * sortedValues.length)
-    );
-    return sortedValues[index] ?? 0;
-  }
-
-  private ensureMetricsDir(): void {
-    if (!existsSync(this.metricsDir)) {
-      mkdirSync(this.metricsDir, { recursive: true });
-    }
-  }
-
   private getMetricsFilePath(): string {
     return join(this.metricsDir, `subagent-metrics-${this.currentDate}.jsonl`);
-  }
-
-  private getDateStr(): string {
-    return new Date().toISOString().slice(0, 10);
   }
 
   private startFlushTimer(): void {

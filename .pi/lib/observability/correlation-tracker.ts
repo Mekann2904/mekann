@@ -24,10 +24,11 @@
  *   out: 相関グラフ、実行パス、統計
  */
 
-import { existsSync, mkdirSync, appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getLogger } from "./unified-logger.js";
+import { getDateStr, ensureDir } from "./utils.js";
 import { getCurrentTraceContext, getAsyncContext } from "./async-context.js";
 
 // ============================================================================
@@ -173,8 +174,8 @@ export class CorrelationTracker {
    */
   constructor(correlationDir: string = DEFAULT_CORRELATION_DIR) {
     this.correlationDir = correlationDir;
-    this.currentDate = this.getDateStr();
-    this.ensureDir();
+    this.currentDate = getDateStr();
+    ensureDir(correlationDir);
   }
 
   // ============================================
@@ -617,22 +618,12 @@ export class CorrelationTracker {
     return result;
   }
 
-  private ensureDir(): void {
-    if (!existsSync(this.correlationDir)) {
-      mkdirSync(this.correlationDir, { recursive: true });
-    }
-  }
-
   private getEventsFilePath(): string {
     return join(this.correlationDir, `correlation-events-${this.currentDate}.jsonl`);
   }
 
   private getLinksFilePath(): string {
     return join(this.correlationDir, `correlation-links-${this.currentDate}.jsonl`);
-  }
-
-  private getDateStr(): string {
-    return new Date().toISOString().slice(0, 10);
   }
 }
 

@@ -25,12 +25,13 @@
  *   out: 構造化ログファイル、コンソール出力
  */
 
-import { appendFileSync, existsSync, mkdirSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getAsyncContext } from "./async-context.js";
 import type { TraceContext } from "./trace-context.js";
 import { toTraceParent } from "./trace-context.js";
+import { getDateStr, ensureDir } from "./utils.js";
 
 // ============================================================================
 // Types
@@ -153,10 +154,10 @@ export class UnifiedLogger {
    */
   constructor(config: Partial<UnifiedLoggerConfig> = {}) {
     this.config = { ...DEFAULT_LOGGER_CONFIG, ...config };
-    this.currentDate = this.getDateStr();
+    this.currentDate = getDateStr();
 
     if (this.config.fileOutput) {
-      this.ensureLogDir();
+      ensureDir(this.config.logDir);
       this.startFlushTimer();
     }
   }
@@ -384,25 +385,15 @@ export class UnifiedLogger {
     this.logBuffer.push(record);
 
     // 日付が変わったらフラッシュ
-    const currentDate = this.getDateStr();
+    const currentDate = getDateStr();
     if (currentDate !== this.currentDate) {
       this.flush();
       this.currentDate = currentDate;
     }
   }
 
-  private ensureLogDir(): void {
-    if (!existsSync(this.config.logDir)) {
-      mkdirSync(this.config.logDir, { recursive: true });
-    }
-  }
-
   private getLogFilePath(): string {
     return join(this.config.logDir, `pi-agent-${this.currentDate}.jsonl`);
-  }
-
-  private getDateStr(): string {
-    return new Date().toISOString().slice(0, 10);
   }
 
   private startFlushTimer(): void {
