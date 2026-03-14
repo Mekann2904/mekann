@@ -182,8 +182,9 @@ function writeAuditLog(entry: {
     const logPath = getAuditLogPath();
     const logLine = JSON.stringify(entry) + "\n";
     appendFileSync(logPath, logLine, "utf-8");
-  } catch {
-    // ログ書き込みエラーは無視
+  } catch (error) {
+    // 監査ログ書き込み失敗は致命的ではないが、デバッグのために記録
+    console.error("[dynamic-tools] Audit log write failed:", error);
   }
 }
 
