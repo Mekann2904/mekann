@@ -182,7 +182,10 @@ function collectResolverBases(requireFn: NodeRequire): string[] {
     bases.push(join(codingAgentDir, "..", "..", "package.json"));
     bases.push(join(codingAgentDir, "..", "package.json"));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException)?.code !== "MODULE_NOT_FOUND") {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    // ERR_PACKAGE_PATH_NOT_EXPORTED: exportsフィールドがpackage.jsonをエクスポートしていない場合
+    // MODULE_NOT_FOUND: パッケージ自体が存在しない場合
+    if (code !== "MODULE_NOT_FOUND" && code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") {
       console.debug("[pi-ai-abort-fix] resolve @mariozechner/pi-coding-agent failed:", error);
     }
   }
@@ -194,7 +197,8 @@ function collectResolverBases(requireFn: NodeRequire): string[] {
     bases.push(join(piAiDir, "..", "..", "package.json"));
     bases.push(join(piAiDir, "..", "package.json"));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException)?.code !== "MODULE_NOT_FOUND") {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code !== "MODULE_NOT_FOUND" && code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") {
       console.debug("[pi-ai-abort-fix] resolve @mariozechner/pi-ai failed:", error);
     }
   }
