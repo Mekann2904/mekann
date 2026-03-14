@@ -28,6 +28,11 @@ export function toError(error: unknown): Error {
  */
 export function toErrorMessage(error: unknown): string {
   if (error instanceof Error) {
+    // NodeJS filesystem system errors have code/errno properties
+    const nodeError = error as NodeJS.ErrnoException;
+    if (nodeError.code) {
+      return `[${nodeError.code}] ${error.message}${nodeError.errno !== undefined ? ` (errno: ${nodeError.errno})` : ""}`;
+    }
     return error.message;
   }
   if (typeof error === "string") {
@@ -74,6 +79,27 @@ export function isError(error: unknown): error is Error {
 export function isStringError(error: unknown): error is string {
   return typeof error === "string";
 }
+
+/**
+ * Node.jsファイルシステムエラーかどうかを判定する型ガード
+ * @summary ファイルシステムエラーを識別
+ * @param error - 検査対象のエラー
+ * @returns ファイルシステムエラーの場合true
+ */
+export function isFilesystemError(error: unknown): error is NodeJS.ErrnoException & { code: string } {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const nodeError = error as NodeJS.ErrnoException;
+  // Common filesystem error codes
+  const fsErrorCodes = [
+    "ENOENT", "EACCES", "EPERM", "EISDIR", "ENOTDIR",
+    "ENOSPC", "EEXIST", "EBUSY", "EXDEV", "EIO",
+    "ENAMETOOLONG", "ELOOP", "ENOTEMPTY", "EROFS",
+  ];
+  return typeof nodeError.code === "string" && fsErrorCodes.includes(nodeError.code);
+}
+
 
 /**
  * @summary メッセージからHTTPステータスコードを抽出

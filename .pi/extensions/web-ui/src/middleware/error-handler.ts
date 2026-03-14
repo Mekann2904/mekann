@@ -65,7 +65,7 @@ export class AppError extends Error {
 /**
  * Zod バリデーションエラーを整形
  */
-function formatZodError(error: ZodError): string {
+export function formatZodError(error: ZodError): string {
   return error.issues
     .map((e) => `${e.path.join(".")}: ${e.message}`)
     .join("; ");

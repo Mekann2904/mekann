@@ -45,6 +45,7 @@ import {
   getHistoryStats,
 } from "../lib/mediator-history.js";
 import { toErrorMessage } from "../lib/core/error-utils.js";
+import { callModelViaPi } from "./shared/pi-print-executor.js";
 
 // ============================================================================
 // 定数
@@ -415,39 +416,42 @@ function formatMediatorOutput(output: MediatorOutput, originalInput: string): st
 }
 
 interface MediatorContext {
-  model?: unknown;
+  model?: {
+    provider?: string;
+    id?: string;
+  };
 }
+
+/**
+ * LLM呼び出し関数を生成
+ * @summary ctx.modelからLLM呼び出し関数を作成
+ * @param ctx メディエータコンテキスト
+ * @returns LLM呼び出し関数
+ */
 function createLlmCallFromContext(ctx: MediatorContext): LlmCallFunction {
   return async (
     systemPrompt: string,
     userPrompt: string,
     options?: { timeoutMs?: number }
   ): Promise<string> => {
-    // ctx.modelを使用してLLMを呼び出す
-    // 注: 実際の実装では pi-core のモデル呼び出し機能を使用
-    if (!ctx.model) {
-      throw new Error("No active model");
+    if (!ctx.model?.provider || !ctx.model?.id) {
+      throw new Error("No active model configured");
     }
 
-    // プレースホルダー: 実際のモデル呼び出し
-    // 本来は pi-core の executeModel などを使用
-    void systemPrompt;
-    void userPrompt;
-    void options;
-    
-    // 簡易的な応答を返す（実際の統合時には置き換える）
-    console.warn("[mediator] Using placeholder LLM call - integrate with pi-core for production");
-    
-    return `### 解釈結果
-ユーザーの入力を解釈しました。
+    // systemPromptとuserPromptを結合してプロンプトを構築
+    const fullPrompt = `${systemPrompt}\n\n---\n\n${userPrompt}`;
 
-### 参照解決
-（参照なし）
+    // callModelViaPiを使って実際のLLMを呼び出す
+    const result = await callModelViaPi({
+      model: {
+        provider: ctx.model.provider,
+        id: ctx.model.id,
+      },
+      prompt: fullPrompt,
+      timeoutMs: options?.timeoutMs ?? 120000, // デフォルト2分
+      entityLabel: "mediator",
+    });
 
-### 情報ギャップ
-（検出されませんでした）
-
-### 信頼度
-0.7`;
+    return result;
   };
 }

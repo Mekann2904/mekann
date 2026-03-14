@@ -4,7 +4,7 @@ category: user-guide
 audience: daily-user
 last_updated: 2026-02-26
 tags: [llm, parallelism, rate-limiting, concurrency]
-related: [../README.md, ./15-subagents.md, ./16-agent-teams.md]
+related: [../README.md, ./08-subagents.md]
 ---
 
 # 並列LLM呼び出しアーキテクチャ
@@ -413,9 +413,8 @@ PI_DEBUG_DYNAMIC_PARALLELISM=1
 
 ## 関連トピック
 
-- [サブエージェント](./15-subagents.md) - サブエージェントの基本的な使い方
-- [エージェントチーム](./16-agent-teams.md) - エージェントチームの設定と実行
-- [DAG実行ガイド](../../.pi/APPEND_SYSTEM.md#dag-execution-guide-recommended) - DAG実行の詳細
+- [サブエージェント](./08-subagents.md) - サブエージェントの基本的な使い方
+- [DAG実行ガイド](../../.pi/APPEND_SYSTEM.md#dag-execution-guide) - DAG実行の詳細
 
 ## 次のトピック
 

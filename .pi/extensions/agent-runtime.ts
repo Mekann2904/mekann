@@ -1492,15 +1492,29 @@ export async function reserveRuntimeCapacity(
         await wait(remainingDelayMs, input.signal);
       }
     } catch (error) {
-      // BUG-009 fix: エラーをログに記録（元はcatch {}で無視していた）
       const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // AbortSignalによる意図的なキャンセルとシステムエラーを区別
+      if (errorMessage === "capacity wait aborted") {
+        // ユーザーによる意図的なキャンセル
+        return {
+          ...attempted,
+          waitedMs: runtimeNow() - startedAt,
+          attempts,
+          timedOut: false,
+          aborted: true,
+        };
+      }
+
+      // 予期せぬシステムエラー
       console.error(`[agent-runtime] reserveRuntimeCapacity failed: ${errorMessage}`);
       return {
         ...attempted,
         waitedMs: runtimeNow() - startedAt,
         attempts,
         timedOut: false,
-        aborted: true,
+        aborted: false,
+        error: errorMessage,
       };
     }
   }

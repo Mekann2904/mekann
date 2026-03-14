@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import registerUlWorkflowExtension from "../extensions/ul-workflow.js";
@@ -28,9 +28,12 @@ function createFakePi() {
   };
 }
 
-describe("UL workflow artifacts", () => {
+// テスト間の状態汚染を防ぐため、シリアル実行を強制
+describe.sequential("UL workflow artifacts", () => {
   let pi: ReturnType<typeof createFakePi>;
   const createdTaskIds: string[] = [];
+  const WORKFLOW_DIR = path.join(process.cwd(), ".pi", "ul-workflow");
+  const ACTIVE_FILE = path.join(WORKFLOW_DIR, "active.json");
 
   beforeEach(() => {
     pi = createFakePi();
@@ -38,11 +41,16 @@ describe("UL workflow artifacts", () => {
   });
 
   afterEach(() => {
+    // タスクディレクトリをクリーンアップ
     for (const taskId of createdTaskIds.splice(0)) {
-      rmSync(path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId), {
+      rmSync(path.join(WORKFLOW_DIR, "tasks", taskId), {
         recursive: true,
         force: true,
       });
+    }
+    // active.jsonもクリーンアップ（状態汚染防止）
+    if (existsSync(ACTIVE_FILE)) {
+      rmSync(ACTIVE_FILE, { force: true });
     }
   });
 
@@ -495,5 +503,114 @@ describe("UL workflow artifacts", () => {
     const result = await approveTool!.execute("tc-approve-before-artifact", {}, undefined, undefined, {});
     expect(result.details.error).toBe("phase_artifact_not_ready");
     expect(result.details.taskId).toBe(taskId);
+  });
+
+  // ============================================================================
+  // エラーパステスト
+  // ============================================================================
+
+  describe("error paths", () => {
+    it("returns no_active_workflow when no workflow exists", async () => {
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      expect(approveTool).toBeDefined();
+
+      const result = await approveTool!.execute("tc-no-workflow", {}, undefined, undefined, {});
+      expect(result.details.error).toBe("no_active_workflow");
+    });
+
+    it("returns empty_task when task description is missing", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      expect(startTool).toBeDefined();
+
+      const result = await startTool!.execute("tc-empty-task", { task: "" }, undefined, undefined, {});
+      expect(result.details.error).toBe("empty_task");
+    });
+
+    it("returns task_too_short when task description is too short", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      expect(startTool).toBeDefined();
+
+      const result = await startTool!.execute("tc-short-task", { task: "abc" }, undefined, undefined, {});
+      expect(result.details.error).toBe("task_too_short");
+    });
+
+    it("returns task_not_found when resuming non-existent task", async () => {
+      const resumeTool = pi.tools.get("ul_workflow_resume");
+      expect(resumeTool).toBeDefined();
+
+      const result = await resumeTool!.execute("tc-resume-not-found", { task_id: "non-existent-task-id" }, undefined, undefined, {});
+      expect(result.details.error).toBe("task_not_found");
+    });
+
+    it("returns wrong_phase when annotate is called in wrong phase", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const annotateTool = pi.tools.get("ul_workflow_annotate");
+      expect(startTool && annotateTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-start", { task: "テスト用のタスク説明を入力する" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      // researchフェーズでannotateを呼ぶ（wrong_phaseになるべき）
+      const result = await annotateTool!.execute("tc-annotate-wrong-phase", {}, undefined, undefined, {});
+      expect(result.details.error).toBe("wrong_phase");
+    });
+
+    it("returns no_task_id when research is called without task_id", async () => {
+      const researchTool = pi.tools.get("ul_workflow_research");
+      expect(researchTool).toBeDefined();
+
+      const result = await researchTool!.execute("tc-research-no-id", { task: "テストタスク" }, undefined, undefined, {});
+      expect(result.details.error).toBe("no_task_id");
+    });
+
+    it("returns plan_not_found when confirm_plan is called without plan", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      const confirmPlanTool = pi.tools.get("ul_workflow_confirm_plan");
+      expect(startTool && researchTool && approveTool && confirmPlanTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-start", { task: "プラン確認テスト用のタスク" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      // researchを実行してplanフェーズへ進む
+      const ctx = {
+        executeTool: async () => ({
+          content: [{ type: "text", text: "# Research\n\n調査結果です。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）" }],
+        }),
+      };
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-research", {}, undefined, undefined, ctx);
+
+      // plan.mdが存在しない状態でconfirm_planを呼ぶ（planフェーズだがファイルなし）
+      const result = await confirmPlanTool!.execute("tc-confirm-no-plan", {}, undefined, undefined, {});
+      expect(result.details.error).toBe("plan_not_found");
+    });
+
+    it("returns empty_modifications when modify_plan is called without modifications", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      const modifyPlanTool = pi.tools.get("ul_workflow_modify_plan");
+      expect(startTool && researchTool && approveTool && modifyPlanTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-start", { task: "修正テスト用のタスク説明" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      // researchを実行してplanフェーズへ進む
+      const ctx = {
+        executeTool: async () => ({
+          content: [{ type: "text", text: "# Research\n\n調査結果です。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）" }],
+        }),
+      };
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-research", {}, undefined, undefined, ctx);
+
+      const result = await modifyPlanTool!.execute("tc-modify-empty", { modifications: "" }, undefined, undefined, {});
+      expect(result.details.error).toBe("empty_modifications");
+    });
   });
 });

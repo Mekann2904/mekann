@@ -484,6 +484,7 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
   pi.on("session_end", async (_event, _ctx) => {
     shutdownAdaptiveController();
     unregisterInstance();
+    isInitialized = false; // 再初期化を許可
   });
 
   // Event: Track model usage on tool calls

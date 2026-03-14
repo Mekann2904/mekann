@@ -4,7 +4,7 @@ category: user-guide
 audience: daily-user
 last_updated: 2026-03-08
 tags: [dynamic-tools, runtime, security, code-generation]
-related: [./01-extensions.md, ./08-subagents.md, ./09-agent-teams.md]
+related: [./01-extensions.md, ./08-subagents.md]
 ---
 
 # Dynamic Tools
@@ -829,7 +829,6 @@ await delete_dynamic_tool({ toolName: "my_tool" });
 
 - [拡張機能](01-extensions.md) - 全拡張機能の概要
 - [サブエージェント](08-subagents.md) - タスク委任
-- [エージェントチーム](09-agent-teams.md) - マルチエージェント実行
 
 ## 次のトピック
 

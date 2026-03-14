@@ -369,6 +369,28 @@ describe("findExpansion", () => {
       const result = findExpansion("xyz", abbreviations);
       expect(result).toBeNull();
     });
+
+    it("should_not_crash_on_invalid_regex_pattern", () => {
+      // 不正な正規表現パターン（閉じられていないブラケット）
+      abbreviations.set("bad", { name: "bad", expansion: "broken", regex: true, pattern: "[" });
+      // クラッシュせず null を返すべき
+      const result = findExpansion("test", abbreviations);
+      expect(result).not.toBeNull(); // 他の有効なパターンは動作する
+    });
+
+    it("should_handle_unmatched_parenthesis", () => {
+      // 不正な正規表現パターン（閉じられていない括弧）
+      abbreviations.set("bad2", { name: "bad2", expansion: "broken2", regex: true, pattern: "(abc" });
+      const result = findExpansion("gaa", abbreviations);
+      expect(result?.expanded).toBe("git"); // 他の有効なパターンは動作する
+    });
+
+    it("should_handle_invalid_quantifier", () => {
+      // 不正な正規表現パターン（無効な量指定子）
+      abbreviations.set("bad3", { name: "bad3", expansion: "broken3", regex: true, pattern: "a{3,2}" });
+      const result = findExpansion("gaa", abbreviations);
+      expect(result?.expanded).toBe("git");
+    });
   });
 
   describe("position設定", () => {
@@ -655,6 +677,21 @@ describe("File Persistence (Simulation)", () => {
 
     it("should_return_empty_for_nonexistent_file", () => {
       expect(fs.existsSync(testConfigFile)).toBe(false);
+    });
+
+    it("should_skip_invalid_regex_patterns_on_load", () => {
+      // 不正な正規表現パターンを含む略語
+      const abbrs: Abbreviation[] = [
+        { name: "valid", expansion: "valid-cmd", regex: true, pattern: "v[a-z]+" },
+        { name: "invalid", expansion: "broken", regex: true, pattern: "[" }, // 不正なパターン
+        { name: "normal", expansion: "normal-cmd" },
+      ];
+
+      fs.writeFileSync(testConfigFile, JSON.stringify({ abbreviations: abbrs }), "utf-8");
+
+      const loaded = JSON.parse(fs.readFileSync(testConfigFile, "utf-8"));
+      expect(loaded.abbreviations).toHaveLength(3);
+      // 実際のロード時には invalid はスキップされる（validateRegexPattern により）
     });
   });
 

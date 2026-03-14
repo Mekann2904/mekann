@@ -225,15 +225,22 @@ function pickSubagentSummaryCandidate(text: string): string {
     .filter((line) => line.length > 0);
   if (lines.length === 0) return "回答を整形しました。";
 
-  const first =
-    lines.find((line) => !/^(SUMMARY|RESULT|NEXT_STEP)\s*:/i.test(line)) ?? lines[0];
-  const compact = first
-    .replace(/^[-*]\s+/, "")
-    .replace(/^#{1,6}\s+/, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!compact) return "回答を整形しました。";
-  return compact.length <= 90 ? compact : `${compact.slice(0, 90)}...`;
+  // ヘッダーパターンにマッチしない全ての行を試す
+  for (const line of lines) {
+    if (/^(SUMMARY|RESULT|NEXT_STEP)\s*:/i.test(line)) continue;
+    
+    const compact = line
+      .replace(/^[-*]\s+/, "")
+      .replace(/^#{1,6}\s+/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    
+    if (compact) {
+      return compact.length <= 90 ? compact : `${compact.slice(0, 90)}...`;
+    }
+  }
+  
+  return "回答を整形しました。";
 }
 
 /**
@@ -686,8 +693,10 @@ export function shouldEnableSubagentExtensions(
   if (!wantsResearchMode) {
     return false;
   }
+  // If turnContext is undefined, we cannot safely determine if extensions are supported.
+  // Default to false for safety - caller must provide turnContext for extensions.
   if (!turnContext) {
-    return true;
+    return false;
   }
   return deriveTurnExecutionDecisions(turnContext, {
     taskKind: "research",
@@ -1154,8 +1163,9 @@ export async function runSubagentTask(input: {
   let relevantPatterns: ExtractedPattern[] = [];
   try {
     relevantPatterns = findRelevantPatterns(input.cwd, input.task, 5);
-  } catch {
+  } catch (err) {
     // Pattern loading failure should not block execution
+    console.warn("[subagent] Failed to load relevant patterns:", err instanceof Error ? err.message : String(err));
   }
 
   const liveTurnContext = buildTurnExecutionContext({
@@ -1167,7 +1177,7 @@ export async function runSubagentTask(input: {
   });
   const turnContext = applyReplayToolConstraints(liveTurnContext, input.replaySnapshot);
   const liveTurnDecisions = deriveTurnExecutionDecisions(turnContext, {
-    taskKind: shouldEnableSubagentExtensions(input.task, input.extraContext) ? "research" : "implementation",
+    taskKind: shouldEnableSubagentExtensions(input.task, input.extraContext, turnContext) ? "research" : "implementation",
     taskText: input.task,
   });
   const turnDecisions = applyReplayDecisionConstraints(liveTurnDecisions, input.replaySnapshot);
@@ -1203,6 +1213,7 @@ export async function runSubagentTask(input: {
   let lastRateLimitHits = 0;
   let rateLimitGateLogged = false;
   let rateLimitStderrLogged = false;
+  let finalized = false; // 二重ファイナライズ防止フラグ
   const heartbeat = () => {
     heartbeatActiveSubagentRun({
       cwd: input.cwd,
@@ -1374,6 +1385,7 @@ export async function runSubagentTask(input: {
         runId,
         success: true,
       });
+      finalized = true;
       recordLongRunningEvent(input.cwd, {
         type: "subagent_run",
         summary: `subagent artifact persisted: ${input.agent.id}`,
@@ -1403,8 +1415,9 @@ export async function runSubagentTask(input: {
             // Console logging is intentional for debugging purposes
             console.log(`[RalphWiggum] ${input.agent.id}: ${verificationResult.result.issues.length} issues, verdict=${verificationResult.result.verdict}`);
           }
-        } catch {
+        } catch (err) {
           // 検証フックエラーは無視して処理を継続
+          console.warn("[subagent] Verification hook error:", err instanceof Error ? err.message : String(err));
         }
       }
 
@@ -1443,8 +1456,9 @@ export async function runSubagentTask(input: {
             },
             cwd: input.cwd,
           });
-        } catch {
+        } catch (err) {
           // 計測エラーは実行に影響させない
+          console.debug?.("[subagent] Metrics recording error:", err instanceof Error ? err.message : String(err));
         }
       }
 
@@ -1510,6 +1524,7 @@ export async function runSubagentTask(input: {
         success: effectiveStatus === "completed",
         error: effectiveStatus === "failed" ? message : undefined,
       });
+      finalized = true;
       recordLongRunningEvent(input.cwd, {
         type: "subagent_run",
         summary: effectiveStatus === "completed"
@@ -1560,8 +1575,9 @@ export async function runSubagentTask(input: {
             },
             cwd: input.cwd,
           });
-        } catch {
+        } catch (err) {
           // 計測エラーは実行に影響させない
+          console.debug?.("[subagent] Metrics recording error:", err instanceof Error ? err.message : String(err));
         }
       }
 
@@ -1574,12 +1590,15 @@ export async function runSubagentTask(input: {
       };
     }
   } finally {
-    finalizeActiveSubagentRun({
-      cwd: input.cwd,
-      runId,
-      success: false,
-      error: "subagent execution interrupted before completion",
-    });
+    // 二重ファイナライズ防止: 成功/失敗パスですでにファイナライズ済みの場合はスキップ
+    if (!finalized) {
+      finalizeActiveSubagentRun({
+        cwd: input.cwd,
+        runId,
+        success: false,
+        error: "subagent execution interrupted before completion",
+      });
+    }
     input.onEnd?.();
   }
 }

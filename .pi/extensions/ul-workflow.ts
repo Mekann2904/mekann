@@ -156,7 +156,8 @@ function readActiveWorkflowRegistry(): ActiveWorkflowRegistry {
       updatedAt: parsed.updatedAt ?? new Date().toISOString(),
       activeByInstance: parsed.activeByInstance ?? {},
     };
-  } catch {
+  } catch (error) {
+    console.error("[ul-workflow] readActiveWorkflowRegistry failed:", error);
     return createEmptyActiveWorkflowRegistry();
   }
 }
@@ -297,7 +298,11 @@ async function assertPhaseArtifactReady(taskId: string, phase: WorkflowPhase): P
     return;
   }
 
-  const content = await fsPromises.readFile(artifactPath, "utf-8").catch(() => "");
+  // ENOENT（ファイルなし）のみ空文字として扱い、他のエラーは伝播させる
+  const content = await fsPromises.readFile(artifactPath, "utf-8").catch((err: NodeJS.ErrnoException) => {
+    if (err.code === "ENOENT") return "";
+    throw err;
+  });
   if (!content.trim()) {
     throw new Error(`${phase}.md がまだ生成されていません: ${artifactPath}`);
   }
@@ -1921,7 +1926,7 @@ ${baseContext}`,
   const artifactPath = typeof dagParams.artifactPath === "string" ? dagParams.artifactPath.trim() : "";
   if (artifactPath && artifactContent.trim()) {
     await fsPromises.mkdir(path.dirname(artifactPath), { recursive: true });
-    await fsPromises.writeFile(artifactPath, `${artifactContent.trim()}\n`, "utf-8");
+    await atomicWriteTextFile(artifactPath, `${artifactContent.trim()}\n`);
   }
 
   updateSession(dagSessionId, {
@@ -2373,11 +2378,9 @@ export function saveState(state: WorkflowState): void {
  * @param state - ワークフロー状態
  */
 async function saveStateAsync(state: WorkflowState): Promise<void> {
-  const taskDir = getTaskDir(state.taskId);
-  const statusPath = path.join(taskDir, "status.json");
-
-  await fsPromises.mkdir(taskDir, { recursive: true });
-  await fsPromises.writeFile(statusPath, JSON.stringify(state, null, 2), "utf-8");
+  // 同期版のsaveStateを使用してファイルロックとatomic writeを保証
+  // 非同期関数として公開することで呼び出し元のAPIを維持
+  saveState(state);
 }
 
 /**
@@ -2388,7 +2391,11 @@ export function loadState(taskId: string): WorkflowState | null {
   try {
     const content = fs.readFileSync(statusPath, "utf-8");
     return JSON.parse(content);
-  } catch {
+  } catch (error) {
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    if (errorCode !== "ENOENT") {
+      console.error(`[ul-workflow] loadState failed for ${taskId}:`, errorCode ?? "unknown", error);
+    }
     return null;
   }
 }
@@ -2410,10 +2417,26 @@ function findLatestWorkflowForInstance(options?: { includeCompleted?: boolean })
       .filter((state): state is WorkflowState => !!state)
       .filter((state) => state.ownerInstanceId === instanceId)
       .filter((state) => options?.includeCompleted ? true : state.phase !== "completed")
-      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+      .sort((a, b) => {
+        const da = Date.parse(a.updatedAt);
+        const db = Date.parse(b.updatedAt);
+        // NaNチェック: 不正なタイムスタンプは後ろに配置
+        if (isNaN(da) || isNaN(db)) {
+          return isNaN(da) ? 1 : -1;
+        }
+        return db - da;
+      });
 
     return states[0] ?? null;
-  } catch {
+  } catch (error) {
+    // 予期せぬエラー（EACCES, EIO等）はログに出力
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    if (errorCode === "ENOENT") {
+      // ディレクトリが存在しないのは正常ケース
+      return null;
+    }
+    // 権限エラーやI/Oエラーは警告を出力
+    console.error(`findLatestWorkflowForInstance: Failed to read workflow directory: ${errorCode ?? "unknown"}`, error);
     return null;
   }
 }
@@ -2429,7 +2452,11 @@ async function loadStateAsync(taskId: string): Promise<WorkflowState | null> {
   try {
     const content = await fsPromises.readFile(statusPath, "utf-8");
     return JSON.parse(content) as WorkflowState;
-  } catch {
+  } catch (error) {
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    if (errorCode !== "ENOENT") {
+      console.error(`[ul-workflow] loadStateAsync failed for ${taskId}:`, errorCode ?? "unknown", error);
+    }
     return null;
   }
 }
@@ -2484,7 +2511,11 @@ function readPlanFile(taskId: string): string {
   const planPath = path.join(getTaskDir(taskId), "plan.md");
   try {
     return fs.readFileSync(planPath, "utf-8");
-  } catch {
+  } catch (error) {
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    if (errorCode !== "ENOENT") {
+      console.error(`[ul-workflow] readPlanFile failed for ${taskId}:`, errorCode ?? "unknown", error);
+    }
     return "";
   }
 }
@@ -2566,13 +2597,17 @@ async function ensureWorkflowArtifact(
     if (existing.trim()) {
       return { created: false, content: existing };
     }
-  } catch {
-    // Ignore missing file and create fallback below.
+  } catch (error) {
+    // ENOENT is expected (file doesn't exist yet), log other errors
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    if (errorCode !== "ENOENT") {
+      console.error(`[ul-workflow] ensureWorkflowArtifact readFile failed for ${artifactPath}:`, errorCode ?? "unknown", error);
+    }
   }
 
   const normalized = fallbackContent.trim() || "_No content generated._";
   await fsPromises.mkdir(path.dirname(artifactPath), { recursive: true });
-  await fsPromises.writeFile(artifactPath, `${normalized}\n`, "utf-8");
+  atomicWriteTextFile(artifactPath, `${normalized}\n`);
   return { created: true, content: normalized };
 }
 
@@ -2907,11 +2942,11 @@ ul_workflow_confirm_plan()
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
       const workflow = getCurrentWorkflow();
       if (!workflow) {
-        return makeResult(`アクティブなワークフローはありません。
+        return makeResult(`エラー: アクティブなワークフローがありません。
 
 新しいワークフローを開始するには:
   ul_workflow_start({ task: "タスク説明" })
-`, { active: false });
+`, { error: "no_active_workflow" });
       }
 
       const phaseDescriptions: Record<WorkflowPhase, string> = {
@@ -3133,11 +3168,23 @@ ${phasesDisplay}
 
       // Force claim ownership
       const now = new Date().toISOString();
-      currentWorkflow.ownerInstanceId = instanceId;
-      currentWorkflow.updatedAt = now;
 
-      saveState(currentWorkflow);
-      setCurrentWorkflow(currentWorkflow);
+      // BUG FIX: Save state before in-memory mutation for consistency
+      // Backup previous state in case saveState fails
+      const previousOwnerInstanceId = currentWorkflow.ownerInstanceId;
+      const previousUpdatedAt = currentWorkflow.updatedAt;
+
+      try {
+        currentWorkflow.ownerInstanceId = instanceId;
+        currentWorkflow.updatedAt = now;
+        saveState(currentWorkflow);
+        setCurrentWorkflow(currentWorkflow);
+      } catch (error) {
+        // Rollback on failure
+        currentWorkflow.ownerInstanceId = previousOwnerInstanceId;
+        currentWorkflow.updatedAt = previousUpdatedAt;
+        throw error;
+      }
 
       let statusText = `所有権を強制的に変更しました。\n\n` +
         `以前の所有者: ${previousOwner}${ownerPid ? ` (PID: ${ownerPid})` : ""}\n` +
@@ -4089,8 +4136,13 @@ plan.mdに基づく実装
       }
 
       workflow.approvedPhases.push(previousPhase);
-      const nextPhase = advancePhase(workflow);
+
+      // BEGIN FIX: BUG-002 原子的状態更新
+      // フェーズ進行前に状態を永続化
       saveState(workflow);
+      const nextPhase = advancePhase(workflow);
+      // END FIX
+
       setCurrentWorkflow(workflow);
 
       ctx.ui.notify(`${previousPhase.toUpperCase()} 承認 → ${nextPhase.toUpperCase()}`, "info");

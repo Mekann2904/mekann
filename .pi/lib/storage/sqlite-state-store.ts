@@ -11,6 +11,7 @@ import { dirname, isAbsolute, join } from "node:path";
 
 import { getDatabase, getSQLiteDisableReason, isSQLiteAvailable } from "./sqlite-db.js";
 import "./sqlite-schema.js";
+import { atomicWriteTextFile } from "./storage-lock.js";
 
 interface JsonStateRow {
   value_json: string;
@@ -65,21 +66,49 @@ function readFallbackValue<T>(stateKey: string): T | null {
     return null;
   }
 
-  const parsed = safeParseJson<{ stateKey?: string; value?: T }>(readFileSync(filePath, "utf-8"));
-  if (!parsed || parsed.stateKey !== stateKey) {
+  try {
+    const content = readFileSync(filePath, "utf-8");
+    const parsed = safeParseJson<{ stateKey?: string; value?: T }>(content);
+    if (!parsed || parsed.stateKey !== stateKey) {
+      return null;
+    }
+    return parsed.value ?? null;
+  } catch (e) {
+    const errorCode = (e as NodeJS.ErrnoException)?.code;
+    if (errorCode === "ENOENT") {
+      return null;
+    }
+    if (errorCode === "EACCES" || errorCode === "EPERM") {
+      console.error(`[sqlite-state-store] アクセス権限エラー: ${filePath}`, e);
+      return null;
+    }
+    console.error(`[sqlite-state-store] ファイル読み込みエラー: ${filePath}`, e);
     return null;
   }
-  return parsed.value ?? null;
 }
 
 function writeFallbackValue<T>(stateKey: string, value: T): void {
   const filePath = buildFallbackFilePath(stateKey);
-  mkdirSync(dirname(filePath), { recursive: true });
-  writeFileSync(filePath, `${JSON.stringify({
-    stateKey,
-    updatedAt: new Date().toISOString(),
-    value,
-  }, null, 2)}\n`);
+  try {
+    mkdirSync(dirname(filePath), { recursive: true });
+    atomicWriteTextFile(filePath, JSON.stringify({
+      stateKey,
+      updatedAt: new Date().toISOString(),
+      value,
+    }, null, 2) + "\n");
+  } catch (e) {
+    const errorCode = (e as NodeJS.ErrnoException)?.code;
+    if (errorCode === "ENOSPC") {
+      console.error(`[sqlite-state-store] ディスク容量不足: ${filePath}`, e);
+      throw new Error(`ディスク容量不足のため状態保存に失敗しました: ${stateKey}`);
+    }
+    if (errorCode === "EACCES" || errorCode === "EPERM") {
+      console.error(`[sqlite-state-store] アクセス権限エラー: ${filePath}`, e);
+      throw new Error(`アクセ権限エラーのため状態保存に失敗しました: ${stateKey}`);
+    }
+    console.error(`[sqlite-state-store] ファイル書き込みエラー: ${filePath}`, e);
+    throw new Error(`状態保存に失敗しました: ${stateKey}`);
+  }
 }
 
 function listFallbackKeys(prefix?: string): string[] {
