@@ -79,6 +79,8 @@ import {
   decidePlanFollowups,
   decideImplementFollowups,
   decideReviewFollowups,
+  type ResearchFollowupDecision,
+  type PlanFollowupDecision,
   type ImplementFollowupDecision,
   type ReviewFollowupDecision,
 } from "./ul-workflow.js";
