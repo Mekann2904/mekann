@@ -3164,11 +3164,23 @@ ${phasesDisplay}
 
       // Force claim ownership
       const now = new Date().toISOString();
-      currentWorkflow.ownerInstanceId = instanceId;
-      currentWorkflow.updatedAt = now;
 
-      saveState(currentWorkflow);
-      setCurrentWorkflow(currentWorkflow);
+      // BUG FIX: Save state before in-memory mutation for consistency
+      // Backup previous state in case saveState fails
+      const previousOwnerInstanceId = currentWorkflow.ownerInstanceId;
+      const previousUpdatedAt = currentWorkflow.updatedAt;
+
+      try {
+        currentWorkflow.ownerInstanceId = instanceId;
+        currentWorkflow.updatedAt = now;
+        saveState(currentWorkflow);
+        setCurrentWorkflow(currentWorkflow);
+      } catch (error) {
+        // Rollback on failure
+        currentWorkflow.ownerInstanceId = previousOwnerInstanceId;
+        currentWorkflow.updatedAt = previousUpdatedAt;
+        throw error;
+      }
 
       let statusText = `所有権を強制的に変更しました。\n\n` +
         `以前の所有者: ${previousOwner}${ownerPid ? ` (PID: ${ownerPid})` : ""}\n` +
