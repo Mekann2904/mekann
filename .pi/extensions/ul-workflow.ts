@@ -584,7 +584,7 @@ function decideImplementFollowups(baseOutput: string): ImplementFollowupDecision
   };
 }
 
-function decideReviewFollowups(baseOutput: string): ReviewFollowupDecision {
+export function decideReviewFollowups(baseOutput: string): ReviewFollowupDecision {
   const gapSection = extractDagTaskSection(baseOutput, "review-gap-check");
   const riskMatch = gapSection.match(/DEEP_DIVE_RISK:\s*([^\n]+)/i);
   const verificationMatch = gapSection.match(/DEEP_DIVE_VERIFICATION:\s*([^\n]+)/i);

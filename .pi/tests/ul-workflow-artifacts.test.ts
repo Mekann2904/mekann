@@ -927,3 +927,90 @@ No deep dive needed. Plan ready.`;
     expect(result.needsValidationDeepDive).toBe(false);
   });
 });
+
+describe("decideReviewFollowups", () => {
+  it("parses DEEP_DIVE_RISK: yes and DEEP_DIVE_VERIFICATION: no", async () => {
+    const { decideReviewFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## review-gap-check
+Status: completed
+DEEP_DIVE_RISK: yes
+DEEP_DIVE_VERIFICATION: no
+RATIONALE: Risk assessment needs deep dive`;
+
+    const result = decideReviewFollowups(gapCheckOutput);
+    expect(result.needsRiskDeepDive).toBe(true);
+    expect(result.needsVerificationDeepDive).toBe(false);
+    expect(result.rationale).toContain("Risk assessment");
+  });
+
+  it("parses DEEP_DIVE_RISK: no and DEEP_DIVE_VERIFICATION: yes", async () => {
+    const { decideReviewFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## review-gap-check
+Status: completed
+DEEP_DIVE_RISK: no
+DEEP_DIVE_VERIFICATION: yes
+RATIONALE: Verification strategy needs deep dive`;
+
+    const result = decideReviewFollowups(gapCheckOutput);
+    expect(result.needsRiskDeepDive).toBe(false);
+    expect(result.needsVerificationDeepDive).toBe(true);
+  });
+
+  it("parses DEEP_DIVE_RISK: yes and DEEP_DIVE_VERIFICATION: yes", async () => {
+    const { decideReviewFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## review-gap-check
+Status: completed
+DEEP_DIVE_RISK: yes
+DEEP_DIVE_VERIFICATION: yes
+RATIONALE: Both risk and verification need deep dive`;
+
+    const result = decideReviewFollowups(gapCheckOutput);
+    expect(result.needsRiskDeepDive).toBe(true);
+    expect(result.needsVerificationDeepDive).toBe(true);
+  });
+
+  it("returns defaults when no explicit flags", async () => {
+    const { decideReviewFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## review-gap-check
+Status: completed
+No deep dive needed. Review ready.`;
+
+    const result = decideReviewFollowups(gapCheckOutput);
+    expect(result.needsRiskDeepDive).toBe(false);
+    expect(result.needsVerificationDeepDive).toBe(false);
+  });
+
+  it("handles empty/null output gracefully", async () => {
+    const { decideReviewFollowups } = await import("../extensions/ul-workflow.js");
+
+    const result = decideReviewFollowups("");
+    expect(result.needsRiskDeepDive).toBe(false);
+    expect(result.needsVerificationDeepDive).toBe(false);
+  });
+
+  it("detects risk keywords in fallback heuristic", async () => {
+    const { decideReviewFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## review-gap-check
+Status: completed
+Security risk detected in authentication flow`;
+
+    const result = decideReviewFollowups(gapCheckOutput);
+    expect(result.needsRiskDeepDive).toBe(true);
+  });
+
+  it("detects verification keywords in fallback heuristic", async () => {
+    const { decideReviewFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## review-gap-check
+Status: completed
+Test coverage verification required`;
+
+    const result = decideReviewFollowups(gapCheckOutput);
+    expect(result.needsVerificationDeepDive).toBe(true);
+  });
+});
