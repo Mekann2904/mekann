@@ -480,13 +480,13 @@ export type PlanFollowupDecision = {
   rationale: string;
 };
 
-type ImplementFollowupDecision = {
+export type ImplementFollowupDecision = {
   needsFixupDeepDive: boolean;
   needsVerificationDeepDive: boolean;
   rationale: string;
 };
 
-type ReviewFollowupDecision = {
+export type ReviewFollowupDecision = {
   needsRiskDeepDive: boolean;
   needsVerificationDeepDive: boolean;
   rationale: string;
