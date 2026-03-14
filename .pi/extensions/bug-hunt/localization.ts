@@ -89,7 +89,12 @@ async function fileExists(path: string): Promise<boolean> {
   try {
     await access(path);
     return true;
-  } catch {
+  } catch (error) {
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    // ENOENT is expected (file doesn't exist), log other errors
+    if (errorCode !== "ENOENT") {
+      console.error(`[bug-hunt] fileExists failed for ${path}:`, errorCode ?? "unknown", error);
+    }
     return false;
   }
 }
@@ -365,7 +370,11 @@ export async function expandBugHuntPreferredFiles(cwd: string, focusFiles: strin
           }
         }
       }
-    } catch {
+    } catch (error) {
+      const errorCode = (error as NodeJS.ErrnoException)?.code;
+      if (errorCode !== "ENOENT") {
+        console.warn(`[bug-hunt] expandBugHuntPreferredFiles: Failed to read ${absolutePath}:`, errorCode ?? "unknown", error);
+      }
       continue;
     }
   }
