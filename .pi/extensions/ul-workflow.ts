@@ -156,7 +156,8 @@ function readActiveWorkflowRegistry(): ActiveWorkflowRegistry {
       updatedAt: parsed.updatedAt ?? new Date().toISOString(),
       activeByInstance: parsed.activeByInstance ?? {},
     };
-  } catch {
+  } catch (error) {
+    console.error("[ul-workflow] readActiveWorkflowRegistry failed:", error);
     return createEmptyActiveWorkflowRegistry();
   }
 }
@@ -2386,7 +2387,11 @@ export function loadState(taskId: string): WorkflowState | null {
   try {
     const content = fs.readFileSync(statusPath, "utf-8");
     return JSON.parse(content);
-  } catch {
+  } catch (error) {
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    if (errorCode !== "ENOENT") {
+      console.error(`[ul-workflow] loadState failed for ${taskId}:`, errorCode ?? "unknown", error);
+    }
     return null;
   }
 }
@@ -2498,7 +2503,11 @@ function readPlanFile(taskId: string): string {
   const planPath = path.join(getTaskDir(taskId), "plan.md");
   try {
     return fs.readFileSync(planPath, "utf-8");
-  } catch {
+  } catch (error) {
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    if (errorCode !== "ENOENT") {
+      console.error(`[ul-workflow] readPlanFile failed for ${taskId}:`, errorCode ?? "unknown", error);
+    }
     return "";
   }
 }
@@ -2580,8 +2589,12 @@ async function ensureWorkflowArtifact(
     if (existing.trim()) {
       return { created: false, content: existing };
     }
-  } catch {
-    // Ignore missing file and create fallback below.
+  } catch (error) {
+    // ENOENT is expected (file doesn't exist yet), log other errors
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    if (errorCode !== "ENOENT") {
+      console.error(`[ul-workflow] ensureWorkflowArtifact readFile failed for ${artifactPath}:`, errorCode ?? "unknown", error);
+    }
   }
 
   const normalized = fallbackContent.trim() || "_No content generated._";
