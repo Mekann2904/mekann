@@ -4120,8 +4120,13 @@ plan.mdに基づく実装
       }
 
       workflow.approvedPhases.push(previousPhase);
-      const nextPhase = advancePhase(workflow);
+
+      // BEGIN FIX: BUG-002 原子的状態更新
+      // フェーズ進行前に状態を永続化
       saveState(workflow);
+      const nextPhase = advancePhase(workflow);
+      // END FIX
+
       setCurrentWorkflow(workflow);
 
       ctx.ui.notify(`${previousPhase.toUpperCase()} 承認 → ${nextPhase.toUpperCase()}`, "info");
