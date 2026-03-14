@@ -2448,7 +2448,11 @@ async function loadStateAsync(taskId: string): Promise<WorkflowState | null> {
   try {
     const content = await fsPromises.readFile(statusPath, "utf-8");
     return JSON.parse(content) as WorkflowState;
-  } catch {
+  } catch (error) {
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    if (errorCode !== "ENOENT") {
+      console.error(`[ul-workflow] loadStateAsync failed for ${taskId}:`, errorCode ?? "unknown", error);
+    }
     return null;
   }
 }
