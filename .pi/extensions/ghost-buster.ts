@@ -78,14 +78,8 @@ function isPiProcess(pid: number): boolean | null {
 			encoding: "utf-8",
 		}).trim();
 		return output === "pi" || output.includes("node");
-	} catch (err) {
+	} catch {
 		// psコマンド失敗時は判断不能としてnullを返す
-		if (config.verbose && ctx) {
-			ctx.ui?.notify(
-				`ps command failed for PID ${pid}, cannot determine if pi process: ${err instanceof Error ? err.message : String(err)}`,
-				"info"
-			);
-		}
 		return null;
 	}
 }

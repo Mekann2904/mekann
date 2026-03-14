@@ -4,7 +4,7 @@ category: user-guide
 audience: daily-user
 last_updated: 2026-03-08
 tags: [runtime, multi-instance, coordination, limits]
-related: [./01-extensions.md, ./08-subagents.md, ./09-agent-teams.md]
+related: [./01-extensions.md, ./08-subagents.md]
 ---
 
 # Cross-Instance Runtime
@@ -476,5 +476,4 @@ pi_model_limits [--provider <provider>]
 ## 関連ドキュメント
 
 - [Subagents](08-subagents.md) - サブエージェントの使用方法
-- [Agent Teams](09-agent-teams.md) - エージェントチームの使用方法
 - [Dynamic Tools](13-dynamic-tools.md) - 動的ツールの使用方法

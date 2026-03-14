@@ -4,7 +4,7 @@ category: user-guide
 audience: developer
 last_updated: 2026-03-08
 tags: [invariant, formal-methods, testing, quint, rust]
-related: [08-subagents.md, 09-agent-teams.md]
+related: [08-subagents.md]
 ---
 
 # Invariant Validation Pipeline
@@ -289,7 +289,6 @@ impl CounterModel {
 ## 関連リソース
 
 - [invariant-generationスキル](../../.pi/skills/invariant-generation/SKILL.md)
-- [invariant-generation-team](../../.pi/extensions/agent-teams/definitions/invariant-generation-team/team.md)
 - [Quint Documentation](https://informalsystems.github.io/quint/)
 - [proptest Book](https://altsysrq.github.io/proptest-book/)
 
@@ -298,7 +297,6 @@ impl CounterModel {
 ## 関連トピック
 
 - [サブエージェント](./08-subagents.md) - タスクの委任
-- [エージェントチーム](./09-agent-teams.md) - マルチエージェント協調
 
 ## 次のトピック
 

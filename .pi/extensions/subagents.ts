@@ -31,6 +31,8 @@
 
 import { writeFileSync, existsSync, readFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { withFileLock } from "../lib/storage/storage-lock.js";
+import { getTaskStorageStateKey } from "../lib/storage/state-keys.js";
 
 import { Type } from "@mariozechner/pi-ai";
 import {
@@ -344,6 +346,17 @@ interface TaskStorage {
 }
 
 /**
+ * タスクストレージのパスを取得
+ * @summary タスクストレージパス取得
+ * @returns タスクストレージファイルのパス
+ */
+function getTaskStoragePath(): string {
+  const stateKey = getTaskStorageStateKey(process.cwd());
+  // SQLite database file path
+  return `.pi/storage/${stateKey}.db`;
+}
+
+/**
  * タスクストレージを読み込む
  * @summary タスクストレージ読込
  */
@@ -365,22 +378,25 @@ function saveTaskStorage(storage: TaskStorage): void {
 
 /**
  * タスクを in_progress に設定
- * @summary タスク進行中設定
+ * @summary タスク進行中設定（アトミック操作)
  * @param taskId - タスクID
  * @returns 設定に成功した場合はtrue
  */
 function setTaskInProgress(taskId: string): boolean {
-	const storage = loadTaskStorage();
-	const task = storage.tasks.find(t => t.id === taskId);
-	if (!task || task.status !== "todo") {
-		return false;
-	}
-	task.status = "in_progress";
-	task.ownerInstanceId = getInstanceId();
-	task.claimedAt = new Date().toISOString();
-	task.updatedAt = new Date().toISOString();
-	saveTaskStorage(storage);
-	return true;
+	// Use file lock to prevent TOCTOU race condition
+	return withFileLock(getTaskStorageStateKey(process.cwd()), () => {
+	 const storage = loadTaskStorage();
+    const task = storage.tasks.find(t => t.id === taskId);
+    if (!task || task.status !== "todo") {
+      return false;
+    }
+    task.status = "in_progress";
+    task.ownerInstanceId = getInstanceId();
+    task.claimedAt = new Date().toISOString();
+    task.updatedAt = new Date().toISOString();
+    saveTaskStorage(storage);
+    return true;
+  });
 }
 
 // ============================================================================

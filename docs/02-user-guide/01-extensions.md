@@ -4,7 +4,7 @@ category: user-guide
 audience: daily-user
 last_updated: 2026-03-08
 tags: [extensions, overview]
-related: [./02-question.md, ./08-subagents.md, ./09-agent-teams.md]
+related: [./02-question.md, ./08-subagents.md]
 ---
 
 # 拡張機能一覧
@@ -30,7 +30,6 @@ pi拡張機能コレクションで利用可能なすべての拡張機能の概
 |---------|------|------|
 | **plan_*** | 計画管理とタスク追跡 | [→](./07-plan.md) |
 | **subagent_*** | サブエージェント | [→](./08-subagents.md) |
-| **agent_team_*** | エージェントチーム | [→](./09-agent-teams.md) |
 | **ul-dual-mode** | デュアルモード強制実行 | [→](./10-ul-dual-mode.md) |
 | **ul-workflow** | ULモードでタスク分解・実行 | [→](./16-ul-workflow.md) |
 | **cross-instance-runtime** | クロスインスタンス協調実行 | [→](./12-cross-instance-runtime.md) |
@@ -629,7 +628,6 @@ run_dynamic_tool
 
 - [question](./02-question.md) - インタラクティブUIの詳細
 - [subagents](./08-subagents.md) - サブエージェントの詳細
-- [agent-teams](./09-agent-teams.md) - エージェントチームの詳細
 - [cross-instance-runtime](./12-cross-instance-runtime.md) - クロスインスタンス調整
 - [dynamic-tools](./13-dynamic-tools.md) - 動的ツールの詳細
 - [self-improvement](./17-self-improvement.md) - 自己改善システム
