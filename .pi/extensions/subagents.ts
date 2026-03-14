@@ -883,13 +883,20 @@ function computeAgentConfigHash(agent: SubagentDefinition): string {
   return hash.toString(16);
 }
 
-function loadSubagentRunArtifact(outputFile: string): { prompt?: string; output?: string } | null {
+export function loadSubagentRunArtifact(outputFile: string): { prompt?: string; output?: string } | null {
   if (!outputFile || !existsSync(outputFile)) return null;
   try {
     const raw = readFileSync(outputFile, "utf-8");
     const parsed = JSON.parse(raw) as { prompt?: string; output?: string };
     return parsed;
-  } catch {
+  } catch (error) {
+    // エラーの種類を区別してログ出力
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (error instanceof SyntaxError) {
+      console.error(`[subagents] Failed to parse artifact JSON: ${outputFile}: ${errorMessage}`);
+    } else {
+      console.error(`[subagents] Failed to load artifact: ${outputFile}: ${errorMessage}`);
+    }
     return null;
   }
 }

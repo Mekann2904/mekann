@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import registerUlWorkflowExtension from "../extensions/ul-workflow.js";
@@ -612,5 +612,405 @@ describe.sequential("UL workflow artifacts", () => {
       const result = await modifyPlanTool!.execute("tc-modify-empty", { modifications: "" }, undefined, undefined, {});
       expect(result.details.error).toBe("empty_modifications");
     });
+
+    it("requires plan.md for implement phase validation", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      const planTool = pi.tools.get("ul_workflow_plan");
+      const confirmPlanTool = pi.tools.get("ul_workflow_confirm_plan");
+      const executePlanTool = pi.tools.get("ul_workflow_execute_plan");
+      expect(startTool && researchTool && approveTool && planTool && confirmPlanTool && executePlanTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-start-implement", { task: "implementフェーズのアーティファクト検証テスト" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      // research → plan → execute_planまで進める
+      const ctx = {
+        executeTool: async ({ params }: { toolName: string; params: Record<string, unknown> }) => ({
+          content: [{
+            type: "text",
+            text: JSON.stringify(params).includes("researcher")
+              ? "# Research\n\n調査結果。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）"
+              : JSON.stringify(params).includes("architect")
+                ? "# Plan\n\n- [ ] 実装計画"
+                : "実装完了",
+          }],
+        }),
+      };
+
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-1", {}, undefined, undefined, ctx);
+      await planTool!.execute("tc-plan", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-2", {}, undefined, undefined, ctx);
+      await confirmPlanTool!.execute("tc-confirm", {}, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-3", {}, undefined, undefined, ctx);
+
+      // execute_planを呼ぶ（この時点でplan.mdは存在するはず）
+      const result = await executePlanTool!.execute("tc-execute", {}, undefined, undefined, ctx);
+      // 実装フェーズではplan.mdが存在すればエラーにならない
+      // テスト環境では実際にファイルが作成されるため、成功したことを確認
+      expect(result.content[0].text).toBeDefined();
+    });
+
+    it("requires review.md for review phase validation", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      const planTool = pi.tools.get("ul_workflow_plan");
+      const confirmPlanTool = pi.tools.get("ul_workflow_confirm_plan");
+      const executePlanTool = pi.tools.get("ul_workflow_execute_plan");
+      const reviewTool = pi.tools.get("ul_workflow_review");
+      expect(startTool && researchTool && approveTool && planTool && confirmPlanTool && executePlanTool && reviewTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-start-review", { task: "reviewフェーズのアーティファクト検証テスト" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      // 全フェーズを進める
+      const ctx = {
+        executeTool: async ({ params }: { toolName: string; params: Record<string, unknown> }) => ({
+          content: [{
+            type: "text",
+            text: JSON.stringify(params).includes("researcher")
+              ? "# Research\n\n調査結果。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）"
+              : JSON.stringify(params).includes("architect")
+                ? "# Plan\n\n- [ ] 実装計画"
+                : JSON.stringify(params).includes("reviewer")
+                  ? "# Review\n\nレビュー結果。\n\n## 判定結果\n- [ ] normal（通常）"
+                  : "実装完了",
+          }],
+        }),
+      };
+
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-1", {}, undefined, undefined, ctx);
+      await planTool!.execute("tc-plan", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-2", {}, undefined, undefined, ctx);
+      await confirmPlanTool!.execute("tc-confirm", {}, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-3", {}, undefined, undefined, ctx);
+      await executePlanTool!.execute("tc-execute", {}, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-4", {}, undefined, undefined, ctx);
+
+      // review.mdを作成
+      const taskDir = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId);
+      writeFileSync(path.join(taskDir, "review.md"), "# Review\n\nレビュー内容です。\n");
+
+      const result = await reviewTool!.execute("tc-review", { task_id: taskId }, undefined, undefined, ctx);
+      expect(result.details.error).toBeUndefined();
+    });
+
+    it("returns phase_artifact_not_ready when plan.md missing in implement phase", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      const planTool = pi.tools.get("ul_workflow_plan");
+      const confirmPlanTool = pi.tools.get("ul_workflow_confirm_plan");
+      expect(startTool && researchTool && approveTool && planTool && confirmPlanTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-start-impl-no-plan", { task: "plan.md欠損テスト" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      const ctx = {
+        executeTool: async ({ params }: { toolName: string; params: Record<string, unknown> }) => ({
+          content: [{
+            type: "text",
+            text: JSON.stringify(params).includes("researcher")
+              ? "# Research\n\n調査結果。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）"
+              : JSON.stringify(params).includes("architect")
+                ? "# Plan\n\n- [ ] 実装計画"
+                : "実装完了",
+          }],
+        }),
+      };
+
+      // research → plan → confirm_planまで進める
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-1", {}, undefined, undefined, ctx);
+      await planTool!.execute("tc-plan", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-2", {}, undefined, undefined, ctx);
+      await confirmPlanTool!.execute("tc-confirm", {}, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-3", {}, undefined, undefined, ctx);
+
+      // plan.mdを削除
+      const taskDir = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId);
+      const planPath = path.join(taskDir, "plan.md");
+      if (existsSync(planPath)) {
+        unlinkSync(planPath);
+      }
+
+      // implementフェーズでapproveを呼ぶとphase_artifact_not_readyエラーになる
+      const result = await approveTool!.execute("tc-approve-impl-no-plan", {}, undefined, undefined, ctx);
+      expect(result.details.error).toBe("phase_artifact_not_ready");
+    });
+
+    it("returns phase_artifact_not_ready when review.md missing in review phase", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      const planTool = pi.tools.get("ul_workflow_plan");
+      const confirmPlanTool = pi.tools.get("ul_workflow_confirm_plan");
+      const executePlanTool = pi.tools.get("ul_workflow_execute_plan");
+      const reviewTool = pi.tools.get("ul_workflow_review");
+      expect(startTool && researchTool && approveTool && planTool && confirmPlanTool && executePlanTool && reviewTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-start-review-no-md", { task: "review.md欠損テスト" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      const ctx = {
+        executeTool: async ({ params }: { toolName: string; params: Record<string, unknown> }) => ({
+          content: [{
+            type: "text",
+            text: JSON.stringify(params).includes("researcher")
+              ? "# Research\n\n調査結果。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）"
+              : JSON.stringify(params).includes("architect")
+                ? "# Plan\n\n- [ ] 実装計画"
+                : JSON.stringify(params).includes("reviewer")
+                  ? "# Review\n\nレビュー結果。\n\n## 判定結果\n- [ ] normal（通常）"
+                  : "実装完了",
+          }],
+        }),
+      };
+
+      // 全フェーズを進める
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-1", {}, undefined, undefined, ctx);
+      await planTool!.execute("tc-plan", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-2", {}, undefined, undefined, ctx);
+      await confirmPlanTool!.execute("tc-confirm", {}, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-3", {}, undefined, undefined, ctx);
+      await executePlanTool!.execute("tc-execute", {}, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-4", {}, undefined, undefined, ctx);
+
+      // review.mdを作成せずにreviewツールを呼ぶ
+      // reviewツールはreview.mdを生成するツールだが、現在の実装ではapproveがreviewフェーズで
+      // review.mdの存在をチェックするため、approveでエラーを検証する
+      const result = await approveTool!.execute("tc-approve-review-no-md", {}, undefined, undefined, ctx);
+      expect(result.details.error).toBe("phase_artifact_not_ready");
+    });
+  });
+});
+
+// =============================================================================
+// decideResearchFollowups and decidePlanFollowups unit tests
+// =============================================================================
+describe("decideResearchFollowups", () => {
+  it("parses DEEP_DIVE_EXTERNAL: yes and DEEP_DIVE_CODEBASE: no", async () => {
+    const { decideResearchFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## research-gap-check
+Status: completed
+DEEP_DIVE_EXTERNAL: yes
+DEEP_DIVE_CODEBASE: no
+RATIONALE: External documentation is needed for API reference`;
+
+    const result = decideResearchFollowups(gapCheckOutput);
+    expect(result.needsExternalDeepDive).toBe(true);
+    expect(result.needsCodebaseDeepDive).toBe(false);
+    expect(result.rationale).toContain("External documentation");
+  });
+
+  it("parses DEEP_DIVE_EXTERNAL: no and DEEP_DIVE_CODEBASE: yes", async () => {
+    const { decideResearchFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## research-gap-check
+Status: completed
+DEEP_DIVE_EXTERNAL: no
+DEEP_DIVE_CODEBASE: yes
+RATIONALE: Codebase has relevant implementation patterns`;
+
+    const result = decideResearchFollowups(gapCheckOutput);
+    expect(result.needsExternalDeepDive).toBe(false);
+    expect(result.needsCodebaseDeepDive).toBe(true);
+    expect(result.rationale).toContain("Codebase");
+  });
+
+  it("parses DEEP_DIVE_EXTERNAL: yes and DEEP_DIVE_CODEBASE: yes", async () => {
+    const { decideResearchFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## research-gap-check
+Status: completed
+DEEP_DIVE_EXTERNAL: yes
+DEEP_DIVE_CODEBASE: yes
+RATIONALE: Both external docs and codebase patterns needed`;
+
+    const result = decideResearchFollowups(gapCheckOutput);
+    expect(result.needsExternalDeepDive).toBe(true);
+    expect(result.needsCodebaseDeepDive).toBe(true);
+  });
+
+  it("returns defaults when no explicitflags", async () => {
+    const { decideResearchFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## research-gap-check
+Status: completed
+No deep dive needed. Plan ready.`;
+
+    const result = decideResearchFollowups(gapCheckOutput);
+    expect(result.needsExternalDeepDive).toBe(false);
+    expect(result.needsCodebaseDeepDive).toBe(false);
+  });
+
+  it("handles empty/null output gracefully", async () => {
+    const { decideResearchFollowups } = await import("../extensions/ul-workflow.js");
+
+    const result = decideResearchFollowups("");
+    expect(result.needsExternalDeepDive).toBe(false);
+    expect(result.needsCodebaseDeepDive).toBe(false);
+  });
+});
+
+describe("decidePlanFollowups", () => {
+  it("parses DEEP_DIVE_CHANGES: yes and DEEP_DIVE_VALIDATION: no", async () => {
+    const { decidePlanFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## plan-gap-check
+Status: completed
+DEEP_DIVE_CHANGES: yes
+DEEP_DIVE_VALIDATION: no
+RATIONALE: Changes impact needs investigation`;
+
+    const result = decidePlanFollowups(gapCheckOutput);
+    expect(result.needsChangesDeepDive).toBe(true);
+    expect(result.needsValidationDeepDive).toBe(false);
+    expect(result.rationale).toContain("Changes impact");
+  });
+
+  it("parses DEEP_DIVE_CHANGES: no and DEEP_DIVE_VALIDATION: yes", async () => {
+    const { decidePlanFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## plan-gap-check
+Status: completed
+DEEP_DIVE_CHANGES: no
+DEEP_DIVE_VALIDATION: yes
+RATIONALE: Validation strategy needs deep dive`;
+
+    const result = decidePlanFollowups(gapCheckOutput);
+    expect(result.needsChangesDeepDive).toBe(false);
+    expect(result.needsValidationDeepDive).toBe(true);
+  });
+
+  it("parses DEEP_DIVE_CHANGES: yes and DEEP_DIVE_VALIDATION: yes", async () => {
+    const { decidePlanFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## plan-gap-check
+Status: completed
+DEEP_DIVE_CHANGES: yes
+DEEP_DIVE_VALIDATION: yes
+RATIONALE: Both changes and validation need deep dive`;
+
+    const result = decidePlanFollowups(gapCheckOutput);
+    expect(result.needsChangesDeepDive).toBe(true);
+    expect(result.needsValidationDeepDive).toBe(true);
+  });
+
+  it("returns defaults when no explicitflags", async () => {
+    const { decidePlanFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## plan-gap-check
+Status: completed
+No deep dive needed. Plan ready.`;
+
+    const result = decidePlanFollowups(gapCheckOutput);
+    expect(result.needsChangesDeepDive).toBe(false);
+    expect(result.needsValidationDeepDive).toBe(false);
+  });
+
+  it("handles empty/nulloutput gracefully", async () => {
+    const { decidePlanFollowups } = await import("../extensions/ul-workflow.js");
+
+    const result = decidePlanFollowups("");
+    expect(result.needsChangesDeepDive).toBe(false);
+    expect(result.needsValidationDeepDive).toBe(false);
+  });
+});
+
+describe("decideReviewFollowups", () => {
+  it("parses DEEP_DIVE_RISK: yes and DEEP_DIVE_VERIFICATION: no", async () => {
+    const { decideReviewFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## review-gap-check
+Status: completed
+DEEP_DIVE_RISK: yes
+DEEP_DIVE_VERIFICATION: no
+RATIONALE: Risk assessment needs deep dive`;
+
+    const result = decideReviewFollowups(gapCheckOutput);
+    expect(result.needsRiskDeepDive).toBe(true);
+    expect(result.needsVerificationDeepDive).toBe(false);
+    expect(result.rationale).toContain("Risk assessment");
+  });
+
+  it("parses DEEP_DIVE_RISK: no and DEEP_DIVE_VERIFICATION: yes", async () => {
+    const { decideReviewFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## review-gap-check
+Status: completed
+DEEP_DIVE_RISK: no
+DEEP_DIVE_VERIFICATION: yes
+RATIONALE: Verification strategy needs deep dive`;
+
+    const result = decideReviewFollowups(gapCheckOutput);
+    expect(result.needsRiskDeepDive).toBe(false);
+    expect(result.needsVerificationDeepDive).toBe(true);
+  });
+
+  it("parses DEEP_DIVE_RISK: yes and DEEP_DIVE_VERIFICATION: yes", async () => {
+    const { decideReviewFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## review-gap-check
+Status: completed
+DEEP_DIVE_RISK: yes
+DEEP_DIVE_VERIFICATION: yes
+RATIONALE: Both risk and verification need deep dive`;
+
+    const result = decideReviewFollowups(gapCheckOutput);
+    expect(result.needsRiskDeepDive).toBe(true);
+    expect(result.needsVerificationDeepDive).toBe(true);
+  });
+
+  it("returns defaults when no explicit flags", async () => {
+    const { decideReviewFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## review-gap-check
+Status: completed
+No deep dive needed. Review ready.`;
+
+    const result = decideReviewFollowups(gapCheckOutput);
+    expect(result.needsRiskDeepDive).toBe(false);
+    expect(result.needsVerificationDeepDive).toBe(false);
+  });
+
+  it("handles empty/null output gracefully", async () => {
+    const { decideReviewFollowups } = await import("../extensions/ul-workflow.js");
+
+    const result = decideReviewFollowups("");
+    expect(result.needsRiskDeepDive).toBe(false);
+    expect(result.needsVerificationDeepDive).toBe(false);
+  });
+
+  it("detects risk keywords in fallback heuristic", async () => {
+    const { decideReviewFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## review-gap-check
+Status: completed
+Security risk detected in authentication flow`;
+
+    const result = decideReviewFollowups(gapCheckOutput);
+    expect(result.needsRiskDeepDive).toBe(true);
+  });
+
+  it("detects verification keywords in fallback heuristic", async () => {
+    const { decideReviewFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## review-gap-check
+Status: completed
+Test coverage verification required`;
+
+    const result = decideReviewFollowups(gapCheckOutput);
+    expect(result.needsVerificationDeepDive).toBe(true);
   });
 });

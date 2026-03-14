@@ -289,6 +289,14 @@ function resolveWorkflowArtifactPath(taskId: string, phase: WorkflowPhase): stri
   if (phase === "plan" || phase === "annotate") {
     return path.join(getTaskDir(taskId), "plan.md");
   }
+  if (phase === "implement") {
+    // 実装フェーズではplan.mdが必須（実装はplanに基づいて行われる）
+    return path.join(getTaskDir(taskId), "plan.md");
+  }
+  if (phase === "review") {
+    // レビューフェーズではreview.mdが必須
+    return path.join(getTaskDir(taskId), "review.md");
+  }
   return null;
 }
 
@@ -298,14 +306,46 @@ async function assertPhaseArtifactReady(taskId: string, phase: WorkflowPhase): P
     return;
   }
 
-  // ENOENT（ファイルなし）のみ空文字として扱い、他のエラーは伝播させる
-  const content = await fsPromises.readFile(artifactPath, "utf-8").catch((err: NodeJS.ErrnoException) => {
-    if (err.code === "ENOENT") return "";
-    throw err;
-  });
-  if (!content.trim()) {
-    throw new Error(`${phase}.md がまだ生成されていません: ${artifactPath}`);
+  // リトライロジック: ファイルシステムのレースコンディションを回避
+  // - 空コンテンツ（書き込み中の可能性）
+  // - 一時的エラー（EACCES, EMFILE, EBUSY）
+  const maxRetries = 3;
+  const baseDelayMs = 50;
+  const transientErrors = ["EACCES", "EMFILE", "EBUSY", "EAGAIN"];
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    if (attempt > 0) {
+      const delayMs = baseDelayMs * Math.pow(2, attempt - 1);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    try {
+      const content = await fsPromises.readFile(artifactPath, "utf-8");
+      if (content.trim()) {
+        return; // 成功: 有効なコンテンツが読み取れた
+      }
+      // 空コンテンツ: 書き込み中の可能性があるためリトライ
+      lastError = new Error(`${phase}.md が空です（書き込み中の可能性）: ${artifactPath}`);
+    } catch (err) {
+      const nodeErr = err as NodeJS.ErrnoException;
+      if (nodeErr.code === "ENOENT") {
+        // ファイルなし: リトライせず即座にエラー
+        throw new Error(`${phase}.md がまだ生成されていません: ${artifactPath}`);
+      }
+      if (nodeErr.code && transientErrors.includes(nodeErr.code)) {
+        // 一時的エラー: リトライ
+        lastError = nodeErr;
+        continue;
+      }
+      // その他のエラー: 即座にスロー
+      throw err;
+    }
   }
+
+  // リトライ上限到達
+  throw lastError || new Error(`${phase}.md がまだ生成されていません: ${artifactPath}`);
 }
 
 function getVerificationGateReason(cwd: string): string | null {
@@ -428,13 +468,13 @@ function buildResearchNodeOutputContract(): string {
   ].join("\n");
 }
 
-type ResearchFollowupDecision = {
+export type ResearchFollowupDecision = {
   needsExternalDeepDive: boolean;
   needsCodebaseDeepDive: boolean;
   rationale: string;
 };
 
-type PlanFollowupDecision = {
+export type PlanFollowupDecision = {
   needsChangesDeepDive: boolean;
   needsValidationDeepDive: boolean;
   rationale: string;
@@ -452,21 +492,21 @@ type ReviewFollowupDecision = {
   rationale: string;
 };
 
-function extractDagTaskSection(output: string, taskId: string): string {
+export function extractDagTaskSection(output: string, taskId: string): string {
   const normalized = String(output || "");
   const pattern = new RegExp(`## ${taskId}\\nStatus: [^\\n]*\\n([\\s\\S]*?)(?=\\n## [^\\n]+\\nStatus:|$)`);
   const match = normalized.match(pattern);
   return match?.[1]?.trim() ?? "";
 }
 
-function normalizeGapDecision(value: string): boolean | null {
+export function normalizeGapDecision(value: string): boolean | null {
   const normalized = value.trim().toLowerCase();
   if (["yes", "true", "required", "needed"].includes(normalized)) return true;
   if (["no", "false", "none", "not_needed", "not-needed"].includes(normalized)) return false;
   return null;
 }
 
-function decideResearchFollowups(baseOutput: string): ResearchFollowupDecision {
+export function decideResearchFollowups(baseOutput: string): ResearchFollowupDecision {
   const gapSection = extractDagTaskSection(baseOutput, "research-gap-check");
   const externalMatch = gapSection.match(/DEEP_DIVE_EXTERNAL:\s*([^\n]+)/i);
   const codebaseMatch = gapSection.match(/DEEP_DIVE_CODEBASE:\s*([^\n]+)/i);
@@ -492,7 +532,7 @@ function decideResearchFollowups(baseOutput: string): ResearchFollowupDecision {
   };
 }
 
-function decidePlanFollowups(baseOutput: string): PlanFollowupDecision {
+export function decidePlanFollowups(baseOutput: string): PlanFollowupDecision {
   const gapSection = extractDagTaskSection(baseOutput, "plan-gap-check");
   const changesMatch = gapSection.match(/DEEP_DIVE_CHANGES:\s*([^\n]+)/i);
   const validationMatch = gapSection.match(/DEEP_DIVE_VALIDATION:\s*([^\n]+)/i);
@@ -544,7 +584,7 @@ function decideImplementFollowups(baseOutput: string): ImplementFollowupDecision
   };
 }
 
-function decideReviewFollowups(baseOutput: string): ReviewFollowupDecision {
+export function decideReviewFollowups(baseOutput: string): ReviewFollowupDecision {
   const gapSection = extractDagTaskSection(baseOutput, "review-gap-check");
   const riskMatch = gapSection.match(/DEEP_DIVE_RISK:\s*([^\n]+)/i);
   const verificationMatch = gapSection.match(/DEEP_DIVE_VERIFICATION:\s*([^\n]+)/i);
@@ -1926,7 +1966,7 @@ ${baseContext}`,
   const artifactPath = typeof dagParams.artifactPath === "string" ? dagParams.artifactPath.trim() : "";
   if (artifactPath && artifactContent.trim()) {
     await fsPromises.mkdir(path.dirname(artifactPath), { recursive: true });
-    await atomicWriteTextFile(artifactPath, `${artifactContent.trim()}\n`);
+    atomicWriteTextFile(artifactPath, `${artifactContent.trim()}\n`);
   }
 
   updateSession(dagSessionId, {

@@ -51,7 +51,14 @@ import {
 } from "../../lib/agent/agent-types.js";
 import {
   reevaluateAgentRunFailure,
+  isRetryableSubagentError as isRetryableSubagentErrorLib,
+  resolveSubagentFailureOutcome as resolveSubagentFailureOutcomeLib,
 } from "../../lib/agent/agent-errors.js";
+import {
+  isEmptyOutputFailureMessage as isEmptyOutputFailureMessageLib,
+  buildFailureSummary as buildFailureSummaryLib,
+  SUBAGENT_CONFIG,
+} from "../../lib/agent/agent-common.js";
 import {
   filterRelevantSkills,
   type SkillRelevanceConfig,
@@ -398,7 +405,7 @@ export function ensureOutputStructure(output: string): ThreeLayerPipelineResult 
 }
 
 // ============================================================================
-// Failure Resolution
+// Failure Resolution (re-exported from lib/agent/agent-errors.ts)
 // ============================================================================
 
 /**
@@ -407,15 +414,10 @@ export function ensureOutputStructure(output: string): ThreeLayerPipelineResult 
  * @param error 判定対象のエラー
  * @param statusCode ステータスコード（任意）
  * @returns リトライ可能な場合true
+ * @description lib/agent/agent-errors.tsの包括的な実装を使用。
+ *              429、5xx、設定可能なパターンもチェックする。
  */
-export function isRetryableSubagentError(error: unknown, statusCode?: number): boolean {
-  if (isNetworkErrorRetryable(error, statusCode)) {
-    return true;
-  }
-
-  const message = toErrorMessage(error).toLowerCase();
-  return message.includes("subagent returned empty output");
-}
+export const isRetryableSubagentError = isRetryableSubagentErrorLib;
 
 /**
  * 空出力エラーか判定する
@@ -424,7 +426,7 @@ export function isRetryableSubagentError(error: unknown, statusCode?: number): b
  * @returns 空出力エラーの場合true
  */
 export function isEmptyOutputFailureMessage(message: string): boolean {
-  return message.toLowerCase().includes("subagent returned empty output");
+  return isEmptyOutputFailureMessageLib(message, SUBAGENT_CONFIG);
 }
 
 /**
@@ -433,40 +435,17 @@ export function isEmptyOutputFailureMessage(message: string): boolean {
  * @param message 元のエラーメッセージ
  * @returns 作成した要約文字列
  */
-export function buildFailureSummary(message: string): string {
-  const lowered = message.toLowerCase();
-  if (lowered.includes("empty output")) return "(failed: empty output)";
-  if (lowered.includes("timed out") || lowered.includes("timeout")) return "(failed: timeout)";
-  if (lowered.includes("rate limit") || lowered.includes("429")) return "(failed: rate limit)";
-  return "(failed)";
-}
+export const buildFailureSummary = buildFailureSummaryLib;
 
 /**
  * エラー種別を判定する
  * @summary エラー種別を判定
  * @param error 判定対象のエラー
  * @returns エラー種別を示すシグナル
+ * @description lib/agent/agent-errors.tsの包括的な実装を使用。
+ *              レート制限、5xxエラーなども適切に判定する。
  */
-export function resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal {
-  if (isCancelledErrorMessage(error)) {
-    return { outcomeCode: "CANCELLED", retryRecommended: false };
-  }
-  if (isTimeoutErrorMessage(error)) {
-    return { outcomeCode: "TIMEOUT", retryRecommended: true };
-  }
-
-  const pressure = classifyPressureError(error);
-  if (pressure !== "other") {
-    return { outcomeCode: "RETRYABLE_FAILURE", retryRecommended: true };
-  }
-
-  const statusCode = extractStatusCodeFromMessage(error);
-  if (isRetryableSubagentError(error, statusCode)) {
-    return { outcomeCode: "RETRYABLE_FAILURE", retryRecommended: true };
-  }
-
-  return { outcomeCode: "NONRETRYABLE_FAILURE", retryRecommended: false };
-}
+export const resolveSubagentFailureOutcome = resolveSubagentFailureOutcomeLib;
 
 // ============================================================================
 // Research Task Guidelines (Phase 2: File Loading Optimization)

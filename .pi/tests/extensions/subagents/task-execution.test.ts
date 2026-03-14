@@ -34,6 +34,12 @@ import {
   extractSummary,
   shouldEnableSubagentExtensions,
 } from "../../../extensions/subagents/task-execution.js";
+import {
+  loadSubagentRunArtifact,
+} from "../../../extensions/subagents.js";
+import {
+  loadSubagentRunArtifact,
+} from "../../../extensions/subagents.js";
 
 describe("isHighRiskTask", () => {
   it("should detect delete/remove operations as high risk", () => {
@@ -326,6 +332,92 @@ describe("shouldEnableSubagentExtensions", () => {
     for (const task of nonResearchTasks) {
       const result = shouldEnableSubagentExtensions(task, undefined, undefined);
       expect(result).toBe(false);
+    }
+  });
+});
+
+describe("loadSubagentRunArtifact", () => {
+  it("should return null for undefined or empty path", () => {
+    expect(loadSubagentRunArtifact("")).toBeNull();
+    expect(loadSubagentRunArtifact(undefined as any)).toBeNull();
+  });
+
+  it("should return null for non-existent file", () => {
+    expect(loadSubagentRunArtifact("/non/existent/file.json")).toBeNull();
+  });
+
+  it("should parse valid JSON artifact", async () => {
+    // テスト用の一時ファイルを作成
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const tmpDir = os.tmpdir();
+    const tmpFile = path.join(tmpDir, `test-artifact-${Date.now()}.json`);
+    
+    try {
+      fs.writeFileSync(tmpFile, JSON.stringify({ prompt: "test prompt", output: "test output" }));
+      const result = loadSubagentRunArtifact(tmpFile);
+      expect(result).toEqual({ prompt: "test prompt", output: "test output" });
+    } finally {
+      fs.unlinkSync(tmpFile);
+    }
+  });
+
+  it("should return null and log error for malformed JSON", async () => {
+    // テスト用の一時ファイルを作成
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const tmpDir = os.tmpdir();
+    const tmpFile = path.join(tmpDir, `test-artifact-malformed-${Date.now()}.json`);
+    
+    // console.errorをスパイ
+    const originalError = console.error;
+    const errorLogs: string[] = [];
+    console.error = (...args: any[]) => {
+      errorLogs.push(args.join(" "));
+    };
+    
+    try {
+      fs.writeFileSync(tmpFile, "{invalid json}");
+      const result = loadSubagentRunArtifact(tmpFile);
+      expect(result).toBeNull();
+      // エラーログが出力されたことを確認
+      expect(errorLogs.length).toBeGreaterThan(0);
+      expect(errorLogs[0]).toContain("Failed to parse artifact JSON");
+    } finally {
+      console.error = originalError;
+      fs.unlinkSync(tmpFile);
+    }
+  });
+
+  it("should return null and log error for file read errors", async () => {
+    // 読み取り不可能なパスをシミュレート
+    // テスト用の一時ディレクトリを作成
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const tmpDir = os.tmpdir();
+    const tmpDir2 = path.join(tmpDir, `test-artifact-dir-${Date.now()}`);
+    fs.mkdirSync(tmpDir2);
+    
+    // console.errorをスパイ
+    const originalError = console.error;
+    const errorLogs: string[] = [];
+    console.error = (...args: any[]) => {
+      errorLogs.push(args.join(" "));
+    };
+    
+    try {
+      // ディレクトリを指定してファイル読み込みエラーを引き起こす
+      const result = loadSubagentRunArtifact(tmpDir2);
+      expect(result).toBeNull();
+      // エラーログが出力されたことを確認
+      expect(errorLogs.length).toBeGreaterThan(0);
+      expect(errorLogs[0]).toContain("Failed to load artifact");
+    } finally {
+      console.error = originalError;
+      fs.rmdirSync(tmpDir2);
     }
   });
 });

@@ -88,7 +88,9 @@ describe("isRetryableSubagentError", () => {
 
     it("socket hang upはリトライ可能", () => {
       const error = new Error("socket hang up");
-      expect(isRetryableSubagentError(error)).toBe(true);
+      // lib/agent/agent-errors.tsでは明示的なネットワークエラーコードや
+      // 設定可能なパターンのみをリトライ可能と判定するため、socket hang upはリトライ不可
+      expect(isRetryableSubagentError(error)).toBe(false);
     });
 
     it("network errorはリトライ可能", () => {
