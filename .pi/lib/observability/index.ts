@@ -127,6 +127,21 @@ export {
   resetDashboardDataProvider,
 } from "./metrics-dashboard.js";
 
+// ============================================================================
+// Correlation Tracker
+// ============================================================================
+
+export {
+  type CorrelationEventType,
+  type CorrelationEvent,
+  type CorrelationLink,
+  type ExecutionPath,
+  type CorrelationStats,
+  CorrelationTracker,
+  getCorrelationTracker,
+  resetCorrelationTracker,
+} from "./correlation-tracker.js";
+
 import {
   createTraceContext,
   createChildSpanContext,
