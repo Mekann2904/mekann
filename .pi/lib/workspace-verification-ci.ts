@@ -230,6 +230,18 @@ function toRelevantTestFiles(changedFiles: string[]): string[] {
     if (normalized === "scripts/run-workspace-verification-ci.ts") {
       candidates.add("tests/unit/lib/workspace-verification-ci.test.ts");
     }
+
+    // bug-reproductionテストのマッピング
+    // critical-race-conditions.test.tsは複数の重要なインフラファイルをテスト
+    const bugReproductionMappings: Record<string, string> = {
+      ".pi/lib/retry-with-backoff.ts": ".pi/tests/bug-reproduction/critical-race-conditions.test.ts",
+      ".pi/lib/agent/agent-runtime.ts": ".pi/tests/bug-reproduction/critical-race-conditions.test.ts",
+      ".pi/lib/coordination/communication.ts": ".pi/tests/bug-reproduction/critical-race-conditions.test.ts",
+    };
+    const bugReproTest = bugReproductionMappings[normalized];
+    if (bugReproTest) {
+      candidates.add(bugReproTest);
+    }
   }
 
   return [...candidates].filter((file) => existsSync(resolve(process.cwd(), file)));
