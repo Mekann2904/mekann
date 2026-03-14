@@ -30,6 +30,7 @@
 import { randomBytes } from "node:crypto";
 import {
   closeSync,
+  fsyncSync,
   openSync,
   readFileSync,
   renameSync,
@@ -315,6 +316,16 @@ export function atomicWriteTextFile(filePath: string, content: string): void {
   atomicWriteCounter = (atomicWriteCounter + 1) >>> 0;
   const tmpFile = `${filePath}.tmp-${process.pid}-${randomBytes(3).toString("hex")}-${atomicWriteCounter}`;
   writeFileSync(tmpFile, content, "utf-8");
+
+  // fsync to ensure data reaches physical storage before rename
+  // This prevents race conditions where subsequent reads see empty content
+  const fd = openSync(tmpFile, "r");
+  try {
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+
   try {
     renameSync(tmpFile, filePath);
   } catch (error) {

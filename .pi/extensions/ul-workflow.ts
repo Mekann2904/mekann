@@ -306,14 +306,46 @@ async function assertPhaseArtifactReady(taskId: string, phase: WorkflowPhase): P
     return;
   }
 
-  // ENOENT（ファイルなし）のみ空文字として扱い、他のエラーは伝播させる
-  const content = await fsPromises.readFile(artifactPath, "utf-8").catch((err: NodeJS.ErrnoException) => {
-    if (err.code === "ENOENT") return "";
-    throw err;
-  });
-  if (!content.trim()) {
-    throw new Error(`${phase}.md がまだ生成されていません: ${artifactPath}`);
+  // リトライロジック: ファイルシステムのレースコンディションを回避
+  // - 空コンテンツ（書き込み中の可能性）
+  // - 一時的エラー（EACCES, EMFILE, EBUSY）
+  const maxRetries = 3;
+  const baseDelayMs = 50;
+  const transientErrors = ["EACCES", "EMFILE", "EBUSY", "EAGAIN"];
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    if (attempt > 0) {
+      const delayMs = baseDelayMs * Math.pow(2, attempt - 1);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    try {
+      const content = await fsPromises.readFile(artifactPath, "utf-8");
+      if (content.trim()) {
+        return; // 成功: 有効なコンテンツが読み取れた
+      }
+      // 空コンテンツ: 書き込み中の可能性があるためリトライ
+      lastError = new Error(`${phase}.md が空です（書き込み中の可能性）: ${artifactPath}`);
+    } catch (err) {
+      const nodeErr = err as NodeJS.ErrnoException;
+      if (nodeErr.code === "ENOENT") {
+        // ファイルなし: リトライせず即座にエラー
+        throw new Error(`${phase}.md がまだ生成されていません: ${artifactPath}`);
+      }
+      if (nodeErr.code && transientErrors.includes(nodeErr.code)) {
+        // 一時的エラー: リトライ
+        lastError = nodeErr;
+        continue;
+      }
+      // その他のエラー: 即座にスロー
+      throw err;
+    }
   }
+
+  // リトライ上限到達
+  throw lastError || new Error(`${phase}.md がまだ生成されていません: ${artifactPath}`);
 }
 
 function getVerificationGateReason(cwd: string): string | null {
@@ -1934,7 +1966,7 @@ ${baseContext}`,
   const artifactPath = typeof dagParams.artifactPath === "string" ? dagParams.artifactPath.trim() : "";
   if (artifactPath && artifactContent.trim()) {
     await fsPromises.mkdir(path.dirname(artifactPath), { recursive: true });
-    await atomicWriteTextFile(artifactPath, `${artifactContent.trim()}\n`);
+    atomicWriteTextFile(artifactPath, `${artifactContent.trim()}\n`);
   }
 
   updateSession(dagSessionId, {
