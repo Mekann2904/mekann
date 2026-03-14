@@ -327,10 +327,18 @@ function normalizeWorkspacePath(pathValue: string): string {
   return pathValue.replace(/\\/g, "/").replace(/^\.\//, "");
 }
 
-function resolveRelativeImportPath(fromFile: string, specifier: string): string[] {
+function resolveRelativeImportPath(fromFile: string, specifier: string): string[] | null {
   const normalizedFrom = normalizeWorkspacePath(fromFile);
   const fromDir = dirname(normalizedFrom);
   const basePath = normalizeWorkspacePath(posix.normalize(posix.join(fromDir, specifier)));
+  
+  // パストラバーサル防止: ワークスペース外へのパスを拒否
+  // 正規化後のパスが '..' で始まる場合、ワークスペース外へのアクセスを試みている
+  if (basePath.startsWith("../") || basePath === "..") {
+    console.warn(`[bug-hunt] Path traversal blocked: ${specifier} resolves to ${basePath}`);
+    return null;
+  }
+  
   const candidates = [
     basePath,
     `${basePath}.ts`,
@@ -363,7 +371,12 @@ export async function expandBugHuntPreferredFiles(cwd: string, focusFiles: strin
         if (!specifier) {
           continue;
         }
-        for (const candidate of resolveRelativeImportPath(normalizedFocusFile, specifier)) {
+        const resolvedPaths = resolveRelativeImportPath(normalizedFocusFile, specifier);
+        // パストラバーサルが検出された場合はスキップ
+        if (!resolvedPaths) {
+          continue;
+        }
+        for (const candidate of resolvedPaths) {
           const candidateAbsolutePath = resolve(cwd, candidate);
           if (await fileExists(candidateAbsolutePath)) {
             expanded.add(candidate);
