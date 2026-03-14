@@ -321,7 +321,7 @@ interface LoopProgress {
   summaryPreview?: string;
 }
 
-interface ParsedLoopCommand {
+export interface ParsedLoopCommand {
   mode: "help" | "status" | "run";
   task: string;
   goal?: string;
@@ -1741,7 +1741,7 @@ function normalizeLoopConfig(
   };
 }
 
-function parseLoopCommand(args: string | undefined): ParsedLoopCommand {
+export function parseLoopCommand(args: string | undefined): ParsedLoopCommand {
   const raw = (args ?? "").trim();
   if (!raw) {
     return {
