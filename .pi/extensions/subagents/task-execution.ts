@@ -225,15 +225,22 @@ function pickSubagentSummaryCandidate(text: string): string {
     .filter((line) => line.length > 0);
   if (lines.length === 0) return "回答を整形しました。";
 
-  const first =
-    lines.find((line) => !/^(SUMMARY|RESULT|NEXT_STEP)\s*:/i.test(line)) ?? lines[0];
-  const compact = first
-    .replace(/^[-*]\s+/, "")
-    .replace(/^#{1,6}\s+/, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!compact) return "回答を整形しました。";
-  return compact.length <= 90 ? compact : `${compact.slice(0, 90)}...`;
+  // ヘッダーパターンにマッチしない全ての行を試す
+  for (const line of lines) {
+    if (/^(SUMMARY|RESULT|NEXT_STEP)\s*:/i.test(line)) continue;
+    
+    const compact = line
+      .replace(/^[-*]\s+/, "")
+      .replace(/^#{1,6}\s+/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    
+    if (compact) {
+      return compact.length <= 90 ? compact : `${compact.slice(0, 90)}...`;
+    }
+  }
+  
+  return "回答を整形しました。";
 }
 
 /**
