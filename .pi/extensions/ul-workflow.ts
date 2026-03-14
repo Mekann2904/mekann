@@ -298,7 +298,11 @@ async function assertPhaseArtifactReady(taskId: string, phase: WorkflowPhase): P
     return;
   }
 
-  const content = await fsPromises.readFile(artifactPath, "utf-8").catch(() => "");
+  // ENOENT（ファイルなし）のみ空文字として扱い、他のエラーは伝播させる
+  const content = await fsPromises.readFile(artifactPath, "utf-8").catch((err: NodeJS.ErrnoException) => {
+    if (err.code === "ENOENT") return "";
+    throw err;
+  });
   if (!content.trim()) {
     throw new Error(`${phase}.md がまだ生成されていません: ${artifactPath}`);
   }
