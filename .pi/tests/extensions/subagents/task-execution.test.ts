@@ -32,6 +32,7 @@ import {
   mergeSkillArrays,
   formatSkillsSection,
   extractSummary,
+  shouldEnableSubagentExtensions,
 } from "../../../extensions/subagents/task-execution.js";
 
 describe("isHighRiskTask", () => {
@@ -257,5 +258,74 @@ describe("extractSummary", () => {
     const output = "a".repeat(1000);
     const summary = extractSummary(output);
     expect(summary.length).toBeLessThanOrEqual(123); // 120 + "..."
+  });
+});
+
+describe("shouldEnableSubagentExtensions", () => {
+  it("should return false when turnContext is undefined", () => {
+    // turnContextが未定義の場合、安全のためfalseを返す
+    const result = shouldEnableSubagentExtensions("調査してください", undefined, undefined);
+    expect(result).toBe(false);
+  });
+
+  it("should return false for USER-FACING mode (default)", () => {
+    // デフォルトはUSER-FACINGモードなので拡張は無効
+    const result = shouldEnableSubagentExtensions("implement a feature", undefined, undefined);
+    expect(result).toBe(false);
+  });
+
+  it("should return false when explicit OUTPUT MODE: USER-FACING is set", () => {
+    // 明示的なUSER-FACING指定
+    const result = shouldEnableSubagentExtensions(
+      "調査してください",
+      "OUTPUT MODE: USER-FACING",
+      undefined,
+    );
+    expect(result).toBe(false);
+  });
+
+  it("should return false for INTERNAL mode without turnContext", () => {
+    // INTERNALモードでもturnContextがないとfalse
+    const result = shouldEnableSubagentExtensions(
+      "調査してください",
+      "OUTPUT MODE: INTERNAL",
+      undefined,
+    );
+    expect(result).toBe(false);
+  });
+
+  it("should detect research task and attempt INTERNAL mode", () => {
+    // 調査タスクは自動的にINTERNALモードになるが、turnContextなしではfalse
+    const researchKeywords = [
+      "調査してください",
+      "investigate the issue",
+      "analyze the codebase",
+      "分析",
+      "探してください",
+      "find information",
+      "検索",
+    ];
+
+    for (const task of researchKeywords) {
+      const result = shouldEnableSubagentExtensions(task, undefined, undefined);
+      // turnContextがないのでfalse
+      expect(result).toBe(false);
+    }
+  });
+
+  it("should return false for non-research tasks without explicit INTERNAL", () => {
+    // 調査以外のタスクはUSER-FACINGモード（拡張無効）
+    const nonResearchTasks = [
+      "implement the feature",
+      "fix the bug",
+      "write tests",
+      "create a new file",
+      "バグを修正してください",
+    ];
+
+    for (const task of nonResearchTasks) {
+      const result = shouldEnableSubagentExtensions(task, undefined, undefined);
+      expect(result).toBe(false);
+    }
   });
 });
