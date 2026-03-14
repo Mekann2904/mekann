@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import registerUlWorkflowExtension from "../extensions/ul-workflow.js";
@@ -699,6 +699,97 @@ describe.sequential("UL workflow artifacts", () => {
 
       const result = await reviewTool!.execute("tc-review", { task_id: taskId }, undefined, undefined, ctx);
       expect(result.details.error).toBeUndefined();
+    });
+
+    it("returns phase_artifact_not_ready when plan.md missing in implement phase", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      const planTool = pi.tools.get("ul_workflow_plan");
+      const confirmPlanTool = pi.tools.get("ul_workflow_confirm_plan");
+      expect(startTool && researchTool && approveTool && planTool && confirmPlanTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-start-impl-no-plan", { task: "plan.md欠損テスト" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      const ctx = {
+        executeTool: async ({ params }: { toolName: string; params: Record<string, unknown> }) => ({
+          content: [{
+            type: "text",
+            text: JSON.stringify(params).includes("researcher")
+              ? "# Research\n\n調査結果。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）"
+              : JSON.stringify(params).includes("architect")
+                ? "# Plan\n\n- [ ] 実装計画"
+                : "実装完了",
+          }],
+        }),
+      };
+
+      // research → plan → confirm_planまで進める
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-1", {}, undefined, undefined, ctx);
+      await planTool!.execute("tc-plan", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-2", {}, undefined, undefined, ctx);
+      await confirmPlanTool!.execute("tc-confirm", {}, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-3", {}, undefined, undefined, ctx);
+
+      // plan.mdを削除
+      const taskDir = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId);
+      const planPath = path.join(taskDir, "plan.md");
+      if (existsSync(planPath)) {
+        unlinkSync(planPath);
+      }
+
+      // implementフェーズでapproveを呼ぶとphase_artifact_not_readyエラーになる
+      const result = await approveTool!.execute("tc-approve-impl-no-plan", {}, undefined, undefined, ctx);
+      expect(result.details.error).toBe("phase_artifact_not_ready");
+    });
+
+    it("returns phase_artifact_not_ready when review.md missing in review phase", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      const planTool = pi.tools.get("ul_workflow_plan");
+      const confirmPlanTool = pi.tools.get("ul_workflow_confirm_plan");
+      const executePlanTool = pi.tools.get("ul_workflow_execute_plan");
+      const reviewTool = pi.tools.get("ul_workflow_review");
+      expect(startTool && researchTool && approveTool && planTool && confirmPlanTool && executePlanTool && reviewTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-start-review-no-md", { task: "review.md欠損テスト" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      const ctx = {
+        executeTool: async ({ params }: { toolName: string; params: Record<string, unknown> }) => ({
+          content: [{
+            type: "text",
+            text: JSON.stringify(params).includes("researcher")
+              ? "# Research\n\n調査結果。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）"
+              : JSON.stringify(params).includes("architect")
+                ? "# Plan\n\n- [ ] 実装計画"
+                : JSON.stringify(params).includes("reviewer")
+                  ? "# Review\n\nレビュー結果。\n\n## 判定結果\n- [ ] normal（通常）"
+                  : "実装完了",
+          }],
+        }),
+      };
+
+      // 全フェーズを進める
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-1", {}, undefined, undefined, ctx);
+      await planTool!.execute("tc-plan", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-2", {}, undefined, undefined, ctx);
+      await confirmPlanTool!.execute("tc-confirm", {}, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-3", {}, undefined, undefined, ctx);
+      await executePlanTool!.execute("tc-execute", {}, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-4", {}, undefined, undefined, ctx);
+
+      // review.mdを作成せずにreviewツールを呼ぶ
+      // reviewツールはreview.mdを生成するツールだが、現在の実装ではapproveがreviewフェーズで
+      // review.mdの存在をチェックするため、approveでエラーを検証する
+      const result = await approveTool!.execute("tc-approve-review-no-md", {}, undefined, undefined, ctx);
+      expect(result.details.error).toBe("phase_artifact_not_ready");
     });
   });
 });
