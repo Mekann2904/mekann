@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import registerUlWorkflowExtension from "../extensions/ul-workflow.js";
@@ -28,9 +28,12 @@ function createFakePi() {
   };
 }
 
-describe("UL workflow artifacts", () => {
+// テスト間の状態汚染を防ぐため、シリアル実行を強制
+describe.sequential("UL workflow artifacts", () => {
   let pi: ReturnType<typeof createFakePi>;
   const createdTaskIds: string[] = [];
+  const WORKFLOW_DIR = path.join(process.cwd(), ".pi", "ul-workflow");
+  const ACTIVE_FILE = path.join(WORKFLOW_DIR, "active.json");
 
   beforeEach(() => {
     pi = createFakePi();
@@ -38,11 +41,16 @@ describe("UL workflow artifacts", () => {
   });
 
   afterEach(() => {
+    // タスクディレクトリをクリーンアップ
     for (const taskId of createdTaskIds.splice(0)) {
-      rmSync(path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId), {
+      rmSync(path.join(WORKFLOW_DIR, "tasks", taskId), {
         recursive: true,
         force: true,
       });
+    }
+    // active.jsonもクリーンアップ（状態汚染防止）
+    if (existsSync(ACTIVE_FILE)) {
+      rmSync(ACTIVE_FILE, { force: true });
     }
   });
 
