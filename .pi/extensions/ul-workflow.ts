@@ -468,13 +468,13 @@ function buildResearchNodeOutputContract(): string {
   ].join("\n");
 }
 
-type ResearchFollowupDecision = {
+export type ResearchFollowupDecision = {
   needsExternalDeepDive: boolean;
   needsCodebaseDeepDive: boolean;
   rationale: string;
 };
 
-type PlanFollowupDecision = {
+export type PlanFollowupDecision = {
   needsChangesDeepDive: boolean;
   needsValidationDeepDive: boolean;
   rationale: string;
@@ -492,21 +492,21 @@ type ReviewFollowupDecision = {
   rationale: string;
 };
 
-function extractDagTaskSection(output: string, taskId: string): string {
+export function extractDagTaskSection(output: string, taskId: string): string {
   const normalized = String(output || "");
   const pattern = new RegExp(`## ${taskId}\\nStatus: [^\\n]*\\n([\\s\\S]*?)(?=\\n## [^\\n]+\\nStatus:|$)`);
   const match = normalized.match(pattern);
   return match?.[1]?.trim() ?? "";
 }
 
-function normalizeGapDecision(value: string): boolean | null {
+export function normalizeGapDecision(value: string): boolean | null {
   const normalized = value.trim().toLowerCase();
   if (["yes", "true", "required", "needed"].includes(normalized)) return true;
   if (["no", "false", "none", "not_needed", "not-needed"].includes(normalized)) return false;
   return null;
 }
 
-function decideResearchFollowups(baseOutput: string): ResearchFollowupDecision {
+export function decideResearchFollowups(baseOutput: string): ResearchFollowupDecision {
   const gapSection = extractDagTaskSection(baseOutput, "research-gap-check");
   const externalMatch = gapSection.match(/DEEP_DIVE_EXTERNAL:\s*([^\n]+)/i);
   const codebaseMatch = gapSection.match(/DEEP_DIVE_CODEBASE:\s*([^\n]+)/i);
@@ -532,7 +532,7 @@ function decideResearchFollowups(baseOutput: string): ResearchFollowupDecision {
   };
 }
 
-function decidePlanFollowups(baseOutput: string): PlanFollowupDecision {
+export function decidePlanFollowups(baseOutput: string): PlanFollowupDecision {
   const gapSection = extractDagTaskSection(baseOutput, "plan-gap-check");
   const changesMatch = gapSection.match(/DEEP_DIVE_CHANGES:\s*([^\n]+)/i);
   const validationMatch = gapSection.match(/DEEP_DIVE_VALIDATION:\s*([^\n]+)/i);

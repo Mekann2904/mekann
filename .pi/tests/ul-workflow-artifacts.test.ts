@@ -702,3 +702,137 @@ describe.sequential("UL workflow artifacts", () => {
     });
   });
 });
+
+// =============================================================================
+// decideResearchFollowups and decidePlanFollowups unit tests
+// =============================================================================
+describe("decideResearchFollowups", () => {
+  it("parses DEEP_DIVE_EXTERNAL: yes and DEEP_DIVE_CODEBASE: no", async () => {
+    const { decideResearchFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## research-gap-check
+Status: completed
+DEEP_DIVE_EXTERNAL: yes
+DEEP_DIVE_CODEBASE: no
+RATIONALE: External documentation is needed for API reference`;
+
+    const result = decideResearchFollowups(gapCheckOutput);
+    expect(result.needsExternalDeepDive).toBe(true);
+    expect(result.needsCodebaseDeepDive).toBe(false);
+    expect(result.rationale).toContain("External documentation");
+  });
+
+  it("parses DEEP_DIVE_EXTERNAL: no and DEEP_DIVE_CODEBASE: yes", async () => {
+    const { decideResearchFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## research-gap-check
+Status: completed
+DEEP_DIVE_EXTERNAL: no
+DEEP_DIVE_CODEBASE: yes
+RATIONALE: Codebase has relevant implementation patterns`;
+
+    const result = decideResearchFollowups(gapCheckOutput);
+    expect(result.needsExternalDeepDive).toBe(false);
+    expect(result.needsCodebaseDeepDive).toBe(true);
+    expect(result.rationale).toContain("Codebase");
+  });
+
+  it("parses DEEP_DIVE_EXTERNAL: yes and DEEP_DIVE_CODEBASE: yes", async () => {
+    const { decideResearchFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## research-gap-check
+Status: completed
+DEEP_DIVE_EXTERNAL: yes
+DEEP_DIVE_CODEBASE: yes
+RATIONALE: Both external docs and codebase patterns needed`;
+
+    const result = decideResearchFollowups(gapCheckOutput);
+    expect(result.needsExternalDeepDive).toBe(true);
+    expect(result.needsCodebaseDeepDive).toBe(true);
+  });
+
+  it("returns defaults when no explicitflags", async () => {
+    const { decideResearchFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## research-gap-check
+Status: completed
+No deep dive needed. Plan ready.`;
+
+    const result = decideResearchFollowups(gapCheckOutput);
+    expect(result.needsExternalDeepDive).toBe(false);
+    expect(result.needsCodebaseDeepDive).toBe(false);
+  });
+
+  it("handles empty/null output gracefully", async () => {
+    const { decideResearchFollowups } = await import("../extensions/ul-workflow.js");
+
+    const result = decideResearchFollowups("");
+    expect(result.needsExternalDeepDive).toBe(false);
+    expect(result.needsCodebaseDeepDive).toBe(false);
+  });
+});
+
+describe("decidePlanFollowups", () => {
+  it("parses DEEP_DIVE_CHANGES: yes and DEEP_DIVE_VALIDATION: no", async () => {
+    const { decidePlanFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## plan-gap-check
+Status: completed
+DEEP_DIVE_CHANGES: yes
+DEEP_DIVE_VALIDATION: no
+RATIONALE: Changes impact needs investigation`;
+
+    const result = decidePlanFollowups(gapCheckOutput);
+    expect(result.needsChangesDeepDive).toBe(true);
+    expect(result.needsValidationDeepDive).toBe(false);
+    expect(result.rationale).toContain("Changes impact");
+  });
+
+  it("parses DEEP_DIVE_CHANGES: no and DEEP_DIVE_VALIDATION: yes", async () => {
+    const { decidePlanFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## plan-gap-check
+Status: completed
+DEEP_DIVE_CHANGES: no
+DEEP_DIVE_VALIDATION: yes
+RATIONALE: Validation strategy needs deep dive`;
+
+    const result = decidePlanFollowups(gapCheckOutput);
+    expect(result.needsChangesDeepDive).toBe(false);
+    expect(result.needsValidationDeepDive).toBe(true);
+  });
+
+  it("parses DEEP_DIVE_CHANGES: yes and DEEP_DIVE_VALIDATION: yes", async () => {
+    const { decidePlanFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## plan-gap-check
+Status: completed
+DEEP_DIVE_CHANGES: yes
+DEEP_DIVE_VALIDATION: yes
+RATIONALE: Both changes and validation need deep dive`;
+
+    const result = decidePlanFollowups(gapCheckOutput);
+    expect(result.needsChangesDeepDive).toBe(true);
+    expect(result.needsValidationDeepDive).toBe(true);
+  });
+
+  it("returns defaults when no explicitflags", async () => {
+    const { decidePlanFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## plan-gap-check
+Status: completed
+No deep dive needed. Plan ready.`;
+
+    const result = decidePlanFollowups(gapCheckOutput);
+    expect(result.needsChangesDeepDive).toBe(false);
+    expect(result.needsValidationDeepDive).toBe(false);
+  });
+
+  it("handles empty/nulloutput gracefully", async () => {
+    const { decidePlanFollowups } = await import("../extensions/ul-workflow.js");
+
+    const result = decidePlanFollowups("");
+    expect(result.needsChangesDeepDive).toBe(false);
+    expect(result.needsValidationDeepDive).toBe(false);
+  });
+});
