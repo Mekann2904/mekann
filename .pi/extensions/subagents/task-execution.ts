@@ -1213,6 +1213,7 @@ export async function runSubagentTask(input: {
   let lastRateLimitHits = 0;
   let rateLimitGateLogged = false;
   let rateLimitStderrLogged = false;
+  let finalized = false; // 二重ファイナライズ防止フラグ
   const heartbeat = () => {
     heartbeatActiveSubagentRun({
       cwd: input.cwd,
@@ -1384,6 +1385,7 @@ export async function runSubagentTask(input: {
         runId,
         success: true,
       });
+      finalized = true;
       recordLongRunningEvent(input.cwd, {
         type: "subagent_run",
         summary: `subagent artifact persisted: ${input.agent.id}`,
@@ -1522,6 +1524,7 @@ export async function runSubagentTask(input: {
         success: effectiveStatus === "completed",
         error: effectiveStatus === "failed" ? message : undefined,
       });
+      finalized = true;
       recordLongRunningEvent(input.cwd, {
         type: "subagent_run",
         summary: effectiveStatus === "completed"
@@ -1587,12 +1590,15 @@ export async function runSubagentTask(input: {
       };
     }
   } finally {
-    finalizeActiveSubagentRun({
-      cwd: input.cwd,
-      runId,
-      success: false,
-      error: "subagent execution interrupted before completion",
-    });
+    // 二重ファイナライズ防止: 成功/失敗パスですでにファイナライズ済みの場合はスキップ
+    if (!finalized) {
+      finalizeActiveSubagentRun({
+        cwd: input.cwd,
+        runId,
+        success: false,
+        error: "subagent execution interrupted before completion",
+      });
+    }
     input.onEnd?.();
   }
 }
