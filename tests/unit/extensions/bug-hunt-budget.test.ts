@@ -9,7 +9,7 @@ import {
   allocateBugHuntStageTimeout,
   buildBugHuntStageTimeouts,
   getMinimumBugHuntIterationTimeoutMs,
-  hasBudgetForBugHuntStage,
+  hasBudgetForModelStage,
 } from "../../../.pi/extensions/bug-hunt/budget.js";
 
 describe("bug-hunt budget", () => {
@@ -18,8 +18,8 @@ describe("bug-hunt budget", () => {
   });
 
   it("investigation は observer/report を残せないと開始しない", () => {
-    expect(hasBudgetForBugHuntStage("investigation", 69_999)).toBe(false);
-    expect(hasBudgetForBugHuntStage("investigation", 70_000)).toBe(true);
+    expect(hasBudgetForModelStage("investigation", 69_999)).toBe(false);
+    expect(hasBudgetForModelStage("investigation", 70_000)).toBe(true);
   });
 
   it("observer は report 用 budget を残した上で timeout を切る", () => {

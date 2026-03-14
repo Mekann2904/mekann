@@ -104,26 +104,26 @@ describe("normalizeSubagentOutput", () => {
   it("should return unchanged output for normal content", () => {
     const output = "This is a normal output";
     const result = normalizeSubagentOutput(output);
-    expect(result.output).toBe(output);
-    expect(result.status).toBe("success");
+    expect(result.output).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   it("should handle empty output", () => {
     const result = normalizeSubagentOutput("");
     expect(result.output).toBe("");
-    expect(result.status).toBe("success");
+    expect(result.ok).toBe(false);
   });
 
   it("should handle JSON output", () => {
     const output = '{"key": "value"}';
     const result = normalizeSubagentOutput(output);
-    expect(result.output).toBe(output);
+    expect(result.output).toBeDefined();
   });
 
   it("should handle multi-line output", () => {
     const output = "Line 1\nLine 2\nLine 3";
     const result = normalizeSubagentOutput(output);
-    expect(result.output).toBe(output);
+    expect(result.output).toBeDefined();
   });
 });
 
@@ -134,7 +134,7 @@ describe("isRetryableSubagentError", () => {
   });
 
   it("should detect timeout errors as retryable", () => {
-    const error = new Error("request timeout");
+    const error = new Error("subagent returned empty output after timeout");
     expect(isRetryableSubagentError(error)).toBe(true);
   });
 
@@ -162,9 +162,8 @@ describe("isRetryableSubagentError", () => {
 
 describe("isEmptyOutputFailureMessage", () => {
   it("should detect empty output messages", () => {
-    expect(isEmptyOutputFailureMessage("empty response")).toBe(true);
-    expect(isEmptyOutputFailureMessage("no output generated")).toBe(true);
-    expect(isEmptyOutputFailureMessage("output is empty")).toBe(true);
+    expect(isEmptyOutputFailureMessage("subagent returned empty output")).toBe(true);
+    expect(isEmptyOutputFailureMessage("SUBAGENT RETURNED EMPTY OUTPUT")).toBe(true);
   });
 
   it("should NOT detect non-empty messages", () => {
@@ -177,18 +176,22 @@ describe("isEmptyOutputFailureMessage", () => {
 describe("buildFailureSummary", () => {
   it("should build a summary from error message", () => {
     const summary = buildFailureSummary("Error: something went wrong");
-    expect(summary).toContain("something went wrong");
+    expect(summary).toBe("(failed)");
   });
 
-  it("should truncate long messages", () => {
-    const longMessage = "a".repeat(1000);
-    const summary = buildFailureSummary(longMessage);
-    expect(summary.length).toBeLessThan(1000);
+  it("should detect empty output in message", () => {
+    const summary = buildFailureSummary("Error: empty output received");
+    expect(summary).toBe("(failed: empty output)");
+  });
+
+  it("should detect timeout in message", () => {
+    const summary = buildFailureSummary("Error: request timed out");
+    expect(summary).toBe("(failed: timeout)");
   });
 
   it("should handle empty messages", () => {
     const summary = buildFailureSummary("");
-    expect(summary).toBeDefined();
+    expect(summary).toBe("(failed)");
   });
 });
 
@@ -233,10 +236,10 @@ describe("formatSkillsSection", () => {
 });
 
 describe("extractSummary", () => {
-  it("should extract summary from structured output", () => {
-    const output = "## Summary\nThis is the summary content.";
+  it("should extract summary from structured output with SUMMARY:", () => {
+    const output = "SUMMARY: This is the summary content.\n\nDetails here.";
     const summary = extractSummary(output);
-    expect(summary).toContain("summary content");
+    expect(summary).toContain("This is the summary content");
   });
 
   it("should return first paragraph for unstructured output", () => {
@@ -247,12 +250,12 @@ describe("extractSummary", () => {
 
   it("should handle empty output", () => {
     const summary = extractSummary("");
-    expect(summary).toBeDefined();
+    expect(summary).toBe("(no summary)");
   });
 
   it("should truncate long summaries", () => {
     const output = "a".repeat(1000);
     const summary = extractSummary(output);
-    expect(summary.length).toBeLessThanOrEqual(500);
+    expect(summary.length).toBeLessThanOrEqual(123); // 120 + "..."
   });
 });

@@ -121,7 +121,7 @@ describe("loadStorage and saveStorage", () => {
           name: "Test Agent",
           description: "A test agent",
           systemPrompt: "Test prompt",
-          enabled: true,
+          enabled: "enabled",
           createdAt: "2024-01-01T00:00:00Z",
           updatedAt: "2024-01-01T00:00:00Z",
         },
@@ -133,9 +133,10 @@ describe("loadStorage and saveStorage", () => {
     saveStorage(tempDir, storage);
     const loaded = loadStorage(tempDir);
 
-    expect(loaded.agents.length).toBe(1);
-    expect(loaded.agents[0].id).toBe("test-agent");
-    expect(loaded.agents[0].name).toBe("Test Agent");
+    // デフォルトエージェント + テストエージェントが含まれる
+    const testAgent = loaded.agents.find((a) => a.id === "test-agent");
+    expect(testAgent).toBeDefined();
+    expect(testAgent?.name).toBe("Test Agent");
   });
 
   it("should preserve run records", () => {
@@ -143,13 +144,15 @@ describe("loadStorage and saveStorage", () => {
       agents: [],
       runs: [
         {
-          id: "run-1",
-          subagentId: "test-agent",
-          taskId: "task-1",
+          runId: "run-1",
+          agentId: "test-agent",
+          task: "task-1",
+          summary: "Test output",
           status: "completed",
           startedAt: "2024-01-01T00:00:00Z",
-          completedAt: "2024-01-01T00:01:00Z",
-          output: "Test output",
+          finishedAt: "2024-01-01T00:01:00Z",
+          latencyMs: 60000,
+          outputFile: "test-output.json",
         },
       ],
       version: SUBAGENT_DEFAULTS_VERSION,
@@ -159,7 +162,7 @@ describe("loadStorage and saveStorage", () => {
     const loaded = loadStorage(tempDir);
 
     expect(loaded.runs.length).toBe(1);
-    expect(loaded.runs[0].id).toBe("run-1");
+    expect(loaded.runs[0].runId).toBe("run-1");
   });
 
   it("should prune old runs when exceeding MAX_RUNS_TO_KEEP", () => {
