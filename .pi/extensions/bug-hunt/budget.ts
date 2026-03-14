@@ -33,7 +33,7 @@ function getReservedTailMs(stage: BugHuntModelStage): number {
   }
 }
 
-export function hasBudgetForBugHuntStage(stage: BugHuntModelStage, remainingMs: number): boolean {
+export function hasBudgetForModelStage(stage: BugHuntModelStage, remainingMs: number): boolean {
   return remainingMs - getReservedTailMs(stage) >= MIN_STAGE_TIMEOUT_MS;
 }
 

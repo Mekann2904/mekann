@@ -115,7 +115,11 @@ async function patchFile(requireFn: NodeRequire, target: PatchTarget): Promise<"
   let resolvedPath: string;
   try {
     resolvedPath = requireFn.resolve(target.modulePath);
-  } catch {
+  } catch (error) {
+    // MODULE_NOT_FOUNDは正常ケース、その他はデバッグ用にログ出力
+    if ((error as NodeJS.ErrnoException)?.code !== "MODULE_NOT_FOUND") {
+      console.debug(`[pi-ai-abort-fix] resolve failed for ${target.modulePath}:`, error);
+    }
     return "skip";
   }
 
@@ -153,7 +157,8 @@ function uniqueNonEmpty(values: Array<string | undefined>): string[] {
 function safeCreateRequire(basePath: string): NodeRequire | undefined {
   try {
     return createRequire(basePath);
-  } catch {
+  } catch (error) {
+    console.debug("[pi-ai-abort-fix] createRequire failed for", basePath, error);
     return undefined;
   }
 }
@@ -176,8 +181,10 @@ function collectResolverBases(requireFn: NodeRequire): string[] {
     bases.push(codingAgentPkg);
     bases.push(join(codingAgentDir, "..", "..", "package.json"));
     bases.push(join(codingAgentDir, "..", "package.json"));
-  } catch {
-    // ignore
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code !== "MODULE_NOT_FOUND") {
+      console.debug("[pi-ai-abort-fix] resolve @mariozechner/pi-coding-agent failed:", error);
+    }
   }
 
   try {
@@ -186,8 +193,10 @@ function collectResolverBases(requireFn: NodeRequire): string[] {
     bases.push(piAiPkg);
     bases.push(join(piAiDir, "..", "..", "package.json"));
     bases.push(join(piAiDir, "..", "package.json"));
-  } catch {
-    // ignore
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code !== "MODULE_NOT_FOUND") {
+      console.debug("[pi-ai-abort-fix] resolve @mariozechner/pi-ai failed:", error);
+    }
   }
 
   return uniqueNonEmpty(
@@ -211,7 +220,12 @@ async function listDirsSafe(path: string): Promise<string[]> {
   try {
     const entries = await (await import("node:fs/promises")).readdir(path, { withFileTypes: true });
     return entries.filter((entry) => entry.isDirectory()).map((entry) => join(path, entry.name));
-  } catch {
+  } catch (error) {
+    // ENOENT/EACCES等は正常ケースとして空配列を返すが、デバッグ用にログ出力
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code !== "ENOENT" && code !== "ENOTDIR") {
+      console.debug("[pi-ai-abort-fix] listDirsSafe failed for", path, code);
+    }
     return [];
   }
 }
@@ -280,7 +294,8 @@ export default function (pi: ExtensionAPI) {
           if (result === "patched") patchedCount++;
           else if (result === "already") alreadyCount++;
           else skipCount++;
-        } catch {
+        } catch (error) {
+          console.debug("[pi-ai-abort-fix] patchFile error for", target.modulePath, error);
           skipCount++;
         }
       }
@@ -298,7 +313,8 @@ export default function (pi: ExtensionAPI) {
         if (result === "patched") patchedCount++;
         else if (result === "already") alreadyCount++;
         else skipCount++;
-      } catch {
+      } catch (error) {
+        console.debug("[pi-ai-abort-fix] patchResolvedFilePath error for", path, error);
         skipCount++;
       }
     }
