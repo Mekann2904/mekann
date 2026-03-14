@@ -289,6 +289,14 @@ function resolveWorkflowArtifactPath(taskId: string, phase: WorkflowPhase): stri
   if (phase === "plan" || phase === "annotate") {
     return path.join(getTaskDir(taskId), "plan.md");
   }
+  if (phase === "implement") {
+    // 実装フェーズではplan.mdが必須（実装はplanに基づいて行われる）
+    return path.join(getTaskDir(taskId), "plan.md");
+  }
+  if (phase === "review") {
+    // レビューフェーズではreview.mdが必須
+    return path.join(getTaskDir(taskId), "review.md");
+  }
   return null;
 }
 
