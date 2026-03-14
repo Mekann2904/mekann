@@ -169,6 +169,12 @@ export async function loadAndConnectMcpServers(): Promise<void> {
         continue;
       }
 
+      // 必須フィールドの検証
+      if (!server.id || !server.url) {
+        console.warn(`[web-ui] Skipping MCP server with missing id or url: ${JSON.stringify(server)}`);
+        continue;
+      }
+
       try {
         await mcpManager.connect({
           id: server.id,
