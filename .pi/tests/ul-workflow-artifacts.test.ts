@@ -1014,3 +1014,90 @@ Test coverage verification required`;
     expect(result.needsVerificationDeepDive).toBe(true);
   });
 });
+
+describe("decideImplementFollowups", () => {
+  it("parses DEEP_DIVE_FIXUP: yes and DEEP_DIVE_VERIFICATION: no", async () => {
+    const { decideImplementFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## implement-gap-check
+Status: completed
+DEEP_DIVE_FIXUP: yes
+DEEP_DIVE_VERIFICATION: no
+RATIONALE: Implementation has bugs to fix`;
+
+    const result = decideImplementFollowups(gapCheckOutput);
+    expect(result.needsFixupDeepDive).toBe(true);
+    expect(result.needsVerificationDeepDive).toBe(false);
+    expect(result.rationale).toContain("Implementation has bugs");
+  });
+
+  it("parses DEEP_DIVE_FIXUP: no and DEEP_DIVE_VERIFICATION: yes", async () => {
+    const { decideImplementFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## implement-gap-check
+Status: completed
+DEEP_DIVE_FIXUP: no
+DEEP_DIVE_VERIFICATION: yes
+RATIONALE: Verification tests need deep dive`;
+
+    const result = decideImplementFollowups(gapCheckOutput);
+    expect(result.needsFixupDeepDive).toBe(false);
+    expect(result.needsVerificationDeepDive).toBe(true);
+  });
+
+  it("parses DEEP_DIVE_FIXUP: yes and DEEP_DIVE_VERIFICATION: yes", async () => {
+    const { decideImplementFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## implement-gap-check
+Status: completed
+DEEP_DIVE_FIXUP: yes
+DEEP_DIVE_VERIFICATION: yes
+RATIONALE: Both fixup and verification need deep dive`;
+
+    const result = decideImplementFollowups(gapCheckOutput);
+    expect(result.needsFixupDeepDive).toBe(true);
+    expect(result.needsVerificationDeepDive).toBe(true);
+  });
+
+  it("returns defaults when no explicit flags", async () => {
+    const { decideImplementFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## implement-gap-check
+Status: completed
+No deep dive needed. Implementation ready.`;
+
+    const result = decideImplementFollowups(gapCheckOutput);
+    expect(result.needsFixupDeepDive).toBe(false);
+    expect(result.needsVerificationDeepDive).toBe(false);
+  });
+
+  it("handles empty/null output gracefully", async () => {
+    const { decideImplementFollowups } = await import("../extensions/ul-workflow.js");
+
+    const result = decideImplementFollowups("");
+    expect(result.needsFixupDeepDive).toBe(false);
+    expect(result.needsVerificationDeepDive).toBe(false);
+  });
+
+  it("detects fixup keywords in fallback heuristic", async () => {
+    const { decideImplementFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## implement-gap-check
+Status: completed
+Bug fix required in implementation`;
+
+    const result = decideImplementFollowups(gapCheckOutput);
+    expect(result.needsFixupDeepDive).toBe(true);
+  });
+
+  it("detects verification keywords in fallback heuristic", async () => {
+    const { decideImplementFollowups } = await import("../extensions/ul-workflow.js");
+
+    const gapCheckOutput = `## implement-gap-check
+Status: completed
+Test verification artifacts missing`;
+
+    const result = decideImplementFollowups(gapCheckOutput);
+    expect(result.needsVerificationDeepDive).toBe(true);
+  });
+});

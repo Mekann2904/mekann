@@ -558,7 +558,7 @@ export function decidePlanFollowups(baseOutput: string): PlanFollowupDecision {
   };
 }
 
-function decideImplementFollowups(baseOutput: string): ImplementFollowupDecision {
+export function decideImplementFollowups(baseOutput: string): ImplementFollowupDecision {
   const gapSection = extractDagTaskSection(baseOutput, "implement-gap-check");
   const fixupMatch = gapSection.match(/DEEP_DIVE_FIXUP:\s*([^\n]+)/i);
   const verificationMatch = gapSection.match(/DEEP_DIVE_VERIFICATION:\s*([^\n]+)/i);
