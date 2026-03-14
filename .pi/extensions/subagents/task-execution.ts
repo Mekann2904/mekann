@@ -1169,7 +1169,7 @@ export async function runSubagentTask(input: {
   });
   const turnContext = applyReplayToolConstraints(liveTurnContext, input.replaySnapshot);
   const liveTurnDecisions = deriveTurnExecutionDecisions(turnContext, {
-    taskKind: shouldEnableSubagentExtensions(input.task, input.extraContext) ? "research" : "implementation",
+    taskKind: shouldEnableSubagentExtensions(input.task, input.extraContext, turnContext) ? "research" : "implementation",
     taskText: input.task,
   });
   const turnDecisions = applyReplayDecisionConstraints(liveTurnDecisions, input.replaySnapshot);
