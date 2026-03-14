@@ -1163,8 +1163,9 @@ export async function runSubagentTask(input: {
   let relevantPatterns: ExtractedPattern[] = [];
   try {
     relevantPatterns = findRelevantPatterns(input.cwd, input.task, 5);
-  } catch {
+  } catch (err) {
     // Pattern loading failure should not block execution
+    console.warn("[subagent] Failed to load relevant patterns:", err instanceof Error ? err.message : String(err));
   }
 
   const liveTurnContext = buildTurnExecutionContext({
@@ -1412,8 +1413,9 @@ export async function runSubagentTask(input: {
             // Console logging is intentional for debugging purposes
             console.log(`[RalphWiggum] ${input.agent.id}: ${verificationResult.result.issues.length} issues, verdict=${verificationResult.result.verdict}`);
           }
-        } catch {
+        } catch (err) {
           // 検証フックエラーは無視して処理を継続
+          console.warn("[subagent] Verification hook error:", err instanceof Error ? err.message : String(err));
         }
       }
 
@@ -1452,8 +1454,9 @@ export async function runSubagentTask(input: {
             },
             cwd: input.cwd,
           });
-        } catch {
+        } catch (err) {
           // 計測エラーは実行に影響させない
+          console.debug?.("[subagent] Metrics recording error:", err instanceof Error ? err.message : String(err));
         }
       }
 
@@ -1569,8 +1572,9 @@ export async function runSubagentTask(input: {
             },
             cwd: input.cwd,
           });
-        } catch {
+        } catch (err) {
           // 計測エラーは実行に影響させない
+          console.debug?.("[subagent] Metrics recording error:", err instanceof Error ? err.message : String(err));
         }
       }
 
