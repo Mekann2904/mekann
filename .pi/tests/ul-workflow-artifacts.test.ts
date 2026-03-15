@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync 
 import { promises as fsPromises } from "node:fs";
 import path from "node:path";
 
-import registerUlWorkflowExtension from "../extensions/ul-workflow.js";
+import registerUlWorkflowExtension, { assertPhaseArtifactReady } from "../extensions/ul-workflow.js";
 
 type RegisteredTool = {
   execute: (...args: any[]) => Promise<any>;
@@ -29,6 +29,11 @@ function createFakePi() {
       commands.set(name, def);
     },
   };
+}
+
+// テスト用の固定インスタンスID
+function getInstanceId(): string {
+  return "test-instance-id";
 }
 
 // テスト間の状態汚染を防ぐため、シリアル実行を強制
@@ -1859,5 +1864,168 @@ describe("ul-workflow command handlers", () => {
 
     expect(notifications.length).toBe(1);
     expect(notifications[0]).toContain("アクティブなワークフロー");
+  });
+
+  // assertPhaseArtifactReady リトライロジックのテスト
+  describe("assertPhaseArtifactReady retry logic", () => {
+    it("retries EACCES and succeeds on second attempt", async () => {
+      const taskId = "test-task-eacces";
+      createdTaskIds.push(taskId);
+      const taskDir = path.join(WORKFLOW_DIR, "tasks", taskId);
+      mkdirSync(taskDir, { recursive: true });
+
+      let callCount = 0;
+      const originalReadFile = fsPromises.readFile;
+      const spy = vi.spyOn(fsPromises, "readFile").mockImplementation(async (filePath: any, encoding?: any) => {
+        const pathStr = String(filePath);
+        if (pathStr.includes(taskId) && pathStr.includes("research.md")) {
+          callCount++;
+          if (callCount === 1) {
+            const err = new Error("EACCES") as NodeJS.ErrnoException;
+            err.code = "EACCES";
+            throw err;
+          }
+          return "# Research\n\n内容あり\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）" as any;
+        }
+        return originalReadFile(filePath, encoding);
+      });
+
+      try {
+        await assertPhaseArtifactReady(taskId, "research");
+        expect(callCount).toBe(2);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("throws after max retries on persistent EBUSY", async () => {
+      const taskId = "test-task-ebusy";
+      createdTaskIds.push(taskId);
+      const taskDir = path.join(WORKFLOW_DIR, "tasks", taskId);
+      mkdirSync(taskDir, { recursive: true });
+
+      const originalReadFile = fsPromises.readFile;
+      const spy = vi.spyOn(fsPromises, "readFile").mockImplementation(async (filePath: any, encoding?: any) => {
+        const pathStr = String(filePath);
+        if (pathStr.includes(taskId) && pathStr.includes("research.md")) {
+          const err = new Error("EBUSY") as NodeJS.ErrnoException;
+          err.code = "EBUSY";
+          throw err;
+        }
+        return originalReadFile(filePath, encoding);
+      });
+
+      try {
+        await expect(assertPhaseArtifactReady(taskId, "research")).rejects.toThrow();
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("retries empty content and succeeds when content appears", async () => {
+      const taskId = "test-task-empty";
+      createdTaskIds.push(taskId);
+      const taskDir = path.join(WORKFLOW_DIR, "tasks", taskId);
+      mkdirSync(taskDir, { recursive: true });
+
+      let callCount = 0;
+      const originalReadFile = fsPromises.readFile;
+      const spy = vi.spyOn(fsPromises, "readFile").mockImplementation(async (filePath: any, encoding?: any) => {
+        const pathStr = String(filePath);
+        if (pathStr.includes(taskId) && pathStr.includes("research.md")) {
+          callCount++;
+          if (callCount === 1) {
+            return "" as any; // 空コンテンツ
+          }
+          return "# Research\n\n内容あり\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）" as any;
+        }
+        return originalReadFile(filePath, encoding);
+      });
+
+      try {
+        await assertPhaseArtifactReady(taskId, "research");
+        expect(callCount).toBe(2);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("throws after max retries on persistent empty content", async () => {
+      const taskId = "test-task-empty-persist";
+      createdTaskIds.push(taskId);
+      const taskDir = path.join(WORKFLOW_DIR, "tasks", taskId);
+      mkdirSync(taskDir, { recursive: true });
+
+      const originalReadFile = fsPromises.readFile;
+      const spy = vi.spyOn(fsPromises, "readFile").mockImplementation(async (filePath: any, encoding?: any) => {
+        const pathStr = String(filePath);
+        if (pathStr.includes(taskId) && pathStr.includes("research.md")) {
+          return "" as any; // 常に空
+        }
+        return originalReadFile(filePath, encoding);
+      });
+
+      try {
+        await expect(assertPhaseArtifactReady(taskId, "research")).rejects.toThrow();
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("re-throws unknown error immediately without retry", async () => {
+      const taskId = "test-task-unknown";
+      createdTaskIds.push(taskId);
+      const taskDir = path.join(WORKFLOW_DIR, "tasks", taskId);
+      mkdirSync(taskDir, { recursive: true });
+
+      let callCount = 0;
+      const originalReadFile = fsPromises.readFile;
+      const spy = vi.spyOn(fsPromises, "readFile").mockImplementation(async (filePath: any, encoding?: any) => {
+        const pathStr = String(filePath);
+        if (pathStr.includes(taskId) && pathStr.includes("research.md")) {
+          callCount++;
+          const err = new Error("UNKNOWN_ERROR") as NodeJS.ErrnoException;
+          err.code = "UNKNOWN_CODE";
+          throw err;
+        }
+        return originalReadFile(filePath, encoding);
+      });
+
+      try {
+        await expect(assertPhaseArtifactReady(taskId, "research")).rejects.toThrow();
+        // 未知エラーは即座にスローされるため、1回しか呼ばれない
+        expect(callCount).toBe(1);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("does not retry ENOENT and throws immediately", async () => {
+      const taskId = "test-task-enoent";
+      createdTaskIds.push(taskId);
+      const taskDir = path.join(WORKFLOW_DIR, "tasks", taskId);
+      mkdirSync(taskDir, { recursive: true });
+
+      let callCount = 0;
+      const originalReadFile = fsPromises.readFile;
+      const spy = vi.spyOn(fsPromises, "readFile").mockImplementation(async (filePath: any, encoding?: any) => {
+        const pathStr = String(filePath);
+        if (pathStr.includes(taskId) && pathStr.includes("research.md")) {
+          callCount++;
+          const err = new Error("ENOENT") as NodeJS.ErrnoException;
+          err.code = "ENOENT";
+          throw err;
+        }
+        return originalReadFile(filePath, encoding);
+      });
+
+      try {
+        await expect(assertPhaseArtifactReady(taskId, "research")).rejects.toThrow();
+        // ENOENTはリトライしないため1回のみ
+        expect(callCount).toBe(1);
+      } finally {
+        spy.mockRestore();
+      }
+    });
   });
 });
