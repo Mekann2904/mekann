@@ -801,8 +801,9 @@ export async function semanticIndex(
 		// Convert Map back to array for saving
 		const finalEmbeddings = Array.from(existingEmbeddings.values());
 
-		// Save index and metadata
-		const outputPath = await saveIndex(finalEmbeddings, cwd);
+		// Save metadata first for atomicity
+		// If metadata save fails, index won't be corrupted with stale metadata
+		// If index save fails after metadata succeeds, next run will detect changes correctly
 		const now = Date.now();
 		await saveMetadata(
 			{
@@ -818,6 +819,9 @@ export async function semanticIndex(
 			},
 			cwd
 		);
+
+		// Save index after metadata is persisted
+		const outputPath = await saveIndex(finalEmbeddings, cwd);
 
 		console.log(
 			`[semantic-index] Indexed ${finalEmbeddings.length} total chunks ` +
