@@ -221,7 +221,7 @@ export function updateActiveWorkflowRegistryForInstance(
   return nextRegistry;
 }
 
-function writeActiveWorkflowRegistry(registry: ActiveWorkflowRegistry): void {
+function writeActiveWorkflowRegistry(registry: ActiveWorkflowRegistry): { success: boolean; error?: string } {
   if (!fs.existsSync(WORKFLOW_DIR)) {
     fs.mkdirSync(WORKFLOW_DIR, { recursive: true });
   }
@@ -232,7 +232,14 @@ function writeActiveWorkflowRegistry(registry: ActiveWorkflowRegistry): void {
   nextRegistry.ownerInstanceId = globalEntry.ownerInstanceId;
   nextRegistry.updatedAt = globalEntry.updatedAt;
 
-  atomicWriteTextFile(ACTIVE_FILE, JSON.stringify(nextRegistry, null, 2));
+  try {
+    atomicWriteTextFile(ACTIVE_FILE, JSON.stringify(nextRegistry, null, 2));
+    return { success: true };
+  } catch (e) {
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    console.error(`Failed to write active workflow registry: ${errorMessage}`, e);
+    return { success: false, error: errorMessage };
+  }
 }
 
 // File-based workflow access (replaces memory variable)
@@ -252,7 +259,7 @@ export function getCurrentWorkflow(): WorkflowState | null {
   }
 }
 
-export function setCurrentWorkflow(state: WorkflowState | null): void {
+export function setCurrentWorkflow(state: WorkflowState | null): { success: boolean; error?: string } {
   const instanceId = getInstanceId();
   const registry = readActiveWorkflowRegistry();
   const nextRegistry = updateActiveWorkflowRegistryForInstance(
@@ -260,7 +267,11 @@ export function setCurrentWorkflow(state: WorkflowState | null): void {
     instanceId,
     state,
   );
-  writeActiveWorkflowRegistry(nextRegistry);
+  const result = writeActiveWorkflowRegistry(nextRegistry);
+  if (!result.success) {
+    console.error(`setCurrentWorkflow: failed to persist registry: ${result.error}`);
+  }
+  return result;
 }
 
 function getToolExecutor(ctx: unknown):
