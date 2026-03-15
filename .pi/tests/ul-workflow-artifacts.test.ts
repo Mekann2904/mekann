@@ -2355,4 +2355,50 @@ describe("ul-workflow command handlers", () => {
       expect(normalizeGapDecision("False")).toBe(false);
     });
   });
+
+  describe("assertPhaseArtifactReady error code preservation", () => {
+    const testTaskId = "test-error-code-task";
+    const taskDir = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", testTaskId);
+    const planPath = path.join(taskDir, "plan.md");
+
+    beforeEach(() => {
+      mkdirSync(taskDir, { recursive: true });
+    });
+
+    afterEach(() => {
+      if (existsSync(taskDir)) {
+        rmSync(taskDir, { recursive: true, force: true });
+      }
+    });
+
+    it("sets EEMPTY code when file is empty", async () => {
+      writeFileSync(planPath, "");
+
+      await expect(assertPhaseArtifactReady(testTaskId, "plan")).rejects.toThrow();
+      try {
+        await assertPhaseArtifactReady(testTaskId, "plan");
+      } catch (err) {
+        const nodeErr = err as NodeJS.ErrnoException;
+        expect(nodeErr.code).toBe("EEMPTY");
+      }
+    });
+
+    it("sets EEMPTY code when file contains only whitespace", async () => {
+      writeFileSync(planPath, "   \n\n   ");
+
+      await expect(assertPhaseArtifactReady(testTaskId, "plan")).rejects.toThrow();
+      try {
+        await assertPhaseArtifactReady(testTaskId, "plan");
+      } catch (err) {
+        const nodeErr = err as NodeJS.ErrnoException;
+        expect(nodeErr.code).toBe("EEMPTY");
+      }
+    });
+
+    it("returns successfully when file has valid content", async () => {
+      writeFileSync(planPath, "# Plan\n\nThis is a valid plan.");
+
+      await expect(assertPhaseArtifactReady(testTaskId, "plan")).resolves.toBeUndefined();
+    });
+  });
 });

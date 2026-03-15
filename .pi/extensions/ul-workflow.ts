@@ -396,7 +396,9 @@ export async function assertPhaseArtifactReady(taskId: string, phase: WorkflowPh
         return; // 成功: 有効なコンテンツが読み取れた
       }
       // 空コンテンツ: 書き込み中の可能性があるためリトライ
-      lastError = new Error(`${phase}.md が空です（書き込み中の可能性）: ${artifactPath}`);
+      const emptyErr = new Error(`${phase}.md が空です（書き込み中の可能性）: ${artifactPath}`) as NodeJS.ErrnoException;
+      emptyErr.code = "EEMPTY";
+      lastError = emptyErr;
     } catch (err) {
       const nodeErr = err as NodeJS.ErrnoException;
       if (nodeErr.code === "ENOENT") {
