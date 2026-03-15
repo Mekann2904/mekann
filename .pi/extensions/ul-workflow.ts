@@ -304,7 +304,13 @@ export function getCurrentWorkflow(): WorkflowState | null {
     }
 
     return loadState(taskId);
-  } catch {
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    // ENOENTは正常ケース（アクティブなワークフローがない）なのでログ出力しない
+    // EACCES, EMFILE, EBUSYなどの一時的エラーは警告として出力
+    if (code && code !== 'ENOENT') {
+      console.warn(`getCurrentWorkflow: filesystem error (${code}), returning null`, error);
+    }
     return null;
   }
 }
@@ -363,7 +369,7 @@ function resolveWorkflowArtifactPath(taskId: string, phase: WorkflowPhase): stri
   return null;
 }
 
-async function assertPhaseArtifactReady(taskId: string, phase: WorkflowPhase): Promise<void> {
+export async function assertPhaseArtifactReady(taskId: string, phase: WorkflowPhase): Promise<void> {
   const artifactPath = resolveWorkflowArtifactPath(taskId, phase);
   if (!artifactPath) {
     return;
