@@ -1155,6 +1155,91 @@ describe.sequential("UL workflow artifacts", () => {
         readFileSpy.mockRestore();
       }
     });
+
+    // =========================================================================
+    // ul_workflow_commit phase artifact validation tests
+    // =========================================================================
+
+    it("returns phase_artifact_not_ready when ul_workflow_commit is called without plan.md", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      const planTool = pi.tools.get("ul_workflow_plan");
+      const commitTool = pi.tools.get("ul_workflow_commit");
+      expect(startTool && researchTool && approveTool && planTool && commitTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-commit-no-plan", { task: "コミットテスト用のタスク" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      const ctx = {
+        executeTool: async ({ params }: { toolName: string; params: Record<string, unknown> }) => ({
+          content: [{
+            type: "text",
+            text: JSON.stringify(params).includes("researcher")
+              ? "# Research\n\n調査結果。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）"
+              : "# Plan\n\n- [ ] 実装計画",
+          }],
+        }),
+      };
+
+      // research → approve → plan まで進める
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-1", {}, undefined, undefined, ctx);
+      await planTool!.execute("tc-plan", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+
+      // plan.mdを削除（アーティファクト不在をシミュレート）
+      const planPath = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId, "plan.md");
+      if (existsSync(planPath)) {
+        unlinkSync(planPath);
+      }
+
+      // commitを実行（plan.mdがないためエラーになるはず）
+      const result = await commitTool!.execute("tc-commit-no-plan", {}, undefined, undefined, ctx);
+      expect(result.details.error).toBe("phase_artifact_not_ready");
+    });
+
+    it("returns phase_artifact_not_ready when ul_workflow_commit is called in review phase without review.md", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      const planTool = pi.tools.get("ul_workflow_plan");
+      const confirmPlanTool = pi.tools.get("ul_workflow_confirm_plan");
+      const executePlanTool = pi.tools.get("ul_workflow_execute_plan");
+      const commitTool = pi.tools.get("ul_workflow_commit");
+      expect(startTool && researchTool && approveTool && planTool && confirmPlanTool && executePlanTool && commitTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-commit-no-review", { task: "review.md欠損時のコミットテスト" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      const ctx = {
+        executeTool: async ({ params }: { toolName: string; params: Record<string, unknown> }) => ({
+          content: [{
+            type: "text",
+            text: JSON.stringify(params).includes("researcher")
+              ? "# Research\n\n調査結果。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）"
+              : JSON.stringify(params).includes("architect")
+                ? "# Plan\n\n- [ ] 実装計画"
+                : "実装完了",
+          }],
+        }),
+      };
+
+      // 全フェーズを進める（reviewフェーズまで）
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-1", {}, undefined, undefined, ctx);
+      await planTool!.execute("tc-plan", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-2", {}, undefined, undefined, ctx);
+      await confirmPlanTool!.execute("tc-confirm", {}, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-3", {}, undefined, undefined, ctx);
+      await executePlanTool!.execute("tc-execute", {}, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-4", {}, undefined, undefined, ctx);
+
+      // review.mdが存在しない状態でcommitを実行
+      const result = await commitTool!.execute("tc-commit-no-review", {}, undefined, undefined, ctx);
+      expect(result.details.error).toBe("phase_artifact_not_ready");
+    });
   });
 });
 

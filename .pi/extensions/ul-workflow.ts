@@ -3973,6 +3973,21 @@ subagent_run_dag(${JSON.stringify(dagParams, null, 2)})
         return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
       }
 
+      // 現在のフェーズのアーティファクトが準備できていることを確認
+      // plan.md (implementフェーズ以降) / review.md (reviewフェーズ) が存在する必要がある
+      try {
+        await assertPhaseArtifactReady(workflow.taskId, workflow.phase);
+      } catch (error) {
+        return makeResult(
+          `エラー: 現在のフェーズ成果物がまだ準備できていません。\n\n${error}`,
+          {
+            error: "phase_artifact_not_ready",
+            taskId: workflow.taskId,
+            phase: workflow.phase,
+          },
+        );
+      }
+
       // git-workflowスキルは workspace ごとに配置揺れがあるため、
       // 2つの候補パスを案内する。
       const skillPaths = [
