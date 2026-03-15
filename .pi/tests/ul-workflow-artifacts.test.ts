@@ -1240,6 +1240,104 @@ describe.sequential("UL workflow artifacts", () => {
       const result = await commitTool!.execute("tc-commit-no-review", {}, undefined, undefined, ctx);
       expect(result.details.error).toBe("phase_artifact_not_ready");
     });
+
+    // =========================================================================
+    // ensureUlExecutionPlan error path tests
+    // =========================================================================
+
+    it("returns implement_error when plan_create returns no planId", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      const planTool = pi.tools.get("ul_workflow_plan");
+      const confirmPlanTool = pi.tools.get("ul_workflow_confirm_plan");
+      const executePlanTool = pi.tools.get("ul_workflow_execute_plan");
+      expect(startTool && researchTool && approveTool && planTool && confirmPlanTool && executePlanTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-planid-empty", { task: "planId欠損テスト用タスク" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      // plan_createがplanIdを返さないケースをシミュレート
+      const ctx = {
+        executeTool: async ({ toolName, params }: { toolName: string; params: Record<string, unknown> }) => {
+          // plan_createの場合はplanIdを返さない
+          if (toolName === "plan_create") {
+            return { details: {} }; // planIdなし
+          }
+          // subagent_run_dagの場合は成功させる
+          if (toolName === "subagent_run_dag") {
+            return { content: [{ type: "text", text: "実装完了" }] };
+          }
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify(params).includes("researcher")
+                ? "# Research\n\n調査結果。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）"
+                : "# Plan\n\n- [ ] 実装計画",
+            }],
+          };
+        },
+      };
+
+      // 全フェーズを進める
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-1", {}, undefined, undefined, ctx);
+      await planTool!.execute("tc-plan", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-2", {}, undefined, undefined, ctx);
+      await confirmPlanTool!.execute("tc-confirm", {}, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-3", {}, undefined, undefined, ctx);
+
+      // execute_planを実行（plan_createがplanIdを返さないためエラーになるはず）
+      const result = await executePlanTool!.execute("tc-execute-no-planid", {}, undefined, undefined, ctx);
+      expect(result.details.error).toBe("implement_error");
+      expect(result.content[0].text).toContain("planId を取得できませんでした");
+    });
+
+    it("returns implement_error when plan_create returns null details", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      const planTool = pi.tools.get("ul_workflow_plan");
+      const confirmPlanTool = pi.tools.get("ul_workflow_confirm_plan");
+      const executePlanTool = pi.tools.get("ul_workflow_execute_plan");
+      expect(startTool && researchTool && approveTool && planTool && confirmPlanTool && executePlanTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-planid-null", { task: "planId nullテスト用タスク" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      // plan_createがnull detailsを返すケース
+      const ctx = {
+        executeTool: async ({ toolName, params }: { toolName: string; params: Record<string, unknown> }) => {
+          if (toolName === "plan_create") {
+            return { details: null }; // detailsがnull
+          }
+          if (toolName === "subagent_run_dag") {
+            return { content: [{ type: "text", text: "実装完了" }] };
+          }
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify(params).includes("researcher")
+                ? "# Research\n\n調査結果。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）"
+                : "# Plan\n\n- [ ] 実装計画",
+            }],
+          };
+        },
+      };
+
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-1", {}, undefined, undefined, ctx);
+      await planTool!.execute("tc-plan", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-2", {}, undefined, undefined, ctx);
+      await confirmPlanTool!.execute("tc-confirm", {}, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-3", {}, undefined, undefined, ctx);
+
+      const result = await executePlanTool!.execute("tc-execute-null-details", {}, undefined, undefined, ctx);
+      expect(result.details.error).toBe("implement_error");
+      expect(result.content[0].text).toContain("planId を取得できませんでした");
+    });
   });
 });
 
