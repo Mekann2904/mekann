@@ -62,6 +62,30 @@ function resolveLatestActiveEntry(
   return entries[0];
 }
 
+/**
+ * アトミック書き込みを行う
+ * 一時ファイルに書き込んだ後、renameで置き換えることで競合を防ぐ
+ * @summary アトミックファイル書き込み
+ * @param filePath - 書き込み先パス
+ * @param content - 書き込む内容
+ */
+function writeAtomicFileSync(filePath: string, content: string): void {
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    fs.writeFileSync(tempPath, content, "utf-8");
+    fs.renameSync(tempPath, filePath);
+  } finally {
+    // 一時ファイルが残っている場合は削除
+    if (fs.existsSync(tempPath)) {
+      try {
+        fs.unlinkSync(tempPath);
+      } catch {
+        // 削除失敗は無視
+      }
+    }
+  }
+}
+
 export function deleteUlWorkflowTaskFiles(baseDir: string, taskId: string): boolean {
   const rawTaskId = normalizeUlTaskId(taskId);
   const ulWorkflowDir = path.join(baseDir, ".pi", "ul-workflow");
@@ -98,7 +122,8 @@ export function deleteUlWorkflowTaskFiles(baseDir: string, taskId: string): bool
         nextRegistry.activeTaskId = latestEntry.activeTaskId;
         nextRegistry.ownerInstanceId = latestEntry.ownerInstanceId;
         nextRegistry.updatedAt = latestEntry.updatedAt;
-        fs.writeFileSync(activePath, JSON.stringify(nextRegistry, null, 2), "utf-8");
+        // アトミック書き込みを使用して競合を防ぐ
+        writeAtomicFileSync(activePath, JSON.stringify(nextRegistry, null, 2));
       }
     } catch {
       // active.json が壊れていても task 削除は続行する
