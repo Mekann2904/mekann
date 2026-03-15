@@ -214,7 +214,7 @@ export class WorkflowService {
    * @summary ワークフロー中止
    * @returns 成功したか
    */
-  async abort(): Promise<{ success: boolean; error?: string; taskId?: string }> {
+  async abort(): Promise<{ success: boolean; error?: string; taskId?: string; cleanupError?: string }> {
     const state = await this.repository.getCurrent();
 
     if (!state) {
@@ -233,7 +233,14 @@ export class WorkflowService {
     await this.repository.save(state);
     await this.repository.setCurrent(null);
 
-    return { success: true, taskId };
+    // タスクディレクトリのクリーンアップを試みる
+    // 削除に失敗してもワークフロー中止自体は成功とみなす
+    const deleteResult = await this.repository.delete(taskId);
+    if (!deleteResult.success) {
+      console.error(`Failed to cleanup task directory for ${taskId}:`, deleteResult.error);
+    }
+
+    return { success: true, taskId, cleanupError: deleteResult.success ? undefined : deleteResult.error };
   }
 
   /**
