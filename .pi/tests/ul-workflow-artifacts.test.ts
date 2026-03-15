@@ -18,13 +18,15 @@ type RegisteredTool = {
 
 function createFakePi() {
   const tools = new Map<string, RegisteredTool>();
+  const commands = new Map<string, { description: string; handler: (args: string, ctx: any) => Promise<void> }>();
   return {
     tools,
+    commands,
     registerTool(def: any) {
       tools.set(def.name, def);
     },
-    registerCommand() {
-      // no-op
+    registerCommand(name: string, def: { description: string; handler: (args: string, ctx: any) => Promise<void> }) {
+      commands.set(name, def);
     },
   };
 }
@@ -1646,5 +1648,170 @@ Test verification artifacts missing`;
 
     const result = decideImplementFollowups(gapCheckOutput);
     expect(result.needsVerificationDeepDive).toBe(true);
+  });
+});
+
+// =============================================================================
+// Command handler tests
+// =============================================================================
+describe("ul-workflow command handlers", () => {
+  let pi: ReturnType<typeof createFakePi>;
+  const createdTaskIds: string[] = [];
+  const WORKFLOW_DIR = path.join(process.cwd(), ".pi", "ul-workflow");
+  const ACTIVE_FILE = path.join(WORKFLOW_DIR, "active.json");
+
+  beforeEach(() => {
+    pi = createFakePi();
+    registerUlWorkflowExtension(pi as any);
+  });
+
+  afterEach(() => {
+    for (const taskId of createdTaskIds.splice(0)) {
+      rmSync(path.join(WORKFLOW_DIR, "tasks", taskId), {
+        recursive: true,
+        force: true,
+      });
+    }
+    if (existsSync(ACTIVE_FILE)) {
+      rmSync(ACTIVE_FILE, { force: true });
+    }
+  });
+
+  it("registers all 6 command handlers", () => {
+    expect(pi.commands.has("ul-workflow-start")).toBe(true);
+    expect(pi.commands.has("ul-workflow-run")).toBe(true);
+    expect(pi.commands.has("ul-workflow-status")).toBe(true);
+    expect(pi.commands.has("ul-workflow-approve")).toBe(true);
+    expect(pi.commands.has("ul-workflow-annotate")).toBe(true);
+    expect(pi.commands.has("ul-workflow-abort")).toBe(true);
+  });
+
+  it("ul-workflow-start creates a new workflow", async () => {
+    const cmd = pi.commands.get("ul-workflow-start");
+    expect(cmd).toBeDefined();
+
+    const notifications: string[] = [];
+    const ctx = {
+      ui: {
+        notify: (msg: string) => {
+          notifications.push(msg);
+        },
+      },
+    };
+
+    await cmd!.handler("テストタスク", ctx);
+
+    expect(notifications.length).toBeGreaterThan(0);
+    expect(notifications[0]).toContain("ワークフロー開始");
+
+    // クリーンアップ用にtaskIdを抽出
+    const match = notifications[0].match(/ワークフロー開始: ([^\n]+)/);
+    if (match) {
+      createdTaskIds.push(match[1]);
+    }
+  });
+
+  it("ul-workflow-start shows warning when task is empty", async () => {
+    const cmd = pi.commands.get("ul-workflow-start");
+    expect(cmd).toBeDefined();
+
+    const notifications: string[] = [];
+    const ctx = {
+      ui: {
+        notify: (msg: string) => {
+          notifications.push(msg);
+        },
+      },
+    };
+
+    await cmd!.handler("", ctx);
+
+    expect(notifications.length).toBe(1);
+    expect(notifications[0]).toContain("タスク説明を入力してください");
+  });
+
+  it("ul-workflow-status shows no active workflow when none exists", async () => {
+    const cmd = pi.commands.get("ul-workflow-status");
+    expect(cmd).toBeDefined();
+
+    const notifications: string[] = [];
+    const ctx = {
+      ui: {
+        notify: (msg: string) => {
+          notifications.push(msg);
+        },
+      },
+    };
+
+    await cmd!.handler("", ctx);
+
+    expect(notifications.length).toBe(1);
+    expect(notifications[0]).toContain("アクティブなワークフローはありません");
+  });
+
+  it("ul-workflow-status shows workflow info when exists", async () => {
+    // まずワークフローを作成
+    const startTool = pi.tools.get("ul_workflow_start");
+    expect(startTool).toBeDefined();
+
+    const startResult = await startTool!.execute("tc-cmd-status", { task: "ステータス確認用タスク" }, undefined, undefined, {});
+    const taskId = startResult.details.taskId as string;
+    createdTaskIds.push(taskId);
+
+    const cmd = pi.commands.get("ul-workflow-status");
+    expect(cmd).toBeDefined();
+
+    const notifications: string[] = [];
+    const ctx = {
+      ui: {
+        notify: (msg: string) => {
+          notifications.push(msg);
+        },
+      },
+    };
+
+    await cmd!.handler("", ctx);
+
+    expect(notifications.length).toBe(1);
+    expect(notifications[0]).toContain(taskId);
+    expect(notifications[0]).toContain("RESEARCH");
+  });
+
+  it("ul-workflow-run shows warning when task is empty", async () => {
+    const cmd = pi.commands.get("ul-workflow-run");
+    expect(cmd).toBeDefined();
+
+    const notifications: string[] = [];
+    const ctx = {
+      ui: {
+        notify: (msg: string) => {
+          notifications.push(msg);
+        },
+      },
+    };
+
+    await cmd!.handler("", ctx);
+
+    expect(notifications.length).toBe(1);
+    expect(notifications[0]).toContain("タスク説明を入力してください");
+  });
+
+  it("ul-workflow-abort shows warning when no workflow exists", async () => {
+    const cmd = pi.commands.get("ul-workflow-abort");
+    expect(cmd).toBeDefined();
+
+    const notifications: string[] = [];
+    const ctx = {
+      ui: {
+        notify: (msg: string) => {
+          notifications.push(msg);
+        },
+      },
+    };
+
+    await cmd!.handler("", ctx);
+
+    expect(notifications.length).toBe(1);
+    expect(notifications[0]).toContain("アクティブなワークフロー");
   });
 });
