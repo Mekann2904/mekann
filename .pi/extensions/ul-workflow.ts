@@ -4332,7 +4332,10 @@ plan.mdに基づく実装
       workflow.phase = "aborted";
       workflow.updatedAt = new Date().toISOString();
       saveState(workflow);
-      setCurrentWorkflow(null);
+      const clearResult = setCurrentWorkflow(null);
+      if (!clearResult.success) {
+        ctx.ui.notify(`警告: レジストリクリア失敗: ${clearResult.error}`, "warning");
+      }
 
       ctx.ui.notify(`ワークフロー中止: ${taskId}`, "info");
     },
