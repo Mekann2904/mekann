@@ -616,21 +616,33 @@ export class ContextHistoryStorage {
 
   /**
    * @summary 古い履歴ファイルをクリーンアップ
+   * @description TOCTOUレース回避のため、全体をロック内で実行
    */
   static cleanup(): void {
-    const instances = InstanceRegistry.getAll();
-    const activePids = new Set(instances.map((i) => i.pid));
+    lock.withLock(() => {
+      // getAll()を使わず直接読み込むことで、再帰的なロック取得を回避
+      const instances = readRegistryState<Record<number, InstanceInfo>>(WEBUI_INSTANCES_STATE_KEY, {});
+      const now = Date.now();
+      const STALE_THRESHOLD_MS = 60000; // 60 seconds (12 missed heartbeats at 5s interval)
 
-    const historyKeys = listJsonStateKeys("webui_context_history:");
-    for (const stateKey of historyKeys) {
-      const match = stateKey.match(/^webui_context_history:(\d+)$/);
-      if (match) {
-        const pid = parseInt(match[1], 10);
-        if (!activePids.has(pid)) {
-          deleteJsonState(stateKey);
+      // アクティブなインスタンスのみを抽出
+      const activePids = new Set(
+        Object.values(instances)
+          .filter((info) => now - info.lastHeartbeat < STALE_THRESHOLD_MS)
+          .map((i) => i.pid)
+      );
+
+      const historyKeys = listJsonStateKeys("webui_context_history:");
+      for (const stateKey of historyKeys) {
+        const match = stateKey.match(/^webui_context_history:(\d+)$/);
+        if (match) {
+          const pid = parseInt(match[1], 10);
+          if (!activePids.has(pid)) {
+            deleteJsonState(stateKey);
+          }
         }
       }
-    }
+    });
   }
 }
 
