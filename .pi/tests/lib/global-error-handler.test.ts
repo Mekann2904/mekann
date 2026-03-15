@@ -454,3 +454,100 @@ describe("エッジケース", () => {
 		vi.restoreAllMocks();
 	});
 });
+
+// ============================================================================
+// process.exit path tests
+// ============================================================================
+
+describe("process.exit path", () => {
+	let mockProcess: ReturnType<typeof mockProcessEvents>;
+	let customLogger: Mock;
+	let originalExit: typeof process.exit;
+
+	beforeEach(() => {
+		teardownGlobalErrorHandlers();
+		mockProcess = mockProcessEvents();
+		customLogger = vi.fn();
+		originalExit = process.exit;
+	});
+
+	afterEach(() => {
+		teardownGlobalErrorHandlers();
+		vi.restoreAllMocks();
+		process.exit = originalExit;
+	});
+
+	it("should_call_process_exit_with_custom_exitCode_when_exitOnUncaught_true", () => {
+		// Arrange
+		const exitMock = vi.fn();
+		process.exit = exitMock as typeof process.exit;
+
+		setupGlobalErrorHandlers({
+			logger: customLogger,
+			exitOnUncaught: true,
+			exitCode: 42,
+		});
+		const error = new Error("Test exception");
+
+		// Act
+		mockProcess.emit("uncaughtException", error, "uncaughtException");
+
+		// Assert
+		expect(exitMock).toHaveBeenCalledWith(42);
+	});
+
+	it("should_call_process_exit_with_default_exitCode_1_when_exitOnUncaught_true", () => {
+		// Arrange
+		const exitMock = vi.fn();
+		process.exit = exitMock as typeof process.exit;
+
+		setupGlobalErrorHandlers({
+			logger: customLogger,
+			exitOnUncaught: true,
+		});
+		const error = new Error("Test exception");
+
+		// Act
+		mockProcess.emit("uncaughtException", error, "uncaughtException");
+
+		// Assert
+		expect(exitMock).toHaveBeenCalledWith(1);
+	});
+
+	it("should_not_call_process_exit_when_exitOnUncaught_false", () => {
+		// Arrange
+		const exitMock = vi.fn();
+		process.exit = exitMock as typeof process.exit;
+
+		setupGlobalErrorHandlers({
+			logger: customLogger,
+			exitOnUncaught: false,
+		});
+		const error = new Error("Test exception");
+
+		// Act
+		mockProcess.emit("uncaughtException", error, "uncaughtException");
+
+		// Assert
+		expect(exitMock).not.toHaveBeenCalled();
+	});
+
+	it("should_not_call_process_exit_for_cancellation_errors_even_with_exitOnUncaught_true", () => {
+		// Arrange
+		const exitMock = vi.fn();
+		process.exit = exitMock as typeof process.exit;
+
+		setupGlobalErrorHandlers({
+			logger: customLogger,
+			exitOnUncaught: true,
+			exitCode: 42,
+		});
+		const error = new Error("This operation was aborted");
+
+		// Act
+		mockProcess.emit("uncaughtException", error, "uncaughtException");
+
+		// Assert: キャンセルエラーではexitしない
+		expect(exitMock).not.toHaveBeenCalled();
+	});
+});
