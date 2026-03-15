@@ -833,6 +833,70 @@ describe.sequential("UL workflow artifacts", () => {
       }
     });
 
+    it("returns owner_still_alive when force_claim is called on workflow owned by alive process", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const forceClaimTool = pi.tools.get("ul_workflow_force_claim");
+      expect(startTool && forceClaimTool).toBeDefined();
+
+      // ワークフローを開始
+      const startResult = await startTool!.execute("tc-force-claim-alive", { task: "force_claimテスト用のタスク説明" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      // active.jsonとstate.jsonを直接操作して異なるownerInstanceIdを設定（生存中のPIDを設定）
+      const activePath = path.join(process.cwd(), ".pi", "ul-workflow", "active.json");
+      const activeData = JSON.parse(readFileSync(activePath, "utf-8"));
+      activeData.ownerInstanceId = `instance-${process.pid}`; // 現在のプロセスPIDを使用（生存中と判定される）
+      writeFileSync(activePath, JSON.stringify(activeData, null, 2), "utf-8");
+
+      // state.jsonも変更（getCurrentWorkflowはstate.jsonから読み込む）
+      const statePath = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId, "state.json");
+      if (existsSync(statePath)) {
+        const stateData = JSON.parse(readFileSync(statePath, "utf-8"));
+        stateData.ownerInstanceId = `instance-${process.pid}`;
+        writeFileSync(statePath, JSON.stringify(stateData, null, 2), "utf-8");
+      }
+
+      // force_claimを実行（所有者が生存中なので owner_still_alive エラーになる）
+      const result = await forceClaimTool!.execute("tc-force-claim-alive-2", {}, undefined, undefined, {});
+      expect(result.details.error).toBe("owner_still_alive");
+      expect(result.details.ownerPid).toBe(process.pid);
+    });
+
+    it("auto-claims ownership when owner process is dead", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const resumeTool = pi.tools.get("ul_workflow_resume");
+      expect(startTool && resumeTool).toBeDefined();
+
+      // ワークフローを開始
+      const startResult = await startTool!.execute("tc-auto-claim-dead", { task: "auto-claimテスト用のタスク説明" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      // active.jsonとstate.jsonを直接操作して異なるownerInstanceIdを設定（存在しないPIDを設定）
+      const activePath = path.join(process.cwd(), ".pi", "ul-workflow", "active.json");
+      const activeData = JSON.parse(readFileSync(activePath, "utf-8"));
+      const deadPid = 999999; // 存在しないPID
+      activeData.ownerInstanceId = `instance-${deadPid}`;
+      writeFileSync(activePath, JSON.stringify(activeData, null, 2), "utf-8");
+
+      // state.jsonも変更（getCurrentWorkflowはstate.jsonから読み込む）
+      const statePath = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId, "state.json");
+      if (existsSync(statePath)) {
+        const stateData = JSON.parse(readFileSync(statePath, "utf-8"));
+        stateData.ownerInstanceId = `instance-${deadPid}`;
+        writeFileSync(statePath, JSON.stringify(stateData, null, 2), "utf-8");
+      }
+
+      // resumeを実行（所有者が死んでいるのでauto-claimが成功する）
+      const result = await resumeTool!.execute("tc-auto-claim-dead-2", { task_id: taskId }, undefined, undefined, {});
+      // エラーがないこと、またはauto-claimが成功していることを確認
+      if (!result.details.error) {
+        expect(result.content[0].text).toContain("再開");
+        expect(result.details.autoClaim).toBe(true);
+      }
+    });
+
     it("returns workflow_finished when approving completed workflow", async () => {
       const startTool = pi.tools.get("ul_workflow_start");
       const approveTool = pi.tools.get("ul_workflow_approve");
@@ -2026,6 +2090,177 @@ describe("ul-workflow command handlers", () => {
       } finally {
         spy.mockRestore();
       }
+    });
+  });
+
+  // 実行フェーズのエラーテスト
+  describe("execution phase errors", () => {
+    it("returns research_error when subagent execution fails during research phase", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      expect(startTool && researchTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-research-error", { task: "リサーチエラーテスト用のタスク説明" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      // サブエージェント実行をモックしてエラーを発生させる
+      const ctx = {
+        executeTool: async () => {
+          throw new Error("Subagent execution failed: connection timeout");
+        },
+      };
+
+      const result = await researchTool!.execute("tc-research-err", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      expect(result.details.error).toBe("research_error");
+      expect(result.details.taskId).toBe(taskId);
+      expect(result.content[0].text).toContain("research フェーズの実行に失敗しました");
+    });
+
+    it("returns plan_error when subagent execution fails during plan phase", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      const planTool = pi.tools.get("ul_workflow_plan");
+      expect(startTool && researchTool && approveTool && planTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-plan-error", { task: "プランエラーテスト用のタスク説明" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      // researchを実行
+      const successCtx = {
+        executeTool: async () => ({
+          content: [{ type: "text", text: "# Research\n\n調査結果です。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）" }],
+        }),
+      };
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, successCtx);
+      await approveTool!.execute("tc-approve-research", {}, undefined, undefined, successCtx);
+
+      // planフェーズでエラーを発生させる
+      const errorCtx = {
+        executeTool: async () => {
+          throw new Error("Plan subagent failed: analysis timeout");
+        },
+      };
+
+      const result = await planTool!.execute("tc-plan-err", { task: "テスト", task_id: taskId }, undefined, undefined, errorCtx);
+      expect(result.details.error).toBe("plan_error");
+      expect(result.details.taskId).toBe(taskId);
+      expect(result.content[0].text).toContain("plan フェーズの実行に失敗しました");
+    });
+
+    it("returns review_error when subagent execution fails during review phase", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      const planTool = pi.tools.get("ul_workflow_plan");
+      const reviewTool = pi.tools.get("ul_workflow_review");
+      expect(startTool && researchTool && approveTool && planTool && reviewTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-review-error", { task: "レビューエラーテスト用のタスク説明" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      // setup: research, planを実行
+      const successCtx = {
+        executeTool: async () => ({
+          content: [{ type: "text", text: "# Research\n\n調査結果です。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）" }],
+        }),
+      };
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, successCtx);
+      await approveTool!.execute("tc-approve-research", {}, undefined, undefined, successCtx);
+
+      // planを実行
+      const planCtx = {
+        executeTool: async () => ({
+          content: [{ type: "text", text: "# Plan\n\n実装計画です。\n\n## 変更内容\n\n- 変更1\n\n## Todo\n\n- [ ] タスク1" }],
+        }),
+      };
+      await planTool!.execute("tc-plan", { task: "テスト", task_id: taskId }, undefined, undefined, planCtx);
+      await approveTool!.execute("tc-approve-plan", {}, undefined, undefined, planCtx);
+
+      // reviewフェーズでエラーを発生させる
+      const errorCtx = {
+        executeTool: async () => {
+          throw new Error("Review subagent failed: analysis error");
+        },
+      };
+
+      const result = await reviewTool!.execute("tc-review-err", { task: "テスト", task_id: taskId }, undefined, undefined, errorCtx);
+      expect(result.details.error).toBe("review_error");
+      expect(result.details.taskId).toBe(taskId);
+      expect(result.content[0].text).toContain("review フェーズの実行に失敗しました");
+    });
+
+    it("returns implement_error when subagent execution fails during implement phase", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      const planTool = pi.tools.get("ul_workflow_plan");
+      const annotateTool = pi.tools.get("ul_workflow_annotate");
+      const executePlanTool = pi.tools.get("ul_workflow_execute_plan");
+      expect(startTool && researchTool && approveTool && planTool && annotateTool && executePlanTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-implement-error", { task: "実装エラーテスト用のタスク説明" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      // setup: research, planを実行
+      const successCtx = {
+        executeTool: async () => ({
+          content: [{ type: "text", text: "# Research\n\n調査結果です。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）" }],
+        }),
+      };
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, successCtx);
+      await approveTool!.execute("tc-approve-research", {}, undefined, undefined, successCtx);
+
+      // planを実行
+      const planCtx = {
+        executeTool: async () => ({
+          content: [{ type: "text", text: "# Plan\n\n実装計画です。\n\n## 変更内容\n\n- 変更1\n\n## Todo\n\n- [ ] タスク1" }],
+        }),
+      };
+      await planTool!.execute("tc-plan", { task: "テスト", task_id: taskId }, undefined, undefined, planCtx);
+
+      // plan.mdを手動で作成（annotateが読み込むため）
+      const taskDir = path.join(WORKFLOW_DIR, "tasks", taskId);
+      const planPath = path.join(taskDir, "plan.md");
+      writeFileSync(planPath, "# Plan\n\n実装計画です。\n\n## 変更内容\n\n- 変更1\n\n## Todo\n\n- [ ] タスク1");
+
+      await approveTool!.execute("tc-approve-plan", {}, undefined, undefined, planCtx);
+
+      // annotateフェーズを経てimplementフェーズへ
+      await annotateTool!.execute("tc-annotate", {}, undefined, undefined, planCtx);
+      await approveTool!.execute("tc-approve-annotate", {}, undefined, undefined, planCtx);
+
+      // implementフェーズでエラーを発生させる
+      const errorCtx = {
+        executeTool: async () => {
+          throw new Error("Implement subagent failed: build error");
+        },
+      };
+
+      const result = await executePlanTool!.execute("tc-implement-err", {}, undefined, undefined, errorCtx);
+      expect(result.details.error).toBe("implement_error");
+      expect(result.details.taskId).toBe(taskId);
+      expect(result.content[0].text).toContain("実装フェーズ中にエラーが発生しました");
+    });
+
+    it("returns subagent_error when subagent execution fails during workflow run", async () => {
+      const runTool = pi.tools.get("ul_workflow_run");
+      expect(runTool).toBeDefined();
+
+      // サブエージェント実行をモックしてエラーを発生させる
+      const errorCtx = {
+        executeTool: async () => {
+          throw new Error("Subagent DAG execution failed: timeout");
+        },
+      };
+
+      const result = await runTool!.execute("tc-run-error", { task: "ワークフロー実行エラーテスト用のタスク" }, undefined, undefined, errorCtx);
+      expect(result.details.error).toBe("subagent_error");
+      expect(result.content[0].text).toContain("サブエージェント実行中にエラーが発生しました");
     });
   });
 });

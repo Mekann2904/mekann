@@ -3539,7 +3539,7 @@ subagent_run_dag(${JSON.stringify(dagParams, null, 2)})
 完了後: ul_workflow_commit() でコミット
 `, { taskId, phase: "implement", requiresDagExecution: true, dynamicImplement: true });
         }
-        return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${error}`, { error: "implement_error", details: String(error) });
+        return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${error}`, { error: "implement_error", details: String(error), taskId });
       }
     },
   });
