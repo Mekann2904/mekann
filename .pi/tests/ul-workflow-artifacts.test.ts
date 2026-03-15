@@ -5,8 +5,9 @@
  * related: .pi/extensions/ul-workflow.ts, .pi/tests/ul-workflow-active-registry.test.ts
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { promises as fsPromises } from "node:fs";
 import path from "node:path";
 
 import registerUlWorkflowExtension from "../extensions/ul-workflow.js";
@@ -977,6 +978,182 @@ describe.sequential("UL workflow artifacts", () => {
       // 実装フェーズでエラーが発生
       const result = await executePlanTool!.execute("tc-execute-err", {}, undefined, undefined, ctx);
       expect(result.details.error).toBe("implement_error");
+    });
+
+    // =========================================================================
+    // assertPhaseArtifactReady トランジェントエラーテスト
+    // =========================================================================
+
+    it("retries and succeeds on transient filesystem errors (EACCES)", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      expect(startTool && researchTool && approveTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-transient-eacces", { task: "EACCESリトライ成功テスト" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      // researchを実行してplanフェーズへ進む
+      const ctx = {
+        executeTool: async () => ({
+          content: [{ type: "text", text: "# Research\n\n調査結果です。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）" }],
+        }),
+      };
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+
+      // fsPromises.readFileをモック: 最初の1回はEACCES、2回目は成功
+      const readFileSpy = vi.spyOn(fsPromises, "readFile");
+      let callCount = 0;
+      readFileSpy.mockImplementation(async () => {
+        callCount++;
+        if (callCount === 1) {
+          const err = new Error("Permission denied") as NodeJS.ErrnoException;
+          err.code = "EACCES";
+          throw err;
+        }
+        return "# Research\n\n調査結果です。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）";
+      });
+
+      try {
+        // approveを実行（リトライして成功するはず）
+        const result = await approveTool!.execute("tc-approve-transient", {}, undefined, undefined, ctx);
+        expect(result.details.error).toBeUndefined();
+        expect(callCount).toBe(2); // 1回失敗 + 1回成功
+      } finally {
+        readFileSpy.mockRestore();
+      }
+    });
+
+    it("retries and succeeds on transient filesystem errors (EMFILE)", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      expect(startTool && researchTool && approveTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-transient-emfile", { task: "EMFILEリトライ成功テスト" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      const ctx = {
+        executeTool: async () => ({
+          content: [{ type: "text", text: "# Research\n\n調査結果です。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）" }],
+        }),
+      };
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+
+      // fsPromises.readFileをモック: 最初の2回はEMFILE、3回目は成功
+      const readFileSpy = vi.spyOn(fsPromises, "readFile");
+      let callCount = 0;
+      readFileSpy.mockImplementation(async () => {
+        callCount++;
+        if (callCount <= 2) {
+          const err = new Error("Too many open files") as NodeJS.ErrnoException;
+          err.code = "EMFILE";
+          throw err;
+        }
+        return "# Research\n\n調査結果です。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）";
+      });
+
+      try {
+        const result = await approveTool!.execute("tc-approve-emfile", {}, undefined, undefined, ctx);
+        expect(result.details.error).toBeUndefined();
+        expect(callCount).toBe(3);
+      } finally {
+        readFileSpy.mockRestore();
+      }
+    });
+
+    it("throws error after transient error retry exhaustion", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      expect(startTool && researchTool && approveTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-transient-exhaust", { task: "リトライ枯渇テスト" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      const ctx = {
+        executeTool: async () => ({
+          content: [{ type: "text", text: "# Research\n\n調査結果です。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）" }],
+        }),
+      };
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+
+      // fsPromises.readFileをモック: 常にEBUSYエラー
+      const readFileSpy = vi.spyOn(fsPromises, "readFile");
+      const busyError = new Error("Resource busy") as NodeJS.ErrnoException;
+      busyError.code = "EBUSY";
+      readFileSpy.mockRejectedValue(busyError);
+
+      try {
+        const result = await approveTool!.execute("tc-approve-exhaust", {}, undefined, undefined, ctx);
+        // リトライ上限に達したらエラー
+        expect(result.details.error).toBe("phase_artifact_not_ready");
+      } finally {
+        readFileSpy.mockRestore();
+      }
+    });
+
+    it("throws error after empty content retry exhaustion", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      expect(startTool && researchTool && approveTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-empty-exhaust", { task: "空コンテンツリトライ枯渇テスト" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      const ctx = {
+        executeTool: async () => ({
+          content: [{ type: "text", text: "# Research\n\n調査結果です。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）" }],
+        }),
+      };
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+
+      // fsPromises.readFileをモック: 常に空文字を返す
+      const readFileSpy = vi.spyOn(fsPromises, "readFile");
+      readFileSpy.mockResolvedValue("");
+
+      try {
+        const result = await approveTool!.execute("tc-approve-empty", {}, undefined, undefined, ctx);
+        expect(result.details.error).toBe("phase_artifact_not_ready");
+      } finally {
+        readFileSpy.mockRestore();
+      }
+    });
+
+    it("propagates unknown errors immediately", async () => {
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      expect(startTool && researchTool && approveTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-unknown-err", { task: "不明エラー伝播テスト" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      const ctx = {
+        executeTool: async () => ({
+          content: [{ type: "text", text: "# Research\n\n調査結果です。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）" }],
+        }),
+      };
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+
+      // fsPromises.readFileをモック: 不明なエラー（ENOENTでも一時的でもない）
+      const readFileSpy = vi.spyOn(fsPromises, "readFile");
+      const unknownError = new Error("Unknown filesystem error") as NodeJS.ErrnoException;
+      unknownError.code = "EUNKNOWN";
+      readFileSpy.mockRejectedValue(unknownError);
+
+      try {
+        const result = await approveTool!.execute("tc-approve-unknown", {}, undefined, undefined, ctx);
+        expect(result.details.error).toBe("phase_artifact_not_ready");
+      } finally {
+        readFileSpy.mockRestore();
+      }
     });
   });
 });
