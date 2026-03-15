@@ -2401,4 +2401,95 @@ describe("ul-workflow command handlers", () => {
       await expect(assertPhaseArtifactReady(testTaskId, "plan")).resolves.toBeUndefined();
     });
   });
+
+  describe("verification_not_cleared error path", () => {
+    const verificationDir = path.join(process.cwd(), ".pi", "workspace-verification");
+    const configPath = path.join(verificationDir, "config.json");
+
+    afterEach(() => {
+      // テスト後に設定ファイルを削除
+      if (existsSync(configPath)) {
+        unlinkSync(configPath);
+      }
+    });
+
+    it("returns verification_not_cleared when workspace verification is blocked during review phase approval", async () => {
+      // workspace verificationを有効化してブロック状態を設定
+      mkdirSync(verificationDir, { recursive: true });
+      writeFileSync(configPath, JSON.stringify({
+        enabled: true,
+        requireProofReview: true,
+        gateMode: "release",
+      }));
+
+      // stateをモックしてpendingProofReview=trueにする
+      const verificationModule = await import("../lib/workspace-verification.js");
+      const loadStateSpy = vi.spyOn(verificationModule, "loadWorkspaceVerificationState").mockReturnValue({
+        dirty: true,
+        pendingProofReview: true,
+        pendingReviewArtifact: false,
+        replanRequired: false,
+        lastRun: null,
+        verificationHistory: [],
+        reviewArtifacts: [],
+        running: false,
+      });
+
+      const startTool = pi.tools.get("ul_workflow_start");
+      const researchTool = pi.tools.get("ul_workflow_research");
+      const approveTool = pi.tools.get("ul_workflow_approve");
+      const planTool = pi.tools.get("ul_workflow_plan");
+      const confirmPlanTool = pi.tools.get("ul_workflow_confirm_plan");
+      const executePlanTool = pi.tools.get("ul_workflow_execute_plan");
+      const statusTool = pi.tools.get("ul_workflow_status");
+      expect(startTool && researchTool && approveTool && planTool && confirmPlanTool && executePlanTool && statusTool).toBeDefined();
+
+      const startResult = await startTool!.execute("tc-start-verification", { task: "verification_not_clearedテスト" }, undefined, undefined, {});
+      const taskId = startResult.details.taskId as string;
+      createdTaskIds.push(taskId);
+
+      const ctx = {
+        executeTool: async ({ params }: { toolName: string; params: Record<string, unknown> }) => ({
+          content: [{
+            type: "text",
+            text: JSON.stringify(params).includes("researcher")
+              ? "# Research\n\n調査結果。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）"
+              : JSON.stringify(params).includes("architect")
+                ? "# Plan\n\n- [ ] 実装計画"
+                : JSON.stringify(params).includes("reviewer")
+                  ? "# Review\n\nレビュー結果。\n\n## 判定結果\n- [ ] normal（通常）"
+                  : "実装完了",
+          }],
+        }),
+        cwd: process.cwd(),
+      };
+
+      // reviewフェーズまで進める
+      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-1", {}, undefined, undefined, ctx);
+      await planTool!.execute("tc-plan", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-2", {}, undefined, undefined, ctx);
+      await confirmPlanTool!.execute("tc-confirm", {}, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-3", {}, undefined, undefined, ctx);
+      await executePlanTool!.execute("tc-execute", {}, undefined, undefined, ctx);
+      await approveTool!.execute("tc-approve-4", {}, undefined, undefined, ctx);
+
+      // reviewフェーズに入ったことを確認
+      const statusBeforeReview = await statusTool!.execute("tc-status-before-review", {}, undefined, undefined, ctx);
+      expect(statusBeforeReview.details.phase).toBe("review");
+
+      // review.mdを作成（reviewツールの代わりに直接作成）
+      const taskDir = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId);
+      writeFileSync(path.join(taskDir, "review.md"), "# Review\n\nレビュー結果。\n\n## 判定結果\n- [ ] normal（通常）");
+
+      // verificationがブロックしている状態でapproveを呼ぶ
+      const result = await approveTool!.execute("tc-approve-verification-blocked", {}, undefined, undefined, ctx);
+      expect(result.details.error).toBe("verification_not_cleared");
+      expect(result.details.taskId).toBe(taskId);
+      expect(result.details.phase).toBe("review");
+
+      // モックをリストア
+      loadStateSpy.mockRestore();
+    });
+  });
 });
