@@ -590,61 +590,77 @@ async function resolveDemand(
   finding?: Finding;
   childDemands?: ExplorationDemand[];
 }> {
-  // キャッシュチェック
-  const cached = agentMemory.get(demand.id);
-  if (cached) {
+  // ステータスを実行中に更新
+  demand.status = "running";
+
+  try {
+    // キャッシュチェック
+    const cached = agentMemory.get(demand.id);
+    if (cached) {
+      demand.status = "resolved";
+      return {
+        resolved: true,
+        finding: {
+          location: cached.source,
+          issue: cached.result,
+          severity: "low",
+          evidence: [cached.result],
+          relatedDemands: [demand.id],
+        },
+      };
+    }
+
+    // 需要タイプに応じた処理
+    let result = "";
+    let source = task.target;
+
+    switch (demand.type) {
+      case "trace-variable":
+        result = `変数の追跡結果: ${demand.context}で定義`;
+        source = `${task.target}:variable`;
+        break;
+      case "trace-call":
+        result = `呼び出し関係: ${demand.context}が参照`;
+        source = `${task.target}:call`;
+        break;
+      case "check-contract":
+        result = `契約確認: ${demand.context}のインターフェース`;
+        source = `${task.target}:contract`;
+        break;
+      case "find-similar":
+        result = `類似パターン: ${demand.context}と同様のコード`;
+        source = `${task.target}:similar`;
+        break;
+      case "validate-assumption":
+        result = `前提検証: ${demand.context}の前提を確認`;
+        source = `${task.target}:assumption`;
+        break;
+    }
+
+    // 結果をキャッシュ
+    agentMemory.set(demand.id, demand.description, result, 0.8, source);
+
+    // ステータスを解決済みに更新
+    demand.status = "resolved";
+
     return {
       resolved: true,
       finding: {
-        location: cached.source,
-        issue: cached.result,
+        location: source,
+        issue: result,
         severity: "low",
-        evidence: [cached.result],
+        evidence: [result],
         relatedDemands: [demand.id],
       },
     };
+  } catch (error) {
+    // エラー時はステータスを失敗に更新
+    demand.status = "failed";
+    demand.result = error instanceof Error ? error.message : String(error);
+    return {
+      resolved: false,
+    };
   }
-
-  // 需要タイプに応じた処理
-  let result = "";
-  let source = task.target;
-
-  switch (demand.type) {
-    case "trace-variable":
-      result = `変数の追跡結果: ${demand.context}で定義`;
-      source = `${task.target}:variable`;
-      break;
-    case "trace-call":
-      result = `呼び出し関係: ${demand.context}が参照`;
-      source = `${task.target}:call`;
-      break;
-    case "check-contract":
-      result = `契約確認: ${demand.context}のインターフェース`;
-      source = `${task.target}:contract`;
-      break;
-    case "find-similar":
-      result = `類似パターン: ${demand.context}と同様のコード`;
-      source = `${task.target}:similar`;
-      break;
-    case "validate-assumption":
-      result = `前提検証: ${demand.context}の前提を確認`;
-      source = `${task.target}:assumption`;
-      break;
-  }
-
-  // 結果をキャッシュ
-  agentMemory.set(demand.id, demand.description, result, 0.8, source);
-
-  return {
-    resolved: true,
-    finding: {
-      location: source,
-      issue: result,
-      severity: "low",
-      evidence: [result],
-      relatedDemands: [demand.id],
-    },
-  };
 }
 
 /**

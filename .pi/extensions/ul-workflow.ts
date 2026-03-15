@@ -142,6 +142,56 @@ function createEmptyActiveWorkflowRegistry(): ActiveWorkflowRegistry {
   };
 }
 
+/**
+ * インプロセス同期ロック - 同時実行のread-modify-write操作を保護
+ * Node.jsのシングルスレッド特性を活用し、同期的なロックを実現
+ */
+class RegistryLock {
+  private locked = false;
+  private waiters = 0;
+
+  acquire(): boolean {
+    if (this.locked) {
+      this.waiters++;
+      return false;
+    }
+    this.locked = true;
+    return true;
+  }
+
+  release(): void {
+    this.locked = false;
+    if (this.waiters > 0) {
+      this.waiters--;
+      this.locked = true;
+    }
+  }
+
+  /** ロックを取得できるまで同期待機（スピンロック） */
+  syncAcquire(timeoutMs = 5000): boolean {
+    const start = Date.now();
+    while (!this.acquire()) {
+      if (Date.now() - start > timeoutMs) {
+        return false;
+      }
+      // 同期スリップ - 他の非同期操作にCPUを譲る
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1);
+    }
+    return true;
+  }
+
+  withLock<T>(fn: () => T): T {
+    this.syncAcquire();
+    try {
+      return fn();
+    } finally {
+      this.release();
+    }
+  }
+}
+
+const registryLock = new RegistryLock();
+
 function readActiveWorkflowRegistry(): ActiveWorkflowRegistry {
   try {
     if (!fs.existsSync(ACTIVE_FILE)) {
@@ -221,7 +271,7 @@ export function updateActiveWorkflowRegistryForInstance(
   return nextRegistry;
 }
 
-function writeActiveWorkflowRegistry(registry: ActiveWorkflowRegistry): void {
+function writeActiveWorkflowRegistry(registry: ActiveWorkflowRegistry): { success: boolean; error?: string } {
   if (!fs.existsSync(WORKFLOW_DIR)) {
     fs.mkdirSync(WORKFLOW_DIR, { recursive: true });
   }
@@ -232,7 +282,14 @@ function writeActiveWorkflowRegistry(registry: ActiveWorkflowRegistry): void {
   nextRegistry.ownerInstanceId = globalEntry.ownerInstanceId;
   nextRegistry.updatedAt = globalEntry.updatedAt;
 
-  atomicWriteTextFile(ACTIVE_FILE, JSON.stringify(nextRegistry, null, 2));
+  try {
+    atomicWriteTextFile(ACTIVE_FILE, JSON.stringify(nextRegistry, null, 2));
+    return { success: true };
+  } catch (e) {
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    console.error(`Failed to write active workflow registry: ${errorMessage}`, e);
+    return { success: false, error: errorMessage };
+  }
 }
 
 // File-based workflow access (replaces memory variable)
@@ -247,20 +304,32 @@ export function getCurrentWorkflow(): WorkflowState | null {
     }
 
     return loadState(taskId);
-  } catch {
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    // ENOENTは正常ケース（アクティブなワークフローがない）なのでログ出力しない
+    // EACCES, EMFILE, EBUSYなどの一時的エラーは警告として出力
+    if (code && code !== 'ENOENT') {
+      console.warn(`getCurrentWorkflow: filesystem error (${code}), returning null`, error);
+    }
     return null;
   }
 }
 
-export function setCurrentWorkflow(state: WorkflowState | null): void {
-  const instanceId = getInstanceId();
-  const registry = readActiveWorkflowRegistry();
-  const nextRegistry = updateActiveWorkflowRegistryForInstance(
-    registry,
-    instanceId,
-    state,
-  );
-  writeActiveWorkflowRegistry(nextRegistry);
+export function setCurrentWorkflow(state: WorkflowState | null): { success: boolean; error?: string } {
+  return registryLock.withLock(() => {
+    const instanceId = getInstanceId();
+    const registry = readActiveWorkflowRegistry();
+    const nextRegistry = updateActiveWorkflowRegistryForInstance(
+      registry,
+      instanceId,
+      state,
+    );
+    const result = writeActiveWorkflowRegistry(nextRegistry);
+    if (!result.success) {
+      console.error(`setCurrentWorkflow: failed to persist registry: ${result.error}`);
+    }
+    return result;
+  });
 }
 
 function getToolExecutor(ctx: unknown):
@@ -300,7 +369,7 @@ function resolveWorkflowArtifactPath(taskId: string, phase: WorkflowPhase): stri
   return null;
 }
 
-async function assertPhaseArtifactReady(taskId: string, phase: WorkflowPhase): Promise<void> {
+export async function assertPhaseArtifactReady(taskId: string, phase: WorkflowPhase): Promise<void> {
   const artifactPath = resolveWorkflowArtifactPath(taskId, phase);
   if (!artifactPath) {
     return;
@@ -327,7 +396,9 @@ async function assertPhaseArtifactReady(taskId: string, phase: WorkflowPhase): P
         return; // 成功: 有効なコンテンツが読み取れた
       }
       // 空コンテンツ: 書き込み中の可能性があるためリトライ
-      lastError = new Error(`${phase}.md が空です（書き込み中の可能性）: ${artifactPath}`);
+      const emptyErr = new Error(`${phase}.md が空です（書き込み中の可能性）: ${artifactPath}`) as NodeJS.ErrnoException;
+      emptyErr.code = "EEMPTY";
+      lastError = emptyErr;
     } catch (err) {
       const nodeErr = err as NodeJS.ErrnoException;
       if (nodeErr.code === "ENOENT") {
@@ -480,21 +551,22 @@ export type PlanFollowupDecision = {
   rationale: string;
 };
 
-type ImplementFollowupDecision = {
+export type ImplementFollowupDecision = {
   needsFixupDeepDive: boolean;
   needsVerificationDeepDive: boolean;
   rationale: string;
 };
 
-type ReviewFollowupDecision = {
+export type ReviewFollowupDecision = {
   needsRiskDeepDive: boolean;
   needsVerificationDeepDive: boolean;
   rationale: string;
 };
 
 export function extractDagTaskSection(output: string, taskId: string): string {
-  const normalized = String(output || "");
-  const pattern = new RegExp(`## ${taskId}\\nStatus: [^\\n]*\\n([\\s\\S]*?)(?=\\n## [^\\n]+\\nStatus:|$)`);
+  // CRLFをLFに正規化し、Status:後のスペースをオプションにする
+  const normalized = String(output || "").replace(/\r\n/g, "\n");
+  const pattern = new RegExp(`## ${taskId}\\nStatus:\\s*[^\\n]*\\n([\\s\\S]*?)(?=\\n## [^\\n]+\\nStatus:|$)`);
   const match = normalized.match(pattern);
   return match?.[1]?.trim() ?? "";
 }
@@ -558,7 +630,7 @@ export function decidePlanFollowups(baseOutput: string): PlanFollowupDecision {
   };
 }
 
-function decideImplementFollowups(baseOutput: string): ImplementFollowupDecision {
+export function decideImplementFollowups(baseOutput: string): ImplementFollowupDecision {
   const gapSection = extractDagTaskSection(baseOutput, "implement-gap-check");
   const fixupMatch = gapSection.match(/DEEP_DIVE_FIXUP:\s*([^\n]+)/i);
   const verificationMatch = gapSection.match(/DEEP_DIVE_VERIFICATION:\s*([^\n]+)/i);
@@ -3469,7 +3541,7 @@ subagent_run_dag(${JSON.stringify(dagParams, null, 2)})
 完了後: ul_workflow_commit() でコミット
 `, { taskId, phase: "implement", requiresDagExecution: true, dynamicImplement: true });
         }
-        return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${error}`, { error: "implement_error", details: String(error) });
+        return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${error}`, { error: "implement_error", details: String(error), taskId });
       }
     },
   });
@@ -3973,6 +4045,21 @@ subagent_run_dag(${JSON.stringify(dagParams, null, 2)})
         return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
       }
 
+      // 現在のフェーズのアーティファクトが準備できていることを確認
+      // plan.md (implementフェーズ以降) / review.md (reviewフェーズ) が存在する必要がある
+      try {
+        await assertPhaseArtifactReady(workflow.taskId, workflow.phase);
+      } catch (error) {
+        return makeResult(
+          `エラー: 現在のフェーズ成果物がまだ準備できていません。\n\n${error}`,
+          {
+            error: "phase_artifact_not_ready",
+            taskId: workflow.taskId,
+            phase: workflow.phase,
+          },
+        );
+      }
+
       // git-workflowスキルは workspace ごとに配置揺れがあるため、
       // 2つの候補パスを案内する。
       const skillPaths = [
@@ -4247,7 +4334,10 @@ plan.mdに基づく実装
       workflow.phase = "aborted";
       workflow.updatedAt = new Date().toISOString();
       saveState(workflow);
-      setCurrentWorkflow(null);
+      const clearResult = setCurrentWorkflow(null);
+      if (!clearResult.success) {
+        ctx.ui.notify(`警告: レジストリクリア失敗: ${clearResult.error}`, "warning");
+      }
 
       ctx.ui.notify(`ワークフロー中止: ${taskId}`, "info");
     },

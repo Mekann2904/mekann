@@ -68,9 +68,11 @@ export interface IWorkflowRepository {
 
   /**
    * タスクを削除
+   * @summary タスク削除
    * @param taskId - タスクID
+   * @returns 成功したか（失敗時はエラーメッセージを含む）
    */
-  delete(taskId: string): Promise<void>;
+  delete(taskId: string): Promise<{ success: boolean; error?: string }>;
 }
 
 /**

@@ -394,7 +394,8 @@ export function parseVerificationCommand(command: string): ParsedVerificationCom
     };
   }
 
-  if (/[|&;<>()$`]/.test(raw)) {
+  // Shell operators and command substitution patterns
+  if (/[|&;<>()$`]/.test(raw) || /\$\([^)]*\)/.test(raw)) {
     return {
       executable: "",
       args: [],
@@ -411,8 +412,19 @@ export function parseVerificationCommand(command: string): ParsedVerificationCom
     };
   }
 
+  const executable = tokens[0];
+
+  // Path traversal check: reject executables containing ..
+  if (/\.\./.test(executable)) {
+    return {
+      executable: "",
+      args: [],
+      error: "path traversal (..) is not allowed in verification command executable",
+    };
+  }
+
   return {
-    executable: tokens[0],
+    executable,
     args: tokens.slice(1),
   };
 }

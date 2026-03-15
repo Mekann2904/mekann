@@ -110,7 +110,10 @@ export class HierarchicalExecutor extends BaseExecutor {
       return {
         planId: plan.id,
         status: this.state.failed.size > 0 ? "partial" : "success",
-        taskResults: outputs.map(o => ({ taskId: o.taskId, status: "success" as const, durationMs: 0 })),
+        taskResults: [
+          ...outputs.map(o => ({ taskId: o.taskId, status: "success" as const, durationMs: 0 })),
+          ...Array.from(this.state.failed).map(taskId => ({ taskId, status: "failure" as const, durationMs: 0 })),
+        ],
         outputs,
         finalOutput,
         durationMs: Date.now() - startTime,
@@ -121,7 +124,10 @@ export class HierarchicalExecutor extends BaseExecutor {
       return {
         planId: plan.id,
         status: "failure",
-        taskResults: outputs.map(o => ({ taskId: o.taskId, status: "success" as const, durationMs: 0 })),
+        taskResults: [
+          ...outputs.map(o => ({ taskId: o.taskId, status: "success" as const, durationMs: 0 })),
+          ...Array.from(this.state.failed).map(taskId => ({ taskId, status: "failure" as const, durationMs: 0 })),
+        ],
         outputs,
         error: error instanceof Error ? error.message : String(error),
         durationMs: Date.now() - startTime,

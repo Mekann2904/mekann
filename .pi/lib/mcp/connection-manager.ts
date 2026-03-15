@@ -1216,7 +1216,12 @@ export class McpConnectionManager {
 
 			try {
 				const params = request.params as Record<string, unknown>;
-				const elicitationId = params.elicitationId as string;
+
+				// Validate elicitationId type
+				if (typeof params.elicitationId !== 'string') {
+					throw new Error('Invalid elicitationId: expected string');
+				}
+				const elicitationId = params.elicitationId;
 
 				// Determine request type (form or url)
 				let elicitationRequest: McpElicitationRequest;
@@ -1247,7 +1252,12 @@ export class McpConnectionManager {
 					throw new Error('Invalid elicitation request: missing form or url');
 				}
 
-				const response = await this.elicitationHandler!(elicitationRequest, connectionId);
+				// Check handler is still available (race condition protection)
+				if (!this.elicitationHandler) {
+					throw new Error('Elicitation handler not configured');
+				}
+
+				const response = await this.elicitationHandler(elicitationRequest, connectionId);
 
 				return {
 					elicitationId: response.elicitationId,

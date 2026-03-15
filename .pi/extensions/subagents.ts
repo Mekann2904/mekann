@@ -73,6 +73,16 @@ import {
   loadState,
   isProcessAlive,
   extractPidFromInstanceId,
+  extractDagTaskSection,
+  normalizeGapDecision,
+  decideResearchFollowups,
+  decidePlanFollowups,
+  decideImplementFollowups,
+  decideReviewFollowups,
+  type ResearchFollowupDecision,
+  type PlanFollowupDecision,
+  type ImplementFollowupDecision,
+  type ReviewFollowupDecision,
 } from "./ul-workflow.js";
 import {
 	loadTaskStorage as loadSharedTaskStorage,
@@ -121,22 +131,10 @@ type DynamicResearchConfig = {
   synthesisTaskId: string;
 };
 
-type ResearchFollowupDecision = {
-  needsExternalDeepDive: boolean;
-  needsCodebaseDeepDive: boolean;
-  rationale: string;
-};
-
 type DynamicPlanConfig = {
   task: string;
   gapTaskId: string;
   synthesisTaskId: string;
-};
-
-type PlanFollowupDecision = {
-  needsChangesDeepDive: boolean;
-  needsValidationDeepDive: boolean;
-  rationale: string;
 };
 
 type DynamicImplementConfig = {
@@ -145,141 +143,11 @@ type DynamicImplementConfig = {
   synthesisTaskId: string;
 };
 
-type ImplementFollowupDecision = {
-  needsFixupDeepDive: boolean;
-  needsVerificationDeepDive: boolean;
-  rationale: string;
-};
-
 type DynamicReviewConfig = {
   task: string;
   gapTaskId: string;
   synthesisTaskId: string;
 };
-
-type ReviewFollowupDecision = {
-  needsRiskDeepDive: boolean;
-  needsVerificationDeepDive: boolean;
-  rationale: string;
-};
-
-function extractDagTaskSection(output: string, taskId: string): string {
-  const normalized = String(output || "");
-  const pattern = new RegExp(`## ${taskId}\\nStatus: [^\\n]*\\n([\\s\\S]*?)(?=\\n## [^\\n]+\\nStatus:|$)`);
-  const match = normalized.match(pattern);
-  return match?.[1]?.trim() ?? "";
-}
-
-function normalizeGapDecision(value: string): boolean | null {
-  const normalized = value.trim().toLowerCase();
-  if (["yes", "true", "required", "needed"].includes(normalized)) return true;
-  if (["no", "false", "none", "not_needed", "not-needed"].includes(normalized)) return false;
-  return null;
-}
-
-function decideResearchFollowups(baseOutput: string): ResearchFollowupDecision {
-  const gapSection = extractDagTaskSection(baseOutput, "research-gap-check");
-  const externalMatch = gapSection.match(/DEEP_DIVE_EXTERNAL:\s*([^\n]+)/i);
-  const codebaseMatch = gapSection.match(/DEEP_DIVE_CODEBASE:\s*([^\n]+)/i);
-  const rationaleMatch = gapSection.match(/RATIONALE:\s*([\s\S]*?)$/i);
-
-  const explicitExternal = externalMatch ? normalizeGapDecision(externalMatch[1]) : null;
-  const explicitCodebase = codebaseMatch ? normalizeGapDecision(codebaseMatch[1]) : null;
-  const rationale = rationaleMatch?.[1]?.trim() || "gap-check output did not provide an explicit rationale";
-
-  if (explicitExternal !== null || explicitCodebase !== null) {
-    return {
-      needsExternalDeepDive: explicitExternal ?? false,
-      needsCodebaseDeepDive: explicitCodebase ?? false,
-      rationale,
-    };
-  }
-
-  const noDive = /no additional deep dive needed|no deep dive needed|plan ready/i.test(gapSection);
-  return {
-    needsExternalDeepDive: !noDive && /(external|official docs|reference|api surface|library|spec)/i.test(gapSection),
-    needsCodebaseDeepDive: !noDive && /(codebase|risk|file|implementation|constraint|reuse)/i.test(gapSection),
-    rationale,
-  };
-}
-
-function decidePlanFollowups(baseOutput: string): PlanFollowupDecision {
-  const gapSection = extractDagTaskSection(baseOutput, "plan-gap-check");
-  const changesMatch = gapSection.match(/DEEP_DIVE_CHANGES:\s*([^\n]+)/i);
-  const validationMatch = gapSection.match(/DEEP_DIVE_VALIDATION:\s*([^\n]+)/i);
-  const rationaleMatch = gapSection.match(/RATIONALE:\s*([\s\S]*?)$/i);
-
-  const explicitChanges = changesMatch ? normalizeGapDecision(changesMatch[1]) : null;
-  const explicitValidation = validationMatch ? normalizeGapDecision(validationMatch[1]) : null;
-  const rationale = rationaleMatch?.[1]?.trim() || "plan gap-check output did not provide an explicit rationale";
-
-  if (explicitChanges !== null || explicitValidation !== null) {
-    return {
-      needsChangesDeepDive: explicitChanges ?? false,
-      needsValidationDeepDive: explicitValidation ?? false,
-      rationale,
-    };
-  }
-
-  const noDive = /no additional deep dive needed|no deep dive needed|plan ready/i.test(gapSection);
-  return {
-    needsChangesDeepDive: !noDive && /(change|file|implementation|snippet|scope|dependency)/i.test(gapSection),
-    needsValidationDeepDive: !noDive && /(validation|verify|test|risk|rollback|acceptance)/i.test(gapSection),
-    rationale,
-  };
-}
-
-function decideImplementFollowups(baseOutput: string): ImplementFollowupDecision {
-  const gapSection = extractDagTaskSection(baseOutput, "implement-gap-check");
-  const fixupMatch = gapSection.match(/DEEP_DIVE_FIXUP:\s*([^\n]+)/i);
-  const verificationMatch = gapSection.match(/DEEP_DIVE_VERIFICATION:\s*([^\n]+)/i);
-  const rationaleMatch = gapSection.match(/RATIONALE:\s*([\s\S]*?)$/i);
-
-  const explicitFixup = fixupMatch ? normalizeGapDecision(fixupMatch[1]) : null;
-  const explicitVerification = verificationMatch ? normalizeGapDecision(verificationMatch[1]) : null;
-  const rationale = rationaleMatch?.[1]?.trim() || "implement gap-check output did not provide an explicit rationale";
-
-  if (explicitFixup !== null || explicitVerification !== null) {
-    return {
-      needsFixupDeepDive: explicitFixup ?? false,
-      needsVerificationDeepDive: explicitVerification ?? false,
-      rationale,
-    };
-  }
-
-  const noDive = /no additional deep dive needed|no deep dive needed|ready for review/i.test(gapSection);
-  return {
-    needsFixupDeepDive: !noDive && /(fix|implementation|bug|regression|follow-up|adjust)/i.test(gapSection),
-    needsVerificationDeepDive: !noDive && /(verification|verify|test|proof|artifact|review)/i.test(gapSection),
-    rationale,
-  };
-}
-
-function decideReviewFollowups(baseOutput: string): ReviewFollowupDecision {
-  const gapSection = extractDagTaskSection(baseOutput, "review-gap-check");
-  const riskMatch = gapSection.match(/DEEP_DIVE_RISK:\s*([^\n]+)/i);
-  const verificationMatch = gapSection.match(/DEEP_DIVE_VERIFICATION:\s*([^\n]+)/i);
-  const rationaleMatch = gapSection.match(/RATIONALE:\s*([\s\S]*?)$/i);
-
-  const explicitRisk = riskMatch ? normalizeGapDecision(riskMatch[1]) : null;
-  const explicitVerification = verificationMatch ? normalizeGapDecision(verificationMatch[1]) : null;
-  const rationale = rationaleMatch?.[1]?.trim() || "review gap-check output did not provide an explicit rationale";
-
-  if (explicitRisk !== null || explicitVerification !== null) {
-    return {
-      needsRiskDeepDive: explicitRisk ?? false,
-      needsVerificationDeepDive: explicitVerification ?? false,
-      rationale,
-    };
-  }
-
-  const noDive = /no additional deep dive needed|no deep dive needed|ready for workspace verify/i.test(gapSection);
-  return {
-    needsRiskDeepDive: !noDive && /(risk|security|regression|rollback|impact)/i.test(gapSection),
-    needsVerificationDeepDive: !noDive && /(verification|verify|test|artifact|proof|review)/i.test(gapSection),
-    rationale,
-  };
-}
 
 function buildDynamicResearchBaseContext(outputByTaskId: Map<string, string>, rationale: string): string {
   const baseOutput = Array.from(outputByTaskId.entries())

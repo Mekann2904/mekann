@@ -7,12 +7,15 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   getInstanceId,
   extractPidFromInstanceId,
+  extractTokenFromInstanceId,
   isProcessAlive,
   isOwnerProcessDead,
+  resetInstanceIdCache,
+} from "../lib/core/ownership.js";
+import {
   checkOwnership,
   claimOwnership,
   isCurrentOwner,
-  resetInstanceIdCache,
   type OwnershipResult,
 } from "../lib/ul-workflow/domain/ownership.js";
 import type { WorkflowState } from "../lib/ul-workflow/domain/workflow-state.js";
@@ -62,18 +65,18 @@ describe("ownership module", () => {
     it("should generate instance ID with default session", () => {
       delete process.env.PI_SESSION_ID;
       const id = getInstanceId();
-      expect(id).toMatch(/^default-\d+$/);
+      expect(id).toMatch(/^default-\d+-[a-f0-9]{8}$/);
     });
 
     it("should include PI_SESSION_ID when set", () => {
       process.env.PI_SESSION_ID = "test-session";
       const id = getInstanceId();
-      expect(id).toMatch(/^test-session-\d+$/);
+      expect(id).toMatch(/^test-session-\d+-[a-f0-9]{8}$/);
     });
 
     it("should include current process PID", () => {
       const id = getInstanceId();
-      expect(id).toContain(`-${process.pid}`);
+      expect(id).toContain(`-${process.pid}-`);
     });
 
     it("should return consistent ID within same process", () => {
@@ -81,11 +84,21 @@ describe("ownership module", () => {
       const id2 = getInstanceId();
       expect(id1).toBe(id2);
     });
+
+    it("should include 8-char hex token", () => {
+      const id = getInstanceId();
+      expect(id).toMatch(/-[a-f0-9]{8}$/);
+    });
   });
 
   describe("extractPidFromInstanceId", () => {
-    it("should extract PID from valid instance ID", () => {
+    it("should extract PID from valid instance ID (old format)", () => {
       const pid = extractPidFromInstanceId("default-12345");
+      expect(pid).toBe(12345);
+    });
+
+    it("should extract PID from valid instance ID (new format with token)", () => {
+      const pid = extractPidFromInstanceId("default-12345-a1b2c3d4");
       expect(pid).toBe(12345);
     });
 
@@ -96,6 +109,11 @@ describe("ownership module", () => {
 
     it("should extract PID from multi-hyphen session ID", () => {
       const pid = extractPidFromInstanceId("session-with-hyphens-99999");
+      expect(pid).toBe(99999);
+    });
+
+    it("should extract PID from multi-hyphen session ID with token", () => {
+      const pid = extractPidFromInstanceId("session-with-hyphens-99999-deadbeef");
       expect(pid).toBe(99999);
     });
 
@@ -134,6 +152,28 @@ describe("ownership module", () => {
       // PID_MAX is typically 4194304 on Linux
       const pid = extractPidFromInstanceId("session-4194304");
       expect(pid).toBe(4194304);
+    });
+  });
+
+  describe("extractTokenFromInstanceId", () => {
+    it("should extract token from instance ID with token", () => {
+      const token = extractTokenFromInstanceId("default-12345-a1b2c3d4");
+      expect(token).toBe("a1b2c3d4");
+    });
+
+    it("should return null for instance ID without token (old format)", () => {
+      const token = extractTokenFromInstanceId("default-12345");
+      expect(token).toBeNull();
+    });
+
+    it("should return null for instance ID without valid token", () => {
+      const token = extractTokenFromInstanceId("session-12345-invalid");
+      expect(token).toBeNull();
+    });
+
+    it("should return null for empty string", () => {
+      const token = extractTokenFromInstanceId("");
+      expect(token).toBeNull();
     });
   });
 
@@ -319,9 +359,10 @@ describe("ownership module", () => {
       resetInstanceIdCache();
       expect(isCurrentOwner(state)).toBe(false);
 
-      delete process.env.PI_SESSION_ID;
-      resetInstanceIdCache();
-      expect(isCurrentOwner(state)).toBe(true);
+      // Note: resetInstanceIdCache() generates a new token each time,
+      // so even restoring the session ID results in a different instance ID.
+      // In production, resetInstanceIdCache() is only called for testing,
+      // and the instance ID remains stable throughout the process lifetime.
     });
   });
 

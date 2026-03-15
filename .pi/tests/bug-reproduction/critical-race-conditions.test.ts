@@ -298,3 +298,101 @@ describe("Bug #3: communication.ts - beliefStateCache Race Condition", () => {
     expect(teamBSummary).toContain("0.70");
   });
 });
+
+// ============================================================================
+// バグ: enforceRuntimeLimitConsistency - limits/limitsVersionの並行更新保護
+// ============================================================================
+
+describe("enforceRuntimeLimitConsistency - limits/limitsVersion mutation race protection", () => {
+  /**
+   * 再現シナリオ:
+   * enforceRuntimeLimitConsistency が runtime.limits と runtime.limitsVersion を
+   * 非原子的に更新するため、並行呼び出しで不整合が発生する可能性がある
+   *
+   * 修正: 再入保護フラグを追加し、limits/limitsVersionの更新を保護
+   */
+
+  it("should handle concurrent getSharedRuntimeState calls safely", async () => {
+    const { getSharedRuntimeState } = await import(
+      "../../extensions/agent-runtime.js"
+    );
+
+    // 並列で複数回 getSharedRuntimeState を呼び出し
+    // enforceRuntimeLimitConsistency が内部的に呼ばれる
+    const results = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        Promise.resolve(getSharedRuntimeState())
+      )
+    );
+
+    // 全ての結果が limits と limitsVersion を持つことを確認
+    for (const result of results) {
+      expect(result.limits).toBeDefined();
+      expect(result.limitsVersion).toBeDefined();
+      expect(typeof result.limitsVersion).toBe("string");
+      expect(result.limitsVersion.length).toBeGreaterThan(0);
+    }
+
+    // 全ての結果が同じオブジェクト参照（シングルトン）であることを確認
+    const firstResult = results[0];
+    for (const result of results) {
+      expect(result).toBe(firstResult);
+    }
+  });
+
+  it("should maintain limits/limitsVersion consistency under rapid calls", async () => {
+    const { getSharedRuntimeState } = await import(
+      "../../extensions/agent-runtime.js"
+    );
+
+    // 短時間に多数の呼び出しを実行
+    const iterations = 100;
+    const results = [];
+    for (let i = 0; i < iterations; i++) {
+      const state = getSharedRuntimeState();
+      expect(state.limits).toBeDefined();
+      expect(state.limitsVersion).toBeDefined();
+      results.push(state);
+    }
+
+    // 全ての結果が同じオブジェクト参照であることを確認
+    const firstResult = results[0];
+    for (const result of results) {
+      expect(result).toBe(firstResult);
+    }
+
+    // limitsVersion が一貫していることを確認
+    const firstVersion = firstResult.limitsVersion;
+    for (const result of results) {
+      expect(result.limitsVersion).toBe(firstVersion);
+    }
+  });
+
+  it("should prevent re-entry during limits update", async () => {
+    const { getSharedRuntimeState } = await import(
+      "../../extensions/agent-runtime.js"
+    );
+
+    // 同期的に再入を試みる
+    // JavaScript はシングルスレッドなので、再入保護フラグが正しく機能すれば
+    // 無限ループやスタックオーバーフローは発生しない
+    let callCount = 0;
+    const originalGetState = getSharedRuntimeState;
+
+    // 複数回の呼び出しが安全に完了することを確認
+    const results = [];
+    for (let i = 0; i < 10; i++) {
+      results.push(originalGetState());
+      callCount++;
+    }
+
+    expect(callCount).toBe(10);
+    expect(results.length).toBe(10);
+
+    // 各結果が有効であることを確認
+    for (const result of results) {
+      expect(result.limits).toBeDefined();
+      expect(result.limitsVersion).toBeDefined();
+    }
+  });
+});

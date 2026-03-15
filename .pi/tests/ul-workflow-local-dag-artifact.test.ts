@@ -160,4 +160,208 @@ describe("UL workflow local DAG artifact fallback", () => {
     expect(content).not.toContain("## plan-findings");
     expect(content).not.toContain("Status: COMPLETED");
   });
+
+  it("handles executeDag returning failed status with failedTaskIds", async () => {
+    dagExecutorMock.executeDag.mockResolvedValue({
+      overallStatus: "failed",
+      totalDurationMs: 100,
+      completedTaskIds: ["plan-findings"],
+      failedTaskIds: ["plan-synthesis"],
+      skippedTaskIds: [],
+      taskResults: new Map([
+        ["plan-findings", { status: "completed", output: { output: "# Partial Plan\n\n部分的な計画" } }],
+        ["plan-synthesis", { status: "failed", error: "Synthesis failed due to timeout" }],
+      ]),
+    });
+
+    const startTool = pi.tools.get("ul_workflow_start");
+    const approveTool = pi.tools.get("ul_workflow_approve");
+    const planTool = pi.tools.get("ul_workflow_plan");
+    expect(startTool && approveTool && planTool).toBeDefined();
+
+    const startResult = await startTool!.execute(
+      "tc-dag-failed-start",
+      { task: "DAG失敗時のテスト" },
+      undefined,
+      undefined,
+      {},
+    );
+    const taskId = startResult.details.taskId as string;
+    createdTaskIds.push(taskId);
+
+    const researchPath = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId, "research.md");
+    writeFileSync(researchPath, "# Research\n\n調査結果\n", "utf-8");
+
+    await approveTool!.execute("tc-dag-failed-approve", {}, undefined, undefined, {});
+    const result = await planTool!.execute(
+      "tc-dag-failed-plan",
+      { task: "DAG失敗時のテスト", task_id: taskId },
+      undefined,
+      undefined,
+      {},
+    );
+
+    // 失敗しても部分的な出力がplan.mdに書き込まれることを確認
+    const planPath = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId, "plan.md");
+    const content = readFileSync(planPath, "utf-8");
+    expect(content).toContain("部分的な計画");
+  });
+
+  it("handles executeDag throwing circular dependency error", async () => {
+    dagExecutorMock.executeDag.mockRejectedValue(new Error("Circular dependency detected in DAG: task-a -> task-b -> task-a"));
+
+    const startTool = pi.tools.get("ul_workflow_start");
+    const approveTool = pi.tools.get("ul_workflow_approve");
+    const planTool = pi.tools.get("ul_workflow_plan");
+    expect(startTool && approveTool && planTool).toBeDefined();
+
+    const startResult = await startTool!.execute(
+      "tc-dag-circular-start",
+      { task: "循環依存エラーのテスト" },
+      undefined,
+      undefined,
+      {},
+    );
+    const taskId = startResult.details.taskId as string;
+    createdTaskIds.push(taskId);
+
+    const researchPath = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId, "research.md");
+    writeFileSync(researchPath, "# Research\n\n調査結果\n", "utf-8");
+
+    await approveTool!.execute("tc-dag-circular-approve", {}, undefined, undefined, {});
+    
+    // 循環依存エラーがエラー応答として返されることを確認
+    const result = await planTool!.execute(
+      "tc-dag-circular-plan",
+      { task: "循環依存エラーのテスト", task_id: taskId },
+      undefined,
+      undefined,
+      {},
+    );
+    
+    expect(result.details.error).toBe("plan_error");
+    expect(result.content[0].text).toContain("Circular dependency");
+  });
+
+  it("handles executeDag throwing timeout error", async () => {
+    dagExecutorMock.executeDag.mockRejectedValue(new Error("DAG execution timeout: exceeded 300000ms"));
+
+    const startTool = pi.tools.get("ul_workflow_start");
+    const approveTool = pi.tools.get("ul_workflow_approve");
+    const planTool = pi.tools.get("ul_workflow_plan");
+    expect(startTool && approveTool && planTool).toBeDefined();
+
+    const startResult = await startTool!.execute(
+      "tc-dag-timeout-start",
+      { task: "タイムアウトエラーのテスト" },
+      undefined,
+      undefined,
+      {},
+    );
+    const taskId = startResult.details.taskId as string;
+    createdTaskIds.push(taskId);
+
+    const researchPath = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId, "research.md");
+    writeFileSync(researchPath, "# Research\n\n調査結果\n", "utf-8");
+
+    await approveTool!.execute("tc-dag-timeout-approve", {}, undefined, undefined, {});
+    
+    const result = await planTool!.execute(
+      "tc-dag-timeout-plan",
+      { task: "タイムアウトエラーのテスト", task_id: taskId },
+      undefined,
+      undefined,
+      {},
+    );
+    
+    expect(result.details.error).toBe("plan_error");
+    expect(result.content[0].text).toContain("timeout");
+  });
+
+  it("handles empty taskResults Map", async () => {
+    dagExecutorMock.executeDag.mockResolvedValue({
+      overallStatus: "completed",
+      totalDurationMs: 50,
+      completedTaskIds: [],
+      failedTaskIds: [],
+      skippedTaskIds: [],
+      taskResults: new Map(),
+    });
+
+    const startTool = pi.tools.get("ul_workflow_start");
+    const approveTool = pi.tools.get("ul_workflow_approve");
+    const planTool = pi.tools.get("ul_workflow_plan");
+    expect(startTool && approveTool && planTool).toBeDefined();
+
+    const startResult = await startTool!.execute(
+      "tc-dag-empty-start",
+      { task: "空のtaskResultsのテスト" },
+      undefined,
+      undefined,
+      {},
+    );
+    const taskId = startResult.details.taskId as string;
+    createdTaskIds.push(taskId);
+
+    const researchPath = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId, "research.md");
+    writeFileSync(researchPath, "# Research\n\n調査結果\n", "utf-8");
+
+    await approveTool!.execute("tc-dag-empty-approve", {}, undefined, undefined, {});
+    await planTool!.execute(
+      "tc-dag-empty-plan",
+      { task: "空のtaskResultsのテスト", task_id: taskId },
+      undefined,
+      undefined,
+      {},
+    );
+
+    // 空の結果でもplan.mdが作成されることを確認
+    const planPath = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId, "plan.md");
+    expect(() => readFileSync(planPath, "utf-8")).not.toThrow();
+  });
+
+  it("handles malformed taskResults with missing output", async () => {
+    dagExecutorMock.executeDag.mockResolvedValue({
+      overallStatus: "completed",
+      totalDurationMs: 50,
+      completedTaskIds: ["plan-findings"],
+      failedTaskIds: [],
+      skippedTaskIds: [],
+      taskResults: new Map([
+        ["plan-findings", { status: "completed", output: undefined }],
+      ]),
+    });
+
+    const startTool = pi.tools.get("ul_workflow_start");
+    const approveTool = pi.tools.get("ul_workflow_approve");
+    const planTool = pi.tools.get("ul_workflow_plan");
+    expect(startTool && approveTool && planTool).toBeDefined();
+
+    const startResult = await startTool!.execute(
+      "tc-dag-malformed-start",
+      { task: "不正なtaskResultsのテスト" },
+      undefined,
+      undefined,
+      {},
+    );
+    const taskId = startResult.details.taskId as string;
+    createdTaskIds.push(taskId);
+
+    const researchPath = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId, "research.md");
+    writeFileSync(researchPath, "# Research\n\n調査結果\n", "utf-8");
+
+    await approveTool!.execute("tc-dag-malformed-approve", {}, undefined, undefined, {});
+    
+    // 不正なタスク結果でもクラッシュしないことを確認
+    await planTool!.execute(
+      "tc-dag-malformed-plan",
+      { task: "不正なtaskResultsのテスト", task_id: taskId },
+      undefined,
+      undefined,
+      {},
+    );
+
+    const planPath = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId, "plan.md");
+    expect(() => readFileSync(planPath, "utf-8")).not.toThrow();
+  });
 });
