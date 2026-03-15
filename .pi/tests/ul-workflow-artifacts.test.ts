@@ -1410,6 +1410,52 @@ No deep dive needed. Plan ready.`;
     expect(result.needsExternalDeepDive).toBe(false);
     expect(result.needsCodebaseDeepDive).toBe(false);
   });
+
+  it("parses CRLF line endings correctly", async () => {
+    const { decideResearchFollowups } = await import("../extensions/ul-workflow.js");
+
+    // CRLF line endings should be normalized and parsed correctly
+    const gapCheckOutput = "## research-gap-check\r\nStatus: completed\r\nDEEP_DIVE_EXTERNAL: yes\r\nDEEP_DIVE_CODEBASE: no\r\nRATIONALE: CRLF test";
+
+    const result = decideResearchFollowups(gapCheckOutput);
+    expect(result.needsExternalDeepDive).toBe(true);
+    expect(result.needsCodebaseDeepDive).toBe(false);
+    expect(result.rationale).toContain("CRLF test");
+  });
+
+  it("parses missing space after Status: colon", async () => {
+    const { decideResearchFollowups } = await import("../extensions/ul-workflow.js");
+
+    // "Status:" without space should still be parsed
+    const gapCheckOutput = `## research-gap-check
+Status:completed
+DEEP_DIVE_EXTERNAL: yes
+DEEP_DIVE_CODEBASE: yes
+RATIONALE: No space after colon`;
+
+    const result = decideResearchFollowups(gapCheckOutput);
+    expect(result.needsExternalDeepDive).toBe(true);
+    expect(result.needsCodebaseDeepDive).toBe(true);
+  });
+
+  it("extractDagTaskSection handles CRLF and missing space variations", async () => {
+    const { extractDagTaskSection } = await import("../extensions/ul-workflow.js");
+
+    // CRLF case
+    const crlfOutput = "## research-gap-check\r\nStatus: completed\r\nDEEP_DIVE_EXTERNAL: yes\r\n";
+    const crlfResult = extractDagTaskSection(crlfOutput, "research-gap-check");
+    expect(crlfResult).toContain("DEEP_DIVE_EXTERNAL: yes");
+
+    // Missing space after Status: case
+    const noSpaceOutput = "## research-gap-check\nStatus:completed\nDEEP_DIVE_EXTERNAL: yes\n";
+    const noSpaceResult = extractDagTaskSection(noSpaceOutput, "research-gap-check");
+    expect(noSpaceResult).toContain("DEEP_DIVE_EXTERNAL: yes");
+
+    // Multiple spaces after Status: case
+    const multiSpaceOutput = "## research-gap-check\nStatus:    completed\nDEEP_DIVE_EXTERNAL: yes\n";
+    const multiSpaceResult = extractDagTaskSection(multiSpaceOutput, "research-gap-check");
+    expect(multiSpaceResult).toContain("DEEP_DIVE_EXTERNAL: yes");
+  });
 });
 
 describe("decidePlanFollowups", () => {

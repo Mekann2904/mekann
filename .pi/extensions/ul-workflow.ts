@@ -493,8 +493,9 @@ export type ReviewFollowupDecision = {
 };
 
 export function extractDagTaskSection(output: string, taskId: string): string {
-  const normalized = String(output || "");
-  const pattern = new RegExp(`## ${taskId}\\nStatus: [^\\n]*\\n([\\s\\S]*?)(?=\\n## [^\\n]+\\nStatus:|$)`);
+  // CRLFをLFに正規化し、Status:後のスペースをオプションにする
+  const normalized = String(output || "").replace(/\r\n/g, "\n");
+  const pattern = new RegExp(`## ${taskId}\\nStatus:\\s*[^\\n]*\\n([\\s\\S]*?)(?=\\n## [^\\n]+\\nStatus:|$)`);
   const match = normalized.match(pattern);
   return match?.[1]?.trim() ?? "";
 }
