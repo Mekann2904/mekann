@@ -25,6 +25,7 @@ import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import * as fs from "fs";
 import * as path from "path";
+import { loadConfigFromEnv, validateConfig, DEFAULT_CONFIG } from "../lib/comprehensive-logger-config";
 
 interface DiagnosticResult {
   category: string;
@@ -280,6 +281,95 @@ function checkConfiguration(): DiagnosticResult {
   };
 }
 
+/**
+ * 拡張機能設定を検証する
+ * comprehensive-logger-config の validateConfig を使用して
+ * observability-data 拡張機能の設定を検証する
+ */
+function checkExtensionConfiguration(): DiagnosticResult {
+  const issues: string[] = [];
+  let hasCriticalError = false;
+
+  try {
+    // 環境変数から設定を読み込み
+    const config = loadConfigFromEnv(DEFAULT_CONFIG);
+    const validation = validateConfig(config);
+
+    // バリデーションエラーを収集
+    if (!validation.valid) {
+      hasCriticalError = true;
+      issues.push(...validation.errors);
+    }
+
+    // logDir のアクセシビリティをチェック
+    try {
+      const resolvedLogDir = path.resolve(config.logDir);
+      // ディレクトリが存在するかチェック
+      if (fs.existsSync(resolvedLogDir)) {
+        // 書き込み権限をチェック（テスト用にファイルを作成してみる）
+        const testFile = path.join(resolvedLogDir, `.write-test-${Date.now()}`);
+        try {
+          fs.writeFileSync(testFile, "test", { flag: "wx" });
+          fs.unlinkSync(testFile);
+        } catch (writeError) {
+          hasCriticalError = true;
+          issues.push(`logDir '${config.logDir}' is not writable`);
+        }
+      } else {
+        // ディレクトリが存在しない場合、親ディレクトリの書き込み権限をチェック
+        const parentDir = path.dirname(resolvedLogDir);
+        if (fs.existsSync(parentDir)) {
+          try {
+            fs.accessSync(parentDir, fs.constants.W_OK);
+          } catch {
+            hasCriticalError = true;
+            issues.push(`logDir '${config.logDir}' cannot be created (parent not writable)`);
+          }
+        } else {
+          hasCriticalError = true;
+          issues.push(`logDir '${config.logDir}' parent directory does not exist`);
+        }
+      }
+    } catch (accessError) {
+      hasCriticalError = true;
+      issues.push(`logDir '${config.logDir}' accessibility check failed: ${accessError instanceof Error ? accessError.message : String(accessError)}`);
+    }
+
+    // 設定値の範囲チェック（validateConfigでカバーされていないもの）
+    if (config.bufferSize > 10000) {
+      issues.push(`bufferSize (${config.bufferSize}) is unusually large (recommended: <= 10000)`);
+    }
+    if (config.flushIntervalMs > 60000) {
+      issues.push(`flushIntervalMs (${config.flushIntervalMs}) is too large (recommended: <= 60000ms)`);
+    }
+
+    return {
+      category: "Extension Configuration",
+      severity: hasCriticalError ? "high" : issues.length > 0 ? "medium" : "low",
+      issue: "Extension Config Validation",
+      description: "observability-data 拡張機能の設定検証",
+      recommendation: hasCriticalError
+        ? "環境変数 PI_LOG_* の設定値を確認してください"
+        : issues.length > 0
+          ? "設定値の調整を検討してください"
+          : "拡張機能設定は正常です",
+      detected: issues.length > 0,
+      details: issues.length > 0 ? issues.join("; ") : "All extension configuration valid",
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return {
+      category: "Extension Configuration",
+      severity: "critical",
+      issue: "Extension Config Validation",
+      description: `拡張機能設定の検証に失敗: ${errorMessage}`,
+      recommendation: "comprehensive-logger-config モジュールの読み込みを確認してください",
+      detected: true,
+      details: `Error: ${errorMessage}`,
+    };
+  }
+}
+
 function checkUlModeState(): DiagnosticResult {
   return {
     category: "UL Mode",
@@ -300,6 +390,7 @@ function runDiagnostics(): DiagnosticReport {
   results.push(checkResourceLeaks());
   results.push(checkParallelExecutionRisk());
   results.push(checkConfiguration());
+  results.push(checkExtensionConfiguration());
   results.push(checkUlModeState());
 
   const detected = results.filter((r) => r.detected);
