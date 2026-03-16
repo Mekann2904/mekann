@@ -145,6 +145,14 @@ function parseLogFileWithStats(filePath: string): ParseResult {
 
 		try {
 			const event = JSON.parse(line) as LogEvent;
+			// timestamp必須検証: 不正なイベントをスキップ
+			if (!event.timestamp || typeof event.timestamp !== "string") {
+				result.parseErrors++;
+				console.warn(
+					`[observability-data] Invalid event missing timestamp in ${filePath}: eventId=${event.eventId ?? "unknown"}`
+				);
+				continue;
+			}
 			result.events.push(event);
 		} catch (error) {
 			// パースエラーをログ出力（無言でドロップしない）
@@ -383,7 +391,7 @@ export default function (pi: ExtensionAPI): void {
                     // 最新イベント
                     lines.push(theme.bold("Recent events:"));
                     for (const event of events.slice(0, 20)) {
-                        const ts = event.timestamp.slice(11, 23);
+                        const ts = event.timestamp?.slice(11, 23) ?? "??:??:??.??";
                         const type = event.eventType.padEnd(20);
                         const taskId = event.taskId?.slice(0, 8) || "-";
                         lines.push(`  ${ts} ${type} ${taskId}`);
