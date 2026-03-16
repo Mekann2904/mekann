@@ -43,6 +43,9 @@ import {
   resolveWorkspaceVerificationPlan,
 } from "../lib/workspace-verification.js";
 
+const SYMPHONY_AUTO_APPROVE_PATTERN = /(承認|続行|進め|実行|apply|approve|continue|proceed|confirm|yes|ok|はい|commit)/i;
+const SYMPHONY_AUTO_REJECT_PATTERN = /(中止|停止|abort|cancel|reject|deny|いいえ|保留|stop|no|skip)/i;
+
 // ワークフローのフェーズ
 type WorkflowPhase = "idle" | "research" | "plan" | "annotate" | "implement" | "review" | "completed" | "aborted";
 
@@ -2514,18 +2517,95 @@ function makeResult(text: string, details: Record<string, unknown> = {}): AgentT
   };
 }
 
+type WorkflowQuestionOption = {
+  label: string;
+  description: string;
+};
+
+type WorkflowQuestionData = {
+  question: string;
+  header: string;
+  options: WorkflowQuestionOption[];
+  multiple?: boolean;
+  custom?: boolean;
+};
+
+function isSymphonyAutonomousWorkflow(ctx: unknown): boolean {
+  const cwd = typeof (ctx as { cwd?: unknown })?.cwd === "string"
+    ? String((ctx as { cwd: string }).cwd)
+    : process.cwd();
+  const configPath = path.join(cwd, ".pi", "tasks", "auto-executor-config.json");
+
+  if (!existsSync(configPath)) {
+    return false;
+  }
+
+  try {
+    const config = JSON.parse(readFileSync(configPath, "utf-8")) as { currentTaskId?: unknown };
+    return typeof config.currentTaskId === "string" && config.currentTaskId.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function pickSymphonyWorkflowAutoAnswer(
+  options: WorkflowQuestionOption[],
+): WorkflowQuestionOption | null {
+  if (options.length === 0) {
+    return null;
+  }
+
+  const scored = options.map((option, index) => {
+    let score = index === 0 ? 1 : 0;
+    if (SYMPHONY_AUTO_APPROVE_PATTERN.test(option.label)) {
+      score += 10;
+    }
+    if (SYMPHONY_AUTO_REJECT_PATTERN.test(option.label)) {
+      score -= 10;
+    }
+    return { option, score, index };
+  });
+
+  scored.sort((left, right) => {
+    if (right.score !== left.score) {
+      return right.score - left.score;
+    }
+    return left.index - right.index;
+  });
+
+  return scored[0]?.option ?? null;
+}
+
 /**
  * ユーザー確認が必要な結果を作成するヘルパー関数
  */
 function makeResultWithQuestion(
   text: string,
-  questionData: {
-    question: string;
-    header: string;
-    options: Array<{ label: string; description: string }>;
-  },
-  details: Record<string, unknown> = {}
+  questionData: WorkflowQuestionData,
+  details: Record<string, unknown> = {},
+  ctx?: unknown,
 ): AgentToolResult<unknown> {
+  if (isSymphonyAutonomousWorkflow(ctx)) {
+    const selectedOption = pickSymphonyWorkflowAutoAnswer(questionData.options);
+    const selectedAnswer = selectedOption?.label ?? null;
+    return {
+      content: [{
+        type: "text",
+        text: selectedAnswer
+          ? `${text}\n\n[Symphony] 自動回答: ${selectedAnswer}`
+          : `${text}\n\n[Symphony] 自動回答候補が見つからなかったため、先頭選択肢を前提に続行してください。`,
+      }],
+      details: {
+        ...details,
+        question: questionData,
+        answer: selectedAnswer,
+        answers: selectedAnswer ? [selectedAnswer] : [],
+        autoAnswered: true,
+        autoAnswerReason: "interactive workflow question is disabled during Symphony autonomous execution",
+      },
+    };
+  }
+
   return {
     content: [{ type: "text", text }],
     details: {
@@ -2816,8 +2896,7 @@ Task ID: ${taskId}
 
         // === ユーザーレビュー（Annotateフェーズ）===
         // UIの有無に関わらず、detailsベースで質問を返す
-        return {
-          content: [{ type: "text", text: `## Plan作成完了（レビュー待ち - Annotateフェーズ）
+        return makeResultWithQuestion(`## Plan作成完了（レビュー待ち - Annotateフェーズ）
 
 Task: ${trimmedTask}
 Execution Mode: 統一フロー（Research/Plan 実行後に annotate で停止）
@@ -2838,26 +2917,22 @@ ${planContent}
    - \`ul_workflow_approve()\` で実装フェーズへ進む
 4. または計画を修正:
    - \`ul_workflow_modify_plan({ modifications: "修正内容" })\`
-` }],
-            details: {
-              taskId,
-              phase: "annotate",
-              executionMode: "unified-flow",
-              modeInput: mode,
-              concurrencyHint: effectiveConcurrency,
-              askUser: true,
-              question: {
-                question: "この計画で実行しますか？",
-                header: "Plan確認",
-                options: [
-                  { label: "実行", description: "このまま実装を開始" },
-                  { label: "修正", description: "修正内容を記述" }
-                ],
-                multiple: false,
-                custom: true
-              }
-            }
-        };
+`, {
+          question: "この計画で実行しますか？",
+          header: "Plan確認",
+          options: [
+            { label: "実行", description: "このまま実装を開始" },
+            { label: "修正", description: "修正内容を記述" }
+          ],
+          multiple: false,
+          custom: true,
+        }, {
+          taskId,
+          phase: "annotate",
+          executionMode: "unified-flow",
+          modeInput: mode,
+          concurrencyHint: effectiveConcurrency,
+        }, ctx);
 
       } catch (error) {
         if (String(error).includes("subagent_run_dag APIが利用できません")) {
@@ -3258,31 +3333,26 @@ ${annotations.map((a, i) => `  ${i + 1}. ${a}`).join("\n")}
       const taskId = currentWorkflow.taskId;
 
       // detailsベースで質問を返す
-      return {
-        content: [{ type: "text", text: `## Plan確認
+      return makeResultWithQuestion(`## Plan確認
 
 Task: ${currentWorkflow.taskDescription}
 
 \`\`\`markdown
 ${planContent}
 \`\`\`
-` }],
-        details: {
-          taskId,
-          phase: "plan",
-          askUser: true,
-          question: {
-            question: "この計画で実行しますか？",
-            header: "Plan確認",
-            options: [
-              { label: "実行", description: "このまま実装を開始" },
-              { label: "修正", description: "修正内容を記述" }
-            ],
-            multiple: false,
-            custom: true
-          }
-        }
-      };
+`, {
+        question: "この計画で実行しますか？",
+        header: "Plan確認",
+        options: [
+          { label: "実行", description: "このまま実装を開始" },
+          { label: "修正", description: "修正内容を記述" }
+        ],
+        multiple: false,
+        custom: true,
+      }, {
+        taskId,
+        phase: "plan",
+      }, ctx);
     },
   });
 
@@ -3437,33 +3507,28 @@ subagent_run_dag(${JSON.stringify(dagParams, null, 2)})
         const planContent = readPlanFile(taskId);
 
         // detailsベースで質問を返す
-        return {
-          content: [{ type: "text", text: `## Plan修正完了
+        return makeResultWithQuestion(`## Plan修正完了
 
 修正: ${trimmedModifications}
 
 \`\`\`markdown
 ${planContent}
 \`\`\`
-` }],
-            details: {
-              taskId,
-              phase: currentWorkflow.phase,
-              autoExecute: true,
-              followupDecision: planRun.decision,
-              askUser: true,
-              question: {
-                question: "この計画で実行しますか？",
-                header: "Plan確認",
-                options: [
-                  { label: "実行", description: "このまま実装を開始" },
-                  { label: "修正", description: "追加の修正内容を記述" }
-                ],
-                multiple: false,
-                custom: true
-              }
-            }
-        };
+`, {
+          question: "この計画で実行しますか？",
+          header: "Plan確認",
+          options: [
+            { label: "実行", description: "このまま実装を開始" },
+            { label: "修正", description: "追加の修正内容を記述" }
+          ],
+          multiple: false,
+          custom: true,
+        }, {
+          taskId,
+          phase: currentWorkflow.phase,
+          autoExecute: true,
+          followupDecision: planRun.decision,
+        }, ctx);
       } catch (error) {
         if (String(error).includes("subagent_run_dag APIが利用できません")) {
           const researchPath = path.join(getTaskDir(taskId), "research.md");
@@ -3917,8 +3982,7 @@ subagent_run_dag(${JSON.stringify(dagParams, null, 2)})
       }
 
       // detailsベースでユーザーに確認
-      return {
-        content: [{ type: "text", text: `## コミット提案
+      return makeResultWithQuestion(`## コミット提案
 
 Task: ${taskDesc}
 Suggested Message: ${suggestedMessage}
@@ -3955,26 +4019,22 @@ plan.mdに基づく実装
 - ${skillPaths[0]}
 - ${skillPaths[1]}
 - 両方なければ、この workspace にはスキル未配置です
-` }],
-        details: {
-          taskId,
-          phase: workflow.phase,
-          suggestCommit: true,
-          suggestedMessage,
-          askUser: true,
-          question: {
-            question: `以下の内容でコミットしますか？\n\n【コミットメッセージ】\n${suggestedMessage}\n\n【変更内容】\n${taskDesc}\n\n【plan.md】\n${planPath}`,
-            header: "Git Commit",
-            options: [
-              { label: "Commit", description: "ステージング + コミットを実行" },
-              { label: "Edit", description: "メッセージを編集" },
-              { label: "Skip", description: "コミットせずに完了" }
-            ],
-            multiple: false,
-            custom: true
-          }
-        }
-      };
+`, {
+        question: `以下の内容でコミットしますか？\n\n【コミットメッセージ】\n${suggestedMessage}\n\n【変更内容】\n${taskDesc}\n\n【plan.md】\n${planPath}`,
+        header: "Git Commit",
+        options: [
+          { label: "Commit", description: "ステージング + コミットを実行" },
+          { label: "Edit", description: "メッセージを編集" },
+          { label: "Skip", description: "コミットせずに完了" }
+        ],
+        multiple: false,
+        custom: true,
+      }, {
+        taskId,
+        phase: workflow.phase,
+        suggestCommit: true,
+        suggestedMessage,
+      }, ctx);
     },
   });
 

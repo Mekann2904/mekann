@@ -550,6 +550,28 @@ function canAutoRunInContext(ctx: unknown, pi?: ExtensionAPI): boolean {
 	return canStartFreshSymphonySession(ctx, pi);
 }
 
+function getCurrentOwnedInProgressTask(storage: TaskStorage): Task | null {
+	const currentTaskId = autoExecutorConfig.currentTaskId;
+	if (!currentTaskId) {
+		return null;
+	}
+
+	const currentTask = storage.tasks.find((task) => task.id === currentTaskId) ?? null;
+	if (!currentTask) {
+		return null;
+	}
+
+	if (currentTask.status !== "in_progress") {
+		return null;
+	}
+
+	if (currentTask.ownerInstanceId !== getInstanceId()) {
+		return null;
+	}
+
+	return currentTask;
+}
+
 function executeTaskRunNextLocally(cwd: string): TaskRunNextResult | {
 	content: Array<{ type: "text"; text: string }>;
 	details: { pendingCount: number };
@@ -701,6 +723,15 @@ async function runSymphonyOnce(
 	},
 	target?: AutoDispatchTarget,
 ): Promise<void> {
+	const currentOwnedTask = getCurrentOwnedInProgressTask(loadStorage());
+	if (currentOwnedTask) {
+		ctx.ui?.notify(
+			`Symphony は次へ進みません。現在のタスク ${currentOwnedTask.id} (${currentOwnedTask.title}) がまだ in_progress です。`,
+			"info",
+		);
+		return;
+	}
+
 	if (!canAutoRunInContext(ctx, pi)) {
 		ctx.ui?.notify("Symphony を開始できません。fresh session dispatcher が見つかりません。", "warning");
 		return;
@@ -863,6 +894,14 @@ function resolveNextAutoDispatch(storage: TaskStorage, cwd: string = process.cwd
 	blockedReason: string | null;
 } {
 	const effectiveStorage = restoreTasksFromActiveCheckpoints(storage);
+	const currentOwnedTask = getCurrentOwnedInProgressTask(effectiveStorage);
+
+	if (currentOwnedTask) {
+		return {
+			target: null,
+			blockedReason: `current task is still in_progress: ${currentOwnedTask.id}`,
+		};
+	}
 
 	if (hasBlockingForeignInProgressTask(effectiveStorage)) {
 		return {
@@ -1710,9 +1749,7 @@ async function queueSymphonyDispatchFreshSession(
 		throw new Error("fresh session dispatcher is unavailable");
 	}
 
-	const result = await ctx.newSession({
-		parentSession: ctx.sessionManager?.getSessionFile?.(),
-	});
+	const result = await ctx.newSession();
 	if (result?.cancelled) {
 		throw new Error("fresh session creation was cancelled");
 	}
@@ -1823,8 +1860,8 @@ export function selectNextLoopTask(storage: TaskStorage): RalphLoopSelection | n
 			// 所有者がいない → 候補に含める（古いデータの移行対応）
 			if (!t.ownerInstanceId) return true;
 			
-			// 自分が所有している → 候補に含める
-			if (t.ownerInstanceId === instanceId) return true;
+			// 自分が所有している実行中タスクは next 候補にしない
+			if (t.ownerInstanceId === instanceId) return false;
 			
 			// 他のインスタンスが所有している → プロセスが死んでいれば再取得可能
 			const pid = extractPidFromInstanceId(t.ownerInstanceId);
@@ -2077,9 +2114,12 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 		if (!nextTask) {
 			ctx.ui.setStatus("auto-executor", undefined);
 			if (blockedReason) {
+				const statusLabel = blockedReason.startsWith("current task is still in_progress")
+					? "現在のタスク実行中"
+					: "他インスタンスの実行中タスクを優先";
 				ctx.ui.setStatus(
 					"auto-executor",
-					ctx.ui.theme.fg("warning", "他インスタンスの実行中タスクを優先")
+					ctx.ui.theme.fg("warning", statusLabel)
 				);
 			}
 			return;

@@ -257,6 +257,72 @@ describe("ul-workflow", () => {
     expect(result.content[0].text).toContain("Plan修正完了");
   });
 
+  it("Symphony 自走中の plan 確認は askUser で停止せず autoAnswered を返す", async () => {
+    const extension = (await import("../../../.pi/extensions/ul-workflow.js")).default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    const startTool = pi.tools.get("ul_workflow_start");
+    const startResult = await startTool.execute("start", { task: "通知バグを修正する" }, undefined, undefined, {});
+    const taskId = startResult.details.taskId;
+
+    fs.writeFileSync(
+      path.join(".pi", "ul-workflow", "tasks", taskId, "plan.md"),
+      "# Plan\n\nこのまま進める\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(".pi", "tasks", "auto-executor-config.json"),
+      JSON.stringify({ currentTaskId: "sym-task-1" }, null, 2),
+      "utf-8",
+    );
+    updateWorkflowState(taskId, (state) => ({
+      ...state,
+      phase: "plan",
+      phaseIndex: 1,
+      approvedPhases: ["research"],
+    }));
+
+    const confirmTool = pi.tools.get("ul_workflow_confirm_plan");
+    const result = await confirmTool.execute("confirm", {}, undefined, undefined, { cwd: "/" });
+
+    expect(result.details.askUser).toBeUndefined();
+    expect(result.details.autoAnswered).toBe(true);
+    expect(result.details.answer).toBe("実行");
+    expect(result.content[0].text).toContain("[Symphony] 自動回答: 実行");
+  });
+
+  it("Symphony 自走中の commit 提案は askUser で停止せず autoAnswered を返す", async () => {
+    const extension = (await import("../../../.pi/extensions/ul-workflow.js")).default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    const startTool = pi.tools.get("ul_workflow_start");
+    const startResult = await startTool.execute("start", { task: "observability-data拡張機能を修正する" }, undefined, undefined, {});
+    const taskId = startResult.details.taskId;
+
+    fs.writeFileSync(
+      path.join(".pi", "tasks", "auto-executor-config.json"),
+      JSON.stringify({ currentTaskId: "sym-task-2" }, null, 2),
+      "utf-8",
+    );
+    updateWorkflowState(taskId, (state) => ({
+      ...state,
+      phase: "completed",
+      phaseIndex: state.phases.indexOf("completed"),
+      approvedPhases: ["research", "plan", "annotate", "implement", "review"],
+    }));
+
+    const commitTool = pi.tools.get("ul_workflow_commit");
+    const result = await commitTool.execute("commit", {}, undefined, undefined, { cwd: "/" });
+
+    expect(result.details.askUser).toBeUndefined();
+    expect(result.details.autoAnswered).toBe(true);
+    expect(result.details.answer).toBe("Commit");
+    expect(result.details.suggestCommit).toBe(true);
+    expect(result.content[0].text).toContain("[Symphony] 自動回答: Commit");
+  });
+
   it("annotate 承認後の案内は execute_plan を指す", async () => {
     const extension = (await import("../../../.pi/extensions/ul-workflow.js")).default;
     const pi = createPiMock();
