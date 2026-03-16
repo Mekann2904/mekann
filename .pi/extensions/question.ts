@@ -27,10 +27,14 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 
 const ANSI_SIMPLE_ESCAPE_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+const SYMPHONY_AUTO_APPROVE_PATTERN = /(承認|続行|進め|実行|apply|approve|continue|proceed|confirm|yes|ok|はい)/i;
+const SYMPHONY_AUTO_REJECT_PATTERN = /(中止|停止|abort|cancel|reject|deny|いいえ|保留|stop|no)/i;
 
 interface OptionWithDesc {
 	label: string;
@@ -46,6 +50,8 @@ interface QuestionDetails {
 	answers?: string[];
 	multiple?: boolean;
 	wasCustom?: boolean;
+	autoAnswered?: boolean;
+	autoAnswerReason?: string;
 }
 
 interface QuestionSelectionResult {
@@ -61,6 +67,10 @@ interface QuestionThemeLike {
 	bold: (text: string) => string;
 }
 
+interface AutoExecutorConfigLike {
+	currentTaskId?: string;
+}
+
 // Options with labels and optional descriptions
 const OptionSchema = Type.Object({
 	label: Type.String({ description: "Display label for the option" }),
@@ -72,6 +82,50 @@ const QuestionParams = Type.Object({
 	options: Type.Array(OptionSchema, { description: "Options for the user to choose from" }),
 	multiple: Type.Optional(Type.Boolean({ description: "Allow multiple selections" })),
 });
+
+function isSymphonyAutonomousQuestion(cwd?: string): boolean {
+	if (!cwd) {
+		return false;
+	}
+
+	const configPath = join(cwd, ".pi", "tasks", "auto-executor-config.json");
+	if (!existsSync(configPath)) {
+		return false;
+	}
+
+	try {
+		const config = JSON.parse(readFileSync(configPath, "utf-8")) as AutoExecutorConfigLike;
+		return typeof config.currentTaskId === "string" && config.currentTaskId.trim().length > 0;
+	} catch {
+		return false;
+	}
+}
+
+function pickSymphonyAutoAnswer(options: OptionWithDesc[]): OptionWithDesc | null {
+	if (options.length === 0) {
+		return null;
+	}
+
+	const scored = options.map((option, index) => {
+		let score = index === 0 ? 1 : 0;
+		if (SYMPHONY_AUTO_APPROVE_PATTERN.test(option.label)) {
+			score += 10;
+		}
+		if (SYMPHONY_AUTO_REJECT_PATTERN.test(option.label)) {
+			score -= 10;
+		}
+		return { option, score, index };
+	});
+
+	scored.sort((left, right) => {
+		if (right.score !== left.score) {
+			return right.score - left.score;
+		}
+		return left.index - right.index;
+	});
+
+	return scored[0]?.option ?? null;
+}
 
 /**
  * 質問の選択済み回答を組み立てる
@@ -292,12 +346,39 @@ export default function question(pi: ExtensionAPI) {
 		parameters: QuestionParams,
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const simpleOptions = params.options.map((o) => o.label);
+			const allowMultiple = params.multiple === true;
+			const autonomousSymphonyMode = isSymphonyAutonomousQuestion(ctx.cwd);
+
+			if (autonomousSymphonyMode) {
+				const selectedOption = pickSymphonyAutoAnswer(params.options);
+				const selectedAnswer = selectedOption?.label ?? null;
+				return {
+					content: [{
+						type: "text",
+						text: selectedAnswer
+							? `Symphony auto-selected: ${selectedAnswer}`
+							: "Symphony auto-question fallback could not find a selectable option",
+					}],
+					details: {
+						question: params.question,
+						options: simpleOptions,
+						answer: selectedAnswer,
+						answers: selectedAnswer ? [selectedAnswer] : [],
+						multiple: allowMultiple,
+						wasCustom: false,
+						autoAnswered: true,
+						autoAnswerReason: "question tool is disabled during Symphony autonomous execution",
+					} as QuestionDetails,
+				};
+			}
+
 			if (!ctx.hasUI) {
 				return {
 					content: [{ type: "text", text: "Error: UI not available (running in non-interactive mode)" }],
 					details: {
 						question: params.question,
-						options: params.options.map((o) => o.label),
+						options: simpleOptions,
 						answer: null,
 					} as QuestionDetails,
 				};
@@ -311,7 +392,6 @@ export default function question(pi: ExtensionAPI) {
 			}
 
 			const allOptions: DisplayOption[] = [...params.options, { label: "Type something.", isOther: true }];
-			const allowMultiple = params.multiple === true;
 
 			const result = await ctx.ui.custom<QuestionSelectionResult | null>(
 				(tui, theme, _kb, done) => {
@@ -538,9 +618,6 @@ export default function question(pi: ExtensionAPI) {
 				},
 			);
 
-			// Build simple options list for details
-			const simpleOptions = params.options.map((o) => o.label);
-
 			if (!result) {
 				return {
 					content: [{ type: "text", text: formatQuestionResultText(null, allowMultiple) }],
@@ -597,6 +674,15 @@ export default function question(pi: ExtensionAPI) {
 			if (!details) {
 				const text = result.content[0];
 				return new Text(text?.type === "text" ? text.text : "", 0, 0);
+			}
+
+			if (details.autoAnswered) {
+				const display = details.answer ?? "auto";
+				return new Text(
+					theme.fg("success", "✓ ") + theme.fg("muted", "(auto) ") + theme.fg("accent", display),
+					0,
+					0,
+				);
 			}
 
 			if (details.answer === null) {
