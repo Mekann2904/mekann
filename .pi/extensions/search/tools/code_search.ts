@@ -58,6 +58,7 @@ import { getSearchCache, getCacheKey } from "../utils/cache.js";
 import { getSearchHistory, extractQuery } from "../utils/history.js";
 import { resolveProbeLimit } from "../../../lib/tool-policy-engine.js";
 import { getToolTelemetryStore } from "../../../lib/tool-telemetry-store.js";
+import { getLogger } from "../../../lib/comprehensive-logger.js";
 import {
 	buildInputFingerprint,
 	buildNormalizedSignature,
@@ -530,6 +531,7 @@ export async function codeSearch(
 	const TOOL_NAME = "code_search";
 	const CACHE_TTL = 5 * 60 * 1000; // 5 minutes for code search
 	const params = safeInput as unknown as Record<string, unknown>;
+	const startTime = Date.now();
 
 	// 1. Generate cache key
 	const cacheKey = getCacheKey(TOOL_NAME, { ...safeInput, cwd });
@@ -627,6 +629,33 @@ export async function codeSearch(
 		query: extractQuery(TOOL_NAME, params),
 		results: extractResultPaths(result.results).slice(0, 10),
 	});
+
+	// 5.5 Emit search metrics to observability for autoresearch tracking
+	const logger = getLogger();
+	logger.logToolResult(TOOL_NAME, {
+		status: 'success',
+		durationMs: Date.now() - startTime,
+		outputType: 'inline',
+		output: `${result.results.length} matches`,
+		outputSize: estimateOutputBytes(result),
+	});
+
+	// 5.6 Emit token estimates to observability
+	if (estimatedTokens > 0) {
+		logger.logMetricsSnapshot({
+			memoryUsageMB: 0,
+			cpuPercent: 0,
+			eventsTotal: 0,
+			tasksCompleted: 0,
+			operationsCompleted: 1,
+			toolCallsTotal: 1,
+			tokensTotal: estimatedTokens,
+			errorRate: 0,
+			avgResponseTimeMs: Date.now() - startTime,
+			p95ResponseTimeMs: Date.now() - startTime,
+		});
+	}
+	logger.flush().catch(() => { /* best effort */ });
 
 	// 6. Save to cache
 	cache.setCache(cacheKey, { ...result, hints } as CodeSearchOutput, CACHE_TTL);
