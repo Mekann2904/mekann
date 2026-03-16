@@ -17,7 +17,7 @@
  * @scope(out) JSON データ
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync, openSync, fsyncSync, closeSync } from "fs";
 import { dirname, join } from "path";
 import { homedir } from "os";
 import { FileLock } from "./file-lock.js";
@@ -96,46 +96,81 @@ export class JsonStorage<T> {
 
   /**
    * データを書き込む（アトミック操作）
+   * @param data 書き込むデータ
+   * @returns 書き込み成功時はtrue、失敗時はfalse
    */
-  write(data: T): void {
+  write(data: T): boolean {
     this.ensureDirectory();
 
     if (this.config.useLock) {
-      this.lock.withLock(() => this.writeInternal(data));
+      return this.lock.withLock(() => this.writeInternal(data));
     } else {
-      this.writeInternal(data);
+      return this.writeInternal(data);
     }
   }
 
   /**
    * 内部書き込み処理
+   * @returns 書き込み成功時はtrue、失敗時はfalse
    */
-  private writeInternal(data: T): void {
+  private writeInternal(data: T): boolean {
     // バックアップ作成
     if (this.config.backup && existsSync(this.filePath)) {
       const backupPath = `${this.filePath}.bak`;
       try {
         writeFileSync(backupPath, readFileSync(this.filePath));
-      } catch {
-        // バックアップ失敗は無視
+      } catch (error) {
+        console.error(`[storage] Failed to create backup ${backupPath}:`, error);
       }
     }
 
     // 一時ファイルに書き込み
     const tempPath = `${this.filePath}.tmp`;
     const content = JSON.stringify(data, null, 2);
-    writeFileSync(tempPath, content, "utf-8");
+    
+    try {
+      writeFileSync(tempPath, content, "utf-8");
+    } catch (error) {
+      console.error(`[storage] Failed to write temp file ${tempPath}:`, error);
+      return false;
+    }
+
+    // fsync()で永続性を確保
+    let fd: number | null = null;
+    try {
+      fd = openSync(tempPath, "r");
+      fsyncSync(fd);
+    } catch (error) {
+      console.error(`[storage] Failed to fsync ${tempPath}:`, error);
+    } finally {
+      if (fd !== null) {
+        try {
+          closeSync(fd);
+        } catch {
+          // close失敗は無視
+        }
+      }
+    }
 
     // アトミックリネーム
     try {
       renameSync(tempPath, this.filePath);
-    } catch {
-      // クロスデバイスリンク対策
-      writeFileSync(this.filePath, content, "utf-8");
+      return true;
+    } catch (renameError) {
+      // クロスデバイスリンク対策: 直接書き込みにフォールバック
+      console.error(`[storage] Rename failed, falling back to direct write:`, renameError);
       try {
-        unlinkSync(tempPath);
-      } catch {
-        // 無視
+        writeFileSync(this.filePath, content, "utf-8");
+        // 一時ファイルを削除
+        try {
+          unlinkSync(tempPath);
+        } catch (cleanupError) {
+          console.error(`[storage] Failed to cleanup temp file ${tempPath}:`, cleanupError);
+        }
+        return true;
+      } catch (writeError) {
+        console.error(`[storage] Direct write to ${this.filePath} failed:`, writeError);
+        return false;
       }
     }
   }
