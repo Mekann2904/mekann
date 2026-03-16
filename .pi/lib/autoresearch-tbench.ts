@@ -14,6 +14,7 @@ import {
   type AutoresearchTbenchLiveSnapshot,
 } from "./autoresearch-tbench-live-monitor.js";
 import { getLogger } from "./comprehensive-logger.js";
+import { ConfigurationError } from "./core/errors.js";
 
 export interface AutoresearchTbenchScore {
   successCount: number;
@@ -896,6 +897,47 @@ function createDefaultRunConfig(cwd: string, options: AutoresearchTbenchInitOpti
   };
 }
 
+/**
+ * 実行設定の妥当性を検証
+ * @summary 設定検証
+ * @param config - 検証する設定
+ * @throws {ConfigurationError} 無効な設定値の場合
+ */
+function validateRunConfig(config: AutoresearchTbenchRunConfig): void {
+  // nConcurrent: 1以上の整数であること
+  if (config.nConcurrent !== null && config.nConcurrent < 1) {
+    throw new ConfigurationError(
+      `nConcurrent must be >= 1, got ${config.nConcurrent}`,
+      { key: "nConcurrent", expected: "positive integer" }
+    );
+  }
+
+  // agentSetupTimeoutMultiplier: 1以上の整数であること
+  if (config.agentSetupTimeoutMultiplier !== null && config.agentSetupTimeoutMultiplier < 1) {
+    throw new ConfigurationError(
+      `agentSetupTimeoutMultiplier must be >= 1, got ${config.agentSetupTimeoutMultiplier}`,
+      { key: "agentSetupTimeoutMultiplier", expected: "positive integer" }
+    );
+  }
+
+  // jobsDir: 親ディレクトリが存在すること（作成可能であること）
+  const jobsDirParent = dirname(config.jobsDir);
+  if (!existsSync(jobsDirParent)) {
+    throw new ConfigurationError(
+      `jobsDir parent directory does not exist: ${jobsDirParent}`,
+      { key: "jobsDir", expected: "existing directory path" }
+    );
+  }
+
+  // datasetPath: 指定されている場合、存在すること
+  if (config.datasetPath && !existsSync(config.datasetPath)) {
+    throw new ConfigurationError(
+      `datasetPath does not exist: ${config.datasetPath}`,
+      { key: "datasetPath", expected: "existing file path" }
+    );
+  }
+}
+
 function cloneState(state: AutoresearchTbenchState): AutoresearchTbenchState {
   return JSON.parse(JSON.stringify(state)) as AutoresearchTbenchState;
 }
@@ -938,6 +980,9 @@ export async function initAutoresearchTbench(
   }
 
   const headCommit = await getHeadCommit(cwd);
+  const runConfig = createDefaultRunConfig(cwd, options, taskNames);
+  validateRunConfig(runConfig);
+
   const state: AutoresearchTbenchState = {
     version: 1,
     createdAt: nowIso(),
@@ -946,7 +991,7 @@ export async function initAutoresearchTbench(
     gitEnabled,
     bestCommit: headCommit,
     baselineCommit: headCommit,
-    runConfig: createDefaultRunConfig(cwd, options, taskNames),
+    runConfig,
     experimentCount: 0,
   };
   ensureDir(state.runConfig.jobsDir);
