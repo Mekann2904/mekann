@@ -794,6 +794,63 @@ function mergeDagExecutionContext(sharedContext: string, dependencyContext: stri
   return [sharedContext.trim(), dependencyContext.trim()].filter(Boolean).join("\n\n");
 }
 
+function isSimpleDagTaskText(task: string): boolean {
+  return /(fix|bug|debug|regression|patch|inspect|trace|root cause|原因|調査|修正|回帰|再現|挙動)/i.test(task);
+}
+
+function shouldUseAdaptOrchForPlan(params: {
+  taskPlan: TaskPlan;
+  task: string;
+  requested?: boolean;
+  forceTopology?: unknown;
+  hasDynamicFollowup: boolean;
+  maxConcurrency: number;
+}): boolean {
+  if (!params.requested || params.hasDynamicFollowup) {
+    return false;
+  }
+
+  if (params.forceTopology) {
+    return true;
+  }
+
+  const taskCount = params.taskPlan.tasks.length;
+  const sameAgentCount = new Set(params.taskPlan.tasks.map((task) => task.assignedAgent || "")).size;
+  const maxDepth = params.taskPlan.metadata.maxDepth ?? 0;
+
+  if (params.maxConcurrency <= 1) {
+    return false;
+  }
+
+  if (taskCount <= 2) {
+    return false;
+  }
+
+  if (taskCount <= 3 && maxDepth <= 1 && sameAgentCount <= 1) {
+    return false;
+  }
+
+  if (isSimpleDagTaskText(params.task) && taskCount <= 4 && maxDepth <= 1) {
+    return false;
+  }
+
+  return true;
+}
+
+function shouldUseWeightSchedulingForPlan(taskPlan: TaskPlan): boolean {
+  return taskPlan.tasks.length >= 3 && (taskPlan.metadata.maxDepth ?? 0) >= 1;
+}
+
+function shouldEnableSelfRevisionForPlan(taskPlan: TaskPlan, task: string): boolean {
+  if (taskPlan.tasks.length <= 2) {
+    return false;
+  }
+  if (isSimpleDagTaskText(task) && (taskPlan.metadata.maxDepth ?? 0) <= 1) {
+    return false;
+  }
+  return true;
+}
+
 /**
  * Refresh runtime status display in the UI with subagent-specific parameters.
  * @see ./shared/runtime-helpers.ts:refreshRuntimeStatus for the underlying implementation.
@@ -2282,7 +2339,17 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         capacityReservation.consume();
 
         // Execute DAG using DagExecutor or AdaptOrch
-        const useAdaptOrch = !dynamicResearchConfig && !dynamicPlanConfig && !dynamicImplementConfig && !dynamicReviewConfig && (params.enableAdaptOrch ?? isGlobalAdaptOrchEnabled());
+        const requestedAdaptOrch = params.enableAdaptOrch ?? isGlobalAdaptOrchEnabled();
+        const useAdaptOrch = shouldUseAdaptOrchForPlan({
+          taskPlan,
+          task: params.task,
+          requested: requestedAdaptOrch,
+          forceTopology: params.forceTopology,
+          hasDynamicFollowup: Boolean(
+            dynamicResearchConfig || dynamicPlanConfig || dynamicImplementConfig || dynamicReviewConfig,
+          ),
+          maxConcurrency,
+        });
         
         const dagExecuteFn = useAdaptOrch 
           ? (plan: TaskPlan, executor: any, opts: any) => executeWithAdaptOrch(plan, executor, {
@@ -2379,6 +2446,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             signal: _signal,
             nodeTimeoutMs: timeoutMs,
             overallTimeoutMs: timeoutMs > 0 ? timeoutMs * Math.max(1, taskPlan.tasks.length) : 0,
+            useWeightBasedScheduling: shouldUseWeightSchedulingForPlan(taskPlan),
+            enableSelfRevision: shouldEnableSelfRevisionForPlan(taskPlan, params.task),
             onBatchSettled: dynamicResearchConfig
               ? (api: DagBatchMutationApi) => {
                 const gapTaskId = dynamicResearchConfig.gapTaskId?.trim() || "research-gap-check";

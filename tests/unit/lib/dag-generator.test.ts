@@ -21,8 +21,8 @@ describe("dag-generator", () => {
     expect(synthesisTask?.dependencies).toEqual(researchTasks.map((task) => task.id));
   });
 
-  it("通常の実装とテストは不要な research なしで fan-in 付き DAG に分解する", async () => {
-    const plan = await generateDagFromTask("Implement authentication and add tests");
+  it("複数 lane の実装とテストは不要な research なしで fan-in 付き DAG に分解する", async () => {
+    const plan = await generateDagFromTask("Implement authentication endpoint, implement billing endpoint, and add tests");
 
     const researchTasks = plan.tasks.filter((task) => task.assignedAgent === "researcher");
     const implementTasks = plan.tasks.filter((task) => task.assignedAgent === "implementer");
@@ -32,6 +32,22 @@ describe("dag-generator", () => {
     expect(implementTasks.length).toBeGreaterThan(0);
     expect(testerTasks.length).toBe(1);
     expect(testerTasks[0]?.dependencies).toEqual(implementTasks.map((task) => task.id));
+  });
+
+  it("単純な bugfix と回帰テストは single-task plan に寄せる", async () => {
+    const plan = await generateDagFromTask("Fix auth regression and add a focused regression test");
+
+    expect(plan.tasks).toHaveLength(1);
+    expect(plan.tasks[0]?.assignedAgent).toBe("implementer");
+    expect(plan.tasks[0]?.description).toContain("Complete the task end-to-end");
+  });
+
+  it("単純な inspect タスクは single research task に寄せる", async () => {
+    const plan = await generateDagFromTask("Investigate why token refresh fails");
+
+    expect(plan.tasks).toHaveLength(1);
+    expect(plan.tasks[0]?.assignedAgent).toBe("researcher");
+    expect(plan.tasks[0]?.description).toContain("Investigate the task end-to-end");
   });
 
   it("複数の実装句を並列な implement タスクへ分解する", async () => {

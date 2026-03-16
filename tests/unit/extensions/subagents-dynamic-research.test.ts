@@ -309,6 +309,52 @@ describe("subagent_run_dag dynamic research", () => {
     expect(runSubagentTaskMock.mock.calls[0]?.[0]?.task).not.toContain("## Context from Previous Tasks");
   });
 
+  it("小さい単純 DAG では AdaptOrch を使わず legacy executeDag を使う", async () => {
+    executeDagMock.mockImplementation(async (plan, executor) => {
+      const task = plan.tasks[0];
+      await executor(task, "");
+      return {
+        planId: plan.id,
+        overallStatus: "completed",
+        totalDurationMs: 1,
+        completedTaskIds: [task.id],
+        failedTaskIds: [],
+        skippedTaskIds: [],
+        taskResults: new Map([
+          [task.id, { taskId: task.id, status: "completed", output: { output: "done" }, durationMs: 1 }],
+        ]),
+      };
+    });
+
+    const registerSubagentExtension = (await import("../../../.pi/extensions/subagents.js")).default;
+    const pi = createFakePi();
+    registerSubagentExtension(pi as any);
+
+    const tool = pi.tools.get("subagent_run_dag");
+    await tool.execute(
+      "tc-simple-dag",
+      {
+        task: "Fix auth bug",
+        plan: {
+          id: "simple-dag",
+          description: "simple dag",
+          tasks: [
+            { id: "implement-auth", description: "Fix auth bug", assignedAgent: "implementer", dependencies: [] },
+          ],
+        },
+      },
+      undefined,
+      undefined,
+      {
+        cwd: "/tmp/subagents-dynamic",
+        model: { id: "gpt-test", provider: "openai" },
+      },
+    );
+
+    expect(executeDagMock).toHaveBeenCalledTimes(1);
+    expect(executeWithAdaptOrchMock).not.toHaveBeenCalled();
+  });
+
   it("dynamicResearch 指定時は legacy executeDag で deep-dive を差し込む", async () => {
     executeDagMock.mockImplementation(async (_plan, _executor, options) => {
       await options.onBatchSettled?.(
