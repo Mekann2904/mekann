@@ -3,6 +3,13 @@
  * role: autoresearch-tbench 実行中の job / trial / activity を live monitor 形式で可視化する
  * why: baseline や run の最中に、今どの task が setup 中か、何を考えているかを pi 画面で追えるようにするため
  * related: .pi/lib/autoresearch-tbench.ts, .pi/extensions/autoresearch-tbench.ts, .pi/lib/tui-types.ts, tests/unit/lib/autoresearch-tbench-live-monitor.test.ts
+ * public_api:
+ *   - collectAutoresearchTbenchLiveSnapshot: pi-events.jsonlからLLMメトリクスを抽出してsnapshotに含める
+ *   - renderAutoresearchTbenchLiveView: LLMメトリクスサマリー（tokens, calls, cost）を表示
+ * invariants:
+ *   - totalLlmMetricsは全trialのllmMetricsの合算
+ *   - llmMetricsはpi-events.jsonlのusageフィールドから抽出
+ *   - usage.input > 0 || usage.output > 0 の場合のみカウント
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -20,6 +27,20 @@ export type AutoresearchTbenchTrialPhase =
   | "completed"
   | "failed";
 
+/**
+ * LLMメトリクス情報
+ * pi-events.jsonlのusageフィールドから抽出
+ */
+export interface LLMMetricsSnapshot {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+  estimatedCost: number;
+  apiCalls: number;
+}
+
 export interface AutoresearchTbenchTrialSnapshot {
   trialName: string;
   taskName: string;
@@ -27,6 +48,7 @@ export interface AutoresearchTbenchTrialSnapshot {
   reward: number | null;
   elapsedMs: number;
   activity: string;
+  llmMetrics: LLMMetricsSnapshot;
 }
 
 export interface AutoresearchTbenchLiveSnapshot {
@@ -44,6 +66,8 @@ export interface AutoresearchTbenchLiveSnapshot {
   pendingCount: number;
   statusLine: string;
   trials: AutoresearchTbenchTrialSnapshot[];
+  /** 全trialの集約LLMメトリクス */
+  totalLlmMetrics: LLMMetricsSnapshot;
 }
 
 export interface AutoresearchTbenchLiveMonitorController {
@@ -67,6 +91,37 @@ interface ResultLike {
     };
   };
   exception_info?: unknown;
+}
+
+/**
+ * 空のLLMメトリクスを作成する
+ * @returns 全フィールドが0のLLMMetricsSnapshot
+ */
+function emptyLLMMetrics(): LLMMetricsSnapshot {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalTokens: 0,
+    estimatedCost: 0,
+    apiCalls: 0,
+  };
+}
+
+/**
+ * 2つのLLMメトリクスを合算する
+ */
+function mergeLLMMetrics(a: LLMMetricsSnapshot, b: LLMMetricsSnapshot): LLMMetricsSnapshot {
+  return {
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
+    cacheWriteTokens: a.cacheWriteTokens + b.cacheWriteTokens,
+    totalTokens: a.totalTokens + b.totalTokens,
+    estimatedCost: a.estimatedCost + b.estimatedCost,
+    apiCalls: a.apiCalls + b.apiCalls,
+  };
 }
 
 function nowMs(): number {
@@ -201,6 +256,72 @@ function readLastEventActivity(eventsPath: string): string {
   return "running";
 }
 
+/**
+ * pi-events.jsonlからLLMメトリクスを集計する
+ * message_start/message_updateイベントのusageフィールドを合算
+ */
+function collectLLMMetricsFromEvents(eventsPath: string): LLMMetricsSnapshot {
+  if (!existsSync(eventsPath)) {
+    return emptyLLMMetrics();
+  }
+
+  const text = readFileSync(eventsPath, "utf-8");
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  const metrics = emptyLLMMetrics();
+
+  for (const line of lines) {
+    if (!line.startsWith("{")) {
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      const type = typeof parsed.type === "string" ? parsed.type : "";
+
+      // message_startまたはmessage_updateからusageを抽出
+      let usage: Record<string, unknown> | undefined;
+
+      if (type === "message_start" && parsed.message) {
+        const message = parsed.message as Record<string, unknown>;
+        usage = message.usage as Record<string, unknown> | undefined;
+      } else if (type === "message_update" && parsed.assistantMessageEvent) {
+        const event = parsed.assistantMessageEvent as Record<string, unknown>;
+        // partialまたはmessageからusageを取得
+        const partial = event.partial as Record<string, unknown> | undefined;
+        const message = event.message as Record<string, unknown> | undefined;
+        usage = (partial?.usage as Record<string, unknown> | undefined) ||
+                (message?.usage as Record<string, unknown> | undefined);
+      }
+
+      if (usage) {
+        // ゼロ値以外のusageのみカウント（初期値を除外）
+        const input = typeof usage.input === "number" ? usage.input : 0;
+        const output = typeof usage.output === "number" ? usage.output : 0;
+
+        if (input > 0 || output > 0) {
+          metrics.inputTokens += input;
+          metrics.outputTokens += output;
+          metrics.cacheReadTokens += typeof usage.cacheRead === "number" ? usage.cacheRead : 0;
+          metrics.cacheWriteTokens += typeof usage.cacheWrite === "number" ? usage.cacheWrite : 0;
+          metrics.totalTokens += typeof usage.totalTokens === "number" ? usage.totalTokens : 0;
+
+          // costフィールドから推定コストを取得
+          const cost = usage.cost as Record<string, unknown> | undefined;
+          if (cost && typeof cost.total === "number") {
+            metrics.estimatedCost += cost.total;
+          }
+
+          metrics.apiCalls += 1;
+        }
+      }
+    } catch {
+      // パースエラーは無視
+    }
+  }
+
+  return metrics;
+}
+
 function pickPhaseGlyph(phase: AutoresearchTbenchTrialPhase): string {
   switch (phase) {
     case "completed":
@@ -271,6 +392,9 @@ function deriveTrialSnapshot(trialDir: string, startedAtMs: number): Autoresearc
   const eventsPath = join(trialDir, "agent", "pi-events.jsonl");
   const verifierDir = join(trialDir, "verifier");
 
+  // LLMメトリクスを収集（eventsPathが存在する場合）
+  const llmMetrics = collectLLMMetricsFromEvents(eventsPath);
+
   const result = readTrialResult(resultPath);
   if (result) {
     const reward = toNumberOrNull(result.verifier_result?.rewards?.reward);
@@ -284,6 +408,7 @@ function deriveTrialSnapshot(trialDir: string, startedAtMs: number): Autoresearc
       activity: failed
         ? "trial failed"
         : `reward=${reward ?? 0}`,
+      llmMetrics,
     };
   }
 
@@ -296,6 +421,7 @@ function deriveTrialSnapshot(trialDir: string, startedAtMs: number): Autoresearc
       reward: null,
       elapsedMs: Math.max(0, nowMs() - startedAtMs),
       activity: "verifier running",
+      llmMetrics,
     };
   }
 
@@ -307,6 +433,7 @@ function deriveTrialSnapshot(trialDir: string, startedAtMs: number): Autoresearc
       reward: null,
       elapsedMs: Math.max(0, nowMs() - startedAtMs),
       activity: readLastEventActivity(eventsPath),
+      llmMetrics,
     };
   }
 
@@ -318,6 +445,7 @@ function deriveTrialSnapshot(trialDir: string, startedAtMs: number): Autoresearc
       reward: null,
       elapsedMs: Math.max(0, nowMs() - startedAtMs),
       activity: cropSingleLine(pickLastNonEmptyLine(tailText(setupStdoutPath, 6_000)) || "agent setup", 80),
+      llmMetrics,
     };
   }
 
@@ -328,6 +456,7 @@ function deriveTrialSnapshot(trialDir: string, startedAtMs: number): Autoresearc
     reward: null,
     elapsedMs: Math.max(0, nowMs() - startedAtMs),
     activity: "waiting",
+    llmMetrics: emptyLLMMetrics(),
   };
 }
 
@@ -388,6 +517,12 @@ export function collectAutoresearchTbenchLiveSnapshot(input: {
   const setupCount = trials.filter((trial) => trial.phase === "setup").length;
   const pendingCount = Math.max(0, totalTrials - trials.length) + trials.filter((trial) => trial.phase === "pending").length;
 
+  // 全trialのLLMメトリクスを集約
+  const totalLlmMetrics = trials.reduce(
+    (acc, trial) => mergeLLMMetrics(acc, trial.llmMetrics),
+    emptyLLMMetrics()
+  );
+
   const sortedTrials = [...trials].sort((left, right) => {
     const phaseOrder: Record<AutoresearchTbenchTrialPhase, number> = {
       running: 0,
@@ -414,6 +549,7 @@ export function collectAutoresearchTbenchLiveSnapshot(input: {
     setupCount,
     pendingCount,
     trials: sortedTrials,
+    totalLlmMetrics,
   };
 
   return {
@@ -434,6 +570,14 @@ export function renderAutoresearchTbenchLiveView(
   add(theme.bold(theme.fg("accent", `Autoresearch Tbench [${snapshot.label}]`)));
   add(theme.fg("dim", `${snapshot.statusLine}  elapsed=${formatElapsedMs(snapshot.elapsedMs)}`));
   add(theme.fg("dim", `[q] close  jobs_dir=${snapshot.jobsDir}`));
+
+  // LLMメトリクスサマリーを表示
+  const m = snapshot.totalLlmMetrics;
+  if (m.apiCalls > 0) {
+    const tokensK = (m.totalTokens / 1000).toFixed(1);
+    const costStr = m.estimatedCost > 0 ? `$${m.estimatedCost.toFixed(4)}` : "-";
+    add(theme.fg("dim", `LLM: calls=${m.apiCalls} tokens=${tokensK}k in=${(m.inputTokens/1000).toFixed(1)}k out=${(m.outputTokens/1000).toFixed(1)}k cost=${costStr}`));
+  }
   add("");
 
   if (snapshot.trials.length === 0) {
@@ -476,6 +620,7 @@ export function createAutoresearchTbenchLiveMonitor(
     pendingCount: 0,
     statusLine: "waiting for job",
     trials: [],
+    totalLlmMetrics: emptyLLMMetrics(),
   };
   let requestRender: (() => void) | undefined;
   let doneUi: (() => void) | undefined;
