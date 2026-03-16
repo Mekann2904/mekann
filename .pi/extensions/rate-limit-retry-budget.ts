@@ -33,6 +33,10 @@ import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { getLogger } from "../lib/comprehensive-logger";
+import type { OperationType } from "../lib/comprehensive-logger-types";
+
+const logger = getLogger();
 
 type Replacement = {
   marker: string;
@@ -124,18 +128,44 @@ export default function registerRateLimitRetryBudgetExtension(pi: ExtensionAPI):
     const requireFn = createRequire(import.meta.url);
     let result: "patched" | "already" | "skip" = "skip";
 
+    // パッチ操作開始を記録
+    const opId = logger.startOperation("direct" as OperationType, "rate-limit-retry-budget-patch", {
+      task: "apply-runtime-patch",
+      params: { targetModule: TARGET_MODULE },
+    });
+
     try {
       result = await applyPatch(requireFn);
-    } catch {
-      result = "skip";
-    }
+      
+      // パッチ結果を記録
+      logger.endOperation({
+        status: result === "patched" ? "success" : result === "already" ? "success" : "partial",
+        tokensUsed: 0,
+        outputLength: 0,
+        childOperations: 0,
+        toolCalls: 0,
+      });
 
-    if (result === "patched") {
-      console.error("[rate-limit-retry-budget] applied runtime patch");
-    } else if (result === "already") {
-      console.error("[rate-limit-retry-budget] patch already applied");
-    } else {
-      console.error("[rate-limit-retry-budget] skipped (target changed or not found)");
+      if (result === "patched") {
+        console.error("[rate-limit-retry-budget] applied runtime patch");
+      } else if (result === "already") {
+        console.error("[rate-limit-retry-budget] patch already applied");
+      } else {
+        console.error("[rate-limit-retry-budget] skipped (target changed or not found)");
+      }
+    } catch (error) {
+      // エラーを記録
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack || "" : "";
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: 0,
+        childOperations: 0,
+        toolCalls: 0,
+        error: { type: "patch_error", message: errorMessage, stack: errorStack },
+      });
+      console.error("[rate-limit-retry-budget] patch error:", errorMessage);
     }
   });
 }

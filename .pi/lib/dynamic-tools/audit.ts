@@ -132,7 +132,8 @@ export function readAuditLog(
     let entries = lines.map(line => {
       try {
         return JSON.parse(line) as AuditLogEntry;
-      } catch {
+      } catch (e) {
+        console.warn("[audit] Failed to parse audit log entry:", { line: line.substring(0, 100), error: String(e) });
         return null;
       }
     }).filter((e): e is AuditLogEntry => e !== null);
@@ -366,8 +367,8 @@ export function archiveOldLogs(
         } else {
           archivedCount++;
         }
-      } catch {
-        // 不正な行はスキップ
+      } catch (e) {
+        console.warn("[audit] Failed to parse entry during archive:", { line: line.substring(0, 100), error: String(e) });
       }
     }
 

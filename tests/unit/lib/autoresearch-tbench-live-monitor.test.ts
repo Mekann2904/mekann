@@ -90,9 +90,22 @@ describe("autoresearch-tbench live monitor", () => {
     expect(snapshot.trials.find((trial) => trial.taskName === "fix-git")?.phase).toBe("setup");
     expect(snapshot.trials.find((trial) => trial.taskName === "break-filter-js-from-html")?.activity).toContain("thinking:");
     expect(snapshot.trials.find((trial) => trial.taskName === "cobol-modernization")?.phase).toBe("completed");
+    // LLMメトリクスが含まれていることを確認
+    expect(snapshot.totalLlmMetrics).toBeDefined();
+    expect(snapshot.trials.every((trial) => trial.llmMetrics !== undefined)).toBe(true);
   });
 
   it("render は trial 一覧を含む", () => {
+    const emptyMetrics = {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      totalTokens: 0,
+      estimatedCost: 0,
+      apiCalls: 0,
+    };
+
     const lines = renderAutoresearchTbenchLiveView({
       bold: (text: string) => text,
       fg: (_color: string, text: string) => text,
@@ -118,6 +131,7 @@ describe("autoresearch-tbench live monitor", () => {
           reward: null,
           elapsedMs: 2_000,
           activity: "thinking: checking inputs",
+          llmMetrics: { ...emptyMetrics, inputTokens: 1000, outputTokens: 500, totalTokens: 1500, apiCalls: 1 },
         },
         {
           trialName: "task-b__2",
@@ -126,12 +140,17 @@ describe("autoresearch-tbench live monitor", () => {
           reward: 1,
           elapsedMs: 1_000,
           activity: "reward=1",
+          llmMetrics: { ...emptyMetrics, inputTokens: 2000, outputTokens: 800, totalTokens: 2800, apiCalls: 2 },
         },
       ],
+      totalLlmMetrics: { ...emptyMetrics, inputTokens: 3000, outputTokens: 1300, totalTokens: 4300, apiCalls: 3 },
     }, 120, 20);
 
     expect(lines.join("\n")).toContain("Autoresearch Tbench [run]");
     expect(lines.join("\n")).toContain("task-a");
     expect(lines.join("\n")).toContain("thinking: checking inputs");
+    // LLMメトリクスが表示されることを確認
+    expect(lines.join("\n")).toContain("LLM:");
+    expect(lines.join("\n")).toContain("calls=3");
   });
 });

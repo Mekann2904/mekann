@@ -72,28 +72,94 @@ function ensureDir(dir: string): void {
 // ============================================================================
 
 /**
+ * Failed records buffer for retry on next successful write.
+ */
+const failedRecordsBuffer: Array<{ record: LLMBehaviorRecord; cwd?: string }> = [];
+const MAX_FAILED_RECORDS_BUFFER = 1000;
+
+/**
  * 行動メトリクスを記録
  * @summary メトリクスをJSONファイルとして保存
  * @param record 行動レコード
  * @param cwd 作業ディレクトリ（オプション）
- * @returns 保存されたファイルパス
+ * @returns 保存されたファイルパス（失敗時は空文字）
  */
 export function recordBehaviorMetrics(
   record: LLMBehaviorRecord,
   cwd?: string,
 ): string {
+  // First, retry any failed records
+  retryFailedRecords(cwd);
+
   const paths = getAnalyticsPaths(cwd);
 
   // 日付別ディレクトリを作成
   const dateStr = record.timestamp.split("T")[0]; // YYYY-MM-DD
   const dateDir = join(paths.records, dateStr);
-  ensureDir(dateDir);
 
-  // ファイルに保存
-  const filePath = join(dateDir, `${record.id}.json`);
-  writeFileSync(filePath, JSON.stringify(record, null, 2), "utf-8");
+  try {
+    ensureDir(dateDir);
 
-  return filePath;
+    // ファイルに保存
+    const filePath = join(dateDir, `${record.id}.json`);
+    writeFileSync(filePath, JSON.stringify(record, null, 2), "utf-8");
+    return filePath;
+  } catch (error) {
+    console.error("[behavior-storage] Failed to record metrics (data NOT dropped):", {
+      recordId: record.id,
+      error: String(error),
+    });
+
+    // 失敗したレコードをバッファに保持
+    if (failedRecordsBuffer.length < MAX_FAILED_RECORDS_BUFFER) {
+      failedRecordsBuffer.push({ record, cwd });
+    } else {
+      console.error("[behavior-storage] Failed records buffer overflow, dropping oldest record");
+      failedRecordsBuffer.shift();
+      failedRecordsBuffer.push({ record, cwd });
+    }
+
+    return "";
+  }
+}
+
+/**
+ * Retry failed records before writing new ones.
+ */
+function retryFailedRecords(cwd?: string): void {
+  if (failedRecordsBuffer.length === 0) return;
+
+  const recordsToRetry = [...failedRecordsBuffer];
+  failedRecordsBuffer.length = 0;
+
+  for (const { record, cwd: recordCwd } of recordsToRetry) {
+    const paths = getAnalyticsPaths(recordCwd ?? cwd);
+    const dateStr = record.timestamp.split("T")[0];
+    const dateDir = join(paths.records, dateStr);
+
+    try {
+      ensureDir(dateDir);
+      const filePath = join(dateDir, `${record.id}.json`);
+      writeFileSync(filePath, JSON.stringify(record, null, 2), "utf-8");
+    } catch (error) {
+      // Still failing - re-add to buffer if not full
+      if (failedRecordsBuffer.length < MAX_FAILED_RECORDS_BUFFER) {
+        failedRecordsBuffer.push({ record, cwd: recordCwd });
+      } else {
+        console.error("[behavior-storage] Failed records buffer full, dropping record:", record.id);
+      }
+    }
+  }
+}
+
+/**
+ * Get failed records buffer status (for testing/debugging).
+ */
+export function getFailedRecordsStatus(): { count: number; maxCapacity: number } {
+  return {
+    count: failedRecordsBuffer.length,
+    maxCapacity: MAX_FAILED_RECORDS_BUFFER,
+  };
 }
 
 /**

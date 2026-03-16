@@ -169,11 +169,8 @@ const HIGH_RISK_PATTERNS: RegExp[] = [
 const RESEARCH_TASK_PATTERNS: RegExp[] = [
   /調査/i, /investigate/i, /analyze/i, /分析/i,
   /探/i, /find/i, /search/i, /検索/i,
-  /確認/i, /verify/i, /check/i, /確認/i,
-  /読/i, /read/i, /review/i, /レビュー/i,
-  /理解/i, /understand/i, /explain/i, /説明/i,
-  /どのファイル/i, /which file/i, /where/i,
-  /どうなって/i, /how does/i, /what is/i,
+  /比較/i, /compare/i, /evaluate/i, /評価/i,
+  /原因調査/i, /root cause/i, /why does/i, /なぜ/i,
 ];
 
 /**
@@ -702,7 +699,7 @@ function computeHardTimeoutMs(idleTimeoutMs: number): number {
   return Math.max(idleTimeoutMs * 3, idleTimeoutMs + 60_000);
 }
 
-function buildInternalContextHandoff(extraContext?: string, maxLines = 12): string[] {
+function buildInternalContextHandoff(extraContext?: string, maxLines = 20): string[] {
   const context = extraContext?.trim();
   if (!context) return [];
 
@@ -713,7 +710,7 @@ function buildInternalContextHandoff(extraContext?: string, maxLines = 12): stri
 
   if (lines.length === 0) return [];
 
-  const priorityPattern = /known_facts=|open_questions=|evidence_snippets=|KNOWN_FACTS|OPEN_QUESTIONS|EVIDENCE_SNIPPETS|CONTEXT_PACK_V1/i;
+  const priorityPattern = /known_facts=|open_questions=|evidence_snippets=|key_artifacts=|KNOWN_FACTS|OPEN_QUESTIONS|EVIDENCE_SNIPPETS|KEY_ARTIFACTS|CONTEXT_PACK_V\d|## Shared Task Context|## Dependency Context Overview|## Result from/i;
   const prioritized: string[] = [];
   const regular: string[] = [];
 
@@ -725,7 +722,19 @@ function buildInternalContextHandoff(extraContext?: string, maxLines = 12): stri
     }
   }
 
-  return [...prioritized, ...regular].slice(0, maxLines);
+  const merged = [...prioritized, ...regular];
+  const deduped: string[] = [];
+  const seen = new Set<string>();
+
+  for (const line of merged) {
+    if (seen.has(line)) {
+      continue;
+    }
+    seen.add(line);
+    deduped.push(line);
+  }
+
+  return deduped.slice(0, maxLines);
 }
 
 /**

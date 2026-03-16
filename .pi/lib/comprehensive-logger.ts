@@ -107,6 +107,10 @@ export class ComprehensiveLogger {
   private operationStartTime: number = 0;
   private activeOperations: Map<string, { startTime: number; target: string }> = new Map();
   private activeTasks: Map<string, { startTime: number; userInput: string }> = new Map();
+  /** シャットダウン中フラグ - レースコンディション防止 */
+  private isShuttingDown: boolean = false;
+  /** flush実行中フラグ - 並行flush呼び出しの直列化 */
+  private isFlushing: boolean = false;
   
   constructor(config?: Partial<LoggerConfig>) {
     this.config = config ? { ...DEFAULT_CONFIG, ...config } : getConfig();
@@ -199,8 +203,12 @@ export class ComprehensiveLogger {
    * @returns {void}
    */
   endSession(exitReason: SessionEndEvent['data']['exitReason']): void {
+    // 二重シャットダウン防止
+    if (this.isShuttingDown) return;
+
     const durationMs = Math.round(performance.now() - this.sessionStartTime);
 
+    // session_endイベントはシャットダウンフラグ設定前に送出
     this.emit({
       eventType: 'session_end',
       data: {
@@ -211,9 +219,14 @@ export class ComprehensiveLogger {
         exitReason,
       },
     } as SessionEndEvent);
-    
-    this.flush();
+
+    // シャットダウンフラグを設定（以降の新規イベントを拒否）
+    this.isShuttingDown = true;
+
+    // タイマーを停止（タイマー発火とflushのレース防止）
     this.stopFlushTimer();
+    // その後でフラッシュ
+    this.flush();
     this.activeTasks.clear();
     this.activeOperations.clear();
   }
@@ -559,6 +572,213 @@ export class ComprehensiveLogger {
   }
 
   // ============================================
+  // 実験イベント (autoresearch)
+  // ============================================
+
+  /**
+   * 実験開始を記録する
+   * @summary 実験を開始する
+   * @param data 実験開始データ
+   * @returns なし
+   * @fires experiment_start
+   */
+  logExperimentStart(data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    tag?: string;
+    branch?: string;
+    targetCommit?: string;
+    config: Record<string, unknown>;
+  }): void {
+    this.emit({
+      eventType: 'experiment_start',
+      data,
+    });
+  }
+
+  /**
+   * 実験ベースラインを記録する
+   * @summary ベースライン記録
+   * @param data ベースラインデータ
+   * @returns なし
+   * @fires experiment_baseline
+   */
+  logExperimentBaseline(data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    score: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+    commit?: string;
+  }): void {
+    this.emit({
+      eventType: 'experiment_baseline',
+      data,
+    });
+  }
+
+  /**
+   * 実験実行を記録する
+   * @summary 実験を実行する
+   * @param data 実験実行データ
+   * @returns なし
+   * @fires experiment_run
+   */
+  logExperimentRun(data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    iteration: number;
+    commit?: string;
+    changesSummary?: string;
+  }): void {
+    this.emit({
+      eventType: 'experiment_run',
+      data,
+    });
+  }
+
+  /**
+   * 実験改善を記録する
+   * @summary 改善を検出
+   * @param data 改善データ
+   * @returns なし
+   * @fires experiment_improved
+   */
+  logExperimentImproved(data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    previousScore: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+    newScore: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+    commit?: string;
+    improvementType: 'fewer_failures' | 'more_passes' | 'faster';
+  }): void {
+    this.emit({
+      eventType: 'experiment_improved',
+      data,
+    });
+  }
+
+  /**
+   * 実験退行を記録する
+   * @summary 退行を検出
+   * @param data 退行データ
+   * @returns なし
+   * @fires experiment_regressed
+   */
+  logExperimentRegressed(data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    previousScore: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+    newScore: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+    commit?: string;
+    regressionType: 'more_failures' | 'fewer_passes' | 'slower';
+    reverted?: boolean;
+  }): void {
+    this.emit({
+      eventType: 'experiment_regressed',
+      data,
+    });
+  }
+
+  /**
+   * 実験タイムアウトを記録する
+   * @summary タイムアウト発生
+   * @param data タイムアウトデータ
+   * @returns なし
+   * @fires experiment_timeout
+   */
+  logExperimentTimeout(data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    iteration: number;
+    timeoutMs: number;
+    partialScore?: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+  }): void {
+    this.emit({
+      eventType: 'experiment_timeout',
+      data,
+    });
+  }
+
+  /**
+   * 実験停止を記録する
+   * @summary 停止発生
+   * @param data 停止データ
+   * @returns なし
+   * @fires experiment_stop
+   */
+  logExperimentStop(data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    iteration: number;
+    reason?: string;
+    partialScore?: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+  }): void {
+    this.emit({
+      eventType: 'experiment_stop',
+      data,
+    });
+  }
+
+  /**
+   * 実験クラッシュを記録する
+   * @summary クラッシュ発生
+   * @param data クラッシュデータ
+   * @returns なし
+   * @fires experiment_crash
+   */
+  logExperimentCrash(data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    iteration: number;
+    error?: string;
+    partialScore?: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+  }): void {
+    this.emit({
+      eventType: 'experiment_crash',
+      data,
+    });
+  }
+
+  // ============================================
   // 警告ログ
   // ============================================
 
@@ -579,6 +799,8 @@ export class ComprehensiveLogger {
   
   private emit(event: { eventType: EventType } & Omit<BaseEvent, 'eventId' | 'sessionId' | 'taskId' | 'operationId' | 'parentEventId' | 'timestamp' | 'component'> & { data: unknown }): void {
     if (!this.config.enabled) return;
+    // シャットダウン中は新規イベントを拒否
+    if (this.isShuttingDown) return;
     
     const fullEvent: BaseEvent = {
       ...event,
@@ -610,33 +832,75 @@ export class ComprehensiveLogger {
    * ログをフラッシュする
    * @summary ログをフラッシュ
    * @returns 解決時に処理完了
+   * @throws I/Oエラー時に例外をスロー（データはバッファに保持）
    */
   async flush(): Promise<void> {
+    // 並行flush呼び出しの直列化 - 既にflush実行中の場合は早期リターン
+    if (this.isFlushing) return;
     if (this.buffer.length === 0) return;
-    
-    const events = [...this.buffer];
+
+    this.isFlushing = true;
+
+    // 原子的バッファスワップ - レースコンディション防止
+    const events = this.buffer;
     this.buffer = [];
-    
-    await this.ensureLogDir();
-    
-    const logFile = join(this.config.logDir, `events-${getDateStr()}.jsonl`);
-    
-    // ファイルサイズチェック
-    if (existsSync(logFile)) {
-      const stats = statSync(logFile);
-      const sizeMB = stats.size / (1024 * 1024);
-      if (sizeMB >= this.config.maxFileSizeMB) {
-        // ローテーション: 新しいファイル名を使用
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        const rotatedFile = join(this.config.logDir, `events-${getDateStr()}-${timestamp}.jsonl`);
+
+    const maxAttempts = this.config.flushRetryAttempts ?? 3;
+    const baseDelayMs = this.config.flushRetryDelayMs ?? 1000;
+    let lastError: Error | undefined;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await this.ensureLogDir();
+
+        const logFile = join(this.config.logDir, `events-${getDateStr()}.jsonl`);
+
+        // ファイルサイズチェック
+        if (existsSync(logFile)) {
+          const stats = statSync(logFile);
+          const sizeMB = stats.size / (1024 * 1024);
+          if (sizeMB >= this.config.maxFileSizeMB) {
+            // ローテーション: 新しいファイル名を使用
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const rotatedFile = join(this.config.logDir, `events-${getDateStr()}-${timestamp}.jsonl`);
+            const lines = events.map(e => JSON.stringify(e)).join('\n') + '\n';
+            await appendFile(rotatedFile, lines, 'utf-8');
+            return;
+          }
+        }
+
         const lines = events.map(e => JSON.stringify(e)).join('\n') + '\n';
-        await appendFile(rotatedFile, lines, 'utf-8');
-        return;
+        await appendFile(logFile, lines, 'utf-8');
+        return; // 成功時は早期リターン
+      } catch (error) {
+        lastError = error as Error;
+        
+        // リトライ可能な場合、指数バックオフで待機
+        if (attempt < maxAttempts) {
+          const delayMs = baseDelayMs * Math.pow(2, attempt - 1);
+          console.error(`[comprehensive-logger] Flush attempt ${attempt}/${maxAttempts} failed, retrying in ${delayMs}ms:`, error);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      }
+    }
+
+    // 全リトライ失敗時の処理
+    // I/Oエラー時はバッファに戻す（データ損失を防ぐ）
+    this.buffer = [...events, ...this.buffer];
+    
+    console.error('[comprehensive-logger] Flush failed after all retries, re-queued events:', lastError);
+    
+    // コールバックが設定されている場合は呼び出し
+    if (this.config.onFlushError && lastError) {
+      try {
+        this.config.onFlushError(lastError, events.length);
+      } catch (callbackError) {
+        console.error('[comprehensive-logger] onFlushError callback threw error:', callbackError);
       }
     }
     
-    const lines = events.map(e => JSON.stringify(e)).join('\n') + '\n';
-    await appendFile(logFile, lines, 'utf-8');
+    this.isFlushing = false;
+    throw lastError;
   }
   
   private stopFlushTimer(): void {
@@ -701,7 +965,7 @@ export class ComprehensiveLogger {
   getErrorCount(): number {
     return this.errorCount;
   }
-  
+
   /**
    * 総トークン数を取得
    * @summary 総トークン数を返す
@@ -709,6 +973,15 @@ export class ComprehensiveLogger {
    */
   getTotalTokens(): number {
     return this.totalTokens;
+  }
+
+  /**
+   * 未フラッシュイベント数を取得
+   * @summary バッファ内の未フラッシュイベント数を返す
+   * @returns {number} 未フラッシュイベント数
+   */
+  getPendingEventsCount(): number {
+    return this.buffer.length;
   }
 }
 

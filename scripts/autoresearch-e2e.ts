@@ -16,6 +16,7 @@ import {
   type AutoresearchE2EOutcome,
   type AutoresearchE2EScore,
 } from "../.pi/lib/autoresearch-e2e.js";
+import { ComprehensiveLogger } from "../.pi/lib/comprehensive-logger.js";
 
 interface CliOptions {
   command: string;
@@ -54,6 +55,9 @@ const RESULTS_TSV_PATH = resolve(ROOT, ".pi", "autoresearch", "e2e", "results.ts
 const DEFAULT_COMMAND = "npx vitest run tests/e2e --reporter=json";
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_PREFER_MS = 5 * 60 * 1000;
+
+// Initialize ComprehensiveLogger for experiment events
+const logger = new ComprehensiveLogger();
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -301,6 +305,20 @@ async function handleInit(options: CliOptions): Promise<void> {
     experimentCount: 0,
   });
 
+  // Emit experiment_start event
+  logger.logExperimentStart({
+    experimentType: 'e2e',
+    label: options.label,
+    tag: options.tag,
+    branch: branchName,
+    targetCommit: head,
+    config: {
+      command: options.command,
+      timeoutMs: options.timeoutMs,
+    },
+  });
+  await logger.flush();
+
   process.stdout.write(`initialized autoresearch e2e branch=${branchName} commit=${head}\n`);
 }
 
@@ -334,6 +352,21 @@ async function handleBaseline(options: CliOptions): Promise<void> {
   };
   writeState(nextState);
   appendResultRow(options.label, "baseline", report.score, head, run.artifacts);
+
+  // Emit experiment_baseline event
+  logger.logExperimentBaseline({
+    experimentType: 'e2e',
+    label: options.label,
+    score: {
+      failed: report.score.failed,
+      passed: report.score.passed,
+      total: report.score.total,
+      durationMs: report.score.durationMs,
+    },
+    commit: head,
+  });
+  await logger.flush();
+
   process.stdout.write(`baseline recorded ${formatAutoresearchScore(report.score)}\n`);
 }
 
@@ -345,6 +378,16 @@ async function handleRun(options: CliOptions): Promise<void> {
 
   const candidateBaseCommit = await getHeadCommit();
   const command = options.command || state.command;
+
+  // Emit experiment_run event
+  logger.logExperimentRun({
+    experimentType: 'e2e',
+    label: options.label,
+    iteration: state.experimentCount + 1,
+    commit: candidateBaseCommit,
+  });
+  await logger.flush();
+
   const run = await runCommand(command, options.label, options.timeoutMs);
 
   let outcome: AutoresearchE2EOutcome = "crash";
@@ -352,9 +395,79 @@ async function handleRun(options: CliOptions): Promise<void> {
 
   if (run.timedOut) {
     outcome = "timeout";
+    // Emit experiment_timeout event
+    logger.logExperimentTimeout({
+      experimentType: 'e2e',
+      label: options.label,
+      iteration: state.experimentCount + 1,
+      timeoutMs: options.timeoutMs,
+    });
+    await logger.flush();
   } else if (existsSync(run.artifacts.reportPath)) {
     score = parseVitestJsonReport(readFileSync(run.artifacts.reportPath, "utf-8")).score;
     outcome = determineAutoresearchOutcome(score, state.bestScore);
+
+    // Emit result-specific events
+    if (outcome === "improved") {
+      const previousScore = state.bestScore || { failed: 0, passed: 0, total: 0, durationMs: 0 };
+      let improvementType: 'fewer_failures' | 'more_passes' | 'faster' = 'fewer_failures';
+      if (score.failed < previousScore.failed) {
+        improvementType = 'fewer_failures';
+      } else if (score.passed > previousScore.passed) {
+        improvementType = 'more_passes';
+      } else {
+        improvementType = 'faster';
+      }
+
+      logger.logExperimentImproved({
+        experimentType: 'e2e',
+        label: options.label,
+        previousScore: {
+          failed: previousScore.failed,
+          passed: previousScore.passed,
+          total: previousScore.total,
+          durationMs: previousScore.durationMs,
+        },
+        newScore: {
+          failed: score.failed,
+          passed: score.passed,
+          total: score.total,
+          durationMs: score.durationMs,
+        },
+        improvementType,
+      });
+      await logger.flush();
+    } else if (outcome === "regressed") {
+      const previousScore = state.bestScore || { failed: 0, passed: 0, total: 0, durationMs: 0 };
+      let regressionType: 'more_failures' | 'fewer_passes' | 'slower' = 'more_failures';
+      if (score.failed > previousScore.failed) {
+        regressionType = 'more_failures';
+      } else if (score.passed < previousScore.passed) {
+        regressionType = 'fewer_passes';
+      } else {
+        regressionType = 'slower';
+      }
+
+      logger.logExperimentRegressed({
+        experimentType: 'e2e',
+        label: options.label,
+        previousScore: {
+          failed: previousScore.failed,
+          passed: previousScore.passed,
+          total: previousScore.total,
+          durationMs: previousScore.durationMs,
+        },
+        newScore: {
+          failed: score.failed,
+          passed: score.passed,
+          total: score.total,
+          durationMs: score.durationMs,
+        },
+        regressionType,
+        reverted: false,
+      });
+      await logger.flush();
+    }
   }
 
   if (options.git) {

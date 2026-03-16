@@ -468,17 +468,34 @@ export class Coordinator {
       this.updateHeartbeat();
     };
 
-    process.once("SIGTERM", () => {
-      forceHeartbeatWrite();
-      this.unregisterInstance();
-      process.exit(0);
-    });
+    // シグナルハンドラの重複実行を防ぐフラグ
+    let isShuttingDown = false;
 
-    process.once("SIGINT", () => {
+    const gracefulShutdown = (signal: string): void => {
+      if (isShuttingDown) {
+        return;
+      }
+      isShuttingDown = true;
+
       forceHeartbeatWrite();
       this.unregisterInstance();
-      process.exit(0);
-    });
+
+      // タイムアウト付きでイベントループのdrainを待つ
+      // これにより、piの拡張機能システムが session_shutdown/session_end イベントを発火できる
+      // 5秒後に強制終了するフォールバック
+      const timeout = setTimeout(() => {
+        console.warn(
+          `[cross-instance-coordinator] Graceful shutdown timeout after 5s (${signal}), forcing exit`
+        );
+        process.exit(0);
+      }, 5000);
+
+      // タイムアウトをアンリファレンスして、イベントループのdrainを妨げないようにする
+      timeout.unref();
+    };
+
+    process.once("SIGTERM", () => gracefulShutdown("SIGTERM"));
+    process.once("SIGINT", () => gracefulShutdown("SIGINT"));
 
     process.once("beforeExit", () => {
       if (this.state) {

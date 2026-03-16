@@ -51,6 +51,12 @@ const storageMocks = vi.hoisted(() => ({
   saveTaskStorage: vi.fn((nextState) => {
     storageMocks.state = structuredClone(nextState);
   }),
+  mutateTaskStorage: vi.fn((input: { mutate: (storage: typeof storageMocks.state) => unknown }) => {
+    const nextState = structuredClone(storageMocks.state);
+    const result = input.mutate(nextState);
+    storageMocks.saveTaskStorage(nextState);
+    return result;
+  }),
 }));
 
 vi.mock("../../../.pi/lib/storage/task-plan-store.js", () => storageMocks);
@@ -96,6 +102,14 @@ const orchestrationMocks = vi.hoisted(() => ({
 
 vi.mock("../../../.pi/lib/symphony-orchestrator-state.js", () => orchestrationMocks);
 
+const trackerMutationMocks = vi.hoisted(() => ({
+  markSymphonyTrackerIssueCompleted: vi.fn(async () => undefined),
+  markSymphonyTrackerIssueFailed: vi.fn(async () => undefined),
+  markSymphonyTrackerIssueTodo: vi.fn(async () => undefined),
+}));
+
+vi.mock("../../../.pi/lib/symphony-tracker.js", () => trackerMutationMocks);
+
 const longRunningMocks = vi.hoisted(() => ({
   createLongRunningReplay: vi.fn(() => ({
     session: {
@@ -136,6 +150,12 @@ vi.mock("../../../.pi/lib/runtime-sessions.js", () => ({
   onSessionEvent: runtimeSessionMocks.onSessionEvent,
 }));
 
+const childProcessMocks = vi.hoisted(() => ({
+  execFileSync: vi.fn(() => "commit-after\n"),
+}));
+
+vi.mock("node:child_process", () => childProcessMocks);
+
 vi.mock("@mariozechner/pi-ai", () => ({
   Type: {
     Object: (value: unknown) => value,
@@ -148,14 +168,34 @@ function createPiMock() {
   const tools: any[] = [];
   const handlers = new Map<string, Function>();
   const commands: any[] = [];
+  const sendUserMessage = vi.fn();
 
   return {
     tools,
     handlers,
     commands,
+    sendUserMessage,
     registerTool: vi.fn((tool: any) => tools.push(tool)),
     registerCommand: vi.fn((name: string, command: any) => commands.push({ name, command })),
     on: vi.fn((name: string, handler: Function) => handlers.set(name, handler)),
+  };
+}
+
+function createSymphonyCommandContext(overrides: Record<string, unknown> = {}) {
+  return {
+    cwd: "/repo",
+    ui: {
+      notify: vi.fn(),
+      setStatus: vi.fn(),
+      theme: {
+        fg: (_tone: string, text: string) => text,
+      },
+    },
+    newSession: vi.fn(async () => ({ cancelled: false })),
+    sessionManager: {
+      getSessionFile: vi.fn(() => "/repo/.pi/sessions/current.jsonl"),
+    },
+    ...overrides,
   };
 }
 
@@ -184,6 +224,8 @@ describe("task-auto-executor workpad", () => {
       backgroundProcesses: [],
       plan: { acceptanceCriteria: [], fileModuleImpact: [], recentProgress: [] },
     });
+    childProcessMocks.execFileSync.mockReset();
+    childProcessMocks.execFileSync.mockReturnValue("commit-after\n");
   });
 
   it("task_run_next で workpad を自動作成する", async () => {
@@ -230,14 +272,177 @@ describe("task-auto-executor workpad", () => {
     ]);
   });
 
-  it("autoRun 有効時は agent_end から既存ツール経由で自動実行する", async () => {
+  it("task_run_next は atomic claim に負けたら空結果を返す", async () => {
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+
+    storageMocks.mutateTaskStorage.mockImplementationOnce(() => null);
+
+    extension(pi as never);
+    const tool = pi.tools.find((entry) => entry.name === "task_run_next");
+    const result = await tool.execute("t1", {}, undefined, undefined, { cwd: "/repo" });
+
+    expect(result.content[0].text).toContain("実行待ちのタスクがありません。");
+    expect(result.details.pendingCount).toBe(0);
+    expect(orchestrationMocks.claimSymphonyIssue).not.toHaveBeenCalled();
+  });
+
+  it("/symphony command を登録する", async () => {
     const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
     const pi = createPiMock();
 
     extension(pi as never);
 
-    const toggleTool = pi.tools.find((entry) => entry.name === "task_auto_executor_toggle");
-    await toggleTool.execute("toggle", { enabled: true, autoRun: true }, undefined, undefined, {});
+    expect(pi.commands.map((entry) => entry.name)).toContain("symphony");
+  });
+
+  it("/symphony next は fresh session を作って dispatch する", async () => {
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+    (pi as { executeTool?: ReturnType<typeof vi.fn> }).executeTool = vi.fn();
+    const ctx = createSymphonyCommandContext();
+
+    extension(pi as never);
+
+    const symphonyCommand = pi.commands.find((entry) => entry.name === "symphony");
+    await symphonyCommand.command.handler("next", ctx);
+
+    expect(pi.executeTool).not.toHaveBeenCalled();
+    expect(ctx.newSession).toHaveBeenCalledWith();
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+    const dispatchPrompt = pi.sendUserMessage.mock.calls[0][0];
+    const dispatchOptions = pi.sendUserMessage.mock.calls[0][1];
+    expect(dispatchPrompt).toContain("Handle this as a normal pi task in a fresh session.");
+    expect(dispatchPrompt).toContain("Do not assume any previous ticket context.");
+    expect(dispatchPrompt).toContain("Do not default to DAG.");
+    expect(dispatchPrompt).toContain("Implement orchestration");
+    expect(dispatchPrompt).toContain("workspace_verify と required verification commands を完了すること。");
+    expect(dispatchPrompt).toContain("検証が通ってから、変更したファイルだけを git add し、必ず git commit を作成すること。");
+    expect(dispatchOptions).toBeUndefined();
+    expect(dispatchPrompt.indexOf("workspace_verify と required verification commands を完了すること。")).toBeLessThan(
+      dispatchPrompt.indexOf("git commit を作成すること。"),
+    );
+    expect(ctx.ui.notify).toHaveBeenCalledWith("自動実行を開始しました: Implement orchestration", "info");
+  });
+
+  it("/symphony next は parentSession を渡さずに clean session を作る", async () => {
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+    const ctx = createSymphonyCommandContext();
+
+    extension(pi as never);
+
+    const symphonyCommand = pi.commands.find((entry) => entry.name === "symphony");
+    await symphonyCommand.command.handler("next", ctx);
+
+    expect(ctx.sessionManager.getSessionFile).not.toHaveBeenCalled();
+    expect(ctx.newSession).toHaveBeenCalledWith();
+  });
+
+  it("/symphony next は command 実行中でも dispatch を followUp で積む", async () => {
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+    const ctx = createSymphonyCommandContext();
+    pi.sendUserMessage.mockImplementation((_content: string, options?: { deliverAs?: string }) => {
+      if (!options?.deliverAs) {
+        throw new Error("Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.");
+      }
+    });
+
+    extension(pi as never);
+
+    const symphonyCommand = pi.commands.find((entry) => entry.name === "symphony");
+    await symphonyCommand.command.handler("next", ctx);
+
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
+    expect(pi.sendUserMessage.mock.calls[0][1]).toBeUndefined();
+    expect(pi.sendUserMessage.mock.calls[1][1]).toEqual({ deliverAs: "followUp" });
+    expect(ctx.ui.notify).toHaveBeenCalledWith("自動実行を開始しました: Implement orchestration", "info");
+  });
+
+  it("/symphony next は fresh session dispatcher がないと開始しない", async () => {
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+    const notify = vi.fn();
+
+    extension(pi as never);
+
+    const symphonyCommand = pi.commands.find((entry) => entry.name === "symphony");
+    await symphonyCommand.command.handler("next", {
+      cwd: "/repo",
+      ui: {
+        notify,
+        theme: {
+          fg: (_tone: string, text: string) => text,
+        },
+      },
+    });
+
+    expect(pi.sendUserMessage).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith("Symphony を開始できません。fresh session dispatcher が見つかりません。", "warning");
+    expect(storageMocks.state.tasks[0].status).toBe("todo");
+  });
+
+  it("/symphony next は current task がまだ in_progress なら新しい dispatch を始めない", async () => {
+    storageMocks.state = {
+      tasks: [
+        {
+          id: "task-1",
+          title: "Implement orchestration",
+          description: "wire runner and queue",
+          status: "in_progress",
+          priority: "high",
+          tags: [],
+          createdAt: "2026-03-08T00:00:00.000Z",
+          updatedAt: "2026-03-08T00:00:00.000Z",
+          ownerInstanceId: "instance-1-123",
+          retryCount: 0,
+          completionGateStatus: "clear",
+        },
+        {
+          id: "task-2",
+          title: "Follow-up cleanup",
+          description: "second ticket",
+          status: "todo",
+          priority: "medium",
+          tags: [],
+          createdAt: "2026-03-08T00:00:01.000Z",
+          updatedAt: "2026-03-08T00:00:01.000Z",
+          retryCount: 0,
+          completionGateStatus: "clear",
+        },
+      ],
+    };
+    writeFileSync(".pi/tasks/auto-executor-config.json", JSON.stringify({
+      enabled: true,
+      autoRun: true,
+      currentTaskId: "task-1",
+      maxRetries: 2,
+    }, null, 2));
+
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+    const ctx = createSymphonyCommandContext();
+
+    extension(pi as never);
+
+    const symphonyCommand = pi.commands.find((entry) => entry.name === "symphony");
+    await symphonyCommand.command.handler("next", ctx);
+
+    expect(ctx.newSession).not.toHaveBeenCalled();
+    expect(pi.sendUserMessage).not.toHaveBeenCalled();
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "Symphony は次へ進みません。現在のタスク task-1 (Implement orchestration) がまだ in_progress です。",
+      "info",
+    );
+    expect(storageMocks.state.tasks[1].status).toBe("todo");
+  });
+
+  it("agent_end は Symphony を開始していない instance では自動実行しない", async () => {
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+
+    extension(pi as never);
 
     const agentEndHandler = pi.handlers.get("agent_end");
     const notify = vi.fn();
@@ -279,36 +484,16 @@ describe("task-auto-executor workpad", () => {
       },
     });
 
-    expect(executeTool).toHaveBeenNthCalledWith(1, {
-      toolName: "task_run_next",
-      params: {},
-    });
-    expect(executeTool).toHaveBeenNthCalledWith(2, {
-      toolName: "subagent_run_dag",
-      params: {
-        task: "Implement orchestration\n\n詳細: wire runner and queue",
-        taskId: "task-1",
-        extraContext: expect.stringContaining("root planner"),
-        autoGenerate: true,
-      },
-    });
-    expect(workflowMocks.updateWorkpad).toHaveBeenCalledWith("/repo", {
-      id: "wp-1",
-      section: "progress",
-      content: "- auto-run dispatch started via task_auto_executor",
-      mode: "append",
-    });
-    expect(notify).toHaveBeenCalledWith("自動実行を開始しました: Implement orchestration", "info");
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+    expect(setStatus).not.toHaveBeenCalled();
   });
 
-  it("autoRun 有効でも agent_end の ctx に tool executor がなければ warning を出さない", async () => {
+  it("agent_end は未開始 instance で follow-up turn も queue しない", async () => {
     const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
     const pi = createPiMock();
 
     extension(pi as never);
-
-    const toggleTool = pi.tools.find((entry) => entry.name === "task_auto_executor_toggle");
-    await toggleTool.execute("toggle", { enabled: true, autoRun: true }, undefined, undefined, {});
 
     const agentEndHandler = pi.handlers.get("agent_end");
     const notify = vi.fn();
@@ -325,56 +510,56 @@ describe("task-auto-executor workpad", () => {
       },
     });
 
-    expect(notify).not.toHaveBeenCalledWith(
-      "自動実行を開始できません。tool executor が見つかりません。",
-      "warning",
-    );
-    expect(setStatus).toHaveBeenCalledWith("auto-executor", "次のタスク: Implement orchestration...");
+    expect(pi.sendUserMessage).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+    expect(setStatus).not.toHaveBeenCalled();
   });
 
-  it("session_start で autoRun 既定値のまま pending task を自動起動する", async () => {
-    writeFileSync(".pi/tasks/auto-executor-config.json", JSON.stringify({
-      enabled: true,
-      autoRun: true,
-      maxRetries: 2,
-    }, null, 2));
+  it("agent_end は current task がまだ in_progress なら /symphony next を self-queue しない", async () => {
+    storageMocks.state = {
+      tasks: [
+        {
+          id: "task-1",
+          title: "Implement orchestration",
+          description: "wire runner and queue",
+          status: "todo",
+          priority: "high",
+          tags: [],
+          createdAt: "2026-03-08T00:00:00.000Z",
+          updatedAt: "2026-03-08T00:00:00.000Z",
+          retryCount: 0,
+          completionGateStatus: "clear",
+        },
+        {
+          id: "task-2",
+          title: "Follow-up cleanup",
+          description: "second ticket",
+          status: "todo",
+          priority: "medium",
+          tags: [],
+          createdAt: "2026-03-08T00:00:01.000Z",
+          updatedAt: "2026-03-08T00:00:01.000Z",
+          retryCount: 0,
+          completionGateStatus: "clear",
+        },
+      ],
+    };
 
     const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
     const pi = createPiMock();
+    const commandCtx = createSymphonyCommandContext();
 
     extension(pi as never);
 
-    const sessionStartHandler = pi.handlers.get("session_start");
+    const symphonyCommand = pi.commands.find((entry) => entry.name === "symphony");
+    await symphonyCommand.command.handler("next", commandCtx);
+
+    const agentEndHandler = pi.handlers.get("agent_end");
     const notify = vi.fn();
     const setStatus = vi.fn();
-    const executeTool = vi.fn(async ({ toolName }: { toolName: string; params: Record<string, unknown> }) => {
-      if (toolName === "task_run_next") {
-        return {
-          content: [{ type: "text", text: "claimed" }],
-          details: {
-            taskId: "task-1",
-            title: "Implement orchestration",
-            description: "wire runner and queue",
-            kind: "implementation",
-            reason: "one thing per loop",
-            workpadId: "wp-1",
-          },
-        };
-      }
 
-      if (toolName === "subagent_run_dag") {
-        return {
-          content: [{ type: "text", text: "started" }],
-          details: { outcomeCode: "SUCCESS" },
-        };
-      }
-
-      throw new Error(`unexpected tool: ${toolName}`);
-    });
-
-    await sessionStartHandler?.({}, {
+    await agentEndHandler?.({}, {
       cwd: "/repo",
-      executeTool,
       ui: {
         notify,
         setStatus,
@@ -384,22 +569,226 @@ describe("task-auto-executor workpad", () => {
       },
     });
 
-    expect(executeTool).toHaveBeenNthCalledWith(1, {
-      toolName: "task_run_next",
-      params: {},
-    });
-    expect(executeTool).toHaveBeenNthCalledWith(2, {
-      toolName: "subagent_run_dag",
-      params: {
-        task: "Implement orchestration\n\n詳細: wire runner and queue",
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+    expect(notify).not.toHaveBeenCalled();
+    expect(setStatus).toHaveBeenCalledWith("auto-executor", undefined);
+    expect(setStatus).toHaveBeenCalledWith("auto-executor", "現在のタスク実行中");
+    expect(storageMocks.state.tasks[1].status).toBe("todo");
+  });
+
+  it("agent_end は current task 完了後なら /symphony next を self-queue して fresh session へ進める", async () => {
+    storageMocks.state = {
+      tasks: [
+        {
+          id: "task-1",
+          title: "Implement orchestration",
+          description: "wire runner and queue",
+          status: "todo",
+          priority: "high",
+          tags: [],
+          createdAt: "2026-03-08T00:00:00.000Z",
+          updatedAt: "2026-03-08T00:00:00.000Z",
+          retryCount: 0,
+          completionGateStatus: "clear",
+        },
+        {
+          id: "task-2",
+          title: "Follow-up cleanup",
+          description: "second ticket",
+          status: "todo",
+          priority: "medium",
+          tags: [],
+          createdAt: "2026-03-08T00:00:01.000Z",
+          updatedAt: "2026-03-08T00:00:01.000Z",
+          retryCount: 0,
+          completionGateStatus: "clear",
+        },
+      ],
+    };
+
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+    const commandCtx = createSymphonyCommandContext();
+
+    extension(pi as never);
+
+    const symphonyCommand = pi.commands.find((entry) => entry.name === "symphony");
+    await symphonyCommand.command.handler("next", commandCtx);
+    writeFileSync(".pi/tasks/auto-executor-runtime.json", JSON.stringify({
+      checkpoints: [],
+    }, null, 2));
+
+    runtimeSessionMocks.emit({
+      type: "session_updated",
+      data: {
         taskId: "task-1",
-        extraContext: expect.stringContaining("root planner"),
-        autoGenerate: true,
+        status: "completed",
+        message: "done",
       },
     });
+
+    const agentEndHandler = pi.handlers.get("agent_end");
+    const notify = vi.fn();
+    const setStatus = vi.fn();
+
+    await agentEndHandler?.({}, {
+      cwd: "/repo",
+      ui: {
+        notify,
+        setStatus,
+        theme: {
+          fg: (_tone: string, text: string) => text,
+        },
+      },
+    });
+
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
+    expect(pi.sendUserMessage).toHaveBeenLastCalledWith("/symphony next", {
+      deliverAs: "followUp",
+    });
+    expect(notify).toHaveBeenCalledWith(
+      "[Symphony] 次タスクを継続します。`/symphony next` を follow-up に投入し、fresh session で開始します。",
+      "info",
+    );
+    expect(storageMocks.state.tasks[0].status).toBe("completed");
+    expect(storageMocks.state.tasks[1].status).toBe("todo");
   });
 
-  it("session_start は UI がなくても自動起動できる", async () => {
+  it("session_shutdown をまたいでも Symphony loop は次タスク継続を止めない", async () => {
+    storageMocks.state = {
+      tasks: [
+        {
+          id: "task-1",
+          title: "Implement orchestration",
+          description: "wire runner and queue",
+          status: "todo",
+          priority: "high",
+          tags: [],
+          createdAt: "2026-03-08T00:00:00.000Z",
+          updatedAt: "2026-03-08T00:00:00.000Z",
+          retryCount: 0,
+          completionGateStatus: "clear",
+        },
+        {
+          id: "task-2",
+          title: "Follow-up cleanup",
+          description: "second ticket",
+          status: "todo",
+          priority: "medium",
+          tags: [],
+          createdAt: "2026-03-08T00:00:01.000Z",
+          updatedAt: "2026-03-08T00:00:01.000Z",
+          retryCount: 0,
+          completionGateStatus: "clear",
+        },
+      ],
+    };
+
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+    const commandCtx = createSymphonyCommandContext();
+
+    extension(pi as never);
+
+    const symphonyCommand = pi.commands.find((entry) => entry.name === "symphony");
+    await symphonyCommand.command.handler("next", commandCtx);
+    writeFileSync(".pi/tasks/auto-executor-runtime.json", JSON.stringify({
+      checkpoints: [],
+    }, null, 2));
+
+    runtimeSessionMocks.emit({
+      type: "session_updated",
+      data: {
+        taskId: "task-1",
+        status: "completed",
+        message: "done",
+      },
+    });
+
+    const sessionShutdownHandler = pi.handlers.get("session_shutdown");
+    await sessionShutdownHandler?.({}, { cwd: "/repo" });
+
+    const agentEndHandler = pi.handlers.get("agent_end");
+    const notify = vi.fn();
+    const setStatus = vi.fn();
+
+    await agentEndHandler?.({}, {
+      cwd: "/repo",
+      ui: {
+        notify,
+        setStatus,
+        theme: {
+          fg: (_tone: string, text: string) => text,
+        },
+      },
+    });
+
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
+    expect(pi.sendUserMessage).toHaveBeenLastCalledWith("/symphony next", {
+      deliverAs: "followUp",
+    });
+    expect(notify).toHaveBeenCalledWith(
+      "[Symphony] 次タスクを継続します。`/symphony next` を follow-up に投入し、fresh session で開始します。",
+      "info",
+    );
+  });
+
+  it("session_start では pending task があっても自動起動しない", async () => {
+    writeFileSync(".pi/tasks/auto-executor-config.json", JSON.stringify({
+      enabled: true,
+      autoRun: true,
+      maxRetries: 2,
+    }, null, 2));
+
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+
+    extension(pi as never);
+
+    const sessionStartHandler = pi.handlers.get("session_start");
+    const notify = vi.fn();
+    const setStatus = vi.fn();
+    const executeTool = vi.fn(async ({ toolName }: { toolName: string; params: Record<string, unknown> }) => {
+      if (toolName === "task_run_next") {
+        return {
+          content: [{ type: "text", text: "claimed" }],
+          details: {
+            taskId: "task-1",
+            title: "Implement orchestration",
+            description: "wire runner and queue",
+            kind: "implementation",
+            reason: "one thing per loop",
+            workpadId: "wp-1",
+          },
+        };
+      }
+
+      if (toolName === "subagent_run_dag") {
+        return {
+          content: [{ type: "text", text: "started" }],
+          details: { outcomeCode: "SUCCESS" },
+        };
+      }
+
+      throw new Error(`unexpected tool: ${toolName}`);
+    });
+
+    await sessionStartHandler?.({}, {
+      cwd: "/repo",
+      executeTool,
+      ui: {
+        notify,
+        setStatus,
+        theme: {
+          fg: (_tone: string, text: string) => text,
+        },
+      },
+    });
+
+    expect(executeTool).not.toHaveBeenCalled();
+  });
+
+  it("session_start は UI がなくても自動起動しない", async () => {
     writeFileSync(".pi/tasks/auto-executor-config.json", JSON.stringify({
       enabled: true,
       autoRun: true,
@@ -442,14 +831,10 @@ describe("task-auto-executor workpad", () => {
       executeTool,
     });
 
-    expect(executeTool).toHaveBeenCalledTimes(2);
-    expect(executeTool).toHaveBeenNthCalledWith(1, {
-      toolName: "task_run_next",
-      params: {},
-    });
+    expect(executeTool).not.toHaveBeenCalled();
   });
 
-  it("session_start の ctx に tool executor がなければ autoRun を誤起動しない", async () => {
+  it("session_start は tool executor がなくても follow-up turn を queue しない", async () => {
     writeFileSync(".pi/tasks/auto-executor-config.json", JSON.stringify({
       enabled: true,
       autoRun: true,
@@ -476,14 +861,12 @@ describe("task-auto-executor workpad", () => {
       },
     });
 
-    expect(notify).not.toHaveBeenCalledWith(
-      "自動実行を開始できません。tool executor が見つかりません。",
-      "warning",
-    );
-    expect(setStatus).toHaveBeenCalledWith("auto-executor", "待機中: Implement orchestration...");
+    expect(pi.sendUserMessage).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalledWith(expect.stringContaining("自動実行を開始しました"), "info");
+    expect(setStatus).not.toHaveBeenCalledWith("auto-executor", "待機中: Implement orchestration...");
   });
 
-  it("session_start は reclaimable な in_progress task を自動再開する", async () => {
+  it("session_start は reclaimable な in_progress task も自動再開しない", async () => {
     storageMocks.state = {
       tasks: [{
         id: "task-1",
@@ -551,14 +934,10 @@ describe("task-auto-executor workpad", () => {
       },
     });
 
-    expect(executeTool).toHaveBeenCalledTimes(2);
-    expect(executeTool).toHaveBeenNthCalledWith(1, {
-      toolName: "task_run_next",
-      params: {},
-    });
+    expect(executeTool).not.toHaveBeenCalled();
   });
 
-  it("durable checkpoint がある stale in_progress task は task_run_next を使わずに resume する", async () => {
+  it("durable checkpoint があっても session_start だけでは resume しない", async () => {
     storageMocks.state = {
       tasks: [{
         id: "task-1",
@@ -631,25 +1010,10 @@ describe("task-auto-executor workpad", () => {
       },
     });
 
-    expect(executeTool).toHaveBeenCalledTimes(1);
-    expect(executeTool).toHaveBeenNthCalledWith(1, {
-      toolName: "subagent_run_dag",
-      params: {
-        task: "Resume orchestration\n\n詳細: recover stale worker",
-        taskId: "task-1",
-        extraContext: expect.stringContaining("Durability Resume Contract"),
-        autoGenerate: true,
-      },
-    });
-    expect(workflowMocks.updateWorkpad).toHaveBeenCalledWith("/repo", {
-      id: "wp-1",
-      section: "progress",
-      content: "- durable auto-run resume started via task_auto_executor",
-      mode: "append",
-    });
+    expect(executeTool).not.toHaveBeenCalled();
   });
 
-  it("task storage から消えた interrupted checkpoint task も agent_end から復元して resume する", async () => {
+  it("task storage から消えた interrupted checkpoint task も未開始 instance の agent_end では resume しない", async () => {
     storageMocks.state = {
       tasks: [],
     };
@@ -709,16 +1073,7 @@ describe("task-auto-executor workpad", () => {
       },
     });
 
-    expect(executeTool).toHaveBeenCalledTimes(1);
-    expect(executeTool).toHaveBeenNthCalledWith(1, {
-      toolName: "subagent_run_dag",
-      params: {
-        task: "Resume orchestration\n\n詳細: recover stale worker",
-        taskId: "task-1",
-        extraContext: expect.stringContaining("Durability Resume Contract"),
-        autoGenerate: true,
-      },
-    });
+    expect(executeTool).not.toHaveBeenCalled();
     expect(storageMocks.state.tasks).toEqual([
       expect.objectContaining({
         id: "task-1",
@@ -729,7 +1084,7 @@ describe("task-auto-executor workpad", () => {
     ]);
   });
 
-  it("他インスタンスの live な in_progress task があると session_start は新規自動起動しない", async () => {
+  it("他インスタンスの live な in_progress task があっても session_start は未開始 instance では何もしない", async () => {
     storageMocks.state = {
       tasks: [
         {
@@ -791,10 +1146,8 @@ describe("task-auto-executor workpad", () => {
     });
 
     expect(executeTool).not.toHaveBeenCalled();
-    expect(notify).toHaveBeenCalledWith(
-      expect.stringContaining("他インスタンスの実行中タスクを優先"),
-      "info",
-    );
+    expect(notify).not.toHaveBeenCalled();
+    expect(setStatus).not.toHaveBeenCalled();
   });
 
   it("workspace_verify の結果を task verification state に反映する", async () => {
@@ -854,46 +1207,18 @@ describe("task-auto-executor workpad", () => {
     });
   });
 
-  it("autoRun 起動失敗時は claim を戻して orchestration を release する", async () => {
+  it("/symphony next 起動失敗時は claim を戻して orchestration を release する", async () => {
     const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
     const pi = createPiMock();
+    const ctx = createSymphonyCommandContext();
+    pi.sendUserMessage.mockImplementation(() => {
+      throw new Error("follow-up dispatch unavailable");
+    });
 
     extension(pi as never);
 
-    const toggleTool = pi.tools.find((entry) => entry.name === "task_auto_executor_toggle");
-    await toggleTool.execute("toggle", { enabled: true, autoRun: true }, undefined, undefined, {});
-
-    const agentEndHandler = pi.handlers.get("agent_end");
-    const notify = vi.fn();
-    const executeTool = vi.fn(async ({ toolName }: { toolName: string; params: Record<string, unknown> }) => {
-      if (toolName === "task_run_next") {
-        return {
-          content: [{ type: "text", text: "claimed" }],
-          details: {
-            taskId: "task-1",
-            title: "Implement orchestration",
-            description: "wire runner and queue",
-            kind: "implementation",
-            reason: "one thing per loop",
-            workpadId: "wp-1",
-          },
-        };
-      }
-
-      throw new Error("subagent runner unavailable");
-    });
-
-    await agentEndHandler?.({}, {
-      cwd: "/repo",
-      executeTool,
-      ui: {
-        notify,
-        setStatus: vi.fn(),
-        theme: {
-          fg: (_tone: string, text: string) => text,
-        },
-      },
-    });
+    const symphonyCommand = pi.commands.find((entry) => entry.name === "symphony");
+    await symphonyCommand.command.handler("next", ctx);
 
     expect(storageMocks.saveTaskStorage).toHaveBeenCalled();
     expect(orchestrationMocks.releaseSymphonyIssue).toHaveBeenCalledWith({
@@ -901,16 +1226,16 @@ describe("task-auto-executor workpad", () => {
       issueId: "task-1",
       title: "Implement orchestration",
       source: "task-auto-executor",
-      reason: "auto-run dispatch failed: subagent runner unavailable",
+      reason: "auto-run dispatch failed: follow-up dispatch unavailable",
       workpadId: "wp-1",
     });
     expect(workflowMocks.updateWorkpad).toHaveBeenCalledWith("/repo", {
       id: "wp-1",
       section: "verification",
-      content: "- auto-run dispatch failed: subagent runner unavailable",
+      content: "- auto-run dispatch failed: follow-up dispatch unavailable",
       mode: "append",
     });
-    expect(notify).toHaveBeenCalledWith("自動実行の起動に失敗しました: Implement orchestration", "warning");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("自動実行の起動に失敗しました: Implement orchestration", "warning");
   });
 
   it("runtime session completed を受けて task を完了扱いにする", async () => {
@@ -948,6 +1273,52 @@ describe("task-auto-executor workpad", () => {
       section: "next",
       content: "- no further action required",
       mode: "replace",
+    });
+  });
+
+  it("git commit が増えていない completed は retry に戻す", async () => {
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+
+    childProcessMocks.execFileSync.mockReturnValue("commit-base\n");
+    writeFileSync(".pi/tasks/auto-executor-runtime.json", JSON.stringify({
+      checkpoints: [{
+        taskId: "task-1",
+        title: "Implement orchestration",
+        description: "wire runner and queue",
+        kind: "implementation",
+        reason: "claimed from task_run_next",
+        workpadId: "wp-1",
+        status: "dispatched",
+        ownerInstanceId: "instance-1-123",
+        ownerPid: 123,
+        attemptCount: 1,
+        resumeCount: 0,
+        createdAt: "2026-03-08T00:00:00.000Z",
+        updatedAt: "2026-03-08T00:00:00.000Z",
+        startHeadCommit: "commit-base",
+      }],
+    }, null, 2));
+
+    extension(pi as never);
+
+    runtimeSessionMocks.emit({
+      type: "session_updated",
+      data: {
+        taskId: "task-1",
+        status: "completed",
+        message: "done without commit",
+      },
+    });
+
+    const savedAfterGateBlock = storageMocks.saveTaskStorage.mock.calls.at(-1)?.[0];
+    expect(savedAfterGateBlock.tasks[0].status).toBe("todo");
+    expect(savedAfterGateBlock.tasks[0].retryCount).toBe(1);
+    expect(workflowMocks.updateWorkpad).toHaveBeenCalledWith(process.cwd(), {
+      id: "wp-1",
+      section: "verification",
+      content: expect.stringContaining("git commit proof is missing"),
+      mode: "append",
     });
   });
 

@@ -114,6 +114,22 @@ function createHeuristicPlan(
   const preferredAgents = new Set(options.preferredAgents?.map((agent) => agent.trim()).filter(Boolean) || []);
   const clauses = splitTaskIntoClauses(task);
   const maxTasks = Math.max(1, options.maxTasks ?? 10);
+  const singleTaskAgent = shouldUseSingleTaskPlan(task, clauses);
+  if (singleTaskAgent) {
+    return {
+      id: `auto-${Date.now()}-${hashTask(task)}`,
+      description: task,
+      tasks: [{
+        id: createTaskId(singleTaskAgent === "researcher" ? "research" : "implement", task),
+        description: buildSingleTaskDescription(task, singleTaskAgent),
+        assignedAgent: pickAgent(singleTaskAgent, preferredAgents),
+        dependencies: [],
+        priority: "high",
+        estimatedDurationMs: singleTaskAgent === "researcher" ? 90_000 : 120_000,
+      }],
+    };
+  }
+
   const wantsResearch = shouldCreateResearch(task, clauses);
   const wantsArchitecture = shouldCreateArchitecture(task, clauses);
   const wantsReview = shouldCreateReview(task, clauses);
@@ -297,17 +313,52 @@ function classifyClause(clause: string): ClauseKind {
   return "implementation";
 }
 
-function shouldCreateResearch(task: string, clauses: string[]): boolean {
-  if (clauses.some((clause) => classifyClause(clause) === "research")) {
-    return true;
+function shouldUseSingleTaskPlan(
+  task: string,
+  clauses: string[],
+): "researcher" | "implementer" | null {
+  const normalized = task.toLowerCase();
+  const clauseKinds = clauses.map((clause) => classifyClause(clause));
+  const hasExplicitParallelWork = /\b(parallel|independent|respectively|in parallel)\b|並列|独立|それぞれ/i.test(task);
+  const hasMultipleImplementationLanes = clauseKinds.filter((kind) => kind === "implementation").length > 1;
+  const hasHeavyDesign = /(architecture|design doc|migration plan|schema design|設計書|アーキテクチャ|移行計画)/i.test(task);
+  const isDebugOrBugfix = /(fix|bug|debug|regression|hotfix|patch|repair|不具合|バグ|回帰|修正)/i.test(task);
+  const isInspectOrDiagnosis = /(inspect|trace|diagnos|investigate why|root cause|why does|原因|再現|挙動|切り分け|調査)/i.test(task);
+  const isExplicitResearchOnly = clauseKinds.every((kind) => kind === "research");
+  const hasExplicitValidationOnly = clauseKinds.every((kind) => kind === "testing" || kind === "implementation");
+  const isSmallTask = clauses.length <= 2;
+
+  if (hasExplicitParallelWork || hasMultipleImplementationLanes || hasHeavyDesign) {
+    return null;
   }
 
-  return clauses.length > 1 || /(refactor|migrate|design|architecture|認証|api|db|database|schema|security|リファクタ|移行|設計|認可|認証)/i.test(task);
+  if (isExplicitResearchOnly && isSmallTask) {
+    return "researcher";
+  }
+
+  if (isSmallTask && isInspectOrDiagnosis && !/(implement|change|update|write|add|fix|patch|修正|実装)/i.test(normalized)) {
+    return "researcher";
+  }
+
+  if (isSmallTask && (isDebugOrBugfix || hasExplicitValidationOnly)) {
+    return "implementer";
+  }
+
+  if (clauses.length === 1 && !/(compare|evaluate|architecture|design|review|audit|security|比較|評価|設計|監査|レビュー)/i.test(task)) {
+    return isInspectOrDiagnosis ? "researcher" : "implementer";
+  }
+
+  return null;
+}
+
+function shouldCreateResearch(task: string, clauses: string[]): boolean {
+  return clauses.some((clause) => classifyClause(clause) === "research")
+    || /\b(compare|evaluate|investigate|research|analyz|explore|spike)\b|調査|分析|比較|評価|検討/i.test(task);
 }
 
 function shouldCreateArchitecture(task: string, clauses: string[]): boolean {
   return clauses.some((clause) => classifyClause(clause) === "architecture")
-    || /(schema|api|architecture|design|設計|構成|方針|インターフェース)/i.test(task);
+    || /(schema|contract|architecture|design|設計|構成|方針|インターフェース)/i.test(task);
 }
 
 function shouldCreateTesting(task: string, clauses: string[]): boolean {
@@ -324,16 +375,18 @@ function createDefaultResearchUnits(task: string, options: DagGenerationOptions)
   const units = [
     `Inspect the existing code paths related to ${task}`,
     `Inspect the public interfaces, schemas, and contracts related to ${task}`,
-    `Inspect the risk areas, edge cases, and failure modes related to ${task}`,
+    `Inspect the highest-risk constraints and failure modes related to ${task}`,
   ];
 
   if (options.contextFiles?.length) {
     units.push(`Inspect the provided context files for ${task}`);
+  } else if (/(compare|evaluate|tradeoff|比較|評価|検討)/i.test(task)) {
+    units.push(`Inspect the main option tradeoffs for ${task}`);
   } else if (/(test|verify|validation|テスト|検証)/i.test(task)) {
     units.push(`Inspect the current tests and validation points for ${task}`);
   }
 
-  return Array.from(new Set(units));
+  return Array.from(new Set(units)).slice(0, 3);
 }
 
 function createExpandedResearchUnits(
@@ -346,7 +399,7 @@ function createExpandedResearchUnits(
       baseClause,
       `Inspect the existing code paths related to ${task}`,
       `Inspect the public interfaces, schemas, and contracts related to ${task}`,
-      `Inspect the risk areas, edge cases, and failure modes related to ${task}`,
+      `Inspect the highest-risk constraints and failure modes related to ${task}`,
       ...(options.contextFiles?.length
         ? [`Inspect the provided context files for ${task}`]
         : []),
@@ -371,6 +424,17 @@ function buildResearchDescription(unit: string, options: DagGenerationOptions): 
 
 function buildImplementationDescription(unit: string): string {
   return `Implement the following work item with concrete code changes: ${unit}`;
+}
+
+function buildSingleTaskDescription(
+  task: string,
+  agentKind: "researcher" | "implementer",
+): string {
+  if (agentKind === "researcher") {
+    return `Investigate the task end-to-end and produce an execution-ready finding: ${task}`;
+  }
+
+  return `Complete the task end-to-end with concrete code changes and validation as needed: ${task}`;
 }
 
 function pickAgent(

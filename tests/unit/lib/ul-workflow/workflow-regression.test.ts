@@ -81,6 +81,39 @@ describe("ul workflow regression guards", () => {
     expect(result.nextAction).toBe("ul_workflow_execute_plan()");
   });
 
+  it("WorkflowService.approve は review への次アクションで workspace_verify を返す", async () => {
+    const ownerInstanceId = getInstanceId();
+    const state: WorkflowState = {
+      taskId: "task-review",
+      taskDescription: "review regression test",
+      phase: "implement",
+      phases: ["research", "plan", "annotate", "implement", "review", "completed"],
+      phaseIndex: 3,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      approvedPhases: ["research", "plan", "annotate"],
+      annotationCount: 0,
+      ownerInstanceId,
+    };
+
+    const repository = {
+      save: vi.fn(async () => {}),
+      load: vi.fn(async () => state),
+      getCurrent: vi.fn(async () => state),
+      setCurrent: vi.fn(async () => {}),
+      createTaskFile: vi.fn(async () => {}),
+      readPlanFile: vi.fn(async () => ""),
+      delete: vi.fn(async () => {}),
+    };
+
+    const service = new WorkflowService({ repository });
+    const result = await service.approve();
+
+    expect(result.success).toBe(true);
+    expect(result.nextPhase).toBe("review");
+    expect(result.nextAction).toBe("workspace_verify()");
+  });
+
   it("WorkflowService.approve は completed でも task 削除を呼ばない", async () => {
     const ownerInstanceId = getInstanceId();
     const state: WorkflowState = {
@@ -133,5 +166,25 @@ describe("ul workflow regression guards", () => {
 
     expect(text).toContain("ul_workflow_execute_plan()");
     expect(text).not.toContain("ul_workflow_implement");
+  });
+
+  it("approve tool は review フェーズで workspace_verify を案内する", async () => {
+    const tool = createApproveTool({
+      approve: vi.fn(async () => ({
+        success: true,
+        previousPhase: "implement",
+        nextPhase: "review",
+      })),
+      getStatus: vi.fn(async () => ({
+        taskId: "task-tool-review",
+        taskDescription: "tool review regression test",
+      })),
+    } as unknown as WorkflowService);
+
+    const result = await tool.execute("approve-review", {}, undefined, undefined, {});
+    const text = String(result.content[0]?.text ?? "");
+
+    expect(text).toContain("workspace_verify()");
+    expect(text).toContain("ul_workflow_approve()");
   });
 });

@@ -28,7 +28,13 @@ export type SSEEventType =
   | "response"
   | "heartbeat"
   | "context-update"
-  | "instances-update";
+  | "instances-update"
+  | "experiment_start"
+  | "experiment_baseline"
+  | "experiment_run"
+  | "experiment_improved"
+  | "experiment_regressed"
+  | "experiment_timeout";
 
 /**
  * SSE イベントペイロード

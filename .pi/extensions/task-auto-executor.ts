@@ -24,6 +24,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
 import { Type } from "@mariozechner/pi-ai";
@@ -32,6 +33,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { getInstanceId, isProcessAlive, extractPidFromInstanceId } from "../lib/core/ownership.js";
 import {
 	loadTaskStorage as loadSharedTaskStorage,
+	mutateTaskStorage as mutateSharedTaskStorage,
 	saveTaskStorage as saveSharedTaskStorage,
 } from "../lib/storage/task-plan-store.js";
 import {
@@ -45,6 +47,11 @@ import {
 	getSymphonyIssueState,
 	releaseSymphonyIssue,
 } from "../lib/symphony-orchestrator-state.js";
+import {
+	markSymphonyTrackerIssueCompleted,
+	markSymphonyTrackerIssueFailed,
+	markSymphonyTrackerIssueTodo,
+} from "../lib/symphony-tracker.js";
 import { createLongRunningReplay } from "../lib/long-running-supervisor.js";
 import { onSessionEvent } from "../lib/runtime-sessions.js";
 
@@ -136,6 +143,8 @@ interface AutoExecutorCheckpoint {
 	createdAt: string;
 	updatedAt: string;
 	lastError?: string;
+	startHeadCommit?: string;
+	completedHeadCommit?: string;
 }
 
 interface AutoExecutorRuntimeState {
@@ -205,17 +214,17 @@ const KIND_ORDER: Record<RalphLoopTaskKind, number> = {
 
 let autoExecutorConfig: AutoExecutorConfig = {
 	enabled: true,
-	autoRun: true, // デフォルトは planner-led continuous execution
+	autoRun: true, // デフォルトは current pi instance 上の継続実行
 	maxRetries: 2,
 };
 
 let lastNotifiedTaskId: string | null = null;
 let sessionEventUnsubscribe: (() => void) | null = null;
-
-type ToolExecutor = (
-	toolName: string,
-	params: Record<string, unknown>,
-) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
+let symphonyActivationState: SymphonyActivationState = {
+	active: false,
+	ownerInstanceId: null,
+	activatedAt: null,
+};
 
 interface AutoDispatchTarget {
 	task: Task;
@@ -224,6 +233,47 @@ interface AutoDispatchTarget {
 	workpadId: string | null;
 	mode: "fresh" | "resume";
 	checkpoint: AutoExecutorCheckpoint | null;
+}
+
+interface TaskRunNextResult {
+	content: Array<{ type: "text"; text: string }>;
+	details: {
+		taskId: string;
+		title: string;
+		priority: TaskPriority;
+		description?: string;
+		kind?: RalphLoopTaskKind;
+		reason?: string;
+		workpadId: string | null;
+	};
+}
+
+interface PreparedAutoDispatch {
+	taskId: string;
+	title: string;
+	description: string;
+	workpadId: string | null;
+	kind: RalphLoopTaskKind;
+	reason: string;
+	checkpoint: AutoExecutorCheckpoint | null;
+	taskBody: string;
+	extraContext: string;
+}
+
+interface SymphonyActivationState {
+	active: boolean;
+	ownerInstanceId: string | null;
+	activatedAt: string | null;
+}
+
+interface SessionManagerLike {
+	getSessionFile?: () => string | undefined;
+}
+
+interface FreshSessionContextLike {
+	newSession?: (options?: { parentSession?: string }) => Promise<{ cancelled?: boolean }>;
+	sessionManager?: SessionManagerLike;
+	waitForIdle?: () => Promise<void>;
 }
 
 // ============================================
@@ -236,6 +286,13 @@ function loadStorage(): TaskStorage {
 
 function saveStorage(storage: TaskStorage): void {
 	saveSharedTaskStorage(storage);
+}
+
+function mutateStorage<R>(cwd: string, mutate: (storage: TaskStorage) => R): R {
+	return mutateSharedTaskStorage<TaskStorage, R>({
+		cwd,
+		mutate,
+	});
 }
 
 function loadConfig(): void {
@@ -302,6 +359,8 @@ function upsertCheckpoint(
 		createdAt: existing?.createdAt ?? now,
 		updatedAt: now,
 		lastError: update.lastError ?? existing?.lastError,
+		startHeadCommit: update.startHeadCommit ?? existing?.startHeadCommit,
+		completedHeadCommit: update.completedHeadCommit ?? existing?.completedHeadCommit,
 	};
 
 	if (existingIndex >= 0) {
@@ -312,6 +371,18 @@ function upsertCheckpoint(
 
 	saveRuntimeState(runtime);
 	return next;
+}
+
+function readGitHeadCommit(cwd: string): string | null {
+	try {
+		return execFileSync("git", ["rev-parse", "HEAD"], {
+			cwd,
+			encoding: "utf-8",
+			stdio: ["ignore", "pipe", "ignore"],
+		}).trim() || null;
+	} catch {
+		return null;
+	}
 }
 
 function getCheckpoint(taskId: string): AutoExecutorCheckpoint | null {
@@ -411,82 +482,400 @@ function startTaskWorkpad(cwd: string, task: Task): string | null {
   return record.metadata.id;
 }
 
-function reclaimTaskOwnership(taskId: string): Task | null {
-	const storage = loadStorage();
-	const taskIndex = storage.tasks.findIndex((task) => task.id === taskId);
-	if (taskIndex < 0) {
+function reclaimTaskOwnership(cwd: string, taskId: string): Task | null {
+	const task = mutateStorage(cwd, (storage) => {
+		const taskIndex = storage.tasks.findIndex((item) => item.id === taskId);
+		if (taskIndex < 0) {
+			return null;
+		}
+
+		const nextTask = storage.tasks[taskIndex];
+		if (nextTask.status !== "in_progress") {
+			return null;
+		}
+		if (nextTask.ownerInstanceId && nextTask.ownerInstanceId !== getInstanceId()) {
+			const pid = extractPidFromInstanceId(nextTask.ownerInstanceId);
+			if (pid && isProcessAlive(pid)) {
+				return null;
+			}
+		}
+		nextTask.status = "in_progress";
+		nextTask.ownerInstanceId = getInstanceId();
+		nextTask.claimedAt = new Date().toISOString();
+		nextTask.updatedAt = new Date().toISOString();
+		return structuredClone(nextTask);
+	});
+
+	if (!task) {
 		return null;
 	}
 
-	const task = storage.tasks[taskIndex];
-	task.status = "in_progress";
-	task.ownerInstanceId = getInstanceId();
-	task.claimedAt = new Date().toISOString();
-	task.updatedAt = new Date().toISOString();
-	saveStorage(storage);
-
-	autoExecutorConfig.currentTaskId = task.id;
+	autoExecutorConfig.currentTaskId = taskId;
 	saveConfig();
-
 	return task;
 }
 
-function getToolExecutor(ctx: unknown): ToolExecutor | undefined {
-	const anyCtx = ctx as {
-		callTool?: (
-			toolName: string,
-			params: Record<string, unknown>,
-		) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
-		executeTool?: (options: {
-			toolName: string;
-			params: Record<string, unknown>;
-		}) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
+function canQueueSymphonyFollowUp(pi: ExtensionAPI): boolean {
+	return typeof (pi as { sendUserMessage?: unknown }).sendUserMessage === "function";
+}
+
+function queueSymphonyFollowUpMessage(
+	pi: ExtensionAPI,
+	content: string,
+	options?: { deliverAs?: "steer" | "followUp" | "nextTurn" },
+): void {
+	const sender = (pi as {
+		sendUserMessage?: (
+			content: string,
+			options?: { deliverAs?: "steer" | "followUp" | "nextTurn" },
+		) => void;
+	}).sendUserMessage;
+
+	if (typeof sender !== "function") {
+		throw new Error("sendUserMessage is unavailable");
+	}
+
+	sender(content, options);
+}
+
+function isSymphonyQueueRequiredError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	return message.includes("Agent is already processing")
+		|| message.includes("Specify streamingBehavior");
+}
+
+function scheduleSymphonyFreshSessionPrompt(
+	pi: ExtensionAPI,
+	content: string,
+): Promise<void> {
+	return new Promise((resolve, reject) => {
+		queueMicrotask(() => {
+			const sender = (pi as {
+				sendUserMessage?: (
+					content: string,
+					options?: { deliverAs?: "steer" | "followUp" | "nextTurn" },
+				) => void;
+			}).sendUserMessage;
+
+			if (typeof sender !== "function") {
+				reject(new Error("sendUserMessage is unavailable"));
+				return;
+			}
+
+			try {
+				// fresh session へ切り替わった直後の最初の user turn として送る。
+				sender(content);
+				resolve();
+			} catch (error) {
+				if (!isSymphonyQueueRequiredError(error)) {
+					reject(error);
+					return;
+				}
+				try {
+					sender(content, { deliverAs: "followUp" });
+					resolve();
+				} catch (followUpError) {
+					reject(followUpError);
+				}
+			}
+		});
+	});
+}
+
+function queueSymphonyNextCommand(pi: ExtensionAPI): void {
+	queueSymphonyFollowUpMessage(pi, "/symphony next", { deliverAs: "followUp" });
+}
+
+function canStartFreshSymphonySession(ctx: unknown, pi?: ExtensionAPI): boolean {
+	const anyCtx = ctx as FreshSessionContextLike;
+	return typeof anyCtx.newSession === "function" && Boolean(pi && canQueueSymphonyFollowUp(pi));
+}
+
+function canAutoRunInContext(ctx: unknown, pi?: ExtensionAPI): boolean {
+	return canStartFreshSymphonySession(ctx, pi);
+}
+
+function getCurrentOwnedInProgressTask(storage: TaskStorage): Task | null {
+	const currentTaskId = autoExecutorConfig.currentTaskId;
+	if (!currentTaskId) {
+		return null;
+	}
+
+	const currentTask = storage.tasks.find((task) => task.id === currentTaskId) ?? null;
+	if (!currentTask) {
+		return null;
+	}
+
+	if (currentTask.status !== "in_progress") {
+		return null;
+	}
+
+	if (currentTask.ownerInstanceId !== getInstanceId()) {
+		return null;
+	}
+
+	return currentTask;
+}
+
+function executeTaskRunNextLocally(cwd: string): TaskRunNextResult | {
+	content: Array<{ type: "text"; text: string }>;
+	details: { pendingCount: number };
+} {
+	const claimed = mutateStorage(cwd, (storage) => {
+		const selection = selectNextLoopTask(storage);
+		const nextTask = selection?.task ?? null;
+
+		if (!nextTask) {
+			return null;
+		}
+
+		const taskIndex = storage.tasks.findIndex((task) => task.id === nextTask.id);
+		if (taskIndex < 0) {
+			return null;
+		}
+
+		const instanceId = getInstanceId();
+		const claimedTask = storage.tasks[taskIndex];
+		claimedTask.status = "in_progress";
+		claimedTask.ownerInstanceId = instanceId;
+		claimedTask.claimedAt = new Date().toISOString();
+		claimedTask.updatedAt = new Date().toISOString();
+
+		return {
+			task: structuredClone(claimedTask),
+			selection,
+		};
+	});
+
+	const nextTask = claimed?.task ?? null;
+	const selection = claimed?.selection ?? null;
+
+	if (!nextTask) {
+		return {
+			content: [{ type: "text", text: "実行待ちのタスクがありません。" }],
+			details: { pendingCount: 0 },
+		};
+	}
+
+	const instanceId = getInstanceId();
+	autoExecutorConfig.currentTaskId = nextTask.id;
+	saveConfig();
+	const workpadId = startTaskWorkpad(cwd, nextTask);
+	upsertCheckpoint(nextTask.id, {
+		title: nextTask.title,
+		description: nextTask.description,
+		kind: selection?.kind ?? classifyRalphLoopTaskKind(nextTask),
+		reason: selection?.reason ?? "claimed from task_run_next",
+		workpadId: workpadId ?? undefined,
+		status: "claimed",
+		ownerInstanceId: instanceId,
+		ownerPid: process.pid,
+		attemptCount: 0,
+		resumeCount: 0,
+		lastError: undefined,
+	});
+	claimSymphonyIssue({
+		cwd,
+		issueId: nextTask.id,
+		title: nextTask.title,
+		source: "task-auto-executor",
+		reason: "claimed from task_run_next",
+		workpadId: workpadId ?? undefined,
+	});
+
+	const taskDescription = nextTask.description
+		? `${nextTask.title}\n\n詳細: ${nextTask.description}`
+		: nextTask.title;
+	const executionBrief = selection ? buildRalphLoopExecutionBrief(selection) : "";
+
+	return {
+		content: [{
+			type: "text",
+			text: `## 次のタスクを実行します
+
+**タスクID**: ${nextTask.id}
+**タイトル**: ${nextTask.title}
+**優先度**: ${nextTask.priority}
+**ステータス**: in_progress
+${workpadId ? `**WORKPAD**: ${workpadId}` : ""}
+
+---
+
+${executionBrief}
+
+---
+
+以下のタスクを実行してください:
+
+${taskDescription}
+
+---
+
+完了したら \`task_complete\` ツールでタスクID \`${nextTask.id}\` を完了してください。`,
+		}],
+		details: {
+			taskId: nextTask.id,
+			title: nextTask.title,
+			priority: nextTask.priority,
+			description: nextTask.description,
+			kind: selection?.kind,
+			reason: selection?.reason,
+			workpadId,
+		},
 	};
-
-	if (typeof anyCtx.callTool === "function") {
-		const callTool = anyCtx.callTool;
-		return (toolName, params) => callTool(toolName, params);
-	}
-
-	if (typeof anyCtx.executeTool === "function") {
-		const executeTool = anyCtx.executeTool;
-		return (toolName, params) => executeTool({ toolName, params });
-	}
-
-	return undefined;
 }
 
-function canAutoRunInContext(ctx: unknown): boolean {
-	return Boolean(getToolExecutor(ctx));
+function isSymphonyActiveForCurrentInstance(): boolean {
+	return symphonyActivationState.active && symphonyActivationState.ownerInstanceId === getInstanceId();
 }
 
-function buildPlannerWorkerExecutionContext(input: {
+function activateSymphonyForCurrentInstance(): void {
+	symphonyActivationState = {
+		active: true,
+		ownerInstanceId: getInstanceId(),
+		activatedAt: new Date().toISOString(),
+	};
+}
+
+function stopSymphonyForCurrentInstance(): void {
+	symphonyActivationState = {
+		active: false,
+		ownerInstanceId: null,
+		activatedAt: null,
+	};
+}
+
+function formatSymphonyHelp(): string {
+	return [
+		"Symphony commands:",
+		"/symphony",
+		"/symphony next",
+		"/symphony run",
+		"/symphony loop",
+		"/symphony stop",
+		"/symphony status",
+		"/symphony help",
+	].join("\n");
+}
+
+async function runSymphonyOnce(
+	pi: ExtensionAPI,
+	ctx: {
+		cwd: string;
+		ui?: { notify(message: string, type?: "info" | "warning" | "error" | "success"): void };
+		newSession?: FreshSessionContextLike["newSession"];
+		sessionManager?: SessionManagerLike;
+	},
+	target?: AutoDispatchTarget,
+): Promise<void> {
+	const currentOwnedTask = getCurrentOwnedInProgressTask(loadStorage());
+	if (currentOwnedTask) {
+		ctx.ui?.notify(
+			`Symphony は次へ進みません。現在のタスク ${currentOwnedTask.id} (${currentOwnedTask.title}) がまだ in_progress です。`,
+			"info",
+		);
+		return;
+	}
+
+	if (!canAutoRunInContext(ctx, pi)) {
+		ctx.ui?.notify("Symphony を開始できません。fresh session dispatcher が見つかりません。", "warning");
+		return;
+	}
+
+	await autoRunNextTask(ctx as never, target, pi);
+}
+
+async function handleSymphonyCommand(
+	pi: ExtensionAPI,
+	args: string,
+	ctx: {
+		cwd: string;
+		ui: {
+			notify(message: string, type?: "info" | "warning" | "error" | "success"): void;
+			setStatus?(key: string, value: unknown): void;
+			theme?: { fg(tone: string, text: string): string };
+		};
+	},
+): Promise<void> {
+	const input = args.trim();
+
+	if (input === "help") {
+		ctx.ui.notify(formatSymphonyHelp(), "info");
+		return;
+	}
+
+	if (input === "status") {
+		const status = getAutoExecutorStatus();
+		const { target, blockedReason } = resolveNextAutoDispatch(loadStorage(), ctx.cwd);
+		const nextLabel = target ? `${target.task.id} ${target.task.title}` : "none";
+		ctx.ui.notify(
+			[
+				`Symphony status: active=${isSymphonyActiveForCurrentInstance() ? "yes" : "no"} enabled=${status.enabled ? "yes" : "no"} autoRun=${status.autoRun ? "yes" : "no"}`,
+				`pending=${status.pendingCount}`,
+				`current=${status.currentTaskId ?? "none"}`,
+				`next=${nextLabel}`,
+				symphonyActivationState.activatedAt ? `activatedAt=${symphonyActivationState.activatedAt}` : null,
+				blockedReason ? `blocked=${blockedReason}` : null,
+			].filter(Boolean).join("\n"),
+			"info",
+		);
+		return;
+	}
+
+	if (input === "stop") {
+		stopSymphonyForCurrentInstance();
+		ctx.ui.notify("Symphony をこの instance で停止しました。", "info");
+		return;
+	}
+
+	if (input === "loop") {
+		activateSymphonyForCurrentInstance();
+		autoExecutorConfig.enabled = true;
+		autoExecutorConfig.autoRun = true;
+		saveConfig();
+		ctx.ui.notify("Symphony loop をこの instance で有効にしました。次の ticket を fresh session で開始します。", "info");
+		await runSymphonyOnce(pi, ctx);
+		return;
+	}
+
+	if (input === "" || input === "next" || input === "run") {
+		activateSymphonyForCurrentInstance();
+		await runSymphonyOnce(pi, ctx);
+		return;
+	}
+
+	ctx.ui.notify(`Unknown Symphony command: ${input}\n\n${formatSymphonyHelp()}`, "warning");
+}
+
+function buildSymphonyExecutionContext(input: {
 	taskId: string;
 	kind: string;
 	reason: string;
 	workpadId: string | null;
 }): string {
 	return [
-		"## Continuous Executor Contract",
+		"## Symphony Execution Contract",
 		"",
-		"- この実行は mekann の既定 long-running mode です。",
-		"- 進行責任は root planner が持ち、個々の worker は割り当てタスクだけに集中します。",
-		"- worker 同士は直接調整しません。共有ロック前提の協調は禁止です。",
-		"- 必要な分解は planner が行い、worker は handoff を planner 側へ返します。",
-		"- 各反復は fresh context を前提にし、 durable state は task / workpad / workflow artifact に残します。",
-		"- 巨大な静的計画に固定せず、観測結果に応じて task DAG を更新して構いません。",
+		"- この実行は current pi instance 上の fresh session で開始した通常ターンとして扱います。",
+		"- まず通常の pi と同じように関連ファイルを読み、必要なツールを自分で選んで進めます。",
+		"- DAG は既定手段ではありません。分解や並列化が本当に必要なときだけ使います。",
+		"- question ツールは使わないこと。判断が必要なら最小で可逆な選択を自分で行い、前提を workpad に残します。",
+		"- durable state は task / workpad / workflow artifact に残します。",
 		"- 小さく安全な変更だけで逃げず、担当タスクの完了責任を持って前に進めます。",
 		"",
-		"## Auto Execution Context",
+		"## Task Context",
 		"",
 		`- taskId: ${input.taskId}`,
 		`- kind: ${input.kind}`,
 		`- reason: ${input.reason}`,
 		input.workpadId ? `- workpadId: ${input.workpadId}` : null,
 		"- まず関連ファイルを読んで、最小の working slice を実装すること。",
-		"- planner は research / implement / validate / review を必要最小限で fan-out してよい。",
-		"- worker は他ワーカーの担当や大局を気にせず、自分のタスクだけ終わらせること。",
-		"- 完了後は task_complete でこの taskId を完了すること。",
+		"- 実装後は、まず workspace_verify と required verification commands を完了すること。",
+		"- 検証が通ってから、変更したファイルだけを git add し、必ず git commit を作成すること。",
+		"- git add . や git add -A は禁止。選択的に stage すること。",
+		"- commit 後にコードを変えないこと。追加変更が必要になったら再度 verification からやり直すこと。",
+		"- inspect だけで閉じず、必要なら修正・検証まで進めること。",
+		"- 最後に task_complete でこの taskId を完了すること。",
 	].filter(Boolean).join("\n");
 }
 
@@ -550,6 +939,14 @@ function resolveNextAutoDispatch(storage: TaskStorage, cwd: string = process.cwd
 	blockedReason: string | null;
 } {
 	const effectiveStorage = restoreTasksFromActiveCheckpoints(storage);
+	const currentOwnedTask = getCurrentOwnedInProgressTask(effectiveStorage);
+
+	if (currentOwnedTask) {
+		return {
+			target: null,
+			blockedReason: `current task is still in_progress: ${currentOwnedTask.id}`,
+		};
+	}
 
 	if (hasBlockingForeignInProgressTask(effectiveStorage)) {
 		return {
@@ -1010,6 +1407,14 @@ function evaluateCompletionGate(
 		}
 	}
 
+	const checkpoint = getCheckpoint(taskId);
+	if (checkpoint?.startHeadCommit) {
+		const currentHeadCommit = readGitHeadCommit(cwd);
+		if (!currentHeadCommit || currentHeadCommit === checkpoint.startHeadCommit) {
+			blockers.push("git commit proof is missing (HEAD unchanged)");
+		}
+	}
+
 	return {
 		ok: blockers.length === 0,
 		blockers,
@@ -1039,6 +1444,24 @@ function handleRuntimeSessionOutcome(event: {
 	const checkpoint = getCheckpoint(session.taskId);
 
 	if (session.status === "completed") {
+		const completedHeadCommit = readGitHeadCommit(process.cwd()) ?? undefined;
+		if (checkpoint && completedHeadCommit) {
+			upsertCheckpoint(session.taskId, {
+				title: runtimeTask?.title ?? session.taskId,
+				description: runtimeTask?.description,
+				kind: checkpoint.kind ?? "other",
+				reason: checkpoint.reason ?? "runtime session completed",
+				workpadId: checkpoint.workpadId,
+				status: checkpoint.status,
+				ownerInstanceId: checkpoint.ownerInstanceId,
+				ownerPid: checkpoint.ownerPid,
+				attemptCount: checkpoint.attemptCount,
+				resumeCount: checkpoint.resumeCount,
+				lastError: checkpoint.lastError,
+				startHeadCommit: checkpoint.startHeadCommit,
+				completedHeadCommit,
+			});
+		}
 		const gate = evaluateCompletionGate(process.cwd(), session.taskId, evidence);
 		if (!gate.ok) {
 			const gateMessage = `completion gate blocked: ${gate.blockers.join(" | ")}`;
@@ -1052,6 +1475,7 @@ function handleRuntimeSessionOutcome(event: {
 			const retryAttempt = (issueState?.retryAttempt ?? 0) + 1;
 			if (retryAttempt <= autoExecutorConfig.maxRetries) {
 				const { delayMs } = scheduleTaskRetry(session.taskId, gateMessage);
+				void markSymphonyTrackerIssueTodo(process.cwd(), session.taskId).catch(() => undefined);
 				upsertCheckpoint(session.taskId, {
 					title: runtimeTask?.title ?? session.taskId,
 					description: runtimeTask?.description,
@@ -1076,6 +1500,7 @@ function handleRuntimeSessionOutcome(event: {
 			}
 
 			finalizeTaskStatus(session.taskId, "failed");
+			void markSymphonyTrackerIssueFailed(process.cwd(), session.taskId).catch(() => undefined);
 			upsertCheckpoint(session.taskId, {
 				title: runtimeTask?.title ?? session.taskId,
 				description: runtimeTask?.description,
@@ -1101,6 +1526,7 @@ function handleRuntimeSessionOutcome(event: {
 
 		updateTaskCompletionGate(session.taskId, "clear", "completion gate passed", []);
 		finalizeTaskStatus(session.taskId, "completed");
+		void markSymphonyTrackerIssueCompleted(process.cwd(), session.taskId).catch(() => undefined);
 		upsertCheckpoint(session.taskId, {
 			title: runtimeTask?.title ?? session.taskId,
 			description: runtimeTask?.description,
@@ -1124,6 +1550,7 @@ function handleRuntimeSessionOutcome(event: {
 		const retryAttempt = (issueState?.retryAttempt ?? 0) + 1;
 		if (retryAttempt <= autoExecutorConfig.maxRetries) {
 			const { delayMs } = scheduleTaskRetry(session.taskId, session.message);
+			void markSymphonyTrackerIssueTodo(process.cwd(), session.taskId).catch(() => undefined);
 			upsertCheckpoint(session.taskId, {
 				title: runtimeTask?.title ?? session.taskId,
 				description: runtimeTask?.description,
@@ -1148,6 +1575,7 @@ function handleRuntimeSessionOutcome(event: {
 		}
 
 		finalizeTaskStatus(session.taskId, "failed");
+		void markSymphonyTrackerIssueFailed(process.cwd(), session.taskId).catch(() => undefined);
 		upsertCheckpoint(session.taskId, {
 			title: runtimeTask?.title ?? session.taskId,
 			description: runtimeTask?.description,
@@ -1171,24 +1599,14 @@ function handleRuntimeSessionOutcome(event: {
 	}
 }
 
-async function autoRunNextTask(ctx: {
-	cwd: string;
-	ui?: ExtensionAPI["context"]["ui"];
-	callTool?: (
-		toolName: string,
-		params: Record<string, unknown>,
-	) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
-	executeTool?: (options: {
-		toolName: string;
-		params: Record<string, unknown>;
-	}) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
-}, target?: AutoDispatchTarget): Promise<void> {
-	const executeTool = getToolExecutor(ctx);
-	if (!executeTool) {
-		ctx.ui?.notify("自動実行を開始できません。tool executor が見つかりません。", "warning");
-		return;
-	}
-
+async function prepareAutoDispatch(
+	ctx: {
+		cwd: string;
+		ui?: ExtensionAPI["context"]["ui"];
+	},
+	claimNextTask: () => Promise<{ details?: Record<string, unknown> }>,
+	target?: AutoDispatchTarget,
+): Promise<PreparedAutoDispatch | null> {
 	let taskId: string | null = null;
 	let title: string | null = null;
 	let description = "";
@@ -1198,10 +1616,10 @@ async function autoRunNextTask(ctx: {
 	let checkpoint = target?.checkpoint ?? null;
 
 	if (target?.mode === "resume") {
-		const reclaimed = reclaimTaskOwnership(target.task.id);
+		const reclaimed = reclaimTaskOwnership(ctx.cwd, target.task.id);
 		if (!reclaimed) {
 			ctx.ui?.notify("resume 対象タスクの所有権復旧に失敗しました。", "warning");
-			return;
+			return null;
 		}
 
 		taskId = reclaimed.id;
@@ -1222,6 +1640,7 @@ async function autoRunNextTask(ctx: {
 			attemptCount: (checkpoint?.attemptCount ?? 0) + 1,
 			resumeCount: (checkpoint?.resumeCount ?? 0) + 1,
 			lastError: checkpoint?.lastError,
+			startHeadCommit: checkpoint?.startHeadCommit ?? readGitHeadCommit(ctx.cwd) ?? undefined,
 		});
 		claimSymphonyIssue({
 			cwd: ctx.cwd,
@@ -1232,7 +1651,7 @@ async function autoRunNextTask(ctx: {
 			workpadId: workpadId ?? undefined,
 		});
 	} else {
-		const nextTaskResult = await executeTool("task_run_next", {});
+		const nextTaskResult = await claimNextTask();
 		const details = (nextTaskResult.details ?? {}) as Record<string, unknown>;
 		taskId = typeof details.taskId === "string" ? details.taskId : null;
 		title = typeof details.title === "string" ? details.title : null;
@@ -1244,12 +1663,12 @@ async function autoRunNextTask(ctx: {
 
 	if (!taskId || !title) {
 		ctx.ui?.notify("次タスクの自動取得に失敗しました。", "warning");
-		return;
+		return null;
 	}
 
 	const taskBody = description ? `${title}\n\n詳細: ${description}` : title;
 	const extraContext = [
-		buildPlannerWorkerExecutionContext({
+		buildSymphonyExecutionContext({
 			taskId,
 			kind,
 			reason,
@@ -1278,6 +1697,7 @@ async function autoRunNextTask(ctx: {
 			: (checkpoint?.attemptCount ?? 0) + 1,
 		resumeCount: checkpoint?.resumeCount ?? 0,
 		lastError: undefined,
+		startHeadCommit: checkpoint?.startHeadCommit ?? readGitHeadCommit(ctx.cwd) ?? undefined,
 	});
 
 	if (workpadId) {
@@ -1291,53 +1711,127 @@ async function autoRunNextTask(ctx: {
 		});
 	}
 
+	return {
+		taskId,
+		title,
+		description,
+		workpadId,
+		kind,
+		reason,
+		checkpoint,
+		taskBody,
+		extraContext,
+	};
+}
+
+function rollbackPreparedAutoDispatch(
+	ctx: { cwd: string; ui?: ExtensionAPI["context"]["ui"] },
+	dispatch: PreparedAutoDispatch,
+	error: unknown,
+): void {
+	const message = error instanceof Error ? error.message : String(error);
+	const restoredTask = releaseClaimedTask(dispatch.taskId);
+	upsertCheckpoint(dispatch.taskId, {
+		title: restoredTask?.title ?? dispatch.title,
+		description: restoredTask?.description ?? dispatch.description,
+		kind: dispatch.kind,
+		reason: dispatch.reason,
+		workpadId: dispatch.workpadId ?? undefined,
+		status: "interrupted",
+		ownerInstanceId: getInstanceId(),
+		ownerPid: process.pid,
+		attemptCount: dispatch.checkpoint?.attemptCount ?? 1,
+		resumeCount: dispatch.checkpoint?.resumeCount ?? 0,
+		lastError: message,
+	});
+	releaseSymphonyIssue({
+		cwd: ctx.cwd,
+		issueId: dispatch.taskId,
+		title: restoredTask?.title ?? dispatch.title,
+		source: "task-auto-executor",
+		reason: `auto-run dispatch failed: ${message}`,
+		workpadId: dispatch.workpadId ?? undefined,
+	});
+	if (dispatch.workpadId) {
+		updateWorkpad(ctx.cwd, {
+			id: dispatch.workpadId,
+			section: "verification",
+			content: `- auto-run dispatch failed: ${message}`,
+			mode: "append",
+		});
+		updateWorkpad(ctx.cwd, {
+			id: dispatch.workpadId,
+			section: "next",
+			content: "- inspect the runner failure, then retry auto dispatch or execute manually",
+			mode: "replace",
+		});
+	}
+}
+
+function buildSymphonyDispatchPrompt(dispatch: PreparedAutoDispatch): string {
+	return [
+		"Symphony fresh-session dispatch.",
+		"Handle this as a normal pi task in a fresh session.",
+		"Do not assume any previous ticket context.",
+		"Choose tools yourself.",
+		"Do not default to DAG. Use `subagent_run_dag` only when decomposition or parallel coordination is actually necessary.",
+		"Do not use the `question` tool. Make the smallest reversible decision yourself and record assumptions in the workpad.",
+		"",
+		"## Task",
+		dispatch.taskBody,
+		"",
+		"## Execution Context",
+		dispatch.extraContext,
+	].join("\n");
+}
+
+async function queueSymphonyDispatchFreshSession(
+	ctx: FreshSessionContextLike,
+	pi: ExtensionAPI,
+	dispatch: PreparedAutoDispatch,
+): Promise<void> {
+	if (typeof ctx.newSession !== "function") {
+		throw new Error("fresh session dispatcher is unavailable");
+	}
+
+	const result = await ctx.newSession();
+	if (result?.cancelled) {
+		throw new Error("fresh session creation was cancelled");
+	}
+
+	await scheduleSymphonyFreshSessionPrompt(
+		pi,
+		buildSymphonyDispatchPrompt(dispatch),
+	);
+}
+
+async function autoRunNextTask(ctx: {
+	cwd: string;
+	ui?: ExtensionAPI["context"]["ui"];
+	newSession?: FreshSessionContextLike["newSession"];
+	sessionManager?: SessionManagerLike;
+}, target?: AutoDispatchTarget, pi?: ExtensionAPI): Promise<void> {
+	if (!pi || !canStartFreshSymphonySession(ctx, pi)) {
+		ctx.ui?.notify("自動実行を開始できません。fresh session dispatcher が見つかりません。", "warning");
+		return;
+	}
+
+	const dispatch = await prepareAutoDispatch(
+		ctx,
+		async () => executeTaskRunNextLocally(ctx.cwd) as { details?: Record<string, unknown> },
+		target,
+	);
+	if (!dispatch) {
+		return;
+	}
+
 	try {
-		await executeTool("subagent_run_dag", {
-			task: taskBody,
-			taskId,
-			extraContext,
-			autoGenerate: true,
-		});
-		ctx.ui?.notify(`自動実行を開始しました: ${title}`, "info");
+		await queueSymphonyDispatchFreshSession(ctx, pi, dispatch);
+		ctx.ui?.notify(`自動実行を開始しました: ${dispatch.title}`, "info");
 	} catch (error) {
-		const restoredTask = releaseClaimedTask(taskId);
-		upsertCheckpoint(taskId, {
-			title: restoredTask?.title ?? title,
-			description: restoredTask?.description ?? description,
-			kind,
-			reason,
-			workpadId: workpadId ?? undefined,
-			status: "interrupted",
-			ownerInstanceId: getInstanceId(),
-			ownerPid: process.pid,
-			attemptCount: checkpoint?.attemptCount ?? 1,
-			resumeCount: checkpoint?.resumeCount ?? 0,
-			lastError: error instanceof Error ? error.message : String(error),
-		});
-		releaseSymphonyIssue({
-			cwd: ctx.cwd,
-			issueId: taskId,
-			title: restoredTask?.title ?? title,
-			source: "task-auto-executor",
-			reason: `auto-run dispatch failed: ${error instanceof Error ? error.message : String(error)}`,
-			workpadId: workpadId ?? undefined,
-		});
-		if (workpadId) {
-			updateWorkpad(ctx.cwd, {
-				id: workpadId,
-				section: "verification",
-				content: `- auto-run dispatch failed: ${error instanceof Error ? error.message : String(error)}`,
-				mode: "append",
-			});
-			updateWorkpad(ctx.cwd, {
-				id: workpadId,
-				section: "next",
-				content: "- inspect the runner failure, then retry auto dispatch or execute manually",
-				mode: "replace",
-			});
-		}
+		rollbackPreparedAutoDispatch(ctx, dispatch, error);
 		ctx.ui?.notify(
-			`自動実行の起動に失敗しました: ${title}`,
+			`自動実行の起動に失敗しました: ${dispatch.title}`,
 			"warning",
 		);
 	}
@@ -1414,8 +1908,8 @@ export function selectNextLoopTask(storage: TaskStorage): RalphLoopSelection | n
 			// 所有者がいない → 候補に含める（古いデータの移行対応）
 			if (!t.ownerInstanceId) return true;
 			
-			// 自分が所有している → 候補に含める
-			if (t.ownerInstanceId === instanceId) return true;
+			// 自分が所有している実行中タスクは next 候補にしない
+			if (t.ownerInstanceId === instanceId) return false;
 			
 			// 他のインスタンスが所有している → プロセスが死んでいれば再取得可能
 			const pid = extractPidFromInstanceId(t.ownerInstanceId);
@@ -1433,13 +1927,15 @@ export function selectNextLoopTask(storage: TaskStorage): RalphLoopSelection | n
 	}
 
 	candidates.sort(compareLoopTasks);
-
-	const nonValidationCandidates = candidates.filter(task => classifyRalphLoopTaskKind(task) !== "validation");
+	const highestPriority = PRIORITY_ORDER[candidates[0]?.priority ?? "low"] ?? PRIORITY_ORDER.low;
+	const highestPriorityCandidates = candidates.filter((task) => (PRIORITY_ORDER[task.priority] ?? 0) === highestPriority);
+	const nonValidationCandidates = highestPriorityCandidates.filter(task => classifyRalphLoopTaskKind(task) !== "validation");
+	const hasValidationAtHighestPriority = highestPriorityCandidates.some((task) => classifyRalphLoopTaskKind(task) === "validation");
 	const selected = nonValidationCandidates[0] ?? candidates[0];
 	const kind = classifyRalphLoopTaskKind(selected);
-	const validationLaneLimited = nonValidationCandidates.length > 0;
+	const validationLaneLimited = nonValidationCandidates.length > 0 && hasValidationAtHighestPriority;
 	const reason = validationLaneLimited
-		? `one thing per loop: implementation/research lane preferred over validation lane (${kind})`
+		? `one thing per loop: highest priority lane kept at ${selected.priority}, implementation/research lane preferred over validation lane (${kind})`
 		: `one thing per loop: best available pending task (${kind})`;
 
 	return {
@@ -1512,92 +2008,7 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 		description: "Execute the next pending task from the task queue (highest priority first)",
 		parameters: Type.Object({}),
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-			const storage = loadStorage();
-			const selection = selectNextLoopTask(storage);
-			const nextTask = selection?.task ?? null;
-
-			if (!nextTask) {
-				return {
-					content: [{ type: "text", text: "実行待ちのタスクがありません。" }],
-					details: { pendingCount: 0 }
-				};
-			}
-
-			// Update status to in_progress and record owner
-			const taskIndex = storage.tasks.findIndex(t => t.id === nextTask.id);
-			const instanceId = getInstanceId();
-			storage.tasks[taskIndex].status = "in_progress";
-			storage.tasks[taskIndex].ownerInstanceId = instanceId;
-			storage.tasks[taskIndex].claimedAt = new Date().toISOString();
-			storage.tasks[taskIndex].updatedAt = new Date().toISOString();
-			saveStorage(storage);
-
-			autoExecutorConfig.currentTaskId = nextTask.id;
-			saveConfig();
-			const workpadId = startTaskWorkpad(ctx.cwd, nextTask);
-			upsertCheckpoint(nextTask.id, {
-				title: nextTask.title,
-				description: nextTask.description,
-				kind: selection?.kind ?? classifyRalphLoopTaskKind(nextTask),
-				reason: selection?.reason ?? "claimed from task_run_next",
-				workpadId: workpadId ?? undefined,
-				status: "claimed",
-				ownerInstanceId: instanceId,
-				ownerPid: process.pid,
-				attemptCount: 0,
-				resumeCount: 0,
-				lastError: undefined,
-			});
-			claimSymphonyIssue({
-				cwd: ctx.cwd,
-				issueId: nextTask.id,
-				title: nextTask.title,
-				source: "task-auto-executor",
-				reason: "claimed from task_run_next",
-				workpadId: workpadId ?? undefined,
-			});
-
-			// Build task description for execution
-			const taskDescription = nextTask.description
-				? `${nextTask.title}\n\n詳細: ${nextTask.description}`
-				: nextTask.title;
-			const executionBrief = selection ? buildRalphLoopExecutionBrief(selection) : "";
-
-			return {
-				content: [{
-					type: "text",
-					text: `## 次のタスクを実行します
-
-**タスクID**: ${nextTask.id}
-**タイトル**: ${nextTask.title}
-**優先度**: ${nextTask.priority}
-**ステータス**: in_progress
-${workpadId ? `**WORKPAD**: ${workpadId}` : ""}
-
----
-
-${executionBrief}
-
----
-
-以下のタスクを実行してください:
-
-${taskDescription}
-
----
-
-完了したら \`task_complete\` ツールでタスクID \`${nextTask.id}\` を完了してください。`,
-				}],
-				details: {
-					taskId: nextTask.id,
-					title: nextTask.title,
-					priority: nextTask.priority,
-					description: nextTask.description,
-					kind: selection?.kind,
-					reason: selection?.reason,
-					workpadId,
-				}
-			};
+			return executeTaskRunNextLocally(ctx.cwd);
 		},
 	});
 
@@ -1700,7 +2111,7 @@ ${taskDescription}
 - **有効**: ${previousEnabled ? "有効" : "無効"} → ${autoExecutorConfig.enabled ? "有効" : "無効"}
 - **自動実行**: ${previousAutoRun ? "有効" : "無効"} → ${autoExecutorConfig.autoRun ? "有効" : "無効"}
 
-※ 自動実行が有効な場合、planner-led DAG 実行を自動で開始します。`,
+※ 自動実行が有効な場合、current pi instance 上で通常の follow-up 実行を開始します。`,
 				}],
 				details: {
 					enabled: autoExecutorConfig.enabled,
@@ -1737,7 +2148,7 @@ ${taskDescription}
 
 	// Event: Agent ends (idle state) - notify about next task
 	pi.on("agent_end", async (_event, ctx) => {
-		if (!autoExecutorConfig.enabled) {
+		if (!autoExecutorConfig.enabled || !isSymphonyActiveForCurrentInstance()) {
 			return;
 		}
 
@@ -1753,9 +2164,12 @@ ${taskDescription}
 		if (!nextTask) {
 			ctx.ui.setStatus("auto-executor", undefined);
 			if (blockedReason) {
+				const statusLabel = blockedReason.startsWith("current task is still in_progress")
+					? "現在のタスク実行中"
+					: "他インスタンスの実行中タスクを優先";
 				ctx.ui.setStatus(
 					"auto-executor",
-					ctx.ui.theme.fg("warning", "他インスタンスの実行中タスクを優先")
+					ctx.ui.theme.fg("warning", statusLabel)
 				);
 			}
 			return;
@@ -1773,8 +2187,25 @@ ${taskDescription}
 			ctx.ui.theme.fg("warning", `次のタスク: ${nextTask.title.slice(0, 25)}...`)
 		);
 
-		if (autoExecutorConfig.autoRun && canAutoRunInContext(ctx)) {
-			await autoRunNextTask(ctx as never, target ?? undefined);
+		if (autoExecutorConfig.autoRun && canAutoRunInContext(ctx, pi)) {
+			await autoRunNextTask(ctx as never, target ?? undefined, pi);
+			return;
+		}
+
+		if (autoExecutorConfig.autoRun) {
+			if (canQueueSymphonyFollowUp(pi)) {
+				queueSymphonyNextCommand(pi);
+				ctx.ui.notify(
+					"[Symphony] 次タスクを継続します。`/symphony next` を follow-up に投入し、fresh session で開始します。",
+					"info",
+				);
+				return;
+			}
+
+			ctx.ui.notify(
+				"[Symphony] 次タスクは fresh session が必要です。self-queue できないため自動移行しません。`/symphony next` で開始してください。",
+				"info",
+			);
 			return;
 		}
 
@@ -1851,11 +2282,11 @@ ${taskDescription}
 			return Boolean(pid && !isProcessAlive(pid));
 		}).length;
 
-		if (ctx?.ui && (todoCount > 0 || reclaimableInProgressCount > 0 || blockedReason)) {
+		if (ctx?.ui && isSymphonyActiveForCurrentInstance() && (todoCount > 0 || reclaimableInProgressCount > 0 || blockedReason)) {
 			ctx.ui.notify(
 				blockedReason
 					? `[自動実行] 他インスタンスの実行中タスクを優先するため、新規自動起動は保留します。`
-					: `[自動実行] todo=${todoCount}件 / reclaimable=${reclaimableInProgressCount}件。${autoExecutorConfig.enabled ? (autoExecutorConfig.autoRun ? "planner-led 自動実行を継続します。" : "アイドル時に通知します。") : ""}`,
+					: `[Symphony] todo=${todoCount}件 / reclaimable=${reclaimableInProgressCount}件。${autoExecutorConfig.enabled ? (autoExecutorConfig.autoRun ? "この instance で待機後に自動実行します。" : "この instance では通知のみです。") : ""}`,
 				"info"
 			);
 			if (nextTask) {
@@ -1871,15 +2302,6 @@ ${taskDescription}
 			}
 		}
 
-		if (
-			autoExecutorConfig.enabled
-			&& autoExecutorConfig.autoRun
-			&& !autoExecutorConfig.currentTaskId
-			&& runnableCount > 0
-			&& canAutoRunInContext(ctx)
-		) {
-			await autoRunNextTask(ctx as never, target ?? undefined);
-		}
 	});
 
 	// Command: /auto-executor
@@ -1889,7 +2311,7 @@ ${taskDescription}
 			if (args === "status") {
 				const status = getAutoExecutorStatus();
 				ctx.ui.notify(
-					`自動実行: ${status.enabled ? "有効" : "無効"} | planner-led autoRun: ${status.autoRun ? "有効" : "無効"} | 待機中: ${status.pendingCount}件`,
+					`自動実行: ${status.enabled ? "有効" : "無効"} | autoRun: ${status.autoRun ? "有効" : "無効"} | 待機中: ${status.pendingCount}件`,
 					"info"
 				);
 			} else if (args === "on" || args === "enable") {
@@ -1915,7 +2337,16 @@ ${taskDescription}
 		},
 	});
 
-	// セッション終了時にリスナー重複登録防止フラグをリセット
+	// Command: /symphony
+	pi.registerCommand("symphony", {
+		description: "Run Symphony task execution in-process (next, run, loop, status)",
+		handler: async (args, ctx) => {
+			await handleSymphonyCommand(pi, args ?? "", ctx as never);
+		},
+	});
+
+	// セッション終了時に durable checkpoint を残す。
+	// Symphony は instance 単位の loop なので、fresh session をまたいでも停止しない。
 	pi.on("session_shutdown", async () => {
 		if (autoExecutorConfig.currentTaskId) {
 			const task = loadStorage().tasks.find((item) => item.id === autoExecutorConfig.currentTaskId);

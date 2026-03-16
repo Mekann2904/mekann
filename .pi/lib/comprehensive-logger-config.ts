@@ -108,21 +108,21 @@ export function loadConfigFromEnv(baseConfig: LoggerConfig = DEFAULT_CONFIG): Lo
  */
 export function validateConfig(config: LoggerConfig): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
-  
-  if (config.bufferSize < 1) {
-    errors.push('bufferSize must be at least 1');
+
+  if (!Number.isFinite(config.bufferSize) || config.bufferSize < 1) {
+    errors.push('bufferSize must be a valid number >= 1');
   }
-  
-  if (config.flushIntervalMs < 100) {
-    errors.push('flushIntervalMs must be at least 100ms');
+
+  if (!Number.isFinite(config.flushIntervalMs) || config.flushIntervalMs < 100) {
+    errors.push('flushIntervalMs must be a valid number >= 100');
   }
-  
-  if (config.maxFileSizeMB < 1) {
-    errors.push('maxFileSizeMB must be at least 1');
+
+  if (!Number.isFinite(config.maxFileSizeMB) || config.maxFileSizeMB < 1) {
+    errors.push('maxFileSizeMB must be a valid number >= 1');
   }
-  
-  if (config.retentionDays < 1) {
-    errors.push('retentionDays must be at least 1');
+
+  if (!Number.isFinite(config.retentionDays) || config.retentionDays < 1) {
+    errors.push('retentionDays must be a valid number >= 1');
   }
   
   const validEnvironments = ['development', 'production', 'test'];

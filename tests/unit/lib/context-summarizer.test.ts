@@ -143,6 +143,49 @@ describe("summarizeContext", () => {
       // Assert
       expect(result).toBe(shortText);
     });
+
+    it("should_preserve_key_artifacts_and_open_questions_in_context_pack", () => {
+      const longText = [
+        "SUMMARY: Authentication regression only affects token refresh.",
+        "CLAIM: Root cause is stale cache invalidation order.",
+        "File: src/auth/refresh-token.ts",
+        "Error: refresh cache mismatch",
+        "Open question: does the retry path reuse stale session state?",
+        ...Array.from({ length: 40 }, (_, index) => `noise line ${index}`),
+      ].join("\n");
+      const config = createTestConfig({ preserveStructure: false });
+
+      const result = summarizeContext(longText, config);
+
+      expect(result).toContain("CONTEXT_PACK_V2");
+      expect(result).toContain("known_facts=");
+      expect(result).toContain("key_artifacts=");
+      expect(result).toContain("open_questions=");
+      expect(result).toContain("src/auth/refresh-token.ts");
+      expect(result).toContain("stale cache invalidation order");
+    });
+
+    it("should_keep_code_signatures_when_truncating_large_code_blocks", () => {
+      const longCode = [
+        "## Code Example",
+        "```typescript",
+        "export async function refreshTokenSession(userId: string) {",
+        "  const session = await loadSession(userId);",
+        ...Array.from({ length: 12 }, (_, index) => `  const step${index} = ${index};`),
+        "  return session;",
+        "}",
+        "```",
+      ].join("\n");
+      const config = createTestConfig({
+        summaryThreshold: 20,
+        preserveStructure: false,
+      });
+
+      const result = summarizeContext(longCode, config);
+
+      expect(result).toContain("export async function refreshTokenSession");
+      expect(result).toContain("// ... truncated ...");
+    });
   });
 
   describe("境界値", () => {

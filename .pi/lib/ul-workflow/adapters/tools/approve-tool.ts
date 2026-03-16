@@ -61,10 +61,11 @@ export function createApproveTool(workflowService: WorkflowService) {
         const workflow = await workflowService.getStatus();
         text += `\nplan.md をエディタで開いて注釈を追加してください:\n  .pi/ul-workflow/tasks/${workflow?.taskId}/plan.md\n\n注釈形式:\n  <!-- NOTE: ここに注釈を記述 -->\n  または\n  [注釈]: ここに注釈を記述\n`;
       } else if (result.nextPhase === "implement") {
-        const workflow = await workflowService.getStatus();
         text += `\n実装を開始するには:\n  ul_workflow_execute_plan()\n`;
+      } else if (result.nextPhase === "review") {
+        text += `\nverify を完了してください:\n  workspace_verify()\n`;
+        text += `\nverify 完了後に次へ進みます:\n  ul_workflow_approve()\n`;
       } else if (result.nextPhase === "completed") {
-        const workflow = await workflowService.getStatus();
         text += `\nワークフローが完了しました。\n\n`;
         text += `### 次のステップ: コミット\n\n`;
         text += `実装完了後、コミットを作成することを強く推奨します:\n\n`;

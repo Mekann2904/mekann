@@ -554,72 +554,72 @@ describe("looksLikeClearGoalTask", () => {
 
 describe("determineWorkflowPhases", () => {
   // ==========================================================================
-  // 低複雑度 - 統一フローでは常に5フェーズ
+  // 低複雑度 - 統一フローでは常に6フェーズ
   // ==========================================================================
 
   describe("低複雑度フェーズ", () => {
-    it("低複雑度_明確ゴール_createパターン_統一フローでは5フェーズ", () => {
+    it("低複雑度_明確ゴール_createパターン_統一フローでは6フェーズ", () => {
       // Arrange: "create show function"
       const task = "create show function";
 
       // Act
       const phases = determineWorkflowPhases(task);
 
-      // Assert: 統一フローでは常に5フェーズ
-      expect(phases).toEqual(["research", "plan", "annotate", "implement", "completed"]);
+      // Assert: 統一フローでは常に6フェーズ
+      expect(phases).toEqual(["research", "plan", "annotate", "implement", "review", "completed"]);
     });
 
-    it("低複雑度_明確ゴール_renameパターン_統一フローでは5フェーズ", () => {
+    it("低複雑度_明確ゴール_renameパターン_統一フローでは6フェーズ", () => {
       // Arrange: "rename get function"
       const task = "rename get function";
 
       // Act
       const phases = determineWorkflowPhases(task);
 
-      // Assert: 統一フローでは常に5フェーズ
-      expect(phases).toEqual(["research", "plan", "annotate", "implement", "completed"]);
+      // Assert: 統一フローでは常に6フェーズ
+      expect(phases).toEqual(["research", "plan", "annotate", "implement", "review", "completed"]);
     });
 
-    it("低複雑度_不明確ゴール_showパターン_統一フローでは5フェーズ", () => {
+    it("低複雑度_不明確ゴール_showパターン_統一フローでは6フェーズ", () => {
       // Arrange: "show version"
       const task = "show version";
 
       // Act
       const phases = determineWorkflowPhases(task);
 
-      // Assert: 統一フローでは常に5フェーズ
-      expect(phases).toEqual(["research", "plan", "annotate", "implement", "completed"]);
+      // Assert: 統一フローでは常に6フェーズ
+      expect(phases).toEqual(["research", "plan", "annotate", "implement", "review", "completed"]);
     });
 
-    it("低複雑度_不明確ゴール_統一フローでは5フェーズ", () => {
+    it("低複雑度_不明確ゴール_統一フローでは6フェーズ", () => {
       // Arrange
       const task = "check configuration settings";
 
       // Act
       const phases = determineWorkflowPhases(task);
 
-      // Assert: 統一フローでは常に5フェーズ
-      expect(phases).toEqual(["research", "plan", "annotate", "implement", "completed"]);
+      // Assert: 統一フローでは常に6フェーズ
+      expect(phases).toEqual(["research", "plan", "annotate", "implement", "review", "completed"]);
     });
   });
 
   // ==========================================================================
-  // 中複雑度 - 統一フローでは常に5フェーズ
+  // 中複雑度 - 統一フローでは常に6フェーズ
   // ==========================================================================
 
   describe("中複雑度フェーズ", () => {
-    it("中複雑度_明確ゴール_統一フローでは5フェーズ", () => {
+    it("中複雑度_明確ゴール_統一フローでは6フェーズ", () => {
       // Arrange
       const task = "implement new feature";
 
       // Act
       const phases = determineWorkflowPhases(task);
 
-      // Assert: 統一フローでは常に5フェーズ
-      expect(phases).toEqual(["research", "plan", "annotate", "implement", "completed"]);
+      // Assert: 統一フローでは常に6フェーズ
+      expect(phases).toEqual(["research", "plan", "annotate", "implement", "review", "completed"]);
     });
 
-    it("中複雑度_不明確ゴール_5フェーズ", () => {
+    it("中複雑度_不明確ゴール_6フェーズ", () => {
       // Arrange
       const task = "modify the code";
 
@@ -627,7 +627,7 @@ describe("determineWorkflowPhases", () => {
       const phases = determineWorkflowPhases(task);
 
       // Assert
-      expect(phases).toEqual(["research", "plan", "annotate", "implement", "completed"]);
+      expect(phases).toEqual(["research", "plan", "annotate", "implement", "review", "completed"]);
     });
   });
 
@@ -636,7 +636,7 @@ describe("determineWorkflowPhases", () => {
   // ==========================================================================
 
   describe("高複雑度フェーズ", () => {
-    it("高複雑度_必ず5フェーズ", () => {
+    it("高複雑度_必ず6フェーズ", () => {
       // Arrange
       const task = "architecture redesign";
 
@@ -644,10 +644,10 @@ describe("determineWorkflowPhases", () => {
       const phases = determineWorkflowPhases(task);
 
       // Assert
-      expect(phases).toEqual(["research", "plan", "annotate", "implement", "completed"]);
+      expect(phases).toEqual(["research", "plan", "annotate", "implement", "review", "completed"]);
     });
 
-    it("高複雑度_明確ゴールでも5フェーズ", () => {
+    it("高複雑度_明確ゴールでも6フェーズ", () => {
       // Arrange
       const task = "refactor entire system";
 
@@ -655,7 +655,7 @@ describe("determineWorkflowPhases", () => {
       const phases = determineWorkflowPhases(task);
 
       // Assert
-      expect(phases).toEqual(["research", "plan", "annotate", "implement", "completed"]);
+      expect(phases).toEqual(["research", "plan", "annotate", "implement", "review", "completed"]);
     });
   });
 
@@ -770,7 +770,7 @@ describe("determineExecutionStrategy", () => {
   });
 
   // ==========================================================================
-  // 低複雑度戦略 - 統一フローでは常にdag戦略と5フェーズ
+  // 低複雑度戦略 - 統一フローでは常にdag戦略と6フェーズ
   // ==========================================================================
 
   describe("低複雑度戦略", () => {
@@ -786,15 +786,15 @@ describe("determineExecutionStrategy", () => {
       expect(result.useDag).toBe(true);
     });
 
-    it("低複雑度_統一フローでは5フェーズ", () => {
+    it("低複雑度_統一フローでは6フェーズ", () => {
       // Arrange
       const task = "get data";
 
       // Act
       const result = determineExecutionStrategy(task);
 
-      // Assert: 統一フローでは常に5フェーズ
-      expect(result.phases).toEqual(["research", "plan", "annotate", "implement", "completed"]);
+      // Assert: 統一フローでは常に6フェーズ
+      expect(result.phases).toEqual(["research", "plan", "annotate", "implement", "review", "completed"]);
     });
 
     it("低複雑度_統一フローの理由を含む", () => {
@@ -891,19 +891,20 @@ describe("determineExecutionStrategy", () => {
       expect(result.useDag).toBe(true);
     });
 
-    it("高複雑度_統一フローでは5フェーズ", () => {
+    it("高複雑度_統一フローでは6フェーズ", () => {
       // Arrange
       const task = "migration entire system";
 
       // Act
       const result = determineExecutionStrategy(task);
 
-      // Assert: 統一フローでは常に5フェーズ（annotateを含む）
+      // Assert: 統一フローでは常に6フェーズ（annotate と review を含む）
       expect(result.phases).toEqual([
         "research",
         "plan",
         "annotate",
         "implement",
+        "review",
         "completed",
       ]);
     });
@@ -1033,9 +1034,9 @@ describe("統合テスト", () => {
     const phases = determineWorkflowPhases(task);
     const strategyResult = determineExecutionStrategy(task);
 
-    // 統一フローでは常に5フェーズ
-    expect(phases.length).toBe(5);
-    expect(strategyResult.phases.length).toBe(5);
+    // 統一フローでは常に6フェーズ
+    expect(phases.length).toBe(6);
+    expect(strategyResult.phases.length).toBe(6);
   });
 
   it("タスクタイプによる一貫した分類_統一フローでは常にmedium", () => {

@@ -4,7 +4,11 @@
  * @testFramework vitest
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, describe, it, expect, beforeEach, vi } from "vitest";
 import * as fc from "fast-check";
 
 // pi SDKのモック
@@ -49,6 +53,30 @@ vi.mock("@mariozechner/pi-tui", () => ({
 vi.mock("@mariozechner/pi-coding-agent", () => ({
 	ExtensionAPI: vi.fn(),
 }));
+
+const tempDirs: string[] = [];
+
+function createTempCwd(): string {
+	const cwd = mkdtempSync(join(tmpdir(), "mekann-question-"));
+	mkdirSync(join(cwd, ".pi", "tasks"), { recursive: true });
+	tempDirs.push(cwd);
+	return cwd;
+}
+
+async function loadQuestionTool() {
+	const extension = (await import("../../../.pi/extensions/question.js")).default;
+	const tools: any[] = [];
+	extension({
+		registerTool: vi.fn((tool: any) => tools.push(tool)),
+	} as never);
+	return tools.find((tool) => tool.name === "question");
+}
+
+afterEach(() => {
+	for (const cwd of tempDirs.splice(0, tempDirs.length)) {
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
 
 // ============================================================================
 // 型定義のテスト
@@ -125,6 +153,63 @@ describe("question.ts 型定義", () => {
 			const answer: string[] = [];
 			expect(answer).toEqual([]);
 		});
+	});
+});
+
+describe("question.ts 実行", () => {
+	it("Symphony 自走中は UI を待たずに自動回答する", async () => {
+		const cwd = createTempCwd();
+		writeFileSync(join(cwd, ".pi", "tasks", "auto-executor-config.json"), JSON.stringify({
+			currentTaskId: "task-1",
+		}, null, 2));
+
+		const tool = await loadQuestionTool();
+		const custom = vi.fn();
+		const result = await tool.execute("q1", {
+			question: "この計画で続行しますか？",
+			options: [
+				{ label: "承認して続行", description: "進める" },
+				{ label: "中止", description: "止める" },
+			],
+		}, undefined, undefined, {
+			cwd,
+			hasUI: true,
+			ui: {
+				custom,
+			},
+		});
+
+		expect(custom).not.toHaveBeenCalled();
+		expect(result.content[0].text).toContain("Symphony auto-selected: 承認して続行");
+		expect(result.details.answer).toBe("承認して続行");
+		expect(result.details.autoAnswered).toBe(true);
+	});
+
+	it("通常時はこれまで通り UI question を使う", async () => {
+		const cwd = createTempCwd();
+		const tool = await loadQuestionTool();
+		const custom = vi.fn(async () => ({
+			answers: ["中止"],
+			selectedIndexes: [1],
+			wasCustom: false,
+		}));
+		const result = await tool.execute("q1", {
+			question: "この計画で続行しますか？",
+			options: [
+				{ label: "承認して続行", description: "進める" },
+				{ label: "中止", description: "止める" },
+			],
+		}, undefined, undefined, {
+			cwd,
+			hasUI: true,
+			ui: {
+				custom,
+			},
+		});
+
+		expect(custom).toHaveBeenCalledTimes(1);
+		expect(result.details.answer).toBe("中止");
+		expect(result.details.autoAnswered).toBeUndefined();
 	});
 });
 

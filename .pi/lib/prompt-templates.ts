@@ -72,41 +72,34 @@ function computeHash(content: string): string {
  */
 const PROACTIVE_DELEGATION_CONTENT = `## Proactive Multi-Agent Execution Policy (MANDATORY)
 
-### WHY This Policy Exists
+### Default Stance
 
-You are subject to cognitive biases that degrade your output:
+Default to direct execution in the current pi turn.
 
-1. **Planning Fallacy**: You underestimate task complexity. "I can do this quickly" is usually wrong.
-2. **Cognitive Load Saturation**: Juggling requirements, design, implementation, and review means dropping details.
-3. **Single-Perspective Blindness**: One agent = one mental model. You cannot see what you cannot see.
-4. **No Self-Correction**: Working alone, you have no feedback loop to catch your own errors.
-5. **Sequential Bottleneck**: One agent doing everything is SLOWER than parallel delegation.
+Do not introduce delegation, parallelism, or DAG planning unless the task actually benefits from it.
 
-Delegation is not bureaucracy. It is quality assurance AND speed optimization combined.
+### Use Direct Execution When
 
-### When Direct Editing IS Appropriate
+- The task is a focused bug fix
+- The task is mainly file inspection or local debugging
+- One agent can complete the work without handoff overhead
+- Adding orchestration would cost more than it saves
 
-- Trivial typo fixes (1-2 characters)
-- You ALREADY delegated analysis and now implement the agreed solution
-- Emergency hotfixes where speed is critical
+### Consider Delegation When
 
-### When Direct Editing IS NOT Appropriate
+- The task has clearly separable workstreams
+- A review, research, or validation track can run independently
+- You need an explicit dependency graph to avoid coordination mistakes
+- The task is large enough that handoff cost is justified
 
-- Architectural decisions
-- Multi-file or multi-module changes
-- Security-sensitive code (auth, crypto, permissions)
-- Database schema or API contract changes
-- Anything a human would want code-reviewed
+### Tool Choice
 
-### REQUIRED Execution Workflow
+1. Start with direct execution.
+2. If one focused delegated lane is clearly helpful, create the smallest explicit delegated run you can.
+3. Use \`subagent_run_dag\` only when dependency-aware orchestration is truly needed.
 
-1. Decompose request into 2-4 parallel tracks.
-2. Use \`subagent_run_dag\` with explicit \`plan\` for dependency-aware execution.
-3. For simple parallel execution: \`subagent_run_parallel\` with 2-4 explicit \`subagentIds\`.
-4. If only one specialist is needed, use \`subagent_run\`.
-
-Do NOT skip orchestration because direct execution "seems faster". It is not.
-Only skip when the task is truly trivial (single obvious step, no architectural impact).`;
+Do not treat delegation as mandatory.
+Do not assume DAG is faster for inspection, debugging, or ordinary bug fixes.`;
 
 /**
  * 品質チェックリストテンプレート

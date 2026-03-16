@@ -83,6 +83,7 @@ export const DEFAULT_PHASES: WorkflowPhase[] = [
   "plan",
   "annotate",
   "implement",
+  "review",
   "completed",
 ];
 

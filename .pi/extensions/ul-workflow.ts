@@ -43,6 +43,9 @@ import {
   resolveWorkspaceVerificationPlan,
 } from "../lib/workspace-verification.js";
 
+const SYMPHONY_AUTO_APPROVE_PATTERN = /(承認|続行|進め|実行|apply|approve|continue|proceed|confirm|yes|ok|はい|commit)/i;
+const SYMPHONY_AUTO_REJECT_PATTERN = /(中止|停止|abort|cancel|reject|deny|いいえ|保留|stop|no|skip)/i;
+
 // ワークフローのフェーズ
 type WorkflowPhase = "idle" | "research" | "plan" | "annotate" | "implement" | "review" | "completed" | "aborted";
 
@@ -69,6 +72,44 @@ const UNIFIED_PHASES: WorkflowPhase[] = [
   "completed",
 ];
 
+const PLAN_FIRST_PHASES: WorkflowPhase[] = [
+  "plan",
+  "annotate",
+  "implement",
+  "review",
+  "completed",
+];
+
+type AutoRunPhaseSelection = {
+  profile: "full" | "plan-first";
+  phases: WorkflowPhase[];
+  skipResearch: boolean;
+  reason: string;
+};
+
+const HIGH_RISK_TASK_PATTERNS = [
+  /auth|authentication|authorization|oauth|password|secret|token|security/i,
+  /database|db|schema|migration|migrate/i,
+  /payment|billing|invoice|checkout/i,
+  /production|prod|deploy|release/i,
+  /delete|remove|drop|destroy/i,
+  /encrypt|decrypt|crypto/i,
+];
+
+const PLAN_FIRST_ELIGIBLE_PATTERNS = [
+  /\bdocs?\b|readme|changelog|comment|comments|typo|wording|copy/i,
+  /documentation|markdown|md file|text only|copy change/i,
+  /\btest\b|\btests\b|unit test|spec file|snapshot/i,
+  /ドキュメント|コメント|文言|誤字|typo|README|テスト/i,
+];
+
+const FULL_RESEARCH_HINT_PATTERNS = [
+  /new feature|feature|design|architecture|refactor|optimi[sz]e|performance/i,
+  /investigate|analy[sz]e|unknown|explore|compare|evaluate/i,
+  /api|sdk|library|external|integration|provider/i,
+  /新機能|設計|アーキテクチャ|リファクタ|調査|分析|外部|連携|最適化/i,
+];
+
 /**
  * 統一実行設定
  * @summary 実行設定
@@ -79,6 +120,85 @@ const UNIFIED_EXECUTION_CONFIG = {
   requireHumanApproval: true,
   subagentTimeoutMs: 5 * 60 * 1000, // 5 minutes default timeout
 } as const;
+
+function appendApprovedPhases(state: WorkflowState, phases: WorkflowPhase[]): void {
+  for (const phase of phases) {
+    if (!state.approvedPhases.includes(phase)) {
+      state.approvedPhases.push(phase);
+    }
+  }
+}
+
+function selectAutoRunPhases(task: string): AutoRunPhaseSelection {
+  const normalizedTask = String(task || "").trim();
+  if (!normalizedTask) {
+    return {
+      profile: "full",
+      phases: [...UNIFIED_PHASES],
+      skipResearch: false,
+      reason: "task is empty, so the standard workflow is kept",
+    };
+  }
+
+  const highRisk = HIGH_RISK_TASK_PATTERNS.some((pattern) => pattern.test(normalizedTask));
+  if (highRisk) {
+    return {
+      profile: "full",
+      phases: [...UNIFIED_PHASES],
+      skipResearch: false,
+      reason: "high-risk task keeps the dedicated research phase",
+    };
+  }
+
+  const researchHeavy = FULL_RESEARCH_HINT_PATTERNS.some((pattern) => pattern.test(normalizedTask));
+  const eligibleForPlanFirst = PLAN_FIRST_ELIGIBLE_PATTERNS.some((pattern) => pattern.test(normalizedTask));
+  if (eligibleForPlanFirst && !researchHeavy) {
+    return {
+      profile: "plan-first",
+      phases: [...PLAN_FIRST_PHASES],
+      skipResearch: true,
+      reason: "low-risk local maintenance task can start from plan without a dedicated research pass",
+    };
+  }
+
+  return {
+    profile: "full",
+    phases: [...UNIFIED_PHASES],
+    skipResearch: false,
+    reason: "task needs the standard research-first workflow",
+  };
+}
+
+function buildPlanFirstResearchArtifact(task: string, selection: AutoRunPhaseSelection): string {
+  return [
+    "# Research",
+    "",
+    "## Workflow Decision",
+    "- Dedicated research phase was skipped for auto-run.",
+    `- Reason: ${selection.reason}`,
+    "",
+    "## User Intent",
+    `- ${task}`,
+    "",
+    "## Constraints",
+    "- Use existing project patterns and local codebase evidence first.",
+    "- If unknown external dependencies appear, fall back to the full research workflow.",
+    "",
+    "## Plan Inputs",
+    "- Keep the change minimal and easy to review.",
+    "- Preserve human review via plan and annotate before implementation.",
+    "",
+    "## 高リスク判定",
+    "",
+    "### 判定結果",
+    "- [ ] high-risk（高リスク）",
+    "- [x] normal（通常）",
+    "",
+    "### 判定根拠",
+    `- ${selection.reason}`,
+    "",
+  ].join("\n");
+}
 
 // ワークフロー状態
 interface WorkflowState {
@@ -2657,18 +2777,95 @@ function makeResult(text: string, details: Record<string, unknown> = {}): AgentT
   };
 }
 
+type WorkflowQuestionOption = {
+  label: string;
+  description: string;
+};
+
+type WorkflowQuestionData = {
+  question: string;
+  header: string;
+  options: WorkflowQuestionOption[];
+  multiple?: boolean;
+  custom?: boolean;
+};
+
+function isSymphonyAutonomousWorkflow(ctx: unknown): boolean {
+  const cwd = typeof (ctx as { cwd?: unknown })?.cwd === "string"
+    ? String((ctx as { cwd: string }).cwd)
+    : process.cwd();
+  const configPath = path.join(cwd, ".pi", "tasks", "auto-executor-config.json");
+
+  if (!existsSync(configPath)) {
+    return false;
+  }
+
+  try {
+    const config = JSON.parse(readFileSync(configPath, "utf-8")) as { currentTaskId?: unknown };
+    return typeof config.currentTaskId === "string" && config.currentTaskId.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function pickSymphonyWorkflowAutoAnswer(
+  options: WorkflowQuestionOption[],
+): WorkflowQuestionOption | null {
+  if (options.length === 0) {
+    return null;
+  }
+
+  const scored = options.map((option, index) => {
+    let score = index === 0 ? 1 : 0;
+    if (SYMPHONY_AUTO_APPROVE_PATTERN.test(option.label)) {
+      score += 10;
+    }
+    if (SYMPHONY_AUTO_REJECT_PATTERN.test(option.label)) {
+      score -= 10;
+    }
+    return { option, score, index };
+  });
+
+  scored.sort((left, right) => {
+    if (right.score !== left.score) {
+      return right.score - left.score;
+    }
+    return left.index - right.index;
+  });
+
+  return scored[0]?.option ?? null;
+}
+
 /**
  * ユーザー確認が必要な結果を作成するヘルパー関数
  */
 function makeResultWithQuestion(
   text: string,
-  questionData: {
-    question: string;
-    header: string;
-    options: Array<{ label: string; description: string }>;
-  },
-  details: Record<string, unknown> = {}
+  questionData: WorkflowQuestionData,
+  details: Record<string, unknown> = {},
+  ctx?: unknown,
 ): AgentToolResult<unknown> {
+  if (isSymphonyAutonomousWorkflow(ctx)) {
+    const selectedOption = pickSymphonyWorkflowAutoAnswer(questionData.options);
+    const selectedAnswer = selectedOption?.label ?? null;
+    return {
+      content: [{
+        type: "text",
+        text: selectedAnswer
+          ? `${text}\n\n[Symphony] 自動回答: ${selectedAnswer}`
+          : `${text}\n\n[Symphony] 自動回答候補が見つからなかったため、先頭選択肢を前提に続行してください。`,
+      }],
+      details: {
+        ...details,
+        question: questionData,
+        answer: selectedAnswer,
+        answers: selectedAnswer ? [selectedAnswer] : [],
+        autoAnswered: true,
+        autoAnswerReason: "interactive workflow question is disabled during Symphony autonomous execution",
+      },
+    };
+  }
+
   return {
     content: [{ type: "text", text }],
     details: {
@@ -2896,9 +3093,12 @@ Task ID: ${taskId}
       const now = new Date().toISOString();
 
       const effectiveConcurrency = maxConcurrency;
-      const phases: WorkflowPhase[] = [...UNIFIED_PHASES];
+      const autoRunSelection = selectAutoRunPhases(trimmedTask);
+      const phases: WorkflowPhase[] = [...autoRunSelection.phases];
       
-      console.log(`[ul_workflow_run] Mode input: ${mode}, Execution: unified-flow, Concurrency hint: ${effectiveConcurrency}`);
+      console.log(
+        `[ul_workflow_run] Mode input: ${mode}, Execution: ${autoRunSelection.profile}, Concurrency hint: ${effectiveConcurrency}`
+      );
 
       currentWorkflow = {
         taskId,
@@ -2923,16 +3123,23 @@ Task ID: ${taskId}
       // 統合アプローチ: Research → Plan（逐次）→ Implement（DAG並列）
       // すべてのモードでResearch/Planは逐次実行し、ImplementのみDAG並列化
       try {
-        // === PHASE 1: Research（逐次）===
-        console.log(`[ul_workflow_run] Phase 1: Research (sequential)`);
-        const researchInstruction = generateResearchInstruction(trimmedTask, researchPath, taskId);
-        const researchRun = await executeResearchWorkflow(ctx, {
-          task: trimmedTask,
-          taskId,
-          researchPath,
-          instruction: researchInstruction,
-        });
-        await ensureWorkflowArtifact(researchPath, extractTextFromToolResult(researchRun.followupResult));
+        if (autoRunSelection.skipResearch) {
+          await ensureWorkflowArtifact(
+            researchPath,
+            buildPlanFirstResearchArtifact(trimmedTask, autoRunSelection),
+          );
+        } else {
+          // === PHASE 1: Research（逐次）===
+          console.log(`[ul_workflow_run] Phase 1: Research (sequential)`);
+          const researchInstruction = generateResearchInstruction(trimmedTask, researchPath, taskId);
+          const researchRun = await executeResearchWorkflow(ctx, {
+            task: trimmedTask,
+            taskId,
+            researchPath,
+            instruction: researchInstruction,
+          });
+          await ensureWorkflowArtifact(researchPath, extractTextFromToolResult(researchRun.followupResult));
+        }
 
         // === PHASE 2: Plan（逐次）===
         console.log(`[ul_workflow_run] Phase 2: Plan (sequential)`);
@@ -2946,9 +3153,12 @@ Task ID: ${taskId}
         });
         await ensureWorkflowArtifact(planPath, extractTextFromToolResult(planRun.result));
 
-        currentWorkflow.approvedPhases.push("research", "plan");
+        appendApprovedPhases(
+          currentWorkflow,
+          autoRunSelection.skipResearch ? ["plan"] : ["research", "plan"],
+        );
         currentWorkflow.phase = "plan";
-        currentWorkflow.phaseIndex = 1;
+        currentWorkflow.phaseIndex = currentWorkflow.phases.indexOf("plan");
         currentWorkflow.updatedAt = new Date().toISOString();
         saveState(currentWorkflow);
 
@@ -2957,18 +3167,19 @@ Task ID: ${taskId}
         // === PHASE 3: Annotate（ユーザーレビュー）===
         // Plan作成後、自動的にannotateフェーズへ移行
         currentWorkflow.phase = "annotate";
-        currentWorkflow.phaseIndex = 2;
+        currentWorkflow.phaseIndex = currentWorkflow.phases.indexOf("annotate");
         currentWorkflow.updatedAt = new Date().toISOString();
         saveState(currentWorkflow);
 
         // === ユーザーレビュー（Annotateフェーズ）===
         // UIの有無に関わらず、detailsベースで質問を返す
-        return {
-          content: [{ type: "text", text: `## Plan作成完了（レビュー待ち - Annotateフェーズ）
+        return makeResultWithQuestion(`## Plan作成完了（レビュー待ち - Annotateフェーズ）
 
 Task: ${trimmedTask}
-Execution Mode: 統一フロー（Research/Plan 実行後に annotate で停止）
+Execution Mode: ${autoRunSelection.profile === "plan-first" ? "plan-first fast track" : "統一フロー"}
 Current Phase: annotate
+
+${autoRunSelection.skipResearch ? `Research Phase: skipped\nReason: ${autoRunSelection.reason}\n` : ""}
 
 \`\`\`markdown
 ${planContent}
@@ -2985,29 +3196,62 @@ ${planContent}
    - \`ul_workflow_approve()\` で実装フェーズへ進む
 4. または計画を修正:
    - \`ul_workflow_modify_plan({ modifications: "修正内容" })\`
-` }],
-            details: {
-              taskId,
-              phase: "annotate",
-              executionMode: "unified-flow",
-              modeInput: mode,
-              concurrencyHint: effectiveConcurrency,
-              askUser: true,
-              question: {
-                question: "この計画で実行しますか？",
-                header: "Plan確認",
-                options: [
-                  { label: "実行", description: "このまま実装を開始" },
-                  { label: "修正", description: "修正内容を記述" }
-                ],
-                multiple: false,
-                custom: true
-              }
-            }
-        };
+`, {
+          question: "この計画で実行しますか？",
+          header: "Plan確認",
+          options: [
+            { label: "実行", description: "このまま実装を開始" },
+            { label: "修正", description: "修正内容を記述" }
+          ],
+          multiple: false,
+          custom: true,
+        }, {
+          taskId,
+          phase: "annotate",
+          executionMode: autoRunSelection.profile,
+          modeInput: mode,
+          concurrencyHint: effectiveConcurrency,
+          skippedPhases: autoRunSelection.skipResearch ? ["research"] : [],
+          selectionReason: autoRunSelection.reason,
+        }, ctx);
 
       } catch (error) {
         if (String(error).includes("subagent_run_dag APIが利用できません")) {
+          if (autoRunSelection.skipResearch) {
+            return makeResult(`## UL Workflow開始
+
+Task: ${trimmedTask}
+ID: ${taskId}
+Execution Mode: plan-first fast track (manual)
+
+### 事前メモ
+- research.md は軽量な fast-track メモとして ${researchPath} に生成済みです
+- 理由: ${autoRunSelection.reason}
+
+### 手順1: Plan
+\`\`\`
+subagent_run_dag(${JSON.stringify(buildSingleAgentDagParams({
+  subagentId: "architect",
+  task: `計画作成: ${trimmedTask}\n\n事前調査: ${researchPath}\n\n保存先: ${planPath}`,
+  extraContext: "research.md の要求解釈をもとに、User Intent と Analyst Interpretation が分かる plan.md を作成してください。",
+  ulTaskId: taskId,
+}), null, 2)})
+\`\`\`
+
+### 手順2: Plan確認（Plan完了後）
+\`\`\`
+ul_workflow_confirm_plan()
+\`\`\`
+`, {
+              taskId,
+              phase: "plan",
+              nextPhase: "annotate",
+              executionMode: autoRunSelection.profile,
+              skippedPhases: ["research"],
+              selectionReason: autoRunSelection.reason,
+            });
+          }
+
           return makeResult(`## UL Workflow開始
 
 Task: ${trimmedTask}
@@ -3417,31 +3661,26 @@ ${annotations.map((a, i) => `  ${i + 1}. ${a}`).join("\n")}
       const taskId = currentWorkflow.taskId;
 
       // detailsベースで質問を返す
-      return {
-        content: [{ type: "text", text: `## Plan確認
+      return makeResultWithQuestion(`## Plan確認
 
 Task: ${currentWorkflow.taskDescription}
 
 \`\`\`markdown
 ${planContent}
 \`\`\`
-` }],
-        details: {
-          taskId,
-          phase: "plan",
-          askUser: true,
-          question: {
-            question: "この計画で実行しますか？",
-            header: "Plan確認",
-            options: [
-              { label: "実行", description: "このまま実装を開始" },
-              { label: "修正", description: "修正内容を記述" }
-            ],
-            multiple: false,
-            custom: true
-          }
-        }
-      };
+`, {
+        question: "この計画で実行しますか？",
+        header: "Plan確認",
+        options: [
+          { label: "実行", description: "このまま実装を開始" },
+          { label: "修正", description: "修正内容を記述" }
+        ],
+        multiple: false,
+        custom: true,
+      }, {
+        taskId,
+        phase: "plan",
+      }, ctx);
     },
   });
 
@@ -3596,33 +3835,28 @@ subagent_run_dag(${JSON.stringify(dagParams, null, 2)})
         const planContent = readPlanFile(taskId);
 
         // detailsベースで質問を返す
-        return {
-          content: [{ type: "text", text: `## Plan修正完了
+        return makeResultWithQuestion(`## Plan修正完了
 
 修正: ${trimmedModifications}
 
 \`\`\`markdown
 ${planContent}
 \`\`\`
-` }],
-            details: {
-              taskId,
-              phase: currentWorkflow.phase,
-              autoExecute: true,
-              followupDecision: planRun.decision,
-              askUser: true,
-              question: {
-                question: "この計画で実行しますか？",
-                header: "Plan確認",
-                options: [
-                  { label: "実行", description: "このまま実装を開始" },
-                  { label: "修正", description: "追加の修正内容を記述" }
-                ],
-                multiple: false,
-                custom: true
-              }
-            }
-        };
+`, {
+          question: "この計画で実行しますか？",
+          header: "Plan確認",
+          options: [
+            { label: "実行", description: "このまま実装を開始" },
+            { label: "修正", description: "追加の修正内容を記述" }
+          ],
+          multiple: false,
+          custom: true,
+        }, {
+          taskId,
+          phase: currentWorkflow.phase,
+          autoExecute: true,
+          followupDecision: planRun.decision,
+        }, ctx);
       } catch (error) {
         if (String(error).includes("subagent_run_dag APIが利用できません")) {
           const researchPath = path.join(getTaskDir(taskId), "research.md");
@@ -4091,8 +4325,7 @@ subagent_run_dag(${JSON.stringify(dagParams, null, 2)})
       }
 
       // detailsベースでユーザーに確認
-      return {
-        content: [{ type: "text", text: `## コミット提案
+      return makeResultWithQuestion(`## コミット提案
 
 Task: ${taskDesc}
 Suggested Message: ${suggestedMessage}
@@ -4129,26 +4362,22 @@ plan.mdに基づく実装
 - ${skillPaths[0]}
 - ${skillPaths[1]}
 - 両方なければ、この workspace にはスキル未配置です
-` }],
-        details: {
-          taskId,
-          phase: workflow.phase,
-          suggestCommit: true,
-          suggestedMessage,
-          askUser: true,
-          question: {
-            question: `以下の内容でコミットしますか？\n\n【コミットメッセージ】\n${suggestedMessage}\n\n【変更内容】\n${taskDesc}\n\n【plan.md】\n${planPath}`,
-            header: "Git Commit",
-            options: [
-              { label: "Commit", description: "ステージング + コミットを実行" },
-              { label: "Edit", description: "メッセージを編集" },
-              { label: "Skip", description: "コミットせずに完了" }
-            ],
-            multiple: false,
-            custom: true
-          }
-        }
-      };
+`, {
+        question: `以下の内容でコミットしますか？\n\n【コミットメッセージ】\n${suggestedMessage}\n\n【変更内容】\n${taskDesc}\n\n【plan.md】\n${planPath}`,
+        header: "Git Commit",
+        options: [
+          { label: "Commit", description: "ステージング + コミットを実行" },
+          { label: "Edit", description: "メッセージを編集" },
+          { label: "Skip", description: "コミットせずに完了" }
+        ],
+        multiple: false,
+        custom: true,
+      }, {
+        taskId,
+        phase: workflow.phase,
+        suggestCommit: true,
+        suggestedMessage,
+      }, ctx);
     },
   });
 

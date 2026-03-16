@@ -4,17 +4,18 @@
 
 ## 基本原則
 
-> **複雑なタスクはDAGで並列化し、レイテンシを削減する**
+> **DAG は依存関係が明確なときだけ使う**
 
 ## 使用方法
 
-### 自動DAG生成（推奨）
+### 明示的な自動DAG生成
 
 ```typescript
 subagent_run_dag({
-  task: "認証システムを実装してテストを追加"
+  task: "認証システムを実装してテストを追加",
+  autoGenerate: true
 })
-// plan省略時は自動的にDAGを生成
+// autoGenerate: true を明示した場合だけ自動生成する
 ```
 
 ### 明示的プラン指定
@@ -78,6 +79,8 @@ Fan-out + Fan-inの組み合わせ。**最も一般的なパターン**。
 | `reviewer` | すべての`implementer` |
 | `architect` | `researcher`（存在する場合） |
 
+依存推論は、タスク文に `then` `after` `してから` `依存` などの明示的な順序表現がある場合だけ有効。
+
 ## いつDAGを使うか
 
 | 状況 | 推奨ツール |
@@ -100,8 +103,8 @@ Fan-out + Fan-inの組み合わせ。**最も一般的なパターン**。
 | パラメータ | 型 | 必須 | 説明 |
 |-----------|---|----|------|
 | `task` | string | Yes | 実行するタスク |
-| `plan` | TaskPlan | No | 明示的なDAGプラン（省略時は自動生成） |
-| `autoGenerate` | boolean | No | plan省略時に自動生成するか（デフォルト: true） |
+| `plan` | TaskPlan | No | 明示的なDAGプラン |
+| `autoGenerate` | boolean | No | `true` のときだけ plan 省略時に自動生成 |
 | `maxConcurrency` | number | No | 最大並列数（デフォルト: 3） |
 | `abortOnFirstError` | boolean | No | 最初のエラーで中止するか（デフォルト: false） |
 

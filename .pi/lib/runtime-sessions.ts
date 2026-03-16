@@ -28,6 +28,7 @@ import {
   ensureSymphonyWorkspace,
   runSymphonyWorkspaceHook,
 } from "./symphony-workspace-manager.js";
+import { markSymphonyTrackerIssueInProgress } from "./symphony-tracker.js";
 
 /**
  * Session type discriminator
@@ -222,6 +223,24 @@ async function syncSymphonyWorkspaceLifecycle(session: RuntimeSession): Promise<
   }
 }
 
+async function syncSymphonyTrackerLifecycle(session: RuntimeSession): Promise<void> {
+  if (!shouldSyncSymphonyIssueState()) {
+    return;
+  }
+  if (!session.taskId) {
+    return;
+  }
+  if (session.status !== "starting" && session.status !== "running") {
+    return;
+  }
+
+  try {
+    await markSymphonyTrackerIssueInProgress(process.cwd(), session.taskId);
+  } catch {
+    // tracker 更新失敗は orchestration state を止めない
+  }
+}
+
 function trimCompletedSessions(now: number = Date.now()): void {
   cleanupCompletedSessions(COMPLETED_SESSION_MAX_AGE_MS);
 
@@ -290,6 +309,7 @@ export function addSession(session: RuntimeSession): RuntimeSession {
   activeSessions.set(session.id, session);
   syncSymphonyIssueState(session);
   void syncSymphonyWorkspaceLifecycle(session);
+  void syncSymphonyTrackerLifecycle(session);
   emitSessionEvent({
     type: "session_added",
     data: session,
@@ -319,6 +339,7 @@ export function updateSession(
   activeSessions.set(id, updated);
   syncSymphonyIssueState(updated);
   void syncSymphonyWorkspaceLifecycle(updated);
+  void syncSymphonyTrackerLifecycle(updated);
   emitSessionEvent({
     type: "session_updated",
     data: updated,

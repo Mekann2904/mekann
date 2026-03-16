@@ -37,7 +37,56 @@ type SSEEventType =
   | "response"
   | "heartbeat"
   | "context-update"
-  | "instances-update";
+  | "instances-update"
+  | "experiment_start"
+  | "experiment_baseline"
+  | "experiment_run"
+  | "experiment_improved"
+  | "experiment_regressed"
+  | "experiment_timeout";
+
+/**
+ * 実験イベントデータ
+ */
+interface ExperimentEventData {
+  experimentType: 'e2e' | 'tbench';
+  label: string;
+  tag?: string;
+  branch?: string;
+  targetCommit?: string;
+  config?: Record<string, unknown>;
+  iteration?: number;
+  commit?: string;
+  changesSummary?: string;
+  previousScore?: {
+    failed: number;
+    passed: number;
+    total: number;
+    durationMs: number;
+  };
+  newScore?: {
+    failed: number;
+    passed: number;
+    total: number;
+    durationMs: number;
+  };
+  improvementType?: 'fewer_failures' | 'more_passes' | 'faster';
+  regressionType?: 'more_failures' | 'fewer_passes' | 'slower';
+  reverted?: boolean;
+  timeoutMs?: number;
+  partialScore?: {
+    failed: number;
+    passed: number;
+    total: number;
+    durationMs: number;
+  };
+  score?: {
+    failed: number;
+    passed: number;
+    total: number;
+    durationMs: number;
+  };
+}
 
 /**
  * SSE イベントハンドラー
@@ -48,6 +97,12 @@ interface SSEEventHandlers {
   onInstancesUpdate?: (instances: InstanceInfo[]) => void;
   onContextUpdate?: (data: { pid: number; timestamp: string; input: number; output: number }) => void;
   onError?: (error: Error) => void;
+  onExperimentStart?: (data: ExperimentEventData) => void;
+  onExperimentBaseline?: (data: ExperimentEventData) => void;
+  onExperimentRun?: (data: ExperimentEventData) => void;
+  onExperimentImproved?: (data: ExperimentEventData) => void;
+  onExperimentRegressed?: (data: ExperimentEventData) => void;
+  onExperimentTimeout?: (data: ExperimentEventData) => void;
 }
 
 /**
@@ -124,6 +179,48 @@ export function useSSE(handlers?: SSEEventHandlers) {
     // ハートビート
     eventSource.addEventListener("heartbeat", () => {
       setLastReceived(Date.now());
+    });
+
+    // 実験開始
+    eventSource.addEventListener("experiment_start", (e: MessageEvent) => {
+      const data = JSON.parse(e.data);
+      setLastReceived(Date.now());
+      handlers?.onExperimentStart?.(data);
+    });
+
+    // 実験ベースライン
+    eventSource.addEventListener("experiment_baseline", (e: MessageEvent) => {
+      const data = JSON.parse(e.data);
+      setLastReceived(Date.now());
+      handlers?.onExperimentBaseline?.(data);
+    });
+
+    // 実験実行
+    eventSource.addEventListener("experiment_run", (e: MessageEvent) => {
+      const data = JSON.parse(e.data);
+      setLastReceived(Date.now());
+      handlers?.onExperimentRun?.(data);
+    });
+
+    // 実験改善
+    eventSource.addEventListener("experiment_improved", (e: MessageEvent) => {
+      const data = JSON.parse(e.data);
+      setLastReceived(Date.now());
+      handlers?.onExperimentImproved?.(data);
+    });
+
+    // 実験退行
+    eventSource.addEventListener("experiment_regressed", (e: MessageEvent) => {
+      const data = JSON.parse(e.data);
+      setLastReceived(Date.now());
+      handlers?.onExperimentRegressed?.(data);
+    });
+
+    // 実験タイムアウト
+    eventSource.addEventListener("experiment_timeout", (e: MessageEvent) => {
+      const data = JSON.parse(e.data);
+      setLastReceived(Date.now());
+      handlers?.onExperimentTimeout?.(data);
     });
 
     // エラー

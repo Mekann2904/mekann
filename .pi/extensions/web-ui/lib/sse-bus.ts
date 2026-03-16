@@ -22,7 +22,19 @@ import type { Response } from "express";
 /**
  * @summary SSE event types for real-time updates
  */
-export type SSEEventType = "status" | "tool-call" | "response" | "heartbeat" | "context-update" | "instances-update";
+export type SSEEventType =
+  | "status"
+  | "tool-call"
+  | "response"
+  | "heartbeat"
+  | "context-update"
+  | "instances-update"
+  | "experiment_start"
+  | "experiment_baseline"
+  | "experiment_run"
+  | "experiment_improved"
+  | "experiment_regressed"
+  | "experiment_timeout";
 
 /**
  * @summary SSE event payload structure

@@ -7,7 +7,7 @@
  * @public_api validateBody, validateQuery, validateParams
  * @invariants バリデーション失敗時は400エラー
  * @side_effects なし
- * @failure_modes ZodError（エラーハンドラーで処理）
+ * @failure_modes ZodError（ミドルウェア内で処理、構造化ログ出力）
  *
  * @abdd.explain
  * @overview Honoミドルウェアとしてリクエストをバリデーション
@@ -22,9 +22,45 @@ import type { ZodSchema } from "zod";
 import { ZodError } from "zod";
 
 /**
- * バリデーションエラーのレスポンス生成
+ * バリデーションエラー情報（observability統合用）
  */
-function validationError(c: Context, error: ZodError) {
+interface ValidationErrorLog {
+  timestamp: string;
+  type: "validation_error";
+  source: "body" | "query" | "params";
+  issues: Array<{ path: string; message: string }>;
+  requestPath: string;
+  requestMethod: string;
+}
+
+/**
+ * バリデーションエラーのレスポンス生成
+ *
+ * @remarks
+ * エラーをobservabilityパイプラインに送信せずに400レスポンスを返す。
+ * 将来的な統合のため、console.errorで構造化ログを出力。
+ */
+function validationError(
+  c: Context,
+  error: ZodError,
+  source: "body" | "query" | "params"
+) {
+  // Observability統合ポイント: 構造化ログ出力
+  const logEntry: ValidationErrorLog = {
+    timestamp: new Date().toISOString(),
+    type: "validation_error",
+    source,
+    issues: error.issues.map((e) => ({
+      path: e.path.join("."),
+      message: e.message,
+    })),
+    requestPath: c.req.path,
+    requestMethod: c.req.method,
+  };
+
+  // TODO: observabilityモジュールへの統合（現在はconsole.error）
+  console.error("[validator:validation_error]", JSON.stringify(logEntry));
+
   return c.json(
     {
       success: false,
@@ -58,7 +94,7 @@ export function validateBody<T>(schema: ZodSchema<T>): MiddlewareHandler {
       return await next();
     } catch (error) {
       if (error instanceof ZodError) {
-        return validationError(c, error);
+        return validationError(c, error, "body");
       }
       throw error;
     }
@@ -85,7 +121,7 @@ export function validateQuery<T>(schema: ZodSchema<T>): MiddlewareHandler {
       return await next();
     } catch (error) {
       if (error instanceof ZodError) {
-        return validationError(c, error);
+        return validationError(c, error, "query");
       }
       throw error;
     }
@@ -111,7 +147,7 @@ export function validateParams<T>(schema: ZodSchema<T>): MiddlewareHandler {
       return await next();
     } catch (error) {
       if (error instanceof ZodError) {
-        return validationError(c, error);
+        return validationError(c, error, "params");
       }
       throw error;
     }

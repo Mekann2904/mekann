@@ -197,6 +197,8 @@ export class WorkflowService {
       nextAction = `ul_workflow_plan({ task: "${state.taskDescription}", task_id: "${state.taskId}" })`;
     } else if (nextPhase === "implement") {
       nextAction = "ul_workflow_execute_plan()";
+    } else if (nextPhase === "review") {
+      nextAction = "workspace_verify()";
     } else if (nextPhase === "completed") {
       nextAction = "ul_workflow_commit()";
     }
