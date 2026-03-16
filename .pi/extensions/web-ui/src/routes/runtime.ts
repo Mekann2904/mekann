@@ -33,6 +33,7 @@ import {
   type SymphonyRuntimeSessionSummary,
   type SymphonyRuntimeSummary,
 } from "../../lib/symphony-reader.js";
+import { onExperimentEvent } from "../../../../lib/comprehensive-logger.js";
 
 function formatRouteError(error: unknown): string {
   if (error instanceof Error) {
@@ -53,6 +54,7 @@ const SESSION_MAX_COUNT = parseInt(process.env.PI_SESSION_MAX_COUNT || "1000", 1
 // インメモリセッションストア（簡易版）
 const sessions = new Map<string, RuntimeSession>();
 let runtimeSessionEventSubscribed = false;
+let experimentEventSubscribed = false;
 
 // SSEクライアント管理
 const sseClients = new Map<string, {
@@ -148,6 +150,7 @@ export function cleanupRuntimeSSE(): void {
 // モジュール読み込み時にハートビートを開始
 startHeartbeat();
 ensureRuntimeSessionEventSubscription();
+ensureExperimentEventSubscription();
 startSymphonyOrchestratorLoop({
   cwd: process.cwd(),
   runtimeSessions: () => getRuntimeSessionSnapshots(),
@@ -228,6 +231,18 @@ function ensureRuntimeSessionEventSubscription(): void {
     broadcastToSSEClients(event.type, event.data);
   });
   runtimeSessionEventSubscribed = true;
+}
+
+function ensureExperimentEventSubscription(): void {
+  if (experimentEventSubscribed) {
+    return;
+  }
+
+  onExperimentEvent((event) => {
+    // 実験イベントをSSEクライアントにブロードキャスト
+    broadcastToSSEClients(event.type, event.data);
+  });
+  experimentEventSubscribed = true;
 }
 
 function buildRuntimeStatusSnapshot(): RuntimeStatus {
