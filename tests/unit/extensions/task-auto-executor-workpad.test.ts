@@ -318,7 +318,7 @@ describe("task-auto-executor workpad", () => {
     expect(dispatchPrompt).toContain("Implement orchestration");
     expect(dispatchPrompt).toContain("workspace_verify と required verification commands を完了すること。");
     expect(dispatchPrompt).toContain("検証が通ってから、変更したファイルだけを git add し、必ず git commit を作成すること。");
-    expect(dispatchOptions).toEqual({ deliverAs: "followUp" });
+    expect(dispatchOptions).toBeUndefined();
     expect(dispatchPrompt.indexOf("workspace_verify と required verification commands を完了すること。")).toBeLessThan(
       dispatchPrompt.indexOf("git commit を作成すること。"),
     );
@@ -354,8 +354,9 @@ describe("task-auto-executor workpad", () => {
     const symphonyCommand = pi.commands.find((entry) => entry.name === "symphony");
     await symphonyCommand.command.handler("next", ctx);
 
-    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
-    expect(pi.sendUserMessage.mock.calls[0][1]).toEqual({ deliverAs: "followUp" });
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
+    expect(pi.sendUserMessage.mock.calls[0][1]).toBeUndefined();
+    expect(pi.sendUserMessage.mock.calls[1][1]).toEqual({ deliverAs: "followUp" });
     expect(ctx.ui.notify).toHaveBeenCalledWith("自動実行を開始しました: Implement orchestration", "info");
   });
 

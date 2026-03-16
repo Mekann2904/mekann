@@ -273,6 +273,7 @@ interface SessionManagerLike {
 interface FreshSessionContextLike {
 	newSession?: (options?: { parentSession?: string }) => Promise<{ cancelled?: boolean }>;
 	sessionManager?: SessionManagerLike;
+	waitForIdle?: () => Promise<void>;
 }
 
 // ============================================
@@ -535,6 +536,50 @@ function queueSymphonyFollowUpMessage(
 	}
 
 	sender(content, options);
+}
+
+function isSymphonyQueueRequiredError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	return message.includes("Agent is already processing")
+		|| message.includes("Specify streamingBehavior");
+}
+
+function scheduleSymphonyFreshSessionPrompt(
+	pi: ExtensionAPI,
+	content: string,
+): Promise<void> {
+	return new Promise((resolve, reject) => {
+		queueMicrotask(() => {
+			const sender = (pi as {
+				sendUserMessage?: (
+					content: string,
+					options?: { deliverAs?: "steer" | "followUp" | "nextTurn" },
+				) => void;
+			}).sendUserMessage;
+
+			if (typeof sender !== "function") {
+				reject(new Error("sendUserMessage is unavailable"));
+				return;
+			}
+
+			try {
+				// fresh session へ切り替わった直後の最初の user turn として送る。
+				sender(content);
+				resolve();
+			} catch (error) {
+				if (!isSymphonyQueueRequiredError(error)) {
+					reject(error);
+					return;
+				}
+				try {
+					sender(content, { deliverAs: "followUp" });
+					resolve();
+				} catch (followUpError) {
+					reject(followUpError);
+				}
+			}
+		});
+	});
 }
 
 function queueSymphonyNextCommand(pi: ExtensionAPI): void {
@@ -1754,12 +1799,9 @@ async function queueSymphonyDispatchFreshSession(
 		throw new Error("fresh session creation was cancelled");
 	}
 
-	// /symphony コマンドの実行中は agent がまだ processing 中なので、
-	// fresh session 上の follow-up として積まないと dispatch が落ちる。
-	queueSymphonyFollowUpMessage(
+	await scheduleSymphonyFreshSessionPrompt(
 		pi,
 		buildSymphonyDispatchPrompt(dispatch),
-		{ deliverAs: "followUp" },
 	);
 }
 
