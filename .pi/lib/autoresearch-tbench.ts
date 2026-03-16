@@ -13,6 +13,7 @@ import {
   collectAutoresearchTbenchLiveSnapshot,
   type AutoresearchTbenchLiveSnapshot,
 } from "./autoresearch-tbench-live-monitor.js";
+import { getLogger } from "./comprehensive-logger.js";
 
 export interface AutoresearchTbenchScore {
   successCount: number;
@@ -190,6 +191,28 @@ interface JobReportLike {
 
 const DEFAULT_TIMEOUT_MS = 45 * 60 * 1000;
 const DEFAULT_PREFER_MS = 20 * 60 * 1000;
+
+// Initialize ComprehensiveLogger for experiment events
+const logger = getLogger();
+
+/**
+ * Convert tbench score to e2e-compatible format for ComprehensiveLogger
+ * tbench: successCount, errorCount, totalTrials, elapsedMs
+ * e2e: passed, failed, total, durationMs
+ */
+function tbenchScoreToE2EFormat(score: AutoresearchTbenchScore): {
+  failed: number;
+  passed: number;
+  total: number;
+  durationMs: number;
+} {
+  return {
+    passed: score.successCount,
+    failed: score.errorCount,
+    total: score.totalTrials,
+    durationMs: score.elapsedMs,
+  };
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -929,6 +952,23 @@ export async function initAutoresearchTbench(
   ensureDir(state.runConfig.jobsDir);
   writeAutoresearchTbenchState(cwd, state);
 
+  // Emit experiment_start event
+  logger.logExperimentStart({
+    experimentType: 'tbench',
+    label: tag,
+    tag,
+    branch: branchName,
+    targetCommit: headCommit,
+    config: {
+      taskNames,
+      dataset: state.runConfig.dataset ?? undefined,
+      agent: state.runConfig.agent,
+      model: state.runConfig.model ?? undefined,
+      nConcurrent: state.runConfig.nConcurrent ?? undefined,
+    },
+  });
+  await logger.flush();
+
   return {
     branchName,
     headCommit,
@@ -968,6 +1008,15 @@ async function runBaselineLike(
     writeAutoresearchTbenchState(cwd, nextState);
     appendResultRow(cwd, label, "stopped", null, commit, run);
 
+    // Emit experiment_stop event and flush
+    logger.logExperimentStop({
+      experimentType: 'tbench',
+      label,
+      iteration: state.experimentCount + 1,
+      reason: 'user_requested',
+    });
+    await logger.flush();
+
     return {
       outcome: "stopped",
       score: null,
@@ -998,6 +1047,15 @@ async function runBaselineLike(
   nextState.lastResultPath = run.resultPath ?? undefined;
   writeAutoresearchTbenchState(cwd, nextState);
   appendResultRow(cwd, label, "baseline", run.summary.score, commit, run);
+
+  // Emit experiment_baseline event
+  logger.logExperimentBaseline({
+    experimentType: 'tbench',
+    label,
+    score: tbenchScoreToE2EFormat(run.summary.score),
+    commit,
+  });
+  await logger.flush();
 
   return {
     outcome: "baseline",
@@ -1037,6 +1095,16 @@ export async function runAutoresearchTbench(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const preferMs = options.preferMs ?? DEFAULT_PREFER_MS;
   const candidateBaseCommit = await getHeadCommit(cwd);
+
+  // Emit experiment_run event
+  logger.logExperimentRun({
+    experimentType: 'tbench',
+    label,
+    iteration: state.experimentCount + 1,
+    commit: candidateBaseCommit,
+  });
+  await logger.flush();
+
   const run = await executeTerminalBenchRun(cwd, label, state.runConfig, timeoutMs, {
     onSnapshot: options.onSnapshot,
     onTextUpdate: options.onTextUpdate,
@@ -1047,8 +1115,24 @@ export async function runAutoresearchTbench(
 
   if (run.stopped) {
     outcome = "stopped";
+    // Emit experiment_stop event and flush
+    logger.logExperimentStop({
+      experimentType: 'tbench',
+      label,
+      iteration: state.experimentCount + 1,
+      reason: 'user_requested',
+    });
+    await logger.flush();
   } else if (run.timedOut) {
     outcome = "timeout";
+    // Emit experiment_timeout event
+    logger.logExperimentTimeout({
+      experimentType: 'tbench',
+      label,
+      iteration: state.experimentCount + 1,
+      timeoutMs,
+    });
+    await logger.flush();
   } else if (run.summary) {
     score = run.summary.score;
     outcome = determineAutoresearchTbenchOutcome(score, state.bestScore);
@@ -1077,6 +1161,27 @@ export async function runAutoresearchTbench(
     writeAutoresearchTbenchState(cwd, nextState);
     appendResultRow(cwd, label, outcome, score, commit, run);
 
+    // Emit experiment_improved event
+    const previousScore = state.bestScore;
+    let improvementType: 'fewer_failures' | 'more_passes' | 'faster' = 'more_passes';
+    if (score.successCount > previousScore.successCount) {
+      improvementType = 'more_passes';
+    } else if (score.errorCount < previousScore.errorCount) {
+      improvementType = 'fewer_failures';
+    } else {
+      improvementType = 'faster';
+    }
+
+    logger.logExperimentImproved({
+      experimentType: 'tbench',
+      label,
+      previousScore: tbenchScoreToE2EFormat(previousScore),
+      newScore: tbenchScoreToE2EFormat(score),
+      commit,
+      improvementType,
+    });
+    await logger.flush();
+
     return {
       outcome,
       score,
@@ -1087,6 +1192,29 @@ export async function runAutoresearchTbench(
     };
   }
 
+  // Emit experiment_regressed event for non-improved outcomes with score
+  if (outcome === "regressed" && score) {
+    const previousScore = state.bestScore;
+    let regressionType: 'more_failures' | 'fewer_passes' | 'slower' = 'more_failures';
+    if (score.errorCount > previousScore.errorCount) {
+      regressionType = 'more_failures';
+    } else if (score.successCount < previousScore.successCount) {
+      regressionType = 'fewer_passes';
+    } else {
+      regressionType = 'slower';
+    }
+
+    logger.logExperimentRegressed({
+      experimentType: 'tbench',
+      label,
+      previousScore: tbenchScoreToE2EFormat(previousScore),
+      newScore: tbenchScoreToE2EFormat(score),
+      regressionType,
+      reverted: state.gitEnabled,
+    });
+    await logger.flush();
+  }
+
   if (state.gitEnabled) {
     await resetToCommit(cwd, state.bestCommit);
     commit = state.bestCommit;
@@ -1094,6 +1222,29 @@ export async function runAutoresearchTbench(
 
   writeAutoresearchTbenchState(cwd, nextState);
   appendResultRow(cwd, label, outcome, score, commit, run);
+
+  // Emit experiment_regressed event for non-improved outcomes with score
+  if (outcome === "regressed" && score) {
+    const previousScore = state.bestScore;
+    let regressionType: 'more_failures' | 'fewer_passes' | 'slower';
+    if (score.errorCount > previousScore.errorCount) {
+      regressionType = 'more_failures';
+    } else if (score.successCount < previousScore.successCount) {
+      regressionType = 'fewer_passes';
+    } else {
+      regressionType = 'slower';
+    }
+
+    logger.logExperimentRegressed({
+      experimentType: 'tbench',
+      label,
+      previousScore: tbenchScoreToE2EFormat(previousScore),
+      newScore: tbenchScoreToE2EFormat(score),
+      regressionType,
+      reverted: state.gitEnabled,
+    });
+    await logger.flush();
+  }
 
   return {
     outcome,
