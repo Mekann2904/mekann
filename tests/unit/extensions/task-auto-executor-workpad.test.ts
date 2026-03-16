@@ -654,6 +654,85 @@ describe("task-auto-executor workpad", () => {
     expect(storageMocks.state.tasks[1].status).toBe("todo");
   });
 
+  it("session_shutdown をまたいでも Symphony loop は次タスク継続を止めない", async () => {
+    storageMocks.state = {
+      tasks: [
+        {
+          id: "task-1",
+          title: "Implement orchestration",
+          description: "wire runner and queue",
+          status: "todo",
+          priority: "high",
+          tags: [],
+          createdAt: "2026-03-08T00:00:00.000Z",
+          updatedAt: "2026-03-08T00:00:00.000Z",
+          retryCount: 0,
+          completionGateStatus: "clear",
+        },
+        {
+          id: "task-2",
+          title: "Follow-up cleanup",
+          description: "second ticket",
+          status: "todo",
+          priority: "medium",
+          tags: [],
+          createdAt: "2026-03-08T00:00:01.000Z",
+          updatedAt: "2026-03-08T00:00:01.000Z",
+          retryCount: 0,
+          completionGateStatus: "clear",
+        },
+      ],
+    };
+
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+    const commandCtx = createSymphonyCommandContext();
+
+    extension(pi as never);
+
+    const symphonyCommand = pi.commands.find((entry) => entry.name === "symphony");
+    await symphonyCommand.command.handler("next", commandCtx);
+    writeFileSync(".pi/tasks/auto-executor-runtime.json", JSON.stringify({
+      checkpoints: [],
+    }, null, 2));
+
+    runtimeSessionMocks.emit({
+      type: "session_updated",
+      data: {
+        taskId: "task-1",
+        status: "completed",
+        message: "done",
+      },
+    });
+
+    const sessionShutdownHandler = pi.handlers.get("session_shutdown");
+    await sessionShutdownHandler?.({}, { cwd: "/repo" });
+
+    const agentEndHandler = pi.handlers.get("agent_end");
+    const notify = vi.fn();
+    const setStatus = vi.fn();
+
+    await agentEndHandler?.({}, {
+      cwd: "/repo",
+      ui: {
+        notify,
+        setStatus,
+        theme: {
+          fg: (_tone: string, text: string) => text,
+        },
+      },
+    });
+
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
+    expect(pi.sendUserMessage).toHaveBeenLastCalledWith("/symphony next", {
+      deliverAs: "followUp",
+    });
+    expect(notify).toHaveBeenCalledWith(
+      "[Symphony] 次タスクを継続します。`/symphony next` を follow-up に投入し、fresh session で開始します。",
+      "info",
+    );
+  });
+
   it("session_start では pending task があっても自動起動しない", async () => {
     writeFileSync(".pi/tasks/auto-executor-config.json", JSON.stringify({
       enabled: true,

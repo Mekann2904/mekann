@@ -2345,7 +2345,8 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 		},
 	});
 
-	// セッション終了時にリスナー重複登録防止フラグをリセット
+	// セッション終了時に durable checkpoint を残す。
+	// Symphony は instance 単位の loop なので、fresh session をまたいでも停止しない。
 	pi.on("session_shutdown", async () => {
 		if (autoExecutorConfig.currentTaskId) {
 			const task = loadStorage().tasks.find((item) => item.id === autoExecutorConfig.currentTaskId);
@@ -2368,7 +2369,6 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 		}
 		sessionEventUnsubscribe?.();
 		sessionEventUnsubscribe = null;
-		stopSymphonyForCurrentInstance();
 		isInitialized = false;
 	});
 }
