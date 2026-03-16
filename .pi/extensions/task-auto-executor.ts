@@ -1879,13 +1879,15 @@ export function selectNextLoopTask(storage: TaskStorage): RalphLoopSelection | n
 	}
 
 	candidates.sort(compareLoopTasks);
-
-	const nonValidationCandidates = candidates.filter(task => classifyRalphLoopTaskKind(task) !== "validation");
+	const highestPriority = PRIORITY_ORDER[candidates[0]?.priority ?? "low"] ?? PRIORITY_ORDER.low;
+	const highestPriorityCandidates = candidates.filter((task) => (PRIORITY_ORDER[task.priority] ?? 0) === highestPriority);
+	const nonValidationCandidates = highestPriorityCandidates.filter(task => classifyRalphLoopTaskKind(task) !== "validation");
+	const hasValidationAtHighestPriority = highestPriorityCandidates.some((task) => classifyRalphLoopTaskKind(task) === "validation");
 	const selected = nonValidationCandidates[0] ?? candidates[0];
 	const kind = classifyRalphLoopTaskKind(selected);
-	const validationLaneLimited = nonValidationCandidates.length > 0;
+	const validationLaneLimited = nonValidationCandidates.length > 0 && hasValidationAtHighestPriority;
 	const reason = validationLaneLimited
-		? `one thing per loop: implementation/research lane preferred over validation lane (${kind})`
+		? `one thing per loop: highest priority lane kept at ${selected.priority}, implementation/research lane preferred over validation lane (${kind})`
 		: `one thing per loop: best available pending task (${kind})`;
 
 	return {

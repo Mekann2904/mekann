@@ -59,7 +59,20 @@ describe("classifyRalphLoopTaskKind", () => {
 });
 
 describe("selectNextLoopTask", () => {
-  it("validation より implementation を優先する", () => {
+  it("同じ priority なら validation より implementation を優先する", () => {
+    const selection = selectNextLoopTask({
+      tasks: [
+        createTask({ id: "verify", title: "Run full test suite", priority: "urgent" }),
+        createTask({ id: "impl", title: "Implement retry budget fix", priority: "urgent" }),
+      ] as never[],
+    } as never);
+
+    expect(selection?.task.id).toBe("impl");
+    expect(selection?.kind).toBe("implementation");
+    expect(selection?.validationLaneLimited).toBe(true);
+  });
+
+  it("priority が高ければ validation でも先に選ぶ", () => {
     const selection = selectNextLoopTask({
       tasks: [
         createTask({ id: "verify", title: "Run full test suite", priority: "urgent" }),
@@ -67,9 +80,9 @@ describe("selectNextLoopTask", () => {
       ] as never[],
     } as never);
 
-    expect(selection?.task.id).toBe("impl");
-    expect(selection?.kind).toBe("implementation");
-    expect(selection?.validationLaneLimited).toBe(true);
+    expect(selection?.task.id).toBe("verify");
+    expect(selection?.kind).toBe("validation");
+    expect(selection?.validationLaneLimited).toBe(false);
   });
 
   it("validation しかなければ validation を返す", () => {
@@ -90,7 +103,7 @@ describe("buildRalphLoopExecutionBrief", () => {
     const brief = buildRalphLoopExecutionBrief({
       task: createTask({ id: "impl" }) as never,
       kind: "implementation",
-      reason: "one thing per loop: implementation/research lane preferred over validation lane (implementation)",
+      reason: "one thing per loop: highest priority lane kept at urgent, implementation/research lane preferred over validation lane (implementation)",
       validationLaneLimited: true,
     });
 
