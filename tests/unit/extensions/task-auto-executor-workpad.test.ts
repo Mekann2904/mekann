@@ -96,6 +96,14 @@ const orchestrationMocks = vi.hoisted(() => ({
 
 vi.mock("../../../.pi/lib/symphony-orchestrator-state.js", () => orchestrationMocks);
 
+const trackerMutationMocks = vi.hoisted(() => ({
+  markSymphonyTrackerIssueCompleted: vi.fn(async () => undefined),
+  markSymphonyTrackerIssueFailed: vi.fn(async () => undefined),
+  markSymphonyTrackerIssueTodo: vi.fn(async () => undefined),
+}));
+
+vi.mock("../../../.pi/lib/symphony-tracker.js", () => trackerMutationMocks);
+
 const longRunningMocks = vi.hoisted(() => ({
   createLongRunningReplay: vi.fn(() => ({
     session: {

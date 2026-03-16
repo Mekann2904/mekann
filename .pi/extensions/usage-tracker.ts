@@ -195,10 +195,11 @@ function parseUsageFile(filePath: string): {
 				}
 			} catch (e) {
 				// Skip malformed JSON lines (normal for partial writes)
+				console.warn("[usage-tracker] Skipped malformed JSON line:", { line: line.substring(0, 100), error: String(e) });
 			}
 		}
 	} catch (e) {
-		console.debug("[usage-tracker] parseUsageFile failed:", { path: filePath, error: e });
+		console.warn("[usage-tracker] parseUsageFile failed:", { path: filePath, error: e });
 	}
 
 	return { byModel, byDate, byDateModel, byDateTokens, byDateRuns, byModelTokens };

@@ -304,8 +304,8 @@ function appendJsonlEntry(filePath: string, entry: Record<string, unknown>): voi
   try {
     const line = JSON.stringify(entry) + "\n";
     appendFileSync(filePath, line, "utf-8");
-  } catch {
-    // Ignore write errors
+  } catch (e) {
+    console.warn("[metrics-collector] Failed to append JSONL entry:", { filePath, error: String(e) });
   }
 }
 

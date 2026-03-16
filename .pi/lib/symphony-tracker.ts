@@ -5,7 +5,7 @@
  * related: .pi/lib/symphony-config.ts, .pi/lib/storage/task-plan-store.ts, .pi/lib/symphony-scheduler.ts, WORKFLOW.md
  */
 
-import { loadTaskStorage } from "./storage/task-plan-store.js";
+import { loadTaskStorage, saveTaskStorage } from "./storage/task-plan-store.js";
 import { loadSymphonyConfig, normalizeSymphonyStateName, type SymphonyEffectiveConfig } from "./symphony-config.js";
 import { getAllUlWorkflowTasks } from "../extensions/web-ui/lib/ul-workflow-reader.js";
 
@@ -23,6 +23,10 @@ interface StoredTask {
   retryCount?: number;
   nextRetryAt?: string;
   lastError?: string;
+}
+
+interface StoredTaskStorage {
+  tasks: StoredTask[];
 }
 
 interface StoredUlTask {
@@ -77,6 +81,26 @@ interface LinearIssuesByIdsResponse {
   issues?: {
     nodes?: LinearIssueNode[];
   };
+}
+
+interface LinearIssueStateCatalogResponse {
+  issue?: {
+    id?: string | null;
+    team?: {
+      states?: {
+        nodes?: Array<{
+          id?: string | null;
+          name?: string | null;
+        }>;
+      } | null;
+    } | null;
+  } | null;
+}
+
+interface LinearIssueUpdateResponse {
+  issueUpdate?: {
+    success?: boolean | null;
+  } | null;
 }
 
 export interface SymphonyTrackerIssue {
@@ -283,6 +307,139 @@ function normalizeLinearIssue(issue: LinearIssueNode): SymphonyTrackerIssue | nu
   };
 }
 
+function getTrackerTodoStateName(config: SymphonyEffectiveConfig): string {
+  return config.tracker.activeStates[0] ?? "Todo";
+}
+
+function getTrackerInProgressStateName(config: SymphonyEffectiveConfig): string {
+  return config.tracker.activeStates[1] ?? config.tracker.activeStates[0] ?? "In Progress";
+}
+
+function getTrackerDoneStateName(config: SymphonyEffectiveConfig): string {
+  const matched = config.tracker.terminalStates.find((state) => /done|closed|complete/i.test(state));
+  return matched ?? config.tracker.terminalStates[0] ?? "Done";
+}
+
+function getTrackerFailedStateName(config: SymphonyEffectiveConfig): string {
+  const matched = config.tracker.terminalStates.find((state) => /fail/i.test(state));
+  return matched ?? config.tracker.terminalStates[0] ?? "Failed";
+}
+
+function resolveTaskStatusFromTrackerState(
+  stateName: string,
+  config: SymphonyEffectiveConfig,
+): TaskStatus | null {
+  const normalized = normalizeSymphonyStateName(stateName);
+  if (normalized === normalizeSymphonyStateName(getTrackerTodoStateName(config))) {
+    return "todo";
+  }
+  if (normalized === normalizeSymphonyStateName(getTrackerInProgressStateName(config))) {
+    return "in_progress";
+  }
+  if (normalized === normalizeSymphonyStateName(getTrackerDoneStateName(config))) {
+    return "completed";
+  }
+  if (normalized === normalizeSymphonyStateName(getTrackerFailedStateName(config))) {
+    return "failed";
+  }
+  if (normalized === normalizeSymphonyStateName("cancelled") || normalized === normalizeSymphonyStateName("canceled")) {
+    return "cancelled";
+  }
+  return null;
+}
+
+function updateTaskQueueIssueState(
+  cwd: string,
+  issueId: string,
+  nextStateName: string,
+): boolean {
+  const config = loadSymphonyConfig(cwd);
+  const nextStatus = resolveTaskStatusFromTrackerState(nextStateName, config);
+  if (!nextStatus) {
+    return false;
+  }
+
+  const storage = loadTaskStorage<StoredTaskStorage>(cwd);
+  const taskIndex = storage.tasks.findIndex((task) => task.id === issueId);
+  if (taskIndex < 0) {
+    return false;
+  }
+
+  const current = storage.tasks[taskIndex];
+  const nextTask: StoredTask = {
+    ...current,
+    status: nextStatus,
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (nextStatus === "completed") {
+    nextTask.lastError = undefined;
+    nextTask.nextRetryAt = undefined;
+    nextTask.retryCount = 0;
+  } else if (nextStatus === "failed") {
+    nextTask.nextRetryAt = undefined;
+  }
+
+  storage.tasks[taskIndex] = nextTask;
+  saveTaskStorage(storage, cwd);
+  return true;
+}
+
+async function resolveLinearStateId(
+  config: SymphonyEffectiveConfig,
+  issueId: string,
+  targetStateName: string,
+): Promise<string> {
+  const query = `
+    query SymphonyIssueStateCatalog($issueId: ID!) {
+      issue(id: $issueId) {
+        id
+        team {
+          states {
+            nodes {
+              id
+              name
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const data = await fetchLinearGraphQL<LinearIssueStateCatalogResponse>(config, query, {
+    issueId,
+  });
+  const states = data.issue?.team?.states?.nodes ?? [];
+  const matched = states.find((state) => normalizeSymphonyStateName(String(state.name ?? "")) === normalizeSymphonyStateName(targetStateName));
+  if (!matched?.id) {
+    throw new SymphonyTrackerError("linear_missing_state", `target state not found: ${targetStateName}`);
+  }
+  return matched.id;
+}
+
+async function updateLinearIssueState(
+  config: SymphonyEffectiveConfig,
+  issueId: string,
+  targetStateName: string,
+): Promise<void> {
+  const stateId = await resolveLinearStateId(config, issueId, targetStateName);
+  const mutation = `
+    mutation SymphonyIssueUpdateState($issueId: ID!, $stateId: String!) {
+      issueUpdate(id: $issueId, input: { stateId: $stateId }) {
+        success
+      }
+    }
+  `;
+
+  const data = await fetchLinearGraphQL<LinearIssueUpdateResponse>(config, mutation, {
+    issueId,
+    stateId,
+  });
+  if (!data.issueUpdate?.success) {
+    throw new SymphonyTrackerError("linear_issue_update_failed", `failed to move issue: ${issueId}`);
+  }
+}
+
 async function fetchLinearCandidateIssues(config: SymphonyEffectiveConfig): Promise<SymphonyTrackerIssue[]> {
   if (!config.tracker.projectSlug) {
     throw new SymphonyTrackerError("missing_tracker_project_slug");
@@ -452,4 +609,49 @@ export async function fetchSymphonyIssueStatesByIds(
       .filter((task) => idSet.has(task.id))
       .map(normalizeUlWorkflowIssue),
   ];
+}
+
+export async function updateSymphonyTrackerIssueState(
+  cwd: string = process.cwd(),
+  issueId: string,
+  targetStateName: string,
+  config: SymphonyEffectiveConfig = loadSymphonyConfig(cwd),
+): Promise<void> {
+  if (config.tracker.kind === "linear") {
+    await updateLinearIssueState(config, issueId, targetStateName);
+    return;
+  }
+  updateTaskQueueIssueState(cwd, issueId, targetStateName);
+}
+
+export async function markSymphonyTrackerIssueTodo(
+  cwd: string = process.cwd(),
+  issueId: string,
+): Promise<void> {
+  const config = loadSymphonyConfig(cwd);
+  await updateSymphonyTrackerIssueState(cwd, issueId, getTrackerTodoStateName(config), config);
+}
+
+export async function markSymphonyTrackerIssueInProgress(
+  cwd: string = process.cwd(),
+  issueId: string,
+): Promise<void> {
+  const config = loadSymphonyConfig(cwd);
+  await updateSymphonyTrackerIssueState(cwd, issueId, getTrackerInProgressStateName(config), config);
+}
+
+export async function markSymphonyTrackerIssueCompleted(
+  cwd: string = process.cwd(),
+  issueId: string,
+): Promise<void> {
+  const config = loadSymphonyConfig(cwd);
+  await updateSymphonyTrackerIssueState(cwd, issueId, getTrackerDoneStateName(config), config);
+}
+
+export async function markSymphonyTrackerIssueFailed(
+  cwd: string = process.cwd(),
+  issueId: string,
+): Promise<void> {
+  const config = loadSymphonyConfig(cwd);
+  await updateSymphonyTrackerIssueState(cwd, issueId, getTrackerFailedStateName(config), config);
 }

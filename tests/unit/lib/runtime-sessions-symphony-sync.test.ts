@@ -24,6 +24,12 @@ const workspaceMocks = vi.hoisted(() => ({
 
 vi.mock("../../../.pi/lib/symphony-workspace-manager.js", () => workspaceMocks);
 
+const trackerMocks = vi.hoisted(() => ({
+  markSymphonyTrackerIssueInProgress: vi.fn(async () => undefined),
+}));
+
+vi.mock("../../../.pi/lib/symphony-tracker.js", () => trackerMocks);
+
 describe("runtime-sessions symphony sync", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -91,6 +97,10 @@ describe("runtime-sessions symphony sync", () => {
       issueId: "task-1",
       sessionId: "session-1",
     }));
+    expect(trackerMocks.markSymphonyTrackerIssueInProgress).toHaveBeenCalledWith(
+      process.cwd(),
+      "task-1",
+    );
     expect(orchestrationMocks.queueSymphonyIssueRetry).toHaveBeenCalledWith(expect.objectContaining({
       issueId: "task-1",
       retryAttempt: 3,

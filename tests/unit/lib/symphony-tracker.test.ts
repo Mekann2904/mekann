@@ -53,6 +53,7 @@ vi.mock("../../../.pi/lib/storage/task-plan-store.js", () => ({
       },
     ],
   })),
+  saveTaskStorage: vi.fn(),
 }));
 
 vi.mock("../../../.pi/extensions/web-ui/lib/ul-workflow-reader.js", () => ({
@@ -72,9 +73,12 @@ import {
   fetchSymphonyCandidateIssues,
   fetchSymphonyIssueStatesByIds,
   fetchSymphonyIssuesByStates,
+  markSymphonyTrackerIssueCompleted,
+  markSymphonyTrackerIssueInProgress,
   SymphonyTrackerError,
 } from "../../../.pi/lib/symphony-tracker.js";
 import { loadSymphonyConfig } from "../../../.pi/lib/symphony-config.js";
+import { saveTaskStorage } from "../../../.pi/lib/storage/task-plan-store.js";
 
 describe("symphony-tracker", () => {
   it("task_queue active states を candidate issues に変換する", async () => {
@@ -310,6 +314,100 @@ describe("symphony-tracker", () => {
 
     await expect(fetchSymphonyCandidateIssues("/repo")).rejects.toMatchObject<SymphonyTrackerError>({
       code: "linear_missing_end_cursor",
+    });
+
+    vi.unstubAllGlobals();
+  });
+
+  it("task_queue issue を In Progress / Done へ更新できる", async () => {
+    await markSymphonyTrackerIssueInProgress("/repo", "task-1");
+    await markSymphonyTrackerIssueCompleted("/repo", "task-1");
+
+    expect(vi.mocked(saveTaskStorage)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(saveTaskStorage).mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      tasks: expect.arrayContaining([
+        expect.objectContaining({
+          id: "task-1",
+          status: "in_progress",
+        }),
+      ]),
+    }));
+    expect(vi.mocked(saveTaskStorage).mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+      tasks: expect.arrayContaining([
+        expect.objectContaining({
+          id: "task-1",
+          status: "completed",
+        }),
+      ]),
+    }));
+  });
+
+  it("linear issue を state mutation で更新できる", async () => {
+    vi.mocked(loadSymphonyConfig).mockReturnValueOnce({
+      workflowPath: "/repo/WORKFLOW.md",
+      tracker: {
+        kind: "linear",
+        endpoint: "https://api.linear.app/graphql",
+        apiKey: "lin_api_test",
+        projectSlug: "proj",
+        activeStates: ["Todo", "In Progress"],
+        terminalStates: ["Done", "Cancelled", "Failed"],
+      },
+      polling: { intervalMs: 30000 },
+      agent: { maxConcurrentAgents: 10, maxRetryBackoffMs: 300000 },
+      runtime: {
+        kind: "pi-mono-extension",
+        command: "pi",
+        turnTimeoutMs: 3600000,
+        readTimeoutMs: 5000,
+        stallTimeoutMs: 300000,
+      },
+    });
+
+    const fetchMock = vi.fn(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      if (String(body.query).includes("SymphonyIssueStateCatalog")) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: {
+              issue: {
+                id: "lin-1",
+                team: {
+                  states: {
+                    nodes: [
+                      { id: "state-todo", name: "Todo" },
+                      { id: "state-progress", name: "In Progress" },
+                    ],
+                  },
+                },
+              },
+            },
+          }),
+        };
+      }
+
+      return {
+        ok: true,
+        json: async () => ({
+          data: {
+            issueUpdate: {
+              success: true,
+            },
+          },
+        }),
+      };
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    await markSymphonyTrackerIssueInProgress("/repo", "lin-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const mutationBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body ?? "{}"));
+    expect(mutationBody.variables).toEqual({
+      issueId: "lin-1",
+      stateId: "state-progress",
     });
 
     vi.unstubAllGlobals();

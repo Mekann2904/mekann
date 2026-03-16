@@ -254,7 +254,8 @@ function parseDynamicToolDefinition(content: string): DynamicToolDefinition | nu
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
-  } catch {
+  } catch (e) {
+    console.warn("[registry] Failed to parse dynamic tool definition:", { content: content.substring(0, 100), error: String(e) });
     return null;
   }
   if (!Value.Check(DynamicToolDefinitionSchema, parsed)) {

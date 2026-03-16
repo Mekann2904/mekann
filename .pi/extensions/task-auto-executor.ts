@@ -45,6 +45,11 @@ import {
 	getSymphonyIssueState,
 	releaseSymphonyIssue,
 } from "../lib/symphony-orchestrator-state.js";
+import {
+	markSymphonyTrackerIssueCompleted,
+	markSymphonyTrackerIssueFailed,
+	markSymphonyTrackerIssueTodo,
+} from "../lib/symphony-tracker.js";
 import { createLongRunningReplay } from "../lib/long-running-supervisor.js";
 import { onSessionEvent } from "../lib/runtime-sessions.js";
 
@@ -1052,6 +1057,7 @@ function handleRuntimeSessionOutcome(event: {
 			const retryAttempt = (issueState?.retryAttempt ?? 0) + 1;
 			if (retryAttempt <= autoExecutorConfig.maxRetries) {
 				const { delayMs } = scheduleTaskRetry(session.taskId, gateMessage);
+				void markSymphonyTrackerIssueTodo(process.cwd(), session.taskId).catch(() => undefined);
 				upsertCheckpoint(session.taskId, {
 					title: runtimeTask?.title ?? session.taskId,
 					description: runtimeTask?.description,
@@ -1076,6 +1082,7 @@ function handleRuntimeSessionOutcome(event: {
 			}
 
 			finalizeTaskStatus(session.taskId, "failed");
+			void markSymphonyTrackerIssueFailed(process.cwd(), session.taskId).catch(() => undefined);
 			upsertCheckpoint(session.taskId, {
 				title: runtimeTask?.title ?? session.taskId,
 				description: runtimeTask?.description,
@@ -1101,6 +1108,7 @@ function handleRuntimeSessionOutcome(event: {
 
 		updateTaskCompletionGate(session.taskId, "clear", "completion gate passed", []);
 		finalizeTaskStatus(session.taskId, "completed");
+		void markSymphonyTrackerIssueCompleted(process.cwd(), session.taskId).catch(() => undefined);
 		upsertCheckpoint(session.taskId, {
 			title: runtimeTask?.title ?? session.taskId,
 			description: runtimeTask?.description,
@@ -1124,6 +1132,7 @@ function handleRuntimeSessionOutcome(event: {
 		const retryAttempt = (issueState?.retryAttempt ?? 0) + 1;
 		if (retryAttempt <= autoExecutorConfig.maxRetries) {
 			const { delayMs } = scheduleTaskRetry(session.taskId, session.message);
+			void markSymphonyTrackerIssueTodo(process.cwd(), session.taskId).catch(() => undefined);
 			upsertCheckpoint(session.taskId, {
 				title: runtimeTask?.title ?? session.taskId,
 				description: runtimeTask?.description,
@@ -1148,6 +1157,7 @@ function handleRuntimeSessionOutcome(event: {
 		}
 
 		finalizeTaskStatus(session.taskId, "failed");
+		void markSymphonyTrackerIssueFailed(process.cwd(), session.taskId).catch(() => undefined);
 		upsertCheckpoint(session.taskId, {
 			title: runtimeTask?.title ?? session.taskId,
 			description: runtimeTask?.description,
