@@ -33,6 +33,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { getInstanceId, isProcessAlive, extractPidFromInstanceId } from "../lib/core/ownership.js";
 import {
 	loadTaskStorage as loadSharedTaskStorage,
+	mutateTaskStorage as mutateSharedTaskStorage,
 	saveTaskStorage as saveSharedTaskStorage,
 } from "../lib/storage/task-plan-store.js";
 import {
@@ -286,6 +287,13 @@ function saveStorage(storage: TaskStorage): void {
 	saveSharedTaskStorage(storage);
 }
 
+function mutateStorage<R>(cwd: string, mutate: (storage: TaskStorage) => R): R {
+	return mutateSharedTaskStorage<TaskStorage, R>({
+		cwd,
+		mutate,
+	});
+}
+
 function loadConfig(): void {
 	if (!existsSync(CONFIG_FILE)) {
 		return;
@@ -473,23 +481,36 @@ function startTaskWorkpad(cwd: string, task: Task): string | null {
   return record.metadata.id;
 }
 
-function reclaimTaskOwnership(taskId: string): Task | null {
-	const storage = loadStorage();
-	const taskIndex = storage.tasks.findIndex((task) => task.id === taskId);
-	if (taskIndex < 0) {
+function reclaimTaskOwnership(cwd: string, taskId: string): Task | null {
+	const task = mutateStorage(cwd, (storage) => {
+		const taskIndex = storage.tasks.findIndex((item) => item.id === taskId);
+		if (taskIndex < 0) {
+			return null;
+		}
+
+		const nextTask = storage.tasks[taskIndex];
+		if (nextTask.status !== "in_progress") {
+			return null;
+		}
+		if (nextTask.ownerInstanceId && nextTask.ownerInstanceId !== getInstanceId()) {
+			const pid = extractPidFromInstanceId(nextTask.ownerInstanceId);
+			if (pid && isProcessAlive(pid)) {
+				return null;
+			}
+		}
+		nextTask.status = "in_progress";
+		nextTask.ownerInstanceId = getInstanceId();
+		nextTask.claimedAt = new Date().toISOString();
+		nextTask.updatedAt = new Date().toISOString();
+		return structuredClone(nextTask);
+	});
+
+	if (!task) {
 		return null;
 	}
 
-	const task = storage.tasks[taskIndex];
-	task.status = "in_progress";
-	task.ownerInstanceId = getInstanceId();
-	task.claimedAt = new Date().toISOString();
-	task.updatedAt = new Date().toISOString();
-	saveStorage(storage);
-
-	autoExecutorConfig.currentTaskId = task.id;
+	autoExecutorConfig.currentTaskId = taskId;
 	saveConfig();
-
 	return task;
 }
 
@@ -510,9 +531,34 @@ function executeTaskRunNextLocally(cwd: string): TaskRunNextResult | {
 	content: Array<{ type: "text"; text: string }>;
 	details: { pendingCount: number };
 } {
-	const storage = loadStorage();
-	const selection = selectNextLoopTask(storage);
-	const nextTask = selection?.task ?? null;
+	const claimed = mutateStorage(cwd, (storage) => {
+		const selection = selectNextLoopTask(storage);
+		const nextTask = selection?.task ?? null;
+
+		if (!nextTask) {
+			return null;
+		}
+
+		const taskIndex = storage.tasks.findIndex((task) => task.id === nextTask.id);
+		if (taskIndex < 0) {
+			return null;
+		}
+
+		const instanceId = getInstanceId();
+		const claimedTask = storage.tasks[taskIndex];
+		claimedTask.status = "in_progress";
+		claimedTask.ownerInstanceId = instanceId;
+		claimedTask.claimedAt = new Date().toISOString();
+		claimedTask.updatedAt = new Date().toISOString();
+
+		return {
+			task: structuredClone(claimedTask),
+			selection,
+		};
+	});
+
+	const nextTask = claimed?.task ?? null;
+	const selection = claimed?.selection ?? null;
 
 	if (!nextTask) {
 		return {
@@ -521,14 +567,7 @@ function executeTaskRunNextLocally(cwd: string): TaskRunNextResult | {
 		};
 	}
 
-	const taskIndex = storage.tasks.findIndex((task) => task.id === nextTask.id);
 	const instanceId = getInstanceId();
-	storage.tasks[taskIndex].status = "in_progress";
-	storage.tasks[taskIndex].ownerInstanceId = instanceId;
-	storage.tasks[taskIndex].claimedAt = new Date().toISOString();
-	storage.tasks[taskIndex].updatedAt = new Date().toISOString();
-	saveStorage(storage);
-
 	autoExecutorConfig.currentTaskId = nextTask.id;
 	saveConfig();
 	const workpadId = startTaskWorkpad(cwd, nextTask);
@@ -1467,7 +1506,7 @@ async function prepareAutoDispatch(
 	let checkpoint = target?.checkpoint ?? null;
 
 	if (target?.mode === "resume") {
-		const reclaimed = reclaimTaskOwnership(target.task.id);
+		const reclaimed = reclaimTaskOwnership(ctx.cwd, target.task.id);
 		if (!reclaimed) {
 			ctx.ui?.notify("resume 対象タスクの所有権復旧に失敗しました。", "warning");
 			return null;

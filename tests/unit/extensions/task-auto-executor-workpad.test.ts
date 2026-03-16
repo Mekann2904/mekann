@@ -51,6 +51,12 @@ const storageMocks = vi.hoisted(() => ({
   saveTaskStorage: vi.fn((nextState) => {
     storageMocks.state = structuredClone(nextState);
   }),
+  mutateTaskStorage: vi.fn((input: { mutate: (storage: typeof storageMocks.state) => unknown }) => {
+    const nextState = structuredClone(storageMocks.state);
+    const result = input.mutate(nextState);
+    storageMocks.saveTaskStorage(nextState);
+    return result;
+  }),
 }));
 
 vi.mock("../../../.pi/lib/storage/task-plan-store.js", () => storageMocks);
@@ -264,6 +270,21 @@ describe("task-auto-executor workpad", () => {
         workpadId: "wp-1",
       }),
     ]);
+  });
+
+  it("task_run_next は atomic claim に負けたら空結果を返す", async () => {
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+
+    storageMocks.mutateTaskStorage.mockImplementationOnce(() => null);
+
+    extension(pi as never);
+    const tool = pi.tools.find((entry) => entry.name === "task_run_next");
+    const result = await tool.execute("t1", {}, undefined, undefined, { cwd: "/repo" });
+
+    expect(result.content[0].text).toContain("実行待ちのタスクがありません。");
+    expect(result.details.pendingCount).toBe(0);
+    expect(orchestrationMocks.claimSymphonyIssue).not.toHaveBeenCalled();
   });
 
   it("/symphony command を登録する", async () => {
