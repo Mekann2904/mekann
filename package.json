@@ -129,6 +129,7 @@
       "./.pi/extensions/bug-hunt/index.ts",
       "./.pi/extensions/mcp-client.ts",
       "./.pi/extensions/mediator.ts",
+      "./.pi/extensions/observability-data.ts",
       "./.pi/extensions/plan.ts",
       "./.pi/extensions/question.ts",
       "./.pi/extensions/rate-limit-retry-budget.ts",
