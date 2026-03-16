@@ -15,6 +15,7 @@ import {
 } from "./autoresearch-tbench-live-monitor.js";
 import { getLogger } from "./comprehensive-logger.js";
 import { ConfigurationError } from "./core/errors.js";
+import { atomicWriteTextFile } from "./storage/storage-lock.js";
 
 export interface AutoresearchTbenchScore {
   successCount: number;
@@ -161,6 +162,43 @@ export interface AutoresearchTbenchRunResult {
   run: AutoresearchTbenchExecutedRun;
   commit: string;
   preferredBudgetExceeded: boolean;
+}
+
+/**
+ * autoresearch-tbench auto モードのオプション
+ * @summary 自動改善ループの設定
+ */
+export interface AutoresearchTbenchAutoOptions {
+  label?: string;
+  iterations?: number;
+  timeoutMs?: number;
+  preferMs?: number;
+  improvementTimeoutMs?: number;
+  maxStalledIterations?: number;
+  commitMessage?: string;
+  provider?: string;
+  model?: string;
+  onSnapshot?: (snapshot: AutoresearchTbenchLiveSnapshot) => void;
+  onTextUpdate?: (text: string) => void;
+}
+
+/**
+ * autoresearch-tbench auto モードの各ステップ結果
+ * @summary 1回の反復の結果
+ */
+export interface AutoresearchTbenchAutoStep {
+  iteration: number;
+  benchmark: AutoresearchTbenchRunResult;
+}
+
+/**
+ * autoresearch-tbench auto モードの結果
+ * @summary 自動改善ループの最終結果
+ */
+export interface AutoresearchTbenchAutoResult {
+  steps: AutoresearchTbenchAutoStep[];
+  stopped: boolean;
+  state: AutoresearchTbenchState;
 }
 
 interface SpawnCaptureResult {
@@ -434,13 +472,19 @@ export function readAutoresearchTbenchState(cwd: string): AutoresearchTbenchStat
   if (!existsSync(statePath)) {
     return null;
   }
-  return JSON.parse(readFileSync(statePath, "utf-8")) as AutoresearchTbenchState;
+  try {
+    return JSON.parse(readFileSync(statePath, "utf-8")) as AutoresearchTbenchState;
+  } catch (error) {
+    const logger = getLogger();
+    logger.warn(`state.json corrupted, returning null: path=${statePath} error=${String(error)}`);
+    return null;
+  }
 }
 
 export function writeAutoresearchTbenchState(cwd: string, state: AutoresearchTbenchState): void {
   const { statePath } = getAutoresearchTbenchPaths(cwd);
   ensureParentDir(statePath);
-  writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf-8");
+  atomicWriteTextFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
 }
 
 function markActiveRun(cwd: string, state: AutoresearchTbenchState, label: string, pid: number): AutoresearchTbenchState {
@@ -1338,4 +1382,100 @@ export function renderAutoresearchTbenchStatus(result: AutoresearchTbenchStatusR
     `n_concurrent=${state.runConfig.nConcurrent ?? "-"}`,
     `jobs_dir=${state.runConfig.jobsDir}`,
   ].join("\n");
+}
+
+/**
+ * autoresearch-tbench auto モード
+ * @summary 自動改善ループを実行する
+ * 改善が続く限り反復し、stalled 条件または最大反復回数で停止する
+ */
+export async function autoAutoresearchTbench(
+  cwd: string,
+  options: AutoresearchTbenchAutoOptions = {},
+): Promise<AutoresearchTbenchAutoResult> {
+  const maxIterations = options.iterations ?? 10;
+  const improvementTimeoutMs = options.improvementTimeoutMs ?? 30 * 60 * 1000; // デフォルト30分
+  const maxStalledIterations = options.maxStalledIterations ?? 3;
+
+  const steps: AutoresearchTbenchAutoStep[] = [];
+  let stopped = false;
+  let stalledCount = 0;
+  let lastImprovementTime = Date.now();
+
+  for (let iteration = 1; iteration <= maxIterations; iteration++) {
+    // 停止リクエストをチェック
+    const currentState = readAutoresearchTbenchState(cwd);
+    if (currentState?.stopRequestedAt) {
+      stopped = true;
+      logger.logExperimentStop({
+        experimentType: 'tbench',
+        label: options.label ?? 'auto',
+        iteration,
+        reason: 'user_requested',
+      });
+      await logger.flush();
+      break;
+    }
+
+    // 改善タイムアウトをチェック
+    const elapsedSinceImprovement = Date.now() - lastImprovementTime;
+    if (elapsedSinceImprovement > improvementTimeoutMs && stalledCount > 0) {
+      logger.logExperimentStop({
+        experimentType: 'tbench',
+        label: options.label ?? 'auto',
+        iteration,
+        reason: 'improvement_timeout',
+      });
+      await logger.flush();
+      break;
+    }
+
+    // max stalled iterations をチェック
+    if (stalledCount >= maxStalledIterations) {
+      logger.logExperimentStop({
+        experimentType: 'tbench',
+        label: options.label ?? 'auto',
+        iteration,
+        reason: 'max_stalled',
+      });
+      await logger.flush();
+      break;
+    }
+
+    // runAutoresearchTbench を呼び出し
+    const benchmark = await runAutoresearchTbench(cwd, {
+      label: options.label ? `${options.label}-${iteration}` : `auto-${iteration}`,
+      timeoutMs: options.timeoutMs,
+      preferMs: options.preferMs,
+      commitMessage: options.commitMessage,
+      onSnapshot: options.onSnapshot,
+      onTextUpdate: options.onTextUpdate,
+    });
+
+    steps.push({ iteration, benchmark });
+
+    // 改善判定
+    if (benchmark.outcome === 'improved') {
+      stalledCount = 0;
+      lastImprovementTime = Date.now();
+    } else if (benchmark.outcome === 'regressed' || benchmark.outcome === 'equal') {
+      stalledCount++;
+    }
+
+    // クラッシュやタイムアウトの場合も stalled とみなす
+    if (benchmark.outcome === 'crash' || benchmark.outcome === 'timeout') {
+      stalledCount++;
+    }
+  }
+
+  const finalState = readAutoresearchTbenchState(cwd);
+  if (!finalState) {
+    throw new Error("state lost after auto run");
+  }
+
+  return {
+    steps,
+    stopped,
+    state: finalState,
+  };
 }

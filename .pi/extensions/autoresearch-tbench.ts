@@ -22,6 +22,7 @@ import { getLogger } from "../lib/comprehensive-logger.js";
 import {
   createAutoresearchTbenchLiveMonitor,
   type AutoresearchTbenchLiveSnapshot,
+  type AutoresearchTbenchTrialSnapshot,
 } from "../lib/autoresearch-tbench-live-monitor.js";
 import type { LiveMonitorContext } from "../lib/tui-types.js";
 
@@ -160,7 +161,7 @@ async function runWithMonitor<T>(
     }
 
     return await runner({
-      onSnapshot: (snapshot) => {
+      onSnapshot: (snapshot: AutoresearchTbenchLiveSnapshot) => {
         if (useStatusFallback) {
           ctx.ui?.setStatus?.("autoresearch-tbench", snapshot.statusLine);
         }
@@ -365,13 +366,13 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
           label: typeof params.label === "string" ? params.label : undefined,
           timeoutMs: typeof params.timeout_ms === "number" ? params.timeout_ms : undefined,
           preferMs: typeof params.prefer_ms === "number" ? params.prefer_ms : undefined,
-          onSnapshot: (snapshot) => {
+          onSnapshot: (snapshot: AutoresearchTbenchLiveSnapshot) => {
             onUpdate?.({
               content: [{
                 type: "text",
                 text: `${snapshot.statusLine}\n${snapshot.trials
                   .slice(0, 6)
-                  .map((trial) => `${trial.taskName}: ${trial.phase} - ${trial.activity}`)
+                  .map((trial: AutoresearchTbenchTrialSnapshot) => `${trial.taskName}: ${trial.phase} - ${trial.activity}`)
                   .join("\n")}`,
               }],
               details: snapshot,
@@ -391,13 +392,13 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
           timeoutMs: typeof params.timeout_ms === "number" ? params.timeout_ms : undefined,
           preferMs: typeof params.prefer_ms === "number" ? params.prefer_ms : undefined,
           commitMessage: typeof params.commit_message === "string" ? params.commit_message : undefined,
-          onSnapshot: (snapshot) => {
+          onSnapshot: (snapshot: AutoresearchTbenchLiveSnapshot) => {
             onUpdate?.({
               content: [{
                 type: "text",
                 text: `${snapshot.statusLine}\n${snapshot.trials
                   .slice(0, 6)
-                  .map((trial) => `${trial.taskName}: ${trial.phase} - ${trial.activity}`)
+                  .map((trial: AutoresearchTbenchTrialSnapshot) => `${trial.taskName}: ${trial.phase} - ${trial.activity}`)
                   .join("\n")}`,
               }],
               details: snapshot,
@@ -422,13 +423,13 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
           commitMessage: typeof params.commit_message === "string" ? params.commit_message : undefined,
           provider: typeof params.provider === "string" ? params.provider : undefined,
           model: typeof params.model === "string" ? params.model : undefined,
-          onSnapshot: (snapshot) => {
+          onSnapshot: (snapshot: AutoresearchTbenchLiveSnapshot) => {
             onUpdate?.({
               content: [{
                 type: "text",
                 text: `${snapshot.statusLine}\n${snapshot.trials
                   .slice(0, 6)
-                  .map((trial) => `${trial.taskName}: ${trial.phase} - ${trial.activity}`)
+                  .map((trial: AutoresearchTbenchTrialSnapshot) => `${trial.taskName}: ${trial.phase} - ${trial.activity}`)
                   .join("\n")}`,
               }],
               details: snapshot,

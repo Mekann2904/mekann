@@ -5,11 +5,32 @@
  * related: scripts/autoresearch-e2e.ts, tests/unit/lib/autoresearch-e2e.test.ts, tests/e2e/README.md, tests/e2e/STRATEGY.md
  */
 
+/**
+ * 行動メトリクスの集計サマリー
+ * @summary 実験期間中のLLM実行メトリクスを集計したもの
+ */
+export interface BehaviorMetricsSummary {
+  /** 分析対象のレコード数 */
+  recordCount: number;
+  /** 平均プロンプトトークン数 */
+  avgPromptTokens: number;
+  /** 平均出力トークン数 */
+  avgOutputTokens: number;
+  /** 平均品質スコア（0.0-1.0） */
+  avgQualityScore: number;
+  /** 平均実行時間（ms） */
+  avgExecutionMs: number;
+  /** 合計トークン数（プロンプト+出力） */
+  totalTokens: number;
+}
+
 export interface AutoresearchE2EScore {
   failed: number;
   passed: number;
   total: number;
   durationMs: number;
+  /** 行動メトリクス（オプション） */
+  behaviorMetrics?: BehaviorMetricsSummary;
 }
 
 export interface AutoresearchE2EReportSummary {
@@ -113,5 +134,10 @@ export function determineAutoresearchOutcome(
 }
 
 export function formatAutoresearchScore(score: AutoresearchE2EScore): string {
-  return `failed=${score.failed} passed=${score.passed} total=${score.total} duration_ms=${score.durationMs}`;
+  const base = `failed=${score.failed} passed=${score.passed} total=${score.total} duration_ms=${score.durationMs}`;
+  if (score.behaviorMetrics) {
+    const bm = score.behaviorMetrics;
+    return `${base} records=${bm.recordCount} avg_quality=${bm.avgQualityScore.toFixed(2)} total_tokens=${bm.totalTokens}`;
+  }
+  return base;
 }
