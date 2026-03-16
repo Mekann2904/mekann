@@ -845,35 +845,62 @@ export class ComprehensiveLogger {
     const events = this.buffer;
     this.buffer = [];
 
-    try {
-      await this.ensureLogDir();
+    const maxAttempts = this.config.flushRetryAttempts ?? 3;
+    const baseDelayMs = this.config.flushRetryDelayMs ?? 1000;
+    let lastError: Error | undefined;
 
-      const logFile = join(this.config.logDir, `events-${getDateStr()}.jsonl`);
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await this.ensureLogDir();
 
-      // ファイルサイズチェック
-      if (existsSync(logFile)) {
-        const stats = statSync(logFile);
-        const sizeMB = stats.size / (1024 * 1024);
-        if (sizeMB >= this.config.maxFileSizeMB) {
-          // ローテーション: 新しいファイル名を使用
-          const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-          const rotatedFile = join(this.config.logDir, `events-${getDateStr()}-${timestamp}.jsonl`);
-          const lines = events.map(e => JSON.stringify(e)).join('\n') + '\n';
-          await appendFile(rotatedFile, lines, 'utf-8');
-          return;
+        const logFile = join(this.config.logDir, `events-${getDateStr()}.jsonl`);
+
+        // ファイルサイズチェック
+        if (existsSync(logFile)) {
+          const stats = statSync(logFile);
+          const sizeMB = stats.size / (1024 * 1024);
+          if (sizeMB >= this.config.maxFileSizeMB) {
+            // ローテーション: 新しいファイル名を使用
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const rotatedFile = join(this.config.logDir, `events-${getDateStr()}-${timestamp}.jsonl`);
+            const lines = events.map(e => JSON.stringify(e)).join('\n') + '\n';
+            await appendFile(rotatedFile, lines, 'utf-8');
+            return;
+          }
+        }
+
+        const lines = events.map(e => JSON.stringify(e)).join('\n') + '\n';
+        await appendFile(logFile, lines, 'utf-8');
+        return; // 成功時は早期リターン
+      } catch (error) {
+        lastError = error as Error;
+        
+        // リトライ可能な場合、指数バックオフで待機
+        if (attempt < maxAttempts) {
+          const delayMs = baseDelayMs * Math.pow(2, attempt - 1);
+          console.error(`[comprehensive-logger] Flush attempt ${attempt}/${maxAttempts} failed, retrying in ${delayMs}ms:`, error);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
         }
       }
-
-      const lines = events.map(e => JSON.stringify(e)).join('\n') + '\n';
-      await appendFile(logFile, lines, 'utf-8');
-    } catch (error) {
-      // I/Oエラー時はバッファに戻す（データ損失を防ぐ）
-      this.buffer = [...events, ...this.buffer];
-      console.error('[comprehensive-logger] Flush failed, re-queued events:', error);
-      throw error;
-    } finally {
-      this.isFlushing = false;
     }
+
+    // 全リトライ失敗時の処理
+    // I/Oエラー時はバッファに戻す（データ損失を防ぐ）
+    this.buffer = [...events, ...this.buffer];
+    
+    console.error('[comprehensive-logger] Flush failed after all retries, re-queued events:', lastError);
+    
+    // コールバックが設定されている場合は呼び出し
+    if (this.config.onFlushError && lastError) {
+      try {
+        this.config.onFlushError(lastError, events.length);
+      } catch (callbackError) {
+        console.error('[comprehensive-logger] onFlushError callback threw error:', callbackError);
+      }
+    }
+    
+    this.isFlushing = false;
+    throw lastError;
   }
   
   private stopFlushTimer(): void {
@@ -938,7 +965,7 @@ export class ComprehensiveLogger {
   getErrorCount(): number {
     return this.errorCount;
   }
-  
+
   /**
    * 総トークン数を取得
    * @summary 総トークン数を返す
@@ -946,6 +973,15 @@ export class ComprehensiveLogger {
    */
   getTotalTokens(): number {
     return this.totalTokens;
+  }
+
+  /**
+   * 未フラッシュイベント数を取得
+   * @summary バッファ内の未フラッシュイベント数を返す
+   * @returns {number} 未フラッシュイベント数
+   */
+  getPendingEventsCount(): number {
+    return this.buffer.length;
   }
 }
 

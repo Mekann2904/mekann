@@ -647,4 +647,20 @@ export interface LoggerConfig {
   retentionDays: number;
   environment: 'development' | 'production' | 'test';
   minLogLevel: 'debug' | 'info' | 'warn' | 'error';
+  /**
+   * フラッシュ失敗時のコールバック関数
+   * I/Oエラー発生時に呼び出され、下游コンシューマーへの通知に使用する
+   */
+  onFlushError?: (error: Error, pendingCount: number) => void;
+  /**
+   * フラッシュ失敗時のリトライ回数
+   * @default 3
+   */
+  flushRetryAttempts?: number;
+  /**
+   * フラッシュリトライの初期遅延（ミリ秒）
+   * 指数バックオフで増加する
+   * @default 1000
+   */
+  flushRetryDelayMs?: number;
 }
