@@ -103,6 +103,8 @@ interface ParseResult {
 	events: LogEvent[];
 	parseErrors: number;
 	incompleteLines: number;
+	/** リトライ後に回復した不完全な行数 */
+	recoveredLines?: number;
 }
 
 /**
@@ -127,16 +129,57 @@ function parseLogFileWithStats(filePath: string): ParseResult {
 		events: [],
 		parseErrors: 0,
 		incompleteLines: 0,
+		recoveredLines: 0,
 	};
 
 	if (!existsSync(filePath)) {
 		return result;
 	}
 
-	const content = readFileSync(filePath, "utf-8");
-	const lines = content.split("\n").filter(Boolean);
+	// リトライ設定: 不完全な行を検出した際に再読み込みを試行
+	const maxRetries = 3;
+	const retryDelayMs = 50;
+	let attempt = 0;
+	let content = readFileSync(filePath, "utf-8");
+	let lines = content.split("\n").filter(Boolean);
 
-	for (const line of lines) {
+	// 不完全な行を収集
+	let incompleteIndices: number[] = lines
+		.map((line, index) => (!line.endsWith("}") ? index : -1))
+		.filter((i) => i >= 0);
+
+	// リトライループ: 不完全な行が残っている場合は再読み込み
+	while (incompleteIndices.length > 0 && attempt < maxRetries) {
+		attempt++;
+		// 同期待機（busy-wait）
+		const start = Date.now();
+		while (Date.now() - start < retryDelayMs) {
+			// busy-wait
+		}
+
+		// ファイルを再読み込み
+		content = readFileSync(filePath, "utf-8");
+		lines = content.split("\n").filter(Boolean);
+
+		// 以前不完全だった行が完全になったかを確認
+		const newIncompleteIndices: number[] = [];
+		for (const idx of incompleteIndices) {
+			if (idx < lines.length && lines[idx].endsWith("}")) {
+				// 回復成功
+				result.recoveredLines!++;
+			} else if (idx < lines.length) {
+				// まだ不完全
+				newIncompleteIndices.push(idx);
+			}
+			// idx >= lines.length の場合は行が削除されたとみなし、スキップ
+		}
+		incompleteIndices = newIncompleteIndices;
+	}
+
+	// パース処理
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+
 		// 行整合性チェック: 不完全な行（書き込み中の可能性）を検出
 		if (!line.endsWith("}")) {
 			result.incompleteLines++;
@@ -165,8 +208,9 @@ function parseLogFileWithStats(filePath: string): ParseResult {
 
 	// 不完全な行があった場合は警告（読み取り中に書き込みが発生した可能性）
 	if (result.incompleteLines > 0) {
+		const recoveredMsg = result.recoveredLines! > 0 ? ` (${result.recoveredLines} recovered)` : "";
 		console.warn(
-			`[observability-data] ${result.incompleteLines} incomplete line(s) detected in ${filePath} (possible concurrent write)`
+			`[observability-data] ${result.incompleteLines} incomplete line(s) detected in ${filePath}${recoveredMsg} (possible concurrent write)`
 		);
 	}
 
