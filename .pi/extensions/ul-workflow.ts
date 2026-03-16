@@ -72,6 +72,44 @@ const UNIFIED_PHASES: WorkflowPhase[] = [
   "completed",
 ];
 
+const PLAN_FIRST_PHASES: WorkflowPhase[] = [
+  "plan",
+  "annotate",
+  "implement",
+  "review",
+  "completed",
+];
+
+type AutoRunPhaseSelection = {
+  profile: "full" | "plan-first";
+  phases: WorkflowPhase[];
+  skipResearch: boolean;
+  reason: string;
+};
+
+const HIGH_RISK_TASK_PATTERNS = [
+  /auth|authentication|authorization|oauth|password|secret|token|security/i,
+  /database|db|schema|migration|migrate/i,
+  /payment|billing|invoice|checkout/i,
+  /production|prod|deploy|release/i,
+  /delete|remove|drop|destroy/i,
+  /encrypt|decrypt|crypto/i,
+];
+
+const PLAN_FIRST_ELIGIBLE_PATTERNS = [
+  /\bdocs?\b|readme|changelog|comment|comments|typo|wording|copy/i,
+  /documentation|markdown|md file|text only|copy change/i,
+  /\btest\b|\btests\b|unit test|spec file|snapshot/i,
+  /ドキュメント|コメント|文言|誤字|typo|README|テスト/i,
+];
+
+const FULL_RESEARCH_HINT_PATTERNS = [
+  /new feature|feature|design|architecture|refactor|optimi[sz]e|performance/i,
+  /investigate|analy[sz]e|unknown|explore|compare|evaluate/i,
+  /api|sdk|library|external|integration|provider/i,
+  /新機能|設計|アーキテクチャ|リファクタ|調査|分析|外部|連携|最適化/i,
+];
+
 /**
  * 統一実行設定
  * @summary 実行設定
@@ -82,6 +120,85 @@ const UNIFIED_EXECUTION_CONFIG = {
   requireHumanApproval: true,
   subagentTimeoutMs: 5 * 60 * 1000, // 5 minutes default timeout
 } as const;
+
+function appendApprovedPhases(state: WorkflowState, phases: WorkflowPhase[]): void {
+  for (const phase of phases) {
+    if (!state.approvedPhases.includes(phase)) {
+      state.approvedPhases.push(phase);
+    }
+  }
+}
+
+function selectAutoRunPhases(task: string): AutoRunPhaseSelection {
+  const normalizedTask = String(task || "").trim();
+  if (!normalizedTask) {
+    return {
+      profile: "full",
+      phases: [...UNIFIED_PHASES],
+      skipResearch: false,
+      reason: "task is empty, so the standard workflow is kept",
+    };
+  }
+
+  const highRisk = HIGH_RISK_TASK_PATTERNS.some((pattern) => pattern.test(normalizedTask));
+  if (highRisk) {
+    return {
+      profile: "full",
+      phases: [...UNIFIED_PHASES],
+      skipResearch: false,
+      reason: "high-risk task keeps the dedicated research phase",
+    };
+  }
+
+  const researchHeavy = FULL_RESEARCH_HINT_PATTERNS.some((pattern) => pattern.test(normalizedTask));
+  const eligibleForPlanFirst = PLAN_FIRST_ELIGIBLE_PATTERNS.some((pattern) => pattern.test(normalizedTask));
+  if (eligibleForPlanFirst && !researchHeavy) {
+    return {
+      profile: "plan-first",
+      phases: [...PLAN_FIRST_PHASES],
+      skipResearch: true,
+      reason: "low-risk local maintenance task can start from plan without a dedicated research pass",
+    };
+  }
+
+  return {
+    profile: "full",
+    phases: [...UNIFIED_PHASES],
+    skipResearch: false,
+    reason: "task needs the standard research-first workflow",
+  };
+}
+
+function buildPlanFirstResearchArtifact(task: string, selection: AutoRunPhaseSelection): string {
+  return [
+    "# Research",
+    "",
+    "## Workflow Decision",
+    "- Dedicated research phase was skipped for auto-run.",
+    `- Reason: ${selection.reason}`,
+    "",
+    "## User Intent",
+    `- ${task}`,
+    "",
+    "## Constraints",
+    "- Use existing project patterns and local codebase evidence first.",
+    "- If unknown external dependencies appear, fall back to the full research workflow.",
+    "",
+    "## Plan Inputs",
+    "- Keep the change minimal and easy to review.",
+    "- Preserve human review via plan and annotate before implementation.",
+    "",
+    "## 高リスク判定",
+    "",
+    "### 判定結果",
+    "- [ ] high-risk（高リスク）",
+    "- [x] normal（通常）",
+    "",
+    "### 判定根拠",
+    `- ${selection.reason}`,
+    "",
+  ].join("\n");
+}
 
 // ワークフロー状態
 interface WorkflowState {
@@ -2829,9 +2946,12 @@ Task ID: ${taskId}
       const now = new Date().toISOString();
 
       const effectiveConcurrency = maxConcurrency;
-      const phases: WorkflowPhase[] = [...UNIFIED_PHASES];
+      const autoRunSelection = selectAutoRunPhases(trimmedTask);
+      const phases: WorkflowPhase[] = [...autoRunSelection.phases];
       
-      console.log(`[ul_workflow_run] Mode input: ${mode}, Execution: unified-flow, Concurrency hint: ${effectiveConcurrency}`);
+      console.log(
+        `[ul_workflow_run] Mode input: ${mode}, Execution: ${autoRunSelection.profile}, Concurrency hint: ${effectiveConcurrency}`
+      );
 
       currentWorkflow = {
         taskId,
@@ -2856,16 +2976,23 @@ Task ID: ${taskId}
       // 統合アプローチ: Research → Plan（逐次）→ Implement（DAG並列）
       // すべてのモードでResearch/Planは逐次実行し、ImplementのみDAG並列化
       try {
-        // === PHASE 1: Research（逐次）===
-        console.log(`[ul_workflow_run] Phase 1: Research (sequential)`);
-        const researchInstruction = generateResearchInstruction(trimmedTask, researchPath, taskId);
-        const researchRun = await executeResearchWorkflow(ctx, {
-          task: trimmedTask,
-          taskId,
-          researchPath,
-          instruction: researchInstruction,
-        });
-        await ensureWorkflowArtifact(researchPath, extractTextFromToolResult(researchRun.followupResult));
+        if (autoRunSelection.skipResearch) {
+          await ensureWorkflowArtifact(
+            researchPath,
+            buildPlanFirstResearchArtifact(trimmedTask, autoRunSelection),
+          );
+        } else {
+          // === PHASE 1: Research（逐次）===
+          console.log(`[ul_workflow_run] Phase 1: Research (sequential)`);
+          const researchInstruction = generateResearchInstruction(trimmedTask, researchPath, taskId);
+          const researchRun = await executeResearchWorkflow(ctx, {
+            task: trimmedTask,
+            taskId,
+            researchPath,
+            instruction: researchInstruction,
+          });
+          await ensureWorkflowArtifact(researchPath, extractTextFromToolResult(researchRun.followupResult));
+        }
 
         // === PHASE 2: Plan（逐次）===
         console.log(`[ul_workflow_run] Phase 2: Plan (sequential)`);
@@ -2879,9 +3006,12 @@ Task ID: ${taskId}
         });
         await ensureWorkflowArtifact(planPath, extractTextFromToolResult(planRun.result));
 
-        currentWorkflow.approvedPhases.push("research", "plan");
+        appendApprovedPhases(
+          currentWorkflow,
+          autoRunSelection.skipResearch ? ["plan"] : ["research", "plan"],
+        );
         currentWorkflow.phase = "plan";
-        currentWorkflow.phaseIndex = 1;
+        currentWorkflow.phaseIndex = currentWorkflow.phases.indexOf("plan");
         currentWorkflow.updatedAt = new Date().toISOString();
         saveState(currentWorkflow);
 
@@ -2890,7 +3020,7 @@ Task ID: ${taskId}
         // === PHASE 3: Annotate（ユーザーレビュー）===
         // Plan作成後、自動的にannotateフェーズへ移行
         currentWorkflow.phase = "annotate";
-        currentWorkflow.phaseIndex = 2;
+        currentWorkflow.phaseIndex = currentWorkflow.phases.indexOf("annotate");
         currentWorkflow.updatedAt = new Date().toISOString();
         saveState(currentWorkflow);
 
@@ -2899,8 +3029,10 @@ Task ID: ${taskId}
         return makeResultWithQuestion(`## Plan作成完了（レビュー待ち - Annotateフェーズ）
 
 Task: ${trimmedTask}
-Execution Mode: 統一フロー（Research/Plan 実行後に annotate で停止）
+Execution Mode: ${autoRunSelection.profile === "plan-first" ? "plan-first fast track" : "統一フロー"}
 Current Phase: annotate
+
+${autoRunSelection.skipResearch ? `Research Phase: skipped\nReason: ${autoRunSelection.reason}\n` : ""}
 
 \`\`\`markdown
 ${planContent}
@@ -2929,13 +3061,50 @@ ${planContent}
         }, {
           taskId,
           phase: "annotate",
-          executionMode: "unified-flow",
+          executionMode: autoRunSelection.profile,
           modeInput: mode,
           concurrencyHint: effectiveConcurrency,
+          skippedPhases: autoRunSelection.skipResearch ? ["research"] : [],
+          selectionReason: autoRunSelection.reason,
         }, ctx);
 
       } catch (error) {
         if (String(error).includes("subagent_run_dag APIが利用できません")) {
+          if (autoRunSelection.skipResearch) {
+            return makeResult(`## UL Workflow開始
+
+Task: ${trimmedTask}
+ID: ${taskId}
+Execution Mode: plan-first fast track (manual)
+
+### 事前メモ
+- research.md は軽量な fast-track メモとして ${researchPath} に生成済みです
+- 理由: ${autoRunSelection.reason}
+
+### 手順1: Plan
+\`\`\`
+subagent_run_dag(${JSON.stringify(buildSingleAgentDagParams({
+  subagentId: "architect",
+  task: `計画作成: ${trimmedTask}\n\n事前調査: ${researchPath}\n\n保存先: ${planPath}`,
+  extraContext: "research.md の要求解釈をもとに、User Intent と Analyst Interpretation が分かる plan.md を作成してください。",
+  ulTaskId: taskId,
+}), null, 2)})
+\`\`\`
+
+### 手順2: Plan確認（Plan完了後）
+\`\`\`
+ul_workflow_confirm_plan()
+\`\`\`
+`, {
+              taskId,
+              phase: "plan",
+              nextPhase: "annotate",
+              executionMode: autoRunSelection.profile,
+              skippedPhases: ["research"],
+              selectionReason: autoRunSelection.reason,
+            });
+          }
+
           return makeResult(`## UL Workflow開始
 
 Task: ${trimmedTask}

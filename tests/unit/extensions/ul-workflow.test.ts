@@ -522,6 +522,46 @@ describe("ul-workflow", () => {
     expect(savedState.approvedPhases).toEqual(["research", "plan"]);
   });
 
+  it("ul_workflow_run は低リスクな文言修正で research を省略して plan から始める", async () => {
+    const extension = (await import("../../../.pi/extensions/ul-workflow.js")).default;
+    const pi = createPiMock();
+    extension(pi as never);
+
+    const runTool = pi.tools.get("ul_workflow_run");
+    const calledPlans: string[] = [];
+    const executeTool = vi.fn(async ({ toolName, params }: { toolName: string; params: Record<string, unknown> }) => {
+      expect(toolName).toBe("subagent_run_dag");
+      calledPlans.push(String((params.plan as { id?: string } | undefined)?.id));
+      return { content: [{ type: "text", text: "# Plan\n\n軽量な計画" }] };
+    });
+
+    const result = await runTool.execute(
+      "run-fast-track",
+      { task: "README の文言 typo を修正する", mode: "auto", maxConcurrency: 2 },
+      undefined,
+      undefined,
+      { executeTool },
+    );
+
+    const taskId = result.details.taskId;
+    const statusPath = path.join(".pi", "ul-workflow", "tasks", taskId, "status.json");
+    const researchPath = path.join(".pi", "ul-workflow", "tasks", taskId, "research.md");
+    const savedState = JSON.parse(fs.readFileSync(statusPath, "utf-8") as string) as {
+      phase: string;
+      phases: string[];
+      approvedPhases: string[];
+    };
+    const researchContent = fs.readFileSync(researchPath, "utf-8") as string;
+
+    expect(calledPlans).toEqual(["ul-plan-dynamic-dag"]);
+    expect(result.details.executionMode).toBe("plan-first");
+    expect(result.details.skippedPhases).toEqual(["research"]);
+    expect(savedState.phase).toBe("annotate");
+    expect(savedState.phases).toEqual(["plan", "annotate", "implement", "review", "completed"]);
+    expect(savedState.approvedPhases).toEqual(["plan"]);
+    expect(researchContent).toContain("Dedicated research phase was skipped");
+  });
+
   it("research フェーズは base DAG の後に gap-check 結果で follow-up DAG を動的に組む", async () => {
     const extension = (await import("../../../.pi/extensions/ul-workflow.js")).default;
     const pi = createPiMock();
