@@ -1136,6 +1136,17 @@ export async function runAutoresearchTbench(
   } else if (run.summary) {
     score = run.summary.score;
     outcome = determineAutoresearchTbenchOutcome(score, state.bestScore);
+  } else {
+    // Crash case: no summary produced
+    outcome = "crash";
+    // Emit experiment_crash event and flush
+    logger.logExperimentCrash({
+      experimentType: 'tbench',
+      label,
+      iteration: state.experimentCount + 1,
+      error: run.stderr?.slice(0, 500) || 'No result.json produced',
+    });
+    await logger.flush();
   }
 
   const nextState = cloneState(state);

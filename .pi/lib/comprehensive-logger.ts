@@ -728,6 +728,56 @@ export class ComprehensiveLogger {
     });
   }
 
+  /**
+   * 実験停止を記録する
+   * @summary 停止発生
+   * @param data 停止データ
+   * @returns なし
+   * @fires experiment_stop
+   */
+  logExperimentStop(data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    iteration: number;
+    reason?: string;
+    partialScore?: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+  }): void {
+    this.emit({
+      eventType: 'experiment_stop',
+      data,
+    });
+  }
+
+  /**
+   * 実験クラッシュを記録する
+   * @summary クラッシュ発生
+   * @param data クラッシュデータ
+   * @returns なし
+   * @fires experiment_crash
+   */
+  logExperimentCrash(data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    iteration: number;
+    error?: string;
+    partialScore?: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+  }): void {
+    this.emit({
+      eventType: 'experiment_crash',
+      data,
+    });
+  }
+
   // ============================================
   // 警告ログ
   // ============================================

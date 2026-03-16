@@ -17,6 +17,7 @@ import {
   renderAutoresearchTbenchStatus,
   runAutoresearchTbench,
 } from "../lib/autoresearch-tbench.js";
+import { getLogger } from "../lib/comprehensive-logger.js";
 import {
   createAutoresearchTbenchLiveMonitor,
   type AutoresearchTbenchLiveSnapshot,
@@ -389,6 +390,9 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", async () => {
+    // Flush any remaining observability events before shutdown
+    const logger = getLogger();
+    await logger.flush();
     isInitialized = false;
   });
 }

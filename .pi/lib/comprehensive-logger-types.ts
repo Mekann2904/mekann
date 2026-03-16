@@ -61,7 +61,9 @@ export type EventType =
   | 'experiment_run'
   | 'experiment_improved'
   | 'experiment_regressed'
-  | 'experiment_timeout';
+  | 'experiment_timeout'
+  | 'experiment_stop'
+  | 'experiment_crash';
 
 /**
  * コンポーネント型
