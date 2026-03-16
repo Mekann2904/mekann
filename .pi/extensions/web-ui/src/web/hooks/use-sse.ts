@@ -163,10 +163,16 @@ export function useSSE(handlers?: SSEEventHandlers) {
 
     // インスタンス更新
     eventSource.addEventListener("instances-update", (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
-      setLastReceived(Date.now());
-      setInstances(data.instances);
-      handlers?.onInstancesUpdate?.(data.instances);
+      try {
+        const data = JSON.parse(e.data);
+        setLastReceived(Date.now());
+        setInstances(data.instances);
+        handlers?.onInstancesUpdate?.(data.instances);
+      } catch (error) {
+        const parseError = error instanceof Error ? error : new Error(String(error));
+        console.error('[SSE] Failed to parse instances-update event:', parseError);
+        handlers?.onError?.(parseError);
+      }
     });
 
     // コンテキスト更新
