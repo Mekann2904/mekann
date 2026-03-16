@@ -1754,7 +1754,13 @@ async function queueSymphonyDispatchFreshSession(
 		throw new Error("fresh session creation was cancelled");
 	}
 
-	queueSymphonyFollowUpMessage(pi, buildSymphonyDispatchPrompt(dispatch));
+	// /symphony コマンドの実行中は agent がまだ processing 中なので、
+	// fresh session 上の follow-up として積まないと dispatch が落ちる。
+	queueSymphonyFollowUpMessage(
+		pi,
+		buildSymphonyDispatchPrompt(dispatch),
+		{ deliverAs: "followUp" },
+	);
 }
 
 async function autoRunNextTask(ctx: {

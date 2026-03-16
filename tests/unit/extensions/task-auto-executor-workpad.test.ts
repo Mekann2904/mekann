@@ -311,12 +311,14 @@ describe("task-auto-executor workpad", () => {
     expect(ctx.newSession).toHaveBeenCalledWith();
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
     const dispatchPrompt = pi.sendUserMessage.mock.calls[0][0];
+    const dispatchOptions = pi.sendUserMessage.mock.calls[0][1];
     expect(dispatchPrompt).toContain("Handle this as a normal pi task in a fresh session.");
     expect(dispatchPrompt).toContain("Do not assume any previous ticket context.");
     expect(dispatchPrompt).toContain("Do not default to DAG.");
     expect(dispatchPrompt).toContain("Implement orchestration");
     expect(dispatchPrompt).toContain("workspace_verify と required verification commands を完了すること。");
     expect(dispatchPrompt).toContain("検証が通ってから、変更したファイルだけを git add し、必ず git commit を作成すること。");
+    expect(dispatchOptions).toEqual({ deliverAs: "followUp" });
     expect(dispatchPrompt.indexOf("workspace_verify と required verification commands を完了すること。")).toBeLessThan(
       dispatchPrompt.indexOf("git commit を作成すること。"),
     );
@@ -335,6 +337,26 @@ describe("task-auto-executor workpad", () => {
 
     expect(ctx.sessionManager.getSessionFile).not.toHaveBeenCalled();
     expect(ctx.newSession).toHaveBeenCalledWith();
+  });
+
+  it("/symphony next は command 実行中でも dispatch を followUp で積む", async () => {
+    const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
+    const pi = createPiMock();
+    const ctx = createSymphonyCommandContext();
+    pi.sendUserMessage.mockImplementation((_content: string, options?: { deliverAs?: string }) => {
+      if (!options?.deliverAs) {
+        throw new Error("Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.");
+      }
+    });
+
+    extension(pi as never);
+
+    const symphonyCommand = pi.commands.find((entry) => entry.name === "symphony");
+    await symphonyCommand.command.handler("next", ctx);
+
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+    expect(pi.sendUserMessage.mock.calls[0][1]).toEqual({ deliverAs: "followUp" });
+    expect(ctx.ui.notify).toHaveBeenCalledWith("自動実行を開始しました: Implement orchestration", "info");
   });
 
   it("/symphony next は fresh session dispatcher がないと開始しない", async () => {
