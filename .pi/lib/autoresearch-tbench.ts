@@ -497,15 +497,38 @@ function markActiveRun(cwd: string, state: AutoresearchTbenchState, label: strin
   };
   delete nextState.stopRequestedAt;
   writeAutoresearchTbenchState(cwd, nextState);
+
+  // Log phase transition to observability system
+  logger.logStateChange({
+    entityType: 'memory',
+    entityPath: `autoresearch-tbench/runs/${label}`,
+    changeType: 'update',
+    beforeContent: JSON.stringify({ phase: 'idle' }),
+    afterContent: JSON.stringify({ phase: 'running', pid, startedAt: nextState.activeRun.startedAt }),
+  });
+
   return nextState;
 }
 
 function clearActiveRun(cwd: string, state: AutoresearchTbenchState): AutoresearchTbenchState {
+  const activeRun = state.activeRun;
   const nextState = cloneState(state);
   nextState.updatedAt = nowIso();
   delete nextState.activeRun;
   delete nextState.stopRequestedAt;
   writeAutoresearchTbenchState(cwd, nextState);
+
+  // Log phase transition to observability system
+  if (activeRun) {
+    logger.logStateChange({
+      entityType: 'memory',
+      entityPath: `autoresearch-tbench/runs/${activeRun.label}`,
+      changeType: 'update',
+      beforeContent: JSON.stringify({ phase: 'running', pid: activeRun.pid, startedAt: activeRun.startedAt }),
+      afterContent: JSON.stringify({ phase: 'completed', endedAt: nowIso() }),
+    });
+  }
+
   return nextState;
 }
 
