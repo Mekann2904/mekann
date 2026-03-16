@@ -63,6 +63,14 @@ export interface ObservabilityResult {
 }
 
 // ============================================
+// Exports for Programmatic Use
+// ============================================
+
+export { queryObservabilityData };
+export { getLogDir, listLogFiles, parseLogFile, parseLogFileWithStats };
+export { calculateStats };
+
+// ============================================
 // Log Reading Functions
 // ============================================
 
