@@ -46,6 +46,34 @@ type SSEEventType =
   | "experiment_timeout";
 
 /**
+ * イベントキューエントリ
+ */
+interface QueuedEvent {
+  type: string;
+  data: string;
+  timestamp: number;
+}
+
+/**
+ * イベントキュー設定
+ */
+const EVENT_QUEUE_MAX_SIZE = 100;
+const EVENT_QUEUE_PROCESS_BATCH = 10;
+
+/**
+ * 安全なJSON解析
+ */
+function safeJsonParse<T>(raw: string, fallback: T, context: string): T {
+  try {
+    return JSON.parse(raw) as T;
+  } catch (error) {
+    const parseError = error instanceof Error ? error : new Error(String(error));
+    console.error(`[SSE] JSON parse error in ${context}:`, parseError);
+    return fallback;
+  }
+}
+
+/**
  * 実験イベントデータ
  */
 interface ExperimentEventData {
@@ -154,30 +182,28 @@ export function useSSE(handlers?: SSEEventHandlers) {
 
     // 接続成功
     eventSource.addEventListener("connected", (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
+      const data = safeJsonParse<{ clientId?: string }>(e.data, {}, "connected");
       setIsConnected(true);
       setLastReceived(Date.now());
       reconnectAttemptsRef.current = 0;
-      handlers?.onConnected?.(data.clientId);
+      handlers?.onConnected?.(data.clientId ?? "");
     });
 
     // インスタンス更新
     eventSource.addEventListener("instances-update", (e: MessageEvent) => {
-      try {
-        const data = JSON.parse(e.data);
-        setLastReceived(Date.now());
-        setInstances(data.instances);
-        handlers?.onInstancesUpdate?.(data.instances);
-      } catch (error) {
-        const parseError = error instanceof Error ? error : new Error(String(error));
-        console.error('[SSE] Failed to parse instances-update event:', parseError);
-        handlers?.onError?.(parseError);
-      }
+      const data = safeJsonParse<{ instances: InstanceInfo[] }>(e.data, { instances: [] }, "instances-update");
+      setLastReceived(Date.now());
+      setInstances(data.instances);
+      handlers?.onInstancesUpdate?.(data.instances);
     });
 
     // コンテキスト更新
     eventSource.addEventListener("context-update", (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
+      const data = safeJsonParse<{ pid: number; timestamp: string; input: number; output: number }>(
+        e.data,
+        { pid: 0, timestamp: "", input: 0, output: 0 },
+        "context-update"
+      );
       setLastReceived(Date.now());
       handlers?.onContextUpdate?.(data);
     });
@@ -189,42 +215,42 @@ export function useSSE(handlers?: SSEEventHandlers) {
 
     // 実験開始
     eventSource.addEventListener("experiment_start", (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
+      const data = safeJsonParse<ExperimentEventData>(e.data, {} as ExperimentEventData, "experiment_start");
       setLastReceived(Date.now());
       handlers?.onExperimentStart?.(data);
     });
 
     // 実験ベースライン
     eventSource.addEventListener("experiment_baseline", (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
+      const data = safeJsonParse<ExperimentEventData>(e.data, {} as ExperimentEventData, "experiment_baseline");
       setLastReceived(Date.now());
       handlers?.onExperimentBaseline?.(data);
     });
 
     // 実験実行
     eventSource.addEventListener("experiment_run", (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
+      const data = safeJsonParse<ExperimentEventData>(e.data, {} as ExperimentEventData, "experiment_run");
       setLastReceived(Date.now());
       handlers?.onExperimentRun?.(data);
     });
 
     // 実験改善
     eventSource.addEventListener("experiment_improved", (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
+      const data = safeJsonParse<ExperimentEventData>(e.data, {} as ExperimentEventData, "experiment_improved");
       setLastReceived(Date.now());
       handlers?.onExperimentImproved?.(data);
     });
 
     // 実験退行
     eventSource.addEventListener("experiment_regressed", (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
+      const data = safeJsonParse<ExperimentEventData>(e.data, {} as ExperimentEventData, "experiment_regressed");
       setLastReceived(Date.now());
       handlers?.onExperimentRegressed?.(data);
     });
 
     // 実験タイムアウト
     eventSource.addEventListener("experiment_timeout", (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
+      const data = safeJsonParse<ExperimentEventData>(e.data, {} as ExperimentEventData, "experiment_timeout");
       setLastReceived(Date.now());
       handlers?.onExperimentTimeout?.(data);
     });
