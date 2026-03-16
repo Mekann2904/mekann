@@ -312,10 +312,16 @@ describe("task-auto-executor workpad", () => {
       parentSession: "/repo/.pi/sessions/current.jsonl",
     });
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
-    expect(pi.sendUserMessage.mock.calls[0][0]).toContain("Handle this as a normal pi task in a fresh session.");
-    expect(pi.sendUserMessage.mock.calls[0][0]).toContain("Do not assume any previous ticket context.");
-    expect(pi.sendUserMessage.mock.calls[0][0]).toContain("Do not default to DAG.");
-    expect(pi.sendUserMessage.mock.calls[0][0]).toContain("Implement orchestration");
+    const dispatchPrompt = pi.sendUserMessage.mock.calls[0][0];
+    expect(dispatchPrompt).toContain("Handle this as a normal pi task in a fresh session.");
+    expect(dispatchPrompt).toContain("Do not assume any previous ticket context.");
+    expect(dispatchPrompt).toContain("Do not default to DAG.");
+    expect(dispatchPrompt).toContain("Implement orchestration");
+    expect(dispatchPrompt).toContain("workspace_verify と required verification commands を完了すること。");
+    expect(dispatchPrompt).toContain("検証が通ってから、変更したファイルだけを git add し、必ず git commit を作成すること。");
+    expect(dispatchPrompt.indexOf("workspace_verify と required verification commands を完了すること。")).toBeLessThan(
+      dispatchPrompt.indexOf("git commit を作成すること。"),
+    );
     expect(ctx.ui.notify).toHaveBeenCalledWith("自動実行を開始しました: Implement orchestration", "info");
   });
 

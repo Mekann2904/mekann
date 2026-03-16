@@ -771,10 +771,12 @@ function buildSymphonyExecutionContext(input: {
 		`- reason: ${input.reason}`,
 		input.workpadId ? `- workpadId: ${input.workpadId}` : null,
 		"- まず関連ファイルを読んで、最小の working slice を実装すること。",
-		"- task_complete の前に、変更したファイルだけを git add し、必ず git commit を作成すること。",
+		"- 実装後は、まず workspace_verify と required verification commands を完了すること。",
+		"- 検証が通ってから、変更したファイルだけを git add し、必ず git commit を作成すること。",
 		"- git add . や git add -A は禁止。選択的に stage すること。",
+		"- commit 後にコードを変えないこと。追加変更が必要になったら再度 verification からやり直すこと。",
 		"- inspect だけで閉じず、必要なら修正・検証まで進めること。",
-		"- 完了後は task_complete でこの taskId を完了すること。",
+		"- 最後に task_complete でこの taskId を完了すること。",
 	].filter(Boolean).join("\n");
 }
 
