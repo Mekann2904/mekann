@@ -610,33 +610,44 @@ export class ComprehensiveLogger {
    * ログをフラッシュする
    * @summary ログをフラッシュ
    * @returns 解決時に処理完了
+   * @throws I/Oエラー時に例外をスロー（データはバッファに保持）
    */
   async flush(): Promise<void> {
     if (this.buffer.length === 0) return;
-    
+
     const events = [...this.buffer];
-    this.buffer = [];
-    
+
     await this.ensureLogDir();
-    
+
     const logFile = join(this.config.logDir, `events-${getDateStr()}.jsonl`);
-    
-    // ファイルサイズチェック
-    if (existsSync(logFile)) {
-      const stats = statSync(logFile);
-      const sizeMB = stats.size / (1024 * 1024);
-      if (sizeMB >= this.config.maxFileSizeMB) {
-        // ローテーション: 新しいファイル名を使用
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        const rotatedFile = join(this.config.logDir, `events-${getDateStr()}-${timestamp}.jsonl`);
-        const lines = events.map(e => JSON.stringify(e)).join('\n') + '\n';
-        await appendFile(rotatedFile, lines, 'utf-8');
-        return;
+
+    try {
+      // ファイルサイズチェック
+      if (existsSync(logFile)) {
+        const stats = statSync(logFile);
+        const sizeMB = stats.size / (1024 * 1024);
+        if (sizeMB >= this.config.maxFileSizeMB) {
+          // ローテーション: 新しいファイル名を使用
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+          const rotatedFile = join(this.config.logDir, `events-${getDateStr()}-${timestamp}.jsonl`);
+          const lines = events.map(e => JSON.stringify(e)).join('\n') + '\n';
+          await appendFile(rotatedFile, lines, 'utf-8');
+          // 成功時のみバッファをクリア
+          this.buffer = [];
+          return;
+        }
       }
+
+      const lines = events.map(e => JSON.stringify(e)).join('\n') + '\n';
+      await appendFile(logFile, lines, 'utf-8');
+      // 成功時のみバッファをクリア
+      this.buffer = [];
+    } catch (error) {
+      // I/Oエラー時はバッファを保持（データ損失を防ぐ）
+      // バッファに戻すのではなく、クリアしないことでデータを保持
+      console.error('[comprehensive-logger] Flush failed, keeping events in buffer:', error);
+      throw error;
     }
-    
-    const lines = events.map(e => JSON.stringify(e)).join('\n') + '\n';
-    await appendFile(logFile, lines, 'utf-8');
   }
   
   private stopFlushTimer(): void {

@@ -299,13 +299,61 @@ function getCurrentLogFilePath(dir: string): string {
 
 /**
  * Append JSONL entry to log file.
+ * @returns true if write succeeded, false otherwise
  */
-function appendJsonlEntry(filePath: string, entry: Record<string, unknown>): void {
+function appendJsonlEntry(filePath: string, entry: Record<string, unknown>): boolean {
   try {
     const line = JSON.stringify(entry) + "\n";
     appendFileSync(filePath, line, "utf-8");
+    return true;
   } catch (e) {
-    console.warn("[metrics-collector] Failed to append JSONL entry:", { filePath, error: String(e) });
+    console.error("[metrics-collector] Failed to append JSONL entry (data NOT dropped):", { filePath, error: String(e), entryType: entry.type });
+    return false;
+  }
+}
+
+/**
+ * Failed entries buffer for retry on next successful write.
+ */
+const failedEntriesBuffer: Array<{ filePath: string; entry: Record<string, unknown> }> = [];
+const MAX_FAILED_ENTRIES_BUFFER = 1000;
+
+/**
+ * Retry failed entries before writing new ones.
+ */
+function retryFailedEntries(): void {
+  if (failedEntriesBuffer.length === 0) return;
+
+  const entriesToRetry = [...failedEntriesBuffer];
+  failedEntriesBuffer.length = 0;
+
+  for (const { filePath, entry } of entriesToRetry) {
+    if (!appendJsonlEntry(filePath, entry)) {
+      // Still failing - re-add to buffer if not full
+      if (failedEntriesBuffer.length < MAX_FAILED_ENTRIES_BUFFER) {
+        failedEntriesBuffer.push({ filePath, entry });
+      } else {
+        console.error("[metrics-collector] Failed entries buffer overflow, dropping oldest entry");
+      }
+    }
+  }
+}
+
+/**
+ * Append with retry logic - attempts to write pending failed entries first.
+ */
+function appendWithRetry(filePath: string, entry: Record<string, unknown>): void {
+  // First, retry any failed entries
+  retryFailedEntries();
+
+  // Then write the new entry
+  if (!appendJsonlEntry(filePath, entry)) {
+    // New entry failed - add to buffer for later retry
+    if (failedEntriesBuffer.length < MAX_FAILED_ENTRIES_BUFFER) {
+      failedEntriesBuffer.push({ filePath, entry });
+    } else {
+      console.error("[metrics-collector] Failed entries buffer full, dropping entry:", entry.type);
+    }
   }
 }
 
@@ -483,7 +531,7 @@ function recordTaskCompletion(
   // Log to JSONL
   if (collectorState.config.enableLogging) {
     const filePath = getCurrentLogFilePath(collectorState.metricsDir);
-    appendJsonlEntry(filePath, { type: "task_completion", ...event });
+    appendWithRetry(filePath, { type: "task_completion", ...event });
     rotateLogFilesIfNeeded(collectorState.metricsDir, collectorState.config);
   }
 }
@@ -511,7 +559,7 @@ function recordPreemption(taskId: string, reason: string): void {
   // Log to JSONL
   if (collectorState.config.enableLogging) {
     const filePath = getCurrentLogFilePath(collectorState.metricsDir);
-    appendJsonlEntry(filePath, { type: "preemption", ...event });
+    appendWithRetry(filePath, { type: "preemption", ...event });
   }
 }
 
@@ -540,7 +588,7 @@ function recordWorkSteal(sourceInstance: string, taskId: string): void {
   // Log to JSONL
   if (collectorState.config.enableLogging) {
     const filePath = getCurrentLogFilePath(collectorState.metricsDir);
-    appendJsonlEntry(filePath, { type: "work_steal", ...event });
+    appendWithRetry(filePath, { type: "work_steal", ...event });
   }
 }
 
@@ -556,7 +604,7 @@ function recordRateLimitHit(): void {
   // Log to JSONL
   if (collectorState.config.enableLogging) {
     const filePath = getCurrentLogFilePath(collectorState.metricsDir);
-    appendJsonlEntry(filePath, {
+    appendWithRetry(filePath, {
       type: "rate_limit_hit",
       timestamp: nowMs(),
     });
@@ -778,7 +826,7 @@ function collectAndLogMetrics(): void {
 
   const metrics = getMetrics();
   const filePath = getCurrentLogFilePath(collectorState.metricsDir);
-  appendJsonlEntry(filePath, { type: "metrics_snapshot", ...metrics });
+  appendWithRetry(filePath, { type: "metrics_snapshot", ...metrics });
   rotateLogFilesIfNeeded(collectorState.metricsDir, collectorState.config);
 }
 
