@@ -15,8 +15,10 @@ import {
   parseVitestJsonReport,
   type AutoresearchE2EOutcome,
   type AutoresearchE2EScore,
+  type BehaviorMetricsSummary,
 } from "../.pi/lib/autoresearch-e2e.js";
 import { ComprehensiveLogger } from "../.pi/lib/comprehensive-logger.js";
+import { loadRecentRecords } from "../.pi/lib/analytics/behavior-storage.js";
 
 interface CliOptions {
   command: string;
@@ -65,6 +67,44 @@ function nowIso(): string {
 
 function ensureDir(path: string): void {
   mkdirSync(path, { recursive: true });
+}
+
+/**
+ * 直近の行動メトリクスを集計する
+ * @param limit 取得するレコード数
+ * @returns 行動メトリクスのサマリー（レコードがない場合はundefined）
+ */
+function aggregateBehaviorMetrics(limit: number = 50): BehaviorMetricsSummary | undefined {
+  const records = loadRecentRecords(limit, ROOT);
+
+  if (records.length === 0) {
+    return undefined;
+  }
+
+  let totalPromptTokens = 0;
+  let totalOutputTokens = 0;
+  let totalQualityScore = 0;
+  let totalExecutionMs = 0;
+
+  for (const record of records) {
+    totalPromptTokens += record.prompt.estimatedTokens;
+    totalOutputTokens += record.output.estimatedTokens;
+    // 品質スコアは複数の指標の平均
+    const quality = (record.quality.formatComplianceScore + record.quality.claimResultConsistency) / 2;
+    totalQualityScore += quality;
+    totalExecutionMs += record.execution.durationMs;
+  }
+
+  const count = records.length;
+
+  return {
+    recordCount: count,
+    avgPromptTokens: Math.round(totalPromptTokens / count),
+    avgOutputTokens: Math.round(totalOutputTokens / count),
+    avgQualityScore: Math.round((totalQualityScore / count) * 1000) / 1000, // 3桁精度
+    avgExecutionMs: Math.round(totalExecutionMs / count),
+    totalTokens: totalPromptTokens + totalOutputTokens,
+  };
 }
 
 function parseArgs(argv: string[]): { subcommand: string; options: CliOptions } {
@@ -139,7 +179,7 @@ function ensureResultsHeader(): void {
   ensureDir(dirname(RESULTS_TSV_PATH));
   appendFileSync(
     RESULTS_TSV_PATH,
-    "timestamp\tlabel\toutcome\tfailed\tpassed\ttotal\tduration_ms\tcommit\tlog_path\treport_path\n",
+    "timestamp\tlabel\toutcome\tfailed\tpassed\ttotal\tduration_ms\tbehavior_records\tavg_quality\ttotal_tokens\tcommit\tlog_path\treport_path\n",
     "utf-8",
   );
 }
@@ -250,6 +290,7 @@ function appendResultRow(
   artifacts: RunArtifacts,
 ): void {
   ensureResultsHeader();
+  const bm = score?.behaviorMetrics;
   appendFileSync(
     RESULTS_TSV_PATH,
     [
@@ -260,6 +301,9 @@ function appendResultRow(
       String(score?.passed ?? -1),
       String(score?.total ?? -1),
       String(score?.durationMs ?? -1),
+      String(bm?.recordCount ?? -1),
+      String(bm?.avgQualityScore ?? -1),
+      String(bm?.totalTokens ?? -1),
       commit,
       artifacts.logPath,
       artifacts.reportPath,
@@ -337,13 +381,19 @@ async function handleBaseline(options: CliOptions): Promise<void> {
   }
 
   const report = parseVitestJsonReport(readFileSync(run.artifacts.reportPath, "utf-8"));
+  // 行動メトリクスを集計してスコアに追加
+  const behaviorMetrics = aggregateBehaviorMetrics();
+  const score: AutoresearchE2EScore = {
+    ...report.score,
+    behaviorMetrics,
+  };
   const head = await getHeadCommit();
   const nextState: ExperimentState = {
     ...state,
     updatedAt: nowIso(),
     bestCommit: head,
     baselineCommit: head,
-    bestScore: report.score,
+    bestScore: score,
     command: options.command || state.command,
     experimentCount: state.experimentCount + 1,
     lastOutcome: "baseline",
@@ -351,7 +401,7 @@ async function handleBaseline(options: CliOptions): Promise<void> {
     lastLogPath: run.artifacts.logPath,
   };
   writeState(nextState);
-  appendResultRow(options.label, "baseline", report.score, head, run.artifacts);
+  appendResultRow(options.label, "baseline", score, head, run.artifacts);
 
   // Emit experiment_baseline event
   logger.logExperimentBaseline({
@@ -404,7 +454,13 @@ async function handleRun(options: CliOptions): Promise<void> {
     });
     await logger.flush();
   } else if (existsSync(run.artifacts.reportPath)) {
-    score = parseVitestJsonReport(readFileSync(run.artifacts.reportPath, "utf-8")).score;
+    const report = parseVitestJsonReport(readFileSync(run.artifacts.reportPath, "utf-8"));
+    // 行動メトリクスを集計してスコアに追加
+    const behaviorMetrics = aggregateBehaviorMetrics();
+    score = {
+      ...report.score,
+      behaviorMetrics,
+    };
     outcome = determineAutoresearchOutcome(score, state.bestScore);
 
     // Emit result-specific events
