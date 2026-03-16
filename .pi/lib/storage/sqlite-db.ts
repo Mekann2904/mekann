@@ -153,6 +153,16 @@ export interface DatabaseOptions {
 }
 
 /**
+ * スキーマ状態を表す型
+ * @summary スキーマ状態型
+ * @description 新規DB、バージョン管理済み、破損の3状態を区別する
+ */
+export type SchemaState =
+  | { status: "fresh" }
+  | { status: "versioned"; version: number }
+  | { status: "corrupted" };
+
+/**
  * Piデータベースクラス
  * @summary SQLiteデータベース管理クラス
  */
@@ -337,6 +347,55 @@ export class PiDatabase {
     const stmt = this.prepare<[], { version: number }>("SELECT MAX(version) as version FROM schema_version");
     const result = stmt.get();
     return result?.version ?? 0;
+  }
+
+  /**
+   * スキーマ状態を詳細に取得
+   * @summary 状態取得
+   * @returns スキーマ状態（新規/バージョン管理済み/破損）
+   */
+  getSchemaState(): SchemaState {
+    this.ensureConnected();
+
+    // schema_versionテーブルが存在する場合はバージョン管理済み
+    if (this.tableExists("schema_version")) {
+      const stmt = this.prepare<[], { version: number }>("SELECT MAX(version) as version FROM schema_version");
+      const result = stmt.get();
+      return { status: "versioned", version: result?.version ?? 0 };
+    }
+
+    // schema_versionテーブルが存在しない場合、他のアプリケーションテーブルがあるか確認
+    if (this.hasApplicationTables()) {
+      // 他のテーブルが存在する = schema_versionだけ欠落 = 破損状態
+      return { status: "corrupted" };
+    }
+
+    // テーブルが何もない = 新規データベース
+    return { status: "fresh" };
+  }
+
+  /**
+   * アプリケーションテーブルが存在するか確認
+   * @summary アプリテーブル確認
+   * @returns アプリケーションテーブルが1つでも存在すればtrue
+   */
+  private hasApplicationTables(): boolean {
+    const applicationTables = [
+      "instances",
+      "adaptive_limits",
+      "rpm_throttle",
+      "total_limit",
+      "queue_states",
+      "distributed_locks",
+      "json_state",
+    ];
+
+    for (const table of applicationTables) {
+      if (this.tableExists(table)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

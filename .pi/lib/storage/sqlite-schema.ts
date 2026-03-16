@@ -226,9 +226,18 @@ const MIGRATIONS: Migration[] = [
  * @param db - データベースインスタンス
  */
 export function initializeSchema(db: PiDatabase): void {
-  const currentVersion = db.getSchemaVersion();
-  
-  if (currentVersion === 0) {
+  const schemaState = db.getSchemaState();
+
+  if (schemaState.status === "corrupted") {
+    // 破損状態: schema_versionテーブルが存在しないが他のテーブルが存在
+    // 自動修復は危険なため、明示的なエラーを投げる
+    throw new Error(
+      "[sqlite-schema] Database corruption detected: schema_version table is missing but other application tables exist. " +
+      "Manual intervention required. Either restore schema_version table from backup, or drop all tables and reinitialize."
+    );
+  }
+
+  if (schemaState.status === "fresh") {
     // 初回作成: 全テーブルを作成
     console.debug("[sqlite-schema] Creating initial schema");
     db.transaction(() => {
@@ -239,9 +248,9 @@ export function initializeSchema(db: PiDatabase): void {
         db.setSchemaVersion(migration.version);
       }
     });
-  } else if (currentVersion < SCHEMA_VERSION) {
+  } else if (schemaState.version < SCHEMA_VERSION) {
     // アップグレード: 必要なマイグレーションのみ実行
-    runMigrations(db, currentVersion);
+    runMigrations(db, schemaState.version);
   }
 }
 
