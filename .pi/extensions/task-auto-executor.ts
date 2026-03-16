@@ -518,6 +518,29 @@ function canQueueSymphonyFollowUp(pi: ExtensionAPI): boolean {
 	return typeof (pi as { sendUserMessage?: unknown }).sendUserMessage === "function";
 }
 
+function queueSymphonyFollowUpMessage(
+	pi: ExtensionAPI,
+	content: string,
+	options?: { deliverAs?: "steer" | "followUp" | "nextTurn" },
+): void {
+	const sender = (pi as {
+		sendUserMessage?: (
+			content: string,
+			options?: { deliverAs?: "steer" | "followUp" | "nextTurn" },
+		) => void;
+	}).sendUserMessage;
+
+	if (typeof sender !== "function") {
+		throw new Error("sendUserMessage is unavailable");
+	}
+
+	sender(content, options);
+}
+
+function queueSymphonyNextCommand(pi: ExtensionAPI): void {
+	queueSymphonyFollowUpMessage(pi, "/symphony next", { deliverAs: "followUp" });
+}
+
 function canStartFreshSymphonySession(ctx: unknown, pi?: ExtensionAPI): boolean {
 	const anyCtx = ctx as FreshSessionContextLike;
 	return typeof anyCtx.newSession === "function" && Boolean(pi && canQueueSymphonyFollowUp(pi));
@@ -1683,17 +1706,6 @@ async function queueSymphonyDispatchFreshSession(
 	pi: ExtensionAPI,
 	dispatch: PreparedAutoDispatch,
 ): Promise<void> {
-	const sender = (pi as {
-		sendUserMessage?: (
-			content: string,
-			options?: { deliverAs?: "steer" | "followUp" | "nextTurn" },
-		) => void;
-	}).sendUserMessage;
-
-	if (typeof sender !== "function") {
-		throw new Error("sendUserMessage is unavailable");
-	}
-
 	if (typeof ctx.newSession !== "function") {
 		throw new Error("fresh session dispatcher is unavailable");
 	}
@@ -1705,7 +1717,7 @@ async function queueSymphonyDispatchFreshSession(
 		throw new Error("fresh session creation was cancelled");
 	}
 
-	sender(buildSymphonyDispatchPrompt(dispatch));
+	queueSymphonyFollowUpMessage(pi, buildSymphonyDispatchPrompt(dispatch));
 }
 
 async function autoRunNextTask(ctx: {
@@ -2091,8 +2103,17 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 		}
 
 		if (autoExecutorConfig.autoRun) {
+			if (canQueueSymphonyFollowUp(pi)) {
+				queueSymphonyNextCommand(pi);
+				ctx.ui.notify(
+					"[Symphony] 次タスクを継続します。`/symphony next` を follow-up に投入し、fresh session で開始します。",
+					"info",
+				);
+				return;
+			}
+
 			ctx.ui.notify(
-				"[Symphony] 次タスクは fresh session が必要です。この文脈では自動移行しません。`/symphony next` で開始してください。",
+				"[Symphony] 次タスクは fresh session が必要です。self-queue できないため自動移行しません。`/symphony next` で開始してください。",
 				"info",
 			);
 			return;

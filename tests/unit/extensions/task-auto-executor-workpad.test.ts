@@ -425,7 +425,7 @@ describe("task-auto-executor workpad", () => {
     expect(setStatus).not.toHaveBeenCalled();
   });
 
-  it("agent_end は active instance でも fresh session を作れない文脈では次タスクへ自動移行しない", async () => {
+  it("agent_end は active instance なら /symphony next を self-queue して fresh session へ進める", async () => {
     storageMocks.state = {
       tasks: [
         {
@@ -479,9 +479,12 @@ describe("task-auto-executor workpad", () => {
       },
     });
 
-    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
+    expect(pi.sendUserMessage).toHaveBeenLastCalledWith("/symphony next", {
+      deliverAs: "followUp",
+    });
     expect(notify).toHaveBeenCalledWith(
-      "[Symphony] 次タスクは fresh session が必要です。この文脈では自動移行しません。`/symphony next` で開始してください。",
+      "[Symphony] 次タスクを継続します。`/symphony next` を follow-up に投入し、fresh session で開始します。",
       "info",
     );
     expect(storageMocks.state.tasks[1].status).toBe("todo");
