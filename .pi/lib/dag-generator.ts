@@ -298,11 +298,8 @@ function classifyClause(clause: string): ClauseKind {
 }
 
 function shouldCreateResearch(task: string, clauses: string[]): boolean {
-  if (clauses.some((clause) => classifyClause(clause) === "research")) {
-    return true;
-  }
-
-  return clauses.length > 1 || /(refactor|migrate|design|architecture|認証|api|db|database|schema|security|リファクタ|移行|設計|認可|認証)/i.test(task);
+  return clauses.some((clause) => classifyClause(clause) === "research")
+    || /\b(compare|evaluate|investigate|research|analyz|explore|spike)\b|調査|分析|比較|評価|検討/i.test(task);
 }
 
 function shouldCreateArchitecture(task: string, clauses: string[]): boolean {
@@ -324,16 +321,18 @@ function createDefaultResearchUnits(task: string, options: DagGenerationOptions)
   const units = [
     `Inspect the existing code paths related to ${task}`,
     `Inspect the public interfaces, schemas, and contracts related to ${task}`,
-    `Inspect the risk areas, edge cases, and failure modes related to ${task}`,
+    `Inspect the highest-risk constraints and failure modes related to ${task}`,
   ];
 
   if (options.contextFiles?.length) {
     units.push(`Inspect the provided context files for ${task}`);
+  } else if (/(compare|evaluate|tradeoff|比較|評価|検討)/i.test(task)) {
+    units.push(`Inspect the main option tradeoffs for ${task}`);
   } else if (/(test|verify|validation|テスト|検証)/i.test(task)) {
     units.push(`Inspect the current tests and validation points for ${task}`);
   }
 
-  return Array.from(new Set(units));
+  return Array.from(new Set(units)).slice(0, 3);
 }
 
 function createExpandedResearchUnits(
@@ -346,7 +345,7 @@ function createExpandedResearchUnits(
       baseClause,
       `Inspect the existing code paths related to ${task}`,
       `Inspect the public interfaces, schemas, and contracts related to ${task}`,
-      `Inspect the risk areas, edge cases, and failure modes related to ${task}`,
+      `Inspect the highest-risk constraints and failure modes related to ${task}`,
       ...(options.contextFiles?.length
         ? [`Inspect the provided context files for ${task}`]
         : []),

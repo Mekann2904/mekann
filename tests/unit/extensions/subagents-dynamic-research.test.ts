@@ -12,6 +12,8 @@ const executeWithAdaptOrchMock = vi.fn();
 const addNodeMock = vi.fn();
 const addDependencyMock = vi.fn();
 const addInputContextMock = vi.fn();
+const generateDagFromTaskMock = vi.fn();
+const runSubagentTaskMock = vi.fn();
 
 vi.mock("@mariozechner/pi-ai", () => ({
   Type: {
@@ -38,6 +40,13 @@ vi.mock("../../../.pi/extensions/subagents/storage.js", () => ({
         name: "Researcher",
         description: "Research specialist",
         systemPrompt: "You research.",
+        enabled: "enabled",
+      },
+      {
+        id: "implementer",
+        name: "Implementer",
+        description: "Implementation specialist",
+        systemPrompt: "You implement.",
         enabled: "enabled",
       },
     ],
@@ -98,10 +107,12 @@ vi.mock("../../../.pi/extensions/subagents/live-monitor.js", () => ({
 }));
 
 vi.mock("../../../.pi/extensions/subagents/task-execution.js", () => ({
-  runSubagentTask: vi.fn(async () => ({
+  runSubagentTask: runSubagentTaskMock.mockImplementation(async () => ({
     runRecord: { status: "completed", summary: "ok", error: undefined },
     output: "done",
     prompt: "prompt",
+    promptStackSummary: undefined,
+    runtimeNotificationCount: 0,
   })),
 }));
 
@@ -142,6 +153,18 @@ vi.mock("../../../.pi/lib/dag-executor.js", () => ({
   executeDag: executeDagMock,
 }));
 
+vi.mock("../../../.pi/lib/dag-generator.js", () => ({
+  generateDagFromTask: generateDagFromTaskMock,
+  DagGenerationError: class DagGenerationError extends Error {
+    code: string;
+    constructor(message: string, code: string) {
+      super(message);
+      this.name = "DagGenerationError";
+      this.code = code;
+    }
+  },
+}));
+
 vi.mock("../../../.pi/lib/dag/adaptorch-adapter.js", () => ({
   executeWithAdaptOrch: executeWithAdaptOrchMock,
   isGlobalAdaptOrchEnabled: vi.fn(() => true),
@@ -167,10 +190,123 @@ describe("subagent_run_dag dynamic research", () => {
     addNodeMock.mockReset();
     addDependencyMock.mockReset();
     addInputContextMock.mockReset();
+    generateDagFromTaskMock.mockReset();
+    runSubagentTaskMock.mockReset();
+    runSubagentTaskMock.mockImplementation(async () => ({
+      runRecord: { agentId: "researcher", status: "completed", summary: "ok", error: undefined },
+      output: "done",
+      prompt: "prompt",
+      promptStackSummary: undefined,
+      runtimeNotificationCount: 0,
+    }));
     const subagentsModule = await import("../../../.pi/extensions/subagents.js");
     if (typeof subagentsModule.resetForTesting === "function") {
       subagentsModule.resetForTesting();
     }
+  });
+
+  it("plan も autoGenerate=true もない場合は auto DAG を始めない", async () => {
+    const registerSubagentExtension = (await import("../../../.pi/extensions/subagents.js")).default;
+    const pi = createFakePi();
+    registerSubagentExtension(pi as any);
+
+    const tool = pi.tools.get("subagent_run_dag");
+    const result = await tool.execute(
+      "tc-auto-gate",
+      {
+        task: "Fix auth bug",
+      },
+      undefined,
+      undefined,
+      {
+        cwd: "/tmp/subagents-dynamic",
+        model: { id: "gpt-test", provider: "openai" },
+      },
+    );
+
+    expect(generateDagFromTaskMock).not.toHaveBeenCalled();
+    expect(result.details.error).toBe("plan_required");
+    expect(result.content[0].text).toContain("autoGenerate=true");
+  });
+
+  it("parallel mode は明示依存がない限り自動で DAG へ昇格しない", async () => {
+    const registerSubagentExtension = (await import("../../../.pi/extensions/subagents.js")).default;
+    const pi = createFakePi();
+    registerSubagentExtension(pi as any);
+
+    const tool = pi.tools.get("subagent_run_dag");
+    const result = await tool.execute(
+      "tc-parallel",
+      {
+        task: "Fix auth bug",
+        subagentIds: ["researcher", "implementer"],
+        extraContext: "Read the failing files and patch the bug.",
+      },
+      undefined,
+      undefined,
+      {
+        cwd: "/tmp/subagents-dynamic",
+        model: { id: "gpt-test", provider: "openai" },
+      },
+    );
+
+    expect(generateDagFromTaskMock).not.toHaveBeenCalled();
+    expect(executeDagMock).not.toHaveBeenCalled();
+    expect(result.details.error).not.toBe("plan_required");
+  });
+
+  it("DAG 実行では root context を extraContext にだけ渡し、task 本文へ二重注入しない", async () => {
+    executeDagMock.mockImplementation(async (plan, executor) => {
+      const task = plan.tasks[0];
+      await executor(task, "## Result from dep-task\nprevious finding");
+      return {
+        planId: plan.id,
+        overallStatus: "completed",
+        totalDurationMs: 1,
+        completedTaskIds: [task.id],
+        failedTaskIds: [],
+        skippedTaskIds: [],
+        taskResults: new Map([
+          [task.id, { taskId: task.id, status: "completed", output: { output: "implemented" }, durationMs: 1 }],
+        ]),
+      };
+    });
+
+    const registerSubagentExtension = (await import("../../../.pi/extensions/subagents.js")).default;
+    const pi = createFakePi();
+    registerSubagentExtension(pi as any);
+
+    const tool = pi.tools.get("subagent_run_dag");
+    await tool.execute(
+      "tc-context",
+      {
+        task: "Fix auth bug",
+        autoGenerate: false,
+        enableAdaptOrch: false,
+        extraContext: "Ticket context: reproduce first, then patch only the auth regression.",
+        plan: {
+          id: "explicit-dag",
+          description: "explicit dag",
+          tasks: [
+            { id: "implement-auth", description: "Fix auth bug", assignedAgent: "implementer", dependencies: [] },
+          ],
+        },
+      },
+      undefined,
+      undefined,
+      {
+        cwd: "/tmp/subagents-dynamic",
+        model: { id: "gpt-test", provider: "openai" },
+      },
+    );
+
+    expect(runSubagentTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      task: "Fix auth bug",
+      extraContext: expect.stringContaining("## Shared Task Context"),
+    }));
+    expect(runSubagentTaskMock.mock.calls[0]?.[0]?.extraContext).toContain("Ticket context: reproduce first");
+    expect(runSubagentTaskMock.mock.calls[0]?.[0]?.extraContext).toContain("## Result from dep-task");
+    expect(runSubagentTaskMock.mock.calls[0]?.[0]?.task).not.toContain("## Context from Previous Tasks");
   });
 
   it("dynamicResearch 指定時は legacy executeDag で deep-dive を差し込む", async () => {

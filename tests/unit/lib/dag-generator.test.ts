@@ -10,8 +10,8 @@ import { generateDagFromTask } from "../../../.pi/lib/dag-generator.js";
 import { executeDag } from "../../../.pi/lib/dag-executor.js";
 
 describe("dag-generator", () => {
-  it("research を複数ノードへ fan-out し synthesis に集約する", async () => {
-    const plan = await generateDagFromTask("Refactor authentication flow");
+  it("明示的な調査タスクだけを research fan-out し synthesis に集約する", async () => {
+    const plan = await generateDagFromTask("Investigate authentication flow and compare options");
 
     const researchTasks = plan.tasks.filter((task) => task.assignedAgent === "researcher");
     const synthesisTask = plan.tasks.find((task) => task.id.startsWith("research-synthesis-"));
@@ -21,12 +21,14 @@ describe("dag-generator", () => {
     expect(synthesisTask?.dependencies).toEqual(researchTasks.map((task) => task.id));
   });
 
-  it("実装とテストを含むタスクを fan-in 付き DAG に分解する", async () => {
+  it("通常の実装とテストは不要な research なしで fan-in 付き DAG に分解する", async () => {
     const plan = await generateDagFromTask("Implement authentication and add tests");
 
+    const researchTasks = plan.tasks.filter((task) => task.assignedAgent === "researcher");
     const implementTasks = plan.tasks.filter((task) => task.assignedAgent === "implementer");
     const testerTasks = plan.tasks.filter((task) => task.assignedAgent === "tester");
 
+    expect(researchTasks.length).toBe(0);
     expect(implementTasks.length).toBeGreaterThan(0);
     expect(testerTasks.length).toBe(1);
     expect(testerTasks[0]?.dependencies).toEqual(implementTasks.map((task) => task.id));

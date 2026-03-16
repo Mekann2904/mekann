@@ -162,11 +162,8 @@ const HIGH_RISK_PATTERNS: RegExp[] = [
 const RESEARCH_TASK_PATTERNS: RegExp[] = [
   /調査/i, /investigate/i, /analyze/i, /分析/i,
   /探/i, /find/i, /search/i, /検索/i,
-  /確認/i, /verify/i, /check/i, /確認/i,
-  /読/i, /read/i, /review/i, /レビュー/i,
-  /理解/i, /understand/i, /explain/i, /説明/i,
-  /どのファイル/i, /which file/i, /where/i,
-  /どうなって/i, /how does/i, /what is/i,
+  /比較/i, /compare/i, /evaluate/i, /評価/i,
+  /原因調査/i, /root cause/i, /why does/i, /なぜ/i,
 ];
 
 /**
