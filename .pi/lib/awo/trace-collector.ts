@@ -31,6 +31,7 @@ import {
   DEFAULT_AWO_CONFIG,
   type AWOConfig,
 } from "./types.js";
+import { getLogger } from "../comprehensive-logger.js";
 
 // =============================================================================
 // 型定義（ローカル）
@@ -148,6 +149,18 @@ export class TraceCollector {
 
     active.toolCalls.push(toolCall);
     this.stats.totalToolCalls++;
+
+    // ComprehensiveLoggerへのブリッジ - observabilityパイプラインに送信
+    try {
+      const logger = getLogger();
+      logger.logToolCall(call.toolName, call.arguments || {}, {
+        file: "awo/trace-collector.ts",
+        line: 150,
+        function: "recordToolCall",
+      });
+    } catch {
+      // Observabilityへの送信エラーはトレース記録を阻害しない
+    }
   }
 
   /**
