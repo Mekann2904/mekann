@@ -225,11 +225,6 @@ let symphonyActivationState: SymphonyActivationState = {
 	activatedAt: null,
 };
 
-type ToolExecutor = (
-	toolName: string,
-	params: Record<string, unknown>,
-) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
-
 interface AutoDispatchTarget {
 	task: Task;
 	kind: RalphLoopTaskKind;
@@ -268,6 +263,15 @@ interface SymphonyActivationState {
 	active: boolean;
 	ownerInstanceId: string | null;
 	activatedAt: string | null;
+}
+
+interface SessionManagerLike {
+	getSessionFile?: () => string | undefined;
+}
+
+interface FreshSessionContextLike {
+	newSession?: (options?: { parentSession?: string }) => Promise<{ cancelled?: boolean }>;
+	sessionManager?: SessionManagerLike;
 }
 
 // ============================================
@@ -489,52 +493,17 @@ function reclaimTaskOwnership(taskId: string): Task | null {
 	return task;
 }
 
-function getToolExecutor(ctx: unknown): ToolExecutor | undefined {
-	const anyCtx = ctx as {
-		callTool?: (
-			toolName: string,
-			params: Record<string, unknown>,
-		) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
-		executeTool?: (options: {
-			toolName: string;
-			params: Record<string, unknown>;
-		}) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
-	};
-
-	if (typeof anyCtx.callTool === "function") {
-		const callTool = anyCtx.callTool;
-		return (toolName, params) => callTool(toolName, params);
-	}
-
-	if (typeof anyCtx.executeTool === "function") {
-		const executeTool = anyCtx.executeTool;
-		return (toolName, params) => executeTool({ toolName, params });
-	}
-
-	return undefined;
-}
-
-function getPiToolExecutor(pi: ExtensionAPI): ToolExecutor | undefined {
-	if (typeof pi.executeTool !== "function") {
-		return undefined;
-	}
-
-	return (toolName, params) => pi.executeTool({ toolName, params }) as Promise<{
-		content?: Array<{ type: string; text?: string }>;
-		details?: Record<string, unknown>;
-	}>;
-}
-
-function resolveToolExecutor(ctx: unknown, pi?: ExtensionAPI): ToolExecutor | undefined {
-	return getToolExecutor(ctx) ?? (pi ? getPiToolExecutor(pi) : undefined);
-}
-
 function canQueueSymphonyFollowUp(pi: ExtensionAPI): boolean {
 	return typeof (pi as { sendUserMessage?: unknown }).sendUserMessage === "function";
 }
 
+function canStartFreshSymphonySession(ctx: unknown, pi?: ExtensionAPI): boolean {
+	const anyCtx = ctx as FreshSessionContextLike;
+	return typeof anyCtx.newSession === "function" && Boolean(pi && canQueueSymphonyFollowUp(pi));
+}
+
 function canAutoRunInContext(ctx: unknown, pi?: ExtensionAPI): boolean {
-	return Boolean(resolveToolExecutor(ctx, pi)) || Boolean(pi && canQueueSymphonyFollowUp(pi));
+	return canStartFreshSymphonySession(ctx, pi);
 }
 
 function executeTaskRunNextLocally(cwd: string): TaskRunNextResult | {
@@ -662,11 +631,16 @@ function formatSymphonyHelp(): string {
 
 async function runSymphonyOnce(
 	pi: ExtensionAPI,
-	ctx: { cwd: string; ui?: { notify(message: string, type?: "info" | "warning" | "error" | "success"): void } },
+	ctx: {
+		cwd: string;
+		ui?: { notify(message: string, type?: "info" | "warning" | "error" | "success"): void };
+		newSession?: FreshSessionContextLike["newSession"];
+		sessionManager?: SessionManagerLike;
+	},
 	target?: AutoDispatchTarget,
 ): Promise<void> {
 	if (!canAutoRunInContext(ctx, pi)) {
-		ctx.ui?.notify("Symphony を開始できません。tool executor が見つかりません。", "warning");
+		ctx.ui?.notify("Symphony を開始できません。fresh session dispatcher が見つかりません。", "warning");
 		return;
 	}
 
@@ -721,7 +695,7 @@ async function handleSymphonyCommand(
 		autoExecutorConfig.enabled = true;
 		autoExecutorConfig.autoRun = true;
 		saveConfig();
-		ctx.ui.notify("Symphony loop をこの instance で有効にしました。次の ticket を in-process で開始します。", "info");
+		ctx.ui.notify("Symphony loop をこの instance で有効にしました。次の ticket を fresh session で開始します。", "info");
 		await runSymphonyOnce(pi, ctx);
 		return;
 	}
@@ -744,7 +718,7 @@ function buildSymphonyExecutionContext(input: {
 	return [
 		"## Symphony Execution Contract",
 		"",
-		"- この実行は current pi instance 上の通常ターンとして扱います。",
+		"- この実行は current pi instance 上の fresh session で開始した通常ターンとして扱います。",
 		"- まず通常の pi と同じように関連ファイルを読み、必要なツールを自分で選んで進めます。",
 		"- DAG は既定手段ではありません。分解や並列化が本当に必要なときだけ使います。",
 		"- durable state は task / workpad / workflow artifact に残します。",
@@ -1645,7 +1619,27 @@ function rollbackPreparedAutoDispatch(
 	}
 }
 
-function queueSymphonyDispatchFollowUp(pi: ExtensionAPI, dispatch: PreparedAutoDispatch): void {
+function buildSymphonyDispatchPrompt(dispatch: PreparedAutoDispatch): string {
+	return [
+		"Symphony fresh-session dispatch.",
+		"Handle this as a normal pi task in a fresh session.",
+		"Do not assume any previous ticket context.",
+		"Choose tools yourself.",
+		"Do not default to DAG. Use `subagent_run_dag` only when decomposition or parallel coordination is actually necessary.",
+		"",
+		"## Task",
+		dispatch.taskBody,
+		"",
+		"## Execution Context",
+		dispatch.extraContext,
+	].join("\n");
+}
+
+async function queueSymphonyDispatchFreshSession(
+	ctx: FreshSessionContextLike,
+	pi: ExtensionAPI,
+	dispatch: PreparedAutoDispatch,
+): Promise<void> {
 	const sender = (pi as {
 		sendUserMessage?: (
 			content: string,
@@ -1657,68 +1651,42 @@ function queueSymphonyDispatchFollowUp(pi: ExtensionAPI, dispatch: PreparedAutoD
 		throw new Error("sendUserMessage is unavailable");
 	}
 
-	sender([
-		"Symphony in-process dispatch.",
-		"Handle this as a normal pi task in the current session.",
-		"Choose tools yourself.",
-		"Do not default to DAG. Use `subagent_run_dag` only when decomposition or parallel coordination is actually necessary.",
-		"",
-		"## Task",
-		dispatch.taskBody,
-		"",
-		"## Execution Context",
-		dispatch.extraContext,
-	].join("\n"));
+	if (typeof ctx.newSession !== "function") {
+		throw new Error("fresh session dispatcher is unavailable");
+	}
+
+	const result = await ctx.newSession({
+		parentSession: ctx.sessionManager?.getSessionFile?.(),
+	});
+	if (result?.cancelled) {
+		throw new Error("fresh session creation was cancelled");
+	}
+
+	sender(buildSymphonyDispatchPrompt(dispatch));
 }
 
 async function autoRunNextTask(ctx: {
 	cwd: string;
 	ui?: ExtensionAPI["context"]["ui"];
-	callTool?: (
-		toolName: string,
-		params: Record<string, unknown>,
-	) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
-	executeTool?: (options: {
-		toolName: string;
-		params: Record<string, unknown>;
-	}) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
+	newSession?: FreshSessionContextLike["newSession"];
+	sessionManager?: SessionManagerLike;
 }, target?: AutoDispatchTarget, pi?: ExtensionAPI): Promise<void> {
-	const canQueueFollowUp = Boolean(pi && canQueueSymphonyFollowUp(pi));
-	const executeTool = resolveToolExecutor(ctx, pi);
-	if (!canQueueFollowUp && !executeTool) {
-		ctx.ui?.notify("自動実行を開始できません。tool executor が見つかりません。", "warning");
+	if (!pi || !canStartFreshSymphonySession(ctx, pi)) {
+		ctx.ui?.notify("自動実行を開始できません。fresh session dispatcher が見つかりません。", "warning");
 		return;
 	}
 
 	const dispatch = await prepareAutoDispatch(
 		ctx,
-		async () => canQueueFollowUp
-			? executeTaskRunNextLocally(ctx.cwd) as { details?: Record<string, unknown> }
-			: executeTool!("task_run_next", {}),
+		async () => executeTaskRunNextLocally(ctx.cwd) as { details?: Record<string, unknown> },
 		target,
 	);
 	if (!dispatch) {
 		return;
 	}
 
-	if (canQueueFollowUp && pi) {
-		try {
-			queueSymphonyDispatchFollowUp(pi, dispatch);
-			ctx.ui?.notify(`自動実行を開始しました: ${dispatch.title}`, "info");
-		} catch (error) {
-			rollbackPreparedAutoDispatch(ctx, dispatch, error);
-			ctx.ui?.notify(`自動実行の起動に失敗しました: ${dispatch.title}`, "warning");
-		}
-		return;
-	}
-
 	try {
-		await executeTool!("subagent_run_dag", {
-			task: dispatch.taskBody,
-			taskId: dispatch.taskId,
-			extraContext: dispatch.extraContext,
-			autoGenerate: true,
-		});
+		await queueSymphonyDispatchFreshSession(ctx, pi, dispatch);
 		ctx.ui?.notify(`自動実行を開始しました: ${dispatch.title}`, "info");
 	} catch (error) {
 		rollbackPreparedAutoDispatch(ctx, dispatch, error);
@@ -2076,6 +2044,14 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 
 		if (autoExecutorConfig.autoRun && canAutoRunInContext(ctx, pi)) {
 			await autoRunNextTask(ctx as never, target ?? undefined, pi);
+			return;
+		}
+
+		if (autoExecutorConfig.autoRun) {
+			ctx.ui.notify(
+				"[Symphony] 次タスクは fresh session が必要です。この文脈では自動移行しません。`/symphony next` で開始してください。",
+				"info",
+			);
 			return;
 		}
 
