@@ -711,7 +711,7 @@ function computeHardTimeoutMs(idleTimeoutMs: number): number {
   return Math.max(idleTimeoutMs * 3, idleTimeoutMs + 60_000);
 }
 
-function buildInternalContextHandoff(extraContext?: string, maxLines = 12): string[] {
+function buildInternalContextHandoff(extraContext?: string, maxLines = 20): string[] {
   const context = extraContext?.trim();
   if (!context) return [];
 
@@ -722,7 +722,7 @@ function buildInternalContextHandoff(extraContext?: string, maxLines = 12): stri
 
   if (lines.length === 0) return [];
 
-  const priorityPattern = /known_facts=|open_questions=|evidence_snippets=|KNOWN_FACTS|OPEN_QUESTIONS|EVIDENCE_SNIPPETS|CONTEXT_PACK_V1/i;
+  const priorityPattern = /known_facts=|open_questions=|evidence_snippets=|key_artifacts=|KNOWN_FACTS|OPEN_QUESTIONS|EVIDENCE_SNIPPETS|KEY_ARTIFACTS|CONTEXT_PACK_V\d|## Shared Task Context|## Dependency Context Overview|## Result from/i;
   const prioritized: string[] = [];
   const regular: string[] = [];
 
@@ -734,7 +734,19 @@ function buildInternalContextHandoff(extraContext?: string, maxLines = 12): stri
     }
   }
 
-  return [...prioritized, ...regular].slice(0, maxLines);
+  const merged = [...prioritized, ...regular];
+  const deduped: string[] = [];
+  const seen = new Set<string>();
+
+  for (const line of merged) {
+    if (seen.has(line)) {
+      continue;
+    }
+    seen.add(line);
+    deduped.push(line);
+  }
+
+  return deduped.slice(0, maxLines);
 }
 
 /**

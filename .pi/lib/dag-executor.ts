@@ -31,7 +31,6 @@
 // Related: .pi/lib/dag-types.ts, .pi/lib/dag-validator.ts, .pi/lib/task-dependencies.ts, .pi/lib/concurrency.ts
 
 import { TaskDependencyGraph, TaskDependencyNode } from "./task-dependencies.js";
-import { runWithConcurrencyLimit, ConcurrencyRunOptions } from "./concurrency.js";
 import { TaskPlan, TaskNode, DagTaskResult, DagResult } from "./dag-types.js";
 import { createChildAbortController } from "./abort-utils.js";
 import { DagExecutionError } from "./dag-errors.js";
@@ -222,6 +221,11 @@ interface BatchResult<T> {
   durationMs: number;
 }
 
+interface RunningTaskResult<T> {
+  taskId: string;
+  result: BatchResult<T>;
+}
+
 /**
  * DAG Executor - 依存関係解決付きタスク実行エンジン（DynTaskMAS統合版）
  * @summary DAG実行エンジン
@@ -398,37 +402,30 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
     }
 
     try {
-      // 初期実行可能タスクを取得
-      let readyTasks = this.graph.getReadyTasks();
+      const running = new Map<string, Promise<RunningTaskResult<T>>>();
 
-      while (readyTasks.length > 0) {
-        // 中止チェック
+      while (running.size > 0 || this.graph.getReadyTasks().length > 0) {
         if (controller.signal.aborted) {
           break;
         }
 
-        // 実行可能タスクを並列実行
-        try {
-          const settlement = await this.executeBatch(readyTasks, executor, controller.signal);
-          await this.options.onBatchSettled?.(this.createBatchMutationApi(settlement), settlement);
-        } catch (error) {
-          if (this.shouldFinalizeAbortedExecution(error, controller.signal)) {
-            this.finalizeAbortedTasks(
-              overallTimedOut
-                ? new Error(
-                    `DAG hard timeout after ${this.options.overallTimeoutMs}ms`,
-                  )
-                : error instanceof Error
-                  ? error
-                  : new Error(String(error)),
-            );
-            break;
-          }
-          throw error;
+        this.launchReadyTasks(running, executor, controller.signal);
+        if (running.size === 0) {
+          break;
         }
 
-        // 次のバッチを取得
-        readyTasks = this.graph.getReadyTasks();
+        const settled = await this.waitForNextRunningResult(running);
+        const settlement = await this.applyBatchResults([settled.result]);
+        await this.options.onBatchSettled?.(this.createBatchMutationApi(settlement), settlement);
+
+        if (this.options.abortOnFirstError && settlement.failedTaskIds.length > 0) {
+          controller.abort();
+          const abortError =
+            settled.result.error ??
+            new Error(`Task ${settled.taskId} failed during DAG execution`);
+          this.finalizeAbortedTasks(abortError);
+          break;
+        }
       }
 
       return this.buildResult();
@@ -477,21 +474,7 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
     }
   }
 
-  /**
-   * タスクのバッチを並列実行
-   * DynTaskMAS: 重みベーススケジューリングを適用
-   * TDP: Self-Revisionを統合
-   * @summary バッチ実行
-   * @param tasks - 実行対象のタスクノード
-   * @param executor - タスク実行関数
-   * @param signal - 中止シグナル
-   */
-  private async executeBatch(
-    tasks: TaskDependencyNode[],
-    executor: TaskExecutor<T>,
-    signal?: AbortSignal,
-  ): Promise<DagBatchSettlement<T>> {
-    // DynTaskMAS: 重みベーススケジューリングを適用
+  private getOrderedTasks(tasks: TaskDependencyNode[]): TaskDependencyNode[] {
     let orderedTasks = tasks;
     if (this.options.useWeightBasedScheduling && this.scheduler) {
       const taskNodes = tasks
@@ -513,31 +496,53 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
           return aIdx - bIdx;
         });
     }
-    // バッチアイテムを準備（重み順でソート済み）
-    const taskItems: BatchItem[] = orderedTasks.map((node) => {
-      const taskNode = this.taskNodes.get(node.id)!;
-      const context = this.buildContext(taskNode);
+    return orderedTasks;
+  }
 
-      // 実行中にマーク
-      this.graph.markRunning(node.id);
-      this.options.onTaskStart?.(node.id);
+  private launchReadyTasks(
+    running: Map<string, Promise<RunningTaskResult<T>>>,
+    executor: TaskExecutor<T>,
+    signal?: AbortSignal,
+  ): void {
+    const availableSlots = this.options.maxConcurrency - running.size;
+    if (availableSlots <= 0) {
+      return;
+    }
 
-      return { node, taskNode, context };
-    });
+    const orderedTasks = this.getOrderedTasks(this.graph.getReadyTasks());
+    for (const node of orderedTasks.slice(0, availableSlots)) {
+      const item = this.createBatchItem(node);
+      const promise = this.runBatchItem(item, executor, signal).then((result) => ({
+        taskId: item.node.id,
+        result,
+      }));
+      running.set(node.id, promise);
+    }
+  }
 
-    // runWithConcurrencyLimitで並列実行
-    const batchResults = await this.executeWithConcurrencyLimit(
-      taskItems,
-      executor,
-      signal,
-    );
+  private async waitForNextRunningResult(
+    running: Map<string, Promise<RunningTaskResult<T>>>,
+  ): Promise<RunningTaskResult<T>> {
+    const settled = await Promise.race(running.values());
+    running.delete(settled.taskId);
+    return settled;
+  }
 
-    // 結果を処理
+  private createBatchItem(node: TaskDependencyNode): BatchItem {
+    const taskNode = this.taskNodes.get(node.id)!;
+    const context = this.buildContext(taskNode);
+
+    this.graph.markRunning(node.id);
+    this.options.onTaskStart?.(node.id);
+
+    return { node, taskNode, context };
+  }
+
+  private async applyBatchResults(
+    batchResults: BatchResult<T>[],
+  ): Promise<DagBatchSettlement<T>> {
     const completedIds: string[] = [];
     const failedIds: string[] = [];
-
-    // Track first error for abortOnFirstError mode
-    let firstError: Error | undefined;
 
     for (const result of batchResults) {
       this.results.set(result.taskId, {
@@ -565,19 +570,7 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
         this.updateTaskWeight(result.taskId, "failed");
         this.options.onTaskError?.(result.taskId, result.error!);
         failedIds.push(result.taskId);
-
-        if (this.options.abortOnFirstError && !firstError) {
-          // Store first error but continue processing all results
-          // to ensure state consistency before throwing
-          firstError = result.error;
-        }
       }
-    }
-
-    // After processing all results, throw if abortOnFirstError is set
-    // This ensures all task states are properly recorded before aborting
-    if (firstError) {
-      throw firstError;
     }
 
     // TDP: Self-Revisionを実行
@@ -608,102 +601,77 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
     };
   }
 
-  /**
-   * 並列数制限付きでタスクを実行
-   * TDP: Local Replanningを統合
-   * @summary 並列実行
-   * @param items - バッチアイテム
-   * @param executor - タスク実行関数
-   * @param signal - 中止シグナル
-   * @returns 実行結果
-   */
-  private async executeWithConcurrencyLimit(
-    items: BatchItem[],
+  private async runBatchItem(
+    item: BatchItem,
     executor: TaskExecutor<T>,
     signal?: AbortSignal,
-  ): Promise<BatchResult<T>[]> {
-    const concurrencyOptions: ConcurrencyRunOptions<BatchItem> & { settleMode: "throw" } = {
-      signal,
-      abortOnError: false,
-      settleMode: "throw",
-    };
+  ): Promise<BatchResult<T>> {
+    const startMs = Date.now();
 
-    return runWithConcurrencyLimit<BatchItem, BatchResult<T>>(
-      items,
-      this.options.maxConcurrency,
-      async (item, _index, workerSignal) => {
-        const startMs = Date.now();
+    this.appendToTrace(item.node.id, {
+      timestamp: startMs,
+      type: "action",
+      content: `Starting task: ${item.taskNode.description.substring(0, 100)}`,
+    });
 
-        // アクション開始をトレースに記録
-        this.appendToTrace(item.node.id, {
-          timestamp: startMs,
-          type: "action",
-          content: `Starting task: ${item.taskNode.description.substring(0, 100)}`,
-        });
+    try {
+      const output = await this.executeTaskWithTimeout(
+        item.taskNode,
+        item.context,
+        executor,
+        signal,
+      );
+      const durationMs = Date.now() - startMs;
 
-        try {
-          const output = await this.executeTaskWithTimeout(
-            item.taskNode,
-            item.context,
-            executor,
-            workerSignal,
-          );
-          const durationMs = Date.now() - startMs;
+      this.appendToTrace(item.node.id, {
+        timestamp: Date.now(),
+        type: "observation",
+        content: `Task completed successfully in ${durationMs}ms`,
+      });
 
-          // 成功をトレースに記録
-          this.appendToTrace(item.node.id, {
-            timestamp: Date.now(),
-            type: "observation",
-            content: `Task completed successfully in ${durationMs}ms`,
-          });
+      return {
+        taskId: item.node.id,
+        status: "completed",
+        output,
+        durationMs,
+      };
+    } catch (error) {
+      const durationMs = Date.now() - startMs;
+      const execError =
+        error instanceof Error ? error : new Error(String(error));
 
-          return {
-            taskId: item.node.id,
-            status: "completed" as const,
-            output,
-            durationMs,
-          };
-        } catch (error) {
-          const durationMs = Date.now() - startMs;
-          const execError =
-            error instanceof Error ? error : new Error(String(error));
+      if (
+        this.options.enableLocalReplanning &&
+        this.isRecoverable(execError)
+      ) {
+        const retryResult = await this.localReplan(
+          item.taskNode,
+          execError,
+          executor,
+          signal,
+        );
 
-          // TDP: Local Replanningを試行
-          if (
-            this.options.enableLocalReplanning &&
-            this.isRecoverable(execError)
-          ) {
-            const retryResult = await this.localReplan(
-              item.taskNode,
-              execError,
-              executor,
-              workerSignal,
-            );
-
-            if (retryResult.status === "completed") {
-              return retryResult;
-            }
-
-            return {
-              taskId: item.node.id,
-              status: "failed" as const,
-              error:
-                retryResult.error ||
-                new Error("Local replanning failed"),
-              durationMs: durationMs + retryResult.durationMs,
-            };
-          }
-
-          return {
-            taskId: item.node.id,
-            status: "failed" as const,
-            error: execError,
-            durationMs,
-          };
+        if (retryResult.status === "completed") {
+          return retryResult;
         }
-      },
-      concurrencyOptions,
-    );
+
+        return {
+          taskId: item.node.id,
+          status: "failed",
+          error:
+            retryResult.error ||
+            new Error("Local replanning failed"),
+          durationMs: durationMs + retryResult.durationMs,
+        };
+      }
+
+      return {
+        taskId: item.node.id,
+        status: "failed",
+        error: execError,
+        durationMs,
+      };
+    }
   }
 
   private async executeTaskWithTimeout(
@@ -757,20 +725,36 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
     // TDP: Node-scoped contextを構築
     const scopedContext = this.buildNodeScopedContext(task);
     const contexts: string[] = [];
-
-    // 1. 前提ノードの結果（要約付き）
-    Array.from(scopedContext.prerequisiteResults.entries()).forEach(([depId, result]) => {
-      if (result.status === "completed" && result.output !== undefined) {
+    const dependencyOutputs = Array.from(scopedContext.prerequisiteResults.entries())
+      .filter(([, result]) => result.status === "completed" && result.output !== undefined)
+      .map(([depId, result]) => {
         const outputStr =
           typeof result.output === "string"
             ? result.output
             : JSON.stringify(result.output, null, 2);
-        
-        // 大きな出力は要約してトークン効率を向上
-        const summarizedOutput = summarizeContext(outputStr, this.summarizerConfig);
-        contexts.push(`## Result from ${depId}\n${summarizedOutput}`);
+        return {
+          depId,
+          outputStr,
+          renderedOutput: this.renderDependencyOutput(
+            outputStr,
+            scopedContext.prerequisiteResults.size,
+          ),
+        };
+      });
+
+    if (dependencyOutputs.length > 0) {
+      contexts.push("## Dependency Context Overview");
+      for (const output of dependencyOutputs) {
+        contexts.push(
+          `- ${output.depId}: ${output.renderedOutput.mode} (${output.outputStr.length} chars)`,
+        );
       }
-    });
+    }
+
+    // 1. 前提ノードの結果（必要時のみ要約）
+    for (const output of dependencyOutputs) {
+      contexts.push(`## Result from ${output.depId}\n${output.renderedOutput.content}`);
+    }
 
     // 2. 現在ノードの実行履歴（TDP追加）
     if (scopedContext.localTrace.length > 0) {
@@ -782,6 +766,45 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
     }
 
     return contexts.join("\n\n");
+  }
+
+  private renderDependencyOutput(
+    output: string,
+    dependencyCount: number,
+  ): { content: string; mode: "raw" | "summarized" } {
+    if (this.shouldPreserveRawDependencyOutput(output, dependencyCount)) {
+      return { content: output, mode: "raw" };
+    }
+
+    return {
+      content: summarizeContext(output, this.summarizerConfig),
+      mode: "summarized",
+    };
+  }
+
+  private shouldPreserveRawDependencyOutput(
+    output: string,
+    dependencyCount: number,
+  ): boolean {
+    const hasStructuredPack = /CONTEXT_PACK_V\d|known_facts=|evidence_snippets=/i.test(output);
+    const rawBudget = Math.max(
+      this.summarizerConfig.maxOutputSize,
+      this.summarizerConfig.summaryThreshold * 2,
+    );
+
+    if (hasStructuredPack && output.length <= rawBudget * 2) {
+      return true;
+    }
+
+    if (dependencyCount <= 1) {
+      return output.length <= rawBudget * 2;
+    }
+
+    if (dependencyCount <= 2) {
+      return output.length <= rawBudget;
+    }
+
+    return output.length <= this.summarizerConfig.summaryThreshold;
   }
 
   /**

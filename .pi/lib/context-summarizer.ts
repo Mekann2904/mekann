@@ -56,6 +56,34 @@ export const DEFAULT_SUMMARIZER_CONFIG: SummarizerConfig = {
   truncateCodeBlocks: true,
 };
 
+const PRIORITY_LINE_PATTERNS: RegExp[] = [
+  /^\s*(summary|claim|confidence|action|status|error|warning|result)\s*:/i,
+  /^\s*(known_facts|open_questions|evidence_snippets|key_artifacts)\s*=/i,
+  /^\s*(path|file|files|changed files?|stack|traceback)\s*:/i,
+  /(^|\s)(todo|fixme|blocked|missing|regression|root cause|failure)(\s|:|$)/i,
+  /(^|\s)(\/[\w./-]+|[A-Za-z0-9_.-]+\.(ts|tsx|js|jsx|py|go|rs|java|json|md|yml|yaml))(\s|:|$)/,
+];
+
+const ARTIFACT_LINE_PATTERNS: RegExp[] = [
+  /^\s*(path|file|files|changed files?)\s*:/i,
+  /(^|\s)(\/[\w./-]+|[A-Za-z0-9_.-]+\.(ts|tsx|js|jsx|py|go|rs|java|json|md|yml|yaml))(\s|:|$)/,
+  /^\s*(function|class|interface|type|const|let|var|export)\b/,
+  /^\s*[@#][A-Za-z0-9_.:/-]+/,
+];
+
+const OPEN_QUESTION_PATTERNS: RegExp[] = [
+  /\?/,
+  /(^|\s)(unknown|unclear|todo|follow up|investigate|verify|confirm|need to)(\s|:|$)/i,
+];
+
+const CODE_SIGNATURE_PATTERNS: RegExp[] = [
+  /^\s*(export\s+)?(async\s+)?function\b/,
+  /^\s*(export\s+)?class\b/,
+  /^\s*(export\s+)?(const|let|var)\s+[A-Za-z0-9_$]+\s*=\s*(async\s*)?\(/,
+  /^\s*(interface|type)\b/,
+  /^\s*@/,
+];
+
 /**
  * 環境変数から設定を読み込む
  * @summary 環境変数設定
@@ -187,22 +215,7 @@ function summarizeSection(section: string, config: SummarizerConfig): string {
     ? processCodeBlocks(contentLines)
     : contentLines;
 
-  // 先頭と末尾を保持
-  const keepLines = Math.floor(config.maxLinesPerSection / 2);
-  const firstLines = processedLines.slice(0, keepLines);
-  const lastLines = processedLines.slice(-keepLines);
-
-  // 中間を省略
-  const result: string[] = [];
-  if (header) result.push(header);
-  result.push(...firstLines);
-
-  if (lastLines.length > 0 && processedLines.length > keepLines * 2) {
-    result.push("...");
-    result.push(...lastLines);
-  }
-
-  return result.join("\n");
+  return buildContextPack(header, processedLines, config);
 }
 
 /**
@@ -258,11 +271,17 @@ function summarizeCodeBlock(lines: string[], lang: string): string {
     return "```" + lang + "\n" + lines.join("\n") + "\n```";
   }
 
-  // シグネチャ（先頭）と末尾を保持
-  const first = lines.slice(0, 3);
+  const signatures = collectMatchingLines(lines, CODE_SIGNATURE_PATTERNS, 4);
+  const first = lines.slice(0, 2);
   const last = lines.slice(-2);
+  const body = dedupeLines([
+    ...first,
+    ...signatures,
+    "// ... truncated ...",
+    ...last,
+  ]);
 
-  const parts = ["```" + lang, ...first, "// ... truncated ...", ...last, "```"];
+  const parts = ["```" + lang, ...body, "```"];
   return parts.join("\n");
 }
 
@@ -289,6 +308,94 @@ function truncateToSize(text: string, maxSize: number): string {
   }
 
   return truncated + "\n\n... [TRUNCATED]";
+}
+
+function buildContextPack(
+  header: string,
+  lines: string[],
+  config: SummarizerConfig,
+): string {
+  const evidenceBudget = Math.max(2, config.maxLinesPerSection - 5);
+  const knownFacts = collectMatchingLines(lines, PRIORITY_LINE_PATTERNS, 4);
+  const keyArtifacts = collectMatchingLines(lines, ARTIFACT_LINE_PATTERNS, 3);
+  const openQuestions = collectMatchingLines(lines, OPEN_QUESTION_PATTERNS, 2);
+  const evidence = buildEvidenceExcerpt(lines, evidenceBudget);
+
+  const result: string[] = [];
+  if (header) {
+    result.push(header);
+  }
+  result.push("CONTEXT_PACK_V2");
+
+  if (knownFacts.length > 0) {
+    result.push("known_facts=");
+    result.push(...knownFacts.map((line) => `- ${line}`));
+  }
+
+  if (keyArtifacts.length > 0) {
+    result.push("key_artifacts=");
+    result.push(...keyArtifacts.map((line) => `- ${line}`));
+  }
+
+  if (openQuestions.length > 0) {
+    result.push("open_questions=");
+    result.push(...openQuestions.map((line) => `- ${line}`));
+  }
+
+  if (evidence.length > 0) {
+    result.push("evidence_snippets=");
+    result.push(...evidence.map((line) => `- ${line}`));
+  }
+
+  return result.join("\n");
+}
+
+function buildEvidenceExcerpt(lines: string[], maxLines: number): string[] {
+  const keepLines = Math.max(1, Math.floor(maxLines / 2));
+  const first = lines.slice(0, keepLines);
+  const last = lines.slice(-keepLines);
+  const merged = dedupeLines([...first, "...", ...last]);
+  return merged
+    .filter((line) => line.trim().length > 0)
+    .slice(0, Math.max(2, maxLines));
+}
+
+function collectMatchingLines(
+  lines: string[],
+  patterns: RegExp[],
+  maxLines: number,
+): string[] {
+  const collected: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+    if (!patterns.some((pattern) => pattern.test(trimmed))) {
+      continue;
+    }
+    collected.push(trimmed);
+    if (collected.length >= maxLines) {
+      break;
+    }
+  }
+  return dedupeLines(collected);
+}
+
+function dedupeLines(lines: string[]): string[] {
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    deduped.push(trimmed);
+  }
+
+  return deduped;
 }
 
 /**
