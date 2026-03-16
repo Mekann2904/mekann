@@ -257,35 +257,10 @@ describe("task-auto-executor workpad", () => {
     expect(pi.commands.map((entry) => entry.name)).toContain("symphony");
   });
 
-  it("/symphony next は command ctx から pi.executeTool fallback で in-process 実行する", async () => {
+  it("/symphony next は executeTool より通常の follow-up dispatch を優先する", async () => {
     const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
     const pi = createPiMock();
     (pi as { executeTool?: ReturnType<typeof vi.fn> }).executeTool = vi.fn();
-
-    pi.executeTool.mockImplementation(async ({ toolName }: { toolName: string; params: Record<string, unknown> }) => {
-      if (toolName === "task_run_next") {
-        return {
-          content: [{ type: "text", text: "claimed" }],
-          details: {
-            taskId: "task-1",
-            title: "Implement orchestration",
-            description: "wire runner and queue",
-            kind: "implementation",
-            reason: "one thing per loop",
-            workpadId: "wp-1",
-          },
-        };
-      }
-
-      if (toolName === "subagent_run_dag") {
-        return {
-          content: [{ type: "text", text: "started" }],
-          details: { outcomeCode: "SUCCESS" },
-        };
-      }
-
-      throw new Error(`unexpected tool: ${toolName}`);
-    });
 
     extension(pi as never);
 
@@ -302,19 +277,11 @@ describe("task-auto-executor workpad", () => {
       },
     });
 
-    expect(pi.executeTool).toHaveBeenNthCalledWith(1, {
-      toolName: "task_run_next",
-      params: {},
-    });
-    expect(pi.executeTool).toHaveBeenNthCalledWith(2, {
-      toolName: "subagent_run_dag",
-      params: {
-        task: "Implement orchestration\n\n詳細: wire runner and queue",
-        taskId: "task-1",
-        extraContext: expect.stringContaining("root planner"),
-        autoGenerate: true,
-      },
-    });
+    expect(pi.executeTool).not.toHaveBeenCalled();
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+    expect(pi.sendUserMessage.mock.calls[0][0]).toContain("Handle this as a normal pi task in the current session.");
+    expect(pi.sendUserMessage.mock.calls[0][0]).toContain("Do not default to DAG.");
+    expect(pi.sendUserMessage.mock.calls[0][0]).toContain("Implement orchestration");
     expect(notify).toHaveBeenCalledWith("自動実行を開始しました: Implement orchestration", "info");
   });
 
@@ -338,9 +305,9 @@ describe("task-auto-executor workpad", () => {
     });
 
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
-    expect(pi.sendUserMessage.mock.calls[0][0]).toContain("subagent_run_dag");
-    expect(pi.sendUserMessage.mock.calls[0][0]).toContain('"taskId": "task-1"');
-    expect(pi.sendUserMessage.mock.calls[0][0]).toContain('"autoGenerate": true');
+    expect(pi.sendUserMessage.mock.calls[0][0]).toContain("Handle this as a normal pi task in the current session.");
+    expect(pi.sendUserMessage.mock.calls[0][0]).toContain("- taskId: task-1");
+    expect(pi.sendUserMessage.mock.calls[0][0]).toContain("Do not default to DAG.");
     expect(notify).toHaveBeenCalledWith("自動実行を開始しました: Implement orchestration", "info");
     expect(storageMocks.state.tasks[0].status).toBe("in_progress");
   });
@@ -899,27 +866,12 @@ describe("task-auto-executor workpad", () => {
   it("/symphony next 起動失敗時は claim を戻して orchestration を release する", async () => {
     const extension = (await import("../../../.pi/extensions/task-auto-executor.js")).default;
     const pi = createPiMock();
-    (pi as { executeTool?: ReturnType<typeof vi.fn> }).executeTool = vi.fn();
+    pi.sendUserMessage.mockImplementation(() => {
+      throw new Error("follow-up dispatch unavailable");
+    });
 
     extension(pi as never);
     const notify = vi.fn();
-    pi.executeTool.mockImplementation(async ({ toolName }: { toolName: string; params: Record<string, unknown> }) => {
-      if (toolName === "task_run_next") {
-        return {
-          content: [{ type: "text", text: "claimed" }],
-          details: {
-            taskId: "task-1",
-            title: "Implement orchestration",
-            description: "wire runner and queue",
-            kind: "implementation",
-            reason: "one thing per loop",
-            workpadId: "wp-1",
-          },
-        };
-      }
-
-      throw new Error("subagent runner unavailable");
-    });
 
     const symphonyCommand = pi.commands.find((entry) => entry.name === "symphony");
     await symphonyCommand.command.handler("next", {
@@ -939,13 +891,13 @@ describe("task-auto-executor workpad", () => {
       issueId: "task-1",
       title: "Implement orchestration",
       source: "task-auto-executor",
-      reason: "auto-run dispatch failed: subagent runner unavailable",
+      reason: "auto-run dispatch failed: follow-up dispatch unavailable",
       workpadId: "wp-1",
     });
     expect(workflowMocks.updateWorkpad).toHaveBeenCalledWith("/repo", {
       id: "wp-1",
       section: "verification",
-      content: "- auto-run dispatch failed: subagent runner unavailable",
+      content: "- auto-run dispatch failed: follow-up dispatch unavailable",
       mode: "append",
     });
     expect(notify).toHaveBeenCalledWith("自動実行の起動に失敗しました: Implement orchestration", "warning");

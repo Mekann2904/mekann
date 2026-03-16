@@ -213,7 +213,7 @@ const KIND_ORDER: Record<RalphLoopTaskKind, number> = {
 
 let autoExecutorConfig: AutoExecutorConfig = {
 	enabled: true,
-	autoRun: true, // デフォルトは planner-led continuous execution
+	autoRun: true, // デフォルトは current pi instance 上の継続実行
 	maxRetries: 2,
 };
 
@@ -735,24 +735,22 @@ async function handleSymphonyCommand(
 	ctx.ui.notify(`Unknown Symphony command: ${input}\n\n${formatSymphonyHelp()}`, "warning");
 }
 
-function buildPlannerWorkerExecutionContext(input: {
+function buildSymphonyExecutionContext(input: {
 	taskId: string;
 	kind: string;
 	reason: string;
 	workpadId: string | null;
 }): string {
 	return [
-		"## Continuous Executor Contract",
+		"## Symphony Execution Contract",
 		"",
-		"- この実行は mekann の既定 long-running mode です。",
-		"- 進行責任は root planner が持ち、個々の worker は割り当てタスクだけに集中します。",
-		"- worker 同士は直接調整しません。共有ロック前提の協調は禁止です。",
-		"- 必要な分解は planner が行い、worker は handoff を planner 側へ返します。",
-		"- 各反復は fresh context を前提にし、 durable state は task / workpad / workflow artifact に残します。",
-		"- 巨大な静的計画に固定せず、観測結果に応じて task DAG を更新して構いません。",
+		"- この実行は current pi instance 上の通常ターンとして扱います。",
+		"- まず通常の pi と同じように関連ファイルを読み、必要なツールを自分で選んで進めます。",
+		"- DAG は既定手段ではありません。分解や並列化が本当に必要なときだけ使います。",
+		"- durable state は task / workpad / workflow artifact に残します。",
 		"- 小さく安全な変更だけで逃げず、担当タスクの完了責任を持って前に進めます。",
 		"",
-		"## Auto Execution Context",
+		"## Task Context",
 		"",
 		`- taskId: ${input.taskId}`,
 		`- kind: ${input.kind}`,
@@ -761,8 +759,7 @@ function buildPlannerWorkerExecutionContext(input: {
 		"- まず関連ファイルを読んで、最小の working slice を実装すること。",
 		"- task_complete の前に、変更したファイルだけを git add し、必ず git commit を作成すること。",
 		"- git add . や git add -A は禁止。選択的に stage すること。",
-		"- planner は research / implement / validate / review を必要最小限で fan-out してよい。",
-		"- worker は他ワーカーの担当や大局を気にせず、自分のタスクだけ終わらせること。",
+		"- inspect だけで閉じず、必要なら修正・検証まで進めること。",
 		"- 完了後は task_complete でこの taskId を完了すること。",
 	].filter(Boolean).join("\n");
 }
@@ -1548,7 +1545,7 @@ async function prepareAutoDispatch(
 
 	const taskBody = description ? `${title}\n\n詳細: ${description}` : title;
 	const extraContext = [
-		buildPlannerWorkerExecutionContext({
+		buildSymphonyExecutionContext({
 			taskId,
 			kind,
 			reason,
@@ -1660,20 +1657,17 @@ function queueSymphonyDispatchFollowUp(pi: ExtensionAPI, dispatch: PreparedAutoD
 		throw new Error("sendUserMessage is unavailable");
 	}
 
-	const params = {
-		task: dispatch.taskBody,
-		taskId: dispatch.taskId,
-		extraContext: dispatch.extraContext,
-		autoGenerate: true,
-	};
-
 	sender([
 		"Symphony in-process dispatch.",
-		"Call the `subagent_run_dag` tool immediately with the exact JSON below.",
-		"Do not ask follow-up questions before the tool call.",
-		"```json",
-		JSON.stringify(params, null, 2),
-		"```",
+		"Handle this as a normal pi task in the current session.",
+		"Choose tools yourself.",
+		"Do not default to DAG. Use `subagent_run_dag` only when decomposition or parallel coordination is actually necessary.",
+		"",
+		"## Task",
+		dispatch.taskBody,
+		"",
+		"## Execution Context",
+		dispatch.extraContext,
 	].join("\n"));
 }
 
@@ -1689,43 +1683,37 @@ async function autoRunNextTask(ctx: {
 		params: Record<string, unknown>;
 	}) => Promise<{ content?: Array<{ type: string; text?: string }>; details?: Record<string, unknown> }>;
 }, target?: AutoDispatchTarget, pi?: ExtensionAPI): Promise<void> {
+	const canQueueFollowUp = Boolean(pi && canQueueSymphonyFollowUp(pi));
 	const executeTool = resolveToolExecutor(ctx, pi);
-	if (!executeTool) {
-		if (pi && canQueueSymphonyFollowUp(pi)) {
-			const dispatch = await prepareAutoDispatch(
-				ctx,
-				async () => executeTaskRunNextLocally(ctx.cwd) as { details?: Record<string, unknown> },
-				target,
-			);
-			if (!dispatch) {
-				return;
-			}
-
-			try {
-				queueSymphonyDispatchFollowUp(pi, dispatch);
-				ctx.ui?.notify(`自動実行を開始しました: ${dispatch.title}`, "info");
-			} catch (error) {
-				rollbackPreparedAutoDispatch(ctx, dispatch, error);
-				ctx.ui?.notify(`自動実行の起動に失敗しました: ${dispatch.title}`, "warning");
-			}
-			return;
-		}
-
+	if (!canQueueFollowUp && !executeTool) {
 		ctx.ui?.notify("自動実行を開始できません。tool executor が見つかりません。", "warning");
 		return;
 	}
 
 	const dispatch = await prepareAutoDispatch(
 		ctx,
-		async () => executeTool("task_run_next", {}),
+		async () => canQueueFollowUp
+			? executeTaskRunNextLocally(ctx.cwd) as { details?: Record<string, unknown> }
+			: executeTool!("task_run_next", {}),
 		target,
 	);
 	if (!dispatch) {
 		return;
 	}
 
+	if (canQueueFollowUp && pi) {
+		try {
+			queueSymphonyDispatchFollowUp(pi, dispatch);
+			ctx.ui?.notify(`自動実行を開始しました: ${dispatch.title}`, "info");
+		} catch (error) {
+			rollbackPreparedAutoDispatch(ctx, dispatch, error);
+			ctx.ui?.notify(`自動実行の起動に失敗しました: ${dispatch.title}`, "warning");
+		}
+		return;
+	}
+
 	try {
-		await executeTool("subagent_run_dag", {
+		await executeTool!("subagent_run_dag", {
 			task: dispatch.taskBody,
 			taskId: dispatch.taskId,
 			extraContext: dispatch.extraContext,
@@ -2013,7 +2001,7 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 - **有効**: ${previousEnabled ? "有効" : "無効"} → ${autoExecutorConfig.enabled ? "有効" : "無効"}
 - **自動実行**: ${previousAutoRun ? "有効" : "無効"} → ${autoExecutorConfig.autoRun ? "有効" : "無効"}
 
-※ 自動実行が有効な場合、planner-led DAG 実行を自動で開始します。`,
+※ 自動実行が有効な場合、current pi instance 上で通常の follow-up 実行を開始します。`,
 				}],
 				details: {
 					enabled: autoExecutorConfig.enabled,
@@ -2193,7 +2181,7 @@ export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
 			if (args === "status") {
 				const status = getAutoExecutorStatus();
 				ctx.ui.notify(
-					`自動実行: ${status.enabled ? "有効" : "無効"} | planner-led autoRun: ${status.autoRun ? "有効" : "無効"} | 待機中: ${status.pendingCount}件`,
+					`自動実行: ${status.enabled ? "有効" : "無効"} | autoRun: ${status.autoRun ? "有効" : "無効"} | 待機中: ${status.pendingCount}件`,
 					"info"
 				);
 			} else if (args === "on" || args === "enable") {
