@@ -52,6 +52,12 @@ export interface ObservabilityStats {
 	tasksCount: number;
 	firstEventAt?: string;
 	lastEventAt?: string;
+	/** パースエラー数（データ損失の指標） */
+	parseErrors?: number;
+	/** 不完全な行数（書き込み中または切り捨て） */
+	incompleteLines?: number;
+	/** リトライ後に回復した行数 */
+	recoveredLines?: number;
 }
 
 export interface ObservabilityResult {
@@ -60,6 +66,12 @@ export interface ObservabilityResult {
 	query: ObservabilityQuery;
 	logDir: string;
 	filesRead: string[];
+	/** 全ファイルのパース統計（データ損失の可視化用） */
+	parseStats?: {
+		totalParseErrors: number;
+		totalIncompleteLines: number;
+		totalRecoveredLines: number;
+	};
 }
 
 // ============================================
@@ -340,26 +352,50 @@ function queryObservabilityData(query: ObservabilityQuery): ObservabilityResult 
     const logDir = getLogDir();
     const targetFiles = getTargetLogFiles(logDir, query.from, query.to);
     const filesRead: string[] = [];
-    // 全イベントを収集
+    
+    // 全イベントを収集（パース統計も追跡）
     let allEvents: LogEvent[] = [];
+    let totalParseErrors = 0;
+    let totalIncompleteLines = 0;
+    let totalRecoveredLines = 0;
+    
     for (const file of targetFiles) {
-        const events = parseLogFile(file);
-        if (events.length > 0) {
-            allEvents = allEvents.concat(events);
+        const result = parseLogFileWithStats(file);
+        if (result.events.length > 0) {
+            allEvents = allEvents.concat(result.events);
             filesRead.push(file);
         }
+        // パース統計を蓄積（イベントがなくてもエラーは記録）
+        totalParseErrors += result.parseErrors;
+        totalIncompleteLines += result.incompleteLines;
+        totalRecoveredLines += result.recoveredLines ?? 0;
     }
+    
     // フィルタリング
     const filteredEvents = filterEvents(allEvents, query);
+    
     // 統計計算（オプション)
     const stats = query.includeStats !== false ? calculateStats(filteredEvents) : undefined;
+    
+    // パース統計をstatsに追加
+    if (stats) {
+        stats.parseErrors = totalParseErrors;
+        stats.incompleteLines = totalIncompleteLines;
+        stats.recoveredLines = totalRecoveredLines;
+    }
+    
     return {
         events: filteredEvents,
         stats,
         query,
         logDir,
-        filesRead
-    }
+        filesRead,
+        parseStats: {
+            totalParseErrors,
+            totalIncompleteLines,
+            totalRecoveredLines,
+        },
+    };
 }
 // ============================================
 // TypeBox Schemas
