@@ -85,6 +85,16 @@ let sessionStartTime = 0;
 /** 差分コンテキストを最後に収集した時刻 */
 let lastDeltaCollectedAt = 0;
 
+function resetStartupContextState(): void {
+  isFirstTurn = true;
+  sessionStartTime = Date.now();
+  previousContext = null;
+  startSession();
+  resetToolTelemetryStore();
+  getRuntimeEnvironmentCache().reset();
+  lastDeltaCollectedAt = 0;
+}
+
 function getDeltaCollectionIntervalMs(): number {
   const raw = process.env.PI_STARTUP_CONTEXT_DELTA_MIN_INTERVAL_MS;
   const parsed = raw ? Number.parseInt(raw, 10) : NaN;
@@ -153,13 +163,13 @@ export default function (pi: ExtensionAPI) {
 
   // セッション開始イベント
   pi.on("session_start", async (_event, _ctx) => {
-    isFirstTurn = true;
-    sessionStartTime = Date.now();
-    previousContext = null;
-    startSession();
-    resetToolTelemetryStore();
-    getRuntimeEnvironmentCache().reset();
-    lastDeltaCollectedAt = 0;
+    resetStartupContextState();
+  });
+
+  // newSession / switchSession では session_start ではなく session_switch が飛ぶ。
+  // Symphony の fresh session でも baseline からやり直すため、ここでも必ず初期化する。
+  pi.on("session_switch", async () => {
+    resetStartupContextState();
   });
 
   // エージェント開始前イベント（毎ターン実行）

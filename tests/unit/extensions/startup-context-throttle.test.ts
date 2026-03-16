@@ -134,4 +134,30 @@ describe("startup-context delta throttling", () => {
 
     expect(collectUserPromptDelta).toHaveBeenCalledTimes(2);
   });
+
+  it("session_switch(new) の後は fresh session として baseline から再開する", async () => {
+    const times = [1000, 1000, 2000, 2000, 3000, 3000];
+    vi.spyOn(Date, "now").mockImplementation(() => times.shift() ?? 3000);
+    vi.spyOn(process, "cwd").mockReturnValue("/repo");
+
+    const handlers = new Map<string, Function>();
+    const pi = {
+      on: vi.fn((event: string, handler: Function) => handlers.set(event, handler)),
+      getAllTools: vi.fn(() => []),
+    };
+
+    const module = await import("../../../.pi/extensions/startup-context.js");
+    module.default(pi as never);
+
+    await handlers.get("session_start")?.({}, {});
+    await handlers.get("before_agent_start")?.({ systemPrompt: "base" }, {});
+    await handlers.get("session_switch")?.({ type: "session_switch", reason: "new" }, {});
+    await handlers.get("before_agent_start")?.({ systemPrompt: "base" }, {});
+
+    expect(collectSessionStartContext).toHaveBeenCalledTimes(2);
+    expect(collectUserPromptDelta).not.toHaveBeenCalled();
+    expect(startSession).toHaveBeenCalledTimes(2);
+    expect(resetToolTelemetryStore).toHaveBeenCalledTimes(2);
+    expect(resetRuntimeEnvironmentCache).toHaveBeenCalledTimes(2);
+  });
 });
