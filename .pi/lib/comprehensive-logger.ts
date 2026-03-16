@@ -107,6 +107,8 @@ export class ComprehensiveLogger {
   private operationStartTime: number = 0;
   private activeOperations: Map<string, { startTime: number; target: string }> = new Map();
   private activeTasks: Map<string, { startTime: number; userInput: string }> = new Map();
+  /** シャットダウン中フラグ - レースコンディション防止 */
+  private isShuttingDown: boolean = false;
   
   constructor(config?: Partial<LoggerConfig>) {
     this.config = config ? { ...DEFAULT_CONFIG, ...config } : getConfig();
@@ -199,8 +201,12 @@ export class ComprehensiveLogger {
    * @returns {void}
    */
   endSession(exitReason: SessionEndEvent['data']['exitReason']): void {
+    // 二重シャットダウン防止
+    if (this.isShuttingDown) return;
+
     const durationMs = Math.round(performance.now() - this.sessionStartTime);
 
+    // session_endイベントはシャットダウンフラグ設定前に送出
     this.emit({
       eventType: 'session_end',
       data: {
@@ -211,9 +217,14 @@ export class ComprehensiveLogger {
         exitReason,
       },
     } as SessionEndEvent);
-    
-    this.flush();
+
+    // シャットダウンフラグを設定（以降の新規イベントを拒否）
+    this.isShuttingDown = true;
+
+    // タイマーを停止（タイマー発火とflushのレース防止）
     this.stopFlushTimer();
+    // その後でフラッシュ
+    this.flush();
     this.activeTasks.clear();
     this.activeOperations.clear();
   }
@@ -579,6 +590,8 @@ export class ComprehensiveLogger {
   
   private emit(event: { eventType: EventType } & Omit<BaseEvent, 'eventId' | 'sessionId' | 'taskId' | 'operationId' | 'parentEventId' | 'timestamp' | 'component'> & { data: unknown }): void {
     if (!this.config.enabled) return;
+    // シャットダウン中は新規イベントを拒否
+    if (this.isShuttingDown) return;
     
     const fullEvent: BaseEvent = {
       ...event,
@@ -615,7 +628,9 @@ export class ComprehensiveLogger {
   async flush(): Promise<void> {
     if (this.buffer.length === 0) return;
 
-    const events = [...this.buffer];
+    // 原子的バッファスワップ - レースコンディション防止
+    const events = this.buffer;
+    this.buffer = [];
 
     await this.ensureLogDir();
 
@@ -632,20 +647,16 @@ export class ComprehensiveLogger {
           const rotatedFile = join(this.config.logDir, `events-${getDateStr()}-${timestamp}.jsonl`);
           const lines = events.map(e => JSON.stringify(e)).join('\n') + '\n';
           await appendFile(rotatedFile, lines, 'utf-8');
-          // 成功時のみバッファをクリア
-          this.buffer = [];
           return;
         }
       }
 
       const lines = events.map(e => JSON.stringify(e)).join('\n') + '\n';
       await appendFile(logFile, lines, 'utf-8');
-      // 成功時のみバッファをクリア
-      this.buffer = [];
     } catch (error) {
-      // I/Oエラー時はバッファを保持（データ損失を防ぐ）
-      // バッファに戻すのではなく、クリアしないことでデータを保持
-      console.error('[comprehensive-logger] Flush failed, keeping events in buffer:', error);
+      // I/Oエラー時はバッファに戻す（データ損失を防ぐ）
+      this.buffer = [...events, ...this.buffer];
+      console.error('[comprehensive-logger] Flush failed, re-queued events:', error);
       throw error;
     }
   }
