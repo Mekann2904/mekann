@@ -570,6 +570,163 @@ export class ComprehensiveLogger {
   }
 
   // ============================================
+  // 実験イベント (autoresearch)
+  // ============================================
+
+  /**
+   * 実験開始を記録する
+   * @summary 実験を開始する
+   * @param data 実験開始データ
+   * @returns なし
+   * @fires experiment_start
+   */
+  logExperimentStart(data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    tag?: string;
+    branch?: string;
+    targetCommit?: string;
+    config: Record<string, unknown>;
+  }): void {
+    this.emit({
+      eventType: 'experiment_start',
+      data,
+    });
+  }
+
+  /**
+   * 実験ベースラインを記録する
+   * @summary ベースライン記録
+   * @param data ベースラインデータ
+   * @returns なし
+   * @fires experiment_baseline
+   */
+  logExperimentBaseline(data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    score: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+    commit?: string;
+  }): void {
+    this.emit({
+      eventType: 'experiment_baseline',
+      data,
+    });
+  }
+
+  /**
+   * 実験実行を記録する
+   * @summary 実験を実行する
+   * @param data 実験実行データ
+   * @returns なし
+   * @fires experiment_run
+   */
+  logExperimentRun(data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    iteration: number;
+    commit?: string;
+    changesSummary?: string;
+  }): void {
+    this.emit({
+      eventType: 'experiment_run',
+      data,
+    });
+  }
+
+  /**
+   * 実験改善を記録する
+   * @summary 改善を検出
+   * @param data 改善データ
+   * @returns なし
+   * @fires experiment_improved
+   */
+  logExperimentImproved(data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    previousScore: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+    newScore: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+    commit?: string;
+    improvementType: 'fewer_failures' | 'more_passes' | 'faster';
+  }): void {
+    this.emit({
+      eventType: 'experiment_improved',
+      data,
+    });
+  }
+
+  /**
+   * 実験退行を記録する
+   * @summary 退行を検出
+   * @param data 退行データ
+   * @returns なし
+   * @fires experiment_regressed
+   */
+  logExperimentRegressed(data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    previousScore: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+    newScore: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+    commit?: string;
+    regressionType: 'more_failures' | 'fewer_passes' | 'slower';
+    reverted?: boolean;
+  }): void {
+    this.emit({
+      eventType: 'experiment_regressed',
+      data,
+    });
+  }
+
+  /**
+   * 実験タイムアウトを記録する
+   * @summary タイムアウト発生
+   * @param data タイムアウトデータ
+   * @returns なし
+   * @fires experiment_timeout
+   */
+  logExperimentTimeout(data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    iteration: number;
+    timeoutMs: number;
+    partialScore?: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+  }): void {
+    this.emit({
+      eventType: 'experiment_timeout',
+      data,
+    });
+  }
+
+  // ============================================
   // 警告ログ
   // ============================================
 

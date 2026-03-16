@@ -54,7 +54,14 @@ export type EventType =
   // システム
   | 'config_load'
   | 'state_change'
-  | 'metrics_snapshot';
+  | 'metrics_snapshot'
+  // 実験 (autoresearch)
+  | 'experiment_start'
+  | 'experiment_baseline'
+  | 'experiment_run'
+  | 'experiment_improved'
+  | 'experiment_regressed'
+  | 'experiment_timeout';
 
 /**
  * コンポーネント型
@@ -462,6 +469,133 @@ export interface MetricsSnapshotEvent extends BaseEvent {
 }
 
 // ============================================
+// 実験イベント (autoresearch)
+// ============================================
+
+/**
+ * 実験開始イベント
+ * @summary 実験を開始する
+ */
+export interface ExperimentStartEvent extends BaseEvent {
+  eventType: 'experiment_start';
+  data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    tag?: string;
+    branch?: string;
+    targetCommit?: string;
+    config: Record<string, unknown>;
+  };
+}
+
+/**
+ * 実験ベースラインイベント
+ * @summary ベースライン記録
+ */
+export interface ExperimentBaselineEvent extends BaseEvent {
+  eventType: 'experiment_baseline';
+  data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    score: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+    commit?: string;
+  };
+}
+
+/**
+ * 実験実行イベント
+ * @summary 実験を実行する
+ */
+export interface ExperimentRunEvent extends BaseEvent {
+  eventType: 'experiment_run';
+  data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    iteration: number;
+    commit?: string;
+    changesSummary?: string;
+  };
+}
+
+/**
+ * 実験改善イベント
+ * @summary 改善を検出
+ */
+export interface ExperimentImprovedEvent extends BaseEvent {
+  eventType: 'experiment_improved';
+  data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    previousScore: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+    newScore: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+    commit?: string;
+    improvementType: 'fewer_failures' | 'more_passes' | 'faster';
+  };
+}
+
+/**
+ * 実験退行イベント
+ * @summary 退行を検出
+ */
+export interface ExperimentRegressedEvent extends BaseEvent {
+  eventType: 'experiment_regressed';
+  data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    previousScore: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+    newScore: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+    commit?: string;
+    regressionType: 'more_failures' | 'fewer_passes' | 'slower';
+    reverted?: boolean;
+  };
+}
+
+/**
+ * 実験タイムアウトイベント
+ * @summary タイムアウト発生
+ */
+export interface ExperimentTimeoutEvent extends BaseEvent {
+  eventType: 'experiment_timeout';
+  data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    iteration: number;
+    timeoutMs: number;
+    partialScore?: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+  };
+}
+
+// ============================================
 // 統合型
 // ============================================
 
@@ -486,7 +620,13 @@ export type LogEvent =
   | UserFeedbackEvent
   | ConfigLoadEvent
   | StateChangeEvent
-  | MetricsSnapshotEvent;
+  | MetricsSnapshotEvent
+  | ExperimentStartEvent
+  | ExperimentBaselineEvent
+  | ExperimentRunEvent
+  | ExperimentImprovedEvent
+  | ExperimentRegressedEvent
+  | ExperimentTimeoutEvent;
 
 // ============================================
 // 設定型
