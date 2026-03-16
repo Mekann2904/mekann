@@ -39,7 +39,7 @@ function createWorkflow(taskId: string, ownerInstanceId: string): TestWorkflowSt
     taskId,
     taskDescription: `task:${taskId}`,
     phase: "research",
-    phases: ["research", "plan", "annotate", "implement", "completed"],
+    phases: ["research", "plan", "annotate", "implement", "review", "completed"],
     phaseIndex: 0,
     createdAt: now,
     updatedAt: now,

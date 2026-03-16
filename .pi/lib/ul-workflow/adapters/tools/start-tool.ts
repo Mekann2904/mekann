@@ -34,7 +34,7 @@ export function createStartTool(workflowService: WorkflowService) {
   return {
     name: "ul_workflow_start",
     label: "Start UL Workflow",
-    description: "UL Workflow Modeを開始（Research-Plan-Annotate-Implement）",
+    description: "UL Workflow Modeを開始（Research-Plan-Annotate-Implement-Review）",
     parameters: Type.Object({
       task: Type.String({ description: "実行するタスクの説明" }),
     }),

@@ -2,7 +2,7 @@
  * @abdd.meta
  * path: .pi/lib/ul-workflow/domain/execution-strategy.ts
  * role: 統一実行フローの定義
- * why: すべてのタスクで一貫したフローを適用するため
+ * why: 実際の UL workflow 実装と同じフェーズ列を domain 層でも共有するため
  * related: ./workflow-state.ts
  * public_api: UNIFIED_PHASES, UNIFIED_EXECUTION_CONFIG
  * invariants: なし
@@ -13,7 +13,8 @@
  * what_it_does:
  *   - 統一フェーズ構成を定義
  *   - 常にDAG並列実行を使用
- * why_it_exists: 複雑度ベースの条件分岐を廃止し、一貫したフローを提供
+ *   - implement 後に review フェーズを必ず挟む
+ * why_it_exists: 複雑度ベースの条件分岐を廃止し、一貫したフローを提供しつつ、verify 導線を落とさない
  * scope:
  *   in: なし
  *   out: application層、adapters層
@@ -29,6 +30,7 @@ import type { WorkflowPhase } from "./workflow-state.js";
  * - Plan: 詳細な実装計画の作成
  * - Annotate: ユーザーによる計画レビュー（必須）
  * - Implement (DAG並列): 計画に基づく実装
+ * - Review: verify と品質確認
  * - Completed: 完了
  */
 export const UNIFIED_PHASES: WorkflowPhase[] = [
@@ -36,6 +38,7 @@ export const UNIFIED_PHASES: WorkflowPhase[] = [
   "plan",
   "annotate",
   "implement",
+  "review",
   "completed",
 ];
 
