@@ -4,7 +4,7 @@ category: user-guide
 audience: daily-user
 last_updated: 2026-03-07
 tags: [self-improvement, learning, storage]
-related: [./01-extensions.md, ./08-subagents.md, ./09-agent-teams.md]
+related: [./01-extensions.md, ./08-subagents.md]
 ---
 
 # Self-Improvement Foundation

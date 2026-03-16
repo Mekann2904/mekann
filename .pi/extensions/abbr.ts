@@ -98,6 +98,20 @@ const AbbrParams = Type.Object({
 const abbreviations: Map<string, Abbreviation> = new Map();
 let piInstance: ExtensionAPI | null = null;
 
+// Validate regex pattern in abbreviation
+function validateRegexPattern(abbr: Abbreviation): boolean {
+	if (!abbr.regex || !abbr.pattern) {
+		return true; // Non-regex abbreviations are always valid
+	}
+	try {
+		new RegExp(`^(${abbr.pattern})(\\s|$)`);
+		return true;
+	} catch (error) {
+		console.error(`Invalid regex pattern in abbreviation "${abbr.name}": ${abbr.pattern}`, error);
+		return false;
+	}
+}
+
 // Load abbreviations from config file
 function loadFromFile(): void {
 	try {
@@ -106,7 +120,10 @@ function loadFromFile(): void {
 			const parsed = JSON.parse(data) as { abbreviations: Abbreviation[] };
 			abbreviations.clear();
 			for (const abbr of parsed.abbreviations) {
-				abbreviations.set(abbr.name, abbr);
+				// Validate regex patterns before loading
+				if (validateRegexPattern(abbr)) {
+					abbreviations.set(abbr.name, abbr);
+				}
 			}
 		}
 	} catch (error) {
@@ -183,11 +200,16 @@ function findExpansion(input: string): { expanded: string; original: string } | 
 	// Check regex patterns
 	for (const abbr of abbreviations.values()) {
 		if (abbr.regex && abbr.pattern) {
-			const regex = new RegExp(`^(${abbr.pattern})(\\s|$)`);
-			const match = trimmed.match(regex);
-			if (match) {
-				const expanded = trimmed.replace(regex, abbr.expansion + "$2");
-				return { expanded, original: match[1] };
+			try {
+				const regex = new RegExp(`^(${abbr.pattern})(\\s|$)`);
+				const match = trimmed.match(regex);
+				if (match) {
+					const expanded = trimmed.replace(regex, abbr.expansion + "$2");
+					return { expanded, original: match[1] };
+				}
+			} catch (error) {
+				// Invalid regex pattern - skip this abbreviation
+				console.error(`Invalid regex pattern in abbreviation "${abbr.name}": ${abbr.pattern}`, error);
 			}
 		}
 	}

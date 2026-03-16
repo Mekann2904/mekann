@@ -107,6 +107,73 @@ function dispatchNotification(notification: McpNotification): void {
 }
 
 /**
+ * 一時的なエラーかどうかを判定
+ * @summary ネットワーク一時エラー判定
+ */
+function isTransientError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  const transientPatterns = [
+    "econnrefused",
+    "econnreset",
+    "etimedout",
+    "enotfound",
+    "eai_again",
+    "socket hang up",
+    "network",
+    "timeout",
+  ];
+  return transientPatterns.some((p) => msg.includes(p));
+}
+
+/**
+ * 指定時間待機
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * リトライ付きでMCPサーバーに接続
+ */
+async function connectWithRetry(
+  server: { id: string; url: string; timeout?: number; auth?: McpAuthProvider; headers?: Record<string, string> },
+  maxRetries: number = 3,
+  baseDelayMs: number = 1000
+): Promise<void> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const auth = server.auth as McpAuthProvider | undefined;
+      await mcpManager.connect({
+        id: server.id,
+        url: server.url,
+        timeout: server.timeout,
+        type: detectConnectionType(server.url),
+        auth,
+        headers: server.headers,
+      });
+      return; // 成功
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+
+      // 一時的エラーでない、または最終試行の場合はリトライしない
+      if (!isTransientError(err) || attempt === maxRetries) {
+        throw lastError;
+      }
+
+      // Exponential backoff: 1s, 2s, 4s
+      const delay = baseDelayMs * Math.pow(2, attempt);
+      console.log(`MCP connection retry ${attempt + 1}/${maxRetries} for ${server.id} after ${delay}ms`);
+      await sleep(delay);
+    }
+  }
+
+  throw lastError;
+}
+
+/**
  * 設定ファイルから自動接続を実行
  */
 async function autoConnectFromConfig(ctx: { ui: { notify: (msg: string, type: "info" | "warning" | "error") => void } }): Promise<{ succeeded: string[]; failed: Array<{ id: string; error: string }> }> {
@@ -124,16 +191,7 @@ async function autoConnectFromConfig(ctx: { ui: { notify: (msg: string, type: "i
 
     for (const server of enabledServers) {
       try {
-        // Cast auth from config to McpAuthProvider (validated by config-loader)
-        const auth = server.auth as McpAuthProvider | undefined;
-        await mcpManager.connect({
-          id: server.id,
-          url: server.url,
-          timeout: server.timeout,
-          type: detectConnectionType(server.url),
-          auth,
-          headers: server.headers
-        });
+        await connectWithRetry(server);
         result.succeeded.push(server.id);
         ctx.ui.notify(`Connected to MCP server: ${server.id}`, "info");
       } catch (err) {

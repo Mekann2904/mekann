@@ -484,6 +484,8 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
   pi.on("session_end", async (_event, _ctx) => {
     shutdownAdaptiveController();
     unregisterInstance();
+    isInitialized = false; // 再初期化を許可
+    adaptiveControllerInitialized = false; // アダプティブコントローラの再初期化を許可
   });
 
   // Event: Track model usage on tool calls
@@ -527,5 +529,6 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
   // セッション終了時にリスナー重複登録防止フラグをリセット
   pi.on("session_shutdown", async () => {
     isInitialized = false;
+    adaptiveControllerInitialized = false; // アダプティブコントローラの再初期化を許可
   });
 }

@@ -747,26 +747,42 @@ function ensureRuntimeStateShape(runtime: AgentRuntimeState): AgentRuntimeState 
   return runtime;
 }
 
-function enforceRuntimeLimitConsistency(runtime: AgentRuntimeState): void {
-  // Detect runtime/env drift early so limits cannot silently diverge between components.
-  const runtimeLimits = sanitizeRuntimeLimits(runtime.limits);
-  const envLimits = sanitizeRuntimeLimits(createRuntimeLimits());
-  const runtimeVersion = serializeRuntimeLimits(runtimeLimits);
-  const envVersion = serializeRuntimeLimits(envLimits);
+let limitsConsistencyUpdateInProgress = false;
 
-  if (runtimeVersion === envVersion) {
-    runtime.limits = runtimeLimits;
-    runtime.limitsVersion = runtimeVersion;
+function enforceRuntimeLimitConsistency(runtime: AgentRuntimeState): void {
+  // 再入保護: 並行呼び出しからlimits/limitsVersionの不整合を防ぐ
+  // JavaScriptはシングルスレッドだが、この保護により:
+  // 1. 将来の非同期化に対応
+  // 2. コードの意図を明確化
+  // 3. デバッグ時のトレーサビリティ向上
+  if (limitsConsistencyUpdateInProgress) {
     return;
   }
+  limitsConsistencyUpdateInProgress = true;
 
-  // Silently update to env limits - drift is expected when:
-  // 1. Coordinator-based dynamic limits change
-  // 2. Env vars change at runtime
-  // Strict mode check removed as it caused false positives with dynamic coordinator limits
-  runtime.limits = envLimits;
-  runtime.limitsVersion = envVersion;
-  notifyRuntimeCapacityChanged();
+  try {
+    // Detect runtime/env drift early so limits cannot silently diverge between components.
+    const runtimeLimits = sanitizeRuntimeLimits(runtime.limits);
+    const envLimits = sanitizeRuntimeLimits(createRuntimeLimits());
+    const runtimeVersion = serializeRuntimeLimits(runtimeLimits);
+    const envVersion = serializeRuntimeLimits(envLimits);
+
+    if (runtimeVersion === envVersion) {
+      runtime.limits = runtimeLimits;
+      runtime.limitsVersion = runtimeVersion;
+      return;
+    }
+
+    // Silently update to env limits - drift is expected when:
+    // 1. Coordinator-based dynamic limits change
+    // 2. Env vars change at runtime
+    // Strict mode check removed as it caused false positives with dynamic coordinator limits
+    runtime.limits = envLimits;
+    runtime.limitsVersion = envVersion;
+    notifyRuntimeCapacityChanged();
+  } finally {
+    limitsConsistencyUpdateInProgress = false;
+  }
 }
 
 /**
@@ -1492,15 +1508,29 @@ export async function reserveRuntimeCapacity(
         await wait(remainingDelayMs, input.signal);
       }
     } catch (error) {
-      // BUG-009 fix: エラーをログに記録（元はcatch {}で無視していた）
       const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // AbortSignalによる意図的なキャンセルとシステムエラーを区別
+      if (errorMessage === "capacity wait aborted") {
+        // ユーザーによる意図的なキャンセル
+        return {
+          ...attempted,
+          waitedMs: runtimeNow() - startedAt,
+          attempts,
+          timedOut: false,
+          aborted: true,
+        };
+      }
+
+      // 予期せぬシステムエラー
       console.error(`[agent-runtime] reserveRuntimeCapacity failed: ${errorMessage}`);
       return {
         ...attempted,
         waitedMs: runtimeNow() - startedAt,
         attempts,
         timedOut: false,
-        aborted: true,
+        aborted: false,
+        error: errorMessage,
       };
     }
   }

@@ -4,7 +4,7 @@ category: user-guide
 audience: daily-user
 last_updated: 2026-02-25
 tags: [monitoring, real-time, tui, live-view]
-related: [./01-extensions.md, ./08-subagents.md, ./09-agent-teams.md]
+related: [./01-extensions.md, ./08-subagents.md]
 ---
 
 # Live Monitoring
@@ -461,7 +461,6 @@ const logs = await get_monitoring_logs({
 
 - [拡張機能概要](./01-extensions.md) - 全拡張機能の一覧
 - [サブエージェント](./08-subagents.md) - サブエージェント実行
-- [エージェントチーム](./09-agent-teams.md) - エージェントチーム実行
 
 ## 次のトピック
 

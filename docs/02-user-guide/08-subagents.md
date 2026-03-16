@@ -4,7 +4,7 @@ category: user-guide
 audience: daily-user
 last_updated: 2026-03-08
 tags: [subagent, orchestration, delegation, dag]
-related: [../README.md, ./01-extensions.md, ./09-agent-teams.md]
+related: [../README.md, ./01-extensions.md]
 ---
 
 # subagents - サブエージェント
@@ -441,7 +441,7 @@ skill_status()
 
 ##### 利用可能なスキル一覧
 
-詳細は [スキルガイド](docs/04-reference/skill-guide.md) を参照してください。主なカテゴリ：
+詳細は [スキルガイド](../04-reference/skill-guide.md) を参照してください。主なカテゴリ：
 
 | カテゴリ | 例 |
 |---------|---|
@@ -822,5 +822,4 @@ Executing with maxConcurrency=3...
 ## 関連トピック
 
 - [拡張機能一覧](./01-extensions.md) - 全拡張機能の概要
-- [agent-teams](./09-agent-teams.md) - エージェントチーム
 - [ul-dual-mode](./10-ul-dual-mode.md) - ULデュアルオーケストレーションモード

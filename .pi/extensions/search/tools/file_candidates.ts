@@ -238,8 +238,12 @@ async function nativeFileCandidates(
 					}
 				}
 			}
-		} catch {
-			// Skip inaccessible directories
+		} catch (error) {
+			// Skip inaccessible directories but log for debugging
+			console.debug(
+				"[file_candidates] Directory access skipped:",
+				error instanceof Error ? error.message : String(error)
+			);
 		}
 	}
 

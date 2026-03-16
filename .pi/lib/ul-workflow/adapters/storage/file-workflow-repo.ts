@@ -165,14 +165,18 @@ ${description}
    * タスクを削除
    * @summary タスク削除
    * @param taskId - タスクID
+   * @returns 成功したか（失敗時はエラーメッセージを含む）
    */
-  async delete(taskId: string): Promise<void> {
+  async delete(taskId: string): Promise<{ success: boolean; error?: string }> {
     const taskDir = getTaskDir(taskId);
     try {
       await fsPromises.rm(taskDir, { recursive: true, force: true });
+      return { success: true };
     } catch (e) {
-      // ディレクトリ削除に失敗してもクリティカルではない
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      // ディレクトリ削除に失敗してもクリティカルではないが、呼び出し元に通知する
       console.error(`Failed to remove task directory: ${taskDir}`, e);
+      return { success: false, error: errorMessage };
     }
   }
 

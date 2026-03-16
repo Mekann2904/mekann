@@ -135,6 +135,8 @@ export interface SubagentRunRecord {
   // 相関IDフィールド（後方互換性のためオプション）
   correlationId?: string;
   parentEventId?: string;
+  // エージェント設定のハッシュ（設定変更検出用）
+  agentConfigHash?: string;
 }
 
 /**

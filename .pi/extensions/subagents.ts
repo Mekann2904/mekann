@@ -31,6 +31,8 @@
 
 import { writeFileSync, existsSync, readFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { withFileLock } from "../lib/storage/storage-lock.js";
+import { getTaskStorageStateKey } from "../lib/storage/state-keys.js";
 
 import { Type } from "@mariozechner/pi-ai";
 import {
@@ -71,6 +73,16 @@ import {
   loadState,
   isProcessAlive,
   extractPidFromInstanceId,
+  extractDagTaskSection,
+  normalizeGapDecision,
+  decideResearchFollowups,
+  decidePlanFollowups,
+  decideImplementFollowups,
+  decideReviewFollowups,
+  type ResearchFollowupDecision,
+  type PlanFollowupDecision,
+  type ImplementFollowupDecision,
+  type ReviewFollowupDecision,
 } from "./ul-workflow.js";
 import {
 	loadTaskStorage as loadSharedTaskStorage,
@@ -119,22 +131,10 @@ type DynamicResearchConfig = {
   synthesisTaskId: string;
 };
 
-type ResearchFollowupDecision = {
-  needsExternalDeepDive: boolean;
-  needsCodebaseDeepDive: boolean;
-  rationale: string;
-};
-
 type DynamicPlanConfig = {
   task: string;
   gapTaskId: string;
   synthesisTaskId: string;
-};
-
-type PlanFollowupDecision = {
-  needsChangesDeepDive: boolean;
-  needsValidationDeepDive: boolean;
-  rationale: string;
 };
 
 type DynamicImplementConfig = {
@@ -143,141 +143,11 @@ type DynamicImplementConfig = {
   synthesisTaskId: string;
 };
 
-type ImplementFollowupDecision = {
-  needsFixupDeepDive: boolean;
-  needsVerificationDeepDive: boolean;
-  rationale: string;
-};
-
 type DynamicReviewConfig = {
   task: string;
   gapTaskId: string;
   synthesisTaskId: string;
 };
-
-type ReviewFollowupDecision = {
-  needsRiskDeepDive: boolean;
-  needsVerificationDeepDive: boolean;
-  rationale: string;
-};
-
-function extractDagTaskSection(output: string, taskId: string): string {
-  const normalized = String(output || "");
-  const pattern = new RegExp(`## ${taskId}\\nStatus: [^\\n]*\\n([\\s\\S]*?)(?=\\n## [^\\n]+\\nStatus:|$)`);
-  const match = normalized.match(pattern);
-  return match?.[1]?.trim() ?? "";
-}
-
-function normalizeGapDecision(value: string): boolean | null {
-  const normalized = value.trim().toLowerCase();
-  if (["yes", "true", "required", "needed"].includes(normalized)) return true;
-  if (["no", "false", "none", "not_needed", "not-needed"].includes(normalized)) return false;
-  return null;
-}
-
-function decideResearchFollowups(baseOutput: string): ResearchFollowupDecision {
-  const gapSection = extractDagTaskSection(baseOutput, "research-gap-check");
-  const externalMatch = gapSection.match(/DEEP_DIVE_EXTERNAL:\s*([^\n]+)/i);
-  const codebaseMatch = gapSection.match(/DEEP_DIVE_CODEBASE:\s*([^\n]+)/i);
-  const rationaleMatch = gapSection.match(/RATIONALE:\s*([\s\S]*?)$/i);
-
-  const explicitExternal = externalMatch ? normalizeGapDecision(externalMatch[1]) : null;
-  const explicitCodebase = codebaseMatch ? normalizeGapDecision(codebaseMatch[1]) : null;
-  const rationale = rationaleMatch?.[1]?.trim() || "gap-check output did not provide an explicit rationale";
-
-  if (explicitExternal !== null || explicitCodebase !== null) {
-    return {
-      needsExternalDeepDive: explicitExternal ?? false,
-      needsCodebaseDeepDive: explicitCodebase ?? false,
-      rationale,
-    };
-  }
-
-  const noDive = /no additional deep dive needed|no deep dive needed|plan ready/i.test(gapSection);
-  return {
-    needsExternalDeepDive: !noDive && /(external|official docs|reference|api surface|library|spec)/i.test(gapSection),
-    needsCodebaseDeepDive: !noDive && /(codebase|risk|file|implementation|constraint|reuse)/i.test(gapSection),
-    rationale,
-  };
-}
-
-function decidePlanFollowups(baseOutput: string): PlanFollowupDecision {
-  const gapSection = extractDagTaskSection(baseOutput, "plan-gap-check");
-  const changesMatch = gapSection.match(/DEEP_DIVE_CHANGES:\s*([^\n]+)/i);
-  const validationMatch = gapSection.match(/DEEP_DIVE_VALIDATION:\s*([^\n]+)/i);
-  const rationaleMatch = gapSection.match(/RATIONALE:\s*([\s\S]*?)$/i);
-
-  const explicitChanges = changesMatch ? normalizeGapDecision(changesMatch[1]) : null;
-  const explicitValidation = validationMatch ? normalizeGapDecision(validationMatch[1]) : null;
-  const rationale = rationaleMatch?.[1]?.trim() || "plan gap-check output did not provide an explicit rationale";
-
-  if (explicitChanges !== null || explicitValidation !== null) {
-    return {
-      needsChangesDeepDive: explicitChanges ?? false,
-      needsValidationDeepDive: explicitValidation ?? false,
-      rationale,
-    };
-  }
-
-  const noDive = /no additional deep dive needed|no deep dive needed|plan ready/i.test(gapSection);
-  return {
-    needsChangesDeepDive: !noDive && /(change|file|implementation|snippet|scope|dependency)/i.test(gapSection),
-    needsValidationDeepDive: !noDive && /(validation|verify|test|risk|rollback|acceptance)/i.test(gapSection),
-    rationale,
-  };
-}
-
-function decideImplementFollowups(baseOutput: string): ImplementFollowupDecision {
-  const gapSection = extractDagTaskSection(baseOutput, "implement-gap-check");
-  const fixupMatch = gapSection.match(/DEEP_DIVE_FIXUP:\s*([^\n]+)/i);
-  const verificationMatch = gapSection.match(/DEEP_DIVE_VERIFICATION:\s*([^\n]+)/i);
-  const rationaleMatch = gapSection.match(/RATIONALE:\s*([\s\S]*?)$/i);
-
-  const explicitFixup = fixupMatch ? normalizeGapDecision(fixupMatch[1]) : null;
-  const explicitVerification = verificationMatch ? normalizeGapDecision(verificationMatch[1]) : null;
-  const rationale = rationaleMatch?.[1]?.trim() || "implement gap-check output did not provide an explicit rationale";
-
-  if (explicitFixup !== null || explicitVerification !== null) {
-    return {
-      needsFixupDeepDive: explicitFixup ?? false,
-      needsVerificationDeepDive: explicitVerification ?? false,
-      rationale,
-    };
-  }
-
-  const noDive = /no additional deep dive needed|no deep dive needed|ready for review/i.test(gapSection);
-  return {
-    needsFixupDeepDive: !noDive && /(fix|implementation|bug|regression|follow-up|adjust)/i.test(gapSection),
-    needsVerificationDeepDive: !noDive && /(verification|verify|test|proof|artifact|review)/i.test(gapSection),
-    rationale,
-  };
-}
-
-function decideReviewFollowups(baseOutput: string): ReviewFollowupDecision {
-  const gapSection = extractDagTaskSection(baseOutput, "review-gap-check");
-  const riskMatch = gapSection.match(/DEEP_DIVE_RISK:\s*([^\n]+)/i);
-  const verificationMatch = gapSection.match(/DEEP_DIVE_VERIFICATION:\s*([^\n]+)/i);
-  const rationaleMatch = gapSection.match(/RATIONALE:\s*([\s\S]*?)$/i);
-
-  const explicitRisk = riskMatch ? normalizeGapDecision(riskMatch[1]) : null;
-  const explicitVerification = verificationMatch ? normalizeGapDecision(verificationMatch[1]) : null;
-  const rationale = rationaleMatch?.[1]?.trim() || "review gap-check output did not provide an explicit rationale";
-
-  if (explicitRisk !== null || explicitVerification !== null) {
-    return {
-      needsRiskDeepDive: explicitRisk ?? false,
-      needsVerificationDeepDive: explicitVerification ?? false,
-      rationale,
-    };
-  }
-
-  const noDive = /no additional deep dive needed|no deep dive needed|ready for workspace verify/i.test(gapSection);
-  return {
-    needsRiskDeepDive: !noDive && /(risk|security|regression|rollback|impact)/i.test(gapSection),
-    needsVerificationDeepDive: !noDive && /(verification|verify|test|artifact|proof|review)/i.test(gapSection),
-    rationale,
-  };
-}
 
 function buildDynamicResearchBaseContext(outputByTaskId: Map<string, string>, rationale: string): string {
   const baseOutput = Array.from(outputByTaskId.entries())
@@ -344,6 +214,17 @@ interface TaskStorage {
 }
 
 /**
+ * タスクストレージのパスを取得
+ * @summary タスクストレージパス取得
+ * @returns タスクストレージファイルのパス
+ */
+function getTaskStoragePath(): string {
+  const stateKey = getTaskStorageStateKey(process.cwd());
+  // SQLite database file path
+  return `.pi/storage/${stateKey}.db`;
+}
+
+/**
  * タスクストレージを読み込む
  * @summary タスクストレージ読込
  */
@@ -365,22 +246,25 @@ function saveTaskStorage(storage: TaskStorage): void {
 
 /**
  * タスクを in_progress に設定
- * @summary タスク進行中設定
+ * @summary タスク進行中設定（アトミック操作)
  * @param taskId - タスクID
  * @returns 設定に成功した場合はtrue
  */
 function setTaskInProgress(taskId: string): boolean {
-	const storage = loadTaskStorage();
-	const task = storage.tasks.find(t => t.id === taskId);
-	if (!task || task.status !== "todo") {
-		return false;
-	}
-	task.status = "in_progress";
-	task.ownerInstanceId = getInstanceId();
-	task.claimedAt = new Date().toISOString();
-	task.updatedAt = new Date().toISOString();
-	saveTaskStorage(storage);
-	return true;
+	// Use file lock to prevent TOCTOU race condition
+	return withFileLock(getTaskStorageStateKey(process.cwd()), () => {
+	 const storage = loadTaskStorage();
+    const task = storage.tasks.find(t => t.id === taskId);
+    if (!task || task.status !== "todo") {
+      return false;
+    }
+    task.status = "in_progress";
+    task.ownerInstanceId = getInstanceId();
+    task.claimedAt = new Date().toISOString();
+    task.updatedAt = new Date().toISOString();
+    saveTaskStorage(storage);
+    return true;
+  });
 }
 
 // ============================================================================
@@ -935,13 +819,42 @@ function normalizeReuseText(value: string | undefined): string {
     .toLowerCase();
 }
 
-function loadSubagentRunArtifact(outputFile: string): { prompt?: string; output?: string } | null {
+/**
+ * エージェント設定のハッシュを計算する
+ * 設定変更を検出してキャッシュの有効性を判定するために使用
+ */
+function computeAgentConfigHash(agent: SubagentDefinition): string {
+  const configStr = [
+    agent.systemPrompt || "",
+    agent.provider || "",
+    agent.model || "",
+    String(agent.enabled),
+    (agent.skills || []).sort().join(","),
+  ].join("|");
+  
+  // 簡易ハッシュ（FNV-1a風）
+  let hash = 2166136261;
+  for (let i = 0; i < configStr.length; i++) {
+    hash ^= configStr.charCodeAt(i);
+    hash = (hash * 16777619) >>> 0;
+  }
+  return hash.toString(16);
+}
+
+export function loadSubagentRunArtifact(outputFile: string): { prompt?: string; output?: string } | null {
   if (!outputFile || !existsSync(outputFile)) return null;
   try {
     const raw = readFileSync(outputFile, "utf-8");
     const parsed = JSON.parse(raw) as { prompt?: string; output?: string };
     return parsed;
-  } catch {
+  } catch (error) {
+    // エラーの種類を区別してログ出力
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (error instanceof SyntaxError) {
+      console.error(`[subagents] Failed to parse artifact JSON: ${outputFile}: ${errorMessage}`);
+    } else {
+      console.error(`[subagents] Failed to load artifact: ${outputFile}: ${errorMessage}`);
+    }
     return null;
   }
 }
@@ -960,11 +873,22 @@ function findReusableSubagentRun(input: {
   const normalizedExtraContext = normalizeReuseText(input.extraContext);
   const nowMs = Date.now();
 
+  // 現在のエージェント設定を取得してハッシュを計算
+  const currentAgent = input.storage.agents.find(a => a.id === input.agentId);
+  if (!currentAgent) return null; // エージェントが存在しない場合はキャッシュ不使用
+  if (currentAgent.enabled !== "enabled") return null; // 無効なエージェントはキャッシュ不使用
+  const currentConfigHash = computeAgentConfigHash(currentAgent);
+
   const recentRuns = input.storage.runs.slice().reverse();
   for (const run of recentRuns) {
     if (run.status !== "completed") continue;
     if (run.agentId !== input.agentId) continue;
     if (normalizeReuseText(run.task) !== normalizedTask) continue;
+
+    // 設定ハッシュの比較（古いレコードにハッシュがない場合はスキップ）
+    if (run.agentConfigHash && run.agentConfigHash !== currentConfigHash) {
+      continue; // 設定が変更されているためキャッシュ不使用
+    }
 
     const finishedAtMs = Date.parse(run.finishedAt || run.startedAt || "");
     if (!Number.isFinite(finishedAtMs)) continue;

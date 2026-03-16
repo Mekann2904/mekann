@@ -76,12 +76,20 @@ function appendBoundedText(current: string, incoming: string, maxBytes: number):
   // Keep only tail to cap memory footprint on verbose commands.
   const target = maxBytes - 128;
   if (target <= 0) {
-    return next.slice(-maxBytes);
+    // Use code-point-aware slicing to avoid splitting surrogate pairs
+    const codePoints = [...next];
+    const tailCodePoints = codePoints.slice(-maxBytes);
+    return tailCodePoints.join("");
   }
 
-  let tail = next.slice(-Math.max(target, 1));
-  while (Buffer.byteLength(tail, "utf-8") > target && tail.length > 1) {
-    tail = tail.slice(1);
+  // Use code-point-aware slicing to avoid splitting surrogate pairs
+  const codePoints = [...next];
+  let tailCodePoints = codePoints.slice(-Math.max(target, 1));
+  let tail = tailCodePoints.join("");
+  
+  while (Buffer.byteLength(tail, "utf-8") > target && tailCodePoints.length > 1) {
+    tailCodePoints = tailCodePoints.slice(1);
+    tail = tailCodePoints.join("");
   }
   return `...[truncated]\n${tail}`;
 }
@@ -386,7 +394,8 @@ export function parseVerificationCommand(command: string): ParsedVerificationCom
     };
   }
 
-  if (/[|&;<>()$`]/.test(raw)) {
+  // Shell operators and command substitution patterns
+  if (/[|&;<>()$`]/.test(raw) || /\$\([^)]*\)/.test(raw)) {
     return {
       executable: "",
       args: [],
@@ -403,8 +412,19 @@ export function parseVerificationCommand(command: string): ParsedVerificationCom
     };
   }
 
+  const executable = tokens[0];
+
+  // Path traversal check: reject executables containing ..
+  if (/\.\./.test(executable)) {
+    return {
+      executable: "",
+      args: [],
+      error: "path traversal (..) is not allowed in verification command executable",
+    };
+  }
+
   return {
-    executable: tokens[0],
+    executable,
     args: tokens.slice(1),
   };
 }

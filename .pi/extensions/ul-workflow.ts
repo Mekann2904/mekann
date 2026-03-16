@@ -262,6 +262,56 @@ function createEmptyActiveWorkflowRegistry(): ActiveWorkflowRegistry {
   };
 }
 
+/**
+ * インプロセス同期ロック - 同時実行のread-modify-write操作を保護
+ * Node.jsのシングルスレッド特性を活用し、同期的なロックを実現
+ */
+class RegistryLock {
+  private locked = false;
+  private waiters = 0;
+
+  acquire(): boolean {
+    if (this.locked) {
+      this.waiters++;
+      return false;
+    }
+    this.locked = true;
+    return true;
+  }
+
+  release(): void {
+    this.locked = false;
+    if (this.waiters > 0) {
+      this.waiters--;
+      this.locked = true;
+    }
+  }
+
+  /** ロックを取得できるまで同期待機（スピンロック） */
+  syncAcquire(timeoutMs = 5000): boolean {
+    const start = Date.now();
+    while (!this.acquire()) {
+      if (Date.now() - start > timeoutMs) {
+        return false;
+      }
+      // 同期スリップ - 他の非同期操作にCPUを譲る
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1);
+    }
+    return true;
+  }
+
+  withLock<T>(fn: () => T): T {
+    this.syncAcquire();
+    try {
+      return fn();
+    } finally {
+      this.release();
+    }
+  }
+}
+
+const registryLock = new RegistryLock();
+
 function readActiveWorkflowRegistry(): ActiveWorkflowRegistry {
   try {
     if (!fs.existsSync(ACTIVE_FILE)) {
@@ -276,7 +326,8 @@ function readActiveWorkflowRegistry(): ActiveWorkflowRegistry {
       updatedAt: parsed.updatedAt ?? new Date().toISOString(),
       activeByInstance: parsed.activeByInstance ?? {},
     };
-  } catch {
+  } catch (error) {
+    console.error("[ul-workflow] readActiveWorkflowRegistry failed:", error);
     return createEmptyActiveWorkflowRegistry();
   }
 }
@@ -340,7 +391,7 @@ export function updateActiveWorkflowRegistryForInstance(
   return nextRegistry;
 }
 
-function writeActiveWorkflowRegistry(registry: ActiveWorkflowRegistry): void {
+function writeActiveWorkflowRegistry(registry: ActiveWorkflowRegistry): { success: boolean; error?: string } {
   if (!fs.existsSync(WORKFLOW_DIR)) {
     fs.mkdirSync(WORKFLOW_DIR, { recursive: true });
   }
@@ -351,7 +402,14 @@ function writeActiveWorkflowRegistry(registry: ActiveWorkflowRegistry): void {
   nextRegistry.ownerInstanceId = globalEntry.ownerInstanceId;
   nextRegistry.updatedAt = globalEntry.updatedAt;
 
-  atomicWriteTextFile(ACTIVE_FILE, JSON.stringify(nextRegistry, null, 2));
+  try {
+    atomicWriteTextFile(ACTIVE_FILE, JSON.stringify(nextRegistry, null, 2));
+    return { success: true };
+  } catch (e) {
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    console.error(`Failed to write active workflow registry: ${errorMessage}`, e);
+    return { success: false, error: errorMessage };
+  }
 }
 
 // File-based workflow access (replaces memory variable)
@@ -366,20 +424,32 @@ export function getCurrentWorkflow(): WorkflowState | null {
     }
 
     return loadState(taskId);
-  } catch {
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    // ENOENTは正常ケース（アクティブなワークフローがない）なのでログ出力しない
+    // EACCES, EMFILE, EBUSYなどの一時的エラーは警告として出力
+    if (code && code !== 'ENOENT') {
+      console.warn(`getCurrentWorkflow: filesystem error (${code}), returning null`, error);
+    }
     return null;
   }
 }
 
-export function setCurrentWorkflow(state: WorkflowState | null): void {
-  const instanceId = getInstanceId();
-  const registry = readActiveWorkflowRegistry();
-  const nextRegistry = updateActiveWorkflowRegistryForInstance(
-    registry,
-    instanceId,
-    state,
-  );
-  writeActiveWorkflowRegistry(nextRegistry);
+export function setCurrentWorkflow(state: WorkflowState | null): { success: boolean; error?: string } {
+  return registryLock.withLock(() => {
+    const instanceId = getInstanceId();
+    const registry = readActiveWorkflowRegistry();
+    const nextRegistry = updateActiveWorkflowRegistryForInstance(
+      registry,
+      instanceId,
+      state,
+    );
+    const result = writeActiveWorkflowRegistry(nextRegistry);
+    if (!result.success) {
+      console.error(`setCurrentWorkflow: failed to persist registry: ${result.error}`);
+    }
+    return result;
+  });
 }
 
 function getToolExecutor(ctx: unknown):
@@ -408,19 +478,65 @@ function resolveWorkflowArtifactPath(taskId: string, phase: WorkflowPhase): stri
   if (phase === "plan" || phase === "annotate") {
     return path.join(getTaskDir(taskId), "plan.md");
   }
+  if (phase === "implement") {
+    // 実装フェーズではplan.mdが必須（実装はplanに基づいて行われる）
+    return path.join(getTaskDir(taskId), "plan.md");
+  }
+  if (phase === "review") {
+    // レビューフェーズではreview.mdが必須
+    return path.join(getTaskDir(taskId), "review.md");
+  }
   return null;
 }
 
-async function assertPhaseArtifactReady(taskId: string, phase: WorkflowPhase): Promise<void> {
+export async function assertPhaseArtifactReady(taskId: string, phase: WorkflowPhase): Promise<void> {
   const artifactPath = resolveWorkflowArtifactPath(taskId, phase);
   if (!artifactPath) {
     return;
   }
 
-  const content = await fsPromises.readFile(artifactPath, "utf-8").catch(() => "");
-  if (!content.trim()) {
-    throw new Error(`${phase}.md がまだ生成されていません: ${artifactPath}`);
+  // リトライロジック: ファイルシステムのレースコンディションを回避
+  // - 空コンテンツ（書き込み中の可能性）
+  // - 一時的エラー（EACCES, EMFILE, EBUSY）
+  const maxRetries = 3;
+  const baseDelayMs = 50;
+  const transientErrors = ["EACCES", "EMFILE", "EBUSY", "EAGAIN"];
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    if (attempt > 0) {
+      const delayMs = baseDelayMs * Math.pow(2, attempt - 1);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    try {
+      const content = await fsPromises.readFile(artifactPath, "utf-8");
+      if (content.trim()) {
+        return; // 成功: 有効なコンテンツが読み取れた
+      }
+      // 空コンテンツ: 書き込み中の可能性があるためリトライ
+      const emptyErr = new Error(`${phase}.md が空です（書き込み中の可能性）: ${artifactPath}`) as NodeJS.ErrnoException;
+      emptyErr.code = "EEMPTY";
+      lastError = emptyErr;
+    } catch (err) {
+      const nodeErr = err as NodeJS.ErrnoException;
+      if (nodeErr.code === "ENOENT") {
+        // ファイルなし: リトライせず即座にエラー
+        throw new Error(`${phase}.md がまだ生成されていません: ${artifactPath}`);
+      }
+      if (nodeErr.code && transientErrors.includes(nodeErr.code)) {
+        // 一時的エラー: リトライ
+        lastError = nodeErr;
+        continue;
+      }
+      // その他のエラー: 即座にスロー
+      throw err;
+    }
   }
+
+  // リトライ上限到達
+  throw lastError || new Error(`${phase}.md がまだ生成されていません: ${artifactPath}`);
 }
 
 function getVerificationGateReason(cwd: string): string | null {
@@ -543,45 +659,46 @@ function buildResearchNodeOutputContract(): string {
   ].join("\n");
 }
 
-type ResearchFollowupDecision = {
+export type ResearchFollowupDecision = {
   needsExternalDeepDive: boolean;
   needsCodebaseDeepDive: boolean;
   rationale: string;
 };
 
-type PlanFollowupDecision = {
+export type PlanFollowupDecision = {
   needsChangesDeepDive: boolean;
   needsValidationDeepDive: boolean;
   rationale: string;
 };
 
-type ImplementFollowupDecision = {
+export type ImplementFollowupDecision = {
   needsFixupDeepDive: boolean;
   needsVerificationDeepDive: boolean;
   rationale: string;
 };
 
-type ReviewFollowupDecision = {
+export type ReviewFollowupDecision = {
   needsRiskDeepDive: boolean;
   needsVerificationDeepDive: boolean;
   rationale: string;
 };
 
-function extractDagTaskSection(output: string, taskId: string): string {
-  const normalized = String(output || "");
-  const pattern = new RegExp(`## ${taskId}\\nStatus: [^\\n]*\\n([\\s\\S]*?)(?=\\n## [^\\n]+\\nStatus:|$)`);
+export function extractDagTaskSection(output: string, taskId: string): string {
+  // CRLFをLFに正規化し、Status:後のスペースをオプションにする
+  const normalized = String(output || "").replace(/\r\n/g, "\n");
+  const pattern = new RegExp(`## ${taskId}\\nStatus:\\s*[^\\n]*\\n([\\s\\S]*?)(?=\\n## [^\\n]+\\nStatus:|$)`);
   const match = normalized.match(pattern);
   return match?.[1]?.trim() ?? "";
 }
 
-function normalizeGapDecision(value: string): boolean | null {
+export function normalizeGapDecision(value: string): boolean | null {
   const normalized = value.trim().toLowerCase();
   if (["yes", "true", "required", "needed"].includes(normalized)) return true;
   if (["no", "false", "none", "not_needed", "not-needed"].includes(normalized)) return false;
   return null;
 }
 
-function decideResearchFollowups(baseOutput: string): ResearchFollowupDecision {
+export function decideResearchFollowups(baseOutput: string): ResearchFollowupDecision {
   const gapSection = extractDagTaskSection(baseOutput, "research-gap-check");
   const externalMatch = gapSection.match(/DEEP_DIVE_EXTERNAL:\s*([^\n]+)/i);
   const codebaseMatch = gapSection.match(/DEEP_DIVE_CODEBASE:\s*([^\n]+)/i);
@@ -607,7 +724,7 @@ function decideResearchFollowups(baseOutput: string): ResearchFollowupDecision {
   };
 }
 
-function decidePlanFollowups(baseOutput: string): PlanFollowupDecision {
+export function decidePlanFollowups(baseOutput: string): PlanFollowupDecision {
   const gapSection = extractDagTaskSection(baseOutput, "plan-gap-check");
   const changesMatch = gapSection.match(/DEEP_DIVE_CHANGES:\s*([^\n]+)/i);
   const validationMatch = gapSection.match(/DEEP_DIVE_VALIDATION:\s*([^\n]+)/i);
@@ -633,7 +750,7 @@ function decidePlanFollowups(baseOutput: string): PlanFollowupDecision {
   };
 }
 
-function decideImplementFollowups(baseOutput: string): ImplementFollowupDecision {
+export function decideImplementFollowups(baseOutput: string): ImplementFollowupDecision {
   const gapSection = extractDagTaskSection(baseOutput, "implement-gap-check");
   const fixupMatch = gapSection.match(/DEEP_DIVE_FIXUP:\s*([^\n]+)/i);
   const verificationMatch = gapSection.match(/DEEP_DIVE_VERIFICATION:\s*([^\n]+)/i);
@@ -659,7 +776,7 @@ function decideImplementFollowups(baseOutput: string): ImplementFollowupDecision
   };
 }
 
-function decideReviewFollowups(baseOutput: string): ReviewFollowupDecision {
+export function decideReviewFollowups(baseOutput: string): ReviewFollowupDecision {
   const gapSection = extractDagTaskSection(baseOutput, "review-gap-check");
   const riskMatch = gapSection.match(/DEEP_DIVE_RISK:\s*([^\n]+)/i);
   const verificationMatch = gapSection.match(/DEEP_DIVE_VERIFICATION:\s*([^\n]+)/i);
@@ -2041,7 +2158,7 @@ ${baseContext}`,
   const artifactPath = typeof dagParams.artifactPath === "string" ? dagParams.artifactPath.trim() : "";
   if (artifactPath && artifactContent.trim()) {
     await fsPromises.mkdir(path.dirname(artifactPath), { recursive: true });
-    await fsPromises.writeFile(artifactPath, `${artifactContent.trim()}\n`, "utf-8");
+    atomicWriteTextFile(artifactPath, `${artifactContent.trim()}\n`);
   }
 
   updateSession(dagSessionId, {
@@ -2493,11 +2610,9 @@ export function saveState(state: WorkflowState): void {
  * @param state - ワークフロー状態
  */
 async function saveStateAsync(state: WorkflowState): Promise<void> {
-  const taskDir = getTaskDir(state.taskId);
-  const statusPath = path.join(taskDir, "status.json");
-
-  await fsPromises.mkdir(taskDir, { recursive: true });
-  await fsPromises.writeFile(statusPath, JSON.stringify(state, null, 2), "utf-8");
+  // 同期版のsaveStateを使用してファイルロックとatomic writeを保証
+  // 非同期関数として公開することで呼び出し元のAPIを維持
+  saveState(state);
 }
 
 /**
@@ -2508,7 +2623,11 @@ export function loadState(taskId: string): WorkflowState | null {
   try {
     const content = fs.readFileSync(statusPath, "utf-8");
     return JSON.parse(content);
-  } catch {
+  } catch (error) {
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    if (errorCode !== "ENOENT") {
+      console.error(`[ul-workflow] loadState failed for ${taskId}:`, errorCode ?? "unknown", error);
+    }
     return null;
   }
 }
@@ -2530,10 +2649,26 @@ function findLatestWorkflowForInstance(options?: { includeCompleted?: boolean })
       .filter((state): state is WorkflowState => !!state)
       .filter((state) => state.ownerInstanceId === instanceId)
       .filter((state) => options?.includeCompleted ? true : state.phase !== "completed")
-      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+      .sort((a, b) => {
+        const da = Date.parse(a.updatedAt);
+        const db = Date.parse(b.updatedAt);
+        // NaNチェック: 不正なタイムスタンプは後ろに配置
+        if (isNaN(da) || isNaN(db)) {
+          return isNaN(da) ? 1 : -1;
+        }
+        return db - da;
+      });
 
     return states[0] ?? null;
-  } catch {
+  } catch (error) {
+    // 予期せぬエラー（EACCES, EIO等）はログに出力
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    if (errorCode === "ENOENT") {
+      // ディレクトリが存在しないのは正常ケース
+      return null;
+    }
+    // 権限エラーやI/Oエラーは警告を出力
+    console.error(`findLatestWorkflowForInstance: Failed to read workflow directory: ${errorCode ?? "unknown"}`, error);
     return null;
   }
 }
@@ -2549,7 +2684,11 @@ async function loadStateAsync(taskId: string): Promise<WorkflowState | null> {
   try {
     const content = await fsPromises.readFile(statusPath, "utf-8");
     return JSON.parse(content) as WorkflowState;
-  } catch {
+  } catch (error) {
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    if (errorCode !== "ENOENT") {
+      console.error(`[ul-workflow] loadStateAsync failed for ${taskId}:`, errorCode ?? "unknown", error);
+    }
     return null;
   }
 }
@@ -2604,7 +2743,11 @@ function readPlanFile(taskId: string): string {
   const planPath = path.join(getTaskDir(taskId), "plan.md");
   try {
     return fs.readFileSync(planPath, "utf-8");
-  } catch {
+  } catch (error) {
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    if (errorCode !== "ENOENT") {
+      console.error(`[ul-workflow] readPlanFile failed for ${taskId}:`, errorCode ?? "unknown", error);
+    }
     return "";
   }
 }
@@ -2763,13 +2906,17 @@ async function ensureWorkflowArtifact(
     if (existing.trim()) {
       return { created: false, content: existing };
     }
-  } catch {
-    // Ignore missing file and create fallback below.
+  } catch (error) {
+    // ENOENT is expected (file doesn't exist yet), log other errors
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    if (errorCode !== "ENOENT") {
+      console.error(`[ul-workflow] ensureWorkflowArtifact readFile failed for ${artifactPath}:`, errorCode ?? "unknown", error);
+    }
   }
 
   const normalized = fallbackContent.trim() || "_No content generated._";
   await fsPromises.mkdir(path.dirname(artifactPath), { recursive: true });
-  await fsPromises.writeFile(artifactPath, `${normalized}\n`, "utf-8");
+  atomicWriteTextFile(artifactPath, `${normalized}\n`);
   return { created: true, content: normalized };
 }
 
@@ -3151,11 +3298,11 @@ ul_workflow_confirm_plan()
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
       const workflow = getCurrentWorkflow();
       if (!workflow) {
-        return makeResult(`アクティブなワークフローはありません。
+        return makeResult(`エラー: アクティブなワークフローがありません。
 
 新しいワークフローを開始するには:
   ul_workflow_start({ task: "タスク説明" })
-`, { active: false });
+`, { error: "no_active_workflow" });
       }
 
       const phaseDescriptions: Record<WorkflowPhase, string> = {
@@ -3377,11 +3524,23 @@ ${phasesDisplay}
 
       // Force claim ownership
       const now = new Date().toISOString();
-      currentWorkflow.ownerInstanceId = instanceId;
-      currentWorkflow.updatedAt = now;
 
-      saveState(currentWorkflow);
-      setCurrentWorkflow(currentWorkflow);
+      // BUG FIX: Save state before in-memory mutation for consistency
+      // Backup previous state in case saveState fails
+      const previousOwnerInstanceId = currentWorkflow.ownerInstanceId;
+      const previousUpdatedAt = currentWorkflow.updatedAt;
+
+      try {
+        currentWorkflow.ownerInstanceId = instanceId;
+        currentWorkflow.updatedAt = now;
+        saveState(currentWorkflow);
+        setCurrentWorkflow(currentWorkflow);
+      } catch (error) {
+        // Rollback on failure
+        currentWorkflow.ownerInstanceId = previousOwnerInstanceId;
+        currentWorkflow.updatedAt = previousUpdatedAt;
+        throw error;
+      }
 
       let statusText = `所有権を強制的に変更しました。\n\n` +
         `以前の所有者: ${previousOwner}${ownerPid ? ` (PID: ${ownerPid})` : ""}\n` +
@@ -3621,7 +3780,7 @@ subagent_run_dag(${JSON.stringify(dagParams, null, 2)})
 完了後: ul_workflow_commit() でコミット
 `, { taskId, phase: "implement", requiresDagExecution: true, dynamicImplement: true });
         }
-        return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${error}`, { error: "implement_error", details: String(error) });
+        return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${error}`, { error: "implement_error", details: String(error), taskId });
       }
     },
   });
@@ -4120,6 +4279,21 @@ subagent_run_dag(${JSON.stringify(dagParams, null, 2)})
         return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
       }
 
+      // 現在のフェーズのアーティファクトが準備できていることを確認
+      // plan.md (implementフェーズ以降) / review.md (reviewフェーズ) が存在する必要がある
+      try {
+        await assertPhaseArtifactReady(workflow.taskId, workflow.phase);
+      } catch (error) {
+        return makeResult(
+          `エラー: 現在のフェーズ成果物がまだ準備できていません。\n\n${error}`,
+          {
+            error: "phase_artifact_not_ready",
+            taskId: workflow.taskId,
+            phase: workflow.phase,
+          },
+        );
+      }
+
       // git-workflowスキルは workspace ごとに配置揺れがあるため、
       // 2つの候補パスを案内する。
       const skillPaths = [
@@ -4318,8 +4492,13 @@ plan.mdに基づく実装
       }
 
       workflow.approvedPhases.push(previousPhase);
-      const nextPhase = advancePhase(workflow);
+
+      // BEGIN FIX: BUG-002 原子的状態更新
+      // フェーズ進行前に状態を永続化
       saveState(workflow);
+      const nextPhase = advancePhase(workflow);
+      // END FIX
+
       setCurrentWorkflow(workflow);
 
       ctx.ui.notify(`${previousPhase.toUpperCase()} 承認 → ${nextPhase.toUpperCase()}`, "info");
@@ -4384,7 +4563,10 @@ plan.mdに基づく実装
       workflow.phase = "aborted";
       workflow.updatedAt = new Date().toISOString();
       saveState(workflow);
-      setCurrentWorkflow(null);
+      const clearResult = setCurrentWorkflow(null);
+      if (!clearResult.success) {
+        ctx.ui.notify(`警告: レジストリクリア失敗: ${clearResult.error}`, "warning");
+      }
 
       ctx.ui.notify(`ワークフロー中止: ${taskId}`, "info");
     },

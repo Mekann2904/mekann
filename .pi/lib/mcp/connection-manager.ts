@@ -496,42 +496,47 @@ export class McpConnectionManager {
 
 		// フォールバックハンドラーですべての通知をキャッチ
 		client.fallbackNotificationHandler = async (notification: { method: string; params?: unknown }) => {
-			// 通知タイプをマッピング（SDK準拠）
-			let notificationType: McpNotificationType | null = null;
-			switch (notification.method) {
-				case 'notifications/tools/list_changed':
-					notificationType = 'tools/list_changed';
-					break;
-				case 'notifications/resources/list_changed':
-					notificationType = 'resources/list_changed';
-					break;
-				case 'notifications/resources/updated':
-					notificationType = 'resources/updated';
-					break;
-				case 'notifications/prompts/list_changed':
-					notificationType = 'prompts/list_changed';
-					break;
-				case 'notifications/message':
-					notificationType = 'logging/setLevel';
-					break;
-				case 'notifications/progress':
-					notificationType = 'progress';
-					break;
-				case 'notifications/cancelled':
-					notificationType = 'cancelled';
-					break;
-				default:
-					// 不明な通知タイプはログ出力してスキップ
-					console.warn(`[MCP] Unknown notification type: ${notification.method} (connection: ${connectionId})`);
-					return;
-			}
+			try {
+				// 通知タイプをマッピング（SDK準拠）
+				let notificationType: McpNotificationType | null = null;
+				switch (notification.method) {
+					case 'notifications/tools/list_changed':
+						notificationType = 'tools/list_changed';
+						break;
+					case 'notifications/resources/list_changed':
+						notificationType = 'resources/list_changed';
+						break;
+					case 'notifications/resources/updated':
+						notificationType = 'resources/updated';
+						break;
+					case 'notifications/prompts/list_changed':
+						notificationType = 'prompts/list_changed';
+						break;
+					case 'notifications/message':
+						notificationType = 'logging/setLevel';
+						break;
+					case 'notifications/progress':
+						notificationType = 'progress';
+						break;
+					case 'notifications/cancelled':
+						notificationType = 'cancelled';
+						break;
+					default:
+						// 不明な通知タイプはログ出力してスキップ
+						console.warn(`[MCP] Unknown notification type: ${notification.method} (connection: ${connectionId})`);
+						return;
+				}
 
-			this.dispatchNotification({
-				type: notificationType,
-				data: (notification.params as Record<string, unknown>) ?? {},
-				connectionId,
-				timestamp: new Date()
-			});
+				this.dispatchNotification({
+					type: notificationType,
+					data: (notification.params as Record<string, unknown>) ?? {},
+					connectionId,
+					timestamp: new Date()
+				});
+			} catch (error) {
+				// 通知処理エラーはログ出力して継続
+				console.error(`[MCP] Notification handler error for ${notification.method}:`, error);
+			}
 		};
 	}
 
@@ -1211,7 +1216,12 @@ export class McpConnectionManager {
 
 			try {
 				const params = request.params as Record<string, unknown>;
-				const elicitationId = params.elicitationId as string;
+
+				// Validate elicitationId type
+				if (typeof params.elicitationId !== 'string') {
+					throw new Error('Invalid elicitationId: expected string');
+				}
+				const elicitationId = params.elicitationId;
 
 				// Determine request type (form or url)
 				let elicitationRequest: McpElicitationRequest;
@@ -1242,7 +1252,12 @@ export class McpConnectionManager {
 					throw new Error('Invalid elicitation request: missing form or url');
 				}
 
-				const response = await this.elicitationHandler!(elicitationRequest, connectionId);
+				// Check handler is still available (race condition protection)
+				if (!this.elicitationHandler) {
+					throw new Error('Elicitation handler not configured');
+				}
+
+				const response = await this.elicitationHandler(elicitationRequest, connectionId);
 
 				return {
 					elicitationId: response.elicitationId,

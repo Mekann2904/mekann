@@ -514,4 +514,3 @@ Step D (依存: B, C)
 
 - [拡張機能一覧](./01-extensions.md) - 全拡張機能の概要
 - [subagents](./08-subagents.md) - サブエージェントによるステップ実行
-- [agent-teams](./09-agent-teams.md) - エージェントチームによる協調実行

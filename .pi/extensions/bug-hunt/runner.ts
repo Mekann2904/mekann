@@ -8,7 +8,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import {
   buildBugHuntStageTimeouts,
-  hasBudgetForBugHuntStage,
+  hasBudgetForModelStage,
   type BugHuntModelStage,
 } from "./budget.js";
 import { callModelViaPi } from "../shared/pi-print-executor.js";
@@ -354,7 +354,7 @@ async function runIteration(): Promise<void> {
   const investigationParallelism = Math.max(1, state.investigationParallelism ?? 1);
 
   for (const hypothesisChunk of chunkHypotheses(hypotheses, investigationParallelism)) {
-    if (!hasBudgetForBugHuntStage("investigation", deadline - Date.now())) {
+    if (!hasBudgetForModelStage("investigation", deadline - Date.now())) {
       break;
     }
 
