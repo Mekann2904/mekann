@@ -97,27 +97,72 @@ function listLogFiles(logDir: string): string[] {
 }
 
 /**
+ * パース結果
+ */
+interface ParseResult {
+	events: LogEvent[];
+	parseErrors: number;
+	incompleteLines: number;
+}
+
+/**
  * ログファイルを読み込んでイベントをパース
+ * @summary ログをパースする
+ * @param filePath ファイルパス
+ * @returns パース結果
  */
 function parseLogFile(filePath: string): LogEvent[] {
+	const result = parseLogFileWithStats(filePath);
+	return result.events;
+}
+
+/**
+ * ログファイルを読み込んでイベントをパース（統計付き）
+ * @summary ログをパース（統計付き）
+ * @param filePath ファイルパス
+ * @returns パース結果
+ */
+function parseLogFileWithStats(filePath: string): ParseResult {
+	const result: ParseResult = {
+		events: [],
+		parseErrors: 0,
+		incompleteLines: 0,
+	};
+
 	if (!existsSync(filePath)) {
-		return [];
+		return result;
 	}
 
-	const events: LogEvent[] = [];
 	const content = readFileSync(filePath, "utf-8");
 	const lines = content.split("\n").filter(Boolean);
 
 	for (const line of lines) {
+		// 行整合性チェック: 不完全な行（書き込み中の可能性）を検出
+		if (!line.endsWith("}")) {
+			result.incompleteLines++;
+			continue;
+		}
+
 		try {
 			const event = JSON.parse(line) as LogEvent;
-            events.push(event);
-		} catch {
-            // パースエラーはスキップ
-        }
-    }
+			result.events.push(event);
+		} catch (error) {
+			// パースエラーをログ出力（無言でドロップしない）
+			result.parseErrors++;
+			console.warn(
+				`[observability-data] JSON parse error in ${filePath}: ${error instanceof Error ? error.message : String(error)}`
+			);
+		}
+	}
 
-	return events;
+	// 不完全な行があった場合は警告（読み取り中に書き込みが発生した可能性）
+	if (result.incompleteLines > 0) {
+		console.warn(
+			`[observability-data] ${result.incompleteLines} incomplete line(s) detected in ${filePath} (possible concurrent write)`
+		);
+	}
+
+	return result;
 }
 
 /**
