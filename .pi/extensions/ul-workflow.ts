@@ -262,74 +262,26 @@ function createEmptyActiveWorkflowRegistry(): ActiveWorkflowRegistry {
   };
 }
 
-/**
- * インプロセス同期ロック - 同時実行のread-modify-write操作を保護
- * Node.jsのシングルスレッド特性を活用し、同期的なロックを実現
- */
-class RegistryLock {
-  private locked = false;
-  private waiters = 0;
-
-  acquire(): boolean {
-    if (this.locked) {
-      this.waiters++;
-      return false;
-    }
-    this.locked = true;
-    return true;
-  }
-
-  release(): void {
-    this.locked = false;
-    if (this.waiters > 0) {
-      this.waiters--;
-      this.locked = true;
-    }
-  }
-
-  /** ロックを取得できるまで同期待機（スピンロック） */
-  syncAcquire(timeoutMs = 5000): boolean {
-    const start = Date.now();
-    while (!this.acquire()) {
-      if (Date.now() - start > timeoutMs) {
-        return false;
-      }
-      // 同期スリップ - 他の非同期操作にCPUを譲る
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1);
-    }
-    return true;
-  }
-
-  withLock<T>(fn: () => T): T {
-    this.syncAcquire();
-    try {
-      return fn();
-    } finally {
-      this.release();
-    }
-  }
-}
-
-const registryLock = new RegistryLock();
-
 function readActiveWorkflowRegistry(): ActiveWorkflowRegistry {
-  try {
-    if (!fs.existsSync(ACTIVE_FILE)) {
+  return withFileLock(ACTIVE_FILE, () => {
+    try {
+      if (!fs.existsSync(ACTIVE_FILE)) {
+        return createEmptyActiveWorkflowRegistry();
+      }
+
+      const raw = readFileSync(ACTIVE_FILE, "utf-8");
+      const parsed = JSON.parse(raw) as Partial<ActiveWorkflowRegistry>;
+      return {
+        activeTaskId: parsed.activeTaskId ?? null,
+        ownerInstanceId: parsed.ownerInstanceId ?? null,
+        updatedAt: parsed.updatedAt ?? new Date().toISOString(),
+        activeByInstance: parsed.activeByInstance ?? {},
+      };
+    } catch (error) {
+      console.error("[ul-workflow] readActiveWorkflowRegistry failed:", error);
       return createEmptyActiveWorkflowRegistry();
     }
-
-    const raw = readFileSync(ACTIVE_FILE, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<ActiveWorkflowRegistry>;
-    return {
-      activeTaskId: parsed.activeTaskId ?? null,
-      ownerInstanceId: parsed.ownerInstanceId ?? null,
-      updatedAt: parsed.updatedAt ?? new Date().toISOString(),
-      activeByInstance: parsed.activeByInstance ?? {},
-    };
-  } catch (error) {
-    console.error("[ul-workflow] readActiveWorkflowRegistry failed:", error);
-    return createEmptyActiveWorkflowRegistry();
-  }
+  });
 }
 
 function resolveGlobalActiveEntry(
@@ -436,7 +388,7 @@ export function getCurrentWorkflow(): WorkflowState | null {
 }
 
 export function setCurrentWorkflow(state: WorkflowState | null): { success: boolean; error?: string } {
-  return registryLock.withLock(() => {
+  return withFileLock(ACTIVE_FILE, () => {
     const instanceId = getInstanceId();
     const registry = readActiveWorkflowRegistry();
     const nextRegistry = updateActiveWorkflowRegistryForInstance(
