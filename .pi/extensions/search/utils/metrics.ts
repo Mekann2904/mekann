@@ -29,6 +29,8 @@
  * Used for monitoring, debugging, and providing feedback to users.
  */
 
+import { getLogger } from "../../../lib/comprehensive-logger.js";
+
 // ============================================
 // Core Metrics Types
 // ============================================
@@ -58,6 +60,17 @@ export interface SearchMetrics {
 	 * Name of the tool that generated these metrics.
 	 */
 	toolName: string;
+
+	/**
+	 * Estimated token count for LLM context usage.
+	 * Used by autoresearch experiments for LLM efficiency tracking.
+	 */
+	estimatedTokens?: number;
+
+	/**
+	 * Number of results returned (before truncation).
+	 */
+	resultCount?: number;
 }
 
 /**
@@ -109,6 +122,8 @@ export class MetricsCollector {
 	private toolName: string;
 	private filesSearched = 0;
 	private indexHitRate: number | undefined;
+	private estimatedTokens = 0;
+	private resultCount = 0;
 
 	constructor(toolName: string) {
 		this.toolName = toolName;
@@ -138,6 +153,28 @@ export class MetricsCollector {
 	}
 
 	/**
+	 * トークン推定値設定
+	 * @summary トークン推定値を設定
+	 * @param {number} tokens 推定トークン数
+	 * @returns {this} インスタンス自身
+	 */
+	setEstimatedTokens(tokens: number): this {
+		this.estimatedTokens = tokens;
+		return this;
+	}
+
+	/**
+	 * 結果数設定
+	 * @summary 結果数を設定
+	 * @param {number} count 結果数
+	 * @returns {this} インスタンス自身
+	 */
+	setResultCount(count: number): this {
+		this.resultCount = count;
+		return this;
+	}
+
+	/**
 	 * 経過時間取得
 	 * @summary 経過時間を取得
 	 * @returns {number} 経過時間（ミリ秒）
@@ -149,15 +186,53 @@ export class MetricsCollector {
 	/**
 	 * 計測を終了して指標を取得
 	 * @summary 計測終了
+	 * @param emitToObservability trueの場合、ComprehensiveLoggerにメトリクスを送信
 	 * @returns 計測結果の検索指標
 	 */
-	finish(): SearchMetrics {
-		return {
+	finish(emitToObservability = true): SearchMetrics {
+		const metrics: SearchMetrics = {
 			durationMs: this.elapsedMs(),
 			filesSearched: this.filesSearched,
 			indexHitRate: this.indexHitRate,
 			toolName: this.toolName,
+			estimatedTokens: this.estimatedTokens > 0 ? this.estimatedTokens : undefined,
+			resultCount: this.resultCount,
 		};
+
+		// ComprehensiveLoggerにメトリクスを送信
+		if (emitToObservability) {
+			try {
+				const logger = getLogger();
+				logger.logToolResult(this.toolName, {
+					status: 'success',
+					durationMs: metrics.durationMs,
+					outputType: 'inline',
+					output: `${this.resultCount} results, ${this.filesSearched} files searched`,
+					outputSize: this.resultCount,
+				});
+
+				// トークン推定値があれば、メトリクススナップショットとして送信
+				if (this.estimatedTokens > 0) {
+					logger.logMetricsSnapshot({
+						memoryUsageMB: 0, // 検索ツールはメモリ使用量を計測していない
+						cpuPercent: 0,
+						eventsTotal: 0,
+						tasksCompleted: 0,
+						operationsCompleted: 1,
+						toolCallsTotal: 1,
+						tokensTotal: this.estimatedTokens,
+						errorRate: 0,
+						avgResponseTimeMs: metrics.durationMs,
+						p95ResponseTimeMs: metrics.durationMs,
+					});
+				}
+			} catch (error) {
+				// Observabilityへの送信エラーはメトリクス返却を阻害しない
+				console.error('Failed to emit search metrics to observability:', error);
+			}
+		}
+
+		return metrics;
 	}
 }
 
