@@ -109,6 +109,8 @@ export class ComprehensiveLogger {
   private activeTasks: Map<string, { startTime: number; userInput: string }> = new Map();
   /** シャットダウン中フラグ - レースコンディション防止 */
   private isShuttingDown: boolean = false;
+  /** flush実行中フラグ - 並行flush呼び出しの直列化 */
+  private isFlushing: boolean = false;
   
   constructor(config?: Partial<LoggerConfig>) {
     this.config = config ? { ...DEFAULT_CONFIG, ...config } : getConfig();
@@ -783,17 +785,21 @@ export class ComprehensiveLogger {
    * @throws I/Oエラー時に例外をスロー（データはバッファに保持）
    */
   async flush(): Promise<void> {
+    // 並行flush呼び出しの直列化 - 既にflush実行中の場合は早期リターン
+    if (this.isFlushing) return;
     if (this.buffer.length === 0) return;
+
+    this.isFlushing = true;
 
     // 原子的バッファスワップ - レースコンディション防止
     const events = this.buffer;
     this.buffer = [];
 
-    await this.ensureLogDir();
-
-    const logFile = join(this.config.logDir, `events-${getDateStr()}.jsonl`);
-
     try {
+      await this.ensureLogDir();
+
+      const logFile = join(this.config.logDir, `events-${getDateStr()}.jsonl`);
+
       // ファイルサイズチェック
       if (existsSync(logFile)) {
         const stats = statSync(logFile);
@@ -815,6 +821,8 @@ export class ComprehensiveLogger {
       this.buffer = [...events, ...this.buffer];
       console.error('[comprehensive-logger] Flush failed, re-queued events:', error);
       throw error;
+    } finally {
+      this.isFlushing = false;
     }
   }
   
