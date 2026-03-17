@@ -34,6 +34,16 @@ function recordBehaviorMetrics(record, cwd) {
   return filePath;
 }
 function createAndRecordMetrics(params) {
+  // Validate required fields to prevent silent telemetry loss
+  if (!params?.prompt?.text) {
+    console.warn("[metrics] Missing prompt.text, skipping metrics");
+    return null;
+  }
+  if (!params?.output?.text) {
+    console.warn("[metrics] Missing output.text, skipping metrics");
+    return null;
+  }
+
   const record = {
     id: createRunId(),
     timestamp: (/* @__PURE__ */ new Date()).toISOString(),

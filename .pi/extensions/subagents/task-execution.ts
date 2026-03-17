@@ -1445,8 +1445,8 @@ export async function runSubagentTask(input: {
             cwd: input.cwd,
           });
         } catch (err) {
-          // 計測エラーは実行に影響させない
-          console.debug?.("[subagent] Metrics recording error:", err instanceof Error ? err.message : String(err));
+          // 計測エラーは実行に影響させない（WARNレベルで可視化）
+          console.warn("[subagent] Metrics recording error:", err instanceof Error ? err.message : String(err));
         }
       }
 
@@ -1564,8 +1564,8 @@ export async function runSubagentTask(input: {
             cwd: input.cwd,
           });
         } catch (err) {
-          // 計測エラーは実行に影響させない
-          console.debug?.("[subagent] Metrics recording error:", err instanceof Error ? err.message : String(err));
+          // 計測エラーは実行に影響させない（WARNレベルで可視化）
+          console.warn("[subagent] Metrics recording error:", err instanceof Error ? err.message : String(err));
         }
       }
 
