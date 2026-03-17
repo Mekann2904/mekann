@@ -55,6 +55,7 @@ export type EventType =
   | 'config_load'
   | 'state_change'
   | 'metrics_snapshot'
+  | 'command_error'
   // 実験 (autoresearch)
   | 'experiment_start'
   | 'experiment_baseline'
@@ -688,6 +689,23 @@ export interface TaskCompletionEvent extends BaseEvent {
 }
 
 // ============================================
+// コマンドエラーイベント
+// ============================================
+
+/**
+ * コマンドエラーイベント
+ * @summary コマンド引数解析エラー
+ */
+export interface CommandErrorEvent extends BaseEvent {
+  eventType: 'command_error';
+  data: {
+    command: string;
+    error: string;
+    args?: string;
+  };
+}
+
+// ============================================
 // 統合型
 // ============================================
 
@@ -723,7 +741,8 @@ export type LogEvent =
   | ExperimentCrashEvent
   | PreemptionEvent
   | WorkStealEvent
-  | TaskCompletionEvent;
+  | TaskCompletionEvent
+  | CommandErrorEvent;
 
 // ============================================
 // 設定型

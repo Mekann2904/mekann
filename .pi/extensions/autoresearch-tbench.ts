@@ -203,12 +203,14 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
   isInitialized = true;
 
   const handler = async (args: string, ctx: ExtensionCommandContext) => {
+    const logger = getLogger();
     const parsed = parseCommand(args);
     if (parsed.action === "help") {
       ctx.ui?.notify?.(buildHelpText(), "info");
       return;
     }
     if (parsed.action === "error") {
+      logger.recordCommandError("autoresearch-tbench", parsed.error ?? "unknown error", args);
       ctx.ui?.notify?.(`autoresearch-tbench argument error: ${parsed.error}`, "error");
       return;
     }

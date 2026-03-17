@@ -572,6 +572,30 @@ export class ComprehensiveLogger {
   }
 
   // ============================================
+  // コマンドエラー記録
+  // ============================================
+
+  /**
+   * コマンド引数エラーを記録する
+   * @summary コマンドエラー記録
+   * @param command コマンド名
+   * @param error エラーメッセージ
+   * @param args 元の引数文字列（オプション）
+   * @returns なし
+   * @fires command_error
+   */
+  recordCommandError(command: string, error: string, args?: string): void {
+    this.emit({
+      eventType: 'command_error',
+      data: {
+        command,
+        error,
+        args,
+      },
+    });
+  }
+
+  // ============================================
   // 実験イベント (autoresearch)
   // ============================================
 

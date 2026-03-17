@@ -843,6 +843,7 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
       }
 
       if (parsed.error) {
+        logger.recordCommandError("loop", parsed.error, args);
         pi.sendMessage({
           customType: "loop-arg-error",
           content: `loop argument error: ${parsed.error}\n\n${LOOP_HELP}`,
