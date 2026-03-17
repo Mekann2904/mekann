@@ -5,7 +5,7 @@
  * why: タスクスケジューラのパフォーマンス可観測性を確保し、最適化のためのデータを提供するため
  * related: .pi/lib/task-scheduler.ts, .pi/extensions/agent-runtime.ts
  * public_api: SchedulerMetrics, TaskCompletionEvent, PreemptionEvent, WorkStealEvent, MetricsSummary インターフェース
- * invariants: タイムスタンプはミリ秒単位のエポック時間、ファイル操作は同期的に実行
+ * invariants: タイムスタンプはミリ秒単位のエポック時間、ファイル操作は非同期バッファ書き込みで実行
  * side_effects: ログファイルの作成、追記、読み込み、削除によるファイルシステムの状態変更
  * failure_modes: ディスク容量不足による書き込み失敗、ログファイルの破損による集計エラー
  * @abdd.explain
@@ -14,7 +14,7 @@
  *   - タスク完了、プリエンプション、ワークスチールなどのイベントを定義・記録する
  *   - キューの深さ、待機時間、スループットなどのSchedulerMetricsを算出する
  *   - 指定された期間のMetricsSummaryを集計する
- *   - イベントデータをJSONL形式でローカルファイルシステムへ永続化する
+ *   - イベントデータをJSONL形式でローカルファイルシステムへ永続化する（非同期バッファ書き込み）
  * why_it_exists:
  *   - スケジューラのボトルネックを特定するため
  *   - タスクの待機時間や実行時間の傾向を分析するため
@@ -29,7 +29,8 @@
 // Why: Enables observability of task scheduler performance for optimization.
 // Related: .pi/lib/task-scheduler.ts, .pi/extensions/agent-runtime.ts
 
-import { existsSync, mkdirSync, appendFileSync, readdirSync, readFileSync, unlinkSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, statSync } from "node:fs";
+import { appendFile, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -161,6 +162,8 @@ export interface MetricsSummary {
  * @param throughputPerMin 1分あたりスループット
  * @param byProvider プロバイダ別集計
  * @param byPriority 優先度別集計
+ * @param writeBufferSize 書き込みバッファサイズ（イベント数）
+ * @param writeFlushIntervalMs バッファフラッシュ間隔（ミリ秒）
  */
 export interface MetricsCollectorConfig {
   /** Directory for storing metrics logs */
@@ -173,6 +176,10 @@ export interface MetricsCollectorConfig {
   maxLogFiles: number;
   /** Enable JSONL logging */
   enableLogging: boolean;
+  /** Write buffer size (number of events) before flush */
+  writeBufferSize: number;
+  /** Interval for periodic buffer flush (ms) */
+  writeFlushIntervalMs: number;
 }
 
 /**
@@ -198,6 +205,8 @@ const DEFAULT_CONFIG: MetricsCollectorConfig = {
   maxLogFileSizeBytes: 10 * 1024 * 1024, // 10 MB
   maxLogFiles: 10,
   enableLogging: true,
+  writeBufferSize: 100, // Buffer up to 100 events
+  writeFlushIntervalMs: 1000, // Flush every 1 second
 };
 
 const METRICS_FILE_PREFIX = "scheduler-metrics-";
@@ -241,6 +250,10 @@ interface CollectorState {
   // Current metrics (from scheduler)
   currentQueueDepth: number;
   currentActiveTasks: number;
+  // Async write buffer
+  writeBuffer: Array<{ filePath: string; line: string }>;
+  flushTimer?: ReturnType<typeof setInterval>;
+  flushInProgress: boolean;
 }
 
 let collectorState: CollectorState | null = null;
@@ -298,16 +311,15 @@ function getCurrentLogFilePath(dir: string): string {
 }
 
 /**
- * Append JSONL entry to log file.
+ * Append JSONL entry to log file (async).
  * @returns true if write succeeded, false otherwise
  */
-function appendJsonlEntry(filePath: string, entry: Record<string, unknown>): boolean {
+async function appendJsonlEntryAsync(filePath: string, line: string): Promise<boolean> {
   try {
-    const line = JSON.stringify(entry) + "\n";
-    appendFileSync(filePath, line, "utf-8");
+    await appendFile(filePath, line, "utf-8");
     return true;
   } catch (e) {
-    console.error("[metrics-collector] Failed to append JSONL entry (data NOT dropped):", { filePath, error: String(e), entryType: entry.type });
+    console.error("[metrics-collector] Failed to append JSONL entry (data buffered):", { filePath, error: String(e) });
     return false;
   }
 }
@@ -315,46 +327,117 @@ function appendJsonlEntry(filePath: string, entry: Record<string, unknown>): boo
 /**
  * Failed entries buffer for retry on next successful write.
  */
-const failedEntriesBuffer: Array<{ filePath: string; entry: Record<string, unknown> }> = [];
+const failedEntriesBuffer: Array<{ filePath: string; line: string }> = [];
 const MAX_FAILED_ENTRIES_BUFFER = 1000;
 
 /**
- * Retry failed entries before writing new ones.
+ * Add entry to write buffer (non-blocking).
+ * Events are flushed asynchronously by the flush timer.
  */
-function retryFailedEntries(): void {
-  if (failedEntriesBuffer.length === 0) return;
+function bufferWriteEntry(filePath: string, entry: Record<string, unknown>): void {
+  if (!collectorState?.initialized) return;
 
-  const entriesToRetry = [...failedEntriesBuffer];
-  failedEntriesBuffer.length = 0;
+  const line = JSON.stringify(entry) + "\n";
+  collectorState.writeBuffer.push({ filePath, line });
 
-  for (const { filePath, entry } of entriesToRetry) {
-    if (!appendJsonlEntry(filePath, entry)) {
-      // Still failing - re-add to buffer if not full
-      if (failedEntriesBuffer.length < MAX_FAILED_ENTRIES_BUFFER) {
-        failedEntriesBuffer.push({ filePath, entry });
-      } else {
-        console.error("[metrics-collector] Failed entries buffer overflow, dropping oldest entry");
-      }
-    }
+  // Flush immediately if buffer is full
+  if (collectorState.writeBuffer.length >= collectorState.config.writeBufferSize) {
+    flushWriteBuffer();
   }
 }
 
 /**
- * Append with retry logic - attempts to write pending failed entries first.
+ * Flush write buffer to disk asynchronously.
+ * Groups entries by file path for efficient batch writes.
  */
-function appendWithRetry(filePath: string, entry: Record<string, unknown>): void {
-  // First, retry any failed entries
-  retryFailedEntries();
+async function flushWriteBuffer(): Promise<void> {
+  if (!collectorState?.initialized) return;
+  if (collectorState.flushInProgress) return;
+  if (collectorState.writeBuffer.length === 0) return;
 
-  // Then write the new entry
-  if (!appendJsonlEntry(filePath, entry)) {
-    // New entry failed - add to buffer for later retry
-    if (failedEntriesBuffer.length < MAX_FAILED_ENTRIES_BUFFER) {
-      failedEntriesBuffer.push({ filePath, entry });
-    } else {
-      console.error("[metrics-collector] Failed entries buffer full, dropping entry:", entry.type);
+  collectorState.flushInProgress = true;
+
+  // Take a snapshot of the buffer
+  const entriesToFlush = [...collectorState.writeBuffer];
+  collectorState.writeBuffer = [];
+
+  // Group by file path
+  const byFile = new Map<string, string[]>();
+  for (const { filePath, line } of entriesToFlush) {
+    const lines = byFile.get(filePath) || [];
+    lines.push(line);
+    byFile.set(filePath, lines);
+  }
+
+  // Write each file
+  for (const [filePath, lines] of Array.from(byFile.entries())) {
+    const combined = lines.join("");
+    const success = await appendJsonlEntryAsync(filePath, combined);
+    
+    if (!success) {
+      // Add failed lines back to buffer (or failed entries buffer if buffer is full)
+      for (const line of lines) {
+        if (failedEntriesBuffer.length < MAX_FAILED_ENTRIES_BUFFER) {
+          failedEntriesBuffer.push({ filePath, line });
+        } else {
+          console.error("[metrics-collector] Failed entries buffer overflow, dropping entry");
+          break;
+        }
+      }
     }
   }
+
+  // Retry previously failed entries
+  if (failedEntriesBuffer.length > 0) {
+    const retryEntries = [...failedEntriesBuffer];
+    failedEntriesBuffer.length = 0;
+
+    for (const { filePath, line } of retryEntries) {
+      const success = await appendJsonlEntryAsync(filePath, line);
+      if (!success && failedEntriesBuffer.length < MAX_FAILED_ENTRIES_BUFFER) {
+        failedEntriesBuffer.push({ filePath, line });
+      }
+    }
+  }
+
+  collectorState.flushInProgress = false;
+}
+
+/**
+ * Start the flush timer for periodic buffer writes.
+ */
+function startFlushTimer(): void {
+  if (!collectorState?.initialized) return;
+
+  const interval = collectorState.config.writeFlushIntervalMs;
+  
+  collectorState.flushTimer = setInterval(() => {
+    flushWriteBuffer();
+  }, interval);
+  
+  collectorState.flushTimer.unref();
+}
+
+/**
+ * Stop the flush timer and flush remaining buffer.
+ */
+async function stopFlushTimer(): Promise<void> {
+  if (!collectorState?.initialized) return;
+
+  if (collectorState.flushTimer) {
+    clearInterval(collectorState.flushTimer);
+    collectorState.flushTimer = undefined;
+  }
+
+  // Final flush
+  await flushWriteBuffer();
+}
+
+/**
+ * Append with retry logic - adds entry to buffer for async write.
+ */
+function appendWithRetry(filePath: string, entry: Record<string, unknown>): void {
+  bufferWriteEntry(filePath, entry);
 }
 
 /**
@@ -450,7 +533,12 @@ export function initMetricsCollector(
     lastStealAt: null,
     currentQueueDepth: 0,
     currentActiveTasks: 0,
+    writeBuffer: [],
+    flushInProgress: false,
   };
+
+  // Start the async flush timer
+  startFlushTimer();
 }
 
 /**
@@ -839,7 +927,20 @@ export function resetMetricsCollector(): void {
   if (collectorState?.collectionTimer) {
     clearInterval(collectorState.collectionTimer);
   }
+  if (collectorState?.flushTimer) {
+    clearInterval(collectorState.flushTimer);
+  }
   collectorState = null;
+}
+
+/**
+ * コレクタをgracefulにシャットダウン
+ * @summary フラッシュタイマーを停止し、残りバスッファをフラッシュする
+ * @returns {Promise<void>}
+ */
+export async function shutdownMetricsCollector(): Promise<void> {
+  await stopFlushTimer();
+  resetMetricsCollector();
 }
 
 /**
@@ -911,6 +1012,22 @@ export function getMetricsConfigFromEnv(): Partial<MetricsCollectorConfig> {
   const enableLogging = process.env.PI_METRICS_ENABLE_LOGGING;
   if (enableLogging !== undefined) {
     config.enableLogging = enableLogging !== "false";
+  }
+
+  const writeBufferSize = process.env.PI_METRICS_WRITE_BUFFER_SIZE;
+  if (writeBufferSize) {
+    const parsed = parseInt(writeBufferSize, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      config.writeBufferSize = parsed;
+    }
+  }
+
+  const writeFlushIntervalMs = process.env.PI_METRICS_WRITE_FLUSH_INTERVAL_MS;
+  if (writeFlushIntervalMs) {
+    const parsed = parseInt(writeFlushIntervalMs, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      config.writeFlushIntervalMs = parsed;
+    }
   }
 
   return config;
