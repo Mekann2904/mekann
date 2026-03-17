@@ -539,6 +539,15 @@ async function handleRun(options: CliOptions): Promise<void> {
       });
       await logger.flush();
     }
+  } else {
+    // outcome is still "crash" - emit experiment_crash event
+    logger.logExperimentCrash({
+      experimentType: 'e2e',
+      label: options.label,
+      iteration: state.experimentCount + 1,
+      error: run.stderr || `exit_code=${run.exitCode}`,
+    });
+    await logger.flush();
   }
 
   if (options.git) {
@@ -582,6 +591,21 @@ async function handleRun(options: CliOptions): Promise<void> {
   if (options.preferMs > 0 && score && score.durationMs > options.preferMs) {
     process.stdout.write(`warning=preferred budget exceeded prefer_ms=${options.preferMs}\n`);
   }
+
+  // Emit experiment_stop event at the end of every run
+  logger.logExperimentStop({
+    experimentType: 'e2e',
+    label: options.label,
+    iteration: state.experimentCount + 1,
+    reason: outcome,
+    partialScore: score ? {
+      failed: score.failed,
+      passed: score.passed,
+      total: score.total,
+      durationMs: score.durationMs,
+    } : undefined,
+  });
+  await logger.flush();
 }
 
 function handleStatus(): void {
