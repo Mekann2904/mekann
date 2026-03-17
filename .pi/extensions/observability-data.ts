@@ -139,6 +139,65 @@ function parseLogFile(filePath: string): LogEvent[] {
 }
 
 /**
+ * BaseEvent必須フィールドを検証
+ * @summary イベントを検証する
+ * @param event 検証対象イベント
+ * @returns エラーメッセージ（問題ない場合はnull）
+ */
+function validateBaseEvent(event: Partial<LogEvent>): string | null {
+	// 必須フィールドのリスト
+	const requiredFields: Array<keyof BaseEvent> = [
+		"eventId",
+		"eventType",
+		"sessionId",
+		"taskId",
+		"operationId",
+		"timestamp",
+		"component",
+	];
+
+	// 未定義またはnullのフィールドを検出
+	const missingFields = requiredFields.filter(
+		(field) => event[field] === undefined || event[field] === null
+	);
+	if (missingFields.length > 0) {
+		return `missing required fields: ${missingFields.join(", ")} (eventId=${event.eventId ?? "unknown"})`;
+	}
+
+	// 型チェック
+	if (typeof event.timestamp !== "string") {
+		return `timestamp must be string (eventId=${event.eventId ?? "unknown"})`;
+	}
+	if (typeof event.eventId !== "string") {
+		return `eventId must be string`;
+	}
+	if (typeof event.eventType !== "string") {
+		return `eventType must be string (eventId=${event.eventId})`;
+	}
+	if (typeof event.sessionId !== "string") {
+		return `sessionId must be string (eventId=${event.eventId})`;
+	}
+	if (typeof event.taskId !== "string") {
+		return `taskId must be string (eventId=${event.eventId})`;
+	}
+	if (typeof event.operationId !== "string") {
+		return `operationId must be string (eventId=${event.eventId})`;
+	}
+
+	// componentの詳細チェック
+	if (
+		typeof event.component !== "object" ||
+		event.component === null ||
+		typeof event.component.type !== "string" ||
+		typeof event.component.name !== "string"
+	) {
+		return `component must have type and name (eventId=${event.eventId})`;
+	}
+
+	return null;
+}
+
+/**
  * ログファイルを読み込んでイベントをパース（統計付き）
  * @summary ログをパース（統計付き）
  * @param filePath ファイルパス
@@ -208,11 +267,12 @@ function parseLogFileWithStats(filePath: string): ParseResult {
 
 		try {
 			const event = JSON.parse(line) as LogEvent;
-			// timestamp必須検証: 不正なイベントをスキップ
-			if (!event.timestamp || typeof event.timestamp !== "string") {
+			// BaseEvent必須フィールド検証: 全7フィールドをチェック
+			const validationError = validateBaseEvent(event);
+			if (validationError) {
 				result.parseErrors++;
 				console.warn(
-					`[observability-data] Invalid event missing timestamp in ${filePath}: eventId=${event.eventId ?? "unknown"}`
+					`[observability-data] Invalid event in ${filePath}: ${validationError}`
 				);
 				continue;
 			}
