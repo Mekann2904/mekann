@@ -34,7 +34,9 @@ export type SSEEventType =
   | "experiment_run"
   | "experiment_improved"
   | "experiment_regressed"
-  | "experiment_timeout";
+  | "experiment_timeout"
+  | "experiment_crash"
+  | "experiment_stop";
 
 /**
  * @summary SSE event payload structure

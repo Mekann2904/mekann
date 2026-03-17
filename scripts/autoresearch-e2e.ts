@@ -8,6 +8,7 @@
 import { mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
+import { request } from "node:http";
 
 import {
   determineAutoresearchOutcome,
@@ -20,6 +21,63 @@ import {
 import { ComprehensiveLogger, getLogger } from "../.pi/lib/comprehensive-logger.js";
 import { loadRecentRecords } from "../.pi/lib/analytics/behavior-storage.js";
 import { setupGlobalErrorHandlers } from "../.pi/lib/global-error-handler.js";
+
+/**
+ * SSEイベントタイプ（SSEEventBusと整合）
+ */
+type SSEExperimentEventType =
+  | "experiment_start"
+  | "experiment_baseline"
+  | "experiment_run"
+  | "experiment_improved"
+  | "experiment_regressed"
+  | "experiment_timeout"
+  | "experiment_stop"
+  | "experiment_crash";
+
+/**
+ * SSEイベントをWeb UIサーバーに送信
+ * サーバーが起動していない場合はサイレントに無視
+ */
+async function emitSSEEvent(
+  type: SSEExperimentEventType,
+  data: Record<string, unknown>
+): Promise<void> {
+  const port = process.env.PI_WEB_UI_PORT ?? "3000";
+  const url = `http://127.0.0.1:${port}/api/v2/experiments/events`;
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type,
+        data,
+        timestamp: Date.now(),
+      }),
+      signal: AbortSignal.timeout(5000), // 5秒タイムアウト
+    });
+
+    if (!response.ok) {
+      process.stderr.write(
+        `[emitSSEEvent] Failed to send SSE event: ${response.status} ${response.statusText}\n`
+      );
+    }
+  } catch (error) {
+    // サーバーが起動していない場合はサイレントに無視
+    // ECONNREFUSED, ETIMEDOUT等は正常な状態として扱う
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (
+      !errorMessage.includes("ECONNREFUSED") &&
+      !errorMessage.includes("ETIMEDOUT") &&
+      !errorMessage.includes("abort")
+    ) {
+      process.stderr.write(`[emitSSEEvent] Error: ${errorMessage}\n`);
+    }
+  }
+}
 
 interface CliOptions {
   command: string;
@@ -376,6 +434,20 @@ async function handleInit(options: CliOptions): Promise<void> {
       timeoutMs: options.timeoutMs,
     },
   });
+
+  // SSEイベント送信
+  await emitSSEEvent("experiment_start", {
+    experimentType: 'e2e',
+    label: options.label,
+    tag: options.tag,
+    branch: branchName,
+    targetCommit: head,
+    config: {
+      command: options.command,
+      timeoutMs: options.timeoutMs,
+    },
+  });
+
   await logger.flush();
 
   process.stdout.write(`initialized autoresearch e2e branch=${branchName} commit=${head}\n`);
@@ -434,6 +506,20 @@ async function handleBaseline(options: CliOptions): Promise<void> {
     },
     commit: head,
   });
+
+  // SSEイベント送信
+  await emitSSEEvent("experiment_baseline", {
+    experimentType: 'e2e',
+    label: options.label,
+    score: {
+      failed: report.score.failed,
+      passed: report.score.passed,
+      total: report.score.total,
+      durationMs: report.score.durationMs,
+    },
+    commit: head,
+  });
+
   await logger.flush();
 
   process.stdout.write(`baseline recorded ${formatAutoresearchScore(report.score)}\n`);
@@ -467,6 +553,15 @@ async function handleRun(options: CliOptions): Promise<void> {
     iteration: newExperimentCount,
     commit: candidateBaseCommit,
   });
+
+  // SSEイベント送信
+  await emitSSEEvent("experiment_run", {
+    experimentType: 'e2e',
+    label: options.label,
+    iteration: newExperimentCount,
+    commit: candidateBaseCommit,
+  });
+
   await logger.flush();
 
   const run = await runCommand(command, options.label, options.timeoutMs);
@@ -483,6 +578,15 @@ async function handleRun(options: CliOptions): Promise<void> {
       iteration: newExperimentCount,
       timeoutMs: options.timeoutMs,
     });
+
+    // SSEイベント送信
+    await emitSSEEvent("experiment_timeout", {
+      experimentType: 'e2e',
+      label: options.label,
+      iteration: newExperimentCount,
+      timeoutMs: options.timeoutMs,
+    });
+
     await logger.flush();
   } else if (existsSync(run.artifacts.reportPath)) {
     const rawReport = readFileSync(run.artifacts.reportPath, "utf-8");
@@ -504,6 +608,15 @@ async function handleRun(options: CliOptions): Promise<void> {
         iteration: newExperimentCount,
         error: "Invalid JSON in vitest report file",
       });
+
+      // SSEイベント送信
+      await emitSSEEvent("experiment_crash", {
+        experimentType: 'e2e',
+        label: options.label,
+        iteration: newExperimentCount,
+        error: "Invalid JSON in vitest report file",
+      });
+
       await logger.flush();
     }
 
@@ -536,6 +649,26 @@ async function handleRun(options: CliOptions): Promise<void> {
         },
         improvementType,
       });
+
+      // SSEイベント送信
+      await emitSSEEvent("experiment_improved", {
+        experimentType: 'e2e',
+        label: options.label,
+        previousScore: {
+          failed: previousScore.failed,
+          passed: previousScore.passed,
+          total: previousScore.total,
+          durationMs: previousScore.durationMs,
+        },
+        newScore: {
+          failed: score.failed,
+          passed: score.passed,
+          total: score.total,
+          durationMs: score.durationMs,
+        },
+        improvementType,
+      });
+
       await logger.flush();
     } else if (outcome === "regressed") {
       const previousScore = state.bestScore || { failed: 0, passed: 0, total: 0, durationMs: 0 };
@@ -566,6 +699,27 @@ async function handleRun(options: CliOptions): Promise<void> {
         regressionType,
         reverted: false,
       });
+
+      // SSEイベント送信
+      await emitSSEEvent("experiment_regressed", {
+        experimentType: 'e2e',
+        label: options.label,
+        previousScore: {
+          failed: previousScore.failed,
+          passed: previousScore.passed,
+          total: previousScore.total,
+          durationMs: previousScore.durationMs,
+        },
+        newScore: {
+          failed: score.failed,
+          passed: score.passed,
+          total: score.total,
+          durationMs: score.durationMs,
+        },
+        regressionType,
+        reverted: false,
+      });
+
       await logger.flush();
     }
   } else {
@@ -576,6 +730,15 @@ async function handleRun(options: CliOptions): Promise<void> {
       iteration: newExperimentCount,
       error: run.stderr || `exit_code=${run.exitCode}`,
     });
+
+    // SSEイベント送信
+    await emitSSEEvent("experiment_crash", {
+      experimentType: 'e2e',
+      label: options.label,
+      iteration: newExperimentCount,
+      error: run.stderr || `exit_code=${run.exitCode}`,
+    });
+
     await logger.flush();
   }
 
@@ -634,6 +797,21 @@ async function handleRun(options: CliOptions): Promise<void> {
       durationMs: score.durationMs,
     } : undefined,
   });
+
+  // SSEイベント送信
+  await emitSSEEvent("experiment_stop", {
+    experimentType: 'e2e',
+    label: options.label,
+    iteration: newExperimentCount,
+    reason: outcome,
+    partialScore: score ? {
+      failed: score.failed,
+      passed: score.passed,
+      total: score.total,
+      durationMs: score.durationMs,
+    } : undefined,
+  });
+
   await logger.flush();
 }
 
