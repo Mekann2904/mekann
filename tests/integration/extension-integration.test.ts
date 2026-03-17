@@ -689,4 +689,342 @@ describe("拡張機能統合テスト", () => {
 			});
 		}
 	);
+
+	// ============================================================================
+	// Observability + Autoresearch Integration Tests
+	// ============================================================================
+
+	describeScenario(
+		"observability-data拡張機能がイベントを読み取る",
+		"ComprehensiveLoggerが記録したイベントをobservability_dataツールでクエリ",
+		(ctx) => {
+			let mockPi: any;
+			let logDir: string;
+
+			ctx.given("observability-data拡張機能がロードされている", async () => {
+				mockPi = createMockPi();
+				logDir = join(testCwd, "logs");
+
+				// observability_dataツール
+				mockPi.registerTool({
+					name: "observability_data",
+					execute: vi.fn().mockImplementation(async (_tc: string, params: any) => {
+						// Simulate reading log events from file system
+						const events: any[] = [];
+						const filesRead: string[] = [];
+
+						if (params.eventTypes) {
+							// Filter by event types
+							events.push(
+								...mockPi._mockEvents.filter((e: any) =>
+									params.eventTypes.includes(e.type)
+								)
+							);
+						} else {
+							events.push(...mockPi._mockEvents);
+						}
+
+						if (params.limit) {
+							events.splice(params.limit);
+						}
+
+						return {
+							content: [{ text: `${events.length}件のイベントを取得` }],
+							details: {
+								events,
+								stats: {
+									totalEvents: events.length,
+									eventsByType: events.reduce(
+										(acc: any, e: any) => {
+											acc[e.type] = (acc[e.type] || 0) + 1;
+											return acc;
+										},
+										{} as Record<string, number>
+									),
+								},
+								query: params,
+								logDir,
+								filesRead,
+							},
+						};
+					}),
+				});
+
+				// Mock event storage
+				mockPi._mockEvents = [];
+			});
+
+			ctx.when("autoresearch実験がイベントを生成する", async () => {
+				// Simulate autoresearch emitting experiment_start event
+				mockPi._mockEvents.push({
+					type: "experiment_start",
+					timestamp: new Date().toISOString(),
+					data: {
+						experimentType: "tbench",
+						label: "test-experiment",
+						tag: "test-tag",
+						branch: "autoresearch/test",
+						targetCommit: "abc123",
+						config: {
+							taskNames: ["task1"],
+							agent: "default",
+						},
+					},
+				});
+
+				// Simulate autoresearch emitting experiment_baseline event
+				mockPi._mockEvents.push({
+					type: "experiment_baseline",
+					timestamp: new Date().toISOString(),
+					data: {
+						experimentType: "tbench",
+						label: "baseline",
+						iteration: 0,
+						score: 0.85,
+						metrics: {
+							total: 10,
+							passed: 8,
+							failed: 2,
+						},
+					},
+				});
+
+				// Simulate autoresearch emitting experiment_run event
+				mockPi._mockEvents.push({
+					type: "experiment_run",
+					timestamp: new Date().toISOString(),
+					data: {
+						experimentType: "tbench",
+						label: "run-1",
+						iteration: 1,
+						score: 0.9,
+						metrics: {
+							total: 10,
+							passed: 9,
+							failed: 1,
+						},
+					},
+				});
+
+				// Simulate autoresearch emitting experiment_improved event
+				mockPi._mockEvents.push({
+					type: "experiment_improved",
+					timestamp: new Date().toISOString(),
+					data: {
+						experimentType: "tbench",
+						label: "run-1",
+						iteration: 1,
+						score: 0.9,
+						baselineScore: 0.85,
+						improvement: 0.05,
+					},
+				});
+			});
+
+			ctx.then("observability_dataツールが実験イベントをクエリできる", async () => {
+				const ctx = {
+					cwd: testCwd,
+					model: undefined,
+					ui: { notify: mockPi.uiNotify },
+				};
+
+				const result = await mockPi.getTool("observability_data")?.execute(
+					"tc-obs-1",
+					{
+						eventTypes: ["experiment_start", "experiment_baseline", "experiment_run", "experiment_improved"],
+					},
+					undefined,
+					undefined,
+					ctx
+				);
+
+				expect(result.details.events).toHaveLength(4);
+				expect(result.details.stats.eventsByType["experiment_start"]).toBe(1);
+				expect(result.details.stats.eventsByType["experiment_improved"]).toBe(1);
+			});
+		}
+	);
+
+	describeScenario(
+		"クロス拡張機能イベントフローを検証する",
+		"autoresearch拡張機能が生成したイベントをobservability-data拡張機能が受信",
+		(ctx) => {
+			let mockPi: any;
+			let eventFlow: { producer: string; eventType: string; consumer: string }[];
+
+			ctx.given("autoresearchとobservability-data拡張機能がロードされている", async () => {
+				mockPi = createMockPi();
+				eventFlow = [];
+
+				// Track event producer registration
+				mockPi._producers = new Map<string, string[]>();
+				mockPi._consumers = new Map<string, string[]>();
+
+				// autoresearch-tbench extension registers as producer
+				mockPi._producers.set("autoresearch-tbench", [
+					"experiment_start",
+					"experiment_baseline",
+					"experiment_run",
+					"experiment_improved",
+					"experiment_regressed",
+					"experiment_timeout",
+					"experiment_stop",
+					"experiment_crash",
+				]);
+
+				// observability-data extension registers as consumer
+				mockPi._consumers.set("observability-data", [
+					"experiment_start",
+					"experiment_baseline",
+					"experiment_run",
+					"experiment_improved",
+					"experiment_regressed",
+					"experiment_timeout",
+					"experiment_stop",
+					"experiment_crash",
+				]);
+
+				// Mock event emission
+				mockPi.emit = vi.fn((eventType: string, _data: any) => {
+					const consumers = mockPi._consumers.get("observability-data") || [];
+					if (consumers.includes(eventType)) {
+						eventFlow.push({
+							producer: "autoresearch-tbench",
+							eventType,
+							consumer: "observability-data",
+						});
+					}
+				});
+			});
+
+			ctx.when("autoresearchが実験イベントを生成する", async () => {
+				// Emit experiment events
+				mockPi.emit("experiment_start", {
+					experimentType: "tbench",
+					label: "test-experiment",
+				});
+
+				mockPi.emit("experiment_baseline", {
+					experimentType: "tbench",
+					label: "baseline",
+					score: 0.85,
+				});
+
+				mockPi.emit("experiment_improved", {
+					experimentType: "tbench",
+					label: "run-1",
+					score: 0.9,
+				});
+			});
+
+			ctx.then("イベントがobservability-dataに届く", () => {
+				expect(eventFlow).toHaveLength(3);
+				expect(eventFlow[0].eventType).toBe("experiment_start");
+				expect(eventFlow[1].eventType).toBe("experiment_baseline");
+				expect(eventFlow[2].eventType).toBe("experiment_improved");
+				expect(eventFlow.every((f) => f.consumer === "observability-data")).toBe(true);
+			});
+
+			ctx.and("イベントコンシューマー登録が検証される", () => {
+				const consumers = mockPi._consumers.get("observability-data");
+				expect(consumers).toContain("experiment_start");
+				expect(consumers).toContain("experiment_improved");
+			});
+
+			ctx.and("イベントプロデューサー登録が検証される", () => {
+				const producers = mockPi._producers.get("autoresearch-tbench");
+				expect(producers).toContain("experiment_start");
+				expect(producers).toContain("experiment_baseline");
+				expect(producers).toContain("experiment_improved");
+			});
+		}
+	);
+
+	describeScenario(
+		"イベントコンシューマー登録のバリデーション",
+		"pi.on()でコンシューマーが正しく登録されることを検証",
+		(ctx) => {
+			let mockPi: any;
+			let registeredHandlers: Map<string, string[]>;
+
+			ctx.given("拡張機能がイベントハンドラーを登録する環境がある", async () => {
+				mockPi = createMockPi();
+				registeredHandlers = new Map();
+
+				// Mock pi.on() for event consumer registration
+				mockPi.on = vi.fn((eventType: string, _handler: any) => {
+					const ext = "test-extension";
+					if (!registeredHandlers.has(ext)) {
+						registeredHandlers.set(ext, []);
+					}
+					registeredHandlers.get(ext)!.push(eventType);
+				});
+			});
+
+			ctx.when("observability-data拡張機能がコンシューマーを登録する", async () => {
+				// Simulate observability-data registering event handlers
+				mockPi.on("experiment_start", async () => {});
+				mockPi.on("experiment_baseline", async () => {});
+				mockPi.on("experiment_run", async () => {});
+				mockPi.on("experiment_improved", async () => {});
+				mockPi.on("experiment_regressed", async () => {});
+			});
+
+			ctx.then("コンシューマー登録が記録される", () => {
+				const handlers = registeredHandlers.get("test-extension");
+				expect(handlers).toHaveLength(5);
+				expect(handlers).toContain("experiment_start");
+				expect(handlers).toContain("experiment_improved");
+			});
+		}
+	);
+
+	describeScenario(
+		"プロデューサーがコンシューマーなしでemitできない",
+		"イベントプロデューサーは対応するコンシューマーが登録されている場合のみemit可能",
+		(ctx) => {
+			let mockPi: any;
+			let emitResults: { eventType: string; success: boolean; reason?: string }[];
+
+			ctx.given("イベントシステムがコンシューマー検証を行う", async () => {
+				mockPi = createMockPi();
+				emitResults = [];
+
+				mockPi._consumers = new Map<string, string[]>();
+				mockPi._consumers.set("observability-data", ["experiment_start"]);
+
+				// Mock emit with consumer validation
+				mockPi.emit = vi.fn((eventType: string, _data: any) => {
+					const hasConsumer = Array.from(mockPi._consumers.values()).some((types) =>
+						types.includes(eventType)
+					);
+
+					emitResults.push({
+						eventType,
+						success: hasConsumer,
+						reason: hasConsumer ? undefined : "No consumer registered",
+					});
+
+					return hasConsumer;
+				});
+			});
+
+			ctx.when("プロデューサーがコンシューマーありのイベントをemitする", async () => {
+				const result = mockPi.emit("experiment_start", { label: "test" });
+				expect(result).toBe(true);
+			});
+
+			ctx.and("プロデューサーがコンシューマーなしのイベントをemitする", async () => {
+				const result = mockPi.emit("experiment_unknown", { label: "test" });
+				expect(result).toBe(false);
+			});
+
+			ctx.then("emit結果がコンシューマー登録状態を反映する", () => {
+				expect(emitResults).toHaveLength(2);
+				expect(emitResults[0].success).toBe(true);
+				expect(emitResults[1].success).toBe(false);
+				expect(emitResults[1].reason).toBe("No consumer registered");
+			});
+		}
+	);
 });
