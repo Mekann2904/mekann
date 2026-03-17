@@ -443,12 +443,24 @@ async function handleRun(options: CliOptions): Promise<void> {
 
   const candidateBaseCommit = await getHeadCommit();
   const command = options.command || state.command;
+  const newExperimentCount = state.experimentCount + 1;
 
-  // Emit experiment_run event
+  // Write state BEFORE emitting event (atomicity fix for crash drift)
+  // If crash occurs during runCommand(), state shows "running" outcome
+  writeState({
+    ...state,
+    updatedAt: nowIso(),
+    command,
+    experimentCount: newExperimentCount,
+    lastOutcome: "running",
+    lastLabel: options.label,
+  });
+
+  // Emit experiment_run event AFTER state is written
   logger.logExperimentRun({
     experimentType: 'e2e',
     label: options.label,
-    iteration: state.experimentCount + 1,
+    iteration: newExperimentCount,
     commit: candidateBaseCommit,
   });
   await logger.flush();
@@ -464,7 +476,7 @@ async function handleRun(options: CliOptions): Promise<void> {
     logger.logExperimentTimeout({
       experimentType: 'e2e',
       label: options.label,
-      iteration: state.experimentCount + 1,
+      iteration: newExperimentCount,
       timeoutMs: options.timeoutMs,
     });
     await logger.flush();
@@ -544,7 +556,7 @@ async function handleRun(options: CliOptions): Promise<void> {
     logger.logExperimentCrash({
       experimentType: 'e2e',
       label: options.label,
-      iteration: state.experimentCount + 1,
+      iteration: newExperimentCount,
       error: run.stderr || `exit_code=${run.exitCode}`,
     });
     await logger.flush();
@@ -561,7 +573,7 @@ async function handleRun(options: CliOptions): Promise<void> {
         bestCommit: committed,
         bestScore: score ?? state.bestScore,
         command,
-        experimentCount: state.experimentCount + 1,
+        experimentCount: newExperimentCount,
         lastOutcome: outcome,
         lastLabel: options.label,
         lastLogPath: run.artifacts.logPath,
@@ -578,7 +590,7 @@ async function handleRun(options: CliOptions): Promise<void> {
     ...state,
     updatedAt: nowIso(),
     command,
-    experimentCount: state.experimentCount + 1,
+    experimentCount: newExperimentCount,
     lastOutcome: outcome,
     lastLabel: options.label,
     lastLogPath: run.artifacts.logPath,
@@ -596,7 +608,7 @@ async function handleRun(options: CliOptions): Promise<void> {
   logger.logExperimentStop({
     experimentType: 'e2e',
     label: options.label,
-    iteration: state.experimentCount + 1,
+    iteration: newExperimentCount,
     reason: outcome,
     partialScore: score ? {
       failed: score.failed,

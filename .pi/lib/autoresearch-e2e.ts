@@ -44,7 +44,8 @@ export type AutoresearchE2EOutcome =
   | "equal"
   | "regressed"
   | "crash"
-  | "timeout";
+  | "timeout"
+  | "running";
 
 interface VitestJsonLike {
   numFailedTests?: unknown;
