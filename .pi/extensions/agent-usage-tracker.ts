@@ -40,6 +40,7 @@ import { basename, dirname, join, resolve } from "node:path";
 
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { z } from "zod";
 
 import { ensureDir } from "../lib/core/fs-utils.js";
 import { toFiniteNumber } from "../lib/core/validation-utils.js";
@@ -51,28 +52,99 @@ const logger = getLogger();
 type FeatureType = "tool" | "agent_run";
 type EventStatus = "ok" | "error";
 
+// ============================================================================
+// Zod Schemas for Runtime Validation
+// ============================================================================
+
+/**
+ * ツール呼び出しイベントのZodスキーマ
+ * @summary ツール呼び出しイベントを検証
+ */
+const ToolCallEventSchema = z.object({
+  toolCallId: z.string().optional(),
+  toolName: z.string().optional(),
+  input: z.record(z.string(), z.unknown()).optional(),
+});
+
+/**
+ * ツール結果イベントのZodスキーマ
+ * @summary ツール結果イベントを検証
+ */
+const ToolResultEventSchema = z.object({
+  toolCallId: z.string().optional(),
+  toolName: z.string().optional(),
+  isError: z.boolean().optional(),
+  details: z.union([
+    z.object({
+      error: z.union([z.string(), z.unknown()]).optional(),
+    }).passthrough(),
+    z.unknown(),
+  ]).optional(),
+  content: z.array(
+    z.union([
+      z.object({
+        text: z.union([z.string(), z.unknown()]).optional(),
+      }).passthrough(),
+      z.unknown(),
+    ])
+  ).optional(),
+});
+
+/**
+ * 使用イベントレコードのZodスキーマ
+ * @summary 使用イベントレコードを検証
+ */
+const UsageEventRecordSchema = z.object({
+  id: z.string(),
+  timestamp: z.string(),
+  extension: z.string(),
+  featureType: z.enum(["tool", "agent_run"]),
+  featureName: z.string(),
+  status: z.enum(["ok", "error"]),
+  durationMs: z.number().optional(),
+  toolCallId: z.string().optional(),
+  inputPreview: z.string().optional(),
+  contextRatio: z.number().optional(),
+  contextTokens: z.number().optional(),
+  contextWindow: z.number().optional(),
+  error: z.string().optional(),
+});
+
+/**
+ * FeatureMetricsのZodスキーマ
+ * @summary FeatureMetricsを検証
+ */
+const FeatureMetricsSchema = z.object({
+  extension: z.string().min(1),
+  featureType: z.enum(["tool", "agent_run"]),
+  featureName: z.string().min(1),
+  calls: z.number().int().nonnegative(),
+  errors: z.number().int().nonnegative(),
+  contextSamples: z.number().int().nonnegative(),
+  contextRatioSum: z.number().nonnegative(),
+  contextTokenSamples: z.number().int().nonnegative(),
+  contextTokenSum: z.number().nonnegative(),
+  lastUsedAt: z.string().optional(),
+  lastErrorAt: z.string().optional(),
+  lastErrorMessage: z.string().optional(),
+});
+
+// ============================================================================
+// Types extracted from Zod schemas
+// ============================================================================
+
 /**
  * BUG-TS-001修正: ツール呼び出しイベントの型定義
  * any型を排除し、コンパイル時の型チェックを有効化
  */
-interface ToolCallEvent {
-  toolCallId?: string;
-  toolName?: string;
-  input?: Record<string, unknown>;
-}
+type ToolCallEvent = z.infer<typeof ToolCallEventSchema>;
 
 /**
  * BUG-TS-001修正: ツール結果イベントの型定義
  * any型を排除し、コンパイル時の型チェックを有効化
  * detailsプロパティは様々なツールの詳細型に対応するためunknownを許可
  */
-interface ToolResultEvent {
-  toolCallId?: string;
-  toolName?: string;
-  isError?: boolean;
-  details?: { error?: string | unknown } | unknown;
-  content?: Array<{ text?: string | unknown } | unknown>;
-}
+type ToolResultEvent = z.infer<typeof ToolResultEventSchema>;
 
 interface ContextSnapshot {
   tokens?: number;
@@ -80,36 +152,9 @@ interface ContextSnapshot {
   ratio?: number;
 }
 
-interface FeatureMetrics {
-  extension: string;
-  featureType: FeatureType;
-  featureName: string;
-  calls: number;
-  errors: number;
-  contextSamples: number;
-  contextRatioSum: number;
-  contextTokenSamples: number;
-  contextTokenSum: number;
-  lastUsedAt?: string;
-  lastErrorAt?: string;
-  lastErrorMessage?: string;
-}
+type FeatureMetrics = z.infer<typeof FeatureMetricsSchema>;
 
-interface UsageEventRecord {
-  id: string;
-  timestamp: string;
-  extension: string;
-  featureType: FeatureType;
-  featureName: string;
-  status: EventStatus;
-  durationMs?: number;
-  toolCallId?: string;
-  inputPreview?: string;
-  contextRatio?: number;
-  contextTokens?: number;
-  contextWindow?: number;
-  error?: string;
-}
+type UsageEventRecord = z.infer<typeof UsageEventRecordSchema>;
 
 interface UsageTrackerState {
   version: number;
@@ -217,44 +262,93 @@ function createEmptyState(timestamp = nowIso()): UsageTrackerState {
 }
 
 /**
- * BUG-FIX: persisted FeatureMetricsの検証
+ * BUG-FIX: persisted FeatureMetricsの検証（Zod使用）
  * @summary FeatureMetricsオブジェクトを検証
  * @param raw - 検証対象のオブジェクト
  * @returns 検証済みのFeatureMetricsまたはundefined
  */
 function validateFeatureMetrics(raw: unknown): FeatureMetrics | undefined {
-  if (!raw || typeof raw !== "object") return undefined;
-  const obj = raw as Record<string, unknown>;
+  const result = FeatureMetricsSchema.safeParse(raw);
+  if (result.success) {
+    return result.data;
+  }
+  const issues = result.error.issues.slice(0, 3).map((i) => `${i.path.join(".")}: ${i.message}`).join(", ");
+  logger.warn(`agent-usage-tracker: FeatureMetrics validation failed: ${result.error.message} [${issues}]`);
+  return undefined;
+}
 
-  // 必須フィールドの検証
-  const extension = typeof obj.extension === "string" && obj.extension.trim() ? obj.extension.trim() : undefined;
-  const featureName = typeof obj.featureName === "string" && obj.featureName.trim() ? obj.featureName.trim() : undefined;
-  const featureType = obj.featureType === "tool" || obj.featureType === "agent_run" ? obj.featureType : undefined;
+/**
+ * ツール呼び出しイベントを検証
+ * @summary ToolCallEventを検証
+ * @param raw - 検証対象のイベント
+ * @returns 検証済みのイベントまたはundefined
+ */
+function validateToolCallEvent(raw: unknown): ToolCallEvent | undefined {
+  const result = ToolCallEventSchema.safeParse(raw);
+  if (result.success) {
+    return result.data;
+  }
+  const keys = raw && typeof raw === "object" ? Object.keys(raw as object).slice(0, 5).join(",") : typeof raw;
+  logger.warn(`agent-usage-tracker: ToolCallEvent validation failed: ${result.error.message} [keys: ${keys}]`);
+  return undefined;
+}
 
-  if (!extension || !featureName || !featureType) return undefined;
+/**
+ * ツール結果イベントを検証
+ * @summary ToolResultEventを検証
+ * @param raw - 検証対象のイベント
+ * @returns 検証済みのイベントまたはundefined
+ */
+function validateToolResultEvent(raw: unknown): ToolResultEvent | undefined {
+  const result = ToolResultEventSchema.safeParse(raw);
+  if (result.success) {
+    return result.data;
+  }
+  const keys = raw && typeof raw === "object" ? Object.keys(raw as object).slice(0, 5).join(",") : typeof raw;
+  logger.warn(`agent-usage-tracker: ToolResultEvent validation failed: ${result.error.message} [keys: ${keys}]`);
+  return undefined;
+}
 
-  // 数値フィールドの検証（NaN防止）
-  const calls = Number(obj.calls) || 0;
-  const errors = Number(obj.errors) || 0;
-  const contextSamples = Number(obj.contextSamples) || 0;
-  const contextRatioSum = Number(obj.contextRatioSum) || 0;
-  const contextTokenSamples = Number(obj.contextTokenSamples) || 0;
-  const contextTokenSum = Number(obj.contextTokenSum) || 0;
+/**
+ * 使用イベントレコードを検証
+ * @summary UsageEventRecordを検証
+ * @param raw - 検証対象のレコード
+ * @returns 検証済みのレコードまたはundefined
+ */
+function validateUsageEventRecord(raw: unknown): UsageEventRecord | undefined {
+  const result = UsageEventRecordSchema.safeParse(raw);
+  if (result.success) {
+    return result.data;
+  }
+  const keys = raw && typeof raw === "object" ? Object.keys(raw as object).slice(0, 5).join(",") : typeof raw;
+  logger.warn(`agent-usage-tracker: UsageEventRecord validation failed: ${result.error.message} [keys: ${keys}]`);
+  return undefined;
+}
 
-  return {
-    extension,
-    featureType,
-    featureName,
-    calls,
-    errors,
-    contextSamples,
-    contextRatioSum,
-    contextTokenSamples,
-    contextTokenSum,
-    lastUsedAt: typeof obj.lastUsedAt === "string" ? obj.lastUsedAt : undefined,
-    lastErrorAt: typeof obj.lastErrorAt === "string" ? obj.lastErrorAt : undefined,
-    lastErrorMessage: typeof obj.lastErrorMessage === "string" ? obj.lastErrorMessage : undefined,
-  };
+/**
+ * 使用イベントレコードの配列を検証してフィルタリング
+ * @summary イベント配列を検証
+ * @param rawEvents - 検証対象の配列
+ * @returns 検証済みのイベント配列
+ */
+function validateUsageEventRecords(rawEvents: unknown[]): UsageEventRecord[] {
+  const validEvents: UsageEventRecord[] = [];
+  let invalidCount = 0;
+
+  for (const raw of rawEvents) {
+    const validated = validateUsageEventRecord(raw);
+    if (validated) {
+      validEvents.push(validated);
+    } else {
+      invalidCount++;
+    }
+  }
+
+  if (invalidCount > 0) {
+    logger.warn(`agent-usage-tracker: Filtered out ${invalidCount} invalid events during load (valid: ${validEvents.length})`);
+  }
+
+  return validEvents;
 }
 
 function loadState(storageFile: string): UsageTrackerState {
@@ -281,6 +375,9 @@ function loadState(storageFile: string): UsageTrackerState {
         }
       }
 
+      // eventsの検証: 不正なイベントを除外
+      const validatedEvents = validateUsageEventRecords(parsed.events);
+
       return {
         version: STATE_VERSION,
         createdAt: typeof parsed.createdAt === "string" ? parsed.createdAt : nowIso(),
@@ -296,7 +393,7 @@ function loadState(storageFile: string): UsageTrackerState {
           contextTokenSum: Number(parsed.totals.contextTokenSum) || 0,
         },
         features: validatedFeatures,
-        events: parsed.events.slice(-MAX_EVENT_HISTORY) as UsageEventRecord[],
+        events: validatedEvents.slice(-MAX_EVENT_HISTORY),
       };
     }
   } catch {
@@ -925,7 +1022,15 @@ function handleAgentUsageCommand(
 function recordToolCall(event: ToolCallEvent, ctx: ExtensionAPI["context"]): void {
   const currentRuntime = ensureRuntime(ctx);
   prunePendingTools(currentRuntime);
-  const toolName = String(event?.toolName || "unknown_tool");
+
+  // ランタイム検証: イベントのスキーマを確認
+  const validatedEvent = validateToolCallEvent(event);
+  if (!validatedEvent) {
+    // 検証に失敗した場合は安全なデフォルト値を使用
+    logger.warn("agent-usage-tracker: Using default values for invalid ToolCallEvent");
+  }
+
+  const toolName = String(validatedEvent?.toolName || event?.toolName || "unknown_tool");
   const extension = resolveExtensionForTool(toolName, currentRuntime.catalog);
   const at = nowIso();
   const context = readContextSnapshot(ctx);
@@ -942,14 +1047,15 @@ function recordToolCall(event: ToolCallEvent, ctx: ExtensionAPI["context"]): voi
     currentRuntime.activeAgentRun.toolCalls += 1;
   }
 
-  const toolCallId = String(event?.toolCallId || "").trim();
+  const toolCallId = String(validatedEvent?.toolCallId || event?.toolCallId || "").trim();
+  const input = validatedEvent?.input || event?.input;
   if (toolCallId) {
     currentRuntime.pendingTools.set(toolCallId, {
       toolName,
       extension,
       featureKey,
       startedAtMs: Date.now(),
-      inputPreview: previewInput(event?.input),
+      inputPreview: previewInput(input),
       context,
     });
   } else {
@@ -960,7 +1066,7 @@ function recordToolCall(event: ToolCallEvent, ctx: ExtensionAPI["context"]): voi
       featureType: "tool",
       featureName: toolName,
       status: "ok",
-      inputPreview: previewInput(event?.input),
+      inputPreview: previewInput(input),
       contextRatio: context?.ratio,
       contextTokens: context?.tokens,
       contextWindow: context?.contextWindow,
@@ -978,20 +1084,29 @@ function recordToolCall(event: ToolCallEvent, ctx: ExtensionAPI["context"]): voi
 function recordToolResult(event: ToolResultEvent, ctx: ExtensionAPI["context"]): void {
   const currentRuntime = ensureRuntime(ctx);
   prunePendingTools(currentRuntime);
-  const toolCallId = String(event?.toolCallId || "").trim();
+
+  // ランタイム検証: イベントのスキーマを確認
+  const validatedEvent = validateToolResultEvent(event);
+  if (!validatedEvent) {
+    // 検証に失敗した場合は安全なデフォルト値を使用
+    logger.warn("agent-usage-tracker: Using default values for invalid ToolResultEvent");
+  }
+
+  const toolCallId = String(validatedEvent?.toolCallId || event?.toolCallId || "").trim();
   const pending = toolCallId ? currentRuntime.pendingTools.get(toolCallId) : undefined;
-  const toolName = pending?.toolName ?? String(event?.toolName || "unknown_tool");
+  const toolName = pending?.toolName ?? String(validatedEvent?.toolName || event?.toolName || "unknown_tool");
   const extension =
     pending?.extension ??
     resolveExtensionForTool(toolName, currentRuntime.catalog);
   const featureKey =
     pending?.featureKey ??
     toFeatureKey("tool", extension, toolName);
-  const status: EventStatus = event?.isError ? "error" : "ok";
+  const status: EventStatus = (validatedEvent?.isError ?? event?.isError) ? "error" : "ok";
   const at = nowIso();
 
+  const effectiveEvent = validatedEvent || event;
   if (status === "error") {
-    const errorMessage = extractToolErrorMessage(event);
+    const errorMessage = extractToolErrorMessage(effectiveEvent);
     markFeatureError(currentRuntime.state, featureKey, at, errorMessage);
     if (currentRuntime.activeAgentRun) {
       currentRuntime.activeAgentRun.toolErrors += 1;
@@ -1011,7 +1126,7 @@ function recordToolResult(event: ToolResultEvent, ctx: ExtensionAPI["context"]):
     contextRatio: context?.ratio,
     contextTokens: context?.tokens,
     contextWindow: context?.contextWindow,
-    error: status === "error" ? extractToolErrorMessage(event) : undefined,
+    error: status === "error" ? extractToolErrorMessage(effectiveEvent) : undefined,
   });
 
   if (toolCallId) {
@@ -1129,11 +1244,8 @@ export default function registerAgentUsageTracker(pi: ExtensionAPI) {
     } catch (err) {
       // シャットダウン中は再試行できないため、エラーをログに記録して続行する。
       // ディスク容量不足、権限エラー、ファイル破損などが原因となり得る。
-      logger.error("agent-usage-tracker: saveState failed during shutdown, events may be lost", {
-        error: err instanceof Error ? err.message : String(err),
-        storageFile: currentRuntime.storageFile,
-        eventsCount: currentRuntime.state.events.length,
-      });
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.warn(`agent-usage-tracker: saveState failed during shutdown, events may be lost: ${errMsg} (file: ${currentRuntime.storageFile}, events: ${currentRuntime.state.events.length})`);
     }
     isInitialized = false;
   });
