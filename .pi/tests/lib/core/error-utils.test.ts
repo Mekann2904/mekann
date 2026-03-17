@@ -14,6 +14,7 @@ import {
   isTimeoutErrorMessage,
   PressureErrorType,
 } from "../../../lib/core/error-utils.js";
+import { CancelledError } from "../../../lib/core/errors.js";
 
 describe("toError", () => {
   it("should return same Error if already Error", () => {
@@ -250,6 +251,15 @@ describe("isCancelledErrorMessage", () => {
     expect(isCancelledErrorMessage("CANCELLED")).toBe(true);
     expect(isCancelledErrorMessage("Aborted")).toBe(true);
     expect(isCancelledErrorMessage("CANCEL")).toBe(true);
+  });
+
+  it("should detect CancelledError instances with custom messages", () => {
+    // キーワードを含まないカスタムメッセージでもCancelledErrorならtrue
+    expect(isCancelledErrorMessage(new CancelledError("User stopped the operation"))).toBe(true);
+    expect(isCancelledErrorMessage(new CancelledError("Manual abort by admin"))).toBe(true);
+    expect(isCancelledErrorMessage(new CancelledError("Custom reason without keywords"))).toBe(true);
+    // 理由付き
+    expect(isCancelledErrorMessage(new CancelledError("Operation halted", { reason: "user-request" }))).toBe(true);
   });
 });
 

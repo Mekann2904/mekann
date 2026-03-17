@@ -158,6 +158,14 @@ export function classifyPressureError(error: unknown): PressureErrorType {
  * @returns キャンセルエラーの場合true
  */
 export function isCancelledErrorMessage(error: unknown): boolean {
+  // CancelledErrorクラスのインスタンスは常にtrue
+  // 循環インポートを避けるため動的インポートではなく型のみ使用
+  if (error !== null && typeof error === "object" && "constructor" in error) {
+    const constructor = (error as object).constructor;
+    if (constructor && constructor.name === "CancelledError") {
+      return true;
+    }
+  }
   const message = typeof error === "string" ? error : toErrorMessage(error);
   const lowerMessage = message.toLowerCase();
   return (
