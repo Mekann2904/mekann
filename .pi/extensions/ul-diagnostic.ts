@@ -27,7 +27,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { loadConfigFromEnv, validateConfig, DEFAULT_CONFIG } from "../lib/comprehensive-logger-config";
 
-interface DiagnosticResult {
+export interface DiagnosticResult {
   category: string;
   severity: "critical" | "high" | "medium" | "low";
   issue: string;
@@ -37,7 +37,7 @@ interface DiagnosticResult {
   details?: string;
 }
 
-interface DiagnosticReport {
+export interface DiagnosticReport {
   timestamp: string;
   ulModeActive: boolean;
   results: DiagnosticResult[];
@@ -478,7 +478,7 @@ function checkUlModeState(): DiagnosticResult {
   };
 }
 
-function runDiagnostics(): DiagnosticReport {
+export function runDiagnostics(): DiagnosticReport {
   const results: DiagnosticResult[] = [];
 
   results.push(checkRateLimitState());
