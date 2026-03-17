@@ -169,6 +169,7 @@ async function runWithMonitor<T>(
     onTextUpdate: (text: string) => void;
   }) => Promise<T>,
 ): Promise<T> {
+  const logger = getLogger();
   const liveMonitor = createAutoresearchTbenchLiveMonitor(ctx as unknown as LiveMonitorContext, title);
   const useStatusFallback = !liveMonitor;
 
@@ -190,6 +191,15 @@ async function runWithMonitor<T>(
         }
       },
     });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.logExperimentCrash({
+      experimentType: 'tbench',
+      label: `runWithMonitor:${title}`,
+      iteration: 0,
+      error: errorMessage,
+    });
+    throw error;
   } finally {
     ctx.ui?.setStatus?.("autoresearch-tbench", undefined);
     liveMonitor?.close();
@@ -216,26 +226,37 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
     }
 
     if (parsed.action === "init") {
-      const result = await initAutoresearchTbench(ctx.cwd, {
-        selection: parsed.options.selection,
-        taskNames: parseStringArray(parsed.options.tasks),
-        tag: parsed.options.tag,
-        git: parseBoolean(parsed.options.git),
-        dataset: parsed.options.dataset,
-        datasetPath: parsed.options.dataset_path,
-        agent: parsed.options.agent,
-        agentImportPath: parsed.options.agent_import_path,
-        model: parsed.options.model,
-        nConcurrent: parseNumber(parsed.options.n_concurrent),
-        jobsDir: parsed.options.jobs_dir,
-        agentSetupTimeoutMultiplier: parseNumber(parsed.options.agent_setup_timeout_multiplier),
-        forceBuild: parseBoolean(parsed.options.force_build) ?? null,
-        excludeTaskNames: parseStringArray(parsed.options.exclude_task_names),
-      });
-      ctx.ui?.notify?.(
-        `autoresearch-tbench initialized branch=${result.branchName} tasks=${result.state.runConfig.taskNames.join(",")}`,
-        "info",
-      );
+      try {
+        const result = await initAutoresearchTbench(ctx.cwd, {
+          selection: parsed.options.selection,
+          taskNames: parseStringArray(parsed.options.tasks),
+          tag: parsed.options.tag,
+          git: parseBoolean(parsed.options.git),
+          dataset: parsed.options.dataset,
+          datasetPath: parsed.options.dataset_path,
+          agent: parsed.options.agent,
+          agentImportPath: parsed.options.agent_import_path,
+          model: parsed.options.model,
+          nConcurrent: parseNumber(parsed.options.n_concurrent),
+          jobsDir: parsed.options.jobs_dir,
+          agentSetupTimeoutMultiplier: parseNumber(parsed.options.agent_setup_timeout_multiplier),
+          forceBuild: parseBoolean(parsed.options.force_build) ?? null,
+          excludeTaskNames: parseStringArray(parsed.options.exclude_task_names),
+        });
+        ctx.ui?.notify?.(
+          `autoresearch-tbench initialized branch=${result.branchName} tasks=${result.state.runConfig.taskNames.join(",")}`,
+          "info",
+        );
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.logExperimentCrash({
+          experimentType: 'tbench',
+          label: 'init',
+          iteration: 0,
+          error: errorMessage,
+        });
+        ctx.ui?.notify?.(`autoresearch-tbench init failed: ${errorMessage}`, "error");
+      }
       return;
     }
 
@@ -283,13 +304,35 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
     }
 
     if (parsed.action === "stop") {
-      const result = requestStopAutoresearchTbench(ctx.cwd);
-      ctx.ui?.notify?.(`requested=${result.requested}\nreason=${result.reason}`, "info");
+      try {
+        const result = requestStopAutoresearchTbench(ctx.cwd);
+        ctx.ui?.notify?.(`requested=${result.requested}\nreason=${result.reason}`, "info");
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.logExperimentCrash({
+          experimentType: 'tbench',
+          label: 'stop',
+          iteration: 0,
+          error: errorMessage,
+        });
+        ctx.ui?.notify?.(`autoresearch-tbench stop failed: ${errorMessage}`, "error");
+      }
       return;
     }
 
-    const status = await getAutoresearchTbenchStatus(ctx.cwd);
-    ctx.ui?.notify?.(renderAutoresearchTbenchStatus(status), "info");
+    try {
+      const status = await getAutoresearchTbenchStatus(ctx.cwd);
+      ctx.ui?.notify?.(renderAutoresearchTbenchStatus(status), "info");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.logExperimentCrash({
+        experimentType: 'tbench',
+        label: 'status',
+        iteration: 0,
+        error: errorMessage,
+      });
+      ctx.ui?.notify?.(`autoresearch-tbench status failed: ${errorMessage}`, "error");
+    }
   };
 
   pi.registerCommand("autoresearch-tbench", {
@@ -351,137 +394,166 @@ export default function registerAutoresearchTbench(pi: ExtensionAPI): void {
       exclude_task_names: Type.Optional(Type.Array(Type.String())),
     }),
     async execute(_toolCallId, params, _signal, onUpdate, ctx) {
+      const logger = getLogger();
       const action = String(params.action);
 
-      if (action === "init") {
-        const result = await initAutoresearchTbench(ctx.cwd, {
-          selection: typeof params.selection === "string" ? params.selection : undefined,
-          taskNames: parseStringArray(params.task_names),
-          tag: typeof params.tag === "string" ? params.tag : undefined,
-          git: typeof params.git === "boolean" ? params.git : undefined,
-          dataset: typeof params.dataset === "string" ? params.dataset : undefined,
-          datasetPath: typeof params.dataset_path === "string" ? params.dataset_path : undefined,
-          agent: typeof params.agent === "string" ? params.agent : undefined,
-          agentImportPath: typeof params.agent_import_path === "string" ? params.agent_import_path : undefined,
-          model: typeof params.model === "string" ? params.model : undefined,
-          nConcurrent: typeof params.n_concurrent === "number" ? params.n_concurrent : undefined,
-          jobsDir: typeof params.jobs_dir === "string" ? params.jobs_dir : undefined,
-          agentSetupTimeoutMultiplier: typeof params.agent_setup_timeout_multiplier === "number" ? params.agent_setup_timeout_multiplier : undefined,
-          forceBuild: typeof params.force_build === "boolean" ? params.force_build : undefined,
-          excludeTaskNames: parseStringArray(params.exclude_task_names),
+      try {
+        if (action === "init") {
+          const result = await initAutoresearchTbench(ctx.cwd, {
+            selection: typeof params.selection === "string" ? params.selection : undefined,
+            taskNames: parseStringArray(params.task_names),
+            tag: typeof params.tag === "string" ? params.tag : undefined,
+            git: typeof params.git === "boolean" ? params.git : undefined,
+            dataset: typeof params.dataset === "string" ? params.dataset : undefined,
+            datasetPath: typeof params.dataset_path === "string" ? params.dataset_path : undefined,
+            agent: typeof params.agent === "string" ? params.agent : undefined,
+            agentImportPath: typeof params.agent_import_path === "string" ? params.agent_import_path : undefined,
+            model: typeof params.model === "string" ? params.model : undefined,
+            nConcurrent: typeof params.n_concurrent === "number" ? params.n_concurrent : undefined,
+            jobsDir: typeof params.jobs_dir === "string" ? params.jobs_dir : undefined,
+            agentSetupTimeoutMultiplier: typeof params.agent_setup_timeout_multiplier === "number" ? params.agent_setup_timeout_multiplier : undefined,
+            forceBuild: typeof params.force_build === "boolean" ? params.force_build : undefined,
+            excludeTaskNames: parseStringArray(params.exclude_task_names),
+          });
+
+          return {
+            content: [{
+              type: "text",
+              text: `initialized branch=${result.branchName} tasks=${result.state.runConfig.taskNames.join(",")}`,
+            }],
+            details: result,
+          };
+        }
+
+        if (action === "baseline") {
+          const result = await baselineAutoresearchTbench(ctx.cwd, {
+            label: typeof params.label === "string" ? params.label : undefined,
+            timeoutMs: typeof params.timeout_ms === "number" ? params.timeout_ms : undefined,
+            preferMs: typeof params.prefer_ms === "number" ? params.prefer_ms : undefined,
+            onSnapshot: (snapshot: AutoresearchTbenchLiveSnapshot) => {
+              onUpdate?.({
+                content: [{
+                  type: "text",
+                  text: `${snapshot.statusLine}\n${snapshot.trials
+                    .slice(0, 6)
+                    .map((trial: AutoresearchTbenchTrialSnapshot) => `${trial.taskName}: ${trial.phase} - ${trial.activity}`)
+                    .join("\n")}`,
+                }],
+                details: snapshot,
+              });
+            },
+          });
+
+          return {
+            content: [{ type: "text", text: summarizeRun("baseline", result) }],
+            details: result,
+          };
+        }
+
+        if (action === "run") {
+          const result = await runAutoresearchTbench(ctx.cwd, {
+            label: typeof params.label === "string" ? params.label : undefined,
+            timeoutMs: typeof params.timeout_ms === "number" ? params.timeout_ms : undefined,
+            preferMs: typeof params.prefer_ms === "number" ? params.prefer_ms : undefined,
+            commitMessage: typeof params.commit_message === "string" ? params.commit_message : undefined,
+            onSnapshot: (snapshot: AutoresearchTbenchLiveSnapshot) => {
+              onUpdate?.({
+                content: [{
+                  type: "text",
+                  text: `${snapshot.statusLine}\n${snapshot.trials
+                    .slice(0, 6)
+                    .map((trial: AutoresearchTbenchTrialSnapshot) => `${trial.taskName}: ${trial.phase} - ${trial.activity}`)
+                    .join("\n")}`,
+                }],
+                details: snapshot,
+              });
+            },
+          });
+
+          return {
+            content: [{ type: "text", text: summarizeRun("run", result) }],
+            details: result,
+          };
+        }
+
+        if (action === "auto") {
+          const result = await autoAutoresearchTbench(ctx.cwd, {
+            label: typeof params.label === "string" ? params.label : undefined,
+            iterations: typeof params.iterations === "number" ? params.iterations : undefined,
+            timeoutMs: typeof params.timeout_ms === "number" ? params.timeout_ms : undefined,
+            preferMs: typeof params.prefer_ms === "number" ? params.prefer_ms : undefined,
+            improvementTimeoutMs: typeof params.improvement_timeout_ms === "number" ? params.improvement_timeout_ms : undefined,
+            maxStalledIterations: typeof params.max_stalled_iterations === "number" ? params.max_stalled_iterations : undefined,
+            commitMessage: typeof params.commit_message === "string" ? params.commit_message : undefined,
+            provider: typeof params.provider === "string" ? params.provider : undefined,
+            model: typeof params.model === "string" ? params.model : undefined,
+            onSnapshot: (snapshot: AutoresearchTbenchLiveSnapshot) => {
+              onUpdate?.({
+                content: [{
+                  type: "text",
+                  text: `${snapshot.statusLine}\n${snapshot.trials
+                    .slice(0, 6)
+                    .map((trial: AutoresearchTbenchTrialSnapshot) => `${trial.taskName}: ${trial.phase} - ${trial.activity}`)
+                    .join("\n")}`,
+                }],
+                details: snapshot,
+              });
+            },
+          });
+
+          return {
+            content: [{ type: "text", text: summarizeAuto(result) }],
+            details: result,
+          };
+        }
+
+        if (action === "stop") {
+          const result = requestStopAutoresearchTbench(ctx.cwd);
+          return {
+            content: [{ type: "text", text: `requested=${result.requested}\nreason=${result.reason}` }],
+            details: result,
+          };
+        }
+
+        const status = await getAutoresearchTbenchStatus(ctx.cwd);
+        return {
+          content: [{ type: "text", text: renderAutoresearchTbenchStatus(status) }],
+          details: status,
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.logExperimentCrash({
+          experimentType: 'tbench',
+          label: `tool:${action}`,
+          iteration: 0,
+          error: errorMessage,
         });
-
         return {
-          content: [{
-            type: "text",
-            text: `initialized branch=${result.branchName} tasks=${result.state.runConfig.taskNames.join(",")}`,
-          }],
-          details: result,
+          content: [{ type: "text", text: `autoresearch-tbench ${action} failed: ${errorMessage}` }],
+          isError: true,
+          details: undefined,
         };
       }
-
-      if (action === "baseline") {
-        const result = await baselineAutoresearchTbench(ctx.cwd, {
-          label: typeof params.label === "string" ? params.label : undefined,
-          timeoutMs: typeof params.timeout_ms === "number" ? params.timeout_ms : undefined,
-          preferMs: typeof params.prefer_ms === "number" ? params.prefer_ms : undefined,
-          onSnapshot: (snapshot: AutoresearchTbenchLiveSnapshot) => {
-            onUpdate?.({
-              content: [{
-                type: "text",
-                text: `${snapshot.statusLine}\n${snapshot.trials
-                  .slice(0, 6)
-                  .map((trial: AutoresearchTbenchTrialSnapshot) => `${trial.taskName}: ${trial.phase} - ${trial.activity}`)
-                  .join("\n")}`,
-              }],
-              details: snapshot,
-            });
-          },
-        });
-
-        return {
-          content: [{ type: "text", text: summarizeRun("baseline", result) }],
-          details: result,
-        };
-      }
-
-      if (action === "run") {
-        const result = await runAutoresearchTbench(ctx.cwd, {
-          label: typeof params.label === "string" ? params.label : undefined,
-          timeoutMs: typeof params.timeout_ms === "number" ? params.timeout_ms : undefined,
-          preferMs: typeof params.prefer_ms === "number" ? params.prefer_ms : undefined,
-          commitMessage: typeof params.commit_message === "string" ? params.commit_message : undefined,
-          onSnapshot: (snapshot: AutoresearchTbenchLiveSnapshot) => {
-            onUpdate?.({
-              content: [{
-                type: "text",
-                text: `${snapshot.statusLine}\n${snapshot.trials
-                  .slice(0, 6)
-                  .map((trial: AutoresearchTbenchTrialSnapshot) => `${trial.taskName}: ${trial.phase} - ${trial.activity}`)
-                  .join("\n")}`,
-              }],
-              details: snapshot,
-            });
-          },
-        });
-
-        return {
-          content: [{ type: "text", text: summarizeRun("run", result) }],
-          details: result,
-        };
-      }
-
-      if (action === "auto") {
-        const result = await autoAutoresearchTbench(ctx.cwd, {
-          label: typeof params.label === "string" ? params.label : undefined,
-          iterations: typeof params.iterations === "number" ? params.iterations : undefined,
-          timeoutMs: typeof params.timeout_ms === "number" ? params.timeout_ms : undefined,
-          preferMs: typeof params.prefer_ms === "number" ? params.prefer_ms : undefined,
-          improvementTimeoutMs: typeof params.improvement_timeout_ms === "number" ? params.improvement_timeout_ms : undefined,
-          maxStalledIterations: typeof params.max_stalled_iterations === "number" ? params.max_stalled_iterations : undefined,
-          commitMessage: typeof params.commit_message === "string" ? params.commit_message : undefined,
-          provider: typeof params.provider === "string" ? params.provider : undefined,
-          model: typeof params.model === "string" ? params.model : undefined,
-          onSnapshot: (snapshot: AutoresearchTbenchLiveSnapshot) => {
-            onUpdate?.({
-              content: [{
-                type: "text",
-                text: `${snapshot.statusLine}\n${snapshot.trials
-                  .slice(0, 6)
-                  .map((trial: AutoresearchTbenchTrialSnapshot) => `${trial.taskName}: ${trial.phase} - ${trial.activity}`)
-                  .join("\n")}`,
-              }],
-              details: snapshot,
-            });
-          },
-        });
-
-        return {
-          content: [{ type: "text", text: summarizeAuto(result) }],
-          details: result,
-        };
-      }
-
-      if (action === "stop") {
-        const result = requestStopAutoresearchTbench(ctx.cwd);
-        return {
-          content: [{ type: "text", text: `requested=${result.requested}\nreason=${result.reason}` }],
-          details: result,
-        };
-      }
-
-      const status = await getAutoresearchTbenchStatus(ctx.cwd);
-      return {
-        content: [{ type: "text", text: renderAutoresearchTbenchStatus(status) }],
-        details: status,
-      };
     },
   });
 
   pi.on("session_shutdown", async () => {
     // Flush any remaining observability events before shutdown
     const logger = getLogger();
-    await logger.flush();
-    isInitialized = false;
+    try {
+      await logger.flush();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.logExperimentCrash({
+        experimentType: 'tbench',
+        label: 'session_shutdown',
+        iteration: 0,
+        error: errorMessage,
+      });
+      // Re-throw to let pi's framework handle it
+      throw error;
+    } finally {
+      isInitialized = false;
+    }
   });
 }
