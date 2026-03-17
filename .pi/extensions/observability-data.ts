@@ -1,13 +1,13 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/observability-data.ts
- * role: ComprehensiveLoggerが出力するイベントログを読み取り、observabilityデータを提供する拡張機能
- * why: ログイベントのクエリ、フィルタリング、集計を可能にし、システムの動作を可視化するため
+ * role: ComprehensiveLoggerが出力するイベントログを読み取り、リアルタイムイベント購読を提供する拡張機能
+ * why: ログイベントのクエリ、フィルタリング、集計を可能にし、リアルタイムな実験監視とクロス拡張機能連携を実現するため
  * related: ../lib/comprehensive-logger.ts, ../lib/comprehensive-logger-config.ts, ../lib/comprehensive-logger-types.ts
- * public_api: observability_data ツール, observability コマンド
- * invariants: getConfig().logDir から正しいパスを取得する
- * side_effects: ファイルシステムからの読み取り
- * failure_modes: ログディレクトリが存在しない、ログファイルが破損
+ * public_api: observability_data ツール, subscribe_experiment_events ツール, subscribeExperimentEvents, observability コマンド
+ * invariants: getConfig().logDir から正しいパスを取得する、onExperimentEvent()で実験イベントを購読する
+ * side_effects: ファイルシステムからの読み取り、実験イベントキャッシュの更新、コールバック通知
+ * failure_modes: ログディレクトリが存在しない、ログファイルが破損、イベントコールバックでの例外
  */
 
 /**
@@ -21,6 +21,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { getConfig } from "../lib/comprehensive-logger-config";
 import type { LogEvent, EventType, BaseEvent } from "../lib/comprehensive-logger-types";
+import { onExperimentEvent } from "../lib/comprehensive-logger";
 
 // ============================================
 // Types
@@ -87,6 +88,99 @@ export interface ObservabilityResult {
 export { queryObservabilityData };
 export { getLogDir, listLogFiles, parseLogFile, parseLogFileWithStats, parsePiEventsFile };
 export { calculateStats };
+export { subscribeExperimentEvents, getRecentExperimentEvents };
+export type { ExperimentEventCallback };
+
+// ============================================
+// Real-Time Event Subscriptions
+// ============================================
+
+/** Maximum number of events to cache for real-time queries */
+const REALTIME_CACHE_SIZE = 100;
+
+/** Callback type for experiment event subscriptions */
+type ExperimentEventCallback = (event: LogEvent) => void;
+
+/** Cached recent experiment events for real-time queries */
+const recentExperimentEvents: LogEvent[] = [];
+
+/** Registered callbacks for experiment event notifications */
+const experimentEventCallbacks = new Set<ExperimentEventCallback>();
+
+/** Flag to track if subscription is active */
+let experimentSubscriptionActive = false;
+
+/**
+ * Subscribe to experiment events in real-time
+ * @summary 実験イベントのリアルタイム購読
+ * @param callback Event callback function
+ * @returns Unsubscribe function
+ */
+function subscribeExperimentEvents(callback: ExperimentEventCallback): () => void {
+	experimentEventCallbacks.add(callback);
+	return () => experimentEventCallbacks.delete(callback);
+}
+
+/**
+ * Get recent experiment events from the real-time cache
+ * @summary 最近の実験イベントを取得
+ * @param limit Maximum number of events to return
+ * @returns Array of recent experiment events
+ */
+function getRecentExperimentEvents(limit: number = 50): LogEvent[] {
+	return recentExperimentEvents.slice(0, limit);
+}
+
+/**
+ * Handle experiment event from ComprehensiveLogger
+ * @summary 実験イベントを処理
+ * @param event LogEvent with experiment_* eventType
+ */
+function handleExperimentEvent(event: { type: string; data: unknown }): void {
+	// Create a LogEvent-like object for the cache
+	const logEvent: LogEvent = {
+		eventId: `realtime-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+		eventType: event.type as EventType,
+		sessionId: "realtime",
+		taskId: "experiment",
+		operationId: "experiment-monitor",
+		timestamp: new Date().toISOString(),
+		component: {
+			type: "extension",
+			name: "observability-data",
+		},
+		data: event.data,
+	} as LogEvent;
+
+	// Add to cache (circular buffer)
+	recentExperimentEvents.unshift(logEvent);
+	if (recentExperimentEvents.length > REALTIME_CACHE_SIZE) {
+		recentExperimentEvents.pop();
+	}
+
+	// Notify all registered callbacks
+	for (const callback of experimentEventCallbacks) {
+		try {
+			callback(logEvent);
+		} catch (err) {
+			console.error("[observability-data] Experiment event callback error:", err);
+		}
+	}
+}
+
+/**
+ * Initialize experiment event subscription
+ * @summary 実験イベント購読を初期化
+ */
+function initExperimentEventSubscription(): void {
+	if (experimentSubscriptionActive) {
+		return;
+	}
+
+	// Subscribe to experiment events from ComprehensiveLogger
+	onExperimentEvent(handleExperimentEvent);
+	experimentSubscriptionActive = true;
+}
 
 // ============================================
 // Log Reading Functions
@@ -678,6 +772,21 @@ const ObservabilityDataParams = Type.Object({
 // Extension Registration
 // ============================================
 export default function (pi: ExtensionAPI): void {
+    // Initialize real-time experiment event subscription
+    initExperimentEventSubscription();
+
+    // Register pi event subscriptions for experiment_* events
+    // These broadcast to pi's event system for cross-extension coordination
+    pi.on("session_start", async (_event, _ctx) => {
+        // Ensure subscription is active on session start
+        initExperimentEventSubscription();
+    });
+
+    pi.on("session_shutdown", async () => {
+        // Clear callbacks on shutdown
+        experimentEventCallbacks.clear();
+    });
+
     pi.registerTool({
         name: "observability_data",
         label: "Observability Data",
@@ -702,6 +811,43 @@ export default function (pi: ExtensionAPI): void {
             }
         },
     })
+
+    // Real-time experiment event subscription tool
+    const SubscribeExperimentEventsParams = Type.Object({
+        limit: Type.Optional(Type.Number()),
+    });
+
+    pi.registerTool({
+        name: "subscribe_experiment_events",
+        label: "Subscribe Experiment Events",
+        description:
+            "実験イベント（experiment_start, experiment_baseline, experiment_run, " +
+            "experiment_improved, experiment_regressed, experiment_timeout）の" +
+            "リアルタイム購読を提供する。直近の実験イベントキャッシュを返す。",
+        parameters: SubscribeExperimentEventsParams,
+        async execute(toolCallId, params, signal, onUpdate, ctx) {
+            const limit = (params as { limit?: number }).limit ?? 50;
+            try {
+                const events = getRecentExperimentEvents(limit);
+                return {
+                    content: [{ type: "text", text: JSON.stringify({
+                        subscribed: true,
+                        cacheSize: recentExperimentEvents.length,
+                        events,
+                        message: "Real-time experiment event subscription is active. " +
+                            "Events are broadcast via onExperimentEvent() callback mechanism.",
+                    }, null, 2) }],
+                    details: { events },
+                }
+            } catch (error) {
+                return {
+                    content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
+                    details: {},
+                }
+            }
+        },
+    })
+
     // コマンドラインからの簡易クエリ
     pi.registerCommand("observability", {
         description: "Show recent observability events from ComprehensiveLogger",
