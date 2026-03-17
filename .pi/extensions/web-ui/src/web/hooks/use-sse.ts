@@ -26,6 +26,140 @@ import {
   notificationAtom,
 } from "../atoms/index.js";
 import type { InstanceInfo } from "../../schemas/instance.schema.js";
+import {
+  validateExperimentEvent,
+  type ExperimentStartEvent,
+  type ExperimentBaselineEvent,
+  type ExperimentRunEvent,
+  type ExperimentImprovedEvent,
+  type ExperimentRegressedEvent,
+  type ExperimentTimeoutEvent,
+} from "../../schemas/experiment.schema.js";
+
+// ============================================================================
+// イベントバッチング（バックプレッシャー）
+// ============================================================================
+
+/**
+ * バッチ処理対象の実験イベント型
+ */
+type BatchableExperimentEvent = {
+  eventType: "experiment_start" | "experiment_baseline" | "experiment_run" | "experiment_improved" | "experiment_regressed" | "experiment_timeout";
+  data: ExperimentStartEvent | ExperimentBaselineEvent | ExperimentRunEvent | ExperimentImprovedEvent | ExperimentRegressedEvent | ExperimentTimeoutEvent;
+  timestamp: number;
+};
+
+/**
+ * イベントバッチャー設定
+ */
+interface EventBatcherConfig {
+  /** バッチウィンドウ（ミリ秒）。デフォルト: 16ms（60fps） */
+  batchWindowMs: number;
+  /** 最大バッチサイズ。これを超えたら即座にフラッシュ */
+  maxBatchSize: number;
+}
+
+const DEFAULT_BATCHER_CONFIG: EventBatcherConfig = {
+  batchWindowMs: 16, // 60fps
+  maxBatchSize: 50,  // 最大50イベント
+};
+
+/**
+ * 実験イベントのバッチャー
+ * requestAnimationFrameベースでイベントをバッチ処理し、UIスレッドスタベーションを防ぐ
+ */
+class ExperimentEventBatcher {
+  private queue: BatchableExperimentEvent[] = [];
+  private rafId: number | null = null;
+  private lastFlushTime: number = 0;
+  private config: EventBatcherConfig;
+
+  // 統計情報（デバッグ・監視用）
+  private stats = {
+    totalEventsReceived: 0,
+    totalBatchesFlushed: 0,
+    maxQueueSize: 0,
+  };
+
+  constructor(config: Partial<EventBatcherConfig> = {}) {
+    this.config = { ...DEFAULT_BATCHER_CONFIG, ...config };
+  }
+
+  /**
+   * イベントをキューに追加し、バッチ処理をスケジュール
+   */
+  enqueue(
+    eventType: BatchableExperimentEvent["eventType"],
+    data: BatchableExperimentEvent["data"],
+    flushCallback: (events: BatchableExperimentEvent[]) => void
+  ): void {
+    const event: BatchableExperimentEvent = {
+      eventType,
+      data,
+      timestamp: Date.now(),
+    };
+
+    this.queue.push(event);
+    this.stats.totalEventsReceived++;
+    this.stats.maxQueueSize = Math.max(this.stats.maxQueueSize, this.queue.length);
+
+    // 最大サイズに達したら即座にフラッシュ
+    if (this.queue.length >= this.config.maxBatchSize) {
+      this.flush(flushCallback);
+      return;
+    }
+
+    // まだRAFがスケジュールされていない場合はスケジュール
+    if (this.rafId === null) {
+      this.scheduleFlush(flushCallback);
+    }
+  }
+
+  /**
+   * requestAnimationFrameでフラッシュをスケジュール
+   */
+  private scheduleFlush(flushCallback: (events: BatchableExperimentEvent[]) => void): void {
+    this.rafId = requestAnimationFrame(() => {
+      this.rafId = null;
+      this.flush(flushCallback);
+    });
+  }
+
+  /**
+   * キューをフラッシュしてコールバックに渡す
+   */
+  private flush(flushCallback: (events: BatchableExperimentEvent[]) => void): void {
+    if (this.queue.length === 0) {
+      return;
+    }
+
+    const events = this.queue;
+    this.queue = [];
+    this.lastFlushTime = Date.now();
+    this.stats.totalBatchesFlushed++;
+
+    // コールバックにイベントを渡す
+    flushCallback(events);
+  }
+
+  /**
+   * バッチャーを破棄
+   */
+  dispose(): void {
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    this.queue = [];
+  }
+
+  /**
+   * 統計情報を取得
+   */
+  getStats(): typeof this.stats {
+    return { ...this.stats };
+  }
+}
 
 /**
  * 安全なJSON解析
@@ -38,51 +172,6 @@ function safeJsonParse<T>(raw: string, fallback: T, context: string): T {
     console.error(`[SSE] JSON parse error in ${context}:`, parseError);
     return fallback;
   }
-}
-
-/**
- * 実験イベントデータ
- */
-interface ExperimentEventData {
-  experimentType: 'e2e' | 'tbench';
-  label: string;
-  tag?: string;
-  branch?: string;
-  targetCommit?: string;
-  config?: Record<string, unknown>;
-  iteration?: number;
-  commit?: string;
-  changesSummary?: string;
-  previousScore?: {
-    failed: number;
-    passed: number;
-    total: number;
-    durationMs: number;
-  };
-  newScore?: {
-    failed: number;
-    passed: number;
-    total: number;
-    durationMs: number;
-  };
-  improvementType?: 'fewer_failures' | 'more_passes' | 'faster';
-  regressionType?: 'more_failures' | 'fewer_passes' | 'slower';
-  reverted?: boolean;
-  timeoutMs?: number;
-  partialScore?: {
-    failed: number;
-    passed: number;
-    total: number;
-    durationMs: number;
-  };
-  score?: {
-    failed: number;
-    passed: number;
-    total: number;
-    durationMs: number;
-  };
-  /** サーバー側のイベントタイムスタンプ（ISO形式） */
-  serverTimestamp?: string;
 }
 
 /**
@@ -123,7 +212,7 @@ function isEventStale(
  */
 function isExperimentEventValid(
   state: EventSequenceState,
-  data: ExperimentEventData,
+  data: { label?: string; iteration?: number },
   eventType: string
 ): boolean {
   const label = data.label;
@@ -161,12 +250,12 @@ interface SSEEventHandlers {
   onInstancesUpdate?: (instances: InstanceInfo[]) => void;
   onContextUpdate?: (data: { pid: number; timestamp: string; input: number; output: number }) => void;
   onError?: (error: Error) => void;
-  onExperimentStart?: (data: ExperimentEventData) => void;
-  onExperimentBaseline?: (data: ExperimentEventData) => void;
-  onExperimentRun?: (data: ExperimentEventData) => void;
-  onExperimentImproved?: (data: ExperimentEventData) => void;
-  onExperimentRegressed?: (data: ExperimentEventData) => void;
-  onExperimentTimeout?: (data: ExperimentEventData) => void;
+  onExperimentStart?: (data: ExperimentStartEvent) => void;
+  onExperimentBaseline?: (data: ExperimentBaselineEvent) => void;
+  onExperimentRun?: (data: ExperimentRunEvent) => void;
+  onExperimentImproved?: (data: ExperimentImprovedEvent) => void;
+  onExperimentRegressed?: (data: ExperimentRegressedEvent) => void;
+  onExperimentTimeout?: (data: ExperimentTimeoutEvent) => void;
 }
 
 /**
@@ -189,6 +278,12 @@ export function useSSE(handlers?: SSEEventHandlers) {
     lastProcessedTimestamp: new Map(),
     experimentIterations: new Map(),
   });
+
+  // 実験イベントバッチャー（バックプレッシャー）
+  const batcherRef = useRef<ExperimentEventBatcher | null>(null);
+  const pendingExperimentHandlersRef = useRef<
+    Array<{ eventType: BatchableExperimentEvent["eventType"]; handler: () => void }>
+  >([]);
 
   const maxReconnectAttempts = 5;
   const baseReconnectDelay = 1000;
@@ -214,41 +309,79 @@ export function useSSE(handlers?: SSEEventHandlers) {
   }, []);
 
   /**
-   * 実験イベントを処理し、イテレーションを追跡
+   * 実験イベントを処理し、イテレーションを追跡（バッチ処理対応）
    */
   const processExperimentEvent = useCallback(
-    (eventType: string, data: ExperimentEventData, handler: () => void) => {
+    (
+      eventType: BatchableExperimentEvent["eventType"],
+      data: { label?: string; iteration?: number; serverTimestamp?: string },
+      eventData: BatchableExperimentEvent["data"],
+      handler: () => void
+    ) => {
       const state = sequenceStateRef.current;
-      
+
       // タイムスタンプベースの staleness チェック
       if (isEventStale(state, eventType, data.serverTimestamp)) {
         return;
       }
-      
+
       // イテレーションベースのチェック
       if (!isExperimentEventValid(state, data, eventType)) {
         return;
       }
-      
-      // イベントを処理
-      handler();
-      
-      // シーケンス状態を更新
-      if (data.serverTimestamp) {
-        state.lastProcessedTimestamp.set(eventType, new Date(data.serverTimestamp).getTime());
+
+      // バッチャーが初期化されていない場合は同期的に処理（フォールバック）
+      const batcher = batcherRef.current;
+      if (!batcher) {
+        // シーケンス状態を更新
+        if (data.serverTimestamp) {
+          state.lastProcessedTimestamp.set(eventType, new Date(data.serverTimestamp).getTime());
+        }
+        if (data.label && data.iteration !== undefined) {
+          state.experimentIterations.set(data.label, data.iteration);
+        }
+        if (eventType === "experiment_start" && data.label) {
+          state.experimentIterations.set(data.label, 0);
+        }
+        handler();
+        return;
       }
-      
-      // 実験イテレーションを更新
-      if (data.label && data.iteration !== undefined) {
-        state.experimentIterations.set(data.label, data.iteration);
-      }
-      
-      // experiment_start の場合はイテレーションをリセット
-      if (eventType === "experiment_start" && data.label) {
-        state.experimentIterations.set(data.label, 0);
-      }
+
+      // ハンドラを一時保存（バッチフラッシュ時に実行）
+      pendingExperimentHandlersRef.current.push({ eventType, handler });
+
+      // バッチャーにエンキュー
+      batcher.enqueue(eventType, eventData, (events) => {
+        // バッチフラッシュ時の処理
+        const now = Date.now();
+
+        // 最後のイベントのタイムスタンプのみをsetLastReceivedに反映
+        setLastReceived(now);
+
+        // シーケンス状態を更新（最後のイベントのみ）
+        const lastEvent = events[events.length - 1];
+        if (lastEvent) {
+          const lastData = lastEvent.data as { label?: string; iteration?: number; serverTimestamp?: string };
+          if (lastData.serverTimestamp) {
+            state.lastProcessedTimestamp.set(lastEvent.eventType, new Date(lastData.serverTimestamp).getTime());
+          }
+          if (lastData.label && lastData.iteration !== undefined) {
+            state.experimentIterations.set(lastData.label, lastData.iteration);
+          }
+          if (lastEvent.eventType === "experiment_start" && lastData.label) {
+            state.experimentIterations.set(lastData.label, 0);
+          }
+        }
+
+        // 保留中のハンドラを実行
+        const handlers = [...pendingExperimentHandlersRef.current];
+        pendingExperimentHandlersRef.current = [];
+        for (const h of handlers) {
+          h.handler();
+        }
+      });
     },
-    []
+    [setLastReceived]
   );
 
   /**
@@ -287,6 +420,14 @@ export function useSSE(handlers?: SSEEventHandlers) {
 
     // 新しい接続開始時にシャットダウンフラグをリセット
     serverShutdownRef.current = false;
+
+    // 実験イベントバッチャーを初期化（バックプレッシャー）
+    if (!batcherRef.current) {
+      batcherRef.current = new ExperimentEventBatcher({
+        batchWindowMs: 16, // 60fps
+        maxBatchSize: 50,
+      });
+    }
 
     const eventSource = new EventSource("/api/sse");
     eventSourceRef.current = eventSource;
@@ -349,55 +490,109 @@ export function useSSE(handlers?: SSEEventHandlers) {
 
     // 実験開始
     eventSource.addEventListener("experiment_start", (e: MessageEvent) => {
-      const data = safeJsonParse<ExperimentEventData>(e.data, {} as ExperimentEventData, "experiment_start");
-      processExperimentEvent("experiment_start", data, () => {
-        setLastReceived(Date.now());
-        handlers?.onExperimentStart?.(data);
+      const rawData = safeJsonParse<unknown>(e.data, null, "experiment_start");
+      if (rawData === null) {
+        handlers?.onError?.(new Error("[SSE] Failed to parse experiment_start event"));
+        return;
+      }
+      const result = validateExperimentEvent("experiment_start", rawData);
+      if (!result.success || !result.data) {
+        handlers?.onError?.(new Error(`[SSE] ${result.error}`));
+        return;
+      }
+      const eventData = result.data as ExperimentStartEvent;
+      processExperimentEvent("experiment_start", eventData, eventData, () => {
+        handlers?.onExperimentStart?.(eventData);
       });
     });
 
     // 実験ベースライン
     eventSource.addEventListener("experiment_baseline", (e: MessageEvent) => {
-      const data = safeJsonParse<ExperimentEventData>(e.data, {} as ExperimentEventData, "experiment_baseline");
-      processExperimentEvent("experiment_baseline", data, () => {
-        setLastReceived(Date.now());
-        handlers?.onExperimentBaseline?.(data);
+      const rawData = safeJsonParse<unknown>(e.data, null, "experiment_baseline");
+      if (rawData === null) {
+        handlers?.onError?.(new Error("[SSE] Failed to parse experiment_baseline event"));
+        return;
+      }
+      const result = validateExperimentEvent("experiment_baseline", rawData);
+      if (!result.success || !result.data) {
+        handlers?.onError?.(new Error(`[SSE] ${result.error}`));
+        return;
+      }
+      const eventData = result.data as ExperimentBaselineEvent;
+      processExperimentEvent("experiment_baseline", eventData, eventData, () => {
+        handlers?.onExperimentBaseline?.(eventData);
       });
     });
 
     // 実験実行
     eventSource.addEventListener("experiment_run", (e: MessageEvent) => {
-      const data = safeJsonParse<ExperimentEventData>(e.data, {} as ExperimentEventData, "experiment_run");
-      processExperimentEvent("experiment_run", data, () => {
-        setLastReceived(Date.now());
-        handlers?.onExperimentRun?.(data);
+      const rawData = safeJsonParse<unknown>(e.data, null, "experiment_run");
+      if (rawData === null) {
+        handlers?.onError?.(new Error("[SSE] Failed to parse experiment_run event"));
+        return;
+      }
+      const result = validateExperimentEvent("experiment_run", rawData);
+      if (!result.success || !result.data) {
+        handlers?.onError?.(new Error(`[SSE] ${result.error}`));
+        return;
+      }
+      const eventData = result.data as ExperimentRunEvent;
+      processExperimentEvent("experiment_run", eventData, eventData, () => {
+        handlers?.onExperimentRun?.(eventData);
       });
     });
 
     // 実験改善
     eventSource.addEventListener("experiment_improved", (e: MessageEvent) => {
-      const data = safeJsonParse<ExperimentEventData>(e.data, {} as ExperimentEventData, "experiment_improved");
-      processExperimentEvent("experiment_improved", data, () => {
-        setLastReceived(Date.now());
-        handlers?.onExperimentImproved?.(data);
+      const rawData = safeJsonParse<unknown>(e.data, null, "experiment_improved");
+      if (rawData === null) {
+        handlers?.onError?.(new Error("[SSE] Failed to parse experiment_improved event"));
+        return;
+      }
+      const result = validateExperimentEvent("experiment_improved", rawData);
+      if (!result.success || !result.data) {
+        handlers?.onError?.(new Error(`[SSE] ${result.error}`));
+        return;
+      }
+      const eventData = result.data as ExperimentImprovedEvent;
+      processExperimentEvent("experiment_improved", eventData, eventData, () => {
+        handlers?.onExperimentImproved?.(eventData);
       });
     });
 
     // 実験退行
     eventSource.addEventListener("experiment_regressed", (e: MessageEvent) => {
-      const data = safeJsonParse<ExperimentEventData>(e.data, {} as ExperimentEventData, "experiment_regressed");
-      processExperimentEvent("experiment_regressed", data, () => {
-        setLastReceived(Date.now());
-        handlers?.onExperimentRegressed?.(data);
+      const rawData = safeJsonParse<unknown>(e.data, null, "experiment_regressed");
+      if (rawData === null) {
+        handlers?.onError?.(new Error("[SSE] Failed to parse experiment_regressed event"));
+        return;
+      }
+      const result = validateExperimentEvent("experiment_regressed", rawData);
+      if (!result.success || !result.data) {
+        handlers?.onError?.(new Error(`[SSE] ${result.error}`));
+        return;
+      }
+      const eventData = result.data as ExperimentRegressedEvent;
+      processExperimentEvent("experiment_regressed", eventData, eventData, () => {
+        handlers?.onExperimentRegressed?.(eventData);
       });
     });
 
     // 実験タイムアウト
     eventSource.addEventListener("experiment_timeout", (e: MessageEvent) => {
-      const data = safeJsonParse<ExperimentEventData>(e.data, {} as ExperimentEventData, "experiment_timeout");
-      processExperimentEvent("experiment_timeout", data, () => {
-        setLastReceived(Date.now());
-        handlers?.onExperimentTimeout?.(data);
+      const rawData = safeJsonParse<unknown>(e.data, null, "experiment_timeout");
+      if (rawData === null) {
+        handlers?.onError?.(new Error("[SSE] Failed to parse experiment_timeout event"));
+        return;
+      }
+      const result = validateExperimentEvent("experiment_timeout", rawData);
+      if (!result.success || !result.data) {
+        handlers?.onError?.(new Error(`[SSE] ${result.error}`));
+        return;
+      }
+      const eventData = result.data as ExperimentTimeoutEvent;
+      processExperimentEvent("experiment_timeout", eventData, eventData, () => {
+        handlers?.onExperimentTimeout?.(eventData);
       });
     });
 
@@ -421,6 +616,12 @@ export function useSSE(handlers?: SSEEventHandlers) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
+    // バッチャーを破棄
+    if (batcherRef.current) {
+      batcherRef.current.dispose();
+      batcherRef.current = null;
+    }
+    pendingExperimentHandlersRef.current = [];
     setIsConnected(false);
   }, [setIsConnected]);
 
