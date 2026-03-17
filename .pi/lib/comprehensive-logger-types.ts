@@ -597,6 +597,46 @@ export interface ExperimentTimeoutEvent extends BaseEvent {
   };
 }
 
+/**
+ * 実験停止イベント
+ * @summary 実験が停止された
+ */
+export interface ExperimentStopEvent extends BaseEvent {
+  eventType: 'experiment_stop';
+  data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    iteration: number;
+    reason?: string;
+    partialScore?: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+  };
+}
+
+/**
+ * 実験クラッシュイベント
+ * @summary 実験がクラッシュした
+ */
+export interface ExperimentCrashEvent extends BaseEvent {
+  eventType: 'experiment_crash';
+  data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    iteration: number;
+    error?: string;
+    partialScore?: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+  };
+}
+
 // ============================================
 // 統合型
 // ============================================
@@ -626,9 +666,11 @@ export type LogEvent =
   | ExperimentStartEvent
   | ExperimentBaselineEvent
   | ExperimentRunEvent
-  | ExperimentImprovedEvent
+ | ExperimentImprovedEvent
   | ExperimentRegressedEvent
-  | ExperimentTimeoutEvent;
+  | ExperimentTimeoutEvent
+  | ExperimentStopEvent
+  | ExperimentCrashEvent;
 
 // ============================================
 // 設定型
