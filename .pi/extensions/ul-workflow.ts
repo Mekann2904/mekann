@@ -2939,7 +2939,17 @@ export default function registerUlWorkflowExtension(pi: ExtensionAPI) {
     return;
   }
 
-  
+  // セッション終了時のクリーンアップハンドラ
+  // アクティブなワークフロー状態を確実に永続化する
+  pi.on("session_shutdown", () => {
+    const currentWorkflow = getCurrentWorkflow();
+    if (currentWorkflow && currentWorkflow.phase !== "completed" && currentWorkflow.phase !== "aborted") {
+      currentWorkflow.updatedAt = new Date().toISOString();
+      saveState(currentWorkflow);
+      console.error(`[ul-workflow] Session shutdown: persisted workflow ${currentWorkflow.taskId} in phase ${currentWorkflow.phase}`);
+    }
+  });
+
   // ワークフロー開始ツール
   pi.registerTool({
     name: "ul_workflow_start",
