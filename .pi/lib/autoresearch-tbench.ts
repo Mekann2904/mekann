@@ -875,24 +875,28 @@ async function executeTerminalBenchRun(
   };
 
   emitSnapshot();
-  const result = await spawnAndCapture("/bin/zsh", ["-lc", command], {
-    cwd,
-    env: buildRunEnv(config),
-    timeoutMs,
-    logPath: artifacts.logPath,
-    controlState,
-    onSpawn: (child) => {
-      childPid = child.pid ?? 0;
-      const currentState = readAutoresearchTbenchState(cwd);
-      if (currentState && childPid > 0) {
-        markActiveRun(cwd, currentState, label, childPid);
-      }
-    },
-  });
-  clearInterval(pollTimer);
-  const currentState = readAutoresearchTbenchState(cwd);
-  if (currentState) {
-    clearActiveRun(cwd, currentState);
+  let result: Awaited<ReturnType<typeof spawnAndCapture>>;
+  try {
+    result = await spawnAndCapture("/bin/zsh", ["-lc", command], {
+      cwd,
+      env: buildRunEnv(config),
+      timeoutMs,
+      logPath: artifacts.logPath,
+      controlState,
+      onSpawn: (child) => {
+        childPid = child.pid ?? 0;
+        const currentState = readAutoresearchTbenchState(cwd);
+        if (currentState && childPid > 0) {
+          markActiveRun(cwd, currentState, label, childPid);
+        }
+      },
+    });
+  } finally {
+    clearInterval(pollTimer);
+    const currentState = readAutoresearchTbenchState(cwd);
+    if (currentState) {
+      clearActiveRun(cwd, currentState);
+    }
   }
 
   const combinedOutput = `${result.stdout}\n${result.stderr}`;
