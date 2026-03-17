@@ -619,10 +619,20 @@ export class CorrelationTracker {
   }
 
   private getEventsFilePath(): string {
+    // 日付が変わっていれば更新（深夜を跨ぐ長時間実行に対応）
+    const today = getDateStr();
+    if (today !== this.currentDate) {
+      this.currentDate = today;
+    }
     return join(this.correlationDir, `correlation-events-${this.currentDate}.jsonl`);
   }
 
   private getLinksFilePath(): string {
+    // 日付が変わっていれば更新（getEventsFilePathと一貫性を保つ）
+    const today = getDateStr();
+    if (today !== this.currentDate) {
+      this.currentDate = today;
+    }
     return join(this.correlationDir, `correlation-links-${this.currentDate}.jsonl`);
   }
 }
