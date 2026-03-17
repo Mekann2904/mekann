@@ -395,7 +395,11 @@ async function handleBaseline(options: CliOptions): Promise<void> {
     throw new Error("baseline report file was not produced");
   }
 
-  const report = parseVitestJsonReport(readFileSync(run.artifacts.reportPath, "utf-8"));
+  const rawReport = readFileSync(run.artifacts.reportPath, "utf-8");
+  const report = parseVitestJsonReport(rawReport);
+  if (!report) {
+    throw new Error("baseline report file contains invalid JSON");
+  }
   // 行動メトリクスを集計してスコアに追加
   const behaviorMetrics = aggregateBehaviorMetrics();
   const score: AutoresearchE2EScore = {
@@ -481,14 +485,27 @@ async function handleRun(options: CliOptions): Promise<void> {
     });
     await logger.flush();
   } else if (existsSync(run.artifacts.reportPath)) {
-    const report = parseVitestJsonReport(readFileSync(run.artifacts.reportPath, "utf-8"));
-    // 行動メトリクスを集計してスコアに追加
-    const behaviorMetrics = aggregateBehaviorMetrics();
-    score = {
-      ...report.score,
-      behaviorMetrics,
-    };
-    outcome = determineAutoresearchOutcome(score, state.bestScore);
+    const rawReport = readFileSync(run.artifacts.reportPath, "utf-8");
+    const report = parseVitestJsonReport(rawReport);
+    if (report) {
+      // 行動メトリクスを集計してスコアに追加
+      const behaviorMetrics = aggregateBehaviorMetrics();
+      score = {
+        ...report.score,
+        behaviorMetrics,
+      };
+      outcome = determineAutoresearchOutcome(score, state.bestScore);
+    } else {
+      // JSONパース失敗時はcrash outcomeとして処理
+      outcome = "crash";
+      logger.logExperimentCrash({
+        experimentType: 'e2e',
+        label: options.label,
+        iteration: newExperimentCount,
+        error: "Invalid JSON in vitest report file",
+      });
+      await logger.flush();
+    }
 
     // Emit result-specific events
     if (outcome === "improved") {

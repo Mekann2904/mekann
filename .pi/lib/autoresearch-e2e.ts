@@ -75,8 +75,23 @@ function collectDurationFromResults(report: VitestJsonLike): number {
   return durationMs;
 }
 
-export function parseVitestJsonReport(raw: string): AutoresearchE2EReportSummary {
-  const parsed = JSON.parse(raw) as VitestJsonLike;
+/**
+ * Vitest JSONレポートをパースする
+ * @summary JSON文字列をパースして正規化されたスコアを返す
+ * @param raw - Vitest JSON形式の文字列
+ * @returns パース成功時は正規化されたレポート、失敗時はnull
+ */
+export function parseVitestJsonReport(raw: string): AutoresearchE2EReportSummary | null {
+  let parsed: VitestJsonLike;
+  try {
+    parsed = JSON.parse(raw) as VitestJsonLike;
+  } catch (error) {
+    // パース失敗時はnullを返し、呼び出し元でcrash outcomeとして処理
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`[parseVitestJsonReport] JSON parse error: ${errorMessage}\n`);
+    return null;
+  }
+
   const failed = toNonNegativeInteger(parsed.numFailedTests);
   const passed = toNonNegativeInteger(parsed.numPassedTests);
   const total = toNonNegativeInteger(parsed.numTotalTests) || failed + passed;
