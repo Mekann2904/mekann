@@ -1315,29 +1315,6 @@ export async function runAutoresearchTbench(
     };
   }
 
-  // Emit experiment_regressed event for non-improved outcomes with score
-  if (outcome === "regressed" && score) {
-    const previousScore = state.bestScore;
-    let regressionType: 'more_failures' | 'fewer_passes' | 'slower' = 'more_failures';
-    if (score.errorCount > previousScore.errorCount) {
-      regressionType = 'more_failures';
-    } else if (score.successCount < previousScore.successCount) {
-      regressionType = 'fewer_passes';
-    } else {
-      regressionType = 'slower';
-    }
-
-    logger.logExperimentRegressed({
-      experimentType: 'tbench',
-      label,
-      previousScore: tbenchScoreToE2EFormat(previousScore),
-      newScore: tbenchScoreToE2EFormat(score),
-      regressionType,
-      reverted: state.gitEnabled,
-    });
-    await logger.flush();
-  }
-
   if (state.gitEnabled) {
     await resetToCommit(cwd, state.bestCommit);
     commit = state.bestCommit;
