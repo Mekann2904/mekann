@@ -13,6 +13,7 @@ vi.mock("node:fs", () => ({
 	mkdirSync: vi.fn(),
 	readFileSync: vi.fn(() => "{}"),
 	writeFileSync: vi.fn(),
+	readdirSync: vi.fn(() => []),
 }));
 
 vi.mock("node:path", () => ({
@@ -563,5 +564,121 @@ describe("abdd.ts プロパティベーステスト", () => {
 			),
 			{ numRuns: 50 }
 		);
+	});
+});
+
+// ============================================================================
+// findAllMdFiles 関数のテスト
+// ============================================================================
+
+describe("findAllMdFiles", () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("存在しないディレクトリは空配列を返す", async () => {
+		const fs = await import("node:fs");
+		vi.spyOn(fs, "existsSync").mockReturnValue(false);
+		vi.spyOn(fs, "readdirSync").mockImplementation(() => []);
+		
+		const { findAllMdFiles } = await import("../../../.pi/extensions/abdd.js");
+		const warnings: string[] = [];
+		const result = findAllMdFiles("/nonexistent/path", warnings);
+		expect(result).toEqual([]);
+	});
+
+	it("readdirエラーをwarnings配列に追加する", async () => {
+		const fs = await import("node:fs");
+		vi.spyOn(fs, "existsSync").mockReturnValue(true);
+		vi.spyOn(fs, "readdirSync").mockImplementation(() => {
+			throw new Error("EACCES: permission denied");
+		});
+
+		const { findAllMdFiles } = await import("../../../.pi/extensions/abdd.js");
+		const warnings: string[] = [];
+		const result = findAllMdFiles("/test/dir", warnings);
+
+		expect(result).toEqual([]);
+		expect(warnings.length).toBe(1);
+		expect(warnings[0]).toContain("ディレクトリ読み込みエラー");
+		expect(warnings[0]).toContain("/test/dir");
+		expect(warnings[0]).toContain("EACCES");
+	});
+
+	it("サブディレクトリ探索エラーをwarnings配列に追加する", async () => {
+		const fs = await import("node:fs");
+		
+		// ルートディレクトリは読めるが、サブディレクトリでエラー
+		let callCount = 0;
+		vi.spyOn(fs, "existsSync").mockReturnValue(true);
+		vi.spyOn(fs, "readdirSync").mockImplementation(() => {
+			callCount++;
+			if (callCount === 1) {
+				// 最初の呼び出し: ルートディレクトリ（サブディレクトリ1つ含む）
+				return [
+					{ name: "subdir", isDirectory: () => true, isFile: () => false },
+					{ name: "test.md", isDirectory: () => false, isFile: () => true },
+				];
+			} else {
+				// 2回目の呼び出し: サブディレクトリ（エラー）
+				throw new Error("EIO: I/O error");
+			}
+		});
+
+		const { findAllMdFiles } = await import("../../../.pi/extensions/abdd.js");
+		const warnings: string[] = [];
+		const result = findAllMdFiles("/test/dir", warnings);
+
+		// test.md は見つかる
+		expect(result.length).toBe(1);
+		expect(result[0]).toContain("test.md");
+		// サブディレクトリエラーが警告に追加される
+		expect(warnings.length).toBe(1);
+		expect(warnings[0]).toContain("ディレクトリ読み込みエラー");
+		expect(warnings[0]).toContain("/test/dir/subdir");
+		expect(warnings[0]).toContain("EIO");
+	});
+
+	it("正常なディレクトリは.mdファイルを再帰的に収集する", async () => {
+		const fs = await import("node:fs");
+		
+		let callCount = 0;
+		vi.spyOn(fs, "existsSync").mockReturnValue(true);
+		vi.spyOn(fs, "readdirSync").mockImplementation(() => {
+			callCount++;
+			if (callCount === 1) {
+				return [
+					{ name: "subdir", isDirectory: () => true, isFile: () => false },
+					{ name: "file1.md", isDirectory: () => false, isFile: () => true },
+					{ name: "file2.txt", isDirectory: () => false, isFile: () => true },
+				];
+			} else {
+				return [
+					{ name: "file3.md", isDirectory: () => false, isFile: () => true },
+				];
+			}
+		});
+
+		const { findAllMdFiles } = await import("../../../.pi/extensions/abdd.js");
+		const warnings: string[] = [];
+		const result = findAllMdFiles("/test/dir", warnings);
+
+		// .mdファイルのみ収集
+		expect(result.length).toBe(2);
+		expect(warnings.length).toBe(0);
+	});
+
+	it("warnings引数なしでも動作する（後方互換性）", async () => {
+		const fs = await import("node:fs");
+		vi.spyOn(fs, "existsSync").mockReturnValue(true);
+		vi.spyOn(fs, "readdirSync").mockImplementation(() => {
+			throw new Error("ENOENT: no such file");
+		});
+
+		const { findAllMdFiles } = await import("../../../.pi/extensions/abdd.js");
+		// warnings引数なしで呼び出し
+		const result = findAllMdFiles("/test/dir");
+
+		expect(result).toEqual([]);
 	});
 });
