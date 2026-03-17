@@ -561,6 +561,15 @@ export function requestStopAutoresearchTbench(cwd: string): AutoresearchTbenchSt
   nextState.stopRequestedAt = nowIso();
   writeAutoresearchTbenchState(cwd, nextState);
 
+  // Log stop request to observability system
+  logger.logStateChange({
+    entityType: 'memory',
+    entityPath: `autoresearch-tbench/runs/${state.activeRun.label}`,
+    changeType: 'update',
+    beforeContent: JSON.stringify({ phase: 'running', pid: state.activeRun.pid, startedAt: state.activeRun.startedAt }),
+    afterContent: JSON.stringify({ phase: 'stop_requested', pid: state.activeRun.pid, stopRequestedAt: nextState.stopRequestedAt }),
+  });
+
   return {
     requested: true,
     state: nextState,
