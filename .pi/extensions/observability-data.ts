@@ -20,7 +20,7 @@ import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { getConfig } from "../lib/comprehensive-logger-config";
-import type { LogEvent, EventType } from "../lib/comprehensive-logger-types";
+import type { LogEvent, EventType, BaseEvent } from "../lib/comprehensive-logger-types";
 
 // ============================================
 // Types
@@ -41,6 +41,12 @@ export interface ObservabilityQuery {
 	limit?: number;
 	/** Include statistics aggregation */
 	includeStats?: boolean;
+	/**
+	 * Trial directory path for pi-events.jsonl
+	 * When specified, reads from {trialDir}/agent/pi-events.jsonl instead of events-{date}.jsonl
+	 * This enables querying LLM metrics from terminal-bench experiments
+	 */
+	trialDir?: string;
 }
 
 export interface ObservabilityStats {
@@ -79,7 +85,7 @@ export interface ObservabilityResult {
 // ============================================
 
 export { queryObservabilityData };
-export { getLogDir, listLogFiles, parseLogFile, parseLogFileWithStats };
+export { getLogDir, listLogFiles, parseLogFile, parseLogFileWithStats, parsePiEventsFile };
 export { calculateStats };
 
 // ============================================
@@ -297,6 +303,190 @@ function parseLogFileWithStats(filePath: string): ParseResult {
 	return result;
 }
 
+// ============================================
+// pi-events.jsonl Parsing (terminal-bench format)
+// ============================================
+
+/**
+ * pi-events.jsonlのLLM usageをLogEvent形式に変換
+ * @summary pi-eventsをLogEventに変換
+ */
+interface PiEventUsage {
+	input: number;
+	output: number;
+	cacheRead?: number;
+	cacheWrite?: number;
+	totalTokens?: number;
+	cost?: {
+		total?: number;
+	};
+}
+
+interface PiEventMessage {
+	role?: string;
+	usage?: PiEventUsage;
+}
+
+interface PiEventPartial {
+	usage?: PiEventUsage;
+	content?: Array<{
+		type?: string;
+		thinking?: string;
+		text?: string;
+	}>;
+}
+
+interface PiEventAssistantMessageEvent {
+	type?: string;
+	partial?: PiEventPartial;
+	message?: PiEventMessage;
+}
+
+interface PiEventParsed {
+	type?: string;
+	message?: PiEventMessage;
+	assistantMessageEvent?: PiEventAssistantMessageEvent;
+	timestamp?: string;
+}
+
+/**
+ * pi-events.jsonlのイベントを解析してLLMメトリクスを抽出
+ * message_start/message_update形式をLogEvent風のオブジェクトに変換
+ * @summary pi-eventsをパース
+ * @param line 1行のJSON文字列
+ * @param trialDir trialディレクトリパス
+ * @param lineIndex 行番号
+ * @returns LogEvent風のオブジェクトまたはnull
+ */
+function parsePiEventLine(
+	line: string,
+	trialDir: string,
+	lineIndex: number
+): LogEvent | null {
+	if (!line.startsWith("{")) {
+		return null;
+	}
+
+	try {
+		const parsed = JSON.parse(line) as PiEventParsed;
+		const type = parsed.type || "";
+
+		// message_startからusageを抽出
+		if (type === "message_start" && parsed.message) {
+			const message = parsed.message;
+			const usage = message.usage;
+
+			if (usage && (usage.input > 0 || usage.output > 0)) {
+				return {
+					eventId: `pi-event-${lineIndex}`,
+					eventType: "llm_response" as EventType,
+					sessionId: "terminal-bench",
+					taskId: trialDir.split("/").pop() || "unknown",
+					operationId: `pi-op-${lineIndex}`,
+					timestamp: parsed.timestamp || new Date().toISOString(),
+					component: {
+						type: "extension" as const,
+						name: "terminal-bench",
+					},
+					data: {
+						provider: "terminal-bench",
+						model: "unknown",
+						inputTokens: usage.input || 0,
+						outputTokens: usage.output || 0,
+						totalTokens: usage.totalTokens || (usage.input || 0) + (usage.output || 0),
+						durationMs: 0,
+						responseLength: 0,
+						stopReason: "end_turn" as const,
+						toolsCalled: [],
+						cacheReadTokens: usage.cacheRead || 0,
+						cacheWriteTokens: usage.cacheWrite || 0,
+						estimatedCost: usage.cost?.total || 0,
+					},
+				} as LogEvent;
+			}
+		}
+
+		// message_updateからusageを抽出
+		if (type === "message_update" && parsed.assistantMessageEvent) {
+			const event = parsed.assistantMessageEvent;
+			const usage = event.partial?.usage || event.message?.usage;
+
+			if (usage && (usage.input > 0 || usage.output > 0)) {
+				return {
+					eventId: `pi-event-${lineIndex}`,
+					eventType: "llm_response" as EventType,
+					sessionId: "terminal-bench",
+					taskId: trialDir.split("/").pop() || "unknown",
+					operationId: `pi-op-${lineIndex}`,
+					timestamp: parsed.timestamp || new Date().toISOString(),
+					component: {
+						type: "extension" as const,
+						name: "terminal-bench",
+					},
+					data: {
+						provider: "terminal-bench",
+						model: "unknown",
+						inputTokens: usage.input || 0,
+						outputTokens: usage.output || 0,
+						totalTokens: usage.totalTokens || (usage.input || 0) + (usage.output || 0),
+						durationMs: 0,
+						responseLength: 0,
+						stopReason: "end_turn" as const,
+						toolsCalled: [],
+						cacheReadTokens: usage.cacheRead || 0,
+						cacheWriteTokens: usage.cacheWrite || 0,
+						estimatedCost: usage.cost?.total || 0,
+					},
+				} as LogEvent;
+			}
+		}
+
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * trialディレクトリ内のpi-events.jsonlを読み込む
+ * @summary pi-events.jsonlを読込
+ * @param trialDir trialディレクトリパス
+ * @returns パース結果
+ */
+function parsePiEventsFile(trialDir: string): ParseResult {
+	const result: ParseResult = {
+		events: [],
+		parseErrors: 0,
+		incompleteLines: 0,
+	};
+
+	const eventsPath = join(trialDir, "agent", "pi-events.jsonl");
+	if (!existsSync(eventsPath)) {
+		return result;
+	}
+
+	const text = readFileSync(eventsPath, "utf-8");
+	const lines = text.split("\n").filter(Boolean);
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		if (!line) continue;
+
+		// 行整合性チェック
+		if (!line.endsWith("}")) {
+			result.incompleteLines++;
+			continue;
+		}
+
+		const event = parsePiEventLine(line, trialDir, i);
+		if (event) {
+			result.events.push(event);
+		}
+	}
+
+	return result;
+}
+
 /**
  * 日付範囲から対象ログファイルを特定
  */
@@ -410,7 +600,6 @@ function calculateStats(events: LogEvent[]): ObservabilityStats {
  */
 function queryObservabilityData(query: ObservabilityQuery): ObservabilityResult {
     const logDir = getLogDir();
-    const targetFiles = getTargetLogFiles(logDir, query.from, query.to);
     const filesRead: string[] = [];
     
     // 全イベントを収集（パース統計も追跡）
@@ -419,16 +608,31 @@ function queryObservabilityData(query: ObservabilityQuery): ObservabilityResult 
     let totalIncompleteLines = 0;
     let totalRecoveredLines = 0;
     
-    for (const file of targetFiles) {
-        const result = parseLogFileWithStats(file);
+    // trialDirが指定された場合、pi-events.jsonlから読み込む
+    if (query.trialDir) {
+        const trialDir = resolve(query.trialDir);
+        const result = parsePiEventsFile(trialDir);
         if (result.events.length > 0) {
             allEvents = allEvents.concat(result.events);
-            filesRead.push(file);
+            filesRead.push(join(trialDir, "agent", "pi-events.jsonl"));
         }
-        // パース統計を蓄積（イベントがなくてもエラーは記録）
         totalParseErrors += result.parseErrors;
         totalIncompleteLines += result.incompleteLines;
-        totalRecoveredLines += result.recoveredLines ?? 0;
+    } else {
+        // 通常のevents-{date}.jsonlから読み込む
+        const targetFiles = getTargetLogFiles(logDir, query.from, query.to);
+        
+        for (const file of targetFiles) {
+            const result = parseLogFileWithStats(file);
+            if (result.events.length > 0) {
+                allEvents = allEvents.concat(result.events);
+                filesRead.push(file);
+            }
+            // パース統計を蓄積（イベントがなくてもエラーは記録）
+            totalParseErrors += result.parseErrors;
+            totalIncompleteLines += result.incompleteLines;
+            totalRecoveredLines += result.recoveredLines ?? 0;
+        }
     }
     
     // フィルタリング
@@ -468,6 +672,7 @@ const ObservabilityDataParams = Type.Object({
     to: Type.Optional(Type.String()),
     limit: Type.Optional(Type.Number()),
     includeStats: Type.Optional(Type.Boolean()),
+    trialDir: Type.Optional(Type.String()),
 });
 // ============================================
 // Extension Registration
@@ -478,7 +683,8 @@ export default function (pi: ExtensionAPI): void {
         label: "Observability Data",
         description:
             "ComprehensiveLoggerが記録したイベントログをクエリしてobservabilityデータを取得する。" +
-            "イベントタイプ、タスクID、セッションID、日時範囲でフィルタリング可能。",
+            "イベントタイプ、タスクID、セッションID、日時範囲でフィルタリング可能。" +
+            "trialDirを指定すると、terminal-bench実験のpi-events.jsonlからLLMメトリクスを取得可能。",
         parameters: ObservabilityDataParams,
         async execute(toolCallId, params, signal, onUpdate, ctx) {
             const query = params as ObservabilityQuery;
