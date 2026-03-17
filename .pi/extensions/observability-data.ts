@@ -48,6 +48,12 @@ export interface ObservabilityQuery {
 	 * This enables querying LLM metrics from terminal-bench experiments
 	 */
 	trialDir?: string;
+	/**
+	 * Include MetricsCollector events (.pi/metrics/)
+	 * When true, also reads scheduler events (preemption, work_steal, task_completion)
+	 * @default true
+	 */
+	includeMetrics?: boolean;
 }
 
 export interface ObservabilityStats {
@@ -72,6 +78,8 @@ export interface ObservabilityResult {
 	stats?: ObservabilityStats;
 	query: ObservabilityQuery;
 	logDir: string;
+	/** MetricsCollectorディレクトリパス */
+	metricsDir?: string;
 	filesRead: string[];
 	/** 全ファイルのパース統計（データ損失の可視化用） */
 	parseStats?: {
@@ -87,6 +95,7 @@ export interface ObservabilityResult {
 
 export { queryObservabilityData };
 export { getLogDir, listLogFiles, parseLogFile, parseLogFileWithStats, parsePiEventsFile };
+export { getMetricsDir, listMetricsFiles, parseMetricsFile };
 export { calculateStats };
 export { subscribeExperimentEvents, getRecentExperimentEvents };
 export type { ExperimentEventCallback };
@@ -581,6 +590,227 @@ function parsePiEventsFile(trialDir: string): ParseResult {
 	return result;
 }
 
+// ============================================
+// MetricsCollector Events (.pi/metrics/)
+// ============================================
+
+/** MetricsCollector default directory */
+const DEFAULT_METRICS_DIR = ".pi/metrics";
+
+/**
+ * メトリクスディレクトリパスを取得
+ * @summary メトリクスディレクトリ取得
+ * @returns メトリクスディレクトリパス
+ */
+function getMetricsDir(): string {
+	return resolve(DEFAULT_METRICS_DIR);
+}
+
+/**
+ * メトリクスディレクトリ内の全ログファイルをリスト
+ * @summary メトリクスファイル一覧取得
+ * @param metricsDir メトリクスディレクトリ
+ * @returns ファイルパスの配列
+ */
+function listMetricsFiles(metricsDir: string): string[] {
+	if (!existsSync(metricsDir)) {
+		return [];
+	}
+
+	return readdirSync(metricsDir)
+		.filter((f) => f.startsWith("scheduler-metrics-") && f.endsWith(".jsonl"))
+		.map((f) => join(metricsDir, f))
+		.sort((a, b) => b.localeCompare(a)); // 新しい順
+}
+
+/**
+ * MetricsCollectorイベントをLogEvent形式に変換
+ * @summary メトリクスイベント変換
+ * @param entry MetricsCollectorから読み込んだエントリ
+ * @param lineIndex 行番号
+ * @returns LogEventまたはnull
+ */
+function convertMetricsEntryToLogEvent(
+	entry: Record<string, unknown>,
+	lineIndex: number
+): LogEvent | null {
+	const type = entry.type as string;
+	if (!type) return null;
+
+	const timestamp = typeof entry.timestamp === "number"
+		? new Date(entry.timestamp).toISOString()
+		: new Date().toISOString();
+
+	const baseEvent = {
+		eventId: `metrics-${lineIndex}-${Date.now()}`,
+		sessionId: "metrics-collector",
+		taskId: (entry.taskId as string) || "unknown",
+		operationId: `metrics-op-${lineIndex}`,
+		timestamp,
+		component: {
+			type: "extension" as const,
+			name: "metrics-collector",
+		},
+	};
+
+	switch (type) {
+		case "preemption":
+			return {
+				...baseEvent,
+				eventType: "preemption",
+				data: {
+					taskId: (entry.taskId as string) || "unknown",
+					reason: (entry.reason as string) || "unknown",
+				},
+			} as LogEvent;
+
+		case "work_steal":
+			return {
+				...baseEvent,
+				eventType: "work_steal",
+				data: {
+					sourceInstance: (entry.sourceInstance as string) || "unknown",
+					taskId: (entry.taskId as string) || "unknown",
+				},
+			} as LogEvent;
+
+		case "task_completion":
+			return {
+				...baseEvent,
+				eventType: "task_completion",
+				data: {
+					taskId: (entry.taskId as string) || "unknown",
+					source: (entry.source as string) || "unknown",
+					provider: (entry.provider as string) || "unknown",
+					model: (entry.model as string) || "unknown",
+					priority: (entry.priority as string) || "unknown",
+					waitedMs: (entry.waitedMs as number) || 0,
+					executionMs: (entry.executionMs as number) || 0,
+					success: (entry.success as boolean) ?? false,
+				},
+			} as LogEvent;
+
+		case "metrics_snapshot":
+			return {
+				...baseEvent,
+				eventType: "metrics_snapshot",
+				data: {
+					memoryUsageMB: 0,
+					cpuPercent: 0,
+					eventsTotal: 0,
+					tasksCompleted: (entry.tasksCompletedPerMin as number) || 0,
+					operationsCompleted: 0,
+					toolCallsTotal: 0,
+					tokensTotal: 0,
+					errorRate: 0,
+					avgResponseTimeMs: (entry.avgWaitMs as number) || 0,
+					p95ResponseTimeMs: (entry.p99WaitMs as number) || 0,
+				},
+			} as LogEvent;
+
+		case "rate_limit_hit":
+			// rate_limit_hitイベントはMetricsSnapshotEventとして扱う
+			// (EventTypeにrate_limit_hitがないため、metrics_snapshotとして記録)
+			return {
+				...baseEvent,
+				eventType: "metrics_snapshot",
+				data: {
+					memoryUsageMB: 0,
+					cpuPercent: 0,
+					eventsTotal: 0,
+					tasksCompleted: 0,
+					operationsCompleted: 0,
+					toolCallsTotal: 0,
+					tokensTotal: 0,
+					errorRate: 0,
+					avgResponseTimeMs: 0,
+					p95ResponseTimeMs: 0,
+				},
+			} as LogEvent;
+
+		default:
+			return null;
+	}
+}
+
+/**
+ * メトリクスファイルを読み込んでイベントをパース
+ * @summary メトリクスファイルをパース
+ * @param filePath ファイルパス
+ * @returns パース結果
+ */
+function parseMetricsFile(filePath: string): ParseResult {
+	const result: ParseResult = {
+		events: [],
+		parseErrors: 0,
+		incompleteLines: 0,
+	};
+
+	if (!existsSync(filePath)) {
+		return result;
+	}
+
+	const text = readFileSync(filePath, "utf-8");
+	const lines = text.split("\n").filter(Boolean);
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		if (!line) continue;
+
+		// 行整合性チェック
+		if (!line.endsWith("}")) {
+			result.incompleteLines++;
+			continue;
+		}
+
+		try {
+			const entry = JSON.parse(line) as Record<string, unknown>;
+			const event = convertMetricsEntryToLogEvent(entry, i);
+			if (event) {
+				result.events.push(event);
+			}
+		} catch {
+			result.parseErrors++;
+		}
+	}
+
+	return result;
+}
+
+/**
+ * 日付範囲から対象メトリクスファイルを特定
+ * @summary 対象メトリクスファイル特定
+ * @param metricsDir メトリクスディレクトリ
+ * @param from 開始日時
+ * @param to 終了日時
+ * @returns ファイルパスの配列
+ */
+function getTargetMetricsFiles(
+	metricsDir: string,
+	from?: string,
+	to?: string
+): string[] {
+	const allFiles = listMetricsFiles(metricsDir);
+
+	if (!from && !to) {
+		return allFiles;
+	}
+
+	const fromDate = from ? new Date(from) : null;
+	const toDate = to ? new Date(to) : null;
+
+	return allFiles.filter((file) => {
+		// ファイル名から日付を抽出: scheduler-metrics-YYYY-MM-DD.jsonl
+		const match = file.match(/scheduler-metrics-(\d{4}-\d{2}-\d{2})(?:-\d+)?\.jsonl$/);
+		if (!match) return false;
+
+		const fileDate = new Date(match[1]);
+		if (fromDate && fileDate < fromDate) return false;
+		if (toDate && fileDate > toDate) return false;
+		return true;
+	});
+}
+
 /**
  * 日付範囲から対象ログファイルを特定
  */
@@ -694,6 +924,7 @@ function calculateStats(events: LogEvent[]): ObservabilityStats {
  */
 function queryObservabilityData(query: ObservabilityQuery): ObservabilityResult {
     const logDir = getLogDir();
+    const metricsDir = getMetricsDir();
     const filesRead: string[] = [];
     
     // 全イベントを収集（パース統計も追跡）
@@ -729,6 +960,21 @@ function queryObservabilityData(query: ObservabilityQuery): ObservabilityResult 
         }
     }
     
+    // MetricsCollectorイベントも読み込む（デフォルトで有効）
+    if (query.includeMetrics !== false) {
+        const metricsFiles = getTargetMetricsFiles(metricsDir, query.from, query.to);
+        
+        for (const file of metricsFiles) {
+            const result = parseMetricsFile(file);
+            if (result.events.length > 0) {
+                allEvents = allEvents.concat(result.events);
+                filesRead.push(file);
+            }
+            totalParseErrors += result.parseErrors;
+            totalIncompleteLines += result.incompleteLines;
+        }
+    }
+    
     // フィルタリング
     const filteredEvents = filterEvents(allEvents, query);
     
@@ -747,6 +993,7 @@ function queryObservabilityData(query: ObservabilityQuery): ObservabilityResult 
         stats,
         query,
         logDir,
+        metricsDir,
         filesRead,
         parseStats: {
             totalParseErrors,
@@ -767,6 +1014,7 @@ const ObservabilityDataParams = Type.Object({
     limit: Type.Optional(Type.Number()),
     includeStats: Type.Optional(Type.Boolean()),
     trialDir: Type.Optional(Type.String()),
+    includeMetrics: Type.Optional(Type.Boolean()),
 });
 // ============================================
 // Extension Registration
@@ -793,7 +1041,8 @@ export default function (pi: ExtensionAPI): void {
         description:
             "ComprehensiveLoggerが記録したイベントログをクエリしてobservabilityデータを取得する。" +
             "イベントタイプ、タスクID、セッションID、日時範囲でフィルタリング可能。" +
-            "trialDirを指定すると、terminal-bench実験のpi-events.jsonlからLLMメトリクスを取得可能。",
+            "trialDirを指定すると、terminal-bench実験のpi-events.jsonlからLLMメトリクスを取得可能。" +
+            "デフォルトでMetricsCollector(.pi/metrics/)のイベント(preemption, work_steal, task_completion)も統合して返す。",
         parameters: ObservabilityDataParams,
         async execute(toolCallId, params, signal, onUpdate, ctx) {
             const query = params as ObservabilityQuery;

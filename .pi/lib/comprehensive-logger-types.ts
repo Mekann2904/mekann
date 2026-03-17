@@ -63,7 +63,11 @@ export type EventType =
   | 'experiment_regressed'
   | 'experiment_timeout'
   | 'experiment_stop'
-  | 'experiment_crash';
+  | 'experiment_crash'
+  // スケジューラ (MetricsCollector)
+  | 'preemption'
+  | 'work_steal'
+  | 'task_completion';
 
 /**
  * コンポーネント型
@@ -638,6 +642,52 @@ export interface ExperimentCrashEvent extends BaseEvent {
 }
 
 // ============================================
+// スケジューライベント (MetricsCollector)
+// ============================================
+
+/**
+ * プリエンプションイベント
+ * @summary タスクがプリエンプションされた
+ */
+export interface PreemptionEvent extends BaseEvent {
+  eventType: 'preemption';
+  data: {
+    taskId: string;
+    reason: string;
+  };
+}
+
+/**
+ * ワークスチールイベント
+ * @summary 他インスタンスからタスクを盗用した
+ */
+export interface WorkStealEvent extends BaseEvent {
+  eventType: 'work_steal';
+  data: {
+    sourceInstance: string;
+    taskId: string;
+  };
+}
+
+/**
+ * タスク完了イベント（スケジューラ）
+ * @summary タスクが完了した
+ */
+export interface TaskCompletionEvent extends BaseEvent {
+  eventType: 'task_completion';
+  data: {
+    taskId: string;
+    source: string;
+    provider: string;
+    model: string;
+    priority: string;
+    waitedMs: number;
+    executionMs: number;
+    success: boolean;
+  };
+}
+
+// ============================================
 // 統合型
 // ============================================
 
@@ -670,7 +720,10 @@ export type LogEvent =
   | ExperimentRegressedEvent
   | ExperimentTimeoutEvent
   | ExperimentStopEvent
-  | ExperimentCrashEvent;
+  | ExperimentCrashEvent
+  | PreemptionEvent
+  | WorkStealEvent
+  | TaskCompletionEvent;
 
 // ============================================
 // 設定型
