@@ -47,10 +47,12 @@ export interface SSEEvent {
 
 /**
  * @summary SSE client connection
+ * @description Tracks last successful write time for stale client detection
  */
 interface SSEClient {
   id: string;
   res: Response;
+  /** Last successful write timestamp, used for stale client cleanup */
   lastHeartbeat: number;
 }
 
@@ -78,13 +80,17 @@ export class SSEEventBus {
 
   /**
    * @summary Broadcast event to all connected clients
+   * @description Updates lastHeartbeat on successful write to track active clients
    */
   broadcast(event: SSEEvent): void {
     const eventStr = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\nid: ${event.timestamp}\n\n`;
+    const now = Date.now();
 
     for (const [id, client] of this.clients) {
       try {
         client.res.write(eventStr);
+        // Update lastHeartbeat on successful write to track active clients
+        client.lastHeartbeat = now;
       } catch (error) {
         // Client disconnected, remove it
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -96,13 +102,27 @@ export class SSEEventBus {
 
   /**
    * @summary Start heartbeat interval (30 seconds)
+   * @description Broadcasts heartbeat and removes stale clients (90s timeout = 3 missed heartbeats)
    */
   startHeartbeat(): void {
+    const CLIENT_TIMEOUT_MS = 90000; // 90 seconds = 3 missed heartbeats
+
     this.heartbeatInterval = setInterval(() => {
+      const now = Date.now();
+
+      // Proactively remove stale clients that haven't responded within timeout
+      for (const [id, client] of this.clients) {
+        const staleDuration = now - client.lastHeartbeat;
+        if (staleDuration > CLIENT_TIMEOUT_MS) {
+          console.warn(`[web-ui] SSE client ${id} timed out after ${Math.round(staleDuration / 1000)}s of inactivity`);
+          this.clients.delete(id);
+        }
+      }
+
       this.broadcast({
         type: "heartbeat",
-        data: { timestamp: Date.now() },
-        timestamp: Date.now(),
+        data: { timestamp: now },
+        timestamp: now,
       });
     }, 30000);
   }
