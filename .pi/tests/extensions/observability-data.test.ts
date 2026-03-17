@@ -359,3 +359,196 @@ describe("TUI display - null safety", () => {
 		expect(ts).toBe("12:34:56.789");
 	});
 });
+
+describe("calculateStats - experiment event aggregation", () => {
+	it("should aggregate experiment_baseline events", () => {
+		const events = [
+			{
+				eventType: "experiment_baseline" as const,
+				eventId: "exp-1",
+				timestamp: "2026-03-16T10:00:00.000Z",
+				sessionId: "s1",
+				taskId: "t1",
+				operationId: "o1",
+				component: { type: "extension" as const, name: "autoresearch" },
+				data: {
+					experimentType: "e2e" as const,
+					label: "test-run",
+					score: { failed: 2, passed: 8, total: 10, durationMs: 5000 },
+					commit: "abc123",
+				},
+			},
+		];
+
+		const stats = calculateStats(events);
+
+		expect(stats.experimentCount).toBe(1);
+		expect(stats.improvementCount).toBe(0);
+		expect(stats.regressionCount).toBe(0);
+		expect(stats.experimentScores?.e2e).toBeDefined();
+		expect(stats.experimentScores?.e2e?.failed).toBe(2);
+		expect(stats.experimentScores?.e2e?.passed).toBe(8);
+		expect(stats.experimentScores?.e2e?.total).toBe(10);
+		expect(stats.experimentScores?.e2e?.durationMs).toBe(5000);
+		expect(stats.experimentScores?.e2e?.commit).toBe("abc123");
+	});
+
+	it("should track experiment_improved events", () => {
+		const events = [
+			{
+				eventType: "experiment_baseline" as const,
+				eventId: "exp-1",
+				timestamp: "2026-03-16T10:00:00.000Z",
+				sessionId: "s1",
+				taskId: "t1",
+				operationId: "o1",
+				component: { type: "extension" as const, name: "autoresearch" },
+				data: {
+					experimentType: "tbench" as const,
+					label: "bench-run",
+					score: { failed: 5, passed: 5, total: 10, durationMs: 3000 },
+				},
+			},
+			{
+				eventType: "experiment_improved" as const,
+				eventId: "exp-2",
+				timestamp: "2026-03-16T11:00:00.000Z",
+				sessionId: "s1",
+				taskId: "t1",
+				operationId: "o1",
+				component: { type: "extension" as const, name: "autoresearch" },
+				data: {
+					experimentType: "tbench" as const,
+					label: "bench-run",
+					previousScore: { failed: 5, passed: 5, total: 10, durationMs: 3000 },
+					newScore: { failed: 2, passed: 8, total: 10, durationMs: 2800 },
+					improvementType: "fewer_failures",
+					commit: "def456",
+				},
+			},
+		];
+
+		const stats = calculateStats(events);
+
+		expect(stats.experimentCount).toBe(2);
+		expect(stats.improvementCount).toBe(1);
+		expect(stats.regressionCount).toBe(0);
+		// 最新スコア（improved）が反映されている
+		expect(stats.experimentScores?.tbench?.failed).toBe(2);
+		expect(stats.experimentScores?.tbench?.passed).toBe(8);
+		expect(stats.experimentScores?.tbench?.commit).toBe("def456");
+	});
+
+	it("should track experiment_regressed events", () => {
+		const events = [
+			{
+				eventType: "experiment_baseline" as const,
+				eventId: "exp-1",
+				timestamp: "2026-03-16T10:00:00.000Z",
+				sessionId: "s1",
+				taskId: "t1",
+				operationId: "o1",
+				component: { type: "extension" as const, name: "autoresearch" },
+				data: {
+					experimentType: "e2e" as const,
+					label: "test-run",
+					score: { failed: 1, passed: 9, total: 10, durationMs: 4000 },
+				},
+			},
+			{
+				eventType: "experiment_regressed" as const,
+				eventId: "exp-2",
+				timestamp: "2026-03-16T11:00:00.000Z",
+				sessionId: "s1",
+				taskId: "t1",
+				operationId: "o1",
+				component: { type: "extension" as const, name: "autoresearch" },
+				data: {
+					experimentType: "e2e" as const,
+					label: "test-run",
+					previousScore: { failed: 1, passed: 9, total: 10, durationMs: 4000 },
+					newScore: { failed: 4, passed: 6, total: 10, durationMs: 4500 },
+					regressionType: "more_failures",
+				},
+			},
+		];
+
+		const stats = calculateStats(events);
+
+		expect(stats.experimentCount).toBe(2);
+		expect(stats.improvementCount).toBe(0);
+		expect(stats.regressionCount).toBe(1);
+		// 退行後のスコアが反映されている
+		expect(stats.experimentScores?.e2e?.failed).toBe(4);
+		expect(stats.experimentScores?.e2e?.passed).toBe(6);
+	});
+
+	it("should handle partial scores from experiment_timeout/stop/crash", () => {
+		const events = [
+			{
+				eventType: "experiment_timeout" as const,
+				eventId: "exp-1",
+				timestamp: "2026-03-16T10:00:00.000Z",
+				sessionId: "s1",
+				taskId: "t1",
+				operationId: "o1",
+				component: { type: "extension" as const, name: "autoresearch" },
+				data: {
+					experimentType: "e2e" as const,
+					label: "test-run",
+					iteration: 3,
+					timeoutMs: 300000,
+					partialScore: { failed: 3, passed: 5, total: 8, durationMs: 290000 },
+				},
+			},
+		];
+
+		const stats = calculateStats(events);
+
+		expect(stats.experimentCount).toBe(1);
+		expect(stats.experimentScores?.e2e?.failed).toBe(3);
+		expect(stats.experimentScores?.e2e?.passed).toBe(5);
+		expect(stats.experimentScores?.e2e?.total).toBe(8);
+	});
+
+	it("should track both e2e and tbench experiment types separately", () => {
+		const events = [
+			{
+				eventType: "experiment_baseline" as const,
+				eventId: "exp-1",
+				timestamp: "2026-03-16T10:00:00.000Z",
+				sessionId: "s1",
+				taskId: "t1",
+				operationId: "o1",
+				component: { type: "extension" as const, name: "autoresearch" },
+				data: {
+					experimentType: "e2e" as const,
+					label: "e2e-run",
+					score: { failed: 1, passed: 9, total: 10, durationMs: 1000 },
+				},
+			},
+			{
+				eventType: "experiment_baseline" as const,
+				eventId: "exp-2",
+				timestamp: "2026-03-16T11:00:00.000Z",
+				sessionId: "s1",
+				taskId: "t1",
+				operationId: "o1",
+				component: { type: "extension" as const, name: "autoresearch" },
+				data: {
+					experimentType: "tbench" as const,
+					label: "bench-run",
+					score: { failed: 2, passed: 8, total: 10, durationMs: 2000 },
+				},
+			},
+		];
+
+		const stats = calculateStats(events);
+
+		expect(stats.experimentCount).toBe(2);
+		expect(stats.experimentScores?.e2e).toBeDefined();
+		expect(stats.experimentScores?.tbench).toBeDefined();
+		expect(stats.experimentScores?.e2e?.failed).toBe(1);
+		expect(stats.experimentScores?.tbench?.failed).toBe(2);
+	});
+});

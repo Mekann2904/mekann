@@ -56,6 +56,35 @@ export interface ObservabilityQuery {
 	includeMetrics?: boolean;
 }
 
+/**
+ * 実験スコアの集計サマリー
+ * experiment_baseline/experiment_improved/experiment_regressedイベントから抽出
+ */
+export interface ExperimentScoreSummary {
+	/** 失敗したテスト数 */
+	failed: number;
+	/** 成功したテスト数 */
+	passed: number;
+	/** テスト総数 */
+	total: number;
+	/** 実行時間（ミリ秒） */
+	durationMs: number;
+	/** ベースライン記録のコミットハッシュ（利用可能な場合） */
+	commit?: string;
+	/** 記録時刻（イベントのtimestamp） */
+	recordedAt?: string;
+}
+
+/**
+ * 実験タイプ別スコア集計
+ */
+export interface ExperimentScores {
+	/** E2Eテストのスコアサマリー */
+	e2e?: ExperimentScoreSummary;
+	/** terminal-benchのスコアサマリー */
+	tbench?: ExperimentScoreSummary;
+}
+
 export interface ObservabilityStats {
 	totalEvents: number;
 	eventsByType: Record<string, number>;
@@ -71,6 +100,14 @@ export interface ObservabilityStats {
 	incompleteLines?: number;
 	/** リトライ後に回復した行数 */
 	recoveredLines?: number;
+	/** 実験イベント総数 */
+	experimentCount?: number;
+	/** 実験タイプ別スコア集計（ベースラインまたは最新スコア） */
+	experimentScores?: ExperimentScores;
+	/** 改善検出回数（experiment_improvedイベント数） */
+	improvementCount?: number;
+	/** 退行検出回数（experiment_regressedイベント数） */
+	regressionCount?: number;
 }
 
 export interface ObservabilityResult {
@@ -886,27 +923,40 @@ function calculateStats(events: LogEvent[]): ObservabilityStats {
         toolCallsCount: 0,
         llmCallsCount: 0,
         tasksCount: 0,
+        experimentCount: 0,
+        experimentScores: {},
+        improvementCount: 0,
+        regressionCount: 0,
     };
     const taskIds = new Set<string>();
+    
+    // 実験イベントの最新スコアを追跡（experimentTypeごと）
+    const latestScores: Map<string, ExperimentScoreSummary> = new Map();
+    
     for (const event of events) {
         // イベントタイプ別カウント
         stats.eventsByType[event.eventType] = (stats.eventsByType[event.eventType] || 0) + 1;
+        
         // エラーカウント
         if (event.eventType === "tool_error" || event.eventType === "llm_error") {
             stats.errorCount++;
         }
+        
         // ツール呼び出しカウント
         if (event.eventType === "tool_call") {
             stats.toolCallsCount++;
         }
+        
         // LLM呼び出しカウント
         if (event.eventType === "llm_request" || event.eventType === "llm_response") {
             stats.llmCallsCount++;
         }
+        
         // タスクID収集
         if (event.taskId) {
             taskIds.add(event.taskId);
         }
+        
         // 最初/最後のイベント時刻
         const ts = event.timestamp;
         if (!stats.firstEventAt || ts < stats.firstEventAt) {
@@ -915,8 +965,94 @@ function calculateStats(events: LogEvent[]): ObservabilityStats {
         if (!stats.lastEventAt || ts > stats.lastEventAt) {
             stats.lastEventAt = ts;
         }
+        
+        // 実験イベント集計
+        if (event.eventType.startsWith("experiment_")) {
+            stats.experimentCount!++;
+            
+            const data = event.data as Record<string, unknown>;
+            const experimentType = data?.experimentType as 'e2e' | 'tbench' | undefined;
+            
+            if (!experimentType) continue;
+            
+            // experiment_baseline: ベースラインスコアを記録
+            if (event.eventType === "experiment_baseline") {
+                const score = data?.score as { failed: number; passed: number; total: number; durationMs: number } | undefined;
+                if (score) {
+                    latestScores.set(experimentType, {
+                        failed: score.failed,
+                        passed: score.passed,
+                        total: score.total,
+                        durationMs: score.durationMs,
+                        commit: data?.commit as string | undefined,
+                        recordedAt: event.timestamp,
+                    });
+                }
+            }
+            
+            // experiment_improved: 新しいスコアで更新
+            if (event.eventType === "experiment_improved") {
+                stats.improvementCount!++;
+                const newScore = data?.newScore as { failed: number; passed: number; total: number; durationMs: number } | undefined;
+                if (newScore) {
+                    latestScores.set(experimentType, {
+                        failed: newScore.failed,
+                        passed: newScore.passed,
+                        total: newScore.total,
+                        durationMs: newScore.durationMs,
+                        commit: data?.commit as string | undefined,
+                        recordedAt: event.timestamp,
+                    });
+                }
+            }
+            
+            // experiment_regressed: 新しいスコアで更新（退行だが現在の状態を反映）
+            if (event.eventType === "experiment_regressed") {
+                stats.regressionCount!++;
+                const newScore = data?.newScore as { failed: number; passed: number; total: number; durationMs: number } | undefined;
+                if (newScore) {
+                    latestScores.set(experimentType, {
+                        failed: newScore.failed,
+                        passed: newScore.passed,
+                        total: newScore.total,
+                        durationMs: newScore.durationMs,
+                        commit: data?.commit as string | undefined,
+                        recordedAt: event.timestamp,
+                    });
+                }
+            }
+            
+            // experiment_timeout/stop/crash: 部分スコアがあれば更新
+            if (event.eventType === "experiment_timeout" || 
+                event.eventType === "experiment_stop" || 
+                event.eventType === "experiment_crash") {
+                const partialScore = data?.partialScore as { failed: number; passed: number; total: number; durationMs: number } | undefined;
+                if (partialScore) {
+                    latestScores.set(experimentType, {
+                        failed: partialScore.failed,
+                        passed: partialScore.passed,
+                        total: partialScore.total,
+                        durationMs: partialScore.durationMs,
+                        recordedAt: event.timestamp,
+                    });
+                }
+            }
+        }
     }
+    
     stats.tasksCount = taskIds.size;
+    
+    // 収集したスコアをexperimentScoresに反映
+    if (latestScores.size > 0) {
+        const e2eScore = latestScores.get('e2e');
+        const tbenchScore = latestScores.get('tbench');
+        
+        stats.experimentScores = {
+            ...(e2eScore && { e2e: e2eScore }),
+            ...(tbenchScore && { tbench: tbenchScore }),
+        };
+    }
+    
     return stats;
 }
 /**
