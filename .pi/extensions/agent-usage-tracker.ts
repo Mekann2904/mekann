@@ -216,6 +216,47 @@ function createEmptyState(timestamp = nowIso()): UsageTrackerState {
   };
 }
 
+/**
+ * BUG-FIX: persisted FeatureMetricsの検証
+ * @summary FeatureMetricsオブジェクトを検証
+ * @param raw - 検証対象のオブジェクト
+ * @returns 検証済みのFeatureMetricsまたはundefined
+ */
+function validateFeatureMetrics(raw: unknown): FeatureMetrics | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const obj = raw as Record<string, unknown>;
+
+  // 必須フィールドの検証
+  const extension = typeof obj.extension === "string" && obj.extension.trim() ? obj.extension.trim() : undefined;
+  const featureName = typeof obj.featureName === "string" && obj.featureName.trim() ? obj.featureName.trim() : undefined;
+  const featureType = obj.featureType === "tool" || obj.featureType === "agent_run" ? obj.featureType : undefined;
+
+  if (!extension || !featureName || !featureType) return undefined;
+
+  // 数値フィールドの検証（NaN防止）
+  const calls = Number(obj.calls) || 0;
+  const errors = Number(obj.errors) || 0;
+  const contextSamples = Number(obj.contextSamples) || 0;
+  const contextRatioSum = Number(obj.contextRatioSum) || 0;
+  const contextTokenSamples = Number(obj.contextTokenSamples) || 0;
+  const contextTokenSum = Number(obj.contextTokenSum) || 0;
+
+  return {
+    extension,
+    featureType,
+    featureName,
+    calls,
+    errors,
+    contextSamples,
+    contextRatioSum,
+    contextTokenSamples,
+    contextTokenSum,
+    lastUsedAt: typeof obj.lastUsedAt === "string" ? obj.lastUsedAt : undefined,
+    lastErrorAt: typeof obj.lastErrorAt === "string" ? obj.lastErrorAt : undefined,
+    lastErrorMessage: typeof obj.lastErrorMessage === "string" ? obj.lastErrorMessage : undefined,
+  };
+}
+
 function loadState(storageFile: string): UsageTrackerState {
   if (!existsSync(storageFile)) {
     return createEmptyState();
@@ -231,6 +272,15 @@ function loadState(storageFile: string): UsageTrackerState {
       parsed.features &&
       Array.isArray(parsed.events)
     ) {
+      // featuresの検証: 不正なエントリを除外
+      const validatedFeatures: Record<string, FeatureMetrics> = {};
+      for (const [key, rawFeature] of Object.entries(parsed.features)) {
+        const validated = validateFeatureMetrics(rawFeature);
+        if (validated) {
+          validatedFeatures[key] = validated;
+        }
+      }
+
       return {
         version: STATE_VERSION,
         createdAt: typeof parsed.createdAt === "string" ? parsed.createdAt : nowIso(),
@@ -245,7 +295,7 @@ function loadState(storageFile: string): UsageTrackerState {
           contextTokenSamples: Number(parsed.totals.contextTokenSamples) || 0,
           contextTokenSum: Number(parsed.totals.contextTokenSum) || 0,
         },
-        features: parsed.features as Record<string, FeatureMetrics>,
+        features: validatedFeatures,
         events: parsed.events.slice(-MAX_EVENT_HISTORY) as UsageEventRecord[],
       };
     }
@@ -655,6 +705,17 @@ function aggregateByExtension(features: FeatureMetrics[]): Array<{
   }>();
 
   for (const feature of features) {
+    // BUG-FIX: 不正なデータをスキップ（NaN/undefined防止）
+    if (!feature.extension || typeof feature.extension !== "string" || !feature.extension.trim()) {
+      continue;
+    }
+
+    // 数値フィールドの防御的チェック
+    const calls = Number(feature.calls) || 0;
+    const errors = Number(feature.errors) || 0;
+    const contextSamples = Number(feature.contextSamples) || 0;
+    const contextRatioSum = Number(feature.contextRatioSum) || 0;
+
     if (!map.has(feature.extension)) {
       map.set(feature.extension, {
         extension: feature.extension,
@@ -666,10 +727,10 @@ function aggregateByExtension(features: FeatureMetrics[]): Array<{
       });
     }
     const row = map.get(feature.extension)!;
-    row.calls += feature.calls;
-    row.errors += feature.errors;
-    row.contextSamples += feature.contextSamples;
-    row.contextRatioSum += feature.contextRatioSum;
+    row.calls += calls;
+    row.errors += errors;
+    row.contextSamples += contextSamples;
+    row.contextRatioSum += contextRatioSum;
     row.featureCount += 1;
   }
 
