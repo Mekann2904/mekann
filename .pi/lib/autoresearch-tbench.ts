@@ -17,6 +17,23 @@ import { getLogger } from "./comprehensive-logger.js";
 import { ConfigurationError } from "./core/errors.js";
 import { atomicWriteTextFile } from "./storage/storage-lock.js";
 
+/**
+ * piイベントバスへ実験イベントを送信するヘルパー関数
+ * ComprehensiveLoggerはファイルへのログのみ行い、リアルタイムのイベント配信を行わないため、
+ * この関数でpi.events.emit()を呼び出してobservability-data等で購読可能にする
+ */
+function emitExperimentEvent(eventType: string, data: unknown): void {
+  // pi is a global object injected by the pi runtime
+  const pi = globalThis.pi;
+  if (pi?.events?.emit) {
+    try {
+      pi.events.emit(eventType, data);
+    } catch {
+      // Ignore emission errors - this is a best-effort notification
+    }
+  }
+}
+
 export interface AutoresearchTbenchScore {
   successCount: number;
   completedTrials: number;
@@ -1078,8 +1095,8 @@ export async function initAutoresearchTbench(
   writeAutoresearchTbenchState(cwd, state);
 
   // Emit experiment_start event
-  logger.logExperimentStart({
-    experimentType: 'tbench',
+  const startEventData = {
+    experimentType: 'tbench' as const,
     label: tag,
     tag,
     branch: branchName,
@@ -1091,7 +1108,9 @@ export async function initAutoresearchTbench(
       model: state.runConfig.model ?? undefined,
       nConcurrent: state.runConfig.nConcurrent ?? undefined,
     },
-  });
+  };
+  logger.logExperimentStart(startEventData);
+  emitExperimentEvent('experiment_start', startEventData);
   await logger.flush();
 
   return {
@@ -1134,12 +1153,14 @@ async function runBaselineLike(
     appendResultRow(cwd, label, "stopped", null, commit, run);
 
     // Emit experiment_stop event and flush
-    logger.logExperimentStop({
-      experimentType: 'tbench',
+    const stopEventData = {
+      experimentType: 'tbench' as const,
       label,
       iteration: state.experimentCount + 1,
-      reason: 'user_requested',
-    });
+      reason: 'user_requested' as const,
+    };
+    logger.logExperimentStop(stopEventData);
+    emitExperimentEvent('experiment_stop', stopEventData);
     await logger.flush();
 
     return {
@@ -1241,22 +1262,26 @@ export async function runAutoresearchTbench(
   if (run.stopped) {
     outcome = "stopped";
     // Emit experiment_stop event and flush
-    logger.logExperimentStop({
-      experimentType: 'tbench',
+    const stopEventData = {
+      experimentType: 'tbench' as const,
       label,
       iteration: state.experimentCount + 1,
-      reason: 'user_requested',
-    });
+      reason: 'user_requested' as const,
+    };
+    logger.logExperimentStop(stopEventData);
+    emitExperimentEvent('experiment_stop', stopEventData);
     await logger.flush();
   } else if (run.timedOut) {
     outcome = "timeout";
     // Emit experiment_timeout event
-    logger.logExperimentTimeout({
-      experimentType: 'tbench',
+    const timeoutEventData = {
+      experimentType: 'tbench' as const,
       label,
       iteration: state.experimentCount + 1,
       timeoutMs,
-    });
+    };
+    logger.logExperimentTimeout(timeoutEventData);
+    emitExperimentEvent('experiment_timeout', timeoutEventData);
     await logger.flush();
   } else if (run.summary) {
     score = run.summary.score;
@@ -1265,12 +1290,14 @@ export async function runAutoresearchTbench(
     // Crash case: no summary produced
     outcome = "crash";
     // Emit experiment_crash event and flush
-    logger.logExperimentCrash({
-      experimentType: 'tbench',
+    const crashEventData = {
+      experimentType: 'tbench' as const,
       label,
       iteration: state.experimentCount + 1,
       error: run.stderr?.slice(0, 500) || 'No result.json produced',
-    });
+    };
+    logger.logExperimentCrash(crashEventData);
+    emitExperimentEvent('experiment_crash', crashEventData);
     await logger.flush();
   }
 
@@ -1316,6 +1343,14 @@ export async function runAutoresearchTbench(
       commit,
       improvementType,
     });
+    emitExperimentEvent('experiment_improved', {
+      experimentType: 'tbench',
+      label,
+      previousScore: tbenchScoreToE2EFormat(previousScore),
+      newScore: tbenchScoreToE2EFormat(score),
+      commit,
+      improvementType,
+    });
     await logger.flush();
 
     return {
@@ -1349,6 +1384,14 @@ export async function runAutoresearchTbench(
     }
 
     logger.logExperimentRegressed({
+      experimentType: 'tbench',
+      label,
+      previousScore: tbenchScoreToE2EFormat(previousScore),
+      newScore: tbenchScoreToE2EFormat(score),
+      regressionType,
+      reverted: state.gitEnabled,
+    });
+    emitExperimentEvent('experiment_regressed', {
       experimentType: 'tbench',
       label,
       previousScore: tbenchScoreToE2EFormat(previousScore),
@@ -1420,12 +1463,14 @@ export async function autoAutoresearchTbench(
     const currentState = readAutoresearchTbenchState(cwd);
     if (currentState?.stopRequestedAt) {
       stopped = true;
-      logger.logExperimentStop({
-        experimentType: 'tbench',
+      const stopEventData = {
+        experimentType: 'tbench' as const,
         label: options.label ?? 'auto',
         iteration,
-        reason: 'user_requested',
-      });
+        reason: 'user_requested' as const,
+      };
+      logger.logExperimentStop(stopEventData);
+      emitExperimentEvent('experiment_stop', stopEventData);
       await logger.flush();
       break;
     }
@@ -1433,24 +1478,28 @@ export async function autoAutoresearchTbench(
     // 改善タイムアウトをチェック
     const elapsedSinceImprovement = Date.now() - lastImprovementTime;
     if (elapsedSinceImprovement > improvementTimeoutMs && stalledCount > 0) {
-      logger.logExperimentStop({
-        experimentType: 'tbench',
+      const stopEventData = {
+        experimentType: 'tbench' as const,
         label: options.label ?? 'auto',
         iteration,
-        reason: 'improvement_timeout',
-      });
+        reason: 'improvement_timeout' as const,
+      };
+      logger.logExperimentStop(stopEventData);
+      emitExperimentEvent('experiment_stop', stopEventData);
       await logger.flush();
       break;
     }
 
     // max stalled iterations をチェック
     if (stalledCount >= maxStalledIterations) {
-      logger.logExperimentStop({
-        experimentType: 'tbench',
+      const stopEventData = {
+        experimentType: 'tbench' as const,
         label: options.label ?? 'auto',
         iteration,
-        reason: 'max_stalled',
-      });
+        reason: 'max_stalled' as const,
+      };
+      logger.logExperimentStop(stopEventData);
+      emitExperimentEvent('experiment_stop', stopEventData);
       await logger.flush();
       break;
     }
