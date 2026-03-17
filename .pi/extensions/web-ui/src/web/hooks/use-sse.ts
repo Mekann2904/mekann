@@ -181,7 +181,9 @@ export function useSSE(handlers?: SSEEventHandlers) {
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
+  // サーバーシャットダウンフラグ（意図的なシャットダウン時は再接続しない）
+  const serverShutdownRef = useRef(false);
+
   // イベントシーケンス追跡用の状態
   const sequenceStateRef = useRef<EventSequenceState>({
     lastProcessedTimestamp: new Map(),
@@ -253,6 +255,12 @@ export function useSSE(handlers?: SSEEventHandlers) {
    * 再接続
    */
   const reconnect = useCallback(() => {
+    // 意図的なサーバーシャットダウン時は再接続しない
+    if (serverShutdownRef.current) {
+      console.log("[SSE] Server shutdown detected, skipping reconnection");
+      return;
+    }
+
     if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
       setNotification({
         message: "SSE接続を復旧できませんでした",
@@ -276,6 +284,9 @@ export function useSSE(handlers?: SSEEventHandlers) {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }
+
+    // 新しい接続開始時にシャットダウンフラグをリセット
+    serverShutdownRef.current = false;
 
     const eventSource = new EventSource("/api/sse");
     eventSourceRef.current = eventSource;
@@ -321,6 +332,19 @@ export function useSSE(handlers?: SSEEventHandlers) {
     // ハートビート
     eventSource.addEventListener("heartbeat", () => {
       setLastReceived(Date.now());
+    });
+
+    // サーバーシャットダウン
+    eventSource.addEventListener("server_shutdown", (e: MessageEvent) => {
+      const data = safeJsonParse<{ reason?: string; timestamp?: number }>(
+        e.data,
+        {},
+        "server_shutdown"
+      );
+      console.log("[SSE] Server shutdown received:", data.reason);
+      serverShutdownRef.current = true;
+      setIsConnected(false);
+      handlers?.onDisconnected?.();
     });
 
     // 実験開始
