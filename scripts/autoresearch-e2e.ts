@@ -17,8 +17,9 @@ import {
   type AutoresearchE2EScore,
   type BehaviorMetricsSummary,
 } from "../.pi/lib/autoresearch-e2e.js";
-import { ComprehensiveLogger } from "../.pi/lib/comprehensive-logger.js";
+import { ComprehensiveLogger, getLogger } from "../.pi/lib/comprehensive-logger.js";
 import { loadRecentRecords } from "../.pi/lib/analytics/behavior-storage.js";
+import { setupGlobalErrorHandlers } from "../.pi/lib/global-error-handler.js";
 
 interface CliOptions {
   command: string;
@@ -60,6 +61,20 @@ const DEFAULT_PREFER_MS = 5 * 60 * 1000;
 
 // Initialize ComprehensiveLogger for experiment events
 const logger = new ComprehensiveLogger();
+
+// Setup global error handlers to catch unhandled rejections and uncaught exceptions
+setupGlobalErrorHandlers({
+  logger: (message: string, ..._args: unknown[]) => {
+    const comprehensiveLogger = getLogger();
+    comprehensiveLogger.logExperimentCrash({
+      experimentType: 'e2e',
+      label: 'global-error-handler',
+      iteration: 0,
+      error: message,
+    });
+  },
+  exitOnUncaught: false,
+});
 
 function nowIso(): string {
   return new Date().toISOString();

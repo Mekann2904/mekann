@@ -19,12 +19,29 @@ import {
   runAutoresearchTbench,
 } from "../lib/autoresearch-tbench.js";
 import { getLogger } from "../lib/comprehensive-logger.js";
+import { setupGlobalErrorHandlers } from "../lib/global-error-handler.js";
 import {
   createAutoresearchTbenchLiveMonitor,
   type AutoresearchTbenchLiveSnapshot,
   type AutoresearchTbenchTrialSnapshot,
 } from "../lib/autoresearch-tbench-live-monitor.js";
 import type { LiveMonitorContext } from "../lib/tui-types.js";
+
+/**
+ * グローバルエラーハンドラー設定済 * @summary 未処理の例外や未処理のPromise拒否を捕捉し、observabilityシステムに記録
+ */
+setupGlobalErrorHandlers({
+  logger: (message: string, ..._args: unknown[]) => {
+    const comprehensiveLogger = getLogger();
+    comprehensiveLogger.logExperimentCrash({
+      experimentType: 'tbench',
+      label: 'global-error-handler',
+      iteration: 0,
+      error: message,
+    });
+  },
+  exitOnUncaught: false,
+});
 
 let isInitialized = false;
 
