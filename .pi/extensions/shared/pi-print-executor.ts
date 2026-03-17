@@ -55,8 +55,8 @@ const PRINT_THROTTLE_STATE_FILE = join(PRINT_THROTTLE_RUNTIME_DIR, "pi-print-rpm
 const PI_CHILD_AGENT_DIR = join(process.cwd(), ".pi", "runtime", "pi-print-agent");
 const PI_CHILD_AGENT_SYNC_FILES = ["auth.json", "models.json"] as const;
 const PI_CHILD_AGENT_DISABLED_RESOURCE_KEYS = ["packages", "extensions", "skills", "prompts", "themes"] as const;
-const PI_PRINT_TRANSIENT_RETRY_LIMIT = 2;
-const PI_PRINT_TRANSIENT_RETRY_BASE_DELAY_MS = 1_000;
+const PI_PRINT_TRANSIENT_RETRY_LIMIT = parseNumberEnv("PI_PRINT_TRANSIENT_RETRY_LIMIT", 3);
+const PI_PRINT_TRANSIENT_RETRY_BASE_DELAY_MS = parseNumberEnv("PI_PRINT_TRANSIENT_RETRY_BASE_DELAY_MS", 2_000);
 const PRINT_THROTTLE_FILE_LOCK_OPTIONS = {
   maxWaitMs: 2_000,
   pollMs: 25,
