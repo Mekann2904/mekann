@@ -16,6 +16,7 @@ import {
 import { getLogger } from "./comprehensive-logger.js";
 import { ConfigurationError } from "./core/errors.js";
 import { atomicWriteTextFile } from "./storage/storage-lock.js";
+import { queryObservabilityData } from "../extensions/observability-data.js";
 
 /**
  * piイベントバスへ実験イベントを送信するヘルパー関数
@@ -31,6 +32,64 @@ function emitExperimentEvent(eventType: string, data: unknown): void {
     } catch {
       // Ignore emission errors - this is a best-effort notification
     }
+  }
+}
+
+/**
+ * 実験完了後にobservabilityデータを分析してログに記録する
+ * @summary observability統合分析
+ * @param experimentLabel 実験名
+ * @param outcome 実験結果
+ */
+async function analyzeExperimentObservability(experimentLabel: string, outcome: string): Promise<void> {
+  const logger = getLogger();
+  try {
+    // 直近の実験イベントをクエリ
+    const result = queryObservabilityData({
+      eventTypes: [
+        'experiment_start',
+        'experiment_baseline',
+        'experiment_run',
+        'experiment_improved',
+        'experiment_regressed',
+        'experiment_timeout',
+        'experiment_stop',
+        'experiment_crash',
+      ],
+      limit: 20,
+      includeStats: true,
+    });
+
+    // 統計情報をログに記録
+    const stats = result.stats;
+    if (stats && stats.totalEvents > 0) {
+      logger.logStateChange({
+        entityType: 'memory',
+        entityPath: `autoresearch-tbench/observability-analysis/${experimentLabel}`,
+        changeType: 'update',
+        beforeContent: JSON.stringify({ phase: 'pre-analysis' }),
+        afterContent: JSON.stringify({
+          phase: 'post-analysis',
+          experimentLabel,
+          outcome,
+          totalExperimentEvents: stats.totalEvents,
+          eventsByType: stats.eventsByType,
+          analyzedAt: new Date().toISOString(),
+        }),
+      });
+
+      // 改善/退行の傾向を分析
+      const improved = result.events.filter(e => e.eventType === 'experiment_improved').length;
+      const regressed = result.events.filter(e => e.eventType === 'experiment_regressed').length;
+      const crashes = result.events.filter(e => e.eventType === 'experiment_crash').length;
+
+      // 分析結果をコンソールにも出力（デバッグ用）
+      console.log(`[autoresearch-tbench] Observability analysis for ${experimentLabel}: ` +
+        `total=${stats.totalEvents}, improved=${improved}, regressed=${regressed}, crashes=${crashes}`);
+    }
+  } catch (error) {
+    // observability分析の失敗は実験フローを止めない
+    logger.warn(`Failed to analyze observability data for ${experimentLabel}: ${error}`);
   }
 }
 
@@ -1203,6 +1262,9 @@ async function runBaselineLike(
   });
   await logger.flush();
 
+  // Analyze observability data after baseline
+  await analyzeExperimentObservability(label, 'baseline');
+
   return {
     outcome: "baseline",
     score: run.summary.score,
@@ -1353,6 +1415,9 @@ export async function runAutoresearchTbench(
     });
     await logger.flush();
 
+    // Analyze observability data after improvement
+    await analyzeExperimentObservability(label, 'improved');
+
     return {
       outcome,
       score,
@@ -1401,6 +1466,9 @@ export async function runAutoresearchTbench(
     });
     await logger.flush();
   }
+
+  // Analyze observability data after run completion
+  await analyzeExperimentObservability(label, outcome);
 
   return {
     outcome,
@@ -1534,6 +1602,9 @@ export async function autoAutoresearchTbench(
   if (!finalState) {
     throw new Error("state lost after auto run");
   }
+
+  // Analyze observability data after auto run completion
+  await analyzeExperimentObservability(options.label ?? 'auto', stopped ? 'stopped' : 'completed');
 
   return {
     steps,
