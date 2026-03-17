@@ -371,6 +371,151 @@ function checkExtensionConfiguration(): DiagnosticResult {
 }
 
 /**
+ * autoresearch-tbench と observability-data の設定互換性を検証する
+ *
+ * autoresearch は高スループットのイベントを生成するため、logger の設定が
+ * 適切でない場合、バッファオーバーフローやイベント損失が発生する可能性がある。
+ */
+function checkAutoresearchLoggerCompatibility(): DiagnosticResult {
+  const issues: string[] = [];
+  const warnings: string[] = [];
+
+  // autoresearch-tbench の推奨設定閾値
+  // 実験中は多数のイベントが短時間に生成されるため、十分なバッファサイズと
+  // 適切なフラッシュ間隔が必要
+  const AUTORESEARCH_MIN_BUFFER_SIZE = 200;
+  const AUTORESEARCH_MAX_FLUSH_INTERVAL_MS = 10000;
+  const AUTORESEARCH_RECOMMENDED_BUFFER_SIZE = 500;
+  const AUTORESEARCH_RECOMMENDED_FLUSH_INTERVAL_MS = 5000;
+
+  try {
+    // 1. autoresearch-tbench 拡張機能がロードされているか確認
+    let autoresearchLoaded = false;
+    try {
+      const autoresearchModule = require("./autoresearch-tbench") as {
+        default?: unknown;
+      };
+      autoresearchLoaded = autoresearchModule.default !== undefined;
+    } catch {
+      // autoresearch がロードされていない場合はチェックをスキップ
+      return {
+        category: "Cross-Extension Config",
+        severity: "low",
+        issue: "Autoresearch-Logger Config Contract",
+        description: "autoresearch-tbench 拡張機能がロードされていないため互換性チェックをスキップ",
+        recommendation: "autoresearch-tbench を使用する場合は設定互換性を確認してください",
+        detected: false,
+        details: "autoresearch-tbench not loaded - config compatibility check skipped",
+      };
+    }
+
+    if (!autoresearchLoaded) {
+      return {
+        category: "Cross-Extension Config",
+        severity: "low",
+        issue: "Autoresearch-Logger Config Contract",
+        description: "autoresearch-tbench 拡張機能が初期化されていないため互換性チェックをスキップ",
+        recommendation: "autoresearch-tbench を使用する場合は設定互換性を確認してください",
+        detected: false,
+        details: "autoresearch-tbench not initialized - config compatibility check skipped",
+      };
+    }
+
+    // 2. logger 設定を読み込み
+    const config = loadConfigFromEnv(DEFAULT_CONFIG);
+
+    // 3. bufferSize の互換性チェック
+    if (config.bufferSize < AUTORESEARCH_MIN_BUFFER_SIZE) {
+      issues.push(
+        `bufferSize (${config.bufferSize}) is below autoresearch minimum (${AUTORESEARCH_MIN_BUFFER_SIZE}). ` +
+        `High-throughput experiments may cause buffer overflow and event loss. ` +
+        `Recommended: >= ${AUTORESEARCH_RECOMMENDED_BUFFER_SIZE}`
+      );
+    } else if (config.bufferSize < AUTORESEARCH_RECOMMENDED_BUFFER_SIZE) {
+      warnings.push(
+        `bufferSize (${config.bufferSize}) is below recommended for autoresearch (${AUTORESEARCH_RECOMMENDED_BUFFER_SIZE}). ` +
+        `Consider increasing for high-throughput experiments.`
+      );
+    }
+
+    // 4. flushIntervalMs の互換性チェック
+    if (config.flushIntervalMs > AUTORESEARCH_MAX_FLUSH_INTERVAL_MS) {
+      issues.push(
+        `flushIntervalMs (${config.flushIntervalMs}ms) exceeds autoresearch maximum (${AUTORESEARCH_MAX_FLUSH_INTERVAL_MS}ms). ` +
+        `Events may be delayed beyond experiment lifecycle. ` +
+        `Recommended: <= ${AUTORESEARCH_RECOMMENDED_FLUSH_INTERVAL_MS}ms`
+      );
+    } else if (config.flushIntervalMs > AUTORESEARCH_RECOMMENDED_FLUSH_INTERVAL_MS) {
+      warnings.push(
+        `flushIntervalMs (${config.flushIntervalMs}ms) is above recommended for autoresearch (${AUTORESEARCH_RECOMMENDED_FLUSH_INTERVAL_MS}ms). ` +
+        `Consider reducing for faster event persistence.`
+      );
+    }
+
+    // 5. logger 初期化状態の確認
+    try {
+      const loggerModule = require("../lib/comprehensive-logger") as {
+        getLogger?: () => { getPendingEventsCount?: () => number };
+      };
+      if (typeof loggerModule.getLogger === "function") {
+        const logger = loggerModule.getLogger();
+        if (typeof logger.getPendingEventsCount === "function") {
+          const pendingCount = logger.getPendingEventsCount();
+          if (pendingCount > config.bufferSize * 0.8) {
+            warnings.push(
+              `Logger buffer is ${Math.round((pendingCount / config.bufferSize) * 100)}% full (${pendingCount}/${config.bufferSize}). ` +
+              `Consider flushing before starting autoresearch experiments.`
+            );
+          }
+        }
+      }
+    } catch {
+      warnings.push("Could not verify logger initialization state");
+    }
+
+    // 6. 結果の構築
+    const hasIssues = issues.length > 0;
+    const hasWarnings = warnings.length > 0;
+    const details = [
+      ...issues.map((i) => `[ERROR] ${i}`),
+      ...warnings.map((w) => `[WARN] ${w}`),
+      `[INFO] autoresearch-tbench loaded: ${autoresearchLoaded}`,
+      `[INFO] Current bufferSize: ${config.bufferSize} (min: ${AUTORESEARCH_MIN_BUFFER_SIZE}, recommended: ${AUTORESEARCH_RECOMMENDED_BUFFER_SIZE})`,
+      `[INFO] Current flushIntervalMs: ${config.flushIntervalMs}ms (max: ${AUTORESEARCH_MAX_FLUSH_INTERVAL_MS}ms, recommended: ${AUTORESEARCH_RECOMMENDED_FLUSH_INTERVAL_MS}ms)`,
+    ].join("\n");
+
+    return {
+      category: "Cross-Extension Config",
+      severity: hasIssues ? "high" : hasWarnings ? "medium" : "low",
+      issue: "Autoresearch-Logger Config Contract",
+      description: hasIssues
+        ? "Logger configuration is incompatible with autoresearch-tbench requirements"
+        : hasWarnings
+          ? "Logger configuration may cause issues with autoresearch-tbench"
+          : "Logger configuration is compatible with autoresearch-tbench",
+      recommendation: hasIssues
+        ? `Update PI_LOG_BUFFER_SIZE to >= ${AUTORESEARCH_MIN_BUFFER_SIZE} and PI_LOG_FLUSH_INTERVAL_MS to <= ${AUTORESEARCH_MAX_FLUSH_INTERVAL_MS}ms`
+        : hasWarnings
+          ? "Consider adjusting logger configuration for optimal autoresearch performance"
+          : "No configuration changes needed",
+      detected: hasIssues,
+      details,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return {
+      category: "Cross-Extension Config",
+      severity: "high",
+      issue: "Autoresearch-Logger Config Contract",
+      description: `Failed to validate autoresearch-logger compatibility: ${errorMessage}`,
+      recommendation: "Check comprehensive-logger module and configuration",
+      detected: true,
+      details: `Error: ${errorMessage}`,
+    };
+  }
+}
+
+/**
  * 拡張機能間の依存関係を検証する
  * autoresearch-tbench と observability-data の連携を確認
  */
@@ -487,6 +632,7 @@ export function runDiagnostics(): DiagnosticReport {
   results.push(checkParallelExecutionRisk());
   results.push(checkConfiguration());
   results.push(checkExtensionConfiguration());
+  results.push(checkAutoresearchLoggerCompatibility());
   results.push(checkCrossExtensionDependencies());
   results.push(checkUlModeState());
 
