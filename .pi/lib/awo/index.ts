@@ -202,6 +202,18 @@ export class AWOOrchestrator {
       registry: this.registry.getStats(),
     };
   }
+
+  /**
+   * Observabilityデータからトレースを復元
+   * @summary ComprehensiveLoggerのイベントからトレースを再構築
+   * @param query クエリ条件（省略時は直近7日間）
+   * @returns 復元されたトレース数
+   */
+  restoreFromObservability(
+    query?: import("../../extensions/observability-data.js").ObservabilityQuery
+  ): number {
+    return this.collector.restoreFromObservability(query);
+  }
 }
 
 /**

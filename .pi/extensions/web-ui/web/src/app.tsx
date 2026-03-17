@@ -37,7 +37,18 @@ interface ThemeSettings {
 /**
  * @summary SSE event types matching server-side SSEEventType
  */
-type SSEEventType = "status" | "tool-call" | "response" | "heartbeat" | "connected";
+type SSEEventType =
+  | "status"
+  | "tool-call"
+  | "response"
+  | "heartbeat"
+  | "connected"
+  | "experiment_start"
+  | "experiment_baseline"
+  | "experiment_run"
+  | "experiment_improved"
+  | "experiment_regressed"
+  | "experiment_timeout";
 
 /**
  * @summary SSE event structure from server
@@ -214,7 +225,19 @@ function useSSE(
         };
 
         // Handle all event types
-        const eventTypes: SSEEventType[] = ["status", "tool-call", "response", "heartbeat", "connected"];
+        const eventTypes: SSEEventType[] = [
+          "status",
+          "tool-call",
+          "response",
+          "heartbeat",
+          "connected",
+          "experiment_start",
+          "experiment_baseline",
+          "experiment_run",
+          "experiment_improved",
+          "experiment_regressed",
+          "experiment_timeout",
+        ];
         eventTypes.forEach((eventType) => {
           eventSource?.addEventListener(eventType, (e) => {
             try {
@@ -275,11 +298,21 @@ export function App() {
     });
   }, []);
 
-  // SSE event handler (for connection status only)
-  const handleSSEEvent = useCallback((_event: SSEEvent) => {
-    // SSE is used for connection status indicator only.
+  // SSE event handler
+  const handleSSEEvent = useCallback((event: SSEEvent) => {
+    // Handle experiment events
+    if (event.type.startsWith("experiment_")) {
+      const experimentData = event.data as {
+        experimentType?: string;
+        label?: string;
+        iteration?: number;
+      };
+      console.log(`[SSE] Experiment event: ${event.type}`, experimentData);
+      // Future: Could show toast notifications for experiment events
+      // when a proper event notification system is implemented
+    }
+    // Other events are used for connection status indicator only.
     // Individual pages poll /api endpoints for data (simpler, more reliable).
-    // Future: Could add SSE-driven updates for real-time data if needed.
   }, []);
 
   // Connect to SSE

@@ -63,6 +63,14 @@ function startHeartbeat(): void {
  * SSEサーバーのクリーンアップ（サーバー停止時に呼び出す）
  */
 export function cleanupSSE(): void {
+  // シャットダウンイベントをブロードキャスト（クライアントが再接続しないように通知）
+  if (sseClients.size > 0) {
+    broadcastSSE({
+      type: "server_shutdown",
+      data: { reason: "server_stopping", timestamp: Date.now() }
+    });
+  }
+
   if (heartbeatInterval) {
     clearInterval(heartbeatInterval);
     heartbeatInterval = null;

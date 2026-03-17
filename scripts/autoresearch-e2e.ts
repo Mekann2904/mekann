@@ -8,6 +8,7 @@
 import { mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
+import { request } from "node:http";
 
 import {
   determineAutoresearchOutcome,
@@ -15,8 +16,68 @@ import {
   parseVitestJsonReport,
   type AutoresearchE2EOutcome,
   type AutoresearchE2EScore,
+  type BehaviorMetricsSummary,
 } from "../.pi/lib/autoresearch-e2e.js";
-import { ComprehensiveLogger } from "../.pi/lib/comprehensive-logger.js";
+import { ComprehensiveLogger, getLogger } from "../.pi/lib/comprehensive-logger.js";
+import { loadRecentRecords } from "../.pi/lib/analytics/behavior-storage.js";
+import { setupGlobalErrorHandlers } from "../.pi/lib/global-error-handler.js";
+
+/**
+ * SSEイベントタイプ（SSEEventBusと整合）
+ */
+type SSEExperimentEventType =
+  | "experiment_start"
+  | "experiment_baseline"
+  | "experiment_run"
+  | "experiment_improved"
+  | "experiment_regressed"
+  | "experiment_timeout"
+  | "experiment_stop"
+  | "experiment_crash";
+
+/**
+ * SSEイベントをWeb UIサーバーに送信
+ * サーバーが起動していない場合はサイレントに無視
+ */
+async function emitSSEEvent(
+  type: SSEExperimentEventType,
+  data: Record<string, unknown>
+): Promise<void> {
+  const port = process.env.PI_WEB_UI_PORT ?? "3000";
+  const url = `http://127.0.0.1:${port}/api/v2/experiments/events`;
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type,
+        data,
+        timestamp: Date.now(),
+      }),
+      signal: AbortSignal.timeout(5000), // 5秒タイムアウト
+    });
+
+    if (!response.ok) {
+      process.stderr.write(
+        `[emitSSEEvent] Failed to send SSE event: ${response.status} ${response.statusText}\n`
+      );
+    }
+  } catch (error) {
+    // サーバーが起動していない場合はサイレントに無視
+    // ECONNREFUSED, ETIMEDOUT等は正常な状態として扱う
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (
+      !errorMessage.includes("ECONNREFUSED") &&
+      !errorMessage.includes("ETIMEDOUT") &&
+      !errorMessage.includes("abort")
+    ) {
+      process.stderr.write(`[emitSSEEvent] Error: ${errorMessage}\n`);
+    }
+  }
+}
 
 interface CliOptions {
   command: string;
@@ -59,12 +120,64 @@ const DEFAULT_PREFER_MS = 5 * 60 * 1000;
 // Initialize ComprehensiveLogger for experiment events
 const logger = new ComprehensiveLogger();
 
+// Setup global error handlers to catch unhandled rejections and uncaught exceptions
+setupGlobalErrorHandlers({
+  logger: (message: string, ..._args: unknown[]) => {
+    const comprehensiveLogger = getLogger();
+    comprehensiveLogger.logExperimentCrash({
+      experimentType: 'e2e',
+      label: 'global-error-handler',
+      iteration: 0,
+      error: message,
+    });
+  },
+  exitOnUncaught: false,
+});
+
 function nowIso(): string {
   return new Date().toISOString();
 }
 
 function ensureDir(path: string): void {
   mkdirSync(path, { recursive: true });
+}
+
+/**
+ * 直近の行動メトリクスを集計する
+ * @param limit 取得するレコード数
+ * @returns 行動メトリクスのサマリー（レコードがない場合はundefined）
+ */
+function aggregateBehaviorMetrics(limit: number = 50): BehaviorMetricsSummary | undefined {
+  const records = loadRecentRecords(limit, ROOT);
+
+  if (records.length === 0) {
+    return undefined;
+  }
+
+  let totalPromptTokens = 0;
+  let totalOutputTokens = 0;
+  let totalQualityScore = 0;
+  let totalExecutionMs = 0;
+
+  for (const record of records) {
+    totalPromptTokens += record.prompt.estimatedTokens;
+    totalOutputTokens += record.output.estimatedTokens;
+    // 品質スコアは複数の指標の平均
+    const quality = (record.quality.formatComplianceScore + record.quality.claimResultConsistency) / 2;
+    totalQualityScore += quality;
+    totalExecutionMs += record.execution.durationMs;
+  }
+
+  const count = records.length;
+
+  return {
+    recordCount: count,
+    avgPromptTokens: Math.round(totalPromptTokens / count),
+    avgOutputTokens: Math.round(totalOutputTokens / count),
+    avgQualityScore: Math.round((totalQualityScore / count) * 1000) / 1000, // 3桁精度
+    avgExecutionMs: Math.round(totalExecutionMs / count),
+    totalTokens: totalPromptTokens + totalOutputTokens,
+  };
 }
 
 function parseArgs(argv: string[]): { subcommand: string; options: CliOptions } {
@@ -139,7 +252,7 @@ function ensureResultsHeader(): void {
   ensureDir(dirname(RESULTS_TSV_PATH));
   appendFileSync(
     RESULTS_TSV_PATH,
-    "timestamp\tlabel\toutcome\tfailed\tpassed\ttotal\tduration_ms\tcommit\tlog_path\treport_path\n",
+    "timestamp\tlabel\toutcome\tfailed\tpassed\ttotal\tduration_ms\tbehavior_records\tavg_quality\ttotal_tokens\tcommit\tlog_path\treport_path\n",
     "utf-8",
   );
 }
@@ -250,6 +363,7 @@ function appendResultRow(
   artifacts: RunArtifacts,
 ): void {
   ensureResultsHeader();
+  const bm = score?.behaviorMetrics;
   appendFileSync(
     RESULTS_TSV_PATH,
     [
@@ -260,6 +374,9 @@ function appendResultRow(
       String(score?.passed ?? -1),
       String(score?.total ?? -1),
       String(score?.durationMs ?? -1),
+      String(bm?.recordCount ?? -1),
+      String(bm?.avgQualityScore ?? -1),
+      String(bm?.totalTokens ?? -1),
       commit,
       artifacts.logPath,
       artifacts.reportPath,
@@ -317,6 +434,20 @@ async function handleInit(options: CliOptions): Promise<void> {
       timeoutMs: options.timeoutMs,
     },
   });
+
+  // SSEイベント送信
+  await emitSSEEvent("experiment_start", {
+    experimentType: 'e2e',
+    label: options.label,
+    tag: options.tag,
+    branch: branchName,
+    targetCommit: head,
+    config: {
+      command: options.command,
+      timeoutMs: options.timeoutMs,
+    },
+  });
+
   await logger.flush();
 
   process.stdout.write(`initialized autoresearch e2e branch=${branchName} commit=${head}\n`);
@@ -336,14 +467,24 @@ async function handleBaseline(options: CliOptions): Promise<void> {
     throw new Error("baseline report file was not produced");
   }
 
-  const report = parseVitestJsonReport(readFileSync(run.artifacts.reportPath, "utf-8"));
+  const rawReport = readFileSync(run.artifacts.reportPath, "utf-8");
+  const report = parseVitestJsonReport(rawReport);
+  if (!report) {
+    throw new Error("baseline report file contains invalid JSON");
+  }
+  // 行動メトリクスを集計してスコアに追加
+  const behaviorMetrics = aggregateBehaviorMetrics();
+  const score: AutoresearchE2EScore = {
+    ...report.score,
+    behaviorMetrics,
+  };
   const head = await getHeadCommit();
   const nextState: ExperimentState = {
     ...state,
     updatedAt: nowIso(),
     bestCommit: head,
     baselineCommit: head,
-    bestScore: report.score,
+    bestScore: score,
     command: options.command || state.command,
     experimentCount: state.experimentCount + 1,
     lastOutcome: "baseline",
@@ -351,7 +492,7 @@ async function handleBaseline(options: CliOptions): Promise<void> {
     lastLogPath: run.artifacts.logPath,
   };
   writeState(nextState);
-  appendResultRow(options.label, "baseline", report.score, head, run.artifacts);
+  appendResultRow(options.label, "baseline", score, head, run.artifacts);
 
   // Emit experiment_baseline event
   logger.logExperimentBaseline({
@@ -365,6 +506,20 @@ async function handleBaseline(options: CliOptions): Promise<void> {
     },
     commit: head,
   });
+
+  // SSEイベント送信
+  await emitSSEEvent("experiment_baseline", {
+    experimentType: 'e2e',
+    label: options.label,
+    score: {
+      failed: report.score.failed,
+      passed: report.score.passed,
+      total: report.score.total,
+      durationMs: report.score.durationMs,
+    },
+    commit: head,
+  });
+
   await logger.flush();
 
   process.stdout.write(`baseline recorded ${formatAutoresearchScore(report.score)}\n`);
@@ -378,14 +533,35 @@ async function handleRun(options: CliOptions): Promise<void> {
 
   const candidateBaseCommit = await getHeadCommit();
   const command = options.command || state.command;
+  const newExperimentCount = state.experimentCount + 1;
 
-  // Emit experiment_run event
+  // Write state BEFORE emitting event (atomicity fix for crash drift)
+  // If crash occurs during runCommand(), state shows "running" outcome
+  writeState({
+    ...state,
+    updatedAt: nowIso(),
+    command,
+    experimentCount: newExperimentCount,
+    lastOutcome: "running",
+    lastLabel: options.label,
+  });
+
+  // Emit experiment_run event AFTER state is written
   logger.logExperimentRun({
     experimentType: 'e2e',
     label: options.label,
-    iteration: state.experimentCount + 1,
+    iteration: newExperimentCount,
     commit: candidateBaseCommit,
   });
+
+  // SSEイベント送信
+  await emitSSEEvent("experiment_run", {
+    experimentType: 'e2e',
+    label: options.label,
+    iteration: newExperimentCount,
+    commit: candidateBaseCommit,
+  });
+
   await logger.flush();
 
   const run = await runCommand(command, options.label, options.timeoutMs);
@@ -399,13 +575,50 @@ async function handleRun(options: CliOptions): Promise<void> {
     logger.logExperimentTimeout({
       experimentType: 'e2e',
       label: options.label,
-      iteration: state.experimentCount + 1,
+      iteration: newExperimentCount,
       timeoutMs: options.timeoutMs,
     });
+
+    // SSEイベント送信
+    await emitSSEEvent("experiment_timeout", {
+      experimentType: 'e2e',
+      label: options.label,
+      iteration: newExperimentCount,
+      timeoutMs: options.timeoutMs,
+    });
+
     await logger.flush();
   } else if (existsSync(run.artifacts.reportPath)) {
-    score = parseVitestJsonReport(readFileSync(run.artifacts.reportPath, "utf-8")).score;
-    outcome = determineAutoresearchOutcome(score, state.bestScore);
+    const rawReport = readFileSync(run.artifacts.reportPath, "utf-8");
+    const report = parseVitestJsonReport(rawReport);
+    if (report) {
+      // 行動メトリクスを集計してスコアに追加
+      const behaviorMetrics = aggregateBehaviorMetrics();
+      score = {
+        ...report.score,
+        behaviorMetrics,
+      };
+      outcome = determineAutoresearchOutcome(score, state.bestScore);
+    } else {
+      // JSONパース失敗時はcrash outcomeとして処理
+      outcome = "crash";
+      logger.logExperimentCrash({
+        experimentType: 'e2e',
+        label: options.label,
+        iteration: newExperimentCount,
+        error: "Invalid JSON in vitest report file",
+      });
+
+      // SSEイベント送信
+      await emitSSEEvent("experiment_crash", {
+        experimentType: 'e2e',
+        label: options.label,
+        iteration: newExperimentCount,
+        error: "Invalid JSON in vitest report file",
+      });
+
+      await logger.flush();
+    }
 
     // Emit result-specific events
     if (outcome === "improved") {
@@ -436,6 +649,26 @@ async function handleRun(options: CliOptions): Promise<void> {
         },
         improvementType,
       });
+
+      // SSEイベント送信
+      await emitSSEEvent("experiment_improved", {
+        experimentType: 'e2e',
+        label: options.label,
+        previousScore: {
+          failed: previousScore.failed,
+          passed: previousScore.passed,
+          total: previousScore.total,
+          durationMs: previousScore.durationMs,
+        },
+        newScore: {
+          failed: score.failed,
+          passed: score.passed,
+          total: score.total,
+          durationMs: score.durationMs,
+        },
+        improvementType,
+      });
+
       await logger.flush();
     } else if (outcome === "regressed") {
       const previousScore = state.bestScore || { failed: 0, passed: 0, total: 0, durationMs: 0 };
@@ -466,8 +699,47 @@ async function handleRun(options: CliOptions): Promise<void> {
         regressionType,
         reverted: false,
       });
+
+      // SSEイベント送信
+      await emitSSEEvent("experiment_regressed", {
+        experimentType: 'e2e',
+        label: options.label,
+        previousScore: {
+          failed: previousScore.failed,
+          passed: previousScore.passed,
+          total: previousScore.total,
+          durationMs: previousScore.durationMs,
+        },
+        newScore: {
+          failed: score.failed,
+          passed: score.passed,
+          total: score.total,
+          durationMs: score.durationMs,
+        },
+        regressionType,
+        reverted: false,
+      });
+
       await logger.flush();
     }
+  } else {
+    // outcome is still "crash" - emit experiment_crash event
+    logger.logExperimentCrash({
+      experimentType: 'e2e',
+      label: options.label,
+      iteration: newExperimentCount,
+      error: run.stderr || `exit_code=${run.exitCode}`,
+    });
+
+    // SSEイベント送信
+    await emitSSEEvent("experiment_crash", {
+      experimentType: 'e2e',
+      label: options.label,
+      iteration: newExperimentCount,
+      error: run.stderr || `exit_code=${run.exitCode}`,
+    });
+
+    await logger.flush();
   }
 
   if (options.git) {
@@ -481,7 +753,7 @@ async function handleRun(options: CliOptions): Promise<void> {
         bestCommit: committed,
         bestScore: score ?? state.bestScore,
         command,
-        experimentCount: state.experimentCount + 1,
+        experimentCount: newExperimentCount,
         lastOutcome: outcome,
         lastLabel: options.label,
         lastLogPath: run.artifacts.logPath,
@@ -498,7 +770,7 @@ async function handleRun(options: CliOptions): Promise<void> {
     ...state,
     updatedAt: nowIso(),
     command,
-    experimentCount: state.experimentCount + 1,
+    experimentCount: newExperimentCount,
     lastOutcome: outcome,
     lastLabel: options.label,
     lastLogPath: run.artifacts.logPath,
@@ -511,6 +783,36 @@ async function handleRun(options: CliOptions): Promise<void> {
   if (options.preferMs > 0 && score && score.durationMs > options.preferMs) {
     process.stdout.write(`warning=preferred budget exceeded prefer_ms=${options.preferMs}\n`);
   }
+
+  // Emit experiment_stop event at the end of every run
+  logger.logExperimentStop({
+    experimentType: 'e2e',
+    label: options.label,
+    iteration: newExperimentCount,
+    reason: outcome,
+    partialScore: score ? {
+      failed: score.failed,
+      passed: score.passed,
+      total: score.total,
+      durationMs: score.durationMs,
+    } : undefined,
+  });
+
+  // SSEイベント送信
+  await emitSSEEvent("experiment_stop", {
+    experimentType: 'e2e',
+    label: options.label,
+    iteration: newExperimentCount,
+    reason: outcome,
+    partialScore: score ? {
+      failed: score.failed,
+      passed: score.passed,
+      total: score.total,
+      durationMs: score.durationMs,
+    } : undefined,
+  });
+
+  await logger.flush();
 }
 
 function handleStatus(): void {

@@ -572,6 +572,30 @@ export class ComprehensiveLogger {
   }
 
   // ============================================
+  // コマンドエラー記録
+  // ============================================
+
+  /**
+   * コマンド引数エラーを記録する
+   * @summary コマンドエラー記録
+   * @param command コマンド名
+   * @param error エラーメッセージ
+   * @param args 元の引数文字列（オプション）
+   * @returns なし
+   * @fires command_error
+   */
+  recordCommandError(command: string, error: string, args?: string): void {
+    this.emit({
+      eventType: 'command_error',
+      data: {
+        command,
+        error,
+        args,
+      },
+    });
+  }
+
+  // ============================================
   // 実験イベント (autoresearch)
   // ============================================
 
@@ -817,8 +841,18 @@ export class ComprehensiveLogger {
       },
     };
     
-    this.buffer.push(fullEvent as LogEvent);
+    const logEvent = fullEvent as LogEvent;
+    this.buffer.push(logEvent);
     this.eventCounter++;
+    
+    // イベントリスナーに通知
+    for (const listener of eventListeners) {
+      try {
+        listener(logEvent);
+      } catch (err) {
+        console.error('[comprehensive-logger] Event listener error:', err);
+      }
+    }
     
     if (this.buffer.length >= this.config.bufferSize) {
       this.flush().catch(err => {
@@ -983,6 +1017,41 @@ export class ComprehensiveLogger {
   getPendingEventsCount(): number {
     return this.buffer.length;
   }
+}
+
+// ============================================
+// イベントリスナー
+// ============================================
+
+type LogEventListener = (event: LogEvent) => void;
+const eventListeners = new Set<LogEventListener>();
+
+/**
+ * ログイベントを購読する
+ * @summary イベント購読
+ * @param listener - イベントリスナー関数
+ * @returns 購読解除関数
+ */
+export function onLogEvent(listener: LogEventListener): () => void {
+  eventListeners.add(listener);
+  return () => eventListeners.delete(listener);
+}
+
+/**
+ * 実験イベントのみを購読するヘルパー
+ * @summary 実験イベント購読
+ * @param listener - 実験イベントリスナー関数
+ * @returns 購読解除関数
+ */
+export function onExperimentEvent(
+  listener: (event: { type: string; data: unknown }) => void
+): () => void {
+  const wrappedListener: LogEventListener = (event) => {
+    if (event.eventType.startsWith('experiment_')) {
+      listener({ type: event.eventType, data: event.data });
+    }
+  };
+  return onLogEvent(wrappedListener);
 }
 
 // ============================================

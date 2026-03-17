@@ -28,6 +28,9 @@ build/
 # Exception: web-ui dist is distributed pre-built
 !.pi/extensions/web-ui/dist/
 
+# Temporary experiment schema (generated during investigation)
+.pi/extensions/web-ui/src/schemas/experiment.schema.ts
+
 # Testing
 coverage/
 .nyc_output/
@@ -75,6 +78,10 @@ plans/*.md
 .pi/ul-workflow/tasks/*
 !.pi/ul-workflow/tasks/.gitkeep
 .pi/ul-workflow/active.json
+.pi/ul-workflow/investigation-result.json
+
+# Investigation reports (temporary investigation artifacts)
+.pi/investigation-reports/
 
 # Self-improvement loop runtime data
 .pi/self-improvement-loop/

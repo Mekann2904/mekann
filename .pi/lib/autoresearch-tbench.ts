@@ -14,6 +14,84 @@ import {
   type AutoresearchTbenchLiveSnapshot,
 } from "./autoresearch-tbench-live-monitor.js";
 import { getLogger } from "./comprehensive-logger.js";
+import { ConfigurationError } from "./core/errors.js";
+import { atomicWriteTextFile } from "./storage/storage-lock.js";
+import { queryObservabilityData } from "../extensions/observability-data.js";
+
+/**
+ * piイベントバスへ実験イベントを送信するヘルパー関数
+ * ComprehensiveLoggerはファイルへのログのみ行い、リアルタイムのイベント配信を行わないため、
+ * この関数でpi.events.emit()を呼び出してobservability-data等で購読可能にする
+ */
+function emitExperimentEvent(eventType: string, data: unknown): void {
+  // pi is a global object injected by the pi runtime
+  const pi = globalThis.pi;
+  if (pi?.events?.emit) {
+    try {
+      pi.events.emit(eventType, data);
+    } catch {
+      // Ignore emission errors - this is a best-effort notification
+    }
+  }
+}
+
+/**
+ * 実験完了後にobservabilityデータを分析してログに記録する
+ * @summary observability統合分析
+ * @param experimentLabel 実験名
+ * @param outcome 実験結果
+ */
+async function analyzeExperimentObservability(experimentLabel: string, outcome: string): Promise<void> {
+  const logger = getLogger();
+  try {
+    // 直近の実験イベントをクエリ
+    const result = queryObservabilityData({
+      eventTypes: [
+        'experiment_start',
+        'experiment_baseline',
+        'experiment_run',
+        'experiment_improved',
+        'experiment_regressed',
+        'experiment_timeout',
+        'experiment_stop',
+        'experiment_crash',
+      ],
+      limit: 20,
+      includeStats: true,
+    });
+
+    // 統計情報をログに記録
+    const stats = result.stats;
+    if (stats && stats.totalEvents > 0) {
+      logger.logStateChange({
+        entityType: 'memory',
+        entityPath: `autoresearch-tbench/observability-analysis/${experimentLabel}`,
+        changeType: 'update',
+        beforeContent: JSON.stringify({ phase: 'pre-analysis' }),
+        afterContent: JSON.stringify({
+          phase: 'post-analysis',
+          experimentLabel,
+          outcome,
+          totalExperimentEvents: stats.totalEvents,
+          eventsByType: stats.eventsByType,
+          analyzedAt: new Date().toISOString(),
+        }),
+      });
+
+      // 改善/退行の傾向を分析
+      const improved = result.events.filter(e => e.eventType === 'experiment_improved').length;
+      const regressed = result.events.filter(e => e.eventType === 'experiment_regressed').length;
+      const crashes = result.events.filter(e => e.eventType === 'experiment_crash').length;
+
+      // 分析結果をコンソールにも出力（デバッグ用）
+      console.log(`[autoresearch-tbench] Observability analysis for ${experimentLabel}: ` +
+        `total=${stats.totalEvents}, improved=${improved}, regressed=${regressed}, crashes=${crashes}`);
+    }
+  } catch (error) {
+    // observability分析の失敗は実験フローを止めない
+    logger.warn(`Failed to analyze observability data for ${experimentLabel}: ${error}`);
+  }
+}
 
 export interface AutoresearchTbenchScore {
   successCount: number;
@@ -160,6 +238,43 @@ export interface AutoresearchTbenchRunResult {
   run: AutoresearchTbenchExecutedRun;
   commit: string;
   preferredBudgetExceeded: boolean;
+}
+
+/**
+ * autoresearch-tbench auto モードのオプション
+ * @summary 自動改善ループの設定
+ */
+export interface AutoresearchTbenchAutoOptions {
+  label?: string;
+  iterations?: number;
+  timeoutMs?: number;
+  preferMs?: number;
+  improvementTimeoutMs?: number;
+  maxStalledIterations?: number;
+  commitMessage?: string;
+  provider?: string;
+  model?: string;
+  onSnapshot?: (snapshot: AutoresearchTbenchLiveSnapshot) => void;
+  onTextUpdate?: (text: string) => void;
+}
+
+/**
+ * autoresearch-tbench auto モードの各ステップ結果
+ * @summary 1回の反復の結果
+ */
+export interface AutoresearchTbenchAutoStep {
+  iteration: number;
+  benchmark: AutoresearchTbenchRunResult;
+}
+
+/**
+ * autoresearch-tbench auto モードの結果
+ * @summary 自動改善ループの最終結果
+ */
+export interface AutoresearchTbenchAutoResult {
+  steps: AutoresearchTbenchAutoStep[];
+  stopped: boolean;
+  state: AutoresearchTbenchState;
 }
 
 interface SpawnCaptureResult {
@@ -433,13 +548,19 @@ export function readAutoresearchTbenchState(cwd: string): AutoresearchTbenchStat
   if (!existsSync(statePath)) {
     return null;
   }
-  return JSON.parse(readFileSync(statePath, "utf-8")) as AutoresearchTbenchState;
+  try {
+    return JSON.parse(readFileSync(statePath, "utf-8")) as AutoresearchTbenchState;
+  } catch (error) {
+    const logger = getLogger();
+    logger.warn(`state.json corrupted, returning null: path=${statePath} error=${String(error)}`);
+    return null;
+  }
 }
 
 export function writeAutoresearchTbenchState(cwd: string, state: AutoresearchTbenchState): void {
   const { statePath } = getAutoresearchTbenchPaths(cwd);
   ensureParentDir(statePath);
-  writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf-8");
+  atomicWriteTextFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
 }
 
 function markActiveRun(cwd: string, state: AutoresearchTbenchState, label: string, pid: number): AutoresearchTbenchState {
@@ -452,15 +573,38 @@ function markActiveRun(cwd: string, state: AutoresearchTbenchState, label: strin
   };
   delete nextState.stopRequestedAt;
   writeAutoresearchTbenchState(cwd, nextState);
+
+  // Log phase transition to observability system
+  logger.logStateChange({
+    entityType: 'memory',
+    entityPath: `autoresearch-tbench/runs/${label}`,
+    changeType: 'update',
+    beforeContent: JSON.stringify({ phase: 'idle' }),
+    afterContent: JSON.stringify({ phase: 'running', pid, startedAt: nextState.activeRun.startedAt }),
+  });
+
   return nextState;
 }
 
 function clearActiveRun(cwd: string, state: AutoresearchTbenchState): AutoresearchTbenchState {
+  const activeRun = state.activeRun;
   const nextState = cloneState(state);
   nextState.updatedAt = nowIso();
   delete nextState.activeRun;
   delete nextState.stopRequestedAt;
   writeAutoresearchTbenchState(cwd, nextState);
+
+  // Log phase transition to observability system
+  if (activeRun) {
+    logger.logStateChange({
+      entityType: 'memory',
+      entityPath: `autoresearch-tbench/runs/${activeRun.label}`,
+      changeType: 'update',
+      beforeContent: JSON.stringify({ phase: 'running', pid: activeRun.pid, startedAt: activeRun.startedAt }),
+      afterContent: JSON.stringify({ phase: 'completed', endedAt: nowIso() }),
+    });
+  }
+
   return nextState;
 }
 
@@ -492,6 +636,15 @@ export function requestStopAutoresearchTbench(cwd: string): AutoresearchTbenchSt
   nextState.updatedAt = nowIso();
   nextState.stopRequestedAt = nowIso();
   writeAutoresearchTbenchState(cwd, nextState);
+
+  // Log stop request to observability system
+  logger.logStateChange({
+    entityType: 'memory',
+    entityPath: `autoresearch-tbench/runs/${state.activeRun.label}`,
+    changeType: 'update',
+    beforeContent: JSON.stringify({ phase: 'running', pid: state.activeRun.pid, startedAt: state.activeRun.startedAt }),
+    afterContent: JSON.stringify({ phase: 'stop_requested', pid: state.activeRun.pid, stopRequestedAt: nextState.stopRequestedAt }),
+  });
 
   return {
     requested: true,
@@ -807,24 +960,28 @@ async function executeTerminalBenchRun(
   };
 
   emitSnapshot();
-  const result = await spawnAndCapture("/bin/zsh", ["-lc", command], {
-    cwd,
-    env: buildRunEnv(config),
-    timeoutMs,
-    logPath: artifacts.logPath,
-    controlState,
-    onSpawn: (child) => {
-      childPid = child.pid ?? 0;
-      const currentState = readAutoresearchTbenchState(cwd);
-      if (currentState && childPid > 0) {
-        markActiveRun(cwd, currentState, label, childPid);
-      }
-    },
-  });
-  clearInterval(pollTimer);
-  const currentState = readAutoresearchTbenchState(cwd);
-  if (currentState) {
-    clearActiveRun(cwd, currentState);
+  let result: Awaited<ReturnType<typeof spawnAndCapture>>;
+  try {
+    result = await spawnAndCapture("/bin/zsh", ["-lc", command], {
+      cwd,
+      env: buildRunEnv(config),
+      timeoutMs,
+      logPath: artifacts.logPath,
+      controlState,
+      onSpawn: (child) => {
+        childPid = child.pid ?? 0;
+        const currentState = readAutoresearchTbenchState(cwd);
+        if (currentState && childPid > 0) {
+          markActiveRun(cwd, currentState, label, childPid);
+        }
+      },
+    });
+  } finally {
+    clearInterval(pollTimer);
+    const currentState = readAutoresearchTbenchState(cwd);
+    if (currentState) {
+      clearActiveRun(cwd, currentState);
+    }
   }
 
   const combinedOutput = `${result.stdout}\n${result.stderr}`;
@@ -896,6 +1053,47 @@ function createDefaultRunConfig(cwd: string, options: AutoresearchTbenchInitOpti
   };
 }
 
+/**
+ * 実行設定の妥当性を検証
+ * @summary 設定検証
+ * @param config - 検証する設定
+ * @throws {ConfigurationError} 無効な設定値の場合
+ */
+function validateRunConfig(config: AutoresearchTbenchRunConfig): void {
+  // nConcurrent: 1以上の整数であること
+  if (config.nConcurrent !== null && config.nConcurrent < 1) {
+    throw new ConfigurationError(
+      `nConcurrent must be >= 1, got ${config.nConcurrent}`,
+      { key: "nConcurrent", expected: "positive integer" }
+    );
+  }
+
+  // agentSetupTimeoutMultiplier: 1以上の整数であること
+  if (config.agentSetupTimeoutMultiplier !== null && config.agentSetupTimeoutMultiplier < 1) {
+    throw new ConfigurationError(
+      `agentSetupTimeoutMultiplier must be >= 1, got ${config.agentSetupTimeoutMultiplier}`,
+      { key: "agentSetupTimeoutMultiplier", expected: "positive integer" }
+    );
+  }
+
+  // jobsDir: 親ディレクトリが存在すること（作成可能であること）
+  const jobsDirParent = dirname(config.jobsDir);
+  if (!existsSync(jobsDirParent)) {
+    throw new ConfigurationError(
+      `jobsDir parent directory does not exist: ${jobsDirParent}`,
+      { key: "jobsDir", expected: "existing directory path" }
+    );
+  }
+
+  // datasetPath: 指定されている場合、存在すること
+  if (config.datasetPath && !existsSync(config.datasetPath)) {
+    throw new ConfigurationError(
+      `datasetPath does not exist: ${config.datasetPath}`,
+      { key: "datasetPath", expected: "existing file path" }
+    );
+  }
+}
+
 function cloneState(state: AutoresearchTbenchState): AutoresearchTbenchState {
   return JSON.parse(JSON.stringify(state)) as AutoresearchTbenchState;
 }
@@ -938,6 +1136,9 @@ export async function initAutoresearchTbench(
   }
 
   const headCommit = await getHeadCommit(cwd);
+  const runConfig = createDefaultRunConfig(cwd, options, taskNames);
+  validateRunConfig(runConfig);
+
   const state: AutoresearchTbenchState = {
     version: 1,
     createdAt: nowIso(),
@@ -946,15 +1147,15 @@ export async function initAutoresearchTbench(
     gitEnabled,
     bestCommit: headCommit,
     baselineCommit: headCommit,
-    runConfig: createDefaultRunConfig(cwd, options, taskNames),
+    runConfig,
     experimentCount: 0,
   };
   ensureDir(state.runConfig.jobsDir);
   writeAutoresearchTbenchState(cwd, state);
 
   // Emit experiment_start event
-  logger.logExperimentStart({
-    experimentType: 'tbench',
+  const startEventData = {
+    experimentType: 'tbench' as const,
     label: tag,
     tag,
     branch: branchName,
@@ -966,7 +1167,9 @@ export async function initAutoresearchTbench(
       model: state.runConfig.model ?? undefined,
       nConcurrent: state.runConfig.nConcurrent ?? undefined,
     },
-  });
+  };
+  logger.logExperimentStart(startEventData);
+  emitExperimentEvent('experiment_start', startEventData);
   await logger.flush();
 
   return {
@@ -1009,12 +1212,14 @@ async function runBaselineLike(
     appendResultRow(cwd, label, "stopped", null, commit, run);
 
     // Emit experiment_stop event and flush
-    logger.logExperimentStop({
-      experimentType: 'tbench',
+    const stopEventData = {
+      experimentType: 'tbench' as const,
       label,
       iteration: state.experimentCount + 1,
-      reason: 'user_requested',
-    });
+      reason: 'user_requested' as const,
+    };
+    logger.logExperimentStop(stopEventData);
+    emitExperimentEvent('experiment_stop', stopEventData);
     await logger.flush();
 
     return {
@@ -1056,6 +1261,9 @@ async function runBaselineLike(
     commit,
   });
   await logger.flush();
+
+  // Analyze observability data after baseline
+  await analyzeExperimentObservability(label, 'baseline');
 
   return {
     outcome: "baseline",
@@ -1116,22 +1324,26 @@ export async function runAutoresearchTbench(
   if (run.stopped) {
     outcome = "stopped";
     // Emit experiment_stop event and flush
-    logger.logExperimentStop({
-      experimentType: 'tbench',
+    const stopEventData = {
+      experimentType: 'tbench' as const,
       label,
       iteration: state.experimentCount + 1,
-      reason: 'user_requested',
-    });
+      reason: 'user_requested' as const,
+    };
+    logger.logExperimentStop(stopEventData);
+    emitExperimentEvent('experiment_stop', stopEventData);
     await logger.flush();
   } else if (run.timedOut) {
     outcome = "timeout";
     // Emit experiment_timeout event
-    logger.logExperimentTimeout({
-      experimentType: 'tbench',
+    const timeoutEventData = {
+      experimentType: 'tbench' as const,
       label,
       iteration: state.experimentCount + 1,
       timeoutMs,
-    });
+    };
+    logger.logExperimentTimeout(timeoutEventData);
+    emitExperimentEvent('experiment_timeout', timeoutEventData);
     await logger.flush();
   } else if (run.summary) {
     score = run.summary.score;
@@ -1140,12 +1352,14 @@ export async function runAutoresearchTbench(
     // Crash case: no summary produced
     outcome = "crash";
     // Emit experiment_crash event and flush
-    logger.logExperimentCrash({
-      experimentType: 'tbench',
+    const crashEventData = {
+      experimentType: 'tbench' as const,
       label,
       iteration: state.experimentCount + 1,
       error: run.stderr?.slice(0, 500) || 'No result.json produced',
-    });
+    };
+    logger.logExperimentCrash(crashEventData);
+    emitExperimentEvent('experiment_crash', crashEventData);
     await logger.flush();
   }
 
@@ -1191,7 +1405,18 @@ export async function runAutoresearchTbench(
       commit,
       improvementType,
     });
+    emitExperimentEvent('experiment_improved', {
+      experimentType: 'tbench',
+      label,
+      previousScore: tbenchScoreToE2EFormat(previousScore),
+      newScore: tbenchScoreToE2EFormat(score),
+      commit,
+      improvementType,
+    });
     await logger.flush();
+
+    // Analyze observability data after improvement
+    await analyzeExperimentObservability(label, 'improved');
 
     return {
       outcome,
@@ -1201,29 +1426,6 @@ export async function runAutoresearchTbench(
       commit,
       preferredBudgetExceeded: preferMs > 0 && score.elapsedMs > preferMs,
     };
-  }
-
-  // Emit experiment_regressed event for non-improved outcomes with score
-  if (outcome === "regressed" && score) {
-    const previousScore = state.bestScore;
-    let regressionType: 'more_failures' | 'fewer_passes' | 'slower' = 'more_failures';
-    if (score.errorCount > previousScore.errorCount) {
-      regressionType = 'more_failures';
-    } else if (score.successCount < previousScore.successCount) {
-      regressionType = 'fewer_passes';
-    } else {
-      regressionType = 'slower';
-    }
-
-    logger.logExperimentRegressed({
-      experimentType: 'tbench',
-      label,
-      previousScore: tbenchScoreToE2EFormat(previousScore),
-      newScore: tbenchScoreToE2EFormat(score),
-      regressionType,
-      reverted: state.gitEnabled,
-    });
-    await logger.flush();
   }
 
   if (state.gitEnabled) {
@@ -1254,8 +1456,19 @@ export async function runAutoresearchTbench(
       regressionType,
       reverted: state.gitEnabled,
     });
+    emitExperimentEvent('experiment_regressed', {
+      experimentType: 'tbench',
+      label,
+      previousScore: tbenchScoreToE2EFormat(previousScore),
+      newScore: tbenchScoreToE2EFormat(score),
+      regressionType,
+      reverted: state.gitEnabled,
+    });
     await logger.flush();
   }
+
+  // Analyze observability data after run completion
+  await analyzeExperimentObservability(label, outcome);
 
   return {
     outcome,
@@ -1293,4 +1506,109 @@ export function renderAutoresearchTbenchStatus(result: AutoresearchTbenchStatusR
     `n_concurrent=${state.runConfig.nConcurrent ?? "-"}`,
     `jobs_dir=${state.runConfig.jobsDir}`,
   ].join("\n");
+}
+
+/**
+ * autoresearch-tbench auto モード
+ * @summary 自動改善ループを実行する
+ * 改善が続く限り反復し、stalled 条件または最大反復回数で停止する
+ */
+export async function autoAutoresearchTbench(
+  cwd: string,
+  options: AutoresearchTbenchAutoOptions = {},
+): Promise<AutoresearchTbenchAutoResult> {
+  const maxIterations = options.iterations ?? 10;
+  const improvementTimeoutMs = options.improvementTimeoutMs ?? 30 * 60 * 1000; // デフォルト30分
+  const maxStalledIterations = options.maxStalledIterations ?? 3;
+
+  const steps: AutoresearchTbenchAutoStep[] = [];
+  let stopped = false;
+  let stalledCount = 0;
+  let lastImprovementTime = Date.now();
+
+  for (let iteration = 1; iteration <= maxIterations; iteration++) {
+    // 停止リクエストをチェック
+    const currentState = readAutoresearchTbenchState(cwd);
+    if (currentState?.stopRequestedAt) {
+      stopped = true;
+      const stopEventData = {
+        experimentType: 'tbench' as const,
+        label: options.label ?? 'auto',
+        iteration,
+        reason: 'user_requested' as const,
+      };
+      logger.logExperimentStop(stopEventData);
+      emitExperimentEvent('experiment_stop', stopEventData);
+      await logger.flush();
+      break;
+    }
+
+    // 改善タイムアウトをチェック
+    const elapsedSinceImprovement = Date.now() - lastImprovementTime;
+    if (elapsedSinceImprovement > improvementTimeoutMs && stalledCount > 0) {
+      const stopEventData = {
+        experimentType: 'tbench' as const,
+        label: options.label ?? 'auto',
+        iteration,
+        reason: 'improvement_timeout' as const,
+      };
+      logger.logExperimentStop(stopEventData);
+      emitExperimentEvent('experiment_stop', stopEventData);
+      await logger.flush();
+      break;
+    }
+
+    // max stalled iterations をチェック
+    if (stalledCount >= maxStalledIterations) {
+      const stopEventData = {
+        experimentType: 'tbench' as const,
+        label: options.label ?? 'auto',
+        iteration,
+        reason: 'max_stalled' as const,
+      };
+      logger.logExperimentStop(stopEventData);
+      emitExperimentEvent('experiment_stop', stopEventData);
+      await logger.flush();
+      break;
+    }
+
+    // runAutoresearchTbench を呼び出し
+    const benchmark = await runAutoresearchTbench(cwd, {
+      label: options.label ? `${options.label}-${iteration}` : `auto-${iteration}`,
+      timeoutMs: options.timeoutMs,
+      preferMs: options.preferMs,
+      commitMessage: options.commitMessage,
+      onSnapshot: options.onSnapshot,
+      onTextUpdate: options.onTextUpdate,
+    });
+
+    steps.push({ iteration, benchmark });
+
+    // 改善判定
+    if (benchmark.outcome === 'improved') {
+      stalledCount = 0;
+      lastImprovementTime = Date.now();
+    } else if (benchmark.outcome === 'regressed' || benchmark.outcome === 'equal') {
+      stalledCount++;
+    }
+
+    // クラッシュやタイムアウトの場合も stalled とみなす
+    if (benchmark.outcome === 'crash' || benchmark.outcome === 'timeout') {
+      stalledCount++;
+    }
+  }
+
+  const finalState = readAutoresearchTbenchState(cwd);
+  if (!finalState) {
+    throw new Error("state lost after auto run");
+  }
+
+  // Analyze observability data after auto run completion
+  await analyzeExperimentObservability(options.label ?? 'auto', stopped ? 'stopped' : 'completed');
+
+  return {
+    steps,
+    stopped,
+    state: finalState,
+  };
 }

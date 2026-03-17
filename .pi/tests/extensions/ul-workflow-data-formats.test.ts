@@ -1,6 +1,11 @@
 /**
- * ul-workflow.tsの単体テスト
- * UL Workflow機能のエラーハンドリングとAPI一貫性を検証する
+ * ul-workflow.tsのデータフォーマット検証テスト
+ * UL Workflowで使用される静的データ構造とパス形式の整合性を検証する
+ *
+ * 注意: このテストファイルは静的データフォーマットの検証のみを行います。
+ * エラーハンドリングやランタイム動作のテストは含まれていません。
+ * 将来的にul-workflow.tsのエラーハンドリングテストを追加する場合は、
+ * 別途 ul-workflow-errors.test.ts を作成してください。
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -8,7 +13,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
-describe("ul-workflow error handling consistency", () => {
+describe("ul-workflow data format consistency", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -19,7 +24,7 @@ describe("ul-workflow error handling consistency", () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  describe("API response consistency", () => {
+  describe("API response format consistency", () => {
     it("エラーレスポンスが一貫した形式を持つこと", () => {
       // Arrange - 期待されるエラーレスポンス形式
       const expectedErrorFormat = { error: "no_active_workflow" };
@@ -39,8 +44,8 @@ describe("ul-workflow error handling consistency", () => {
     });
   });
 
-  describe("Workflow state transitions", () => {
-    it("ワークフローフェーズが正しい順序で遷移すること", () => {
+  describe("Workflow phase definitions", () => {
+    it("ワークフローフェーズが正しい順序で定義されていること", () => {
       // Arrange
       const phases = ["idle", "research", "plan", "annotate", "implement", "review", "completed"];
 
@@ -64,7 +69,7 @@ describe("ul-workflow error handling consistency", () => {
     });
   });
 
-  describe("Plan file handling", () => {
+  describe("File path format validation", () => {
     it("プランファイルのパスが期待される形式であること", () => {
       // Arrange
       const taskId = "test-task-123";
@@ -86,7 +91,7 @@ describe("ul-workflow error handling consistency", () => {
     });
   });
 
-  describe("Annotation handling", () => {
+  describe("Annotation pattern validation", () => {
     it("注釈パターンが正しく検出されること", () => {
       // Arrange
       const planContent = `
@@ -108,7 +113,7 @@ describe("ul-workflow error handling consistency", () => {
     });
   });
 
-  describe("Error messages", () => {
+  describe("Error message format validation", () => {
     it("no_active_workflowエラーが期待される形式であること", () => {
       // Arrange
       const errorMessage = "エラー: アクティブなワークフローがありません。";

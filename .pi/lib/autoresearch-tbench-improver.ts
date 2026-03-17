@@ -5,6 +5,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { loadRecentRecords } from "./analytics/behavior-storage.js";
 
 export interface AutoresearchTbenchFailureInsight {
   taskName: string;
@@ -33,6 +34,26 @@ export interface AutoresearchTbenchImprovementPromptInput {
   lastScoreLine: string;
   failureDigest: AutoresearchTbenchFailureDigest | null;
   piImprovementBrief: string;
+  behaviorInsights?: BehaviorInsights | null;
+}
+
+/**
+ * 行動メトリクスの要約
+ * autoresearch実行中のエージェント行動パターンを表す
+ */
+export interface BehaviorInsights {
+  /** 取得したレコード数 */
+  recordCount: number;
+  /** タスクタイプ呼び出し回数の上位 */
+  topToolCalls: Array<{ tool: string; count: number }>;
+  /** 平均トークン使用量 */
+  avgTokensUsed: number;
+  /** エラー発生率 */
+  errorRate: number;
+  /** 平均応答時間（ms） */
+  avgResponseMs: number;
+  /** 失敗パターンの検出 */
+  failurePatterns: string[];
 }
 
 interface JobReportLike {
@@ -288,11 +309,105 @@ function formatFailureDigest(digest: AutoresearchTbenchFailureDigest | null): st
   return lines.join("\n");
 }
 
+/**
+ * 行動メトリクスからインサイトを抽出
+ * @summary 直近の行動データから改善に役立つパターンを抽出
+ * @param limit 取得するレコード数（デフォルト: 50）
+ * @returns 行動インサイト
+ */
+export function extractBehaviorInsights(limit = 50): BehaviorInsights | null {
+  const records = loadRecentRecords(limit);
+  
+  if (records.length === 0) {
+    return null;
+  }
+  
+  // タスクタイプ別の集計
+  const taskTypeCounts = new Map<string, number>();
+  let totalTokens = 0;
+  let errorCount = 0;
+  let totalDurationMs = 0;
+  const failurePatterns: string[] = [];
+  
+  for (const record of records) {
+    // タスクタイプの集計
+    const taskType = record.context?.taskType || "unknown";
+    taskTypeCounts.set(taskType, (taskTypeCounts.get(taskType) ?? 0) + 1);
+    
+    // トークン使用量の集計（prompt + output）
+    const promptTokens = record.prompt?.estimatedTokens || 0;
+    const outputTokens = record.output?.estimatedTokens || 0;
+    totalTokens += promptTokens + outputTokens;
+    
+    // 実行時間の集計
+    if (record.execution?.durationMs) {
+      totalDurationMs += record.execution.durationMs;
+    }
+    
+    // エラー検出
+    const outcomeCode = record.execution?.outcomeCode;
+    if (outcomeCode && outcomeCode !== "success" && outcomeCode !== "done") {
+      errorCount++;
+      const pattern = `${outcomeCode}:${record.context?.taskType || "unknown"}`;
+      if (!failurePatterns.includes(pattern)) {
+        failurePatterns.push(pattern);
+      }
+    }
+  }
+  
+  // 上位タスクタイプの抽出
+  const topToolCalls = Array.from(taskTypeCounts.entries())
+    .map(([tool, count]) => ({ tool, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+  
+  return {
+    recordCount: records.length,
+    topToolCalls,
+    avgTokensUsed: records.length > 0 ? Math.round(totalTokens / records.length) : 0,
+    errorRate: records.length > 0 ? errorCount / records.length : 0,
+    avgResponseMs: records.length > 0 ? Math.round(totalDurationMs / records.length) : 0,
+    failurePatterns: failurePatterns.slice(0, 3),
+  };
+}
+
+/**
+ * 行動インサイトをフォーマット
+ */
+function formatBehaviorInsights(insights: BehaviorInsights | null | undefined): string {
+  if (!insights) {
+    return "No behavior insights available.";
+  }
+  
+  const lines = [
+    `records_analyzed: ${insights.recordCount}`,
+    `avg_tokens: ${insights.avgTokensUsed}`,
+    `error_rate: ${(insights.errorRate * 100).toFixed(1)}%`,
+    `avg_response_ms: ${insights.avgResponseMs}`,
+  ];
+  
+  if (insights.topToolCalls.length > 0) {
+    lines.push(
+      `top_task_types: ${insights.topToolCalls.map((t) => `${t.tool}(${t.count})`).join(", ")}`
+    );
+  }
+  
+  if (insights.failurePatterns.length > 0) {
+    lines.push("", "observed_failures:");
+    for (const pattern of insights.failurePatterns) {
+      lines.push(`- ${pattern.slice(0, 100)}`);
+    }
+  }
+  
+  return lines.join("\n");
+}
+
 export function buildAutoresearchTbenchImprovementPrompt(
   input: AutoresearchTbenchImprovementPromptInput,
 ): string {
   const digestBlock = formatFailureDigest(input.failureDigest);
   const improvementBrief = input.piImprovementBrief.trim() || "No additional pi improvement brief.";
+  const behaviorBlock = formatBehaviorInsights(input.behaviorInsights);
 
   return [
     "You are running an automatic terminal-bench improvement iteration for the mekann repository.",
@@ -309,12 +424,16 @@ export function buildAutoresearchTbenchImprovementPrompt(
     "Latest benchmark failure digest:",
     digestBlock,
     "",
+    "Agent behavior insights:",
+    behaviorBlock,
+    "",
     "Additional local improvement brief:",
     improvementBrief,
     "",
     "Rules:",
     "- Make one focused, high-confidence code change set.",
     "- Target the most shared root cause visible in the failure digest.",
+    "- Consider behavior insights when deciding where to focus improvements.",
     "- Keep mekann behavior intact. Do not remove core extensions just to game the benchmark.",
     "- Do not edit benchmark artifacts, .pi/autoresearch, .pi/benchmarks, .pi/runtime, .pi/logs, or generated result files.",
     "- Do not commit.",

@@ -1048,6 +1048,44 @@ describe("ComprehensiveLogger", () => {
   });
 
   // ============================================================================
+  // Command Error Logging
+  // ============================================================================
+
+  describe("recordCommandError", () => {
+    it("should_emit_command_error_event", () => {
+      // Arrange
+      const logger = new ComprehensiveLogger(createTestConfig());
+      logger.startSession({
+        version: "1.0.0",
+        args: ["test"],
+        cwd: "/test",
+      });
+
+      // Act
+      logger.recordCommandError("loop", "missing task parameter");
+
+      // Assert
+      expect(logger.getEventCount()).toBeGreaterThan(0);
+    });
+
+    it("should_include_command_and_error_in_event_data", () => {
+      // Arrange
+      const logger = new ComprehensiveLogger(createTestConfig());
+      logger.startSession({
+        version: "1.0.0",
+        args: ["test"],
+        cwd: "/test",
+      });
+
+      // Act
+      logger.recordCommandError("autoresearch-tbench", "invalid action", "run --invalid");
+
+      // Assert
+      expect(logger.getEventCount()).toBeGreaterThan(0);
+    });
+  });
+
+  // ============================================================================
   // Disabled Logger
   // ============================================================================
 

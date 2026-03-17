@@ -57,12 +57,34 @@ describe("autoresearch-e2e", () => {
       ],
     }));
 
-    expect(parsed.score).toEqual({
+    expect(parsed).not.toBeNull();
+    expect(parsed!.score).toEqual({
       failed: 1,
       passed: 5,
       total: 6,
       durationMs: 300,
     });
-    expect(formatAutoresearchScore(parsed.score)).toContain("failed=1");
+    expect(formatAutoresearchScore(parsed!.score)).toContain("failed=1");
+  });
+
+  it("不正なJSON入力に対してnullを返す", () => {
+    // 切り詰められたJSON
+    const truncatedJson = '{"numFailedTests": 1, "numPasse';
+    const result = parseVitestJsonReport(truncatedJson);
+    expect(result).toBeNull();
+  });
+
+  it("空文字列入力に対してnullを返す", () => {
+    const result = parseVitestJsonReport("");
+    expect(result).toBeNull();
+  });
+
+  it("JSONとして有効だがオブジェクトでない入力に対して正常動作する", () => {
+    // 配列やプリミティブ値など
+    const result = parseVitestJsonReport("[]");
+    // エラーにはならず、デフォルト値で処理される
+    expect(result).not.toBeNull();
+    expect(result!.score.failed).toBe(0);
+    expect(result!.score.passed).toBe(0);
   });
 });

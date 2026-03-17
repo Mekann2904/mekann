@@ -1,266 +1,383 @@
 /**
  * @abdd.meta
  * path: tests/e2e/multi-extension-integration.e2e.test.ts
- * role: 複数拡張機能の統合E2Eテスト
- * why: 複数の拡張機能を組み合わせたワークフロー全体を検証するため
- * related: .pi/extensions/plan.ts, .pi/extensions/subagents.ts, .pi/extensions/question.ts
- * public_api: describe, it, expect (Vitest)
+ * role: 複数拡張機能の統合E2Eテスト（observability-dataとautoresearch-tbenchのイベントフロー検証）
+ * why: クロス拡張機能のイベントプロデューサー/コンシューマーが正しく連携することを検証するため
+ * related: .pi/extensions/observability-data.ts, .pi/extensions/autoresearch-tbench.ts, .pi/lib/comprehensive-logger.ts
+ * public_api: describe, it, expect, beforeEach, afterEach (Vitest)
  * invariants: テスト実行順序に依存しない、各テストは独立して実行可能
- * side_effects: .pi/plans/, .pi/subagents/, .pi/subagents/runs/ への書き込み
- * failure_modes: 複数拡張機能間の競合、状態の一貫性喪失、デッドロック
+ * side_effects: .pi/logs/ へのイベント書き込み
+ * failure_modes: イベントの欠落、パースエラー、クロス拡張機能間の通信失敗
  * @abdd.explain
- * overview: 複数の拡張機能を組み合わせたワークフロー全体を通したE2Eテストスイート
+ * overview: observability-dataとautoresearch-tbench拡張機能間のイベントフローを検証するE2Eテストスイート
  * what_it_does:
- *   - 計画作成とサブエージェント実行の統合をテスト
- *   - ユーザー質問と計画管理の統合をテスト
- *   - 複数のサブエージェントの並列実行と計画の統合をテスト
- *   - ワークフローの完了検証をテスト
+ *   - autoresearch-tbenchが生成するイベントをobservability-dataがクエリできることを検証
+ *   - イベントの登録、配送、フィルタリングのライフサイクルをテスト
+ *   - クロス拡張機能のイベントプロデューサー/コンシューマー連携を検証
  * why_it_exists:
- *   - 拡張機能間の相互作用を検証するため
- *   - 実際のユーザージャーニーに近いテストシナリオを提供するため
+ *   - 拡張機能間のイベントフローが実際に動作することを保証するため
+ *   - イベント損失や通信エラーを早期に発見するため
  * scope:
- *   in: plan_create, plan_add_step, plan_update_step, subagent_create, subagent_run, question
+ *   in: observability_data ツール, autoresearch_tbench イベント, ComprehensiveLogger
  *   out: テスト結果、カバレッジレポート
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { existsSync, readFileSync, unlinkSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 
-// テストディレクトリの設定
-const TEST_PLANS_DIR = ".pi/plans";
-const TEST_SUBAGENTS_DIR = ".pi/subagents";
-const TEST_PLANS_STORAGE = join(TEST_PLANS_DIR, "storage.json");
-const TEST_SUBAGENTS_STORAGE = join(TEST_SUBAGENTS_DIR, "storage.json");
+// テスト対象のモジュールをインポート
+import {
+  queryObservabilityData,
+  type ObservabilityQuery,
+  type ObservabilityResult,
+} from "../../.pi/extensions/observability-data.js";
+import {
+  getLogger,
+  resetLogger,
+  type ComprehensiveLogger,
+} from "../../.pi/lib/comprehensive-logger.js";
+import type { EventType, LogEvent } from "../../.pi/lib/comprehensive-logger-types.js";
 
-// テストユーティリティ
-function cleanupTestFiles(): void {
-  if (existsSync(TEST_PLANS_STORAGE)) {
-    unlinkSync(TEST_PLANS_STORAGE);
-  }
-  if (existsSync(TEST_SUBAGENTS_STORAGE)) {
-    unlinkSync(TEST_SUBAGENTS_STORAGE);
-  }
-  if (existsSync(TEST_PLANS_DIR)) {
-    rmSync(TEST_PLANS_DIR, { recursive: true, force: true });
-  }
-  if (existsSync(TEST_SUBAGENTS_DIR)) {
-    rmSync(TEST_SUBAGENTS_DIR, { recursive: true, force: true });
-  }
-}
+// テスト用一時ディレクトリ
+let testLogDir: string;
+let logger: ComprehensiveLogger;
 
-// フェイクExtensionAPIの実装
-class FakeExtensionAPI {
-  private responses: Map<string, any> = new Map();
+describe("E2E: observability-data と autoresearch-tbench のイベントフロー", () => {
+  beforeEach(async () => {
+    // テスト用一時ディレクトリを作成
+    testLogDir = join(tmpdir(), `observability-test-${Date.now()}`);
+    mkdirSync(testLogDir, { recursive: true });
 
-  setResponse(key: string, response: any): void {
-    this.responses.set(key, response);
-  }
+    // ロガーをリセットしてテスト用設定を適用
+    resetLogger();
+    logger = getLogger({
+      logDir: testLogDir,
+      enabled: true,
+      bufferSize: 1,
+      flushIntervalMs: 10,
+    });
 
-  async callLLM(prompt: string): Promise<any> {
-    return {
-      content: "Test response",
-      usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
-    };
-  }
-
-  async executeCommand(command: string): Promise<any> {
-    return { stdout: "test output", stderr: "", exitCode: 0 };
-  }
-
-  // ユーザー入力をシミュレートするメソッド
-  async askQuestion(questionData: any): Promise<any> {
-    // デフォルトで最初の選択肢を選択
-    return { answers: ["option-1"] };
-  }
-}
-
-describe("E2E: 複数拡張機能の統合", () => {
-  let fakeApi: FakeExtensionAPI;
-
-  beforeEach(() => {
-    cleanupTestFiles();
-    fakeApi = new FakeExtensionAPI();
+    // 初期フラッシュ
+    await logger.flush();
   });
 
-  afterEach(() => {
-    cleanupTestFiles();
+  afterEach(async () => {
+    // ロガーをフラッシュしてリセット
+    if (logger) {
+      await logger.flush();
+    }
+    resetLogger();
+
+    // テスト用ディレクトリを削除
+    if (existsSync(testLogDir)) {
+      try {
+        rmSync(testLogDir, { recursive: true, force: true });
+      } catch {
+        // ディレクトリ削除エラーは無視
+      }
+    }
   });
 
-  describe("シナリオ1: 計画作成とサブエージェント実行の統合", () => {
-    it("GIVEN 計画とサブエージェント WHEN 計画を実行 THEN サブエージェントが実行される", async () => {
-      // GIVEN: 計画とサブエージェント
-      // const plan = await plan_create(fakeApi, {
-      //   name: "Integration Test Plan",
-      //   description: "Plan with subagent execution",
-      // });
-      // const subagent = await subagent_create(fakeApi, {
-      //   id: "test-subagent",
-      //   name: "Test Subagent",
-      //   systemPrompt: "You are a test subagent",
-      // });
+  describe("シナリオ1: 実験イベントの記録とクエリ", () => {
+    it("GIVEN autoresearch-tbenchがexperiment_startイベントを生成 WHEN observability-dataがクエリ THEN イベントが取得できる", async () => {
+      // GIVEN: autoresearch-tbenchがexperiment_startイベントを生成
+      logger.logExperimentStart({
+        experimentType: "tbench",
+        label: "test-experiment-1",
+        tag: "test-tag",
+        branch: "test-branch",
+        config: { iterations: 3 },
+      });
 
-      // WHEN: 計画にステップを追加し、実行
-      // await plan_add_step(fakeApi, plan.id, {
-      //   title: "Execute subagent",
-      //   description: "Run test subagent",
-      // });
-      // await plan_update_step(fakeApi, plan.id, "step-1-id", "in_progress");
-      // await subagent_run(fakeApi, "test-subagent", { task: "Test task" });
-      // await plan_update_step(fakeApi, plan.id, "step-1-id", "completed");
+      // フラッシュしてイベントをファイルに書き込む
+      await logger.flush();
 
-      // THEN: 計画が完了していること
-      // const updatedPlan = await plan_show(fakeApi, plan.id);
-      // expect(updatedPlan.steps[0].status).toBe("completed");
+      // WHEN: observability-dataがクエリ
+      const result = queryObservabilityData({
+        eventTypes: ["experiment_start"],
+        includeStats: true,
+      });
 
-      // AND: サブエージェントの実行履歴が残っていること
-      // const runs = await subagent_runs(fakeApi, { limit: 10 });
-      // expect(runs.length).toBeGreaterThan(0);
+      // THEN: イベントが取得できる
+      expect(result.events.length).toBeGreaterThanOrEqual(1);
 
-      // テストの実装を保留 - 実際の拡張機能のAPIを確認後に実装
-      expect(true).toBe(true); // テストスタブ
+      const startEvent = result.events.find((e) => e.eventType === "experiment_start");
+      expect(startEvent).toBeDefined();
+      expect((startEvent as any).data.label).toBe("test-experiment-1");
+      expect((startEvent as any).data.experimentType).toBe("tbench");
+    });
+
+    it("GIVEN autoresearch-tbenchがexperiment_baselineイベントを生成 WHEN observability-dataがクエリ THEN スコア情報が取得できる", async () => {
+      // GIVEN: experiment_baselineイベントを生成
+      logger.logExperimentBaseline({
+        experimentType: "tbench",
+        label: "baseline-test",
+        score: { failed: 1, passed: 5, total: 6, durationMs: 10000 },
+        commit: "abc123",
+      });
+
+      await logger.flush();
+
+      // WHEN: クエリ
+      const result = queryObservabilityData({
+        eventTypes: ["experiment_baseline"],
+      });
+
+      // THEN: ベースラインイベントが取得できる
+      expect(result.events.length).toBeGreaterThanOrEqual(1);
+
+      const baselineEvent = result.events.find((e) => e.eventType === "experiment_baseline");
+      expect(baselineEvent).toBeDefined();
+      expect((baselineEvent as any).data.label).toBe("baseline-test");
+      expect((baselineEvent as any).data.score.failed).toBe(1);
+      expect((baselineEvent as any).data.score.passed).toBe(5);
     });
   });
 
-  describe("シナリオ2: ユーザー質問と計画管理の統合", () => {
-    it("GIVEN ユーザー入力が必要な計画 WHEN 質問して計画作成 THEN ユーザー入力が反映される", async () => {
-      // GIVEN: ユーザー入力が必要な計画作成
+  describe("シナリオ2: 複数イベントタイプのフィルタリング", () => {
+    it("GIVEN 複数種類のイベント WHEN 特定タイプでフィルタリング THEN 該当イベントのみ取得できる", async () => {
+      // GIVEN: 複数種類のイベントを生成
+      logger.logExperimentStart({
+        experimentType: "tbench",
+        label: "filter-test",
+        config: {},
+      });
 
-      // WHEN: ユーザーに質問し、回答を取得して計画を作成
-      // const answer = await fakeApi.askQuestion({
-      //   question: "Choose plan priority",
-      //   options: [
-      //     { label: "High", description: "High priority" },
-      //     { label: "Low", description: "Low priority" },
-      //   ],
-      // });
-      // const plan = await plan_create(fakeApi, {
-      //   name: "User Input Plan",
-      //   description: `Priority: ${answer.answers[0]}`,
-      // });
+      logger.logExperimentRun({
+        experimentType: "tbench",
+        label: "filter-test",
+        iteration: 1,
+      });
 
-      // THEN: ユーザー入力が反映されていること
-      // expect(plan.description).toContain("Priority");
+      logger.logToolCall(
+        "autoresearch_tbench",
+        { action: "run" },
+        { file: "test.ts", line: 1, function: "test" }
+      );
 
-      // テストの実装を保留
-      expect(true).toBe(true); // テストスタブ
+      await logger.flush();
+
+      // WHEN: 実験イベントのみでフィルタリング
+      const result = queryObservabilityData({
+        eventTypes: ["experiment_start", "experiment_run"],
+      });
+
+      // THEN: 実験イベントのみ取得できる
+      expect(result.events.length).toBeGreaterThanOrEqual(2);
+      result.events.forEach((event) => {
+        expect(["experiment_start", "experiment_run"]).toContain(event.eventType);
+      });
     });
   });
 
-  describe("シナリオ3: 複数サブエージェントの並列実行と計画の統合", () => {
-    it("GIFT 計画と複数サブエージェント WHEN 並列実行 THEN 全サブエージェントが完了する", async () => {
-      // GIVEN: 計画と複数のサブエージェント
-      // const subagents = [
-      //   { id: "subagent-1", name: "Subagent 1", systemPrompt: "Test" },
-      //   { id: "subagent-2", name: "Subagent 2", systemPrompt: "Test" },
-      //   { id: "subagent-3", name: "Subagent 3", systemPrompt: "Test" },
-      // ];
-      // subagents.forEach(async (s) => await subagent_create(fakeApi, s));
+  describe("シナリオ3: ライフサイクルイベントの検証", () => {
+    it("GIVEN 実験のライフサイクルイベント WHEN 完了まで記録 THEN 全イベントが追跡できる", async () => {
+      // GIVEN: 実験のライフサイクルをシミュレート
+      // 1. 実験開始
+      logger.logExperimentStart({
+        experimentType: "tbench",
+        label: "lifecycle-test",
+        config: { iterations: 5 },
+      });
 
-      // WHEN: 計画にステップを追加し、並列実行
-      // await plan_add_step(fakeApi, "plan-id", { title: "Parallel execution" });
-      // const results = await subagent_run_parallel(fakeApi, {
-      //   task: "Test task",
-      //   subagentIds: ["subagent-1", "subagent-2", "subagent-3"],
-      // });
+      // 2. ベースライン記録
+      logger.logExperimentBaseline({
+        experimentType: "tbench",
+        label: "lifecycle-test",
+        score: { failed: 2, passed: 4, total: 6, durationMs: 30000 },
+      });
 
-      // THEN: 全サブエージェントが完了していること
-      // expect(results).toHaveLength(3);
-      // expect(results.every((r) => r !== undefined)).toBe(true);
+      // 3. 実行
+      logger.logExperimentRun({
+        experimentType: "tbench",
+        label: "lifecycle-test",
+        iteration: 1,
+      });
 
-      // テストの実装を保留
-      expect(true).toBe(true); // テストスタブ
+      // 4. 改善検出
+      logger.logExperimentImproved({
+        experimentType: "tbench",
+        label: "lifecycle-test",
+        previousScore: { failed: 2, passed: 4, total: 6, durationMs: 30000 },
+        newScore: { failed: 0, passed: 6, total: 6, durationMs: 25000 },
+        improvementType: "fewer_failures",
+      });
+
+      // 5. 停止
+      logger.logExperimentStop({
+        experimentType: "tbench",
+        label: "lifecycle-test",
+        iteration: 1,
+        reason: "success",
+      });
+
+      await logger.flush();
+
+      // WHEN: 全ライフサイクルイベントをクエリ
+      const result = queryObservabilityData({
+        eventTypes: [
+          "experiment_start",
+          "experiment_baseline",
+          "experiment_run",
+          "experiment_improved",
+          "experiment_stop",
+        ],
+      });
+
+      // THEN: 全イベントが追跡できる
+      expect(result.events.length).toBeGreaterThanOrEqual(5);
+
+      const eventTypes = result.events.map((e) => e.eventType);
+      expect(eventTypes).toContain("experiment_start");
+      expect(eventTypes).toContain("experiment_baseline");
+      expect(eventTypes).toContain("experiment_run");
+      expect(eventTypes).toContain("experiment_improved");
+      expect(eventTypes).toContain("experiment_stop");
     });
   });
 
-  describe("シナリオ4: 完全なワークフロー（Plan -> Subagent -> Question）", () => {
-    it("GIFT 新規プロジェクト WHEN 完全なワークフロー実行 THEN 成功する", async () => {
-      // シナリオ: ユーザーが新しいプロジェクトを作成する
-      // 1. ユーザーに質問（プロジェクトタイプ）
-      // 2. 計画を作成
-      // 3. サブエージェントで各ステップを実行
-      // 4. 完了確認
+  describe("シナリオ4: エラーイベントの検証", () => {
+    it("GIVEN 実験がクラッシュ WHEN クラッシュイベントを記録 THEN クラッシュイベントが取得できる", async () => {
+      // GIVEN: クラッシュイベントを記録
+      logger.logExperimentStart({
+        experimentType: "tbench",
+        label: "crash-test",
+        config: {},
+      });
 
-      // GIVEN: ユーザーがプロジェクト作成を開始
+      logger.logExperimentCrash({
+        experimentType: "tbench",
+        label: "crash-test",
+        iteration: 2,
+        error: "Test error message",
+      });
 
-      // WHEN: ワークフロー実行
-      // Step 1: ユーザーに質問
-      // const answer = await fakeApi.askQuestion({
-      //   question: "What type of project?",
-      //   options: [
-      //     { label: "Web App", description: "Web application" },
-      //     { label: "CLI Tool", description: "Command line tool" },
-      //   ],
-      // });
+      await logger.flush();
 
-      // Step 2: 計画を作成
-      // const plan = await plan_create(fakeApi, {
-      //   name: `Create ${answer.answers[0]}`,
-      //   description: "New project plan",
-      // });
+      // WHEN: クラッシュイベントをクエリ
+      const result = queryObservabilityData({
+        eventTypes: ["experiment_crash"],
+      });
 
-      // Step 3: ステップを追加
-      // await plan_add_step(fakeApi, plan.id, { title: "Initialize project" });
-      // await plan_add_step(fakeApi, plan.id, { title: "Setup dependencies" });
-      // await plan_add_step(fakeApi, plan.id, { title: "Create initial files" });
+      // THEN: クラッシュイベントが取得できる
+      expect(result.events.length).toBeGreaterThanOrEqual(1);
 
-      // Step 4: サブエージェントで各ステップを実行
-      // const steps = await plan_ready_steps(fakeApi, plan.id);
-      // for (const step of steps) {
-      //   await plan_update_step(fakeApi, plan.id, step.id, "in_progress");
-      //   await subagent_run(fakeApi, "builder", { task: step.title });
-      //   await plan_update_step(fakeApi, plan.id, step.id, "completed");
-      // }
-
-      // THEN: 全ステップが完了していること
-      // const finalPlan = await plan_show(fakeApi, plan.id);
-      // expect(finalPlan.steps.every((s) => s.status === "completed")).toBe(true);
-
-      // テストの実装を保留
-      expect(true).toBe(true); // テストスタブ
+      const crashEvent = result.events.find((e) => e.eventType === "experiment_crash");
+      expect(crashEvent).toBeDefined();
+      expect((crashEvent as any).data.label).toBe("crash-test");
+      expect((crashEvent as any).data.error).toBe("Test error message");
     });
-  });
-});
 
-/**
- * BDDスタイルのシナリオ記述
- *
- * Given-When-Thenパターンを使用した、ユーザー視点のシナリオ記述
- */
-describe("E2E: BDDスタイルシナリオ", () => {
-  describe("シナリオ: 複雑なタスクの計画的な実行", () => {
-    it("GIVEN 開発者が新機能を追加したい WHEN 計画的に進めると THEN 効率的に実装できる", async () => {
-      // Given: 開発者が新機能の追加を検討している
-      const featureName = "New Feature";
-      const complexity = "medium";
+    it("GIVEN 実験がタイムアウト WHEN タイムアウトイベントを記録 THEN タイムアウトイベントが取得できる", async () => {
+      // GIVEN: タイムアウトイベントを記録
+      logger.logExperimentTimeout({
+        experimentType: "tbench",
+        label: "timeout-test",
+        iteration: 5,
+        timeoutMs: 60000,
+      });
 
-      // When: 開発者が計画的に進める
-      // 1. 計画を作成
-      // 2. ステップを分解
-      // 3. 各ステップを実行
-      // 4. 進捗を追跡
+      await logger.flush();
 
-      // Then: 効率的に実装できる
-      // - 全ステップが完了する
-      // - 進捗が可視化される
-      // - 実行履歴が残る
+      // WHEN: タイムアウトイベントをクエリ
+      const result = queryObservabilityData({
+        eventTypes: ["experiment_timeout"],
+      });
 
-      expect(true).toBe(true); // テストスタブ
+      // THEN: タイムアウトイベントが取得できる
+      expect(result.events.length).toBeGreaterThanOrEqual(1);
+
+      const timeoutEvent = result.events.find((e) => e.eventType === "experiment_timeout");
+      expect(timeoutEvent).toBeDefined();
+      expect((timeoutEvent as any).data.label).toBe("timeout-test");
+      expect((timeoutEvent as any).data.timeoutMs).toBe(60000);
     });
   });
 
-  describe("シナリオ: 並列タスクの効率的な実行", () => {
-    it("GIVEN 複数の独立タスクがある WHEN 並列で実行すると THEN 時間を短縮できる", async () => {
-      // Given: 3つの独立したタスクがある
+  describe("シナリオ5: 退行イベントの検証", () => {
+    it("GIVEN 実験が退行 WHEN 退行イベントを記録 THEN 退行情報が取得できる", async () => {
+      // GIVEN: 退行イベントを記録
+      logger.logExperimentRegressed({
+        experimentType: "tbench",
+        label: "regression-test",
+        previousScore: { failed: 0, passed: 6, total: 6, durationMs: 25000 },
+        newScore: { failed: 2, passed: 4, total: 6, durationMs: 35000 },
+        regressionType: "more_failures",
+        reverted: true,
+      });
 
-      // When: 並列で実行する
+      await logger.flush();
 
-      // Then: シーケンシャル実行より時間が短縮される
-      // - 全タスクが並列で実行される
-      // - 結果が収集される
-      // - 実行履歴が残る
+      // WHEN: 退行イベントをクエリ
+      const result = queryObservabilityData({
+        eventTypes: ["experiment_regressed"],
+      });
 
-      expect(true).toBe(true); // テストスタブ
+      // THEN: 退行イベントが取得できる
+      expect(result.events.length).toBeGreaterThanOrEqual(1);
+
+      const regressedEvent = result.events.find((e) => e.eventType === "experiment_regressed");
+      expect(regressedEvent).toBeDefined();
+      expect((regressedEvent as any).data.label).toBe("regression-test");
+      expect((regressedEvent as any).data.regressionType).toBe("more_failures");
+      expect((regressedEvent as any).data.reverted).toBe(true);
+    });
+  });
+
+  describe("シナリオ6: 統計情報の検証", () => {
+    it("GIVEN 複数のイベント WHEN 統計付きでクエリ THEN 正確な統計が取得できる", async () => {
+      // GIVEN: 複数のイベントを生成
+      for (let i = 0; i < 5; i++) {
+        logger.logExperimentRun({
+          experimentType: "tbench",
+          label: `stats-test-${i}`,
+          iteration: i,
+        });
+      }
+
+      await logger.flush();
+
+      // WHEN: 統計付きでクエリ
+      const result = queryObservabilityData({
+        eventTypes: ["experiment_run"],
+        includeStats: true,
+      });
+
+      // THEN: 統計が正確
+      expect(result.stats).toBeDefined();
+      expect(result.stats!.totalEvents).toBeGreaterThanOrEqual(5);
+      expect(result.stats!.eventsByType["experiment_run"]).toBeGreaterThanOrEqual(5);
+      expect(result.stats!.firstEventAt).toBeDefined();
+      expect(result.stats!.lastEventAt).toBeDefined();
+    });
+  });
+
+  describe("シナリオ7: タスクID・セッションIDによるフィルタリング", () => {
+    it("GIVEN 特定タスクのイベント WHEN タスクIDでフィルタリング THEN 該当イベントのみ取得できる", async () => {
+      // 現在のタスクIDを設定
+      const taskId = logger.getCurrentTaskId();
+
+      // GIVEN: イベントを生成
+      logger.logExperimentStart({
+        experimentType: "tbench",
+        label: "taskid-test",
+        config: {},
+      });
+
+      await logger.flush();
+
+      // WHEN: タスクIDでフィルタリング
+      const result = queryObservabilityData({
+        taskId,
+        eventTypes: ["experiment_start"],
+      });
+
+      // THEN: 該当タスクのイベントのみ取得
+      result.events.forEach((event) => {
+        expect(event.taskId).toBe(taskId);
+      });
     });
   });
 });
@@ -270,32 +387,151 @@ describe("E2E: BDDスタイルシナリオ", () => {
  *
  * 実際のユーザーが使用する典型的なワークフローをテスト
  */
-describe("E2E: ユーザージャーニー", () => {
-  describe("ジャーニー1: 新しい拡張機能の開発", () => {
-    it("ユーザーが新しい拡張機能を開発する一連のフローをテストする", async () => {
-      // ユーザージャーニー:
-      // 1. ユーザーは拡張機能のアイデアを持っている
-      // 2. 計画を作成する
-      // 3. 計画にステップを追加する
-      // 4. 各ステップを実行する
-      // 5. 完了を確認する
+describe("E2E: ユーザージャーニー - autoresearch監視", () => {
+  let testLogDir: string;
+  let logger: ComprehensiveLogger;
 
-      expect(true).toBe(true); // テストスタブ
+  beforeEach(async () => {
+    testLogDir = join(tmpdir(), `observability-journey-${Date.now()}`);
+    mkdirSync(testLogDir, { recursive: true });
+    resetLogger();
+    logger = getLogger({
+      logDir: testLogDir,
+      enabled: true,
+      bufferSize: 1,
+      flushIntervalMs: 10,
+    });
+    await logger.flush();
+  });
+
+  afterEach(async () => {
+    if (logger) {
+      await logger.flush();
+    }
+    resetLogger();
+    if (existsSync(testLogDir)) {
+      try {
+        rmSync(testLogDir, { recursive: true, force: true });
+      } catch {
+        // 削除エラーは無視
+      }
+    }
+  });
+
+  describe("ジャーニー1: 実験の開始から完了まで", () => {
+    it("ユーザーが実験を開始し、完了するまでのイベントフローをテストする", async () => {
+      const label = "journey-test";
+
+      // 1. 実験開始
+      logger.logExperimentStart({
+        experimentType: "tbench",
+        label,
+        config: { iterations: 5 },
+      });
+
+      // 2. ベースライン記録
+      logger.logExperimentBaseline({
+        experimentType: "tbench",
+        label,
+        score: { failed: 2, passed: 8, total: 10, durationMs: 60000 },
+      });
+
+      // 3. 複数回の実行
+      for (let i = 1; i <= 3; i++) {
+        logger.logExperimentRun({
+          experimentType: "tbench",
+          label,
+          iteration: i,
+        });
+      }
+
+      // 4. 改善検出
+      logger.logExperimentImproved({
+        experimentType: "tbench",
+        label,
+        previousScore: { failed: 2, passed: 8, total: 10, durationMs: 60000 },
+        newScore: { failed: 0, passed: 10, total: 10, durationMs: 55000 },
+        improvementType: "fewer_failures",
+      });
+
+      // 5. 実験停止
+      logger.logExperimentStop({
+        experimentType: "tbench",
+        label,
+        iteration: 3,
+        reason: "success",
+      });
+
+      await logger.flush();
+
+      // 検証: 全イベントが記録されている
+      const result = queryObservabilityData({
+        eventTypes: [
+          "experiment_start",
+          "experiment_baseline",
+          "experiment_run",
+          "experiment_improved",
+          "experiment_stop",
+        ],
+        includeStats: true,
+      });
+
+      expect(result.events.length).toBeGreaterThanOrEqual(7);
+
+      const eventCounts = {
+        experiment_start: result.events.filter((e) => e.eventType === "experiment_start").length,
+        experiment_baseline: result.events.filter((e) => e.eventType === "experiment_baseline").length,
+        experiment_run: result.events.filter((e) => e.eventType === "experiment_run").length,
+        experiment_improved: result.events.filter((e) => e.eventType === "experiment_improved").length,
+        experiment_stop: result.events.filter((e) => e.eventType === "experiment_stop").length,
+      };
+
+      expect(eventCounts.experiment_start).toBeGreaterThanOrEqual(1);
+      expect(eventCounts.experiment_baseline).toBeGreaterThanOrEqual(1);
+      expect(eventCounts.experiment_run).toBeGreaterThanOrEqual(3);
+      expect(eventCounts.experiment_improved).toBeGreaterThanOrEqual(1);
+      expect(eventCounts.experiment_stop).toBeGreaterThanOrEqual(1);
     });
   });
 
-  describe("ジャーニー2: バグ調査と修正", () => {
-    it("ユーザーがバグを調査し、修正する一連のフローをテストする", async () => {
-      // ユーザージャーニー:
-      // 1. ユーザーはバグレポートを受けている
-      // 2. 調査用サブエージェントを作成する
-      // 3. 調査を実行する
-      // 4. 修正計画を作成する
-      // 5. 修正を実装する
-      // 6. テストを実行する
-      // 7. 修正を確認する
+  describe("ジャーニー2: エラーからの回復", () => {
+    it("実験がクラッシュし、再開するまでのイベントフローをテストする", async () => {
+      const label = "recovery-test";
 
-      expect(true).toBe(true); // テストスタブ
+      // 1. 実験開始
+      logger.logExperimentStart({
+        experimentType: "tbench",
+        label,
+        config: { iterations: 5 },
+      });
+
+      // 2. クラッシュ発生
+      logger.logExperimentCrash({
+        experimentType: "tbench",
+        label,
+        iteration: 2,
+        error: "Network timeout",
+      });
+
+      // 3. 再開
+      logger.logExperimentStart({
+        experimentType: "tbench",
+        label: `${label}-retry`,
+        config: { iterations: 5 },
+      });
+
+      await logger.flush();
+
+      // 検証: クラッシュと再開が記録されている
+      const result = queryObservabilityData({
+        eventTypes: ["experiment_start", "experiment_crash"],
+      });
+
+      const startEvents = result.events.filter((e) => e.eventType === "experiment_start");
+      const crashEvents = result.events.filter((e) => e.eventType === "experiment_crash");
+
+      expect(startEvents.length).toBeGreaterThanOrEqual(2);
+      expect(crashEvents.length).toBeGreaterThanOrEqual(1);
     });
   });
 });
@@ -305,37 +541,116 @@ describe("E2E: ユーザージャーニー", () => {
  *
  * プロダクトオーナーが定義した受け入れ基準を満たすかテスト
  */
-describe("E2E: 受け入れテスト", () => {
-  describe("受け入れ基準1: 計画の作成と管理", () => {
-    it("ユーザーは計画を作成し、ステップを追加し、進捗を追跡できる", async () => {
-      // AC1: ユーザーは新しい計画を作成できる
-      // AC2: ユーザーは計画にステップを追加できる
-      // AC3: ユーザーはステップの進捗を更新できる
-      // AC4: ユーザーは計画の詳細を表示できる
+describe("E2E: 受け入れテスト - クロス拡張機能イベントフロー", () => {
+  let testLogDir: string;
+  let logger: ComprehensiveLogger;
 
-      expect(true).toBe(true); // テストスタブ
+  beforeEach(async () => {
+    testLogDir = join(tmpdir(), `observability-acceptance-${Date.now()}`);
+    mkdirSync(testLogDir, { recursive: true });
+    resetLogger();
+    logger = getLogger({
+      logDir: testLogDir,
+      enabled: true,
+      bufferSize: 1,
+      flushIntervalMs: 10,
+    });
+    await logger.flush();
+  });
+
+  afterEach(async () => {
+    if (logger) {
+      await logger.flush();
+    }
+    resetLogger();
+    if (existsSync(testLogDir)) {
+      try {
+        rmSync(testLogDir, { recursive: true, force: true });
+      } catch {
+        // 削除エラーは無視
+      }
+    }
+  });
+
+  describe("受け入れ基準1: イベントの記録と取得", () => {
+    it("autoresearch-tbenchがイベントを生成し、observability-dataがそれを取得できる", async () => {
+      // AC1: autoresearch-tbenchがイベントを生成できる
+      logger.logExperimentStart({
+        experimentType: "tbench",
+        label: "acceptance-test",
+        config: {},
+      });
+
+      await logger.flush();
+
+      // AC2: observability-dataがイベントを取得できる
+      const result = queryObservabilityData({
+        eventTypes: ["experiment_start"],
+      });
+
+      expect(result.events.length).toBeGreaterThanOrEqual(1);
+
+      // AC3: イベントの内容が正しい
+      const event = result.events.find((e) => e.eventType === "experiment_start");
+      expect(event).toBeDefined();
+      expect((event as any).data.experimentType).toBe("tbench");
+      expect((event as any).data.label).toBe("acceptance-test");
     });
   });
 
-  describe("受け入れ基準2: サブエージェントの実行", () => {
-    it("ユーザーはサブエージェントを作成し、タスクを実行し、結果を取得できる", async () => {
-      // AC1: ユーザーは新しいサブエージェントを定義できる
-      // AC2: ユーザーはサブエージェントにタスクを実行できる
-      // AC3: ユーザーは実行結果を取得できる
-      // AC4: ユーザーは実行履歴を確認できる
+  describe("受け入れ基準2: フィルタリング機能", () => {
+    it("ユーザーはイベントをタイプでフィルタリングできる", async () => {
+      // 複数のイベントを生成
+      logger.logExperimentStart({
+        experimentType: "tbench",
+        label: "filter-acceptance",
+        config: {},
+      });
 
-      expect(true).toBe(true); // テストスタブ
+      logger.logToolCall(
+        "autoresearch_tbench",
+        {},
+        { file: "test.ts", line: 1, function: "test" }
+      );
+
+      await logger.flush();
+
+      // AC1: タイプでフィルタリング
+      const typeResult = queryObservabilityData({
+        eventTypes: ["experiment_start"],
+      });
+      expect(typeResult.events.every((e) => e.eventType === "experiment_start")).toBe(true);
     });
   });
 
-  describe("受け入れ基準3: ユーザーとの対話", () => {
-    it("ユーザーは対話的に質問に回答し、選択を行える", async () => {
-      // AC1: エージェントはユーザーに質問できる
-      // AC2: ユーザーは選択肢から選択できる
-      // AC3: ユーザーは自由入力を行える
-      // AC4: 回答はエージェントに渡される
+  describe("受け入れ基準3: 統計情報", () => {
+    it("ユーザーはイベントの統計情報を取得できる", async () => {
+      // 複数のイベントを生成
+      for (let i = 0; i < 5; i++) {
+        logger.logExperimentRun({
+          experimentType: "tbench",
+          label: `stats-test-${i}`,
+          iteration: i,
+        });
+      }
 
-      expect(true).toBe(true); // テストスタブ
+      await logger.flush();
+
+      // AC1: 統計情報を取得できる
+      const result = queryObservabilityData({
+        eventTypes: ["experiment_run"],
+        includeStats: true,
+      });
+
+      expect(result.stats).toBeDefined();
+
+      // AC2: 統計が正確
+      expect(result.stats!.totalEvents).toBeGreaterThanOrEqual(5);
+      expect(result.stats!.eventsByType["experiment_run"]).toBeGreaterThanOrEqual(5);
+
+      // AC3: 最初/最後のイベント時刻が記録されている
+      expect(result.stats!.firstEventAt).toBeDefined();
+      expect(result.stats!.lastEventAt).toBeDefined();
     });
   });
 });

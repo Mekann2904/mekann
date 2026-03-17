@@ -55,6 +55,7 @@ export type EventType =
   | 'config_load'
   | 'state_change'
   | 'metrics_snapshot'
+  | 'command_error'
   // 実験 (autoresearch)
   | 'experiment_start'
   | 'experiment_baseline'
@@ -63,7 +64,11 @@ export type EventType =
   | 'experiment_regressed'
   | 'experiment_timeout'
   | 'experiment_stop'
-  | 'experiment_crash';
+  | 'experiment_crash'
+  // スケジューラ (MetricsCollector)
+  | 'preemption'
+  | 'work_steal'
+  | 'task_completion';
 
 /**
  * コンポーネント型
@@ -597,6 +602,109 @@ export interface ExperimentTimeoutEvent extends BaseEvent {
   };
 }
 
+/**
+ * 実験停止イベント
+ * @summary 実験が停止された
+ */
+export interface ExperimentStopEvent extends BaseEvent {
+  eventType: 'experiment_stop';
+  data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    iteration: number;
+    reason?: string;
+    partialScore?: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+  };
+}
+
+/**
+ * 実験クラッシュイベント
+ * @summary 実験がクラッシュした
+ */
+export interface ExperimentCrashEvent extends BaseEvent {
+  eventType: 'experiment_crash';
+  data: {
+    experimentType: 'e2e' | 'tbench';
+    label: string;
+    iteration: number;
+    error?: string;
+    partialScore?: {
+      failed: number;
+      passed: number;
+      total: number;
+      durationMs: number;
+    };
+  };
+}
+
+// ============================================
+// スケジューライベント (MetricsCollector)
+// ============================================
+
+/**
+ * プリエンプションイベント
+ * @summary タスクがプリエンプションされた
+ */
+export interface PreemptionEvent extends BaseEvent {
+  eventType: 'preemption';
+  data: {
+    taskId: string;
+    reason: string;
+  };
+}
+
+/**
+ * ワークスチールイベント
+ * @summary 他インスタンスからタスクを盗用した
+ */
+export interface WorkStealEvent extends BaseEvent {
+  eventType: 'work_steal';
+  data: {
+    sourceInstance: string;
+    taskId: string;
+  };
+}
+
+/**
+ * タスク完了イベント（スケジューラ）
+ * @summary タスクが完了した
+ */
+export interface TaskCompletionEvent extends BaseEvent {
+  eventType: 'task_completion';
+  data: {
+    taskId: string;
+    source: string;
+    provider: string;
+    model: string;
+    priority: string;
+    waitedMs: number;
+    executionMs: number;
+    success: boolean;
+  };
+}
+
+// ============================================
+// コマンドエラーイベント
+// ============================================
+
+/**
+ * コマンドエラーイベント
+ * @summary コマンド引数解析エラー
+ */
+export interface CommandErrorEvent extends BaseEvent {
+  eventType: 'command_error';
+  data: {
+    command: string;
+    error: string;
+    args?: string;
+  };
+}
+
 // ============================================
 // 統合型
 // ============================================
@@ -626,9 +734,15 @@ export type LogEvent =
   | ExperimentStartEvent
   | ExperimentBaselineEvent
   | ExperimentRunEvent
-  | ExperimentImprovedEvent
+ | ExperimentImprovedEvent
   | ExperimentRegressedEvent
-  | ExperimentTimeoutEvent;
+  | ExperimentTimeoutEvent
+  | ExperimentStopEvent
+  | ExperimentCrashEvent
+  | PreemptionEvent
+  | WorkStealEvent
+  | TaskCompletionEvent
+  | CommandErrorEvent;
 
 // ============================================
 // 設定型

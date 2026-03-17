@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync 
 import { promises as fsPromises } from "node:fs";
 import path from "node:path";
 
-import registerUlWorkflowExtension, { assertPhaseArtifactReady, normalizeGapDecision } from "../extensions/ul-workflow.js";
+import registerUlWorkflowExtension, { assertPhaseArtifactReady, normalizeGapDecision, loadState, saveState } from "../extensions/ul-workflow.js";
 
 type RegisteredTool = {
   execute: (...args: any[]) => Promise<any>;
@@ -854,12 +854,12 @@ describe.sequential("UL workflow artifacts", () => {
       activeData.ownerInstanceId = fakeOwnerInstanceId;
       writeFileSync(activePath, JSON.stringify(activeData, null, 2), "utf-8");
 
-      // state.jsonも変更（getCurrentWorkflowはstate.jsonから読み込む）
-      const statePath = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId, "state.json");
-      if (existsSync(statePath)) {
-        const stateData = JSON.parse(readFileSync(statePath, "utf-8"));
-        stateData.ownerInstanceId = fakeOwnerInstanceId;
-        writeFileSync(statePath, JSON.stringify(stateData, null, 2), "utf-8");
+      // status.jsonを変更（getCurrentWorkflowはstatus.jsonから読み込む）
+      // loadState/saveStateを使用して正しいファイルパスを操作
+      const statusData = loadState(taskId);
+      if (statusData) {
+        statusData.ownerInstanceId = fakeOwnerInstanceId;
+        saveState(statusData);
       }
 
       // force_claimを実行（所有者が生存中なので owner_still_alive エラーになる）
@@ -885,12 +885,12 @@ describe.sequential("UL workflow artifacts", () => {
       activeData.ownerInstanceId = `instance-${deadPid}`;
       writeFileSync(activePath, JSON.stringify(activeData, null, 2), "utf-8");
 
-      // state.jsonも変更（getCurrentWorkflowはstate.jsonから読み込む）
-      const statePath = path.join(process.cwd(), ".pi", "ul-workflow", "tasks", taskId, "state.json");
-      if (existsSync(statePath)) {
-        const stateData = JSON.parse(readFileSync(statePath, "utf-8"));
-        stateData.ownerInstanceId = `instance-${deadPid}`;
-        writeFileSync(statePath, JSON.stringify(stateData, null, 2), "utf-8");
+      // status.jsonを変更（getCurrentWorkflowはstatus.jsonから読み込む）
+      // loadState/saveStateを使用して正しいファイルパスを操作
+      const statusData = loadState(taskId);
+      if (statusData) {
+        statusData.ownerInstanceId = `instance-${deadPid}`;
+        saveState(statusData);
       }
 
       // resumeを実行（所有者が死んでいるのでauto-claimが成功する）
@@ -911,21 +911,19 @@ describe.sequential("UL workflow artifacts", () => {
       const taskId = startResult.details.taskId as string;
       createdTaskIds.push(taskId);
 
-      // active.jsonを直接操作してフェーズをcompletedに設定
-      const activePath = path.join(process.cwd(), ".pi", "ul-workflow", "active.json");
-      const activeData = JSON.parse(readFileSync(activePath, "utf-8"));
-      activeData.phase = "completed";
-      activeData.phaseIndex = 6; // completedのインデックス
-      writeFileSync(activePath, JSON.stringify(activeData, null, 2), "utf-8");
+      // status.jsonを直接操作してフェーズをcompletedに設定
+      // loadState/saveStateを使用して正しいファイルパスを操作
+      const statusData = loadState(taskId);
+      expect(statusData).not.toBeNull();
+      if (statusData) {
+        statusData.phase = "completed";
+        saveState(statusData);
+      }
 
-      // メモリ内のcurrentWorkflowをリロードさせるために、再度ワークフローを開始
-      // 注: テスト環境ではメモリ内キャッシュが優先されるため、
-      // workflow_finishedエラーは実際の運用環境で発生する
-      
-      // このテストでは、active.jsonの状態を確認することで
-      // workflow_finishedエラーの条件を文書化する
-      const savedData = JSON.parse(readFileSync(activePath, "utf-8"));
-      expect(savedData.phase).toBe("completed");
+      // approveを実行（completed状態なのでworkflow_finishedエラーになる）
+      const result = await approveTool!.execute("tc-approve-finished", {}, undefined, undefined, {});
+      expect(result.details.error).toBe("workflow_finished");
+      expect(result.content[0].text).toContain("完了");
     });
 
     it("returns workflow_already_active when resume is called with existing active workflow", async () => {
@@ -954,43 +952,32 @@ describe.sequential("UL workflow artifacts", () => {
       // 2. approvedPhases に "plan" が含まれていない
       // 3. この状態で ul_workflow_execute_plan() を呼ぶ
       
-      // 実装コード参照: ul-workflow.ts line 3398
+      // 実装コード参照: ul-workflow.ts line 3660-3661
       // if (!currentWorkflow.approvedPhases.includes("plan")) {
       //   return makeResult("エラー: planフェーズが承認されていません...", { error: "plan_not_approved" });
       // }
       
-      // 代替テスト: フェーズ進行の正しいシーケンスを確認
       const startTool = pi.tools.get("ul_workflow_start");
-      const researchTool = pi.tools.get("ul_workflow_research");
-      const approveTool = pi.tools.get("ul_workflow_approve");
-      const planTool = pi.tools.get("ul_workflow_plan");
       const executePlanTool = pi.tools.get("ul_workflow_execute_plan");
-      expect(startTool && researchTool && approveTool && planTool && executePlanTool).toBeDefined();
+      expect(startTool && executePlanTool).toBeDefined();
 
-      const startResult = await startTool!.execute("tc-start-plan-seq", { task: "フェーズシーケンステスト" }, undefined, undefined, {});
+      const startResult = await startTool!.execute("tc-start-plan-not-approved", { task: "plan未承認テスト" }, undefined, undefined, {});
       const taskId = startResult.details.taskId as string;
       createdTaskIds.push(taskId);
 
-      const ctx = {
-        executeTool: async ({ params }: { toolName: string; params: Record<string, unknown> }) => ({
-          content: [{
-            type: "text",
-            text: JSON.stringify(params).includes("researcher")
-              ? "# Research\n\n調査結果。\n\n## 高リスク判定\n\n### 判定結果\n- [ ] normal（通常）"
-              : "# Plan\n\n- [ ] 実装計画",
-          }],
-        }),
-      };
+      // status.jsonを直接操作して、phase="implement" かつ approvedPhases=[] の状態を作る
+      const statusData = loadState(taskId);
+      expect(statusData).not.toBeNull();
+      if (statusData) {
+        statusData.phase = "implement";
+        statusData.approvedPhases = []; // planを含まない
+        saveState(statusData);
+      }
 
-      // 正しいシーケンスでフェーズを進める
-      await researchTool!.execute("tc-research", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
-      await approveTool!.execute("tc-approve-1", {}, undefined, undefined, ctx);
-      await planTool!.execute("tc-plan", { task: "テスト", task_id: taskId }, undefined, undefined, ctx);
-      
-      // plan フェーズで approve せずに execute_plan を呼ぶ
-      // wrong_phase エラーになる（implement フェーズではないため）
-      const result = await executePlanTool!.execute("tc-execute-wrong-phase", {}, undefined, undefined, ctx);
-      expect(result.details.error).toBe("wrong_phase");
+      // execute_planを実行（plan未承認なのでplan_not_approvedエラーになる）
+      const result = await executePlanTool!.execute("tc-execute-plan-not-approved", {}, undefined, undefined, {});
+      expect(result.details.error).toBe("plan_not_approved");
+      expect(result.content[0].text).toContain("plan");
     });
 
     it("returns research_error when research phase fails", async () => {

@@ -111,7 +111,12 @@ const PATCH_TARGETS: PatchTarget[] = [
   },
 ];
 
-async function patchFile(requireFn: NodeRequire, target: PatchTarget): Promise<"patched" | "already" | "skip"> {
+type PatchResult = "patched" | "already" | "skip" | "error";
+
+export type { PatchTarget, PatchResult };
+export { patchFile, patchResolvedFilePath, safeCreateRequire, listDirsSafe };
+
+async function patchFile(requireFn: NodeRequire, target: PatchTarget): Promise<PatchResult> {
   let resolvedPath: string;
   try {
     resolvedPath = requireFn.resolve(target.modulePath);
@@ -123,7 +128,15 @@ async function patchFile(requireFn: NodeRequire, target: PatchTarget): Promise<"
     return "skip";
   }
 
-  const source = await readFile(resolvedPath, "utf-8");
+  let source: string;
+  try {
+    source = await readFile(resolvedPath, "utf-8");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    console.debug(`[pi-ai-abort-fix] readFile failed for ${resolvedPath}:`, code || error);
+    return "error";
+  }
+
   if (source.includes(target.marker)) {
     return "already";
   }
@@ -133,21 +146,43 @@ async function patchFile(requireFn: NodeRequire, target: PatchTarget): Promise<"
     return "skip";
   }
 
-  await writeFile(resolvedPath, patched, "utf-8");
-  return "patched";
+  try {
+    await writeFile(resolvedPath, patched, "utf-8");
+    return "patched";
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    console.debug(`[pi-ai-abort-fix] writeFile failed for ${resolvedPath}:`, code || error);
+    return "error";
+  }
 }
 
-async function patchResolvedFilePath(path: string, target: PatchTarget): Promise<"patched" | "already" | "skip"> {
-  const source = await readFile(path, "utf-8");
+async function patchResolvedFilePath(path: string, target: PatchTarget): Promise<PatchResult> {
+  let source: string;
+  try {
+    source = await readFile(path, "utf-8");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    console.debug(`[pi-ai-abort-fix] readFile failed for ${path}:`, code || error);
+    return "error";
+  }
+
   if (source.includes(target.marker)) {
     return "already";
   }
+
   const patched = source.replace(target.before, target.after);
   if (patched === source) {
     return "skip";
   }
-  await writeFile(path, patched, "utf-8");
-  return "patched";
+
+  try {
+    await writeFile(path, patched, "utf-8");
+    return "patched";
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    console.debug(`[pi-ai-abort-fix] writeFile failed for ${path}:`, code || error);
+    return "error";
+  }
 }
 
 function uniqueNonEmpty(values: Array<string | undefined>): string[] {

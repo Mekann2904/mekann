@@ -289,7 +289,7 @@ function isUnhandledAbortStopReasonMessage(text: string): boolean {
 }
 
 export function isRetryablePiChildErrorMessage(text: string): boolean {
-  return /overloaded|rate.?limit|too many requests|429|500|502|503|504|service.?unavailable|server error|internal error|unknown error(?: occurred)?|connection.?error|connection.?refused|other side closed|fetch failed|upstream.?connect|reset before headers|terminated|retry delay/i.test(text);
+  return /overloaded|rate.?limit|too many requests|429|500|502|503|504|service.?unavailable|server error|internal error|unknown error(?: occurred)?|connection.?error|connection.?refused|other side closed|fetch failed|upstream.?connect|reset before headers|terminated|retry delay|timeout/i.test(text);
 }
 
 function extractRetryAfterMs(text: string): number | undefined {

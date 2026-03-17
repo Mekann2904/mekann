@@ -31,6 +31,11 @@ import {
   DEFAULT_AWO_CONFIG,
   type AWOConfig,
 } from "./types.js";
+import { getLogger } from "../comprehensive-logger.js";
+import {
+  queryObservabilityData,
+  type ObservabilityQuery,
+} from "../../extensions/observability-data.js";
 
 // =============================================================================
 // 型定義（ローカル）
@@ -148,6 +153,18 @@ export class TraceCollector {
 
     active.toolCalls.push(toolCall);
     this.stats.totalToolCalls++;
+
+    // ComprehensiveLoggerへのブリッジ - observabilityパイプラインに送信
+    try {
+      const logger = getLogger();
+      logger.logToolCall(call.toolName, call.arguments || {}, {
+        file: "awo/trace-collector.ts",
+        line: 150,
+        function: "recordToolCall",
+      });
+    } catch {
+      // Observabilityへの送信エラーはトレース記録を阻害しない
+    }
   }
 
   /**
@@ -238,6 +255,91 @@ export class TraceCollector {
    */
   getStats(): AWOStats {
     return { ...this.stats };
+  }
+
+  /**
+   * Observabilityデータからトレースを復元
+   * @summary ComprehensiveLoggerのイベントからトレースを再構築
+   * @param query クエリ条件（省略時は直近7日間）
+   * @returns 復元されたトレース数
+   */
+  restoreFromObservability(query?: ObservabilityQuery): number {
+    if (!this.config.enabled) {
+      return 0;
+    }
+
+    // デフォルトクエリ: 直近7日間のツールコールイベント
+    const effectiveQuery: ObservabilityQuery = query || {
+      eventTypes: ["tool_call", "tool_error"],
+      from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+
+    try {
+      const result = queryObservabilityData(effectiveQuery);
+      const events = result.events;
+
+      // タスクIDでグループ化
+      const byTask = new Map<string, typeof events>();
+
+      for (const event of events) {
+        if (!event.taskId) continue;
+        const existing = byTask.get(event.taskId) || [];
+        existing.push(event);
+        byTask.set(event.taskId, existing);
+      }
+
+      let restoredCount = 0;
+
+      // 各タスクをトレースとして復元
+      for (const [taskId, taskEvents] of byTask) {
+        // ツールコールを抽出
+        const toolCalls: ToolCall[] = taskEvents
+          .filter((e) => e.eventType === "tool_call" || e.eventType === "tool_error")
+          .map((e) => {
+            // ToolCallEvent型を想定
+            const data = (e as { data: Record<string, unknown> }).data || {};
+            return {
+              toolName: (data.toolName as string) || "unknown",
+              arguments: (data.params as Record<string, unknown>) || {},
+              result: (e as { data: { output?: string } }).data?.output || undefined,
+              timestamp: new Date(e.timestamp).getTime(),
+              executionId: `restored-${Math.random().toString(36).substring(2, 9)}`,
+              success: e.eventType !== "tool_error",
+            };
+          });
+
+        if (toolCalls.length === 0) continue;
+
+        // トレースを作成
+        const trace: Trace = {
+          id: `restored-${taskId}-${Date.now()}`,
+          taskId,
+          taskDescription: `Restored from observability (task: ${taskId})`,
+          toolCalls,
+          startTime: Math.min(...toolCalls.map((t) => t.timestamp)),
+          endTime: Math.max(...toolCalls.map((t) => t.timestamp)),
+          success: !taskEvents.some((e) => e.eventType === "tool_error"),
+          agentType: "subagent", // デフォルト
+          metadata: { restored: true, source: "observability" },
+        };
+
+        // 保存
+        this.saveTrace(trace);
+        restoredCount++;
+      }
+
+      // 統計更新
+      if (restoredCount > 0) {
+        this.stats.totalTraces += restoredCount;
+        this.stats.lastUpdated = Date.now();
+        this.saveStats();
+      }
+
+      return restoredCount;
+    } catch (error) {
+      console.warn("[AWO] Failed to restore from observability:", error);
+      return 0;
+    }
   }
 
   /**

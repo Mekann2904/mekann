@@ -21,7 +21,11 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { secureHeaders } from "hono/secure-headers";
-import { errorHandler, notFoundHandler } from "../middleware/error-handler.js";
+import {
+  errorHandler,
+  handleError,
+  notFoundHandler,
+} from "../middleware/error-handler.js";
 import { taskRoutes } from "../routes/tasks.js";
 import { instanceRoutes } from "../routes/instances.js";
 import { sseRoutes } from "../routes/sse.js";
@@ -35,6 +39,7 @@ import { runtimeRoutes } from "../routes/runtime.js";
 import { indexesRoutes } from "../routes/indexes.js";
 import { benchmarkRoutes } from "../routes/benchmark.js";
 import { workpadRoutes } from "../routes/workpads.js";
+import { experimentsRoutes } from "../routes/experiments.js";
 
 /**
  * アプリケーションコンテキスト型
@@ -55,7 +60,10 @@ export function createApp(): Hono<AppContext> {
   const app = new Hono<AppContext>();
 
   // エラーハンドラー
+  // app.use() は non-Error thrown values をキャッチ
   app.use("*", errorHandler());
+  // app.onError() は Error オブジェクトをキャッチ
+  app.onError(handleError);
 
   // ヘルスチェック
   app.get("/health", (c) => {
@@ -83,6 +91,7 @@ export function createApp(): Hono<AppContext> {
   app.route("/indexes", indexesRoutes);
   app.route("/benchmark", benchmarkRoutes);
   app.route("/workpads", workpadRoutes);
+  app.route("/experiments", experimentsRoutes);
 
   // 404 ハンドラー
   app.notFound(notFoundHandler);

@@ -534,7 +534,7 @@ AST検出の特徴:
 			// ABDD/.pi/**/*.mdの読み込み
 			const realityFiles: { path: string; content: string }[] = [];
 			if (fs.existsSync(abddDir)) {
-				const mdFiles = findAllMdFiles(abddDir);
+				const mdFiles = findAllMdFiles(abddDir, warnings);
 				for (const filePath of mdFiles) {
 					try {
 						const content = fs.readFileSync(filePath, "utf-8");
@@ -915,16 +915,23 @@ strict（厳格）: add-abdd-header --regenerate → add-jsdoc --regenerate → 
 
 /**
  * 指定ディレクトリ以下の.mdファイルを再帰的に検索
+ * @param dir - 検索対象ディレクトリ
+ * @param warnings - エラー情報を格納する配列（オプション）
+ * @returns 見つかった.mdファイルのパス配列
  */
-function findAllMdFiles(dir: string): string[] {
+function findAllMdFiles(dir: string, warnings?: string[]): string[] {
 	const files: string[] = [];
 	let entries: fs.Dirent[];
-	
+
 	try {
 		entries = fs.readdirSync(dir, { withFileTypes: true });
 	} catch (e) {
-		// ディレクトリ読み込みエラーは空配列を返して処理を継続
-		console.error(`[abdd] ディレクトリ読み込みエラー: ${dir}`, e);
+		// ディレクトリ読み込みエラーは警告に追加して空配列を返す
+		const errorMsg = `ディレクトリ読み込みエラー: ${dir} - ${e instanceof Error ? e.message : String(e)}`;
+		console.error(`[abdd] ${errorMsg}`);
+		if (warnings) {
+			warnings.push(errorMsg);
+		}
 		return files;
 	}
 
@@ -932,10 +939,14 @@ function findAllMdFiles(dir: string): string[] {
 		const fullPath = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
 			try {
-				files.push(...findAllMdFiles(fullPath));
+				files.push(...findAllMdFiles(fullPath, warnings));
 			} catch (e) {
-				// 再帰呼び出しのエラーはログして継続
-				console.error(`[abdd] サブディレクトリ探索エラー: ${fullPath}`, e);
+				// 再帰呼び出しのエラーは警告に追加して継続
+				const errorMsg = `サブディレクトリ探索エラー: ${fullPath} - ${e instanceof Error ? e.message : String(e)}`;
+				console.error(`[abdd] ${errorMsg}`);
+				if (warnings) {
+					warnings.push(errorMsg);
+				}
 			}
 		} else if (entry.isFile() && entry.name.endsWith(".md")) {
 			files.push(fullPath);
@@ -1938,3 +1949,6 @@ function runASTDetection(verbose: boolean): Divergence[] {
 
 	return results.map((r) => r.divergence);
 }
+
+// テスト用にエクスポート
+export { findAllMdFiles };

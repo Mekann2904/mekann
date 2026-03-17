@@ -47,6 +47,7 @@ import { getSearchCache, getCacheKey } from "../utils/cache.js";
 import { getSearchHistory, extractQuery } from "../utils/history.js";
 import { resolveProbeLimit } from "../../../lib/tool-policy-engine.js";
 import { getToolTelemetryStore } from "../../../lib/tool-telemetry-store.js";
+import { getLogger } from "../../../lib/comprehensive-logger.js";
 import {
 	buildInputFingerprint,
 	buildNormalizedSignature,
@@ -54,6 +55,8 @@ import {
 	estimateOutputBytes,
 	summarizeOutput,
 } from "../../../lib/tool-telemetry.js";
+
+const logger = getLogger();
 
 const FILE_CANDIDATES_PROBE_LIMIT = 20;
 const NATIVE_FILE_CANDIDATES_TOOL_NAME = "native_file_candidates";
@@ -386,6 +389,7 @@ export async function fileCandidates(
 
 	// 3. Execute search
 	let result: FileCandidatesOutput;
+	const startTime = Date.now();
 	try {
 		const availability = await checkToolAvailability();
 		const probeInput = buildProbeFileCandidatesInput(input);
@@ -441,6 +445,32 @@ export async function fileCandidates(
 		DEFAULT_CONTEXT_BUDGET,
 		extractQuery(TOOL_NAME, params)
 	);
+
+	// 4.5 Emit search metrics to observability
+	logger.logToolResult(TOOL_NAME, {
+		status: 'success',
+		durationMs: Date.now() - startTime,
+		outputType: 'inline',
+		output: summarizeOutput(result, 200),
+		outputSize: estimateOutputBytes(result),
+	});
+
+	// 4.6 Emit token estimates to observability for autoresearch tracking
+	if (estimatedTokens > 0) {
+		logger.logMetricsSnapshot({
+			memoryUsageMB: 0,
+			cpuPercent: 0,
+			eventsTotal: 0,
+			tasksCompleted: 0,
+			operationsCompleted: 1,
+			toolCallsTotal: 1,
+			tokensTotal: estimatedTokens,
+			errorRate: 0,
+			avgResponseTimeMs: Date.now() - startTime,
+			p95ResponseTimeMs: Date.now() - startTime,
+		});
+	}
+	logger.flush().catch(() => { /* best effort */ });
 
 	// 5. Record to history
 	history.addHistoryEntry({
