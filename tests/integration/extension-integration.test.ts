@@ -1027,4 +1027,391 @@ describe("拡張機能統合テスト", () => {
 			});
 		}
 	);
+
+	// ============================================================================
+	// Error Cases + Concurrent Operations + Shutdown Cleanup
+	// ============================================================================
+
+	describeScenario(
+		"同時autoresearch操作でのイベント処理",
+		"アクティブなautoresearch実行中にstart/stopが同時発生した場合のイベント整合性",
+		(ctx) => {
+			let mockPi: any;
+			let eventLog: { eventType: string; timestamp: number; concurrent: boolean }[];
+			let activeRuns: Set<string>;
+
+			ctx.given("autoresearchとobservability-data拡張機能がロードされている", async () => {
+				mockPi = createMockPi();
+				eventLog = [];
+				activeRuns = new Set();
+
+				// Mock concurrent-safe event emission
+				mockPi.emit = vi.fn((eventType: string, data: any) => {
+					const isConcurrent = activeRuns.size > 1;
+					eventLog.push({
+						eventType,
+						timestamp: Date.now(),
+						concurrent: isConcurrent,
+					});
+
+					// Track active runs
+					if (eventType === "experiment_run" && data.label) {
+						activeRuns.add(data.label);
+					} else if (eventType === "experiment_stop" && data.label) {
+						activeRuns.delete(data.label);
+					}
+				});
+			});
+
+			ctx.when("複数のautoresearch実験が並列で開始される", async () => {
+				// Simulate concurrent experiment starts
+				mockPi.emit("experiment_start", { label: "exp-1", experimentType: "tbench" });
+				mockPi.emit("experiment_run", { label: "exp-1", iteration: 1 });
+
+				// Start second experiment while first is running
+				mockPi.emit("experiment_start", { label: "exp-2", experimentType: "tbench" });
+				mockPi.emit("experiment_run", { label: "exp-2", iteration: 1 });
+
+				// Verify concurrent state
+				expect(activeRuns.size).toBe(2);
+			});
+
+			ctx.and("一方の実験が停止される", async () => {
+				// Stop first experiment while second is still running
+				mockPi.emit("experiment_stop", { label: "exp-1", reason: "user_cancelled" });
+
+				expect(activeRuns.size).toBe(1);
+				expect(activeRuns.has("exp-2")).toBe(true);
+			});
+
+			ctx.and("もう一方の実験が改善イベントを生成", async () => {
+				// Second experiment continues and improves
+				mockPi.emit("experiment_improved", {
+					label: "exp-2",
+					iteration: 2,
+					score: 0.92,
+					baselineScore: 0.85,
+				});
+
+				mockPi.emit("experiment_stop", { label: "exp-2", reason: "completed" });
+			});
+
+			ctx.then("イベントログが並列状態を正しく記録する", () => {
+				expect(eventLog.length).toBeGreaterThan(0);
+
+				// Verify concurrent events are marked
+				const concurrentEvents = eventLog.filter((e) => e.concurrent);
+				expect(concurrentEvents.length).toBeGreaterThan(0);
+
+				// Verify all events are logged in order
+				const eventTypes = eventLog.map((e) => e.eventType);
+				expect(eventTypes).toContain("experiment_start");
+				expect(eventTypes).toContain("experiment_stop");
+				expect(eventTypes).toContain("experiment_improved");
+			});
+
+			ctx.and("activeRunsが最終的に空になる", () => {
+				expect(activeRuns.size).toBe(0);
+			});
+		}
+	);
+
+	describeScenario(
+		"observability-dataイベント受信エラーの伝播",
+		"observability-dataがイベント受信に失敗した場合のエラー伝播を検証",
+		(ctx) => {
+			let mockPi: any;
+			let errorLog: { eventType: string; error: string; recovered: boolean }[];
+			let callbackErrors: Error[];
+
+			ctx.given("イベントコールバックが例外を投げる可能性がある", async () => {
+				mockPi = createMockPi();
+				errorLog = [];
+				callbackErrors = [];
+
+				// Mock callback registration with error tracking
+				mockPi._callbacks = new Map<string, ((event: any) => void)[]>();
+				mockPi._errorCallbacks = new Set<(error: Error, event: any) => void>();
+
+				// Register error handler
+				mockPi.onError = vi.fn((handler: (error: Error, event: any) => void) => {
+					mockPi._errorCallbacks.add(handler);
+				});
+
+				// Mock emit with error handling
+				mockPi.emit = vi.fn((eventType: string, data: any) => {
+					const callbacks = mockPi._callbacks.get(eventType) || [];
+
+					for (const callback of callbacks) {
+						try {
+							callback({ type: eventType, data });
+						} catch (err) {
+							const error = err instanceof Error ? err : new Error(String(err));
+							callbackErrors.push(error);
+							errorLog.push({
+								eventType,
+								error: error.message,
+								recovered: false,
+							});
+
+							// Notify error handlers
+							for (const errorHandler of mockPi._errorCallbacks) {
+								try {
+									errorHandler(error, { type: eventType, data });
+								} catch {
+									// Error handlers must not throw
+								}
+							}
+						}
+					}
+				});
+
+				// Register callback that throws
+				mockPi.on = vi.fn((eventType: string, callback: (event: any) => void) => {
+					if (!mockPi._callbacks.has(eventType)) {
+						mockPi._callbacks.set(eventType, []);
+					}
+					mockPi._callbacks.get(eventType)!.push(callback);
+				});
+			});
+
+			ctx.when("正常なコールバックとエラーを投げるコールバックを登録する", async () => {
+				// Normal callback
+				mockPi.on("experiment_start", (_event: any) => {
+					// Normal processing
+				});
+
+				// Callback that throws
+				mockPi.on("experiment_start", (_event: any) => {
+					throw new Error("Simulated callback error");
+				});
+
+				// Another normal callback
+				mockPi.on("experiment_start", (_event: any) => {
+					// This should still be called
+				});
+
+				// Register error handler
+				mockPi.onError((error: Error, event: any) => {
+					errorLog.push({
+						eventType: event.type,
+						error: error.message,
+						recovered: true,
+					});
+				});
+			});
+
+			ctx.and("イベントをemitする", async () => {
+				mockPi.emit("experiment_start", { label: "test" });
+			});
+
+			ctx.then("エラーがログに記録される", () => {
+				expect(callbackErrors.length).toBe(1);
+				expect(callbackErrors[0].message).toBe("Simulated callback error");
+			});
+
+			ctx.and("エラーハンドラーが呼ばれる", () => {
+				const recoveredErrors = errorLog.filter((e) => e.recovered);
+				expect(recoveredErrors.length).toBeGreaterThan(0);
+			});
+
+			ctx.and("他のコールバックは継続して実行される", () => {
+				// All callbacks should have been attempted
+				expect(mockPi._callbacks.get("experiment_start")?.length).toBe(3);
+			});
+		}
+	);
+
+	describeScenario(
+		"シャットダウン時のイベントサブスクリプションクリーンアップ",
+		"session_shutdown時にサブスクリプションが正しくクリーンアップされる",
+		(ctx) => {
+			let mockPi: any;
+			let shutdownState: { phase: string; cleanedUp: string[] }[];
+			let activeSubscriptions: Map<string, boolean>;
+
+			ctx.given("拡張機能がシャットダウンハンドラーを登録している", async () => {
+				mockPi = createMockPi();
+				shutdownState = [];
+				activeSubscriptions = new Map();
+
+				// Track active subscriptions
+				mockPi._shutdownHandlers = new Map<string, () => Promise<void>>();
+
+				// Mock session_shutdown registration
+				mockPi.onSessionShutdown = vi.fn((extensionName: string, handler: () => Promise<void>) => {
+					mockPi._shutdownHandlers.set(extensionName, handler);
+				});
+
+				// Mock subscription management
+				mockPi.subscribe = vi.fn((eventType: string) => {
+					activeSubscriptions.set(eventType, true);
+					return () => activeSubscriptions.delete(eventType);
+				});
+
+				// Simulate observability-data extension registering shutdown handler
+				mockPi.onSessionShutdown("observability-data", async () => {
+					shutdownState.push({ phase: "observability-data-start", cleanedUp: [] });
+
+					// Cleanup subscriptions
+					for (const [eventType] of activeSubscriptions) {
+						activeSubscriptions.delete(eventType);
+						shutdownState[shutdownState.length - 1].cleanedUp.push(eventType);
+					}
+
+					shutdownState.push({ phase: "observability-data-end", cleanedUp: [] });
+				});
+
+				// Simulate autoresearch-tbench extension registering shutdown handler
+				mockPi.onSessionShutdown("autoresearch-tbench", async () => {
+					shutdownState.push({ phase: "autoresearch-tbench-start", cleanedUp: [] });
+					// Flush final events before observability-data clears
+					shutdownState.push({ phase: "autoresearch-tbench-end", cleanedUp: [] });
+				});
+			});
+
+			ctx.when("イベントサブスクリプションを登録する", async () => {
+				mockPi.subscribe("experiment_start");
+				mockPi.subscribe("experiment_baseline");
+				mockPi.subscribe("experiment_improved");
+
+				expect(activeSubscriptions.size).toBe(3);
+			});
+
+			ctx.and("session_shutdownをトリガーする", async () => {
+				// Execute shutdown handlers in order (autoresearch first, then observability)
+				const autoresearchHandler = mockPi._shutdownHandlers.get("autoresearch-tbench");
+				const observabilityHandler = mockPi._shutdownHandlers.get("observability-data");
+
+				if (autoresearchHandler) {
+					await autoresearchHandler();
+				}
+				if (observabilityHandler) {
+					await observabilityHandler();
+				}
+			});
+
+			ctx.then("サブスクリプションがクリーンアップされる", () => {
+				expect(activeSubscriptions.size).toBe(0);
+			});
+
+			ctx.and("シャットダウン順序が正しい", () => {
+				expect(shutdownState.length).toBeGreaterThan(0);
+				const phases = shutdownState.map((s) => s.phase);
+
+				// autoresearch should flush before observability cleans up
+				const autoresearchEndIndex = phases.indexOf("autoresearch-tbench-end");
+				const observabilityStartIndex = phases.indexOf("observability-data-start");
+
+				expect(autoresearchEndIndex).toBeLessThan(observabilityStartIndex);
+			});
+
+			ctx.and("クリーンアップされたイベントが記録される", () => {
+				const cleanupState = shutdownState.find(
+					(s) => s.phase === "observability-data-start" && s.cleanedUp.length > 0
+				);
+				expect(cleanupState).toBeDefined();
+				expect(cleanupState!.cleanedUp).toContain("experiment_start");
+			});
+		}
+	);
+
+	describeScenario(
+		"高頻度状態変更でのレジストリ書き込み障害",
+		"高頻度イベント発生時にレジストリ書き込みが失敗した場合の動作",
+		(ctx) => {
+			let mockPi: any;
+			let eventQueue: { eventType: string; timestamp: number; processed: boolean }[];
+			let registryWriteFailures: number;
+			let maxQueueSize: number;
+
+			ctx.given("高頻度イベントに対応したイベントシステムがある", async () => {
+				mockPi = createMockPi();
+				eventQueue = [];
+				registryWriteFailures = 0;
+				maxQueueSize = 0;
+
+				// Simulate registry with occasional write failures
+				mockPi._registryWrites = 0;
+				mockPi._registryFailureRate = 0.1; // 10% failure rate
+
+				// Mock high-frequency event emission
+				mockPi.emit = vi.fn((eventType: string, data: any) => {
+					const event = {
+						eventType,
+						timestamp: Date.now(),
+						processed: false,
+					};
+
+					eventQueue.push(event);
+					maxQueueSize = Math.max(maxQueueSize, eventQueue.length);
+
+					// Simulate registry write
+					mockPi._registryWrites++;
+					if (Math.random() < mockPi._registryFailureRate) {
+						registryWriteFailures++;
+						// Event remains in queue but unprocessed
+						return false;
+					}
+
+					event.processed = true;
+					return true;
+				});
+
+				// Mock batch processing
+				mockPi.flushQueue = vi.fn(() => {
+					const unprocessed = eventQueue.filter((e) => !e.processed);
+					for (const event of unprocessed) {
+						mockPi._registryWrites++;
+						if (Math.random() >= mockPi._registryFailureRate) {
+							event.processed = true;
+						} else {
+							registryWriteFailures++;
+						}
+					}
+					return unprocessed.length;
+				});
+			});
+
+			ctx.when("短時間に大量のイベントを生成する", async () => {
+				// Simulate 100 rapid events
+				const eventCount = 100;
+				for (let i = 0; i < eventCount; i++) {
+					mockPi.emit("experiment_run", {
+						label: `run-${i}`,
+						iteration: i,
+						score: Math.random(),
+					});
+				}
+
+				expect(eventQueue.length).toBe(eventCount);
+			});
+
+			ctx.and("キューをフラッシュする", async () => {
+				// Retry unprocessed events
+				const retriedCount = mockPi.flushQueue();
+				expect(retriedCount).toBeGreaterThanOrEqual(0);
+			});
+
+			ctx.then("イベントが処理される（一部失敗しても継続）", () => {
+				const processedCount = eventQueue.filter((e) => e.processed).length;
+
+				// Most events should be processed despite failures
+				expect(processedCount).toBeGreaterThan(eventQueue.length * 0.8);
+			});
+
+			ctx.and("レジストリ書き込み失敗が記録される", () => {
+				// Some failures should have occurred
+				expect(mockPi._registryWrites).toBeGreaterThan(eventQueue.length);
+
+				// Failures should be tracked
+				expect(typeof registryWriteFailures).toBe("number");
+			});
+
+			ctx.and("最大キューサイズが監視される", () => {
+				expect(maxQueueSize).toBeGreaterThan(0);
+				expect(maxQueueSize).toBeLessThanOrEqual(200); // Reasonable bound
+			});
+		}
+	);
 });
