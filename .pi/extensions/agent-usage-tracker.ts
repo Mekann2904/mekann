@@ -1058,10 +1058,22 @@ export default function registerAgentUsageTracker(pi: ExtensionAPI) {
   });
 
   // セッション終了時に最終保存する。
+  // シャットダウン時のディスク書き込み失敗でイベントが黙って失われるのを防ぐため、
+  // エラーハンドリングを追加してログに記録する。
   pi.on("session_shutdown", async (_event, ctx) => {
     const currentRuntime = ensureRuntime(ctx);
     prunePendingTools(currentRuntime);
-    saveState(currentRuntime);
+    try {
+      saveState(currentRuntime);
+    } catch (err) {
+      // シャットダウン中は再試行できないため、エラーをログに記録して続行する。
+      // ディスク容量不足、権限エラー、ファイル破損などが原因となり得る。
+      logger.error("agent-usage-tracker: saveState failed during shutdown, events may be lost", {
+        error: err instanceof Error ? err.message : String(err),
+        storageFile: currentRuntime.storageFile,
+        eventsCount: currentRuntime.state.events.length,
+      });
+    }
     isInitialized = false;
   });
 
