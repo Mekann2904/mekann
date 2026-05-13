@@ -27,7 +27,7 @@ const DESTRUCTIVE_PATTERNS = [
 	/(^|[^<])>(?!>)/,
 	/>>/,
 	/\bnpm\s+(install|uninstall|update|ci|link|publish)/i,
-	/\bnpm\s+audit\s+(fix|--fix)\b/i,
+	/\bnpm\s+audit\b.*(?:\bfix\b|--fix\b)/i,
 	/\byarn\s+(add|remove|install|publish)/i,
 	/\bpnpm\s+(add|remove|install|publish)/i,
 	/\bpip\s+(install|uninstall)/i,
@@ -35,7 +35,8 @@ const DESTRUCTIVE_PATTERNS = [
 	/\bbrew\s+(install|uninstall|upgrade)/i,
 	/\bgit\s+(add|commit|push|pull|merge|rebase|reset|checkout|branch\s+-[dD]|stash|cherry-pick|revert|tag|init|clone)/i,
 	/\bgit\s+diff\b.*--output\b/i,
-	/\bfind\b.*\s+(?:-delete|-exec\b|-execdir\b|-ok\b|-fls\b|-fprint\b|-fprintf)\b/i,
+	/\bfind\b.*\s+(?:-delete|-exec\b|-execdir\b|-ok\b|-fls\b|-fprint\b|-fprint0\b|-fprintf)\b/i,
+	/\bsed\b.*-i\b/i,
 	/\bsudo\b/i,
 	/\bsu\b/i,
 	/\bkill\b/i,
@@ -470,6 +471,9 @@ const ACTION_WORDS_RE =
 const ACTION_WORDS_JA_RE =
 	/[するつくり追加更新修正削除作成実装確認検証テスト移行設定構築分析レビュー導入適用変更改善対応変換抽出検証保証実行移動分割統合再構築]/;
 
+/** step ID 形式: kebab-case のみ許可（extractDoneSteps の正規表現と整合） */
+const STEP_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
+
 export function validatePlan(items: TodoItem[]): {
 	valid: boolean;
 	issues: string[];
@@ -495,6 +499,15 @@ export function validatePlan(items: TodoItem[]): {
 	}
 	if (dupes.size > 0) {
 		issues.push(`重複するステップID: ${[...dupes].join(", ")}。IDは一意にしてください。`);
+	}
+
+	// step ID 形式チェック（kebab-case — extractDoneSteps と整合）
+	for (let i = 0; i < items.length; i++) {
+		if (!STEP_ID_RE.test(items[i].id)) {
+			issues.push(
+				`ステップ ${i + 1} の id "${items[i].id}" は無効です。英小文字・数字・ハイフンのみ使用してください（kebab-case）。`
+			);
+		}
 	}
 
 	for (let i = 0; i < items.length; i++) {

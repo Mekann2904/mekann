@@ -85,9 +85,9 @@ Plan:
 4. Plan the API endpoint modifications
 ```
 
-5. After the plan is complete, choose "Execute the plan"
+5. After the plan is complete, run `/execute-plan` to start execution
 6. The model switches to the execution model automatically
-7. Agent executes steps, marking them with `[DONE:n]` tags
+7. Agent executes steps, marking them with `[DONE:step-id]` tags
 8. Progress widget shows completion status
 
 ## Model Selection
@@ -149,17 +149,18 @@ The test suite covers:
 
 | Category | Tests | Description |
 |----------|-------|-------------|
-| `isSafeCommand` | ~70 | Safe/dangerous bash command classification |
+| `isSafeCommand` | ~80 | Safe/dangerous bash command classification |
 | `extractTodoItems` | ~15 | Plan extraction from `<proposed_plan>` and `Plan:` formats |
 | `extractDoneSteps` | ~4 | `[DONE:n]` marker parsing |
 | `markCompletedSteps` | ~3 | Step completion tracking |
 | `cleanStepText` | ~7 | Text cleanup (markdown removal, normalization) |
+| `validatePlan` | ~20 | Plan quality validation (step count, ID format, action words) |
 | Integration Scenarios | ~3 | Full workflow: plan → execute → complete |
 | `tool_call` blocking | ~6 | Tool block simulation in plan mode |
 | `buildBlockReason` | ~5 | Block reason message generation |
 | `loadPrompt` | ~5 | Prompt file loading and variable substitution |
 
-Total: ~163 tests
+Total: ~259 tests
 
 ## Architecture
 
