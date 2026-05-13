@@ -52,11 +52,8 @@ const SAFE_REDIRECT_PATTERN = /\s*2>\/dev\/null\b|\s*2>&1\b|\s*>\/dev\/null\b/g;
 export function isSafeCommand(command: string): boolean {
 	const stripped = command.replace(SAFE_REDIRECT_PATTERN, "");
 
-	if (SHELL_META_PATTERNS.some((p) => p.test(stripped))) {
-		return false;
-	}
-
-	return !DESTRUCTIVE_PATTERNS.some((p) => p.test(stripped))
+	return !SHELL_META_PATTERNS.some((p) => p.test(stripped))
+		&& !DESTRUCTIVE_PATTERNS.some((p) => p.test(stripped))
 		&& SAFE_PATTERNS.some((p) => p.test(stripped));
 }
 
