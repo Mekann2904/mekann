@@ -18,10 +18,6 @@ function formatBytes(bytes: number): string {
 	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function escapeAppleScriptString(value: string): string {
-	return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
 type ZipMode = "default" | "head" | "worktree";
 
 function parseArgs(raw: string): { mode: ZipMode } {
@@ -108,7 +104,7 @@ export default function (pi: ExtensionAPI) {
 			try {
 				await execFileAsync("osascript", [
 					"-e",
-					`set the clipboard to (POSIX file "${escapeAppleScriptString(zipPath)}")`,
+					`set the clipboard to (POSIX file "${zipPath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}")`,
 				]);
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
