@@ -113,7 +113,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 
 		const reason = buildBlockReason(toolName, input, blockCount);
-
 		pi.appendEntry("plan-mode-blocked-tool", {
 			at: Date.now(),
 			mode: state.mode,

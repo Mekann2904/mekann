@@ -92,8 +92,5 @@ async function overlayDirtyFiles(parentDir: string, repoName: string, repoRoot: 
 	const dirtyFiles = stdout.split("\n").filter(Boolean);
 	if (dirtyFiles.length === 0) return;
 
-	await execFileAsync("/usr/bin/zip", [
-		"-u", zipPath,
-		...dirtyFiles.map((f) => `${repoName}/${f}`),
-	], { cwd: parentDir });
+	await execFileAsync("/usr/bin/zip", ["-u", zipPath, ...dirtyFiles.map((f) => `${repoName}/${f}`)], { cwd: parentDir });
 }
