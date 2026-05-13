@@ -73,10 +73,7 @@ export default function (pi: ExtensionAPI) {
 			} catch {}
 
 			try {
-				await execFileAsync("osascript", [
-					"-e",
-					`set the clipboard to (POSIX file "${zipPath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}")`,
-				]);
+				await execFileAsync("osascript", ["-e", `set the clipboard to (POSIX file "${zipPath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}")`]);
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
 				ctx.ui.notify(`ZIP created at ${zipPath} (${sizeStr}) but clipboard copy failed: ${msg}`, "warning");
@@ -90,9 +87,7 @@ export default function (pi: ExtensionAPI) {
 }
 
 async function overlayDirtyFiles(parentDir: string, repoName: string, repoRoot: string, zipPath: string): Promise<void> {
-	const { stdout } = await execFileAsync("git", [
-		"ls-files", "-mo", "--exclude-standard", "--",
-	], { cwd: repoRoot, encoding: "utf8" });
+	const { stdout } = await execFileAsync("git", ["ls-files", "-mo", "--exclude-standard", "--"], { cwd: repoRoot, encoding: "utf8" });
 
 	const dirtyFiles = stdout.split("\n").filter(Boolean);
 	if (dirtyFiles.length === 0) return;
