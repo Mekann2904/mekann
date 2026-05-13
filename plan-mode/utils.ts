@@ -604,9 +604,9 @@ export function validatePlan(items: TodoItem[]): {
 			);
 		}
 
-		// P1: acceptance 欠落（soft warning）
-		if (!items[i].acceptance) {
-			warnings.push(`ステップ ${i + 1} [${items[i].id}] に acceptance がありません。完了基準を明示すると実行品質が向上します。`);
+		// acceptance は必須（hard error）: 実装者の判断を減らすため
+		if (!items[i].acceptance || items[i].acceptance.trim().length === 0) {
+			issues.push(`ステップ ${i + 1} [${items[i].id}] の acceptance が空です。完了基準を明示してください。`);
 		}
 	}
 

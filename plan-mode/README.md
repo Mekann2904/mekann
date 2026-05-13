@@ -150,6 +150,8 @@ Human-readable plan description
 
 Step ID format: **kebab-case** only (lowercase, digits, hyphens). Example: `add-validator`, `fix-api-v2`.
 
+**`acceptance` is required.** Every step must include a completion criterion. This ensures the plan is "decision complete" — the implementer should never need to make judgment calls about whether a step is done.
+
 Steps are completed with `[DONE:step-id]` markers (e.g., `[DONE:add-validator]`).
 
 ## Bash Restrictions in Plan Mode
@@ -207,8 +209,10 @@ plan-mode/
 - Planning and plan_ready modes enforce read-only tool access at the `tool_call` boundary
 - Tool restrictions are enforced by the host, not by prompt instructions
 - Blocked tool calls are counted and reported to the model with escalating urgency
+- Blocked tool calls are logged to session history (`plan-mode-blocked-tool` entries) with sanitized data (path/command only)
 - Shell metacharacters are blocked to prevent command chaining
 - `bash` is disabled by default in plan mode; opt-in via configuration
+- Plan snapshot is frozen at execution start — the executing plan cannot be modified mid-run
 
 ## Known Limitations
 
