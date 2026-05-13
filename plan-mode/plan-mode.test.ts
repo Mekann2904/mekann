@@ -29,7 +29,7 @@ const SAFE_PLAN_TOOLS = new Set(["read", "grep", "find", "ls"]);
 function shouldBlockToolCall(
 	planModeEnabled: boolean,
 	toolName: string,
-	input: Record<string, unknown>,
+	input: Record<string, unknown> | null | undefined,
 ): boolean {
 	if (!planModeEnabled) return false;
 
@@ -38,7 +38,8 @@ function shouldBlockToolCall(
 
 	// bash は isSafeCommand で検査
 	if (toolName === "bash") {
-		const command = String(input.command ?? "");
+		const safeInput = input ?? {};
+		const command = String((safeInput as Record<string, unknown>).command ?? "");
 		return !isSafeCommand(command);
 	}
 
@@ -60,6 +61,7 @@ describe("isSafeCommand", () => {
 			"more file.txt",
 			"grep -r 'TODO' src/",
 			"find . -name '*.ts'",
+			"find . -type f",
 			"ls -la",
 			"pwd",
 			"echo 'hello'",
@@ -186,6 +188,50 @@ describe("isSafeCommand", () => {
 		}
 	});
 
+	// --- P0: 追加された危険パターン ---
+	describe("P0: 追加された危険パターン", () => {
+		it("find -delete をブロック", () => {
+			expect(isSafeCommand("find . -delete")).toBe(false);
+			expect(isSafeCommand("find . -name '*.tmp' -delete")).toBe(false);
+		});
+
+		it("find -exec をブロック", () => {
+			expect(isSafeCommand("find . -exec rm {} \\;")).toBe(false);
+		});
+
+		it("find -execdir をブロック", () => {
+			expect(isSafeCommand("find . -execdir rm {} +")).toBe(false);
+		});
+
+		it("find -ok をブロック", () => {
+			expect(isSafeCommand("find . -ok rm {} \\;")).toBe(false);
+		});
+
+		it("find -fls をブロック", () => {
+			expect(isSafeCommand("find . -fls /tmp/find.log")).toBe(false);
+		});
+
+		it("find -fprint をブロック", () => {
+			expect(isSafeCommand("find . -fprint /tmp/find.txt")).toBe(false);
+		});
+
+		it("npm audit fix をブロック", () => {
+			expect(isSafeCommand("npm audit fix")).toBe(false);
+		});
+
+		it("npm audit --fix をブロック", () => {
+			expect(isSafeCommand("npm audit --fix")).toBe(false);
+		});
+
+		it("git diff --output をブロック", () => {
+			expect(isSafeCommand("git diff --output=patch")).toBe(false);
+		});
+
+		it("git diff --output-files をブロック", () => {
+			expect(isSafeCommand("git diff --output-file patch.diff")).toBe(false);
+		});
+	});
+
 	// --- Shell metacharacter guard ---
 	describe("シェルメタ文字ガード", () => {
 		it("パイプを含むコマンドはブロック", () => {
@@ -215,6 +261,27 @@ describe("isSafeCommand", () => {
 
 		it("プロセス置換を含むコマンドはブロック", () => {
 			expect(isSafeCommand("cat <(echo hello)")).toBe(false);
+		});
+
+		it("P0: 単独 & バックグラウンド実行をブロック", () => {
+			expect(isSafeCommand("echo foo &")).toBe(false);
+			expect(isSafeCommand("sleep 10 &")).toBe(false);
+		});
+
+		it("P0: 単独 & (disown付き) をブロック", () => {
+			expect(isSafeCommand("echo foo&disown")).toBe(false);
+		});
+
+		it("P0: 改行による複数コマンドをブロック", () => {
+			expect(isSafeCommand("ls\nrm -rf /")).toBe(false);
+		});
+
+		it("P0: CRLFによる複数コマンドをブロック", () => {
+			expect(isSafeCommand("ls\r\nrm -rf /")).toBe(false);
+		});
+
+		it("P0: CRのみでもブロック", () => {
+			expect(isSafeCommand("ls\rrm -rf /")).toBe(false);
 		});
 	});
 
@@ -358,6 +425,22 @@ this is not json
 			expect(items).toHaveLength(1);
 			expect(items[0].id).toBe("json-step");
 			expect(items[0].text).toBe("JSON 側のステップ");
+		});
+
+		// P3: タグとコンテンツが同じ行でも抽出できる
+		it("P3: タグ前後の空白のみで抽出（改行を前提にしない）", () => {
+			const message = `<plan_steps_json>[{"id":"x","title":"Y"}]</plan_steps_json>`;
+			const items = extractTodoItems(message);
+			expect(items).toHaveLength(1);
+			expect(items[0].id).toBe("x");
+			expect(items[0].text).toBe("Y");
+		});
+
+		it("P3: タグ直後に空白→内容→空白→閉じタグ", () => {
+			const message = `<plan_steps_json>  [{"id":"a","title":"A"}]  </plan_steps_json>`;
+			const items = extractTodoItems(message);
+			expect(items).toHaveLength(1);
+			expect(items[0].id).toBe("a");
 		});
 	});
 
@@ -520,6 +603,22 @@ This is just an overview section with no implementation items.
 			const items = extractTodoItems(message);
 			expect(items).toHaveLength(1);
 			expect(items[0].text).toBe("これは十分に長い説明文です");
+		});
+
+		// P3: タグ前後の空白が緩い場合
+		it("P3: タグとコンテンツが同じ行でも抽出", () => {
+			const message = `<proposed_plan>## Key Changes\n- 同じ行のステップ内容です\n</proposed_plan>`;
+			const items = extractTodoItems(message);
+			expect(items).toHaveLength(1);
+			expect(items[0].text).toBe("同じ行のステップ内容です");
+		});
+	});
+
+	describe("P3: 終了タグなしの proposed_plan は検出されない", () => {
+		it("終了タグなしは抽出されず空配列", () => {
+			const message = `<proposed_plan>\n## Key Changes\n- 抽出されないステップ\n`;
+			const items = extractTodoItems(message);
+			expect(items).toHaveLength(0);
 		});
 	});
 
@@ -700,7 +799,19 @@ describe("cleanStepText", () => {
 // validatePlan — プラン品質チェック
 // ============================================================
 describe("validatePlan", () => {
-	it("有効なプランは valid: true", () => {
+	it("有効なプラン（acceptance あり）は valid: true、warnings 空", () => {
+		const items: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "分析する", instruction: "コードを分析する", acceptance: "分析完了", completed: false },
+			{ id: "step-2", step: 2, text: "実装する", instruction: "機能を実装する", acceptance: "テスト通過", completed: false },
+			{ id: "step-3", step: 3, text: "テストする", instruction: "テストを追加する", acceptance: "全テストgreen", completed: false },
+		];
+		const result = validatePlan(items);
+		expect(result.valid).toBe(true);
+		expect(result.issues).toHaveLength(0);
+		expect(result.warnings).toHaveLength(0);
+	});
+
+	it("有効なプラン（acceptance なし）は valid: true、warnings あり", () => {
 		const items: TodoItem[] = [
 			{ id: "step-1", step: 1, text: "分析する", instruction: "コードを分析する", completed: false },
 			{ id: "step-2", step: 2, text: "実装する", instruction: "機能を実装する", completed: false },
@@ -709,6 +820,10 @@ describe("validatePlan", () => {
 		const result = validatePlan(items);
 		expect(result.valid).toBe(true);
 		expect(result.issues).toHaveLength(0);
+		expect(result.warnings).toHaveLength(3);
+		for (let i = 0; i < 3; i++) {
+			expect(result.warnings[i]).toContain("acceptance がありません");
+		}
 	});
 
 	it("ステップ数が少なすぎる場合は invalid", () => {
@@ -762,6 +877,44 @@ describe("validatePlan", () => {
 		];
 		const result = validatePlan(items);
 		expect(result.valid).toBe(true);
+	});
+
+	// P1: 重複 ID
+	it("P1: 重複 ID は hard error", () => {
+		const items: TodoItem[] = [
+			{ id: "dup", step: 1, text: "ステップ1", instruction: "ステップ1を実装する", completed: false },
+			{ id: "dup", step: 2, text: "ステップ2", instruction: "ステップ2を実装する", completed: false },
+			{ id: "unique", step: 3, text: "ステップ3", instruction: "ステップ3を実装する", completed: false },
+		];
+		const result = validatePlan(items);
+		expect(result.valid).toBe(false);
+		expect(result.issues.some((s) => s.includes("重複するステップID") && s.includes("dup"))).toBe(true);
+	});
+
+	// P1: 空 instruction
+	it("P1: 空 instruction は hard error", () => {
+		const items: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "ステップ1", instruction: "ステップ1を実装する", completed: false },
+			{ id: "step-2", step: 2, text: "ステップ2", instruction: "", completed: false },
+			{ id: "step-3", step: 3, text: "ステップ3", instruction: "ステップ3を実装する", completed: false },
+		];
+		const result = validatePlan(items);
+		expect(result.valid).toBe(false);
+		expect(result.issues.some((s) => s.includes("instruction が空"))).toBe(true);
+	});
+
+	// P1: acceptance 欠落は soft warning
+	it("P1: acceptance 欠落は soft warning で valid: true", () => {
+		const items: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "ステップ1", instruction: "ステップ1を実装する", completed: false },
+			{ id: "step-2", step: 2, text: "ステップ2", instruction: "ステップ2を実装する", acceptance: "テスト通過", completed: false },
+			{ id: "step-3", step: 3, text: "ステップ3", instruction: "ステップ3を実装する", completed: false },
+		];
+		const result = validatePlan(items);
+		expect(result.valid).toBe(true);
+		expect(result.warnings).toHaveLength(2);
+		expect(result.warnings[0]).toContain("step-1");
+		expect(result.warnings[1]).toContain("step-3");
 	});
 });
 
@@ -999,6 +1152,17 @@ describe("tool_call ブロック判定", () => {
 		expect(shouldBlockToolCall(true, "find", { path: "." })).toBe(false);
 		expect(shouldBlockToolCall(true, "ls", { path: "." })).toBe(false);
 	});
+
+	// P0: null input でもクラッシュしない
+	it("P0: null input でもクラッシュしない", () => {
+		expect(shouldBlockToolCall(true, "edit", null)).toBe(true);
+		expect(shouldBlockToolCall(true, "bash", null)).toBe(true);
+		expect(shouldBlockToolCall(true, "bash", undefined)).toBe(true);
+	});
+
+	it("P0: undefined input でもクラッシュしない", () => {
+		expect(shouldBlockToolCall(true, "write", undefined)).toBe(true);
+	});
 });
 
 // ============================================================
@@ -1032,6 +1196,18 @@ describe("buildBlockReason", () => {
 		const reason = buildBlockReason("edit", { path: "file.ts" }, 5);
 		expect(reason).toContain("5回ブロック済み");
 		expect(reason).toContain("絶対に再試行しないでください");
+	});
+
+	// P0: defensive input handling
+	it("P0: null input でもクラッシュしない", () => {
+		const reason = buildBlockReason("edit", null as unknown as Record<string, unknown>, 1);
+		expect(reason).toContain("【プランモード・読み取り専用】");
+		expect(reason).toContain("unknown");
+	});
+
+	it("P0: path なしの input でもクラッシュしない", () => {
+		const reason = buildBlockReason("edit", {}, 1);
+		expect(reason).toContain("unknown");
 	});
 });
 
@@ -1134,7 +1310,12 @@ function simulateBeforeAgentStart(
 	if (executionMode && todoItems.length > 0) {
 		const remaining = todoItems.filter((t) => !t.completed);
 		const completed = todoItems.filter((t) => t.completed);
-		const todoList = remaining.map((t) => `${t.step}. [${t.id}] ${t.instruction ?? t.text}`).join("\n");
+		// P5: acceptance を含める（index.ts の実装に合わせる）
+		const todoList = remaining.map((t) => {
+			let line = `${t.step}. [${t.id}] ${t.instruction ?? t.text}`;
+			if (t.acceptance) line += `\n   Acceptance: ${t.acceptance}`;
+			return line;
+		}).join("\n");
 		const completedList = completed.map((t) => `${t.step}. [${t.id}] ${t.text} ✓`).join("\n");
 		const executeModeTemplate = loadPrompt("execute-mode");
 		const executeModePrompt = executeModeTemplate
@@ -1241,6 +1422,29 @@ describe("before_agent_start プロンプト注入", () => {
 		expect(result.systemPrompt).toContain("[add-validator]");
 		expect(result.systemPrompt).toContain("バリデーターを追加する");
 		expect(result.systemPrompt).toContain("[update-tests]");
+	});
+
+	// P5: acceptance が実行モードプロンプトに含まれる
+	it("P5: 実行モードプロンプトに acceptance が含まれる", () => {
+		const state = { planPromptDelivered: false, planPromptHash: undefined as string | undefined };
+		const todoItems: TodoItem[] = [
+			{ id: "add-validator", step: 1, text: "バリデーター追加", instruction: "バリデーターを追加する", acceptance: "テストが通る", completed: false },
+		];
+
+		const result = simulateBeforeAgentStart(false, true, todoItems, state);
+		expect(result.injectedPromptType).toBe("execute");
+		expect(result.systemPrompt).toContain("Acceptance: テストが通る");
+	});
+
+	it("P5: acceptance なしのステップには Acceptance 行が含まれない", () => {
+		const state = { planPromptDelivered: false, planPromptHash: undefined as string | undefined };
+		const todoItems: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "ステップ1", instruction: "ステップ1を実装する", completed: false },
+		];
+
+		const result = simulateBeforeAgentStart(false, true, todoItems, state);
+		expect(result.injectedPromptType).toBe("execute");
+		expect(result.systemPrompt).not.toContain("Acceptance:");
 	});
 
 	it("reminder のみの状態でブロック対象ツール呼び出し → ブロックされる", () => {

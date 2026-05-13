@@ -27,12 +27,15 @@ const DESTRUCTIVE_PATTERNS = [
 	/(^|[^<])>(?!>)/,
 	/>>/,
 	/\bnpm\s+(install|uninstall|update|ci|link|publish)/i,
+	/\bnpm\s+audit\s+(fix|--fix)\b/i,
 	/\byarn\s+(add|remove|install|publish)/i,
 	/\bpnpm\s+(add|remove|install|publish)/i,
 	/\bpip\s+(install|uninstall)/i,
 	/\bapt(-get)?\s+(install|remove|purge|update|upgrade)/i,
 	/\bbrew\s+(install|uninstall|upgrade)/i,
 	/\bgit\s+(add|commit|push|pull|merge|rebase|reset|checkout|branch\s+-[dD]|stash|cherry-pick|revert|tag|init|clone)/i,
+	/\bgit\s+diff\b.*--output\b/i,
+	/\bfind\b.*\s+(?:-delete|-exec\b|-execdir\b|-ok\b|-fls\b|-fprint\b|-fprintf)\b/i,
 	/\bsudo\b/i,
 	/\bsu\b/i,
 	/\bkill\b/i,
@@ -52,7 +55,7 @@ const SAFE_PATTERNS = [
 	/^\s*less\b/,
 	/^\s*more\b/,
 	/^\s*grep\b/,
-	/^\s*find\b/,
+	/^\s*find\b(?!.*\b(?:-delete|-exec|-execdir|-ok|-fls|-fprint|-fprintf)\b)/i,
 	/^\s*ls\b/,
 	/^\s*pwd\b/,
 	/^\s*echo\b/,
@@ -99,14 +102,20 @@ const SAFE_PATTERNS = [
 ];
 
 // Shell metacharacter guard: plan mode で許容しないシェル構文
+// TODO: 正規表現ベースの判定は限界がある。
+// 変数展開、クォート内メタ文字、glob 等を正しく扱うには
+// shell quote aware な tokenizer + コマンド別 allowlist が必要。
+// 現状は「既知の穴を塞ぐ」一時対応。
 const SHELL_META_PATTERNS = [
-	/&&/,       // command chaining
-	/\|\|/,     // OR chaining
-	/;/,        // sequential execution
-	/\|/,       // pipe
-	/`/,        // backtick substitution
-	/\$\(/,     // command substitution $()
-	/<\(/,      // process substitution <()
+	/&&/,                   // command chaining
+	/\|\|/,                 // OR chaining
+	/;/,                    // sequential execution
+	/\|/,                   // pipe
+	/`/,                    // backtick substitution
+	/\$\(/,                 // command substitution $()
+	/<\(/,                  // process substitution <()
+	/(^|[^&])&([^&]|$)/,   // single & background execution (not &&)
+	/[\r\n]/,              // newline / carriage return (multiple commands)
 ];
 
 // 安全なリダイレクト（stderr 抑制、/dev/null 出力）をストリップ
@@ -186,7 +195,7 @@ export function extractTodoItems(message: string): TodoItem[] {
 
 	// --- 優先: <plan_steps_json> ブロック ---
 	const jsonMatch = message.match(
-		/<plan_steps_json>\s*\n([\s\S]*?)\n\s*<\/plan_steps_json>/,
+		/<plan_steps_json>\s*([\s\S]*?)\s*<\/plan_steps_json>/,
 	);
 	if (jsonMatch) {
 		try {
@@ -214,7 +223,7 @@ export function extractTodoItems(message: string): TodoItem[] {
 
 	// --- フォールバック1: <proposed_plan> ブロック内 Markdown ---
 	const proposedPlanMatch = message.match(
-		/<proposed_plan>\s*\n([\s\S]*?)\n\s*<\/proposed_plan>/,
+		/<proposed_plan>\s*([\s\S]*?)\s*<\/proposed_plan>/,
 	);
 	if (proposedPlanMatch) {
 		extractItemsFromSection(proposedPlanMatch[1], items);
@@ -435,7 +444,8 @@ export function buildBlockReason(
 	blockCount: number,
 ): string {
 	const toolLabel = WRITING_TOOL_NAMES[toolName] || toolName;
-	const inputDesc = typeof input.path === "string" ? input.path : "unknown";
+	// P0: input が null や path を持たない場合も安全に処理
+	const inputDesc = typeof input?.path === "string" ? input.path : "unknown";
 
 	if (blockCount >= 3) {
 		return `${BLOCK_REASON_HEADER}\n⚠ ${toolLabel}は実行できません。${blockCount}回ブロック済みです。\n今すぐ停止し、分析結果を報告してください。\n絶対に再試行しないでください。\n代わりに <proposed_plan> ブロックで実装計画を出力してください。`;
@@ -449,6 +459,12 @@ export function buildBlockReason(
 
 // --- Plan quality validation ---
 
+export interface ValidationResult {
+	valid: boolean;
+	issues: string[];    // hard errors — plan 実行をブロック
+	warnings: string[];  // soft warnings — 通知のみ、ブロックしない
+}
+
 const ACTION_WORDS_RE =
 	/^(update|create|write|read|check|verify|modify|add|remove|delete|install|fix|implement|refactor|test|migrate|configure|setup|build|deploy|analyze|review|document|optimize|extract|integrate|replace|rename|move|split|merge|restructure|change|improve|handle|convert|validate|ensure|set|get|run|execute)/i;
 const ACTION_WORDS_JA_RE =
@@ -457,8 +473,10 @@ const ACTION_WORDS_JA_RE =
 export function validatePlan(items: TodoItem[]): {
 	valid: boolean;
 	issues: string[];
+	warnings: string[];
 } {
 	const issues: string[] = [];
+	const warnings: string[] = [];
 
 	if (items.length < 3) {
 		issues.push("ステップ数が少なすぎます（最低3ステップ）。");
@@ -467,8 +485,27 @@ export function validatePlan(items: TodoItem[]): {
 		issues.push("ステップ数が多すぎます（最大15ステップ）。大きいステップにまとめるか、複数プランに分割してください。");
 	}
 
+	// P1: 重複 ID チェック（hard error）
+	const ids = items.map((i) => i.id);
+	const seen = new Set<string>();
+	const dupes = new Set<string>();
+	for (const id of ids) {
+		if (seen.has(id)) dupes.add(id);
+		seen.add(id);
+	}
+	if (dupes.size > 0) {
+		issues.push(`重複するステップID: ${[...dupes].join(", ")}。IDは一意にしてください。`);
+	}
+
 	for (let i = 0; i < items.length; i++) {
 		const text = items[i].instruction || items[i].text;
+
+		// P1: 空 instruction チェック（hard error）
+		if (!items[i].instruction || items[i].instruction.trim().length === 0) {
+			issues.push(`ステップ ${i + 1} [${items[i].id}] の instruction が空です。`);
+			continue;
+		}
+
 		if (text.trim().length <= 5) {
 			issues.push(`ステップ ${i + 1} の説明が短すぎます。`);
 		} else if (
@@ -479,9 +516,14 @@ export function validatePlan(items: TodoItem[]): {
 				`ステップ ${i + 1}「${text.slice(0, 30)}」に動作の記述が見つかりません。動詞で始まる具体的なアクションにしてください。`
 			);
 		}
+
+		// P1: acceptance 欠落（soft warning）
+		if (!items[i].acceptance) {
+			warnings.push(`ステップ ${i + 1} [${items[i].id}] に acceptance がありません。完了基準を明示すると実行品質が向上します。`);
+		}
 	}
 
-	return { valid: issues.length === 0, issues };
+	return { valid: issues.length === 0, issues, warnings };
 }
 
 // --- Todo hashing ---

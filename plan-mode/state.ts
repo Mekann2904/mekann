@@ -87,6 +87,17 @@ export function persistState(pi: ExtensionAPI, state: ModeState): void {
 	if (state.savedActiveTools) {
 		data.savedActiveTools = state.savedActiveTools;
 	}
+	// P0: originalModel / originalThinkingLevel を永続化
+	// セッション再開時に plan モデルではなく main モデルへ正しく復元するため
+	if (state.originalModel) {
+		data.originalModel = {
+			provider: state.originalModel.provider,
+			modelId: state.originalModel.id,
+		};
+	}
+	if (state.originalThinkingLevel) {
+		data.originalThinkingLevel = state.originalThinkingLevel;
+	}
 	pi.appendEntry("plan-mode", data);
 }
 

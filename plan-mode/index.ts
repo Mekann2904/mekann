@@ -323,15 +323,15 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (!state.planModeEnabled) return;
 
 		const { toolName } = event;
+		// P0: event.input が null/undefined の場合も安全に処理
+		const input = (event.input ?? {}) as Record<string, unknown>;
 
 		// read/grep/find/ls は無条件許可
 		if (SAFE_PLAN_TOOLS.has(toolName)) return;
 
 		// bash はコマンド内容で安全性を判定
 		if (toolName === "bash") {
-			const command = String(
-				(event.input as { command?: unknown }).command ?? "",
-			);
+			const command = String(input.command ?? "");
 			if (!isSafeCommand(command)) {
 				return {
 					block: true,
@@ -342,7 +342,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 
 		// それ以外は原則ブロック（edit, write, 将来の tool 含む）
-		const inputKey = (event.input.path as string) || "";
+		const inputKey = String(input.path ?? "");
 		if (toolName === lastBlockedTool && inputKey === lastBlockedInput) {
 			blockCount++;
 		} else {
@@ -351,7 +351,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			lastBlockedInput = inputKey;
 		}
 
-		const reason = buildBlockReason(toolName, event.input as Record<string, unknown>, blockCount);
+		const reason = buildBlockReason(toolName, input, blockCount);
 
 		return {
 			block: true,
@@ -386,7 +386,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (state.executionMode && state.todoItems.length > 0) {
 			const remaining = state.todoItems.filter((t) => !t.completed);
 			const completed = state.todoItems.filter((t) => t.completed);
-			const todoList = remaining.map((t) => `${t.step}. [${t.id}] ${t.instruction ?? t.text}`).join("\n");
+			const todoList = remaining.map((t) => {
+				let line = `${t.step}. [${t.id}] ${t.instruction ?? t.text}`;
+				if (t.acceptance) line += `\n   Acceptance: ${t.acceptance}`;
+				return line;
+			}).join("\n");
 			const completedList = completed.map((t) => `${t.step}. [${t.id}] ${t.text} ✓`).join("\n");
 			const executeModeTemplate = loadPrompt("execute-mode");
 			const executeModePrompt = executeModeTemplate
@@ -466,7 +470,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (!lastAssistant) return;
 
 		const assistantText = getTextContent(lastAssistant);
-		const hasProposedPlan = /<proposed_plan>/.test(assistantText);
+		const hasProposedPlan = /<proposed_plan>[\s\S]*?<\/proposed_plan>/.test(assistantText);
 
 		// <proposed_plan> がない場合は Todo 抽出もダイアログも行わない
 		// （探索フェーズ中の番号付きリスト誤抽出を防ぐ）
@@ -492,30 +496,21 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			wrappedPersistState();
 			return;
 		}
+		if (validation.warnings.length > 0) {
+			ctx.ui.notify(
+				`推奨: ${validation.warnings.join("\n")}`,
+				"info",
+			);
+		}
 
 		// 永続化（UI 有無に関わらない）
 		wrappedPersistState();
 
-		// UI あり: 従来の選択フロー
-		if (ctx.hasUI) {
-			ctx.ui.notify(`プラン手順 (${state.todoItems.length}): UIに表示中`, "info");
-
-			const choices = [
-				"プランを実行する",
-				"プランモードを継続",
-			];
-
-			const choice = await ctx.ui.select("プランが提出されました — 次どうする？", choices);
-
-			if (choice === "プランを実行する") {
-				await wrappedStartExecution(ctx);
-
-				pi.sendUserMessage("プランを実行開始。");
-			}
-
-			wrappedPersistState();
-		}
-		// UI なし: state に保存済み。/execute-plan で実行可能
+		// 保存と通知のみ。実行開始は /execute-plan で明示的に
+		ctx.ui.notify(
+			`プラン手順 (${state.todoItems.length}) を保存しました。/execute-plan で実行を開始できます。`,
+			"info",
+		);
 	});
 
 	// セッション開始/再開時に状態を復元
@@ -565,6 +560,18 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				state.savedActiveTools = (planModeEntry.data as { savedActiveTools?: string[] }).savedActiveTools;
 			}
 
+			// P0: persisted originalModel/originalThinkingLevel を優先復元
+			// plan/execution 中にセッション再開した場合、ctx.model は plan モデルの可能性があるため
+			const persistedOriginal = (planModeEntry.data as { originalModel?: { provider: string; modelId: string } }).originalModel;
+			if (persistedOriginal) {
+				const restored = ctx.modelRegistry.find(persistedOriginal.provider, persistedOriginal.modelId);
+				if (restored) state.originalModel = restored;
+			}
+			const persistedThinking = (planModeEntry.data as { originalThinkingLevel?: string }).originalThinkingLevel;
+			if (persistedThinking) {
+				state.originalThinkingLevel = persistedThinking;
+			}
+
 			// 後方互換: 古い TodoItem（id, instruction なし）にデフォルトを設定
 			state.todoItems = state.todoItems.map((item: TodoItem, i: number) => ({
 				...item,
@@ -573,7 +580,17 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			}));
 		}
 
-		// 復元後の状態更新（通常モードの場合は上で保存済みなので上書き）
+		// persisted 復元後にまだ未設定の場合のみ ctx.model をフォールバックとして保存
+		// (plan/execution 中の再開では上で persisted 値が設定済みなので ctx.model で上書きされない)
+		if (!state.originalModel) {
+			state.originalModel = ctx.model;
+			state.originalThinkingLevel = pi.getThinkingLevel();
+		}
+		if (!state.planThinkingLevel) {
+			state.planThinkingLevel = pi.getThinkingLevel();
+		}
+
+		// 通常モードの場合は最新 ctx.model で更新
 		if (!state.planModeEnabled && !state.executionMode) {
 			state.originalModel = ctx.model;
 			state.originalThinkingLevel = pi.getThinkingLevel();
