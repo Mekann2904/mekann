@@ -52,6 +52,7 @@ import {
 	markCompletedSteps,
 	buildBlockReason,
 	loadPrompt,
+	hashContent,
 	type TodoItem,
 } from "./utils.js";
 
@@ -248,9 +249,24 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	// before_agent_start: systemPrompt でプラン/実行指示を注入
 	pi.on("before_agent_start", async (event) => {
 		if (state.planModeEnabled) {
-			const planModePrompt = loadPrompt("plan-mode");
+			const fullPrompt = loadPrompt("plan-mode");
+			const currentHash = hashContent(fullPrompt);
+
+			const shouldInjectFull =
+				!state.planPromptDelivered ||
+				state.planPromptHash !== currentHash;
+
+			const prompt = shouldInjectFull
+				? fullPrompt
+				: loadPrompt("plan-mode-reminder");
+
+			if (shouldInjectFull) {
+				state.planPromptHash = currentHash;
+				state.planPromptDelivered = true;
+			}
+
 			return {
-				systemPrompt: `${event.systemPrompt}\n\n${planModePrompt}`,
+				systemPrompt: `${event.systemPrompt}\n\n${prompt}`,
 			};
 		}
 
