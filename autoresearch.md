@@ -59,17 +59,19 @@ Clean up the entire repository codebase — remove noise, fix inconsistencies, e
 
 **Total: 706 → 518 lines (-26.6%), all 79 tests passing**
 
-### Latest batch (iters 25-29)
-- ✅ Iter 25: Merged git/npm/yarn/node SAFE_PATTERNS, inlined resetBlockTracking (-8 lines)
-- ✅ Iter 26: Collapsed overlayDirtyFiles intermediate variables (-1 line)
-- ✅ Iter 27: Inlined isAssistantMessage and getTextContent at single usage site (-6 lines)
-- ✅ Iter 28: Merged && and || SHELL_META_PATTERN (-1 line)
-- ✅ Iter 29: Removed redundant PlanState JSDoc (-3 lines)
+### Latest batch (iters 30-36)
+- ✅ Iter 30: Inlined WRITING_TOOL_NAMES and BLOCK_REASON_HEADER into buildBlockReason (-5 lines)
+- ❌ Iter 31: Renamed __dirname→dir: cosmetic, discarded
+- ❌ Iter 32: resetPlanState helper: net +2, discarded (confirmed 2nd time)
+- ✅ Iter 33: Returned boolean expression directly in isSafeCommand (-1 line)
+- ✅ Iter 34: Inlined escapeAppleScriptString (-4 lines)
+- ✅ Iter 35: Inlined parseArgs with ternary chain (-6 lines)
+- ✅ Iter 36: Inlined formatBytes as ternary chain (-4 lines)
 
 ### File breakdown
-- plan-mode/index.ts: ~195 lines
-- plan-mode/utils.ts: ~122 lines
+- plan-mode/index.ts: 195 lines
+- plan-mode/utils.ts: 117 lines
 - plan-mode/state.ts: 24 lines
-- zip-repo/index.ts: ~158 lines
-- Total: 499 lines
+- zip-repo/index.ts: 143 lines
+- Total: 479 lines
 
