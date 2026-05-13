@@ -108,7 +108,6 @@ export function loadPrompt(name: string, vars?: Record<string, string>): string 
 	return content;
 }
 
-/** <proposed_plan> の中身をそのまま取り出す */
 export function extractProposedPlan(message: string): string | undefined {
 	const match = message.match(/<proposed_plan>\s*([\s\S]*?)\s*<\/proposed_plan>/);
 	return match?.[1]?.trim() || undefined;
