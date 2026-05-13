@@ -10,11 +10,8 @@ export function modeLabel(mode: Mode): string {
 
 export interface PlanState {
 	mode: Mode;
-	/** <proposed_plan> の中身をそのまま保存 */
 	pendingPlan?: string;
-	/** plan mode 进入時の元 tools を保存 */
 	savedActiveTools?: string[];
-	/** plan mode プロンプトの重複注入回避 */
 	planPromptHash?: string;
 	planPromptDelivered: boolean;
 }
