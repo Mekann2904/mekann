@@ -59,14 +59,14 @@ Clean up the entire repository codebase — remove noise, fix inconsistencies, e
 
 **Total: 706 → 518 lines (-26.6%), all 79 tests passing**
 
-### Latest batch (iters 64-65)
-- ✅ Iter 64: Collapsed /usr/bin/zip multi-line call, removed blank line between buildBlockReason and appendEntry (-4 lines)
+### Latest batch (iters 65-66)
 - ✅ Iter 65: Collapsed buildBlockReason signature to single line, removed blank line in isSafeCommand (-5 lines)
+- ✅ Iter 66: Collapsed multi-line import statements to single lines in index.ts (-9 lines)
 
 ### File breakdown
-- plan-mode/index.ts: 166 lines
+- plan-mode/index.ts: 157 lines
 - plan-mode/utils.ts: 94 lines
 - plan-mode/state.ts: 24 lines
 - zip-repo/index.ts: 96 lines
-- Total: 380 lines
+- Total: 371 lines
 
