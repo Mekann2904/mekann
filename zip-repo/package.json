@@ -1,0 +1,8 @@
+{
+  "name": "zip-repo",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.ts",
+  "description": "Archive the current Git repository as ZIP and copy it to the macOS clipboard. Supports /zip, /zip --head, /zip --worktree.",
+  "license": "ISC"
+}
