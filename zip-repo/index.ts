@@ -1,12 +1,6 @@
 /**
- * Zip Repo Extension
- *
- * Compresses the current Git repository into a ZIP file and copies it to the macOS clipboard.
- *
- * Usage:
- *   /zip              Archive HEAD (fails if worktree is dirty)
- *   /zip --head       Archive HEAD regardless of worktree state
- *   /zip --worktree   Archive current worktree (on-disk content, including dirty/untracked)
+ * Zip Repo Extension — archive Git repo as ZIP to clipboard (macOS).
+ * /zip [--head|--worktree]
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
