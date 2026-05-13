@@ -116,28 +116,15 @@ export default function (pi: ExtensionAPI) {
 
 /** Overlay modified and untracked files onto an existing ZIP archive. */
 async function overlayDirtyFiles(parentDir: string, repoName: string, repoRoot: string, zipPath: string): Promise<void> {
-	const { stdout: modifiedStdout } = await execFileAsync("git", [
-		"diff-files",
-		"--name-only",
+	const { stdout } = await execFileAsync("git", [
+		"ls-files", "-mo", "--exclude-standard", "--",
 	], { cwd: repoRoot, encoding: "utf8" });
 
-	const { stdout: othersStdout } = await execFileAsync("git", [
-		"ls-files",
-		"--others",
-		"--exclude-standard",
-		"--",
-	], { cwd: repoRoot, encoding: "utf8" });
-
-	const dirtyFiles = [
-		...modifiedStdout.split("\n").filter(Boolean),
-		...othersStdout.split("\n").filter(Boolean),
-	];
-
+	const dirtyFiles = stdout.split("\n").filter(Boolean);
 	if (dirtyFiles.length === 0) return;
 
 	await execFileAsync("/usr/bin/zip", [
-		"-u",
-		zipPath,
+		"-u", zipPath,
 		...dirtyFiles.map((f) => `${repoName}/${f}`),
 	], { cwd: parentDir });
 }
