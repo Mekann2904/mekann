@@ -59,15 +59,15 @@ Clean up the entire repository codebase — remove noise, fix inconsistencies, e
 
 **Total: 706 → 518 lines (-26.6%), all 79 tests passing**
 
-### Latest batch (iters 54-55)
+### Latest batch (iters 54-56)
 - ✅ Iter 54: Merged sudo/su + kill/pkill/killall into single alternation (-1 line)
 - ✅ Iter 55: Merged npm install/uninstall + npm audit fix into single regex (-1 line)
+- ✅ Iter 56: Collapsed before_agent_start handler — inlined prompt variable, condensed state update (-11 lines)
 
 ### File breakdown
-- plan-mode/index.ts: 189 lines
-- plan-mode/utils.ts: 98 lines
+- plan-mode/index.ts: 178 lines
+- plan-mode/utils.ts: 99 lines
 - plan-mode/state.ts: 24 lines
 - zip-repo/index.ts: 125 lines
-- Total: 437 lines
-- DESTRUCTIVE_PATTERNS: 15 entries (from 37 originally)
+- Total: 426 lines
 
