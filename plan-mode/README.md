@@ -5,11 +5,13 @@ Codex-inspired plan mode that separates code analysis/planning from implementati
 ## Features
 
 - **Plan Mode**: Read-only exploration — analyze code, understand architecture, create plans
+- **Plan Ready**: Approval gate — plan is validated and waiting for explicit execution command
 - **Execute Mode**: Full tool access — implement the plan step by step
-- **Separate Models**: Different models for plan and execute phases (e.g., reasoning model for planning, code model for execution)
-- **Model Selector**: Pi-style model selection UI for each mode
-- **Progress Tracking**: Widget shows step completion during execution
-- **Session Persistence**: State and model selections survive restarts
+- **State Machine**: `normal → planning → plan_ready → executing → completed/aborted` with validated transitions
+- **Separate Models**: Different models for plan and execute phases
+- **Progress Tracking**: Widget shows step completion and status (`pending`, `in_progress`, `done`, `failed`, `skipped`)
+- **Verification**: Steps can include verification commands (e.g., `npm test`, `tsc --noEmit`)
+- **Session Persistence**: State, model selections, and plan revision survive restarts
 
 ## Installation
 
@@ -29,8 +31,10 @@ Or add to `settings.json`:
 | `/plan` | Toggle plan mode on/off |
 | `/plan-model` | Select model for plan mode (pi-style selector) |
 | `/todos` | Show current plan progress |
-| `/execute-plan` | Start executing the saved plan |
-| `/plan-clear` | Discard current plan and return to normal mode |
+| `/execute-plan` | Start executing the saved plan (plan_ready only) |
+| `/revise-plan` | Go back to planning to modify the plan |
+| `/discard-plan` | Discard current plan and return to normal mode |
+| `/plan-clear` | Alias for `/discard-plan` (backward compat) |
 | `/plan-status` | Show detailed plan state (mode, model, tools, steps) |
 
 ## Shortcuts
@@ -45,6 +49,43 @@ Or add to `settings.json`:
 pi --plan              # Start in plan mode
 pi --plan -e ./plan-mode  # With explicit extension
 ```
+
+## State Machine
+
+```
+                    ┌──────────────────────┐
+                    │                      │
+                    ▼                      │
+ ┌─────────┐  /plan  ┌──────────┐  plan   ┌────────────┐
+ │ normal  │ ──────► │ planning │ ──────► │ plan_ready │
+ └─────────┘         └──────────┘         └────────────┘
+      ▲                   │ ▲                     │
+      │                   │ │                     │
+      │            /plan, │ │ /revise-plan        │ /execute-plan
+      │          /discard │ │                     ▼
+      │                   │ │              ┌────────────┐
+      │                   │ │              │ executing  │
+      │                   │ │              └────────────┘
+      │                   │ │                │        │
+      │                   │ │                ▼        ▼
+      │                   │ │         ┌───────────┐ ┌────────┐
+      │                   │ │         │ completed │ │ aborted│
+      │                   │ │         └───────────┘ └────────┘
+      └───────────────────┘ │               │           │
+                            │               └─────┬─────┘
+                            └─────────────────────┘
+```
+
+### Mode Descriptions
+
+| Mode | Tools | Model | Description |
+|------|-------|-------|-------------|
+| `normal` | All (user's default) | User's default | Regular mode, no restrictions |
+| `planning` | Read-only (read, grep, find, ls) | Plan model | Explore code, create plan |
+| `plan_ready` | Read-only (same as planning) | Plan model | Plan validated, awaiting approval |
+| `executing` | All (read, bash, edit, write, ...) | Main model | Implement saved plan |
+| `completed` | All | Main model | All steps done |
+| `aborted` | All | Main model | Execution was aborted |
 
 ## Configuration
 
@@ -64,60 +105,25 @@ Create `~/.pi/agent/plan-mode.json` (global) or `.pi/plan-mode.json` (project-lo
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `planModel` | `{provider, modelId}` | — | Model to use in plan mode |
-| `planTools` | `string[]` | `["read","grep","find","ls"]` | Tools available in plan mode. `bash` is **not** included by default; opt-in via config. When enabled, all commands are validated through `isSafeCommand()` and shell metacharacters (`&&`, `\|\|`, `;`, `\|`, `` ` ``, `$()`) are blocked. |
-| `execTools` | `string[]` | *(restores pre-plan tools)* | Explicit override for execute mode tools. If unset, original active tools are restored on mode exit. |
-
-If plan model is not configured, use `/plan-model` to select interactively.
-The execution model uses pi's current default model.
+| `planTools` | `string[]` | `["read","grep","find","ls"]` | Tools available in planning/plan_ready mode |
+| `execTools` | `string[]` | *(restores pre-plan tools)* | Explicit override for execute mode tools |
 
 ## Workflow
 
 1. Enable plan mode: `/plan` or `Ctrl+Alt+P`
 2. Optionally set plan model: `/plan-model` → select from available models
 3. Ask the agent to analyze code and create a plan
-4. The agent outputs a structured numbered plan:
-
-```
-Plan:
-1. Analyze the authentication module
-2. Identify all password validation rules
-3. Map out the database schema changes needed
-4. Plan the API endpoint modifications
-```
-
-5. After the plan is complete, run `/execute-plan` to start execution
-6. The model switches to the execution model automatically
-7. Agent executes steps, marking them with `[DONE:step-id]` tags
-8. Progress widget shows completion status
-
-## Model Selection
-
-The `/plan-model` command opens a model selector that matches pi's built-in `/model` experience:
-
-- All available models listed, grouped by provider
-- Current selection highlighted with ●
-- Type to filter, arrow keys to navigate
-- Enter to select, Escape to cancel
-
-When switching between plan and execute modes, the model changes automatically to the configured model for that mode.
-
-## Bash Restrictions in Plan Mode
-
-`bash` is **not included** in the default `planTools`. To enable bash in plan mode,
-add it to your configuration's `planTools` array (opt-in).
-
-When enabled, all bash commands are validated through `isSafeCommand()` at the
-`tool_call` boundary. Additionally, shell metacharacters (`&&`, `||`, `;`, `|`,
-`` ` `` `$()`, `<()`) are blocked to prevent command chaining, pipes, and substitution.
-
-**Allowed (opt-in, single command only):** `cat`, `head`, `tail`, `grep`, `find`, `ls`, `pwd`, `tree`, `git status`, `git log`, `git diff`, `rg`, `fd`, `npm list`, etc.
-
-**Always blocked:** `rm`, `mv`, `cp`, `npm install`, `git commit`, `sudo`, editors, and any command with shell metacharacters.
+4. Agent outputs `<proposed_plan>` + `<plan_steps_json>` → state moves to `plan_ready`
+5. Choose:
+   - `/execute-plan` — approve and start execution
+   - `/revise-plan` — go back to modify the plan
+   - `/discard-plan` — discard and return to normal
+6. During execution, agent marks steps with `[DONE:step-id]` tags
+7. Progress widget shows completion status
 
 ## Structured Plan Steps
 
-Plans can include a `<plan_steps_json>` block alongside `<proposed_plan>` for
-machine-readable step definitions:
+Plans include a `<plan_steps_json>` block alongside `<proposed_plan>` for machine-readable step definitions:
 
 ```
 <proposed_plan>
@@ -126,26 +132,40 @@ Human-readable plan description
 
 <plan_steps_json>
 [
-  {"id":"add-validator","title":"Add password validator","acceptance":"Tests pass"},
-  {"id":"update-tests","title":"Update existing tests","instruction":"Update auth.test.ts"}
+  {
+    "id": "add-validator",
+    "title": "Add password validator",
+    "acceptance": "Tests pass",
+    "verification": "npm test -- auth.test.ts"
+  },
+  {
+    "id": "update-tests",
+    "title": "Update existing tests",
+    "instruction": "Update auth.test.ts",
+    "verification": "tsc --noEmit"
+  }
 ]
 </plan_steps_json>
 ```
 
-When `<plan_steps_json>` is present, the system uses it for execution tracking.
+Step ID format: **kebab-case** only (lowercase, digits, hyphens). Example: `add-validator`, `fix-api-v2`.
+
 Steps are completed with `[DONE:step-id]` markers (e.g., `[DONE:add-validator]`).
-Numeric `[DONE:1]` format is also supported for backward compatibility.
+
+## Bash Restrictions in Plan Mode
+
+`bash` is **not included** in default `planTools`. To enable, add it to your configuration (opt-in).
+
+When enabled, commands are validated through `isSafeCommand()` and shell metacharacters (`&&`, `||`, `;`, `|`, `` ` ``, `$()`) are blocked.
+
+**Always blocked:** `rm`, `mv`, `cp`, `npm install`, `git commit`, `sudo`, editors, and any command with shell metacharacters.
 
 ## Testing
-
-Run the test suite to verify plan mode works correctly:
 
 ```bash
 cd plan-mode
 npm test
 ```
-
-The test suite covers:
 
 | Category | Tests | Description |
 |----------|-------|-------------|
@@ -154,13 +174,17 @@ The test suite covers:
 | `extractDoneSteps` | ~4 | `[DONE:n]` marker parsing |
 | `markCompletedSteps` | ~3 | Step completion tracking |
 | `cleanStepText` | ~7 | Text cleanup (markdown removal, normalization) |
-| `validatePlan` | ~20 | Plan quality validation (step count, ID format, action words) |
-| Integration Scenarios | ~3 | Full workflow: plan → execute → complete |
-| `tool_call` blocking | ~6 | Tool block simulation in plan mode |
+| `validatePlan` | ~20 | Plan quality validation |
+| State transitions | ~30 | Mode state machine validation |
+| `tool_call` blocking | ~6 | Tool block simulation |
 | `buildBlockReason` | ~5 | Block reason message generation |
-| `loadPrompt` | ~5 | Prompt file loading and variable substitution |
+| `loadPrompt` | ~5 | Prompt file loading |
+| Integration Scenarios | ~3 | Full workflow tests |
+| Japanese action words | ~3 | ACTION_WORDS_JA_RE accuracy |
+| Verification field | ~3 | verification extraction and prompt injection |
+| Prompt consistency | ~2 | kebab-case in prompts |
 
-Total: ~259 tests
+Total: ~320+ tests
 
 ## Architecture
 
@@ -169,10 +193,26 @@ plan-mode/
 ├── index.ts           # 拡張機能エントリポイント（コマンド・イベントハンドラ）
 ├── state.ts           # 状態管理・遷移（ModeState、モデル管理、モード切替）
 ├── footer.ts          # カスタムフッター描画（pwd、トークン統計、モデル表示）
-├── utils.ts           # ユーティリティ（isSafeCommand、extractTodoItems、buildBlockReason、loadPrompt）
+├── utils.ts           # ユーティリティ + 純粋関数（状態遷移、isSafeCommand、extractTodoItems等）
 ├── model-selector.ts  # モデルセレクタUI
 ├── prompts/
 │   ├── plan-mode.md   # プランモードシステムプロンプト
+│   ├── plan-mode-reminder.md # プランモード継続中プロンプト
 │   └── execute-mode.md # 実行モードシステムプロンプト
 └── plan-mode.test.ts  # テストスイート
 ```
+
+## Security
+
+- Planning and plan_ready modes enforce read-only tool access at the `tool_call` boundary
+- Tool restrictions are enforced by the host, not by prompt instructions
+- Blocked tool calls are counted and reported to the model with escalating urgency
+- Shell metacharacters are blocked to prevent command chaining
+- `bash` is disabled by default in plan mode; opt-in via configuration
+
+## Known Limitations
+
+- Bash safety detection uses regex patterns; not a complete shell parser
+- Verification commands are informational; not automatically executed
+- Step status tracking (`in_progress`, `failed`) requires model cooperation
+- Pi host integration (`setActiveTools`, `before_agent_start`, etc.) requires runtime verification

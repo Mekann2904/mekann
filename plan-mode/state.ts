@@ -1,8 +1,9 @@
 /**
  * Plan Mode — 状態管理・遷移
  *
- * 拡張機能の状態（ModeState）、設定読み込み、モデル管理、
- * モード切替ロジックを提供する。
+ * 単一 mode enum による状態管理。
+ * normal → planning → plan_ready → executing → completed/aborted
+ * の状態機械を提供する。
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -11,7 +12,24 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ModelSelection } from "./model-selector.js";
-import { type TodoItem, hashTodoItems, resolveExecutionTools } from "./utils.js";
+import { type TodoItem, hashTodoItems, resolveExecutionTools,
+	// Re-export pure functions for consumers
+	type PlanMode,
+	isValidTransition,
+	transition as _transition,
+	isReadOnlyMode,
+	modeLabel,
+	InvalidTransitionError,
+} from "./utils.js";
+
+// Re-export types and pure functions
+export type { PlanMode };
+export { isValidTransition, isReadOnlyMode, modeLabel, InvalidTransitionError };
+
+/** 安全な遷移 — state.ts からは utils の transition を再エクスポート */
+export const transition = _transition;
+
+// --- Mode enum (types and pure functions are in utils.ts) ---
 
 // --- 設定 ---
 
@@ -48,8 +66,7 @@ export function loadConfig(cwd: string): PlanModeConfig {
 // --- 拡張機能状態 ---
 
 export interface ModeState {
-	planModeEnabled: boolean;
-	executionMode: boolean;
+	mode: PlanMode;
 	todoItems: TodoItem[];
 	planModel: ModelSelection | undefined;
 	planThinkingLevel: string | undefined;
@@ -58,12 +75,14 @@ export interface ModeState {
 	planPromptHash: string | undefined;
 	planPromptDelivered: boolean;
 	savedActiveTools: string[] | undefined;
+	/** plan revision tracking */
+	planId: string | undefined;
+	planRevision: number;
 }
 
 export function createInitialState(): ModeState {
 	return {
-		planModeEnabled: false,
-		executionMode: false,
+		mode: "normal",
 		todoItems: [],
 		planModel: undefined,
 		planThinkingLevel: undefined,
@@ -72,6 +91,8 @@ export function createInitialState(): ModeState {
 		planPromptHash: undefined,
 		planPromptDelivered: false,
 		savedActiveTools: undefined,
+		planId: undefined,
+		planRevision: 0,
 	};
 }
 
@@ -79,16 +100,16 @@ export function createInitialState(): ModeState {
 
 export function persistState(pi: ExtensionAPI, state: ModeState): void {
 	const data: Record<string, unknown> = {
-		enabled: state.planModeEnabled,
-		executing: state.executionMode,
+		mode: state.mode,
 		todos: state.todoItems,
 		planModel: state.planModel,
+		planId: state.planId,
+		planRevision: state.planRevision,
 	};
 	if (state.savedActiveTools) {
 		data.savedActiveTools = state.savedActiveTools;
 	}
-	// P0: originalModel / originalThinkingLevel を永続化
-	// セッション再開時に plan モデルではなく main モデルへ正しく復元するため
+	// originalModel / originalThinkingLevel を永続化
 	if (state.originalModel) {
 		data.originalModel = {
 			provider: state.originalModel.provider,
@@ -98,6 +119,10 @@ export function persistState(pi: ExtensionAPI, state: ModeState): void {
 	if (state.originalThinkingLevel) {
 		data.originalThinkingLevel = state.originalThinkingLevel;
 	}
+	// 後方互換: 旧フォーマット（enabled/executing）も書き出す
+	data.enabled = isReadOnlyMode(state.mode);
+	data.executing = state.mode === "executing";
+
 	pi.appendEntry("plan-mode", data);
 }
 
@@ -136,9 +161,6 @@ export async function restoreMainModel(pi: ExtensionAPI, state: ModeState): Prom
 
 /**
  * 実行フェーズ用の tools を決定する。
- * execTools が明示されていればそれを使い、そうでなければ保存済みの元 tools、
- * さらにフォールバックとして DEFAULT_EXEC_TOOLS を返す。
- * savedActiveTools は消さない。
  */
 export function getExecutionTools(state: ModeState, cwd: string): string[] {
 	const config = loadConfig(cwd);
@@ -158,7 +180,6 @@ export function applyExecutionTools(
 
 /**
  * plan 開始前の元 tools を復元し、savedActiveTools をクリアする。
- * 完全に通常モードへ戻るときだけ使う。
  */
 export function restoreOriginalToolsAndClear(
 	pi: ExtensionAPI,
@@ -191,11 +212,12 @@ export async function enterPlanMode(
 
 	state.planThinkingLevel = pi.getThinkingLevel();
 
-	state.planModeEnabled = true;
-	state.executionMode = false;
+	state.mode = transition(state.mode, "planning");
 	state.todoItems = [];
 	state.planPromptDelivered = false;
 	state.planPromptHash = undefined;
+	state.planId = undefined;
+	state.planRevision = 0;
 
 	const config = loadConfig(ctx.cwd);
 	pi.setActiveTools(config.planTools ?? DEFAULT_PLAN_TOOLS);
@@ -216,11 +238,12 @@ export async function exitPlanMode(
 	ctx: ExtensionContext,
 	updateStatus: (ctx: ExtensionContext) => void,
 ): Promise<void> {
-	state.planModeEnabled = false;
-	state.executionMode = false;
+	state.mode = transition(state.mode, "normal");
 	state.todoItems = [];
 	state.planPromptDelivered = false;
 	state.planPromptHash = undefined;
+	state.planId = undefined;
+	state.planRevision = 0;
 
 	restoreOriginalToolsAndClear(pi, state);
 
@@ -230,14 +253,30 @@ export async function exitPlanMode(
 	updateStatus(ctx);
 }
 
+/** plan_ready に移行（plan 抽出・validation 後） */
+export function markPlanReady(
+	state: ModeState,
+): void {
+	state.mode = transition(state.mode, "plan_ready");
+	state.planRevision++;
+}
+
+/** plan_ready → planning に戻る（revision） */
+export function revisePlan(
+	state: ModeState,
+): void {
+	state.mode = transition(state.mode, "planning");
+	state.planPromptDelivered = false;
+	state.planPromptHash = undefined;
+}
+
 export async function startExecution(
 	pi: ExtensionAPI,
 	state: ModeState,
 	ctx: ExtensionContext,
 	updateStatus: (ctx: ExtensionContext) => void,
 ): Promise<void> {
-	state.planModeEnabled = false;
-	state.executionMode = true;
+	state.mode = transition(state.mode, "executing");
 	state.planPromptDelivered = false;
 	state.planPromptHash = undefined;
 
@@ -247,6 +286,8 @@ export async function startExecution(
 		startedAt: Date.now(),
 		planHash,
 		todos: state.todoItems,
+		planId: state.planId,
+		planRevision: state.planRevision,
 	});
 
 	applyExecutionTools(pi, state, ctx.cwd);
@@ -256,28 +297,74 @@ export async function startExecution(
 	updateStatus(ctx);
 }
 
+/** 全ステップ完了 → completed */
+export function markCompleted(
+	state: ModeState,
+): void {
+	state.mode = transition(state.mode, "completed");
+}
+
+/** 中断 → aborted */
+export function markAborted(
+	state: ModeState,
+): void {
+	state.mode = transition(state.mode, "aborted");
+}
+
+/** 任意の状態から normal にリセット（強制） */
+export function forceResetToNormal(
+	state: ModeState,
+): void {
+	// 強制リセット: バリデーションなし
+	state.mode = "normal";
+	state.todoItems = [];
+	state.planPromptDelivered = false;
+	state.planPromptHash = undefined;
+	state.planId = undefined;
+	state.planRevision = 0;
+}
+
 export async function togglePlanMode(
 	pi: ExtensionAPI,
 	state: ModeState,
 	ctx: ExtensionContext,
 	updateStatus: (ctx: ExtensionContext) => void,
 ): Promise<void> {
-	if (state.planModeEnabled) {
-		await exitPlanMode(pi, state, ctx, updateStatus);
-	} else if (state.executionMode) {
-		// 実行モード→プランモード（todoItems保持）
-		state.planModeEnabled = true;
-		state.executionMode = false;
-		state.planPromptDelivered = false;
-		state.planPromptHash = undefined;
+	switch (state.mode) {
+		case "normal":
+			await enterPlanMode(pi, state, ctx, updateStatus);
+			break;
 
-		const config = loadConfig(ctx.cwd);
-		pi.setActiveTools(config.planTools ?? DEFAULT_PLAN_TOOLS);
-		await applyPlanModel(pi, state, ctx);
+		case "planning":
+			await exitPlanMode(pi, state, ctx, updateStatus);
+			break;
 
-		ctx.ui.notify("プランモードに復帰 — todoItems保持", "info");
-		updateStatus(ctx);
-	} else {
-		await enterPlanMode(pi, state, ctx, updateStatus);
+		case "plan_ready":
+			// plan_ready → planning に戻る（修正）
+			revisePlan(state);
+			ctx.ui.notify("プランを再修正中 — 読み取り専用探索", "info");
+			updateStatus(ctx);
+			break;
+
+		case "executing":
+			// 実行モード→プランモード（todoItems保持）
+			state.mode = transition(state.mode, "planning");
+			state.planPromptDelivered = false;
+			state.planPromptHash = undefined;
+
+			{
+				const config = loadConfig(ctx.cwd);
+				pi.setActiveTools(config.planTools ?? DEFAULT_PLAN_TOOLS);
+				await applyPlanModel(pi, state, ctx);
+			}
+
+			ctx.ui.notify("プランモードに復帰 — todoItems保持", "info");
+			updateStatus(ctx);
+			break;
+
+		case "completed":
+		case "aborted":
+			await enterPlanMode(pi, state, ctx, updateStatus);
+			break;
 	}
 }

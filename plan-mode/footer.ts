@@ -8,7 +8,7 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import type { ModeState } from "./state.js";
+import { type ModeState, isReadOnlyMode, modeLabel } from "./state.js";
 
 // --- フッター ---
 
@@ -110,21 +110,49 @@ export function installFooter(ctx: ExtensionContext, state: ModeState): FooterHa
 				const mainLabel = `(${mainProvider}) ${mainModelId} · ${mainThinking}`;
 
 				let planText: string;
-				if (state.planModeEnabled) {
+				if (isReadOnlyMode(state.mode)) {
 					planText = theme.fg("warning", `${planLabel} (plan)`);
+				} else if (state.mode === "executing") {
+					planText = theme.fg("success", `${planLabel} (plan)`);
 				} else {
 					planText = theme.fg("dim", `${planLabel} (plan)`);
 				}
 
 				let mainText: string;
-				if (state.planModeEnabled) {
+				if (isReadOnlyMode(state.mode)) {
+					mainText = theme.fg("dim", `${mainLabel} (main)`);
+				} else if (state.mode === "executing") {
 					mainText = theme.fg("dim", `${mainLabel} (main)`);
 				} else {
 					mainText = theme.fg("warning", `${mainLabel} (main)`);
 				}
 
-				// --- 行1: pwd行 ---
-				const line1 = truncateToWidth(theme.fg("dim", pwd), width, theme.fg("dim", "..."));
+				// --- mode indicator (行1.5に相当: pwd の次に挿入) ---
+				const modeStr = modeLabel(state.mode);
+				let modeIndicator: string;
+				switch (state.mode) {
+					case "planning":
+					case "plan_ready":
+						modeIndicator = theme.fg("warning", `◆ ${modeStr}`);
+						break;
+					case "executing":
+						modeIndicator = theme.fg("accent", `▶ ${modeStr}`);
+						break;
+					case "completed":
+						modeIndicator = theme.fg("success", `✓ ${modeStr}`);
+						break;
+					case "aborted":
+						modeIndicator = theme.fg("error", `⊘ ${modeStr}`);
+						break;
+					default:
+						modeIndicator = "";
+				}
+
+				// --- 行1: pwd行 + mode indicator ---
+				const pwdLine = truncateToWidth(theme.fg("dim", pwd), width - visibleWidth(modeIndicator) - 2, theme.fg("dim", "..."));
+				const line1 = visibleWidth(modeIndicator) > 0
+					? pwdLine + "  " + modeIndicator
+					: pwdLine;
 
 				// --- 行2: stats行 左=トークン統計 右=planモデル ---
 				const statsLeftWidth = visibleWidth(statsLeft);
