@@ -16,8 +16,11 @@ import {
 	loadPrompt,
 	hashContent,
 	hashTodoItems,
+	resolveExecutionTools,
 	type TodoItem,
 } from "./utils.js";
+
+const DEFAULT_EXEC_TOOLS = ["read", "bash", "grep", "find", "ls", "edit", "write"];
 
 // tool_call イベントのブロック判定をシミュレーション（allowlist 方式）
 const SAFE_PLAN_TOOLS = new Set(["read", "grep", "find", "ls"]);
@@ -1004,68 +1007,75 @@ describe("tool_call: bash safety enforcement at execution boundary", () => {
 });
 
 // ============================================================
-// 追加テスト2: active tools 保存・復元
+// 追加テスト2: active tools 保存・復元（実関数 resolveExecutionTools）
 // ============================================================
-describe("active tools save/restore", () => {
-	it("enterPlanMode 時に savedActiveTools に現在の tools が保存される", () => {
-		// シミュレーション: 元の active tools が ["read", "grep"] の状態
-		const savedActiveTools = undefined as string[] | undefined;
-		const currentTools = ["read", "grep"];
 
-		// enterPlanMode で保存されるロジックのシミュレーション
-		const result = savedActiveTools ?? currentTools;
+describe("active tools: resolveExecutionTools", () => {
+	it("savedActiveTools があれば configExecTools 未設定でもそちらを返す", () => {
+		expect(resolveExecutionTools(["read", "grep"], undefined, DEFAULT_EXEC_TOOLS))
+			.toEqual(["read", "grep"]);
+	});
+
+	it("configExecTools が明示されていればそちらを優先", () => {
+		expect(resolveExecutionTools(["read", "grep"], ["read", "bash", "edit"], DEFAULT_EXEC_TOOLS))
+			.toEqual(["read", "bash", "edit"]);
+	});
+
+	it("savedActiveTools も configExecTools もない場合は DEFAULT にフォールバック", () => {
+		expect(resolveExecutionTools(undefined, undefined, DEFAULT_EXEC_TOOLS))
+			.toEqual(DEFAULT_EXEC_TOOLS);
+	});
+
+	it("resolveExecutionTools は引数を変更しない（saved array は不変）", () => {
+		const saved = ["read", "grep"];
+		const result = resolveExecutionTools(saved, undefined, DEFAULT_EXEC_TOOLS);
 		expect(result).toEqual(["read", "grep"]);
+		expect(saved).toEqual(["read", "grep"]); // 元の配列は不変
 	});
 
-	it("exitPlanMode 時に savedActiveTools が復元される（execTools 未設定）", () => {
-		// savedActiveTools = ["read", "grep"], config.execTools = undefined
-		const savedActiveTools = ["read", "grep"];
-		const configExecTools = undefined as string[] | undefined;
+	it("startExecution 相当: saved は消えず、次回 get でも同じものが返る", () => {
+		const saved = ["read", "grep"];
 
-		// restoreActiveTools のロジックシミュレーション
-		let restoredTools: string[];
-		if (configExecTools) {
-			restoredTools = configExecTools;
-		} else if (savedActiveTools) {
-			restoredTools = savedActiveTools;
-		} else {
-			restoredTools = ["read", "bash", "grep", "find", "ls", "edit", "write"];
-		}
+		// 1回目: execution tools を取得
+		const tools1 = resolveExecutionTools(saved, undefined, DEFAULT_EXEC_TOOLS);
+		expect(tools1).toEqual(["read", "grep"]);
 
+		// saved は消えていない（同じ値で再度取得可能）
+		const tools2 = resolveExecutionTools(saved, undefined, DEFAULT_EXEC_TOOLS);
+		expect(tools2).toEqual(["read", "grep"]);
+	});
+
+	it("agent_end 相当: saved をクリア後は DEFAULT にフォールバック", () => {
+		let saved: string[] | undefined = ["read", "grep"];
+
+		// execution 完了時: saved で tools を復元
+		const restoredTools = resolveExecutionTools(saved, undefined, DEFAULT_EXEC_TOOLS);
 		expect(restoredTools).toEqual(["read", "grep"]);
+
+		// saved をクリア（restoreOriginalToolsAndClear 相当）
+		saved = undefined;
+
+		// 次は DEFAULT にフォールバック
+		const fallbackTools = resolveExecutionTools(saved, undefined, DEFAULT_EXEC_TOOLS);
+		expect(fallbackTools).toEqual(DEFAULT_EXEC_TOOLS);
 	});
 
-	it("startExecution 時に execTools が明示設定されていればそちらを使う", () => {
-		// savedActiveTools = ["read", "grep"], config.execTools = ["read", "bash", "edit", "write"]
-		const savedActiveTools = ["read", "grep"];
-		const configExecTools = ["read", "bash", "edit", "write"];
+	it("session resume: saved が永続化されていれば復元後も制限が維持される", () => {
+		// persist → restore のシミュレーション
+		const original = ["read", "grep"];
 
-		let restoredTools: string[];
-		if (configExecTools) {
-			restoredTools = configExecTools;
-		} else if (savedActiveTools) {
-			restoredTools = savedActiveTools;
-		} else {
-			restoredTools = ["read", "bash", "grep", "find", "ls", "edit", "write"];
+		// persist 時のデータに saved を含む
+		const data: Record<string, unknown> = { savedActiveTools: original };
+
+		// restore
+		let restored: string[] | undefined = undefined;
+		if ((data as { savedActiveTools?: string[] }).savedActiveTools) {
+			restored = (data as { savedActiveTools?: string[] }).savedActiveTools;
 		}
 
-		expect(restoredTools).toEqual(["read", "bash", "edit", "write"]);
-	});
-
-	it("savedActiveTools も execTools もない場合は DEFAULT_EXEC_TOOLS にフォールバック", () => {
-		const savedActiveTools = undefined as string[] | undefined;
-		const configExecTools = undefined as string[] | undefined;
-
-		let restoredTools: string[];
-		if (configExecTools) {
-			restoredTools = configExecTools;
-		} else if (savedActiveTools) {
-			restoredTools = savedActiveTools;
-		} else {
-			restoredTools = ["read", "bash", "grep", "find", "ls", "edit", "write"];
-		}
-
-		expect(restoredTools).toEqual(["read", "bash", "grep", "find", "ls", "edit", "write"]);
+		// 復元後の getExecutionTools
+		const tools = resolveExecutionTools(restored, undefined, DEFAULT_EXEC_TOOLS);
+		expect(tools).toEqual(["read", "grep"]);
 	});
 });
 

@@ -11,7 +11,7 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ModelSelection } from "./model-selector.js";
-import { type TodoItem, hashTodoItems } from "./utils.js";
+import { type TodoItem, hashTodoItems, resolveExecutionTools } from "./utils.js";
 
 // --- 設定 ---
 
@@ -78,12 +78,16 @@ export function createInitialState(): ModeState {
 // --- 永続化 ---
 
 export function persistState(pi: ExtensionAPI, state: ModeState): void {
-	pi.appendEntry("plan-mode", {
+	const data: Record<string, unknown> = {
 		enabled: state.planModeEnabled,
 		executing: state.executionMode,
 		todos: state.todoItems,
 		planModel: state.planModel,
-	});
+	};
+	if (state.savedActiveTools) {
+		data.savedActiveTools = state.savedActiveTools;
+	}
+	pi.appendEntry("plan-mode", data);
 }
 
 // --- モデル管理 ---
@@ -120,22 +124,39 @@ export async function restoreMainModel(pi: ExtensionAPI, state: ModeState): Prom
 // --- Active tools management ---
 
 /**
- * execTools が明示されていればそれを使い、そうでなければ保存済みの元 tools に戻す。
+ * 実行フェーズ用の tools を決定する。
+ * execTools が明示されていればそれを使い、そうでなければ保存済みの元 tools、
+ * さらにフォールバックとして DEFAULT_EXEC_TOOLS を返す。
+ * savedActiveTools は消さない。
  */
-export function restoreActiveTools(
+export function getExecutionTools(state: ModeState, cwd: string): string[] {
+	const config = loadConfig(cwd);
+	return resolveExecutionTools(state.savedActiveTools, config.execTools, DEFAULT_EXEC_TOOLS);
+}
+
+/**
+ * 実行フェーズの tools を適用する。savedActiveTools は保持する。
+ */
+export function applyExecutionTools(
 	pi: ExtensionAPI,
 	state: ModeState,
 	cwd: string,
 ): void {
-	const config = loadConfig(cwd);
-	if (config.execTools) {
-		pi.setActiveTools(config.execTools);
-	} else if (state.savedActiveTools) {
+	pi.setActiveTools(getExecutionTools(state, cwd));
+}
+
+/**
+ * plan 開始前の元 tools を復元し、savedActiveTools をクリアする。
+ * 完全に通常モードへ戻るときだけ使う。
+ */
+export function restoreOriginalToolsAndClear(
+	pi: ExtensionAPI,
+	state: ModeState,
+): void {
+	if (state.savedActiveTools) {
 		pi.setActiveTools(state.savedActiveTools);
-		state.savedActiveTools = undefined;
-	} else {
-		pi.setActiveTools(DEFAULT_EXEC_TOOLS);
 	}
+	state.savedActiveTools = undefined;
 }
 
 // --- モード切替 ---
@@ -190,7 +211,7 @@ export async function exitPlanMode(
 	state.planPromptDelivered = false;
 	state.planPromptHash = undefined;
 
-	restoreActiveTools(pi, state, ctx.cwd);
+	restoreOriginalToolsAndClear(pi, state);
 
 	await restoreMainModel(pi, state);
 
@@ -217,7 +238,7 @@ export async function startExecution(
 		todos: state.todoItems,
 	});
 
-	restoreActiveTools(pi, state, ctx.cwd);
+	applyExecutionTools(pi, state, ctx.cwd);
 
 	await restoreMainModel(pi, state);
 

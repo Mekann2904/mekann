@@ -2,7 +2,7 @@
   "name": "plan-mode",
   "version": "1.0.0",
   "description": "Codex-inspired plan mode that separates code analysis/planning from implementation, with separate model selection for each phase.",
-  "main": "index.js",
+  "main": "index.ts",
   "scripts": {
     "test": "vitest run"
   },

@@ -45,6 +45,16 @@ export default function (pi: ExtensionAPI) {
 			const repoRoot = repoRootStdout.trim();
 			const repoName = basename(repoRoot);
 
+			// 2b. Verify HEAD exists (unborn branch has no commits)
+			try {
+				await execFileAsync("git", ["rev-parse", "--verify", "HEAD"], {
+					cwd: repoRoot,
+				});
+			} catch {
+				ctx.ui.notify("No commits yet. /zip requires HEAD to exist.", "error");
+				return;
+			}
+
 			// 3. Generate timestamp
 			const now = new Date();
 			const ts = [

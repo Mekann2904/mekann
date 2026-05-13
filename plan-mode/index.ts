@@ -37,7 +37,8 @@ import {
 	persistState,
 	applyPlanModel,
 	restoreMainModel,
-	restoreActiveTools,
+	applyExecutionTools,
+	restoreOriginalToolsAndClear,
 	enterPlanMode,
 	exitPlanMode,
 	startExecution,
@@ -361,7 +362,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				state.executionMode = false;
 				state.todoItems = [];
 
-				restoreActiveTools(pi, state, ctx.cwd);
+				restoreOriginalToolsAndClear(pi, state);
 
 				updateStatus(ctx);
 				wrappedPersistState();
@@ -456,6 +457,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			if (planModeEntry.data.executing) state.executionMode = true;
 			if (planModeEntry.data.todos) state.todoItems = planModeEntry.data.todos;
 			if (planModeEntry.data.planModel) state.planModel = planModeEntry.data.planModel;
+			if ((planModeEntry.data as { savedActiveTools?: string[] }).savedActiveTools) {
+				state.savedActiveTools = (planModeEntry.data as { savedActiveTools?: string[] }).savedActiveTools;
+			}
 		}
 
 		// 復元後の状態更新（通常モードの場合は上で保存済みなので上書き）
@@ -469,7 +473,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			pi.setActiveTools(config.planTools ?? DEFAULT_PLAN_TOOLS);
 			await wrappedApplyPlanModel(ctx);
 		} else if (state.executionMode) {
-			pi.setActiveTools(config.execTools ?? DEFAULT_EXEC_TOOLS);
+			applyExecutionTools(pi, state, ctx.cwd);
 		}
 
 		// 再開時: planHash が一致する場合のみ [DONE:n] を再スキャン
