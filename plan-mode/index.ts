@@ -36,9 +36,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		state.mode = "plan";
 		Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined });
-
 		pi.setActiveTools([...SAFE_PLAN_TOOLS]);
-
 		ctx.ui.notify("plan");
 	}
 
@@ -51,7 +49,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		const plan = state.pendingPlan;
 		state.mode = "main";
 		Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined });
-
 		if (plan) {
 			pi.sendUserMessage(
 				`以下の plan に従って実装してください。\n\n<plan>\n${plan}\n</plan>`,
