@@ -49,17 +49,12 @@ const SAFE_REDIRECT_PATTERN = /\s*2>\/dev\/null\b|\s*2>&1\b|\s*>\/dev\/null\b/g;
 
 export function isSafeCommand(command: string): boolean {
 	const stripped = command.replace(SAFE_REDIRECT_PATTERN, "");
-
 	return !SHELL_META_PATTERNS.some((p) => p.test(stripped))
 		&& !DESTRUCTIVE_PATTERNS.some((p) => p.test(stripped))
 		&& SAFE_PATTERNS.some((p) => p.test(stripped));
 }
 
-export function buildBlockReason(
-	toolName: string,
-	input: Record<string, unknown>,
-	blockCount: number,
-): string {
+export function buildBlockReason(toolName: string, input: Record<string, unknown>, blockCount: number): string {
 	const H = "【プランモード・読み取り専用】";
 	const toolLabel = ({ edit: "ファイル編集", write: "ファイル作成/上書き" } as Record<string, string>)[toolName] || toolName;
 
