@@ -20,18 +20,12 @@ function formatBytes(bytes: number): string {
 
 type ZipMode = "default" | "head" | "worktree";
 
-function parseArgs(raw: string): { mode: ZipMode } {
-	const tokens = raw.trim().split(/\s+/);
-	if (tokens.includes("--worktree")) return { mode: "worktree" };
-	if (tokens.includes("--head")) return { mode: "head" };
-	return { mode: "default" };
-}
-
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("zip", {
 		description: "Archive the current Git repo as ZIP and copy to clipboard (macOS). Flags: --head, --worktree",
 		handler: async (rawArgs, ctx) => {
-			const { mode } = parseArgs(rawArgs ?? "");
+			const tokens = (rawArgs ?? "").trim().split(/\s+/);
+			const mode: ZipMode = tokens.includes("--worktree") ? "worktree" : tokens.includes("--head") ? "head" : "default";
 
 			let repoRoot: string;
 			let shortHead = "nohead";
