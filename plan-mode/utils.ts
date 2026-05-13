@@ -95,9 +95,7 @@ export function loadPrompt(name: string, vars?: Record<string, string>): string 
 	} catch {
 		throw new Error(`プロンプトファイルが見つかりません: prompts/${name}.md`);
 	}
-
 	if (vars) Object.entries(vars).forEach(([k, v]) => { content = content.replaceAll(`\${${k}}`, v); });
-
 	return content;
 }
 
