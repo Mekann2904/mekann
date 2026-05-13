@@ -10,8 +10,6 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 
-// --- Bash command safety ---
-
 const DESTRUCTIVE_PATTERNS = [
 	/\brm\b/i,
 	/\brmdir\b/i,
@@ -131,8 +129,6 @@ export function isSafeCommand(command: string): boolean {
 	return !isDestructive && isSafe;
 }
 
-// --- Block reason generation ---
-
 export const WRITING_TOOL_NAMES: Record<string, string> = {
 	edit: "ファイル編集",
 	write: "ファイル作成/上書き",
@@ -158,20 +154,14 @@ export function buildBlockReason(
 	return `${BLOCK_REASON_HEADER}\n${toolLabel}「${inputDesc}」はブロックされました。\nプランモードではファイル変更は一切禁止。\n代わりに変更内容をテキストで報告してください。`;
 }
 
-// --- Tool sanitization ---
-
 const WRITE_TOOLS = new Set(["edit", "write"]);
 export function sanitizePlanTools(tools: string[]): string[] {
 	return tools.filter((t) => !WRITE_TOOLS.has(t));
 }
 
-// --- Content hashing ---
-
 export function hashContent(content: string): string {
 	return createHash("sha256").update(content).digest("hex").slice(0, 12);
 }
-
-// --- Prompt loading ---
 
 export function loadPrompt(name: string, vars?: Record<string, string>): string {
 	const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -190,8 +180,6 @@ export function loadPrompt(name: string, vars?: Record<string, string>): string 
 
 	return content;
 }
-
-// --- Plan extraction ---
 
 /** <proposed_plan> の中身をそのまま取り出す */
 export function extractProposedPlan(message: string): string | undefined {

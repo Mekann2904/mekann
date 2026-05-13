@@ -46,7 +46,6 @@ export default function (pi: ExtensionAPI) {
 		handler: async (rawArgs, ctx) => {
 			const { mode } = parseArgs(rawArgs ?? "");
 
-			// 1. Check if inside a Git repository
 			try {
 				await execFileAsync("git", ["rev-parse", "--is-inside-work-tree"], {
 					cwd: ctx.cwd,
@@ -56,7 +55,6 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			// 2. Get repo root and name
 			const { stdout: repoRootStdout } = await execFileAsync(
 				"git", ["rev-parse", "--show-toplevel"],
 				{ cwd: ctx.cwd, encoding: "utf8" },
@@ -64,7 +62,6 @@ export default function (pi: ExtensionAPI) {
 			const repoRoot = repoRootStdout.trim();
 			const repoName = basename(repoRoot);
 
-			// 2b. Verify HEAD exists (unborn branch has no commits)
 			let shortHead = "nohead";
 			try {
 				const { stdout: headStdout } = await execFileAsync(
@@ -77,7 +74,6 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			// 3. Check for uncommitted changes
 			let dirty = false;
 			try {
 				const { stdout: statusStdout } = await execFileAsync(
@@ -86,10 +82,8 @@ export default function (pi: ExtensionAPI) {
 				);
 				dirty = statusStdout.trim().length > 0;
 			} catch {
-				// status 取得失敗は警告だけ出して継続
 			}
 
-			// 4. Mode-dependent behavior
 			if (mode === "default" && dirty) {
 				ctx.ui.notify(
 					"Working tree has uncommitted changes. Commit/stash them, or use /zip --head or /zip --worktree.",
@@ -105,12 +99,10 @@ export default function (pi: ExtensionAPI) {
 				);
 			}
 
-			// 5. Generate collision-resistant output path
 			const tmpDir = await mkdtemp(join(tmpdir(), `${repoName}-${shortHead}-`));
 			const zipPath = join(tmpDir, `${repoName}-${shortHead}-${Date.now()}.zip`);
 
 			try {
-				// Base archive from HEAD (always, for both modes)
 				await execFileAsync("git", [
 					"archive",
 					"--format=zip",
@@ -119,7 +111,6 @@ export default function (pi: ExtensionAPI) {
 					"HEAD",
 				], { cwd: repoRoot });
 
-				// In worktree mode, overlay dirty files on top of the HEAD archive
 				if (mode === "worktree" && dirty) {
 					const parentDir = dirname(repoRoot);
 					await overlayDirtyFiles(parentDir, repoName, repoRoot, zipPath);
@@ -130,7 +121,6 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			// 6. Get file size
 			let sizeStr: string;
 			try {
 				const info = await stat(zipPath);
@@ -139,7 +129,6 @@ export default function (pi: ExtensionAPI) {
 				sizeStr = "unknown size";
 			}
 
-			// 7. Copy to clipboard as a file (macOS)
 			try {
 				await execFileAsync("osascript", [
 					"-e",
@@ -173,13 +162,11 @@ export default function (pi: ExtensionAPI) {
  * @param zipPath    Path to the ZIP file to update
  */
 async function overlayDirtyFiles(parentDir: string, repoName: string, repoRoot: string, zipPath: string): Promise<void> {
-	// Get modified tracked files (content differs from HEAD)
 	const { stdout: modifiedStdout } = await execFileAsync("git", [
 		"diff-files",
 		"--name-only",
 	], { cwd: repoRoot, encoding: "utf8" });
 
-	// Get untracked (non-ignored) files
 	const { stdout: othersStdout } = await execFileAsync("git", [
 		"ls-files",
 		"--others",
@@ -193,10 +180,8 @@ async function overlayDirtyFiles(parentDir: string, repoName: string, repoRoot: 
 
 	if (dirtyFiles.length === 0) return;
 
-	// Build archive paths: repoName/relative/path
 	const archivePaths = dirtyFiles.map((f) => `${repoName}/${f}`);
 
-	// zip -u from parentDir so repoName/file resolves correctly
 	await execFileAsync("/usr/bin/zip", [
 		"-u",
 		zipPath,

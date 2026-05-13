@@ -5,8 +5,6 @@
  * plan はテキストコンテキストとして保存・注入される。
  */
 
-// --- Mode ---
-
 export type Mode = "main" | "plan";
 
 export function isReadOnlyMode(mode: Mode): boolean {
@@ -16,8 +14,6 @@ export function isReadOnlyMode(mode: Mode): boolean {
 export function modeLabel(mode: Mode): string {
 	return mode === "plan" ? "PLAN MODE" : "";
 }
-
-// --- State ---
 
 export interface PlanState {
 	mode: Mode;
