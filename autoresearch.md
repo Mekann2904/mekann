@@ -59,14 +59,15 @@ Clean up the entire repository codebase — remove noise, fix inconsistencies, e
 
 **Total: 706 → 518 lines (-26.6%), all 79 tests passing**
 
-### Latest batch (iters 51-52)
+### Latest batch (iters 51-53)
 - ✅ Iter 51: Removed blank lines within loadPrompt body (-2 lines)
 - ✅ Iter 52: Merged pip+brew destructive patterns into one regex (-1 line)
+- ✅ Iter 53: Merged shell meta early-return guard into boolean expression in isSafeCommand (-3 lines)
 
 ### File breakdown
 - plan-mode/index.ts: 189 lines
-- plan-mode/utils.ts: 104 lines
+- plan-mode/utils.ts: 101 lines
 - plan-mode/state.ts: 24 lines
 - zip-repo/index.ts: 125 lines
-- Total: 442 lines
+- Total: 439 lines
 
