@@ -111,7 +111,6 @@ export default function (pi: ExtensionAPI) {
 	});
 }
 
-/** Overlay modified and untracked files onto an existing ZIP archive. */
 async function overlayDirtyFiles(parentDir: string, repoName: string, repoRoot: string, zipPath: string): Promise<void> {
 	const { stdout } = await execFileAsync("git", [
 		"ls-files", "-mo", "--exclude-standard", "--",
