@@ -491,13 +491,20 @@ export function markCompletedSteps(text: string, items: TodoItem[]): number {
 	const doneSteps = extractDoneSteps(text);
 	let changed = 0;
 	for (const step of doneSteps) {
-		const item =
+		// Sequential enforcement: only accept DONE for the current (first non-completed) step.
+		// This prevents out-of-order completion and guarantees top-to-bottom execution.
+		const currentIndex = items.findIndex((t) => !t.completed);
+		if (currentIndex === -1) break;
+
+		const currentItem = items[currentIndex];
+		const matchesCurrent =
 			typeof step === "number"
-				? items.find((t) => t.step === step)
-				: items.find((t) => t.id === step);
-		if (item && !item.completed) {
-			item.completed = true;
-			item.status = "done";
+				? currentItem.step === step
+				: currentItem.id === step;
+
+		if (matchesCurrent) {
+			currentItem.completed = true;
+			currentItem.status = "done";
 			changed++;
 		}
 	}
@@ -623,9 +630,59 @@ export function resolveExecutionTools(
 	return configExecTools ?? savedActiveTools ?? defaultTools;
 }
 
-export function hashTodoItems(items: TodoItem[]): string {
-	const content = items.map((t) => `${t.id}:${t.step}:${t.instruction}`).join("\n");
-	return hashContent(content);
+/** Remove write-capable tools from plan-time tool sets. */
+const WRITE_TOOLS = new Set(["edit", "write"]);
+export function sanitizePlanTools(tools: string[]): string[] {
+	return tools.filter((t) => !WRITE_TOOLS.has(t));
+}
+
+// --- Restored state validation ---
+
+const VALID_PLAN_MODES: readonly PlanMode[] = ["normal", "planning", "plan_ready", "executing", "completed", "aborted"];
+const VALID_STEP_STATUSES: readonly StepStatus[] = ["pending", "in_progress", "done", "failed", "skipped"];
+
+export function validateRestoredMode(mode: unknown): PlanMode {
+	if (typeof mode === "string" && (VALID_PLAN_MODES as readonly string[]).includes(mode)) {
+		return mode as PlanMode;
+	}
+	return "normal";
+}
+
+export function validateRestoredTodoItem(raw: unknown, index: number): TodoItem {
+	if (typeof raw !== "object" || raw === null) {
+		return {
+			id: `restored-${index + 1}`,
+			step: index + 1,
+			text: `Restored step ${index + 1}`,
+			instruction: `Restored step ${index + 1}`,
+			status: "pending",
+			completed: false,
+		};
+	}
+	const e = raw as Record<string, unknown>;
+	const status: StepStatus =
+		typeof e.status === "string" && (VALID_STEP_STATUSES as readonly string[]).includes(e.status)
+			? (e.status as StepStatus)
+			: "pending";
+	const id = typeof e.id === "string" && STEP_ID_RE.test(e.id) ? e.id : `restored-${index + 1}`;
+	return {
+		id,
+		step: typeof e.step === "number" ? e.step : index + 1,
+		text: typeof e.text === "string" ? e.text : `Step ${index + 1}`,
+		instruction: typeof e.instruction === "string" ? e.instruction : typeof e.text === "string" ? e.text : `Step ${index + 1}`,
+		acceptance: typeof e.acceptance === "string" && e.acceptance.trim().length > 0 ? e.acceptance : undefined,
+		verification: typeof e.verification === "string" && e.verification.trim().length > 0 ? e.verification : undefined,
+		status,
+		completed: status === "done",
+	};
+}
+
+export function hashTodoItems(items: TodoItem[], planId?: string, planRevision?: number): string {
+	const header = `${planId ?? ""}:${planRevision ?? 0}`;
+	const content = items.map((t) =>
+		`${t.id}:${t.step}:${t.instruction}:${t.acceptance ?? ""}:${t.verification ?? ""}`
+	).join("\n");
+	return hashContent(header + "\n" + content);
 }
 
 // --- Content hashing ---

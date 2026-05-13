@@ -64,6 +64,9 @@ import {
 	modeLabel,
 	DEFAULT_PLAN_TOOLS,
 	DEFAULT_EXEC_TOOLS,
+	sanitizePlanTools,
+	validateRestoredMode,
+	validateRestoredTodoItem,
 	type ModeState,
 	type PlanMode,
 } from "./state.js";
@@ -79,6 +82,16 @@ import {
 	validatePlan,
 	type TodoItem,
 } from "./utils.js";
+
+// --- Active plan helper ---
+
+/**
+ * 実行中は frozenPlan を、それ以外は todoItems を返す。
+ * 実行フェーズでは frozenPlan（不変スナップショット）が唯一の権威ある plan となる。
+ */
+function activePlan(state: ModeState): TodoItem[] {
+	return (state.mode === "executing" && state.frozenPlan) ? state.frozenPlan : state.todoItems;
+}
 
 
 // --- 型ヘルパー ---
@@ -115,8 +128,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	function updateStatus(ctx: ExtensionContext): void {
 		requestFooterRender();
 
-		if ((state.mode === "executing" || state.mode === "plan_ready") && state.todoItems.length > 0) {
-			const lines = state.todoItems.map((item) => {
+		if ((state.mode === "executing" || state.mode === "plan_ready") && activePlan(state).length > 0) {
+			const lines = activePlan(state).map((item) => {
 				if (item.completed) {
 					return (
 						ctx.ui.theme.fg("success", "☑ ") +
@@ -194,11 +207,12 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("todos", {
 		description: "プラン進捗表示",
 		handler: async (_args, ctx) => {
-			if (state.todoItems.length === 0) {
+			const plan = activePlan(state);
+			if (plan.length === 0) {
 				ctx.ui.notify("アクティブなプランがありません。/plan で開始してください。", "info");
 				return;
 			}
-			const list = state.todoItems
+			const list = plan
 				.map((item, i) => {
 					const statusIcon = item.status === "done" ? "✓"
 						: item.status === "failed" ? "✗"
@@ -209,8 +223,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				})
 				.join("\n");
 
-			const completed = state.todoItems.filter((t) => t.completed).length;
-			ctx.ui.notify(`プラン進捗 (${completed}/${state.todoItems.length}):\n${list}`, "info");
+			const completed = plan.filter((t) => t.completed).length;
+			ctx.ui.notify(`プラン進捗 (${completed}/${plan.length}):\n${list}`, "info");
 		},
 	});
 
@@ -247,8 +261,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			await wrappedStartExecution(ctx);
 			wrappedPersistState();
 
-			// plan content を固定して実行開始メッセージ
-			const remaining = state.todoItems.filter((t) => !t.completed);
+			// frozenPlan（実行スナップショット）に基づく開始メッセージ
+			const frozen = state.frozenPlan ?? state.todoItems;
+			const remaining = frozen.filter((t) => !t.completed);
 			const executePrompt = `プラン (revision ${state.planRevision}) を実行開始。残り ${remaining.length} ステップ。`;
 			pi.sendUserMessage(executePrompt);
 		},
@@ -269,12 +284,33 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				revisePlanState(state);
 				// planning ツールを適用
 				const config = loadConfig(ctx.cwd);
-				pi.setActiveTools(config.planTools ?? DEFAULT_PLAN_TOOLS);
+				pi.setActiveTools(sanitizePlanTools(config.planTools ?? DEFAULT_PLAN_TOOLS));
 				ctx.ui.notify("プランを再修正中 — 読み取り専用探索", "info");
 			} else {
 				ctx.ui.notify("すでに planning 状態です。引き続きプランを修正してください。", "info");
 			}
 
+			updateStatus(ctx);
+			wrappedPersistState();
+		},
+	});
+
+	pi.registerCommand("abort-plan", {
+		description: "実行中のプランを中断（executing/planning → aborted → normal）",
+		handler: async (_args, ctx) => {
+			if (state.mode !== "executing" && state.mode !== "planning" && state.mode !== "plan_ready") {
+				ctx.ui.notify(
+					`現在 ${modeLabel(state.mode)} です。/abort-plan は executing/planning/plan_ready でのみ使用できます。`,
+					"warning",
+			);
+				return;
+			}
+
+			markAborted(state);
+			restoreOriginalToolsAndClear(pi, state);
+			await restoreMainModel(pi, state);
+
+			ctx.ui.notify("プランを中断しました。", "warning");
 			updateStatus(ctx);
 			wrappedPersistState();
 		},
@@ -326,14 +362,15 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				lines.push(`プランID: ${state.planId} (revision ${state.planRevision})`);
 			}
 
-			if (state.todoItems.length > 0) {
-				const completed = state.todoItems.filter((t) => t.completed).length;
-				const planHash = hashTodoItems(state.todoItems);
-				lines.push(`プラン進捗: ${completed}/${state.todoItems.length}`);
+			if (activePlan(state).length > 0) {
+				const plan = activePlan(state);
+				const completed = plan.filter((t) => t.completed).length;
+				const planHash = hashTodoItems(plan, state.planId, state.planRevision);
+				lines.push(`プラン進捗: ${completed}/${plan.length}`);
 				lines.push(`プランハッシュ: ${planHash}`);
 				lines.push("");
 				lines.push("ステップ:");
-				for (const item of state.todoItems) {
+				for (const item of plan) {
 					const statusIcon = item.status === "done" ? "✓"
 						: item.status === "failed" ? "✗"
 						: item.status === "in_progress" ? "→"
@@ -424,6 +461,15 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (toolName === "bash") {
 			const command = String(input.command ?? "");
 			if (!isSafeCommand(command)) {
+				// 監査ログ: unsafe bash ブロックも記録
+				pi.appendEntry("plan-mode-blocked-tool", {
+					at: Date.now(),
+					mode: state.mode,
+					toolName: "bash",
+					command,
+					blockCount: 1,
+					reason: "unsafe-bash",
+				});
 				return {
 					block: true,
 					reason: `Plan mode is read-only. Blocked unsafe bash command:\n${command}`,
@@ -485,9 +531,10 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			};
 		}
 
-		if (state.mode === "executing" && state.todoItems.length > 0) {
-			const remaining = state.todoItems.filter((t) => !t.completed);
-			const completed = state.todoItems.filter((t) => t.completed);
+		if (state.mode === "executing" && state.frozenPlan && state.frozenPlan.length > 0) {
+			const frozen = state.frozenPlan;
+			const remaining = frozen.filter((t) => !t.completed);
+			const completed = frozen.filter((t) => t.completed);
 			const todoList = remaining.map((t) => {
 				let line = `${t.step}. [${t.id}] ${t.instruction ?? t.text}`;
 				if (t.acceptance) line += `\n   Acceptance: ${t.acceptance}`;
@@ -539,11 +586,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	pi.on("turn_end", async (event, ctx) => {
 		resetBlockTracking();
 
-		if (state.mode !== "executing" || state.todoItems.length === 0) return;
+		if (state.mode !== "executing" || !state.frozenPlan || state.frozenPlan.length === 0) return;
 		if (!isAssistantMessage(event.message)) return;
 
 		const text = getTextContent(event.message);
-		if (markCompletedSteps(text, state.todoItems) > 0) {
+		if (markCompletedSteps(text, state.frozenPlan) > 0) {
 			updateStatus(ctx);
 			wrappedPersistState();
 		}
@@ -552,8 +599,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	// プラン完了とモード遷移を処理
 	pi.on("agent_end", async (event, ctx) => {
 		// 実行完了チェック
-		if (state.mode === "executing" && state.todoItems.length > 0) {
-			if (state.todoItems.every((t) => t.completed)) {
+		if (state.mode === "executing" && state.frozenPlan && state.frozenPlan.length > 0) {
+			if (state.frozenPlan.every((t) => t.completed)) {
 				markCompleted(state);
 				ctx.ui.notify("**プラン完了！** ✓", "success");
 
@@ -627,6 +674,10 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		state.planModel = config.planModel;
 
 		if (pi.getFlag("plan") === true) {
+			// --plan 経由も enterPlanMode 相当の tool 保存を通す
+			if (!state.savedActiveTools) {
+				state.savedActiveTools = pi.getActiveTools();
+			}
 			state.mode = "planning";
 		}
 
@@ -651,13 +702,14 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 						mode?: PlanMode;
 						enabled?: boolean;       // 後方互換
 						executing?: boolean;      // 後方互換
-						todos?: TodoItem[];
+						todos?: unknown[];
 						planModel?: ModelSelection;
 						planId?: string;
 						planRevision?: number;
 						savedActiveTools?: string[];
 						originalModel?: { provider: string; modelId: string };
 						originalThinkingLevel?: string;
+						frozenPlan?: unknown[];
 					};
 			  }
 			| undefined;
@@ -665,9 +717,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (planModeEntry?.data) {
 			const d = planModeEntry.data;
 
-			// 新フォーマット: mode フィールド
+			// mode を検証付きで復元
 			if (d.mode) {
-				state.mode = d.mode;
+				state.mode = validateRestoredMode(d.mode);
 			} else {
 				// 後方互換: enabled/executing フラグ → mode 復元
 				if (d.executing) {
@@ -678,11 +730,16 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				}
 			}
 
-			if (d.todos) state.todoItems = d.todos;
+			// todos を検証付きで復元
+			if (d.todos) {
+				state.todoItems = (d.todos as unknown[]).map((raw, i) => validateRestoredTodoItem(raw, i));
+			}
 			if (d.planModel) state.planModel = d.planModel;
 			if (d.planId) state.planId = d.planId;
-			if (d.planRevision) state.planRevision = d.planRevision;
-			if (d.savedActiveTools) state.savedActiveTools = d.savedActiveTools;
+			if (typeof d.planRevision === "number") state.planRevision = d.planRevision;
+			if (d.savedActiveTools && Array.isArray(d.savedActiveTools)) {
+				state.savedActiveTools = d.savedActiveTools.filter((t): t is string => typeof t === "string");
+			}
 
 			// persisted originalModel/originalThinkingLevel を優先復元
 			if (d.originalModel) {
@@ -693,13 +750,12 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				state.originalThinkingLevel = d.originalThinkingLevel;
 			}
 
-			// 後方互換: 古い TodoItem にデフォルトを設定
-			state.todoItems = state.todoItems.map((item: TodoItem, i: number) => ({
-				...item,
-				id: item.id || `step-${item.step || i + 1}`,
-				instruction: item.instruction || item.text || "",
-				status: item.status || (item.completed ? "done" as const : "pending" as const),
-			}));
+			// frozenPlan を検証付きで復元（実行中の不変スナップショット）
+			if (d.frozenPlan && Array.isArray(d.frozenPlan)) {
+				state.frozenPlan = (d.frozenPlan as unknown[]).map((raw, i) => validateRestoredTodoItem(raw, i));
+			}
+
+			// 後方互換: 古い TodoItem にデフォルトを設定 (validateRestoredTodoItem で処理済み)
 		}
 
 		// persisted 復元後にまだ未設定の場合のみ ctx.model をフォールバックとして保存
@@ -720,33 +776,42 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		// モードに応じたツール・モデル適用
 		if (state.mode === "planning" || state.mode === "plan_ready") {
-			pi.setActiveTools(config.planTools ?? DEFAULT_PLAN_TOOLS);
+			const safeTools = sanitizePlanTools(config.planTools ?? DEFAULT_PLAN_TOOLS);
+			pi.setActiveTools(safeTools);
 			await wrappedApplyPlanModel(ctx);
 		} else if (state.mode === "executing") {
 			applyExecutionTools(pi, state, ctx.cwd);
 		}
 
 		// 再開時: planHash が一致する場合のみ [DONE:n] を再スキャン
-		if (planModeEntry !== undefined && state.mode === "executing" && state.todoItems.length > 0) {
+		if (planModeEntry !== undefined && state.mode === "executing" && state.frozenPlan && state.frozenPlan.length > 0) {
 			let executeIndex = -1;
 			let executionPlanHash: string | undefined;
+			let executionPlanId: string | undefined;
+			let executionPlanRevision: number | undefined;
 
 			for (let i = entries.length - 1; i >= 0; i--) {
 				const entry = entries[i] as {
 					type: string;
 					customType?: string;
-					data?: { planHash?: string };
+					data?: { planHash?: string; planId?: string; planRevision?: number };
 				};
 				if (entry.customType === "plan-mode-execute") {
 					executeIndex = i;
 					executionPlanHash = entry.data?.planHash;
+					executionPlanId = entry.data?.planId;
+					executionPlanRevision = entry.data?.planRevision;
 					break;
 				}
 			}
 
-			const currentPlanHash = hashTodoItems(state.todoItems);
+			const currentPlanHash = hashTodoItems(state.frozenPlan, executionPlanId, executionPlanRevision);
 
-			if (executionPlanHash && executionPlanHash === currentPlanHash && executeIndex >= 0) {
+			// planId + planRevision の一致も確認（hash 衝突対策）
+			const idMatches = (!executionPlanId && !state.planId) ||
+				(executionPlanId === state.planId && executionPlanRevision === state.planRevision);
+
+			if (executionPlanHash && executionPlanHash === currentPlanHash && idMatches && executeIndex >= 0) {
 				const messages: AssistantMessage[] = [];
 				for (let i = executeIndex + 1; i < entries.length; i++) {
 					const entry = entries[i];
@@ -759,7 +824,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 					}
 				}
 				const allText = messages.map(getTextContent).join("\n");
-				markCompletedSteps(allText, state.todoItems);
+				markCompletedSteps(allText, state.frozenPlan);
 			}
 		}
 
