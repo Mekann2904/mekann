@@ -32,12 +32,9 @@ type ZipMode = "default" | "head" | "worktree";
 
 function parseArgs(raw: string): { mode: ZipMode } {
 	const tokens = raw.trim().split(/\s+/);
-	let mode: ZipMode = "default";
-	for (const token of tokens) {
-		if (token === "--head") mode = "head";
-		else if (token === "--worktree") mode = "worktree";
-	}
-	return { mode };
+	if (tokens.includes("--worktree")) return { mode: "worktree" };
+	if (tokens.includes("--head")) return { mode: "head" };
+	return { mode: "default" };
 }
 
 export default function (pi: ExtensionAPI) {

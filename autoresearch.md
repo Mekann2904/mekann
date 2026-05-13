@@ -36,4 +36,20 @@ Clean up the entire repository codebase — remove noise, fix inconsistencies, e
 - Keep test coverage: don't remove tests
 
 ## What's Been Tried
-(Baseline run)
+- ✅ Removed 10 section comments from index.ts, 6 from utils.ts, 2 from state.ts (-20 lines)
+- ✅ Deduplicated SAFE_PLAN_TOOLS Set in index.ts (-2 lines)
+- ✅ Removed vitest.config.ts (default-only config)
+- ✅ Removed 15 numbered step comments from zip-repo/index.ts
+- ✅ Fixed README shortcut inconsistency (Ctrl+Alt+P → Cmd+P)
+- ✅ Removed 18 decorative === separators from test file
+- ✅ Trimmed stale utils.ts header comment
+- ✅ Reused enterPlanMode() in session_start handler (-6 lines duplication)
+- ✅ Removed unnecessary sanitizePlanTools() call (DEFAULT_PLAN_TOOLS has no write tools)
+- ✅ Removed redundant resetBlockTracking() call at init
+- ✅ Consolidated duplicate ctx.ui.notify('main') in exitPlanMode
+
+### Dead ends / not worth it
+- Stale test comment removal: 0 source lines saved (test file not counted)
+- WRITING_TOOL_NAMES/BLOCK_REASON_HEADER unexport: not worth risk, used by tests
+- Inlining enterPlanMode/exitPlanMode: hurts readability
+
