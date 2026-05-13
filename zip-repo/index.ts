@@ -9,8 +9,6 @@ import { basename, join, dirname } from "node:path";
 import { mkdtemp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
-
-
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("zip", {
 		description: "Archive the current Git repo as ZIP and copy to clipboard (macOS). Flags: --head, --worktree",
@@ -87,18 +85,12 @@ export default function (pi: ExtensionAPI) {
 				]);
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
-				ctx.ui.notify(
-					`ZIP created at ${zipPath} (${sizeStr}) but clipboard copy failed: ${msg}`,
-					"warning",
-				);
+				ctx.ui.notify(`ZIP created at ${zipPath} (${sizeStr}) but clipboard copy failed: ${msg}`, "warning");
 				return;
 			}
 
 			const modeLabel = mode === "default" || mode === "head" ? "HEAD" : "worktree";
-			ctx.ui.notify(
-				`Copied to clipboard: ${zipPath} (${sizeStr}, ${modeLabel})`,
-				"info",
-			);
+			ctx.ui.notify(`Copied to clipboard: ${zipPath} (${sizeStr}, ${modeLabel})`, "info");
 		},
 	});
 }
