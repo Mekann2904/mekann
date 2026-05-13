@@ -122,13 +122,14 @@
 [
   {"id":"add-validator","title":"パスワードバリデーターを追加","acceptance":"テストが通る"}
 ]
+]
 </plan_steps_json>
 
 各エントリ:
 - `id`: 英小文字・数字・ハイフンの kebab-case ID（例: `add-validator`, `fix-api-v2`）。実行完了時に [DONE:id] で参照する
 - `title`: 人間向けの簡潔なステップ名
 - `instruction`（省略可）: エージェント向けの詳細指示。省略時は title を使用
-- `acceptance`（省略可）: このステップの完了基準
+- `acceptance`（**必須**）: このステップの完了基準。すべてのステップに必ず設定すること
 - `verification`（省略可）: 完了後に実行する検証コマンド（例: `npm test`, `tsc --noEmit`）
 
 `<plan_steps_json>` を出力しない場合、`<proposed_plan>` 内の箇条書き・番号付きリストから自動抽出する（フォールバック）。

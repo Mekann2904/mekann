@@ -17,9 +17,13 @@ import {
 	hashContent,
 	hashTodoItems,
 	resolveExecutionTools,
+	sanitizePlanTools,
+	validateRestoredMode,
+	validateRestoredTodoItem,
 	validatePlan,
 	type TodoItem,
 	type PlanMode,
+	type StepStatus,
 	isValidTransition,
 	transition,
 	isReadOnlyMode,
@@ -722,17 +726,18 @@ describe("extractDoneSteps", () => {
 });
 
 describe("markCompletedSteps", () => {
-	it("マーカーに一致するステップを完了にする", () => {
+	it("マーカーに一致するステップを完了にする（順次制約あり）", () => {
 		const items: TodoItem[] = [
 			{ id: "step-1", step: 1, text: "ステップ1", instruction: "ステップ1", completed: false },
 			{ id: "step-2", step: 2, text: "ステップ2", instruction: "ステップ2", completed: false },
 			{ id: "step-3", step: 3, text: "ステップ3", instruction: "ステップ3", completed: false },
 		];
+		// 順次制約: [DONE:3] は step-1 が完了していないため拒否される
 		const count = markCompletedSteps("[DONE:1] [DONE:3]", items);
-		expect(count).toBe(2);
+		expect(count).toBe(1);
 		expect(items[0].completed).toBe(true);
 		expect(items[1].completed).toBe(false);
-		expect(items[2].completed).toBe(true);
+		expect(items[2].completed).toBe(false);
 	});
 
 	it("step ID で完了にする", () => {
@@ -1734,7 +1739,7 @@ describe("plan identity: hash-based DONE rescan", () => {
 		}
 	});
 
-	it("DONE from matching plan is correctly applied", () => {
+	it("DONE from matching plan is correctly applied (sequential)", () => {
 		const plan: TodoItem[] = [
 			{ id: "step-1", step: 1, text: "ステップA", instruction: "ステップA", completed: false },
 			{ id: "step-2", step: 2, text: "ステップB", instruction: "ステップB", completed: false },
@@ -1744,11 +1749,12 @@ describe("plan identity: hash-based DONE rescan", () => {
 
 		expect(planHash).toBe(hashTodoItems(plan));
 
-		const messages = "[DONE:1] 完了 [DONE:3] 完了";
+		// 順次制約: [DONE:1] [DONE:2] [DONE:3] のみ全て受理される
+		const messages = "[DONE:1] 完了 [DONE:2] 完了 [DONE:3] 完了";
 		markCompletedSteps(messages, plan);
 
 		expect(plan[0].completed).toBe(true);
-		expect(plan[1].completed).toBe(false);
+		expect(plan[1].completed).toBe(true);
 		expect(plan[2].completed).toBe(true);
 	});
 });
@@ -2301,5 +2307,210 @@ describe("acceptance は hard error", () => {
 		const result = validatePlan(items);
 		expect(result.valid).toBe(true);
 		expect(result.issues).toHaveLength(0);
+	});
+});
+
+// ============================================================
+// sanitizePlanTools
+// ============================================================
+describe("sanitizePlanTools", () => {
+	it("edit と write を除去する", () => {
+		expect(sanitizePlanTools(["read", "edit", "write", "grep"])).toEqual(["read", "grep"]);
+	});
+
+	it("edit/write がなければそのまま返す", () => {
+		expect(sanitizePlanTools(["read", "grep", "find", "ls"])).toEqual(["read", "grep", "find", "ls"]);
+	});
+
+	it("bash は保持される（設定で明示された場合）", () => {
+		expect(sanitizePlanTools(["read", "bash", "grep"])).toEqual(["read", "bash", "grep"]);
+	});
+
+	it("空配列は空配列を返す", () => {
+		expect(sanitizePlanTools([])).toEqual([]);
+	});
+});
+
+// ============================================================
+// validateRestoredMode
+// ============================================================
+describe("validateRestoredMode", () => {
+	it("有効な mode はそのまま返す", () => {
+		const modes: PlanMode[] = ["normal", "planning", "plan_ready", "executing", "completed", "aborted"];
+		for (const mode of modes) {
+			expect(validateRestoredMode(mode)).toBe(mode);
+		}
+	});
+
+	it("無効な mode は 'normal' にフォールバック", () => {
+		expect(validateRestoredMode("invalid")).toBe("normal");
+		expect(validateRestoredMode(123)).toBe("normal");
+		expect(validateRestoredMode(undefined)).toBe("normal");
+		expect(validateRestoredMode(null)).toBe("normal");
+	});
+});
+
+// ============================================================
+// validateRestoredTodoItem
+// ============================================================
+describe("validateRestoredTodoItem", () => {
+	it("正常な TodoItem をそのまま返す", () => {
+		const raw = {
+			id: "add-validator",
+			step: 1,
+			text: "バリデーター追加",
+			instruction: "バリデーターを追加する",
+			acceptance: "テスト通過",
+			verification: "npm test",
+			status: "pending",
+			completed: false,
+		};
+		const item = validateRestoredTodoItem(raw, 0);
+		expect(item.id).toBe("add-validator");
+		expect(item.step).toBe(1);
+		expect(item.instruction).toBe("バリデーターを追加する");
+		expect(item.acceptance).toBe("テスト通過");
+		expect(item.verification).toBe("npm test");
+		expect(item.status).toBe("pending");
+		expect(item.completed).toBe(false);
+	});
+
+	it("done ステータスのアイテムは completed=true になる", () => {
+		const raw = {
+			id: "step-1",
+			step: 1,
+			text: "完了済み",
+			instruction: "完了済み",
+			status: "done",
+		};
+		const item = validateRestoredTodoItem(raw, 0);
+		expect(item.completed).toBe(true);
+		expect(item.status).toBe("done");
+	});
+
+	it("null / undefined はデフォルト値で生成", () => {
+		const item1 = validateRestoredTodoItem(null, 2);
+		expect(item1.id).toBe("restored-3");
+		expect(item1.step).toBe(3);
+		expect(item1.status).toBe("pending");
+
+		const item2 = validateRestoredTodoItem(undefined, 0);
+		expect(item2.id).toBe("restored-1");
+	});
+
+	it("無効な status は pending にフォールバック", () => {
+		const raw = {
+			id: "step-1",
+			step: 1,
+			text: "テスト",
+			instruction: "テスト",
+			status: "unknown_status",
+		};
+		const item = validateRestoredTodoItem(raw, 0);
+		expect(item.status).toBe("pending");
+	});
+
+	it("無効な id は restored-N にフォールバック", () => {
+		const raw = {
+			id: "Invalid_ID",
+			step: 1,
+			text: "テスト",
+			instruction: "テスト",
+		};
+		const item = validateRestoredTodoItem(raw, 4);
+		expect(item.id).toBe("restored-5");
+	});
+
+	it("acceptance が空文字なら undefined になる", () => {
+		const raw = {
+			id: "step-1",
+			step: 1,
+			text: "テスト",
+			instruction: "テスト",
+			acceptance: "",
+		};
+		const item = validateRestoredTodoItem(raw, 0);
+		expect(item.acceptance).toBeUndefined();
+	});
+
+	it("instruction がなくても text からフォールバック", () => {
+		const raw = {
+			id: "step-1",
+			step: 1,
+			text: "テスト手順",
+		};
+		const item = validateRestoredTodoItem(raw, 0);
+		expect(item.instruction).toBe("テスト手順");
+	});
+});
+
+// ============================================================
+// 順次実行制約のテスト
+// ============================================================
+describe("markCompletedSteps: 順次実行制約", () => {
+	it("順序通りの DONE は全て受理される", () => {
+		const items: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "A", instruction: "A", completed: false },
+			{ id: "step-2", step: 2, text: "B", instruction: "B", completed: false },
+		];
+		const count = markCompletedSteps("[DONE:1] [DONE:2]", items);
+		expect(count).toBe(2);
+		expect(items[0].completed).toBe(true);
+		expect(items[1].completed).toBe(true);
+	});
+
+	it("逆順の DONE は現在ステップのみ受理", () => {
+		const items: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "A", instruction: "A", completed: false },
+			{ id: "step-2", step: 2, text: "B", instruction: "B", completed: false },
+		];
+		const count = markCompletedSteps("[DONE:2] [DONE:1]", items);
+		expect(count).toBe(1);
+		expect(items[0].completed).toBe(true);
+		expect(items[1].completed).toBe(false);
+	});
+
+	it("スキップ先の DONE は拒否される", () => {
+		const items: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "A", instruction: "A", completed: false },
+			{ id: "step-2", step: 2, text: "B", instruction: "B", completed: false },
+		];
+		const count = markCompletedSteps("[DONE:2]", items);
+		expect(count).toBe(0);
+		expect(items[0].completed).toBe(false);
+		expect(items[1].completed).toBe(false);
+	});
+
+	it("ID ベースでも順次制約が適用される", () => {
+		const items: TodoItem[] = [
+			{ id: "add-validator", step: 1, text: "A", instruction: "A", completed: false },
+			{ id: "update-tests", step: 2, text: "B", instruction: "B", completed: false },
+		];
+		// 逆順
+		const count = markCompletedSteps("[DONE:update-tests] [DONE:add-validator]", items);
+		expect(count).toBe(1);
+		expect(items[0].completed).toBe(true);
+		expect(items[1].completed).toBe(false);
+	});
+
+	it("全ステップ完了後に DONE が来ても無視", () => {
+		const items: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "A", instruction: "A", completed: true, status: "done" },
+		];
+		const count = markCompletedSteps("[DONE:1]", items);
+		expect(count).toBe(0);
+	});
+
+	it("途中まで完了している状態で正しく継続", () => {
+		const items: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "A", instruction: "A", completed: true, status: "done" },
+			{ id: "step-2", step: 2, text: "B", instruction: "B", completed: false },
+			{ id: "step-3", step: 3, text: "C", instruction: "C", completed: false },
+		];
+		// step-2 が current
+		const count = markCompletedSteps("[DONE:2] [DONE:3]", items);
+		expect(count).toBe(2);
+		expect(items[1].completed).toBe(true);
+		expect(items[2].completed).toBe(true);
 	});
 });

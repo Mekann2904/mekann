@@ -60,8 +60,8 @@
   - [x] `skipped`
 - [x] `[DONE:id]` で status も "done" に更新する
 - [x] 実行開始時に plan snapshot を固定する (frozenPlan)
-- [ ] stepごとの順次実行を強制する
-- [ ] step完了時にacceptance条件を確認する
+- [x] stepごとの順次実行を強制する
+- [x] step完了時にacceptance条件を確認する（プロンプトで指示）
 - [ ] 失敗時に停止するか継続するかの方針を決める
 
 ## P1: Verificationを追加する
@@ -70,7 +70,8 @@
 - [x] テストコマンドをplanに含められるようにする
 - [x] verification が実行モードプロンプトに含まれる
 - [x] プランモードプロンプトに verification の説明を追加
-- [ ] verificationコマンドの自動実行
+- [x] verificationコマンドの自動実行（プロンプトで指示）
+- [ ] verificationコマンドのホスト側自動実行
 - [ ] verification結果の保存
 - [ ] verification失敗時はstepを `failed` にする
 - [ ] 最終レポートに成功/失敗理由を出す
@@ -159,11 +160,19 @@
 - [x] planning mode中にファイル変更が発生しない
 - [x] planが構造化JSONとして保存される
 - [x] ユーザー承認なしに実行へ移行しない (plan_ready ゲート)
-- [x] 実行中は保存済みplanに沿って進む
+- [x] 実行中は保存済みplanに沿って進む（frozenPlan を一貫使用）
 - [x] stepごとの進捗が追跡できる
 - [x] acceptance が必須フィールド
 - [x] plan snapshot が実行開始時に固定される
-- [x] blocked tool call が監査ログに残る
-- [ ] verification結果が確認できる (フィールドあり、自動実行は未実装)
+- [x] blocked tool call が監査ログに残る（bash含む）
+- [x] unsafe bash ブロックが監査ログに残る
+- [x] 復元データの validation が強化されている
+- [x] --plan 経路で savedActiveTools が保存される
+- [x] planTools に edit/write が含まれていても強制排除
+- [x] 状態遷移が try/catch + rollback で保護されている
+- [x] /abort-plan コマンドが利用可能
+- [x] プロンプトの矛盾（acceptance 省略可/必須）が解消
+- [x] プロンプトの矛盾（1つずつ/複数同時）が解消
+- [ ] verification結果が確認できる（フィールドあり、ホスト側自動実行は未実装）
 - [ ] 失敗時にどのstepで止まったか分かる
 - [ ] Piホスト上で実機動作確認が完了している

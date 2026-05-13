@@ -14,6 +14,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ModelSelection } from "./model-selector.js";
 import { type TodoItem, hashTodoItems, resolveExecutionTools,
+	sanitizePlanTools, validateRestoredMode, validateRestoredTodoItem,
 	// Re-export pure functions for consumers
 	type PlanMode,
 	isValidTransition,
@@ -26,6 +27,7 @@ import { type TodoItem, hashTodoItems, resolveExecutionTools,
 // Re-export types and pure functions
 export type { PlanMode };
 export { isValidTransition, isReadOnlyMode, modeLabel, InvalidTransitionError };
+export { sanitizePlanTools, validateRestoredMode, validateRestoredTodoItem } from "./utils.js";
 
 /** 安全な遷移 — state.ts からは utils の transition を再エクスポート */
 export const transition = _transition;
@@ -123,6 +125,10 @@ export function persistState(pi: ExtensionAPI, state: ModeState): void {
 	if (state.originalThinkingLevel) {
 		data.originalThinkingLevel = state.originalThinkingLevel;
 	}
+	// frozenPlan を永続化（実行中の不変スナップショット）
+	if (state.frozenPlan) {
+		data.frozenPlan = state.frozenPlan;
+	}
 	// 後方互換: 旧フォーマット（enabled/executing）も書き出す
 	data.enabled = isReadOnlyMode(state.mode);
 	data.executing = state.mode === "executing";
@@ -214,27 +220,38 @@ export async function enterPlanMode(
 		state.savedActiveTools = pi.getActiveTools();
 	}
 
+	// rollback 用に現在の状態を保存
+	const prevMode = state.mode;
+
 	state.planThinkingLevel = pi.getThinkingLevel();
 
-	state.mode = transition(state.mode, "planning");
-	state.todoItems = [];
-	state.planPromptDelivered = false;
-	state.planPromptHash = undefined;
-	state.planId = undefined;
-	state.planRevision = 0;
-	state.frozenPlan = undefined;
+	try {
+		state.mode = transition(state.mode, "planning");
+		state.todoItems = [];
+		state.planPromptDelivered = false;
+		state.planPromptHash = undefined;
+		state.planId = undefined;
+		state.planRevision = 0;
+		state.frozenPlan = undefined;
 
-	const config = loadConfig(ctx.cwd);
-	pi.setActiveTools(config.planTools ?? DEFAULT_PLAN_TOOLS);
+		const config = loadConfig(ctx.cwd);
+		// edit / write が設定に含まれていても強制排除
+		const safeTools = sanitizePlanTools(config.planTools ?? DEFAULT_PLAN_TOOLS);
+		pi.setActiveTools(safeTools);
 
-	await applyPlanModel(pi, state, ctx);
+		await applyPlanModel(pi, state, ctx);
 
-	if (!state.planModel) {
-		ctx.ui.notify("プラン用モデルが未設定です。/plan-model で設定してください。", "warning");
+		if (!state.planModel) {
+			ctx.ui.notify("プラン用モデルが未設定です。/plan-model で設定してください。", "warning");
+		}
+
+		ctx.ui.notify("プランモード有効 — 読み取り専用探索", "info");
+		updateStatus(ctx);
+	} catch (err) {
+		// rollback: mode を復元
+		state.mode = prevMode;
+		throw err;
 	}
-
-	ctx.ui.notify("プランモード有効 — 読み取り専用探索", "info");
-	updateStatus(ctx);
 }
 
 export async function exitPlanMode(
@@ -283,28 +300,39 @@ export async function startExecution(
 	ctx: ExtensionContext,
 	updateStatus: (ctx: ExtensionContext) => void,
 ): Promise<void> {
-	state.mode = transition(state.mode, "executing");
-	state.planPromptDelivered = false;
-	state.planPromptHash = undefined;
+	// rollback 用に現在の状態を保存
+	const prevMode = state.mode;
+	const prevFrozenPlan = state.frozenPlan;
 
-	// plan snapshot を固定（deep copy）
-	state.frozenPlan = JSON.parse(JSON.stringify(state.todoItems));
+	try {
+		state.mode = transition(state.mode, "executing");
+		state.planPromptDelivered = false;
+		state.planPromptHash = undefined;
 
-	// plan-mode-execute マーカーを保存（復元時の DONE 再スキャン用）
-	const planHash = hashTodoItems(state.todoItems);
-	pi.appendEntry("plan-mode-execute", {
-		startedAt: Date.now(),
-		planHash,
-		todos: state.todoItems,
-		planId: state.planId,
-		planRevision: state.planRevision,
-	});
+		// plan snapshot を固定（deep copy）
+		state.frozenPlan = JSON.parse(JSON.stringify(state.todoItems));
 
-	applyExecutionTools(pi, state, ctx.cwd);
+		// plan-mode-execute マーカーを保存（復元時の DONE 再スキャン用）
+		const planHash = hashTodoItems(state.todoItems, state.planId, state.planRevision);
+		pi.appendEntry("plan-mode-execute", {
+			startedAt: Date.now(),
+			planHash,
+			todos: state.todoItems,
+			planId: state.planId,
+			planRevision: state.planRevision,
+		});
 
-	await restoreMainModel(pi, state);
+		applyExecutionTools(pi, state, ctx.cwd);
 
-	updateStatus(ctx);
+		await restoreMainModel(pi, state);
+
+		updateStatus(ctx);
+	} catch (err) {
+		// rollback: mode と frozenPlan を復元
+		state.mode = prevMode;
+		state.frozenPlan = prevFrozenPlan;
+		throw err;
+	}
 }
 
 /** 全ステップ完了 → completed */
