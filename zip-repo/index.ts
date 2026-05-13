@@ -100,13 +100,10 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			let sizeStr: string;
+			let sizeStr = "unknown size";
 			try {
-				const info = await stat(zipPath);
-				sizeStr = formatBytes(info.size);
-			} catch {
-				sizeStr = "unknown size";
-			}
+				sizeStr = formatBytes((await stat(zipPath)).size);
+			} catch {}
 
 			try {
 				await execFileAsync("osascript", [
