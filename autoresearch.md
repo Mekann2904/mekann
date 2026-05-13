@@ -57,5 +57,14 @@ Clean up the entire repository codebase — remove noise, fix inconsistencies, e
 - Inlining enterPlanMode/exitPlanMode (hurts readability)
 - Removing modeLabel export (used by tests)
 
-**Total: 706 → 621 lines (-12.0%), all 79 tests passing**
+**Total: 706 → 529 lines (-25.1%), all 79 tests passing**
+
+### Latest batch (iters 14-20)
+- ✅ Iter 14: Consolidated 60+ single-command regex patterns into grouped alternations (-55 lines)
+- ✅ Iter 15: Merged two git rev-parse calls in zip-repo (-3 lines)
+- ✅ Iter 16: Un-exported WRITING_TOOL_NAMES and BLOCK_REASON_HEADER (-1 line)
+- ✅ Iter 17: Merged --show-toplevel + HEAD into single git call (-9 lines)
+- ❌ Iter 18: resetPlanState helper: net +2, discarded
+- ✅ Iter 19: Trimmed index.ts file header 20→4 lines (-18 lines)
+- ✅ Iter 20: Trimmed zip-repo file header 11→3 lines (-6 lines)
 
