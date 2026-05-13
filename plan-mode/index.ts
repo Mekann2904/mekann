@@ -139,22 +139,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		const fullPrompt = loadPrompt("plan-mode");
 		const currentHash = hashContent(fullPrompt);
-
-		const shouldInjectFull =
-			!state.planPromptDelivered ||
-			state.planPromptHash !== currentHash;
-
-		const prompt = shouldInjectFull
-			? fullPrompt
-			: loadPrompt("plan-mode-reminder");
-
-		if (shouldInjectFull) {
-			state.planPromptHash = currentHash;
-			state.planPromptDelivered = true;
-		}
+		const useFull = !state.planPromptDelivered || state.planPromptHash !== currentHash;
+		if (useFull) { state.planPromptHash = currentHash; state.planPromptDelivered = true; }
 
 		return {
-			systemPrompt: `${event.systemPrompt}\n\n${prompt}`,
+			systemPrompt: `${event.systemPrompt}\n\n${useFull ? fullPrompt : loadPrompt("plan-mode-reminder")}`,
 		};
 	});
 	pi.on("agent_end", async (event, ctx) => {
