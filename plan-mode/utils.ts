@@ -71,12 +71,11 @@ export function isSafeCommand(command: string): boolean {
 	return !isDestructive && isSafe;
 }
 
-export const WRITING_TOOL_NAMES: Record<string, string> = {
+const BLOCK_REASON_HEADER = "【プランモード・読み取り専用】";
+const WRITING_TOOL_NAMES: Record<string, string> = {
 	edit: "ファイル編集",
 	write: "ファイル作成/上書き",
 };
-
-export const BLOCK_REASON_HEADER = "【プランモード・読み取り専用】";
 
 export function buildBlockReason(
 	toolName: string,
