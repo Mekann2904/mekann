@@ -22,17 +22,6 @@ import {
 
 const SAFE_PLAN_TOOLS = new Set(["read", "grep", "find", "ls"]);
 
-function isAssistantMessage(m: AgentMessage): m is AssistantMessage {
-	return m.role === "assistant" && Array.isArray(m.content);
-}
-
-function getTextContent(message: AssistantMessage): string {
-	return message.content
-		.filter((block): block is TextContent => block.type === "text")
-		.map((block) => block.text)
-		.join("\n");
-}
-
 export default function planModeExtension(pi: ExtensionAPI): void {
 	const state: PlanState = createInitialState();
 
@@ -177,10 +166,15 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	pi.on("agent_end", async (event, ctx) => {
 		if (state.mode !== "plan") return;
 
-		const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
+		const lastAssistant = [...event.messages].reverse().find(
+			(m): m is AssistantMessage => m.role === "assistant" && Array.isArray(m.content),
+		);
 		if (!lastAssistant) return;
 
-		const text = getTextContent(lastAssistant);
+		const text = lastAssistant.content
+			.filter((block): block is TextContent => block.type === "text")
+			.map((block) => block.text)
+			.join("\n");
 		const plan = extractProposedPlan(text);
 
 		if (plan) {
