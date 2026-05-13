@@ -41,6 +41,8 @@ import {
 
 const DEFAULT_PLAN_TOOLS = ["read", "grep", "find", "ls"];
 
+
+
 // --- 型ヘルパー ---
 
 function isAssistantMessage(m: AgentMessage): m is AssistantMessage {
@@ -80,8 +82,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		const safeTools = sanitizePlanTools(DEFAULT_PLAN_TOOLS);
 		pi.setActiveTools(safeTools);
 
-		ctx.ui.notify("PLAN MODE — 読み取り専用探索", "info");
-		ctx.ui.notify("/plan: plan を実行して main に戻る", "info");
+		ctx.ui.notify("plan");
 	}
 
 	async function exitPlanMode(ctx: ExtensionContext): Promise<void> {
@@ -98,12 +99,12 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		state.planPromptHash = undefined;
 
 		if (plan) {
-			ctx.ui.notify("Plan を実行します", "info");
+			ctx.ui.notify("main");
 			pi.sendUserMessage(
 				`以下の plan に従って実装してください。\n\n<plan>\n${plan}\n</plan>`,
 			);
 		} else {
-			ctx.ui.notify("Plan mode をキャンセルしました", "info");
+			ctx.ui.notify("main");
 		}
 	}
 
@@ -236,10 +237,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		if (plan) {
 			state.pendingPlan = plan;
-			ctx.ui.notify(
-				"Plan を保存しました。\n/plan: 実行して main に戻る",
-				"info",
-			);
+			ctx.ui.notify("plan");
 		}
 	});
 
@@ -259,7 +257,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			state.mode = "plan";
 			const safeTools = sanitizePlanTools(DEFAULT_PLAN_TOOLS);
 			pi.setActiveTools(safeTools);
-			ctx.ui.notify("PLAN MODE — 読み取り専用探索 (--plan)", "info");
+			ctx.ui.notify("plan");
 		}
 	});
 }
