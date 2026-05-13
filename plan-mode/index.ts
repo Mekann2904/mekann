@@ -372,50 +372,75 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (!hasProposedPlan) return;
 
 		const extracted = extractTodoItems(assistantText);
-		if (extracted.length === 0) return;
-		state.todoItems = extracted;
 
 		if (!ctx.hasUI) return;
 
-		// プランステップを表示
-		const todoListText = state.todoItems
-			.map((t, i) => `${i + 1}. ☐ ${t.text}`)
-			.join("\n");
+		if (extracted.length > 0) {
+			state.todoItems = extracted;
 
-		pi.sendMessage(
-			{
-				customType: "plan-todo-list",
-				content: `**プラン手順 (${state.todoItems.length}):**\n\n${todoListText}`,
-				display: true,
-			},
-			{ triggerTurn: false },
-		);
-
-		wrappedPersistState();
-
-		// 次のアクションを促す（todoItems が1件以上あることが保証されている）
-		const choices = [
-			"プランを実行する",
-			"プランモードを継続",
-			"プランを修正",
-		];
-
-		const choice = await ctx.ui.select("プランが提出されました — 次どうする？", choices);
-
-		if (choice === "プランを実行する") {
-			await wrappedStartExecution(ctx);
-
-			const execMessage = `プランを実行。ステップ ${state.todoItems[0].step} から開始: ${state.todoItems[0].text}`;
+			// プランステップを表示
+			const todoListText = state.todoItems
+				.map((t, i) => `${i + 1}. ☐ ${t.text}`)
+				.join("\n");
 
 			pi.sendMessage(
-				{ customType: "plan-mode-execute", content: execMessage, display: true },
-				{ triggerTurn: true },
+				{
+					customType: "plan-todo-list",
+					content: `**プラン手順 (${state.todoItems.length}):**\n\n${todoListText}`,
+					display: true,
+				},
+				{ triggerTurn: false },
 			);
-		} else if (choice === "プランを修正") {
-			const refinement = await ctx.ui.editor("プランを修正:", "");
-			if (refinement?.trim()) {
-				pi.sendUserMessage(refinement.trim());
+
+			// 次のアクションを促す（todoItems が1件以上あることが保証されている）
+			const choices = [
+				"プランを実行する",
+				"プランモードを継続",
+				"プランを修正",
+			];
+
+			const choice = await ctx.ui.select("プランが提出されました — 次どうする？", choices);
+
+			if (choice === "プランを実行する") {
+				await wrappedStartExecution(ctx);
+
+				const execMessage = `プランを実行。ステップ ${state.todoItems[0].step} から開始: ${state.todoItems[0].text}`;
+
+				pi.sendMessage(
+					{ customType: "plan-mode-execute", content: execMessage, display: true },
+					{ triggerTurn: true },
+				);
+			} else if (choice === "プランを修正") {
+				const refinement = await ctx.ui.editor("プランを修正:", "");
+				if (refinement?.trim()) {
+					pi.sendUserMessage(refinement.trim());
+				}
 			}
+
+			// ユーザーの選択後に永続化（不完全な状態の保存を防ぐ）
+			wrappedPersistState();
+		} else {
+			// <proposed_plan> はあるがステップを抽出できなかった場合
+			ctx.ui.notify(
+				"プランから実装ステップを抽出できませんでした。プランを見直してください。",
+				"warning",
+			);
+
+			const choices = [
+				"プランモードを継続",
+				"プランを修正",
+			];
+
+			const choice = await ctx.ui.select("プランを見直してください", choices);
+
+			if (choice === "プランを修正") {
+				const refinement = await ctx.ui.editor("プランを修正:", "");
+				if (refinement?.trim()) {
+					pi.sendUserMessage(refinement.trim());
+				}
+			}
+
+			wrappedPersistState();
 		}
 	});
 

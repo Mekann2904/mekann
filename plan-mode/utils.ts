@@ -82,6 +82,7 @@ const SAFE_PATTERNS = [
 	/^\s*free\b/,
 	/^\s*git\s+(status|log|diff|show|branch|remote|config\s+--get)/i,
 	/^\s*git\s+ls-/i,
+	/^\s*git\s+submodule\s+(status|summary)/i,
 	/^\s*npm\s+(list|ls|view|info|search|outdated|audit)/i,
 	/^\s*yarn\s+(list|info|why|audit)/i,
 	/^\s*node\s+--version/i,
