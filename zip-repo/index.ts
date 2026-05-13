@@ -44,29 +44,20 @@ export default function (pi: ExtensionAPI) {
 			const { mode } = parseArgs(rawArgs ?? "");
 
 			let repoRoot: string;
+			let shortHead = "nohead";
 			try {
 				const { stdout } = await execFileAsync(
-					"git", ["rev-parse", "--show-toplevel"],
+					"git", ["rev-parse", "--show-toplevel", "HEAD"],
 					{ cwd: ctx.cwd, encoding: "utf8" },
 				);
-				repoRoot = stdout.trim();
+				const lines = stdout.trim().split("\n");
+				repoRoot = lines[0];
+				shortHead = lines[1].slice(0, 12);
 			} catch {
-				ctx.ui.notify("Not a Git repository", "error");
+				ctx.ui.notify("Not a Git repository or no commits yet. /zip requires HEAD to exist.", "error");
 				return;
 			}
 			const repoName = basename(repoRoot);
-
-			let shortHead = "nohead";
-			try {
-				const { stdout: headStdout } = await execFileAsync(
-					"git", ["rev-parse", "HEAD"],
-					{ cwd: repoRoot, encoding: "utf8" },
-				);
-				shortHead = headStdout.trim().slice(0, 12);
-			} catch {
-				ctx.ui.notify("No commits yet. /zip requires HEAD to exist.", "error");
-				return;
-			}
 
 			let dirty = false;
 			try {
