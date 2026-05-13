@@ -224,13 +224,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	});
 	pi.on("session_start", async (_event, ctx) => {
 		if (pi.getFlag("plan") === true) {
-			if (!state.savedActiveTools) {
-				state.savedActiveTools = pi.getActiveTools();
-			}
-			state.mode = "plan";
-			const safeTools = sanitizePlanTools(DEFAULT_PLAN_TOOLS);
-			pi.setActiveTools(safeTools);
-			ctx.ui.notify("plan");
+			await enterPlanMode(ctx);
 		}
 	});
 }
