@@ -1,0 +1,14 @@
+{
+  "name": "@mekann/pi-extensions",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Custom extensions for pi coding agent — plan-mode and zip-repo",
+  "keywords": ["pi-package", "pi-extension"],
+  "license": "ISC",
+  "scripts": {
+    "test": "cd plan-mode && npm test"
+  },
+  "pi": {
+    "extensions": ["./plan-mode", "./zip-repo"]
+  }
+}

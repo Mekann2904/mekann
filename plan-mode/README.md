@@ -61,8 +61,8 @@ Create `~/.pi/agent/plan-mode.json` (global) or `.pi/plan-mode.json` (project-lo
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `planModel` | `{provider, modelId}` | — | Model to use in plan mode |
-| `planTools` | `string[]` | `["read","bash","grep","find","ls"]` | Tools available in plan mode |
-| `execTools` | `string[]` | `["read","bash","grep","find","ls","edit","write"]` | Tools available in execute mode |
+| `planTools` | `string[]` | `["read","grep","find","ls"]` | Tools available in plan mode. `bash` may be included — all commands are validated through `isSafeCommand()` at the `tool_call` boundary. |
+| `execTools` | `string[]` | *(restores pre-plan tools)* | Explicit override for execute mode tools. If unset, original active tools are restored on mode exit. |
 
 If plan model is not configured, use `/plan-model` to select interactively.
 The execution model uses pi's current default model.
@@ -100,7 +100,10 @@ When switching between plan and execute modes, the model changes automatically t
 
 ## Bash Restrictions in Plan Mode
 
-Only read-only commands are allowed during planning:
+`bash` may be included in `planTools`. All bash commands are validated through
+`isSafeCommand()` at the `tool_call` boundary — unsafe commands are blocked
+regardless of configuration. This is enforced at the execution layer, not
+by prompt convention.
 
 **Allowed:** `cat`, `head`, `tail`, `grep`, `find`, `ls`, `pwd`, `tree`, `git status`, `git log`, `git diff`, `rg`, `fd`, `npm list`, etc.
 

@@ -47,6 +47,7 @@ export async function showModelSelector(
 	const sortedProviders = [...groups.keys()].sort();
 
 	// プロバイダー別に選択アイテムを構築
+	const modelByIndex = new Map<string, Model<Api>>();
 	const items: SelectItem[] = [];
 	for (const provider of sortedProviders) {
 		const models = groups.get(provider)!;
@@ -58,12 +59,15 @@ export async function showModelSelector(
 				model.provider === currentSelection.provider &&
 				model.id === currentSelection.modelId;
 
+			const key = String(modelByIndex.size);
+			modelByIndex.set(key, model);
+
 			const label = model.name || model.id;
 			const prefix = isCurrent ? "● " : "  ";
 			const suffix = model.reasoning ? " (推論)" : "";
 
 			items.push({
-				value: `${model.provider}/${model.id}`,
+				value: key,
 				label: `${prefix}${label}${suffix}`,
 				description: provider,
 			});
@@ -123,6 +127,5 @@ export async function showModelSelector(
 
 	if (!result) return undefined;
 
-	const [provider, id] = result.split("/");
-	return ctx.modelRegistry.find(provider, id);
+	return modelByIndex.get(result) ?? undefined;
 }

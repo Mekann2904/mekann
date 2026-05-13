@@ -335,6 +335,13 @@ export function buildBlockReason(
 	return `${BLOCK_REASON_HEADER}\n${toolLabel}「${inputDesc}」はブロックされました。\nプランモードではファイル変更は一切禁止。\n代わりに変更内容をテキストで報告してください。`;
 }
 
+// --- Todo hashing ---
+
+export function hashTodoItems(items: TodoItem[]): string {
+	const content = items.map((t) => `${t.step}:${t.text}`).join("\n");
+	return hashContent(content);
+}
+
 // --- Content hashing ---
 
 export function hashContent(content: string): string {

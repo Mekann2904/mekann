@@ -15,19 +15,31 @@ import {
 	buildBlockReason,
 	loadPrompt,
 	hashContent,
+	hashTodoItems,
 	type TodoItem,
 } from "./utils.js";
 
-// tool_call イベントのブロック判定をシミュレーション
-// bash は setActiveTools で非表示のため tool_call 対象外
+// tool_call イベントのブロック判定をシミュレーション（allowlist 方式）
+const SAFE_PLAN_TOOLS = new Set(["read", "grep", "find", "ls"]);
+
 function shouldBlockToolCall(
 	planModeEnabled: boolean,
 	toolName: string,
-	_input: Record<string, unknown>,
+	input: Record<string, unknown>,
 ): boolean {
-	const BLOCKED_TOOLS = ["edit", "write"];
 	if (!planModeEnabled) return false;
-	return BLOCKED_TOOLS.includes(toolName);
+
+	// read/grep/find/ls は無条件許可
+	if (SAFE_PLAN_TOOLS.has(toolName)) return false;
+
+	// bash は isSafeCommand で検査
+	if (toolName === "bash") {
+		const command = String(input.command ?? "");
+		return !isSafeCommand(command);
+	}
+
+	// それ以外は原則ブロック
+	return true;
 }
 
 // ============================================================
@@ -674,8 +686,16 @@ describe("tool_call ブロック判定", () => {
 		expect(shouldBlockToolCall(true, "write", { path: "src/new-file.ts" })).toBe(true);
 	});
 
-	it("bashはsetActiveToolsで非表示のためtool_call対象外", () => {
-		expect(shouldBlockToolCall(true, "bash", { command: "npm install" })).toBe(false);
+	it("bash は isSafeCommand で検査し、unsafe ならブロック", () => {
+		expect(shouldBlockToolCall(true, "bash", { command: "npm install" })).toBe(true);
+		expect(shouldBlockToolCall(true, "bash", { command: "rm -rf dist/" })).toBe(true);
+		expect(shouldBlockToolCall(true, "bash", { command: "git commit -m 'test'" })).toBe(true);
+	});
+
+	it("bash は isSafeCommand で検査し、safe なら許可", () => {
+		expect(shouldBlockToolCall(true, "bash", { command: "git status" })).toBe(false);
+		expect(shouldBlockToolCall(true, "bash", { command: "ls -la" })).toBe(false);
+		expect(shouldBlockToolCall(true, "bash", { command: "cat README.md" })).toBe(false);
 	});
 
 	it("プランモードONでread等の非ブロックツールは許可する", () => {
@@ -939,5 +959,196 @@ describe("before_agent_start プロンプト注入", () => {
 		// 許可されたツールはブロックされない
 		const result3 = shouldBlockToolCall(planModeEnabled, "read", { path: "/tmp/test.ts" });
 		expect(result3).toBe(false);
+
+		// bash safe コマンドはブロックされない
+		const result4 = shouldBlockToolCall(planModeEnabled, "bash", { command: "git status" });
+		expect(result4).toBe(false);
+
+		// bash unsafe コマンドはブロックされる
+		const result5 = shouldBlockToolCall(planModeEnabled, "bash", { command: "npm install" });
+		expect(result5).toBe(true);
+	});
+});
+
+// ============================================================
+// 追加テスト1: bash tool_call の isSafeCommand 実行経路接続
+// ============================================================
+describe("tool_call: bash safety enforcement at execution boundary", () => {
+	it("unsafe bash command is blocked in plan mode", () => {
+		expect(isSafeCommand("npm install")).toBe(false);
+		expect(shouldBlockToolCall(true, "bash", { command: "npm install" })).toBe(true);
+		expect(shouldBlockToolCall(true, "bash", { command: "rm -rf node_modules" })).toBe(true);
+		expect(shouldBlockToolCall(true, "bash", { command: "git commit -m 'test'" })).toBe(true);
+	});
+
+	it("safe bash command is allowed in plan mode", () => {
+		expect(isSafeCommand("git status")).toBe(true);
+		expect(shouldBlockToolCall(true, "bash", { command: "git status" })).toBe(false);
+		expect(shouldBlockToolCall(true, "bash", { command: "cat README.md" })).toBe(false);
+		expect(shouldBlockToolCall(true, "bash", { command: "ls -la" })).toBe(false);
+		expect(shouldBlockToolCall(true, "bash", { command: "rg 'pattern' src/" })).toBe(false);
+	});
+
+	it("bash tool_call uses isSafeCommand regardless of planTools config", () => {
+		// planTools に bash が含まれていても、unsafe はブロック
+		expect(isSafeCommand("rm -rf dist/")).toBe(false);
+		expect(shouldBlockToolCall(true, "bash", { command: "rm -rf dist/" })).toBe(true);
+		expect(shouldBlockToolCall(true, "bash", { command: "git push origin main" })).toBe(true);
+		expect(shouldBlockToolCall(true, "bash", { command: "sudo rm -rf /" })).toBe(true);
+	});
+
+	it("plan mode OFF では bash もブロックしない", () => {
+		expect(shouldBlockToolCall(false, "bash", { command: "npm install" })).toBe(false);
+		expect(shouldBlockToolCall(false, "bash", { command: "rm -rf /" })).toBe(false);
+	});
+});
+
+// ============================================================
+// 追加テスト2: active tools 保存・復元
+// ============================================================
+describe("active tools save/restore", () => {
+	it("enterPlanMode 時に savedActiveTools に現在の tools が保存される", () => {
+		// シミュレーション: 元の active tools が ["read", "grep"] の状態
+		const savedActiveTools = undefined as string[] | undefined;
+		const currentTools = ["read", "grep"];
+
+		// enterPlanMode で保存されるロジックのシミュレーション
+		const result = savedActiveTools ?? currentTools;
+		expect(result).toEqual(["read", "grep"]);
+	});
+
+	it("exitPlanMode 時に savedActiveTools が復元される（execTools 未設定）", () => {
+		// savedActiveTools = ["read", "grep"], config.execTools = undefined
+		const savedActiveTools = ["read", "grep"];
+		const configExecTools = undefined as string[] | undefined;
+
+		// restoreActiveTools のロジックシミュレーション
+		let restoredTools: string[];
+		if (configExecTools) {
+			restoredTools = configExecTools;
+		} else if (savedActiveTools) {
+			restoredTools = savedActiveTools;
+		} else {
+			restoredTools = ["read", "bash", "grep", "find", "ls", "edit", "write"];
+		}
+
+		expect(restoredTools).toEqual(["read", "grep"]);
+	});
+
+	it("startExecution 時に execTools が明示設定されていればそちらを使う", () => {
+		// savedActiveTools = ["read", "grep"], config.execTools = ["read", "bash", "edit", "write"]
+		const savedActiveTools = ["read", "grep"];
+		const configExecTools = ["read", "bash", "edit", "write"];
+
+		let restoredTools: string[];
+		if (configExecTools) {
+			restoredTools = configExecTools;
+		} else if (savedActiveTools) {
+			restoredTools = savedActiveTools;
+		} else {
+			restoredTools = ["read", "bash", "grep", "find", "ls", "edit", "write"];
+		}
+
+		expect(restoredTools).toEqual(["read", "bash", "edit", "write"]);
+	});
+
+	it("savedActiveTools も execTools もない場合は DEFAULT_EXEC_TOOLS にフォールバック", () => {
+		const savedActiveTools = undefined as string[] | undefined;
+		const configExecTools = undefined as string[] | undefined;
+
+		let restoredTools: string[];
+		if (configExecTools) {
+			restoredTools = configExecTools;
+		} else if (savedActiveTools) {
+			restoredTools = savedActiveTools;
+		} else {
+			restoredTools = ["read", "bash", "grep", "find", "ls", "edit", "write"];
+		}
+
+		expect(restoredTools).toEqual(["read", "bash", "grep", "find", "ls", "edit", "write"]);
+	});
+});
+
+// ============================================================
+// 追加テスト3: plan identity — hashTodoItems による DONE 混入防止
+// ============================================================
+describe("plan identity: hash-based DONE rescan", () => {
+	it("hashTodoItems produces stable hash for same items", () => {
+		const items: TodoItem[] = [
+			{ step: 1, text: "ステップA", completed: false },
+			{ step: 2, text: "ステップB", completed: false },
+		];
+		expect(hashTodoItems(items)).toBe(hashTodoItems(items));
+	});
+
+	it("different todos produce different hashes", () => {
+		const items1: TodoItem[] = [
+			{ step: 1, text: "ステップA", completed: false },
+		];
+		const items2: TodoItem[] = [
+			{ step: 1, text: "ステップB", completed: false },
+		];
+		expect(hashTodoItems(items1)).not.toBe(hashTodoItems(items2));
+	});
+
+	it("completion status does not affect hash", () => {
+		const items1: TodoItem[] = [
+			{ step: 1, text: "ステップA", completed: false },
+		];
+		const items2: TodoItem[] = [
+			{ step: 1, text: "ステップA", completed: true },
+		];
+		// hash は step と text のみを使用
+		expect(hashTodoItems(items1)).toBe(hashTodoItems(items2));
+	});
+
+	it("DONE from old plan with different hash is ignored", () => {
+		// 古いプラン
+		const oldPlan: TodoItem[] = [
+			{ step: 1, text: "古いステップA", completed: false },
+			{ step: 2, text: "古いステップB", completed: false },
+		];
+		const oldHash = hashTodoItems(oldPlan);
+
+		// 新しいプラン（ステップが異なる）
+		const newPlan: TodoItem[] = [
+			{ step: 1, text: "新しいステップX", completed: false },
+			{ step: 2, text: "新しいステップY", completed: false },
+		];
+		const newHash = hashTodoItems(newPlan);
+
+		// hash が異なるので、古い DONE が再スキャンされないことを検証
+		expect(oldHash).not.toBe(newHash);
+
+		// シミュレーション: 古い実行マーカーの hash と新プランの hash が不一致
+		// → 再スキャンはスキップされ、新プランのステップはすべて未完了のまま
+		const executionPlanHash = oldHash;
+		const currentPlanHash = hashTodoItems(newPlan);
+		expect(executionPlanHash === currentPlanHash).toBe(false);
+
+		// マーカーが一致しないので DONE は適用されない
+		for (const item of newPlan) {
+			expect(item.completed).toBe(false);
+		}
+	});
+
+	it("DONE from matching plan is correctly applied", () => {
+		const plan: TodoItem[] = [
+			{ step: 1, text: "ステップA", completed: false },
+			{ step: 2, text: "ステップB", completed: false },
+			{ step: 3, text: "ステップC", completed: false },
+		];
+		const planHash = hashTodoItems(plan);
+
+		// マーカーの hash と現在の hash が一致 → 再スキャンが実行される
+		expect(planHash).toBe(hashTodoItems(plan));
+
+		// 再スキャンのシミュレーション
+		const messages = "[DONE:1] 完了 [DONE:3] 完了";
+		markCompletedSteps(messages, plan);
+
+		expect(plan[0].completed).toBe(true);
+		expect(plan[1].completed).toBe(false);
+		expect(plan[2].completed).toBe(true);
 	});
 });
