@@ -1,24 +1,6 @@
 /**
- * Plan Mode Extension — 最小実装
- *
- * plan はテキストコンテキスト。Todo ではない。
- *
- *   main: 全ツール利用可能
- *   plan: 読み取り専用。調査と計画のみ。
- *
- * コマンド:
- *   /plan  — トグル (main → plan / plan → main)
- *
- * ショートカット:
- *   Cmd+P (super+p)  — /plan と同じ
- *
- * CLIフラグ:
- *   --plan  — プランモードで起動
- *
- * 挙動:
- *   main で /plan      → plan mode に入る (read-only tools)
- *   plan で /plan      → plan を実行して main に戻る
- *   plan で pendingPlan がない場合 → そのまま main に戻る
+ * Plan Mode Extension — 読み取り専用モードと実行モードのトグル。
+ * /plan で main ↔ plan を切り替え。--plan フラグで plan モード起動。
  */
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
