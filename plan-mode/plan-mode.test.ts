@@ -18,19 +18,15 @@ import {
 } from "./utils.js";
 
 // tool_call イベントのブロック判定をシミュレーション
+// bash は setActiveTools で非表示のため tool_call 対象外
 function shouldBlockToolCall(
 	planModeEnabled: boolean,
 	toolName: string,
-	input: Record<string, unknown>,
+	_input: Record<string, unknown>,
 ): boolean {
-	const BLOCKED_TOOLS = ["edit", "write", "bash"];
+	const BLOCKED_TOOLS = ["edit", "write"];
 	if (!planModeEnabled) return false;
-	if (!BLOCKED_TOOLS.includes(toolName)) return false;
-	if (toolName === "bash") {
-		const command = input.command as string;
-		if (isSafeCommand(command)) return false;
-	}
-	return true;
+	return BLOCKED_TOOLS.includes(toolName);
 }
 
 // ============================================================
@@ -667,7 +663,6 @@ describe("tool_call ブロック判定", () => {
 	it("プランモードOFFでは何もブロックしない", () => {
 		expect(shouldBlockToolCall(false, "edit", { path: "file.ts" })).toBe(false);
 		expect(shouldBlockToolCall(false, "write", { path: "file.ts" })).toBe(false);
-		expect(shouldBlockToolCall(false, "bash", { command: "rm -rf /" })).toBe(false);
 	});
 
 	it("プランモードONでeditをブロックする", () => {
@@ -678,18 +673,8 @@ describe("tool_call ブロック判定", () => {
 		expect(shouldBlockToolCall(true, "write", { path: "src/new-file.ts" })).toBe(true);
 	});
 
-	it("プランモードONで危険なbashをブロックする", () => {
-		expect(shouldBlockToolCall(true, "bash", { command: "npm install" })).toBe(true);
-		expect(shouldBlockToolCall(true, "bash", { command: "rm -rf dist" })).toBe(true);
-		expect(shouldBlockToolCall(true, "bash", { command: "git commit -m 'test'" })).toBe(true);
-	});
-
-	it("プランモードONでも安全なbashは許可する", () => {
-		expect(shouldBlockToolCall(true, "bash", { command: "ls -la" })).toBe(false);
-		expect(shouldBlockToolCall(true, "bash", { command: "cat file.txt" })).toBe(false);
-		expect(shouldBlockToolCall(true, "bash", { command: "grep pattern src/" })).toBe(false);
-		expect(shouldBlockToolCall(true, "bash", { command: "git status" })).toBe(false);
-		expect(shouldBlockToolCall(true, "bash", { command: "git diff" })).toBe(false);
+	it("bashはsetActiveToolsで非表示のためtool_call対象外", () => {
+		expect(shouldBlockToolCall(true, "bash", { command: "npm install" })).toBe(false);
 	});
 
 	it("プランモードONでread等の非ブロックツールは許可する", () => {
@@ -712,14 +697,6 @@ describe("buildBlockReason", () => {
 		expect(reason).toContain("ファイル変更は一切禁止");
 	});
 
-	it("1回目のブロック: bash ツール", () => {
-		const reason = buildBlockReason("bash", { command: "npm install" }, 1);
-		expect(reason).toContain("【プランモード・読み取り専用】");
-		expect(reason).toContain("シェルコマンド");
-		expect(reason).toContain("npm install");
-		expect(reason).toContain("読み取りコマンド");
-	});
-
 	it("2回目のブロック: 警告が強化される", () => {
 		const reason = buildBlockReason("edit", { path: "file.ts" }, 2);
 		expect(reason).toContain("2回目のブロック");
@@ -728,7 +705,7 @@ describe("buildBlockReason", () => {
 	});
 
 	it("3回目のブロック: 最高レベルの警告", () => {
-		const reason = buildBlockReason("bash", { command: "rm -rf /" }, 3);
+		const reason = buildBlockReason("edit", { path: "file.ts" }, 3);
 		expect(reason).toContain("3回ブロック済み");
 		expect(reason).toContain("今すぐ停止");
 		expect(reason).toContain("絶対に再試行しないでください");

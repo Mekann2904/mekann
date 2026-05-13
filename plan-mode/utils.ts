@@ -312,7 +312,6 @@ export function markCompletedSteps(text: string, items: TodoItem[]): number {
 export const WRITING_TOOL_NAMES: Record<string, string> = {
 	edit: "ファイル編集",
 	write: "ファイル作成/上書き",
-	bash: "シェルコマンド",
 };
 
 export const BLOCK_REASON_HEADER = "【プランモード・読み取り専用】";
@@ -323,20 +322,13 @@ export function buildBlockReason(
 	blockCount: number,
 ): string {
 	const toolLabel = WRITING_TOOL_NAMES[toolName] || toolName;
-	const inputDesc =
-		toolName === "bash"
-			? (typeof input.command === "string" ? input.command : "unknown")
-			: (typeof input.path === "string" ? input.path : "unknown");
+	const inputDesc = typeof input.path === "string" ? input.path : "unknown";
 
 	if (blockCount >= 3) {
 		return `${BLOCK_REASON_HEADER}\n⚠ ${toolLabel}は実行できません。${blockCount}回ブロック済みです。\n今すぐ停止し、分析結果を報告してください。\n絶対に再試行しないでください。\n代わりに <proposed_plan> ブロックで実装計画を出力してください。`;
 	}
 	if (blockCount >= 2) {
 		return `${BLOCK_REASON_HEADER}\n⚠ ${toolLabel}は実行できません（${blockCount}回目のブロック）。\n再度試行しても同じ結果になります。\n読み取り専用の分析を続け、最終的に <proposed_plan> ブロックで結果を出力してください。`;
-	}
-
-	if (toolName === "bash") {
-		return `${BLOCK_REASON_HEADER}\nシェルコマンド「${inputDesc}」はブロックされました。\nプランモードでは読み取りコマンド（cat, ls, grep, find, read等）のみ許可。\n代わりに分析結果をテキストで報告してください。`;
 	}
 
 	return `${BLOCK_REASON_HEADER}\n${toolLabel}「${inputDesc}」はブロックされました。\nプランモードではファイル変更は一切禁止。\n代わりに変更内容をテキストで報告してください。`;
