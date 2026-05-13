@@ -44,19 +44,12 @@ export default function (pi: ExtensionAPI) {
 			} catch {
 			}
 
-			if (mode === "default" && dirty) {
-				ctx.ui.notify(
-					"Working tree has uncommitted changes. Commit/stash them, or use /zip --head or /zip --worktree.",
-					"error",
-				);
-				return;
-			}
-
-			if (mode === "head" && dirty) {
-				ctx.ui.notify(
-					"⚠ Archiving HEAD only — uncommitted changes are NOT included.",
-					"warning",
-				);
+			if (dirty) {
+				if (mode === "default") {
+					ctx.ui.notify("Working tree has uncommitted changes. Commit/stash them, or use /zip --head or /zip --worktree.", "error");
+					return;
+				}
+				if (mode === "head") ctx.ui.notify("⚠ Archiving HEAD only — uncommitted changes are NOT included.", "warning");
 			}
 
 			const tmpDir = await mkdtemp(join(tmpdir(), `${repoName}-${shortHead}-`));
