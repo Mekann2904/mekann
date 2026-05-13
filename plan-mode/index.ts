@@ -8,7 +8,6 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Key } from "@earendil-works/pi-tui";
 import {
 	createInitialState,
-	type PlanState,
 	isReadOnlyMode,
 } from "./state.js";
 import {
@@ -22,7 +21,7 @@ import {
 const SAFE_PLAN_TOOLS = new Set(["read", "grep", "find", "ls"]);
 
 export default function planModeExtension(pi: ExtensionAPI): void {
-	const state: PlanState = createInitialState();
+	const state = createInitialState();
 
 	pi.registerFlag("plan", {
 		description: "プランモードで起動（読み取り専用探索）",
