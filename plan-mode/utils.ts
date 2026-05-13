@@ -60,9 +60,8 @@ export function isSafeCommand(command: string): boolean {
 		return false;
 	}
 
-	const isDestructive = DESTRUCTIVE_PATTERNS.some((p) => p.test(stripped));
-	const isSafe = SAFE_PATTERNS.some((p) => p.test(stripped));
-	return !isDestructive && isSafe;
+	return !DESTRUCTIVE_PATTERNS.some((p) => p.test(stripped))
+		&& SAFE_PATTERNS.some((p) => p.test(stripped));
 }
 
 export function buildBlockReason(
