@@ -184,8 +184,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		const currentThinking = pi.getThinkingLevel();
 
 		if (state.planModeEnabled) {
+			// プランモード中のモデル変更は plan 側の設定として記録
 			state.planThinkingLevel = currentThinking;
 		} else if (!state.executionMode) {
+			// 通常モード中のユーザーによるモデル変更を追跡
+			// (restoreMainModel 後の再変更に対応するため)
 			state.originalModel = ctx.model;
 			state.originalThinkingLevel = currentThinking;
 		}
@@ -326,21 +329,23 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		// 実行完了チェック
 		if (state.executionMode && state.todoItems.length > 0) {
 			if (state.todoItems.every((t) => t.completed)) {
-				pi.sendMessage(
-					{
-						customType: "plan-complete",
-						content: "**プラン完了！** ✓",
-						details: {
-							steps: state.todoItems.map((t) => ({
-								step: t.step,
-								text: t.text,
-								completed: t.completed,
-							})),
+				if (ctx.hasUI) {
+					pi.sendMessage(
+						{
+							customType: "plan-complete",
+							content: "**プラン完了！** ✓",
+							details: {
+								steps: state.todoItems.map((t) => ({
+									step: t.step,
+									text: t.text,
+									completed: t.completed,
+								})),
+							},
+							display: true,
 						},
-						display: true,
-					},
-					{ triggerTurn: false },
-				);
+						{ triggerTurn: false },
+					);
+				}
 				state.executionMode = false;
 				state.todoItems = [];
 
@@ -367,32 +372,28 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (!hasProposedPlan) return;
 
 		const extracted = extractTodoItems(assistantText);
-		if (extracted.length > 0) {
-			state.todoItems = extracted;
-		}
+		if (extracted.length === 0) return;
+		state.todoItems = extracted;
 
 		if (!ctx.hasUI) return;
 
 		// プランステップを表示
-		if (state.todoItems.length > 0) {
-			const todoListText = state.todoItems
-				.map((t, i) => `${i + 1}. ☐ ${t.text}`)
-				.join("\n");
+		const todoListText = state.todoItems
+			.map((t, i) => `${i + 1}. ☐ ${t.text}`)
+			.join("\n");
 
-			pi.sendMessage(
-				{
-					customType: "plan-todo-list",
-					content: `**プラン手順 (${state.todoItems.length}):**\n\n${todoListText}`,
-					display: true,
-				},
-				{ triggerTurn: false },
-			);
+		pi.sendMessage(
+			{
+				customType: "plan-todo-list",
+				content: `**プラン手順 (${state.todoItems.length}):**\n\n${todoListText}`,
+				display: true,
+			},
+			{ triggerTurn: false },
+		);
 
-			wrappedPersistState();
-		}
+		wrappedPersistState();
 
-		// 次のアクションを促す
-		const hasTodos = state.todoItems.length > 0;
+		// 次のアクションを促す（todoItems が1件以上あることが保証されている）
 		const choices = [
 			"プランを実行する",
 			"プランモードを継続",
@@ -404,9 +405,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (choice === "プランを実行する") {
 			await wrappedStartExecution(ctx);
 
-			const execMessage = hasTodos
-				? `プランを実行。ステップ ${state.todoItems[0].step} から開始: ${state.todoItems[0].text}`
-				: "作成したプランを実行。";
+			const execMessage = `プランを実行。ステップ ${state.todoItems[0].step} から開始: ${state.todoItems[0].text}`;
 
 			pi.sendMessage(
 				{ customType: "plan-mode-execute", content: execMessage, display: true },
