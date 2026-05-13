@@ -13,8 +13,7 @@ const DESTRUCTIVE_PATTERNS = [
 	/>>/,
 	/\bnpm\s+(install|uninstall|update|ci|link|publish)/i,
 	/\bnpm\s+audit\b.*(?:\bfix\b|--fix\b)/i,
-	/\byarn\s+(add|remove|install|publish)/i,
-	/\bpnpm\s+(add|remove|install|publish)/i,
+	/\b(yarn|pnpm)\s+(add|remove|install|publish)/i,
 	/\bpip\s+(install|uninstall)/i,
 	/\bapt(-get)?\s+(install|remove|purge|update|upgrade)/i,
 	/\bbrew\s+(install|uninstall|upgrade)/i,
@@ -32,7 +31,7 @@ const DESTRUCTIVE_PATTERNS = [
 
 const SAFE_PATTERNS = [
 	/^\s*(cat|head|tail|less|more|grep|ls|pwd|echo|printf|wc|sort|uniq|diff|file|stat|du|df|tree|which|whereis|type|env|printenv|uname|whoami|id|date|cal|uptime|ps|top|htop|free)\b/,
-	/^\s*find\b(?!.*\b(?:-delete|-exec|-execdir|-ok|-fls|-fprint|-fprintf)\b)/i,,
+	/^\s*find\b(?!.*\b(?:-delete|-exec|-execdir|-ok|-fls|-fprint|-fprintf)\b)/i,
 	/^\s*git\s+(status|log|diff|show|branch|remote|config\s+--get)/i,
 	/^\s*git\s+ls-/i,
 	/^\s*git\s+submodule\s+(status|summary)/i,
