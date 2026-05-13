@@ -36,9 +36,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 
 		state.mode = "plan";
-		state.pendingPlan = undefined;
-		state.planPromptDelivered = false;
-		state.planPromptHash = undefined;
+		Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined });
 
 		pi.setActiveTools([...SAFE_PLAN_TOOLS]);
 
@@ -53,9 +51,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		const plan = state.pendingPlan;
 		state.mode = "main";
-		state.pendingPlan = undefined;
-		state.planPromptDelivered = false;
-		state.planPromptHash = undefined;
+		Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined });
 
 		if (plan) {
 			pi.sendUserMessage(
