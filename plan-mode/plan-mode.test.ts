@@ -1,8 +1,8 @@
 /**
  * Plan Mode 拡張機能のテスト
  *
- * ユーティリティ関数（isSafeCommand, extractTodoItems, markCompletedSteps 等）と
- * 拡張機能全体の動作を検証するテストスイート。
+ * ユーティリティ関数（isSafeCommand, extractTodoItems, markCompletedSteps,
+ * validatePlan, cleanStepText 等）と拡張機能全体の動作を検証するテストスイート。
  */
 
 import { describe, it, expect } from "vitest";
@@ -17,6 +17,7 @@ import {
 	hashContent,
 	hashTodoItems,
 	resolveExecutionTools,
+	validatePlan,
 	type TodoItem,
 } from "./utils.js";
 
@@ -185,6 +186,38 @@ describe("isSafeCommand", () => {
 		}
 	});
 
+	// --- Shell metacharacter guard ---
+	describe("シェルメタ文字ガード", () => {
+		it("パイプを含むコマンドはブロック", () => {
+			expect(isSafeCommand("cat file.txt | grep foo")).toBe(false);
+			expect(isSafeCommand("ls -la | head -5")).toBe(false);
+		});
+
+		it("&& チェーンを含むコマンドはブロック", () => {
+			expect(isSafeCommand("cd /tmp && ls")).toBe(false);
+		});
+
+		it("|| チェーンを含むコマンドはブロック", () => {
+			expect(isSafeCommand("cd /tmp || echo fail")).toBe(false);
+		});
+
+		it("; セミコロンを含むコマンドはブロック", () => {
+			expect(isSafeCommand("ls; pwd")).toBe(false);
+		});
+
+		it("backtick コマンド置換を含むコマンドはブロック", () => {
+			expect(isSafeCommand("echo `cat /etc/passwd`")).toBe(false);
+		});
+
+		it("$() コマンド置換を含むコマンドはブロック", () => {
+			expect(isSafeCommand("echo $(cat /etc/passwd)")).toBe(false);
+		});
+
+		it("プロセス置換を含むコマンドはブロック", () => {
+			expect(isSafeCommand("cat <(echo hello)")).toBe(false);
+		});
+	});
+
 	// --- リダイレクトの処理 ---
 	describe("リダイレクト", () => {
 		it("安全なリダイレクト: 2>/dev/null を含む読み取りコマンドは安全", () => {
@@ -218,11 +251,8 @@ describe("isSafeCommand", () => {
 			expect(isSafeCommand("unknown-command")).toBe(false);
 		});
 
-		it("パイプ付きの安全なコマンドの最初の部分が安全でもパイプ先が危険なら判定される", () => {
-			// isSafeCommand はコマンド全体を評価するため、パイプ先の内容次第
-			// 現在の実装ではコマンド文字列全体に対してパターンマッチ
-			const cmd = "cat file.txt | grep foo";
-			expect(isSafeCommand(cmd)).toBe(true);
+		it("メタ文字付きの安全コマンドはメタ文字ガードでブロックされる", () => {
+			expect(isSafeCommand("cat file.txt && echo done")).toBe(false);
 		});
 	});
 });
@@ -231,7 +261,107 @@ describe("isSafeCommand", () => {
 // extractTodoItems — プランからステップを抽出
 // ============================================================
 describe("extractTodoItems", () => {
-	describe("<proposed_plan> ブロックからの抽出", () => {
+	describe("<plan_steps_json> ブロックからの抽出（優先）", () => {
+		it("構造化 JSON からステップを抽出する", () => {
+			const message = `
+<proposed_plan>
+概要テキスト
+</proposed_plan>
+
+<plan_steps_json>
+[
+  {"id":"add-validator","title":"パスワードバリデーターを追加する","acceptance":"テストが通る"},
+  {"id":"update-tests","title":"既存のテストを更新する","instruction":"auth.test.ts を更新","acceptance":"全テスト green"},
+  {"id":"fix-api","title":"API エンドポイントを修正する"}
+]
+</plan_steps_json>
+`;
+			const items = extractTodoItems(message);
+			expect(items).toHaveLength(3);
+
+			expect(items[0]).toEqual({
+				id: "add-validator",
+				step: 1,
+				text: "パスワードバリデーターを追加する",
+				instruction: "パスワードバリデーターを追加する",
+				acceptance: "テストが通る",
+				completed: false,
+			});
+			expect(items[1]).toEqual({
+				id: "update-tests",
+				step: 2,
+				text: "既存のテストを更新する",
+				instruction: "auth.test.ts を更新",
+				acceptance: "全テスト green",
+				completed: false,
+			});
+			expect(items[2]).toEqual({
+				id: "fix-api",
+				step: 3,
+				text: "API エンドポイントを修正する",
+				instruction: "API エンドポイントを修正する",
+				acceptance: undefined,
+				completed: false,
+			});
+		});
+
+		it("不正な JSON はフォールバックする", () => {
+			const message = `
+<proposed_plan>
+## Key Changes
+
+- フォールバックのステップ
+</proposed_plan>
+
+<plan_steps_json>
+this is not json
+</plan_steps_json>
+`;
+			const items = extractTodoItems(message);
+			expect(items).toHaveLength(1);
+			expect(items[0].id).toBe("step-1");
+			expect(items[0].text).toBe("フォールバックのステップ");
+		});
+
+		it("空配列の JSON はフォールバックする", () => {
+			const message = `
+<proposed_plan>
+## Key Changes
+
+- フォールバックのステップ
+</proposed_plan>
+
+<plan_steps_json>
+[]
+</plan_steps_json>
+`;
+			const items = extractTodoItems(message);
+			expect(items).toHaveLength(1);
+			expect(items[0].id).toBe("step-1");
+		});
+
+		it("plan_steps_json が proposed_plan より優先される", () => {
+			const message = `
+<proposed_plan>
+## Key Changes
+
+- Markdown 側のステップ（使われない）
+</proposed_plan>
+
+<plan_steps_json>
+[
+  {"id":"json-step","title":"JSON 側のステップ"}
+]
+</plan_steps_json>
+`;
+			const items = extractTodoItems(message);
+			expect(items).toHaveLength(1);
+			expect(items[0].id).toBe("json-step");
+			expect(items[0].text).toBe("JSON 側のステップ");
+		});
+	});
+
+	describe("<proposed_plan> ブロックからの抽出（フォールバック）", () => {
 		it("基本的な箇条書きステップを抽出する", () => {
 			const message = `
 分析結果に基づいて、以下のプランを提案します。
@@ -252,23 +382,31 @@ describe("extractTodoItems", () => {
 			const items = extractTodoItems(message);
 			expect(items).toHaveLength(4);
 			expect(items[0]).toEqual({
+				id: "step-1",
 				step: 1,
 				text: "新しいパスワードバリデーターを追加する",
+				instruction: "新しいパスワードバリデーターを追加する",
 				completed: false,
 			});
 			expect(items[1]).toEqual({
+				id: "step-2",
 				step: 2,
 				text: "既存のテストを更新する",
+				instruction: "既存のテストを更新する",
 				completed: false,
 			});
 			expect(items[2]).toEqual({
+				id: "step-3",
 				step: 3,
 				text: "API エンドポイントを修正する",
+				instruction: "API エンドポイントを修正する",
 				completed: false,
 			});
 			expect(items[3]).toEqual({
+				id: "step-4",
 				step: 4,
 				text: "ドキュメントを追加する",
+				instruction: "ドキュメントを追加する",
 				completed: false,
 			});
 		});
@@ -287,6 +425,7 @@ describe("extractTodoItems", () => {
 			const items = extractTodoItems(message);
 			expect(items).toHaveLength(4);
 			expect(items[0].text).toBe("データベーススキーマを分析する");
+			expect(items[0].instruction).toBe("データベーススキーマを分析する");
 			expect(items[3].text).toBe("コードレビューの準備をする");
 		});
 
@@ -345,11 +484,10 @@ This is just an overview section with no implementation items.
 </proposed_plan>
 `;
 			const items = extractTodoItems(message);
-			// Overview セクションの箇条書きは実装セクションではないので抽出されない
 			expect(items).toHaveLength(0);
 		});
 
-		it("太字やコード記法を除去する", () => {
+		it("太字やコード記法を除去し、識別子の大小文字を保持する", () => {
 			const message = `
 <proposed_plan>
 ## Key Changes
@@ -360,8 +498,13 @@ This is just an overview section with no implementation items.
 `;
 			const items = extractTodoItems(message);
 			expect(items).toHaveLength(2);
-			expect(items[0].text).toBe("Auth.ts のパスワード検証を更新する");
-			expect(items[1].text).toBe("ValidatePassword 関数を追加する");
+			// auth.ts はファイル名として大文字化されない
+			expect(items[0].text).toBe("auth.ts のパスワード検証を更新する");
+			// validatePassword は camelCase として大文字化されない
+			expect(items[1].text).toBe("validatePassword 関数を追加する");
+			// instruction も元のテキストを保持
+			expect(items[0].instruction).toBe("auth.ts のパスワード検証を更新する");
+			expect(items[1].instruction).toBe("validatePassword 関数を追加する");
 		});
 
 		it("5文字以下の項目はスキップする", () => {
@@ -393,6 +536,8 @@ Plan:
 			expect(items).toHaveLength(4);
 			expect(items[0].text).toBe("認証モジュールを分析する");
 			expect(items[3].text).toBe("API エンドポイント修正を計画する");
+			// instruction は元のテキストを保持
+			expect(items[0].instruction).toBe("認証モジュールを分析する");
 		});
 
 		it("Plan: ヘッダーがない場合は空配列", () => {
@@ -429,9 +574,18 @@ describe("extractDoneSteps", () => {
 		expect(extractDoneSteps("[DONE:1] [DONE:3] [DONE:5]")).toEqual([1, 3, 5]);
 	});
 
+	it("[DONE:id] マーカーから step ID を抽出する", () => {
+		expect(extractDoneSteps("[DONE:update-auth]")).toEqual(["update-auth"]);
+		expect(extractDoneSteps("[DONE:fix_tests] [DONE:add-validator]")).toEqual(["fix_tests", "add-validator"]);
+	});
+
+	it("番号と ID が混在しても両方抽出する", () => {
+		expect(extractDoneSteps("[DONE:1] [DONE:update-auth] [DONE:3]")).toEqual([1, "update-auth", 3]);
+	});
+
 	it("大文字小文字を区別しない", () => {
 		expect(extractDoneSteps("[done:1]")).toEqual([1]);
-		expect(extractDoneSteps("[Done:1]")).toEqual([1]);
+		expect(extractDoneSteps("[Done:update-auth]")).toEqual(["update-auth"]);
 	});
 
 	it("マーカーがない場合は空配列", () => {
@@ -442,9 +596,9 @@ describe("extractDoneSteps", () => {
 describe("markCompletedSteps", () => {
 	it("マーカーに一致するステップを完了にする", () => {
 		const items: TodoItem[] = [
-			{ step: 1, text: "ステップ1", completed: false },
-			{ step: 2, text: "ステップ2", completed: false },
-			{ step: 3, text: "ステップ3", completed: false },
+			{ id: "step-1", step: 1, text: "ステップ1", instruction: "ステップ1", completed: false },
+			{ id: "step-2", step: 2, text: "ステップ2", instruction: "ステップ2", completed: false },
+			{ id: "step-3", step: 3, text: "ステップ3", instruction: "ステップ3", completed: false },
 		];
 		const count = markCompletedSteps("[DONE:1] [DONE:3]", items);
 		expect(count).toBe(2);
@@ -453,20 +607,43 @@ describe("markCompletedSteps", () => {
 		expect(items[2].completed).toBe(true);
 	});
 
-	it("存在しないステップ番号は無視される", () => {
+	it("step ID で完了にする", () => {
 		const items: TodoItem[] = [
-			{ step: 1, text: "ステップ1", completed: false },
+			{ id: "add-validator", step: 1, text: "バリデーター追加", instruction: "バリデーター追加", completed: false },
+			{ id: "update-tests", step: 2, text: "テスト更新", instruction: "テスト更新", completed: false },
 		];
-		const count = markCompletedSteps("[DONE:99]", items);
-		expect(count).toBe(1); // 抽出はされた
-		expect(items[0].completed).toBe(false); // マッチしなかった
+		const count = markCompletedSteps("[DONE:add-validator]", items);
+		expect(count).toBe(1);
+		expect(items[0].completed).toBe(true);
+		expect(items[1].completed).toBe(false);
 	});
 
-	it("すでに完了しているステップはそのまま", () => {
+	it("番号と ID が混在しても動作する", () => {
 		const items: TodoItem[] = [
-			{ step: 1, text: "ステップ1", completed: true },
+			{ id: "add-validator", step: 1, text: "バリデーター追加", instruction: "バリデーター追加", completed: false },
+			{ id: "update-tests", step: 2, text: "テスト更新", instruction: "テスト更新", completed: false },
 		];
-		markCompletedSteps("[DONE:1]", items);
+		const count = markCompletedSteps("[DONE:add-validator] [DONE:2]", items);
+		expect(count).toBe(2);
+		expect(items[0].completed).toBe(true);
+		expect(items[1].completed).toBe(true);
+	});
+
+	it("存在しないステップ番号は変更なしで返す", () => {
+		const items: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "ステップ1", instruction: "ステップ1", completed: false },
+		];
+		const count = markCompletedSteps("[DONE:99]", items);
+		expect(count).toBe(0);
+		expect(items[0].completed).toBe(false);
+	});
+
+	it("すでに完了しているステップは変更なしで返す", () => {
+		const items: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "ステップ1", instruction: "ステップ1", completed: true },
+		];
+		const count = markCompletedSteps("[DONE:1]", items);
+		expect(count).toBe(0);
 		expect(items[0].completed).toBe(true);
 	});
 });
@@ -479,18 +656,27 @@ describe("cleanStepText", () => {
 		expect(cleanStepText("**太字テキスト**")).toBe("太字テキスト");
 	});
 
-	it("コードマーカーを除去する（先頭大文字化に注意）", () => {
+	it("コードマーカーを除去する（通常英単語は大文字化）", () => {
 		expect(cleanStepText("`code`")).toBe("Code");
 	});
 
 	it("先頭の動詞を除去する", () => {
 		expect(cleanStepText("Create a new file")).toBe("A new file");
-		// "Update the" → the も除去 → "configuration" → "Configuration"
 		expect(cleanStepText("Update the configuration")).toBe("Configuration");
 		expect(cleanStepText("Remove deprecated code")).toBe("Deprecated code");
 	});
 
-	it("先頭を大文字にする", () => {
+	it("camelCase 識別子は大文字化しない", () => {
+		expect(cleanStepText("validatePassword 関数を追加")).toBe("validatePassword 関数を追加");
+		expect(cleanStepText("getUserInfo を実装")).toBe("getUserInfo を実装");
+	});
+
+	it("ドット付きファイル名は大文字化しない", () => {
+		expect(cleanStepText("auth.ts を更新")).toBe("auth.ts を更新");
+		expect(cleanStepText("config.json の設定")).toBe("config.json の設定");
+	});
+
+	it("通常の英文は先頭を大文字にする", () => {
 		expect(cleanStepText("lowercase start")).toBe("Lowercase start");
 	});
 
@@ -507,6 +693,75 @@ describe("cleanStepText", () => {
 
 	it("空文字列はそのまま返す", () => {
 		expect(cleanStepText("")).toBe("");
+	});
+});
+
+// ============================================================
+// validatePlan — プラン品質チェック
+// ============================================================
+describe("validatePlan", () => {
+	it("有効なプランは valid: true", () => {
+		const items: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "分析する", instruction: "コードを分析する", completed: false },
+			{ id: "step-2", step: 2, text: "実装する", instruction: "機能を実装する", completed: false },
+			{ id: "step-3", step: 3, text: "テストする", instruction: "テストを追加する", completed: false },
+		];
+		const result = validatePlan(items);
+		expect(result.valid).toBe(true);
+		expect(result.issues).toHaveLength(0);
+	});
+
+	it("ステップ数が少なすぎる場合は invalid", () => {
+		const items: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "実装する", instruction: "機能を実装する", completed: false },
+		];
+		const result = validatePlan(items);
+		expect(result.valid).toBe(false);
+		expect(result.issues).toContain("ステップ数が少なすぎます（最低3ステップ）。");
+	});
+
+	it("ステップ数が多すぎる場合は invalid", () => {
+		const items: TodoItem[] = Array.from({ length: 20 }, (_, i) => ({
+			id: `step-${i + 1}`,
+			step: i + 1,
+			text: `ステップ${i + 1}を実装する`,
+			instruction: `ステップ${i + 1}の機能を実装する`,
+			completed: false,
+		}));
+		const result = validatePlan(items);
+		expect(result.valid).toBe(false);
+		expect(result.issues.some((s) => s.includes("多すぎます"))).toBe(true);
+	});
+
+	it("動作の記述がないステップは invalid", () => {
+		const items: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "概要セクション", instruction: "Overview section description", completed: false },
+			{ id: "step-2", step: 2, text: "別の概要", instruction: "Another overview", completed: false },
+			{ id: "step-3", step: 3, text: "さらに概要", instruction: "Yet another overview", completed: false },
+		];
+		const result = validatePlan(items);
+		expect(result.valid).toBe(false);
+		expect(result.issues.some((s) => s.includes("動作の記述が見つかりません"))).toBe(true);
+	});
+
+	it("日本語の動詞を含むステップは valid", () => {
+		const items: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "分析", instruction: "コードを分析する", completed: false },
+			{ id: "step-2", step: 2, text: "実装", instruction: "新機能を追加する", completed: false },
+			{ id: "step-3", step: 3, text: "テスト", instruction: "テストを実装する", completed: false },
+		];
+		const result = validatePlan(items);
+		expect(result.valid).toBe(true);
+	});
+
+	it("英語の動詞で始まるステップは valid", () => {
+		const items: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "Analyze", instruction: "Analyze the codebase", completed: false },
+			{ id: "step-2", step: 2, text: "Implement", instruction: "Implement the feature", completed: false },
+			{ id: "step-3", step: 3, text: "Test", instruction: "Add tests for coverage", completed: false },
+		];
+		const result = validatePlan(items);
+		expect(result.valid).toBe(true);
 	});
 });
 
@@ -546,13 +801,15 @@ describe("統合シナリオ: プランモードワークフロー", () => {
 			expect(item.completed).toBe(false);
 		}
 
+		// 品質チェック
+		const validation = validatePlan(items);
+		expect(validation.valid).toBe(true);
+
 		// --- フェーズ2: 実行開始、ステップ完了 ---
-		// 最初のステップを完了
 		let marked = markCompletedSteps("[DONE:1]", items);
 		expect(marked).toBe(1);
 		expect(items[0].completed).toBe(true);
 
-		// 2つ目のステップを完了
 		marked = markCompletedSteps("[DONE:2]", items);
 		expect(marked).toBe(1);
 		expect(items[1].completed).toBe(true);
@@ -566,7 +823,6 @@ describe("統合シナリオ: プランモードワークフロー", () => {
 	});
 
 	it("セッション復元シナリオ: 途中まで完了した状態から再開", () => {
-		// プラン抽出
 		const planMessage = `
 <proposed_plan>
 ## Key Changes
@@ -579,7 +835,6 @@ describe("統合シナリオ: プランモードワークフロー", () => {
 		const items = extractTodoItems(planMessage);
 		expect(items).toHaveLength(3);
 
-		// セッション復元時の再スキャン: 最初の2ステップが完了済み
 		const previousMessages = `
 [DONE:1] ステップ1を実行しました。
 [DONE:2] ステップ2を実行しました。
@@ -590,13 +845,11 @@ describe("統合シナリオ: プランモードワークフロー", () => {
 		expect(items[1].completed).toBe(true);
 		expect(items[2].completed).toBe(false);
 
-		// 残りのステップを完了
 		markCompletedSteps("[DONE:3]", items);
 		expect(items[2].completed).toBe(true);
 	});
 
 	it("プラン修正シナリオ: 新しい <proposed_plan> が古いプランを置き換える", () => {
-		// 最初のプラン
 		const plan1 = `
 <proposed_plan>
 ## Key Changes
@@ -608,7 +861,6 @@ describe("統合シナリオ: プランモードワークフロー", () => {
 		let items = extractTodoItems(plan1);
 		expect(items).toHaveLength(2);
 
-		// 修正後のプラン（完全な置き換え）
 		const plan2 = `
 <proposed_plan>
 ## Key Changes
@@ -621,10 +873,45 @@ describe("統合シナリオ: プランモードワークフロー", () => {
 		items = extractTodoItems(plan2);
 		expect(items).toHaveLength(3);
 		expect(items[0].text).toBe("新しいステップX");
-		// 古いプランの状態はリセットされる
 		for (const item of items) {
 			expect(item.completed).toBe(false);
 		}
+	});
+
+	it("構造化 plan_steps_json ワークフロー", () => {
+		const planMessage = `
+<proposed_plan>
+概要テキスト
+</proposed_plan>
+
+<plan_steps_json>
+[
+  {"id":"inspect-state","title":"現在の状態を確認する","acceptance":"関連ファイルを確認済み"},
+  {"id":"fix-policy","title":"ツールポリシーを修正する","instruction":"bash policy を修正","acceptance":"ポリシーとプロンプトが一致"},
+  {"id":"add-tests","title":"テストを追加する","acceptance":"regression test が通る"}
+]
+</plan_steps_json>
+`;
+		const items = extractTodoItems(planMessage);
+		expect(items).toHaveLength(3);
+
+		expect(items[0].id).toBe("inspect-state");
+		expect(items[1].id).toBe("fix-policy");
+		expect(items[2].id).toBe("add-tests");
+
+		// instruction が正しく設定されている
+		expect(items[1].instruction).toBe("bash policy を修正");
+		expect(items[0].instruction).toBe("現在の状態を確認する");
+
+		// Step ID で完了マーク
+		const marked = markCompletedSteps("[DONE:inspect-state]", items);
+		expect(marked).toBe(1);
+		expect(items[0].completed).toBe(true);
+		expect(items[1].completed).toBe(false);
+
+		// 品質チェック
+		const validation = validatePlan(items);
+		expect(validation.valid).toBe(true);
 	});
 });
 
@@ -701,6 +988,11 @@ describe("tool_call ブロック判定", () => {
 		expect(shouldBlockToolCall(true, "bash", { command: "cat README.md" })).toBe(false);
 	});
 
+	it("bash のパイプ/チェーンはシェルメタガードでブロック", () => {
+		expect(shouldBlockToolCall(true, "bash", { command: "cat file | grep foo" })).toBe(true);
+		expect(shouldBlockToolCall(true, "bash", { command: "ls && pwd" })).toBe(true);
+	});
+
 	it("プランモードONでread等の非ブロックツールは許可する", () => {
 		expect(shouldBlockToolCall(true, "read", { path: "file.ts" })).toBe(false);
 		expect(shouldBlockToolCall(true, "grep", { pattern: "TODO" })).toBe(false);
@@ -742,7 +1034,6 @@ describe("buildBlockReason", () => {
 		expect(reason).toContain("絶対に再試行しないでください");
 	});
 });
-
 
 // ============================================================
 // loadPrompt — プロンプトファイル読み込み
@@ -810,7 +1101,6 @@ describe("hashContent", () => {
 // before_agent_start プロンプト注入最適化
 // ============================================================
 
-// before_agent_start の注入ロジックをシミュレーションする関数
 function simulateBeforeAgentStart(
 	planModeEnabled: boolean,
 	executionMode: boolean,
@@ -844,8 +1134,8 @@ function simulateBeforeAgentStart(
 	if (executionMode && todoItems.length > 0) {
 		const remaining = todoItems.filter((t) => !t.completed);
 		const completed = todoItems.filter((t) => t.completed);
-		const todoList = remaining.map((t) => `${t.step}. ${t.text}`).join("\n");
-		const completedList = completed.map((t) => `${t.step}. ${t.text} ✓`).join("\n");
+		const todoList = remaining.map((t) => `${t.step}. [${t.id}] ${t.instruction ?? t.text}`).join("\n");
+		const completedList = completed.map((t) => `${t.step}. [${t.id}] ${t.text} ✓`).join("\n");
 		const executeModeTemplate = loadPrompt("execute-mode");
 		const executeModePrompt = executeModeTemplate
 			.replaceAll("\${completedList}", completedList || "（なし）")
@@ -877,11 +1167,9 @@ describe("before_agent_start プロンプト注入", () => {
 
 	it("2回目（継続中）→ reminder が選択される", () => {
 		const state = { planPromptDelivered: false, planPromptHash: undefined as string | undefined };
-		// 初回
 		simulateBeforeAgentStart(true, false, [], state);
 		expect(state.planPromptDelivered).toBe(true);
 
-		// 2回目
 		const result = simulateBeforeAgentStart(true, false, [], state);
 		expect(result.injectedPromptType).toBe("reminder");
 		expect(result.systemPrompt).toContain("プランモード（実行中）");
@@ -890,10 +1178,7 @@ describe("before_agent_start プロンプト注入", () => {
 
 	it("プロンプト変更 → フルプロンプトが再注入される", () => {
 		const state = { planPromptDelivered: false, planPromptHash: undefined as string | undefined };
-		// 初回（偽のハッシュをセットして「変更があった」状況を再現）
 		simulateBeforeAgentStart(true, false, [], state);
-
-		// ハッシュを偽装（プロンプトファイルが変更されたと想定）
 		state.planPromptHash = "000000000000";
 
 		const result = simulateBeforeAgentStart(true, false, [], state);
@@ -909,17 +1194,14 @@ describe("before_agent_start プロンプト注入", () => {
 		expect(result.systemPrompt).toBe("BASE");
 	});
 
-	it("OFF → ON → フルプロンプトが再注入される（exitPlanMode後のenterPlanModeをシミュレーション）", () => {
+	it("OFF → ON → フルプロンプトが再注入される", () => {
 		const state = { planPromptDelivered: false, planPromptHash: undefined as string | undefined };
-		// 初回 ON
 		simulateBeforeAgentStart(true, false, [], state);
 		expect(state.planPromptDelivered).toBe(true);
 
-		// exitPlanMode シミュレーション: フラグリセット
 		state.planPromptDelivered = false;
 		state.planPromptHash = undefined;
 
-		// 再度 ON
 		const result = simulateBeforeAgentStart(true, false, [], state);
 		expect(result.injectedPromptType).toBe("full");
 		expect(result.systemPrompt).toContain("プランモード（対話型）");
@@ -927,20 +1209,18 @@ describe("before_agent_start プロンプト注入", () => {
 
 	it("実行モード→プランモード復帰 → フルプロンプトが再注入される", () => {
 		const state = { planPromptDelivered: false, planPromptHash: undefined as string | undefined };
-		// 初回 plan mode
 		simulateBeforeAgentStart(true, false, [], state);
 		expect(state.planPromptDelivered).toBe(true);
 
-		// startExecution シミュレーション: フラグリセット
 		state.planPromptDelivered = false;
 		state.planPromptHash = undefined;
 
-		// 実行モード中
-		const todoItems = [{ step: 1, text: "ステップ1", completed: false }];
+		const todoItems: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "ステップ1", instruction: "ステップ1", completed: false },
+		];
 		const execResult = simulateBeforeAgentStart(false, true, todoItems, state);
 		expect(execResult.injectedPromptType).toBe("execute");
 
-		// togglePlanMode（実行→プラン復帰）シミュレーション: フラグリセット
 		state.planPromptDelivered = false;
 		state.planPromptHash = undefined;
 
@@ -949,9 +1229,21 @@ describe("before_agent_start プロンプト注入", () => {
 		expect(planResult.systemPrompt).toContain("プランモード（対話型）");
 	});
 
+	it("実行モードプロンプトに step ID が含まれる", () => {
+		const state = { planPromptDelivered: false, planPromptHash: undefined as string | undefined };
+		const todoItems: TodoItem[] = [
+			{ id: "add-validator", step: 1, text: "バリデーター追加", instruction: "バリデーターを追加する", completed: false },
+			{ id: "update-tests", step: 2, text: "テスト更新", instruction: "テストを更新する", completed: true },
+		];
+
+		const result = simulateBeforeAgentStart(false, true, todoItems, state);
+		expect(result.injectedPromptType).toBe("execute");
+		expect(result.systemPrompt).toContain("[add-validator]");
+		expect(result.systemPrompt).toContain("バリデーターを追加する");
+		expect(result.systemPrompt).toContain("[update-tests]");
+	});
+
 	it("reminder のみの状態でブロック対象ツール呼び出し → ブロックされる", () => {
-		// reminder が注入されている状態でも tool_call ブロックは有効であるべき
-		// （ツールブロックは before_agent_start ではなく tool_call イベントで処理）
 		const planModeEnabled = true;
 		const result = shouldBlockToolCall(planModeEnabled, "edit", { path: "/tmp/test.ts" });
 		expect(result).toBe(true);
@@ -959,15 +1251,12 @@ describe("before_agent_start プロンプト注入", () => {
 		const result2 = shouldBlockToolCall(planModeEnabled, "write", { path: "/tmp/test.ts" });
 		expect(result2).toBe(true);
 
-		// 許可されたツールはブロックされない
 		const result3 = shouldBlockToolCall(planModeEnabled, "read", { path: "/tmp/test.ts" });
 		expect(result3).toBe(false);
 
-		// bash safe コマンドはブロックされない
 		const result4 = shouldBlockToolCall(planModeEnabled, "bash", { command: "git status" });
 		expect(result4).toBe(false);
 
-		// bash unsafe コマンドはブロックされる
 		const result5 = shouldBlockToolCall(planModeEnabled, "bash", { command: "npm install" });
 		expect(result5).toBe(true);
 	});
@@ -993,7 +1282,6 @@ describe("tool_call: bash safety enforcement at execution boundary", () => {
 	});
 
 	it("bash tool_call uses isSafeCommand regardless of planTools config", () => {
-		// planTools に bash が含まれていても、unsafe はブロック
 		expect(isSafeCommand("rm -rf dist/")).toBe(false);
 		expect(shouldBlockToolCall(true, "bash", { command: "rm -rf dist/" })).toBe(true);
 		expect(shouldBlockToolCall(true, "bash", { command: "git push origin main" })).toBe(true);
@@ -1030,17 +1318,15 @@ describe("active tools: resolveExecutionTools", () => {
 		const saved = ["read", "grep"];
 		const result = resolveExecutionTools(saved, undefined, DEFAULT_EXEC_TOOLS);
 		expect(result).toEqual(["read", "grep"]);
-		expect(saved).toEqual(["read", "grep"]); // 元の配列は不変
+		expect(saved).toEqual(["read", "grep"]);
 	});
 
 	it("startExecution 相当: saved は消えず、次回 get でも同じものが返る", () => {
 		const saved = ["read", "grep"];
 
-		// 1回目: execution tools を取得
 		const tools1 = resolveExecutionTools(saved, undefined, DEFAULT_EXEC_TOOLS);
 		expect(tools1).toEqual(["read", "grep"]);
 
-		// saved は消えていない（同じ値で再度取得可能）
 		const tools2 = resolveExecutionTools(saved, undefined, DEFAULT_EXEC_TOOLS);
 		expect(tools2).toEqual(["read", "grep"]);
 	});
@@ -1048,32 +1334,25 @@ describe("active tools: resolveExecutionTools", () => {
 	it("agent_end 相当: saved をクリア後は DEFAULT にフォールバック", () => {
 		let saved: string[] | undefined = ["read", "grep"];
 
-		// execution 完了時: saved で tools を復元
 		const restoredTools = resolveExecutionTools(saved, undefined, DEFAULT_EXEC_TOOLS);
 		expect(restoredTools).toEqual(["read", "grep"]);
 
-		// saved をクリア（restoreOriginalToolsAndClear 相当）
 		saved = undefined;
 
-		// 次は DEFAULT にフォールバック
 		const fallbackTools = resolveExecutionTools(saved, undefined, DEFAULT_EXEC_TOOLS);
 		expect(fallbackTools).toEqual(DEFAULT_EXEC_TOOLS);
 	});
 
 	it("session resume: saved が永続化されていれば復元後も制限が維持される", () => {
-		// persist → restore のシミュレーション
 		const original = ["read", "grep"];
 
-		// persist 時のデータに saved を含む
 		const data: Record<string, unknown> = { savedActiveTools: original };
 
-		// restore
 		let restored: string[] | undefined = undefined;
 		if ((data as { savedActiveTools?: string[] }).savedActiveTools) {
 			restored = (data as { savedActiveTools?: string[] }).savedActiveTools;
 		}
 
-		// 復元後の getExecutionTools
 		const tools = resolveExecutionTools(restored, undefined, DEFAULT_EXEC_TOOLS);
 		expect(tools).toEqual(["read", "grep"]);
 	});
@@ -1085,58 +1364,51 @@ describe("active tools: resolveExecutionTools", () => {
 describe("plan identity: hash-based DONE rescan", () => {
 	it("hashTodoItems produces stable hash for same items", () => {
 		const items: TodoItem[] = [
-			{ step: 1, text: "ステップA", completed: false },
-			{ step: 2, text: "ステップB", completed: false },
+			{ id: "step-1", step: 1, text: "ステップA", instruction: "ステップA", completed: false },
+			{ id: "step-2", step: 2, text: "ステップB", instruction: "ステップB", completed: false },
 		];
 		expect(hashTodoItems(items)).toBe(hashTodoItems(items));
 	});
 
 	it("different todos produce different hashes", () => {
 		const items1: TodoItem[] = [
-			{ step: 1, text: "ステップA", completed: false },
+			{ id: "step-1", step: 1, text: "ステップA", instruction: "ステップA", completed: false },
 		];
 		const items2: TodoItem[] = [
-			{ step: 1, text: "ステップB", completed: false },
+			{ id: "step-1", step: 1, text: "ステップB", instruction: "ステップB", completed: false },
 		];
 		expect(hashTodoItems(items1)).not.toBe(hashTodoItems(items2));
 	});
 
 	it("completion status does not affect hash", () => {
 		const items1: TodoItem[] = [
-			{ step: 1, text: "ステップA", completed: false },
+			{ id: "step-1", step: 1, text: "ステップA", instruction: "ステップA", completed: false },
 		];
 		const items2: TodoItem[] = [
-			{ step: 1, text: "ステップA", completed: true },
+			{ id: "step-1", step: 1, text: "ステップA", instruction: "ステップA", completed: true },
 		];
-		// hash は step と text のみを使用
 		expect(hashTodoItems(items1)).toBe(hashTodoItems(items2));
 	});
 
 	it("DONE from old plan with different hash is ignored", () => {
-		// 古いプラン
 		const oldPlan: TodoItem[] = [
-			{ step: 1, text: "古いステップA", completed: false },
-			{ step: 2, text: "古いステップB", completed: false },
+			{ id: "step-1", step: 1, text: "古いステップA", instruction: "古いステップA", completed: false },
+			{ id: "step-2", step: 2, text: "古いステップB", instruction: "古いステップB", completed: false },
 		];
 		const oldHash = hashTodoItems(oldPlan);
 
-		// 新しいプラン（ステップが異なる）
 		const newPlan: TodoItem[] = [
-			{ step: 1, text: "新しいステップX", completed: false },
-			{ step: 2, text: "新しいステップY", completed: false },
+			{ id: "step-1", step: 1, text: "新しいステップX", instruction: "新しいステップX", completed: false },
+			{ id: "step-2", step: 2, text: "新しいステップY", instruction: "新しいステップY", completed: false },
 		];
 		const newHash = hashTodoItems(newPlan);
 
-		// hash が異なるので、古い DONE が再スキャンされないことを検証
 		expect(oldHash).not.toBe(newHash);
 
-		// シミュレーション: 古い実行マーカーの hash と新プランの hash が不一致
-		// → 再スキャンはスキップされ、新プランのステップはすべて未完了のまま
 		const executionPlanHash = oldHash;
 		const currentPlanHash = hashTodoItems(newPlan);
 		expect(executionPlanHash === currentPlanHash).toBe(false);
 
-		// マーカーが一致しないので DONE は適用されない
 		for (const item of newPlan) {
 			expect(item.completed).toBe(false);
 		}
@@ -1144,16 +1416,14 @@ describe("plan identity: hash-based DONE rescan", () => {
 
 	it("DONE from matching plan is correctly applied", () => {
 		const plan: TodoItem[] = [
-			{ step: 1, text: "ステップA", completed: false },
-			{ step: 2, text: "ステップB", completed: false },
-			{ step: 3, text: "ステップC", completed: false },
+			{ id: "step-1", step: 1, text: "ステップA", instruction: "ステップA", completed: false },
+			{ id: "step-2", step: 2, text: "ステップB", instruction: "ステップB", completed: false },
+			{ id: "step-3", step: 3, text: "ステップC", instruction: "ステップC", completed: false },
 		];
 		const planHash = hashTodoItems(plan);
 
-		// マーカーの hash と現在の hash が一致 → 再スキャンが実行される
 		expect(planHash).toBe(hashTodoItems(plan));
 
-		// 再スキャンのシミュレーション
 		const messages = "[DONE:1] 完了 [DONE:3] 完了";
 		markCompletedSteps(messages, plan);
 

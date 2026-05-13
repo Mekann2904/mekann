@@ -98,12 +98,29 @@ const SAFE_PATTERNS = [
 	/^\s*eza\b/,
 ];
 
+// Shell metacharacter guard: plan mode で許容しないシェル構文
+const SHELL_META_PATTERNS = [
+	/&&/,       // command chaining
+	/\|\|/,     // OR chaining
+	/;/,        // sequential execution
+	/\|/,       // pipe
+	/`/,        // backtick substitution
+	/\$\(/,     // command substitution $()
+	/<\(/,      // process substitution <()
+];
+
 // 安全なリダイレクト（stderr 抑制、/dev/null 出力）をストリップ
 const SAFE_REDIRECT_PATTERN = /\s*2>\/dev\/null\b|\s*2>&1\b|\s*>\/dev\/null\b/g;
 
 export function isSafeCommand(command: string): boolean {
 	// リダイレクトを除去してから安全性を判定
 	const stripped = command.replace(SAFE_REDIRECT_PATTERN, "");
+
+	// Shell metacharacter guard: メタ文字を含む場合は一律ブロック
+	if (SHELL_META_PATTERNS.some((p) => p.test(stripped))) {
+		return false;
+	}
+
 	const isDestructive = DESTRUCTIVE_PATTERNS.some((p) => p.test(stripped));
 	const isSafe = SAFE_PATTERNS.some((p) => p.test(stripped));
 	return !isDestructive && isSafe;
@@ -112,9 +129,20 @@ export function isSafeCommand(command: string): boolean {
 // --- Plan extraction ---
 
 export interface TodoItem {
-	step: number;
-	text: string;
+	id: string;           // 機械可読 step ID (例: "inspect-current-state")
+	step: number;         // 表示順序（1-origin）
+	text: string;         // UI 表示用テキスト
+	instruction: string;  // 実行用原文（識別子の大小文字を保持）
+	acceptance?: string;  // 受け入れ基準
 	completed: boolean;
+}
+
+/** <plan_steps_json> の各エントリ */
+interface PlanStepJson {
+	id: string;
+	title: string;
+	instruction?: string;
+	acceptance?: string;
 }
 
 export function cleanStepText(text: string): string {
@@ -128,9 +156,16 @@ export function cleanStepText(text: string): string {
 		.replace(/\s+/g, " ")
 		.trim();
 
-	if (cleaned.length > 0) {
-		cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+	// 大文字化: コード識別子（camelCase, ドット付きファイル名）はそのまま
+	if (cleaned.length > 0 && /^[a-z]/.test(cleaned)) {
+		const firstWord = cleaned.split(/\s/)[0];
+		const isCamelCase = /[a-z][A-Z]/.test(firstWord);
+		const isFilename = /\.\w+$/.test(firstWord);
+		if (!isCamelCase && !isFilename) {
+			cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+		}
 	}
+
 	if (cleaned.length > 80) {
 		cleaned = `${cleaned.slice(0, 77)}...`;
 	}
@@ -138,32 +173,68 @@ export function cleanStepText(text: string): string {
 }
 
 /**
- * extractTodoItems — \"Plan:\" ヘッダーまたは <proposed_plan> ブロックから
+ * extractTodoItems — <plan_steps_json>, <proposed_plan>, Plan: の順で
  * 実装ステップを抽出する。
  *
- * 対応フォーマット:
- * 1. 従来の \"Plan:\" + 番号付きリスト
- * 2. <proposed_plan> ブロック内の実装項目
- *    - \"Key Changes\" / \"Implementation Changes\" セクションの箇条書き
- *    - 番号付きリスト
+ * 優先順位:
+ * 1. <plan_steps_json> ブロック（構造化データ）
+ * 2. <proposed_plan> ブロック内の箇条書き・番号付きリスト（フォールバック）
+ * 3. 従来の "Plan:" ヘッダー（フォールバック）
  */
 export function extractTodoItems(message: string): TodoItem[] {
 	const items: TodoItem[] = [];
 
-	// --- パターン1: <proposed_plan> ブロック ---
-	const proposedPlanMatch = message.match(/<proposed_plan>\s*\n([\s\S]*?)\n\s*<\/proposed_plan>/);
-	if (proposedPlanMatch) {
-		const planContent = proposedPlanMatch[1];
-		extractItemsFromSection(planContent, items);
+	// --- 優先: <plan_steps_json> ブロック ---
+	const jsonMatch = message.match(
+		/<plan_steps_json>\s*\n([\s\S]*?)\n\s*<\/plan_steps_json>/,
+	);
+	if (jsonMatch) {
+		try {
+			const parsed = JSON.parse(jsonMatch[1]);
+			if (Array.isArray(parsed)) {
+				for (const entry of parsed) {
+					const e = entry as Record<string, unknown>;
+					if (typeof e.id === "string" && typeof e.title === "string") {
+						items.push({
+							id: e.id,
+							step: items.length + 1,
+							text: cleanStepText(e.title),
+							instruction: typeof e.instruction === "string" ? e.instruction : e.title,
+							acceptance: typeof e.acceptance === "string" ? e.acceptance : undefined,
+							completed: false,
+						});
+					}
+				}
+				if (items.length > 0) return items;
+			}
+		} catch {
+			// JSON parse 失敗 → フォールバック
+		}
 	}
 
-	// --- パターン2: 従来の \"Plan:\" ヘッダー ---
+	// --- フォールバック1: <proposed_plan> ブロック内 Markdown ---
+	const proposedPlanMatch = message.match(
+		/<proposed_plan>\s*\n([\s\S]*?)\n\s*<\/proposed_plan>/,
+	);
+	if (proposedPlanMatch) {
+		extractItemsFromSection(proposedPlanMatch[1], items);
+	}
+
+	// --- フォールバック2: 従来の "Plan:" ヘッダー ---
 	if (items.length === 0) {
 		const headerMatch = message.match(/\*{0,2}Plan:\*{0,2}\s*\n/i);
 		if (headerMatch) {
-			const planSection = message.slice(message.indexOf(headerMatch[0]) + headerMatch[0].length);
+			const planSection = message.slice(
+				message.indexOf(headerMatch[0]) + headerMatch[0].length,
+			);
 			extractNumberedItems(planSection, items);
 		}
+	}
+
+	// フォールバック時: id / instruction のデフォルトを設定
+	for (const item of items) {
+		if (!item.id) item.id = `step-${item.step}`;
+		if (!item.instruction) item.instruction = item.text;
 	}
 
 	return items;
@@ -203,14 +274,20 @@ function extractItemsFromSection(content: string, items: TodoItem[]): void {
 		// 箇条書き (- / * ) からステップ抽出
 		const bulletMatch = trimmed.match(/^[-*]\s+(.+)/);
 		if (bulletMatch) {
-			const text = bulletMatch[1]
+			const raw = bulletMatch[1]
 				.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
 				.replace(/`([^`]+)`/g, "$1")
 				.trim();
-			if (text.length > 5) {
-				const cleaned = cleanStepText(text);
+			if (raw.length > 5) {
+				const cleaned = cleanStepText(raw);
 				if (cleaned.length > 3) {
-					items.push({ step: items.length + 1, text: cleaned, completed: false });
+					items.push({
+						id: "",
+						step: items.length + 1,
+						text: cleaned,
+						instruction: raw,
+						completed: false,
+					});
 				}
 			}
 			continue;
@@ -219,14 +296,20 @@ function extractItemsFromSection(content: string, items: TodoItem[]): void {
 		// 番号付きリスト (1. / 2. ) からステップ抽出
 		const numberedMatch = trimmed.match(/^(\d+)[.)]\s+(.+)/);
 		if (numberedMatch) {
-			const text = numberedMatch[2]
+			const raw = numberedMatch[2]
 				.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
 				.replace(/`([^`]+)`/g, "$1")
 				.trim();
-			if (text.length > 5) {
-				const cleaned = cleanStepText(text);
+			if (raw.length > 5) {
+				const cleaned = cleanStepText(raw);
 				if (cleaned.length > 3) {
-					items.push({ step: items.length + 1, text: cleaned, completed: false });
+					items.push({
+						id: "",
+						step: items.length + 1,
+						text: cleaned,
+						instruction: raw,
+						completed: false,
+					});
 				}
 			}
 		}
@@ -240,14 +323,20 @@ function extractItemsFromSection(content: string, items: TodoItem[]): void {
 
 			const bulletMatch = trimmed.match(/^[-*]\s+(.+)/);
 			if (bulletMatch) {
-				const text = bulletMatch[1]
+				const raw = bulletMatch[1]
 					.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
 					.replace(/`([^`]+)`/g, "$1")
 					.trim();
-				if (text.length > 5) {
-					const cleaned = cleanStepText(text);
+				if (raw.length > 5) {
+					const cleaned = cleanStepText(raw);
 					if (cleaned.length > 3) {
-						items.push({ step: items.length + 1, text: cleaned, completed: false });
+						items.push({
+							id: "",
+							step: items.length + 1,
+							text: cleaned,
+							instruction: raw,
+							completed: false,
+						});
 					}
 				}
 				continue;
@@ -255,14 +344,20 @@ function extractItemsFromSection(content: string, items: TodoItem[]): void {
 
 			const numberedMatch = trimmed.match(/^(\d+)[.)]\s+(.+)/);
 			if (numberedMatch) {
-				const text = numberedMatch[2]
+				const raw = numberedMatch[2]
 					.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
 					.replace(/`([^`]+)`/g, "$1")
 					.trim();
-				if (text.length > 5) {
-					const cleaned = cleanStepText(text);
+				if (raw.length > 5) {
+					const cleaned = cleanStepText(raw);
 					if (cleaned.length > 3) {
-						items.push({ step: items.length + 1, text: cleaned, completed: false });
+						items.push({
+							id: "",
+							step: items.length + 1,
+							text: cleaned,
+							instruction: raw,
+							completed: false,
+						});
 					}
 				}
 			}
@@ -271,41 +366,58 @@ function extractItemsFromSection(content: string, items: TodoItem[]): void {
 }
 
 /**
- * 従来の \"Plan:\" 番号付きリストからステップ抽出。
+ * 従来の "Plan:" 番号付きリストからステップ抽出。
  */
 function extractNumberedItems(planSection: string, items: TodoItem[]): void {
 	const numberedPattern = /^\s*(\d+)[.)]\s+\*{0,2}([^*\n]+)/gm;
 
 	for (const match of planSection.matchAll(numberedPattern)) {
-		const text = match[2]
+		const raw = match[2]
 			.trim()
 			.replace(/\*{1,2}$/, "")
 			.trim();
-		if (text.length > 5 && !text.startsWith("`") && !text.startsWith("/") && !text.startsWith("-")) {
-			const cleaned = cleanStepText(text);
+		if (raw.length > 5 && !raw.startsWith("`") && !raw.startsWith("/") && !raw.startsWith("-")) {
+			const cleaned = cleanStepText(raw);
 			if (cleaned.length > 3) {
-				items.push({ step: items.length + 1, text: cleaned, completed: false });
+				items.push({
+					id: "",
+					step: items.length + 1,
+					text: cleaned,
+					instruction: raw,
+					completed: false,
+				});
 			}
 		}
 	}
 }
 
-export function extractDoneSteps(message: string): number[] {
-	const steps: number[] = [];
-	for (const match of message.matchAll(/\[DONE:(\d+)\]/gi)) {
-		const step = Number(match[1]);
-		if (Number.isFinite(step)) steps.push(step);
+export function extractDoneSteps(message: string): Array<number | string> {
+	const steps: Array<number | string> = [];
+	for (const match of message.matchAll(/\[DONE:([a-zA-Z0-9_-]+)\]/gi)) {
+		const value = match[1];
+		if (/^\d+$/.test(value)) {
+			steps.push(Number(value));
+		} else {
+			steps.push(value);
+		}
 	}
 	return steps;
 }
 
 export function markCompletedSteps(text: string, items: TodoItem[]): number {
 	const doneSteps = extractDoneSteps(text);
+	let changed = 0;
 	for (const step of doneSteps) {
-		const item = items.find((t) => t.step === step);
-		if (item) item.completed = true;
+		const item =
+			typeof step === "number"
+				? items.find((t) => t.step === step)
+				: items.find((t) => t.id === step);
+		if (item && !item.completed) {
+			item.completed = true;
+			changed++;
+		}
 	}
-	return doneSteps.length;
+	return changed;
 }
 
 // --- Block reason generation ---
@@ -335,6 +447,43 @@ export function buildBlockReason(
 	return `${BLOCK_REASON_HEADER}\n${toolLabel}「${inputDesc}」はブロックされました。\nプランモードではファイル変更は一切禁止。\n代わりに変更内容をテキストで報告してください。`;
 }
 
+// --- Plan quality validation ---
+
+const ACTION_WORDS_RE =
+	/^(update|create|write|read|check|verify|modify|add|remove|delete|install|fix|implement|refactor|test|migrate|configure|setup|build|deploy|analyze|review|document|optimize|extract|integrate|replace|rename|move|split|merge|restructure|change|improve|handle|convert|validate|ensure|set|get|run|execute)/i;
+const ACTION_WORDS_JA_RE =
+	/[するつくり追加更新修正削除作成実装確認検証テスト移行設定構築分析レビュー導入適用変更改善対応変換抽出検証保証実行移動分割統合再構築]/;
+
+export function validatePlan(items: TodoItem[]): {
+	valid: boolean;
+	issues: string[];
+} {
+	const issues: string[] = [];
+
+	if (items.length < 3) {
+		issues.push("ステップ数が少なすぎます（最低3ステップ）。");
+	}
+	if (items.length > 15) {
+		issues.push("ステップ数が多すぎます（最大15ステップ）。大きいステップにまとめるか、複数プランに分割してください。");
+	}
+
+	for (let i = 0; i < items.length; i++) {
+		const text = items[i].instruction || items[i].text;
+		if (text.trim().length <= 5) {
+			issues.push(`ステップ ${i + 1} の説明が短すぎます。`);
+		} else if (
+			!ACTION_WORDS_RE.test(text) &&
+			!ACTION_WORDS_JA_RE.test(text)
+		) {
+			issues.push(
+				`ステップ ${i + 1}「${text.slice(0, 30)}」に動作の記述が見つかりません。動詞で始まる具体的なアクションにしてください。`
+			);
+		}
+	}
+
+	return { valid: issues.length === 0, issues };
+}
+
 // --- Todo hashing ---
 
 export function resolveExecutionTools(
@@ -346,7 +495,7 @@ export function resolveExecutionTools(
 }
 
 export function hashTodoItems(items: TodoItem[]): string {
-	const content = items.map((t) => `${t.step}:${t.text}`).join("\n");
+	const content = items.map((t) => `${t.id}:${t.step}:${t.instruction}`).join("\n");
 	return hashContent(content);
 }
 

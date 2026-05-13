@@ -57,8 +57,10 @@ import {
 	loadPrompt,
 	hashContent,
 	hashTodoItems,
+	validatePlan,
 	type TodoItem,
 } from "./utils.js";
+
 
 // --- 型ヘルパー ---
 
@@ -163,12 +165,95 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			const list = state.todoItems
 				.map((item, i) => {
 					const mark = item.completed ? "✓" : "○";
-					return `${i + 1}. ${mark} ${item.text}`;
+					return `${i + 1}. ${mark} [${item.id}] ${item.text}`;
 				})
 				.join("\n");
 
 			const completed = state.todoItems.filter((t) => t.completed).length;
 			ctx.ui.notify(`プラン進捗 (${completed}/${state.todoItems.length}):\n${list}`, "info");
+		},
+	});
+
+	pi.registerCommand("execute-plan", {
+		description: "保存済みプランを実行モードに移行して実行開始",
+		handler: async (_args, ctx) => {
+			if (state.todoItems.length === 0) {
+				ctx.ui.notify("実行可能なプランがありません。先にプランを作成してください。", "warning");
+				return;
+			}
+			if (state.executionMode) {
+				ctx.ui.notify("すでに実行モード中です。", "info");
+				return;
+			}
+			await wrappedStartExecution(ctx);
+			wrappedPersistState();
+			pi.sendUserMessage("プランを実行開始。");
+		},
+	});
+
+	pi.registerCommand("plan-clear", {
+		description: "現在のプランと todo を破棄",
+		handler: async (_args, ctx) => {
+			if (state.todoItems.length === 0 && !state.planModeEnabled && !state.executionMode) {
+				ctx.ui.notify("破棄するプランがありません。", "info");
+				return;
+			}
+			state.todoItems = [];
+			state.executionMode = false;
+			state.planModeEnabled = false;
+			state.planPromptDelivered = false;
+			state.planPromptHash = undefined;
+
+			restoreOriginalToolsAndClear(pi, state);
+			await restoreMainModel(pi, state);
+
+			ctx.ui.notify("プランを破棄しました。通常モードに復帰。", "info");
+			updateStatus(ctx);
+			wrappedPersistState();
+		},
+	});
+
+	pi.registerCommand("plan-status", {
+		description: "プランの詳細状態を表示（mode, model, tools, plan hash, steps）",
+		handler: async (_args, ctx) => {
+			const mode = state.planModeEnabled
+				? "プランモード（読み取り専用）"
+				: state.executionMode
+				  ? "実行モード"
+				  : "通常モード";
+
+			const planModel = state.planModel
+				? `${state.planModel.provider}/${state.planModel.modelId}`
+				: "未設定";
+			const mainModel = state.originalModel
+				? `${state.originalModel.provider}/${state.originalModel.id}`
+				: "未設定";
+
+			const activeTools = pi.getActiveTools().join(", ");
+
+			const lines: string[] = [
+				`モード: ${mode}`,
+				`プラン用モデル: ${planModel}`,
+				`実行用モデル: ${mainModel}`,
+				`アクティブツール: ${activeTools}`,
+			];
+
+			if (state.todoItems.length > 0) {
+				const completed = state.todoItems.filter((t) => t.completed).length;
+				const planHash = hashTodoItems(state.todoItems);
+				lines.push(`プラン進捗: ${completed}/${state.todoItems.length}`);
+				lines.push(`プランハッシュ: ${planHash}`);
+				lines.push("");
+				lines.push("ステップ:");
+				for (const item of state.todoItems) {
+					const mark = item.completed ? "✓" : "○";
+					lines.push(`  ${mark} [${item.id}] ${item.text}`);
+				}
+			} else {
+				lines.push("プラン: なし");
+			}
+
+			ctx.ui.notify(lines.join("\n"), "info");
 		},
 	});
 
@@ -189,7 +274,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		if (state.planModeEnabled) {
 			// プランモード中のモデル変更は plan 側の設定として記録
+			if (ctx.model) {
+				state.planModel = { provider: ctx.model.provider, modelId: ctx.model.id };
+			}
 			state.planThinkingLevel = currentThinking;
+			wrappedPersistState();
 		} else if (!state.executionMode) {
 			// 通常モード中のユーザーによるモデル変更を追跡
 			// (restoreMainModel 後の再変更に対応するため)
@@ -297,8 +386,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (state.executionMode && state.todoItems.length > 0) {
 			const remaining = state.todoItems.filter((t) => !t.completed);
 			const completed = state.todoItems.filter((t) => t.completed);
-			const todoList = remaining.map((t) => `${t.step}. ${t.text}`).join("\n");
-			const completedList = completed.map((t) => `${t.step}. ${t.text} ✓`).join("\n");
+			const todoList = remaining.map((t) => `${t.step}. [${t.id}] ${t.instruction ?? t.text}`).join("\n");
+			const completedList = completed.map((t) => `${t.step}. [${t.id}] ${t.text} ✓`).join("\n");
 			const executeModeTemplate = loadPrompt("execute-mode");
 			const executeModePrompt = executeModeTemplate
 				.replaceAll("${completedList}", completedList || "（なし）")
@@ -385,14 +474,32 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		const extracted = extractTodoItems(assistantText);
 
-		if (!ctx.hasUI) return;
+		if (extracted.length === 0) {
+			wrappedPersistState();
+			return;
+		}
 
-		if (extracted.length > 0) {
-			state.todoItems = extracted;
+		// todo を state に保存（UI 有無に関わらない）
+		state.todoItems = extracted;
 
+		// 品質チェック
+		const validation = validatePlan(extracted);
+		if (!validation.valid) {
+			ctx.ui.notify(
+				`プランを詳細化してください:\n${validation.issues.join("\n")}`,
+				"warning",
+			);
+			wrappedPersistState();
+			return;
+		}
+
+		// 永続化（UI 有無に関わらない）
+		wrappedPersistState();
+
+		// UI あり: 従来の選択フロー
+		if (ctx.hasUI) {
 			ctx.ui.notify(`プラン手順 (${state.todoItems.length}): UIに表示中`, "info");
 
-			// 次のアクションを促す（todoItems が1件以上あることが保証されている）
 			const choices = [
 				"プランを実行する",
 				"プランモードを継続",
@@ -406,12 +513,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				pi.sendUserMessage("プランを実行開始。");
 			}
 
-			// ユーザーの選択後に永続化（不完全な状態の保存を防ぐ）
-			wrappedPersistState();
-		} else {
-			// <proposed_plan> はあるがステップを抽出できなかった場合
 			wrappedPersistState();
 		}
+		// UI なし: state に保存済み。/execute-plan で実行可能
 	});
 
 	// セッション開始/再開時に状態を復元
@@ -460,6 +564,13 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			if ((planModeEntry.data as { savedActiveTools?: string[] }).savedActiveTools) {
 				state.savedActiveTools = (planModeEntry.data as { savedActiveTools?: string[] }).savedActiveTools;
 			}
+
+			// 後方互換: 古い TodoItem（id, instruction なし）にデフォルトを設定
+			state.todoItems = state.todoItems.map((item: TodoItem, i: number) => ({
+				...item,
+				id: item.id || `step-${item.step || i + 1}`,
+				instruction: item.instruction || item.text || "",
+			}));
 		}
 
 		// 復元後の状態更新（通常モードの場合は上で保存済みなので上書き）
