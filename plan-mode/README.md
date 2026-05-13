@@ -29,6 +29,9 @@ Or add to `settings.json`:
 | `/plan` | Toggle plan mode on/off |
 | `/plan-model` | Select model for plan mode (pi-style selector) |
 | `/todos` | Show current plan progress |
+| `/execute-plan` | Start executing the saved plan |
+| `/plan-clear` | Discard current plan and return to normal mode |
+| `/plan-status` | Show detailed plan state (mode, model, tools, steps) |
 
 ## Shortcuts
 
@@ -61,7 +64,7 @@ Create `~/.pi/agent/plan-mode.json` (global) or `.pi/plan-mode.json` (project-lo
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `planModel` | `{provider, modelId}` | — | Model to use in plan mode |
-| `planTools` | `string[]` | `["read","grep","find","ls"]` | Tools available in plan mode. `bash` may be included — all commands are validated through `isSafeCommand()` at the `tool_call` boundary. |
+| `planTools` | `string[]` | `["read","grep","find","ls"]` | Tools available in plan mode. `bash` is **not** included by default; opt-in via config. When enabled, all commands are validated through `isSafeCommand()` and shell metacharacters (`&&`, `\|\|`, `;`, `\|`, `` ` ``, `$()`) are blocked. |
 | `execTools` | `string[]` | *(restores pre-plan tools)* | Explicit override for execute mode tools. If unset, original active tools are restored on mode exit. |
 
 If plan model is not configured, use `/plan-model` to select interactively.
@@ -100,14 +103,38 @@ When switching between plan and execute modes, the model changes automatically t
 
 ## Bash Restrictions in Plan Mode
 
-`bash` may be included in `planTools`. All bash commands are validated through
-`isSafeCommand()` at the `tool_call` boundary — unsafe commands are blocked
-regardless of configuration. This is enforced at the execution layer, not
-by prompt convention.
+`bash` is **not included** in the default `planTools`. To enable bash in plan mode,
+add it to your configuration's `planTools` array (opt-in).
 
-**Allowed:** `cat`, `head`, `tail`, `grep`, `find`, `ls`, `pwd`, `tree`, `git status`, `git log`, `git diff`, `rg`, `fd`, `npm list`, etc.
+When enabled, all bash commands are validated through `isSafeCommand()` at the
+`tool_call` boundary. Additionally, shell metacharacters (`&&`, `||`, `;`, `|`,
+`` ` `` `$()`, `<()`) are blocked to prevent command chaining, pipes, and substitution.
 
-**Blocked:** `rm`, `mv`, `cp`, `npm install`, `git commit`, `sudo`, editors, etc.
+**Allowed (opt-in, single command only):** `cat`, `head`, `tail`, `grep`, `find`, `ls`, `pwd`, `tree`, `git status`, `git log`, `git diff`, `rg`, `fd`, `npm list`, etc.
+
+**Always blocked:** `rm`, `mv`, `cp`, `npm install`, `git commit`, `sudo`, editors, and any command with shell metacharacters.
+
+## Structured Plan Steps
+
+Plans can include a `<plan_steps_json>` block alongside `<proposed_plan>` for
+machine-readable step definitions:
+
+```
+<proposed_plan>
+Human-readable plan description
+</proposed_plan>
+
+<plan_steps_json>
+[
+  {"id":"add-validator","title":"Add password validator","acceptance":"Tests pass"},
+  {"id":"update-tests","title":"Update existing tests","instruction":"Update auth.test.ts"}
+]
+</plan_steps_json>
+```
+
+When `<plan_steps_json>` is present, the system uses it for execution tracking.
+Steps are completed with `[DONE:step-id]` markers (e.g., `[DONE:add-validator]`).
+Numeric `[DONE:1]` format is also supported for backward compatibility.
 
 ## Testing
 
