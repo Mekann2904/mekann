@@ -89,13 +89,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		state.planPromptHash = undefined;
 
 		if (plan) {
-			ctx.ui.notify("main");
 			pi.sendUserMessage(
 				`以下の plan に従って実装してください。\n\n<plan>\n${plan}\n</plan>`,
 			);
-		} else {
-			ctx.ui.notify("main");
 		}
+		ctx.ui.notify("main");
 	}
 
 	async function togglePlanMode(ctx: ExtensionContext): Promise<void> {
@@ -128,8 +126,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		lastBlockedTool = "";
 		lastBlockedInput = "";
 	}
-
-	resetBlockTracking();
 
 	pi.on("tool_call", async (event) => {
 		if (!isReadOnlyMode(state.mode)) return;
