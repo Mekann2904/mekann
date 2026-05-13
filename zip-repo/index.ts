@@ -10,14 +10,13 @@ import { mkdtemp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 
-type ZipMode = "default" | "head" | "worktree";
 
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("zip", {
 		description: "Archive the current Git repo as ZIP and copy to clipboard (macOS). Flags: --head, --worktree",
 		handler: async (rawArgs, ctx) => {
 			const tokens = (rawArgs ?? "").trim().split(/\s+/);
-			const mode: ZipMode = tokens.includes("--worktree") ? "worktree" : tokens.includes("--head") ? "head" : "default";
+			const mode = tokens.includes("--worktree") ? "worktree" : tokens.includes("--head") ? "head" : "default";
 
 			let repoRoot: string;
 			let shortHead = "nohead";
