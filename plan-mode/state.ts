@@ -21,7 +21,7 @@ export interface PlanModeConfig {
 	execTools?: string[];
 }
 
-export const DEFAULT_PLAN_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire"];
+export const DEFAULT_PLAN_TOOLS = ["read", "bash", "grep", "find", "ls"];
 export const DEFAULT_EXEC_TOOLS = ["read", "bash", "grep", "find", "ls", "edit", "write"];
 
 export function loadConfig(cwd: string): PlanModeConfig {

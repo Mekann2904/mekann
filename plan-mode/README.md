@@ -28,7 +28,6 @@ Or add to `settings.json`:
 |---------|-------------|
 | `/plan` | Toggle plan mode on/off |
 | `/plan-model` | Select model for plan mode (pi-style selector) |
-| `/exec-model` | Select model for execution mode (pi-style selector) |
 | `/todos` | Show current plan progress |
 
 ## Shortcuts
@@ -54,10 +53,6 @@ Create `~/.pi/agent/plan-mode.json` (global) or `.pi/plan-mode.json` (project-lo
     "provider": "openai",
     "modelId": "o3"
   },
-  "execModel": {
-    "provider": "anthropic",
-    "modelId": "claude-sonnet-4-5"
-  },
   "planTools": ["read", "bash", "grep", "find", "ls"],
   "execTools": ["read", "bash", "edit", "write"]
 }
@@ -66,11 +61,11 @@ Create `~/.pi/agent/plan-mode.json` (global) or `.pi/plan-mode.json` (project-lo
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `planModel` | `{provider, modelId}` | — | Model to use in plan mode |
-| `execModel` | `{provider, modelId}` | — | Model to use in execute mode |
 | `planTools` | `string[]` | `["read","bash","grep","find","ls"]` | Tools available in plan mode |
-| `execTools` | `string[]` | `["read","bash","edit","write"]` | Tools available in execute mode |
+| `execTools` | `string[]` | `["read","bash","grep","find","ls","edit","write"]` | Tools available in execute mode |
 
-If models are not configured in the file, use `/plan-model` and `/exec-model` to select them interactively.
+If plan model is not configured, use `/plan-model` to select interactively.
+The execution model uses pi's current default model.
 
 ## Workflow
 
@@ -94,7 +89,7 @@ Plan:
 
 ## Model Selection
 
-The `/plan-model` and `/exec-model` commands open a model selector that matches pi's built-in `/model` experience:
+The `/plan-model` command opens a model selector that matches pi's built-in `/model` experience:
 
 - All available models listed, grouped by provider
 - Current selection highlighted with ●

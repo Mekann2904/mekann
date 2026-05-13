@@ -41,11 +41,11 @@ export function installFooter(ctx: ExtensionContext, state: ModeState): FooterHa
 				for (const entry of ctx.sessionManager.getBranch()) {
 					if (entry.type === "message" && entry.message.role === "assistant") {
 						const m = entry.message as AssistantMessage;
-						totalInput += m.usage.input;
-						totalOutput += m.usage.output;
-						totalCacheRead += m.usage.cacheRead;
-						totalCacheWrite += m.usage.cacheWrite;
-						totalCost += m.usage.cost.total;
+						totalInput += m.usage?.input ?? 0;
+						totalOutput += m.usage?.output ?? 0;
+						totalCacheRead += m.usage?.cacheRead ?? 0;
+						totalCacheWrite += m.usage?.cacheWrite ?? 0;
+						totalCost += m.usage?.cost?.total ?? 0;
 					}
 				}
 

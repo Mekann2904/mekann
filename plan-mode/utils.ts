@@ -324,8 +324,8 @@ export function buildBlockReason(
 	const toolLabel = WRITING_TOOL_NAMES[toolName] || toolName;
 	const inputDesc =
 		toolName === "bash"
-			? (input.command as string)
-			: (input.path as string) || "unknown";
+			? (typeof input.command === "string" ? input.command : "unknown")
+			: (typeof input.path === "string" ? input.path : "unknown");
 
 	if (blockCount >= 3) {
 		return `${BLOCK_REASON_HEADER}\n⚠ ${toolLabel}は実行できません。${blockCount}回ブロック済みです。\n今すぐ停止し、分析結果を報告してください。\n絶対に再試行しないでください。\n代わりに <proposed_plan> ブロックで実装計画を出力してください。`;
