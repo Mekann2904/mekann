@@ -59,16 +59,17 @@ Clean up the entire repository codebase — remove noise, fix inconsistencies, e
 
 **Total: 706 → 518 lines (-26.6%), all 79 tests passing**
 
-### Latest batch (iters 37-40)
-- ✅ Iter 37: Removed dead AgentMessage import, merged two git calls into git ls-files -mo (-14 lines)
-- ✅ Iter 38: Replaced promisify(execFile) with native node:child_process/promises (-3 lines)
-- ❌ Iter 39: PROMPTS_DIR cache: net +1, discarded
-- ✅ Iter 40: Merged redirect DESTRUCTIVE_PATTERNS into one regex (-1 line)
+### Latest batch (iters 41-45)
+- ❌ Iter 41: Merge dirty-check blocks: net +1, discarded
+- ✅ Iter 42: Replaced 2-element WRITE_TOOLS Set with inline boolean filter (-1)
+- ✅ Iter 43: Removed self-documenting JSDoc from extractProposedPlan (-1)
+- ✅ Iter 44: Removed self-documenting JSDoc from overlayDirtyFiles (-1)
+- ✅ Iter 45: Merged 3 single-char SHELL_META patterns into char class (-2)
 
 ### File breakdown
 - plan-mode/index.ts: 194 lines
-- plan-mode/utils.ts: 116 lines
+- plan-mode/utils.ts: 112 lines
 - plan-mode/state.ts: 24 lines
-- zip-repo/index.ts: 127 lines
-- Total: 461 lines
+- zip-repo/index.ts: 126 lines
+- Total: 456 lines
 
