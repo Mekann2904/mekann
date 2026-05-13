@@ -10,7 +10,7 @@
  *   /plan  — トグル (main → plan / plan → main)
  *
  * ショートカット:
- *   Ctrl+Alt+P  — /plan と同じ
+ *   Cmd+P (super+p)  — /plan と同じ
  *
  * CLIフラグ:
  *   --plan  — プランモードで起動
@@ -124,7 +124,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerShortcut(Key.ctrlAlt("p"), {
+	pi.registerShortcut(Key.super("p"), {
 		description: "プランモード切替",
 		handler: async (ctx) => {
 			await togglePlanMode(ctx);
