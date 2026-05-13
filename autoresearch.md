@@ -59,15 +59,14 @@ Clean up the entire repository codebase — remove noise, fix inconsistencies, e
 
 **Total: 706 → 518 lines (-26.6%), all 79 tests passing**
 
-### Latest batch (iters 46-48)
-- ✅ Iter 46: Used Object.assign for 3-property state resets in enter/exitPlanMode (-4 lines)
-- ✅ Iter 47: Removed redundant PlanState type annotation (inferred from createInitialState) (-1 line)
-- ✅ Iter 48: Condensed loadPrompt vars replacement loop into single-line forEach (-4 lines)
+### Latest batch (iters 49-50)
+- ✅ Iter 49: Removed single-use ZipMode type alias (-1 line)
+- ✅ Iter 50: Inlined single-use inputDesc variable in buildBlockReason (-1 line)
 
 ### File breakdown
 - plan-mode/index.ts: 189 lines
-- plan-mode/utils.ts: 108 lines
+- plan-mode/utils.ts: 107 lines
 - plan-mode/state.ts: 24 lines
-- zip-repo/index.ts: 126 lines
-- Total: 447 lines
+- zip-repo/index.ts: 125 lines
+- Total: 445 lines
 
