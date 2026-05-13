@@ -17,14 +17,14 @@ export interface FooterHandle {
 }
 
 export function installFooter(ctx: ExtensionContext, state: ModeState): FooterHandle {
-	let tuiHandle: FooterHandle | null = null;
+	let requestRenderFn: (() => void) | null = null;
 
 	ctx.ui.setFooter((tui, theme, footerData) => {
-		tuiHandle = tui;
+		requestRenderFn = () => tui.requestRender();
 		const unsub = footerData.onBranchChange(() => tui.requestRender());
 
 		return {
-			dispose() { unsub(); tuiHandle = null; },
+		dispose() { unsub(); requestRenderFn = null; },
 			invalidate() {},
 			render(width: number): string[] {
 				// --- piデフォルト: pwd行 ---
@@ -172,6 +172,6 @@ export function installFooter(ctx: ExtensionContext, state: ModeState): FooterHa
 	});
 
 	return {
-		requestRender: () => { if (tuiHandle) tuiHandle.requestRender(); },
+		requestRender: () => { if (requestRenderFn) requestRenderFn(); },
 	};
 }
