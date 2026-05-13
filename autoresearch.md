@@ -59,17 +59,14 @@ Clean up the entire repository codebase — remove noise, fix inconsistencies, e
 
 **Total: 706 → 518 lines (-26.6%), all 79 tests passing**
 
-### Latest batch (iters 57-61)
-- ✅ Iter 57: Inlined text extraction chain into extractProposedPlan call, removed intermediate 'text' variable (-2 lines)
-- ✅ Iter 58: Removed non-essential blank lines within enterPlanMode/exitPlanMode bodies (-3 lines)
-- ✅ Iter 59: Merged two dirty-mode notify blocks under single if(dirty) guard in zip-repo (-7 lines)
-- ✅ Iter 60: Removed double-blank lines, collapsed multi-line notify calls in zip-repo (-8 lines)
+### Latest batch (iters 61-62)
 - ✅ Iter 61: Collapsed sendUserMessage, simplified registerCommand/registerShortcut handlers by removing redundant async/await (-6 lines)
+- ✅ Iter 62: Collapsed git archive multi-line array into single-line call (-6 lines)
 
 ### File breakdown
 - plan-mode/index.ts: 167 lines
 - plan-mode/utils.ts: 99 lines
 - plan-mode/state.ts: 24 lines
-- zip-repo/index.ts: 110 lines
-- Total: 400 lines
+- zip-repo/index.ts: 104 lines
+- Total: 394 lines
 
