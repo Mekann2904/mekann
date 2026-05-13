@@ -4,13 +4,10 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execFile as execFileAsync } from "node:child_process/promises";
 import { basename, join, dirname } from "node:path";
 import { mkdtemp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-
-const execFileAsync = promisify(execFile);
 
 
 type ZipMode = "default" | "head" | "worktree";
