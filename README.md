@@ -24,3 +24,21 @@ cp -r plan-mode ~/.pi/agent/extensions/plan-mode
 ```
 
 See [plan-mode/README.md](./plan-mode/README.md) for full documentation.
+
+### [zip-repo](./zip-repo/)
+
+Archive the current Git repository as a ZIP file and copy it to the macOS clipboard.
+
+- `/zip` command archives committed files (respects `.gitignore`, excludes `.git/`)
+- ZIP file is copied to clipboard as a **file** — paste into Finder, Slack, email, etc.
+- macOS only
+
+```bash
+# Install
+cp -r zip-repo ~/.pi/agent/extensions/zip-repo
+
+# Or add to settings.json
+{
+  "extensions": ["/path/to/this/repo/zip-repo"]
+}
+```
