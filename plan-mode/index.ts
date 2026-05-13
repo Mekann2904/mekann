@@ -49,7 +49,6 @@ import {
 import { installFooter, type FooterHandle } from "./footer.js";
 import {
 	extractTodoItems,
-	isSafeCommand,
 	markCompletedSteps,
 	buildBlockReason,
 	loadPrompt,
@@ -210,7 +209,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	});
 
 	// プランモード中の書き込みツールをすべてブロック
-	const BLOCKED_TOOLS = ["edit", "write", "bash"];
+	const BLOCKED_TOOLS = ["edit", "write"];
 
 	let blockCount = 0;
 	let lastBlockedTool = "";
@@ -229,14 +228,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		if (!BLOCKED_TOOLS.includes(event.toolName)) return;
 
-		if (event.toolName === "bash") {
-			const command = event.input.command as string;
-			if (isSafeCommand(command)) return;
-		}
-
-		const inputKey = event.toolName === "bash"
-			? (event.input.command as string)
-			: (event.input.path as string) || "";
+		const inputKey = (event.input.path as string) || "";
 		if (event.toolName === lastBlockedTool && inputKey === lastBlockedInput) {
 			blockCount++;
 		} else {
