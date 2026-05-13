@@ -82,9 +82,8 @@ export function buildBlockReason(
 	return `${H}\n${toolLabel}「${inputDesc}」はブロックされました。\nプランモードではファイル変更は一切禁止。\n代わりに変更内容をテキストで報告してください。`;
 }
 
-const WRITE_TOOLS = new Set(["edit", "write"]);
 export function sanitizePlanTools(tools: string[]): string[] {
-	return tools.filter((t) => !WRITE_TOOLS.has(t));
+	return tools.filter((t) => t !== "edit" && t !== "write");
 }
 
 export function hashContent(content: string): string {
