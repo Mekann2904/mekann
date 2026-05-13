@@ -59,15 +59,15 @@ Clean up the entire repository codebase — remove noise, fix inconsistencies, e
 
 **Total: 706 → 518 lines (-26.6%), all 79 tests passing**
 
-### Latest batch (iters 61-63)
-- ✅ Iter 61: Collapsed sendUserMessage, simplified registerCommand/registerShortcut handlers by removing redundant async/await (-6 lines)
+### Latest batch (iters 62-64)
 - ✅ Iter 62: Collapsed git archive multi-line array into single-line call (-6 lines)
 - ✅ Iter 63: Collapsed overlayDirtyFiles ls-files and osascript multi-line calls to single-line (-5 lines)
+- ✅ Iter 64: Collapsed /usr/bin/zip multi-line call, removed blank line between buildBlockReason and appendEntry (-4 lines)
 
 ### File breakdown
-- plan-mode/index.ts: 167 lines
+- plan-mode/index.ts: 166 lines
 - plan-mode/utils.ts: 99 lines
 - plan-mode/state.ts: 24 lines
-- zip-repo/index.ts: 99 lines
-- Total: 389 lines
+- zip-repo/index.ts: 96 lines
+- Total: 385 lines
 
