@@ -142,17 +142,16 @@ async function overlayDirtyFiles(parentDir: string, repoName: string, repoRoot: 
 		"--",
 	], { cwd: repoRoot, encoding: "utf8" });
 
-	const modified = modifiedStdout.split("\n").filter(Boolean);
-	const untracked = othersStdout.split("\n").filter(Boolean);
-	const dirtyFiles = [...modified, ...untracked];
+	const dirtyFiles = [
+		...modifiedStdout.split("\n").filter(Boolean),
+		...othersStdout.split("\n").filter(Boolean),
+	];
 
 	if (dirtyFiles.length === 0) return;
-
-	const archivePaths = dirtyFiles.map((f) => `${repoName}/${f}`);
 
 	await execFileAsync("/usr/bin/zip", [
 		"-u",
 		zipPath,
-		...archivePaths,
+		...dirtyFiles.map((f) => `${repoName}/${f}`),
 	], { cwd: parentDir });
 }
