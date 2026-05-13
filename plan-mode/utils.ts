@@ -9,8 +9,7 @@ import { createHash } from "node:crypto";
 
 const DESTRUCTIVE_PATTERNS = [
 	/\b(rm|rmdir|mv|cp|mkdir|touch|chmod|chown|chgrp|ln|tee|truncate|dd|shred)\b/i,
-	/(^|[^<])>(?!>)/,
-	/>>/,
+	/(^|[^<])(?:>>|>(?!>))/,
 	/\bnpm\s+(install|uninstall|update|ci|link|publish)/i,
 	/\bnpm\s+audit\b.*(?:\bfix\b|--fix\b)/i,
 	/\b(yarn|pnpm)\s+(add|remove|install|publish)/i,
