@@ -181,6 +181,15 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				ctx.ui.notify("実行可能なプランがありません。先にプランを作成してください。", "warning");
 				return;
 			}
+			// validation gate: invalid plan は実行ブロック
+			const validation = validatePlan(state.todoItems);
+			if (!validation.valid) {
+				ctx.ui.notify(
+					`プランが無効なため実行できません:\n${validation.issues.join("\n")}`,
+					"error",
+				);
+				return;
+			}
 			if (state.executionMode) {
 				ctx.ui.notify("すでに実行モード中です。", "info");
 				return;
@@ -483,19 +492,19 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			return;
 		}
 
-		// todo を state に保存（UI 有無に関わらない）
-		state.todoItems = extracted;
-
-		// 品質チェック
+		// 品質チェック（採用前に検証 — invalid plan は state に採用しない）
 		const validation = validatePlan(extracted);
 		if (!validation.valid) {
 			ctx.ui.notify(
 				`プランを詳細化してください:\n${validation.issues.join("\n")}`,
 				"warning",
 			);
-			wrappedPersistState();
 			return;
 		}
+
+		// validation 通過後のみ state に採用
+		state.todoItems = extracted;
+
 		if (validation.warnings.length > 0) {
 			ctx.ui.notify(
 				`推奨: ${validation.warnings.join("\n")}`,
@@ -503,7 +512,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			);
 		}
 
-		// 永続化（UI 有無に関わらない）
+		// 永続化
 		wrappedPersistState();
 
 		// 保存と通知のみ。実行開始は /execute-plan で明示的に

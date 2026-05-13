@@ -230,6 +230,22 @@ describe("isSafeCommand", () => {
 		it("git diff --output-files をブロック", () => {
 			expect(isSafeCommand("git diff --output-file patch.diff")).toBe(false);
 		});
+
+		it("npm audit --omit=dev --fix をブロック", () => {
+			expect(isSafeCommand("npm audit --omit=dev --fix")).toBe(false);
+		});
+
+		it("find -fprint0 をブロック", () => {
+			expect(isSafeCommand("find . -fprint0 /tmp/out")).toBe(false);
+		});
+
+		it("sed -i をブロック（-n 付きでも）", () => {
+			expect(isSafeCommand("sed -n -i '1p' file.txt")).toBe(false);
+		});
+
+		it("sed -i.bak をブロック", () => {
+			expect(isSafeCommand("sed -i.bak 's/old/new/g' file.txt")).toBe(false);
+		});
 	});
 
 	// --- Shell metacharacter guard ---
@@ -915,6 +931,93 @@ describe("validatePlan", () => {
 		expect(result.warnings).toHaveLength(2);
 		expect(result.warnings[0]).toContain("step-1");
 		expect(result.warnings[1]).toContain("step-3");
+	});
+
+	// step ID 形式バリデーション（kebab-case）
+	describe("step ID 形式バリデーション", () => {
+		it("有効な kebab-case ID は valid", () => {
+			const items: TodoItem[] = [
+				{ id: "add-validator", step: 1, text: "分析", instruction: "コードを分析する", completed: false },
+				{ id: "update-tests", step: 2, text: "実装", instruction: "機能を実装する", completed: false },
+				{ id: "fix-api-v2", step: 3, text: "テスト", instruction: "テストを追加する", completed: false },
+			];
+			const result = validatePlan(items);
+			expect(result.valid).toBe(true);
+		});
+
+		it("数字始まりの ID も valid", () => {
+			const items: TodoItem[] = [
+				{ id: "0-setup", step: 1, text: "分析", instruction: "コードを分析する", completed: false },
+				{ id: "1-implement", step: 2, text: "実装", instruction: "機能を実装する", completed: false },
+				{ id: "2-test", step: 3, text: "テスト", instruction: "テストを追加する", completed: false },
+			];
+			const result = validatePlan(items);
+			expect(result.valid).toBe(true);
+		});
+
+		it("underscore を含む ID は invalid", () => {
+			const items: TodoItem[] = [
+				{ id: "add_validator", step: 1, text: "分析", instruction: "コードを分析する", completed: false },
+				{ id: "update-tests", step: 2, text: "実装", instruction: "機能を実装する", completed: false },
+				{ id: "fix-api", step: 3, text: "テスト", instruction: "テストを追加する", completed: false },
+			];
+			const result = validatePlan(items);
+			expect(result.valid).toBe(false);
+			expect(result.issues.some((s) => s.includes("add_validator") && s.includes("kebab-case"))).toBe(true);
+		});
+
+		it("大文字を含む ID は invalid", () => {
+			const items: TodoItem[] = [
+				{ id: "AddValidator", step: 1, text: "分析", instruction: "コードを分析する", completed: false },
+				{ id: "update-tests", step: 2, text: "実装", instruction: "機能を実装する", completed: false },
+				{ id: "fix-api", step: 3, text: "テスト", instruction: "テストを追加する", completed: false },
+			];
+			const result = validatePlan(items);
+			expect(result.valid).toBe(false);
+			expect(result.issues.some((s) => s.includes("AddValidator"))).toBe(true);
+		});
+
+		it("空文字 ID は invalid", () => {
+			const items: TodoItem[] = [
+				{ id: "", step: 1, text: "分析", instruction: "コードを分析する", completed: false },
+				{ id: "update-tests", step: 2, text: "実装", instruction: "機能を実装する", completed: false },
+				{ id: "fix-api", step: 3, text: "テスト", instruction: "テストを追加する", completed: false },
+			];
+			const result = validatePlan(items);
+			expect(result.valid).toBe(false);
+			expect(result.issues.some((s) => s.includes("\"\"") && s.includes("無効"))).toBe(true);
+		});
+
+		it("日本語 ID は invalid", () => {
+			const items: TodoItem[] = [
+				{ id: "ステップ1", step: 1, text: "分析", instruction: "コードを分析する", completed: false },
+				{ id: "update-tests", step: 2, text: "実装", instruction: "機能を実装する", completed: false },
+				{ id: "fix-api", step: 3, text: "テスト", instruction: "テストを追加する", completed: false },
+			];
+			const result = validatePlan(items);
+			expect(result.valid).toBe(false);
+			expect(result.issues.some((s) => s.includes("ステップ1"))).toBe(true);
+		});
+
+		it("スペース入り ID は invalid", () => {
+			const items: TodoItem[] = [
+				{ id: "add validator", step: 1, text: "分析", instruction: "コードを分析する", completed: false },
+				{ id: "update-tests", step: 2, text: "実装", instruction: "機能を実装する", completed: false },
+				{ id: "fix-api", step: 3, text: "テスト", instruction: "テストを追加する", completed: false },
+			];
+			const result = validatePlan(items);
+			expect(result.valid).toBe(false);
+		});
+
+		it("コロン入り ID は invalid", () => {
+			const items: TodoItem[] = [
+				{ id: "module:add", step: 1, text: "分析", instruction: "コードを分析する", completed: false },
+				{ id: "update-tests", step: 2, text: "実装", instruction: "機能を実装する", completed: false },
+				{ id: "fix-api", step: 3, text: "テスト", instruction: "テストを追加する", completed: false },
+			];
+			const result = validatePlan(items);
+			expect(result.valid).toBe(false);
+		});
 	});
 });
 
