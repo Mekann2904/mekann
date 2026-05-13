@@ -38,8 +38,7 @@ import {
 	extractProposedPlan,
 } from "./utils.js";
 
-const DEFAULT_PLAN_TOOLS = ["read", "grep", "find", "ls"];
-const SAFE_PLAN_TOOLS = new Set(DEFAULT_PLAN_TOOLS);
+const SAFE_PLAN_TOOLS = new Set(["read", "grep", "find", "ls"]);
 
 function isAssistantMessage(m: AgentMessage): m is AssistantMessage {
 	return m.role === "assistant" && Array.isArray(m.content);
@@ -71,7 +70,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		state.planPromptDelivered = false;
 		state.planPromptHash = undefined;
 
-		pi.setActiveTools(DEFAULT_PLAN_TOOLS);
+		pi.setActiveTools([...SAFE_PLAN_TOOLS]);
 
 		ctx.ui.notify("plan");
 	}
