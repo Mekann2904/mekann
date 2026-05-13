@@ -43,20 +43,17 @@ export default function (pi: ExtensionAPI) {
 		handler: async (rawArgs, ctx) => {
 			const { mode } = parseArgs(rawArgs ?? "");
 
+			let repoRoot: string;
 			try {
-				await execFileAsync("git", ["rev-parse", "--is-inside-work-tree"], {
-					cwd: ctx.cwd,
-				});
+				const { stdout } = await execFileAsync(
+					"git", ["rev-parse", "--show-toplevel"],
+					{ cwd: ctx.cwd, encoding: "utf8" },
+				);
+				repoRoot = stdout.trim();
 			} catch {
 				ctx.ui.notify("Not a Git repository", "error");
 				return;
 			}
-
-			const { stdout: repoRootStdout } = await execFileAsync(
-				"git", ["rev-parse", "--show-toplevel"],
-				{ cwd: ctx.cwd, encoding: "utf8" },
-			);
-			const repoRoot = repoRootStdout.trim();
 			const repoName = basename(repoRoot);
 
 			let shortHead = "nohead";
