@@ -3,7 +3,6 @@
  * /plan で main ↔ plan を切り替え。--plan フラグで plan モード起動。
  */
 
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
