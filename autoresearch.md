@@ -36,20 +36,26 @@ Clean up the entire repository codebase — remove noise, fix inconsistencies, e
 - Keep test coverage: don't remove tests
 
 ## What's Been Tried
-- ✅ Removed 10 section comments from index.ts, 6 from utils.ts, 2 from state.ts (-20 lines)
-- ✅ Deduplicated SAFE_PLAN_TOOLS Set in index.ts (-2 lines)
-- ✅ Removed vitest.config.ts (default-only config)
-- ✅ Removed 15 numbered step comments from zip-repo/index.ts
-- ✅ Fixed README shortcut inconsistency (Ctrl+Alt+P → Cmd+P)
-- ✅ Removed 18 decorative === separators from test file
-- ✅ Trimmed stale utils.ts header comment
-- ✅ Reused enterPlanMode() in session_start handler (-6 lines duplication)
-- ✅ Removed unnecessary sanitizePlanTools() call (DEFAULT_PLAN_TOOLS has no write tools)
-- ✅ Removed redundant resetBlockTracking() call at init
-- ✅ Consolidated duplicate ctx.ui.notify('main') in exitPlanMode
+- ✅ Iter 1: Removed 10 section comments from index.ts, 6 from utils.ts, 2 from state.ts, 15 numbered comments from zip-repo (-20 lines)
+- ✅ Iter 1: Deduplicated SAFE_PLAN_TOOLS Set in index.ts, removed vitest.config.ts, fixed README shortcut (-38 lines total)
+- ✅ Iter 2: Removed 18 decorative === separators from test file, trimmed utils.ts header (-3 lines)
+- ✅ Iter 3: Reused enterPlanMode() in session_start handler (-6 lines duplication)
+- ✅ Iter 4: Removed unnecessary sanitizePlanTools() call — DEFAULT_PLAN_TOOLS has no write tools (-4 lines)
+- ✅ Iter 5: Removed redundant resetBlockTracking() call, consolidated duplicate notify (-4 lines)
+- ✅ Iter 9: Simplified zip-repo parseArgs with early returns (-3 lines)
+- ✅ Iter 11: Collapsed DEFAULT_PLAN_TOOLS + SAFE_PLAN_TOOLS into single const (-1 line)
+- ✅ Iter 12: Trimmed verbose overlayDirtyFiles JSDoc from 7 to 1 line (-8 lines)
 
-### Dead ends / not worth it
-- Stale test comment removal: 0 source lines saved (test file not counted)
-- WRITING_TOOL_NAMES/BLOCK_REASON_HEADER unexport: not worth risk, used by tests
-- Inlining enterPlanMode/exitPlanMode: hurts readability
+### Discarded (not worth it)
+- ❌ Stale test comment removal: 0 source lines (test file excluded from metric)
+- ❌ formatBytes loop refactor: net +2 lines
+- ❌ errMsg helper extraction: net +2 lines
+
+### Not attempted (too risky)
+- Consolidating regex patterns in utils.ts (security-sensitive, could break tests)
+- Removing file header comments (valuable docs)
+- Inlining enterPlanMode/exitPlanMode (hurts readability)
+- Removing modeLabel export (used by tests)
+
+**Total: 706 → 621 lines (-12.0%), all 79 tests passing**
 
