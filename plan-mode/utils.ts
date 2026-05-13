@@ -1,71 +1,14 @@
 /**
- * Utility functions for plan mode.
+ * Plan Mode — ユーティリティ関数
+ *
+ * isSafeCommand, buildBlockReason, loadPrompt, hashContent のみ。
+ * TodoItem / StepStatus / extractTodoItems 等はすべて削除済み。
  */
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
-
-// --- Mode enum & transitions (Pi非依存の純粋関数) ---
-
-export type PlanMode =
-	| "normal"
-	| "planning"
-	| "plan_ready"
-	| "executing"
-	| "completed"
-	| "aborted";
-
-/** 不正な状態遷移のエラー */
-export class InvalidTransitionError extends Error {
-	constructor(
-		public readonly from: PlanMode,
-		public readonly to: PlanMode,
-	) {
-		super(`Invalid mode transition: ${from} → ${to}`);
-		this.name = "InvalidTransitionError";
-	}
-}
-
-const VALID_TRANSITIONS: Record<PlanMode, PlanMode[]> = {
-	normal:     ["planning"],
-	planning:   ["normal", "plan_ready"],
-	plan_ready: ["executing", "planning", "normal"],
-	executing:  ["completed", "aborted", "planning"],
-	completed:  ["normal"],
-	aborted:    ["normal"],
-};
-
-/** 遷移が有効か検証 */
-export function isValidTransition(from: PlanMode, to: PlanMode): boolean {
-	return VALID_TRANSITIONS[from]?.includes(to) ?? false;
-}
-
-/** 安全な遷移関数 */
-export function transition(current: PlanMode, next: PlanMode): PlanMode {
-	if (!isValidTransition(current, next)) {
-		throw new InvalidTransitionError(current, next);
-	}
-	return next;
-}
-
-/** mode が読み取り専用か */
-export function isReadOnlyMode(mode: PlanMode): boolean {
-	return mode === "planning" || mode === "plan_ready";
-}
-
-/** mode の表示ラベル */
-export function modeLabel(mode: PlanMode): string {
-	switch (mode) {
-		case "normal":     return "通常モード";
-		case "planning":   return "プランモード（読み取り専用）";
-		case "plan_ready": return "プラン実行待ち";
-		case "executing":  return "実行モード";
-		case "completed":  return "プラン完了 ✓";
-		case "aborted":    return "プラン中断";
-	}
-}
 
 // --- Bash command safety ---
 
@@ -162,31 +105,23 @@ const SAFE_PATTERNS = [
 	/^\s*eza\b/,
 ];
 
-// Shell metacharacter guard: plan mode で許容しないシェル構文
-// TODO: 正規表現ベースの判定は限界がある。
-// 変数展開、クォート内メタ文字、glob 等を正しく扱うには
-// shell quote aware な tokenizer + コマンド別 allowlist が必要。
-// 現状は「既知の穴を塞ぐ」一時対応。
 const SHELL_META_PATTERNS = [
-	/&&/,                   // command chaining
-	/\|\|/,                 // OR chaining
-	/;/,                    // sequential execution
-	/\|/,                   // pipe
-	/`/,                    // backtick substitution
-	/\$\(/,                 // command substitution $()
-	/<\(/,                  // process substitution <()
-	/(^|[^&])&([^&]|$)/,   // single & background execution (not &&)
-	/[\r\n]/,              // newline / carriage return (multiple commands)
+	/&&/,
+	/\|\|/,
+	/;/,
+	/\|/,
+	/`/,
+	/\$\(/,
+	/<\(/,
+	/(^|[^&])&([^&]|$)/,
+	/[\r\n]/,
 ];
 
-// 安全なリダイレクト（stderr 抑制、/dev/null 出力）をストリップ
 const SAFE_REDIRECT_PATTERN = /\s*2>\/dev\/null\b|\s*2>&1\b|\s*>\/dev\/null\b/g;
 
 export function isSafeCommand(command: string): boolean {
-	// リダイレクトを除去してから安全性を判定
 	const stripped = command.replace(SAFE_REDIRECT_PATTERN, "");
 
-	// Shell metacharacter guard: メタ文字を含む場合は一律ブロック
 	if (SHELL_META_PATTERNS.some((p) => p.test(stripped))) {
 		return false;
 	}
@@ -194,321 +129,6 @@ export function isSafeCommand(command: string): boolean {
 	const isDestructive = DESTRUCTIVE_PATTERNS.some((p) => p.test(stripped));
 	const isSafe = SAFE_PATTERNS.some((p) => p.test(stripped));
 	return !isDestructive && isSafe;
-}
-
-// --- Plan extraction ---
-
-/** ステップの実行状態 */
-export type StepStatus = "pending" | "in_progress" | "done" | "failed" | "skipped";
-
-export interface TodoItem {
-	id: string;            // 機械可読 step ID (例: "inspect-current-state")
-	step: number;          // 表示順序（1-origin）
-	text: string;          // UI 表示用テキスト
-	instruction: string;   // 実行用原文（識別子の大小文字を保持）
-	acceptance?: string;   // 受け入れ基準
-	verification?: string; // 検証コマンド（例: "npm test", "tsc --noEmit"）
-	status: StepStatus;    // 実行状態
-	completed: boolean;    // 後方互換: status === "done" と等価
-}
-
-/** <plan_steps_json> の各エントリ */
-interface PlanStepJson {
-	id: string;
-	title: string;
-	instruction?: string;
-	acceptance?: string;
-	verification?: string;
-}
-
-export function cleanStepText(text: string): string {
-	let cleaned = text
-		.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
-		.replace(/`([^`]+)`/g, "$1")
-		.replace(
-			/^(Use|Run|Execute|Create|Write|Read|Check|Verify|Update|Modify|Add|Remove|Delete|Install)\s+(the\s+)?/i,
-			"",
-		)
-		.replace(/\s+/g, " ")
-		.trim();
-
-	// 大文字化: コード識別子（camelCase, ドット付きファイル名）はそのまま
-	if (cleaned.length > 0 && /^[a-z]/.test(cleaned)) {
-		const firstWord = cleaned.split(/\s/)[0];
-		const isCamelCase = /[a-z][A-Z]/.test(firstWord);
-		const isFilename = /\.\w+$/.test(firstWord);
-		if (!isCamelCase && !isFilename) {
-			cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-		}
-	}
-
-	if (cleaned.length > 80) {
-		cleaned = `${cleaned.slice(0, 77)}...`;
-	}
-	return cleaned;
-}
-
-/**
- * extractTodoItems — <plan_steps_json>, <proposed_plan>, Plan: の順で
- * 実装ステップを抽出する。
- *
- * 優先順位:
- * 1. <plan_steps_json> ブロック（構造化データ）
- * 2. <proposed_plan> ブロック内の箇条書き・番号付きリスト（フォールバック）
- * 3. 従来の "Plan:" ヘッダー（フォールバック）
- */
-export function extractTodoItems(message: string): TodoItem[] {
-	const items: TodoItem[] = [];
-
-	// --- 優先: <plan_steps_json> ブロック ---
-	const jsonMatch = message.match(
-		/<plan_steps_json>\s*([\s\S]*?)\s*<\/plan_steps_json>/,
-	);
-	if (jsonMatch) {
-		try {
-			const parsed = JSON.parse(jsonMatch[1]);
-			if (Array.isArray(parsed)) {
-				for (const entry of parsed) {
-					const e = entry as Record<string, unknown>;
-					if (typeof e.id === "string" && typeof e.title === "string") {
-						items.push({
-							id: e.id,
-							step: items.length + 1,
-							text: cleanStepText(e.title),
-							instruction: typeof e.instruction === "string" ? e.instruction : e.title,
-							acceptance: typeof e.acceptance === "string" ? e.acceptance : undefined,
-							verification: typeof e.verification === "string" ? e.verification : undefined,
-							status: "pending" as const,
-							completed: false,
-						});
-					}
-				}
-				if (items.length > 0) return items;
-			}
-		} catch {
-			// JSON parse 失敗 → フォールバック
-		}
-	}
-
-	// --- フォールバック1: <proposed_plan> ブロック内 Markdown ---
-	const proposedPlanMatch = message.match(
-		/<proposed_plan>\s*([\s\S]*?)\s*<\/proposed_plan>/,
-	);
-	if (proposedPlanMatch) {
-		extractItemsFromSection(proposedPlanMatch[1], items);
-	}
-
-	// --- フォールバック2: 従来の "Plan:" ヘッダー ---
-	if (items.length === 0) {
-		const headerMatch = message.match(/\*{0,2}Plan:\*{0,2}\s*\n/i);
-		if (headerMatch) {
-			const planSection = message.slice(
-				message.indexOf(headerMatch[0]) + headerMatch[0].length,
-			);
-			extractNumberedItems(planSection, items);
-		}
-	}
-
-	// フォールバック時: id / instruction のデフォルトを設定
-	for (const item of items) {
-		if (!item.id) item.id = `step-${item.step}`;
-		if (!item.instruction) item.instruction = item.text;
-	}
-
-	return items;
-}
-
-/**
- * <proposed_plan> 内のコンテンツから実装項目を抽出。
- * 実装関連セクション（Key Changes, Implementation Changes, Test Plan 等）の
- * 箇条書き (- / * ) と番号付きリストを対象とする。
- */
-function extractItemsFromSection(content: string, items: TodoItem[]): void {
-	const lines = content.split("\n");
-	let inImplementationSection = false;
-	let anySectionHeaderFound = false;
-
-	// 英語・日本語のセクションヘッダーキーワード
-	const IMPL_SECTION_RE =
-		/key\s*changes|implementation|changes|test\s*plan|steps|task|action/i;
-	const IMPL_SECTION_JA_RE =
-		/主要な変更|実装の変更|変更点|テスト計画|テスト|手順|ステップ|タスク/i;
-
-	for (const line of lines) {
-		const trimmed = line.trim();
-
-		// セクションヘッダー検出 (## or ###)
-		const headerMatch = trimmed.match(/^#{1,4}\s+(.+)/);
-		if (headerMatch) {
-			const headerText = headerMatch[1];
-			anySectionHeaderFound = true;
-			inImplementationSection =
-				IMPL_SECTION_RE.test(headerText) || IMPL_SECTION_JA_RE.test(headerText);
-			continue;
-		}
-
-		if (!inImplementationSection) continue;
-
-		// 箇条書き (- / * ) からステップ抽出
-		const bulletMatch = trimmed.match(/^[-*]\s+(.+)/);
-		if (bulletMatch) {
-			const raw = bulletMatch[1]
-				.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
-				.replace(/`([^`]+)`/g, "$1")
-				.trim();
-			if (raw.length > 5) {
-				const cleaned = cleanStepText(raw);
-				if (cleaned.length > 3) {
-					items.push({
-						id: "",
-						step: items.length + 1,
-						text: cleaned,
-						instruction: raw,
-						status: "pending" as const,
-						completed: false,
-					});
-				}
-			}
-			continue;
-		}
-
-		// 番号付きリスト (1. / 2. ) からステップ抽出
-		const numberedMatch = trimmed.match(/^(\d+)[.)]\s+(.+)/);
-		if (numberedMatch) {
-			const raw = numberedMatch[2]
-				.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
-				.replace(/`([^`]+)`/g, "$1")
-				.trim();
-			if (raw.length > 5) {
-				const cleaned = cleanStepText(raw);
-				if (cleaned.length > 3) {
-					items.push({
-						id: "",
-						step: items.length + 1,
-						text: cleaned,
-						instruction: raw,
-						status: "pending" as const,
-						completed: false,
-					});
-				}
-			}
-		}
-	}
-
-	// フォールバック: セクションヘッダーが1つもマッチしなかった場合、
-	// ブロック内の全箇条書き・番号付きリストを抽出する
-	if (items.length === 0 && !anySectionHeaderFound) {
-		for (const line of lines) {
-			const trimmed = line.trim();
-
-			const bulletMatch = trimmed.match(/^[-*]\s+(.+)/);
-			if (bulletMatch) {
-				const raw = bulletMatch[1]
-					.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
-					.replace(/`([^`]+)`/g, "$1")
-					.trim();
-				if (raw.length > 5) {
-					const cleaned = cleanStepText(raw);
-					if (cleaned.length > 3) {
-						items.push({
-							id: "",
-							step: items.length + 1,
-							text: cleaned,
-							instruction: raw,
-							status: "pending" as const,
-							completed: false,
-						});
-					}
-				}
-				continue;
-			}
-
-			const numberedMatch = trimmed.match(/^(\d+)[.)]\s+(.+)/);
-			if (numberedMatch) {
-				const raw = numberedMatch[2]
-					.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
-					.replace(/`([^`]+)`/g, "$1")
-					.trim();
-				if (raw.length > 5) {
-					const cleaned = cleanStepText(raw);
-					if (cleaned.length > 3) {
-						items.push({
-							id: "",
-							step: items.length + 1,
-							text: cleaned,
-							instruction: raw,
-							status: "pending" as const,
-							completed: false,
-						});
-					}
-				}
-			}
-		}
-	}
-}
-
-/**
- * 従来の "Plan:" 番号付きリストからステップ抽出。
- */
-function extractNumberedItems(planSection: string, items: TodoItem[]): void {
-	const numberedPattern = /^\s*(\d+)[.)]\s+\*{0,2}([^*\n]+)/gm;
-
-	for (const match of planSection.matchAll(numberedPattern)) {
-		const raw = match[2]
-			.trim()
-			.replace(/\*{1,2}$/, "")
-			.trim();
-		if (raw.length > 5 && !raw.startsWith("`") && !raw.startsWith("/") && !raw.startsWith("-")) {
-			const cleaned = cleanStepText(raw);
-			if (cleaned.length > 3) {
-				items.push({
-					id: "",
-					step: items.length + 1,
-					text: cleaned,
-					instruction: raw,
-					status: "pending" as const,
-					completed: false,
-				});
-			}
-		}
-	}
-}
-
-export function extractDoneSteps(message: string): Array<number | string> {
-	const steps: Array<number | string> = [];
-	for (const match of message.matchAll(/\[DONE:([a-zA-Z0-9_-]+)\]/gi)) {
-		const value = match[1];
-		if (/^\d+$/.test(value)) {
-			steps.push(Number(value));
-		} else {
-			steps.push(value);
-		}
-	}
-	return steps;
-}
-
-export function markCompletedSteps(text: string, items: TodoItem[]): number {
-	const doneSteps = extractDoneSteps(text);
-	let changed = 0;
-	for (const step of doneSteps) {
-		// Sequential enforcement: only accept DONE for the current (first non-completed) step.
-		// This prevents out-of-order completion and guarantees top-to-bottom execution.
-		const currentIndex = items.findIndex((t) => !t.completed);
-		if (currentIndex === -1) break;
-
-		const currentItem = items[currentIndex];
-		const matchesCurrent =
-			typeof step === "number"
-				? currentItem.step === step
-				: currentItem.id === step;
-
-		if (matchesCurrent) {
-			currentItem.completed = true;
-			currentItem.status = "done";
-			changed++;
-		}
-	}
-	return changed;
 }
 
 // --- Block reason generation ---
@@ -526,7 +146,6 @@ export function buildBlockReason(
 	blockCount: number,
 ): string {
 	const toolLabel = WRITING_TOOL_NAMES[toolName] || toolName;
-	// P0: input が null や path を持たない場合も安全に処理
 	const inputDesc = typeof input?.path === "string" ? input.path : "unknown";
 
 	if (blockCount >= 3) {
@@ -539,150 +158,11 @@ export function buildBlockReason(
 	return `${BLOCK_REASON_HEADER}\n${toolLabel}「${inputDesc}」はブロックされました。\nプランモードではファイル変更は一切禁止。\n代わりに変更内容をテキストで報告してください。`;
 }
 
-// --- Plan quality validation ---
+// --- Tool sanitization ---
 
-export interface ValidationResult {
-	valid: boolean;
-	issues: string[];    // hard errors — plan 実行をブロック
-	warnings: string[];  // soft warnings — 通知のみ、ブロックしない
-}
-
-const ACTION_WORDS_RE =
-	/^(update|create|write|read|check|verify|modify|add|remove|delete|install|fix|implement|refactor|test|migrate|configure|setup|build|deploy|analyze|review|document|optimize|extract|integrate|replace|rename|move|split|merge|restructure|change|improve|handle|convert|validate|ensure|set|get|run|execute)/i;
-const ACTION_WORDS_JA_RE =
-	/(追加|更新|修正|削除|作成|実装|確認|検証|テスト|移行|設定|構築|分析|レビュー|導入|適用|変更|改善|対応|変換|抽出|実行|移動|分割|統合|再構築|リファクタ)/;
-
-/** step ID 形式: kebab-case のみ許可（extractDoneSteps の正規表現と整合） */
-const STEP_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
-
-export function validatePlan(items: TodoItem[]): {
-	valid: boolean;
-	issues: string[];
-	warnings: string[];
-} {
-	const issues: string[] = [];
-	const warnings: string[] = [];
-
-	if (items.length < 3) {
-		issues.push("ステップ数が少なすぎます（最低3ステップ）。");
-	}
-	if (items.length > 15) {
-		issues.push("ステップ数が多すぎます（最大15ステップ）。大きいステップにまとめるか、複数プランに分割してください。");
-	}
-
-	// P1: 重複 ID チェック（hard error）
-	const ids = items.map((i) => i.id);
-	const seen = new Set<string>();
-	const dupes = new Set<string>();
-	for (const id of ids) {
-		if (seen.has(id)) dupes.add(id);
-		seen.add(id);
-	}
-	if (dupes.size > 0) {
-		issues.push(`重複するステップID: ${[...dupes].join(", ")}。IDは一意にしてください。`);
-	}
-
-	// step ID 形式チェック（kebab-case — extractDoneSteps と整合）
-	for (let i = 0; i < items.length; i++) {
-		if (!STEP_ID_RE.test(items[i].id)) {
-			issues.push(
-				`ステップ ${i + 1} の id "${items[i].id}" は無効です。英小文字・数字・ハイフンのみ使用してください（kebab-case）。`
-			);
-		}
-	}
-
-	for (let i = 0; i < items.length; i++) {
-		const text = items[i].instruction || items[i].text;
-
-		// P1: 空 instruction チェック（hard error）
-		if (!items[i].instruction || items[i].instruction.trim().length === 0) {
-			issues.push(`ステップ ${i + 1} [${items[i].id}] の instruction が空です。`);
-			continue;
-		}
-
-		if (text.trim().length <= 5) {
-			issues.push(`ステップ ${i + 1} の説明が短すぎます。`);
-		} else if (
-			!ACTION_WORDS_RE.test(text) &&
-			!ACTION_WORDS_JA_RE.test(text)
-		) {
-			issues.push(
-				`ステップ ${i + 1}「${text.slice(0, 30)}」に動作の記述が見つかりません。動詞で始まる具体的なアクションにしてください。`
-			);
-		}
-
-		// acceptance は必須（hard error）: 実装者の判断を減らすため
-		if (!items[i].acceptance || items[i].acceptance.trim().length === 0) {
-			issues.push(`ステップ ${i + 1} [${items[i].id}] の acceptance が空です。完了基準を明示してください。`);
-		}
-	}
-
-	return { valid: issues.length === 0, issues, warnings };
-}
-
-// --- Todo hashing ---
-
-export function resolveExecutionTools(
-	savedActiveTools: string[] | undefined,
-	configExecTools: string[] | undefined,
-	defaultTools: string[],
-): string[] {
-	return configExecTools ?? savedActiveTools ?? defaultTools;
-}
-
-/** Remove write-capable tools from plan-time tool sets. */
 const WRITE_TOOLS = new Set(["edit", "write"]);
 export function sanitizePlanTools(tools: string[]): string[] {
 	return tools.filter((t) => !WRITE_TOOLS.has(t));
-}
-
-// --- Restored state validation ---
-
-const VALID_PLAN_MODES: readonly PlanMode[] = ["normal", "planning", "plan_ready", "executing", "completed", "aborted"];
-const VALID_STEP_STATUSES: readonly StepStatus[] = ["pending", "in_progress", "done", "failed", "skipped"];
-
-export function validateRestoredMode(mode: unknown): PlanMode {
-	if (typeof mode === "string" && (VALID_PLAN_MODES as readonly string[]).includes(mode)) {
-		return mode as PlanMode;
-	}
-	return "normal";
-}
-
-export function validateRestoredTodoItem(raw: unknown, index: number): TodoItem {
-	if (typeof raw !== "object" || raw === null) {
-		return {
-			id: `restored-${index + 1}`,
-			step: index + 1,
-			text: `Restored step ${index + 1}`,
-			instruction: `Restored step ${index + 1}`,
-			status: "pending",
-			completed: false,
-		};
-	}
-	const e = raw as Record<string, unknown>;
-	const status: StepStatus =
-		typeof e.status === "string" && (VALID_STEP_STATUSES as readonly string[]).includes(e.status)
-			? (e.status as StepStatus)
-			: "pending";
-	const id = typeof e.id === "string" && STEP_ID_RE.test(e.id) ? e.id : `restored-${index + 1}`;
-	return {
-		id,
-		step: typeof e.step === "number" ? e.step : index + 1,
-		text: typeof e.text === "string" ? e.text : `Step ${index + 1}`,
-		instruction: typeof e.instruction === "string" ? e.instruction : typeof e.text === "string" ? e.text : `Step ${index + 1}`,
-		acceptance: typeof e.acceptance === "string" && e.acceptance.trim().length > 0 ? e.acceptance : undefined,
-		verification: typeof e.verification === "string" && e.verification.trim().length > 0 ? e.verification : undefined,
-		status,
-		completed: status === "done",
-	};
-}
-
-export function hashTodoItems(items: TodoItem[], planId?: string, planRevision?: number): string {
-	const header = `${planId ?? ""}:${planRevision ?? 0}`;
-	const content = items.map((t) =>
-		`${t.id}:${t.step}:${t.instruction}:${t.acceptance ?? ""}:${t.verification ?? ""}`
-	).join("\n");
-	return hashContent(header + "\n" + content);
 }
 
 // --- Content hashing ---
@@ -704,9 +184,17 @@ export function loadPrompt(name: string, vars?: Record<string, string>): string 
 
 	if (vars) {
 		for (const [key, value] of Object.entries(vars)) {
-			content = content.replaceAll(`\$\{${key}\}`, value);
+			content = content.replaceAll(`\${${key}}`, value);
 		}
 	}
 
 	return content;
+}
+
+// --- Plan extraction ---
+
+/** <proposed_plan> の中身をそのまま取り出す */
+export function extractProposedPlan(message: string): string | undefined {
+	const match = message.match(/<proposed_plan>\s*([\s\S]*?)\s*<\/proposed_plan>/);
+	return match?.[1]?.trim() || undefined;
 }
