@@ -110,3 +110,43 @@ Only read-only commands are allowed during planning:
 **Allowed:** `cat`, `head`, `tail`, `grep`, `find`, `ls`, `pwd`, `tree`, `git status`, `git log`, `git diff`, `rg`, `fd`, `npm list`, etc.
 
 **Blocked:** `rm`, `mv`, `cp`, `npm install`, `git commit`, `sudo`, editors, etc.
+
+## Testing
+
+Run the test suite to verify plan mode works correctly:
+
+```bash
+cd plan-mode
+npm test
+```
+
+The test suite covers:
+
+| Category | Tests | Description |
+|----------|-------|-------------|
+| `isSafeCommand` | ~70 | Safe/dangerous bash command classification |
+| `extractTodoItems` | ~15 | Plan extraction from `<proposed_plan>` and `Plan:` formats |
+| `extractDoneSteps` | ~4 | `[DONE:n]` marker parsing |
+| `markCompletedSteps` | ~3 | Step completion tracking |
+| `cleanStepText` | ~7 | Text cleanup (markdown removal, normalization) |
+| Integration Scenarios | ~3 | Full workflow: plan → execute → complete |
+| `tool_call` blocking | ~6 | Tool block simulation in plan mode |
+| `buildBlockReason` | ~5 | Block reason message generation |
+| `loadPrompt` | ~5 | Prompt file loading and variable substitution |
+
+Total: ~163 tests
+
+## Architecture
+
+```
+plan-mode/
+├── index.ts           # 拡張機能エントリポイント（コマンド・イベントハンドラ）
+├── state.ts           # 状態管理・遷移（ModeState、モデル管理、モード切替）
+├── footer.ts          # カスタムフッター描画（pwd、トークン統計、モデル表示）
+├── utils.ts           # ユーティリティ（isSafeCommand、extractTodoItems、buildBlockReason、loadPrompt）
+├── model-selector.ts  # モデルセレクタUI
+├── prompts/
+│   ├── plan-mode.md   # プランモードシステムプロンプト
+│   └── execute-mode.md # 実行モードシステムプロンプト
+└── plan-mode.test.ts  # テストスイート
+```

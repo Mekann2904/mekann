@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Vitest
+coverage/
+*.lcov
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
