@@ -111,17 +111,18 @@ export function installFooter(ctx: ExtensionContext, state: ModeState): FooterHa
 
 				let planText: string;
 				if (state.planModeEnabled) {
-					planText = theme.fg("warning", `⏸ ${planLabel} (plan)`);
+					planText = theme.fg("warning", `${planLabel} (plan)`);
 				} else {
 					planText = theme.fg("dim", `${planLabel} (plan)`);
 				}
 
 				let mainText: string;
-				if (state.executionMode) {
-					const completed = state.todoItems.filter((t) => t.completed).length;
-					mainText = theme.fg("accent", `▶ ${completed}/${state.todoItems.length} ${mainLabel} (main)`);
-				} else {
+				if (state.planModeEnabled) {
 					mainText = theme.fg("dim", `${mainLabel} (main)`);
+				} else if (state.executionMode) {
+					mainText = theme.fg("warning", `${mainLabel} (main)`);
+				} else {
+					mainText = theme.fg("warning", `${mainLabel} (main)`);
 				}
 
 				// --- 行1: pwd行 ---
