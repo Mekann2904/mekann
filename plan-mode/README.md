@@ -23,7 +23,7 @@ plan に pendingPlan がない場合 → そのまま main に戻る（キャン
 
 | Shortcut | Description |
 |----------|-------------|
-| `Ctrl+Alt+P` | `/plan` と同じ |
+| `Cmd+P` (`super+p`) | `/plan` と同じ |
 
 ## CLI Flag
 

@@ -40,10 +40,7 @@ import {
 } from "./utils.js";
 
 const DEFAULT_PLAN_TOOLS = ["read", "grep", "find", "ls"];
-
-
-
-// --- 型ヘルパー ---
+const SAFE_PLAN_TOOLS = new Set(DEFAULT_PLAN_TOOLS);
 
 function isAssistantMessage(m: AgentMessage): m is AssistantMessage {
 	return m.role === "assistant" && Array.isArray(m.content);
@@ -56,8 +53,6 @@ function getTextContent(message: AssistantMessage): string {
 		.join("\n");
 }
 
-// --- メイン拡張機能 ---
-
 export default function planModeExtension(pi: ExtensionAPI): void {
 	const state: PlanState = createInitialState();
 
@@ -66,8 +61,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		type: "boolean",
 		default: false,
 	});
-
-	// --- Mode transitions ---
 
 	async function enterPlanMode(ctx: ExtensionContext): Promise<void> {
 		if (!state.savedActiveTools) {
@@ -86,7 +79,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	}
 
 	async function exitPlanMode(ctx: ExtensionContext): Promise<void> {
-		// tools を復元
 		if (state.savedActiveTools) {
 			pi.setActiveTools(state.savedActiveTools);
 			state.savedActiveTools = undefined;
@@ -115,9 +107,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			await exitPlanMode(ctx);
 		}
 	}
-
-	// --- Commands ---
-
 	pi.registerCommand("plan", {
 		description: "プランモード切替",
 		handler: async (_args, ctx) => {
@@ -131,10 +120,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			await togglePlanMode(ctx);
 		},
 	});
-
-	// --- Tool call blocking (plan mode: read-only) ---
-
-	const SAFE_PLAN_TOOLS = new Set(["read", "grep", "find", "ls"]);
 
 	let blockCount = 0;
 	let lastBlockedTool = "";
@@ -197,9 +182,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		return { block: true, reason };
 	});
-
-	// --- System prompt injection (plan mode only) ---
-
 	pi.on("before_agent_start", async (event) => {
 		if (!isReadOnlyMode(state.mode)) return;
 
@@ -223,9 +205,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			systemPrompt: `${event.systemPrompt}\n\n${prompt}`,
 		};
 	});
-
-	// --- Plan extraction (plan mode only) ---
-
 	pi.on("agent_end", async (event, ctx) => {
 		if (state.mode !== "plan") return;
 
@@ -240,15 +219,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			ctx.ui.notify("plan");
 		}
 	});
-
-	// --- Turn end: reset block tracking ---
-
 	pi.on("turn_end", async () => {
 		resetBlockTracking();
 	});
-
-	// --- Session start ---
-
 	pi.on("session_start", async (_event, ctx) => {
 		if (pi.getFlag("plan") === true) {
 			if (!state.savedActiveTools) {
