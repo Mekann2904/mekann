@@ -59,19 +59,16 @@ Clean up the entire repository codebase — remove noise, fix inconsistencies, e
 
 **Total: 706 → 518 lines (-26.6%), all 79 tests passing**
 
-### Latest batch (iters 30-36)
-- ✅ Iter 30: Inlined WRITING_TOOL_NAMES and BLOCK_REASON_HEADER into buildBlockReason (-5 lines)
-- ❌ Iter 31: Renamed __dirname→dir: cosmetic, discarded
-- ❌ Iter 32: resetPlanState helper: net +2, discarded (confirmed 2nd time)
-- ✅ Iter 33: Returned boolean expression directly in isSafeCommand (-1 line)
-- ✅ Iter 34: Inlined escapeAppleScriptString (-4 lines)
-- ✅ Iter 35: Inlined parseArgs with ternary chain (-6 lines)
-- ✅ Iter 36: Inlined formatBytes as ternary chain (-4 lines)
+### Latest batch (iters 37-40)
+- ✅ Iter 37: Removed dead AgentMessage import, merged two git calls into git ls-files -mo (-14 lines)
+- ✅ Iter 38: Replaced promisify(execFile) with native node:child_process/promises (-3 lines)
+- ❌ Iter 39: PROMPTS_DIR cache: net +1, discarded
+- ✅ Iter 40: Merged redirect DESTRUCTIVE_PATTERNS into one regex (-1 line)
 
 ### File breakdown
-- plan-mode/index.ts: 195 lines
-- plan-mode/utils.ts: 117 lines
+- plan-mode/index.ts: 194 lines
+- plan-mode/utils.ts: 116 lines
 - plan-mode/state.ts: 24 lines
-- zip-repo/index.ts: 143 lines
-- Total: 479 lines
+- zip-repo/index.ts: 127 lines
+- Total: 461 lines
 
