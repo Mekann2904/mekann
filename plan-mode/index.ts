@@ -6,17 +6,8 @@
 import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
-import {
-	createInitialState,
-	isReadOnlyMode,
-} from "./state.js";
-import {
-	isSafeCommand,
-	buildBlockReason,
-	loadPrompt,
-	hashContent,
-	extractProposedPlan,
-} from "./utils.js";
+import { createInitialState, isReadOnlyMode } from "./state.js";
+import { isSafeCommand, buildBlockReason, loadPrompt, hashContent, extractProposedPlan } from "./utils.js";
 
 const SAFE_PLAN_TOOLS = new Set(["read", "grep", "find", "ls"]);
 
