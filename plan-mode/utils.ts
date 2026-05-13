@@ -337,6 +337,14 @@ export function buildBlockReason(
 
 // --- Todo hashing ---
 
+export function resolveExecutionTools(
+	savedActiveTools: string[] | undefined,
+	configExecTools: string[] | undefined,
+	defaultTools: string[],
+): string[] {
+	return configExecTools ?? savedActiveTools ?? defaultTools;
+}
+
 export function hashTodoItems(items: TodoItem[]): string {
 	const content = items.map((t) => `${t.step}:${t.text}`).join("\n");
 	return hashContent(content);
