@@ -41,9 +41,7 @@ const SAFE_PATTERNS = [
 
 const SHELL_META_PATTERNS = [
 	/&&|\|\|/,
-	/;/,
-	/\|/,
-	/`/,
+	/[;|`]/,
 	/\$\(/,
 	/<\(/,
 	/(^|[^&])&([^&]|$)/,
