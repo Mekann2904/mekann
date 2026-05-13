@@ -50,9 +50,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		state.mode = "main";
 		Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined });
 		if (plan) {
-			pi.sendUserMessage(
-				`以下の plan に従って実装してください。\n\n<plan>\n${plan}\n</plan>`,
-			);
+			pi.sendUserMessage(`以下の plan に従って実装してください。\n\n<plan>\n${plan}\n</plan>`);
 		}
 		ctx.ui.notify("main");
 	}
@@ -66,16 +64,12 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	}
 	pi.registerCommand("plan", {
 		description: "プランモード切替",
-		handler: async (_args, ctx) => {
-			await togglePlanMode(ctx);
-		},
+		handler: (_args, ctx) => togglePlanMode(ctx),
 	});
 
 	pi.registerShortcut(Key.super("p"), {
 		description: "プランモード切替",
-		handler: async (ctx) => {
-			await togglePlanMode(ctx);
-		},
+		handler: (ctx) => togglePlanMode(ctx),
 	});
 
 	let blockCount = 0;
