@@ -1,8 +1,5 @@
 /**
  * Plan Mode — ユーティリティ関数
- *
- * isSafeCommand, buildBlockReason, loadPrompt, hashContent のみ。
- * TodoItem / StepStatus / extractTodoItems 等はすべて削除済み。
  */
 
 import { readFileSync } from "node:fs";
