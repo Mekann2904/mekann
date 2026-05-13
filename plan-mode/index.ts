@@ -102,12 +102,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	let lastBlockedTool = "";
 	let lastBlockedInput = "";
 
-	function resetBlockTracking(): void {
-		blockCount = 0;
-		lastBlockedTool = "";
-		lastBlockedInput = "";
-	}
-
 	pi.on("tool_call", async (event) => {
 		if (!isReadOnlyMode(state.mode)) return;
 
@@ -195,7 +189,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 	});
 	pi.on("turn_end", async () => {
-		resetBlockTracking();
+		blockCount = 0;
+		lastBlockedTool = "";
+		lastBlockedInput = "";
 	});
 	pi.on("session_start", async (_event, ctx) => {
 		if (pi.getFlag("plan") === true) {
