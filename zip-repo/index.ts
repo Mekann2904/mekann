@@ -149,15 +149,7 @@ export default function (pi: ExtensionAPI) {
 	});
 }
 
-/**
- * Overlay modified and untracked (non-ignored) files onto an existing ZIP archive.
- * Uses `zip -u` to update entries with on-disk content.
- *
- * @param parentDir  Parent directory of the repo (run zip from here so repoName/ prefix resolves)
- * @param repoName   Basename of the repo directory
- * @param repoRoot   Absolute path to the repo root (for git commands)
- * @param zipPath    Path to the ZIP file to update
- */
+/** Overlay modified and untracked files onto an existing ZIP archive. */
 async function overlayDirtyFiles(parentDir: string, repoName: string, repoRoot: string, zipPath: string): Promise<void> {
 	const { stdout: modifiedStdout } = await execFileAsync("git", [
 		"diff-files",
