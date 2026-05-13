@@ -14,6 +14,7 @@ import {
 	cleanStepText,
 	buildBlockReason,
 	loadPrompt,
+	hashContent,
 	type TodoItem,
 } from "./utils.js";
 
@@ -759,5 +760,184 @@ describe("loadPrompt", () => {
 		const prompt = loadPrompt("execute-mode");
 		expect(prompt).toContain("\${completedList}");
 		expect(prompt).toContain("\${todoList}");
+	});
+});
+
+// ============================================================
+// hashContent — コンテンツハッシュ
+// ============================================================
+describe("hashContent", () => {
+	it("同じ入力で同じハッシュを返す", () => {
+		const content = "hello world";
+		expect(hashContent(content)).toBe(hashContent(content));
+	});
+
+	it("異なる入力で異なるハッシュを返す", () => {
+		expect(hashContent("abc")).not.toBe(hashContent("xyz"));
+	});
+
+	it("ハッシュは12文字の16進文字列", () => {
+		const hash = hashContent("test");
+		expect(hash).toHaveLength(12);
+		expect(hash).toMatch(/^[0-9a-f]{12}$/);
+	});
+});
+
+// ============================================================
+// before_agent_start プロンプト注入最適化
+// ============================================================
+
+// before_agent_start の注入ロジックをシミュレーションする関数
+function simulateBeforeAgentStart(
+	planModeEnabled: boolean,
+	executionMode: boolean,
+	todoItems: TodoItem[],
+	state: { planPromptDelivered: boolean; planPromptHash: string | undefined },
+): { systemPrompt: string; injectedPromptType: "full" | "reminder" | "execute" | "none" } {
+	if (planModeEnabled) {
+		const fullPrompt = loadPrompt("plan-mode");
+		const currentHash = hashContent(fullPrompt);
+
+		const shouldInjectFull =
+			!state.planPromptDelivered ||
+			state.planPromptHash !== currentHash;
+
+		const prompt = shouldInjectFull
+			? fullPrompt
+			: loadPrompt("plan-mode-reminder");
+
+		if (shouldInjectFull) {
+			state.planPromptHash = currentHash;
+			state.planPromptDelivered = true;
+		}
+
+		const injectedPromptType = shouldInjectFull ? "full" as const : "reminder" as const;
+		return {
+			systemPrompt: `BASE\n\n${prompt}`,
+			injectedPromptType,
+		};
+	}
+
+	if (executionMode && todoItems.length > 0) {
+		const remaining = todoItems.filter((t) => !t.completed);
+		const completed = todoItems.filter((t) => t.completed);
+		const todoList = remaining.map((t) => `${t.step}. ${t.text}`).join("\n");
+		const completedList = completed.map((t) => `${t.step}. ${t.text} ✓`).join("\n");
+		const executeModeTemplate = loadPrompt("execute-mode");
+		const executeModePrompt = executeModeTemplate
+			.replaceAll("\${completedList}", completedList || "（なし）")
+			.replaceAll("\${todoList}", todoList);
+
+		return {
+			systemPrompt: `BASE\n\n${executeModePrompt}`,
+			injectedPromptType: "execute",
+		};
+	}
+
+	return {
+		systemPrompt: "BASE",
+		injectedPromptType: "none",
+	};
+}
+
+describe("before_agent_start プロンプト注入", () => {
+	it("初回 plan mode ON → フルプロンプトが選択される", () => {
+		const state = { planPromptDelivered: false, planPromptHash: undefined as string | undefined };
+		const result = simulateBeforeAgentStart(true, false, [], state);
+
+		expect(result.injectedPromptType).toBe("full");
+		expect(result.systemPrompt).toContain("プランモード（対話型）");
+		expect(result.systemPrompt).toContain("フェーズ1");
+		expect(state.planPromptDelivered).toBe(true);
+		expect(state.planPromptHash).toBeDefined();
+	});
+
+	it("2回目（継続中）→ reminder が選択される", () => {
+		const state = { planPromptDelivered: false, planPromptHash: undefined as string | undefined };
+		// 初回
+		simulateBeforeAgentStart(true, false, [], state);
+		expect(state.planPromptDelivered).toBe(true);
+
+		// 2回目
+		const result = simulateBeforeAgentStart(true, false, [], state);
+		expect(result.injectedPromptType).toBe("reminder");
+		expect(result.systemPrompt).toContain("プランモード（実行中）");
+		expect(result.systemPrompt).not.toContain("フェーズ1");
+	});
+
+	it("プロンプト変更 → フルプロンプトが再注入される", () => {
+		const state = { planPromptDelivered: false, planPromptHash: undefined as string | undefined };
+		// 初回（偽のハッシュをセットして「変更があった」状況を再現）
+		simulateBeforeAgentStart(true, false, [], state);
+
+		// ハッシュを偽装（プロンプトファイルが変更されたと想定）
+		state.planPromptHash = "000000000000";
+
+		const result = simulateBeforeAgentStart(true, false, [], state);
+		expect(result.injectedPromptType).toBe("full");
+		expect(result.systemPrompt).toContain("プランモード（対話型）");
+	});
+
+	it("plan mode OFF → 何も注入されない", () => {
+		const state = { planPromptDelivered: true, planPromptHash: "abc123" as string | undefined };
+		const result = simulateBeforeAgentStart(false, false, [], state);
+
+		expect(result.injectedPromptType).toBe("none");
+		expect(result.systemPrompt).toBe("BASE");
+	});
+
+	it("OFF → ON → フルプロンプトが再注入される（exitPlanMode後のenterPlanModeをシミュレーション）", () => {
+		const state = { planPromptDelivered: false, planPromptHash: undefined as string | undefined };
+		// 初回 ON
+		simulateBeforeAgentStart(true, false, [], state);
+		expect(state.planPromptDelivered).toBe(true);
+
+		// exitPlanMode シミュレーション: フラグリセット
+		state.planPromptDelivered = false;
+		state.planPromptHash = undefined;
+
+		// 再度 ON
+		const result = simulateBeforeAgentStart(true, false, [], state);
+		expect(result.injectedPromptType).toBe("full");
+		expect(result.systemPrompt).toContain("プランモード（対話型）");
+	});
+
+	it("実行モード→プランモード復帰 → フルプロンプトが再注入される", () => {
+		const state = { planPromptDelivered: false, planPromptHash: undefined as string | undefined };
+		// 初回 plan mode
+		simulateBeforeAgentStart(true, false, [], state);
+		expect(state.planPromptDelivered).toBe(true);
+
+		// startExecution シミュレーション: フラグリセット
+		state.planPromptDelivered = false;
+		state.planPromptHash = undefined;
+
+		// 実行モード中
+		const todoItems = [{ step: 1, text: "ステップ1", completed: false }];
+		const execResult = simulateBeforeAgentStart(false, true, todoItems, state);
+		expect(execResult.injectedPromptType).toBe("execute");
+
+		// togglePlanMode（実行→プラン復帰）シミュレーション: フラグリセット
+		state.planPromptDelivered = false;
+		state.planPromptHash = undefined;
+
+		const planResult = simulateBeforeAgentStart(true, false, [], state);
+		expect(planResult.injectedPromptType).toBe("full");
+		expect(planResult.systemPrompt).toContain("プランモード（対話型）");
+	});
+
+	it("reminder のみの状態でブロック対象ツール呼び出し → ブロックされる", () => {
+		// reminder が注入されている状態でも tool_call ブロックは有効であるべき
+		// （ツールブロックは before_agent_start ではなく tool_call イベントで処理）
+		const planModeEnabled = true;
+		const result = shouldBlockToolCall(planModeEnabled, "edit", { path: "/tmp/test.ts" });
+		expect(result).toBe(true);
+
+		const result2 = shouldBlockToolCall(planModeEnabled, "write", { path: "/tmp/test.ts" });
+		expect(result2).toBe(true);
+
+		// 許可されたツールはブロックされない
+		const result3 = shouldBlockToolCall(planModeEnabled, "read", { path: "/tmp/test.ts" });
+		expect(result3).toBe(false);
 	});
 });

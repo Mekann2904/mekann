@@ -55,6 +55,8 @@ export interface ModeState {
 	planThinkingLevel: string | undefined;
 	originalModel: Model<Api> | undefined;
 	originalThinkingLevel: string | undefined;
+	planPromptHash: string | undefined;
+	planPromptDelivered: boolean;
 }
 
 export function createInitialState(): ModeState {
@@ -66,6 +68,8 @@ export function createInitialState(): ModeState {
 		planThinkingLevel: undefined,
 		originalModel: undefined,
 		originalThinkingLevel: undefined,
+		planPromptHash: undefined,
+		planPromptDelivered: false,
 	};
 }
 
@@ -130,6 +134,8 @@ export async function enterPlanMode(
 	state.planModeEnabled = true;
 	state.executionMode = false;
 	state.todoItems = [];
+	state.planPromptDelivered = false;
+	state.planPromptHash = undefined;
 
 	const config = loadConfig(ctx.cwd);
 	pi.setActiveTools(config.planTools ?? DEFAULT_PLAN_TOOLS);
@@ -153,6 +159,8 @@ export async function exitPlanMode(
 	state.planModeEnabled = false;
 	state.executionMode = false;
 	state.todoItems = [];
+	state.planPromptDelivered = false;
+	state.planPromptHash = undefined;
 
 	const config = loadConfig(ctx.cwd);
 	pi.setActiveTools(config.execTools ?? DEFAULT_EXEC_TOOLS);
@@ -171,6 +179,8 @@ export async function startExecution(
 ): Promise<void> {
 	state.planModeEnabled = false;
 	state.executionMode = true;
+	state.planPromptDelivered = false;
+	state.planPromptHash = undefined;
 
 	const config = loadConfig(ctx.cwd);
 	pi.setActiveTools(config.execTools ?? DEFAULT_EXEC_TOOLS);
@@ -192,6 +202,8 @@ export async function togglePlanMode(
 		// 実行モード→プランモード（todoItems保持）
 		state.planModeEnabled = true;
 		state.executionMode = false;
+		state.planPromptDelivered = false;
+		state.planPromptHash = undefined;
 
 		const config = loadConfig(ctx.cwd);
 		pi.setActiveTools(config.planTools ?? DEFAULT_PLAN_TOOLS);

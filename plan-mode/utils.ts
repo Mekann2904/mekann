@@ -5,6 +5,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { createHash } from "node:crypto";
 
 // --- Bash command safety ---
 
@@ -332,6 +333,12 @@ export function buildBlockReason(
 	}
 
 	return `${BLOCK_REASON_HEADER}\n${toolLabel}「${inputDesc}」はブロックされました。\nプランモードではファイル変更は一切禁止。\n代わりに変更内容をテキストで報告してください。`;
+}
+
+// --- Content hashing ---
+
+export function hashContent(content: string): string {
+	return createHash("sha256").update(content).digest("hex").slice(0, 12);
 }
 
 // --- Prompt loading ---
