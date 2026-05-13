@@ -54,13 +54,7 @@ export default function (pi: ExtensionAPI) {
 			const zipPath = join(tmpDir, `${repoName}-${shortHead}-${Date.now()}.zip`);
 
 			try {
-				await execFileAsync("git", [
-					"archive",
-					"--format=zip",
-					`--prefix=${repoName}/`,
-					`--output=${zipPath}`,
-					"HEAD",
-				], { cwd: repoRoot });
+				await execFileAsync("git", ["archive", "--format=zip", `--prefix=${repoName}/`, `--output=${zipPath}`, "HEAD"], { cwd: repoRoot });
 
 				if (mode === "worktree" && dirty) {
 					const parentDir = dirname(repoRoot);
