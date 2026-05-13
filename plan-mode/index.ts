@@ -154,11 +154,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		);
 		if (!lastAssistant) return;
 
-		const text = lastAssistant.content
-			.filter((block): block is TextContent => block.type === "text")
-			.map((block) => block.text)
-			.join("\n");
-		const plan = extractProposedPlan(text);
+		const plan = extractProposedPlan(
+			lastAssistant.content.filter((b): b is TextContent => b.type === "text").map(b => b.text).join("\n"),
+		);
 
 		if (plan) {
 			state.pendingPlan = plan;
