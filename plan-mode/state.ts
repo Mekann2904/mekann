@@ -8,6 +8,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
@@ -68,6 +69,8 @@ export function loadConfig(cwd: string): PlanModeConfig {
 export interface ModeState {
 	mode: PlanMode;
 	todoItems: TodoItem[];
+	/** 実行開始時に固定された plan snapshot（実行中は変更不可） */
+	frozenPlan: TodoItem[] | undefined;
 	planModel: ModelSelection | undefined;
 	planThinkingLevel: string | undefined;
 	originalModel: Model<Api> | undefined;
@@ -93,6 +96,7 @@ export function createInitialState(): ModeState {
 		savedActiveTools: undefined,
 		planId: undefined,
 		planRevision: 0,
+		frozenPlan: undefined,
 	};
 }
 
@@ -218,6 +222,7 @@ export async function enterPlanMode(
 	state.planPromptHash = undefined;
 	state.planId = undefined;
 	state.planRevision = 0;
+	state.frozenPlan = undefined;
 
 	const config = loadConfig(ctx.cwd);
 	pi.setActiveTools(config.planTools ?? DEFAULT_PLAN_TOOLS);
@@ -244,6 +249,7 @@ export async function exitPlanMode(
 	state.planPromptHash = undefined;
 	state.planId = undefined;
 	state.planRevision = 0;
+	state.frozenPlan = undefined;
 
 	restoreOriginalToolsAndClear(pi, state);
 
@@ -258,6 +264,7 @@ export function markPlanReady(
 	state: ModeState,
 ): void {
 	state.mode = transition(state.mode, "plan_ready");
+	if (!state.planId) state.planId = randomUUID();
 	state.planRevision++;
 }
 
@@ -279,6 +286,9 @@ export async function startExecution(
 	state.mode = transition(state.mode, "executing");
 	state.planPromptDelivered = false;
 	state.planPromptHash = undefined;
+
+	// plan snapshot を固定（deep copy）
+	state.frozenPlan = JSON.parse(JSON.stringify(state.todoItems));
 
 	// plan-mode-execute マーカーを保存（復元時の DONE 再スキャン用）
 	const planHash = hashTodoItems(state.todoItems);
@@ -322,6 +332,7 @@ export function forceResetToNormal(
 	state.planPromptHash = undefined;
 	state.planId = undefined;
 	state.planRevision = 0;
+	state.frozenPlan = undefined;
 }
 
 export async function togglePlanMode(
@@ -364,6 +375,8 @@ export async function togglePlanMode(
 
 		case "completed":
 		case "aborted":
+			// 完了/中断 → normal 経由で planning へ
+			forceResetToNormal(state);
 			await enterPlanMode(pi, state, ctx, updateStatus);
 			break;
 	}

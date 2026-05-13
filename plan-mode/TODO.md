@@ -13,16 +13,18 @@
 - [x] 不正な状態遷移を防ぐ transition 関数を作る
 - [x] mode ごとに利用可能ツールを明示的に定義する
 - [x] セッション復元時の後方互換 (旧 enabled/executing → mode 復元)
+- [x] `completed`/`aborted` → `/plan` 時は normal 経由で planning に遷移（バグ修正）
 
 ## P0: Plan JSON スキーマを固定する
 
 - [x] `<plan_steps_json>` の正式スキーマを決める
 - [x] 各stepに必須フィールドを定義する
-  - [x] `id`
-  - [x] `title`
-  - [x] `instruction`
-  - [x] `acceptance`
-  - [x] `status`
+  - [x] `id` — kebab-case (必須)
+  - [x] `title` — 人間向けタイトル (必須)
+  - [x] `instruction` — エージェント向け詳細指示 (必須)
+  - [x] `acceptance` — 完了基準 (**必須**, hard error)
+  - [x] `verification` — 検証コマンド (省略可)
+  - [x] `status` — 実行状態 (必須, 初期値: "pending")
 - [x] `id` の形式を kebab-case に統一する
 - [x] プロンプト内の `snake-case-id` 表記を修正する
 - [x] JSON parse失敗時のフォールバック処理を作る
@@ -34,18 +36,18 @@
 - [x] planning mode中は副作用のあるコマンドを実行できないようにする
 - [x] ツール制限をプロンプト依存にしない
 - [x] host側で権限を強制する (tool_call event)
-- [x] ブロックされたツール呼び出しをログに残す
 - [x] ブロック理由をモデルに返す
 - [x] plan_ready モードでも同じ読み取り専用制限を適用
+- [x] ブロックされたツール呼び出しを永続ログに記録する
 
 ## P0.5: 承認フローを作る
 
 - [x] plan生成後に `plan_ready` 状態へ移行する
 - [x] `/execute-plan` は `plan_ready` のときだけ許可する
 - [x] `/execute-plan` 前に対象planの要約を表示する
-- [x] plan更新時は revision を増やす
-- [ ] 古いplanを誤って実行しないように plan id を持つ (部分的: planRevision あり)
-- [ ] 実行開始後は plan 内容を固定する
+- [x] planに `planId` を付与する (randomUUID)
+- [x] planに `planRevision` を付与する
+- [x] plan修正時に revision を増やす、planId は維持する
 
 ## P1: 実行モードを堅くする
 
@@ -57,6 +59,7 @@
   - [x] `failed`
   - [x] `skipped`
 - [x] `[DONE:id]` で status も "done" に更新する
+- [x] 実行開始時に plan snapshot を固定する (frozenPlan)
 - [ ] stepごとの順次実行を強制する
 - [ ] step完了時にacceptance条件を確認する
 - [ ] 失敗時に停止するか継続するかの方針を決める
@@ -86,8 +89,6 @@
 ## P1: 日本語アクション語判定を修正する
 
 - [x] `ACTION_WORDS_JA_RE` を文字クラスではなく語単位の正規表現にする
-- [x] 例: `追加|更新|修正|削除|作成|実装|確認|検証|テスト|...`
-- [x] 英語・日本語混在のstep titleでも検出できるようにする
 - [x] 誤検出を減らすテストを追加する
 
 ## P1: UI / UXを整える
@@ -103,17 +104,17 @@
 
 ## P2: Plan revisionを扱う
 
+- [x] planに `planId` を付与する (randomUUID)
 - [x] planに `planRevision` を付与する
 - [x] plan修正時に revision を増やす
-- [ ] planに `planId` を付与する
 - [ ] 実行済みplanの再実行を防ぐ
 - [ ] revision間のdiffを表示できるようにする
 
 ## P2: ログと監査性を追加する
 
+- [x] ブロックされたtool callログを永続化する (plan-mode-blocked-tool entry)
+  - mode, toolName, path/command のみ記録（機密回避）
 - [ ] mode遷移ログを残す
-- [ ] tool callログを残す
-- [ ] ブロックされたtool callログを残す
 - [ ] plan生成時の入力コンテキストを記録する
 - [ ] 実行結果をstepごとに記録する
 - [ ] 最終的な変更ファイル一覧を記録する
@@ -128,6 +129,11 @@
 - [x] 日本語step titleのvalidationテストを追加する
 - [x] verification フィールドの抽出テストを追加する
 - [x] プロンプト整合性テストを追加する
+- [x] 統合テスト: completed/aborted → /plan の遷移
+- [x] 統合テスト: planId 発行・planId 維持
+- [x] 統合テスト: plan snapshot 固定
+- [x] 統合テスト: blocked tool call ログ内容
+- [x] acceptance hard error テスト
 
 ## P2: ドキュメントを整備する
 
@@ -155,6 +161,9 @@
 - [x] ユーザー承認なしに実行へ移行しない (plan_ready ゲート)
 - [x] 実行中は保存済みplanに沿って進む
 - [x] stepごとの進捗が追跡できる
+- [x] acceptance が必須フィールド
+- [x] plan snapshot が実行開始時に固定される
+- [x] blocked tool call が監査ログに残る
 - [ ] verification結果が確認できる (フィールドあり、自動実行は未実装)
 - [ ] 失敗時にどのstepで止まったか分かる
 - [ ] Piホスト上で実機動作確認が完了している

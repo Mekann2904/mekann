@@ -444,6 +444,17 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		const reason = buildBlockReason(toolName, input, blockCount);
 
+		// 監査ログ: ブロックされたツール呼び出しを永続化
+		// 機密情報を避けるため、path と command のみ記録
+		pi.appendEntry("plan-mode-blocked-tool", {
+			at: Date.now(),
+			mode: state.mode,
+			toolName,
+			path: typeof input?.path === "string" ? input.path : undefined,
+			command: typeof input?.command === "string" ? input.command : undefined,
+			blockCount,
+		});
+
 		return {
 			block: true,
 			reason,

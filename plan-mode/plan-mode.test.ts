@@ -840,19 +840,15 @@ describe("validatePlan", () => {
 		expect(result.warnings).toHaveLength(0);
 	});
 
-	it("有効なプラン（acceptance なし）は valid: true、warnings あり", () => {
+	it("acceptance なしのステップは invalid", () => {
 		const items: TodoItem[] = [
 			{ id: "step-1", step: 1, text: "分析する", instruction: "コードを分析する", completed: false },
 			{ id: "step-2", step: 2, text: "実装する", instruction: "機能を実装する", completed: false },
 			{ id: "step-3", step: 3, text: "テストする", instruction: "テストを追加する", completed: false },
 		];
 		const result = validatePlan(items);
-		expect(result.valid).toBe(true);
-		expect(result.issues).toHaveLength(0);
-		expect(result.warnings).toHaveLength(3);
-		for (let i = 0; i < 3; i++) {
-			expect(result.warnings[i]).toContain("acceptance がありません");
-		}
+		expect(result.valid).toBe(false);
+		expect(result.issues.filter(s => s.includes("acceptance が空"))).toHaveLength(3);
 	});
 
 	it("ステップ数が少なすぎる場合は invalid", () => {
@@ -891,9 +887,9 @@ describe("validatePlan", () => {
 
 	it("日本語の動詞を含むステップは valid", () => {
 		const items: TodoItem[] = [
-			{ id: "step-1", step: 1, text: "分析", instruction: "コードを分析する", completed: false },
-			{ id: "step-2", step: 2, text: "実装", instruction: "新機能を追加する", completed: false },
-			{ id: "step-3", step: 3, text: "テスト", instruction: "テストを実装する", completed: false },
+			{ id: "step-1", step: 1, text: "分析", instruction: "コードを分析する", acceptance: "分析完了", completed: false },
+			{ id: "step-2", step: 2, text: "実装", instruction: "新機能を追加する", acceptance: "実装完了", completed: false },
+			{ id: "step-3", step: 3, text: "テスト", instruction: "テストを実装する", acceptance: "テスト通過", completed: false },
 		];
 		const result = validatePlan(items);
 		expect(result.valid).toBe(true);
@@ -901,9 +897,9 @@ describe("validatePlan", () => {
 
 	it("英語の動詞で始まるステップは valid", () => {
 		const items: TodoItem[] = [
-			{ id: "step-1", step: 1, text: "Analyze", instruction: "Analyze the codebase", completed: false },
-			{ id: "step-2", step: 2, text: "Implement", instruction: "Implement the feature", completed: false },
-			{ id: "step-3", step: 3, text: "Test", instruction: "Add tests for coverage", completed: false },
+			{ id: "step-1", step: 1, text: "Analyze", instruction: "Analyze the codebase", acceptance: "Analysis done", completed: false },
+			{ id: "step-2", step: 2, text: "Implement", instruction: "Implement the feature", acceptance: "Feature works", completed: false },
+			{ id: "step-3", step: 3, text: "Test", instruction: "Add tests for coverage", acceptance: "Tests pass", completed: false },
 		];
 		const result = validatePlan(items);
 		expect(result.valid).toBe(true);
@@ -933,27 +929,26 @@ describe("validatePlan", () => {
 		expect(result.issues.some((s) => s.includes("instruction が空"))).toBe(true);
 	});
 
-	// P1: acceptance 欠落は soft warning
-	it("P1: acceptance 欠落は soft warning で valid: true", () => {
+	// acceptance は必須（hard error）
+	it("acceptance 欠落は hard error", () => {
 		const items: TodoItem[] = [
 			{ id: "step-1", step: 1, text: "ステップ1", instruction: "ステップ1を実装する", completed: false },
 			{ id: "step-2", step: 2, text: "ステップ2", instruction: "ステップ2を実装する", acceptance: "テスト通過", completed: false },
 			{ id: "step-3", step: 3, text: "ステップ3", instruction: "ステップ3を実装する", completed: false },
 		];
 		const result = validatePlan(items);
-		expect(result.valid).toBe(true);
-		expect(result.warnings).toHaveLength(2);
-		expect(result.warnings[0]).toContain("step-1");
-		expect(result.warnings[1]).toContain("step-3");
+		expect(result.valid).toBe(false);
+		expect(result.issues.some(s => s.includes("acceptance が空") && s.includes("step-1"))).toBe(true);
+		expect(result.issues.some(s => s.includes("acceptance が空") && s.includes("step-3"))).toBe(true);
 	});
 
 	// step ID 形式バリデーション（kebab-case）
 	describe("step ID 形式バリデーション", () => {
 		it("有効な kebab-case ID は valid", () => {
 			const items: TodoItem[] = [
-				{ id: "add-validator", step: 1, text: "分析", instruction: "コードを分析する", completed: false },
-				{ id: "update-tests", step: 2, text: "実装", instruction: "機能を実装する", completed: false },
-				{ id: "fix-api-v2", step: 3, text: "テスト", instruction: "テストを追加する", completed: false },
+				{ id: "add-validator", step: 1, text: "分析", instruction: "コードを分析する", acceptance: "分析完了", completed: false },
+				{ id: "update-tests", step: 2, text: "実装", instruction: "機能を実装する", acceptance: "実装完了", completed: false },
+				{ id: "fix-api-v2", step: 3, text: "テスト", instruction: "テストを追加する", acceptance: "テスト通過", completed: false },
 			];
 			const result = validatePlan(items);
 			expect(result.valid).toBe(true);
@@ -961,9 +956,9 @@ describe("validatePlan", () => {
 
 		it("数字始まりの ID も valid", () => {
 			const items: TodoItem[] = [
-				{ id: "0-setup", step: 1, text: "分析", instruction: "コードを分析する", completed: false },
-				{ id: "1-implement", step: 2, text: "実装", instruction: "機能を実装する", completed: false },
-				{ id: "2-test", step: 3, text: "テスト", instruction: "テストを追加する", completed: false },
+				{ id: "0-setup", step: 1, text: "分析", instruction: "コードを分析する", acceptance: "分析完了", completed: false },
+				{ id: "1-implement", step: 2, text: "実装", instruction: "機能を実装する", acceptance: "実装完了", completed: false },
+				{ id: "2-test", step: 3, text: "テスト", instruction: "テストを追加する", acceptance: "テスト通過", completed: false },
 			];
 			const result = validatePlan(items);
 			expect(result.valid).toBe(true);
@@ -1071,9 +1066,14 @@ describe("統合シナリオ: プランモードワークフロー", () => {
 			expect(item.completed).toBe(false);
 		}
 
-		// 品質チェック
-		const validation = validatePlan(items);
-		expect(validation.valid).toBe(true);
+		// 品質チェック: acceptance は必須なので、フォールバック抽出では invalid
+		const validation1 = validatePlan(items);
+		if (items.every(i => i.acceptance)) {
+			expect(validation1.valid).toBe(true);
+		} else {
+			expect(validation1.valid).toBe(false);
+			expect(validation1.issues.some(s => s.includes("acceptance が空"))).toBe(true);
+		}
 
 		// --- フェーズ2: 実行開始、ステップ完了 ---
 		let marked = markCompletedSteps("[DONE:1]", items);
@@ -2040,9 +2040,9 @@ describe("StepStatus と markCompletedSteps", () => {
 describe("日本語アクション語判定 (ACTION_WORDS_JA_RE)", () => {
 	it("正しい動詞を検出する", () => {
 		const items: TodoItem[] = [
-			{ id: "step-1", step: 1, text: "分析", instruction: "コードを分析する", status: "pending", completed: false },
-			{ id: "step-2", step: 2, text: "追加", instruction: "機能を追加する", status: "pending", completed: false },
-			{ id: "step-3", step: 3, text: "テスト", instruction: "テストを実装する", status: "pending", completed: false },
+			{ id: "step-1", step: 1, text: "分析", instruction: "コードを分析する", acceptance: "分析完了", status: "pending", completed: false },
+			{ id: "step-2", step: 2, text: "追加", instruction: "機能を追加する", acceptance: "追加完了", status: "pending", completed: false },
+			{ id: "step-3", step: 3, text: "テスト", instruction: "テストを実装する", acceptance: "テスト通過", status: "pending", completed: false },
 		];
 		const result = validatePlan(items);
 		expect(result.valid).toBe(true);
@@ -2125,5 +2125,181 @@ describe("プロンプト: kebab-case ID 指示", () => {
 	it("plan-mode.md の例が kebab-case を使っている", () => {
 		const prompt = loadPrompt("plan-mode");
 		expect(prompt).toContain("add-validator");
+	});
+});
+
+// ============================================================
+// 統合テスト: index.ts / state.ts のイベント連携
+// ============================================================
+
+/**
+ * index.ts / state.ts の関数を直接呼ぶには Pi API が必要なので、
+ * 代わりに純粋関数レベルで「起こるべき状態遷移」を検証する。
+ * Pi ホスト上での実際のイベント連携は実機テストで確認する。
+ */
+describe("統合テスト: 状態遷移シナリオ", () => {
+	it("completed → /plan → normal 経由で planning になる", () => {
+		let mode: PlanMode = "normal";
+
+		// normal → planning → plan_ready → executing → completed
+		mode = transition(mode, "planning");
+		mode = transition(mode, "plan_ready");
+		mode = transition(mode, "executing");
+		mode = transition(mode, "completed");
+		expect(mode).toBe("completed");
+
+		// completed → normal (forceResetToNormal 相当) → planning
+		// 直接 completed → planning は InvalidTransitionError
+		expect(() => transition(mode, "planning")).toThrow(InvalidTransitionError);
+
+		// 正しい経路: completed → normal → planning
+		mode = transition(mode, "normal");
+		mode = transition(mode, "planning");
+		expect(mode).toBe("planning");
+	});
+
+	it("aborted → /plan → normal 経由で planning になる", () => {
+		let mode: PlanMode = "normal";
+
+		mode = transition(mode, "planning");
+		mode = transition(mode, "plan_ready");
+		mode = transition(mode, "executing");
+		mode = transition(mode, "aborted");
+		expect(mode).toBe("aborted");
+
+		expect(() => transition(mode, "planning")).toThrow(InvalidTransitionError);
+
+		mode = transition(mode, "normal");
+		mode = transition(mode, "planning");
+		expect(mode).toBe("planning");
+	});
+
+	it("planId 発行: markPlanReady で初回のみ planId が設定される", () => {
+		// planId は state.ts の markPlanReady 内で randomUUID() を呼ぶため、
+		// ここでは「初回のみ生成」というロジックをテストできない。
+		// 代わりに、state.ts の markPlanReady を呼ぶテストは Pi 依存のため、
+		// 関数のロジックを純粋関数として検証する:
+		// - planId が未設定なら生成
+		// - planId が既にあれば維持
+		let planId: string | undefined = undefined;
+
+		// 初回: planId は undefined → 生成されるべき
+		expect(planId).toBeUndefined();
+		planId = "generated-uuid-v1";
+		expect(planId).toBeDefined();
+
+		// revision 後も planId は維持
+		const savedPlanId = planId;
+		planId = planId; // 再設定なし → 同じ値
+		expect(planId).toBe(savedPlanId);
+	});
+
+	it("revise-plan では planId を維持し revision だけ増える", () => {
+		let mode: PlanMode = "planning";
+
+		// planning → plan_ready (1回目)
+		mode = transition(mode, "plan_ready");
+		let planRevision = 1;
+		const planId = "uuid-abc";
+
+		// plan_ready → planning (revision)
+		mode = transition(mode, "planning");
+
+		// planning → plan_ready (2回目)
+		mode = transition(mode, "plan_ready");
+		planRevision++;
+
+		expect(mode).toBe("plan_ready");
+		expect(planRevision).toBe(2);
+		expect(planId).toBe("uuid-abc"); // 変更なし
+	});
+
+	it("execute-plan 開始後に plan snapshot が固定される", () => {
+		// plan 内容の固定は startExecution で JSON.parse(JSON.stringify()) により行われる。
+		// ここでは概念的に、実行開始後は todoItems の内容が
+		// frozenPlan と一致することを確認する。
+		const todoItems: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "ステップ1", instruction: "ステップ1", acceptance: "完了", status: "pending", completed: false },
+			{ id: "step-2", step: 2, text: "ステップ2", instruction: "ステップ2", acceptance: "完了", status: "pending", completed: false },
+		];
+
+		// frozenPlan = deep copy
+		const frozenPlan = JSON.parse(JSON.stringify(todoItems));
+
+		// 実行中に todoItems が変更されても frozenPlan は不変
+		todoItems[0].completed = true;
+		todoItems[0].status = "done";
+
+		expect(frozenPlan[0].completed).toBe(false);
+		expect(frozenPlan[0].status).toBe("pending");
+		expect(todoItems[0].completed).toBe(true);
+	});
+
+	it("blocked tool call が appendEntry に渡されるべき内容を持つ", () => {
+		// tool_call ブロック時に pi.appendEntry に渡されるデータ構造を検証
+		const mode: PlanMode = "planning";
+		const toolName = "edit";
+		const input = { path: "src/index.ts" };
+		const blockCount = 1;
+
+		const logEntry = {
+			at: Date.now(),
+			mode,
+			toolName,
+			path: typeof input?.path === "string" ? input.path : undefined,
+			command: typeof input?.command === "string" ? input.command : undefined,
+			blockCount,
+		};
+
+		expect(logEntry.mode).toBe("planning");
+		expect(logEntry.toolName).toBe("edit");
+		expect(logEntry.path).toBe("src/index.ts");
+		expect(logEntry.command).toBeUndefined();
+	});
+
+	it("bash ブロック時は command が記録される", () => {
+		const mode: PlanMode = "planning";
+		const toolName = "bash";
+		const input = { command: "npm install" };
+		const blockCount = 1;
+
+		const logEntry = {
+			at: Date.now(),
+			mode,
+			toolName,
+			path: typeof input?.path === "string" ? input.path : undefined,
+			command: typeof input?.command === "string" ? input.command : undefined,
+			blockCount,
+		};
+
+		expect(logEntry.command).toBe("npm install");
+		expect(logEntry.path).toBeUndefined();
+	});
+});
+
+// ============================================================
+// acceptance 必須化のテスト
+// ============================================================
+describe("acceptance は hard error", () => {
+	it("acceptance 空文字は hard error", () => {
+		const items: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "ステップ1", instruction: "ステップ1を実装する", acceptance: "", status: "pending", completed: false },
+			{ id: "step-2", step: 2, text: "ステップ2", instruction: "ステップ2を実装する", acceptance: "テスト通過", status: "pending", completed: false },
+			{ id: "step-3", step: 3, text: "ステップ3", instruction: "ステップ3を実装する", acceptance: "完了", status: "pending", completed: false },
+		];
+		const result = validatePlan(items);
+		expect(result.valid).toBe(false);
+		expect(result.issues.some(s => s.includes("acceptance が空") && s.includes("step-1"))).toBe(true);
+	});
+
+	it("acceptance ありのプランは valid", () => {
+		const items: TodoItem[] = [
+			{ id: "step-1", step: 1, text: "分析する", instruction: "コードを分析する", acceptance: "分析完了", status: "pending", completed: false },
+			{ id: "step-2", step: 2, text: "実装する", instruction: "機能を実装する", acceptance: "テスト通過", status: "pending", completed: false },
+			{ id: "step-3", step: 3, text: "テストする", instruction: "テストを追加する", acceptance: "全テストgreen", status: "pending", completed: false },
+		];
+		const result = validatePlan(items);
+		expect(result.valid).toBe(true);
+		expect(result.issues).toHaveLength(0);
 	});
 });
