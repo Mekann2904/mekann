@@ -270,16 +270,13 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 	});
 
-	// context イベント: 通常モード時に plan 関連の sendMessage メッセージを除去
+	// context イベント: plan 関連の sendMessage メッセージを全モードで除去
 	const PLAN_MESSAGE_TYPES = new Set([
 		"plan-todo-list",
 		"plan-complete",
-		"plan-mode-execute",
 	]);
 
 	pi.on("context", async (event) => {
-		if (state.planModeEnabled || state.executionMode) return;
-
 		return {
 			messages: event.messages.filter((m) => {
 				const msg = m as AgentMessage & { customType?: string };
@@ -321,23 +318,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		// 実行完了チェック
 		if (state.executionMode && state.todoItems.length > 0) {
 			if (state.todoItems.every((t) => t.completed)) {
-				if (ctx.hasUI) {
-					pi.sendMessage(
-						{
-							customType: "plan-complete",
-							content: "**プラン完了！** ✓",
-							details: {
-								steps: state.todoItems.map((t) => ({
-									step: t.step,
-									text: t.text,
-									completed: t.completed,
-								})),
-							},
-							display: true,
-						},
-						{ triggerTurn: false },
-					);
-				}
+				ctx.ui.notify("**プラン完了！** ✓", "success");
 				state.executionMode = false;
 				state.todoItems = [];
 
@@ -370,25 +351,12 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (extracted.length > 0) {
 			state.todoItems = extracted;
 
-			// プランステップを表示
-			const todoListText = state.todoItems
-				.map((t, i) => `${i + 1}. ☐ ${t.text}`)
-				.join("\n");
-
-			pi.sendMessage(
-				{
-					customType: "plan-todo-list",
-					content: `**プラン手順 (${state.todoItems.length}):**\n\n${todoListText}`,
-					display: true,
-				},
-				{ triggerTurn: false },
-			);
+			ctx.ui.notify(`プラン手順 (${state.todoItems.length}): UIに表示中`, "info");
 
 			// 次のアクションを促す（todoItems が1件以上あることが保証されている）
 			const choices = [
 				"プランを実行する",
 				"プランモードを継続",
-				"プランを修正",
 			];
 
 			const choice = await ctx.ui.select("プランが提出されました — 次どうする？", choices);
@@ -396,42 +364,13 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			if (choice === "プランを実行する") {
 				await wrappedStartExecution(ctx);
 
-				const execMessage = `プランを実行。ステップ ${state.todoItems[0].step} から開始: ${state.todoItems[0].text}`;
-
-				pi.sendMessage(
-					{ customType: "plan-mode-execute", content: execMessage, display: true },
-					{ triggerTurn: true },
-				);
-			} else if (choice === "プランを修正") {
-				const refinement = await ctx.ui.editor("プランを修正:", "");
-				if (refinement?.trim()) {
-					pi.sendUserMessage(refinement.trim());
-				}
+				pi.sendUserMessage("プランを実行開始。");
 			}
 
 			// ユーザーの選択後に永続化（不完全な状態の保存を防ぐ）
 			wrappedPersistState();
 		} else {
 			// <proposed_plan> はあるがステップを抽出できなかった場合
-			ctx.ui.notify(
-				"プランから実装ステップを抽出できませんでした。プランを見直してください。",
-				"warning",
-			);
-
-			const choices = [
-				"プランモードを継続",
-				"プランを修正",
-			];
-
-			const choice = await ctx.ui.select("プランを見直してください", choices);
-
-			if (choice === "プランを修正") {
-				const refinement = await ctx.ui.editor("プランを修正:", "");
-				if (refinement?.trim()) {
-					pi.sendUserMessage(refinement.trim());
-				}
-			}
-
 			wrappedPersistState();
 		}
 	});
