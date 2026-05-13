@@ -37,6 +37,7 @@ import {
 	persistState,
 	applyPlanModel,
 	restoreMainModel,
+	restoreActiveTools,
 	enterPlanMode,
 	exitPlanMode,
 	startExecution,
@@ -48,11 +49,13 @@ import {
 } from "./state.js";
 import { installFooter, type FooterHandle } from "./footer.js";
 import {
+	isSafeCommand,
 	extractTodoItems,
 	markCompletedSteps,
 	buildBlockReason,
 	loadPrompt,
 	hashContent,
+	hashTodoItems,
 	type TodoItem,
 } from "./utils.js";
 
@@ -209,8 +212,10 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		updateStatus(ctx);
 	});
 
-	// プランモード中の書き込みツールをすべてブロック
-	const BLOCKED_TOOLS = ["edit", "write"];
+	// プランモード中のツール制限 — allowlist 方式
+	// read/grep/find/ls は無条件許可、bash は isSafeCommand() で検査、
+	// それ以外（edit, write, 将来の tool 含む）は原則ブロック。
+	const SAFE_PLAN_TOOLS = new Set(["read", "grep", "find", "ls"]);
 
 	let blockCount = 0;
 	let lastBlockedTool = "";
@@ -227,18 +232,36 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	pi.on("tool_call", async (event) => {
 		if (!state.planModeEnabled) return;
 
-		if (!BLOCKED_TOOLS.includes(event.toolName)) return;
+		const { toolName } = event;
 
+		// read/grep/find/ls は無条件許可
+		if (SAFE_PLAN_TOOLS.has(toolName)) return;
+
+		// bash はコマンド内容で安全性を判定
+		if (toolName === "bash") {
+			const command = String(
+				(event.input as { command?: unknown }).command ?? "",
+			);
+			if (!isSafeCommand(command)) {
+				return {
+					block: true,
+					reason: `Plan mode is read-only. Blocked unsafe bash command:\n${command}`,
+				};
+			}
+			return; // safe command は許可
+		}
+
+		// それ以外は原則ブロック（edit, write, 将来の tool 含む）
 		const inputKey = (event.input.path as string) || "";
-		if (event.toolName === lastBlockedTool && inputKey === lastBlockedInput) {
+		if (toolName === lastBlockedTool && inputKey === lastBlockedInput) {
 			blockCount++;
 		} else {
 			blockCount = 1;
-			lastBlockedTool = event.toolName;
+			lastBlockedTool = toolName;
 			lastBlockedInput = inputKey;
 		}
 
-		const reason = buildBlockReason(event.toolName, event.input as Record<string, unknown>, blockCount);
+		const reason = buildBlockReason(toolName, event.input as Record<string, unknown>, blockCount);
 
 		return {
 			block: true,
@@ -338,8 +361,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				state.executionMode = false;
 				state.todoItems = [];
 
-				const config = loadConfig(ctx.cwd);
-				pi.setActiveTools(config.execTools ?? DEFAULT_EXEC_TOOLS);
+				restoreActiveTools(pi, state, ctx.cwd);
 
 				updateStatus(ctx);
 				wrappedPersistState();
@@ -450,30 +472,42 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			pi.setActiveTools(config.execTools ?? DEFAULT_EXEC_TOOLS);
 		}
 
-		// 再開時: メッセージを再スキャンして完了状態を再構築
+		// 再開時: planHash が一致する場合のみ [DONE:n] を再スキャン
 		if (planModeEntry !== undefined && state.executionMode && state.todoItems.length > 0) {
 			let executeIndex = -1;
+			let executionPlanHash: string | undefined;
+
 			for (let i = entries.length - 1; i >= 0; i--) {
-				const entry = entries[i] as { type: string; customType?: string };
+				const entry = entries[i] as {
+					type: string;
+					customType?: string;
+					data?: { planHash?: string };
+				};
 				if (entry.customType === "plan-mode-execute") {
 					executeIndex = i;
+					executionPlanHash = entry.data?.planHash;
 					break;
 				}
 			}
 
-			const messages: AssistantMessage[] = [];
-			for (let i = executeIndex + 1; i < entries.length; i++) {
-				const entry = entries[i];
-				if (
-					entry.type === "message" &&
-					"message" in entry &&
-					isAssistantMessage(entry.message as AgentMessage)
-				) {
-					messages.push(entry.message as AssistantMessage);
+			const currentPlanHash = hashTodoItems(state.todoItems);
+
+			// planHash が一致する場合のみ再スキャン（古い DONE が新 plan に混入するのを防ぐ）
+			if (executionPlanHash && executionPlanHash === currentPlanHash && executeIndex >= 0) {
+				const messages: AssistantMessage[] = [];
+				for (let i = executeIndex + 1; i < entries.length; i++) {
+					const entry = entries[i];
+					if (
+						entry.type === "message" &&
+						"message" in entry &&
+						isAssistantMessage(entry.message as AgentMessage)
+					) {
+						messages.push(entry.message as AssistantMessage);
+					}
 				}
+				const allText = messages.map(getTextContent).join("\n");
+				markCompletedSteps(allText, state.todoItems);
 			}
-			const allText = messages.map(getTextContent).join("\n");
-			markCompletedSteps(allText, state.todoItems);
 		}
 
 		updateStatus(ctx);

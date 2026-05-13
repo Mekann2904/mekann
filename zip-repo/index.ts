@@ -19,6 +19,10 @@ function formatBytes(bytes: number): string {
 	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function escapeAppleScriptString(value: string): string {
+	return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("zip", {
 		description: "Archive the current Git repo as ZIP and copy to clipboard (macOS)",
@@ -33,8 +37,13 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			// 2. Get repo name
-			const repoName = basename(ctx.cwd);
+			// 2. Get repo root and name
+			const { stdout: repoRootStdout } = await execFileAsync(
+				"git", ["rev-parse", "--show-toplevel"],
+				{ cwd: ctx.cwd, encoding: "utf8" },
+			);
+			const repoRoot = repoRootStdout.trim();
+			const repoName = basename(repoRoot);
 
 			// 3. Generate timestamp
 			const now = new Date();
@@ -50,10 +59,26 @@ export default function (pi: ExtensionAPI) {
 
 			const zipPath = `/tmp/${repoName}-${ts}.zip`;
 
-			// 4. Create ZIP via git archive (respects .gitignore, excludes .git/)
+			// 4. Check for uncommitted changes
+			try {
+				const { stdout: statusStdout } = await execFileAsync(
+					"git", ["status", "--porcelain"],
+					{ cwd: repoRoot, encoding: "utf8" },
+				);
+				if (statusStdout.trim()) {
+					ctx.ui.notify(
+						"⚠ Uncommitted changes are not included in the ZIP (archived HEAD only)",
+						"warning",
+					);
+				}
+			} catch {
+				// status 取得失敗は警告だけ出して継続
+			}
+
+			// 5. Create ZIP via git archive (respects .gitignore, excludes .git/)
 			try {
 				await execFileAsync("git", ["archive", "--format=zip", `--output=${zipPath}`, "HEAD"], {
-					cwd: ctx.cwd,
+					cwd: repoRoot,
 				});
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
@@ -61,7 +86,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			// 5. Get file size
+			// 6. Get file size
 			let sizeStr: string;
 			try {
 				const info = await stat(zipPath);
@@ -70,11 +95,11 @@ export default function (pi: ExtensionAPI) {
 				sizeStr = "unknown size";
 			}
 
-			// 6. Copy to clipboard as a file (macOS)
+			// 7. Copy to clipboard as a file (macOS)
 			try {
 				await execFileAsync("osascript", [
 					"-e",
-					`set the clipboard to (POSIX file "${zipPath}")`,
+					`set the clipboard to (POSIX file "${escapeAppleScriptString(zipPath)}")`,
 				]);
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);

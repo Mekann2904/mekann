@@ -11,7 +11,7 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ModelSelection } from "./model-selector.js";
-import type { TodoItem } from "./utils.js";
+import { type TodoItem, hashTodoItems } from "./utils.js";
 
 // --- 設定 ---
 
@@ -57,6 +57,7 @@ export interface ModeState {
 	originalThinkingLevel: string | undefined;
 	planPromptHash: string | undefined;
 	planPromptDelivered: boolean;
+	savedActiveTools: string[] | undefined;
 }
 
 export function createInitialState(): ModeState {
@@ -70,6 +71,7 @@ export function createInitialState(): ModeState {
 		originalThinkingLevel: undefined,
 		planPromptHash: undefined,
 		planPromptDelivered: false,
+		savedActiveTools: undefined,
 	};
 }
 
@@ -115,6 +117,27 @@ export async function restoreMainModel(pi: ExtensionAPI, state: ModeState): Prom
 	}
 }
 
+// --- Active tools management ---
+
+/**
+ * execTools が明示されていればそれを使い、そうでなければ保存済みの元 tools に戻す。
+ */
+export function restoreActiveTools(
+	pi: ExtensionAPI,
+	state: ModeState,
+	cwd: string,
+): void {
+	const config = loadConfig(cwd);
+	if (config.execTools) {
+		pi.setActiveTools(config.execTools);
+	} else if (state.savedActiveTools) {
+		pi.setActiveTools(state.savedActiveTools);
+		state.savedActiveTools = undefined;
+	} else {
+		pi.setActiveTools(DEFAULT_EXEC_TOOLS);
+	}
+}
+
 // --- モード切替 ---
 
 export async function enterPlanMode(
@@ -127,6 +150,11 @@ export async function enterPlanMode(
 	if (!state.originalModel) {
 		state.originalModel = ctx.model;
 		state.originalThinkingLevel = pi.getThinkingLevel();
+	}
+
+	// 現在の active tools を保存（初回のみ）
+	if (!state.savedActiveTools) {
+		state.savedActiveTools = pi.getActiveTools();
 	}
 
 	state.planThinkingLevel = pi.getThinkingLevel();
@@ -162,8 +190,7 @@ export async function exitPlanMode(
 	state.planPromptDelivered = false;
 	state.planPromptHash = undefined;
 
-	const config = loadConfig(ctx.cwd);
-	pi.setActiveTools(config.execTools ?? DEFAULT_EXEC_TOOLS);
+	restoreActiveTools(pi, state, ctx.cwd);
 
 	await restoreMainModel(pi, state);
 
@@ -182,8 +209,15 @@ export async function startExecution(
 	state.planPromptDelivered = false;
 	state.planPromptHash = undefined;
 
-	const config = loadConfig(ctx.cwd);
-	pi.setActiveTools(config.execTools ?? DEFAULT_EXEC_TOOLS);
+	// plan-mode-execute マーカーを保存（復元時の DONE 再スキャン用）
+	const planHash = hashTodoItems(state.todoItems);
+	pi.appendEntry("plan-mode-execute", {
+		startedAt: Date.now(),
+		planHash,
+		todos: state.todoItems,
+	});
+
+	restoreActiveTools(pi, state, ctx.cwd);
 
 	await restoreMainModel(pi, state);
 
