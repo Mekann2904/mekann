@@ -119,8 +119,6 @@ export function installFooter(ctx: ExtensionContext, state: ModeState): FooterHa
 				let mainText: string;
 				if (state.planModeEnabled) {
 					mainText = theme.fg("dim", `${mainLabel} (main)`);
-				} else if (state.executionMode) {
-					mainText = theme.fg("warning", `${mainLabel} (main)`);
 				} else {
 					mainText = theme.fg("warning", `${mainLabel} (main)`);
 				}
