@@ -22,9 +22,7 @@ import {
 	modeLabel,
 } from "./state.js";
 
-// ============================================================
 // isSafeCommand — bash コマンドの安全性判定
-// ============================================================
 describe("isSafeCommand", () => {
 	describe("安全なコマンド", () => {
 		const safeCommands = [
@@ -129,9 +127,7 @@ describe("isSafeCommand", () => {
 	});
 });
 
-// ============================================================
 // extractProposedPlan — plan テキスト抽出
-// ============================================================
 describe("extractProposedPlan", () => {
 	it("<proposed_plan> の中身を取り出す", () => {
 		const msg = `
@@ -187,9 +183,7 @@ describe("extractProposedPlan", () => {
 	});
 });
 
-// ============================================================
 // buildBlockReason — ブロック理由メッセージ
-// ============================================================
 describe("buildBlockReason", () => {
 	it("1回目のブロック: edit ツール", () => {
 		const reason = buildBlockReason("edit", { path: "src/index.ts" }, 1);
@@ -216,9 +210,7 @@ describe("buildBlockReason", () => {
 	});
 });
 
-// ============================================================
 // loadPrompt — プロンプトファイル読み込み
-// ============================================================
 describe("loadPrompt", () => {
 	it("plan-mode.md を読み込める", () => {
 		const prompt = loadPrompt("plan-mode");
@@ -248,9 +240,7 @@ describe("loadPrompt", () => {
 	});
 });
 
-// ============================================================
 // hashContent — コンテンツハッシュ
-// ============================================================
 describe("hashContent", () => {
 	it("同じ入力で同じハッシュを返す", () => {
 		expect(hashContent("hello")).toBe(hashContent("hello"));
@@ -267,9 +257,7 @@ describe("hashContent", () => {
 	});
 });
 
-// ============================================================
 // sanitizePlanTools
-// ============================================================
 describe("sanitizePlanTools", () => {
 	it("edit と write を除去する", () => {
 		expect(sanitizePlanTools(["read", "edit", "write", "grep"])).toEqual(["read", "grep"]);
@@ -288,9 +276,7 @@ describe("sanitizePlanTools", () => {
 	});
 });
 
-// ============================================================
 // State: createInitialState, isReadOnlyMode, modeLabel
-// ============================================================
 describe("State", () => {
 	it("初期状態は main", () => {
 		const state = createInitialState();
@@ -311,9 +297,7 @@ describe("State", () => {
 	});
 });
 
-// ============================================================
 // Tool blocking simulation
-// ============================================================
 const SAFE_PLAN_TOOLS = new Set(["read", "grep", "find", "ls"]);
 
 function shouldBlockToolCall(
@@ -362,9 +346,7 @@ describe("tool_call ブロック判定", () => {
 	});
 });
 
-// ============================================================
 // 統合シナリオ: plan mode の最小ワークフロー
-// ============================================================
 describe("統合シナリオ: plan mode ワークフロー", () => {
 	it("main → plan → plan 抽出 → main で実行", () => {
 		const state = createInitialState();
