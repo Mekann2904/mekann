@@ -136,6 +136,10 @@ export async function enterPlanMode(
 
 	await applyPlanModel(pi, state, ctx);
 
+	if (!state.planModel) {
+		ctx.ui.notify("プラン用モデルが未設定です。/plan-model で設定してください。", "warning");
+	}
+
 	ctx.ui.notify("プランモード有効 — 読み取り専用探索", "info");
 	updateStatus(ctx);
 }
@@ -184,6 +188,17 @@ export async function togglePlanMode(
 ): Promise<void> {
 	if (state.planModeEnabled) {
 		await exitPlanMode(pi, state, ctx, updateStatus);
+	} else if (state.executionMode) {
+		// 実行モード→プランモード（todoItems保持）
+		state.planModeEnabled = true;
+		state.executionMode = false;
+
+		const config = loadConfig(ctx.cwd);
+		pi.setActiveTools(config.planTools ?? DEFAULT_PLAN_TOOLS);
+		await applyPlanModel(pi, state, ctx);
+
+		ctx.ui.notify("プランモードに復帰 — todoItems保持", "info");
+		updateStatus(ctx);
 	} else {
 		await enterPlanMode(pi, state, ctx, updateStatus);
 	}
