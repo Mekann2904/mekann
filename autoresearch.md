@@ -59,15 +59,14 @@ Clean up the entire repository codebase — remove noise, fix inconsistencies, e
 
 **Total: 706 → 518 lines (-26.6%), all 79 tests passing**
 
-### Latest batch (iters 54-56)
-- ✅ Iter 54: Merged sudo/su + kill/pkill/killall into single alternation (-1 line)
-- ✅ Iter 55: Merged npm install/uninstall + npm audit fix into single regex (-1 line)
-- ✅ Iter 56: Collapsed before_agent_start handler — inlined prompt variable, condensed state update (-11 lines)
+### Latest batch (iters 57-58)
+- ✅ Iter 57: Inlined text extraction chain into extractProposedPlan call, removed intermediate 'text' variable (-2 lines)
+- ✅ Iter 58: Removed non-essential blank lines within enterPlanMode/exitPlanMode bodies (-3 lines)
 
 ### File breakdown
-- plan-mode/index.ts: 178 lines
+- plan-mode/index.ts: 171 lines
 - plan-mode/utils.ts: 99 lines
 - plan-mode/state.ts: 24 lines
 - zip-repo/index.ts: 125 lines
-- Total: 426 lines
+- Total: 421 lines
 
