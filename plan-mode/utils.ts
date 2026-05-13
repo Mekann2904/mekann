@@ -7,6 +7,66 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 
+// --- Mode enum & transitions (Pi非依存の純粋関数) ---
+
+export type PlanMode =
+	| "normal"
+	| "planning"
+	| "plan_ready"
+	| "executing"
+	| "completed"
+	| "aborted";
+
+/** 不正な状態遷移のエラー */
+export class InvalidTransitionError extends Error {
+	constructor(
+		public readonly from: PlanMode,
+		public readonly to: PlanMode,
+	) {
+		super(`Invalid mode transition: ${from} → ${to}`);
+		this.name = "InvalidTransitionError";
+	}
+}
+
+const VALID_TRANSITIONS: Record<PlanMode, PlanMode[]> = {
+	normal:     ["planning"],
+	planning:   ["normal", "plan_ready"],
+	plan_ready: ["executing", "planning", "normal"],
+	executing:  ["completed", "aborted", "planning"],
+	completed:  ["normal"],
+	aborted:    ["normal"],
+};
+
+/** 遷移が有効か検証 */
+export function isValidTransition(from: PlanMode, to: PlanMode): boolean {
+	return VALID_TRANSITIONS[from]?.includes(to) ?? false;
+}
+
+/** 安全な遷移関数 */
+export function transition(current: PlanMode, next: PlanMode): PlanMode {
+	if (!isValidTransition(current, next)) {
+		throw new InvalidTransitionError(current, next);
+	}
+	return next;
+}
+
+/** mode が読み取り専用か */
+export function isReadOnlyMode(mode: PlanMode): boolean {
+	return mode === "planning" || mode === "plan_ready";
+}
+
+/** mode の表示ラベル */
+export function modeLabel(mode: PlanMode): string {
+	switch (mode) {
+		case "normal":     return "通常モード";
+		case "planning":   return "プランモード（読み取り専用）";
+		case "plan_ready": return "プラン実行待ち";
+		case "executing":  return "実行モード";
+		case "completed":  return "プラン完了 ✓";
+		case "aborted":    return "プラン中断";
+	}
+}
+
 // --- Bash command safety ---
 
 const DESTRUCTIVE_PATTERNS = [
@@ -138,13 +198,18 @@ export function isSafeCommand(command: string): boolean {
 
 // --- Plan extraction ---
 
+/** ステップの実行状態 */
+export type StepStatus = "pending" | "in_progress" | "done" | "failed" | "skipped";
+
 export interface TodoItem {
-	id: string;           // 機械可読 step ID (例: "inspect-current-state")
-	step: number;         // 表示順序（1-origin）
-	text: string;         // UI 表示用テキスト
-	instruction: string;  // 実行用原文（識別子の大小文字を保持）
-	acceptance?: string;  // 受け入れ基準
-	completed: boolean;
+	id: string;            // 機械可読 step ID (例: "inspect-current-state")
+	step: number;          // 表示順序（1-origin）
+	text: string;          // UI 表示用テキスト
+	instruction: string;   // 実行用原文（識別子の大小文字を保持）
+	acceptance?: string;   // 受け入れ基準
+	verification?: string; // 検証コマンド（例: "npm test", "tsc --noEmit"）
+	status: StepStatus;    // 実行状態
+	completed: boolean;    // 後方互換: status === "done" と等価
 }
 
 /** <plan_steps_json> の各エントリ */
@@ -153,6 +218,7 @@ interface PlanStepJson {
 	title: string;
 	instruction?: string;
 	acceptance?: string;
+	verification?: string;
 }
 
 export function cleanStepText(text: string): string {
@@ -211,6 +277,8 @@ export function extractTodoItems(message: string): TodoItem[] {
 							text: cleanStepText(e.title),
 							instruction: typeof e.instruction === "string" ? e.instruction : e.title,
 							acceptance: typeof e.acceptance === "string" ? e.acceptance : undefined,
+							verification: typeof e.verification === "string" ? e.verification : undefined,
+							status: "pending" as const,
 							completed: false,
 						});
 					}
@@ -296,6 +364,7 @@ function extractItemsFromSection(content: string, items: TodoItem[]): void {
 						step: items.length + 1,
 						text: cleaned,
 						instruction: raw,
+						status: "pending" as const,
 						completed: false,
 					});
 				}
@@ -318,6 +387,7 @@ function extractItemsFromSection(content: string, items: TodoItem[]): void {
 						step: items.length + 1,
 						text: cleaned,
 						instruction: raw,
+						status: "pending" as const,
 						completed: false,
 					});
 				}
@@ -345,6 +415,7 @@ function extractItemsFromSection(content: string, items: TodoItem[]): void {
 							step: items.length + 1,
 							text: cleaned,
 							instruction: raw,
+							status: "pending" as const,
 							completed: false,
 						});
 					}
@@ -366,6 +437,7 @@ function extractItemsFromSection(content: string, items: TodoItem[]): void {
 							step: items.length + 1,
 							text: cleaned,
 							instruction: raw,
+							status: "pending" as const,
 							completed: false,
 						});
 					}
@@ -394,6 +466,7 @@ function extractNumberedItems(planSection: string, items: TodoItem[]): void {
 					step: items.length + 1,
 					text: cleaned,
 					instruction: raw,
+					status: "pending" as const,
 					completed: false,
 				});
 			}
@@ -424,6 +497,7 @@ export function markCompletedSteps(text: string, items: TodoItem[]): number {
 				: items.find((t) => t.id === step);
 		if (item && !item.completed) {
 			item.completed = true;
+			item.status = "done";
 			changed++;
 		}
 	}
@@ -469,7 +543,7 @@ export interface ValidationResult {
 const ACTION_WORDS_RE =
 	/^(update|create|write|read|check|verify|modify|add|remove|delete|install|fix|implement|refactor|test|migrate|configure|setup|build|deploy|analyze|review|document|optimize|extract|integrate|replace|rename|move|split|merge|restructure|change|improve|handle|convert|validate|ensure|set|get|run|execute)/i;
 const ACTION_WORDS_JA_RE =
-	/[するつくり追加更新修正削除作成実装確認検証テスト移行設定構築分析レビュー導入適用変更改善対応変換抽出検証保証実行移動分割統合再構築]/;
+	/(追加|更新|修正|削除|作成|実装|確認|検証|テスト|移行|設定|構築|分析|レビュー|導入|適用|変更|改善|対応|変換|抽出|実行|移動|分割|統合|再構築|リファクタ)/;
 
 /** step ID 形式: kebab-case のみ許可（extractDoneSteps の正規表現と整合） */
 const STEP_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
