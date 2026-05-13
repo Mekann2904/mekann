@@ -12,11 +12,6 @@ import { tmpdir } from "node:os";
 
 const execFileAsync = promisify(execFile);
 
-function formatBytes(bytes: number): string {
-	if (bytes < 1024) return `${bytes} B`;
-	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 type ZipMode = "default" | "head" | "worktree";
 
@@ -92,7 +87,8 @@ export default function (pi: ExtensionAPI) {
 
 			let sizeStr = "unknown size";
 			try {
-				sizeStr = formatBytes((await stat(zipPath)).size);
+				const b = (await stat(zipPath)).size;
+				sizeStr = b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`;
 			} catch {}
 
 			try {
