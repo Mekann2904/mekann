@@ -35,7 +35,6 @@ import {
 	buildBlockReason,
 	loadPrompt,
 	hashContent,
-	sanitizePlanTools,
 	extractProposedPlan,
 } from "./utils.js";
 
@@ -72,8 +71,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		state.planPromptDelivered = false;
 		state.planPromptHash = undefined;
 
-		const safeTools = sanitizePlanTools(DEFAULT_PLAN_TOOLS);
-		pi.setActiveTools(safeTools);
+		pi.setActiveTools(DEFAULT_PLAN_TOOLS);
 
 		ctx.ui.notify("plan");
 	}
