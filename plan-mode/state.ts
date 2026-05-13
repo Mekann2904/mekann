@@ -1,10 +1,3 @@
-/**
- * Plan Mode — 最小状態管理
- *
- * main と plan の2モードのみ。
- * plan はテキストコンテキストとして保存・注入される。
- */
-
 export type Mode = "main" | "plan";
 
 export function isReadOnlyMode(mode: Mode): boolean {
