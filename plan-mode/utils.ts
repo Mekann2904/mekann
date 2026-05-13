@@ -2,6 +2,10 @@
  * Utility functions for plan mode.
  */
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
 // --- Bash command safety ---
 
 const DESTRUCTIVE_PATTERNS = [
@@ -131,12 +135,143 @@ export function cleanStepText(text: string): string {
 	return cleaned;
 }
 
+/**
+ * extractTodoItems — \"Plan:\" ヘッダーまたは <proposed_plan> ブロックから
+ * 実装ステップを抽出する。
+ *
+ * 対応フォーマット:
+ * 1. 従来の \"Plan:\" + 番号付きリスト
+ * 2. <proposed_plan> ブロック内の実装項目
+ *    - \"Key Changes\" / \"Implementation Changes\" セクションの箇条書き
+ *    - 番号付きリスト
+ */
 export function extractTodoItems(message: string): TodoItem[] {
 	const items: TodoItem[] = [];
-	const headerMatch = message.match(/\*{0,2}Plan:\*{0,2}\s*\n/i);
-	if (!headerMatch) return items;
 
-	const planSection = message.slice(message.indexOf(headerMatch[0]) + headerMatch[0].length);
+	// --- パターン1: <proposed_plan> ブロック ---
+	const proposedPlanMatch = message.match(/<proposed_plan>\s*\n([\s\S]*?)\n\s*<\/proposed_plan>/);
+	if (proposedPlanMatch) {
+		const planContent = proposedPlanMatch[1];
+		extractItemsFromSection(planContent, items);
+	}
+
+	// --- パターン2: 従来の \"Plan:\" ヘッダー ---
+	if (items.length === 0) {
+		const headerMatch = message.match(/\*{0,2}Plan:\*{0,2}\s*\n/i);
+		if (headerMatch) {
+			const planSection = message.slice(message.indexOf(headerMatch[0]) + headerMatch[0].length);
+			extractNumberedItems(planSection, items);
+		}
+	}
+
+	return items;
+}
+
+/**
+ * <proposed_plan> 内のコンテンツから実装項目を抽出。
+ * 実装関連セクション（Key Changes, Implementation Changes, Test Plan 等）の
+ * 箇条書き (- / * ) と番号付きリストを対象とする。
+ */
+function extractItemsFromSection(content: string, items: TodoItem[]): void {
+	const lines = content.split("\n");
+	let inImplementationSection = false;
+	let anySectionHeaderFound = false;
+
+	// 英語・日本語のセクションヘッダーキーワード
+	const IMPL_SECTION_RE =
+		/key\s*changes|implementation|changes|test\s*plan|steps|task|action/i;
+	const IMPL_SECTION_JA_RE =
+		/主要な変更|実装の変更|変更点|テスト計画|テスト|手順|ステップ|タスク/i;
+
+	for (const line of lines) {
+		const trimmed = line.trim();
+
+		// セクションヘッダー検出 (## or ###)
+		const headerMatch = trimmed.match(/^#{1,4}\s+(.+)/);
+		if (headerMatch) {
+			const headerText = headerMatch[1];
+			anySectionHeaderFound = true;
+			inImplementationSection =
+				IMPL_SECTION_RE.test(headerText) || IMPL_SECTION_JA_RE.test(headerText);
+			continue;
+		}
+
+		if (!inImplementationSection) continue;
+
+		// 箇条書き (- / * ) からステップ抽出
+		const bulletMatch = trimmed.match(/^[-*]\s+(.+)/);
+		if (bulletMatch) {
+			const text = bulletMatch[1]
+				.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
+				.replace(/`([^`]+)`/g, "$1")
+				.trim();
+			if (text.length > 5) {
+				const cleaned = cleanStepText(text);
+				if (cleaned.length > 3) {
+					items.push({ step: items.length + 1, text: cleaned, completed: false });
+				}
+			}
+			continue;
+		}
+
+		// 番号付きリスト (1. / 2. ) からステップ抽出
+		const numberedMatch = trimmed.match(/^(\d+)[.)]\s+(.+)/);
+		if (numberedMatch) {
+			const text = numberedMatch[2]
+				.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
+				.replace(/`([^`]+)`/g, "$1")
+				.trim();
+			if (text.length > 5) {
+				const cleaned = cleanStepText(text);
+				if (cleaned.length > 3) {
+					items.push({ step: items.length + 1, text: cleaned, completed: false });
+				}
+			}
+		}
+	}
+
+	// フォールバック: セクションヘッダーが1つもマッチしなかった場合、
+	// ブロック内の全箇条書き・番号付きリストを抽出する
+	if (items.length === 0 && !anySectionHeaderFound) {
+		for (const line of lines) {
+			const trimmed = line.trim();
+
+			const bulletMatch = trimmed.match(/^[-*]\s+(.+)/);
+			if (bulletMatch) {
+				const text = bulletMatch[1]
+					.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
+					.replace(/`([^`]+)`/g, "$1")
+					.trim();
+				if (text.length > 5) {
+					const cleaned = cleanStepText(text);
+					if (cleaned.length > 3) {
+						items.push({ step: items.length + 1, text: cleaned, completed: false });
+					}
+				}
+				continue;
+			}
+
+			const numberedMatch = trimmed.match(/^(\d+)[.)]\s+(.+)/);
+			if (numberedMatch) {
+				const text = numberedMatch[2]
+					.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
+					.replace(/`([^`]+)`/g, "$1")
+					.trim();
+				if (text.length > 5) {
+					const cleaned = cleanStepText(text);
+					if (cleaned.length > 3) {
+						items.push({ step: items.length + 1, text: cleaned, completed: false });
+					}
+				}
+			}
+		}
+	}
+}
+
+/**
+ * 従来の \"Plan:\" 番号付きリストからステップ抽出。
+ */
+function extractNumberedItems(planSection: string, items: TodoItem[]): void {
 	const numberedPattern = /^\s*(\d+)[.)]\s+\*{0,2}([^*\n]+)/gm;
 
 	for (const match of planSection.matchAll(numberedPattern)) {
@@ -151,7 +286,6 @@ export function extractTodoItems(message: string): TodoItem[] {
 			}
 		}
 	}
-	return items;
 }
 
 export function extractDoneSteps(message: string): number[] {
@@ -170,4 +304,59 @@ export function markCompletedSteps(text: string, items: TodoItem[]): number {
 		if (item) item.completed = true;
 	}
 	return doneSteps.length;
+}
+
+// --- Block reason generation ---
+
+export const WRITING_TOOL_NAMES: Record<string, string> = {
+	edit: "ファイル編集",
+	write: "ファイル作成/上書き",
+	bash: "シェルコマンド",
+};
+
+export const BLOCK_REASON_HEADER = "【プランモード・読み取り専用】";
+
+export function buildBlockReason(
+	toolName: string,
+	input: Record<string, unknown>,
+	blockCount: number,
+): string {
+	const toolLabel = WRITING_TOOL_NAMES[toolName] || toolName;
+	const inputDesc =
+		toolName === "bash"
+			? (input.command as string)
+			: (input.path as string) || "unknown";
+
+	if (blockCount >= 3) {
+		return `${BLOCK_REASON_HEADER}\n⚠ ${toolLabel}は実行できません。${blockCount}回ブロック済みです。\n今すぐ停止し、分析結果を報告してください。\n絶対に再試行しないでください。\n代わりに <proposed_plan> ブロックで実装計画を出力してください。`;
+	}
+	if (blockCount >= 2) {
+		return `${BLOCK_REASON_HEADER}\n⚠ ${toolLabel}は実行できません（${blockCount}回目のブロック）。\n再度試行しても同じ結果になります。\n読み取り専用の分析を続け、最終的に <proposed_plan> ブロックで結果を出力してください。`;
+	}
+
+	if (toolName === "bash") {
+		return `${BLOCK_REASON_HEADER}\nシェルコマンド「${inputDesc}」はブロックされました。\nプランモードでは読み取りコマンド（cat, ls, grep, find, read等）のみ許可。\n代わりに分析結果をテキストで報告してください。`;
+	}
+
+	return `${BLOCK_REASON_HEADER}\n${toolLabel}「${inputDesc}」はブロックされました。\nプランモードではファイル変更は一切禁止。\n代わりに変更内容をテキストで報告してください。`;
+}
+
+// --- Prompt loading ---
+
+export function loadPrompt(name: string, vars?: Record<string, string>): string {
+	const __dirname = dirname(fileURLToPath(import.meta.url));
+	let content: string;
+	try {
+		content = readFileSync(join(__dirname, "prompts", `${name}.md`), "utf-8");
+	} catch {
+		throw new Error(`プロンプトファイルが見つかりません: prompts/${name}.md`);
+	}
+
+	if (vars) {
+		for (const [key, value] of Object.entries(vars)) {
+			content = content.replaceAll(`\$\{${key}\}`, value);
+		}
+	}
+
+	return content;
 }
