@@ -517,17 +517,10 @@ function cleanupTempDir(dir: string): void {
 
 // ─── Process group cleanup helper ───────────────────────────────
 
-/**
- * Process group に SIGKILL を送り、短時間待つ safety net。
- * close handler の中から呼ばれるため、'close' event listener は使えない
- * （既に発火済みのため）。
- * 代わりに SIGKILL を送った後、OS が cleanup する短い猶予を与える。
- */
-function cleanupResidualProcesses(proc: ReturnType<typeof spawn>): void {
+/** Send SIGKILL to a process group (idempotent — ignores already-dead processes). */
+function killPgSigkill(proc: ReturnType<typeof spawn>): void {
 	try {
-		if (proc.pid) {
-			process.kill(-proc.pid, "SIGKILL");
-		}
+		if (proc.pid) process.kill(-proc.pid, "SIGKILL");
 	} catch {
 		// already dead — idempotent
 	}
@@ -552,13 +545,7 @@ function waitForProcessDeath(
 		};
 
 		// Safety net: send SIGKILL to process group
-		try {
-			if (proc.pid) {
-				process.kill(-proc.pid, "SIGKILL");
-			}
-		} catch {
-			// already dead
-		}
+		killPgSigkill(proc);
 
 		// Wait for 'close' event (all stdio streams closed + process exited)
 		proc.once("close", done);
@@ -704,14 +691,6 @@ export async function runSandboxedShellMac(
 		}
 	}
 
-	function killProcessGroupForce(proc: ReturnType<typeof spawn>): void {
-		try {
-			process.kill(-proc.pid!, "SIGKILL");
-		} catch (e) {
-			// already dead — idempotent
-		}
-	}
-
 	/**
 	 * Unified termination path for timeout, abort, and output cap exceeded.
 	 * SIGTERM → grace → SIGKILL.
@@ -723,7 +702,7 @@ export async function runSandboxedShellMac(
 
 		killProcessGroup(child, "SIGTERM");
 		sigkillTimeoutId = setTimeout(() => {
-			killProcessGroupForce(child);
+			killPgSigkill(child);
 		}, SIGKILL_GRACE_MS);
 	}
 
@@ -787,7 +766,7 @@ export async function runSandboxedShellMac(
 			// as a safety net for any residual background processes.
 			// Only do this for truly normal exits to avoid PID/PGID reuse risk.
 			if (!killed && code !== null) {
-				cleanupResidualProcesses(child);
+				killPgSigkill(child);
 				// Give OS a brief moment to clean up residual processes
 				await new Promise<void>((r) => setTimeout(r, 200));
 			}
