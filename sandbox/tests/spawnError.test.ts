@@ -191,4 +191,30 @@ describe("runSandboxedShellMac: spawn error paths", () => {
 		});
 		expect(result.stderr).toContain("aborted");
 	});
+
+	it("requestTerminate idempotency: output limit + timeout both trigger", async () => {
+		const killCalls: Array<{ pid: number; sig: string }> = [];
+		process.kill = vi.fn((pid: number, sig: string) => {
+			killCalls.push({ pid, sig });
+			return true;
+		}) as any;
+
+		state.onSpawn = () => {
+			setImmediate(() => {
+				// Trigger output limit
+				state.child.stdout.emit("data", Buffer.alloc(1024 * 1024, "x"));
+				setImmediate(() => state.child.emit("close", 1, null));
+			});
+		};
+
+		const result = await runSandboxedShellMac("echo hello", readOnlyPolicy(tmpdir(), [tmpdir()]), {
+			maxOutputBytes: 1024,
+			timeoutMs: 50, // very short timeout — both output limit and timeout race
+		});
+		// Either timed out or output limited — both are valid
+		expect(result.stderr).toBeTruthy();
+		// SIGTERM should only be sent once (idempotent requestTerminate)
+		const sigtermCalls = killCalls.filter(c => c.sig === "SIGTERM");
+		expect(sigtermCalls.length).toBeLessThanOrEqual(1);
+	});
 });
