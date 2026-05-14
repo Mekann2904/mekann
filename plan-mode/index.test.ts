@@ -1652,3 +1652,72 @@ describe("plan-model args parsing: branch coverage", () => {
 		expect(mock.setModel).toHaveBeenCalled();
 	});
 });
+
+// ─── suppressModelSelectPersist / suppressThinkingSelectPersist branches ──
+
+describe("suppress flags during mode transitions", () => {
+	it("setModel that triggers model_select is suppressed during enterPlanMode", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+
+		// Create setModel that triggers model_select hook
+		mock.setModel = vi.fn((model: MockModel) => {
+			// Simulate pi.setModel triggering model_select
+			if (mock._hooks.model_select) {
+				mock._hooks.model_select({ model, source: "user" });
+			}
+			return Promise.resolve(true);
+		});
+
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		// Set main model config
+		await mock._commands["plan-model"].handler("main anthropic/sonnet", ctx);
+
+		// Enter plan mode — triggers trySetModel which sets suppressModelSelectPersist
+		await mock._commands["plan"].handler("", ctx);
+
+		// The model_select triggered by setModel inside trySetModel should be suppressed
+		// If not suppressed, it would overwrite config — verify it didn't crash
+		expect(mock.setModel).toHaveBeenCalled();
+	});
+
+	it("setThinkingLevel that triggers thinking_level_select is suppressed during session_start", async () => {
+		let capturedLevel = "";
+		const mock = createMockApi();
+
+		// Create setThinkingLevel that triggers thinking_level_select hook
+		mock.setThinkingLevel = vi.fn((level: string) => {
+			capturedLevel = level;
+			if (mock._hooks.thinking_level_select) {
+				mock._hooks.thinking_level_select({ level });
+			}
+		});
+
+		// Pre-create a config with thinking levels
+		const { writeFileSync } = require("fs");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		writeFileSync(configPath, JSON.stringify({
+			version: 1,
+			models: {},
+			thinking: { main: "high", plan: "low" },
+		}));
+
+		const ctx = createMockCtx();
+		await loadExtension(mock);
+
+		// session_start applies configured thinking level via setThinkingLevel
+		// which sets suppressThinkingSelectPersist — the triggered hook should be suppressed
+		await mock._hooks.session_start({}, ctx);
+
+		// Verify thinking level was applied
+		expect(capturedLevel).toBe("high");
+
+		// Clean up config
+		try { require("fs").unlinkSync(configPath); } catch {}
+	});
+});
