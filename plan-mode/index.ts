@@ -20,8 +20,6 @@ import {
 	sameModelRef,
 	loadModelConfig,
 	saveModelConfig,
-	updateModelConfig,
-	updateThinkingConfig,
 	updateConfigField,
 	createDefaultConfig,
 	isThinkingLevel,
@@ -93,11 +91,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			const mainRef = currentModelRef(ctx);
 			if (mainRef) {
 				state.savedMainModel = mainRef;
-				updateModelConfig(state.modelConfig, "main", mainRef, configPath);
+				updateConfigField(state.modelConfig, "models", "main", mainRef, configPath);
 			}
 			const mainThinking = pi.getThinkingLevel();
 			state.savedMainThinking = mainThinking;
-			updateThinkingConfig(state.modelConfig, "main", mainThinking, configPath);
+			updateConfigField(state.modelConfig, "thinking", "main", mainThinking, configPath);
 		}
 
 		// 2. Enter plan mode (restrict tools)
