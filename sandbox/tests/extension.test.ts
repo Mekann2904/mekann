@@ -938,4 +938,58 @@ describe("tool execute: Case 2 inline approval flow", () => {
 		expect(ctx.ui.confirm).not.toHaveBeenCalled();
 		expect(result).toBeDefined();
 	});
+
+	it("session_shutdown 後に mode が残っている場合、execute 内でインライン承認", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "danger_full_access" };
+		await loadExtension(mock);
+
+		// session_start approves danger_full_access
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// session_shutdown resets fullAccessApproved to false, but currentMode stays
+		await mock._hooks.session_shutdown();
+
+		// Now execute should hit the inline approval path
+		const confirmFn = vi.fn(() => Promise.resolve(true));
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, confirm: confirmFn },
+		});
+		const result = await mock._registeredTools[0].execute("id1", { command: "echo test" }, undefined, undefined, ctx);
+
+		// Should have prompted for approval
+		expect(confirmFn).toHaveBeenCalledTimes(1);
+		expect(confirmFn).toHaveBeenCalledWith(
+			"⚠️ Full Access Required",
+			expect.stringContaining("disable sandboxing"),
+		);
+		expect(result).toBeDefined();
+	});
+
+	it("session_shutdown 後に inline approval 拒否 → エラー", async () => {
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "danger_full_access" };
+		await loadExtension(mock);
+
+		// session_start approves
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// session_shutdown resets approval
+		await mock._hooks.session_shutdown();
+
+		// Execute with confirm rejecting
+		const confirmFn = vi.fn(() => Promise.resolve(false));
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, confirm: confirmFn },
+		});
+
+		await expect(
+			mock._registeredTools[0].execute("id1", { command: "echo test" }, undefined, undefined, ctx),
+		).rejects.toThrow("danger_full_access requires explicit user approval");
+
+		expect(confirmFn).toHaveBeenCalledTimes(1);
+	});
 });
