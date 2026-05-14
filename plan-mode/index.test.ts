@@ -1721,3 +1721,93 @@ describe("suppress flags during mode transitions", () => {
 		try { require("fs").unlinkSync(configPath); } catch {}
 	});
 });
+
+// ─── exitPlanMode: remaining branch coverage ────────────────────────
+
+describe("exitPlanMode: remaining branch coverage", () => {
+	it("no saved thinking level: exitPlanMode skips thinking restore", async () => {
+		const mock = createMockApi();
+		// Delete config to start fresh
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		try { require("fs").unlinkSync(configPath); } catch {}
+
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Enter plan mode
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		// Exit plan mode — no thinking config → no crash
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		// Verify we're back in main mode
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		await mock._commands["plan-model"].handler("status", ctx);
+		expect(notifications[0]).toContain("Mode: main");
+	});
+
+	it("args undefined: /plan-model handler works with undefined args", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		// Call with undefined args (covers ?? [] branch)
+		await mock._commands["plan-model"].handler(undefined as any, ctx);
+		expect(notifications.length).toBeGreaterThan(0);
+	});
+
+	it("args undefined: /plan-thinking handler works with undefined args", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		// Call with undefined args (covers ?? [] branch)
+		await mock._commands["plan-thinking"].handler(undefined as any, ctx);
+		expect(notifications.length).toBeGreaterThan(0);
+	});
+});
+
+// ─── enterPlanMode: no main model branch ────────────────────────────
+
+describe("enterPlanMode: no main model configured", () => {
+	it("enters plan mode without main model: savedMainModel undefined", async () => {
+		const mock = createMockApi();
+		// Delete config to ensure no main model
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		try { require("fs").unlinkSync(configPath); } catch {}
+
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Verify no main model is set
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		await mock._commands["plan-model"].handler("status", ctx);
+		expect(notifications[0]).toContain("(unset)");
+
+		// Enter plan mode — should work even without main model
+		notifications.length = 0;
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		// Exit plan mode — should not crash even without saved main model
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		// Verify we're back in main mode
+		notifications.length = 0;
+		await mock._commands["plan-model"].handler("status", ctx);
+		expect(notifications[0]).toContain("Mode: main");
+	});
+});
