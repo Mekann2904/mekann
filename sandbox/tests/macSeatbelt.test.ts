@@ -1426,6 +1426,20 @@ describe("truncateForLlm", () => {
 		expect(result.originalLines).toBe(1);
 	});
 
+	it("\r\n を含むテキストの行数も正確にカウントされる", () => {
+		const result = truncateForLlm("line1\r\nline2\r\nline3");
+		expect(result.originalLines).toBe(3);
+		expect(result.truncated).toBe(false);
+	});
+
+	it("単一行の長いテキストがバイト制限のみで切り詰められる", () => {
+		const text = "x".repeat(60 * 1024); // 60KB
+		const result = truncateForLlm(text, { maxBytes: 10 * 1024, maxLines: 100 });
+		expect(result.truncated).toBe(true);
+		expect(result.originalBytes).toBe(60 * 1024);
+		expect(result.originalLines).toBe(1);
+	});
+
 	it("空文字列はそのまま返す", () => {
 		const result = truncateForLlm("");
 		expect(result.text).toBe("");
@@ -1482,5 +1496,176 @@ describe("truncateForLlm", () => {
 		expect(result.text).toContain("1 lines");
 		expect(result.text).toContain(`${DEFAULT_LLM_OUTPUT_MAX_BYTES} bytes`);
 		expect(result.text).toContain(`${DEFAULT_LLM_OUTPUT_MAX_LINES} lines`);
+	});
+});
+
+// ─── Unit tests: resolveSafeRealPath ─────────────────────────────────
+
+describe("resolveSafeRealPath", () => {
+	it("存在するパスは realpath を返す", async () => {
+		const { resolveSafeRealPath } = await import("../macSeatbelt.js");
+		const result = await resolveSafeRealPath("/tmp");
+		expect(result).toMatch(/^\/private\/tmp$|^\/tmp$/);
+	});
+
+	it("存在しないパスは resolve の結果を返す", async () => {
+		const { resolveSafeRealPath } = await import("../macSeatbelt.js");
+		const result = await resolveSafeRealPath("/nonexistent/path/to/file");
+		expect(result).toBe("/nonexistent/path/to/file");
+	});
+});
+
+// ─── Unit tests: assertMacSandboxAvailable ──────────────────────────
+
+describe("assertMacSandboxAvailable", () => {
+	it("非 macOS 環境では例外を投げる (platform check)", async () => {
+		// This test only passes the platform check. On macOS it will pass.
+		// On non-macOS it would throw.
+		const { assertMacSandboxAvailable } = await import("../macSeatbelt.js");
+		if (process.platform !== "darwin") {
+			await expect(assertMacSandboxAvailable()).rejects.toThrow("macOS");
+		}
+		// On macOS with sandbox-exec, it should resolve
+		if (process.platform === "darwin") {
+			// May or may not have sandbox-exec
+			try {
+				await assertMacSandboxAvailable();
+			} catch (e) {
+				expect((e as Error).message).toContain("sandbox-exec");
+			}
+		}
+	});
+});
+
+// ─── Unit tests: buildMacSeatbeltPolicy edge cases ───────────────────
+
+describe("buildMacSeatbeltPolicy: resolved gitdir deny rules", () => {
+	it("_resolvedGitdirs がある場合、deny rules を含む", () => {
+		const policy = workspaceWritePolicy("/tmp/workspace", ["/tmp/workspace"], ["/tmp/workspace"], false);
+		policy._resolvedGitdirs = ["/tmp/workspace/.git", "/tmp/external-git"];
+		const sbpl = buildMacSeatbeltPolicy(policy);
+		expect(sbpl).toContain("Resolved .git directories");
+		expect(sbpl).toContain('subpath "/tmp/workspace/.git"');
+		expect(sbpl).toContain('subpath "/tmp/external-git"');
+	});
+
+	it("_resolvedGitdirs が空の場合、deny rules セクションを含まない", () => {
+		const policy = workspaceWritePolicy("/tmp/workspace", ["/tmp/workspace"], ["/tmp/workspace"], false);
+		policy._resolvedGitdirs = [];
+		const sbpl = buildMacSeatbeltPolicy(policy);
+		expect(sbpl).not.toContain("Resolved .git directories");
+	});
+});
+
+describe("buildMacSeatbeltPolicy: isolated temp dir section", () => {
+	it("_isolatedTempDir がある場合、temp dir rules を含む", () => {
+		const policy = readOnlyPolicy("/tmp/workspace");
+		policy._isolatedTempDir = "/tmp/sandbox-run-abc123";
+		const sbpl = buildMacSeatbeltPolicy(policy);
+		expect(sbpl).toContain("Per-run isolated temp directory");
+		expect(sbpl).toContain('subpath "/tmp/sandbox-run-abc123"');
+	});
+
+	it("_isolatedTempDir がない場合、temp dir セクションを含まない", () => {
+		const policy = readOnlyPolicy("/tmp/workspace");
+		const sbpl = buildMacSeatbeltPolicy(policy);
+		expect(sbpl).not.toContain("Per-run isolated temp directory");
+	});
+});
+
+describe("buildMacSeatbeltPolicy: read_only explicit deny section", () => {
+	it("read_only は workspace root への write deny を含む", () => {
+		const policy = readOnlyPolicy("/tmp/project", ["/tmp/project"]);
+		const sbpl = buildMacSeatbeltPolicy(policy);
+		expect(sbpl).toContain("read_only mode — explicitly deny writes to workspace roots");
+		expect(sbpl).toContain('deny file-write*');
+	});
+
+	it("workspace_write は read_only deny セクションを含まない", () => {
+		const policy = workspaceWritePolicy("/tmp/project", ["/tmp/project"], ["/tmp/project"], false);
+		const sbpl = buildMacSeatbeltPolicy(policy);
+		expect(sbpl).not.toContain("read_only mode — explicitly deny writes");
+	});
+});
+
+// ─── Unit tests: buildSandboxEnv additional cases ──────────────────────
+
+describe("buildSandboxEnv: LC_ALL passthrough", () => {
+	it("LC_ALL が設定されている場合、含まれる", () => {
+		const origLc = process.env.LC_ALL;
+		process.env.LC_ALL = "en_US.UTF-8";
+		try {
+			const policy = readOnlyPolicy("/tmp/workspace");
+			const env = buildSandboxEnv(policy, "/tmp/sandbox-run-test/home");
+			expect(env.LC_ALL).toBe("en_US.UTF-8");
+		} finally {
+			if (origLc) process.env.LC_ALL = origLc;
+			else delete process.env.LC_ALL;
+		}
+	});
+
+	it("LC_ALL が未設定の場合、含まれない", () => {
+		const origLc = process.env.LC_ALL;
+		delete process.env.LC_ALL;
+		try {
+			const policy = readOnlyPolicy("/tmp/workspace");
+			const env = buildSandboxEnv(policy, "/tmp/sandbox-run-test/home");
+			expect(env.LC_ALL).toBeUndefined();
+		} finally {
+			if (origLc) process.env.LC_ALL = origLc;
+			else delete process.env.LC_ALL;
+		}
+	});
+});
+
+// ─── Unit tests: runSandboxedShellMac error handling ──────────────────
+
+describe("runSandboxedShellMac: empty command rejection", () => {
+	it("空文字列コマンドは例外を投げる", async () => {
+		const policy = readOnlyPolicy("/tmp/workspace");
+		await expect(runSandboxedShellMac("", policy)).rejects.toThrow("empty command");
+	});
+
+	it("空白のみのコマンドは例外を投げる", async () => {
+		const policy = readOnlyPolicy("/tmp/workspace");
+		await expect(runSandboxedShellMac("   ", policy)).rejects.toThrow("empty command");
+	});
+});
+
+// ─── Unit tests: validatePolicy read_only with writableRoots ──────────
+
+describe("validatePolicy: read_only mode constraints", () => {
+	it("read_only で writableRoots がある場合はエラー", async () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "sandbox-readonly-writable-test-"));
+		try {
+			const policy: SandboxPolicy = {
+				mode: "read_only",
+				cwd: tmpDir,
+				workspaceRoots: [tmpDir],
+				writableRoots: [tmpDir], // should not be allowed
+				network: false,
+			};
+			await expect(validatePolicy(policy)).rejects.toThrow("read_only mode must not have writableRoots");
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+});
+
+// ─── Unit tests: validatePolicy symlink escape detection ──────────────
+
+describe("validatePolicy: symlink-based writable root escape", () => {
+	it("symlink で workspace 外を指す writableRoot を検出する", async () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "sandbox-symlink-test-"));
+		const outsideDir = mkdtempSync(join(tmpdir(), "sandbox-symlink-outside-"));
+		const linkPath = join(tmpDir, "escape_link");
+		try {
+			symlinkSync(outsideDir, linkPath);
+			const policy = workspaceWritePolicy(tmpDir, [tmpDir], [linkPath], false);
+			await expect(validatePolicy(policy)).rejects.toThrow("outside workspace roots");
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+			rmSync(outsideDir, { recursive: true, force: true });
+		}
 	});
 });

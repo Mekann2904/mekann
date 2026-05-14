@@ -1362,3 +1362,699 @@ describe("context hook: old proposed_plan compaction", () => {
 		expect(result[1].content[0].text).toBe("ユーザーメッセージ");
 	});
 });
+
+// ─── PlanState mutation edge cases ────────────────────────────────
+
+describe("PlanState mutation edge cases", () => {
+	it("planPromptDelivered と planPromptHash の相互作用", () => {
+		const state = createInitialState();
+
+		// 初回: fullPrompt を配信
+		const hash = hashContent("test prompt");
+		state.planPromptDelivered = true;
+		state.planPromptHash = hash;
+
+		// 次回: 同じハッシュなら short prompt (reminder) を使用
+		const newHash = hashContent("test prompt");
+		const useFull = !state.planPromptDelivered || state.planPromptHash !== newHash;
+		expect(useFull).toBe(false); // same hash, already delivered
+
+		// プロンプトが更新された場合
+		const changedHash = hashContent("changed prompt");
+		const useFullAfterChange = !state.planPromptDelivered || state.planPromptHash !== changedHash;
+		expect(useFullAfterChange).toBe(true); // hash changed
+	});
+
+	it("savedActiveTools の復元パターン", () => {
+		const state = createInitialState();
+
+		// Enter plan mode
+		state.savedActiveTools = ["read", "bash", "edit", "write"];
+		state.mode = "plan";
+
+		// Exit plan mode
+		const restoredTools = state.savedActiveTools;
+		state.savedActiveTools = undefined;
+		expect(restoredTools).toEqual(["read", "bash", "edit", "write"]);
+		expect(state.savedActiveTools).toBeUndefined();
+	});
+});
+
+// ─── SAFE_PLAN_TOOLS coverage ─────────────────────────────────────
+
+describe("SAFE_PLAN_TOOLS", () => {
+	it("read, grep, find, ls を含む", () => {
+		expect(SAFE_PLAN_TOOLS.has("read")).toBe(true);
+		expect(SAFE_PLAN_TOOLS.has("grep")).toBe(true);
+		expect(SAFE_PLAN_TOOLS.has("find")).toBe(true);
+		expect(SAFE_PLAN_TOOLS.has("ls")).toBe(true);
+	});
+
+	it("edit, write, bash を含まない", () => {
+		expect(SAFE_PLAN_TOOLS.has("edit")).toBe(false);
+		expect(SAFE_PLAN_TOOLS.has("write")).toBe(false);
+		expect(SAFE_PLAN_TOOLS.has("bash")).toBe(false);
+	});
+});
+
+// ─── isSafeCommand additional edge cases ─────────────────────────
+
+describe("isSafeCommand: additional edge cases", () => {
+	it("eza (ls replacement) は安全", () => {
+		expect(isSafeCommand("eza -la")).toBe(true);
+	});
+
+	it("bat (cat replacement) は安全", () => {
+		expect(isSafeCommand("bat README.md")).toBe(true);
+	});
+
+	it("fd (find replacement) は安全", () => {
+		expect(isSafeCommand("fd '.ts$' src/")).toBe(true);
+	});
+
+	it("awk は安全", () => {
+		expect(isSafeCommand("awk '{print $1}' file.txt")).toBe(true);
+	});
+
+	it("rg は安全", () => {
+		expect(isSafeCommand("rg 'TODO' src/")).toBe(true);
+	});
+
+	it("sed -n (read-only sed) は安全", () => {
+		expect(isSafeCommand("sed -n '1,10p' file.txt")).toBe(true);
+	});
+
+	it("wget -O - (stdout への出力) は安全", () => {
+		expect(isSafeCommand("wget -O - https://example.com")).toBe(true);
+	});
+
+	it("git remote -v は安全", () => {
+		expect(isSafeCommand("git remote -v")).toBe(true);
+	});
+
+	it("git show HEAD:file.txt は安全", () => {
+		expect(isSafeCommand("git show HEAD:file.txt")).toBe(true);
+	});
+
+	it("git config --get は安全", () => {
+		expect(isSafeCommand("git config --get user.name")).toBe(true);
+	});
+
+	it("npm audit は安全", () => {
+		expect(isSafeCommand("npm audit")).toBe(true);
+	});
+
+	it("npm outdated は安全", () => {
+		expect(isSafeCommand("npm outdated")).toBe(true);
+	});
+
+	it("npm why は安全", () => {
+		expect(isSafeCommand("npm why react")).toBe(true);
+	});
+
+	it("npm view は安全", () => {
+		expect(isSafeCommand("npm view react version")).toBe(true);
+	});
+
+	it("node --version は安全", () => {
+		expect(isSafeCommand("node --version")).toBe(true);
+	});
+
+	it("python --version は安全", () => {
+		expect(isSafeCommand("python --version")).toBe(true);
+	});
+
+	it("printf は安全", () => {
+		expect(isSafeCommand("printf '%s' hello")).toBe(true);
+	});
+
+	it("uname は安全", () => {
+		expect(isSafeCommand("uname -a")).toBe(true);
+	});
+
+	it("whoami は安全", () => {
+		expect(isSafeCommand("whoami")).toBe(true);
+	});
+
+	it("id は安全", () => {
+		expect(isSafeCommand("id")).toBe(true);
+	});
+
+	it("date は安全", () => {
+		expect(isSafeCommand("date")).toBe(true);
+	});
+
+	it("uptime は安全", () => {
+		expect(isSafeCommand("uptime")).toBe(true);
+	});
+
+	it("ps は安全", () => {
+		expect(isSafeCommand("ps aux")).toBe(true);
+	});
+
+	it("free は安全", () => {
+		expect(isSafeCommand("free -h")).toBe(true);
+	});
+
+	it("env は安全", () => {
+		expect(isSafeCommand("env")).toBe(true);
+	});
+
+	it("printenv は安全", () => {
+		expect(isSafeCommand("printenv HOME")).toBe(true);
+	});
+
+	it("which は安全", () => {
+		expect(isSafeCommand("which node")).toBe(true);
+	});
+
+	it("whereis は安全", () => {
+		expect(isSafeCommand("whereis node")).toBe(true);
+	});
+
+	it("type は安全", () => {
+		expect(isSafeCommand("type node")).toBe(true);
+	});
+
+	it("du は安全", () => {
+		expect(isSafeCommand("du -sh .")).toBe(true);
+	});
+
+	it("df は安全", () => {
+		expect(isSafeCommand("df -h")).toBe(true);
+	});
+
+	it("stat は安全", () => {
+		expect(isSafeCommand("stat file.txt")).toBe(true);
+	});
+
+	it("file は安全", () => {
+		expect(isSafeCommand("file binary")).toBe(true);
+	});
+
+	it("cal は安全", () => {
+		expect(isSafeCommand("cal")).toBe(true);
+	});
+
+	it("2>&1 リダイレクト付きの安全コマンド", () => {
+		expect(isSafeCommand("cat file.txt 2>&1")).toBe(true);
+	});
+
+	it(">/dev/null リダイレクト付きの安全コマンド", () => {
+		expect(isSafeCommand("cat file.txt >/dev/null")).toBe(true);
+	});
+
+	it("find with -name は安全だが -delete は危険", () => {
+		expect(isSafeCommand("find . -name '*.ts'")).toBe(true);
+		expect(isSafeCommand("find . -name '*.ts' -delete")).toBe(false);
+	});
+
+	it("find with -exec は危険", () => {
+		expect(isSafeCommand("find . -name '*.ts' -exec rm {} \\")).toBe(false);
+	});
+
+	it("git diff --output は危険", () => {
+		expect(isSafeCommand("git diff --output=patch.txt")).toBe(false);
+	});
+
+	it("git stash は危険", () => {
+		expect(isSafeCommand("git stash")).toBe(false);
+	});
+
+	it("git cherry-pick は危険", () => {
+		expect(isSafeCommand("git cherry-pick abc123")).toBe(false);
+	});
+
+	it("git revert は危険", () => {
+		expect(isSafeCommand("git revert HEAD")).toBe(false);
+	});
+
+	it("git tag は危険", () => {
+		expect(isSafeCommand("git tag v1.0")).toBe(false);
+	});
+
+	it("git init は危険", () => {
+		expect(isSafeCommand("git init")).toBe(false);
+	});
+
+	it("git clone は危険", () => {
+		expect(isSafeCommand("git clone https://example.com/repo")).toBe(false);
+	});
+
+	it("npm install は危険", () => {
+		expect(isSafeCommand("npm install express")).toBe(false);
+	});
+
+	it("npm uninstall は危険", () => {
+		expect(isSafeCommand("npm uninstall express")).toBe(false);
+	});
+
+	it("npm ci は危険", () => {
+		expect(isSafeCommand("npm ci")).toBe(false);
+	});
+
+	it("npm audit --fix は危険", () => {
+		expect(isSafeCommand("npm audit --fix")).toBe(false);
+	});
+
+	it("yarn add は危険", () => {
+		expect(isSafeCommand("yarn add express")).toBe(false);
+	});
+
+	it("pnpm add は危険", () => {
+		expect(isSafeCommand("pnpm add express")).toBe(false);
+	});
+
+	it("pip install は危険", () => {
+		expect(isSafeCommand("pip install requests")).toBe(false);
+	});
+
+	it("brew install は危険", () => {
+		expect(isSafeCommand("brew install node")).toBe(false);
+	});
+
+	it("apt-get install は危険", () => {
+		expect(isSafeCommand("apt-get install build-essential")).toBe(false);
+	});
+
+	it("systemctl start は危険", () => {
+		expect(isSafeCommand("systemctl start nginx")).toBe(false);
+	});
+
+	it("service start は危険", () => {
+		expect(isSafeCommand("service nginx start")).toBe(false);
+	});
+
+	it("tee は危険", () => {
+		expect(isSafeCommand("tee output.txt")).toBe(false);
+	});
+
+	it("truncate は危険", () => {
+		expect(isSafeCommand("truncate -s 0 file.txt")).toBe(false);
+	});
+
+	it("dd は危険", () => {
+		expect(isSafeCommand("dd if=/dev/zero of=file bs=1 count=0")).toBe(false);
+	});
+
+	it("shred は危険", () => {
+		expect(isSafeCommand("shred file.txt")).toBe(false);
+	});
+
+	it("ln は危険", () => {
+		expect(isSafeCommand("ln -s target link")).toBe(false);
+	});
+
+	it("chgrp は危険", () => {
+		expect(isSafeCommand("chgrp wheel file")).toBe(false);
+	});
+
+	it("htop は安全", () => {
+		expect(isSafeCommand("htop")).toBe(true);
+	});
+
+	it("top は安全", () => {
+		expect(isSafeCommand("top")).toBe(true);
+	});
+
+	it("git submodule status は安全", () => {
+		expect(isSafeCommand("git submodule status")).toBe(true);
+	});
+
+	it("git submodule summary は安全", () => {
+		expect(isSafeCommand("git submodule summary")).toBe(true);
+	});
+
+	it("git ls-remote は安全", () => {
+		expect(isSafeCommand("git ls-remote")).toBe(true);
+	});
+
+	it("git ls-files は安全", () => {
+		expect(isSafeCommand("git ls-files")).toBe(true);
+	});
+
+	it("git ls-tree は安全", () => {
+		expect(isSafeCommand("git ls-tree HEAD")).toBe(true);
+	});
+
+	it("npm ls は安全", () => {
+		expect(isSafeCommand("npm ls")).toBe(true);
+	});
+
+	it("npm list は安全", () => {
+		expect(isSafeCommand("npm list")).toBe(true);
+	});
+
+	it("npm info は安全", () => {
+		expect(isSafeCommand("npm info react")).toBe(true);
+	});
+
+	it("npm search は安全", () => {
+		expect(isSafeCommand("npm search react")).toBe(true);
+	});
+
+	it("yarn list は安全", () => {
+		expect(isSafeCommand("yarn list")).toBe(true);
+	});
+
+	it("npm audit fix は危険", () => {
+		expect(isSafeCommand("npm audit fix")).toBe(false);
+	});
+
+	it("git checkout は危険", () => {
+		expect(isSafeCommand("git checkout main")).toBe(false);
+	});
+
+	it("git branch -d は危険", () => {
+		expect(isSafeCommand("git branch -d feature")).toBe(false);
+	});
+
+	it("git branch -D は危険", () => {
+		expect(isSafeCommand("git branch -D feature")).toBe(false);
+	});
+
+	it("git reset は危険", () => {
+		expect(isSafeCommand("git reset HEAD~1")).toBe(false);
+	});
+
+	it("git pull は危険", () => {
+		expect(isSafeCommand("git pull origin main")).toBe(false);
+	});
+
+	it("git merge は危険", () => {
+		expect(isSafeCommand("git merge feature")).toBe(false);
+	});
+
+	it("git rebase は危険", () => {
+		expect(isSafeCommand("git rebase main")).toBe(false);
+	});
+
+	it("pkill は危険", () => {
+		expect(isSafeCommand("pkill node")).toBe(false);
+	});
+
+	it("killall は危険", () => {
+		expect(isSafeCommand("killall node")).toBe(false);
+	});
+
+	it("su は危険", () => {
+		expect(isSafeCommand("su root")).toBe(false);
+	});
+
+	it("npm update は危険", () => {
+		expect(isSafeCommand("npm update")).toBe(false);
+	});
+
+	it("npm link は危険", () => {
+		expect(isSafeCommand("npm link")).toBe(false);
+	});
+
+	it("npm publish は危険", () => {
+		expect(isSafeCommand("npm publish")).toBe(false);
+	});
+
+	it("sed -i は危険 (in-place edit)", () => {
+		expect(isSafeCommand("sed -i 's/foo/bar/' file.txt")).toBe(false);
+	});
+
+	it("code (VS Code) は危険", () => {
+		expect(isSafeCommand("code .")).toBe(false);
+	});
+
+	it("subl (Sublime Text) は危険", () => {
+		expect(isSafeCommand("subl file.txt")).toBe(false);
+	});
+
+	it("emacs は危険", () => {
+		expect(isSafeCommand("emacs file.txt")).toBe(false);
+	});
+
+	it("vi は危険", () => {
+		expect(isSafeCommand("vi file.txt")).toBe(false);
+	});
+
+	it("nano は危険", () => {
+		expect(isSafeCommand("nano file.txt")).toBe(false);
+	});
+
+	it("git config --get user.name は安全だが git config (set) は危険ではないが safe-list にない", () => {
+		// git config without --get is not in safe patterns
+		// but also not in destructive patterns — so it falls through to "unknown"
+		expect(isSafeCommand("git config user.name 'test'")).toBe(false);
+	});
+});
+
+// ─── loadPrompt variable replacement edge cases ──────────────────
+
+describe("loadPrompt: edge cases", () => {
+	it("複数変数の置換が機能する", async () => {
+		const { writeFileSync, unlinkSync } = await import("node:fs");
+		const { dirname, join } = await import("node:path");
+		const { fileURLToPath } = await import("node:url");
+		const dir = dirname(fileURLToPath(import.meta.url));
+		const tmpFile = join(dir, "prompts", "_test-multi-vars.md");
+		try {
+			writeFileSync(tmpFile, "Hello ${name}, you are ${role}!", "utf-8");
+			const result = loadPrompt("_test-multi-vars", { name: "Alice", role: "admin" });
+			expect(result).toBe("Hello Alice, you are admin!");
+		} finally {
+			unlinkSync(tmpFile);
+		}
+	});
+
+	it("変数が存在しない場合はプレースホルダーが残る", async () => {
+		const { writeFileSync, unlinkSync } = await import("node:fs");
+		const { dirname, join } = await import("node:path");
+		const { fileURLToPath } = await import("node:url");
+		const dir = dirname(fileURLToPath(import.meta.url));
+		const tmpFile = join(dir, "prompts", "_test-no-replace.md");
+		try {
+			writeFileSync(tmpFile, "Hello ${unknown}!", "utf-8");
+			const result = loadPrompt("_test-no-replace");
+			expect(result).toBe("Hello ${unknown}!");
+		} finally {
+			unlinkSync(tmpFile);
+		}
+	});
+});
+
+// ─── hashContent collision resistance ──────────────────────────────
+
+describe("hashContent: collision resistance", () => {
+	it("異なる長さの入力で異なるハッシュ", () => {
+		const hashes = new Set<string>();
+		const inputs = ["a", "ab", "abc", "abcd", "abcde"];
+		for (const input of inputs) {
+			hashes.add(hashContent(input));
+		}
+		expect(hashes.size).toBe(inputs.length);
+	});
+
+	it("空文字列でもハッシュを生成する", () => {
+		const hash = hashContent("");
+		expect(hash).toHaveLength(12);
+		expect(hash).toMatch(/^[0-9a-f]{12}$/);
+	});
+
+	it("長い文字列でも同じ長さのハッシュ", () => {
+		const hash = hashContent("x".repeat(100000));
+		expect(hash).toHaveLength(12);
+	});
+});
+
+// ─── extractProposedPlan edge cases ────────────────────────────────
+
+describe("extractProposedPlan: additional edge cases", () => {
+	it("空白のみの <proposed_plan> は undefined", () => {
+		expect(extractProposedPlan("<proposed_plan> \t\n </proposed_plan>")).toBeUndefined();
+	});
+
+	it("属性付きの proposed_plan タグはマッチしない", () => {
+		// Non-greedy match with attributes — the regex expects no attributes
+		const result = extractProposedPlan('<proposed_plan id="1">content</proposed_plan>');
+		// The regex uses <proposed_plan> not <proposed_plan...>, so this won't match
+		// Actually the regex will match because it looks for <proposed_plan> as prefix
+		// The ' id="1">content' part comes after <proposed_plan in the text
+		// But the regex is: /<proposed_plan>\s*([\s\S]*?)\s*<\/proposed_plan>/
+		// So '<proposed_plan id="1">' doesn't match '<proposed_plan>' exactly
+		expect(result).toBeUndefined();
+	});
+
+	it("ネストされたタグを含む plan を正しく抽出", () => {
+		const msg = "<proposed_plan>\n## Step 1\n<code>example</code>\n</proposed_plan>";
+		const plan = extractProposedPlan(msg);
+		expect(plan).toContain("<code>example</code>");
+	});
+
+	it("非常に長い plan を正しく抽出", () => {
+		const longPlan = "x".repeat(50000);
+		const msg = `<proposed_plan>${longPlan}</proposed_plan>`;
+		const plan = extractProposedPlan(msg);
+		expect(plan).toBe(longPlan);
+	});
+});
+
+// ─── buildBlockReason additional cases ─────────────────────────────
+
+describe("buildBlockReason: additional edge cases", () => {
+	it("write ツールの日本語ラベル", () => {
+		const reason = buildBlockReason("write", { path: "new-file.ts" }, 1);
+		expect(reason).toContain("ファイル作成/上書き");
+	});
+
+	it("未知のツール名はツール名をそのまま表示", () => {
+		const reason = buildBlockReason("custom_tool", { path: "file.ts" }, 1);
+		expect(reason).toContain("custom_tool");
+	});
+
+	it("blockCount=4 でも 3回以上の警告パターン", () => {
+		const reason = buildBlockReason("edit", { path: "file.ts" }, 4);
+		expect(reason).toContain("4回ブロック済み");
+		expect(reason).toContain("絶対に再試行しないでください");
+	});
+
+	it("input に path がない場合は unknown と表示", () => {
+		const reason = buildBlockReason("edit", { command: "ls" }, 1);
+		expect(reason).toContain("unknown");
+	});
+});
+
+// ─── sanitizePlanTools edge cases ──────────────────────────────────
+
+describe("sanitizePlanTools: additional edge cases", () => {
+	it("edit が複数あっても全て除去する", () => {
+		expect(sanitizePlanTools(["edit", "edit", "read"])).toEqual(["read"]);
+	});
+
+	it("write が複数あっても全て除去する", () => {
+		expect(sanitizePlanTools(["write", "write", "read"])).toEqual(["read"]);
+	});
+});
+
+// ─── getConfigPath tests ──────────────────────────────────────────
+
+describe("getConfigPath", () => {
+	it("明示的なパスを渡すとそのまま返す", () => {
+		expect(getConfigPath("/custom/path/config.json")).toBe("/custom/path/config.json");
+	});
+
+	it("パスを渡さないと ~/.pi/agent/plan-mode.json を返す", () => {
+		const path = getConfigPath();
+		expect(path).toContain(".pi");
+		expect(path).toContain("plan-mode.json");
+	});
+});
+
+// ─── normalizeConfig edge cases ──────────────────────────────────
+
+describe("normalizeConfig: edge cases", () => {
+	it("version が 1 でなくても version 1 として返す", () => {
+		const config = normalizeConfig({ version: 2 });
+		expect(config.version).toBe(1);
+	});
+
+	it("models がオブジェクトでない場合は空オブジェクト", () => {
+		const config = normalizeConfig({ version: 1, models: "invalid" });
+		expect(config.models).toEqual({});
+	});
+
+	it("thinking が null の場合は空オブジェクト", () => {
+		const config = normalizeConfig({ version: 1, thinking: null });
+		expect(config.thinking).toEqual({});
+	});
+});
+
+// ─── State with config mutation tests ──────────────────────────────
+
+describe("PlanState: config mutation", () => {
+	it("implementationPlan のライフサイクル", () => {
+		const state = createInitialState();
+
+		// 1. Plan mode: assistant creates a plan
+		state.mode = "plan";
+		state.pendingPlan = "Test plan";
+
+		// 2. Exit plan mode: pendingPlan → implementationPlan
+		const plan = state.pendingPlan;
+		state.mode = "main";
+		state.implementationPlan = plan;
+		state.pendingPlan = undefined;
+
+		expect(state.implementationPlan).toBe("Test plan");
+		expect(state.pendingPlan).toBeUndefined();
+
+		// 3. before_agent_start consumes implementationPlan
+		if (state.mode === "main" && state.implementationPlan) {
+			const _consumed = state.implementationPlan;
+			state.implementationPlan = undefined;
+		}
+
+		expect(state.implementationPlan).toBeUndefined();
+	});
+
+	it("連続した plan → main → plan → main サイクル", () => {
+		const state = createInitialState();
+
+		// First cycle
+		state.mode = "plan";
+		state.pendingPlan = "Plan 1";
+		state.mode = "main";
+		state.implementationPlan = state.pendingPlan;
+		state.pendingPlan = undefined;
+		state.implementationPlan = undefined;
+
+		// Second cycle
+		state.mode = "plan";
+		state.pendingPlan = "Plan 2";
+		state.mode = "main";
+		state.implementationPlan = state.pendingPlan;
+		state.pendingPlan = undefined;
+
+		expect(state.implementationPlan).toBe("Plan 2");
+	});
+});
+
+// ─── Integration: full workflow with model config ──────────────────
+
+describe("Integration: full workflow with model config", () => {
+	it("セッション開始 → plan → plan 終了 → main 復帰の完全フロー", () => {
+		const config = createDefaultConfig();
+		config.models.main = { provider: "anthropic", modelId: "sonnet" };
+		config.models.plan = { provider: "openai", modelId: "gpt-4.1" };
+		config.thinking.main = "high";
+		config.thinking.plan = "medium";
+
+		const state = createInitialState(config);
+
+		// 1. Session start (normal, not --plan)
+		expect(state.mode).toBe("main");
+		expect(state.modelConfig.models.main).toBeDefined();
+
+		// 2. Toggle to plan mode
+		state.savedMainModel = { provider: "anthropic", modelId: "sonnet" };
+		state.savedMainThinking = "high";
+		state.mode = "plan";
+		state.savedActiveTools = ["read", "bash", "edit", "write"];
+
+		// 3. In plan mode: tools restricted
+		expect(isReadOnlyMode(state.mode)).toBe(true);
+
+		// 4. Assistant generates plan
+		const planText = "1. Refactor module X\n2. Add tests";
+		state.pendingPlan = planText;
+
+		// 5. Toggle back to main
+		state.mode = "main";
+		state.implementationPlan = state.pendingPlan;
+		state.pendingPlan = undefined;
+		state.savedActiveTools = undefined;
+
+		// 6. Main mode: plan injected into system prompt
+		expect(state.implementationPlan).toBe(planText);
+		expect(isReadOnlyMode(state.mode)).toBe(false);
+
+		// 7. Plan consumed after injection
+		state.implementationPlan = undefined;
+		expect(state.implementationPlan).toBeUndefined();
+	});
+});

@@ -10,6 +10,54 @@ const execFileAsync = promisify(execFile);
 import { basename, dirname, join } from "node:path";
 import { stat, unlink } from "node:fs/promises";
 
+// ─── Exported utility functions (testable) ───────────────────────
+
+/**
+ * バイト数を人間可読のサイズ文字列にフォーマットする。
+ */
+export function formatFileSize(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+	return `${(bytes / 1048576).toFixed(1)} MB`;
+}
+
+/**
+ * ZIP ファイルのパスを生成する。
+ */
+export function buildZipPath(repoRoot: string, shortHead: string): string {
+	const repoName = basename(repoRoot);
+	const parentDir = dirname(repoRoot);
+	return join(parentDir, `${repoName}-${shortHead}.zip`);
+}
+
+/**
+ * AppleScript 用のパスエスケープ。
+ */
+export function escapeAppleScriptPath(path: string): string {
+	return path.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
+ * AppleScript clipboard スクリプトを生成する。
+ */
+export function buildClipboardScript(escapedPath: string): string {
+	return `
+				use framework "Foundation"
+				use framework "AppKit"
+				set theURL to current application's NSURL's fileURLWithPath:"${escapedPath}"
+				set thePasteboard to current application's NSPasteboard's generalPasteboard()
+				thePasteboard's clearContents()
+				thePasteboard's writeObjects:{theURL}
+			`;
+}
+
+/**
+ * git ls-files の出力から dirty file リストをパースする。
+ */
+export function parseDirtyFiles(stdout: string): string[] {
+	return stdout.split("\n").filter(Boolean);
+}
+
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("zip", {
 		description: "Archive working tree as ZIP and copy to clipboard (macOS)",
@@ -33,7 +81,6 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify(`Not a Git repository or no commits yet: ${msg}`, "error");
 				return;
 			}
-			const repoName = basename(repoRoot);
 
 			let dirty = false;
 			try {
@@ -44,17 +91,16 @@ export default function (pi: ExtensionAPI) {
 				dirty = statusStdout.trim().length > 0;
 			} catch {}
 
-			const parentDir = dirname(repoRoot);
-			const zipPath = join(parentDir, `${repoName}-${shortHead}.zip`);
+			const zipPath = buildZipPath(repoRoot, shortHead);
 
 			// 前回の ZIP が残っていれば削除
 			try { await unlink(zipPath); } catch {}
 
 			try {
-				await execFileAsync("git", ["archive", "--format=zip", `--prefix=${repoName}/`, `--output=${zipPath}`, "HEAD"], { cwd: repoRoot });
+				await execFileAsync("git", ["archive", "--format=zip", `--prefix=${basename(repoRoot)}/`, `--output=${zipPath}`, "HEAD"], { cwd: repoRoot });
 
 				if (dirty) {
-					await overlayDirtyFiles(repoRoot, repoName, zipPath);
+					await overlayDirtyFiles(repoRoot, basename(repoRoot), zipPath);
 				}
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
@@ -65,21 +111,14 @@ export default function (pi: ExtensionAPI) {
 			let sizeStr = "unknown size";
 			try {
 				const b = (await stat(zipPath)).size;
-				sizeStr = b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`;
+				sizeStr = formatFileSize(b);
 			} catch {}
 
 			// NSPasteboard 経由でファイル URL をクリップボードにコピー
 			// Finder、チャットアプリ等で ⌘V によるファイルペーストが可能
 			try {
-				const escaped = zipPath.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-				const script = `
-					use framework "Foundation"
-					use framework "AppKit"
-					set theURL to current application's NSURL's fileURLWithPath:"${escaped}"
-					set thePasteboard to current application's NSPasteboard's generalPasteboard()
-					thePasteboard's clearContents()
-					thePasteboard's writeObjects:{theURL}
-				`;
+				const escaped = escapeAppleScriptPath(zipPath);
+				const script = buildClipboardScript(escaped);
 				await execFileAsync("osascript", ["-e", script]);
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
@@ -95,7 +134,7 @@ export default function (pi: ExtensionAPI) {
 async function overlayDirtyFiles(repoRoot: string, repoName: string, zipPath: string): Promise<void> {
 	const { stdout } = await execFileAsync("git", ["ls-files", "-mo", "--exclude-standard", "--"], { cwd: repoRoot, encoding: "utf8" });
 
-	const dirtyFiles = stdout.split("\n").filter(Boolean);
+	const dirtyFiles = parseDirtyFiles(stdout);
 	if (dirtyFiles.length === 0) return;
 
 	await execFileAsync("/usr/bin/zip", ["-u", zipPath, ...dirtyFiles.map((f) => `${repoName}/${f}`)], { cwd: dirname(repoRoot) });
