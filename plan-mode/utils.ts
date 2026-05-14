@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 
+export const SAFE_PLAN_TOOLS = new Set(["read", "grep", "find", "ls"]);
+
 const DESTRUCTIVE_PATTERNS = [
 	/\b(rm|rmdir|mv|cp|mkdir|touch|chmod|chown|chgrp|ln|tee|truncate|dd|shred)\b/i,
 	/(^|[^<])(?:>>|>(?!>))/,

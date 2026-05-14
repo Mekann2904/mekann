@@ -6,21 +6,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-	isSafeCommand,
-	extractProposedPlan,
-	buildBlockReason,
-	loadPrompt,
-	hashContent,
-	sanitizePlanTools,
-} from "./utils.js";
-import {
-	type Mode,
-	type PlanState,
-	createInitialState,
-	isReadOnlyMode,
-	modeLabel,
-} from "./state.js";
+import { isSafeCommand, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, sanitizePlanTools, SAFE_PLAN_TOOLS } from "./utils.js";
+import { type Mode, type PlanState, createInitialState, isReadOnlyMode, modeLabel } from "./state.js";
 
 // isSafeCommand — bash コマンドの安全性判定
 describe("isSafeCommand", () => {
@@ -230,13 +217,26 @@ describe("loadPrompt", () => {
 		);
 	});
 
-	it("変数置換が機能する", () => {
-		// plan-mode-reminder には変数がないので、execute-mode は削除済み
-		// 代わりに loadPrompt 自体の vars 機能をテストするファイルはないので
-		// 関数が存在することだけ確認
-		const prompt = loadPrompt("plan-mode");
-		expect(typeof prompt).toBe("string");
-		expect(prompt.length).toBeGreaterThan(0);
+	it("変数置換が機能する", async () => {
+		// plan-mode.md に ${} プレースホルダはないので、
+		// vars を渡しても元の内容がそのまま返ることを確認
+		const prompt = loadPrompt("plan-mode", { nonexistent: "replaced" });
+		expect(prompt).toContain("プランモード");
+		expect(prompt).not.toContain("replaced");
+
+		// 変数置換の実コードパスをテスト: 一時ファイルで検証
+		const { writeFileSync, unlinkSync } = await import("node:fs");
+		const { dirname, join } = await import("node:path");
+		const { fileURLToPath } = await import("node:url");
+		const dir = dirname(fileURLToPath(import.meta.url));
+		const tmpFile = join(dir, "prompts", "_test-vars.md");
+		try {
+			writeFileSync(tmpFile, "Hello \\-dist-${name}\\-suffix", "utf-8");
+			const result = loadPrompt("_test-vars", { name: "world" });
+			expect(result).toBe("Hello \\-dist-world\\-suffix");
+		} finally {
+			unlinkSync(tmpFile);
+		}
 	});
 });
 
@@ -298,8 +298,6 @@ describe("State", () => {
 });
 
 // Tool blocking simulation
-const SAFE_PLAN_TOOLS = new Set(["read", "grep", "find", "ls"]);
-
 function shouldBlockToolCall(
 	mode: Mode,
 	toolName: string,

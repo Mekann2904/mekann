@@ -7,8 +7,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
-import { basename, join, dirname } from "node:path";
-import { mkdtemp, stat } from "node:fs/promises";
+import { basename, join } from "node:path";
+import { mkdtemp, stat, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 export default function (pi: ExtensionAPI) {
@@ -59,8 +59,7 @@ export default function (pi: ExtensionAPI) {
 				await execFileAsync("git", ["archive", "--format=zip", `--prefix=${repoName}/`, `--output=${zipPath}`, "HEAD"], { cwd: repoRoot });
 
 				if (mode === "worktree" && dirty) {
-					const parentDir = dirname(repoRoot);
-					await overlayDirtyFiles(parentDir, repoName, repoRoot, zipPath);
+					await overlayDirtyFiles(repoRoot, repoName, zipPath);
 				}
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
@@ -84,15 +83,19 @@ export default function (pi: ExtensionAPI) {
 
 			const modeLabel = mode === "default" || mode === "head" ? "HEAD" : "worktree";
 			ctx.ui.notify(`Copied to clipboard: ${zipPath} (${sizeStr}, ${modeLabel})`, "info");
+
+			// 一時ファイルをクリーンアップ（クリップボードにコピー済み）
+			rm(tmpDir, { recursive: true, force: true }).catch(() => {});
 		},
 	});
 }
 
-async function overlayDirtyFiles(parentDir: string, repoName: string, repoRoot: string, zipPath: string): Promise<void> {
+async function overlayDirtyFiles(repoRoot: string, repoName: string, zipPath: string): Promise<void> {
 	const { stdout } = await execFileAsync("git", ["ls-files", "-mo", "--exclude-standard", "--"], { cwd: repoRoot, encoding: "utf8" });
 
 	const dirtyFiles = stdout.split("\n").filter(Boolean);
 	if (dirtyFiles.length === 0) return;
 
-	await execFileAsync("/usr/bin/zip", ["-u", zipPath, ...dirtyFiles.map((f) => `${repoName}/${f}`)], { cwd: parentDir });
+	// repoRoot を CWD にして、cd repoRoot && zip -u zipPath repoName/file ... と等価にする
+	await execFileAsync("/usr/bin/zip", ["-u", zipPath, ...dirtyFiles.map((f) => `${repoName}/${f}`)], { cwd: repoRoot });
 }
