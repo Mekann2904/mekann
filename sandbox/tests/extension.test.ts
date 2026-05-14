@@ -680,3 +680,185 @@ describe("status bar", () => {
 		expect(ctx.ui.setStatus).toHaveBeenCalledWith("sandbox", expect.any(String));
 	});
 });
+
+// ─── tool execute: Case 4 (sandboxed execution) ──────────────────
+
+describe("tool execute: Case 4 (sandboxed execution)", () => {
+	it("sandboxed command が成功する", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			code: 0,
+			signal: null,
+			stdout: "hello world",
+			stderr: "",
+		});
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		const result = await tool.execute("id1", { command: "echo hello" }, undefined, undefined, createMockCtx());
+
+		expect(result.content[0].text).toBe("hello world");
+		expect(result.details.sandboxed).toBe(true);
+	});
+
+	it("sandboxed command の stderr も出力に含まれる", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			code: 0,
+			signal: null,
+			stdout: "stdout output",
+			stderr: "stderr output",
+		});
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		const result = await tool.execute("id1", { command: "cmd" }, undefined, undefined, createMockCtx());
+
+		expect(result.content[0].text).toContain("stdout output");
+		expect(result.content[0].text).toContain("stderr output");
+	});
+
+	it("sandboxed command が非ゼロ終了コードの場合はエラー", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			code: 1,
+			signal: null,
+			stdout: "some output",
+			stderr: "error message",
+		});
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		await expect(
+			tool.execute("id1", { command: "fail" }, undefined, undefined, createMockCtx()),
+		).rejects.toThrow("exited with code 1");
+	});
+
+	it("sandboxed command 出力なしの場合は (no output)", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			code: 0,
+			signal: null,
+			stdout: "",
+			stderr: "",
+		});
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		const result = await tool.execute("id1", { command: "true" }, undefined, undefined, createMockCtx());
+
+		expect(result.content[0].text).toBe("(no output)");
+	});
+
+	it("危険コマンド (rm -rf) は承認プロンプトを表示 (approve)", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			code: 0,
+			signal: null,
+			stdout: "",
+			stderr: "",
+		});
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		const ctx = createMockCtx();
+		const result = await tool.execute("id1", { command: "rm -rf ./node_modules" }, undefined, undefined, ctx);
+
+		expect(ctx.ui.confirm).toHaveBeenCalled();
+		expect(result).toBeDefined();
+	});
+
+	it("危険コマンド (rm -rf) は承認拒否でエラー", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		const ctx = createMockCtx({
+			ui: {
+				...createMockCtx().ui,
+				confirm: vi.fn(() => Promise.resolve(false)),
+			},
+		});
+		await expect(
+			tool.execute("id1", { command: "rm -rf ./node_modules" }, undefined, undefined, ctx),
+		).rejects.toThrow("Command blocked");
+	});
+
+	it("安全コマンドは承認プロンプトなし", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			code: 0,
+			signal: null,
+			stdout: "output",
+			stderr: "",
+		});
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		const ctx = createMockCtx();
+		await tool.execute("id1", { command: "ls -la" }, undefined, undefined, ctx);
+
+		expect(ctx.ui.confirm).not.toHaveBeenCalled();
+	});
+});
+
+// ─── resolveRealPaths error fallback ──────────────────────────────
+
+describe("resolveRealPaths error fallback", () => {
+	it("realpath が失敗した場合、cwd をそのまま使用する", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+		const { resolveRealPaths } = await import("../pathPolicy.js");
+		(resolveRealPaths as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("realpath failed"));
+
+		const notifications: string[] = [];
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		const ctx = createMockCtx({
+			cwd: "/tmp/test-fallback-cwd",
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+
+		// Should not throw — should fall back to [cwd]
+		await mock._hooks.session_start({}, ctx);
+
+		// Should have enabled sandbox
+		expect(ctx.ui.setStatus).toHaveBeenCalledWith("sandbox", expect.any(String));
+	});
+});
