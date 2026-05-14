@@ -13,7 +13,6 @@ import {
 	isProtectedPath,
 	assertPathInsideRoot,
 	resolveRealPaths,
-	validateWritableRoots,
 	validateWorkspaceRoot,
 } from "../pathPolicy.js";
 
@@ -143,77 +142,6 @@ describe("resolveRealPaths", () => {
 	});
 });
 
-// ─── validateWritableRoots ────────────────────────────────────────
-
-describe("validateWritableRoots", () => {
-	const tmpDir = mkdtempSync(join(tmpdir(), "sandbox-writable-policy-test-"));
-
-	afterAll(() => {
-		rmSync(tmpDir, { recursive: true, force: true });
-	});
-
-	it("writableRoots が workspaceRoots 内なら有効", async () => {
-		await expect(
-			validateWritableRoots([tmpDir], [tmpDir], "workspace_write"),
-		).resolves.toBeUndefined();
-	});
-
-	it("writableRoots が workspaceRoots のサブディレクトリなら有効", async () => {
-		const subDir = join(tmpDir, "sub");
-		mkdirSync(subDir, { recursive: true });
-		await expect(
-			validateWritableRoots([subDir], [tmpDir], "workspace_write"),
-		).resolves.toBeUndefined();
-	});
-
-	it("writableRoots が workspaceRoots 外なら無効", async () => {
-		const outsideDir = mkdtempSync(join(tmpdir(), "sandbox-outside-wr-"));
-		try {
-			await expect(
-				validateWritableRoots([outsideDir], [tmpDir], "workspace_write"),
-			).rejects.toThrow("outside workspace roots");
-		} finally {
-			rmSync(outsideDir, { recursive: true, force: true });
-		}
-	});
-
-	it("danger_full_access は検証をスキップする", async () => {
-		await expect(
-			validateWritableRoots(["/"], [tmpDir], "danger_full_access"),
-		).resolves.toBeUndefined();
-	});
-
-	it("writableRoots に / は不可", async () => {
-		await expect(
-			validateWritableRoots(["/"], [tmpDir], "workspace_write"),
-		).rejects.toThrow("cannot be /");
-	});
-
-	it("writableRoots に $HOME は不可", async () => {
-		const home = process.env.HOME ?? "/Users/test";
-		await expect(
-			validateWritableRoots([home], [tmpDir], "workspace_write"),
-		).rejects.toThrow("cannot be $HOME");
-	});
-
-	it("空の writableRoots は有効", async () => {
-		await expect(
-			validateWritableRoots([], [tmpDir], "workspace_write"),
-		).resolves.toBeUndefined();
-	});
-
-	it("read_only モードでも検証は実行される", async () => {
-		const outsideDir = mkdtempSync(join(tmpdir(), "sandbox-outside-ro-"));
-		try {
-			await expect(
-				validateWritableRoots([outsideDir], [tmpDir], "read_only"),
-			).rejects.toThrow();
-		} finally {
-			rmSync(outsideDir, { recursive: true, force: true });
-		}
-	});
-});
-
 // ─── validateWorkspaceRoot ────────────────────────────────────────
 
 describe("validateWorkspaceRoot", () => {
@@ -265,7 +193,7 @@ describe("validateWorkspaceRoot", () => {
 
 // ─── HOME undefined edge case ─────────────────────────────────────
 
-describe("validateWorkspaceRoot / validateWritableRoots: HOME undefined", () => {
+describe("validateWorkspaceRoot: HOME undefined", () => {
 	it("HOME が undefined の場合でも workspace root を検証できる", async () => {
 		const origHome = process.env.HOME;
 		delete process.env.HOME;
@@ -275,23 +203,6 @@ describe("validateWorkspaceRoot / validateWritableRoots: HOME undefined", () => 
 				await expect(validateWorkspaceRoot(projectDir)).resolves.toBeUndefined();
 			} finally {
 				rmSync(projectDir, { recursive: true, force: true });
-			}
-		} finally {
-			process.env.HOME = origHome;
-		}
-	});
-
-	it("HOME が undefined の場合でも writable root を検証できる", async () => {
-		const origHome = process.env.HOME;
-		delete process.env.HOME;
-		try {
-			const tmpDir = mkdtempSync(join(tmpdir(), "sandbox-nohome-wr-"));
-			try {
-				await expect(
-					validateWritableRoots([tmpDir], [tmpDir], "workspace_write"),
-				).resolves.toBeUndefined();
-			} finally {
-				rmSync(tmpDir, { recursive: true, force: true });
 			}
 		} finally {
 			process.env.HOME = origHome;

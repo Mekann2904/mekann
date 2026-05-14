@@ -51,7 +51,7 @@ import {
 	type SandboxPolicy,
 } from "../permissions.js";
 
-import { assertPathInsideRoot, resolveRealPaths, isProtectedPath, validateWritableRoots } from "../pathPolicy.js";
+import { assertPathInsideRoot, resolveRealPaths, isProtectedPath } from "../pathPolicy.js";
 import { shouldRequestApproval, fullAccessApprovalMessage } from "../approvals.js";
 
 // ─── Platform check ──────────────────────────────────────────────
@@ -624,43 +624,6 @@ describe("resolveRealPaths", () => {
 		const paths = await resolveRealPaths(["/tmp"]);
 		expect(paths).toHaveLength(1);
 		expect(paths[0]).toMatch(/^\/private\/tmp$|^\/tmp$/);
-	});
-});
-
-describe("validateWritableRoots", () => {
-	const tmpDir = mkdtempSync(join(tmpdir(), "sandbox-writable-test-"));
-
-	afterAll(() => {
-		rmSync(tmpDir, { recursive: true, force: true });
-	});
-
-	it("writableRoots が workspaceRoots 内なら有効", async () => {
-		await expect(
-			validateWritableRoots([tmpDir], [tmpDir], "workspace_write"),
-		).resolves.toBeUndefined();
-	});
-
-	it("writableRoots が workspaceRoots 外なら無効", async () => {
-		const outsideDir = mkdtempSync(join(tmpdir(), "sandbox-outside2-"));
-		try {
-			await expect(
-				validateWritableRoots([outsideDir], [tmpDir], "workspace_write"),
-			).rejects.toThrow("writable root");
-		} finally {
-			rmSync(outsideDir, { recursive: true, force: true });
-		}
-	});
-
-	it("danger_full_access は検証をスキップする", async () => {
-		await expect(
-			validateWritableRoots(["/"], [tmpDir], "danger_full_access"),
-		).resolves.toBeUndefined();
-	});
-
-	it("writableRoots に / は不可（workspace_write）", async () => {
-		await expect(
-			validateWritableRoots(["/"], [tmpDir], "workspace_write"),
-		).rejects.toThrow();
 	});
 });
 

@@ -71,10 +71,6 @@ export function buildBlockReason(toolName: string, input: Record<string, unknown
 	return `${H}\n${toolLabel}「${typeof input?.path === "string" ? input.path : "unknown"}」はブロックされました。\nプランモードではファイル変更は一切禁止。\n代わりに変更内容をテキストで報告してください。`;
 }
 
-export function sanitizePlanTools(tools: string[]): string[] {
-	return tools.filter((t) => t !== "edit" && t !== "write");
-}
-
 export function hashContent(content: string): string {
 	return createHash("sha256").update(content).digest("hex").slice(0, 12);
 }
