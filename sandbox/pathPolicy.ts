@@ -73,7 +73,7 @@ export function isProtectedPath(path: string): boolean {
  * - 広すぎるパスは警告または拒否する
  */
 export async function validateWorkspaceRoot(root: string): Promise<void> {
-	const resolved = await resolveSafe(root);
+	const resolved = await resolveSafeRealPath(root);
 
 	if (resolved === "/") {
 		throw new Error("workspace root cannot be /");
@@ -81,7 +81,7 @@ export async function validateWorkspaceRoot(root: string): Promise<void> {
 
 	const home = process.env.HOME;
 	if (home) {
-		const resolvedHome = await resolveSafe(home);
+		const resolvedHome = await resolveSafeRealPath(home);
 		if (resolved === resolvedHome) {
 			throw new Error("workspace root cannot be $HOME — use a project subdirectory");
 		}
@@ -96,7 +96,7 @@ export async function validateWorkspaceRoot(root: string): Promise<void> {
 }
 
 /** realpath を試み、失敗したら resolve の結果を返す。 */
-async function resolveSafe(p: string): Promise<string> {
+export async function resolveSafeRealPath(p: string): Promise<string> {
 	try {
 		return await realpath(resolve(p));
 	} catch {

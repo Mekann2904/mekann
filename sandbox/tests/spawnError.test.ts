@@ -28,6 +28,7 @@ vi.mock("../pathPolicy.js", () => ({
 	validateWorkspaceRoot: vi.fn(() => Promise.resolve()),
 	assertPathInsideRoot: vi.fn(() => Promise.resolve()),
 	isProtectedPath: vi.fn(() => false),
+	resolveSafeRealPath: vi.fn((p: string) => Promise.resolve(p)),
 }));
 
 import { runSandboxedShellMac } from "../macSeatbelt.js";

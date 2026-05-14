@@ -25,6 +25,7 @@ import { relative, isAbsolute, resolve, dirname, join as pathJoin } from "node:p
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import type { SandboxPolicy } from "./permissions.js";
+import { resolveSafeRealPath } from "./pathPolicy.js";
 
 export interface RunResult {
 	code: number | null;
@@ -258,15 +259,6 @@ export async function validatePolicy(policy: SandboxPolicy): Promise<void> {
 				`writable root "${wr}" (resolved: "${resolvedWr}") is outside workspace roots [${resolvedWorkspaceRoots.join(", ")}]`,
 			);
 		}
-	}
-}
-
-/** realpath を試み、失敗したら resolve の結果を返す。 */
-export async function resolveSafeRealPath(p: string): Promise<string> {
-	try {
-		return await realpath(resolve(p));
-	} catch {
-		return resolve(p);
 	}
 }
 
