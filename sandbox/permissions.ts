@@ -27,21 +27,11 @@ export interface SandboxPolicy {
 	 */
 	allowHomebrewPaths?: boolean;
 	/**
-	 * sandbox 用 HOME ディレクトリ。
-	 * 未指定の場合は cwd を使用。
-	 * 子プロセスの $HOME を制限するために使用。
-	 */
-	sandboxHome?: string;
-	/**
 	 * @internal per-run isolated temp directory.
-	 * runSandboxedMac が command ごとに作成・終了後に削除する。
+	 * runSandboxedShellMac が command ごとに作成・終了後に削除する。
 	 * system TMPDIR を広く許可しないための機構。
 	 */
 	_isolatedTempDir?: string;
-	/**
-	 * @internal realpath で解決済みの TMPDIR（旧式、使用されなくなった）。
-	 */
-	_resolvedTmpDir?: string;
 	/**
 	 * @internal 解決済み .git ディレクトリパス群。
 	 * pointer file / worktree / submodule の gitdir 解決結果。

@@ -84,18 +84,36 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 	// ─── Bash tool override ──────────────────────────────────────────
 
-	const localCwd = process.cwd();
-	const localBash = createBashTool(localCwd);
+	// NOTE: localBash is created lazily on session_start with the correct ctx.cwd.
+	// Using process.cwd() at extension init time would give the wrong directory
+	// if the agent's CWD differs from the extension's load-time CWD.
+	type LocalBashWithCwd = ReturnType<typeof createBashTool> & { _cwd: string };
+	let localBash: LocalBashWithCwd | null = null;
+
+	/**
+	 * Get or create localBash with current session cwd.
+	 * Ensures unsandboxed execution uses the correct working directory.
+	 */
+	function getLocalBash(): LocalBashWithCwd {
+		const cwd = currentCwd || process.cwd();
+		if (!localBash || localBash._cwd !== cwd) {
+			localBash = Object.assign(createBashTool(cwd), { _cwd: cwd });
+		}
+		return localBash;
+	}
+
+	// Dummy initial localBash for registerTool spread (will be replaced on session_start)
+	const initialBash = createBashTool(process.cwd());
 
 	pi.registerTool({
-		...localBash,
+		...initialBash,
 		label: "bash (sandboxed)",
 		async execute(id, params, signal, onUpdate, ctx) {
 			const command = String(params.command ?? "");
 
 			// ── Case 1: Explicitly disabled via --no-sandbox ─────────
 			if (explicitlyDisabled) {
-				return localBash.execute(id, params, signal, onUpdate, ctx);
+				return getLocalBash().execute(id, params, signal, onUpdate, ctx);
 			}
 
 			// ── Case 2: danger_full_access with explicit approval ────
@@ -115,7 +133,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					fullAccessState.fullAccessApprovedReason = "approved via tool execution prompt";
 				}
 				// Approved danger_full_access: unsandboxed execution
-				return localBash.execute(id, params, signal, onUpdate, ctx);
+				return getLocalBash().execute(id, params, signal, onUpdate, ctx);
 			}
 
 			// ── Case 3: Sandbox mode but sandbox-exec unavailable → REFUSE ─
