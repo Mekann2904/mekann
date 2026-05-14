@@ -12,6 +12,7 @@
   "type": "module",
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.6",
+    "fast-check": "^4.8.0",
     "vitest": "^4.1.6"
   }
 }
