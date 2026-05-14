@@ -25,7 +25,7 @@ import { relative, isAbsolute, resolve, dirname, join as pathJoin } from "node:p
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import type { SandboxPolicy } from "./permissions.js";
-import { resolveSafeRealPath } from "./pathPolicy.js";
+import { resolveSafeRealPath, checkUnsafeRoot } from "./pathPolicy.js";
 
 export interface RunResult {
 	code: number | null;
@@ -162,35 +162,6 @@ export async function resolveGitdirPaths(
 	return results;
 }
 
-// ─── Workspace root validation (unsafe path check) ──────────────
-
-/**
- * workspaceRoot が安全でないパス（/, $HOME, /Users 等）でないか検証する。
- * validatePolicy() からも呼ばれる。
- */
-async function isUnsafeWorkspaceRoot(root: string): Promise<string | null> {
-	const resolved = await resolveSafeRealPath(root);
-
-	if (resolved === "/") {
-		return "workspace root cannot be /";
-	}
-
-	const home = process.env.HOME;
-	if (home) {
-		const resolvedHome = await resolveSafeRealPath(home);
-		if (resolved === resolvedHome) {
-			return "workspace root cannot be $HOME — use a project subdirectory";
-		}
-	}
-
-	// Reject /Users or /Users/<user> as too broad
-	if (resolved === "/Users" || resolved.match(/^\/Users\/[^/]+$/)) {
-		return "workspace root cannot be /Users or a user home directory — use a project subdirectory";
-	}
-
-	return null;
-}
-
 // ─── Policy validation ──────────────────────────────────────────
 
 /**
@@ -220,7 +191,7 @@ export async function validatePolicy(policy: SandboxPolicy): Promise<void> {
 
 	// Validate effective workspaceRoots for unsafe paths
 	for (const root of effectiveWorkspaceRoots) {
-		const unsafeReason = await isUnsafeWorkspaceRoot(root);
+		const unsafeReason = await checkUnsafeRoot(root);
 		if (unsafeReason) {
 			throw new Error(unsafeReason);
 		}
@@ -235,7 +206,7 @@ export async function validatePolicy(policy: SandboxPolicy): Promise<void> {
 
 	// Validate effective writableRoots for unsafe paths
 	for (const wr of effectiveWritableRoots) {
-		const unsafeReason = await isUnsafeWorkspaceRoot(wr);
+		const unsafeReason = await checkUnsafeRoot(wr);
 		if (unsafeReason) {
 			throw new Error(`writable ${unsafeReason}`);
 		}
