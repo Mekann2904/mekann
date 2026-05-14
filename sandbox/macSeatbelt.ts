@@ -6,19 +6,23 @@
  *   - sandbox-exec は絶対パス /usr/bin/sandbox-exec 固定（PATH 探索回避）
  *   - /bin/bash を明示的に使用（Homebrew bash 依存を回避）
  *
- * Security hardening (v3):
+ * Security hardening (v4):
  *   - /usr を細分化: /usr/bin, /usr/sbin, /usr/lib, /usr/libexec, /usr/share のみ
  *   - per-run isolated temp directory（command ごとに作成・終了後に削除）
+ *   - per-run isolated HOME directory（workspace/cwd にしない）
+ *   - /bin/bash --noprofile --norc -c で startup files を読み込まない
  *   - PATH は固定値（process.env.PATH をそのまま渡さない）
  *   - process group kill（detached + process.kill(-pgid)）
  *   - idempotent cleanup（複数回 kill が安全）
  *   - AbortSignal を tool から伝播
+ *   - maxOutputBytes は stdout + stderr の合計で制限
+ *   - API: runSandboxedShellMac(command: string, ...) で shell string runner を明示
  */
 
 import { spawn } from "node:child_process";
-import { access, constants, realpath, readFile } from "node:fs/promises";
-import { relative, isAbsolute, resolve, dirname } from "node:path";
-import { mkdtempSync, rmSync } from "node:fs";
+import { access, constants, realpath, readFile, mkdir } from "node:fs/promises";
+import { relative, isAbsolute, resolve, dirname, join as pathJoin } from "node:path";
+import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import type { SandboxPolicy } from "./permissions.js";
 
@@ -29,11 +33,11 @@ export interface RunResult {
 	stderr: string;
 }
 
-/** runSandboxedMac のオプション。 */
+/** runSandboxedShellMac のオプション。 */
 export interface SandboxRunOptions {
 	/** タイムアウト（ms）。デフォルト 120000。 */
 	timeoutMs?: number;
-	/** stdout+stderr の最大バイト数。超過したら kill してエラー。デフォルト 5 MB。 */
+	/** stdout+stderr の合計最大バイト数。超過したら kill してエラー。デフォルト 5 MB。 */
 	maxOutputBytes?: number;
 	/** AbortSignal。tool execution から伝播させる。 */
 	signal?: AbortSignal;
@@ -77,9 +81,9 @@ function buildSandboxPath(allowHomebrewPaths: boolean): string {
  *
  * SECURITY: process.env を spread せず、明示的に許可した変数だけを渡す。
  * secrets (OPENAI_API_KEY, GITHUB_TOKEN, AWS_*, etc.) はデフォルトで含まない。
- * PATH は固定値。HOME は isolated temp home に設定。
+ * PATH は固定値。HOME は isolated temp home に設定（workspace/cwd にはしない）。
  */
-export function buildSandboxEnv(policy: SandboxPolicy): NodeJS.ProcessEnv {
+export function buildSandboxEnv(policy: SandboxPolicy, isolatedHome: string): NodeJS.ProcessEnv {
 	const allowHomebrew = policy.allowHomebrewPaths ?? false;
 
 	const env: NodeJS.ProcessEnv = {
@@ -87,9 +91,10 @@ export function buildSandboxEnv(policy: SandboxPolicy): NodeJS.ProcessEnv {
 		SHELL: "/bin/bash",
 		TERM: process.env.TERM ?? "xterm-256color",
 		LANG: process.env.LANG ?? "C.UTF-8",
-		// HOME is set to sandbox cwd, sandboxHome, or isolated temp home.
-		// This prevents child processes from reading user's $HOME config files.
-		HOME: policy.sandboxHome ?? policy.cwd,
+		// SECURITY: HOME is set to isolated temp home, NOT workspace/cwd.
+		// This prevents child processes from reading user's $HOME config files
+		// or workspace-controlled startup files (.bash_profile, .profile, etc.).
+		HOME: isolatedHome,
 		GIT_TERMINAL_PROMPT: "0",
 	};
 
@@ -156,11 +161,41 @@ export async function resolveGitdirPaths(
 	return results;
 }
 
+// ─── Workspace root validation (unsafe path check) ──────────────
+
+/**
+ * workspaceRoot が安全でないパス（/, $HOME, /Users 等）でないか検証する。
+ * validatePolicy() からも呼ばれる。
+ */
+async function isUnsafeWorkspaceRoot(root: string): Promise<string | null> {
+	const resolved = await resolveSafeRealPath(root);
+
+	if (resolved === "/") {
+		return "workspace root cannot be /";
+	}
+
+	const home = process.env.HOME;
+	if (home) {
+		const resolvedHome = await resolveSafeRealPath(home);
+		if (resolved === resolvedHome) {
+			return "workspace root cannot be $HOME — use a project subdirectory";
+		}
+	}
+
+	// Reject /Users or /Users/<user> as too broad
+	if (resolved === "/Users" || resolved.match(/^\/Users\/[^/]+$/)) {
+		return "workspace root cannot be /Users or a user home directory — use a project subdirectory";
+	}
+
+	return null;
+}
+
 // ─── Policy validation ──────────────────────────────────────────
 
 /**
  * SandboxPolicy のセキュリティ検証。
  *
+ * - workspaceRoots が安全でないパス（/, $HOME, /Users）でないことを確認
  * - writableRoots が workspaceRoots 配下にあることを確認
  * - danger_full_access 以外で / や $HOME 全体を writableRoots にできないことを確認
  * - symlink 経由の脱出も検出する
@@ -168,6 +203,22 @@ export async function resolveGitdirPaths(
 export async function validatePolicy(policy: SandboxPolicy): Promise<void> {
 	// danger_full_access は sandbox なし（検証不要）
 	if (policy.mode === "danger_full_access") return;
+
+	// Validate workspaceRoots for unsafe paths
+	for (const root of policy.workspaceRoots) {
+		const unsafeReason = await isUnsafeWorkspaceRoot(root);
+		if (unsafeReason) {
+			throw new Error(unsafeReason);
+		}
+	}
+
+	// Also validate cwd if workspaceRoots is empty (cwd becomes the effective root)
+	if (policy.workspaceRoots.length === 0) {
+		const unsafeReason = await isUnsafeWorkspaceRoot(policy.cwd);
+		if (unsafeReason) {
+			throw new Error(unsafeReason);
+		}
+	}
 
 	// read_only は writableRoots が空であるべき
 	if (policy.mode === "read_only" && policy.writableRoots.length > 0) {
@@ -287,10 +338,12 @@ ${writeRules}
 	// Per-run isolated temp directory.
 	// SECURITY: NOT the broad system TMPDIR. This is a dedicated directory
 	// created for this specific command invocation, cleaned up after exit.
+	// Includes the isolated HOME subdirectory.
 	const tmpDirSection = policy._isolatedTempDir
 		? `
 ; Per-run isolated temp directory (not system TMPDIR)
 ; Created for this specific command invocation, cleaned up after exit
+; Includes isolated HOME directory to prevent workspace startup file injection
 (allow file-read* file-write*
   ${pathSubpath(policy._isolatedTempDir)}
 )
@@ -492,29 +545,89 @@ function cleanupTempDir(dir: string): void {
 	} catch {
 		// cleanup failure is a warning, not an error.
 		// The temp dir will be cleaned up by the OS eventually.
-		// In production, this should be logged for visibility.
 	}
+}
+
+// ─── Process group cleanup helper ───────────────────────────────
+
+/**
+ * Process group に SIGKILL を送り、短時間待つ safety net。
+ * close handler の中から呼ばれるため、'close' event listener は使えない
+ * （既に発火済みのため）。
+ * 代わりに SIGKILL を送った後、OS が cleanup する短い猶予を与える。
+ */
+function cleanupResidualProcesses(proc: ReturnType<typeof spawn>): void {
+	try {
+		if (proc.pid) {
+			process.kill(-proc.pid, "SIGKILL");
+		}
+	} catch {
+		// already dead — idempotent
+	}
+}
+
+/**
+ * Process group が完全に終了するのを待つ。
+ * close handler の外（timeout/abort path）から呼ばれる。
+ * SIGKILL safety net を送り、close event を待つ。
+ */
+function waitForProcessDeath(
+	proc: ReturnType<typeof spawn>,
+	timeoutMs: number,
+): Promise<void> {
+	return new Promise<void>((resolvePromise) => {
+		let resolved = false;
+
+		const done = () => {
+			if (resolved) return;
+			resolved = true;
+			resolvePromise();
+		};
+
+		// Safety net: send SIGKILL to process group
+		try {
+			if (proc.pid) {
+				process.kill(-proc.pid, "SIGKILL");
+			}
+		} catch {
+			// already dead
+		}
+
+		// Wait for 'close' event (all stdio streams closed + process exited)
+		proc.once("close", done);
+
+		// Timeout fallback in case 'close' never fires
+		setTimeout(() => {
+			proc.removeListener("close", done);
+			done();
+		}, timeoutMs);
+	});
 }
 
 // ─── Sandboxed execution ─────────────────────────────────────────
 
 /**
- * sandbox-exec 経由でコマンドを実行する。
+ * sandbox-exec 経由で shell command string を実行する。
  *
- * - コマンドは argv 配列で渡すこと（文字列連結禁止）
+ * - command は shell string として /bin/bash --noprofile --norc -c に渡される
  * - sandbox-exec は絶対パス固定
  * - stdout / stderr / exit code をキャプチャ
  * - timeout / abort / output cap 対応
  * - process group kill（孫/background プロセスも終了）
- * - SIGTERM 後、SIGKILL_GRACE_MS で SIGKILL
+ * - SIGTERM 後、SIGKILL_GRACE_MS で SIGKILL、'close' event を待つ
  * - per-run isolated temp directory を作成・終了後に cleanup
+ * - per-run isolated HOME directory（workspace/cwd にしない）
+ * - maxOutputBytes は stdout + stderr の合計で制限
+ *
+ * API: This is a shell string runner. The command parameter is a shell command
+ * string, NOT an argv array.
  */
-export async function runSandboxedMac(
-	command: string[],
+export async function runSandboxedShellMac(
+	command: string,
 	policy: SandboxPolicy,
 	options?: SandboxRunOptions,
 ): Promise<RunResult> {
-	if (command.length === 0) {
+	if (!command || command.trim().length === 0) {
 		throw new Error("empty command");
 	}
 
@@ -534,19 +647,29 @@ export async function runSandboxedMac(
 	const isolatedTemp = await resolveSafeRealPath(rawIsolatedTemp);
 	resolvedPolicy._isolatedTempDir = isolatedTemp;
 
+	// SECURITY: Create isolated HOME directory under per-run temp.
+	// This prevents:
+	//   1. workspace-controlled startup file injection (.bash_profile, .profile, etc.)
+	//   2. $HOME pointing to user's real home directory
+	const isolatedHome = pathJoin(isolatedTemp, "home");
+	mkdirSync(isolatedHome, { recursive: true });
+
 	const fullPolicy = buildMacSeatbeltPolicy(resolvedPolicy);
-	const sandboxEnv = buildSandboxEnv(resolvedPolicy);
+	const sandboxEnv = buildSandboxEnv(resolvedPolicy, isolatedHome);
 
-	// SECURITY: Always use /bin/bash explicitly.
-	// On systems with Homebrew bash, PATH lookup resolves to
-	// /opt/homebrew/bin/bash which requires blocked libraries.
-	// /bin/bash (Apple system bash) only needs system paths.
-	const bashCommand = command.length >= 3 ? command[2] : command.join(" ");
-
-	// SECURITY: Use detached mode for process group management.
-	// This allows us to kill the entire process group (including grandchildren
-	// and background processes) using process.kill(-child.pid, signal).
-	const child = spawn(SANDBOX_EXEC, ["-p", fullPolicy, "--", "/bin/bash", "-lc", bashCommand], {
+	// SECURITY: Use /bin/bash --noprofile --norc to prevent loading
+	// any startup files (.bash_profile, .bash_login, .profile, .bashrc).
+	// This prevents workspace-controlled startup file injection.
+	const child = spawn(SANDBOX_EXEC, [
+		"-p",
+		fullPolicy,
+		"--",
+		"/bin/bash",
+		"--noprofile",
+		"--norc",
+		"-c",
+		command,
+	], {
 		cwd: resolvedPolicy.cwd,
 		stdio: ["ignore", "pipe", "pipe"],
 		env: sandboxEnv,
@@ -555,26 +678,48 @@ export async function runSandboxedMac(
 
 	let stdout = "";
 	let stderr = "";
+	let totalOutputBytes = 0;
 	let outputExceeded = false;
 	let killed = false;
 
 	child.stdout.setEncoding("utf8");
 	child.stderr.setEncoding("utf8");
 
+	// SECURITY: Track total bytes across stdout + stderr combined.
+	// Previous implementation tracked them separately, allowing 2x limit.
 	child.stdout.on("data", (chunk: string) => {
-		stdout += chunk;
-		if (Buffer.byteLength(stdout, "utf8") > maxOutputBytes) {
+		if (outputExceeded) return;
+		const chunkBytes = Buffer.byteLength(chunk, "utf8");
+		totalOutputBytes += chunkBytes;
+		if (totalOutputBytes > maxOutputBytes) {
 			outputExceeded = true;
+			// Keep what fits
+			const overshoot = totalOutputBytes - maxOutputBytes;
+			const keepBytes = chunkBytes - overshoot;
+			if (keepBytes > 0) {
+				stdout += chunk.slice(0, Math.max(0, keepBytes));
+			}
 			killProcessGroup(child);
+			return;
 		}
+		stdout += chunk;
 	});
 
 	child.stderr.on("data", (chunk: string) => {
-		stderr += chunk;
-		if (Buffer.byteLength(stderr, "utf8") > maxOutputBytes) {
+		if (outputExceeded) return;
+		const chunkBytes = Buffer.byteLength(chunk, "utf8");
+		totalOutputBytes += chunkBytes;
+		if (totalOutputBytes > maxOutputBytes) {
 			outputExceeded = true;
+			const overshoot = totalOutputBytes - maxOutputBytes;
+			const keepBytes = chunkBytes - overshoot;
+			if (keepBytes > 0) {
+				stderr += chunk.slice(0, Math.max(0, keepBytes));
+			}
 			killProcessGroup(child);
+			return;
 		}
+		stderr += chunk;
 	});
 
 	// ─── Idempotent process group kill ──────────────────────────
@@ -585,16 +730,17 @@ export async function runSandboxedMac(
 		try {
 			// Kill entire process group (negative PID)
 			process.kill(-proc.pid!, sig);
-		} catch {
-			// Process may already be dead — idempotent, ignore
+		} catch (e) {
+			// Process may already be dead — idempotent, but log for debug
+			// In production, this should be logged for visibility.
 		}
 	}
 
 	function killProcessGroupForce(proc: ReturnType<typeof spawn>): void {
 		try {
 			process.kill(-proc.pid!, "SIGKILL");
-		} catch {
-			// already dead
+		} catch (e) {
+			// already dead — idempotent
 		}
 	}
 
@@ -603,8 +749,10 @@ export async function runSandboxedMac(
 	let timeoutId: ReturnType<typeof setTimeout> | null = null;
 	let timedOut = false;
 	let sigkillTimeoutId: ReturnType<typeof setTimeout> | null = null;
+	let timeoutReject: ((reason: Error) => void) | null = null;
 
 	const timeoutPromise = new Promise<never>((_resolve, reject) => {
+		timeoutReject = reject;
 		timeoutId = setTimeout(() => {
 			timedOut = true;
 			killProcessGroup(child, "SIGTERM");
@@ -619,7 +767,10 @@ export async function runSandboxedMac(
 	// ─── AbortSignal handling ───────────────────────────────────
 
 	let abortHandler: (() => void) | null = null;
+	let abortReject: ((reason: Error) => void) | null = null;
+
 	const abortPromise = new Promise<never>((_resolve, reject) => {
+		abortReject = reject;
 		if (abortSignal) {
 			if (abortSignal.aborted) {
 				killProcessGroup(child);
@@ -628,7 +779,8 @@ export async function runSandboxedMac(
 				return;
 			}
 			abortHandler = () => {
-				killProcessGroup(child);
+				killProcessGroup(child, "SIGTERM");
+				// Grace period then SIGKILL
 				sigkillTimeoutId = setTimeout(() => {
 					killProcessGroupForce(child);
 				}, SIGKILL_GRACE_MS);
@@ -652,16 +804,26 @@ export async function runSandboxedMac(
 				stderr: err.message,
 			});
 		});
-		child.on("close", (code, signal) => {
+		child.on("close", async (code, signal) => {
 			cleanupTimers();
+
+			// SECURITY: After normal close, send SIGKILL to process group
+			// as safety net to kill any residual background processes.
+			// We are inside the 'close' handler, so the main process is dead,
+			// but background children may linger.
+			cleanupResidualProcesses(child);
+
+			// Give OS a brief moment to clean up residual processes
+			await new Promise<void>((r) => setTimeout(r, 200));
+
 			cleanupTempDir(isolatedTemp);
 
 			if (outputExceeded) {
 				resolvePromise({
 					code: 1,
 					signal: null,
-					stdout: stdout.slice(0, maxOutputBytes),
-					stderr: stderr + `\n[ERROR] output limit exceeded (${maxOutputBytes} bytes)`,
+					stdout: stdout.slice(0, maxOutputBytes) + "\n[...output truncated...]",
+					stderr: stderr + `\n[ERROR] output limit exceeded (${maxOutputBytes} bytes combined stdout+stderr)`,
 				});
 				return;
 			}
@@ -681,11 +843,18 @@ export async function runSandboxedMac(
 	try {
 		return await Promise.race([execPromise, timeoutPromise, abortPromise]);
 	} catch (err) {
+		// For timeout/abort, we need to wait for the process to actually die
+		// before returning, to ensure cleanup is complete.
+
+		// Wait for grace period + close event
+		await waitForProcessDeath(child, SIGKILL_GRACE_MS + 1000);
+		cleanupTempDir(isolatedTemp);
+
 		// For timeout/abort, return a result object instead of throwing
 		return {
 			code: null,
 			signal: "SIGTERM",
-			stdout: stdout.slice(0, maxOutputBytes),
+			stdout: stdout.slice(0, maxOutputBytes) + (outputExceeded ? "\n[...output truncated...]" : ""),
 			stderr: stderr + `\n[ERROR] command ${(timedOut ? "timed out" : "aborted")}`,
 		};
 	}

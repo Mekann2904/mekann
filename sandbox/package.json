@@ -4,7 +4,11 @@
   "type": "module",
   "main": "index.ts",
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit --skipLibCheck"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.1.0"
   },
   "devDependencies": {
     "vitest": "^4.1.6"
