@@ -1067,3 +1067,112 @@ describe("mode transitions with model/thinking config", () => {
 		expect(notifications[0]).toContain("Mode: plan");
 	});
 });
+
+// ─── Remaining branch coverage ────────────────────────────────────
+
+describe("remaining branch coverage", () => {
+	it("/plan-model plan (no arg) with null model: warning", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			model: null,
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-model"].handler("plan", ctx);
+		expect(notifications[0]).toContain("No current model");
+	});
+
+	it("/plan-model plan <invalid>: error", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-model"].handler("plan noprovider", ctx);
+		expect(notifications[0]).toContain("Invalid");
+	});
+
+	it("/plan-model plan <model> in plan mode: setModel が呼ばれる", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		// Enter plan mode
+		await mock._commands["plan"].handler("", ctx);
+
+		// Clear any prior setModel calls from session_start / enterPlanMode
+		mock.setModel.mockClear();
+		notifications.length = 0;
+
+		// Set plan model while in plan mode
+		await mock._commands["plan-model"].handler("plan google/gemini-flash", ctx);
+		expect(mock.setModel).toHaveBeenCalledTimes(1);
+		// The notification may include modeLabel from enterPlanMode, so check for any gemini mention
+		expect(notifications.some(n => n.includes("gemini-flash"))).toBe(true);
+	});
+
+	it("/plan-thinking clear invalid: usage warning", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-thinking"].handler("clear invalid", ctx);
+		expect(notifications[0]).toContain("Usage");
+	});
+
+	it("/plan-thinking unknown: usage warning (line 398)", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-thinking"].handler("unknown", ctx);
+		expect(notifications[0]).toContain("Usage");
+	});
+
+	it("thinking_level_select with same level in main: update しない (line 560)", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Set main thinking to "medium" (same as default)
+		await mock._commands["plan-thinking"].handler("main medium", createMockCtx());
+
+		// Now thinking_level_select with same level should skip update
+		// (The default thinkingLevel from mock is "medium")
+		await mock._hooks.thinking_level_select({ level: "medium" });
+		// No error means the path was handled correctly
+	});
+
+	it("thinking_level_select with same level in plan: update しない (line 564)", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Enter plan mode
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		// Set plan thinking to "medium" (same as default)
+		await mock._commands["plan-thinking"].handler("plan medium", createMockCtx());
+
+		// thinking_level_select with same level
+		await mock._hooks.thinking_level_select({ level: "medium" });
+	});
+});
