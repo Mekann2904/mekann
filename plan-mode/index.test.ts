@@ -1175,4 +1175,146 @@ describe("remaining branch coverage", () => {
 		// thinking_level_select with same level
 		await mock._hooks.thinking_level_select({ level: "medium" });
 	});
+
+	// ─── trySetModel failure paths (lines 53-54, 60-61) ──────────────
+
+	it("exitPlanMode: model not found in registry triggers warning (line 53-54)", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			modelRegistry: {
+				find: (_provider: string, _modelId: string) => undefined,
+			},
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Set a plan model so exitPlanMode tries to restore
+		await mock._commands["plan-model"].handler("main anthropic/sonnet", createMockCtx());
+
+		// Enter plan mode
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		// Exit plan mode with ctx that has registry returning undefined
+		notifications.length = 0;
+		await mock._commands["plan"].handler("", ctx);
+
+		// Should have warned about model not found
+		expect(notifications.some(n => n.includes("見つかりません"))).toBe(true);
+	});
+
+	it("exitPlanMode: setModel returns false triggers warning (line 60-61)", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		// setModel returns false — simulates missing API key
+		mock.setModel = vi.fn((_model: MockModel) => Promise.resolve(false));
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		// Set a main model config
+		await mock._commands["plan-model"].handler("main anthropic/sonnet", ctx);
+
+		// Enter plan mode
+		await mock._commands["plan"].handler("", ctx);
+
+		// Exit plan mode
+		notifications.length = 0;
+		await mock._commands["plan"].handler("", ctx);
+
+		// Should have warned about API key
+		expect(notifications.some(n => n.includes("API key"))).toBe(true);
+	});
+
+	// ─── exitPlanMode fallback restore (line 136) ──────────────────
+
+	it("exitPlanMode: main model fails → fallback to savedMainModel (line 136)", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		// Save the initial model as savedMainModel by entering/exiting plan mode
+		// First, set main model to anthropic/sonnet
+		await mock._commands["plan-model"].handler("main anthropic/sonnet", ctx);
+
+		// Enter plan mode
+		await mock._commands["plan"].handler("", ctx);
+
+		// Now change main model config to something else
+		await mock._commands["plan-model"].handler("main google/gemini-flash", ctx);
+
+		// Make setModel fail only for gemini-flash (the new main model)
+		mock.setModel = vi.fn((model: MockModel) => {
+			if (model.id === "gemini-flash") return Promise.resolve(false);
+			return Promise.resolve(true);
+		});
+
+		// Exit plan mode — should try main model (gemini-flash), fail, then fallback
+		notifications.length = 0;
+		await mock._commands["plan"].handler("", ctx);
+
+		// Should have warned about API key for gemini-flash
+		expect(notifications.some(n => n.includes("API key"))).toBe(true);
+	});
+
+	// ─── Shortcut handler invocation (line 398) ─────────────────────
+
+	it("Super+P shortcut toggles plan mode", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		// Find the shortcut handler — Key.super("p") returns "super+p"
+		const shortcutCalls = (mock.registerShortcut as ReturnType<typeof vi.fn>).mock.calls;
+		const superPCall = shortcutCalls.find((call: unknown[]) => call[0] === "super+p");
+		expect(superPCall).toBeDefined();
+
+		const shortcutConfig = superPCall![1] as { handler: (ctx: ExtensionContext) => Promise<void> };
+
+		// Invoke the shortcut handler — should toggle into plan mode
+		await shortcutConfig.handler(ctx);
+		expect(mock._activeTools).not.toContain("edit");
+
+		// Invoke again — should toggle back to main mode
+		await shortcutConfig.handler(ctx);
+		expect(mock._activeTools).toContain("edit");
+	});
+
+	// ─── thinking_level_select in plan mode with different level (line 564) ──
+
+	it("thinking_level_select in plan mode with different level updates config", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		// Enter plan mode
+		await mock._commands["plan"].handler("", ctx);
+
+		// Set plan thinking to "low"
+		await mock._commands["plan-thinking"].handler("plan low", ctx);
+
+		// thinking_level_select with different level should update plan config
+		await mock._hooks.thinking_level_select({ level: "high" });
+
+		// Verify via status command
+		notifications.length = 0;
+		await mock._commands["plan-thinking"].handler("status", ctx);
+		// Plan thinking should now be "high" (updated by thinking_level_select)
+		expect(notifications.some(n => n.includes("high"))).toBe(true);
+	});
 });
