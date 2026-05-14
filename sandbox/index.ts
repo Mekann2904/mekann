@@ -9,6 +9,7 @@
  *   - sandbox-exec unavailable + read_only/workspace_write → command execution REFUSED
  *   - sandbox-exec unavailable + --no-sandbox or approved danger_full_access → allowed
  *   - No silent fallback to unsandboxed execution
+ *   - Unsafe workspace root (/root, $HOME, /Users) → sandbox disabled, commands REFUSED
  *
  * Usage:
  *   pi -e ./sandbox                           # workspace_write (default)
@@ -28,7 +29,7 @@ import {
 	workspaceWritePolicy,
 	dangerFullAccessPolicy,
 } from "./permissions.js";
-import { isMacSandboxAvailable, runSandboxedMac } from "./macSeatbelt.js";
+import { isMacSandboxAvailable, runSandboxedShellMac } from "./macSeatbelt.js";
 import { resolveRealPaths, validateWorkspaceRoot } from "./pathPolicy.js";
 import { shouldRequestApproval, fullAccessApprovalMessage, type FullAccessApprovalState } from "./approvals.js";
 
@@ -94,7 +95,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 			// ── Case 1: Explicitly disabled via --no-sandbox ─────────
 			if (explicitlyDisabled) {
-				return localBash.execute(id, params, signal, onUpdate);
+				return localBash.execute(id, params, signal, onUpdate, ctx);
 			}
 
 			// ── Case 2: danger_full_access with explicit approval ────
@@ -114,7 +115,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					fullAccessState.fullAccessApprovedReason = "approved via tool execution prompt";
 				}
 				// Approved danger_full_access: unsandboxed execution
-				return localBash.execute(id, params, signal, onUpdate);
+				return localBash.execute(id, params, signal, onUpdate, ctx);
 			}
 
 			// ── Case 3: Sandbox mode but sandbox-exec unavailable → REFUSE ─
@@ -142,9 +143,10 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			}
 
 			// Execute via sandbox with AbortSignal propagation
+			// API: runSandboxedShellMac takes a shell command string, not argv.
 			const policy = buildCurrentPolicy();
-			const result = await runSandboxedMac(
-				["bash", "-lc", command],
+			const result = await runSandboxedShellMac(
+				command,
 				policy,
 				{ signal }, // Propagate AbortSignal from tool execution
 			);
@@ -342,14 +344,18 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			}
 		}
 
-		// SECURITY: Validate workspace root is not too broad
+		// SECURITY: Validate workspace root is not too broad.
+		// FAIL-CLOSED: If workspace root is unsafe, do NOT continue.
+		// This applies to ALL modes (read_only AND workspace_write).
 		try {
 			await validateWorkspaceRoot(ctx.cwd);
 		} catch (e) {
+			sandboxEnabled = false;
 			ctx.ui.notify(
-				`WARNING: ${(e as Error).message}. Using workspace as-is.`,
-				"warning",
+				`SECURITY: Unsafe workspace root: ${(e as Error).message}. Sandbox disabled for safety. Commands will be REFUSED.`,
+				"error",
 			);
+			return;
 		}
 
 		// Resolve paths through realpath

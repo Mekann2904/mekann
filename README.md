@@ -26,7 +26,9 @@ See [plan-mode/README.md](./plan-mode/README.md) for full documentation.
 
 ### [sandbox](./sandbox/)
 
-macOS Seatbelt (`sandbox-exec`) によるコマンドサンドボックス化。
+macOS Seatbelt-based defense-in-depth bash command sandbox for Pi's bash tool.
+
+**Note: This sandboxes ONLY the bash tool, NOT the entire agent.**
 
 - 3 段階の sandbox mode (read_only / workspace_write / danger_full_access)
 - default deny: 必要な許可だけを明示的に付与
@@ -35,6 +37,10 @@ macOS Seatbelt (`sandbox-exec`) によるコマンドサンドボックス化。
 - 環境変数は allowlist 方式（secret は子プロセスに渡さない）
 - `danger_full_access` はユーザーの明示的承認が必要
 - sandbox-exec は絶対パス固定（PATH 探索回避）
+- Isolated HOME: `$HOME` は workspace ではなく per-run isolated temp に設定
+- Bash startup files は読み込まれない (`--noprofile --norc`)
+- Unsafe workspace root (`/`, `$HOME`, `/Users`) は fail-closed で拒否
+- approval regex は UX layer であり security boundary ではない
 
 See [sandbox/SECURITY.md](./sandbox/SECURITY.md) for full security documentation.
 
