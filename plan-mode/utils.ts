@@ -96,6 +96,24 @@ export function extractProposedPlan(message: string): string | undefined {
 	return match?.[1]?.trim() || undefined;
 }
 
+// ─── Thinking level ───────────────────────────────────────────────
+
+/** Pi thinking levels. */
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
+const VALID_THINKING_LEVELS = new Set<string>(["off", "minimal", "low", "medium", "high", "xhigh"]);
+
+/** Check if a value is a valid ThinkingLevel. */
+export function isThinkingLevel(value: unknown): value is ThinkingLevel {
+	return typeof value === "string" && VALID_THINKING_LEVELS.has(value);
+}
+
+/** Format a ThinkingLevel for display. */
+export function formatThinkingLevel(level?: ThinkingLevel | null): string {
+	if (!level) return "(unset)";
+	return level;
+}
+
 // ─── Model preference persistence ───────────────────────────────────
 
 /** Provider + modelId pair identifying a specific model. */
@@ -111,10 +129,30 @@ export interface PlanModeConfig {
 		main?: ModelRef;
 		plan?: ModelRef;
 	};
+	thinking: {
+		main?: ThinkingLevel;
+		plan?: ThinkingLevel;
+	};
 }
 
 export function createDefaultConfig(): PlanModeConfig {
-	return { version: 1, models: {} };
+	return { version: 1, models: {}, thinking: {} };
+}
+
+/** Normalize a loaded config: ensure models/thinking objects exist, strip invalid thinking values. */
+export function normalizeConfig(raw: Record<string, unknown>): PlanModeConfig {
+	const config: PlanModeConfig = {
+		version: 1,
+		models: (raw.models && typeof raw.models === "object") ? raw.models as PlanModeConfig["models"] : {},
+		thinking: {},
+	};
+	const t = raw.thinking;
+	if (t && typeof t === "object") {
+		const ti = t as Record<string, unknown>;
+		if (isThinkingLevel(ti.main)) config.thinking.main = ti.main;
+		if (isThinkingLevel(ti.plan)) config.thinking.plan = ti.plan;
+	}
+	return config;
 }
 
 /**
@@ -162,7 +200,7 @@ export function loadModelConfig(explicitPath?: string): PlanModeConfig {
 	try {
 		const raw = readFileSync(configPath, "utf-8");
 		const parsed = JSON.parse(raw);
-		if (parsed && parsed.version === 1 && parsed.models) return parsed as PlanModeConfig;
+		if (parsed && parsed.version === 1) return normalizeConfig(parsed);
 	} catch {
 		// fall through to default
 	}
@@ -202,6 +240,24 @@ export function updateModelConfig(
 		config.models[mode] = ref;
 	} else {
 		delete config.models[mode];
+	}
+	saveModelConfig(config, path);
+}
+
+/**
+ * Update a specific mode's thinking level in the config and persist it.
+ * Pass `undefined` for `level` to clear that mode's setting.
+ */
+export function updateThinkingConfig(
+	config: PlanModeConfig,
+	mode: "main" | "plan",
+	level: ThinkingLevel | undefined,
+	path?: string,
+): void {
+	if (level) {
+		config.thinking[mode] = level;
+	} else {
+		delete config.thinking[mode];
 	}
 	saveModelConfig(config, path);
 }

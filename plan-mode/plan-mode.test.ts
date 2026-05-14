@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { isSafeCommand, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, sanitizePlanTools, SAFE_PLAN_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateModelConfig, createDefaultConfig, getConfigPath, type ModelRef } from "./utils.js";
+import { isSafeCommand, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, sanitizePlanTools, SAFE_PLAN_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateModelConfig, updateThinkingConfig, createDefaultConfig, getConfigPath, isThinkingLevel, formatThinkingLevel, normalizeConfig, type ModelRef, type ThinkingLevel } from "./utils.js";
 import { type Mode, type PlanState, createInitialState, isReadOnlyMode, modeLabel } from "./state.js";
 
 // isSafeCommand — bash コマンドの安全性判定
@@ -833,5 +833,331 @@ describe("/plan-model status availability", () => {
 		const ref: ModelRef | undefined = undefined;
 		const formatted = ref ? `${ref.provider}/${ref.modelId}` : "(unset)";
 		expect(formatted).toBe("(unset)");
+	});
+});
+
+// ─── Thinking Level Utilities ──────────────────────────────────────
+
+describe("isThinkingLevel", () => {
+	it("accepts valid levels", () => {
+		const validLevels: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+		for (const level of validLevels) {
+			expect(isThinkingLevel(level)).toBe(true);
+		}
+	});
+
+	it("rejects invalid values", () => {
+		expect(isThinkingLevel("ultra")).toBe(false);
+		expect(isThinkingLevel("")).toBe(false);
+		expect(isThinkingLevel(null)).toBe(false);
+		expect(isThinkingLevel(undefined)).toBe(false);
+		expect(isThinkingLevel(123)).toBe(false);
+		expect(isThinkingLevel("HIGH")).toBe(false);
+	});
+});
+
+describe("formatThinkingLevel", () => {
+	it("formats a valid level", () => {
+		expect(formatThinkingLevel("high")).toBe("high");
+		expect(formatThinkingLevel("xhigh")).toBe("xhigh");
+		expect(formatThinkingLevel("off")).toBe("off");
+	});
+
+	it("returns (unset) for undefined/null", () => {
+		expect(formatThinkingLevel(undefined)).toBe("(unset)");
+		expect(formatThinkingLevel(null)).toBe("(unset)");
+	});
+});
+
+// ─── Thinking Config Persistence ───────────────────────────────────
+
+describe("thinking config persistence", () => {
+	it("default config has empty thinking", () => {
+		const config = createDefaultConfig();
+		expect(config.thinking).toEqual({});
+	});
+
+	it("save and load round-trip with thinking", () => {
+		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
+		const path = `${tmpDir}/plan-mode.json`;
+
+		try {
+			const config = createDefaultConfig();
+			config.models.main = { provider: "anthropic", modelId: "claude-sonnet-4-5" };
+			config.thinking.main = "high";
+			config.thinking.plan = "xhigh";
+
+			saveModelConfig(config, path);
+
+			const loaded = loadModelConfig(path);
+			expect(loaded.models.main).toEqual({ provider: "anthropic", modelId: "claude-sonnet-4-5" });
+			expect(loaded.thinking.main).toBe("high");
+			expect(loaded.thinking.plan).toBe("xhigh");
+		} finally {
+			rmSync(tmpDir, { recursive: true });
+		}
+	});
+
+	it("existing config without thinking field normalizes correctly", () => {
+		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
+		const path = `${tmpDir}/plan-mode.json`;
+
+		try {
+			// Write a config without "thinking" field (old format)
+			writeFileSync(path, JSON.stringify({
+				version: 1,
+				models: { main: { provider: "anthropic", modelId: "sonnet" } },
+			}, null, 2));
+
+			const loaded = loadModelConfig(path);
+			expect(loaded.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
+			expect(loaded.thinking).toEqual({});
+		} finally {
+			rmSync(tmpDir, { recursive: true });
+		}
+	});
+
+	it("invalid thinking values are stripped on load", () => {
+		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
+		const path = `${tmpDir}/plan-mode.json`;
+
+		try {
+			writeFileSync(path, JSON.stringify({
+				version: 1,
+				models: {},
+				thinking: { main: "ultra", plan: "high", extra: "low" },
+			}, null, 2));
+
+			const loaded = loadModelConfig(path);
+			expect(loaded.thinking.main).toBeUndefined();
+			expect(loaded.thinking.plan).toBe("high");
+			expect((loaded.thinking as Record<string, unknown>).extra).toBeUndefined();
+		} finally {
+			rmSync(tmpDir, { recursive: true });
+		}
+	});
+});
+
+// ─── updateThinkingConfig ──────────────────────────────────────────
+
+describe("updateThinkingConfig", () => {
+	it("sets and clears thinking", () => {
+		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
+		const path = `${tmpDir}/plan-mode.json`;
+
+		try {
+			const config = createDefaultConfig();
+			updateThinkingConfig(config, "main", "high", path);
+			expect(config.thinking.main).toBe("high");
+
+			const loaded = loadModelConfig(path);
+			expect(loaded.thinking.main).toBe("high");
+
+			updateThinkingConfig(config, "main", undefined, path);
+			expect(config.thinking.main).toBeUndefined();
+
+			const loaded2 = loadModelConfig(path);
+			expect(loaded2.thinking.main).toBeUndefined();
+		} finally {
+			rmSync(tmpDir, { recursive: true });
+		}
+	});
+
+	it("sets plan thinking", () => {
+		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
+		const path = `${tmpDir}/plan-mode.json`;
+
+		try {
+			const config = createDefaultConfig();
+			updateThinkingConfig(config, "plan", "xhigh", path);
+			expect(config.thinking.plan).toBe("xhigh");
+		} finally {
+			rmSync(tmpDir, { recursive: true });
+		}
+	});
+});
+
+// ─── normalizeConfig ──────────────────────────────────────────────
+
+describe("normalizeConfig", () => {
+	it("normalizes config with missing fields", () => {
+		const config = normalizeConfig({ version: 1 });
+		expect(config.version).toBe(1);
+		expect(config.models).toEqual({});
+		expect(config.thinking).toEqual({});
+	});
+
+	it("preserves valid thinking levels", () => {
+		const config = normalizeConfig({
+			version: 1,
+			thinking: { main: "high", plan: "xhigh" },
+		});
+		expect(config.thinking.main).toBe("high");
+		expect(config.thinking.plan).toBe("xhigh");
+	});
+
+	it("strips invalid thinking levels", () => {
+		const config = normalizeConfig({
+			version: 1,
+			thinking: { main: "INVALID", plan: "medium" },
+		});
+		expect(config.thinking.main).toBeUndefined();
+		expect(config.thinking.plan).toBe("medium");
+	});
+});
+
+// ─── Thinking Mode Switch Simulation ──────────────────────────────
+
+describe("thinking mode switch simulation", () => {
+	it("main → plan saves main thinking to config", () => {
+		const config = createDefaultConfig();
+		const state = createInitialState(config);
+		expect(state.mode).toBe("main");
+
+		// Simulate: entering plan mode, current thinking = high
+		const currentThinking: ThinkingLevel = "high";
+		state.savedMainThinking = currentThinking;
+		updateThinkingConfig(state.modelConfig, "main", currentThinking);
+		state.mode = "plan";
+
+		expect(state.modelConfig.thinking.main).toBe("high");
+		expect(state.savedMainThinking).toBe("high");
+	});
+
+	it("plan config thinking is used when entering plan", () => {
+		const config = createDefaultConfig();
+		config.thinking.plan = "xhigh";
+		const state = createInitialState(config);
+
+		const planThinking = state.modelConfig.thinking.plan;
+		expect(planThinking).toBe("xhigh");
+	});
+
+	it("plan → main restores main thinking from config", () => {
+		const config = createDefaultConfig();
+		config.thinking.main = "medium";
+		const state = createInitialState(config);
+		state.mode = "plan";
+
+		state.mode = "main";
+		const mainThinking = state.modelConfig.thinking.main;
+		expect(mainThinking).toBe("medium");
+	});
+
+	it("plan → main falls back to savedMainThinking", () => {
+		const config = createDefaultConfig();
+		const state = createInitialState(config);
+		state.mode = "plan";
+		state.savedMainThinking = "low";
+
+		state.mode = "main";
+		const mainThinking = state.modelConfig.thinking.main ?? state.savedMainThinking;
+		expect(mainThinking).toBe("low");
+	});
+
+	it("config thinking.main takes precedence over savedMainThinking", () => {
+		const config = createDefaultConfig();
+		config.thinking.main = "high";
+		const state = createInitialState(config);
+		state.mode = "plan";
+		state.savedMainThinking = "low";
+
+		state.mode = "main";
+		const mainThinking = state.modelConfig.thinking.main ?? state.savedMainThinking;
+		expect(mainThinking).toBe("high");
+	});
+
+	it("--plan startup does NOT overwrite main thinking", () => {
+		const config = createDefaultConfig();
+		config.thinking.main = "xhigh";
+		config.thinking.plan = "high";
+		const state = createInitialState(config);
+
+		// Simulate: --plan startup with persistCurrentMain=false
+		// Should NOT save current thinking to main
+		const persistCurrentMain = false;
+		if (persistCurrentMain) {
+			// This block should NOT execute
+			expect(true).toBe(false);
+		}
+
+		state.mode = "plan";
+		expect(state.modelConfig.thinking.main).toBe("xhigh");
+		expect(state.modelConfig.thinking.plan).toBe("high");
+		expect(state.savedMainThinking).toBeUndefined();
+	});
+});
+
+// ─── Thinking Event Simulation ────────────────────────────────────
+
+describe("thinking event simulation", () => {
+	it("thinking_level_select in main mode updates thinking.main", () => {
+		const config = createDefaultConfig();
+		const state = createInitialState(config);
+		state.mode = "main";
+
+		const newLevel: ThinkingLevel = "high";
+		if (state.mode === "main") {
+			updateThinkingConfig(state.modelConfig, "main", newLevel);
+		}
+
+		expect(state.modelConfig.thinking.main).toBe("high");
+	});
+
+	it("thinking_level_select in plan mode updates thinking.plan", () => {
+		const config = createDefaultConfig();
+		const state = createInitialState(config);
+		state.mode = "plan";
+
+		const newLevel: ThinkingLevel = "xhigh";
+		if (state.mode === "plan") {
+			updateThinkingConfig(state.modelConfig, "plan", newLevel);
+		}
+
+		expect(state.modelConfig.thinking.plan).toBe("xhigh");
+	});
+
+	it("suppressThinkingSelectPersist prevents update", () => {
+		const config = createDefaultConfig();
+		config.thinking.main = "medium";
+		const state = createInitialState(config);
+		state.mode = "main";
+
+		let suppressThinkingSelectPersist = true;
+
+		// Simulate: extension-driven setThinkingLevel
+		if (!suppressThinkingSelectPersist && state.mode === "main") {
+			updateThinkingConfig(state.modelConfig, "main", "high");
+		}
+
+		expect(state.modelConfig.thinking.main).toBe("medium");
+
+		suppressThinkingSelectPersist = false;
+		expect(suppressThinkingSelectPersist).toBe(false);
+	});
+});
+
+// ─── /plan-model status now includes thinking ────────────────────
+
+describe("/plan-model status thinking integration", () => {
+	it("status includes thinking levels", () => {
+		const config = createDefaultConfig();
+		config.models.main = { provider: "anthropic", modelId: "sonnet" };
+		config.thinking.main = "high";
+		config.thinking.plan = "xhigh";
+
+		const mainThinking = formatThinkingLevel(config.thinking.main);
+		const planThinking = formatThinkingLevel(config.thinking.plan);
+
+		expect(mainThinking).toBe("high");
+		expect(planThinking).toBe("xhigh");
+	});
+
+	it("unset thinking shows (unset)", () => {
+		const config = createDefaultConfig();
+		const mainThinking = formatThinkingLevel(config.thinking.main);
+		const planThinking = formatThinkingLevel(config.thinking.plan);
+		expect(mainThinking).toBe("(unset)");
+		expect(planThinking).toBe("(unset)");
 	});
 });

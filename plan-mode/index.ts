@@ -21,15 +21,20 @@ import {
 	loadModelConfig,
 	saveModelConfig,
 	updateModelConfig,
+	updateThinkingConfig,
 	createDefaultConfig,
+	isThinkingLevel,
+	formatThinkingLevel,
 	type ModelRef,
 	type PlanModeConfig,
+	type ThinkingLevel,
 } from "./utils.js";
 
 export default function planModeExtension(pi: ExtensionAPI): void {
 	let configPath: string | undefined;
 	const state = createInitialState();
 	let suppressModelSelectPersist = false;
+	let suppressThinkingSelectPersist = false;
 
 	pi.registerFlag("plan", {
 		description: "プランモードで起動（読み取り専用探索）",
@@ -79,6 +84,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				state.savedMainModel = mainRef;
 				updateModelConfig(state.modelConfig, "main", mainRef, configPath);
 			}
+			const mainThinking = pi.getThinkingLevel();
+			state.savedMainThinking = mainThinking;
+			updateThinkingConfig(state.modelConfig, "main", mainThinking, configPath);
 		}
 
 		// 2. Enter plan mode (restrict tools)
@@ -93,6 +101,17 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		const planRef = state.modelConfig.models.plan;
 		if (planRef) {
 			await trySetModel(planRef, ctx, "Plan model");
+		}
+
+		// 4. Switch to plan thinking level if configured
+		const planThinking = state.modelConfig.thinking.plan;
+		if (planThinking) {
+			suppressThinkingSelectPersist = true;
+			try {
+				pi.setThinkingLevel(planThinking);
+			} finally {
+				suppressThinkingSelectPersist = false;
+			}
 		}
 
 		ctx.ui.notify(modeLabel(state.mode));
@@ -116,8 +135,19 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			await trySetModel(state.savedMainModel, ctx, "Main model (fallback)");
 		}
 
-		// 4. Clean up state
-		Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined, savedMainModel: undefined });
+		// 4. Restore main thinking level
+		const mainThinking = state.modelConfig.thinking.main ?? state.savedMainThinking;
+		if (mainThinking) {
+			suppressThinkingSelectPersist = true;
+			try {
+				pi.setThinkingLevel(mainThinking);
+			} finally {
+				suppressThinkingSelectPersist = false;
+			}
+		}
+
+		// 5. Clean up state
+		Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined, savedMainModel: undefined, savedMainThinking: undefined });
 
 		if (plan) {
 			pi.sendUserMessage(`以下の plan に従って実装してください。\n\n<plan>\n${plan}\n</plan>`);
@@ -163,8 +193,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				const planAvail = planRef ? (ctx.modelRegistry.find(planRef.provider, planRef.modelId) ? "✓" : "✗") : "";
 				const main = mainRef ? `${formatModelRef(mainRef)} ${mainAvail}` : "(unset)";
 				const plan = planRef ? `${formatModelRef(planRef)} ${planAvail}` : "(unset)";
+				const mainThinking = formatThinkingLevel(state.modelConfig.thinking.main);
+				const planThinking = formatThinkingLevel(state.modelConfig.thinking.plan);
+				const currentThinking = pi.getThinkingLevel();
 				ctx.ui.notify(
-					`Mode: ${state.mode} | Current: ${current} | Main: ${main} | Plan: ${plan}`,
+					`Mode: ${state.mode} | Current: ${current} [${currentThinking}] | Main: ${main} [${mainThinking}] | Plan: ${plan} [${planThinking}]`,
 					"info",
 				);
 				return;
@@ -242,6 +275,119 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			}
 
 			ctx.ui.notify("Usage: /plan-model status | main [provider/modelId] | plan [provider/modelId] | clear main|plan|all", "warning");
+		},
+	});
+
+	// ─── /plan-thinking command ───────────────────────────────────────
+
+	const THINKING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+
+	pi.registerCommand("plan-thinking", {
+		description: "main/plan モード別 thinking effort 設定",
+		getArgumentCompletions(prefix: string) {
+			const subs = [
+				{ value: "status", label: "status", description: "現在の thinking 設定を表示" },
+				...THINKING_LEVELS.map((l) => ({
+					value: `main ${l}`, label: `main ${l}`, description: `main mode 用 thinking: ${l}`,
+				})),
+				...THINKING_LEVELS.map((l) => ({
+					value: `plan ${l}`, label: `plan ${l}`, description: `plan mode 用 thinking: ${l}`,
+				})),
+				{ value: "clear main", label: "clear main", description: "main thinking 設定を削除" },
+				{ value: "clear plan", label: "clear plan", description: "plan thinking 設定を削除" },
+				{ value: "clear all", label: "clear all", description: "全 thinking 設定を削除" },
+				];
+			return subs.filter((s) => s.value.startsWith(prefix));
+		},
+		handler: async (args, ctx) => {
+			const parts = args?.trim().split(/\s+/) ?? [];
+
+			// /plan-thinking status
+			if (parts[0] === "status" || parts.length === 0) {
+				const current = pi.getThinkingLevel();
+				const mainThinking = formatThinkingLevel(state.modelConfig.thinking.main);
+				const planThinking = formatThinkingLevel(state.modelConfig.thinking.plan);
+				ctx.ui.notify(
+					`Mode: ${state.mode} | Current: ${current} | Main thinking: ${mainThinking} | Plan thinking: ${planThinking}`,
+					"info",
+				);
+				return;
+			}
+
+			// /plan-thinking clear <main|plan|all>
+			if (parts[0] === "clear") {
+				const target = parts[1];
+				if (target === "main") {
+					updateThinkingConfig(state.modelConfig, "main", undefined, configPath);
+					ctx.ui.notify("Main thinking setting cleared", "info");
+				} else if (target === "plan") {
+					updateThinkingConfig(state.modelConfig, "plan", undefined, configPath);
+					ctx.ui.notify("Plan thinking setting cleared", "info");
+				} else if (target === "all") {
+					state.modelConfig.thinking = {};
+					saveModelConfig(state.modelConfig, configPath);
+					ctx.ui.notify("All thinking settings cleared", "info");
+				} else {
+					ctx.ui.notify("Usage: /plan-thinking clear main|plan|all", "warning");
+				}
+				return;
+			}
+
+			// /plan-thinking main [level]
+			if (parts[0] === "main") {
+				if (parts[1]) {
+					if (!isThinkingLevel(parts[1])) {
+						ctx.ui.notify(`Invalid thinking level: ${parts[1]}. Use: ${THINKING_LEVELS.join(", ")}`, "error");
+						return;
+					}
+					const level = parts[1] as ThinkingLevel;
+					updateThinkingConfig(state.modelConfig, "main", level, configPath);
+					ctx.ui.notify(`Main thinking set to ${level}`, "info");
+					if (state.mode === "main") {
+						suppressThinkingSelectPersist = true;
+						try {
+							pi.setThinkingLevel(level);
+						} finally {
+							suppressThinkingSelectPersist = false;
+						}
+					}
+				} else {
+					// Save current thinking as main
+					const level = pi.getThinkingLevel();
+					updateThinkingConfig(state.modelConfig, "main", level, configPath);
+					ctx.ui.notify(`Main thinking saved: ${level}`, "info");
+				}
+				return;
+			}
+
+			// /plan-thinking plan [level]
+			if (parts[0] === "plan") {
+				if (parts[1]) {
+					if (!isThinkingLevel(parts[1])) {
+						ctx.ui.notify(`Invalid thinking level: ${parts[1]}. Use: ${THINKING_LEVELS.join(", ")}`, "error");
+						return;
+					}
+					const level = parts[1] as ThinkingLevel;
+					updateThinkingConfig(state.modelConfig, "plan", level, configPath);
+					ctx.ui.notify(`Plan thinking set to ${level}`, "info");
+					if (state.mode === "plan") {
+						suppressThinkingSelectPersist = true;
+						try {
+							pi.setThinkingLevel(level);
+						} finally {
+							suppressThinkingSelectPersist = false;
+						}
+					}
+				} else {
+					// Save current thinking as plan
+					const level = pi.getThinkingLevel();
+					updateThinkingConfig(state.modelConfig, "plan", level, configPath);
+					ctx.ui.notify(`Plan thinking saved: ${level}`, "info");
+				}
+				return;
+			}
+
+			ctx.ui.notify("Usage: /plan-thinking status | main [level] | plan [level] | clear main|plan|all", "warning");
 		},
 	});
 
@@ -343,7 +489,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	});
 
 	// Track model changes per-mode
-	pi.on("model_select", async (event) => {
+		pi.on("model_select", async (event) => {
 		if (event.source === "restore") return;
 		if (suppressModelSelectPersist) return;
 
@@ -355,6 +501,22 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		} else {
 			if (!sameModelRef(state.modelConfig.models.plan, ref)) {
 				updateModelConfig(state.modelConfig, "plan", ref, configPath);
+			}
+		}
+	});
+
+	// Track thinking level changes per-mode
+	pi.on("thinking_level_select", async (event) => {
+		if (suppressThinkingSelectPersist) return;
+
+		const level = event.level;
+		if (state.mode === "main") {
+			if (state.modelConfig.thinking.main !== level) {
+				updateThinkingConfig(state.modelConfig, "main", level, configPath);
+			}
+		} else {
+			if (state.modelConfig.thinking.plan !== level) {
+				updateThinkingConfig(state.modelConfig, "plan", level, configPath);
 			}
 		}
 	});
@@ -372,6 +534,15 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			// Normal startup: apply configured main model if set
 			if (state.modelConfig.models.main) {
 				await trySetModel(state.modelConfig.models.main, ctx, "Main model");
+			}
+			// Apply configured main thinking level if set
+			if (state.modelConfig.thinking.main) {
+				suppressThinkingSelectPersist = true;
+				try {
+					pi.setThinkingLevel(state.modelConfig.thinking.main);
+				} finally {
+					suppressThinkingSelectPersist = false;
+				}
 			}
 		}
 	});
