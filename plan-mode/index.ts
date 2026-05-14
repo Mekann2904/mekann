@@ -208,12 +208,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			// /plan-model clear <main|plan|all>
 			if (parts[0] === "clear") {
 				const target = parts[1];
-				if (target === "main") {
-					updateModelConfig(state.modelConfig, "main", undefined, configPath);
-					ctx.ui.notify("Main model setting cleared", "info");
-				} else if (target === "plan") {
-					updateModelConfig(state.modelConfig, "plan", undefined, configPath);
-					ctx.ui.notify("Plan model setting cleared", "info");
+				if (target === "main" || target === "plan") {
+					updateConfigField(state.modelConfig, "models", target, undefined, configPath);
+					ctx.ui.notify(`${target === "main" ? "Main" : "Plan"} model setting cleared`, "info");
 				} else if (target === "all") {
 					state.modelConfig = createDefaultConfig();
 					saveModelConfig(state.modelConfig, configPath);
@@ -295,12 +292,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			// /plan-thinking clear <main|plan|all>
 			if (parts[0] === "clear") {
 				const target = parts[1];
-				if (target === "main") {
-					updateThinkingConfig(state.modelConfig, "main", undefined, configPath);
-					ctx.ui.notify("Main thinking setting cleared", "info");
-				} else if (target === "plan") {
-					updateThinkingConfig(state.modelConfig, "plan", undefined, configPath);
-					ctx.ui.notify("Plan thinking setting cleared", "info");
+				if (target === "main" || target === "plan") {
+					updateConfigField(state.modelConfig, "thinking", target, undefined, configPath);
+					ctx.ui.notify(`${target === "main" ? "Main" : "Plan"} thinking setting cleared`, "info");
 				} else if (target === "all") {
 					state.modelConfig.thinking = {};
 					saveModelConfig(state.modelConfig, configPath);
