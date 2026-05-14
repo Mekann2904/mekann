@@ -852,6 +852,20 @@ describe("resolveGitdirPaths", () => {
 		const paths = await resolveGitdirPaths(emptyDir);
 		expect(paths).toHaveLength(0);
 	});
+
+	it(".git pointer file with relative gitdir is resolved against workspace root", async () => {
+		const subDir = join(testGitDir, "relative-pointer-test");
+		mkdirSync(subDir, { recursive: true });
+		const externalGitdir = join(testGitDir, "relative-gitdir");
+		mkdirSync(externalGitdir, { recursive: true });
+
+		// Use a relative path instead of absolute
+		writeFileSync(join(subDir, ".git"), "gitdir: ../relative-gitdir\n");
+
+		const paths = await resolveGitdirPaths(subDir);
+		expect(paths).toHaveLength(2);
+		expect(paths.some((p) => p.includes("relative-gitdir"))).toBe(true);
+	});
 });
 
 // ─── Unit tests: workspace root validation ─────────────────────────
