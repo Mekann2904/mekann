@@ -66,6 +66,33 @@ export function isProtectedPath(path: string): boolean {
 }
 
 /**
+ * Check if a path is an unsafe workspace root (/, $HOME, /Users, /Users/<user>).
+ * Returns an error message string if unsafe, null if safe.
+ * Shared by validateWorkspaceRoot and macSeatbelt validatePolicy.
+ */
+export async function checkUnsafeRoot(root: string): Promise<string | null> {
+	const resolved = await resolveSafeRealPath(root);
+
+	if (resolved === "/") {
+		return "workspace root cannot be /";
+	}
+
+	const home = process.env.HOME;
+	if (home) {
+		const resolvedHome = await resolveSafeRealPath(home);
+		if (resolved === resolvedHome) {
+			return "workspace root cannot be $HOME — use a project subdirectory";
+		}
+	}
+
+	if (resolved === "/Users" || resolved.match(/^\/Users\/[^/]+$/)) {
+		return "workspace root cannot be /Users or a user home directory — use a project subdirectory";
+	}
+
+	return null;
+}
+
+/**
  * Workspace root のバリデーション。
  *
  * - `/` を workspace root にできない
@@ -73,26 +100,8 @@ export function isProtectedPath(path: string): boolean {
  * - 広すぎるパスは警告または拒否する
  */
 export async function validateWorkspaceRoot(root: string): Promise<void> {
-	const resolved = await resolveSafeRealPath(root);
-
-	if (resolved === "/") {
-		throw new Error("workspace root cannot be /");
-	}
-
-	const home = process.env.HOME;
-	if (home) {
-		const resolvedHome = await resolveSafeRealPath(home);
-		if (resolved === resolvedHome) {
-			throw new Error("workspace root cannot be $HOME — use a project subdirectory");
-		}
-	}
-
-	// Reject /Users or /Users/<user> as too broad
-	if (resolved === "/Users" || resolved.match(/^\/Users\/[^/]+$/)) {
-		throw new Error(
-			"workspace root cannot be /Users or a user home directory — use a project subdirectory",
-		);
-	}
+	const reason = await checkUnsafeRoot(root);
+	if (reason) throw new Error(reason);
 }
 
 /** realpath を試み、失敗したら resolve の結果を返す。 */

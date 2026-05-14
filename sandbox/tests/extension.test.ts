@@ -57,6 +57,7 @@ vi.mock("../pathPolicy.js", () => ({
 	resolveSafeRealPath: vi.fn((p: string) => Promise.resolve(p)),
 	assertPathInsideRoot: vi.fn(() => Promise.resolve()),
 	isProtectedPath: vi.fn(() => false),
+	checkUnsafeRoot: vi.fn(() => Promise.resolve(null)),
 }));
 
 // ─── Mock infrastructure ─────────────────────────────────────────
