@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { isSafeCommand, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, sanitizePlanTools, SAFE_PLAN_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateModelConfig, updateThinkingConfig, createDefaultConfig, getConfigPath, isThinkingLevel, formatThinkingLevel, normalizeConfig, compactOldProposedPlansInText, type ModelRef, type ThinkingLevel } from "./utils.js";
+import { isSafeCommand, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, SAFE_PLAN_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateModelConfig, updateThinkingConfig, createDefaultConfig, getConfigPath, isThinkingLevel, formatThinkingLevel, normalizeConfig, compactOldProposedPlansInText, type ModelRef, type ThinkingLevel } from "./utils.js";
 import { type Mode, type PlanState, createInitialState, isReadOnlyMode, modeLabel } from "./state.js";
 
 // isSafeCommand — bash コマンドの安全性判定
@@ -255,25 +255,6 @@ describe("hashContent", () => {
 		const hash = hashContent("test");
 		expect(hash).toHaveLength(12);
 		expect(hash).toMatch(/^[0-9a-f]{12}$/);
-	});
-});
-
-// sanitizePlanTools
-describe("sanitizePlanTools", () => {
-	it("edit と write を除去する", () => {
-		expect(sanitizePlanTools(["read", "edit", "write", "grep"])).toEqual(["read", "grep"]);
-	});
-
-	it("edit/write がなければそのまま返す", () => {
-		expect(sanitizePlanTools(["read", "grep", "find", "ls"])).toEqual(["read", "grep", "find", "ls"]);
-	});
-
-	it("bash は保持される", () => {
-		expect(sanitizePlanTools(["read", "bash", "grep"])).toEqual(["read", "bash", "grep"]);
-	});
-
-	it("空配列は空配列を返す", () => {
-		expect(sanitizePlanTools([])).toEqual([]);
 	});
 });
 
@@ -1916,18 +1897,6 @@ describe("buildBlockReason: additional edge cases", () => {
 	it("input に path がない場合は unknown と表示", () => {
 		const reason = buildBlockReason("edit", { command: "ls" }, 1);
 		expect(reason).toContain("unknown");
-	});
-});
-
-// ─── sanitizePlanTools edge cases ──────────────────────────────────
-
-describe("sanitizePlanTools: additional edge cases", () => {
-	it("edit が複数あっても全て除去する", () => {
-		expect(sanitizePlanTools(["edit", "edit", "read"])).toEqual(["read"]);
-	});
-
-	it("write が複数あっても全て除去する", () => {
-		expect(sanitizePlanTools(["write", "write", "read"])).toEqual(["read"]);
 	});
 });
 

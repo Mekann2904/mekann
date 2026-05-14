@@ -66,51 +66,6 @@ export function isProtectedPath(path: string): boolean {
 }
 
 /**
- * writableRoots のバリデーション。
- *
- * - 各 writableRoot が workspaceRoots 配下にあることを確認
- * - symlink 経由の脱出も検出する
- * - danger_full_access 以外で / や $HOME 全体を writable にできない
- */
-export async function validateWritableRoots(
-	writableRoots: string[],
-	workspaceRoots: string[],
-	mode: string,
-): Promise<void> {
-	if (mode === "danger_full_access") return;
-
-	const resolvedWorkspaceRoots = await resolveRealPaths(workspaceRoots);
-
-	for (const wr of writableRoots) {
-		const resolvedWr = await resolveSafe(wr);
-
-		// / や $HOME 全体は不可
-		if (resolvedWr === "/") {
-			throw new Error("writable root cannot be /");
-		}
-		const home = process.env.HOME;
-		if (home) {
-			const resolvedHome = await resolveSafe(home);
-			if (resolvedWr === resolvedHome) {
-				throw new Error("writable root cannot be $HOME");
-			}
-		}
-
-		// workspaceRoots 配下かチェック
-		const isInside = resolvedWorkspaceRoots.some((root) => {
-			const rel = relative(root, resolvedWr);
-			return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
-		});
-
-		if (!isInside) {
-			throw new Error(
-				`writable root "${wr}" (resolved: "${resolvedWr}") is outside workspace roots`,
-			);
-		}
-	}
-}
-
-/**
  * Workspace root のバリデーション。
  *
  * - `/` を workspace root にできない
