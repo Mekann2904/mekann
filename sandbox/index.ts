@@ -113,7 +113,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 			// ── Case 1: Explicitly disabled via --no-sandbox ─────────
 			if (explicitlyDisabled) {
-				return getLocalBash().execute(id, params, signal, onUpdate, ctx);
+				return getLocalBash().execute(id, params, signal, onUpdate);
 			}
 
 			// ── Case 2: danger_full_access with explicit approval ────
@@ -133,7 +133,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					fullAccessState.fullAccessApprovedReason = "approved via tool execution prompt";
 				}
 				// Approved danger_full_access: unsandboxed execution
-				return getLocalBash().execute(id, params, signal, onUpdate, ctx);
+				return getLocalBash().execute(id, params, signal, onUpdate);
 			}
 
 			// ── Case 3: Sandbox mode but sandbox-exec unavailable → REFUSE ─
@@ -296,7 +296,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 	// ─── Status bar ──────────────────────────────────────────────────
 
-	function updateStatusBar(ctx: { ui: { setStatus: (ns: string, text: string | undefined) => void; theme: { fg: (color: string, text: string) => string } } }): void {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	function updateStatusBar(ctx: any): void {
 		if (explicitlyDisabled || !sandboxEnabled) {
 			ctx.ui.setStatus("sandbox", undefined);
 			return;
