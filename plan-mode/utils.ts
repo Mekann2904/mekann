@@ -242,34 +242,31 @@ export function saveModelConfig(config: PlanModeConfig, explicitPath?: string): 
  * Update a specific mode's model reference in the config and persist it.
  * Pass `undefined` for `ref` to clear that mode's setting.
  */
-export function updateModelConfig(
+type ModeConfigSection = "models" | "thinking";
+
+/**
+ * Update a specific mode's config field (model or thinking level) and persist.
+ * Pass `undefined` for `value` to clear that mode's setting.
+ */
+export function updateConfigField<T>(
 	config: PlanModeConfig,
+	section: ModeConfigSection,
 	mode: "main" | "plan",
-	ref: ModelRef | undefined,
+	value: T | undefined,
 	path?: string,
 ): void {
-	if (ref) {
-		config.models[mode] = ref;
+	if (value) {
+		(config[section] as Record<string, T>)[mode] = value;
 	} else {
-		delete config.models[mode];
+		delete (config[section] as Record<string, T>)[mode];
 	}
 	saveModelConfig(config, path);
 }
 
-/**
- * Update a specific mode's thinking level in the config and persist it.
- * Pass `undefined` for `level` to clear that mode's setting.
- */
-export function updateThinkingConfig(
-	config: PlanModeConfig,
-	mode: "main" | "plan",
-	level: ThinkingLevel | undefined,
-	path?: string,
-): void {
-	if (level) {
-		config.thinking[mode] = level;
-	} else {
-		delete config.thinking[mode];
-	}
-	saveModelConfig(config, path);
-}
+/** Update a mode's model config. */
+export const updateModelConfig = (config: PlanModeConfig, mode: "main" | "plan", ref: ModelRef | undefined, path?: string) =>
+	updateConfigField(config, "models", mode, ref, path);
+
+/** Update a mode's thinking level config. */
+export const updateThinkingConfig = (config: PlanModeConfig, mode: "main" | "plan", level: ThinkingLevel | undefined, path?: string) =>
+	updateConfigField(config, "thinking", mode, level, path);
