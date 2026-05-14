@@ -138,6 +138,7 @@ This extension uses `@earendil-works/pi-coding-agent` as a peer dependency becau
 13. **.git pointer 対応**: `.git` が file (pointer file) の場合、gitdir を解決して write deny rule を追加。
 14. **Combined output limit**: `maxOutputBytes` は stdout + stderr の合計で制限。個別に 2 倍保持できない。
 15. **Shell string API**: `runSandboxedShellMac(command: string, ...)` で shell string runner であることを型と名前で明示。
+16. **LLM output truncation**: sandbox tool results は `truncateForLlm()` で最大 50KB / 2000 行に短縮される。長いコマンド出力が LLM context を肥大化させない。Error message も同様に短縮される。
 
 ## Recommended Safe Defaults
 

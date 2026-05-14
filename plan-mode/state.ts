@@ -13,6 +13,8 @@ export function modeLabel(mode: Mode): string {
 export interface PlanState {
 	mode: Mode;
 	pendingPlan?: string;
+	/** Plan text to inject once into main mode's system prompt, then cleared. */
+	implementationPlan?: string;
 	savedActiveTools?: string[];
 	planPromptHash?: string;
 	planPromptDelivered: boolean;
