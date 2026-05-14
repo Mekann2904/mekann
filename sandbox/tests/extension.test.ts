@@ -862,3 +862,80 @@ describe("resolveRealPaths error fallback", () => {
 		expect(ctx.ui.setStatus).toHaveBeenCalledWith("sandbox", expect.any(String));
 	});
 });
+
+// ─── buildCurrentPolicy: read_only and danger_full_access paths ───
+
+describe("buildCurrentPolicy: all mode paths", () => {
+	it("read_only モードで sandboxed command が正しい policy を使う", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue({
+			code: 0,
+			signal: null,
+			stdout: "output",
+			stderr: "",
+		});
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "read_only" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Explicitly switch to read_only (in case previous test left another mode)
+		await mock._commands["sandbox-mode"].handler("read_only", createMockCtx());
+
+		// Now execute a tool command
+		const tool = mock._registeredTools[0];
+		await tool.execute("id1", { command: "cat file.txt" }, undefined, undefined, createMockCtx());
+
+		expect(runSandboxedShellMac).toHaveBeenCalled();
+		const callArgs = (runSandboxedShellMac as ReturnType<typeof vi.fn>).mock.calls[0];
+		expect(callArgs[1].mode).toBe("read_only");
+
+		// Reset
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(false);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue({
+			code: 0, signal: null, stdout: "mock stdout", stderr: "",
+		});
+	});
+
+	it("danger_full_access モード (承認済み) で unsandboxed 実行", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "danger_full_access" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		const result = await tool.execute("id1", { command: "echo hello" }, undefined, undefined, createMockCtx());
+
+		expect(result).toBeDefined();
+
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+	});
+});
+
+// ─── tool execute: Case 2 inline approval ────────────────────────
+
+describe("tool execute: Case 2 inline approval flow", () => {
+	it("/sandbox-mode で danger_full_access 承認 → 次の tool 実行はプロンプトなし", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Switch to danger_full_access via command (approve)
+		await mock._commands["sandbox-mode"].handler("danger_full_access", createMockCtx());
+
+		// Now tool execute should work without confirm (approved via command)
+		const ctx = createMockCtx();
+		const result = await mock._registeredTools[0].execute("id1", { command: "echo test" }, undefined, undefined, ctx);
+		expect(ctx.ui.confirm).not.toHaveBeenCalled();
+		expect(result).toBeDefined();
+	});
+});
