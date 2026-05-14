@@ -1,35 +1,36 @@
 /**
- * Zip Repo Extension — archive Git repo as ZIP to clipboard (macOS).
- * /zip [--head|--worktree]
+ * Zip Repo Extension — archive working tree as ZIP to clipboard (macOS).
+ * /zip — always includes HEAD + uncommitted changes.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
-import { basename, join } from "node:path";
-import { mkdtemp, stat, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
+import { stat, unlink } from "node:fs/promises";
 
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("zip", {
-		description: "Archive the current Git repo as ZIP and copy to clipboard (macOS). Flags: --head, --worktree",
-		handler: async (rawArgs, ctx) => {
-			const tokens = (rawArgs ?? "").trim().split(/\s+/);
-			const mode = tokens.includes("--worktree") ? "worktree" : tokens.includes("--head") ? "head" : "default";
-
+		description: "Archive working tree as ZIP and copy to clipboard (macOS)",
+		handler: async (_args, ctx) => {
 			let repoRoot: string;
 			let shortHead = "nohead";
 			try {
-				const { stdout } = await execFileAsync(
-					"git", ["rev-parse", "--show-toplevel", "HEAD"],
+				const { stdout: rootStdout } = await execFileAsync(
+					"git", ["rev-parse", "--show-toplevel"],
 					{ cwd: ctx.cwd, encoding: "utf8" },
 				);
-				const lines = stdout.trim().split("\n");
-				repoRoot = lines[0];
-				shortHead = lines[1].slice(0, 12);
-			} catch {
-				ctx.ui.notify("Not a Git repository or no commits yet. /zip requires HEAD to exist.", "error");
+				repoRoot = rootStdout.trim();
+
+				const { stdout: headStdout } = await execFileAsync(
+					"git", ["rev-parse", "--short=12", "HEAD"],
+					{ cwd: repoRoot, encoding: "utf8" },
+				);
+				shortHead = headStdout.trim();
+			} catch (e: unknown) {
+				const msg = e instanceof Error ? e.message : String(e);
+				ctx.ui.notify(`Not a Git repository or no commits yet: ${msg}`, "error");
 				return;
 			}
 			const repoName = basename(repoRoot);
@@ -41,24 +42,18 @@ export default function (pi: ExtensionAPI) {
 					{ cwd: repoRoot, encoding: "utf8" },
 				);
 				dirty = statusStdout.trim().length > 0;
-			} catch {
-			}
+			} catch {}
 
-			if (dirty) {
-				if (mode === "default") {
-					ctx.ui.notify("Working tree has uncommitted changes. Commit/stash them, or use /zip --head or /zip --worktree.", "error");
-					return;
-				}
-				if (mode === "head") ctx.ui.notify("⚠ Archiving HEAD only — uncommitted changes are NOT included.", "warning");
-			}
+			const parentDir = dirname(repoRoot);
+			const zipPath = join(parentDir, `${repoName}-${shortHead}.zip`);
 
-			const tmpDir = await mkdtemp(join(tmpdir(), `${repoName}-${shortHead}-`));
-			const zipPath = join(tmpDir, `${repoName}-${shortHead}-${Date.now()}.zip`);
+			// 前回の ZIP が残っていれば削除
+			try { await unlink(zipPath); } catch {}
 
 			try {
 				await execFileAsync("git", ["archive", "--format=zip", `--prefix=${repoName}/`, `--output=${zipPath}`, "HEAD"], { cwd: repoRoot });
 
-				if (mode === "worktree" && dirty) {
+				if (dirty) {
 					await overlayDirtyFiles(repoRoot, repoName, zipPath);
 				}
 			} catch (err) {
@@ -73,19 +68,26 @@ export default function (pi: ExtensionAPI) {
 				sizeStr = b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`;
 			} catch {}
 
+			// NSPasteboard 経由でファイル URL をクリップボードにコピー
+			// Finder、チャットアプリ等で ⌘V によるファイルペーストが可能
 			try {
-				await execFileAsync("osascript", ["-e", `set the clipboard to (POSIX file "${zipPath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}")`]);
+				const escaped = zipPath.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+				const script = `
+					use framework "Foundation"
+					use framework "AppKit"
+					set theURL to current application's NSURL's fileURLWithPath:"${escaped}"
+					set thePasteboard to current application's NSPasteboard's generalPasteboard()
+					thePasteboard's clearContents()
+					thePasteboard's writeObjects:{theURL}
+				`;
+				await execFileAsync("osascript", ["-e", script]);
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
 				ctx.ui.notify(`ZIP created at ${zipPath} (${sizeStr}) but clipboard copy failed: ${msg}`, "warning");
 				return;
 			}
 
-			const modeLabel = mode === "default" || mode === "head" ? "HEAD" : "worktree";
-			ctx.ui.notify(`Copied to clipboard: ${zipPath} (${sizeStr}, ${modeLabel})`, "info");
-
-			// 一時ファイルをクリーンアップ（クリップボードにコピー済み）
-			rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+			ctx.ui.notify(`Copied to clipboard: ${zipPath} (${sizeStr})`, "info");
 		},
 	});
 }
@@ -96,6 +98,5 @@ async function overlayDirtyFiles(repoRoot: string, repoName: string, zipPath: st
 	const dirtyFiles = stdout.split("\n").filter(Boolean);
 	if (dirtyFiles.length === 0) return;
 
-	// repoRoot を CWD にして、cd repoRoot && zip -u zipPath repoName/file ... と等価にする
-	await execFileAsync("/usr/bin/zip", ["-u", zipPath, ...dirtyFiles.map((f) => `${repoName}/${f}`)], { cwd: repoRoot });
+	await execFileAsync("/usr/bin/zip", ["-u", zipPath, ...dirtyFiles.map((f) => `${repoName}/${f}`)], { cwd: dirname(repoRoot) });
 }
