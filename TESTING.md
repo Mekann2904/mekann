@@ -20,13 +20,14 @@ cd plan-mode && npx vitest run --coverage
 
 ## Test Structure
 
-### plan-mode (276 tests)
+### plan-mode (313 tests)
 
 | File | Tests | Description |
 |------|-------|-------------|
 | `plan-mode.test.ts` | 276 | utils.ts + state.ts + integration scenarios |
+| `index.test.ts` | 37 | Extension hooks via mock API |
 
-**Coverage**: 97.84% statements, 97.1% branches
+**Coverage**: 79.5% statements, 71.7% branches (index.ts was 0% → 73.7%)
 
 ### sandbox (283 tests)
 
