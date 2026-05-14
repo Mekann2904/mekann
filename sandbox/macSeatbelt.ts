@@ -431,18 +431,10 @@ export async function isMacSandboxAvailable(): Promise<boolean> {
 
 // ─── Path resolution ─────────────────────────────────────────────
 
-async function resolveRealPath(p: string): Promise<string> {
-	try {
-		return await realpath(p);
-	} catch {
-		return resolve(p);
-	}
-}
-
 async function resolvePolicyPaths(policy: SandboxPolicy): Promise<SandboxPolicy> {
-	const cwd = await resolveRealPath(policy.cwd);
-	const workspaceRoots = await Promise.all(policy.workspaceRoots.map(resolveRealPath));
-	const writableRoots = await Promise.all(policy.writableRoots.map(resolveRealPath));
+	const cwd = await resolveSafeRealPath(policy.cwd);
+	const workspaceRoots = await Promise.all(policy.workspaceRoots.map((p) => resolveSafeRealPath(p)));
+	const writableRoots = await Promise.all(policy.writableRoots.map((p) => resolveSafeRealPath(p)));
 
 	// Resolve .git pointer files for each workspace root
 	const gitdirSets = await Promise.all(workspaceRoots.map(resolveGitdirPaths));
