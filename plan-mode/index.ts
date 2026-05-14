@@ -22,6 +22,7 @@ import {
 	saveModelConfig,
 	updateModelConfig,
 	updateThinkingConfig,
+	updateConfigField,
 	createDefaultConfig,
 	isThinkingLevel,
 	formatThinkingLevel,
@@ -522,21 +523,26 @@ ${plan}
 		lastBlockedInput = "";
 	});
 
+	// Track config changes per-mode
+	function persistIfChanged<T>(
+		section: "models" | "thinking",
+		mode: "main" | "plan",
+		value: T | undefined,
+		isEqual: (a: T | undefined, b: T | undefined) => boolean,
+	): void {
+		const current = (state.modelConfig[section] as Record<string, T | undefined>)[mode];
+		if (!isEqual(current, value)) {
+			updateConfigField(state.modelConfig, section, mode, value, configPath);
+		}
+	}
+
 	// Track model changes per-mode
-		pi.on("model_select", async (event) => {
+	pi.on("model_select", async (event) => {
 		if (event.source === "restore") return;
 		if (suppressModelSelectPersist) return;
 
 		const ref: ModelRef = { provider: event.model.provider, modelId: event.model.id };
-		if (state.mode === "main") {
-			if (!sameModelRef(state.modelConfig.models.main, ref)) {
-				updateModelConfig(state.modelConfig, "main", ref, configPath);
-			}
-		} else {
-			if (!sameModelRef(state.modelConfig.models.plan, ref)) {
-				updateModelConfig(state.modelConfig, "plan", ref, configPath);
-			}
-		}
+		persistIfChanged("models", state.mode, ref, sameModelRef);
 	});
 
 	// Track thinking level changes per-mode
@@ -544,15 +550,7 @@ ${plan}
 		if (suppressThinkingSelectPersist) return;
 
 		const level = event.level;
-		if (state.mode === "main") {
-			if (state.modelConfig.thinking.main !== level) {
-				updateThinkingConfig(state.modelConfig, "main", level, configPath);
-			}
-		} else {
-			if (state.modelConfig.thinking.plan !== level) {
-				updateThinkingConfig(state.modelConfig, "plan", level, configPath);
-			}
-		}
+		persistIfChanged("thinking", state.mode, level, (a, b) => a === b);
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
