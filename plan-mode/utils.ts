@@ -2,10 +2,11 @@
  * Plan Mode — ユーティリティ関数
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
+import { homedir } from "node:os";
 
 export const SAFE_PLAN_TOOLS = new Set(["read", "grep", "find", "ls"]);
 
@@ -93,4 +94,114 @@ export function loadPrompt(name: string, vars?: Record<string, string>): string 
 export function extractProposedPlan(message: string): string | undefined {
 	const match = message.match(/<proposed_plan>\s*([\s\S]*?)\s*<\/proposed_plan>/);
 	return match?.[1]?.trim() || undefined;
+}
+
+// ─── Model preference persistence ───────────────────────────────────
+
+/** Provider + modelId pair identifying a specific model. */
+export interface ModelRef {
+	provider: string;
+	modelId: string;
+}
+
+/** Configuration file shape stored at ~/.pi/agent/plan-mode.json */
+export interface PlanModeConfig {
+	version: 1;
+	models: {
+		main?: ModelRef;
+		plan?: ModelRef;
+	};
+}
+
+export function createDefaultConfig(): PlanModeConfig {
+	return { version: 1, models: {} };
+}
+
+/**
+ * Parse a "provider/modelId" string into a ModelRef.
+ * The first `/` separates provider from modelId, so modelIds containing `/`
+ * (e.g. "openrouter/anthropic/claude-3.5-sonnet") are handled correctly.
+ */
+export function parseModelRef(input: string): ModelRef | undefined {
+	const trimmed = input.trim();
+	if (!trimmed) return undefined;
+	const slashIndex = trimmed.indexOf("/");
+	if (slashIndex <= 0 || slashIndex === trimmed.length - 1) return undefined;
+	return {
+		provider: trimmed.slice(0, slashIndex),
+		modelId: trimmed.slice(slashIndex + 1),
+	};
+}
+
+/** Format a ModelRef as "provider/modelId". */
+export function formatModelRef(ref?: ModelRef): string {
+	if (!ref) return "(not set)";
+	return `${ref.provider}/${ref.modelId}`;
+}
+
+/** Compare two ModelRef values for equality. */
+export function sameModelRef(a: ModelRef | undefined, b: ModelRef | undefined): boolean {
+	if (a === b) return true;
+	if (!a || !b) return false;
+	return a.provider === b.provider && a.modelId === b.modelId;
+}
+
+/**
+ * Resolve the path to ~/.pi/agent/plan-mode.json.
+ * Accepts an explicit override for testing.
+ */
+export function getConfigPath(explicitPath?: string): string {
+	if (explicitPath) return explicitPath;
+	return join(homedir(), ".pi", "agent", "plan-mode.json");
+}
+
+/** Load config from disk, returning a default config on missing/invalid file. */
+export function loadModelConfig(explicitPath?: string): PlanModeConfig {
+	const configPath = getConfigPath(explicitPath);
+	if (!existsSync(configPath)) return createDefaultConfig();
+	try {
+		const raw = readFileSync(configPath, "utf-8");
+		const parsed = JSON.parse(raw);
+		if (parsed && parsed.version === 1 && parsed.models) return parsed as PlanModeConfig;
+	} catch {
+		// fall through to default
+	}
+	return createDefaultConfig();
+}
+
+/**
+ * Save config to disk using write-then-rename for atomicity.
+ * Creates the parent directory if it doesn't exist.
+ */
+export function saveModelConfig(config: PlanModeConfig, explicitPath?: string): void {
+	const configPath = getConfigPath(explicitPath);
+	const dir = dirname(configPath);
+	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+	const tmp = `${configPath}.tmp`;
+	writeFileSync(tmp, JSON.stringify(config, null, 2) + "\n", "utf-8");
+	try {
+		renameSync(tmp, configPath);
+	} catch {
+		// renameSync may fail across partitions; fall back to direct write
+		writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+	}
+}
+
+/**
+ * Update a specific mode's model reference in the config and persist it.
+ * Pass `undefined` for `ref` to clear that mode's setting.
+ */
+export function updateModelConfig(
+	config: PlanModeConfig,
+	mode: "main" | "plan",
+	ref: ModelRef | undefined,
+	path?: string,
+): void {
+	if (ref) {
+		config.models[mode] = ref;
+	} else {
+		delete config.models[mode];
+	}
+	saveModelConfig(config, path);
 }

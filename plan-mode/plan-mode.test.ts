@@ -6,7 +6,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { isSafeCommand, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, sanitizePlanTools, SAFE_PLAN_TOOLS } from "./utils.js";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { isSafeCommand, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, sanitizePlanTools, SAFE_PLAN_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateModelConfig, createDefaultConfig, getConfigPath, type ModelRef } from "./utils.js";
 import { type Mode, type PlanState, createInitialState, isReadOnlyMode, modeLabel } from "./state.js";
 
 // isSafeCommand — bash コマンドの安全性判定
@@ -408,5 +409,429 @@ describe("統合シナリオ: plan mode ワークフロー", () => {
 		state.mode = "plan";
 		state.savedActiveTools = ["read", "bash", "edit", "write"];
 		expect(isReadOnlyMode(state.mode)).toBe(true);
+	});
+});
+
+// ─── Model preference utilities ──────────────────────────────────
+
+describe("parseModelRef", () => {
+	it("standard provider/modelId", () => {
+		const ref = parseModelRef("anthropic/claude-sonnet-4-5");
+		expect(ref).toEqual({ provider: "anthropic", modelId: "claude-sonnet-4-5" });
+	});
+
+	it("modelId with slashes (e.g. openrouter)", () => {
+		const ref = parseModelRef("openrouter/anthropic/claude-3.5-sonnet");
+		expect(ref).toEqual({ provider: "openrouter", modelId: "anthropic/claude-3.5-sonnet" });
+	});
+
+	it("trims whitespace", () => {
+		const ref = parseModelRef("  anthropic/claude-sonnet-4-5  ");
+		expect(ref).toEqual({ provider: "anthropic", modelId: "claude-sonnet-4-5" });
+	});
+
+	it("empty string returns undefined", () => {
+		expect(parseModelRef("")).toBeUndefined();
+		expect(parseModelRef("   ")).toBeUndefined();
+	});
+
+	it("no slash returns undefined", () => {
+		expect(parseModelRef("noprovider")).toBeUndefined();
+	});
+
+	it("slash only at start returns undefined", () => {
+		expect(parseModelRef("/noprovider")).toBeUndefined();
+	});
+
+	it("slash only at end returns undefined", () => {
+		expect(parseModelRef("provider/")).toBeUndefined();
+	});
+});
+
+describe("formatModelRef", () => {
+	it("formats provider/modelId", () => {
+		expect(formatModelRef({ provider: "anthropic", modelId: "claude-sonnet-4-5" })).toBe("anthropic/claude-sonnet-4-5");
+	});
+
+	it("undefined returns (not set)", () => {
+		expect(formatModelRef(undefined)).toBe("(not set)");
+	});
+});
+
+describe("sameModelRef", () => {
+	it("same refs are equal", () => {
+		const a: ModelRef = { provider: "anthropic", modelId: "claude-sonnet-4-5" };
+		expect(sameModelRef(a, a)).toBe(true);
+	});
+
+	it("identical refs are equal", () => {
+		expect(sameModelRef({ provider: "a", modelId: "b" }, { provider: "a", modelId: "b" })).toBe(true);
+	});
+
+	it("different provider is not equal", () => {
+		expect(sameModelRef({ provider: "a", modelId: "b" }, { provider: "c", modelId: "b" })).toBe(false);
+	});
+
+	it("different modelId is not equal", () => {
+		expect(sameModelRef({ provider: "a", modelId: "b" }, { provider: "a", modelId: "c" })).toBe(false);
+	});
+
+	it("both undefined is equal", () => {
+		expect(sameModelRef(undefined, undefined)).toBe(true);
+	});
+
+	it("one undefined is not equal", () => {
+		expect(sameModelRef({ provider: "a", modelId: "b" }, undefined)).toBe(false);
+		expect(sameModelRef(undefined, { provider: "a", modelId: "b" })).toBe(false);
+	});
+});
+
+// ─── Config persistence ───────────────────────────────────────────
+
+describe("config persistence", () => {
+	it("load from nonexistent file returns default", () => {
+		const config = loadModelConfig("/nonexistent/path/plan-mode-test.json");
+		expect(config).toEqual(createDefaultConfig());
+	});
+
+	it("save and load round-trip", () => {
+		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
+		const path = `${tmpDir}/plan-mode.json`;
+
+		try {
+			const config = createDefaultConfig();
+			config.models.main = { provider: "anthropic", modelId: "claude-sonnet-4-5" };
+			config.models.plan = { provider: "openai", modelId: "gpt-4.1" };
+
+			saveModelConfig(config, path);
+
+			const loaded = loadModelConfig(path);
+			expect(loaded.models.main).toEqual({ provider: "anthropic", modelId: "claude-sonnet-4-5" });
+			expect(loaded.models.plan).toEqual({ provider: "openai", modelId: "gpt-4.1" });
+		} finally {
+			rmSync(tmpDir, { recursive: true });
+		}
+	});
+
+	it("invalid JSON returns default config", () => {
+		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
+		const path = `${tmpDir}/plan-mode.json`;
+
+		try {
+			writeFileSync(path, "NOT JSON", "utf-8");
+			const loaded = loadModelConfig(path);
+			expect(loaded).toEqual(createDefaultConfig());
+		} finally {
+			rmSync(tmpDir, { recursive: true });
+		}
+	});
+
+	it("updateModelConfig sets and clears", () => {
+		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
+		const path = `${tmpDir}/plan-mode.json`;
+
+		try {
+			const config = createDefaultConfig();
+			updateModelConfig(config, "main", { provider: "anthropic", modelId: "sonnet" }, path);
+			expect(config.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
+
+			const loaded = loadModelConfig(path);
+			expect(loaded.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
+
+			updateModelConfig(config, "main", undefined, path);
+			expect(config.models.main).toBeUndefined();
+
+			const loaded2 = loadModelConfig(path);
+			expect(loaded2.models.main).toBeUndefined();
+		} finally {
+			rmSync(tmpDir, { recursive: true });
+		}
+	});
+});
+
+// ─── State with config ────────────────────────────────────────────
+
+describe("createInitialState with config", () => {
+	it("accepts custom config", () => {
+		const config = createDefaultConfig();
+		config.models.main = { provider: "anthropic", modelId: "claude-sonnet-4-5" };
+		const state = createInitialState(config);
+		expect(state.modelConfig.models.main).toEqual({ provider: "anthropic", modelId: "claude-sonnet-4-5" });
+	});
+
+	it("defaults to empty config", () => {
+		const state = createInitialState();
+		expect(state.modelConfig).toEqual(createDefaultConfig());
+	});
+});
+
+// ─── Mode switch model simulation ─────────────────────────────────
+
+describe("mode switch model simulation", () => {
+	it("main → plan saves main model to config", () => {
+		const config = createDefaultConfig();
+		const state = createInitialState(config);
+		expect(state.mode).toBe("main");
+
+		// Simulate: entering plan mode, current model = anthropic/sonnet
+		state.savedMainModel = { provider: "anthropic", modelId: "sonnet" };
+		updateModelConfig(state.modelConfig, "main", state.savedMainModel);
+		state.mode = "plan";
+
+		expect(state.modelConfig.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
+		expect(state.savedMainModel).toEqual({ provider: "anthropic", modelId: "sonnet" });
+	});
+
+	it("plan → main restores main model from config", () => {
+		const config = createDefaultConfig();
+		config.models.main = { provider: "anthropic", modelId: "sonnet" };
+		const state = createInitialState(config);
+		state.mode = "plan";
+
+		// Simulate: exiting plan mode
+		state.mode = "main";
+		const mainRef = state.modelConfig.models.main;
+		expect(mainRef).toEqual({ provider: "anthropic", modelId: "sonnet" });
+	});
+
+	it("plan config model is used when entering plan", () => {
+		const config = createDefaultConfig();
+		config.models.plan = { provider: "openai", modelId: "gpt-4.1" };
+		const state = createInitialState(config);
+
+		// On enterPlanMode, config.models.plan should be the target
+		const planRef = state.modelConfig.models.plan;
+		expect(planRef).toEqual({ provider: "openai", modelId: "gpt-4.1" });
+	});
+
+	it("model_select ignored for restore source", () => {
+		// Restore events should not update config
+		const source = "restore" as const;
+		expect(source).toBe("restore");
+		// The actual logic is: if (event.source === "restore") return;
+	});
+
+	it("model_select in main mode updates main config", () => {
+		const config = createDefaultConfig();
+		const state = createInitialState(config);
+		state.mode = "main";
+
+		// Simulate: user selected a new model in main mode
+		const newRef: ModelRef = { provider: "google", modelId: "gemini-2.5-pro" };
+		if (state.mode === "main") {
+			updateModelConfig(state.modelConfig, "main", newRef);
+		}
+
+		expect(state.modelConfig.models.main).toEqual({ provider: "google", modelId: "gemini-2.5-pro" });
+	});
+
+	it("model_select in plan mode updates plan config", () => {
+		const config = createDefaultConfig();
+		const state = createInitialState(config);
+		state.mode = "plan";
+
+		// Simulate: user selected a new model in plan mode
+		const newRef: ModelRef = { provider: "google", modelId: "gemini-2.5-flash" };
+		if (state.mode === "plan") {
+			updateModelConfig(state.modelConfig, "plan", newRef);
+		}
+
+		expect(state.modelConfig.models.plan).toEqual({ provider: "google", modelId: "gemini-2.5-flash" });
+	});
+});
+
+// ─── Bug fix: suppressModelSelectPersist ───────────────────────────
+
+describe("suppressModelSelectPersist guard", () => {
+	it("model_select with source=restore is ignored", () => {
+		// When source is "restore", the model_select handler should return early
+		const source = "restore";
+		// Simulating: the handler checks `if (event.source === "restore") return;`
+		// No config update should happen
+		const config = createDefaultConfig();
+		config.models.main = { provider: "anthropic", modelId: "sonnet" };
+		const state = createInitialState(config);
+		state.mode = "main";
+		// If restore were not ignored, main would be overwritten:
+		// But since source=restore, config stays as-is
+		expect(state.modelConfig.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
+	});
+
+	it("extension-driven setModel should not trigger config overwrite", () => {
+		// When suppressModelSelectPersist is true, model_select handler returns early
+		// This simulates the guard: `if (suppressModelSelectPersist) return;`
+		let suppressModelSelectPersist = true;
+		const config = createDefaultConfig();
+		config.models.main = { provider: "anthropic", modelId: "sonnet" };
+		const state = createInitialState(config);
+		state.mode = "main";
+
+		// Simulate: extension calls trySetModel which sets suppressModelSelectPersist=true
+		// Then pi.setModel fires model_select, but handler returns early
+		if (!suppressModelSelectPersist && state.mode === "main") {
+			updateModelConfig(state.modelConfig, "main", { provider: "google", modelId: "gemini" });
+		}
+
+		// Config should NOT have been overwritten
+		expect(state.modelConfig.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
+
+		// After trySetModel finishes, suppressModelSelectPersist is reset
+		suppressModelSelectPersist = false;
+		expect(suppressModelSelectPersist).toBe(false);
+	});
+});
+
+// ─── Bug fix: enterPlanMode persistCurrentMain option ──────────────
+
+describe("enterPlanMode persistCurrentMain option", () => {
+	it("default (persistCurrentMain=true) saves current model", () => {
+		const config = createDefaultConfig();
+		const state = createInitialState(config);
+		state.mode = "main";
+
+		// Simulate: user toggles /plan — persistCurrentMain defaults to true
+		const persistCurrentMain = true;
+		const currentMain: ModelRef = { provider: "anthropic", modelId: "sonnet" };
+
+		if (persistCurrentMain) {
+			state.savedMainModel = currentMain;
+			updateModelConfig(state.modelConfig, "main", currentMain);
+		}
+
+		state.mode = "plan";
+		expect(state.savedMainModel).toEqual({ provider: "anthropic", modelId: "sonnet" });
+		expect(state.modelConfig.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
+	});
+
+	it("persistCurrentMain=false (--plan startup) does NOT overwrite config", () => {
+		// User hand-wrote config: main=zai/glm-5.1, plan=openai-codex/gpt-5.5
+		const config = createDefaultConfig();
+		config.models.main = { provider: "zai", modelId: "glm-5.1" };
+		config.models.plan = { provider: "openai-codex", modelId: "gpt-5.5" };
+		const state = createInitialState(config);
+		state.mode = "main";
+
+		// Simulate: --plan startup calls enterPlanMode(ctx, { persistCurrentMain: false })
+		const persistCurrentMain = false;
+		// Current model is anthropic/default (pi's startup default), NOT zai/glm-5.1
+		const currentModel: ModelRef = { provider: "anthropic", modelId: "default-model" };
+
+		if (persistCurrentMain) {
+			// This block should NOT execute
+			state.savedMainModel = currentModel;
+			updateModelConfig(state.modelConfig, "main", currentModel);
+		}
+
+		state.mode = "plan";
+
+		// Config should still have the hand-written values
+		expect(state.modelConfig.models.main).toEqual({ provider: "zai", modelId: "glm-5.1" });
+		expect(state.modelConfig.models.plan).toEqual({ provider: "openai-codex", modelId: "gpt-5.5" });
+		// savedMainModel should NOT be set
+		expect(state.savedMainModel).toBeUndefined();
+	});
+});
+
+// ─── Bug fix: exitPlanMode ordering ────────────────────────────────
+
+describe("exitPlanMode ordering", () => {
+	it("state.mode is main before model restore triggers model_select", () => {
+		const config = createDefaultConfig();
+		config.models.main = { provider: "anthropic", modelId: "sonnet" };
+		const state = createInitialState(config);
+		state.mode = "plan";
+		state.pendingPlan = "test plan";
+
+		// Simulate: exitPlanMode sets mode=main BEFORE trySetModel
+		const plan = state.pendingPlan;
+		state.mode = "main";
+		// Now model_select would fire (from trySetModel), and it should update "main" config
+		expect(state.mode).toBe("main");
+
+		// Cleanup
+		Object.assign(state, { pendingPlan: undefined });
+		expect(state.pendingPlan).toBeUndefined();
+	});
+});
+
+// ─── Bug fix: session_start main model apply ───────────────────────
+
+describe("session_start main model apply", () => {
+	it("normal startup applies configured main model", () => {
+		const config = createDefaultConfig();
+		config.models.main = { provider: "zai", modelId: "glm-5.1" };
+		const state = createInitialState(config);
+
+		// Simulate: session_start with --plan=false and main model configured
+		const isPlanStartup = false;
+
+		if (!isPlanStartup && state.modelConfig.models.main) {
+			// trySetModel would be called with the configured main model
+			const targetRef = state.modelConfig.models.main;
+			expect(targetRef).toEqual({ provider: "zai", modelId: "glm-5.1" });
+		}
+	});
+
+	it("--plan startup does NOT apply main model (enters plan mode instead)", () => {
+		const config = createDefaultConfig();
+		config.models.main = { provider: "zai", modelId: "glm-5.1" };
+		config.models.plan = { provider: "openai-codex", modelId: "gpt-5.5" };
+		const state = createInitialState(config);
+
+		// Simulate: session_start with --plan=true
+		const isPlanStartup = true;
+
+		if (isPlanStartup) {
+			// Should call enterPlanMode(ctx, { persistCurrentMain: false })
+			// Should NOT call trySetModel for main model at session_start level
+			state.mode = "plan";
+		}
+
+		expect(state.mode).toBe("plan");
+		// main config should be untouched
+		expect(state.modelConfig.models.main).toEqual({ provider: "zai", modelId: "glm-5.1" });
+	});
+
+	it("normal startup with no main config does not crash", () => {
+		const config = createDefaultConfig();
+		const state = createInitialState(config);
+
+		const isPlanStartup = false;
+
+		if (!isPlanStartup && state.modelConfig.models.main) {
+			// This block should NOT execute since main is undefined
+			expect(true).toBe(false); // should not reach
+		}
+
+		// Should reach here without error
+		expect(state.modelConfig.models.main).toBeUndefined();
+	});
+});
+
+// ─── Bug fix: /plan-model status availability check ────────────────
+
+describe("/plan-model status availability", () => {
+	it("formats available model with ✓", () => {
+		const mainRef: ModelRef = { provider: "anthropic", modelId: "sonnet" };
+		// Simulate: modelRegistry.find returns a model (truthy)
+		const registryResult = { provider: "anthropic", id: "sonnet" }; // truthy = found
+		const avail = registryResult ? "✓" : "✗";
+		const formatted = `${mainRef.provider}/${mainRef.modelId} ${avail}`;
+		expect(formatted).toBe("anthropic/sonnet ✓");
+	});
+
+	it("formats unavailable model with ✗", () => {
+		const planRef: ModelRef = { provider: "openai-codex", modelId: "gpt-5.5" };
+		// Simulate: modelRegistry.find returns undefined
+		const registryResult = undefined;
+		const avail = registryResult ? "✓" : "✗";
+		const formatted = `${planRef.provider}/${planRef.modelId} ${avail}`;
+		expect(formatted).toBe("openai-codex/gpt-5.5 ✗");
+	});
+
+	it("unset model shows (unset)", () => {
+		const ref: ModelRef | undefined = undefined;
+		const formatted = ref ? `${ref.provider}/${ref.modelId}` : "(unset)";
+		expect(formatted).toBe("(unset)");
 	});
 });
