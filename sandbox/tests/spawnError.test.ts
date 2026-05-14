@@ -111,7 +111,7 @@ describe("runSandboxedShellMac: spawn error paths", () => {
 		// We can't wait that long in unit tests, so we just verify SIGTERM was sent
 	}, 10_000);
 
-	it("output limit exceeded triggers truncation", async () => {
+	it("output limit exceeded on stdout triggers truncation", async () => {
 		process.kill = vi.fn(() => true) as any;
 
 		state.onSpawn = () => {
@@ -126,5 +126,69 @@ describe("runSandboxedShellMac: spawn error paths", () => {
 		});
 		expect(result.code).toBe(1);
 		expect(result.stdout).toContain("truncated");
+	});
+
+	it("output limit exceeded on stderr triggers truncation", async () => {
+		process.kill = vi.fn(() => true) as any;
+
+		state.onSpawn = () => {
+			setImmediate(() => {
+				state.child.stderr.emit("data", Buffer.alloc(1024 * 1024, "e"));
+				setImmediate(() => state.child.emit("close", 1, null));
+			});
+		};
+
+		const result = await runSandboxedShellMac("echo hello", readOnlyPolicy(tmpdir(), [tmpdir()]), {
+			maxOutputBytes: 1024,
+		});
+		expect(result.code).toBe(1);
+		expect(result.stderr).toContain("output limit exceeded");
+		expect(result.stdout).toContain("truncated");
+	});
+
+	it("output limit exceeded: stderr partial keep preserves content", async () => {
+		process.kill = vi.fn(() => true) as any;
+
+		state.onSpawn = () => {
+			setImmediate(() => {
+				// First emit 500 bytes of stderr (under limit)
+				state.child.stderr.emit("data", Buffer.alloc(500, "a"));
+				// Then emit 1000 more bytes of stderr (exceeds 1024 limit)
+				state.child.stderr.emit("data", Buffer.alloc(1000, "b"));
+				setImmediate(() => state.child.emit("close", 1, null));
+			});
+		};
+
+		const result = await runSandboxedShellMac("echo hello", readOnlyPolicy(tmpdir(), [tmpdir()]), {
+			maxOutputBytes: 1024,
+		});
+		expect(result.code).toBe(1);
+		// Should have kept partial content
+		expect(result.stderr).toContain("a");
+		expect(result.stderr).toContain("output limit exceeded");
+	});
+
+	it("abort signal fires during execution", async () => {
+		const controller = new AbortController();
+		let closeEmitted = false;
+		process.kill = vi.fn((_pid: number, _sig: string) => {
+			if (!closeEmitted) {
+				closeEmitted = true;
+				setImmediate(() => state.child.emit("close", null, "SIGTERM"));
+			}
+			return true;
+		}) as any;
+
+		state.onSpawn = () => {
+			setImmediate(() => {
+				// Abort after spawn
+				controller.abort();
+			});
+		};
+
+		const result = await runSandboxedShellMac("echo hello", readOnlyPolicy(tmpdir(), [tmpdir()]), {
+			signal: controller.signal,
+		});
+		expect(result.stderr).toContain("aborted");
 	});
 });
