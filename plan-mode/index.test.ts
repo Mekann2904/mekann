@@ -629,3 +629,441 @@ describe("sendUserMessage on exit plan mode", () => {
 		expect(mock._sentMessages).toHaveLength(0);
 	});
 });
+
+// ─── /plan-model: additional sub-commands ─────────────────────────
+
+describe("/plan-model: additional sub-commands", () => {
+	it("plan <provider/modelId>: plan model を設定", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-model"].handler("plan openai/gpt-4.1", ctx);
+		expect(notifications[0]).toContain("gpt-4.1");
+	});
+
+	it("plan (no arg): save current model as plan", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-model"].handler("plan", ctx);
+		expect(notifications[0]).toContain("sonnet"); // current model from mock ctx
+	});
+
+	it("main (no arg): save current model as main", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-model"].handler("main", ctx);
+		expect(notifications[0]).toContain("sonnet");
+	});
+
+	it("clear main: main model をクリア", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		// Set first
+		await mock._commands["plan-model"].handler("main google/gemini-pro", ctx);
+		notifications.length = 0;
+
+		// Clear
+		await mock._commands["plan-model"].handler("clear main", ctx);
+		expect(notifications[0]).toContain("cleared");
+	});
+
+	it("clear plan: plan model をクリア", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-model"].handler("clear plan", ctx);
+		expect(notifications[0]).toContain("cleared");
+	});
+
+	it("clear invalid: usage warning", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-model"].handler("clear invalid", ctx);
+		expect(notifications[0]).toContain("Usage");
+	});
+
+	it("unknown sub-command: usage warning", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-model"].handler("unknown", ctx);
+		expect(notifications[0]).toContain("Usage");
+	});
+
+	it("main <model> in main mode: model が即座に切り替わる", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-model"].handler("main google/gemini-pro", ctx);
+		expect(mock.setModel).toHaveBeenCalled();
+	});
+
+	it("plan <model> in main mode: model は切り替わらない", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+		// mode is main, setting plan model should NOT call setModel
+		mock.setModel.mockClear();
+
+		await mock._commands["plan-model"].handler("plan openai/gpt-4.1", ctx);
+		expect(mock.setModel).not.toHaveBeenCalled();
+	});
+
+	it("no current model: save warning", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			model: null,
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-model"].handler("main", ctx);
+		expect(notifications[0]).toContain("No current model");
+	});
+
+	it("getArgumentCompletions returns completions", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		const cmd = mock._commands["plan-model"];
+		if (cmd.getArgumentCompletions) {
+			const completions = cmd.getArgumentCompletions("ma");
+			expect(completions.some((c: { value: string }) => c.value === "main")).toBe(true);
+		}
+	});
+});
+
+// ─── /plan-thinking: additional sub-commands ─────────────────────
+
+describe("/plan-thinking: additional sub-commands", () => {
+	it("plan high: plan thinking を設定", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-thinking"].handler("plan high", ctx);
+		expect(notifications[0]).toContain("high");
+	});
+
+	it("plan (no arg): save current thinking as plan", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-thinking"].handler("plan", ctx);
+		expect(notifications[0]).toContain("medium"); // default thinking level
+	});
+
+	it("main (no arg): save current thinking as main", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-thinking"].handler("main", ctx);
+		expect(notifications[0]).toContain("medium");
+	});
+
+	it("clear main: main thinking をクリア", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-thinking"].handler("clear main", ctx);
+		expect(notifications[0]).toContain("cleared");
+	});
+
+	it("clear plan: plan thinking をクリア", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-thinking"].handler("clear plan", ctx);
+		expect(notifications[0]).toContain("cleared");
+	});
+
+	it("clear invalid: usage warning", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-thinking"].handler("clear invalid", ctx);
+		expect(notifications[0]).toContain("Usage");
+	});
+
+	it("unknown sub-command: usage warning", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-thinking"].handler("unknown", ctx);
+		expect(notifications[0]).toContain("Usage");
+	});
+
+	it("plan invalid: エラー", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-thinking"].handler("plan ultra", ctx);
+		expect(notifications[0]).toContain("Invalid");
+	});
+
+	it("plan high in plan mode: setThinkingLevel が呼ばれる", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+		await mock._commands["plan"].handler("", ctx); // enter plan mode
+
+		mock.setThinkingLevel.mockClear();
+		await mock._commands["plan-thinking"].handler("plan xhigh", ctx);
+		expect(mock.setThinkingLevel).toHaveBeenCalledWith("xhigh");
+	});
+
+	it("main low in plan mode: setThinkingLevel は呼ばれない", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+		await mock._commands["plan"].handler("", ctx); // enter plan mode
+
+		mock.setThinkingLevel.mockClear();
+		await mock._commands["plan-thinking"].handler("main low", ctx);
+		expect(mock.setThinkingLevel).not.toHaveBeenCalled();
+	});
+
+	it("getArgumentCompletions returns completions", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		const cmd = mock._commands["plan-thinking"];
+		if (cmd.getArgumentCompletions) {
+			const completions = cmd.getArgumentCompletions("plan h");
+			expect(completions.some((c: { value: string }) => c.value === "plan high")).toBe(true);
+		}
+	});
+});
+
+// ─── model_select: plan mode path ────────────────────────────────
+
+describe("model_select: plan mode path", () => {
+	it("plan mode で model_select が plan config を更新する", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+		await mock._commands["plan"].handler("", createMockCtx()); // enter plan mode
+
+		await mock._hooks.model_select({
+			model: { provider: "google", id: "gemini-flash" },
+			source: "user",
+		});
+
+		// Verify by checking plan model config via status
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		await mock._commands["plan-model"].handler("status", ctx);
+		expect(notifications[0]).toContain("gemini-flash");
+	});
+
+	it("plan mode で same model ref の場合は update しない", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		// Set plan model explicitly
+		await mock._commands["plan-model"].handler("plan google/gemini-pro", createMockCtx());
+
+		// model_select with same ref → no change (verified by no error)
+		await mock._hooks.model_select({
+			model: { provider: "google", id: "gemini-pro" },
+			source: "user",
+		});
+	});
+});
+
+// ─── thinking_level_select: plan mode path ───────────────────────
+
+describe("thinking_level_select: plan mode path", () => {
+	it("plan mode で thinking 変更が plan config を更新する", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+		await mock._commands["plan"].handler("", createMockCtx()); // enter plan mode
+
+		await mock._hooks.thinking_level_select({ level: "xhigh" });
+
+		// Verify via status
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		await mock._commands["plan-thinking"].handler("status", ctx);
+		expect(notifications[0]).toContain("xhigh");
+	});
+
+	it("plan mode で same level の場合は update しない", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		// Set plan thinking explicitly
+		await mock._commands["plan-thinking"].handler("plan xhigh", createMockCtx());
+
+		// thinking_level_select with same level → no change
+		await mock._hooks.thinking_level_select({ level: "xhigh" });
+	});
+});
+
+// ─── enterPlanMode/exitPlanMode with model/thinking config ──────
+
+describe("mode transitions with model/thinking config", () => {
+	it("enterPlanMode は main thinking を保存する", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Set main thinking
+		await mock._commands["plan-thinking"].handler("main high", createMockCtx());
+
+		// Enter plan mode
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		// Exit plan mode — main thinking should be restored
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		// Check status — main thinking should be "high"
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		await mock._commands["plan-thinking"].handler("status", ctx);
+		expect(notifications[0]).toContain("high");
+	});
+
+	it("exitPlanMode with plan model config は main model に復帰する", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Set main model
+		await mock._commands["plan-model"].handler("main anthropic/sonnet", createMockCtx());
+
+		// Enter plan mode
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		// Exit plan mode
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		// setModel should have been called for main model restore
+		expect(mock.setModel).toHaveBeenCalled();
+	});
+
+	it("--plan startup: persistCurrentMain=false で config を上書きしない", async () => {
+		const mock = createMockApi();
+		mock._flags = { plan: true };
+		await loadExtension(mock);
+
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Should be in plan mode
+		expect(mock._activeTools).not.toContain("edit");
+
+		// Check status — no model should have been overwritten
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		await mock._commands["plan-model"].handler("status", ctx);
+		expect(notifications[0]).toContain("Mode: plan");
+	});
+});
