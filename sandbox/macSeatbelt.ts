@@ -701,7 +701,7 @@ export async function runSandboxedShellMac(
 			if (keepBytes > 0) {
 				stdoutBuf = Buffer.concat([stdoutBuf, buf.subarray(0, keepBytes)]);
 			}
-			terminateProcessGroup(child);
+			requestTerminate("output_limit");
 			return;
 		}
 		stdoutBuf = Buffer.concat([stdoutBuf, buf]);
@@ -718,7 +718,7 @@ export async function runSandboxedShellMac(
 			if (keepBytes > 0) {
 				stderrBuf = Buffer.concat([stderrBuf, buf.subarray(0, keepBytes)]);
 			}
-			terminateProcessGroup(child);
+			requestTerminate("output_limit");
 			return;
 		}
 		stderrBuf = Buffer.concat([stderrBuf, buf]);
@@ -727,6 +727,7 @@ export async function runSandboxedShellMac(
 	// ─── Idempotent process group kill ──────────────────────────
 
 	let sigkillTimeoutId: ReturnType<typeof setTimeout> | null = null;
+	let terminationRequested: "timeout" | "abort" | "output_limit" | null = null;
 
 	function killProcessGroup(proc: ReturnType<typeof spawn>, sig: NodeJS.Signals = "SIGTERM"): void {
 		if (killed) return;
@@ -749,14 +750,17 @@ export async function runSandboxedShellMac(
 	}
 
 	/**
-	 * SIGTERM → grace → SIGKILL termination sequence.
-	 * Used for timeout, abort, and output cap exceeded.
-	 * All three paths use the same termination logic.
+	 * Unified termination path for timeout, abort, and output cap exceeded.
+	 * SIGTERM → grace → SIGKILL.
+	 * Idempotent: first call wins, subsequent calls are no-ops.
 	 */
-	function terminateProcessGroup(proc: ReturnType<typeof spawn>): void {
-		killProcessGroup(proc, "SIGTERM");
+	function requestTerminate(reason: "timeout" | "abort" | "output_limit"): void {
+		if (terminationRequested) return;
+		terminationRequested = reason;
+
+		killProcessGroup(child, "SIGTERM");
 		sigkillTimeoutId = setTimeout(() => {
-			killProcessGroupForce(proc);
+			killProcessGroupForce(child);
 		}, SIGKILL_GRACE_MS);
 	}
 
@@ -770,7 +774,7 @@ export async function runSandboxedShellMac(
 		timeoutReject = reject;
 		timeoutId = setTimeout(() => {
 			timedOut = true;
-			terminateProcessGroup(child);
+			requestTerminate("timeout");
 			reject(new Error(`command timed out after ${timeoutMs}ms`));
 		}, timeoutMs);
 	});
@@ -784,13 +788,13 @@ export async function runSandboxedShellMac(
 		abortReject = reject;
 		if (abortSignal) {
 			if (abortSignal.aborted) {
-				terminateProcessGroup(child);
+				requestTerminate("abort");
 				cleanupTempDir(isolatedTemp);
 				reject(new Error("command aborted before execution"));
 				return;
 			}
 			abortHandler = () => {
-				terminateProcessGroup(child);
+				requestTerminate("abort");
 				reject(new Error("command aborted"));
 			};
 			abortSignal.addEventListener("abort", abortHandler);
@@ -815,7 +819,7 @@ export async function runSandboxedShellMac(
 			cleanupTimers();
 
 			// SECURITY: If this close was triggered by output cap / timeout / abort,
-			// terminateProcessGroup already handled the kill sequence.
+			// requestTerminate already handled the kill sequence.
 			// For normal exits (not forced kill), send SIGKILL to process group
 			// as a safety net for any residual background processes.
 			// Only do this for truly normal exits to avoid PID/PGID reuse risk.

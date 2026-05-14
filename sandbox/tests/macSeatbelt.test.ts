@@ -949,11 +949,33 @@ describeMac("runSandboxedShellMac (integration)", () => {
 	});
 
 	// sandbox-exec が利用可能かを実行時にチェックするヘルパー
-	function itSandbox(name: string, fn: () => Promise<void>) {
-		it(name, async () => {
-			if (!sandboxReady) return; // skip silently when sandbox unavailable
-			await fn();
-		});
+	const requireMacSandboxTests = process.env.RUN_MAC_SANDBOX_TESTS === "1";
+
+	function itSandbox(
+		name: string,
+		fn: () => Promise<void>,
+		timeout?: number,
+	) {
+		it(
+			name,
+			async () => {
+				if (sandboxReady) {
+					await fn();
+					return;
+				}
+
+				// sandbox-exec not available
+				if (requireMacSandboxTests) {
+					throw new Error(
+						"macOS sandbox tests were required (RUN_MAC_SANDBOX_TESTS=1) " +
+						"but sandbox-exec is unavailable",
+					);
+				}
+
+				// Not required — skip silently
+			},
+			timeout,
+		);
 	}
 
 	// ── read_only: 許可されるべき操作 ──────────────────────────────
