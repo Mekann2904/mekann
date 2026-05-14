@@ -10,7 +10,7 @@
 - **Performance regression テスト**: テスト実行時間の CI での監視
 - ~~**Snapshot testing**: SBPL ポリシーのスナップショットテスト (意図しない変更を検出)~~ ✅ Done (11 snapshots + 8 structural invariants)
 - **Test fixtures**: 共通のテストデータを fixtures/ ディレクトリに整理
-- **CI でのカバレッジレポート**: coverage report を CI artifact として保存
+- ~~**CI でのカバレッジレポート**: coverage report を CI artifact として保存~~ ✅ Done (plan-mode >=95%, sandbox >=89% thresholds)
 - **Cross-platform tests**: Linux での sandbox テスト (sandbox-exec の代替)
 
 ## Code Quality (Deferred)
