@@ -2,7 +2,7 @@
 
 ## Maintenance Cost Reduction (Ongoing)
 
-- **Merge /plan-model and /plan-thinking command registrations**: The two commands share significant structure (status, clear, main/plan sub-handlers). A generic `registerModeConfigCommand` could reduce ~50 more lines, but risks over-abstraction. Consider only if LOC is critical.
+- **Merge /plan-model and /plan-thinking command registrations**: ✅ Done via registerModeConfigCommand factory.
 - **Inline `escapeAppleScriptPath` in zip-repo**: Identical to `escapeSbplString` in macSeatbelt.ts but different packages — cannot share without coupling packages.
 - **Sandbox index.ts `localBash` lazy init pattern**: The `LocalBashWithCwd` type and lazy initialization adds ~15 lines. Could potentially be simplified.
 - **SBPL template string in macSeatbelt.ts**: The `buildMacSeatbeltPolicy` function is ~130 lines of template string. Hard to reduce without compromising readability of the security policy.
