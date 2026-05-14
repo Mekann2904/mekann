@@ -13,6 +13,7 @@ Codex-inspired plan mode — 実装前に考えさせるための読み取り専
 - 計画が `<proposed_plan>` で提示され、main に戻ると実行プロンプトとして注入
 - 連続ブロックで段階的に警告を強化するエスカレーション機構
 - `pi --plan` で plan mode から起動可能
+- main / plan それぞれにモデルと thinking effort を設定・永続化可能
 
 ```bash
 # Install — add to settings.json

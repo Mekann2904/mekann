@@ -1,4 +1,4 @@
-import type { ModelRef, PlanModeConfig } from "./utils.js";
+import type { ModelRef, PlanModeConfig, ThinkingLevel } from "./utils.js";
 
 export type Mode = "main" | "plan";
 
@@ -20,12 +20,14 @@ export interface PlanState {
 	modelConfig: PlanModeConfig;
 	/** Snapshot of the main-mode model before entering plan mode (for fallback restore). */
 	savedMainModel?: ModelRef;
+	/** Snapshot of the main-mode thinking level before entering plan mode (for fallback restore). */
+	savedMainThinking?: ThinkingLevel;
 }
 
 export function createInitialState(modelConfig?: PlanModeConfig): PlanState {
 	return {
 		mode: "main",
 		planPromptDelivered: false,
-		modelConfig: modelConfig ?? { version: 1, models: {} },
+		modelConfig: modelConfig ?? { version: 1, models: {}, thinking: {} },
 	};
 }
