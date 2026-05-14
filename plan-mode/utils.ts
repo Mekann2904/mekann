@@ -229,12 +229,13 @@ export function saveModelConfig(config: PlanModeConfig, explicitPath?: string): 
 	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
 	const tmp = `${configPath}.tmp`;
-	writeFileSync(tmp, JSON.stringify(config, null, 2) + "\n", "utf-8");
+	const json = JSON.stringify(config, null, 2) + "\n";
+	writeFileSync(tmp, json, "utf-8");
 	try {
 		renameSync(tmp, configPath);
 	} catch {
 		// renameSync may fail across partitions; fall back to direct write
-		writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+		writeFileSync(configPath, json, "utf-8");
 	}
 }
 
