@@ -1483,3 +1483,78 @@ describe("model_select: branch coverage", () => {
 		expect(notifications.length).toBeGreaterThan(0);
 	});
 });
+
+// ─── tool_call: input type edge cases ───────────────────────────────
+
+describe("tool_call: input type edge cases", () => {
+	it("input.path が undefined: String() coercion works", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		const result = await mock._hooks.tool_call({ toolName: "edit", input: {} });
+		expect(result).toEqual({ block: true, reason: expect.any(String) });
+	});
+
+	it("input が undefined: defaults to {}", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		const result = await mock._hooks.tool_call({ toolName: "edit" });
+		expect(result).toEqual({ block: true, reason: expect.any(String) });
+	});
+
+	it("input.path が number: typeof !== 'string' → undefined in appendEntry", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		const result = await mock._hooks.tool_call({ toolName: "edit", input: { path: 123 } as any });
+		expect(result).toEqual({ block: true, reason: expect.any(String) });
+		// Verify appendEntry was called — path should be undefined since typeof 123 !== 'string'
+		expect(mock._appendEntries.length).toBeGreaterThan(0);
+		const lastEntry = mock._appendEntries[mock._appendEntries.length - 1];
+		expect(lastEntry.data.path).toBeUndefined();
+	});
+
+	it("bash with input.command が number: blocked as unsafe", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		// String(123) = "123" — which is not a safe command
+		const result = await mock._hooks.tool_call({ toolName: "bash", input: { command: 123 } as any });
+		expect(result).toEqual({ block: true, reason: expect.stringContaining("unsafe") });
+	});
+
+	it("non-bash tool with input.command as string: command captured in appendEntry", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		const result = await mock._hooks.tool_call({ toolName: "edit", input: { path: "f.ts", command: "do stuff" } });
+		expect(result).toEqual({ block: true, reason: expect.any(String) });
+		const lastEntry = mock._appendEntries[mock._appendEntries.length - 1];
+		expect(lastEntry.data.command).toBe("do stuff");
+		expect(lastEntry.data.path).toBe("f.ts");
+	});
+
+	it("non-bash tool with input.command as number: command undefined in appendEntry", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		const result = await mock._hooks.tool_call({ toolName: "edit", input: { path: "f.ts", command: 456 } as any });
+		expect(result).toEqual({ block: true, reason: expect.any(String) });
+		const lastEntry = mock._appendEntries[mock._appendEntries.length - 1];
+		expect(lastEntry.data.command).toBeUndefined();
+		expect(lastEntry.data.path).toBe("f.ts");
+	});
+});

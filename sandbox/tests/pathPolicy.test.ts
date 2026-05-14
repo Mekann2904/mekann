@@ -262,3 +262,39 @@ describe("validateWorkspaceRoot", () => {
 		await expect(validateWorkspaceRoot("/nonexistent/project")).resolves.toBeUndefined();
 	});
 });
+
+// ─── HOME undefined edge case ─────────────────────────────────────
+
+describe("validateWorkspaceRoot / validateWritableRoots: HOME undefined", () => {
+	it("HOME が undefined の場合でも workspace root を検証できる", async () => {
+		const origHome = process.env.HOME;
+		delete process.env.HOME;
+		try {
+			const projectDir = mkdtempSync(join(tmpdir(), "sandbox-nohome-"));
+			try {
+				await expect(validateWorkspaceRoot(projectDir)).resolves.toBeUndefined();
+			} finally {
+				rmSync(projectDir, { recursive: true, force: true });
+			}
+		} finally {
+			process.env.HOME = origHome;
+		}
+	});
+
+	it("HOME が undefined の場合でも writable root を検証できる", async () => {
+		const origHome = process.env.HOME;
+		delete process.env.HOME;
+		try {
+			const tmpDir = mkdtempSync(join(tmpdir(), "sandbox-nohome-wr-"));
+			try {
+				await expect(
+					validateWritableRoots([tmpDir], [tmpDir], "workspace_write"),
+				).resolves.toBeUndefined();
+			} finally {
+				rmSync(tmpDir, { recursive: true, force: true });
+			}
+		} finally {
+			process.env.HOME = origHome;
+		}
+	});
+});
