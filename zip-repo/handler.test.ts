@@ -12,13 +12,16 @@ import { join } from "node:path";
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 
 // Mock child_process.execFile
-const execResults: Map<string, { stdout: string; stderr?: string } | Error> = new Map();
+const execResults: Map<string, { stdout: string; stderr?: string } | Error | string> = new Map();
 vi.mock("node:child_process", () => ({
 	execFile: vi.fn((cmd: string, args: string[], opts: any, cb: any) => {
 		if (typeof opts === "function") { cb = opts; opts = {}; }
 		const key = `${cmd} ${args.join(" ")}`;
 		const result = execResults.get(key) || execResults.get(cmd) || new Error(`unexpected execFile: ${key}`);
 		if (result instanceof Error) {
+			cb(result);
+		} else if (typeof result === "string") {
+			// Non-Error throw value
 			cb(result);
 		} else {
 			cb(null, result);
@@ -198,6 +201,73 @@ describe("/zip command handler", () => {
 
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
 			expect.stringContaining("Copied to clipboard"),
+			"info",
+		);
+	});
+
+	// ─── Error type branch coverage ───────────────────────────────────
+
+	it("non-Error thrown from git rev-parse: String(e) branch", async () => {
+		// Throw a string instead of Error to cover String(e) branch
+		execResults.set("git rev-parse --show-toplevel", "not a git repo" as any);
+
+		const ctx = createMockCtx();
+		await mock._commands["zip"].handler("", ctx);
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("not a git repo"),
+			"error",
+		);
+	});
+
+	it("non-Error thrown from git archive: String(e) branch", async () => {
+		execResults.set("git rev-parse --show-toplevel", { stdout: "/tmp/project\n" });
+		execResults.set("git rev-parse --short=12 HEAD", { stdout: "abc123\n" });
+		execResults.set("git status --porcelain", { stdout: "" });
+		execResults.set("git archive --format=zip --prefix=project/ --output=/tmp/project-abc123.zip HEAD", "archive failed" as any);
+
+		const ctx = createMockCtx();
+		await mock._commands["zip"].handler("", ctx);
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("archive failed"),
+			"error",
+		);
+	});
+
+	it("non-Error thrown from osascript: String(e) branch", async () => {
+		execResults.set("git", { stdout: "" });
+		execResults.set("git rev-parse --show-toplevel", { stdout: "/tmp/project\n" });
+		execResults.set("git rev-parse --short=12 HEAD", { stdout: "abc123\n" });
+		execResults.set("git status --porcelain", { stdout: "" });
+		execResults.set("git archive --format=zip --prefix=project/ --output=/tmp/project-abc123.zip HEAD", { stdout: "" });
+		execResults.set("osascript", "clipboard error" as any);
+
+		const ctx = createMockCtx();
+		await mock._commands["zip"].handler("", ctx);
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("clipboard error"),
+			"warning",
+		);
+	});
+
+	it("stat fails: sizeStr stays 'unknown size'", async () => {
+		const { stat } = await import("node:fs/promises");
+		(stat as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("stat failed"));
+
+		execResults.set("git", { stdout: "" });
+		execResults.set("git rev-parse --show-toplevel", { stdout: "/tmp/project\n" });
+		execResults.set("git rev-parse --short=12 HEAD", { stdout: "abc123\n" });
+		execResults.set("git status --porcelain", { stdout: "" });
+		execResults.set("git archive --format=zip --prefix=project/ --output=/tmp/project-abc123.zip HEAD", { stdout: "" });
+		execResults.set("osascript", { stdout: "" });
+
+		const ctx = createMockCtx();
+		await mock._commands["zip"].handler("", ctx);
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("unknown size"),
 			"info",
 		);
 	});
