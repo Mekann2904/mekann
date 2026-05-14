@@ -2,8 +2,8 @@
 
 ## Test Improvements (Deferred)
 
-- **plan-mode/index.ts のテスト**: Extension API をモックして tool_call, context, before_agent_start, agent_end, turn_end, model_select, thinking_level_select, session_start フックをテストする
-- **sandbox/index.ts extension body のテスト**: registerTool, registerCommand, session_start/session_shutdown のモックテスト
+- ~~**plan-mode/index.ts のテスト**: Extension API をモックして tool_call, context, before_agent_start, agent_end, turn_end, model_select, thinking_level_select, session_start フックをテストする~~ ✅ Done (73.7% coverage)
+- ~~**sandbox/index.ts extension body のテスト**: registerTool, registerCommand, session_start/session_shutdown のモックテスト~~ ✅ Done (81.8% coverage)
 - **Property-based testing**: isSafeCommand の falsification テスト (fast-check を使用)
 - **Mutation testing**: Stryker でテストの品質を検証
 - **E2E テスト**: pi 本体と統合したエンドツーエンドのテスト
