@@ -9,6 +9,6 @@
     "test": "cd plan-mode && npm test"
   },
   "pi": {
-    "extensions": ["./plan-mode", "./zip-repo"]
+    "extensions": ["./plan-mode", "./zip-repo", "./sandbox"]
   }
 }

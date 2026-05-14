@@ -24,20 +24,23 @@ Codex-inspired plan mode — 実装前に考えさせるための読み取り専
 
 See [plan-mode/README.md](./plan-mode/README.md) for full documentation.
 
-### [zip-repo](./zip-repo/)
+### [sandbox](./sandbox/)
 
-Git リポジトリの作業ツリー現状を ZIP アーカイブし、macOS のクリップボードにコピー。
+macOS Seatbelt (`sandbox-exec`) によるコマンドサンドボックス化。
 
-- `/zip` コマンドで HEAD + 未コミット変更を含む ZIP を作成
-- NSPasteboard 経由でファイルとしてクリップボードにコピー（Finder や Slack 等に直接ペースト可能）
-- 出力先: リポジトリの親ディレクトリに `{repoName}-{shortHead}.zip`
-- macOS only
+- 3 段階の sandbox mode (read_only / workspace_write / danger_full_access)
+- default deny: 必要な許可だけを明示的に付与
+- `/Users` 全体は read path に含まれない（read_only / workspace_write）
+- `.git` / `.codex` / `.agents` 配下は書き込み deny
+- 環境変数は allowlist 方式（secret は子プロセスに渡さない）
+- `danger_full_access` はユーザーの明示的承認が必要
+- sandbox-exec は絶対パス固定（PATH 探索回避）
+
+See [sandbox/SECURITY.md](./sandbox/SECURITY.md) for full security documentation.
 
 ```bash
 # Install — add to settings.json
 {
-  "extensions": ["/path/to/this/repo/zip-repo"]
+  "extensions": ["/path/to/this/repo/sandbox"]
 }
 ```
-
-See [zip-repo/README.md](./zip-repo/README.md) for full documentation.
