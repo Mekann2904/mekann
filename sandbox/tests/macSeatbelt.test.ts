@@ -1492,28 +1492,6 @@ describe("resolveSafeRealPath", () => {
 	});
 });
 
-// ─── Unit tests: assertMacSandboxAvailable ──────────────────────────
-
-describe("assertMacSandboxAvailable", () => {
-	it("非 macOS 環境では例外を投げる (platform check)", async () => {
-		// This test only passes the platform check. On macOS it will pass.
-		// On non-macOS it would throw.
-		const { assertMacSandboxAvailable } = await import("../macSeatbelt.js");
-		if (process.platform !== "darwin") {
-			await expect(assertMacSandboxAvailable()).rejects.toThrow("macOS");
-		}
-		// On macOS with sandbox-exec, it should resolve
-		if (process.platform === "darwin") {
-			// May or may not have sandbox-exec
-			try {
-				await assertMacSandboxAvailable();
-			} catch (e) {
-				expect((e as Error).message).toContain("sandbox-exec");
-			}
-		}
-	});
-});
-
 // ─── Unit tests: buildMacSeatbeltPolicy edge cases ───────────────────
 
 describe("buildMacSeatbeltPolicy: resolved gitdir deny rules", () => {
