@@ -25,6 +25,7 @@ import {
 	createDefaultConfig,
 	isThinkingLevel,
 	formatThinkingLevel,
+	compactOldProposedPlansInText,
 	type ModelRef,
 	type PlanModeConfig,
 	type ThinkingLevel,
@@ -94,7 +95,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			state.savedActiveTools = pi.getActiveTools();
 		}
 		state.mode = "plan";
-		Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined });
+		Object.assign(state, { pendingPlan: undefined, implementationPlan: undefined, planPromptDelivered: false, planPromptHash: undefined });
 		pi.setActiveTools([...SAFE_PLAN_TOOLS]);
 
 		// 3. Switch to plan model if configured
@@ -150,7 +151,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined, savedMainModel: undefined, savedMainThinking: undefined });
 
 		if (plan) {
-			pi.sendUserMessage(`以下の plan に従って実装してください。\n\n<plan>\n${plan}\n</plan>`);
+			state.implementationPlan = plan;
+			pi.sendUserMessage("保存された plan に従って実装してください。");
 		}
 		ctx.ui.notify(modeLabel(state.mode));
 	}
@@ -451,7 +453,50 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		return { block: true, reason };
 	});
 
+	pi.on("context", async (event) => {
+		const messages = event.messages;
+		// Scan messages from end (most recent) to find the latest <proposed_plan>
+		let foundLatest = false;
+		for (let i = messages.length - 1; i >= 0; i--) {
+			const msg = messages[i];
+			if (msg.role !== "assistant") continue;
+
+			const textParts = (msg as { content?: unknown }).content;
+			if (!Array.isArray(textParts)) continue;
+
+			for (let j = 0; j < textParts.length; j++) {
+				const part = textParts[j] as { type?: string; text?: string };
+				if (part.type !== "text" || typeof part.text !== "string") continue;
+				if (!/<proposed_plan>[\s\S]*?<\/proposed_plan>/.test(part.text)) continue;
+
+				if (!foundLatest) {
+					foundLatest = true; // keep the latest one intact
+				} else {
+					// older plan — compact it
+					textParts[j] = { ...part, text: compactOldProposedPlansInText(part.text, false) };
+				}
+			}
+		}
+
+		return { messages };
+	});
+
 	pi.on("before_agent_start", async (event) => {
+		// Inject implementation plan once into main mode system prompt, then clear it
+		if (state.mode === "main" && state.implementationPlan) {
+			const plan = state.implementationPlan;
+			state.implementationPlan = undefined;
+
+			return {
+				systemPrompt: `${event.systemPrompt}
+
+Implementation plan for this turn:
+<plan>
+${plan}
+</plan>`,
+			};
+		}
+
 		if (!isReadOnlyMode(state.mode)) return;
 
 		const fullPrompt = loadPrompt("plan-mode");

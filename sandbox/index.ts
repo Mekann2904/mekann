@@ -33,6 +33,43 @@ import { isMacSandboxAvailable, runSandboxedShellMac } from "./macSeatbelt.js";
 import { resolveRealPaths, validateWorkspaceRoot } from "./pathPolicy.js";
 import { shouldRequestApproval, fullAccessApprovalMessage, type FullAccessApprovalState } from "./approvals.js";
 
+// ─── LLM output truncation ─────────────────────────────────────────
+
+export const DEFAULT_LLM_OUTPUT_MAX_BYTES = 50 * 1024;
+export const DEFAULT_LLM_OUTPUT_MAX_LINES = 2000;
+
+export function truncateForLlm(
+	text: string,
+	opts = {
+		maxBytes: DEFAULT_LLM_OUTPUT_MAX_BYTES,
+		maxLines: DEFAULT_LLM_OUTPUT_MAX_LINES,
+	},
+): { text: string; truncated: boolean; originalBytes: number; originalLines: number } {
+	const originalBytes = Buffer.byteLength(text, "utf8");
+	const originalLines = text.length === 0 ? 0 : text.split(/\r?\n/).length;
+
+	let lines = text.split(/\r?\n/);
+	let truncated = false;
+
+	if (lines.length > opts.maxLines) {
+		lines = lines.slice(0, opts.maxLines);
+		truncated = true;
+	}
+
+	let out = lines.join("\n");
+	if (Buffer.byteLength(out, "utf8") > opts.maxBytes) {
+		let buf = Buffer.from(out, "utf8").subarray(0, opts.maxBytes);
+		out = buf.toString("utf8").replace(/\uFFFD$/u, "");
+		truncated = true;
+	}
+
+	if (truncated) {
+		out += `\n\n[...output truncated: original ${originalBytes} bytes, ${originalLines} lines; shown at most ${opts.maxBytes} bytes / ${opts.maxLines} lines...]`;
+	}
+
+	return { text: out, truncated, originalBytes, originalLines };
+}
+
 export default function sandboxExtension(pi: ExtensionAPI): void {
 	// ─── State ───────────────────────────────────────────────────────
 
@@ -173,19 +210,23 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			if (result.stdout) output.push(result.stdout);
 			if (result.stderr) output.push(result.stderr);
 			const outputText = output.join("\n");
+			const shown = truncateForLlm(outputText);
 
 			if (result.code !== 0) {
 				throw new Error(
-					`Sandboxed command exited with code ${result.code}${outputText ? `:\n${outputText}` : ""}`,
+					`Sandboxed command exited with code ${result.code}${shown.text ? `:\n${shown.text}` : ""}`,
 				);
 			}
 
 			return {
-				content: [{ type: "text", text: outputText || "(no output)" }],
+				content: [{ type: "text", text: shown.text || "(no output)" }],
 				details: {
 					sandboxed: true,
 					mode: currentMode,
 					exitCode: result.code,
+					outputTruncated: shown.truncated,
+					originalOutputBytes: shown.originalBytes,
+					originalOutputLines: shown.originalLines,
 				},
 			};
 		},

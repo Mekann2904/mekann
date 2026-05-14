@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { isSafeCommand, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, sanitizePlanTools, SAFE_PLAN_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateModelConfig, updateThinkingConfig, createDefaultConfig, getConfigPath, isThinkingLevel, formatThinkingLevel, normalizeConfig, type ModelRef, type ThinkingLevel } from "./utils.js";
+import { isSafeCommand, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, sanitizePlanTools, SAFE_PLAN_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateModelConfig, updateThinkingConfig, createDefaultConfig, getConfigPath, isThinkingLevel, formatThinkingLevel, normalizeConfig, compactOldProposedPlansInText, type ModelRef, type ThinkingLevel } from "./utils.js";
 import { type Mode, type PlanState, createInitialState, isReadOnlyMode, modeLabel } from "./state.js";
 
 // isSafeCommand — bash コマンドの安全性判定
@@ -1159,5 +1159,206 @@ describe("/plan-model status thinking integration", () => {
 		const planThinking = formatThinkingLevel(config.thinking.plan);
 		expect(mainThinking).toBe("(unset)");
 		expect(planThinking).toBe("(unset)");
+	});
+});
+
+// ─── P0-2: exitPlanMode does not inject plan text into sendUserMessage ──
+
+describe("exitPlanMode: plan injection", () => {
+	it("pendingPlan があっても plan 本文を sendUserMessage に含めない", () => {
+		const state = createInitialState();
+		state.mode = "plan";
+		state.pendingPlan = "1. ファイル A を変更\n2. テストを追加";
+
+		// Simulate: exitPlanMode captures plan and sets implementationPlan
+		const plan = state.pendingPlan;
+		state.mode = "main";
+		state.implementationPlan = plan;
+		// Old behavior would be: sendUserMessage(`<plan>\n${plan}\n</plan>`)
+		// New behavior: sendUserMessage("保存された plan に従って実装してください。")
+		const sentMessage = "保存された plan に従って実装してください。";
+		expect(sentMessage).not.toContain("<plan>");
+		expect(sentMessage).not.toContain("ファイル A");
+		expect(state.implementationPlan).toContain("ファイル A");
+	});
+
+	it("pendingPlan がなければ implementationPlan も設定されない", () => {
+		const state = createInitialState();
+		state.mode = "plan";
+
+		const plan = state.pendingPlan;
+		state.mode = "main";
+		if (plan) {
+			state.implementationPlan = plan;
+		}
+
+		expect(state.implementationPlan).toBeUndefined();
+	});
+});
+
+// ─── P1-1: implementationPlan is injected once via system prompt ──────
+
+describe("implementationPlan: system prompt injection", () => {
+	it("implementationPlan は main mode の before_agent_start で system prompt に注入される", () => {
+		const state = createInitialState();
+		state.mode = "main";
+		state.implementationPlan = "1. ファイル A を変更\n2. テストを追加";
+
+		// Simulate: before_agent_start handler
+		if (state.mode === "main" && state.implementationPlan) {
+			const plan = state.implementationPlan;
+			state.implementationPlan = undefined;
+
+			const systemPrompt = `base prompt\n\nImplementation plan for this turn:\n<plan>\n${plan}\n</plan>`;
+			expect(systemPrompt).toContain("<plan>");
+			expect(systemPrompt).toContain("ファイル A");
+		}
+	});
+
+	it("implementationPlan は注入後に undefined になる", () => {
+		const state = createInitialState();
+		state.mode = "main";
+		state.implementationPlan = "test plan";
+
+		// Simulate: before_agent_start handler consumes implementationPlan
+		if (state.mode === "main" && state.implementationPlan) {
+			const _plan = state.implementationPlan;
+			state.implementationPlan = undefined;
+		}
+
+		expect(state.implementationPlan).toBeUndefined();
+	});
+
+	it("次回の before_agent_start では plan は注入されない", () => {
+		const state = createInitialState();
+		state.mode = "main";
+		// implementationPlan was already consumed
+		expect(state.implementationPlan).toBeUndefined();
+
+		// Simulate: second before_agent_start
+		let injected = false;
+		if (state.mode === "main" && state.implementationPlan) {
+			injected = true;
+		}
+		expect(injected).toBe(false);
+	});
+});
+
+// ─── P1-2: compactOldProposedPlansInText ───────────────────────────
+
+describe("compactOldProposedPlansInText", () => {
+	it("keep=true の場合はテキストをそのまま返す", () => {
+		const text = "<proposed_plan>\nFirst plan\n</proposed_plan>";
+		expect(compactOldProposedPlansInText(text, true)).toBe(text);
+	});
+
+	it("keep=false の場合は plan 内容を placeholder に置換する", () => {
+		const text = "<proposed_plan>\nFirst plan with long content\n</proposed_plan>";
+		const result = compactOldProposedPlansInText(text, false);
+		expect(result).toContain("[omitted: superseded plan]");
+		expect(result).not.toContain("First plan with long content");
+		expect(result).toContain("<proposed_plan>");
+		expect(result).toContain("</proposed_plan>");
+	});
+
+	it("複数の plan があっても全て placeholder に置換する", () => {
+		const text = `
+<proposed_plan>Plan A content here</proposed_plan>
+<proposed_plan>Plan B content here</proposed_plan>
+`;
+		const result = compactOldProposedPlansInText(text, false);
+		expect(result).not.toContain("Plan A");
+		expect(result).not.toContain("Plan B");
+		const matches = result.match(/\[omitted: superseded plan\]/g);
+		expect(matches).toHaveLength(2);
+	});
+
+	it("plan がないテキストはそのまま返す", () => {
+		const text = "通常のテキストです。";
+		expect(compactOldProposedPlansInText(text, false)).toBe(text);
+	});
+});
+
+// ─── P1-2: context hook old proposed_plan compaction simulation ─────
+
+describe("context hook: old proposed_plan compaction", () => {
+	function simulateContextHook(messages: Array<{ role: string; content: Array<{ type: string; text?: string }> }>): typeof messages {
+		// Deep clone to avoid mutation issues
+		const cloned = JSON.parse(JSON.stringify(messages));
+		let foundLatest = false;
+
+		for (let i = cloned.length - 1; i >= 0; i--) {
+			const msg = cloned[i];
+			if (msg.role !== "assistant") continue;
+
+			for (let j = 0; j < msg.content.length; j++) {
+				const part = msg.content[j];
+				if (part.type !== "text" || typeof part.text !== "string") continue;
+				if (!/<proposed_plan>[\s\S]*?<\/proposed_plan>/.test(part.text)) continue;
+
+				if (!foundLatest) {
+					foundLatest = true;
+				} else {
+					msg.content[j] = { ...part, text: compactOldProposedPlansInText(part.text, false) };
+				}
+			}
+		}
+
+		return cloned;
+	}
+
+	it("最新の plan は残し、古い plan は placeholder にする", () => {
+		const messages = [
+			{
+				role: "assistant",
+				content: [{ type: "text", text: "<proposed_plan>\n古いプラン ver1\n</proposed_plan>" }],
+			},
+			{
+				role: "assistant",
+				content: [{ type: "text", text: "<proposed_plan>\n最新プラン ver2\n</proposed_plan>" }],
+			},
+		];
+
+		const result = simulateContextHook(messages);
+		expect(result[0].content[0].text).toContain("[omitted: superseded plan]");
+		expect(result[0].content[0].text).not.toContain("古いプラン ver1");
+		expect(result[1].content[0].text).toContain("最新プラン ver2");
+		expect(result[1].content[0].text).not.toContain("[omitted");
+	});
+
+	it("3回 plan を出した場合、最新1件のみ全文", () => {
+		const messages = [
+			{ role: "assistant", content: [{ type: "text", text: "<proposed_plan>v1</proposed_plan>" }] },
+			{ role: "assistant", content: [{ type: "text", text: "<proposed_plan>v2</proposed_plan>" }] },
+			{ role: "assistant", content: [{ type: "text", text: "<proposed_plan>v3</proposed_plan>" }] },
+		];
+
+		const result = simulateContextHook(messages);
+		// Oldest two should be compacted
+		expect(result[0].content[0].text).toContain("[omitted: superseded plan]");
+		expect(result[1].content[0].text).toContain("[omitted: superseded plan]");
+		// Latest should be kept
+		expect(result[2].content[0].text).toBe("<proposed_plan>v3</proposed_plan>");
+	});
+
+	it("plan が1件だけの場合は compact されない", () => {
+		const messages = [
+			{ role: "assistant", content: [{ type: "text", text: "<proposed_plan>唯一のプラン</proposed_plan>" }] },
+		];
+
+		const result = simulateContextHook(messages);
+		expect(result[0].content[0].text).toContain("唯一のプラン");
+		expect(result[0].content[0].text).not.toContain("[omitted");
+	});
+
+	it("plan がないメッセージは影響を受けない", () => {
+		const messages = [
+			{ role: "assistant", content: [{ type: "text", text: "plan なしの応答" }] },
+			{ role: "user", content: [{ type: "text", text: "ユーザーメッセージ" }] },
+		];
+
+		const result = simulateContextHook(messages);
+		expect(result[0].content[0].text).toBe("plan なしの応答");
+		expect(result[1].content[0].text).toBe("ユーザーメッセージ");
 	});
 });

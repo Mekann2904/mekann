@@ -96,6 +96,22 @@ export function extractProposedPlan(message: string): string | undefined {
 	return match?.[1]?.trim() || undefined;
 }
 
+/**
+ * Replace all `<proposed_plan>...</proposed_plan>` blocks with a short placeholder.
+ * Used by the `context` hook to prevent old plan content from consuming LLM context.
+ *
+ * @param keep - when true, the latest plan is kept intact (caller responsibility)
+ * @param text - the text to compact
+ */
+export function compactOldProposedPlansInText(text: string, keep: boolean): string {
+	if (keep) return text;
+
+	return text.replace(
+		/<proposed_plan>\s*[\s\S]*?\s*<\/proposed_plan>/g,
+		"<proposed_plan>[omitted: superseded plan]</proposed_plan>",
+	);
+}
+
 // ─── Thinking level ───────────────────────────────────────────────
 
 /** Pi thinking levels. */
