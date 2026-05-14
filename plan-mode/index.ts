@@ -188,18 +188,16 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 			// /plan-model status
 			if (parts[0] === "status" || parts.length === 0) {
-				const mainRef = state.modelConfig.models.main;
-				const planRef = state.modelConfig.models.plan;
+				const fmt = (ref: ModelRef | undefined) => {
+					if (!ref) return "(unset)";
+					const avail = ctx.modelRegistry.find(ref.provider, ref.modelId) ? "✓" : "✗";
+					return `${formatModelRef(ref)} ${avail}`;
+				};
 				const current = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "(none)";
-				const mainAvail = mainRef ? (ctx.modelRegistry.find(mainRef.provider, mainRef.modelId) ? "✓" : "✗") : "";
-				const planAvail = planRef ? (ctx.modelRegistry.find(planRef.provider, planRef.modelId) ? "✓" : "✗") : "";
-				const main = mainRef ? `${formatModelRef(mainRef)} ${mainAvail}` : "(unset)";
-				const plan = planRef ? `${formatModelRef(planRef)} ${planAvail}` : "(unset)";
 				const mainThinking = formatThinkingLevel(state.modelConfig.thinking.main);
 				const planThinking = formatThinkingLevel(state.modelConfig.thinking.plan);
-				const currentThinking = pi.getThinkingLevel();
 				ctx.ui.notify(
-					`Mode: ${state.mode} | Current: ${current} [${currentThinking}] | Main: ${main} [${mainThinking}] | Plan: ${plan} [${planThinking}]`,
+					`Mode: ${state.mode} | Current: ${current} [${pi.getThinkingLevel()}] | Main: ${fmt(state.modelConfig.models.main)} [${mainThinking}] | Plan: ${fmt(state.modelConfig.models.plan)} [${planThinking}]`,
 					"info",
 				);
 				return;
