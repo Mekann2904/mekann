@@ -679,6 +679,32 @@ describe("status bar", () => {
 		// Status bar should be set
 		expect(ctx.ui.setStatus).toHaveBeenCalledWith("sandbox", expect.any(String));
 	});
+
+	it("danger_full_access 時は ⚠️ アイコン", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "danger_full_access" };
+		await loadExtension(mock);
+		const ctx = createMockCtx();
+		await mock._hooks.session_start({}, ctx);
+
+		expect(ctx.ui.setStatus).toHaveBeenCalledWith("sandbox", expect.stringContaining("⚠️"));
+	});
+
+	it("workspace_write 時は 🔒 アイコン", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		const ctx = createMockCtx();
+		await mock._hooks.session_start({}, ctx);
+
+		expect(ctx.ui.setStatus).toHaveBeenCalledWith("sandbox", expect.stringContaining("🔒"));
+	});
 });
 
 // ─── tool execute: Case 4 (sandboxed execution) ──────────────────
