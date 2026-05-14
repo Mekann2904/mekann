@@ -418,23 +418,6 @@ ${readOnlyDenySection}
 
 // ─── Preflight ───────────────────────────────────────────────────
 
-/**
- * macOS + sandbox-exec が利用可能かを検証する。
- * 実行前に呼び出すこと。
- */
-export async function assertMacSandboxAvailable(): Promise<void> {
-	if (process.platform !== "darwin") {
-		throw new Error("macOS Seatbelt sandbox is only available on macOS");
-	}
-	try {
-		await access("/usr/bin/sandbox-exec", constants.X_OK);
-	} catch {
-		throw new Error(
-			"/usr/bin/sandbox-exec not found or not executable. macOS Seatbelt is required.",
-		);
-	}
-}
-
 /** macOS で sandbox-exec が利用可能かを非例外で返す。 */
 export async function isMacSandboxAvailable(): Promise<boolean> {
 	if (process.platform !== "darwin") return false;
