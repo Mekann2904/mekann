@@ -2,7 +2,7 @@
  * Plan Mode 拡張機能のテスト — 最小実装版
  *
  * isSafeCommand, extractProposedPlan, buildBlockReason, loadPrompt,
- * hashContent, sanitizePlanTools とツールブロック判定を検証する。
+ * hashContent とツールブロック判定を検証する。
  */
 
 import { describe, it, expect } from "vitest";

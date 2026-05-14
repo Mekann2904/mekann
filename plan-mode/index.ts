@@ -225,50 +225,26 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			}
 
 			// /plan-model main [provider/modelId]
-			if (parts[0] === "main") {
-				if (parts[1]) {
-					const ref = parseModelRef(parts.slice(1).join(" "));
-					if (!ref) {
-						ctx.ui.notify("Invalid model reference. Use provider/modelId format.", "error");
-						return;
-					}
-					updateModelConfig(state.modelConfig, "main", ref, configPath);
-					ctx.ui.notify(`Main model set to ${formatModelRef(ref)}`, "info");
-					if (state.mode === "main") {
-						await trySetModel(ref, ctx, "Main model");
-					}
-				} else {
-					// Save current model as main
-					const ref = currentModelRef(ctx);
-					if (ref) {
-						updateModelConfig(state.modelConfig, "main", ref, configPath);
-						ctx.ui.notify(`Main model saved: ${formatModelRef(ref)}`, "info");
-					} else {
-						ctx.ui.notify("No current model to save", "warning");
-					}
-				}
-				return;
-			}
-
 			// /plan-model plan [provider/modelId]
-			if (parts[0] === "plan") {
+			if (parts[0] === "main" || parts[0] === "plan") {
+				const target = parts[0] as "main" | "plan";
+				const label = `${target === "main" ? "Main" : "Plan"} model`;
 				if (parts[1]) {
 					const ref = parseModelRef(parts.slice(1).join(" "));
 					if (!ref) {
 						ctx.ui.notify("Invalid model reference. Use provider/modelId format.", "error");
 						return;
 					}
-					updateModelConfig(state.modelConfig, "plan", ref, configPath);
-					ctx.ui.notify(`Plan model set to ${formatModelRef(ref)}`, "info");
-					if (state.mode === "plan") {
-						await trySetModel(ref, ctx, "Plan model");
+					updateModelConfig(state.modelConfig, target, ref, configPath);
+					ctx.ui.notify(`${label} set to ${formatModelRef(ref)}`, "info");
+					if (state.mode === target) {
+						await trySetModel(ref, ctx, label);
 					}
 				} else {
-					// Save current model as plan
 					const ref = currentModelRef(ctx);
 					if (ref) {
-						updateModelConfig(state.modelConfig, "plan", ref, configPath);
-						ctx.ui.notify(`Plan model saved: ${formatModelRef(ref)}`, "info");
+						updateModelConfig(state.modelConfig, target, ref, configPath);
+						ctx.ui.notify(`${label} saved: ${formatModelRef(ref)}`, "info");
 					} else {
 						ctx.ui.notify("No current model to save", "warning");
 					}
@@ -336,45 +312,25 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			}
 
 			// /plan-thinking main [level]
-			if (parts[0] === "main") {
-				if (parts[1]) {
-					if (!isThinkingLevel(parts[1])) {
-						ctx.ui.notify(`Invalid thinking level: ${parts[1]}. Use: ${THINKING_LEVELS.join(", ")}`, "error");
-						return;
-					}
-					const level = parts[1] as ThinkingLevel;
-					updateThinkingConfig(state.modelConfig, "main", level, configPath);
-					ctx.ui.notify(`Main thinking set to ${level}`, "info");
-					if (state.mode === "main") {
-						withThinkingSuppressed(() => pi.setThinkingLevel(level));
-					}
-				} else {
-					// Save current thinking as main
-					const level = pi.getThinkingLevel();
-					updateThinkingConfig(state.modelConfig, "main", level, configPath);
-					ctx.ui.notify(`Main thinking saved: ${level}`, "info");
-				}
-				return;
-			}
-
 			// /plan-thinking plan [level]
-			if (parts[0] === "plan") {
+			if (parts[0] === "main" || parts[0] === "plan") {
+				const target = parts[0] as "main" | "plan";
+				const label = target === "main" ? "Main" : "Plan";
 				if (parts[1]) {
 					if (!isThinkingLevel(parts[1])) {
 						ctx.ui.notify(`Invalid thinking level: ${parts[1]}. Use: ${THINKING_LEVELS.join(", ")}`, "error");
 						return;
 					}
 					const level = parts[1] as ThinkingLevel;
-					updateThinkingConfig(state.modelConfig, "plan", level, configPath);
-					ctx.ui.notify(`Plan thinking set to ${level}`, "info");
-					if (state.mode === "plan") {
+					updateThinkingConfig(state.modelConfig, target, level, configPath);
+					ctx.ui.notify(`${label} thinking set to ${level}`, "info");
+					if (state.mode === target) {
 						withThinkingSuppressed(() => pi.setThinkingLevel(level));
 					}
 				} else {
-					// Save current thinking as plan
 					const level = pi.getThinkingLevel();
-					updateThinkingConfig(state.modelConfig, "plan", level, configPath);
-					ctx.ui.notify(`Plan thinking saved: ${level}`, "info");
+					updateThinkingConfig(state.modelConfig, target, level, configPath);
+					ctx.ui.notify(`${label} thinking saved: ${level}`, "info");
 				}
 				return;
 			}
