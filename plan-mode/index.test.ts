@@ -1558,3 +1558,97 @@ describe("tool_call: input type edge cases", () => {
 		expect(lastEntry.data.path).toBe("f.ts");
 	});
 });
+
+// ─── plan-model status: branch coverage ────────────────────────────
+
+describe("plan-model status: branch coverage", () => {
+	it("null model: current shows (none)", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			model: null,
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-model"].handler("status", ctx);
+		expect(notifications[0]).toContain("(none)");
+	});
+
+	it("main model set but not found in registry: shows ✗", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			modelRegistry: {
+				find: (_provider: string, _modelId: string) => undefined,
+			},
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		// Set a main model
+		await mock._commands["plan-model"].handler("main anthropic/sonnet", createMockCtx());
+
+		notifications.length = 0;
+		await mock._commands["plan-model"].handler("status", ctx);
+		expect(notifications[0]).toContain("✗");
+	});
+
+	it("plan model set but not found in registry: shows ✗", async () => {
+		const notifications: string[] = [];
+		const ctxWithMissingModel = createMockCtx({
+			modelRegistry: {
+				find: (_provider: string, _modelId: string) => undefined,
+			},
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Set a plan model
+		await mock._commands["plan-model"].handler("plan google/gemini-flash", createMockCtx());
+
+		notifications.length = 0;
+		await mock._commands["plan-model"].handler("status", ctxWithMissingModel);
+		expect(notifications[0]).toContain("✗");
+	});
+
+	it("no main model set: shows (unset) when config is empty", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+
+		// Delete persisted config from previous tests to start fresh
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		try { require("fs").unlinkSync(configPath); } catch {}
+
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._commands["plan-model"].handler("status", ctx);
+		expect(notifications[0]).toContain("(unset)");
+	});
+});
+
+// ─── plan-model args parsing: branch coverage ──────────────────────
+
+describe("plan-model args parsing: branch coverage", () => {
+	it("args with extra whitespace splits correctly", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		// Use multiple spaces between parts
+		await mock._commands["plan-model"].handler("main   google/gemini-flash", ctx);
+		expect(mock.setModel).toHaveBeenCalled();
+	});
+});
