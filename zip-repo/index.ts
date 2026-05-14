@@ -4,7 +4,9 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { execFile as execFileAsync } from "node:child_process/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+const execFileAsync = promisify(execFile);
 import { basename, join, dirname } from "node:path";
 import { mkdtemp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
