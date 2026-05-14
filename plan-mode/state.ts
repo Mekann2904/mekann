@@ -1,3 +1,5 @@
+import type { ModelRef, PlanModeConfig } from "./utils.js";
+
 export type Mode = "main" | "plan";
 
 export function isReadOnlyMode(mode: Mode): boolean {
@@ -14,11 +16,16 @@ export interface PlanState {
 	savedActiveTools?: string[];
 	planPromptHash?: string;
 	planPromptDelivered: boolean;
+	/** Persisted model preferences for each mode. */
+	modelConfig: PlanModeConfig;
+	/** Snapshot of the main-mode model before entering plan mode (for fallback restore). */
+	savedMainModel?: ModelRef;
 }
 
-export function createInitialState(): PlanState {
+export function createInitialState(modelConfig?: PlanModeConfig): PlanState {
 	return {
 		mode: "main",
 		planPromptDelivered: false,
+		modelConfig: modelConfig ?? { version: 1, models: {} },
 	};
 }
