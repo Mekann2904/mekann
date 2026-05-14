@@ -204,17 +204,22 @@ export async function validatePolicy(policy: SandboxPolicy): Promise<void> {
 	// danger_full_access は sandbox なし（検証不要）
 	if (policy.mode === "danger_full_access") return;
 
-	// Validate workspaceRoots for unsafe paths
-	for (const root of policy.workspaceRoots) {
-		const unsafeReason = await isUnsafeWorkspaceRoot(root);
-		if (unsafeReason) {
-			throw new Error(unsafeReason);
-		}
-	}
+	// SECURITY: Compute effective roots the same way buildMacSeatbeltPolicy does.
+	// If workspaceRoots is empty, cwd becomes the effective workspace root.
+	// If writableRoots is empty in workspace_write mode, cwd becomes the effective writable root.
+	// We must validate ALL effective roots, not just the explicitly-provided ones.
+	const effectiveWorkspaceRoots =
+		policy.workspaceRoots.length > 0 ? policy.workspaceRoots : [policy.cwd];
+	const effectiveWritableRoots =
+		policy.mode === "workspace_write"
+			? policy.writableRoots.length > 0
+				? policy.writableRoots
+				: [policy.cwd]
+			: [];
 
-	// Also validate cwd if workspaceRoots is empty (cwd becomes the effective root)
-	if (policy.workspaceRoots.length === 0) {
-		const unsafeReason = await isUnsafeWorkspaceRoot(policy.cwd);
+	// Validate effective workspaceRoots for unsafe paths
+	for (const root of effectiveWorkspaceRoots) {
+		const unsafeReason = await isUnsafeWorkspaceRoot(root);
 		if (unsafeReason) {
 			throw new Error(unsafeReason);
 		}
@@ -227,21 +232,20 @@ export async function validatePolicy(policy: SandboxPolicy): Promise<void> {
 		);
 	}
 
+	// Validate effective writableRoots for unsafe paths
+	for (const wr of effectiveWritableRoots) {
+		const unsafeReason = await isUnsafeWorkspaceRoot(wr);
+		if (unsafeReason) {
+			throw new Error(`writable ${unsafeReason}`);
+		}
+	}
+
 	const resolvedWorkspaceRoots = await Promise.all(
-		policy.workspaceRoots.map((p) => resolveSafeRealPath(p)),
+		effectiveWorkspaceRoots.map((p) => resolveSafeRealPath(p)),
 	);
 
-	for (const wr of policy.writableRoots) {
+	for (const wr of effectiveWritableRoots) {
 		const resolvedWr = await resolveSafeRealPath(wr);
-
-		// / や $HOME 全体は不可
-		if (resolvedWr === "/") {
-			throw new Error("writable root cannot be /");
-		}
-		const home = process.env.HOME;
-		if (home && resolvedWr === await resolveSafeRealPath(home)) {
-			throw new Error("writable root cannot be $HOME");
-		}
 
 		// workspaceRoots 配下かチェック
 		const isInside = resolvedWorkspaceRoots.some((root) => {
@@ -676,53 +680,53 @@ export async function runSandboxedShellMac(
 		detached: true,
 	});
 
-	let stdout = "";
-	let stderr = "";
+	let stdoutBuf = Buffer.alloc(0);
+	let stderrBuf = Buffer.alloc(0);
 	let totalOutputBytes = 0;
 	let outputExceeded = false;
 	let killed = false;
 
-	child.stdout.setEncoding("utf8");
-	child.stderr.setEncoding("utf8");
-
 	// SECURITY: Track total bytes across stdout + stderr combined.
 	// Previous implementation tracked them separately, allowing 2x limit.
-	child.stdout.on("data", (chunk: string) => {
+	// Uses Buffer-based tracking for byte-accurate truncation (no UTF-16 vs byte mismatch).
+	child.stdout.on("data", (chunk: Buffer | string) => {
 		if (outputExceeded) return;
-		const chunkBytes = Buffer.byteLength(chunk, "utf8");
-		totalOutputBytes += chunkBytes;
+		const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8");
+		totalOutputBytes += buf.byteLength;
 		if (totalOutputBytes > maxOutputBytes) {
 			outputExceeded = true;
-			// Keep what fits
+			// Keep what fits using proper byte slicing
 			const overshoot = totalOutputBytes - maxOutputBytes;
-			const keepBytes = chunkBytes - overshoot;
+			const keepBytes = buf.byteLength - overshoot;
 			if (keepBytes > 0) {
-				stdout += chunk.slice(0, Math.max(0, keepBytes));
+				stdoutBuf = Buffer.concat([stdoutBuf, buf.subarray(0, keepBytes)]);
 			}
-			killProcessGroup(child);
+			terminateProcessGroup(child);
 			return;
 		}
-		stdout += chunk;
+		stdoutBuf = Buffer.concat([stdoutBuf, buf]);
 	});
 
-	child.stderr.on("data", (chunk: string) => {
+	child.stderr.on("data", (chunk: Buffer | string) => {
 		if (outputExceeded) return;
-		const chunkBytes = Buffer.byteLength(chunk, "utf8");
-		totalOutputBytes += chunkBytes;
+		const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8");
+		totalOutputBytes += buf.byteLength;
 		if (totalOutputBytes > maxOutputBytes) {
 			outputExceeded = true;
 			const overshoot = totalOutputBytes - maxOutputBytes;
-			const keepBytes = chunkBytes - overshoot;
+			const keepBytes = buf.byteLength - overshoot;
 			if (keepBytes > 0) {
-				stderr += chunk.slice(0, Math.max(0, keepBytes));
+				stderrBuf = Buffer.concat([stderrBuf, buf.subarray(0, keepBytes)]);
 			}
-			killProcessGroup(child);
+			terminateProcessGroup(child);
 			return;
 		}
-		stderr += chunk;
+		stderrBuf = Buffer.concat([stderrBuf, buf]);
 	});
 
 	// ─── Idempotent process group kill ──────────────────────────
+
+	let sigkillTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
 	function killProcessGroup(proc: ReturnType<typeof spawn>, sig: NodeJS.Signals = "SIGTERM"): void {
 		if (killed) return;
@@ -744,22 +748,29 @@ export async function runSandboxedShellMac(
 		}
 	}
 
+	/**
+	 * SIGTERM → grace → SIGKILL termination sequence.
+	 * Used for timeout, abort, and output cap exceeded.
+	 * All three paths use the same termination logic.
+	 */
+	function terminateProcessGroup(proc: ReturnType<typeof spawn>): void {
+		killProcessGroup(proc, "SIGTERM");
+		sigkillTimeoutId = setTimeout(() => {
+			killProcessGroupForce(proc);
+		}, SIGKILL_GRACE_MS);
+	}
+
 	// ─── Timeout handling ───────────────────────────────────────
 
 	let timeoutId: ReturnType<typeof setTimeout> | null = null;
 	let timedOut = false;
-	let sigkillTimeoutId: ReturnType<typeof setTimeout> | null = null;
 	let timeoutReject: ((reason: Error) => void) | null = null;
 
 	const timeoutPromise = new Promise<never>((_resolve, reject) => {
 		timeoutReject = reject;
 		timeoutId = setTimeout(() => {
 			timedOut = true;
-			killProcessGroup(child, "SIGTERM");
-			// Grace period then SIGKILL
-			sigkillTimeoutId = setTimeout(() => {
-				killProcessGroupForce(child);
-			}, SIGKILL_GRACE_MS);
+			terminateProcessGroup(child);
 			reject(new Error(`command timed out after ${timeoutMs}ms`));
 		}, timeoutMs);
 	});
@@ -773,17 +784,13 @@ export async function runSandboxedShellMac(
 		abortReject = reject;
 		if (abortSignal) {
 			if (abortSignal.aborted) {
-				killProcessGroup(child);
+				terminateProcessGroup(child);
 				cleanupTempDir(isolatedTemp);
 				reject(new Error("command aborted before execution"));
 				return;
 			}
 			abortHandler = () => {
-				killProcessGroup(child, "SIGTERM");
-				// Grace period then SIGKILL
-				sigkillTimeoutId = setTimeout(() => {
-					killProcessGroupForce(child);
-				}, SIGKILL_GRACE_MS);
+				terminateProcessGroup(child);
 				reject(new Error("command aborted"));
 			};
 			abortSignal.addEventListener("abort", abortHandler);
@@ -807,14 +814,16 @@ export async function runSandboxedShellMac(
 		child.on("close", async (code, signal) => {
 			cleanupTimers();
 
-			// SECURITY: After normal close, send SIGKILL to process group
-			// as safety net to kill any residual background processes.
-			// We are inside the 'close' handler, so the main process is dead,
-			// but background children may linger.
-			cleanupResidualProcesses(child);
-
-			// Give OS a brief moment to clean up residual processes
-			await new Promise<void>((r) => setTimeout(r, 200));
+			// SECURITY: If this close was triggered by output cap / timeout / abort,
+			// terminateProcessGroup already handled the kill sequence.
+			// For normal exits (not forced kill), send SIGKILL to process group
+			// as a safety net for any residual background processes.
+			// Only do this for truly normal exits to avoid PID/PGID reuse risk.
+			if (!killed && code !== null) {
+				cleanupResidualProcesses(child);
+				// Give OS a brief moment to clean up residual processes
+				await new Promise<void>((r) => setTimeout(r, 200));
+			}
 
 			cleanupTempDir(isolatedTemp);
 
@@ -822,13 +831,13 @@ export async function runSandboxedShellMac(
 				resolvePromise({
 					code: 1,
 					signal: null,
-					stdout: stdout.slice(0, maxOutputBytes) + "\n[...output truncated...]",
-					stderr: stderr + `\n[ERROR] output limit exceeded (${maxOutputBytes} bytes combined stdout+stderr)`,
+					stdout: stdoutBuf.toString("utf8") + "\n[...output truncated...]",
+					stderr: stderrBuf.toString("utf8") + `\n[ERROR] output limit exceeded (${maxOutputBytes} bytes combined stdout+stderr)`,
 				});
 				return;
 			}
 
-			resolvePromise({ code, signal, stdout, stderr });
+			resolvePromise({ code, signal, stdout: stdoutBuf.toString("utf8"), stderr: stderrBuf.toString("utf8") });
 		});
 	});
 
@@ -854,8 +863,8 @@ export async function runSandboxedShellMac(
 		return {
 			code: null,
 			signal: "SIGTERM",
-			stdout: stdout.slice(0, maxOutputBytes) + (outputExceeded ? "\n[...output truncated...]" : ""),
-			stderr: stderr + `\n[ERROR] command ${(timedOut ? "timed out" : "aborted")}`,
+			stdout: stdoutBuf.toString("utf8") + (outputExceeded ? "\n[...output truncated...]" : ""),
+			stderr: stderrBuf.toString("utf8") + `\n[ERROR] command ${(timedOut ? "timed out" : "aborted")}`,
 		};
 	}
 }

@@ -166,6 +166,16 @@ pi -e ./sandbox --sandbox-mode read_only
 10. **Pi tool registration order**: Pi extension の tool registration 順序に依存する。他の extension が同じ tool を上書きする可能性あり (未確認)。
 11. **macOS Seatbelt の限界**: Seatbelt 自体の bypass 可能性は Apple の実装に依存する。この extension は Seatbelt の上に構築される defense-in-depth layer である。
 12. **Unsupported OS では sandbox なし**: Linux/Windows では sandbox security は提供されない。コマンド実行は拒否される。
+13. **localBash cwd**: unsandboxed execution (`--no-sandbox` / `danger_full_access`) は `session_start` 時の `ctx.cwd` を使用。agent の CWD が変わった場合は session restart が必要。
+
+## Future Hardening Issues
+
+The following items are known security improvements that should be tracked as separate issues:
+
+1. **mach-lookup allowlist**: 現在 `(allow mach-lookup)` で全ての system service への接続を許可している。DNS 解決に必要な service のみに制限するべき。特に `mach-lookup` は system service への接続面を広げるため、production 境界としては改善が必要。
+2. **sysctl-read allowlist**: 現在 `(allow sysctl-read)` で全ての sysctl を許可している。CLI tool が必要とする specific sysctl のみに制限するべき。
+3. **Seatbelt bypass monitoring**: macOS Seatbelt 自体の bypass 可能性について、Apple security update を追跡する仕組み。
+4. **Per-process resource limits**: CPU / memory / file descriptor 数の制限。
 
 ## Test Coverage
 
