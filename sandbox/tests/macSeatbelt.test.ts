@@ -1480,13 +1480,13 @@ describe("truncateForLlm", () => {
 
 describe("resolveSafeRealPath", () => {
 	it("存在するパスは realpath を返す", async () => {
-		const { resolveSafeRealPath } = await import("../macSeatbelt.js");
+		const { resolveSafeRealPath } = await import("../pathPolicy.js");
 		const result = await resolveSafeRealPath("/tmp");
 		expect(result).toMatch(/^\/private\/tmp$|^\/tmp$/);
 	});
 
 	it("存在しないパスは resolve の結果を返す", async () => {
-		const { resolveSafeRealPath } = await import("../macSeatbelt.js");
+		const { resolveSafeRealPath } = await import("../pathPolicy.js");
 		const result = await resolveSafeRealPath("/nonexistent/path/to/file");
 		expect(result).toBe("/nonexistent/path/to/file");
 	});

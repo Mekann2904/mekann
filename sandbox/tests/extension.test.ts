@@ -48,13 +48,13 @@ vi.mock("../macSeatbelt.js", () => ({
 	})),
 	validatePolicy: vi.fn(() => Promise.resolve()),
 	resolveGitdirPaths: vi.fn(() => Promise.resolve([])),
-	resolveSafeRealPath: vi.fn((p: string) => Promise.resolve(p)),
 }));
 
 // Mock pathPolicy
 vi.mock("../pathPolicy.js", () => ({
 	resolveRealPaths: vi.fn((paths: string[]) => Promise.resolve(paths)),
 	validateWorkspaceRoot: vi.fn(() => Promise.resolve()),
+	resolveSafeRealPath: vi.fn((p: string) => Promise.resolve(p)),
 	assertPathInsideRoot: vi.fn(() => Promise.resolve()),
 	isProtectedPath: vi.fn(() => false),
 }));
