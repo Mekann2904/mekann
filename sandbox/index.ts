@@ -30,7 +30,6 @@ export function truncateForLlm(
 	let truncated = false;
 
 	if (lines.length > opts.maxLines) { lines = lines.slice(0, opts.maxLines); truncated = true; }
-
 	let out = lines.join("\n");
 	if (Buffer.byteLength(out, "utf8") > opts.maxBytes) { out = Buffer.from(out, "utf8").subarray(0, opts.maxBytes).toString("utf8").replace(/\uFFFD$/u, ""); truncated = true; }
 
@@ -247,7 +246,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				ctx.ui.notify(effectiveMode(), "info");
 				return;
 			}
-
 			const newMode = parseSandboxMode(modeStr);
 			if (!newMode) {
 				ctx.ui.notify(`無効なモード: ${modeStr}。指定可能: read_only, workspace_write, yolo`, "error");
@@ -266,7 +264,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					ctx.ui.notify("base モードを yolo に設定しました。override 終了後、bash tool 実行時に yolo 承認を求めます。direct bash は承認済みになるまで拒否されます。", "info");
 					return;
 				}
-
 				const ok = await ctx.ui.confirm("[!] サンドボックスを無効化しますか？", yoloApprovalMessage());
 				if (!ok) { ctx.ui.notify("モード変更はキャンセルされました", "info"); return; }
 								yoloState.yoloApproved = true;

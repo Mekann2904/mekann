@@ -166,7 +166,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			}
 			return;
 		}
-
 		const inputKey = String(input.path ?? "");
 		if (toolName === lastBlockedTool && inputKey === lastBlockedInput) {
 			blockCount++;
@@ -175,7 +174,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			lastBlockedTool = toolName;
 			lastBlockedInput = inputKey;
 		}
-
 		const reason = buildBlockReason(toolName, input, blockCount);
 		pi.appendEntry("plan-mode-blocked-tool", {
 			at: Date.now(),
@@ -266,9 +264,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	// Track thinking level changes per-mode
 	pi.on("thinking_level_select", async (event) => {
 		if (suppressThinkingSelectPersist) return;
-
-		const level = event.level;
-		persistIfChanged("thinking", state.mode, level, (a, b) => a === b);
+		const level = event.level; persistIfChanged("thinking", state.mode, level, (a, b) => a === b);
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
