@@ -388,7 +388,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		// Update status bar to reflect effective mode change
 		if (lastCtx) updateStatusBar(lastCtx);
 	});
-
 	pi.events.on(SANDBOX_POP_PROFILE_EVENT, (data: unknown) => {
 		const event = data as SandboxPopProfileEvent;
 		if (!event.token) return;
@@ -398,7 +397,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		// Update status bar to reflect effective mode change
 		if (lastCtx) updateStatusBar(lastCtx);
 	});
-
 	pi.on("session_shutdown", async () => {
 		sandboxEnabled = false;
 		sandboxAvailable = false;

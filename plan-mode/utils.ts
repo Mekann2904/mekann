@@ -14,7 +14,6 @@ export { classifyCommandIntent, isPlanReadOnlyCommandIntent, isSafeCommand, type
 
 // Re-export tool list from policy-core.
 export { PLAN_MODE_TOOLS } from "../policy-core/modes.js";
-
 export function buildBlockReason(toolName: string, input: Record<string, unknown>, blockCount: number): string {
 	const H = "【プランモード・読み取り専用】";
 	const toolLabel = ({ edit: "ファイル編集", write: "ファイル作成/上書き" } as Record<string, string>)[toolName] || toolName;

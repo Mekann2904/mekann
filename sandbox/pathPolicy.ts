@@ -49,7 +49,6 @@ export function isProtectedPath(path: string): boolean {
 export async function checkUnsafeRoot(root: string): Promise<string | null> {
 	const resolved = await resolveSafeRealPath(root);
 	if (resolved === "/") return "workspace root cannot be /";
-
 	const home = process.env.HOME;
 	if (home) {
 		const resolvedHome = await resolveSafeRealPath(home);
@@ -57,7 +56,6 @@ export async function checkUnsafeRoot(root: string): Promise<string | null> {
 	}
 
 	if (resolved === "/Users" || resolved.match(/^\/Users\/[^/]+$/)) return "workspace root cannot be /Users or a user home directory — use a project subdirectory";
-
 	return null;
 }
 
