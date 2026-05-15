@@ -264,10 +264,4 @@ export function updateConfigField<T>(
 	saveModelConfig(config, path);
 }
 
-/** Update a mode's model config. */
-export const updateModelConfig = (config: PlanModeConfig, mode: "main" | "plan", ref: ModelRef | undefined, path?: string) =>
-	updateConfigField(config, "models", mode, ref, path);
 
-/** Update a mode's thinking level config. */
-export const updateThinkingConfig = (config: PlanModeConfig, mode: "main" | "plan", level: ThinkingLevel | undefined, path?: string) =>
-	updateConfigField(config, "thinking", mode, level, path);
