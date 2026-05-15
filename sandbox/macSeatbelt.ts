@@ -351,9 +351,9 @@ function cleanupTempDir(dir: string): void {
 // ─── Process group cleanup helper ───────────────────────────────
 
 /** Send SIGKILL to a process group (idempotent — ignores already-dead processes). */
-function killPgSigkill(proc: ReturnType<typeof spawn>): void {
+function killProcessGroup(proc: ReturnType<typeof spawn>, sig: NodeJS.Signals = "SIGKILL"): void {
 	try {
-		if (proc.pid) process.kill(-proc.pid, "SIGKILL");
+		if (proc.pid) process.kill(-proc.pid, sig);
 	} catch {
 		// already dead — idempotent
 	}
@@ -373,7 +373,7 @@ function waitForProcessDeath(
 			resolvePromise();
 		};
 
-		killPgSigkill(proc);
+		killProcessGroup(proc);
 		proc.once("close", done);
 		setTimeout(() => { proc.removeListener("close", done); done(); }, timeoutMs);
 	});
@@ -457,22 +457,13 @@ export async function runSandboxedShellMac(
 	let sigkillTimeoutId: ReturnType<typeof setTimeout> | null = null;
 	let terminationRequested: "timeout" | "abort" | "output_limit" | null = null;
 
-	/** Send signal to process group (idempotent — ignores already-dead processes). */
-	function killPg(sig: NodeJS.Signals = "SIGKILL"): void {
-		try {
-			if (child.pid) process.kill(-child.pid, sig);
-		} catch {
-			// already dead — idempotent
-		}
-	}
-
 	/** Unified termination: SIGTERM → grace → SIGKILL. Idempotent. */
 	function requestTerminate(reason: "timeout" | "abort" | "output_limit"): void {
 		if (terminationRequested) return;
 		terminationRequested = reason;
 		killed = true;
-		killPg("SIGTERM");
-		sigkillTimeoutId = setTimeout(killPg, SIGKILL_GRACE_MS);
+		killProcessGroup(child, "SIGTERM");
+		sigkillTimeoutId = setTimeout(() => killProcessGroup(child), SIGKILL_GRACE_MS);
 	}
 
 	// ─── Timeout handling ───────────────────────────────────────
@@ -521,7 +512,7 @@ export async function runSandboxedShellMac(
 
 			// Safety net: kill residual background processes on normal exits
 			if (!killed && code !== null) {
-				killPg();
+				killProcessGroup(child);
 				await new Promise<void>((r) => setTimeout(r, 200));
 			}
 
