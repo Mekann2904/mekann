@@ -260,8 +260,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				if (profileOverrideStack.length > 0) {
 					// Override active — save base, defer approval
 					currentMode = newMode;
-					resetYoloApproval();
-					updateStatusBar(ctx);
+			resetYoloApproval();
+					refreshStatusBar();
 					ctx.ui.notify("base モードを yolo に設定しました。override 終了後、bash tool 実行時に yolo 承認を求めます。direct bash は承認済みになるまで拒否されます。", "info");
 					return;
 				}
@@ -271,11 +271,11 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 							yoloState.yoloApprovedAt = new Date();
 							yoloState.yoloApprovedReason = "コマンド /sandbox で承認";
 			} else {
-				resetYoloApproval();
+			resetYoloApproval();
 			}
 
 			currentMode = newMode;
-			updateStatusBar(ctx);
+			refreshStatusBar();
 			ctx.ui.notify(`サンドボックスモードを変更しました: ${effectiveMode()}`, "info");
 		})();
 	}
@@ -351,7 +351,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		}
 
 		sandboxEnabled = true;
-		updateStatusBar(ctx);
+		refreshStatusBar();
 		ctx.ui.notify(`サンドボックス有効: ${modeLabel(effectiveMode())}`, "info");
 	});
 
@@ -412,6 +412,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		profileOverrideStack.length = 0;
 		planModeStatus = undefined;
 		lastCtx = undefined;
-				resetYoloApproval();
+			resetYoloApproval();
 	});
 }
