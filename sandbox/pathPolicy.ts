@@ -66,8 +66,7 @@ export async function checkUnsafeRoot(root: string): Promise<string | null> {
 
 /** Workspace root のバリデーション（/, $HOME, /Users を拒否）。 */
 export async function validateWorkspaceRoot(root: string): Promise<void> {
-	const reason = await checkUnsafeRoot(root);
-	if (reason) throw new Error(reason);
+	const reason = await checkUnsafeRoot(root); if (reason) throw new Error(reason);
 }
 
 /** realpath を試み、失敗したら resolve の結果を返す。 */

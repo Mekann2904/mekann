@@ -73,16 +73,10 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	async function trySetModel(ref: ModelRef | undefined, ctx: ExtensionContext, label: string): Promise<boolean> {
 		if (!ref) return false;
 		const model = ctx.modelRegistry.find(ref.provider, ref.modelId);
-		if (!model) {
-			ctx.ui.notify(`${label}: モデル ${formatModelRef(ref)} が見つかりません`, "warning");
-			return false;
-		}
+		if (!model) { ctx.ui.notify(`${label}: モデル ${formatModelRef(ref)} が見つかりません`, "warning"); return false; }
 		return withModelSuppressed(async () => {
 			const ok = await pi.setModel(model);
-			if (!ok) {
-				ctx.ui.notify(`${label}: ${formatModelRef(ref)} の API key がありません`, "warning");
-				return false;
-			}
+			if (!ok) { ctx.ui.notify(`${label}: ${formatModelRef(ref)} の API key がありません`, "warning"); return false; }
 			return true;
 		});
 	}
@@ -98,10 +92,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (persistCurrentMain) {
 			const _m = ctx.model;
 				const mainRef = _m ? { provider: _m.provider, modelId: _m.id } as ModelRef : undefined;
-			if (mainRef) {
-				state.savedMainModel = mainRef;
-				updateConfigField(state.modelConfig, "models", "main", mainRef, configPath);
-			}
+			if (mainRef) { state.savedMainModel = mainRef; updateConfigField(state.modelConfig, "models", "main", mainRef, configPath); }
 			const mainThinking = pi.getThinkingLevel();
 			state.savedMainThinking = mainThinking;
 			updateConfigField(state.modelConfig, "thinking", "main", mainThinking, configPath);
@@ -140,10 +131,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		popSandboxOverride();
 
 		// 2. Restore tools
-		if (state.savedActiveTools) {
-			pi.setActiveTools(state.savedActiveTools);
-			state.savedActiveTools = undefined;
-		}
+		if (state.savedActiveTools) { pi.setActiveTools(state.savedActiveTools); state.savedActiveTools = undefined; }
 
 		// 3. Switch state to main BEFORE restoring model so model_select hook updates the correct mode
 		const plan = state.pendingPlan;
@@ -160,10 +148,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		// 6. Clean up state
 		Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined, savedMainModel: undefined, savedMainThinking: undefined });
 
-		if (plan) {
-			state.implementationPlan = plan;
-			pi.sendUserMessage("保存された plan に従って実装してください。");
-		}
+		if (plan) { state.implementationPlan = plan; pi.sendUserMessage("保存された plan に従って実装してください。"); }
 		ctx.ui.notify(modeLabel(state.mode));
 	}
 
@@ -289,10 +274,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			lastAssistant.content.filter((b): b is TextContent => b.type === "text").map(b => b.text).join("\n"),
 		);
 
-		if (plan) {
-			state.pendingPlan = plan;
-			ctx.ui.notify(modeLabel(state.mode));
-		}
+		if (plan) { state.pendingPlan = plan; ctx.ui.notify(modeLabel(state.mode)); }
 	});
 
 	pi.on("turn_end", async () => {
