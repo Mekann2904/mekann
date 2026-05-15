@@ -395,11 +395,7 @@ function killPgSigkill(proc: ReturnType<typeof spawn>): void {
 	}
 }
 
-/**
- * Process group が完全に終了するのを待つ。
- * close handler の外（timeout/abort path）から呼ばれる。
- * SIGKILL safety net を送り、close event を待つ。
- */
+/** Process group が完全に終了するのを待つ。SIGKILL safety net 付き。 */
 function waitForProcessDeath(
 	proc: ReturnType<typeof spawn>,
 	timeoutMs: number,
@@ -429,22 +425,7 @@ function waitForProcessDeath(
 
 // ─── Sandboxed execution ─────────────────────────────────────────
 
-/**
- * sandbox-exec 経由で shell command string を実行する。
- *
- * - command は shell string として /bin/bash --noprofile --norc -c に渡される
- * - sandbox-exec は絶対パス固定
- * - stdout / stderr / exit code をキャプチャ
- * - timeout / abort / output cap 対応
- * - process group kill（孫/background プロセスも終了）
- * - SIGTERM 後、SIGKILL_GRACE_MS で SIGKILL、'close' event を待つ
- * - per-run isolated temp directory を作成・終了後に cleanup
- * - per-run isolated HOME directory（workspace/cwd にしない）
- * - maxOutputBytes は stdout + stderr の合計で制限
- *
- * API: This is a shell string runner. The command parameter is a shell command
- * string, NOT an argv array.
- */
+/** sandbox-exec 経由で shell command string を実行。timeout/abort/output cap/process group kill 対応。 */
 export async function runSandboxedShellMac(
 	command: string,
 	policy: SandboxPolicy,
@@ -458,31 +439,21 @@ export async function runSandboxedShellMac(
 	const maxOutputBytes = options?.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
 	const abortSignal = options?.signal;
 
-	// Resolve paths through realpath to handle symlinks
 	const resolvedPolicy = await resolvePolicyPaths(policy);
-
-	// Validate policy before execution
 	await validatePolicy(resolvedPolicy);
 
-	// Create per-run isolated temp directory
 	const rawIsolatedTemp = createIsolatedTempDir();
-	// Resolve through realpath for macOS /var → /private/var handling
 	const isolatedTemp = await resolveSafeRealPath(rawIsolatedTemp);
 	resolvedPolicy._isolatedTempDir = isolatedTemp;
 
-	// SECURITY: Create isolated HOME directory under per-run temp.
-	// This prevents:
-	//   1. workspace-controlled startup file injection (.bash_profile, .profile, etc.)
-	//   2. $HOME pointing to user's real home directory
+	// SECURITY: isolated HOME prevents workspace-controlled startup file injection
 	const isolatedHome = pathJoin(isolatedTemp, "home");
 	mkdirSync(isolatedHome, { recursive: true });
 
 	const fullPolicy = buildMacSeatbeltPolicy(resolvedPolicy);
 	const sandboxEnv = buildSandboxEnv(resolvedPolicy, isolatedHome);
 
-	// SECURITY: Use /bin/bash --noprofile --norc to prevent loading
-	// any startup files (.bash_profile, .bash_login, .profile, .bashrc).
-	// This prevents workspace-controlled startup file injection.
+	// SECURITY: --noprofile --norc prevents workspace-controlled startup file injection
 	const child = spawn(SANDBOX_EXEC, [
 		"-p",
 		fullPolicy,
