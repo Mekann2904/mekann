@@ -80,7 +80,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	let startupBlockedReason: string | undefined;
 
 	// Last UI context for updating status bar after profile override push/pop.
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	let lastCtx: any | undefined;
 
 	// ─── Profile override stack (plan-mode coordination) ──────────
@@ -367,8 +366,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	});
 
 	// ─── Commands ────────────────────────────────────────────────────
-
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	function changeMode(args: string | undefined, ctx: any): Promise<void> {
 		return (async () => {
 			lastCtx = ctx;
@@ -440,8 +437,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	});
 
 	// ─── Status bar ──────────────────────────────────────────────────
-
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	function updateStatusBar(ctx: any): void {
 		if (explicitlyDisabled || !sandboxEnabled) {
 			ctx.ui.setWidget("sandbox", undefined);
