@@ -44,13 +44,16 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 	// ─── Model helpers ──────────────────────────────────────────────
 
-	/** Try to switch to the model identified by `ref`. Returns true on success. */
-	async function trySetModel(ref: ModelRef | undefined, ctx: ExtensionContext, label: string): Promise<boolean> {
-		if (!ref) return false;
+	/** Result of attempting to set a model via trySetModel. */
+	type ModelLookupResult = "ok" | "not_found" | "no_key";
+
+	/** Try to switch to the model identified by `ref`. Returns the outcome. */
+	async function trySetModel(ref: ModelRef | undefined, ctx: ExtensionContext, label: string): Promise<ModelLookupResult> {
+		if (!ref) return "not_found";
 		const model = ctx.modelRegistry.find(ref.provider, ref.modelId);
-		if (!model) { ctx.ui.notify(`${label}: モデル ${formatModelRef(ref)} が見つかりません`, "warning"); return false; }
+		if (!model) { ctx.ui.notify(`${label}: モデル ${formatModelRef(ref)} が見つかりません。コンフィグをクリアします`, "warning"); return "not_found"; }
 		return withModelSuppressed(async () => {
-			const ok = await pi.setModel(model); if (!ok) { ctx.ui.notify(`${label}: ${formatModelRef(ref)} の API key がありません`, "warning"); return false; } return true;
+			const ok = await pi.setModel(model); if (!ok) { ctx.ui.notify(`${label}: ${formatModelRef(ref)} の API key がありません`, "warning"); return "no_key"; } return "ok";
 		});
 	}
 
@@ -64,8 +67,12 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		// 1. Snapshot & persist current main model (only when explicitly toggling, not --plan startup)
 		if (persistCurrentMain) {
 			const _m = ctx.model;
-				const mainRef = _m ? { provider: _m.provider, modelId: _m.id } as ModelRef : undefined;
-			if (mainRef) { state.savedMainModel = mainRef; updateConfigField(state.modelConfig, "models", "main", mainRef, configPath); }
+			const mainRef = _m ? { provider: _m.provider, modelId: _m.id } as ModelRef : undefined;
+			// Only persist if the model actually exists in the registry (skip fallback models from failed restores)
+			if (mainRef && ctx.modelRegistry.find(mainRef.provider, mainRef.modelId)) {
+				state.savedMainModel = mainRef;
+				updateConfigField(state.modelConfig, "models", "main", mainRef, configPath);
+			}
 			const mainThinking = pi.getThinkingLevel();
 			state.savedMainThinking = mainThinking;
 			updateConfigField(state.modelConfig, "thinking", "main", mainThinking, configPath);
@@ -107,8 +114,12 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		// 4. Restore main model
 		const mainRef = state.modelConfig.models.main;
-		const restored = await trySetModel(mainRef, ctx, "Main model");
-		if (!restored && state.savedMainModel && !sameModelRef(mainRef, state.savedMainModel)) await trySetModel(state.savedMainModel, ctx, "Main model (fallback)");
+		const result = await trySetModel(mainRef, ctx, "Main model");
+		if (result === "not_found") updateConfigField(state.modelConfig, "models", "main", undefined, configPath);
+		if (result !== "ok" && state.savedMainModel && !sameModelRef(mainRef, state.savedMainModel)) {
+			const fbResult = await trySetModel(state.savedMainModel, ctx, "Main model (fallback)");
+			if (fbResult === "not_found") updateConfigField(state.modelConfig, "models", "main", undefined, configPath);
+		}
 
 		// 5. Restore main thinking level
 		applyThinking(state.modelConfig.thinking.main ?? state.savedMainThinking);
@@ -262,7 +273,10 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (pi.getFlag("plan") === true) {
 			await enterPlanMode(ctx, { persistCurrentMain: false });
 		} else {
-			if (state.modelConfig.models.main) await trySetModel(state.modelConfig.models.main, ctx, "Main model");
+			if (state.modelConfig.models.main) {
+				const result = await trySetModel(state.modelConfig.models.main, ctx, "Main model");
+				if (result === "not_found") updateConfigField(state.modelConfig, "models", "main", undefined, configPath);
+			}
 			applyThinking(state.modelConfig.thinking.main);
 		}
 	});

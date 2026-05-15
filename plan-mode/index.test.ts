@@ -1111,3 +1111,213 @@ describe("enterPlanMode: no main model configured", () => {
 		expect(mock._activeTools).toContain("edit");
 	});
 });
+
+// ─── session_start: clear invalid ModelRef from config ──────────────
+
+describe("session_start: invalid ModelRef cleanup", () => {
+	it("session_start clears invalid main model from config", async () => {
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			modelRegistry: {
+				find: (_provider: string, _modelId: string) => undefined,
+			},
+		});
+
+		// Pre-create a config with an invalid model ref
+		const { writeFileSync, readFileSync, existsSync } = require("fs");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		writeFileSync(configPath, JSON.stringify({
+			version: 1,
+			models: { main: { provider: "zai", modelId: "glm-5.1" } },
+			thinking: {},
+		}));
+
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		// Should have warned about model not found
+		expect(notifications.some(n => n.includes("見つかりません"))).toBe(true);
+
+		// Config should have been cleared
+		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
+		expect(saved.models.main).toBeUndefined();
+
+		// Clean up
+		try { require("fs").unlinkSync(configPath); } catch {}
+	});
+
+	it("session_start with valid main model does NOT clear config", async () => {
+		const { writeFileSync, readFileSync } = require("fs");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		writeFileSync(configPath, JSON.stringify({
+			version: 1,
+			models: { main: { provider: "anthropic", modelId: "sonnet" } },
+			thinking: {},
+		}));
+
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Config should still have the main model
+		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
+		expect(saved.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
+
+		// Clean up
+		try { require("fs").unlinkSync(configPath); } catch {}
+	});
+});
+
+// ─── enterPlanMode: skip saving unregistered model ───────────────────
+
+describe("enterPlanMode: skip saving unregistered model", () => {
+	it("does not save main model if ctx.model is not in registry", async () => {
+		const { writeFileSync, readFileSync } = require("fs");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		writeFileSync(configPath, JSON.stringify({ version: 1, models: {}, thinking: {} }));
+
+		// ctx.model = anthropic/default, but registry can't find it
+		const ctx = createMockCtx({
+			model: { provider: "anthropic", id: "default-model" },
+			modelRegistry: {
+				find: (provider: string, modelId: string) => {
+					// Only "sonnet" exists
+					if (modelId === "sonnet") return { provider, id: modelId };
+					return undefined;
+				},
+			},
+		});
+
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		// Enter plan mode — should NOT save the unregistered model
+		await mock._commands["plan"].handler("", ctx);
+
+		// Config should NOT have main model
+		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
+		expect(saved.models.main).toBeUndefined();
+
+		// Clean up
+		try { require("fs").unlinkSync(configPath); } catch {}
+	});
+
+	it("saves main model if ctx.model IS in registry", async () => {
+		const { writeFileSync, readFileSync } = require("fs");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		writeFileSync(configPath, JSON.stringify({ version: 1, models: {}, thinking: {} }));
+
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Enter plan mode — should save current model
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		// Config should have main model
+		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
+		expect(saved.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
+
+		// Clean up
+		try { require("fs").unlinkSync(configPath); } catch {}
+	});
+});
+
+// ─── exitPlanMode: clear invalid ModelRef from config ────────────────
+
+describe("exitPlanMode: clear invalid ModelRef from config", () => {
+	it("clears invalid main model ref from config on exit", async () => {
+		const notifications: string[] = [];
+		const { writeFileSync, readFileSync } = require("fs");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+
+		// Pre-set a main model so session_start saves it, then exitPlanMode will try to restore
+		writeFileSync(configPath, JSON.stringify({
+			version: 1,
+			models: { main: { provider: "zai", modelId: "glm-5.1" } },
+			thinking: {},
+		}));
+
+		// Registry can't find anything
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			modelRegistry: {
+				find: (_provider: string, _modelId: string) => undefined,
+			},
+		});
+
+		const mock = createMockApi();
+		await loadExtension(mock);
+		// session_start will try to restore zai/glm-5.1 → fail → clear config
+		await mock._hooks.session_start({}, ctx);
+		expect(notifications.some(n => n.includes("見つかりません"))).toBe(true);
+
+		// Config should already be cleared by session_start
+		let saved = JSON.parse(readFileSync(configPath, "utf-8"));
+		expect(saved.models.main).toBeUndefined();
+
+		// Enter plan mode — no main model to save (registry still empty)
+		await mock._commands["plan"].handler("", ctx);
+
+		// Exit plan mode — still no main model, no crash
+		notifications.length = 0;
+		await mock._commands["plan"].handler("", ctx);
+
+		// Config should remain cleared
+		saved = JSON.parse(readFileSync(configPath, "utf-8"));
+		expect(saved.models.main).toBeUndefined();
+
+		// Clean up
+		try { require("fs").unlinkSync(configPath); } catch {}
+	});
+
+	it("clears invalid savedMainModel (fallback) from config on exit", async () => {
+		const notifications: string[] = [];
+		const { writeFileSync, readFileSync } = require("fs");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+
+		// Pre-set a main model that the registry CAN find (for session_start)
+		writeFileSync(configPath, JSON.stringify({
+			version: 1,
+			models: { main: { provider: "anthropic", modelId: "sonnet" } },
+			thinking: {},
+		}));
+
+		// After entering plan mode, make registry unable to find anything
+		let findCallCount = 0;
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			modelRegistry: {
+				find: (provider: string, modelId: string) => {
+					findCallCount++;
+					// First call: session_start trySetModel (sonnet — found)
+					// Later calls: exitPlanMode — everything fails
+					if (findCallCount <= 1) return { provider, id: modelId };
+					return undefined;
+				},
+			},
+		});
+
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		// Enter plan mode — saves sonnet as savedMainModel
+		await mock._commands["plan"].handler("", ctx);
+
+		// Exit plan mode — both main ref and fallback fail → config cleared
+		notifications.length = 0;
+		await mock._commands["plan"].handler("", ctx);
+
+		expect(notifications.some(n => n.includes("見つかりません"))).toBe(true);
+
+		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
+		expect(saved.models.main).toBeUndefined();
+
+		// Clean up
+		try { require("fs").unlinkSync(configPath); } catch {}
+	});
+});
