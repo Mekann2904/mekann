@@ -341,11 +341,7 @@ function waitForProcessDeath(
 	return new Promise<void>((resolvePromise) => {
 		let resolved = false;
 
-		const done = () => {
-			if (resolved) return;
-			resolved = true;
-			resolvePromise();
-		};
+		const done = () => { if (resolved) return; resolved = true; resolvePromise(); };
 
 		killProcessGroup(proc);
 		proc.once("close", done);
