@@ -1,16 +1,9 @@
-/**
- * Path Policy — realpath ベースのパス検証・エスケープ防止。
- *
- * symlink escape を潰すため、SBPL に入れるパスは原則 realpath 済みにする。
- */
+/** Path Policy — realpath ベースのパス検証・エスケープ防止。 */
 
 import { realpath } from "node:fs/promises";
 import { relative, isAbsolute, resolve } from "node:path";
 
-/**
- * 指定パスが root 配下にあることを検証する。
- * symlink 経由の脱出も検出する（realpath で解決後 relative で判定）。
- */
+/** symlink 逸脱も検出する（realpath + relative）。 */
 export async function assertPathInsideRoot(
 	path: string,
 	root: string,
@@ -26,10 +19,7 @@ export async function assertPathInsideRoot(
 	throw new Error(`path escapes sandbox root: ${path}`);
 }
 
-/**
- * 文字列配列を realpath 済みの絶対パス配列に変換する。
- * 存在しないパスは resolve だけ行い realpath はスキップする。
- */
+/** 文字列配列を realpath 済みの絶対パスに変換。存在しないパスは resolve のみ。 */
 export async function resolveRealPaths(
 	paths: string[],
 ): Promise<string[]> {
@@ -49,9 +39,7 @@ export async function resolveRealPaths(
 /** 保護すべきメタデータディレクトリパターン。 */
 const PROTECTED_DIRS = [".git", ".codex", ".agents"];
 
-/**
- * パスが保護対象（.git, .codex, .agents 配下）かどうかを判定する。
- */
+/** パスが .git/.codex/.agents 配下か判定。 */
 export function isProtectedPath(path: string): boolean {
 	// パスを正規化して各セグメントをチェック
 	const normalized = resolve(path);
@@ -65,11 +53,7 @@ export function isProtectedPath(path: string): boolean {
 	return false;
 }
 
-/**
- * Check if a path is an unsafe workspace root (/, $HOME, /Users, /Users/<user>).
- * Returns an error message string if unsafe, null if safe.
- * Shared by validateWorkspaceRoot and macSeatbelt validatePolicy.
- */
+/** unsafe root (/, $HOME, /Users) ならエラーメッセージ、safe なら null。 */
 export async function checkUnsafeRoot(root: string): Promise<string | null> {
 	const resolved = await resolveSafeRealPath(root);
 
@@ -92,13 +76,7 @@ export async function checkUnsafeRoot(root: string): Promise<string | null> {
 	return null;
 }
 
-/**
- * Workspace root のバリデーション。
- *
- * - `/` を workspace root にできない
- * - `$HOME` 全体を workspace root にできない
- * - 広すぎるパスは警告または拒否する
- */
+/** Workspace root のバリデーション（/, $HOME, /Users を拒否）。 */
 export async function validateWorkspaceRoot(root: string): Promise<void> {
 	const reason = await checkUnsafeRoot(root);
 	if (reason) throw new Error(reason);
