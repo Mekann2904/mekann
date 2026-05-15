@@ -112,9 +112,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 
 		// 2. Enter plan mode (restrict tools)
-		if (!state.savedActiveTools) {
-			state.savedActiveTools = pi.getActiveTools();
-		}
+		if (!state.savedActiveTools) state.savedActiveTools = pi.getActiveTools();
 		state.mode = "plan";
 		Object.assign(state, { pendingPlan: undefined, implementationPlan: undefined, planPromptDelivered: false, planPromptHash: undefined });
 		pi.setActiveTools([...PLAN_MODE_TOOLS]);
@@ -133,9 +131,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		// 4. Switch to plan model if configured
 		const planRef = state.modelConfig.models.plan;
-		if (planRef) {
-			await trySetModel(planRef, ctx, "Plan model");
-		}
+		if (planRef) await trySetModel(planRef, ctx, "Plan model");
 
 		// 5. Switch to plan thinking level if configured
 		applyThinking(state.modelConfig.thinking.plan);
@@ -160,9 +156,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		// 4. Restore main model
 		const mainRef = state.modelConfig.models.main;
 		const restored = await trySetModel(mainRef, ctx, "Main model");
-		if (!restored && state.savedMainModel && !sameModelRef(mainRef, state.savedMainModel)) {
-			await trySetModel(state.savedMainModel, ctx, "Main model (fallback)");
-		}
+		if (!restored && state.savedMainModel && !sameModelRef(mainRef, state.savedMainModel)) await trySetModel(state.savedMainModel, ctx, "Main model (fallback)");
 
 		// 5. Restore main thinking level
 		applyThinking(state.modelConfig.thinking.main ?? state.savedMainThinking);
@@ -329,9 +323,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		isEqual: (a: T | undefined, b: T | undefined) => boolean,
 	): void {
 		const current = (state.modelConfig[section] as Record<string, T | undefined>)[mode];
-		if (!isEqual(current, value)) {
-			updateConfigField(state.modelConfig, section, mode, value, configPath);
-		}
+		if (!isEqual(current, value)) updateConfigField(state.modelConfig, section, mode, value, configPath);
 	}
 
 	// Track model changes per-mode

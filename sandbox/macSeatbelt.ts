@@ -127,9 +127,7 @@ export async function validatePolicy(policy: SandboxPolicy): Promise<void> {
 		if (reason) throw new Error(reason);
 	}
 
-	if (policy.mode === "read_only" && policy.writableRoots.length > 0) {
-		throw new Error(`read_only mode must not have writableRoots, got: ${policy.writableRoots.join(", ")}`);
-	}
+	if (policy.mode === "read_only" && policy.writableRoots.length > 0) throw new Error(`read_only mode must not have writableRoots, got: ${policy.writableRoots.join(", ")}`);
 
 	for (const wr of wRoots) {
 		const reason = await checkUnsafeRoot(wr);
@@ -376,9 +374,7 @@ export async function runSandboxedShellMac(
 	policy: SandboxPolicy,
 	options?: SandboxRunOptions,
 ): Promise<RunResult> {
-	if (!command?.trim()) {
-		throw new Error("empty command");
-	}
+	if (!command?.trim()) throw new Error("empty command");
 
 	const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 	const maxOutputBytes = options?.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
@@ -429,9 +425,7 @@ export async function runSandboxedShellMac(
 			outputExceeded = true;
 			const overshoot = totalOutputBytes - maxOutputBytes;
 			const keepBytes = buf.byteLength - overshoot;
-			if (keepBytes > 0) {
-				bufs[stream] = Buffer.concat([bufs[stream], buf.subarray(0, keepBytes)]);
-			}
+			if (keepBytes > 0) bufs[stream] = Buffer.concat([bufs[stream], buf.subarray(0, keepBytes)]);
 			requestTerminate("output_limit");
 			return;
 		}
@@ -524,9 +518,7 @@ export async function runSandboxedShellMac(
 	function cleanupTimers(): void {
 		if (timeoutId) clearTimeout(timeoutId);
 		if (sigkillTimeoutId) clearTimeout(sigkillTimeoutId);
-		if (abortSignal && abortHandler) {
-			abortSignal.removeEventListener("abort", abortHandler);
-		}
+		if (abortSignal && abortHandler) abortSignal.removeEventListener("abort", abortHandler);
 	}
 
 	try {
