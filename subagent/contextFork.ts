@@ -28,10 +28,10 @@ export function extractForkContext(
   const pairs: Array<{ role: "user" | "assistant"; text: string }> = [];
   for (const msg of messages) {
     if (msg.role === "user") {
-      const text = extractText(msg.content);
+      const text = extractTextFromContent(msg.content);
       if (text) pairs.push({ role: "user", text });
     } else if (msg.role === "assistant") {
-      const text = extractAssistantText(msg.content);
+      const text = extractTextFromContent(msg.content);
       if (text) pairs.push({ role: "assistant", text });
     }
     // Skip toolResult, bashExecution, custom messages
@@ -83,46 +83,4 @@ export function buildContextPreamble(opts: {
   return lines.join("\n");
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────
-
-function extractText(content: unknown): string | null {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    const texts: string[] = [];
-    for (const block of content) {
-      if (
-        block &&
-        typeof block === "object" &&
-        "type" in block &&
-        block.type === "text" &&
-        "text" in block &&
-        typeof block.text === "string"
-      ) {
-        texts.push(block.text);
-      }
-    }
-    return texts.length > 0 ? texts.join("\n") : null;
-  }
-  return null;
-}
-
-function extractAssistantText(content: unknown): string | null {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    const texts: string[] = [];
-    for (const block of content) {
-      if (
-        block &&
-        typeof block === "object" &&
-        "type" in block &&
-        block.type === "text" &&
-        "text" in block &&
-        typeof block.text === "string"
-      ) {
-        texts.push(block.text);
-      }
-    }
-    return texts.length > 0 ? texts.join("\n") : null;
-  }
-  return null;
-}
+import { extractTextFromContent } from "./contentExtract.js";

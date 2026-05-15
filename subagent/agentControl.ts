@@ -201,7 +201,7 @@ export class AgentControl {
           const msgs = (event as any).messages as AgentMessage[] | undefined;
           const lastAssistant = msgs?.filter((m) => m.role === "assistant").pop();
           const finalText = lastAssistant
-            ? extractAssistantText(lastAssistant)
+            ? extractTextFromContent(lastAssistant.content) ?? undefined
             : undefined;
 
           this.registry.updateStatus(canonicalPath, "completed", {
@@ -538,24 +538,4 @@ function clampTimeout(ms: number): number {
   return Math.max(MIN_WAIT_TIMEOUT_MS, Math.min(ms, MAX_WAIT_TIMEOUT_MS));
 }
 
-function extractAssistantText(msg: AgentMessage): string | undefined {
-  const content = msg.content;
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    const texts: string[] = [];
-    for (const block of content) {
-      if (
-        block &&
-        typeof block === "object" &&
-        "type" in block &&
-        block.type === "text" &&
-        "text" in block &&
-        typeof block.text === "string"
-      ) {
-        texts.push(block.text);
-      }
-    }
-    return texts.length > 0 ? texts.join("\n") : undefined;
-  }
-  return undefined;
-}
+import { extractTextFromContent } from "./contentExtract.js";
