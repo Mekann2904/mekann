@@ -470,9 +470,7 @@ export async function runSandboxedShellMac(
 		detached: true,
 	});
 
-	// SECURITY: Track total bytes across stdout + stderr combined.
-	// Previous implementation tracked them separately, allowing 2x limit.
-	// Uses Buffer-based tracking for byte-accurate truncation (no UTF-16 vs byte mismatch).
+	// SECURITY: Track total bytes across stdout + stderr combined (Buffer-based, byte-accurate)
 	const bufs = { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) };
 	let totalOutputBytes = 0;
 	let outputExceeded = false;
@@ -512,11 +510,7 @@ export async function runSandboxedShellMac(
 		}
 	}
 
-	/**
-	 * Unified termination path for timeout, abort, and output cap exceeded.
-	 * SIGTERM → grace → SIGKILL.
-	 * Idempotent: first call wins, subsequent calls are no-ops.
-	 */
+	/** Unified termination: SIGTERM → grace → SIGKILL. Idempotent. */
 	function requestTerminate(reason: "timeout" | "abort" | "output_limit"): void {
 		if (terminationRequested) return;
 		terminationRequested = reason;
@@ -575,14 +569,9 @@ export async function runSandboxedShellMac(
 		child.on("close", async (code, signal) => {
 			cleanupTimers();
 
-			// SECURITY: If this close was triggered by output cap / timeout / abort,
-			// requestTerminate already handled the kill sequence.
-			// For normal exits (not forced kill), send SIGKILL to process group
-			// as a safety net for any residual background processes.
-			// Only do this for truly normal exits to avoid PID/PGID reuse risk.
+			// Safety net: kill residual background processes on normal exits
 			if (!killed && code !== null) {
 				killPg();
-				// Give OS a brief moment to clean up residual processes
 				await new Promise<void>((r) => setTimeout(r, 200));
 			}
 
@@ -612,15 +601,9 @@ export async function runSandboxedShellMac(
 
 	try {
 		return await Promise.race([execPromise, timeoutPromise, abortPromise]);
-	} catch (err) {
-		// For timeout/abort, we need to wait for the process to actually die
-		// before returning, to ensure cleanup is complete.
-
-		// Wait for grace period + close event
+	} catch {
 		await waitForProcessDeath(child, SIGKILL_GRACE_MS + 1000);
 		cleanupTempDir(isolatedTemp);
-
-		// For timeout/abort, return a result object instead of throwing
 		return {
 			code: null,
 			signal: "SIGTERM",
