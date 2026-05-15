@@ -89,9 +89,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	/** Compute the effective sandbox mode, respecting override stack. */
 	function effectiveMode(): SandboxMode {
 		if (explicitlyDisabled) return currentMode; // overrides don't apply when disabled
-		if (profileOverrideStack.length > 0) {
-			return profileOverrideStack[profileOverrideStack.length - 1].mode;
-		}
+		if (profileOverrideStack.length > 0) return profileOverrideStack[profileOverrideStack.length - 1].mode;
 		return currentMode;
 	}
 
@@ -170,9 +168,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			const command = String(params.command ?? "");
 
 			// ── Case 1: Explicitly disabled via --no-sandbox ─────────
-			if (explicitlyDisabled) {
-				return getLocalBash().execute(id, params, signal, onUpdate);
-			}
+			if (explicitlyDisabled) return getLocalBash().execute(id, params, signal, onUpdate);
 
 			// ── Hard block: startup failure (unsafe root / sandbox unavailable) ──
 			if (startupBlockedReason) {
@@ -180,9 +176,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			}
 
 			// ── Case 2: yolo (unsandboxed) ────
-			if (effectiveMode() === "yolo") {
-				return getLocalBash().execute(id, params, signal, onUpdate);
-			}
+			if (effectiveMode() === "yolo") return getLocalBash().execute(id, params, signal, onUpdate);
 
 			// ── Case 3: sandbox-exec unavailable → REFUSE (fail-closed) ─
 			if (!sandboxAvailable) {
@@ -253,17 +247,11 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const { command, reason } = params;
 
-			if (explicitlyDisabled) {
-				return { content: [{ type: "text", text: "サンドボックスは既に無効化されています (--no-sandbox)。bash ツールを直接使用してください。" }], details: {} };
-			}
+			if (explicitlyDisabled) return { content: [{ type: "text", text: "サンドボックスは既に無効化されています (--no-sandbox)。bash ツールを直接使用してください。" }], details: {} };
 
-			if (startupBlockedReason) {
-				return { content: [{ type: "text", text: `${startupBlockedReason}。権限昇格では回避できません。明示的に --no-sandbox で起動し直す必要があります。` }], details: {} };
-			}
+			if (startupBlockedReason) return { content: [{ type: "text", text: `${startupBlockedReason}。権限昇格では回避できません。明示的に --no-sandbox で起動し直す必要があります。` }], details: {} };
 
-			if (!sandboxEnabled) {
-				return { content: [{ type: "text", text: "サンドボックスはアクティブではありません。bash ツールを直接使用してください。" }], details: {} };
-			}
+			if (!sandboxEnabled) return { content: [{ type: "text", text: "サンドボックスはアクティブではありません。bash ツールを直接使用してください。" }], details: {} };
 
 			const ok = await ctx.ui.confirm(
 				"[>>] サンドボックス権限昇格リクエスト",
