@@ -103,12 +103,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		yoloApproved: false,
 	};
 
-	function approveYolo(reason: string): void {
-		yoloState.yoloApproved = true;
-		yoloState.yoloApprovedAt = new Date();
-		yoloState.yoloApprovedReason = reason;
-	}
-
 	function resetYoloApproval(): void {
 		Object.assign(yoloState, { yoloApproved: false, yoloApprovedAt: undefined, yoloApprovedReason: undefined });
 	}
@@ -393,7 +387,9 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					ctx.ui.notify("モード変更はキャンセルされました", "info");
 					return;
 				}
-								approveYolo("コマンド /sandbox で承認");
+								yoloState.yoloApproved = true;
+							yoloState.yoloApprovedAt = new Date();
+							yoloState.yoloApprovedReason = "コマンド /sandbox で承認";
 			} else {
 				resetYoloApproval();
 			}
