@@ -637,15 +637,12 @@ export async function runSandboxedShellMac(
 	let sigkillTimeoutId: ReturnType<typeof setTimeout> | null = null;
 	let terminationRequested: "timeout" | "abort" | "output_limit" | null = null;
 
-	function killProcessGroup(proc: ReturnType<typeof spawn>, sig: NodeJS.Signals = "SIGTERM"): void {
-		if (killed) return;
-		killed = true;
+	/** Send signal to process group (idempotent — ignores already-dead processes). */
+	function killPg(sig: NodeJS.Signals = "SIGKILL"): void {
 		try {
-			// Kill entire process group (negative PID)
-			process.kill(-proc.pid!, sig);
-		} catch (e) {
-			// Process may already be dead — idempotent, but log for debug
-			// In production, this should be logged for visibility.
+			if (child.pid) process.kill(-child.pid, sig);
+		} catch {
+			// already dead — idempotent
 		}
 	}
 
@@ -657,11 +654,9 @@ export async function runSandboxedShellMac(
 	function requestTerminate(reason: "timeout" | "abort" | "output_limit"): void {
 		if (terminationRequested) return;
 		terminationRequested = reason;
-
-		killProcessGroup(child, "SIGTERM");
-		sigkillTimeoutId = setTimeout(() => {
-			killPgSigkill(child);
-		}, SIGKILL_GRACE_MS);
+		killed = true;
+		killPg("SIGTERM");
+		sigkillTimeoutId = setTimeout(killPg, SIGKILL_GRACE_MS);
 	}
 
 	// ─── Timeout handling ───────────────────────────────────────
@@ -724,7 +719,7 @@ export async function runSandboxedShellMac(
 			// as a safety net for any residual background processes.
 			// Only do this for truly normal exits to avoid PID/PGID reuse risk.
 			if (!killed && code !== null) {
-				killPgSigkill(child);
+				killPg();
 				// Give OS a brief moment to clean up residual processes
 				await new Promise<void>((r) => setTimeout(r, 200));
 			}
