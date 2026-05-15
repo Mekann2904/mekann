@@ -83,4 +83,18 @@ export function buildContextPreamble(opts: {
   return lines.join("\n");
 }
 
-import { extractTextFromContent } from "./contentExtract.js";
+// ─── Content extraction ───────────────────────────────────────────────
+
+/** Extract text from message content (string or content block array). */
+export function extractTextFromContent(content: unknown): string | null {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const texts: string[] = [];
+    for (const block of content) {
+      if (block && typeof block === "object" && "type" in block && block.type === "text" && "text" in block && typeof block.text === "string") texts.push(block.text);
+    }
+    return texts.length > 0 ? texts.join("\n") : null;
+  }
+  return null;
+}
+

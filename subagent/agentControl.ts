@@ -471,4 +471,4 @@ function clampTimeout(ms: number): number {
   return Math.max(MIN_WAIT_TIMEOUT_MS, Math.min(ms, MAX_WAIT_TIMEOUT_MS));
 }
 
-import { extractTextFromContent } from "./contentExtract.js";
+import { extractTextFromContent } from "./contextFork.js";
