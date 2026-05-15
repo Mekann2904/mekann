@@ -22,18 +22,16 @@ export interface SandboxPolicy {
 	_resolvedGitdirs?: string[];
 }
 
+function mkPolicy(mode: SandboxMode, cwd: string, workspaceRoots: string[], writableRoots: string[], network: boolean): SandboxPolicy {
+	return { mode, cwd, workspaceRoots, writableRoots, network };
+}
+
 /** read_only ポリシーを生成する。 */
 export function readOnlyPolicy(
 	cwd: string,
 	workspaceRoots: string[] = [],
 ): SandboxPolicy {
-	return {
-		mode: "read_only",
-		cwd,
-		workspaceRoots,
-		writableRoots: [],
-		network: false,
-	};
+	return mkPolicy("read_only", cwd, workspaceRoots, [], false);
 }
 
 /** workspace_write ポリシーを生成する。 */
@@ -43,24 +41,12 @@ export function workspaceWritePolicy(
 	writableRoots: string[] = [],
 	network = false,
 ): SandboxPolicy {
-	return {
-		mode: "workspace_write",
-		cwd,
-		workspaceRoots,
-		writableRoots,
-		network,
-	};
+	return mkPolicy("workspace_write", cwd, workspaceRoots, writableRoots, network);
 }
 
 /** yolo ポリシーを生成する。 */
 export function yoloPolicy(): SandboxPolicy {
-	return {
-		mode: "yolo",
-		cwd: "/",
-		workspaceRoots: [],
-		writableRoots: [],
-		network: true,
-	};
+	return mkPolicy("yolo", "/", [], [], true);
 }
 
 // ─── Approval logic (UX layer, NOT security boundary) ───────────────
