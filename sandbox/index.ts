@@ -343,10 +343,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		}
 
 		if (effectiveMode() === "yolo") return undefined;
-		throw new Error(
-			"サンドボックスがアクティブな場合、直接の bash 実行はブロックされます。" +
-			"コマンドはサンドボックス化された bash ツール経由で実行してください。",
-		);
+		throw new Error("サンドボックスがアクティブな場合、直接の bash 実行はブロックされます。コマンドはサンドボックス化された bash ツール経由で実行してください。");
 	});
 
 	// ─── Commands ────────────────────────────────────────────────────
