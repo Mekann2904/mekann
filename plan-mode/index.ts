@@ -397,19 +397,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("before_agent_start", async (event) => {
-		// Inject implementation plan once into main mode system prompt, then clear it
+	// Inject implementation plan once into main mode system prompt, then clear it
 		if (state.mode === "main" && state.implementationPlan) {
 			const plan = state.implementationPlan;
 			state.implementationPlan = undefined;
-
-			return {
-				systemPrompt: `${event.systemPrompt}
-
-Implementation plan for this turn:
-<plan>
-${plan}
-</plan>`,
-			};
+			return { systemPrompt: `${event.systemPrompt}\n\nImplementation plan for this turn:\n<plan>\n${plan}\n</plan>` };
 		}
 
 		if (!isReadOnlyMode(state.mode)) return;
