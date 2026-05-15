@@ -10,13 +10,7 @@ import { homedir } from "node:os";
 
 // Re-export from policy-core — single source of truth for command intent classification.
 // isSafeCommand is a UX guard, NOT a security boundary.
-export {
-	classifyCommandIntent,
-	isPlanReadOnlyCommandIntent,
-	isSafeCommand,
-	type CommandIntent,
-	type CommandIntentKind,
-} from "../policy-core/commandIntent.js";
+export { classifyCommandIntent, isPlanReadOnlyCommandIntent, isSafeCommand, type CommandIntent, type CommandIntentKind } from "../policy-core/commandIntent.js";
 
 // Re-export tool list from policy-core.
 export { PLAN_MODE_TOOLS } from "../policy-core/modes.js";
