@@ -44,10 +44,7 @@ export function truncateForLlm(
 	const originalLines = text.length === 0 ? 0 : lines.length;
 	let truncated = false;
 
-	if (lines.length > opts.maxLines) {
-		lines = lines.slice(0, opts.maxLines);
-		truncated = true;
-	}
+	if (lines.length > opts.maxLines) { lines = lines.slice(0, opts.maxLines); truncated = true; }
 
 	let out = lines.join("\n");
 	if (Buffer.byteLength(out, "utf8") > opts.maxBytes) {
@@ -290,10 +287,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			lastCtx = ctx;
 			const modeStr = args?.trim();
 			if (!modeStr) {
-				if (startupBlockedReason) {
-					ctx.ui.notify(`blocked: ${startupBlockedReason}`, "error");
-					return;
-				}
+				if (startupBlockedReason) { ctx.ui.notify(`blocked: ${startupBlockedReason}`, "error"); return; }
 				ctx.ui.notify(effectiveMode(), "info");
 				return;
 			}
@@ -327,10 +321,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					"[!] サンドボックスを無効化しますか？",
 					yoloApprovalMessage(),
 				);
-				if (!ok) {
-					ctx.ui.notify("モード変更はキャンセルされました", "info");
-					return;
-				}
+				if (!ok) { ctx.ui.notify("モード変更はキャンセルされました", "info"); return; }
 								yoloState.yoloApproved = true;
 							yoloState.yoloApprovedAt = new Date();
 							yoloState.yoloApprovedReason = "コマンド /sandbox で承認";
@@ -359,10 +350,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 	// ─── Status bar ──────────────────────────────────────────────────
 	function updateStatusBar(ctx: any): void {
-		if (explicitlyDisabled || !sandboxEnabled) {
-			ctx.ui.setWidget("sandbox", undefined);
-			return;
-		}
+		if (explicitlyDisabled || !sandboxEnabled) { ctx.ui.setWidget("sandbox", undefined); return; }
 
 		ctx.ui.setWidget(
 			"sandbox",

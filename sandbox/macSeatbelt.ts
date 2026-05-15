@@ -122,17 +122,11 @@ export async function validatePolicy(policy: SandboxPolicy): Promise<void> {
 	const rRoots = effectiveReadableRoots(policy);
 	const wRoots = effectiveWritableRoots(policy);
 
-	for (const root of rRoots) {
-		const reason = await checkUnsafeRoot(root);
-		if (reason) throw new Error(reason);
-	}
+	for (const root of rRoots) { const reason = await checkUnsafeRoot(root); if (reason) throw new Error(reason); }
 
 	if (policy.mode === "read_only" && policy.writableRoots.length > 0) throw new Error(`read_only mode must not have writableRoots, got: ${policy.writableRoots.join(", ")}`);
 
-	for (const wr of wRoots) {
-		const reason = await checkUnsafeRoot(wr);
-		if (reason) throw new Error(`writable ${reason}`);
-	}
+	for (const wr of wRoots) { const reason = await checkUnsafeRoot(wr); if (reason) throw new Error(`writable ${reason}`); }
 
 	const resolvedWorkspaceRoots = await Promise.all(rRoots.map(resolveSafeRealPath));
 
