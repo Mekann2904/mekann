@@ -163,11 +163,7 @@ export class AgentRegistry {
 
 
   get openCount(): number {
-    let count = 0;
-    for (const [, agent] of this.agents) {
-      if (agent.open) count++;
-    }
-    return count;
+    return this.filterAgents(a => a.open).length;
   }
 
   get(agentPath: string): AgentMetadata | undefined {
