@@ -91,11 +91,9 @@ export function normalizeConfig(raw: Record<string, unknown>): PlanModeConfig {
 
 /** "provider/modelId" 文字列を ModelRef にパース（最初の / で分割）。 */
 export function parseModelRef(input: string): ModelRef | undefined {
-	const trimmed = input.trim();
-	if (!trimmed) return undefined;
-	const slashIndex = trimmed.indexOf("/");
-	if (slashIndex <= 0 || slashIndex === trimmed.length - 1) return undefined;
-	return { provider: trimmed.slice(0, slashIndex), modelId: trimmed.slice(slashIndex + 1) };
+	const t = input.trim(); if (!t) return undefined;
+	const i = t.indexOf("/"); if (i <= 0 || i === t.length - 1) return undefined;
+	return { provider: t.slice(0, i), modelId: t.slice(i + 1) };
 }
 
 /** Format a ModelRef as "provider/modelId". */
@@ -106,15 +104,12 @@ export function formatModelRef(ref?: ModelRef): string {
 
 /** Compare two ModelRef values for equality. */
 export function sameModelRef(a: ModelRef | undefined, b: ModelRef | undefined): boolean {
-	if (a === b) return true;
-	if (!a || !b) return false;
-	return a.provider === b.provider && a.modelId === b.modelId;
+	return a === b ? true : !a || !b ? false : a.provider === b.provider && a.modelId === b.modelId;
 }
 
 /** ~/.pi/agent/plan-mode.json へのパス（explicitPath で上書き可能）。 */
 export function getConfigPath(explicitPath?: string): string {
-	if (explicitPath) return explicitPath;
-	return join(homedir(), ".pi", "agent", "plan-mode.json");
+	return explicitPath ?? join(homedir(), ".pi", "agent", "plan-mode.json");
 }
 
 /** Load config from disk, returning a default config on missing/invalid file. */
