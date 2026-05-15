@@ -477,14 +477,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		state.modelConfig = loaded;
 
 		if (pi.getFlag("plan") === true) {
-			// --plan startup: enter plan mode without overwriting hand-written config
 			await enterPlanMode(ctx, { persistCurrentMain: false });
 		} else {
-			// Normal startup: apply configured main model if set
-			if (state.modelConfig.models.main) {
-				await trySetModel(state.modelConfig.models.main, ctx, "Main model");
-			}
-			// Apply configured main thinking level if set
+			if (state.modelConfig.models.main) await trySetModel(state.modelConfig.models.main, ctx, "Main model");
 			applyThinking(state.modelConfig.thinking.main);
 		}
 	});
