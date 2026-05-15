@@ -2,9 +2,19 @@
 
 Custom extensions for [pi](https://pi.dev) coding agent.
 
+---
+
 ## Extensions
 
-### [plan-mode](./plan-mode/)
+| Extension | Description |
+|-----------|-------------|
+| [plan-mode](./plan-mode/) | 実装前の読み取り専用プランニングモード |
+| [sandbox](./sandbox/) | macOS Seatbelt による bash コマンドサンドボックス |
+| [zip-repo](./zip-repo/) | 作業ツリーを ZIP 化してクリップボードにコピー |
+
+---
+
+### plan-mode
 
 Codex-inspired plan mode — 実装前に考えさせるための読み取り専用モード。
 
@@ -15,38 +25,46 @@ Codex-inspired plan mode — 実装前に考えさせるための読み取り専
 - `pi --plan` で plan mode から起動可能
 - main / plan それぞれにモデルと thinking effort を設定・永続化可能
 
-```bash
-# Install — add to settings.json
-{
-  "extensions": ["/path/to/this/repo/plan-mode"]
-}
-```
+詳細: [plan-mode/README.md](./plan-mode/README.md)
 
-See [plan-mode/README.md](./plan-mode/README.md) for full documentation.
+### sandbox
 
-### [sandbox](./sandbox/)
+macOS Seatbelt による bash ツール用サンドボックス。
 
-macOS Seatbelt-based defense-in-depth bash command sandbox for Pi's bash tool.
+**注意: bash ツールのみが対象。エージェント全体のサンドボックスではない。**
 
-**Note: This sandboxes ONLY the bash tool, NOT the entire agent.**
-
-- 3 段階の sandbox mode (read_only / workspace_write / danger_full_access)
+- 3 段階のモード: `read_only` / `workspace_write` / `yolo`
+- デフォルト: `yolo`（サンドボックスなし）
+- `/sandbox [mode]` でモード表示・変更（Tab で補完）
+- `request_elevation` ツール: ブロック時に一時的な権限昇格をリクエスト可能
 - default deny: 必要な許可だけを明示的に付与
-- `/Users` 全体は read path に含まれない（read_only / workspace_write）
-- `.git` / `.codex` / `.agents` 配下は書き込み deny
 - 環境変数は allowlist 方式（secret は子プロセスに渡さない）
-- `danger_full_access` はユーザーの明示的承認が必要
-- sandbox-exec は絶対パス固定（PATH 探索回避）
-- Isolated HOME: `$HOME` は workspace ではなく per-run isolated temp に設定
-- Bash startup files は読み込まれない (`--noprofile --norc`)
-- Unsafe workspace root (`/`, `$HOME`, `/Users`) は fail-closed で拒否
-- approval regex は UX layer であり security boundary ではない
+- Isolated HOME / Bash startup files 無効化
 
-See [sandbox/SECURITY.md](./sandbox/SECURITY.md) for full security documentation.
+詳細: [sandbox/README.md](./sandbox/README.md) / [sandbox/SECURITY.md](./sandbox/SECURITY.md)
 
-```bash
-# Install — add to settings.json
+### zip-repo
+
+Git リポジトリの作業ツリー現状を ZIP アーカイブし、クリップボードにコピー。
+
+- `/zip` で即座に ZIP 化
+- HEAD + 未コミット変更をオーバーレイして作業ツリーの現状そのものを取得
+- macOS `osascript` でクリップボードにファイル参照としてコピー
+
+詳細: [zip-repo/README.md](./zip-repo/README.md)
+
+---
+
+## Install
+
+`~/.pi/agent/settings.json` の `extensions` にパスを追加:
+
+```json
 {
-  "extensions": ["/path/to/this/repo/sandbox"]
+  "extensions": [
+    "/path/to/this/repo/plan-mode",
+    "/path/to/this/repo/sandbox",
+    "/path/to/this/repo/zip-repo"
+  ]
 }
 ```
