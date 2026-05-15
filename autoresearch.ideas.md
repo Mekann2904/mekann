@@ -1,28 +1,34 @@
 # Autoresearch Ideas
 
-## Maintenance Cost Reduction (Ongoing)
+## Completed (Previous Session)
+- ✅ Dead code removal: sanitizePlanTools, validateWritableRoots, assertMacSandboxAvailable
+- ✅ Shared functions: resolveSafeRealPath, checkUnsafeRoot, killPgSigkill, effectiveRoots, approveFullAccess
+- ✅ Helpers: withModelSuppressed/withThinkingSuppressed, updateConfigField, persistIfChanged, applyThinking
+- ✅ Merged handlers: registerModeConfigCommand factory, stdout/stderr data handlers
+- ✅ Removed unused wrappers: updateModelConfig, updateThinkingConfig
+- ✅ Removed unused params: compactOldProposedPlansInText keep param
+- ✅ Removed unused variables: timeoutReject, abortReject
+- ✅ Simplified: getArgumentCompletions, ModeConfigSection inline, static import for stat
 
-- **Merge /plan-model and /plan-thinking command registrations**: ✅ Done via registerModeConfigCommand factory.
-- **Inline `escapeAppleScriptPath` in zip-repo**: Identical to `escapeSbplString` in macSeatbelt.ts but different packages — cannot share without coupling packages.
-- **Sandbox index.ts `localBash` lazy init pattern**: The `LocalBashWithCwd` type and lazy initialization adds ~15 lines. Could potentially be simplified.
-- **SBPL template string in macSeatbelt.ts**: The `buildMacSeatbeltPolicy` function is ~130 lines of template string. Hard to reduce without compromising readability of the security policy.
-- **Consolidate test mock patterns**: Multiple test files have similar mock setups for pathPolicy, macSeatbelt, etc. A shared test helper file could reduce test LOC.
+## Current Session Achievements
+- ✅ Consolidated stdout/stderr data handlers (onStreamData) — -16 LOC
+- ✅ Merged killProcessGroup into requestTerminate — -5 LOC
+- ✅ Removed unused updateModelConfig/updateThinkingConfig wrappers — -6 LOC
+- ✅ Simplified compactOldProposedPlansInText (remove keep param) — -4 LOC
+- ✅ Simplified sandbox-mode getArgumentCompletions — -4 LOC
+- ✅ Extracted applyThinking helper — -3 LOC
+- ✅ Removed unused timeoutReject/abortReject — -4 LOC
+- ✅ Simplified truncateForLlm — -2 LOC
+- ✅ Code cleanup: static import for stat in resolveGitdirPaths
 
-## Test Improvements (Deferred)
+## Remaining Opportunities (Diminishing Returns)
+- **SBPL template in macSeatbelt.ts (~130 lines)**: Hard to reduce without compromising readability of security policy
+- **sandbox/index.ts localBash lazy init pattern (~15 lines)**: Necessary for correct CWD handling
+- **Comment removal**: ~85 comment lines in macSeatbelt.ts, ~29 in plan-mode/index.ts — NOT recommended for security-critical code
+- **Test mock consolidation**: Would reduce test LOC, not source LOC
 
-- ~~**plan-mode/index.ts のテスト**: Extension API をモックして tool_call, context, before_agent_start, agent_end, turn_end, model_select, thinking_level_select, session_start フックをテストする~~ ✅ Done (73.7% coverage)
-- ~~**sandbox/index.ts extension body のテスト**: registerTool, registerCommand, session_start/session_shutdown のモックテスト~~ ✅ Done (81.8% coverage)
-- ~~**Property-based testing**: isSafeCommand の falsification テスト (fast-check を使用)~~ ✅ Done (12 invariants, 200 runs/property)
-- **Mutation testing**: Stryker でテストの品質を検証
-- **E2E テスト**: pi 本体と統合したエンドツーエンドのテスト
-- **Performance regression テスト**: テスト実行時間の CI での監視
-- ~~**Snapshot testing**: SBPL ポリシーのスナップショットテスト (意図しない変更を検出)~~ ✅ Done (11 snapshots + 8 structural invariants)
-- **Test fixtures**: 共通のテストデータを fixtures/ ディレクトリに整理
-- ~~**CI でのカバレッジレポート**: coverage report を CI artifact として保存~~ ✅ Done (plan-mode >=95%, sandbox >=89% thresholds)
-- **Cross-platform tests**: Linux での sandbox テスト (sandbox-exec の代替)
-
-## Code Quality (Deferred)
-
-- **ESLint**: コードスタイルの統一
-- **TypeScript strict mode**: strictNullChecks の完全適用
-- **JSDoc**: パブリック API のドキュメント化
+## Future Ideas
+- **Mutation testing**: Stryker for test quality verification
+- **E2E testing**: Integration tests with pi core
+- **Cross-platform tests**: Linux sandbox testing (sandbox-exec alternative)
+- **ESLint**: Code style unification
