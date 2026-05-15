@@ -221,61 +221,24 @@ export class AgentRegistry {
 
   // ─── Mutations ───────────────────────────────────────────────
 
-  /**
-   * Update the status of an agent. Publishes a status changed event
-   * and a final message event if the new status is terminal.
-   */
-  updateStatus(
-    agentPath: string,
-    newStatus: AgentStatus,
-    extra?: Partial<Pick<AgentMetadata, "lastTaskMessage" | "timeoutDeadline">>,
-  ): void {
+  private setStatusAndPublish(agentPath: string, newStatus: AgentStatus, updates?: Partial<AgentMetadata>): void {
     const agent = this.agents.get(agentPath);
     if (!agent) return;
-
     const previousStatus = agent.status;
-    agent.status = newStatus;
-    agent.updatedAt = Date.now();
-    if (extra?.lastTaskMessage !== undefined) {
-      agent.lastTaskMessage = extra.lastTaskMessage;
-    }
-    if (extra?.timeoutDeadline !== undefined) {
-      agent.timeoutDeadline = extra.timeoutDeadline;
-    }
-
-    if (previousStatus !== newStatus) {
-      this.publish({
-        type: "agent_status_changed",
-        agentId: agent.agentId,
-        agentPath: agent.agentPath,
-        previousStatus,
-        newStatus,
-        timestamp: agent.updatedAt,
-      });
-    }
+    Object.assign(agent, updates, { status: newStatus, updatedAt: Date.now() });
+    this.publish({ type: "agent_status_changed", agentId: agent.agentId, agentPath: agent.agentPath, previousStatus, newStatus, timestamp: agent.updatedAt });
   }
 
-  /**
-   * Mark an agent as closed (shutdown). Marks it as not open,
-   * allowing the path to be reused.
-   */
-  close(agentPath: string, status: AgentStatus = "shutdown"): void {
+  updateStatus(agentPath: string, newStatus: AgentStatus, extra?: Partial<Pick<AgentMetadata, "lastTaskMessage" | "timeoutDeadline">>): void {
     const agent = this.agents.get(agentPath);
     if (!agent) return;
+    if (extra?.lastTaskMessage !== undefined) agent.lastTaskMessage = extra.lastTaskMessage;
+    if (extra?.timeoutDeadline !== undefined) agent.timeoutDeadline = extra.timeoutDeadline;
+    if (agent.status !== newStatus) this.setStatusAndPublish(agentPath, newStatus);
+  }
 
-    const previousStatus = agent.status;
-    agent.open = false;
-    agent.status = status;
-    agent.updatedAt = Date.now();
-
-    this.publish({
-      type: "agent_status_changed",
-      agentId: agent.agentId,
-      agentPath: agent.agentPath,
-      previousStatus,
-      newStatus: status,
-      timestamp: agent.updatedAt,
-    });
+  close(agentPath: string, status: AgentStatus = "shutdown"): void {
+    this.setStatusAndPublish(agentPath, status, { open: false });
   }
 
   /**

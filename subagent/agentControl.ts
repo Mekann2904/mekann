@@ -270,6 +270,14 @@ export class AgentControl {
     return this.registry.get(callerPath)?.agentId ?? "root";
   }
 
+  /** Resolve target path + lookup agent. Throws if not found. */
+  private resolveAgentOrFail(target: string, callerPath: string): { targetPath: string; agent: AgentMetadata } {
+    const targetPath = this.resolveTarget(target, callerPath);
+    const agent = this.registry.get(targetPath);
+    if (!agent) throw new Error(`Agent not found: ${targetPath}`);
+    return { targetPath, agent };
+  }
+
   // ─── send_message ──────────────────────────────────────────────
 
   async sendMessage(
@@ -277,9 +285,7 @@ export class AgentControl {
     ctx: ExtensionContext,
   ): Promise<{ delivered: boolean }> {
     const callerPath = this.resolveCallerPath(ctx);
-    const targetPath = this.resolveTarget(params.target, callerPath);
-    const agent = this.registry.get(targetPath);
-    if (!agent) throw new Error(`Agent not found: ${targetPath}`);
+    const { targetPath, agent } = this.resolveAgentOrFail(params.target, callerPath);
     if (!agent.open || isTerminalStatus(agent.status)) throw new Error(`Agent at ${targetPath} is not open (status: ${agent.status}). Cannot send message.`);
     this.enqueueToMailbox(this.getCallerAgentId(callerPath), callerPath, targetPath, params.message, "message");
 
@@ -297,10 +303,8 @@ export class AgentControl {
     ctx: ExtensionContext,
   ): Promise<{ queued: boolean; triggered: boolean }> {
     const callerPath = this.resolveCallerPath(ctx);
-    const targetPath = this.resolveTarget(params.target, callerPath);
+    const { targetPath, agent } = this.resolveAgentOrFail(params.target, callerPath);
     if (targetPath === ROOT_PATH) throw new Error("Cannot send followup_task to the root agent.");
-    const agent = this.registry.get(targetPath);
-    if (!agent) throw new Error(`Agent not found: ${targetPath}`);
     if (!agent.open) throw new Error(`Agent at ${targetPath} is not open (status: ${agent.status}).`);
 
     this.enqueueToMailbox(this.getCallerAgentId(callerPath), callerPath, targetPath, params.message, "followup");
@@ -386,19 +390,14 @@ export class AgentControl {
     ctx: ExtensionContext,
   ): Promise<{ closed: string[] }> {
     const callerPath = this.resolveCallerPath(ctx);
-    const targetPath = this.resolveTarget(params.target, callerPath);
+    const { targetPath } = this.resolveAgentOrFail(params.target, callerPath);
 
     if (targetPath === ROOT_PATH) {
       throw new Error("Cannot close the root agent.");
     }
 
     const agent = this.registry.get(targetPath);
-    if (!agent) throw new Error(`Agent not found: ${targetPath}`);
-    if (!agent.open) {
-      throw new Error(
-        `Agent at ${targetPath} is already closed (status: ${agent.status}).`,
-      );
-    }
+    if (!agent?.open) throw new Error(`Agent at ${targetPath} is already closed (status: ${agent?.status ?? "unknown"}).`);
 
     // Close descendants first (deepest first)
     const descendants = this.registry.getOpenDescendants(targetPath);
