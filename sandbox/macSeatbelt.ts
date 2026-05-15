@@ -13,12 +13,7 @@ import { tmpdir } from "node:os";
 import type { SandboxPolicy } from "./permissions.js";
 import { resolveSafeRealPath, checkUnsafeRoot } from "./pathPolicy.js";
 
-export interface RunResult {
-	code: number | null;
-	signal: NodeJS.Signals | null;
-	stdout: string;
-	stderr: string;
-}
+export interface RunResult { code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string; }
 
 /** runSandboxedShellMac のオプション。 */
 export interface SandboxRunOptions {
