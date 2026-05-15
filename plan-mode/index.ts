@@ -53,9 +53,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		const model = ctx.modelRegistry.find(ref.provider, ref.modelId);
 		if (!model) { ctx.ui.notify(`${label}: モデル ${formatModelRef(ref)} が見つかりません`, "warning"); return false; }
 		return withModelSuppressed(async () => {
-			const ok = await pi.setModel(model);
-			if (!ok) { ctx.ui.notify(`${label}: ${formatModelRef(ref)} の API key がありません`, "warning"); return false; }
-			return true;
+			const ok = await pi.setModel(model); if (!ok) { ctx.ui.notify(`${label}: ${formatModelRef(ref)} の API key がありません`, "warning"); return false; } return true;
 		});
 	}
 

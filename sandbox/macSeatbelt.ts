@@ -130,10 +130,7 @@ export async function validatePolicy(policy: SandboxPolicy): Promise<void> {
 
 	for (const wr of wRoots) {
 		const resolvedWr = await resolveSafeRealPath(wr);
-		const isInside = resolvedWorkspaceRoots.some((root) => {
-			const rel = relative(root, resolvedWr);
-			return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
-		});
+		const isInside = resolvedWorkspaceRoots.some((root) => { const rel = relative(root, resolvedWr); return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel)); });
 		if (!isInside) throw new Error(`writable root "${wr}" (resolved: "${resolvedWr}") is outside workspace roots [${resolvedWorkspaceRoots.join(", ")}]`);
 	}
 }
