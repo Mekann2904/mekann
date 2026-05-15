@@ -225,10 +225,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 					blockCount: 1,
 					reason: `not-read-only-intent:${intent.kind}`,
 				});
-				return {
-					block: true,
-					reason: `Plan mode is read-only. Command intent "${intent.kind}" is not allowed:\n${command}\n理由: ${intent.reason}`,
-				};
+				return { block: true, reason: `Plan mode is read-only. Command intent "${intent.kind}" is not allowed:\n${command}\n理由: ${intent.reason}` };
 			}
 			return;
 		}
