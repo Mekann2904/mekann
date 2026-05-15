@@ -1,22 +1,8 @@
 /**
  * Sandbox Extension — macOS Seatbelt によるコマンドサンドボックス化。
- *
- * SECURITY SCOPE: This extension sandboxes ONLY the bash tool.
- * Other tools (file edit, patch, MCP, extension tools) are NOT sandboxed.
- * See SECURITY.md for full scope documentation.
- *
- * Fail-closed behavior:
- *   - sandbox-exec unavailable + read_only/workspace_write → command execution REFUSED
- *   - sandbox-exec unavailable + --no-sandbox or approved danger_full_access → allowed
- *   - No silent fallback to unsandboxed execution
- *   - Unsafe workspace root (/root, $HOME, /Users) → sandbox disabled, commands REFUSED
- *
- * Usage:
- *   pi -e ./sandbox                           # workspace_write (default)
- *   pi -e ./sandbox --sandbox-mode read_only  # read-only
- *   pi -e ./sandbox --no-sandbox              # sandbox disabled (explicit opt-out)
- *   /sandbox                                  # show status
- *   /sandbox-mode read_only                   # change mode
+ * SECURITY SCOPE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.
+ * Fail-closed: sandbox-exec unavailable → command REFUSED (no silent fallback).
+ * Usage: pi -e ./sandbox [--sandbox-mode read_only] [--no-sandbox] | /sandbox | /sandbox-mode <mode>
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
