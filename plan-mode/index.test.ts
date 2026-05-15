@@ -1323,3 +1323,81 @@ describe("exitPlanMode: clear invalid ModelRef from config", () => {
 		try { require("fs").unlinkSync(configPath); } catch {}
 	});
 });
+
+// ─── updateModeStatus emits PLAN_MODE_STATUS_EVENT ──────────────────
+
+describe("updateModeStatus: PLAN_MODE_STATUS_EVENT emission", () => {
+	it("enterPlanMode は events.emit で mode: plan を通知する", async () => {
+		const mock = createMockApi() as any;
+		const emittedEvents: Array<{ name: string; data: unknown }> = [];
+		mock.events = {
+			on: vi.fn(),
+			emit: vi.fn((name: string, data: unknown) => { emittedEvents.push({ name, data }); }),
+		};
+
+		const { default: planModeExtension } = await import("../index.js");
+		planModeExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+		emittedEvents.length = 0;
+
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		const planEvent = emittedEvents.find(e => e.name === "mekann:plan-mode:status");
+		expect(planEvent).toBeDefined();
+		expect((planEvent!.data as any).mode).toBe("plan");
+	});
+
+	it("exitPlanMode は events.emit で mode: main を通知する", async () => {
+		const mock = createMockApi() as any;
+		const emittedEvents: Array<{ name: string; data: unknown }> = [];
+		mock.events = {
+			on: vi.fn(),
+			emit: vi.fn((name: string, data: unknown) => { emittedEvents.push({ name, data }); }),
+		};
+
+		const { default: planModeExtension } = await import("../index.js");
+		planModeExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Enter plan mode
+		await mock._commands["plan"].handler("", createMockCtx());
+		emittedEvents.length = 0;
+
+		// Exit plan mode
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		const mainEvent = emittedEvents.find(e => e.name === "mekann:plan-mode:status");
+		expect(mainEvent).toBeDefined();
+		expect((mainEvent!.data as any).mode).toBe("main");
+	});
+
+	it("exitPlanMode では state.mode=main が sandbox pop より前に通知される", async () => {
+		const mock = createMockApi() as any;
+		const eventOrder: string[] = [];
+		mock.events = {
+			on: vi.fn(),
+			emit: vi.fn((name: string, _data: unknown) => {
+				if (name === "mekann:plan-mode:status") eventOrder.push("plan-status");
+				if (name === "mekann:sandbox:pop-profile") eventOrder.push("sandbox-pop");
+			}),
+		};
+
+		const { default: planModeExtension } = await import("../index.js");
+		planModeExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Enter plan mode (triggers push-profile)
+		await mock._commands["plan"].handler("", createMockCtx());
+		eventOrder.length = 0;
+
+		// Exit plan mode
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		// plan-status should come before sandbox-pop
+		const statusIdx = eventOrder.indexOf("plan-status");
+		const popIdx = eventOrder.indexOf("sandbox-pop");
+		expect(statusIdx).toBeGreaterThanOrEqual(0);
+		expect(popIdx).toBeGreaterThanOrEqual(0);
+		expect(statusIdx).toBeLessThan(popIdx);
+	});
+});

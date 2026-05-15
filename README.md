@@ -35,8 +35,8 @@ macOS Seatbelt による bash ツール用サンドボックス。
 **注意: bash ツールのみが対象。エージェント全体のサンドボックスではない。**
 
 - 3 段階のモード: `read_only` / `workspace_write` / `yolo`
-- デフォルト: `workspace_write`（サンドボックスあり）
-- `yolo`（サンドボックスなし）は明示指定のみ
+- デフォルト: `yolo`（サンドボックスなし）
+- `workspace_write`（サンドボックスあり）は明示指定のみ
 - `/sandbox [mode]` でモード表示・変更（Tab で補完）
 - `request_elevation` ツール: ブロック時に一時的な権限昇格をリクエスト可能
 - default deny: 必要な許可だけを明示的に付与

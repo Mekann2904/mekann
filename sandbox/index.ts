@@ -304,6 +304,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			explicitlyDisabled = true;
 			sandboxEnabled = false;
 			sandboxAvailable = false;
+			ctx.ui.setWidget("sandbox", undefined);
 			ctx.ui.notify("--no-sandbox によりサンドボックスは明示的に無効化されました", "warning");
 			return;
 		}
@@ -323,6 +324,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			startupBlockedReason = `安全でない workspace root: ${(e as Error).message}`;
 			sandboxEnabled = false;
 			resetYoloApproval();
+			ctx.ui.setWidget("sandbox", undefined);
 			ctx.ui.notify(`セキュリティ: ${startupBlockedReason}。安全のためサンドボックスを無効化しました。コマンドは拒否されます。`, "error");
 			return;
 		}
@@ -342,6 +344,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		if (!sandboxAvailable && effectiveMode() !== "yolo") {
 			startupBlockedReason = "サンドボックスが必要ですが /usr/bin/sandbox-exec が利用できません。サンドボックス強制なしではコマンドを実行できません。--no-sandbox で明示的に無効化してください（非推奨）。";
 			sandboxEnabled = false;
+			ctx.ui.setWidget("sandbox", undefined);
 			ctx.ui.notify(`[!] ${startupBlockedReason}`, "error");
 			return;
 		}
@@ -407,8 +410,10 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	});
 	// Listen for plan-mode status updates to render a combined status line
 	pi.events.on(PLAN_MODE_STATUS_EVENT, (data: unknown) => {
-		const event = data as PlanModeStatusEvent;
-		if (event.mode) planModeStatus = event.mode;
+		if (data == null || typeof data !== "object") return;
+		const event = data as Partial<PlanModeStatusEvent>;
+		if (event.mode !== "main" && event.mode !== "plan") return;
+		planModeStatus = event.mode;
 		if (lastCtx) updateStatusBar(lastCtx);
 	});
 
