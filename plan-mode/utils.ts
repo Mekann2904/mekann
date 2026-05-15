@@ -143,20 +143,19 @@ export function createDefaultConfig(): PlanModeConfig {
 	return { version: 1, models: {}, thinking: {} };
 }
 
-/** Normalize a loaded config: ensure models/thinking objects exist, strip invalid thinking values. */
 export function normalizeConfig(raw: Record<string, unknown>): PlanModeConfig {
-	const config: PlanModeConfig = {
-		version: 1,
-		models: (raw.models && typeof raw.models === "object") ? raw.models as PlanModeConfig["models"] : {},
-		thinking: {},
-	};
 	const t = raw.thinking;
+	const thinking: PlanModeConfig["thinking"] = {};
 	if (t && typeof t === "object") {
 		const ti = t as Record<string, unknown>;
-		if (isThinkingLevel(ti.main)) config.thinking.main = ti.main;
-		if (isThinkingLevel(ti.plan)) config.thinking.plan = ti.plan;
+		if (isThinkingLevel(ti.main)) thinking.main = ti.main;
+		if (isThinkingLevel(ti.plan)) thinking.plan = ti.plan;
 	}
-	return config;
+	return {
+		version: 1,
+		models: (raw.models && typeof raw.models === "object") ? raw.models as PlanModeConfig["models"] : {},
+		thinking,
+	};
 }
 
 /** "provider/modelId" 文字列を ModelRef にパース（最初の / で分割）。 */

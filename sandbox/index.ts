@@ -232,20 +232,15 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("sandbox", {
 		description: "現在の sandbox 設定を表示",
 		handler: async (_args, ctx) => {
-			const lines = [
-				"Sandbox Status:",
-				`  Enabled: ${sandboxEnabled ? "✓" : "✗"}`,
-				`  Available: ${sandboxAvailable ? "✓" : "✗"}`,
-				`  Explicitly Disabled: ${explicitlyDisabled ? "✓" : "✗"}`,
-				`  Mode: ${currentMode} (${modeLabel(currentMode)})`,
-				`  CWD: ${currentCwd || "(not initialized)"}`,
-				`  Workspace Roots: ${resolvedWorkspaceRoots.length > 0 ? resolvedWorkspaceRoots.join(", ") : "(cwd)"}`,
-				`  Writable Roots: ${resolvedWritableRoots.length > 0 ? resolvedWritableRoots.join(", ") : "(cwd)"}`,
-				`  Full Access Approved: ${fullAccessState.fullAccessApproved ? "✓" : "✗"}`,
-				"",
-				"NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.",
-			];
-			ctx.ui.notify(lines.join("\n"), "info");
+			const ck = (b: boolean) => b ? "✓" : "✗";
+			const roots = (r: string[]) => r.length > 0 ? r.join(", ") : "(cwd)";
+			ctx.ui.notify(`Sandbox Status:
+  Enabled: ${ck(sandboxEnabled)} | Available: ${ck(sandboxAvailable)} | Explicitly Disabled: ${ck(explicitlyDisabled)}
+  Mode: ${currentMode} (${modeLabel(currentMode)}) | CWD: ${currentCwd || "(not initialized)"}
+  Workspace Roots: ${roots(resolvedWorkspaceRoots)} | Writable Roots: ${roots(resolvedWritableRoots)}
+  Full Access Approved: ${ck(fullAccessState.fullAccessApproved)}
+
+NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 		},
 	});
 
@@ -331,21 +326,13 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			return;
 		}
 
-		// Check sandbox-exec availability
 		sandboxAvailable = await isMacSandboxAvailable();
 
-		// Read initial mode from flag
 		const modeFlag = pi.getFlag("sandbox-mode") as string;
 		if (modeFlag) {
 			const parsed = parseSandboxMode(modeFlag);
-			if (parsed) {
-				currentMode = parsed;
-			} else {
-				ctx.ui.notify(
-					`Invalid --sandbox-mode: ${modeFlag}. Using default: workspace_write`,
-					"warning",
-				);
-			}
+			if (parsed) currentMode = parsed;
+			else ctx.ui.notify(`Invalid --sandbox-mode: ${modeFlag}. Using default: workspace_write`, "warning");
 		}
 
 		// SECURITY: danger_full_access requires approval even at startup
@@ -378,10 +365,10 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			return;
 		}
 
-		// Resolve paths through realpath
 		try {
-			resolvedWorkspaceRoots = await resolveRealPaths([ctx.cwd]);
-			resolvedWritableRoots = await resolveRealPaths([ctx.cwd]);
+			const resolved = await resolveRealPaths([ctx.cwd]);
+			resolvedWorkspaceRoots = resolved;
+			resolvedWritableRoots = resolved;
 		} catch {
 			resolvedWorkspaceRoots = [ctx.cwd];
 			resolvedWritableRoots = [ctx.cwd];

@@ -1,13 +1,5 @@
-/**
- * Sandbox Permissions — 権限モデルの型定義とデフォルトポリシービルダー。
- *
- * 3段階の sandbox mode:
- *   read_only         — 読み取りのみ。書き込み・ネットワークは一切禁止。
- *                        workspace は read-only。ただし isolated temp dir のみ writable。
- *   workspace_write   — workspace 内への書き込みを許可（.git/.codex/.agents は deny）。
- *                        ネットワークは独立制御（デフォルト false）。
- *   danger_full_access — sandbox なし。(allow default)。要明示承認。
- */
+/** Sandbox Permissions — 権限モデルとデフォルトポリシービルダー。
+ * read_only: 読み取りのみ、workspace_write: workspace 内書き込み (.git deny), danger_full_access: sandbox なし (要承認) */
 
 export type SandboxMode =
 	| "read_only"
@@ -20,23 +12,11 @@ export interface SandboxPolicy {
 	workspaceRoots: string[]; // 読み取り可能ルート
 	writableRoots: string[]; // 書き込み可能ルート（workspace_write のみ）
 	network: boolean; // ネットワーク許可（filesystem と独立）
-	/**
-	 * true の場合、/opt/homebrew と /usr/local への read アクセスを許可する。
-	 * Homebrew 経由でインストールされたツール（node, python 等）を
-	 * sandbox 内で実行する場合に必要。
-	 */
+	/** true の場合、/opt/homebrew と /usr/local への read を許可。 */
 	allowHomebrewPaths?: boolean;
-	/**
-	 * @internal per-run isolated temp directory.
-	 * runSandboxedShellMac が command ごとに作成・終了後に削除する。
-	 * system TMPDIR を広く許可しないための機構。
-	 */
+	/** @internal per-run isolated temp directory. */
 	_isolatedTempDir?: string;
-	/**
-	 * @internal 解決済み .git ディレクトリパス群。
-	 * pointer file / worktree / submodule の gitdir 解決結果。
-	 * これらのパスには write deny rule を適用する。
-	 */
+	/** @internal 解決済み .git ディレクトリパス群。 */
 	_resolvedGitdirs?: string[];
 }
 
