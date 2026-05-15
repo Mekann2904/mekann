@@ -161,18 +161,18 @@ export function isValidSegment(seg: string): boolean {
   return seg.length > 0 && seg !== "." && seg !== ".." && !seg.includes("/");
 }
 
+function validateSegments(segments: string[], context: string): void {
+  for (const seg of segments) {
+    if (!isValidSegment(seg)) throw new Error(`Invalid path segment${context}: "${seg}".`);
+  }
+}
+
 /**
  * Join segments into a canonical path.
  * Returns the canonical path or throws on invalid segments.
  */
 export function joinSegments(base: string, segments: string[]): string {
-  for (const seg of segments) {
-    if (!isValidSegment(seg)) {
-      throw new Error(
-        `Invalid path segment: "${seg}". Segments must not be empty, ".", "..", or contain "/".`,
-      );
-    }
-  }
+  validateSegments(segments, "");
   const parts = base.split("/").filter(Boolean);
   return "/" + [...parts, ...segments].join("/");
 }
@@ -206,13 +206,7 @@ export function resolveTaskPath(
     }
     // Validate segments
     const segments = trimmed.slice(ROOT_PATH.length + 1).split("/");
-    for (const seg of segments) {
-      if (!isValidSegment(seg)) {
-        throw new Error(
-          `Invalid path segment in absolute path: "${seg}".`,
-        );
-      }
-    }
+    validateSegments(segments, " in absolute path");
     return trimmed;
   }
 
