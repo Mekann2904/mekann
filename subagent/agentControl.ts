@@ -124,10 +124,7 @@ export class AgentControl {
       parentAgentId: this.parentAgentId(callerPath) ?? "root",
       message: `Agent error: ${errorMessage}`, status: "errored",
     });
-    this.mailbox.enqueue({
-      fromAgentId: agentId, fromAgentPath: canonicalPath, toAgentPath: callerPath,
-      content: `Agent error: ${errorMessage}`, timestamp: Date.now(), kind: "final_result",
-    });
+    this.enqueueToMailbox(agentId, canonicalPath, callerPath, `Agent error: ${errorMessage}`, "final_result");
     this.childSessions.delete(canonicalPath);
   }
 
@@ -222,15 +219,7 @@ export class AgentControl {
             lastTaskMessage: finalText,
           });
 
-          // Enqueue final message to parent mailbox
-          this.mailbox.enqueue({
-            fromAgentId: agentId,
-            fromAgentPath: canonicalPath,
-            toAgentPath: callerPath,
-            content: finalText ?? "(agent completed)",
-            timestamp: Date.now(),
-            kind: "final_result",
-          });
+          this.enqueueToMailbox(agentId, canonicalPath, callerPath, finalText ?? "(agent completed)", "final_result");
 
           // Publish final message lifecycle event
           this.mailbox.appendEvent({
