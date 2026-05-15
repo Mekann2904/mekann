@@ -66,14 +66,6 @@ export const CAPABILITY_PROFILES: Record<CapabilityProfileName, CapabilityProfil
 };
 
 /**
- * Look up a capability profile by name.
- * Returns undefined for unknown names.
- */
-export function getCapabilityProfile(name: string): CapabilityProfile | undefined {
-	return CAPABILITY_PROFILES[name as CapabilityProfileName];
-}
-
-/**
  * Map a capability profile to the corresponding sandbox mode.
  * Returns undefined for profiles that don't correspond to a sandbox mode.
  */
