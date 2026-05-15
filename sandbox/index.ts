@@ -103,18 +103,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		return currentMode;
 	}
 
-	// SECURITY: Mode ranking — higher number = less restrictive.
-	// Profile override events may ONLY push modes that are equally or more restrictive
-	// than the current base mode (restrict-only policy).
-	const MODE_RANK: Record<SandboxMode, number> = {
-		read_only: 0,
-		workspace_write: 1,
-		yolo: 2,
-	};
-
-	function isRestrictiveOrEqual(requested: SandboxMode, base: SandboxMode): boolean {
-		return MODE_RANK[requested] <= MODE_RANK[base];
-	}
+	// SECURITY: Mode ranking (lower = more restrictive). Used for restrict-only override policy.
+	const MODE_RANK: Record<SandboxMode, number> = { read_only: 0, workspace_write: 1, yolo: 2 };
 
 	// SECURITY: yolo の承認状態
 	const yoloState: YoloApprovalState = {
@@ -568,7 +558,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		if (!mode) return; // Unknown profile — fail closed, ignore
 
 		// SECURITY: Reject escalation — override must be equally or more restrictive.
-		if (!isRestrictiveOrEqual(mode, currentMode)) {
+		if (MODE_RANK[mode] > MODE_RANK[currentMode]) {
 			pi.appendEntry("sandbox-profile-override-rejected", {
 				at: Date.now(),
 				owner: event.owner,
