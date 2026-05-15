@@ -20,7 +20,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { access, constants, realpath, readFile, mkdir } from "node:fs/promises";
+import { access, constants, realpath, readFile, mkdir, stat } from "node:fs/promises";
 import { relative, isAbsolute, resolve, dirname, join as pathJoin } from "node:path";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -131,10 +131,10 @@ export async function resolveGitdirPaths(
 	const results: string[] = [];
 
 	try {
-		const stat = await import("node:fs/promises").then((fs) => fs.stat(gitPath));
-		if (stat.isDirectory()) {
+		const st = await stat(gitPath);
+		if (st.isDirectory()) {
 			results.push(gitPath);
-		} else if (stat.isFile()) {
+		} else if (st.isFile()) {
 			// pointer file: read and parse gitdir
 			const content = await readFile(gitPath, "utf8");
 			const match = content.match(/^gitdir:\s*(.+)$/m);
