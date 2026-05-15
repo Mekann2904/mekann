@@ -96,15 +96,7 @@ export function buildSandboxEnv(policy: SandboxPolicy, isolatedHome: string): No
 
 // ─── .git pointer resolution ─────────────────────────────────────
 
-/**
- * .git が file（pointer file）の場合、gitdir を解決する。
- * .git が directory の場合はそのまま返す。
- * 解決に失敗した場合は空配列を返す（安全側）。
- *
- * Supports:
- *   - `.git` file with `gitdir: /path/to/gitdir`
- *   - Regular `.git` directory (returns [".git"])
- */
+/** .git ポインタファイル/ディレクトリを解決してパス群を返す。失敗時は空配列。 */
 export async function resolveGitdirPaths(
 	workspaceRoot: string,
 ): Promise<string[]> {
@@ -116,24 +108,14 @@ export async function resolveGitdirPaths(
 		if (st.isDirectory()) {
 			results.push(gitPath);
 		} else if (st.isFile()) {
-			// pointer file: read and parse gitdir
 			const content = await readFile(gitPath, "utf8");
 			const match = content.match(/^gitdir:\s*(.+)$/m);
 			if (match?.[1]) {
 				let gitdir = match[1].trim();
-				// Resolve relative paths against workspace root
-				if (!isAbsolute(gitdir)) {
-					gitdir = resolve(workspaceRoot, gitdir);
-				}
-				// Resolve through realpath
-				try {
-					gitdir = await realpath(gitdir);
-				} catch {
-					// If realpath fails, use the resolved path as-is
-				}
+				if (!isAbsolute(gitdir)) gitdir = resolve(workspaceRoot, gitdir);
+				try { gitdir = await realpath(gitdir); } catch { /* use resolved path as-is */ }
 				results.push(gitdir);
 			}
-			// Also protect the .git pointer file itself
 			results.push(gitPath);
 		}
 	} catch {
@@ -157,82 +139,44 @@ function effectiveWritableRoots(policy: SandboxPolicy): string[] {
 
 // ─── Policy validation ──────────────────────────────────────────
 
-/**
- * SandboxPolicy のセキュリティ検証。
- *
- * - workspaceRoots が安全でないパス（/, $HOME, /Users）でないことを確認
- * - writableRoots が workspaceRoots 配下にあることを確認
- * - danger_full_access 以外で / や $HOME 全体を writableRoots にできないことを確認
- * - symlink 経由の脱出も検出する
- */
+/** SandboxPolicy のセキュリティ検証。安全でないパス・symlink 脱出を検出。 */
 export async function validatePolicy(policy: SandboxPolicy): Promise<void> {
-	// danger_full_access は sandbox なし（検証不要）
 	if (policy.mode === "danger_full_access") return;
 
-	// SECURITY: Compute effective roots the same way buildMacSeatbeltPolicy does.
-	// If rRoots is empty, cwd becomes the effective workspace root.
-	// If writableRoots is empty in workspace_write mode, cwd becomes the effective writable root.
-	// We must validate ALL effective roots, not just the explicitly-provided ones.
+	// SECURITY: Validate effective roots (same computation as buildMacSeatbeltPolicy)
 	const rRoots = effectiveReadableRoots(policy);
 	const wRoots = effectiveWritableRoots(policy);
 
-	// Validate effective rRoots for unsafe paths
 	for (const root of rRoots) {
-		const unsafeReason = await checkUnsafeRoot(root);
-		if (unsafeReason) {
-			throw new Error(unsafeReason);
-		}
+		const reason = await checkUnsafeRoot(root);
+		if (reason) throw new Error(reason);
 	}
 
-	// read_only は writableRoots が空であるべき
 	if (policy.mode === "read_only" && policy.writableRoots.length > 0) {
-		throw new Error(
-			`read_only mode must not have writableRoots, got: ${policy.writableRoots.join(", ")}`,
-		);
+		throw new Error(`read_only mode must not have writableRoots, got: ${policy.writableRoots.join(", ")}`);
 	}
 
-	// Validate effective writableRoots for unsafe paths
 	for (const wr of wRoots) {
-		const unsafeReason = await checkUnsafeRoot(wr);
-		if (unsafeReason) {
-			throw new Error(`writable ${unsafeReason}`);
-		}
+		const reason = await checkUnsafeRoot(wr);
+		if (reason) throw new Error(`writable ${reason}`);
 	}
 
-	const resolvedWorkspaceRoots = await Promise.all(
-		rRoots.map((p) => resolveSafeRealPath(p)),
-	);
+	const resolvedWorkspaceRoots = await Promise.all(rRoots.map(resolveSafeRealPath));
 
 	for (const wr of wRoots) {
 		const resolvedWr = await resolveSafeRealPath(wr);
-
-		// rRoots 配下かチェック
 		const isInside = resolvedWorkspaceRoots.some((root) => {
 			const rel = relative(root, resolvedWr);
 			return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 		});
-
-		if (!isInside) {
-			throw new Error(
-				`writable root "${wr}" (resolved: "${resolvedWr}") is outside workspace roots [${resolvedWorkspaceRoots.join(", ")}]`,
-			);
-		}
+		if (!isInside) throw new Error(`writable root "${wr}" (resolved: "${resolvedWr}") is outside workspace roots [${resolvedWorkspaceRoots.join(", ")}]`);
 	}
 }
 
 // ─── SBPL policy builder ─────────────────────────────────────────
 
-/**
- * SandboxPolicy から macOS Seatbelt SBPL を生成する。
- *
- * - danger_full_access: (allow default) のみ返す
- * - read_only / workspace_write: (deny default) から必要許可だけを戻す
- *
- * SECURITY: deny rules MUST come after all allow rules.
- * macOS Seatbelt evaluates rules in order — LAST matching rule wins.
- */
+/** SandboxPolicy から SBPL 生成。deny rules は LAST matching rule wins なので末尾に置く。 */
 export function buildMacSeatbeltPolicy(policy: SandboxPolicy): string {
-	// danger_full_access は sandbox なし
 	if (policy.mode === "danger_full_access") {
 		return `
 (version 1)
