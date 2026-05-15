@@ -185,9 +185,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					"[!] コマンドの承認が必要です",
 					`サンドボックスモード: ${modeLabel(effectiveMode())}\nコマンド: ${command}\n理由: ${approval.reason}\n\nこのコマンドを許可しますか？`,
 				);
-				if (!ok) {
-					throw new Error(`コマンドがブロックされました: ${approval.reason}`);
-				}
+				if (!ok) throw new Error(`コマンドがブロックされました: ${approval.reason}`);
 			}
 
 			// Execute via sandbox (runSandboxedShellMac takes shell string, not argv)
@@ -290,9 +288,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	pi.on("user_bash", () => {
 		if (explicitlyDisabled) return undefined;
 
-		if (startupBlockedReason) {
-			throw new Error(`${startupBlockedReason}。--no-sandbox で明示的に無効化しない限り、直接 bash 実行は拒否されます。`);
-		}
+		if (startupBlockedReason) throw new Error(`${startupBlockedReason}。--no-sandbox で明示的に無効化しない限り、直接 bash 実行は拒否されます。`);
 
 		if (effectiveMode() === "yolo") return undefined;
 		throw new Error("サンドボックスがアクティブな場合、直接の bash 実行はブロックされます。コマンドはサンドボックス化された bash ツール経由で実行してください。");

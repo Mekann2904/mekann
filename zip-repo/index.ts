@@ -89,9 +89,7 @@ export default function (pi: ExtensionAPI) {
 			try {
 				await execFileAsync("git", ["archive", "--format=zip", `--prefix=${basename(repoRoot)}/`, `--output=${zipPath}`, "HEAD"], { cwd: repoRoot });
 
-				if (dirty) {
-					await overlayDirtyFiles(repoRoot, basename(repoRoot), zipPath);
-				}
+				if (dirty) await overlayDirtyFiles(repoRoot, basename(repoRoot), zipPath);
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
 				ctx.ui.notify(`Failed to create ZIP: ${msg}`, "error");
