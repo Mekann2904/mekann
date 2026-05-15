@@ -49,19 +49,12 @@ export function pathSubpath(p: string): string {
 
 // ─── Environment allowlist ──────────────────────────────────────
 
-/** sandbox 用 PATH 構築。SECURITY: process.env.PATH をそのまま渡さない。 */
-function buildSandboxPath(allowHomebrewPaths: boolean): string {
-	const segments = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
-	if (allowHomebrewPaths) segments.push("/opt/homebrew/bin", "/usr/local/bin");
-	return segments.join(":");
-}
-
 /** sandbox 用環境変数構築。SECURITY: process.env を spread せず、明示的に許可した変数だけを渡す。 */
 export function buildSandboxEnv(policy: SandboxPolicy, isolatedHome: string): NodeJS.ProcessEnv {
 	const allowHomebrew = policy.allowHomebrewPaths ?? false;
 
 	const env: NodeJS.ProcessEnv = {
-		PATH: buildSandboxPath(allowHomebrew),
+		PATH: ["/usr/bin", "/bin", "/usr/sbin", "/sbin", ...(allowHomebrew ? ["/opt/homebrew/bin", "/usr/local/bin"] : [])].join(":"),
 		SHELL: "/bin/bash",
 		TERM: process.env.TERM ?? "xterm-256color",
 		LANG: process.env.LANG ?? "C.UTF-8",
