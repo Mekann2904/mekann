@@ -65,20 +65,3 @@ export const CAPABILITY_PROFILES: Record<CapabilityProfileName, CapabilityProfil
 	},
 };
 
-/**
- * Map a capability profile to the corresponding sandbox mode.
- * Returns undefined for profiles that don't correspond to a sandbox mode.
- */
-export function profileToSandboxMode(name: CapabilityProfileName): "read_only" | "workspace_write" | "yolo" | undefined {
-	switch (name) {
-		case "plan_read_only":
-		case "sandbox_read_only":
-			return "read_only";
-		case "workspace_write":
-			return "workspace_write";
-		case "yolo":
-			return "yolo";
-		default:
-			return undefined;
-	}
-}
