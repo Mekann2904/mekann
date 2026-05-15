@@ -374,21 +374,17 @@ export default function subagentExtension(pi: ExtensionAPI): void {
 
   // ─── Lifecycle ────────────────────────────────────────────────
 
+  async function shutdownControl() {
+    if (control) { await control.shutdown(); control = null; }
+  }
+
   pi.on("session_start", async (_event, ctx) => {
-    // Reset control on new session
-    if (control) {
-      await control.shutdown();
-      control = null;
-    }
+    await shutdownControl();
     ensureControl();
-    // Register root
     control!.registry.ensureRoot("root");
   });
 
   pi.on("session_shutdown", async () => {
-    if (control) {
-      await control.shutdown();
-      control = null;
-    }
+    await shutdownControl();
   });
 }
