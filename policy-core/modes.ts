@@ -63,3 +63,9 @@ export interface SandboxPushProfileEvent { owner: string; token: string; profile
 
 /** Payload for popping a profile override from the sandbox stack. */
 export interface SandboxPopProfileEvent { owner: string; token: string; }
+
+/** Event name for plan-mode → sandbox mode status coordination. */
+export const PLAN_MODE_STATUS_EVENT = "mekann:plan-mode:status";
+
+/** Payload for plan-mode status broadcast. */
+export interface PlanModeStatusEvent { mode: "main" | "plan"; }
