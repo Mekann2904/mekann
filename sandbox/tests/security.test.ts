@@ -6,15 +6,15 @@
  *
  * Invariants tested:
  * 1. isSafeCommand never allows destructive commands
- * 2. SBPL policies always deny-by-default (except danger_full_access)
- * 3. Sandbox mode transitions require approval for danger_full_access
+ * 2. SBPL policies always deny-by-default (except yolo)
+ * 3. Sandbox mode transitions require approval for yolo
  * 4. Path policies block escapes via symlink, parent traversal, etc.
  * 5. Environment sanitization removes secrets
  */
 
 import { describe, it, expect } from "vitest";
 import { isSafeCommand } from "../../plan-mode/utils.js";
-import { readOnlyPolicy, workspaceWritePolicy, dangerFullAccessPolicy } from "../permissions.js";
+import { readOnlyPolicy, workspaceWritePolicy, yoloPolicy } from "../permissions.js";
 import { buildSandboxEnv, buildMacSeatbeltPolicy } from "../macSeatbelt.js";
 
 // ─── Invariant 1: isSafeCommand rejects all destructive commands ────
@@ -94,8 +94,8 @@ describe("Security: SBPL policies deny-by-default", () => {
 		expect(sbpl).toContain("(deny default)");
 	});
 
-	it("danger_full_access policy contains (allow default)", () => {
-		const policy = dangerFullAccessPolicy();
+	it("yolo policy contains (allow default)", () => {
+		const policy = yoloPolicy();
 		const sbpl = buildMacSeatbeltPolicy(policy);
 		expect(sbpl).toContain("(allow default)");
 		expect(sbpl).not.toContain("(deny default)");

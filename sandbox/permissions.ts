@@ -1,10 +1,10 @@
 /** Sandbox Permissions — 権限モデルとデフォルトポリシービルダー。
- * read_only: 読み取りのみ、workspace_write: workspace 内書き込み (.git deny), danger_full_access: sandbox なし (要承認) */
+ * read_only: 読み取りのみ、workspace_write: workspace 内書き込み (.git deny), yolo: sandbox なし (要承認) */
 
 export type SandboxMode =
 	| "read_only"
 	| "workspace_write"
-	| "danger_full_access";
+	| "yolo";
 
 export interface SandboxPolicy {
 	mode: SandboxMode;
@@ -50,10 +50,10 @@ export function workspaceWritePolicy(
 	};
 }
 
-/** danger_full_access ポリシーを生成する。 */
-export function dangerFullAccessPolicy(): SandboxPolicy {
+/** yolo ポリシーを生成する。 */
+export function yoloPolicy(): SandboxPolicy {
 	return {
-		mode: "danger_full_access",
+		mode: "yolo",
 		cwd: "/",
 		workspaceRoots: [],
 		writableRoots: [],
@@ -66,7 +66,7 @@ export function parseSandboxMode(value: string): SandboxMode | undefined {
 	switch (value) {
 		case "read_only":
 		case "workspace_write":
-		case "danger_full_access":
+		case "yolo":
 			return value;
 		default:
 			return undefined;
@@ -80,7 +80,7 @@ export function modeLabel(mode: SandboxMode): string {
 			return "read-only";
 		case "workspace_write":
 			return "workspace-write";
-		case "danger_full_access":
-			return "full-access";
+		case "yolo":
+			return "yolo";
 	}
 }

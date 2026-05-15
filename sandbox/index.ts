@@ -7,17 +7,18 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createBashTool } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import type { SandboxMode, SandboxPolicy } from "./permissions.js";
 import {
 	parseSandboxMode,
 	modeLabel,
 	readOnlyPolicy,
 	workspaceWritePolicy,
-	dangerFullAccessPolicy,
+	yoloPolicy,
 } from "./permissions.js";
 import { isMacSandboxAvailable, runSandboxedShellMac } from "./macSeatbelt.js";
 import { resolveRealPaths, validateWorkspaceRoot } from "./pathPolicy.js";
-import { shouldRequestApproval, fullAccessApprovalMessage, type FullAccessApprovalState } from "./approvals.js";
+import { shouldRequestApproval, yoloApprovalMessage, type YoloApprovalState } from "./approvals.js";
 
 // ─── LLM output truncation ─────────────────────────────────────────
 
@@ -66,21 +67,21 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// SECURITY: true only when user explicitly opted out via --no-sandbox
 	let explicitlyDisabled = false;
 
-	// SECURITY: danger_full_access の承認状態
-	const fullAccessState: FullAccessApprovalState = {
-		fullAccessApproved: false,
+	// SECURITY: yolo の承認状態
+	const yoloState: YoloApprovalState = {
+		yoloApproved: false,
 	};
 
-	function approveFullAccess(reason: string): void {
-		fullAccessState.fullAccessApproved = true;
-		fullAccessState.fullAccessApprovedAt = new Date();
-		fullAccessState.fullAccessApprovedReason = reason;
+	function approveYolo(reason: string): void {
+		yoloState.yoloApproved = true;
+		yoloState.yoloApprovedAt = new Date();
+		yoloState.yoloApprovedReason = reason;
 	}
 
-	function resetFullAccessApproval(): void {
-		fullAccessState.fullAccessApproved = false;
-		fullAccessState.fullAccessApprovedAt = undefined;
-		fullAccessState.fullAccessApprovedReason = undefined;
+	function resetYoloApproval(): void {
+		yoloState.yoloApproved = false;
+		yoloState.yoloApprovedAt = undefined;
+		yoloState.yoloApprovedReason = undefined;
 	}
 
 	// ─── Flags ───────────────────────────────────────────────────────
@@ -92,7 +93,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.registerFlag("sandbox-mode", {
-		description: "初期 sandbox モード (read_only | workspace_write | danger_full_access)",
+		description: "初期 sandbox モード (read_only | workspace_write | yolo)",
 		type: "string",
 		default: "workspace_write",
 	});
@@ -110,10 +111,15 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					resolvedWritableRoots,
 					false, // network は独立制御（デフォルト false）
 				);
-			case "danger_full_access":
-				return dangerFullAccessPolicy();
+			case "yolo":
+				return yoloPolicy();
 		}
 	}
+
+	// ─── Elevation hint for error messages ─────────────────────────
+
+	const SANDBOX_BLOCK_HINT =
+		" If you believe this command should be allowed, use the request_elevation tool to ask the user for permission.";
 
 	// ─── Bash tool override ──────────────────────────────────────────
 
@@ -144,21 +150,21 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				return getLocalBash().execute(id, params, signal, onUpdate);
 			}
 
-			// ── Case 2: danger_full_access with explicit approval ────
-			if (currentMode === "danger_full_access") {
-				if (!fullAccessState.fullAccessApproved) {
+			// ── Case 2: yolo with explicit approval ────
+			if (currentMode === "yolo") {
+				if (!yoloState.yoloApproved) {
 					const ok = await ctx.ui.confirm(
 						"⚠️ Full Access Required",
-						fullAccessApprovalMessage(),
+						yoloApprovalMessage(),
 					);
 					if (!ok) {
 						throw new Error(
-							"danger_full_access requires explicit user approval. Use /sandbox-mode danger_full_access to approve.",
+							"yolo requires explicit user approval. Use /sandbox-mode yolo to approve.",
 						);
 					}
-										approveFullAccess("approved via tool execution prompt");
+										approveYolo("approved via tool execution prompt");
 				}
-				// Approved danger_full_access: unsandboxed execution
+				// Approved yolo: unsandboxed execution
 				return getLocalBash().execute(id, params, signal, onUpdate);
 			}
 
@@ -167,7 +173,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				throw new Error(
 					"Sandbox is required but /usr/bin/sandbox-exec is not available. " +
 					"Commands cannot be executed without sandbox enforcement. " +
-					"Use --no-sandbox to explicitly disable sandbox (not recommended).",
+					"Use --no-sandbox to explicitly disable sandbox (not recommended)." +
+					SANDBOX_BLOCK_HINT,
 				);
 			}
 
@@ -194,9 +201,12 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
 			const shown = truncateForLlm(output);
 
+			// Detect sandbox permission errors and add elevation hint
 			if (result.code !== 0) {
+				const isPermissionError = /Operation not permitted|Permission denied|EPERM|EACCES/.test(shown.text);
+				const hint = isPermissionError ? SANDBOX_BLOCK_HINT : "";
 				throw new Error(
-					`Sandboxed command exited with code ${result.code}${shown.text ? `:\n${shown.text}` : ""}`,
+					`Sandboxed command exited with code ${result.code}${shown.text ? `:\n${shown.text}` : ""}${hint}`,
 				);
 			}
 
@@ -214,10 +224,89 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		},
 	});
 
+	// ─── Elevation tool (LLM → user permission request) ─────────────
+
+	pi.registerTool({
+		name: "request_elevation",
+		label: "Request Sandbox Elevation",
+		description:
+			"Request temporary sandbox elevation to run a command that is blocked by the current sandbox policy. " +
+			"The user will be shown the reason and command, and must explicitly approve. " +
+			"Use this ONLY when the sandbox blocks a legitimate operation (e.g., installing dependencies, accessing system paths).",
+		promptSnippet: "Request temporary sandbox bypass for a blocked command",
+		promptGuidelines: [
+			"Use request_elevation when sandbox blocks a legitimate command that requires access outside the workspace (e.g., npm install, brew, system tooling).",
+			"Always explain why the command needs to run outside the sandbox.",
+			"Do NOT use request_elevation for dangerous or destructive operations.",
+		],
+		parameters: Type.Object({
+			command: Type.String({ description: "The command that needs to run outside the sandbox" }),
+			reason: Type.String({ description: "Why this command needs to bypass the sandbox" }),
+		}),
+		async execute(_id, params, _signal, _onUpdate, ctx) {
+			const { command, reason } = params;
+
+			if (explicitlyDisabled) {
+				return {
+					content: [{ type: "text", text: "Sandbox is already disabled (--no-sandbox). Use the bash tool directly." }],
+				};
+			}
+
+			if (!sandboxEnabled) {
+				return {
+					content: [{ type: "text", text: "Sandbox is not active. Use the bash tool directly." }],
+				};
+			}
+
+			const ok = await ctx.ui.confirm(
+				"🔓 Sandbox Elevation Request",
+				[
+					`The agent is requesting temporary sandbox elevation:`,
+					"",
+					`Command: ${command}`,
+					`Reason: ${reason}`,
+					"",
+					`Current mode: ${modeLabel(currentMode)}`,
+					"",
+					"Allow this command to run outside the sandbox?",
+				].join("\n"),
+			);
+
+			if (!ok) {
+				return {
+					content: [{
+						type: "text",
+						text: "Elevation denied by user. The command was not executed. " +
+							"Consider an alternative approach that works within sandbox constraints, " +
+							"or ask the user to run `/sandbox-mode yolo` manually.",
+					}],
+				};
+			}
+
+			// Execute the command unsandboxed
+			const result = await getLocalBash().execute(
+				`elevated-${Date.now()}`,
+				{ command },
+				undefined,
+				_onUpdate,
+			);
+
+			return {
+				content: result.content,
+				details: {
+					...result.details,
+					elevated: true,
+					originalMode: currentMode,
+					reason,
+				},
+			};
+		},
+	});
+
 	// SECURITY: When sandbox is active, returning undefined = bypass. Block instead.
 	pi.on("user_bash", () => {
 		if (explicitlyDisabled) return undefined;
-		if (currentMode === "danger_full_access" && fullAccessState.fullAccessApproved) return undefined;
+		if (currentMode === "yolo" && yoloState.yoloApproved) return undefined;
 		throw new Error(
 			"Direct bash execution is blocked when sandbox is active. " +
 			"Commands must go through the sandboxed bash tool.",
@@ -235,7 +324,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
   Enabled: ${ck(sandboxEnabled)} | Available: ${ck(sandboxAvailable)} | Explicitly Disabled: ${ck(explicitlyDisabled)}
   Mode: ${currentMode} (${modeLabel(currentMode)}) | CWD: ${currentCwd || "(not initialized)"}
   Workspace Roots: ${roots(resolvedWorkspaceRoots)} | Writable Roots: ${roots(resolvedWritableRoots)}
-  Full Access Approved: ${ck(fullAccessState.fullAccessApproved)}
+  Full Access Approved: ${ck(yoloState.yoloApproved)}
 
 NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 		},
@@ -244,7 +333,7 @@ NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 	pi.registerCommand("sandbox-mode", {
 		description: "sandbox モードを変更",
 		getArgumentCompletions(prefix: string) {
-			return ["read_only", "workspace_write", "danger_full_access"]
+			return ["read_only", "workspace_write", "yolo"]
 				.filter((m) => m.startsWith(prefix))
 				.map((m) => ({ value: m, label: m }));
 		},
@@ -261,25 +350,25 @@ NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 			const newMode = parseSandboxMode(modeStr);
 			if (!newMode) {
 				ctx.ui.notify(
-					`Invalid mode: ${modeStr}. Use: read_only, workspace_write, danger_full_access`,
+					`Invalid mode: ${modeStr}. Use: read_only, workspace_write, yolo`,
 					"error",
 				);
 				return;
 			}
 
-			// SECURITY: danger_full_access requires explicit approval
-			if (newMode === "danger_full_access") {
+			// SECURITY: yolo requires explicit approval
+			if (newMode === "yolo") {
 				const ok = await ctx.ui.confirm(
 					"⚠️ Disable Sandbox?",
-					fullAccessApprovalMessage(),
+					yoloApprovalMessage(),
 				);
 				if (!ok) {
 					ctx.ui.notify("Mode change cancelled", "info");
 					return;
 				}
-								approveFullAccess("approved via /sandbox-mode command");
+								approveYolo("approved via /sandbox-mode command");
 			} else {
-				resetFullAccessApproval();
+				resetYoloApproval();
 			}
 
 			currentMode = newMode;
@@ -300,7 +389,7 @@ NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 			return;
 		}
 
-		const icon = currentMode === "danger_full_access" ? "⚠️" : "🔒";
+		const icon = currentMode === "yolo" ? "⚠️" : "🔒";
 		const label = modeLabel(currentMode);
 		ctx.ui.setStatus(
 			"sandbox",
@@ -332,19 +421,19 @@ NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 			else ctx.ui.notify(`Invalid --sandbox-mode: ${modeFlag}. Using default: workspace_write`, "warning");
 		}
 
-		// SECURITY: danger_full_access requires approval even at startup
-		if (currentMode === "danger_full_access") {
+		// SECURITY: yolo requires approval even at startup
+		if (currentMode === "yolo") {
 			const ok = await ctx.ui.confirm(
 				"⚠️ Sandbox Mode: Full Access",
-				`The sandbox mode is set to danger_full_access.\n\n${fullAccessApprovalMessage()}`,
+				`The sandbox mode is set to yolo.\n\n${yoloApprovalMessage()}`,
 			);
 			if (ok) {
-								approveFullAccess("approved at session_start");
+								approveYolo("approved at session_start");
 			} else {
 				currentMode = "workspace_write";
-				resetFullAccessApproval();
+				resetYoloApproval();
 				ctx.ui.notify(
-					"danger_full_access not approved. Falling back to workspace_write.",
+					"yolo not approved. Falling back to workspace_write.",
 					"warning",
 				);
 			}
@@ -371,7 +460,7 @@ NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 			resolvedWritableRoots = [ctx.cwd];
 		}
 
-		if (!sandboxAvailable && currentMode !== "danger_full_access") {
+		if (!sandboxAvailable && currentMode !== "yolo") {
 			sandboxEnabled = false;
 			ctx.ui.notify(
 				"⚠️ Sandbox unavailable on this system. " +
@@ -394,6 +483,6 @@ NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 		sandboxEnabled = false;
 		sandboxAvailable = false;
 		explicitlyDisabled = false;
-				resetFullAccessApproval();
+				resetYoloApproval();
 	});
 }

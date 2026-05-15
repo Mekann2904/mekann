@@ -22,7 +22,7 @@ The following tools and operations are NOT covered by this sandbox:
 - MCP tools
 - Extension tools
 - Other plugins' tool registrations
-- `localBash` when `--no-sandbox` or approved `danger_full_access`
+- `localBash` when `--no-sandbox` or approved `yolo`
 - Any tool registered by other extensions
 
 Only commands executed through the overridden bash tool are sandboxed.
@@ -32,7 +32,7 @@ Only commands executed through the overridden bash tool are sandboxed.
 - **macOS only**: macOS Seatbelt / `sandbox-exec` に依存する。
 - **Unsupported OS**: Linux/Windows では sandbox security は提供されない。Bash commands will be REFUSED。
 - **Fail-closed**: sandbox-exec が利用不可の場合、`read_only` / `workspace_write` モードでのコマンド実行は **拒否される**。silent fallback はしない。
-- 実行するには `--no-sandbox` で明示的に sandbox を無効にするか、承認済み `danger_full_access` モードにする必要がある。
+- 実行するには `--no-sandbox` で明示的に sandbox を無効にするか、承認済み `yolo` モードにする必要がある。
 
 ## Peer Dependencies
 
@@ -48,7 +48,7 @@ This extension uses `@earendil-works/pi-coding-agent` as a peer dependency becau
 |------|----------|----------|-----------|---------|---------|
 | `read_only` | ✓ | ✗ | ✓ (per-run isolated) | ✓ (per-run isolated) | ✗ |
 | `workspace_write` | ✓ | ✓ (.git/.codex/.agents 除く) | ✓ (per-run isolated) | ✓ (per-run isolated) | opt-in |
-| `danger_full_access` | 制限なし | 制限なし | N/A | N/A | 制限なし |
+| `yolo` | 制限なし | 制限なし | N/A | N/A | 制限なし |
 
 ### read_only の正確な意味
 
@@ -69,7 +69,7 @@ This extension uses `@earendil-works/pi-coding-agent` as a peer dependency becau
 - symlink 経由で workspace 外に書き込むことはできない (Seatbelt が canonical path を評価)
 - **Isolated HOME**: `$HOME` は workspace/cwd ではなく isolated temp に設定される
 
-### danger_full_access の正確な意味
+### yolo の正確な意味
 
 - **Sandbox を完全に外す**: macOS Seatbelt による制限が一切ない
 - すべてのファイル、ネットワーク、コマンドに無制限アクセス
@@ -106,7 +106,7 @@ This extension uses `@earendil-works/pi-coding-agent` as a peer dependency becau
 - これは user confirmation friction を追加するためだけのもの
 - regex に過度な安全性を持たせる設計ではない
 - **Actual security enforcement は macOS Seatbelt sandbox が担当する**
-- `danger_full_access` では必ず明示承認を要求する (regex に関係なく)
+- `yolo` では必ず明示承認を要求する (regex に関係なく)
 - Approval regex は security boundary ではなく UX/consent layer である
 
 ## Workspace Root Validation
@@ -131,7 +131,7 @@ This extension uses `@earendil-works/pi-coding-agent` as a peer dependency becau
 6. **Per-run isolated temp**: command ごとに専用 temp dir を作成・終了後に削除。system TMPDIR は広く許可しない。
 7. **Per-run isolated HOME**: `$HOME` は workspace/cwd にしない。per-run temp 配下の isolated directory に設定。startup file injection を防止。
 8. **No bash startup files**: `/bin/bash --noprofile --norc -c` で実行。`.bash_profile`, `.profile` 等は読み込まれない。
-9. **danger_full_access は明示承認が必要**: CLI option, session_start, tool execution のいずれでも承認が必要。
+9. **yolo は明示承認が必要**: CLI option, session_start, tool execution のいずれでも承認が必要。
 10. **Workspace root validation**: `/`, `$HOME`, `/Users` などを workspace root にできない。fail-closed。
 11. **Writable root validation**: writableRoots は workspaceRoots 配下のみ。realpath で symlink を解決。
 12. **/usr 細分化**: `/usr` 全体ではなく `/usr/bin`, `/usr/sbin`, `/usr/lib`, `/usr/libexec`, `/usr/share` のみ許可。`/usr/local` は `allowHomebrewPaths=true` のみ。
@@ -167,7 +167,7 @@ pi -e ./sandbox --sandbox-mode read_only
 10. **Pi tool registration order**: Pi extension の tool registration 順序に依存する。他の extension が同じ tool を上書きする可能性あり (未確認)。
 11. **macOS Seatbelt の限界**: Seatbelt 自体の bypass 可能性は Apple の実装に依存する。この extension は Seatbelt の上に構築される defense-in-depth layer である。
 12. **Unsupported OS では sandbox なし**: Linux/Windows では sandbox security は提供されない。コマンド実行は拒否される。
-13. **localBash cwd**: unsandboxed execution (`--no-sandbox` / `danger_full_access`) は `session_start` 時の `ctx.cwd` を使用。agent の CWD が変わった場合は session restart が必要。
+13. **localBash cwd**: unsandboxed execution (`--no-sandbox` / `yolo`) は `session_start` 時の `ctx.cwd` を使用。agent の CWD が変わった場合は session restart が必要。
 
 ## Future Hardening Issues
 

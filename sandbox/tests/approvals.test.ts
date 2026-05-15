@@ -1,7 +1,7 @@
 /**
  * Sandbox Approvals の独立テスト。
  *
- * shouldRequestApproval と fullAccessApprovalMessage を検証する。
+ * shouldRequestApproval と yoloApprovalMessage を検証する。
  * UX layer であり security boundary ではないことを前提に、
  * 正規表現ベースのパターンマッチングの精度を確認する。
  */
@@ -9,39 +9,39 @@
 import { describe, it, expect } from "vitest";
 import {
 	shouldRequestApproval,
-	fullAccessApprovalMessage,
-	type FullAccessApprovalState,
+	yoloApprovalMessage,
+	type YoloApprovalState,
 } from "../approvals.js";
 
-// ─── shouldRequestApproval: danger_full_access ──────────────────
+// ─── shouldRequestApproval: yolo ──────────────────
 
-describe("shouldRequestApproval: danger_full_access", () => {
+describe("shouldRequestApproval: yolo", () => {
 	it("未承認の場合は承認が必要", () => {
-		const result = shouldRequestApproval("danger_full_access", "ls");
+		const result = shouldRequestApproval("yolo", "ls");
 		expect(result.needsApproval).toBe(true);
 		expect(result.reason).toContain("approval");
 	});
 
-	it("fullAccessApproved=true なら承認不要", () => {
-		const state: FullAccessApprovalState = { fullAccessApproved: true };
-		const result = shouldRequestApproval("danger_full_access", "rm -rf /", state);
+	it("yoloApproved=true なら承認不要", () => {
+		const state: YoloApprovalState = { yoloApproved: true };
+		const result = shouldRequestApproval("yolo", "rm -rf /", state);
 		expect(result.needsApproval).toBe(false);
 	});
 
-	it("fullAccessApproved=false なら承認が必要", () => {
-		const state: FullAccessApprovalState = { fullAccessApproved: false };
-		const result = shouldRequestApproval("danger_full_access", "ls", state);
+	it("yoloApproved=false なら承認が必要", () => {
+		const state: YoloApprovalState = { yoloApproved: false };
+		const result = shouldRequestApproval("yolo", "ls", state);
 		expect(result.needsApproval).toBe(true);
 	});
 
 	it("approvalState 未指定なら承認が必要", () => {
-		const result = shouldRequestApproval("danger_full_access", "echo hello");
+		const result = shouldRequestApproval("yolo", "echo hello");
 		expect(result.needsApproval).toBe(true);
 	});
 
 	it("approvalState の部分的な指定でも承認が必要", () => {
-		const result = shouldRequestApproval("danger_full_access", "ls", {
-			fullAccessApprovedAt: new Date(),
+		const result = shouldRequestApproval("yolo", "ls", {
+			yoloApprovedAt: new Date(),
 		});
 		expect(result.needsApproval).toBe(true);
 	});
@@ -174,62 +174,62 @@ describe("shouldRequestApproval: bypass patterns (NOT a security boundary)", () 
 	});
 });
 
-// ─── fullAccessApprovalMessage ────────────────────────────────────
+// ─── yoloApprovalMessage ────────────────────────────────────
 
-describe("fullAccessApprovalMessage", () => {
+describe("yoloApprovalMessage", () => {
 	it("sandboxing について警告する", () => {
-		const msg = fullAccessApprovalMessage();
+		const msg = yoloApprovalMessage();
 		expect(msg).toContain("disable sandboxing");
 	});
 
 	it("unrestricted access について言及する", () => {
-		const msg = fullAccessApprovalMessage();
+		const msg = yoloApprovalMessage();
 		expect(msg).toContain("unrestricted access");
 	});
 
 	it("ファイルアクセスについて言及する", () => {
-		const msg = fullAccessApprovalMessage();
+		const msg = yoloApprovalMessage();
 		expect(msg).toContain("files");
 	});
 
 	it("ネットワークについて言及する", () => {
-		const msg = fullAccessApprovalMessage();
+		const msg = yoloApprovalMessage();
 		expect(msg).toContain("network");
 	});
 
 	it("警告絵文字を含む", () => {
-		const msg = fullAccessApprovalMessage();
+		const msg = yoloApprovalMessage();
 		expect(msg).toContain("⚠️");
 	});
 });
 
-// ─── FullAccessApprovalState 型の挙動確認 ────────────────────────
+// ─── YoloApprovalState 型の挙動確認 ────────────────────────
 
-describe("FullAccessApprovalState: state transitions", () => {
+describe("YoloApprovalState: state transitions", () => {
 	it("初期状態は未承認", () => {
-		const state: FullAccessApprovalState = { fullAccessApproved: false };
-		expect(state.fullAccessApproved).toBe(false);
-		expect(state.fullAccessApprovedAt).toBeUndefined();
-		expect(state.fullAccessApprovedReason).toBeUndefined();
+		const state: YoloApprovalState = { yoloApproved: false };
+		expect(state.yoloApproved).toBe(false);
+		expect(state.yoloApprovedAt).toBeUndefined();
+		expect(state.yoloApprovedReason).toBeUndefined();
 	});
 
 	it("承認後は全フィールドが設定される", () => {
-		const state: FullAccessApprovalState = {
-			fullAccessApproved: true,
-			fullAccessApprovedAt: new Date(),
-			fullAccessApprovedReason: "test",
+		const state: YoloApprovalState = {
+			yoloApproved: true,
+			yoloApprovedAt: new Date(),
+			yoloApprovedReason: "test",
 		};
-		expect(state.fullAccessApproved).toBe(true);
-		expect(state.fullAccessApprovedAt).toBeInstanceOf(Date);
-		expect(state.fullAccessApprovedReason).toBe("test");
+		expect(state.yoloApproved).toBe(true);
+		expect(state.yoloApprovedAt).toBeInstanceOf(Date);
+		expect(state.yoloApprovedReason).toBe("test");
 	});
 
 	it("shouldRequestApproval は state の変更を反映する", () => {
-		const state: FullAccessApprovalState = { fullAccessApproved: false };
+		const state: YoloApprovalState = { yoloApproved: false };
 
-		expect(shouldRequestApproval("danger_full_access", "ls", state).needsApproval).toBe(true);
+		expect(shouldRequestApproval("yolo", "ls", state).needsApproval).toBe(true);
 
-		state.fullAccessApproved = true;
-		expect(shouldRequestApproval("danger_full_access", "ls", state).needsApproval).toBe(false);
+		state.yoloApproved = true;
+		expect(shouldRequestApproval("yolo", "ls", state).needsApproval).toBe(false);
 	});
 });
