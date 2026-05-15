@@ -424,9 +424,7 @@ export async function runSandboxedShellMac(
 	let timeoutId: ReturnType<typeof setTimeout> | null = null;
 	let timedOut = false;
 
-	const timeoutPromise = new Promise<never>((_resolve, reject) => {
-		timeoutId = setTimeout(() => { timedOut = true; requestTerminate("timeout"); reject(new Error(`command timed out after ${timeoutMs}ms`)); }, timeoutMs);
-	});
+	const timeoutPromise = new Promise<never>((_resolve, reject) => { timeoutId = setTimeout(() => { timedOut = true; requestTerminate("timeout"); reject(new Error(`command timed out after ${timeoutMs}ms`)); }, timeoutMs); });
 
 	// ─── AbortSignal handling ───────────────────────────────────
 
