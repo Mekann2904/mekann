@@ -7,7 +7,6 @@
 // Re-export from single source of truth
 export type { SandboxMode } from "../policy-core/modes.js";
 export { parseSandboxMode, modeLabel, SANDBOX_MODES, DEFAULT_SANDBOX_MODE } from "../policy-core/modes.js";
-
 import type { SandboxMode } from "../policy-core/modes.js";
 
 export interface SandboxPolicy {

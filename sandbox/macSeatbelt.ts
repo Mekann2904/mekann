@@ -57,10 +57,8 @@ export function buildSandboxEnv(policy: SandboxPolicy, isolatedHome: string): No
 		HOME: isolatedHome,
 		GIT_TERMINAL_PROMPT: "0",
 	};
-
 	if (process.env.LC_ALL) env.LC_ALL = process.env.LC_ALL;
 	if (policy._isolatedTempDir) env.TMPDIR = policy._isolatedTempDir;
-
 	return env;
 }
 
