@@ -1,17 +1,17 @@
 /**
  * Plan Mode 拡張機能のテスト — 最小実装版
  *
- * isSafeCommand, extractProposedPlan, buildBlockReason, loadPrompt,
+ * isPlanReadOnlyCommandIntent, extractProposedPlan, buildBlockReason, loadPrompt,
  * hashContent とツールブロック判定を検証する。
  */
 
 import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { isSafeCommand, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, SAFE_PLAN_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateConfigField, createDefaultConfig, getConfigPath, normalizeConfig, compactOldProposedPlansInText, type ModelRef, type ThinkingLevel } from "./utils.js";
+import { isSafeCommand, isPlanReadOnlyCommandIntent, classifyCommandIntent, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, PLAN_MODE_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateConfigField, createDefaultConfig, getConfigPath, normalizeConfig, compactOldProposedPlansInText, type ModelRef, type ThinkingLevel } from "./utils.js";
 import { type Mode, type PlanState, createInitialState, isReadOnlyMode, modeLabel } from "./state.js";
 
-// isSafeCommand — bash コマンドの安全性判定
-describe("isSafeCommand", () => {
+// isPlanReadOnlyCommandIntent — bash コマンドの intent 分類 (UX guard, not security)
+describe("isPlanReadOnlyCommandIntent (isSafeCommand)", () => {
 	describe("安全なコマンド", () => {
 		const safeCommands = [
 			"cat README.md",
@@ -286,7 +286,7 @@ function shouldBlockToolCall(
 	input: Record<string, unknown> | null | undefined,
 ): boolean {
 	if (!isReadOnlyMode(mode)) return false;
-	if (SAFE_PLAN_TOOLS.has(toolName)) return false;
+	if (PLAN_MODE_TOOLS.has(toolName) && toolName !== "bash") return false;
 
 	if (toolName === "bash") {
 		const safeInput = input ?? {};
@@ -1358,26 +1358,26 @@ describe("PlanState mutation edge cases", () => {
 	});
 });
 
-// ─── SAFE_PLAN_TOOLS coverage ─────────────────────────────────────
+// ─── PLAN_MODE_TOOLS coverage ─────────────────────────────────────
 
-describe("SAFE_PLAN_TOOLS", () => {
-	it("read, grep, find, ls を含む", () => {
-		expect(SAFE_PLAN_TOOLS.has("read")).toBe(true);
-		expect(SAFE_PLAN_TOOLS.has("grep")).toBe(true);
-		expect(SAFE_PLAN_TOOLS.has("find")).toBe(true);
-		expect(SAFE_PLAN_TOOLS.has("ls")).toBe(true);
+describe("PLAN_MODE_TOOLS", () => {
+	it("read, grep, find, ls, bash を含む", () => {
+		expect(PLAN_MODE_TOOLS.has("read")).toBe(true);
+		expect(PLAN_MODE_TOOLS.has("grep")).toBe(true);
+		expect(PLAN_MODE_TOOLS.has("find")).toBe(true);
+		expect(PLAN_MODE_TOOLS.has("ls")).toBe(true);
+		expect(PLAN_MODE_TOOLS.has("bash")).toBe(true);
 	});
 
-	it("edit, write, bash を含まない", () => {
-		expect(SAFE_PLAN_TOOLS.has("edit")).toBe(false);
-		expect(SAFE_PLAN_TOOLS.has("write")).toBe(false);
-		expect(SAFE_PLAN_TOOLS.has("bash")).toBe(false);
+	it("edit, write を含まない", () => {
+		expect(PLAN_MODE_TOOLS.has("edit")).toBe(false);
+		expect(PLAN_MODE_TOOLS.has("write")).toBe(false);
 	});
 });
 
 // ─── isSafeCommand additional edge cases ─────────────────────────
 
-describe("isSafeCommand: additional edge cases", () => {
+describe("isPlanReadOnlyCommandIntent: additional edge cases", () => {
 	it("eza (ls replacement) は安全", () => {
 		expect(isSafeCommand("eza -la")).toBe(true);
 	});

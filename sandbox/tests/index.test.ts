@@ -59,7 +59,7 @@ describe("truncateForLlm", () => {
 		it("切り詰め通知が追加される", () => {
 			const text = "x".repeat(100);
 			const result = truncateForLlm(text, { maxBytes: 50, maxLines: 1000 });
-			expect(result.text).toContain("output truncated");
+			expect(result.text).toContain("切り詰められました");
 		});
 
 		it("非 ASCII 文字でバイト境界を正しく処理する", () => {
@@ -103,7 +103,7 @@ describe("truncateForLlm", () => {
 			const text = "x".repeat(60000);
 			const result = truncateForLlm(text);
 			if (result.truncated) {
-				expect(result.text).toContain("60000 bytes");
+				expect(result.text).toContain("60000 バイト");
 			}
 		});
 
@@ -112,7 +112,7 @@ describe("truncateForLlm", () => {
 			const text = lines.join("\n");
 			const result = truncateForLlm(text);
 			if (result.truncated) {
-				expect(result.text).toContain("3000 lines");
+				expect(result.text).toContain("3000 行");
 			}
 		});
 
@@ -120,8 +120,8 @@ describe("truncateForLlm", () => {
 			const text = "x".repeat(60000);
 			const result = truncateForLlm(text);
 			if (result.truncated) {
-				expect(result.text).toContain(`${DEFAULT_LLM_OUTPUT_MAX_BYTES} bytes`);
-				expect(result.text).toContain(`${DEFAULT_LLM_OUTPUT_MAX_LINES} lines`);
+				expect(result.text).toContain(`${DEFAULT_LLM_OUTPUT_MAX_BYTES} バイト`);
+				expect(result.text).toContain(`${DEFAULT_LLM_OUTPUT_MAX_LINES} 行`);
 			}
 		});
 	});

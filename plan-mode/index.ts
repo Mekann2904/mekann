@@ -10,11 +10,12 @@ import { Key } from "@earendil-works/pi-tui";
 import { createInitialState, isReadOnlyMode, modeLabel } from "./state.js";
 import {
 	isSafeCommand,
+	classifyCommandIntent,
 	buildBlockReason,
 	loadPrompt,
 	hashContent,
 	extractProposedPlan,
-	SAFE_PLAN_TOOLS,
+	PLAN_MODE_TOOLS,
 	formatModelRef,
 	sameModelRef,
 	loadModelConfig,
@@ -25,12 +26,21 @@ import {
 	type PlanModeConfig,
 	type ThinkingLevel,
 } from "./utils.js";
+import {
+	SANDBOX_PUSH_PROFILE_EVENT,
+	SANDBOX_POP_PROFILE_EVENT,
+	type SandboxPushProfileEvent,
+	type SandboxPopProfileEvent,
+} from "../policy-core/modes.js";
 
 export default function planModeExtension(pi: ExtensionAPI): void {
 	let configPath: string | undefined;
 	const state = createInitialState();
 	let suppressModelSelectPersist = false;
 	let suppressThinkingSelectPersist = false;
+
+	/** Token for sandbox profile override (set on plan entry, cleared on exit). */
+	let sandboxOverrideToken: string | undefined;
 
 	/** Run an async callback with a suppress flag set, restoring it afterward. */
 	async function withModelSuppressed<T>(fn: () => Promise<T>): Promise<T> {
@@ -105,42 +115,67 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 		state.mode = "plan";
 		Object.assign(state, { pendingPlan: undefined, implementationPlan: undefined, planPromptDelivered: false, planPromptHash: undefined });
-		pi.setActiveTools([...SAFE_PLAN_TOOLS]);
+		pi.setActiveTools([...PLAN_MODE_TOOLS]);
 
-		// 3. Switch to plan model if configured
+		// 3. Push sandbox profile override (best-effort; no-op if sandbox extension is absent)
+		sandboxOverrideToken = `plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+		try {
+			pi.events.emit(SANDBOX_PUSH_PROFILE_EVENT, {
+				owner: "plan-mode",
+				token: sandboxOverrideToken,
+				profile: "plan_read_only",
+			} satisfies SandboxPushProfileEvent);
+		} catch {
+			// sandbox extension not loaded — rely on UX guard only
+		}
+
+		// 4. Switch to plan model if configured
 		const planRef = state.modelConfig.models.plan;
 		if (planRef) {
 			await trySetModel(planRef, ctx, "Plan model");
 		}
 
-		// 4. Switch to plan thinking level if configured
+		// 5. Switch to plan thinking level if configured
 		applyThinking(state.modelConfig.thinking.plan);
 
 		ctx.ui.notify(modeLabel(state.mode));
 	}
 
 	async function exitPlanMode(ctx: ExtensionContext): Promise<void> {
-		// 1. Restore tools
+		// 1. Pop sandbox profile override (best-effort)
+		if (sandboxOverrideToken) {
+			try {
+				pi.events.emit(SANDBOX_POP_PROFILE_EVENT, {
+					owner: "plan-mode",
+					token: sandboxOverrideToken,
+				} satisfies SandboxPopProfileEvent);
+			} catch {
+				// sandbox extension not loaded
+			}
+			sandboxOverrideToken = undefined;
+		}
+
+		// 2. Restore tools
 		if (state.savedActiveTools) {
 			pi.setActiveTools(state.savedActiveTools);
 			state.savedActiveTools = undefined;
 		}
 
-		// 2. Switch state to main BEFORE restoring model so model_select hook updates the correct mode
+		// 3. Switch state to main BEFORE restoring model so model_select hook updates the correct mode
 		const plan = state.pendingPlan;
 		state.mode = "main";
 
-		// 3. Restore main model
+		// 4. Restore main model
 		const mainRef = state.modelConfig.models.main;
 		const restored = await trySetModel(mainRef, ctx, "Main model");
 		if (!restored && state.savedMainModel && !sameModelRef(mainRef, state.savedMainModel)) {
 			await trySetModel(state.savedMainModel, ctx, "Main model (fallback)");
 		}
 
-		// 4. Restore main thinking level
+		// 5. Restore main thinking level
 		applyThinking(state.modelConfig.thinking.main ?? state.savedMainThinking);
 
-		// 5. Clean up state
+		// 6. Clean up state
 		Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined, savedMainModel: undefined, savedMainThinking: undefined });
 
 		if (plan) {
@@ -182,22 +217,25 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		const { toolName } = event;
 		const input = (event.input ?? {}) as Record<string, unknown>;
 
-		if (SAFE_PLAN_TOOLS.has(toolName)) return;
+		if (PLAN_MODE_TOOLS.has(toolName) && toolName !== "bash") return;
 
 		if (toolName === "bash") {
 			const command = String(input.command ?? "");
+			// UX guard: classify command intent for plan mode.
+			// Security boundary is the sandbox extension's OS-level policy.
 			if (!isSafeCommand(command)) {
+				const intent = classifyCommandIntent(command);
 				pi.appendEntry("plan-mode-blocked-tool", {
 					at: Date.now(),
 					mode: state.mode,
 					toolName: "bash",
 					command,
 					blockCount: 1,
-					reason: "unsafe-bash",
+					reason: `not-read-only-intent:${intent.kind}`,
 				});
 				return {
 					block: true,
-					reason: `Plan mode is read-only. Blocked unsafe bash command:\n${command}`,
+					reason: `Plan mode is read-only. Command intent "${intent.kind}" is not allowed:\n${command}\n理由: ${intent.reason}`,
 				};
 			}
 			return;
@@ -335,6 +373,21 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		} else {
 			if (state.modelConfig.models.main) await trySetModel(state.modelConfig.models.main, ctx, "Main model");
 			applyThinking(state.modelConfig.thinking.main);
+		}
+	});
+
+	// Clean up sandbox override on session shutdown
+	pi.on("session_shutdown", async () => {
+		if (sandboxOverrideToken) {
+			try {
+				pi.events.emit(SANDBOX_POP_PROFILE_EVENT, {
+					owner: "plan-mode",
+					token: sandboxOverrideToken,
+				} satisfies SandboxPopProfileEvent);
+			} catch {
+				// sandbox extension not loaded
+			}
+			sandboxOverrideToken = undefined;
 		}
 	});
 }

@@ -73,7 +73,7 @@ This extension uses `@earendil-works/pi-coding-agent` as a peer dependency becau
 
 - **Sandbox を完全に外す**: macOS Seatbelt による制限が一切ない
 - すべてのファイル、ネットワーク、コマンドに無制限アクセス
-- **ユーザーの明示的承認が必要**: CLI flag, `/sandbox-mode` コマンド, tool 実行時のいずれかで承認が必要
+- **ユーザーの明示的承認が必要**: CLI flag, `/sandbox` コマンド, tool 実行時のいずれかで承認が必要
 - 承認なしではコマンド実行不可
 
 ### network=false の正確な意味と限界
@@ -149,9 +149,46 @@ pi -e ./sandbox
 # Most restrictive: read-only
 pi -e ./sandbox --sandbox-mode read_only
 
+# yolo requires explicit opt-in (NOT the default)
+pi -e ./sandbox --sandbox-mode yolo
+
 # If you need Homebrew tools (node, python, etc.)
 # Set allowHomebrewPaths in policy or extension config
 ```
+
+## Startup Hard Block
+
+If sandbox initialization fails, a `startupBlockedReason` is set that prevents
+**all** bash execution (both sandboxed bash tool and direct `user_bash` hook).
+Only `--no-sandbox` (explicit opt-out) bypasses this hard block.
+
+### Blocked scenarios
+
+| Scenario | Blocks yolo? | Reason |
+|----------|-------------|--------|
+| Unsafe workspace root (`/`, `$HOME`, `/Users`, `/Users/<username>`) | **Yes** | Cannot enforce write boundaries on unsafe root. |
+| `sandbox-exec` unavailable + non-yolo mode | **No** | If effective mode is `yolo`, sandbox enforcement is not needed. |
+
+### Order of checks in session_start
+
+1. `--no-sandbox` → early return, explicitly disabled
+2. `--sandbox-mode` flag parsing
+3. `validateWorkspaceRoot()` → hard block if unsafe (**before** yolo approval)
+4. `resolveRealPaths()` → resolve workspace paths
+5. Yolo approval prompt (only if `effectiveMode() === "yolo"`)
+6. `sandbox-exec` availability check → hard block if unavailable and non-yolo
+
+This ordering ensures yolo approval is never requested for an unsafe workspace root.
+
+## Relationship with plan-mode
+
+`plan-mode` 拡張は plan mode 入場時に `mekann:sandbox:push-profile` イベントを発行し、sandbox の effective mode を `read_only` にオーバーライドする。plan mode 終了時に `mekann:sandbox:pop-profile` で元のモードに復元する。
+
+重要事項:
+- `read_only` モードの強制は **OS-level Seatbelt policy** による。plan-mode の command intent 正規表現に依存しない。
+- plan-mode の `classifyCommandIntent()` は UX フィルタであり、security boundary ではない。
+- sandbox が未導入または `--no-sandbox` の場合、plan-mode は単独で command intent 分類による保守的なガードを提供する。
+- plan override 中に `/sandbox yolo` しても、effective mode は `read_only` のまま。plan 終了後に base mode へ戻る。
 
 ## Known Limitations
 

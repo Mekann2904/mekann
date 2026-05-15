@@ -2,7 +2,7 @@
  * Sandbox Extension — index.ts のフックテスト。
  *
  * Mock ExtensionAPI を構築し、session_start, session_shutdown,
- * user_bash, /sandbox, /sandbox-mode コマンドの挙動を検証する。
+ * user_bash, /sandbox コマンドの挙動を検証する。
  *
  * テスト可能なロジック:
  *   - フラグ解析 (--no-sandbox, --sandbox-mode)
@@ -11,7 +11,7 @@
  *   - yolo 承認フロー
  *   - user_bash ブロック/許可
  *   - /sandbox status 表示
- *   - /sandbox-mode コマンド
+ *   - /sandbox コマンド
  *   - session_shutdown リセット
  */
 
@@ -95,6 +95,7 @@ function createMockApi() {
 	let flags: Record<string, unknown> = {};
 	const registeredTools: Array<Record<string, unknown>> = [];
 	const registeredFlags: Array<{ name: string; config: unknown }> = [];
+	const eventHandlers: Record<string, Function> = {};
 
 	const api = {
 		registerFlag: vi.fn((name: string, config: unknown) => {
@@ -113,12 +114,21 @@ function createMockApi() {
 		setActiveTools: vi.fn(),
 		sendUserMessage: vi.fn(),
 		appendEntry: vi.fn(),
+		events: {
+			on: vi.fn((name: string, handler: Function) => {
+				eventHandlers[name] = handler;
+			}),
+			emit: vi.fn((name: string, data: unknown) => {
+				eventHandlers[name]?.(data);
+			}),
+		},
 		// Test accessors
 		get _hooks() { return hooks; },
 		get _commands() { return commands; },
 		set _flags(f: Record<string, unknown>) { flags = f; },
 		get _registeredTools() { return registeredTools; },
 		get _registeredFlags() { return registeredFlags; },
+		get _eventHandlers() { return eventHandlers; },
 	};
 
 	return api;
@@ -157,7 +167,7 @@ describe("session_start hook", () => {
 		await mock._hooks.session_start({}, ctx);
 
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("explicitly disabled"),
+			expect.stringContaining("明示的に無効化"),
 			"warning",
 		);
 	});
@@ -172,7 +182,7 @@ describe("session_start hook", () => {
 
 		// Non-macOS → sandbox unavailable → commands refused
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("unavailable"),
+			expect.stringContaining("sandbox-exec"),
 			"error",
 		);
 	});
@@ -198,7 +208,7 @@ describe("session_start hook", () => {
 		await mock._hooks.session_start({}, ctx);
 
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("Invalid --sandbox-mode"),
+			expect.stringContaining("無効な --sandbox-mode"),
 			"warning",
 		);
 	});
@@ -231,7 +241,7 @@ describe("session_start hook", () => {
 		await mock._hooks.session_start({}, ctx);
 
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("Falling back"),
+			expect.stringContaining("フォールバック"),
 			"warning",
 		);
 	});
@@ -251,7 +261,7 @@ describe("session_start hook", () => {
 		await mock._hooks.session_start({}, ctx);
 
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("Unsafe workspace root"),
+			expect.stringContaining("安全でない workspace root"),
 			"error",
 		);
 	});
@@ -272,14 +282,14 @@ describe("session_shutdown hook", () => {
 		// Shutdown
 		await mock._hooks.session_shutdown();
 
-		// After shutdown, sandbox should be disabled
-		// Verify by checking /sandbox status command
+		// After shutdown, state is reset. /sandbox shows the current effective mode.
 		const notifications: string[] = [];
 		const statusCtx = createMockCtx({
 			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
 		});
 		await mock._commands["sandbox"].handler("", statusCtx);
-		expect(notifications[0]).toContain("有効: OFF");
+		// After shutdown, effectiveMode() returns currentMode (workspace_write by default)
+		expect(notifications[0]).toBe("workspace_write");
 	});
 });
 
@@ -302,7 +312,8 @@ describe("user_bash hook", () => {
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
-		expect(() => mock._hooks.user_bash()).toThrow("blocked when sandbox is active");
+		// sandbox-exec unavailable → startupBlockedReason set → user_bash throws startup block
+		expect(() => mock._hooks.user_bash()).toThrow("sandbox-exec");
 	});
 
 	it("yolo 承認済み: undefined を返す (許可)", async () => {
@@ -329,12 +340,12 @@ describe("user_bash hook", () => {
 		await mock._hooks.session_start({}, ctx);
 
 		// yolo was rejected → fallback to workspace_write
-		// So user_bash should block
-		expect(() => mock._hooks.user_bash()).toThrow("blocked when sandbox is active");
+		// sandbox-exec unavailable → startupBlockedReason set → user_bash throws startup block
+		expect(() => mock._hooks.user_bash()).toThrow("sandbox-exec");
 	});
 });
 
-// ─── /sandbox command ────────────────────────────────────────────
+// ─── /sandbox command ───────────────────────────────────────────
 
 describe("/sandbox command", () => {
 	it("ステータスを表示する", async () => {
@@ -349,9 +360,8 @@ describe("/sandbox command", () => {
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 
-		expect(notifications[0]).toContain("Sandbox Status");
-		expect(notifications[0]).toContain("有効: OFF");
-		expect(notifications[0]).toContain("明示的無効化: ON");
+		// When explicitly disabled, effectiveMode() returns currentMode (workspace_write)
+		expect(notifications[0]).toBe("workspace_write");
 	});
 
 	it("sandbox 有効時のステータス", async () => {
@@ -369,13 +379,13 @@ describe("/sandbox command", () => {
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 
-		expect(notifications[0]).toContain("利用可能: ON");
+		expect(notifications[0]).toBe("workspace_write");
 	});
 });
 
-// ─── /sandbox-mode command ───────────────────────────────────────
+// ─── /sandbox mode change command ────────────────────────────────
 
-describe("/sandbox-mode command", () => {
+describe("/sandbox mode change", () => {
 	it("引数なし: 現在のモードを表示", async () => {
 		const notifications: string[] = [];
 		const mock = createMockApi();
@@ -386,9 +396,9 @@ describe("/sandbox-mode command", () => {
 		const ctx = createMockCtx({
 			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
 		});
-		await mock._commands["sandbox-mode"].handler("", ctx);
+		await mock._commands["sandbox"].handler("", ctx);
 
-		expect(notifications[0]).toContain("Current mode:");
+		expect(notifications[0]).toBe("workspace_write");
 	});
 
 	it("read_only: モードを変更", async () => {
@@ -401,9 +411,9 @@ describe("/sandbox-mode command", () => {
 		const ctx = createMockCtx({
 			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
 		});
-		await mock._commands["sandbox-mode"].handler("read_only", ctx);
+		await mock._commands["sandbox"].handler("read_only", ctx);
 
-		expect(notifications[0]).toContain("read-only");
+		expect(notifications[0]).toContain("read_only");
 	});
 
 	it("workspace_write: モードを変更", async () => {
@@ -416,9 +426,9 @@ describe("/sandbox-mode command", () => {
 		const ctx = createMockCtx({
 			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
 		});
-		await mock._commands["sandbox-mode"].handler("workspace_write", ctx);
+		await mock._commands["sandbox"].handler("workspace_write", ctx);
 
-		expect(notifications[0]).toContain("workspace-write");
+		expect(notifications[0]).toContain("workspace_write");
 	});
 
 	it("yolo: 承認プロンプト (approve)", async () => {
@@ -435,7 +445,7 @@ describe("/sandbox-mode command", () => {
 				confirm: vi.fn(() => Promise.resolve(true)),
 			},
 		});
-		await mock._commands["sandbox-mode"].handler("yolo", ctx);
+		await mock._commands["sandbox"].handler("yolo", ctx);
 
 		expect(ctx.ui.confirm).toHaveBeenCalled();
 		expect(notifications[0]).toContain("yolo");
@@ -455,9 +465,9 @@ describe("/sandbox-mode command", () => {
 				confirm: vi.fn(() => Promise.resolve(false)),
 			},
 		});
-		await mock._commands["sandbox-mode"].handler("yolo", ctx);
+		await mock._commands["sandbox"].handler("yolo", ctx);
 
-		expect(notifications[0]).toContain("cancelled");
+		expect(notifications[0]).toContain("キャンセル");
 	});
 
 	it("invalid: エラーメッセージ", async () => {
@@ -470,9 +480,9 @@ describe("/sandbox-mode command", () => {
 		const ctx = createMockCtx({
 			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
 		});
-		await mock._commands["sandbox-mode"].handler("invalid", ctx);
+		await mock._commands["sandbox"].handler("invalid", ctx);
 
-		expect(notifications[0]).toContain("Invalid mode");
+		expect(notifications[0]).toContain("無効なモード");
 	});
 
 	it("yolo → read_only: 承認状態をリセット", async () => {
@@ -493,7 +503,7 @@ describe("/sandbox-mode command", () => {
 				confirm: vi.fn(() => Promise.resolve(true)),
 			},
 		});
-		await mock._commands["sandbox-mode"].handler("yolo", ctx1);
+		await mock._commands["sandbox"].handler("yolo", ctx1);
 
 		// Verify user_bash is allowed (approved yolo)
 		expect(mock._hooks.user_bash()).toBeUndefined();
@@ -502,21 +512,21 @@ describe("/sandbox-mode command", () => {
 		const ctx2 = createMockCtx({
 			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
 		});
-		await mock._commands["sandbox-mode"].handler("read_only", ctx2);
+		await mock._commands["sandbox"].handler("read_only", ctx2);
 
 		// Now user_bash should block (no longer approved yolo)
-		expect(() => mock._hooks.user_bash()).toThrow("blocked when sandbox is active");
+		expect(() => mock._hooks.user_bash()).toThrow("サンドボックスがアクティブ");
 	});
 });
 
-// ─── /sandbox-mode getArgumentCompletions ─────────────────────────
+// ─── /sandbox getArgumentCompletions ────────────────────────────
 
-describe("/sandbox-mode getArgumentCompletions", () => {
+describe("/sandbox getArgumentCompletions", () => {
 	it("read_only が補完される", async () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 
-		const completions = mock._commands["sandbox-mode"].getArgumentCompletions("read");
+		const completions = mock._commands["sandbox"].getArgumentCompletions("read");
 		expect(completions.some((c: { value: string }) => c.value === "read_only")).toBe(true);
 	});
 
@@ -524,7 +534,7 @@ describe("/sandbox-mode getArgumentCompletions", () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 
-		const completions = mock._commands["sandbox-mode"].getArgumentCompletions("work");
+		const completions = mock._commands["sandbox"].getArgumentCompletions("work");
 		expect(completions.some((c: { value: string }) => c.value === "workspace_write")).toBe(true);
 	});
 
@@ -532,7 +542,7 @@ describe("/sandbox-mode getArgumentCompletions", () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 
-		const completions = mock._commands["sandbox-mode"].getArgumentCompletions("yolo");
+		const completions = mock._commands["sandbox"].getArgumentCompletions("yolo");
 		expect(completions.some((c: { value: string }) => c.value === "yolo")).toBe(true);
 	});
 
@@ -540,7 +550,7 @@ describe("/sandbox-mode getArgumentCompletions", () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 
-		const completions = mock._commands["sandbox-mode"].getArgumentCompletions("");
+		const completions = mock._commands["sandbox"].getArgumentCompletions("");
 		expect(completions.length).toBe(3);
 	});
 });
@@ -579,7 +589,7 @@ describe("tool execute: Case 3 (sandbox unavailable, refuse)", () => {
 		const tool = mock._registeredTools[0];
 		await expect(
 			tool.execute("test-id", { command: "echo hello" }, undefined, undefined, createMockCtx()),
-		).rejects.toThrow("sandbox-exec is not available");
+		).rejects.toThrow("sandbox-exec");
 	});
 });
 
@@ -648,7 +658,9 @@ describe("session lifecycle", () => {
 		const notifications: string[] = [];
 		ctx.ui.notify = (msg: string) => { notifications.push(msg); };
 		await mock._commands["sandbox"].handler("", ctx);
-		expect(notifications[0]).toContain("明示的無効化: OFF");
+		// After restart with no flags, sandbox-exec unavailable → startup blocked
+		expect(notifications[0]).toContain("blocked:");
+		expect(notifications[0]).toContain("sandbox-exec");
 	});
 });
 
@@ -773,7 +785,7 @@ describe("tool execute: Case 4 (sandboxed execution)", () => {
 		const tool = mock._registeredTools[0];
 		await expect(
 			tool.execute("id1", { command: "fail" }, undefined, undefined, createMockCtx()),
-		).rejects.toThrow("exited with code 1");
+		).rejects.toThrow("終了コード 1");
 	});
 
 	it("sandboxed command 出力なしの場合は (no output)", async () => {
@@ -794,7 +806,7 @@ describe("tool execute: Case 4 (sandboxed execution)", () => {
 		const tool = mock._registeredTools[0];
 		const result = await tool.execute("id1", { command: "true" }, undefined, undefined, createMockCtx());
 
-		expect(result.content[0].text).toBe("(no output)");
+		expect(result.content[0].text).toBe("(出力なし)");
 	});
 
 	it("危険コマンド (rm -rf) は承認プロンプトを表示 (approve)", async () => {
@@ -838,7 +850,7 @@ describe("tool execute: Case 4 (sandboxed execution)", () => {
 		});
 		await expect(
 			tool.execute("id1", { command: "rm -rf ./node_modules" }, undefined, undefined, ctx),
-		).rejects.toThrow("Command blocked");
+		).rejects.toThrow("ブロックされました");
 	});
 
 	it("安全コマンドは承認プロンプトなし", async () => {
@@ -909,7 +921,7 @@ describe("buildCurrentPolicy: all mode paths", () => {
 		await mock._hooks.session_start({}, createMockCtx());
 
 		// Explicitly switch to read_only (in case previous test left another mode)
-		await mock._commands["sandbox-mode"].handler("read_only", createMockCtx());
+		await mock._commands["sandbox"].handler("read_only", createMockCtx());
 
 		// Now execute a tool command
 		const tool = mock._registeredTools[0];
@@ -947,7 +959,7 @@ describe("buildCurrentPolicy: all mode paths", () => {
 // ─── tool execute: Case 2 inline approval ────────────────────────
 
 describe("tool execute: Case 2 inline approval flow", () => {
-	it("/sandbox-mode で yolo 承認 → 次の tool 実行はプロンプトなし", async () => {
+	it("/sandbox で yolo 承認 → 次の tool 実行はプロンプトなし", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
@@ -957,7 +969,7 @@ describe("tool execute: Case 2 inline approval flow", () => {
 		await mock._hooks.session_start({}, createMockCtx());
 
 		// Switch to yolo via command (approve)
-		await mock._commands["sandbox-mode"].handler("yolo", createMockCtx());
+		await mock._commands["sandbox"].handler("yolo", createMockCtx());
 
 		// Now tool execute should work without confirm (approved via command)
 		const ctx = createMockCtx();
@@ -991,7 +1003,7 @@ describe("tool execute: Case 2 inline approval flow", () => {
 		expect(confirmFn).toHaveBeenCalledTimes(1);
 		expect(confirmFn).toHaveBeenCalledWith(
 			"[!] フルアクセスが必要です",
-			expect.stringContaining("disable sandboxing"),
+			expect.stringContaining("無効化"),
 		);
 		expect(result).toBeDefined();
 	});
@@ -1015,8 +1027,214 @@ describe("tool execute: Case 2 inline approval flow", () => {
 
 		await expect(
 			mock._registeredTools[0].execute("id1", { command: "echo test" }, undefined, undefined, ctx),
-		).rejects.toThrow("yolo requires explicit user approval");
+		).rejects.toThrow("明示的な承認");
 
 		expect(confirmFn).toHaveBeenCalledTimes(1);
+	});
+});
+
+// ─── Profile override: restrict-only policy ─────────────────────
+
+describe("profile override: restrict-only policy", () => {
+	it("base workspace_write で plan_read_only push → effective mode が read_only", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Push plan_read_only override
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "plan-mode",
+			token: "plan-123",
+			profile: "plan_read_only",
+		});
+
+		// Effective mode should be read_only now
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		await mock._commands["sandbox"].handler("", ctx);
+		expect(notifications[0]).toBe("read_only");
+	});
+
+	it("base read_only で workspace_write push → reject", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "read_only" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Try to push workspace_write (escalation)
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "evil-extension",
+			token: "evil-123",
+			profile: "workspace_write" as any,
+		});
+
+		// Should be rejected — appendEntry called
+		expect(mock.appendEntry).toHaveBeenCalledWith(
+			"sandbox-profile-override-rejected",
+			expect.objectContaining({ reason: "unsupported-profile-for-event-override" }),
+		);
+
+		// Effective mode should still be read_only
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		await mock._commands["sandbox"].handler("", ctx);
+		expect(notifications[0]).toBe("read_only");
+	});
+
+	it("base workspace_write で yolo push → reject", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Try to push yolo (escalation)
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "evil-extension",
+			token: "evil-456",
+			profile: "yolo" as any,
+		});
+
+		expect(mock.appendEntry).toHaveBeenCalledWith(
+			"sandbox-profile-override-rejected",
+			expect.objectContaining({ reason: "unsupported-profile-for-event-override" }),
+		);
+
+		// Effective mode should still be workspace_write
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		await mock._commands["sandbox"].handler("", ctx);
+		expect(notifications[0]).toBe("workspace_write");
+	});
+
+	it("unknown profile は reject", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const prevCallCount = mock.appendEntry.mock.calls.length;
+
+		// Push unknown profile
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "test",
+			token: "test-unknown",
+			profile: "nonexistent_profile" as any,
+		});
+
+		// Should be rejected (unsupported profile)
+		expect(mock.appendEntry).toHaveBeenCalledTimes(prevCallCount + 1);
+	});
+
+	it("pop で override が外れ、base mode に戻る", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Push plan_read_only
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "plan-mode",
+			token: "plan-789",
+			profile: "plan_read_only",
+		});
+
+		// Pop it
+		mock._eventHandlers["mekann:sandbox:pop-profile"]({
+			owner: "plan-mode",
+			token: "plan-789",
+		});
+
+		// Effective mode should be back to workspace_write
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		await mock._commands["sandbox"].handler("", ctx);
+		expect(notifications[0]).toBe("workspace_write");
+	});
+
+	it("push/pop 後に setWidget が呼ばれる (lastCtx がある場合)", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		const ctx = createMockCtx();
+		await mock._hooks.session_start({}, ctx);
+
+		const setWidgetCallCount = ctx.ui.setWidget.mock.calls.length;
+
+		// Push plan_read_only
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "plan-mode",
+			token: "plan-status-test",
+			profile: "plan_read_only",
+		});
+
+		expect(ctx.ui.setWidget).toHaveBeenCalledTimes(setWidgetCallCount + 1);
+
+		// Pop it
+		mock._eventHandlers["mekann:sandbox:pop-profile"]({
+			owner: "plan-mode",
+			token: "plan-status-test",
+		});
+
+		expect(ctx.ui.setWidget).toHaveBeenCalledTimes(setWidgetCallCount + 2);
+	});
+});
+
+// ─── request_elevation: startup block ────────────────────────────
+
+describe("request_elevation: startup block", () => {
+	it("startupBlockedReason がある場合、権限昇格不可メッセージを返す", async () => {
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+
+		// Trigger startup block by setting workspace root to /
+		const { validateWorkspaceRoot } = await import("../pathPolicy.js");
+		(validateWorkspaceRoot as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+			new Error("workspace root cannot be /"),
+		);
+
+		await mock._hooks.session_start({}, createMockCtx({ cwd: "/" }));
+
+		// Now request_elevation should return the startup block message
+		const tool = mock._registeredTools[1]; // request_elevation is the second tool
+		const result = await tool.execute(
+			"test-id",
+			{ command: "echo hello", reason: "test" },
+			undefined,
+			undefined,
+			createMockCtx(),
+		);
+
+		const text = result.content[0].text;
+		expect(text).toContain("権限昇格では回避できません");
+		expect(text).not.toContain("bash ツールを直接使用してください");
+		expect(result.details).toEqual({});
 	});
 });

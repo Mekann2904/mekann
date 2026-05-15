@@ -1,10 +1,14 @@
 /** Sandbox Permissions — 権限モデルとデフォルトポリシービルダー。
- * read_only: 読み取りのみ、workspace_write: workspace 内書き込み (.git deny), yolo: sandbox なし (要承認) */
+ * read_only: 読み取りのみ、workspace_write: workspace 内書き込み (.git deny), yolo: sandbox なし (要承認)
+ *
+ * SandboxMode, parseSandboxMode, modeLabel の実体は policy-core/modes.ts。
+ * ここから re-export して既存 import の互換性を保つ。 */
 
-export type SandboxMode =
-	| "read_only"
-	| "workspace_write"
-	| "yolo";
+// Re-export from single source of truth
+export type { SandboxMode } from "../policy-core/modes.js";
+export { parseSandboxMode, modeLabel, SANDBOX_MODES, DEFAULT_SANDBOX_MODE } from "../policy-core/modes.js";
+
+import type { SandboxMode } from "../policy-core/modes.js";
 
 export interface SandboxPolicy {
 	mode: SandboxMode;
@@ -59,28 +63,4 @@ export function yoloPolicy(): SandboxPolicy {
 		writableRoots: [],
 		network: true,
 	};
-}
-
-/** 文字列から SandboxMode への安全なパース。 */
-export function parseSandboxMode(value: string): SandboxMode | undefined {
-	switch (value) {
-		case "read_only":
-		case "workspace_write":
-		case "yolo":
-			return value;
-		default:
-			return undefined;
-	}
-}
-
-/** 人間可読のモードラベル。 */
-export function modeLabel(mode: SandboxMode): string {
-	switch (mode) {
-		case "read_only":
-			return "読み取り専用";
-		case "workspace_write":
-			return "ワークスペース書き込み可能";
-		case "yolo":
-			return "yolo";
-	}
 }

@@ -52,7 +52,7 @@ import {
 } from "../permissions.js";
 
 import { assertPathInsideRoot, resolveRealPaths, isProtectedPath } from "../pathPolicy.js";
-import { shouldRequestApproval, fullAccessApprovalMessage } from "../approvals.js";
+import { shouldRequestApproval, yoloApprovalMessage } from "../approvals.js";
 
 // ─── Platform check ──────────────────────────────────────────────
 
@@ -292,8 +292,8 @@ describe("parseSandboxMode", () => {
 
 describe("modeLabel", () => {
 	it("各モードのラベルを返す", () => {
-		expect(modeLabel("read_only")).toBe("read-only");
-		expect(modeLabel("workspace_write")).toBe("workspace-write");
+		expect(modeLabel("read_only")).toBe("読み取り専用");
+		expect(modeLabel("workspace_write")).toBe("ワークスペース書き込み可能");
 		expect(modeLabel("yolo")).toBe("yolo");
 	});
 });
@@ -630,19 +630,19 @@ describe("resolveRealPaths", () => {
 // ─── Unit tests: approvals ───────────────────────────────────────
 
 describe("shouldRequestApproval", () => {
-	it("yolo で fullAccessApproved=true なら承認不要", () => {
+	it("yolo で yoloApproved=true なら承認不要", () => {
 		expect(
-			shouldRequestApproval("yolo", "rm -rf /", { fullAccessApproved: true }).needsApproval,
+			shouldRequestApproval("yolo", "rm -rf /", { yoloApproved: true }).needsApproval,
 		).toBe(false);
 	});
 
-	it("yolo で fullAccessApproved=false なら承認が必要", () => {
-		const result = shouldRequestApproval("yolo", "ls", { fullAccessApproved: false });
+	it("yolo で yoloApproved=false なら承認が必要", () => {
+		const result = shouldRequestApproval("yolo", "ls", { yoloApproved: false });
 		expect(result.needsApproval).toBe(true);
-		expect(result.reason).toContain("approval");
+		expect(result.reason).toContain("明示的な承認");
 	});
 
-	it("yolo で fullAccessApproved 未指定なら承認が必要", () => {
+	it("yolo で yoloApproved 未指定なら承認が必要", () => {
 		const result = shouldRequestApproval("yolo", "ls");
 		expect(result.needsApproval).toBe(true);
 	});
@@ -654,13 +654,13 @@ describe("shouldRequestApproval", () => {
 	it("workspace_write で rm -rf は承認が必要", () => {
 		const result = shouldRequestApproval("workspace_write", "rm -rf ./node_modules");
 		expect(result.needsApproval).toBe(true);
-		expect(result.reason).toContain("Recursive force delete");
+		expect(result.reason).toContain("再帰的強制削除");
 	});
 
 	it("workspace_write で sudo は承認が必要", () => {
 		const result = shouldRequestApproval("workspace_write", "sudo apt install build-essential");
 		expect(result.needsApproval).toBe(true);
-		expect(result.reason).toContain("Elevated privileges");
+		expect(result.reason).toContain("権限昇格");
 	});
 
 	it("workspace_write で安全なコマンドは承認不要", () => {
@@ -670,11 +670,11 @@ describe("shouldRequestApproval", () => {
 	});
 });
 
-describe("fullAccessApprovalMessage", () => {
+describe("yoloApprovalMessage", () => {
 	it("承認メッセージを返す", () => {
-		const msg = fullAccessApprovalMessage();
-		expect(msg).toContain("disable sandboxing");
-		expect(msg).toContain("unrestricted access");
+		const msg = yoloApprovalMessage();
+		expect(msg).toContain("サンドボックスを完全に無効化");
+		expect(msg).toContain("制限なし");
 	});
 });
 
@@ -1434,7 +1434,7 @@ describe("truncateForLlm", () => {
 		expect(result.originalLines).toBe(1);
 		// The output should be at most ~50KB + truncation notice
 		expect(Buffer.byteLength(result.text, "utf8")).toBeLessThan(60 * 1024);
-		expect(result.text).toContain("output truncated");
+		expect(result.text).toContain("切り詰められました");
 	});
 
 	it("3000 行の stdout は 2000 行程度に短縮される", () => {
@@ -1446,7 +1446,7 @@ describe("truncateForLlm", () => {
 		// The result should have at most 2000 lines + truncation notice
 		const resultLines = result.text.split("\n").length;
 		expect(resultLines).toBeLessThanOrEqual(2010); // some slack for the notice
-		expect(result.text).toContain("output truncated");
+		expect(result.text).toContain("切り詰められました");
 	});
 
 	it("非 ASCII 文字でも正確にバイト制限される", () => {
@@ -1463,16 +1463,16 @@ describe("truncateForLlm", () => {
 		const text = Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n");
 		const result = truncateForLlm(text, { maxBytes: 100000, maxLines: 10 });
 		expect(result.truncated).toBe(true);
-		expect(result.text).toContain("output truncated");
+		expect(result.text).toContain("切り詰められました");
 	});
 
 	it("truncation notice に元のサイズ情報が含まれる", () => {
 		const largeText = "x".repeat(60 * 1024);
 		const result = truncateForLlm(largeText);
-		expect(result.text).toContain(`original ${60 * 1024} bytes`);
-		expect(result.text).toContain("1 lines");
-		expect(result.text).toContain(`${DEFAULT_LLM_OUTPUT_MAX_BYTES} bytes`);
-		expect(result.text).toContain(`${DEFAULT_LLM_OUTPUT_MAX_LINES} lines`);
+		expect(result.text).toContain(`元の ${60 * 1024} バイト`);
+		expect(result.text).toContain("1 行");
+		expect(result.text).toContain(`${DEFAULT_LLM_OUTPUT_MAX_BYTES} バイト`);
+		expect(result.text).toContain(`${DEFAULT_LLM_OUTPUT_MAX_LINES} 行`);
 	});
 });
 

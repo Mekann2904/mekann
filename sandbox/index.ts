@@ -2,7 +2,7 @@
  * Sandbox Extension — macOS Seatbelt によるコマンドサンドボックス化。
  * SECURITY SCOPE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.
  * Fail-closed: sandbox-exec unavailable → command REFUSED (no silent fallback).
- * Usage: pi -e ./sandbox [--sandbox-mode read_only] [--no-sandbox] | /sandbox [mode]
+ * Usage: pi -e ./sandbox [--sandbox-mode read_only|workspace_write|yolo] [--no-sandbox] | /sandbox [mode]
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -10,8 +10,6 @@ import { createBashTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { SandboxMode, SandboxPolicy } from "./permissions.js";
 import {
-	parseSandboxMode,
-	modeLabel,
 	readOnlyPolicy,
 	workspaceWritePolicy,
 	yoloPolicy,
@@ -19,6 +17,16 @@ import {
 import { isMacSandboxAvailable, runSandboxedShellMac } from "./macSeatbelt.js";
 import { resolveRealPaths, validateWorkspaceRoot } from "./pathPolicy.js";
 import { shouldRequestApproval, yoloApprovalMessage, type YoloApprovalState } from "./approvals.js";
+import {
+	DEFAULT_SANDBOX_MODE,
+	parseSandboxMode,
+	modeLabel,
+	SANDBOX_PUSH_PROFILE_EVENT,
+	SANDBOX_POP_PROFILE_EVENT,
+	type SandboxPushProfileEvent,
+	type SandboxPopProfileEvent,
+} from "../policy-core/modes.js";
+import { profileToSandboxMode } from "../policy-core/capabilities.js";
 
 // ─── LLM output truncation ─────────────────────────────────────────
 
@@ -59,13 +67,54 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// ─── State ───────────────────────────────────────────────────────
 
 	let sandboxEnabled = false;
-	let currentMode: SandboxMode = "yolo";
+	let currentMode: SandboxMode = DEFAULT_SANDBOX_MODE;
 	let sandboxAvailable = false;
 	let resolvedWorkspaceRoots: string[] = [];
 	let resolvedWritableRoots: string[] = [];
 	let currentCwd = "";
 	// SECURITY: true only when user explicitly opted out via --no-sandbox
 	let explicitlyDisabled = false;
+
+	// SECURITY: When set, bash execute() always refuses (unless --no-sandbox).
+	// Set on unsafe workspace root or sandbox-init failure.
+	let startupBlockedReason: string | undefined;
+
+	// Last UI context for updating status bar after profile override push/pop.
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let lastCtx: any | undefined;
+
+	// ─── Profile override stack (plan-mode coordination) ──────────
+
+	/** Override entries pushed by other extensions (e.g. plan-mode). */
+	interface ProfileOverride {
+		owner: string;
+		token: string;
+		mode: SandboxMode;
+	}
+
+	const profileOverrideStack: ProfileOverride[] = [];
+
+	/** Compute the effective sandbox mode, respecting override stack. */
+	function effectiveMode(): SandboxMode {
+		if (explicitlyDisabled) return currentMode; // overrides don't apply when disabled
+		if (profileOverrideStack.length > 0) {
+			return profileOverrideStack[profileOverrideStack.length - 1].mode;
+		}
+		return currentMode;
+	}
+
+	// SECURITY: Mode ranking — higher number = less restrictive.
+	// Profile override events may ONLY push modes that are equally or more restrictive
+	// than the current base mode (restrict-only policy).
+	const MODE_RANK: Record<SandboxMode, number> = {
+		read_only: 0,
+		workspace_write: 1,
+		yolo: 2,
+	};
+
+	function isRestrictiveOrEqual(requested: SandboxMode, base: SandboxMode): boolean {
+		return MODE_RANK[requested] <= MODE_RANK[base];
+	}
 
 	// SECURITY: yolo の承認状態
 	const yoloState: YoloApprovalState = {
@@ -95,13 +144,14 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	pi.registerFlag("sandbox-mode", {
 		description: "初期 sandbox モード (read_only | workspace_write | yolo)",
 		type: "string",
-		default: "yolo",
+		default: DEFAULT_SANDBOX_MODE,
 	});
 
 	// ─── Policy builder ──────────────────────────────────────────────
 
 	function buildCurrentPolicy(): SandboxPolicy {
-		switch (currentMode) {
+		const mode = effectiveMode();
+		switch (mode) {
 			case "read_only":
 				return readOnlyPolicy(currentCwd, resolvedWorkspaceRoots);
 			case "workspace_write":
@@ -150,8 +200,13 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				return getLocalBash().execute(id, params, signal, onUpdate);
 			}
 
+			// ── Hard block: startup failure (unsafe root / sandbox unavailable) ──
+			if (startupBlockedReason) {
+				throw new Error(`${startupBlockedReason}${SANDBOX_BLOCK_HINT}`);
+			}
+
 			// ── Case 2: yolo with explicit approval ────
-			if (currentMode === "yolo") {
+			if (effectiveMode() === "yolo") {
 				if (!yoloState.yoloApproved) {
 					const ok = await ctx.ui.confirm(
 						"[!] フルアクセスが必要です",
@@ -179,11 +234,11 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			}
 
 			// ── Case 4: Normal sandboxed execution (read_only / workspace_write) ──
-			const approval = shouldRequestApproval(currentMode, command);
+			const approval = shouldRequestApproval(effectiveMode(), command);
 			if (approval.needsApproval && approval.reason) {
 				const ok = await ctx.ui.confirm(
 					"[!] コマンドの承認が必要です",
-					`サンドボックスモード: ${modeLabel(currentMode)}\nコマンド: ${command}\n理由: ${approval.reason}\n\nこのコマンドを許可しますか？`,
+					`サンドボックスモード: ${modeLabel(effectiveMode())}\nコマンド: ${command}\n理由: ${approval.reason}\n\nこのコマンドを許可しますか？`,
 				);
 				if (!ok) {
 					throw new Error(`コマンドがブロックされました: ${approval.reason}`);
@@ -214,7 +269,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				content: [{ type: "text", text: shown.text || "(出力なし)" }],
 				details: {
 					sandboxed: true,
-					mode: currentMode,
+					mode: effectiveMode(),
 					exitCode: result.code,
 					outputTruncated: shown.truncated,
 					originalOutputBytes: shown.originalBytes,
@@ -250,12 +305,26 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			if (explicitlyDisabled) {
 				return {
 					content: [{ type: "text", text: "サンドボックスは既に無効化されています (--no-sandbox)。bash ツールを直接使用してください。" }],
+					details: {},
+				};
+			}
+
+			if (startupBlockedReason) {
+				return {
+					content: [{
+						type: "text",
+						text:
+							`${startupBlockedReason}。権限昇格では回避できません。` +
+							"明示的に --no-sandbox で起動し直す必要があります。",
+					}],
+					details: {},
 				};
 			}
 
 			if (!sandboxEnabled) {
 				return {
 					content: [{ type: "text", text: "サンドボックスはアクティブではありません。bash ツールを直接使用してください。" }],
+					details: {},
 				};
 			}
 
@@ -267,7 +336,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					`コマンド: ${command}`,
 					`理由: ${reason}`,
 					"",
-					`現在のモード: ${modeLabel(currentMode)}`,
+					`現在のモード: ${modeLabel(effectiveMode())}`,
 					"",
 					"このコマンドをサンドボックス外で実行しますか？",
 				].join("\n"),
@@ -281,6 +350,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 							"サンドボックス制約内で動作する別の方法を検討するか、" +
 							"ユーザーに `/sandbox yolo` の手動実行を依頼してください。",
 					}],
+					details: {},
 				};
 			}
 
@@ -297,7 +367,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				details: {
 					...result.details,
 					elevated: true,
-					originalMode: currentMode,
+					originalMode: effectiveMode(),
 					reason,
 				},
 			};
@@ -307,7 +377,21 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// SECURITY: When sandbox is active, returning undefined = bypass. Block instead.
 	pi.on("user_bash", () => {
 		if (explicitlyDisabled) return undefined;
-		if (currentMode === "yolo" && yoloState.yoloApproved) return undefined;
+
+		if (startupBlockedReason) {
+			throw new Error(
+				`${startupBlockedReason}。--no-sandbox で明示的に無効化しない限り、直接 bash 実行は拒否されます。`,
+			);
+		}
+
+		if (effectiveMode() === "yolo") {
+			if (yoloState.yoloApproved) return undefined;
+			throw new Error(
+				"yolo モードはまだ承認されていません。" +
+				"`/sandbox yolo` を再実行して承認するか、" +
+				"sandbox 化された bash ツール経由で承認してください。",
+			);
+		}
 		throw new Error(
 			"サンドボックスがアクティブな場合、直接の bash 実行はブロックされます。" +
 			"コマンドはサンドボックス化された bash ツール経由で実行してください。",
@@ -319,9 +403,14 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	function changeMode(args: string | undefined, ctx: any): Promise<void> {
 		return (async () => {
+			lastCtx = ctx;
 			const modeStr = args?.trim();
 			if (!modeStr) {
-				ctx.ui.notify(currentMode, "info");
+				if (startupBlockedReason) {
+					ctx.ui.notify(`blocked: ${startupBlockedReason}`, "error");
+					return;
+				}
+				ctx.ui.notify(effectiveMode(), "info");
 				return;
 			}
 
@@ -336,6 +425,20 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 			// SECURITY: yolo requires explicit approval
 			if (newMode === "yolo") {
+				// If override is active, effective mode won't be yolo even after base change.
+				// Save the base mode but defer approval until yolo actually becomes effective.
+				if (profileOverrideStack.length > 0) {
+					// Override active — save base, defer approval
+					currentMode = newMode;
+					resetYoloApproval();
+					updateStatusBar(ctx);
+					ctx.ui.notify(
+						"base モードを yolo に設定しました。override 終了後、bash tool 実行時に yolo 承認を求めます。direct bash は承認済みになるまで拒否されます。",
+						"info",
+					);
+					return;
+				}
+
 				const ok = await ctx.ui.confirm(
 					"[!] サンドボックスを無効化しますか？",
 					yoloApprovalMessage(),
@@ -352,7 +455,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			currentMode = newMode;
 			updateStatusBar(ctx);
 			ctx.ui.notify(
-				`サンドボックスモードを変更しました: ${currentMode}`,
+				`サンドボックスモードを変更しました: ${effectiveMode()}`,
 				"info",
 			);
 		})();
@@ -379,7 +482,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 		ctx.ui.setWidget(
 			"sandbox",
-			[ctx.ui.theme.fg("dim", currentMode)],
+			[ctx.ui.theme.fg("dim", effectiveMode())],
 			{ placement: "belowEditor" },
 		);
 	}
@@ -388,6 +491,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 	pi.on("session_start", async (_event, ctx) => {
 		currentCwd = ctx.cwd;
+		startupBlockedReason = undefined;
+		lastCtx = ctx;
 
 		// --no-sandbox: explicit opt-out
 		const noSandbox = pi.getFlag("no-sandbox") as boolean;
@@ -404,35 +509,26 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		const modeFlag = pi.getFlag("sandbox-mode") as string;
 		if (modeFlag) {
 			const parsed = parseSandboxMode(modeFlag);
-			if (parsed) currentMode = parsed;
-			else ctx.ui.notify(`無効な --sandbox-mode: ${modeFlag}。デフォルトの workspace_write を使用します`, "warning");
-		}
-
-		// SECURITY: yolo requires approval even at startup
-		if (currentMode === "yolo") {
-			const ok = await ctx.ui.confirm(
-				"[!] サンドボックスモード: フルアクセス",
-				`サンドボックスモードが yolo に設定されています。\n\n${yoloApprovalMessage()}`,
-			);
-			if (ok) {
-								approveYolo("セッション開始時に承認");
+			if (parsed) {
+				currentMode = parsed;
 			} else {
-				currentMode = "workspace_write";
-				resetYoloApproval();
+				currentMode = DEFAULT_SANDBOX_MODE;
 				ctx.ui.notify(
-					"yolo が承認されませんでした。workspace_write にフォールバックします。",
-					"warning",
+					`無効な --sandbox-mode: ${modeFlag}。デフォルトの ${DEFAULT_SANDBOX_MODE} を使用します`, "warning",
 				);
 			}
 		}
 
 		// SECURITY: FAIL-CLOSED on unsafe workspace root (all modes)
+		// Validate BEFORE yolo approval — no point asking for approval if we'll hard-block anyway.
 		try {
 			await validateWorkspaceRoot(ctx.cwd);
 		} catch (e) {
+			startupBlockedReason = `安全でない workspace root: ${(e as Error).message}`;
 			sandboxEnabled = false;
+			resetYoloApproval();
 			ctx.ui.notify(
-				`セキュリティ: 安全でない workspace ルート: ${(e as Error).message}。安全のためサンドボックスを無効化しました。コマンドは拒否されます。`,
+				`セキュリティ: ${startupBlockedReason}。安全のためサンドボックスを無効化しました。コマンドは拒否されます。`,
 				"error",
 			);
 			return;
@@ -447,29 +543,110 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			resolvedWritableRoots = [ctx.cwd];
 		}
 
-		if (!sandboxAvailable && currentMode !== "yolo") {
-			sandboxEnabled = false;
-			ctx.ui.notify(
-				"[!] このシステムではサンドボックスを利用できません。" +
-				"bash コマンドは拒否されます。" +
-				"--no-sandbox で明示的に無効化してください（非推奨）。",
-				"error",
+		// SECURITY: yolo requires approval — but only when effective mode is actually yolo.
+		// If a plan-mode override is already active, effective mode won't be yolo,
+		// so defer approval until yolo actually becomes effective.
+		if (effectiveMode() === "yolo") {
+			const ok = await ctx.ui.confirm(
+				"[!] サンドボックスモード: フルアクセス",
+				`サンドボックスモードが yolo に設定されています。\n\n${yoloApprovalMessage()}`,
 			);
+			if (ok) {
+								approveYolo("セッション開始時に承認");
+			} else {
+				currentMode = DEFAULT_SANDBOX_MODE;
+				resetYoloApproval();
+				ctx.ui.notify(
+					`yolo が承認されませんでした。${DEFAULT_SANDBOX_MODE} にフォールバックします。`, "warning",
+				);
+			}
+		}
+
+		if (!sandboxAvailable && effectiveMode() !== "yolo") {
+			startupBlockedReason =
+				"サンドボックスが必要ですが /usr/bin/sandbox-exec が利用できません。" +
+				"サンドボックス強制なしではコマンドを実行できません。" +
+				"--no-sandbox で明示的に無効化してください（非推奨）。";
+			sandboxEnabled = false;
+			ctx.ui.notify(`[!] ${startupBlockedReason}`, "error");
 			return;
 		}
 
 		sandboxEnabled = true;
 		updateStatusBar(ctx);
 		ctx.ui.notify(
-			`サンドボックス有効: ${modeLabel(currentMode)}`,
+			`サンドボックス有効: ${modeLabel(effectiveMode())}`,
 			"info",
 		);
+	});
+
+	// ─── Profile override events (plan-mode coordination) ───────────
+
+	pi.events.on(SANDBOX_PUSH_PROFILE_EVENT, (data: unknown) => {
+		const event = data as SandboxPushProfileEvent;
+		if (!event.token || !event.profile) return;
+
+		// SECURITY: Only accept restrict-only profiles via events.
+		// workspace_write / yolo overrides must go through /sandbox command or approval flow.
+		if (event.profile !== "plan_read_only" && event.profile !== "sandbox_read_only") {
+			pi.appendEntry("sandbox-profile-override-rejected", {
+				at: Date.now(),
+				owner: event.owner,
+				token: event.token,
+				profile: event.profile,
+				reason: "unsupported-profile-for-event-override",
+			});
+			return;
+		}
+
+		// Map profile name to sandbox mode via policy-core
+		const mode = profileToSandboxMode(event.profile);
+		if (!mode) return; // Unknown profile — fail closed, ignore
+
+		// SECURITY: Reject escalation — override must be equally or more restrictive.
+		if (!isRestrictiveOrEqual(mode, currentMode)) {
+			pi.appendEntry("sandbox-profile-override-rejected", {
+				at: Date.now(),
+				owner: event.owner,
+				token: event.token,
+				profile: event.profile,
+				requestedMode: mode,
+				baseMode: currentMode,
+				reason: "override-escalation-rejected",
+			});
+			return;
+		}
+
+		// Remove any existing entry with the same token to prevent duplicates
+		const idx = profileOverrideStack.findIndex((e) => e.token === event.token);
+		if (idx >= 0) profileOverrideStack.splice(idx, 1);
+
+		profileOverrideStack.push({ owner: event.owner, token: event.token, mode });
+
+		// Update status bar to reflect effective mode change
+		if (lastCtx) updateStatusBar(lastCtx);
+	});
+
+	pi.events.on(SANDBOX_POP_PROFILE_EVENT, (data: unknown) => {
+		const event = data as SandboxPopProfileEvent;
+		if (!event.token) return;
+
+		const idx = profileOverrideStack.findIndex(
+			(e) => e.owner === event.owner && e.token === event.token,
+		);
+		if (idx >= 0) profileOverrideStack.splice(idx, 1);
+
+		// Update status bar to reflect effective mode change
+		if (lastCtx) updateStatusBar(lastCtx);
 	});
 
 	pi.on("session_shutdown", async () => {
 		sandboxEnabled = false;
 		sandboxAvailable = false;
 		explicitlyDisabled = false;
+		startupBlockedReason = undefined;
+		profileOverrideStack.length = 0;
+		lastCtx = undefined;
 				resetYoloApproval();
 	});
 }

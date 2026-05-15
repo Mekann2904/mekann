@@ -1,0 +1,78 @@
+/**
+ * Policy Core — Shared Mode Definitions.
+ *
+ * Single source of truth for sandbox mode types, parsing, labels,
+ * plan-mode tool lists, and inter-extension event payloads.
+ */
+
+import type { CapabilityProfileName } from "./capabilities.js";
+
+// ─── Plan mode tools ──────────────────────────────────────────────
+
+/**
+ * Tools available in plan mode.
+ * Includes bash for read-only investigation commands;
+ * bash intent is filtered by classifyCommandIntent() as a UX guard,
+ * and enforced by sandbox's OS-level policy as the security boundary.
+ */
+export const PLAN_MODE_TOOLS = new Set(["read", "grep", "find", "ls", "bash"]);
+
+/**
+ * @deprecated Use PLAN_MODE_TOOLS instead.
+ * This alias exists for backward compatibility during migration.
+ */
+export const SAFE_PLAN_TOOLS = PLAN_MODE_TOOLS;
+
+// ─── Sandbox modes ────────────────────────────────────────────────
+
+/** The canonical set of sandbox mode names. */
+export const SANDBOX_MODES = ["read_only", "workspace_write", "yolo"] as const;
+
+/** Sandbox mode type — the single definition used by both sandbox and plan-mode. */
+export type SandboxMode = (typeof SANDBOX_MODES)[number];
+
+/** Default sandbox mode. Safe default: workspace_write. */
+export const DEFAULT_SANDBOX_MODE: SandboxMode = "workspace_write";
+
+/** Parse a string into a SandboxMode. Returns undefined for invalid values. */
+export function parseSandboxMode(value: string): SandboxMode | undefined {
+	switch (value) {
+		case "read_only":
+		case "workspace_write":
+		case "yolo":
+			return value;
+		default:
+			return undefined;
+	}
+}
+
+/** Human-readable label for a sandbox mode. */
+export function modeLabel(mode: SandboxMode): string {
+	switch (mode) {
+		case "read_only":
+			return "読み取り専用";
+		case "workspace_write":
+			return "ワークスペース書き込み可能";
+		case "yolo":
+			return "yolo";
+	}
+}
+
+// ─── Inter-extension events ───────────────────────────────────────
+
+/** Event names for plan-mode ↔ sandbox coordination via pi.events. */
+export const SANDBOX_PUSH_PROFILE_EVENT = "mekann:sandbox:push-profile";
+export const SANDBOX_POP_PROFILE_EVENT = "mekann:sandbox:pop-profile";
+
+/** Payload for pushing a profile override onto the sandbox stack. */
+export interface SandboxPushProfileEvent {
+	owner: string;
+	token: string;
+	profile: CapabilityProfileName;
+}
+
+/** Payload for popping a profile override from the sandbox stack. */
+export interface SandboxPopProfileEvent {
+	owner: string;
+	token: string;
+}

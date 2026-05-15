@@ -143,14 +143,14 @@ describe("tool_call hook", () => {
 		expect(result).toBeUndefined();
 	});
 
-	it("plan mode: unsafe bash をブロックする", async () => {
+	it("plan mode: non-read-only bash intent をブロックする", async () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 		await mock._commands["plan"].handler("", createMockCtx());
 
 		const result = await mock._hooks.tool_call({ toolName: "bash", input: { command: "rm -rf /" } });
-		expect(result).toEqual({ block: true, reason: expect.stringContaining("unsafe bash") });
+		expect(result).toEqual({ block: true, reason: expect.stringContaining("Command intent") });
 	});
 
 	it("plan mode: write をブロックする", async () => {
@@ -465,7 +465,7 @@ describe("appendEntry tracking", () => {
 		expect(mock._appendEntries[0].type).toBe("plan-mode-blocked-tool");
 	});
 
-	it("unsafe bash is logged with reason", async () => {
+	it("non-read-only bash intent is logged with reason", async () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
@@ -474,7 +474,7 @@ describe("appendEntry tracking", () => {
 		await mock._hooks.tool_call({ toolName: "bash", input: { command: "rm -rf /" } });
 
 		expect(mock._appendEntries.length).toBe(1);
-		expect(mock._appendEntries[0].data).toHaveProperty("reason", "unsafe-bash");
+		expect(mock._appendEntries[0].data).toHaveProperty("reason", expect.stringContaining("not-read-only-intent:destructive"));
 	});
 
 	it("safe tools are not logged", async () => {
@@ -968,15 +968,15 @@ describe("tool_call: input type edge cases", () => {
 		expect(lastEntry.data.path).toBeUndefined();
 	});
 
-	it("bash with input.command が number: blocked as unsafe", async () => {
+	it("bash with input.command が number: blocked as not-read-only-intent", async () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 		await mock._commands["plan"].handler("", createMockCtx());
 
-		// String(123) = "123" — which is not a safe command
+		// String(123) = "123" — which is not a plan-read-only command
 		const result = await mock._hooks.tool_call({ toolName: "bash", input: { command: 123 } as any });
-		expect(result).toEqual({ block: true, reason: expect.stringContaining("unsafe") });
+		expect(result).toEqual({ block: true, reason: expect.stringContaining("Command intent") });
 	});
 
 	it("non-bash tool with input.command as string: command captured in appendEntry", async () => {

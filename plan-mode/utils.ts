@@ -8,54 +8,18 @@ import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 
-export const SAFE_PLAN_TOOLS = new Set(["read", "grep", "find", "ls"]);
+// Re-export from policy-core — single source of truth for command intent classification.
+// isSafeCommand is a UX guard, NOT a security boundary.
+export {
+	classifyCommandIntent,
+	isPlanReadOnlyCommandIntent,
+	isSafeCommand,
+	type CommandIntent,
+	type CommandIntentKind,
+} from "../policy-core/commandIntent.js";
 
-const DESTRUCTIVE_PATTERNS = [
-	/\b(rm|rmdir|mv|cp|mkdir|touch|chmod|chown|chgrp|ln|tee|truncate|dd|shred)\b/i,
-	/(^|[^<])(?:>>|>(?!>))/,
-	/\bnpm\s+(install|uninstall|update|ci|link|publish|audit\b.*(?:\bfix\b|--fix\b))/i,
-	/\b(yarn|pnpm)\s+(add|remove|install|publish)/i,
-	/\b(pip|brew)\s+(install|uninstall|upgrade)/i,
-	/\bapt(-get)?\s+(install|remove|purge|update|upgrade)/i,
-	/\bgit\s+(add|commit|push|pull|merge|rebase|reset|checkout|branch\s+-[dD]|stash|cherry-pick|revert|tag|init|clone)/i,
-	/\bgit\s+diff\b.*--output\b/i,
-	/\bfind\b.*\s+(?:-delete|-exec\b|-execdir\b|-ok\b|-fls\b|-fprint\b|-fprint0\b|-fprintf)\b/i,
-	/\bsed\b.*-i\b/i,
-	/\b(sudo|su|kill|pkill|killall)\b/i,
-	/\b(reboot|shutdown)\b/i,
-	/\bsystemctl\s+(start|stop|restart|enable|disable)/i,
-	/\bservice\s+\S+\s+(start|stop|restart)/i,
-	/\b(vim?|nano|emacs|code|subl)\b/i,
-];
-
-const SAFE_PATTERNS = [
-	/^\s*(cat|head|tail|less|more|grep|ls|pwd|echo|printf|wc|sort|uniq|diff|file|stat|du|df|tree|which|whereis|type|env|printenv|uname|whoami|id|date|cal|uptime|ps|top|htop|free)\b/,
-	/^\s*find\b(?!.*\b(?:-delete|-exec|-execdir|-ok|-fls|-fprint|-fprintf)\b)/i,
-	/^\s*git\s+(status|log|diff|show|branch|remote|config\s+--get|ls-\S+|submodule\s+(?:status|summary))/i,
-	/^\s*(npm|yarn)\s+(list|ls|view|info|search|outdated|audit|why)/i,
-	/^\s*(node|python)\s+--version/i,
-	/^\s*wget\s+-O\s*-/i,
-	/^\s*(jq|awk|rg|fd|bat|eza)\b/,
-	/^\s*sed\s+-n/i,
-];
-
-const SHELL_META_PATTERNS = [
-	/&&|\|\|/,
-	/[;|`]/,
-	/\$\(/,
-	/<\(/,
-	/(^|[^&])&([^&]|$)/,
-	/[\r\n]/,
-];
-
-const SAFE_REDIRECT_PATTERN = /\s*2>\/dev\/null\b|\s*2>&1\b|\s*>\/dev\/null\b/g;
-
-export function isSafeCommand(command: string): boolean {
-	const stripped = command.replace(SAFE_REDIRECT_PATTERN, "");
-	return !SHELL_META_PATTERNS.some((p) => p.test(stripped))
-		&& !DESTRUCTIVE_PATTERNS.some((p) => p.test(stripped))
-		&& SAFE_PATTERNS.some((p) => p.test(stripped));
-}
+// Re-export tool list from policy-core.
+export { PLAN_MODE_TOOLS, SAFE_PLAN_TOOLS } from "../policy-core/modes.js";
 
 export function buildBlockReason(toolName: string, input: Record<string, unknown>, blockCount: number): string {
 	const H = "【プランモード・読み取り専用】";
