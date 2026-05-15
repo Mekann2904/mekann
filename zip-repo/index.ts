@@ -21,9 +21,7 @@ export function formatFileSize(bytes: number): string {
 
 /** ZIP ファイルパスを生成。 */
 export function buildZipPath(repoRoot: string, shortHead: string): string {
-	const repoName = basename(repoRoot);
-	const parentDir = dirname(repoRoot);
-	return join(parentDir, `${repoName}-${shortHead}.zip`);
+	return join(dirname(repoRoot), `${basename(repoRoot)}-${shortHead}.zip`);
 }
 
 /** AppleScript 用パスエスケープ。 */

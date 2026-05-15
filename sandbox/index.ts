@@ -65,8 +65,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	/** Compute the effective sandbox mode, respecting override stack. */
 	function effectiveMode(): SandboxMode {
 		if (explicitlyDisabled) return currentMode; // overrides don't apply when disabled
-		if (profileOverrideStack.length > 0) return profileOverrideStack[profileOverrideStack.length - 1].mode;
-		return currentMode;
+		return profileOverrideStack.length > 0 ? profileOverrideStack[profileOverrideStack.length - 1].mode : currentMode;
 	}
 
 	// SECURITY: Mode ranking (lower = more restrictive). Used for restrict-only override policy.
@@ -110,9 +109,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 	/** Get or create localBash with current session cwd. */
 	function getLocalBash(): LocalBashWithCwd {
-		const cwd = currentCwd || process.cwd();
-		if (!localBash || localBash._cwd !== cwd) localBash = Object.assign(createBashTool(cwd), { _cwd: cwd });
-		return localBash;
+		const cwd = currentCwd || process.cwd(); if (!localBash || localBash._cwd !== cwd) localBash = Object.assign(createBashTool(cwd), { _cwd: cwd }); return localBash;
 	}
 
 	// Dummy initial localBash for registerTool spread (will be replaced on session_start)
@@ -284,7 +281,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// ─── Status bar ──────────────────────────────────────────────────
 	function updateStatusBar(ctx: any): void {
 		if (explicitlyDisabled || !sandboxEnabled) { ctx.ui.setWidget("sandbox", undefined); return; }
-
 		ctx.ui.setWidget("sandbox", [ctx.ui.theme.fg("dim", effectiveMode())], { placement: "belowEditor" });
 	}
 
