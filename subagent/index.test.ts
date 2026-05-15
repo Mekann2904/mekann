@@ -36,7 +36,7 @@ import {
   pathPrefix,
   parentPath,
   pathDepth,
-} from "./agentPath.js";
+} from "./types.js";
 import { extractForkContext, buildContextPreamble } from "./contextFork.js";
 import { AgentRegistry } from "./registry.js";
 import { Mailbox } from "./mailbox.js";

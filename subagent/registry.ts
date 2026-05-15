@@ -6,7 +6,7 @@
  * to subscribers.
  */
 
-import { ROOT_PATH, pathDepth } from "./agentPath.js";
+import { ROOT_PATH, pathDepth } from "./types.js";
 import type {
   AgentMetadata,
   AgentStatus,
