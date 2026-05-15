@@ -52,7 +52,7 @@ import {
 } from "../permissions.js";
 
 import { assertPathInsideRoot, resolveRealPaths, isProtectedPath } from "../pathPolicy.js";
-import { shouldRequestApproval, yoloApprovalMessage } from "../approvals.js";
+import { shouldRequestApproval, yoloApprovalMessage } from "../permissions.js";
 
 // ─── Platform check ──────────────────────────────────────────────
 

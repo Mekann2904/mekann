@@ -11,7 +11,7 @@ import {
 	shouldRequestApproval,
 	yoloApprovalMessage,
 	type YoloApprovalState,
-} from "../approvals.js";
+} from "../permissions.js";
 
 // ─── shouldRequestApproval: yolo ──────────────────
 
