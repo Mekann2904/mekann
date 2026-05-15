@@ -101,10 +101,7 @@ export interface SendMessageParams {
   message: string;
 }
 
-export interface FollowupTaskParams {
-  target: string;
-  message: string;
-}
+export type FollowupTaskParams = SendMessageParams;
 
 export interface WaitAgentParams {
   timeout_ms?: number;
