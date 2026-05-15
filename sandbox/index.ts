@@ -198,10 +198,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			"コマンドがサンドボックス外で実行されるべき理由を必ず説明すること。",
 			"危険または破壊的な操作には request_elevation を使用しないこと。",
 		],
-		parameters: Type.Object({
-			command: Type.String({ description: "サンドボックス外で実行する必要があるコマンド" }),
-			reason: Type.String({ description: "このコマンドがサンドボックスをバイパスする必要がある理由" }),
-		}),
+		parameters: Type.Object({ command: Type.String({ description: "サンドボックス外で実行する必要があるコマンド" }), reason: Type.String({ description: "このコマンドがサンドボックスをバイパスする必要がある理由" }) }),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const { command, reason } = params;
 

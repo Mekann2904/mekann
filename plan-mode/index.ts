@@ -85,11 +85,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		// 3. Push sandbox profile override (best-effort; no-op if sandbox extension is absent)
 		sandboxOverrideToken = `plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 		try {
-			pi.events.emit(SANDBOX_PUSH_PROFILE_EVENT, {
-				owner: "plan-mode",
-				token: sandboxOverrideToken,
-				profile: "plan_read_only",
-			} satisfies SandboxPushProfileEvent);
+			pi.events.emit(SANDBOX_PUSH_PROFILE_EVENT, { owner: "plan-mode", token: sandboxOverrideToken, profile: "plan_read_only" } satisfies SandboxPushProfileEvent);
 		} catch {
 			// sandbox extension not loaded — rely on UX guard only
 		}
