@@ -49,9 +49,7 @@ export function shouldRequestApproval(
 	}
 
 	// 危険パターンのチェック
-	for (const { pattern, reason } of DANGEROUS_PATTERNS) {
-		if (pattern.test(command)) return { needsApproval: true, reason };
-	}
+	for (const { pattern, reason } of DANGEROUS_PATTERNS) if (pattern.test(command)) return { needsApproval: true, reason };
 
 	return { needsApproval: false };
 }

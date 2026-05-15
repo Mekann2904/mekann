@@ -45,9 +45,7 @@ export function isProtectedPath(path: string): boolean {
 	const normalized = resolve(path);
 	const segments = normalized.split("/").filter(Boolean);
 
-	for (const seg of segments) {
-		if (PROTECTED_DIRS.includes(seg)) return true;
-	}
+	for (const seg of segments) if (PROTECTED_DIRS.includes(seg)) return true;
 	return false;
 }
 
