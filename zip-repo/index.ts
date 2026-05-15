@@ -68,10 +68,7 @@ export default function (pi: ExtensionAPI) {
 
 			let dirty = false;
 			try {
-				const { stdout: statusStdout } = await execFileAsync(
-					"git", ["status", "--porcelain"],
-					{ cwd: repoRoot, encoding: "utf8" },
-				);
+				const { stdout: statusStdout } = await execFileAsync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" });
 				dirty = statusStdout.trim().length > 0;
 			} catch {}
 

@@ -94,12 +94,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			case "read_only":
 				return readOnlyPolicy(currentCwd, resolvedWorkspaceRoots);
 			case "workspace_write":
-				return workspaceWritePolicy(
-					currentCwd,
-					resolvedWorkspaceRoots,
-					resolvedWritableRoots,
-					false, // network は独立制御（デフォルト false）
-				);
+				return workspaceWritePolicy(currentCwd, resolvedWorkspaceRoots, resolvedWritableRoots, false /* network は独立制御 */);
 			case "yolo":
 				return yoloPolicy();
 		}
