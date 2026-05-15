@@ -85,4 +85,51 @@ H7: Inline trivial functions that add indirection without abstraction value
 
 ## Experiment Log
 
-(Updated after each experiment)
+### Exp 1: Extract contentExtract.ts (KEEP, -120 pts)
+- Deduplicated extractText/extractAssistantText
+- 3977→3946 LOC, duplication 195→183
+
+### Exp 2: Consolidate lifecycle event types with extends (DISCARD)
+- Score 2560→2565 (+5), changed_loc penalty outweighed LOC bonus
+
+### Exp 3: Delete unused SessionSource types (KEEP, -6 pts)
+- 3946→3924 LOC, duplication 183→182
+
+### Exp 4: Remove unused CAPABILITY_PROFILES (KEEP, -5 pts)
+- 3924→3897 LOC
+
+### Exp 5: Remove unused appendState (DISCARD)
+- Score 2549→2550 (+1), changed_loc penalty
+
+### Exp 6: Consolidate lifecycle events with LifecycleBase (KEEP, -9 pts)
+- 3897→3832 LOC, duplication 182→181
+
+### Exp 7: Merge notifyWaiters/notifyAllWaiters (KEEP, -40 pts)
+- 3832→3824 LOC, duplication 181→177
+
+### Exp 8: Extract resolveModel/finalizeWithError (KEEP, -60 pts)
+- 3824→3813 LOC, duplication 177→171
+
+### Exp 9: Extract abortSession, compress send/followup (KEEP, -85 pts)
+- 3813→3757 LOC, duplication 171→162
+- max_file agentControl.ts: 561→474 (under 500!)
+
+### Key Learnings
+- Small dead code removals have minimal impact due to changed_loc penalty
+- Helper extraction that reduces code volume AND duplication is high-value
+- Deduplication of event construction patterns is the highest-leverage lever
+- File count increase from new modules can offset max_file_loc benefits
+
+### Current score breakdown (2345)
+- duplication: 162 × 10 = 1620
+- review_risk: 7 × 100 = 700
+- complexity: 2 × 10 = 20
+- test_seconds: ~10 × 1 = 10
+- LOC bonus: -5 * ((-220)/100) = -10 (3757 vs 3977 baseline)
+- Total: 1620 + 700 + 20 + 10 - 10 - 5(changed_loc) = 2345 ✓
+
+### Remaining Opportunities
+1. Further duplication reduction (162 lines still duplicated)
+2. File count reduction (22 files → review_risk 7; need to get to 15 to eliminate)
+3. Reduce sandbox/index.ts (430 lines) — second largest file
+4. Compress subagent/index.ts tool registrations
