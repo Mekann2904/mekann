@@ -156,6 +156,10 @@ export default function subagentExtension(pi: ExtensionAPI): void {
     return 0;
   }
 
+  function toolResult(text: string, result: unknown) {
+    return { content: [{ type: "text", text }], details: result };
+  }
+
   // ─── Tools ────────────────────────────────────────────────────
 
   pi.registerTool({
@@ -201,15 +205,7 @@ export default function subagentExtension(pi: ExtensionAPI): void {
         },
         ctx,
       );
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-        details: result,
-      };
+      return toolResult(JSON.stringify(result, null, 2), result);
     },
   });
 
@@ -227,15 +223,7 @@ export default function subagentExtension(pi: ExtensionAPI): void {
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const ctrl = ensureControl();
       const result = await ctrl.sendMessage(params, ctx);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Message delivered: ${result.delivered}`,
-          },
-        ],
-        details: result,
-      };
+      return toolResult(`Message delivered: ${result.delivered}`, result);
     },
   });
 
@@ -253,15 +241,7 @@ export default function subagentExtension(pi: ExtensionAPI): void {
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const ctrl = ensureControl();
       const result = await ctrl.followupTask(params, ctx);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Follow-up ${result.triggered ? "triggered new turn" : "queued"}: queued=${result.queued}, triggered=${result.triggered}`,
-          },
-        ],
-        details: result,
-      };
+      return toolResult(`Follow-up ${result.triggered ? "triggered new turn" : "queued"}: queued=${result.queued}, triggered=${result.triggered}`, result);
     },
   });
 
@@ -281,41 +261,7 @@ export default function subagentExtension(pi: ExtensionAPI): void {
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const ctrl = ensureControl();
       const result = await ctrl.wait(params, ctx);
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                timed_out: result.timed_out,
-                event_count: result.events.length,
-                mailbox_count: result.mailbox.length,
-                events: result.events.map((e) => ({
-                  type: e.type,
-                  agentPath: "agentPath" in e ? (e as any).agentPath : undefined,
-                  ...(e.type === "agent_status_changed"
-                    ? {
-                        previousStatus: (e as any).previousStatus,
-                        newStatus: (e as any).newStatus,
-                      }
-                    : {}),
-                  ...(e.type === "agent_final_message"
-                    ? { message: (e as any).message }
-                    : {}),
-                })),
-                mailbox: result.mailbox.map((m) => ({
-                  from: m.fromAgentPath,
-                  kind: m.kind,
-                  content: m.content.slice(0, 200),
-                })),
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-        details: result,
-      };
+      return toolResult(JSON.stringify({ timed_out: result.timed_out, event_count: result.events.length, mailbox_count: result.mailbox.length, events: result.events.map((e) => ({ type: e.type, agentPath: "agentPath" in e ? (e as any).agentPath : undefined, ...(e.type === "agent_status_changed" ? { previousStatus: (e as any).previousStatus, newStatus: (e as any).newStatus } : {}), ...(e.type === "agent_final_message" ? { message: (e as any).message } : {}) })), mailbox: result.mailbox.map((m) => ({ from: m.fromAgentPath, kind: m.kind, content: m.content.slice(0, 200) })) }, null, 2), result);
     },
   });
 
@@ -331,23 +277,7 @@ export default function subagentExtension(pi: ExtensionAPI): void {
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       const ctrl = ensureControl();
       const result = ctrl.list(params);
-      return {
-        content: [
-          {
-            type: "text",
-            text:
-              result.agents.length === 0
-                ? "(no agents)"
-                : result.agents
-                    .map(
-                      (a) =>
-                        `${a.status === "completed" || a.status === "shutdown" ? "○" : "●"} ${a.agent_path}${a.nickname ? ` (${a.nickname})` : ""}${a.role ? ` [${a.role}]` : ""} — ${a.status}${a.last_task ? `\n  last: ${a.last_task.slice(0, 80)}` : ""}`,
-                    )
-                    .join("\n"),
-          },
-        ],
-        details: result,
-      };
+      return toolResult(result.agents.length === 0 ? "(no agents)" : result.agents.map((a) => `${a.status === "completed" || a.status === "shutdown" ? "○" : "●"} ${a.agent_path}${a.nickname ? ` (${a.nickname})` : ""}${a.role ? ` [${a.role}]` : ""} — ${a.status}${a.last_task ? `\n  last: ${a.last_task.slice(0, 80)}` : ""}`).join("\n"), result);
     },
   });
 
@@ -365,15 +295,7 @@ export default function subagentExtension(pi: ExtensionAPI): void {
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const ctrl = ensureControl();
       const result = await ctrl.close(params, ctx);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Closed: ${result.closed.join(", ")}`,
-          },
-        ],
-        details: result,
-      };
+      return toolResult(`Closed: ${result.closed.join(", ")}`, result);
     },
   });
 
