@@ -419,13 +419,7 @@ ${readOnlyDenySection}
 
 /** macOS で sandbox-exec が利用可能かを非例外で返す。 */
 export async function isMacSandboxAvailable(): Promise<boolean> {
-	if (process.platform !== "darwin") return false;
-	try {
-		await access("/usr/bin/sandbox-exec", constants.X_OK);
-		return true;
-	} catch {
-		return false;
-	}
+	return process.platform === "darwin" && access("/usr/bin/sandbox-exec", constants.X_OK).then(() => true, () => false);
 }
 
 // ─── Path resolution ─────────────────────────────────────────────
@@ -464,29 +458,14 @@ const SIGKILL_GRACE_MS = 5_000;
 
 // ─── Per-run temp directory ──────────────────────────────────────
 
-/**
- * per-run 専用の一時ディレクトリを作成する。
- * command の実行期間のみ存在し、終了後に cleanup する。
- *
- * SECURITY: system TMPDIR を広く許可せず、
- * 専用ディレクトリのみ read/write を許可する。
- */
+/** Per-run 専用一時ディレクトリ作成。 */
 function createIsolatedTempDir(): string {
 	return mkdtempSync(resolve(tmpdir(), "sandbox-run-"));
 }
 
-/**
- * 一時ディレクトリを cleanup する。
- * 失敗しても例外を投げず、warning 扱いにする。
- * 複数回呼ばれても安全（idempotent）。
- */
+/** 一時ディレクトリを cleanup する。失敗しても例外を投げない（idempotent）。 */
 function cleanupTempDir(dir: string): void {
-	try {
-		rmSync(dir, { recursive: true, force: true });
-	} catch {
-		// cleanup failure is a warning, not an error.
-		// The temp dir will be cleaned up by the OS eventually.
-	}
+	try { rmSync(dir, { recursive: true, force: true }); } catch { /* OS will clean up */ }
 }
 
 // ─── Process group cleanup helper ───────────────────────────────
@@ -555,7 +534,7 @@ export async function runSandboxedShellMac(
 	policy: SandboxPolicy,
 	options?: SandboxRunOptions,
 ): Promise<RunResult> {
-	if (!command || command.trim().length === 0) {
+	if (!command?.trim()) {
 		throw new Error("empty command");
 	}
 
