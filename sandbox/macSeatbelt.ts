@@ -11,7 +11,7 @@ import { relative, isAbsolute, resolve, dirname, join as pathJoin } from "node:p
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import type { SandboxPolicy } from "./permissions.js";
-import { resolveSafeRealPath, checkUnsafeRoot } from "./pathPolicy.js";
+import { resolveSafeRealPath, checkUnsafeRoot } from "./permissions.js";
 
 export interface RunResult { code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string; }
 

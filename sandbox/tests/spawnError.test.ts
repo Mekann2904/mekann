@@ -23,11 +23,16 @@ vi.mock("node:child_process", () => ({
 	}),
 }));
 
-vi.mock("../pathPolicy.js", () => ({
+vi.mock("../permissions.js", () => ({
 	resolveRealPaths: vi.fn((paths: string[]) => Promise.resolve(paths)),
 	validateWorkspaceRoot: vi.fn(() => Promise.resolve()),
 	assertPathInsideRoot: vi.fn(() => Promise.resolve()),
 	isProtectedPath: vi.fn(() => false),
+	readOnlyPolicy: vi.fn((cwd: string, workspaceRoots: string[] = []) => ({ mode: "read_only", cwd, workspaceRoots, writableRoots: [], network: false })),
+	workspaceWritePolicy: vi.fn(),
+	yoloPolicy: vi.fn(),
+	shouldRequestApproval: vi.fn(),
+	yoloApprovalMessage: vi.fn(),
 	resolveSafeRealPath: vi.fn((p: string) => Promise.resolve(p)),
 	checkUnsafeRoot: vi.fn(() => Promise.resolve(null)),
 }));

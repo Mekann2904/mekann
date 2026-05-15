@@ -51,7 +51,7 @@ import {
 	type SandboxPolicy,
 } from "../permissions.js";
 
-import { assertPathInsideRoot, resolveRealPaths, isProtectedPath } from "../pathPolicy.js";
+import { assertPathInsideRoot, resolveRealPaths, isProtectedPath } from "../permissions.js";
 import { shouldRequestApproval, yoloApprovalMessage } from "../permissions.js";
 
 // ─── Platform check ──────────────────────────────────────────────
@@ -837,7 +837,7 @@ describe("validateWorkspaceRoot", () => {
 	it("正常な project directory は pass する", async () => {
 		const projectDir = mkdtempSync(join(tmpdir(), "sandbox-project-"));
 		try {
-			const { validateWorkspaceRoot } = await import("../pathPolicy.js");
+			const { validateWorkspaceRoot } = await import("../permissions.js");
 			await expect(validateWorkspaceRoot(projectDir)).resolves.toBeUndefined();
 		} finally {
 			rmSync(projectDir, { recursive: true, force: true });
@@ -845,23 +845,23 @@ describe("validateWorkspaceRoot", () => {
 	});
 
 	it("workspace root に / は不可", async () => {
-		const { validateWorkspaceRoot } = await import("../pathPolicy.js");
+		const { validateWorkspaceRoot } = await import("../permissions.js");
 		await expect(validateWorkspaceRoot("/")).rejects.toThrow("cannot be /");
 	});
 
 	it("workspace root に $HOME は不可", async () => {
-		const { validateWorkspaceRoot } = await import("../pathPolicy.js");
+		const { validateWorkspaceRoot } = await import("../permissions.js");
 		const home = process.env.HOME ?? "/Users/test";
 		await expect(validateWorkspaceRoot(home)).rejects.toThrow("cannot be $HOME");
 	});
 
 	it("workspace root に /Users は不可", async () => {
-		const { validateWorkspaceRoot } = await import("../pathPolicy.js");
+		const { validateWorkspaceRoot } = await import("../permissions.js");
 		await expect(validateWorkspaceRoot("/Users")).rejects.toThrow("cannot be /Users");
 	});
 
 	it("workspace root に /Users/<user> は不可", async () => {
-		const { validateWorkspaceRoot } = await import("../pathPolicy.js");
+		const { validateWorkspaceRoot } = await import("../permissions.js");
 		await expect(validateWorkspaceRoot("/Users/testuser")).rejects.toThrow("cannot be /Users");
 	});
 });
@@ -1480,13 +1480,13 @@ describe("truncateForLlm", () => {
 
 describe("resolveSafeRealPath", () => {
 	it("存在するパスは realpath を返す", async () => {
-		const { resolveSafeRealPath } = await import("../pathPolicy.js");
+		const { resolveSafeRealPath } = await import("../permissions.js");
 		const result = await resolveSafeRealPath("/tmp");
 		expect(result).toMatch(/^\/private\/tmp$|^\/tmp$/);
 	});
 
 	it("存在しないパスは resolve の結果を返す", async () => {
-		const { resolveSafeRealPath } = await import("../pathPolicy.js");
+		const { resolveSafeRealPath } = await import("../permissions.js");
 		const result = await resolveSafeRealPath("/nonexistent/path/to/file");
 		expect(result).toBe("/nonexistent/path/to/file");
 	});

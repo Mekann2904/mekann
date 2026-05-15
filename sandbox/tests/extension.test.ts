@@ -51,13 +51,21 @@ vi.mock("../macSeatbelt.js", () => ({
 }));
 
 // Mock pathPolicy
-vi.mock("../pathPolicy.js", () => ({
+vi.mock("../permissions.js", () => ({
 	resolveRealPaths: vi.fn((paths: string[]) => Promise.resolve(paths)),
 	validateWorkspaceRoot: vi.fn(() => Promise.resolve()),
 	resolveSafeRealPath: vi.fn((p: string) => Promise.resolve(p)),
 	assertPathInsideRoot: vi.fn(() => Promise.resolve()),
 	isProtectedPath: vi.fn(() => false),
 	checkUnsafeRoot: vi.fn(() => Promise.resolve(null)),
+	readOnlyPolicy: vi.fn((cwd: string, workspaceRoots: string[] = []) => ({ mode: "read_only", cwd, workspaceRoots, writableRoots: [], network: false })),
+	workspaceWritePolicy: vi.fn(),
+	yoloPolicy: vi.fn(),
+	shouldRequestApproval: vi.fn((_mode: string, command: string) => {
+		if (/\brm\s+-rf\b/i.test(command)) return { needsApproval: true, reason: "再帰的強制削除" };
+		return { needsApproval: false };
+	}),
+	yoloApprovalMessage: vi.fn(),
 }));
 
 // ─── Mock infrastructure ─────────────────────────────────────────
@@ -258,7 +266,7 @@ describe("session_start hook", () => {
 		const ctx = createMockCtx({ cwd: "/" });
 
 		// Mock validateWorkspaceRoot to throw for /
-		const { validateWorkspaceRoot } = await import("../pathPolicy.js");
+		const { validateWorkspaceRoot } = await import("../permissions.js");
 		(validateWorkspaceRoot as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
 			new Error("workspace root cannot be /"),
 		);
@@ -876,7 +884,7 @@ describe("resolveRealPaths error fallback", () => {
 	it("realpath が失敗した場合、cwd をそのまま使用する", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
-		const { resolveRealPaths } = await import("../pathPolicy.js");
+		const { resolveRealPaths } = await import("../permissions.js");
 		(resolveRealPaths as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("realpath failed"));
 
 		const notifications: string[] = [];
@@ -1184,7 +1192,7 @@ describe("request_elevation: startup block", () => {
 		await loadExtension(mock);
 
 		// Trigger startup block by setting workspace root to /
-		const { validateWorkspaceRoot } = await import("../pathPolicy.js");
+		const { validateWorkspaceRoot } = await import("../permissions.js");
 		(validateWorkspaceRoot as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
 			new Error("workspace root cannot be /"),
 		);
@@ -1334,7 +1342,7 @@ describe("startup block: stale widget prevention", () => {
 		mock._flags = {};
 		await loadExtension(mock);
 
-		const { validateWorkspaceRoot } = await import("../pathPolicy.js");
+		const { validateWorkspaceRoot } = await import("../permissions.js");
 		(validateWorkspaceRoot as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
 			new Error("workspace root cannot be /"),
 		);
