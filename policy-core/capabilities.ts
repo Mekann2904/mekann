@@ -35,33 +35,9 @@ export interface CapabilityProfile {
 
 /** The canonical set of capability profiles. */
 export const CAPABILITY_PROFILES: Record<CapabilityProfileName, CapabilityProfile> = {
-	plan_read_only: {
-		name: "plan_read_only",
-		allowFileMutationTools: false,
-		bashMode: "read_only",
-		network: false,
-		requiresUserApproval: false,
-	},
-	sandbox_read_only: {
-		name: "sandbox_read_only",
-		allowFileMutationTools: false,
-		bashMode: "read_only",
-		network: false,
-		requiresUserApproval: false,
-	},
-	workspace_write: {
-		name: "workspace_write",
-		allowFileMutationTools: true,
-		bashMode: "workspace_write",
-		network: false,
-		requiresUserApproval: false,
-	},
-	yolo: {
-		name: "yolo",
-		allowFileMutationTools: true,
-		bashMode: "unsandboxed",
-		network: true,
-		requiresUserApproval: true,
-	},
+	plan_read_only: { name: "plan_read_only", allowFileMutationTools: false, bashMode: "read_only", network: false, requiresUserApproval: false },
+	sandbox_read_only: { name: "sandbox_read_only", allowFileMutationTools: false, bashMode: "read_only", network: false, requiresUserApproval: false },
+	workspace_write: { name: "workspace_write", allowFileMutationTools: true, bashMode: "workspace_write", network: false, requiresUserApproval: false },
+	yolo: { name: "yolo", allowFileMutationTools: true, bashMode: "unsandboxed", network: true, requiresUserApproval: true },
 };
 
