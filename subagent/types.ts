@@ -47,95 +47,30 @@ export interface AgentMetadata {
 
 // ─── Lifecycle events ────────────────────────────────────────────
 
-export interface AgentSpawnBegin {
-  type: "agent_spawn_begin";
-  agentId: string;
-  agentPath: string;
-  parentAgentId?: string;
-  timestamp: number;
-}
-
-export interface AgentSpawnEnd {
-  type: "agent_spawn_end";
-  agentId: string;
-  agentPath: string;
-  success: boolean;
-  error?: string;
-  timestamp: number;
-}
-
-export interface AgentMessageBegin {
-  type: "agent_message_begin";
+/** Base fields shared by all lifecycle events. */
+interface LifecycleBase {
   agentId: string;
   agentPath: string;
   timestamp: number;
 }
 
-export interface AgentMessageEnd {
-  type: "agent_message_end";
-  agentId: string;
-  agentPath: string;
-  timestamp: number;
-}
-
-export interface AgentWaitingBegin {
-  type: "agent_waiting_begin";
-  agentId: string;
-  agentPath: string;
-  timestamp: number;
-}
-
-export interface AgentWaitingEnd {
-  type: "agent_waiting_end";
-  agentId: string;
-  agentPath: string;
-  timestamp: number;
-}
-
-export interface AgentCloseBegin {
-  type: "agent_close_begin";
-  agentId: string;
-  agentPath: string;
-  timestamp: number;
-}
-
-export interface AgentCloseEnd {
-  type: "agent_close_end";
-  agentId: string;
-  agentPath: string;
-  timestamp: number;
-}
-
-export interface AgentStatusChanged {
-  type: "agent_status_changed";
-  agentId: string;
-  agentPath: string;
-  previousStatus: AgentStatus;
-  newStatus: AgentStatus;
-  timestamp: number;
-}
-
-export interface AgentFinalMessage {
-  type: "agent_final_message";
-  agentId: string;
-  agentPath: string;
-  parentAgentId?: string;
-  message: string;
-  status: AgentStatus;
-  timestamp: number;
-}
+export interface AgentSpawnBegin extends LifecycleBase { type: "agent_spawn_begin"; parentAgentId?: string; }
+export interface AgentSpawnEnd extends LifecycleBase { type: "agent_spawn_end"; success: boolean; error?: string; }
+export interface AgentMessageBegin extends LifecycleBase { type: "agent_message_begin"; }
+export interface AgentMessageEnd extends LifecycleBase { type: "agent_message_end"; }
+export interface AgentWaitingBegin extends LifecycleBase { type: "agent_waiting_begin"; }
+export interface AgentWaitingEnd extends LifecycleBase { type: "agent_waiting_end"; }
+export interface AgentCloseBegin extends LifecycleBase { type: "agent_close_begin"; }
+export interface AgentCloseEnd extends LifecycleBase { type: "agent_close_end"; }
+export interface AgentStatusChanged extends LifecycleBase { type: "agent_status_changed"; previousStatus: AgentStatus; newStatus: AgentStatus; }
+export interface AgentFinalMessage extends LifecycleBase { type: "agent_final_message"; parentAgentId?: string; message: string; status: AgentStatus; }
 
 export type LifecycleEvent =
-  | AgentSpawnBegin
-  | AgentSpawnEnd
-  | AgentMessageBegin
-  | AgentMessageEnd
-  | AgentWaitingBegin
-  | AgentWaitingEnd
-  | AgentCloseBegin
-  | AgentCloseEnd
-  | AgentStatusChanged
-  | AgentFinalMessage;
+  | AgentSpawnBegin | AgentSpawnEnd
+  | AgentMessageBegin | AgentMessageEnd
+  | AgentWaitingBegin | AgentWaitingEnd
+  | AgentCloseBegin | AgentCloseEnd
+  | AgentStatusChanged | AgentFinalMessage;
 
 // ─── Mailbox item ────────────────────────────────────────────────
 
