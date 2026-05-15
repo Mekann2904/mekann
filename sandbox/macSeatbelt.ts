@@ -460,9 +460,7 @@ export async function runSandboxedShellMac(
 	});
 
 	function cleanupTimers(): void {
-		if (timeoutId) clearTimeout(timeoutId);
-		if (sigkillTimeoutId) clearTimeout(sigkillTimeoutId);
-		if (abortSignal && abortHandler) abortSignal.removeEventListener("abort", abortHandler);
+		if (timeoutId) clearTimeout(timeoutId); if (sigkillTimeoutId) clearTimeout(sigkillTimeoutId); if (abortSignal && abortHandler) abortSignal.removeEventListener("abort", abortHandler);
 	}
 
 	try {

@@ -37,10 +37,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 	/** Apply a thinking level with suppress guard (safe to call when level is undefined). */
 	function applyThinking(level?: ThinkingLevel): void {
-		if (level) {
-			suppressThinkingSelectPersist = true;
-			try { pi.setThinkingLevel(level); } finally { suppressThinkingSelectPersist = false; }
-		}
+		if (level) { suppressThinkingSelectPersist = true; try { pi.setThinkingLevel(level); } finally { suppressThinkingSelectPersist = false; } }
 	}
 
 	pi.registerFlag("plan", { description: "プランモードで起動（読み取り専用探索）", type: "boolean", default: false });
