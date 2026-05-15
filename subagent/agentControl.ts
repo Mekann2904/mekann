@@ -9,7 +9,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createAgentSession } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { ROOT_PATH, resolveTaskPath } from "./agentPath.js";
+import { ROOT_PATH, resolveTaskPath } from "./types.js";
 import { AgentRegistry } from "./registry.js";
 import { Mailbox } from "./mailbox.js";
 import { extractForkContext, buildContextPreamble } from "./contextFork.js";
