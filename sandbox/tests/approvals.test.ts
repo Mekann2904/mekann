@@ -19,7 +19,7 @@ describe("shouldRequestApproval: yolo", () => {
 	it("未承認の場合は承認が必要", () => {
 		const result = shouldRequestApproval("yolo", "ls");
 		expect(result.needsApproval).toBe(true);
-		expect(result.reason).toContain("approval");
+		expect(result.reason).toContain("明示的な承認");
 	});
 
 	it("yoloApproved=true なら承認不要", () => {
@@ -53,25 +53,25 @@ describe("shouldRequestApproval: workspace_write dangerous patterns", () => {
 	it("rm -rf は承認が必要", () => {
 		const result = shouldRequestApproval("workspace_write", "rm -rf ./node_modules");
 		expect(result.needsApproval).toBe(true);
-		expect(result.reason).toContain("Recursive force delete");
+		expect(result.reason).toContain("再帰的強制削除");
 	});
 
 	it("rm -r は承認が必要", () => {
 		const result = shouldRequestApproval("workspace_write", "rm -r ./dist");
 		expect(result.needsApproval).toBe(true);
-		expect(result.reason).toContain("Recursive delete");
+		expect(result.reason).toContain("再帰的削除");
 	});
 
 	it("sudo は承認が必要", () => {
 		const result = shouldRequestApproval("workspace_write", "sudo apt install build-essential");
 		expect(result.needsApproval).toBe(true);
-		expect(result.reason).toContain("Elevated privileges");
+		expect(result.reason).toContain("権限昇格");
 	});
 
 	it("chmod 777 は承認が必要", () => {
 		const result = shouldRequestApproval("workspace_write", "chmod 777 /tmp/test");
 		expect(result.needsApproval).toBe(true);
-		expect(result.reason).toContain("Permission change");
+		expect(result.reason).toContain("権限変更");
 	});
 
 	it("chmod 755 は承認が必要", () => {
@@ -82,31 +82,31 @@ describe("shouldRequestApproval: workspace_write dangerous patterns", () => {
 	it("chown は承認が必要", () => {
 		const result = shouldRequestApproval("workspace_write", "chown root:wheel file");
 		expect(result.needsApproval).toBe(true);
-		expect(result.reason).toContain("Ownership change");
+		expect(result.reason).toContain("所有者変更");
 	});
 
 	it("shutdown は承認が必要", () => {
 		const result = shouldRequestApproval("workspace_write", "shutdown -h now");
 		expect(result.needsApproval).toBe(true);
-		expect(result.reason).toContain("System shutdown");
+		expect(result.reason).toContain("システムシャットダウン");
 	});
 
 	it("reboot は承認が必要", () => {
 		const result = shouldRequestApproval("workspace_write", "reboot");
 		expect(result.needsApproval).toBe(true);
-		expect(result.reason).toContain("System reboot");
+		expect(result.reason).toContain("システム再起動");
 	});
 
 	it("mkfs は承認が必要", () => {
 		const result = shouldRequestApproval("workspace_write", "mkfs.ext4 /dev/sda1");
 		expect(result.needsApproval).toBe(true);
-		expect(result.reason).toContain("Filesystem format");
+		expect(result.reason).toContain("ファイルシステム初期化");
 	});
 
 	it("dd は承認が必要", () => {
 		const result = shouldRequestApproval("workspace_write", "dd if=/dev/zero of=/dev/sda");
 		expect(result.needsApproval).toBe(true);
-		expect(result.reason).toContain("Raw disk operation");
+		expect(result.reason).toContain("RAW ディスク操作");
 	});
 });
 
@@ -179,22 +179,22 @@ describe("shouldRequestApproval: bypass patterns (NOT a security boundary)", () 
 describe("yoloApprovalMessage", () => {
 	it("sandboxing について警告する", () => {
 		const msg = yoloApprovalMessage();
-		expect(msg).toContain("disable sandboxing");
+		expect(msg).toContain("無効化");
 	});
 
 	it("unrestricted access について言及する", () => {
 		const msg = yoloApprovalMessage();
-		expect(msg).toContain("unrestricted access");
+		expect(msg).toContain("制限なし");
 	});
 
 	it("ファイルアクセスについて言及する", () => {
 		const msg = yoloApprovalMessage();
-		expect(msg).toContain("files");
+		expect(msg).toContain("ファイル");
 	});
 
 	it("ネットワークについて言及する", () => {
 		const msg = yoloApprovalMessage();
-		expect(msg).toContain("network");
+		expect(msg).toContain("ネットワーク");
 	});
 
 	it("警告絵文字を含む", () => {

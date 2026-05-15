@@ -22,7 +22,7 @@ macOS Seatbelt (`sandbox-exec`) による bash ツール用コマンドサンド
 |--------|------|
 | `read_only` | Workspace は読み取り専用。workspace への書き込みは拒否。実行ごとに隔離された `$TMPDIR` のみ書き込み可能。workspace 外のユーザーデータの読み取りは拒否。 |
 | `workspace_write` | Workspace への書き込みを許可。ただし `.git`, `.codex`, `.agents` ディレクトリは保護（書き込み拒否）。シンボリックリンクによる脱出をブロック。 |
-| `yolo` | サンドボックスなし。デフォルトモード。ユーザーの明示的な承認が必要。 |
+| `yolo` | サンドボックスなし。明示指定のみ。ユーザーの明示的な承認が必要。 |
 
 ## 主要なセキュリティプロパティ
 
@@ -35,14 +35,14 @@ macOS Seatbelt (`sandbox-exec`) による bash ツール用コマンドサンド
 ## 使い方
 
 ```bash
-# デフォルト: yolo モード（サンドボックスなし）
+# Default: workspace_write (サンドボックスあり)
 pi -e ./sandbox
 
 # 読み取り専用モードで起動
 pi -e ./sandbox --sandbox-mode read_only
 
-# workspace 書き込みモードで起動
-pi -e ./sandbox --sandbox-mode workspace_write
+# サンドボックスなし（明示指定のみ）
+pi -e ./sandbox --sandbox-mode yolo
 
 # サンドボックスを明示的に無効化
 pi -e ./sandbox --no-sandbox
@@ -101,3 +101,16 @@ RUN_MAC_SANDBOX_TESTS=1 npm test
 ## ドキュメント
 
 - [SECURITY.md](./SECURITY.md) — セキュリティモデル、スコープ、制限事項、既知の問題
+
+## 拡張間連携 (plan-mode)
+
+`plan-mode` 拡張が plan mode に入ると、`mekann:sandbox:push-profile` イベントを発行します。
+sandbox 拡張はこれを受信し、effective mode を `read_only` にオーバーライドします。
+plan mode が終了すると `mekann:sandbox:pop-profile` で元のモードに戻ります。
+
+この連携により:
+- `plan-mode` が UX レベルで `bash` ツールを表示し、command intent で早期ブロック
+- `sandbox` が OS レベルで実際の read-only 強制
+- どちらかが未導入でも単独で動作可能
+
+詳細は `policy-core/` の共通定義を参照。

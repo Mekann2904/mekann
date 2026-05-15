@@ -28,16 +28,20 @@ pi --plan  # プランモードで起動
 | Mode | Tools | Description |
 |------|-------|-------------|
 | `main` | All | 通常モード（全ツール使用可能） |
-| `plan` | read-only (`read`, `grep`, `find`, `ls`) | 調査と計画のみ |
+| `plan` | read-only (`read`, `grep`, `find`, `ls`, `bash`) | 調査と計画のみ |
 
 ### Bash in Plan Mode
 
-`bash` は条件付きで許可。読み取り専用コマンドのみ実行可能。
+`bash` ツールは plan mode でも表示され、読み取り専用コマンドのみ実行可能。
 
 - **許可**: `cat`, `head`, `tail`, `grep`, `ls`, `find`, `git status`, `git log`, `git diff`, `npm list`, `jq`, `rg`, `fd`, `bat` 等
 - **ブロック**: `rm`, `mv`, `cp`, `npm install`, `git add`, `git commit`, `sudo`, `vim` 等
 - **シェルメタ**: パイプ (`|`)、チェーン (`&&`, `||`, `;`)、コマンド置換 (`$()`)、リダイレクト (`>`) はすべてブロック
 - 例外: `2>/dev/null`, `2>&1`, `>/dev/null` は読み取りコマンドに限り許可
+
+> **注意**: bash のコマンド intent 分類 (`classifyCommandIntent()`) は **UX フィルタ** であり、security boundary ではありません。
+> 実際の強制実行は sandbox 拡張の OS-level Seatbelt policy が担当します。
+> sandbox が未導入の場合、intent 分類が唯一のガードとして機能します。
 
 ## Mode-Specific Models & Thinking
 
@@ -160,7 +164,7 @@ interface PlanState {
 | Hook | Plan Mode での挙動 |
 |------|-------------------|
 | `session_start` | `--plan` フラグがあれば自動で plan mode に入る。モデル・thinking 設定ファイルをロード |
-| `tool_call` | read-only ツール以外をブロック。bash は `isSafeCommand()` で判定 |
+| `tool_call` | read-only ツール以外をブロック。bash は `classifyCommandIntent()` で UX guard 判定（security boundary は sandbox） |
 | `before_agent_start` | プロンプト注入: 初回は `plan-mode.md`、以降は `plan-mode-reminder.md` |
 | `agent_end` | 最後の assistant メッセージから `<proposed_plan>` を抽出して保存 |
 | `turn_end` | ブロックカウンターをリセット |
@@ -198,12 +202,12 @@ npm test
 
 テスト対象:
 
-- `isSafeCommand` — 安全・危険コマンド、シェルメタ文字、リダイレクト、エッジケース
+- `isPlanReadOnlyCommandIntent` — 安全・危険コマンド、シェルメタ文字、リダイレクト、エッジケース
 - `extractProposedPlan` — 抽出・空・複数・終了タグなし
 - `buildBlockReason` — 段階的エスカレーション
 - `loadPrompt` — ファイル読み込み・変数置換
 - `hashContent` — 一意性・フォーマット
-- `sanitizePlanTools` — edit/write 除去
+- `PLAN_MODE_TOOLS` coverage — read, grep, find, ls, bash を含む
 - `parseModelRef` — provider/modelId パース（スラッシュ含む modelId 対応）
 - `formatModelRef` / `sameModelRef` — ModelRef ユーティリティ
 - Config persistence — load/save/update、round-trip、invalid JSON

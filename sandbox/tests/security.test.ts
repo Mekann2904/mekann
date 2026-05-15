@@ -5,81 +5,20 @@
  * They are not about coverage — they are about preventing security holes.
  *
  * Invariants tested:
- * 1. isSafeCommand never allows destructive commands
- * 2. SBPL policies always deny-by-default (except yolo)
- * 3. Sandbox mode transitions require approval for yolo
- * 4. Path policies block escapes via symlink, parent traversal, etc.
- * 5. Environment sanitization removes secrets
+ * 1. SBPL policies always deny-by-default (except yolo)
+ * 2. Environment sanitization removes secrets
+ * 3. Sandbox mode enforcement (read_only, workspace_write, yolo)
+ *
+ * Note: Command intent classification (isSafeCommand / classifyCommandIntent)
+ * was moved to policy-core/ and is tested in plan-mode tests.
+ * It is a UX filter, not a security boundary.
  */
 
 import { describe, it, expect } from "vitest";
-import { isSafeCommand } from "../../plan-mode/utils.js";
 import { readOnlyPolicy, workspaceWritePolicy, yoloPolicy } from "../permissions.js";
 import { buildSandboxEnv, buildMacSeatbeltPolicy } from "../macSeatbelt.js";
 
-// ─── Invariant 1: isSafeCommand rejects all destructive commands ────
-
-describe("Security: isSafeCommand never allows destructive commands", () => {
-	const destructiveCommands = [
-		// File deletion
-		"rm -rf /",
-		"rm -rf ~",
-		"rm -rf .",
-		"rm -rf *",
-		"rmdir /tmp/important",
-
-		// System commands
-		"sudo rm -rf /",
-		"sudo shutdown -h now",
-		"sudo reboot",
-		"sudo mkfs.ext4 /dev/sda1",
-		"sudo dd if=/dev/zero of=/dev/sda",
-		"sudo chmod 777 /",
-		"sudo chown root:root /etc/passwd",
-
-		// Package managers (can install malicious code)
-		"npm install malicious-pkg",
-		"npm uninstall critical-pkg",
-		"yarn add malicious-pkg",
-		"pnpm add malicious-pkg",
-		"pip install malicious-pkg",
-		"brew install malicious-pkg",
-
-		// Editors (can modify files)
-		"vim /etc/passwd",
-		"vi /etc/hosts",
-		"nano /etc/fstab",
-		"emacs /etc/ssh/sshd_config",
-		"code /etc/passwd",
-
-		// Shell meta characters (command injection)
-		"ls; rm -rf /",
-		"echo hello && rm -rf /",
-		"cat file || rm -rf /",
-		"ls | rm -rf /",
-		"echo $(rm -rf /)",
-		"ls `rm -rf /`",
-		"cat file > /etc/passwd",
-		"ls >> /etc/hosts",
-		"echo hello & rm -rf /",
-
-		// Newline injection
-		"ls\nrm -rf /",
-
-		// Git mutating commands
-		"git push --force",
-		"git reset --hard HEAD~1",
-		"git clean -fdx",
-		"git checkout -- .",
-		"git branch -D main",
-	];
-
-	it.each(destructiveCommands)("rejects '%s'", (cmd) => {
-		expect(isSafeCommand(cmd)).toBe(false);
-	});
-});
-
-// ─── Invariant 2: SBPL policies deny-by-default ─────────────────────
+// ─── Invariant 1: SBPL policies deny-by-default ─────────────────────
 
 describe("Security: SBPL policies deny-by-default", () => {
 	it("read_only policy contains (deny default)", () => {
@@ -109,7 +48,7 @@ describe("Security: SBPL policies deny-by-default", () => {
 	});
 });
 
-// ─── Invariant 3: Environment sanitization removes secrets ──────────
+// ─── Invariant 2: Environment sanitization removes secrets ──────────
 
 describe("Security: buildSandboxEnv removes secrets", () => {
 	const secretEnvVars = [
@@ -153,35 +92,5 @@ describe("Security: buildSandboxEnv removes secrets", () => {
 	it("GIT_TERMINAL_PROMPT is 0 (prevents interactive prompts)", () => {
 		const env = buildSandboxEnv(readOnlyPolicy("/tmp/project"), "/tmp/home");
 		expect(env.GIT_TERMINAL_PROMPT).toBe("0");
-	});
-});
-
-// ─── Invariant 4: Safe commands that must always be allowed ─────────
-
-describe("Security: critical safe commands are always allowed", () => {
-	const safeCommands = [
-		"git status",
-		"git log",
-		"git diff",
-		"git show",
-		"git branch",
-		"ls -la",
-		"cat README.md",
-		"head -20 package.json",
-		"tail -50 output.log",
-		"grep -r 'TODO' src/",
-		"find . -name '*.ts'",
-		"pwd",
-		"echo hello",
-		"wc -l src/index.ts",
-		"ps aux",
-		"node --version",
-		"npm list",
-		"npm view react",
-		"npm outdated",
-	];
-
-	it.each(safeCommands)("allows '%s'", (cmd) => {
-		expect(isSafeCommand(cmd)).toBe(true);
 	});
 });

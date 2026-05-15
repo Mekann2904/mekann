@@ -8,6 +8,7 @@ Custom extensions for [pi](https://pi.dev) coding agent.
 
 | Extension | Description |
 |-----------|-------------|
+| [policy-core](./policy-core/) | `read_only` / bash 制限 / capability 語彙の共通定義 |
 | [plan-mode](./plan-mode/) | 実装前の読み取り専用プランニングモード |
 | [sandbox](./sandbox/) | macOS Seatbelt による bash コマンドサンドボックス |
 | [zip-repo](./zip-repo/) | 作業ツリーを ZIP 化してクリップボードにコピー |
@@ -19,7 +20,7 @@ Custom extensions for [pi](https://pi.dev) coding agent.
 Codex-inspired plan mode — 実装前に考えさせるための読み取り専用モード。
 
 - `/plan` または `Cmd+P` で main ↔ plan をトグル
-- Plan mode: read-only（`bash` は安全なコマンドのみ許可）
+- Plan mode: read-only（`bash` は読み取り専用 intent のみ UX guard で許可、security は sandbox が担当）
 - 計画が `<proposed_plan>` で提示され、main に戻ると実行プロンプトとして注入
 - 連続ブロックで段階的に警告を強化するエスカレーション機構
 - `pi --plan` で plan mode から起動可能
@@ -34,7 +35,8 @@ macOS Seatbelt による bash ツール用サンドボックス。
 **注意: bash ツールのみが対象。エージェント全体のサンドボックスではない。**
 
 - 3 段階のモード: `read_only` / `workspace_write` / `yolo`
-- デフォルト: `yolo`（サンドボックスなし）
+- デフォルト: `workspace_write`（サンドボックスあり）
+- `yolo`（サンドボックスなし）は明示指定のみ
 - `/sandbox [mode]` でモード表示・変更（Tab で補完）
 - `request_elevation` ツール: ブロック時に一時的な権限昇格をリクエスト可能
 - default deny: 必要な許可だけを明示的に付与

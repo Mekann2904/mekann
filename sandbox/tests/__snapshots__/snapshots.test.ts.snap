@@ -864,6 +864,13 @@ exports[`SBPL policy snapshots > writableRoots ≠ workspaceRoots 1`] = `
 "
 `;
 
+exports[`SBPL policy snapshots > yolo 1`] = `
+"
+(version 1)
+(allow default)
+"
+`;
+
 exports[`SBPL policy snapshots > 複数 workspaceRoots 1`] = `
 "
 (version 1)

@@ -12,6 +12,8 @@ import {
 	yoloPolicy,
 	parseSandboxMode,
 	modeLabel,
+	DEFAULT_SANDBOX_MODE,
+	SANDBOX_MODES,
 	type SandboxMode,
 	type SandboxPolicy,
 } from "../permissions.js";
@@ -157,8 +159,8 @@ describe("parseSandboxMode", () => {
 
 describe("modeLabel", () => {
 	it("各モードのラベルを返す", () => {
-		expect(modeLabel("read_only")).toBe("read-only");
-		expect(modeLabel("workspace_write")).toBe("workspace-write");
+		expect(modeLabel("read_only")).toBe("読み取り専用");
+		expect(modeLabel("workspace_write")).toBe("ワークスペース書き込み可能");
 		expect(modeLabel("yolo")).toBe("yolo");
 	});
 
@@ -166,6 +168,27 @@ describe("modeLabel", () => {
 		expect(modeLabel("read_only")).not.toContain("_");
 		expect(modeLabel("workspace_write")).not.toContain("_");
 		expect(modeLabel("yolo")).not.toContain("_");
+	});
+});
+
+// ─── policy-core integration ─────────────────────────────────────
+
+describe("policy-core integration", () => {
+	it("DEFAULT_SANDBOX_MODE is workspace_write", () => {
+		expect(DEFAULT_SANDBOX_MODE).toBe("workspace_write");
+	});
+
+	it("SANDBOX_MODES contains all three modes", () => {
+		expect(SANDBOX_MODES).toContain("read_only");
+		expect(SANDBOX_MODES).toContain("workspace_write");
+		expect(SANDBOX_MODES).toContain("yolo");
+		expect(SANDBOX_MODES).toHaveLength(3);
+	});
+
+	it("parseSandboxMode validates against SANDBOX_MODES", () => {
+		for (const mode of SANDBOX_MODES) {
+			expect(parseSandboxMode(mode)).toBe(mode);
+		}
 	});
 });
 
