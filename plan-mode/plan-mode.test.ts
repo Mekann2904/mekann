@@ -8,7 +8,7 @@
 import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { isSafeCommand, isPlanReadOnlyCommandIntent, classifyCommandIntent, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, PLAN_MODE_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateConfigField, createDefaultConfig, getConfigPath, normalizeConfig, compactOldProposedPlansInText, type ModelRef, type ThinkingLevel } from "./utils.js";
-import { type Mode, type PlanState, createInitialState, isReadOnlyMode, modeLabel } from "./state.js";
+import { type Mode, type PlanState, createInitialState, isReadOnlyMode, modeLabel } from "./utils.js";
 
 // isPlanReadOnlyCommandIntent — bash コマンドの intent 分類 (UX guard, not security)
 describe("isPlanReadOnlyCommandIntent (isSafeCommand)", () => {
