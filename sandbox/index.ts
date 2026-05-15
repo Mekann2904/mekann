@@ -26,7 +26,6 @@ import {
 	type SandboxPushProfileEvent,
 	type SandboxPopProfileEvent,
 } from "../policy-core/modes.js";
-import { profileToSandboxMode } from "../policy-core/capabilities.js";
 
 // ─── LLM output truncation ─────────────────────────────────────────
 
@@ -540,9 +539,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			return;
 		}
 
-		// Map profile name to sandbox mode via policy-core
-		const mode = profileToSandboxMode(event.profile);
-		if (!mode) return; // Unknown profile — fail closed, ignore
+		// Both plan_read_only and sandbox_read_only map to "read_only" mode.
+		const mode: SandboxMode = "read_only";
 
 		// SECURITY: Reject escalation — override must be equally or more restrictive.
 		if (MODE_RANK[mode] > MODE_RANK[currentMode]) {
