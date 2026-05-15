@@ -63,27 +63,14 @@ export function pathSubpath(p: string): string {
 
 // ─── Environment allowlist ──────────────────────────────────────
 
-/**
- * sandbox 用 PATH を構築する。
- *
- * SECURITY: process.env.PATH をそのまま渡さない。
- * allowHomebrewPaths=false では Homebrew 系パスを含めない。
- */
+/** sandbox 用 PATH 構築。SECURITY: process.env.PATH をそのまま渡さない。 */
 function buildSandboxPath(allowHomebrewPaths: boolean): string {
 	const segments = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
-	if (allowHomebrewPaths) {
-		segments.push("/opt/homebrew/bin", "/usr/local/bin");
-	}
+	if (allowHomebrewPaths) segments.push("/opt/homebrew/bin", "/usr/local/bin");
 	return segments.join(":");
 }
 
-/**
- * sandbox 用環境変数を構築する。
- *
- * SECURITY: process.env を spread せず、明示的に許可した変数だけを渡す。
- * secrets (OPENAI_API_KEY, GITHUB_TOKEN, AWS_*, etc.) はデフォルトで含まない。
- * PATH は固定値。HOME は isolated temp home に設定（workspace/cwd にはしない）。
- */
+/** sandbox 用環境変数構築。SECURITY: process.env を spread せず、明示的に許可した変数だけを渡す。 */
 export function buildSandboxEnv(policy: SandboxPolicy, isolatedHome: string): NodeJS.ProcessEnv {
 	const allowHomebrew = policy.allowHomebrewPaths ?? false;
 
@@ -93,22 +80,16 @@ export function buildSandboxEnv(policy: SandboxPolicy, isolatedHome: string): No
 		TERM: process.env.TERM ?? "xterm-256color",
 		LANG: process.env.LANG ?? "C.UTF-8",
 		// SECURITY: HOME is set to isolated temp home, NOT workspace/cwd.
-		// This prevents child processes from reading user's $HOME config files
-		// or workspace-controlled startup files (.bash_profile, .profile, etc.).
 		HOME: isolatedHome,
 		GIT_TERMINAL_PROMPT: "0",
 	};
 
 	// LC_ALL: only pass through if already set
-	if (process.env.LC_ALL) {
-		env.LC_ALL = process.env.LC_ALL;
-	}
+	if (process.env.LC_ALL) env.LC_ALL = process.env.LC_ALL;
 
 	// TMPDIR: set to per-run isolated temp directory if available.
 	// This replaces broad system TMPDIR access with a dedicated directory.
-	if (policy._isolatedTempDir) {
-		env.TMPDIR = policy._isolatedTempDir;
-	}
+	if (policy._isolatedTempDir) env.TMPDIR = policy._isolatedTempDir;
 
 	return env;
 }
@@ -426,20 +407,11 @@ export async function isMacSandboxAvailable(): Promise<boolean> {
 
 async function resolvePolicyPaths(policy: SandboxPolicy): Promise<SandboxPolicy> {
 	const cwd = await resolveSafeRealPath(policy.cwd);
-	const workspaceRoots = await Promise.all(policy.workspaceRoots.map((p) => resolveSafeRealPath(p)));
-	const writableRoots = await Promise.all(policy.writableRoots.map((p) => resolveSafeRealPath(p)));
+	const workspaceRoots = await Promise.all(policy.workspaceRoots.map(resolveSafeRealPath));
+	const writableRoots = await Promise.all(policy.writableRoots.map(resolveSafeRealPath));
+	const resolvedGitdirs = (await Promise.all(workspaceRoots.map(resolveGitdirPaths))).flat();
 
-	// Resolve .git pointer files for each workspace root
-	const gitdirSets = await Promise.all(workspaceRoots.map(resolveGitdirPaths));
-	const resolvedGitdirs = gitdirSets.flat();
-
-	return {
-		...policy,
-		cwd,
-		workspaceRoots,
-		writableRoots,
-		_resolvedGitdirs: resolvedGitdirs,
-	};
+	return { ...policy, cwd, workspaceRoots, writableRoots, _resolvedGitdirs: resolvedGitdirs };
 }
 
 // ─── Constants ───────────────────────────────────────────────────
