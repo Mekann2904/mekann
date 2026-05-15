@@ -2,7 +2,7 @@
  * Sandbox Extension — macOS Seatbelt によるコマンドサンドボックス化。
  * SECURITY SCOPE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.
  * Fail-closed: sandbox-exec unavailable → command REFUSED (no silent fallback).
- * Usage: pi -e ./sandbox [--sandbox-mode read_only] [--no-sandbox] | /sandbox | /sandbox-mode <mode>
+ * Usage: pi -e ./sandbox [--sandbox-mode read_only] [--no-sandbox] | /sandbox [mode]
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -159,7 +159,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					);
 					if (!ok) {
 						throw new Error(
-							"yolo モードにはユーザーの明示的な承認が必要です。/sandbox-mode yolo で承認してください。",
+							"yolo モードにはユーザーの明示的な承認が必要です。/sandbox yolo で承認してください。",
 						);
 					}
 										approveYolo("ツール実行プロンプトで承認");
@@ -278,7 +278,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 						type: "text",
 						text: "権限昇格がユーザーによって拒否されました。コマンドは実行されませんでした。" +
 							"サンドボックス制約内で動作する別の方法を検討するか、" +
-							"ユーザーに `/sandbox-mode yolo` の手動実行を依頼してください。",
+							"ユーザーに `/sandbox yolo` の手動実行を依頼してください。",
 					}],
 				};
 			}
@@ -315,35 +315,12 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 	// ─── Commands ────────────────────────────────────────────────────
 
-	pi.registerCommand("sandbox", {
-		description: "現在の sandbox 設定を表示",
-		handler: async (_args, ctx) => {
-			const ck = (b: boolean) => b ? "ON" : "OFF";
-			const roots = (r: string[]) => r.length > 0 ? r.join(", ") : "(cwd)";
-			ctx.ui.notify(`サンドボックス状態:
-  有効: ${ck(sandboxEnabled)} | 利用可能: ${ck(sandboxAvailable)} | 明示的無効化: ${ck(explicitlyDisabled)}
-  モード: ${currentMode} (${modeLabel(currentMode)}) | CWD: ${currentCwd || "(未初期化)"}
-  Workspace ルート: ${roots(resolvedWorkspaceRoots)} | 書き込み可能ルート: ${roots(resolvedWritableRoots)}
-  フルアクセス承認済み: ${ck(yoloState.yoloApproved)}
-
-注: bash ツールのみがサンドボックス化されます。他のツールはサンドボックス化されません。`, "info");
-		},
-	});
-
-	pi.registerCommand("sandbox-mode", {
-		description: "sandbox モードを変更",
-		getArgumentCompletions(prefix: string) {
-			return ["read_only", "workspace_write", "yolo"]
-				.filter((m) => m.startsWith(prefix))
-				.map((m) => ({ value: m, label: m }));
-		},
-		handler: async (args, ctx) => {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	function changeMode(args: string | undefined, ctx: any): Promise<void> {
+		return (async () => {
 			const modeStr = args?.trim();
 			if (!modeStr) {
-				ctx.ui.notify(
-					`現在のモード: ${currentMode} (${modeLabel(currentMode)})`,
-					"info",
-				);
+				ctx.ui.notify(currentMode, "info");
 				return;
 			}
 
@@ -366,7 +343,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					ctx.ui.notify("モード変更はキャンセルされました", "info");
 					return;
 				}
-								approveYolo("コマンド /sandbox-mode で承認");
+								approveYolo("コマンド /sandbox で承認");
 			} else {
 				resetYoloApproval();
 			}
@@ -374,10 +351,20 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			currentMode = newMode;
 			updateStatusBar(ctx);
 			ctx.ui.notify(
-				`サンドボックスモードを変更しました: ${modeLabel(currentMode)}`,
+				`サンドボックスモードを変更しました: ${currentMode}`,
 				"info",
 			);
+		})();
+	}
+
+	pi.registerCommand("sandbox", {
+		description: "サンドボックスモードを表示・変更",
+		getArgumentCompletions(prefix: string) {
+			const items = ["read_only", "workspace_write", "yolo"].map((m) => ({ value: m, label: m }));
+			const filtered = items.filter((i) => i.value.startsWith(prefix));
+			return filtered.length > 0 ? filtered : null;
 		},
+		handler: changeMode,
 	});
 
 	// ─── Status bar ──────────────────────────────────────────────────
