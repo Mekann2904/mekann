@@ -34,10 +34,7 @@ export const DEFAULT_LLM_OUTPUT_MAX_LINES = 2000;
 
 export function truncateForLlm(
 	text: string,
-	opts = {
-		maxBytes: DEFAULT_LLM_OUTPUT_MAX_BYTES,
-		maxLines: DEFAULT_LLM_OUTPUT_MAX_LINES,
-	},
+	opts = { maxBytes: DEFAULT_LLM_OUTPUT_MAX_BYTES, maxLines: DEFAULT_LLM_OUTPUT_MAX_LINES },
 ): { text: string; truncated: boolean; originalBytes: number; originalLines: number } {
 	const originalBytes = Buffer.byteLength(text, "utf8");
 	let lines = text.split(/\r?\n/);
@@ -47,14 +44,9 @@ export function truncateForLlm(
 	if (lines.length > opts.maxLines) { lines = lines.slice(0, opts.maxLines); truncated = true; }
 
 	let out = lines.join("\n");
-	if (Buffer.byteLength(out, "utf8") > opts.maxBytes) {
-		out = Buffer.from(out, "utf8").subarray(0, opts.maxBytes).toString("utf8").replace(/\uFFFD$/u, "");
-		truncated = true;
-	}
+	if (Buffer.byteLength(out, "utf8") > opts.maxBytes) { out = Buffer.from(out, "utf8").subarray(0, opts.maxBytes).toString("utf8").replace(/\uFFFD$/u, ""); truncated = true; }
 
-	if (truncated) {
-		out += `\n\n[...出力が切り詰められました: 元の ${originalBytes} バイト、${originalLines} 行; 最大 ${opts.maxBytes} バイト / ${opts.maxLines} 行...]`;
-	}
+	if (truncated) out += `\n\n[...出力が切り詰められました: 元の ${originalBytes} バイト、${originalLines} 行; 最大 ${opts.maxBytes} バイト / ${opts.maxLines} 行...]`;
 
 	return { text: out, truncated, originalBytes, originalLines };
 }

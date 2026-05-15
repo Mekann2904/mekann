@@ -468,10 +468,7 @@ export async function runSandboxedShellMac(
 				reject(new Error("command aborted before execution"));
 				return;
 			}
-			abortHandler = () => {
-				requestTerminate("abort");
-				reject(new Error("command aborted"));
-			};
+			abortHandler = () => { requestTerminate("abort"); reject(new Error("command aborted")); };
 			abortSignal.addEventListener("abort", abortHandler);
 		}
 	});
@@ -488,10 +485,7 @@ export async function runSandboxedShellMac(
 			cleanupTimers();
 
 			// Safety net: kill residual background processes on normal exits
-			if (!killed && code !== null) {
-				killProcessGroup(child);
-				await new Promise<void>((r) => setTimeout(r, 200));
-			}
+			if (!killed && code !== null) { killProcessGroup(child); await new Promise<void>((r) => setTimeout(r, 200)); }
 
 			cleanupTempDir(isolatedTemp);
 
