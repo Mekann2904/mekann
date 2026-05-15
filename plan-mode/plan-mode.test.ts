@@ -1228,14 +1228,9 @@ describe("implementationPlan: system prompt injection", () => {
 // ─── P1-2: compactOldProposedPlansInText ───────────────────────────
 
 describe("compactOldProposedPlansInText", () => {
-	it("keep=true の場合はテキストをそのまま返す", () => {
-		const text = "<proposed_plan>\nFirst plan\n</proposed_plan>";
-		expect(compactOldProposedPlansInText(text, true)).toBe(text);
-	});
-
-	it("keep=false の場合は plan 内容を placeholder に置換する", () => {
+	it("plan 内容を placeholder に置換する", () => {
 		const text = "<proposed_plan>\nFirst plan with long content\n</proposed_plan>";
-		const result = compactOldProposedPlansInText(text, false);
+		const result = compactOldProposedPlansInText(text);
 		expect(result).toContain("[omitted: superseded plan]");
 		expect(result).not.toContain("First plan with long content");
 		expect(result).toContain("<proposed_plan>");
@@ -1247,7 +1242,7 @@ describe("compactOldProposedPlansInText", () => {
 <proposed_plan>Plan A content here</proposed_plan>
 <proposed_plan>Plan B content here</proposed_plan>
 `;
-		const result = compactOldProposedPlansInText(text, false);
+		const result = compactOldProposedPlansInText(text);
 		expect(result).not.toContain("Plan A");
 		expect(result).not.toContain("Plan B");
 		const matches = result.match(/\[omitted: superseded plan\]/g);
@@ -1256,7 +1251,7 @@ describe("compactOldProposedPlansInText", () => {
 
 	it("plan がないテキストはそのまま返す", () => {
 		const text = "通常のテキストです。";
-		expect(compactOldProposedPlansInText(text, false)).toBe(text);
+		expect(compactOldProposedPlansInText(text)).toBe(text);
 	});
 });
 
@@ -1280,7 +1275,7 @@ describe("context hook: old proposed_plan compaction", () => {
 				if (!foundLatest) {
 					foundLatest = true;
 				} else {
-					msg.content[j] = { ...part, text: compactOldProposedPlansInText(part.text, false) };
+					msg.content[j] = { ...part, text: compactOldProposedPlansInText(part.text) };
 				}
 			}
 		}

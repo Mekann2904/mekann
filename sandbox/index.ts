@@ -290,12 +290,9 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("sandbox-mode", {
 		description: "sandbox モードを変更",
 		getArgumentCompletions(prefix: string) {
-			const modes = [
-				{ value: "read_only", label: "read_only", description: "読み取りのみ" },
-				{ value: "workspace_write", label: "workspace_write", description: "workspace 内書き込み許可" },
-				{ value: "danger_full_access", label: "danger_full_access", description: "sandbox なし（要承認）" },
-			];
-			return modes.filter((m) => m.value.startsWith(prefix));
+			return ["read_only", "workspace_write", "danger_full_access"]
+				.filter((m) => m.startsWith(prefix))
+				.map((m) => ({ value: m, label: m }));
 		},
 		handler: async (args, ctx) => {
 			const modeStr = args?.trim();
