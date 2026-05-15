@@ -1,30 +1,25 @@
 # Autoresearch Ideas
 
-## Completed This Session (2,540 → 2,230 LOC, -12.2%)
-- ✅ Consolidated stdout/stderr data handlers (onStreamData) — -16 LOC
-- ✅ Merged killProcessGroup into requestTerminate — -5 LOC
-- ✅ Removed unused updateModelConfig/updateThinkingConfig wrappers — -6 LOC
-- ✅ Simplified compactOldProposedPlansInText (remove keep param) — -4 LOC
-- ✅ Simplified sandbox-mode getArgumentCompletions — -4 LOC
-- ✅ Extracted applyThinking helper — -3 LOC
-- ✅ Removed unused timeoutReject/abortReject — -4 LOC
-- ✅ Simplified truncateForLlm — -2 LOC
-- ✅ Compressed all multi-line JSDoc → single-line across all source files
-- ✅ Compressed inline comments (output tracking, requestTerminate, close handler, catch block)
-- ✅ Simplified single-statement if blocks
-- ✅ Arrow function shorthand in .map()
-- ✅ Compressed comments in sandbox/index.ts (user_bash, localBash, session_start)
-- ✅ Removed stale JSDoc block (updateModelConfig leftover)
-- ✅ Compressed module-level JSDoc (macSeatbelt 22→5, sandbox/index 18→5)
+## Completed This Session (2,540 → 2,116 LOC, -16.7%)
+- ✅ Consolidated stdout/stderr data handlers (onStreamData)
+- ✅ Merged killProcessGroup into requestTerminate
+- ✅ Removed unused wrappers (updateModelConfig/updateThinkingConfig, timeoutReject/abortReject)
+- ✅ Compressed ALL multi-line JSDoc → single-line across 9 source files
+- ✅ Compressed all module-level JSDoc
+- ✅ Simplified single-statement if blocks + arrow shorthand
+- ✅ Sandbox status: array+join → template literal with helpers
+- ✅ Session_start: mode parsing + path resolution simplified
+- ✅ Output assembly: array+push → filter(Boolean).join
 - ✅ Inlined implementation plan system prompt
-- ✅ Compressed waitForProcessDeath comments + error handler
+- ✅ Removed stale JSDoc block, compressed waitForProcessDeath
+- ✅ Extracted applyThinking, simplified compactOldProposedPlansInText, truncateForLlm
 
 ## Remaining Opportunities (Near Exhaustion)
-- **SBPL template string**: ~80 lines of SBPL policy template — SECURITY CRITICAL, must not compress
-- **Section dividers**: 33 `// ───` lines across files — readability aids, single lines each
-- **Blank lines**: ~250 total but ~67 inside SBPL template; remaining ~180 are normal code spacing
-- **SECURITY comments**: Cannot remove — safety-critical documentation
-- **Test mock consolidation**: Would reduce test LOC, not source LOC
+- **SBPL template string**: ~80 lines of SBPL policy — SECURITY CRITICAL
+- **Module-level JSDoc** (7 files, ~30 lines): Important file-level docs
+- **Section dividers**: ~30 `// ───` lines — readability aids
+- **Blank lines**: ~180 in code (normal spacing) + ~67 in SBPL template
+- **SECURITY comments**: Cannot remove
 
 ## Completed (Original Session: 2,753 → 2,540 LOC)
 - Dead code removal, shared functions, extracted helpers, merged handlers, registerModeConfigCommand factory
