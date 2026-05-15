@@ -140,8 +140,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 	// ─── Elevation hint for error messages ─────────────────────────
 
-	const SANDBOX_BLOCK_HINT =
-		" このコマンドの実行が必要な場合は、request_elevation ツールを使ってユーザーに許可を求めてください。";
+	const SANDBOX_BLOCK_HINT = " このコマンドの実行が必要な場合は、request_elevation ツールを使ってユーザーに許可を求めてください。";
 
 	// ─── Bash tool override ──────────────────────────────────────────
 
