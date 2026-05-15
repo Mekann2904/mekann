@@ -23,22 +23,13 @@ exports[`SBPL policy snapshots > read_only (基本) 1`] = `
 (allow pseudo-tty)
 
 ; macOS process initialization
-; NOTE: sysctl-read is kept because many CLI tools require it.
-; sysctl only exposes kernel state, not user data.
-; Known limitation: could be restricted to specific sysctls in the future.
 (allow sysctl-read)
 (allow ipc-posix-shm)
-; NOTE: mach-lookup is kept because restricting it breaks
-; DNS resolution, IPC, and many system services.
-; Known limitation: could be restricted to specific services.
 (allow mach-lookup)
 (allow file-read-metadata)
 
 ; ─── System read paths (minimum set) ──────────────────────────
 ; SECURITY: (literal "/") is required for bash to stat root during init.
-; /Users, /Library, /opt, /var are NOT included.
-; /usr is NOT included as a whole — only specific subdirectories.
-; /usr/local is ONLY readable via allowHomebrewPaths.
 (allow file-read*
   (literal "/")
   (subpath "/bin")
@@ -103,22 +94,13 @@ exports[`SBPL policy snapshots > read_only + homebrew 1`] = `
 (allow pseudo-tty)
 
 ; macOS process initialization
-; NOTE: sysctl-read is kept because many CLI tools require it.
-; sysctl only exposes kernel state, not user data.
-; Known limitation: could be restricted to specific sysctls in the future.
 (allow sysctl-read)
 (allow ipc-posix-shm)
-; NOTE: mach-lookup is kept because restricting it breaks
-; DNS resolution, IPC, and many system services.
-; Known limitation: could be restricted to specific services.
 (allow mach-lookup)
 (allow file-read-metadata)
 
 ; ─── System read paths (minimum set) ──────────────────────────
 ; SECURITY: (literal "/") is required for bash to stat root during init.
-; /Users, /Library, /opt, /var are NOT included.
-; /usr is NOT included as a whole — only specific subdirectories.
-; /usr/local is ONLY readable via allowHomebrewPaths.
 (allow file-read*
   (literal "/")
   (subpath "/bin")
@@ -190,22 +172,13 @@ exports[`SBPL policy snapshots > read_only + isolated temp dir 1`] = `
 (allow pseudo-tty)
 
 ; macOS process initialization
-; NOTE: sysctl-read is kept because many CLI tools require it.
-; sysctl only exposes kernel state, not user data.
-; Known limitation: could be restricted to specific sysctls in the future.
 (allow sysctl-read)
 (allow ipc-posix-shm)
-; NOTE: mach-lookup is kept because restricting it breaks
-; DNS resolution, IPC, and many system services.
-; Known limitation: could be restricted to specific services.
 (allow mach-lookup)
 (allow file-read-metadata)
 
 ; ─── System read paths (minimum set) ──────────────────────────
 ; SECURITY: (literal "/") is required for bash to stat root during init.
-; /Users, /Library, /opt, /var are NOT included.
-; /usr is NOT included as a whole — only specific subdirectories.
-; /usr/local is ONLY readable via allowHomebrewPaths.
 (allow file-read*
   (literal "/")
   (subpath "/bin")
@@ -277,22 +250,13 @@ exports[`SBPL policy snapshots > read_only + resolved gitdirs 1`] = `
 (allow pseudo-tty)
 
 ; macOS process initialization
-; NOTE: sysctl-read is kept because many CLI tools require it.
-; sysctl only exposes kernel state, not user data.
-; Known limitation: could be restricted to specific sysctls in the future.
 (allow sysctl-read)
 (allow ipc-posix-shm)
-; NOTE: mach-lookup is kept because restricting it breaks
-; DNS resolution, IPC, and many system services.
-; Known limitation: could be restricted to specific services.
 (allow mach-lookup)
 (allow file-read-metadata)
 
 ; ─── System read paths (minimum set) ──────────────────────────
 ; SECURITY: (literal "/") is required for bash to stat root during init.
-; /Users, /Library, /opt, /var are NOT included.
-; /usr is NOT included as a whole — only specific subdirectories.
-; /usr/local is ONLY readable via allowHomebrewPaths.
 (allow file-read*
   (literal "/")
   (subpath "/bin")
@@ -368,22 +332,13 @@ exports[`SBPL policy snapshots > workspace_write (基本) 1`] = `
 (allow pseudo-tty)
 
 ; macOS process initialization
-; NOTE: sysctl-read is kept because many CLI tools require it.
-; sysctl only exposes kernel state, not user data.
-; Known limitation: could be restricted to specific sysctls in the future.
 (allow sysctl-read)
 (allow ipc-posix-shm)
-; NOTE: mach-lookup is kept because restricting it breaks
-; DNS resolution, IPC, and many system services.
-; Known limitation: could be restricted to specific services.
 (allow mach-lookup)
 (allow file-read-metadata)
 
 ; ─── System read paths (minimum set) ──────────────────────────
 ; SECURITY: (literal "/") is required for bash to stat root during init.
-; /Users, /Library, /opt, /var are NOT included.
-; /usr is NOT included as a whole — only specific subdirectories.
-; /usr/local is ONLY readable via allowHomebrewPaths.
 (allow file-read*
   (literal "/")
   (subpath "/bin")
@@ -450,22 +405,13 @@ exports[`SBPL policy snapshots > workspace_write + homebrew 1`] = `
 (allow pseudo-tty)
 
 ; macOS process initialization
-; NOTE: sysctl-read is kept because many CLI tools require it.
-; sysctl only exposes kernel state, not user data.
-; Known limitation: could be restricted to specific sysctls in the future.
 (allow sysctl-read)
 (allow ipc-posix-shm)
-; NOTE: mach-lookup is kept because restricting it breaks
-; DNS resolution, IPC, and many system services.
-; Known limitation: could be restricted to specific services.
 (allow mach-lookup)
 (allow file-read-metadata)
 
 ; ─── System read paths (minimum set) ──────────────────────────
 ; SECURITY: (literal "/") is required for bash to stat root during init.
-; /Users, /Library, /opt, /var are NOT included.
-; /usr is NOT included as a whole — only specific subdirectories.
-; /usr/local is ONLY readable via allowHomebrewPaths.
 (allow file-read*
   (literal "/")
   (subpath "/bin")
@@ -539,22 +485,13 @@ exports[`SBPL policy snapshots > workspace_write + isolated temp + gitdirs 1`] =
 (allow pseudo-tty)
 
 ; macOS process initialization
-; NOTE: sysctl-read is kept because many CLI tools require it.
-; sysctl only exposes kernel state, not user data.
-; Known limitation: could be restricted to specific sysctls in the future.
 (allow sysctl-read)
 (allow ipc-posix-shm)
-; NOTE: mach-lookup is kept because restricting it breaks
-; DNS resolution, IPC, and many system services.
-; Known limitation: could be restricted to specific services.
 (allow mach-lookup)
 (allow file-read-metadata)
 
 ; ─── System read paths (minimum set) ──────────────────────────
 ; SECURITY: (literal "/") is required for bash to stat root during init.
-; /Users, /Library, /opt, /var are NOT included.
-; /usr is NOT included as a whole — only specific subdirectories.
-; /usr/local is ONLY readable via allowHomebrewPaths.
 (allow file-read*
   (literal "/")
   (subpath "/bin")
@@ -631,22 +568,13 @@ exports[`SBPL policy snapshots > workspace_write + network 1`] = `
 (allow pseudo-tty)
 
 ; macOS process initialization
-; NOTE: sysctl-read is kept because many CLI tools require it.
-; sysctl only exposes kernel state, not user data.
-; Known limitation: could be restricted to specific sysctls in the future.
 (allow sysctl-read)
 (allow ipc-posix-shm)
-; NOTE: mach-lookup is kept because restricting it breaks
-; DNS resolution, IPC, and many system services.
-; Known limitation: could be restricted to specific services.
 (allow mach-lookup)
 (allow file-read-metadata)
 
 ; ─── System read paths (minimum set) ──────────────────────────
 ; SECURITY: (literal "/") is required for bash to stat root during init.
-; /Users, /Library, /opt, /var are NOT included.
-; /usr is NOT included as a whole — only specific subdirectories.
-; /usr/local is ONLY readable via allowHomebrewPaths.
 (allow file-read*
   (literal "/")
   (subpath "/bin")
@@ -717,22 +645,13 @@ exports[`SBPL policy snapshots > workspaceRoots 空 (cwd 使用) 1`] = `
 (allow pseudo-tty)
 
 ; macOS process initialization
-; NOTE: sysctl-read is kept because many CLI tools require it.
-; sysctl only exposes kernel state, not user data.
-; Known limitation: could be restricted to specific sysctls in the future.
 (allow sysctl-read)
 (allow ipc-posix-shm)
-; NOTE: mach-lookup is kept because restricting it breaks
-; DNS resolution, IPC, and many system services.
-; Known limitation: could be restricted to specific services.
 (allow mach-lookup)
 (allow file-read-metadata)
 
 ; ─── System read paths (minimum set) ──────────────────────────
 ; SECURITY: (literal "/") is required for bash to stat root during init.
-; /Users, /Library, /opt, /var are NOT included.
-; /usr is NOT included as a whole — only specific subdirectories.
-; /usr/local is ONLY readable via allowHomebrewPaths.
 (allow file-read*
   (literal "/")
   (subpath "/bin")
@@ -797,22 +716,13 @@ exports[`SBPL policy snapshots > writableRoots ≠ workspaceRoots 1`] = `
 (allow pseudo-tty)
 
 ; macOS process initialization
-; NOTE: sysctl-read is kept because many CLI tools require it.
-; sysctl only exposes kernel state, not user data.
-; Known limitation: could be restricted to specific sysctls in the future.
 (allow sysctl-read)
 (allow ipc-posix-shm)
-; NOTE: mach-lookup is kept because restricting it breaks
-; DNS resolution, IPC, and many system services.
-; Known limitation: could be restricted to specific services.
 (allow mach-lookup)
 (allow file-read-metadata)
 
 ; ─── System read paths (minimum set) ──────────────────────────
 ; SECURITY: (literal "/") is required for bash to stat root during init.
-; /Users, /Library, /opt, /var are NOT included.
-; /usr is NOT included as a whole — only specific subdirectories.
-; /usr/local is ONLY readable via allowHomebrewPaths.
 (allow file-read*
   (literal "/")
   (subpath "/bin")
@@ -887,22 +797,13 @@ exports[`SBPL policy snapshots > 複数 workspaceRoots 1`] = `
 (allow pseudo-tty)
 
 ; macOS process initialization
-; NOTE: sysctl-read is kept because many CLI tools require it.
-; sysctl only exposes kernel state, not user data.
-; Known limitation: could be restricted to specific sysctls in the future.
 (allow sysctl-read)
 (allow ipc-posix-shm)
-; NOTE: mach-lookup is kept because restricting it breaks
-; DNS resolution, IPC, and many system services.
-; Known limitation: could be restricted to specific services.
 (allow mach-lookup)
 (allow file-read-metadata)
 
 ; ─── System read paths (minimum set) ──────────────────────────
 ; SECURITY: (literal "/") is required for bash to stat root during init.
-; /Users, /Library, /opt, /var are NOT included.
-; /usr is NOT included as a whole — only specific subdirectories.
-; /usr/local is ONLY readable via allowHomebrewPaths.
 (allow file-read*
   (literal "/")
   (subpath "/bin")
