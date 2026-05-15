@@ -94,7 +94,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		// 5. Switch to plan thinking level if configured
 		applyThinking(state.modelConfig.thinking.plan);
-
 		ctx.ui.notify(modeLabel(state.mode));
 	}
 

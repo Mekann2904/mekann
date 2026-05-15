@@ -82,7 +82,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// ─── Flags ───────────────────────────────────────────────────────
 
 	pi.registerFlag("no-sandbox", { description: "sandbox を無効化する（明示的 opt-out）", type: "boolean", default: false });
-
 	pi.registerFlag("sandbox-mode", { description: "初期 sandbox モード (read_only | workspace_write | yolo)", type: "string", default: DEFAULT_SANDBOX_MODE });
 
 	// ─── Policy builder ──────────────────────────────────────────────
@@ -187,9 +186,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		parameters: Type.Object({ command: Type.String({ description: "サンドボックス外で実行する必要があるコマンド" }), reason: Type.String({ description: "このコマンドがサンドボックスをバイパスする必要がある理由" }) }),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const { command, reason } = params;
-
 			if (explicitlyDisabled) return { content: [{ type: "text", text: "サンドボックスは既に無効化されています (--no-sandbox)。bash ツールを直接使用してください。" }], details: {} };
-
 			if (startupBlockedReason) return { content: [{ type: "text", text: `${startupBlockedReason}。権限昇格では回避できません。明示的に --no-sandbox で起動し直す必要があります。` }], details: {} };
 
 			if (!sandboxEnabled) return { content: [{ type: "text", text: "サンドボックスはアクティブではありません。bash ツールを直接使用してください。" }], details: {} };
@@ -227,9 +224,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// SECURITY: When sandbox is active, returning undefined = bypass. Block instead.
 	pi.on("user_bash", () => {
 		if (explicitlyDisabled) return undefined;
-
 		if (startupBlockedReason) throw new Error(`${startupBlockedReason}。--no-sandbox で明示的に無効化しない限り、直接 bash 実行は拒否されます。`);
-
 		if (effectiveMode() === "yolo") return undefined;
 		throw new Error("サンドボックスがアクティブな場合、直接の bash 実行はブロックされます。コマンドはサンドボックス化された bash ツール経由で実行してください。");
 	});
