@@ -91,12 +91,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		});
 	}
 
-	/** Extract ModelRef from the current ctx.model. */
-	function currentModelRef(ctx: ExtensionContext): ModelRef | undefined {
-		const m = ctx.model;
-		if (!m) return undefined;
-		return { provider: m.provider, modelId: m.id };
-	}
+
 
 	// ─── Mode transitions ───────────────────────────────────────────
 
@@ -105,7 +100,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		// 1. Snapshot & persist current main model (only when explicitly toggling, not --plan startup)
 		if (persistCurrentMain) {
-			const mainRef = currentModelRef(ctx);
+			const _m = ctx.model;
+				const mainRef = _m ? { provider: _m.provider, modelId: _m.id } as ModelRef : undefined;
 			if (mainRef) {
 				state.savedMainModel = mainRef;
 				updateConfigField(state.modelConfig, "models", "main", mainRef, configPath);
