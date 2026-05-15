@@ -1,3 +1,17 @@
 commit	maintenance_score	tests_passed	test_seconds	status	description	maintenance_hypothesis
 2467ff4	2680	true	10.18	baseline	initial baseline	current structure
 8d4f652	2554	true	9.82	keep	Delete unused session source types	dead code removal reduces LOC and duplication
+bbc594d	2560	true	10.07	keep	Extract shared contentExtract.ts	deduplicate text extraction
+faa2ba9	2549	true	9.72	keep	Remove unused CAPABILITY_PROFILES	dead code removal
+823bfdb	2540	true	10.03	keep	Consolidate lifecycle events with LifecycleBase	reduce type boilerplate
+9c7ec8b	2500	true	10.03	keep	Merge notifyWaiters in mailbox.ts	eliminate duplicated resolve logic
+9c63e01	2440	true	10.04	keep	Extract resolveModel/finalizeWithError	reduce spawn method length
+ecb6e78	2430	true	10.05	keep	Extract abortSession helper	deduplicate close/shutdown logic
+2f26908	2345	true	10.07	keep	Compress send/followup methods	reduce duplication
+f086844	2240	true	10.10	keep	Merge capabilities.ts into modes.ts	reduce file count
+b73d1d7	2129	true	9.93	keep	Merge approvals.ts into permissions.ts	reduce file count
+1d0bb3a	2029	true	9.97	keep	Merge state.ts into utils.ts	reduce file count
+9f29dc2	1919	true	9.99	keep	Merge contentExtract.ts into contextFork.ts	reduce file count
+c365982	1824	true	9.77	keep	Merge commandIntent.ts into modes.ts	reduce file count
+fe47f02	1729	true	9.76	keep	Merge agentPath.ts into types.ts	reduce file count
+b2c3234	1704	true	9.91	keep	Extract evBase helper	reduce event construction duplication
