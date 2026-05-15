@@ -107,9 +107,7 @@ function effectiveReadableRoots(policy: SandboxPolicy): string[] {
 }
 
 function effectiveWritableRoots(policy: SandboxPolicy): string[] {
-	return policy.mode === "workspace_write"
-		? policy.writableRoots.length > 0 ? policy.writableRoots : [policy.cwd]
-		: [];
+	return policy.mode === "workspace_write" ? (policy.writableRoots.length > 0 ? policy.writableRoots : [policy.cwd]) : [];
 }
 
 // ─── Policy validation ──────────────────────────────────────────
@@ -393,12 +391,7 @@ export async function runSandboxedShellMac(
 		"--norc",
 		"-c",
 		command,
-	], {
-		cwd: resolvedPolicy.cwd,
-		stdio: ["ignore", "pipe", "pipe"],
-		env: sandboxEnv,
-		detached: true,
-	});
+	], { cwd: resolvedPolicy.cwd, stdio: ["ignore", "pipe", "pipe"], env: sandboxEnv, detached: true });
 
 	// SECURITY: Track total bytes across stdout + stderr combined (Buffer-based, byte-accurate)
 	const bufs = { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) };
