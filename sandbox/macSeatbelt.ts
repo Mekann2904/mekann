@@ -333,26 +333,17 @@ async function resolvePolicyPaths(policy: SandboxPolicy): Promise<SandboxPolicy>
 
 // ─── Constants ───────────────────────────────────────────────────
 
-/** sandbox-exec の絶対パス。PATH 探索は行わない。 */
-const SANDBOX_EXEC = "/usr/bin/sandbox-exec";
-
-/** デフォルトのタイムアウト（ms）。 */
+const SANDBOX_EXEC = "/usr/bin/sandbox-exec"; // PATH 探索回避
 const DEFAULT_TIMEOUT_MS = 120_000;
-
-/** デフォルトの最大出力バイト数。 */
 const DEFAULT_MAX_OUTPUT_BYTES = 5 * 1024 * 1024; // 5 MB
-
-/** SIGTERM 後に SIGKILL するまでの猶予（ms）。 */
 const SIGKILL_GRACE_MS = 5_000;
 
 // ─── Per-run temp directory ──────────────────────────────────────
 
-/** Per-run 専用一時ディレクトリ作成。 */
 function createIsolatedTempDir(): string {
 	return mkdtempSync(resolve(tmpdir(), "sandbox-run-"));
 }
 
-/** 一時ディレクトリを cleanup する。失敗しても例外を投げない（idempotent）。 */
 function cleanupTempDir(dir: string): void {
 	try { rmSync(dir, { recursive: true, force: true }); } catch { /* OS will clean up */ }
 }
