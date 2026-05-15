@@ -220,9 +220,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 	// SECURITY: When sandbox is active, returning undefined = bypass. Block instead.
 	pi.on("user_bash", () => {
-		if (explicitlyDisabled) return undefined;
+		if (explicitlyDisabled || effectiveMode() === "yolo") return undefined;
 		if (startupBlockedReason) throw new Error(`${startupBlockedReason}。--no-sandbox で明示的に無効化しない限り、直接 bash 実行は拒否されます。`);
-		if (effectiveMode() === "yolo") return undefined;
 		throw new Error("サンドボックスがアクティブな場合、直接の bash 実行はブロックされます。コマンドはサンドボックス化された bash ツール経由で実行してください。");
 	});
 
