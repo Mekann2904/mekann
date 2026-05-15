@@ -9,7 +9,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Key } from "@earendil-works/pi-tui";
 import { createInitialState, isReadOnlyMode, modeLabel } from "./state.js";
 import { isSafeCommand, classifyCommandIntent, buildBlockReason, loadPrompt, hashContent, extractProposedPlan, PLAN_MODE_TOOLS, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateConfigField, compactOldProposedPlansInText, type ModelRef, type PlanModeConfig, type ThinkingLevel } from "./utils.js";
-import { SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, type SandboxPushProfileEvent, type SandboxPopProfileEvent } from "../policy-core/modes.js";
+import { SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, PLAN_MODE_STATUS_EVENT, type SandboxPushProfileEvent, type SandboxPopProfileEvent, type PlanModeStatusEvent } from "../policy-core/modes.js";
 
 export default function planModeExtension(pi: ExtensionAPI): void {
 	let configPath: string | undefined;
@@ -61,13 +61,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 	// ─── Status bar ────────────────────────────────────────────────────
 
-	/** Update footer status to reflect current mode. */
-	function updateModeStatus(ctx: ExtensionContext): void {
-		if (state.mode === "plan") {
-			ctx.ui.setWidget("plan-mode", [ctx.ui.theme.fg("warning", "plan")], { placement: "belowEditor" });
-		} else {
-			ctx.ui.setWidget("plan-mode", ["main"], { placement: "belowEditor" });
-		}
+	/** Notify sandbox extension of current mode so it can render a combined status line. */
+	function updateModeStatus(_ctx: ExtensionContext): void {
+		try {
+			pi.events.emit(PLAN_MODE_STATUS_EVENT, { mode: state.mode } satisfies PlanModeStatusEvent);
+		} catch { /* sandbox extension not loaded */ }
 	}
 
 	// ─── Mode transitions ───────────────────────────────────────────

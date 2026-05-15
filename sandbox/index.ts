@@ -13,7 +13,7 @@ import { readOnlyPolicy, workspaceWritePolicy, yoloPolicy } from "./permissions.
 import { isMacSandboxAvailable, runSandboxedShellMac } from "./macSeatbelt.js";
 import { resolveRealPaths, validateWorkspaceRoot } from "./pathPolicy.js";
 import { shouldRequestApproval, yoloApprovalMessage, type YoloApprovalState } from "./approvals.js";
-import { DEFAULT_SANDBOX_MODE, parseSandboxMode, modeLabel, SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, type SandboxPushProfileEvent, type SandboxPopProfileEvent } from "../policy-core/modes.js";
+import { DEFAULT_SANDBOX_MODE, parseSandboxMode, modeLabel, SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, PLAN_MODE_STATUS_EVENT, type SandboxPushProfileEvent, type SandboxPopProfileEvent, type PlanModeStatusEvent } from "../policy-core/modes.js";
 
 // ─── LLM output truncation ─────────────────────────────────────────
 
@@ -61,6 +61,9 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 	/** Override entries pushed by other extensions (e.g. plan-mode). */
 	const profileOverrideStack: { owner: string; token: string; mode: SandboxMode }[] = [];
+
+	/** Current plan-mode mode (received via event from plan-mode extension). */
+	let planModeStatus: "main" | "plan" | undefined;
 
 	/** Compute the effective sandbox mode, respecting override stack. */
 	function effectiveMode(): SandboxMode {
@@ -280,7 +283,12 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// ─── Status bar ──────────────────────────────────────────────────
 	function updateStatusBar(ctx: any): void {
 		if (explicitlyDisabled || !sandboxEnabled) { ctx.ui.setWidget("sandbox", undefined); return; }
-		ctx.ui.setWidget("sandbox", [ctx.ui.theme.fg("dim", effectiveMode())], { placement: "belowEditor" });
+		let label = "";
+		if (planModeStatus) {
+			label = ctx.ui.theme.fg(planModeStatus === "plan" ? "warning" : "dim", planModeStatus) + " ";
+		}
+		label += ctx.ui.theme.fg("dim", effectiveMode());
+		ctx.ui.setWidget("sandbox", [label], { placement: "belowEditor" });
 	}
 
 	// ─── Events ──────────────────────────────────────────────────────
@@ -397,12 +405,20 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		// Update status bar to reflect effective mode change
 		if (lastCtx) updateStatusBar(lastCtx);
 	});
+	// Listen for plan-mode status updates to render a combined status line
+	pi.events.on(PLAN_MODE_STATUS_EVENT, (data: unknown) => {
+		const event = data as PlanModeStatusEvent;
+		if (event.mode) planModeStatus = event.mode;
+		if (lastCtx) updateStatusBar(lastCtx);
+	});
+
 	pi.on("session_shutdown", async () => {
 		sandboxEnabled = false;
 		sandboxAvailable = false;
 		explicitlyDisabled = false;
 		startupBlockedReason = undefined;
 		profileOverrideStack.length = 0;
+		planModeStatus = undefined;
 		lastCtx = undefined;
 				resetYoloApproval();
 	});
