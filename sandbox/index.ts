@@ -188,14 +188,11 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			const result = await runSandboxedShellMac(
 				command,
 				policy,
-				{ signal }, // Propagate AbortSignal from tool execution
+				{ signal },
 			);
 
-			const output: string[] = [];
-			if (result.stdout) output.push(result.stdout);
-			if (result.stderr) output.push(result.stderr);
-			const outputText = output.join("\n");
-			const shown = truncateForLlm(outputText);
+			const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
+			const shown = truncateForLlm(output);
 
 			if (result.code !== 0) {
 				throw new Error(
