@@ -153,9 +153,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			if (effectiveMode() === "yolo") return getLocalBash().execute(id, params, signal, onUpdate);
 
 			// ── Case 3: sandbox-exec unavailable → REFUSE (fail-closed) ─
-			if (!sandboxAvailable) {
-				throw new Error("サンドボックスが必要ですが /usr/bin/sandbox-exec が利用できません。サンドボックス強制なしではコマンドを実行できません。--no-sandbox で明示的に無効化してください（非推奨）。" + SANDBOX_BLOCK_HINT);
-			}
+			if (!sandboxAvailable) throw new Error("サンドボックスが必要ですが /usr/bin/sandbox-exec が利用できません。サンドボックス強制なしではコマンドを実行できません。--no-sandbox で明示的に無効化してください（非推奨）。" + SANDBOX_BLOCK_HINT);
 
 			// ── Case 4: Normal sandboxed execution (read_only / workspace_write) ──
 			const approval = shouldRequestApproval(effectiveMode(), command);
@@ -239,9 +237,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				].join("\n"),
 			);
 
-			if (!ok) {
-								return { content: [{ type: "text", text: "権限昇格がユーザーによって拒否されました。コマンドは実行されませんでした。サンドボックス制約内で動作する別の方法を検討するか、ユーザーに `/sandbox yolo` の手動実行を依頼してください。" }], details: {} };
-			}
+			if (!ok) return { content: [{ type: "text", text: "権限昇格がユーザーによって拒否されました。コマンドは実行されませんでした。サンドボックス制約内で動作する別の方法を検討するか、ユーザーに `/sandbox yolo` の手動実行を依頼してください。" }], details: {} };
 
 			// Execute the command unsandboxed
 			const result = await getLocalBash().execute(
