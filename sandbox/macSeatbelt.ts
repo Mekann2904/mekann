@@ -430,11 +430,7 @@ export async function runSandboxedShellMac(
 	let timedOut = false;
 
 	const timeoutPromise = new Promise<never>((_resolve, reject) => {
-		timeoutId = setTimeout(() => {
-			timedOut = true;
-			requestTerminate("timeout");
-			reject(new Error(`command timed out after ${timeoutMs}ms`));
-		}, timeoutMs);
+		timeoutId = setTimeout(() => { timedOut = true; requestTerminate("timeout"); reject(new Error(`command timed out after ${timeoutMs}ms`)); }, timeoutMs);
 	});
 
 	// ─── AbortSignal handling ───────────────────────────────────
@@ -457,11 +453,7 @@ export async function runSandboxedShellMac(
 	// ─── Main execution promise ─────────────────────────────────
 
 	const execPromise = new Promise<RunResult>((resolvePromise) => {
-		child.on("error", (err) => {
-			cleanupTimers();
-			cleanupTempDir(isolatedTemp);
-			resolvePromise({ code: null, signal: null, stdout: "", stderr: err.message });
-		});
+		child.on("error", (err) => { cleanupTimers(); cleanupTempDir(isolatedTemp); resolvePromise({ code: null, signal: null, stdout: "", stderr: err.message }); });
 		child.on("close", async (code, signal) => {
 			cleanupTimers();
 

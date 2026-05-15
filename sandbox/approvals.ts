@@ -6,17 +6,10 @@
 import type { SandboxMode } from "./permissions.js";
 
 /** 承認要否の判定結果。 */
-export interface ApprovalDecision {
-	needsApproval: boolean;
-	reason?: string;
-}
+export interface ApprovalDecision { needsApproval: boolean; reason?: string; }
 
 /** yolo の承認状態。 */
-export interface YoloApprovalState {
-	yoloApproved: boolean;
-	yoloApprovedAt?: Date;
-	yoloApprovedReason?: string;
-}
+export interface YoloApprovalState { yoloApproved: boolean; yoloApprovedAt?: Date; yoloApprovedReason?: string; }
 
 /** UX-level dangerous command patterns (NOT security — trivially bypassable). */
 const DANGEROUS_PATTERNS = [

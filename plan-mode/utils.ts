@@ -69,22 +69,13 @@ function isThinkingLevel(value: unknown): value is ThinkingLevel {
 // ─── Model preference persistence ───────────────────────────────────
 
 /** Provider + modelId pair identifying a specific model. */
-export interface ModelRef {
-	provider: string;
-	modelId: string;
-}
+export interface ModelRef { provider: string; modelId: string; }
 
 /** Configuration file shape stored at ~/.pi/agent/plan-mode.json */
 export interface PlanModeConfig {
 	version: 1;
-	models: {
-		main?: ModelRef;
-		plan?: ModelRef;
-	};
-	thinking: {
-		main?: ThinkingLevel;
-		plan?: ThinkingLevel;
-	};
+	models: { main?: ModelRef; plan?: ModelRef; };
+	thinking: { main?: ThinkingLevel; plan?: ThinkingLevel; };
 }
 
 export function createDefaultConfig(): PlanModeConfig {

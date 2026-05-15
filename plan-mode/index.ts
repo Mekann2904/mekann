@@ -241,11 +241,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (plan) { state.pendingPlan = plan; ctx.ui.notify(modeLabel(state.mode)); }
 	});
 
-	pi.on("turn_end", async () => {
-		blockCount = 0;
-		lastBlockedTool = "";
-		lastBlockedInput = "";
-	});
+	pi.on("turn_end", async () => { blockCount = 0; lastBlockedTool = ""; lastBlockedInput = ""; });
 
 	// Track config changes per-mode
 	function persistIfChanged<T>(
