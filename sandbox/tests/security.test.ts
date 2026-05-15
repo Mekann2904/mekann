@@ -14,8 +14,8 @@
 
 import { describe, it, expect } from "vitest";
 import { isSafeCommand } from "../../plan-mode/utils.js";
-import { readOnlyPolicy, workspaceWritePolicy, dangerFullAccessPolicy } from "./permissions.js";
-import { buildSandboxEnv, buildMacSeatbeltPolicy } from "./macSeatbelt.js";
+import { readOnlyPolicy, workspaceWritePolicy, dangerFullAccessPolicy } from "../permissions.js";
+import { buildSandboxEnv, buildMacSeatbeltPolicy } from "../macSeatbelt.js";
 
 // ─── Invariant 1: isSafeCommand rejects all destructive commands ────
 
