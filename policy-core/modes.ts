@@ -31,8 +31,8 @@ export const SANDBOX_MODES = ["read_only", "workspace_write", "yolo"] as const;
 /** Sandbox mode type — the single definition used by both sandbox and plan-mode. */
 export type SandboxMode = (typeof SANDBOX_MODES)[number];
 
-/** Default sandbox mode. Safe default: workspace_write. */
-export const DEFAULT_SANDBOX_MODE: SandboxMode = "workspace_write";
+/** Default sandbox mode. */
+export const DEFAULT_SANDBOX_MODE: SandboxMode = "yolo";
 
 /** Parse a string into a SandboxMode. Returns undefined for invalid values. */
 export function parseSandboxMode(value: string): SandboxMode | undefined {

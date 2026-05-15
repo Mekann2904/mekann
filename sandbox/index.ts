@@ -205,21 +205,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				throw new Error(`${startupBlockedReason}${SANDBOX_BLOCK_HINT}`);
 			}
 
-			// ── Case 2: yolo with explicit approval ────
+			// ── Case 2: yolo (unsandboxed) ────
 			if (effectiveMode() === "yolo") {
-				if (!yoloState.yoloApproved) {
-					const ok = await ctx.ui.confirm(
-						"[!] フルアクセスが必要です",
-						yoloApprovalMessage(),
-					);
-					if (!ok) {
-						throw new Error(
-							"yolo モードにはユーザーの明示的な承認が必要です。/sandbox yolo で承認してください。",
-						);
-					}
-										approveYolo("ツール実行プロンプトで承認");
-				}
-				// Approved yolo: unsandboxed execution
 				return getLocalBash().execute(id, params, signal, onUpdate);
 			}
 
@@ -384,14 +371,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			);
 		}
 
-		if (effectiveMode() === "yolo") {
-			if (yoloState.yoloApproved) return undefined;
-			throw new Error(
-				"yolo モードはまだ承認されていません。" +
-				"`/sandbox yolo` を再実行して承認するか、" +
-				"sandbox 化された bash ツール経由で承認してください。",
-			);
-		}
+		if (effectiveMode() === "yolo") return undefined;
 		throw new Error(
 			"サンドボックスがアクティブな場合、直接の bash 実行はブロックされます。" +
 			"コマンドはサンドボックス化された bash ツール経由で実行してください。",
@@ -543,24 +523,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			resolvedWritableRoots = [ctx.cwd];
 		}
 
-		// SECURITY: yolo requires approval — but only when effective mode is actually yolo.
-		// If a plan-mode override is already active, effective mode won't be yolo,
-		// so defer approval until yolo actually becomes effective.
-		if (effectiveMode() === "yolo") {
-			const ok = await ctx.ui.confirm(
-				"[!] サンドボックスモード: フルアクセス",
-				`サンドボックスモードが yolo に設定されています。\n\n${yoloApprovalMessage()}`,
-			);
-			if (ok) {
-								approveYolo("セッション開始時に承認");
-			} else {
-				currentMode = DEFAULT_SANDBOX_MODE;
-				resetYoloApproval();
-				ctx.ui.notify(
-					`yolo が承認されませんでした。${DEFAULT_SANDBOX_MODE} にフォールバックします。`, "warning",
-				);
-			}
-		}
+		// yolo approval is deferred to first bash execution (inline approval).
+		// No prompt at session_start — avoids bothering the user on every startup.
 
 		if (!sandboxAvailable && effectiveMode() !== "yolo") {
 			startupBlockedReason =

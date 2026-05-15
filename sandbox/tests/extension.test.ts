@@ -180,10 +180,12 @@ describe("session_start hook", () => {
 
 		await mock._hooks.session_start({}, ctx);
 
-		// Non-macOS → sandbox unavailable → commands refused
+		// Default is now yolo — no approval prompt at session_start
+		// sandbox-exec unavailable is not a hard block for yolo
+		expect(ctx.ui.confirm).not.toHaveBeenCalled();
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("sandbox-exec"),
-			"error",
+			expect.stringContaining("サンドボックス有効"),
+			"info",
 		);
 	});
 
@@ -213,7 +215,7 @@ describe("session_start hook", () => {
 		);
 	});
 
-	it("yolo: 承認プロンプトが表示される (approve)", async () => {
+	it("yolo: session_start では承認プロンプトを出さず、初回 bash 実行時に求める", async () => {
 		const mock = createMockApi();
 		mock._flags = { "sandbox-mode": "yolo" };
 		await loadExtension(mock);
@@ -221,13 +223,11 @@ describe("session_start hook", () => {
 
 		await mock._hooks.session_start({}, ctx);
 
-		expect(ctx.ui.confirm).toHaveBeenCalledWith(
-			expect.stringContaining("フルアクセス"),
-			expect.any(String),
-		);
+		// No confirm prompt at session_start
+		expect(ctx.ui.confirm).not.toHaveBeenCalled();
 	});
 
-	it("yolo: 承認拒否で workspace_write にフォールバック", async () => {
+	it("yolo: session_start ではフォールバックしない（初回 bash まで保留）", async () => {
 		const mock = createMockApi();
 		mock._flags = { "sandbox-mode": "yolo" };
 		await loadExtension(mock);
@@ -240,10 +240,15 @@ describe("session_start hook", () => {
 
 		await mock._hooks.session_start({}, ctx);
 
-		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("フォールバック"),
-			"warning",
-		);
+		// No confirm at session_start → no fallback either
+		expect(ctx.ui.confirm).not.toHaveBeenCalled();
+		// Mode stays yolo
+		const notifications: string[] = [];
+		const statusCtx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+		});
+		await mock._commands["sandbox"].handler("", statusCtx);
+		expect(notifications[0]).toBe("yolo");
 	});
 
 	it("unsafe workspace root (/): sandbox を無効化する", async () => {
@@ -288,8 +293,8 @@ describe("session_shutdown hook", () => {
 			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
 		});
 		await mock._commands["sandbox"].handler("", statusCtx);
-		// After shutdown, effectiveMode() returns currentMode (workspace_write by default)
-		expect(notifications[0]).toBe("workspace_write");
+		// After shutdown, effectiveMode() returns currentMode (yolo by default)
+		expect(notifications[0]).toBe("yolo");
 	});
 });
 
@@ -306,14 +311,15 @@ describe("user_bash hook", () => {
 		expect(result).toBeUndefined();
 	});
 
-	it("sandbox 有効時: エラーを投げる (ブロック)", async () => {
+	it("sandbox 有効時: yolo なら許可", async () => {
 		const mock = createMockApi();
 		mock._flags = {};
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
-		// sandbox-exec unavailable → startupBlockedReason set → user_bash throws startup block
-		expect(() => mock._hooks.user_bash()).toThrow("sandbox-exec");
+		// Default is yolo → user_bash returns undefined (allowed)
+		const result = mock._hooks.user_bash();
+		expect(result).toBeUndefined();
 	});
 
 	it("yolo 承認済み: undefined を返す (許可)", async () => {
@@ -327,21 +333,15 @@ describe("user_bash hook", () => {
 		expect(result).toBeUndefined();
 	});
 
-	it("yolo 未承認: エラーを投げる", async () => {
+	it("yolo モードなら user_bash 許可", async () => {
 		const mock = createMockApi();
 		mock._flags = { "sandbox-mode": "yolo" };
 		await loadExtension(mock);
-		const ctx = createMockCtx({
-			ui: {
-				...createMockCtx().ui,
-				confirm: vi.fn(() => Promise.resolve(false)),
-			},
-		});
-		await mock._hooks.session_start({}, ctx);
+		await mock._hooks.session_start({}, createMockCtx());
 
-		// yolo was rejected → fallback to workspace_write
-		// sandbox-exec unavailable → startupBlockedReason set → user_bash throws startup block
-		expect(() => mock._hooks.user_bash()).toThrow("sandbox-exec");
+		// yolo mode → user_bash allowed (no approval gating)
+		const result = mock._hooks.user_bash();
+		expect(result).toBeUndefined();
 	});
 });
 
@@ -360,8 +360,8 @@ describe("/sandbox command", () => {
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 
-		// When explicitly disabled, effectiveMode() returns currentMode (workspace_write)
-		expect(notifications[0]).toBe("workspace_write");
+		// When explicitly disabled, effectiveMode() returns currentMode (yolo default)
+		expect(notifications[0]).toBe("yolo");
 	});
 
 	it("sandbox 有効時のステータス", async () => {
@@ -379,7 +379,7 @@ describe("/sandbox command", () => {
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 
-		expect(notifications[0]).toBe("workspace_write");
+		expect(notifications[0]).toBe("yolo");
 	});
 });
 
@@ -398,7 +398,7 @@ describe("/sandbox mode change", () => {
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 
-		expect(notifications[0]).toBe("workspace_write");
+		expect(notifications[0]).toBe("yolo");
 	});
 
 	it("read_only: モードを変更", async () => {
@@ -580,10 +580,11 @@ describe("tool execute: Case 1 (--no-sandbox)", () => {
 // ─── tool execute: Case 3 (sandbox unavailable) ──────────────────
 
 describe("tool execute: Case 3 (sandbox unavailable, refuse)", () => {
-	it("sandbox-exec が利用不可の場合、コマンドを拒否する", async () => {
+	it("sandbox-exec が利用不可の場合、workspace_write モードではコマンドを拒否する", async () => {
 		const mock = createMockApi();
-		mock._flags = {};
+		mock._flags = { "sandbox-mode": "workspace_write" };
 		await loadExtension(mock);
+		// workspace_write does not need yolo approval, confirm won't be called for mode
 		await mock._hooks.session_start({}, createMockCtx());
 
 		const tool = mock._registeredTools[0];
@@ -615,23 +616,18 @@ describe("tool execute: Case 2 (yolo)", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("未承認: 承認拒否でエラー", async () => {
+	it("yolo モードなら確認なしで実行", async () => {
 		const mock = createMockApi();
 		mock._flags = { "sandbox-mode": "yolo" };
 		await loadExtension(mock);
-		// Reject the session_start approval
-		await mock._hooks.session_start({}, createMockCtx({
-			ui: {
-				...createMockCtx().ui,
-				confirm: vi.fn(() => Promise.resolve(false)),
-			},
-		}));
-		// yolo was rejected at session_start → fallback to workspace_write
-		// But since sandbox is unavailable, it will refuse
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// yolo mode → tool executes without any approval prompt
 		const tool = mock._registeredTools[0];
-		await expect(
-			tool.execute("test-id", { command: "echo hello" }, undefined, undefined, createMockCtx()),
-		).rejects.toThrow();
+		const ctx = createMockCtx();
+		const result = await tool.execute("test-id", { command: "echo hello" }, undefined, undefined, ctx);
+		expect(result).toBeDefined();
+		expect(ctx.ui.confirm).not.toHaveBeenCalled();
 	});
 });
 
@@ -658,9 +654,8 @@ describe("session lifecycle", () => {
 		const notifications: string[] = [];
 		ctx.ui.notify = (msg: string) => { notifications.push(msg); };
 		await mock._commands["sandbox"].handler("", ctx);
-		// After restart with no flags, sandbox-exec unavailable → startup blocked
-		expect(notifications[0]).toContain("blocked:");
-		expect(notifications[0]).toContain("sandbox-exec");
+		// After restart with no flags, default is yolo, approved at session_start
+		expect(notifications[0]).toBe("yolo");
 	});
 });
 
@@ -706,7 +701,7 @@ describe("status bar", () => {
 		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", expect.arrayContaining([expect.stringContaining("yolo")]), expect.any(Object));
 	});
 
-	it("workspace_write 時は [o] アイコン", async () => {
+	it("yolo 時は yolo 表示", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
@@ -716,7 +711,7 @@ describe("status bar", () => {
 		const ctx = createMockCtx();
 		await mock._hooks.session_start({}, ctx);
 
-		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", expect.arrayContaining([expect.stringContaining("workspace_write")]), expect.any(Object));
+		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", expect.arrayContaining([expect.stringContaining("yolo")]), expect.any(Object));
 	});
 });
 
@@ -734,7 +729,7 @@ describe("tool execute: Case 4 (sandboxed execution)", () => {
 		});
 
 		const mock = createMockApi();
-		mock._flags = {};
+		mock._flags = { "sandbox-mode": "workspace_write" };
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
@@ -756,7 +751,7 @@ describe("tool execute: Case 4 (sandboxed execution)", () => {
 		});
 
 		const mock = createMockApi();
-		mock._flags = {};
+		mock._flags = { "sandbox-mode": "workspace_write" };
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
@@ -778,7 +773,7 @@ describe("tool execute: Case 4 (sandboxed execution)", () => {
 		});
 
 		const mock = createMockApi();
-		mock._flags = {};
+		mock._flags = { "sandbox-mode": "workspace_write" };
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
@@ -799,7 +794,7 @@ describe("tool execute: Case 4 (sandboxed execution)", () => {
 		});
 
 		const mock = createMockApi();
-		mock._flags = {};
+		mock._flags = { "sandbox-mode": "workspace_write" };
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
@@ -820,7 +815,7 @@ describe("tool execute: Case 4 (sandboxed execution)", () => {
 		});
 
 		const mock = createMockApi();
-		mock._flags = {};
+		mock._flags = { "sandbox-mode": "workspace_write" };
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
@@ -837,7 +832,7 @@ describe("tool execute: Case 4 (sandboxed execution)", () => {
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
 		const mock = createMockApi();
-		mock._flags = {};
+		mock._flags = { "sandbox-mode": "workspace_write" };
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
@@ -864,7 +859,7 @@ describe("tool execute: Case 4 (sandboxed execution)", () => {
 		});
 
 		const mock = createMockApi();
-		mock._flags = {};
+		mock._flags = { "sandbox-mode": "workspace_write" };
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
@@ -978,58 +973,33 @@ describe("tool execute: Case 2 inline approval flow", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("session_shutdown 後に mode が残っている場合、execute 内でインライン承認", async () => {
+	it("session_shutdown 後に yolo なら確認なしで実行", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
 		const mock = createMockApi();
 		mock._flags = { "sandbox-mode": "yolo" };
 		await loadExtension(mock);
-
-		// session_start approves yolo
 		await mock._hooks.session_start({}, createMockCtx());
-
-		// session_shutdown resets yoloApproved to false, but currentMode stays
 		await mock._hooks.session_shutdown();
 
-		// Now execute should hit the inline approval path
-		const confirmFn = vi.fn(() => Promise.resolve(true));
-		const ctx = createMockCtx({
-			ui: { ...createMockCtx().ui, confirm: confirmFn },
-		});
+		// yolo mode — no approval needed
+		const ctx = createMockCtx();
 		const result = await mock._registeredTools[0].execute("id1", { command: "echo test" }, undefined, undefined, ctx);
-
-		// Should have prompted for approval
-		expect(confirmFn).toHaveBeenCalledTimes(1);
-		expect(confirmFn).toHaveBeenCalledWith(
-			"[!] フルアクセスが必要です",
-			expect.stringContaining("無効化"),
-		);
 		expect(result).toBeDefined();
+		expect(ctx.ui.confirm).not.toHaveBeenCalled();
 	});
 
-	it("session_shutdown 後に inline approval 拒否 → エラー", async () => {
+	it("session_shutdown 後も yolo なら user_bash 許可", async () => {
 		const mock = createMockApi();
 		mock._flags = { "sandbox-mode": "yolo" };
 		await loadExtension(mock);
-
-		// session_start approves
 		await mock._hooks.session_start({}, createMockCtx());
-
-		// session_shutdown resets approval
 		await mock._hooks.session_shutdown();
 
-		// Execute with confirm rejecting
-		const confirmFn = vi.fn(() => Promise.resolve(false));
-		const ctx = createMockCtx({
-			ui: { ...createMockCtx().ui, confirm: confirmFn },
-		});
-
-		await expect(
-			mock._registeredTools[0].execute("id1", { command: "echo test" }, undefined, undefined, ctx),
-		).rejects.toThrow("明示的な承認");
-
-		expect(confirmFn).toHaveBeenCalledTimes(1);
+		// yolo mode → user_bash allowed
+		const result = mock._hooks.user_bash();
+		expect(result).toBeUndefined();
 	});
 });
 
@@ -1097,7 +1067,7 @@ describe("profile override: restrict-only policy", () => {
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
 		const mock = createMockApi();
-		mock._flags = {};
+		mock._flags = { "sandbox-mode": "workspace_write" };
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
@@ -1149,7 +1119,7 @@ describe("profile override: restrict-only policy", () => {
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
 		const mock = createMockApi();
-		mock._flags = {};
+		mock._flags = { "sandbox-mode": "workspace_write" };
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
