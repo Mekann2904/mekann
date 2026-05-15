@@ -27,12 +27,9 @@ export function extractForkContext(
   // Extract user/assistant text pairs in order
   const pairs: Array<{ role: "user" | "assistant"; text: string }> = [];
   for (const msg of messages) {
-    if (msg.role === "user") {
+    if (msg.role === "user" || msg.role === "assistant") {
       const text = extractTextFromContent(msg.content);
-      if (text) pairs.push({ role: "user", text });
-    } else if (msg.role === "assistant") {
-      const text = extractTextFromContent(msg.content);
-      if (text) pairs.push({ role: "assistant", text });
+      if (text) pairs.push({ role: msg.role, text });
     }
     // Skip toolResult, bashExecution, custom messages
   }
