@@ -118,9 +118,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	}
 
 	function resetYoloApproval(): void {
-		yoloState.yoloApproved = false;
-		yoloState.yoloApprovedAt = undefined;
-		yoloState.yoloApprovedReason = undefined;
+		Object.assign(yoloState, { yoloApproved: false, yoloApprovedAt: undefined, yoloApprovedReason: undefined });
 	}
 
 	// ─── Flags ───────────────────────────────────────────────────────
