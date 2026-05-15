@@ -98,8 +98,7 @@ export function parseModelRef(input: string): ModelRef | undefined {
 
 /** Format a ModelRef as "provider/modelId". */
 export function formatModelRef(ref?: ModelRef): string {
-	if (!ref) return "(not set)";
-	return `${ref.provider}/${ref.modelId}`;
+	return ref ? `${ref.provider}/${ref.modelId}` : "(not set)";
 }
 
 /** Compare two ModelRef values for equality. */
