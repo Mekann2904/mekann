@@ -165,8 +165,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				return getLocalBash().execute(id, params, signal, onUpdate);
 			}
 
-			// ── Case 3: Sandbox mode but sandbox-exec unavailable → REFUSE ─
-			// FAIL-CLOSED: Do NOT fall through to unsandboxed execution.
+			// ── Case 3: sandbox-exec unavailable → REFUSE (fail-closed) ─
 			if (!sandboxAvailable) {
 				throw new Error(
 					"Sandbox is required but /usr/bin/sandbox-exec is not available. " +
@@ -176,8 +175,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			}
 
 			// ── Case 4: Normal sandboxed execution (read_only / workspace_write) ──
-
-			// UX-level approval check (NOT a security boundary)
 			const approval = shouldRequestApproval(currentMode, command);
 			if (approval.needsApproval && approval.reason) {
 				const ok = await ctx.ui.confirm(
@@ -189,8 +186,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				}
 			}
 
-			// Execute via sandbox with AbortSignal propagation
-			// API: runSandboxedShellMac takes a shell command string, not argv.
+			// Execute via sandbox (runSandboxedShellMac takes shell string, not argv)
 			const policy = buildCurrentPolicy();
 			const result = await runSandboxedShellMac(
 				command,
@@ -224,20 +220,10 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	// ─── user_bash handler ───────────────────────────────────────────
-	// SECURITY: When sandbox is active, returning undefined would delegate to the default unsandboxed handler (bypass). Block instead.
-
+	// SECURITY: When sandbox is active, returning undefined = bypass. Block instead.
 	pi.on("user_bash", () => {
-		// Explicitly disabled: allow default handler
 		if (explicitlyDisabled) return undefined;
-
-		// Approved danger_full_access: allow default handler
-		if (currentMode === "danger_full_access" && fullAccessState.fullAccessApproved) {
-			return undefined;
-		}
-
-		// Sandbox active: BLOCK direct bash execution.
-		// All commands must go through the sandboxed bash tool.
+		if (currentMode === "danger_full_access" && fullAccessState.fullAccessApproved) return undefined;
 		throw new Error(
 			"Direct bash execution is blocked when sandbox is active. " +
 			"Commands must go through the sandboxed bash tool.",
@@ -304,8 +290,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				}
 								approveFullAccess("approved via /sandbox-mode command");
 			} else {
-				// Reset approval when leaving danger_full_access
-								resetFullAccessApproval();
+				resetFullAccessApproval();
 			}
 
 			currentMode = newMode;
@@ -384,9 +369,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			}
 		}
 
-		// SECURITY: Validate workspace root is not too broad.
-		// FAIL-CLOSED: If workspace root is unsafe, do NOT continue.
-		// This applies to ALL modes (read_only AND workspace_write).
+		// SECURITY: FAIL-CLOSED on unsafe workspace root (all modes)
 		try {
 			await validateWorkspaceRoot(ctx.cwd);
 		} catch (e) {
@@ -407,9 +390,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			resolvedWritableRoots = [ctx.cwd];
 		}
 
-		// FAIL-CLOSED: If sandbox is unavailable and mode requires it, warn clearly
 		if (!sandboxAvailable && currentMode !== "danger_full_access") {
-			// Commands will be REFUSED when attempted (see execute handler Case 3)
 			sandboxEnabled = false;
 			ctx.ui.notify(
 				"⚠️ Sandbox unavailable on this system. " +
