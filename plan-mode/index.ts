@@ -219,7 +219,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 
 		if (!isReadOnlyMode(state.mode)) return;
-
 		const fullPrompt = loadPrompt("plan-mode");
 		const currentHash = hashContent(fullPrompt);
 		const useFull = !state.planPromptDelivered || state.planPromptHash !== currentHash;
@@ -230,10 +229,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 	pi.on("agent_end", async (event, ctx) => {
 		if (state.mode !== "plan") return;
-
 		const lastAssistant = [...event.messages].reverse().find((m): m is AssistantMessage => m.role === "assistant" && Array.isArray(m.content));
 		if (!lastAssistant) return;
-
 		const plan = extractProposedPlan(lastAssistant.content.filter((b): b is TextContent => b.type === "text").map(b => b.text).join("\n"));
 
 		if (plan) { state.pendingPlan = plan; ctx.ui.notify(modeLabel(state.mode)); }
@@ -256,7 +253,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	pi.on("model_select", async (event) => {
 		if (event.source === "restore") return;
 		if (suppressModelSelectPersist) return;
-
 		const ref: ModelRef = { provider: event.model.provider, modelId: event.model.id };
 		persistIfChanged("models", state.mode, ref, sameModelRef);
 	});

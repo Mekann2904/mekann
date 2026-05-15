@@ -147,7 +147,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			// Execute via sandbox (runSandboxedShellMac takes shell string, not argv)
 			const policy = buildCurrentPolicy();
 			const result = await runSandboxedShellMac(command, policy, { signal });
-
 			const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
 			const shown = truncateForLlm(output);
 
@@ -194,7 +193,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			if (startupBlockedReason) return { content: [{ type: "text", text: `${startupBlockedReason}。権限昇格では回避できません。明示的に --no-sandbox で起動し直す必要があります。` }], details: {} };
 
 			if (!sandboxEnabled) return { content: [{ type: "text", text: "サンドボックスはアクティブではありません。bash ツールを直接使用してください。" }], details: {} };
-
 			const ok = await ctx.ui.confirm(
 				"[>>] サンドボックス権限昇格リクエスト",
 				[
@@ -313,7 +311,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		}
 
 		sandboxAvailable = await isMacSandboxAvailable();
-
 		const modeFlag = pi.getFlag("sandbox-mode") as string;
 		if (modeFlag) {
 			const parsed = parseSandboxMode(modeFlag);
@@ -405,7 +402,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	pi.events.on(SANDBOX_POP_PROFILE_EVENT, (data: unknown) => {
 		const event = data as SandboxPopProfileEvent;
 		if (!event.token) return;
-
 		const idx = profileOverrideStack.findIndex((e) => e.owner === event.owner && e.token === event.token);
 		if (idx >= 0) profileOverrideStack.splice(idx, 1);
 

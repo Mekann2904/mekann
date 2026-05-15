@@ -136,7 +136,6 @@ export function saveModelConfig(config: PlanModeConfig, explicitPath?: string): 
 	const configPath = getConfigPath(explicitPath);
 	const dir = dirname(configPath);
 	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-
 	const tmp = `${configPath}.tmp`;
 	const json = JSON.stringify(config, null, 2) + "\n";
 	writeFileSync(tmp, json, "utf-8");
