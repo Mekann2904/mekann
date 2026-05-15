@@ -1,22 +1,8 @@
 /**
  * macOS Seatbelt — SBPL ポリシー生成 + sandbox-exec spawn wrapper。
- *
- * Design principles:
- *   - danger_full_access 以外は default deny
- *   - sandbox-exec は絶対パス /usr/bin/sandbox-exec 固定（PATH 探索回避）
- *   - /bin/bash を明示的に使用（Homebrew bash 依存を回避）
- *
- * Security hardening (v4):
- *   - /usr を細分化: /usr/bin, /usr/sbin, /usr/lib, /usr/libexec, /usr/share のみ
- *   - per-run isolated temp directory（command ごとに作成・終了後に削除）
- *   - per-run isolated HOME directory（workspace/cwd にしない）
- *   - /bin/bash --noprofile --norc -c で startup files を読み込まない
- *   - PATH は固定値（process.env.PATH をそのまま渡さない）
- *   - process group kill（detached + process.kill(-pgid)）
- *   - idempotent cleanup（複数回 kill が安全）
- *   - AbortSignal を tool から伝播
- *   - maxOutputBytes は stdout + stderr の合計で制限
- *   - API: runSandboxedShellMac(command: string, ...) で shell string runner を明示
+ * Design: default deny, fixed sandbox-exec/bash paths, per-run isolated temp+HOME,
+ * PATH fixed, process group kill, idempotent cleanup, AbortSignal propagation,
+ * stdout+stderr combined output limit, shell string runner API.
  */
 
 import { spawn } from "node:child_process";
@@ -38,9 +24,9 @@ export interface RunResult {
 export interface SandboxRunOptions {
 	/** タイムアウト（ms）。デフォルト 120000。 */
 	timeoutMs?: number;
-	/** stdout+stderr の合計最大バイト数。超過したら kill してエラー。デフォルト 5 MB。 */
+	/** stdout+stderr 合計最大バイト数。デフォルト 5 MB。 */
 	maxOutputBytes?: number;
-	/** AbortSignal。tool execution から伝播させる。 */
+	/** AbortSignal。tool execution から伝播。 */
 	signal?: AbortSignal;
 }
 

@@ -92,10 +92,7 @@ export function extractProposedPlan(message: string): string | undefined {
 	return match?.[1]?.trim() || undefined;
 }
 
-/**
- * Replace all `<proposed_plan>...</proposed_plan>` blocks with a short placeholder.
- * Used by the `context` hook to prevent old plan content from consuming LLM context.
- */
+/** <proposed_plan> ブロックを短いプレースホルダーに置換（context hook 用）。 */
 export function compactOldProposedPlansInText(text: string): string {
 	return text.replace(
 		/<proposed_plan>\s*[\s\S]*?\s*<\/proposed_plan>/g,
@@ -162,11 +159,7 @@ export function normalizeConfig(raw: Record<string, unknown>): PlanModeConfig {
 	return config;
 }
 
-/**
- * Parse a "provider/modelId" string into a ModelRef.
- * The first `/` separates provider from modelId, so modelIds containing `/`
- * (e.g. "openrouter/anthropic/claude-3.5-sonnet") are handled correctly.
- */
+/** "provider/modelId" 文字列を ModelRef にパース（最初の / で分割）。 */
 export function parseModelRef(input: string): ModelRef | undefined {
 	const trimmed = input.trim();
 	if (!trimmed) return undefined;
@@ -214,10 +207,7 @@ export function loadModelConfig(explicitPath?: string): PlanModeConfig {
 	return createDefaultConfig();
 }
 
-/**
- * Save config to disk using write-then-rename for atomicity.
- * Creates the parent directory if it doesn't exist.
- */
+/** 設定を write-then-rename で原子的に保存。 */
 export function saveModelConfig(config: PlanModeConfig, explicitPath?: string): void {
 	const configPath = getConfigPath(explicitPath);
 	const dir = dirname(configPath);
@@ -234,14 +224,7 @@ export function saveModelConfig(config: PlanModeConfig, explicitPath?: string): 
 	}
 }
 
-/**
- * Update a specific mode's model reference in the config and persist it.
- * Pass `undefined` for `ref` to clear that mode's setting.
- */
-/**
- * Update a specific mode's config field (model or thinking level) and persist.
- * Pass `undefined` for `value` to clear that mode's setting.
- */
+/** 特定モードの config field を更新して保存。undefined でクリア。 */
 export function updateConfigField<T>(
 	config: PlanModeConfig,
 	section: "models" | "thinking",
