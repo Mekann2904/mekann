@@ -388,11 +388,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				if (!/<proposed_plan>[\s\S]*?<\/proposed_plan>/.test(part.text)) continue;
 
 				if (!foundLatest) {
-					foundLatest = true; // keep the latest one intact
-				} else {
-					// older plan — compact it
-					textParts[j] = { ...part, text: compactOldProposedPlansInText(part.text) };
-				}
+					foundLatest = true;
+				} else textParts[j] = { ...part, text: compactOldProposedPlansInText(part.text) };
 			}
 		}
 
