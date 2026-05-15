@@ -58,6 +58,10 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 
 
+	function logBlockedTool(extra: Record<string, unknown>) {
+		pi.appendEntry("plan-mode-blocked-tool", { at: Date.now(), mode: state.mode, ...extra });
+	}
+
 	// ─── Status bar ────────────────────────────────────────────────────
 
 	/** Notify sandbox extension of current mode so it can render a combined status line. */
@@ -170,14 +174,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			// Security boundary is the sandbox extension's OS-level policy.
 			if (!isSafeCommand(command)) {
 				const intent = classifyCommandIntent(command);
-				pi.appendEntry("plan-mode-blocked-tool", {
-					at: Date.now(),
-					mode: state.mode,
-					toolName: "bash",
-					command,
-					blockCount: 1,
-					reason: `not-read-only-intent:${intent.kind}`,
-				});
+				logBlockedTool({ toolName: "bash", command, blockCount: 1, reason: `not-read-only-intent:${intent.kind}` });
 				return { block: true, reason: `Plan mode is read-only. Command intent "${intent.kind}" is not allowed:\n${command}\n理由: ${intent.reason}` };
 			}
 			return;
@@ -191,14 +188,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			lastBlockedInput = inputKey;
 		}
 		const reason = buildBlockReason(toolName, input, blockCount);
-		pi.appendEntry("plan-mode-blocked-tool", {
-			at: Date.now(),
-			mode: state.mode,
-			toolName,
-			path: typeof input?.path === "string" ? input.path : undefined,
-			command: typeof input?.command === "string" ? input.command : undefined,
-			blockCount,
-		});
+		logBlockedTool({ toolName, path: typeof input?.path === "string" ? input.path : undefined, command: typeof input?.command === "string" ? input.command : undefined, blockCount });
 
 		return { block: true, reason };
 	});
