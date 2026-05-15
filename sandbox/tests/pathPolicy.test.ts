@@ -14,7 +14,7 @@ import {
 	assertPathInsideRoot,
 	resolveRealPaths,
 	validateWorkspaceRoot,
-} from "../pathPolicy.js";
+} from "../permissions.js";
 
 // ─── isProtectedPath ──────────────────────────────────────────────
 
