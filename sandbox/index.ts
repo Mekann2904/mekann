@@ -186,9 +186,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 			// ── Case 3: sandbox-exec unavailable → REFUSE (fail-closed) ─
 			if (!sandboxAvailable) {
-				throw new Error(
-					"サンドボックスが必要ですが /usr/bin/sandbox-exec が利用できません。サンドボックス強制なしではコマンドを実行できません。--no-sandbox で明示的に無効化してください（非推奨）。" + SANDBOX_BLOCK_HINT,
-				);
+				throw new Error("サンドボックスが必要ですが /usr/bin/sandbox-exec が利用できません。サンドボックス強制なしではコマンドを実行できません。--no-sandbox で明示的に無効化してください（非推奨）。" + SANDBOX_BLOCK_HINT);
 			}
 
 			// ── Case 4: Normal sandboxed execution (read_only / workspace_write) ──
@@ -218,9 +216,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			if (result.code !== 0) {
 				const isPermissionError = /Operation not permitted|Permission denied|EPERM|EACCES/.test(shown.text);
 				const hint = isPermissionError ? SANDBOX_BLOCK_HINT : "";
-				throw new Error(
-					`サンドボックスコマンドが終了コード ${result.code} で終了しました${shown.text ? `:\n${shown.text}` : ""}${hint}`,
-				);
+				throw new Error(`サンドボックスコマンドが終了コード ${result.code} で終了しました${shown.text ? `:\n${shown.text}` : ""}${hint}`);
 			}
 
 			return {
@@ -312,9 +308,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		if (explicitlyDisabled) return undefined;
 
 		if (startupBlockedReason) {
-			throw new Error(
-				`${startupBlockedReason}。--no-sandbox で明示的に無効化しない限り、直接 bash 実行は拒否されます。`,
-			);
+			throw new Error(`${startupBlockedReason}。--no-sandbox で明示的に無効化しない限り、直接 bash 実行は拒否されます。`);
 		}
 
 		if (effectiveMode() === "yolo") return undefined;
