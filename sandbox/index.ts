@@ -235,7 +235,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			"サンドボックスが正当な操作をブロックした場合にのみ使用すること（例: 依存関係のインストール、システムパスへのアクセス）。",
 		promptSnippet: "ブロックされたコマンドの一時的なサンドボックスバイパスをリクエスト",
 		promptGuidelines: [
-			"サンドボックスが workspace 外へのアクセスを必要とする正当なコマンドをブロックした場合に request_elevation を使用する（例: npm install, brew, システムツール）。",
+			"request_elevation はサンドボックスがアクティブなモード（read_only または workspace_write）でコマンドがブロックされた場合にのみ使用する。",
+			"yolo モードではサンドボックスが無効なため、request_elevation は不要。直接 bash ツールを使用すること。",
 			"コマンドがサンドボックス外で実行されるべき理由を必ず説明すること。",
 			"危険または破壊的な操作には request_elevation を使用しないこと。",
 		],
