@@ -97,9 +97,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	const MODE_RANK: Record<SandboxMode, number> = { read_only: 0, workspace_write: 1, yolo: 2 };
 
 	// SECURITY: yolo の承認状態
-	const yoloState: YoloApprovalState = {
-		yoloApproved: false,
-	};
+	const yoloState: YoloApprovalState = { yoloApproved: false };
 
 	function resetYoloApproval(): void {
 		Object.assign(yoloState, { yoloApproved: false, yoloApprovedAt: undefined, yoloApprovedReason: undefined });
@@ -107,17 +105,9 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 	// ─── Flags ───────────────────────────────────────────────────────
 
-	pi.registerFlag("no-sandbox", {
-		description: "sandbox を無効化する（明示的 opt-out）",
-		type: "boolean",
-		default: false,
-	});
+	pi.registerFlag("no-sandbox", { description: "sandbox を無効化する（明示的 opt-out）", type: "boolean", default: false });
 
-	pi.registerFlag("sandbox-mode", {
-		description: "初期 sandbox モード (read_only | workspace_write | yolo)",
-		type: "string",
-		default: DEFAULT_SANDBOX_MODE,
-	});
+	pi.registerFlag("sandbox-mode", { description: "初期 sandbox モード (read_only | workspace_write | yolo)", type: "string", default: DEFAULT_SANDBOX_MODE });
 
 	// ─── Policy builder ──────────────────────────────────────────────
 

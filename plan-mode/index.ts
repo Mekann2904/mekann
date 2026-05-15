@@ -177,15 +177,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 	// ─── Commands ───────────────────────────────────────────────────
 
-	pi.registerCommand("plan", {
-		description: "プランモード切替",
-		handler: (_args, ctx) => togglePlanMode(ctx),
-	});
+	pi.registerCommand("plan", { description: "プランモード切替", handler: (_args, ctx) => togglePlanMode(ctx) });
 
-	pi.registerShortcut(Key.super("p"), {
-		description: "プランモード切替",
-		handler: (ctx) => togglePlanMode(ctx),
-	});
+	pi.registerShortcut(Key.super("p"), { description: "プランモード切替", handler: (ctx) => togglePlanMode(ctx) });
 
 	// ─── Hooks ──────────────────────────────────────────────────────
 

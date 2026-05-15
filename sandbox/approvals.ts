@@ -42,10 +42,7 @@ export function shouldRequestApproval(
 	// SECURITY: yolo でも明示承認が必要
 	if (mode === "yolo") {
 		if (approvalState?.yoloApproved) return { needsApproval: false };
-		return {
-			needsApproval: true,
-			reason: "yolo モードではコマンドを実行する前にユーザーの明示的な承認が必要です",
-		};
+		return { needsApproval: true, reason: "yolo モードではコマンドを実行する前にユーザーの明示的な承認が必要です" };
 	}
 
 	// 危険パターンのチェック

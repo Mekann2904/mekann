@@ -115,11 +115,7 @@ export function classifyCommandIntent(command: string): CommandIntent {
 		};
 	}
 
-	return {
-		allowedInPlanReadOnly: false,
-		kind: "unknown",
-		reason: "既知の安全なコマンドパターンに一致しません",
-	};
+	return { allowedInPlanReadOnly: false, kind: "unknown", reason: "既知の安全なコマンドパターンに一致しません" };
 }
 
 /**
