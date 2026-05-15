@@ -369,14 +369,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		const modeFlag = pi.getFlag("sandbox-mode") as string;
 		if (modeFlag) {
 			const parsed = parseSandboxMode(modeFlag);
-			if (parsed) {
-				currentMode = parsed;
-			} else {
-				currentMode = DEFAULT_SANDBOX_MODE;
-				ctx.ui.notify(
-					`無効な --sandbox-mode: ${modeFlag}。デフォルトの ${DEFAULT_SANDBOX_MODE} を使用します`, "warning",
-				);
-			}
+			if (parsed) currentMode = parsed; else { currentMode = DEFAULT_SANDBOX_MODE; ctx.ui.notify(`無効な --sandbox-mode: ${modeFlag}。デフォルトの ${DEFAULT_SANDBOX_MODE} を使用します`, "warning"); }
 		}
 
 		// SECURITY: FAIL-CLOSED on unsafe workspace root (all modes)
