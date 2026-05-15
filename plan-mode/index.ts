@@ -135,7 +135,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	let blockCount = 0;
 	let lastBlockedTool = "";
 	let lastBlockedInput = "";
-
 	pi.on("tool_call", async (event) => {
 		if (!isReadOnlyMode(state.mode)) return;
 
@@ -182,7 +181,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		return { block: true, reason };
 	});
-
 	pi.on("context", async (event) => {
 		const messages = event.messages;
 		// Scan messages from end (most recent) to find the latest <proposed_plan>
@@ -205,7 +203,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		return { messages };
 	});
-
 	pi.on("before_agent_start", async (event) => {
 	// Inject implementation plan once into main mode system prompt, then clear it
 		if (state.mode === "main" && state.implementationPlan) {
@@ -222,7 +219,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		return { systemPrompt: `${event.systemPrompt}\n\n${useFull ? fullPrompt : loadPrompt("plan-mode-reminder")}` };
 	});
-
 	pi.on("agent_end", async (event, ctx) => {
 		if (state.mode !== "plan") return;
 		const lastAssistant = [...event.messages].reverse().find((m): m is AssistantMessage => m.role === "assistant" && Array.isArray(m.content));
@@ -231,7 +227,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		if (plan) { state.pendingPlan = plan; ctx.ui.notify(modeLabel(state.mode)); }
 	});
-
 	pi.on("turn_end", async () => { blockCount = 0; lastBlockedTool = ""; lastBlockedInput = ""; });
 
 	// Track config changes per-mode
@@ -258,7 +253,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (suppressThinkingSelectPersist) return;
 		const level = event.level; persistIfChanged("thinking", state.mode, level, (a, b) => a === b);
 	});
-
 	pi.on("session_start", async (_event, ctx) => {
 		// Load config
 		configPath = undefined; // use default path

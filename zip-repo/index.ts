@@ -109,6 +109,5 @@ async function overlayDirtyFiles(repoRoot: string, repoName: string, zipPath: st
 
 	const dirtyFiles = parseDirtyFiles(stdout);
 	if (dirtyFiles.length === 0) return;
-
 	await execFileAsync("/usr/bin/zip", ["-u", zipPath, ...dirtyFiles.map((f) => `${repoName}/${f}`)], { cwd: dirname(repoRoot) });
 }

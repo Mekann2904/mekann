@@ -50,12 +50,9 @@ export function buildSandboxEnv(policy: SandboxPolicy, isolatedHome: string): No
 
 	const env: NodeJS.ProcessEnv = {
 		PATH: ["/usr/bin", "/bin", "/usr/sbin", "/sbin", ...(allowHomebrew ? ["/opt/homebrew/bin", "/usr/local/bin"] : [])].join(":"),
-		SHELL: "/bin/bash",
-		TERM: process.env.TERM ?? "xterm-256color",
-		LANG: process.env.LANG ?? "C.UTF-8",
+		SHELL: "/bin/bash", TERM: process.env.TERM ?? "xterm-256color", LANG: process.env.LANG ?? "C.UTF-8",
 		// SECURITY: HOME is set to isolated temp home, NOT workspace/cwd.
-		HOME: isolatedHome,
-		GIT_TERMINAL_PROMPT: "0",
+		HOME: isolatedHome, GIT_TERMINAL_PROMPT: "0",
 	};
 	if (process.env.LC_ALL) env.LC_ALL = process.env.LC_ALL;
 	if (policy._isolatedTempDir) env.TMPDIR = policy._isolatedTempDir;
@@ -362,16 +359,7 @@ export async function runSandboxedShellMac(
 	const sandboxEnv = buildSandboxEnv(resolvedPolicy, isolatedHome);
 
 	// SECURITY: --noprofile --norc prevents workspace-controlled startup file injection
-	const child = spawn(SANDBOX_EXEC, [
-		"-p",
-		fullPolicy,
-		"--",
-		"/bin/bash",
-		"--noprofile",
-		"--norc",
-		"-c",
-		command,
-	], { cwd: resolvedPolicy.cwd, stdio: ["ignore", "pipe", "pipe"], env: sandboxEnv, detached: true });
+	const child = spawn(SANDBOX_EXEC, ["-p", fullPolicy, "--", "/bin/bash", "--noprofile", "--norc", "-c", command], { cwd: resolvedPolicy.cwd, stdio: ["ignore", "pipe", "pipe"], env: sandboxEnv, detached: true });
 
 	// SECURITY: Track total bytes across stdout + stderr combined (Buffer-based, byte-accurate)
 	const bufs = { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) };
@@ -444,7 +432,6 @@ export async function runSandboxedShellMac(
 			if (!killed && code !== null) { killProcessGroup(child); await new Promise<void>((r) => setTimeout(r, 200)); }
 
 			cleanupTempDir(isolatedTemp);
-
 			if (outputExceeded) {
 				resolvePromise({
 					code: 1,
