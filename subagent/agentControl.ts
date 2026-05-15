@@ -85,9 +85,42 @@ export class AgentControl {
   private resolveTarget(target: string, callerPath: string): string {
     const trimmed = target.trim();
     if (!trimmed) throw new Error("Target must not be empty.");
-    // If absolute, use as-is. If relative, resolve from caller.
     if (trimmed.startsWith("/")) return trimmed;
     return resolveTaskPath(trimmed, callerPath);
+  }
+
+  // ─── Helper: resolve model from params ────────────────────────────
+
+  private resolveModel(modelOverride: string | undefined, ctx: ExtensionContext) {
+    let model = ctx.model;
+    if (!modelOverride) return model;
+    const parts = modelOverride.split("/");
+    if (parts.length === 2) {
+      const found = ctx.modelRegistry.find(parts[0], parts[1]);
+      if (!found) throw new Error(`Model not found: ${modelOverride}. Use provider/model_id format.`);
+      return found;
+    }
+    const all = ctx.modelRegistry.getAvailable();
+    const found = all.find((m) => m.id === modelOverride);
+    if (!found) throw new Error(`Model not found: ${modelOverride}. Available: ${all.map((m) => m.id).join(", ")}`);
+    return found;
+  }
+
+  // ─── Helper: finalize agent with error ─────────────────────────────
+
+  private finalizeWithError(agentId: string, canonicalPath: string, callerPath: string, err: unknown): void {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    this.registry.updateStatus(canonicalPath, "errored");
+    this.mailbox.appendEvent({
+      type: "agent_final_message", agentId, agentPath: canonicalPath,
+      parentAgentId: callerPath === ROOT_PATH ? undefined : "root",
+      message: `Agent error: ${errorMessage}`, status: "errored", timestamp: Date.now(),
+    });
+    this.mailbox.enqueue({
+      fromAgentId: agentId, fromAgentPath: canonicalPath, toAgentPath: callerPath,
+      content: `Agent error: ${errorMessage}`, timestamp: Date.now(), kind: "final_result",
+    });
+    this.childSessions.delete(canonicalPath);
   }
 
   // ─── spawn_agent ───────────────────────────────────────────────
@@ -127,32 +160,8 @@ export class AgentControl {
     });
 
     try {
-      // Resolve model
-      let model = ctx.model;
-      if (params.model) {
-        const parts = params.model.split("/");
-        if (parts.length === 2) {
-          const found = ctx.modelRegistry.find(parts[0], parts[1]);
-          if (!found) {
-            throw new Error(
-              `Model not found: ${params.model}. Use provider/model_id format.`,
-            );
-          }
-          model = found;
-        } else {
-          // Try to find by ID alone
-          const all = ctx.modelRegistry.getAvailable();
-          const found = all.find((m) => m.id === params.model);
-          if (!found) {
-            throw new Error(
-              `Model not found: ${params.model}. Available: ${all.map((m) => m.id).join(", ")}`,
-            );
-          }
-          model = found;
-        }
-      }
+      const model = this.resolveModel(params.model, ctx);
 
-      // Create child session
       const forkTurns = params.fork_turns ?? 0;
 
       const { session } = await createAgentSession({
@@ -242,27 +251,7 @@ export class AgentControl {
       void session
         .prompt(initialMessage)
         .catch((err: unknown) => {
-          const errorMessage =
-            err instanceof Error ? err.message : String(err);
-          this.registry.updateStatus(canonicalPath, "errored");
-          this.mailbox.appendEvent({
-            type: "agent_final_message",
-            agentId,
-            agentPath: canonicalPath,
-            parentAgentId: callerPath === ROOT_PATH ? undefined : "root",
-            message: `Agent error: ${errorMessage}`,
-            status: "errored",
-            timestamp: Date.now(),
-          });
-          this.mailbox.enqueue({
-            fromAgentId: agentId,
-            fromAgentPath: canonicalPath,
-            toAgentPath: callerPath,
-            content: `Agent error: ${errorMessage}`,
-            timestamp: Date.now(),
-            kind: "final_result",
-          });
-          this.childSessions.delete(canonicalPath);
+          this.finalizeWithError(agentId, canonicalPath, callerPath, err);
         });
 
       return {
