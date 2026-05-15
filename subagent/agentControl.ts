@@ -466,46 +466,28 @@ export class AgentControl {
     return { closed };
   }
 
-  private async closeSingle(agentPath: string): Promise<void> {
-    // Abort child session if running
+  private async abortSession(agentPath: string): Promise<void> {
     const childSession = this.childSessions.get(agentPath);
-    if (childSession) {
-      try {
-        await childSession.abort();
-      } catch {
-        // Best-effort abort
-      }
-      try {
-        childSession.dispose();
-      } catch {
-        // Best-effort dispose
-      }
-      this.childSessions.delete(agentPath);
-    }
+    if (!childSession) return;
+    try { await childSession.abort(); } catch { /* best-effort */ }
+    try { childSession.dispose(); } catch { /* best-effort */ }
+    this.childSessions.delete(agentPath);
+  }
 
+  private async closeSingle(agentPath: string): Promise<void> {
+    await this.abortSession(agentPath);
     this.registry.close(agentPath, "shutdown");
-
     this.mailbox.appendEvent({
       type: "agent_close_end",
       agentId: this.registry.get(agentPath)?.agentId ?? "unknown",
-      agentPath,
-      timestamp: Date.now(),
+      agentPath, timestamp: Date.now(),
     });
   }
 
   // ─── Shutdown ──────────────────────────────────────────────────
 
   async shutdown(): Promise<void> {
-    // Close all child sessions
-    for (const [path, session] of this.childSessions) {
-      try {
-        await session.abort();
-        session.dispose();
-      } catch {
-        // Best-effort
-      }
-    }
-    this.childSessions.clear();
+    for (const path of [...this.childSessions.keys()]) await this.abortSession(path);
     this.registry.clear();
     this.mailbox.clear();
   }
