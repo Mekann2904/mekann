@@ -49,7 +49,7 @@ export function truncateForLlm(
 	}
 
 	if (truncated) {
-		out += `\n\n[...output truncated: original ${originalBytes} bytes, ${originalLines} lines; shown at most ${opts.maxBytes} bytes / ${opts.maxLines} lines...]`;
+		out += `\n\n[...出力が切り詰められました: 元の ${originalBytes} バイト、${originalLines} 行; 最大 ${opts.maxBytes} バイト / ${opts.maxLines} 行...]`;
 	}
 
 	return { text: out, truncated, originalBytes, originalLines };
@@ -119,7 +119,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// ─── Elevation hint for error messages ─────────────────────────
 
 	const SANDBOX_BLOCK_HINT =
-		" If you believe this command should be allowed, use the request_elevation tool to ask the user for permission.";
+		" このコマンドの実行が必要な場合は、request_elevation ツールを使ってユーザーに許可を求めてください。";
 
 	// ─── Bash tool override ──────────────────────────────────────────
 
@@ -141,7 +141,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 	pi.registerTool({
 		...initialBash,
-		label: "bash (sandboxed)",
+		label: "bash (サンドボックス)",
 		async execute(id, params, signal, onUpdate, ctx) {
 			const command = String(params.command ?? "");
 
@@ -154,15 +154,15 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			if (currentMode === "yolo") {
 				if (!yoloState.yoloApproved) {
 					const ok = await ctx.ui.confirm(
-						"⚠️ Full Access Required",
+						"[!] フルアクセスが必要です",
 						yoloApprovalMessage(),
 					);
 					if (!ok) {
 						throw new Error(
-							"yolo requires explicit user approval. Use /sandbox-mode yolo to approve.",
+							"yolo モードにはユーザーの明示的な承認が必要です。/sandbox-mode yolo で承認してください。",
 						);
 					}
-										approveYolo("approved via tool execution prompt");
+										approveYolo("ツール実行プロンプトで承認");
 				}
 				// Approved yolo: unsandboxed execution
 				return getLocalBash().execute(id, params, signal, onUpdate);
@@ -171,9 +171,9 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			// ── Case 3: sandbox-exec unavailable → REFUSE (fail-closed) ─
 			if (!sandboxAvailable) {
 				throw new Error(
-					"Sandbox is required but /usr/bin/sandbox-exec is not available. " +
-					"Commands cannot be executed without sandbox enforcement. " +
-					"Use --no-sandbox to explicitly disable sandbox (not recommended)." +
+					"サンドボックスが必要ですが /usr/bin/sandbox-exec が利用できません。" +
+					"サンドボックス強制なしではコマンドを実行できません。" +
+					"--no-sandbox で明示的に無効化してください（非推奨）。" +
 					SANDBOX_BLOCK_HINT,
 				);
 			}
@@ -182,11 +182,11 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			const approval = shouldRequestApproval(currentMode, command);
 			if (approval.needsApproval && approval.reason) {
 				const ok = await ctx.ui.confirm(
-					"⚠️ Command requires approval",
-					`Sandbox mode: ${modeLabel(currentMode)}\nCommand: ${command}\nReason: ${approval.reason}\n\nAllow this command?`,
+					"[!] コマンドの承認が必要です",
+					`サンドボックスモード: ${modeLabel(currentMode)}\nコマンド: ${command}\n理由: ${approval.reason}\n\nこのコマンドを許可しますか？`,
 				);
 				if (!ok) {
-					throw new Error(`Command blocked: ${approval.reason}`);
+					throw new Error(`コマンドがブロックされました: ${approval.reason}`);
 				}
 			}
 
@@ -206,12 +206,12 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				const isPermissionError = /Operation not permitted|Permission denied|EPERM|EACCES/.test(shown.text);
 				const hint = isPermissionError ? SANDBOX_BLOCK_HINT : "";
 				throw new Error(
-					`Sandboxed command exited with code ${result.code}${shown.text ? `:\n${shown.text}` : ""}${hint}`,
+					`サンドボックスコマンドが終了コード ${result.code} で終了しました${shown.text ? `:\n${shown.text}` : ""}${hint}`,
 				);
 			}
 
 			return {
-				content: [{ type: "text", text: shown.text || "(no output)" }],
+				content: [{ type: "text", text: shown.text || "(出力なし)" }],
 				details: {
 					sandboxed: true,
 					mode: currentMode,
@@ -228,47 +228,47 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 	pi.registerTool({
 		name: "request_elevation",
-		label: "Request Sandbox Elevation",
+		label: "サンドボックス権限昇格リクエスト",
 		description:
-			"Request temporary sandbox elevation to run a command that is blocked by the current sandbox policy. " +
-			"The user will be shown the reason and command, and must explicitly approve. " +
-			"Use this ONLY when the sandbox blocks a legitimate operation (e.g., installing dependencies, accessing system paths).",
-		promptSnippet: "Request temporary sandbox bypass for a blocked command",
+			"現在のサンドボックスポリシーでブロックされたコマンドを実行するため、一時的な権限昇格をリクエストする。" +
+			"ユーザーに理由とコマンドが表示され、明示的な承認が必要。" +
+			"サンドボックスが正当な操作をブロックした場合にのみ使用すること（例: 依存関係のインストール、システムパスへのアクセス）。",
+		promptSnippet: "ブロックされたコマンドの一時的なサンドボックスバイパスをリクエスト",
 		promptGuidelines: [
-			"Use request_elevation when sandbox blocks a legitimate command that requires access outside the workspace (e.g., npm install, brew, system tooling).",
-			"Always explain why the command needs to run outside the sandbox.",
-			"Do NOT use request_elevation for dangerous or destructive operations.",
+			"サンドボックスが workspace 外へのアクセスを必要とする正当なコマンドをブロックした場合に request_elevation を使用する（例: npm install, brew, システムツール）。",
+			"コマンドがサンドボックス外で実行されるべき理由を必ず説明すること。",
+			"危険または破壊的な操作には request_elevation を使用しないこと。",
 		],
 		parameters: Type.Object({
-			command: Type.String({ description: "The command that needs to run outside the sandbox" }),
-			reason: Type.String({ description: "Why this command needs to bypass the sandbox" }),
+			command: Type.String({ description: "サンドボックス外で実行する必要があるコマンド" }),
+			reason: Type.String({ description: "このコマンドがサンドボックスをバイパスする必要がある理由" }),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const { command, reason } = params;
 
 			if (explicitlyDisabled) {
 				return {
-					content: [{ type: "text", text: "Sandbox is already disabled (--no-sandbox). Use the bash tool directly." }],
+					content: [{ type: "text", text: "サンドボックスは既に無効化されています (--no-sandbox)。bash ツールを直接使用してください。" }],
 				};
 			}
 
 			if (!sandboxEnabled) {
 				return {
-					content: [{ type: "text", text: "Sandbox is not active. Use the bash tool directly." }],
+					content: [{ type: "text", text: "サンドボックスはアクティブではありません。bash ツールを直接使用してください。" }],
 				};
 			}
 
 			const ok = await ctx.ui.confirm(
-				"🔓 Sandbox Elevation Request",
+				"[>>] サンドボックス権限昇格リクエスト",
 				[
-					`The agent is requesting temporary sandbox elevation:`,
+					`エージェントが一時的なサンドボックス権限昇格を要求しています:`,
 					"",
-					`Command: ${command}`,
-					`Reason: ${reason}`,
+					`コマンド: ${command}`,
+					`理由: ${reason}`,
 					"",
-					`Current mode: ${modeLabel(currentMode)}`,
+					`現在のモード: ${modeLabel(currentMode)}`,
 					"",
-					"Allow this command to run outside the sandbox?",
+					"このコマンドをサンドボックス外で実行しますか？",
 				].join("\n"),
 			);
 
@@ -276,9 +276,9 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				return {
 					content: [{
 						type: "text",
-						text: "Elevation denied by user. The command was not executed. " +
-							"Consider an alternative approach that works within sandbox constraints, " +
-							"or ask the user to run `/sandbox-mode yolo` manually.",
+						text: "権限昇格がユーザーによって拒否されました。コマンドは実行されませんでした。" +
+							"サンドボックス制約内で動作する別の方法を検討するか、" +
+							"ユーザーに `/sandbox-mode yolo` の手動実行を依頼してください。",
 					}],
 				};
 			}
@@ -308,8 +308,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		if (explicitlyDisabled) return undefined;
 		if (currentMode === "yolo" && yoloState.yoloApproved) return undefined;
 		throw new Error(
-			"Direct bash execution is blocked when sandbox is active. " +
-			"Commands must go through the sandboxed bash tool.",
+			"サンドボックスがアクティブな場合、直接の bash 実行はブロックされます。" +
+			"コマンドはサンドボックス化された bash ツール経由で実行してください。",
 		);
 	});
 
@@ -318,15 +318,15 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("sandbox", {
 		description: "現在の sandbox 設定を表示",
 		handler: async (_args, ctx) => {
-			const ck = (b: boolean) => b ? "✓" : "✗";
+			const ck = (b: boolean) => b ? "ON" : "OFF";
 			const roots = (r: string[]) => r.length > 0 ? r.join(", ") : "(cwd)";
-			ctx.ui.notify(`Sandbox Status:
-  Enabled: ${ck(sandboxEnabled)} | Available: ${ck(sandboxAvailable)} | Explicitly Disabled: ${ck(explicitlyDisabled)}
-  Mode: ${currentMode} (${modeLabel(currentMode)}) | CWD: ${currentCwd || "(not initialized)"}
-  Workspace Roots: ${roots(resolvedWorkspaceRoots)} | Writable Roots: ${roots(resolvedWritableRoots)}
-  Full Access Approved: ${ck(yoloState.yoloApproved)}
+			ctx.ui.notify(`サンドボックス状態:
+  有効: ${ck(sandboxEnabled)} | 利用可能: ${ck(sandboxAvailable)} | 明示的無効化: ${ck(explicitlyDisabled)}
+  モード: ${currentMode} (${modeLabel(currentMode)}) | CWD: ${currentCwd || "(未初期化)"}
+  Workspace ルート: ${roots(resolvedWorkspaceRoots)} | 書き込み可能ルート: ${roots(resolvedWritableRoots)}
+  フルアクセス承認済み: ${ck(yoloState.yoloApproved)}
 
-NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
+注: bash ツールのみがサンドボックス化されます。他のツールはサンドボックス化されません。`, "info");
 		},
 	});
 
@@ -341,7 +341,7 @@ NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 			const modeStr = args?.trim();
 			if (!modeStr) {
 				ctx.ui.notify(
-					`Current mode: ${currentMode} (${modeLabel(currentMode)})`,
+					`現在のモード: ${currentMode} (${modeLabel(currentMode)})`,
 					"info",
 				);
 				return;
@@ -350,7 +350,7 @@ NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 			const newMode = parseSandboxMode(modeStr);
 			if (!newMode) {
 				ctx.ui.notify(
-					`Invalid mode: ${modeStr}. Use: read_only, workspace_write, yolo`,
+					`無効なモード: ${modeStr}。指定可能: read_only, workspace_write, yolo`,
 					"error",
 				);
 				return;
@@ -359,14 +359,14 @@ NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 			// SECURITY: yolo requires explicit approval
 			if (newMode === "yolo") {
 				const ok = await ctx.ui.confirm(
-					"⚠️ Disable Sandbox?",
+					"[!] サンドボックスを無効化しますか？",
 					yoloApprovalMessage(),
 				);
 				if (!ok) {
-					ctx.ui.notify("Mode change cancelled", "info");
+					ctx.ui.notify("モード変更はキャンセルされました", "info");
 					return;
 				}
-								approveYolo("approved via /sandbox-mode command");
+								approveYolo("コマンド /sandbox-mode で承認");
 			} else {
 				resetYoloApproval();
 			}
@@ -374,7 +374,7 @@ NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 			currentMode = newMode;
 			updateStatusBar(ctx);
 			ctx.ui.notify(
-				`Sandbox mode changed to: ${modeLabel(currentMode)}`,
+				`サンドボックスモードを変更しました: ${modeLabel(currentMode)}`,
 				"info",
 			);
 		},
@@ -389,7 +389,7 @@ NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 			return;
 		}
 
-		const icon = currentMode === "yolo" ? "⚠️" : "🔒";
+		const icon = currentMode === "yolo" ? "[!]" : "[o]";
 		const label = modeLabel(currentMode);
 		ctx.ui.setStatus(
 			"sandbox",
@@ -408,7 +408,7 @@ NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 			explicitlyDisabled = true;
 			sandboxEnabled = false;
 			sandboxAvailable = false;
-			ctx.ui.notify("Sandbox explicitly disabled via --no-sandbox", "warning");
+			ctx.ui.notify("--no-sandbox によりサンドボックスは明示的に無効化されました", "warning");
 			return;
 		}
 
@@ -418,22 +418,22 @@ NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 		if (modeFlag) {
 			const parsed = parseSandboxMode(modeFlag);
 			if (parsed) currentMode = parsed;
-			else ctx.ui.notify(`Invalid --sandbox-mode: ${modeFlag}. Using default: workspace_write`, "warning");
+			else ctx.ui.notify(`無効な --sandbox-mode: ${modeFlag}。デフォルトの workspace_write を使用します`, "warning");
 		}
 
 		// SECURITY: yolo requires approval even at startup
 		if (currentMode === "yolo") {
 			const ok = await ctx.ui.confirm(
-				"⚠️ Sandbox Mode: Full Access",
-				`The sandbox mode is set to yolo.\n\n${yoloApprovalMessage()}`,
+				"[!] サンドボックスモード: フルアクセス",
+				`サンドボックスモードが yolo に設定されています。\n\n${yoloApprovalMessage()}`,
 			);
 			if (ok) {
-								approveYolo("approved at session_start");
+								approveYolo("セッション開始時に承認");
 			} else {
 				currentMode = "workspace_write";
 				resetYoloApproval();
 				ctx.ui.notify(
-					"yolo not approved. Falling back to workspace_write.",
+					"yolo が承認されませんでした。workspace_write にフォールバックします。",
 					"warning",
 				);
 			}
@@ -445,7 +445,7 @@ NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 		} catch (e) {
 			sandboxEnabled = false;
 			ctx.ui.notify(
-				`SECURITY: Unsafe workspace root: ${(e as Error).message}. Sandbox disabled for safety. Commands will be REFUSED.`,
+				`セキュリティ: 安全でない workspace ルート: ${(e as Error).message}。安全のためサンドボックスを無効化しました。コマンドは拒否されます。`,
 				"error",
 			);
 			return;
@@ -463,9 +463,9 @@ NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 		if (!sandboxAvailable && currentMode !== "yolo") {
 			sandboxEnabled = false;
 			ctx.ui.notify(
-				"⚠️ Sandbox unavailable on this system. " +
-				"Bash commands will be REFUSED. " +
-				"Use --no-sandbox to explicitly disable sandbox (not recommended).",
+				"[!] このシステムではサンドボックスを利用できません。" +
+				"bash コマンドは拒否されます。" +
+				"--no-sandbox で明示的に無効化してください（非推奨）。",
 				"error",
 			);
 			return;
@@ -474,7 +474,7 @@ NOTE: Only the bash tool is sandboxed. Other tools are NOT sandboxed.`, "info");
 		sandboxEnabled = true;
 		updateStatusBar(ctx);
 		ctx.ui.notify(
-			`Sandbox enabled: ${modeLabel(currentMode)}`,
+			`サンドボックス有効: ${modeLabel(currentMode)}`,
 			"info",
 		);
 	});

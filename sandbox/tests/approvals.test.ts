@@ -132,7 +132,7 @@ describe("shouldRequestApproval: workspace_write safe patterns", () => {
 	];
 
 	for (const cmd of safeCommands) {
-		it(`✓ ${cmd}`, () => {
+		it(`${cmd}`, () => {
 			const result = shouldRequestApproval("workspace_write", cmd);
 			expect(result.needsApproval).toBe(false);
 		});
@@ -199,7 +199,7 @@ describe("yoloApprovalMessage", () => {
 
 	it("警告絵文字を含む", () => {
 		const msg = yoloApprovalMessage();
-		expect(msg).toContain("⚠️");
+		expect(msg).toContain("[!]");
 	});
 });
 

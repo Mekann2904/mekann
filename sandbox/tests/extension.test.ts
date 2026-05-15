@@ -212,7 +212,7 @@ describe("session_start hook", () => {
 		await mock._hooks.session_start({}, ctx);
 
 		expect(ctx.ui.confirm).toHaveBeenCalledWith(
-			expect.stringContaining("Full Access"),
+			expect.stringContaining("フルアクセス"),
 			expect.any(String),
 		);
 	});
@@ -279,7 +279,7 @@ describe("session_shutdown hook", () => {
 			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
 		});
 		await mock._commands["sandbox"].handler("", statusCtx);
-		expect(notifications[0]).toContain("Enabled: ✗");
+		expect(notifications[0]).toContain("有効: OFF");
 	});
 });
 
@@ -350,8 +350,8 @@ describe("/sandbox command", () => {
 		await mock._commands["sandbox"].handler("", ctx);
 
 		expect(notifications[0]).toContain("Sandbox Status");
-		expect(notifications[0]).toContain("Enabled: ✗");
-		expect(notifications[0]).toContain("Explicitly Disabled: ✓");
+		expect(notifications[0]).toContain("有効: OFF");
+		expect(notifications[0]).toContain("明示的無効化: ON");
 	});
 
 	it("sandbox 有効時のステータス", async () => {
@@ -369,7 +369,7 @@ describe("/sandbox command", () => {
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 
-		expect(notifications[0]).toContain("Available: ✓");
+		expect(notifications[0]).toContain("利用可能: ON");
 	});
 });
 
@@ -648,7 +648,7 @@ describe("session lifecycle", () => {
 		const notifications: string[] = [];
 		ctx.ui.notify = (msg: string) => { notifications.push(msg); };
 		await mock._commands["sandbox"].handler("", ctx);
-		expect(notifications[0]).toContain("Explicitly Disabled: ✗");
+		expect(notifications[0]).toContain("明示的無効化: OFF");
 	});
 });
 
@@ -681,7 +681,7 @@ describe("status bar", () => {
 		expect(ctx.ui.setStatus).toHaveBeenCalledWith("sandbox", expect.any(String));
 	});
 
-	it("yolo 時は ⚠️ アイコン", async () => {
+	it("yolo 時は [!] アイコン", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
@@ -691,10 +691,10 @@ describe("status bar", () => {
 		const ctx = createMockCtx();
 		await mock._hooks.session_start({}, ctx);
 
-		expect(ctx.ui.setStatus).toHaveBeenCalledWith("sandbox", expect.stringContaining("⚠️"));
+		expect(ctx.ui.setStatus).toHaveBeenCalledWith("sandbox", expect.stringContaining("[!]"));
 	});
 
-	it("workspace_write 時は 🔒 アイコン", async () => {
+	it("workspace_write 時は [o] アイコン", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
@@ -704,7 +704,7 @@ describe("status bar", () => {
 		const ctx = createMockCtx();
 		await mock._hooks.session_start({}, ctx);
 
-		expect(ctx.ui.setStatus).toHaveBeenCalledWith("sandbox", expect.stringContaining("🔒"));
+		expect(ctx.ui.setStatus).toHaveBeenCalledWith("sandbox", expect.stringContaining("[o]"));
 	});
 });
 
@@ -990,7 +990,7 @@ describe("tool execute: Case 2 inline approval flow", () => {
 		// Should have prompted for approval
 		expect(confirmFn).toHaveBeenCalledTimes(1);
 		expect(confirmFn).toHaveBeenCalledWith(
-			"⚠️ Full Access Required",
+			"[!] フルアクセスが必要です",
 			expect.stringContaining("disable sandboxing"),
 		);
 		expect(result).toBeDefined();

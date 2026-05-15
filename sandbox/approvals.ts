@@ -20,15 +20,15 @@ export interface YoloApprovalState {
 
 /** UX-level dangerous command patterns (NOT security — trivially bypassable). */
 const DANGEROUS_PATTERNS = [
-	{ pattern: /\brm\s+-rf\b/i, reason: "Recursive force delete" },
-	{ pattern: /\brm\s+-r\b/i, reason: "Recursive delete" },
-	{ pattern: /\bsudo\b/i, reason: "Elevated privileges" },
-	{ pattern: /\bchmod\s+[0-7]{3,4}\b/i, reason: "Permission change" },
-	{ pattern: /\bchown\b/i, reason: "Ownership change" },
-	{ pattern: /\bshutdown\b/i, reason: "System shutdown" },
-	{ pattern: /\breboot\b/i, reason: "System reboot" },
-	{ pattern: /\bmkfs\b/i, reason: "Filesystem format" },
-	{ pattern: /\bdd\s+/i, reason: "Raw disk operation" },
+	{ pattern: /\brm\s+-rf\b/i, reason: "再帰的強制削除" },
+	{ pattern: /\brm\s+-r\b/i, reason: "再帰的削除" },
+	{ pattern: /\bsudo\b/i, reason: "権限昇格" },
+	{ pattern: /\bchmod\s+[0-7]{3,4}\b/i, reason: "権限変更" },
+	{ pattern: /\bchown\b/i, reason: "所有者変更" },
+	{ pattern: /\bshutdown\b/i, reason: "システムシャットダウン" },
+	{ pattern: /\breboot\b/i, reason: "システム再起動" },
+	{ pattern: /\bmkfs\b/i, reason: "ファイルシステム初期化" },
+	{ pattern: /\bdd\s+/i, reason: "RAW ディスク操作" },
 ];
 
 /**
@@ -46,7 +46,7 @@ export function shouldRequestApproval(
 		}
 		return {
 			needsApproval: true,
-			reason: "yolo mode requires explicit user approval before any command can execute",
+			reason: "yolo モードではコマンドを実行する前にユーザーの明示的な承認が必要です",
 		};
 	}
 
@@ -63,13 +63,13 @@ export function shouldRequestApproval(
 /** yolo 切り替え時の承認メッセージ。 */
 export function yoloApprovalMessage(): string {
 	return [
-		"⚠️  You are about to disable sandboxing entirely.",
+		"[!]  サンドボックスを完全に無効化しようとしています。",
 		"",
-		"This grants the agent unrestricted access to:",
-		"  • All files on your system (read + write)",
-		"  • Full network access",
-		"  • Any command without restrictions",
+		"これによりエージェントは以下の制限なしのアクセスを得ます:",
+		"  • システム上のすべてのファイル（読み取り + 書き込み）",
+		"  • 完全なネットワークアクセス",
+		"  • いかなる制限もないコマンド実行",
 		"",
-		"This should only be used when you fully trust the agent's behavior.",
+		"エージェントの動作を完全に信頼できる場合にのみ使用してください。",
 	].join("\n");
 }

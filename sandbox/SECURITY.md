@@ -2,7 +2,7 @@
 
 macOS Seatbelt (`sandbox-exec`) による bash tool 用コマンドサンドボックス化 extension。
 
-## ⚠️ Important Scope Limitation
+## [!] Important Scope Limitation
 
 **This extension sandboxes ONLY the bash tool in the Pi coding agent.**
 
@@ -46,8 +46,8 @@ This extension uses `@earendil-works/pi-coding-agent` as a peer dependency becau
 
 | Mode | Workspace 読み取り | Workspace 書き込み | Isolated Temp 書き込み | Isolated HOME | Network |
 |------|----------|----------|-----------|---------|---------|
-| `read_only` | ✓ | ✗ | ✓ (per-run isolated) | ✓ (per-run isolated) | ✗ |
-| `workspace_write` | ✓ | ✓ (.git/.codex/.agents 除く) | ✓ (per-run isolated) | ✓ (per-run isolated) | opt-in |
+| `read_only` | ON | OFF | ON (per-run isolated) | ON (per-run isolated) | OFF |
+| `workspace_write` | ON | ON (.git/.codex/.agents 除く) | ON (per-run isolated) | ON (per-run isolated) | opt-in |
 | `yolo` | 制限なし | 制限なし | N/A | N/A | 制限なし |
 
 ### read_only の正確な意味
