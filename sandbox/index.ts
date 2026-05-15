@@ -46,9 +46,8 @@ export function truncateForLlm(
 	},
 ): { text: string; truncated: boolean; originalBytes: number; originalLines: number } {
 	const originalBytes = Buffer.byteLength(text, "utf8");
-	const originalLines = text.length === 0 ? 0 : text.split(/\r?\n/).length;
-
 	let lines = text.split(/\r?\n/);
+	const originalLines = text.length === 0 ? 0 : lines.length;
 	let truncated = false;
 
 	if (lines.length > opts.maxLines) {
@@ -58,8 +57,7 @@ export function truncateForLlm(
 
 	let out = lines.join("\n");
 	if (Buffer.byteLength(out, "utf8") > opts.maxBytes) {
-		let buf = Buffer.from(out, "utf8").subarray(0, opts.maxBytes);
-		out = buf.toString("utf8").replace(/\uFFFD$/u, "");
+		out = Buffer.from(out, "utf8").subarray(0, opts.maxBytes).toString("utf8").replace(/\uFFFD$/u, "");
 		truncated = true;
 	}
 
