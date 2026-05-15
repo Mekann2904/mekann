@@ -161,11 +161,10 @@ export class AgentRegistry {
 
   // ─── Queries ─────────────────────────────────────────────────
 
-  private allAgents(): AgentMetadata[] { return [...this.agents.values()]; }
 
   private get openCount(): number {
     let count = 0;
-    for (const agent of this.allAgents()) {
+    for (const [, agent] of this.agents) {
       if (agent.open) count++;
     }
     return count;
@@ -176,14 +175,14 @@ export class AgentRegistry {
   }
 
   getByAgentId(agentId: string): AgentMetadata | undefined {
-    for (const agent of this.allAgents()) {
+    for (const [, agent] of this.agents) {
       if (agent.agentId === agentId) return agent;
     }
     return undefined;
   }
 
   getBySessionId(sessionId: string): AgentMetadata | undefined {
-    for (const agent of this.allAgents()) {
+    for (const [, agent] of this.agents) {
       if (agent.sessionId === sessionId) return agent;
     }
     return undefined;
@@ -194,7 +193,7 @@ export class AgentRegistry {
    */
   list(pathPrefix?: string): AgentMetadata[] {
     const result: AgentMetadata[] = [];
-    for (const agent of this.allAgents()) {
+    for (const [, agent] of this.agents) {
       if (!pathPrefix || agent.agentPath.startsWith(pathPrefix + "/") || agent.agentPath === pathPrefix) {
         result.push(agent);
       }
@@ -209,7 +208,7 @@ export class AgentRegistry {
   getOpenDescendants(agentPath: string): AgentMetadata[] {
     const result: AgentMetadata[] = [];
     const prefix = agentPath + "/";
-    for (const agent of this.allAgents()) {
+    for (const [, agent] of this.agents) {
       if (agent.open && agent.agentPath.startsWith(prefix)) {
         result.push(agent);
       }
