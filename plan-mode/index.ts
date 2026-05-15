@@ -107,7 +107,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		// 5. Switch to plan thinking level if configured
 		applyThinking(state.modelConfig.thinking.plan);
-		ctx.ui.notify(modeLabel(state.mode));
 		updateModeStatus(ctx);
 	}
 
@@ -138,7 +137,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined, savedMainModel: undefined, savedMainThinking: undefined });
 
 		if (plan) { state.implementationPlan = plan; pi.sendUserMessage("保存された plan に従って実装してください。"); }
-		ctx.ui.notify(modeLabel(state.mode));
 		updateModeStatus(ctx);
 	}
 
@@ -247,7 +245,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (!lastAssistant) return;
 		const plan = extractProposedPlan(lastAssistant.content.filter((b): b is TextContent => b.type === "text").map(b => b.text).join("\n"));
 
-		if (plan) { state.pendingPlan = plan; ctx.ui.notify(modeLabel(state.mode)); }
+		if (plan) { state.pendingPlan = plan; }
 	});
 	pi.on("turn_end", async () => { blockCount = 0; lastBlockedTool = ""; lastBlockedInput = ""; });
 
