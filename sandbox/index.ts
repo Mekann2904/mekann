@@ -265,14 +265,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			}
 
 			if (startupBlockedReason) {
-				return {
-					content: [{
-						type: "text",
-						text:
-							`${startupBlockedReason}。権限昇格では回避できません。明示的に --no-sandbox で起動し直す必要があります。`,
-				}],
-					details: {},
-				};
+				return { content: [{ type: "text", text: `${startupBlockedReason}。権限昇格では回避できません。明示的に --no-sandbox で起動し直す必要があります。` }], details: {} };
 			}
 
 			if (!sandboxEnabled) {
@@ -297,13 +290,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			);
 
 			if (!ok) {
-				return {
-					content: [{
-						type: "text",
-						text: "権限昇格がユーザーによって拒否されました。コマンドは実行されませんでした。サンドボックス制約内で動作する別の方法を検討するか、ユーザーに `/sandbox yolo` の手動実行を依頼してください。",
-					}],
-					details: {},
-				};
+								return { content: [{ type: "text", text: "権限昇格がユーザーによって拒否されました。コマンドは実行されませんでした。サンドボックス制約内で動作する別の方法を検討するか、ユーザーに `/sandbox yolo` の手動実行を依頼してください。" }], details: {} };
 			}
 
 			// Execute the command unsandboxed
