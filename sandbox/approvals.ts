@@ -40,10 +40,7 @@ export function shouldRequestApproval(
 	approvalState?: Partial<YoloApprovalState>,
 ): ApprovalDecision {
 	// SECURITY: yolo でも明示承認が必要
-	if (mode === "yolo") {
-		if (approvalState?.yoloApproved) return { needsApproval: false };
-		return { needsApproval: true, reason: "yolo モードではコマンドを実行する前にユーザーの明示的な承認が必要です" };
-	}
+	if (mode === "yolo") return approvalState?.yoloApproved ? { needsApproval: false } : { needsApproval: true, reason: "yolo モードではコマンドを実行する前にユーザーの明示的な承認が必要です" };
 
 	// 危険パターンのチェック
 	for (const { pattern, reason } of DANGEROUS_PATTERNS) if (pattern.test(command)) return { needsApproval: true, reason };

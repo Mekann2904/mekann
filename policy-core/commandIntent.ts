@@ -81,23 +81,15 @@ export interface CommandIntent {
 export function classifyCommandIntent(command: string): CommandIntent {
 	const stripped = command.trim();
 
-	if (!stripped) {
-		return { allowedInPlanReadOnly: false, kind: "empty", reason: "空のコマンドです" };
-	}
+	if (!stripped) return { allowedInPlanReadOnly: false, kind: "empty", reason: "空のコマンドです" };
 
 	const cleaned = stripped.replace(SAFE_REDIRECT_PATTERN, "");
 
-	if (SHELL_META_PATTERNS.some((p) => p.test(cleaned))) {
-		return { allowedInPlanReadOnly: false, kind: "shell_meta", reason: "シェルメタ文字を含みます（パイプ・チェーン・コマンド置換・リダイレクト等）" };
-	}
+	if (SHELL_META_PATTERNS.some((p) => p.test(cleaned))) return { allowedInPlanReadOnly: false, kind: "shell_meta", reason: "シェルメタ文字を含みます（パイプ・チェーン・コマンド置換・リダイレクト等）" };
 
-	if (DESTRUCTIVE_PATTERNS.some((p) => p.test(cleaned))) {
-		return { allowedInPlanReadOnly: false, kind: "destructive", reason: "破壊的または変更を伴うコマンドパターンに一致します" };
-	}
+	if (DESTRUCTIVE_PATTERNS.some((p) => p.test(cleaned))) return { allowedInPlanReadOnly: false, kind: "destructive", reason: "破壊的または変更を伴うコマンドパターンに一致します" };
 
-	if (SAFE_PATTERNS.some((p) => p.test(cleaned))) {
-		return { allowedInPlanReadOnly: true, kind: "plan_read_only", reason: "読み取り専用コマンド" };
-	}
+	if (SAFE_PATTERNS.some((p) => p.test(cleaned))) return { allowedInPlanReadOnly: true, kind: "plan_read_only", reason: "読み取り専用コマンド" };
 
 	return { allowedInPlanReadOnly: false, kind: "unknown", reason: "既知の安全なコマンドパターンに一致しません" };
 }
