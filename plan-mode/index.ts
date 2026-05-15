@@ -19,12 +19,14 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	/** Token for sandbox profile override (set on plan entry, cleared on exit). */
 	let sandboxOverrideToken: string | undefined;
 
+	function safeEmit(event: string, data: unknown): void {
+		try { pi.events.emit(event, data); } catch { /* sandbox extension not loaded */ }
+	}
+
 	/** Pop sandbox profile override (best-effort; no-op if not active). */
 	function popSandboxOverride(): void {
 		if (!sandboxOverrideToken) return;
-		try {
-			 pi.events.emit(SANDBOX_POP_PROFILE_EVENT, { owner: "plan-mode", token: sandboxOverrideToken } satisfies SandboxPopProfileEvent);
-		} catch { /* sandbox extension not loaded */ }
+		safeEmit(SANDBOX_POP_PROFILE_EVENT, { owner: "plan-mode", token: sandboxOverrideToken } satisfies SandboxPopProfileEvent);
 		sandboxOverrideToken = undefined;
 	}
 
@@ -66,9 +68,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 	/** Notify sandbox extension of current mode so it can render a combined status line. */
 	function updateModeStatus(_ctx: ExtensionContext): void {
-		try {
-			pi.events.emit(PLAN_MODE_STATUS_EVENT, { mode: state.mode } satisfies PlanModeStatusEvent);
-		} catch { /* sandbox extension not loaded */ }
+		safeEmit(PLAN_MODE_STATUS_EVENT, { mode: state.mode } satisfies PlanModeStatusEvent);
 	}
 
 	// ─── Mode transitions ───────────────────────────────────────────
@@ -98,11 +98,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		// 3. Push sandbox profile override (best-effort; no-op if sandbox extension is absent)
 		sandboxOverrideToken = `plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-		try {
-			pi.events.emit(SANDBOX_PUSH_PROFILE_EVENT, { owner: "plan-mode", token: sandboxOverrideToken, profile: "plan_read_only" } satisfies SandboxPushProfileEvent);
-		} catch {
-			// sandbox extension not loaded — rely on UX guard only
-		}
+		safeEmit(SANDBOX_PUSH_PROFILE_EVENT, { owner: "plan-mode", token: sandboxOverrideToken, profile: "plan_read_only" } satisfies SandboxPushProfileEvent);
 
 		// 4. Switch to plan model if configured
 		const planRef = state.modelConfig.models.plan;
