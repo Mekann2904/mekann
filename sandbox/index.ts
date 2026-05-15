@@ -87,6 +87,18 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		fullAccessApproved: false,
 	};
 
+	function approveFullAccess(reason: string): void {
+		fullAccessState.fullAccessApproved = true;
+		fullAccessState.fullAccessApprovedAt = new Date();
+		fullAccessState.fullAccessApprovedReason = reason;
+	}
+
+	function resetFullAccessApproval(): void {
+		fullAccessState.fullAccessApproved = false;
+		fullAccessState.fullAccessApprovedAt = undefined;
+		fullAccessState.fullAccessApprovedReason = undefined;
+	}
+
 	// ─── Flags ───────────────────────────────────────────────────────
 
 	pi.registerFlag("no-sandbox", {
@@ -165,9 +177,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 							"danger_full_access requires explicit user approval. Use /sandbox-mode danger_full_access to approve.",
 						);
 					}
-					fullAccessState.fullAccessApproved = true;
-					fullAccessState.fullAccessApprovedAt = new Date();
-					fullAccessState.fullAccessApprovedReason = "approved via tool execution prompt";
+										approveFullAccess("approved via tool execution prompt");
 				}
 				// Approved danger_full_access: unsandboxed execution
 				return getLocalBash().execute(id, params, signal, onUpdate);
@@ -316,14 +326,10 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					ctx.ui.notify("Mode change cancelled", "info");
 					return;
 				}
-				fullAccessState.fullAccessApproved = true;
-				fullAccessState.fullAccessApprovedAt = new Date();
-				fullAccessState.fullAccessApprovedReason = "approved via /sandbox-mode command";
+								approveFullAccess("approved via /sandbox-mode command");
 			} else {
 				// Reset approval when leaving danger_full_access
-				fullAccessState.fullAccessApproved = false;
-				fullAccessState.fullAccessApprovedAt = undefined;
-				fullAccessState.fullAccessApprovedReason = undefined;
+								resetFullAccessApproval();
 			}
 
 			currentMode = newMode;
@@ -391,12 +397,10 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				`The sandbox mode is set to danger_full_access.\n\n${fullAccessApprovalMessage()}`,
 			);
 			if (ok) {
-				fullAccessState.fullAccessApproved = true;
-				fullAccessState.fullAccessApprovedAt = new Date();
-				fullAccessState.fullAccessApprovedReason = "approved at session_start";
+								approveFullAccess("approved at session_start");
 			} else {
 				currentMode = "workspace_write";
-				fullAccessState.fullAccessApproved = false;
+				resetFullAccessApproval();
 				ctx.ui.notify(
 					"danger_full_access not approved. Falling back to workspace_write.",
 					"warning",
@@ -452,8 +456,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		sandboxEnabled = false;
 		sandboxAvailable = false;
 		explicitlyDisabled = false;
-		fullAccessState.fullAccessApproved = false;
-		fullAccessState.fullAccessApprovedAt = undefined;
-		fullAccessState.fullAccessApprovedReason = undefined;
+				resetFullAccessApproval();
 	});
 }
