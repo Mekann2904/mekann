@@ -2,10 +2,17 @@
  * Policy Core — Shared Mode Definitions.
  *
  * Single source of truth for sandbox mode types, parsing, labels,
- * plan-mode tool lists, and inter-extension event payloads.
+ * plan-mode tool lists, capability profile names, and inter-extension event payloads.
  */
 
-import type { CapabilityProfileName } from "./capabilities.js";
+// ─── Capability profiles ──────────────────────────────────────────
+
+/** Well-known capability profile names. */
+export type CapabilityProfileName =
+	| "plan_read_only"
+	| "sandbox_read_only"
+	| "workspace_write"
+	| "yolo";
 
 // ─── Plan mode tools ──────────────────────────────────────────────
 
