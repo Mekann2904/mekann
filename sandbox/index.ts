@@ -152,11 +152,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 			// Execute via sandbox (runSandboxedShellMac takes shell string, not argv)
 			const policy = buildCurrentPolicy();
-			const result = await runSandboxedShellMac(
-				command,
-				policy,
-				{ signal },
-			);
+			const result = await runSandboxedShellMac(command, policy, { signal });
 
 			const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
 			const shown = truncateForLlm(output);
@@ -310,11 +306,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	function updateStatusBar(ctx: any): void {
 		if (explicitlyDisabled || !sandboxEnabled) { ctx.ui.setWidget("sandbox", undefined); return; }
 
-		ctx.ui.setWidget(
-			"sandbox",
-			[ctx.ui.theme.fg("dim", effectiveMode())],
-			{ placement: "belowEditor" },
-		);
+		ctx.ui.setWidget("sandbox", [ctx.ui.theme.fg("dim", effectiveMode())], { placement: "belowEditor" });
 	}
 
 	// ─── Events ──────────────────────────────────────────────────────
@@ -428,9 +420,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		const event = data as SandboxPopProfileEvent;
 		if (!event.token) return;
 
-		const idx = profileOverrideStack.findIndex(
-			(e) => e.owner === event.owner && e.token === event.token,
-		);
+		const idx = profileOverrideStack.findIndex((e) => e.owner === event.owner && e.token === event.token);
 		if (idx >= 0) profileOverrideStack.splice(idx, 1);
 
 		// Update status bar to reflect effective mode change

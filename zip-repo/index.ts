@@ -55,16 +55,10 @@ export default function (pi: ExtensionAPI) {
 			let repoRoot: string;
 			let shortHead = "nohead";
 			try {
-				const { stdout: rootStdout } = await execFileAsync(
-					"git", ["rev-parse", "--show-toplevel"],
-					{ cwd: ctx.cwd, encoding: "utf8" },
-				);
+				const { stdout: rootStdout } = await execFileAsync("git", ["rev-parse", "--show-toplevel"], { cwd: ctx.cwd, encoding: "utf8" });
 				repoRoot = rootStdout.trim();
 
-				const { stdout: headStdout } = await execFileAsync(
-					"git", ["rev-parse", "--short=12", "HEAD"],
-					{ cwd: repoRoot, encoding: "utf8" },
-				);
+				const { stdout: headStdout } = await execFileAsync("git", ["rev-parse", "--short=12", "HEAD"], { cwd: repoRoot, encoding: "utf8" });
 				shortHead = headStdout.trim();
 			} catch (e: unknown) {
 				const msg = e instanceof Error ? e.message : String(e);
