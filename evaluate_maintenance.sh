@@ -15,11 +15,11 @@ fi
 test_seconds=$(echo "$test_output" | grep -oE 'Duration  [0-9.]+s' | grep -oE '[0-9.]+' | awk '{s+=$1}END{print s}')
 if [ -z "$test_seconds" ]; then
   # Fallback: sum Duration lines
-  test_seconds=$(echo "$test_output" | grep -oP 'Duration\s+\K[0-9.]+' | awk '{s+=$1}END{print s}')
+  test_seconds=$(echo "$test_output" | grep -oE 'Duration +[0-9.]+s' | grep -oE '[0-9.]+' | awk '{s+=$1}END{print s}')
 fi
 if [ -z "$test_seconds" ]; then test_seconds="0"; fi
-total_tests=$(echo "$test_output" | grep -oP '\d+(?= passed)' | awk '{s+=$1}END{print s}')
-failed_tests=$(echo "$test_output" | grep -oP '\d+(?= failed)' | awk '{s+=$1}END{print s}')
+total_tests=$(echo "$test_output" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' | awk '{s+=$1}END{print s}')
+failed_tests=$(echo "$test_output" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+' | awk '{s+=$1}END{print s+0}') || failed_tests=0
 if [ -z "$failed_tests" ]; then failed_tests=0; fi
 if [ "$failed_tests" -gt 0 ]; then tests_passed=false; fi
 echo "Tests: $total_tests total, $failed_tests failed, ${test_seconds}s"
@@ -81,7 +81,7 @@ echo "Max file: $max_file_name ($max_file_loc lines)"
 # 9. Changed LOC (vs HEAD~1 or initial)
 changed_loc=0
 if git rev-parse HEAD~1 >/dev/null 2>&1; then
-  changed_loc=$(git diff HEAD~1 -- $source_files 2>/dev/null | grep '^[+-]' | grep -v '^[+-][+-][+-]' | wc -l | tr -d ' ')
+  changed_loc=$(git diff HEAD~1 -- $source_files 2>/dev/null | grep '^[+-]' | grep -v '^[+-][+-][+-]' | wc -l | tr -d ' ') || changed_loc=0
 fi
 echo "Changed LOC: $changed_loc"
 
@@ -116,13 +116,18 @@ duplication_score=$dup_lines
 # Compute
 score=0
 score=$((score + 100000 * behavior_regressions))
-score=$((score + 10000 * (tests_passed == "true" ? 0 : 1)))
+test_fail_indicator=0
+if [ "$tests_passed" = "false" ]; then test_fail_indicator=1; fi
+score=$((score + 10000 * test_fail_indicator))
 score=$((score + 1000 * type_errors))
 score=$((score + 100 * review_risk))
 score=$((score + 10 * complexity_score))
 score=$((score + 10 * duplication_score))
-score=$((score + 5 * changed_loc / 100))  # Normalize change amplification
-score=$((score + 1 * ${test_seconds%.*}))  # Test runtime (integer part)
+changed_loc_norm=$((changed_loc / 100))
+score=$((score + 5 * changed_loc_norm))
+test_seconds_int=${test_seconds%.*}
+if [ -z "$test_seconds_int" ]; then test_seconds_int=0; fi
+score=$((score + test_seconds_int))
 
 # Bonus: source LOC reduction (per 100 LOC reduced vs baseline)
 baseline_loc=3977
