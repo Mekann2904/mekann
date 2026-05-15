@@ -39,7 +39,7 @@ describe("isPlanReadOnlyCommandIntent: property-based invariants", () => {
 					// Exclude all shell meta chars, redirects, and destructive keywords
 					if (s.length === 0) return false;
 					if (/[;&|`$\\\n><]/.test(s)) return false;
-				if (/\b(rm|mv|cp|mkdir|touch|chmod|chown|chgrp|ln|tee|truncate|dd|shred|sudo|su|kill|pkill|killall|reboot|shutdown|mkfs)\b/i.test(s)) return false;
+				if (/\b(rm|mv|cp|mkdir|touch|chmod|chown|chgrp|ln|tee|truncate|dd|shred|sudo|su|kill|pkill|killall|reboot|shutdown|mkfs|vim?|nano|emacs|code|subl)\b/i.test(s)) return false;
 					return true;
 				}),
 				(cmd, arg) => {
