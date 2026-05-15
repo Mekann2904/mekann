@@ -213,12 +213,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			if (!ok) return { content: [{ type: "text", text: "権限昇格がユーザーによって拒否されました。コマンドは実行されませんでした。サンドボックス制約内で動作する別の方法を検討するか、ユーザーに `/sandbox yolo` の手動実行を依頼してください。" }], details: {} };
 
 			// Execute the command unsandboxed
-			const result = await getLocalBash().execute(
-				`elevated-${Date.now()}`,
-				{ command },
-				undefined,
-				_onUpdate,
-			);
+			const result = await getLocalBash().execute(`elevated-${Date.now()}`, { command }, undefined, _onUpdate);
 
 			return {
 				content: result.content,
