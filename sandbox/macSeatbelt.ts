@@ -534,11 +534,6 @@ export async function runSandboxedShellMac(
 	} catch {
 		await waitForProcessDeath(child, SIGKILL_GRACE_MS + 1000);
 		cleanupTempDir(isolatedTemp);
-		return {
-			code: null,
-			signal: "SIGTERM",
-			stdout: bufs.stdout.toString("utf8") + (outputExceeded ? "\n[...output truncated...]" : ""),
-			stderr: bufs.stderr.toString("utf8") + `\n[ERROR] command ${(timedOut ? "timed out" : "aborted")}`,
-		};
+		return { code: null, signal: "SIGTERM", stdout: bufs.stdout.toString("utf8") + (outputExceeded ? "\n[...output truncated...]" : ""), stderr: bufs.stderr.toString("utf8") + `\n[ERROR] command ${(timedOut ? "timed out" : "aborted")}` };
 	}
 }
