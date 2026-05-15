@@ -440,11 +440,7 @@ export class AgentControl {
   // ─── Accessors ─────────────────────────────────────────────────
 
   get openCount(): number {
-    let count = 0;
-    for (const agent of this.registry.list()) {
-      if (agent.open) count++;
-    }
-    return count;
+    return this.registry.openCount;
   }
 }
 

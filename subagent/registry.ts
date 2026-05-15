@@ -162,7 +162,7 @@ export class AgentRegistry {
   // ─── Queries ─────────────────────────────────────────────────
 
 
-  private get openCount(): number {
+  get openCount(): number {
     let count = 0;
     for (const [, agent] of this.agents) {
       if (agent.open) count++;
