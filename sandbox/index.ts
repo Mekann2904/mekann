@@ -146,10 +146,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			// ── Case 4: Normal sandboxed execution (read_only / workspace_write) ──
 			const approval = shouldRequestApproval(effectiveMode(), command);
 			if (approval.needsApproval && approval.reason) {
-				const ok = await ctx.ui.confirm(
-					"[!] コマンドの承認が必要です",
-					`サンドボックスモード: ${modeLabel(effectiveMode())}\nコマンド: ${command}\n理由: ${approval.reason}\n\nこのコマンドを許可しますか？`,
-				);
+				const ok = await ctx.ui.confirm("[!] コマンドの承認が必要です", `サンドボックスモード: ${modeLabel(effectiveMode())}\nコマンド: ${command}\n理由: ${approval.reason}\n\nこのコマンドを許可しますか？`);
 				if (!ok) throw new Error(`コマンドがブロックされました: ${approval.reason}`);
 			}
 
@@ -267,10 +264,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 			const newMode = parseSandboxMode(modeStr);
 			if (!newMode) {
-				ctx.ui.notify(
-					`無効なモード: ${modeStr}。指定可能: read_only, workspace_write, yolo`,
-					"error",
-				);
+				ctx.ui.notify(`無効なモード: ${modeStr}。指定可能: read_only, workspace_write, yolo`, "error");
 				return;
 			}
 
@@ -283,17 +277,11 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					currentMode = newMode;
 					resetYoloApproval();
 					updateStatusBar(ctx);
-					ctx.ui.notify(
-						"base モードを yolo に設定しました。override 終了後、bash tool 実行時に yolo 承認を求めます。direct bash は承認済みになるまで拒否されます。",
-						"info",
-					);
+					ctx.ui.notify("base モードを yolo に設定しました。override 終了後、bash tool 実行時に yolo 承認を求めます。direct bash は承認済みになるまで拒否されます。", "info");
 					return;
 				}
 
-				const ok = await ctx.ui.confirm(
-					"[!] サンドボックスを無効化しますか？",
-					yoloApprovalMessage(),
-				);
+				const ok = await ctx.ui.confirm("[!] サンドボックスを無効化しますか？", yoloApprovalMessage());
 				if (!ok) { ctx.ui.notify("モード変更はキャンセルされました", "info"); return; }
 								yoloState.yoloApproved = true;
 							yoloState.yoloApprovedAt = new Date();
@@ -304,10 +292,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 			currentMode = newMode;
 			updateStatusBar(ctx);
-			ctx.ui.notify(
-				`サンドボックスモードを変更しました: ${effectiveMode()}`,
-				"info",
-			);
+			ctx.ui.notify(`サンドボックスモードを変更しました: ${effectiveMode()}`, "info");
 		})();
 	}
 
@@ -365,10 +350,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			startupBlockedReason = `安全でない workspace root: ${(e as Error).message}`;
 			sandboxEnabled = false;
 			resetYoloApproval();
-			ctx.ui.notify(
-				`セキュリティ: ${startupBlockedReason}。安全のためサンドボックスを無効化しました。コマンドは拒否されます。`,
-				"error",
-			);
+			ctx.ui.notify(`セキュリティ: ${startupBlockedReason}。安全のためサンドボックスを無効化しました。コマンドは拒否されます。`, "error");
 			return;
 		}
 
@@ -393,10 +375,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 		sandboxEnabled = true;
 		updateStatusBar(ctx);
-		ctx.ui.notify(
-			`サンドボックス有効: ${modeLabel(effectiveMode())}`,
-			"info",
-		);
+		ctx.ui.notify(`サンドボックス有効: ${modeLabel(effectiveMode())}`, "info");
 	});
 
 	// ─── Profile override events (plan-mode coordination) ───────────
