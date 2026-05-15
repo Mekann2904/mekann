@@ -77,9 +77,9 @@ export function parseSandboxMode(value: string): SandboxMode | undefined {
 export function modeLabel(mode: SandboxMode): string {
 	switch (mode) {
 		case "read_only":
-			return "read-only";
+			return "読み取り専用";
 		case "workspace_write":
-			return "workspace-write";
+			return "ワークスペース書き込み可能";
 		case "yolo":
 			return "yolo";
 	}
