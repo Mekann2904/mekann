@@ -1,0 +1,24 @@
+{
+  "name": "subagent",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit --skipLibCheck"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.1.6",
+    "@sinclair/typebox": "^0.34.0",
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.6"
+  },
+  "keywords": [
+    "pi-extension"
+  ],
+  "license": "ISC"
+}
