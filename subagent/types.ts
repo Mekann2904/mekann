@@ -25,28 +25,6 @@ export function isTerminalStatus(s: AgentStatus): boolean {
   return TERMINAL_STATUSES.has(s);
 }
 
-// ─── Session source ──────────────────────────────────────────────
-
-export interface RootSource {
-  tag: "root";
-}
-
-export interface SubAgentSource {
-  tag: "subagent";
-  parentAgentId: string;
-  depth: number;
-  agentPath: string;
-  agentRole?: string;
-  agentNickname?: string;
-}
-
-export interface OtherSource {
-  tag: "other";
-  reason: string;
-}
-
-export type SessionSource = RootSource | SubAgentSource | OtherSource;
-
 // ─── Agent metadata ──────────────────────────────────────────────
 
 export interface AgentMetadata {
