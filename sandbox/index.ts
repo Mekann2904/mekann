@@ -193,10 +193,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			// ── Case 3: sandbox-exec unavailable → REFUSE (fail-closed) ─
 			if (!sandboxAvailable) {
 				throw new Error(
-					"サンドボックスが必要ですが /usr/bin/sandbox-exec が利用できません。" +
-					"サンドボックス強制なしではコマンドを実行できません。" +
-					"--no-sandbox で明示的に無効化してください（非推奨）。" +
-					SANDBOX_BLOCK_HINT,
+					"サンドボックスが必要ですが /usr/bin/sandbox-exec が利用できません。サンドボックス強制なしではコマンドを実行できません。--no-sandbox で明示的に無効化してください（非推奨）。" + SANDBOX_BLOCK_HINT,
 				);
 			}
 
@@ -251,10 +248,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "request_elevation",
 		label: "サンドボックス権限昇格リクエスト",
-		description:
-			"現在のサンドボックスポリシーでブロックされたコマンドを実行するため、一時的な権限昇格をリクエストする。" +
-			"ユーザーに理由とコマンドが表示され、明示的な承認が必要。" +
-			"サンドボックスが正当な操作をブロックした場合にのみ使用すること（例: 依存関係のインストール、システムパスへのアクセス）。",
+		description: "現在のサンドボックスポリシーでブロックされたコマンドを実行するため、一時的な権限昇格をリクエストする。ユーザーに理由とコマンドが表示され、明示的な承認が必要。サンドボックスが正当な操作をブロックした場合にのみ使用すること（例: 依存関係のインストール、システムパスへのアクセス）。",
 		promptSnippet: "ブロックされたコマンドの一時的なサンドボックスバイパスをリクエスト",
 		promptGuidelines: [
 			"request_elevation はサンドボックスがアクティブなモード（read_only または workspace_write）でコマンドがブロックされた場合にのみ使用する。",
@@ -281,9 +275,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					content: [{
 						type: "text",
 						text:
-							`${startupBlockedReason}。権限昇格では回避できません。` +
-							"明示的に --no-sandbox で起動し直す必要があります。",
-					}],
+							`${startupBlockedReason}。権限昇格では回避できません。明示的に --no-sandbox で起動し直す必要があります。`,
+				}],
 					details: {},
 				};
 			}
@@ -313,9 +306,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				return {
 					content: [{
 						type: "text",
-						text: "権限昇格がユーザーによって拒否されました。コマンドは実行されませんでした。" +
-							"サンドボックス制約内で動作する別の方法を検討するか、" +
-							"ユーザーに `/sandbox yolo` の手動実行を依頼してください。",
+						text: "権限昇格がユーザーによって拒否されました。コマンドは実行されませんでした。サンドボックス制約内で動作する別の方法を検討するか、ユーザーに `/sandbox yolo` の手動実行を依頼してください。",
 					}],
 					details: {},
 				};
@@ -503,10 +494,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		// No prompt at session_start — avoids bothering the user on every startup.
 
 		if (!sandboxAvailable && effectiveMode() !== "yolo") {
-			startupBlockedReason =
-				"サンドボックスが必要ですが /usr/bin/sandbox-exec が利用できません。" +
-				"サンドボックス強制なしではコマンドを実行できません。" +
-				"--no-sandbox で明示的に無効化してください（非推奨）。";
+			startupBlockedReason = "サンドボックスが必要ですが /usr/bin/sandbox-exec が利用できません。サンドボックス強制なしではコマンドを実行できません。--no-sandbox で明示的に無効化してください（非推奨）。";
 			sandboxEnabled = false;
 			ctx.ui.notify(`[!] ${startupBlockedReason}`, "error");
 			return;
