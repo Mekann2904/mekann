@@ -604,49 +604,33 @@ export async function runSandboxedShellMac(
 		detached: true,
 	});
 
-	let stdoutBuf = Buffer.alloc(0);
-	let stderrBuf = Buffer.alloc(0);
+	// SECURITY: Track total bytes across stdout + stderr combined.
+	// Previous implementation tracked them separately, allowing 2x limit.
+	// Uses Buffer-based tracking for byte-accurate truncation (no UTF-16 vs byte mismatch).
+	const bufs = { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) };
 	let totalOutputBytes = 0;
 	let outputExceeded = false;
 	let killed = false;
 
-	// SECURITY: Track total bytes across stdout + stderr combined.
-	// Previous implementation tracked them separately, allowing 2x limit.
-	// Uses Buffer-based tracking for byte-accurate truncation (no UTF-16 vs byte mismatch).
-	child.stdout.on("data", (chunk: Buffer | string) => {
+	function onStreamData(stream: "stdout" | "stderr", chunk: Buffer | string): void {
 		if (outputExceeded) return;
 		const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8");
 		totalOutputBytes += buf.byteLength;
 		if (totalOutputBytes > maxOutputBytes) {
 			outputExceeded = true;
-			// Keep what fits using proper byte slicing
 			const overshoot = totalOutputBytes - maxOutputBytes;
 			const keepBytes = buf.byteLength - overshoot;
 			if (keepBytes > 0) {
-				stdoutBuf = Buffer.concat([stdoutBuf, buf.subarray(0, keepBytes)]);
+				bufs[stream] = Buffer.concat([bufs[stream], buf.subarray(0, keepBytes)]);
 			}
 			requestTerminate("output_limit");
 			return;
 		}
-		stdoutBuf = Buffer.concat([stdoutBuf, buf]);
-	});
+		bufs[stream] = Buffer.concat([bufs[stream], buf]);
+	}
 
-	child.stderr.on("data", (chunk: Buffer | string) => {
-		if (outputExceeded) return;
-		const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8");
-		totalOutputBytes += buf.byteLength;
-		if (totalOutputBytes > maxOutputBytes) {
-			outputExceeded = true;
-			const overshoot = totalOutputBytes - maxOutputBytes;
-			const keepBytes = buf.byteLength - overshoot;
-			if (keepBytes > 0) {
-				stderrBuf = Buffer.concat([stderrBuf, buf.subarray(0, keepBytes)]);
-			}
-			requestTerminate("output_limit");
-			return;
-		}
-		stderrBuf = Buffer.concat([stderrBuf, buf]);
-	});
+	child.stdout.on("data", (chunk) => onStreamData("stdout", chunk));
+	child.stderr.on("data", (chunk) => onStreamData("stderr", chunk));
 
 	// ─── Idempotent process group kill ──────────────────────────
 
@@ -751,13 +735,13 @@ export async function runSandboxedShellMac(
 				resolvePromise({
 					code: 1,
 					signal: null,
-					stdout: stdoutBuf.toString("utf8") + "\n[...output truncated...]",
-					stderr: stderrBuf.toString("utf8") + `\n[ERROR] output limit exceeded (${maxOutputBytes} bytes combined stdout+stderr)`,
+					stdout: bufs.stdout.toString("utf8") + "\n[...output truncated...]",
+					stderr: bufs.stderr.toString("utf8") + `\n[ERROR] output limit exceeded (${maxOutputBytes} bytes combined stdout+stderr)`,
 				});
 				return;
 			}
 
-			resolvePromise({ code, signal, stdout: stdoutBuf.toString("utf8"), stderr: stderrBuf.toString("utf8") });
+			resolvePromise({ code, signal, stdout: bufs.stdout.toString("utf8"), stderr: bufs.stderr.toString("utf8") });
 		});
 	});
 
@@ -783,8 +767,8 @@ export async function runSandboxedShellMac(
 		return {
 			code: null,
 			signal: "SIGTERM",
-			stdout: stdoutBuf.toString("utf8") + (outputExceeded ? "\n[...output truncated...]" : ""),
-			stderr: stderrBuf.toString("utf8") + `\n[ERROR] command ${(timedOut ? "timed out" : "aborted")}`,
+			stdout: bufs.stdout.toString("utf8") + (outputExceeded ? "\n[...output truncated...]" : ""),
+			stderr: bufs.stderr.toString("utf8") + `\n[ERROR] command ${(timedOut ? "timed out" : "aborted")}`,
 		};
 	}
 }
