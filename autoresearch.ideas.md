@@ -1,31 +1,29 @@
 # Autoresearch Ideas
 
-## Completed This Session (2,480 → 1,930 LOC, -22.2%)
-- ✅ Dead code removal: SAFE_PLAN_TOOLS, getCapabilityProfile, profileToSandboxMode, eslint-disable
-- ✅ Deduplication: popSandboxOverride, killProcessGroup
-- ✅ Single-use inlining: buildSandboxPath, createIsolatedTempDir, approveYolo, currentModelRef, etc.
-- ✅ String compression: multi-line concatenations, yoloApprovalMessage array→string
-- ✅ Multi-line import compression: 8 imports across 3 files (34 LOC)
-- ✅ Multi-line re-export compression: utils.ts
-- ✅ Multi-line object compression: CAPABILITY_PROFILES, commandIntent returns, registerFlag/registerCommand
-- ✅ Brace block compression: ~50 single-stmt if/for blocks → braceless or single-line
-- ✅ Multi-line throw/return compression: all throw and simple return objects
-- ✅ 2-stmt block compression: ~15 if/for blocks → single-line { stmt1; stmt2; }
-- ✅ Ternary conversion: yolo approval check, if/else-return patterns
-- ✅ Arrow function compression: done(), resolvePromise(), abortHandler
-- ✅ Spawn options, Type.Object params, emit objects
-- ✅ Multi-line notify/confirm calls → single lines (7 calls, -21 LOC)
-- ✅ Multi-line function calls → single lines (15+ calls, -50 LOC)
-- ✅ Interface compression: 7 interfaces to single lines (-20 LOC)
-- ✅ Callback compression: turn_end, setTimeout, child.on, timeoutPromise
-- ❌ textResponse helper: net LOC increase — reverted
-- ❌ Import merge: net LOC increase — reverted
+## Completed This Session (2,480 → 1,882 LOC, -24.1%)
+- ✅ Dead code removal, deduplication, single-use inlining
+- ✅ Multi-line import/export compression (34 LOC)
+- ✅ Brace block compression (~50 blocks)
+- ✅ Multi-line throw/return/object/function call compression
+- ✅ Ternary conversion, arrow function compression
+- ✅ Interface compression (7 interfaces → single lines)
+- ✅ Callback compression (turn_end, setTimeout, child.on, timeoutPromise)
+- ✅ Multi-line notify/confirm call compression (7 calls)
+- ✅ Multi-line function call compression (15+ calls)
+- ✅ Blank line removal between sequential code (~40 lines)
+- ❌ textResponse helper: net LOC increase
+- ❌ Import merge: net LOC increase
 
-## Remaining Opportunities
-- Complex interfaces with comments (SandboxPolicy, SandboxRunOptions, CapabilityProfile, CommandIntent) — keep for readability
-- Complex function bodies (>3 stmts) — readability concern
-- SBPL template (~80 lines) — SECURITY CRITICAL
-- Blank lines (~350) — readability aids
+## Remaining Opportunities (diminishing)
+- More blank line removals (~20 safe ones remain)
+- Some plan-mode/index.ts sequential guards still have blanks
+
+## Truly Exhausted
+- All imports/exports: single-line
+- All simple interfaces: single-line
+- All simple function calls: single-line
+- All brace blocks with ≤2 statements: compressed
+- SBPL template: SECURITY CRITICAL
 
 ## Future Ideas
 - Extract sandbox state into a state object (reduces coupling, not LOC)

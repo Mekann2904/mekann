@@ -346,7 +346,6 @@ export async function runSandboxedShellMac(
 	options?: SandboxRunOptions,
 ): Promise<RunResult> {
 	if (!command?.trim()) throw new Error("empty command");
-
 	const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 	const maxOutputBytes = options?.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
 	const abortSignal = options?.signal;
