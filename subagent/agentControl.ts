@@ -274,6 +274,14 @@ export class AgentControl {
     }
   }
 
+  private enqueueToMailbox(fromAgentId: string, fromPath: string, toPath: string, content: string, kind: "message" | "followup" | "final_result"): void {
+    this.mailbox.enqueue({ fromAgentId, fromAgentPath: fromPath, toAgentPath: toPath, content, timestamp: Date.now(), kind });
+  }
+
+  private getCallerAgentId(callerPath: string): string {
+    return this.registry.get(callerPath)?.agentId ?? "root";
+  }
+
   // ─── send_message ──────────────────────────────────────────────
 
   async sendMessage(
@@ -282,42 +290,15 @@ export class AgentControl {
   ): Promise<{ delivered: boolean }> {
     const callerPath = this.resolveCallerPath(ctx);
     const targetPath = this.resolveTarget(params.target, callerPath);
-
     const agent = this.registry.get(targetPath);
     if (!agent) throw new Error(`Agent not found: ${targetPath}`);
-    if (!agent.open || isTerminalStatus(agent.status)) {
-      throw new Error(
-        `Agent at ${targetPath} is not open (status: ${agent.status}). Cannot send message.`,
-      );
-    }
+    if (!agent.open || isTerminalStatus(agent.status)) throw new Error(`Agent at ${targetPath} is not open (status: ${agent.status}). Cannot send message.`);
+    this.enqueueToMailbox(this.getCallerAgentId(callerPath), callerPath, targetPath, params.message, "message");
 
-    // Get caller agent for from info
-    const callerAgent = this.registry.get(callerPath);
-    const fromAgentId = callerAgent?.agentId ?? "root";
-
-    // Enqueue to mailbox
-    this.mailbox.enqueue({
-      fromAgentId,
-      fromAgentPath: callerPath,
-      toAgentPath: targetPath,
-      content: params.message,
-      timestamp: Date.now(),
-      kind: "message",
-    });
-
-    // Deliver to child session as a custom message (no turn trigger)
     const childSession = this.childSessions.get(targetPath);
     if (childSession) {
-      await childSession.sendCustomMessage(
-        {
-          customType: "subagent_message",
-          content: `[Message from ${callerPath}]: ${params.message}`,
-          display: true,
-        },
-        { triggerTurn: false, deliverAs: "nextTurn" },
-      );
+      await childSession.sendCustomMessage({ customType: "subagent_message", content: `[Message from ${callerPath}]: ${params.message}`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
     }
-
     return { delivered: true };
   }
 
@@ -329,31 +310,12 @@ export class AgentControl {
   ): Promise<{ queued: boolean; triggered: boolean }> {
     const callerPath = this.resolveCallerPath(ctx);
     const targetPath = this.resolveTarget(params.target, callerPath);
-
-    if (targetPath === ROOT_PATH) {
-      throw new Error("Cannot send followup_task to the root agent.");
-    }
-
+    if (targetPath === ROOT_PATH) throw new Error("Cannot send followup_task to the root agent.");
     const agent = this.registry.get(targetPath);
     if (!agent) throw new Error(`Agent not found: ${targetPath}`);
-    if (!agent.open) {
-      throw new Error(
-        `Agent at ${targetPath} is not open (status: ${agent.status}).`,
-      );
-    }
+    if (!agent.open) throw new Error(`Agent at ${targetPath} is not open (status: ${agent.status}).`);
 
-    const callerAgent = this.registry.get(callerPath);
-    const fromAgentId = callerAgent?.agentId ?? "root";
-
-    // Enqueue to mailbox
-    this.mailbox.enqueue({
-      fromAgentId,
-      fromAgentPath: callerPath,
-      toAgentPath: targetPath,
-      content: params.message,
-      timestamp: Date.now(),
-      kind: "followup",
-    });
+    this.enqueueToMailbox(this.getCallerAgentId(callerPath), callerPath, targetPath, params.message, "followup");
 
     // Update last task message
     this.registry.updateStatus(targetPath, agent.status, {
