@@ -140,10 +140,8 @@ export function buildMacSeatbeltPolicy(policy: SandboxPolicy): string {
 
 	// writable roots: workspace_write で writableRoots があればそれ、なければ cwd
 	const writableRoots = effectiveWritableRoots(policy);
-
 	const readRules = readableRoots.map((p) => `  ${pathSubpath(p)}`).join("\n");
 	const writeRules = writableRoots.map((p) => `  ${pathSubpath(p)}`).join("\n");
-
 	const networkRules = policy.network
 		? `
 ; network access (explicitly opted in)
@@ -354,10 +352,8 @@ export async function runSandboxedShellMac(
 	const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 	const maxOutputBytes = options?.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
 	const abortSignal = options?.signal;
-
 	const resolvedPolicy = await resolvePolicyPaths(policy);
 	await validatePolicy(resolvedPolicy);
-
 	const rawIsolatedTemp = mkdtempSync(resolve(tmpdir(), "sandbox-run-"));
 	const isolatedTemp = await resolveSafeRealPath(rawIsolatedTemp);
 	resolvedPolicy._isolatedTempDir = isolatedTemp;
@@ -365,7 +361,6 @@ export async function runSandboxedShellMac(
 	// SECURITY: isolated HOME prevents workspace-controlled startup file injection
 	const isolatedHome = pathJoin(isolatedTemp, "home");
 	mkdirSync(isolatedHome, { recursive: true });
-
 	const fullPolicy = buildMacSeatbeltPolicy(resolvedPolicy);
 	const sandboxEnv = buildSandboxEnv(resolvedPolicy, isolatedHome);
 
@@ -423,13 +418,11 @@ export async function runSandboxedShellMac(
 
 	let timeoutId: ReturnType<typeof setTimeout> | null = null;
 	let timedOut = false;
-
 	const timeoutPromise = new Promise<never>((_resolve, reject) => { timeoutId = setTimeout(() => { timedOut = true; requestTerminate("timeout"); reject(new Error(`command timed out after ${timeoutMs}ms`)); }, timeoutMs); });
 
 	// ─── AbortSignal handling ───────────────────────────────────
 
 	let abortHandler: (() => void) | null = null;
-
 	const abortPromise = new Promise<never>((_resolve, reject) => {
 		if (abortSignal) {
 			if (abortSignal.aborted) {

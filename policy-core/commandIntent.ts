@@ -27,7 +27,6 @@ const DESTRUCTIVE_PATTERNS = [
 	/\bservice\s+\S+\s+(start|stop|restart)/i,
 	/\b(vim?|nano|emacs|code|subl)\b/i,
 ];
-
 const SAFE_PATTERNS = [
 	/^\s*(cat|head|tail|less|more|grep|ls|pwd|echo|printf|wc|sort|uniq|diff|file|stat|du|df|tree|which|whereis|type|env|printenv|uname|whoami|id|date|cal|uptime|ps|top|htop|free)\b/,
 	/^\s*find\b(?!.*\b(?:-delete|-exec|-execdir|-ok|-fls|-fprint|-fprintf)\b)/i,
@@ -38,7 +37,6 @@ const SAFE_PATTERNS = [
 	/^\s*(jq|awk|rg|fd|bat|eza)\b/,
 	/^\s*sed\s+-n/i,
 ];
-
 const SHELL_META_PATTERNS = [
 	/&&|\|\|/,
 	/[;|`]/,

@@ -10,7 +10,6 @@ export async function assertPathInsideRoot(
 ): Promise<void> {
 	const realPath = await realpath(path);
 	const realRoot = await realpath(root);
-
 	const rel = relative(realRoot, realPath);
 	if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) return;
 
