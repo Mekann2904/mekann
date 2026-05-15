@@ -289,12 +289,11 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	function updateStatusBar(ctx: any): void {
 		if (explicitlyDisabled || !sandboxEnabled) { ctx.ui.setWidget("sandbox", undefined); return; }
 		let label = "";
-		if (planModeStatus) {
-			label = ctx.ui.theme.fg(planModeStatus === "plan" ? "warning" : "dim", planModeStatus) + " ";
-		}
+		if (planModeStatus) label = ctx.ui.theme.fg(planModeStatus === "plan" ? "warning" : "dim", planModeStatus) + " ";
 		label += ctx.ui.theme.fg("dim", effectiveMode());
 		ctx.ui.setWidget("sandbox", [label], { placement: "belowEditor" });
 	}
+	function refreshStatusBar() { if (lastCtx) updateStatusBar(lastCtx); }
 
 	// ─── Events ──────────────────────────────────────────────────────
 
@@ -395,7 +394,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		profileOverrideStack.push({ owner: event.owner, token: event.token, mode });
 
 		// Update status bar to reflect effective mode change
-		if (lastCtx) updateStatusBar(lastCtx);
+		refreshStatusBar();
 	});
 	pi.events.on(SANDBOX_POP_PROFILE_EVENT, (data: unknown) => {
 		const event = data as SandboxPopProfileEvent;
@@ -404,7 +403,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		if (idx >= 0) profileOverrideStack.splice(idx, 1);
 
 		// Update status bar to reflect effective mode change
-		if (lastCtx) updateStatusBar(lastCtx);
+		refreshStatusBar();
 	});
 	// Listen for plan-mode status updates to render a combined status line
 	pi.events.on(PLAN_MODE_STATUS_EVENT, (data: unknown) => {
@@ -412,7 +411,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		const event = data as Partial<PlanModeStatusEvent>;
 		if (event.mode !== "main" && event.mode !== "plan") return;
 		planModeStatus = event.mode;
-		if (lastCtx) updateStatusBar(lastCtx);
+		refreshStatusBar();
 	});
 
 	pi.on("session_shutdown", async () => {
