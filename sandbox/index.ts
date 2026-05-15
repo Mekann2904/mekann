@@ -85,13 +85,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// ─── Profile override stack (plan-mode coordination) ──────────
 
 	/** Override entries pushed by other extensions (e.g. plan-mode). */
-	interface ProfileOverride {
-		owner: string;
-		token: string;
-		mode: SandboxMode;
-	}
-
-	const profileOverrideStack: ProfileOverride[] = [];
+	const profileOverrideStack: { owner: string; token: string; mode: SandboxMode }[] = [];
 
 	/** Compute the effective sandbox mode, respecting override stack. */
 	function effectiveMode(): SandboxMode {
