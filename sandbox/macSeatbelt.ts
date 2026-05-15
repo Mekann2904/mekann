@@ -382,17 +382,9 @@ function waitForProcessDeath(
 			resolvePromise();
 		};
 
-		// Safety net: send SIGKILL to process group
 		killPgSigkill(proc);
-
-		// Wait for 'close' event (all stdio streams closed + process exited)
 		proc.once("close", done);
-
-		// Timeout fallback in case 'close' never fires
-		setTimeout(() => {
-			proc.removeListener("close", done);
-			done();
-		}, timeoutMs);
+		setTimeout(() => { proc.removeListener("close", done); done(); }, timeoutMs);
 	});
 }
 
@@ -531,13 +523,7 @@ export async function runSandboxedShellMac(
 		child.on("error", (err) => {
 			cleanupTimers();
 			cleanupTempDir(isolatedTemp);
-			// Convert error to a result — don't throw
-			resolvePromise({
-				code: null,
-				signal: null,
-				stdout: "",
-				stderr: err.message,
-			});
+			resolvePromise({ code: null, signal: null, stdout: "", stderr: err.message });
 		});
 		child.on("close", async (code, signal) => {
 			cleanupTimers();
