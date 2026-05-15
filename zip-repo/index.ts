@@ -65,13 +65,11 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify(`Not a Git repository or no commits yet: ${msg}`, "error");
 				return;
 			}
-
 			let dirty = false;
 			try {
 				const { stdout: statusStdout } = await execFileAsync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" });
 				dirty = statusStdout.trim().length > 0;
 			} catch {}
-
 			const zipPath = buildZipPath(repoRoot, shortHead);
 
 			// 前回の ZIP が残っていれば削除
@@ -86,7 +84,6 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify(`Failed to create ZIP: ${msg}`, "error");
 				return;
 			}
-
 			let sizeStr = "unknown size";
 			try {
 				const b = (await stat(zipPath)).size;
