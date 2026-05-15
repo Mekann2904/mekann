@@ -89,6 +89,14 @@ export class AgentControl {
     return resolveTaskPath(trimmed, callerPath);
   }
 
+  private evBase(agentId: string, agentPath: string) {
+    return { agentId, agentPath, timestamp: Date.now() };
+  }
+
+  private parentAgentId(callerPath: string): string | undefined {
+    return callerPath === ROOT_PATH ? undefined : callerPath;
+  }
+
   // ─── Helper: resolve model from params ────────────────────────────
 
   private resolveModel(modelOverride: string | undefined, ctx: ExtensionContext) {
@@ -112,9 +120,9 @@ export class AgentControl {
     const errorMessage = err instanceof Error ? err.message : String(err);
     this.registry.updateStatus(canonicalPath, "errored");
     this.mailbox.appendEvent({
-      type: "agent_final_message", agentId, agentPath: canonicalPath,
-      parentAgentId: callerPath === ROOT_PATH ? undefined : "root",
-      message: `Agent error: ${errorMessage}`, status: "errored", timestamp: Date.now(),
+      type: "agent_final_message", ...this.evBase(agentId, canonicalPath),
+      parentAgentId: this.parentAgentId(callerPath) ?? "root",
+      message: `Agent error: ${errorMessage}`, status: "errored",
     });
     this.mailbox.enqueue({
       fromAgentId: agentId, fromAgentPath: canonicalPath, toAgentPath: callerPath,
@@ -152,11 +160,8 @@ export class AgentControl {
     // Publish spawn begin event
     const agentId = nextAgentId();
     this.mailbox.appendEvent({
-      type: "agent_spawn_begin",
-      agentId,
-      agentPath: canonicalPath,
+      type: "agent_spawn_begin", ...this.evBase(agentId, canonicalPath),
       parentAgentId: callerPath === ROOT_PATH ? undefined : callerPath,
-      timestamp: Date.now(),
     });
 
     try {
@@ -229,13 +234,10 @@ export class AgentControl {
 
           // Publish final message lifecycle event
           this.mailbox.appendEvent({
-            type: "agent_final_message",
-            agentId,
-            agentPath: canonicalPath,
+            type: "agent_final_message", ...this.evBase(agentId, canonicalPath),
             parentAgentId: callerPath === ROOT_PATH ? undefined : "root",
             message: finalText ?? "(agent completed)",
             status: "completed",
-            timestamp: Date.now(),
           });
 
           this.childSessions.delete(canonicalPath);
@@ -263,12 +265,9 @@ export class AgentControl {
       // Rollback reservation on failure
       this.registry.rollbackReservation(reservation);
       this.mailbox.appendEvent({
-        type: "agent_spawn_end",
-        agentId,
-        agentPath: canonicalPath,
+        type: "agent_spawn_end", ...this.evBase(agentId, canonicalPath),
         success: false,
         error: err instanceof Error ? err.message : String(err),
-        timestamp: Date.now(),
       });
       throw err;
     }
@@ -439,11 +438,7 @@ export class AgentControl {
   private async closeSingle(agentPath: string): Promise<void> {
     await this.abortSession(agentPath);
     this.registry.close(agentPath, "shutdown");
-    this.mailbox.appendEvent({
-      type: "agent_close_end",
-      agentId: this.registry.get(agentPath)?.agentId ?? "unknown",
-      agentPath, timestamp: Date.now(),
-    });
+    this.mailbox.appendEvent({ type: "agent_close_end", ...this.evBase(this.registry.get(agentPath)?.agentId ?? "unknown", agentPath) });
   }
 
   // ─── Shutdown ──────────────────────────────────────────────────
