@@ -212,10 +212,7 @@ ${writeRules}
 `
 			: "";
 
-	// Per-run isolated temp directory.
-	// SECURITY: NOT the broad system TMPDIR. This is a dedicated directory
-	// created for this specific command invocation, cleaned up after exit.
-	// Includes the isolated HOME subdirectory.
+	// Per-run isolated temp directory (not broad system TMPDIR)
 	const tmpDirSection = policy._isolatedTempDir
 		? `
 ; Per-run isolated temp directory (not system TMPDIR)
@@ -227,9 +224,7 @@ ${writeRules}
 `
 		: "";
 
-	// SECURITY: In read_only mode, explicitly deny writes to all readable roots.
-	// This is necessary because temp dir write access may overlap with
-	// the workspace when the workspace is created inside temp.
+	// read_only mode: deny writes to readable roots (temp may overlap workspace)
 	const readOnlyDenySection =
 		policy.mode === "read_only"
 			? `
@@ -238,8 +233,7 @@ ${readableRoots.map((p) => `(deny file-write* ${pathSubpath(p)})`).join("\n")}
 `
 			: "";
 
-	// Resolved .git directories (pointer files, worktrees)
-	// These get write deny rules in addition to the regex pattern
+	// Resolved .git directories get write deny rules
 	const gitdirDenyRules = (policy._resolvedGitdirs ?? [])
 		.map((g) => `(deny file-write* ${pathSubpath(g)})`)
 		.join("\n");

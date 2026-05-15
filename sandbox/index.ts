@@ -121,10 +121,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	type LocalBashWithCwd = ReturnType<typeof createBashTool> & { _cwd: string };
 	let localBash: LocalBashWithCwd | null = null;
 
-	/**
-	 * Get or create localBash with current session cwd.
-	 * Ensures unsandboxed execution uses the correct working directory.
-	 */
+	/** Get or create localBash with current session cwd. */
 	function getLocalBash(): LocalBashWithCwd {
 		const cwd = currentCwd || process.cwd();
 		if (!localBash || localBash._cwd !== cwd) {

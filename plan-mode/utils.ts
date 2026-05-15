@@ -184,10 +184,7 @@ export function sameModelRef(a: ModelRef | undefined, b: ModelRef | undefined): 
 	return a.provider === b.provider && a.modelId === b.modelId;
 }
 
-/**
- * Resolve the path to ~/.pi/agent/plan-mode.json.
- * Accepts an explicit override for testing.
- */
+/** ~/.pi/agent/plan-mode.json へのパス（explicitPath で上書き可能）。 */
 export function getConfigPath(explicitPath?: string): string {
 	if (explicitPath) return explicitPath;
 	return join(homedir(), ".pi", "agent", "plan-mode.json");
