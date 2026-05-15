@@ -162,6 +162,18 @@ export async function resolveGitdirPaths(
 	return results;
 }
 
+// ─── Effective roots computation (shared by validatePolicy + buildMacSeatbeltPolicy) ──
+
+function effectiveReadableRoots(policy: SandboxPolicy): string[] {
+	return policy.workspaceRoots.length > 0 ? policy.workspaceRoots : [policy.cwd];
+}
+
+function effectiveWritableRoots(policy: SandboxPolicy): string[] {
+	return policy.mode === "workspace_write"
+		? policy.writableRoots.length > 0 ? policy.writableRoots : [policy.cwd]
+		: [];
+}
+
 // ─── Policy validation ──────────────────────────────────────────
 
 /**
@@ -177,20 +189,14 @@ export async function validatePolicy(policy: SandboxPolicy): Promise<void> {
 	if (policy.mode === "danger_full_access") return;
 
 	// SECURITY: Compute effective roots the same way buildMacSeatbeltPolicy does.
-	// If workspaceRoots is empty, cwd becomes the effective workspace root.
+	// If rRoots is empty, cwd becomes the effective workspace root.
 	// If writableRoots is empty in workspace_write mode, cwd becomes the effective writable root.
 	// We must validate ALL effective roots, not just the explicitly-provided ones.
-	const effectiveWorkspaceRoots =
-		policy.workspaceRoots.length > 0 ? policy.workspaceRoots : [policy.cwd];
-	const effectiveWritableRoots =
-		policy.mode === "workspace_write"
-			? policy.writableRoots.length > 0
-				? policy.writableRoots
-				: [policy.cwd]
-			: [];
+	const rRoots = effectiveReadableRoots(policy);
+	const wRoots = effectiveWritableRoots(policy);
 
-	// Validate effective workspaceRoots for unsafe paths
-	for (const root of effectiveWorkspaceRoots) {
+	// Validate effective rRoots for unsafe paths
+	for (const root of rRoots) {
 		const unsafeReason = await checkUnsafeRoot(root);
 		if (unsafeReason) {
 			throw new Error(unsafeReason);
@@ -205,7 +211,7 @@ export async function validatePolicy(policy: SandboxPolicy): Promise<void> {
 	}
 
 	// Validate effective writableRoots for unsafe paths
-	for (const wr of effectiveWritableRoots) {
+	for (const wr of wRoots) {
 		const unsafeReason = await checkUnsafeRoot(wr);
 		if (unsafeReason) {
 			throw new Error(`writable ${unsafeReason}`);
@@ -213,13 +219,13 @@ export async function validatePolicy(policy: SandboxPolicy): Promise<void> {
 	}
 
 	const resolvedWorkspaceRoots = await Promise.all(
-		effectiveWorkspaceRoots.map((p) => resolveSafeRealPath(p)),
+		rRoots.map((p) => resolveSafeRealPath(p)),
 	);
 
-	for (const wr of effectiveWritableRoots) {
+	for (const wr of wRoots) {
 		const resolvedWr = await resolveSafeRealPath(wr);
 
-		// workspaceRoots 配下かチェック
+		// rRoots 配下かチェック
 		const isInside = resolvedWorkspaceRoots.some((root) => {
 			const rel = relative(root, resolvedWr);
 			return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
@@ -253,17 +259,10 @@ export function buildMacSeatbeltPolicy(policy: SandboxPolicy): string {
 `;
 	}
 
-	// readable roots: workspaceRoots があればそれ、なければ cwd
-	const readableRoots =
-		policy.workspaceRoots.length > 0 ? policy.workspaceRoots : [policy.cwd];
+	const readableRoots = effectiveReadableRoots(policy);
 
 	// writable roots: workspace_write で writableRoots があればそれ、なければ cwd
-	const writableRoots =
-		policy.mode === "workspace_write"
-			? policy.writableRoots.length > 0
-				? policy.writableRoots
-				: [policy.cwd]
-			: [];
+	const writableRoots = effectiveWritableRoots(policy);
 
 	const readRules = readableRoots.map((p) => `  ${pathSubpath(p)}`).join("\n");
 	const writeRules = writableRoots.map((p) => `  ${pathSubpath(p)}`).join("\n");
