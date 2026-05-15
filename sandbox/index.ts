@@ -9,10 +9,9 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createBashTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { SandboxMode, SandboxPolicy } from "./permissions.js";
-import { readOnlyPolicy, workspaceWritePolicy, yoloPolicy } from "./permissions.js";
 import { isMacSandboxAvailable, runSandboxedShellMac } from "./macSeatbelt.js";
 import { resolveRealPaths, validateWorkspaceRoot } from "./pathPolicy.js";
-import { shouldRequestApproval, yoloApprovalMessage, type YoloApprovalState } from "./approvals.js";
+import { shouldRequestApproval, yoloApprovalMessage, type YoloApprovalState, readOnlyPolicy, workspaceWritePolicy, yoloPolicy } from "./permissions.js";
 import { DEFAULT_SANDBOX_MODE, parseSandboxMode, modeLabel, SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, PLAN_MODE_STATUS_EVENT, type SandboxPushProfileEvent, type SandboxPopProfileEvent, type PlanModeStatusEvent } from "../policy-core/modes.js";
 
 // ─── LLM output truncation ─────────────────────────────────────────
