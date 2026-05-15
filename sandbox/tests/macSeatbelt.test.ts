@@ -45,7 +45,7 @@ import {
 import {
 	readOnlyPolicy,
 	workspaceWritePolicy,
-	dangerFullAccessPolicy,
+	yoloPolicy,
 	parseSandboxMode,
 	modeLabel,
 	type SandboxPolicy,
@@ -63,8 +63,8 @@ const isMac = process.platform === "darwin";
 describe("buildMacSeatbeltPolicy", () => {
 	const tmpDir = "/tmp/sandbox-test";
 
-	it("danger_full_access は (allow default) のみを含む", () => {
-		const policy = dangerFullAccessPolicy();
+	it("yolo は (allow default) のみを含む", () => {
+		const policy = yoloPolicy();
 		const sbpl = buildMacSeatbeltPolicy(policy);
 
 		expect(sbpl).toContain("(allow default)");
@@ -280,7 +280,7 @@ describe("parseSandboxMode", () => {
 	it("有効なモードをパースする", () => {
 		expect(parseSandboxMode("read_only")).toBe("read_only");
 		expect(parseSandboxMode("workspace_write")).toBe("workspace_write");
-		expect(parseSandboxMode("danger_full_access")).toBe("danger_full_access");
+		expect(parseSandboxMode("yolo")).toBe("yolo");
 	});
 
 	it("無効なモードは undefined を返す", () => {
@@ -294,7 +294,7 @@ describe("modeLabel", () => {
 	it("各モードのラベルを返す", () => {
 		expect(modeLabel("read_only")).toBe("read-only");
 		expect(modeLabel("workspace_write")).toBe("workspace-write");
-		expect(modeLabel("danger_full_access")).toBe("full-access");
+		expect(modeLabel("yolo")).toBe("yolo");
 	});
 });
 
@@ -313,9 +313,9 @@ describe("policy builders", () => {
 		expect(policy.network).toBe(false);
 	});
 
-	it("dangerFullAccessPolicy は danger_full_access を返す", () => {
-		const policy = dangerFullAccessPolicy();
-		expect(policy.mode).toBe("danger_full_access");
+	it("yoloPolicy は yolo を返す", () => {
+		const policy = yoloPolicy();
+		expect(policy.mode).toBe("yolo");
 		expect(policy.network).toBe(true);
 	});
 });
@@ -461,8 +461,8 @@ describe("validatePolicy", () => {
 		rmSync(tmpDir, { recursive: true, force: true });
 	});
 
-	it("danger_full_access は常に有効", async () => {
-		const policy = dangerFullAccessPolicy();
+	it("yolo は常に有効", async () => {
+		const policy = yoloPolicy();
 		await expect(validatePolicy(policy)).resolves.toBeUndefined();
 	});
 
@@ -630,20 +630,20 @@ describe("resolveRealPaths", () => {
 // ─── Unit tests: approvals ───────────────────────────────────────
 
 describe("shouldRequestApproval", () => {
-	it("danger_full_access で fullAccessApproved=true なら承認不要", () => {
+	it("yolo で fullAccessApproved=true なら承認不要", () => {
 		expect(
-			shouldRequestApproval("danger_full_access", "rm -rf /", { fullAccessApproved: true }).needsApproval,
+			shouldRequestApproval("yolo", "rm -rf /", { fullAccessApproved: true }).needsApproval,
 		).toBe(false);
 	});
 
-	it("danger_full_access で fullAccessApproved=false なら承認が必要", () => {
-		const result = shouldRequestApproval("danger_full_access", "ls", { fullAccessApproved: false });
+	it("yolo で fullAccessApproved=false なら承認が必要", () => {
+		const result = shouldRequestApproval("yolo", "ls", { fullAccessApproved: false });
 		expect(result.needsApproval).toBe(true);
 		expect(result.reason).toContain("approval");
 	});
 
-	it("danger_full_access で fullAccessApproved 未指定なら承認が必要", () => {
-		const result = shouldRequestApproval("danger_full_access", "ls");
+	it("yolo で fullAccessApproved 未指定なら承認が必要", () => {
+		const result = shouldRequestApproval("yolo", "ls");
 		expect(result.needsApproval).toBe(true);
 	});
 

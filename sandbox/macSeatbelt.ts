@@ -123,7 +123,7 @@ function effectiveWritableRoots(policy: SandboxPolicy): string[] {
 
 /** SandboxPolicy のセキュリティ検証。安全でないパス・symlink 脱出を検出。 */
 export async function validatePolicy(policy: SandboxPolicy): Promise<void> {
-	if (policy.mode === "danger_full_access") return;
+	if (policy.mode === "yolo") return;
 
 	// SECURITY: Validate effective roots (same computation as buildMacSeatbeltPolicy)
 	const rRoots = effectiveReadableRoots(policy);
@@ -159,7 +159,7 @@ export async function validatePolicy(policy: SandboxPolicy): Promise<void> {
 
 /** SandboxPolicy から SBPL 生成。deny rules は LAST matching rule wins なので末尾に置く。 */
 export function buildMacSeatbeltPolicy(policy: SandboxPolicy): string {
-	if (policy.mode === "danger_full_access") {
+	if (policy.mode === "yolo") {
 		return `
 (version 1)
 (allow default)

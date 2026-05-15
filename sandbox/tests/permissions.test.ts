@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
 import {
 	readOnlyPolicy,
 	workspaceWritePolicy,
-	dangerFullAccessPolicy,
+	yoloPolicy,
 	parseSandboxMode,
 	modeLabel,
 	type SandboxMode,
@@ -98,12 +98,12 @@ describe("workspaceWritePolicy", () => {
 	});
 });
 
-// ─── dangerFullAccessPolicy ──────────────────────────────────────
+// ─── yoloPolicy ──────────────────────────────────────
 
-describe("dangerFullAccessPolicy", () => {
-	it("基本的な danger_full_access ポリシーを生成する", () => {
-		const policy = dangerFullAccessPolicy();
-		expect(policy.mode).toBe("danger_full_access");
+describe("yoloPolicy", () => {
+	it("基本的な yolo ポリシーを生成する", () => {
+		const policy = yoloPolicy();
+		expect(policy.mode).toBe("yolo");
 		expect(policy.cwd).toBe("/");
 		expect(policy.workspaceRoots).toEqual([]);
 		expect(policy.writableRoots).toEqual([]);
@@ -111,7 +111,7 @@ describe("dangerFullAccessPolicy", () => {
 	});
 
 	it("引数を取らない", () => {
-		const policy = dangerFullAccessPolicy();
+		const policy = yoloPolicy();
 		expect(policy).toBeDefined();
 	});
 });
@@ -122,7 +122,7 @@ describe("parseSandboxMode", () => {
 	it("有効なモードをパースする", () => {
 		expect(parseSandboxMode("read_only")).toBe("read_only");
 		expect(parseSandboxMode("workspace_write")).toBe("workspace_write");
-		expect(parseSandboxMode("danger_full_access")).toBe("danger_full_access");
+		expect(parseSandboxMode("yolo")).toBe("yolo");
 	});
 
 	it("大文字は無効", () => {
@@ -159,13 +159,13 @@ describe("modeLabel", () => {
 	it("各モードのラベルを返す", () => {
 		expect(modeLabel("read_only")).toBe("read-only");
 		expect(modeLabel("workspace_write")).toBe("workspace-write");
-		expect(modeLabel("danger_full_access")).toBe("full-access");
+		expect(modeLabel("yolo")).toBe("yolo");
 	});
 
 	it("ラベルにアンダースコアが含まれない", () => {
 		expect(modeLabel("read_only")).not.toContain("_");
 		expect(modeLabel("workspace_write")).not.toContain("_");
-		expect(modeLabel("danger_full_access")).not.toContain("_");
+		expect(modeLabel("yolo")).not.toContain("_");
 	});
 });
 

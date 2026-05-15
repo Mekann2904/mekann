@@ -15,7 +15,7 @@ import {
 import {
 	readOnlyPolicy,
 	workspaceWritePolicy,
-	dangerFullAccessPolicy,
+	yoloPolicy,
 } from "../permissions.js";
 
 // ─── Snapshots: 全ポリシーパターンの回帰テスト ──────────────────
@@ -79,8 +79,8 @@ describe("SBPL policy snapshots", () => {
 		expect(sbpl).toMatchSnapshot();
 	});
 
-	it("danger_full_access", () => {
-		const policy = dangerFullAccessPolicy();
+	it("yolo", () => {
+		const policy = yoloPolicy();
 		const sbpl = buildMacSeatbeltPolicy(policy);
 		expect(sbpl).toMatchSnapshot();
 	});
@@ -142,8 +142,8 @@ describe("SBPL policy structure invariants", () => {
 		}
 	});
 
-	it("danger_full_access は常に (allow default) のみ", () => {
-		const sbpl = buildMacSeatbeltPolicy(dangerFullAccessPolicy());
+	it("yolo は常に (allow default) のみ", () => {
+		const sbpl = buildMacSeatbeltPolicy(yoloPolicy());
 		expect(sbpl).toContain("(allow default)");
 		expect(sbpl).not.toContain("(deny default)");
 	});
@@ -152,14 +152,14 @@ describe("SBPL policy structure invariants", () => {
 		const policies = [
 			readOnlyPolicy("/tmp/a", ["/tmp/a"]),
 			workspaceWritePolicy("/tmp/a", ["/tmp/a"], ["/tmp/a"], false),
-			dangerFullAccessPolicy(),
+			yoloPolicy(),
 		];
 		for (const p of policies) {
 			expect(buildMacSeatbeltPolicy(p)).toContain("(version 1)");
 		}
 	});
 
-	it("非 danger ポリシーは process-exec, process-fork を許可する", () => {
+	it("非 yolo ポリシーは process-exec, process-fork を許可する", () => {
 		const policies = [
 			readOnlyPolicy("/tmp/a", ["/tmp/a"]),
 			workspaceWritePolicy("/tmp/a", ["/tmp/a"], ["/tmp/a"], false),
@@ -171,7 +171,7 @@ describe("SBPL policy structure invariants", () => {
 		}
 	});
 
-	it("非 danger ポリシーは保護パス deny を含む", () => {
+	it("非 yolo ポリシーは保護パス deny を含む", () => {
 		const policies = [
 			readOnlyPolicy("/tmp/a", ["/tmp/a"]),
 			workspaceWritePolicy("/tmp/a", ["/tmp/a"], ["/tmp/a"], false),
@@ -196,8 +196,8 @@ describe("SBPL policy structure invariants", () => {
 		}
 	});
 
-	it("danger_full_access は process-exec/fork/signal 制限を含まない", () => {
-		const sbpl = buildMacSeatbeltPolicy(dangerFullAccessPolicy());
+	it("yolo は process-exec/fork/signal 制限を含まない", () => {
+		const sbpl = buildMacSeatbeltPolicy(yoloPolicy());
 		expect(sbpl).not.toContain("same-sandbox");
 	});
 });

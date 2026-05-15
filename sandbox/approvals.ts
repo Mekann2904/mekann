@@ -11,11 +11,11 @@ export interface ApprovalDecision {
 	reason?: string;
 }
 
-/** danger_full_access の承認状態。 */
-export interface FullAccessApprovalState {
-	fullAccessApproved: boolean;
-	fullAccessApprovedAt?: Date;
-	fullAccessApprovedReason?: string;
+/** yolo の承認状態。 */
+export interface YoloApprovalState {
+	yoloApproved: boolean;
+	yoloApprovedAt?: Date;
+	yoloApprovedReason?: string;
 }
 
 /** UX-level dangerous command patterns (NOT security — trivially bypassable). */
@@ -32,21 +32,21 @@ const DANGEROUS_PATTERNS = [
 ];
 
 /**
- * UX-level approval check (NOT security). danger_full_access requires explicit approval.
+ * UX-level approval check (NOT security). yolo requires explicit approval.
  */
 export function shouldRequestApproval(
 	mode: SandboxMode,
 	command: string,
-	approvalState?: Partial<FullAccessApprovalState>,
+	approvalState?: Partial<YoloApprovalState>,
 ): ApprovalDecision {
-	// SECURITY: danger_full_access でも明示承認が必要
-	if (mode === "danger_full_access") {
-		if (approvalState?.fullAccessApproved) {
+	// SECURITY: yolo でも明示承認が必要
+	if (mode === "yolo") {
+		if (approvalState?.yoloApproved) {
 			return { needsApproval: false };
 		}
 		return {
 			needsApproval: true,
-			reason: "danger_full_access mode requires explicit user approval before any command can execute",
+			reason: "yolo mode requires explicit user approval before any command can execute",
 		};
 	}
 
@@ -60,8 +60,8 @@ export function shouldRequestApproval(
 	return { needsApproval: false };
 }
 
-/** danger_full_access 切り替え時の承認メッセージ。 */
-export function fullAccessApprovalMessage(): string {
+/** yolo 切り替え時の承認メッセージ。 */
+export function yoloApprovalMessage(): string {
 	return [
 		"⚠️  You are about to disable sandboxing entirely.",
 		"",

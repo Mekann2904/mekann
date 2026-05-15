@@ -8,7 +8,7 @@
  *   - フラグ解析 (--no-sandbox, --sandbox-mode)
  *   - セッション開始時のモード初期化
  *   - ワークスペースルート検証
- *   - danger_full_access 承認フロー
+ *   - yolo 承認フロー
  *   - user_bash ブロック/許可
  *   - /sandbox status 表示
  *   - /sandbox-mode コマンド
@@ -203,9 +203,9 @@ describe("session_start hook", () => {
 		);
 	});
 
-	it("danger_full_access: 承認プロンプトが表示される (approve)", async () => {
+	it("yolo: 承認プロンプトが表示される (approve)", async () => {
 		const mock = createMockApi();
-		mock._flags = { "sandbox-mode": "danger_full_access" };
+		mock._flags = { "sandbox-mode": "yolo" };
 		await loadExtension(mock);
 		const ctx = createMockCtx();
 
@@ -217,9 +217,9 @@ describe("session_start hook", () => {
 		);
 	});
 
-	it("danger_full_access: 承認拒否で workspace_write にフォールバック", async () => {
+	it("yolo: 承認拒否で workspace_write にフォールバック", async () => {
 		const mock = createMockApi();
-		mock._flags = { "sandbox-mode": "danger_full_access" };
+		mock._flags = { "sandbox-mode": "yolo" };
 		await loadExtension(mock);
 		const ctx = createMockCtx({
 			ui: {
@@ -305,20 +305,20 @@ describe("user_bash hook", () => {
 		expect(() => mock._hooks.user_bash()).toThrow("blocked when sandbox is active");
 	});
 
-	it("danger_full_access 承認済み: undefined を返す (許可)", async () => {
+	it("yolo 承認済み: undefined を返す (許可)", async () => {
 		const mock = createMockApi();
-		mock._flags = { "sandbox-mode": "danger_full_access" };
+		mock._flags = { "sandbox-mode": "yolo" };
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
-		// danger_full_access approved at session_start (confirm returns true)
+		// yolo approved at session_start (confirm returns true)
 		const result = mock._hooks.user_bash();
 		expect(result).toBeUndefined();
 	});
 
-	it("danger_full_access 未承認: エラーを投げる", async () => {
+	it("yolo 未承認: エラーを投げる", async () => {
 		const mock = createMockApi();
-		mock._flags = { "sandbox-mode": "danger_full_access" };
+		mock._flags = { "sandbox-mode": "yolo" };
 		await loadExtension(mock);
 		const ctx = createMockCtx({
 			ui: {
@@ -328,7 +328,7 @@ describe("user_bash hook", () => {
 		});
 		await mock._hooks.session_start({}, ctx);
 
-		// danger_full_access was rejected → fallback to workspace_write
+		// yolo was rejected → fallback to workspace_write
 		// So user_bash should block
 		expect(() => mock._hooks.user_bash()).toThrow("blocked when sandbox is active");
 	});
@@ -421,7 +421,7 @@ describe("/sandbox-mode command", () => {
 		expect(notifications[0]).toContain("workspace-write");
 	});
 
-	it("danger_full_access: 承認プロンプト (approve)", async () => {
+	it("yolo: 承認プロンプト (approve)", async () => {
 		const notifications: string[] = [];
 		const mock = createMockApi();
 		mock._flags = { "no-sandbox": true };
@@ -435,13 +435,13 @@ describe("/sandbox-mode command", () => {
 				confirm: vi.fn(() => Promise.resolve(true)),
 			},
 		});
-		await mock._commands["sandbox-mode"].handler("danger_full_access", ctx);
+		await mock._commands["sandbox-mode"].handler("yolo", ctx);
 
 		expect(ctx.ui.confirm).toHaveBeenCalled();
-		expect(notifications[0]).toContain("full-access");
+		expect(notifications[0]).toContain("yolo");
 	});
 
-	it("danger_full_access: 承認拒否", async () => {
+	it("yolo: 承認拒否", async () => {
 		const notifications: string[] = [];
 		const mock = createMockApi();
 		mock._flags = { "no-sandbox": true };
@@ -455,7 +455,7 @@ describe("/sandbox-mode command", () => {
 				confirm: vi.fn(() => Promise.resolve(false)),
 			},
 		});
-		await mock._commands["sandbox-mode"].handler("danger_full_access", ctx);
+		await mock._commands["sandbox-mode"].handler("yolo", ctx);
 
 		expect(notifications[0]).toContain("cancelled");
 	});
@@ -475,7 +475,7 @@ describe("/sandbox-mode command", () => {
 		expect(notifications[0]).toContain("Invalid mode");
 	});
 
-	it("danger_full_access → read_only: 承認状態をリセット", async () => {
+	it("yolo → read_only: 承認状態をリセット", async () => {
 		const notifications: string[] = [];
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
@@ -485,7 +485,7 @@ describe("/sandbox-mode command", () => {
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
-		// First, set to danger_full_access (approve)
+		// First, set to yolo (approve)
 		const ctx1 = createMockCtx({
 			ui: {
 				...createMockCtx().ui,
@@ -493,9 +493,9 @@ describe("/sandbox-mode command", () => {
 				confirm: vi.fn(() => Promise.resolve(true)),
 			},
 		});
-		await mock._commands["sandbox-mode"].handler("danger_full_access", ctx1);
+		await mock._commands["sandbox-mode"].handler("yolo", ctx1);
 
-		// Verify user_bash is allowed (approved danger_full_access)
+		// Verify user_bash is allowed (approved yolo)
 		expect(mock._hooks.user_bash()).toBeUndefined();
 
 		// Then, switch to read_only — should reset approval
@@ -504,7 +504,7 @@ describe("/sandbox-mode command", () => {
 		});
 		await mock._commands["sandbox-mode"].handler("read_only", ctx2);
 
-		// Now user_bash should block (no longer approved danger_full_access)
+		// Now user_bash should block (no longer approved yolo)
 		expect(() => mock._hooks.user_bash()).toThrow("blocked when sandbox is active");
 	});
 });
@@ -528,12 +528,12 @@ describe("/sandbox-mode getArgumentCompletions", () => {
 		expect(completions.some((c: { value: string }) => c.value === "workspace_write")).toBe(true);
 	});
 
-	it("danger_full_access が補完される", async () => {
+	it("yolo が補完される", async () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 
-		const completions = mock._commands["sandbox-mode"].getArgumentCompletions("danger");
-		expect(completions.some((c: { value: string }) => c.value === "danger_full_access")).toBe(true);
+		const completions = mock._commands["sandbox-mode"].getArgumentCompletions("yolo");
+		expect(completions.some((c: { value: string }) => c.value === "yolo")).toBe(true);
 	});
 
 	it("空 prefix は全モードを返す", async () => {
@@ -583,18 +583,18 @@ describe("tool execute: Case 3 (sandbox unavailable, refuse)", () => {
 	});
 });
 
-// ─── tool execute: Case 2 (danger_full_access unapproved) ────────
+// ─── tool execute: Case 2 (yolo unapproved) ────────
 
-describe("tool execute: Case 2 (danger_full_access)", () => {
+describe("tool execute: Case 2 (yolo)", () => {
 	it("未承認: 承認プロンプト → 承認で実行", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
 		const mock = createMockApi();
-		mock._flags = { "sandbox-mode": "danger_full_access" };
+		mock._flags = { "sandbox-mode": "yolo" };
 		await loadExtension(mock);
 
-		// session_start already approves danger_full_access (confirm returns true)
+		// session_start already approves yolo (confirm returns true)
 		await mock._hooks.session_start({}, createMockCtx());
 
 		const tool = mock._registeredTools[0];
@@ -607,7 +607,7 @@ describe("tool execute: Case 2 (danger_full_access)", () => {
 
 	it("未承認: 承認拒否でエラー", async () => {
 		const mock = createMockApi();
-		mock._flags = { "sandbox-mode": "danger_full_access" };
+		mock._flags = { "sandbox-mode": "yolo" };
 		await loadExtension(mock);
 		// Reject the session_start approval
 		await mock._hooks.session_start({}, createMockCtx({
@@ -616,7 +616,7 @@ describe("tool execute: Case 2 (danger_full_access)", () => {
 				confirm: vi.fn(() => Promise.resolve(false)),
 			},
 		}));
-		// danger_full_access was rejected at session_start → fallback to workspace_write
+		// yolo was rejected at session_start → fallback to workspace_write
 		// But since sandbox is unavailable, it will refuse
 		const tool = mock._registeredTools[0];
 		await expect(
@@ -681,12 +681,12 @@ describe("status bar", () => {
 		expect(ctx.ui.setStatus).toHaveBeenCalledWith("sandbox", expect.any(String));
 	});
 
-	it("danger_full_access 時は ⚠️ アイコン", async () => {
+	it("yolo 時は ⚠️ アイコン", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
 		const mock = createMockApi();
-		mock._flags = { "sandbox-mode": "danger_full_access" };
+		mock._flags = { "sandbox-mode": "yolo" };
 		await loadExtension(mock);
 		const ctx = createMockCtx();
 		await mock._hooks.session_start({}, ctx);
@@ -890,7 +890,7 @@ describe("resolveRealPaths error fallback", () => {
 	});
 });
 
-// ─── buildCurrentPolicy: read_only and danger_full_access paths ───
+// ─── buildCurrentPolicy: read_only and yolo paths ───
 
 describe("buildCurrentPolicy: all mode paths", () => {
 	it("read_only モードで sandboxed command が正しい policy を使う", async () => {
@@ -926,12 +926,12 @@ describe("buildCurrentPolicy: all mode paths", () => {
 		});
 	});
 
-	it("danger_full_access モード (承認済み) で unsandboxed 実行", async () => {
+	it("yolo モード (承認済み) で unsandboxed 実行", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValue(true);
 
 		const mock = createMockApi();
-		mock._flags = { "sandbox-mode": "danger_full_access" };
+		mock._flags = { "sandbox-mode": "yolo" };
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
@@ -947,7 +947,7 @@ describe("buildCurrentPolicy: all mode paths", () => {
 // ─── tool execute: Case 2 inline approval ────────────────────────
 
 describe("tool execute: Case 2 inline approval flow", () => {
-	it("/sandbox-mode で danger_full_access 承認 → 次の tool 実行はプロンプトなし", async () => {
+	it("/sandbox-mode で yolo 承認 → 次の tool 実行はプロンプトなし", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
@@ -956,8 +956,8 @@ describe("tool execute: Case 2 inline approval flow", () => {
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
-		// Switch to danger_full_access via command (approve)
-		await mock._commands["sandbox-mode"].handler("danger_full_access", createMockCtx());
+		// Switch to yolo via command (approve)
+		await mock._commands["sandbox-mode"].handler("yolo", createMockCtx());
 
 		// Now tool execute should work without confirm (approved via command)
 		const ctx = createMockCtx();
@@ -971,13 +971,13 @@ describe("tool execute: Case 2 inline approval flow", () => {
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
 		const mock = createMockApi();
-		mock._flags = { "sandbox-mode": "danger_full_access" };
+		mock._flags = { "sandbox-mode": "yolo" };
 		await loadExtension(mock);
 
-		// session_start approves danger_full_access
+		// session_start approves yolo
 		await mock._hooks.session_start({}, createMockCtx());
 
-		// session_shutdown resets fullAccessApproved to false, but currentMode stays
+		// session_shutdown resets yoloApproved to false, but currentMode stays
 		await mock._hooks.session_shutdown();
 
 		// Now execute should hit the inline approval path
@@ -998,7 +998,7 @@ describe("tool execute: Case 2 inline approval flow", () => {
 
 	it("session_shutdown 後に inline approval 拒否 → エラー", async () => {
 		const mock = createMockApi();
-		mock._flags = { "sandbox-mode": "danger_full_access" };
+		mock._flags = { "sandbox-mode": "yolo" };
 		await loadExtension(mock);
 
 		// session_start approves
@@ -1015,7 +1015,7 @@ describe("tool execute: Case 2 inline approval flow", () => {
 
 		await expect(
 			mock._registeredTools[0].execute("id1", { command: "echo test" }, undefined, undefined, ctx),
-		).rejects.toThrow("danger_full_access requires explicit user approval");
+		).rejects.toThrow("yolo requires explicit user approval");
 
 		expect(confirmFn).toHaveBeenCalledTimes(1);
 	});
