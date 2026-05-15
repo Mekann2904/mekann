@@ -59,7 +59,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// ─── State ───────────────────────────────────────────────────────
 
 	let sandboxEnabled = false;
-	let currentMode: SandboxMode = "workspace_write";
+	let currentMode: SandboxMode = "yolo";
 	let sandboxAvailable = false;
 	let resolvedWorkspaceRoots: string[] = [];
 	let resolvedWritableRoots: string[] = [];
@@ -95,7 +95,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	pi.registerFlag("sandbox-mode", {
 		description: "初期 sandbox モード (read_only | workspace_write | yolo)",
 		type: "string",
-		default: "workspace_write",
+		default: "yolo",
 	});
 
 	// ─── Policy builder ──────────────────────────────────────────────
