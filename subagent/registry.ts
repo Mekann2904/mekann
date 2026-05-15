@@ -188,17 +188,21 @@ export class AgentRegistry {
     return undefined;
   }
 
+  /** Filter agents by predicate, return as sorted array. */
+  private filterAgents(predicate: (agent: AgentMetadata) => boolean): AgentMetadata[] {
+    const result: AgentMetadata[] = [];
+    for (const [, agent] of this.agents) {
+      if (predicate(agent)) result.push(agent);
+    }
+    return result;
+  }
+
   /**
    * List agents, optionally filtered by path prefix (segment-boundary).
    */
   list(pathPrefix?: string): AgentMetadata[] {
-    const result: AgentMetadata[] = [];
-    for (const [, agent] of this.agents) {
-      if (!pathPrefix || agent.agentPath.startsWith(pathPrefix + "/") || agent.agentPath === pathPrefix) {
-        result.push(agent);
-      }
-    }
-    return result.sort((a, b) => a.agentPath.localeCompare(b.agentPath));
+    return this.filterAgents(a => !pathPrefix || a.agentPath.startsWith(pathPrefix + "/") || a.agentPath === pathPrefix)
+      .sort((a, b) => a.agentPath.localeCompare(b.agentPath));
   }
 
   /**
@@ -206,16 +210,9 @@ export class AgentRegistry {
    * Returns in depth-first order (deepest first for safe closing).
    */
   getOpenDescendants(agentPath: string): AgentMetadata[] {
-    const result: AgentMetadata[] = [];
     const prefix = agentPath + "/";
-    for (const [, agent] of this.agents) {
-      if (agent.open && agent.agentPath.startsWith(prefix)) {
-        result.push(agent);
-      }
-    }
-    // Sort deepest first
-    result.sort((a, b) => pathDepth(b.agentPath) - pathDepth(a.agentPath));
-    return result;
+    return this.filterAgents(a => a.open && a.agentPath.startsWith(prefix))
+      .sort((a, b) => pathDepth(b.agentPath) - pathDepth(a.agentPath));
   }
 
   // ─── Mutations ───────────────────────────────────────────────

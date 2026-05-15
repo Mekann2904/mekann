@@ -109,9 +109,9 @@ export class AgentControl {
       return found;
     }
     const all = ctx.modelRegistry.getAvailable();
-    const found = all.find((m) => m.id === modelOverride);
-    if (!found) throw new Error(`Model not found: ${modelOverride}. Available: ${all.map((m) => m.id).join(", ")}`);
-    return found;
+    const match = all.find((m) => m.id === modelOverride);
+    if (!match) throw new Error(`Model not found: ${modelOverride}. Available: ${all.map((m) => m.id).join(", ")}`);
+    return match;
   }
 
   // ─── Helper: finalize agent with error ─────────────────────────────
