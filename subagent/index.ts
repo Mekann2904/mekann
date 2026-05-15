@@ -160,6 +160,11 @@ export default function subagentExtension(pi: ExtensionAPI): void {
     return { content: [{ type: "text", text }], details: result };
   }
 
+  type ToolHandler = (ctrl: AgentControl, params: any, ctx: ExtensionContext) => Promise<any>;
+  function withCtrl(handler: ToolHandler) {
+    return async (_id: string, params: unknown, _signal: unknown, _onUpdate: unknown, ctx: ExtensionContext) => handler(ensureControl(), params, ctx);
+  }
+
   // ─── Tools ────────────────────────────────────────────────────
 
   pi.registerTool({
@@ -191,8 +196,7 @@ export default function subagentExtension(pi: ExtensionAPI): void {
       }
       return a as any;
     },
-    async execute(_id, params, _signal, _onUpdate, ctx) {
-      const ctrl = ensureControl();
+    execute: withCtrl(async (ctrl, params, ctx) => {
       const result = await ctrl.spawn(
         {
           task_name: params.task_name,
@@ -206,7 +210,7 @@ export default function subagentExtension(pi: ExtensionAPI): void {
         ctx,
       );
       return toolResult(JSON.stringify(result, null, 2), result);
-    },
+    }),
   });
 
   pi.registerTool({
@@ -220,11 +224,10 @@ export default function subagentExtension(pi: ExtensionAPI): void {
       "If you want the subagent to perform additional work, use followup_task instead of send_message.",
     ],
     parameters: SendMessageSchema,
-    async execute(_id, params, _signal, _onUpdate, ctx) {
-      const ctrl = ensureControl();
+    execute: withCtrl(async (ctrl, params, ctx) => {
       const result = await ctrl.sendMessage(params, ctx);
       return toolResult(`Message delivered: ${result.delivered}`, result);
-    },
+    }),
   });
 
   pi.registerTool({
@@ -238,11 +241,10 @@ export default function subagentExtension(pi: ExtensionAPI): void {
       "If the target subagent is idle, followup_task starts a new turn; if it is running, the task is queued. Use wait_agent afterward to collect the result.",
     ],
     parameters: FollowupTaskSchema,
-    async execute(_id, params, _signal, _onUpdate, ctx) {
-      const ctrl = ensureControl();
+    execute: withCtrl(async (ctrl, params, ctx) => {
       const result = await ctrl.followupTask(params, ctx);
       return toolResult(`Follow-up ${result.triggered ? "triggered new turn" : "queued"}: queued=${result.queued}, triggered=${result.triggered}`, result);
-    },
+    }),
   });
 
   pi.registerTool({
@@ -258,11 +260,10 @@ export default function subagentExtension(pi: ExtensionAPI): void {
       "If wait_agent times out, say that the subagent is still running and either continue other useful work or wait again. Do not invent missing results.",
     ],
     parameters: WaitAgentSchema,
-    async execute(_id, params, _signal, _onUpdate, ctx) {
-      const ctrl = ensureControl();
+    execute: withCtrl(async (ctrl, params, ctx) => {
       const result = await ctrl.wait(params, ctx);
       return toolResult(JSON.stringify({ timed_out: result.timed_out, event_count: result.events.length, mailbox_count: result.mailbox.length, events: result.events.map((e) => ({ type: e.type, agentPath: "agentPath" in e ? (e as any).agentPath : undefined, ...(e.type === "agent_status_changed" ? { previousStatus: (e as any).previousStatus, newStatus: (e as any).newStatus } : {}), ...(e.type === "agent_final_message" ? { message: (e as any).message } : {}) })), mailbox: result.mailbox.map((m) => ({ from: m.fromAgentPath, kind: m.kind, content: m.content.slice(0, 200) })) }, null, 2), result);
-    },
+    }),
   });
 
   pi.registerTool({
@@ -274,11 +275,10 @@ export default function subagentExtension(pi: ExtensionAPI): void {
       "Use list_agents when you are unsure which subagents exist, need to verify status, need a target path for followup_task/close_agent, or need to diagnose duplicate task_name errors.",
     ],
     parameters: ListAgentsSchema,
-    async execute(_id, params, _signal, _onUpdate, _ctx) {
-      const ctrl = ensureControl();
+    execute: withCtrl(async (ctrl, params, _ctx) => {
       const result = ctrl.list(params);
       return toolResult(result.agents.length === 0 ? "(no agents)" : result.agents.map((a) => `${a.status === "completed" || a.status === "shutdown" ? "○" : "●"} ${a.agent_path}${a.nickname ? ` (${a.nickname})` : ""}${a.role ? ` [${a.role}]` : ""} — ${a.status}${a.last_task ? `\n  last: ${a.last_task.slice(0, 80)}` : ""}`).join("\n"), result);
-    },
+    }),
   });
 
   pi.registerTool({
@@ -292,11 +292,10 @@ export default function subagentExtension(pi: ExtensionAPI): void {
       "close_agent aborts running work for the target and its descendants. Do not close an active subagent prematurely unless cancellation is intended.",
     ],
     parameters: CloseAgentSchema,
-    async execute(_id, params, _signal, _onUpdate, ctx) {
-      const ctrl = ensureControl();
+    execute: withCtrl(async (ctrl, params, ctx) => {
       const result = await ctrl.close(params, ctx);
       return toolResult(`Closed: ${result.closed.join(", ")}`, result);
-    },
+    }),
   });
 
   // ─── Commands ─────────────────────────────────────────────────
