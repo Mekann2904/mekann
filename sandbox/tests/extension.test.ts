@@ -93,7 +93,7 @@ function createMockApi() {
 	const hooks: Record<string, Function> = {};
 	const commands: Record<string, { handler: Function; getArgumentCompletions?: Function }> = {};
 	let flags: Record<string, unknown> = {};
-	const registeredTools: Array<Record<string, unknown>> = [];
+	const registeredTools: Array<Record<string, any>> = [];
 	const registeredFlags: Array<{ name: string; config: unknown }> = [];
 	const eventHandlers: Record<string, Function> = {};
 
@@ -101,7 +101,7 @@ function createMockApi() {
 		registerFlag: vi.fn((name: string, config: unknown) => {
 			registeredFlags.push({ name, config });
 		}),
-		registerTool: vi.fn((tool: Record<string, unknown>) => {
+		registerTool: vi.fn((tool: Record<string, any>) => {
 			registeredTools.push(tool);
 		}),
 		registerCommand: vi.fn((name: string, config: { handler: Function; getArgumentCompletions?: Function }) => {
@@ -245,7 +245,7 @@ describe("session_start hook", () => {
 		// Mode stays yolo
 		const notifications: string[] = [];
 		const statusCtx = createMockCtx({
-			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", statusCtx);
 		expect(notifications[0]).toBe("yolo");
@@ -290,7 +290,7 @@ describe("session_shutdown hook", () => {
 		// After shutdown, state is reset. /sandbox shows the current effective mode.
 		const notifications: string[] = [];
 		const statusCtx = createMockCtx({
-			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", statusCtx);
 		// After shutdown, effectiveMode() returns currentMode (yolo by default)
@@ -356,7 +356,7 @@ describe("/sandbox command", () => {
 		await mock._hooks.session_start({}, createMockCtx());
 
 		const ctx = createMockCtx({
-			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 
@@ -375,7 +375,7 @@ describe("/sandbox command", () => {
 		await mock._hooks.session_start({}, createMockCtx());
 
 		const ctx = createMockCtx({
-			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 
@@ -394,7 +394,7 @@ describe("/sandbox mode change", () => {
 		await mock._hooks.session_start({}, createMockCtx());
 
 		const ctx = createMockCtx({
-			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 
@@ -409,7 +409,7 @@ describe("/sandbox mode change", () => {
 		await mock._hooks.session_start({}, createMockCtx());
 
 		const ctx = createMockCtx({
-			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("read_only", ctx);
 
@@ -424,7 +424,7 @@ describe("/sandbox mode change", () => {
 		await mock._hooks.session_start({}, createMockCtx());
 
 		const ctx = createMockCtx({
-			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("workspace_write", ctx);
 
@@ -441,7 +441,7 @@ describe("/sandbox mode change", () => {
 		const ctx = createMockCtx({
 			ui: {
 				...createMockCtx().ui,
-				notify: (msg: string) => { notifications.push(msg); },
+				notify: vi.fn((msg: string) => { notifications.push(msg); }),
 				confirm: vi.fn(() => Promise.resolve(true)),
 			},
 		});
@@ -461,7 +461,7 @@ describe("/sandbox mode change", () => {
 		const ctx = createMockCtx({
 			ui: {
 				...createMockCtx().ui,
-				notify: (msg: string) => { notifications.push(msg); },
+				notify: vi.fn((msg: string) => { notifications.push(msg); }),
 				confirm: vi.fn(() => Promise.resolve(false)),
 			},
 		});
@@ -478,7 +478,7 @@ describe("/sandbox mode change", () => {
 		await mock._hooks.session_start({}, createMockCtx());
 
 		const ctx = createMockCtx({
-			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("invalid", ctx);
 
@@ -499,7 +499,7 @@ describe("/sandbox mode change", () => {
 		const ctx1 = createMockCtx({
 			ui: {
 				...createMockCtx().ui,
-				notify: (msg: string) => { notifications.push(msg); },
+				notify: vi.fn((msg: string) => { notifications.push(msg); }),
 				confirm: vi.fn(() => Promise.resolve(true)),
 			},
 		});
@@ -510,7 +510,7 @@ describe("/sandbox mode change", () => {
 
 		// Then, switch to read_only — should reset approval
 		const ctx2 = createMockCtx({
-			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("read_only", ctx2);
 
@@ -526,7 +526,7 @@ describe("/sandbox getArgumentCompletions", () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 
-		const completions = mock._commands["sandbox"].getArgumentCompletions("read");
+		const completions = mock._commands["sandbox"]!.getArgumentCompletions!("read");
 		expect(completions.some((c: { value: string }) => c.value === "read_only")).toBe(true);
 	});
 
@@ -534,7 +534,7 @@ describe("/sandbox getArgumentCompletions", () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 
-		const completions = mock._commands["sandbox"].getArgumentCompletions("work");
+		const completions = mock._commands["sandbox"]!.getArgumentCompletions!("work");
 		expect(completions.some((c: { value: string }) => c.value === "workspace_write")).toBe(true);
 	});
 
@@ -542,7 +542,7 @@ describe("/sandbox getArgumentCompletions", () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 
-		const completions = mock._commands["sandbox"].getArgumentCompletions("yolo");
+		const completions = mock._commands["sandbox"]!.getArgumentCompletions!("yolo");
 		expect(completions.some((c: { value: string }) => c.value === "yolo")).toBe(true);
 	});
 
@@ -550,7 +550,7 @@ describe("/sandbox getArgumentCompletions", () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 
-		const completions = mock._commands["sandbox"].getArgumentCompletions("");
+		const completions = mock._commands["sandbox"]!.getArgumentCompletions!("");
 		expect(completions.length).toBe(3);
 	});
 });
@@ -652,7 +652,7 @@ describe("session lifecycle", () => {
 		// Should not have "explicitly disabled" message
 		const ctx = createMockCtx();
 		const notifications: string[] = [];
-		ctx.ui.notify = (msg: string) => { notifications.push(msg); };
+		ctx.ui.notify = vi.fn((msg: string) => { notifications.push(msg); });
 		await mock._commands["sandbox"].handler("", ctx);
 		// After restart with no flags, default is yolo, approved at session_start
 		expect(notifications[0]).toBe("yolo");
@@ -662,16 +662,15 @@ describe("session lifecycle", () => {
 // ─── status bar ──────────────────────────────────────────────────
 
 describe("status bar", () => {
-	it("disabled 時は status bar を設定しない", async () => {
+	it("disabled 時は status bar をクリアする", async () => {
 		const mock = createMockApi();
 		mock._flags = { "no-sandbox": true };
 		await loadExtension(mock);
 		const ctx = createMockCtx();
 		await mock._hooks.session_start({}, ctx);
 
-		// With --no-sandbox, session_start returns early and doesn't reach updateStatusBar
-		// Status bar should not be set
-		expect(ctx.ui.setWidget).not.toHaveBeenCalled();
+		// With --no-sandbox, setWidget is called with undefined to clear stale widget
+		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", undefined);
 	});
 
 	it("enabled 時は status bar を設定", async () => {
@@ -886,7 +885,7 @@ describe("resolveRealPaths error fallback", () => {
 		await loadExtension(mock);
 		const ctx = createMockCtx({
 			cwd: "/tmp/test-fallback-cwd",
-			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 
 		// Should not throw — should fall back to [cwd]
@@ -1025,7 +1024,7 @@ describe("profile override: restrict-only policy", () => {
 		// Effective mode should be read_only now
 		const notifications: string[] = [];
 		const ctx = createMockCtx({
-			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 		expect(notifications[0]).toBe("read_only");
@@ -1056,7 +1055,7 @@ describe("profile override: restrict-only policy", () => {
 		// Effective mode should still be read_only
 		const notifications: string[] = [];
 		const ctx = createMockCtx({
-			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 		expect(notifications[0]).toBe("read_only");
@@ -1086,7 +1085,7 @@ describe("profile override: restrict-only policy", () => {
 		// Effective mode should still be workspace_write
 		const notifications: string[] = [];
 		const ctx = createMockCtx({
-			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 		expect(notifications[0]).toBe("workspace_write");
@@ -1139,7 +1138,7 @@ describe("profile override: restrict-only policy", () => {
 		// Effective mode should be back to workspace_write
 		const notifications: string[] = [];
 		const ctx = createMockCtx({
-			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 		expect(notifications[0]).toBe("workspace_write");
@@ -1206,5 +1205,157 @@ describe("request_elevation: startup block", () => {
 		expect(text).toContain("権限昇格では回避できません");
 		expect(text).not.toContain("bash ツールを直接使用してください");
 		expect(result.details).toEqual({});
+	});
+});
+
+// ─── PLAN_MODE_STATUS_EVENT validation ─────────────────────────────
+
+describe("PLAN_MODE_STATUS_EVENT validation", () => {
+	it("mode: plan で setWidget が plan を含むラベルを表示", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		const ctx = createMockCtx();
+		await mock._hooks.session_start({}, ctx);
+
+		// Emit plan mode status — should trigger updateStatusBar via lastCtx
+		mock._eventHandlers["mekann:plan-mode:status"]({ mode: "plan" });
+
+		// setWidget should have been called with a label containing "plan"
+		expect(ctx.ui.setWidget).toHaveBeenCalledWith(
+			"sandbox",
+			expect.arrayContaining([expect.stringContaining("plan")]),
+			expect.any(Object),
+		);
+	});
+
+	it("mode: main で setWidget から plan ラベルが消える", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		const ctx = createMockCtx();
+		await mock._hooks.session_start({}, ctx);
+
+		// First set plan
+		mock._eventHandlers["mekann:plan-mode:status"]({ mode: "plan" });
+
+		// Then set main — should trigger updateStatusBar via lastCtx
+		mock._eventHandlers["mekann:plan-mode:status"]({ mode: "main" });
+
+		// The last setWidget call should NOT contain "plan"
+		const lastCall = ctx.ui.setWidget.mock.calls[ctx.ui.setWidget.mock.calls.length - 1];
+		expect(lastCall[0]).toBe("sandbox");
+		const label = lastCall[1][0] as string;
+		expect(label).not.toContain("plan");
+		expect(label).toContain("yolo");
+	});
+
+	it("invalid payload では planModeStatus が変わらない", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		const ctx = createMockCtx();
+		await mock._hooks.session_start({}, ctx);
+
+		// Set plan mode first
+		mock._eventHandlers["mekann:plan-mode:status"]({ mode: "plan" });
+
+		// Send invalid payloads — should be ignored
+		mock._eventHandlers["mekann:plan-mode:status"](undefined);
+		mock._eventHandlers["mekann:plan-mode:status"](null);
+		mock._eventHandlers["mekann:plan-mode:status"]({});
+		mock._eventHandlers["mekann:plan-mode:status"]({ mode: undefined });
+		mock._eventHandlers["mekann:plan-mode:status"]({ mode: null });
+		mock._eventHandlers["mekann:plan-mode:status"]({ mode: "invalid" });
+		mock._eventHandlers["mekann:plan-mode:status"]({ mode: 123 });
+		mock._eventHandlers["mekann:plan-mode:status"]("string");
+		mock._eventHandlers["mekann:plan-mode:status"](42);
+
+		// planModeStatus should still be "plan" after all invalid payloads
+		// Verify by checking the last setWidget call
+		const lastCall = ctx.ui.setWidget.mock.calls[ctx.ui.setWidget.mock.calls.length - 1];
+		const label = lastCall[1][0] as string;
+		expect(label).toContain("plan");
+	});
+});
+
+// ─── Sandbox default mode ──────────────────────────────────────────
+
+describe("sandbox default mode", () => {
+	it("デフォルト mode が yolo である", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
+		});
+		await mock._commands["sandbox"].handler("", ctx);
+		expect(notifications[0]).toBe("yolo");
+	});
+
+	it("workspace_write は明示指定した場合のみ effective mode になる", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
+		});
+		await mock._commands["sandbox"].handler("", ctx);
+		expect(notifications[0]).toBe("workspace_write");
+	});
+});
+
+// ─── Startup block: stale widget prevention ────────────────────────
+
+describe("startup block: stale widget prevention", () => {
+	it("startup block 時に setWidget(undefined) で widget を消す", async () => {
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+
+		const { validateWorkspaceRoot } = await import("../pathPolicy.js");
+		(validateWorkspaceRoot as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+			new Error("workspace root cannot be /"),
+		);
+
+		const ctx = createMockCtx({ cwd: "/" });
+		await mock._hooks.session_start({}, ctx);
+
+		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", undefined);
+	});
+
+	it("sandbox-exec unavailable 時に setWidget(undefined) で widget を消す", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+
+		const ctx = createMockCtx();
+		await mock._hooks.session_start({}, ctx);
+
+		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", undefined);
 	});
 });

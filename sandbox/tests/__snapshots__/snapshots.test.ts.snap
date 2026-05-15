@@ -1,12 +1,5 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`SBPL policy snapshots > danger_full_access 1`] = `
-"
-(version 1)
-(allow default)
-"
-`;
-
 exports[`SBPL policy snapshots > read_only (基本) 1`] = `
 "
 (version 1)

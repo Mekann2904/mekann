@@ -111,17 +111,20 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	}
 
 	async function exitPlanMode(ctx: ExtensionContext): Promise<void> {
-		// 1. Pop sandbox profile override
-		popSandboxOverride();
-
-		// 2. Restore tools
-		if (state.savedActiveTools) { pi.setActiveTools(state.savedActiveTools); state.savedActiveTools = undefined; }
-
-		// 3. Switch state to main BEFORE restoring model so model_select hook updates the correct mode
+		// 1. Switch state to main BEFORE restoring model so model_select hook updates the correct mode
 		const plan = state.pendingPlan;
 		state.mode = "main";
 
-		// 4. Restore main model
+		// 2. Notify sandbox of mode change BEFORE popping override to avoid stale display
+		updateModeStatus(ctx);
+
+		// 3. Pop sandbox profile override
+		popSandboxOverride();
+
+		// 4. Restore tools
+		if (state.savedActiveTools) { pi.setActiveTools(state.savedActiveTools); state.savedActiveTools = undefined; }
+
+		// 5. Restore main model
 		const mainRef = state.modelConfig.models.main;
 		const result = await trySetModel(mainRef, ctx, "Main model");
 		if (result === "not_found") updateConfigField(state.modelConfig, "models", "main", undefined, configPath);
@@ -137,7 +140,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined, savedMainModel: undefined, savedMainThinking: undefined });
 
 		if (plan) { state.implementationPlan = plan; pi.sendUserMessage("保存された plan に従って実装してください。"); }
-		updateModeStatus(ctx);
 	}
 
 	async function togglePlanMode(ctx: ExtensionContext): Promise<void> {

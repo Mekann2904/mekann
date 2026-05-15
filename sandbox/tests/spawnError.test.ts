@@ -36,12 +36,12 @@ import { runSandboxedShellMac } from "../macSeatbelt.js";
 import { readOnlyPolicy } from "../permissions.js";
 
 function createMockChild() {
-	const child = new EventEmitter();
+	const child = new EventEmitter() as any;
 	child.pid = 12345;
 	child.stdout = new EventEmitter();
 	child.stderr = new EventEmitter();
 	child.kill = vi.fn();
-	return child;
+	return child as typeof child & { pid: number; stdout: EventEmitter; stderr: EventEmitter; kill: ReturnType<typeof vi.fn> };
 }
 
 describe("runSandboxedShellMac: spawn error paths", () => {
