@@ -70,11 +70,7 @@ export function buildSandboxEnv(policy: SandboxPolicy, isolatedHome: string): No
 		GIT_TERMINAL_PROMPT: "0",
 	};
 
-	// LC_ALL: only pass through if already set
 	if (process.env.LC_ALL) env.LC_ALL = process.env.LC_ALL;
-
-	// TMPDIR: set to per-run isolated temp directory if available.
-	// This replaces broad system TMPDIR access with a dedicated directory.
 	if (policy._isolatedTempDir) env.TMPDIR = policy._isolatedTempDir;
 
 	return env;
@@ -196,10 +192,7 @@ ${writeRules}
 `
 			: "";
 
-	// Optional: homebrew paths.
-	// Only included when allowHomebrewPaths is explicitly set.
-	// SECURITY: /usr is NOT granted as a whole — only specific subdirs.
-	// /opt/homebrew and /usr/local are ONLY readable when this flag is true.
+	// Homebrew paths (only when allowHomebrewPaths set; /usr NOT granted as whole)
 	const homebrewSection =
 		policy.allowHomebrewPaths
 			? `
