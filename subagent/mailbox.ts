@@ -23,7 +23,7 @@ export class Mailbox {
   enqueue(item: Omit<MailboxItem, "seq">): MailboxItem {
     const full: MailboxItem = { ...item, seq: ++this.seq };
     this.items.push(full);
-    this.notifyWaiters(item.toAgentPath);
+    this.notifyWaiters((ap) => ap === item.toAgentPath);
     return full;
   }
 
@@ -36,7 +36,7 @@ export class Mailbox {
     const agentPath =
       "agentPath" in event ? (event as any).agentPath as string : undefined;
     if (agentPath) {
-      this.notifyWaiters(agentPath);
+      this.notifyWaiters((ap) => ap === agentPath);
     }
     // Also notify parent if this is a final message
     if (event.type === "agent_final_message" && event.parentAgentId) {
@@ -140,21 +140,9 @@ export class Mailbox {
 
   // ─── Internal ────────────────────────────────────────────────
 
-  private notifyWaiters(agentPath: string): void {
+  private notifyWaiters(filter?: (agentPath: string) => boolean): void {
     for (const waiter of this.waiters) {
-      if (waiter.agentPath === agentPath) {
-        const mb = this.pendingFor(waiter.agentPath, waiter.afterSeq);
-        const ev = this.pendingEventsFor(waiter.agentPath);
-        if (mb.length > 0 || ev.length > 0) {
-          this.waiters.delete(waiter);
-          waiter.resolve({ events: ev, mailbox: mb });
-        }
-      }
-    }
-  }
-
-  private notifyAllWaiters(): void {
-    for (const waiter of this.waiters) {
+      if (filter && !filter(waiter.agentPath)) continue;
       const mb = this.pendingFor(waiter.agentPath, waiter.afterSeq);
       const ev = this.pendingEventsFor(waiter.agentPath);
       if (mb.length > 0 || ev.length > 0) {
@@ -162,5 +150,9 @@ export class Mailbox {
         waiter.resolve({ events: ev, mailbox: mb });
       }
     }
+  }
+
+  private notifyAllWaiters(): void {
+    this.notifyWaiters();
   }
 }
