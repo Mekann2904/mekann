@@ -80,6 +80,10 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		Object.assign(yoloState, { yoloApproved: false, yoloApprovedAt: undefined, yoloApprovedReason: undefined });
 	}
 
+	function logProfileRejection(event: { owner?: string; token?: string; profile?: string }, reason: string, extra?: Record<string, unknown>) {
+		pi.appendEntry("sandbox-profile-override-rejected", { at: Date.now(), owner: event.owner, token: event.token, profile: event.profile, ...extra, reason });
+	}
+
 	function disableSandbox(reason: string, level: "error" | "warning" = "error") {
 		sandboxEnabled = false;
 		resetYoloApproval();
@@ -360,13 +364,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		// SECURITY: Only accept restrict-only profiles via events.
 		// workspace_write / yolo overrides must go through /sandbox command or approval flow.
 		if (event.profile !== "plan_read_only" && event.profile !== "sandbox_read_only") {
-			pi.appendEntry("sandbox-profile-override-rejected", {
-				at: Date.now(),
-				owner: event.owner,
-				token: event.token,
-				profile: event.profile,
-				reason: "unsupported-profile-for-event-override",
-			});
+			logProfileRejection(event, "unsupported-profile-for-event-override");
 			return;
 		}
 
@@ -375,15 +373,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 		// SECURITY: Reject escalation — override must be equally or more restrictive.
 		if (MODE_RANK[mode] > MODE_RANK[currentMode]) {
-			pi.appendEntry("sandbox-profile-override-rejected", {
-				at: Date.now(),
-				owner: event.owner,
-				token: event.token,
-				profile: event.profile,
-				requestedMode: mode,
-				baseMode: currentMode,
-				reason: "override-escalation-rejected",
-			});
+			logProfileRejection(event, "override-escalation-rejected", { requestedMode: mode, baseMode: currentMode });
 			return;
 		}
 
