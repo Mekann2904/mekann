@@ -151,9 +151,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	/** Get or create localBash with current session cwd. */
 	function getLocalBash(): LocalBashWithCwd {
 		const cwd = currentCwd || process.cwd();
-		if (!localBash || localBash._cwd !== cwd) {
-			localBash = Object.assign(createBashTool(cwd), { _cwd: cwd });
-		}
+		if (!localBash || localBash._cwd !== cwd) localBash = Object.assign(createBashTool(cwd), { _cwd: cwd });
 		return localBash;
 	}
 
@@ -170,9 +168,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			if (explicitlyDisabled) return getLocalBash().execute(id, params, signal, onUpdate);
 
 			// ── Hard block: startup failure (unsafe root / sandbox unavailable) ──
-			if (startupBlockedReason) {
-				throw new Error(`${startupBlockedReason}${SANDBOX_BLOCK_HINT}`);
-			}
+			if (startupBlockedReason) throw new Error(`${startupBlockedReason}${SANDBOX_BLOCK_HINT}`);
 
 			// ── Case 2: yolo (unsandboxed) ────
 			if (effectiveMode() === "yolo") return getLocalBash().execute(id, params, signal, onUpdate);
