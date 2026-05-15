@@ -235,14 +235,10 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	pi.on("agent_end", async (event, ctx) => {
 		if (state.mode !== "plan") return;
 
-		const lastAssistant = [...event.messages].reverse().find(
-			(m): m is AssistantMessage => m.role === "assistant" && Array.isArray(m.content),
-		);
+		const lastAssistant = [...event.messages].reverse().find((m): m is AssistantMessage => m.role === "assistant" && Array.isArray(m.content));
 		if (!lastAssistant) return;
 
-		const plan = extractProposedPlan(
-			lastAssistant.content.filter((b): b is TextContent => b.type === "text").map(b => b.text).join("\n"),
-		);
+		const plan = extractProposedPlan(lastAssistant.content.filter((b): b is TextContent => b.type === "text").map(b => b.text).join("\n"));
 
 		if (plan) { state.pendingPlan = plan; ctx.ui.notify(modeLabel(state.mode)); }
 	});

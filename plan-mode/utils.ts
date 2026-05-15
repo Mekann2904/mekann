@@ -52,10 +52,7 @@ export function extractProposedPlan(message: string): string | undefined {
 
 /** <proposed_plan> ブロックを短いプレースホルダーに置換（context hook 用）。 */
 export function compactOldProposedPlansInText(text: string): string {
-	return text.replace(
-		/<proposed_plan>\s*[\s\S]*?\s*<\/proposed_plan>/g,
-		"<proposed_plan>[omitted: superseded plan]</proposed_plan>",
-	);
+	return text.replace(/<proposed_plan>\s*[\s\S]*?\s*<\/proposed_plan>/g, "<proposed_plan>[omitted: superseded plan]</proposed_plan>");
 }
 
 // ─── Thinking level ───────────────────────────────────────────────
