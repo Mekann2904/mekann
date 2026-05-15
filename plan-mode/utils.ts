@@ -99,11 +99,7 @@ export function normalizeConfig(raw: Record<string, unknown>): PlanModeConfig {
 		if (isThinkingLevel(ti.main)) thinking.main = ti.main;
 		if (isThinkingLevel(ti.plan)) thinking.plan = ti.plan;
 	}
-	return {
-		version: 1,
-		models: (raw.models && typeof raw.models === "object") ? raw.models as PlanModeConfig["models"] : {},
-		thinking,
-	};
+	return { version: 1, models: (raw.models && typeof raw.models === "object") ? raw.models as PlanModeConfig["models"] : {}, thinking };
 }
 
 /** "provider/modelId" 文字列を ModelRef にパース（最初の / で分割）。 */
