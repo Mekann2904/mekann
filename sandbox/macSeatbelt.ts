@@ -144,12 +144,7 @@ export async function validatePolicy(policy: SandboxPolicy): Promise<void> {
 
 /** SandboxPolicy から SBPL 生成。deny rules は LAST matching rule wins なので末尾に置く。 */
 export function buildMacSeatbeltPolicy(policy: SandboxPolicy): string {
-	if (policy.mode === "yolo") {
-		return `
-(version 1)
-(allow default)
-`;
-	}
+	if (policy.mode === "yolo") return `\n(version 1)\n(allow default)\n`;
 
 	const readableRoots = effectiveReadableRoots(policy);
 
