@@ -70,7 +70,7 @@ interface MockCtx {
 		notify: ReturnType<typeof vi.fn>;
 		confirm: ReturnType<typeof vi.fn>;
 		theme: { fg: (c: string, t: string) => string };
-		setStatus: ReturnType<typeof vi.fn>;
+		setWidget: ReturnType<typeof vi.fn>;
 	};
 }
 
@@ -83,7 +83,7 @@ function createMockCtx(overrides?: Partial<MockCtx>): MockCtx {
 			notify: vi.fn(),
 			confirm: vi.fn(() => Promise.resolve(true)),
 			theme: { fg: (_c: string, t: string) => t },
-			setStatus: vi.fn(),
+			setWidget: vi.fn(),
 		},
 		...overrides,
 	};
@@ -664,7 +664,7 @@ describe("status bar", () => {
 
 		// With --no-sandbox, session_start returns early and doesn't reach updateStatusBar
 		// Status bar should not be set
-		expect(ctx.ui.setStatus).not.toHaveBeenCalled();
+		expect(ctx.ui.setWidget).not.toHaveBeenCalled();
 	});
 
 	it("enabled 時は status bar を設定", async () => {
@@ -678,7 +678,7 @@ describe("status bar", () => {
 		await mock._hooks.session_start({}, ctx);
 
 		// Status bar should be set
-		expect(ctx.ui.setStatus).toHaveBeenCalledWith("sandbox", expect.any(String));
+		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", expect.any(Array), expect.any(Object));
 	});
 
 	it("yolo 時は [!] アイコン", async () => {
@@ -691,7 +691,7 @@ describe("status bar", () => {
 		const ctx = createMockCtx();
 		await mock._hooks.session_start({}, ctx);
 
-		expect(ctx.ui.setStatus).toHaveBeenCalledWith("sandbox", expect.stringContaining("[!]"));
+		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", expect.arrayContaining([expect.stringContaining("yolo")]), expect.any(Object));
 	});
 
 	it("workspace_write 時は [o] アイコン", async () => {
@@ -704,7 +704,7 @@ describe("status bar", () => {
 		const ctx = createMockCtx();
 		await mock._hooks.session_start({}, ctx);
 
-		expect(ctx.ui.setStatus).toHaveBeenCalledWith("sandbox", expect.stringContaining("[o]"));
+		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", expect.arrayContaining([expect.stringContaining("workspace_write")]), expect.any(Object));
 	});
 });
 
@@ -886,7 +886,7 @@ describe("resolveRealPaths error fallback", () => {
 		await mock._hooks.session_start({}, ctx);
 
 		// Should have enabled sandbox
-		expect(ctx.ui.setStatus).toHaveBeenCalledWith("sandbox", expect.any(String));
+		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", expect.any(Array), expect.any(Object));
 	});
 });
 

@@ -385,15 +385,14 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	function updateStatusBar(ctx: any): void {
 		if (explicitlyDisabled || !sandboxEnabled) {
-			ctx.ui.setStatus("sandbox", undefined);
+			ctx.ui.setWidget("sandbox", undefined);
 			return;
 		}
 
-		const icon = currentMode === "yolo" ? "[!]" : "[o]";
-		const label = modeLabel(currentMode);
-		ctx.ui.setStatus(
+		ctx.ui.setWidget(
 			"sandbox",
-			ctx.ui.theme.fg("accent", `${icon} Sandbox: ${label}`),
+			[ctx.ui.theme.fg("dim", currentMode)],
+			{ placement: "belowEditor" },
 		);
 	}
 
