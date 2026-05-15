@@ -233,9 +233,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				if (part.type !== "text" || typeof part.text !== "string") continue;
 				if (!/<proposed_plan>[\s\S]*?<\/proposed_plan>/.test(part.text)) continue;
 
-				if (!foundLatest) {
-					foundLatest = true;
-				} else textParts[j] = { ...part, text: compactOldProposedPlansInText(part.text) };
+				if (!foundLatest) foundLatest = true; else textParts[j] = { ...part, text: compactOldProposedPlansInText(part.text) };
 			}
 		}
 
@@ -257,9 +255,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		const useFull = !state.planPromptDelivered || state.planPromptHash !== currentHash;
 		if (useFull) { state.planPromptHash = currentHash; state.planPromptDelivered = true; }
 
-		return {
-			systemPrompt: `${event.systemPrompt}\n\n${useFull ? fullPrompt : loadPrompt("plan-mode-reminder")}`,
-		};
+		return { systemPrompt: `${event.systemPrompt}\n\n${useFull ? fullPrompt : loadPrompt("plan-mode-reminder")}` };
 	});
 
 	pi.on("agent_end", async (event, ctx) => {
