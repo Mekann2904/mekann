@@ -59,14 +59,7 @@ export const SANDBOX_PUSH_PROFILE_EVENT = "mekann:sandbox:push-profile";
 export const SANDBOX_POP_PROFILE_EVENT = "mekann:sandbox:pop-profile";
 
 /** Payload for pushing a profile override onto the sandbox stack. */
-export interface SandboxPushProfileEvent {
-	owner: string;
-	token: string;
-	profile: CapabilityProfileName;
-}
+export interface SandboxPushProfileEvent { owner: string; token: string; profile: CapabilityProfileName; }
 
 /** Payload for popping a profile override from the sandbox stack. */
-export interface SandboxPopProfileEvent {
-	owner: string;
-	token: string;
-}
+export interface SandboxPopProfileEvent { owner: string; token: string; }
