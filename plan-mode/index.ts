@@ -65,11 +65,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 	}
 
-	pi.registerFlag("plan", {
-		description: "プランモードで起動（読み取り専用探索）",
-		type: "boolean",
-		default: false,
-	});
+	pi.registerFlag("plan", { description: "プランモードで起動（読み取り専用探索）", type: "boolean", default: false });
 
 	// ─── Model helpers ──────────────────────────────────────────────
 
