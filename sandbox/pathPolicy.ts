@@ -12,9 +12,7 @@ export async function assertPathInsideRoot(
 	const realRoot = await realpath(root);
 
 	const rel = relative(realRoot, realPath);
-	if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) {
-		return;
-	}
+	if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) return;
 
 	throw new Error(`path escapes sandbox root: ${path}`);
 }

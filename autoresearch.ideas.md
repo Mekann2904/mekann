@@ -1,6 +1,6 @@
 # Autoresearch Ideas
 
-## Completed This Session (2,480 → 2,333 LOC, -5.9%)
+## Completed This Session (2,480 → 2,273 LOC, -8.3%)
 - ✅ Inlined `withThinkingSuppressed` into `applyThinking`
 - ✅ Extracted `popSandboxOverride()` dedup (3 call sites → 1 function)
 - ✅ Removed deprecated `SAFE_PLAN_TOOLS` alias
@@ -12,28 +12,24 @@
 - ✅ Removed 3 unused `eslint-disable` comments
 - ✅ Inlined single-use `ProfileOverride` interface into array type
 - ✅ Inlined single-use `buildSandboxPath` into `buildSandboxEnv`
-- ✅ Inlined `profileToSandboxMode` (statically known after guard) + removed dead function
-- ✅ Merged 6 multi-line string concatenations into single strings
-- ✅ Inlined single-use `createIsolatedTempDir` function
+- ✅ Inlined `profileToSandboxMode` + removed dead function
+- ✅ Merged multi-line string concatenations into single strings
+- ✅ Inlined `createIsolatedTempDir`, `approveYolo`, `currentModelRef`
 - ✅ Converted `yoloApprovalMessage` from array+join to inline string
-- ✅ Inlined single-use `approveYolo` function
-- ✅ Inlined single-use `currentModelRef` function
-- ✅ Compressed 2 multi-line response objects into single-line returns (sandbox)
-- ✅ Compressed 2 more multi-line response objects (sandbox)
-- ✅ Compressed plan-mode block-response return into single line
-- ❌ `textResponse` helper: net LOC increase (+5) — reverted
-- ❌ Import merge (permissions.js): net LOC increase (+1) — reverted
+- ✅ Compressed multi-line return/throw/if blocks into single lines
+- ✅ Converted ~27 single-statement brace blocks to braceless one-liners
+- ❌ `textResponse` helper: net LOC increase — reverted
+- ❌ Import merge (permissions.js): net LOC increase — reverted
 
-## Remaining Opportunities (Diminishing Returns)
+## Remaining Opportunities (Exhausted)
 - **SBPL template** (~80 lines): SECURITY CRITICAL — do not modify
-- **`isSafeCommand` deprecated alias**: Used extensively in tests
-- **`changeMode` IIFE wrapper**: Structural pattern — cannot simplify  
-- **Blank lines**: ~230 — readability aids
-- **Section dividers**: ~30 `// ───` lines — readability aids
+- **Multi-line string bodies** (plan-mode/utils.ts): Too long for one line
+- **Complex return objects** (sandbox/index.ts): Details objects with 6+ fields
+- **Blank lines**: ~220 — readability aids
+- **Section dividers**: ~30 `// ───` — readability aids
 - **SECURITY comments**: Must keep
+- **Comments**: ~60 — readability aids
 - **Import consolidation**: Adding `type` keywords makes it LOC-positive
-- **Non-SECURITY comments**: ~60 lines — readability aids
-- **Remaining multi-line returns**: Complex objects that would be hard to read on one line
 
 ## Future Ideas
 - Extract sandbox state into a state object (reduces coupling, not LOC)

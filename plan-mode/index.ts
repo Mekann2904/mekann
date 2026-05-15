@@ -172,11 +172,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	}
 
 	async function togglePlanMode(ctx: ExtensionContext): Promise<void> {
-		if (state.mode === "main") {
-			await enterPlanMode(ctx);
-		} else {
-			await exitPlanMode(ctx);
-		}
+		if (state.mode === "main") await enterPlanMode(ctx); else await exitPlanMode(ctx);
 	}
 
 	// ─── Commands ───────────────────────────────────────────────────

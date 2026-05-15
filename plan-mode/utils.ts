@@ -185,11 +185,7 @@ export function updateConfigField<T>(
 	value: T | undefined,
 	path?: string,
 ): void {
-	if (value) {
-		(config[section] as Record<string, T>)[mode] = value;
-	} else {
-		delete (config[section] as Record<string, T>)[mode];
-	}
+	if (value) (config[section] as Record<string, T>)[mode] = value; else delete (config[section] as Record<string, T>)[mode];
 	saveModelConfig(config, path);
 }
 
