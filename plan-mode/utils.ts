@@ -69,9 +69,8 @@ export function compactOldProposedPlansInText(text: string): string {
 /** Pi thinking levels. */
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
-const VALID_THINKING_LEVELS = new Set<string>(["off", "minimal", "low", "medium", "high", "xhigh"]);
-
-/** Check if a value is a valid ThinkingLevel. */
+/** ThinkingLevel values (used by normalizeConfig). */
+const VALID_THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh"]);
 function isThinkingLevel(value: unknown): value is ThinkingLevel {
 	return typeof value === "string" && VALID_THINKING_LEVELS.has(value);
 }
