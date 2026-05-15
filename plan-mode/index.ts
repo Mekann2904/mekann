@@ -42,21 +42,27 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	/** Token for sandbox profile override (set on plan entry, cleared on exit). */
 	let sandboxOverrideToken: string | undefined;
 
+	/** Pop sandbox profile override (best-effort; no-op if not active). */
+	function popSandboxOverride(): void {
+		if (!sandboxOverrideToken) return;
+		try {
+			 pi.events.emit(SANDBOX_POP_PROFILE_EVENT, { owner: "plan-mode", token: sandboxOverrideToken } satisfies SandboxPopProfileEvent);
+		} catch { /* sandbox extension not loaded */ }
+		sandboxOverrideToken = undefined;
+	}
+
 	/** Run an async callback with a suppress flag set, restoring it afterward. */
 	async function withModelSuppressed<T>(fn: () => Promise<T>): Promise<T> {
 		suppressModelSelectPersist = true;
 		try { return await fn(); } finally { suppressModelSelectPersist = false; }
 	}
 
-	/** Run a callback with thinking-select persistence suppressed. */
-	function withThinkingSuppressed(fn: () => void): void {
-		suppressThinkingSelectPersist = true;
-		try { fn(); } finally { suppressThinkingSelectPersist = false; }
-	}
-
 	/** Apply a thinking level with suppress guard (safe to call when level is undefined). */
 	function applyThinking(level?: ThinkingLevel): void {
-		if (level) withThinkingSuppressed(() => pi.setThinkingLevel(level));
+		if (level) {
+			suppressThinkingSelectPersist = true;
+			try { pi.setThinkingLevel(level); } finally { suppressThinkingSelectPersist = false; }
+		}
 	}
 
 	pi.registerFlag("plan", {
@@ -142,18 +148,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	}
 
 	async function exitPlanMode(ctx: ExtensionContext): Promise<void> {
-		// 1. Pop sandbox profile override (best-effort)
-		if (sandboxOverrideToken) {
-			try {
-				pi.events.emit(SANDBOX_POP_PROFILE_EVENT, {
-					owner: "plan-mode",
-					token: sandboxOverrideToken,
-				} satisfies SandboxPopProfileEvent);
-			} catch {
-				// sandbox extension not loaded
-			}
-			sandboxOverrideToken = undefined;
-		}
+		// 1. Pop sandbox profile override
+		popSandboxOverride();
 
 		// 2. Restore tools
 		if (state.savedActiveTools) {
@@ -377,17 +373,5 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	});
 
 	// Clean up sandbox override on session shutdown
-	pi.on("session_shutdown", async () => {
-		if (sandboxOverrideToken) {
-			try {
-				pi.events.emit(SANDBOX_POP_PROFILE_EVENT, {
-					owner: "plan-mode",
-					token: sandboxOverrideToken,
-				} satisfies SandboxPopProfileEvent);
-			} catch {
-				// sandbox extension not loaded
-			}
-			sandboxOverrideToken = undefined;
-		}
-	});
+	 pi.on("session_shutdown", async () => { popSandboxOverride(); });
 }

@@ -19,7 +19,7 @@ export {
 } from "../policy-core/commandIntent.js";
 
 // Re-export tool list from policy-core.
-export { PLAN_MODE_TOOLS, SAFE_PLAN_TOOLS } from "../policy-core/modes.js";
+export { PLAN_MODE_TOOLS } from "../policy-core/modes.js";
 
 export function buildBlockReason(toolName: string, input: Record<string, unknown>, blockCount: number): string {
 	const H = "【プランモード・読み取り専用】";

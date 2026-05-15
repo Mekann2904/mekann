@@ -17,12 +17,6 @@ import type { CapabilityProfileName } from "./capabilities.js";
  */
 export const PLAN_MODE_TOOLS = new Set(["read", "grep", "find", "ls", "bash"]);
 
-/**
- * @deprecated Use PLAN_MODE_TOOLS instead.
- * This alias exists for backward compatibility during migration.
- */
-export const SAFE_PLAN_TOOLS = PLAN_MODE_TOOLS;
-
 // ─── Sandbox modes ────────────────────────────────────────────────
 
 /** The canonical set of sandbox mode names. */
