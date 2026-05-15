@@ -333,10 +333,6 @@ const SIGKILL_GRACE_MS = 5_000;
 
 // ─── Per-run temp directory ──────────────────────────────────────
 
-function createIsolatedTempDir(): string {
-	return mkdtempSync(resolve(tmpdir(), "sandbox-run-"));
-}
-
 function cleanupTempDir(dir: string): void {
 	try { rmSync(dir, { recursive: true, force: true }); } catch { /* OS will clean up */ }
 }
@@ -391,7 +387,7 @@ export async function runSandboxedShellMac(
 	const resolvedPolicy = await resolvePolicyPaths(policy);
 	await validatePolicy(resolvedPolicy);
 
-	const rawIsolatedTemp = createIsolatedTempDir();
+	const rawIsolatedTemp = mkdtempSync(resolve(tmpdir(), "sandbox-run-"));
 	const isolatedTemp = await resolveSafeRealPath(rawIsolatedTemp);
 	resolvedPolicy._isolatedTempDir = isolatedTemp;
 
