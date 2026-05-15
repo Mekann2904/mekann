@@ -132,8 +132,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// ─── Bash tool override ──────────────────────────────────────────
 
 	// NOTE: localBash is created lazily on session_start with the correct ctx.cwd.
-	// Using process.cwd() at extension init time would give the wrong directory
-	// if the agent's CWD differs from the extension's load-time CWD.
 	type LocalBashWithCwd = ReturnType<typeof createBashTool> & { _cwd: string };
 	let localBash: LocalBashWithCwd | null = null;
 
@@ -241,10 +239,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	});
 
 	// ─── user_bash handler ───────────────────────────────────────────
-	//
-	// SECURITY: When sandbox is active (enabled + available + not danger_full_access),
-	// returning undefined would delegate to the default unsandboxed handler.
-	// This is a sandbox bypass. Instead, we explicitly block or delegate to sandbox.
+	// SECURITY: When sandbox is active, returning undefined would delegate to the default unsandboxed handler (bypass). Block instead.
 
 	pi.on("user_bash", () => {
 		// Explicitly disabled: allow default handler
