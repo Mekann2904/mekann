@@ -174,18 +174,19 @@ export class AgentRegistry {
     return this.agents.get(agentPath);
   }
 
-  getByAgentId(agentId: string): AgentMetadata | undefined {
+  /** Find first agent matching predicate, or undefined. */
+  private findAgent(predicate: (agent: AgentMetadata) => boolean): AgentMetadata | undefined {
     for (const [, agent] of this.agents) {
-      if (agent.agentId === agentId) return agent;
+      if (predicate(agent)) return agent;
     }
-    return undefined;
+  }
+
+  getByAgentId(agentId: string): AgentMetadata | undefined {
+    return this.findAgent(a => a.agentId === agentId);
   }
 
   getBySessionId(sessionId: string): AgentMetadata | undefined {
-    for (const [, agent] of this.agents) {
-      if (agent.sessionId === sessionId) return agent;
-    }
-    return undefined;
+    return this.findAgent(a => a.sessionId === sessionId);
   }
 
   /** Filter agents by predicate, return as sorted array. */
