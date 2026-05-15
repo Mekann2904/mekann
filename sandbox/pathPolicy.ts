@@ -41,7 +41,6 @@ export function isProtectedPath(path: string): boolean {
 	// パスを正規化して各セグメントをチェック
 	const normalized = resolve(path);
 	const segments = normalized.split("/").filter(Boolean);
-
 	for (const seg of segments) if (PROTECTED_DIRS.includes(seg)) return true;
 	return false;
 }
@@ -49,7 +48,6 @@ export function isProtectedPath(path: string): boolean {
 /** unsafe root (/, $HOME, /Users) ならエラーメッセージ、safe なら null。 */
 export async function checkUnsafeRoot(root: string): Promise<string | null> {
 	const resolved = await resolveSafeRealPath(root);
-
 	if (resolved === "/") return "workspace root cannot be /";
 
 	const home = process.env.HOME;
