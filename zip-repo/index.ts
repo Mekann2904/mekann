@@ -12,34 +12,26 @@ import { stat, unlink } from "node:fs/promises";
 
 // ─── Exported utility functions (testable) ───────────────────────
 
-/**
- * バイト数を人間可読のサイズ文字列にフォーマットする。
- */
+/** バイト数を人間可読に。 */
 export function formatFileSize(bytes: number): string {
 	if (bytes < 1024) return `${bytes} B`;
 	if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
 	return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
-/**
- * ZIP ファイルのパスを生成する。
- */
+/** ZIP ファイルパスを生成。 */
 export function buildZipPath(repoRoot: string, shortHead: string): string {
 	const repoName = basename(repoRoot);
 	const parentDir = dirname(repoRoot);
 	return join(parentDir, `${repoName}-${shortHead}.zip`);
 }
 
-/**
- * AppleScript 用のパスエスケープ。
- */
+/** AppleScript 用パスエスケープ。 */
 export function escapeAppleScriptPath(path: string): string {
 	return path.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-/**
- * AppleScript clipboard スクリプトを生成する。
- */
+/** AppleScript clipboard スクリプトを生成。 */
 export function buildClipboardScript(escapedPath: string): string {
 	return `
 				use framework "Foundation"
@@ -51,9 +43,7 @@ export function buildClipboardScript(escapedPath: string): string {
 			`;
 }
 
-/**
- * git ls-files の出力から dirty file リストをパースする。
- */
+/** git ls-files の出力から dirty file リストをパース。 */
 export function parseDirtyFiles(stdout: string): string[] {
 	return stdout.split("\n").filter(Boolean);
 }
