@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { isSafeCommand, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, SAFE_PLAN_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateModelConfig, updateThinkingConfig, createDefaultConfig, getConfigPath, isThinkingLevel, formatThinkingLevel, normalizeConfig, compactOldProposedPlansInText, type ModelRef, type ThinkingLevel } from "./utils.js";
+import { isSafeCommand, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, SAFE_PLAN_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateConfigField, createDefaultConfig, getConfigPath, isThinkingLevel, formatThinkingLevel, normalizeConfig, compactOldProposedPlansInText, type ModelRef, type ThinkingLevel } from "./utils.js";
 import { type Mode, type PlanState, createInitialState, isReadOnlyMode, modeLabel } from "./state.js";
 
 // isSafeCommand — bash コマンドの安全性判定
@@ -507,19 +507,19 @@ describe("config persistence", () => {
 		}
 	});
 
-	it("updateModelConfig sets and clears", () => {
+	it("updateConfigField for models sets and clears", () => {
 		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
 		const path = `${tmpDir}/plan-mode.json`;
 
 		try {
 			const config = createDefaultConfig();
-			updateModelConfig(config, "main", { provider: "anthropic", modelId: "sonnet" }, path);
+			updateConfigField(config, "models", "main", { provider: "anthropic", modelId: "sonnet" }, path);
 			expect(config.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
 
 			const loaded = loadModelConfig(path);
 			expect(loaded.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
 
-			updateModelConfig(config, "main", undefined, path);
+			updateConfigField(config, "models", "main", undefined, path);
 			expect(config.models.main).toBeUndefined();
 
 			const loaded2 = loadModelConfig(path);
@@ -556,7 +556,7 @@ describe("mode switch model simulation", () => {
 
 		// Simulate: entering plan mode, current model = anthropic/sonnet
 		state.savedMainModel = { provider: "anthropic", modelId: "sonnet" };
-		updateModelConfig(state.modelConfig, "main", state.savedMainModel);
+		updateConfigField(state.modelConfig, "models", "main", state.savedMainModel);
 		state.mode = "plan";
 
 		expect(state.modelConfig.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
@@ -600,7 +600,7 @@ describe("mode switch model simulation", () => {
 		// Simulate: user selected a new model in main mode
 		const newRef: ModelRef = { provider: "google", modelId: "gemini-2.5-pro" };
 		if (state.mode === "main") {
-			updateModelConfig(state.modelConfig, "main", newRef);
+			updateConfigField(state.modelConfig, "models", "main", newRef);
 		}
 
 		expect(state.modelConfig.models.main).toEqual({ provider: "google", modelId: "gemini-2.5-pro" });
@@ -614,7 +614,7 @@ describe("mode switch model simulation", () => {
 		// Simulate: user selected a new model in plan mode
 		const newRef: ModelRef = { provider: "google", modelId: "gemini-2.5-flash" };
 		if (state.mode === "plan") {
-			updateModelConfig(state.modelConfig, "plan", newRef);
+			updateConfigField(state.modelConfig, "models", "plan", newRef);
 		}
 
 		expect(state.modelConfig.models.plan).toEqual({ provider: "google", modelId: "gemini-2.5-flash" });
@@ -650,7 +650,7 @@ describe("suppressModelSelectPersist guard", () => {
 		// Simulate: extension calls trySetModel which sets suppressModelSelectPersist=true
 		// Then pi.setModel fires model_select, but handler returns early
 		if (!suppressModelSelectPersist && state.mode === "main") {
-			updateModelConfig(state.modelConfig, "main", { provider: "google", modelId: "gemini" });
+			updateConfigField(state.modelConfig, "models", "main", { provider: "google", modelId: "gemini" });
 		}
 
 		// Config should NOT have been overwritten
@@ -676,7 +676,7 @@ describe("enterPlanMode persistCurrentMain option", () => {
 
 		if (persistCurrentMain) {
 			state.savedMainModel = currentMain;
-			updateModelConfig(state.modelConfig, "main", currentMain);
+			updateConfigField(state.modelConfig, "models", "main", currentMain);
 		}
 
 		state.mode = "plan";
@@ -700,7 +700,7 @@ describe("enterPlanMode persistCurrentMain option", () => {
 		if (persistCurrentMain) {
 			// This block should NOT execute
 			state.savedMainModel = currentModel;
-			updateModelConfig(state.modelConfig, "main", currentModel);
+			updateConfigField(state.modelConfig, "models", "main", currentModel);
 		}
 
 		state.mode = "plan";
@@ -919,22 +919,22 @@ describe("thinking config persistence", () => {
 	});
 });
 
-// ─── updateThinkingConfig ──────────────────────────────────────────
+// ─── updateConfigField for thinking ──────────────────────────────────────────
 
-describe("updateThinkingConfig", () => {
+describe("updateConfigField for thinking", () => {
 	it("sets and clears thinking", () => {
 		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
 		const path = `${tmpDir}/plan-mode.json`;
 
 		try {
 			const config = createDefaultConfig();
-			updateThinkingConfig(config, "main", "high", path);
+			updateConfigField(config, "thinking", "main", "high", path);
 			expect(config.thinking.main).toBe("high");
 
 			const loaded = loadModelConfig(path);
 			expect(loaded.thinking.main).toBe("high");
 
-			updateThinkingConfig(config, "main", undefined, path);
+			updateConfigField(config, "thinking", "main", undefined, path);
 			expect(config.thinking.main).toBeUndefined();
 
 			const loaded2 = loadModelConfig(path);
@@ -950,7 +950,7 @@ describe("updateThinkingConfig", () => {
 
 		try {
 			const config = createDefaultConfig();
-			updateThinkingConfig(config, "plan", "xhigh", path);
+			updateConfigField(config, "thinking", "plan", "xhigh", path);
 			expect(config.thinking.plan).toBe("xhigh");
 		} finally {
 			rmSync(tmpDir, { recursive: true });
@@ -998,7 +998,7 @@ describe("thinking mode switch simulation", () => {
 		// Simulate: entering plan mode, current thinking = high
 		const currentThinking: ThinkingLevel = "high";
 		state.savedMainThinking = currentThinking;
-		updateThinkingConfig(state.modelConfig, "main", currentThinking);
+		updateConfigField(state.modelConfig, "thinking", "main", currentThinking);
 		state.mode = "plan";
 
 		expect(state.modelConfig.thinking.main).toBe("high");
@@ -1079,7 +1079,7 @@ describe("thinking event simulation", () => {
 
 		const newLevel: ThinkingLevel = "high";
 		if (state.mode === "main") {
-			updateThinkingConfig(state.modelConfig, "main", newLevel);
+			updateConfigField(state.modelConfig, "thinking", "main", newLevel);
 		}
 
 		expect(state.modelConfig.thinking.main).toBe("high");
@@ -1092,7 +1092,7 @@ describe("thinking event simulation", () => {
 
 		const newLevel: ThinkingLevel = "xhigh";
 		if (state.mode === "plan") {
-			updateThinkingConfig(state.modelConfig, "plan", newLevel);
+			updateConfigField(state.modelConfig, "thinking", "plan", newLevel);
 		}
 
 		expect(state.modelConfig.thinking.plan).toBe("xhigh");
@@ -1108,7 +1108,7 @@ describe("thinking event simulation", () => {
 
 		// Simulate: extension-driven setThinkingLevel
 		if (!suppressThinkingSelectPersist && state.mode === "main") {
-			updateThinkingConfig(state.modelConfig, "main", "high");
+			updateConfigField(state.modelConfig, "thinking", "main", "high");
 		}
 
 		expect(state.modelConfig.thinking.main).toBe("medium");
