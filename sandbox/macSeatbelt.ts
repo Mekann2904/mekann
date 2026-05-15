@@ -663,10 +663,8 @@ export async function runSandboxedShellMac(
 
 	let timeoutId: ReturnType<typeof setTimeout> | null = null;
 	let timedOut = false;
-	let timeoutReject: ((reason: Error) => void) | null = null;
 
 	const timeoutPromise = new Promise<never>((_resolve, reject) => {
-		timeoutReject = reject;
 		timeoutId = setTimeout(() => {
 			timedOut = true;
 			requestTerminate("timeout");
@@ -677,10 +675,8 @@ export async function runSandboxedShellMac(
 	// ─── AbortSignal handling ───────────────────────────────────
 
 	let abortHandler: (() => void) | null = null;
-	let abortReject: ((reason: Error) => void) | null = null;
 
 	const abortPromise = new Promise<never>((_resolve, reject) => {
-		abortReject = reject;
 		if (abortSignal) {
 			if (abortSignal.aborted) {
 				requestTerminate("abort");
