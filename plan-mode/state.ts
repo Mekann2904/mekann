@@ -1,5 +1,4 @@
 import type { ModelRef, PlanModeConfig, ThinkingLevel } from "./utils.js";
-
 export type Mode = "main" | "plan";
 
 export function isReadOnlyMode(mode: Mode): boolean {
