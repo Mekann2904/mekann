@@ -22,7 +22,7 @@ macOS Seatbelt (`sandbox-exec`) による bash ツール用コマンドサンド
 |--------|------|
 | `read_only` | Workspace は読み取り専用。workspace への書き込みは拒否。実行ごとに隔離された `$TMPDIR` のみ書き込み可能。workspace 外のユーザーデータの読み取りは拒否。 |
 | `workspace_write` | Workspace への書き込みを許可。ただし `.git`, `.codex`, `.agents` ディレクトリは保護（書き込み拒否）。シンボリックリンクによる脱出をブロック。 |
-| `yolo` | サンドボックスなし。CLI フラグ、`/sandbox-mode` コマンド、またはツール実行プロンプトでのユーザーの明示的な承認が必要。 |
+| `yolo` | サンドボックスなし。デフォルトモード。ユーザーの明示的な承認が必要。 |
 
 ## 主要なセキュリティプロパティ
 
@@ -35,30 +35,42 @@ macOS Seatbelt (`sandbox-exec`) による bash ツール用コマンドサンド
 ## 使い方
 
 ```bash
-# デフォルト: workspace_write モード
+# デフォルト: yolo モード（サンドボックスなし）
 pi -e ./sandbox
 
-# 読み取り専用モード
+# 読み取り専用モードで起動
 pi -e ./sandbox --sandbox-mode read_only
 
-# サンドボックスを明示的に無効化（非推奨）
+# workspace 書き込みモードで起動
+pi -e ./sandbox --sandbox-mode workspace_write
+
+# サンドボックスを明示的に無効化
 pi -e ./sandbox --no-sandbox
+```
 
-# サンドボックスの状態を表示
-/sandbox
+## コマンド
 
-# 実行時にモードを変更
-/sandbox-mode read_only
+### `/sandbox [mode]`
+
+引数なしで現在のモードを表示。引数付きでモードを変更。Tab で補完。
+
+```
+/sandbox              → 現在のモードを表示
+/sandbox read_only    → 読み取り専用モードに変更
+/sandbox workspace_write  → workspace 書き込みモードに変更
+/sandbox yolo         → サンドボックスなしモードに変更（承認必要）
 ```
 
 ### LLM からの権限昇格リクエスト
 
-サンドボックスがコマンドをブロックしたとき、LLM は `request_elevation` ツールを使って一時的な権限昇格をリクエストできます。ユーザーに確認ダイアログが表示されます:
+`read_only` または `workspace_write` モードでサンドボックスがコマンドをブロックしたとき、LLM は `request_elevation` ツールを使って一時的な権限昇格をリクエストできます:
 
 1. LLM がブロックされたコマンドと理由を指定して `request_elevation` を呼び出す
 2. 確認ダイアログが表示: 「このコマンドをサンドボックス外で実行しますか？」
 3. 承認された場合 → コマンドがサンドボックス外で 1 回だけ実行される
 4. 拒否された場合 → LLM に代替アプローチの提案が返される
+
+**注意**: `yolo` モードではサンドボックスが無効なため、`request_elevation` は不要。LLM は直接 bash ツールを使用します。
 
 サンドボックスの権限エラーメッセージにはヒントが付加され、LLM は自動的にこのツールの使用を検討します。
 
