@@ -392,7 +392,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 					foundLatest = true; // keep the latest one intact
 				} else {
 					// older plan — compact it
-					textParts[j] = { ...part, text: compactOldProposedPlansInText(part.text, false) };
+					textParts[j] = { ...part, text: compactOldProposedPlansInText(part.text) };
 				}
 			}
 		}
