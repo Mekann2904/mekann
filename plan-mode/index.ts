@@ -59,6 +59,17 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 
 
+	// ─── Status bar ────────────────────────────────────────────────────
+
+	/** Update footer status to reflect current mode. */
+	function updateModeStatus(ctx: ExtensionContext): void {
+		if (state.mode === "plan") {
+			ctx.ui.setWidget("plan-mode", [ctx.ui.theme.fg("warning", "plan")], { placement: "belowEditor" });
+		} else {
+			ctx.ui.setWidget("plan-mode", ["main"], { placement: "belowEditor" });
+		}
+	}
+
 	// ─── Mode transitions ───────────────────────────────────────────
 
 	async function enterPlanMode(ctx: ExtensionContext, opts?: { persistCurrentMain?: boolean }): Promise<void> {
@@ -99,6 +110,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		// 5. Switch to plan thinking level if configured
 		applyThinking(state.modelConfig.thinking.plan);
 		ctx.ui.notify(modeLabel(state.mode));
+		updateModeStatus(ctx);
 	}
 
 	async function exitPlanMode(ctx: ExtensionContext): Promise<void> {
@@ -129,6 +141,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		if (plan) { state.implementationPlan = plan; pi.sendUserMessage("保存された plan に従って実装してください。"); }
 		ctx.ui.notify(modeLabel(state.mode));
+		updateModeStatus(ctx);
 	}
 
 	async function togglePlanMode(ctx: ExtensionContext): Promise<void> {
@@ -279,6 +292,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			}
 			applyThinking(state.modelConfig.thinking.main);
 		}
+		updateModeStatus(ctx);
 	});
 
 	// Clean up sandbox override on session shutdown

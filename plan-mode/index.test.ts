@@ -66,6 +66,7 @@ function createMockApi() {
 		getFlag: (name: string) => flags[name],
 		sendUserMessage: vi.fn((msg: string) => { sentMessages.push(msg); }),
 		appendEntry: vi.fn((type: string, data: unknown) => { appendEntries.push({ type, data }); }),
+		setWidget: vi.fn(),
 		// Test accessors
 		get _hooks() { return hooks; },
 		get _commands() { return commands; },
@@ -91,6 +92,7 @@ function createMockCtx(overrides?: Partial<MockExtensionContext>): MockExtension
 			confirm: vi.fn(() => Promise.resolve(true)),
 			theme: { fg: (_c: string, t: string) => t },
 			setStatus: vi.fn(),
+			setWidget: vi.fn(),
 		},
 		...overrides,
 	};
