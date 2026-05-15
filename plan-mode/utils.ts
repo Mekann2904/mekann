@@ -108,14 +108,8 @@ export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhi
 const VALID_THINKING_LEVELS = new Set<string>(["off", "minimal", "low", "medium", "high", "xhigh"]);
 
 /** Check if a value is a valid ThinkingLevel. */
-export function isThinkingLevel(value: unknown): value is ThinkingLevel {
+function isThinkingLevel(value: unknown): value is ThinkingLevel {
 	return typeof value === "string" && VALID_THINKING_LEVELS.has(value);
-}
-
-/** Format a ThinkingLevel for display. */
-export function formatThinkingLevel(level?: ThinkingLevel | null): string {
-	if (!level) return "(unset)";
-	return level;
 }
 
 // ─── Model preference persistence ───────────────────────────────────

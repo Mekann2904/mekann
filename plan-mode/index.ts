@@ -15,15 +15,11 @@ import {
 	hashContent,
 	extractProposedPlan,
 	SAFE_PLAN_TOOLS,
-	parseModelRef,
 	formatModelRef,
 	sameModelRef,
 	loadModelConfig,
 	saveModelConfig,
 	updateConfigField,
-	createDefaultConfig,
-	isThinkingLevel,
-	formatThinkingLevel,
 	compactOldProposedPlansInText,
 	type ModelRef,
 	type PlanModeConfig,
@@ -162,88 +158,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 	}
 
-	// ─── Generic mode-config command factory ─────────────────────────
-
-	interface ModeConfigOpts<T> {
-		commandName: string;
-		description: string;
-		section: "models" | "thinking";
-		itemLabel: string;
-		formatValue: (value: T) => string;
-		parseValue: (input: string) => T | undefined;
-		getCurrentValue: (ctx: ExtensionContext) => T | undefined;
-		applyIfActive: (target: "main" | "plan", value: T, ctx: ExtensionContext) => Promise<void> | void;
-		clearAll: () => void;
-		formatStatus: (ctx: ExtensionContext) => string;
-		usage: string;
-		completions: string[];
-	}
-
-	function registerModeConfigCommand<T>(opts: ModeConfigOpts<T>): void {
-		pi.registerCommand(opts.commandName, {
-			description: opts.description,
-		getArgumentCompletions(prefix: string) {
-			return opts.completions
-				.filter((s) => s.startsWith(prefix))
-				.map((s) => ({ value: s, label: s }));
-		},
-			handler: async (args, ctx) => {
-				const parts = args?.trim().split(/\s+/) ?? [];
-
-				// status
-				if (parts[0] === "status" || parts.length === 0) {
-					ctx.ui.notify(opts.formatStatus(ctx), "info");
-					return;
-				}
-
-				// clear <main|plan|all>
-				if (parts[0] === "clear") {
-					const target = parts[1];
-					if (target === "main" || target === "plan") {
-						updateConfigField(state.modelConfig, opts.section, target, undefined, configPath);
-						ctx.ui.notify(`${target === "main" ? "Main" : "Plan"} ${opts.itemLabel} setting cleared`, "info");
-					} else if (target === "all") {
-						opts.clearAll();
-						saveModelConfig(state.modelConfig, configPath);
-						ctx.ui.notify(`All ${opts.itemLabel} settings cleared`, "info");
-					} else {
-						ctx.ui.notify(`Usage: /${opts.commandName} clear main|plan|all`, "warning");
-					}
-					return;
-				}
-
-				// main [value] / plan [value]
-				if (parts[0] === "main" || parts[0] === "plan") {
-					const target = parts[0] as "main" | "plan";
-					const label = target === "main" ? "Main" : "Plan";
-					if (parts[1]) {
-						const value = opts.parseValue(parts.slice(1).join(" "));
-						if (!value) {
-							ctx.ui.notify(`Invalid ${opts.itemLabel} format.`, "error");
-							return;
-						}
-						updateConfigField(state.modelConfig, opts.section, target, value, configPath);
-						ctx.ui.notify(`${label} ${opts.itemLabel} set to ${opts.formatValue(value)}`, "info");
-						if (state.mode === target) {
-							await opts.applyIfActive(target, value, ctx);
-						}
-					} else {
-						const value = opts.getCurrentValue(ctx);
-						if (value) {
-							updateConfigField(state.modelConfig, opts.section, target, value, configPath);
-							ctx.ui.notify(`${label} ${opts.itemLabel} saved: ${opts.formatValue(value)}`, "info");
-						} else {
-							ctx.ui.notify(`No current ${opts.itemLabel} to save`, "warning");
-						}
-					}
-					return;
-				}
-
-				ctx.ui.notify(opts.usage, "warning");
-			},
-		});
-	}
-
 	// ─── Commands ───────────────────────────────────────────────────
 
 	pi.registerCommand("plan", {
@@ -251,67 +165,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		handler: (_args, ctx) => togglePlanMode(ctx),
 	});
 
-	// ─── /plan-model command ─────────────────────────────────────────
-
-	registerModeConfigCommand<ModelRef>({
-		commandName: "plan-model",
-		description: "main/plan モード別モデル設定",
-		section: "models",
-		itemLabel: "model",
-		formatValue: formatModelRef,
-		parseValue: (input) => parseModelRef(input),
-		getCurrentValue: (ctx) => currentModelRef(ctx),
-		applyIfActive: async (target, ref, ctx) => {
-			await trySetModel(ref, ctx, `${target === "main" ? "Main" : "Plan"} model`);
-		},
-		clearAll: () => { state.modelConfig = createDefaultConfig(); },
-		formatStatus: (ctx) => {
-			const fmt = (ref: ModelRef | undefined) => {
-				if (!ref) return "(unset)";
-				const avail = ctx.modelRegistry.find(ref.provider, ref.modelId) ? "✓" : "✗";
-				return `${formatModelRef(ref)} ${avail}`;
-			};
-			const current = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "(none)";
-			const mainThinking = formatThinkingLevel(state.modelConfig.thinking.main);
-			const planThinking = formatThinkingLevel(state.modelConfig.thinking.plan);
-			return `Mode: ${state.mode} | Current: ${current} [${pi.getThinkingLevel()}] | Main: ${fmt(state.modelConfig.models.main)} [${mainThinking}] | Plan: ${fmt(state.modelConfig.models.plan)} [${planThinking}]`;
-		},
-		usage: "Usage: /plan-model status | main [provider/modelId] | plan [provider/modelId] | clear main|plan|all",
-		completions: ["status", "main", "plan", "clear"],
-	});
-
-	// ─── /plan-thinking command ───────────────────────────────────────
-
-	const THINKING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
-
-	registerModeConfigCommand<ThinkingLevel>({
-		commandName: "plan-thinking",
-		description: "main/plan モード別 thinking effort 設定",
-		section: "thinking",
-		itemLabel: "thinking",
-		formatValue: (v) => v,
-		parseValue: (input) => isThinkingLevel(input) ? (input as ThinkingLevel) : undefined,
-		getCurrentValue: () => pi.getThinkingLevel() as ThinkingLevel,
-		applyIfActive: (_target, level) => {
-			withThinkingSuppressed(() => pi.setThinkingLevel(level));
-		},
-		clearAll: () => { state.modelConfig.thinking = {}; },
-		formatStatus: (_ctx) => {
-			const current = pi.getThinkingLevel();
-			const mainThinking = formatThinkingLevel(state.modelConfig.thinking.main);
-			const planThinking = formatThinkingLevel(state.modelConfig.thinking.plan);
-			return `Mode: ${state.mode} | Current: ${current} | Main thinking: ${mainThinking} | Plan thinking: ${planThinking}`;
-		},
-		usage: "Usage: /plan-thinking status | main [level] | plan [level] | clear main|plan|all",
-		completions: [
-			"status",
-			...THINKING_LEVELS.map((l) => `main ${l}`),
-			...THINKING_LEVELS.map((l) => `plan ${l}`),
-			"clear main", "clear plan", "clear all",
-		],
-	});
-
-		pi.registerShortcut(Key.super("p"), {
+	pi.registerShortcut(Key.super("p"), {
 		description: "プランモード切替",
 		handler: (ctx) => togglePlanMode(ctx),
 	});

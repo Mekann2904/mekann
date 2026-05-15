@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { isSafeCommand, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, SAFE_PLAN_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateConfigField, createDefaultConfig, getConfigPath, isThinkingLevel, formatThinkingLevel, normalizeConfig, compactOldProposedPlansInText, type ModelRef, type ThinkingLevel } from "./utils.js";
+import { isSafeCommand, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, SAFE_PLAN_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateConfigField, createDefaultConfig, getConfigPath, normalizeConfig, compactOldProposedPlansInText, type ModelRef, type ThinkingLevel } from "./utils.js";
 import { type Mode, type PlanState, createInitialState, isReadOnlyMode, modeLabel } from "./state.js";
 
 // isSafeCommand — bash コマンドの安全性判定
@@ -819,34 +819,21 @@ describe("/plan-model status availability", () => {
 
 // ─── Thinking Level Utilities ──────────────────────────────────────
 
-describe("isThinkingLevel", () => {
-	it("accepts valid levels", () => {
-		const validLevels: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+// Note: isThinkingLevel is now a private function in utils.ts, tested indirectly via normalizeConfig
+
+describe("normalizeConfig: thinking validation", () => {
+	it("accepts valid thinking levels", () => {
+		const validLevels = ["off", "minimal", "low", "medium", "high", "xhigh"];
 		for (const level of validLevels) {
-			expect(isThinkingLevel(level)).toBe(true);
+			const config = normalizeConfig({ version: 1, thinking: { main: level } });
+			expect(config.thinking.main).toBe(level);
 		}
 	});
 
-	it("rejects invalid values", () => {
-		expect(isThinkingLevel("ultra")).toBe(false);
-		expect(isThinkingLevel("")).toBe(false);
-		expect(isThinkingLevel(null)).toBe(false);
-		expect(isThinkingLevel(undefined)).toBe(false);
-		expect(isThinkingLevel(123)).toBe(false);
-		expect(isThinkingLevel("HIGH")).toBe(false);
-	});
-});
-
-describe("formatThinkingLevel", () => {
-	it("formats a valid level", () => {
-		expect(formatThinkingLevel("high")).toBe("high");
-		expect(formatThinkingLevel("xhigh")).toBe("xhigh");
-		expect(formatThinkingLevel("off")).toBe("off");
-	});
-
-	it("returns (unset) for undefined/null", () => {
-		expect(formatThinkingLevel(undefined)).toBe("(unset)");
-		expect(formatThinkingLevel(null)).toBe("(unset)");
+	it("rejects invalid thinking levels", () => {
+		const config = normalizeConfig({ version: 1, thinking: { main: "ultra", plan: "INVALID" } });
+		expect(config.thinking.main).toBeUndefined();
+		expect(config.thinking.plan).toBeUndefined();
 	});
 });
 
@@ -1118,28 +1105,23 @@ describe("thinking event simulation", () => {
 	});
 });
 
-// ─── /plan-model status now includes thinking ────────────────────
+// ─── Thinking display integration ────────────────────────
 
-describe("/plan-model status thinking integration", () => {
+describe("thinking display integration", () => {
 	it("status includes thinking levels", () => {
 		const config = createDefaultConfig();
 		config.models.main = { provider: "anthropic", modelId: "sonnet" };
 		config.thinking.main = "high";
 		config.thinking.plan = "xhigh";
 
-		const mainThinking = formatThinkingLevel(config.thinking.main);
-		const planThinking = formatThinkingLevel(config.thinking.plan);
-
-		expect(mainThinking).toBe("high");
-		expect(planThinking).toBe("xhigh");
+		expect(config.thinking.main).toBe("high");
+		expect(config.thinking.plan).toBe("xhigh");
 	});
 
-	it("unset thinking shows (unset)", () => {
+	it("unset thinking is undefined", () => {
 		const config = createDefaultConfig();
-		const mainThinking = formatThinkingLevel(config.thinking.main);
-		const planThinking = formatThinkingLevel(config.thinking.plan);
-		expect(mainThinking).toBe("(unset)");
-		expect(planThinking).toBe("(unset)");
+		expect(config.thinking.main).toBeUndefined();
+		expect(config.thinking.plan).toBeUndefined();
 	});
 });
 
