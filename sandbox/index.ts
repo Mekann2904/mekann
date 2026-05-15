@@ -80,6 +80,12 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		Object.assign(yoloState, { yoloApproved: false, yoloApprovedAt: undefined, yoloApprovedReason: undefined });
 	}
 
+	function disableSandbox(reason: string, level: "error" | "warning" = "error") {
+		sandboxEnabled = false;
+		resetYoloApproval();
+		if (lastCtx) { lastCtx.ui.setWidget("sandbox", undefined); lastCtx.ui.notify(reason, level); }
+	}
+
 	// ─── Flags ───────────────────────────────────────────────────────
 
 	pi.registerFlag("no-sandbox", { description: "sandbox を無効化する（明示的 opt-out）", type: "boolean", default: false });
@@ -301,10 +307,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		const noSandbox = pi.getFlag("no-sandbox") as boolean;
 		if (noSandbox) {
 			explicitlyDisabled = true;
-			sandboxEnabled = false;
 			sandboxAvailable = false;
-			ctx.ui.setWidget("sandbox", undefined);
-			ctx.ui.notify("--no-sandbox によりサンドボックスは明示的に無効化されました", "warning");
+			disableSandbox("--no-sandbox によりサンドボックスは明示的に無効化されました", "warning");
 			return;
 		}
 
@@ -321,10 +325,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			await validateWorkspaceRoot(ctx.cwd);
 		} catch (e) {
 			startupBlockedReason = `安全でない workspace root: ${(e as Error).message}`;
-			sandboxEnabled = false;
-			resetYoloApproval();
-			ctx.ui.setWidget("sandbox", undefined);
-			ctx.ui.notify(`セキュリティ: ${startupBlockedReason}。安全のためサンドボックスを無効化しました。コマンドは拒否されます。`, "error");
+			disableSandbox(`セキュリティ: ${startupBlockedReason}。安全のためサンドボックスを無効化しました。コマンドは拒否されます。`);
 			return;
 		}
 
@@ -341,10 +342,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		// No prompt at session_start — avoids bothering the user on every startup.
 
 		if (!sandboxAvailable && effectiveMode() !== "yolo") {
-			startupBlockedReason = "サンドボックスが必要ですが /usr/bin/sandbox-exec が利用できません。サンドボックス強制なしではコマンドを実行できません。--no-sandbox で明示的に無効化してください（非推奨）。";
-			sandboxEnabled = false;
-			ctx.ui.setWidget("sandbox", undefined);
-			ctx.ui.notify(`[!] ${startupBlockedReason}`, "error");
+			startupBlockedReason = "サンドボックスが必要ですが /usr/bin/sandbox-exec が利用できません。サンドボックス強制なしではコマンドを実行できません。--no-sandbox で明式的に無効化してください（非推奨）。";
+			disableSandbox(`[!] ${startupBlockedReason}`);
 			return;
 		}
 
