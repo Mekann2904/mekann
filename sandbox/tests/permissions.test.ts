@@ -174,8 +174,8 @@ describe("modeLabel", () => {
 // ─── policy-core integration ─────────────────────────────────────
 
 describe("policy-core integration", () => {
-	it("DEFAULT_SANDBOX_MODE is workspace_write", () => {
-		expect(DEFAULT_SANDBOX_MODE).toBe("workspace_write");
+	it("DEFAULT_SANDBOX_MODE is yolo", () => {
+		expect(DEFAULT_SANDBOX_MODE).toBe("yolo");
 	});
 
 	it("SANDBOX_MODES contains all three modes", () => {
