@@ -125,81 +125,38 @@ export async function validatePolicy(policy: SandboxPolicy): Promise<void> {
 	}
 }
 
-// ─── SBPL policy builder ─────────────────────────────────────────
-
-/** SandboxPolicy から SBPL 生成。deny rules は LAST matching rule wins なので末尾に置く。 */
-export function buildMacSeatbeltPolicy(policy: SandboxPolicy): string {
-	if (policy.mode === "yolo") return `\n(version 1)\n(allow default)\n`;
-
+/** Compute SBPL policy sections from a SandboxPolicy. */
+function buildPolicySections(policy: SandboxPolicy) {
 	const readableRoots = effectiveReadableRoots(policy);
-
-	// writable roots: workspace_write で writableRoots があればそれ、なければ cwd
 	const writableRoots = effectiveWritableRoots(policy);
 	const readRules = readableRoots.map((p) => `  ${pathSubpath(p)}`).join("\n");
 	const writeRules = writableRoots.map((p) => `  ${pathSubpath(p)}`).join("\n");
 	const networkRules = policy.network
-		? `
-; network access (explicitly opted in)
-(allow network-outbound)
-(allow network-inbound)
-`
+		? `\n; network access (explicitly opted in)\n(allow network-outbound)\n(allow network-inbound)\n`
 		: "";
-
-	const writeSection =
-		writeRules.length > 0
-			? `
-; user-selected writable roots
-(allow file-write*
-${writeRules}
-)
-`
-			: "";
-
-	// Homebrew paths (only when allowHomebrewPaths set; /usr NOT granted as whole)
-	const homebrewSection =
-		policy.allowHomebrewPaths
-			? `
-; homebrew: needed for tools installed via brew (node, python, etc.)
-; Only included when allowHomebrewPaths is explicitly set
-(allow file-read*
-  (subpath "/opt/homebrew")
-  (subpath "/usr/local")
-)
-`
-			: "";
-
-	// Per-run isolated temp directory (not broad system TMPDIR)
+	const writeSection = writeRules.length > 0
+		? `\n; user-selected writable roots\n(allow file-write*\n${writeRules}\n)\n`
+		: "";
+	const homebrewSection = policy.allowHomebrewPaths
+		? `\n; homebrew: needed for tools installed via brew (node, python, etc.)\n; Only included when allowHomebrewPaths is explicitly set\n(allow file-read*\n  (subpath "/opt/homebrew")\n  (subpath "/usr/local")\n)\n`
+		: "";
 	const tmpDirSection = policy._isolatedTempDir
-		? `
-; Per-run isolated temp directory (not system TMPDIR)
-; Created for this specific command invocation, cleaned up after exit
-; Includes isolated HOME directory to prevent workspace startup file injection
-(allow file-read* file-write*
-  ${pathSubpath(policy._isolatedTempDir)}
-)
-`
+		? `\n; Per-run isolated temp directory (not system TMPDIR)\n; Created for this specific command invocation, cleaned up after exit\n; Includes isolated HOME directory to prevent workspace startup file injection\n(allow file-read* file-write*\n  ${pathSubpath(policy._isolatedTempDir)}\n)\n`
 		: "";
-
-	// read_only mode: deny writes to readable roots (temp may overlap workspace)
-	const readOnlyDenySection =
-		policy.mode === "read_only"
-			? `
-; SECURITY: read_only mode — explicitly deny writes to workspace roots
-${readableRoots.map((p) => `(deny file-write* ${pathSubpath(p)})`).join("\n")}
-`
-			: "";
-
-	// Resolved .git directories get write deny rules
-	const gitdirDenyRules = (policy._resolvedGitdirs ?? [])
-		.map((g) => `(deny file-write* ${pathSubpath(g)})`)
-		.join("\n");
+	const readOnlyDenySection = policy.mode === "read_only"
+		? `\n; SECURITY: read_only mode — explicitly deny writes to workspace roots\n${readableRoots.map((p) => `(deny file-write* ${pathSubpath(p)})`).join("\n")}\n`
+		: "";
+	const gitdirDenyRules = (policy._resolvedGitdirs ?? []).map((g) => `(deny file-write* ${pathSubpath(g)})`).join("\n");
 	const gitdirDenySection = gitdirDenyRules.length > 0
-		? `
-; Resolved .git directories (pointer files / worktrees / submodules)
-${gitdirDenyRules}
-`
+		? `\n; Resolved .git directories (pointer files / worktrees / submodules)\n${gitdirDenyRules}\n`
 		: "";
+	return { readRules, writeSection, networkRules, homebrewSection, tmpDirSection, gitdirDenySection, readOnlyDenySection };
+}
 
+// ─── SBPL policy builder ─────────────────────────────────────────
+
+/** Fixed base rules for SBPL. SECURITY CRITICAL — do not weaken. */
+function sbplBaseRules(): string {
 	return `
 (version 1)
 
@@ -222,22 +179,13 @@ ${gitdirDenyRules}
 (allow pseudo-tty)
 
 ; macOS process initialization
-; NOTE: sysctl-read is kept because many CLI tools require it.
-; sysctl only exposes kernel state, not user data.
-; Known limitation: could be restricted to specific sysctls in the future.
 (allow sysctl-read)
 (allow ipc-posix-shm)
-; NOTE: mach-lookup is kept because restricting it breaks
-; DNS resolution, IPC, and many system services.
-; Known limitation: could be restricted to specific services.
 (allow mach-lookup)
 (allow file-read-metadata)
 
 ; ─── System read paths (minimum set) ──────────────────────────
 ; SECURITY: (literal "/") is required for bash to stat root during init.
-; /Users, /Library, /opt, /var are NOT included.
-; /usr is NOT included as a whole — only specific subdirectories.
-; /usr/local is ONLY readable via allowHomebrewPaths.
 (allow file-read*
   (literal "/")
   (subpath "/bin")
@@ -252,15 +200,20 @@ ${gitdirDenyRules}
   (subpath "/etc")
   (subpath "/dev")
 )
+`;
+}
 
+/** Render the SBPL policy template with computed sections. SECURITY CRITICAL — do not weaken rules. */
+function renderSBPL(readRules: string, sections: ReturnType<typeof buildPolicySections>): string {
+	return sbplBaseRules() + `
 ; user-selected readable roots
 (allow file-read*
 ${readRules}
 )
-${writeSection}
-${networkRules}
-${homebrewSection}
-${tmpDirSection}
+${sections.writeSection}
+${sections.networkRules}
+${sections.homebrewSection}
+${sections.tmpDirSection}
 
 ; ═══════════════════════════════════════════════════════════════
 ; SECURITY: Deny rules come LAST.
@@ -271,9 +224,16 @@ ${tmpDirSection}
 (deny file-write*
   (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
 )
-${gitdirDenySection}
-${readOnlyDenySection}
+${sections.gitdirDenySection}
+${sections.readOnlyDenySection}
 `;
+}
+
+/** SandboxPolicy から SBPL 生成。deny rules は LAST matching rule wins なので末尾に置く。 */
+export function buildMacSeatbeltPolicy(policy: SandboxPolicy): string {
+	if (policy.mode === "yolo") return `\n(version 1)\n(allow default)\n`;
+	const s = buildPolicySections(policy);
+	return renderSBPL(s.readRules, s);
 }
 
 // ─── Preflight ───────────────────────────────────────────────────
