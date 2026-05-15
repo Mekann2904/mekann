@@ -285,9 +285,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("sandbox", {
 		description: "サンドボックスモードを表示・変更",
 		getArgumentCompletions(prefix: string) {
-			const items = ["read_only", "workspace_write", "yolo"].map((m) => ({ value: m, label: m }));
-			const filtered = items.filter((i) => i.value.startsWith(prefix));
-			return filtered.length > 0 ? filtered : null;
+			const f = ["read_only", "workspace_write", "yolo"].filter((m) => m.startsWith(prefix)).map((m) => ({ value: m, label: m }));
+			return f.length ? f : null;
 		},
 		handler: changeMode,
 	});
