@@ -27,9 +27,5 @@ export interface PlanState {
 }
 
 export function createInitialState(modelConfig?: PlanModeConfig): PlanState {
-	return {
-		mode: "main",
-		planPromptDelivered: false,
-		modelConfig: modelConfig ?? { version: 1, models: {}, thinking: {} },
-	};
+	return { mode: "main", planPromptDelivered: false, modelConfig: modelConfig ?? { version: 1, models: {}, thinking: {} } };
 }

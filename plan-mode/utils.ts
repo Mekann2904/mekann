@@ -121,10 +121,7 @@ export function parseModelRef(input: string): ModelRef | undefined {
 	if (!trimmed) return undefined;
 	const slashIndex = trimmed.indexOf("/");
 	if (slashIndex <= 0 || slashIndex === trimmed.length - 1) return undefined;
-	return {
-		provider: trimmed.slice(0, slashIndex),
-		modelId: trimmed.slice(slashIndex + 1),
-	};
+	return { provider: trimmed.slice(0, slashIndex), modelId: trimmed.slice(slashIndex + 1) };
 }
 
 /** Format a ModelRef as "provider/modelId". */
