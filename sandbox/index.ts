@@ -258,10 +258,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			const { command, reason } = params;
 
 			if (explicitlyDisabled) {
-				return {
-					content: [{ type: "text", text: "サンドボックスは既に無効化されています (--no-sandbox)。bash ツールを直接使用してください。" }],
-					details: {},
-				};
+				return { content: [{ type: "text", text: "サンドボックスは既に無効化されています (--no-sandbox)。bash ツールを直接使用してください。" }], details: {} };
 			}
 
 			if (startupBlockedReason) {
@@ -269,10 +266,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			}
 
 			if (!sandboxEnabled) {
-				return {
-					content: [{ type: "text", text: "サンドボックスはアクティブではありません。bash ツールを直接使用してください。" }],
-					details: {},
-				};
+				return { content: [{ type: "text", text: "サンドボックスはアクティブではありません。bash ツールを直接使用してください。" }], details: {} };
 			}
 
 			const ok = await ctx.ui.confirm(
