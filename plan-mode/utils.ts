@@ -238,15 +238,13 @@ export function saveModelConfig(config: PlanModeConfig, explicitPath?: string): 
  * Update a specific mode's model reference in the config and persist it.
  * Pass `undefined` for `ref` to clear that mode's setting.
  */
-type ModeConfigSection = "models" | "thinking";
-
 /**
  * Update a specific mode's config field (model or thinking level) and persist.
  * Pass `undefined` for `value` to clear that mode's setting.
  */
 export function updateConfigField<T>(
 	config: PlanModeConfig,
-	section: ModeConfigSection,
+	section: "models" | "thinking",
 	mode: "main" | "plan",
 	value: T | undefined,
 	path?: string,
