@@ -26,10 +26,11 @@ import {
   GoalError,
   type GoalStateEntry,
   type Goal,
+  remainingTokens,
 } from "./state.js";
 import { GoalRuntime } from "./runtime.js";
-import { renderGoalSummary, renderNoGoal, renderWidget } from "./render.js";
-import { renderGoalContext } from "./prompts.js";
+import { renderGoalSummary, renderNoGoal, renderWidget, renderGoalContext } from "./prompts.js";
+
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -77,6 +78,11 @@ export default function goalExtension(pi: ExtensionAPI): void {
     if (!ctx.sessionManager.isPersisted()) return false;
     return true;
   }
+
+  const DISABLED_RESPONSE = {
+    content: [{ type: "text" as const, text: "Goals feature is disabled or session is not persisted." }],
+    details: {},
+  };
 
   function updateWidget(ctx: ExtensionContext): void {
     if (!ctx.hasUI) return;
@@ -186,12 +192,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
     ],
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-      if (!isEnabled(ctx) || !store) {
-        return {
-          content: [{ type: "text" as const, text: "Goals feature is disabled or session is not persisted." }],
-          details: {},
-        };
-      }
+      if (!isEnabled(ctx) || !store) return DISABLED_RESPONSE;
       const goal = store.getGoal();
       if (!goal) {
         return {
@@ -199,9 +200,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
           details: {},
         };
       }
-      const remaining = goal.token_budget !== null
-        ? Math.max(0, goal.token_budget - goal.tokens_used)
-        : null;
+      const remaining = remainingTokens(goal);
       return {
         content: [{
           type: "text" as const,
@@ -244,12 +243,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      if (!isEnabled(ctx) || !store || !runtime) {
-        return {
-          content: [{ type: "text" as const, text: "Goals feature is disabled or session is not persisted." }],
-          details: {},
-        };
-      }
+      if (!isEnabled(ctx) || !store || !runtime) return DISABLED_RESPONSE;
       try {
         const goal = store.createGoal(
           ctx.sessionManager.getSessionId(),
@@ -295,12 +289,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      if (!isEnabled(ctx) || !store || !runtime) {
-        return {
-          content: [{ type: "text" as const, text: "Goals feature is disabled or session is not persisted." }],
-          details: {},
-        };
-      }
+      if (!isEnabled(ctx) || !store || !runtime) return DISABLED_RESPONSE;
       try {
         const patch: { status: "complete" } = { status: params.status };
 
@@ -357,16 +346,8 @@ export default function goalExtension(pi: ExtensionAPI): void {
       const sub = parts[0] || "";
 
       // Feature disabled?
-      if (pi.getFlag("goals") !== true) {
-        ctx.ui.notify("Goals feature is disabled (enable with --goals flag)", "warning");
-        return;
-      }
-      if (!ctx.sessionManager.isPersisted()) {
-        ctx.ui.notify("Goals require a persisted session", "warning");
-        return;
-      }
-      if (!store || !runtime) {
-        ctx.ui.notify("Goal system not initialized", "warning");
+      if (!isEnabled(ctx) || !store || !runtime) {
+        ctx.ui.notify(!pi.getFlag("goals") ? "Goals feature is disabled (enable with --goals flag)" : !ctx.sessionManager.isPersisted() ? "Goals require a persisted session" : "Goal system not initialized", "warning");
         return;
       }
 

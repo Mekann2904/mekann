@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { directionLabel, directionArrow, renderWidget } from "./render.js";
+import { directionLabel, directionArrow, renderWidget } from "./state.js";
 import type { ExperimentState } from "./state.js";
 
 // ---------------------------------------------------------------------------
