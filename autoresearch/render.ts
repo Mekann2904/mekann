@@ -30,10 +30,6 @@ export function directionArrow(direction: "lower" | "higher"): string {
 // Widget rendering
 // ---------------------------------------------------------------------------
 
-/**
- * ステータス widget の文字列を返す。
- * 非アクティブ時や結果がない場合は undefined を返す。
- */
 export function renderWidget(
 	state: ExperimentState,
 	isActive: boolean,
