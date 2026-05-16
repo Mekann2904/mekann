@@ -4748,3 +4748,26 @@ describe("extension: wait_agent tool result formatting", () => {
     }
   });
 });
+
+// ─── registry.ts: unsubscribe called twice (branch #0-1) ───────
+
+describe("registry: unsubscribe idempotent", () => {
+  it("calling unsubscribe twice is safe", () => {
+    const registry = new AgentRegistry(4, 2);
+    registry.ensureRoot("session-1");
+    const fn = vi.fn();
+    const unsub = registry.subscribe(fn);
+    unsub(); // first call — removes fn
+    unsub(); // second call — idx < 0, false branch covered
+    // No error thrown
+  });
+});
+
+// ─── render.ts: event type that is neither status_changed nor final_message ──
+// NOTE: The else-if false branch on line 57 is dead code by design.
+// formatWaitResult filters events to only status_changed and final_message
+// before the if/else chain, so the false branch is unreachable.
+// The function is:
+//   const statusEvents = events.filter(e => e.type === "agent_status_changed" || e.type === "agent_final_message");
+//   for (const evt of statusEvents) { if (status_changed) ... else if (final_message) ... }
+// Since all events pass the filter, the else-if false branch never fires.
