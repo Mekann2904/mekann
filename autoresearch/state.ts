@@ -69,6 +69,19 @@ export function freshState(): ExperimentState {
 }
 
 /** JSONL ファイル全体から ExperimentState を復元。 */
+function parseRunEntry(entry: Record<string, unknown>): RunEntry {
+	return {
+		type: "run",
+		run: entry.run as number,
+		commit: typeof entry.commit === "string" ? entry.commit : "unknown",
+		metric: typeof entry.metric === "number" ? entry.metric as number : 0,
+		status: validateStatus(entry.status),
+		description: typeof entry.description === "string" ? entry.description : "",
+		timestamp: typeof entry.timestamp === "number" ? entry.timestamp as number : Date.now(),
+		memo: typeof entry.memo === "string" ? entry.memo : undefined,
+	};
+}
+
 export function reconstructState(jsonlContent: string): ExperimentState {
 	const state = freshState();
 
@@ -83,7 +96,6 @@ export function reconstructState(jsonlContent: string): ExperimentState {
 			if (entry.direction === "higher" || entry.direction === "lower") {
 				state.direction = entry.direction;
 			}
-			// 新セグメント: リセット
 			state.bestMetric = null;
 			state.results = [];
 			state.runCount = 0;
@@ -91,16 +103,7 @@ export function reconstructState(jsonlContent: string): ExperimentState {
 		}
 
 		if (entry.type === "run" && typeof entry.run === "number") {
-			const run: RunEntry = {
-				type: "run",
-				run: entry.run as number,
-				commit: typeof entry.commit === "string" ? entry.commit : "unknown",
-				metric: typeof entry.metric === "number" ? entry.metric as number : 0,
-				status: validateStatus(entry.status),
-				description: typeof entry.description === "string" ? entry.description : "",
-				timestamp: typeof entry.timestamp === "number" ? entry.timestamp as number : Date.now(),
-				memo: typeof entry.memo === "string" ? entry.memo : undefined,
-			};
+			const run = parseRunEntry(entry as Record<string, unknown>);
 
 			if (typeof entry.metrics === "object" && entry.metrics !== null) {
 				const metrics: Record<string, number> = {};
