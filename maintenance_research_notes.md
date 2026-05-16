@@ -1,32 +1,36 @@
 # Maintenance Research Notes
 
-## Codebase Overview
+## Current State (2026-05-16 restart)
 
-4 pi extensions: plan-mode, sandbox, subagent, zip-repo + 1 shared policy-core.
-Total: 3,977 source LOC across 21 files. 852 tests across 6 test files (~5,050 test LOC).
+- **Baseline**: 6436 LOC, 24 files, 1392 tests
+- **After Exp 1**: 6405 LOC (-31)
+- **New modules since last session**: autoresearch/ (1279 LOC), goal/ (1601 LOC) — 45% of total
 
 ### File sizes (source LOC)
-- subagent/agentControl.ts: 488 (largest — most complex)
-- subagent/index.ts: 473 (tool registrations + commands)
-- sandbox/macSeatbelt.ts: 460 (SBPL policy generation + sandboxed execution)
-- sandbox/index.ts: 430 (sandbox mode management, events, bash handler)
-- subagent/registry.ts: 293 (agent tracking, lifecycle events)
-- plan-mode/index.ts: 298 (mode toggling, hooks)
-- subagent/types.ts: 236 (type definitions)
-- subagent/mailbox.ts: 166 (async message queue)
-- plan-mode/utils.ts: 155 (utility functions)
-- subagent/contextFork.ts: 128 (context extraction)
-- zip-repo/index.ts: 113
-- subagent/agentPath.ts: 110
-- policy-core/commandIntent.ts: 105
-- sandbox/pathPolicy.ts: 74
+- autoresearch/index.ts: 837 (command handler + tool registrations)
+- goal/index.ts: 645 (command handler + tool registrations)
+- subagent/agentControl.ts: 489
+- sandbox/index.ts: 422
+- sandbox/macSeatbelt.ts: 420
+- goal/runtime.ts: 347
+- goal/state.ts: 359
+- subagent/index.ts: 371
+- subagent/registry.ts: 279
+- plan-mode/index.ts: 283
+- policy-core/modes.ts: 183
+- autoresearch/runner.ts: 175
+- autoresearch/state.ts: 182
+- plan-mode/utils.ts: 183
+- subagent/contextFork.ts: 97
+- goal/prompts.ts: 149
+- sandbox/permissions.ts: 153
+- subagent/mailbox.ts: 160
+- goal/render.ts: 75
+- autoresearch/render.ts: 72
+- zip-repo/index.ts: 171
 - subagent/render.ts: 72
-- policy-core/modes.ts: 71
-- sandbox/permissions.ts: 65
+- subagent/types.ts: 251
 - subagent/persistence.ts: 48
-- sandbox/approvals.ts: 47
-- policy-core/capabilities.ts: 43
-- plan-mode/state.ts: 29
 
 ## First-Principles Analysis
 
@@ -100,15 +104,13 @@ H7: Inline trivial functions that add indirection without abstraction value
 ### Exp 6: Consolidate lifecycle events with LifecycleBase (KEEP, -9 pts)
 - 3897→3832 LOC, duplication 182→181
 
-### Exp 7: Merge notifyWaiters/notifyAllWaiters (KEEP, -40 pts)
-- 3832→3824 LOC, duplication 181→177
+### Exp 7-15: (see results.tsv for details)
+- Previous session reached ~1075 score with 54 experiments
 
-### Exp 8: Extract resolveModel/finalizeWithError (KEEP, -60 pts)
-- 3824→3813 LOC, duplication 177→171
-
-### Exp 9: Extract abortSession, compress send/followup (KEEP, -85 pts)
-- 3813→3757 LOC, duplication 171→162
-- max_file agentControl.ts: 561→474 (under 500!)
+### Exp 16 (2026-05-16): Deduplicate on/default + formatDuration (KEEP, -31 LOC)
+- autoresearch/index.ts: on/default cases merged into activateAutoresearch helper
+- goal/render.ts: formatDuration moved to import from goal/prompts.ts
+- 6436→6405 LOC, all 1392 tests pass
 
 ### Key Learnings
 - Small dead code removals have minimal impact due to changed_loc penalty
@@ -123,14 +125,3 @@ H7: Inline trivial functions that add indirection without abstraction value
 - test_seconds: ~10 × 1 = 10
 - LOC bonus: -5 * ((-220)/100) = -10 (3757 vs 3977 baseline)
 - Total: 1620 + 700 + 20 + 10 - 10 - 5(changed_loc) = 2345 ✓
-
-> **Note**: agentControl.ts is now 488 lines (notes originally recorded 561 pre-Exp9).
-> Text extraction duplication is resolved — `extractTextFromContent()` lives in `contextFork.ts`.
-> If more callers appear, consider extracting to `messageContent.ts` for clearer module ownership.
-
-### Remaining Opportunities
-1. Further duplication reduction (162 lines still duplicated)
-2. File count reduction (22 files → review_risk 7; need to get to 15 to eliminate)
-3. Reduce sandbox/index.ts (430 lines) — second largest file
-4. Compress subagent/index.ts tool registrations
-5. Move `extractTextFromContent` from `contextFork.ts` to `messageContent.ts` if callers increase (currently 2 call sites)
