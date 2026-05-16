@@ -1,1 +1,2 @@
 {"type":"config","name":"maintenance-cost-reduction","metricName":"maintenance_score","metricUnit":"pts","direction":"lower"}
+{"type":"run","run":1,"commit":"f1cb065","metric":4072,"status":"keep","description":"Baseline for 2026-05-17 maintenance session: 6325 LOC, 22 files, 271 dup lines, type_errors=0","timestamp":1778946141920,"metrics":{"source_loc":6325,"duplication_score":271,"review_risk":13,"complexity_score":3,"type_errors":0,"test_seconds":32.84}}
