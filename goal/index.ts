@@ -29,8 +29,8 @@ import {
   remainingTokens,
 } from "./state.js";
 import { GoalRuntime } from "./runtime.js";
-import { renderGoalSummary, renderNoGoal, renderWidget } from "./render.js";
-import { renderGoalContext } from "./prompts.js";
+import { renderGoalSummary, renderNoGoal, renderWidget, renderGoalContext } from "./prompts.js";
+
 
 // ---------------------------------------------------------------------------
 // Constants
