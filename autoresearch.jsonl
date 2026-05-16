@@ -2,3 +2,4 @@
 {"type":"run","run":1,"commit":"baseline","metric":6436,"status":"keep","description":"Initial baseline: 6436 source LOC, 24 files, 1392 tests all passing","timestamp":1778935289628}
 {"type":"run","run":2,"commit":"2c918ec","metric":6405,"status":"keep","description":"Deduplicate autoresearch on/default handler + extract formatDuration to shared export","timestamp":1778935876265}
 {"type":"run","run":3,"commit":"347fe2c","metric":6385,"status":"keep","description":"Extract INACTIVE_RESPONSE constant, replace 3 duplicated error responses in autoresearch tools","timestamp":1778936075432}
+{"type":"run","run":4,"commit":"126efd7","metric":6375,"status":"keep","description":"Extract DISABLED_RESPONSE constant, replace 3 duplicated error responses in goal tools","timestamp":1778936250561}
