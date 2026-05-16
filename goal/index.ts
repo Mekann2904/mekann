@@ -346,16 +346,8 @@ export default function goalExtension(pi: ExtensionAPI): void {
       const sub = parts[0] || "";
 
       // Feature disabled?
-      if (pi.getFlag("goals") !== true) {
-        ctx.ui.notify("Goals feature is disabled (enable with --goals flag)", "warning");
-        return;
-      }
-      if (!ctx.sessionManager.isPersisted()) {
-        ctx.ui.notify("Goals require a persisted session", "warning");
-        return;
-      }
-      if (!store || !runtime) {
-        ctx.ui.notify("Goal system not initialized", "warning");
+      if (!isEnabled(ctx) || !store || !runtime) {
+        ctx.ui.notify(!pi.getFlag("goals") ? "Goals feature is disabled (enable with --goals flag)" : !ctx.sessionManager.isPersisted() ? "Goals require a persisted session" : "Goal system not initialized", "warning");
         return;
       }
 
