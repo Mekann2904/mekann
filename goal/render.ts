@@ -3,6 +3,7 @@
  */
 
 import type { Goal, GoalStatus } from "./state.js";
+import { formatDuration } from "./prompts.js";
 
 // ---------------------------------------------------------------------------
 // Status labels
@@ -14,19 +15,6 @@ const STATUS_LABELS: Record<GoalStatus, string> = {
   budget_limited: "■ limited by budget",
   complete: "✓ complete",
 };
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  if (m < 60) return `${m}m ${s}s`;
-  const h = Math.floor(m / 60);
-  return `${h}h ${m % 60}m`;
-}
 
 function truncateObjective(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
