@@ -2,7 +2,7 @@
  * autoresearch/runner.ts — コマンド実行と出力の切り詰め。
  */
 
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseMetricLines } from "./state.js";
@@ -168,4 +168,60 @@ export async function runCommand(
 			finish(null);
 		});
 	});
+}
+
+// ---------------------------------------------------------------------------
+// Git helpers
+// ---------------------------------------------------------------------------
+
+export function getGitShortHash(cwd: string): string {
+	try {
+		return execFileSync("git", ["rev-parse", "--short", "HEAD"], {
+			cwd,
+			encoding: "utf8",
+			timeout: 5_000,
+		}).trim();
+	} catch {
+		return "unknown";
+	}
+}
+
+/** `git add -A && git diff --cached --quiet` を実行し staged diff があれば commit。 */
+export function gitAutoCommit(cwd: string, message: string): { committed: boolean; commit?: string; error?: string } {
+	try {
+		execFileSync("git", ["add", "-A"], { cwd, encoding: "utf8", timeout: 10_000 });
+
+		// staged diff があるか確認
+		try {
+			execFileSync("git", ["diff", "--cached", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000 });
+			return { committed: false }; // 変更なし
+		} catch {
+			// diff あり → commit
+		}
+
+		execFileSync("git", ["commit", "-m", message], { cwd, encoding: "utf8", timeout: 10_000 });
+
+		const newHash = getGitShortHash(cwd);
+		return { committed: true, commit: newHash };
+	} catch (e) {
+		return { committed: false, error: e instanceof Error ? e.message : String(e) };
+	}
+}
+
+/** 作業ツリーを revert（autoresearch.* は保護）。 */
+export function gitAutoRevert(cwd: string): { reverted: boolean; error?: string } {
+	try {
+		execFileSync(
+			"bash",
+			[
+				"-c",
+				"git checkout -- . ':(exclude,glob)**/autoresearch.*' ':(exclude,glob)**/autoresearch.*/**' && " +
+				"git clean -fd -e 'autoresearch.*' -e '**/autoresearch.*/**' 2>/dev/null || true",
+			],
+			{ cwd, encoding: "utf8", timeout: 10_000 },
+		);
+		return { reverted: true };
+	} catch (e) {
+		return { reverted: false, error: e instanceof Error ? e.message : String(e) };
+	}
 }

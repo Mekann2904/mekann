@@ -15,7 +15,6 @@ import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execFileSync, type ExecException } from "node:child_process";
 
 import {
 	reconstructState,
@@ -26,7 +25,7 @@ import {
 	type RunEntry,
 	type RunStatus,
 } from "./state.js";
-import { runCommand, runChecks, type ChecksResult } from "./runner.js";
+import { runCommand, runChecks, type ChecksResult, getGitShortHash, gitAutoCommit, gitAutoRevert } from "./runner.js";
 import { renderWidget, directionLabel, type LoopInfo } from "./state.js";
 
 // ---------------------------------------------------------------------------
@@ -53,58 +52,6 @@ function mdFilePath(cwd: string): string {
 }
 
 /** git short hash を取得。失敗時は "unknown"。 */
-function getGitShortHash(cwd: string): string {
-	try {
-		return execFileSync("git", ["rev-parse", "--short", "HEAD"], {
-			cwd,
-			encoding: "utf8",
-			timeout: 5_000,
-		}).trim();
-	} catch {
-		return "unknown";
-	}
-}
-
-/** `git add -A && git diff --cached --quiet` を実行し staged diff があれば commit。 */
-function gitAutoCommit(cwd: string, message: string): { committed: boolean; commit?: string; error?: string } {
-	try {
-		execFileSync("git", ["add", "-A"], { cwd, encoding: "utf8", timeout: 10_000 });
-
-		// staged diff があるか確認
-		try {
-			execFileSync("git", ["diff", "--cached", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000 });
-			return { committed: false }; // 変更なし
-		} catch {
-			// diff あり → commit
-		}
-
-		execFileSync("git", ["commit", "-m", message], { cwd, encoding: "utf8", timeout: 10_000 });
-
-		const newHash = getGitShortHash(cwd);
-		return { committed: true, commit: newHash };
-	} catch (e) {
-		return { committed: false, error: e instanceof Error ? e.message : String(e) };
-	}
-}
-
-/** 作業ツリーを revert（autoresearch.* は保護）。 */
-function gitAutoRevert(cwd: string): { reverted: boolean; error?: string } {
-	try {
-		execFileSync(
-			"bash",
-			[
-				"-c",
-				"git checkout -- . ':(exclude,glob)**/autoresearch.*' ':(exclude,glob)**/autoresearch.*/**' && " +
-				"git clean -fd -e 'autoresearch.*' -e '**/autoresearch.*/**' 2>/dev/null || true",
-			],
-			{ cwd, encoding: "utf8", timeout: 10_000 },
-		);
-		return { reverted: true };
-	} catch (e) {
-		return { reverted: false, error: e instanceof Error ? e.message : String(e) };
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Widget update
 // ---------------------------------------------------------------------------
