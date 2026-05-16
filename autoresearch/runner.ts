@@ -225,3 +225,48 @@ export function gitAutoRevert(cwd: string): { reverted: boolean; error?: string 
 		return { reverted: false, error: e instanceof Error ? e.message : String(e) };
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Loop helpers
+// ---------------------------------------------------------------------------
+
+export const COMPLETE_MARKER = "<autoresearch>COMPLETE</autoresearch>";
+
+function appendTextFragments(value: unknown, out: string[]): void {
+	if (typeof value === "string") {
+		out.push(value);
+		return;
+	}
+	if (!value || typeof value !== "object") return;
+	if (Array.isArray(value)) {
+		for (const item of value) appendTextFragments(item, out);
+		return;
+	}
+	const record = value as Record<string, unknown>;
+	if (typeof record.text === "string") out.push(record.text);
+	if (typeof record.content === "string") out.push(record.content);
+	if (Array.isArray(record.content)) appendTextFragments(record.content, out);
+	if (Array.isArray(record.messages)) appendTextFragments(record.messages, out);
+}
+
+export function hasCompleteMarker(event: unknown): boolean {
+	const fragments: string[] = [];
+	appendTextFragments(event, fragments);
+	return fragments.join("\n").includes(COMPLETE_MARKER);
+}
+
+export function loopFollowUpMessage(noProgress: boolean): string {
+	const prefix = noProgress
+		? "前ターンでは autoresearch_log まで進みませんでした。"
+		: "前ターンの実験記録が完了しました。";
+	return [
+		prefix,
+		"Ralph 方式で次のイテレーションを継続してください。",
+		"- autoresearch.md と autoresearch.ideas.md（存在する場合）を読み、過去の学びを踏まえる",
+		"- 原則として1ターンで1つの具体的な実験だけを行う",
+		"- コード変更後は autoresearch_run → autoresearch_log を必ず実行する",
+		"- 学んだことを autoresearch.md の Codebase Patterns / 試したこと、または memo に残す",
+		`- 有望な実験が尽きた場合だけ ${COMPLETE_MARKER} を返す`,
+		"ユーザーに継続確認せず進めてください。",
+	].join("\n");
+}
