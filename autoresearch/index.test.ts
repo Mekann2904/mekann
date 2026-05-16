@@ -1604,4 +1604,95 @@ describe("autoresearchExtension", () => {
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 	});
+
+	// ── /autoresearch loop subcommands ───────────────────────
+
+	describe("/autoresearch loop subcommands", () => {
+		it("loop on enables auto loop", async () => {
+			const ctx = createMockCtx();
+			await pi.commands.get("autoresearch")!.handler("on", ctx);
+			// Turn off first, then turn on via loop on
+			await pi.commands.get("autoresearch")!.handler("loop off", ctx);
+			ctx.ui.notify.mockClear();
+			await pi.commands.get("autoresearch")!.handler("loop on", ctx);
+			expect(ctx.ui.notify).toHaveBeenCalledWith(
+				expect.stringContaining("有効"),
+				"info",
+			);
+		});
+
+		it("loop off disables auto loop", async () => {
+			const ctx = createMockCtx();
+			await pi.commands.get("autoresearch")!.handler("on", ctx);
+			ctx.ui.notify.mockClear();
+			await pi.commands.get("autoresearch")!.handler("loop off", ctx);
+			expect(ctx.ui.notify).toHaveBeenCalledWith(
+				expect.stringContaining("無効"),
+				"info",
+			);
+		});
+
+		it("loop max none sets unlimited", async () => {
+			const ctx = createMockCtx();
+			await pi.commands.get("autoresearch")!.handler("on", ctx);
+			ctx.ui.notify.mockClear();
+			await pi.commands.get("autoresearch")!.handler("loop max none", ctx);
+			expect(ctx.ui.notify).toHaveBeenCalledWith(
+				expect.stringContaining("\u221e"),  // ∞
+				"info",
+			);
+		});
+
+		it("loop max infinite sets unlimited", async () => {
+			const ctx = createMockCtx();
+			await pi.commands.get("autoresearch")!.handler("on", ctx);
+			ctx.ui.notify.mockClear();
+			await pi.commands.get("autoresearch")!.handler("loop max infinite", ctx);
+			expect(ctx.ui.notify).toHaveBeenCalledWith(
+				expect.stringContaining("\u221e"),
+				"info",
+			);
+		});
+
+		it("loop max with invalid value shows usage", async () => {
+			const ctx = createMockCtx();
+			await pi.commands.get("autoresearch")!.handler("on", ctx);
+			ctx.ui.notify.mockClear();
+			await pi.commands.get("autoresearch")!.handler("loop max abc", ctx);
+			expect(ctx.ui.notify).toHaveBeenCalledWith(
+				expect.stringContaining("正の整数"),
+				"warning",
+			);
+		});
+
+		it("loop status shows current state", async () => {
+			const ctx = createMockCtx();
+			await pi.commands.get("autoresearch")!.handler("on", ctx);
+			ctx.ui.notify.mockClear();
+			await pi.commands.get("autoresearch")!.handler("loop", ctx);
+			expect(ctx.ui.notify).toHaveBeenCalledWith(
+				expect.stringContaining("loop"),
+				"info",
+			);
+		});
+
+		it("hasCompleteMarker detects marker in nested content", async () => {
+			const ctx = createMockCtx();
+			await pi.commands.get("autoresearch")!.handler("on", ctx);
+			await pi.eventHandlers.get("agent_start")!({}, ctx);
+			pi.sentMessages.length = 0;
+
+			// Test with nested content structure
+			await pi.eventHandlers.get("agent_end")!(
+				{ messages: [{ role: "assistant", content: [{ type: "text", text: "<autoresearch>COMPLETE</autoresearch>" }] }] },
+				ctx,
+			);
+
+			expect(pi.sentMessages).toHaveLength(0);
+			expect(ctx.ui.notify).toHaveBeenCalledWith(
+				expect.stringContaining("完了マーカー"),
+				"success",
+			);
+		});
+	});
 });
