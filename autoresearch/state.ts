@@ -16,13 +16,15 @@ export interface ConfigEntry {
 	direction: "lower" | "higher";
 }
 
+export type RunStatus = "keep" | "discard" | "crash" | "checks_failed";
+
 export interface RunEntry {
 	type: "run";
 	run: number;
 	commit: string;
 	metric: number;
 	metrics?: Record<string, number>;
-	status: "keep" | "discard" | "crash";
+	status: RunStatus;
 	description: string;
 	timestamp: number;
 	memo?: string;
@@ -129,7 +131,7 @@ export function reconstructState(jsonlContent: string): ExperimentState {
 }
 
 function validateStatus(value: unknown): RunEntry["status"] {
-	if (value === "keep" || value === "discard" || value === "crash") return value;
+	if (value === "keep" || value === "discard" || value === "crash" || value === "checks_failed") return value;
 	return "crash";
 }
 

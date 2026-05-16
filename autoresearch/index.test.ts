@@ -201,6 +201,7 @@ describe("autoresearchExtension", () => {
 			const handler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx();
 			await handler("", ctx);
+			// Empty arg → goes to status (sub is "status" when parts[0] is empty)
 			expect(ctx.ui.notify).toHaveBeenCalledWith(
 				expect.stringContaining("autoresearch"),
 				"info",
@@ -235,6 +236,48 @@ describe("autoresearchExtension", () => {
 			expect(result.systemPrompt).toContain("autoresearch_run");
 			expect(result.systemPrompt).toContain("autoresearch_log");
 			expect(result.systemPrompt).toContain("日本語");
+			// 自動 commit/revert の指示がある
+			expect(result.systemPrompt).toContain("自動で git commit / revert");
+			// ideas.md の指示がある
+			expect(result.systemPrompt).toContain("autoresearch.ideas.md");
+		});
+	});
+
+	// ── /autoresearch <text> (default case: start) ────────────
+
+	describe("/autoresearch <目的文>", () => {
+		it("activates mode and sends followUp with purpose", async () => {
+			const handler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx();
+			await handler("テストを高速化したい", ctx);
+
+			expect(ctx.ui.setWidget).toHaveBeenCalledWith("autoresearch", expect.any(Array));
+			expect(ctx.ui.notify).toHaveBeenCalledWith(
+				expect.stringContaining("有効"),
+				"info",
+			);
+			expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+			expect(pi.sentMessages[0].msg).toContain("テストを高速化したい");
+			expect(pi.sentMessages[0].opts).toEqual({ deliverAs: "followUp" });
+		});
+
+		it("activates even without purpose text", async () => {
+			const handler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx();
+			// 'optimize' is not on/off/status/clear → treated as purpose
+			await handler("optimize", ctx);
+			expect(ctx.ui.setWidget).toHaveBeenCalledWith("autoresearch", expect.any(Array));
+		});
+	});
+
+	// ── autoresearch_log has checks_failed in status ──────────
+
+	describe("autoresearch_log checks_failed", () => {
+		it("accepts checks_failed as a valid status in parameters", () => {
+			const logTool = pi.tools.find((t) => t.name === "autoresearch_log");
+			expect(logTool).toBeTruthy();
+			// The description should mention checks_failed
+			expect(logTool!.description).toContain("checks_failed");
 		});
 	});
 

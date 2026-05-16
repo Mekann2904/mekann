@@ -15,7 +15,7 @@ import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, type ExecException } from "node:child_process";
 
 import {
 	reconstructState,
@@ -24,8 +24,9 @@ import {
 	freshState,
 	type ExperimentState,
 	type RunEntry,
+	type RunStatus,
 } from "./state.js";
-import { runCommand } from "./runner.js";
+import { runCommand, runChecks, type ChecksResult } from "./runner.js";
 import { renderWidget, directionLabel } from "./render.js";
 
 // ---------------------------------------------------------------------------
@@ -58,6 +59,46 @@ function getGitShortHash(cwd: string): string {
 		}).trim();
 	} catch {
 		return "unknown";
+	}
+}
+
+/** `git add -A && git diff --cached --quiet` を実行し staged diff があれば commit。 */
+function gitAutoCommit(cwd: string, message: string): { committed: boolean; commit?: string; error?: string } {
+	try {
+		execFileSync("git", ["add", "-A"], { cwd, encoding: "utf8", timeout: 10_000 });
+
+		// staged diff があるか確認
+		try {
+			execFileSync("git", ["diff", "--cached", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000 });
+			return { committed: false }; // 変更なし
+		} catch {
+			// diff あり → commit
+		}
+
+		execFileSync("git", ["commit", "-m", message], { cwd, encoding: "utf8", timeout: 10_000 });
+
+		const newHash = getGitShortHash(cwd);
+		return { committed: true, commit: newHash };
+	} catch (e) {
+		return { committed: false, error: e instanceof Error ? e.message : String(e) };
+	}
+}
+
+/** 作業ツリーを revert（autoresearch.* は保護）。 */
+function gitAutoRevert(cwd: string): { reverted: boolean; error?: string } {
+	try {
+		execFileSync(
+			"bash",
+			[
+				"-c",
+				"git checkout -- . ':(exclude,glob)**/autoresearch.*' ':(exclude,glob)**/autoresearch.*/**' && " +
+				"git clean -fd -e 'autoresearch.*' -e '**/autoresearch.*/**' 2>/dev/null || true",
+			],
+			{ cwd, encoding: "utf8", timeout: 10_000 },
+		);
+		return { reverted: true };
+	} catch (e) {
+		return { reverted: false, error: e instanceof Error ? e.message : String(e) };
 	}
 }
 
@@ -94,10 +135,11 @@ const SYSTEM_PROMPT_EXTRA = [
 	"2. `autoresearch_init` でセッションを初期化（未初期化の場合）",
 	"3. `autoresearch_run` でコマンドを実行し、結果を測定",
 	"4. 必ず `autoresearch_log` で結果を記録",
-	"5. 改善したら自分で `git commit`、悪化したら自分で `git checkout` で revert",
+	"5. `autoresearch_log` が自動で git commit / revert を行うため、手動 git 操作は不要",
 	"6. ユーザーに毎回継続確認しない — 停止されるまで繰り返す",
 	"7. 表示・報告は日本語で行う",
 	"8. `autoresearch.jsonl` に履歴が自動保存される",
+	"9. 有望だが今すぐ試さない最適化案は `autoresearch.ideas.md` に追記する",
 	"",
 ].join("\n");
 
@@ -109,6 +151,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	// ─── Mutable runtime state ──────────────────────────────────────
 	let active = false;
 	let runningExperiment: { startedAt: number; command: string } | null = null;
+	let lastChecks: ChecksResult | null = null;
 	let state: ExperimentState = freshState();
 
 	// ─── session_start: JSONL から状態復元 ─────────────────────────
@@ -192,9 +235,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					break;
 				}
 
-				// ── status / default ─────────────────────────────
-				case "status":
-				default: {
+				// ── status ──────────────────────────────────────
+				case "status": {
 					const kept = countByStatus(state.results, "keep");
 					const best =
 						state.bestMetric !== null
@@ -204,11 +246,36 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					ctx.ui.notify(
 						`autoresearch: ${modeStr}\n` +
 						`実験回数: ${state.runCount}\n` +
-						`採用数: ${kept}\n` +
-						`最良指標: ${best}\n` +
-						`方向: ${directionLabel(state.direction)}`,
+					`採用数: ${kept}\n` +
+					`最良指標: ${best}\n` +
+					`方向: ${directionLabel(state.direction)}`,
 						"info",
 					);
+					break;
+				}
+
+				// ── default: 目的文として扱い mode ON ───────────
+				default: {
+					const purpose = (args ?? "").trim();
+					active = true;
+					updateWidget(ctx, state, active, runningExperiment);
+					ctx.ui.notify("autoresearch モードを有効にしました", "info");
+
+					const hasMd = fs.existsSync(mdFilePath(ctx.cwd));
+					let followUpMsg: string;
+					if (hasMd) {
+						followUpMsg =
+							"autoresearch.md を読み直して、autoresearch を再開してください。" +
+							"最後の実験結果から継続してください。";
+						if (purpose) followUpMsg += `\n追加コンテキスト: ${purpose}`;
+					} else {
+						const purposeText = purpose ? `目的: ${purpose}` : "";
+						followUpMsg =
+							`autoresearch を開始します。目的・指標・実行コマンドを整理して ` +
+							`autoresearch.md とベンチマークスクリプトを作成し、実験を開始してください。` +
+							(purposeText ? ` ${purposeText}` : "");
+					}
+					pi.sendUserMessage(followUpMsg, { deliverAs: "followUp" });
 					break;
 				}
 			}
@@ -310,11 +377,13 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		label: "autoresearch run",
 		description:
 			"シェルコマンドを実行し、実行時間と出力を記録します。" +
-			"METRIC name=value 形式の出力を自動的にパースします。",
+			"METRIC name=value 形式の出力を自動的にパースします。" +
+			"autoresearch.checks.sh が存在する場合、benchmark 成功後に自動実行します。",
 		promptSnippet: "コマンドを実行して時間と結果を測定",
 		promptGuidelines: [
 			"実験コマンドの実行には autoresearch_run を使ってください。",
 			"実行後は必ず autoresearch_log で結果を記録してください。",
+			"checks が失敗した場合は checks_failed で記録してください。",
 		],
 		parameters: Type.Object({
 			command: Type.String({
@@ -322,6 +391,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			}),
 			timeout_seconds: Type.Optional(
 				Type.Number({ description: "タイムアウト秒数（デフォルト: 600）" }),
+			),
+			checks_timeout_seconds: Type.Optional(
+				Type.Number({ description: "autoresearch.checks.sh のタイムアウト秒数（デフォルト: 300）" }),
 			),
 		}),
 
@@ -336,6 +408,15 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			runningExperiment = null;
 			updateWidget(ctx, state, active, runningExperiment);
 
+			// benchmark 成功時に checks を実行
+			let checks: ChecksResult;
+			if (result.passed) {
+				checks = await runChecks(ctx.cwd, signal, params.checks_timeout_seconds);
+			} else {
+				checks = { passed: null, timedOut: false, output: "", durationSeconds: 0 };
+			}
+			lastChecks = checks;
+
 			let text = "";
 			if (result.timedOut) {
 				text = `[TIMEOUT] 実験がタイムアウトしました（${params.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS}秒）\n`;
@@ -346,6 +427,17 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			}
 			text += `実行時間: ${result.durationSeconds.toFixed(1)}秒\n`;
 			text += `コマンド: ${result.command}\n`;
+
+			// checks 結果を報告
+			if (checks.passed === true) {
+				text += `checks: 成功（${checks.durationSeconds.toFixed(1)}秒）\n`;
+			} else if (checks.passed === false) {
+				text += `checks: 失敗\n`;
+				if (checks.output) {
+					text += `checks 出力（末尾）:\n${checks.output}\n`;
+				}
+				text += `\nautoresearch_log では status=checks_failed で記録してください。keep は拒否されます。\n`;
+			}
 
 			if (result.parsedMetrics) {
 				text += `\n測定指標:\n`;
@@ -364,7 +456,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			return {
 				content: [{ type: "text", text }],
-				details: result,
+				details: { ...result, checks },
 			};
 		},
 	});
@@ -375,19 +467,21 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		name: "autoresearch_log",
 		label: "autoresearch log",
 		description:
-			"実験結果を記録します。結果は autoresearch.jsonl に追記され、最良指標が更新されます。",
-		promptSnippet: "実験結果を記録（keep / discard / crash）",
+			"実験結果を記録します。結果は autoresearch.jsonl に追記され、最良指標が更新されます。" +
+			"keep は自動で git commit し、discard/crash/checks_failed は自動で revert します。",
+		promptSnippet: "実験結果を記録（keep / discard / crash / checks_failed）",
 		promptGuidelines: [
 			"autoresearch_run の後は必ず autoresearch_log を呼び出してください。",
-			"改善 → keep、悪化 → discard、クラッシュ → crash に設定してください。",
-			"keep の場合は自分で git commit してください。discard の場合は自分で git checkout で revert してください。",
+			"改善 → keep、悪化 → discard、クラッシュ → crash、checks 失敗 → checks_failed に設定してください。",
+			"keep の場合は自動で git commit されます。discard/crash/checks_failed の場合は自動で revert されます。",
+			"checks が失敗した場合は keep を選択できません。",
 		],
 		parameters: Type.Object({
 			metric: Type.Number({
 				description: "主指標の値",
 			}),
-			status: StringEnum(["keep", "discard", "crash"] as const, {
-				description: "実験結果: keep=採用, discard=棄却, crash=クラッシュ",
+			status: StringEnum(["keep", "discard", "crash", "checks_failed"] as const, {
+				description: "実験結果: keep=採用, discard=棄却, crash=クラッシュ, checks_failed=checks失敗",
 			}),
 			description: Type.String({
 				description: "実験内容の短い説明",
@@ -408,7 +502,21 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const commit = params.commit ?? getGitShortHash(ctx.cwd);
+			// Gate: checks 失敗時の keep を拒否
+			if (params.status === "keep" && lastChecks && lastChecks.passed === false) {
+				return {
+					content: [{
+						type: "text",
+						text:
+							`[ERROR] checks が失敗しているため keep できません。\n` +
+							`checks 出力:\n${lastChecks.output.slice(-500)}\n` +
+							`status=checks_failed で記録してください。`,
+					}],
+					details: {},
+				};
+			}
+
+			let commit = params.commit ?? getGitShortHash(ctx.cwd);
 			const run = state.runCount + 1;
 
 			const entry: RunEntry = {
@@ -461,8 +569,15 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				keep: "採用",
 				discard: "棄却",
 				crash: "クラッシュ",
+				checks_failed: "checks失敗",
 			};
-			const prefix = params.status === "keep" ? "[KEEP]" : params.status === "discard" ? "[DISCARD]" : "[CRASH]";
+			const prefixMap: Record<string, string> = {
+				keep: "[KEEP]",
+				discard: "[DISCARD]",
+				crash: "[CRASH]",
+				checks_failed: "[CHECKS_FAILED]",
+			};
+			const prefix = prefixMap[params.status] ?? "[UNKNOWN]";
 
 			let text = `${prefix} 実験 #${run} を記録: ${statusLabel[params.status]}\n`;
 			text += `説明: ${params.description}\n`;
@@ -474,11 +589,30 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				text += `最良: ${state.metricName}=${state.bestMetric}${state.metricUnit}\n`;
 			}
 
+			// 自動 git 操作
 			if (params.status === "keep") {
-				text += `\n改善しました。自分で git commit してください。`;
-			} else if (params.status === "discard") {
-				text += `\n悪化しました。自分で git checkout で revert してください。`;
+				const commitMsg = `${params.description}\n\nResult: ${JSON.stringify({ status: params.status, [state.metricName]: params.metric })}`;
+				const gitResult = gitAutoCommit(ctx.cwd, commitMsg);
+				if (gitResult.committed) {
+					commit = gitResult.commit ?? commit;
+					text += `\n[git] 自動 commit しました: ${commit}`;
+				} else if (gitResult.error) {
+					text += `\n[git] commit エラー: ${gitResult.error}`;
+				} else {
+					text += `\n[git] 変更なし（commit 不要）`;
+				}
+			} else {
+				// discard / crash / checks_failed → 自動 revert
+				const revertResult = gitAutoRevert(ctx.cwd);
+				if (revertResult.reverted) {
+					text += `\n[git] 作業ツリーを revert しました（autoresearch.* は保護）`;
+				} else if (revertResult.error) {
+					text += `\n[git] revert エラー: ${revertResult.error}`;
+				}
 			}
+
+			// lastChecks をクリア
+			lastChecks = null;
 
 			return {
 				content: [{ type: "text", text }],
@@ -488,6 +622,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					metric: params.metric,
 					bestMetric: state.bestMetric,
 					kept,
+					commit,
 				},
 			};
 		},

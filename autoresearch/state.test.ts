@@ -271,6 +271,7 @@ describe("countByStatus", () => {
 		{ type: "run" as const, run: 2, commit: "b", metric: 2, status: "discard" as const, description: "", timestamp: 0 },
 		{ type: "run" as const, run: 3, commit: "c", metric: 3, status: "keep" as const, description: "", timestamp: 0 },
 		{ type: "run" as const, run: 4, commit: "d", metric: 4, status: "crash" as const, description: "", timestamp: 0 },
+		{ type: "run" as const, run: 5, commit: "e", metric: 5, status: "checks_failed" as const, description: "", timestamp: 0 },
 	];
 
 	it("counts keep", () => {
@@ -285,7 +286,46 @@ describe("countByStatus", () => {
 		expect(countByStatus(results, "crash")).toBe(1);
 	});
 
+	it("counts checks_failed", () => {
+		expect(countByStatus(results, "checks_failed")).toBe(1);
+	});
+
 	it("returns 0 for empty results", () => {
 		expect(countByStatus([], "keep")).toBe(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// checks_failed status
+// ---------------------------------------------------------------------------
+
+describe("checks_failed status", () => {
+	it("is parsed from JSONL", () => {
+		const content = [
+			JSON.stringify({ type: "config", name: "test", metricName: "ms" }),
+			JSON.stringify({ type: "run", run: 1, metric: 100, status: "checks_failed", description: "テスト失敗" }),
+		].join("\n") + "\n";
+		const state = reconstructState(content);
+		expect(state.results[0]?.status).toBe("checks_failed");
+		expect(state.runCount).toBe(1);
+	});
+
+	it("is not counted as best metric", () => {
+		const content = [
+			JSON.stringify({ type: "config", name: "test", metricName: "ms", direction: "lower" }),
+			JSON.stringify({ type: "run", run: 1, metric: 100, status: "keep", description: "" }),
+			JSON.stringify({ type: "run", run: 2, metric: 50, status: "checks_failed", description: "" }),
+		].join("\n") + "\n";
+		const state = reconstructState(content);
+		expect(state.bestMetric).toBe(100);
+	});
+
+	it("unknown status defaults to crash", () => {
+		const content = [
+			JSON.stringify({ type: "config", name: "test", metricName: "ms" }),
+			JSON.stringify({ type: "run", run: 1, metric: 100, status: "unknown_status", description: "" }),
+		].join("\n") + "\n";
+		const state = reconstructState(content);
+		expect(state.results[0]?.status).toBe("crash");
 	});
 });
