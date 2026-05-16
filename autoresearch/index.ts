@@ -316,29 +316,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			switch (sub) {
 				// ── on ───────────────────────────────────────────
 				case "on": {
-					active = true;
-					autoLoop = true;
-					resetLoopProgress();
-					loopPromptQueued = true;
-					const purpose = parts.slice(1).join(" ").trim();
-					updateWidget(ctx, state, active, runningExperiment, loopInfo());
-					ctx.ui.notify("autoresearch モードを有効にしました（loop ON）", "info");
-
-					const hasMd = fs.existsSync(mdFilePath(ctx.cwd));
-					let followUpMsg: string;
-					if (hasMd) {
-						followUpMsg =
-							"autoresearch.md を読み直して、autoresearch を再開してください。" +
-							"最後の実験結果から継続してください。";
-					} else {
-						const purposeText = purpose ? `目的: ${purpose}` : "";
-						followUpMsg =
-							"autoresearch モードを有効化しました。" +
-							"目的・指標・実行コマンドを整理して autoresearch.md とベンチマークスクリプトを作成し、実験を開始してください。" +
-							"\n必要なら `/skill:autoresearch-create` で手順を確認できます。" +
-							(purposeText ? ` ${purposeText}` : "");
-					}
-					pi.sendUserMessage(followUpMsg, { deliverAs: "followUp" });
+					activateAutoresearch(ctx, parts.slice(1).join(" ").trim());
 					break;
 				}
 
@@ -435,37 +413,40 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 				// ── default: 目的文として扱い mode ON ───────────
 				default: {
-					const purpose = (args ?? "").trim();
-					active = true;
-					autoLoop = true;
-					resetLoopProgress();
-					loopPromptQueued = true;
-					updateWidget(ctx, state, active, runningExperiment, loopInfo());
-					ctx.ui.notify("autoresearch モードを有効にしました（loop ON）", "info");
-
-					const hasMd = fs.existsSync(mdFilePath(ctx.cwd));
-					let followUpMsg: string;
-					if (hasMd) {
-						followUpMsg =
-							"autoresearch.md を読み直して、autoresearch を再開してください。" +
-							"最後の実験結果から継続してください。";
-						if (purpose) followUpMsg += `\n追加コンテキスト: ${purpose}`;
-					} else {
-						const purposeText = purpose ? `目的: ${purpose}` : "";
-						followUpMsg =
-							"autoresearch モードを有効化しました。" +
-							"目的・指標・実行コマンドを整理して autoresearch.md とベンチマークスクリプトを作成し、実験を開始してください。" +
-							"\n必要なら `/skill:autoresearch-create` で手順を確認できます。" +
-							(purposeText ? ` ${purposeText}` : "");
-					}
-					pi.sendUserMessage(followUpMsg, { deliverAs: "followUp" });
+					activateAutoresearch(ctx, (args ?? "").trim());
 					break;
 				}
 			}
-		},
-	});
+			}
+		});
 
-	// ─── Tool: autoresearch_init ────────────────────────────────────
+	// ─── Shared activation helper ────────────────────────────────────
+
+	function activateAutoresearch(ctx: ExtensionContext, purpose: string): void {
+		active = true;
+		autoLoop = true;
+		resetLoopProgress();
+		loopPromptQueued = true;
+		updateWidget(ctx, state, active, runningExperiment, loopInfo());
+		ctx.ui.notify("autoresearch モードを有効にしました（loop ON）", "info");
+
+		const hasMd = fs.existsSync(mdFilePath(ctx.cwd));
+		let followUpMsg: string;
+		if (hasMd) {
+			followUpMsg =
+				"autoresearch.md を読み直して、autoresearch を再開してください。" +
+				"最後の実験結果から継続してください。";
+			if (purpose) followUpMsg += `\n追加コンテキスト: ${purpose}`;
+		} else {
+			const purposeText = purpose ? `目的: ${purpose}` : "";
+			followUpMsg =
+				"autoresearch モードを有効化しました。" +
+				"目的・指標・実行コマンドを整理して autoresearch.md とベンチマークスクリプトを作成し、実験を開始してください。" +
+				"\n必要なら `/skill:autoresearch-create` で手順を確認できます。" +
+				(purposeText ? ` ${purposeText}` : "");
+		}
+		pi.sendUserMessage(followUpMsg, { deliverAs: "followUp" });
+	}
 
 	pi.registerTool({
 		name: "autoresearch_init",
