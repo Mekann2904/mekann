@@ -4,3 +4,4 @@
 {"type":"run","run":3,"commit":"347fe2c","metric":6385,"status":"keep","description":"Extract INACTIVE_RESPONSE constant, replace 3 duplicated error responses in autoresearch tools","timestamp":1778936075432}
 {"type":"run","run":4,"commit":"126efd7","metric":6375,"status":"keep","description":"Extract DISABLED_RESPONSE constant, replace 3 duplicated error responses in goal tools","timestamp":1778936250561}
 {"type":"run","run":5,"commit":"a79725c","metric":6363,"status":"keep","description":"Remove unused ConfigEntry interface + deduplicate runner.ts section headers","timestamp":1778936468882}
+{"type":"run","run":6,"commit":"5244c6c","metric":6351,"status":"keep","description":"Extract accountUsage helper in goal/runtime.ts, replace 3 duplicated wall-clock accounting blocks","timestamp":1778936807589}
