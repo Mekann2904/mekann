@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": false,
   "description": "Custom extensions for pi coding agent — plan-mode and zip-repo",
-  "keywords": ["pi-package", "pi-extension"],
+  "keywords": [
+    "pi-package",
+    "pi-extension"
+  ],
   "license": "ISC",
   "scripts": {
     "test": "cd plan-mode && npm test && cd ../sandbox && npm test && cd ../subagent && npm test && cd ../zip-repo && npm test && cd ../autoresearch && npm test && cd ../goal && npm test",
@@ -15,7 +18,19 @@
     "test:goal": "cd goal && npm test"
   },
   "pi": {
-    "extensions": ["./plan-mode", "./zip-repo", "./sandbox", "./subagent", "./autoresearch", "./goal"],
-    "skills": ["./skills"]
+    "extensions": [
+      "./plan-mode",
+      "./zip-repo",
+      "./sandbox",
+      "./subagent",
+      "./autoresearch",
+      "./goal"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.6"
   }
 }
