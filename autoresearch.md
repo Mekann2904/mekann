@@ -1,26 +1,42 @@
-# Autoresearch: Maintenance Cost Reduction
+# Autoresearch: Test Coverage Improvement
 
 ## Goal
-Reduce source LOC (excluding tests/config) while preserving all 765 tests and behavior.
+Improve test coverage across all modules, targeting >98% statement coverage.
 
 ## Metric
-- **Primary**: source LOC (`.ts` excluding `*.test.*` and `vitest.config.*`)
-- **Baseline**: 2,480 LOC
+- **Primary**: uncovered statements (lower is better)
+- **Baseline**: 183 uncovered (out of 2270 total)
 - **Direction**: lower is better
 
+## Current Status
+- **Uncovered**: 44 statements
+- **Coverage**: 98.06%
+- **Total tests**: 1494 (was 1392)
+
 ## Rules
-- All tests must pass (`npm test` — 765 tests across plan-mode, sandbox, zip-repo)
-- No behavior changes — tests should not need modification
-- No cheating — don't just move code to test files or rename files
-- Track test LOC separately (should remain stable)
-- SECURITY CRITICAL code in macSeatbelt.ts SBPL template must not be weakened
+- All tests must pass (`npm test`)
+- No behavior changes to source code
+- Coverage measured per-module via `npx vitest run --coverage`
+
+## Per-Module Coverage
+| Module | Stmts | Branch | Tests |
+|--------|-------|--------|-------|
+| goal | 96.98% | 89.21% | 205 |
+| autoresearch | 97.06% | 90.07% | 168 |
+| plan-mode | 98.84% | 97.04% | 364 |
+| sandbox | 98.09% | 96.10% | 465 |
+| subagent | 99.43% | 93.71% | 235 |
+| zip-repo | 100% | 100% | 57 |
 
 ## Benchmark
 ```bash
 cd /Users/mekann/github/pi-plugin/mekann && npm test
 ```
 
-## LOC Count
+## Coverage per module
 ```bash
-find . -maxdepth 2 -name '*.ts' ! -path '*/node_modules/*' ! -name '*.test.*' ! -name 'vitest.config.*' -exec cat {} + | wc -l
+for dir in autoresearch goal plan-mode sandbox subagent; do
+  cd $dir && npx vitest run --coverage 2>&1 | grep -E '(File|% |Statements)'
+  cd ..
+done
 ```

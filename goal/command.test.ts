@@ -461,4 +461,69 @@ describe("/goal command", () => {
       "info",
     );
   });
+
+  // 37. /goal resume rejects when budget exhausted
+  it("resume rejects when token budget exhausted", async () => {
+    await goalCommand.handler("--budget 100 Budget limited goal", ctx);
+    // Manually update tokens_used to exceed budget
+    const goal = (mockPi as any).appendEntry.mock.calls;
+    // We need to access the store to update tokens
+    // Use get_goal tool to verify, then update via store
+    const getGoalTool = mockPi.tools.find((t: any) => t.name === "get_goal");
+    const result = await getGoalTool.execute("tc", {}, undefined, undefined, ctx);
+    const goalId = result.details.goal.goal_id;
+
+    // Simulate token usage via runtime's onMessageEnd
+    const agentStartHandler = mockPi.on.mock.calls.find(
+      (call: any[]) => call[0] === "agent_start",
+    )?.[1] as Function;
+    const turnStartHandler = mockPi.on.mock.calls.find(
+      (call: any[]) => call[0] === "turn_start",
+    )?.[1] as Function;
+    const msgEndHandler = mockPi.on.mock.calls.find(
+      (call: any[]) => call[0] === "message_end",
+    )?.[1] as Function;
+
+    if (agentStartHandler) await agentStartHandler();
+    if (turnStartHandler) await turnStartHandler({}, ctx);
+    if (msgEndHandler) {
+      await msgEndHandler(
+        { message: { role: "assistant", timestamp: 9999, usage: { input: 80, output: 30, cacheRead: 0 } } },
+        ctx,
+      );
+    }
+
+    // Now pause
+    await goalCommand.handler("pause", ctx);
+    ctx.ui.notify.mockClear();
+
+    // Try to resume — should fail due to exhausted budget
+    await goalCommand.handler("resume", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Cannot resume"),
+      "warning",
+    );
+  });
+
+  // 38. /goal command disabled when flag off
+  it("command handler rejects when goals flag disabled", async () => {
+    mockPi.getFlag.mockReturnValue(false);
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("some objective", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("disabled"),
+      "warning",
+    );
+  });
+
+  // 39. /goal command disabled when session not persisted
+  it("command handler rejects when session not persisted", async () => {
+    ctx.sessionManager.isPersisted.mockReturnValue(false);
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("some objective", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("persisted"),
+      "warning",
+    );
+  });
 });
