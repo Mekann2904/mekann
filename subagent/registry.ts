@@ -215,16 +215,14 @@ export class AgentRegistry {
   // ─── Mutations ───────────────────────────────────────────────
 
   private setStatusAndPublish(agentPath: string, newStatus: AgentStatus, updates?: Partial<AgentMetadata>): void {
-    const agent = this.agents.get(agentPath);
-    if (!agent) return;
+    const agent = this.agents.get(agentPath); if (!agent) return;
     const previousStatus = agent.status;
     Object.assign(agent, updates, { status: newStatus, updatedAt: Date.now() });
     this.publish({ type: "agent_status_changed", agentId: agent.agentId, agentPath: agent.agentPath, previousStatus, newStatus, timestamp: agent.updatedAt });
   }
 
   updateStatus(agentPath: string, newStatus: AgentStatus, extra?: Partial<Pick<AgentMetadata, "lastTaskMessage" | "timeoutDeadline">>): void {
-    const agent = this.agents.get(agentPath);
-    if (!agent) return;
+    const agent = this.agents.get(agentPath); if (!agent) return;
     if (extra?.lastTaskMessage !== undefined) agent.lastTaskMessage = extra.lastTaskMessage;
     if (extra?.timeoutDeadline !== undefined) agent.timeoutDeadline = extra.timeoutDeadline;
     if (agent.status !== newStatus) this.setStatusAndPublish(agentPath, newStatus);
