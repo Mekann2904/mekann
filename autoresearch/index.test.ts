@@ -425,6 +425,18 @@ describe("autoresearchExtension", () => {
 			expect(ctx.ui.setWidget).toHaveBeenCalledWith("autoresearch", undefined);
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
+
+		it("falls back to freshState when JSONL is a directory (EISDIR)", async () => {
+			const handler = pi.eventHandlers.get("session_start")!;
+			const testDir = "/tmp/test-ar-session-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+			// Create a directory named autoresearch.jsonl — readFileSync throws EISDIR
+			fs.mkdirSync(path.join(testDir, "autoresearch.jsonl"));
+			const ctx = createMockCtx({ cwd: testDir });
+			await handler({}, ctx);
+			expect(ctx.ui.setWidget).toHaveBeenCalledWith("autoresearch", undefined);
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
 	});
 
 	// ── /autoresearch on with autoresearch.md ────────────────────
@@ -1270,7 +1282,7 @@ describe("autoresearchExtension", () => {
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 
-		it("log discard in non-git dir: shows error", async () => {
+		it("log discard in non-git dir: shows no revert error", async () => {
 			const testDir = "/tmp/test-ar-nogit2-" + Date.now();
 			fs.mkdirSync(testDir, { recursive: true });
 
@@ -1298,6 +1310,49 @@ describe("autoresearchExtension", () => {
 			expect(result.content[0].text).toContain("[DISCARD]");
 			expect(result.content[0].text).toContain("[git]");
 
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
+		it("log keep with locked git index: shows commit error", async () => {
+			const testDir = "/tmp/test-ar-locked-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+
+			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
+			childProcess.execFileSync("git", ["init"], { cwd: testDir });
+			childProcess.execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: testDir });
+			childProcess.execFileSync("git", ["config", "user.name", "Test"], { cwd: testDir });
+			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir });
+			childProcess.execFileSync("git", ["commit", "-m", "init"], { cwd: testDir });
+
+			// Lock the git index to make git add fail
+			fs.writeFileSync(path.join(testDir, ".git", "index.lock"), "");
+
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await cmdHandler("on", ctx);
+
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			await initTool.execute(
+				"tc-init",
+				{ name: "test", metric_name: "ms" },
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
+			const result = await logTool.execute(
+				"tc-log-locked",
+				{ metric: 100, status: "keep", description: "locked index" },
+				undefined,
+				undefined,
+				ctx,
+			);
+			expect(result.content[0].text).toContain("[KEEP]");
+			expect(result.content[0].text).toContain("commit エラー");
+
+			// Cleanup: remove lock file
+			fs.unlinkSync(path.join(testDir, ".git", "index.lock"));
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 
