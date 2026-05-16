@@ -1,6 +1,31 @@
 # Autoresearch Ideas
 
-## Session Status: 2680 → 1075 (-59.9%), 54 experiments | Coverage: 99.14% avg stmts, 1117 tests
+## Session Status: 183 → 40 (-78.1%), 6 experiments | Coverage: 98.24% avg stmts, 1497 tests
+
+## Remaining 40 Uncovered Lines
+### goal/index.ts (~13 lines)
+- L331-335: update_goal "already complete" error (covered in tool.test.ts but coverage tool inconsistency)
+- L351-352: command handler disabled guard
+- L386,429,489,534,624: catch blocks String(e) path (non-Error thrown)
+- L403-407: resume budget exhausted
+- L562: handleSetObjective guard (store/runtime null)
+
+### autoresearch/index.ts (~13 lines)
+- L105: gitAutoRevert catch (requires actual git error)
+- L159-160: appendTextFragments content=string / messages array
+- L783,790-791: git revert error branches in log tool
+
+### autoresearch/runner.ts (~8 lines)
+- L167-168: child 'error' event (spawn failure before close)
+
+### Defensive / Unreachable by Design
+- goal/state.ts L240: fromEntries edge case
+- plan-mode/index.ts L131-132: fallback model path
+- sandbox/index.ts L115: yolo branch (yolo skips Case 4)
+- sandbox/index.ts L383-384: escalation rejection
+- sandbox/macSeatbelt.ts L275,289,332: defensive checks
+- subagent/render.ts L57: else-if false
+- subagent/registry.ts L171: duplicate recheck
 
 ## Completed
 - ✅ Dead code removal, deduplication, single-use inlining
