@@ -1,70 +1,77 @@
 # Goal Extension
 
-Persistent thread-local goals with idle continuation, token/time budget tracking, and plan-mode integration for the pi coding agent.
+pi coding agent 向けの、スレッドローカルな永続 goal 管理 extension。アイドル時の自動継続、トークン/時間予算の追跡、plan-mode 連携を提供します。
 
-## Features
+## 機能
 
-- **Thread-local goals** — One active goal per session, persisted in the session branch.
-- **Idle continuation** — When the agent finishes a turn and the goal is still active, automatically sends a continuation prompt to keep working.
-- **Token/time budgets** — Optional token budget with automatic `budget_limited` status clamping.
-- **Plan-mode integration** — Suppresses continuation while plan mode is active.
-- **System prompt injection** — Active goal context is injected into the system prompt at `before_agent_start`.
+- **スレッドローカルな goal** — セッションごとに1つのアクティブな goal を持ち、セッションブランチに永続化されます。
+- **アイドル時の自動継続** — agent が turn を終了しても goal がまだアクティブな場合、自動的に継続プロンプトを送信して作業を続けます。
+- **トークン/時間予算** — オプションのトークン予算を設定でき、予算到達時に自動的に `budget_limited` ステータスに遷移します。
+- **Plan-mode 連携** — plan mode 中は継続を抑制します。
+- **システムプロンプト注入** — `before_agent_start` でアクティブな goal のコンテキストをシステムプロンプトに注入します。
 
-## Commands
+## コマンド
 
-| Command | Description |
+| コマンド | 説明 |
 |---|---|
-| `/goal <objective>` | Set a new goal (replaces existing after confirmation) |
-| `/goal` | Show current goal status |
-| `/goal edit` | Edit the objective via an editor |
-| `/goal pause` | Pause the active goal |
-| `/goal resume` | Resume a paused goal |
-| `/goal clear` | Delete the goal |
-| `/goal budget <n\|none>` | Set or clear token budget |
+| `/goal <objective>` | 新しい goal を設定（既存がある場合は確認後置換） |
+| `/goal` | 現在の goal のステータスを表示 |
+| `/goal edit` | エディタで objective を編集 |
+| `/goal pause` | アクティブな goal を一時停止 |
+| `/goal resume` | 一時停止中の goal を再開 |
+| `/goal clear` | goal を削除 |
+| `/goal budget <n\|none>` | トークン予算を設定または解除 |
 
-### Budget in objective
+### goal 設定時の予算指定
 
-You can specify a token budget inline when setting a goal:
+goal 設定時にインラインでトークン予算を指定できます：
 
 ```
-/goal --budget 10000 Refactor the authentication module
-/goal Refactor the authentication module --budget 10000
+/goal --budget 10000 認証モジュールをリファクタリングする
+/goal 認証モジュールをリファクタリングする --budget 10000
 ```
 
-## Model Tools
+## モデルツール
 
-| Tool | Description |
+| ツール | 説明 |
 |---|---|
-| `get_goal` | Get the current goal status and remaining budget |
-| `create_goal` | Create a new goal (fails if one already exists) |
-| `update_goal` | Mark goal as `complete` (only status allowed) |
+| `get_goal` | 現在の goal のステータスと残り予算を取得 |
+| `create_goal` | 新しい goal を作成（既に存在する場合は失敗） |
+| `update_goal` | goal を `complete` にマーク（これ以外のステータス変更は不可） |
 
-## Continuation Logic
+## 自動継続の仕組み
 
-When the agent ends a turn and the goal is still active:
+agent が turn を終了した時点で goal がまだアクティブな場合：
 
-1. Checks: feature enabled, session persisted, not in plan mode, agent idle, no pending messages.
-2. **Continuation guard**: `continuation_count < max_continuations` (default max: 5).
-3. **Cooldown**: At least 2 seconds since the last continuation.
-4. Sends a follow-up continuation prompt to continue working.
-5. Increments `continuation_count` and updates `last_continued_at_ms`.
-6. When `max_continuations` is reached, the goal is automatically **paused** and the user is notified.
+1. 事前チェック：機能有効、セッション永続化済み、plan mode ではない、agent アイドル中、保留メッセージなし。
+2. **継続ガード**：`continuation_count < max_continuations`（デフォルト上限：5回）。
+3. **クールダウン**：前回の継続から最低2秒経過していること。
+4. フォローアップ継続プロンプトを送信して作業を継続。
+5. `continuation_count` をインクリメントし、`last_continued_at_ms` を更新。
+6. `max_continuations` に到達すると、goal は自動的に **一時停止** され、ユーザーに通知されます。
 
-## Architecture
+## アーキテクチャ
 
 ```
-state.ts      — Goal data model, GoalStore (pure state, no pi API)
-prompts.ts    — Prompt templates (escaping, continuation, budget, context)
-render.ts     — UI rendering (widget, summary, no-goal message)
-runtime.ts    — Lifecycle management (accounting, continuation, budget steering)
-index.ts      — Extension entry point (commands, tools, event handlers)
+state.ts      — goal データモデル、GoalStore（純粋な状態管理、pi API 非依存）
+prompts.ts    — プロンプトテンプレート（escaping、継続、予算、コンテキスト）
+render.ts     — UI レンダリング（ウィジェット、サマリー、no-goal メッセージ）
+runtime.ts    — ライフサイクル管理（usage 計上、継続、予算ステアリング）
+index.ts      — extension エントリポイント（コマンド、ツール、イベントハンドラ）
 ```
 
-## Status Values
+## ステータス値
 
-| Status | Meaning |
+| ステータス | 意味 |
 |---|---|
-| `active` | Goal is in progress |
-| `paused` | Goal is paused (user or max continuations reached) |
-| `budget_limited` | Token budget exhausted |
-| `complete` | Objective achieved |
+| `active` | goal が進行中 |
+| `paused` | goal が一時停止中（ユーザー操作または継続上限到達） |
+| `budget_limited` | トークン予算を使い切った |
+| `complete` | objective が達成された |
+
+## 制限事項
+
+- トークン計上は Pi API の usage メタデータに依存します。正確なトークン使用量が取得できない場合は 0 または best-effort になります。
+- 自動継続は `max_continuations` とクールダウンによって制限されます。
+- plan-mode 中は継続しません。
+- final usage の正確な計上は、lifecycle event の到着順序に依存するため best-effort です。
