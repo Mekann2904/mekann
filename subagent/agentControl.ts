@@ -12,7 +12,7 @@ import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core"
 import { ROOT_PATH, resolveTaskPath } from "./types.js";
 import { AgentRegistry } from "./registry.js";
 import { Mailbox } from "./mailbox.js";
-import { extractForkContext, buildContextPreamble } from "./contextFork.js";
+import { extractForkContext, buildContextPreamble, extractTextFromContent } from "./contextFork.js";
 import type {
   AgentMetadata,
   AgentStatus,
@@ -485,4 +485,3 @@ function clampTimeout(ms: number): number {
   return Math.max(MIN_WAIT_TIMEOUT_MS, Math.min(ms, MAX_WAIT_TIMEOUT_MS));
 }
 
-import { extractTextFromContent } from "./contextFork.js";
