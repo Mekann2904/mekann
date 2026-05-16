@@ -138,5 +138,13 @@ export function renderGoalContext(goal: Goal): string {
     `Time used: ${formatDuration(goal.time_used_seconds)}`,
     `Continuation: ${goal.continuation_count} / ${goal.max_continuations}`,
   );
+  lines.push(
+    "",
+    "Instructions:",
+    '- Continue to respect this active goal while answering the user.',
+    '- If the goal is fully achieved and no required work remains, call update_goal with status="complete".',
+    '- Do not mark the goal complete merely because the budget is low or work is paused.',
+    '- Do not pause, resume, clear, or budget-limit the goal through model tools.',
+  );
   return lines.join("\n");
 }

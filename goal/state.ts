@@ -96,6 +96,28 @@ export function validateTokenBudget(budget: unknown): number | null {
 }
 
 // ---------------------------------------------------------------------------
+// Normalization
+// ---------------------------------------------------------------------------
+
+/** Normalize a goal to ensure all fields have valid defaults. */
+function normalizeGoal(goal: Goal | Record<string, unknown>): Goal {
+  return {
+    ...goal,
+    continuation_count: Number.isInteger((goal as any).continuation_count)
+      ? (goal as any).continuation_count
+      : 0,
+    max_continuations:
+      Number.isInteger((goal as any).max_continuations) && (goal as any).max_continuations > 0
+        ? (goal as any).max_continuations
+        : DEFAULT_MAX_CONTINUATIONS,
+    last_continued_at_ms:
+      typeof (goal as any).last_continued_at_ms === "number"
+        ? (goal as any).last_continued_at_ms
+        : null,
+  } as Goal;
+}
+
+// ---------------------------------------------------------------------------
 // GoalStore
 // ---------------------------------------------------------------------------
 
@@ -122,13 +144,13 @@ export class GoalStore {
     for (const entry of entries) {
       switch (entry.kind) {
         case "set":
-          store.goal = { ...entry.goal };
+          store.goal = normalizeGoal(entry.goal);
           break;
         case "clear":
           store.goal = null;
           break;
         case "usage":
-          store.goal = { ...entry.goal };
+          store.goal = normalizeGoal(entry.goal);
           break;
       }
     }

@@ -692,3 +692,63 @@ describe("continuation fields", () => {
 		expect(updated.last_continued_at_ms).toBe(now);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// fromEntries normalization
+// ---------------------------------------------------------------------------
+
+describe("fromEntries normalization", () => {
+	it("normalizes old goal entries missing continuation fields", () => {
+		const oldGoal: any = {
+			thread_id: "t1",
+			goal_id: "g1",
+			objective: "Test",
+			status: "active",
+			token_budget: 1000,
+			tokens_used: 50,
+			time_used_seconds: 5,
+			created_at_ms: 1000,
+			updated_at_ms: 2000,
+			// continuation fields missing
+		};
+
+		const entries: GoalStateEntry[] = [
+			{ kind: "set", goal: oldGoal, source: "user" },
+		];
+
+		const persisted: GoalStateEntry[] = [];
+		const store = GoalStore.fromEntries(entries, (e) => persisted.push(e));
+
+		const got = store.getGoal()!;
+		expect(got.continuation_count).toBe(0);
+		expect(got.max_continuations).toBe(5);
+		expect(got.last_continued_at_ms).toBeNull();
+	});
+
+	it("normalizes invalid max_continuations to default", () => {
+		const goalWithInvalid: any = {
+			thread_id: "t1",
+			goal_id: "g1",
+			objective: "Test",
+			status: "active",
+			token_budget: null,
+			tokens_used: 0,
+			time_used_seconds: 0,
+			created_at_ms: 1000,
+			updated_at_ms: 1000,
+			continuation_count: 0,
+			max_continuations: -1,
+			last_continued_at_ms: null,
+		};
+
+		const entries: GoalStateEntry[] = [
+			{ kind: "set", goal: goalWithInvalid, source: "user" },
+		];
+
+		const persisted: GoalStateEntry[] = [];
+		const store = GoalStore.fromEntries(entries, (e) => persisted.push(e));
+
+		const got = store.getGoal()!;
+		expect(got.max_continuations).toBe(5);
+	});
+});

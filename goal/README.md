@@ -46,7 +46,7 @@ When the agent ends a turn and the goal is still active:
 1. Checks: feature enabled, session persisted, not in plan mode, agent idle, no pending messages.
 2. **Continuation guard**: `continuation_count < max_continuations` (default max: 5).
 3. **Cooldown**: At least 2 seconds since the last continuation.
-4. Sends a hidden follow-up prompt to continue working.
+4. Sends a follow-up continuation prompt to continue working.
 5. Increments `continuation_count` and updates `last_continued_at_ms`.
 6. When `max_continuations` is reached, the goal is automatically **paused** and the user is notified.
 
