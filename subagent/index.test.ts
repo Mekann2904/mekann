@@ -4771,3 +4771,29 @@ describe("registry: unsubscribe idempotent", () => {
 //   const statusEvents = events.filter(e => e.type === "agent_status_changed" || e.type === "agent_final_message");
 //   for (const evt of statusEvents) { if (status_changed) ... else if (final_message) ... }
 // Since all events pass the filter, the else-if false branch never fires.
+
+// ─── contextFork.ts line 30: if (text) false branch ────────────────
+
+describe("extractForkContext: skips messages with non-text content", () => {
+	it("skips user message with image-only content (text is null)", () => {
+		const msgs = [
+			{ role: "user", content: [{ type: "image", data: "base64..." }] },
+			{ role: "assistant", content: [{ type: "text", text: "I see the image" }] },
+		];
+		const result = extractForkContext(msgs as any, "all");
+		// User message has null text → skipped, only assistant included
+		expect(result).toHaveLength(1);
+		expect(result[0].role).toBe("assistant");
+		expect(result[0].text).toBe("I see the image");
+	});
+
+	it("skips assistant message with no text content", () => {
+		const msgs = [
+			{ role: "user", content: [{ type: "text", text: "Hello" }] },
+			{ role: "assistant", content: [{ type: "image", data: "base64..." }] },
+		];
+		const result = extractForkContext(msgs as any, "all");
+		expect(result).toHaveLength(1);
+		expect(result[0].role).toBe("user");
+	});
+});

@@ -1,6 +1,6 @@
 # Autoresearch Ideas
 
-## Session Status: 2680 → 1075 (-59.9%), 54 experiments
+## Session Status: 2680 → 1075 (-59.9%), 54 experiments | Coverage: 99.14% avg stmts, 1117 tests
 
 ## Completed
 - ✅ Dead code removal, deduplication, single-use inlining
@@ -49,15 +49,26 @@ that represent genuine different code paths. The `runSandboxedShellMac` function
 ### Before → After
 | Module | Stmts Before | Stmts After | Branch Before | Branch After |
 |--------|-------------|------------|---------------|-------------|
-| plan-mode | 97.66% | 98.44% | 94.01% | 96.40% |
+| plan-mode | 97.66% | 98.83% | 94.01% | 97% |
 | sandbox | 94.27% | 98.3% | 86.38% | 96.1% |
-| subagent | 67.85% | 99.43% | 58.98% | 93.41% |
+| subagent | 67.85% | 99.43% | 58.98% | 93.71% |
 | zip-repo | 100% | 100% | 100% | 100% |
-| **Total tests** | 890 | 1114 | | |
-| **Avg stmt coverage** | ~90% | **99.04%** | | |
+| **Total tests** | 890 | 1117 | | |
+| **Avg stmt coverage** | ~90% | **99.14%** | | |
+| **Avg branch coverage** | ~85% | **96.7%** | | |
 
 ### Identified Dead Code (defensive, unreachable by design)
 - sandbox/index.ts:115 — `buildCurrentPolicy()` yolo branch (yolo skips Case 4)
 - sandbox/index.ts:383-384 — escalation rejection (`MODE_RANK[read_only]=0 > any` is always false)
+- sandbox/macSeatbelt.ts:332 — `keepBytes > 0` false branch (mathematically always true when reached)
+- sandbox/macSeatbelt.ts:123 — `!isAbsolute(rel)` false (cross-volume relative path)
+- sandbox/macSeatbelt.ts:275,289 — `proc.pid` falsy / `resolved` already true in waitForProcessDeath
 - subagent/registry.ts:171 — duplicate recheck (single-threaded, checked at reservation time)
-- subagent/contextFork.ts:30 — null text skip in fork (already tested but v8 branch reporting)
+- subagent/contextFork.ts:30 — null text skip in fork
+- subagent/agentControl.ts:98,162,219,256 — `callerPath !== ROOT_PATH` (resolveCallerPath always returns ROOT_PATH)
+- subagent/agentControl.ts:388 — `"seq" in e` false (appendEvent always sets seq)
+- subagent/agentControl.ts:437,466 — agent closed/removed during close
+- subagent/render.ts:57 — else-if false (filter guarantees only status_changed/final_message)
+- subagent/index.ts:265 — wait_agent formatting branches (architectural limitation)
+- subagent/index.ts:349 — String(err) path (close() always throws Error)
+- plan-mode/index.ts:131-132 — fallback model path (enterPlanMode sets mainRef === savedMainModel)

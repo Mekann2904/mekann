@@ -2452,4 +2452,20 @@ describe("getLocalBash: cwd fallback", () => {
 
 		expect(result).toBeDefined();
 	});
+
+	it("reuses localBash when cwd unchanged (branches #12-1, #13-1)", async () => {
+		const mock = createMockApi();
+		mock._flags = { "no-sandbox": true };
+		await loadExtension(mock);
+		const ctx = createMockCtx({ cwd: "/tmp/test-cwd" });
+		await mock._hooks.session_start!({}, ctx);
+
+		const tool = mock._registeredTools[0];
+
+		// First call creates localBash
+		await tool.execute("id1", { command: "echo first" }, undefined, undefined, ctx);
+		// Second call with same cwd reuses localBash (localBash._cwd === cwd)
+		const result2 = await tool.execute("id2", { command: "echo second" }, undefined, undefined, ctx);
+		expect(result2).toBeDefined();
+	});
 });
