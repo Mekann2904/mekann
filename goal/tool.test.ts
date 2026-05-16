@@ -315,4 +315,83 @@ describe("goal tools", () => {
     expect(result.details.goal.continuation_count).toBe(0);
     expect(result.details.goal.max_continuations).toBe(5);
   });
+
+  // 9. get_goal returns budget info when budget is null (no budget set)
+  it("get_goal returns usage without budget info when no budget set", async () => {
+    const createTool = getTool(mockPi, "create_goal");
+    await createTool.execute("tc-1", { objective: "No budget goal" }, undefined, undefined, ctx);
+
+    const goalTool = getTool(mockPi, "get_goal");
+    const result = await goalTool.execute("tc-2", {}, undefined, undefined, ctx);
+
+    expect(result.content[0].text).toContain("No budget goal");
+    expect(result.content[0].text).not.toContain("Token budget:");
+    expect(result.content[0].text).not.toContain("Remaining tokens:");
+    expect(result.content[0].text).toContain("Tokens used: 0");
+    expect(result.details.remaining_tokens).toBeNull();
+  });
+
+  // 10. update_goal returns error when no goal exists
+  it("update_goal returns error when no goal exists", async () => {
+    const updateTool = getTool(mockPi, "update_goal");
+    const result = await updateTool.execute("tc-1", { status: "complete" }, undefined, undefined, ctx);
+
+    expect(result.content[0].text).toContain("[ERROR]");
+    expect(result.content[0].text).toContain("No goal to update");
+  });
+
+  // 11. update_goal with expected_goal_id that matches
+  it("update_goal succeeds with matching expected_goal_id", async () => {
+    const createTool = getTool(mockPi, "create_goal");
+    const created = await createTool.execute("tc-1", { objective: "Concurrency test" }, undefined, undefined, ctx);
+    const goalId = created.details.goal.goal_id;
+
+    const updateTool = getTool(mockPi, "update_goal");
+    const result = await updateTool.execute(
+      "tc-2",
+      { status: "complete", expected_goal_id: goalId },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(result.content[0].text).toContain("Goal marked as complete");
+  });
+
+  // 12. create_goal when disabled returns disabled response
+  it("tools return disabled when goals flag is false", async () => {
+    // Use lifecycle-style mock that records handlers
+    const tools: Array<{ name: string; execute: Function }> = [];
+    const flagPi = {
+      tools,
+      appendEntry: vi.fn(),
+      getFlag: vi.fn(() => false),
+      events: { emit: vi.fn(), on: vi.fn() },
+      registerTool: vi.fn((def: any) => tools.push(def)),
+      registerCommand: vi.fn(),
+      registerFlag: vi.fn(),
+      on: vi.fn(),
+      sendUserMessage: vi.fn(),
+    };
+    goalExtension(flagPi as any);
+
+    // session_start handler was registered but with disabled flag,
+    // store/runtime will be null. isEnabled also checks the flag.
+    const sessionStartHandler = flagPi.on.mock.calls.find(
+      (call: any[]) => call[0] === "session_start",
+    )![1] as Function;
+    const flagCtx = createMockCtx();
+    await sessionStartHandler({}, flagCtx);
+
+    const createTool = tools.find((t) => t.name === "create_goal")!;
+    const result = await createTool.execute("tc-1", { objective: "Should fail" }, undefined, undefined, flagCtx);
+    expect(result.content[0].text).toContain("disabled");
+  });
+
+  // 13. get_goal returns no active goal when none set
+  it("get_goal returns 'No active goal' when none set", async () => {
+    const goalTool = getTool(mockPi, "get_goal");
+    const result = await goalTool.execute("tc-1", {}, undefined, undefined, ctx);
+    expect(result.content[0].text).toContain("No active goal");
+  });
 });
