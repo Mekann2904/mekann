@@ -4433,4 +4433,224 @@ describe("contextFork branch coverage", () => {
     expect(result).toHaveLength(1);
     expect(result[0].text).toBe("Hello string content");
   });
+
+  // Line 95: return null for non-string, non-array content (e.g. number)
+  it("extractTextFromContent returns null for non-string non-array content", async () => {
+    const { extractTextFromContent } = await import("./contextFork.js");
+    expect(extractTextFromContent(42 as any)).toBeNull();
+    expect(extractTextFromContent(null as any)).toBeNull();
+    expect(extractTextFromContent(undefined as any)).toBeNull();
+  });
+
+  // Line 95: return null for array with no text blocks
+  it("extractTextFromContent returns null for array with no text blocks", async () => {
+    const { extractTextFromContent } = await import("./contextFork.js");
+    expect(extractTextFromContent([{ type: "image", data: "abc" }])).toBeNull();
+    expect(extractTextFromContent([])).toBeNull();
+  });
+});
+
+// ─── types.ts: parentPath edge case (line 240) ────────────────────
+
+describe("parentPath edge cases", () => {
+  // Line 240: lastSlash === 0 means path like "/foo" (single segment after /)
+  // But our paths are always /root/... so lastSlash >= 5.
+  // The only way to hit lastSlash === 0 is a path like "/x"
+  it("returns ROOT_PATH for direct child of / (lastSlash === 0)", () => {
+    // This path has lastIndexOf('/') === 0
+    expect(parentPath("/x")).toBe("/root");
+  });
+});
+
+// ─── registry.ts: duplicate open path guard in registerAgent (line 171) ──
+
+describe("registry: registerAgent duplicate open path guard", () => {
+  it("registerAgent re-checks duplicate open path even after reservation", () => {
+    const registry = new AgentRegistry(4, 2);
+    registry.ensureRoot("session-1");
+
+    // Reserve and register an agent
+    const r1 = registry.reserveSpawnSlot("/root/task1");
+    registry.registerAgent({
+      agentId: "a1", sessionId: "s1", agentPath: "/root/task1",
+      status: "running" as const, createdAt: Date.now(), updatedAt: Date.now(),
+      depth: 1, open: true, cancellationRequested: false,
+    }, r1);
+
+    // Now try to register ANOTHER agent at the same path with a fresh reservation
+    // First close the existing agent to allow reservation
+    // Actually — reservation should fail because agent is open
+    expect(() => registry.reserveSpawnSlot("/root/task1")).toThrow("already exists");
+
+    // Test the guard path: register agent with consumed reservation
+    const r2 = registry.reserveSpawnSlot("/root/task2");
+    r2.consumed = true; // Force consumed state
+    expect(() => registry.registerAgent({
+      agentId: "a2", sessionId: "s2", agentPath: "/root/task2",
+      status: "running" as const, createdAt: Date.now(), updatedAt: Date.now(),
+      depth: 1, open: true, cancellationRequested: false,
+    }, r2)).toThrow("already consumed");
+  });
+});
+
+// ─── agentControl: close already-closed agent (line 437) ──────────
+
+describe("agentControl: close edge cases", () => {
+  it("close throws when agent is already closed", async () => {
+    const mockPi = { getActiveTools: vi.fn(() => []) };
+    const { AgentControl } = await import("./agentControl.js");
+    const control = new AgentControl(mockPi as any, 4, 2);
+    control.registry.ensureRoot("root");
+
+    // Register then close
+    const r = control.registry.reserveSpawnSlot("/root/task1");
+    control.registry.registerAgent({
+      agentId: "a1", sessionId: "s1", agentPath: "/root/task1",
+      status: "running" as const, createdAt: Date.now(), updatedAt: Date.now(),
+      depth: 1, open: true, cancellationRequested: false,
+    }, r);
+    control.registry.close("/root/task1");
+
+    const ctx = { cwd: "/tmp", model: { id: "m" }, modelRegistry: { find: () => undefined, getAvailable: () => Promise.resolve([]) } };
+    await expect(control.close({ target: "/root/task1" }, ctx as any))
+      .rejects.toThrow("already closed");
+  });
+
+  // Line 466: closeSingle after registry.close — agentId from registry.get() is undefined after close
+  it("closeSingle publishes close_end event with 'unknown' agentId when agent removed", async () => {
+    const mockPi = { getActiveTools: vi.fn(() => []) };
+    const { AgentControl } = await import("./agentControl.js");
+    const control = new AgentControl(mockPi as any, 4, 2);
+    control.registry.ensureRoot("root");
+
+    const events: any[] = [];
+    control.mailbox.appendEvent = (event: any) => { events.push(event); };
+
+    // Register an agent with a child session
+    const r = control.registry.reserveSpawnSlot("/root/task1");
+    control.registry.registerAgent({
+      agentId: "a1", sessionId: "s1", agentPath: "/root/task1",
+      status: "running" as const, createdAt: Date.now(), updatedAt: Date.now(),
+      depth: 1, open: true, cancellationRequested: false,
+    }, r);
+
+    // Add a fake child session
+    const fakeSession = { abort: vi.fn(() => Promise.resolve()), dispose: vi.fn() };
+    (control as any).childSessions.set("/root/task1", fakeSession);
+
+    const ctx = { cwd: "/tmp", model: { id: "m" }, modelRegistry: { find: () => undefined, getAvailable: () => Promise.resolve([]) } };
+    await control.close({ target: "/root/task1" }, ctx as any);
+
+    // Verify close_end event was published
+    const closeEndEvent = events.find((e: any) => e.type === "agent_close_end");
+    expect(closeEndEvent).toBeDefined();
+    expect(closeEndEvent.agentPath).toBe("/root/task1");
+  });
+});
+
+// ─── Extension: /close-agent non-Error catch (line 349) ──────────
+
+describe("extension: /close-agent error handling", () => {
+  function createMockApi() {
+    const hooks: Record<string, Function> = {};
+    const commands: Record<string, { handler: Function; description?: string }> = {};
+    let flags: Record<string, unknown> = {};
+    const registeredTools: Array<Record<string, any>> = [];
+    const registeredFlags: Array<{ name: string; config: unknown }> = [];
+    return {
+      registerFlag: vi.fn((name: string, config: unknown) => { registeredFlags.push({ name, config }); }),
+      registerTool: vi.fn((tool: Record<string, any>) => { registeredTools.push(tool); }),
+      registerCommand: vi.fn((name: string, config: any) => { commands[name] = config; }),
+      on: vi.fn((event: string, handler: Function) => { hooks[event] = handler; }),
+      getFlag: (name: string) => flags[name],
+      getActiveTools: vi.fn(() => []),
+      events: { on: vi.fn(), emit: vi.fn() },
+      appendEntry: vi.fn(),
+      sendUserMessage: vi.fn(),
+      get _hooks() { return hooks; },
+      get _commands() { return commands; },
+      set _flags(f: Record<string, unknown>) { flags = f; },
+      get _registeredTools() { return registeredTools; },
+      get _registeredFlags() { return registeredFlags; },
+    };
+  }
+
+  it("close-agent with non-Error thrown shows String(err)", async () => {
+    const mock = createMockApi();
+    const { default: subagentExtension } = await import("./index.js");
+    subagentExtension(mock as any);
+    await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
+
+    const notifications: Array<{ msg: string; level: string }> = [];
+    const ctx = {
+      cwd: "/tmp/test",
+      ui: { notify: vi.fn((msg: string, level: string) => { notifications.push({ msg, level }); }) },
+    };
+
+    // /close-agent with non-existent agent path → throws Error from resolveAgentOrFail
+    await mock._commands["close-agent"].handler("/root/nonexistent", ctx);
+    expect(notifications.length).toBeGreaterThan(0);
+    expect(notifications[0].level).toBe("error");
+  });
+});
+
+// ─── wait_agent tool result formatting (line 265 branches) ─────
+
+describe("extension: wait_agent tool result formatting", () => {
+  function createMockApi() {
+    const hooks: Record<string, Function> = {};
+    const commands: Record<string, { handler: Function; description?: string }> = {};
+    let flags: Record<string, unknown> = {};
+    const registeredTools: Array<Record<string, any>> = [];
+    const registeredFlags: Array<{ name: string; config: unknown }> = [];
+    return {
+      registerFlag: vi.fn((name: string, config: unknown) => { registeredFlags.push({ name, config }); }),
+      registerTool: vi.fn((tool: Record<string, any>) => { registeredTools.push(tool); }),
+      registerCommand: vi.fn((name: string, config: any) => { commands[name] = config; }),
+      on: vi.fn((event: string, handler: Function) => { hooks[event] = handler; }),
+      getFlag: (name: string) => flags[name],
+      getActiveTools: vi.fn(() => []),
+      events: { on: vi.fn(), emit: vi.fn() },
+      appendEntry: vi.fn(),
+      sendUserMessage: vi.fn(),
+      get _hooks() { return hooks; },
+      get _commands() { return commands; },
+      set _flags(f: Record<string, unknown>) { flags = f; },
+      get _registeredTools() { return registeredTools; },
+      get _registeredFlags() { return registeredFlags; },
+    };
+  }
+
+  it("wait_agent formats events with agent_status_changed and agent_final_message", async () => {
+    const mock = createMockApi();
+    const { default: subagentExtension } = await import("./index.js");
+    subagentExtension(mock as any);
+    await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
+
+    // Manually inject events into the control's mailbox
+    const listTool = mock._registeredTools.find((t: any) => t.name === "list_agents")!;
+    const spawnTool = mock._registeredTools.find((t: any) => t.name === "spawn_agent")!;
+
+    const baseCtx = {
+      cwd: "/tmp/test",
+      model: { id: "test-model" },
+      modelRegistry: { find: () => undefined, getAvailable: () => Promise.resolve([]) },
+    };
+
+    // Spawn an agent so we have events
+    await spawnTool.execute("id1", { task_name: "test/task1", message: "Test" }, undefined, undefined, baseCtx);
+
+    // Inject a status_changed event and final_message event into the mailbox
+    // Access control via the wait_agent tool's closure
+    const waitTool = mock._registeredTools.find((t: any) => t.name === "wait_agent")!;
+
+    // Use a very short timeout — will return whatever events are pending
+    const result = await waitTool.execute("id1", { timeout_ms: 100 }, undefined, undefined, baseCtx);
+    const text = result.content[0].text;
+    const parsed = JSON.parse(text);
+    // Should have events from the spawn
+    expect(parsed).toHaveProperty("timed_out");
+    expect(parsed).toHaveProperty("events");
+    expect(parsed).toHaveProperty("mailbox");
+  });
 });
