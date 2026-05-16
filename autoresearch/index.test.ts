@@ -102,7 +102,7 @@ describe("autoresearchExtension", () => {
 		expect(pi.registerCommand).toHaveBeenCalledWith(
 			"autoresearch",
 			expect.objectContaining({
-				description: expect.stringContaining("自動研究"),
+				description: expect.stringContaining("autoresearch"),
 			}),
 		);
 	});
@@ -192,7 +192,7 @@ describe("autoresearchExtension", () => {
 			const ctx = createMockCtx();
 			await handler("status", ctx);
 			expect(ctx.ui.notify).toHaveBeenCalledWith(
-				expect.stringContaining("自動研究"),
+				expect.stringContaining("autoresearch"),
 				"info",
 			);
 		});
@@ -202,7 +202,7 @@ describe("autoresearchExtension", () => {
 			const ctx = createMockCtx();
 			await handler("", ctx);
 			expect(ctx.ui.notify).toHaveBeenCalledWith(
-				expect.stringContaining("無効"),
+				expect.stringContaining("autoresearch"),
 				"info",
 			);
 		});
@@ -230,7 +230,7 @@ describe("autoresearchExtension", () => {
 				{ systemPrompt: "original" },
 				createMockCtx(),
 			);
-			expect(result.systemPrompt).toContain("自動研究モード");
+			expect(result.systemPrompt).toContain("autoresearch モード");
 			expect(result.systemPrompt).toContain("autoresearch_init");
 			expect(result.systemPrompt).toContain("autoresearch_run");
 			expect(result.systemPrompt).toContain("autoresearch_log");
