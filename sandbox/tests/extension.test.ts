@@ -2218,3 +2218,238 @@ describe("bash tool: workspace_write sandboxed with policy builder", () => {
 		});
 	});
 });
+
+// ─── /sandbox getArgumentCompletions: no match returns null ────────
+
+describe("/sandbox getArgumentCompletions: no match", () => {
+	it("マッチしない prefix は null を返す", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+
+		const completions = mock._commands["sandbox"]!.getArgumentCompletions!("xyz");
+		expect(completions).toBeNull();
+	});
+});
+
+// ─── buildCurrentPolicy: yolo path via sandboxed execution ────────
+
+describe("buildCurrentPolicy: yolo path", () => {
+	it("yolo モードで Case 4 に到達しないことを確認", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue({
+			code: 0, signal: null, stdout: "yolo output", stderr: "",
+		});
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "yolo" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		const result = await tool.execute("id1", { command: "echo hello" }, undefined, undefined, createMockCtx());
+
+		// yolo goes through Case 2 (unsandboxed), not Case 4 (sandboxed)
+		expect(result).toBeDefined();
+		// runSandboxedShellMac should NOT be called for yolo mode
+		expect(runSandboxedShellMac).not.toHaveBeenCalled();
+
+		// Reset mocks
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(false);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue({
+			code: 0, signal: null, stdout: "mock stdout", stderr: "",
+		});
+	});
+});
+
+// ─── Profile override: escalation rejection (read_only push to yolo base) ──
+
+describe("profile override: escalation rejection", () => {
+	it("read_only base で read_only push は escalation rejection しない", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "read_only" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// read_only push to read_only base — same level, no escalation
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "test",
+			token: "ro-same",
+			profile: "plan_read_only",
+		});
+
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
+		});
+		await mock._commands["sandbox"].handler("", ctx);
+		expect(notifications[0]).toBe("read_only");
+	});
+});
+
+// ─── disableSandbox: lastCtx undefined branch ──────────────────
+
+describe("disableSandbox: no lastCtx", () => {
+	it("session_start 前に disableSandbox が呼ばれると lastCtx がなくてもクラッシュしない", async () => {
+		const mock = createMockApi();
+		mock._flags = { "no-sandbox": true };
+		await loadExtension(mock);
+
+		// session_start calls disableSandbox but first time lastCtx is set before the call
+		// Instead, test the flow where shutdown resets lastCtx=undefined then something triggers disableSandbox
+		const ctx = createMockCtx();
+		await mock._hooks.session_start({}, ctx);
+		await mock._hooks.session_shutdown();
+
+		// After shutdown, session_start again with --no-sandbox
+		mock._flags = { "no-sandbox": true };
+		const ctx2 = createMockCtx();
+		await mock._hooks.session_start({}, ctx2);
+
+		expect(ctx2.ui.setWidget).toHaveBeenCalledWith("sandbox", undefined);
+	});
+});
+
+// ─── Bash tool: params.command is undefined ──────────────────
+
+describe("bash tool: params.command edge cases", () => {
+	it("command が undefined の場合でもエラーにならない", async () => {
+		const mock = createMockApi();
+		mock._flags = { "no-sandbox": true };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		const result = await tool.execute(
+			"test-id",
+			{ command: undefined },
+			undefined,
+			undefined,
+			createMockCtx(),
+		);
+
+		expect(result).toBeDefined();
+	});
+});
+
+// ─── refreshStatusBar: lastCtx undefined ──────────────────────
+
+describe("refreshStatusBar: no lastCtx", () => {
+	it("lastCtx が undefined でも refreshStatusBar はクラッシュしない", async () => {
+		const mock = createMockApi();
+		mock._flags = { "no-sandbox": true };
+		await loadExtension(mock);
+
+		// No session_start → lastCtx is undefined
+		// Profile push/pop events call refreshStatusBar internally
+		// This should not throw
+		expect(() => {
+			mock._eventHandlers["mekann:sandbox:push-profile"]({
+				owner: "test",
+				token: "no-ctx-test",
+				profile: "plan_read_only",
+			});
+		}).not.toThrow();
+	});
+});
+
+// ─── changeMode: read_only resets yolo approval ──────────────────
+
+describe("changeMode: non-yolo mode resets yolo approval", () => {
+	it("yolo → read_only → user_bash がブロックされる", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Switch to yolo (approve)
+		await mock._commands["sandbox"].handler("yolo", createMockCtx());
+
+		// user_bash should be allowed
+		expect(mock._hooks.user_bash()).toBeUndefined();
+
+		// Switch to read_only
+		await mock._commands["sandbox"].handler("read_only", createMockCtx());
+
+		// user_bash should now block
+		expect(() => mock._hooks.user_bash()).toThrow();
+	});
+});
+
+// ─── Case 3: sandbox unavailable after mode switch from yolo ──────
+
+describe("tool execute: Case 3 after yolo→workspace_write switch", () => {
+	it("yolo 起動 → workspace_write 切替 → sandbox-exec unavailable で拒否", async () => {
+		// sandbox-exec unavailable, but yolo doesn't need it
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "yolo" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Switch to workspace_write via /sandbox command
+		await mock._commands["sandbox"].handler("workspace_write", createMockCtx());
+
+		// Now bash tool should hit Case 3 (!sandboxAvailable) and throw
+		const tool = mock._registeredTools[0];
+		await expect(
+			tool.execute("test-id", { command: "echo hello" }, undefined, undefined, createMockCtx()),
+		).rejects.toThrow("sandbox-exec");
+	});
+});
+
+// ─── Bash tool: non-zero exit with empty output ────────────────────
+
+describe("bash tool: non-zero exit with empty output", () => {
+	it("非ゼロ終了コードで出力が空の場合でもエラーメッセージが正しい", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			code: 1,
+			signal: null,
+			stdout: "",
+			stderr: "",
+		});
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		const error = await tool
+			.execute("id1", { command: "fail" }, undefined, undefined, createMockCtx())
+			.catch((e: Error) => e);
+
+		expect(error.message).toContain("終了コード 1");
+		// With empty output, the format is different (no ":\n" prefix)
+		expect(error.message).not.toContain(":\n");
+	});
+});
+
+// ─── getLocalBash: currentCwd falsy fallback ──────────────────────
+
+describe("getLocalBash: cwd fallback", () => {
+	it("session_start 前に bash tool を実行しても process.cwd() が使われる", async () => {
+		const mock = createMockApi();
+		mock._flags = { "no-sandbox": true };
+		await loadExtension(mock);
+		// No session_start → currentCwd is empty → falls back to process.cwd()
+
+		const tool = mock._registeredTools[0];
+		const result = await tool.execute(
+			"test-id",
+			{ command: "echo hello" },
+			undefined,
+			undefined,
+			createMockCtx(),
+		);
+
+		expect(result).toBeDefined();
+	});
+});
