@@ -395,8 +395,7 @@ export class AgentControl {
       throw new Error("Cannot close the root agent.");
     }
 
-    const agent = this.registry.get(targetPath);
-    if (!agent?.open) throw new Error(`Agent at ${targetPath} is already closed (status: ${agent?.status ?? "unknown"}).`);
+    const agent = this.registry.get(targetPath); if (!agent?.open) throw new Error(`Agent at ${targetPath} is already closed (status: ${agent?.status ?? "unknown"}).`);
 
     // Close descendants first (deepest first)
     const descendants = this.registry.getOpenDescendants(targetPath);
