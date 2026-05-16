@@ -10,12 +10,12 @@ import type { ExperimentState } from "./state.js";
 
 /** 方向の日本語ラベル。 */
 export function directionLabel(direction: "lower" | "higher"): string {
-	return direction === "lower" ? "低い方が良い ↓" : "高い方が良い ↑";
+	return direction === "lower" ? "低い方が良い (min)" : "高い方が良い (max)";
 }
 
 /** Widget 用の矢印記号。 */
 export function directionArrow(direction: "lower" | "higher"): string {
-	return direction === "lower" ? "↓" : "↑";
+	return direction === "lower" ? "(min)" : "(max)";
 }
 
 // ---------------------------------------------------------------------------
@@ -36,12 +36,12 @@ export function renderWidget(
 	// 実行中
 	if (runningInfo) {
 		const elapsed = ((Date.now() - runningInfo.startedAt) / 1000).toFixed(1);
-		return [`🔬 自動研究: 実験実行中 ${elapsed}秒 / ${runningInfo.command}`];
+		return [`autoresearch: 実験実行中 ${elapsed}秒 / ${runningInfo.command}`];
 	}
 
 	// 結果なし（初期化直後）
 	if (state.runCount === 0) {
-		return ["🔬 自動研究: 初期化済み / ベースライン測定待ち"];
+		return ["autoresearch: 初期化済み / ベースライン測定待ち"];
 	}
 
 	// 待機中
@@ -51,5 +51,5 @@ export function renderWidget(
 			? `最良 ${state.metricName}=${state.bestMetric}${state.metricUnit} ${directionArrow(state.direction)}`
 			: "最良 未測定";
 
-	return [`🔬 自動研究: ${state.runCount}回 / 採用${kept} / ${bestStr} / 待機中`];
+	return [`autoresearch: ${state.runCount}回 / 採用${kept} / ${bestStr} / 待機中`]
 }

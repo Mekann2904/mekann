@@ -86,9 +86,9 @@ function updateWidget(
 
 const SYSTEM_PROMPT_EXTRA = [
 	"",
-	"## 自動研究モード（アクティブ）",
+	"## autoresearch モード（アクティブ）",
 	"",
-	"現在は自動研究モードです。以下のルールに従って自律的に実験を繰り返してください。",
+	"現在は autoresearch モードです。以下のルールに従って自律的に実験を繰り返してください。",
 	"",
 	"1. 最初に `autoresearch.md` を読む（存在する場合）",
 	"2. `autoresearch_init` でセッションを初期化（未初期化の場合）",
@@ -140,7 +140,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	// ─── /autoresearch command ───────────────────────────────────────
 
 	pi.registerCommand("autoresearch", {
-		description: "自動研究モードの管理（on / off / status / clear）",
+		description: "autoresearch モードの管理（on / off / status / clear）",
 		handler: async (args, ctx) => {
 			const parts = (args ?? "").trim().split(/\s+/);
 			const sub = parts[0] || "status";
@@ -151,18 +151,18 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					active = true;
 					const purpose = parts.slice(1).join(" ").trim();
 					updateWidget(ctx, state, active, runningExperiment);
-					ctx.ui.notify("🔬 自動研究モードを有効にしました", "info");
+					ctx.ui.notify("autoresearch モードを有効にしました", "info");
 
 					const hasMd = fs.existsSync(mdFilePath(ctx.cwd));
 					let followUpMsg: string;
 					if (hasMd) {
 						followUpMsg =
-							"autoresearch.md を読み直して、自動研究を再開してください。" +
+							"autoresearch.md を読み直して、autoresearch を再開してください。" +
 							"最後の実験結果から継続してください。";
 					} else {
 						const purposeText = purpose ? `目的: ${purpose}` : "";
 						followUpMsg =
-							`自動研究を開始します。目的・指標・実行コマンドを整理して ` +
+							`autoresearch を開始します。目的・指標・実行コマンドを整理して ` +
 							`autoresearch.md とベンチマークスクリプトを作成し、実験を開始してください。` +
 							(purposeText ? ` ${purposeText}` : "");
 					}
@@ -174,7 +174,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				case "off": {
 					active = false;
 					updateWidget(ctx, state, active, runningExperiment);
-					ctx.ui.notify("🔬 自動研究モードを無効にしました", "info");
+					ctx.ui.notify("autoresearch モードを無効にしました", "info");
 					break;
 				}
 
@@ -188,7 +188,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					active = false;
 					runningExperiment = null;
 					updateWidget(ctx, state, active, runningExperiment);
-					ctx.ui.notify("🔬 自動研究のデータをクリアしました", "info");
+					ctx.ui.notify("autoresearch のデータをクリアしました", "info");
 					break;
 				}
 
@@ -202,7 +202,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 							: "未測定";
 					const modeStr = active ? "有効" : "無効";
 					ctx.ui.notify(
-						`🔬 自動研究: ${modeStr}\n` +
+						`autoresearch: ${modeStr}\n` +
 						`実験回数: ${state.runCount}\n` +
 						`採用数: ${kept}\n` +
 						`最良指標: ${best}\n` +
@@ -219,7 +219,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 	pi.registerTool({
 		name: "autoresearch_init",
-		label: "自動研究 初期化",
+		label: "autoresearch init",
 		description:
 			"実験セッションを初期化します。名前・指標・単位・方向を設定し、autoresearch.jsonl に保存します。",
 		promptSnippet: "実験セッションの初期化（名前、指標、方向）",
@@ -273,7 +273,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					content: [
 						{
 							type: "text",
-							text: `❌ autoresearch.jsonl の書き込みに失敗: ${e instanceof Error ? e.message : String(e)}`,
+							text: `[ERROR] autoresearch.jsonl の書き込みに失敗: ${e instanceof Error ? e.message : String(e)}`,
 						},
 					],
 					details: {},
@@ -287,7 +287,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					{
 						type: "text",
 						text:
-							`✅ 自動研究を初期化しました\n` +
+							`[OK] autoresearch を初期化しました\n` +
 							`名前: ${state.name}\n` +
 							`指標: ${state.metricName}（${directionLabel(state.direction)}）\n` +
 							`次に autoresearch_run でベースラインを測定してください。`,
@@ -307,7 +307,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 	pi.registerTool({
 		name: "autoresearch_run",
-		label: "自動研究 実行",
+		label: "autoresearch run",
 		description:
 			"シェルコマンドを実行し、実行時間と出力を記録します。" +
 			"METRIC name=value 形式の出力を自動的にパースします。",
@@ -338,17 +338,17 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			let text = "";
 			if (result.timedOut) {
-				text = `⏱️ 実験がタイムアウトしました（${params.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS}秒）\n`;
+				text = `[TIMEOUT] 実験がタイムアウトしました（${params.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS}秒）\n`;
 			} else if (!result.passed) {
-				text = `❌ 実験が失敗しました（終了コード: ${result.exitCode}）\n`;
+				text = `[FAIL] 実験が失敗しました（終了コード: ${result.exitCode}）\n`;
 			} else {
-				text = `✅ 実験が完了しました\n`;
+				text = `[OK] 実験が完了しました\n`;
 			}
 			text += `実行時間: ${result.durationSeconds.toFixed(1)}秒\n`;
 			text += `コマンド: ${result.command}\n`;
 
 			if (result.parsedMetrics) {
-				text += `\n📊 測定指標:\n`;
+				text += `\n測定指標:\n`;
 				for (const [name, value] of Object.entries(result.parsedMetrics)) {
 					text += `  METRIC ${name}=${value}\n`;
 				}
@@ -359,7 +359,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			}
 
 			if (result.output) {
-				text += `\n📄 出力（末尾）:\n${result.output}`;
+				text += `\n出力（末尾）:\n${result.output}`;
 			}
 
 			return {
@@ -373,7 +373,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 	pi.registerTool({
 		name: "autoresearch_log",
-		label: "自動研究 記録",
+		label: "autoresearch log",
 		description:
 			"実験結果を記録します。結果は autoresearch.jsonl に追記され、最良指標が更新されます。",
 		promptSnippet: "実験結果を記録（keep / discard / crash）",
@@ -446,7 +446,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					content: [
 						{
 							type: "text",
-							text: `❌ autoresearch.jsonl の書き込みに失敗: ${e instanceof Error ? e.message : String(e)}`,
+							text: `[ERROR] autoresearch.jsonl の書き込みに失敗: ${e instanceof Error ? e.message : String(e)}`,
 						},
 					],
 					details: {},
@@ -462,9 +462,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				discard: "棄却",
 				crash: "クラッシュ",
 			};
-			const icon = params.status === "keep" ? "✅" : params.status === "discard" ? "⏪" : "💥";
+			const prefix = params.status === "keep" ? "[KEEP]" : params.status === "discard" ? "[DISCARD]" : "[CRASH]";
 
-			let text = `${icon} 実験 #${run} を記録: ${statusLabel[params.status]}\n`;
+			let text = `${prefix} 実験 #${run} を記録: ${statusLabel[params.status]}\n`;
 			text += `説明: ${params.description}\n`;
 			text += `指標: ${state.metricName}=${params.metric}${state.metricUnit}\n`;
 			text += `コミット: ${commit}\n`;
@@ -475,9 +475,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			}
 
 			if (params.status === "keep") {
-				text += `\n✨ 改善しました。自分で git commit してください。`;
+				text += `\n改善しました。自分で git commit してください。`;
 			} else if (params.status === "discard") {
-				text += `\n⏪ 悪化しました。自分で git checkout で revert してください。`;
+				text += `\n悪化しました。自分で git checkout で revert してください。`;
 			}
 
 			return {
