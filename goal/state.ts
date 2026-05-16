@@ -87,6 +87,10 @@ export function validateObjective(objective: string): string {
   return trimmed;
 }
 
+export function remainingTokens(goal: Goal): number | null {
+  return goal.token_budget !== null ? Math.max(0, goal.token_budget - goal.tokens_used) : null;
+}
+
 export function validateTokenBudget(budget: unknown): number | null {
   if (budget === undefined || budget === null) return null;
   if (typeof budget !== "number" || !Number.isInteger(budget) || budget <= 0) {

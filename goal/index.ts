@@ -26,6 +26,7 @@ import {
   GoalError,
   type GoalStateEntry,
   type Goal,
+  remainingTokens,
 } from "./state.js";
 import { GoalRuntime } from "./runtime.js";
 import { renderGoalSummary, renderNoGoal, renderWidget } from "./render.js";
@@ -199,9 +200,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
           details: {},
         };
       }
-      const remaining = goal.token_budget !== null
-        ? Math.max(0, goal.token_budget - goal.tokens_used)
-        : null;
+      const remaining = remainingTokens(goal);
       return {
         content: [{
           type: "text" as const,

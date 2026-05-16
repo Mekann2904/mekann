@@ -6,3 +6,4 @@
 {"type":"run","run":5,"commit":"a79725c","metric":6363,"status":"keep","description":"Remove unused ConfigEntry interface + deduplicate runner.ts section headers","timestamp":1778936468882}
 {"type":"run","run":6,"commit":"5244c6c","metric":6351,"status":"keep","description":"Extract accountUsage helper in goal/runtime.ts, replace 3 duplicated wall-clock accounting blocks","timestamp":1778936807589}
 {"type":"run","run":7,"commit":"ae77d7a","metric":6347,"status":"keep","description":"Remove redundant JSDoc on renderWidget (keep directionArrow for test coverage)","timestamp":1778937069720}
+{"type":"run","run":8,"commit":"5cee77f","metric":6347,"status":"keep","description":"Extract remainingTokens helper to goal/state.ts, replace 6 duplicated Math.max calculations across goal module (neutral LOC but reduces duplicated logic)","timestamp":1778937572110}

@@ -4,7 +4,7 @@
  * Injected as follow-up user messages or system prompt context, depending on lifecycle.
  */
 
-import type { Goal } from "./state.js";
+import { type Goal, remainingTokens } from "./state.js";
 
 // ---------------------------------------------------------------------------
 // XML escaping
@@ -34,8 +34,8 @@ export function formatDuration(seconds: number): string {
 function formatUsage(goal: Goal): string {
   const lines: string[] = [];
   lines.push(`Tokens used: ${goal.tokens_used}`);
-  if (goal.token_budget !== null) {
-    const remaining = Math.max(0, goal.token_budget - goal.tokens_used);
+  const remaining = remainingTokens(goal);
+  if (remaining !== null) {
     lines.push(`Token budget: ${goal.token_budget}`);
     lines.push(`Remaining tokens: ${remaining}`);
   }
@@ -75,9 +75,7 @@ export function continuationPrompt(goal: Goal): string {
  * Tells the model to wrap up and wait for user instructions.
  */
 export function budgetLimitPrompt(goal: Goal): string {
-  const remaining = goal.token_budget !== null
-    ? Math.max(0, goal.token_budget - goal.tokens_used)
-    : "N/A";
+  const remaining = remainingTokens(goal);
   return [
     `[Token budget limit reached]`,
     ``,
@@ -127,8 +125,7 @@ export function renderGoalContext(goal: Goal): string {
     `<goal_objective>${escapeXmlText(goal.objective)}</goal_objective>`,
     `Status: ${goal.status}`,
   ];
-  if (goal.token_budget !== null) {
-    const remaining = Math.max(0, goal.token_budget - goal.tokens_used);
+  if (remaining !== null) {
     lines.push(`Token budget: ${goal.token_budget} (used: ${goal.tokens_used}, remaining: ${remaining})`);
   } else {
     lines.push(`Tokens used: ${goal.tokens_used}`);

@@ -2,7 +2,7 @@
  * goal/render.ts — UI rendering utilities for goal status display.
  */
 
-import type { Goal, GoalStatus } from "./state.js";
+import { type Goal, type GoalStatus, remainingTokens } from "./state.js";
 import { formatDuration } from "./prompts.js";
 
 // ---------------------------------------------------------------------------
@@ -32,7 +32,7 @@ export function renderGoalSummary(goal: Goal): string[] {
   lines.push(`  ${goal.objective}`);
   lines.push(`  Time: ${formatDuration(goal.time_used_seconds)} | Tokens: ${goal.tokens_used}`);
   if (goal.token_budget !== null) {
-    const remaining = Math.max(0, goal.token_budget - goal.tokens_used);
+    const remaining = remainingTokens(goal);
     lines.push(`  Budget: ${goal.tokens_used} / ${goal.token_budget} (${remaining} remaining)`);
   }
   return lines;
@@ -54,7 +54,7 @@ export function renderWidget(goal: Goal | null): string[] | undefined {
   const lines: string[] = [];
   lines.push(`Goal ${STATUS_LABELS[goal.status]}: ${truncateObjective(goal.objective, 80)}`);
   if (goal.token_budget !== null) {
-    const remaining = Math.max(0, goal.token_budget - goal.tokens_used);
+    const remaining = remainingTokens(goal);
     lines.push(`  Tokens: ${goal.tokens_used}/${goal.token_budget} (${remaining} left) | Time: ${formatDuration(goal.time_used_seconds)}`);
   } else {
     lines.push(`  Tokens: ${goal.tokens_used} | Time: ${formatDuration(goal.time_used_seconds)}`);
