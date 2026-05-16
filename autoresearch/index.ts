@@ -27,7 +27,7 @@ import {
 	type RunStatus,
 } from "./state.js";
 import { runCommand, runChecks, type ChecksResult } from "./runner.js";
-import { renderWidget, directionLabel, type LoopInfo } from "./render.js";
+import { renderWidget, directionLabel, type LoopInfo } from "./state.js";
 
 // ---------------------------------------------------------------------------
 // Constants

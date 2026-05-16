@@ -11,3 +11,4 @@
 {"type":"run","run":10,"commit":"e96748e","metric":6351,"status":"discard","description":"Extract notifyError helper — net LOC increase (+4), not worth the indirection","timestamp":1778938080458}
 {"type":"run","run":11,"commit":"e96748e","metric":6339,"status":"keep","description":"Consolidate 3 guard checks in goal command handler into single isEnabled+store+runtime guard","timestamp":1778938265631}
 {"type":"run","run":12,"commit":"7092a4b","metric":6330,"status":"keep","description":"Merge goal/render.ts into goal/prompts.ts — reduce file count by 1, eliminate cross-file imports","timestamp":1778938972611}
+{"type":"run","run":13,"commit":"efcf795","metric":6321,"status":"keep","description":"Merge autoresearch/render.ts into state.ts — reduce file count by 1, collocate state + display logic","timestamp":1778939188228}
