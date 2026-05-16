@@ -8,6 +8,8 @@
 
 エージェントは `autoresearch-create` skill を読み込み、`autoresearch.md` と `autoresearch.sh` を作成し、停止されるまで自律的に実験を繰り返す。
 
+**autoresearch は明示的な `/autoresearch on` または `/autoresearch <目的>` でのみ有効化される。** ツールはモード無効時には拒否され、`autoresearch-create` skill も LLM による自動選択の対象外（`disable-model-invocation: true`）。明示的に `/skill:autoresearch-create` で呼び出した場合のみ利用できる。
+
 ## 提供するもの
 
 ### 3つのツール

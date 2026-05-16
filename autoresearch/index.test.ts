@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import * as fs from "node:fs";
 
 // Mock peer dependencies before importing the extension
 vi.mock("@earendil-works/pi-coding-agent", () => ({}));
@@ -296,6 +297,89 @@ describe("autoresearchExtension", () => {
 				expect(tool.description).toBeTruthy();
 				expect(typeof tool.description).toBe("string");
 			}
+		});
+	});
+
+	// ── active guard: ツールはモード無効時に拒否する ──────────────
+
+	describe("active guard (tools reject when inactive)", () => {
+		it("autoresearch_init rejects when not active", async () => {
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			const result = await initTool.execute(
+				"tc1",
+				{ name: "test", metric_name: "ms" },
+				undefined,
+				undefined,
+				createMockCtx(),
+			);
+			expect(result.content[0].text).toContain("autoresearch モードが無効です");
+			expect(result.details).toEqual({});
+		});
+
+		it("autoresearch_run rejects when not active", async () => {
+			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
+			const result = await runTool.execute(
+				"tc2",
+				{ command: "echo hello" },
+				undefined,
+				undefined,
+				createMockCtx(),
+			);
+			expect(result.content[0].text).toContain("autoresearch モードが無効です");
+			expect(result.details).toEqual({});
+		});
+
+		it("autoresearch_log rejects when not active", async () => {
+			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
+			const result = await logTool.execute(
+				"tc3",
+				{ metric: 100, status: "keep", description: "test" },
+				undefined,
+				undefined,
+				createMockCtx(),
+			);
+			expect(result.content[0].text).toContain("autoresearch モードが無効です");
+			expect(result.details).toEqual({});
+		});
+
+		it("autoresearch_init succeeds after /autoresearch on", async () => {
+			// テスト用ディレクトリを作成
+			const testDir = "/tmp/test-autoresearch-init-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await cmdHandler("on", ctx);
+
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			const result = await initTool.execute(
+				"tc4",
+				{ name: "test", metric_name: "ms" },
+				undefined,
+				undefined,
+				ctx,
+			);
+			expect(result.content[0].text).toContain("初期化しました");
+
+			// クリーンアップ
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+	});
+
+	// ── followUp に skill 誘導が含まれる ──────────────────────────
+
+	describe("followUp includes skill guidance", () => {
+		it("/autoresearch on followUp mentions skill", async () => {
+			const handler = pi.commands.get("autoresearch")!.handler;
+			await handler("on", createMockCtx());
+			expect(pi.sentMessages[0].msg).toContain("/skill:autoresearch-create");
+		});
+
+		it("/autoresearch <目的> followUp mentions skill", async () => {
+			const handler = pi.commands.get("autoresearch")!.handler;
+			await handler("高速化", createMockCtx());
+			const msg = pi.sentMessages.find((m) => m.msg.includes("/skill:autoresearch-create"));
+			expect(msg).toBeTruthy();
 		});
 	});
 });
