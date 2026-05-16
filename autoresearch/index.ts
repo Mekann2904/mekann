@@ -448,6 +448,16 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		pi.sendUserMessage(followUpMsg, { deliverAs: "followUp" });
 	}
 
+	const INACTIVE_RESPONSE = {
+		content: [{
+			type: "text" as const,
+			text:
+				"[ERROR] autoresearch モードが無効です。\n" +
+				"先に `/autoresearch on` または `/autoresearch <目的>` を実行してください。",
+		}],
+		details: {},
+	};
+
 	pi.registerTool({
 		name: "autoresearch_init",
 		label: "autoresearch init",
@@ -476,17 +486,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			if (!active) {
-				return {
-					content: [{
-						type: "text",
-						text:
-							"[ERROR] autoresearch モードが無効です。\n" +
-							"先に `/autoresearch on` または `/autoresearch <目的>` を実行してください。",
-					}],
-					details: {},
-				};
-			}
+			if (!active) return INACTIVE_RESPONSE;
 
 			state.name = params.name;
 			state.metricName = params.metric_name;
@@ -574,17 +574,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-			if (!active) {
-				return {
-					content: [{
-						type: "text",
-						text:
-							"[ERROR] autoresearch モードが無効です。\n" +
-							"先に `/autoresearch on` または `/autoresearch <目的>` を実行してください。",
-					}],
-					details: {},
-				};
-			}
+			if (!active) return INACTIVE_RESPONSE;
 
 			const timeoutMs = (params.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
 
@@ -690,17 +680,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			if (!active) {
-				return {
-					content: [{
-						type: "text",
-						text:
-							"[ERROR] autoresearch モードが無効です。\n" +
-							"先に `/autoresearch on` または `/autoresearch <目的>` を実行してください。",
-					}],
-					details: {},
-				};
-			}
+			if (!active) return INACTIVE_RESPONSE;
 
 			// Gate: checks 失敗時の keep を拒否
 			if (params.status === "keep" && lastChecks && lastChecks.passed === false) {
