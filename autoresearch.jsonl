@@ -7,3 +7,4 @@
 {"type":"run","run":6,"commit":"5244c6c","metric":6351,"status":"keep","description":"Extract accountUsage helper in goal/runtime.ts, replace 3 duplicated wall-clock accounting blocks","timestamp":1778936807589}
 {"type":"run","run":7,"commit":"ae77d7a","metric":6347,"status":"keep","description":"Remove redundant JSDoc on renderWidget (keep directionArrow for test coverage)","timestamp":1778937069720}
 {"type":"run","run":8,"commit":"5cee77f","metric":6347,"status":"keep","description":"Extract remainingTokens helper to goal/state.ts, replace 6 duplicated Math.max calculations across goal module (neutral LOC but reduces duplicated logic)","timestamp":1778937572110}
+{"type":"run","run":9,"commit":"5e1c8e5","metric":6347,"status":"keep","description":"Extract STATUS_LABELS/STATUS_PREFIX constants from autoresearch_log tool handler (neutral LOC, reduces inline duplication)","timestamp":1778937726682}

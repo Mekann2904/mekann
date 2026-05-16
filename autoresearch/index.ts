@@ -448,6 +448,19 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		pi.sendUserMessage(followUpMsg, { deliverAs: "followUp" });
 	}
 
+	const STATUS_LABELS: Record<string, string> = {
+		keep: "採用",
+		discard: "棄却",
+		crash: "クラッシュ",
+		checks_failed: "checks失敗",
+	};
+	const STATUS_PREFIX: Record<string, string> = {
+		keep: "[KEEP]",
+		discard: "[DISCARD]",
+		crash: "[CRASH]",
+		checks_failed: "[CHECKS_FAILED]",
+	};
+
 	const INACTIVE_RESPONSE = {
 		content: [{
 			type: "text" as const,
@@ -744,23 +757,10 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			lastLoggedRun = run;
 			updateWidget(ctx, state, active, runningExperiment, loopInfo());
 
-			// 結果メッセージ
 			const kept = countByStatus(state.results, "keep");
-			const statusLabel: Record<string, string> = {
-				keep: "採用",
-				discard: "棄却",
-				crash: "クラッシュ",
-				checks_failed: "checks失敗",
-			};
-			const prefixMap: Record<string, string> = {
-				keep: "[KEEP]",
-				discard: "[DISCARD]",
-				crash: "[CRASH]",
-				checks_failed: "[CHECKS_FAILED]",
-			};
-			const prefix = prefixMap[params.status] ?? "[UNKNOWN]";
+			const prefix = STATUS_PREFIX[params.status] ?? "[UNKNOWN]";
 
-			let text = `${prefix} 実験 #${run} を記録: ${statusLabel[params.status]}\n`;
+			let text = `${prefix} 実験 #${run} を記録: ${STATUS_LABELS[params.status] ?? params.status}\n`;
 			text += `説明: ${params.description}\n`;
 			text += `指標: ${state.metricName}=${params.metric}${state.metricUnit}\n`;
 			text += `コミット: ${commit}\n`;
