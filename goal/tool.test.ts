@@ -9,7 +9,6 @@ function createMockPi() {
   const tools: Array<{ name: string; execute: Function }> = [];
   return {
     tools,
-    sendMessage: vi.fn(),
     appendEntry: vi.fn((_entry: any) => {}),
     getFlag: vi.fn(() => true),
     events: { emit: vi.fn(), on: vi.fn() },
@@ -264,5 +263,56 @@ describe("goal tools", () => {
 
     // No continuation should be sent for a completed goal
     expect(mockPi.sendUserMessage).not.toHaveBeenCalled();
+  });
+
+  // 8. session_start replays persisted entries and restores goal
+  it("session_start replays persisted entries and restores goal", async () => {
+    const createTool = getTool(mockPi, "create_goal");
+    await createTool.execute(
+      "tc-1",
+      { objective: "Persisted goal", token_budget: 5000 },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    // Capture the entries that were persisted (appendEntry is called with customType, data)
+    const persistedEntries = mockPi.appendEntry.mock.calls.map(
+      (call: any[]) => call[1],
+    );
+    expect(persistedEntries.length).toBeGreaterThan(0);
+
+    // Simulate a new session_start with those entries in getBranch
+    const newPi = createMockPi();
+    goalExtension(newPi as any);
+
+    const newCtx = createMockCtx({
+      sessionManager: {
+        getSessionId: vi.fn(() => "test-thread-1"),
+        isPersisted: vi.fn(() => true),
+        getBranch: vi.fn(() =>
+          persistedEntries.map((entry: any) => ({
+            type: "custom",
+            customType: "goal-state",
+            data: entry,
+          }))
+        ),
+      },
+    });
+
+    const sessionStartHandler = newPi.on.mock.calls.find(
+      (call: any[]) => call[0] === "session_start",
+    )![1] as Function;
+    await sessionStartHandler({}, newCtx);
+
+    // Verify the goal was restored
+    const getGoalTool = getTool(newPi, "get_goal");
+    const result = await getGoalTool.execute("tc-replay", {}, undefined, undefined, newCtx);
+    expect(result.content[0].text).toContain("Persisted goal");
+    expect(result.content[0].text).toContain("Token budget: 5000");
+    expect(result.details.goal.status).toBe("active");
+    // Continuation fields should be normalized
+    expect(result.details.goal.continuation_count).toBe(0);
+    expect(result.details.goal.max_continuations).toBe(5);
   });
 });

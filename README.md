@@ -103,7 +103,10 @@ Codex-inspired goal 機能 — thread/session に紐づく永続的な objective
   "extensions": [
     "/path/to/this/repo/plan-mode",
     "/path/to/this/repo/sandbox",
-    "/path/to/this/repo/zip-repo"
+    "/path/to/this/repo/zip-repo",
+    "/path/to/this/repo/autoresearch",
+    "/path/to/this/repo/subagent",
+    "/path/to/this/repo/goal"
   ]
 }
 ```

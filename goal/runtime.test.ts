@@ -8,7 +8,6 @@ import { GoalStore, type GoalStateEntry } from "./state.js";
 
 function createMockPi() {
   return {
-    sendMessage: vi.fn(),
     appendEntry: vi.fn(),
     getFlag: vi.fn(() => true),
     events: { emit: vi.fn(), on: vi.fn() },
@@ -435,5 +434,21 @@ describe("GoalRuntime", () => {
     // goal B should not have inherited A's wall-clock time
     const goalBAfter = store.getGoal()!;
     expect(goalBAfter.time_used_seconds).toBe(0);
+  });
+
+  // ─── 16. continuation counter at max is not reset without explicit action ──
+
+  it("continuation at max pauses goal without reset", () => {
+    const { runtime, pi, ctx, store } = setupRuntimeWithGoal();
+
+    // Set continuation_count to max
+    store.updateGoal({ continuation_count: 5, last_continued_at_ms: Date.now() - 5000 });
+
+    runtime.maybeContinueIfIdle(ctx);
+
+    // Goal should be paused
+    const goal = store.getGoal()!;
+    expect(goal.status).toBe("paused");
+    expect(goal.continuation_count).toBe(5); // not reset by auto-pause
   });
 });

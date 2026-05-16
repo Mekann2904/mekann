@@ -752,3 +752,49 @@ describe("fromEntries normalization", () => {
 		expect(got.max_continuations).toBe(5);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// updateGoal validation for continuation fields
+// ---------------------------------------------------------------------------
+
+describe("updateGoal continuation validation", () => {
+	it("rejects negative continuation_count", () => {
+		const { store } = makeStore();
+		store.createGoal("t1", "Test");
+		expect(() => store.updateGoal({ continuation_count: -1 })).toThrow(GoalError);
+		expect(() => store.updateGoal({ continuation_count: -1 })).toThrow("non-negative integer");
+	});
+
+	it("rejects non-integer continuation_count", () => {
+		const { store } = makeStore();
+		store.createGoal("t1", "Test");
+		expect(() => store.updateGoal({ continuation_count: 1.5 })).toThrow(GoalError);
+	});
+
+	it("rejects zero max_continuations", () => {
+		const { store } = makeStore();
+		store.createGoal("t1", "Test");
+		expect(() => store.updateGoal({ max_continuations: 0 })).toThrow(GoalError);
+		expect(() => store.updateGoal({ max_continuations: 0 })).toThrow("positive integer");
+	});
+
+	it("rejects negative max_continuations", () => {
+		const { store } = makeStore();
+		store.createGoal("t1", "Test");
+		expect(() => store.updateGoal({ max_continuations: -5 })).toThrow(GoalError);
+	});
+
+	it("accepts valid max_continuations", () => {
+		const { store } = makeStore();
+		store.createGoal("t1", "Test");
+		const updated = store.updateGoal({ max_continuations: 10 });
+		expect(updated.max_continuations).toBe(10);
+	});
+
+	it("accepts zero continuation_count", () => {
+		const { store } = makeStore();
+		store.createGoal("t1", "Test");
+		const updated = store.updateGoal({ continuation_count: 0 });
+		expect(updated.continuation_count).toBe(0);
+	});
+});
