@@ -206,3 +206,18 @@ describe("runChecks", () => {
 		expect(typeof r.passed).toBe("boolean");
 	}, 10000);
 });
+
+// ---------------------------------------------------------------------------
+// spawn error (non-existent command)
+// ---------------------------------------------------------------------------
+
+describe("runCommand spawn error", () => {
+	it("handles command not found via bash exit code 127", async () => {
+		const tmpDir = fs.mkdtempSync("/tmp/test-runner-spawn-");
+		const r = await runCommand("/nonexistent/command/that/does/not/exist", tmpDir, 5000);
+		expect(r.passed).toBe(false);
+		expect(r.exitCode).toBe(127);
+		expect(r.output).toBeTruthy();
+		fs.rmSync(tmpDir, { recursive: true, force: true });
+	}, 10000);
+});
