@@ -103,7 +103,8 @@ export class GoalRuntime {
     const timeDelta = this.consumeWallClockSeconds();
 
     if (tokenDelta > 0 || timeDelta > 0) {
-      const result = this.store.accountGoalUsage(timeDelta, tokenDelta, undefined, "active_only");
+      const expectedGoalId = this.active_goal_id ?? undefined;
+      const result = this.store.accountGoalUsage(timeDelta, tokenDelta, expectedGoalId, "active_only");
       if (result?.budgetLimited) {
         this.onBudgetLimited(result.goal);
       }
@@ -124,7 +125,8 @@ export class GoalRuntime {
     // Best-effort wall-clock accounting
     const timeDelta = this.consumeWallClockSeconds();
     if (timeDelta > 0) {
-      const result = this.store.accountGoalUsage(timeDelta, 0, undefined, "active_only");
+      const expectedGoalId = this.active_goal_id ?? undefined;
+      const result = this.store.accountGoalUsage(timeDelta, 0, expectedGoalId, "active_only");
       if (result?.budgetLimited && !this.suppress_budget_steering) {
         this.onBudgetLimited(result.goal);
       }
@@ -139,7 +141,8 @@ export class GoalRuntime {
     if (goal && goal.status === "active") {
       const timeDelta = this.consumeWallClockSeconds();
       if (timeDelta > 0) {
-        const result = this.store.accountGoalUsage(timeDelta, 0, undefined, "active_only");
+        const expectedGoalId = this.active_goal_id ?? undefined;
+        const result = this.store.accountGoalUsage(timeDelta, 0, expectedGoalId, "active_only");
         if (result?.budgetLimited) {
           this.onBudgetLimited(result.goal);
         }
@@ -312,7 +315,8 @@ export class GoalRuntime {
     }
     const timeDelta = this.consumeWallClockSeconds();
     if (timeDelta > 0) {
-      this.store.accountGoalUsage(timeDelta, 0, undefined, "active_only");
+      const expectedGoalId = this.active_goal_id ?? undefined;
+      this.store.accountGoalUsage(timeDelta, 0, expectedGoalId, "active_only");
     }
     this.last_accounted_wall_clock = null;
   }

@@ -210,4 +210,56 @@ describe("/goal command", () => {
       "success",
     );
   });
+
+  // 11. /goal budget 10abc rejects
+  it("rejects invalid budget value 10abc", async () => {
+    await goalCommand.handler("Temporary goal", ctx);
+    ctx.ui.notify.mockClear();
+
+    await goalCommand.handler("budget 10abc", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("positive integer"),
+      "warning",
+    );
+  });
+
+  // 12. /goal budget 0 rejects
+  it("rejects budget value 0", async () => {
+    await goalCommand.handler("Temporary goal", ctx);
+    ctx.ui.notify.mockClear();
+
+    await goalCommand.handler("budget 0", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("positive integer"),
+      "warning",
+    );
+  });
+
+  // 13. /goal --budget 10abc foo rejects
+  it("rejects --budget with invalid value in objective", async () => {
+    await goalCommand.handler("--budget 10abc foo", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Invalid --budget"),
+      "warning",
+    );
+  });
+
+  // 14. /goal foo --budget 10abc rejects
+  it("rejects suffix --budget with invalid value", async () => {
+    await goalCommand.handler("foo --budget 10abc", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Invalid --budget"),
+      "warning",
+    );
+  });
+
+  // 15. /goal --budget 0 foo rejects
+  it("rejects --budget 0 in objective", async () => {
+    await goalCommand.handler("--budget 0 foo", ctx);
+    // 0 matches \d+ but validateTokenBudget rejects it
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("positive integer"),
+      "error",
+    );
+  });
 });

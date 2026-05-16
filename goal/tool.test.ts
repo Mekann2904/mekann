@@ -228,4 +228,41 @@ describe("goal tools", () => {
     expect(result.content[0].text).toContain("[ERROR]");
     expect(result.content[0].text).toContain("already complete");
   });
+
+  // 7. update_goal complete synchronizes runtime active state
+  it("update_goal complete synchronizes runtime active state", async () => {
+    const createTool = getTool(mockPi, "create_goal");
+    await createTool.execute(
+      "tc-1",
+      { objective: "Complete this task" },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    const updateTool = getTool(mockPi, "update_goal");
+    await updateTool.execute(
+      "tc-2",
+      { status: "complete" },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    // After complete, runtime should not send continuation on maybeContinueIfIdle
+    // This verifies that onExternalSet was called and active_goal_id was cleared
+    mockPi.sendUserMessage.mockClear();
+
+    // Simulate the agent_end -> maybeContinueIfIdle flow
+    const agentEndHandler = mockPi.on.mock.calls.find(
+      (call: any[]) => call[0] === "agent_end",
+    )![1] as Function;
+    await agentEndHandler(
+      { messages: [{ role: "assistant", stopReason: "end_turn" }] },
+      ctx,
+    );
+
+    // No continuation should be sent for a completed goal
+    expect(mockPi.sendUserMessage).not.toHaveBeenCalled();
+  });
 });

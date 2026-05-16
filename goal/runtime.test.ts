@@ -373,4 +373,67 @@ describe("GoalRuntime", () => {
     expect(goal.continuation_count).toBe(3);
     expect(goal.last_continued_at_ms).toBeGreaterThan(oldTs);
   });
+
+  // ─── 14. expectedGoalId prevents stale accounting ────────────
+
+  it("expectedGoalId prevents stale accounting after goal replace", () => {
+    const { runtime, pi, ctx, store } = setupRuntimeWithGoal();
+    const goalA = store.getGoal()!;
+
+    // Simulate turn start capturing goal A
+    runtime.onTurnStart({ turnIndex: 0 }, ctx);
+    expect(runtime.active_goal_id).toBe(goalA.goal_id);
+
+    // Replace goal A with goal B at store level ONLY (not via onExternalSet)
+    // This simulates a race where the store is updated but active_goal_id
+    // hasn't been synced yet (e.g. delayed lifecycle event)
+    const goalB = store.replaceGoal("test-thread-1", "New objective");
+    // active_goal_id is still goalA's
+    expect(runtime.active_goal_id).toBe(goalA.goal_id);
+    // store's current goal is now goalB
+    expect(store.getGoal()!.goal_id).toBe(goalB.goal_id);
+
+    // Advance wall-clock
+    vi.advanceTimersByTime(5000);
+
+    // Simulate a delayed message_end — active_goal_id is still A
+    // but store's goal is B. The expectedGoalId (= A) won't match B's id.
+    runtime.onMessageEnd(
+      {
+        message: {
+          role: "assistant",
+          timestamp: 99999,
+          usage: { input: 100, output: 50, cacheRead: 0 },
+        },
+      },
+      ctx,
+    );
+
+    // goal B should NOT have received goal A's tokens
+    const goalBAfter = store.getGoal()!;
+    expect(goalBAfter.goal_id).toBe(goalB.goal_id);
+    expect(goalBAfter.tokens_used).toBe(0);
+  });
+
+  // ─── 15. stale wall-clock accounting rejected ────────────────
+
+  it("stale wall-clock accounting rejected after goal replace", () => {
+    const { runtime, pi, ctx, store } = setupRuntimeWithGoal();
+    const goalA = store.getGoal()!;
+
+    // Turn start
+    runtime.onTurnStart({ turnIndex: 0 }, ctx);
+    vi.advanceTimersByTime(3000);
+
+    // Replace with new goal
+    const goalB = store.replaceGoal("test-thread-1", "New objective");
+    runtime.onExternalSet(goalB, goalA);
+
+    // Turn end tries to account wall-clock — active_goal_id is now goalB
+    runtime.onTurnEnd({ turnIndex: 0 }, ctx);
+
+    // goal B should not have inherited A's wall-clock time
+    const goalBAfter = store.getGoal()!;
+    expect(goalBAfter.time_used_seconds).toBe(0);
+  });
 });

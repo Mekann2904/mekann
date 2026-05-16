@@ -238,7 +238,10 @@ export default function goalExtension(pi: ExtensionAPI): void {
     parameters: Type.Object({
       objective: Type.String({ description: "The goal objective" }),
       token_budget: Type.Optional(
-        Type.Number({ description: "Optional token budget (positive integer)" }),
+        Type.Integer({
+          minimum: 1,
+          description: "Optional positive integer token budget.",
+        }),
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -317,10 +320,16 @@ export default function goalExtension(pi: ExtensionAPI): void {
           };
         }
 
+        // Flush wall-clock accounting before completing
+        runtime.onExternalMutationStarting();
+        const previousGoal = store.getGoal();
+
         const goal = store.updateGoal(patch, params.expected_goal_id, "tool");
 
         // Suppress budget steering since we're completing
         runtime.suppressBudgetSteering();
+        // Synchronize runtime state (clears active_goal_id, wall-clock baseline)
+        runtime.onExternalSet(goal, previousGoal);
 
         emitUpdated(ctx, goal);
         const usageReport = `Final usage: ${goal.tokens_used} tokens, ${goal.time_used_seconds}s`;
@@ -496,10 +505,19 @@ export default function goalExtension(pi: ExtensionAPI): void {
             ctx.ui.notify("No goal to set budget for", "warning");
             return;
           }
-          const newBudget = budgetArg === "none" ? null : parseInt(budgetArg, 10);
-          if (newBudget !== null && (!Number.isInteger(newBudget) || newBudget <= 0)) {
-            ctx.ui.notify("Budget must be a positive integer or 'none'", "warning");
-            return;
+          let newBudget: number | null;
+          if (budgetArg === "none") {
+            newBudget = null;
+          } else {
+            if (!/^\d+$/.test(budgetArg)) {
+              ctx.ui.notify("Budget must be a positive integer or 'none'", "warning");
+              return;
+            }
+            newBudget = Number(budgetArg);
+            if (!Number.isSafeInteger(newBudget) || newBudget <= 0) {
+              ctx.ui.notify("Budget must be a positive integer or 'none'", "warning");
+              return;
+            }
           }
           try {
             runtime.onExternalMutationStarting();
@@ -548,11 +566,15 @@ export default function goalExtension(pi: ExtensionAPI): void {
     const budgetPrefixMatch = input.match(/^--budget\s+(\d+)\s+([\s\S]+)$/);
     const budgetSuffixMatch = input.match(/^([\s\S]+?)\s+--budget\s+(\d+)$/);
     if (budgetPrefixMatch) {
-      budget = parseInt(budgetPrefixMatch[1], 10);
+      budget = Number(budgetPrefixMatch[1]);
       objective = budgetPrefixMatch[2].trim();
     } else if (budgetSuffixMatch) {
-      budget = parseInt(budgetSuffixMatch[2], 10);
+      budget = Number(budgetSuffixMatch[2]);
       objective = budgetSuffixMatch[1].trim();
+    } else if (input.includes("--budget")) {
+      // User intended --budget but format is invalid
+      ctx.ui.notify("Invalid --budget usage. Expected: /goal --budget <n> <objective> or /goal <objective> --budget <n>", "warning");
+      return;
     } else {
       objective = input.trim();
     }
