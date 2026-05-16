@@ -528,13 +528,13 @@ describe("getGoal", () => {
 		expect(got).toEqual(created);
 	});
 
-	it("returns a direct reference", () => {
+	it("returns a defensive copy", () => {
 		const { store } = makeStore();
 		store.createGoal("t1", "Obj");
 		const got = store.getGoal()!;
 		got.objective = "mutated";
-		// getGoal returns the internal reference, not a defensive copy
-		expect(store.getGoal()!.objective).toBe("mutated");
+		// getGoal returns a defensive copy, not the internal reference
+		expect(store.getGoal()!.objective).toBe("Obj");
 	});
 });
 
@@ -656,5 +656,39 @@ describe("fromEntries", () => {
 		const persisted: GoalStateEntry[] = [];
 		const store = GoalStore.fromEntries([], (e) => persisted.push(e));
 		expect(store.getGoal()).toBeNull();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// continuation fields
+// ---------------------------------------------------------------------------
+
+describe("continuation fields", () => {
+	it("createGoal initializes continuation fields", () => {
+		const { store } = makeStore();
+		const goal = store.createGoal("t1", "Test");
+		expect(goal.continuation_count).toBe(0);
+		expect(goal.max_continuations).toBe(5);
+		expect(goal.last_continued_at_ms).toBeNull();
+	});
+
+	it("replaceGoal initializes continuation fields", () => {
+		const { store } = makeStore();
+		const goal = store.replaceGoal("t1", "Test");
+		expect(goal.continuation_count).toBe(0);
+		expect(goal.max_continuations).toBe(5);
+		expect(goal.last_continued_at_ms).toBeNull();
+	});
+
+	it("updateGoal can set continuation_count and last_continued_at_ms", () => {
+		const { store } = makeStore();
+		store.createGoal("t1", "Test");
+		const now = Date.now();
+		const updated = store.updateGoal({
+			continuation_count: 2,
+			last_continued_at_ms: now,
+		});
+		expect(updated.continuation_count).toBe(2);
+		expect(updated.last_continued_at_ms).toBe(now);
 	});
 });

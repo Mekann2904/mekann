@@ -12,6 +12,12 @@
 /** Goal status values. */
 export type GoalStatus = "active" | "paused" | "budget_limited" | "complete";
 
+/** Default maximum number of automatic continuations. */
+export const DEFAULT_MAX_CONTINUATIONS = 5;
+
+/** Cooldown between continuations in milliseconds. */
+export const CONTINUATION_COOLDOWN_MS = 2000;
+
 /** A persistent goal tied to a thread/session. */
 export interface Goal {
   /** Thread/session ID from ctx.sessionManager.getSessionId() */
@@ -32,6 +38,12 @@ export interface Goal {
   created_at_ms: number;
   /** Last update timestamp (ms) */
   updated_at_ms: number;
+  /** How many continuation turns have been sent for this goal. */
+  continuation_count: number;
+  /** Maximum number of automatic continuations allowed. */
+  max_continuations: number;
+  /** Timestamp of the last continuation sent (ms), or null. */
+  last_continued_at_ms: number | null;
 }
 
 /** Who initiated the goal mutation. */
@@ -123,9 +135,9 @@ export class GoalStore {
     return store;
   }
 
-  /** Get the current goal, or null if none exists. */
+  /** Get the current goal, or null if none exists. Returns a defensive copy. */
   getGoal(): Goal | null {
-    return this.goal;
+    return this.goal ? { ...this.goal } : null;
   }
 
   /**
@@ -156,6 +168,9 @@ export class GoalStore {
       time_used_seconds: 0,
       created_at_ms: now,
       updated_at_ms: now,
+      continuation_count: 0,
+      max_continuations: DEFAULT_MAX_CONTINUATIONS,
+      last_continued_at_ms: null,
     };
 
     this.goal = goal;
@@ -189,6 +204,9 @@ export class GoalStore {
       time_used_seconds: 0,
       created_at_ms: now,
       updated_at_ms: now,
+      continuation_count: 0,
+      max_continuations: DEFAULT_MAX_CONTINUATIONS,
+      last_continued_at_ms: null,
     };
 
     // If activating with exhausted budget, clamp to budget_limited
@@ -210,6 +228,9 @@ export class GoalStore {
       objective?: string;
       status?: GoalStatus;
       token_budget?: number | null;
+      continuation_count?: number;
+      max_continuations?: number;
+      last_continued_at_ms?: number | null;
     },
     expectedGoalId?: string,
     source: GoalSource = "user",
@@ -233,6 +254,18 @@ export class GoalStore {
 
     if (patch.token_budget !== undefined) {
       goal.token_budget = validateTokenBudget(patch.token_budget);
+    }
+
+    if (patch.continuation_count !== undefined) {
+      goal.continuation_count = patch.continuation_count;
+    }
+
+    if (patch.max_continuations !== undefined) {
+      goal.max_continuations = patch.max_continuations;
+    }
+
+    if (patch.last_continued_at_ms !== undefined) {
+      goal.last_continued_at_ms = patch.last_continued_at_ms;
     }
 
     // If setting active and budget is exhausted, clamp to budget_limited

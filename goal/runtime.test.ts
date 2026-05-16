@@ -203,7 +203,7 @@ describe("GoalRuntime", () => {
     runtime.inPlanMode = true;
     runtime.maybeContinueIfIdle(ctx);
 
-    expect(pi.sendMessage).not.toHaveBeenCalled();
+    expect(pi.sendUserMessage).not.toHaveBeenCalled();
   });
 
   // ─── 7. active idle goal starts continuation turn ────────────
@@ -213,18 +213,11 @@ describe("GoalRuntime", () => {
 
     runtime.maybeContinueIfIdle(ctx);
 
-    expect(pi.sendMessage).toHaveBeenCalledTimes(1);
-    expect(pi.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        customType: "goal-steering",
-        display: false,
-      }),
-      expect.objectContaining({ deliverAs: "followUp", triggerTurn: true }),
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+    expect(pi.sendUserMessage).toHaveBeenCalledWith(
+      expect.stringContaining("Build the feature"),
+      { deliverAs: "followUp" },
     );
-
-    // The content should contain the objective
-    const call = pi.sendMessage.mock.calls[0][0];
-    expect(call.content).toContain("Build the feature");
 
     expect(runtime.continuation_active).toBe(true);
   });
@@ -240,7 +233,7 @@ describe("GoalRuntime", () => {
 
     runtime.maybeContinueIfIdle(ctx);
 
-    expect(pi.sendMessage).not.toHaveBeenCalled();
+    expect(pi.sendUserMessage).not.toHaveBeenCalled();
     expect(runtime.continuation_active).toBe(false);
   });
 
@@ -265,10 +258,10 @@ describe("GoalRuntime", () => {
     );
 
     // Budget steering should be injected
-    expect(pi.sendMessage).toHaveBeenCalledTimes(1);
-    expect(pi.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ customType: "goal-budget-limit" }),
-      expect.objectContaining({ deliverAs: "steer", triggerTurn: true }),
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+    expect(pi.sendUserMessage).toHaveBeenCalledWith(
+      expect.stringContaining("Token budget limit reached"),
+      { deliverAs: "followUp" },
     );
 
     // Budget should be limited now
@@ -293,7 +286,7 @@ describe("GoalRuntime", () => {
     );
 
     // Should NOT send a second steering message for the same goal_id
-    expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
   });
 
   // ─── 10. completion suppresses budget steering ───────────────
@@ -319,10 +312,65 @@ describe("GoalRuntime", () => {
     );
 
     // Budget steering should NOT be injected
-    expect(pi.sendMessage).not.toHaveBeenCalled();
+    expect(pi.sendUserMessage).not.toHaveBeenCalled();
 
     // But goal should still be budget_limited from accounting
     const goal = store.getGoal()!;
     expect(goal.status).toBe("budget_limited");
+  });
+
+  // ─── 11. continuation_count guard pauses at max ────────────
+
+  it("continuation_count guard pauses at max", () => {
+    const { runtime, pi, ctx, store } = setupRuntimeWithGoal();
+
+    // Set continuation_count to max
+    store.updateGoal({ continuation_count: 5, last_continued_at_ms: Date.now() });
+
+    runtime.maybeContinueIfIdle(ctx);
+
+    // Should NOT send continuation — should pause instead
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+    expect(pi.sendUserMessage).toHaveBeenCalledWith(
+      expect.stringContaining("automatically paused after 5 continuations"),
+      { deliverAs: "followUp" },
+    );
+
+    const goal = store.getGoal()!;
+    expect(goal.status).toBe("paused");
+    expect(runtime.continuation_active).toBe(false);
+  });
+
+  // ─── 12. cooldown prevents continuation ──────────────────────
+
+  it("cooldown prevents continuation", () => {
+    const { runtime, pi, ctx, store } = setupRuntimeWithGoal();
+
+    // Set last_continued_at_ms to recent time (within cooldown)
+    store.updateGoal({ continuation_count: 2, last_continued_at_ms: Date.now() - 1000 });
+
+    runtime.maybeContinueIfIdle(ctx);
+
+    // Should NOT send continuation due to cooldown
+    expect(pi.sendUserMessage).not.toHaveBeenCalled();
+    expect(runtime.continuation_active).toBe(false);
+  });
+
+  // ─── 13. continuation increments count and updates timestamp ─
+
+  it("continuation increments count and updates timestamp", () => {
+    const { runtime, pi, ctx, store } = setupRuntimeWithGoal();
+
+    // Set to 2 continuations with old timestamp (past cooldown)
+    const oldTs = Date.now() - 5000;
+    store.updateGoal({ continuation_count: 2, last_continued_at_ms: oldTs });
+
+    runtime.maybeContinueIfIdle(ctx);
+
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+
+    const goal = store.getGoal()!;
+    expect(goal.continuation_count).toBe(3);
+    expect(goal.last_continued_at_ms).toBeGreaterThan(oldTs);
   });
 });
