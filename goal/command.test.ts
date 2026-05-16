@@ -284,4 +284,181 @@ describe("/goal command", () => {
       "warning",
     );
   });
+
+  // 18. /goal pause with no goal shows warning
+  it("pause with no goal shows warning", async () => {
+    await goalCommand.handler("pause", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("No goal to pause", "warning");
+  });
+
+  // 19. /goal pause already paused shows warning
+  it("pause on already paused goal shows warning", async () => {
+    await goalCommand.handler("Goal to pause", ctx);
+    await goalCommand.handler("pause", ctx);
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("pause", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("already paused"),
+      "warning",
+    );
+  });
+
+  // 20. /goal resume with no goal shows warning
+  it("resume with no goal shows warning", async () => {
+    await goalCommand.handler("resume", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("No goal to resume", "warning");
+  });
+
+  // 21. /goal resume when already active shows info
+  it("resume on already active goal shows info", async () => {
+    await goalCommand.handler("Active goal", ctx);
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("resume", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("already active"),
+      "info",
+    );
+  });
+
+  // 22. /goal clear with no goal shows warning
+  it("clear with no goal shows warning", async () => {
+    await goalCommand.handler("clear", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("No goal to clear", "warning");
+  });
+
+  // 23. /goal clear cancelled
+  it("clear cancelled shows info", async () => {
+    await goalCommand.handler("To be cleared", ctx);
+    ctx.ui.confirm.mockResolvedValue(false);
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("clear", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Cancelled", "info");
+  });
+
+  // 24. /goal edit with no goal shows warning
+  it("edit with no goal shows warning", async () => {
+    await goalCommand.handler("edit", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("No goal to edit", "warning");
+  });
+
+  // 25. /goal edit unchanged (same text) shows info
+  it("edit unchanged shows info", async () => {
+    await goalCommand.handler("Same objective", ctx);
+    ctx.ui.editor.mockResolvedValue("Same objective"); // same text
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("edit", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Goal unchanged", "info");
+  });
+
+  // 26. /goal edit cancelled (empty return) shows info
+  it("edit cancelled (null) shows info", async () => {
+    await goalCommand.handler("Original obj", ctx);
+    ctx.ui.editor.mockResolvedValue(null as any);
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("edit", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Goal unchanged", "info");
+  });
+
+  // 27. /goal budget with no arg shows current budget
+  it("budget with no arg shows current budget", async () => {
+    await goalCommand.handler("--budget 5000 Budgeted goal", ctx);
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("budget", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Current budget: 5000"),
+      "info",
+    );
+  });
+
+  // 28. /goal budget with no arg and no goal
+  it("budget with no arg and no goal shows warning", async () => {
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("budget", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("No active goal", "warning");
+  });
+
+  // 29. /goal budget none removes budget
+  it("budget none removes budget", async () => {
+    await goalCommand.handler("--budget 5000 Budgeted", ctx);
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("budget none", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("unlimited"),
+      "info",
+    );
+  });
+
+  // 30. /goal budget with no goal to set
+  it("budget value with no goal shows warning", async () => {
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("budget 1000", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("No goal to set budget"),
+      "warning",
+    );
+  });
+
+  // 31. /goal set with no objective shows usage
+  it("set with no objective shows usage", async () => {
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("set", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Usage: /goal set <objective>"),
+      "warning",
+    );
+  });
+
+  // 32. /goal set with objective works
+  it("set with objective creates goal", async () => {
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("set Build the thing", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Build the thing"),
+      "success",
+    );
+  });
+
+  // 33. /goal with unknown subcommand treats as objective
+  it("unknown subcommand treated as objective", async () => {
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("some random objective", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("some random objective"),
+      "success",
+    );
+  });
+
+  // 34. Replacement cancelled
+  it("goal replacement cancelled by user", async () => {
+    await goalCommand.handler("First objective", ctx);
+    ctx.ui.confirm.mockResolvedValue(false);
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("Second objective", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "Goal replacement cancelled",
+      "info",
+    );
+  });
+
+  // 35. /goal --budget with only budget and no objective
+  it("--budget with no objective shows usage", async () => {
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("--budget 5000", ctx);
+    // The objective after removing --budget 5000 is empty string
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Usage:"),
+      "warning",
+    );
+  });
+
+  // 36. /goal budget shows 'none' when no budget set
+  it("budget with no arg shows 'none' when no budget", async () => {
+    await goalCommand.handler("Goal without budget", ctx);
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("budget", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Current budget: none"),
+      "info",
+    );
+  });
 });
