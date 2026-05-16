@@ -112,16 +112,29 @@ H7: Inline trivial functions that add indirection without abstraction value
 - goal/render.ts: formatDuration moved to import from goal/prompts.ts
 - 6436→6405 LOC, all 1392 tests pass
 
-### Key Learnings
-- Small dead code removals have minimal impact due to changed_loc penalty
-- Helper extraction that reduces code volume AND duplication is high-value
-- Deduplication of event construction patterns is the highest-leverage lever
-- File count increase from new modules can offset max_file_loc benefits
+### Exp 17-25 (2026-05-16): Ongoing deduplication
+- INACTIVE_RESPONSE constant in autoresearch (-20 LOC)
+- DISABLED_RESPONSE constant in goal (-10 LOC)
+- ConfigEntry removal + runner.ts section cleanup (-12 LOC)
+- accountUsage helper in goal/runtime.ts (-12 LOC)
+- remainingTokens helper across goal module (neutral LOC, reduces duplication)
+- STATUS_LABELS/STATUS_PREFIX constants (neutral LOC)
+- renderWidget JSDoc removal (-4 LOC)
+- Guard consolidation in goal command handler (-8 LOC)
+- notifyError helper: DISCARDED (+4 LOC, not worth the indirection)
+- Total: 6436 → 6339 (-97 LOC, -1.5%)
 
-### Current score breakdown (2345)
-- duplication: 162 × 10 = 1620
-- review_risk: 7 × 100 = 700
-- complexity: 2 × 10 = 20
-- test_seconds: ~10 × 1 = 10
-- LOC bonus: -5 * ((-220)/100) = -10 (3757 vs 3977 baseline)
-- Total: 1620 + 700 + 20 + 10 - 10 - 5(changed_loc) = 2345 ✓
+### Key Learnings
+- Helper extraction that reduces code volume AND duplication is high-value
+- Guard consolidation (multiple if → single compound if) saves lines
+- Error message helpers NOT worth it when callers are single-line
+- Single-line replacements that don't reduce line count add indirection without benefit
+- New modules (autoresearch, goal) are at natural LOC floor — most code is API contract
+
+### Remaining Opportunities
+1. New modules at natural LOC floor — most remaining code is API contract boilerplate
+2. Tool registration descriptions/guidelines are externally-visible behavior
+3. Sandbox/macSeatbelt is SECURITY CRITICAL and already optimized
+4. Subagent modules were optimized in previous session
+5. Consider: file merging (goal/render.ts → goal/prompts.ts, but increases coupling)
+6. Consider: multi-line return object compression (risky, reduces readability)
