@@ -2104,3 +2104,52 @@ describe("validatePolicy: read_only with writableRoots", () => {
 		await expect(validatePolicy(policy)).resolves.toBeUndefined();
 	});
 });
+
+// ─── buildSandboxEnv: TERM and LANG defaults when env vars absent ──────
+
+describe("buildSandboxEnv: default TERM and LANG", () => {
+	const isolatedHome = "/tmp/sandbox-run-defaults/home";
+
+	it("TERM が未設定の場合、xterm-256color がデフォルト", () => {
+		const origTerm = process.env.TERM;
+		delete process.env.TERM;
+		try {
+			const policy = readOnlyPolicy("/tmp/workspace");
+			const env = buildSandboxEnv(policy, isolatedHome);
+			expect(env.TERM).toBe("xterm-256color");
+		} finally {
+			if (origTerm) process.env.TERM = origTerm;
+		}
+	});
+
+	it("LANG が未設定の場合、C.UTF-8 がデフォルト", () => {
+		const origLang = process.env.LANG;
+		delete process.env.LANG;
+		try {
+			const policy = readOnlyPolicy("/tmp/workspace");
+			const env = buildSandboxEnv(policy, isolatedHome);
+			expect(env.LANG).toBe("C.UTF-8");
+		} finally {
+			if (origLang) process.env.LANG = origLang;
+		}
+	});
+});
+
+// ─── resolveGitdirPaths: .git is a FIFO (not file, not directory) ──────
+
+describe("resolveGitdirPaths: .git is neither file nor directory", () => {
+	it(".git が FIFO の場合、空配列を返す", async () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "sandbox-gitdir-fifo-"));
+		try {
+			// Create a FIFO at .git — stat will show isFile=false, isDirectory=false
+			const { execSync } = await import("node:child_process");
+			execSync(`mkfifo '${join(tmpDir, ".git")}'`);
+
+			const paths = await resolveGitdirPaths(tmpDir);
+			// Neither directory nor file → no results pushed (just empty)
+			expect(paths).toHaveLength(0);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+});
