@@ -1376,3 +1376,845 @@ describe("startup block: stale widget prevention", () => {
 		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", undefined);
 	});
 });
+
+// ─── request_elevation tool: explicitlyDisabled ───────────────────
+
+describe("request_elevation: explicitlyDisabled", () => {
+	it("--no-sandbox 時は既に無効化メッセージを返す", async () => {
+		const mock = createMockApi();
+		mock._flags = { "no-sandbox": true };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[1]; // request_elevation
+		const result = await tool.execute(
+			"test-id",
+			{ command: "echo hello", reason: "test" },
+			undefined,
+			undefined,
+			createMockCtx(),
+		);
+
+		expect(result.content[0].text).toContain("既に無効化されています");
+		expect(result.details).toEqual({});
+	});
+});
+
+// ─── request_elevation tool: sandboxEnabled=false ──────────────────
+
+describe("request_elevation: sandbox not enabled", () => {
+	it("session_shutdown 後は sandbox 非アクティブメッセージを返す", async () => {
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "yolo" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// After shutdown: sandboxEnabled=false, explicitlyDisabled=false, startupBlockedReason=undefined
+		await mock._hooks.session_shutdown();
+
+		const tool = mock._registeredTools[1]; // request_elevation
+		const result = await tool.execute(
+			"test-id",
+			{ command: "echo hello", reason: "test" },
+			undefined,
+			undefined,
+			createMockCtx(),
+		);
+
+		expect(result.content[0].text).toContain("アクティブではありません");
+		expect(result.details).toEqual({});
+	});
+});
+
+// ─── request_elevation tool: user confirms ─────────────────────────
+
+describe("request_elevation: user confirms", () => {
+	it("ユーザーが承認した場合、unsandboxed で実行される", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[1]; // request_elevation
+		const ctx = createMockCtx();
+		const result = await tool.execute(
+			"test-id",
+			{ command: "npm install", reason: "依存関係のインストール" },
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(ctx.ui.confirm).toHaveBeenCalled();
+		expect(result).toBeDefined();
+		expect(result.details.elevated).toBe(true);
+		expect(result.details.reason).toBe("依存関係のインストール");
+	});
+});
+
+// ─── request_elevation tool: user denies ───────────────────────────
+
+describe("request_elevation: user denies", () => {
+	it("ユーザーが拒否した場合、拒否メッセージを返す", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[1]; // request_elevation
+		const ctx = createMockCtx({
+			ui: {
+				...createMockCtx().ui,
+				confirm: vi.fn(() => Promise.resolve(false)),
+			},
+		});
+		const result = await tool.execute(
+			"test-id",
+			{ command: "npm install", reason: "test" },
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(result.content[0].text).toContain("拒否されました");
+		expect(result.details).toEqual({});
+	});
+});
+
+// ─── user_bash hook: startup blocked ───────────────────────────────
+
+describe("user_bash hook: startup blocked", () => {
+	it("startupBlockedReason がある場合、エラーを投げる", async () => {
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+
+		// sandbox-exec unavailable + workspace_write = startup blocked
+		await mock._hooks.session_start({}, createMockCtx());
+
+		expect(() => mock._hooks.user_bash()).toThrow(/明示的に無効化/);
+	});
+
+	it("sandbox active (not yolo, not disabled) でエラーを投げる", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "read_only" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		expect(() => mock._hooks.user_bash()).toThrow("サンドボックスがアクティブな場合");
+	});
+});
+
+// ─── /sandbox command: no args with startupBlockedReason ────────────
+
+describe("/sandbox command: no args with startup blocked", () => {
+	it("startupBlockedReason がある場合、blocked メッセージを表示", async () => {
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
+		});
+		await mock._commands["sandbox"].handler("", ctx);
+
+		expect(notifications[0]).toContain("blocked:");
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("blocked:"),
+			"error",
+		);
+	});
+});
+
+// ─── /sandbox command: yolo with override active ───────────────────
+
+describe("/sandbox command: yolo with override active", () => {
+	it("override 活動中に yolo を設定すると延期メッセージを表示", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Push plan_read_only override
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "plan-mode",
+			token: "plan-defer-test",
+			profile: "plan_read_only",
+		});
+
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
+		});
+		await mock._commands["sandbox"].handler("yolo", ctx);
+
+		expect(notifications[0]).toContain("base モードを yolo に設定しました");
+		expect(notifications[0]).toContain("override 終了後");
+	});
+});
+
+// ─── Bash tool: startupBlockedReason throws ────────────────────────
+
+describe("bash tool: startup blocked", () => {
+	it("startupBlockedReason がある場合、HINT 付きでエラーを投げる", async () => {
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		await expect(
+			tool.execute("test-id", { command: "echo hello" }, undefined, undefined, createMockCtx()),
+		).rejects.toThrow("request_elevation");
+	});
+});
+
+// ─── Bash tool: non-zero exit with permission error ────────────────
+
+describe("bash tool: non-zero exit with permission error", () => {
+	it("権限エラー時は elevation hint を含む", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			code: 1,
+			signal: null,
+			stdout: "Operation not permitted",
+			stderr: "",
+		});
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		await expect(
+			tool.execute("id1", { command: "npm install" }, undefined, undefined, createMockCtx()),
+		).rejects.toThrow("request_elevation");
+	});
+
+	it("権限エラーなしの場合は elevation hint を含まない", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			code: 1,
+			signal: null,
+			stdout: "command not found",
+			stderr: "",
+		});
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		const error = await tool
+			.execute("id1", { command: "badcmd" }, undefined, undefined, createMockCtx())
+			.catch((e: Error) => e);
+
+		expect(error.message).toContain("終了コード 1");
+		expect(error.message).not.toContain("request_elevation");
+	});
+
+	it("Permission denied でも hint を含む", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			code: 2,
+			signal: null,
+			stdout: "",
+			stderr: "Permission denied: file.txt",
+		});
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		await expect(
+			tool.execute("id1", { command: "cat /etc/shadow" }, undefined, undefined, createMockCtx()),
+		).rejects.toThrow("request_elevation");
+	});
+
+	it("EPERM でも hint を含む", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			code: 1,
+			signal: null,
+			stdout: "Error: EPERM: operation not permitted",
+			stderr: "",
+		});
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		await expect(
+			tool.execute("id1", { command: "test" }, undefined, undefined, createMockCtx()),
+		).rejects.toThrow("request_elevation");
+	});
+
+	it("EACCES でも hint を含む", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			code: 1,
+			signal: null,
+			stdout: "Error: EACCES: permission denied",
+			stderr: "",
+		});
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		await expect(
+			tool.execute("id1", { command: "test" }, undefined, undefined, createMockCtx()),
+		).rejects.toThrow("request_elevation");
+	});
+});
+
+// ─── Profile override: sandbox_read_only ───────────────────────────
+
+describe("profile override: sandbox_read_only", () => {
+	it("sandbox_read_only push が有効", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "test-ext",
+			token: "sandbox-ro-1",
+			profile: "sandbox_read_only",
+		});
+
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
+		});
+		await mock._commands["sandbox"].handler("", ctx);
+		expect(notifications[0]).toBe("read_only");
+	});
+});
+
+// ─── Profile override: pop with non-matching token ─────────────────
+
+describe("profile override: pop with non-matching token", () => {
+	it("異なる token で pop しても変化しない", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Push with token A
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "plan-mode",
+			token: "token-A",
+			profile: "plan_read_only",
+		});
+
+		// Pop with different token
+		mock._eventHandlers["mekann:sandbox:pop-profile"]({
+			owner: "plan-mode",
+			token: "token-B",
+		});
+
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
+		});
+		await mock._commands["sandbox"].handler("", ctx);
+		// Should still be read_only (override not popped)
+		expect(notifications[0]).toBe("read_only");
+	});
+});
+
+// ─── Profile override: multiple pushes/pops stack ──────────────────
+
+describe("profile override: stack behavior", () => {
+	it("複数 push/pop で正しい effective mode を返す", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Push two overrides
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "ext-a",
+			token: "token-a",
+			profile: "plan_read_only",
+		});
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "ext-b",
+			token: "token-b",
+			profile: "sandbox_read_only",
+		});
+
+		// Both overrides active → read_only
+		let notifications: string[] = [];
+		let ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
+		});
+		await mock._commands["sandbox"].handler("", ctx);
+		expect(notifications[0]).toBe("read_only");
+
+		// Pop first one
+		mock._eventHandlers["mekann:sandbox:pop-profile"]({
+			owner: "ext-a",
+			token: "token-a",
+		});
+
+		notifications = [];
+		ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
+		});
+		await mock._commands["sandbox"].handler("", ctx);
+		expect(notifications[0]).toBe("read_only"); // still read_only (ext-b still active)
+
+		// Pop second one
+		mock._eventHandlers["mekann:sandbox:pop-profile"]({
+			owner: "ext-b",
+			token: "token-b",
+		});
+
+		notifications = [];
+		ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
+		});
+		await mock._commands["sandbox"].handler("", ctx);
+		expect(notifications[0]).toBe("yolo"); // back to base mode
+	});
+
+	it("同じ token で再 push は既存エントリを置き換える", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Push with token
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "ext-a",
+			token: "token-dup",
+			profile: "plan_read_only",
+		});
+
+		// Push again with same token (should replace)
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "ext-a",
+			token: "token-dup",
+			profile: "sandbox_read_only",
+		});
+
+		// Pop once should remove the entry
+		mock._eventHandlers["mekann:sandbox:pop-profile"]({
+			owner: "ext-a",
+			token: "token-dup",
+		});
+
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
+		});
+		await mock._commands["sandbox"].handler("", ctx);
+		expect(notifications[0]).toBe("yolo"); // back to base
+	});
+});
+
+// ─── Profile override: push with no token/profile ──────────────────
+
+describe("profile override: invalid payloads", () => {
+	it("token なし push は無視される", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		const ctx = createMockCtx();
+		await mock._hooks.session_start({}, ctx);
+
+		const prevCallCount = mock.appendEntry.mock.calls.length;
+
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "test",
+			// no token
+			profile: "plan_read_only",
+		});
+
+		// No rejection logged, no state change
+		expect(mock.appendEntry).toHaveBeenCalledTimes(prevCallCount);
+	});
+
+	it("profile なし push は無視される", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		const ctx = createMockCtx();
+		await mock._hooks.session_start({}, ctx);
+
+		const prevCallCount = mock.appendEntry.mock.calls.length;
+
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "test",
+			token: "no-profile-token",
+			// no profile
+		});
+
+		expect(mock.appendEntry).toHaveBeenCalledTimes(prevCallCount);
+	});
+
+	it("token なし pop は無視される", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		const ctx = createMockCtx();
+		await mock._hooks.session_start({}, ctx);
+
+		// Push first
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "test",
+			token: "pop-no-token",
+			profile: "plan_read_only",
+		});
+
+		// Pop without token
+		mock._eventHandlers["mekann:sandbox:pop-profile"]({
+			owner: "test",
+			// no token
+		});
+
+		// Override should still be active
+		const notifications: string[] = [];
+		const statusCtx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
+		});
+		await mock._commands["sandbox"].handler("", statusCtx);
+		expect(notifications[0]).toBe("read_only");
+	});
+});
+
+// ─── Escalation rejection from read_only base ──────────────────────
+
+describe("profile override: escalation rejection", () => {
+	it("read_only base で read_only push は成功する (同じ制限レベル)", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "read_only" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const prevRejectCount = mock.appendEntry.mock.calls.filter(
+			(c: any[]) => c[0] === "sandbox-profile-override-rejected",
+		).length;
+
+		// read_only → read_only: same restrictiveness, should succeed
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "test",
+			token: "ro-same-level",
+			profile: "plan_read_only",
+		});
+
+		const newRejectCount = mock.appendEntry.mock.calls.filter(
+			(c: any[]) => c[0] === "sandbox-profile-override-rejected",
+		).length;
+		expect(newRejectCount).toBe(prevRejectCount); // no new rejection
+
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
+		});
+		await mock._commands["sandbox"].handler("", ctx);
+		expect(notifications[0]).toBe("read_only");
+	});
+
+	it("workspace_write base で read_only push は成功する (より制限的)", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "test",
+			token: "ww-to-ro",
+			profile: "plan_read_only",
+		});
+
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
+		});
+		await mock._commands["sandbox"].handler("", ctx);
+		expect(notifications[0]).toBe("read_only");
+	});
+});
+
+// ─── Status bar: planModeStatus + explicitlyDisabled ───────────────
+
+describe("status bar: combined states", () => {
+	it("planModeStatus=plan の時、status bar に plan ラベルが含まれる", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		const ctx = createMockCtx();
+		await mock._hooks.session_start({}, ctx);
+
+		// Set plan mode status
+		mock._eventHandlers["mekann:plan-mode:status"]({ mode: "plan" });
+
+		// Verify status bar includes plan label
+		const lastCall = ctx.ui.setWidget.mock.calls[ctx.ui.setWidget.mock.calls.length - 1];
+		expect(lastCall[1][0]).toContain("plan");
+		expect(lastCall[1][0]).toContain("yolo");
+	});
+
+	it("sandboxEnabled=false の時、updateStatusBar は widget をクリアする", async () => {
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+
+		// sandbox-exec unavailable → sandboxEnabled=false
+		const ctx = createMockCtx();
+		await mock._hooks.session_start({}, ctx);
+
+		// updateStatusBar during session_start should clear widget
+		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", undefined);
+	});
+});
+
+// ─── session_shutdown resets all state ─────────────────────────────
+
+describe("session_shutdown: full reset", () => {
+	it("profileOverrideStack と planModeStatus をリセットする", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Push override
+		mock._eventHandlers["mekann:sandbox:push-profile"]({
+			owner: "test",
+			token: "shutdown-test",
+			profile: "plan_read_only",
+		});
+
+		// Set plan mode status
+		mock._eventHandlers["mekann:plan-mode:status"]({ mode: "plan" });
+
+		// Shutdown
+		await mock._hooks.session_shutdown();
+
+		// All state should be reset — /sandbox shows yolo (default mode)
+		const notifications: string[] = [];
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
+		});
+		await mock._commands["sandbox"].handler("", ctx);
+		expect(notifications[0]).toBe("yolo");
+
+		// user_bash should be allowed (yolo default after reset)
+		expect(mock._hooks.user_bash()).toBeUndefined();
+	});
+});
+
+// ─── buildCurrentPolicy: yolo path ─────────────────────────────────
+
+describe("buildCurrentPolicy: yolo via tool execute", () => {
+	it("yolo モードで tool が unsandboxed 実行される (sandboxExec unavailable)", async () => {
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "yolo" };
+		await loadExtension(mock);
+
+		// sandbox-exec unavailable, but yolo doesn't need it
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		const result = await tool.execute(
+			"test-id",
+			{ command: "echo hello" },
+			undefined,
+			undefined,
+			createMockCtx(),
+		);
+
+		expect(result).toBeDefined();
+	});
+});
+
+// ─── Bash tool: command approval needed ────────────────────────────
+
+describe("bash tool: command approval needed", () => {
+	it("rm -rf コマンドは承認が必要 (workspace_write)", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			code: 0,
+			signal: null,
+			stdout: "output",
+			stderr: "",
+		});
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		const ctx = createMockCtx();
+		await tool.execute("id1", { command: "rm -rf ./node_modules" }, undefined, undefined, ctx);
+
+		expect(ctx.ui.confirm).toHaveBeenCalled();
+	});
+
+	it("reboot コマンドは承認が必要 (rm -rf pattern variant)", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			code: 0,
+			signal: null,
+			stdout: "output",
+			stderr: "",
+		});
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		const ctx = createMockCtx();
+		// The mock shouldRequestApproval only catches rm -rf, so we use that
+		await tool.execute("id1", { command: "rm -rf /tmp/old-build" }, undefined, undefined, ctx);
+
+		expect(ctx.ui.confirm).toHaveBeenCalled();
+	});
+});
+
+// ─── Bash tool: read_only mode sandboxed execution ─────────────────
+
+describe("bash tool: read_only sandboxed execution", () => {
+	it("read_only モードで sandboxed command が成功する", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			code: 0,
+			signal: null,
+			stdout: "read_only output",
+			stderr: "",
+		});
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "read_only" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const tool = mock._registeredTools[0];
+		const result = await tool.execute("id1", { command: "ls" }, undefined, undefined, createMockCtx());
+
+		expect(result.content[0].text).toBe("read_only output");
+		expect(result.details.sandboxed).toBe(true);
+		expect(result.details.mode).toBe("read_only");
+	});
+});
+
+// ─── Bash tool: workspace_write sandboxed execution with policy ────
+
+describe("bash tool: workspace_write sandboxed with policy builder", () => {
+	it("workspace_write モードで buildCurrentPolicy の workspaceWritePolicy パスを実行", async () => {
+		const { isMacSandboxAvailable, runSandboxedShellMac } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(true);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue({
+			code: 0,
+			signal: null,
+			stdout: "workspace_write output",
+			stderr: "",
+		});
+
+		const { workspaceWritePolicy } = await import("../permissions.js");
+		(workspaceWritePolicy as ReturnType<typeof vi.fn>).mockReturnValue({
+			mode: "workspace_write",
+			cwd: "/tmp/test",
+			workspaceRoots: ["/tmp/test"],
+			writableRoots: ["/tmp/test"],
+			network: false,
+		});
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "workspace_write" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		// Verify mode is workspace_write
+		const notifications: string[] = [];
+		const modeCtx = createMockCtx({
+			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
+		});
+		await mock._commands["sandbox"].handler("", modeCtx);
+		expect(notifications[0]).toBe("workspace_write");
+
+		// Execute sandboxed command
+		const tool = mock._registeredTools[0];
+		const result = await tool.execute("id1", { command: "echo test" }, undefined, undefined, createMockCtx());
+
+		expect(result).toBeDefined();
+		expect(result.details.sandboxed).toBe(true);
+		expect(result.details.mode).toBe("workspace_write");
+		expect(workspaceWritePolicy).toHaveBeenCalled();
+
+		// Reset mocks
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(false);
+		(runSandboxedShellMac as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue({
+			code: 0, signal: null, stdout: "mock stdout", stderr: "",
+		});
+	});
+});

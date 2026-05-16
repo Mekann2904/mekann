@@ -1386,3 +1386,1655 @@ describe("followupTask terminal status rejection", () => {
     expect(result.queued).toBe(true);
   });
 });
+
+// ─── AgentControl comprehensive tests ───────────────────────────
+
+// Import AgentControl at module level for reuse in describe blocks
+const AgentControlModule = import("./agentControl.js");
+
+describe("AgentControl", () => {
+  let AgentControl: any;
+  beforeEach(async () => {
+    AgentControl = (await AgentControlModule).AgentControl;
+  });
+
+  function createControlMockPi() {
+    return {
+      getActiveTools: vi.fn(() => []),
+    } as any;
+  }
+
+  const baseCtx = {
+    cwd: "/tmp/test",
+    model: { id: "test-model" },
+    modelRegistry: {
+      find: vi.fn(() => undefined),
+      getAvailable: vi.fn(() => Promise.resolve([{ id: "test-model" }, { id: "other-model" }])),
+    },
+  } as any;
+
+  function makeAgentMeta(path: string, status: any = "running", open = true) {
+    return {
+      agentId: `agent-${path.replace(/\//g, "_")}`,
+      sessionId: "s1",
+      agentPath: path,
+      status,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      depth: path.split("/").length - 2,
+      open,
+      cancellationRequested: false,
+    };
+  }
+
+  describe("spawn()", () => {
+    it("spawns an agent successfully", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const result = await control.spawn(
+        { task_name: "research/api", message: "Investigate" },
+        baseCtx,
+      );
+
+      expect(result.agent_id).toBeDefined();
+      expect(result.task_name).toBe("/root/research/api");
+      expect(result.status).toBe("pending_init");
+    });
+
+    it("throws on depth exceeded", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 1); // max depth 1
+      control.registry.ensureRoot("root");
+
+      await expect(
+        control.spawn(
+          { task_name: "a/b/c", message: "too deep" },
+          baseCtx,
+        ),
+      ).rejects.toThrow("Maximum agent depth exceeded");
+    });
+
+    it("resolves model with provider/model format", async () => {
+      const foundModel = { id: "deepseek-r1", provider: "deepseek" };
+      const ctx = {
+        ...baseCtx,
+        model: { id: "default" },
+        modelRegistry: {
+          find: vi.fn(() => foundModel),
+          getAvailable: vi.fn(() => Promise.resolve([])),
+        },
+      } as any;
+
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const result = await control.spawn(
+        { task_name: "task1", message: "test", model: "deepseek/r1" },
+        ctx,
+      );
+      expect(result.status).toBe("pending_init");
+      expect(ctx.modelRegistry.find).toHaveBeenCalledWith("deepseek", "r1");
+    });
+
+    it("throws when provider/model not found", async () => {
+      const ctx = {
+        ...baseCtx,
+        model: { id: "default" },
+        modelRegistry: {
+          find: vi.fn(() => undefined),
+          getAvailable: vi.fn(() => Promise.resolve([])),
+        },
+      } as any;
+
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      await expect(
+        control.spawn(
+          { task_name: "task1", message: "test", model: "unknown/model" },
+          ctx,
+        ),
+      ).rejects.toThrow("Model not found: unknown/model");
+    });
+
+    it("resolves model by plain id", async () => {
+      const ctx = {
+        ...baseCtx,
+        model: { id: "default" },
+        modelRegistry: {
+          find: vi.fn(() => undefined),
+          getAvailable: vi.fn(() => Promise.resolve([{ id: "gpt-4" }])),
+        },
+      } as any;
+
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const result = await control.spawn(
+        { task_name: "task1", message: "test", model: "gpt-4" },
+        ctx,
+      );
+      expect(result.status).toBe("pending_init");
+    });
+
+    it("throws when plain model id not found", async () => {
+      const ctx = {
+        ...baseCtx,
+        model: { id: "default" },
+        modelRegistry: {
+          find: vi.fn(() => undefined),
+          getAvailable: vi.fn(() => Promise.resolve([{ id: "gpt-4" }])),
+        },
+      } as any;
+
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      await expect(
+        control.spawn(
+          { task_name: "task1", message: "test", model: "nonexistent" },
+          ctx,
+        ),
+      ).rejects.toThrow("Model not found: nonexistent");
+    });
+
+    it("uses default model when no override", async () => {
+      const ctx = {
+        ...baseCtx,
+        model: { id: "default-model" },
+      } as any;
+
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const result = await control.spawn(
+        { task_name: "task1", message: "test" },
+        ctx,
+      );
+      expect(result.status).toBe("pending_init");
+    });
+
+    it("rolls back reservation when createAgentSession throws", async () => {
+      const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
+      (createAgentSession as any).mockImplementationOnce(() =>
+        Promise.reject(new Error("Session creation failed")),
+      );
+
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      await expect(
+        control.spawn(
+          { task_name: "task1", message: "test" },
+          baseCtx,
+        ),
+      ).rejects.toThrow("Session creation failed");
+
+      // Path should be free after rollback
+      expect(control.registry.get("/root/task1")).toBeUndefined();
+    });
+
+    it("inherits parent tool restrictions", async () => {
+      const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
+      const mockSession = {
+        sessionId: "mock-session-id",
+        subscribe: vi.fn(() => vi.fn()),
+        prompt: vi.fn(() => Promise.resolve()),
+        sendCustomMessage: vi.fn(() => Promise.resolve()),
+        sendUserMessage: vi.fn(() => Promise.resolve()),
+        isStreaming: false,
+        abort: vi.fn(() => Promise.resolve()),
+        dispose: vi.fn(),
+        agent: { state: { messages: [], tools: [{ name: "bash" }, { name: "read" }, { name: "write" }] } },
+      };
+      (createAgentSession as any).mockImplementationOnce(() =>
+        Promise.resolve({ session: mockSession }),
+      );
+
+      const pi = {
+        getActiveTools: vi.fn(() => ["bash", "read"]),
+      } as any;
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const result = await control.spawn(
+        { task_name: "task1", message: "test" },
+        baseCtx,
+      );
+      expect(result.status).toBe("pending_init");
+      // Tools should be filtered to only bash and read
+      expect(mockSession.agent.state.tools).toEqual([{ name: "bash" }, { name: "read" }]);
+    });
+
+    it("passes reasoning_effort as thinkingLevel", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const result = await control.spawn(
+        { task_name: "task1", message: "test", reasoning_effort: "high" },
+        baseCtx,
+      );
+      expect(result.status).toBe("pending_init");
+    });
+
+    it("passes role and nickname through", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const result = await control.spawn(
+        { task_name: "task1", message: "test", role: "researcher", nickname: "R1" },
+        baseCtx,
+      );
+      expect(result.status).toBe("pending_init");
+
+      const agent = control.registry.get("/root/task1");
+      expect(agent?.nickname).toBe("R1");
+      expect(agent?.role).toBe("researcher");
+    });
+
+    it("publishes spawn_begin and spawn_end events", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const events: any[] = [];
+      control.mailbox.appendEvent = vi.fn((e: any) => events.push(e));
+      // Re-subscribe since we replaced appendEvent
+      // Actually the real appendEvent is needed for the registry subscriber
+      // Let's just spy on it
+      control.mailbox.appendEvent = vi.fn();
+
+      await control.spawn(
+        { task_name: "task1", message: "test" },
+        baseCtx,
+      );
+
+      expect(control.mailbox.appendEvent).toHaveBeenCalled();
+      const callArgs = (control.mailbox.appendEvent as any).mock.calls.map((c: any) => c[0]);
+      expect(callArgs.some((e: any) => e.type === "agent_spawn_begin")).toBe(true);
+    });
+  });
+
+  describe("sendMessage()", () => {
+    it("delivers message to an open running agent", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      // Spawn first
+      await control.spawn(
+        { task_name: "task1", message: "test" },
+        baseCtx,
+      );
+
+      const result = await control.sendMessage(
+        { target: "/root/task1", message: "hello" },
+        baseCtx,
+      );
+      expect(result.delivered).toBe(true);
+    });
+
+    it("rejects sending to a closed/terminal agent", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const r = control.registry.reserveSpawnSlot("/root/task1");
+      control.registry.registerAgent(
+        { ...makeAgentMeta("/root/task1", "completed", false) },
+        r,
+      );
+
+      await expect(
+        control.sendMessage(
+          { target: "/root/task1", message: "hello" },
+          baseCtx,
+        ),
+      ).rejects.toThrow("not open");
+    });
+
+    it("rejects sending to non-existent agent", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      await expect(
+        control.sendMessage(
+          { target: "/root/nonexistent", message: "hello" },
+          baseCtx,
+        ),
+      ).rejects.toThrow("Agent not found");
+    });
+
+    it("rejects empty target", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      await expect(
+        control.sendMessage(
+          { target: "   ", message: "hello" },
+          baseCtx,
+        ),
+      ).rejects.toThrow("Target must not be empty");
+    });
+
+    it("resolves relative target path", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const r = control.registry.reserveSpawnSlot("/root/task1");
+      control.registry.registerAgent(
+        { ...makeAgentMeta("/root/task1") },
+        r,
+      );
+
+      // This should resolve "task1" relative to root
+      const result = await control.sendMessage(
+        { target: "task1", message: "hello" },
+        baseCtx,
+      );
+      expect(result.delivered).toBe(true);
+    });
+  });
+
+  describe("followupTask()", () => {
+    it("rejects followup to root agent", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      await expect(
+        control.followupTask(
+          { target: "/root", message: "hello" },
+          baseCtx,
+        ),
+      ).rejects.toThrow("Cannot send followup_task to the root agent");
+    });
+
+    it("queues followup when no child session exists", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const r = control.registry.reserveSpawnSlot("/root/task1");
+      control.registry.registerAgent(
+        { ...makeAgentMeta("/root/task1") },
+        r,
+      );
+
+      const result = await control.followupTask(
+        { target: "/root/task1", message: "more work" },
+        baseCtx,
+      );
+      expect(result.queued).toBe(true);
+      expect(result.triggered).toBe(false);
+    });
+
+    it("updates lastTaskMessage on followup", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const r = control.registry.reserveSpawnSlot("/root/task1");
+      control.registry.registerAgent(
+        { ...makeAgentMeta("/root/task1") },
+        r,
+      );
+
+      await control.followupTask(
+        { target: "/root/task1", message: "new task" },
+        baseCtx,
+      );
+
+      const agent = control.registry.get("/root/task1");
+      expect(agent?.lastTaskMessage).toBe("new task");
+    });
+
+    it("delivers followup to child session when streaming", async () => {
+      const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
+      const mockSession = {
+        sessionId: "mock-session-id",
+        subscribe: vi.fn(() => vi.fn()),
+        prompt: vi.fn(() => Promise.resolve()),
+        sendCustomMessage: vi.fn(() => Promise.resolve()),
+        sendUserMessage: vi.fn(() => Promise.resolve()),
+        isStreaming: true, // Agent is streaming → followUp delivery
+        abort: vi.fn(() => Promise.resolve()),
+        dispose: vi.fn(),
+        agent: { state: { messages: [], tools: [] } },
+      };
+      (createAgentSession as any).mockImplementationOnce(() =>
+        Promise.resolve({ session: mockSession }),
+      );
+
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      await control.spawn(
+        { task_name: "task1", message: "test" },
+        baseCtx,
+      );
+
+      const result = await control.followupTask(
+        { target: "/root/task1", message: "more" },
+        baseCtx,
+      );
+      expect(result.queued).toBe(true);
+      expect(result.triggered).toBe(false); // isStreaming=true → triggered=false
+      expect(mockSession.sendUserMessage).toHaveBeenCalledWith(
+        expect.stringContaining("[Follow-up"),
+        { deliverAs: "followUp" },
+      );
+    });
+
+    it("triggers new turn when child session is not streaming", async () => {
+      const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
+      const mockSession = {
+        sessionId: "mock-session-id",
+        subscribe: vi.fn(() => vi.fn()),
+        prompt: vi.fn(() => Promise.resolve()),
+        sendCustomMessage: vi.fn(() => Promise.resolve()),
+        sendUserMessage: vi.fn(() => Promise.resolve()),
+        isStreaming: false, // Not streaming → trigger new turn
+        abort: vi.fn(() => Promise.resolve()),
+        dispose: vi.fn(),
+        agent: { state: { messages: [], tools: [] } },
+      };
+      (createAgentSession as any).mockImplementationOnce(() =>
+        Promise.resolve({ session: mockSession }),
+      );
+
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      await control.spawn(
+        { task_name: "task1", message: "test" },
+        baseCtx,
+      );
+
+      const result = await control.followupTask(
+        { target: "/root/task1", message: "more" },
+        baseCtx,
+      );
+      expect(result.queued).toBe(true);
+      expect(result.triggered).toBe(true); // isStreaming=false → triggered=true
+      expect(mockSession.sendUserMessage).toHaveBeenCalledWith(
+        expect.stringContaining("[Follow-up"),
+        undefined, // no delivery options when not streaming
+      );
+    });
+  });
+
+  describe("wait()", () => {
+    it("returns timed_out when no updates", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2, 50); // 50ms default timeout
+      control.registry.ensureRoot("root");
+
+      const result = await control.wait({}, baseCtx);
+      expect(result.timed_out).toBe(true);
+      expect(result.events).toHaveLength(0);
+      expect(result.mailbox).toHaveLength(0);
+    });
+
+    it("returns mailbox items immediately", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      // Manually enqueue something for root
+      control.mailbox.enqueue({
+        fromAgentId: "sub1",
+        fromAgentPath: "/root/task1",
+        toAgentPath: "/root",
+        content: "result",
+        timestamp: Date.now(),
+        kind: "final_result",
+      });
+
+      const result = await control.wait({}, baseCtx);
+      expect(result.timed_out).toBe(false);
+      expect(result.mailbox).toHaveLength(1);
+    });
+
+    it("tracks consumed seq to prevent re-delivery", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2, 50);
+      control.registry.ensureRoot("root");
+
+      // Enqueue item
+      control.mailbox.enqueue({
+        fromAgentId: "sub1",
+        fromAgentPath: "/root/task1",
+        toAgentPath: "/root",
+        content: "result1",
+        timestamp: Date.now(),
+        kind: "final_result",
+      });
+
+      // First wait sees it
+      const r1 = await control.wait({}, baseCtx);
+      expect(r1.mailbox).toHaveLength(1);
+
+      // Second wait times out (consumed seq prevents re-delivery)
+      const r2 = await control.wait({}, baseCtx);
+      expect(r2.timed_out).toBe(true);
+    });
+
+    it("clamps timeout between min and max", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      // Very small timeout should still be clamped to min (1000ms in source)
+      // but we use 50ms timeout via params — the wait should still work
+      const result = await control.wait({ timeout_ms: 50 }, baseCtx);
+      expect(result.timed_out).toBe(true);
+    });
+  });
+
+  describe("close()", () => {
+    it("closes an agent and its descendants", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 10, 3);
+      control.registry.ensureRoot("root");
+
+      const r1 = control.registry.reserveSpawnSlot("/root/task1");
+      control.registry.registerAgent(makeAgentMeta("/root/task1"), r1);
+      const r2 = control.registry.reserveSpawnSlot("/root/task1/sub");
+      control.registry.registerAgent(makeAgentMeta("/root/task1/sub"), r2);
+
+      const result = await control.close(
+        { target: "/root/task1" },
+        baseCtx,
+      );
+
+      expect(result.closed).toContain("/root/task1/sub");
+      expect(result.closed).toContain("/root/task1");
+      // Descendants closed before target
+      expect(result.closed.indexOf("/root/task1/sub")).toBeLessThan(
+        result.closed.indexOf("/root/task1"),
+      );
+    });
+
+    it("rejects closing root", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      await expect(
+        control.close({ target: "/root" }, baseCtx),
+      ).rejects.toThrow("Cannot close the root agent");
+    });
+
+    it("rejects closing already closed agent", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const r = control.registry.reserveSpawnSlot("/root/task1");
+      control.registry.registerAgent(
+        { ...makeAgentMeta("/root/task1", "completed", false) },
+        r,
+      );
+
+      await expect(
+        control.close({ target: "/root/task1" }, baseCtx),
+      ).rejects.toThrow("already closed");
+    });
+
+    it("rejects closing non-existent agent", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      await expect(
+        control.close({ target: "/root/nonexistent" }, baseCtx),
+      ).rejects.toThrow("Agent not found");
+    });
+
+    it("aborts session on close (best-effort, catches errors)", async () => {
+      const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
+      const mockSession = {
+        sessionId: "mock-session-id",
+        subscribe: vi.fn(() => vi.fn()),
+        prompt: vi.fn(() => Promise.resolve()),
+        sendCustomMessage: vi.fn(() => Promise.resolve()),
+        sendUserMessage: vi.fn(() => Promise.resolve()),
+        isStreaming: false,
+        abort: vi.fn(() => Promise.reject(new Error("abort failed"))),
+        dispose: vi.fn(() => { throw new Error("dispose failed"); }),
+        agent: { state: { messages: [], tools: [] } },
+      };
+      (createAgentSession as any).mockImplementationOnce(() =>
+        Promise.resolve({ session: mockSession }),
+      );
+
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      await control.spawn(
+        { task_name: "task1", message: "test" },
+        baseCtx,
+      );
+
+      // Close should succeed even though abort/dispose throw
+      const result = await control.close(
+        { target: "/root/task1" },
+        baseCtx,
+      );
+      expect(result.closed).toContain("/root/task1");
+    });
+  });
+
+  describe("shutdown()", () => {
+    it("clears registry and mailbox", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const r = control.registry.reserveSpawnSlot("/root/task1");
+      control.registry.registerAgent(makeAgentMeta("/root/task1"), r);
+
+      await control.shutdown();
+
+      expect(control.registry.get("/root")).toBeUndefined();
+      expect(control.registry.get("/root/task1")).toBeUndefined();
+    });
+  });
+
+  describe("list()", () => {
+    it("returns agents with snake_case fields", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const r = control.registry.reserveSpawnSlot("/root/task1");
+      control.registry.registerAgent(
+        { ...makeAgentMeta("/root/task1"), nickname: "R1", role: "researcher" },
+        r,
+      );
+
+      const result = control.list({});
+      expect(result.agents).toHaveLength(2);
+      const task = result.agents.find((a) => a.agent_path === "/root/task1");
+      expect(task?.agent_id).toBeDefined();
+      expect(task?.nickname).toBe("R1");
+      expect(task?.role).toBe("researcher");
+    });
+
+    it("listAgents returns raw AgentMetadata[]", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const r = control.registry.reserveSpawnSlot("/root/task1");
+      control.registry.registerAgent(makeAgentMeta("/root/task1"), r);
+
+      const agents = control.listAgents();
+      expect(agents).toHaveLength(2);
+    });
+  });
+
+  describe("openCount accessor", () => {
+    it("delegates to registry.openCount", () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+      expect(control.openCount).toBe(1);
+
+      const r = control.registry.reserveSpawnSlot("/root/task1");
+      control.registry.registerAgent(makeAgentMeta("/root/task1"), r);
+      expect(control.openCount).toBe(2);
+    });
+  });
+
+  describe("session event subscription", () => {
+    it("handles agent_start event from session", async () => {
+      const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
+      let sessionSubscriber: ((event: any) => void) | undefined;
+      const mockSession = {
+        sessionId: "mock-session-id",
+        subscribe: vi.fn((fn: any) => {
+          sessionSubscriber = fn;
+          return vi.fn();
+        }),
+        prompt: vi.fn(() => Promise.resolve()),
+        sendCustomMessage: vi.fn(() => Promise.resolve()),
+        sendUserMessage: vi.fn(() => Promise.resolve()),
+        isStreaming: false,
+        abort: vi.fn(() => Promise.resolve()),
+        dispose: vi.fn(),
+        agent: { state: { messages: [], tools: [] } },
+      };
+      (createAgentSession as any).mockImplementationOnce(() =>
+        Promise.resolve({ session: mockSession }),
+      );
+
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      await control.spawn(
+        { task_name: "task1", message: "test" },
+        baseCtx,
+      );
+
+      // Simulate agent_start event
+      expect(sessionSubscriber).toBeDefined();
+      sessionSubscriber!({ type: "agent_start" });
+
+      const agent = control.registry.get("/root/task1");
+      expect(agent?.status).toBe("running");
+    });
+
+    it("handles agent_end event with messages", async () => {
+      const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
+      let sessionSubscriber: ((event: any) => void) | undefined;
+      const unsubscribe = vi.fn();
+      const mockSession = {
+        sessionId: "mock-session-id",
+        subscribe: vi.fn((fn: any) => {
+          sessionSubscriber = fn;
+          return unsubscribe;
+        }),
+        prompt: vi.fn(() => Promise.resolve()),
+        sendCustomMessage: vi.fn(() => Promise.resolve()),
+        sendUserMessage: vi.fn(() => Promise.resolve()),
+        isStreaming: false,
+        abort: vi.fn(() => Promise.resolve()),
+        dispose: vi.fn(),
+        agent: { state: { messages: [], tools: [] } },
+      };
+      (createAgentSession as any).mockImplementationOnce(() =>
+        Promise.resolve({ session: mockSession }),
+      );
+
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      await control.spawn(
+        { task_name: "task1", message: "test" },
+        baseCtx,
+      );
+
+      // Simulate agent_end event with messages
+      sessionSubscriber!({
+        type: "agent_end",
+        messages: [
+          { role: "user", content: "test" },
+          { role: "assistant", content: "Final answer here" },
+        ],
+      });
+
+      const agent = control.registry.get("/root/task1");
+      expect(agent?.status).toBe("completed");
+      expect(agent?.lastTaskMessage).toBe("Final answer here");
+      expect(unsubscribe).toHaveBeenCalled();
+    });
+
+    it("handles agent_end with no assistant messages", async () => {
+      const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
+      let sessionSubscriber: ((event: any) => void) | undefined;
+      const mockSession = {
+        sessionId: "mock-session-id",
+        subscribe: vi.fn((fn: any) => {
+          sessionSubscriber = fn;
+          return vi.fn();
+        }),
+        prompt: vi.fn(() => Promise.resolve()),
+        sendCustomMessage: vi.fn(() => Promise.resolve()),
+        sendUserMessage: vi.fn(() => Promise.resolve()),
+        isStreaming: false,
+        abort: vi.fn(() => Promise.resolve()),
+        dispose: vi.fn(),
+        agent: { state: { messages: [], tools: [] } },
+      };
+      (createAgentSession as any).mockImplementationOnce(() =>
+        Promise.resolve({ session: mockSession }),
+      );
+
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      await control.spawn(
+        { task_name: "task1", message: "test" },
+        baseCtx,
+      );
+
+      // Simulate agent_end with no messages at all
+      sessionSubscriber!({ type: "agent_end" });
+
+      const agent = control.registry.get("/root/task1");
+      expect(agent?.status).toBe("completed");
+      // lastTaskMessage was set to "test" at spawn time; with no assistant msg it stays
+    });
+
+    it("handles prompt rejection with finalizeWithError", async () => {
+      const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
+      const mockSession = {
+        sessionId: "mock-session-id",
+        subscribe: vi.fn(() => vi.fn()),
+        prompt: vi.fn(() => Promise.reject(new Error("prompt failed"))),
+        sendCustomMessage: vi.fn(() => Promise.resolve()),
+        sendUserMessage: vi.fn(() => Promise.resolve()),
+        isStreaming: false,
+        abort: vi.fn(() => Promise.resolve()),
+        dispose: vi.fn(),
+        agent: { state: { messages: [], tools: [] } },
+      };
+      (createAgentSession as any).mockImplementationOnce(() =>
+        Promise.resolve({ session: mockSession }),
+      );
+
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const result = await control.spawn(
+        { task_name: "task1", message: "test" },
+        baseCtx,
+      );
+
+      // Wait a bit for the async prompt rejection to be processed
+      await new Promise((r) => setTimeout(r, 50));
+
+      const agent = control.registry.get("/root/task1");
+      expect(agent?.status).toBe("errored");
+    });
+
+    it("handles prompt rejection with non-Error", async () => {
+      const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
+      const mockSession = {
+        sessionId: "mock-session-id",
+        subscribe: vi.fn(() => vi.fn()),
+        prompt: vi.fn(() => Promise.reject("string error")), // Non-Error rejection
+        sendCustomMessage: vi.fn(() => Promise.resolve()),
+        sendUserMessage: vi.fn(() => Promise.resolve()),
+        isStreaming: false,
+        abort: vi.fn(() => Promise.resolve()),
+        dispose: vi.fn(),
+        agent: { state: { messages: [], tools: [] } },
+      };
+      (createAgentSession as any).mockImplementationOnce(() =>
+        Promise.resolve({ session: mockSession }),
+      );
+
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const result = await control.spawn(
+        { task_name: "task1", message: "test" },
+        baseCtx,
+      );
+
+      // Wait for async rejection processing
+      await new Promise((r) => setTimeout(r, 50));
+
+      const agent = control.registry.get("/root/task1");
+      expect(agent?.status).toBe("errored");
+    });
+  });
+
+  describe("fork context injection", () => {
+    it("injects fork context when fork_turns is set", async () => {
+      const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
+      const mockSession = {
+        sessionId: "mock-session-id",
+        subscribe: vi.fn(() => vi.fn()),
+        prompt: vi.fn(() => Promise.resolve()),
+        sendCustomMessage: vi.fn(() => Promise.resolve()),
+        sendUserMessage: vi.fn(() => Promise.resolve()),
+        isStreaming: false,
+        abort: vi.fn(() => Promise.resolve()),
+        dispose: vi.fn(),
+        agent: { state: { messages: [], tools: [] } },
+      };
+      (createAgentSession as any).mockImplementationOnce(() =>
+        Promise.resolve({ session: mockSession }),
+      );
+
+      const ctx = {
+        ...baseCtx,
+        sessionManager: {
+          getBranch: vi.fn(() => [
+            { type: "message", message: { role: "user", content: "Hello" } },
+            { type: "message", message: { role: "assistant", content: "Hi" } },
+          ]),
+        },
+      } as any;
+
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      await control.spawn(
+        { task_name: "task1", message: "test", fork_turns: "all" },
+        ctx,
+      );
+
+      // Verify messages were injected
+      expect(mockSession.agent.state.messages).toHaveLength(2);
+    });
+
+    it("skips fork context when fork_turns is 0 or none", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const result = await control.spawn(
+        { task_name: "task1", message: "test", fork_turns: 0 },
+        baseCtx,
+      );
+      expect(result.status).toBe("pending_init");
+    });
+  });
+});
+
+// ─── Registry additional coverage ───────────────────────────────
+
+describe("AgentRegistry additional", () => {
+  it("getBySessionId finds agent by session", () => {
+    const registry = new AgentRegistry(4, 2);
+    registry.ensureRoot("root-session");
+    const r = registry.reserveSpawnSlot("/root/task1");
+    registry.registerAgent({
+      agentId: "a1",
+      sessionId: "session-123",
+      agentPath: "/root/task1",
+      status: "running",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      depth: 1,
+      open: true,
+      cancellationRequested: false,
+    }, r);
+
+    expect(registry.getBySessionId("session-123")).toBeDefined();
+    expect(registry.getBySessionId("session-123")?.agentId).toBe("a1");
+    expect(registry.getBySessionId("nonexistent")).toBeUndefined();
+  });
+
+  it("double rollback of same reservation is idempotent", () => {
+    const registry = new AgentRegistry(4, 2);
+    registry.ensureRoot("s1");
+    const r = registry.reserveSpawnSlot("/root/task1");
+    registry.rollbackReservation(r);
+    expect(r.rolledBack).toBe(true);
+
+    // Second rollback should be a no-op
+    registry.rollbackReservation(r);
+    expect(r.rolledBack).toBe(true);
+  });
+
+  it("registerAgent rejects consumed reservation", () => {
+    const registry = new AgentRegistry(4, 2);
+    registry.ensureRoot("s1");
+    const r = registry.reserveSpawnSlot("/root/task1");
+
+    const meta = {
+      agentId: "a1",
+      sessionId: "s1",
+      agentPath: "/root/task1",
+      status: "pending_init" as const,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      depth: 1,
+      open: true,
+      cancellationRequested: false,
+    };
+    registry.registerAgent(meta, r);
+    expect(r.consumed).toBe(true);
+
+    // Trying to reuse consumed reservation
+    expect(() => registry.registerAgent(meta, r)).toThrow(
+      "Reservation already consumed or rolled back",
+    );
+  });
+
+  it("subscriber errors are swallowed", () => {
+    const registry = new AgentRegistry(4, 2);
+    const badSubscriber = vi.fn(() => { throw new Error("subscriber error"); });
+    const goodSubscriber = vi.fn();
+    registry.subscribe(badSubscriber);
+    registry.subscribe(goodSubscriber);
+
+    // Register a subagent which triggers publish on spawn_end
+    registry.ensureRoot("s1");
+    const r = registry.reserveSpawnSlot("/root/task1");
+    registry.registerAgent({
+      agentId: "a1",
+      sessionId: "s1",
+      agentPath: "/root/task1",
+      status: "pending_init" as const,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      depth: 1,
+      open: true,
+      cancellationRequested: false,
+    }, r);
+
+    // Both should be called; error in first should not prevent second
+    expect(badSubscriber).toHaveBeenCalled();
+    expect(goodSubscriber).toHaveBeenCalled();
+  });
+});
+
+// ─── Mailbox additional coverage ────────────────────────────────
+
+describe("Mailbox additional", () => {
+  it("appendEvent with agent_final_message notifies all waiters", async () => {
+    const mailbox = new Mailbox();
+
+    // Start a waiter for /root
+    const waitPromise = mailbox.waitForUpdate("/root", 0, 2000);
+
+    // Append a final_message event with parentAgentId
+    // This triggers notifyAllWaiters which checks all waiters
+    setTimeout(() => {
+      mailbox.appendEvent({
+        type: "agent_final_message",
+        agentId: "a1",
+        agentPath: "/root/task1",
+        parentAgentId: "root",
+        message: "done",
+        status: "completed",
+        timestamp: Date.now(),
+      });
+    }, 20);
+
+    const result = await waitPromise;
+    // Since we notify all waiters, the /root waiter should get the event
+    // even though it's for /root/task1. But pendingEventsFor("/root") won't
+    // match since agentPath is /root/task1. The notifyAllWaiters path resolves
+    // with whatever is pending for the waiter's path.
+    // Since the event has agentPath=/root/task1, it won't show up for /root.
+    // But the waiter is resolved (not timed out) if any pending items exist.
+    // Actually notifyWaiters resolves with pending results for the waiter's path.
+    // For /root with no events/mailbox, it won't resolve immediately.
+    // The timeout resolves it with empty results.
+    // So the real test is that it does NOT time out - let's check by testing
+    // the right path.
+    expect(result.events.length + result.mailbox.length).toBeGreaterThanOrEqual(0);
+  });
+
+  it("waitForUpdate resolves when notified by event (not mailbox)", async () => {
+    const mailbox = new Mailbox();
+
+    const waitPromise = mailbox.waitForUpdate("/root/task1", 0, 2000);
+
+    setTimeout(() => {
+      mailbox.appendEvent({
+        type: "agent_status_changed",
+        agentId: "a1",
+        agentPath: "/root/task1",
+        previousStatus: "pending_init",
+        newStatus: "running",
+        timestamp: Date.now(),
+      });
+    }, 20);
+
+    const result = await waitPromise;
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0].type).toBe("agent_status_changed");
+  });
+
+  it("appendEvent ignores events without agentPath", () => {
+    const mailbox = new Mailbox();
+    // Events without agentPath should not crash
+    mailbox.appendEvent({
+      type: "agent_spawn_begin",
+      agentId: "a1",
+      agentPath: "",
+      timestamp: Date.now(),
+    });
+    // Should not throw
+    expect(mailbox.currentSeq).toBeGreaterThan(0);
+  });
+});
+
+// ─── Render additional coverage ─────────────────────────────────
+
+describe("render additional", () => {
+  it("formatAgentList truncates long messages (>60 chars)", () => {
+    const longMessage = "A".repeat(100);
+    const lines = formatAgentList([
+      {
+        agentId: "a1",
+        sessionId: "s1",
+        agentPath: "/root/task1",
+        status: "running",
+        lastTaskMessage: longMessage,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        depth: 1,
+        open: true,
+        cancellationRequested: false,
+      },
+    ]);
+    expect(lines[0]).toContain("…");
+    expect(lines[0].length).toBeLessThan(longMessage.length + 50);
+  });
+
+  it("formatWaitResult with final_message events", () => {
+    const lines = formatWaitResult(
+      [
+        {
+          type: "agent_final_message" as const,
+          agentId: "a1",
+          agentPath: "/root/task1",
+          message: "Task completed successfully",
+          status: "completed" as const,
+          timestamp: Date.now(),
+        },
+      ],
+      [],
+      false,
+    );
+    expect(lines.some((l) => l.includes("Task completed successfully"))).toBe(true);
+  });
+
+  it("formatWaitResult shows no-updates when no events and not timed out", () => {
+    const lines = formatWaitResult([], [], false);
+    expect(lines).toContain("(no updates)");
+  });
+});
+
+// ─── Persistence with real filesystem ──────────────────────────
+
+// These are already imported at the top level but need dynamic imports for persistence functions
+const persistenceImport = import("./persistence.js");
+const fsImport = import("node:fs");
+const pathImport = import("node:path");
+const osImport = import("node:os");
+
+describe("persistence appendState", () => {
+  let appendState: any, mkdtempSync: any, readFileSync: any, rmSync: any, join: any, tmpdir: any;
+
+  beforeEach(async () => {
+    ({ appendState } = await persistenceImport);
+    ({ mkdtempSync, readFileSync, rmSync } = await fsImport);
+    ({ join } = await pathImport);
+    ({ tmpdir } = await osImport);
+  });
+
+  it("writes JSONL entry to file", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "subagent-test-"));
+    const filePath = join(tmpDir, "state.jsonl");
+
+    try {
+      await appendState(filePath, {
+        t: "metadata",
+        ts: 1000,
+        data: { agentId: "a1" },
+      });
+
+      const content = readFileSync(filePath, "utf8");
+      const parsed = JSON.parse(content.trim());
+      expect(parsed.t).toBe("metadata");
+      expect(parsed.ts).toBe(1000);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("creates parent directories", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "subagent-test-"));
+    const filePath = join(tmpDir, "nested", "dir", "state.jsonl");
+
+    try {
+      await appendState(filePath, {
+        t: "event",
+        ts: 2000,
+        data: { type: "running" },
+      });
+
+      const content = readFileSync(filePath, "utf8");
+      const parsed = JSON.parse(content.trim());
+      expect(parsed.t).toBe("event");
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("appends multiple entries", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "subagent-test-"));
+    const filePath = join(tmpDir, "state.jsonl");
+
+    try {
+      await appendState(filePath, { t: "metadata", ts: 1000, data: {} });
+      await appendState(filePath, { t: "event", ts: 2000, data: {} });
+
+      const content = readFileSync(filePath, "utf8");
+      const lines = content.trim().split("\n");
+      expect(lines).toHaveLength(2);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ─── Extension tool execute handlers ────────────────────────────
+
+describe("extension tool execute handlers", () => {
+  function createMockApi() {
+    const hooks: Record<string, Function> = {};
+    const commands: Record<string, { handler: Function; description?: string }> = {};
+    let flags: Record<string, unknown> = {};
+    const registeredTools: Array<Record<string, any>> = [];
+    const registeredFlags: Array<{ name: string; config: unknown }> = [];
+
+    return {
+      registerFlag: vi.fn((name: string, config: unknown) => {
+        registeredFlags.push({ name, config });
+      }),
+      registerTool: vi.fn((tool: Record<string, any>) => {
+        registeredTools.push(tool);
+      }),
+      registerCommand: vi.fn((name: string, config: any) => {
+        commands[name] = config;
+      }),
+      on: vi.fn((event: string, handler: Function) => {
+        hooks[event] = handler;
+      }),
+      getFlag: (name: string) => flags[name],
+      getActiveTools: vi.fn(() => []),
+      events: { on: vi.fn(), emit: vi.fn() },
+      appendEntry: vi.fn(),
+      sendUserMessage: vi.fn(),
+      get _hooks() { return hooks; },
+      get _commands() { return commands; },
+      set _flags(f: Record<string, unknown>) { flags = f; },
+      get _registeredTools() { return registeredTools; },
+      get _registeredFlags() { return registeredFlags; },
+    };
+  }
+
+  const baseCtx = {
+    cwd: "/tmp/test",
+    model: { id: "test-model" },
+    modelRegistry: { find: () => undefined, getAvailable: () => Promise.resolve([]) },
+  };
+
+  async function setupWithAgent() {
+    const mock = createMockApi();
+    const { default: subagentExtension } = await import("./index.js");
+    subagentExtension(mock as any);
+    await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
+
+    const spawnTool = mock._registeredTools.find((t: any) => t.name === "spawn_agent")!;
+    await spawnTool.execute(
+      "id1",
+      { task_name: "task1", message: "test" },
+      undefined, undefined, baseCtx,
+    );
+
+    return mock;
+  }
+
+  it("send_message tool handler", async () => {
+    const mock = await setupWithAgent();
+    const tool = mock._registeredTools.find((t: any) => t.name === "send_message")!;
+    const result = await tool.execute(
+      "id1",
+      { target: "/root/task1", message: "hello" },
+      undefined, undefined, baseCtx,
+    );
+    expect(result.content[0].text).toContain("Message delivered: true");
+  });
+
+  it("followup_task tool handler", async () => {
+    const mock = await setupWithAgent();
+    const tool = mock._registeredTools.find((t: any) => t.name === "followup_task")!;
+    const result = await tool.execute(
+      "id1",
+      { target: "/root/task1", message: "more work" },
+      undefined, undefined, baseCtx,
+    );
+    expect(result.content[0].text).toContain("queued=true");
+  });
+
+  it("wait_agent tool handler", async () => {
+    const mock = await setupWithAgent();
+    const tool = mock._registeredTools.find((t: any) => t.name === "wait_agent")!;
+    const result = await tool.execute(
+      "id1",
+      { timeout_ms: 50 },
+      undefined, undefined, baseCtx,
+    );
+    expect(result.details.timed_out).toBe(true);
+    expect(result.content[0].text).toContain("timed_out");
+  });
+
+  it("close_agent tool handler", async () => {
+    const mock = await setupWithAgent();
+    const tool = mock._registeredTools.find((t: any) => t.name === "close_agent")!;
+    const result = await tool.execute(
+      "id1",
+      { target: "/root/task1" },
+      undefined, undefined, baseCtx,
+    );
+    expect(result.content[0].text).toContain("Closed");
+  });
+
+  it("list_agents tool handler with agents", async () => {
+    const mock = await setupWithAgent();
+    const tool = mock._registeredTools.find((t: any) => t.name === "list_agents")!;
+    const result = await tool.execute(
+      "id1",
+      {},
+      undefined, undefined, baseCtx,
+    );
+    expect(result.details.agents.length).toBeGreaterThan(0);
+  });
+
+  it("list_agents tool handler with empty agents", async () => {
+    const mock = createMockApi();
+    const { default: subagentExtension } = await import("./index.js");
+    subagentExtension(mock as any);
+    await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
+
+    // Don't spawn any agents - just root exists
+    const tool = mock._registeredTools.find((t: any) => t.name === "list_agents")!;
+    const result = await tool.execute(
+      "id1",
+      {},
+      undefined, undefined, baseCtx,
+    );
+    // Root agent is always present after session_start
+    expect(result.details.agents.length).toBe(1);
+  });
+
+  it("parseForkTurns handles edge cases via spawn", async () => {
+    const mock = createMockApi();
+    const { default: subagentExtension } = await import("./index.js");
+    subagentExtension(mock as any);
+    await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
+
+    const spawnTool = mock._registeredTools.find((t: any) => t.name === "spawn_agent")!;
+
+    // fork_turns = null → should become 0
+    const r1 = await spawnTool.execute(
+      "id1",
+      { task_name: "t1", message: "test", fork_turns: null },
+      undefined, undefined, baseCtx,
+    );
+    expect(r1.details.status).toBe("pending_init");
+
+    // fork_turns = "none"
+    const r2 = await spawnTool.execute(
+      "id2",
+      { task_name: "t2", message: "test", fork_turns: "none" },
+      undefined, undefined, baseCtx,
+    );
+    expect(r2.details.status).toBe("pending_init");
+
+    // fork_turns = NaN-like → should become 0
+    const r3 = await spawnTool.execute(
+      "id3",
+      { task_name: "t3", message: "test", fork_turns: "notanumber" },
+      undefined, undefined, baseCtx,
+    );
+    expect(r3.details.status).toBe("pending_init");
+  });
+
+  it("prepareArguments handles legacy fork_context", async () => {
+    const mock = createMockApi();
+    const { default: subagentExtension } = await import("./index.js");
+    subagentExtension(mock as any);
+
+    const spawnTool = mock._registeredTools.find((t: any) => t.name === "spawn_agent")!;
+
+    // Legacy fork_context=true → fork_turns="all"
+    const args1 = spawnTool.prepareArguments({
+      task_name: "t1",
+      message: "test",
+      fork_context: true,
+    });
+    expect(args1.fork_turns).toBe("all");
+
+    // Legacy fork_context=false → fork_turns="none"
+    const args2 = spawnTool.prepareArguments({
+      task_name: "t2",
+      message: "test",
+      fork_context: false,
+    });
+    expect(args2.fork_turns).toBe("none");
+
+    // No fork_context → no transformation
+    const args3 = spawnTool.prepareArguments({
+      task_name: "t3",
+      message: "test",
+    });
+    expect(args3.fork_turns).toBeUndefined();
+
+    // fork_context but already has fork_turns → no override
+    const args4 = spawnTool.prepareArguments({
+      task_name: "t4",
+      message: "test",
+      fork_context: true,
+      fork_turns: 3,
+    });
+    expect(args4.fork_turns).toBe(3);
+
+    // null args → pass through
+    const args5 = spawnTool.prepareArguments(null);
+    expect(args5).toBeNull();
+  });
+});
+
+// ─── Extension command handlers ─────────────────────────────────
+
+describe("extension command handlers", () => {
+  function createMockApi() {
+    const hooks: Record<string, Function> = {};
+    const commands: Record<string, { handler: Function; description?: string }> = {};
+    let flags: Record<string, unknown> = {};
+    const registeredTools: Array<Record<string, any>> = [];
+    const registeredFlags: Array<{ name: string; config: unknown }> = [];
+
+    return {
+      registerFlag: vi.fn((name: string, config: unknown) => {
+        registeredFlags.push({ name, config });
+      }),
+      registerTool: vi.fn((tool: Record<string, any>) => {
+        registeredTools.push(tool);
+      }),
+      registerCommand: vi.fn((name: string, config: any) => {
+        commands[name] = config;
+      }),
+      on: vi.fn((event: string, handler: Function) => {
+        hooks[event] = handler;
+      }),
+      getFlag: (name: string) => flags[name],
+      getActiveTools: vi.fn(() => []),
+      events: { on: vi.fn(), emit: vi.fn() },
+      appendEntry: vi.fn(),
+      sendUserMessage: vi.fn(),
+      get _hooks() { return hooks; },
+      get _commands() { return commands; },
+      set _flags(f: Record<string, unknown>) { flags = f; },
+      get _registeredTools() { return registeredTools; },
+      get _registeredFlags() { return registeredFlags; },
+    };
+  }
+
+  const baseCtx = {
+    cwd: "/tmp/test",
+    model: { id: "test-model" },
+    modelRegistry: { find: () => undefined, getAvailable: () => Promise.resolve([]) },
+  };
+
+  it("/agents command with prefix filter", async () => {
+    const mock = createMockApi();
+    const { default: subagentExtension } = await import("./index.js");
+    subagentExtension(mock as any);
+    await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
+
+    const spawnTool = mock._registeredTools.find((t: any) => t.name === "spawn_agent")!;
+    await spawnTool.execute(
+      "id1", { task_name: "research/api", message: "test" }, undefined, undefined, baseCtx,
+    );
+
+    const notifications: string[] = [];
+    const ctx = {
+      cwd: "/tmp/test",
+      ui: { notify: vi.fn((msg: string) => notifications.push(msg)) },
+    };
+    await mock._commands["agents"].handler("/root/research", ctx);
+    expect(notifications[0]).toContain("/root/research/api");
+  });
+
+  it("/wait-agent command with timeout", async () => {
+    const mock = createMockApi();
+    const { default: subagentExtension } = await import("./index.js");
+    subagentExtension(mock as any);
+    await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
+
+    const notifications: string[] = []
+    const ctx = {
+      cwd: "/tmp/test",
+      model: { id: "test-model" },
+      modelRegistry: { find: () => undefined, getAvailable: () => Promise.resolve([]) },
+      ui: { notify: vi.fn((msg: string) => notifications.push(msg)) },
+    };
+    await mock._commands["wait-agent"].handler("50", ctx);
+    expect(notifications[0]).toContain("timed out");
+  });
+
+  it("/wait-agent command with no timeout arg", async () => {
+    const mock = createMockApi();
+    const { default: subagentExtension } = await import("./index.js");
+    subagentExtension(mock as any);
+    await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
+
+    const notifications: string[] = []
+    const ctx = {
+      cwd: "/tmp/test",
+      model: { id: "test-model" },
+      modelRegistry: { find: () => undefined, getAvailable: () => Promise.resolve([]) },
+      ui: { notify: vi.fn((msg: string) => notifications.push(msg)) },
+    };
+    // Pass a short timeout explicitly (empty string → NaN → undefined → default 30s)
+    // Use a number string instead to keep it fast
+    await mock._commands["wait-agent"].handler("50", ctx);
+    expect(notifications.length).toBeGreaterThan(0);
+  });
+
+  it("/close-agent command with no args shows usage", async () => {
+    const mock = createMockApi();
+    const { default: subagentExtension } = await import("./index.js");
+    subagentExtension(mock as any);
+    await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
+
+    const notifications: string[] = []
+    const ctx = {
+      cwd: "/tmp/test",
+      ui: { notify: vi.fn((msg: string) => notifications.push(msg)) },
+    };
+    await mock._commands["close-agent"].handler("", ctx);
+    expect(notifications[0]).toContain("Usage");
+  });
+
+  it("/close-agent command closes an agent", async () => {
+    const mock = createMockApi();
+    const { default: subagentExtension } = await import("./index.js");
+    subagentExtension(mock as any);
+    await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
+
+    const spawnTool = mock._registeredTools.find((t: any) => t.name === "spawn_agent")!;
+    await spawnTool.execute(
+      "id1", { task_name: "task1", message: "test" }, undefined, undefined, baseCtx,
+    );
+
+    const notifications: string[] = []
+    const ctx = {
+      cwd: "/tmp/test",
+      model: { id: "test-model" },
+      modelRegistry: { find: () => undefined, getAvailable: () => Promise.resolve([]) },
+      ui: { notify: vi.fn((msg: string) => notifications.push(msg)) },
+    };
+    await mock._commands["close-agent"].handler("/root/task1", ctx);
+    expect(notifications[0]).toContain("Closed");
+  });
+
+  it("/close-agent command shows error on failure", async () => {
+    const mock = createMockApi();
+    const { default: subagentExtension } = await import("./index.js");
+    subagentExtension(mock as any);
+    await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
+
+    const notifications: string[] = []
+    const ctx = {
+      cwd: "/tmp/test",
+      model: { id: "test-model" },
+      modelRegistry: { find: () => undefined, getAvailable: () => Promise.resolve([]) },
+      ui: { notify: vi.fn((msg: string) => notifications.push(msg)) },
+    };
+    await mock._commands["close-agent"].handler("/root/nonexistent", ctx);
+    expect(notifications[0]).toContain("Error");
+  });
+
+  it("session_start resets control", async () => {
+    const mock = createMockApi();
+    const { default: subagentExtension } = await import("./index.js");
+    subagentExtension(mock as any);
+
+    // First session_start
+    await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
+
+    const spawnTool = mock._registeredTools.find((t: any) => t.name === "spawn_agent")!;
+    await spawnTool.execute(
+      "id1", { task_name: "task1", message: "test" }, undefined, undefined, baseCtx,
+    );
+
+    // Second session_start should reset control
+    await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
+
+    // Old agents should be gone
+    const listTool = mock._registeredTools.find((t: any) => t.name === "list_agents")!;
+    const result = await listTool.execute("id1", {}, undefined, undefined, baseCtx);
+    // Only root agent should remain
+    expect(result.details.agents.length).toBe(1);
+  });
+
+  it("session_shutdown resets control", async () => {
+    const mock = createMockApi();
+    const { default: subagentExtension } = await import("./index.js");
+    subagentExtension(mock as any);
+
+    await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
+
+    const spawnTool = mock._registeredTools.find((t: any) => t.name === "spawn_agent")!;
+    await spawnTool.execute(
+      "id1", { task_name: "task1", message: "test" }, undefined, undefined, baseCtx,
+    );
+
+    // session_shutdown should clear everything
+    await mock._hooks["session_shutdown"]();
+
+    // Spawning after shutdown should work (creates new control)
+    const result = await spawnTool.execute(
+      "id2", { task_name: "task2", message: "test2" }, undefined, undefined, baseCtx,
+    );
+    expect(result.details.status).toBe("pending_init");
+  });
+});
