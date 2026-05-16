@@ -7,7 +7,7 @@
 import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
-import { createInitialState, isReadOnlyMode, modeLabel, isSafeCommand, classifyCommandIntent, buildBlockReason, loadPrompt, hashContent, extractProposedPlan, PLAN_MODE_TOOLS, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateConfigField, compactOldProposedPlansInText, type ModelRef, type PlanModeConfig, type ThinkingLevel } from "./utils.js";
+import { createInitialState, isReadOnlyMode, modeLabel, isPlanReadOnlyCommandIntent, classifyCommandIntent, buildBlockReason, loadPrompt, hashContent, extractProposedPlan, PLAN_MODE_TOOLS, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateConfigField, compactOldProposedPlansInText, type ModelRef, type PlanModeConfig, type ThinkingLevel } from "./utils.js";
 import { SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, PLAN_MODE_STATUS_EVENT, type SandboxPushProfileEvent, type SandboxPopProfileEvent, type PlanModeStatusEvent } from "../policy-core/modes.js";
 
 export default function planModeExtension(pi: ExtensionAPI): void {
@@ -168,7 +168,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			const command = String(input.command ?? "");
 			// UX guard: classify command intent for plan mode.
 			// Security boundary is the sandbox extension's OS-level policy.
-			if (!isSafeCommand(command)) {
+			if (!isPlanReadOnlyCommandIntent(command)) {
 				const intent = classifyCommandIntent(command);
 				logBlockedTool({ toolName: "bash", command, blockCount: 1, reason: `not-read-only-intent:${intent.kind}` });
 				return { block: true, reason: `Plan mode is read-only. Command intent "${intent.kind}" is not allowed:\n${command}\n理由: ${intent.reason}` };

@@ -6,7 +6,7 @@
 Total: 3,977 source LOC across 21 files. 852 tests across 6 test files (~5,050 test LOC).
 
 ### File sizes (source LOC)
-- subagent/agentControl.ts: 561 (largest — most complex)
+- subagent/agentControl.ts: 488 (largest — most complex)
 - subagent/index.ts: 473 (tool registrations + commands)
 - sandbox/macSeatbelt.ts: 460 (SBPL policy generation + sandboxed execution)
 - sandbox/index.ts: 430 (sandbox mode management, events, bash handler)
@@ -35,9 +35,9 @@ Total: 3,977 source LOC across 21 files. 852 tests across 6 test files (~5,050 t
 1. **P1**: Each extension needs its own directory structure — **fact** (pi extension contract)
 2. **P2**: policy-core provides shared definitions — **fact** (verified by imports)
 3. **P3**: SBPL template in macSeatbelt.ts must not be weakened — **fact** (SECURITY CRITICAL)
-4. **P4**: `extractText` and `extractAssistantText` in contextFork.ts are identical — **fact** (verified line-by-line)
+4. **P4**: `extractText` and `extractAssistantText` in contextFork.ts are identical — **resolved by Exp1** (now `extractTextFromContent`)
 5. **P5**: subagent/types.ts has 10 lifecycle event interfaces with near-identical shapes — **fact**
-6. **P6**: extractAssistantText is duplicated in agentControl.ts and contextFork.ts — **fact**
+6. **P6**: extractAssistantText is duplicated in agentControl.ts and contextFork.ts — **resolved by Exp1** (consolidated into `extractTextFromContent`)
 7. **P7**: The 4 extensions are independent — **inference** (plan-mode and sandbox coordinate via events)
 8. **P8**: Current code organization is optimal — **convention/unverified**
 9. **P9**: Separate type definitions in types.ts are needed — **convention** (could use inline types)
@@ -52,9 +52,7 @@ Total: 3,977 source LOC across 21 files. 852 tests across 6 test files (~5,050 t
 
 ### Maintenance Cost Sources (prioritized)
 
-1. **extractAssistantText duplicated** in agentControl.ts (lines ~515-530) and contextFork.ts (lines ~88-102). Identical logic. Change amplification: bug fix must touch 2 places.
-
-2. **Lifecycle event type explosion** in types.ts: 10 separate interfaces for events that share {type, agentId, agentPath, timestamp} + 1-2 extra fields each. A new event type requires adding a new interface + updating LifecycleEvent union.
+1. **Lifecycle event type explosion** in types.ts: 10 separate interfaces for events that share {type, agentId, agentPath, timestamp} + 1-2 extra fields each. A new event type requires adding a new interface + updating LifecycleEvent union.
 
 3. **sandbox/index.ts coupling**: 430-line file mixing mode management, yolo approval, bash tool handler, profile overrides, events, session lifecycle. Multiple responsibilities in one closure.
 
@@ -66,11 +64,9 @@ Total: 3,977 source LOC across 21 files. 852 tests across 6 test files (~5,050 t
 
 7. **Event type string literals**: Lifecycle event types are string literals scattered across files. Could benefit from constants.
 
-8. **No shared text extraction utility**: Both contextFork.ts and agentControl.ts extract text from message content using identical code.
-
 ### Hypotheses to Test
 
-H1: Extract `extractAssistantText` / `extractText` into shared utility → reduces duplication, reduces change amplification
+H1: ~~Extract `extractAssistantText` / `extractText` into shared utility~~ → **Done (Exp1): now `extractTextFromContent` in `contextFork.ts`. Consider moving to `messageContent.ts` if more callers appear.**
 H2: Consolidate lifecycle event interfaces into a single generic type → reduces type boilerplate
 H3: Extract bash tool handler from sandbox/index.ts → reduces file size, improves locality
 H4: Extract yolo approval management from sandbox/index.ts → reduces coupling
@@ -128,8 +124,13 @@ H7: Inline trivial functions that add indirection without abstraction value
 - LOC bonus: -5 * ((-220)/100) = -10 (3757 vs 3977 baseline)
 - Total: 1620 + 700 + 20 + 10 - 10 - 5(changed_loc) = 2345 ✓
 
+> **Note**: agentControl.ts is now 488 lines (notes originally recorded 561 pre-Exp9).
+> Text extraction duplication is resolved — `extractTextFromContent()` lives in `contextFork.ts`.
+> If more callers appear, consider extracting to `messageContent.ts` for clearer module ownership.
+
 ### Remaining Opportunities
 1. Further duplication reduction (162 lines still duplicated)
 2. File count reduction (22 files → review_risk 7; need to get to 15 to eliminate)
 3. Reduce sandbox/index.ts (430 lines) — second largest file
 4. Compress subagent/index.ts tool registrations
+5. Move `extractTextFromContent` from `contextFork.ts` to `messageContent.ts` if callers increase (currently 2 call sites)
