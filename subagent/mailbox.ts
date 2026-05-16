@@ -31,6 +31,7 @@ export class Mailbox {
    * Append a lifecycle event. Notifies any waiting consumer.
    */
   appendEvent(event: LifecycleEvent): void {
+    (event as any).seq = ++this.seq;
     this.events.push(event);
     // Notify based on the event's agentPath
     const agentPath =
@@ -57,11 +58,12 @@ export class Mailbox {
   /**
    * Get pending lifecycle events for a given agent path.
    */
-  pendingEventsFor(agentPath: string): LifecycleEvent[] {
+  pendingEventsFor(agentPath: string, afterSeq = 0): LifecycleEvent[] {
     return this.events.filter(
       (event) =>
         "agentPath" in event &&
-        (event as any).agentPath === agentPath,
+        (event as any).agentPath === agentPath &&
+        event.seq !== undefined && event.seq > afterSeq,
     );
   }
 
@@ -91,7 +93,7 @@ export class Mailbox {
   ): Promise<{ events: LifecycleEvent[]; mailbox: MailboxItem[] }> {
     // Check for immediate results
     const pending = this.pendingFor(agentPath, afterSeq);
-    const pendingEvts = this.pendingEventsFor(agentPath);
+    const pendingEvts = this.pendingEventsFor(agentPath, afterSeq);
     if (pending.length > 0 || pendingEvts.length > 0) {
       return Promise.resolve({ events: pendingEvts, mailbox: pending });
     }
@@ -101,7 +103,7 @@ export class Mailbox {
       const timer = setTimeout(() => {
         this.waiters.delete(waiter);
         const mb = this.pendingFor(agentPath, afterSeq);
-        const ev = this.pendingEventsFor(agentPath);
+        const ev = this.pendingEventsFor(agentPath, afterSeq);
         resolve({ events: ev, mailbox: mb });
       }, timeoutMs);
 
@@ -144,7 +146,7 @@ export class Mailbox {
     for (const waiter of this.waiters) {
       if (filter && !filter(waiter.agentPath)) continue;
       const mb = this.pendingFor(waiter.agentPath, waiter.afterSeq);
-      const ev = this.pendingEventsFor(waiter.agentPath);
+      const ev = this.pendingEventsFor(waiter.agentPath, waiter.afterSeq);
       if (mb.length > 0 || ev.length > 0) {
         this.waiters.delete(waiter);
         waiter.resolve({ events: ev, mailbox: mb });

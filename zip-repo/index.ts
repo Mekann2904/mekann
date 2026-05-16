@@ -52,7 +52,33 @@ export function parseGitStatus(stdout: string): { deleted: string[]; modified: s
 	const modified: string[] = [];
 	for (const line of stdout.split("\n").filter(Boolean)) {
 		const statusCode = line.slice(0, 2);
-		const filePath = line.slice(3);
+		let filePath = line.slice(3);
+
+		// Handle rename: "XY old_path -> new_path"
+		const renameArrow = filePath.indexOf(" -> ");
+		if (renameArrow !== -1) {
+			filePath = filePath.slice(renameArrow + 4);
+		}
+
+		// Handle quoted paths: git status --porcelain may quote paths with special chars
+		if (filePath.startsWith('"') && filePath.endsWith('"')) {
+			filePath = filePath.slice(1, -1);
+			// Unescape C-style octal sequences (\303\261 → ñ etc.)
+			// Git outputs individual UTF-8 bytes as octal; collect all bytes then decode
+			const bytes: number[] = [];
+			let i = 0;
+			while (i < filePath.length) {
+				if (filePath[i] === "\\" && i + 3 < filePath.length && /^[0-7]{3}$/.test(filePath.slice(i + 1, i + 4))) {
+					bytes.push(parseInt(filePath.slice(i + 1, i + 4), 8));
+					i += 4;
+				} else {
+					for (const b of new TextEncoder().encode(filePath[i])) bytes.push(b);
+					i++;
+				}
+			}
+			filePath = new TextDecoder().decode(new Uint8Array(bytes));
+		}
+
 		if (statusCode.includes("D")) {
 			deleted.push(filePath);
 		} else {
@@ -127,7 +153,19 @@ async function prepareWorktreeZip(repoRoot: string, repoName: string, zipPath: s
 	if (deleted.length > 0) {
 		await execFileAsync("/usr/bin/zip", ["-d", zipPath, ...deleted.map((f) => `${repoName}/${f}`)], { cwd: dirname(repoRoot) });
 	}
-	if (modified.length > 0) {
-		await execFileAsync("/usr/bin/zip", ["-u", zipPath, ...modified.map((f) => `${repoName}/${f}`)], { cwd: dirname(repoRoot) });
+
+	// Filter modified files to only include those that actually exist on disk
+	const existingModified: string[] = [];
+	for (const f of modified) {
+		try {
+			await stat(join(repoRoot, f));
+			existingModified.push(f);
+		} catch {
+			// File doesn't exist on disk (e.g., type change to symlink) — skip
+		}
+	}
+
+	if (existingModified.length > 0) {
+		await execFileAsync("/usr/bin/zip", ["-u", zipPath, ...existingModified.map((f) => `${repoName}/${f}`)], { cwd: dirname(repoRoot) });
 	}
 }

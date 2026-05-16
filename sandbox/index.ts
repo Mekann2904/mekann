@@ -99,16 +99,18 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 	pi.registerFlag("no-sandbox", { description: "sandbox を無効化する（明示的 opt-out）", type: "boolean", default: false });
 	pi.registerFlag("sandbox-mode", { description: "初期 sandbox モード (read_only | workspace_write | yolo)", type: "string", default: DEFAULT_SANDBOX_MODE });
+	pi.registerFlag("sandbox-allow-homebrew-paths", { description: "Homebrew paths (/opt/homebrew/bin, /usr/local/bin) を sandbox PATH に追加する。便利だが、sandbox 内から Homebrew 管理バイナリを実行可能にするため信頼境界が広がる", type: "boolean", default: false });
 
 	// ─── Policy builder ──────────────────────────────────────────────
 
 	function buildCurrentPolicy(): SandboxPolicy {
 		const mode = effectiveMode();
+		const homebrew = Boolean(pi.getFlag("sandbox-allow-homebrew-paths"));
 		switch (mode) {
 			case "read_only":
-				return readOnlyPolicy(currentCwd, resolvedWorkspaceRoots);
+				return readOnlyPolicy(currentCwd, resolvedWorkspaceRoots, homebrew);
 			case "workspace_write":
-				return workspaceWritePolicy(currentCwd, resolvedWorkspaceRoots, resolvedWritableRoots, false /* network は独立制御 */);
+				return workspaceWritePolicy(currentCwd, resolvedWorkspaceRoots, resolvedWritableRoots, false /* network は独立制御 */, homebrew);
 			case "yolo":
 				return yoloPolicy();
 		}

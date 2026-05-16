@@ -23,6 +23,7 @@ export interface Reservation {
   readonly maxAgents: number;
   consumed: boolean;
   rolledBack: boolean;
+  readonly path: string;
 }
 
 // ─── Agent registry ──────────────────────────────────────────────
@@ -32,6 +33,12 @@ export class AgentRegistry {
   private subscribers: RegistrySubscriber[] = [];
   private _maxAgents: number;
   private _maxDepth: number;
+  private reservations = new Set<Reservation>();
+  private reservedPaths = new Set<string>();
+
+  private get reservedCount(): number {
+    return this.reservations.size;
+  }
 
   constructor(maxAgents: number, maxDepth: number) {
     this._maxAgents = maxAgents;
@@ -73,24 +80,43 @@ export class AgentRegistry {
    * session. If the reservation is not consumed via registerAgent(), call
    * rollbackReservation() to free the slot.
    */
-  reserveSpawnSlot(): Reservation {
-    const openCount = this.openCount;
-    if (openCount >= this._maxAgents) {
+  reserveSpawnSlot(path: string): Reservation {
+    // Check open count + reserved-but-not-committed count
+    const activeCount = this.openCount + this.reservedCount;
+    if (activeCount >= this._maxAgents) {
       throw new Error(
         `Maximum number of open agents reached (${this._maxAgents}). Close existing agents before spawning new ones.`,
       );
     }
-    return {
+    // Duplicate open path check (includes reserved paths)
+    const existing = this.agents.get(path);
+    if (existing && existing.open) {
+      throw new Error(
+        `An open agent already exists at path "${path}" (agent_id: ${existing.agentId}). Close it first or use a different path.`,
+      );
+    }
+    if (this.reservedPaths.has(path)) {
+      throw new Error(
+        `An agent reservation already exists at path "${path}". Wait for the pending spawn to complete or use a different path.`,
+      );
+    }
+    const reservation: Reservation = {
       token: ++reservationCounter,
       maxAgents: this._maxAgents,
       consumed: false,
       rolledBack: false,
+      path,
     };
+    this.reservations.add(reservation);
+    this.reservedPaths.add(path);
+    return reservation;
   }
 
   rollbackReservation(reservation: Reservation): void {
     if (reservation.consumed || reservation.rolledBack) return;
     reservation.rolledBack = true;
+    this.reservations.delete(reservation);
+    this.reservedPaths.delete(reservation.path);
   }
 
   // ─── Registration ────────────────────────────────────────────
@@ -139,7 +165,7 @@ export class AgentRegistry {
       );
     }
 
-    // Duplicate open path check
+    // Duplicate open path check (already checked at reservation time, but guard again for safety)
     const existing = this.agents.get(metadata.agentPath);
     if (existing && existing.open) {
       throw new Error(
@@ -148,6 +174,8 @@ export class AgentRegistry {
     }
 
     reservation.consumed = true;
+    this.reservations.delete(reservation);
+    this.reservedPaths.delete(reservation.path);
     this.agents.set(metadata.agentPath, metadata);
 
     this.publish({
@@ -237,6 +265,8 @@ export class AgentRegistry {
    */
   clear(): void {
     this.agents.clear();
+    this.reservations.clear();
+    this.reservedPaths.clear();
   }
 
   /**

@@ -7,6 +7,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit --skipLibCheck"
   },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.0"
+  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.1.0"
   },

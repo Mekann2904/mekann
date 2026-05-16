@@ -46,6 +46,9 @@ pi -e ./sandbox --sandbox-mode yolo
 
 # サンドボックスを明示的に無効化
 pi -e ./sandbox --no-sandbox
+
+# Homebrew バイナリ (node, python 等) を sandbox 内で利用可能にする
+pi -e ./sandbox --sandbox-allow-homebrew-paths
 ```
 
 ## コマンド
@@ -59,6 +62,21 @@ pi -e ./sandbox --no-sandbox
 /sandbox read_only    → 読み取り専用モードに変更
 /sandbox workspace_write  → workspace 書き込みモードに変更
 /sandbox yolo         → サンドボックスなしモードに変更（承認必要）
+```
+
+### `--sandbox-allow-homebrew-paths`
+
+Homebrew がインストールしたバイナリ（`node`, `python`, `npm` など）をサンドボックス内で利用可能にします。
+
+- **デフォルト**: `false`（Homebrew パスは PATH に含まれず、Seatbelt ポリシーでも読み取り不可）
+- **有効化時の影響**:
+  - サンドボックスの `$PATH` に `/opt/homebrew/bin` と `/usr/local/bin` が追加される
+  - Seatbelt ポリシーで `/opt/homebrew` と `/usr/local` 配下の読み取りが許可される
+- **セキュリティ上の注意**: Homebrew 管理下のバイナリやスクリプトがサンドボックス内から実行可能になるため、信頼境界が広がります。Homebrew パッケージの供給連鎖攻撃 (supply chain attack) のリスクが増すことを理解した上で有効化してください。
+
+```bash
+# 例: sandbox 内で node を使う場合
+pi -e ./sandbox --sandbox-mode workspace_write --sandbox-allow-homebrew-paths
 ```
 
 ### LLM からの権限昇格リクエスト

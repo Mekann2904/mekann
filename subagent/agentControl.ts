@@ -152,8 +152,8 @@ export class AgentControl {
       );
     }
 
-    // Reserve slot
-    const reservation = this.registry.reserveSpawnSlot();
+    // Reserve slot + path atomically before async session creation
+    const reservation = this.registry.reserveSpawnSlot(canonicalPath);
 
     // Publish spawn begin event
     const agentId = nextAgentId();
@@ -338,7 +338,9 @@ export class AgentControl {
   ): Promise<{ queued: boolean; triggered: boolean }> {
     const { callerPath, targetPath, agent, childSession } = this.resolveTargetSession(params.target, ctx);
     if (targetPath === ROOT_PATH) throw new Error("Cannot send followup_task to the root agent.");
-    if (!agent.open) throw new Error(`Agent at ${targetPath} is not open (status: ${agent.status}).`);
+    if (!agent.open || isTerminalStatus(agent.status)) {
+      throw new Error(`Cannot follow up a terminal agent (status: ${agent.status}).`);
+    }
 
     this.enqueueToMailbox(this.getCallerAgentId(callerPath), callerPath, targetPath, params.message, "followup");
 

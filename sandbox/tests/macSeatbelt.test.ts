@@ -721,6 +721,35 @@ describe("buildMacSeatbeltPolicy: /usr subpath restrictions", () => {
 		const hasBareUsr = /^\s*\(subpath "\/usr"\)\s*$/m.test(sbpl);
 		expect(hasBareUsr).toBe(false);
 	});
+
+	// Tests that use policy builder functions (readOnlyPolicy/workspaceWritePolicy) with allowHomebrewPaths param
+	it("readOnlyPolicy(cwd, roots, true) produces SBPL with /opt/homebrew", () => {
+		const policy = readOnlyPolicy(tmpDir, [tmpDir], true);
+		const sbpl = buildMacSeatbeltPolicy(policy);
+		expect(sbpl).toContain('(subpath "/opt/homebrew")');
+		expect(sbpl).toContain('(subpath "/usr/local")');
+	});
+
+	it("readOnlyPolicy(cwd, roots, false) produces SBPL without homebrew paths", () => {
+		const policy = readOnlyPolicy(tmpDir, [tmpDir], false);
+		const sbpl = buildMacSeatbeltPolicy(policy);
+		expect(sbpl).not.toContain('(subpath "/opt/homebrew")');
+		expect(sbpl).not.toContain('(subpath "/usr/local")');
+	});
+
+	it("workspaceWritePolicy(cwd, roots, wRoots, net, true) produces SBPL with /opt/homebrew", () => {
+		const policy = workspaceWritePolicy(tmpDir, [tmpDir], [tmpDir], false, true);
+		const sbpl = buildMacSeatbeltPolicy(policy);
+		expect(sbpl).toContain('(subpath "/opt/homebrew")');
+		expect(sbpl).toContain('(subpath "/usr/local")');
+	});
+
+	it("workspaceWritePolicy(cwd, roots, wRoots, net, false) produces SBPL without homebrew paths", () => {
+		const policy = workspaceWritePolicy(tmpDir, [tmpDir], [tmpDir], false, false);
+		const sbpl = buildMacSeatbeltPolicy(policy);
+		expect(sbpl).not.toContain('(subpath "/opt/homebrew")');
+		expect(sbpl).not.toContain('(subpath "/usr/local")');
+	});
 });
 
 // ─── Unit tests: PATH restrictions ─────────────────────────────────
@@ -774,6 +803,35 @@ describe("buildSandboxEnv: PATH restrictions", () => {
 			if (orig) process.env.NODE_AUTH_TOKEN = orig;
 			else delete process.env.NODE_AUTH_TOKEN;
 		}
+	});
+
+	// Tests that use policy builder functions (readOnlyPolicy/workspaceWritePolicy) with allowHomebrewPaths param
+	it("readOnlyPolicy(cwd, roots, true) PATH に /opt/homebrew/bin を含む", () => {
+		const policy = readOnlyPolicy("/tmp/workspace", ["/tmp/workspace"], true);
+		const env = buildSandboxEnv(policy, isolatedHome);
+		expect(env.PATH).toContain("/opt/homebrew/bin");
+		expect(env.PATH).toContain("/usr/local/bin");
+	});
+
+	it("readOnlyPolicy(cwd, roots, false) PATH に homebrew を含まない", () => {
+		const policy = readOnlyPolicy("/tmp/workspace", ["/tmp/workspace"], false);
+		const env = buildSandboxEnv(policy, isolatedHome);
+		expect(env.PATH).not.toContain("homebrew");
+		expect(env.PATH).not.toContain("/usr/local/bin");
+	});
+
+	it("workspaceWritePolicy(cwd, roots, wRoots, net, true) PATH に /opt/homebrew/bin を含む", () => {
+		const policy = workspaceWritePolicy("/tmp/workspace", ["/tmp/workspace"], ["/tmp/workspace"], false, true);
+		const env = buildSandboxEnv(policy, isolatedHome);
+		expect(env.PATH).toContain("/opt/homebrew/bin");
+		expect(env.PATH).toContain("/usr/local/bin");
+	});
+
+	it("workspaceWritePolicy(cwd, roots, wRoots, net, false) PATH に homebrew を含まない", () => {
+		const policy = workspaceWritePolicy("/tmp/workspace", ["/tmp/workspace"], ["/tmp/workspace"], false, false);
+		const env = buildSandboxEnv(policy, isolatedHome);
+		expect(env.PATH).not.toContain("homebrew");
+		expect(env.PATH).not.toContain("/usr/local/bin");
 	});
 });
 

@@ -22,16 +22,17 @@ export interface SandboxPolicy {
 	_resolvedGitdirs?: string[];
 }
 
-function mkPolicy(mode: SandboxMode, cwd: string, workspaceRoots: string[], writableRoots: string[], network: boolean): SandboxPolicy {
-	return { mode, cwd, workspaceRoots, writableRoots, network };
+function mkPolicy(mode: SandboxMode, cwd: string, workspaceRoots: string[], writableRoots: string[], network: boolean, allowHomebrewPaths = false): SandboxPolicy {
+	return { mode, cwd, workspaceRoots, writableRoots, network, allowHomebrewPaths: allowHomebrewPaths || undefined };
 }
 
 /** read_only ポリシーを生成する。 */
 export function readOnlyPolicy(
 	cwd: string,
 	workspaceRoots: string[] = [],
+	allowHomebrewPaths = false,
 ): SandboxPolicy {
-	return mkPolicy("read_only", cwd, workspaceRoots, [], false);
+	return mkPolicy("read_only", cwd, workspaceRoots, [], false, allowHomebrewPaths);
 }
 
 /** workspace_write ポリシーを生成する。 */
@@ -40,8 +41,9 @@ export function workspaceWritePolicy(
 	workspaceRoots: string[] = [],
 	writableRoots: string[] = [],
 	network = false,
+	allowHomebrewPaths = false,
 ): SandboxPolicy {
-	return mkPolicy("workspace_write", cwd, workspaceRoots, writableRoots, network);
+	return mkPolicy("workspace_write", cwd, workspaceRoots, writableRoots, network, allowHomebrewPaths);
 }
 
 /** yolo ポリシーを生成する。 */

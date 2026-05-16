@@ -161,6 +161,15 @@ describe("flag registration", () => {
 		await loadExtension(mock);
 		expect(mock._registeredFlags.some(f => f.name === "sandbox-mode")).toBe(true);
 	});
+
+	it("--sandbox-allow-homebrew-paths フラグを登録する", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		const flag = mock._registeredFlags.find(f => f.name === "sandbox-allow-homebrew-paths");
+		expect(flag).toBeDefined();
+		expect((flag as any).config.type).toBe("boolean");
+		expect((flag as any).config.default).toBe(false);
+	});
 });
 
 // ─── session_start hook ──────────────────────────────────────────

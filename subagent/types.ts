@@ -52,6 +52,7 @@ interface LifecycleBase {
   agentId: string;
   agentPath: string;
   timestamp: number;
+  seq?: number;
 }
 
 export interface AgentSpawnBegin extends LifecycleBase { type: "agent_spawn_begin"; parentAgentId?: string; }

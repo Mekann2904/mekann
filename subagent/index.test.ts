@@ -278,25 +278,22 @@ describe("AgentRegistry", () => {
 
   it("rejects duplicate open task path", () => {
     registry.ensureRoot("session-1");
-    const reservation = registry.reserveSpawnSlot();
+    const reservation = registry.reserveSpawnSlot("/root/task1");
     const meta = makeMeta("agent-1", "/root/task1");
     registry.registerAgent(meta, reservation);
 
-    const reservation2 = registry.reserveSpawnSlot();
-    const meta2 = makeMeta("agent-2", "/root/task1");
-    expect(() => registry.registerAgent(meta2, reservation2)).toThrow(
+    expect(() => registry.reserveSpawnSlot("/root/task1")).toThrow(
       "already exists",
     );
-    registry.rollbackReservation(reservation2);
   });
 
   it("allows closed path to be reused", () => {
     registry.ensureRoot("session-1");
-    const reservation = registry.reserveSpawnSlot();
+    const reservation = registry.reserveSpawnSlot("/root/task1");
     registry.registerAgent(makeMeta("agent-1", "/root/task1"), reservation);
     registry.close("/root/task1");
 
-    const reservation2 = registry.reserveSpawnSlot();
+    const reservation2 = registry.reserveSpawnSlot("/root/task1");
     expect(() =>
       registry.registerAgent(
         makeMeta("agent-2", "/root/task1"),
@@ -309,10 +306,10 @@ describe("AgentRegistry", () => {
     registry = new AgentRegistry(2, 2);
     registry.ensureRoot("session-1"); // 1 open (root)
 
-    const r1 = registry.reserveSpawnSlot();
+    const r1 = registry.reserveSpawnSlot("/root/t1");
     registry.registerAgent(makeMeta("a1", "/root/t1"), r1); // 2 open
 
-    expect(() => registry.reserveSpawnSlot()).toThrow(
+    expect(() => registry.reserveSpawnSlot("/root/t2")).toThrow(
       "Maximum number of open agents",
     );
   });
@@ -321,14 +318,16 @@ describe("AgentRegistry", () => {
     registry = new AgentRegistry(10, 1);
     registry.ensureRoot("session-1");
 
-    const r = registry.reserveSpawnSlot();
+    const r = registry.reserveSpawnSlot("/root/a/b");
     expect(() =>
       registry.registerAgent(makeMeta("a1", "/root/a/b", 2), r),
     ).toThrow("Maximum agent depth exceeded");
+    registry.rollbackReservation(r);
   });
 
   it("rollback frees reservation (via consumed/rolledBack tracking)", () => {
-    const r = registry.reserveSpawnSlot();
+    registry.ensureRoot("session-1");
+    const r = registry.reserveSpawnSlot("/root/task1");
     expect(r.consumed).toBe(false);
     expect(r.rolledBack).toBe(false);
     registry.rollbackReservation(r);
@@ -337,9 +336,9 @@ describe("AgentRegistry", () => {
 
   it("closeDescendants closes deepest first", () => {
     registry.ensureRoot("session-1");
-    const r1 = registry.reserveSpawnSlot();
+    const r1 = registry.reserveSpawnSlot("/root/t1");
     registry.registerAgent(makeMeta("a1", "/root/t1"), r1);
-    const r2 = registry.reserveSpawnSlot();
+    const r2 = registry.reserveSpawnSlot("/root/t1/sub");
     registry.registerAgent(makeMeta("a2", "/root/t1/sub"), r2);
 
     const desc = registry.getOpenDescendants("/root/t1");
@@ -352,7 +351,7 @@ describe("AgentRegistry", () => {
     registry.subscribe((e) => events.push(e));
 
     registry.ensureRoot("session-1");
-    const r = registry.reserveSpawnSlot();
+    const r = registry.reserveSpawnSlot("/root/t1");
     registry.registerAgent(makeMeta("a1", "/root/t1"), r);
     registry.updateStatus("/root/t1", "running");
 
@@ -365,9 +364,9 @@ describe("AgentRegistry", () => {
 
   it("list returns sorted agents", () => {
     registry.ensureRoot("session-1");
-    const r1 = registry.reserveSpawnSlot();
+    const r1 = registry.reserveSpawnSlot("/root/bbb");
     registry.registerAgent(makeMeta("a1", "/root/bbb"), r1);
-    const r2 = registry.reserveSpawnSlot();
+    const r2 = registry.reserveSpawnSlot("/root/aaa");
     registry.registerAgent(makeMeta("a2", "/root/aaa"), r2);
 
     const list = registry.list();
@@ -380,9 +379,9 @@ describe("AgentRegistry", () => {
 
   it("list filters by prefix", () => {
     registry.ensureRoot("session-1");
-    const r1 = registry.reserveSpawnSlot();
+    const r1 = registry.reserveSpawnSlot("/root/research/api");
     registry.registerAgent(makeMeta("a1", "/root/research/api"), r1);
-    const r2 = registry.reserveSpawnSlot();
+    const r2 = registry.reserveSpawnSlot("/root/build/deps");
     registry.registerAgent(makeMeta("a2", "/root/build/deps"), r2);
 
     const list = registry.list("/root/research");
@@ -404,10 +403,75 @@ describe("AgentRegistry", () => {
 
   it("getByAgentId finds agents", () => {
     registry.ensureRoot("session-1");
-    const r = registry.reserveSpawnSlot();
+    const r = registry.reserveSpawnSlot("/root/t1");
     registry.registerAgent(makeMeta("test-agent-1", "/root/t1"), r);
     expect(registry.getByAgentId("test-agent-1")).toBeDefined();
     expect(registry.getByAgentId("nonexistent")).toBeUndefined();
+  });
+
+  // ─── Atomic slot + path reservation tests ───────────────────
+
+  it("reservations count toward maxAgents limit", () => {
+    registry = new AgentRegistry(3, 2);
+    registry.ensureRoot("session-1"); // 1 open (root)
+
+    // Reserve a slot without committing — counts toward the limit
+    const r1 = registry.reserveSpawnSlot("/root/t1");
+    // openCount is 1, but activeCount (open + reserved) is 2
+    expect(registry.openCount).toBe(1);
+
+    // Reserve another slot — activeCount is now 3 (= maxAgents)
+    const r2 = registry.reserveSpawnSlot("/root/t2");
+
+    // Third reservation should fail (activeCount would be 4 > 3)
+    expect(() => registry.reserveSpawnSlot("/root/t3")).toThrow(
+      "Maximum number of open agents",
+    );
+
+    // Rollback r2 frees a slot
+    registry.rollbackReservation(r2);
+    expect(() => registry.reserveSpawnSlot("/root/t3")).not.toThrow();
+  });
+
+  it("duplicate path is rejected at reservation time", () => {
+    registry.ensureRoot("session-1");
+    const r1 = registry.reserveSpawnSlot("/root/task1");
+
+    // Same path reserved but not yet committed
+    expect(() => registry.reserveSpawnSlot("/root/task1")).toThrow(
+      "reservation already exists",
+    );
+
+    // After commit, it should say "already exists" (open agent)
+    registry.registerAgent(makeMeta("a1", "/root/task1"), r1);
+    expect(() => registry.reserveSpawnSlot("/root/task1")).toThrow(
+      "already exists",
+    );
+  });
+
+  it("rollback then re-spawn succeeds", () => {
+    registry = new AgentRegistry(2, 2);
+    registry.ensureRoot("session-1"); // 1 open (root)
+
+    // Reserve and rollback
+    const r1 = registry.reserveSpawnSlot("/root/task1");
+    registry.rollbackReservation(r1);
+
+    // Path is free again
+    const r2 = registry.reserveSpawnSlot("/root/task1");
+    registry.registerAgent(makeMeta("a1", "/root/task1"), r2);
+    expect(registry.openCount).toBe(2);
+  });
+
+  it("clear also clears reservations", () => {
+    registry.ensureRoot("session-1");
+    registry.reserveSpawnSlot("/root/task1");
+    registry.reserveSpawnSlot("/root/task2");
+
+    registry.clear();
+
+    // Should be able to reserve again after clear
+    expect(() => registry.reserveSpawnSlot("/root/task1")).not.toThrow();
   });
 });
 
@@ -590,6 +654,194 @@ describe("Mailbox", () => {
     expect(items).toHaveLength(1);
     items.length = 0;
     expect(mailbox.allItems()).toHaveLength(1);
+  });
+
+  // ─── Lifecycle event seq / dedup tests ────────────────────────
+
+  it("appendEvent assigns monotonic seq", () => {
+    mailbox.appendEvent({
+      type: "agent_status_changed",
+      agentId: "a1",
+      agentPath: "/root/task1",
+      previousStatus: "pending_init",
+      newStatus: "running",
+      timestamp: Date.now(),
+    });
+    mailbox.appendEvent({
+      type: "agent_status_changed",
+      agentId: "a1",
+      agentPath: "/root/task1",
+      previousStatus: "running",
+      newStatus: "completed",
+      timestamp: Date.now(),
+    });
+
+    const events = mailbox.allEvents();
+    expect(events).toHaveLength(2);
+    expect(events[0].seq).toBeDefined();
+    expect(events[1].seq).toBeDefined();
+    expect(events[0].seq!).toBeLessThan(events[1].seq!);
+  });
+
+  it("pendingEventsFor filters by afterSeq", () => {
+    mailbox.appendEvent({
+      type: "agent_status_changed",
+      agentId: "a1",
+      agentPath: "/root/task1",
+      previousStatus: "pending_init",
+      newStatus: "running",
+      timestamp: Date.now(),
+    });
+    mailbox.appendEvent({
+      type: "agent_status_changed",
+      agentId: "a1",
+      agentPath: "/root/task1",
+      previousStatus: "running",
+      newStatus: "completed",
+      timestamp: Date.now(),
+    });
+
+    // All events
+    const all = mailbox.pendingEventsFor("/root/task1");
+    expect(all).toHaveLength(2);
+
+    // Only events after the first one's seq
+    const firstSeq = all[0].seq!;
+    const later = mailbox.pendingEventsFor("/root/task1", firstSeq);
+    expect(later).toHaveLength(1);
+    expect((later[0] as any).newStatus).toBe("completed");
+  });
+
+  it("pendingEventsFor returns empty when all events are consumed", () => {
+    mailbox.appendEvent({
+      type: "agent_status_changed",
+      agentId: "a1",
+      agentPath: "/root/task1",
+      previousStatus: "pending_init",
+      newStatus: "completed",
+      timestamp: Date.now(),
+    });
+
+    const all = mailbox.pendingEventsFor("/root/task1");
+    expect(all).toHaveLength(1);
+
+    const afterLast = mailbox.pendingEventsFor("/root/task1", all[0].seq!);
+    expect(afterLast).toHaveLength(0);
+  });
+
+  it("waitForUpdate does not return already-consumed events", async () => {
+    mailbox.appendEvent({
+      type: "agent_status_changed",
+      agentId: "a1",
+      agentPath: "/root/task1",
+      previousStatus: "pending_init",
+      newStatus: "running",
+      timestamp: Date.now(),
+    });
+
+    // First wait sees the event
+    const result1 = await mailbox.waitForUpdate("/root/task1", 0, 100);
+    expect(result1.events).toHaveLength(1);
+    const consumedSeq = result1.events[0].seq!;
+
+    // Second wait with afterSeq=consumedSeq should see nothing
+    const result2 = await mailbox.waitForUpdate("/root/task1", consumedSeq, 50);
+    expect(result2.events).toHaveLength(0);
+    expect(result2.mailbox).toHaveLength(0);
+  });
+
+  it("events and mailbox items share the same seq counter", () => {
+    const item = mailbox.enqueue({
+      fromAgentId: "root",
+      fromAgentPath: "/root",
+      toAgentPath: "/root/task1",
+      content: "msg",
+      timestamp: Date.now(),
+      kind: "message",
+    });
+
+    mailbox.appendEvent({
+      type: "agent_status_changed",
+      agentId: "a1",
+      agentPath: "/root/task1",
+      previousStatus: "pending_init",
+      newStatus: "running",
+      timestamp: Date.now(),
+    });
+
+    const events = mailbox.allEvents();
+    // Event seq should be item seq + 1 (shared counter)
+    expect(events[0].seq).toBe(item.seq + 1);
+  });
+
+  it("mixed mailbox items and events respect lastConsumedSeq correctly", async () => {
+    // Enqueue a message (seq=1)
+    const item = mailbox.enqueue({
+      fromAgentId: "root",
+      fromAgentPath: "/root",
+      toAgentPath: "/root/task1",
+      content: "hello",
+      timestamp: Date.now(),
+      kind: "message",
+    });
+
+    // Append an event (seq=2)
+    mailbox.appendEvent({
+      type: "agent_status_changed",
+      agentId: "a1",
+      agentPath: "/root/task1",
+      previousStatus: "pending_init",
+      newStatus: "running",
+      timestamp: Date.now(),
+    });
+
+    // First wait sees both
+    const result1 = await mailbox.waitForUpdate("/root/task1", 0, 100);
+    expect(result1.mailbox).toHaveLength(1);
+    expect(result1.events).toHaveLength(1);
+
+    // maxSeq is the larger of item.seq and event.seq
+    const maxSeq = Math.max(item.seq, result1.events[0].seq!);
+
+    // Second wait after consuming all should see nothing
+    const result2 = await mailbox.waitForUpdate("/root/task1", maxSeq, 50);
+    expect(result2.mailbox).toHaveLength(0);
+    expect(result2.events).toHaveLength(0);
+  });
+
+  it("multiple events are returned in seq order", () => {
+    mailbox.appendEvent({
+      type: "agent_status_changed",
+      agentId: "a1",
+      agentPath: "/root/task1",
+      previousStatus: "pending_init",
+      newStatus: "running",
+      timestamp: Date.now(),
+    });
+    mailbox.appendEvent({
+      type: "agent_status_changed",
+      agentId: "a1",
+      agentPath: "/root/task1",
+      previousStatus: "running",
+      newStatus: "completed",
+      timestamp: Date.now(),
+    });
+    mailbox.appendEvent({
+      type: "agent_final_message",
+      agentId: "a1",
+      agentPath: "/root/task1",
+      message: "done",
+      status: "completed",
+      timestamp: Date.now(),
+    });
+
+    const events = mailbox.pendingEventsFor("/root/task1");
+    expect(events).toHaveLength(3);
+    expect(events[0].seq).toBeLessThan(events[1].seq!);
+    expect(events[1].seq).toBeLessThan(events[2].seq!);
+    expect((events[0] as any).newStatus).toBe("running");
+    expect((events[1] as any).newStatus).toBe("completed");
+    expect(events[2].type).toBe("agent_final_message");
   });
 });
 
@@ -915,5 +1167,222 @@ describe("extension entry point", () => {
     };
     await mock._commands["agents"].handler("", ctx);
     expect(notifications[0]).toContain("/root");
+  });
+});
+
+// ─── followupTask terminal status rejection ─────────────────────
+
+describe("followupTask terminal status rejection", () => {
+  function createMockApi() {
+    const hooks: Record<string, Function> = {};
+    const commands: Record<string, { handler: Function; description?: string }> = {};
+    let flags: Record<string, unknown> = {};
+    const registeredTools: Array<Record<string, any>> = [];
+    const registeredFlags: Array<{ name: string; config: unknown }> = [];
+
+    return {
+      registerFlag: vi.fn((name: string, config: unknown) => {
+        registeredFlags.push({ name, config });
+      }),
+      registerTool: vi.fn((tool: Record<string, any>) => {
+        registeredTools.push(tool);
+      }),
+      registerCommand: vi.fn((name: string, config: any) => {
+        commands[name] = config;
+      }),
+      on: vi.fn((event: string, handler: Function) => {
+        hooks[event] = handler;
+      }),
+      getFlag: (name: string) => flags[name],
+      getActiveTools: vi.fn(() => []),
+      events: { on: vi.fn(), emit: vi.fn() },
+      appendEntry: vi.fn(),
+      sendUserMessage: vi.fn(),
+      get _hooks() { return hooks; },
+      get _commands() { return commands; },
+      set _flags(f: Record<string, unknown>) { flags = f; },
+      get _registeredTools() { return registeredTools; },
+      get _registeredFlags() { return registeredFlags; },
+    };
+  }
+
+  async function loadExtension(mockApi: ReturnType<typeof createMockApi>) {
+    const { default: subagentExtension } = await import("./index.js");
+    subagentExtension(mockApi as any);
+  }
+
+  const baseCtx = {
+    cwd: "/tmp/test",
+    model: { id: "test-model" },
+    modelRegistry: { find: () => undefined, getAvailable: () => Promise.resolve([]) },
+  };
+
+  async function spawnAndGetControl(mockApi: ReturnType<typeof createMockApi>) {
+    await loadExtension(mockApi);
+    await mockApi._hooks["session_start"]({}, { cwd: "/tmp/test" });
+
+    const spawnTool = mockApi._registeredTools.find((t) => t.name === "spawn_agent")!;
+    await spawnTool.execute(
+      "id1",
+      { task_name: "research/api", message: "Investigate" },
+      undefined, undefined, baseCtx,
+    );
+
+    // Access the AgentControl via the followup_task tool's closure
+    const followupTool = mockApi._registeredTools.find((t) => t.name === "followup_task")!;
+    return { mockApi, followupTool };
+  }
+
+  it("rejects followup to a completed agent", async () => {
+    const { mockApi, followupTool } = await spawnAndGetControl(createMockApi());
+
+    // Access control via session_start hook to set status directly
+    // We use the close method to shut down, then manually set status to completed
+    const listTool = mockApi._registeredTools.find((t) => t.name === "list_agents")!;
+    const listResult = await listTool.execute("id1", {}, undefined, undefined, baseCtx);
+    expect(listResult.details.agents.length).toBeGreaterThan(1);
+
+    // Use AgentControl directly: get it from the module's internal state
+    // Instead, test via the registry by using the close + manual status approach
+    // Actually, let's test via the tool interface by simulating completion
+    // We need direct access to AgentControl. Let's get it from index.ts exports.
+    const { AgentControl } = await import("./agentControl.js");
+    const control = new AgentControl(mockApi as any, 4, 2);
+    control.registry.ensureRoot("root");
+    const r = control.registry.reserveSpawnSlot("/root/task1");
+    control.registry.registerAgent({
+      agentId: "test-completed",
+      sessionId: "s1",
+      agentPath: "/root/task1",
+      status: "completed",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      depth: 1,
+      open: false,
+      cancellationRequested: false,
+    }, r);
+
+    await expect(
+      control.followupTask({ target: "/root/task1", message: "more work" }, baseCtx as any),
+    ).rejects.toThrow("Cannot follow up a terminal agent");
+  });
+
+  it("rejects followup to an errored agent", async () => {
+    const mockApi = createMockApi();
+    const { AgentControl } = await import("./agentControl.js");
+    const control = new AgentControl(mockApi as any, 4, 2);
+    control.registry.ensureRoot("root");
+    const r = control.registry.reserveSpawnSlot("/root/task1");
+    control.registry.registerAgent({
+      agentId: "test-errored",
+      sessionId: "s1",
+      agentPath: "/root/task1",
+      status: "errored",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      depth: 1,
+      open: false,
+      cancellationRequested: false,
+    }, r);
+
+    await expect(
+      control.followupTask({ target: "/root/task1", message: "retry" }, baseCtx as any),
+    ).rejects.toThrow("Cannot follow up a terminal agent");
+  });
+
+  it("rejects followup to a shutdown agent", async () => {
+    const mockApi = createMockApi();
+    const { AgentControl } = await import("./agentControl.js");
+    const control = new AgentControl(mockApi as any, 4, 2);
+    control.registry.ensureRoot("root");
+    const r = control.registry.reserveSpawnSlot("/root/task1");
+    control.registry.registerAgent({
+      agentId: "test-shutdown",
+      sessionId: "s1",
+      agentPath: "/root/task1",
+      status: "shutdown",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      depth: 1,
+      open: false,
+      cancellationRequested: false,
+    }, r);
+
+    await expect(
+      control.followupTask({ target: "/root/task1", message: "more work" }, baseCtx as any),
+    ).rejects.toThrow("Cannot follow up a terminal agent");
+  });
+
+  it("rejects followup to an interrupted agent", async () => {
+    const mockApi = createMockApi();
+    const { AgentControl } = await import("./agentControl.js");
+    const control = new AgentControl(mockApi as any, 4, 2);
+    control.registry.ensureRoot("root");
+    const r = control.registry.reserveSpawnSlot("/root/task1");
+    control.registry.registerAgent({
+      agentId: "test-interrupted",
+      sessionId: "s1",
+      agentPath: "/root/task1",
+      status: "interrupted",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      depth: 1,
+      open: false,
+      cancellationRequested: false,
+    }, r);
+
+    await expect(
+      control.followupTask({ target: "/root/task1", message: "more work" }, baseCtx as any),
+    ).rejects.toThrow("Cannot follow up a terminal agent");
+  });
+
+  it("allows followup to a running agent", async () => {
+    const mockApi = createMockApi();
+    const { AgentControl } = await import("./agentControl.js");
+    const control = new AgentControl(mockApi as any, 4, 2);
+    control.registry.ensureRoot("root");
+    const r = control.registry.reserveSpawnSlot("/root/task1");
+    control.registry.registerAgent({
+      agentId: "test-running",
+      sessionId: "s1",
+      agentPath: "/root/task1",
+      status: "running",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      depth: 1,
+      open: true,
+      cancellationRequested: false,
+    }, r);
+
+    // Should NOT throw — agent is running and open
+    const result = await control.followupTask(
+      { target: "/root/task1", message: "more work" }, baseCtx as any,
+    );
+    expect(result.queued).toBe(true);
+  });
+
+  it("allows followup to a pending_init agent", async () => {
+    const mockApi = createMockApi();
+    const { AgentControl } = await import("./agentControl.js");
+    const control = new AgentControl(mockApi as any, 4, 2);
+    control.registry.ensureRoot("root");
+    const r = control.registry.reserveSpawnSlot("/root/task1");
+    control.registry.registerAgent({
+      agentId: "test-pending",
+      sessionId: "s1",
+      agentPath: "/root/task1",
+      status: "pending_init",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      depth: 1,
+      open: true,
+      cancellationRequested: false,
+    }, r);
+
+    // Should NOT throw — agent is pending_init and open
+    const result = await control.followupTask(
+      { target: "/root/task1", message: "more work" }, baseCtx as any,
+    );
+    expect(result.queued).toBe(true);
   });
 });
