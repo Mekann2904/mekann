@@ -59,6 +59,16 @@ describe("readOnlyPolicy", () => {
 		const policy = readOnlyPolicy("/tmp/project");
 		expect(policy._resolvedGitdirs).toBeUndefined();
 	});
+
+	it("allowHomebrewPaths=true を渡せる", () => {
+		const policy = readOnlyPolicy("/tmp/project", ["/tmp/project"], true);
+		expect(policy.allowHomebrewPaths).toBe(true);
+	});
+
+	it("allowHomebrewPaths=false では undefined になる", () => {
+		const policy = readOnlyPolicy("/tmp/project", ["/tmp/project"], false);
+		expect(policy.allowHomebrewPaths).toBeUndefined();
+	});
 });
 
 // ─── workspaceWritePolicy ────────────────────────────────────────
@@ -97,6 +107,16 @@ describe("workspaceWritePolicy", () => {
 		expect(policy.workspaceRoots).toEqual(["/tmp/project", "/tmp/deps"]);
 		expect(policy.writableRoots).toEqual(["/tmp/project/src"]);
 		expect(policy.network).toBe(true);
+	});
+
+	it("allowHomebrewPaths=true を渡せる", () => {
+		const policy = workspaceWritePolicy("/tmp/project", [], [], false, true);
+		expect(policy.allowHomebrewPaths).toBe(true);
+	});
+
+	it("allowHomebrewPaths=false では undefined になる", () => {
+		const policy = workspaceWritePolicy("/tmp/project", [], [], false, false);
+		expect(policy.allowHomebrewPaths).toBeUndefined();
 	});
 });
 

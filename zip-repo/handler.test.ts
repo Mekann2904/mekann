@@ -285,6 +285,40 @@ describe("/zip command handler", () => {
 		expect(result.modified).toEqual([]);
 	});
 
+	it("parseGitStatus handles rename", async () => {
+		const { parseGitStatus } = await import("./index.js");
+		const result = parseGitStatus("R  old_name.ts -> new_name.ts\n");
+		expect(result.modified).toEqual(["new_name.ts"]);
+		expect(result.deleted).toEqual([]);
+	});
+
+	it("parseGitStatus handles quoted path with spaces", async () => {
+		const { parseGitStatus } = await import("./index.js");
+		const result = parseGitStatus('?? "path with spaces.ts"\n');
+		expect(result.modified).toEqual(["path with spaces.ts"]);
+	});
+
+	it("parseGitStatus handles quoted path with octal-escaped Japanese chars", async () => {
+		const { parseGitStatus } = await import("./index.js");
+		// \343\201\202 = UTF-8 bytes for U+3042 (あ)
+		const result = parseGitStatus('M  "\\343\\201\\202.ts"\n');
+		expect(result.modified).toEqual(["\u3042.ts"]);
+	});
+
+	it("parseGitStatus handles untracked files as modified", async () => {
+		const { parseGitStatus } = await import("./index.js");
+		const result = parseGitStatus("?? new_file.ts\n");
+		expect(result.modified).toEqual(["new_file.ts"]);
+		expect(result.deleted).toEqual([]);
+	});
+
+	it("parseGitStatus handles rename with deletion in same output", async () => {
+		const { parseGitStatus } = await import("./index.js");
+		const result = parseGitStatus("R  old.ts -> new.ts\nD  gone.ts\n");
+		expect(result.modified).toEqual(["new.ts"]);
+		expect(result.deleted).toEqual(["gone.ts"]);
+	});
+
 	it("stat fails: sizeStr stays 'unknown size'", async () => {
 		const { stat } = await import("node:fs/promises");
 		(stat as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("stat failed"));
