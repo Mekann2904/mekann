@@ -61,6 +61,11 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	/** Override entries pushed by other extensions (e.g. plan-mode). */
 	const profileOverrideStack: { owner: string; token: string; mode: SandboxMode }[] = [];
 
+	function removeProfileEntry(predicate: (e: { owner: string; token: string; mode: SandboxMode }) => boolean): void {
+		const idx = profileOverrideStack.findIndex(predicate);
+		if (idx >= 0) profileOverrideStack.splice(idx, 1);
+	}
+
 	/** Current plan-mode mode (received via event from plan-mode extension). */
 	let planModeStatus: "main" | "plan" | undefined;
 
@@ -378,8 +383,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		}
 
 		// Remove any existing entry with the same token to prevent duplicates
-		const idx = profileOverrideStack.findIndex((e) => e.token === event.token);
-		if (idx >= 0) profileOverrideStack.splice(idx, 1);
+		removeProfileEntry((e) => e.token === event.token);
 
 		profileOverrideStack.push({ owner: event.owner, token: event.token, mode });
 
@@ -389,8 +393,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	pi.events.on(SANDBOX_POP_PROFILE_EVENT, (data: unknown) => {
 		const event = data as SandboxPopProfileEvent;
 		if (!event.token) return;
-		const idx = profileOverrideStack.findIndex((e) => e.owner === event.owner && e.token === event.token);
-		if (idx >= 0) profileOverrideStack.splice(idx, 1);
+		removeProfileEntry((e) => e.owner === event.owner && e.token === event.token);
 
 		// Update status bar to reflect effective mode change
 		refreshStatusBar();
