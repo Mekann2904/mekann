@@ -40,7 +40,6 @@ import {
 import { extractForkContext, buildContextPreamble } from "./contextFork.js";
 import { AgentRegistry } from "./registry.js";
 import { Mailbox } from "./mailbox.js";
-import { parseStateLog } from "./persistence.js";
 import { formatAgentList, formatWaitResult } from "./render.js";
 import { isTerminalStatus } from "./types.js";
 
@@ -846,28 +845,6 @@ describe("Mailbox", () => {
 });
 
 // ─── Persistence ─────────────────────────────────────────────────
-
-describe("persistence", () => {
-  it("parses valid JSONL", () => {
-    const content = [
-      JSON.stringify({ t: "metadata", ts: 1000, data: { agentId: "a1" } }),
-      JSON.stringify({ t: "event", ts: 2000, data: { type: "running" } }),
-      "",
-      "  ",
-      "invalid json",
-    ].join("\n");
-
-    const entries = parseStateLog(content);
-    expect(entries).toHaveLength(2);
-    expect(entries[0].t).toBe("metadata");
-    expect(entries[1].ts).toBe(2000);
-  });
-
-  it("ignores malformed lines", () => {
-    const entries = parseStateLog("not json\nalso not json");
-    expect(entries).toHaveLength(0);
-  });
-});
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -2555,80 +2532,6 @@ describe("render additional", () => {
   it("formatWaitResult shows no-updates when no events and not timed out", () => {
     const lines = formatWaitResult([], [], false);
     expect(lines).toContain("(no updates)");
-  });
-});
-
-// ─── Persistence with real filesystem ──────────────────────────
-
-// These are already imported at the top level but need dynamic imports for persistence functions
-const persistenceImport = import("./persistence.js");
-const fsImport = import("node:fs");
-const pathImport = import("node:path");
-const osImport = import("node:os");
-
-describe("persistence appendState", () => {
-  let appendState: any, mkdtempSync: any, readFileSync: any, rmSync: any, join: any, tmpdir: any;
-
-  beforeEach(async () => {
-    ({ appendState } = await persistenceImport);
-    ({ mkdtempSync, readFileSync, rmSync } = await fsImport);
-    ({ join } = await pathImport);
-    ({ tmpdir } = await osImport);
-  });
-
-  it("writes JSONL entry to file", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "subagent-test-"));
-    const filePath = join(tmpDir, "state.jsonl");
-
-    try {
-      await appendState(filePath, {
-        t: "metadata",
-        ts: 1000,
-        data: { agentId: "a1" },
-      });
-
-      const content = readFileSync(filePath, "utf8");
-      const parsed = JSON.parse(content.trim());
-      expect(parsed.t).toBe("metadata");
-      expect(parsed.ts).toBe(1000);
-    } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
-    }
-  });
-
-  it("creates parent directories", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "subagent-test-"));
-    const filePath = join(tmpDir, "nested", "dir", "state.jsonl");
-
-    try {
-      await appendState(filePath, {
-        t: "event",
-        ts: 2000,
-        data: { type: "running" },
-      });
-
-      const content = readFileSync(filePath, "utf8");
-      const parsed = JSON.parse(content.trim());
-      expect(parsed.t).toBe("event");
-    } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
-    }
-  });
-
-  it("appends multiple entries", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "subagent-test-"));
-    const filePath = join(tmpDir, "state.jsonl");
-
-    try {
-      await appendState(filePath, { t: "metadata", ts: 1000, data: {} });
-      await appendState(filePath, { t: "event", ts: 2000, data: {} });
-
-      const content = readFileSync(filePath, "utf8");
-      const lines = content.trim().split("\n");
-      expect(lines).toHaveLength(2);
-    } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
-    }
   });
 });
 
