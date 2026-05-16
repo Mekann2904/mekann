@@ -92,9 +92,8 @@ describe("/zip command handler", () => {
 		execResults.set("git", { stdout: "" });
 		execResults.set("git rev-parse --show-toplevel", { stdout: "/tmp/project\n" });
 		execResults.set("git rev-parse --short=12 HEAD", { stdout: "abc123\n" });
-		execResults.set("git status --porcelain", { stdout: "M file.ts\n" }); // dirty
+		execResults.set("git status --porcelain", { stdout: "M file.ts\n?? new.ts\n" }); // dirty + prepareWorktreeZip
 		execResults.set("git archive --format=zip --prefix=project/ --output=/tmp/project-abc123.zip HEAD", { stdout: "" });
-		execResults.set("git ls-files -mo --exclude-standard --", { stdout: "file.ts\nnew.ts\n" });
 		execResults.set("/usr/bin/zip", { stdout: "" }); // overlay
 		execResults.set("osascript", { stdout: "" });
 
@@ -187,13 +186,31 @@ describe("/zip command handler", () => {
 		);
 	});
 
-	it("dirty repo with no dirty files after ls-files: skips overlay", async () => {
+	it("dirty repo with only deleted files: runs zip -d only", async () => {
 		execResults.set("git", { stdout: "" });
 		execResults.set("git rev-parse --show-toplevel", { stdout: "/tmp/project\n" });
 		execResults.set("git rev-parse --short=12 HEAD", { stdout: "abc123\n" });
-		execResults.set("git status --porcelain", { stdout: "M file.ts\n" }); // dirty
+		execResults.set("git status --porcelain", { stdout: "D  deleted.ts\n" }); // deleted only
 		execResults.set("git archive --format=zip --prefix=project/ --output=/tmp/project-abc123.zip HEAD", { stdout: "" });
-		execResults.set("git ls-files -mo --exclude-standard --", { stdout: "" }); // but no untracked
+		execResults.set("/usr/bin/zip", { stdout: "" }); // zip -d
+		execResults.set("osascript", { stdout: "" });
+
+		const ctx = createMockCtx();
+		await mock._commands["zip"].handler("", ctx);
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("Copied to clipboard"),
+			"info",
+		);
+	});
+
+	it("deleted files are removed from ZIP before overlay", async () => {
+		execResults.set("git", { stdout: "" });
+		execResults.set("git rev-parse --show-toplevel", { stdout: "/tmp/project\n" });
+		execResults.set("git rev-parse --short=12 HEAD", { stdout: "abc123\n" });
+		execResults.set("git status --porcelain", { stdout: "D  deleted.ts\n M modified.ts\n?? new.ts\n" }); // mixed
+		execResults.set("git archive --format=zip --prefix=project/ --output=/tmp/project-abc123.zip HEAD", { stdout: "" });
+		execResults.set("/usr/bin/zip", { stdout: "" }); // both zip -d and zip -u
 		execResults.set("osascript", { stdout: "" });
 
 		const ctx = createMockCtx();
@@ -250,6 +267,22 @@ describe("/zip command handler", () => {
 			expect.stringContaining("clipboard error"),
 			"warning",
 		);
+	});
+
+	// ─── parseGitStatus unit tests ────────────────────────────────────
+
+	it("parseGitStatus separates deleted and modified files", async () => {
+		const { parseGitStatus } = await import("./index.js");
+		const result = parseGitStatus("D  deleted.ts\n M modified.ts\n?? new.ts\n");
+		expect(result.deleted).toEqual(["deleted.ts"]);
+		expect(result.modified).toEqual(["modified.ts", "new.ts"]);
+	});
+
+	it("parseGitStatus handles empty input", async () => {
+		const { parseGitStatus } = await import("./index.js");
+		const result = parseGitStatus("");
+		expect(result.deleted).toEqual([]);
+		expect(result.modified).toEqual([]);
 	});
 
 	it("stat fails: sizeStr stays 'unknown size'", async () => {

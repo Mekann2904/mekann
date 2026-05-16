@@ -17,7 +17,7 @@
  *   close_agent({ target:"/root/research/api_scan" })
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { AgentControl } from "./agentControl.js";
 import { formatAgentList, formatWaitResult } from "./render.js";

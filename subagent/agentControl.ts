@@ -7,8 +7,8 @@
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { createAgentSession } from "@earendil-works/pi-coding-agent";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { createAgentSession, type AgentSession } from "@earendil-works/pi-coding-agent";
+import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { ROOT_PATH, resolveTaskPath } from "./types.js";
 import { AgentRegistry } from "./registry.js";
 import { Mailbox } from "./mailbox.js";
@@ -51,6 +51,7 @@ export class AgentControl {
   private childSessions = new Map<string, import("@earendil-works/pi-coding-agent").AgentSession>();
   private pi: import("@earendil-works/pi-coding-agent").ExtensionAPI;
   private defaultWaitTimeout: number;
+  private lastConsumedSeq = new Map<string, number>();
 
   constructor(
     pi: import("@earendil-works/pi-coding-agent").ExtensionAPI,
@@ -99,7 +100,7 @@ export class AgentControl {
 
   // ─── Helper: resolve model from params ────────────────────────────
 
-  private resolveModel(modelOverride: string | undefined, ctx: ExtensionContext) {
+  private async resolveModel(modelOverride: string | undefined, ctx: ExtensionContext) {
     let model = ctx.model;
     if (!modelOverride) return model;
     const parts = modelOverride.split("/");
@@ -108,7 +109,7 @@ export class AgentControl {
       if (!found) throw new Error(`Model not found: ${modelOverride}. Use provider/model_id format.`);
       return found;
     }
-    const all = ctx.modelRegistry.getAvailable();
+    const all = await ctx.modelRegistry.getAvailable();
     const match = all.find((m) => m.id === modelOverride);
     if (!match) throw new Error(`Model not found: ${modelOverride}. Available: ${all.map((m) => m.id).join(", ")}`);
     return match;
@@ -162,13 +163,16 @@ export class AgentControl {
     });
 
     try {
-      const model = this.resolveModel(params.model, ctx);
+      const model = await this.resolveModel(params.model, ctx);
 
       const forkTurns = params.fork_turns ?? 0;
+
+      const thinkingLevel = params.reasoning_effort as ThinkingLevel | undefined;
 
       const { session } = await createAgentSession({
         cwd: ctx.cwd,
         model,
+        ...(thinkingLevel ? { thinkingLevel } : {}),
         sessionManager: await import("@earendil-works/pi-coding-agent").then((m) =>
           m.SessionManager.inMemory(),
         ),
@@ -180,7 +184,32 @@ export class AgentControl {
             nickname: params.nickname,
           }),
         ],
-      });
+      } as any);
+
+      // Inject fork context if requested
+      if (forkTurns !== 0 && forkTurns !== "none") {
+        const branch = ctx.sessionManager?.getBranch?.() ?? [];
+        const messages = branch
+          .filter((e: any) => e.type === "message")
+          .map((e: any) => e.message as any);
+        const forkCtx = extractForkContext(messages, forkTurns);
+        if (forkCtx.length > 0) {
+          for (const msg of forkCtx) {
+            session.agent.state.messages.push({
+              role: msg.role,
+              content: [{ type: "text", text: msg.text }],
+            } as any);
+          }
+        }
+      }
+
+      // Inherit parent's tool restrictions
+      const parentActiveTools = this.pi.getActiveTools?.();
+      if (parentActiveTools && parentActiveTools.length > 0) {
+        const activeSet = new Set(parentActiveTools);
+        const allTools = session.agent.state.tools;
+        session.agent.state.tools = allTools.filter((t: any) => activeSet.has(t.name));
+      }
 
       // Register agent
       const now = Date.now();
@@ -343,13 +372,21 @@ export class AgentControl {
       params.timeout_ms ?? this.defaultWaitTimeout,
     );
 
-    const beforeSeq = this.mailbox.currentSeq;
+    const beforeSeq = this.lastConsumedSeq.get(callerPath) ?? 0;
 
     const result = await this.mailbox.waitForUpdate(
       callerPath,
       beforeSeq,
       timeoutMs,
     );
+
+    // Update consumed seq to prevent re-delivery
+    const maxSeq = Math.max(
+      ...result.mailbox.map((m) => m.seq),
+      ...result.events.map((e) => "seq" in e ? (e as any).seq as number : 0),
+      beforeSeq,
+    );
+    this.lastConsumedSeq.set(callerPath, maxSeq);
 
     const timedOut =
       result.events.length === 0 && result.mailbox.length === 0;
