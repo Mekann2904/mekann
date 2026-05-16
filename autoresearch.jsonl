@@ -8,3 +8,5 @@
 {"type":"run","run":7,"commit":"ae77d7a","metric":6347,"status":"keep","description":"Remove redundant JSDoc on renderWidget (keep directionArrow for test coverage)","timestamp":1778937069720}
 {"type":"run","run":8,"commit":"5cee77f","metric":6347,"status":"keep","description":"Extract remainingTokens helper to goal/state.ts, replace 6 duplicated Math.max calculations across goal module (neutral LOC but reduces duplicated logic)","timestamp":1778937572110}
 {"type":"run","run":9,"commit":"5e1c8e5","metric":6347,"status":"keep","description":"Extract STATUS_LABELS/STATUS_PREFIX constants from autoresearch_log tool handler (neutral LOC, reduces inline duplication)","timestamp":1778937726682}
+{"type":"run","run":10,"commit":"e96748e","metric":6351,"status":"discard","description":"Extract notifyError helper — net LOC increase (+4), not worth the indirection","timestamp":1778938080458}
+{"type":"run","run":11,"commit":"e96748e","metric":6339,"status":"keep","description":"Consolidate 3 guard checks in goal command handler into single isEnabled+store+runtime guard","timestamp":1778938265631}
