@@ -9,9 +9,20 @@ Improve test coverage across all modules, targeting >98% statement coverage.
 - **Direction**: lower is better
 
 ## Current Status
-- **Uncovered**: 44 statements
-- **Coverage**: 98.06%
-- **Total tests**: 1494 (was 1392)
+- **Uncovered**: 40 statements (natural floor)
+- **Coverage**: 98.24%
+- **Total tests**: 1494 (was 1392, +102)
+
+## Experiments Summary
+| # | Description | Δ Uncovered | Status |
+|---|---|---|---|
+| 1 | goal/lifecycle.test.ts (21 tests) | 183→129 (-54) | keep |
+| 2 | command.test.ts +19, tool.test.ts +5 | 129→85 (-44) | keep |
+| 3 | goal/prompts.test.ts (28 tests) | 85→73 (-12) | keep |
+| 4 | autoresearch loop tests +7 | 73→57 (-16) | keep |
+| 5 | goal/runtime.test.ts +21 | 57→44 (-13) | keep |
+| 6 | goal/command.test.ts +3 | 44→40 (-4) | keep |
+| 7 | hasCompleteMarker edge cases | 40→40 (0) | discard |
 
 ## Rules
 - All tests must pass (`npm test`)
