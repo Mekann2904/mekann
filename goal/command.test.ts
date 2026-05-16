@@ -190,4 +190,24 @@ describe("/goal command", () => {
       "success",
     );
   });
+
+  // 9. --budget prefix parsing
+  it("parses --budget prefix in objective", async () => {
+    await goalCommand.handler("--budget 5000 Build the feature", ctx);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Build the feature"),
+      "success",
+    );
+  });
+
+  // 10. --budget suffix parsing
+  it("parses --budget suffix in objective", async () => {
+    await goalCommand.handler("Build the feature --budget 5000", ctx);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Build the feature"),
+      "success",
+    );
+  });
 });

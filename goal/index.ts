@@ -29,6 +29,7 @@ import {
 } from "./state.js";
 import { GoalRuntime } from "./runtime.js";
 import { renderGoalSummary, renderNoGoal, renderWidget } from "./render.js";
+import { renderGoalContext } from "./prompts.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -160,6 +161,18 @@ export default function goalExtension(pi: ExtensionAPI): void {
     }
   });
 
+  // ─── before_agent_start: inject active goal context ───────
+
+  pi.on("before_agent_start", async (_event, _ctx) => {
+    if (!store) return {};
+    const goal = store.getGoal();
+    if (!goal || goal.status !== "active") return {};
+    const extra = "\n" + renderGoalContext(goal) + "\n";
+    return {
+      systemPrompt: _event.systemPrompt + extra,
+    };
+  });
+
   // ─── Model tools ──────────────────────────────────────────────
 
   // get_goal
@@ -275,9 +288,6 @@ export default function goalExtension(pi: ExtensionAPI): void {
       status: StringEnum(["complete"] as const, {
         description: "Set to 'complete' when the goal is achieved",
       }),
-      objective: Type.Optional(
-        Type.String({ description: "Optional: update the objective" }),
-      ),
       expected_goal_id: Type.Optional(
         Type.String({ description: "Optional: expected goal_id for optimistic concurrency" }),
       ),
@@ -290,8 +300,22 @@ export default function goalExtension(pi: ExtensionAPI): void {
         };
       }
       try {
-        const patch: { status: "complete"; objective?: string } = { status: params.status };
-        if (params.objective) patch.objective = params.objective;
+        const patch: { status: "complete" } = { status: params.status };
+
+        // Reject if goal status is already complete
+        const current = store.getGoal();
+        if (!current) {
+          return {
+            content: [{ type: "text" as const, text: "[ERROR] No goal to update" }],
+            details: { error: "No goal to update" },
+          };
+        }
+        if (current.status === "complete") {
+          return {
+            content: [{ type: "text" as const, text: "[ERROR] Goal is already complete" }],
+            details: { error: "Goal is already complete" },
+          };
+        }
 
         const goal = store.updateGoal(patch, params.expected_goal_id, "tool");
 
@@ -448,6 +472,8 @@ export default function goalExtension(pi: ExtensionAPI): void {
             runtime.onExternalSet(updated, previousGoal);
             emitUpdated(ctx, updated);
             ctx.ui.notify(`Goal updated: ${updated.objective}`, "success");
+            // Trigger continuation check after editing goal
+            runtime.maybeContinueIfIdle(ctx);
           } catch (e) {
             ctx.ui.notify(`Error: ${e instanceof Error ? e.message : String(e)}`, "error");
           }
@@ -518,11 +544,15 @@ export default function goalExtension(pi: ExtensionAPI): void {
     let objective: string;
     let budget: number | null = null;
 
-    // Parse --budget <n> prefix
-    const budgetMatch = input.match(/^--budget\s+(\d+)\s+([\s\S]+)$/);
-    if (budgetMatch) {
-      budget = parseInt(budgetMatch[1], 10);
-      objective = budgetMatch[2].trim();
+    // Parse --budget <n> prefix or suffix
+    const budgetPrefixMatch = input.match(/^--budget\s+(\d+)\s+([\s\S]+)$/);
+    const budgetSuffixMatch = input.match(/^([\s\S]+?)\s+--budget\s+(\d+)$/);
+    if (budgetPrefixMatch) {
+      budget = parseInt(budgetPrefixMatch[1], 10);
+      objective = budgetPrefixMatch[2].trim();
+    } else if (budgetSuffixMatch) {
+      budget = parseInt(budgetSuffixMatch[2], 10);
+      objective = budgetSuffixMatch[1].trim();
     } else {
       objective = input.trim();
     }
@@ -554,6 +584,8 @@ export default function goalExtension(pi: ExtensionAPI): void {
       runtime.onExternalSet(newGoal, previousGoal);
       emitUpdated(ctx, newGoal);
       ctx.ui.notify(`Goal set: ${newGoal.objective}`, "success");
+      // Trigger continuation check after setting a new goal
+      runtime.maybeContinueIfIdle(ctx);
     } catch (e) {
       ctx.ui.notify(`Error: ${e instanceof Error ? e.message : String(e)}`, "error");
     }

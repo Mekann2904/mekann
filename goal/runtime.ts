@@ -6,7 +6,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { GoalStore, type Goal, type GoalStateEntry } from "./state.js";
+import { GoalStore, type Goal, type GoalStateEntry, CONTINUATION_COOLDOWN_MS, DEFAULT_MAX_CONTINUATIONS } from "./state.js";
 import { continuationPrompt, budgetLimitPrompt, objectiveUpdatedPrompt } from "./prompts.js";
 
 // ---------------------------------------------------------------------------
@@ -200,11 +200,10 @@ export class GoalRuntime {
 
     // If objective changed and there's an active turn, inject objective-updated prompt
     if (previousGoal && previousGoal.objective !== goal.objective && this.active_turn_marker) {
-      this.pi.sendMessage({
-        customType: "goal-objective-updated",
-        content: objectiveUpdatedPrompt(previousGoal.objective, goal.objective),
-        display: false,
-      }, { deliverAs: "steer" });
+      this.pi.sendUserMessage(
+        objectiveUpdatedPrompt(previousGoal.objective, goal.objective),
+        { deliverAs: "followUp" },
+      );
     }
 
     // Reset budget reporting for new goal_id
@@ -227,23 +226,63 @@ export class GoalRuntime {
     if (this.pi.getFlag("goals") !== true) return;
     if (!ctx.sessionManager.isPersisted()) return;
     if (this.inPlanMode) return;
-    if (!ctx.isIdle()) return;
-    if (ctx.hasPendingMessages()) return;
     if (this.active_turn_marker) return;
     if (this.continuation_active) return;
+
+    // Defensive: check ctx.isIdle() / ctx.hasPendingMessages()
+    const isIdle = typeof (ctx as any).isIdle === "function" ? (ctx as any).isIdle() : true;
+    const hasPendingMessages = typeof (ctx as any).hasPendingMessages === "function" ? (ctx as any).hasPendingMessages() : false;
+    if (!isIdle) return;
+    if (hasPendingMessages) return;
 
     const goal = this.store.getGoal();
     if (!goal) return;
     if (goal.status !== "active") return;
+    if (!goal.objective.trim()) return;
     if (this.active_goal_id !== null && this.active_goal_id !== goal.goal_id) return;
 
-    // Send hidden continuation prompt
+    // Continuation guard: max count
+    if (goal.continuation_count >= goal.max_continuations) {
+      // Pause the goal and notify
+      try {
+        const updated = this.store.updateGoal(
+          { status: "paused" },
+          goal.goal_id,
+          "runtime",
+        );
+        this.active_goal_id = null;
+        this.pi.sendUserMessage(
+          `Goal automatically paused after ${goal.max_continuations} continuations. Use /goal resume to continue or /goal edit to adjust the objective.`,
+          { deliverAs: "followUp" },
+        );
+      } catch {
+        // Best effort
+      }
+      return;
+    }
+
+    // Continuation guard: cooldown
+    if (goal.last_continued_at_ms !== null) {
+      const elapsed = Date.now() - goal.last_continued_at_ms;
+      if (elapsed < CONTINUATION_COOLDOWN_MS) return;
+    }
+
+    // Send continuation prompt
     this.continuation_active = true;
-    this.pi.sendMessage({
-      customType: "goal-steering",
-      content: continuationPrompt(goal),
-      display: false,
-    }, { deliverAs: "followUp", triggerTurn: true });
+    const now = Date.now();
+    this.store.updateGoal(
+      {
+        continuation_count: goal.continuation_count + 1,
+        last_continued_at_ms: now,
+      },
+      goal.goal_id,
+      "runtime",
+    );
+
+    this.pi.sendUserMessage(
+      continuationPrompt(this.store.getGoal()!),
+      { deliverAs: "followUp" },
+    );
   }
 
   // ─── For tool use ──────────────────────────────────────────────
@@ -284,11 +323,10 @@ export class GoalRuntime {
     if (this.budget_limit_reported_goal_id === goal.goal_id) return;
     this.budget_limit_reported_goal_id = goal.goal_id;
 
-    this.pi.sendMessage({
-      customType: "goal-budget-limit",
-      content: budgetLimitPrompt(goal),
-      display: false,
-    }, { deliverAs: "steer", triggerTurn: true });
+    this.pi.sendUserMessage(
+      budgetLimitPrompt(goal),
+      { deliverAs: "followUp" },
+    );
   }
 
   /** Reset all runtime state. */

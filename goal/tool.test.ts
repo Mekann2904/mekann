@@ -193,4 +193,39 @@ describe("goal tools", () => {
     expect(result.details.final_usage).toHaveProperty("tokens");
     expect(result.details.final_usage).toHaveProperty("time");
   });
+
+  // 6. update_goal rejects when goal is already complete
+  it("update_goal rejects when goal is already complete", async () => {
+    const createTool = getTool(mockPi, "create_goal");
+    await createTool.execute(
+      "tc-1",
+      { objective: "Done task" },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    const updateTool = getTool(mockPi, "update_goal");
+
+    // Mark as complete
+    await updateTool.execute(
+      "tc-2",
+      { status: "complete" },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    // Try to update again
+    const result = await updateTool.execute(
+      "tc-3",
+      { status: "complete" },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(result.content[0].text).toContain("[ERROR]");
+    expect(result.content[0].text).toContain("already complete");
+  });
 });

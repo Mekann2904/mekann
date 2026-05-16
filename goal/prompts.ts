@@ -8,6 +8,18 @@
 import type { Goal } from "./state.js";
 
 // ---------------------------------------------------------------------------
+// XML escaping
+// ---------------------------------------------------------------------------
+
+/** Escape text for safe inclusion inside XML-style tags. */
+export function escapeXmlText(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -44,8 +56,9 @@ export function continuationPrompt(goal: Goal): string {
   return [
     `[Goal continuation check]`,
     ``,
-    `Objective: ${goal.objective}`,
+    `<goal_objective>${escapeXmlText(goal.objective)}</goal_objective>`,
     `Status: ${goal.status}`,
+    `Continuation: ${goal.continuation_count} / ${goal.max_continuations}`,
     ``,
     formatUsage(goal),
     ``,
@@ -69,7 +82,7 @@ export function budgetLimitPrompt(goal: Goal): string {
   return [
     `[Token budget limit reached]`,
     ``,
-    `Objective: ${goal.objective}`,
+    `<goal_objective>${escapeXmlText(goal.objective)}</goal_objective>`,
     `Tokens used: ${goal.tokens_used} / ${goal.token_budget}`,
     `Remaining: ${remaining}`,
     `Time used: ${formatDuration(goal.time_used_seconds)}`,
@@ -92,8 +105,8 @@ export function objectiveUpdatedPrompt(previous: string, next: string): string {
   return [
     `[Goal objective updated]`,
     ``,
-    `Previous objective: ${previous}`,
-    `New objective: ${next}`,
+    `Previous objective: ${escapeXmlText(previous)}`,
+    `New objective: ${escapeXmlText(next)}`,
     ``,
     `Instructions:`,
     `1. The goal objective has been changed by the user.`,
@@ -101,4 +114,29 @@ export function objectiveUpdatedPrompt(previous: string, next: string): string {
     `3. Do not continue work based on the old objective.`,
     `4. If the new objective invalidates in-progress work, pivot accordingly.`,
   ].join("\n");
+}
+
+/**
+ * Render the active goal context for injection into the system prompt.
+ * Returns an empty string if no active goal.
+ */
+export function renderGoalContext(goal: Goal): string {
+  if (goal.status !== "active") return "";
+  const lines: string[] = [
+    "[Active Goal Context]",
+    "",
+    `<goal_objective>${escapeXmlText(goal.objective)}</goal_objective>`,
+    `Status: ${goal.status}`,
+  ];
+  if (goal.token_budget !== null) {
+    const remaining = Math.max(0, goal.token_budget - goal.tokens_used);
+    lines.push(`Token budget: ${goal.token_budget} (used: ${goal.tokens_used}, remaining: ${remaining})`);
+  } else {
+    lines.push(`Tokens used: ${goal.tokens_used}`);
+  }
+  lines.push(
+    `Time used: ${formatDuration(goal.time_used_seconds)}`,
+    `Continuation: ${goal.continuation_count} / ${goal.max_continuations}`,
+  );
+  return lines.join("\n");
 }
