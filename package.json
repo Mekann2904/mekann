@@ -6,15 +6,16 @@
   "keywords": ["pi-package", "pi-extension"],
   "license": "ISC",
   "scripts": {
-    "test": "cd plan-mode && npm test && cd ../sandbox && npm test && cd ../subagent && npm test && cd ../zip-repo && npm test && cd ../autoresearch && npm test",
+    "test": "cd plan-mode && npm test && cd ../sandbox && npm test && cd ../subagent && npm test && cd ../zip-repo && npm test && cd ../autoresearch && npm test && cd ../goal && npm test",
     "test:plan-mode": "cd plan-mode && npm test",
     "test:sandbox": "cd sandbox && npm test",
     "test:subagent": "cd subagent && npm test",
     "test:zip-repo": "cd zip-repo && npm test",
-    "test:autoresearch": "cd autoresearch && npm test"
+    "test:autoresearch": "cd autoresearch && npm test",
+    "test:goal": "cd goal && npm test"
   },
   "pi": {
-    "extensions": ["./plan-mode", "./zip-repo", "./sandbox", "./subagent", "./autoresearch"],
+    "extensions": ["./plan-mode", "./zip-repo", "./sandbox", "./subagent", "./autoresearch", "./goal"],
     "skills": ["./skills"]
   }
 }

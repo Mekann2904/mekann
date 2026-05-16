@@ -1,0 +1,21 @@
+{
+  "name": "goal",
+  "version": "1.0.0",
+  "description": "Persistent thread-local goals with idle continuation, token/time budget tracking, and plan-mode integration.",
+  "main": "index.ts",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.1.0",
+    "@earendil-works/pi-ai": ">=0.1.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.6",
+    "vitest": "^4.1.6"
+  }
+}

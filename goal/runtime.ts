@@ -1,0 +1,305 @@
+/**
+ * goal/runtime.ts — Goal runtime lifecycle management.
+ *
+ * Handles token/time accounting, idle continuation, budget steering,
+ * and coordinates with the GoalStore.
+ */
+
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { GoalStore, type Goal, type GoalStateEntry } from "./state.js";
+import { continuationPrompt, budgetLimitPrompt, objectiveUpdatedPrompt } from "./prompts.js";
+
+// ---------------------------------------------------------------------------
+// GoalRuntime
+// ---------------------------------------------------------------------------
+
+export class GoalRuntime {
+  private store: GoalStore;
+  private pi: ExtensionAPI;
+
+  // ─── Runtime state ────────────────────────────────────────────
+
+  /** goal_id of the goal we're actively accounting for. */
+  active_goal_id: string | null = null;
+  /** Whether an agent turn is currently in progress. */
+  private active_turn_marker = false;
+  /** Whether a continuation turn is currently in flight. */
+  continuation_active = false;
+  /** goal_id for which we've already injected a budget limit prompt. */
+  budget_limit_reported_goal_id: string | null = null;
+  /** Wall-clock baseline (ms since epoch) for time accounting. */
+  last_accounted_wall_clock: number | null = null;
+  /** Set of assistant message timestamps already accounted for tokens. */
+  private accounted_assistant_timestamps: Set<number> = new Set();
+  /** Whether plan mode is active (suppresses continuation). */
+  inPlanMode = false;
+  /** Whether budget steering is suppressed for the current turn. */
+  private suppress_budget_steering = false;
+
+  constructor(store: GoalStore, pi: ExtensionAPI) {
+    this.store = store;
+    this.pi = pi;
+  }
+
+  // ─── Accessors ────────────────────────────────────────────────
+
+  getGoal(): Goal | null {
+    return this.store.getGoal();
+  }
+
+  getStore(): GoalStore {
+    return this.store;
+  }
+
+  // ─── Lifecycle: session_start ──────────────────────────────────
+
+  onSessionStart(_ctx: ExtensionContext): void {
+    const goal = this.store.getGoal();
+    if (goal && goal.status === "active") {
+      this.active_goal_id = goal.goal_id;
+      this.last_accounted_wall_clock = Date.now();
+    }
+  }
+
+  // ─── Lifecycle: agent_start ────────────────────────────────────
+
+  onAgentStart(): void {
+    this.active_turn_marker = true;
+  }
+
+  // ─── Lifecycle: turn_start ─────────────────────────────────────
+
+  onTurnStart(_event: { turnIndex: number }, _ctx: ExtensionContext): void {
+    const goal = this.store.getGoal();
+    if (goal && goal.status === "active") {
+      this.active_goal_id = goal.goal_id;
+      this.last_accounted_wall_clock = Date.now();
+    } else {
+      this.active_goal_id = null;
+    }
+    this.suppress_budget_steering = false;
+  }
+
+  // ─── Lifecycle: message_end ────────────────────────────────────
+
+  onMessageEnd(event: { message: { role: string; usage?: { input?: number; output?: number; cacheRead?: number }; timestamp: number } }, _ctx: ExtensionContext): void {
+    const msg = event.message;
+    if (msg.role !== "assistant") return;
+    if (!msg.usage) return;
+
+    // Deduplicate by timestamp
+    const ts = msg.timestamp;
+    if (this.accounted_assistant_timestamps.has(ts)) return;
+    this.accounted_assistant_timestamps.add(ts);
+
+    const goal = this.store.getGoal();
+    if (!goal || goal.status !== "active") return;
+
+    // Token delta: exclude cached input tokens
+    const usage = msg.usage;
+    const tokenDelta = Math.max(0, (usage.input ?? 0) - (usage.cacheRead ?? 0)) + (usage.output ?? 0);
+
+    // Also account accumulated wall-clock time
+    const timeDelta = this.consumeWallClockSeconds();
+
+    if (tokenDelta > 0 || timeDelta > 0) {
+      const result = this.store.accountGoalUsage(timeDelta, tokenDelta, undefined, "active_only");
+      if (result?.budgetLimited) {
+        this.onBudgetLimited(result.goal);
+      }
+    }
+  }
+
+  // ─── Lifecycle: tool_execution_end ─────────────────────────────
+
+  onToolExecutionEnd(event: { toolName: string }, _ctx: ExtensionContext): void {
+    // Skip goal tools to avoid double-counting
+    if (event.toolName === "update_goal" || event.toolName === "create_goal" || event.toolName === "get_goal") {
+      return;
+    }
+
+    const goal = this.store.getGoal();
+    if (!goal || goal.status !== "active") return;
+
+    // Best-effort wall-clock accounting
+    const timeDelta = this.consumeWallClockSeconds();
+    if (timeDelta > 0) {
+      const result = this.store.accountGoalUsage(timeDelta, 0, undefined, "active_only");
+      if (result?.budgetLimited && !this.suppress_budget_steering) {
+        this.onBudgetLimited(result.goal);
+      }
+    }
+  }
+
+  // ─── Lifecycle: turn_end ───────────────────────────────────────
+
+  onTurnEnd(_event: { turnIndex: number }, _ctx: ExtensionContext): void {
+    // Final wall-clock accounting for this turn
+    const goal = this.store.getGoal();
+    if (goal && goal.status === "active") {
+      const timeDelta = this.consumeWallClockSeconds();
+      if (timeDelta > 0) {
+        const result = this.store.accountGoalUsage(timeDelta, 0, undefined, "active_only");
+        if (result?.budgetLimited) {
+          this.onBudgetLimited(result.goal);
+        }
+      }
+    }
+
+    this.continuation_active = false;
+  }
+
+  // ─── Lifecycle: agent_end ──────────────────────────────────────
+
+  onAgentEnd(event: { messages: Array<{ role: string; stopReason?: string }> }, _ctx: ExtensionContext): void {
+    // Check if the last assistant message was aborted
+    const lastAssistant = [...event.messages].reverse().find((m) => m.role === "assistant");
+    if (lastAssistant?.stopReason === "aborted") {
+      const goal = this.store.getGoal();
+      if (goal && goal.status === "active") {
+        // Final accounting before pausing
+        this.accountWallClockFinal();
+        try {
+          this.store.updateGoal({ status: "paused" }, undefined, "runtime");
+        } catch {
+          // Best effort
+        }
+        this.active_goal_id = null;
+      }
+    } else {
+      // Final wall-clock accounting
+      this.accountWallClockFinal();
+    }
+
+    this.active_turn_marker = false;
+  }
+
+  // ─── Lifecycle: session_shutdown ───────────────────────────────
+
+  onSessionShutdown(): void {
+    this.accountWallClockFinal();
+    this.reset();
+  }
+
+  // ─── External mutation hooks ───────────────────────────────────
+
+  /** Called before an external mutation (e.g., user command) to flush accounting. */
+  onExternalMutationStarting(): void {
+    this.accountWallClockFinal();
+  }
+
+  /** Called when a goal is externally set/updated. */
+  onExternalSet(goal: Goal, previousGoal?: Goal | null): void {
+    if (goal.status === "active") {
+      this.active_goal_id = goal.goal_id;
+      this.last_accounted_wall_clock = Date.now();
+    } else {
+      this.active_goal_id = null;
+      this.last_accounted_wall_clock = null;
+    }
+
+    // If objective changed and there's an active turn, inject objective-updated prompt
+    if (previousGoal && previousGoal.objective !== goal.objective && this.active_turn_marker) {
+      this.pi.sendMessage({
+        customType: "goal-objective-updated",
+        content: objectiveUpdatedPrompt(previousGoal.objective, goal.objective),
+        display: false,
+      }, { deliverAs: "steer" });
+    }
+
+    // Reset budget reporting for new goal_id
+    if (!previousGoal || previousGoal.goal_id !== goal.goal_id) {
+      this.budget_limit_reported_goal_id = null;
+    }
+  }
+
+  /** Called when a goal is externally cleared. */
+  onExternalClear(): void {
+    this.active_goal_id = null;
+    this.last_accounted_wall_clock = null;
+    this.budget_limit_reported_goal_id = null;
+  }
+
+  // ─── Idle continuation ─────────────────────────────────────────
+
+  maybeContinueIfIdle(ctx: ExtensionContext): void {
+    // Check all preconditions
+    if (this.pi.getFlag("goals") !== true) return;
+    if (!ctx.sessionManager.isPersisted()) return;
+    if (this.inPlanMode) return;
+    if (!ctx.isIdle()) return;
+    if (ctx.hasPendingMessages()) return;
+    if (this.active_turn_marker) return;
+    if (this.continuation_active) return;
+
+    const goal = this.store.getGoal();
+    if (!goal) return;
+    if (goal.status !== "active") return;
+    if (this.active_goal_id !== null && this.active_goal_id !== goal.goal_id) return;
+
+    // Send hidden continuation prompt
+    this.continuation_active = true;
+    this.pi.sendMessage({
+      customType: "goal-steering",
+      content: continuationPrompt(goal),
+      display: false,
+    }, { deliverAs: "followUp", triggerTurn: true });
+  }
+
+  // ─── For tool use ──────────────────────────────────────────────
+
+  /** Suppress budget steering for the current turn (e.g., when update_goal sets complete). */
+  suppressBudgetSteering(): void {
+    this.suppress_budget_steering = true;
+  }
+
+  // ─── Internal helpers ──────────────────────────────────────────
+
+  /** Consume elapsed wall-clock seconds and advance the baseline. */
+  private consumeWallClockSeconds(): number {
+    if (this.last_accounted_wall_clock === null) return 0;
+    const now = Date.now();
+    const elapsedMs = now - this.last_accounted_wall_clock;
+    this.last_accounted_wall_clock = now;
+    return Math.max(0, Math.round(elapsedMs / 1000));
+  }
+
+  /** Final wall-clock accounting (clears baseline). */
+  private accountWallClockFinal(): void {
+    const goal = this.store.getGoal();
+    if (!goal || goal.status !== "active") {
+      this.last_accounted_wall_clock = null;
+      return;
+    }
+    const timeDelta = this.consumeWallClockSeconds();
+    if (timeDelta > 0) {
+      this.store.accountGoalUsage(timeDelta, 0, undefined, "active_only");
+    }
+    this.last_accounted_wall_clock = null;
+  }
+
+  /** Handle budget limit reached — inject steering prompt once per goal. */
+  private onBudgetLimited(goal: Goal): void {
+    if (this.suppress_budget_steering) return;
+    if (this.budget_limit_reported_goal_id === goal.goal_id) return;
+    this.budget_limit_reported_goal_id = goal.goal_id;
+
+    this.pi.sendMessage({
+      customType: "goal-budget-limit",
+      content: budgetLimitPrompt(goal),
+      display: false,
+    }, { deliverAs: "steer", triggerTurn: true });
+  }
+
+  /** Reset all runtime state. */
+  reset(): void {
+    this.active_goal_id = null;
+    this.active_turn_marker = false;
+    this.continuation_active = false;
+    this.budget_limit_reported_goal_id = null;
+    this.last_accounted_wall_clock = null;
+    this.accounted_assistant_timestamps.clear();
+    this.inPlanMode = false;
+    this.suppress_budget_steering = false;
+  }
+}
