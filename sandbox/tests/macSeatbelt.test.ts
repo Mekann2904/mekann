@@ -1682,3 +1682,425 @@ describe("validatePolicy: symlink-based writable root escape", () => {
 		}
 	});
 });
+
+// ─── Unit tests: buildSandboxEnv TMPDIR not set branch ───────────────────
+
+describe("buildSandboxEnv: TMPDIR when _isolatedTempDir is not set", () => {
+	it("_isolatedTempDir が未設定の場合、TMPDIR は含まれない", () => {
+		const policy = readOnlyPolicy("/tmp/workspace");
+		// _isolatedTempDir is undefined by default
+		expect(policy._isolatedTempDir).toBeUndefined();
+		const env = buildSandboxEnv(policy, "/tmp/sandbox-run-test/home");
+		expect(env.TMPDIR).toBeUndefined();
+	});
+});
+
+// ─── Unit tests: resolveGitdirPaths .git file without gitdir match ──────
+
+describe("resolveGitdirPaths: .git file with non-gitdir content", () => {
+	it(".git ファイルに gitdir: 行がない場合、ファイルパスのみ返す", async () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "sandbox-gitdir-nocontent-"));
+		try {
+			writeFileSync(join(tmpDir, ".git"), "not a gitdir file\n");
+			const paths = await resolveGitdirPaths(tmpDir);
+			// match?.[1] is null → no gitdir pushed, only the .git file path itself
+			expect(paths).toHaveLength(1);
+			expect(paths[0]).toBe(join(tmpDir, ".git"));
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+
+	it(".git ファイルが空の場合、ファイルパスのみ返す", async () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "sandbox-gitdir-empty-"));
+		try {
+			writeFileSync(join(tmpDir, ".git"), "");
+			const paths = await resolveGitdirPaths(tmpDir);
+			expect(paths).toHaveLength(1);
+			expect(paths[0]).toBe(join(tmpDir, ".git"));
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+});
+
+// ─── Unit tests: resolveGitdirPaths .git file with nonexistent gitdir ───
+
+describe("resolveGitdirPaths: .git file pointing to nonexistent path", () => {
+	it("gitdir が存在しないパスでも resolved path を返す", async () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "sandbox-gitdir-nonexist-"));
+		try {
+			writeFileSync(join(tmpDir, ".git"), "gitdir: /tmp/nonexistent-gitdir-path-12345\n");
+			const paths = await resolveGitdirPaths(tmpDir);
+			// realpath fails → catch block uses resolved path as-is
+			expect(paths.length).toBeGreaterThanOrEqual(2);
+			expect(paths.some((p) => p.includes("nonexistent-gitdir-path-12345"))).toBe(true);
+			expect(paths).toContain(join(tmpDir, ".git"));
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+
+	it("gitdir が絶対パスで存在する場合、realpath で解決される", async () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "sandbox-gitdir-abs-"));
+		const gitdirDir = mkdtempSync(join(tmpdir(), "sandbox-gitdir-target-"));
+		try {
+			writeFileSync(join(tmpDir, ".git"), `gitdir: ${gitdirDir}\n`);
+			const paths = await resolveGitdirPaths(tmpDir);
+			expect(paths.length).toBeGreaterThanOrEqual(2);
+			expect(paths.some((p) => p.includes("sandbox-gitdir-target"))).toBe(true);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+			rmSync(gitdirDir, { recursive: true, force: true });
+		}
+	});
+});
+
+// ─── Unit tests: validatePolicy writable root exactly matches workspace root ──
+
+describe("validatePolicy: writable root exactly equals workspace root (rel === \"\")", () => {
+	it("writableRoot が workspaceRoot と完全一致する場合、検証パスする", async () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "sandbox-exact-match-"));
+		try {
+			// When resolvedWr === root, relative(root, resolvedWr) === "" → isInside = true
+			const policy = workspaceWritePolicy(tmpDir, [tmpDir], [tmpDir], false);
+			await expect(validatePolicy(policy)).resolves.toBeUndefined();
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+
+	it("複数 workspaceRoots のうち一つと一致すればパスする", async () => {
+		const root1 = mkdtempSync(join(tmpdir(), "sandbox-root1-"));
+		const root2 = mkdtempSync(join(tmpdir(), "sandbox-root2-"));
+		try {
+			const policy = workspaceWritePolicy(root1, [root1, root2], [root2], false);
+			await expect(validatePolicy(policy)).resolves.toBeUndefined();
+		} finally {
+			rmSync(root1, { recursive: true, force: true });
+			rmSync(root2, { recursive: true, force: true });
+		}
+	});
+});
+
+// ─── Integration tests: abort signal already aborted ────────────────────
+
+describeMac("runSandboxedShellMac: abort signal already aborted", () => {
+	let testDir: string;
+	let sandboxReady = false;
+
+	beforeAll(async () => {
+		sandboxReady = await isMacSandboxAvailable();
+		testDir = mkdtempSync(join(tmpdir(), "sandbox-abort-test-"));
+	});
+
+	afterAll(() => {
+		if (testDir) {
+			rmSync(testDir, { recursive: true, force: true });
+		}
+	});
+
+	it("AbortSignal が既に aborted の場合、即座にエラーを返す", async () => {
+		if (!sandboxReady) return;
+
+		const controller = new AbortController();
+		controller.abort(); // Abort before calling runSandboxedShellMac
+
+		const policy = readOnlyPolicy(testDir, [testDir]);
+		const result = await runSandboxedShellMac(
+			"echo hello",
+			policy,
+			{ signal: controller.signal, timeoutMs: 60000 },
+		);
+
+		expect(result.code).toBeNull();
+		expect(result.stderr).toContain("aborted");
+	}, 10000);
+});
+
+// ─── Integration tests: normal exit without kill ────────────────────────
+
+describeMac("runSandboxedShellMac: normal exit safety net", () => {
+	let testDir: string;
+	let sandboxReady = false;
+
+	beforeAll(async () => {
+		sandboxReady = await isMacSandboxAvailable();
+		testDir = mkdtempSync(join(tmpdir(), "sandbox-normal-exit-"));
+	});
+
+	afterAll(() => {
+		if (testDir) {
+			rmSync(testDir, { recursive: true, force: true });
+		}
+	});
+
+	it("正常終了時、outputExceeded=false で通常の出力を返す", async () => {
+		if (!sandboxReady) return;
+
+		const policy = readOnlyPolicy(testDir, [testDir]);
+		const result = await runSandboxedShellMac("echo normal_output", policy);
+
+		expect(result.code).toBe(0);
+		expect(result.stdout).toContain("normal_output");
+		expect(result.stdout).not.toContain("[...output truncated...]");
+		expect(result.stderr).not.toContain("output limit");
+	});
+
+	it("stderr のみ出力がある場合でも正常に返す", async () => {
+		if (!sandboxReady) return;
+
+		const policy = readOnlyPolicy(testDir, [testDir]);
+		const result = await runSandboxedShellMac("echo stderr_only >&2", policy);
+
+		expect(result.code).toBe(0);
+		expect(result.stderr).toContain("stderr_only");
+		expect(result.stdout).toBe("");
+	});
+});
+
+// ─── Integration tests: output exceeded with keepBytes ──────────────────
+
+describeMac("runSandboxedShellMac: output limit edge cases", () => {
+	let testDir: string;
+	let sandboxReady = false;
+
+	beforeAll(async () => {
+		sandboxReady = await isMacSandboxAvailable();
+		testDir = mkdtempSync(join(tmpdir(), "sandbox-output-edge-"));
+	});
+
+	afterAll(() => {
+		if (testDir) {
+			rmSync(testDir, { recursive: true, force: true });
+		}
+	});
+
+	it("maxOutputBytes が 0 の場合、即座に output limit になる", async () => {
+		if (!sandboxReady) return;
+
+		const policy = readOnlyPolicy(testDir, [testDir]);
+		const result = await runSandboxedShellMac(
+			"echo hello",
+			policy,
+			{ maxOutputBytes: 0 },
+		);
+
+		expect(result.code).not.toBe(0);
+		expect(result.stderr).toContain("output limit");
+	});
+
+	it("keepBytes > 0 で部分的にデータが保持される", async () => {
+		if (!sandboxReady) return;
+
+		const policy = readOnlyPolicy(testDir, [testDir]);
+		// Generate enough output to exceed 100 bytes but keep some bytes from the last chunk
+		const result = await runSandboxedShellMac(
+			"echo 'initial data'; printf '%0.sx' {1..20000}",
+			policy,
+			{ maxOutputBytes: 100 },
+		);
+
+		expect(result.code).not.toBe(0);
+		expect(result.stderr).toContain("output limit");
+		// The truncated output should have some content (keepBytes > 0)
+		expect(result.stdout.length).toBeGreaterThan(0);
+	});
+});
+
+// ─── Integration tests: abort during execution (timedOut=false in catch) ─
+
+describeMac("runSandboxedShellMac: abort vs timeout error messages", () => {
+	let testDir: string;
+	let sandboxReady = false;
+
+	beforeAll(async () => {
+		sandboxReady = await isMacSandboxAvailable();
+		testDir = mkdtempSync(join(tmpdir(), "sandbox-abort-msg-"));
+	});
+
+	afterAll(() => {
+		if (testDir) {
+			rmSync(testDir, { recursive: true, force: true });
+		}
+	});
+
+	it("abort 時のエラーメッセージは 'aborted' を含む (timedOut は false)", async () => {
+		if (!sandboxReady) return;
+
+		const controller = new AbortController();
+		const policy = readOnlyPolicy(testDir, [testDir]);
+
+		setTimeout(() => controller.abort(), 300);
+
+		const result = await runSandboxedShellMac(
+			"sleep 30",
+			policy,
+			{ signal: controller.signal, timeoutMs: 60000 },
+		);
+
+		expect(result.code).toBeNull();
+		// timedOut is false → message says "aborted", not "timed out"
+		expect(result.stderr).toContain("aborted");
+		expect(result.stderr).not.toContain("timed out");
+	}, 10000);
+
+	it("timeout 時のエラーメッセージは 'timed out' を含む (timedOut は true)", async () => {
+		if (!sandboxReady) return;
+
+		const policy = readOnlyPolicy(testDir, [testDir]);
+		const result = await runSandboxedShellMac(
+			"sleep 30",
+			policy,
+			{ timeoutMs: 500 },
+		);
+
+		expect(result.code).not.toBe(0);
+		expect(result.stderr).toContain("timed out");
+	}, 10000);
+});
+
+// ─── Integration tests: output not exceeded in catch path ───────────────
+
+describeMac("runSandboxedShellMac: catch path without output exceeded", () => {
+	let testDir: string;
+	let sandboxReady = false;
+
+	beforeAll(async () => {
+		sandboxReady = await isMacSandboxAvailable();
+		testDir = mkdtempSync(join(tmpdir(), "sandbox-catch-noexceed-"));
+	});
+
+	afterAll(() => {
+		if (testDir) {
+			rmSync(testDir, { recursive: true, force: true });
+		}
+	});
+
+	it("abort 時に outputExceeded=false なら truncated マーカーなし", async () => {
+		if (!sandboxReady) return;
+
+		const controller = new AbortController();
+		const policy = readOnlyPolicy(testDir, [testDir]);
+
+		setTimeout(() => controller.abort(), 300);
+
+		const result = await runSandboxedShellMac(
+			"echo small; sleep 30",
+			policy,
+			{ signal: controller.signal, timeoutMs: 60000 },
+		);
+
+		expect(result.code).toBeNull();
+		expect(result.stderr).toContain("aborted");
+		// outputExceeded is false → no truncated marker in stdout
+		expect(result.stdout).not.toContain("[...output truncated...]");
+	}, 10000);
+});
+
+// ─── buildSandboxEnv: LC_ALL branch ──────────────────────────────
+
+describe("buildSandboxEnv: LC_ALL branch", () => {
+	const isolatedHome = "/tmp/sandbox-run-lctest/home";
+
+	it("LC_ALL が設定されている場合、env に含まれる", () => {
+		const orig = process.env.LC_ALL;
+		process.env.LC_ALL = "en_US.UTF-8";
+		try {
+			const policy = readOnlyPolicy("/tmp/workspace");
+			const env = buildSandboxEnv(policy, isolatedHome);
+			expect(env.LC_ALL).toBe("en_US.UTF-8");
+		} finally {
+			if (orig) process.env.LC_ALL = orig;
+			else delete process.env.LC_ALL;
+		}
+	});
+
+	it("LC_ALL が未設定の場合、env に含まれない", () => {
+		const orig = process.env.LC_ALL;
+		delete process.env.LC_ALL;
+		try {
+			const policy = readOnlyPolicy("/tmp/workspace");
+			const env = buildSandboxEnv(policy, isolatedHome);
+			expect(env.LC_ALL).toBeUndefined();
+		} finally {
+			if (orig) process.env.LC_ALL = orig;
+			else delete process.env.LC_ALL;
+		}
+	});
+
+	it("_isolatedTempDir なしの場合、TMPDIR は設定されない", () => {
+		const policy = readOnlyPolicy("/tmp/workspace");
+		// Don't set _isolatedTempDir
+		const env = buildSandboxEnv(policy, isolatedHome);
+		expect(env.TMPDIR).toBeUndefined();
+	});
+});
+
+// ─── resolveGitdirPaths: .git file without gitdir match ────────────
+
+describe("resolveGitdirPaths: .git file without gitdir", () => {
+	it("gitdir 行のない .git ファイルはファイルパスのみ返す", async () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "sandbox-gitdir-nocontent-"));
+		try {
+			writeFileSync(join(tmpDir, ".git"), "not a gitdir file\n");
+			const paths = await resolveGitdirPaths(tmpDir);
+			expect(paths).toHaveLength(1);
+			expect(paths[0]).toContain(".git");
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+
+	it(".git ファイルが空の場合はファイルパスのみ返す", async () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "sandbox-gitdir-empty-"));
+		try {
+			writeFileSync(join(tmpDir, ".git"), "");
+			const paths = await resolveGitdirPaths(tmpDir);
+			expect(paths).toHaveLength(1);
+			expect(paths[0]).toContain(".git");
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+
+	it(".git ファイルが存在しない gitdir を指す場合", async () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "sandbox-gitdir-nonexist-"));
+		try {
+			writeFileSync(join(tmpDir, ".git"), "gitdir: /tmp/nonexistent-gitdir-path-99999\n");
+			const paths = await resolveGitdirPaths(tmpDir);
+			// realpath will fail for nonexistent path, falls back to resolve
+			expect(paths.length).toBeGreaterThanOrEqual(1);
+			// Should include the pointer file path itself
+			expect(paths.some((p) => p.endsWith(".git"))).toBe(true);
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+});
+
+// ─── validatePolicy: read_only with writableRoots ──────────────────
+
+describe("validatePolicy: read_only with writableRoots", () => {
+	const tmpDir = mkdtempSync(join(tmpdir(), "sandbox-validate-ro-w-"));
+
+	afterAll(() => {
+		rmSync(tmpDir, { recursive: true, force: true });
+	});
+
+	it("read_only モードで writableRoots が非空の場合エラー", async () => {
+		const policy: SandboxPolicy = {
+			mode: "read_only",
+			cwd: tmpDir,
+			workspaceRoots: [tmpDir],
+			writableRoots: [tmpDir],
+			network: false,
+		};
+		await expect(validatePolicy(policy)).rejects.toThrow("read_only mode must not have writableRoots");
+	});
+
+	it("writable root が workspace root と完全一致する場合 (rel === '')", async () => {
+		const policy = workspaceWritePolicy(tmpDir, [tmpDir], [tmpDir], false);
+		await expect(validatePolicy(policy)).resolves.toBeUndefined();
+	});
+});
