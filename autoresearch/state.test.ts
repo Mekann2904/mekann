@@ -328,4 +328,47 @@ describe("checks_failed status", () => {
 		const state = reconstructState(content);
 		expect(state.results[0]?.status).toBe("crash");
 	});
+
+	it("skips run entry without numeric run field", () => {
+		const content = [
+			JSON.stringify({ type: "config", name: "test", metricName: "ms" }),
+			JSON.stringify({ type: "run", run: "not-a-number", metric: 100, status: "keep", description: "" }),
+			JSON.stringify({ type: "run", metric: 200, status: "keep", description: "" }),
+		].join("\n") + "\n";
+		const state = reconstructState(content);
+		expect(state.runCount).toBe(0);
+		expect(state.results).toHaveLength(0);
+	});
+
+	it("filters out non-numeric values in metrics", () => {
+		const content = [
+			JSON.stringify({ type: "config", name: "test", metricName: "ms" }),
+			JSON.stringify({
+				type: "run",
+				run: 1,
+				metric: 100,
+				status: "keep",
+				description: "",
+				metrics: { valid: 42, invalid: "not-a-number", also_valid: 0 },
+			}),
+		].join("\n") + "\n";
+		const state = reconstructState(content);
+		expect(state.results[0]?.metrics).toEqual({ valid: 42, also_valid: 0 });
+	});
+
+	it("omits metrics when all values are non-numeric", () => {
+		const content = [
+			JSON.stringify({ type: "config", name: "test", metricName: "ms" }),
+			JSON.stringify({
+				type: "run",
+				run: 1,
+				metric: 100,
+				status: "keep",
+				description: "",
+				metrics: { a: "x", b: true },
+			}),
+		].join("\n") + "\n";
+		const state = reconstructState(content);
+		expect(state.results[0]?.metrics).toBeUndefined();
+	});
 });
