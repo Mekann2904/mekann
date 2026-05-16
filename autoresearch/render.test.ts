@@ -139,4 +139,30 @@ describe("renderWidget", () => {
       "autoresearch: 1回 / 採用1 / 最良 time_ms=100ms (min) / 待機中",
     ]);
   });
+
+  it("shows loop ON status when loopInfo is provided", () => {
+    const result = renderWidget(baseState, true, undefined, {
+      enabled: true,
+      iteration: 3,
+      maxIterations: 50,
+      noProgress: 1,
+      noProgressLimit: 2,
+    });
+    expect(result).toEqual([
+      "autoresearch: 初期化済み / ベースライン測定待ち / loop ON 3/50 / no progress 1/2",
+    ]);
+  });
+
+  it("shows paused loop status", () => {
+    const result = renderWidget(baseState, true, undefined, {
+      enabled: false,
+      iteration: 3,
+      maxIterations: null,
+      noProgress: 0,
+      noProgressLimit: 2,
+    });
+    expect(result).toEqual([
+      "autoresearch: 初期化済み / ベースライン測定待ち / loop paused",
+    ]);
+  });
 });

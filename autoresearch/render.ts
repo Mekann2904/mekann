@@ -4,6 +4,14 @@
 
 import type { ExperimentState } from "./state.js";
 
+export interface LoopInfo {
+	enabled: boolean;
+	iteration: number;
+	maxIterations: number | null;
+	noProgress: number;
+	noProgressLimit: number;
+}
+
 // ---------------------------------------------------------------------------
 // Direction helpers
 // ---------------------------------------------------------------------------
@@ -30,18 +38,19 @@ export function renderWidget(
 	state: ExperimentState,
 	isActive: boolean,
 	runningInfo?: { startedAt: number; command: string },
+	loopInfo?: LoopInfo,
 ): string[] | undefined {
 	if (!isActive) return undefined;
 
 	// 実行中
 	if (runningInfo) {
 		const elapsed = ((Date.now() - runningInfo.startedAt) / 1000).toFixed(1);
-		return [`autoresearch: 実験実行中 ${elapsed}秒 / ${runningInfo.command}`];
+		return [`autoresearch: 実験実行中 ${elapsed}秒 / ${runningInfo.command}${loopSuffix(loopInfo)}`];
 	}
 
 	// 結果なし（初期化直後）
 	if (state.runCount === 0) {
-		return ["autoresearch: 初期化済み / ベースライン測定待ち"];
+		return [`autoresearch: 初期化済み / ベースライン測定待ち${loopSuffix(loopInfo)}`];
 	}
 
 	// 待機中
@@ -51,5 +60,13 @@ export function renderWidget(
 			? `最良 ${state.metricName}=${state.bestMetric}${state.metricUnit} ${directionArrow(state.direction)}`
 			: "最良 未測定";
 
-	return [`autoresearch: ${state.runCount}回 / 採用${kept} / ${bestStr} / 待機中`]
+	return [`autoresearch: ${state.runCount}回 / 採用${kept} / ${bestStr} / 待機中${loopSuffix(loopInfo)}`];
+}
+
+function loopSuffix(loopInfo?: LoopInfo): string {
+	if (!loopInfo) return "";
+	if (!loopInfo.enabled) return " / loop paused";
+	const max = loopInfo.maxIterations === null ? "∞" : String(loopInfo.maxIterations);
+	const noProgress = loopInfo.noProgress > 0 ? ` / no progress ${loopInfo.noProgress}/${loopInfo.noProgressLimit}` : "";
+	return ` / loop ON ${loopInfo.iteration}/${max}${noProgress}`;
 }

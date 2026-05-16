@@ -20,6 +20,16 @@
 | `autoresearch_run` | コマンドを実行し、実行時間と出力を記録。`METRIC name=value` 行を自動パース |
 | `autoresearch_log` | 結果を `autoresearch.jsonl` に記録。ステータスに応じて自動 commit / revert |
 
+### Ralph-style loop
+
+`/autoresearch on` または `/autoresearch <目的>` は Ralph 方式の watchdog loop も有効化する。各 agent turn の終了時に、拡張機能が `agent_end` で進捗を確認し、`autoresearch_log` まで進んでいれば次イテレーション用の follow-up を自動投入する。
+
+- 1ターン1実験を基本にして、コンテキストを小さく保つ
+- 記憶は `autoresearch.md` / `autoresearch.ideas.md` / `autoresearch.jsonl` / git history に残す
+- 進捗なし終了が続くと自動停止する（空回り防止）
+- 上限回数に達すると停止する
+- エージェントが `<autoresearch>COMPLETE</autoresearch>` を出力すると停止する
+
 ### コマンド
 
 ```
@@ -27,13 +37,18 @@
 /autoresearch on           → モード有効化
 /autoresearch off          → モード無効化
 /autoresearch clear        → データをクリア
+/autoresearch loop status  → loop 状態を表示
+/autoresearch loop on      → watchdog loop を有効化
+/autoresearch loop off     → watchdog loop を無効化
+/autoresearch loop max <n|none> → loop 上限回数を設定
 /autoresearch <目的文>      → モード有効化＋目的文をエージェントに送信
 ```
 
 ### その他
 
 - `before_agent_start` — モード有効時に日本語 system prompt を追記
-- 日本語ステータス widget（実験回数・採用数・最良指標を表示）
+- `agent_end` — Ralph 方式の watchdog loop で次イテレーションを自動投入
+- 日本語ステータス widget（実験回数・採用数・最良指標・loop状態を表示）
 - `session_start` — `autoresearch.jsonl` から状態を復元
 
 ## ワークフロー
@@ -44,7 +59,7 @@
 3. autoresearch.md + autoresearch.sh を作成
 4. autoresearch_init → autoresearch_run（ベースライン）→ autoresearch_log
 5. コードを変更 → autoresearch_run → autoresearch_log（改善なら keep、悪化なら discard）
-6. 停止されるまで 5 を繰り返す
+6. `agent_end` の watchdog が follow-up を投入し、停止条件まで 5 を繰り返す
 ```
 
 ## 自動 git 操作
@@ -113,7 +128,6 @@ cd autoresearch && npm test
 - セカンダリメトリクス（追加指標の自動追跡）
 - ASI（Actionable Side Information）
 - 信頼度スコア（MAD ベースノイズ推定）
-- auto-resume（agent_end 後の自動継続）
 - autoresearch.config.json（workingDir, maxIterations）
 - キーボードショートカット
 - finalize（実験ブランチの整理・レビュー用分割）

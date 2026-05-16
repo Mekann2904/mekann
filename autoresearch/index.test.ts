@@ -110,9 +110,11 @@ describe("autoresearchExtension", () => {
 		);
 	});
 
-	it("registers session_start and before_agent_start event handlers", () => {
+	it("registers session_start, before_agent_start, and loop event handlers", () => {
 		expect(pi.on).toHaveBeenCalledWith("session_start", expect.any(Function));
 		expect(pi.on).toHaveBeenCalledWith("before_agent_start", expect.any(Function));
+		expect(pi.on).toHaveBeenCalledWith("agent_start", expect.any(Function));
+		expect(pi.on).toHaveBeenCalledWith("agent_end", expect.any(Function));
 	});
 
 	// ── /autoresearch on ────────────────────────────────────────
@@ -299,6 +301,118 @@ describe("autoresearchExtension", () => {
 				expect(tool.description).toBeTruthy();
 				expect(typeof tool.description).toBe("string");
 			}
+		});
+	});
+
+	// ── Ralph-style auto loop ────────────────────────────────────
+
+	describe("Ralph-style auto loop", () => {
+		it("queues a follow-up after a logged iteration", async () => {
+			const testDir = "/tmp/test-ar-loop-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+			const ctx = createMockCtx({ cwd: testDir });
+
+			await pi.commands.get("autoresearch")!.handler("on", ctx);
+			await pi.eventHandlers.get("agent_start")!({}, ctx);
+
+			await pi.tools.find((t) => t.name === "autoresearch_init")!.execute(
+				"tc-init",
+				{ name: "test", metric_name: "ms" },
+				undefined,
+				undefined,
+				ctx,
+			);
+			await pi.tools.find((t) => t.name === "autoresearch_log")!.execute(
+				"tc-log",
+				{ metric: 100, status: "discard", description: "baseline" },
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			pi.sentMessages.length = 0;
+			await pi.eventHandlers.get("agent_end")!({ messages: [] }, ctx);
+
+			expect(pi.sendUserMessage).toHaveBeenCalled();
+			expect(pi.sentMessages[0].msg).toContain("Ralph 方式");
+			expect(pi.sentMessages[0].opts).toEqual({ deliverAs: "followUp" });
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
+		it("does not queue after /autoresearch off", async () => {
+			const ctx = createMockCtx();
+			await pi.commands.get("autoresearch")!.handler("on", ctx);
+			await pi.eventHandlers.get("agent_start")!({}, ctx);
+			await pi.commands.get("autoresearch")!.handler("off", ctx);
+
+			pi.sentMessages.length = 0;
+			await pi.eventHandlers.get("agent_end")!({ messages: [] }, ctx);
+
+			expect(pi.sentMessages).toHaveLength(0);
+		});
+
+		it("stops after repeated no-progress agent ends", async () => {
+			const ctx = createMockCtx();
+			await pi.commands.get("autoresearch")!.handler("on", ctx);
+			pi.sentMessages.length = 0;
+
+			for (let i = 0; i < 3; i++) {
+				await pi.eventHandlers.get("agent_start")!({}, ctx);
+				await pi.eventHandlers.get("agent_end")!({ messages: [] }, ctx);
+			}
+
+			expect(pi.sentMessages).toHaveLength(2);
+			expect(ctx.ui.notify).toHaveBeenCalledWith(
+				expect.stringContaining("停止しました"),
+				"warning",
+			);
+		});
+
+		it("stops at max loop iterations", async () => {
+			const testDir = "/tmp/test-ar-loop-max-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+			const ctx = createMockCtx({ cwd: testDir });
+
+			await pi.commands.get("autoresearch")!.handler("on", ctx);
+			await pi.commands.get("autoresearch")!.handler("loop max 1", ctx);
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
+			await pi.eventHandlers.get("agent_start")!({}, ctx);
+			await initTool.execute("tc-init", { name: "test", metric_name: "ms" }, undefined, undefined, ctx);
+			await logTool.execute("tc-log1", { metric: 100, status: "discard", description: "one" }, undefined, undefined, ctx);
+			pi.sentMessages.length = 0;
+			await pi.eventHandlers.get("agent_end")!({ messages: [] }, ctx);
+			expect(pi.sentMessages).toHaveLength(1);
+
+			await pi.eventHandlers.get("agent_start")!({}, ctx);
+			await logTool.execute("tc-log2", { metric: 90, status: "discard", description: "two" }, undefined, undefined, ctx);
+			pi.sentMessages.length = 0;
+			await pi.eventHandlers.get("agent_end")!({ messages: [] }, ctx);
+
+			expect(pi.sentMessages).toHaveLength(0);
+			expect(ctx.ui.notify).toHaveBeenCalledWith(
+				expect.stringContaining("上限 1 回"),
+				"info",
+			);
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
+		it("stops when the completion marker is present", async () => {
+			const ctx = createMockCtx();
+			await pi.commands.get("autoresearch")!.handler("on", ctx);
+			await pi.eventHandlers.get("agent_start")!({}, ctx);
+			pi.sentMessages.length = 0;
+
+			await pi.eventHandlers.get("agent_end")!(
+				{ messages: [{ role: "assistant", content: "<autoresearch>COMPLETE</autoresearch>" }] },
+				ctx,
+			);
+
+			expect(pi.sentMessages).toHaveLength(0);
+			expect(ctx.ui.notify).toHaveBeenCalledWith(
+				expect.stringContaining("完了マーカー"),
+				"success",
+			);
 		});
 	});
 
