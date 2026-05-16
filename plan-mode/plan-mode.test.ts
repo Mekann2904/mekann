@@ -6,7 +6,9 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { isSafeCommand, isPlanReadOnlyCommandIntent, classifyCommandIntent, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, PLAN_MODE_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateConfigField, createDefaultConfig, getConfigPath, normalizeConfig, compactOldProposedPlansInText, type ModelRef, type ThinkingLevel } from "./utils.js";
 import { type Mode, type PlanState, createInitialState, isReadOnlyMode, modeLabel } from "./utils.js";
 
@@ -2002,5 +2004,25 @@ describe("Integration: full workflow with model config", () => {
 		// 7. Plan consumed after injection
 		state.implementationPlan = undefined;
 		expect(state.implementationPlan).toBeUndefined();
+	});
+});
+
+// ─── saveModelConfig: mkdir when parent dir doesn't exist (utils.ts line 131) ──
+
+describe("saveModelConfig: creates parent directory", () => {
+	it("creates missing parent directory before writing", () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "plan-mode-mkdir-"));
+		rmSync(tmpDir, { recursive: true }); // delete it so it doesn't exist
+
+		const path = `${tmpDir}/plan-mode.json`;
+		try {
+			const config = createDefaultConfig();
+			saveModelConfig(config, path);
+			expect(existsSync(path)).toBe(true);
+			const loaded = loadModelConfig(path);
+			expect(loaded.version).toBe(1);
+		} finally {
+			if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true });
+		}
 	});
 });
