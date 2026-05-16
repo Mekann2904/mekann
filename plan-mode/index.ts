@@ -248,10 +248,14 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	}
 
 	// Track model changes per-mode
-	pi.on("model_select", async (event) => {
+	pi.on("model_select", async (event, ctx) => {
 		if (event.source === "restore") return;
 		if (suppressModelSelectPersist) return;
 		const ref: ModelRef = { provider: event.model.provider, modelId: event.model.id };
+		// Only persist models that really exist in the registry. pi may temporarily
+		// expose fallback/custom IDs after failed restores; saving those would make
+		// the next session warn and clear the config on every startup.
+		if (!ctx.modelRegistry.find(ref.provider, ref.modelId)) return;
 		persistIfChanged("models", state.mode, ref, sameModelRef);
 	});
 

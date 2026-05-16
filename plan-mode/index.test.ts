@@ -373,31 +373,71 @@ describe("turn_end hook", () => {
 // ─── model_select hook ──────────────────────────────────────────────
 
 describe("model_select hook", () => {
+	function withPlanModeConfig<T>(initial: unknown, fn: (configPath: string) => Promise<T>): Promise<T> {
+		const fs = require("fs");
+		const path = require("path");
+		const os = require("os");
+		const configPath = path.join(os.homedir(), ".pi", "agent", "plan-mode.json");
+		const original = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf-8") : undefined;
+		fs.mkdirSync(path.dirname(configPath), { recursive: true });
+		fs.writeFileSync(configPath, JSON.stringify(initial));
+		return fn(configPath).finally(() => {
+			if (original === undefined) {
+				try { fs.unlinkSync(configPath); } catch {}
+			} else {
+				fs.writeFileSync(configPath, original);
+			}
+		});
+	}
+
 	it("source=restore: 何もしない", async () => {
 		const mock = createMockApi();
+		const ctx = createMockCtx();
 		await loadExtension(mock);
-		await mock._hooks.session_start({}, createMockCtx());
+		await mock._hooks.session_start({}, ctx);
 
 		// Should not throw
 		await mock._hooks.model_select({
 			model: { provider: "google", id: "gemini-pro" },
 			source: "restore",
-		});
+		}, ctx);
 	});
 
-	it("main mode: モデル変更が config に反映される", async () => {
+	it("main mode: モデル変更が config に反映される", async () => withPlanModeConfig({ version: 1, models: {}, thinking: {} }, async (configPath) => {
 		const mock = createMockApi();
+		const ctx = createMockCtx({
+			modelRegistry: {
+				find: (provider: string, modelId: string) => provider === "openai-codex" && modelId === "gpt-5.5" ? { provider, id: modelId } : undefined,
+			},
+		});
 		await loadExtension(mock);
-		await mock._hooks.session_start({}, createMockCtx());
+		await mock._hooks.session_start({}, ctx);
 
 		await mock._hooks.model_select({
-			model: { provider: "google", id: "gemini-pro" },
-			source: "user",
-		});
+			model: { provider: "openai-codex", id: "gpt-5.5" },
+			source: "set",
+		}, ctx);
 
-		// Config update happened internally — verify no crash
-		expect(true).toBe(true);
-	});
+		const saved = JSON.parse(require("fs").readFileSync(configPath, "utf-8"));
+		expect(saved.models.main).toEqual({ provider: "openai-codex", modelId: "gpt-5.5" });
+	}));
+
+	it("registry に存在しない fallback model は config に保存しない", async () => withPlanModeConfig({ version: 1, models: {}, thinking: {} }, async (configPath) => {
+		const mock = createMockApi();
+		const ctx = createMockCtx({
+			modelRegistry: { find: () => undefined },
+		});
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		await mock._hooks.model_select({
+			model: { provider: "anthropic", id: "sonnet" },
+			source: "set",
+		}, ctx);
+
+		const saved = JSON.parse(require("fs").readFileSync(configPath, "utf-8"));
+		expect(saved.models.main).toBeUndefined();
+	}));
 });
 
 // ─── thinking_level_select hook ─────────────────────────────────────
@@ -526,14 +566,15 @@ describe("sendUserMessage on exit plan mode", () => {
 describe("model_select: plan mode path", () => {
 	it("plan mode で model_select が plan config を更新する", async () => {
 		const mock = createMockApi();
+		const ctx = createMockCtx();
 		await loadExtension(mock);
-		await mock._hooks.session_start({}, createMockCtx());
-		await mock._commands["plan"].handler("", createMockCtx()); // enter plan mode
+		await mock._hooks.session_start({}, ctx);
+		await mock._commands["plan"].handler("", ctx); // enter plan mode
 
 		await mock._hooks.model_select({
 			model: { provider: "google", id: "gemini-flash" },
 			source: "user",
-		});
+		}, ctx);
 
 		// Config update happened internally — verify no crash
 		expect(true).toBe(true);
@@ -541,15 +582,16 @@ describe("model_select: plan mode path", () => {
 
 	it("plan mode で same model ref の場合は update しない", async () => {
 		const mock = createMockApi();
+		const ctx = createMockCtx();
 		await loadExtension(mock);
-		await mock._hooks.session_start({}, createMockCtx());
-		await mock._commands["plan"].handler("", createMockCtx());
+		await mock._hooks.session_start({}, ctx);
+		await mock._commands["plan"].handler("", ctx);
 
 		// model_select with any ref → no crash
 		await mock._hooks.model_select({
 			model: { provider: "google", id: "gemini-pro" },
 			source: "user",
-		});
+		}, ctx);
 	});
 });
 
@@ -606,7 +648,7 @@ describe("mode transitions with model/thinking config", () => {
 		await mock._hooks.session_start({}, createMockCtx());
 
 		// Set main model via hook
-		await mock._hooks.model_select({ model: { provider: "anthropic", id: "sonnet" }, source: "user" });
+		await mock._hooks.model_select({ model: { provider: "anthropic", id: "sonnet" }, source: "user" }, createMockCtx());
 
 		// Enter plan mode
 		await mock._commands["plan"].handler("", createMockCtx());
@@ -670,7 +712,7 @@ describe("remaining branch coverage", () => {
 		await mock._hooks.session_start({}, createMockCtx());
 
 		// Set main model via model_select hook
-		await mock._hooks.model_select({ model: { provider: "anthropic", id: "sonnet" }, source: "user" });
+		await mock._hooks.model_select({ model: { provider: "anthropic", id: "sonnet" }, source: "user" }, createMockCtx());
 
 		// Enter plan mode
 		await mock._commands["plan"].handler("", createMockCtx());
@@ -695,7 +737,7 @@ describe("remaining branch coverage", () => {
 		await mock._hooks.session_start({}, ctx);
 
 		// Set main model via hook
-		await mock._hooks.model_select({ model: { provider: "anthropic", id: "sonnet" }, source: "user" });
+		await mock._hooks.model_select({ model: { provider: "anthropic", id: "sonnet" }, source: "user" }, ctx);
 
 		// Enter plan mode
 		await mock._commands["plan"].handler("", ctx);
@@ -720,7 +762,7 @@ describe("remaining branch coverage", () => {
 		await mock._hooks.session_start({}, ctx);
 
 		// Set main model via hook
-		await mock._hooks.model_select({ model: { provider: "anthropic", id: "sonnet" }, source: "user" });
+		await mock._hooks.model_select({ model: { provider: "anthropic", id: "sonnet" }, source: "user" }, ctx);
 
 		// Enter plan mode — saves main model
 		await mock._commands["plan"].handler("", ctx);
@@ -902,17 +944,18 @@ describe("agent_end: edge cases", () => {
 describe("model_select: branch coverage", () => {
 	it("main mode: same model ref → no config update", async () => {
 		const mock = createMockApi();
+		const ctx = createMockCtx();
 		await loadExtension(mock);
-		await mock._hooks.session_start({}, createMockCtx());
+		await mock._hooks.session_start({}, ctx);
 
 		// Set main model via hook
-		await mock._hooks.model_select({ model: { provider: "anthropic", id: "sonnet" }, source: "user" });
+		await mock._hooks.model_select({ model: { provider: "anthropic", id: "sonnet" }, source: "user" }, ctx);
 
 		// model_select with same ref → no update (same ref branch)
 		await mock._hooks.model_select({
 			model: { provider: "anthropic", id: "sonnet" },
 			source: "user",
-		});
+		}, ctx);
 		// No crash = success
 	});
 
@@ -928,7 +971,7 @@ describe("model_select: branch coverage", () => {
 		await mock._commands["plan"].handler("", createMockCtx());
 
 		// model_select should work normally after transitions
-		await mock._hooks.model_select({ model: { provider: "google", id: "gemini" }, source: "user" });
+		await mock._hooks.model_select({ model: { provider: "google", id: "gemini" }, source: "user" }, createMockCtx());
 		// No crash = success
 	});
 });
@@ -1026,7 +1069,7 @@ describe("suppress flags during mode transitions", () => {
 		await mock._hooks.session_start({}, createMockCtx());
 
 		// Set main model config via hook
-		await mock._hooks.model_select({ model: { provider: "anthropic", id: "sonnet" }, source: "user" });
+		await mock._hooks.model_select({ model: { provider: "anthropic", id: "sonnet" }, source: "user" }, createMockCtx());
 
 		// Enter plan mode — triggers trySetModel which sets suppressModelSelectPersist
 		await mock._commands["plan"].handler("", createMockCtx());
