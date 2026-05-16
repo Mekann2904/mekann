@@ -4,7 +4,7 @@
  * Injected as follow-up user messages or system prompt context, depending on lifecycle.
  */
 
-import type { Goal } from "./state.js";
+import { type Goal, type GoalStatus, remainingTokens } from "./state.js";
 
 // ---------------------------------------------------------------------------
 // XML escaping
@@ -22,7 +22,7 @@ export function escapeXmlText(text: string): string {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatDuration(seconds: number): string {
+export function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -34,8 +34,8 @@ function formatDuration(seconds: number): string {
 function formatUsage(goal: Goal): string {
   const lines: string[] = [];
   lines.push(`Tokens used: ${goal.tokens_used}`);
-  if (goal.token_budget !== null) {
-    const remaining = Math.max(0, goal.token_budget - goal.tokens_used);
+  const remaining = remainingTokens(goal);
+  if (remaining !== null) {
     lines.push(`Token budget: ${goal.token_budget}`);
     lines.push(`Remaining tokens: ${remaining}`);
   }
@@ -75,9 +75,7 @@ export function continuationPrompt(goal: Goal): string {
  * Tells the model to wrap up and wait for user instructions.
  */
 export function budgetLimitPrompt(goal: Goal): string {
-  const remaining = goal.token_budget !== null
-    ? Math.max(0, goal.token_budget - goal.tokens_used)
-    : "N/A";
+  const remaining = remainingTokens(goal);
   return [
     `[Token budget limit reached]`,
     ``,
@@ -121,14 +119,14 @@ export function objectiveUpdatedPrompt(previous: string, next: string): string {
  */
 export function renderGoalContext(goal: Goal): string {
   if (goal.status !== "active") return "";
+  const remaining = remainingTokens(goal);
   const lines: string[] = [
     "[Active Goal Context]",
     "",
     `<goal_objective>${escapeXmlText(goal.objective)}</goal_objective>`,
     `Status: ${goal.status}`,
   ];
-  if (goal.token_budget !== null) {
-    const remaining = Math.max(0, goal.token_budget - goal.tokens_used);
+  if (remaining !== null) {
     lines.push(`Token budget: ${goal.token_budget} (used: ${goal.tokens_used}, remaining: ${remaining})`);
   } else {
     lines.push(`Tokens used: ${goal.tokens_used}`);
@@ -146,4 +144,57 @@ export function renderGoalContext(goal: Goal): string {
     '- Do not pause, resume, clear, or budget-limit the goal through model tools.',
   );
   return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// UI rendering (merged from render.ts)
+// ---------------------------------------------------------------------------
+
+const STATUS_LABELS: Record<GoalStatus, string> = {
+  active: "● active",
+  paused: "○ paused",
+  budget_limited: "■ limited by budget",
+  complete: "✓ complete",
+};
+
+function truncateObjective(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen - 1) + "…";
+}
+
+/** Render a goal summary for the /goal command output. */
+export function renderGoalSummary(goal: Goal): string[] {
+  const lines: string[] = [];
+  lines.push(`Goal [${STATUS_LABELS[goal.status]}]`);
+  lines.push(`  ${goal.objective}`);
+  lines.push(`  Time: ${formatDuration(goal.time_used_seconds)} | Tokens: ${goal.tokens_used}`);
+  if (goal.token_budget !== null) {
+    const remaining = remainingTokens(goal);
+    lines.push(`  Budget: ${goal.tokens_used} / ${goal.token_budget} (${remaining} remaining)`);
+  }
+  return lines;
+}
+
+/** Render the "no goal" message. */
+export function renderNoGoal(): string[] {
+  return [
+    "No active goal",
+    "",
+    "Commands: /goal <objective>, /goal edit, /goal pause, /goal resume, /goal clear, /goal budget <n>",
+  ];
+}
+
+/** Render widget lines from a goal (or undefined to clear). */
+export function renderWidget(goal: Goal | null): string[] | undefined {
+  if (!goal) return undefined;
+  if (goal.status === "complete") return undefined;
+  const lines: string[] = [];
+  lines.push(`Goal ${STATUS_LABELS[goal.status]}: ${truncateObjective(goal.objective, 80)}`);
+  if (goal.token_budget !== null) {
+    const remaining = remainingTokens(goal);
+    lines.push(`  Tokens: ${goal.tokens_used}/${goal.token_budget} (${remaining} left) | Time: ${formatDuration(goal.time_used_seconds)}`);
+  } else {
+    lines.push(`  Tokens: ${goal.tokens_used} | Time: ${formatDuration(goal.time_used_seconds)}`);
+  }
+  return lines;
 }

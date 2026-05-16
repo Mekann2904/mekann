@@ -27,7 +27,7 @@ import {
 	type RunStatus,
 } from "./state.js";
 import { runCommand, runChecks, type ChecksResult } from "./runner.js";
-import { renderWidget, directionLabel, type LoopInfo } from "./render.js";
+import { renderWidget, directionLabel, type LoopInfo } from "./state.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -316,29 +316,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			switch (sub) {
 				// ── on ───────────────────────────────────────────
 				case "on": {
-					active = true;
-					autoLoop = true;
-					resetLoopProgress();
-					loopPromptQueued = true;
-					const purpose = parts.slice(1).join(" ").trim();
-					updateWidget(ctx, state, active, runningExperiment, loopInfo());
-					ctx.ui.notify("autoresearch モードを有効にしました（loop ON）", "info");
-
-					const hasMd = fs.existsSync(mdFilePath(ctx.cwd));
-					let followUpMsg: string;
-					if (hasMd) {
-						followUpMsg =
-							"autoresearch.md を読み直して、autoresearch を再開してください。" +
-							"最後の実験結果から継続してください。";
-					} else {
-						const purposeText = purpose ? `目的: ${purpose}` : "";
-						followUpMsg =
-							"autoresearch モードを有効化しました。" +
-							"目的・指標・実行コマンドを整理して autoresearch.md とベンチマークスクリプトを作成し、実験を開始してください。" +
-							"\n必要なら `/skill:autoresearch-create` で手順を確認できます。" +
-							(purposeText ? ` ${purposeText}` : "");
-					}
-					pi.sendUserMessage(followUpMsg, { deliverAs: "followUp" });
+					activateAutoresearch(ctx, parts.slice(1).join(" ").trim());
 					break;
 				}
 
@@ -435,37 +413,63 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 				// ── default: 目的文として扱い mode ON ───────────
 				default: {
-					const purpose = (args ?? "").trim();
-					active = true;
-					autoLoop = true;
-					resetLoopProgress();
-					loopPromptQueued = true;
-					updateWidget(ctx, state, active, runningExperiment, loopInfo());
-					ctx.ui.notify("autoresearch モードを有効にしました（loop ON）", "info");
-
-					const hasMd = fs.existsSync(mdFilePath(ctx.cwd));
-					let followUpMsg: string;
-					if (hasMd) {
-						followUpMsg =
-							"autoresearch.md を読み直して、autoresearch を再開してください。" +
-							"最後の実験結果から継続してください。";
-						if (purpose) followUpMsg += `\n追加コンテキスト: ${purpose}`;
-					} else {
-						const purposeText = purpose ? `目的: ${purpose}` : "";
-						followUpMsg =
-							"autoresearch モードを有効化しました。" +
-							"目的・指標・実行コマンドを整理して autoresearch.md とベンチマークスクリプトを作成し、実験を開始してください。" +
-							"\n必要なら `/skill:autoresearch-create` で手順を確認できます。" +
-							(purposeText ? ` ${purposeText}` : "");
-					}
-					pi.sendUserMessage(followUpMsg, { deliverAs: "followUp" });
+					activateAutoresearch(ctx, (args ?? "").trim());
 					break;
 				}
 			}
-		},
-	});
+			}
+		});
 
-	// ─── Tool: autoresearch_init ────────────────────────────────────
+	// ─── Shared activation helper ────────────────────────────────────
+
+	function activateAutoresearch(ctx: ExtensionContext, purpose: string): void {
+		active = true;
+		autoLoop = true;
+		resetLoopProgress();
+		loopPromptQueued = true;
+		updateWidget(ctx, state, active, runningExperiment, loopInfo());
+		ctx.ui.notify("autoresearch モードを有効にしました（loop ON）", "info");
+
+		const hasMd = fs.existsSync(mdFilePath(ctx.cwd));
+		let followUpMsg: string;
+		if (hasMd) {
+			followUpMsg =
+				"autoresearch.md を読み直して、autoresearch を再開してください。" +
+				"最後の実験結果から継続してください。";
+			if (purpose) followUpMsg += `\n追加コンテキスト: ${purpose}`;
+		} else {
+			const purposeText = purpose ? `目的: ${purpose}` : "";
+			followUpMsg =
+				"autoresearch モードを有効化しました。" +
+				"目的・指標・実行コマンドを整理して autoresearch.md とベンチマークスクリプトを作成し、実験を開始してください。" +
+				"\n必要なら `/skill:autoresearch-create` で手順を確認できます。" +
+				(purposeText ? ` ${purposeText}` : "");
+		}
+		pi.sendUserMessage(followUpMsg, { deliverAs: "followUp" });
+	}
+
+	const STATUS_LABELS: Record<string, string> = {
+		keep: "採用",
+		discard: "棄却",
+		crash: "クラッシュ",
+		checks_failed: "checks失敗",
+	};
+	const STATUS_PREFIX: Record<string, string> = {
+		keep: "[KEEP]",
+		discard: "[DISCARD]",
+		crash: "[CRASH]",
+		checks_failed: "[CHECKS_FAILED]",
+	};
+
+	const INACTIVE_RESPONSE = {
+		content: [{
+			type: "text" as const,
+			text:
+				"[ERROR] autoresearch モードが無効です。\n" +
+				"先に `/autoresearch on` または `/autoresearch <目的>` を実行してください。",
+		}],
+		details: {},
+	};
 
 	pi.registerTool({
 		name: "autoresearch_init",
@@ -495,17 +499,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			if (!active) {
-				return {
-					content: [{
-						type: "text",
-						text:
-							"[ERROR] autoresearch モードが無効です。\n" +
-							"先に `/autoresearch on` または `/autoresearch <目的>` を実行してください。",
-					}],
-					details: {},
-				};
-			}
+			if (!active) return INACTIVE_RESPONSE;
 
 			state.name = params.name;
 			state.metricName = params.metric_name;
@@ -593,17 +587,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-			if (!active) {
-				return {
-					content: [{
-						type: "text",
-						text:
-							"[ERROR] autoresearch モードが無効です。\n" +
-							"先に `/autoresearch on` または `/autoresearch <目的>` を実行してください。",
-					}],
-					details: {},
-				};
-			}
+			if (!active) return INACTIVE_RESPONSE;
 
 			const timeoutMs = (params.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
 
@@ -709,17 +693,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			if (!active) {
-				return {
-					content: [{
-						type: "text",
-						text:
-							"[ERROR] autoresearch モードが無効です。\n" +
-							"先に `/autoresearch on` または `/autoresearch <目的>` を実行してください。",
-					}],
-					details: {},
-				};
-			}
+			if (!active) return INACTIVE_RESPONSE;
 
 			// Gate: checks 失敗時の keep を拒否
 			if (params.status === "keep" && lastChecks && lastChecks.passed === false) {
@@ -783,23 +757,10 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			lastLoggedRun = run;
 			updateWidget(ctx, state, active, runningExperiment, loopInfo());
 
-			// 結果メッセージ
 			const kept = countByStatus(state.results, "keep");
-			const statusLabel: Record<string, string> = {
-				keep: "採用",
-				discard: "棄却",
-				crash: "クラッシュ",
-				checks_failed: "checks失敗",
-			};
-			const prefixMap: Record<string, string> = {
-				keep: "[KEEP]",
-				discard: "[DISCARD]",
-				crash: "[CRASH]",
-				checks_failed: "[CHECKS_FAILED]",
-			};
-			const prefix = prefixMap[params.status] ?? "[UNKNOWN]";
+			const prefix = STATUS_PREFIX[params.status] ?? "[UNKNOWN]";
 
-			let text = `${prefix} 実験 #${run} を記録: ${statusLabel[params.status]}\n`;
+			let text = `${prefix} 実験 #${run} を記録: ${STATUS_LABELS[params.status] ?? params.status}\n`;
 			text += `説明: ${params.description}\n`;
 			text += `指標: ${state.metricName}=${params.metric}${state.metricUnit}\n`;
 			text += `コミット: ${commit}\n`;
