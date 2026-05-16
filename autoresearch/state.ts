@@ -8,14 +8,6 @@
 // Types
 // ---------------------------------------------------------------------------
 
-export interface ConfigEntry {
-	type: "config";
-	name: string;
-	metricName: string;
-	metricUnit: string;
-	direction: "lower" | "higher";
-}
-
 export type RunStatus = "keep" | "discard" | "crash" | "checks_failed";
 
 export interface RunEntry {
