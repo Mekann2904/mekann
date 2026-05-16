@@ -27,7 +27,7 @@ import {
 	type RunStatus,
 } from "./state.js";
 import { runCommand, runChecks, type ChecksResult } from "./runner.js";
-import { renderWidget, directionLabel } from "./render.js";
+import { renderWidget, directionLabel, type LoopInfo } from "./render.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -36,6 +36,9 @@ import { renderWidget, directionLabel } from "./render.js";
 const JSONL_FILE = "autoresearch.jsonl";
 const MD_FILE = "autoresearch.md";
 const DEFAULT_TIMEOUT_SECONDS = 600;
+const DEFAULT_MAX_LOOP_ITERATIONS = 50;
+const NO_PROGRESS_LIMIT = 2;
+const COMPLETE_MARKER = "<autoresearch>COMPLETE</autoresearch>";
 
 // ---------------------------------------------------------------------------
 // Path helpers
@@ -110,10 +113,11 @@ function updateWidget(
 	ctx: ExtensionContext,
 	state: ExperimentState,
 	active: boolean,
-	runningInfo?: { startedAt: number; command: string },
+	runningInfo?: { startedAt: number; command: string } | null,
+	loopInfo?: LoopInfo,
 ): void {
 	if (!ctx.hasUI) return;
-	const lines = renderWidget(state, active, runningInfo);
+	const lines = renderWidget(state, active, runningInfo ?? undefined, loopInfo);
 	if (lines) {
 		ctx.ui.setWidget("autoresearch", lines);
 	} else {
@@ -137,11 +141,57 @@ const SYSTEM_PROMPT_EXTRA = [
 	"4. 必ず `autoresearch_log` で結果を記録",
 	"5. `autoresearch_log` が自動で git commit / revert を行うため、手動 git 操作は不要",
 	"6. ユーザーに毎回継続確認しない — 停止されるまで繰り返す",
-	"7. 表示・報告は日本語で行う",
-	"8. `autoresearch.jsonl` に履歴が自動保存される",
-	"9. 有望だが今すぐ試さない最適化案は `autoresearch.ideas.md` に追記する",
+	"7. Ralph 方式: 1ターンでは原則1つの実験だけを完了し、次ターンに知見を引き継ぐ",
+	"8. 表示・報告は日本語で行う",
+	"9. `autoresearch.jsonl` に履歴が自動保存される",
+	"10. `autoresearch.md` の Codebase Patterns / 試したことを更新し、次イテレーションの記憶にする",
+	"11. 有望だが今すぐ試さない最適化案は `autoresearch.ideas.md` に追記する",
+	`12. すべての有望な実験が尽きたら ${COMPLETE_MARKER} を返して停止を宣言する`,
 	"",
 ].join("\n");
+
+// ---------------------------------------------------------------------------
+// Ralph-style loop helpers
+// ---------------------------------------------------------------------------
+
+function appendTextFragments(value: unknown, out: string[]): void {
+	if (typeof value === "string") {
+		out.push(value);
+		return;
+	}
+	if (!value || typeof value !== "object") return;
+	if (Array.isArray(value)) {
+		for (const item of value) appendTextFragments(item, out);
+		return;
+	}
+	const record = value as Record<string, unknown>;
+	if (typeof record.text === "string") out.push(record.text);
+	if (typeof record.content === "string") out.push(record.content);
+	if (Array.isArray(record.content)) appendTextFragments(record.content, out);
+	if (Array.isArray(record.messages)) appendTextFragments(record.messages, out);
+}
+
+function hasCompleteMarker(event: unknown): boolean {
+	const fragments: string[] = [];
+	appendTextFragments(event, fragments);
+	return fragments.join("\n").includes(COMPLETE_MARKER);
+}
+
+function loopFollowUpMessage(noProgress: boolean): string {
+	const prefix = noProgress
+		? "前ターンでは autoresearch_log まで進みませんでした。"
+		: "前ターンの実験記録が完了しました。";
+	return [
+		prefix,
+		"Ralph 方式で次のイテレーションを継続してください。",
+		"- autoresearch.md と autoresearch.ideas.md（存在する場合）を読み、過去の学びを踏まえる",
+		"- 原則として1ターンで1つの具体的な実験だけを行う",
+		"- コード変更後は autoresearch_run → autoresearch_log を必ず実行する",
+		"- 学んだことを autoresearch.md の Codebase Patterns / 試したこと、または memo に残す",
+		`- 有望な実験が尽きた場合だけ ${COMPLETE_MARKER} を返す`,
+		"ユーザーに継続確認せず進めてください。",
+	].join("\n");
+}
 
 // ---------------------------------------------------------------------------
 // Extension factory
@@ -150,9 +200,34 @@ const SYSTEM_PROMPT_EXTRA = [
 export default function autoresearchExtension(pi: ExtensionAPI): void {
 	// ─── Mutable runtime state ──────────────────────────────────────
 	let active = false;
+	let autoLoop = false;
+	let loopPromptQueued = false;
+	let loopIterationCount = 0;
+	let maxLoopIterations: number | null = DEFAULT_MAX_LOOP_ITERATIONS;
+	let lastLoggedRun = 0;
+	let agentStartRunCount = 0;
+	let noProgressAgentEnds = 0;
 	let runningExperiment: { startedAt: number; command: string } | null = null;
 	let lastChecks: ChecksResult | null = null;
 	let state: ExperimentState = freshState();
+
+	function loopInfo(): LoopInfo {
+		return {
+			enabled: autoLoop,
+			iteration: loopIterationCount,
+			maxIterations: maxLoopIterations,
+			noProgress: noProgressAgentEnds,
+			noProgressLimit: NO_PROGRESS_LIMIT,
+		};
+	}
+
+	function resetLoopProgress(): void {
+		loopPromptQueued = false;
+		loopIterationCount = 0;
+		lastLoggedRun = state.runCount;
+		agentStartRunCount = state.runCount;
+		noProgressAgentEnds = 0;
+	}
 
 	// ─── session_start: JSONL から状態復元 ─────────────────────────
 
@@ -167,8 +242,10 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}
 		// セッション開始時は非アクティブ。ユーザーが /autoresearch on で明示的に有効化する。
 		active = false;
+		autoLoop = false;
 		runningExperiment = null;
-		updateWidget(ctx, state, active, runningExperiment);
+		resetLoopProgress();
+		updateWidget(ctx, state, active, runningExperiment, loopInfo());
 	});
 
 	// ─── before_agent_start: 日本語指示を追加 ─────────────────────
@@ -178,6 +255,54 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		return {
 			systemPrompt: event.systemPrompt + SYSTEM_PROMPT_EXTRA,
 		};
+	});
+
+	// ─── agent loop watchdog (Ralph-style auto resume) ───────────────
+
+	pi.on("agent_start", async () => {
+		loopPromptQueued = false;
+		agentStartRunCount = state.runCount;
+	});
+
+	pi.on("agent_end", async (event, ctx) => {
+		if (!active || !autoLoop) return;
+		if (runningExperiment || loopPromptQueued) return;
+
+		if (hasCompleteMarker(event)) {
+			autoLoop = false;
+			loopPromptQueued = false;
+			updateWidget(ctx, state, active, runningExperiment, loopInfo());
+			ctx.ui.notify("autoresearch loop を完了マーカーで停止しました", "success");
+			return;
+		}
+
+		const madeProgress = state.runCount > agentStartRunCount || lastLoggedRun > agentStartRunCount;
+		if (madeProgress) {
+			noProgressAgentEnds = 0;
+		} else {
+			noProgressAgentEnds++;
+			if (noProgressAgentEnds > NO_PROGRESS_LIMIT) {
+				autoLoop = false;
+				updateWidget(ctx, state, active, runningExperiment, loopInfo());
+				ctx.ui.notify(
+					`autoresearch loop を停止しました: ${NO_PROGRESS_LIMIT}回連続で autoresearch_log まで進みませんでした`,
+					"warning",
+				);
+				return;
+			}
+		}
+
+		if (maxLoopIterations !== null && loopIterationCount >= maxLoopIterations) {
+			autoLoop = false;
+			updateWidget(ctx, state, active, runningExperiment, loopInfo());
+			ctx.ui.notify(`autoresearch loop が上限 ${maxLoopIterations} 回に達したため停止しました`, "info");
+			return;
+		}
+
+		loopIterationCount++;
+		loopPromptQueued = true;
+		updateWidget(ctx, state, active, runningExperiment, loopInfo());
+		pi.sendUserMessage(loopFollowUpMessage(!madeProgress), { deliverAs: "followUp" });
 	});
 
 	// ─── /autoresearch command ───────────────────────────────────────
@@ -192,9 +317,12 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				// ── on ───────────────────────────────────────────
 				case "on": {
 					active = true;
+					autoLoop = true;
+					resetLoopProgress();
+					loopPromptQueued = true;
 					const purpose = parts.slice(1).join(" ").trim();
-					updateWidget(ctx, state, active, runningExperiment);
-					ctx.ui.notify("autoresearch モードを有効にしました", "info");
+					updateWidget(ctx, state, active, runningExperiment, loopInfo());
+					ctx.ui.notify("autoresearch モードを有効にしました（loop ON）", "info");
 
 					const hasMd = fs.existsSync(mdFilePath(ctx.cwd));
 					let followUpMsg: string;
@@ -217,7 +345,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				// ── off ──────────────────────────────────────────
 				case "off": {
 					active = false;
-					updateWidget(ctx, state, active, runningExperiment);
+					autoLoop = false;
+					loopPromptQueued = false;
+					updateWidget(ctx, state, active, runningExperiment, loopInfo());
 					ctx.ui.notify("autoresearch モードを無効にしました", "info");
 					break;
 				}
@@ -230,8 +360,10 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					} catch { /* ignore */ }
 					state = freshState();
 					active = false;
+					autoLoop = false;
 					runningExperiment = null;
-					updateWidget(ctx, state, active, runningExperiment);
+					resetLoopProgress();
+					updateWidget(ctx, state, active, runningExperiment, loopInfo());
 					ctx.ui.notify("autoresearch のデータをクリアしました", "info");
 					break;
 				}
@@ -244,8 +376,10 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 							? `${state.metricName}=${state.bestMetric}${state.metricUnit}`
 							: "未測定";
 					const modeStr = active ? "有効" : "無効";
+					const maxStr = maxLoopIterations === null ? "∞" : String(maxLoopIterations);
 					ctx.ui.notify(
 						`autoresearch: ${modeStr}\n` +
+						`loop: ${autoLoop ? "ON" : "OFF"} (${loopIterationCount}/${maxStr}, no-progress ${noProgressAgentEnds}/${NO_PROGRESS_LIMIT})\n` +
 						`実験回数: ${state.runCount}\n` +
 					`採用数: ${kept}\n` +
 					`最良指標: ${best}\n` +
@@ -255,12 +389,59 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					break;
 				}
 
+				// ── loop ────────────────────────────────────────
+				case "loop": {
+					const loopSub = parts[1] || "status";
+					if (loopSub === "on") {
+						autoLoop = true;
+						noProgressAgentEnds = 0;
+						loopPromptQueued = false;
+						updateWidget(ctx, state, active, runningExperiment, loopInfo());
+						ctx.ui.notify("autoresearch loop を有効にしました", "info");
+						break;
+					}
+					if (loopSub === "off") {
+						autoLoop = false;
+						loopPromptQueued = false;
+						updateWidget(ctx, state, active, runningExperiment, loopInfo());
+						ctx.ui.notify("autoresearch loop を無効にしました", "info");
+						break;
+					}
+					if (loopSub === "max") {
+						const raw = parts[2];
+						if (raw === "none" || raw === "∞" || raw === "infinite") {
+							maxLoopIterations = null;
+						} else {
+							const parsed = Number(raw);
+							if (!Number.isInteger(parsed) || parsed <= 0) {
+								ctx.ui.notify("使い方: /autoresearch loop max <正の整数|none>", "warning");
+								break;
+							}
+							maxLoopIterations = parsed;
+						}
+						updateWidget(ctx, state, active, runningExperiment, loopInfo());
+						ctx.ui.notify(`autoresearch loop max を ${maxLoopIterations ?? "∞"} に設定しました`, "info");
+						break;
+					}
+					const maxStr = maxLoopIterations === null ? "∞" : String(maxLoopIterations);
+					ctx.ui.notify(
+						`autoresearch loop: ${autoLoop ? "ON" : "OFF"}\n` +
+						`iteration: ${loopIterationCount}/${maxStr}\n` +
+						`no-progress: ${noProgressAgentEnds}/${NO_PROGRESS_LIMIT}`,
+						"info",
+					);
+					break;
+				}
+
 				// ── default: 目的文として扱い mode ON ───────────
 				default: {
 					const purpose = (args ?? "").trim();
 					active = true;
-					updateWidget(ctx, state, active, runningExperiment);
-					ctx.ui.notify("autoresearch モードを有効にしました", "info");
+					autoLoop = true;
+					resetLoopProgress();
+					loopPromptQueued = true;
+					updateWidget(ctx, state, active, runningExperiment, loopInfo());
+					ctx.ui.notify("autoresearch モードを有効にしました（loop ON）", "info");
 
 					const hasMd = fs.existsSync(mdFilePath(ctx.cwd));
 					let followUpMsg: string;
@@ -361,7 +542,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				};
 			}
 
-			updateWidget(ctx, state, active, runningExperiment);
+			updateWidget(ctx, state, active, runningExperiment, loopInfo());
 
 			return {
 				content: [
@@ -427,12 +608,12 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			const timeoutMs = (params.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
 
 			runningExperiment = { startedAt: Date.now(), command: params.command };
-			updateWidget(ctx, state, active, runningExperiment);
+			updateWidget(ctx, state, active, runningExperiment, loopInfo());
 
 			const result = await runCommand(params.command, ctx.cwd, timeoutMs, signal);
 
 			runningExperiment = null;
-			updateWidget(ctx, state, active, runningExperiment);
+			updateWidget(ctx, state, active, runningExperiment, loopInfo());
 
 			// benchmark 成功時に checks を実行
 			let checks: ChecksResult;
@@ -599,7 +780,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				};
 			}
 
-			updateWidget(ctx, state, active, runningExperiment);
+			lastLoggedRun = run;
+			updateWidget(ctx, state, active, runningExperiment, loopInfo());
 
 			// 結果メッセージ
 			const kept = countByStatus(state.results, "keep");
