@@ -305,27 +305,8 @@ export default function subagentExtension(pi: ExtensionAPI): void {
     async handler(args, ctx) {
       const ctrl = ensureControl();
       const prefix = args?.trim() || undefined;
-      const agents = ctrl.list({ path_prefix: prefix });
-      const lines = formatAgentList(
-        agents.agents.map((a) => ({
-          agentId: a.agent_id,
-          sessionId: "",
-          agentPath: a.agent_path,
-          nickname: a.nickname,
-          role: a.role,
-          status: a.status,
-          lastTaskMessage: a.last_task,
-          createdAt: 0,
-          updatedAt: 0,
-          depth: a.depth,
-          open:
-            a.status !== "completed" &&
-            a.status !== "shutdown" &&
-            a.status !== "errored" &&
-            a.status !== "interrupted",
-          cancellationRequested: false,
-        })),
-      );
+      const agents = ctrl.listAgents(prefix);
+      const lines = formatAgentList(agents);
       ctx.ui.notify(lines.join("\n"), "info");
     },
   });

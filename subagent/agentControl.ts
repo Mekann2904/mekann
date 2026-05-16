@@ -363,6 +363,11 @@ export class AgentControl {
 
   // ─── list_agents ───────────────────────────────────────────────
 
+  /** List raw agents (for internal use by commands, avoids snake_case round-trip). */
+  listAgents(pathPrefix?: string): AgentMetadata[] {
+    return this.registry.list(pathPrefix);
+  }
+
   list(params: ListAgentsParams): ListResult {
     const agents = this.registry.list(params.path_prefix);
     return {
