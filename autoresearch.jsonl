@@ -1,0 +1,2 @@
+{"type":"config","name":"Test Coverage Expansion - autoresearch + subagent","metricName":"uncovered_stmts","metricUnit":"stmts","direction":"lower"}
+{"type":"run","run":1,"commit":"b8ed4ee","metric":157,"status":"keep","description":"ベースライン測定: 1194テスト全通過。autoresearch uncovered stmts = 157 (333-176), subagent uncovered stmts = 3 (532-529)","timestamp":1778926260421,"metrics":{"autoresearch_uncovered_stmts":157,"subagent_uncovered_stmts":3,"autoresearch_branch_pct":49.52,"subagent_branch_pct":93.71,"total_tests":1194}}
