@@ -392,8 +392,7 @@ export class AgentControl {
     params: CloseAgentParams,
     ctx: ExtensionContext,
   ): Promise<{ closed: string[] }> {
-    const callerPath = this.resolveCallerPath(ctx);
-    const { targetPath } = this.resolveAgentOrFail(params.target, callerPath);
+    const { targetPath } = this.resolveTargetSession(params.target, ctx);
 
     if (targetPath === ROOT_PATH) {
       throw new Error("Cannot close the root agent.");
