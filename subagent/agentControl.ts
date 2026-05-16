@@ -278,18 +278,23 @@ export class AgentControl {
     return { targetPath, agent };
   }
 
+  /** Resolve target agent path + get child session. Shared by sendMessage/followupTask. */
+  private resolveTargetSession(target: string, ctx: ExtensionContext): { callerPath: string; targetPath: string; agent: AgentMetadata; childSession: AgentSession | undefined } {
+    const callerPath = this.resolveCallerPath(ctx);
+    const { targetPath, agent } = this.resolveAgentOrFail(target, callerPath);
+    return { callerPath, targetPath, agent, childSession: this.childSessions.get(targetPath) };
+  }
+
   // ─── send_message ──────────────────────────────────────────────
 
   async sendMessage(
     params: SendMessageParams,
     ctx: ExtensionContext,
   ): Promise<{ delivered: boolean }> {
-    const callerPath = this.resolveCallerPath(ctx);
-    const { targetPath, agent } = this.resolveAgentOrFail(params.target, callerPath);
+    const { callerPath, targetPath, agent, childSession } = this.resolveTargetSession(params.target, ctx);
     if (!agent.open || isTerminalStatus(agent.status)) throw new Error(`Agent at ${targetPath} is not open (status: ${agent.status}). Cannot send message.`);
     this.enqueueToMailbox(this.getCallerAgentId(callerPath), callerPath, targetPath, params.message, "message");
 
-    const childSession = this.childSessions.get(targetPath);
     if (childSession) {
       await childSession.sendCustomMessage({ customType: "subagent_message", content: `[Message from ${callerPath}]: ${params.message}`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
     }
@@ -302,8 +307,7 @@ export class AgentControl {
     params: FollowupTaskParams,
     ctx: ExtensionContext,
   ): Promise<{ queued: boolean; triggered: boolean }> {
-    const callerPath = this.resolveCallerPath(ctx);
-    const { targetPath, agent } = this.resolveAgentOrFail(params.target, callerPath);
+    const { callerPath, targetPath, agent, childSession } = this.resolveTargetSession(params.target, ctx);
     if (targetPath === ROOT_PATH) throw new Error("Cannot send followup_task to the root agent.");
     if (!agent.open) throw new Error(`Agent at ${targetPath} is not open (status: ${agent.status}).`);
 
@@ -315,7 +319,6 @@ export class AgentControl {
     });
 
     // Deliver to child session
-    const childSession = this.childSessions.get(targetPath);
     if (childSession) {
       if (childSession.isStreaming) {
         // Queue as follow-up
