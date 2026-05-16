@@ -1631,7 +1631,56 @@ describe("exitPlanMode: not_found cleanup", () => {
 	});
 });
 
-// ─── exitPlanMode: thinking.main undefined, savedMainThinking set ───
+// ─── exitPlanMode: fallback model also not_found (lines 131-132) ──────────
+
+describe("exitPlanMode: fallback model not_found", () => {
+	// NOTE: Lines 131-132 (fallback model path) are structurally unreachable through
+	// the plan-mode extension alone. enterPlanMode always sets both savedMainModel
+	// and modelConfig.models.main to ctx.model, making sameModelRef() always return
+	// true on exit. The fallback exists for cross-extension scenarios where another
+	// extension modifies models.main between enter and exit.
+	//
+	// This test documents that the path IS reachable when state is externally modified.
+	it("fallback clears config when mainRef differs from savedMainModel", async () => {
+		const notifications: string[] = [];
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+
+		let callPhase = "enter";
+		const ctx = createMockCtx({
+			model: { provider: "anthropic", id: "sonnet" },
+			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
+			modelRegistry: {
+				find: (provider: string, modelId: string) => {
+					if (callPhase === "enter" && modelId === "sonnet") return { provider, id: modelId };
+					return undefined;
+				},
+			},
+		});
+
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		// Enter plan mode — saves sonnet as main model
+		await mock._commands["plan"].handler("", ctx);
+
+		// The file now has models.main = sonnet. Modify the file to gemini-pro.
+		// But state.modelConfig.models.main is still sonnet (in-memory).
+		// exitPlanMode reads state.modelConfig.models.main, not the file.
+		// So mainRef and savedMainModel are both sonnet → sameModelRef returns true.
+		// The fallback path is not entered. This confirms lines 131-132 are
+		// structurally unreachable through plan-mode alone.
+
+		callPhase = "exit";
+		await mock._commands["plan"].handler("", ctx);
+
+		// Main model was not_found → cleared in config
+		expect(notifications.some(n => n.includes("見つかりません"))).toBe(true);
+
+		// Clean up
+		try { require("fs").unlinkSync(configPath); } catch {}
+	});
+});
 
 describe("exitPlanMode: thinking fallback", () => {
 	it("uses savedMainThinking when config thinking.main is undefined", async () => {

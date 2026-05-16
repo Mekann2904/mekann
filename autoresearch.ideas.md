@@ -50,10 +50,11 @@ that represent genuine different code paths. The `runSandboxedShellMac` function
 | Module | Stmts Before | Stmts After | Branch Before | Branch After |
 |--------|-------------|------------|---------------|-------------|
 | plan-mode | 97.66% | 98.44% | 94.01% | 96.40% |
-| sandbox | 94.27% | 98.09% | 86.38% | 95.33% |
+| sandbox | 94.27% | 98.3% | 86.38% | 96.1% |
 | subagent | 67.85% | 99.43% | 58.98% | 93.41% |
 | zip-repo | 100% | 100% | 100% | 100% |
-| **Total tests** | 890 | 1111 | | |
+| **Total tests** | 890 | 1114 | | |
+| **Avg stmt coverage** | ~90% | **99.04%** | | |
 
 ### Identified Dead Code (defensive, unreachable by design)
 - sandbox/index.ts:115 — `buildCurrentPolicy()` yolo branch (yolo skips Case 4)
