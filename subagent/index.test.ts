@@ -759,6 +759,7 @@ describe("extension entry point", () => {
         hooks[event] = handler;
       }),
       getFlag: (name: string) => flags[name],
+      getActiveTools: vi.fn(() => []),
       events: {
         on: vi.fn(),
         emit: vi.fn(),
@@ -835,11 +836,11 @@ describe("extension entry point", () => {
 
     const listTool = mock._registeredTools.find(
       (t) => t.name === "list_agents",
-    );
+    )!;
     const result = await listTool.execute("id1", {}, undefined, undefined, {
       cwd: "/tmp/test",
       model: undefined,
-      modelRegistry: { find: () => undefined, getAvailable: () => [] },
+      modelRegistry: { find: () => undefined, getAvailable: () => Promise.resolve([]) },
     });
     // Root agent is always present after session_start
     expect(result.content[0].text).toContain("/root");
@@ -855,7 +856,7 @@ describe("extension entry point", () => {
 
     const spawnTool = mock._registeredTools.find(
       (t) => t.name === "spawn_agent",
-    );
+    )!;
     const result = await spawnTool.execute(
       "id1",
       { task_name: "research/api", message: "Investigate API" },
@@ -866,7 +867,7 @@ describe("extension entry point", () => {
         model: { id: "test-model" },
         modelRegistry: {
           find: () => undefined,
-          getAvailable: () => [],
+          getAvailable: () => Promise.resolve([]),
         },
       },
     );
@@ -891,7 +892,7 @@ describe("extension entry point", () => {
     // Spawn an agent first
     const spawnTool = mock._registeredTools.find(
       (t) => t.name === "spawn_agent",
-    );
+    )!;
     await spawnTool.execute(
       "id1",
       { task_name: "test/task1", message: "Test" },
@@ -900,7 +901,7 @@ describe("extension entry point", () => {
       {
         cwd: "/tmp/test",
         model: { id: "test-model" },
-        modelRegistry: { find: () => undefined, getAvailable: () => [] },
+        modelRegistry: { find: () => undefined, getAvailable: () => Promise.resolve([]) },
       },
     );
 

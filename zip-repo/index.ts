@@ -46,6 +46,22 @@ export function parseDirtyFiles(stdout: string): string[] {
 	return stdout.split("\n").filter(Boolean);
 }
 
+/** git status --porcelain の出力から deleted / modified に分離。 */
+export function parseGitStatus(stdout: string): { deleted: string[]; modified: string[] } {
+	const deleted: string[] = [];
+	const modified: string[] = [];
+	for (const line of stdout.split("\n").filter(Boolean)) {
+		const statusCode = line.slice(0, 2);
+		const filePath = line.slice(3);
+		if (statusCode.includes("D")) {
+			deleted.push(filePath);
+		} else {
+			modified.push(filePath);
+		}
+	}
+	return { deleted, modified };
+}
+
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("zip", {
 		description: "Archive working tree as ZIP and copy to clipboard (macOS)",
@@ -75,7 +91,7 @@ export default function (pi: ExtensionAPI) {
 			try {
 				await execFileAsync("git", ["archive", "--format=zip", `--prefix=${basename(repoRoot)}/`, `--output=${zipPath}`, "HEAD"], { cwd: repoRoot });
 
-				if (dirty) await overlayDirtyFiles(repoRoot, basename(repoRoot), zipPath);
+				if (dirty) await prepareWorktreeZip(repoRoot, basename(repoRoot), zipPath);
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
 				ctx.ui.notify(`Failed to create ZIP: ${msg}`, "error");
@@ -104,10 +120,14 @@ export default function (pi: ExtensionAPI) {
 	});
 }
 
-async function overlayDirtyFiles(repoRoot: string, repoName: string, zipPath: string): Promise<void> {
-	const { stdout } = await execFileAsync("git", ["ls-files", "-mo", "--exclude-standard", "--"], { cwd: repoRoot, encoding: "utf8" });
+async function prepareWorktreeZip(repoRoot: string, repoName: string, zipPath: string): Promise<void> {
+	const { stdout } = await execFileAsync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" });
+	const { deleted, modified } = parseGitStatus(stdout);
 
-	const dirtyFiles = parseDirtyFiles(stdout);
-	if (dirtyFiles.length === 0) return;
-	await execFileAsync("/usr/bin/zip", ["-u", zipPath, ...dirtyFiles.map((f) => `${repoName}/${f}`)], { cwd: dirname(repoRoot) });
+	if (deleted.length > 0) {
+		await execFileAsync("/usr/bin/zip", ["-d", zipPath, ...deleted.map((f) => `${repoName}/${f}`)], { cwd: dirname(repoRoot) });
+	}
+	if (modified.length > 0) {
+		await execFileAsync("/usr/bin/zip", ["-u", zipPath, ...modified.map((f) => `${repoName}/${f}`)], { cwd: dirname(repoRoot) });
+	}
 }
