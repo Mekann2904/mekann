@@ -2072,7 +2072,7 @@ describe("AgentControl", () => {
 
       const result = control.list({});
       expect(result.agents).toHaveLength(2);
-      const task = result.agents.find((a) => a.agent_path === "/root/task1");
+      const task = result.agents.find((a: { agent_path: string }) => a.agent_path === "/root/task1");
       expect(task?.agent_id).toBeDefined();
       expect(task?.nickname).toBe("R1");
       expect(task?.role).toBe("researcher");
