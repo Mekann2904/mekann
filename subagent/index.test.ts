@@ -40,7 +40,7 @@ import {
 import { extractForkContext, buildContextPreamble } from "./contextFork.js";
 import { AgentRegistry } from "./registry.js";
 import { Mailbox } from "./mailbox.js";
-import { formatAgentList, formatWaitResult } from "./render.js";
+import { formatAgentList, formatWaitResult } from "./types.js";
 import { isTerminalStatus } from "./types.js";
 
 // ─── agentPath ───────────────────────────────────────────────────
