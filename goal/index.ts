@@ -78,6 +78,11 @@ export default function goalExtension(pi: ExtensionAPI): void {
     return true;
   }
 
+  const DISABLED_RESPONSE = {
+    content: [{ type: "text" as const, text: "Goals feature is disabled or session is not persisted." }],
+    details: {},
+  };
+
   function updateWidget(ctx: ExtensionContext): void {
     if (!ctx.hasUI) return;
     const goal = store?.getGoal() ?? null;
@@ -186,12 +191,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
     ],
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-      if (!isEnabled(ctx) || !store) {
-        return {
-          content: [{ type: "text" as const, text: "Goals feature is disabled or session is not persisted." }],
-          details: {},
-        };
-      }
+      if (!isEnabled(ctx) || !store) return DISABLED_RESPONSE;
       const goal = store.getGoal();
       if (!goal) {
         return {
@@ -244,12 +244,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      if (!isEnabled(ctx) || !store || !runtime) {
-        return {
-          content: [{ type: "text" as const, text: "Goals feature is disabled or session is not persisted." }],
-          details: {},
-        };
-      }
+      if (!isEnabled(ctx) || !store || !runtime) return DISABLED_RESPONSE;
       try {
         const goal = store.createGoal(
           ctx.sessionManager.getSessionId(),
@@ -295,12 +290,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      if (!isEnabled(ctx) || !store || !runtime) {
-        return {
-          content: [{ type: "text" as const, text: "Goals feature is disabled or session is not persisted." }],
-          details: {},
-        };
-      }
+      if (!isEnabled(ctx) || !store || !runtime) return DISABLED_RESPONSE;
       try {
         const patch: { status: "complete" } = { status: params.status };
 
