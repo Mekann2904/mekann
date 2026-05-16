@@ -205,8 +205,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					} else {
 						const purposeText = purpose ? `目的: ${purpose}` : "";
 						followUpMsg =
-							`autoresearch を開始します。目的・指標・実行コマンドを整理して ` +
-							`autoresearch.md とベンチマークスクリプトを作成し、実験を開始してください。` +
+							"autoresearch モードを有効化しました。" +
+							"目的・指標・実行コマンドを整理して autoresearch.md とベンチマークスクリプトを作成し、実験を開始してください。" +
+							"\n必要なら `/skill:autoresearch-create` で手順を確認できます。" +
 							(purposeText ? ` ${purposeText}` : "");
 					}
 					pi.sendUserMessage(followUpMsg, { deliverAs: "followUp" });
@@ -271,8 +272,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					} else {
 						const purposeText = purpose ? `目的: ${purpose}` : "";
 						followUpMsg =
-							`autoresearch を開始します。目的・指標・実行コマンドを整理して ` +
-							`autoresearch.md とベンチマークスクリプトを作成し、実験を開始してください。` +
+							"autoresearch モードを有効化しました。" +
+							"目的・指標・実行コマンドを整理して autoresearch.md とベンチマークスクリプトを作成し、実験を開始してください。" +
+							"\n必要なら `/skill:autoresearch-create` で手順を確認できます。" +
 							(purposeText ? ` ${purposeText}` : "");
 					}
 					pi.sendUserMessage(followUpMsg, { deliverAs: "followUp" });
@@ -312,6 +314,18 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			if (!active) {
+				return {
+					content: [{
+						type: "text",
+						text:
+							"[ERROR] autoresearch モードが無効です。\n" +
+							"先に `/autoresearch on` または `/autoresearch <目的>` を実行してください。",
+					}],
+					details: {},
+				};
+			}
+
 			state.name = params.name;
 			state.metricName = params.metric_name;
 			state.metricUnit = params.metric_unit ?? "";
@@ -398,6 +412,18 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+			if (!active) {
+				return {
+					content: [{
+						type: "text",
+						text:
+							"[ERROR] autoresearch モードが無効です。\n" +
+							"先に `/autoresearch on` または `/autoresearch <目的>` を実行してください。",
+					}],
+					details: {},
+				};
+			}
+
 			const timeoutMs = (params.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
 
 			runningExperiment = { startedAt: Date.now(), command: params.command };
@@ -502,6 +528,18 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			if (!active) {
+				return {
+					content: [{
+						type: "text",
+						text:
+							"[ERROR] autoresearch モードが無効です。\n" +
+							"先に `/autoresearch on` または `/autoresearch <目的>` を実行してください。",
+					}],
+					details: {},
+				};
+			}
+
 			// Gate: checks 失敗時の keep を拒否
 			if (params.status === "keep" && lastChecks && lastChecks.passed === false) {
 				return {

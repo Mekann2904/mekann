@@ -36,6 +36,30 @@ describe("skills/autoresearch-create/SKILL.md", () => {
 		expect(frontmatter).toContain("description:");
 	});
 
+	it("frontmatter に disable-model-invocation: true がある", () => {
+		const match = content.match(/^---\n([\s\S]*?)\n---/);
+		expect(match).toBeTruthy();
+		const frontmatter = match![1];
+		expect(frontmatter).toContain("disable-model-invocation: true");
+	});
+
+	it("モード無効なら開始しない旨が冒頭に記載されている", () => {
+		const body = content.replace(/^---[\s\S]*?---\n/, "");
+		expect(body).toContain("モードが無効な場合は実験を開始しない");
+	});
+
+	it("skill のセットアップ手順に /autoresearch on の実行指示がない", () => {
+		const setupSection = content.match(/## セットアップ手順[\s\S]*?(?=## )/);
+		expect(setupSection).toBeTruthy();
+		// 前提説明には /autoresearch on が言及されるが、手順番号の中にはない
+		const steps = setupSection![0];
+		// 手順番号付きの行に /autoresearch on が含まれていないこと
+		const numberedLines = steps.split("\n").filter((l) => /^\d+\./.test(l.trim()));
+		for (const line of numberedLines) {
+			expect(line).not.toContain("/autoresearch on");
+		}
+	});
+
 	it("本文に現行ツール名が含まれる", () => {
 		expect(content).toContain("autoresearch_init");
 		expect(content).toContain("autoresearch_run");
