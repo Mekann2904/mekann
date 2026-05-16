@@ -100,15 +100,7 @@ export class GoalRuntime {
     const tokenDelta = Math.max(0, (usage.input ?? 0) - (usage.cacheRead ?? 0)) + (usage.output ?? 0);
 
     // Also account accumulated wall-clock time
-    const timeDelta = this.consumeWallClockSeconds();
-
-    if (tokenDelta > 0 || timeDelta > 0) {
-      const expectedGoalId = this.active_goal_id ?? undefined;
-      const result = this.store.accountGoalUsage(timeDelta, tokenDelta, expectedGoalId, "active_only");
-      if (result?.budgetLimited) {
-        this.onBudgetLimited(result.goal);
-      }
-    }
+    this.accountUsage(this.consumeWallClockSeconds(), tokenDelta);
   }
 
   // ─── Lifecycle: tool_execution_end ─────────────────────────────
@@ -123,14 +115,7 @@ export class GoalRuntime {
     if (!goal || goal.status !== "active") return;
 
     // Best-effort wall-clock accounting
-    const timeDelta = this.consumeWallClockSeconds();
-    if (timeDelta > 0) {
-      const expectedGoalId = this.active_goal_id ?? undefined;
-      const result = this.store.accountGoalUsage(timeDelta, 0, expectedGoalId, "active_only");
-      if (result?.budgetLimited && !this.suppress_budget_steering) {
-        this.onBudgetLimited(result.goal);
-      }
-    }
+    this.accountUsage(this.consumeWallClockSeconds(), 0);
   }
 
   // ─── Lifecycle: turn_end ───────────────────────────────────────
@@ -139,14 +124,7 @@ export class GoalRuntime {
     // Final wall-clock accounting for this turn
     const goal = this.store.getGoal();
     if (goal && goal.status === "active") {
-      const timeDelta = this.consumeWallClockSeconds();
-      if (timeDelta > 0) {
-        const expectedGoalId = this.active_goal_id ?? undefined;
-        const result = this.store.accountGoalUsage(timeDelta, 0, expectedGoalId, "active_only");
-        if (result?.budgetLimited) {
-          this.onBudgetLimited(result.goal);
-        }
-      }
+      this.accountUsage(this.consumeWallClockSeconds(), 0);
     }
 
     this.continuation_active = false;
@@ -304,6 +282,16 @@ export class GoalRuntime {
     const elapsedMs = now - this.last_accounted_wall_clock;
     this.last_accounted_wall_clock = now;
     return Math.max(0, Math.round(elapsedMs / 1000));
+  }
+
+  /** Account usage and handle budget limiting. */
+  private accountUsage(timeDelta: number, tokenDelta: number, checkBudget?: boolean): void {
+    if (timeDelta <= 0 && tokenDelta <= 0) return;
+    const expectedGoalId = this.active_goal_id ?? undefined;
+    const result = this.store.accountGoalUsage(timeDelta, tokenDelta, expectedGoalId, "active_only");
+    if (result?.budgetLimited && (checkBudget !== false) && !this.suppress_budget_steering) {
+      this.onBudgetLimited(result.goal);
+    }
   }
 
   /** Final wall-clock accounting (clears baseline). */
