@@ -3,11 +3,21 @@
  */
 
 import { spawn } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { parseMetricLines } from "./state.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+export interface ChecksResult {
+	/** null = checks not run (no file or benchmark failed) */
+	passed: boolean | null;
+	timedOut: boolean;
+	output: string;
+	durationSeconds: number;
+}
 
 export interface RunResult {
 	command: string;
@@ -17,6 +27,7 @@ export interface RunResult {
 	passed: boolean;
 	output: string;
 	parsedMetrics: Record<string, number> | null;
+	checks: ChecksResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -26,6 +37,8 @@ export interface RunResult {
 const OUTPUT_MAX_LINES = 10;
 const OUTPUT_MAX_BYTES = 4 * 1024; // 4KB
 const CAPTURE_MAX_BYTES = 1024 * 1024; // 1MB
+const CHECKS_OUTPUT_MAX_LINES = 80;
+const DEFAULT_CHECKS_TIMEOUT_SECONDS = 300;
 
 // ---------------------------------------------------------------------------
 // Truncation
@@ -46,6 +59,42 @@ export function truncateTail(text: string, maxLines: number, maxBytes: number): 
 		if (nlIdx >= 0) result = result.slice(nlIdx + 1);
 	}
 	return result;
+}
+
+// ---------------------------------------------------------------------------
+// Command execution
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Checks execution
+// ---------------------------------------------------------------------------
+
+/**
+ * autoresearch.checks.sh を実行する。
+ * ファイルが存在しない場合は { passed: null } を返す。
+ */
+export async function runChecks(
+	cwd: string,
+	signal?: AbortSignal,
+	timeoutSeconds: number = DEFAULT_CHECKS_TIMEOUT_SECONDS,
+): Promise<ChecksResult> {
+	const checksPath = path.join(cwd, "autoresearch.checks.sh");
+
+	if (!fs.existsSync(checksPath)) {
+		return { passed: null, timedOut: false, output: "", durationSeconds: 0 };
+	}
+
+	const result = await runCommand(`bash "${checksPath}"`, cwd, timeoutSeconds * 1000, signal);
+
+	const outputLines = result.output.split("\n");
+	const tailOutput = outputLines.slice(-CHECKS_OUTPUT_MAX_LINES).join("\n");
+
+	return {
+		passed: result.passed,
+		timedOut: result.timedOut,
+		output: tailOutput,
+		durationSeconds: result.durationSeconds,
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -113,6 +162,7 @@ export async function runCommand(
 				passed: code === 0 && !timedOut,
 				output: truncateTail(combined, OUTPUT_MAX_LINES, OUTPUT_MAX_BYTES),
 				parsedMetrics: Object.keys(parsed).length > 0 ? parsed : null,
+				checks: { passed: null, timedOut: false, output: "", durationSeconds: 0 },
 			});
 		}
 
