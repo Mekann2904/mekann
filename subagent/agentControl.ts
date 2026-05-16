@@ -320,20 +320,12 @@ export class AgentControl {
 
     // Deliver to child session
     if (childSession) {
-      if (childSession.isStreaming) {
-        // Queue as follow-up
-        await childSession.sendUserMessage(
-          `[Follow-up from ${callerPath}]: ${params.message}`,
-          { deliverAs: "followUp" },
-        );
-        return { queued: true, triggered: false };
-      } else {
-        // Trigger a new turn
-        await childSession.sendUserMessage(
-          `[Follow-up from ${callerPath}]: ${params.message}`,
-        );
-        return { queued: false, triggered: true };
-      }
+      const triggered = !childSession.isStreaming;
+      await childSession.sendUserMessage(
+        `[Follow-up from ${callerPath}]: ${params.message}`,
+        childSession.isStreaming ? { deliverAs: "followUp" } : undefined,
+      );
+      return { queued: true, triggered };
     }
 
     return { queued: true, triggered: false };
