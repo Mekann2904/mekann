@@ -43,3 +43,20 @@ that represent genuine different code paths. The `runSandboxedShellMac` function
 - E2E testing with pi core
 - Extract sandbox state into a state object (reduces coupling, not LOC)
 - Split runSandboxedShellMac into class-based state machine (high risk, 121 lines of closures)
+
+## Test Coverage Session Results
+
+### Before → After
+| Module | Stmts Before | Stmts After | Branch Before | Branch After |
+|--------|-------------|------------|---------------|-------------|
+| plan-mode | 97.66% | 98.44% | 94.01% | 96.40% |
+| sandbox | 94.27% | 98.09% | 86.38% | 95.33% |
+| subagent | 67.85% | 99.43% | 58.98% | 93.41% |
+| zip-repo | 100% | 100% | 100% | 100% |
+| **Total tests** | 890 | 1111 | | |
+
+### Identified Dead Code (defensive, unreachable by design)
+- sandbox/index.ts:115 — `buildCurrentPolicy()` yolo branch (yolo skips Case 4)
+- sandbox/index.ts:383-384 — escalation rejection (`MODE_RANK[read_only]=0 > any` is always false)
+- subagent/registry.ts:171 — duplicate recheck (single-threaded, checked at reservation time)
+- subagent/contextFork.ts:30 — null text skip in fork (already tested but v8 branch reporting)
