@@ -279,10 +279,16 @@ export class GoalStore {
     }
 
     if (patch.continuation_count !== undefined) {
+      if (!Number.isInteger(patch.continuation_count) || patch.continuation_count < 0) {
+        throw new GoalError("continuation_count must be a non-negative integer");
+      }
       goal.continuation_count = patch.continuation_count;
     }
 
     if (patch.max_continuations !== undefined) {
+      if (!Number.isInteger(patch.max_continuations) || patch.max_continuations <= 0) {
+        throw new GoalError("max_continuations must be a positive integer");
+      }
       goal.max_continuations = patch.max_continuations;
     }
 

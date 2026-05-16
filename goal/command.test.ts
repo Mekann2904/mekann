@@ -9,7 +9,6 @@ function createMockPi() {
   const tools: Array<{ name: string; execute: Function }> = [];
   return {
     tools,
-    sendMessage: vi.fn(),
     appendEntry: vi.fn((_entry: any) => {}),
     getFlag: vi.fn(() => true),
     events: { emit: vi.fn(), on: vi.fn() },
@@ -256,10 +255,33 @@ describe("/goal command", () => {
   // 15. /goal --budget 0 foo rejects
   it("rejects --budget 0 in objective", async () => {
     await goalCommand.handler("--budget 0 foo", ctx);
-    // 0 matches \d+ but validateTokenBudget rejects it
+    // 0 matches \d+ but Number.isSafeInteger check with <= 0 rejects it
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringContaining("positive integer"),
-      "error",
+      "warning",
+    );
+  });
+
+  // 16. /goal resume works after pause
+  it("resume works after pause", async () => {
+    await goalCommand.handler("Test goal", ctx);
+    ctx.ui.notify.mockClear();
+
+    await goalCommand.handler("pause", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Goal paused", "info");
+
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("resume", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Goal resumed", "success");
+  });
+
+  // 17. /goal rejects objective containing --budget without a number
+  it("rejects objective containing --budget without a number", async () => {
+    // Token-based: --budget is found as a token, next token is not a pure digit string
+    await goalCommand.handler("fix behavior --budget", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Invalid --budget"),
+      "warning",
     );
   });
 });

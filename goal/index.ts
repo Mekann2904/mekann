@@ -163,13 +163,12 @@ export default function goalExtension(pi: ExtensionAPI): void {
 
   // ─── before_agent_start: inject active goal context ───────
 
-  pi.on("before_agent_start", async (_event, _ctx) => {
-    if (!store) return {};
+  pi.on("before_agent_start", async (event, ctx) => {
+    if (!isEnabled(ctx) || !store) return {};
     const goal = store.getGoal();
     if (!goal || goal.status !== "active") return {};
-    const extra = "\n" + renderGoalContext(goal) + "\n";
     return {
-      systemPrompt: _event.systemPrompt + extra,
+      systemPrompt: event.systemPrompt + "\n" + renderGoalContext(goal) + "\n",
     };
   });
 
@@ -427,7 +426,19 @@ export default function goalExtension(pi: ExtensionAPI): void {
           }
           try {
             runtime.onExternalMutationStarting();
-            const updated = store.updateGoal({ status: "active" }, undefined, "user");
+            // Reset continuation counter when resuming from max-continuations pause
+            const resetContinuation =
+              goal.continuation_count >= goal.max_continuations;
+            const updated = store.updateGoal(
+              {
+                status: "active",
+                ...(resetContinuation
+                  ? { continuation_count: 0, last_continued_at_ms: null }
+                  : {}),
+              },
+              undefined,
+              "user",
+            );
             runtime.onExternalSet(updated);
             emitUpdated(ctx, updated);
             ctx.ui.notify("Goal resumed", "success");
@@ -473,8 +484,17 @@ export default function goalExtension(pi: ExtensionAPI): void {
             runtime.onExternalMutationStarting();
             const previousGoal = store.getGoal();
             // Editing reactivates the goal (clears complete/budget_limited)
+            // Also reset continuation counter if it was at the limit
+            const resetContinuation =
+              previousGoal!.continuation_count >= previousGoal!.max_continuations;
             const updated = store.updateGoal(
-              { objective: edited, status: "active" },
+              {
+                objective: edited,
+                status: "active",
+                ...(resetContinuation
+                  ? { continuation_count: 0, last_continued_at_ms: null }
+                  : {}),
+              },
               undefined,
               "user",
             );
@@ -562,19 +582,29 @@ export default function goalExtension(pi: ExtensionAPI): void {
     let objective: string;
     let budget: number | null = null;
 
-    // Parse --budget <n> prefix or suffix
-    const budgetPrefixMatch = input.match(/^--budget\s+(\d+)\s+([\s\S]+)$/);
-    const budgetSuffixMatch = input.match(/^([\s\S]+?)\s+--budget\s+(\d+)$/);
-    if (budgetPrefixMatch) {
-      budget = Number(budgetPrefixMatch[1]);
-      objective = budgetPrefixMatch[2].trim();
-    } else if (budgetSuffixMatch) {
-      budget = Number(budgetSuffixMatch[2]);
-      objective = budgetSuffixMatch[1].trim();
-    } else if (input.includes("--budget")) {
-      // User intended --budget but format is invalid
-      ctx.ui.notify("Invalid --budget usage. Expected: /goal --budget <n> <objective> or /goal <objective> --budget <n>", "warning");
-      return;
+    // Token-based --budget parsing: only match --budget as an independent token
+    const tokens = input.trim().split(/\s+/);
+    const budgetIndex = tokens.indexOf("--budget");
+
+    if (budgetIndex >= 0) {
+      const raw = tokens[budgetIndex + 1];
+      if (!raw || !/^\d+$/.test(raw)) {
+        ctx.ui.notify(
+          "Invalid --budget usage. Expected: /goal --budget <n> <objective> or /goal <objective> --budget <n>",
+          "warning",
+        );
+        return;
+      }
+      budget = Number(raw);
+      if (!Number.isSafeInteger(budget) || budget <= 0) {
+        ctx.ui.notify("Budget must be a positive integer", "warning");
+        return;
+      }
+      const objectiveTokens = [
+        ...tokens.slice(0, budgetIndex),
+        ...tokens.slice(budgetIndex + 2),
+      ];
+      objective = objectiveTokens.join(" ").trim();
     } else {
       objective = input.trim();
     }

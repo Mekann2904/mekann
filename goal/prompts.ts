@@ -1,8 +1,7 @@
 /**
- * goal/prompts.ts — Hidden prompt templates for goal steering.
+ * goal/prompts.ts — Prompt templates for goal steering.
  *
- * Injected as hidden custom messages (display: false) to guide the model
- * during continuation, budget limits, and objective updates.
+ * Injected as follow-up user messages or system prompt context, depending on lifecycle.
  */
 
 import type { Goal } from "./state.js";
