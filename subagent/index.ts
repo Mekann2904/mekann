@@ -20,7 +20,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { AgentControl } from "./agentControl.js";
-import { formatAgentList, formatWaitResult } from "./render.js";
+import { formatAgentList, formatWaitResult } from "./types.js";
 import type { ForkTurns } from "./contextFork.js";
 
 // ─── Tool parameter schemas ──────────────────────────────────────

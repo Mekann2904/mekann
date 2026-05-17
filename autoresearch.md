@@ -9,20 +9,28 @@ Improve test coverage across all modules, targeting >98% statement coverage.
 - **Direction**: lower is better
 
 ## Current Status
-- **Uncovered**: 40 statements (natural floor)
-- **Coverage**: 98.24%
-- **Total tests**: 1494 (was 1392, +102)
+- **Score**: 3652 (best, -10.3% from baseline 4072)
+- **Source LOC**: 6288
+- **Source files**: 20
+- **Total tests**: 1492
+- **Complexity functions**: 2
+- **Duplication**: 270
+- **Review risk**: 9
 
-## Experiments Summary
-| # | Description | Δ Uncovered | Status |
+## Session: Maintenance Cost Reduction (2026-05-17)
+
+| # | Description | Δ Score | Status |
 |---|---|---|---|
-| 1 | goal/lifecycle.test.ts (21 tests) | 183→129 (-54) | keep |
-| 2 | command.test.ts +19, tool.test.ts +5 | 129→85 (-44) | keep |
-| 3 | goal/prompts.test.ts (28 tests) | 85→73 (-12) | keep |
-| 4 | autoresearch loop tests +7 | 73→57 (-16) | keep |
-| 5 | goal/runtime.test.ts +21 | 57→44 (-13) | keep |
-| 6 | goal/command.test.ts +3 | 44→40 (-4) | keep |
-| 7 | hasCompleteMarker edge cases | 40→40 (0) | discard |
+| 0 | Baseline | 4072 | baseline |
+| 1 | (previous session baseline) | - | baseline |
+| 2 | uw() helper for updateWidget | +20 | discard |
+| 3 | Move git helpers to runner.ts | -95 | keep |
+| 4 | Move loop helpers to runner.ts | -100 | keep |
+| 5 | Extract parseRunEntry from reconstructState | -10 | keep |
+| 6 | Delete unused persistence.ts | -115 | keep |
+| 7 | Merge render.ts into types.ts | -100 | keep |
+| 8 | notifyError helper in goal/index.ts | 0 | discard |
+| 9 | Merge plan-mode/utils.ts into index.ts | FAIL | discard |
 
 ## Rules
 - All tests must pass (`npm test`)

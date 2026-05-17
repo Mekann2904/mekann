@@ -130,7 +130,7 @@ if [ -z "$test_seconds_int" ]; then test_seconds_int=0; fi
 score=$((score + test_seconds_int))
 
 # Bonus: source LOC reduction (per 100 LOC reduced vs baseline)
-baseline_loc=3977
+baseline_loc=6325
 loc_delta=$((source_loc - baseline_loc))
 if [ "$loc_delta" -lt 0 ]; then
   score=$((score - 5 * ((-loc_delta) / 100)))
