@@ -3,3 +3,6 @@
 {"type":"run","run":2,"commit":"d0548db","metric":11800,"status":"keep","description":"macSeatbelt.test.ts タイムアウト/スリープ短縮: sleep 30→5, sleep 1000→5, timeoutMs 300→150/500→200, abort delay 300-500→150-200, expectProcessGone 10retries→5/100ms→50ms, test timeouts 10000→5000/15000→8000. sandbox 9.61s→8.05s, prepush ~12.1s","timestamp":1779018789396}
 {"type":"run","run":3,"commit":"d7ee680","metric":8200,"status":"keep","description":"sandbox macSeatbelt統合テストにvitest concurrent mode追加 (describe.concurrent) + autoresearch timeout 1s→0.5s。sandbox 9.0s→4.0s, prepush 11.8s→8.2s","timestamp":1779019510124}
 {"type":"run","run":4,"commit":"490aeae","metric":6100,"status":"keep","description":"全sandboxのdescribeMacブロックにconcurrent mode適用。sandbox 4.0s→3.1s, prepush 8.2s→6.1s","timestamp":1779019629000}
+{"type":"run","run":5,"commit":"626c53a","metric":7100,"status":"discard","description":"typecheck並列化 (sandbox + subagent tsc --project をバックグラウンドで並列)。結果にばらつき: 7.1-14.4s。サブプロセス数増加でシステム負荷上昇。改善不明確。","timestamp":1779019824443}
+{"type":"run","run":6,"commit":"626c53a","metric":11600,"status":"discard","description":"typecheck並列化（直接tscバックグラウンド実行）。8プロセス同時でシステム過負荷、11-16秒に悪化。revert。","timestamp":1779020080784}
+{"type":"run","run":7,"commit":"626c53a","metric":6800,"status":"keep","description":"最終確認: 全テスト合格、prepush 6.8秒。ベースライン14秒から-51%。","timestamp":1779020391487}

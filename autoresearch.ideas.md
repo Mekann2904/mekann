@@ -1,5 +1,26 @@
 # Autoresearch Ideas
 
+## Pre-push Phase 2 Optimization Ideas
+
+### High Potential
+1. **subagent index.test.ts ファイル分割**: 4699行→複数ファイルに分割。tscの型チェック時間3.8秒を短縮可能
+2. **sandbox macSeatbelt.test.ts 分割**: 2205行でtransform+import 3秒。unit tests(L1-968)とintegration tests(L969-2205)に分割したいが、unit testsがintegrationの前後に散在しているため、まずdescribeブロックの順序を整理する必要がある
+3. **typecheck並列化**: sandbox tsc(1.7s)とsubagent tsc(3.8s)を並列→3.8sに短縮。ただし8プロセス同時でシステム過負荷になる。CPUコア数が多ければ効果的
+
+### Medium Potential
+4. **tsc --build モード**: プロジェクト参照を使ったインクリメンタル型チェック。初回は同じだが2回目以降が速くなる
+5. **subagentテストのconcurrent mode**: mailbox/agentControlのwait系テスト(50ms)を並列化。subagent自体は2.4秒でsandboxより速いためprepushには影響しない
+6. **sandboxテストのバッチ化**: 複数アサーションを1プロセス起動にまとめる。プロセス起動回数を33→15に削減で~3.6秒短縮。ただしテスト粒度が荒くなる
+
+### Low Potential
+7. **typecheckをprepushから外す**: prepushはテストのみにし、typecheckはCIで実行。prepush ~3秒に短縮だが品質保証レベルが下がる
+8. **vitest workspace モード**: 全モジュールを単一vitestプロセスで実行。モジュールパス解決の問題で失敗。各モジュールのimportパスを相対→絶対に変更すれば可能
+
+### Physical Limits
+- sandbox-exec プロセス起動: ~200ms/回（OS制約）
+- vitest transform+import: ~3秒（2200行TypeScriptのコンパイル）
+- 7並列プロセスがシステム負荷の限界
+
 ## Session Status: 183 → 40 (-78.1%), 6 experiments | Coverage: 98.24% avg stmts, 1497 tests
 
 ## Remaining 40 Uncovered Lines
