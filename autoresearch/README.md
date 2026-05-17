@@ -58,6 +58,10 @@ autoresearch_run:
 
 timeout 時は単一プロセスではなく、プロセスグループ全体（bash + 子プロセス + 孫プロセス）に SIGTERM → SIGKILL を送信します。これにより、Deno や Python の benchmark が孫プロセスを残す問題を防ぎます。
 
+### 同一 session での並列 run は非対応
+
+`autoresearch_run` は `runs.jsonl` の行数から runSeq を採番しています。同一 session で複数の `autoresearch_run` を並列実行すると、runSeq 競合や artifact 上書きが発生します。必ず1本ずつ直列に実行してください。
+
 ### Streaming stdout/stderr 保存
 
 run の開始直後に `stdout.log` / `stderr.log` が作成され、実行中に streaming write されます。プロセスクラッシュ時も部分ログが残ります。
