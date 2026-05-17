@@ -313,11 +313,12 @@ export async function runCommand(
 			} catch { /* already exited */ }
 		}
 
+		let graceTimer: NodeJS.Timeout | null = null;
 		const timer = setTimeout(() => {
 			timedOut = true;
 			killGroup("SIGTERM");
 			// Grace period then SIGKILL
-			setTimeout(() => killGroup("SIGKILL"), 5_000);
+			graceTimer = setTimeout(() => killGroup("SIGKILL"), 5_000);
 		}, timeoutMs);
 
 		const abortHandler = () => {
@@ -329,6 +330,7 @@ export async function runCommand(
 			if (resolved) return;
 			resolved = true;
 			clearTimeout(timer);
+			if (graceTimer) clearTimeout(graceTimer);
 			signal?.removeEventListener("abort", abortHandler);
 
 			const durationSeconds = (Date.now() - t0) / 1000;
@@ -639,6 +641,7 @@ export function loadRunFromArtifact(
 	completedAt: number;
 	createdAt: number;
 	artifactDir: string;
+	runSeq?: number;
 } | null {
 	const runDir = getRunArtifactDir(cwd, sessionId, piRunId);
 	const manifestPath = path.join(runDir, "manifest.json");
