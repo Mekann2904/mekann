@@ -118,3 +118,4 @@ that represent genuine different code paths. The `runSandboxedShellMac` function
 - subagent/index.ts:265 — wait_agent formatting branches (architectural limitation)
 - subagent/index.ts:349 — String(err) path (close() always throws Error)
 - plan-mode/index.ts:131-132 — fallback model path (enterPlanMode sets mainRef === savedMainModel)
+
