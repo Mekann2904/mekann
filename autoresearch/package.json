@@ -8,6 +8,10 @@
   "scripts": {
     "test": "vitest run"
   },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.1.0",
+    "@earendil-works/pi-ai": ">=0.1.0"
+  },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.6",
     "vitest": "^4.1.6"

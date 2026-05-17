@@ -5,6 +5,7 @@
 import { spawn, execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { randomUUID } from "node:crypto";
 import { parseMetricLines } from "./state.js";
 
 // ---------------------------------------------------------------------------
@@ -184,6 +185,55 @@ export function getGitShortHash(cwd: string): string {
 	} catch {
 		return "unknown";
 	}
+}
+
+/** Get the full commit hash. */
+export function getGitFullHash(cwd: string): string {
+	try {
+		return execFileSync("git", ["rev-parse", "HEAD"], {
+			cwd,
+			encoding: "utf8",
+			timeout: 5_000,
+		}).trim();
+	} catch {
+		return "unknown";
+	}
+}
+
+/** Check if the working tree has uncommitted changes. */
+export function isGitDirty(cwd: string): boolean {
+	try {
+		execFileSync("git", ["diff", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000 });
+		execFileSync("git", ["diff", "--cached", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000 });
+		// Also check for untracked files
+		const untracked = execFileSync("git", ["ls-files", "--others", "--exclude-standard"], {
+			cwd, encoding: "utf8", timeout: 5_000,
+		}).trim();
+		return untracked.length > 0;
+	} catch {
+		// git diff --quiet exits with 1 when there are differences
+		return true;
+	}
+}
+
+/** Get list of changed files (staged + unstaged + untracked). */
+export function getChangedFiles(cwd: string): string[] {
+	try {
+		const result = execFileSync(
+			"git",
+			["status", "--porcelain"],
+			{ cwd, encoding: "utf8", timeout: 5_000 },
+		).trim();
+		if (!result) return [];
+		return result.split("\n").map((line: string) => line.slice(3)).filter(Boolean);
+	} catch {
+		return [];
+	}
+}
+
+/** Generate a unique run ID. */
+export function generateRunId(): string {
+	return randomUUID().slice(0, 8);
 }
 
 /** `git add -A && git diff --cached --quiet` を実行し staged diff があれば commit。 */
