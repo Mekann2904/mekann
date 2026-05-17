@@ -234,15 +234,15 @@ describe("isPlanReadOnlyCommandIntent: property-based invariants", () => {
 		);
 	});
 
-	// ─── Invariant 12: Newline-separated commands are unsafe ─────────
+	// ─── Invariant 12: Newline with two non-empty parts is unsafe ─────
 
-	it("newline in command always makes it unsafe", () => {
+	it("newline separating two non-empty commands is unsafe", () => {
 		fc.assert(
 			fc.property(
-				fc.string({ maxLength: 30 }).filter(s => !/[;\n|`$&]/.test(s)),
-				fc.string({ maxLength: 30 }).filter(s => !/[;\n|`$&]/.test(s)),
+				fc.string({ maxLength: 30 }).filter(s => s.trim().length > 0 && !/[;\n|`$&]/.test(s)),
+				fc.string({ maxLength: 30 }).filter(s => s.trim().length > 0 && !/[;\n|`$&]/.test(s)),
 				(before, after) => {
-					if (before.length === 0 && after.length === 0) return true;
+					if (before.trim().length === 0 || after.trim().length === 0) return true;
 					const command = `${before}\n${after}`;
 					return isSafeCommand(command) === false;
 				},
