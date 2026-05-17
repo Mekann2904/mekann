@@ -766,6 +766,48 @@ describe("autoresearchExtension", () => {
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 
+		it("redacts secrets from response details and artifact logs", async () => {
+			const testDir = "/tmp/test-ar-secret-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await cmdHandler("on", ctx);
+
+			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
+			const result = await runTool.execute(
+				"tc-run-secret",
+				{ command: "echo API_KEY=abc123; echo 'Authorization: Bearer bearer123'; echo METRIC ms=1; echo TOKEN=tok123 >&2; echo PASSWORD=pw123 >&2" },
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			const text = result.content[0].text;
+			expect(text).not.toContain("abc123");
+			expect(text).not.toContain("bearer123");
+			expect(text).not.toContain("tok123");
+			expect(text).not.toContain("pw123");
+			expect(text).toContain("***REDACTED***");
+
+			expect(result.details.stdout).toBeUndefined();
+			expect(result.details.stderr).toBeUndefined();
+			expect(result.details.output).not.toContain("abc123");
+			expect(result.details.output).not.toContain("bearer123");
+			expect(result.details.output).not.toContain("tok123");
+			expect(result.details.output).not.toContain("pw123");
+
+			const runDir = result.details.artifactDir as string;
+			const stdoutLog = fs.readFileSync(path.join(runDir, "stdout.log"), "utf8");
+			const stderrLog = fs.readFileSync(path.join(runDir, "stderr.log"), "utf8");
+			expect(stdoutLog).not.toContain("abc123");
+			expect(stdoutLog).not.toContain("bearer123");
+			expect(stderrLog).not.toContain("tok123");
+			expect(stderrLog).not.toContain("pw123");
+			expect(stdoutLog + stderrLog).toContain("***REDACTED***");
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
 		it("parses METRIC output lines", async () => {
 			const testDir = "/tmp/test-ar-" + Date.now();
 			fs.mkdirSync(testDir, { recursive: true });
@@ -1489,11 +1531,20 @@ describe("autoresearchExtension", () => {
 				ctx,
 			);
 
+			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
+			const runResult = await runTool.execute(
+				"tc-run-locked",
+				{ command: "echo METRIC ms=100" },
+				undefined,
+				undefined,
+				ctx,
+			);
+			const piRunId = runResult.details.piRunId as string;
+
 			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
-			await runBenchmark(pi.tools, ctx);
 			const result = await logTool.execute(
 				"tc-log-locked",
-				{ metric: 100, status: "keep", description: "locked index" },
+				{ metric: 100, status: "keep", description: "locked index", runId: piRunId },
 				undefined,
 				undefined,
 				ctx,
@@ -1503,8 +1554,27 @@ describe("autoresearchExtension", () => {
 			expect(result.content[0].text).toContain("git commit");
 			expect(result.details.gitError).toBeTruthy();
 
-			// Cleanup: remove lock file
+			// state / ledger / pointer must not be updated on commit failure
+			await cmdHandler("status", ctx);
+			expect(ctx.ui.notify).toHaveBeenLastCalledWith(expect.stringContaining("実験回数: 0"), "info");
+			const jsonl = fs.readFileSync(path.join(testDir, "autoresearch.jsonl"), "utf8");
+			expect(jsonl.trim().split("\n")).toHaveLength(1); // config only
+			const sessionRoot = path.join(testDir, ".pi", "autoresearch");
+			const sessionId = fs.readdirSync(sessionRoot).find((n) => n !== "default")!;
+			expect(fs.existsSync(path.join(sessionRoot, sessionId, "best.pointer.json"))).toBe(false);
+
+			// After fixing git, the same runId can be logged again
 			fs.unlinkSync(path.join(testDir, ".git", "index.lock"));
+			const retry = await logTool.execute(
+				"tc-log-locked-retry",
+				{ metric: 100, status: "keep", description: "locked index retry", runId: piRunId },
+				undefined,
+				undefined,
+				ctx,
+			);
+			expect(retry.content[0].text).toContain("[KEEP]");
+			expect(fs.existsSync(path.join(sessionRoot, sessionId, "best.pointer.json"))).toBe(true);
+
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 

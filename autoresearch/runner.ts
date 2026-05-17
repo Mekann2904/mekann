@@ -94,15 +94,16 @@ export function truncateTail(text: string, maxLines: number, maxBytes: number): 
 // Secret filtering
 // ---------------------------------------------------------------------------
 
-const SECRET_PATTERNS = [
-	/(API_KEY|SECRET|PASSWORD|TOKEN|PRIVATE_KEY)[\s]*[=:]\s*\S+/gi,
+const SECRET_REPLACEMENTS: Array<[RegExp, (...args: string[]) => string]> = [
+	[/(API_KEY|SECRET|PASSWORD|TOKEN|PRIVATE_KEY)[\s]*[=:]\s*\S+/gi, (_match, key) => `${key}=***REDACTED***`],
+	[/(Authorization\s*:\s*Bearer)\s+\S+/gi, (_match, prefix) => `${prefix} ***REDACTED***`],
 ];
 
 /** Filter lines that look like they contain secrets. */
 export function filterSecrets(text: string): string {
 	let result = text;
-	for (const pattern of SECRET_PATTERNS) {
-		result = result.replace(pattern, (_, key) => `${key}=***REDACTED***`);
+	for (const [pattern, replace] of SECRET_REPLACEMENTS) {
+		result = result.replace(pattern, replace);
 	}
 	return result;
 }
