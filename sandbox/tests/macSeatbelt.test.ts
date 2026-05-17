@@ -951,12 +951,12 @@ describe("package.json dependencies", () => {
  * Unix zombies / scheduling delays can cause false positives in
  * process.kill(pid, 0) checks. Retry with backoff to avoid flaky tests.
  */
-async function expectProcessGone(pid: number, retries = 10): Promise<void> {
+async function expectProcessGone(pid: number, retries = 5): Promise<void> {
 	for (let i = 0; i < retries; i++) {
 		try {
 			process.kill(pid, 0);
 			// Process still exists, wait and retry
-			await new Promise<void>((r) => setTimeout(r, 100));
+			await new Promise<void>((r) => setTimeout(r, 50));
 		} catch {
 			return; // process is gone — success
 		}
@@ -1262,9 +1262,9 @@ describeMac("runSandboxedShellMac (integration)", () => {
 	itSandbox("timeout が発火するとプロセスが kill される", async () => {
 		const policy = readOnlyPolicy(testDir, [testDir]);
 		const result = await runSandboxedShellMac(
-			"sleep 30",
+			"sleep 5",
 			policy,
-			{ timeoutMs: 300 },
+			{ timeoutMs: 150 },
 		);
 
 		expect(result.code).not.toBe(0);
@@ -1290,9 +1290,9 @@ describeMac("runSandboxedShellMac (integration)", () => {
 		// Start a background sleep, echo its PID to stdout so we can capture it
 		// Using workspace_write so the command can write to $TMPDIR if needed
 		const result = await runSandboxedShellMac(
-			"sleep 1000 & BG_PID=$!; echo BG_PID=$BG_PID; wait",
+			"sleep 5 & BG_PID=$!; echo BG_PID=$BG_PID; wait",
 			policy,
-			{ timeoutMs: 500 },
+			{ timeoutMs: 200 },
 		);
 
 		expect(result.code).not.toBe(0);
@@ -1307,17 +1307,17 @@ describeMac("runSandboxedShellMac (integration)", () => {
 				await expectProcessGone(pid);
 			}
 		}
-	}, 15000);
+	}, 8000);
 
 	itSandbox("background process が abort 後に kill される (stdout PID verification)", async () => {
 		const controller = new AbortController();
 		const policy = workspaceWritePolicy(testDir, [testDir], [testDir], false);
 
 		// Abort after a short delay
-		setTimeout(() => controller.abort(), 500);
+		setTimeout(() => controller.abort(), 200);
 
 		const result = await runSandboxedShellMac(
-			"sleep 1000 & BG_PID=$!; echo BG_PID=$BG_PID; wait",
+			"sleep 5 & BG_PID=$!; echo BG_PID=$BG_PID; wait",
 			policy,
 			{ signal: controller.signal, timeoutMs: 60000 },
 		);
@@ -1333,7 +1333,7 @@ describeMac("runSandboxedShellMac (integration)", () => {
 				await expectProcessGone(pid);
 			}
 		}
-	}, 15000);
+	}, 8000);
 
 	// ── per-run temp directory ───────────────────────────────────────
 
@@ -1380,17 +1380,17 @@ describeMac("runSandboxedShellMac (integration)", () => {
 		const policy = readOnlyPolicy(testDir, [testDir]);
 
 		// Abort after a short delay
-		setTimeout(() => controller.abort(), 500);
+		setTimeout(() => controller.abort(), 200);
 
 		const result = await runSandboxedShellMac(
-			"sleep 30",
+			"sleep 5",
 			policy,
 			{ signal: controller.signal, timeoutMs: 60000 },
 		);
 
 		expect(result.code).not.toBe(0);
 		expect(result.stderr).toContain("aborted");
-	}, 10000);
+	}, 5000);
 
 	// ── FIX 2: Isolated HOME and no startup files ────────────────────
 
@@ -1815,7 +1815,7 @@ describeMac("runSandboxedShellMac: abort signal already aborted", () => {
 
 		expect(result.code).toBeNull();
 		expect(result.stderr).toContain("aborted");
-	}, 10000);
+	}, 5000);
 });
 
 // ─── Integration tests: normal exit without kill ────────────────────────
@@ -1931,10 +1931,10 @@ describeMac("runSandboxedShellMac: abort vs timeout error messages", () => {
 		const controller = new AbortController();
 		const policy = readOnlyPolicy(testDir, [testDir]);
 
-		setTimeout(() => controller.abort(), 300);
+		setTimeout(() => controller.abort(), 150);
 
 		const result = await runSandboxedShellMac(
-			"sleep 30",
+			"sleep 5",
 			policy,
 			{ signal: controller.signal, timeoutMs: 60000 },
 		);
@@ -1943,21 +1943,21 @@ describeMac("runSandboxedShellMac: abort vs timeout error messages", () => {
 		// timedOut is false → message says "aborted", not "timed out"
 		expect(result.stderr).toContain("aborted");
 		expect(result.stderr).not.toContain("timed out");
-	}, 10000);
+	}, 5000);
 
 	it("timeout 時のエラーメッセージは 'timed out' を含む (timedOut は true)", async () => {
 		if (!sandboxReady) return;
 
 		const policy = readOnlyPolicy(testDir, [testDir]);
 		const result = await runSandboxedShellMac(
-			"sleep 30",
+			"sleep 5",
 			policy,
-			{ timeoutMs: 500 },
+			{ timeoutMs: 200 },
 		);
 
 		expect(result.code).not.toBe(0);
 		expect(result.stderr).toContain("timed out");
-	}, 10000);
+	}, 5000);
 });
 
 // ─── Integration tests: output not exceeded in catch path ───────────────
@@ -1983,10 +1983,10 @@ describeMac("runSandboxedShellMac: catch path without output exceeded", () => {
 		const controller = new AbortController();
 		const policy = readOnlyPolicy(testDir, [testDir]);
 
-		setTimeout(() => controller.abort(), 300);
+		setTimeout(() => controller.abort(), 150);
 
 		const result = await runSandboxedShellMac(
-			"echo small; sleep 30",
+			"echo small; sleep 5",
 			policy,
 			{ signal: controller.signal, timeoutMs: 60000 },
 		);
@@ -1995,7 +1995,7 @@ describeMac("runSandboxedShellMac: catch path without output exceeded", () => {
 		expect(result.stderr).toContain("aborted");
 		// outputExceeded is false → no truncated marker in stdout
 		expect(result.stdout).not.toContain("[...output truncated...]");
-	}, 10000);
+	}, 5000);
 });
 
 // ─── Integration: output limit + timeout overlap (branches 355, 418) ──
@@ -2024,9 +2024,9 @@ describeMac("runSandboxedShellMac: output limit with timeout", () => {
 		// then the timeout fires (requestTerminate("timeout") returns early since already terminated,
 		// but still rejects the promise → catch block with outputExceeded=true).
 		const result = await runSandboxedShellMac(
-			"echo hello; sleep 30", // produce output then sleep (so process stays alive for timeout)
+			"echo hello; sleep 5", // produce output then sleep (so process stays alive for timeout)
 			policy,
-			{ maxOutputBytes: 2, timeoutMs: 100 }, // output limit fires from "hello", timeout fires 100ms later
+			{ maxOutputBytes: 2, timeoutMs: 80 }, // output limit fires from "hello", timeout fires 80ms later
 		);
 
 		// Either the output limit or timeout won the race
@@ -2045,7 +2045,7 @@ describeMac("runSandboxedShellMac: output limit with timeout", () => {
 			expect(result.code).not.toBe(0);
 			expect(result.stderr).toContain("output limit");
 		}
-	}, 15000);
+	}, 8000);
 });
 
 // ─── buildSandboxEnv: LC_ALL branch ──────────────────────────────
