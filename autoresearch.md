@@ -1,61 +1,50 @@
-# Autoresearch: Test Coverage Improvement
+# Autoresearch: Pre-push高速化（品質維持）
 
 ## Goal
-Improve test coverage across all modules, targeting >98% statement coverage.
+husky prepushフックの実行時間を短縮する（品質を損なわずに）
 
 ## Metric
-- **Primary**: uncovered statements (lower is better)
-- **Baseline**: 183 uncovered (out of 2270 total)
+- **Primary**: prepush実行時間 (ms)
+- **Baseline**: 41200ms
+- **Current**: 12800ms (-69.0%)
 - **Direction**: lower is better
 
-## Current Status
-- **Score**: 3652 (best, -10.3% from baseline 4072)
-- **Source LOC**: 6288
-- **Source files**: 20
-- **Total tests**: 1492
-- **Complexity functions**: 2
-- **Duplication**: 270
-- **Review risk**: 9
+## Session: Pre-push高速化 (2026-05-17)
 
-## Session: Maintenance Cost Reduction (2026-05-17)
+| # | Description | Time | Δ | Status |
+|---|---|---|---|---|
+| 0 | Baseline: 直列 typecheck + 全テスト | 41.2s | - | baseline |
+| 1 | 並列prepushスクリプト (scripts/prepush-parallel.sh) | 20.9s | -49.3% | keep |
+| 2 | subagent MIN_WAIT_TIMEOUT_MS オーバーライド可能化 + テスト10ms | 14.5s | -30.6% | keep |
+| 3 | sandbox timeoutテスト 1000/1500ms→300/500ms | 12.8s | -11.7% | keep |
 
-| # | Description | Δ Score | Status |
-|---|---|---|---|
-| 0 | Baseline | 4072 | baseline |
-| 1 | (previous session baseline) | - | baseline |
-| 2 | uw() helper for updateWidget | +20 | discard |
-| 3 | Move git helpers to runner.ts | -95 | keep |
-| 4 | Move loop helpers to runner.ts | -100 | keep |
-| 5 | Extract parseRunEntry from reconstructState | -10 | keep |
-| 6 | Delete unused persistence.ts | -115 | keep |
-| 7 | Merge render.ts into types.ts | -100 | keep |
-| 8 | notifyError helper in goal/index.ts | 0 | discard |
-| 9 | Merge plan-mode/utils.ts into index.ts | FAIL | discard |
+## Changes Made
+### 1. 並列実行スクリプト (scripts/prepush-parallel.sh)
+- typecheck + 6モジュールのテストを全てバックグラウンドプロセスで並列実行
+- 一時ファイルにログをリダイレクト、失敗時のみ出力表示
+- 品質: 同じチェックを同じ品質で実行
+
+### 2. subagent MIN_WAIT_TIMEOUT_MS 設定可能化
+- `agentControl.ts`: コンストラクタに `minWaitTimeout` パラメータ追加
+- `index.ts`: `subagent-min-wait-timeout-ms` フラグ追加
+- テスト: `minWaitTimeout=10` で1秒待機テストを10msに短縮
+- 品質: タイムアウトロジックは同じ、待機時間のみ短縮
+
+### 3. sandbox テストタイムアウト短縮
+- timeoutMs: 1000→300, 1500→500
+- プロセスkillの動作検証は短いタイムアウトでも可能
+- 品質: kill動作の検証精度は維持
+
+## Remaining Bottleneck
+- sandbox: ~10.8s（実プロセス起動の統合テスト、物理限界）
+- これ以上の短縮にはテストの性質を変える必要がある
 
 ## Rules
-- All tests must pass (`npm test`)
-- No behavior changes to source code
-- Coverage measured per-module via `npx vitest run --coverage`
-
-## Per-Module Coverage
-| Module | Stmts | Branch | Tests |
-|--------|-------|--------|-------|
-| goal | 96.98% | 89.21% | 205 |
-| autoresearch | 97.06% | 90.07% | 168 |
-| plan-mode | 98.84% | 97.04% | 364 |
-| sandbox | 98.09% | 96.10% | 465 |
-| subagent | 99.43% | 93.71% | 235 |
-| zip-repo | 100% | 100% | 57 |
+- All tests must pass (`npm run prepush`)
+- No behavior changes to production source code
+- Quality equivalence: same checks, same logic paths
 
 ## Benchmark
 ```bash
-cd /Users/mekann/github/pi-plugin/mekann && npm test
-```
-
-## Coverage per module
-```bash
-for dir in autoresearch goal plan-mode sandbox subagent; do
-  cd $dir && npx vitest run --coverage 2>&1 | grep -E '(File|% |Statements)'
-  cd ..
-done
+cd /Users/mekann/github/pi-plugin/mekann && npm run prepush
 ```
