@@ -17,3 +17,6 @@ coverage/
 Thumbs.db
 /doc/pi-autoresearch
 /doc/ralph
+
+# Pi autoresearch artifacts
+.pi/

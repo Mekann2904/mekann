@@ -5,7 +5,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -177,6 +177,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		completedAt: number;
 		createdAt: number;
 		artifactDir?: string;
+		artifactFailed?: boolean;
+		runSeq?: number;
 	}> = new Map();
 
 	function loopInfo(): LoopInfo {
@@ -375,6 +377,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		completedAt: number;
 		createdAt: number;
 		artifactDir?: string;
+		artifactFailed?: boolean;
+		runSeq?: number;
 	} | undefined {
 		// 1. Memory map
 		const mem = runResultMap.get(piRunId);
@@ -390,6 +394,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				completedAt: loaded.completedAt,
 				createdAt: loaded.createdAt,
 				artifactDir: loaded.artifactDir,
+				runSeq: loaded.runSeq,
 			};
 		}
 
@@ -477,8 +482,18 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			try {
 				ensureSessionDir(ctx.cwd);
 				artifactDir = createRunArtifactDir(ctx.cwd, state.sessionId, piRunId, params.command, runningExperiment.startedAt);
-			} catch {
+			} catch (e) {
 				artifactFailed = true;
+			}
+
+			// P0: artifact dir 作成失敗時は benchmark を実行しない（fail-fast）
+			if (!artifactDir || artifactFailed) {
+				runningExperiment = null;
+				updateWidget(ctx, state, active, runningExperiment, loopInfo());
+				return {
+					content: [{ type: "text", text: `[ERROR] artifact directory を作成できないため benchmark を実行しません。\n長時間 run の監査不能を防ぐため、先に修正してください。\nエラー詳細: ディレクトリ ${path.join(ctx.cwd, ".pi", "autoresearch", state.sessionId, "runs", piRunId)} の作成に失敗しました。` }],
+					details: {},
+				};
 			}
 
 			// Events ledger: started
@@ -506,19 +521,22 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			if (result.passed) {
 				checks = await runChecks(ctx.cwd, signal, params.checks_timeout_seconds);
 			} else {
-				checks = { passed: null, timedOut: false, output: "", durationSeconds: 0 };
+				checks = { passed: null, timedOut: false, output: "", stdout: "", stderr: "", durationSeconds: 0 };
 			}
 			lastChecks = checks;
 			lastRunResult = { ...result, piRunId };
 			lastRunChecks = checks;
 
-			// Store in memory map
-			runResultMap.set(piRunId, { result, checks, startedAt, completedAt, createdAt, artifactDir });
+			// Runs ledger — use runs.jsonl line count for runSeq (not state.runCount)
+			const runSeq = nextRunSeq(ctx.cwd, state.sessionId);
+
+			// Store in memory map (with runSeq and artifactFailed)
+			runResultMap.set(piRunId, { result, checks, startedAt, completedAt, createdAt, artifactDir, artifactFailed, runSeq });
 
 			// Write remaining artifacts (manifest, result.json, metrics.json, checks)
 			if (artifactDir) {
 				try {
-					writeRunArtifacts(artifactDir, result, piRunId, startedAt, completedAt);
+					writeRunArtifacts(artifactDir, result, piRunId, startedAt, completedAt, runSeq);
 					if (checks.passed !== null) writeChecksArtifacts(artifactDir, checks);
 				} catch {
 					artifactFailed = true;
@@ -526,8 +544,6 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			}
 			if (!artifactDir) artifactFailed = true;
 
-			// Runs ledger — use runs.jsonl line count for runSeq (not state.runCount)
-			const runSeq = nextRunSeq(ctx.cwd, state.sessionId);
 			appendToJsonl(runsLedgerPath(ctx.cwd, state.sessionId), {
 				schemaVersion: 1, runSeq, piRunId,
 				externalRunId: result.externalRunId,
@@ -658,12 +674,25 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					);
 				}
 
-				// P1: artifact が保存されていること
-				if (!matchedRunData?.artifactDir && !runResultMap.has(matchedPiRunId ?? "")) {
-					// Check if artifact dir exists on disk
-					const runDir = getRunArtifactDir(ctx.cwd, state.sessionId, matchedPiRunId ?? "");
-					if (!fs.existsSync(path.join(runDir, "manifest.json"))) {
-						reasons.push("run artifact が保存されていません。artifact がない run は監査不能のため keep できません。");
+				// P0: artifactFailed チェック
+				if (runResultMap.has(matchedPiRunId ?? "")) {
+					const rd = runResultMap.get(matchedPiRunId ?? "");
+					if (rd?.artifactFailed) {
+						reasons.push("artifact 保存に失敗した run は監査不能のため keep できません。");
+					}
+				}
+
+				// P0: artifactDir + manifest.json + metrics.json の存在確認
+				const artifactDirPath = matchedRunData?.artifactDir
+					?? getRunArtifactDir(ctx.cwd, state.sessionId, matchedPiRunId ?? "");
+				if (!fs.existsSync(artifactDirPath)) {
+					reasons.push("run artifact directory が存在しません。監査不能のため keep できません。");
+				} else {
+					if (!fs.existsSync(path.join(artifactDirPath, "manifest.json"))) {
+						reasons.push("manifest.json が存在しません。監査不能のため keep できません。");
+					}
+					if (!fs.existsSync(path.join(artifactDirPath, "metrics.json"))) {
+						reasons.push("metrics.json が存在しません。監査不能のため keep できません。");
 					}
 				}
 
@@ -681,6 +710,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			const changedFiles = getChangedFiles(ctx.cwd);
 			let commit = params.commit ?? preCommit;
 			const run = state.runCount + 1;
+
+			// P0: runSeq は run 時採番値を使用（log 順ではなく実行順）
+			const runSeq = matchedRunData?.runSeq ?? run;
 
 			const entry: RunEntry = {
 				type: "run", run, runId: matchedPiRunId, piRunId: matchedPiRunId,
@@ -710,7 +742,12 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			// --- Git operations ---
 			if (params.status === "keep") {
 				const gr = gitAutoCommit(ctx.cwd, `${params.description}\n\nResult: ${JSON.stringify({ status: params.status, [state.metricName]: params.metric })}`);
-				commit = gr.committed ? (gr.commit ?? commit) : commit;
+				if (gr.committed) {
+					commit = gr.commit ?? commit;
+				} else if (gr.error) {
+					// P1: commit error を明示的に表示
+					console.error(`[autoresearch] gitAutoCommit error: ${gr.error}`);
+				}
 				entry.postCommit = commit;
 			} else {
 				gitAutoRevert(ctx.cwd);
@@ -723,7 +760,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			// Latest pointer
 			writePointer(latestPointerPath(ctx.cwd, state.sessionId), {
-				piRunId: matchedPiRunId ?? "", runSeq: run, metric: params.metric,
+				piRunId: matchedPiRunId ?? "", runSeq, metric: params.metric,
 				timestamp: entry.timestamp, gitCommit: entry.postCommit ?? preCommit,
 			});
 
@@ -732,7 +769,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				const cur = readPointer(bestPointerPath(ctx.cwd, state.sessionId));
 				if (isBestPointerMetric(params.metric, cur, state.direction)) {
 					writePointer(bestPointerPath(ctx.cwd, state.sessionId), {
-						piRunId: matchedPiRunId ?? "", runSeq: run, metric: params.metric,
+						piRunId: matchedPiRunId ?? "", runSeq, metric: params.metric,
 						timestamp: entry.timestamp, gitCommit: entry.postCommit ?? preCommit,
 					});
 				}
@@ -740,7 +777,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			// Metrics ledger
 			appendToJsonl(metricsLedgerPath(ctx.cwd, state.sessionId), {
-				schemaVersion: 1, runSeq: run, piRunId: matchedPiRunId ?? "",
+				schemaVersion: 1, runSeq, piRunId: matchedPiRunId ?? "",
 				externalRunId: matchedResult?.externalRunId ?? null,
 				createdAt: matchedRunData?.createdAt ?? entry.timestamp,
 				startedAt: matchedRunData?.startedAt ?? entry.timestamp,
@@ -771,7 +808,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			// Event ledger
 			appendToJsonl(eventsLedgerPath(ctx.cwd, state.sessionId), {
 				schemaVersion: 1, event: "logged", piRunId: matchedPiRunId ?? "",
-				timestamp: entry.timestamp, details: { status: params.status, metric: params.metric, run },
+				timestamp: entry.timestamp, details: { status: params.status, metric: params.metric, runSeq },
 			} satisfies EventLedgerEntry);
 
 			// --- Main JSONL ---

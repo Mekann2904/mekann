@@ -22,6 +22,8 @@ export interface ChecksResult {
 	passed: boolean | null;
 	timedOut: boolean;
 	output: string;
+	stdout: string;
+	stderr: string;
 	durationSeconds: number;
 }
 
@@ -152,7 +154,7 @@ export async function runChecks(
 	const checksPath = path.join(cwd, "autoresearch.checks.sh");
 
 	if (!fs.existsSync(checksPath)) {
-		return { passed: null, timedOut: false, output: "", durationSeconds: 0 };
+		return { passed: null, timedOut: false, output: "", stdout: "", stderr: "", durationSeconds: 0 };
 	}
 
 	const result = await runCommand(`bash "${checksPath}"`, cwd, timeoutSeconds * 1000, signal);
@@ -164,6 +166,8 @@ export async function runChecks(
 		passed: result.passed,
 		timedOut: result.timedOut,
 		output: tailOutput,
+		stdout: result.stdout,
+		stderr: result.stderr,
 		durationSeconds: result.durationSeconds,
 	};
 }
@@ -218,6 +222,46 @@ export async function runCommand(
 		let stdout = "";
 		let stderr = "";
 
+		// --- Streaming parse state (captures METRIC/RUN_ID/etc even after 1MB) ---
+		const sp = {
+			metrics: {} as Record<string, number>,
+			extRunId: null as string | null,
+			extArtifactDir: null as string | null,
+			extSummaryPath: null as string | null,
+			extViewlogPath: null as string | null,
+			extMetricsPath: null as string | null,
+			stdoutBuf: "",
+			stderrBuf: "",
+		};
+
+		function spLine(line: string): void {
+			const t = line.trim();
+			if (t.startsWith("METRIC ")) {
+				const rest = t.slice(7);
+				const eq = rest.indexOf("=");
+				if (eq >= 0) {
+					const n = rest.slice(0, eq).trim();
+					const v = Number(rest.slice(eq + 1).trim());
+					if (n && !isNaN(v)) sp.metrics[n] = v;
+				}
+			}
+			const m = t.match(/^(RUN_ID|ARTIFACT_DIR|SUMMARY_PATH|VIEWLOG_PATH|METRICS_PATH)\s+(.+)$/);
+			if (m) switch (m[1]) {
+				case "RUN_ID": sp.extRunId = m[2].trim(); break;
+				case "ARTIFACT_DIR": sp.extArtifactDir = m[2].trim(); break;
+				case "SUMMARY_PATH": sp.extSummaryPath = m[2].trim(); break;
+				case "VIEWLOG_PATH": sp.extViewlogPath = m[2].trim(); break;
+				case "METRICS_PATH": sp.extMetricsPath = m[2].trim(); break;
+			}
+		}
+
+		function spChunk(chunk: string, bufKey: "stdoutBuf" | "stderrBuf"): void {
+			sp[bufKey] += chunk;
+			const lines = sp[bufKey].split("\n");
+			sp[bufKey] = lines.pop() ?? "";
+			for (const l of lines) spLine(l);
+		}
+
 		child.stdout.on("data", (chunk: Buffer) => {
 			const str = chunk.toString("utf8");
 			if (Buffer.byteLength(stdout, "utf8") < CAPTURE_MAX_BYTES) {
@@ -227,6 +271,8 @@ export async function runCommand(
 			if (stdoutStream) {
 				stdoutStream.write(filterSecrets(str));
 			}
+			// Streaming parse for metrics/external info
+			spChunk(str, "stdoutBuf");
 		});
 
 		child.stderr.on("data", (chunk: Buffer) => {
@@ -237,6 +283,8 @@ export async function runCommand(
 			if (stderrStream) {
 				stderrStream.write(filterSecrets(str));
 			}
+			// Streaming parse for metrics (can appear in stderr too)
+			spChunk(str, "stderrBuf");
 		});
 
 		/** Kill the entire process group (leader + all descendants). */
@@ -265,16 +313,26 @@ export async function runCommand(
 			clearTimeout(timer);
 			signal?.removeEventListener("abort", abortHandler);
 
-			// Close streaming files
-			stdoutStream?.end();
-			stderrStream?.end();
-
 			const durationSeconds = (Date.now() - t0) / 1000;
-			const combined = stdout + (stderr ? "\n" + stderr : "");
-			const parsed = parseMetricLines(combined);
-			const externalInfo = parseExternalInfo(stdout);
 
-			resolve({
+			// Flush remaining streaming line buffers
+			if (sp.stdoutBuf) spLine(sp.stdoutBuf);
+			if (sp.stderrBuf) spLine(sp.stderrBuf);
+
+			// Merge: streaming captures everything including >1MB content
+			const combined = stdout + (stderr ? "\n" + stderr : "");
+			const inMemParsed = parseMetricLines(combined);
+			const inMemExt = parseExternalInfo(stdout);
+			const parsed = { ...inMemParsed, ...sp.metrics };
+			const externalInfo: ExternalInfo = {
+				externalRunId: sp.extRunId ?? inMemExt.externalRunId,
+				externalArtifactDir: sp.extArtifactDir ?? inMemExt.externalArtifactDir,
+				externalSummaryPath: sp.extSummaryPath ?? inMemExt.externalSummaryPath,
+				externalViewlogPath: sp.extViewlogPath ?? inMemExt.externalViewlogPath,
+				externalMetricsPath: sp.extMetricsPath ?? inMemExt.externalMetricsPath,
+			};
+
+			const result: RunResult = {
 				command,
 				exitCode: code,
 				durationSeconds,
@@ -282,13 +340,28 @@ export async function runCommand(
 				passed: code === 0 && !timedOut,
 				output: truncateTail(combined, OUTPUT_MAX_LINES, OUTPUT_MAX_BYTES),
 				parsedMetrics: Object.keys(parsed).length > 0 ? parsed : null,
-				checks: { passed: null, timedOut: false, output: "", durationSeconds: 0 },
+				checks: { passed: null, timedOut: false, output: "", stdout: "", stderr: "", durationSeconds: 0 },
 				stdout,
 				stderr,
 				signal: sig,
 				logFilesWritten,
 				...externalInfo,
-			});
+			};
+
+			// Wait for stream flush before resolving
+			const flushes: Promise<void>[] = [];
+			if (stdoutStream && !stdoutStream.destroyed) {
+				flushes.push(new Promise<void>(r => { stdoutStream!.end(() => r()); }));
+			}
+			if (stderrStream && !stderrStream.destroyed) {
+				flushes.push(new Promise<void>(r => { stderrStream!.end(() => r()); }));
+			}
+
+			if (flushes.length > 0) {
+				Promise.all(flushes).then(() => resolve(result));
+			} else {
+				resolve(result);
+			}
 		}
 
 		child.on("close", (code, sig) => finish(code, sig ?? killSignal));
@@ -405,7 +478,10 @@ export function createRunArtifactDir(
 		throw new Error(`Run artifact directory already exists: ${runDir}`);
 	}
 
-	fs.mkdirSync(runDir, { recursive: true });
+	// Create parent only (recursive), then runDir exclusively (non-recursive)
+	const parentDir = path.dirname(runDir);
+	if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
+	fs.mkdirSync(runDir, { recursive: false });
 
 	fs.writeFileSync(path.join(runDir, "command.txt"), command, "utf8");
 
@@ -439,6 +515,7 @@ export function writeRunArtifacts(
 	piRunId: string,
 	startedAt: number,
 	completedAt: number,
+	runSeq?: number,
 ): void {
 	// stdout.log — skip if streaming already wrote content
 	const stdoutPath = path.join(runDir, "stdout.log");
@@ -462,6 +539,7 @@ export function writeRunArtifacts(
 	// manifest.json
 	const manifest = {
 		piRunId,
+		runSeq,
 		command: result.command,
 		startedAt,
 		completedAt,
@@ -493,6 +571,13 @@ export function writeRunArtifacts(
 
 /** Write checks result to the artifact directory. */
 export function writeChecksArtifacts(runDir: string, checksResult: ChecksResult): void {
+	// Save checks stdout/stderr logs
+	if (checksResult.stdout) {
+		fs.writeFileSync(path.join(runDir, "checks.stdout.log"), filterSecrets(checksResult.stdout), "utf8");
+	}
+	if (checksResult.stderr) {
+		fs.writeFileSync(path.join(runDir, "checks.stderr.log"), filterSecrets(checksResult.stderr), "utf8");
+	}
 	fs.writeFileSync(path.join(runDir, "checks-result.json"), JSON.stringify(checksResult, null, 2), "utf8");
 	const manifestPath = path.join(runDir, "manifest.json");
 	if (fs.existsSync(manifestPath)) {
@@ -528,7 +613,7 @@ export function loadRunFromArtifact(
 		const m = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 
 		// Read checks result if available
-		let checks: ChecksResult = { passed: null, timedOut: false, output: "", durationSeconds: 0 };
+		let checks: ChecksResult = { passed: null, timedOut: false, output: "", stdout: "", stderr: "", durationSeconds: 0 };
 		const checksPath = path.join(runDir, "checks-result.json");
 		if (fs.existsSync(checksPath)) {
 			checks = JSON.parse(fs.readFileSync(checksPath, "utf8"));
@@ -568,6 +653,7 @@ export function loadRunFromArtifact(
 			completedAt: m.completedAt ?? 0,
 			createdAt: m.startedAt ?? 0,
 			artifactDir: runDir,
+			runSeq: m.runSeq,
 		};
 	} catch {
 		return null;
@@ -585,7 +671,7 @@ export function loadRunFromArtifact(
 export function gitAutoCommit(cwd: string, message: string): { committed: boolean; commit?: string; error?: string } {
 	try {
 		// .pi/ を除外して git add
-		execFileSync("bash", ["-c", "git add -A -- ':!.pi'"], { cwd, encoding: "utf8", timeout: 10_000 });
+		execFileSync("bash", ["-c", "git add -A -- . ':(exclude).pi/**'"], { cwd, encoding: "utf8", timeout: 10_000 });
 
 		try {
 			execFileSync("git", ["diff", "--cached", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000 });

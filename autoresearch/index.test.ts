@@ -15,7 +15,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({}));
 vi.mock("@earendil-works/pi-ai", () => ({
 	StringEnum: (values: string[]) => values,
 }));
-vi.mock("typebox", () => ({
+vi.mock("@sinclair/typebox", () => ({
 	Type: {
 		Object: (props: unknown) => props,
 		String: (opts?: unknown) => opts ?? {},
@@ -3048,5 +3048,192 @@ describe("autoresearchExtension", () => {
 
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
+	});
+
+	// ── P0/P1 fix verification tests ────────────────────────────────────
+
+	describe("P0: .gitignore includes .pi/", () => {
+		it(".gitignore contains .pi/", () => {
+			const gitignorePath = path.resolve(__dirname, "..", ".gitignore");
+			expect(fs.existsSync(gitignorePath)).toBe(true);
+			const content = fs.readFileSync(gitignorePath, "utf8");
+			expect(content).toContain(".pi/");
+		});
+	});
+
+	describe("P0: artifact dir creation failure prevents benchmark", () => {
+		it("returns error when artifact dir creation fails", async () => {
+			const testDir = "/tmp/test-ar-artfail-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await cmdHandler("on", ctx);
+
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			await initTool.execute("tc-init", { name: "test", metric_name: "ms" }, undefined, undefined, ctx);
+
+			// Make .pi/ read-only to prevent artifact dir creation
+			const piDir = path.join(testDir, ".pi");
+			fs.mkdirSync(piDir, { recursive: true });
+			// Create the session dir structure but make .pi unwritable
+			fs.chmodSync(piDir, 0o444);
+
+			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
+			const result = await runTool.execute(
+				"tc-run-artfail",
+			{ command: "echo hello" },
+			undefined, undefined, ctx,
+			);
+
+			expect(result.content[0].text).toContain("[ERROR]");
+			expect(result.content[0].text).toContain("benchmark を実行しません");
+
+			// Cleanup
+			fs.chmodSync(piDir, 0o755);
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+	});
+
+	describe("P0: keep validation requires manifest.json and metrics.json", () => {
+		it("rejects keep when manifest.json is missing", async () => {
+			const testDir = "/tmp/test-ar-nomanifest-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await cmdHandler("on", ctx);
+
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			await initTool.execute("tc-init", { name: "test", metric_name: "ms" }, undefined, undefined, ctx);
+
+			// Run a benchmark — this creates artifacts normally
+			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
+			const runResult = await runTool.execute(
+				"tc-run-nm", { command: "echo METRIC ms=42" }, undefined, undefined, ctx,
+			);
+
+			// Delete manifest.json to simulate partial artifact failure
+			const sessDirs = fs.readdirSync(path.join(testDir, ".pi", "autoresearch"));
+			const sessionId = sessDirs[0];
+			const manifestPath = path.join(testDir, ".pi", "autoresearch", sessionId, "runs", runResult.details.piRunId, "manifest.json");
+			if (fs.existsSync(manifestPath)) fs.unlinkSync(manifestPath);
+
+			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
+			const result = await logTool.execute(
+				"tc-log-nm", { metric: 42, status: "keep", description: "no manifest", runId: runResult.details.piRunId },
+				undefined, undefined, ctx,
+			);
+			expect(result.content[0].text).toContain("[ERROR]");
+			expect(result.content[0].text).toContain("manifest.json");
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
+		it("rejects keep when metrics.json is missing", async () => {
+			const testDir = "/tmp/test/ar-nometrics-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await cmdHandler("on", ctx);
+
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			await initTool.execute("tc-init", { name: "test", metric_name: "ms" }, undefined, undefined, ctx);
+
+			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
+			const runResult = await runTool.execute(
+				"tc-run-nometrics", { command: "echo METRIC ms=42" }, undefined, undefined, ctx,
+			);
+
+			// Delete metrics.json
+			const sessDirs = fs.readdirSync(path.join(testDir, ".pi", "autoresearch"));
+			const sessionId = sessDirs[0];
+			const metricsPath = path.join(testDir, ".pi", "autoresearch", sessionId, "runs", runResult.details.piRunId, "metrics.json");
+			if (fs.existsSync(metricsPath)) fs.unlinkSync(metricsPath);
+
+			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
+			const result = await logTool.execute(
+				"tc-log-nometrics", { metric: 42, status: "keep", description: "no metrics", runId: runResult.details.piRunId },
+				undefined, undefined, ctx,
+			);
+			expect(result.content[0].text).toContain("[ERROR]");
+			expect(result.content[0].text).toContain("metrics.json");
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+	});
+
+	describe("P0: runSeq consistency between runs.jsonl and pointers", () => {
+		it("metrics.jsonl and pointer runSeq match runs.jsonl runSeq", async () => {
+			const testDir = "/tmp/test-ar-seqmatch-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await cmdHandler("on", ctx);
+
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			await initTool.execute("tc-init", { name: "test", metric_name: "ms" }, undefined, undefined, ctx);
+
+			// Run twice, log in between
+			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
+			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
+
+			const run1 = await runTool.execute("tc-rs1", { command: "echo METRIC ms=100" }, undefined, undefined, ctx);
+			await logTool.execute("tc-l1", { metric: 100, status: "keep", description: "first", runId: run1.details.piRunId }, undefined, undefined, ctx);
+
+			const run2 = await runTool.execute("tc-rs2", { command: "echo METRIC ms=80" }, undefined, undefined, ctx);
+			await logTool.execute("tc-l2", { metric: 80, status: "keep", description: "second", runId: run2.details.piRunId }, undefined, undefined, ctx);
+
+			const sessDirs = fs.readdirSync(path.join(testDir, ".pi", "autoresearch"));
+			const sessionId = sessDirs[0];
+			const sessDir = path.join(testDir, ".pi", "autoresearch", sessionId);
+
+			// Verify runs.jsonl
+			const runsContent = fs.readFileSync(path.join(sessDir, "runs.jsonl"), "utf8").trim().split("\n");
+			const runSeqs = runsContent.map(l => JSON.parse(l).runSeq);
+			expect(runSeqs).toEqual([1, 2]);
+
+			// Verify metrics.jsonl runSeq matches
+			const metricsContent = fs.readFileSync(path.join(sessDir, "metrics.jsonl"), "utf8").trim().split("\n");
+			const metricSeqs = metricsContent.map(l => JSON.parse(l).runSeq);
+			expect(metricSeqs).toEqual([1, 2]);
+
+			// Verify pointers
+			const latest = JSON.parse(fs.readFileSync(path.join(sessDir, "latest.pointer.json"), "utf8"));
+			expect(latest.runSeq).toBe(2);
+			expect(latest.metric).toBe(80);
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+	});
+
+	describe("P0: streaming parse captures METRIC after 1MB in tool context", () => {
+		it("captures METRIC emitted after large output", async () => {
+			const testDir = "/tmp/test-ar-stream-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await cmdHandler("on", ctx);
+
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			await initTool.execute("tc-init", { name: "test", metric_name: "score" }, undefined, undefined, ctx);
+
+			// Generate >1MB output, then emit METRIC
+			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
+			const result = await runTool.execute(
+				"tc-run-stream",
+			{ command: "for i in $(seq 1 150000); do echo \"padding $i\"; done && echo METRIC score=99 && echo RUN_ID stream-test" },
+			undefined, undefined, ctx,
+			);
+
+			expect(result.content[0].text).toContain("METRIC score=99");
+			expect(result.details.parsedMetrics).toMatchObject({ score: 99 });
+			expect(result.details.externalRunId).toBe("stream-test");
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		}, 35000);
 	});
 });
