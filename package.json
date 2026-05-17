@@ -18,7 +18,7 @@
     "test:goal": "cd goal && npm test",
     "prepare": "husky",
     "typecheck": "cd sandbox && npm run typecheck && cd ../subagent && npm run typecheck",
-    "prepush": "npm run typecheck && npm test"
+    "prepush": "bash scripts/prepush-parallel.sh"
   },
   "pi": {
     "extensions": [
