@@ -3424,4 +3424,39 @@ describe("autoresearchExtension", () => {
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 	});
+
+	describe("P0: keep validation requires result.json", () => {
+		it("rejects keep when result.json is missing", async () => {
+			const testDir = "/tmp/test-ar-noresult-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await cmdHandler("on", ctx);
+
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			await initTool.execute("tc-init", { name: "test", metric_name: "ms" }, undefined, undefined, ctx);
+
+			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
+			const runResult = await runTool.execute(
+				"tc-run-nr", { command: "echo METRIC ms=42" }, undefined, undefined, ctx,
+			);
+
+			// Delete result.json
+			const sessDirs = fs.readdirSync(path.join(testDir, ".pi", "autoresearch"));
+			const sessionId = sessDirs[0];
+			const resultPath = path.join(testDir, ".pi", "autoresearch", sessionId, "runs", runResult.details.piRunId, "result.json");
+			if (fs.existsSync(resultPath)) fs.unlinkSync(resultPath);
+
+			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
+			const result = await logTool.execute(
+				"tc-log-nr", { metric: 42, status: "keep", description: "no result", runId: runResult.details.piRunId },
+				undefined, undefined, ctx,
+			);
+			expect(result.content[0].text).toContain("[ERROR]");
+			expect(result.content[0].text).toContain("result.json");
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+	});
 });
