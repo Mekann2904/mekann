@@ -530,6 +530,29 @@ describe("config persistence", () => {
 			rmSync(tmpDir, { recursive: true });
 		}
 	});
+
+	it("updateConfigField reloads latest config to avoid stale-session resurrection", () => {
+		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
+		const path = `${tmpDir}/plan-mode.json`;
+
+		try {
+			const staleConfig = createDefaultConfig();
+			staleConfig.models.main = { provider: "anthropic", modelId: "sonnet" };
+
+			const latestConfig = createDefaultConfig();
+			latestConfig.models.main = { provider: "openai-codex", modelId: "gpt-5.5" };
+			saveModelConfig(latestConfig, path);
+
+			updateConfigField(staleConfig, "thinking", "main", "medium", path);
+
+			const loaded = loadModelConfig(path);
+			expect(loaded.models.main).toEqual({ provider: "openai-codex", modelId: "gpt-5.5" });
+			expect(loaded.thinking.main).toBe("medium");
+			expect(staleConfig.models.main).toEqual({ provider: "openai-codex", modelId: "gpt-5.5" });
+		} finally {
+			rmSync(tmpDir, { recursive: true });
+		}
+	});
 });
 
 // ─── State with config ────────────────────────────────────────────
