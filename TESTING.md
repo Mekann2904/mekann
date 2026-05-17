@@ -55,6 +55,36 @@ GitHub Actions runs all tests on every push/PR:
 - `sandbox-unit`: Ubuntu (unit tests only)
 - `sandbox-macos`: macOS (full integration with sandbox-exec)
 - `zip-repo`: Ubuntu (unit tests)
+- `subagent`: Ubuntu (unit tests + typecheck)
+- `autoresearch`: Ubuntu (unit tests)
+- `goal`: Ubuntu (unit tests)
+
+## Pre-push Hook (Husky)
+
+`git push` 前に [Husky](https://typicode.github.io/husky/) が自動的に `npm run prepush` を実行する。
+
+```
+prepush = typecheck + npm test
+  ├── sandbox typecheck
+  ├── subagent typecheck
+  ├── plan-mode tests
+  ├── sandbox tests
+  ├── subagent tests
+  ├── zip-repo tests
+  ├── autoresearch tests
+  └── goal tests
+```
+
+```bash
+# 手動実行
+npm run prepush
+
+# 型チェックのみ
+npm run typecheck
+
+# hook を一時的に無視して push
+git push --no-verify
+```
 
 ## Adding Tests
 

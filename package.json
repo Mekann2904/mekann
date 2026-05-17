@@ -15,7 +15,10 @@
     "test:subagent": "cd subagent && npm test",
     "test:zip-repo": "cd zip-repo && npm test",
     "test:autoresearch": "cd autoresearch && npm test",
-    "test:goal": "cd goal && npm test"
+    "test:goal": "cd goal && npm test",
+    "prepare": "husky",
+    "typecheck": "cd sandbox && npm run typecheck && cd ../subagent && npm run typecheck",
+    "prepush": "npm run typecheck && npm test"
   },
   "pi": {
     "extensions": [
@@ -31,6 +34,7 @@
     ]
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^4.1.6"
+    "@vitest/coverage-v8": "^4.1.6",
+    "husky": "^9.1.7"
   }
 }
