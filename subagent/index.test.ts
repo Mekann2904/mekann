@@ -571,7 +571,7 @@ describe("Mailbox", () => {
   });
 
   it("waitForUpdate resolves when item is enqueued", async () => {
-    const promise = mailbox.waitForUpdate("/root/task1", 0, 2000);
+    const promise = mailbox.waitForUpdate("/root/task1", 0, 200);
 
     // Enqueue after a small delay
     setTimeout(() => {
@@ -591,7 +591,7 @@ describe("Mailbox", () => {
   });
 
   it("clear rejects all waiters", async () => {
-    const promise = mailbox.waitForUpdate("/root/task1", 0, 5000);
+    const promise = mailbox.waitForUpdate("/root/task1", 0, 100);
     mailbox.clear();
     const result = await promise;
     expect(result.mailbox).toHaveLength(0);
@@ -1040,13 +1040,14 @@ describe("extension entry point", () => {
     expect(Object.keys(mock._commands)).toContain("close-agent");
   });
 
-  it("registers 3 flags", async () => {
+  it("registers 4 flags", async () => {
     const mock = createMockApi();
     await loadExtension(mock);
     const flagNames = mock._registeredFlags.map((f) => f.name);
     expect(flagNames).toContain("subagent-max-agents");
     expect(flagNames).toContain("subagent-max-depth");
     expect(flagNames).toContain("subagent-default-wait-timeout-ms");
+    expect(flagNames).toContain("subagent-min-wait-timeout-ms");
   });
 
   it("registers session_start and session_shutdown hooks", async () => {
@@ -1859,7 +1860,7 @@ describe("AgentControl", () => {
   describe("wait()", () => {
     it("returns timed_out when no updates", async () => {
       const pi = createControlMockPi();
-      const control = new (AgentControl as any)(pi, 4, 2, 50); // 50ms default timeout
+      const control = new (AgentControl as any)(pi, 4, 2, 50, 10); // 50ms default timeout, 10ms min
       control.registry.ensureRoot("root");
 
       const result = await control.wait({}, baseCtx);
@@ -1890,7 +1891,7 @@ describe("AgentControl", () => {
 
     it("tracks consumed seq to prevent re-delivery", async () => {
       const pi = createControlMockPi();
-      const control = new (AgentControl as any)(pi, 4, 2, 50);
+      const control = new (AgentControl as any)(pi, 4, 2, 50, 10);
       control.registry.ensureRoot("root");
 
       // Enqueue item
@@ -1914,11 +1915,10 @@ describe("AgentControl", () => {
 
     it("clamps timeout between min and max", async () => {
       const pi = createControlMockPi();
-      const control = new (AgentControl as any)(pi, 4, 2);
+      const control = new (AgentControl as any)(pi, 4, 2, 50, 10);
       control.registry.ensureRoot("root");
 
-      // Very small timeout should still be clamped to min (1000ms in source)
-      // but we use 50ms timeout via params — the wait should still work
+      // Very small timeout should still be clamped to min (now 10ms)
       const result = await control.wait({ timeout_ms: 50 }, baseCtx);
       expect(result.timed_out).toBe(true);
     });
@@ -2422,7 +2422,7 @@ describe("Mailbox additional", () => {
     const mailbox = new Mailbox();
 
     // Start a waiter for /root
-    const waitPromise = mailbox.waitForUpdate("/root", 0, 2000);
+    const waitPromise = mailbox.waitForUpdate("/root", 0, 200);
 
     // Append a final_message event with parentAgentId
     // This triggers notifyAllWaiters which checks all waiters
@@ -2456,7 +2456,7 @@ describe("Mailbox additional", () => {
   it("waitForUpdate resolves when notified by event (not mailbox)", async () => {
     const mailbox = new Mailbox();
 
-    const waitPromise = mailbox.waitForUpdate("/root/task1", 0, 2000);
+    const waitPromise = mailbox.waitForUpdate("/root/task1", 0, 200);
 
     setTimeout(() => {
       mailbox.appendEvent({
@@ -2581,6 +2581,7 @@ describe("extension tool execute handlers", () => {
     const mock = createMockApi();
     const { default: subagentExtension } = await import("./index.js");
     subagentExtension(mock as any);
+    mock._flags = { "subagent-min-wait-timeout-ms": "10" };
     await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
 
     const spawnTool = mock._registeredTools.find((t: any) => t.name === "spawn_agent")!;
@@ -2810,6 +2811,7 @@ describe("extension command handlers", () => {
     const mock = createMockApi();
     const { default: subagentExtension } = await import("./index.js");
     subagentExtension(mock as any);
+    mock._flags = { "subagent-min-wait-timeout-ms": "10" };
     await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
 
     const notifications: string[] = []
@@ -2827,6 +2829,7 @@ describe("extension command handlers", () => {
     const mock = createMockApi();
     const { default: subagentExtension } = await import("./index.js");
     subagentExtension(mock as any);
+    mock._flags = { "subagent-default-wait-timeout-ms": "50", "subagent-min-wait-timeout-ms": "10" };
     await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
 
     const notifications: string[] = []
@@ -2988,6 +2991,7 @@ describe("index.ts parseForkTurns branches", () => {
     const mock = createMockApi();
     const { default: subagentExtension } = await import("./index.js");
     subagentExtension(mock as any);
+    mock._flags = { "subagent-min-wait-timeout-ms": "10" };
     await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
     return mock;
   }
@@ -3365,7 +3369,7 @@ describe("index.ts parseForkTurns branches", () => {
     const mock = createMockApi();
     const { default: subagentExtension } = await import("./index.js");
     subagentExtension(mock as any);
-    mock._flags = { "subagent-default-wait-timeout-ms": "50" };
+    mock._flags = { "subagent-default-wait-timeout-ms": "50", "subagent-min-wait-timeout-ms": "10" };
     await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
 
     // Spawn and trigger agent_end to get events + mailbox items
@@ -3491,7 +3495,7 @@ describe("index.ts parseForkTurns branches", () => {
     const { default: subagentExtension } = await import("./index.js");
     subagentExtension(mock as any);
     // Set a very short default timeout flag
-    mock._flags = { "subagent-default-wait-timeout-ms": "50" };
+    mock._flags = { "subagent-default-wait-timeout-ms": "50", "subagent-min-wait-timeout-ms": "10" };
     await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
 
     const notifications: string[] = [];
@@ -3596,13 +3600,13 @@ describe("AgentControl branch coverage", () => {
   }
 
   it("constructor uses defaults when maxAgents/maxDepth/defaultWaitTimeout undefined", async () => {
-    const control = new AgentControl(createPi());
+    const control = new AgentControl(createPi(), undefined, undefined, undefined, 10);
     // Exercises maxAgents ?? DEFAULT_MAX_AGENTS, maxDepth ?? DEFAULT_MAX_DEPTH,
     // defaultWaitTimeout ?? DEFAULT_WAIT_TIMEOUT_MS
     control.registry.ensureRoot("root");
     expect(control.openCount).toBe(1);
     // Quick wait to exercise the default timeout path
-    const result = await control.wait({ timeout_ms: 1050 }, baseCtx);
+    const result = await control.wait({ timeout_ms: 15 }, baseCtx);
     expect(result.timed_out).toBe(true);
   });
 
@@ -3801,10 +3805,7 @@ describe("AgentControl branch coverage", () => {
 
   it("wait: timeout clamping with very large value uses defaultWaitTimeout", async () => {
     // Use a short defaultWaitTimeout so the test doesn't take long
-    const control = new AgentControl(createPi(), 4, 2, 50);
-    control.registry.ensureRoot("root");
-
-    // Even with very large timeout_ms, the wait uses defaultWaitTimeout if that's the configured value
+    const control = new AgentControl(createPi(), 4, 2, 50, 10);
     // Actually the large value gets clamped to MAX (600000) then waits. We can't wait that long.
     // Instead, test the clamping behavior by checking the internal function.
     // We'll test that a moderate value still works and clamping doesn't break.
@@ -3814,23 +3815,17 @@ describe("AgentControl branch coverage", () => {
 
   it("wait: timeout clamping - value below min gets clamped up", async () => {
     // Use a short defaultWaitTimeout so test is fast
-    const control = new AgentControl(createPi(), 4, 2, 50);
+    const control = new AgentControl(createPi(), 4, 2, 50, 10);
     control.registry.ensureRoot("root");
 
-    // Very small timeout gets clamped to MIN_WAIT_TIMEOUT_MS (1000ms)
-    // But our defaultWaitTimeout is 50, and it's used when no override given
-    // When we pass timeout_ms, it gets clamped between MIN(1000) and MAX(600000)
-    // So passing 1 would be clamped to 1000ms - too long for test.
-    // Let's just verify the wait works with a reasonable value.
-    const result = await control.wait({ timeout_ms: 1050 }, baseCtx);
+    // Very small timeout gets clamped to minWaitTimeout (now 10ms)
+    const result = await control.wait({ timeout_ms: 1 }, baseCtx);
     expect(result.timed_out).toBe(true);
   });
 
   it("wait: consumes events correctly (maxSeq calculation with events having seq)", async () => {
-    const control = new AgentControl(createPi(), 4, 2, 50);
+    const control = new AgentControl(createPi(), 4, 2, 50, 10);
     control.registry.ensureRoot("root");
-
-    // Manually add events and mailbox items with seq
     control.mailbox.appendEvent({
       type: "agent_status_changed",
       agentId: "a1",
@@ -4060,7 +4055,7 @@ describe("AgentControl branch coverage", () => {
   });
 
   it("wait: maxSeq handles events without seq property", async () => {
-    const control = new AgentControl(createPi(), 4, 2, 50);
+    const control = new AgentControl(createPi(), 4, 2, 50, 10);
     control.registry.ensureRoot("root");
 
     // Manually enqueue a mailbox item to /root to test maxSeq
@@ -4528,6 +4523,7 @@ describe("extension: wait_agent tool result formatting", () => {
     const mock = createMockApi();
     const { default: subagentExtension } = await import("./index.js");
     subagentExtension(mock as any);
+    mock._flags = { "subagent-min-wait-timeout-ms": "10" };
     await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
 
     // Manually inject events into the control's mailbox
@@ -4568,6 +4564,7 @@ describe("extension: wait_agent tool result formatting", () => {
     const mock = createMockApi();
     const { default: subagentExtension } = await import("./index.js");
     subagentExtension(mock as any);
+    mock._flags = { "subagent-min-wait-timeout-ms": "10" };
     await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
 
     const baseCtx = {
@@ -4594,7 +4591,7 @@ describe("extension: wait_agent tool result formatting", () => {
   it("wait_agent formats event without agentPath property", async () => {
     const mockPi = { getActiveTools: vi.fn(() => []) };
     const { AgentControl } = await import("./agentControl.js");
-    const control = new AgentControl(mockPi as any, 4, 2, 100);
+    const control = new AgentControl(mockPi as any, 4, 2, 100, 10);
     control.registry.ensureRoot("root");
 
     const baseCtx = {
@@ -4630,7 +4627,7 @@ describe("extension: wait_agent tool result formatting", () => {
     });
 
     // Wait for events — uses ROOT_PATH as caller
-    const waitResult = await control.wait({ timeout_ms: 1000 }, baseCtx as any);
+    const waitResult = await control.wait({ timeout_ms: 10 }, baseCtx as any);
 
     // Events may not be delivered to /root since they are for /root/waittest
     // The wait uses callerPath=ROOT_PATH and filters by that path

@@ -133,6 +133,12 @@ export default function subagentExtension(pi: ExtensionAPI): void {
     default: "30000",
   });
 
+  pi.registerFlag("subagent-min-wait-timeout-ms", {
+    description: "Minimum wait_agent timeout in ms (default: 1000)",
+    type: "string",
+    default: "1000",
+  });
+
   // ─── Helper: ensure control is initialized ────────────────────
 
   function ensureControl(): AgentControl {
@@ -140,7 +146,8 @@ export default function subagentExtension(pi: ExtensionAPI): void {
       const maxAgents = Number(pi.getFlag("subagent-max-agents")) || 4;
       const maxDepth = Number(pi.getFlag("subagent-max-depth")) || 2;
       const defaultWait = Number(pi.getFlag("subagent-default-wait-timeout-ms")) || 30000;
-      control = new AgentControl(pi, maxAgents, maxDepth, defaultWait);
+      const minWait = Number(pi.getFlag("subagent-min-wait-timeout-ms")) || 1000;
+      control = new AgentControl(pi, maxAgents, maxDepth, defaultWait, minWait);
     }
     return control;
   }
