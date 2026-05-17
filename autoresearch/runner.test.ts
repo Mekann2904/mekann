@@ -154,6 +154,21 @@ describe("runCommand", () => {
 		);
 		expect(r.parsedMetrics).toEqual({ a: 1, b: 2.5 });
 	});
+
+	it("captures METRIC after 1MB of output via streaming parse", async () => {
+		// Generate >1MB of output, then emit METRIC at the end
+		// seq produces ~8 bytes/line, 150000 lines = ~1.2MB
+		const r = await runCommand(
+			'for i in $(seq 1 150000); do echo "padding line $i"; done && echo "METRIC captured_after_1mb=42" && echo "RUN_ID post-1mb-run" && echo "ARTIFACT_DIR /tmp/post1mb"',
+			"/tmp",
+			30000,
+		);
+		// The streaming parser should have captured the METRIC even though
+		// the in-memory buffer was truncated at 1MB
+		expect(r.parsedMetrics).toMatchObject({ captured_after_1mb: 42 });
+		expect(r.externalRunId).toBe("post-1mb-run");
+		expect(r.externalArtifactDir).toBe("/tmp/post1mb");
+	}, 35000);
 });
 
 // ---------------------------------------------------------------------------
@@ -373,11 +388,12 @@ describe("artifact directory management", () => {
 		const runDir = createRunArtifactDir(tmpDir, "sess1", "run1", "echo test", Date.now());
 		const result = await runCommand("echo hello", tmpDir, 5000);
 		writeRunArtifacts(runDir, result, "run1", Date.now(), Date.now());
-		writeChecksArtifacts(runDir, { passed: true, timedOut: false, output: "OK", durationSeconds: 1 });
+		writeChecksArtifacts(runDir, { passed: true, timedOut: false, output: "OK", stdout: "OK", stderr: "", durationSeconds: 1 });
 
 		expect(fs.existsSync(path.join(runDir, "checks-result.json"))).toBe(true);
 		const checks = JSON.parse(fs.readFileSync(path.join(runDir, "checks-result.json"), "utf8"));
 		expect(checks.passed).toBe(true);
+		expect(fs.existsSync(path.join(runDir, "checks.stdout.log"))).toBe(true);
 	});
 });
 
@@ -427,9 +443,21 @@ describe("loadRunFromArtifact", () => {
 		const runDir = createRunArtifactDir(tmpDir, "sess1", "run2", "echo ok", Date.now());
 		const result = await runCommand("echo ok", tmpDir, 5000);
 		writeRunArtifacts(runDir, result, "run2", Date.now(), Date.now());
-		writeChecksArtifacts(runDir, { passed: true, timedOut: false, output: "OK", durationSeconds: 1 });
+		writeChecksArtifacts(runDir, { passed: true, timedOut: false, output: "OK", stdout: "OK", stderr: "", durationSeconds: 1 });
 
 		const loaded = loadRunFromArtifact(tmpDir, "sess1", "run2");
 		expect(loaded!.result.checks.passed).toBe(true);
+	});
+
+	it("runSeq is stored in manifest when provided", async () => {
+		const runDir = createRunArtifactDir(tmpDir, "sess1", "run-rs", "echo test", Date.now());
+		const result = await runCommand("echo ok", tmpDir, 5000);
+		writeRunArtifacts(runDir, result, "run-rs", Date.now(), Date.now(), 42);
+
+		const manifest = JSON.parse(fs.readFileSync(path.join(runDir, "manifest.json"), "utf8"));
+		expect(manifest.runSeq).toBe(42);
+
+		const loaded = loadRunFromArtifact(tmpDir, "sess1", "run-rs");
+		expect(loaded!.runSeq).toBe(42);
 	});
 });
