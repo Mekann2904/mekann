@@ -252,10 +252,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (event.source === "restore") return;
 		if (suppressModelSelectPersist) return;
 		const ref: ModelRef = { provider: event.model.provider, modelId: event.model.id };
-		// Only persist models that really exist in the registry. pi may temporarily
-		// expose fallback/custom IDs after failed restores; saving those would make
-		// the next session warn and clear the config on every startup.
-		if (!ctx.modelRegistry.find(ref.provider, ref.modelId)) return;
+		// model_select is emitted after pi has selected a concrete model. Persist it
+		// directly instead of re-validating through modelRegistry.find(): some
+		// providers/selector paths can expose a selected model that does not round-trip
+		// through find() in this hook context, which made plan-mode changes fail to
+		// persist. restore events are still ignored above to avoid saving fallback IDs.
 		persistIfChanged("models", state.mode, ref, sameModelRef);
 	});
 
