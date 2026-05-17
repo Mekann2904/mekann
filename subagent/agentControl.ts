@@ -51,6 +51,7 @@ export class AgentControl {
   private childSessions = new Map<string, import("@earendil-works/pi-coding-agent").AgentSession>();
   private pi: import("@earendil-works/pi-coding-agent").ExtensionAPI;
   private defaultWaitTimeout: number;
+  private minWaitTimeout: number;
   private lastConsumedSeq = new Map<string, number>();
 
   constructor(
@@ -58,6 +59,7 @@ export class AgentControl {
     maxAgents?: number,
     maxDepth?: number,
     defaultWaitTimeout?: number,
+    minWaitTimeout?: number,
   ) {
     this.pi = pi;
     this.registry = new AgentRegistry(
@@ -66,6 +68,7 @@ export class AgentControl {
     );
     this.mailbox = new Mailbox();
     this.defaultWaitTimeout = defaultWaitTimeout ?? DEFAULT_WAIT_TIMEOUT_MS;
+    this.minWaitTimeout = minWaitTimeout ?? MIN_WAIT_TIMEOUT_MS;
 
     // Forward registry events to mailbox
     this.registry.subscribe((event) => {
@@ -372,6 +375,7 @@ export class AgentControl {
 
     const timeoutMs = clampTimeout(
       params.timeout_ms ?? this.defaultWaitTimeout,
+      this.minWaitTimeout,
     );
 
     const beforeSeq = this.lastConsumedSeq.get(callerPath) ?? 0;
@@ -483,7 +487,7 @@ export class AgentControl {
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
-function clampTimeout(ms: number): number {
-  return Math.max(MIN_WAIT_TIMEOUT_MS, Math.min(ms, MAX_WAIT_TIMEOUT_MS));
+function clampTimeout(ms: number, minMs: number = MIN_WAIT_TIMEOUT_MS): number {
+  return Math.max(minMs, Math.min(ms, MAX_WAIT_TIMEOUT_MS));
 }
 
