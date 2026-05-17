@@ -531,8 +531,8 @@ describe("/sandbox mode change", () => {
 		});
 		await mock._commands["sandbox"].handler("read_only", ctx2);
 
-		// Now user_bash should block (no longer approved yolo)
-		expect(() => mock._hooks.user_bash()).toThrow("サンドボックスがアクティブ");
+		// Now user_bash should be intercepted by sandbox operations (no direct bypass)
+		expect(mock._hooks.user_bash()).toHaveProperty("operations");
 	});
 });
 
@@ -1490,7 +1490,7 @@ describe("request_elevation: user denies", () => {
 // ─── user_bash hook: startup blocked ───────────────────────────────
 
 describe("user_bash hook: startup blocked", () => {
-	it("startupBlockedReason がある場合、エラーを投げる", async () => {
+	it("startupBlockedReason がある場合、エラー表示ではなく失敗 result を返す", async () => {
 		const mock = createMockApi();
 		mock._flags = { "sandbox-mode": "workspace_write" };
 		await loadExtension(mock);
@@ -1498,10 +1498,12 @@ describe("user_bash hook: startup blocked", () => {
 		// sandbox-exec unavailable + workspace_write = startup blocked
 		await mock._hooks.session_start({}, createMockCtx());
 
-		expect(() => mock._hooks.user_bash()).toThrow(/明示的に無効化/);
+		const result = mock._hooks.user_bash();
+		expect(result.result.exitCode).toBe(1);
+		expect(result.result.output).toMatch(/明示的に無効化/);
 	});
 
-	it("sandbox active (not yolo, not disabled) でエラーを投げる", async () => {
+	it("sandbox active (not yolo, not disabled) では sandboxed operations を返す", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
@@ -1510,7 +1512,7 @@ describe("user_bash hook: startup blocked", () => {
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
-		expect(() => mock._hooks.user_bash()).toThrow("サンドボックスがアクティブな場合");
+		expect(mock._hooks.user_bash()).toHaveProperty("operations");
 	});
 });
 
@@ -2377,8 +2379,8 @@ describe("changeMode: non-yolo mode resets yolo approval", () => {
 		// Switch to read_only
 		await mock._commands["sandbox"].handler("read_only", createMockCtx());
 
-		// user_bash should now block
-		expect(() => mock._hooks.user_bash()).toThrow();
+		// user_bash should now be intercepted by sandbox operations
+		expect(mock._hooks.user_bash()).toHaveProperty("operations");
 	});
 });
 

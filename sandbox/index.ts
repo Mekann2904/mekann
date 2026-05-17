@@ -5,7 +5,7 @@
  * Usage: pi -e ./sandbox [--sandbox-mode read_only|workspace_write|yolo] [--no-sandbox] | /sandbox [mode]
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { BashOperations, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createBashTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { SandboxMode, SandboxPolicy } from "./permissions.js";
@@ -237,11 +237,33 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	// SECURITY: When sandbox is active, returning undefined = bypass. Block instead.
+	function blockedUserBashResult(message: string) {
+		return { result: { output: message, exitCode: 1, cancelled: false, truncated: false } };
+	}
+
+	function sandboxedUserBashOperations(): BashOperations {
+		return {
+			async exec(command, _cwd, options) {
+				if (!sandboxAvailable) {
+					const msg = "サンドボックスが必要ですが /usr/bin/sandbox-exec が利用できません。サンドボックス強制なしではコマンドを実行できません。--no-sandbox で明示的に無効化してください（非推奨）。";
+					options.onData(Buffer.from(msg));
+					return { exitCode: 1 };
+				}
+				const result = await runSandboxedShellMac(command, buildCurrentPolicy(), { signal: options.signal });
+				const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
+				if (output) options.onData(Buffer.from(output));
+				return { exitCode: result.code };
+			},
+		};
+	}
+
+	// SECURITY: When sandbox is active, returning undefined = bypass. Provide
+	// sandboxed operations for direct `!`/`!!` user bash instead of throwing an
+	// extension error into the UI.
 	pi.on("user_bash", () => {
 		if (explicitlyDisabled || effectiveMode() === "yolo") return undefined;
-		if (startupBlockedReason) throw new Error(`${startupBlockedReason}。--no-sandbox で明示的に無効化しない限り、直接 bash 実行は拒否されます。`);
-		throw new Error("サンドボックスがアクティブな場合、直接の bash 実行はブロックされます。コマンドはサンドボックス化された bash ツール経由で実行してください。");
+		if (startupBlockedReason) return blockedUserBashResult(`${startupBlockedReason}。--no-sandbox で明示的に無効化しない限り、直接 bash 実行は拒否されます。`);
+		return { operations: sandboxedUserBashOperations() };
 	});
 
 	// ─── Commands ────────────────────────────────────────────────────
