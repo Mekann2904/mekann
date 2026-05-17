@@ -422,7 +422,7 @@ describe("model_select hook", () => {
 		expect(saved.models.main).toEqual({ provider: "openai-codex", modelId: "gpt-5.5" });
 	}));
 
-	it("registry に存在しない fallback model は config に保存しない", async () => withPlanModeConfig({ version: 1, models: {}, thinking: {} }, async (configPath) => {
+	it("model_select は registry.find に依存せず選択済みモデルを保存する", async () => withPlanModeConfig({ version: 1, models: {}, thinking: {} }, async (configPath) => {
 		const mock = createMockApi();
 		const ctx = createMockCtx({
 			modelRegistry: { find: () => undefined },
@@ -436,7 +436,28 @@ describe("model_select hook", () => {
 		}, ctx);
 
 		const saved = JSON.parse(require("fs").readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toBeUndefined();
+		expect(saved.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
+	}));
+
+	it("plan mode: /model 相当のモデル変更が plan config に反映される", async () => withPlanModeConfig({ version: 1, models: {}, thinking: {} }, async (configPath) => {
+		const mock = createMockApi();
+		const ctx = createMockCtx({
+			model: { provider: "openai-codex", id: "gpt-5.5" },
+			modelRegistry: {
+				find: (provider: string, modelId: string) => provider === "openai-codex" && modelId === "gpt-5.5" ? { provider, id: modelId } : undefined,
+			},
+		});
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+		await mock._commands["plan"].handler("", ctx);
+
+		await mock._hooks.model_select({
+			model: { provider: "openai-codex", id: "gpt-5.5" },
+			source: "set",
+		}, ctx);
+
+		const saved = JSON.parse(require("fs").readFileSync(configPath, "utf-8"));
+		expect(saved.models.plan).toEqual({ provider: "openai-codex", modelId: "gpt-5.5" });
 	}));
 });
 
