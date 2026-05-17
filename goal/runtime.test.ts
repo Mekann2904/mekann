@@ -721,4 +721,40 @@ describe("GoalRuntime", () => {
     runtime.maybeContinueIfIdle(ctx);
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(1); // should work with valid objective
   });
+  // ── 38. maybeContinueIfIdle works when ctx lacks isIdle/hasPendingMessages ──
+
+  it("maybeContinueIfIdle defaults to idle when ctx lacks isIdle", () => {
+    const { runtime, pi, ctx, store } = setupRuntimeWithGoal();
+    const ctxNoIdle = { ...ctx };
+    delete (ctxNoIdle as any).isIdle;
+    delete (ctxNoIdle as any).hasPendingMessages;
+    runtime.maybeContinueIfIdle(ctxNoIdle);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+  });
+
+  // ── 39. onMessageEnd handles missing usage fields ──
+
+  it("onMessageEnd handles usage with undefined input", () => {
+    const { runtime, store, ctx } = setupRuntimeWithGoal(1000);
+    runtime.onTurnStart({ turnIndex: 0 }, ctx);
+    runtime.onMessageEnd(
+      { message: { role: "assistant", timestamp: 1001, usage: { output: 50 } } },
+      ctx,
+    );
+    const goal = store.getGoal();
+    expect(goal!.tokens_used).toBe(50); // only output, input defaults to 0
+  });
+
+  // ── 40. onAgentEnd pauses on aborted assistant ──
+
+  it("onAgentEnd pauses goal when assistant was aborted", () => {
+    const { runtime, store, ctx } = setupRuntimeWithGoal(1000);
+    runtime.onTurnStart({ turnIndex: 0 }, ctx);
+    runtime.onAgentEnd(
+      { messages: [{ role: "user" }, { role: "assistant", stopReason: "aborted" }] },
+      ctx,
+    );
+    const goal = store.getGoal();
+    expect(goal!.status).toBe("paused");
+  });
 });
