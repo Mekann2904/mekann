@@ -45,6 +45,7 @@ import {
 	createRunArtifactDir,
 	writeRunArtifacts,
 	writeChecksArtifacts,
+	markArtifactComplete,
 	loadRunFromArtifact,
 	COMPLETE_MARKER,
 	hasCompleteMarker,
@@ -535,7 +536,12 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			if (artifactDir) {
 				try {
 					writeRunArtifacts(artifactDir, result, piRunId, startedAt, completedAt, runSeq);
-					if (checks.passed !== null) writeChecksArtifacts(artifactDir, checks);
+					if (checks.passed !== null) {
+						writeChecksArtifacts(artifactDir, checks);
+					} else {
+						// No checks to run — mark artifact complete now
+						markArtifactComplete(artifactDir);
+					}
 				} catch {
 					artifactFailed = true;
 				}
@@ -705,6 +711,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					if (!fs.existsSync(path.join(artifactDirPath, "metrics.json"))) {
 						reasons.push("metrics.json が存在しません。監査不能のため keep できません。");
 					}
+					if (!fs.existsSync(path.join(artifactDirPath, "result.json"))) {
+						reasons.push("result.json が存在しません。監査不能のため keep できません。");
+					}
 				}
 
 				if (reasons.length > 0) {
@@ -768,60 +777,75 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			entry.dirtyAfter = isGitDirty(ctx.cwd);
 
 			// --- Pointers & ledgers ---
-			ensureSessionDir(ctx.cwd);
+			const ledgerErrors: string[] = [];
+			try {
+				ensureSessionDir(ctx.cwd);
+			} catch (e) {
+				ledgerErrors.push(`session dir: ${e instanceof Error ? e.message : String(e)}`);
+			}
 
 			// Latest pointer
-			writePointer(latestPointerPath(ctx.cwd, state.sessionId), {
-				piRunId: matchedPiRunId ?? "", runSeq, metric: params.metric,
-				timestamp: entry.timestamp, gitCommit: entry.postCommit ?? preCommit,
-			});
+			try {
+				writePointer(latestPointerPath(ctx.cwd, state.sessionId), {
+					piRunId: matchedPiRunId ?? "", runSeq, metric: params.metric,
+					timestamp: entry.timestamp, gitCommit: entry.postCommit ?? preCommit,
+				});
+			} catch (e) { ledgerErrors.push(`latest pointer: ${e instanceof Error ? e.message : String(e)}`); }
 
 			// Best pointer
 			if (params.status === "keep") {
-				const cur = readPointer(bestPointerPath(ctx.cwd, state.sessionId));
-				if (isBestPointerMetric(params.metric, cur, state.direction)) {
-					writePointer(bestPointerPath(ctx.cwd, state.sessionId), {
-						piRunId: matchedPiRunId ?? "", runSeq, metric: params.metric,
-						timestamp: entry.timestamp, gitCommit: entry.postCommit ?? preCommit,
-					});
-				}
+				try {
+					const cur = readPointer(bestPointerPath(ctx.cwd, state.sessionId));
+					if (isBestPointerMetric(params.metric, cur, state.direction)) {
+						writePointer(bestPointerPath(ctx.cwd, state.sessionId), {
+							piRunId: matchedPiRunId ?? "", runSeq, metric: params.metric,
+							timestamp: entry.timestamp, gitCommit: entry.postCommit ?? preCommit,
+						});
+					}
+				} catch (e) { ledgerErrors.push(`best pointer: ${e instanceof Error ? e.message : String(e)}`); }
 			}
 
 			// Metrics ledger
-			appendToJsonl(metricsLedgerPath(ctx.cwd, state.sessionId), {
-				schemaVersion: 1, runSeq, piRunId: matchedPiRunId ?? "",
-				externalRunId: matchedResult?.externalRunId ?? null,
-				createdAt: matchedRunData?.createdAt ?? entry.timestamp,
-				startedAt: matchedRunData?.startedAt ?? entry.timestamp,
-				completedAt: matchedRunData?.completedAt ?? entry.timestamp,
-				durationSeconds: matchedResult?.durationSeconds ?? 0,
-				command: matchedResult?.command ?? "", gitCommit: entry.postCommit ?? preCommit,
-				exitCode: matchedResult?.exitCode ?? null, timedOut: matchedResult?.timedOut ?? false,
-				primaryMetricName: state.metricName, primaryMetricValue: params.metric,
-				metrics: { ...(params.metrics ?? {}), [state.metricName]: params.metric },
-				externalArtifactDir: matchedResult?.externalArtifactDir ?? null,
-				externalSummaryPath: matchedResult?.externalSummaryPath ?? null,
-				externalViewlogPath: matchedResult?.externalViewlogPath ?? null,
-				externalMetricsPath: matchedResult?.externalMetricsPath ?? null,
-				status: params.status,
-			} as unknown as Record<string, unknown>);
+			try {
+				appendToJsonl(metricsLedgerPath(ctx.cwd, state.sessionId), {
+					schemaVersion: 1, runSeq, piRunId: matchedPiRunId ?? "",
+					externalRunId: matchedResult?.externalRunId ?? null,
+					createdAt: matchedRunData?.createdAt ?? entry.timestamp,
+					startedAt: matchedRunData?.startedAt ?? entry.timestamp,
+					completedAt: matchedRunData?.completedAt ?? entry.timestamp,
+					durationSeconds: matchedResult?.durationSeconds ?? 0,
+					command: matchedResult?.command ?? "", gitCommit: entry.postCommit ?? preCommit,
+					exitCode: matchedResult?.exitCode ?? null, timedOut: matchedResult?.timedOut ?? false,
+					primaryMetricName: state.metricName, primaryMetricValue: params.metric,
+					metrics: { ...(params.metrics ?? {}), [state.metricName]: params.metric },
+					externalArtifactDir: matchedResult?.externalArtifactDir ?? null,
+					externalSummaryPath: matchedResult?.externalSummaryPath ?? null,
+					externalViewlogPath: matchedResult?.externalViewlogPath ?? null,
+					externalMetricsPath: matchedResult?.externalMetricsPath ?? null,
+					status: params.status,
+				} as unknown as Record<string, unknown>);
+			} catch (e) { ledgerErrors.push(`metrics ledger: ${e instanceof Error ? e.message : String(e)}`); }
 
 			// Decision ledger
-			appendToJsonl(decisionsLedgerPath(ctx.cwd, state.sessionId), {
-				schemaVersion: 1, piRunId: matchedPiRunId ?? "",
-				externalRunId: matchedResult?.externalRunId ?? null,
-				status: params.status, metric: params.metric,
-				preCommit, postCommit: entry.postCommit ?? preCommit,
-				dirtyBefore, dirtyAfter: entry.dirtyAfter ?? false,
-				changedFiles, timestamp: entry.timestamp,
-				description: params.description, notes: params.memo,
-			} as unknown as Record<string, unknown>);
+			try {
+				appendToJsonl(decisionsLedgerPath(ctx.cwd, state.sessionId), {
+					schemaVersion: 1, piRunId: matchedPiRunId ?? "",
+					externalRunId: matchedResult?.externalRunId ?? null,
+					status: params.status, metric: params.metric,
+					preCommit, postCommit: entry.postCommit ?? preCommit,
+					dirtyBefore, dirtyAfter: entry.dirtyAfter ?? false,
+					changedFiles, timestamp: entry.timestamp,
+					description: params.description, notes: params.memo,
+				} as unknown as Record<string, unknown>);
+			} catch (e) { ledgerErrors.push(`decision ledger: ${e instanceof Error ? e.message : String(e)}`); }
 
 			// Event ledger
-			appendToJsonl(eventsLedgerPath(ctx.cwd, state.sessionId), {
-				schemaVersion: 1, event: "logged", piRunId: matchedPiRunId ?? "",
-				timestamp: entry.timestamp, details: { status: params.status, metric: params.metric, runSeq },
-			} satisfies EventLedgerEntry);
+			try {
+				appendToJsonl(eventsLedgerPath(ctx.cwd, state.sessionId), {
+					schemaVersion: 1, event: "logged", piRunId: matchedPiRunId ?? "",
+					timestamp: entry.timestamp, details: { status: params.status, metric: params.metric, runSeq },
+				} satisfies EventLedgerEntry);
+			} catch (e) { ledgerErrors.push(`event ledger: ${e instanceof Error ? e.message : String(e)}`); }
 
 			// --- Main JSONL ---
 			const jp = jsonlPath(ctx.cwd);
@@ -879,6 +903,10 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			lastChecks = null; lastRunResult = null; lastRunChecks = null;
 
+			if (ledgerErrors.length > 0) {
+				text += `\n[WARNING] ledger 書き込み一部失敗: ${ledgerErrors.join(", ")}`;
+			}
+
 			return {
 				content: [{ type: "text", text }],
 				details: {
@@ -887,6 +915,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					kept, commit, preCommit, postCommit: entry.postCommit, changedFiles,
 					externalRunId: entry.externalRunId, externalArtifactDir: entry.externalArtifactDir,
 					gitError,
+					ledgerErrors: ledgerErrors.length > 0 ? ledgerErrors : undefined,
 				},
 			};
 		},

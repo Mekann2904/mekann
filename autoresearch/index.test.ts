@@ -1331,8 +1331,9 @@ describe("autoresearchExtension", () => {
 		it("returns error when JSONL write fails", async () => {
 			const testDir = "/tmp/test-ar-ro-" + Date.now();
 			fs.mkdirSync(testDir, { recursive: true });
-			// Make directory read-only so appendFileSync fails
-			fs.chmodSync(testDir, 0o444);
+			// Create a directory where autoresearch.jsonl would be — appendFileSync gets EISDIR
+			// This works regardless of user permissions (no chmod needed)
+			fs.mkdirSync(path.join(testDir, "autoresearch.jsonl"));
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -1349,8 +1350,6 @@ describe("autoresearchExtension", () => {
 			expect(result.content[0].text).toContain("ERROR");
 			expect(result.content[0].text).toContain("autoresearch.jsonl");
 
-			// Cleanup: restore permissions
-			fs.chmodSync(testDir, 0o755);
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 	});
@@ -1375,9 +1374,12 @@ describe("autoresearchExtension", () => {
 				ctx,
 			);
 
-			// Make directory read-only so appendFileSync fails on log
+			// Replace autoresearch.jsonl file with a directory — appendFileSync gets EISDIR
+			// This works regardless of user permissions (no chmod needed)
 			const jsonlPath = path.join(testDir, "autoresearch.jsonl");
-			fs.chmodSync(jsonlPath, 0o444);
+			const content = fs.readFileSync(jsonlPath, "utf8");
+			fs.unlinkSync(jsonlPath);
+			fs.mkdirSync(jsonlPath);
 
 			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
 			const result = await logTool.execute(
@@ -1390,7 +1392,6 @@ describe("autoresearchExtension", () => {
 			expect(result.content[0].text).toContain("ERROR");
 			expect(result.content[0].text).toContain("autoresearch.jsonl");
 
-			fs.chmodSync(jsonlPath, 0o644);
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 	});
@@ -2642,6 +2643,13 @@ describe("autoresearchExtension", () => {
 			expect(fs.existsSync(artifactDir)).toBe(true);
 			expect(fs.existsSync(path.join(artifactDir, "manifest.json"))).toBe(true);
 			expect(fs.existsSync(path.join(artifactDir, "stdout.log"))).toBe(true);
+
+			// Verify manifest has artifactComplete=true (set after checks/not-needed)
+			const manifest = JSON.parse(fs.readFileSync(path.join(artifactDir, "manifest.json"), "utf8"));
+			expect(manifest.artifactComplete).toBe(true);
+
+			// Verify result.json also exists
+			expect(fs.existsSync(path.join(artifactDir, "result.json"))).toBe(true);
 
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});

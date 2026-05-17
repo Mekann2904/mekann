@@ -536,9 +536,20 @@ export function writeRunArtifacts(
 		"utf8",
 	);
 
-	// manifest.json (written last — artifactComplete=true means all writes succeeded)
+	// result.json
+	fs.writeFileSync(path.join(runDir, "result.json"), JSON.stringify({
+		piRunId,
+		passed: result.passed,
+		exitCode: result.exitCode,
+		timedOut: result.timedOut,
+		durationSeconds: result.durationSeconds,
+		parsedMetrics: result.parsedMetrics,
+	}, null, 2), "utf8");
+
+	// manifest.json — written LAST. artifactComplete=true means ALL artifact writes succeeded.
+	// If this file is missing or artifactComplete !== true, the artifact is incomplete.
 	const manifest = {
-		artifactComplete: true,
+		artifactComplete: false as boolean, // will be set to true after checks
 		piRunId,
 		runSeq,
 		command: result.command,
@@ -558,19 +569,10 @@ export function writeRunArtifacts(
 		logFilesWritten: result.logFilesWritten,
 	};
 	fs.writeFileSync(path.join(runDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
-
-	// result.json
-	fs.writeFileSync(path.join(runDir, "result.json"), JSON.stringify({
-		piRunId,
-		passed: result.passed,
-		exitCode: result.exitCode,
-		timedOut: result.timedOut,
-		durationSeconds: result.durationSeconds,
-		parsedMetrics: result.parsedMetrics,
-	}, null, 2), "utf8");
 }
 
-/** Write checks result to the artifact directory. */
+/** Write checks result to the artifact directory.
+ *  Also marks the manifest as artifactComplete=true (all artifacts written). */
 export function writeChecksArtifacts(runDir: string, checksResult: ChecksResult): void {
 	// Save checks stdout/stderr logs
 	if (checksResult.stdout) {
@@ -585,6 +587,19 @@ export function writeChecksArtifacts(runDir: string, checksResult: ChecksResult)
 		try {
 			const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 			manifest.checks = checksResult;
+			manifest.artifactComplete = true;
+			fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+		} catch { /* best effort */ }
+	}
+}
+
+/** Mark artifact as complete (called when no checks are needed). */
+export function markArtifactComplete(runDir: string): void {
+	const manifestPath = path.join(runDir, "manifest.json");
+	if (fs.existsSync(manifestPath)) {
+		try {
+			const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+			manifest.artifactComplete = true;
 			fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
 		} catch { /* best effort */ }
 	}
