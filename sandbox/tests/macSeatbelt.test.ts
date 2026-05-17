@@ -1264,7 +1264,7 @@ describeMac("runSandboxedShellMac (integration)", () => {
 		const result = await runSandboxedShellMac(
 			"sleep 30",
 			policy,
-			{ timeoutMs: 1000 },
+			{ timeoutMs: 300 },
 		);
 
 		expect(result.code).not.toBe(0);
@@ -1292,7 +1292,7 @@ describeMac("runSandboxedShellMac (integration)", () => {
 		const result = await runSandboxedShellMac(
 			"sleep 1000 & BG_PID=$!; echo BG_PID=$BG_PID; wait",
 			policy,
-			{ timeoutMs: 1500 },
+			{ timeoutMs: 500 },
 		);
 
 		expect(result.code).not.toBe(0);
