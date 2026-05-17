@@ -39,9 +39,14 @@ interface MockCtx {
 
 /** Init git repo with user config for test isolation. */
 function gitInitForTest(cwd: string): void {
-	childProcess.execFileSync("git", ["init"], { cwd });
-	childProcess.execFileSync("git", ["config", "user.email", "test@example.com"], { cwd });
-	childProcess.execFileSync("git", ["config", "user.name", "Test User"], { cwd });
+	try {
+		childProcess.execFileSync("git", ["init", "-b", "main"], { cwd, stdio: "ignore" });
+	} catch {
+		childProcess.execFileSync("git", ["init"], { cwd, stdio: "ignore" });
+		childProcess.execFileSync("git", ["checkout", "-b", "main"], { cwd, stdio: "ignore" });
+	}
+	childProcess.execFileSync("git", ["config", "user.email", "test@example.com"], { cwd, stdio: "ignore" });
+	childProcess.execFileSync("git", ["config", "user.name", "Test User"], { cwd, stdio: "ignore" });
 }
 
 function createMockPi() {
