@@ -2,7 +2,9 @@
  * autoresearch/state.test.ts — state.ts 純粋関数のユニットテスト。
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import {
 	parseJsonlLine,
 	reconstructState,
@@ -10,6 +12,11 @@ import {
 	isBestMetric,
 	parseMetricLines,
 	countByStatus,
+	appendToJsonl,
+	readJsonlEntries,
+	writePointer,
+	readPointer,
+	isBestPointerMetric,
 } from "./state.js";
 
 // ---------------------------------------------------------------------------
@@ -296,8 +303,144 @@ describe("countByStatus", () => {
 });
 
 // ---------------------------------------------------------------------------
-// checks_failed status
+// Ledger functions
 // ---------------------------------------------------------------------------
+
+describe("appendToJsonl / readJsonlEntries", () => {
+	let tmpDir: string;
+
+	beforeEach(() => {
+		tmpDir = `/tmp/test-state-${Date.now()}`;
+		fs.mkdirSync(tmpDir, { recursive: true });
+	});
+
+	afterEach(() => {
+		fs.rmSync(tmpDir, { recursive: true, force: true });
+	});
+
+	it("appends and reads entries", () => {
+		const fp = path.join(tmpDir, "test.jsonl");
+		appendToJsonl(fp, { type: "a", value: 1 });
+		appendToJsonl(fp, { type: "b", value: 2 });
+		const entries = readJsonlEntries(fp);
+		expect(entries).toHaveLength(2);
+		expect(entries[0]).toMatchObject({ type: "a", value: 1 });
+		expect(entries[1]).toMatchObject({ type: "b", value: 2 });
+	});
+
+	it("returns empty array for non-existent file", () => {
+		const entries = readJsonlEntries("/tmp/nonexistent.jsonl");
+		expect(entries).toEqual([]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Pointer functions
+// ---------------------------------------------------------------------------
+
+describe("writePointer / readPointer", () => {
+	let tmpDir: string;
+
+	beforeEach(() => {
+		tmpDir = `/tmp/test-state-ptr-${Date.now()}`;
+		fs.mkdirSync(tmpDir, { recursive: true });
+	});
+
+	afterEach(() => {
+		fs.rmSync(tmpDir, { recursive: true, force: true });
+	});
+
+	it("writes and reads a pointer", () => {
+		const fp = path.join(tmpDir, "test.pointer.json");
+		const pointer = { piRunId: "run1", runSeq: 1, metric: 42, timestamp: Date.now(), gitCommit: "abc" };
+		writePointer(fp, pointer);
+		const read = readPointer(fp);
+		expect(read).toMatchObject(pointer);
+	});
+
+	it("overwrites existing pointer", () => {
+		const fp = path.join(tmpDir, "test.pointer.json");
+		writePointer(fp, { piRunId: "run1", runSeq: 1, metric: 42, timestamp: 0, gitCommit: "a" });
+		writePointer(fp, { piRunId: "run2", runSeq: 2, metric: 30, timestamp: 1, gitCommit: "b" });
+		const read = readPointer(fp);
+		expect(read?.metric).toBe(30);
+	});
+
+	it("returns null for non-existent file", () => {
+		expect(readPointer("/tmp/nonexistent")).toBeNull();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// isBestPointerMetric
+// ---------------------------------------------------------------------------
+
+describe("isBestPointerMetric", () => {
+	it("returns true when bestPointer is null", () => {
+		expect(isBestPointerMetric(100, null, "lower")).toBe(true);
+	});
+
+	it("returns true for better lower value", () => {
+		const best = { piRunId: "r1", runSeq: 1, metric: 100, timestamp: 0, gitCommit: "a" };
+		expect(isBestPointerMetric(80, best, "lower")).toBe(true);
+		expect(isBestPointerMetric(120, best, "lower")).toBe(false);
+	});
+
+	it("returns true for better higher value", () => {
+		const best = { piRunId: "r1", runSeq: 1, metric: 50, timestamp: 0, gitCommit: "a" };
+		expect(isBestPointerMetric(80, best, "higher")).toBe(true);
+		expect(isBestPointerMetric(30, best, "higher")).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// reconstructState with new fields
+// ---------------------------------------------------------------------------
+
+describe("reconstructState with long-run fields", () => {
+	it("parses piRunId and external fields", () => {
+		const content = [
+			JSON.stringify({ type: "config", name: "test", metricName: "ms" }),
+			JSON.stringify({
+				type: "run",
+				run: 1,
+				metric: 100,
+				status: "keep",
+				description: "baseline",
+				commit: "abc",
+				piRunId: "20260517T153000.000Z-pi-abc123-def456",
+				createdAt: 1747492200000,
+				startedAt: 1747492200100,
+				completedAt: 1747492210100,
+				durationSeconds: 10,
+				externalRunId: "bench-ext-1",
+				externalArtifactDir: "/tmp/artifacts/1",
+				externalSummaryPath: "/tmp/artifacts/1/summary.json",
+				externalViewlogPath: "/tmp/artifacts/1/viewlog.json",
+				externalMetricsPath: "/tmp/artifacts/1/metrics.json",
+				signal: null,
+			}),
+		].join("\n") + "\n";
+
+		const state = reconstructState(content);
+		expect(state.results[0]?.piRunId).toBe("20260517T153000.000Z-pi-abc123-def456");
+		expect(state.results[0]?.externalRunId).toBe("bench-ext-1");
+		expect(state.results[0]?.externalArtifactDir).toBe("/tmp/artifacts/1");
+		expect(state.results[0]?.externalSummaryPath).toBe("/tmp/artifacts/1/summary.json");
+		expect(state.results[0]?.externalViewlogPath).toBe("/tmp/artifacts/1/viewlog.json");
+		expect(state.results[0]?.externalMetricsPath).toBe("/tmp/artifacts/1/metrics.json");
+		expect(state.results[0]?.createdAt).toBe(1747492200000);
+		expect(state.results[0]?.startedAt).toBe(1747492200100);
+		expect(state.results[0]?.completedAt).toBe(1747492210100);
+		expect(state.results[0]?.durationSeconds).toBe(10);
+	});
+
+	it("parses sessionId from config", () => {
+		const content = JSON.stringify({ type: "config", name: "test", metricName: "ms", sessionId: "sess-123" }) + "\n";
+		const state = reconstructState(content);
+		expect(state.sessionId).toBe("sess-123");
+	});
+});
 
 describe("checks_failed status", () => {
 	it("is parsed from JSONL", () => {

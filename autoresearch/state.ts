@@ -2,7 +2,10 @@
  * autoresearch/state.ts — 純粋関数による JSONL 解析・状態管理。
  *
  * pi API に依存しないため unit test が容易。
+ * 長時間 benchmark 対応のため、append-only ledger と pointer 管理を追加。
  */
+
+import * as fs from "node:fs";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,6 +35,18 @@ export interface RunEntry {
 	dirtyAfter?: boolean;
 	changedFiles?: string[];
 	notes?: string;
+	// --- Long-run benchmark fields (added in v2.0) ---
+	piRunId?: string;
+	createdAt?: number;
+	startedAt?: number;
+	completedAt?: number;
+	durationSeconds?: number;
+	externalRunId?: string | null;
+	externalArtifactDir?: string | null;
+	externalSummaryPath?: string | null;
+	externalViewlogPath?: string | null;
+	externalMetricsPath?: string | null;
+	signal?: string | null;
 }
 
 export interface ExperimentState {
@@ -42,6 +57,83 @@ export interface ExperimentState {
 	bestMetric: number | null;
 	results: RunEntry[];
 	runCount: number;
+	/** Session ID for artifact directory organization */
+	sessionId: string;
+}
+
+// ---------------------------------------------------------------------------
+// Ledger entry types
+// ---------------------------------------------------------------------------
+
+export interface RunsLedgerEntry {
+	schemaVersion: 1;
+	runSeq: number;
+	piRunId: string;
+	externalRunId: string | null;
+	createdAt: number;
+	startedAt: number;
+	completedAt: number;
+	durationSeconds: number;
+	command: string;
+	exitCode: number | null;
+	timedOut: boolean;
+	signal: string | null;
+	gitCommit: string;
+}
+
+export interface MetricsLedgerEntry {
+	schemaVersion: 1;
+	runSeq: number;
+	piRunId: string;
+	externalRunId: string | null;
+	createdAt: number;
+	startedAt: number;
+	completedAt: number;
+	durationSeconds: number;
+	command: string;
+	gitCommit: string;
+	exitCode: number | null;
+	timedOut: boolean;
+	primaryMetricName: string;
+	primaryMetricValue: number;
+	metrics: Record<string, number>;
+	externalArtifactDir: string | null;
+	externalSummaryPath: string | null;
+	externalViewlogPath: string | null;
+	externalMetricsPath: string | null;
+	status: string;
+}
+
+export interface DecisionLedgerEntry {
+	schemaVersion: 1;
+	piRunId: string;
+	externalRunId: string | null;
+	status: string;
+	metric: number;
+	preCommit: string;
+	postCommit: string;
+	dirtyBefore: boolean;
+	dirtyAfter: boolean;
+	changedFiles: string[];
+	timestamp: number;
+	description: string;
+	notes?: string;
+}
+
+export interface EventLedgerEntry {
+	schemaVersion: 1;
+	event: string; // "started" | "completed" | "timed_out" | "logged"
+	piRunId: string;
+	timestamp: number;
+	details?: Record<string, unknown>;
+}
+
+export interface PointerEntry {
+	piRunId: string;
+	runSeq: number;
+	metric: number;
+	timestamp: number;
+	gitCommit: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -64,6 +156,61 @@ export function parseJsonlLine(line: string): Record<string, unknown> | null {
 }
 
 // ---------------------------------------------------------------------------
+// Ledger file management (append-only)
+// ---------------------------------------------------------------------------
+
+/** Append a line to a JSONL file. Creates the file if it doesn't exist. */
+export function appendToJsonl(filePath: string, data: Record<string, unknown>): void {
+	const line = JSON.stringify(data) + "\n";
+	fs.appendFileSync(filePath, line, "utf8");
+}
+
+/** Read all entries from a JSONL file. Returns empty array if file doesn't exist. */
+export function readJsonlEntries<T = Record<string, unknown>>(filePath: string): T[] {
+	if (!fs.existsSync(filePath)) return [];
+	const content = fs.readFileSync(filePath, "utf8");
+	const entries: T[] = [];
+	for (const line of content.split("\n")) {
+		const entry = parseJsonlLine(line);
+		if (entry) entries.push(entry as T);
+	}
+	return entries;
+}
+
+// ---------------------------------------------------------------------------
+// Pointer management
+// ---------------------------------------------------------------------------
+
+/** Write a pointer file (overwrites existing). */
+export function writePointer(filePath: string, pointer: PointerEntry): void {
+	fs.writeFileSync(filePath, JSON.stringify(pointer, null, 2), "utf8");
+}
+
+/** Read a pointer file. Returns null if file doesn't exist or is invalid. */
+export function readPointer(filePath: string): PointerEntry | null {
+	if (!fs.existsSync(filePath)) return null;
+	try {
+		const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
+		if (data && typeof data === "object" && typeof data.piRunId === "string") {
+			return data as PointerEntry;
+		}
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+/** Determine if a candidate metric is better than the current best pointer. */
+export function isBestPointerMetric(
+	candidate: number,
+	bestPointer: PointerEntry | null,
+	direction: "lower" | "higher",
+): boolean {
+	if (!bestPointer) return true;
+	return direction === "lower" ? candidate < bestPointer.metric : candidate > bestPointer.metric;
+}
+
+// ---------------------------------------------------------------------------
 // State reconstruction
 // ---------------------------------------------------------------------------
 
@@ -77,6 +224,7 @@ export function freshState(): ExperimentState {
 		bestMetric: null,
 		results: [],
 		runCount: 0,
+		sessionId: "default",
 	};
 }
 
@@ -104,6 +252,18 @@ function parseRunEntry(entry: Record<string, unknown>): RunEntry {
 	if (typeof entry.dirtyAfter === "boolean") result.dirtyAfter = entry.dirtyAfter;
 	if (Array.isArray(entry.changedFiles)) result.changedFiles = entry.changedFiles.filter((f: unknown) => typeof f === "string");
 	if (typeof entry.notes === "string") result.notes = entry.notes;
+	// Long-run benchmark fields
+	if (typeof entry.piRunId === "string") result.piRunId = entry.piRunId;
+	if (typeof entry.createdAt === "number") result.createdAt = entry.createdAt;
+	if (typeof entry.startedAt === "number") result.startedAt = entry.startedAt;
+	if (typeof entry.completedAt === "number") result.completedAt = entry.completedAt;
+	if (typeof entry.durationSeconds === "number") result.durationSeconds = entry.durationSeconds;
+	if (typeof entry.externalRunId === "string" || entry.externalRunId === null) result.externalRunId = entry.externalRunId as string | null;
+	if (typeof entry.externalArtifactDir === "string" || entry.externalArtifactDir === null) result.externalArtifactDir = entry.externalArtifactDir as string | null;
+	if (typeof entry.externalSummaryPath === "string" || entry.externalSummaryPath === null) result.externalSummaryPath = entry.externalSummaryPath as string | null;
+	if (typeof entry.externalViewlogPath === "string" || entry.externalViewlogPath === null) result.externalViewlogPath = entry.externalViewlogPath as string | null;
+	if (typeof entry.externalMetricsPath === "string" || entry.externalMetricsPath === null) result.externalMetricsPath = entry.externalMetricsPath as string | null;
+	if (typeof entry.signal === "string" || entry.signal === null) result.signal = entry.signal as string | null;
 	return result;
 }
 
@@ -121,6 +281,7 @@ export function reconstructState(jsonlContent: string): ExperimentState {
 			if (entry.direction === "higher" || entry.direction === "lower") {
 				state.direction = entry.direction;
 			}
+			if (typeof entry.sessionId === "string") state.sessionId = entry.sessionId;
 			state.bestMetric = null;
 			state.results = [];
 			state.runCount = 0;

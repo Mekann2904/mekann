@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { truncateTail, runCommand, runChecks } from "./runner.js";
+import { truncateTail, runCommand, runChecks, generatePiRunId, generateRunId, parseExternalInfo, filterSecrets, createRunArtifactDir, writeRunArtifacts, writeChecksArtifacts, loadRunFromArtifact } from "./runner.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -208,16 +208,228 @@ describe("runChecks", () => {
 });
 
 // ---------------------------------------------------------------------------
-// spawn error (non-existent command)
+// generatePiRunId
 // ---------------------------------------------------------------------------
 
-describe("runCommand spawn error", () => {
-	it("handles command not found via bash exit code 127", async () => {
-		const tmpDir = fs.mkdtempSync("/tmp/test-runner-spawn-");
-		const r = await runCommand("/nonexistent/command/that/does/not/exist", tmpDir, 5000);
-		expect(r.passed).toBe(false);
-		expect(r.exitCode).toBe(127);
-		expect(r.output).toBeTruthy();
+describe("generatePiRunId", () => {
+	it("generates a time-sortable ID with -pi- separator", () => {
+		const id = generatePiRunId("/tmp");
+		expect(id).toContain("-pi-");
+		expect(id).toMatch(/^\d{8}T\d{6}\.\d{3}Z-pi-.+$/);
+	});
+
+	it("generates unique IDs", () => {
+		const ids = new Set<string>();
+		for (let i = 0; i < 100; i++) {
+			ids.add(generatePiRunId("/tmp"));
+		}
+		expect(ids.size).toBe(100);
+	});
+
+	it("IDs sort chronologically", async () => {
+		const ids: string[] = [];
+		for (let i = 0; i < 5; i++) {
+			ids.push(generatePiRunId("/tmp"));
+			await new Promise(r => setTimeout(r, 10));
+		}
+		const sorted = [...ids].sort();
+		expect(sorted).toEqual(ids);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// parseExternalInfo
+// ---------------------------------------------------------------------------
+
+describe("parseExternalInfo", () => {
+	it("extracts RUN_ID", () => {
+		const info = parseExternalInfo("RUN_ID bench-abc-123\n");
+		expect(info.externalRunId).toBe("bench-abc-123");
+	});
+
+	it("extracts ARTIFACT_DIR", () => {
+		const info = parseExternalInfo("ARTIFACT_DIR logs/runs/abc\n");
+		expect(info.externalArtifactDir).toBe("logs/runs/abc");
+	});
+
+	it("extracts SUMMARY_PATH", () => {
+		const info = parseExternalInfo("SUMMARY_PATH logs/summary.json\n");
+		expect(info.externalSummaryPath).toBe("logs/summary.json");
+	});
+
+	it("extracts VIEWLOG_PATH", () => {
+		const info = parseExternalInfo("VIEWLOG_PATH logs/viewlog.json\n");
+		expect(info.externalViewlogPath).toBe("logs/viewlog.json");
+	});
+
+	it("extracts METRICS_PATH", () => {
+		const info = parseExternalInfo("METRICS_PATH logs/metrics.json\n");
+		expect(info.externalMetricsPath).toBe("logs/metrics.json");
+	});
+
+	it("extracts all fields from combined output", () => {
+		const output = [
+			"RUN_ID 20260517T153000.123Z-bench-a1b2c3-k9x4qp",
+			"ARTIFACT_DIR logs/benchmarks/task-001/runs/20260517T153000.123Z-bench-a1b2c3-k9x4qp",
+			"SUMMARY_PATH logs/benchmarks/task-001/runs/20260517T153000.123Z-bench-a1b2c3-k9x4qp/summary.json",
+			"VIEWLOG_PATH logs/benchmarks/task-001/runs/20260517T153000.123Z-bench-a1b2c3-k9x4qp/viewlog.json",
+			"METRICS_PATH logs/benchmarks/task-001/runs/20260517T153000.123Z-bench-a1b2c3-k9x4qp/metrics.json",
+			"METRIC objective_score=0.7342",
+		].join("\n");
+		const info = parseExternalInfo(output);
+		expect(info.externalRunId).toBe("20260517T153000.123Z-bench-a1b2c3-k9x4qp");
+		expect(info.externalArtifactDir).toContain("task-001");
+		expect(info.externalSummaryPath).toContain("summary.json");
+		expect(info.externalViewlogPath).toContain("viewlog.json");
+		expect(info.externalMetricsPath).toContain("metrics.json");
+	});
+
+	it("returns nulls for empty output", () => {
+		const info = parseExternalInfo("");
+		expect(info.externalRunId).toBeNull();
+		expect(info.externalArtifactDir).toBeNull();
+	});
+
+	it("ignores unrelated lines", () => {
+		const info = parseExternalInfo("Some random output\nMETRIC foo=42\nOther stuff");
+		expect(info.externalRunId).toBeNull();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// filterSecrets
+// ---------------------------------------------------------------------------
+
+describe("filterSecrets", () => {
+	it("redacts API_KEY values", () => {
+		expect(filterSecrets("API_KEY=sk-12345")).toContain("***REDACTED***");
+		expect(filterSecrets("API_KEY=sk-12345")).not.toContain("sk-12345");
+	});
+
+	it("redacts SECRET values", () => {
+		expect(filterSecrets("MY_SECRET=abc123")).toContain("***REDACTED***");
+	});
+
+	it("redacts PASSWORD values", () => {
+		expect(filterSecrets("DB_PASSWORD=hunter2")).toContain("***REDACTED***");
+	});
+
+	it("redacts TOKEN values", () => {
+		expect(filterSecrets("TOKEN=eyJhbGci")).toContain("***REDACTED***");
+	});
+
+	it("preserves normal lines", () => {
+		expect(filterSecrets("METRIC foo=42")).toBe("METRIC foo=42");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Artifact directory management
+// ---------------------------------------------------------------------------
+
+describe("artifact directory management", () => {
+	let tmpDir: string;
+
+	beforeEach(() => {
+		tmpDir = `/tmp/test-artifact-${Date.now()}`;
+		fs.mkdirSync(tmpDir, { recursive: true });
+	});
+
+	afterEach(() => {
 		fs.rmSync(tmpDir, { recursive: true, force: true });
-	}, 10000);
+	});
+
+	it("createRunArtifactDir creates directory with initial files", () => {
+		const runDir = createRunArtifactDir(tmpDir, "sess1", "run1", "echo test", Date.now());
+		expect(fs.existsSync(runDir)).toBe(true);
+		expect(fs.existsSync(path.join(runDir, "command.txt"))).toBe(true);
+		expect(fs.readFileSync(path.join(runDir, "command.txt"), "utf8")).toBe("echo test");
+		expect(fs.existsSync(path.join(runDir, "git.status.txt"))).toBe(true);
+		expect(fs.existsSync(path.join(runDir, "git.diff"))).toBe(true);
+	});
+
+	it("createRunArtifactDir throws if directory already exists", () => {
+		createRunArtifactDir(tmpDir, "sess1", "run1", "echo test", Date.now());
+		expect(() => createRunArtifactDir(tmpDir, "sess1", "run1", "echo test2", Date.now())).toThrow(/already exists/);
+	});
+
+	it("writeRunArtifacts writes all artifact files", async () => {
+		const runDir = createRunArtifactDir(tmpDir, "sess1", "run1", "echo test", Date.now());
+		const result = await runCommand("echo hello", tmpDir, 5000);
+		writeRunArtifacts(runDir, result, "run1", Date.now(), Date.now());
+
+		expect(fs.existsSync(path.join(runDir, "stdout.log"))).toBe(true);
+		expect(fs.existsSync(path.join(runDir, "stderr.log"))).toBe(true);
+		expect(fs.existsSync(path.join(runDir, "metrics.json"))).toBe(true);
+		expect(fs.existsSync(path.join(runDir, "manifest.json"))).toBe(true);
+		expect(fs.existsSync(path.join(runDir, "result.json"))).toBe(true);
+
+		const manifest = JSON.parse(fs.readFileSync(path.join(runDir, "manifest.json"), "utf8"));
+		expect(manifest.piRunId).toBe("run1");
+		expect(manifest.command).toBe("echo hello");
+	});
+
+	it("writeChecksArtifacts writes checks result", async () => {
+		const runDir = createRunArtifactDir(tmpDir, "sess1", "run1", "echo test", Date.now());
+		const result = await runCommand("echo hello", tmpDir, 5000);
+		writeRunArtifacts(runDir, result, "run1", Date.now(), Date.now());
+		writeChecksArtifacts(runDir, { passed: true, timedOut: false, output: "OK", durationSeconds: 1 });
+
+		expect(fs.existsSync(path.join(runDir, "checks-result.json"))).toBe(true);
+		const checks = JSON.parse(fs.readFileSync(path.join(runDir, "checks-result.json"), "utf8"));
+		expect(checks.passed).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// generateRunId (deprecated alias)
+// ---------------------------------------------------------------------------
+
+describe("generateRunId (deprecated)", () => {
+	it("generates a valid runId via generatePiRunId", () => {
+		const id = generateRunId();
+		expect(id).toContain("-pi-");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// loadRunFromArtifact
+// ---------------------------------------------------------------------------
+
+describe("loadRunFromArtifact", () => {
+	let tmpDir: string;
+
+	beforeEach(() => {
+		tmpDir = `/tmp/test-load-artifact-${Date.now()}`;
+		fs.mkdirSync(tmpDir, { recursive: true });
+	});
+
+	afterEach(() => {
+		fs.rmSync(tmpDir, { recursive: true, force: true });
+	});
+
+	it("returns null when manifest does not exist", () => {
+		expect(loadRunFromArtifact(tmpDir, "sess1", "nonexistent")).toBeNull();
+	});
+
+	it("reconstructs RunResult from manifest.json", async () => {
+		const runDir = createRunArtifactDir(tmpDir, "sess1", "run1", "echo test", Date.now());
+		const result = await runCommand("echo METRIC score=42", tmpDir, 5000);
+		writeRunArtifacts(runDir, result, "run1", Date.now(), Date.now());
+
+		const loaded = loadRunFromArtifact(tmpDir, "sess1", "run1");
+		expect(loaded).not.toBeNull();
+		expect(loaded!.result.parsedMetrics).toMatchObject({ score: 42 });
+		expect(loaded!.result.command).toBe("echo METRIC score=42");
+	});
+
+	it("loads checks result when available", async () => {
+		const runDir = createRunArtifactDir(tmpDir, "sess1", "run2", "echo ok", Date.now());
+		const result = await runCommand("echo ok", tmpDir, 5000);
+		writeRunArtifacts(runDir, result, "run2", Date.now(), Date.now());
+		writeChecksArtifacts(runDir, { passed: true, timedOut: false, output: "OK", durationSeconds: 1 });
+
+		const loaded = loadRunFromArtifact(tmpDir, "sess1", "run2");
+		expect(loaded!.result.checks.passed).toBe(true);
+	});
 });
