@@ -34,10 +34,18 @@ export function buildClipboardScript(escapedPath: string): string {
 	return `
 				use framework "Foundation"
 				use framework "AppKit"
-				set theURL to current application's NSURL's fileURLWithPath:"${escapedPath}"
+				set expectedPath to "${escapedPath}"
+				set theURL to current application's NSURL's fileURLWithPath:expectedPath
 				set thePasteboard to current application's NSPasteboard's generalPasteboard()
 				thePasteboard's clearContents()
-				thePasteboard's writeObjects:{theURL}
+				set wroteObjects to thePasteboard's writeObjects:{theURL}
+				if wroteObjects as boolean is false then error "NSPasteboard writeObjects returned false"
+				delay 0.1
+				set readURLs to thePasteboard's readObjectsForClasses:{current application's NSURL} options:(missing value)
+				if readURLs is missing value then error "NSPasteboard readback returned no file URL"
+				if (readURLs's |count|()) as integer is 0 then error "NSPasteboard readback returned no file URL"
+				set actualPath to ((readURLs's objectAtIndex:0)'s |path|()) as text
+				if actualPath is not expectedPath then error "NSPasteboard readback mismatch: " & actualPath
 			`;
 }
 

@@ -140,10 +140,18 @@ describe("buildClipboardScript", () => {
 		expect(script).toContain("generalPasteboard");
 	});
 
-	it("clearContents と writeObjects を含む", () => {
+	it("clearContents / writeObjects と成功判定を含む", () => {
 		const script = buildClipboardScript("/tmp/test.zip");
 		expect(script).toContain("clearContents");
 		expect(script).toContain("writeObjects");
+		expect(script).toContain("NSPasteboard writeObjects returned false");
+	});
+
+	it("書き込み後に readback 検証する", () => {
+		const script = buildClipboardScript("/tmp/test.zip");
+		expect(script).toContain("readObjectsForClasses");
+		expect(script).toContain("NSPasteboard readback returned no file URL");
+		expect(script).toContain("NSPasteboard readback mismatch");
 	});
 
 	it("エスケープされたパスを渡す", () => {
