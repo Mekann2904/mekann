@@ -26,7 +26,29 @@
 | # | Description | Uncovered | Δ | Status |
 |---|---|---|---|---|
 | 1 | Baseline (pre-existing tests) | ~90 | - | baseline |
-| 2 | state provenance + runner git helpers + goal continuation + result.json test | ~70 | -22% | keep |
+| 2 | state provenance + runner git helpers + goal continuation + result.json test | ~78 | -13% | keep |
+| 3 | goal runtime: no isIdle ctx, missing usage, aborted assistant | ~65 | -17% | keep |
+
+## Final Coverage
+
+| Module | Stmts | Branch | Tests |
+|--------|-------|--------|-------|
+| autoresearch | 96.45% | 89.88% | 280 |
+| goal | 97.69% | 92.1% | 214 |
+| sandbox | 96.48% | 95.4% | 465 |
+| subagent | 99.42% | 93.65% | 230 |
+| plan-mode | 95.87% | 94.28% | 366 |
+| zip-repo | 100% | 100% | 58 |
+| **Avg stmt** | **97.65%** | | **1613** |
+| **Avg branch** | | **93.87%** | |
+
+## Natural Floor Reached
+残りの未カバー branches はほぼすべて defensive/unreachable by design:
+- autoresearch: ledger エラーの catch (String(e))、artifact フォールバックパス
+- goal: catch (String(e)) パス、fallback model path
+- sandbox: yolo branch, escalation rejection, cross-volume path
+- subagent: callerPath !== ROOT_PATH (always ROOT_PATH)
+- plan-mode: renameSync fallback, fallback model path
 
 ## Changes Made
 
