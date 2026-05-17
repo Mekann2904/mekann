@@ -2,3 +2,4 @@
 {"type":"run","run":1,"commit":"89e9a15","metric":41200,"status":"keep","description":"ベースライン: npm run prepush（typecheck直列 + テスト全モジュール直列）= 41.2秒","timestamp":1779015877583}
 {"type":"run","run":2,"commit":"3b74142","metric":20900,"status":"keep","description":"並列prepush: 全テスト+typecheckをバックグラウンド&で同時実行。41.2s→20.9s（-49.3%）","timestamp":1779015999943}
 {"type":"run","run":3,"commit":"39ea953","metric":14500,"status":"keep","description":"subagentのMIN_WAIT_TIMEOUT_MSをコンストラクタ経由でオーバーライド可能にし、テストで10msに設定。subagent 18.5s→2.6s。prepush全体 20.9s→14.5s（-30.6%）","timestamp":1779017335674}
+{"type":"run","run":4,"commit":"ca489ab","metric":12800,"status":"keep","description":"sandboxのtimeoutテストを1000/1500ms→300/500msに短縮。sandbox 12.2s→10.8s。prepush 14.5s→12.8s（-11.7%）","timestamp":1779017430171}
