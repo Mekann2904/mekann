@@ -1,140 +1,60 @@
 # Maintenance Research Notes
 
-## Current State (2026-05-16 restart)
+## Current State (2026-05-17 session)
 
-- **Baseline**: 6436 LOC, 24 files, 1392 tests
-- **After Exp 1**: 6405 LOC (-31)
-- **New modules since last session**: autoresearch/ (1279 LOC), goal/ (1601 LOC) — 45% of total
+- **Score progression**: 4072 (baseline) → 3652 (best, -10.3%)
+- **LOC**: 6325 → 6288 (-37)
+- **Files**: 22 → 20 (-2)
+- **Tests**: 1497 → 1492 (-5 deleted dead tests)
+- **Complexity functions**: 3 → 2 (reconstructState shrunk from 51→42 lines)
 
-### File sizes (source LOC)
-- autoresearch/index.ts: 837 (command handler + tool registrations)
-- goal/index.ts: 645 (command handler + tool registrations)
+### File sizes (source LOC, current)
+- autoresearch/index.ts: 719 (was 837)
+- goal/index.ts: 626
 - subagent/agentControl.ts: 489
+- subagent/types.ts: 323 (was 251 + render.ts 72)
 - sandbox/index.ts: 422
 - sandbox/macSeatbelt.ts: 420
-- goal/runtime.ts: 347
-- goal/state.ts: 359
+- goal/state.ts: 363
+- goal/runtime.ts: 335
 - subagent/index.ts: 371
 - subagent/registry.ts: 279
-- plan-mode/index.ts: 283
-- policy-core/modes.ts: 183
-- autoresearch/runner.ts: 175
-- autoresearch/state.ts: 182
+- plan-mode/index.ts: 287
+- autoresearch/runner.ts: 272 (was 175, absorbed git+loop helpers)
+- autoresearch/state.ts: 236
 - plan-mode/utils.ts: 183
-- subagent/contextFork.ts: 97
-- goal/prompts.ts: 149
+- policy-core/modes.ts: 183
+- goal/prompts.ts: 200
 - sandbox/permissions.ts: 153
 - subagent/mailbox.ts: 160
-- goal/render.ts: 75
-- autoresearch/render.ts: 72
+- subagent/contextFork.ts: 97
 - zip-repo/index.ts: 171
-- subagent/render.ts: 72
-- subagent/types.ts: 251
-- subagent/persistence.ts: 48
 
-## First-Principles Analysis
+### Score Structure (best: 3652)
+- duplication_score: 270 × 10 = 2700 (74%)
+- review_risk: 9 × 100 = 900 (25%)
+- complexity_score: 2 × 10 = 20 (1%)
+- test_seconds: 32 × 1 = 32 (1%)
 
-### Premises
+### Key Learnings (this session)
 
-1. **P1**: Each extension needs its own directory structure — **fact** (pi extension contract)
-2. **P2**: policy-core provides shared definitions — **fact** (verified by imports)
-3. **P3**: SBPL template in macSeatbelt.ts must not be weakened — **fact** (SECURITY CRITICAL)
-4. **P4**: `extractText` and `extractAssistantText` in contextFork.ts are identical — **resolved by Exp1** (now `extractTextFromContent`)
-5. **P5**: subagent/types.ts has 10 lifecycle event interfaces with near-identical shapes — **fact**
-6. **P6**: extractAssistantText is duplicated in agentControl.ts and contextFork.ts — **resolved by Exp1** (consolidated into `extractTextFromContent`)
-7. **P7**: The 4 extensions are independent — **inference** (plan-mode and sandbox coordinate via events)
-8. **P8**: Current code organization is optimal — **convention/unverified**
-9. **P9**: Separate type definitions in types.ts are needed — **convention** (could use inline types)
-10. **P10**: Sandbox index.ts at 430 lines is manageable — **unverified** (high coupling risk)
+1. **Moving pure functions to separate modules reduces max file size without adding duplication**: git helpers, loop helpers moved from autoresearch/index.ts (837→719 lines) to runner.ts
+2. **Deleting truly unused code is high-value**: persistence.ts had 48 LOC + 5 tests, zero source references
+3. **File merging reduces file count**: render.ts (72 lines) → types.ts saved 1 file, -100pts
+4. **Helper extraction that only shortens call sites increases LOC**: uw() helper added 2 lines (def+ctx save) per call site, net score increase
+5. **notifyError helper is neutral**: deduplicates pattern but adds definition LOC
+6. **File merging has test isolation limits**: utils.ts → index.ts fails when index.ts has runtime-only imports (@earendil-works/pi-tui) unavailable in test env
+7. **parseRunEntry extraction**: Split 51-line function to reduce complexity score
 
-### Essential Facts (what remains if premises fail)
-- Observable behavior: test suite validates behavior
-- Explicit contracts: ExtensionAPI from pi SDK, SandboxPolicy, AgentMetadata
-- Necessary data flow: commands → handlers → tools → execution
-- Necessary state transitions: mode changes, agent lifecycle, sandbox profiles
-- Necessary interfaces: ExtensionAPI, SandboxPolicy, AgentMetadata, MailboxItem
+### Natural Floor Analysis
+- **duplication_score (270)**: ~66 JSDoc markers, ~44 `return;`, ~42 `);`, ~39 `try {` — all fundamental TS syntax or meaningful documentation
+- **review_risk (9)**: Max file 719 lines (4 pts) + 20 files over 15 threshold (5 pts). Reducing max file below 500 or file count below 15 is unrealistic
+- **complexity (2)**: runCommand (70 lines) and runSandboxedShellMac (120 lines, SECURITY CRITICAL)
+- **Remaining duplication**: API contract boilerplate (pi.registerTool, promptGuidelines, parameters) is externally-visible behavior and cannot be reduced
 
-### Maintenance Cost Sources (prioritized)
-
-1. **Lifecycle event type explosion** in types.ts: 10 separate interfaces for events that share {type, agentId, agentPath, timestamp} + 1-2 extra fields each. A new event type requires adding a new interface + updating LifecycleEvent union.
-
-3. **sandbox/index.ts coupling**: 430-line file mixing mode management, yolo approval, bash tool handler, profile overrides, events, session lifecycle. Multiple responsibilities in one closure.
-
-4. **agentControl.ts complexity**: 561 lines. Long methods (spawn is ~150 lines). Multiple concerns mixed.
-
-5. **subagent/index.ts verbosity**: 473 lines, dominated by tool registration boilerplate. Each tool follows the same pattern (schema + execute + return).
-
-6. **Hardcoded strings**: Japanese UI strings scattered throughout sandbox/index.ts and plan-mode. Not localized, but embedded in logic.
-
-7. **Event type string literals**: Lifecycle event types are string literals scattered across files. Could benefit from constants.
-
-### Hypotheses to Test
-
-H1: ~~Extract `extractAssistantText` / `extractText` into shared utility~~ → **Done (Exp1): now `extractTextFromContent` in `contextFork.ts`. Consider moving to `messageContent.ts` if more callers appear.**
-H2: Consolidate lifecycle event interfaces into a single generic type → reduces type boilerplate
-H3: Extract bash tool handler from sandbox/index.ts → reduces file size, improves locality
-H4: Extract yolo approval management from sandbox/index.ts → reduces coupling
-H5: Delete unused code / dead exports → reduces LOC without behavior change
-H6: Reduce subagent/index.ts tool registration boilerplate → reduce LOC
-H7: Inline trivial functions that add indirection without abstraction value
-
-### Risks
-- SBPL template is SECURITY CRITICAL — do NOT modify security logic
-- Sandbox event coordination with plan-mode is fragile — changes must preserve event contracts
-- Test mocks depend on internal structure — refactoring may break test imports
-
-## Experiment Log
-
-### Exp 1: Extract contentExtract.ts (KEEP, -120 pts)
-- Deduplicated extractText/extractAssistantText
-- 3977→3946 LOC, duplication 195→183
-
-### Exp 2: Consolidate lifecycle event types with extends (DISCARD)
-- Score 2560→2565 (+5), changed_loc penalty outweighed LOC bonus
-
-### Exp 3: Delete unused SessionSource types (KEEP, -6 pts)
-- 3946→3924 LOC, duplication 183→182
-
-### Exp 4: Remove unused CAPABILITY_PROFILES (KEEP, -5 pts)
-- 3924→3897 LOC
-
-### Exp 5: Remove unused appendState (DISCARD)
-- Score 2549→2550 (+1), changed_loc penalty
-
-### Exp 6: Consolidate lifecycle events with LifecycleBase (KEEP, -9 pts)
-- 3897→3832 LOC, duplication 182→181
-
-### Exp 7-15: (see results.tsv for details)
-- Previous session reached ~1075 score with 54 experiments
-
-### Exp 16 (2026-05-16): Deduplicate on/default + formatDuration (KEEP, -31 LOC)
-- autoresearch/index.ts: on/default cases merged into activateAutoresearch helper
-- goal/render.ts: formatDuration moved to import from goal/prompts.ts
-- 6436→6405 LOC, all 1392 tests pass
-
-### Exp 17-25 (2026-05-16): Ongoing deduplication
-- INACTIVE_RESPONSE constant in autoresearch (-20 LOC)
-- DISABLED_RESPONSE constant in goal (-10 LOC)
-- ConfigEntry removal + runner.ts section cleanup (-12 LOC)
-- accountUsage helper in goal/runtime.ts (-12 LOC)
-- remainingTokens helper across goal module (neutral LOC, reduces duplication)
-- STATUS_LABELS/STATUS_PREFIX constants (neutral LOC)
-- renderWidget JSDoc removal (-4 LOC)
-- Guard consolidation in goal command handler (-8 LOC)
-- notifyError helper: DISCARDED (+4 LOC, not worth the indirection)
-- Total: 6436 → 6339 (-97 LOC, -1.5%)
-
-### Key Learnings
-- Helper extraction that reduces code volume AND duplication is high-value
-- Guard consolidation (multiple if → single compound if) saves lines
-- Error message helpers NOT worth it when callers are single-line
-- Single-line replacements that don't reduce line count add indirection without benefit
-- New modules (autoresearch, goal) are at natural LOC floor — most code is API contract
-
-### Remaining Opportunities
-1. New modules at natural LOC floor — most remaining code is API contract boilerplate
-2. Tool registration descriptions/guidelines are externally-visible behavior
-3. Sandbox/macSeatbelt is SECURITY CRITICAL and already optimized
-4. Subagent modules were optimized in previous session
-5. Consider: file merging (goal/render.ts → goal/prompts.ts, but increases coupling)
-6. Consider: multi-line return object compression (risky, reduces readability)
+### Remaining Opportunities (low-ROI)
+1. goal/prompts.ts → goal/state.ts merge (200+363=563, over 500)
+2. sandbox/permissions.ts → sandbox/index.ts merge (153+422=575, over 500)
+3. JSDoc removal (132 dup lines) — most are meaningful, removal reduces clarity
+4. Error pattern helper across modules — requires shared dependency or increases coupling
+5. Test speed optimization — 32s is modest, most time is subagent/sandbox integration tests

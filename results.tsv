@@ -15,3 +15,11 @@ b73d1d7	2129	true	9.93	keep	Merge approvals.ts into permissions.ts	reduce file c
 c365982	1824	true	9.77	keep	Merge commandIntent.ts into modes.ts	reduce file count
 fe47f02	1729	true	9.76	keep	Merge agentPath.ts into types.ts	reduce file count
 b2c3234	1704	true	9.91	keep	Extract evBase helper	reduce event construction duplication
+79098e2	3652	true	32.5	keep	Baseline for 2026-05-17 maintenance session (updated)	current structure
+8dad330	3977	true	32.6	keep	Move git helpers to runner.ts	reduce max file size
+8dad330	3877	true	32.7	keep	Move loop helpers to runner.ts	reduce max file size
+962139d	3867	true	32.7	keep	Extract parseRunEntry helper	reduce complexity
+8a8d21b	3752	true	32.5	keep	Delete unused persistence.ts	dead code removal
+4962395	3652	true	32.5	keep	Merge render.ts into types.ts	reduce file count
+4962395	3652	true	32.7	discard	notifyError helper	neutral score
+4962395	3652	true	0.0	discard	Merge utils.ts into index.ts	test isolation failure
