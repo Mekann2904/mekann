@@ -1,0 +1,2 @@
+{"type":"config","name":"Pre-push高速化（品質維持）","metricName":"prepush_ms","metricUnit":"ms","direction":"lower"}
+{"type":"run","run":1,"commit":"89e9a15","metric":41200,"status":"keep","description":"ベースライン: npm run prepush（typecheck直列 + テスト全モジュール直列）= 41.2秒","timestamp":1779015877583}
