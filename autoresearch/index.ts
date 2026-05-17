@@ -569,8 +569,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			if (result.timedOut) text = `[TIMEOUT] タイムアウト（${params.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS}秒）\n`;
 			else if (!result.passed) text = `[FAIL] 失敗（終了コード: ${result.exitCode}）\n`;
 			else text = `[OK] 完了\n`;
+			const safeCommand = filterSecrets(result.command);
 			text += `実行時間: ${result.durationSeconds.toFixed(1)}秒\n`;
-			text += `コマンド: ${result.command}\n`;
+			text += `コマンド: ${safeCommand}\n`;
 			text += `piRunId: ${piRunId}\n`;
 
 			if (result.externalRunId) text += `外部 RUN_ID: ${result.externalRunId}\n`;
@@ -595,14 +596,43 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				if (primary !== undefined) text += `\n主指標 ${state.metricName}=${primary}${state.metricUnit} を autoresearch_log に報告してください。`;
 			}
 
-			if (result.output) text += `\n出力（末尾）:\n${result.output}`;
+			const safeOutput = filterSecrets(result.output);
+			if (safeOutput) text += `\n出力（末尾）:\n${safeOutput}`;
 			text += `\npiRunId: ${piRunId}（autoresearch_log の runId に渡してください）`;
 
 			return {
 				content: [{ type: "text", text }],
 				details: {
-					...result, runId: piRunId, piRunId, checks, preCommit,
-					startedAt, completedAt, createdAt, artifactFailed,
+					// raw stdout/stderr は secret とサイズの両面で返さない。正本は artifact の stdout.log/stderr.log。
+					command: safeCommand,
+					exitCode: result.exitCode,
+					durationSeconds: result.durationSeconds,
+					timedOut: result.timedOut,
+					passed: result.passed,
+					output: safeOutput,
+					parsedMetrics: result.parsedMetrics,
+					signal: result.signal,
+					logFilesWritten: result.logFilesWritten,
+					streamError: result.streamError,
+					externalRunId: result.externalRunId,
+					externalArtifactDir: result.externalArtifactDir,
+					externalSummaryPath: result.externalSummaryPath,
+					externalViewlogPath: result.externalViewlogPath,
+					externalMetricsPath: result.externalMetricsPath,
+					runId: piRunId,
+					piRunId,
+					checks: {
+						passed: checks.passed,
+						timedOut: checks.timedOut,
+						durationSeconds: checks.durationSeconds,
+						output: filterSecrets(checks.output),
+					},
+					preCommit,
+					startedAt,
+					completedAt,
+					createdAt,
+					artifactDir,
+					artifactFailed,
 				},
 			};
 		},
@@ -757,15 +787,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				signal: matchedResult?.signal ?? null,
 			};
 
-			state.results.push(entry);
-			state.runCount = run;
-			if (params.status === "keep" && isBestMetric(state.bestMetric, params.metric, state.direction)) {
-				state.bestMetric = params.metric;
-			}
-
-			// P0-2: git commit 失敗時は keep を成功扱いにしない
-			// 先に git commit を試み、失敗したら状態を更新せずにエラーを返す
-			let gitError: string | undefined;
+			// P0-2: git commit 失敗時は keep を成功扱いにしない。
+			// state.results/runCount/bestMetric は git 成功（または non-keep の revert）後に更新する。
 			if (params.status === "keep") {
 				const gr = gitAutoCommit(ctx.cwd, `${params.description}\n\nResult: ${JSON.stringify({ status: params.status, [state.metricName]: params.metric })}`);
 				if (gr.committed) {
@@ -783,6 +806,14 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				entry.postCommit = getGitShortHash(ctx.cwd);
 			}
 			entry.dirtyAfter = isGitDirty(ctx.cwd);
+			entry.commit = commit;
+
+			// P0-2: commit 失敗時はここに到達しないため、ここから state を更新する。
+			state.results.push(entry);
+			state.runCount = run;
+			if (params.status === "keep" && isBestMetric(state.bestMetric, params.metric, state.direction)) {
+				state.bestMetric = params.metric;
+			}
 
 			// --- Pointers & ledgers ---
 			const ledgerErrors: string[] = [];
