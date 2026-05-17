@@ -536,8 +536,9 @@ export function writeRunArtifacts(
 		"utf8",
 	);
 
-	// manifest.json
+	// manifest.json (written last — artifactComplete=true means all writes succeeded)
 	const manifest = {
+		artifactComplete: true,
 		piRunId,
 		runSeq,
 		command: result.command,

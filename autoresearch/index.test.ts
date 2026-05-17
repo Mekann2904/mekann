@@ -37,6 +37,13 @@ interface MockCtx {
 	ui: MockUi;
 }
 
+/** Init git repo with user config for test isolation. */
+function gitInitForTest(cwd: string): void {
+	childProcess.execFileSync("git", ["init"], { cwd });
+	childProcess.execFileSync("git", ["config", "user.email", "test@example.com"], { cwd });
+	childProcess.execFileSync("git", ["config", "user.name", "Test User"], { cwd });
+}
+
 function createMockPi() {
 	const tools: Array<{ name: string; [k: string]: unknown }> = [];
 	const commands: Map<string, { handler: Function; description?: string }> = new Map();
@@ -896,7 +903,7 @@ describe("autoresearchExtension", () => {
 
 			// git init for auto commit
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
-			childProcess.execFileSync("git", ["init"], { cwd: testDir });
+			gitInitForTest(testDir);
 			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir });
 			childProcess.execFileSync("git", ["commit", "-m", "init"], { cwd: testDir });
 
@@ -952,7 +959,7 @@ describe("autoresearchExtension", () => {
 			fs.mkdirSync(testDir, { recursive: true });
 
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
-			childProcess.execFileSync("git", ["init"], { cwd: testDir });
+			gitInitForTest(testDir);
 			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir });
 			childProcess.execFileSync("git", ["commit", "-m", "init"], { cwd: testDir });
 
@@ -990,7 +997,7 @@ describe("autoresearchExtension", () => {
 			fs.mkdirSync(testDir, { recursive: true });
 
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
-			childProcess.execFileSync("git", ["init"], { cwd: testDir });
+			gitInitForTest(testDir);
 			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir });
 			childProcess.execFileSync("git", ["commit", "-m", "init"], { cwd: testDir });
 
@@ -1027,7 +1034,7 @@ describe("autoresearchExtension", () => {
 			fs.mkdirSync(testDir, { recursive: true });
 
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
-			childProcess.execFileSync("git", ["init"], { cwd: testDir });
+			gitInitForTest(testDir);
 			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir });
 			childProcess.execFileSync("git", ["commit", "-m", "init"], { cwd: testDir });
 
@@ -1270,7 +1277,7 @@ describe("autoresearchExtension", () => {
 			fs.mkdirSync(testDir, { recursive: true });
 
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
-			childProcess.execFileSync("git", ["init"], { cwd: testDir });
+			gitInitForTest(testDir);
 			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir });
 			childProcess.execFileSync("git", ["commit", "-m", "init"], { cwd: testDir });
 
@@ -1419,8 +1426,8 @@ describe("autoresearchExtension", () => {
 				ctx,
 			);
 			expect(result.content[0].text).toContain("[KEEP]");
-			// Non-git dir: commit エラー or 変更なし
-			expect(result.content[0].text).toContain("[git]");
+			// Non-git dir: commit エラー
+			expect(result.content[0].text).toContain("[git ERROR]");
 
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
@@ -1461,9 +1468,7 @@ describe("autoresearchExtension", () => {
 			fs.mkdirSync(testDir, { recursive: true });
 
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
-			childProcess.execFileSync("git", ["init"], { cwd: testDir });
-			childProcess.execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: testDir });
-			childProcess.execFileSync("git", ["config", "user.name", "Test"], { cwd: testDir });
+			gitInitForTest(testDir);
 			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir });
 			childProcess.execFileSync("git", ["commit", "-m", "init"], { cwd: testDir });
 
@@ -1493,8 +1498,9 @@ describe("autoresearchExtension", () => {
 				ctx,
 			);
 			expect(result.content[0].text).toContain("[KEEP]");
-			// Locked index: git add fails, so it falls through to "変更なし"
-			expect(result.content[0].text).toContain("[git]");
+			// Locked index: git add fails → gitError is set
+			expect(result.content[0].text).toContain("[git ERROR]");
+			expect(result.details.gitError).toBeTruthy();
 
 			// Cleanup: remove lock file
 			fs.unlinkSync(path.join(testDir, ".git", "index.lock"));
@@ -1506,7 +1512,7 @@ describe("autoresearchExtension", () => {
 			fs.mkdirSync(testDir, { recursive: true });
 
 			// Init git and make initial commit
-			childProcess.execFileSync("git", ["init"], { cwd: testDir });
+			gitInitForTest(testDir);
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
 			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir });
 			childProcess.execFileSync("git", ["commit", "-m", "init"], { cwd: testDir });
@@ -2098,9 +2104,7 @@ describe("autoresearchExtension", () => {
 			fs.mkdirSync(testDir, { recursive: true });
 
 			// git init
-			childProcess.execFileSync("git", ["init"], { cwd: testDir });
-			childProcess.execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: testDir });
-			childProcess.execFileSync("git", ["config", "user.name", "Test"], { cwd: testDir });
+			gitInitForTest(testDir);
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
 			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir });
 			childProcess.execFileSync("git", ["commit", "-m", "init"], { cwd: testDir });
@@ -2200,9 +2204,7 @@ describe("autoresearchExtension", () => {
 			fs.mkdirSync(testDir, { recursive: true });
 
 			// git init
-			childProcess.execFileSync("git", ["init"], { cwd: testDir });
-			childProcess.execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: testDir });
-			childProcess.execFileSync("git", ["config", "user.name", "Test"], { cwd: testDir });
+			gitInitForTest(testDir);
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "original");
 			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir });
 			childProcess.execFileSync("git", ["commit", "-m", "init"], { cwd: testDir });
@@ -2250,9 +2252,7 @@ describe("autoresearchExtension", () => {
 			fs.mkdirSync(testDir, { recursive: true });
 
 			// git init
-			childProcess.execFileSync("git", ["init"], { cwd: testDir });
-			childProcess.execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: testDir });
-			childProcess.execFileSync("git", ["config", "user.name", "Test"], { cwd: testDir });
+			gitInitForTest(testDir);
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
 			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir });
 			childProcess.execFileSync("git", ["commit", "-m", "init"], { cwd: testDir });
@@ -2546,9 +2546,7 @@ describe("autoresearchExtension", () => {
 			fs.mkdirSync(testDir, { recursive: true });
 
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
-			childProcess.execFileSync("git", ["init"], { cwd: testDir });
-			childProcess.execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: testDir });
-			childProcess.execFileSync("git", ["config", "user.name", "Test"], { cwd: testDir });
+			gitInitForTest(testDir);
 			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir });
 			childProcess.execFileSync("git", ["commit", "-m", "init"], { cwd: testDir });
 
@@ -2585,9 +2583,7 @@ describe("autoresearchExtension", () => {
 			fs.mkdirSync(testDir, { recursive: true });
 
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "original");
-			childProcess.execFileSync("git", ["init"], { cwd: testDir });
-			childProcess.execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: testDir });
-			childProcess.execFileSync("git", ["config", "user.name", "Test"], { cwd: testDir });
+			gitInitForTest(testDir);
 			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir });
 			childProcess.execFileSync("git", ["commit", "-m", "init"], { cwd: testDir });
 
@@ -3073,11 +3069,23 @@ describe("autoresearchExtension", () => {
 			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
 			await initTool.execute("tc-init", { name: "test", metric_name: "ms" }, undefined, undefined, ctx);
 
-			// Make .pi/ read-only to prevent artifact dir creation
-			const piDir = path.join(testDir, ".pi");
-			fs.mkdirSync(piDir, { recursive: true });
-			// Create the session dir structure but make .pi unwritable
-			fs.chmodSync(piDir, 0o444);
+			// Make artifact creation fail by creating a file where the directory would be
+			// This works regardless of user permissions (no chmod needed)
+			const sessDirs = path.join(testDir, ".pi", "autoresearch");
+			fs.mkdirSync(sessDirs, { recursive: true });
+
+			// Find the session directory that was created by init
+			const existingSess = fs.readdirSync(sessDirs);
+			if (existingSess.length > 0) {
+				const runsDir = path.join(sessDirs, existingSess[0], "runs");
+				fs.mkdirSync(runsDir, { recursive: true });
+				// Place a plain file with the name of the piRunId — createRunArtifactDir will fail
+				// because it tries to mkdir a path that's already a file
+				// We don't know the exact piRunId yet, but the createRunArtifactDir checks existsSync first
+				// So we need a different approach: create a file where "runs" dir would be
+				fs.rmdirSync(runsDir);
+				fs.writeFileSync(runsDir, "blocker");
+			}
 
 			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
 			const result = await runTool.execute(
@@ -3090,7 +3098,6 @@ describe("autoresearchExtension", () => {
 			expect(result.content[0].text).toContain("benchmark を実行しません");
 
 			// Cleanup
-			fs.chmodSync(piDir, 0o755);
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 	});
@@ -3159,6 +3166,41 @@ describe("autoresearchExtension", () => {
 			);
 			expect(result.content[0].text).toContain("[ERROR]");
 			expect(result.content[0].text).toContain("metrics.json");
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
+		it("rejects keep when manifest has no artifactComplete", async () => {
+			const testDir = "/tmp/test-ar-nocomplete-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await cmdHandler("on", ctx);
+
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			await initTool.execute("tc-init", { name: "test", metric_name: "ms" }, undefined, undefined, ctx);
+
+			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
+			const runResult = await runTool.execute(
+				"tc-run-noc", { command: "echo METRIC ms=42" }, undefined, undefined, ctx,
+			);
+
+			// Overwrite manifest.json without artifactComplete to simulate partial write
+			const sessDirs = fs.readdirSync(path.join(testDir, ".pi", "autoresearch"));
+			const sessionId = sessDirs[0];
+			const manifestPath = path.join(testDir, ".pi", "autoresearch", sessionId, "runs", runResult.details.piRunId, "manifest.json");
+			const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+			delete manifest.artifactComplete;
+			fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+
+			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
+			const result = await logTool.execute(
+				"tc-log-noc", { metric: 42, status: "keep", description: "no complete", runId: runResult.details.piRunId },
+				undefined, undefined, ctx,
+			);
+			expect(result.content[0].text).toContain("[ERROR]");
+			expect(result.content[0].text).toContain("artifactComplete");
 
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
@@ -3235,5 +3277,68 @@ describe("autoresearchExtension", () => {
 
 			fs.rmSync(testDir, { recursive: true, force: true });
 		}, 35000);
+	});
+
+	describe("P1: run→run→log out-of-order uses run-time runSeq", () => {
+		it("logs run2 first then run1 — runSeq is based on run order, not log order", async () => {
+			const testDir = "/tmp/test-ar-ootest-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await cmdHandler("on", ctx);
+
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			await initTool.execute("tc-init", { name: "test", metric_name: "ms" }, undefined, undefined, ctx);
+
+			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
+			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
+
+			// Run two benchmarks without logging in between
+			const run1 = await runTool.execute("tc-r1", { command: "echo METRIC ms=100" }, undefined, undefined, ctx);
+			const run2 = await runTool.execute("tc-r2", { command: "echo METRIC ms=80" }, undefined, undefined, ctx);
+
+			// Log run2 first, then run1
+			const log2 = await logTool.execute(
+				"tc-l2", { metric: 80, status: "keep", description: "second run logged first", runId: run2.details.piRunId },
+				undefined, undefined, ctx,
+			);
+			expect(log2.content[0].text).toContain("[KEEP]");
+
+			const log1 = await logTool.execute(
+				"tc-l1", { metric: 100, status: "discard", description: "first run logged second", runId: run1.details.piRunId },
+				undefined, undefined, ctx,
+			);
+			expect(log1.content[0].text).toContain("[DISCARD]");
+
+			// Verify runs.jsonl has sequential runSeq
+			const sessDirs = fs.readdirSync(path.join(testDir, ".pi", "autoresearch"));
+			const sessionId = sessDirs[0];
+			const sessDir = path.join(testDir, ".pi", "autoresearch", sessionId);
+
+			const runsContent = fs.readFileSync(path.join(sessDir, "runs.jsonl"), "utf8").trim().split("\n");
+			const runSeqs = runsContent.map(l => JSON.parse(l).runSeq);
+			expect(runSeqs).toEqual([1, 2]);
+
+			// metrics.jsonl: first entry is run2 (logged first), but runSeq should be 2 (run order)
+			const metricsContent = fs.readFileSync(path.join(sessDir, "metrics.jsonl"), "utf8").trim().split("\n");
+			const metricEntries = metricsContent.map(l => JSON.parse(l));
+			// run2 was logged first → metricSeqs[0] = 2, run1 logged second → metricSeqs[1] = 1
+			expect(metricEntries[0].runSeq).toBe(2); // run2
+			expect(metricEntries[0].primaryMetricValue).toBe(80);
+			expect(metricEntries[1].runSeq).toBe(1); // run1
+			expect(metricEntries[1].primaryMetricValue).toBe(100);
+
+			// latest pointer should reflect the last LOG (run1), with runSeq=1
+			const latest = JSON.parse(fs.readFileSync(path.join(sessDir, "latest.pointer.json"), "utf8"));
+			expect(latest.runSeq).toBe(1);
+
+			// best pointer should reflect the best keep (run2 with metric=80), with runSeq=2
+			const best = JSON.parse(fs.readFileSync(path.join(sessDir, "best.pointer.json"), "utf8"));
+			expect(best.runSeq).toBe(2);
+			expect(best.metric).toBe(80);
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
 	});
 });

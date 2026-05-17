@@ -530,10 +530,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			// Runs ledger — use runs.jsonl line count for runSeq (not state.runCount)
 			const runSeq = nextRunSeq(ctx.cwd, state.sessionId);
 
-			// Store in memory map (with runSeq and artifactFailed)
-			runResultMap.set(piRunId, { result, checks, startedAt, completedAt, createdAt, artifactDir, artifactFailed, runSeq });
-
 			// Write remaining artifacts (manifest, result.json, metrics.json, checks)
+			// P0: 書き込み失敗時は artifactFailed を確実に記録
 			if (artifactDir) {
 				try {
 					writeRunArtifacts(artifactDir, result, piRunId, startedAt, completedAt, runSeq);
@@ -543,6 +541,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				}
 			}
 			if (!artifactDir) artifactFailed = true;
+
+			// Store in memory map AFTER artifact write — artifactFailed reflects actual status
+			runResultMap.set(piRunId, { result, checks, startedAt, completedAt, createdAt, artifactDir, artifactFailed, runSeq });
 
 			appendToJsonl(runsLedgerPath(ctx.cwd, state.sessionId), {
 				schemaVersion: 1, runSeq, piRunId,
@@ -690,6 +691,16 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				} else {
 					if (!fs.existsSync(path.join(artifactDirPath, "manifest.json"))) {
 						reasons.push("manifest.json が存在しません。監査不能のため keep できません。");
+					} else {
+						// manifest must have artifactComplete=true (incomplete writes don't count)
+						try {
+							const mf = JSON.parse(fs.readFileSync(path.join(artifactDirPath, "manifest.json"), "utf8"));
+							if (mf.artifactComplete !== true) {
+								reasons.push("manifest.json に artifactComplete=true がありません。artifact 書き込みが不完全な run は keep できません。");
+							}
+						} catch {
+							reasons.push("manifest.json の読み取りに失敗しました。監査不能のため keep できません。");
+						}
 					}
 					if (!fs.existsSync(path.join(artifactDirPath, "metrics.json"))) {
 						reasons.push("metrics.json が存在しません。監査不能のため keep できません。");
@@ -740,12 +751,13 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			}
 
 			// --- Git operations ---
+			let gitError: string | undefined;
 			if (params.status === "keep") {
 				const gr = gitAutoCommit(ctx.cwd, `${params.description}\n\nResult: ${JSON.stringify({ status: params.status, [state.metricName]: params.metric })}`);
 				if (gr.committed) {
 					commit = gr.commit ?? commit;
 				} else if (gr.error) {
-					// P1: commit error を明示的に表示
+					gitError = gr.error;
 					console.error(`[autoresearch] gitAutoCommit error: ${gr.error}`);
 				}
 				entry.postCommit = commit;
@@ -853,8 +865,17 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			if (state.bestMetric !== null) text += `最良: ${state.metricName}=${state.bestMetric}${state.metricUnit}\n`;
 
 			if (!params.runId && matchedPiRunId) text += `\n[WARNING] runId 省略。次回は明示指定してください。`;
-			if (params.status === "keep") text += entry.postCommit && entry.postCommit !== preCommit ? `\n[git] 自動 commit しました: ${entry.postCommit}` : `\n[git] 変更なし（commit 不要）`;
-			else text += `\n[git] revert 完了（autoresearch.* / .pi/ は保護）`;
+			if (params.status === "keep") {
+				if (gitError) {
+					text += `\n[git ERROR] commit 失敗: ${gitError}`;
+				} else if (entry.postCommit && entry.postCommit !== preCommit) {
+					text += `\n[git] 自動 commit しました: ${entry.postCommit}`;
+				} else {
+					text += `\n[git] 変更なし（commit 不要）`;
+				}
+			} else {
+				text += `\n[git] revert 完了（autoresearch.* / .pi/ は保護）`;
+			}
 
 			lastChecks = null; lastRunResult = null; lastRunChecks = null;
 
@@ -865,6 +886,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					status: params.status, metric: params.metric, bestMetric: state.bestMetric,
 					kept, commit, preCommit, postCommit: entry.postCommit, changedFiles,
 					externalRunId: entry.externalRunId, externalArtifactDir: entry.externalArtifactDir,
+					gitError,
 				},
 			};
 		},
