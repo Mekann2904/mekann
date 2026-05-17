@@ -1786,7 +1786,7 @@ describe("validatePolicy: writable root exactly equals workspace root (rel === \
 
 // ─── Integration tests: abort signal already aborted ────────────────────
 
-describeMac("runSandboxedShellMac: abort signal already aborted", () => {
+describeMacConcurrent("runSandboxedShellMac: abort signal already aborted", () => {
 	let testDir: string;
 	let sandboxReady = false;
 
@@ -1821,7 +1821,7 @@ describeMac("runSandboxedShellMac: abort signal already aborted", () => {
 
 // ─── Integration tests: normal exit without kill ────────────────────────
 
-describeMac("runSandboxedShellMac: normal exit safety net", () => {
+describeMacConcurrent("runSandboxedShellMac: normal exit safety net", () => {
 	let testDir: string;
 	let sandboxReady = false;
 
@@ -1862,7 +1862,7 @@ describeMac("runSandboxedShellMac: normal exit safety net", () => {
 
 // ─── Integration tests: output exceeded with keepBytes ──────────────────
 
-describeMac("runSandboxedShellMac: output limit edge cases", () => {
+describeMacConcurrent("runSandboxedShellMac: output limit edge cases", () => {
 	let testDir: string;
 	let sandboxReady = false;
 
@@ -1911,7 +1911,7 @@ describeMac("runSandboxedShellMac: output limit edge cases", () => {
 
 // ─── Integration tests: abort during execution (timedOut=false in catch) ─
 
-describeMac("runSandboxedShellMac: abort vs timeout error messages", () => {
+describeMacConcurrent("runSandboxedShellMac: abort vs timeout error messages", () => {
 	let testDir: string;
 	let sandboxReady = false;
 
@@ -1963,7 +1963,7 @@ describeMac("runSandboxedShellMac: abort vs timeout error messages", () => {
 
 // ─── Integration tests: output not exceeded in catch path ───────────────
 
-describeMac("runSandboxedShellMac: catch path without output exceeded", () => {
+describeMacConcurrent("runSandboxedShellMac: catch path without output exceeded", () => {
 	let testDir: string;
 	let sandboxReady = false;
 
@@ -2001,7 +2001,7 @@ describeMac("runSandboxedShellMac: catch path without output exceeded", () => {
 
 // ─── Integration: output limit + timeout overlap (branches 355, 418) ──
 
-describeMac("runSandboxedShellMac: output limit with timeout", () => {
+describeMacConcurrent("runSandboxedShellMac: output limit with timeout", () => {
 	let testDir: string;
 	let sandboxReady = false;
 
