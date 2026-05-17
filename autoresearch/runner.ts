@@ -1,11 +1,16 @@
 /**
  * autoresearch/runner.ts — コマンド実行と出力の切り詰め。
+ *
+ * 長時間・高コストな評価 run も安全に扱える実験コントローラの実行層。
+ * - プロセスグループ単位の kill
+ * - streaming stdout/stderr 保存
+ * - .pi/ の git commit 除外
  */
 
 import { spawn, execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { parseMetricLines } from "./state.js";
 
 // ---------------------------------------------------------------------------
@@ -29,6 +34,25 @@ export interface RunResult {
 	output: string;
 	parsedMetrics: Record<string, number> | null;
 	checks: ChecksResult;
+	// --- Long-run benchmark support ---
+	stdout: string;
+	stderr: string;
+	signal: string | null;
+	externalRunId: string | null;
+	externalArtifactDir: string | null;
+	externalSummaryPath: string | null;
+	externalViewlogPath: string | null;
+	externalMetricsPath: string | null;
+	/** Whether streaming log files were written during execution */
+	logFilesWritten: boolean;
+}
+
+export interface ExternalInfo {
+	externalRunId: string | null;
+	externalArtifactDir: string | null;
+	externalSummaryPath: string | null;
+	externalViewlogPath: string | null;
+	externalMetricsPath: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -63,13 +87,63 @@ export function truncateTail(text: string, maxLines: number, maxBytes: number): 
 }
 
 // ---------------------------------------------------------------------------
+// Secret filtering
+// ---------------------------------------------------------------------------
+
+const SECRET_PATTERNS = [
+	/(API_KEY|SECRET|PASSWORD|TOKEN|PRIVATE_KEY)[\s]*[=:]\s*\S+/gi,
+];
+
+/** Filter lines that look like they contain secrets. */
+export function filterSecrets(text: string): string {
+	let result = text;
+	for (const pattern of SECRET_PATTERNS) {
+		result = result.replace(pattern, (_, key) => `${key}=***REDACTED***`);
+	}
+	return result;
+}
+
+// ---------------------------------------------------------------------------
+// External info parsing
+// ---------------------------------------------------------------------------
+
+/** Parse RUN_ID / ARTIFACT_DIR / SUMMARY_PATH / VIEWLOG_PATH / METRICS_PATH from stdout. */
+export function parseExternalInfo(output: string): ExternalInfo {
+	const info: ExternalInfo = {
+		externalRunId: null,
+		externalArtifactDir: null,
+		externalSummaryPath: null,
+		externalViewlogPath: null,
+		externalMetricsPath: null,
+	};
+
+	for (const line of output.split("\n")) {
+		const trimmed = line.trim();
+		if (!trimmed) continue;
+
+		const match = trimmed.match(
+			/^(RUN_ID|ARTIFACT_DIR|SUMMARY_PATH|VIEWLOG_PATH|METRICS_PATH)\s+(.+)$/,
+		);
+		if (!match) continue;
+
+		const [, key, value] = match;
+		switch (key) {
+			case "RUN_ID": info.externalRunId = value.trim(); break;
+			case "ARTIFACT_DIR": info.externalArtifactDir = value.trim(); break;
+			case "SUMMARY_PATH": info.externalSummaryPath = value.trim(); break;
+			case "VIEWLOG_PATH": info.externalViewlogPath = value.trim(); break;
+			case "METRICS_PATH": info.externalMetricsPath = value.trim(); break;
+		}
+	}
+
+	return info;
+}
+
+// ---------------------------------------------------------------------------
 // Checks execution
 // ---------------------------------------------------------------------------
 
-/**
- * autoresearch.checks.sh を実行する。
- * ファイルが存在しない場合は { passed: null } を返す。
- */
+/** autoresearch.checks.sh を実行する。ファイルが存在しない場合は { passed: null } を返す。 */
 export async function runChecks(
 	cwd: string,
 	signal?: AbortSignal,
@@ -98,58 +172,107 @@ export async function runChecks(
 // Command execution
 // ---------------------------------------------------------------------------
 
-/** シェルコマンドを spawn で実行し、結果を返す。 */
+/**
+ * シェルコマンドを spawn で実行し、結果を返す。
+ *
+ * @param logDir 指定すると stdout.log / stderr.log に streaming 保存する。
+ *               プロセスクラッシュ時も部分ログが残る。
+ */
 export async function runCommand(
 	command: string,
 	cwd: string,
 	timeoutMs: number,
 	signal?: AbortSignal,
+	logDir?: string,
 ): Promise<RunResult> {
 	return new Promise<RunResult>((resolve) => {
 		const t0 = Date.now();
 		let resolved = false;
 		let timedOut = false;
+		let killSignal: string | null = null;
 
+		// Streaming log files — created before spawn so partial logs survive crashes
+		let stdoutStream: fs.WriteStream | null = null;
+		let stderrStream: fs.WriteStream | null = null;
+		let logFilesWritten = false;
+
+		if (logDir) {
+			try {
+				if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+				stdoutStream = fs.createWriteStream(path.join(logDir, "stdout.log"), { flags: "w" });
+				stderrStream = fs.createWriteStream(path.join(logDir, "stderr.log"), { flags: "w" });
+				logFilesWritten = true;
+			} catch {
+				logFilesWritten = false;
+			}
+		}
+
+		// detached: true で新しいプロセスグループを作成。
+		// 子プロセスが孫プロセスをspawnしていてもグループ全体をkillできる。
 		const child = spawn("bash", ["-c", command], {
 			cwd,
 			stdio: ["ignore", "pipe", "pipe"],
+			detached: true,
 		});
 
 		let stdout = "";
 		let stderr = "";
 
 		child.stdout.on("data", (chunk: Buffer) => {
+			const str = chunk.toString("utf8");
 			if (Buffer.byteLength(stdout, "utf8") < CAPTURE_MAX_BYTES) {
-				stdout += chunk.toString("utf8");
+				stdout += str;
+			}
+			// Stream to file (filter secrets)
+			if (stdoutStream) {
+				stdoutStream.write(filterSecrets(str));
 			}
 		});
 
 		child.stderr.on("data", (chunk: Buffer) => {
+			const str = chunk.toString("utf8");
 			if (Buffer.byteLength(stderr, "utf8") < CAPTURE_MAX_BYTES) {
-				stderr += chunk.toString("utf8");
+				stderr += str;
+			}
+			if (stderrStream) {
+				stderrStream.write(filterSecrets(str));
 			}
 		});
 
+		/** Kill the entire process group (leader + all descendants). */
+		function killGroup(sig: string): void {
+			killSignal = sig;
+			try {
+				if (child.pid) process.kill(-child.pid, sig as NodeJS.Signals);
+			} catch { /* already exited */ }
+		}
+
 		const timer = setTimeout(() => {
 			timedOut = true;
-			try { child.kill("SIGTERM"); } catch { /* already exited */ }
-			setTimeout(() => { try { child.kill("SIGKILL"); } catch {} }, 5_000);
+			killGroup("SIGTERM");
+			// Grace period then SIGKILL
+			setTimeout(() => killGroup("SIGKILL"), 5_000);
 		}, timeoutMs);
 
 		const abortHandler = () => {
-			try { child.kill("SIGTERM"); } catch {}
+			killGroup("SIGTERM");
 		};
 		signal?.addEventListener("abort", abortHandler, { once: true });
 
-		function finish(code: number | null) {
+		function finish(code: number | null, sig: string | null) {
 			if (resolved) return;
 			resolved = true;
 			clearTimeout(timer);
 			signal?.removeEventListener("abort", abortHandler);
 
+			// Close streaming files
+			stdoutStream?.end();
+			stderrStream?.end();
+
 			const durationSeconds = (Date.now() - t0) / 1000;
 			const combined = stdout + (stderr ? "\n" + stderr : "");
 			const parsed = parseMetricLines(combined);
+			const externalInfo = parseExternalInfo(stdout);
 
 			resolve({
 				command,
@@ -160,13 +283,18 @@ export async function runCommand(
 				output: truncateTail(combined, OUTPUT_MAX_LINES, OUTPUT_MAX_BYTES),
 				parsedMetrics: Object.keys(parsed).length > 0 ? parsed : null,
 				checks: { passed: null, timedOut: false, output: "", durationSeconds: 0 },
+				stdout,
+				stderr,
+				signal: sig,
+				logFilesWritten,
+				...externalInfo,
 			});
 		}
 
-		child.on("close", (code) => finish(code));
+		child.on("close", (code, sig) => finish(code, sig ?? killSignal));
 		child.on("error", (err) => {
 			stderr += `\n${err.message}`;
-			finish(null);
+			finish(null, null);
 		});
 	});
 }
@@ -178,9 +306,7 @@ export async function runCommand(
 export function getGitShortHash(cwd: string): string {
 	try {
 		return execFileSync("git", ["rev-parse", "--short", "HEAD"], {
-			cwd,
-			encoding: "utf8",
-			timeout: 5_000,
+			cwd, encoding: "utf8", timeout: 5_000,
 		}).trim();
 	} catch {
 		return "unknown";
@@ -191,9 +317,7 @@ export function getGitShortHash(cwd: string): string {
 export function getGitFullHash(cwd: string): string {
 	try {
 		return execFileSync("git", ["rev-parse", "HEAD"], {
-			cwd,
-			encoding: "utf8",
-			timeout: 5_000,
+			cwd, encoding: "utf8", timeout: 5_000,
 		}).trim();
 	} catch {
 		return "unknown";
@@ -205,13 +329,11 @@ export function isGitDirty(cwd: string): boolean {
 	try {
 		execFileSync("git", ["diff", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000 });
 		execFileSync("git", ["diff", "--cached", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000 });
-		// Also check for untracked files
 		const untracked = execFileSync("git", ["ls-files", "--others", "--exclude-standard"], {
 			cwd, encoding: "utf8", timeout: 5_000,
 		}).trim();
 		return untracked.length > 0;
 	} catch {
-		// git diff --quiet exits with 1 when there are differences
 		return true;
 	}
 }
@@ -220,8 +342,7 @@ export function isGitDirty(cwd: string): boolean {
 export function getChangedFiles(cwd: string): string[] {
 	try {
 		const result = execFileSync(
-			"git",
-			["status", "--porcelain"],
+			"git", ["status", "--porcelain"],
 			{ cwd, encoding: "utf8", timeout: 5_000 },
 		).trim();
 		if (!result) return [];
@@ -231,45 +352,266 @@ export function getChangedFiles(cwd: string): string[] {
 	}
 }
 
-/** Generate a unique run ID. */
-export function generateRunId(): string {
-	return randomUUID().slice(0, 8);
+// ---------------------------------------------------------------------------
+// Run ID generation
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate a time-sortable unique run ID.
+ * Format: `<UTC timestamp>-pi-<gitShortSha>-<random6hex>`
+ */
+export function generatePiRunId(cwd: string): string {
+	const now = new Date();
+	const ts = now.toISOString().replace(/-/g, "").replace(/:/g, "").replace(/\.(?=\d{3}Z)/, ".");
+	const gitSha = getGitShortHash(cwd);
+	const random = randomBytes(3).toString("hex");
+	return `${ts}-pi-${gitSha}-${random}`;
 }
 
-/** `git add -A && git diff --cached --quiet` を実行し staged diff があれば commit。 */
-export function gitAutoCommit(cwd: string, message: string): { committed: boolean; commit?: string; error?: string } {
-	try {
-		execFileSync("git", ["add", "-A"], { cwd, encoding: "utf8", timeout: 10_000 });
+/** @deprecated Use generatePiRunId(cwd) instead. */
+export function generateRunId(): string {
+	return generatePiRunId(".");
+}
 
-		// staged diff があるか確認
+// ---------------------------------------------------------------------------
+// Artifact directory management
+// ---------------------------------------------------------------------------
+
+/** Get the base artifact directory for all autoresearch sessions. */
+export function getArtifactBaseDir(cwd: string): string {
+	return path.join(cwd, ".pi", "autoresearch");
+}
+
+/** Get the run-specific artifact directory. */
+export function getRunArtifactDir(cwd: string, sessionId: string, piRunId: string): string {
+	return path.join(getArtifactBaseDir(cwd), sessionId, "runs", piRunId);
+}
+
+/**
+ * Create run artifact directory and write initial files.
+ * Throws if the piRunId subdirectory already exists.
+ * Returns the directory path.
+ */
+export function createRunArtifactDir(
+	cwd: string,
+	sessionId: string,
+	piRunId: string,
+	command: string,
+	startedAt: number,
+): string {
+	const runDir = getRunArtifactDir(cwd, sessionId, piRunId);
+
+	if (fs.existsSync(runDir)) {
+		throw new Error(`Run artifact directory already exists: ${runDir}`);
+	}
+
+	fs.mkdirSync(runDir, { recursive: true });
+
+	fs.writeFileSync(path.join(runDir, "command.txt"), command, "utf8");
+
+	try {
+		const status = execFileSync("git", ["status", "--porcelain"], {
+			cwd, encoding: "utf8", timeout: 5_000,
+		});
+		fs.writeFileSync(path.join(runDir, "git.status.txt"), status, "utf8");
+	} catch {
+		fs.writeFileSync(path.join(runDir, "git.status.txt"), "(git unavailable)", "utf8");
+	}
+
+	try {
+		const diffUnstaged = execFileSync("git", ["diff"], { cwd, encoding: "utf8", timeout: 10_000 });
+		const diffStaged = execFileSync("git", ["diff", "--cached"], { cwd, encoding: "utf8", timeout: 10_000 });
+		fs.writeFileSync(path.join(runDir, "git.diff"), diffUnstaged + (diffStaged ? "\n--- staged ---\n" + diffStaged : ""), "utf8");
+	} catch {
+		fs.writeFileSync(path.join(runDir, "git.diff"), "(git diff unavailable)", "utf8");
+	}
+
+	return runDir;
+}
+
+/**
+ * Write run result files to the artifact directory.
+ * Skips stdout.log/stderr.log if streaming already wrote them (file exists with content).
+ */
+export function writeRunArtifacts(
+	runDir: string,
+	result: RunResult,
+	piRunId: string,
+	startedAt: number,
+	completedAt: number,
+): void {
+	// stdout.log — skip if streaming already wrote content
+	const stdoutPath = path.join(runDir, "stdout.log");
+	if (!fs.existsSync(stdoutPath) || fs.statSync(stdoutPath).size === 0) {
+		fs.writeFileSync(stdoutPath, filterSecrets(result.stdout), "utf8");
+	}
+
+	// stderr.log — skip if streaming already wrote content
+	const stderrPath = path.join(runDir, "stderr.log");
+	if (!fs.existsSync(stderrPath) || fs.statSync(stderrPath).size === 0) {
+		fs.writeFileSync(stderrPath, filterSecrets(result.stderr), "utf8");
+	}
+
+	// metrics.json
+	fs.writeFileSync(
+		path.join(runDir, "metrics.json"),
+		JSON.stringify(result.parsedMetrics ?? {}, null, 2),
+		"utf8",
+	);
+
+	// manifest.json
+	const manifest = {
+		piRunId,
+		command: result.command,
+		startedAt,
+		completedAt,
+		durationSeconds: result.durationSeconds,
+		exitCode: result.exitCode,
+		timedOut: result.timedOut,
+		signal: result.signal,
+		externalRunId: result.externalRunId,
+		externalArtifactDir: result.externalArtifactDir,
+		externalSummaryPath: result.externalSummaryPath,
+		externalViewlogPath: result.externalViewlogPath,
+		externalMetricsPath: result.externalMetricsPath,
+		parsedMetrics: result.parsedMetrics,
+		checks: result.checks,
+		logFilesWritten: result.logFilesWritten,
+	};
+	fs.writeFileSync(path.join(runDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
+
+	// result.json
+	fs.writeFileSync(path.join(runDir, "result.json"), JSON.stringify({
+		piRunId,
+		passed: result.passed,
+		exitCode: result.exitCode,
+		timedOut: result.timedOut,
+		durationSeconds: result.durationSeconds,
+		parsedMetrics: result.parsedMetrics,
+	}, null, 2), "utf8");
+}
+
+/** Write checks result to the artifact directory. */
+export function writeChecksArtifacts(runDir: string, checksResult: ChecksResult): void {
+	fs.writeFileSync(path.join(runDir, "checks-result.json"), JSON.stringify(checksResult, null, 2), "utf8");
+	const manifestPath = path.join(runDir, "manifest.json");
+	if (fs.existsSync(manifestPath)) {
 		try {
-			execFileSync("git", ["diff", "--cached", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000 });
-			return { committed: false }; // 変更なし
-		} catch {
-			// diff あり → commit
+			const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+			manifest.checks = checksResult;
+			fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+		} catch { /* best effort */ }
+	}
+}
+
+/**
+ * Load run data from artifact manifest.json.
+ * Used when runResultMap is empty (e.g. after process restart).
+ * Returns null if artifact not found.
+ */
+export function loadRunFromArtifact(
+	cwd: string,
+	sessionId: string,
+	piRunId: string,
+): {
+	result: RunResult;
+	startedAt: number;
+	completedAt: number;
+	createdAt: number;
+	artifactDir: string;
+} | null {
+	const runDir = getRunArtifactDir(cwd, sessionId, piRunId);
+	const manifestPath = path.join(runDir, "manifest.json");
+	if (!fs.existsSync(manifestPath)) return null;
+
+	try {
+		const m = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+
+		// Read checks result if available
+		let checks: ChecksResult = { passed: null, timedOut: false, output: "", durationSeconds: 0 };
+		const checksPath = path.join(runDir, "checks-result.json");
+		if (fs.existsSync(checksPath)) {
+			checks = JSON.parse(fs.readFileSync(checksPath, "utf8"));
 		}
 
-		execFileSync("git", ["commit", "-m", message], { cwd, encoding: "utf8", timeout: 10_000 });
+		// Read metrics
+		let parsedMetrics: Record<string, number> | null = null;
+		const metricsPath = path.join(runDir, "metrics.json");
+		if (fs.existsSync(metricsPath)) {
+			const parsed = JSON.parse(fs.readFileSync(metricsPath, "utf8"));
+			if (Object.keys(parsed).length > 0) parsedMetrics = parsed;
+		}
 
-		const newHash = getGitShortHash(cwd);
-		return { committed: true, commit: newHash };
+		const result: RunResult = {
+			command: m.command ?? "",
+			exitCode: m.exitCode ?? null,
+			durationSeconds: m.durationSeconds ?? 0,
+			timedOut: m.timedOut ?? false,
+			passed: (m.exitCode === 0) && !m.timedOut,
+			output: "",
+			parsedMetrics,
+			checks,
+			stdout: "",
+			stderr: "",
+			signal: m.signal ?? null,
+			externalRunId: m.externalRunId ?? null,
+			externalArtifactDir: m.externalArtifactDir ?? null,
+			externalSummaryPath: m.externalSummaryPath ?? null,
+			externalViewlogPath: m.externalViewlogPath ?? null,
+			externalMetricsPath: m.externalMetricsPath ?? null,
+			logFilesWritten: m.logFilesWritten ?? false,
+		};
+
+		return {
+			result,
+			startedAt: m.startedAt ?? 0,
+			completedAt: m.completedAt ?? 0,
+			createdAt: m.startedAt ?? 0,
+			artifactDir: runDir,
+		};
+	} catch {
+		return null;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Auto git operations
+// ---------------------------------------------------------------------------
+
+/**
+ * `git add -A` (excluding .pi/) → staged diff check → commit.
+ * .pi/ は監査用 artifact であり git 管理対象外。
+ */
+export function gitAutoCommit(cwd: string, message: string): { committed: boolean; commit?: string; error?: string } {
+	try {
+		// .pi/ を除外して git add
+		execFileSync("bash", ["-c", "git add -A -- ':!.pi'"], { cwd, encoding: "utf8", timeout: 10_000 });
+
+		try {
+			execFileSync("git", ["diff", "--cached", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000 });
+			return { committed: false };
+		} catch { /* diff あり → commit */ }
+
+		execFileSync("git", ["commit", "-m", message], { cwd, encoding: "utf8", timeout: 10_000 });
+		return { committed: true, commit: getGitShortHash(cwd) };
 	} catch (e) {
 		return { committed: false, error: e instanceof Error ? e.message : String(e) };
 	}
 }
 
-/** 作業ツリーを revert（autoresearch.* は保護）。 */
+/** 作業ツリーを revert（autoresearch.* と .pi/ は保護）。 */
 export function gitAutoRevert(cwd: string): { reverted: boolean; error?: string } {
 	try {
-		execFileSync(
-			"bash",
-			[
-				"-c",
-				"git checkout -- . ':(exclude,glob)**/autoresearch.*' ':(exclude,glob)**/autoresearch.*/**' && " +
-				"git clean -fd -e 'autoresearch.*' -e '**/autoresearch.*/**' 2>/dev/null || true",
-			],
-			{ cwd, encoding: "utf8", timeout: 10_000 },
-		);
+		execFileSync("bash", ["-c",
+			"git checkout -- . " +
+			":'(exclude,glob)**/autoresearch.*' " +
+			":'(exclude,glob)**/autoresearch.*/**' " +
+			":'(exclude,glob)**/.pi/**' && " +
+			"git clean -fd " +
+			"-e 'autoresearch.*' -e '**/autoresearch.*/**' " +
+			"-e '.pi' -e '**/.pi/**' " +
+			"2>/dev/null || true",
+		], { cwd, encoding: "utf8", timeout: 10_000 });
 		return { reverted: true };
 	} catch (e) {
 		return { reverted: false, error: e instanceof Error ? e.message : String(e) };
@@ -283,15 +625,9 @@ export function gitAutoRevert(cwd: string): { reverted: boolean; error?: string 
 export const COMPLETE_MARKER = "<autoresearch>COMPLETE</autoresearch>";
 
 function appendTextFragments(value: unknown, out: string[]): void {
-	if (typeof value === "string") {
-		out.push(value);
-		return;
-	}
+	if (typeof value === "string") { out.push(value); return; }
 	if (!value || typeof value !== "object") return;
-	if (Array.isArray(value)) {
-		for (const item of value) appendTextFragments(item, out);
-		return;
-	}
+	if (Array.isArray(value)) { for (const item of value) appendTextFragments(item, out); return; }
 	const record = value as Record<string, unknown>;
 	if (typeof record.text === "string") out.push(record.text);
 	if (typeof record.content === "string") out.push(record.content);
