@@ -732,7 +732,7 @@ describe("autoresearchExtension", () => {
 			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
 			const result = await runTool.execute(
 				"tc-run3",
-				{ command: "sleep 10", timeout_seconds: 1 },
+				{ command: "sleep 10", timeout_seconds: 0.5 },
 				undefined,
 				undefined,
 				ctx,

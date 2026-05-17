@@ -967,8 +967,9 @@ async function expectProcessGone(pid: number, retries = 5): Promise<void> {
 // ─── Integration tests (macOS + sandbox-exec only) ───────────────
 
 const describeMac = isMac ? describe : describe.skip;
+const describeMacConcurrent = isMac ? describe.concurrent : describe.skip;
 
-describeMac("runSandboxedShellMac (integration)", () => {
+describeMacConcurrent("runSandboxedShellMac (integration)", () => {
 	let testDir: string;
 	let sandboxReady = false;
 
