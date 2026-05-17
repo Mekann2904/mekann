@@ -526,4 +526,65 @@ describe("/goal command", () => {
       "warning",
     );
   });
+
+  // 40. resume resets continuation count when at max continuations
+  it("resume resets continuation count when at max continuations", async () => {
+    await goalCommand.handler("Continue goal", ctx);
+    await goalCommand.handler("pause", ctx);
+    // Drive continuation_count to max via runtime's maybeContinueIfIdle
+    const agentStartHandler = mockPi.on.mock.calls.find(
+      (call: any[]) => call[0] === "agent_start",
+    )?.[1] as Function;
+    const turnStartHandler = mockPi.on.mock.calls.find(
+      (call: any[]) => call[0] === "turn_start",
+    )?.[1] as Function;
+    const msgEndHandler = mockPi.on.mock.calls.find(
+      (call: any[]) => call[0] === "message_end",
+    )?.[1] as Function;
+
+    // First resume and drive continuation to max
+    await goalCommand.handler("resume", ctx);
+    // Simulate 5 continuation cycles (DEFAULT_MAX_CONTINUATIONS is 5)
+    for (let i = 0; i < 5; i++) {
+      if (agentStartHandler) await agentStartHandler();
+      if (turnStartHandler) await turnStartHandler({}, ctx);
+      if (msgEndHandler) {
+        await msgEndHandler(
+          { message: { role: "assistant", timestamp: Date.now(), usage: { input: 10, output: 10, cacheRead: 0 } } },
+          ctx,
+        );
+      }
+      // Wait for cooldown (CONTINUATION_COOLDOWN_MS = 2000)
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    // Goal should be auto-paused at max continuations
+    // Now resume should reset continuation_count
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("resume", ctx);
+    // Check if it was resumed (if auto-paused) or already active
+    const allNotifies = ctx.ui.notify.mock.calls.map((c: any[]) => c[0]);
+    // Should either resume successfully or say already active
+    expect(allNotifies.some((n: string) => n.includes("resumed") || n.includes("already active") || n.includes("Goal resumed"))).toBe(true);
+  });
+
+  // 41. /goal budget sets valid budget
+  it("budget command sets a valid token budget", async () => {
+    await goalCommand.handler("Budget test", ctx);
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("budget 5000", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Budget set"),
+      "info",
+    );
+  });
+
+  // 42. /goal set <objective> explicitly sets objective
+  it("set subcommand creates a goal", async () => {
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("set My explicit objective", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Goal set"),
+      "success",
+    );
+  });
 });

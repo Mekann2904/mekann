@@ -515,3 +515,126 @@ describe("checks_failed status", () => {
 		expect(state.results[0]?.metrics).toBeUndefined();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Provenance fields in parseRunEntry
+// ---------------------------------------------------------------------------
+
+describe("parseRunEntry: provenance fields", () => {
+	it("parses runId and command", () => {
+		const content = [
+			JSON.stringify({ type: "config", name: "test", metricName: "ms" }),
+			JSON.stringify({
+				type: "run", run: 1, metric: 100, status: "keep", description: "",
+				runId: "pi-run-abc",
+				command: "npm test",
+			}),
+		].join("\n") + "\n";
+		const state = reconstructState(content);
+		expect(state.results[0]?.runId).toBe("pi-run-abc");
+		expect(state.results[0]?.command).toBe("npm test");
+	});
+
+	it("parses exitCode (number and null)", () => {
+		const content = [
+			JSON.stringify({ type: "config", name: "test", metricName: "ms" }),
+			JSON.stringify({ type: "run", run: 1, metric: 100, status: "crash", description: "", exitCode: 1 }),
+		].join("\n") + "\n";
+		const state = reconstructState(content);
+		expect(state.results[0]?.exitCode).toBe(1);
+	});
+
+	it("parses exitCode null", () => {
+		const content = [
+			JSON.stringify({ type: "config", name: "test", metricName: "ms" }),
+			JSON.stringify({ type: "run", run: 1, metric: 100, status: "keep", description: "", exitCode: null }),
+		].join("\n") + "\n";
+		const state = reconstructState(content);
+		expect(state.results[0]?.exitCode).toBeNull();
+	});
+
+	it("parses timedOut and checksPassed", () => {
+		const content = [
+			JSON.stringify({ type: "config", name: "test", metricName: "ms" }),
+			JSON.stringify({ type: "run", run: 1, metric: 100, status: "keep", description: "", timedOut: true, checksPassed: true }),
+		].join("\n") + "\n";
+		const state = reconstructState(content);
+		expect(state.results[0]?.timedOut).toBe(true);
+		expect(state.results[0]?.checksPassed).toBe(true);
+	});
+
+	it("parses checksPassed null", () => {
+		const content = [
+			JSON.stringify({ type: "config", name: "test", metricName: "ms" }),
+			JSON.stringify({ type: "run", run: 1, metric: 100, status: "keep", description: "", checksPassed: null }),
+		].join("\n") + "\n";
+		const state = reconstructState(content);
+		expect(state.results[0]?.checksPassed).toBeNull();
+	});
+
+	it("parses git provenance fields", () => {
+		const content = [
+			JSON.stringify({ type: "config", name: "test", metricName: "ms" }),
+			JSON.stringify({
+				type: "run", run: 1, metric: 100, status: "keep", description: "",
+				preCommit: "abc1234", postCommit: "def5678",
+				dirtyBefore: true, dirtyAfter: false,
+			}),
+		].join("\n") + "\n";
+		const state = reconstructState(content);
+		expect(state.results[0]?.preCommit).toBe("abc1234");
+		expect(state.results[0]?.postCommit).toBe("def5678");
+		expect(state.results[0]?.dirtyBefore).toBe(true);
+		expect(state.results[0]?.dirtyAfter).toBe(false);
+	});
+
+	it("parses changedFiles and notes", () => {
+		const content = [
+			JSON.stringify({ type: "config", name: "test", metricName: "ms" }),
+			JSON.stringify({
+				type: "run", run: 1, metric: 100, status: "keep", description: "",
+				changedFiles: ["src/a.ts", "src/b.ts"],
+				notes: "some notes",
+			}),
+		].join("\n") + "\n";
+		const state = reconstructState(content);
+		expect(state.results[0]?.changedFiles).toEqual(["src/a.ts", "src/b.ts"]);
+		expect(state.results[0]?.notes).toBe("some notes");
+	});
+
+	it("filters non-string values in changedFiles", () => {
+		const content = [
+			JSON.stringify({ type: "config", name: "test", metricName: "ms" }),
+			JSON.stringify({
+				type: "run", run: 1, metric: 100, status: "keep", description: "",
+				changedFiles: ["src/a.ts", 42, null, "src/b.ts"],
+			}),
+		].join("\n") + "\n";
+		const state = reconstructState(content);
+		expect(state.results[0]?.changedFiles).toEqual(["src/a.ts", "src/b.ts"]);
+	});
+
+	it("parses memo field", () => {
+		const content = [
+			JSON.stringify({ type: "config", name: "test", metricName: "ms" }),
+			JSON.stringify({
+				type: "run", run: 1, metric: 100, status: "keep", description: "",
+				memo: "test memo",
+			}),
+		].join("\n") + "\n";
+		const state = reconstructState(content);
+		expect(state.results[0]?.memo).toBe("test memo");
+	});
+
+	it("parses signal field", () => {
+		const content = [
+			JSON.stringify({ type: "config", name: "test", metricName: "ms" }),
+			JSON.stringify({
+				type: "run", run: 1, metric: 100, status: "crash", description: "",
+				signal: "SIGTERM",
+			}),
+		].join("\n") + "\n";
+		const state = reconstructState(content);
+		expect(state.results[0]?.signal).toBe("SIGTERM");
+	});
+});

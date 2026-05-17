@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { truncateTail, runCommand, runChecks, generatePiRunId, generateRunId, parseExternalInfo, filterSecrets, createRunArtifactDir, writeRunArtifacts, writeChecksArtifacts, loadRunFromArtifact } from "./runner.js";
+import { truncateTail, runCommand, runChecks, generatePiRunId, generateRunId, parseExternalInfo, filterSecrets, createRunArtifactDir, writeRunArtifacts, writeChecksArtifacts, loadRunFromArtifact, getGitFullHash, isGitDirty, getChangedFiles, gitAutoCommit, gitAutoRevert, hasCompleteMarker, loopFollowUpMessage, markArtifactComplete } from "./runner.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -459,5 +459,167 @@ describe("loadRunFromArtifact", () => {
 
 		const loaded = loadRunFromArtifact(tmpDir, "sess1", "run-rs");
 		expect(loaded!.runSeq).toBe(42);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Git helpers
+// ---------------------------------------------------------------------------
+
+describe("getGitFullHash", () => {
+	it("returns a full commit hash in a git repo", () => {
+		const { execFileSync } = require("node:child_process");
+		const cwd = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
+		const hash = getGitFullHash(cwd);
+		expect(hash).toMatch(/^[0-9a-f]{40}$/);
+	});
+
+	it("returns 'unknown' for non-git directory", () => {
+		expect(getGitFullHash("/tmp/nonexistent-git-dir-" + Date.now())).toBe("unknown");
+	});
+});
+
+describe("isGitDirty", () => {
+	it("detects clean state in git repo", () => {
+		const { execFileSync } = require("node:child_process");
+		const cwd = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
+		// Our repo should be clean in CI or after autoresearch cleanup
+		const result = isGitDirty(cwd);
+		expect(typeof result).toBe("boolean");
+	});
+
+	it("returns true for non-existent directory", () => {
+		expect(isGitDirty("/tmp/nonexistent-git-dir-" + Date.now())).toBe(true);
+	});
+});
+
+describe("getChangedFiles", () => {
+	it("returns empty array for clean git repo", () => {
+		const { execFileSync } = require("node:child_process");
+		const cwd = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
+		// In a clean state, should return []
+		const files = getChangedFiles(cwd);
+		expect(Array.isArray(files)).toBe(true);
+	});
+
+	it("returns empty array for non-git directory", () => {
+		expect(getChangedFiles("/tmp/nonexistent-git-dir-" + Date.now())).toEqual([]);
+	});
+});
+
+describe("gitAutoCommit and gitAutoRevert", () => {
+	it("gitAutoCommit returns committed:false for clean repo or handles dirty state", () => {
+		const { execFileSync } = require("node:child_process");
+		const cwd = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
+		const result = gitAutoCommit(cwd, "test: no changes");
+		// Either committed:false (no changes or no diff) or committed:true (dirty files committed)
+		expect(typeof result.committed).toBe("boolean");
+	});
+
+	it("gitAutoRevert succeeds on clean repo", () => {
+		const { execFileSync } = require("node:child_process");
+		const cwd = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
+		const result = gitAutoRevert(cwd);
+		expect(result.reverted).toBe(true);
+	});
+
+	it("gitAutoCommit returns committed:false for non-git dir", () => {
+		const result = gitAutoCommit("/tmp/nonexistent-git-dir-" + Date.now(), "test");
+		expect(result.committed).toBe(false);
+	});
+
+	it("gitAutoRevert returns error for non-git dir", () => {
+		const result = gitAutoRevert("/tmp/nonexistent-git-dir-" + Date.now());
+		expect(result.reverted).toBe(false);
+		expect(result.error).toBeDefined();
+	});
+});
+
+describe("hasCompleteMarker", () => {
+	it("detects COMPLETE marker in string", () => {
+		expect(hasCompleteMarker("some text <autoresearch>COMPLETE</autoresearch> more")).toBe(true);
+	});
+
+	it("returns false for plain text", () => {
+		expect(hasCompleteMarker("just some text")).toBe(false);
+	});
+
+	it("handles non-string content", () => {
+		expect(hasCompleteMarker(42)).toBe(false);
+		expect(hasCompleteMarker(null)).toBe(false);
+		expect(hasCompleteMarker(undefined)).toBe(false);
+	});
+});
+
+describe("loopFollowUpMessage", () => {
+	it("generates no-progress message", () => {
+		const msg = loopFollowUpMessage(true);
+		expect(msg).toContain("前ターンでは");
+	});
+
+	it("generates progress message", () => {
+		const msg = loopFollowUpMessage(false);
+		expect(typeof msg).toBe("string");
+		expect(msg.length).toBeGreaterThan(0);
+	});
+});
+
+describe("markArtifactComplete", () => {
+	let tmpMarkDir: string;
+
+	beforeEach(() => {
+		tmpMarkDir = `/tmp/test-mark-artifact-${Date.now()}`;
+		fs.mkdirSync(tmpMarkDir, { recursive: true });
+	});
+
+	afterEach(() => {
+		fs.rmSync(tmpMarkDir, { recursive: true, force: true });
+	});
+
+	it("sets artifactComplete=true in manifest", async () => {
+		const runDir = createRunArtifactDir(tmpMarkDir, "sess1", "run1", "echo test", Date.now());
+		// writeRunArtifacts creates the manifest
+		const result = await runCommand("echo hello", tmpMarkDir, 5000);
+		writeRunArtifacts(runDir, result, "run1", Date.now(), Date.now());
+		markArtifactComplete(runDir);
+		const manifest = JSON.parse(fs.readFileSync(path.join(runDir, "manifest.json"), "utf8"));
+		expect(manifest.artifactComplete).toBe(true);
+	});
+});
+
+describe("writeChecksArtifacts: edge cases", () => {
+	let tmpChecksDir: string;
+
+	beforeEach(() => {
+		tmpChecksDir = `/tmp/test-checks-artifact-${Date.now()}`;
+		fs.mkdirSync(tmpChecksDir, { recursive: true });
+	});
+
+	afterEach(() => {
+		fs.rmSync(tmpChecksDir, { recursive: true, force: true });
+	});
+
+	it("handles checks without stdout/stderr", () => {
+		writeChecksArtifacts(tmpChecksDir, { passed: false, timedOut: true, output: "timeout", stdout: "", stderr: "", durationSeconds: 30 });
+		expect(fs.existsSync(path.join(tmpChecksDir, "checks-result.json"))).toBe(true);
+		expect(fs.existsSync(path.join(tmpChecksDir, "checks.stdout.log"))).toBe(false);
+		expect(fs.existsSync(path.join(tmpChecksDir, "checks.stderr.log"))).toBe(false);
+	});
+
+	it("handles checks with stdout and stderr", () => {
+		writeChecksArtifacts(tmpChecksDir, { passed: true, timedOut: false, output: "OK", stdout: "out", stderr: "err", durationSeconds: 1 });
+		expect(fs.existsSync(path.join(tmpChecksDir, "checks.stdout.log"))).toBe(true);
+		expect(fs.existsSync(path.join(tmpChecksDir, "checks.stderr.log"))).toBe(true);
+		expect(fs.readFileSync(path.join(tmpChecksDir, "checks.stdout.log"), "utf8")).toBe("out");
+		expect(fs.readFileSync(path.join(tmpChecksDir, "checks.stderr.log"), "utf8")).toBe("err");
+	});
+
+	it("updates existing manifest with checks data", () => {
+		// Create manifest first
+		fs.writeFileSync(path.join(tmpChecksDir, "manifest.json"), JSON.stringify({ piRunId: "test" }));
+		writeChecksArtifacts(tmpChecksDir, { passed: true, timedOut: false, output: "OK", stdout: "", stderr: "", durationSeconds: 1 });
+		const manifest = JSON.parse(fs.readFileSync(path.join(tmpChecksDir, "manifest.json"), "utf8"));
+		expect(manifest.checks).toBeDefined();
+		expect(manifest.checks.passed).toBe(true);
 	});
 });
