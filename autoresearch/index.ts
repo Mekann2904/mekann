@@ -25,7 +25,21 @@ import {
 	type RunEntry,
 	type RunStatus,
 } from "./state.js";
-import { runCommand, runChecks, type ChecksResult, getGitShortHash, gitAutoCommit, gitAutoRevert, COMPLETE_MARKER, hasCompleteMarker, loopFollowUpMessage } from "./runner.js";
+import {
+	runCommand,
+	runChecks,
+	type ChecksResult,
+	type RunResult,
+	getGitShortHash,
+	gitAutoCommit,
+	gitAutoRevert,
+	getChangedFiles,
+	isGitDirty,
+	generateRunId,
+	COMPLETE_MARKER,
+	hasCompleteMarker,
+	loopFollowUpMessage,
+} from "./runner.js";
 import { renderWidget, directionLabel, type LoopInfo } from "./state.js";
 
 // ---------------------------------------------------------------------------
@@ -117,6 +131,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	let noProgressAgentEnds = 0;
 	let runningExperiment: { startedAt: number; command: string } | null = null;
 	let lastChecks: ChecksResult | null = null;
+	let lastRunResult: (RunResult & { runId: string }) | null = null;
+	let lastRunChecks: ChecksResult | null = null;
 	let state: ExperimentState = freshState();
 
 	function loopInfo(): LoopInfo {
@@ -499,9 +515,14 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			const timeoutMs = (params.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
 
+			const preCommit = getGitShortHash(ctx.cwd);
+			const dirtyBefore = isGitDirty(ctx.cwd);
+			const changedFilesBefore = getChangedFiles(ctx.cwd);
+
 			runningExperiment = { startedAt: Date.now(), command: params.command };
 			updateWidget(ctx, state, active, runningExperiment, loopInfo());
 
+			const runId = generateRunId();
 			const result = await runCommand(params.command, ctx.cwd, timeoutMs, signal);
 
 			runningExperiment = null;
@@ -515,6 +536,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				checks = { passed: null, timedOut: false, output: "", durationSeconds: 0 };
 			}
 			lastChecks = checks;
+			lastRunResult = { ...result, runId };
+			lastRunChecks = checks;
 
 			let text = "";
 			if (result.timedOut) {
@@ -553,9 +576,12 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				text += `\n出力（末尾）:\n${result.output}`;
 			}
 
+			text += `\nrunId: ${runId}`;
+			text += `\nこの runId を autoresearch_log に渡して紐付けてください。`;
+
 			return {
 				content: [{ type: "text", text }],
-				details: { ...result, checks },
+				details: { ...result, checks, runId, preCommit, dirtyBefore, changedFilesBefore },
 			};
 		},
 	});
@@ -585,6 +611,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			description: Type.String({
 				description: "実験内容の短い説明",
 			}),
+			runId: Type.Optional(
+				Type.String({ description: "対応する autoresearch_run の runId。省略時は直前の run に紐付け。" }),
+			),
 			commit: Type.Optional(
 				Type.String({ description: "Git コミットハッシュ。省略時は自動取得。" }),
 			),
@@ -603,26 +632,94 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			if (!active) return INACTIVE_RESPONSE;
 
-			// Gate: checks 失敗時の keep を拒否
-			if (params.status === "keep" && lastChecks && lastChecks.passed === false) {
-				return {
-					content: [{
-						type: "text",
-						text:
-							`[ERROR] checks が失敗しているため keep できません。\n` +
-							`checks 出力:\n${lastChecks.output.slice(-500)}\n` +
-							`status=checks_failed で記録してください。`,
-					}],
-					details: {},
-				};
+			// --- Validate runId ---
+			let matchedRun: (RunResult & { runId: string }) | null = null;
+			if (params.runId) {
+				if (!lastRunResult || lastRunResult.runId !== params.runId) {
+					return {
+						content: [{
+							type: "text",
+							text:
+								`[ERROR] runId "${params.runId}" に対応する run 結果が見つかりません。\n` +
+								`直前の runId は ${lastRunResult?.runId ?? "(なし)"} です。\n` +
+								`正しい runId を指定するか、省略して直前の run に紐付けてください。`,
+						}],
+						details: {},
+					};
+				}
+				matchedRun = lastRunResult;
+			} else if (lastRunResult) {
+				matchedRun = lastRunResult;
+			} else {
+				// No run result available — keep is rejected, others allowed for backward compat
+				if (params.status === "keep") {
+					return {
+						content: [{
+							type: "text",
+							text:
+								"[ERROR] 対応する autoresearch_run 結果がありません。\n" +
+								"先に autoresearch_run を実行してから autoresearch_log を呼び出してください。",
+						}],
+						details: {},
+					};
+				}
 			}
 
-			let commit = params.commit ?? getGitShortHash(ctx.cwd);
+			// --- Gate: keep validation (enforced) ---
+			if (params.status === "keep") {
+				// 1. run が timeout していない
+				if (matchedRun && matchedRun.timedOut) {
+					return {
+						content: [{
+							type: "text",
+							text:
+								"[ERROR] timeout した run は keep できません。\n" +
+								`runId: ${matchedRun.runId} はタイムアウトしています。\n` +
+								"status=discard または status=crash で記録してください。",
+						}],
+						details: {},
+					};
+				}
+				// 2. run の exit code が成功している
+				if (matchedRun && !matchedRun.passed) {
+					return {
+						content: [{
+							type: "text",
+							text:
+								"[ERROR] 失敗した run（終了コード: " + matchedRun.exitCode + "）は keep できません。\n" +
+								`runId: ${matchedRun.runId}\n` +
+								"status=discard または status=crash で記録してください。",
+						}],
+						details: {},
+					};
+				}
+				// 3. checks が定義されていて失敗している場合は拒否
+				if (lastChecks && lastChecks.passed === false) {
+					return {
+						content: [{
+							type: "text",
+							text:
+								"[ERROR] checks が失敗しているため keep できません。\n" +
+								`checks 出力:\n${lastChecks.output.slice(-500)}\n` +
+								"status=checks_failed で記録してください。",
+						}],
+						details: {},
+					};
+				}
+			}
+
+			// --- Collect provenance ---
+			const preCommit = getGitShortHash(ctx.cwd);
+			const dirtyBefore = isGitDirty(ctx.cwd);
+			const changedFiles = getChangedFiles(ctx.cwd);
+
+			let commit = params.commit ?? preCommit;
 			const run = state.runCount + 1;
 
 			const entry: RunEntry = {
 				type: "run",
 				run,
+				runId: matchedRun?.runId,
 				commit,
 				metric: params.metric,
 				status: params.status,
@@ -630,6 +727,16 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				timestamp: Date.now(),
 				metrics: params.metrics,
 				memo: params.memo,
+				command: matchedRun?.command,
+				exitCode: matchedRun?.exitCode,
+				timedOut: matchedRun?.timedOut,
+				checksPassed: lastRunChecks?.passed ?? null,
+				preCommit: preCommit,
+				postCommit: undefined, // updated after git operation
+				dirtyBefore: dirtyBefore,
+				dirtyAfter: undefined, // updated after git operation
+				changedFiles: changedFiles.length > 0 ? changedFiles : undefined,
+				notes: params.memo,
 			};
 
 			// 状態更新
@@ -640,14 +747,43 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				state.bestMetric = params.metric;
 			}
 
-			// JSONL へ追記
+			// --- Auto git operations (before JSONL write so postCommit is correct) ---
+			if (params.status === "keep") {
+				const commitMsg = `${params.description}\n\nResult: ${JSON.stringify({ status: params.status, [state.metricName]: params.metric })}`;
+				const gitResult = gitAutoCommit(ctx.cwd, commitMsg);
+				if (gitResult.committed) {
+					commit = gitResult.commit ?? commit;
+					entry.postCommit = commit;
+				} else {
+					entry.postCommit = preCommit;
+				}
+				entry.dirtyAfter = isGitDirty(ctx.cwd);
+			} else {
+				// discard / crash / checks_failed → 自動 revert
+				const revertResult = gitAutoRevert(ctx.cwd);
+				entry.postCommit = getGitShortHash(ctx.cwd);
+				entry.dirtyAfter = isGitDirty(ctx.cwd);
+			}
+
+			// JSONL へ追記（provenance 完了後）
 			const jp = jsonlPath(ctx.cwd);
 			try {
 				const line =
 					JSON.stringify({
 						...entry,
+						runId: entry.runId ?? undefined,
 						metrics: params.metrics ?? undefined,
 						memo: params.memo ?? undefined,
+						command: entry.command ?? undefined,
+						exitCode: entry.exitCode ?? undefined,
+						timedOut: entry.timedOut ?? undefined,
+						checksPassed: entry.checksPassed ?? undefined,
+						preCommit: entry.preCommit ?? undefined,
+						postCommit: entry.postCommit ?? undefined,
+						dirtyBefore: entry.dirtyBefore ?? undefined,
+						dirtyAfter: entry.dirtyAfter ?? undefined,
+						changedFiles: entry.changedFiles ?? undefined,
+						notes: entry.notes ?? undefined,
 					}) + "\n";
 				fs.appendFileSync(jp, line);
 			} catch (e) {
@@ -672,46 +808,44 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			text += `説明: ${params.description}\n`;
 			text += `指標: ${state.metricName}=${params.metric}${state.metricUnit}\n`;
 			text += `コミット: ${commit}\n`;
+			if (entry.runId) {
+				text += `runId: ${entry.runId}\n`;
+			}
 			text += `\n累計: ${state.runCount}回 / 採用${kept}\n`;
 
 			if (state.bestMetric !== null) {
 				text += `最良: ${state.metricName}=${state.bestMetric}${state.metricUnit}\n`;
 			}
 
-			// 自動 git 操作
+			// git 操作結果
 			if (params.status === "keep") {
-				const commitMsg = `${params.description}\n\nResult: ${JSON.stringify({ status: params.status, [state.metricName]: params.metric })}`;
-				const gitResult = gitAutoCommit(ctx.cwd, commitMsg);
-				if (gitResult.committed) {
-					commit = gitResult.commit ?? commit;
-					text += `\n[git] 自動 commit しました: ${commit}`;
-				} else if (gitResult.error) {
-					text += `\n[git] commit エラー: ${gitResult.error}`;
+				if (entry.postCommit && entry.postCommit !== preCommit) {
+					text += `\n[git] 自動 commit しました: ${entry.postCommit}`;
 				} else {
 					text += `\n[git] 変更なし（commit 不要）`;
 				}
 			} else {
-				// discard / crash / checks_failed → 自動 revert
-				const revertResult = gitAutoRevert(ctx.cwd);
-				if (revertResult.reverted) {
-					text += `\n[git] 作業ツリーを revert しました（autoresearch.* は保護）`;
-				} else if (revertResult.error) {
-					text += `\n[git] revert エラー: ${revertResult.error}`;
-				}
+				text += `\n[git] 作業ツリーを revert しました（autoresearch.* は保護）`;
 			}
 
-			// lastChecks をクリア
+			// 状態をクリア
 			lastChecks = null;
+			lastRunResult = null;
+			lastRunChecks = null;
 
 			return {
 				content: [{ type: "text", text }],
 				details: {
 					run,
+					runId: entry.runId,
 					status: params.status,
 					metric: params.metric,
 					bestMetric: state.bestMetric,
 					kept,
 					commit,
+					preCommit: entry.preCommit,
+					postCommit: entry.postCommit,
+					changedFiles: entry.changedFiles,
 				},
 			};
 		},

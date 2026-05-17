@@ -13,6 +13,7 @@ export type RunStatus = "keep" | "discard" | "crash" | "checks_failed";
 export interface RunEntry {
 	type: "run";
 	run: number;
+	runId?: string;
 	commit: string;
 	metric: number;
 	metrics?: Record<string, number>;
@@ -20,6 +21,17 @@ export interface RunEntry {
 	description: string;
 	timestamp: number;
 	memo?: string;
+	// --- Provenance fields (added in v1.1) ---
+	command?: string;
+	exitCode?: number | null;
+	timedOut?: boolean;
+	checksPassed?: boolean | null;
+	preCommit?: string;
+	postCommit?: string;
+	dirtyBefore?: boolean;
+	dirtyAfter?: boolean;
+	changedFiles?: string[];
+	notes?: string;
 }
 
 export interface ExperimentState {
@@ -70,7 +82,7 @@ export function freshState(): ExperimentState {
 
 /** JSONL ファイル全体から ExperimentState を復元。 */
 function parseRunEntry(entry: Record<string, unknown>): RunEntry {
-	return {
+	const result: RunEntry = {
 		type: "run",
 		run: entry.run as number,
 		commit: typeof entry.commit === "string" ? entry.commit : "unknown",
@@ -80,6 +92,19 @@ function parseRunEntry(entry: Record<string, unknown>): RunEntry {
 		timestamp: typeof entry.timestamp === "number" ? entry.timestamp as number : Date.now(),
 		memo: typeof entry.memo === "string" ? entry.memo : undefined,
 	};
+	// Optional provenance fields
+	if (typeof entry.runId === "string") result.runId = entry.runId;
+	if (typeof entry.command === "string") result.command = entry.command;
+	if (entry.exitCode === null || typeof entry.exitCode === "number") result.exitCode = entry.exitCode as number | null;
+	if (typeof entry.timedOut === "boolean") result.timedOut = entry.timedOut;
+	if (entry.checksPassed === null || typeof entry.checksPassed === "boolean") result.checksPassed = entry.checksPassed as boolean | null;
+	if (typeof entry.preCommit === "string") result.preCommit = entry.preCommit;
+	if (typeof entry.postCommit === "string") result.postCommit = entry.postCommit;
+	if (typeof entry.dirtyBefore === "boolean") result.dirtyBefore = entry.dirtyBefore;
+	if (typeof entry.dirtyAfter === "boolean") result.dirtyAfter = entry.dirtyAfter;
+	if (Array.isArray(entry.changedFiles)) result.changedFiles = entry.changedFiles.filter((f: unknown) => typeof f === "string");
+	if (typeof entry.notes === "string") result.notes = entry.notes;
+	return result;
 }
 
 export function reconstructState(jsonlContent: string): ExperimentState {
