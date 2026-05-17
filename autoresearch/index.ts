@@ -50,6 +50,7 @@ import {
 	COMPLETE_MARKER,
 	hasCompleteMarker,
 	loopFollowUpMessage,
+	filterSecrets,
 } from "./runner.js";
 import { renderWidget, directionLabel, type LoopInfo } from "./state.js";
 
@@ -681,11 +682,14 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					);
 				}
 
-				// P0: artifactFailed チェック
+				// P0: artifactFailed + stream error チェック
 				if (runResultMap.has(matchedPiRunId ?? "")) {
 					const rd = runResultMap.get(matchedPiRunId ?? "");
 					if (rd?.artifactFailed) {
 						reasons.push("artifact 保存に失敗した run は監査不能のため keep できません。");
+					}
+					if (rd?.result.streamError) {
+						reasons.push(`stream 書き込みエラー (${rd.result.streamError})。ログが不完全な run は keep できません。`);
 					}
 				}
 
@@ -759,15 +763,19 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				state.bestMetric = params.metric;
 			}
 
-			// --- Git operations ---
+			// P0-2: git commit 失敗時は keep を成功扱いにしない
+			// 先に git commit を試み、失敗したら状態を更新せずにエラーを返す
 			let gitError: string | undefined;
 			if (params.status === "keep") {
 				const gr = gitAutoCommit(ctx.cwd, `${params.description}\n\nResult: ${JSON.stringify({ status: params.status, [state.metricName]: params.metric })}`);
 				if (gr.committed) {
 					commit = gr.commit ?? commit;
 				} else if (gr.error) {
-					gitError = gr.error;
-					console.error(`[autoresearch] gitAutoCommit error: ${gr.error}`);
+					// 案A: commit できない keep は keep ではない。状態を更新せずエラーを返す。
+					return {
+						content: [{ type: "text", text: `[ERROR] git commit に失敗したため keep を記録できません:\n${gr.error}\n\ncommit できない keep は再現性を保証できません。\ngit の状態を確認して再度 autoresearch_log を呼び出してください。` }],
+						details: { gitError: gr.error },
+					};
 				}
 				entry.postCommit = commit;
 			} else {
@@ -890,9 +898,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			if (!params.runId && matchedPiRunId) text += `\n[WARNING] runId 省略。次回は明示指定してください。`;
 			if (params.status === "keep") {
-				if (gitError) {
-					text += `\n[git ERROR] commit 失敗: ${gitError}`;
-				} else if (entry.postCommit && entry.postCommit !== preCommit) {
+				// P0-2: git commit 失敗時は既に return 済みなので、ここは commit 成功時のみ
+				if (entry.postCommit && entry.postCommit !== preCommit) {
 					text += `\n[git] 自動 commit しました: ${entry.postCommit}`;
 				} else {
 					text += `\n[git] 変更なし（commit 不要）`;
@@ -914,7 +921,6 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					status: params.status, metric: params.metric, bestMetric: state.bestMetric,
 					kept, commit, preCommit, postCommit: entry.postCommit, changedFiles,
 					externalRunId: entry.externalRunId, externalArtifactDir: entry.externalArtifactDir,
-					gitError,
 					ledgerErrors: ledgerErrors.length > 0 ? ledgerErrors : undefined,
 				},
 			};

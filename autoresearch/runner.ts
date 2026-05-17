@@ -47,6 +47,8 @@ export interface RunResult {
 	externalMetricsPath: string | null;
 	/** Whether streaming log files were written during execution */
 	logFilesWritten: boolean;
+	/** Non-null if a stream write error occurred (disk full, permission, etc.) */
+	streamError: string | null;
 }
 
 export interface ExternalInfo {
@@ -199,6 +201,7 @@ export async function runCommand(
 		let stdoutStream: fs.WriteStream | null = null;
 		let stderrStream: fs.WriteStream | null = null;
 		let logFilesWritten = false;
+		let streamError: string | null = null;
 
 		if (logDir) {
 			try {
@@ -209,6 +212,20 @@ export async function runCommand(
 			} catch {
 				logFilesWritten = false;
 			}
+		}
+
+		// P0-3: Handle stream errors (disk full, permission error, etc.)
+		if (stdoutStream) {
+			stdoutStream.on("error", (e) => {
+				streamError = e.message;
+				logFilesWritten = false;
+			});
+		}
+		if (stderrStream) {
+			stderrStream.on("error", (e) => {
+				streamError = e.message;
+				logFilesWritten = false;
+			});
 		}
 
 		// detached: true で新しいプロセスグループを作成。
@@ -345,6 +362,7 @@ export async function runCommand(
 				stderr,
 				signal: sig,
 				logFilesWritten,
+				streamError,
 				...externalInfo,
 			};
 
@@ -379,7 +397,7 @@ export async function runCommand(
 export function getGitShortHash(cwd: string): string {
 	try {
 		return execFileSync("git", ["rev-parse", "--short", "HEAD"], {
-			cwd, encoding: "utf8", timeout: 5_000,
+			cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"],
 		}).trim();
 	} catch {
 		return "unknown";
@@ -390,7 +408,7 @@ export function getGitShortHash(cwd: string): string {
 export function getGitFullHash(cwd: string): string {
 	try {
 		return execFileSync("git", ["rev-parse", "HEAD"], {
-			cwd, encoding: "utf8", timeout: 5_000,
+			cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"],
 		}).trim();
 	} catch {
 		return "unknown";
@@ -400,10 +418,10 @@ export function getGitFullHash(cwd: string): string {
 /** Check if the working tree has uncommitted changes. */
 export function isGitDirty(cwd: string): boolean {
 	try {
-		execFileSync("git", ["diff", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000 });
-		execFileSync("git", ["diff", "--cached", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000 });
+		execFileSync("git", ["diff", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] });
+		execFileSync("git", ["diff", "--cached", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] });
 		const untracked = execFileSync("git", ["ls-files", "--others", "--exclude-standard"], {
-			cwd, encoding: "utf8", timeout: 5_000,
+			cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"],
 		}).trim();
 		return untracked.length > 0;
 	} catch {
@@ -416,7 +434,7 @@ export function getChangedFiles(cwd: string): string[] {
 	try {
 		const result = execFileSync(
 			"git", ["status", "--porcelain"],
-			{ cwd, encoding: "utf8", timeout: 5_000 },
+			{ cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] },
 		).trim();
 		if (!result) return [];
 		return result.split("\n").map((line: string) => line.slice(3)).filter(Boolean);
@@ -487,7 +505,7 @@ export function createRunArtifactDir(
 
 	try {
 		const status = execFileSync("git", ["status", "--porcelain"], {
-			cwd, encoding: "utf8", timeout: 5_000,
+			cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"],
 		});
 		fs.writeFileSync(path.join(runDir, "git.status.txt"), status, "utf8");
 	} catch {
@@ -495,8 +513,8 @@ export function createRunArtifactDir(
 	}
 
 	try {
-		const diffUnstaged = execFileSync("git", ["diff"], { cwd, encoding: "utf8", timeout: 10_000 });
-		const diffStaged = execFileSync("git", ["diff", "--cached"], { cwd, encoding: "utf8", timeout: 10_000 });
+		const diffUnstaged = execFileSync("git", ["diff"], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
+		const diffStaged = execFileSync("git", ["diff", "--cached"], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
 		fs.writeFileSync(path.join(runDir, "git.diff"), diffUnstaged + (diffStaged ? "\n--- staged ---\n" + diffStaged : ""), "utf8");
 	} catch {
 		fs.writeFileSync(path.join(runDir, "git.diff"), "(git diff unavailable)", "utf8");
@@ -661,6 +679,7 @@ export function loadRunFromArtifact(
 			externalViewlogPath: m.externalViewlogPath ?? null,
 			externalMetricsPath: m.externalMetricsPath ?? null,
 			logFilesWritten: m.logFilesWritten ?? false,
+			streamError: null,
 		};
 
 		return {
@@ -686,15 +705,22 @@ export function loadRunFromArtifact(
  */
 export function gitAutoCommit(cwd: string, message: string): { committed: boolean; commit?: string; error?: string } {
 	try {
+		// Check if we're in a git repo first. If not, no error — just nothing to commit.
+		execFileSync("git", ["rev-parse", "--git-dir"], { cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] });
+	} catch {
+		return { committed: false };
+	}
+
+	try {
 		// .pi/ を除外して git add
-		execFileSync("bash", ["-c", "git add -A -- . ':(exclude).pi/**'"], { cwd, encoding: "utf8", timeout: 10_000 });
+		execFileSync("bash", ["-c", "git add -A -- . ':(exclude).pi/**'"], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
 
 		try {
-			execFileSync("git", ["diff", "--cached", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000 });
+			execFileSync("git", ["diff", "--cached", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] });
 			return { committed: false };
 		} catch { /* diff あり → commit */ }
 
-		execFileSync("git", ["commit", "-m", message], { cwd, encoding: "utf8", timeout: 10_000 });
+		execFileSync("git", ["commit", "-m", message], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
 		return { committed: true, commit: getGitShortHash(cwd) };
 	} catch (e) {
 		return { committed: false, error: e instanceof Error ? e.message : String(e) };
@@ -713,7 +739,7 @@ export function gitAutoRevert(cwd: string): { reverted: boolean; error?: string 
 			"-e 'autoresearch.*' -e '**/autoresearch.*/**' " +
 			"-e '.pi' -e '**/.pi/**' " +
 			"2>/dev/null || true",
-		], { cwd, encoding: "utf8", timeout: 10_000 });
+		], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
 		return { reverted: true };
 	} catch (e) {
 		return { reverted: false, error: e instanceof Error ? e.message : String(e) };

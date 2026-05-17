@@ -1399,7 +1399,7 @@ describe("autoresearchExtension", () => {
 	// ── git operation error paths ─────────────────────────────────
 
 	describe("git operation error paths", () => {
-		it("log keep in non-git dir: shows error", async () => {
+		it("log keep in non-git dir: succeeds without error (no git repo)", async () => {
 			const testDir = "/tmp/test-ar-nogit-" + Date.now();
 			fs.mkdirSync(testDir, { recursive: true });
 
@@ -1416,7 +1416,7 @@ describe("autoresearchExtension", () => {
 				ctx,
 			);
 
-			// keep in non-git dir triggers gitAutoCommit → catch → error
+			// keep in non-git dir: gitAutoCommit detects no git repo → { committed: false } (no error)
 			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
 			await runBenchmark(pi.tools, ctx);
 			const result = await logTool.execute(
@@ -1427,8 +1427,8 @@ describe("autoresearchExtension", () => {
 				ctx,
 			);
 			expect(result.content[0].text).toContain("[KEEP]");
-			// Non-git dir: commit エラー
-			expect(result.content[0].text).toContain("[git ERROR]");
+			// Non-git dir: no error, just treated as no changes
+			expect(result.content[0].text).toContain("[git]");
 
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
@@ -1464,7 +1464,7 @@ describe("autoresearchExtension", () => {
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 
-		it("log keep with locked git index: shows commit error", async () => {
+		it("log keep with locked git index: returns error (P0-2: commit failure rejects keep)", async () => {
 			const testDir = "/tmp/test-ar-locked-" + Date.now();
 			fs.mkdirSync(testDir, { recursive: true });
 
@@ -1498,9 +1498,9 @@ describe("autoresearchExtension", () => {
 				undefined,
 				ctx,
 			);
-			expect(result.content[0].text).toContain("[KEEP]");
-			// Locked index: git add fails → gitError is set
-			expect(result.content[0].text).toContain("[git ERROR]");
+			// P0-2: commit failure now returns [ERROR] instead of recording as keep
+			expect(result.content[0].text).toContain("[ERROR]");
+			expect(result.content[0].text).toContain("git commit");
 			expect(result.details.gitError).toBeTruthy();
 
 			// Cleanup: remove lock file
