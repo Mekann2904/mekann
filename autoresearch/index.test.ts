@@ -271,6 +271,11 @@ describe("autoresearchExtension", () => {
 			expect(result.systemPrompt).toContain("autoresearch_run");
 			expect(result.systemPrompt).toContain("autoresearch_log");
 			expect(result.systemPrompt).toContain("autoresearch_evaluate_query");
+			expect(result.systemPrompt).toContain("ready_for_run");
+			expect(result.systemPrompt).toContain("ready_for_init");
+			expect(result.systemPrompt).toContain("needs_command");
+			expect(result.systemPrompt).toContain("needs_metric_extraction");
+			expect(result.systemPrompt).toContain("needs_checks_policy");
 			expect(result.systemPrompt).toContain("日本語");
 			// 自動 commit/revert の指示がある
 			expect(result.systemPrompt).toContain("自動で git commit / revert");
@@ -500,8 +505,15 @@ describe("autoresearchExtension", () => {
 			);
 			expect(result.content[0].text).not.toContain("autoresearch モードが無効です");
 			expect(result.content[0].text).toContain("クエリ評価結果");
+			expect(result.content[0].text).toContain("段階別 readiness");
+			expect(result.content[0].text).toContain("measurementMethod");
+			expect(result.content[0].text).toContain("checks policy");
 			expect(result.details).toMatchObject({
 				decision: expect.any(String),
+				readiness: expect.objectContaining({
+					initReady: expect.any(Boolean),
+					runReady: expect.any(Boolean),
+				}),
 			});
 		});
 

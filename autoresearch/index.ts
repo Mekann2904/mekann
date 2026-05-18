@@ -153,11 +153,20 @@ const SYSTEM_PROMPT_EXTRA = [
 	"### クエリ評価",
 	"",
 	"ユーザの目的が自然文で曖昧な場合、`autoresearch_init` の前に `autoresearch_evaluate_query` を呼び出す。",
-	"評価結果が `ready` でない場合、無理に `autoresearch_init` しない。",
-	"`needs_metric_design` の場合は metric 候補を提示する。",
-	"`needs_clarification` の場合は、実験契約に必要な最小限の質問だけを行う。",
-	"`needs_rewrite` の場合は、autoresearch 向けの suggestedRewrite を提示する。",
-	"`reject` の場合は、安全上の理由を説明して実験を開始しない。",
+	"評価結果の decision に従って行動すること。",
+	"",
+	"decision の意味:",
+	"- `ready_for_run`: 実験契約が完備。`autoresearch_init` → `autoresearch_run` まで安全に進める。",
+	"- `ready_for_init`: init は可能だが、run には benchmark command / extraction / checks が不足。",
+	"- `needs_command`: benchmark command を確認する。",
+	"- `needs_metric_extraction`: metric の抽出方法 (wall-clock / stdout / report file) を確認する。",
+	"- `needs_checks_policy`: checks command または `autoresearch.checks.sh` 方針を確認する。",
+	"- `needs_metric_design`: metric 候補を提示する。",
+	"- `needs_rewrite`: autoresearch 向けの suggestedRewrite を提示する。",
+	"- `reject`: 安全上の理由を説明して実験を開始しない。",
+	"",
+	"`ready_for_run` 以外では `autoresearch_run` に進んではならない。",
+	"`ready_for_init` では `autoresearch_init` は可能だが、run 前に不足を解消する。",
 	"",
 	"動的評価として以下を 0.0〜1.0 で評価してよい（ただし ready 判定は static validator の blocking/risk を優先）:",
 	"- semanticAlignment: ユーザ目的と metric が一致しているか",
@@ -439,11 +448,28 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		async execute(_tc, params, _sig, _ou, _ctx) {
 			// 評価 tool は autoresearch モード有効/無効に関わらず実行可能（read-only）
 			const evaluation = evaluateQueryStatically(params.query);
+			const r = evaluation.readiness;
+			const m = evaluation.contractDraft.primaryMetric;
 
 			const text = [
 				`## クエリ評価結果`,
 				``,
 				`**判定**: ${evaluation.decision}`,
+				``,
+				`### 段階別 readiness`,
+				`- initReady: ${r.initReady}`,
+				`- runReady: ${r.runReady}`,
+				`- metricExtractionReady: ${r.metricExtractionReady}`,
+				`- checksReady: ${r.checksReady}`,
+				`- logReady: ${r.logReady}`,
+				``,
+				`### 測定方法`,
+				`- measurementMethod: ${m.measurementMethod}`,
+				`- extractionConfidence: ${m.extractionConfidence.toFixed(2)}`,
+				`- extractionRule: ${m.extractionRule ?? "（未定）"}`,
+				``,
+				`### checks policy`,
+				evaluation.contractDraft.checksPolicy,
 				``,
 				`### スコア`,
 				`- readiness: ${evaluation.scores.readiness.toFixed(2)}`,
@@ -461,7 +487,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					? `### ブロッキング issue\n${evaluation.blockingIssues.map(i => `- ${i}`).join("\n")}\n`
 					: "",
 				evaluation.riskFlags.length > 0
-					? `### リスク\n${evaluation.riskFlags.map(r => `- ⚠️ ${r}`).join("\n")}\n`
+					? `### リスク\n${evaluation.riskFlags.map(fl => `- ⚠️ ${fl}`).join("\n")}\n`
 					: "",
 				evaluation.suggestedRewrite
 					? `### 推奨書き換え\n${evaluation.suggestedRewrite}\n`
@@ -472,7 +498,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				`### 実験契約ドラフト`,
 				`- 目的: ${evaluation.contractDraft.objective || "（未定）"}`,
 				`- 対象: ${evaluation.contractDraft.targetScope.length > 0 ? evaluation.contractDraft.targetScope.join(", ") : "（未定）"}`,
-				`- 主指標: ${evaluation.contractDraft.primaryMetric.name ?? "（未定）"}（${evaluation.contractDraft.primaryMetric.direction}）`,
+				`- 主指標: ${m.name ?? "（未定）"}（${m.direction}）`,
 				`- benchmark: ${evaluation.contractDraft.benchmarkCommand ?? "（未定）"}`,
 				`- checks: ${evaluation.contractDraft.checksCommand ?? "（未定）"}`,
 			].filter(s => s !== false).join("\n");

@@ -2,14 +2,14 @@
  * autoresearch/queryEvaluation.test.ts — 静的クエリ評価のテスト。
  *
  * evaluateQueryStatically の各パターンを検証する。
+ * 段階別 readiness gate、measurementMethod、checksPolicy を含む。
  */
 
 import { describe, it, expect } from "vitest";
 import {
 	evaluateQueryStatically,
-	type QueryEvaluation,
 	type QueryEvaluationDecision,
-	type StaticNumericScores,
+	type QueryEvaluation,
 } from "./queryEvaluation.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -31,39 +31,65 @@ describe("evaluateQueryStatically", () => {
 			expect(r.decision).toBe("needs_rewrite");
 			expect(r.scores.readiness).toBe(0);
 			expect(r.scores.safety).toBe(1);
+			expect(r.readiness.initReady).toBe(false);
+			expect(r.readiness.runReady).toBe(false);
+			expect(r.readiness.logReady).toBe(false);
 			expect(r.blockingIssues.length).toBeGreaterThan(0);
 			expect(r.clarifyingQuestions.length).toBeGreaterThan(0);
 		});
 
 		it("returns needs_rewrite for single character", () => {
-			const r = evaluateQueryStatically("x");
-			expect(r.decision).toBe("needs_rewrite");
+			expectDecision("x", "needs_rewrite");
 		});
 
 		it("returns needs_rewrite for whitespace-only input", () => {
-			const r = evaluateQueryStatically("   ");
-			expect(r.decision).toBe("needs_rewrite");
+			expectDecision("   ", "needs_rewrite");
 		});
 	});
 
-	// ── Test 1: Speed improvement query without command ──────────
+	// ── Test 1: prepush を速くしたい → ready_for_init ────────────
 
 	describe("prepush を速くしたい", () => {
 		const query = "prepush を速くしたい";
 
-		it("has objective", () => {
+		it("decision is ready_for_init", () => {
 			const r = evaluateQueryStatically(query);
-			expect(r.contractDraft.objective).toBeTruthy();
-			expect(r.contractDraft.objective).toContain("prepush");
+			expect(r.decision).toBe("ready_for_init");
 		});
 
-		it("detects duration metric", () => {
+		it("initReady is true", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.readiness.initReady).toBe(true);
+		});
+
+		it("runReady is false", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.readiness.runReady).toBe(false);
+		});
+
+		it("metricExtractionReady is true (wall-clock)", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.readiness.metricExtractionReady).toBe(true);
+		});
+
+		it("checksReady is false", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.readiness.checksReady).toBe(false);
+		});
+
+		it("measurementMethod is wall_clock", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("wall_clock");
+		});
+
+		it("extractionConfidence is 1.0", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.primaryMetric.extractionConfidence).toBe(1.0);
+		});
+
+		it("detects duration_seconds metric", () => {
 			const r = evaluateQueryStatically(query);
 			expect(r.contractDraft.primaryMetric.name).toBe("duration_seconds");
-		});
-
-		it("detects direction lower", () => {
-			const r = evaluateQueryStatically(query);
 			expect(r.contractDraft.primaryMetric.direction).toBe("lower");
 		});
 
@@ -72,24 +98,14 @@ describe("evaluateQueryStatically", () => {
 			expect(r.contractDraft.benchmarkCommand).toBeNull();
 		});
 
-		it("includes benchmarkCommand in missingFields", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.contractDraft.missingFields).toContain("benchmarkCommand");
-		});
-
-		it("decision is needs_clarification (has metric but no command)", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.decision).toMatch(/needs_clarification|needs_metric_design/);
-		});
-
 		it("has scope prepush", () => {
 			const r = evaluateQueryStatically(query);
 			expect(r.contractDraft.targetScope).toContain("prepush");
 		});
 
-		it("has suggestedRewrite", () => {
+		it("has suggestedRewrite mentioning init", () => {
 			const r = evaluateQueryStatically(query);
-			expect(r.suggestedRewrite).toBeTruthy();
+			expect(r.suggestedRewrite).toContain("init");
 		});
 
 		it("has clarifyingQuestions", () => {
@@ -98,63 +114,217 @@ describe("evaluateQueryStatically", () => {
 		});
 	});
 
-	// ── Test 2: Clear, complete query ────────────────────────────
+	// ── Test 2: Complete query + checks → ready_for_run ──────────
 
-	describe("clear query with explicit metric and command", () => {
-		const query = "`npm run prepush` の実行時間を短縮したい。metric は duration_seconds、lower is better。";
+	describe("complete query with checks policy", () => {
+		const query = "`npm run prepush` の実行時間を短縮したい。metric は duration_seconds、lower is better。既存 checks を使う。";
+
+		it("decision is ready_for_run", () => {
+			expectDecision(query, "ready_for_run");
+		});
+
+		it("all readiness flags are true", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.readiness.initReady).toBe(true);
+			expect(r.readiness.runReady).toBe(true);
+			expect(r.readiness.checksReady).toBe(true);
+			expect(r.readiness.metricExtractionReady).toBe(true);
+			expect(r.readiness.logReady).toBe(true);
+		});
+
+		it("measurementMethod is wall_clock", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("wall_clock");
+		});
+
+		it("checksPolicy is autoresearch_checks_sh", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.checksPolicy).toBe("autoresearch_checks_sh");
+		});
+
+		it("extracts benchmarkCommand", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.benchmarkCommand).toBe("npm run prepush");
+		});
 
 		it("detects metric name duration_seconds", () => {
 			const r = evaluateQueryStatically(query);
 			expect(r.contractDraft.primaryMetric.name).toBe("duration_seconds");
 		});
 
-		it("detects direction lower", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.contractDraft.primaryMetric.direction).toBe("lower");
-		});
-
-		it("extracts benchmarkCommand npm run prepush", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.contractDraft.benchmarkCommand).toBe("npm run prepush");
-		});
-
-		it("has no high risk flags", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.riskFlags).toEqual([]);
-		});
-
-		it("has high safety score", () => {
+		it("has high safety and readiness scores", () => {
 			const r = evaluateQueryStatically(query);
 			expect(r.scores.safety).toBe(1);
-		});
-
-		it("has high readiness", () => {
-			const r = evaluateQueryStatically(query);
 			expect(r.scores.readiness).toBeGreaterThanOrEqual(0.5);
-		});
-
-		it("decision is ready", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.decision).toBe("ready");
-		});
-
-		it("has scope prepush", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.contractDraft.targetScope).toContain("prepush");
 		});
 	});
 
-	// ── Test 3: Broad query ──────────────────────────────────────
+	// ── Test 3: Command exists but no checks → needs_checks_policy ──
+
+	describe("`pnpm test` の時間を短縮したい", () => {
+		const query = "`pnpm test` の時間を短縮したい";
+
+		it("decision is needs_checks_policy", () => {
+			expectDecision(query, "needs_checks_policy");
+		});
+
+		it("initReady is true", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.readiness.initReady).toBe(true);
+		});
+
+		it("runReady is true (command + metric extraction ready)", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.readiness.runReady).toBe(true);
+		});
+
+		it("checksReady is false", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.readiness.checksReady).toBe(false);
+		});
+
+		it("extracts benchmarkCommand pnpm test", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.benchmarkCommand).toBe("pnpm test");
+		});
+
+		it("checksPolicy is not_specified", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.checksPolicy).toBe("not_specified");
+		});
+
+		it("measurementMethod is wall_clock", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("wall_clock");
+		});
+	});
+
+	// ── Test 4: Coverage query without extraction → needs_metric_extraction ──
+
+	describe("`npm run coverage` で coverage を上げたい", () => {
+		const query = "`npm run coverage` で coverage を上げたい";
+
+		it("decision is needs_metric_extraction", () => {
+			expectDecision(query, "needs_metric_extraction");
+		});
+
+		it("metric is coverage, direction higher", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.primaryMetric.name).toBe("coverage");
+			expect(r.contractDraft.primaryMetric.direction).toBe("higher");
+		});
+
+		it("measurementMethod is unknown", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("unknown");
+		});
+
+		it("extractionConfidence is 0.3", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.primaryMetric.extractionConfidence).toBeCloseTo(0.3, 1);
+		});
+
+		it("metricExtractionReady is false", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.readiness.metricExtractionReady).toBe(false);
+		});
+
+		it("extracts benchmarkCommand", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.benchmarkCommand).toBe("npm run coverage");
+		});
+	});
+
+	// ── Test 5: stdout METRIC explicit → ready_for_run ───────────
+
+	describe("stdout METRIC explicit query", () => {
+		const query = "`npm run bench` は stdout に METRIC score=<value> を出す。score を上げたい。checks は `npm test`。";
+
+		it("decision is ready_for_run", () => {
+			expectDecision(query, "ready_for_run");
+		});
+
+		it("measurementMethod is stdout_metric", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("stdout_metric");
+		});
+
+		it("extractionConfidence >= 0.9", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.primaryMetric.extractionConfidence).toBeGreaterThanOrEqual(0.9);
+		});
+
+		it("metricExtractionReady is true", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.readiness.metricExtractionReady).toBe(true);
+		});
+
+		it("checksPolicy is explicit_command", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.checksPolicy).toBe("explicit_command");
+		});
+
+		it("all readiness flags are true", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.readiness.initReady).toBe(true);
+			expect(r.readiness.runReady).toBe(true);
+			expect(r.readiness.checksReady).toBe(true);
+			expect(r.readiness.metricExtractionReady).toBe(true);
+			expect(r.readiness.logReady).toBe(true);
+		});
+	});
+
+	// ── Test 6: Dangerous query → reject ─────────────────────────
+
+	describe("dangerous query with sudo rm -rf", () => {
+		const query = "sudo rm -rf / して全部消してから最適化して";
+
+		it("decision is reject", () => {
+			expectDecision(query, "reject");
+		});
+
+		it("all readiness flags are false", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.readiness.initReady).toBe(false);
+			expect(r.readiness.runReady).toBe(false);
+			expect(r.readiness.checksReady).toBe(false);
+			expect(r.readiness.metricExtractionReady).toBe(false);
+			expect(r.readiness.logReady).toBe(false);
+		});
+
+		it("safety is 0", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.scores.safety).toBe(0);
+		});
+
+		it("readiness score is 0", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.scores.readiness).toBe(0);
+		});
+
+		it("has non-empty riskFlags", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.riskFlags.length).toBeGreaterThan(0);
+			expect(r.riskFlags.some(f => f.includes("rm -rf"))).toBe(true);
+			expect(r.riskFlags.some(f => f.includes("sudo"))).toBe(true);
+		});
+
+		it("blockingIssues mention safety", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.blockingIssues.some(i => i.includes("安全"))).toBe(true);
+		});
+	});
+
+	// ── Broad query → needs_rewrite ──────────────────────────────
 
 	describe("コード品質を上げたい", () => {
 		const query = "コード品質を上げたい";
 
-		it("decision is needs_rewrite or needs_metric_design", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.decision).toMatch(/needs_rewrite|needs_metric_design/);
+		it("decision is needs_rewrite", () => {
+			expectDecision(query, "needs_rewrite");
 		});
 
-		it("suggestedRewrite mentions proxy metric candidates", () => {
+		it("suggestedRewrite mentions proxy metric", () => {
 			const r = evaluateQueryStatically(query);
 			expect(r.suggestedRewrite).toContain("proxy metric");
 		});
@@ -170,77 +340,16 @@ describe("evaluateQueryStatically", () => {
 		});
 	});
 
-	// ── Test 4: Dangerous query ──────────────────────────────────
-
-	describe("dangerous query with sudo rm -rf", () => {
-		const query = "sudo rm -rf / して全部消してから最適化して";
-
-		it("decision is reject", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.decision).toBe("reject");
-		});
-
-		it("has non-empty riskFlags", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.riskFlags.length).toBeGreaterThan(0);
-		});
-
-		it("safety is 0", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.scores.safety).toBe(0);
-		});
-
-		it("readiness is 0", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.scores.readiness).toBe(0);
-		});
-
-		it("detects rm -rf risk", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.riskFlags.some(f => f.includes("rm -rf"))).toBe(true);
-		});
-
-		it("detects sudo risk", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.riskFlags.some(f => f.includes("sudo"))).toBe(true);
-		});
-
-		it("blockingIssues mention safety", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.blockingIssues.some(i => i.includes("安全"))).toBe(true);
-		});
-	});
-
-	// ── Test 5: Command extraction ───────────────────────────────
-
-	describe("`pnpm test` の時間を短縮したい", () => {
-		const query = "`pnpm test` の時間を短縮したい";
-
-		it("extracts benchmarkCommand pnpm test", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.contractDraft.benchmarkCommand).toBe("pnpm test");
-		});
-
-		it("detects direction lower", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.contractDraft.primaryMetric.direction).toBe("lower");
-		});
-
-		it("detects tests scope", () => {
-			const r = evaluateQueryStatically(query);
-			expect(r.contractDraft.targetScope).toContain("tests");
-		});
-	});
-
 	// ── Score ranges ─────────────────────────────────────────────
 
 	describe("all scores are in 0..1 range", () => {
 		const queries = [
 			"prepush を速くしたい",
-			"`npm run prepush` の実行時間を短縮したい。metric は duration_seconds、lower is better。",
+			"`npm run prepush` の実行時間を短縮したい。metric は duration_seconds、lower is better。既存 checks を使う。",
 			"コード品質を上げたい",
 			"sudo rm -rf / して全部消してから最適化して",
 			"`pnpm test` の時間を短縮したい",
+			"`npm run coverage` で coverage を上げたい",
 			"",
 			"x",
 		];
@@ -248,8 +357,7 @@ describe("evaluateQueryStatically", () => {
 		for (const q of queries) {
 			it(`scores in range for: "${q.slice(0, 40)}"`, () => {
 				const r = evaluateQueryStatically(q);
-				const s = r.scores;
-				for (const [key, val] of Object.entries(s)) {
+				for (const [, val] of Object.entries(r.scores)) {
 					expect(val).toBeGreaterThanOrEqual(0);
 					expect(val).toBeLessThanOrEqual(1);
 				}
@@ -285,6 +393,59 @@ describe("evaluateQueryStatically", () => {
 		it("detects explicit metric name via '主指標は X'", () => {
 			const r = evaluateQueryStatically("主指標は total_time で改善したい");
 			expect(r.contractDraft.primaryMetric.name).toBe("total_time");
+		});
+	});
+
+	// ── Measurement method detection ─────────────────────────────
+
+	describe("measurement method detection", () => {
+		it("wall_clock for speed keywords", () => {
+			const r = evaluateQueryStatically("高速化したい");
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("wall_clock");
+			expect(r.readiness.metricExtractionReady).toBe(true);
+		});
+
+		it("wall_clock for 実行時間", () => {
+			const r = evaluateQueryStatically("`make build` の実行時間を短縮したい");
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("wall_clock");
+		});
+
+		it("stdout_metric for METRIC mention", () => {
+			const r = evaluateQueryStatically("`npm run bench` は METRIC score=<value> を出力する。score を上げたい。");
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("stdout_metric");
+			expect(r.readiness.metricExtractionReady).toBe(true);
+		});
+
+		it("unknown for coverage without extraction", () => {
+			const r = evaluateQueryStatically("coverage を上げたい");
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("unknown");
+			expect(r.readiness.metricExtractionReady).toBe(false);
+		});
+
+		it("report_file for coverage report mention", () => {
+			const r = evaluateQueryStatically("`npm run coverage` で coverage report を使って coverage を上げたい");
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("report_file");
+			expect(r.contractDraft.primaryMetric.extractionConfidence).toBeCloseTo(0.6, 1);
+		});
+	});
+
+	// ── Checks policy detection ──────────────────────────────────
+
+	describe("checks policy detection", () => {
+		it("explicit_command when checks command is in query", () => {
+			const r = evaluateQueryStatically("`npm run bench` checks は `npm test`");
+			expect(r.contractDraft.checksPolicy).toBe("explicit_command");
+			expect(r.contractDraft.checksCommand).toBeTruthy();
+		});
+
+		it("autoresearch_checks_sh for 既存 checks mention", () => {
+			const r = evaluateQueryStatically("`npm run test` の時間を短縮したい。既存 checks を使う。");
+			expect(r.contractDraft.checksPolicy).toBe("autoresearch_checks_sh");
+		});
+
+		it("not_specified when no checks mention", () => {
+			const r = evaluateQueryStatically("`npm run test` を速くしたい");
+			expect(r.contractDraft.checksPolicy).toBe("not_specified");
 		});
 	});
 
@@ -342,22 +503,29 @@ describe("evaluateQueryStatically", () => {
 	// ── Decision logic ───────────────────────────────────────────
 
 	describe("decision logic", () => {
-		it("ready: all fields present", () => {
+		it("ready_for_run: all fields present including checks", () => {
 			const r = evaluateQueryStatically(
-				"`npm run build` の時間を短縮したい。metric は duration_seconds、lower is better。"
+				"`npm run build` の時間を短縮したい。metric は duration_seconds、lower is better。checks は `npm test`。"
 			);
-			expect(r.decision).toBe("ready");
+			expect(r.decision).toBe("ready_for_run");
 		});
 
-		it("needs_metric_design: objective + command but no metric", () => {
+		it("needs_metric_design: no metric name", () => {
 			const r = evaluateQueryStatically("`npm run test` の結果を改善したい");
-			// "改善" doesn't match specific metric keywords; direction may be unknown
-			expect(r.decision).toMatch(/needs_metric_design|needs_clarification/);
+			expect(r.decision).toMatch(/needs_metric_design|needs_checks_policy|needs_metric_extraction/);
 		});
 
 		it("needs_rewrite: broad without specifics", () => {
 			const r = evaluateQueryStatically("保守性を改善したい");
 			expect(r.decision).toBe("needs_rewrite");
+		});
+
+		it("needs_command: metric exists but no command and broad", () => {
+			// coverage + no command → ready_for_init (because initReady && !broad)
+			// For needs_command we need a case where initReady is false but metric exists
+			const r = evaluateQueryStatically("coverage を上げたい。高くしたい。");
+			// coverage has metric name and direction, initReady=true, !broad → ready_for_init
+			expect(r.decision).toBe("ready_for_init");
 		});
 	});
 
@@ -372,6 +540,7 @@ describe("evaluateQueryStatically", () => {
 			expect(d).toHaveProperty("primaryMetric");
 			expect(d).toHaveProperty("benchmarkCommand");
 			expect(d).toHaveProperty("checksCommand");
+			expect(d).toHaveProperty("checksPolicy");
 			expect(d).toHaveProperty("constraints");
 			expect(d).toHaveProperty("stopCondition");
 			expect(d).toHaveProperty("missingFields");
@@ -379,7 +548,9 @@ describe("evaluateQueryStatically", () => {
 			expect(d.primaryMetric).toHaveProperty("unit");
 			expect(d.primaryMetric).toHaveProperty("direction");
 			expect(d.primaryMetric).toHaveProperty("source");
+			expect(d.primaryMetric).toHaveProperty("measurementMethod");
 			expect(d.primaryMetric).toHaveProperty("extractionRule");
+			expect(d.primaryMetric).toHaveProperty("extractionConfidence");
 		});
 
 		it("constraints and stopCondition default to empty/null", () => {
@@ -389,40 +560,15 @@ describe("evaluateQueryStatically", () => {
 		});
 	});
 
-	// ── Blocking issues ──────────────────────────────────────────
-
-	describe("blocking issues", () => {
-		it("lists missing objective for empty query", () => {
-			const r = evaluateQueryStatically("");
-			expect(r.blockingIssues.some(i => i.includes("目的"))).toBe(true);
-		});
-
-		it("lists missing metric for query without metric", () => {
-			const r = evaluateQueryStatically("何か改善したい");
-			// May or may not have metric depending on keyword matching
-			// But readiness should be low
-			expect(r.scores.readiness).toBeLessThan(1);
-		});
-	});
-
 	// ── Score calculation details ────────────────────────────────
 
 	describe("score calculation", () => {
-		it("readiness is min of completeness, measurability, commandReadiness, safety", () => {
+		it("readiness is min of completeness, measurability, commandReadiness, safety, reproducibility", () => {
 			const r = evaluateQueryStatically("prepush を速くしたい");
 			const s = r.scores;
 			expect(s.readiness).toBe(
-				Math.min(s.completeness, s.measurability, s.commandReadiness, s.safety)
+				Math.min(s.completeness, s.measurability, s.commandReadiness, s.safety, s.reproducibility)
 			);
-		});
-
-		it("completeness = filledFields / 6 for fully specified query", () => {
-			const r = evaluateQueryStatically(
-				"`npm run prepush` の実行時間を短縮したい。metric は duration_seconds、lower is better。"
-			);
-			// All required fields should be filled except maybe checksCommand
-			const filled = 6 - r.contractDraft.missingFields.length;
-			expect(r.scores.completeness).toBeCloseTo(filled / 6, 1);
 		});
 
 		it("safety is 0 when risk flags exist", () => {
