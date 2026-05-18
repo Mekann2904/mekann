@@ -7,11 +7,25 @@
 export type MetricDirection = "lower" | "higher" | "unknown";
 
 export type QueryEvaluationDecision =
-  | "ready"
-  | "needs_rewrite"
+  | "ready_for_run"
+  | "ready_for_init"
   | "needs_metric_design"
-  | "needs_clarification"
+  | "needs_command"
+  | "needs_metric_extraction"
+  | "needs_checks_policy"
+  | "needs_rewrite"
   | "reject";
+
+export type MeasurementMethod =
+  | "wall_clock"
+  | "stdout_metric"
+  | "report_file"
+  | "unknown";
+
+export type ChecksPolicy =
+  | "explicit_command"
+  | "autoresearch_checks_sh"
+  | "not_specified";
 
 export interface ResearchContractDraft {
   objective: string;
@@ -21,13 +35,24 @@ export interface ResearchContractDraft {
     unit: string | null;
     direction: MetricDirection;
     source: "stdout" | "file" | "test-report" | "custom" | "unknown";
+    measurementMethod: MeasurementMethod;
     extractionRule: string | null;
+    extractionConfidence: number;
   };
   benchmarkCommand: string | null;
   checksCommand: string | null;
+  checksPolicy: ChecksPolicy;
   constraints: string[];
   stopCondition: string | null;
   missingFields: string[];
+}
+
+export interface Readiness {
+  initReady: boolean;
+  runReady: boolean;
+  checksReady: boolean;
+  metricExtractionReady: boolean;
+  logReady: boolean;
 }
 
 export interface StaticNumericScores {
@@ -42,6 +67,7 @@ export interface StaticNumericScores {
 
 export interface QueryEvaluation {
   decision: QueryEvaluationDecision;
+  readiness: Readiness;
   scores: StaticNumericScores;
   contractDraft: ResearchContractDraft;
   blockingIssues: string[];
@@ -57,6 +83,8 @@ export interface QueryEvaluation {
 function clamp(value: number, min = 0, max = 1): number {
   return Math.max(min, Math.min(max, value));
 }
+
+// ── Risk detection ────────────────────────────────────────────
 
 function detectRiskFlags(query: string): string[] {
   const flags: string[] = [];
@@ -90,24 +118,25 @@ function detectRiskFlags(query: string): string[] {
   return flags;
 }
 
+// ── Scope detection ───────────────────────────────────────────
+
 function detectScope(query: string): string[] {
   const scopes: string[] = [];
   const q = query.toLowerCase();
 
   if (/\bprepush\b/.test(q)) scopes.push("prepush");
   if (
-    /\b(pytest|go\s+test|cargo\s+test|pnpm\s+test|npm\s+run\s+test|\btest\b|テスト)\b/.test(
-      q
-    )
+    /\b(pytest|go\s+test|cargo\s+test|pnpm\s+test|npm\s+run\s+test|\btest\b|テスト)\b/.test(q)
   )
     scopes.push("tests");
   if (/\b(coverage|カバレッジ)\b/.test(q)) scopes.push("coverage");
   if (/\blint\b/.test(q)) scopes.push("lint");
   if (/\b(build|ビルド)\b/.test(q)) scopes.push("build");
 
-  // 重複除去
   return [...new Set(scopes)];
 }
+
+// ── Metric name & direction detection ─────────────────────────
 
 function detectExplicitMetricName(query: string): string | null {
   const patterns = [
@@ -123,60 +152,41 @@ function detectExplicitMetricName(query: string): string | null {
   return null;
 }
 
-interface MetricInfo {
+interface MetricNameInfo {
   name: string | null;
   unit: string | null;
   direction: MetricDirection;
   source: "stdout" | "file" | "test-report" | "custom" | "unknown";
-  extractionRule: string | null;
 }
 
-function detectMetric(
+function detectMetricNameAndDirection(
   query: string,
   hasCommand: boolean
-): MetricInfo {
+): MetricNameInfo {
   const q = query.toLowerCase();
-
-  // 1. 明示指定を最優先
   const explicitName = detectExplicitMetricName(query);
 
-  // 2. キーワード推定
   let name: string | null = explicitName;
   let unit: string | null = null;
   let direction: MetricDirection = "unknown";
 
   if (!name) {
-    if (
-      /(速く|高速化|latency|time|duration|\bms\b|\bsec\b|秒|実行時間|短縮)/.test(
-        q
-      )
-    ) {
+    if (/(速く|高速化|latency|\btime\b|duration|\bms\b|\bsec\b|秒|実行時間|短縮)/.test(q)) {
       name = "duration_seconds";
       unit = "seconds";
       direction = "lower";
     } else if (
-      /(スコア|score|accuracy|pass\s*rate|success\s*rate|win\s*rate)/.test(
-        q
-      ) &&
+      /(スコア|score|accuracy|pass\s*rate|success\s*rate|win\s*rate)/.test(q) &&
       /(上げ|改善|向上)/.test(q)
     ) {
-      const scoreMatch = q.match(
-        /(スコア|score|accuracy|pass\s*rate|success\s*rate|win\s*rate)/
-      );
+      const scoreMatch = q.match(/(スコア|score|accuracy|pass\s*rate|success\s*rate|win\s*rate)/);
       name = scoreMatch ? scoreMatch[1].replace(/\s+/g, "_") : "score";
       direction = "higher";
-    } else if (
-      /(エラー|error|failure|crash|flaky)/.test(q) &&
-      /(減ら|削減)/.test(q)
-    ) {
+    } else if (/(エラー|error|failure|crash|flaky)/.test(q) && /(減ら|削減)/.test(q)) {
       name = "error_count";
       direction = "lower";
-    } else if (
-      /(コスト|cost|token|memory|size|bundle)/.test(q)
-    ) {
-      const costMatch = q.match(
-        /(コスト|cost|token|memory|size|bundle)/
-      );
+    } else if (/(コスト|cost|token|memory|size|bundle)/.test(q)) {
+      const costMatch = q.match(/(コスト|cost|token|memory|size|bundle)/);
       name = costMatch ? costMatch[1] : "cost";
       direction = "lower";
     } else if (/(coverage|カバレッジ)/.test(q)) {
@@ -186,20 +196,16 @@ function detectMetric(
     }
   }
 
-  // 3. Direction の明示検出
-  if (
-    /(lower\s+is\s+better|小さいほど|短縮|減ら|削減|\blower\b)/.test(q)
-  ) {
+  // Direction の明示検出
+  if (/(lower\s+is\s+better|小さいほど|短縮|減ら|削減|\blower\b)/.test(q)) {
     direction = "lower";
-  } else if (
-    /(higher\s+is\s+better|大きいほど|上げ|\bhigher\b)/.test(q)
-  ) {
+  } else if (/(higher\s+is\s+better|大きいほど|上げ|\bhigher\b)/.test(q)) {
     direction = "higher";
   }
 
   // 明示 metric name がある場合、direction がまだ unknown ならキーワード推定を再試行
   if (explicitName && direction === "unknown") {
-    if (/(速く|高速化|latency|time|duration|\bms\b|\bsec\b|秒|実行時間|短縮|減ら|削減|小さい|lower)/.test(q)) {
+    if (/(速く|高速化|latency|\btime\b|duration|\bms\b|\bsec\b|秒|実行時間|短縮|減ら|削減|小さい|lower)/.test(q)) {
       direction = "lower";
     } else if (/(上げ|大きい|高い|higher|改善|向上)/.test(q)) {
       direction = "higher";
@@ -207,26 +213,72 @@ function detectMetric(
   }
 
   const source = hasCommand ? "stdout" : "unknown";
-  const extractionRule =
-    name !== null
-      ? `stdout に METRIC ${name}=<value> を出力する`
-      : null;
-
-  return { name, unit, direction, source, extractionRule };
+  return { name, unit, direction, source };
 }
+
+// ── Measurement method detection ──────────────────────────────
+
+interface MeasurementInfo {
+  measurementMethod: MeasurementMethod;
+  extractionRule: string | null;
+  extractionConfidence: number;
+  metricExtractionReady: boolean;
+}
+
+function detectMeasurementMethod(
+  query: string,
+  metricName: string | null
+): MeasurementInfo {
+  const q = query.toLowerCase();
+
+  // 1. Stdout metric: METRIC / stdout / 標準出力 が明示的に言及されている
+  if (/METRIC|stdout|標準出力/.test(query)) {
+    return {
+      measurementMethod: "stdout_metric",
+      extractionRule: metricName
+        ? `stdout に METRIC ${metricName}=<value> を出力する`
+        : "stdout から METRIC 行をパースする",
+      extractionConfidence: 0.9,
+      metricExtractionReady: true,
+    };
+  }
+
+  // 2. Wall-clock: 速度・時間系キーワード
+  if (/(速く|高速化|latency|\btime\b|duration|\bms\b|\bsec\b|秒|実行時間|短縮)/.test(q)) {
+    return {
+      measurementMethod: "wall_clock",
+      extractionRule: "autoresearch_run の durationSeconds を primary metric として使う",
+      extractionConfidence: 1.0,
+      metricExtractionReady: true,
+    };
+  }
+
+  // 3. Report file: coverage report / lcov / json report / test-report 等
+  if (/(coverage\s*report|lcov|json\s*report|test-report|coverage-final\.json|report\s*file)/.test(q)) {
+    return {
+      measurementMethod: "report_file",
+      extractionRule: null,
+      extractionConfidence: 0.6,
+      metricExtractionReady: false,
+    };
+  }
+
+  // 4. Unknown: 上記いずれにも該当しない
+  return {
+    measurementMethod: "unknown",
+    extractionRule: null,
+    extractionConfidence: 0.3,
+    metricExtractionReady: false,
+  };
+}
+
+// ── Command extraction ────────────────────────────────────────
 
 function extractCommands(
   query: string
 ): { benchmarkCommand: string | null; checksCommand: string | null } {
-  // 1. バッククォート内の command を最優先
-  const backtickCommands = [...query.matchAll(/`([^`]+)`/g)].map(
-    (m) => m[1]
-  );
+  const backtickCommands = [...query.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
 
-  let benchmarkCommand: string | null = null;
-  let checksCommand: string | null = null;
-
-  // 追加の正規表現によるコマンド検出
   const commandPatterns = [
     /((?:npm\s+run|pnpm|yarn|bun)\s+\S+)/g,
     /((?:pytest)\s+[^\s,，。、]+)/g,
@@ -246,7 +298,7 @@ function extractCommands(
 
   // checksCommand 用: check/checks/検証/成功すること に続く command
   const checksPatterns = [
-    /(?:check|checks|検証|成功すること)\s*[`:]?\s*`([^`]+)`/gi,
+    /(?:check|checks|検証|成功すること)[\sは:：]*`([^`]+)`/gi,
     /(?:check|checks|検証|成功すること)\s+(npm\s+run\s+\S+|pnpm\s+\S+|yarn\s+\S+|pytest\s+\S+|cargo\s+\S+|go\s+test\s*\S*|make\s+\S+|\.\/\S+\.sh)/gi,
   ];
 
@@ -258,13 +310,13 @@ function extractCommands(
     }
   }
 
-  // 全コマンドを統合
   const allCommands = [...backtickCommands, ...additionalCommands];
   const uniqueCommands = [...new Set(allCommands)];
 
-  // benchmarkCommand: バッククォート優先 → 残り
+  let benchmarkCommand: string | null = null;
+  let checksCommand: string | null = null;
+
   if (backtickCommands.length > 0) {
-    // checks の文脈にあるものを除く
     const nonChecksBacktick = backtickCommands.filter(
       (c) => !checksCandidates.includes(c)
     );
@@ -273,18 +325,35 @@ function extractCommands(
     benchmarkCommand = uniqueCommands[0];
   }
 
-  // checksCommand
   if (checksCandidates.length > 0) {
     checksCommand = checksCandidates[0];
-  } else if (uniqueCommands.length > 1 && backtickCommands.length <= 1) {
-    // 2 つ目のコマンドを checks にする（backtick が複数ある場合は別枠）
-    checksCommand = uniqueCommands[1];
-  } else if (backtickCommands.length > 1) {
-    checksCommand = backtickCommands[1];
   }
 
   return { benchmarkCommand, checksCommand };
 }
+
+// ── Checks policy detection ───────────────────────────────────
+
+function detectChecksPolicy(
+  query: string,
+  checksCommand: string | null
+): ChecksPolicy {
+  // 1. checks command が query から明示的に抽出された
+  if (checksCommand) return "explicit_command";
+
+  // 2. autoresearch.checks.sh または「既存 checks」等の表現
+  const q = query.toLowerCase();
+  if (
+    /(autoresearch\.checks\.sh|既存\s*check|既存チェッ|既存のチェッ|既存チェック|checks?\s*として\s*prepush|prepush\s*を\s*checks?\s*と|checks?\s*として\s*test|test\s*を\s*checks?\s*と)/.test(q)
+  ) {
+    return "autoresearch_checks_sh";
+  }
+
+  // 3. 未指定
+  return "not_specified";
+}
+
+// ── Broad query detection ─────────────────────────────────────
 
 function isBroadQuery(query: string): boolean {
   const patterns = [
@@ -305,24 +374,65 @@ function isBroadQuery(query: string): boolean {
   return patterns.some((p) => p.test(query));
 }
 
-function findMissingFields(draft: ResearchContractDraft): string[] {
+// ── Missing fields ────────────────────────────────────────────
+
+function findMissingFields(
+  objective: string,
+  metricName: string | null,
+  metricDirection: MetricDirection,
+  benchmarkCommand: string | null,
+  metricExtractionReady: boolean,
+  checksPolicy: ChecksPolicy
+): string[] {
   const missing: string[] = [];
-  if (!draft.objective) missing.push("objective");
-  if (!draft.primaryMetric.name) missing.push("primaryMetric.name");
-  if (draft.primaryMetric.direction === "unknown")
-    missing.push("primaryMetric.direction");
-  if (!draft.benchmarkCommand) missing.push("benchmarkCommand");
-  if (!draft.checksCommand) missing.push("checksCommand");
-  if (draft.targetScope.length === 0) missing.push("targetScope");
+  if (!objective) missing.push("objective");
+  if (!metricName) missing.push("primaryMetric.name");
+  if (metricDirection === "unknown") missing.push("primaryMetric.direction");
+  if (!benchmarkCommand) missing.push("benchmarkCommand");
+  if (!metricExtractionReady) missing.push("metricExtraction");
+  if (checksPolicy === "not_specified") missing.push("checksPolicy");
   return missing;
 }
+
+// ── Readiness gate ────────────────────────────────────────────
+
+function computeReadiness(
+  objective: string,
+  metricName: string | null,
+  metricDirection: MetricDirection,
+  benchmarkCommand: string | null,
+  metricExtractionReady: boolean,
+  checksPolicy: ChecksPolicy,
+  riskFlags: string[]
+): Readiness {
+  const noRisk = riskFlags.length === 0;
+  const initReady =
+    !!objective &&
+    !!metricName &&
+    (metricDirection === "lower" || metricDirection === "higher") &&
+    noRisk;
+
+  const runReady =
+    initReady &&
+    !!benchmarkCommand &&
+    metricExtractionReady;
+
+  const checksReady = checksPolicy !== "not_specified";
+
+  const logReady = runReady && checksReady;
+
+  return { initReady, runReady, checksReady, metricExtractionReady, logReady };
+}
+
+// ── Scores ────────────────────────────────────────────────────
 
 function computeScores(
   missingFields: string[],
   metricName: string | null,
   metricDirection: MetricDirection,
+  metricExtractionReady: boolean,
   benchmarkCommand: string | null,
-  checksCommand: string | null,
+  checksReady: boolean,
   scope: string[],
   riskFlags: string[],
   broad: boolean
@@ -330,21 +440,20 @@ function computeScores(
   const filledRequiredFields = 6 - missingFields.length;
   const completeness = clamp(filledRequiredFields / 6);
   const measurability = clamp(
-    (metricName ? 0.7 : 0) +
-      (metricDirection === "lower" || metricDirection === "higher" ? 0.3 : 0)
+    (metricName ? 0.5 : 0) +
+    (metricDirection === "lower" || metricDirection === "higher" ? 0.2 : 0) +
+    (metricExtractionReady ? 0.3 : 0)
   );
-  const commandReadiness = clamp(
-    (benchmarkCommand ? 0.7 : 0) + (checksCommand ? 0.3 : 0)
-  );
-  const scopeClarity = clamp(
-    scope.length > 0 ? 1 : broad ? 0.2 : 0.5
-  );
+  const commandReadiness = clamp(benchmarkCommand ? 1 : 0);
+  const scopeClarity = clamp(scope.length > 0 ? 1 : broad ? 0.2 : 0.5);
   const safety = riskFlags.length === 0 ? 1 : 0;
   const reproducibility = clamp(
-    (benchmarkCommand ? 0.7 : 0) + (checksCommand ? 0.3 : 0)
+    (benchmarkCommand ? 0.4 : 0) +
+    (checksReady ? 0.3 : 0) +
+    (metricExtractionReady ? 0.3 : 0)
   );
   const readiness = clamp(
-    Math.min(completeness, measurability, commandReadiness, safety)
+    Math.min(completeness, measurability, commandReadiness, safety, reproducibility)
   );
 
   return {
@@ -358,6 +467,8 @@ function computeScores(
   };
 }
 
+// ── Decision ──────────────────────────────────────────────────
+
 function decide(
   riskFlags: string[],
   objective: string,
@@ -365,32 +476,50 @@ function decide(
   metricName: string | null,
   metricDirection: MetricDirection,
   benchmarkCommand: string | null,
-  scope: string[]
+  metricExtractionReady: boolean,
+  checksReady: boolean,
+  readiness: Readiness
 ): QueryEvaluationDecision {
   if (riskFlags.length > 0) return "reject";
   if (!objective) return "needs_rewrite";
   if (broad && !metricName && !benchmarkCommand) return "needs_rewrite";
-  if (!metricName || metricDirection === "unknown")
-    return "needs_metric_design";
-  if (!benchmarkCommand || scope.length === 0)
-    return "needs_clarification";
-  return "ready";
+  if (!metricName || metricDirection === "unknown") return "needs_metric_design";
+
+  // init は可能だが benchmark command がなく、broad でもない → ready_for_init
+  if (!benchmarkCommand) {
+    if (readiness.initReady && !broad) return "ready_for_init";
+    return "needs_command";
+  }
+
+  if (!metricExtractionReady) return "needs_metric_extraction";
+  if (!checksReady) return "needs_checks_policy";
+  return "ready_for_run";
 }
+
+// ── Blocking issues ───────────────────────────────────────────
 
 function buildBlockingIssues(
   decision: QueryEvaluationDecision,
   riskFlags: string[],
-  draft: ResearchContractDraft
+  objective: string,
+  metricName: string | null,
+  metricDirection: MetricDirection,
+  benchmarkCommand: string | null,
+  metricExtractionReady: boolean,
+  checksPolicy: ChecksPolicy
 ): string[] {
   const issues: string[] = [];
 
-  if (!draft.objective) issues.push("実験の目的が不明確です");
-  if (!draft.primaryMetric.name)
-    issues.push("主指標 (metric) が未定義です");
-  if (draft.primaryMetric.direction === "unknown")
-    issues.push("改善方向 (lower/higher) が未指定です");
-  if (!draft.benchmarkCommand)
-    issues.push("ベンチマークコマンドが未指定です");
+  if (!objective) issues.push("実験の目的が不明確です");
+  if (!metricName) issues.push("主指標 (metric) が未定義です");
+  if (metricDirection === "unknown") issues.push("改善方向 (lower/higher) が未指定です");
+  if (!benchmarkCommand) issues.push("ベンチマークコマンドが未指定です");
+  if (!metricExtractionReady && metricName) {
+    issues.push("metric の抽出方法 (extraction rule) が未確定です");
+  }
+  if (checksPolicy === "not_specified" && benchmarkCommand) {
+    issues.push("検証方針 (checks policy) が未指定です");
+  }
 
   if (decision === "reject") {
     for (const flag of riskFlags) {
@@ -401,21 +530,27 @@ function buildBlockingIssues(
   return issues;
 }
 
+// ── Warnings ──────────────────────────────────────────────────
+
 function buildWarnings(
-  checksCommand: string | null,
+  checksPolicy: ChecksPolicy,
   scope: string[]
 ): string[] {
   const w: string[] = [];
-  if (!checksCommand)
+  if (checksPolicy === "not_specified") {
     w.push(
-      "検証コマンド (checks) が未指定です。変更が既存の振る舞いを壊さないか確認する checks を追加することを推奨します。"
+      "検証方針 (checks) が未指定です。変更が既存の振る舞いを壊さないか確認するため、checks command または autoresearch.checks.sh の方針を明示することを推奨します。"
     );
-  if (scope.length === 0)
+  }
+  if (scope.length === 0) {
     w.push(
       "対象範囲 (scope) が未指定です。改善対象を明確にすると実験の再現性が向上します。"
     );
+  }
   return w;
 }
+
+// ── Ambiguity flags ───────────────────────────────────────────
 
 function buildAmbiguityFlags(
   broad: boolean,
@@ -423,25 +558,26 @@ function buildAmbiguityFlags(
   scope: string[]
 ): string[] {
   const flags: string[] = [];
-  if (broad)
-    flags.push(
-      "目的が広すぎます。具体的な測定可能な指標に分解する必要があります"
-    );
-  if (!metricName && !broad)
-    flags.push(
-      "測定指標が不明です。主指標 (primary metric) を明記してください"
-    );
+  if (broad) {
+    flags.push("目的が広すぎます。具体的な測定可能な指標に分解する必要があります");
+  }
+  if (!metricName && !broad) {
+    flags.push("測定指標が不明です。主指標 (primary metric) を明記してください");
+  }
   if (scope.length === 0) flags.push("対象範囲が不明です");
   if (scope.length > 2) flags.push("複数の対象範囲が含まれています");
   return flags;
 }
+
+// ── Suggested rewrite ─────────────────────────────────────────
 
 function buildSuggestedRewrite(
   decision: QueryEvaluationDecision,
   broad: boolean,
   metricName: string | null,
   metricDirection: MetricDirection,
-  benchmarkCommand: string | null
+  benchmarkCommand: string | null,
+  measurementMethod: MeasurementMethod
 ): string {
   if (decision === "reject") {
     return "安全上の理由により、このクエリは実験として実行できません。危険な操作を削除した上で、安全な代替手段を検討してください。";
@@ -449,25 +585,51 @@ function buildSuggestedRewrite(
   if (broad) {
     return "目的が広すぎるため、まず測定可能な proxy metric を選ぶ必要があります。候補: lint violation 数、型エラー数、重複行数、複雑度、test coverage、prepush 実行時間などから一つ選び、具体的な benchmark command と合わせて再投稿してください。";
   }
-  if (
-    metricName === "duration_seconds" ||
-    metricDirection === "lower"
-  ) {
-    const cmd = benchmarkCommand ?? "<benchmark command>";
-    return `目的を達成するため、主指標は \`${cmd}\` の実行時間秒数で、lower is better。挙動を変えず、既存 checks が成功する範囲で改善する。`;
+
+  switch (decision) {
+    case "ready_for_init":
+      return `init は可能ですが、実行には benchmark command と checks 方針が必要です。\n例: \`<command>\` の実行時間を短縮したい。metric は ${metricName ?? "duration_seconds"}、${metricDirection === "higher" ? "higher" : "lower"} is better。既存 checks を使う。`;
+
+    case "needs_command": {
+      const metric = metricName ?? "duration_seconds";
+      return `主指標は ${metric} で、${metricDirection === "higher" ? "higher" : "lower"} is better。benchmark command を指定してください。`;
+    }
+
+    case "needs_metric_extraction": {
+      const metric = metricName ?? "<metric>";
+      return `主指標 ${metric} の抽出方法を指定してください。\n- wall-clock (実行時間): 自動測定\n- stdout_metric: コマンドが METRIC ${metric}=<value> を出力\n- report_file: カバレッジレポート等から抽出`;
+    }
+
+    case "needs_checks_policy":
+      return `検証方針を指定してください。\n- checks command を明示: checks は \`npm test\`\n- autoresearch.checks.sh を使う: 「既存 checks を使う」と記載`;
+
+    case "needs_metric_design":
+      return "測定可能な主指標 (metric) と改善方向 (lower/higher) を指定してください。";
+
+    default: {
+      // ready_for_run or fallback
+      if (measurementMethod === "wall_clock") {
+        const cmd = benchmarkCommand ?? "<benchmark command>";
+        return `主指標は \`${cmd}\` の実行時間秒数で、lower is better。挙動を変えず、既存 checks が成功する範囲で改善する。`;
+      }
+      if (metricDirection === "higher") {
+        const name = metricName ?? "score";
+        return `主指標は ${name} で、higher is better。`;
+      }
+      return "主指標と benchmark command を明記してください。";
+    }
   }
-  if (metricDirection === "higher") {
-    const name = metricName ?? "score";
-    return `目的を達成するため、主指標は ${name} で、higher is better。`;
-  }
-  return "目的を達成するため、metric と benchmark command を明記してください。";
 }
+
+// ── Clarifying questions ──────────────────────────────────────
 
 function buildClarifyingQuestions(
   metricName: string | null,
   benchmarkCommand: string | null,
   scope: string[],
-  broad: boolean
+  broad: boolean,
+  metricExtractionReady: boolean,
+  checksPolicy: ChecksPolicy
 ): string[] {
   const questions: string[] = [];
 
@@ -479,6 +641,16 @@ function buildClarifyingQuestions(
   if (!benchmarkCommand) {
     questions.push(
       "benchmark command は何を実行しますか？（例: `npm run prepush`、`pnpm test`）"
+    );
+  }
+  if (!metricExtractionReady && metricName) {
+    questions.push(
+      `主指標 ${metricName} はどうやって測定しますか？（stdout / report file / wall-clock）`
+    );
+  }
+  if (checksPolicy === "not_specified" && benchmarkCommand) {
+    questions.push(
+      "検証には autoresearch.checks.sh を使いますか？それとも checks command を指定しますか？"
     );
   }
   if (scope.length === 0) {
@@ -508,10 +680,13 @@ export function evaluateQueryStatically(query: string): QueryEvaluation {
         unit: null,
         direction: "unknown",
         source: "unknown",
+        measurementMethod: "unknown",
         extractionRule: null,
+        extractionConfidence: 0,
       },
       benchmarkCommand: null,
       checksCommand: null,
+      checksPolicy: "not_specified",
       constraints: [],
       stopCondition: null,
       missingFields: [
@@ -519,9 +694,17 @@ export function evaluateQueryStatically(query: string): QueryEvaluation {
         "primaryMetric.name",
         "primaryMetric.direction",
         "benchmarkCommand",
-        "checksCommand",
-        "targetScope",
+        "metricExtraction",
+        "checksPolicy",
       ],
+    };
+
+    const emptyReadiness: Readiness = {
+      initReady: false,
+      runReady: false,
+      checksReady: false,
+      metricExtractionReady: false,
+      logReady: false,
     };
 
     const emptyScores: StaticNumericScores = {
@@ -536,17 +719,17 @@ export function evaluateQueryStatically(query: string): QueryEvaluation {
 
     return {
       decision: "needs_rewrite",
+      readiness: emptyReadiness,
       scores: emptyScores,
       contractDraft: emptyDraft,
       blockingIssues: ["実験の目的が不明確です"],
       warnings: [
-        "検証コマンド (checks) が未指定です。変更が既存の振る舞いを壊さないか確認する checks を追加することを推奨します。",
+        "検証方針 (checks) が未指定です。変更が既存の振る舞いを壊さないか確認するため、checks command または autoresearch.checks.sh の方針を明示することを推奨します。",
         "対象範囲 (scope) が未指定です。改善対象を明確にすると実験の再現性が向上します。",
       ],
       ambiguityFlags: ["対象範囲が不明です"],
       riskFlags: [],
-      suggestedRewrite:
-        "目的を達成するため、metric と benchmark command を明記してください。",
+      suggestedRewrite: "測定可能な主指標 (metric) と改善方向 (lower/higher) を指定してください。",
       clarifyingQuestions: [
         "主指標は wall-clock time、テスト成功率、coverage のどれを優先しますか？",
         "benchmark command は何を実行しますか？（例: `npm run prepush`、`pnpm test`）",
@@ -572,82 +755,114 @@ export function evaluateQueryStatically(query: string): QueryEvaluation {
   // ── Command extraction ──
   const { benchmarkCommand, checksCommand } = extractCommands(trimmed);
 
-  // ── Metric detection ──
-  const metric = detectMetric(trimmed, benchmarkCommand !== null);
+  // ── Checks policy ──
+  const checksPolicy = detectChecksPolicy(trimmed, checksCommand);
+
+  // ── Metric name & direction ──
+  const metricInfo = detectMetricNameAndDirection(trimmed, benchmarkCommand !== null);
+
+  // ── Measurement method ──
+  const measurementInfo = detectMeasurementMethod(trimmed, metricInfo.name);
 
   // ── Broad query detection ──
   const broad = isBroadQuery(trimmed);
 
-  // ── Contract draft ──
-  const contractDraft: ResearchContractDraft = {
+  // ── Readiness gate ──
+  const readiness = computeReadiness(
     objective,
-    targetScope: scope,
-    primaryMetric: {
-      name: metric.name,
-      unit: metric.unit,
-      direction: metric.direction,
-      source: metric.source,
-      extractionRule: metric.extractionRule,
-    },
+    metricInfo.name,
+    metricInfo.direction,
     benchmarkCommand,
-    checksCommand,
-    constraints: [],
-    stopCondition: null,
-    missingFields: [],
-  };
-  contractDraft.missingFields = findMissingFields(contractDraft);
+    measurementInfo.metricExtractionReady,
+    checksPolicy,
+    riskFlags
+  );
+
+  // ── Missing fields ──
+  const missingFields = findMissingFields(
+    objective,
+    metricInfo.name,
+    metricInfo.direction,
+    benchmarkCommand,
+    measurementInfo.metricExtractionReady,
+    checksPolicy
+  );
 
   // ── Decision ──
   const decision = decide(
     riskFlags,
     objective,
     broad,
-    metric.name,
-    metric.direction,
+    metricInfo.name,
+    metricInfo.direction,
     benchmarkCommand,
-    scope
+    measurementInfo.metricExtractionReady,
+    readiness.checksReady,
+    readiness
   );
 
   // ── Scores ──
   const scores = computeScores(
-    contractDraft.missingFields,
-    metric.name,
-    metric.direction,
+    missingFields,
+    metricInfo.name,
+    metricInfo.direction,
+    measurementInfo.metricExtractionReady,
     benchmarkCommand,
-    checksCommand,
+    readiness.checksReady,
     scope,
     riskFlags,
     broad
   );
 
+  // ── Contract draft ──
+  const contractDraft: ResearchContractDraft = {
+    objective,
+    targetScope: scope,
+    primaryMetric: {
+      name: metricInfo.name,
+      unit: metricInfo.unit,
+      direction: metricInfo.direction,
+      source: metricInfo.source,
+      measurementMethod: measurementInfo.measurementMethod,
+      extractionRule: measurementInfo.extractionRule,
+      extractionConfidence: measurementInfo.extractionConfidence,
+    },
+    benchmarkCommand,
+    checksCommand,
+    checksPolicy,
+    constraints: [],
+    stopCondition: null,
+    missingFields,
+  };
+
   // ── Blocking issues ──
-  const blockingIssues = buildBlockingIssues(decision, riskFlags, contractDraft);
+  const blockingIssues = buildBlockingIssues(
+    decision, riskFlags,
+    objective, metricInfo.name, metricInfo.direction,
+    benchmarkCommand, measurementInfo.metricExtractionReady, checksPolicy
+  );
 
   // ── Warnings ──
-  const warnings = buildWarnings(checksCommand, scope);
+  const warnings = buildWarnings(checksPolicy, scope);
 
   // ── Ambiguity flags ──
-  const ambiguityFlags = buildAmbiguityFlags(broad, metric.name, scope);
+  const ambiguityFlags = buildAmbiguityFlags(broad, metricInfo.name, scope);
 
   // ── Suggested rewrite ──
   const suggestedRewrite = buildSuggestedRewrite(
-    decision,
-    broad,
-    metric.name,
-    metric.direction,
-    benchmarkCommand
+    decision, broad, metricInfo.name, metricInfo.direction,
+    benchmarkCommand, measurementInfo.measurementMethod
   );
 
   // ── Clarifying questions ──
   const clarifyingQuestions = buildClarifyingQuestions(
-    metric.name,
-    benchmarkCommand,
-    scope,
-    broad
+    metricInfo.name, benchmarkCommand, scope, broad,
+    measurementInfo.metricExtractionReady, checksPolicy
   );
 
   return {
     decision,
+    readiness,
     scores,
     contractDraft,
     blockingIssues,

@@ -164,13 +164,16 @@ while active:
 
 #### decision の意味
 
-| decision              | 意味                                  |
-| --------------------- | ----------------------------------- |
-| `ready`               | 実験契約に変換可能。`autoresearch_init` に進める  |
-| `needs_metric_design` | 目的はあるが主指標が未定義。metric 候補の検討が必要       |
-| `needs_clarification` | 情報不足。benchmark command や scope の確認が必要 |
-| `needs_rewrite`       | クエリが広すぎるまたは曖昧。具体化が必要                |
-| `reject`              | 危険な操作を含むため実験不可                      |
+| decision                | 意味                                                        |
+| ----------------------- | ---------------------------------------------------------- |
+| `ready_for_run`         | 実験契約が完備。`autoresearch_init` → `autoresearch_run` まで安全に進める |
+| `ready_for_init`        | init は可能だが run に必要な情報（benchmark command / checks）が不足     |
+| `needs_command`         | benchmark command が未指定                                        |
+| `needs_metric_extraction` | metric の抽出方法（wall-clock / stdout / report file）が未確定      |
+| `needs_checks_policy`   | 検証方針（checks command または autoresearch.checks.sh）が未指定        |
+| `needs_metric_design`   | 目的はあるが主指標が未定義。metric 候補の検討が必要                           |
+| `needs_rewrite`         | クエリが広すぎるまたは曖昧。具体化が必要                                       |
+| `reject`                | 危険な操作を含むため実験不可                                            |
 
 #### スコアの意味
 
@@ -178,37 +181,109 @@ while active:
 | ----------------- | --------------------------------------- |
 | `readiness`       | 実験開始可能性（weakest-link: 他スコアの最小値）         |
 | `completeness`    | 必須フィールドの充足率                             |
-| `measurability`   | 指標化可能性（metric 名 + direction の有無）        |
+| `measurability`   | 指標化可能性（metric 名 + direction + metric 抽出確定）         |
 | `commandReadiness`| コマンドの準備状況（benchmark + checks）           |
 | `scopeClarity`    | 対象範囲の明確さ                                |
 | `safety`          | 安全性（risk flag なし = 1、あり = 0）            |
-| `reproducibility` | 再現可能性（benchmark + checks command の有無）  |
+| `reproducibility` | 再現可能性（benchmark command + checks 確定 + metric 抽出確定） |
+
+#### 段階別 readiness
+
+評価結果には `readiness` オブジェクトが含まれ、各段階に進めるかを boolean で示します。
+
+| フィールド                 | 意味                                                        |
+| ---------------------- | ---------------------------------------------------------- |
+| `initReady`            | `autoresearch_init` に必要な情報（目的・指標・方向）が揃っている              |
+| `runReady`             | `autoresearch_run` に必要な情報（init + command + metric 抽出）が揃っている |
+| `metricExtractionReady`| metric の抽出方法が確定している                                         |
+| `checksReady`          | 検証方針（checks command または autoresearch.checks.sh）が指定されている    |
+| `logReady`             | `autoresearch_log` まで安全に進められる（runReady + checksReady）        |
+
+#### 測定方法（measurementMethod）
+
+主指標をどうやって測定するかを示します。
+
+| measurementMethod | 意味                                 | extractionConfidence |
+| ----------------- | ---------------------------------- | -------------------- |
+| `wall_clock`      | 実行時間を autoresearch_run が自動測定        | 1.0                  |
+| `stdout_metric`   | stdout の `METRIC name=value` から抽出   | 0.9                  |
+| `report_file`     | カバレッジレポート等のファイルから抽出                 | 0.6                  |
+| `unknown`         | 抽出方法が不明                             | 0.3                  |
+
+#### 検証方針（checksPolicy）
+
+| checksPolicy            | 意味                                           |
+| ----------------------- | -------------------------------------------- |
+| `explicit_command`      | クエリ内に checks command が明示されている                   |
+| `autoresearch_checks_sh`| `autoresearch.checks.sh` または「既存 checks」の記述がある |
+| `not_specified`         | 検証方針が未指定                                       |
 
 #### 使用例
 
-**曖昧なクエリ:**
+**曖昧なクエリ（ready_for_init）:**
 
 ```text
 ユーザ入力: prepush を速くしたい
 
-判定: needs_clarification
-推奨書き換え: prepush を速くしたい 主指標は `<benchmark command>` の実行時間秒数で、lower is better。挙動を変えず、既存 checks が成功する範囲で改善する。
-確認質問:
-1. benchmark command は何を実行しますか？（例: `npm run prepush`、`pnpm test`）
+判定: ready_for_init
+段階別 readiness:
+- initReady: true
+- runReady: false
+- metricExtractionReady: true
+- checksReady: false
+- logReady: false
+測定方法: wall_clock (extractionConfidence: 1.00)
+checks policy: not_specified
 ```
 
-**明確なクエリ:**
+**明確なクエリ（ready_for_run）:**
 
 ```text
-ユーザ入力: `npm run prepush` の実行時間を短縮したい。metric は duration_seconds、lower is better。
+ユーザ入力: `npm run prepush` の実行時間を短縮したい。metric は duration_seconds、lower is better。既存 checks を使う。
 
-判定: ready
-主指標: duration_seconds (lower)
-benchmark command: npm run prepush
-readiness: 0.70+
+判定: ready_for_run
+段階別 readiness:
+- initReady: true
+- runReady: true
+- metricExtractionReady: true
+- checksReady: true
+- logReady: true
+測定方法: wall_clock (extractionConfidence: 1.00)
+checks policy: autoresearch_checks_sh
 ```
 
-**広すぎるクエリ:**
+**command はあるが checks 未指定（needs_checks_policy）:**
+
+```text
+ユーザ入力: `pnpm test` の時間を短縮したい
+
+判定: needs_checks_policy
+段階別 readiness:
+- initReady: true
+- runReady: true
+- metricExtractionReady: true
+- checksReady: false
+- logReady: false
+測定方法: wall_clock
+checks policy: not_specified
+```
+
+**coverage（needs_metric_extraction）:**
+
+```text
+ユーザ入力: `npm run coverage` で coverage を上げたい
+
+判定: needs_metric_extraction
+段階別 readiness:
+- initReady: true
+- runReady: false
+- metricExtractionReady: false
+- checksReady: false
+- logReady: false
+測定方法: unknown (extractionConfidence: 0.30)
+```
+
+**広すぎるクエリ（needs_rewrite）:**
 
 ```text
 ユーザ入力: コード品質を上げたい
@@ -218,7 +293,7 @@ readiness: 0.70+
 候補: lint violation 数、型エラー数、重複行数、複雑度、test coverage、prepush 実行時間。
 ```
 
-**危険なクエリ:**
+**危険なクエリ（reject）:**
 
 ```text
 ユーザ入力: sudo rm -rf / して全部消してから最適化して
