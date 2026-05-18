@@ -30,6 +30,30 @@ import {
 	type PointerEntry,
 } from "./state.js";
 import {
+	contractFilePath,
+	contractExists,
+	readContract,
+	writeContract,
+	deleteContract,
+	validateGitSafety,
+	validateCommand,
+	validateChangedFiles,
+	validateContract,
+	buildContract,
+	isGitRepo,
+	isWorkingTreeClean,
+	getBaselineCommit,
+	DEFAULT_ACCEPTANCE,
+	DEFAULT_SAFETY,
+	DEFAULT_CHECKS,
+	type ExperimentContract,
+	type AcceptanceMode,
+	type MetricMethod,
+	type ChecksMode,
+	type AggregateMethod,
+} from "./contract.js";
+import { evaluateAcceptance, type AcceptanceInput } from "./acceptance.js";
+import {
 	runCommand,
 	runChecks,
 	type ChecksResult,
@@ -316,6 +340,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				case "clear": {
 					const jp = jsonlPath(ctx.cwd);
 					try { if (fs.existsSync(jp)) fs.unlinkSync(jp); } catch {}
+					deleteContract(ctx.cwd); // P0-4: contract ファイルも削除
 					state = freshState(); active = false; autoLoop = false; runningExperiment = null;
 					runResultMap.clear(); resetLoopProgress();
 					updateWidget(ctx, state, active, runningExperiment, loopInfo());
@@ -372,8 +397,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		pi.sendUserMessage(msg, { deliverAs: "followUp" });
 	}
 
-	const STATUS_LABELS: Record<string, string> = { keep: "採用", discard: "棄却", crash: "クラッシュ", checks_failed: "checks失敗" };
-	const STATUS_PREFIX: Record<string, string> = { keep: "[KEEP]", discard: "[DISCARD]", crash: "[CRASH]", checks_failed: "[CHECKS_FAILED]" };
+	const STATUS_LABELS: Record<string, string> = { keep: "採用", discard: "棄却", crash: "クラッシュ", checks_failed: "checks失敗", revert_failed: "revert失敗" };
+	const STATUS_PREFIX: Record<string, string> = { keep: "[KEEP]", discard: "[DISCARD]", crash: "[CRASH]", checks_failed: "[CHECKS_FAILED]", revert_failed: "[REVERT_FAILED]" };
 
 	function resolvePrimaryMetricValue(
 		metricName: string,
@@ -533,40 +558,190 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	// Tool: autoresearch_init
 	// ═══════════════════════════════════════════════════════════════
 
+	// P0-4: init は contract 生成の正本
+	// P0-1: git safety を強制
+	// P0-3: acceptance policy を指定可能
+
+	const initParamDefs = Type.Object({
+		name: Type.String({ description: "実験セッションの名前" }),
+		metric_name: Type.String({ description: "主指標名(例: total_ms)" }),
+		metric_unit: Type.Optional(Type.String({ description: "単位(例: ms)" })),
+		direction: Type.Optional(StringEnum(["lower", "higher"] as const, { description: "デフォルト: lower" })),
+		// --- P0: 拡張パラメータ ---
+		objective: Type.Optional(Type.String({ description: "実験目的" })),
+		benchmark_command: Type.Optional(Type.String({ description: "benchmark command (例: ./autoresearch.sh)" })),
+		metric_method: Type.Optional(StringEnum(["wall_clock", "stdout_metric", "report_file"] as const, { description: "測定方法。デフォルト: wall_clock" })),
+		checks_mode: Type.Optional(StringEnum(["script", "command", "none"] as const, { description: "checks mode。デフォルト: script" })),
+		checks_command: Type.Optional(Type.String({ description: "checks mode=command の場合のコマンド" })),
+		acceptance_mode: Type.Optional(StringEnum(["better_than_best", "improvement_threshold", "manual"] as const, { description: "acceptance mode。デフォルト: better_than_best" })),
+		min_improvement: Type.Optional(Type.Number({ description: "最小改善率 (0.02 = 2%)。acceptance_mode=improvement_threshold で有効" })),
+		repeat: Type.Optional(Type.Number({ description: "測定繰り返し回数。デフォルト: 1" })),
+		aggregate: Type.Optional(StringEnum(["single", "median", "mean", "min", "max"] as const, { description: "集計方法。デフォルト: single" })),
+		require_git: Type.Optional(Type.Boolean({ description: "git repo を必須にする。デフォルト: true" })),
+		require_clean_baseline: Type.Optional(Type.Boolean({ description: "clean working tree を必須にする。デフォルト: true" })),
+		allowed_paths: Type.Optional(Type.Object({}, { additionalProperties: Type.String(), description: "許可パスパターンの配列" })),
+		excluded_paths: Type.Optional(Type.Object({}, { additionalProperties: Type.String(), description: "除外パスパターンの配列" })),
+	});
+
+	// Validate string enum values for optional fields
+	function validateOptionalEnum<T extends string>(value: unknown, valid: readonly T[], _fieldName: string): T | undefined {
+		if (value === undefined || value === null) return undefined;
+		if (typeof value === "string" && (valid as readonly string[]).includes(value)) return value as T;
+		return undefined;
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// Register autoresearch_init tool
+	// ═══════════════════════════════════════════════════════════════
+
 	pi.registerTool({
 		name: "autoresearch_init",
 		label: "autoresearch init",
-		description: "実験セッションを初期化します。名前・指標・単位・方向を設定し、autoresearch.jsonl に保存します。",
+		description:
+			"実験セッションを初期化します。名前・指標・単位・方向を設定し、autoresearch.contract.json と autoresearch.jsonl に保存します。" +
+			"\nP0: git repo 必須、clean baseline 必須(変更可能)。acceptance policy / safety policy も指定可能。",
 		promptSnippet: "実験セッションの初期化",
-		promptGuidelines: ["autoresearch_init はセッションの最初に一度だけ。既存設定があれば再初期化しない。"],
-		parameters: Type.Object({
-			name: Type.String({ description: "実験セッションの名前" }),
-			metric_name: Type.String({ description: "主指標名(例: total_ms)" }),
-			metric_unit: Type.Optional(Type.String({ description: "単位(例: ms)" })),
-			direction: Type.Optional(StringEnum(["lower", "higher"] as const, { description: "デフォルト: lower" })),
-		}),
+		promptGuidelines: [
+			"autoresearch_init はセッションの最初に一度だけ。既存設定があれば再初期化しない。",
+		],
+		parameters: initParamDefs as any,
 
 		async execute(_tc, params, _sig, _ou, ctx) {
 			if (!active) return INACTIVE_RESPONSE;
+
+			// --- P0-4: 既存 contract の再初期化拒否 ---
+			if (contractExists(ctx.cwd)) {
+				const existing = readContract(ctx.cwd);
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] 既に実験契約が存在します (sessionId: ${existing?.sessionId ?? "unknown"}).\n再初期化する場合は、先に /autoresearch clear を実行してください。\n契約ファイル: ${contractFilePath(ctx.cwd)}` }],
+					details: { existingSessionId: existing?.sessionId },
+				};
+			}
+
+			// --- Extract typed params ---
+			const direction = params.direction === "higher" ? "higher" : "lower";
+			const metricMethod = validateOptionalEnum(params.metric_method, ["wall_clock", "stdout_metric", "report_file"], "metric_method") ?? "wall_clock" as MetricMethod;
+			const checksMode = validateOptionalEnum(params.checks_mode, ["script", "command", "none"], "checks_mode") ?? "script" as ChecksMode;
+			const acceptanceMode = validateOptionalEnum(params.acceptance_mode, ["better_than_best", "improvement_threshold", "manual"], "acceptance_mode") ?? "better_than_best" as AcceptanceMode;
+			const aggregateMethod = validateOptionalEnum(params.aggregate, ["single", "median", "mean", "min", "max"], "aggregate") ?? "single" as AggregateMethod;
+
 			const sessionId = generateSessionId(params.name);
+
+			// --- P0-1: Build safety policy and validate git safety ---
+			const safetyPolicy = {
+				requireGit: (params as any).require_git !== false,
+				requireCleanBaseline: (params as any).require_clean_baseline !== false,
+				allowedPaths: Array.isArray((params as any).allowed_paths) ? (params as any).allowed_paths : [],
+				excludedPaths: Array.isArray((params as any).excluded_paths) ? (params as any).excluded_paths : [],
+				forbiddenCommandPatterns: DEFAULT_SAFETY.forbiddenCommandPatterns,
+			};
+
+			const gitViolations = validateGitSafety(ctx.cwd, safetyPolicy);
+			if (gitViolations.length > 0) {
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] git safety 違反のため初期化できません:\n${gitViolations.map((v, i) => `  ${i + 1}. ${v}`).join("\n")}` }],
+					details: { gitViolations },
+				};
+			}
+
+			// --- P0-4: Build and validate contract ---
+			const contract = buildContract({
+				name: params.name,
+				sessionId,
+				metricName: params.metric_name,
+				metricUnit: params.metric_unit ?? "",
+				direction,
+				metricMethod,
+				benchmarkCommand: (params as any).benchmark_command ?? "./autoresearch.sh",
+				objective: (params as any).objective ?? params.name,
+				checksMode,
+				checksCommand: (params as any).checks_command,
+				acceptanceMode,
+				minImprovement: (params as any).min_improvement,
+				repeat: (params as any).repeat,
+				aggregate: aggregateMethod,
+				requireGit: safetyPolicy.requireGit,
+				requireCleanBaseline: safetyPolicy.requireCleanBaseline,
+				allowedPaths: safetyPolicy.allowedPaths,
+				excludedPaths: safetyPolicy.excludedPaths,
+			});
+
+			const validation = validateContract(contract);
+			if (!validation.valid) {
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] 契約検証失敗:\n${validation.errors.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}` }],
+					details: { errors: validation.errors },
+				};
+			}
+
+			// --- Write contract file ---
+			try {
+				writeContract(ctx.cwd, contract);
+			} catch (e) {
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] 契約ファイル書き込み失敗: ${e instanceof Error ? e.message : String(e)}` }],
+					details: {},
+				};
+			}
+
+			// --- Update state ---
 			state.name = params.name;
 			state.metricName = params.metric_name;
 			state.metricUnit = params.metric_unit ?? "";
 			state.sessionId = sessionId;
-			if (params.direction === "lower" || params.direction === "higher") state.direction = params.direction;
-			state.bestMetric = null; state.results = []; state.runCount = 0;
+			state.direction = direction;
+			state.bestMetric = null;
+			state.results = [];
+			state.runCount = 0;
 
+			// --- Write JSONL config entry ---
 			const jp = jsonlPath(ctx.cwd);
 			try {
-				fs.appendFileSync(jp, JSON.stringify({ type: "config", name: state.name, metricName: state.metricName, metricUnit: state.metricUnit, direction: state.direction, sessionId }) + "\n");
+				fs.appendFileSync(jp, JSON.stringify({
+					type: "config", name: state.name, metricName: state.metricName,
+					metricUnit: state.metricUnit, direction: state.direction, sessionId,
+					contractVersion: contract.version,
+				}) + "\n");
 			} catch (e) {
-				return { content: [{ type: "text", text: `[ERROR] JSONL 書き込み失敗: ${e instanceof Error ? e.message : String(e)}` }], details: {} };
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] JSONL 書き込み失敗: ${e instanceof Error ? e.message : String(e)}` }],
+					details: {},
+				};
 			}
+
 			try { ensureSessionDir(ctx.cwd); } catch {}
+
+			// --- P0-1: Record baseline commit for future diff tracking ---
+			const baselineCommit = getBaselineCommit(ctx.cwd);
+
+			// --- Transaction event: contract_created ---
+			try {
+				appendToJsonl(eventsLedgerPath(ctx.cwd, sessionId), {
+					schemaVersion: 1, event: "contract_created", piRunId: "", timestamp: Date.now(),
+					details: { sessionId, contractVersion: contract.version, baselineCommit },
+				} satisfies EventLedgerEntry);
+			} catch { /* best effort */ }
+
 			updateWidget(ctx, state, active, runningExperiment, loopInfo());
+
+			let text = `[OK] 初期化完了\n名前: ${state.name}\n指標: ${state.metricName}(${directionLabel(state.direction)})\nsessionId: ${sessionId}`;
+			text += `\n契約: ${contractFilePath(ctx.cwd)}`;
+			if (baselineCommit) text += `\nbaseline: ${baselineCommit.slice(0, 12)}`;
+			if (validation.warnings.length > 0) {
+				text += `\n\n[WARNING]\n${validation.warnings.map((w, i) => `  ${i + 1}. ${w}`).join("\n")}`;
+			}
+			text += `\n\nacceptance mode: ${contract.acceptance.mode}`;
+			text += `\nchecks mode: ${contract.checks.mode}`;
+			text += `\nbenchmark: ${contract.benchmarkCommand}`;
+
 			return {
-				content: [{ type: "text", text: `[OK] 初期化完了\n名前: ${state.name}\n指標: ${state.metricName}(${directionLabel(state.direction)})\nsessionId: ${sessionId}` }],
-				details: { name: state.name, metricName: state.metricName, metricUnit: state.metricUnit, direction: state.direction, sessionId },
+				content: [{ type: "text" as const, text }],
+				details: {
+					name: state.name, metricName: state.metricName, metricUnit: state.metricUnit,
+					direction: state.direction, sessionId, contractVersion: contract.version,
+					acceptance: contract.acceptance, safety: contract.safety,
+					baselineCommit, warnings: validation.warnings,
+				},
 			};
 		},
 	});
@@ -595,6 +770,18 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 		async execute(_tc, params, signal, _ou, ctx) {
 			if (!active) return INACTIVE_RESPONSE;
+
+			// --- P0-7: Command policy チェック ---
+			const contract = readContract(ctx.cwd);
+			if (contract) {
+				const cmdViolations = validateCommand(params.command, contract.safety);
+				if (cmdViolations.length > 0) {
+					return {
+						content: [{ type: "text" as const, text: `[ERROR] コマンドが safety policy に違反しています:\n${cmdViolations.map((v, i) => `  ${i + 1}. ${v}`).join("\n")}` }],
+						details: { violations: cmdViolations },
+					};
+				}
+			}
 
 			const timeoutMs = (params.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
 			const piRunId = generatePiRunId(ctx.cwd);
@@ -794,6 +981,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		async execute(_tc, params, _sig, _ou, ctx) {
 			if (!active) return INACTIVE_RESPONSE;
 
+			// --- P0-4: Load experiment contract ---
+			const contract = readContract(ctx.cwd);
+
 			// --- Find run data ---
 			let matchedPiRunId: string | undefined;
 			let matchedRunData: ReturnType<typeof findRunData>;
@@ -890,6 +1080,36 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 						details: {},
 					};
 				}
+
+				// --- P0-2: Acceptance policy 強制 ---
+				if (contract) {
+					const acceptanceInput: AcceptanceInput = {
+						candidateMetric: effectiveMetric,
+						bestMetric: state.bestMetric,
+						direction: state.direction,
+						policy: contract.acceptance,
+					};
+					const acceptanceResult = evaluateAcceptance(acceptanceInput);
+
+					if (!acceptanceResult.accepted) {
+						return {
+							content: [{ type: "text", text: `[ERROR] acceptance policy により keep が拒否されました:\n${acceptanceResult.reason}\n\ncandidate: ${effectiveMetric} vs best: ${state.bestMetric}\nacceptance mode: ${contract.acceptance.mode}\nminImprovement: ${(contract.acceptance.minImprovement * 100).toFixed(1)}%\n\nstatus=discard で記録してください。改善が不十分(noise)な場合は、別のアプローチを試してください。` }],
+							details: { acceptanceResult, effectiveMetric, bestMetric: state.bestMetric },
+						};
+					}
+				}
+
+				// --- P0-1: 変更ファイルが safety policy に収まっているか ---
+				if (contract) {
+					const preChangedFiles = getChangedFiles(ctx.cwd);
+					const pathViolations = validateChangedFiles(preChangedFiles, contract.safety);
+					if (pathViolations.length > 0) {
+						return {
+							content: [{ type: "text", text: `[ERROR] 変更ファイルが safety policy に違反:\n${pathViolations.map((v, i) => `  ${i + 1}. ${v}`).join("\n")}\n\nstatus=discard で記録してください。許可されたパス内に収まるように変更してください。` }],
+							details: { pathViolations, changedFiles: preChangedFiles },
+						};
+					}
+				}
 			}
 
 			// --- Provenance ---
@@ -937,7 +1157,46 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				}
 				entry.postCommit = commit;
 			} else {
-				gitAutoRevert(ctx.cwd);
+				// P0-6: revert エラーを致命扱いにする
+				const revertResult = gitAutoRevert(ctx.cwd);
+				if (!revertResult.reverted && revertResult.error) {
+					// revert 失敗 → revert_failed status で記録し loop を停止
+					const failedEntry: RunEntry = {
+						...entry,
+						status: "revert_failed",
+						postCommit: getGitShortHash(ctx.cwd),
+						dirtyAfter: isGitDirty(ctx.cwd),
+					};
+					failedEntry.commit = commit;
+
+					state.results.push(failedEntry);
+					state.runCount = run;
+
+					// Event ledger: revert_failed
+					try {
+						ensureSessionDir(ctx.cwd);
+						appendToJsonl(eventsLedgerPath(ctx.cwd, state.sessionId), {
+							schemaVersion: 1, event: "revert_failed", piRunId: matchedPiRunId ?? "",
+							timestamp: Date.now(),
+							details: { error: revertResult.error, originalStatus: params.status },
+						} satisfies EventLedgerEntry);
+					} catch { /* best effort */ }
+
+					// Main JSONL
+					try {
+						const jp = jsonlPath(ctx.cwd);
+						fs.appendFileSync(jp, JSON.stringify({ ...failedEntry }) + "\n");
+					} catch { /* best effort */ }
+
+					// P0-6: loop を強制停止
+					autoLoop = false;
+					updateWidget(ctx, state, active, runningExperiment, loopInfo());
+
+					return {
+						content: [{ type: "text", text: `[REVERT_FAILED] 実験 #${run} の revert に失敗しました:\n${revertResult.error}\n\n⚠️ 手動介入が必要です。git の状態を確認し、不要な変更を手動で元してください。\nautoresearch loop を停止しました。` }],
+						details: { run, status: "revert_failed", error: revertResult.error },
+					};
+				}
 				entry.postCommit = getGitShortHash(ctx.cwd);
 			}
 			entry.dirtyAfter = isGitDirty(ctx.cwd);

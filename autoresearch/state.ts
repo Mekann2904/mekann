@@ -11,7 +11,7 @@ import * as fs from "node:fs";
 // Types
 // ---------------------------------------------------------------------------
 
-export type RunStatus = "keep" | "discard" | "crash" | "checks_failed";
+export type RunStatus = "keep" | "discard" | "crash" | "checks_failed" | "revert_failed";
 
 export interface RunEntry {
 	type: "run";
@@ -314,7 +314,7 @@ export function reconstructState(jsonlContent: string): ExperimentState {
 }
 
 function validateStatus(value: unknown): RunEntry["status"] {
-	if (value === "keep" || value === "discard" || value === "crash" || value === "checks_failed") return value;
+	if (value === "keep" || value === "discard" || value === "crash" || value === "checks_failed" || value === "revert_failed") return value;
 	return "crash";
 }
 

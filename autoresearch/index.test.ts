@@ -20,6 +20,7 @@ vi.mock("@sinclair/typebox", () => ({
 		Object: (props: unknown) => props,
 		String: (opts?: unknown) => opts ?? {},
 		Number: (opts?: unknown) => opts ?? {},
+		Boolean: (opts?: unknown) => opts ?? {},
 		Optional: (schema: unknown) => schema,
 	},
 }));
@@ -77,9 +78,23 @@ function createMockPi() {
 	};
 }
 
+// ─── Shared test directory (initialized per test suite) ─────────────
+let _sharedTestDir = "/tmp/test-autoresearch";
+
+/** Create a temp dir with git repo + initial commit (for tests needing init). */
+function createGitTestDir(prefix = "test-ar"): string {
+	const testDir = `/tmp/${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+	fs.mkdirSync(testDir, { recursive: true });
+	gitInitForTest(testDir);
+	fs.writeFileSync(path.join(testDir, "README.md"), "# test\n");
+	childProcess.execFileSync("git", ["add", "README.md"], { cwd: testDir, stdio: "ignore" });
+	childProcess.execFileSync("git", ["commit", "-m", "initial"], { cwd: testDir, stdio: "ignore" });
+	return testDir;
+}
+
 function createMockCtx(overrides?: Partial<MockCtx>): MockCtx {
 	return {
-		cwd: "/tmp/test-autoresearch",
+		cwd: _sharedTestDir,
 		hasUI: true,
 		ui: {
 			notify: vi.fn(),
@@ -106,6 +121,35 @@ async function runBenchmark(
 	);
 }
 
+/** Helper: activate autoresearch + init session. Call after pi is created. */
+async function activateAndInit(
+	pi: ReturnType<typeof createMockPi>,
+	ctx: MockCtx,
+	opts?: { metric_name?: string; direction?: string },
+): Promise<{ result: any }> {
+	// 1. Trigger session_start to reset state
+	const sessionStart = pi.eventHandlers.get("session_start")!;
+	await sessionStart({}, ctx);
+
+	// 2. Activate via /autoresearch on
+	const cmdHandler = pi.commands.get("autoresearch")!.handler;
+	await cmdHandler("on", ctx);
+
+	// 3. Init
+	const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+	return initTool.execute(
+		"tc-init",
+		{
+			name: "test-session",
+			metric_name: opts?.metric_name ?? "ms",
+			direction: opts?.direction ?? "lower",
+		},
+		undefined,
+		undefined,
+		ctx,
+	);
+}
+
 // ─── Tests ───────────────────────────────────────────────────────
 
 // Import after mocks are set up
@@ -114,7 +158,21 @@ import autoresearchExtension from "./index.js";
 describe("autoresearchExtension", () => {
 	let pi: ReturnType<typeof createMockPi>;
 
+	let ctx: MockCtx;
+
 	beforeEach(() => {
+		// Create a unique temp dir for each test and initialize as a clean git repo
+		const testDir = `/tmp/autoresearch-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+		fs.mkdirSync(testDir, { recursive: true });
+		gitInitForTest(testDir);
+		// Make an initial commit so HEAD exists and working tree is clean
+		fs.writeFileSync(path.join(testDir, "README.md"), "# test\n");
+		childProcess.execFileSync("git", ["add", "README.md"], { cwd: testDir, stdio: "ignore" });
+		childProcess.execFileSync("git", ["commit", "-m", "initial"], { cwd: testDir, stdio: "ignore" });
+
+		_sharedTestDir = testDir;
+		ctx = createMockCtx();
+
 		pi = createMockPi();
 		autoresearchExtension(pi as unknown as any);
 	});
@@ -344,8 +402,7 @@ describe("autoresearchExtension", () => {
 
 	describe("Ralph-style auto loop", () => {
 		it("queues a follow-up after a logged iteration", async () => {
-			const testDir = "/tmp/test-ar-loop-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-loop");
 			const ctx = createMockCtx({ cwd: testDir });
 
 			await pi.commands.get("autoresearch")!.handler("on", ctx);
@@ -405,8 +462,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("stops at max loop iterations", async () => {
-			const testDir = "/tmp/test-ar-loop-max-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-loop-max");
 			const ctx = createMockCtx({ cwd: testDir });
 
 			await pi.commands.get("autoresearch")!.handler("on", ctx);
@@ -518,9 +574,13 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("autoresearch_init succeeds after /autoresearch on", async () => {
-			// テスト用ディレクトリを作成
+			// テスト用ディレクトリを作成 (git repo)
 			const testDir = "/tmp/test-autoresearch-init-" + Date.now();
 			fs.mkdirSync(testDir, { recursive: true });
+			gitInitForTest(testDir);
+			fs.writeFileSync(path.join(testDir, "README.md"), "# test\n");
+			childProcess.execFileSync("git", ["add", "README.md"], { cwd: testDir, stdio: "ignore" });
+			childProcess.execFileSync("git", ["commit", "-m", "initial"], { cwd: testDir, stdio: "ignore" });
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -563,8 +623,7 @@ describe("autoresearchExtension", () => {
 	describe("session_start handler", () => {
 		it("sets active to false and updates widget when no JSONL exists", async () => {
 			const handler = pi.eventHandlers.get("session_start")!;
-			const testDir = "/tmp/test-ar-session-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-session");
 			const ctx = createMockCtx({ cwd: testDir });
 			await handler({}, ctx);
 			expect(ctx.ui.setWidget).toHaveBeenCalledWith("autoresearch", undefined);
@@ -573,8 +632,7 @@ describe("autoresearchExtension", () => {
 
 		it("reconstructs state from existing JSONL", async () => {
 			const handler = pi.eventHandlers.get("session_start")!;
-			const testDir = "/tmp/test-ar-session-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-session");
 			const jsonlContent =
 				JSON.stringify({ type: "config", name: "perf", metricName: "ms", metricUnit: "ms", direction: "lower" }) + "\n" +
 				JSON.stringify({ type: "run", run: 1, commit: "abc", metric: 100, status: "keep", description: "baseline", timestamp: Date.now() }) + "\n";
@@ -588,8 +646,7 @@ describe("autoresearchExtension", () => {
 
 		it("falls back to freshState on corrupt JSONL", async () => {
 			const handler = pi.eventHandlers.get("session_start")!;
-			const testDir = "/tmp/test-ar-session-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-session");
 			// Write invalid JSON that causes reconstructState to throw
 			fs.writeFileSync(path.join(testDir, "autoresearch.jsonl"), "NOT VALID JSON!!!");
 			const ctx = createMockCtx({ cwd: testDir });
@@ -601,8 +658,7 @@ describe("autoresearchExtension", () => {
 
 		it("falls back to freshState when JSONL is a directory (EISDIR)", async () => {
 			const handler = pi.eventHandlers.get("session_start")!;
-			const testDir = "/tmp/test-ar-session-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-session");
 			// Create a directory named autoresearch.jsonl — readFileSync throws EISDIR
 			fs.mkdirSync(path.join(testDir, "autoresearch.jsonl"));
 			const ctx = createMockCtx({ cwd: testDir });
@@ -616,8 +672,7 @@ describe("autoresearchExtension", () => {
 
 	describe("/autoresearch on with existing autoresearch.md", () => {
 		it("sends resume message when autoresearch.md exists", async () => {
-			const testDir = "/tmp/test-ar-md-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-md");
 			fs.writeFileSync(path.join(testDir, "autoresearch.md"), "# Test");
 			const handler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -628,8 +683,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("sends resume message in default case with md and extra context", async () => {
-			const testDir = "/tmp/test-ar-md-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-md");
 			fs.writeFileSync(path.join(testDir, "autoresearch.md"), "# Test");
 			const handler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -645,8 +699,7 @@ describe("autoresearchExtension", () => {
 
 	describe("/autoresearch clear with existing JSONL", () => {
 		it("deletes the JSONL file", async () => {
-			const testDir = "/tmp/test-ar-clear-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-clear");
 			const jp = path.join(testDir, "autoresearch.jsonl");
 			fs.writeFileSync(jp, JSON.stringify({ type: "config", name: "x", metricName: "m" }) + "\n");
 			expect(fs.existsSync(jp)).toBe(true);
@@ -662,8 +715,7 @@ describe("autoresearchExtension", () => {
 
 	describe("autoresearch_init execute (active)", () => {
 		it("initializes with name, metric_name, metric_unit, direction and writes JSONL", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
 			await cmdHandler("on", ctx);
@@ -696,8 +748,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("uses default direction=lower and empty unit when not specified", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
 			await cmdHandler("on", ctx);
@@ -718,8 +769,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("accepts direction=higher", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
 			await cmdHandler("on", ctx);
@@ -741,8 +791,7 @@ describe("autoresearchExtension", () => {
 
 	describe("autoresearch_run execute (active)", () => {
 		it("runs a successful command and returns [OK]", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
 			await cmdHandler("on", ctx);
@@ -762,8 +811,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("runs a failing command and returns [FAIL]", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
 			await cmdHandler("on", ctx);
@@ -782,8 +830,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("times out and returns [TIMEOUT]", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
 			await cmdHandler("on", ctx);
@@ -802,8 +849,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("redacts secrets from response details and artifact logs", async () => {
-			const testDir = "/tmp/test-ar-secret-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-secret");
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
 			await cmdHandler("on", ctx);
@@ -844,8 +890,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("parses METRIC output lines", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
 			await cmdHandler("on", ctx);
@@ -876,8 +921,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("runs checks.sh when benchmark passes", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 			// Create a checks.sh that exits 0
 			fs.writeFileSync(path.join(testDir, "autoresearch.checks.sh"), "#!/bin/bash\necho checks passed\nexit 0\n");
 			fs.chmodSync(path.join(testDir, "autoresearch.checks.sh"), 0o755);
@@ -901,8 +945,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("reports checks failure when checks.sh exits non-zero", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 			// Create a checks.sh that fails
 			fs.writeFileSync(path.join(testDir, "autoresearch.checks.sh"), "#!/bin/bash\necho FAIL: broken\nexit 1\n");
 			fs.chmodSync(path.join(testDir, "autoresearch.checks.sh"), 0o755);
@@ -925,8 +968,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("does not run checks when benchmark fails", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 			fs.writeFileSync(path.join(testDir, "autoresearch.checks.sh"), "#!/bin/bash\nexit 0\n");
 			fs.chmodSync(path.join(testDir, "autoresearch.checks.sh"), 0o755);
 
@@ -949,8 +991,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("shows widget during execution", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
 			await cmdHandler("on", ctx);
@@ -975,8 +1016,7 @@ describe("autoresearchExtension", () => {
 
 	describe("autoresearch_log execute (active)", () => {
 		it("logs keep: updates bestMetric, JSONL, git auto commit", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 
 			// git init for auto commit
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
@@ -1032,8 +1072,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("logs discard: git auto revert", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
 			gitInitForTest(testDir);
@@ -1070,8 +1109,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("logs crash: git auto revert", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
 			gitInitForTest(testDir);
@@ -1107,8 +1145,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("logs checks_failed: git auto revert", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
 			gitInitForTest(testDir);
@@ -1143,8 +1180,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("rejects keep when checks failed", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -1190,8 +1226,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("accepts optional commit, metrics, and memo params", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -1224,8 +1259,9 @@ describe("autoresearchExtension", () => {
 				ctx,
 			);
 			expect(result.content[0].text).toContain("[KEEP]");
-			expect(result.content[0].text).toContain("abc123");
-			expect(result.details.commit).toBe("abc123");
+			// P0-2: commit param is used as preCommit, but postCommit is the actual git hash
+			expect(result.details.commit).toBeTruthy();
+			expect(result.details.preCommit).toBeTruthy();
 
 			// Verify JSONL has metrics and memo
 			const jsonl = fs.readFileSync(path.join(testDir, "autoresearch.jsonl"), "utf8");
@@ -1237,8 +1273,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("auto-obtains commit hash when commit param is omitted", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 
 			// Without git, getGitShortHash returns "unknown"
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
@@ -1262,14 +1297,16 @@ describe("autoresearchExtension", () => {
 				undefined,
 				ctx,
 			);
-			expect(result.content[0].text).toContain("unknown");
+			// P0-1: git repo exists, so commit hash should be real (not "unknown")
+			expect(result.content[0].text).toContain("コミット:");
+			expect(result.details.commit).toBeTruthy();
+			expect(result.details.commit).not.toBe("");
 
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 
 		it("updates bestMetric for direction=lower (lower is better)", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -1314,8 +1351,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("updates bestMetric for direction=higher (higher is better)", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -1350,8 +1386,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("keep with JSONL change gets auto committed", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
 			gitInitForTest(testDir);
@@ -1392,8 +1427,7 @@ describe("autoresearchExtension", () => {
 
 	describe("updateWidget with hasUI=false", () => {
 		it("does not call setWidget when hasUI is false", async () => {
-			const testDir = "/tmp/test-ar-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir, hasUI: false });
 			await cmdHandler("on", ctx);
@@ -1404,10 +1438,9 @@ describe("autoresearchExtension", () => {
 
 	// ── autoresearch_init JSONL write error ────────────────────────
 
-	describe("autoresearch_init JSONL write error", () => {
+		describe("autoresearch_init JSONL write error", () => {
 		it("returns error when JSONL write fails", async () => {
-			const testDir = "/tmp/test-ar-ro-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir();
 			// Create a directory where autoresearch.jsonl would be — appendFileSync gets EISDIR
 			// This works regardless of user permissions (no chmod needed)
 			fs.mkdirSync(path.join(testDir, "autoresearch.jsonl"));
@@ -1435,8 +1468,7 @@ describe("autoresearchExtension", () => {
 
 	describe("autoresearch_log JSONL write error", () => {
 		it("returns error when JSONL append fails", async () => {
-			const testDir = "/tmp/test-ar-logerr-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-logerr");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -1476,43 +1508,31 @@ describe("autoresearchExtension", () => {
 	// ── git operation error paths ─────────────────────────────────
 
 	describe("git operation error paths", () => {
-		it("log keep in non-git dir: succeeds without error (no git repo)", async () => {
+		it("log keep in non-git dir: init rejects when not a git repo", async () => {
 			const testDir = "/tmp/test-ar-nogit-" + Date.now();
 			fs.mkdirSync(testDir, { recursive: true });
+			// NOT a git repo — P0-1: init should reject
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
 			await cmdHandler("on", ctx);
 
 			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
-			await initTool.execute(
-				"tc-init",
+			const initResult = await initTool.execute(
+				"tc-init-nogit",
 				{ name: "test", metric_name: "ms" },
 				undefined,
 				undefined,
 				ctx,
 			);
-
-			// keep in non-git dir: gitAutoCommit detects no git repo → { committed: false } (no error)
-			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
-			await runBenchmark(pi.tools, ctx);
-			const result = await logTool.execute(
-				"tc-log-nogit",
-				{ metric: 100, status: "keep", description: "no git" },
-				undefined,
-				undefined,
-				ctx,
-			);
-			expect(result.content[0].text).toContain("[KEEP]");
-			// Non-git dir: no error, just treated as no changes
-			expect(result.content[0].text).toContain("[git]");
+			expect(initResult.content[0].text).toContain("[ERROR]");
+			expect(initResult.content[0].text).toContain("git");
 
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 
 		it("log discard in non-git dir: shows no revert error", async () => {
-			const testDir = "/tmp/test-ar-nogit2-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-nogit2");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -1542,8 +1562,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("log keep with locked git index: returns error (P0-2: commit failure rejects keep)", async () => {
-			const testDir = "/tmp/test-ar-locked-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-locked");
 
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
 			gitInitForTest(testDir);
@@ -1614,8 +1633,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("log keep in git dir with no changes: shows 変更なし", async () => {
-			const testDir = "/tmp/test-ar-nochg-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-nochg");
 
 			// Init git and make initial commit
 			gitInitForTest(testDir);
@@ -1667,8 +1685,7 @@ describe("autoresearchExtension", () => {
 
 	describe("/autoresearch <purpose> without autoresearch.md", () => {
 		it("sends create message without md file", async () => {
-			const testDir = "/tmp/test-ar-nomd-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-nomd");
 
 			const handler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -1684,8 +1701,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("sends create message with purpose text in default case", async () => {
-			const testDir = "/tmp/test-ar-nomd2-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-nomd2");
 
 			const handler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -1703,8 +1719,7 @@ describe("autoresearchExtension", () => {
 
 	describe("autoresearch_run edge cases", () => {
 		it("does not show primary metric hint when not initialized", async () => {
-			const testDir = "/tmp/test-ar-noinit-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-noinit");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -1727,8 +1742,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("shows output for failed commands", async () => {
-			const testDir = "/tmp/test-ar-failout-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-failout");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -1844,8 +1858,7 @@ describe("autoresearchExtension", () => {
 
 	describe("runId tracking and keep validation", () => {
 		it("autoresearch_run returns a runId", async () => {
-			const testDir = "/tmp/test-ar-runid-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-runid");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -1867,8 +1880,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("autoresearch_run piRunId is time-sortable format", async () => {
-			const testDir = "/tmp/test-ar-runid8-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-runid8");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -1892,8 +1904,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("autoresearch_log rejects unknown runId", async () => {
-			const testDir = "/tmp/test-ar-badrunid-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-badrunid");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -1927,8 +1938,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("autoresearch_log accepts matching runId", async () => {
-			const testDir = "/tmp/test-ar-matchid-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-matchid");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -1968,8 +1978,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("autoresearch_log accepts log without runId (uses last run)", async () => {
-			const testDir = "/tmp/test-ar-norunid-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-norunid");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2008,8 +2017,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("autoresearch_log rejects keep when no run exists", async () => {
-			const testDir = "/tmp/test-ar-norun-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-norun");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2041,8 +2049,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("autoresearch_log allows discard when no run exists", async () => {
-			const testDir = "/tmp/test-ar-discardnorun-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-discardnorun");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2073,8 +2080,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("rejects keep for timed-out run", async () => {
-			const testDir = "/tmp/test-ar-keepto-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-keepto");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2116,8 +2122,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("rejects keep for failed exit code", async () => {
-			const testDir = "/tmp/test-ar-keepfail-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-keepfail");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2159,8 +2164,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("rejects keep when checks failed", async () => {
-			const testDir = "/tmp/test-ar-keepchecks-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-keepchecks");
 
 			// Create failing checks.sh
 			fs.writeFileSync(path.join(testDir, "autoresearch.checks.sh"), "#!/bin/bash\necho FAIL: broken\nexit 1\n");
@@ -2206,8 +2210,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("JSONL entry includes runId, preCommit, postCommit, changedFiles", async () => {
-			const testDir = "/tmp/test-ar-jsonlfields-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-jsonlfields");
 
 			// git init
 			gitInitForTest(testDir);
@@ -2257,8 +2260,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("JSONL entry includes command and exitCode", async () => {
-			const testDir = "/tmp/test-ar-jsonlcmd-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-jsonlcmd");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2306,8 +2308,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("discard performs revert", async () => {
-			const testDir = "/tmp/test-ar-revert-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-revert");
 
 			// git init
 			gitInitForTest(testDir);
@@ -2354,8 +2355,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("keep creates a commit", async () => {
-			const testDir = "/tmp/test-ar-commit-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-commit");
 
 			// git init
 			gitInitForTest(testDir);
@@ -2405,8 +2405,7 @@ describe("autoresearchExtension", () => {
 
 	describe("long-run benchmark support", () => {
 		it("autoresearch_run returns piRunId in time-sortable format", async () => {
-			const testDir = "/tmp/test-ar-piRunId-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-piRunId");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2431,8 +2430,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("piRunIds sort chronologically", async () => {
-			const testDir = "/tmp/test-ar-sort-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-sort");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2459,8 +2457,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("extracts RUN_ID from stdout", async () => {
-			const testDir = "/tmp/test-ar-extract-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-extract");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2483,8 +2480,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("extracts SUMMARY_PATH, VIEWLOG_PATH, METRICS_PATH from stdout", async () => {
-			const testDir = "/tmp/test-ar-extract2-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-extract2");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2507,8 +2503,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("works without external artifacts", async () => {
-			const testDir = "/tmp/test-ar-noext-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-noext");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2531,8 +2526,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("autoresearch_log rejects non-existent piRunId", async () => {
-			const testDir = "/tmp/test-ar-noexist-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-noexist");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2555,8 +2549,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("timeout run cannot be kept", async () => {
-			const testDir = "/tmp/test-ar-tkeep-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-tkeep");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2585,8 +2578,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("exitCode != 0 run cannot be kept", async () => {
-			const testDir = "/tmp/test-ar-ecfail-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-ecfail");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2615,8 +2607,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("checks failure prevents keep", async () => {
-			const testDir = "/tmp/test-ar-chkf-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-chkf");
 
 			fs.writeFileSync(path.join(testDir, "autoresearch.checks.sh"), "#!/bin/bash\nexit 1\n");
 			fs.chmodSync(path.join(testDir, "autoresearch.checks.sh"), 0o755);
@@ -2648,8 +2639,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("keep creates commit and records preCommit/postCommit", async () => {
-			const testDir = "/tmp/test-ar-prov-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-prov");
 
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "init");
 			gitInitForTest(testDir);
@@ -2685,8 +2675,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("discard performs revert and records decision", async () => {
-			const testDir = "/tmp/test-ar-drev-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-drev");
 
 			fs.writeFileSync(path.join(testDir, "dummy.txt"), "original");
 			gitInitForTest(testDir);
@@ -2722,8 +2711,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("run artifact directory is not overwritten", async () => {
-			const testDir = "/tmp/test-ar-nooverwrite-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-nooverwrite");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2760,8 +2748,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("runs.jsonl is populated", async () => {
-			const testDir = "/tmp/test-ar-runsjl-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-runsjl");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2791,8 +2778,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("metrics.jsonl is populated", async () => {
-			const testDir = "/tmp/test-ar-mjl-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-mjl");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2826,8 +2812,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("decisions.jsonl is populated", async () => {
-			const testDir = "/tmp/test-ar-djl-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-djl");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2860,8 +2845,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("latest.pointer.json and best.pointer.json are updated", async () => {
-			const testDir = "/tmp/test-ar-ptr-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-ptr");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2911,8 +2895,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("events.jsonl records started/completed/logged events", async () => {
-			const testDir = "/tmp/test-ar-evjl-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-evjl");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2948,8 +2931,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("logs full external artifact info in JSONL", async () => {
-			const testDir = "/tmp/test-ar-extjsonl-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-extjsonl");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -2987,8 +2969,7 @@ describe("autoresearchExtension", () => {
 		// ── P0/P1 fix tests ──────────────────────────────────────────────
 
 		it("rejects keep when primary metric not in run output", async () => {
-			const testDir = "/tmp/test-ar-nometric-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-nometric");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -3014,8 +2995,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("allows keep for duration_seconds using measured wall-clock duration", async () => {
-			const testDir = "/tmp/test-ar-wallclock-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-wallclock");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -3041,8 +3021,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("prefers stdout METRIC over wall-clock for duration_seconds", async () => {
-			const testDir = "/tmp/test-ar-wallstdout-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-wallstdout");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -3067,8 +3046,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("does not use durationSeconds for non-wall-clock primary metric", async () => {
-			const testDir = "/tmp/test-ar-p95nom-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-p95nom");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -3092,8 +3070,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("allows keep for p95_latency_ms when stdout METRIC is present", async () => {
-			const testDir = "/tmp/test-ar-p95metric-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-p95metric");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -3118,8 +3095,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("rejects keep when artifact save failed", async () => {
-			const testDir = "/tmp/test-ar-artfail-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-artfail");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -3139,8 +3115,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("runSeq does not duplicate when multiple runs before log", async () => {
-			const testDir = "/tmp/test-ar-rseq-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-rseq");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -3169,8 +3144,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("runResultMap fallback loads from manifest.json", async () => {
-			const testDir = "/tmp/test-ar-fallback-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-fallback");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -3198,8 +3172,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("stdout.log is written even if output is large", async () => {
-			const testDir = "/tmp/test-ar-large-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-large");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -3227,8 +3200,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("process group kill: timeout kills child processes", async () => {
-			const testDir = "/tmp/test-ar-pgkill-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-pgkill");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -3276,8 +3248,7 @@ describe("autoresearchExtension", () => {
 
 	describe("P0: artifact dir creation failure prevents benchmark", () => {
 		it("returns error when artifact dir creation fails", async () => {
-			const testDir = "/tmp/test-ar-artfail-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-artfail");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -3321,8 +3292,7 @@ describe("autoresearchExtension", () => {
 
 	describe("P0: keep validation requires manifest.json and metrics.json", () => {
 		it("rejects keep when manifest.json is missing", async () => {
-			const testDir = "/tmp/test-ar-nomanifest-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-nomanifest");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -3355,8 +3325,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("rejects keep when metrics.json is missing", async () => {
-			const testDir = "/tmp/test/ar-nometrics-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-nometrics");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -3388,8 +3357,7 @@ describe("autoresearchExtension", () => {
 		});
 
 		it("rejects keep when manifest has no artifactComplete", async () => {
-			const testDir = "/tmp/test-ar-nocomplete-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-nocomplete");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -3425,8 +3393,7 @@ describe("autoresearchExtension", () => {
 
 	describe("P0: runSeq consistency between runs.jsonl and pointers", () => {
 		it("metrics.jsonl and pointer runSeq match runs.jsonl runSeq", async () => {
-			const testDir = "/tmp/test-ar-seqmatch-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-seqmatch");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -3470,8 +3437,7 @@ describe("autoresearchExtension", () => {
 
 	describe("P0: streaming parse captures METRIC after 1MB in tool context", () => {
 		it("captures METRIC emitted after large output", async () => {
-			const testDir = "/tmp/test-ar-stream-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-stream");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -3498,8 +3464,7 @@ describe("autoresearchExtension", () => {
 
 	describe("P1: run→run→log out-of-order uses run-time runSeq", () => {
 		it("logs run2 first then run1 — runSeq is based on run order, not log order", async () => {
-			const testDir = "/tmp/test-ar-ootest-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-ootest");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
@@ -3561,8 +3526,7 @@ describe("autoresearchExtension", () => {
 
 	describe("P0: keep validation requires result.json", () => {
 		it("rejects keep when result.json is missing", async () => {
-			const testDir = "/tmp/test-ar-noresult-" + Date.now();
-			fs.mkdirSync(testDir, { recursive: true });
+			const testDir = createGitTestDir("test-ar-noresult");
 
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
