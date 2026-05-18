@@ -1472,7 +1472,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			const metricName = m.name ?? "duration_seconds";
 			const metricDirection = m.direction === "higher" ? "higher" : "lower";
 			const metricSource = m.measurementMethod === "wall_clock" ? "wall_clock" : "metric_line";
-			const benchmarkCommand = evaluation.contractDraft.benchmarkCommand ?? "./autoresearch.sh";
+			const suggestedBenchmarkCommand = evaluation.contractDraft.benchmarkCommand ?? "./autoresearch.sh";
+			const contractBenchmarkCommand = "bash ./autoresearch.sh";
 
 			// Build contract JSONC
 			const contractDraft: AutoresearchContractV1 = {
@@ -1484,13 +1485,19 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				scope: {
 					allowedWritePaths: ["src/**", "tests/**", "lib/**"],
 					forbiddenWritePaths: [
+						"autoresearch.sh",
+						"checks.sh",
 						"benchmarks/**",
+						"benchmark/**",
 						"fixtures/**",
+						"test/fixtures/**",
 						"package-lock.json",
 						"pnpm-lock.yaml",
 						"yarn.lock",
 					],
 					immutableReadPaths: [
+						"autoresearch.sh",
+						"checks.sh",
 						"package.json",
 						"package-lock.json",
 						"pnpm-lock.yaml",
@@ -1619,7 +1626,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			text += `\n### Query 評価\n`;
 			text += `判定: ${evaluation.decision}\n`;
 			text += `主指標: ${metricName} (${metricDirection})\n`;
-			text += `benchmark: ${benchmarkCommand}\n`;
+			text += `benchmark: ${contractBenchmarkCommand}\n`;
+			text += `note: actual benchmark logic should live in autoresearch.sh, or edit the contract argv explicitly. Suggested by query evaluation: ${suggestedBenchmarkCommand}\n`;
 			if (evaluation.blockingIssues.length > 0) {
 				text += `\n### ブロッキング issue\n`;
 				for (const issue of evaluation.blockingIssues) text += `- ${issue}\n`;

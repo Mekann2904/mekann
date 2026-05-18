@@ -3599,10 +3599,14 @@ describe("autoresearchExtension", () => {
 			expect(contractJson.evaluation.benchmark.command.argv[0]).toBe("bash");
 			expect(contractJson.evaluation.benchmark.command.argv[1]).toBe("./autoresearch.sh");
 
-			// Verify default scope is not empty
+			// Verify default scope fixes benchmark harness files
 			expect(contractJson.scope.allowedWritePaths.length).toBeGreaterThan(0);
-			expect(contractJson.scope.forbiddenWritePaths.length).toBeGreaterThan(0);
-			expect(contractJson.scope.immutableReadPaths.length).toBeGreaterThan(0);
+			expect(contractJson.scope.forbiddenWritePaths).toContain("autoresearch.sh");
+			expect(contractJson.scope.forbiddenWritePaths).toContain("checks.sh");
+			expect(contractJson.scope.immutableReadPaths).toContain("autoresearch.sh");
+			expect(contractJson.scope.immutableReadPaths).toContain("checks.sh");
+			expect(result.content[0].text).toContain("benchmark: bash ./autoresearch.sh");
+			expect(result.content[0].text).toContain("Suggested by query evaluation");
 
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
