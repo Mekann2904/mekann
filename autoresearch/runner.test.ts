@@ -2,6 +2,19 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { truncateTail, runCommand, runChecks, generatePiRunId, generateRunId, parseExternalInfo, filterSecrets, createRunArtifactDir, writeRunArtifacts, writeChecksArtifacts, loadRunFromArtifact, getGitFullHash, isGitDirty, getChangedFiles, gitAutoCommit, gitAutoRevert, hasCompleteMarker, loopFollowUpMessage, markArtifactComplete } from "./runner.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as childProcess from "node:child_process";
+import * as os from "node:os";
+
+function createTempGitRepo(): string {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "autoresearch-git-"));
+	childProcess.execFileSync("git", ["init", "-b", "main"], { cwd: dir });
+	childProcess.execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: dir });
+	childProcess.execFileSync("git", ["config", "user.name", "Test User"], { cwd: dir });
+	fs.writeFileSync(path.join(dir, "README.md"), "test\n");
+	childProcess.execFileSync("git", ["add", "-A"], { cwd: dir });
+	childProcess.execFileSync("git", ["commit", "-m", "init"], { cwd: dir });
+	return dir;
+}
 
 // ---------------------------------------------------------------------------
 // truncateTail
@@ -468,10 +481,13 @@ describe("loadRunFromArtifact", () => {
 
 describe("getGitFullHash", () => {
 	it("returns a full commit hash in a git repo", () => {
-		const { execFileSync } = require("node:child_process");
-		const cwd = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
-		const hash = getGitFullHash(cwd);
-		expect(hash).toMatch(/^[0-9a-f]{40}$/);
+		const cwd = createTempGitRepo();
+		try {
+			const hash = getGitFullHash(cwd);
+			expect(hash).toMatch(/^[0-9a-f]{40}$/);
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
 	});
 
 	it("returns 'unknown' for non-git directory", () => {
@@ -481,11 +497,14 @@ describe("getGitFullHash", () => {
 
 describe("isGitDirty", () => {
 	it("detects clean state in git repo", () => {
-		const { execFileSync } = require("node:child_process");
-		const cwd = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
-		// Our repo should be clean in CI or after autoresearch cleanup
-		const result = isGitDirty(cwd);
-		expect(typeof result).toBe("boolean");
+		const cwd = createTempGitRepo();
+		try {
+			// clean repo after init
+			const result = isGitDirty(cwd);
+			expect(result).toBe(false);
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
 	});
 
 	it("returns true for non-existent directory", () => {
@@ -495,11 +514,14 @@ describe("isGitDirty", () => {
 
 describe("getChangedFiles", () => {
 	it("returns empty array for clean git repo", () => {
-		const { execFileSync } = require("node:child_process");
-		const cwd = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
-		// In a clean state, should return []
-		const files = getChangedFiles(cwd);
-		expect(Array.isArray(files)).toBe(true);
+		const cwd = createTempGitRepo();
+		try {
+			// clean repo
+			const files = getChangedFiles(cwd);
+			expect(files).toEqual([]);
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
 	});
 
 	it("returns empty array for non-git directory", () => {
@@ -508,19 +530,24 @@ describe("getChangedFiles", () => {
 });
 
 describe("gitAutoCommit and gitAutoRevert", () => {
-	it("gitAutoCommit returns committed:false for clean repo or handles dirty state", () => {
-		const { execFileSync } = require("node:child_process");
-		const cwd = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
-		const result = gitAutoCommit(cwd, "test: no changes");
-		// Either committed:false (no changes or no diff) or committed:true (dirty files committed)
-		expect(typeof result.committed).toBe("boolean");
+	it("gitAutoCommit returns committed:false for clean repo", () => {
+		const cwd = createTempGitRepo();
+		try {
+			const result = gitAutoCommit(cwd, "test: no changes");
+			expect(result.committed).toBe(false);
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
 	});
 
 	it("gitAutoRevert succeeds on clean repo", () => {
-		const { execFileSync } = require("node:child_process");
-		const cwd = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
-		const result = gitAutoRevert(cwd);
-		expect(result.reverted).toBe(true);
+		const cwd = createTempGitRepo();
+		try {
+			const result = gitAutoRevert(cwd);
+			expect(result.reverted).toBe(true);
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
 	});
 
 	it("gitAutoCommit returns committed:false for non-git dir", () => {
@@ -576,10 +603,12 @@ describe("markArtifactComplete", () => {
 		fs.rmSync(tmpMarkDir, { recursive: true, force: true });
 	});
 
-	it("sets artifactComplete=true in manifest", async () => {
+	it("sets artifactComplete=true in manifest when conditions met", async () => {
 		const runDir = createRunArtifactDir(tmpMarkDir, "sess1", "run1", "echo test", Date.now());
-		// writeRunArtifacts creates the manifest
 		const result = await runCommand("echo hello", tmpMarkDir, 5000);
+		// ensure conditions for complete
+		result.logFilesWritten = true;
+		result.streamError = null;
 		writeRunArtifacts(runDir, result, "run1", Date.now(), Date.now());
 		markArtifactComplete(runDir);
 		const manifest = JSON.parse(fs.readFileSync(path.join(runDir, "manifest.json"), "utf8"));

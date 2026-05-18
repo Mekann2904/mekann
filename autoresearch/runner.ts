@@ -588,6 +588,7 @@ export function writeRunArtifacts(
 		parsedMetrics: result.parsedMetrics,
 		checks: result.checks,
 		logFilesWritten: result.logFilesWritten,
+		streamError: result.streamError,
 	};
 	fs.writeFileSync(path.join(runDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
 }
@@ -595,20 +596,30 @@ export function writeRunArtifacts(
 /** Write checks result to the artifact directory.
  *  Also marks the manifest as artifactComplete=true (all artifacts written). */
 export function writeChecksArtifacts(runDir: string, checksResult: ChecksResult): void {
-	// Save checks stdout/stderr logs
+	// Save checks stdout/stderr logs (already filtered)
 	if (checksResult.stdout) {
 		fs.writeFileSync(path.join(runDir, "checks.stdout.log"), filterSecrets(checksResult.stdout), "utf8");
 	}
 	if (checksResult.stderr) {
 		fs.writeFileSync(path.join(runDir, "checks.stderr.log"), filterSecrets(checksResult.stderr), "utf8");
 	}
-	fs.writeFileSync(path.join(runDir, "checks-result.json"), JSON.stringify(checksResult, null, 2), "utf8");
+
+	const safeChecksResult = {
+		...checksResult,
+		stdout: filterSecrets(checksResult.stdout ?? ""),
+		stderr: filterSecrets(checksResult.stderr ?? ""),
+		output: filterSecrets(checksResult.output ?? ""),
+	};
+	fs.writeFileSync(path.join(runDir, "checks-result.json"), JSON.stringify(safeChecksResult, null, 2), "utf8");
+
 	const manifestPath = path.join(runDir, "manifest.json");
 	if (fs.existsSync(manifestPath)) {
 		try {
 			const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-			manifest.checks = checksResult;
-			manifest.artifactComplete = true;
+			manifest.checks = safeChecksResult;
+			manifest.artifactComplete =
+				manifest.logFilesWritten === true &&
+				!manifest.streamError;
 			fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
 		} catch { /* best effort */ }
 	}
@@ -620,7 +631,9 @@ export function markArtifactComplete(runDir: string): void {
 	if (fs.existsSync(manifestPath)) {
 		try {
 			const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-			manifest.artifactComplete = true;
+			manifest.artifactComplete =
+				manifest.logFilesWritten === true &&
+				!manifest.streamError;
 			fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
 		} catch { /* best effort */ }
 	}
@@ -683,7 +696,7 @@ export function loadRunFromArtifact(
 			externalViewlogPath: m.externalViewlogPath ?? null,
 			externalMetricsPath: m.externalMetricsPath ?? null,
 			logFilesWritten: m.logFilesWritten ?? false,
-			streamError: null,
+			streamError: m.streamError ?? null,
 		};
 
 		return {
