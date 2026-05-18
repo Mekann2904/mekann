@@ -578,6 +578,41 @@ describe("evaluateQueryStatically", () => {
 			// coverage has metric name and direction, initReady=true, !broad → ready_for_init
 			expect(r.decision).toBe("ready_for_init");
 		});
+
+		it("explicit metric name prevents broad rewrite even with 改善したい", () => {
+			const r = evaluateQueryStatically("主指標は total_ms で改善したい");
+			// metric is explicit → effectiveBroad = false → not needs_rewrite
+			expect(r.decision).not.toBe("needs_rewrite");
+			expect(r.contractDraft.primaryMetric.name).toBe("total_ms");
+		});
+
+		it("metricName infers wall_clock measurementMethod", () => {
+			const r = evaluateQueryStatically("主指標は total_ms で改善したい");
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("wall_clock");
+			expect(r.contractDraft.primaryMetric.extractionConfidence).toBeGreaterThanOrEqual(0.9);
+			expect(r.readiness.metricExtractionReady).toBe(true);
+		});
+
+		it("total_ms with 改善したい has direction lower (metricName semantics)", () => {
+			const r = evaluateQueryStatically("主指標は total_ms で改善したい");
+			expect(r.contractDraft.primaryMetric.direction).toBe("lower");
+		});
+
+		it("coverage with 改善したい has direction higher (metricName semantics)", () => {
+			const r = evaluateQueryStatically("主指標は coverage で改善したい");
+			expect(r.contractDraft.primaryMetric.direction).toBe("higher");
+		});
+
+		it("error_count with 改善したい has direction lower (metricName semantics)", () => {
+			const r = evaluateQueryStatically("主指標は error_count で改善したい");
+			expect(r.contractDraft.primaryMetric.direction).toBe("lower");
+		});
+
+		it("改善 alone without explicit metric does not set direction", () => {
+			const r = evaluateQueryStatically("コード品質を改善したい");
+			// broad query → direction stays unknown or gets inferred from keywords
+			expect(r.decision).toBe("needs_rewrite");
+		});
 	});
 
 	// ── Unit inference from metric name ──────────────────────────
