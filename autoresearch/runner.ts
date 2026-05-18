@@ -950,8 +950,13 @@ export function gitAutoCommit(cwd: string, message: string): { committed: boolea
 	}
 
 	try {
-		// .pi/ を除外して git add
-		execFileSync("bash", ["-c", "git add -A -- . ':(exclude).pi/**' ':(exclude).autoresearch/**'"], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
+		// Internal artifacts are discussion/audit state, not candidate patches.
+		execFileSync("git", [
+			"add", "-A", "--", ".",
+			":(exclude).pi/**",
+			":(exclude).autoresearch/**",
+			":(exclude)autoresearch.plan.md",
+		], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
 
 		try {
 			execFileSync("git", ["diff", "--cached", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] });
@@ -965,20 +970,31 @@ export function gitAutoCommit(cwd: string, message: string): { committed: boolea
 	}
 }
 
-/** 作業ツリーを revert（autoresearch.* と .pi/ は保護）。 */
+/** 作業ツリーを revert（root internal artifacts と .autoresearch/.pi は保護）。 */
 export function gitAutoRevert(cwd: string): { reverted: boolean; error?: string } {
 	try {
-		execFileSync("bash", ["-c",
-			"git checkout -- . " +
-			":'(exclude,glob)**/autoresearch.*' " +
-			":'(exclude,glob)**/autoresearch.*/**' " +
-			":'(exclude,glob)**/.autoresearch/**' " +
-			":'(exclude,glob)**/.pi/**' && " +
-			"git clean -fd " +
-			"-e 'autoresearch.*' -e '**/autoresearch.*/**' " +
-			"-e '.autoresearch' -e '**/.autoresearch/**' " +
-			"-e '.pi' -e '**/.pi/**' " +
-			"2>/dev/null || true",
+		const checkoutExcludes = [
+			":(exclude)autoresearch.plan.md",
+			":(exclude)autoresearch.md",
+			":(exclude)autoresearch.jsonl",
+			":(exclude)autoresearch.ideas.md",
+			":(exclude).autoresearch/**",
+			":(exclude).pi/**",
+		];
+		execFileSync("git", ["checkout", "--", ".", ...checkoutExcludes], {
+			cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"],
+		});
+		// Preserve only root discussion artifacts and internal audit directories.
+		execFileSync("git", [
+			"clean", "-fd",
+			"-e", "autoresearch.plan.md",
+			"-e", "autoresearch.md",
+			"-e", "autoresearch.jsonl",
+			"-e", "autoresearch.ideas.md",
+			"-e", ".autoresearch",
+			"-e", ".autoresearch/**",
+			"-e", ".pi",
+			"-e", ".pi/**",
 		], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
 		return { reverted: true };
 	} catch (e) {

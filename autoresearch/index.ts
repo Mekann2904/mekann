@@ -1822,6 +1822,39 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				});
 			}
 
+			const immutableAfterBaseline = await computeImmutableReadSetHash(
+				ctx.cwd,
+				contract.scope.immutableReadPaths,
+			);
+			if (immutableAfterBaseline.hash !== immutableResult.hash) {
+				appendEvent(ctx.cwd, {
+					timestamp: Date.now(),
+					contractId,
+					contractHash,
+					event: "baseline_immutable_drift",
+					details: { before: immutableResult.hash, after: immutableAfterBaseline.hash },
+				});
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] baseline benchmark mutated immutableReadPaths.\nBenchmark/read-only files changed during approve; fix the benchmark harness before locking the contract.` }],
+					details: { beforeHash: immutableResult.hash, afterHash: immutableAfterBaseline.hash, warnings: immutableAfterBaseline.warnings },
+				};
+			}
+
+			const postBaselineChangedFiles = getContractRelevantChangedFiles(ctx.cwd);
+			if (postBaselineChangedFiles.length > 0) {
+				appendEvent(ctx.cwd, {
+					timestamp: Date.now(),
+					contractId,
+					contractHash,
+					event: "baseline_dirty_worktree",
+					details: { changedFiles: postBaselineChangedFiles },
+				});
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] baseline benchmark created contract-relevant dirty files.\n対象: ${postBaselineChangedFiles.join(", ")}\nFix the benchmark so approve leaves the candidate worktree clean.` }],
+					details: { changedFiles: postBaselineChangedFiles },
+				};
+			}
+
 			const baselineMetrics = baselineRuns.map((r) => r.metric);
 			const noise = computeBaselineNoise(baselineMetrics, contract.evaluation.benchmark.aggregate);
 			const gitCommit = getBaselineCommit(ctx.cwd) ?? "unknown";

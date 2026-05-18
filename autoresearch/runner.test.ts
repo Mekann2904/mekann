@@ -550,9 +550,64 @@ describe("gitAutoCommit and gitAutoRevert", () => {
 		}
 	});
 
+	it("gitAutoCommit does not stage autoresearch.plan.md", () => {
+		const cwd = createTempGitRepo();
+		try {
+			fs.writeFileSync(path.join(cwd, "autoresearch.plan.md"), "# plan\n");
+			fs.writeFileSync(path.join(cwd, "src.txt"), "candidate\n");
+			const result = gitAutoCommit(cwd, "test: candidate");
+			expect(result.committed).toBe(true);
+
+			const committedFiles = childProcess.execFileSync(
+				"git", ["show", "--name-only", "--pretty=format:", "HEAD"],
+				{ cwd, encoding: "utf8" },
+			).trim();
+			expect(committedFiles).toContain("src.txt");
+			expect(committedFiles).not.toContain("autoresearch.plan.md");
+			expect(fs.existsSync(path.join(cwd, "autoresearch.plan.md"))).toBe(true);
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
 	it("gitAutoCommit returns committed:false for non-git dir", () => {
 		const result = gitAutoCommit("/tmp/nonexistent-git-dir-" + Date.now(), "test");
 		expect(result.committed).toBe(false);
+	});
+
+	it("gitAutoRevert reverts src/autoresearch.ts", () => {
+		const cwd = createTempGitRepo();
+		try {
+			fs.mkdirSync(path.join(cwd, "src"), { recursive: true });
+			fs.writeFileSync(path.join(cwd, "src", "autoresearch.ts"), "export const v = 1;\n");
+			childProcess.execFileSync("git", ["add", "src/autoresearch.ts"], { cwd });
+			childProcess.execFileSync("git", ["commit", "-m", "add source"], { cwd });
+
+			fs.writeFileSync(path.join(cwd, "src", "autoresearch.ts"), "export const v = 2;\n");
+			const result = gitAutoRevert(cwd);
+			expect(result.reverted).toBe(true);
+			expect(fs.readFileSync(path.join(cwd, "src", "autoresearch.ts"), "utf8")).toContain("v = 1");
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("gitAutoRevert preserves root autoresearch.plan.md and .autoresearch lock", () => {
+		const cwd = createTempGitRepo();
+		try {
+			fs.writeFileSync(path.join(cwd, "autoresearch.plan.md"), "# discussion plan\n");
+			fs.mkdirSync(path.join(cwd, ".autoresearch"), { recursive: true });
+			fs.writeFileSync(path.join(cwd, ".autoresearch", "current.lock.json"), "{}\n");
+			fs.writeFileSync(path.join(cwd, "candidate.txt"), "candidate\n");
+
+			const result = gitAutoRevert(cwd);
+			expect(result.reverted).toBe(true);
+			expect(fs.existsSync(path.join(cwd, "autoresearch.plan.md"))).toBe(true);
+			expect(fs.existsSync(path.join(cwd, ".autoresearch", "current.lock.json"))).toBe(true);
+			expect(fs.existsSync(path.join(cwd, "candidate.txt"))).toBe(false);
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
 	});
 
 	it("gitAutoRevert returns error for non-git dir", () => {

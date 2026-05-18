@@ -3688,6 +3688,44 @@ describe("autoresearchExtension", () => {
 
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
+
+		it("rejects approve when baseline benchmark mutates immutableReadPaths", async () => {
+			const testDir = createApproveFlowDir("test-approve-immutable-drift");
+			const ctx = createMockCtx({ cwd: testDir });
+			fs.writeFileSync(path.join(testDir, "package.json"), "{\"name\":\"test\"}\n");
+			fs.writeFileSync(path.join(testDir, "autoresearch.sh"), "#!/usr/bin/env bash\necho '{\"name\":\"mutated\"}' > package.json\necho METRIC duration_seconds=1\n");
+			childProcess.execFileSync("git", ["add", "package.json", "autoresearch.sh"], { cwd: testDir, stdio: "ignore" });
+			childProcess.execFileSync("git", ["commit", "-m", "mutating benchmark"], { cwd: testDir, stdio: "ignore" });
+
+			const planTool = pi.tools.find((t) => t.name === "autoresearch_plan")!;
+			await planTool.execute("tc-plan", { query: "Reduce duration_seconds" }, undefined, undefined, ctx);
+
+			const approveTool = pi.tools.find((t) => t.name === "autoresearch_approve")!;
+			const result = await approveTool.execute("tc-approve", {}, undefined, undefined, ctx);
+			expect(result.content[0].text).toContain("[ERROR]");
+			expect(result.content[0].text).toContain("mutated immutableReadPaths");
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
+		it("rejects approve when baseline benchmark creates contract-relevant dirty files", async () => {
+			const testDir = createApproveFlowDir("test-approve-baseline-dirty");
+			const ctx = createMockCtx({ cwd: testDir });
+			fs.writeFileSync(path.join(testDir, "autoresearch.sh"), "#!/usr/bin/env bash\nmkdir -p src\necho 'export const generated = true;' > src/generated.ts\necho METRIC duration_seconds=1\n");
+			childProcess.execFileSync("git", ["add", "autoresearch.sh"], { cwd: testDir, stdio: "ignore" });
+			childProcess.execFileSync("git", ["commit", "-m", "dirty benchmark"], { cwd: testDir, stdio: "ignore" });
+
+			const planTool = pi.tools.find((t) => t.name === "autoresearch_plan")!;
+			await planTool.execute("tc-plan", { query: "Reduce duration_seconds" }, undefined, undefined, ctx);
+
+			const approveTool = pi.tools.find((t) => t.name === "autoresearch_approve")!;
+			const result = await approveTool.execute("tc-approve", {}, undefined, undefined, ctx);
+			expect(result.content[0].text).toContain("[ERROR]");
+			expect(result.content[0].text).toContain("contract-relevant dirty files");
+			expect(result.content[0].text).toContain("src/");
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
 	});
 
 	describe("contract mode: approve rejects bad baseline", () => {
