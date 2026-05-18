@@ -453,19 +453,18 @@ export async function runArgvCommand(
 			});
 		}
 
-		// Build env
-		const spawnEnv: Record<string, string | undefined> = { ...process.env };
+		// Build env: if allow list specified, start empty; otherwise inherit process.env
+		const spawnEnv: Record<string, string | undefined> = cmd.env?.allow
+			? {}
+			: { ...process.env };
+
+		if (cmd.env?.allow) {
+			for (const key of cmd.env.allow) {
+				if (process.env[key] !== undefined) spawnEnv[key] = process.env[key];
+			}
+		}
 		if (cmd.env?.set) {
 			Object.assign(spawnEnv, cmd.env.set);
-		}
-		if (cmd.env?.allow) {
-			// If allow list is specified, only keep those + set
-			const filtered: Record<string, string | undefined> = {};
-			for (const key of cmd.env.allow) {
-				if (process.env[key] !== undefined) filtered[key] = process.env[key];
-			}
-			Object.assign(filtered, cmd.env.set ?? {});
-			Object.assign(spawnEnv, filtered);
 		}
 
 		const child = spawn(cmd.argv[0], cmd.argv.slice(1), {
@@ -949,7 +948,7 @@ export function gitAutoCommit(cwd: string, message: string): { committed: boolea
 
 	try {
 		// .pi/ を除外して git add
-		execFileSync("bash", ["-c", "git add -A -- . ':(exclude).pi/**'"], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
+		execFileSync("bash", ["-c", "git add -A -- . ':(exclude).pi/**' ':(exclude).autoresearch/**'"], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
 
 		try {
 			execFileSync("git", ["diff", "--cached", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] });
@@ -970,9 +969,11 @@ export function gitAutoRevert(cwd: string): { reverted: boolean; error?: string 
 			"git checkout -- . " +
 			":'(exclude,glob)**/autoresearch.*' " +
 			":'(exclude,glob)**/autoresearch.*/**' " +
+			":'(exclude,glob)**/.autoresearch/**' " +
 			":'(exclude,glob)**/.pi/**' && " +
 			"git clean -fd " +
 			"-e 'autoresearch.*' -e '**/autoresearch.*/**' " +
+			"-e '.autoresearch' -e '**/.autoresearch/**' " +
 			"-e '.pi' -e '**/.pi/**' " +
 			"2>/dev/null || true",
 		], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });

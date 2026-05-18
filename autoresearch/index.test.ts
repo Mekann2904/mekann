@@ -3570,4 +3570,225 @@ describe("autoresearchExtension", () => {
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 	});
+
+
+
+	// =====================================================================
+	// Contract mode integration tests
+	// =====================================================================
+
+	describe("contract mode: autoresearch_plan", () => {
+		it("generates plan with direct script argv (no bash -c)", async () => {
+			const testDir = createGitTestDir("test-plan-argv");
+			const ctx = createMockCtx({ cwd: testDir });
+
+			const planTool = pi.tools.find((t) => t.name === "autoresearch_plan")!;
+			const result = await planTool.execute(
+				"tc-plan", { query: "Reduce build time of this TypeScript project" },
+				undefined, undefined, ctx,
+			);
+			expect(result.content[0].text).toContain("[OK]");
+
+			// Read plan file and verify no bash -c in contract block
+			const planContent = fs.readFileSync(path.join(testDir, "autoresearch.plan.md"), "utf8");
+			const contractMatch = planContent.match(/```autoresearch-contract jsonc\n([\s\S]*?)```/);
+			expect(contractMatch).not.toBeNull();
+			const contractJson = JSON.parse(contractMatch![1]);
+			expect(contractJson.evaluation.benchmark.command.argv).not.toContain("-c");
+			// Should use direct script invocation
+			expect(contractJson.evaluation.benchmark.command.argv[0]).toBe("bash");
+			expect(contractJson.evaluation.benchmark.command.argv[1]).toBe("./autoresearch.sh");
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+	});
+
+	describe("contract mode: approve rejects bad baseline", () => {
+		it("rejects approve when benchmark exits non-zero", async () => {
+			const testDir = createGitTestDir("test-approve-fail");
+			const ctx = createMockCtx({ cwd: testDir });
+
+			// Generate plan first
+			const planTool = pi.tools.find((t) => t.name === "autoresearch_plan")!;
+			await planTool.execute("tc-plan", { query: "test" }, undefined, undefined, ctx);
+
+			// Commit plan + .autoresearch so tree is clean
+			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir, stdio: "ignore" });
+			childProcess.execFileSync("git", ["commit", "-m", "add plan"], { cwd: testDir, stdio: "ignore" });
+
+			// Edit the plan to use a command that will fail
+			const planPath_ = path.join(testDir, "autoresearch.plan.md");
+			let planContent = fs.readFileSync(planPath_, "utf8");
+			// JSON.stringify formats arrays across multiple lines
+			planContent = planContent.replace(
+				/bash"\s*,\s*"\.\/autoresearch\.sh"/,
+				'bash",\n          "-c",\n          "exit 1"',
+			);
+			fs.writeFileSync(planPath_, planContent, "utf8");
+
+			// Commit the edited plan so tree is clean for approve
+			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir, stdio: "ignore" });
+			childProcess.execFileSync("git", ["commit", "-m", "edit plan"], { cwd: testDir, stdio: "ignore" });
+
+			const approveTool = pi.tools.find((t) => t.name === "autoresearch_approve")!;
+			const result = await approveTool.execute("tc-approve", {}, undefined, undefined, ctx);
+			expect(result.content[0].text).toContain("[ERROR]");
+			expect(result.content[0].text).toContain("fail");
+
+			// Lock file should NOT exist
+			expect(fs.existsSync(path.join(testDir, ".autoresearch", "current.lock.json"))).toBe(false);
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
+		it("rejects approve when metric missing and no wall_clock fallback", async () => {
+			const testDir = createGitTestDir("test-approve-nometric");
+			const ctx = createMockCtx({ cwd: testDir });
+
+			// Generate plan first
+			const planTool = pi.tools.find((t) => t.name === "autoresearch_plan")!;
+			await planTool.execute("tc-plan", { query: "test" }, undefined, undefined, ctx);
+
+			// Commit plan + .autoresearch so tree is clean
+			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir, stdio: "ignore" });
+			childProcess.execFileSync("git", ["commit", "-m", "add plan"], { cwd: testDir, stdio: "ignore" });
+
+			// Edit the plan: command succeeds but outputs no METRIC, and source has no fallback
+			const planPath_ = path.join(testDir, "autoresearch.plan.md");
+			let planContent = fs.readFileSync(planPath_, "utf8");
+			// Replace command to just echo hello (no METRIC line)
+			// JSON.stringify formats arrays across multiple lines
+			planContent = planContent.replace(
+				/bash"\s*,\s*"\.\/autoresearch\.sh"/,
+				'echo",\n          "hello"',
+			);
+			// Remove fallback: "wall_clock" → none
+			planContent = planContent.replace(
+				/"fallback": "wall_clock"/,
+				'"fallback": "none"',
+			);
+			fs.writeFileSync(planPath_, planContent, "utf8");
+
+			// Commit the edited plan so tree is clean for approve
+			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir, stdio: "ignore" });
+			childProcess.execFileSync("git", ["commit", "-m", "edit plan"], { cwd: testDir, stdio: "ignore" });
+
+			const approveTool = pi.tools.find((t) => t.name === "autoresearch_approve")!;
+			const result = await approveTool.execute("tc-approve", {}, undefined, undefined, ctx);
+			expect(result.content[0].text).toContain("[ERROR]");
+			expect(result.content[0].text).toContain("not found");
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
+		it("accepts approve when metric missing but wall_clock fallback", async () => {
+			const testDir = createGitTestDir("test-approve-wc");
+			const ctx = createMockCtx({ cwd: testDir });
+
+			// Generate plan first
+			const planTool = pi.tools.find((t) => t.name === "autoresearch_plan")!;
+			await planTool.execute("tc-plan", { query: "test" }, undefined, undefined, ctx);
+
+			// Commit plan + .autoresearch so tree is clean
+			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir, stdio: "ignore" });
+			childProcess.execFileSync("git", ["commit", "-m", "add plan"], { cwd: testDir, stdio: "ignore" });
+
+			// Edit the plan: command succeeds but outputs no METRIC, but fallback=wall_clock
+			const planPath_ = path.join(testDir, "autoresearch.plan.md");
+			let planContent = fs.readFileSync(planPath_, "utf8");
+			// JSON.stringify formats arrays across multiple lines
+			planContent = planContent.replace(
+				/bash"\s*,\s*"\.\/autoresearch\.sh"/,
+				'echo",\n          "hello"',
+			);
+			// Keep fallback: "wall_clock" as-is
+			fs.writeFileSync(planPath_, planContent, "utf8");
+
+			// Commit the edited plan so tree is clean for approve
+			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir, stdio: "ignore" });
+			childProcess.execFileSync("git", ["commit", "-m", "edit plan"], { cwd: testDir, stdio: "ignore" });
+
+			const approveTool = pi.tools.find((t) => t.name === "autoresearch_approve")!;
+			const result = await approveTool.execute("tc-approve", {}, undefined, undefined, ctx);
+			expect(result.content[0].text).toContain("[OK]");
+			expect(fs.existsSync(path.join(testDir, ".autoresearch", "current.lock.json"))).toBe(true);
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+	});
+
+	describe("contract mode: .autoresearch excluded from git ops", () => {
+		it("commit does not stage .autoresearch/**", async () => {
+			const testDir = createGitTestDir("test-git-exclude");
+			try {
+				// Create .autoresearch dir with files
+				fs.mkdirSync(path.join(testDir, ".autoresearch"), { recursive: true });
+				fs.writeFileSync(path.join(testDir, ".autoresearch", "test.json"), "{}");
+				// Also create a real change
+				fs.writeFileSync(path.join(testDir, "src.txt"), "changed");
+
+				const { gitAutoCommit } = await import("./runner.js");
+				const result = gitAutoCommit(testDir, "test commit");
+				expect(result.committed).toBe(true);
+
+				// Verify .autoresearch/test.json is NOT in the commit
+				const showOutput = childProcess.execFileSync(
+					"git", ["show", "--name-only", "--pretty=format:", "HEAD"],
+					{ cwd: testDir, encoding: "utf8" },
+				).trim();
+				expect(showOutput).not.toContain(".autoresearch");
+				expect(showOutput).toContain("src.txt");
+			} finally {
+				fs.rmSync(testDir, { recursive: true, force: true });
+			}
+		});
+
+		it("revert preserves .autoresearch/current.lock.json", async () => {
+			const testDir = createGitTestDir("test-revert-preserve");
+			try {
+				// Create .autoresearch dir with lock file
+				fs.mkdirSync(path.join(testDir, ".autoresearch"), { recursive: true });
+				fs.writeFileSync(
+					path.join(testDir, ".autoresearch", "current.lock.json"),
+					JSON.stringify({ test: true }),
+				);
+				// Create a change that revert should undo
+				fs.writeFileSync(path.join(testDir, "src.txt"), "dirty");
+
+				const { gitAutoRevert } = await import("./runner.js");
+				const result = gitAutoRevert(testDir);
+				expect(result.reverted).toBe(true);
+
+				// .autoresearch/current.lock.json should still exist
+				expect(fs.existsSync(path.join(testDir, ".autoresearch", "current.lock.json"))).toBe(true);
+				// src.txt should be reverted (clean)
+				expect(fs.existsSync(path.join(testDir, "src.txt"))).toBe(false);
+			} finally {
+				fs.rmSync(testDir, { recursive: true, force: true });
+			}
+		});
+	});
+
+	describe("contract mode: env allow list", () => {
+		it("env allow list actually restricts env vars", async () => {
+			const { runArgvCommand } = await import("./runner.js");
+			// Run with allow list containing only PATH
+			const result = await runArgvCommand(
+				{
+					argv: ["env"],
+					cwd: ".",
+					env: {
+						allow: ["PATH", "HOME"],
+					},
+				},
+				5000,
+			);
+			expect(result.passed).toBe(true);
+			expect(result.stdout).toContain("PATH=");
+			expect(result.stdout).toContain("HOME=");
+			// Most other env vars should be missing
+			expect(result.stdout).not.toContain("SHELL=");
+		});
+	});
+
 });

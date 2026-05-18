@@ -1478,7 +1478,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				evaluation: {
 					benchmark: {
 						command: {
-							argv: ["bash", "-c", benchmarkCommand],
+							argv: ["bash", "./autoresearch.sh"],
 							cwd: ".",
 						},
 						timeoutSeconds: 600,
@@ -1495,7 +1495,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					checks: evaluation.contractDraft.checksCommand
 						? [{
 							name: "default-checks",
-							command: { argv: ["bash", "-c", evaluation.contractDraft.checksCommand], cwd: "." },
+							command: { argv: ["bash", "./checks.sh"], cwd: "." },
 							timeoutSeconds: 300,
 							required: true,
 						}]
@@ -1732,7 +1732,44 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					contract.evaluation.benchmark.timeoutSeconds * 1000,
 					signal,
 				);
+
+				// --- P0: Reject baseline on failure/timeout ---
+				if (!runResult.passed || runResult.timedOut) {
+					appendEvent(ctx.cwd, {
+						timestamp: Date.now(),
+						contractId,
+						contractHash,
+						event: "baseline_run_failed",
+						details: { runIndex: i, runId, exitCode: runResult.exitCode, timedOut: runResult.timedOut },
+					});
+					return {
+						content: [{ type: "text" as const, text: `[ERROR] baseline run ${i + 1}/${contract.evaluation.benchmark.repeats} failed.${runResult.timedOut ? " Timed out." : ""} exitCode=${runResult.exitCode}\nBaseline cannot be established from failed benchmark. Fix the benchmark command and retry.` }],
+						details: { runIndex: i, exitCode: runResult.exitCode, timedOut: runResult.timedOut },
+					};
+				}
+
 				const metricValue = resolvePrimaryMetricFromRun(contract.evaluation.primaryMetric, runResult);
+
+				// --- P0: Reject when metric missing unless explicit wall_clock fallback ---
+				if (metricValue === null) {
+					const source = contract.evaluation.primaryMetric.source;
+					const hasWallClockFallback = source.type === "metric_line" && source.fallback === "wall_clock";
+					const isWallClock = source.type === "wall_clock";
+					if (!hasWallClockFallback && !isWallClock) {
+						appendEvent(ctx.cwd, {
+							timestamp: Date.now(),
+							contractId,
+							contractHash,
+							event: "baseline_metric_missing",
+							details: { runIndex: i, runId, metricName: contract.evaluation.primaryMetric.name },
+						});
+						return {
+							content: [{ type: "text" as const, text: `[ERROR] Primary metric "${contract.evaluation.primaryMetric.name}" not found in baseline run ${i + 1}.\nMetric source is "${source.type}" with no wall_clock fallback.\nEnsure the benchmark outputs METRIC ${contract.evaluation.primaryMetric.name}=<number> to stdout.` }],
+							details: { metricName: contract.evaluation.primaryMetric.name, sourceType: source.type },
+						};
+					}
+				}
+
 				baselineRuns.push({ runId, metric: metricValue ?? runResult.durationSeconds, durationSeconds: runResult.durationSeconds });
 				appendEvent(ctx.cwd, {
 					timestamp: Date.now(),
@@ -1875,18 +1912,18 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				};
 			}
 
-			const changedFiles = getChangedFiles(ctx.cwd);
-			const immutableResult = await computeImmutableReadSetHash(ctx.cwd, contract.scope.immutableReadPaths);
-			const immutableReadSetHashMatches = immutableResult.hash === lock.environment.immutableReadSetHash;
+			// Pre-check state (logged for diagnostics only)
+			const preChangedFiles = getChangedFiles(ctx.cwd);
 
 			appendEvent(ctx.cwd, {
 				timestamp: Date.now(),
 				contractId: lock.contractId,
 				contractHash: currentHash,
 				event: "contract_run_started",
-				details: { reason: params.reason, iterationLabel: params.iteration_label, changedFilesCount: changedFiles.length },
+				details: { reason: params.reason, iterationLabel: params.iteration_label, preChangedFilesCount: preChangedFiles.length },
 			});
 
+			// --- Run checks ---
 			const checkResults = new Map<string, boolean>();
 			for (const check of contract.evaluation.checks) {
 				const checkCwd = path.resolve(ctx.cwd, check.command.cwd);
@@ -1898,6 +1935,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				checkResults.set(check.name, checkResult.passed);
 			}
 
+			// --- Run benchmark repeats ---
 			const benchmarkCwd = path.resolve(ctx.cwd, contract.evaluation.benchmark.command.cwd);
 			const measurements: number[] = [];
 			let benchmarkSucceeded = true;
@@ -1924,6 +1962,20 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					details: { runIndex: i, exitCode: result.exitCode, metric: metricValue, durationSeconds: result.durationSeconds, timedOut: result.timedOut },
 				});
 			}
+
+			// --- POST state: re-check changed files and immutable hash AFTER benchmark ---
+			// This catches mutations made by checks or benchmark scripts.
+			const changedFiles = getChangedFiles(ctx.cwd);
+			const immutableResult = await computeImmutableReadSetHash(ctx.cwd, contract.scope.immutableReadPaths);
+			const immutableReadSetHashMatches = immutableResult.hash === lock.environment.immutableReadSetHash;
+
+			appendEvent(ctx.cwd, {
+				timestamp: Date.now(),
+				contractId: lock.contractId,
+				contractHash: currentHash,
+				event: "post_state_captured",
+				details: { postChangedFilesCount: changedFiles.length, immutableHashMatch: immutableReadSetHashMatches },
+			});
 
 			const aggregateMethod = contract.evaluation.benchmark.aggregate;
 			const candidateMetric = measurements.length > 0
@@ -1956,6 +2008,42 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				reference: evaluatorResult.reference,
 				details: { ...evaluatorResult.details, measurements, changedFiles, reason: params.reason, iterationLabel: params.iteration_label },
 			});
+
+			// --- Append to runs.jsonl and metrics.jsonl for audit ---
+			try {
+				ensureSessionDir(ctx.cwd);
+				const runSeq = nextRunSeq(ctx.cwd, state.sessionId);
+				const now = Date.now();
+				const postCommit = getGitShortHash(ctx.cwd);
+				appendToJsonl(runsLedgerPath(ctx.cwd, state.sessionId), {
+					schemaVersion: 1, runSeq,
+					piRunId: "contract-" + lock.contractId + "-" + runSeq,
+					externalRunId: null,
+					createdAt: now, startedAt: now, completedAt: now,
+					durationSeconds: 0,
+					command: JSON.stringify(contract.evaluation.benchmark.command.argv),
+					exitCode: evaluatorResult.decision === "keep" ? 0 : 1,
+					timedOut: benchmarkTimedOut,
+					signal: null,
+					gitCommit: postCommit,
+				} satisfies RunsLedgerEntry);
+				appendToJsonl(metricsLedgerPath(ctx.cwd, state.sessionId), {
+					schemaVersion: 1, runSeq,
+					piRunId: "contract-" + lock.contractId + "-" + runSeq,
+					externalRunId: null,
+					createdAt: now, startedAt: now, completedAt: now,
+					durationSeconds: 0,
+					command: JSON.stringify(contract.evaluation.benchmark.command.argv),
+					gitCommit: postCommit,
+					exitCode: evaluatorResult.decision === "keep" ? 0 : 1,
+					timedOut: benchmarkTimedOut,
+					primaryMetricName: contract.evaluation.primaryMetric.name,
+					primaryMetricValue: evaluatorResult.representativeMetric,
+					primaryMetricSource: "contract_evaluator",
+					metrics: measurements.length > 0 ? { [contract.evaluation.primaryMetric.name]: evaluatorResult.representativeMetric } : {},
+					status: evaluatorResult.decision,
+				} as unknown as Record<string, unknown>);
+			} catch { /* best effort */ }
 
 			if (evaluatorResult.decision === "keep") {
 				const gr = gitAutoCommit(

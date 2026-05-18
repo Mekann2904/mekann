@@ -145,12 +145,51 @@ describe("contractEvaluator", () => {
 		});
 	});
 
-	describe("forbidden write paths", () => {
+	describe("write path validation", () => {
 		it("pauses when forbidden files changed", () => {
-			const input = makeInput({ changedFiles: [".env"] });
+			const contract = makeContract({
+				scope: {
+					...makeContract().scope,
+					allowedWritePaths: ["src/"],
+					forbiddenWritePaths: [".env"],
+				},
+			});
+			const input = makeInput({ contract, changedFiles: [".env"] });
 			const result = evaluateContract(input);
 			expect(result.decision).toBe("pause");
 			expect(result.reason).toContain("forbidden");
+		});
+
+		it("discards when file outside allowedWritePaths changed", () => {
+			const contract = makeContract({
+				scope: {
+					...makeContract().scope,
+					allowedWritePaths: ["src/"],
+					forbiddenWritePaths: [],
+				},
+			});
+			const input = makeInput({ contract, changedFiles: ["lib/outside.ts"] });
+			const result = evaluateContract(input);
+			expect(result.decision).toBe("discard");
+			expect(result.reason).toContain("write path violations");
+		});
+
+		it("allows files within allowedWritePaths", () => {
+			const contract = makeContract({
+				scope: {
+					...makeContract().scope,
+					allowedWritePaths: ["src/"],
+					forbiddenWritePaths: [],
+				},
+			});
+			const input = makeInput({
+				contract,
+				changedFiles: ["src/index.ts"],
+				candidateMetric: 90,
+				allMeasurements: [90],
+			});
+			const result = evaluateContract(input);
+			expect(result.decision).toBe("keep");
 		});
 	});
 

@@ -6,6 +6,7 @@
  */
 
 import type { AutoresearchContractV1, BaselineNoiseSummary, LockFile } from "./contractV1.js";
+import { validateWritePaths, matchesAnyPattern } from "./contractV1.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -80,12 +81,14 @@ export function evaluateContract(input: EvaluatorInput): EvaluatorResult {
 		};
 	}
 
-	// 2. Immutable read set hash mismatch
+	// 2. Immutable read set hash mismatch (also covers rejectIfBenchmarkChanged
+	//    when benchmark files are listed in immutableReadPaths)
 	if (!input.immutableReadSetHashMatches) {
-		if (contract.acceptance.rejectIfImmutableReadPathChanged) {
+		if (contract.acceptance.rejectIfImmutableReadPathChanged || contract.acceptance.rejectIfBenchmarkChanged) {
 			return {
 				decision: "pause",
-				reason: "immutableReadPaths hash changed since approval. Read-only files were modified.",
+				reason: "immutableReadPaths hash changed since approval. Read-only files were modified." +
+					(contract.acceptance.rejectIfBenchmarkChanged ? " (includes benchmark change detection via immutableReadPaths)" : ""),
 				representativeMetric: null,
 				improvement: null,
 				improvementRate: null,
@@ -95,22 +98,25 @@ export function evaluateContract(input: EvaluatorInput): EvaluatorResult {
 		}
 	}
 
-	// 3. Forbidden write paths
-	const forbiddenViolations = input.changedFiles.filter((f) =>
-		contract.scope.forbiddenWritePaths.some((p) => matchesPattern(p, f)),
+	// 3. Write path validation (allowed + forbidden)
+	const writeValidation = validateWritePaths(
+		input.changedFiles,
+		contract.scope.allowedWritePaths,
+		contract.scope.forbiddenWritePaths,
 	);
-	if (forbiddenViolations.length > 0) {
-		if (contract.acceptance.rejectIfForbiddenFilesChanged) {
-			return {
-				decision: "pause",
-				reason: `forbiddenWritePaths matching files were changed: ${forbiddenViolations.join(", ")}`,
-				representativeMetric: null,
-				improvement: null,
-				improvementRate: null,
-				reference: null,
-				details: { forbiddenViolations },
-			};
-		}
+	if (writeValidation.violations.length > 0) {
+		const hasForbidden = contract.scope.forbiddenWritePaths.length > 0 &&
+			input.changedFiles.some((f) => matchesAnyPattern(f, contract.scope.forbiddenWritePaths));
+		const decision = hasForbidden ? "pause" : "discard";
+		return {
+			decision,
+			reason: `write path violations detected: ${writeValidation.violations.join(", ")}`,
+			representativeMetric: null,
+			improvement: null,
+			improvementRate: null,
+			reference: null,
+			details: { violations: writeValidation.violations },
+		};
 	}
 
 	// 4. Benchmark failure
