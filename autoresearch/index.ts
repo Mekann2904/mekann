@@ -52,6 +52,7 @@ import {
 	loopFollowUpMessage,
 	filterSecrets,
 } from "./runner.js";
+import { evaluateQueryStatically } from "./queryEvaluation.js";
 import { renderWidget, directionLabel, type LoopInfo } from "./state.js";
 
 // ---------------------------------------------------------------------------
@@ -149,6 +150,21 @@ const SYSTEM_PROMPT_EXTRA = [
 	"- `--webui` や watch server のように終了しないコマンドを benchmark command に入れないでください",
 	"- 外部 benchmark が `RUN_ID` / `ARTIFACT_DIR` / `METRIC` を stdout に出す場合、pi 側で自動保存します",
 	"",
+	"### クエリ評価",
+	"",
+	"ユーザの目的が自然文で曖昧な場合、`autoresearch_init` の前に `autoresearch_evaluate_query` を呼び出す。",
+	"評価結果が `ready` でない場合、無理に `autoresearch_init` しない。",
+	"`needs_metric_design` の場合は metric 候補を提示する。",
+	"`needs_clarification` の場合は、実験契約に必要な最小限の質問だけを行う。",
+	"`needs_rewrite` の場合は、autoresearch 向けの suggestedRewrite を提示する。",
+	"`reject` の場合は、安全上の理由を説明して実験を開始しない。",
+	"",
+	"動的評価として以下を 0.0〜1.0 で評価してよい（ただし ready 判定は static validator の blocking/risk を優先）:",
+	"- semanticAlignment: ユーザ目的と metric が一致しているか",
+	"- feasibility: 現在の repository で実行可能そうか",
+	"- valuePotential: 改善余地がありそうか",
+	"- ambiguityRisk: 解釈の揺れが大きいか",
+	"- confidence: この評価にどれだけ確信があるか",
 ].join("\n");
 
 // ---------------------------------------------------------------------------
@@ -402,6 +418,71 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 		return undefined;
 	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// Tool: autoresearch_evaluate_query
+	// ═══════════════════════════════════════════════════════════════
+
+	pi.registerTool({
+		name: "autoresearch_evaluate_query",
+		label: "autoresearch evaluate query",
+		description: "ユーザの自然文クエリを評価し、autoresearch 実験契約に変換できるか判定します。",
+		promptSnippet: "自然文クエリの評価",
+		promptGuidelines: [
+			"autoresearch 開始前に、ユーザの目的が曖昧な場合に呼び出す。",
+			"評価結果に従って、必要に応じて metric や command の確認を行う。",
+		],
+		parameters: Type.Object({
+			query: Type.String({ description: "ユーザの自然文クエリ" }),
+		}),
+
+		async execute(_tc, params, _sig, _ou, _ctx) {
+			// 評価 tool は autoresearch モード有効/無効に関わらず実行可能（read-only）
+			const evaluation = evaluateQueryStatically(params.query);
+
+			const text = [
+				`## クエリ評価結果`,
+				``,
+				`**判定**: ${evaluation.decision}`,
+				``,
+				`### スコア`,
+				`- readiness: ${evaluation.scores.readiness.toFixed(2)}`,
+				`- completeness: ${evaluation.scores.completeness.toFixed(2)}`,
+				`- measurability: ${evaluation.scores.measurability.toFixed(2)}`,
+				`- commandReadiness: ${evaluation.scores.commandReadiness.toFixed(2)}`,
+				`- scopeClarity: ${evaluation.scores.scopeClarity.toFixed(2)}`,
+				`- safety: ${evaluation.scores.safety.toFixed(2)}`,
+				`- reproducibility: ${evaluation.scores.reproducibility.toFixed(2)}`,
+				``,
+				evaluation.contractDraft.missingFields.length > 0
+					? `### 欠落フィールド\n${evaluation.contractDraft.missingFields.map(f => `- ${f}`).join("\n")}\n`
+					: "",
+				evaluation.blockingIssues.length > 0
+					? `### ブロッキング issue\n${evaluation.blockingIssues.map(i => `- ${i}`).join("\n")}\n`
+					: "",
+				evaluation.riskFlags.length > 0
+					? `### リスク\n${evaluation.riskFlags.map(r => `- ⚠️ ${r}`).join("\n")}\n`
+					: "",
+				evaluation.suggestedRewrite
+					? `### 推奨書き換え\n${evaluation.suggestedRewrite}\n`
+					: "",
+				evaluation.clarifyingQuestions.length > 0
+					? `### 確認質問\n${evaluation.clarifyingQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n")}\n`
+					: "",
+				`### 実験契約ドラフト`,
+				`- 目的: ${evaluation.contractDraft.objective || "（未定）"}`,
+				`- 対象: ${evaluation.contractDraft.targetScope.length > 0 ? evaluation.contractDraft.targetScope.join(", ") : "（未定）"}`,
+				`- 主指標: ${evaluation.contractDraft.primaryMetric.name ?? "（未定）"}（${evaluation.contractDraft.primaryMetric.direction}）`,
+				`- benchmark: ${evaluation.contractDraft.benchmarkCommand ?? "（未定）"}`,
+				`- checks: ${evaluation.contractDraft.checksCommand ?? "（未定）"}`,
+			].filter(s => s !== false).join("\n");
+
+			return {
+				content: [{ type: "text" as const, text }],
+				details: evaluation,
+			};
+		},
+	});
 
 	// ═══════════════════════════════════════════════════════════════
 	// Tool: autoresearch_init

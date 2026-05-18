@@ -121,9 +121,10 @@ describe("autoresearchExtension", () => {
 
 	// ── Registration ────────────────────────────────────────────
 
-	it("registers 3 tools with correct names", () => {
-		expect(pi.registerTool).toHaveBeenCalledTimes(3);
+	it("registers 4 tools with correct names", () => {
+		expect(pi.registerTool).toHaveBeenCalledTimes(4);
 		expect(pi.tools.map((t) => t.name)).toEqual([
+			"autoresearch_evaluate_query",
 			"autoresearch_init",
 			"autoresearch_run",
 			"autoresearch_log",
@@ -269,6 +270,7 @@ describe("autoresearchExtension", () => {
 			expect(result.systemPrompt).toContain("autoresearch_init");
 			expect(result.systemPrompt).toContain("autoresearch_run");
 			expect(result.systemPrompt).toContain("autoresearch_log");
+			expect(result.systemPrompt).toContain("autoresearch_evaluate_query");
 			expect(result.systemPrompt).toContain("日本語");
 			// 自動 commit/revert の指示がある
 			expect(result.systemPrompt).toContain("自動で git commit / revert");
@@ -485,6 +487,22 @@ describe("autoresearchExtension", () => {
 			);
 			expect(result.content[0].text).toContain("autoresearch モードが無効です");
 			expect(result.details).toEqual({});
+		});
+
+		it("autoresearch_evaluate_query succeeds even when not active", async () => {
+			const evalTool = pi.tools.find((t) => t.name === "autoresearch_evaluate_query")!;
+			const result = await evalTool.execute(
+				"tc-eval",
+				{ query: "prepush を速くしたい" },
+				undefined,
+				undefined,
+				createMockCtx(),
+			);
+			expect(result.content[0].text).not.toContain("autoresearch モードが無効です");
+			expect(result.content[0].text).toContain("クエリ評価結果");
+			expect(result.details).toMatchObject({
+				decision: expect.any(String),
+			});
 		});
 
 		it("autoresearch_init succeeds after /autoresearch on", async () => {

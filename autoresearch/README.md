@@ -34,6 +34,7 @@ mekann/autoresearch は、この2つを組み合わせます。
 * [スラッシュコマンド](#スラッシュコマンド)
 * [API](#api)
 
+  * [autoresearch_evaluate_query](#autoresearch_evaluate_query)
   * [autoresearch_init](#autoresearch_init)
   * [autoresearch_run](#autoresearch_run)
   * [autoresearch_log](#autoresearch_log)
@@ -57,13 +58,14 @@ mekann/autoresearch は、この2つを組み合わせます。
 
 この最適化サイクルを自動化します。パフォーマンス改善、バンドルサイズ削減、テスト実行時間の短縮、長時間ベンチマークの評価などに特に有用です。
 
-**autoresearch は、次の3つのツールで構成されます。**
+**autoresearch は、次の4つのツールで構成されます。**
 
-| ツール                 | 役割                              |
-| ------------------- | ------------------------------- |
-| `autoresearch_init` | 実験セッションを初期化する。指標名・単位・改善方向を設定する  |
-| `autoresearch_run`  | コマンドを実行し、結果を測定する                |
-| `autoresearch_log`  | 結果を記録し、`keep` / `discard` を判断する |
+| ツール                            | 役割                                                                   |
+| ------------------------------ | -------------------------------------------------------------------- |
+| `autoresearch_evaluate_query` | ユーザの自然文クエリを評価し、実験契約に変換できるか判定する                                       |
+| `autoresearch_init`            | 実験セッションを初期化する。指標名・単位・改善方向を設定する                                       |
+| `autoresearch_run`             | コマンドを実行し、結果を測定する                                                     |
+| `autoresearch_log`             | 結果を記録し、`keep` / `discard` を判断する                                      |
 
 ---
 
@@ -149,6 +151,86 @@ while active:
 ---
 
 ## API
+
+### `autoresearch_evaluate_query`
+
+ユーザの自然文クエリを評価し、autoresearch の実験契約に変換できるかを判定します。autoresearch モードの有効/無効に関わらず利用できます。
+
+| パラメータ   | 必須 | 説明                 |
+| ------- | -- | ------------------ |
+| `query` | 必須 | ユーザの自然文クエリ         |
+
+**返り値:** `decision`（判定結果）、`scores`（スコア群）、`contractDraft`（契約ドラフト）、`blockingIssues`、`riskFlags`、`suggestedRewrite`、`clarifyingQuestions`
+
+#### decision の意味
+
+| decision              | 意味                                  |
+| --------------------- | ----------------------------------- |
+| `ready`               | 実験契約に変換可能。`autoresearch_init` に進める  |
+| `needs_metric_design` | 目的はあるが主指標が未定義。metric 候補の検討が必要       |
+| `needs_clarification` | 情報不足。benchmark command や scope の確認が必要 |
+| `needs_rewrite`       | クエリが広すぎるまたは曖昧。具体化が必要                |
+| `reject`              | 危険な操作を含むため実験不可                      |
+
+#### スコアの意味
+
+| スコア              | 意味                                      |
+| ----------------- | --------------------------------------- |
+| `readiness`       | 実験開始可能性（weakest-link: 他スコアの最小値）         |
+| `completeness`    | 必須フィールドの充足率                             |
+| `measurability`   | 指標化可能性（metric 名 + direction の有無）        |
+| `commandReadiness`| コマンドの準備状況（benchmark + checks）           |
+| `scopeClarity`    | 対象範囲の明確さ                                |
+| `safety`          | 安全性（risk flag なし = 1、あり = 0）            |
+| `reproducibility` | 再現可能性（benchmark + checks command の有無）  |
+
+#### 使用例
+
+**曖昧なクエリ:**
+
+```text
+ユーザ入力: prepush を速くしたい
+
+判定: needs_clarification
+推奨書き換え: prepush を速くしたい 主指標は `<benchmark command>` の実行時間秒数で、lower is better。挙動を変えず、既存 checks が成功する範囲で改善する。
+確認質問:
+1. benchmark command は何を実行しますか？（例: `npm run prepush`、`pnpm test`）
+```
+
+**明確なクエリ:**
+
+```text
+ユーザ入力: `npm run prepush` の実行時間を短縮したい。metric は duration_seconds、lower is better。
+
+判定: ready
+主指標: duration_seconds (lower)
+benchmark command: npm run prepush
+readiness: 0.70+
+```
+
+**広すぎるクエリ:**
+
+```text
+ユーザ入力: コード品質を上げたい
+
+判定: needs_rewrite
+推奨書き換え: 目的が広すぎるため、まず測定可能な proxy metric を選ぶ必要があります。
+候補: lint violation 数、型エラー数、重複行数、複雑度、test coverage、prepush 実行時間。
+```
+
+**危険なクエリ:**
+
+```text
+ユーザ入力: sudo rm -rf / して全部消してから最適化して
+
+判定: reject
+リスク:
+- ⚠️ 破壊的ファイル削除 (rm -rf)
+- ⚠️ 管理者権限の使用 (sudo)
+safety: 0
+```
+
+---
 
 ### `autoresearch_init`
 
