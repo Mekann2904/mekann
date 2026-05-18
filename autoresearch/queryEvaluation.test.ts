@@ -471,13 +471,26 @@ describe("evaluateQueryStatically", () => {
 		});
 
 		it("autoresearch_checks_sh for 既存 checks mention", () => {
-			const r = evaluateQueryStatically("`npm run test` の時間を短縮したい。既存 checks を使う。");
+			const r = evaluateQueryStatically("`npm run test` の時間を短縮したい。既存 checks を使る。");
 			expect(r.contractDraft.checksPolicy).toBe("autoresearch_checks_sh");
 		});
 
 		it("not_specified when no checks mention", () => {
 			const r = evaluateQueryStatically("`npm run test` を速くしたい");
 			expect(r.contractDraft.checksPolicy).toBe("not_specified");
+		});
+
+		it("checks-only query does not set benchmarkCommand", () => {
+			const r = evaluateQueryStatically("metric は coverage、higher is better。checks は `npm test`。");
+			expect(r.contractDraft.benchmarkCommand).toBeNull();
+			expect(r.contractDraft.checksCommand).toBe("npm test");
+			expect(r.contractDraft.checksPolicy).toBe("explicit_command");
+		});
+
+		it("unbackticked checks with は is extracted", () => {
+			const r = evaluateQueryStatically("`pnpm test` を速くしたい。checks は pnpm lint");
+			expect(r.contractDraft.checksCommand).toBeTruthy();
+			expect(r.contractDraft.checksPolicy).toBe("explicit_command");
 		});
 	});
 
@@ -502,6 +515,12 @@ describe("evaluateQueryStatically", () => {
 		it("extracts make target", () => {
 			const r = evaluateQueryStatically("`make test` を高速化したい");
 			expect(r.contractDraft.benchmarkCommand).toBe("make test");
+		});
+
+		it("stops at Japanese 句点 in unbackticked command", () => {
+			const r = evaluateQueryStatically("pnpm test、checks は npm run lint");
+			expect(r.contractDraft.benchmarkCommand).toBe("pnpm test"); // 読点で止まる
+			expect(r.contractDraft.checksCommand).toBe("npm run lint");
 		});
 	});
 
@@ -558,6 +577,38 @@ describe("evaluateQueryStatically", () => {
 			const r = evaluateQueryStatically("coverage を上げたい。高くしたい。");
 			// coverage has metric name and direction, initReady=true, !broad → ready_for_init
 			expect(r.decision).toBe("ready_for_init");
+		});
+	});
+
+	// ── Unit inference from metric name ──────────────────────────
+
+	describe("unit inference", () => {
+		it("infers seconds from duration_seconds metric name", () => {
+			const r = evaluateQueryStatically("prepush を速くしたい");
+			expect(r.contractDraft.primaryMetric.name).toBe("duration_seconds");
+			expect(r.contractDraft.primaryMetric.unit).toBe("seconds");
+		});
+
+		it("infers ms from metric name ending with _ms", () => {
+			const r = evaluateQueryStatically("主指標は total_ms で改善したい");
+			expect(r.contractDraft.primaryMetric.unit).toBe("ms");
+		});
+
+		it("infers % from coverage metric name", () => {
+			const r = evaluateQueryStatically("coverage を上げたい");
+			expect(r.contractDraft.primaryMetric.name).toBe("coverage");
+			expect(r.contractDraft.primaryMetric.unit).toBe("%");
+		});
+
+		it("infers count from error_count metric name", () => {
+			const r = evaluateQueryStatically("エラーを減らしたい");
+			expect(r.contractDraft.primaryMetric.name).toBe("error_count");
+			expect(r.contractDraft.primaryMetric.unit).toBe("count");
+		});
+
+		it("returns null unit for unknown metric name", () => {
+			const r = evaluateQueryStatically("主指標は custom_score で改善したい。higher is better。");
+			expect(r.contractDraft.primaryMetric.unit).toBeNull();
 		});
 	});
 
