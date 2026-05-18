@@ -3608,6 +3608,84 @@ describe("autoresearchExtension", () => {
 		});
 	});
 
+	describe("contract mode: approve clean worktree filtering", () => {
+		function createApproveFlowDir(prefix: string): string {
+			const testDir = createGitTestDir(prefix);
+			fs.writeFileSync(path.join(testDir, "autoresearch.sh"), "#!/usr/bin/env bash\necho METRIC duration_seconds=1\n");
+			childProcess.execFileSync("git", ["add", "autoresearch.sh"], { cwd: testDir, stdio: "ignore" });
+			childProcess.execFileSync("git", ["commit", "-m", "add benchmark script"], { cwd: testDir, stdio: "ignore" });
+			return testDir;
+		}
+
+		it("approves immediately after autoresearch_plan even when plan file is uncommitted", async () => {
+			const testDir = createApproveFlowDir("test-approve-plan-dirty");
+			const ctx = createMockCtx({ cwd: testDir });
+
+			const planTool = pi.tools.find((t) => t.name === "autoresearch_plan")!;
+			await planTool.execute("tc-plan", { query: "Reduce duration_seconds" }, undefined, undefined, ctx);
+
+			const approveTool = pi.tools.find((t) => t.name === "autoresearch_approve")!;
+			const result = await approveTool.execute("tc-approve", {}, undefined, undefined, ctx);
+			expect(result.content[0].text).toContain("[OK]");
+			expect(fs.existsSync(path.join(testDir, ".autoresearch", "current.lock.json"))).toBe(true);
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
+		it("rejects approve when src/** has uncommitted changes", async () => {
+			const testDir = createApproveFlowDir("test-approve-src-dirty");
+			const ctx = createMockCtx({ cwd: testDir });
+
+			const planTool = pi.tools.find((t) => t.name === "autoresearch_plan")!;
+			await planTool.execute("tc-plan", { query: "Reduce duration_seconds" }, undefined, undefined, ctx);
+			fs.mkdirSync(path.join(testDir, "src"), { recursive: true });
+			fs.writeFileSync(path.join(testDir, "src", "candidate.ts"), "export const x = 1;\n");
+
+			const approveTool = pi.tools.find((t) => t.name === "autoresearch_approve")!;
+			const result = await approveTool.execute("tc-approve", {}, undefined, undefined, ctx);
+			expect(result.content[0].text).toContain("[ERROR]");
+			expect(result.content[0].text).toContain("contract-relevant");
+			expect(result.content[0].text).toContain("src/");
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
+		it("allows approve when only .autoresearch/** is dirty", async () => {
+			const testDir = createApproveFlowDir("test-approve-ar-dirty");
+			const ctx = createMockCtx({ cwd: testDir });
+
+			const planTool = pi.tools.find((t) => t.name === "autoresearch_plan")!;
+			await planTool.execute("tc-plan", { query: "Reduce duration_seconds" }, undefined, undefined, ctx);
+			childProcess.execFileSync("git", ["add", "autoresearch.plan.md"], { cwd: testDir, stdio: "ignore" });
+			childProcess.execFileSync("git", ["commit", "-m", "add plan"], { cwd: testDir, stdio: "ignore" });
+			fs.mkdirSync(path.join(testDir, ".autoresearch"), { recursive: true });
+			fs.writeFileSync(path.join(testDir, ".autoresearch", "scratch.json"), "{}\n");
+
+			const approveTool = pi.tools.find((t) => t.name === "autoresearch_approve")!;
+			const result = await approveTool.execute("tc-approve", {}, undefined, undefined, ctx);
+			expect(result.content[0].text).toContain("[OK]");
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
+		it("allows approve when only autoresearch.plan.md is modified", async () => {
+			const testDir = createApproveFlowDir("test-approve-plan-modified");
+			const ctx = createMockCtx({ cwd: testDir });
+
+			const planTool = pi.tools.find((t) => t.name === "autoresearch_plan")!;
+			await planTool.execute("tc-plan", { query: "Reduce duration_seconds" }, undefined, undefined, ctx);
+			childProcess.execFileSync("git", ["add", "autoresearch.plan.md"], { cwd: testDir, stdio: "ignore" });
+			childProcess.execFileSync("git", ["commit", "-m", "add plan"], { cwd: testDir, stdio: "ignore" });
+			fs.appendFileSync(path.join(testDir, "autoresearch.plan.md"), "\n<!-- discussion note -->\n");
+
+			const approveTool = pi.tools.find((t) => t.name === "autoresearch_approve")!;
+			const result = await approveTool.execute("tc-approve", {}, undefined, undefined, ctx);
+			expect(result.content[0].text).toContain("[OK]");
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+	});
+
 	describe("contract mode: approve rejects bad baseline", () => {
 		it("rejects approve when benchmark exits non-zero", async () => {
 			const testDir = createGitTestDir("test-approve-fail");

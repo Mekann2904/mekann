@@ -1414,6 +1414,14 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		return null;
 	}
 
+	function isWorkingTreeCleanForContract(cwd: string): boolean {
+		return filterInternalPaths(getChangedFiles(cwd)).length === 0;
+	}
+
+	function getContractRelevantChangedFiles(cwd: string): string[] {
+		return filterInternalPaths(getChangedFiles(cwd));
+	}
+
 	function aggregateMeasurementsFromValues(
 		values: number[],
 		method: "median" | "mean" | "min" | "max",
@@ -1718,10 +1726,11 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					details: {},
 				};
 			}
-			if (contract.scope.requireCleanGitWorktree && !isWorkingTreeClean(ctx.cwd)) {
+			if (contract.scope.requireCleanGitWorktree && !isWorkingTreeCleanForContract(ctx.cwd)) {
+				const relevantChangedFiles = getContractRelevantChangedFiles(ctx.cwd);
 				return {
-					content: [{ type: "text" as const, text: `[ERROR] working tree に未コミット変更があります。contract で requireCleanGitWorktree=true が指定されています。\n先に commit または stash してください。` }],
-					details: {},
+					content: [{ type: "text" as const, text: `[ERROR] working tree に contract-relevant な未コミット変更があります。contract で requireCleanGitWorktree=true が指定されています。\n対象: ${relevantChangedFiles.join(", ")}\n先に commit または stash してください。` }],
+					details: { changedFiles: relevantChangedFiles },
 				};
 			}
 

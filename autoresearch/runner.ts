@@ -658,7 +658,10 @@ export function getChangedFiles(cwd: string): string[] {
 			{ cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] },
 		).trim();
 		if (!result) return [];
-		return result.split("\n").map((line: string) => line.slice(3)).filter(Boolean);
+		return result.split("\n").map((line: string) => {
+			const file = line.length >= 3 && line[2] === " " ? line.slice(3) : line.slice(2).trimStart();
+			return file.includes(" -> ") ? file.split(" -> ").pop()! : file;
+		}).filter(Boolean);
 	} catch {
 		return [];
 	}

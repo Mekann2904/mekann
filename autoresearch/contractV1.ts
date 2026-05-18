@@ -221,6 +221,13 @@ export function validateContractV1(value: unknown): ContractV1ValidationResult {
 			);
 		}
 
+		if (contract.acceptance.mode === "better_than_best") {
+			warnings.push(
+				"acceptance.mode=better_than_best is experimental in contract v1/P1. " +
+				"Prefer better_than_baseline for P0 contract mode unless best-metric ledger recovery is acceptable.",
+			);
+		}
+
 		// Check command argv safety
 		const allCommands = [
 			contract.evaluation.benchmark.command,
