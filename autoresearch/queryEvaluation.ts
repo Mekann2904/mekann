@@ -223,6 +223,17 @@ interface MeasurementInfo {
   metricExtractionReady: boolean;
 }
 
+// ── Unit inference from metric name ───────────────────────────
+
+function inferUnitFromMetricName(name: string | null): string | null {
+  if (!name) return null;
+  if (/(duration|latency|time|seconds|sec)/i.test(name)) return "seconds";
+  if (/\bms\b|_ms$/i.test(name)) return "ms";
+  if (/(coverage|rate|ratio|accuracy|percent)/i.test(name)) return "%";
+  if (/(count|errors?|failures?|violations?)/i.test(name)) return "count";
+  return null;
+}
+
 function sourceFromMeasurementMethod(
   method: MeasurementMethod
 ): "stdout" | "file" | "test-report" | "custom" | "unknown" {
@@ -293,12 +304,12 @@ function extractCommands(
   const backtickCommands = [...query.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
 
   const commandPatterns = [
-    /((?:npm\s+run|pnpm|yarn|bun)\s+\S+)/g,
+    /((?:npm\s+run|pnpm|yarn|bun)\s+[^\s,，。、]+)/g,
     /((?:pytest)\s+[^\s,，。、]+)/g,
-    /((?:cargo\s+\S+))/g,
+    /((?:cargo)\s+[^\s,，。、]+)/g,
     /((?:go\s+test)\s*[^\s,，。、]*)/g,
-    /((?:make)\s+\S+)/g,
-    /(\.\/\S+\.sh)/g,
+    /((?:make)\s+[^\s,，。、]+)/g,
+    /(\.\/[^\s,，。、]+\.sh)/g,
   ];
 
   const additionalCommands: string[] = [];
@@ -312,7 +323,7 @@ function extractCommands(
   // checksCommand 用: check/checks/検証/成功すること に続く command
   const checksPatterns = [
     /(?:check|checks|検証|成功すること)[\sは:：]*`([^`]+)`/gi,
-    /(?:check|checks|検証|成功すること)\s+(npm\s+run\s+\S+|pnpm\s+\S+|yarn\s+\S+|pytest\s+\S+|cargo\s+\S+|go\s+test\s*\S*|make\s+\S+|\.\/\S+\.sh)/gi,
+    /(?:check|checks|検証|成功すること)[\sは:：]+(npm\s+run\s+[^\s,，。、]+|pnpm\s+[^\s,，。、]+|yarn\s+[^\s,，。、]+|pytest\s+[^\s,，。、]+|cargo\s+[^\s,，。、]+|go\s+test\s*[^\s,，。、]*|make\s+[^\s,，。、]+|\.\/[^\s,，。、]+\.sh)/gi,
   ];
 
   const checksCandidates: string[] = [];
@@ -333,9 +344,12 @@ function extractCommands(
     const nonChecksBacktick = backtickCommands.filter(
       (c) => !checksCandidates.includes(c)
     );
-    benchmarkCommand = nonChecksBacktick[0] ?? backtickCommands[0];
+    benchmarkCommand = nonChecksBacktick[0] ?? null;
   } else if (uniqueCommands.length > 0) {
-    benchmarkCommand = uniqueCommands[0];
+    const nonChecksCommands = uniqueCommands.filter(
+      (c) => !checksCandidates.includes(c)
+    );
+    benchmarkCommand = nonChecksCommands[0] ?? null;
   }
 
   if (checksCandidates.length > 0) {
@@ -833,7 +847,7 @@ export function evaluateQueryStatically(query: string): QueryEvaluation {
     targetScope: scope,
     primaryMetric: {
       name: metricInfo.name,
-      unit: metricInfo.unit,
+      unit: metricInfo.unit ?? inferUnitFromMetricName(metricInfo.name),
       direction: metricInfo.direction,
       source: sourceFromMeasurementMethod(measurementInfo.measurementMethod),
       measurementMethod: measurementInfo.measurementMethod,
