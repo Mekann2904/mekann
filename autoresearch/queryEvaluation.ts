@@ -141,21 +141,27 @@ function detectScope(query: string): string[] {
 function inferDirectionFromMetricName(name: string | null): MetricDirection {
   if (!name) return "unknown";
 
-  // higher 系: success / pass / coverage / score 等
-  if (/(success_count|pass_count|passed_count|successes|passes)/i.test(name)) {
-    return "higher";
+  // lower 系 (negative): error_rate, failure_rate 等を先に判定
+  if (/(error_rate|failure_rate|crash_rate|flaky_rate|violation_rate|defect_rate|bug_rate)/i.test(name)) {
+    return "lower";
   }
-  if (/(coverage|accuracy|score|rate|ratio|success|pass|win)/i.test(name)) {
-    return "higher";
+  if (/(error_count|failure_count|violation_count|crash_count|flaky_count|defect_count|bug_count|errors?|failures?|violations?)/i.test(name)) {
+    return "lower";
   }
-
-  // lower 系: time / cost / error 等
-  if (/(duration|latency|time|seconds|sec|_ms$|\bms\b|cost|memory|size|error_count|failure_count|violation_count|errors?|failures?|violations?)/i.test(name)) {
+  if (/(duration|latency|time|seconds|sec|_ms$|\bms\b|cost|memory|size)/i.test(name)) {
     return "lower";
   }
 
-  // count 単体は方向不明
-  if (/count/i.test(name)) {
+  // higher 系 (positive): success / pass / coverage / score 等
+  if (/(success_count|pass_count|passed_count|successes|passes)/i.test(name)) {
+    return "higher";
+  }
+  if (/(success_rate|pass_rate|win_rate|coverage|accuracy|score)/i.test(name)) {
+    return "higher";
+  }
+
+  // rate / ratio / count 単体は方向不明（ドメイン依存）
+  if (/(rate|ratio|count)/i.test(name)) {
     return "unknown";
   }
 
@@ -657,13 +663,29 @@ function buildAmbiguityFlags(
 
 // ── Suggested rewrite ─────────────────────────────────────────
 
+// ── Missing run requirements ───────────────────────────────
+
+function describeMissingRunRequirements(
+  benchmarkCommand: string | null,
+  metricExtractionReady: boolean,
+  checksPolicy: ChecksPolicy
+): string[] {
+  const items: string[] = [];
+  if (!benchmarkCommand) items.push("benchmark command");
+  if (!metricExtractionReady) items.push("metric extraction rule");
+  if (checksPolicy === "not_specified") items.push("checks policy");
+  return items;
+}
+
 function buildSuggestedRewrite(
   decision: QueryEvaluationDecision,
   broad: boolean,
   metricName: string | null,
   metricDirection: MetricDirection,
   benchmarkCommand: string | null,
-  measurementMethod: MeasurementMethod
+  measurementMethod: MeasurementMethod,
+  metricExtractionReady: boolean,
+  checksPolicy: ChecksPolicy
 ): string {
   if (decision === "reject") {
     return "安全上の理由により、このクエリは実験として実行できません。危険な操作を削除した上で、安全な代替手段を検討してください。";
@@ -673,8 +695,11 @@ function buildSuggestedRewrite(
   }
 
   switch (decision) {
-    case "ready_for_init":
-      return `init は可能ですが、実行には benchmark command と checks 方針が必要です。\n例: \`<command>\` の実行時間を短縮したい。metric は ${metricName ?? "duration_seconds"}、${metricDirection === "higher" ? "higher" : "lower"} is better。既存 checks を使う。`;
+    case "ready_for_init": {
+      const missing = describeMissingRunRequirements(benchmarkCommand, metricExtractionReady, checksPolicy);
+      const missingText = missing.length > 0 ? missing.join("、") : "追加情報";
+      return `init は可能ですが、run 前に ${missingText} が必要です。\n例: \`<command>\` の実行時間を短縮したい。metric は ${metricName ?? "duration_seconds"}、${metricDirection === "higher" ? "higher" : "lower"} is better。既存 checks を使う。`;
+    }
 
     case "needs_command": {
       const metric = metricName ?? "duration_seconds";
@@ -938,7 +963,8 @@ export function evaluateQueryStatically(query: string): QueryEvaluation {
   // ── Suggested rewrite ──
   const suggestedRewrite = buildSuggestedRewrite(
     decision, effectiveBroad, metricInfo.name, metricInfo.direction,
-    benchmarkCommand, measurementInfo.measurementMethod
+    benchmarkCommand, measurementInfo.measurementMethod,
+    measurementInfo.metricExtractionReady, checksPolicy
   );
 
   // ── Clarifying questions ──

@@ -667,6 +667,67 @@ describe("evaluateQueryStatically", () => {
 		});
 	});
 
+	// ── Negative rate semantics ────────────────────────────────────
+
+	describe("negative rate direction", () => {
+		it("error_rate direction is lower", () => {
+			const r = evaluateQueryStatically("主指標は error_rate で改善したい");
+			expect(r.contractDraft.primaryMetric.direction).toBe("lower");
+		});
+
+		it("failure_rate direction is lower", () => {
+			const r = evaluateQueryStatically("主指標は failure_rate で改善したい");
+			expect(r.contractDraft.primaryMetric.direction).toBe("lower");
+		});
+
+		it("crash_rate direction is lower", () => {
+			const r = evaluateQueryStatically("主指標は crash_rate で改善したい");
+			expect(r.contractDraft.primaryMetric.direction).toBe("lower");
+		});
+
+		it("violation_rate direction is lower", () => {
+			const r = evaluateQueryStatically("主指標は violation_rate で改善したい");
+			expect(r.contractDraft.primaryMetric.direction).toBe("lower");
+		});
+
+		it("success_rate direction is higher", () => {
+			const r = evaluateQueryStatically("主指標は success_rate で改善したい");
+			expect(r.contractDraft.primaryMetric.direction).toBe("higher");
+		});
+
+		it("pass_rate direction is higher", () => {
+			const r = evaluateQueryStatically("主指標は pass_rate で改善したい");
+			expect(r.contractDraft.primaryMetric.direction).toBe("higher");
+		});
+
+		it("generic ratio direction is unknown", () => {
+			const r = evaluateQueryStatically("主指標は request_ratio で改善したい");
+			expect(r.contractDraft.primaryMetric.direction).toBe("unknown");
+		});
+
+		it("generic rate direction is unknown", () => {
+			const r = evaluateQueryStatically("主指標は conversion_rate で改善したい");
+			expect(r.contractDraft.primaryMetric.direction).toBe("unknown");
+		});
+	});
+
+	// ── Dynamic suggestedRewrite ────────────────────────────────────
+
+	describe("dynamic suggestedRewrite for ready_for_init", () => {
+		it("lists all missing requirements", () => {
+			const r = evaluateQueryStatically("主指標は p95_latency_ms で改善したい");
+			expect(r.suggestedRewrite).toContain("benchmark command");
+			expect(r.suggestedRewrite).toContain("metric extraction rule");
+			expect(r.suggestedRewrite).toContain("checks policy");
+		});
+
+		it("omits satisfied requirements", () => {
+			const r = evaluateQueryStatically("`npm run bench` を速くしたい。既存 checks を使う。");
+			// has benchmark + checks but no metric extraction needed (wall-clock)
+			expect(r.suggestedRewrite).not.toContain("metric extraction rule");
+		});
+	});
+
 	// ── Unit inference from metric name ──────────────────────────
 
 	describe("unit inference", () => {
