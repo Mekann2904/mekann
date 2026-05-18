@@ -1,0 +1,284 @@
+/**
+ * autoresearch/contractEvaluator.ts — Contract mode の acceptance evaluator。
+ *
+ * agent ではなく contract evaluator が keep/discard/pause を決める。
+ * manual acceptance は使用不可。
+ */
+
+import type { AutoresearchContractV1, BaselineNoiseSummary, LockFile } from "./contractV1.js";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export type Decision = "keep" | "discard" | "pause";
+
+export interface EvaluatorInput {
+	/** The contract being evaluated against */
+	contract: AutoresearchContractV1;
+	/** Lock file from approval */
+	lock: LockFile;
+	/** Current best metric (null if no previous keep) */
+	bestMetric: number | null;
+	/** Candidate metric value */
+	candidateMetric: number | null;
+	/** Whether benchmark succeeded */
+	benchmarkSucceeded: boolean;
+	/** Whether benchmark timed out */
+	benchmarkTimedOut: boolean;
+	/** Check results: name → passed */
+	checkResults: Map<string, boolean>;
+	/** Changed files in working tree */
+	changedFiles: string[];
+	/** Whether immutable read set hash matches lock */
+	immutableReadSetHashMatches: boolean;
+	/** Whether contract hash matches lock */
+	contractHashMatches: boolean;
+	/** All metric measurements from repeats (for aggregate) */
+	allMeasurements: number[];
+}
+
+export interface EvaluatorResult {
+	decision: Decision;
+	reason: string;
+	representativeMetric: number | null;
+	improvement: number | null;
+	improvementRate: number | null;
+	reference: number | null;
+	details: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// Evaluator
+// ---------------------------------------------------------------------------
+
+/**
+ * Contract evaluator: determine keep/discard/pause based on contract rules.
+ *
+ * Evaluation priority (first hit wins):
+ * 1. Contract hash mismatch → pause
+ * 2. Immutable read set hash mismatch → pause
+ * 3. Forbidden write paths violated → pause
+ * 4. Benchmark failure → discard/pause per failurePolicy
+ * 5. Required checks failed → discard/pause per failurePolicy
+ * 6. Metric missing → discard/pause per failurePolicy
+ * 7. Acceptance threshold check → keep/discard
+ */
+export function evaluateContract(input: EvaluatorInput): EvaluatorResult {
+	const { contract, lock } = input;
+
+	// 1. Contract hash mismatch
+	if (!input.contractHashMatches) {
+		return {
+			decision: "pause",
+			reason: "contract hash does not match lock file. Contract was modified after approval.",
+			representativeMetric: null,
+			improvement: null,
+			improvementRate: null,
+			reference: null,
+			details: { expectedHash: lock.contractHash },
+		};
+	}
+
+	// 2. Immutable read set hash mismatch
+	if (!input.immutableReadSetHashMatches) {
+		if (contract.acceptance.rejectIfImmutableReadPathChanged) {
+			return {
+				decision: "pause",
+				reason: "immutableReadPaths hash changed since approval. Read-only files were modified.",
+				representativeMetric: null,
+				improvement: null,
+				improvementRate: null,
+				reference: null,
+				details: {},
+			};
+		}
+	}
+
+	// 3. Forbidden write paths
+	const forbiddenViolations = input.changedFiles.filter((f) =>
+		contract.scope.forbiddenWritePaths.some((p) => matchesPattern(p, f)),
+	);
+	if (forbiddenViolations.length > 0) {
+		if (contract.acceptance.rejectIfForbiddenFilesChanged) {
+			return {
+				decision: "pause",
+				reason: `forbiddenWritePaths matching files were changed: ${forbiddenViolations.join(", ")}`,
+				representativeMetric: null,
+				improvement: null,
+				improvementRate: null,
+				reference: null,
+				details: { forbiddenViolations },
+			};
+		}
+	}
+
+	// 4. Benchmark failure
+	if (!input.benchmarkSucceeded || input.benchmarkTimedOut) {
+		const policy = input.benchmarkTimedOut
+			? contract.failurePolicy.onBenchmarkFailure
+			: contract.failurePolicy.onBenchmarkFailure;
+		return {
+			decision: policy,
+			reason: input.benchmarkTimedOut
+				? "benchmark timed out"
+				: `benchmark failed`,
+			representativeMetric: null,
+			improvement: null,
+			improvementRate: null,
+			reference: null,
+			details: { benchmarkSucceeded: input.benchmarkSucceeded, benchmarkTimedOut: input.benchmarkTimedOut },
+		};
+	}
+
+	// 5. Required checks
+	const requiredChecks = contract.evaluation.checks.filter((c) => c.required);
+	const failedRequiredChecks: string[] = [];
+	for (const check of requiredChecks) {
+		if (input.checkResults.get(check.name) === false) {
+			failedRequiredChecks.push(check.name);
+		}
+	}
+	if (failedRequiredChecks.length > 0 && contract.acceptance.requireAllChecksPass) {
+		return {
+			decision: contract.failurePolicy.onCheckFailure,
+			reason: `Required checks failed: ${failedRequiredChecks.join(", ")}`,
+			representativeMetric: input.candidateMetric,
+			improvement: null,
+			improvementRate: null,
+			reference: null,
+			details: { failedRequiredChecks },
+		};
+	}
+
+	// 6. Metric missing
+	if (input.candidateMetric === null || input.allMeasurements.length === 0) {
+		if (contract.acceptance.rejectIfMetricMissing) {
+			return {
+				decision: contract.failurePolicy.onMetricMissing,
+				reason: "Primary metric not found. Ensure stdout contains METRIC <name>=<number>.",
+				representativeMetric: null,
+				improvement: null,
+				improvementRate: null,
+				reference: null,
+				details: {},
+			};
+		}
+	}
+
+	// 7. Compute aggregate metric
+	const aggregateMethod = contract.evaluation.benchmark.aggregate;
+	const representative = aggregate( input.allMeasurements, aggregateMethod);
+
+	// 8. Determine reference value
+	let reference: number;
+	if (contract.acceptance.mode === "better_than_baseline") {
+		reference = lock.baseline.primaryMetricValue;
+	} else {
+		// better_than_best
+		reference = input.bestMetric ?? lock.baseline.primaryMetricValue;
+	}
+
+	// 9. Compute required improvement
+	let requiredImprovement = contract.acceptance.minRelativeImprovement;
+	if (contract.acceptance.requireImprovementAboveNoiseFloor) {
+		const noiseRange = lock.baseline.noise.relativeRange;
+		requiredImprovement = Math.max(requiredImprovement, noiseRange);
+	}
+
+	// 10. Check improvement
+	const direction = contract.evaluation.primaryMetric.direction;
+	const isImprovement =
+		direction === "lower"
+			? representative < reference
+			: representative > reference;
+
+	if (!isImprovement) {
+		return {
+			decision: "discard",
+			reason: `Metric regressed or unchanged: ${representative} vs reference ${reference} (direction=${direction})`,
+			representativeMetric: representative,
+			improvement: null,
+			improvementRate: null,
+			reference,
+			details: {},
+		};
+	}
+
+	// Check if improvement exceeds threshold
+	const improvementAbs = Math.abs(representative - reference);
+	const improvementRate = reference === 0
+		? (improvementAbs > 0 ? Infinity : 0)
+		: improvementAbs / Math.abs(reference);
+
+	if (improvementRate < requiredImprovement) {
+		return {
+			decision: "discard",
+			reason: `Improvement rate ${(improvementRate * 100).toFixed(2)}% is below minimum threshold ${(requiredImprovement * 100).toFixed(2)}% . This may be noise.`,
+			representativeMetric: representative,
+			improvement: direction === "lower" ? reference - representative : representative - reference,
+			improvementRate,
+			reference,
+			details: { requiredImprovement },
+		};
+	}
+
+	return {
+		decision: "keep",
+		reason: `Metric improved: ${representative} vs reference ${reference} (Improvement rate ${(improvementRate * 100).toFixed(2)}%)`,
+		representativeMetric: representative,
+		improvement: direction === "lower" ? reference - representative : representative - reference,
+		improvementRate,
+		reference,
+		details: { requiredImprovement, aggregateMethod },
+	};
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function aggregate(values: number[], method: "median" | "mean" | "min" | "max"): number {
+	if (values.length === 0) return 0;
+	if (values.length === 1) return values[0];
+	const sorted = [...values].sort((a, b) => a - b);
+	switch (method) {
+		case "median": {
+			const mid = Math.floor(sorted.length / 2);
+			return sorted.length % 2 === 0
+				? (sorted[mid - 1] + sorted[mid]) / 2
+				: sorted[mid];
+		}
+		case "mean":
+			return values.reduce((s, v) => s + v, 0) / values.length;
+		case "min":
+			return sorted[0];
+		case "max":
+			return sorted[sorted.length - 1];
+	}
+}
+
+function matchesPattern(pattern: string, filePath: string): boolean {
+	const normPattern = pattern.replace(/\\/g, "/");
+	const normFile = filePath.replace(/\\/g, "/");
+
+	if (normPattern === normFile) return true;
+	if (normPattern.endsWith("/")) {
+		return normFile.startsWith(normPattern) || normFile === normPattern.slice(0, -1);
+	}
+	if (normPattern.includes("*") || normPattern.includes("?")) {
+		let regexStr = normPattern
+			.replace(/[.+^${}()|[\]\\]/g, "\\$&")
+			.replace(/\*\*/g, "<<DOUBLESTAR>>")
+			.replace(/\*/g, "[^/]*")
+			.replace(/<<DOUBLESTAR>>/g, ".*")
+			.replace(/\?/g, "[^/]");
+		regexStr = "^" + regexStr + "$";
+		try {
+			return new RegExp(regexStr).test(normFile);
+		} catch {
+			return false;
+		}
+	}
+	return false;
+}

@@ -652,3 +652,85 @@ describe("writeChecksArtifacts: edge cases", () => {
 		expect(manifest.checks.passed).toBe(true);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// runArgvCommand (contract mode)
+// ---------------------------------------------------------------------------
+
+describe("runArgvCommand", () => {
+	it("executes argv command without shell interpolation", async () => {
+		const { runArgvCommand } = await import("./runner.js");
+		const result = await runArgvCommand(
+			{ argv: ["echo", "METRIC test_arg=42"], cwd: "." },
+			5000,
+		);
+		expect(result.passed).toBe(true);
+		expect(result.exitCode).toBe(0);
+		expect(result.parsedMetrics).not.toBeNull();
+		expect(result.parsedMetrics!["test_arg"]).toBe(42);
+	});
+
+	it("parses METRIC lines from stdout", async () => {
+		const { runArgvCommand } = await import("./runner.js");
+		const result = await runArgvCommand(
+			{ argv: ["printf", "METRIC duration=1234.5\nMETRIC count=10"], cwd: "." },
+			5000,
+		);
+		expect(result.parsedMetrics).not.toBeNull();
+		expect(result.parsedMetrics!["duration"]).toBe(1234.5);
+		expect(result.parsedMetrics!["count"]).toBe(10);
+	});
+
+	it("timeout still works", async () => {
+		const { runArgvCommand } = await import("./runner.js");
+		const result = await runArgvCommand(
+			{ argv: ["sleep", "10"], cwd: "." },
+			1000, // 1 second timeout
+		);
+		expect(result.timedOut).toBe(true);
+	}, 10000);
+
+	it("writes stdout/stderr artifacts when logDir is provided", async () => {
+		const { runArgvCommand } = await import("./runner.js");
+		const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "argv-test-"));
+		try {
+			const result = await runArgvCommand(
+				{ argv: ["echo", "hello argv"], cwd: "." },
+				5000,
+				undefined,
+				logDir,
+			);
+			expect(result.logFilesWritten).toBe(true);
+			expect(fs.existsSync(path.join(logDir, "stdout.log"))).toBe(true);
+			expect(fs.readFileSync(path.join(logDir, "stdout.log"), "utf8")).toContain("hello argv");
+		} finally {
+			fs.rmSync(logDir, { recursive: true, force: true });
+		}
+	});
+
+	it("returns exit code correctly", async () => {
+		const { runArgvCommand } = await import("./runner.js");
+		const result = await runArgvCommand(
+			{ argv: ["bash", "-c", "exit 1"], cwd: "." },
+			5000,
+		);
+		expect(result.exitCode).toBe(1);
+		expect(result.passed).toBe(false);
+	});
+
+	it("respects cwd parameter", async () => {
+		const { runArgvCommand } = await import("./runner.js");
+		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "argv-cwd-"));
+		try {
+			const result = await runArgvCommand(
+				{ argv: ["pwd"], cwd: tmpDir },
+				5000,
+			);
+			expect(result.passed).toBe(true);
+			const resolvedTmpDir = fs.realpathSync(tmpDir);
+			expect(result.stdout.trim()).toBe(resolvedTmpDir);
+		} finally {
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+});

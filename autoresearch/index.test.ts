@@ -22,6 +22,16 @@ vi.mock("@sinclair/typebox", () => ({
 		Number: (opts?: unknown) => opts ?? {},
 		Boolean: (opts?: unknown) => opts ?? {},
 		Optional: (schema: unknown) => schema,
+		Array: (schema: unknown) => schema,
+		Literal: (value: unknown) => value,
+		Union: (schemas: unknown) => schemas,
+		Record: (key: unknown, value: unknown) => value,
+	},
+}));
+vi.mock("@sinclair/typebox/value", () => ({
+	Value: {
+		Errors: () => [],
+		Check: () => true,
 	},
 }));
 
@@ -179,13 +189,16 @@ describe("autoresearchExtension", () => {
 
 	// ── Registration ────────────────────────────────────────────
 
-	it("registers 4 tools with correct names", () => {
-		expect(pi.registerTool).toHaveBeenCalledTimes(4);
+	it("registers 7 tools with correct names", () => {
+		expect(pi.registerTool).toHaveBeenCalledTimes(7);
 		expect(pi.tools.map((t) => t.name)).toEqual([
 			"autoresearch_evaluate_query",
 			"autoresearch_init",
 			"autoresearch_run",
 			"autoresearch_log",
+			"autoresearch_plan",
+			"autoresearch_approve",
+			"autoresearch_run_contract",
 		]);
 	});
 

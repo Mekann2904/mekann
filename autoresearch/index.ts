@@ -30,6 +30,36 @@ import {
 	type PointerEntry,
 } from "./state.js";
 import {
+	validateContractV1,
+	extractContractBlockFromPlan,
+	parseJsonc,
+	canonicalJsonPretty,
+	canonicalJsonStringify,
+	computeContractHash,
+	computeImmutableReadSetHash,
+	collectEnvironmentFingerprint,
+	computeBaselineNoise,
+	writeCurrentContract,
+	readCurrentContract,
+	writeLockFile,
+	readLockFile,
+	currentContractPath,
+	currentLockPath,
+	autoresearchDir,
+	planPath,
+	ensureAutoresearchDir,
+	appendEvent,
+	appendDecision,
+	validateWritePaths,
+	matchesAnyPattern,
+	type AutoresearchContractV1,
+	type LockFile,
+	type ContractV1ValidationResult,
+	type ContractEvent,
+	type DecisionEntry,
+} from "./contractV1.js";
+import { evaluateContract, type EvaluatorInput, type Decision } from "./contractEvaluator.js";
+import {
 	contractFilePath,
 	contractExists,
 	readContract,
@@ -55,6 +85,7 @@ import {
 import { evaluateAcceptance, type AcceptanceInput } from "./acceptance.js";
 import {
 	runCommand,
+	runArgvCommand,
 	runChecks,
 	type ChecksResult,
 	type RunResult,
@@ -1352,6 +1383,646 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					ledgerErrors: ledgerErrors.length > 0 ? ledgerErrors : undefined,
 				},
 			};
+		},
+	});
+
+	// ═══════════════════════════════════════════════════════════════
+	// Helper functions for contract mode tools
+	// ═══════════════════════════════════════════════════════════════
+
+	function resolvePrimaryMetricFromRun(
+		primaryMetric: AutoresearchContractV1["evaluation"]["primaryMetric"],
+		runResult: { durationSeconds: number; parsedMetrics: Record<string, number> | null },
+	): number | null {
+		if (primaryMetric.source.type === "metric_line") {
+			const parsed = runResult.parsedMetrics?.[primaryMetric.name];
+			if (typeof parsed === "number" && Number.isFinite(parsed)) {
+				return parsed;
+			}
+			if (primaryMetric.source.fallback === "wall_clock") {
+				return runResult.durationSeconds;
+			}
+			return null;
+		} else if (primaryMetric.source.type === "wall_clock") {
+			return runResult.durationSeconds;
+		}
+		return null;
+	}
+
+	function aggregateMeasurementsFromValues(
+		values: number[],
+		method: "median" | "mean" | "min" | "max",
+	): number {
+		if (values.length === 0) return 0;
+		if (values.length === 1) return values[0];
+		const sorted = [...values].sort((a, b) => a - b);
+		switch (method) {
+			case "median": {
+				const mid = Math.floor(sorted.length / 2);
+				return sorted.length % 2 === 0
+					? (sorted[mid - 1] + sorted[mid]) / 2
+					: sorted[mid];
+			}
+			case "mean":
+				return values.reduce((s, v) => s + v, 0) / values.length;
+			case "min":
+				return sorted[0];
+			case "max":
+				return sorted[sorted.length - 1];
+		}
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// Tool: autoresearch_plan
+	// ═══════════════════════════════════════════════════════════════
+
+	pi.registerTool({
+		name: "autoresearch_plan",
+		label: "autoresearch plan",
+		description:
+			"自然文 query から autoresearch.plan.md の draft を生成する。" +
+			"plan は Markdown + contract block 形式。baseline 測定はしない。repo は read-only 調査のみ。",
+		promptSnippet: "実験 plan の draft を生成",
+		promptGuidelines: [
+			"plan は人間と agent が議論するための editable document です。",
+			"contract block の言語指定は `autoresearch-contract jsonc` にしてください。",
+		],
+		parameters: Type.Object({
+			query: Type.String({ description: "ユーザの自然文クエリ" }),
+		}),
+
+		async execute(_tc, params, _sig, _ou, ctx) {
+			// Use queryEvaluation to help draft the plan
+			const evaluation = evaluateQueryStatically(params.query);
+
+			const m = evaluation.contractDraft.primaryMetric;
+			const metricName = m.name ?? "duration_seconds";
+			const metricDirection = m.direction === "higher" ? "higher" : "lower";
+			const metricSource = m.measurementMethod === "wall_clock" ? "wall_clock" : "metric_line";
+			const benchmarkCommand = evaluation.contractDraft.benchmarkCommand ?? "./autoresearch.sh";
+
+			// Build contract JSONC
+			const contractDraft: AutoresearchContractV1 = {
+				schemaVersion: "autoresearch/v1",
+				objective: {
+					summary: evaluation.contractDraft.objective || params.query,
+					successDefinition: `${metricName} improves in ${metricDirection} direction`,
+				},
+				scope: {
+					allowedWritePaths: [],
+					forbiddenWritePaths: [],
+					immutableReadPaths: [],
+					requireGit: true,
+					requireCleanGitWorktree: true,
+				},
+				evaluation: {
+					benchmark: {
+						command: {
+							argv: ["bash", "-c", benchmarkCommand],
+							cwd: ".",
+						},
+						timeoutSeconds: 600,
+						repeats: 3,
+						aggregate: "median",
+					},
+					primaryMetric: {
+						name: metricName,
+						direction: metricDirection,
+						source: metricSource === "wall_clock"
+							? { type: "wall_clock" }
+							: { type: "metric_line", format: "METRIC <name>=<number>", fallback: "wall_clock" },
+					},
+					checks: evaluation.contractDraft.checksCommand
+						? [{
+							name: "default-checks",
+							command: { argv: ["bash", "-c", evaluation.contractDraft.checksCommand], cwd: "." },
+							timeoutSeconds: 300,
+							required: true,
+						}]
+						: [],
+				},
+				acceptance: {
+					mode: "better_than_baseline",
+					minRelativeImprovement: 0.02,
+					requireImprovementAboveNoiseFloor: true,
+					requireAllChecksPass: true,
+					rejectIfMetricMissing: true,
+					rejectIfImmutableReadPathChanged: true,
+					rejectIfForbiddenFilesChanged: true,
+					rejectIfBenchmarkChanged: true,
+				},
+				loop: {
+					maxIterations: 50,
+					maxRuntimeMinutes: 120,
+					maxConsecutiveNoImprovement: 3,
+					maxConsecutiveFailures: 2,
+				},
+				failurePolicy: {
+					onBenchmarkFailure: "discard",
+					onCheckFailure: "discard",
+					onMetricMissing: "discard",
+					onContractViolation: "pause",
+					onRevertFailure: "pause",
+				},
+			};
+
+			// Build plan markdown
+			const md = [
+				`# Autoresearch Plan`,
+				``,
+				`## User Query`,
+				``,
+				params.query,
+				``,
+				`## Interpreted Objective`,
+				``,
+				contractDraft.objective.summary,
+				``,
+				`## Assumptions`,
+				``,
+				...evaluation.contractDraft.constraints.map((c) => `- ${c}`),
+				`- Platform: ${process.platform}`,
+				``,
+				`## Unknowns`,
+				``,
+				...evaluation.clarifyingQuestions.map((q) => `- ${q}`),
+				``,
+				`## Non-goals`,
+				``,
+				`- Modifying the benchmark script itself`,
+				`- Changing the metric definition mid-experiment`,
+				``,
+				`## Proposed Loop Strategy`,
+				``,
+				`1. Baseline measurement with current code`,
+				`2. Apply candidate optimization`,
+				`3. Run benchmark with ${contractDraft.evaluation.benchmark.repeats} repeats`,
+				`4. Evaluate against contract acceptance criteria`,
+				`5. Keep if improvement exceeds threshold, otherwise discard and revert`,
+				``,
+				`## Evaluation Contract`,
+				``,
+				"```autoresearch-contract jsonc",
+				JSON.stringify(contractDraft, null, 2),
+				"```",
+			].join("\n");
+
+			// Write plan file
+			const pp = planPath(ctx.cwd);
+			try {
+				fs.writeFileSync(pp, md, "utf8");
+			} catch (e) {
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] plan file の書き込みに失敗: ${e instanceof Error ? e.message : String(e)}` }],
+					details: {},
+				};
+			}
+
+			// Record event
+			const contractHash = computeContractHash(contractDraft);
+			try {
+				ensureAutoresearchDir(ctx.cwd);
+				appendEvent(ctx.cwd, {
+					timestamp: Date.now(),
+					contractId: "0001",
+					contractHash,
+					event: "plan_created",
+					details: { planPath: pp, query: params.query },
+				});
+			} catch { /* best effort */ }
+
+			let text = `[OK] plan draft を生成しました: ${pp}\n`;
+			text += `\n### Query 評価\n`;
+			text += `判定: ${evaluation.decision}\n`;
+			text += `主指標: ${metricName} (${metricDirection})\n`;
+			text += `benchmark: ${benchmarkCommand}\n`;
+			if (evaluation.blockingIssues.length > 0) {
+				text += `\n### ブロッキング issue\n`;
+				for (const issue of evaluation.blockingIssues) text += `- ${issue}\n`;
+			}
+			if (evaluation.clarifyingQuestions.length > 0) {
+				text += `\n### 確認質問\n`;
+				for (const q of evaluation.clarifyingQuestions) text += `- ${q}\n`;
+			}
+			text += `\nplan を確認・編集した後、autoresearch_approve で承認してください。`;
+
+			return {
+				content: [{ type: "text" as const, text }],
+				details: { planPath: pp, decision: evaluation.decision, contractHash },
+			};
+		},
+	});
+
+	// ═══════════════════════════════════════════════════════════════
+	// Tool: autoresearch_approve
+	// ═══════════════════════════════════════════════════════════════
+
+	pi.registerTool({
+		name: "autoresearch_approve",
+		label: "autoresearch approve",
+		description:
+			"plan の contract block を validate し、baseline を測り、" +
+			".autoresearch/current.contract.json と .autoresearch/current.lock.json を作成する。",
+		promptSnippet: "contract を承認して baseline を測定",
+		promptGuidelines: [
+			"approve 前に plan を確認・編集してください。",
+			"approve 後は contract の変更ができません。",
+		],
+		parameters: Type.Object({
+			plan_path: Type.Optional(Type.String({ description: "plan file path (default: autoresearch.plan.md)" })),
+		}),
+
+		async execute(_tc, params, signal, _ou, ctx) {
+			const pp = params.plan_path ?? planPath(ctx.cwd);
+			if (!fs.existsSync(pp)) {
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] plan file が見つかりません: ${pp}\n先に autoresearch_plan で plan を生成してください。` }],
+					details: {},
+				};
+			}
+
+			const planMarkdown = fs.readFileSync(pp, "utf8");
+
+			let jsonc: string;
+			try {
+				const block = extractContractBlockFromPlan(planMarkdown);
+				jsonc = block.jsonc;
+			} catch (e) {
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] contract block の抽出に失敗: ${e instanceof Error ? e.message : String(e)}` }],
+					details: {},
+				};
+			}
+
+			let contractObj: unknown;
+			try {
+				contractObj = parseJsonc(jsonc);
+			} catch (e) {
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] JSONC の parse に失敗: ${e instanceof Error ? e.message : String(e)}` }],
+					details: {},
+				};
+			}
+
+			const validation = validateContractV1(contractObj);
+			if (!validation.valid) {
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] contract の検証に失敗:\n${validation.errors.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}` }],
+					details: { errors: validation.errors },
+				};
+			}
+
+			const contract = contractObj as AutoresearchContractV1;
+
+			const allCommands = [
+				contract.evaluation.benchmark.command,
+				...contract.evaluation.checks.map((c) => c.command),
+			];
+			for (const cmd of allCommands) {
+				if (!cmd.argv || cmd.argv.length === 0) {
+					return {
+						content: [{ type: "text" as const, text: `[ERROR] command.argv が空です: ${JSON.stringify(cmd)}` }],
+						details: {},
+					};
+				}
+			}
+
+			if (contract.scope.requireGit && !isGitRepo(ctx.cwd)) {
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] git repo ではありません。contract で requireGit=true が指定されています。` }],
+					details: {},
+				};
+			}
+			if (contract.scope.requireCleanGitWorktree && !isWorkingTreeClean(ctx.cwd)) {
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] working tree に未コミット変更があります。contract で requireCleanGitWorktree=true が指定されています。\n先に commit または stash してください。` }],
+					details: {},
+				};
+			}
+
+			const contractHash = computeContractHash(contract);
+			const contractId = "0001";
+			ensureAutoresearchDir(ctx.cwd);
+			appendEvent(ctx.cwd, {
+				timestamp: Date.now(),
+				contractId,
+				contractHash,
+				event: "approve_started",
+				details: {},
+			});
+
+			const immutableResult = await computeImmutableReadSetHash(
+				ctx.cwd,
+				contract.scope.immutableReadPaths,
+			);
+
+			const envFingerprint = await collectEnvironmentFingerprint(
+				ctx.cwd,
+				immutableResult.hash,
+			);
+
+			const baselineCommand = contract.evaluation.benchmark.command;
+			const benchmarkCwd = path.resolve(ctx.cwd, baselineCommand.cwd);
+			const baselineRuns: Array<{ runId: string; metric: number; durationSeconds: number }> = [];
+
+			for (let i = 0; i < contract.evaluation.benchmark.repeats; i++) {
+				const runId = generatePiRunId(ctx.cwd);
+				const runResult = await runArgvCommand(
+					{ argv: baselineCommand.argv, cwd: benchmarkCwd, env: baselineCommand.env },
+					contract.evaluation.benchmark.timeoutSeconds * 1000,
+					signal,
+				);
+				const metricValue = resolvePrimaryMetricFromRun(contract.evaluation.primaryMetric, runResult);
+				baselineRuns.push({ runId, metric: metricValue ?? runResult.durationSeconds, durationSeconds: runResult.durationSeconds });
+				appendEvent(ctx.cwd, {
+					timestamp: Date.now(),
+					contractId,
+					contractHash,
+					event: "baseline_run_completed",
+					details: { runIndex: i, runId, exitCode: runResult.exitCode, metric: metricValue, durationSeconds: runResult.durationSeconds, timedOut: runResult.timedOut },
+				});
+			}
+
+			const baselineMetrics = baselineRuns.map((r) => r.metric);
+			const noise = computeBaselineNoise(baselineMetrics, contract.evaluation.benchmark.aggregate);
+			const gitCommit = getBaselineCommit(ctx.cwd) ?? "unknown";
+
+			const lock: LockFile = {
+				schemaVersion: "autoresearch-lock/v1",
+				contractId,
+				contractHash,
+				approvedAt: Date.now(),
+				approvedBy: "user",
+				baseline: {
+					gitCommit,
+					runs: baselineRuns,
+					aggregate: contract.evaluation.benchmark.aggregate,
+					primaryMetricValue: noise.aggregate,
+					noise,
+				},
+				environment: envFingerprint,
+			};
+
+			writeCurrentContract(ctx.cwd, contract);
+			writeLockFile(ctx.cwd, lock);
+
+			appendEvent(ctx.cwd, {
+				timestamp: Date.now(),
+				contractId,
+				contractHash,
+				event: "approve_completed",
+				details: { baselineValue: noise.aggregate, noiseRange: noise.relativeRange, samples: noise.samples.length },
+			});
+
+			let text = `[OK] contract を承認し、baseline を測定しました\n`;
+			text += `\n### Baseline\n`;
+			text += `aggregate (${contract.evaluation.benchmark.aggregate}): ${noise.aggregate.toFixed(4)}\n`;
+			text += `samples: ${noise.samples.length}\n`;
+			text += `min: ${noise.min.toFixed(4)}\n`;
+			text += `max: ${noise.max.toFixed(4)}\n`;
+			text += `mean: ${noise.mean.toFixed(4)}\n`;
+			text += `stddev: ${noise.stddev.toFixed(4)}\n`;
+			text += `relativeRange: ${(noise.relativeRange * 100).toFixed(2)}%\n`;
+			text += `\n### Files\n`;
+			text += `contract: ${currentContractPath(ctx.cwd)}\n`;
+			text += `lock: ${currentLockPath(ctx.cwd)}\n`;
+			text += `\n### Acceptance\n`;
+			text += `mode: ${contract.acceptance.mode}\n`;
+			text += `minRelativeImprovement: ${(contract.acceptance.minRelativeImprovement * 100).toFixed(1)}%\n`;
+			if (contract.acceptance.requireImprovementAboveNoiseFloor) {
+				const effective = Math.max(contract.acceptance.minRelativeImprovement, noise.relativeRange);
+				text += `effective threshold (with noise floor): ${(effective * 100).toFixed(2)}%\n`;
+			}
+			if (validation.warnings.length > 0) {
+				text += `\n### Warnings\n`;
+				for (const w of validation.warnings) text += `- ${w}\n`;
+			}
+			if (immutableResult.warnings.length > 0) {
+				text += `\n### Immutable Read Set Warnings\n`;
+				for (const w of immutableResult.warnings) text += `- ${w}\n`;
+			}
+			text += `\nautoresearch_run_contract で実験を開始できます。`;
+
+			return {
+				content: [{ type: "text" as const, text }],
+				details: { contractPath: currentContractPath(ctx.cwd), lockPath: currentLockPath(ctx.cwd), baseline: noise, contractHash, gitCommit },
+			};
+		},
+	});
+
+	// ═══════════════════════════════════════════════════════════════
+	// Tool: autoresearch_run_contract
+	// ═══════════════════════════════════════════════════════════════
+
+	pi.registerTool({
+		name: "autoresearch_run_contract",
+		label: "autoresearch run contract",
+		description:
+			"contract に従って checks/benchmark/repeats/aggregate/acceptance を実行する。" +
+			"keep/discard/pause は agent ではなく evaluator が決める。" +
+			"benchmark command や metric は受け取らない。",
+		promptSnippet: "contract mode で実験を実行",
+		promptGuidelines: [
+			"contract mode では agent から status=keep/status=discard を受け取らない。",
+			"decision は必ず tool 側が返す。",
+		],
+		parameters: Type.Object({
+			reason: Type.Optional(Type.String({ description: "この run の理由" })),
+			iteration_label: Type.Optional(Type.String({ description: "iteration label" })),
+		}),
+
+		async execute(_tc, params, signal, _ou, ctx) {
+			const contract = readCurrentContract(ctx.cwd);
+			const lock = readLockFile(ctx.cwd);
+
+			if (!contract) {
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] current contract が見つかりません。\n先に autoresearch_approve を実行してください。` }],
+					details: {},
+				};
+			}
+			if (!lock) {
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] lock file が見つかりません。\n先に autoresearch_approve を実行してください。` }],
+					details: {},
+				};
+			}
+
+			const currentHash = computeContractHash(contract);
+			const contractHashMatches = currentHash === lock.contractHash;
+
+			if (!contractHashMatches) {
+				appendDecision(ctx.cwd, {
+					timestamp: Date.now(),
+					contractId: lock.contractId,
+					contractHash: currentHash,
+					decision: "pause",
+					reason: "contract hash mismatch",
+					metric: null,
+					reference: null,
+					details: { expected: lock.contractHash, actual: currentHash },
+				});
+				return {
+					content: [{ type: "text" as const, text: `[PAUSE] contract hash が lock と一致しません。\nexpected: ${lock.contractHash}\nactual: ${currentHash}\ncontract が承認後に変更されました。` }],
+					details: { decision: "pause" },
+				};
+			}
+
+			if (contract.scope.requireGit && !isGitRepo(ctx.cwd)) {
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] git repo ではありません。` }],
+					details: {},
+				};
+			}
+
+			const changedFiles = getChangedFiles(ctx.cwd);
+			const immutableResult = await computeImmutableReadSetHash(ctx.cwd, contract.scope.immutableReadPaths);
+			const immutableReadSetHashMatches = immutableResult.hash === lock.environment.immutableReadSetHash;
+
+			appendEvent(ctx.cwd, {
+				timestamp: Date.now(),
+				contractId: lock.contractId,
+				contractHash: currentHash,
+				event: "contract_run_started",
+				details: { reason: params.reason, iterationLabel: params.iteration_label, changedFilesCount: changedFiles.length },
+			});
+
+			const checkResults = new Map<string, boolean>();
+			for (const check of contract.evaluation.checks) {
+				const checkCwd = path.resolve(ctx.cwd, check.command.cwd);
+				const checkResult = await runArgvCommand(
+					{ argv: check.command.argv, cwd: checkCwd, env: check.command.env },
+					check.timeoutSeconds * 1000,
+					signal,
+				);
+				checkResults.set(check.name, checkResult.passed);
+			}
+
+			const benchmarkCwd = path.resolve(ctx.cwd, contract.evaluation.benchmark.command.cwd);
+			const measurements: number[] = [];
+			let benchmarkSucceeded = true;
+			let benchmarkTimedOut = false;
+
+			for (let i = 0; i < contract.evaluation.benchmark.repeats; i++) {
+				const result = await runArgvCommand(
+					{ argv: contract.evaluation.benchmark.command.argv, cwd: benchmarkCwd, env: contract.evaluation.benchmark.command.env },
+					contract.evaluation.benchmark.timeoutSeconds * 1000,
+					signal,
+				);
+
+				if (!result.passed) benchmarkSucceeded = false;
+				if (result.timedOut) benchmarkTimedOut = true;
+
+				const metricValue = resolvePrimaryMetricFromRun(contract.evaluation.primaryMetric, result);
+				if (metricValue !== null) measurements.push(metricValue);
+
+				appendEvent(ctx.cwd, {
+					timestamp: Date.now(),
+					contractId: lock.contractId,
+					contractHash: currentHash,
+					event: "benchmark_run_completed",
+					details: { runIndex: i, exitCode: result.exitCode, metric: metricValue, durationSeconds: result.durationSeconds, timedOut: result.timedOut },
+				});
+			}
+
+			const aggregateMethod = contract.evaluation.benchmark.aggregate;
+			const candidateMetric = measurements.length > 0
+				? aggregateMeasurementsFromValues(measurements, aggregateMethod)
+				: null;
+
+			const evaluatorInput: EvaluatorInput = {
+				contract,
+				lock,
+				bestMetric: state.bestMetric,
+				candidateMetric,
+				benchmarkSucceeded,
+				benchmarkTimedOut,
+				checkResults,
+				changedFiles,
+				immutableReadSetHashMatches,
+				contractHashMatches,
+				allMeasurements: measurements,
+			};
+
+			const evaluatorResult = evaluateContract(evaluatorInput);
+
+			appendDecision(ctx.cwd, {
+				timestamp: Date.now(),
+				contractId: lock.contractId,
+				contractHash: currentHash,
+				decision: evaluatorResult.decision,
+				reason: evaluatorResult.reason,
+				metric: evaluatorResult.representativeMetric,
+				reference: evaluatorResult.reference,
+				details: { ...evaluatorResult.details, measurements, changedFiles, reason: params.reason, iterationLabel: params.iteration_label },
+			});
+
+			if (evaluatorResult.decision === "keep") {
+				const gr = gitAutoCommit(
+					ctx.cwd,
+				`[autoresearch] ${params.reason ?? "contract run"}\n\nDecision: keep\nMetric: ${evaluatorResult.representativeMetric}\nImprovement: ${evaluatorResult.improvement}\nRate: ${evaluatorResult.improvementRate}`,
+				);
+				if (gr.error) {
+					appendEvent(ctx.cwd, { timestamp: Date.now(), contractId: lock.contractId, contractHash: currentHash, event: "decision_pause", details: { reason: "git commit failed", error: gr.error } });
+					return {
+						content: [{ type: "text" as const, text: `[PAUSE] git commit に失敗しました: ${gr.error}` }],
+						details: { decision: "pause", error: gr.error },
+					};
+				}
+
+				state.runCount++;
+				if (candidateMetric !== null && isBestMetric(state.bestMetric, candidateMetric, state.direction)) {
+					state.bestMetric = candidateMetric;
+				}
+
+				appendEvent(ctx.cwd, { timestamp: Date.now(), contractId: lock.contractId, contractHash: currentHash, event: "decision_keep", details: { metric: evaluatorResult.representativeMetric, commit: gr.commit } });
+				updateWidget(ctx, state, active, runningExperiment, loopInfo());
+
+				let text = `[KEEP] 改善が承認されました\n`;
+				text += `metric: ${evaluatorResult.representativeMetric}\n`;
+				text += `reference: ${evaluatorResult.reference}\n`;
+				text += `improvement: ${evaluatorResult.improvement}\n`;
+				text += `rate: ${((evaluatorResult.improvementRate ?? 0) * 100).toFixed(2)}%\n`;
+				text += `reason: ${evaluatorResult.reason}\n`;
+				if (gr.committed) text += `commit: ${gr.commit}\n`;
+				text += `\n次の候補を実装して、再度 autoresearch_run_contract を実行してください。`;
+				return {
+					content: [{ type: "text" as const, text }],
+					details: { decision: "keep", metric: evaluatorResult.representativeMetric, reference: evaluatorResult.reference, improvement: evaluatorResult.improvement, improvementRate: evaluatorResult.improvementRate, commit: gr.commit },
+				};
+			} else if (evaluatorResult.decision === "discard") {
+				const rv = gitAutoRevert(ctx.cwd);
+				if (!rv.reverted) {
+					appendEvent(ctx.cwd, { timestamp: Date.now(), contractId: lock.contractId, contractHash: currentHash, event: "revert_failed", details: { error: rv.error } });
+					return {
+						content: [{ type: "text" as const, text: `[PAUSE] revert に失敗しました: ${rv.error}\n手動介入が必要です。` }],
+						details: { decision: "pause", error: rv.error },
+					};
+				}
+
+				state.runCount++;
+				appendEvent(ctx.cwd, { timestamp: Date.now(), contractId: lock.contractId, contractHash: currentHash, event: "decision_discard", details: { metric: evaluatorResult.representativeMetric, reason: evaluatorResult.reason } });
+				updateWidget(ctx, state, active, runningExperiment, loopInfo());
+
+				let text = `[DISCARD] 改善不十分のため棄却しました\n`;
+				text += `metric: ${evaluatorResult.representativeMetric}\n`;
+				text += `reference: ${evaluatorResult.reference}\n`;
+				text += `reason: ${evaluatorResult.reason}\n`;
+				text += `\nrevert 完了。次の候補を実装して、再度 autoresearch_run_contract を実行してください。`;
+				return {
+					content: [{ type: "text" as const, text }],
+					details: { decision: "discard", metric: evaluatorResult.representativeMetric, reference: evaluatorResult.reference, reason: evaluatorResult.reason },
+				};
+			} else {
+				appendEvent(ctx.cwd, { timestamp: Date.now(), contractId: lock.contractId, contractHash: currentHash, event: "decision_pause", details: { reason: evaluatorResult.reason } });
+				let text = `[PAUSE] 実験を一時停止しました\n`;
+				text += `reason: ${evaluatorResult.reason}\n`;
+				text += `\n変更は working tree に残っています。問題を解決してから再開してください。`;
+				return {
+					content: [{ type: "text" as const, text }],
+					details: { decision: "pause", reason: evaluatorResult.reason },
+				};
+			}
 		},
 	});
 }
