@@ -30,8 +30,8 @@ export interface AcceptanceInput {
 export interface AcceptanceResult {
 	/** keep を許可するか */
 	accepted: boolean;
-	/** 集計後の代表値 (aggregate に従う) */
-	representativeMetric: number;
+	/** 集計後の代表値 (aggregate に従う)。測定値が空なら null */
+	representativeMetric: number | null;
 	/** 改善量 (best → candidate)。best=null の場合は 0 */
 	improvement: number;
 	/** 改善率 (0.02 = 2%改善)。best=null の場合は Infinity */
@@ -48,8 +48,8 @@ export interface AcceptanceResult {
 export function aggregateMeasurements(
 	values: number[],
 	method: AggregateMethod,
-): number {
-	if (values.length === 0) return 0;
+): number | null {
+	if (values.length === 0) return null;
 	if (values.length === 1) return values[0];
 
 	const sorted = [...values].sort((a, b) => a - b);
@@ -137,6 +137,15 @@ export function evaluateAcceptance(input: AcceptanceInput): AcceptanceResult {
 	// 集計
 	const measurements = input.allMeasurements ?? [input.candidateMetric];
 	const representative = aggregateMeasurements(measurements, policy.aggregate);
+	if (representative === null) {
+		return {
+			accepted: false,
+			representativeMetric: null,
+			improvement: 0,
+			improvementRate: 0,
+			reason: "測定値が空のため acceptance を評価できません",
+		};
+	}
 	const { improvement, improvementRate } = calculateImprovement(representative, bestMetric, direction);
 
 	// 初回 (best = null): ベースライン確立として常に許可

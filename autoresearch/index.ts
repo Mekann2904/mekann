@@ -1417,8 +1417,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	function aggregateMeasurementsFromValues(
 		values: number[],
 		method: "median" | "mean" | "min" | "max",
-	): number {
-		if (values.length === 0) return 0;
+	): number | null {
+		if (values.length === 0) return null;
 		if (values.length === 1) return values[0];
 		const sorted = [...values].sort((a, b) => a - b);
 		switch (method) {
@@ -1487,6 +1487,10 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 						"package-lock.json",
 						"pnpm-lock.yaml",
 						"yarn.lock",
+						"benchmarks/**",
+						"benchmark/**",
+						"fixtures/**",
+						"test/fixtures/**",
 					],
 					requireGit: true,
 					requireCleanGitWorktree: true,
@@ -1601,18 +1605,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				};
 			}
 
-			// Record event
 			const contractHash = computeContractHash(contractDraft);
-			try {
-				ensureAutoresearchDir(ctx.cwd);
-				appendEvent(ctx.cwd, {
-					timestamp: Date.now(),
-					contractId: "0001",
-					contractHash,
-					event: "plan_created",
-					details: { planPath: pp, query: params.query },
-				});
-			} catch { /* best effort */ }
 
 			let text = `[OK] plan draft を生成しました: ${pp}\n`;
 			text += `\n### Query 評価\n`;

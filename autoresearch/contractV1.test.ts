@@ -53,7 +53,7 @@ function validContractV1(): AutoresearchContractV1 {
 		scope: {
 			allowedWritePaths: ["src/"],
 			forbiddenWritePaths: [".env", "config/production.json"],
-			immutableReadPaths: ["package.json", "tsconfig.json"],
+			immutableReadPaths: ["package.json", "tsconfig.json", "benchmarks/**"],
 			requireGit: true,
 			requireCleanGitWorktree: true,
 		},
@@ -559,6 +559,18 @@ describe("P0 additions", () => {
 			expect(errors.some((e) => e.includes("sh -c"))).toBe(true);
 		});
 
+		it("rejects shell -c variants and env shell wrappers", () => {
+			const errors = validateCommandSafety(
+				[
+					{ argv: ["bash", "-lc", "echo hello"], cwd: "." },
+					{ argv: ["sh", "-ec", "echo hello"], cwd: "." },
+					{ argv: ["/usr/bin/env", "bash", "-c", "echo hello"], cwd: "." },
+				],
+				"/repo",
+			);
+			expect(errors.length).toBe(3);
+		});
+
 		it("allows bash with script file", () => {
 			const errors = validateCommandSafety(
 				[{ argv: ["bash", "./autoresearch.sh"], cwd: "." }],
@@ -644,12 +656,21 @@ describe("P0 additions", () => {
 			expect(result.errors.some((e) => e.includes("rejectIfBenchmarkChanged") && e.includes("immutableReadPaths"))).toBe(true);
 		});
 
-		it("passes when rejectIfBenchmarkChanged=true with non-empty immutableReadPaths", () => {
+		it("passes when rejectIfBenchmarkChanged=true with benchmark immutableReadPaths", () => {
 			const contract = validContractV1();
 			contract.acceptance.rejectIfBenchmarkChanged = true;
 			contract.scope.immutableReadPaths = ["benchmarks/**"];
 			const result = validateContractV1(contract);
 			expect(result.valid).toBe(true);
+		});
+
+		it("rejects when rejectIfBenchmarkChanged=true without benchmark or fixture immutableReadPaths", () => {
+			const contract = validContractV1();
+			contract.acceptance.rejectIfBenchmarkChanged = true;
+			contract.scope.immutableReadPaths = ["package.json"];
+			const result = validateContractV1(contract);
+			expect(result.valid).toBe(false);
+			expect(result.errors.some((e) => e.includes("benchmark or fixture paths"))).toBe(true);
 		});
 
 		it("passes when rejectIfBenchmarkChanged=false with empty immutableReadPaths", () => {

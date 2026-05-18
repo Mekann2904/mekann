@@ -192,9 +192,21 @@ export function evaluateContract(input: EvaluatorInput): EvaluatorResult {
 		}
 	}
 
-	// 7. Compute aggregate metric
+	// 7. Compute aggregate metric. Never coerce an empty measurement set to 0:
+	// even when rejectIfMetricMissing=false, an absent metric is not a valid score.
 	const aggregateMethod = contract.evaluation.benchmark.aggregate;
-	const representative = aggregate( input.allMeasurements, aggregateMethod);
+	const representative = aggregate(input.allMeasurements, aggregateMethod);
+	if (representative === null) {
+		return {
+			decision: contract.failurePolicy.onMetricMissing,
+			reason: "Primary metric not found; empty measurements cannot be evaluated as 0.",
+			representativeMetric: null,
+			improvement: null,
+			improvementRate: null,
+			reference: null,
+			details: { expectedMeasurements: input.expectedMeasurements, actualMeasurements: 0 },
+		};
+	}
 
 	// 8. Determine reference value
 	let reference: number;
@@ -264,8 +276,8 @@ export function evaluateContract(input: EvaluatorInput): EvaluatorResult {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function aggregate(values: number[], method: "median" | "mean" | "min" | "max"): number {
-	if (values.length === 0) return 0;
+function aggregate(values: number[], method: "median" | "mean" | "min" | "max"): number | null {
+	if (values.length === 0) return null;
 	if (values.length === 1) return values[0];
 	const sorted = [...values].sort((a, b) => a - b);
 	switch (method) {

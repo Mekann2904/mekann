@@ -68,20 +68,6 @@ const CheckSchema = Type.Object(
 	{ additionalProperties: false },
 );
 
-const GuardrailSchema = Type.Object(
-	{
-		name: Type.String(),
-		direction: Type.Union([
-			Type.Literal("lower"),
-			Type.Literal("higher"),
-			Type.Literal("equal"),
-		]),
-		maxRegression: Type.Optional(Type.Number({ minimum: 0 })),
-		required: Type.Boolean(),
-	},
-	{ additionalProperties: false },
-);
-
 const BenchmarkSchema = Type.Object(
 	{
 		command: CommandSchema,
@@ -102,7 +88,6 @@ const EvaluationSchema = Type.Object(
 		benchmark: BenchmarkSchema,
 		primaryMetric: PrimaryMetricSchema,
 		checks: Type.Array(CheckSchema),
-		guardrails: Type.Optional(Type.Array(GuardrailSchema)),
 	},
 	{ additionalProperties: false },
 );
@@ -268,15 +253,26 @@ export function validateContractV1(value: unknown): ContractV1ValidationResult {
 			}
 		}
 
-		// rejectIfBenchmarkChanged requires immutableReadPaths
-		if (
-			contract.acceptance.rejectIfBenchmarkChanged &&
-			contract.scope.immutableReadPaths.length === 0
-		) {
-			errors.push(
-				"rejectIfBenchmarkChanged=true requires non-empty immutableReadPaths. " +
-				"Add benchmark-related files to immutableReadPaths for drift detection.",
-			);
+		// rejectIfBenchmarkChanged requires benchmark/fixture paths in immutableReadPaths
+		if (contract.acceptance.rejectIfBenchmarkChanged) {
+			if (contract.scope.immutableReadPaths.length === 0) {
+				errors.push(
+					"rejectIfBenchmarkChanged=true requires non-empty immutableReadPaths. " +
+					"Add benchmark-related files to immutableReadPaths for drift detection.",
+				);
+			} else {
+				const hasBenchmarkImmutablePath = contract.scope.immutableReadPaths.some((p) => {
+					const normalized = p.replace(/\\/g, "/");
+					return normalized.startsWith("benchmark/") || normalized.startsWith("benchmarks/") ||
+						normalized.startsWith("fixtures/") || normalized.startsWith("test/fixtures/");
+				});
+				if (!hasBenchmarkImmutablePath) {
+					errors.push(
+						"rejectIfBenchmarkChanged=true requires benchmark or fixture paths in immutableReadPaths " +
+						"(for example: benchmarks/**, benchmark/**, fixtures/**, test/fixtures/**).",
+					);
+				}
+			}
 		}
 	}
 
@@ -746,20 +742,6 @@ export function ensureAutoresearchDir(cwd: string): void {
 		fs.mkdirSync(dir, { recursive: true });
 	}
 
-	// Ensure .autoresearch/ is in .gitignore
-	const gitignorePath = path.join(cwd, ".gitignore");
-	try {
-		let gitignore = "";
-		if (fs.existsSync(gitignorePath)) {
-			gitignore = fs.readFileSync(gitignorePath, "utf8");
-		}
-		if (!gitignore.split("\n").some((l) => l.trim() === ".autoresearch" || l.trim() === ".autoresearch/")) {
-			const line = (gitignore.length > 0 && !gitignore.endsWith("\n") ? "\n" : "") + ".autoresearch/\n";
-			fs.appendFileSync(gitignorePath, line, "utf8");
-		}
-	} catch {
-		// best effort — don't fail the operation if .gitignore write fails
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1006,14 +988,26 @@ export function validateCommandSafety(
 		const cmd = commands[ci];
 		const label = ci === 0 ? "benchmark" : "check[" + (ci - 1) + "]";
 
-		// Reject shell -c invocations
+		// Reject shell -c invocations, including variants such as bash -lc,
+		// sh -ec, and /usr/bin/env bash -c.
 		const shellNames = ["bash", "sh", "zsh", "fish", "dash", "ksh", "csh", "tcsh"];
-		if (cmd.argv.length >= 2) {
-			const exe = cmd.argv[0];
-			const base = path.basename(exe);
-			if (shellNames.includes(base) && cmd.argv[1] === "-c") {
+		let shellIndex = -1;
+		let exe = cmd.argv[0] ?? "";
+		const base = path.basename(exe);
+		if (shellNames.includes(base)) {
+			shellIndex = 0;
+		} else if (base === "env") {
+			const envShellIndex = cmd.argv.findIndex((arg, idx) => idx > 0 && shellNames.includes(path.basename(arg)));
+			if (envShellIndex >= 0) {
+				shellIndex = envShellIndex;
+				exe = cmd.argv[envShellIndex];
+			}
+		}
+		if (shellIndex >= 0) {
+			const hasShellStringFlag = cmd.argv.slice(shellIndex + 1).some((arg) => /^-[A-Za-z]*c[A-Za-z]*$/.test(arg));
+			if (hasShellStringFlag) {
 				errors.push(
-					label + ": command uses " + exe + " -c (shell string invocation). " +
+					label + ": command uses " + exe + " -c/-lc style shell string invocation. " +
 					"Use a script file instead: [" + exe + ", \"./script.sh\"]. " +
 					"Shell -c defeats the purpose of argv-based command safety.",
 				);

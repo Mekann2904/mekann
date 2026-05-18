@@ -42,8 +42,8 @@ describe("acceptance module", () => {
 			expect(aggregateMeasurements([5, 1, 3], "max")).toBe(5);
 		});
 
-		it("returns 0 for empty array", () => {
-			expect(aggregateMeasurements([], "median")).toBe(0);
+		it("returns null for empty array", () => {
+			expect(aggregateMeasurements([], "median")).toBeNull();
 		});
 	});
 
