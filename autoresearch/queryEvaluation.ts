@@ -140,12 +140,25 @@ function detectScope(query: string): string[] {
 
 function inferDirectionFromMetricName(name: string | null): MetricDirection {
   if (!name) return "unknown";
-  if (/(duration|latency|time|seconds|sec|_ms$|\bms\b|cost|memory|size|errors?|failures?|violations?|count)/i.test(name)) {
-    return "lower";
+
+  // higher 系: success / pass / coverage / score 等
+  if (/(success_count|pass_count|passed_count|successes|passes)/i.test(name)) {
+    return "higher";
   }
   if (/(coverage|accuracy|score|rate|ratio|success|pass|win)/i.test(name)) {
     return "higher";
   }
+
+  // lower 系: time / cost / error 等
+  if (/(duration|latency|time|seconds|sec|_ms$|\bms\b|cost|memory|size|error_count|failure_count|violation_count|errors?|failures?|violations?)/i.test(name)) {
+    return "lower";
+  }
+
+  // count 単体は方向不明
+  if (/count/i.test(name)) {
+    return "unknown";
+  }
+
   return "unknown";
 }
 
@@ -243,10 +256,11 @@ interface MeasurementInfo {
 
 function inferUnitFromMetricName(name: string | null): string | null {
   if (!name) return null;
-  if (/(duration|latency|time|seconds|sec)/i.test(name)) return "seconds";
+  // _ms / ms を先にチェック（latency_ms 等の誤判定防止）
   if (/\bms\b|_ms$/i.test(name)) return "ms";
+  if (/(duration|elapsed|runtime|wall_clock|time|seconds|sec)/i.test(name)) return "seconds";
   if (/(coverage|rate|ratio|accuracy|percent)/i.test(name)) return "%";
-  if (/(count|errors?|failures?|violations?)/i.test(name)) return "count";
+  if (/(error_count|failure_count|violation_count|errors?|failures?|violations?)/i.test(name)) return "count";
   return null;
 }
 
@@ -283,8 +297,24 @@ function detectMeasurementMethod(
     };
   }
 
-  // 2. Wall-clock: 速度・時間系キーワード（最も信頼度が高い）
-  if (/(速く|高速化|latency|\btime\b|duration|\bms\b|\bsec\b|秒|実行時間|短縮)/.test(q)) {
+  // 2. Internal latency metric: p95/p99/latency 系は wall-clock ではない
+  const hasInternalLatencyMetric =
+    metricName != null && /(latency|p50|p90|p95|p99)/i.test(metricName);
+
+  if (hasInternalLatencyMetric) {
+    return {
+      measurementMethod: "unknown",
+      extractionRule: null,
+      extractionConfidence: 0.4,
+      metricExtractionReady: false,
+    };
+  }
+
+  // 3. Wall-clock: 速度・時間系キーワード（command 全体の実行時間を指す語）
+  const hasWallClockLanguage =
+    /(wall[-\s]?clock|実行時間|全体時間|elapsed|runtime|duration|秒|短縮|速く|高速化)/i.test(q);
+
+  if (hasWallClockLanguage) {
     return {
       measurementMethod: "wall_clock",
       extractionRule: "autoresearch_run の durationSeconds を primary metric として使う",

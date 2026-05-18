@@ -615,6 +615,58 @@ describe("evaluateQueryStatically", () => {
 		});
 	});
 
+	// ── p95/latency metric semantics ────────────────────────────────
+
+	describe("internal latency metric semantics", () => {
+		it("p95_latency_ms unit is ms, not seconds", () => {
+			const r = evaluateQueryStatically("主指標は p95_latency_ms で改善したい。`npm run bench`。既存 checks を使う。");
+			expect(r.contractDraft.primaryMetric.unit).toBe("ms");
+		});
+
+		it("p95_latency_ms is not wall_clock", () => {
+			const r = evaluateQueryStatically("主指標は p95_latency_ms で改善したい。`npm run bench`。既存 checks を使う。");
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("unknown");
+			expect(r.readiness.metricExtractionReady).toBe(false);
+		});
+
+		it("p95_latency_ms without extraction → needs_metric_extraction", () => {
+			const r = evaluateQueryStatically("主指標は p95_latency_ms で改善したい。`npm run bench`。既存 checks を使う。");
+			expect(r.decision).toBe("needs_metric_extraction");
+		});
+
+		it("p95_latency_ms with stdout METRIC extraction → ready_for_run", () => {
+			const r = evaluateQueryStatically(
+				"`npm run bench`。主指標は p95_latency_ms、lower is better。stdout に METRIC p95_latency_ms=<value> を出す。既存 checks を使う。"
+			);
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("stdout_metric");
+			expect(r.decision).toBe("ready_for_run");
+		});
+
+		it("p95_latency_ms direction is lower", () => {
+			const r = evaluateQueryStatically("主指標は p95_latency_ms で改善したい");
+			expect(r.contractDraft.primaryMetric.direction).toBe("lower");
+		});
+	});
+
+	// ── success_count / pass_count semantics ───────────────────────
+
+	describe("success / pass count semantics", () => {
+		it("success_count direction is higher", () => {
+			const r = evaluateQueryStatically("主指標は success_count で改善したい");
+			expect(r.contractDraft.primaryMetric.direction).toBe("higher");
+		});
+
+		it("pass_count direction is higher", () => {
+			const r = evaluateQueryStatically("主指標は pass_count で改善したい");
+			expect(r.contractDraft.primaryMetric.direction).toBe("higher");
+		});
+
+		it("generic count direction is unknown", () => {
+			const r = evaluateQueryStatically("主指標は request_count で改善したい");
+			expect(r.contractDraft.primaryMetric.direction).toBe("unknown");
+		});
+	});
+
 	// ── Unit inference from metric name ──────────────────────────
 
 	describe("unit inference", () => {
