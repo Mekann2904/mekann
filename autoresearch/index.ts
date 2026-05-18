@@ -1,5 +1,5 @@
 /**
- * autoresearch — Pi 拡張機能: 自律的実験ループ（日本語 UI）。
+ * autoresearch - Pi 拡張機能: 自律的実験ループ(日本語 UI)。
  *
  * 長時間・高コストな評価 run も安全に扱える実験コントローラ。
  */
@@ -127,16 +127,16 @@ function updateWidget(
 
 const SYSTEM_PROMPT_EXTRA = [
 	"",
-	"## autoresearch モード（アクティブ）",
+	"## autoresearch モード(アクティブ)",
 	"",
 	"現在は autoresearch モードです。以下のルールに従って自律的に実験を繰り返してください。",
 	"",
-	"1. 最初に `autoresearch.md` を読む（存在する場合）",
-	"2. `autoresearch_init` でセッションを初期化（未初期化の場合）",
+	"1. 最初に `autoresearch.md` を読む(存在する場合)",
+	"2. `autoresearch_init` でセッションを初期化(未初期化の場合)",
 	"3. `autoresearch_run` でコマンドを実行し、結果を測定",
 	"4. 必ず `autoresearch_log` で結果を記録",
 	"5. `autoresearch_log` が自動で git commit / revert を行うため、手動 git 操作は不要",
-	"6. ユーザーに毎回継続確認しない — 停止されるまで繰り返す",
+	"6. ユーザーに毎回継続確認しない - 停止されるまで繰り返す",
 	"7. Ralph 方式: 1ターンでは原則1つの実験だけを完了し、次ターンに知見を引き継ぐ",
 	"8. 表示・報告は日本語で行う",
 	"9. `autoresearch.jsonl` に履歴が自動保存される",
@@ -146,7 +146,7 @@ const SYSTEM_PROMPT_EXTRA = [
 	"",
 	"### long-run benchmark での注意",
 	"",
-	"- 長時間実行コマンド（数十分〜数時間）では `timeout_seconds` を明示指定してください",
+	"- 長時間実行コマンド(数十分〜数時間)では `timeout_seconds` を明示指定してください",
 	"- `--webui` や watch server のように終了しないコマンドを benchmark command に入れないでください",
 	"- 外部 benchmark が `RUN_ID` / `ARTIFACT_DIR` / `METRIC` を stdout に出す場合、pi 側で自動保存します",
 	"",
@@ -156,7 +156,7 @@ const SYSTEM_PROMPT_EXTRA = [
 	"評価結果の decision に従って行動すること。",
 	"",
 	"decision の意味:",
-	"- `ready_for_run`: 実験契約が完備。`autoresearch_init` → `autoresearch_run` まで安全に進める。",
+	"- `ready_for_run`: 実験契約が完備。`autoresearch_init` → `autoresearch_run` → checks/log/keep 判断まで安全に進める。",
 	"- `ready_for_init`: init は可能だが、run には benchmark command / extraction / checks が不足。",
 	"- `needs_command`: benchmark command を確認する。",
 	"- `needs_metric_extraction`: metric の抽出方法 (wall-clock / stdout / report file) を確認する。",
@@ -165,10 +165,11 @@ const SYSTEM_PROMPT_EXTRA = [
 	"- `needs_rewrite`: autoresearch 向けの suggestedRewrite を提示する。",
 	"- `reject`: 安全上の理由を説明して実験を開始しない。",
 	"",
+	"`ready_for_run` は `autoresearch_run` 単体ではなく、run 後に checks と log/keep/discard 判断まで安全に進められる状態を意味する。",
 	"`ready_for_run` 以外では `autoresearch_run` に進んではならない。",
 	"`ready_for_init` では `autoresearch_init` は可能だが、run 前に不足を解消する。",
 	"",
-	"動的評価として以下を 0.0〜1.0 で評価してよい（ただし ready 判定は static validator の blocking/risk を優先）:",
+	"動的評価として以下を 0.0〜1.0 で評価してよい(ただし ready 判定は static validator の blocking/risk を優先):",
 	"- semanticAlignment: ユーザ目的と metric が一致しているか",
 	"- feasibility: 現在の repository で実行可能そうか",
 	"- valuePotential: 改善余地がありそうか",
@@ -300,7 +301,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	// ─── /autoresearch command ─────────────────────────────────
 
 	pi.registerCommand("autoresearch", {
-		description: "autoresearch モードの管理（on / off / status / clear）",
+		description: "autoresearch モードの管理(on / off / status / clear)",
 		handler: async (args, ctx) => {
 			const parts = (args ?? "").trim().split(/\s+/);
 			const sub = parts[0] || "status";
@@ -356,7 +357,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	function activateAutoresearch(ctx: ExtensionContext, purpose: string): void {
 		active = true; autoLoop = true; resetLoopProgress(); loopPromptQueued = true;
 		updateWidget(ctx, state, active, runningExperiment, loopInfo());
-		ctx.ui.notify("autoresearch モードを有効にしました（loop ON）", "info");
+		ctx.ui.notify("autoresearch モードを有効にしました(loop ON)", "info");
 		const hasMd = fs.existsSync(mdFilePath(ctx.cwd));
 		let msg: string;
 		if (hasMd) {
@@ -446,7 +447,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_tc, params, _sig, _ou, _ctx) {
-			// 評価 tool は autoresearch モード有効/無効に関わらず実行可能（read-only）
+			// 評価 tool は autoresearch モード有効/無効に関わらず実行可能(read-only)
 			const evaluation = evaluateQueryStatically(params.query);
 			const r = evaluation.readiness;
 			const m = evaluation.contractDraft.primaryMetric;
@@ -466,7 +467,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				`### 測定方法`,
 				`- measurementMethod: ${m.measurementMethod}`,
 				`- extractionConfidence: ${m.extractionConfidence.toFixed(2)}`,
-				`- extractionRule: ${m.extractionRule ?? "（未定）"}`,
+				`- extractionRule: ${m.extractionRule ?? "(未定)"}`,
 				``,
 				`### checks policy`,
 				evaluation.contractDraft.checksPolicy,
@@ -496,11 +497,11 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					? `### 確認質問\n${evaluation.clarifyingQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n")}\n`
 					: "",
 				`### 実験契約ドラフト`,
-				`- 目的: ${evaluation.contractDraft.objective || "（未定）"}`,
-				`- 対象: ${evaluation.contractDraft.targetScope.length > 0 ? evaluation.contractDraft.targetScope.join(", ") : "（未定）"}`,
-				`- 主指標: ${m.name ?? "（未定）"}（${m.direction}）`,
-				`- benchmark: ${evaluation.contractDraft.benchmarkCommand ?? "（未定）"}`,
-				`- checks: ${evaluation.contractDraft.checksCommand ?? "（未定）"}`,
+				`- 目的: ${evaluation.contractDraft.objective || "(未定)"}`,
+				`- 対象: ${evaluation.contractDraft.targetScope.length > 0 ? evaluation.contractDraft.targetScope.join(", ") : "(未定)"}`,
+				`- 主指標: ${m.name ?? "(未定)"}(${m.direction})`,
+				`- benchmark: ${evaluation.contractDraft.benchmarkCommand ?? "(未定)"}`,
+				`- checks: ${evaluation.contractDraft.checksCommand ?? "(未定)"}`,
 			].filter(s => s !== false).join("\n");
 
 			return {
@@ -522,8 +523,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		promptGuidelines: ["autoresearch_init はセッションの最初に一度だけ。既存設定があれば再初期化しない。"],
 		parameters: Type.Object({
 			name: Type.String({ description: "実験セッションの名前" }),
-			metric_name: Type.String({ description: "主指標名（例: total_ms）" }),
-			metric_unit: Type.Optional(Type.String({ description: "単位（例: ms）" })),
+			metric_name: Type.String({ description: "主指標名(例: total_ms)" }),
+			metric_unit: Type.Optional(Type.String({ description: "単位(例: ms)" })),
 			direction: Type.Optional(StringEnum(["lower", "higher"] as const, { description: "デフォルト: lower" })),
 		}),
 
@@ -546,7 +547,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			try { ensureSessionDir(ctx.cwd); } catch {}
 			updateWidget(ctx, state, active, runningExperiment, loopInfo());
 			return {
-				content: [{ type: "text", text: `[OK] 初期化完了\n名前: ${state.name}\n指標: ${state.metricName}（${directionLabel(state.direction)}）\nsessionId: ${sessionId}` }],
+				content: [{ type: "text", text: `[OK] 初期化完了\n名前: ${state.name}\n指標: ${state.metricName}(${directionLabel(state.direction)})\nsessionId: ${sessionId}` }],
 				details: { name: state.name, metricName: state.metricName, metricUnit: state.metricUnit, direction: state.direction, sessionId },
 			};
 		},
@@ -566,12 +567,12 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"実行後は必ず autoresearch_log で記録。",
 			"長時間コマンドでは timeout_seconds を明示指定。",
-			"終了しないコマンド（webui 等）は入れない。",
+			"終了しないコマンド(webui 等)は入れない。",
 		],
 		parameters: Type.Object({
 			command: Type.String({ description: "実行するコマンド" }),
-			timeout_seconds: Type.Optional(Type.Number({ description: "タイムアウト秒数（デフォルト: 600）" })),
-			checks_timeout_seconds: Type.Optional(Type.Number({ description: "checks のタイムアウト秒数（デフォルト: 300）" })),
+			timeout_seconds: Type.Optional(Type.Number({ description: "タイムアウト秒数(デフォルト: 600)" })),
+			checks_timeout_seconds: Type.Optional(Type.Number({ description: "checks のタイムアウト秒数(デフォルト: 300)" })),
 		}),
 
 		async execute(_tc, params, signal, _ou, ctx) {
@@ -595,7 +596,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				artifactFailed = true;
 			}
 
-			// P0: artifact dir 作成失敗時は benchmark を実行しない（fail-fast）
+			// P0: artifact dir 作成失敗時は benchmark を実行しない(fail-fast)
 			if (!artifactDir || artifactFailed) {
 				runningExperiment = null;
 				updateWidget(ctx, state, active, runningExperiment, loopInfo());
@@ -611,7 +612,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				details: { command: params.command },
 			} satisfies EventLedgerEntry);
 
-			// Execute — pass logDir for streaming stdout/stderr
+			// Execute - pass logDir for streaming stdout/stderr
 			const result = await runCommand(params.command, ctx.cwd, timeoutMs, signal, artifactDir);
 			const completedAt = Date.now();
 			const startedAt = runningExperiment.startedAt;
@@ -636,7 +637,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			lastRunResult = { ...result, piRunId };
 			lastRunChecks = checks;
 
-			// Runs ledger — use runs.jsonl line count for runSeq (not state.runCount)
+			// Runs ledger - use runs.jsonl line count for runSeq (not state.runCount)
 			const runSeq = nextRunSeq(ctx.cwd, state.sessionId);
 
 			// Write remaining artifacts (manifest, result.json, metrics.json, checks)
@@ -647,7 +648,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					if (checks.passed !== null) {
 						writeChecksArtifacts(artifactDir, checks);
 					} else {
-						// No checks to run — mark artifact complete now
+						// No checks to run - mark artifact complete now
 						markArtifactComplete(artifactDir);
 					}
 				} catch {
@@ -656,7 +657,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			}
 			if (!artifactDir) artifactFailed = true;
 
-			// Store in memory map AFTER artifact write — artifactFailed reflects actual status
+			// Store in memory map AFTER artifact write - artifactFailed reflects actual status
 			runResultMap.set(piRunId, { result, checks, startedAt, completedAt, createdAt, artifactDir, artifactFailed, runSeq });
 
 			appendToJsonl(runsLedgerPath(ctx.cwd, state.sessionId), {
@@ -673,8 +674,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			// Build response text
 			let text = "";
-			if (result.timedOut) text = `[TIMEOUT] タイムアウト（${params.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS}秒）\n`;
-			else if (!result.passed) text = `[FAIL] 失敗（終了コード: ${result.exitCode}）\n`;
+			if (result.timedOut) text = `[TIMEOUT] タイムアウト(${params.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS}秒)\n`;
+			else if (!result.passed) text = `[FAIL] 失敗(終了コード: ${result.exitCode})\n`;
 			else text = `[OK] 完了\n`;
 			const safeCommand = filterSecrets(result.command);
 			text += `実行時間: ${result.durationSeconds.toFixed(1)}秒\n`;
@@ -689,7 +690,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			if (artifactFailed) text += `[WARNING] artifact 保存に失敗しました。この run は keep できません。\n`;
 
-			if (checks.passed === true) text += `checks: 成功（${checks.durationSeconds.toFixed(1)}秒）\n`;
+			if (checks.passed === true) text += `checks: 成功(${checks.durationSeconds.toFixed(1)}秒)\n`;
 			else if (checks.passed === false) {
 				text += `checks: 失敗\n`;
 				if (checks.output) text += `checks 出力:\n${checks.output}\n`;
@@ -704,8 +705,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			}
 
 			const safeOutput = filterSecrets(result.output);
-			if (safeOutput) text += `\n出力（末尾）:\n${safeOutput}`;
-			text += `\npiRunId: ${piRunId}（autoresearch_log の runId に渡してください）`;
+			if (safeOutput) text += `\n出力(末尾):\n${safeOutput}`;
+			text += `\npiRunId: ${piRunId}(autoresearch_log の runId に渡してください)`;
 
 			return {
 				content: [{ type: "text", text }],
@@ -764,7 +765,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			status: StringEnum(["keep", "discard", "crash", "checks_failed"] as const, { description: "結果ステータス" }),
 			description: Type.String({ description: "実験内容の短い説明" }),
 			runId: Type.Optional(Type.String({ description: "autoresearch_run の piRunId" })),
-			commit: Type.Optional(Type.String({ description: "Git commit hash（省略時自動）" })),
+			commit: Type.Optional(Type.String({ description: "Git commit hash(省略時自動)" })),
 			metrics: Type.Optional(Type.Object({}, { additionalProperties: Type.Number(), description: "追加指標" })),
 			memo: Type.Optional(Type.String({ description: "メモ" })),
 		}),
@@ -806,12 +807,12 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				}
 
 				if (matchedResult.timedOut) reasons.push(`timeout した run は keep できません。`);
-				if (!matchedResult.passed && !matchedResult.timedOut) reasons.push(`失敗した run（exitCode: ${matchedResult.exitCode}）は keep できません。`);
+				if (!matchedResult.passed && !matchedResult.timedOut) reasons.push(`失敗した run(exitCode: ${matchedResult.exitCode})は keep できません。`);
 				if (matchedChecks && matchedChecks.passed === false) reasons.push(`checks が失敗しているため keep できません。checks 出力:\n${matchedChecks.output.slice(-500)}`);
 
 				// P0: 主指標が run 出力に存在することを検証
 				if (matchedResult.parsedMetrics && state.metricName in matchedResult.parsedMetrics) {
-					// OK — benchmark actually produced this metric
+					// OK - benchmark actually produced this metric
 				} else {
 					reasons.push(
 						`run 出力に主指標 "${state.metricName}" が含まれていません。` +
@@ -872,7 +873,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			let commit = params.commit ?? preCommit;
 			const run = state.runCount + 1;
 
-			// P0: runSeq は run 時採番値を使用（log 順ではなく実行順）
+			// P0: runSeq は run 時採番値を使用(log 順ではなく実行順)
 			const runSeq = matchedRunData?.runSeq ?? run;
 
 			const entry: RunEntry = {
@@ -895,7 +896,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			};
 
 			// P0-2: git commit 失敗時は keep を成功扱いにしない。
-			// state.results/runCount/bestMetric は git 成功（または non-keep の revert）後に更新する。
+			// state.results/runCount/bestMetric は git 成功(または non-keep の revert)後に更新する。
 			if (params.status === "keep") {
 				const gr = gitAutoCommit(ctx.cwd, `${params.description}\n\nResult: ${JSON.stringify({ status: params.status, [state.metricName]: params.metric })}`);
 				if (gr.committed) {
@@ -1040,10 +1041,10 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				if (entry.postCommit && entry.postCommit !== preCommit) {
 					text += `\n[git] 自動 commit しました: ${entry.postCommit}`;
 				} else {
-					text += `\n[git] 変更なし（commit 不要）`;
+					text += `\n[git] 変更なし(commit 不要)`;
 				}
 			} else {
-				text += `\n[git] revert 完了（autoresearch.* / .pi/ は保護）`;
+				text += `\n[git] revert 完了(autoresearch.* / .pi/ は保護)`;
 			}
 
 			lastChecks = null; lastRunResult = null; lastRunChecks = null;

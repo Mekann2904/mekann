@@ -166,7 +166,7 @@ while active:
 
 | decision                | 意味                                                        |
 | ----------------------- | ---------------------------------------------------------- |
-| `ready_for_run`         | 実験契約が完備。`autoresearch_init` → `autoresearch_run` まで安全に進める |
+| `ready_for_run`         | 実験契約が完備。`autoresearch_init` → `autoresearch_run` → checks/log/keep 判断まで安全に進める。`ready_for_run` は `autoresearch_run` 単体ではなく、run 後に checks と log/keep/discard 判断まで進められる状態を意味する |
 | `ready_for_init`        | init は可能だが run に必要な情報（benchmark command / checks）が不足     |
 | `needs_command`         | benchmark command が未指定                                        |
 | `needs_metric_extraction` | metric の抽出方法（wall-clock / stdout / report file）が未確定      |
@@ -182,7 +182,7 @@ while active:
 | `readiness`       | 実験開始可能性（weakest-link: 他スコアの最小値）         |
 | `completeness`    | 必須フィールドの充足率                             |
 | `measurability`   | 指標化可能性（metric 名 + direction + metric 抽出確定）         |
-| `commandReadiness`| コマンドの準備状況（benchmark + checks）           |
+| `commandReadiness`| benchmark command の準備状況（checks の準備状況は `readiness.checksReady` と `reproducibility` に反映される） |
 | `scopeClarity`    | 対象範囲の明確さ                                |
 | `safety`          | 安全性（risk flag なし = 1、あり = 0）            |
 | `reproducibility` | 再現可能性（benchmark command + checks 確定 + metric 抽出確定） |
