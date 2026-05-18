@@ -82,6 +82,11 @@ describe("evaluateQueryStatically", () => {
 			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("wall_clock");
 		});
 
+		it("source is custom for wall-clock", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.primaryMetric.source).toBe("custom");
+		});
+
 		it("extractionConfidence is 1.0", () => {
 			const r = evaluateQueryStatically(query);
 			expect(r.contractDraft.primaryMetric.extractionConfidence).toBe(1.0);
@@ -135,6 +140,11 @@ describe("evaluateQueryStatically", () => {
 		it("measurementMethod is wall_clock", () => {
 			const r = evaluateQueryStatically(query);
 			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("wall_clock");
+		});
+
+		it("source is custom for wall-clock", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.primaryMetric.source).toBe("custom");
 		});
 
 		it("checksPolicy is autoresearch_checks_sh", () => {
@@ -252,6 +262,11 @@ describe("evaluateQueryStatically", () => {
 		it("extractionConfidence >= 0.9", () => {
 			const r = evaluateQueryStatically(query);
 			expect(r.contractDraft.primaryMetric.extractionConfidence).toBeGreaterThanOrEqual(0.9);
+		});
+
+		it("source is stdout for stdout_metric", () => {
+			const r = evaluateQueryStatically(query);
+			expect(r.contractDraft.primaryMetric.source).toBe("stdout");
 		});
 
 		it("metricExtractionReady is true", () => {
@@ -426,6 +441,23 @@ describe("evaluateQueryStatically", () => {
 			const r = evaluateQueryStatically("`npm run coverage` で coverage report を使って coverage を上げたい");
 			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("report_file");
 			expect(r.contractDraft.primaryMetric.extractionConfidence).toBeCloseTo(0.6, 1);
+			expect(r.contractDraft.primaryMetric.source).toBe("file");
+		});
+
+		it("lowercase metric line detected as stdout_metric", () => {
+			const r = evaluateQueryStatically(
+				"`npm run bench` は stdout に metric score=<value> を出す。score を上げたい。checks は `npm test`。"
+			);
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("stdout_metric");
+			expect(r.contractDraft.primaryMetric.source).toBe("stdout");
+		});
+
+		it("'metric は duration_seconds' alone does NOT imply stdout_metric", () => {
+			const r = evaluateQueryStatically(
+				"`npm run prepush` の実行時間を短縮したい。metric は duration_seconds、lower is better。既存 checks を使う。"
+			);
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("wall_clock");
+			expect(r.contractDraft.primaryMetric.source).toBe("custom");
 		});
 	});
 

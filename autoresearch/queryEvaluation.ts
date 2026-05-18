@@ -156,7 +156,6 @@ interface MetricNameInfo {
   name: string | null;
   unit: string | null;
   direction: MetricDirection;
-  source: "stdout" | "file" | "test-report" | "custom" | "unknown";
 }
 
 function detectMetricNameAndDirection(
@@ -212,8 +211,7 @@ function detectMetricNameAndDirection(
     }
   }
 
-  const source = hasCommand ? "stdout" : "unknown";
-  return { name, unit, direction, source };
+  return { name, unit, direction };
 }
 
 // ── Measurement method detection ──────────────────────────────
@@ -225,14 +223,29 @@ interface MeasurementInfo {
   metricExtractionReady: boolean;
 }
 
+function sourceFromMeasurementMethod(
+  method: MeasurementMethod
+): "stdout" | "file" | "test-report" | "custom" | "unknown" {
+  switch (method) {
+    case "wall_clock": return "custom";
+    case "stdout_metric": return "stdout";
+    case "report_file": return "file";
+    default: return "unknown";
+  }
+}
+
 function detectMeasurementMethod(
   query: string,
   metricName: string | null
 ): MeasurementInfo {
   const q = query.toLowerCase();
 
-  // 1. Stdout metric: METRIC / stdout / 標準出力 が明示的に言及されている
-  if (/METRIC|stdout|標準出力/.test(query)) {
+  // 1. Stdout metric: METRIC name=value パターン、または stdout/標準出力 + metric の同時言及
+  const hasMetricLinePattern = /\bmetric\s+[\w.-]+\s*=/i.test(query);
+  const hasStdoutMetricMention =
+    /(stdout|標準出力)/i.test(query) && /\bmetric\b/i.test(query);
+
+  if (hasMetricLinePattern || hasStdoutMetricMention) {
     return {
       measurementMethod: "stdout_metric",
       extractionRule: metricName
@@ -822,7 +835,7 @@ export function evaluateQueryStatically(query: string): QueryEvaluation {
       name: metricInfo.name,
       unit: metricInfo.unit,
       direction: metricInfo.direction,
-      source: metricInfo.source,
+      source: sourceFromMeasurementMethod(measurementInfo.measurementMethod),
       measurementMethod: measurementInfo.measurementMethod,
       extractionRule: measurementInfo.extractionRule,
       extractionConfidence: measurementInfo.extractionConfidence,
