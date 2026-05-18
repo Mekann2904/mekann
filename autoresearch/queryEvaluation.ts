@@ -202,7 +202,12 @@ function detectMetricNameAndDirection(
   let direction: MetricDirection = "unknown";
 
   if (!name) {
-    if (/(速く|高速化|latency|\btime\b|duration|\bms\b|\bsec\b|秒|実行時間|短縮)/.test(q)) {
+    // latency / percentile latency は内部指標なので extraction が必要
+    if (/(p50|p90|p95|p99|latency|レイテンシ|応答時間)/i.test(q)) {
+      name = /p95/i.test(q) ? "p95_latency_ms" : "latency_ms";
+      unit = "ms";
+      direction = "lower";
+    } else if (/(速く|高速化|\btime\b|duration|\bsec\b|秒|実行時間|短縮)/.test(q)) {
       name = "duration_seconds";
       unit = "seconds";
       direction = "lower";
