@@ -646,6 +646,27 @@ describe("evaluateQueryStatically", () => {
 			const r = evaluateQueryStatically("主指標は p95_latency_ms で改善したい");
 			expect(r.contractDraft.primaryMetric.direction).toBe("lower");
 		});
+
+		it("implicit latency does not become duration_seconds", () => {
+			const r = evaluateQueryStatically("latency を短縮したい。`npm run bench`。既存 checks を使う。");
+			expect(r.contractDraft.primaryMetric.name).toBe("latency_ms");
+			expect(r.contractDraft.primaryMetric.unit).toBe("ms");
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("unknown");
+			expect(r.decision).toBe("needs_metric_extraction");
+		});
+
+		it("implicit p95 latency does not become duration_seconds", () => {
+			const r = evaluateQueryStatically("p95 latency を下げたい。`npm run bench`。既存 checks を使う。");
+			expect(r.contractDraft.primaryMetric.name).toBe("p95_latency_ms");
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("unknown");
+			expect(r.decision).toBe("needs_metric_extraction");
+		});
+
+		it("command execution time still becomes duration_seconds wall_clock", () => {
+			const r = evaluateQueryStatically("`npm run bench` の実行時間を短縮したい。既存 checks を使う。");
+			expect(r.contractDraft.primaryMetric.name).toBe("duration_seconds");
+			expect(r.contractDraft.primaryMetric.measurementMethod).toBe("wall_clock");
+		});
 	});
 
 	// ── success_count / pass_count semantics ───────────────────────
