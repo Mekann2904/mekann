@@ -160,7 +160,22 @@ while active:
 | ------- | -- | ------------------ |
 | `query` | 必須 | ユーザの自然文クエリ         |
 
-**返り値:** `decision`（判定結果）、`scores`（スコア群）、`contractDraft`（契約ドラフト）、`blockingIssues`、`riskFlags`、`suggestedRewrite`、`clarifyingQuestions`
+**返り値:** `decision`（判定結果）、`readiness`（段階別 gate）、`scores`（スコア群）、`contractDraft`（契約ドラフト）、`blockingIssues`、`warnings`、`ambiguityFlags`、`riskFlags`、`suggestedRewrite`、`clarifyingQuestions`
+
+`contractDraft.primaryMetric` には `name` / `unit` / `direction` / `source` / `measurementMethod` / `extractionRule` / `extractionConfidence` が含まれます。
+
+#### 評価の 2×2: 静的 / 動的 × 数値化可能 / 数値化困難
+
+`autoresearch_evaluate_query` の思想は、評価対象を「静的 / 動的」と「数値化可能 / 数値化困難」の 2 軸で分けることです。
+
+| 分類 | 意味 | autoresearch での扱い |
+| ---- | ---- | -------------------- |
+| 静的 × 数値化可能 | クエリ文字列だけから機械的に判定でき、0.0〜1.0 等でスコア化しやすいもの | `evaluateQueryStatically` が担当。例: 必須フィールド充足率、command の有無、risk flag、checksPolicy、metricExtractionReady |
+| 静的 × 数値化困難 | クエリ文字列だけから検出はできるが、単純な数値にしにくい意味的判断 | `decision` / `blockingIssues` / `suggestedRewrite` に反映。例: broad query、latency は wall-clock ではない、rate / ratio は方向不明に寄せる |
+| 動的 × 数値化可能 | repo の状態や実行結果を見ると数値評価できるもの | 将来的な動的評価の対象。例: 実行時間、coverage、test pass rate、METRIC 行、checks 成否 |
+| 動的 × 数値化困難 | repo の文脈や設計判断が必要で、数値だけでは決めにくいもの | agent の判断・確認質問の対象。例: metric がユーザ目的に本当に合っているか、改善価値があるか、変更方針が妥当か |
+
+現在の tool は **静的 evaluator** です。LLM API や git 操作、コマンド実行は行わず、クエリ文字列だけから契約ドラフトと gate を作ります。したがって `ready_for_run` は「静的に見て実験契約が揃っている」という意味であり、実際の repo で有用か・改善余地があるかまでは保証しません。
 
 #### decision の意味
 
@@ -205,10 +220,21 @@ while active:
 
 | measurementMethod | 意味                                 | extractionConfidence |
 | ----------------- | ---------------------------------- | -------------------- |
-| `wall_clock`      | 実行時間を autoresearch_run が自動測定        | 1.0                  |
+| `wall_clock`      | `autoresearch_run` が測定したコマンド全体の `durationSeconds` を主指標として使う。`duration_seconds` では stdout の `METRIC duration_seconds=<value>` がなくても keep 可能。stdout METRIC がある場合はそちらを優先する。 | 1.0（明示的な実行時間表現） / 0.9（metric 名からの推定） |
 | `stdout_metric`   | stdout の `METRIC name=value` から抽出   | 0.9                  |
 | `report_file`     | カバレッジレポート等のファイルから抽出                 | 0.6                  |
-| `unknown`         | 抽出方法が不明                             | 0.3                  |
+| `unknown`         | 抽出方法が不明                             | 0.3（通常） / 0.4（latency 系内部指標） |
+
+`primaryMetric.source` は `measurementMethod` から導出されます。
+
+| measurementMethod | source |
+| ----------------- | ------ |
+| `wall_clock`      | `custom` |
+| `stdout_metric`   | `stdout` |
+| `report_file`     | `file` |
+| `unknown`         | `unknown` |
+
+重要: `wall_clock` はコマンド全体の実行時間です。`duration_seconds` は `autoresearch_run.durationSeconds` から解決されます。`latency_ms` / `p95_latency_ms` のような benchmark 内部の latency 指標は、コマンド全体時間とは別物なので `wall_clock` にはせず、`stdout_metric` または `report_file` の抽出指定が必要です。
 
 #### 検証方針（checksPolicy）
 
@@ -217,6 +243,36 @@ while active:
 | `explicit_command`      | クエリ内に checks command が明示されている                   |
 | `autoresearch_checks_sh`| `autoresearch.checks.sh` または「既存 checks」の記述がある |
 | `not_specified`         | 検証方針が未指定                                       |
+
+#### metric 名からの推定ルール
+
+明示的な metric 名がある場合、unit / direction / measurementMethod の一部を静的に推定します。
+
+**unit 推定:**
+
+| metric 名の例 | unit |
+| ------------ | ---- |
+| `duration_seconds`, `runtime_sec` | `seconds` |
+| `total_ms`, `p95_latency_ms` | `ms` |
+| `coverage`, `success_rate`, `accuracy` | `%` |
+| `error_count`, `failure_count`, `violation_count` | `count` |
+
+**direction 推定:**
+
+| metric 名の例 | direction |
+| ------------ | --------- |
+| `duration_seconds`, `total_ms`, `latency_ms`, `p95_latency_ms` | `lower` |
+| `error_rate`, `failure_rate`, `crash_rate`, `flaky_rate`, `violation_rate` | `lower` |
+| `error_count`, `failure_count`, `violation_count` | `lower` |
+| `success_rate`, `pass_rate`, `win_rate`, `coverage`, `accuracy`, `score` | `higher` |
+| `success_count`, `pass_count` | `higher` |
+| `request_count`, `conversion_rate`, `request_ratio` など中立的な `count` / `rate` / `ratio` | `unknown` |
+
+`改善したい` は direction を直接決める語として扱いません。`total_ms を改善` は `lower`、`coverage を改善` は `higher` のように、metric 名の意味を優先します。
+
+**latency 系 metric:**
+
+`latency`, `レイテンシ`, `応答時間`, `p50`, `p90`, `p95`, `p99` が自然文に出た場合は、`duration_seconds` ではなく `latency_ms` / `p95_latency_ms` のような内部指標として扱います。この場合、抽出方法が明示されていなければ `needs_metric_extraction` になります。
 
 #### 使用例
 
@@ -281,6 +337,38 @@ checks policy: not_specified
 - checksReady: false
 - logReady: false
 測定方法: unknown (extractionConfidence: 0.30)
+```
+
+**latency 系内部指標（needs_metric_extraction）:**
+
+```text
+ユーザ入力: latency を短縮したい。`npm run bench`。既存 checks を使う。
+
+判定: needs_metric_extraction
+主指標: latency_ms（lower, unit: ms）
+測定方法: unknown (extractionConfidence: 0.40)
+理由: latency は benchmark 内部指標であり、autoresearch_run の wall-clock time では測れないため
+```
+
+**p95 latency を stdout METRIC で明示（ready_for_run）:**
+
+```text
+ユーザ入力: `npm run bench`。主指標は p95_latency_ms、lower is better。stdout に METRIC p95_latency_ms=<value> を出す。既存 checks を使う。
+
+判定: ready_for_run
+主指標: p95_latency_ms（lower, unit: ms）
+測定方法: stdout_metric (extractionConfidence: 0.90)
+checks policy: autoresearch_checks_sh
+```
+
+**中立的な rate / ratio（needs_metric_design）:**
+
+```text
+ユーザ入力: 主指標は conversion_rate で改善したい
+
+判定: needs_metric_design
+主指標: conversion_rate（direction: unknown）
+理由: rate / ratio はドメインにより higher/lower が変わるため、改善方向の明示が必要
 ```
 
 **広すぎるクエリ（needs_rewrite）:**
@@ -394,9 +482,13 @@ METRIC objective_score=0.7342
 1. 対応する `autoresearch_run` の結果が存在する
 2. タイムアウトしていない
 3. 終了コードが `0` である
-4. stdout に `METRIC <metricName>=<value>` が含まれている
+4. 主指標が解決できる
+   - stdout に `METRIC <metricName>=<value>` が含まれている
+   - または `metricName` が `duration_seconds` で、`autoresearch_run` が測定した `durationSeconds` が存在する
 5. checks がすべて成功している
 6. run アーティファクトが正常に保存されている
+
+現行 API では `autoresearch_log` の `metric` 引数は必須です。ただし `keep` 時に主指標が stdout METRIC または `duration_seconds` wall-clock から解決できる場合、記録値は解決済み主指標を優先します。
 
 ---
 

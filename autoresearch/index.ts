@@ -374,6 +374,24 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 	const STATUS_LABELS: Record<string, string> = { keep: "採用", discard: "棄却", crash: "クラッシュ", checks_failed: "checks失敗" };
 	const STATUS_PREFIX: Record<string, string> = { keep: "[KEEP]", discard: "[DISCARD]", crash: "[CRASH]", checks_failed: "[CHECKS_FAILED]" };
+
+	function resolvePrimaryMetricValue(
+		metricName: string,
+		runResult: { durationSeconds?: number; parsedMetrics?: Record<string, number> | null },
+	): { value: number | null; source: "stdout_metric" | "wall_clock" | "missing" } {
+		const parsed = runResult.parsedMetrics?.[metricName];
+		if (typeof parsed === "number" && Number.isFinite(parsed)) {
+			return { value: parsed, source: "stdout_metric" };
+		}
+		if (
+			metricName === "duration_seconds" &&
+			typeof runResult.durationSeconds === "number" &&
+			Number.isFinite(runResult.durationSeconds)
+		) {
+			return { value: runResult.durationSeconds, source: "wall_clock" };
+		}
+		return { value: null, source: "missing" };
+	}
 	const INACTIVE_RESPONSE = {
 		content: [{ type: "text" as const, text: "[ERROR] autoresearch モードが無効です。\n`/autoresearch on` で有効化してください。" }],
 		details: {},
@@ -703,6 +721,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				const primary = result.parsedMetrics[state.metricName];
 				if (primary !== undefined) text += `\n主指標 ${state.metricName}=${primary}${state.metricUnit} を autoresearch_log に報告してください。`;
 			}
+			if (!(result.parsedMetrics && state.metricName in result.parsedMetrics) && state.metricName === "duration_seconds") {
+				text += `\n主指標 duration_seconds=${result.durationSeconds}${state.metricUnit} (wall_clock) を autoresearch_log に報告できます。`;
+			}
 
 			const safeOutput = filterSecrets(result.output);
 			if (safeOutput) text += `\n出力(末尾):\n${safeOutput}`;
@@ -797,6 +818,12 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			const matchedResult = matchedRunData?.result;
 			const matchedChecks = matchedRunData?.checks;
+			const resolvedPrimaryMetric = matchedResult
+				? resolvePrimaryMetricValue(state.metricName, matchedResult)
+				: { value: null, source: "missing" as const };
+			const effectiveMetric = params.status === "keep" && resolvedPrimaryMetric.value !== null
+				? resolvedPrimaryMetric.value
+				: params.metric;
 
 			// --- keep validation ---
 			if (params.status === "keep") {
@@ -810,13 +837,12 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				if (!matchedResult.passed && !matchedResult.timedOut) reasons.push(`失敗した run(exitCode: ${matchedResult.exitCode})は keep できません。`);
 				if (matchedChecks && matchedChecks.passed === false) reasons.push(`checks が失敗しているため keep できません。checks 出力:\n${matchedChecks.output.slice(-500)}`);
 
-				// P0: 主指標が run 出力に存在することを検証
-				if (matchedResult.parsedMetrics && state.metricName in matchedResult.parsedMetrics) {
-					// OK - benchmark actually produced this metric
-				} else {
+				// P0: 主指標が stdout METRIC または duration_seconds wall-clock で解決できることを検証
+				if (resolvedPrimaryMetric.value === null) {
 					reasons.push(
-						`run 出力に主指標 "${state.metricName}" が含まれていません。` +
-						`benchmark が METRIC ${state.metricName}=value を stdout に出力する必要があります。`
+						`主指標 "${state.metricName}" を解決できません。` +
+						`stdout に METRIC ${state.metricName}=<number> を出力してください。` +
+						`ただし duration_seconds の場合は autoresearch_run が測定した wall-clock durationSeconds を使用できます。`
 					);
 				}
 
@@ -878,7 +904,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			const entry: RunEntry = {
 				type: "run", run, runId: matchedPiRunId, piRunId: matchedPiRunId,
-				commit, metric: params.metric, status: params.status as RunStatus,
+				commit, metric: effectiveMetric, status: params.status as RunStatus,
 				description: params.description, timestamp: Date.now(),
 				metrics: params.metrics, memo: params.memo,
 				command: matchedResult?.command, exitCode: matchedResult?.exitCode,
@@ -893,12 +919,13 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				externalViewlogPath: matchedResult?.externalViewlogPath ?? null,
 				externalMetricsPath: matchedResult?.externalMetricsPath ?? null,
 				signal: matchedResult?.signal ?? null,
+				metricSource: params.status === "keep" && resolvedPrimaryMetric.source !== "missing" ? resolvedPrimaryMetric.source : undefined,
 			};
 
 			// P0-2: git commit 失敗時は keep を成功扱いにしない。
 			// state.results/runCount/bestMetric は git 成功(または non-keep の revert)後に更新する。
 			if (params.status === "keep") {
-				const gr = gitAutoCommit(ctx.cwd, `${params.description}\n\nResult: ${JSON.stringify({ status: params.status, [state.metricName]: params.metric })}`);
+				const gr = gitAutoCommit(ctx.cwd, `${params.description}\n\nResult: ${JSON.stringify({ status: params.status, [state.metricName]: effectiveMetric, metricSource: entry.metricSource })}`);
 				if (gr.committed) {
 					commit = gr.commit ?? commit;
 				} else if (gr.error) {
@@ -919,8 +946,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			// P0-2: commit 失敗時はここに到達しないため、ここから state を更新する。
 			state.results.push(entry);
 			state.runCount = run;
-			if (params.status === "keep" && isBestMetric(state.bestMetric, params.metric, state.direction)) {
-				state.bestMetric = params.metric;
+			if (params.status === "keep" && isBestMetric(state.bestMetric, effectiveMetric, state.direction)) {
+				state.bestMetric = effectiveMetric;
 			}
 
 			// --- Pointers & ledgers ---
@@ -934,7 +961,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			// Latest pointer
 			try {
 				writePointer(latestPointerPath(ctx.cwd, state.sessionId), {
-					piRunId: matchedPiRunId ?? "", runSeq, metric: params.metric,
+					piRunId: matchedPiRunId ?? "", runSeq, metric: effectiveMetric,
 					timestamp: entry.timestamp, gitCommit: entry.postCommit ?? preCommit,
 				});
 			} catch (e) { ledgerErrors.push(`latest pointer: ${e instanceof Error ? e.message : String(e)}`); }
@@ -943,9 +970,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			if (params.status === "keep") {
 				try {
 					const cur = readPointer(bestPointerPath(ctx.cwd, state.sessionId));
-					if (isBestPointerMetric(params.metric, cur, state.direction)) {
+					if (isBestPointerMetric(effectiveMetric, cur, state.direction)) {
 						writePointer(bestPointerPath(ctx.cwd, state.sessionId), {
-							piRunId: matchedPiRunId ?? "", runSeq, metric: params.metric,
+							piRunId: matchedPiRunId ?? "", runSeq, metric: effectiveMetric,
 							timestamp: entry.timestamp, gitCommit: entry.postCommit ?? preCommit,
 						});
 					}
@@ -963,8 +990,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					durationSeconds: matchedResult?.durationSeconds ?? 0,
 					command: matchedResult?.command ?? "", gitCommit: entry.postCommit ?? preCommit,
 					exitCode: matchedResult?.exitCode ?? null, timedOut: matchedResult?.timedOut ?? false,
-					primaryMetricName: state.metricName, primaryMetricValue: params.metric,
-					metrics: { ...(params.metrics ?? {}), [state.metricName]: params.metric },
+					primaryMetricName: state.metricName, primaryMetricValue: effectiveMetric,
+					primaryMetricSource: entry.metricSource,
+					metrics: { ...(params.metrics ?? {}), [state.metricName]: effectiveMetric },
 					externalArtifactDir: matchedResult?.externalArtifactDir ?? null,
 					externalSummaryPath: matchedResult?.externalSummaryPath ?? null,
 					externalViewlogPath: matchedResult?.externalViewlogPath ?? null,
@@ -978,7 +1006,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				appendToJsonl(decisionsLedgerPath(ctx.cwd, state.sessionId), {
 					schemaVersion: 1, piRunId: matchedPiRunId ?? "",
 					externalRunId: matchedResult?.externalRunId ?? null,
-					status: params.status, metric: params.metric,
+					status: params.status, metric: effectiveMetric, metricSource: entry.metricSource,
 					preCommit, postCommit: entry.postCommit ?? preCommit,
 					dirtyBefore, dirtyAfter: entry.dirtyAfter ?? false,
 					changedFiles, timestamp: entry.timestamp,
@@ -990,7 +1018,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			try {
 				appendToJsonl(eventsLedgerPath(ctx.cwd, state.sessionId), {
 					schemaVersion: 1, event: "logged", piRunId: matchedPiRunId ?? "",
-					timestamp: entry.timestamp, details: { status: params.status, metric: params.metric, runSeq },
+					timestamp: entry.timestamp, details: { status: params.status, metric: effectiveMetric, metricSource: entry.metricSource, runSeq },
 				} satisfies EventLedgerEntry);
 			} catch (e) { ledgerErrors.push(`event ledger: ${e instanceof Error ? e.message : String(e)}`); }
 
@@ -1001,6 +1029,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					...entry,
 					runId: entry.runId ?? undefined, piRunId: entry.piRunId ?? undefined,
 					metrics: params.metrics ?? undefined, memo: params.memo ?? undefined,
+					metricSource: entry.metricSource ?? undefined,
 					command: entry.command ?? undefined, exitCode: entry.exitCode ?? undefined,
 					timedOut: entry.timedOut ?? undefined, checksPassed: entry.checksPassed ?? undefined,
 					preCommit, postCommit: entry.postCommit ?? undefined,
@@ -1028,7 +1057,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			const prefix = STATUS_PREFIX[params.status] ?? "[UNKNOWN]";
 			let text = `${prefix} 実験 #${run} を記録: ${STATUS_LABELS[params.status] ?? params.status}\n`;
 			text += `説明: ${params.description}\n`;
-			text += `指標: ${state.metricName}=${params.metric}${state.metricUnit}\n`;
+			text += `指標: ${state.metricName}=${effectiveMetric}${state.metricUnit}\n`;
+			if (entry.metricSource) text += `指標ソース: ${entry.metricSource}\n`;
 			text += `コミット: ${commit}\n`;
 			if (entry.piRunId) text += `piRunId: ${entry.piRunId}\n`;
 			if (entry.externalRunId) text += `外部 RUN_ID: ${entry.externalRunId}\n`;
@@ -1057,7 +1087,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				content: [{ type: "text", text }],
 				details: {
 					run, runId: entry.piRunId, piRunId: entry.piRunId,
-					status: params.status, metric: params.metric, bestMetric: state.bestMetric,
+					status: params.status, metric: effectiveMetric, metricSource: entry.metricSource, bestMetric: state.bestMetric,
 					kept, commit, preCommit, postCommit: entry.postCommit, changedFiles,
 					externalRunId: entry.externalRunId, externalArtifactDir: entry.externalArtifactDir,
 					ledgerErrors: ledgerErrors.length > 0 ? ledgerErrors : undefined,

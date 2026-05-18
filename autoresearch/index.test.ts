@@ -1287,7 +1287,7 @@ describe("autoresearchExtension", () => {
 			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
 
 			// First keep: 100
-			await runBenchmark(pi.tools, ctx);
+			await runBenchmark(pi.tools, ctx, "echo METRIC ms=100");
 			const r1 = await logTool.execute(
 				"tc-l1", { metric: 100, status: "keep", description: "baseline" },
 				undefined, undefined, ctx,
@@ -1295,7 +1295,7 @@ describe("autoresearchExtension", () => {
 			expect(r1.details.bestMetric).toBe(100);
 
 			// Better keep: 80
-			await runBenchmark(pi.tools, ctx);
+			await runBenchmark(pi.tools, ctx, "echo METRIC ms=80");
 			const r2 = await logTool.execute(
 				"tc-l2", { metric: 80, status: "keep", description: "improved" },
 				undefined, undefined, ctx,
@@ -1303,7 +1303,7 @@ describe("autoresearchExtension", () => {
 			expect(r2.details.bestMetric).toBe(80);
 
 			// Worse keep: 120 → bestMetric stays 80
-			await runBenchmark(pi.tools, ctx);
+			await runBenchmark(pi.tools, ctx, "echo METRIC ms=120");
 			const r3 = await logTool.execute(
 				"tc-l3", { metric: 120, status: "keep", description: "worse" },
 				undefined, undefined, ctx,
@@ -3009,6 +3009,110 @@ describe("autoresearchExtension", () => {
 			expect(result.content[0].text).toContain("[ERROR]");
 			expect(result.content[0].text).toContain("score");
 			expect(result.content[0].text).toContain("keep");
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
+		it("allows keep for duration_seconds using measured wall-clock duration", async () => {
+			const testDir = "/tmp/test-ar-wallclock-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await cmdHandler("on", ctx);
+
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			await initTool.execute("tc-init", { name: "wall", metric_name: "duration_seconds", metric_unit: "seconds" }, undefined, undefined, ctx);
+
+			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
+			const runResult = await runTool.execute("tc-run-wall", { command: "echo ok" }, undefined, undefined, ctx);
+
+			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
+			const result = await logTool.execute(
+				"tc-log-wall", { metric: 999, status: "keep", description: "wall", runId: runResult.details.piRunId },
+				undefined, undefined, ctx,
+			);
+			expect(result.content[0].text).toContain("[KEEP]");
+			expect(result.details.metricSource).toBe("wall_clock");
+			expect(result.details.metric).toBeCloseTo(runResult.details.durationSeconds, 3);
+			expect(result.details.metric).not.toBe(999);
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
+		it("prefers stdout METRIC over wall-clock for duration_seconds", async () => {
+			const testDir = "/tmp/test-ar-wallstdout-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await cmdHandler("on", ctx);
+
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			await initTool.execute("tc-init", { name: "wall", metric_name: "duration_seconds", metric_unit: "seconds" }, undefined, undefined, ctx);
+
+			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
+			const runResult = await runTool.execute("tc-run-wallstdout", { command: "echo METRIC duration_seconds=3" }, undefined, undefined, ctx);
+
+			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
+			const result = await logTool.execute(
+				"tc-log-wallstdout", { metric: 999, status: "keep", description: "wall stdout", runId: runResult.details.piRunId },
+				undefined, undefined, ctx,
+			);
+			expect(result.content[0].text).toContain("[KEEP]");
+			expect(result.details.metric).toBe(3);
+			expect(result.details.metricSource).toBe("stdout_metric");
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
+		it("does not use durationSeconds for non-wall-clock primary metric", async () => {
+			const testDir = "/tmp/test-ar-p95nom-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await cmdHandler("on", ctx);
+
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			await initTool.execute("tc-init", { name: "p95", metric_name: "p95_latency_ms", metric_unit: "ms" }, undefined, undefined, ctx);
+
+			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
+			const runResult = await runTool.execute("tc-run-p95nom", { command: "echo ok" }, undefined, undefined, ctx);
+
+			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
+			const result = await logTool.execute(
+				"tc-log-p95nom", { metric: 123, status: "keep", description: "p95 no metric", runId: runResult.details.piRunId },
+				undefined, undefined, ctx,
+			);
+			expect(result.content[0].text).toContain("[ERROR]");
+			expect(result.content[0].text).toContain("p95_latency_ms");
+
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
+		it("allows keep for p95_latency_ms when stdout METRIC is present", async () => {
+			const testDir = "/tmp/test-ar-p95metric-" + Date.now();
+			fs.mkdirSync(testDir, { recursive: true });
+
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await cmdHandler("on", ctx);
+
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			await initTool.execute("tc-init", { name: "p95", metric_name: "p95_latency_ms", metric_unit: "ms" }, undefined, undefined, ctx);
+
+			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
+			const runResult = await runTool.execute("tc-run-p95metric", { command: "echo METRIC p95_latency_ms=123" }, undefined, undefined, ctx);
+
+			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
+			const result = await logTool.execute(
+				"tc-log-p95metric", { metric: 999, status: "keep", description: "p95 metric", runId: runResult.details.piRunId },
+				undefined, undefined, ctx,
+			);
+			expect(result.content[0].text).toContain("[KEEP]");
+			expect(result.details.metric).toBe(123);
+			expect(result.details.metricSource).toBe("stdout_metric");
 
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});

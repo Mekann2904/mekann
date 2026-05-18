@@ -47,6 +47,7 @@ export interface RunEntry {
 	externalViewlogPath?: string | null;
 	externalMetricsPath?: string | null;
 	signal?: string | null;
+	metricSource?: "stdout_metric" | "wall_clock";
 }
 
 export interface ExperimentState {
@@ -264,6 +265,7 @@ function parseRunEntry(entry: Record<string, unknown>): RunEntry {
 	if (typeof entry.externalViewlogPath === "string" || entry.externalViewlogPath === null) result.externalViewlogPath = entry.externalViewlogPath as string | null;
 	if (typeof entry.externalMetricsPath === "string" || entry.externalMetricsPath === null) result.externalMetricsPath = entry.externalMetricsPath as string | null;
 	if (typeof entry.signal === "string" || entry.signal === null) result.signal = entry.signal as string | null;
+	if (entry.metricSource === "stdout_metric" || entry.metricSource === "wall_clock") result.metricSource = entry.metricSource;
 	return result;
 }
 
