@@ -136,6 +136,19 @@ function detectScope(query: string): string[] {
   return [...new Set(scopes)];
 }
 
+// ── Direction inference from metric name ────────────────────
+
+function inferDirectionFromMetricName(name: string | null): MetricDirection {
+  if (!name) return "unknown";
+  if (/(duration|latency|time|seconds|sec|_ms$|\bms\b|cost|memory|size|errors?|failures?|violations?|count)/i.test(name)) {
+    return "lower";
+  }
+  if (/(coverage|accuracy|score|rate|ratio|success|pass|win)/i.test(name)) {
+    return "higher";
+  }
+  return "unknown";
+}
+
 // ── Metric name & direction detection ─────────────────────────
 
 function detectExplicitMetricName(query: string): string | null {
@@ -202,11 +215,14 @@ function detectMetricNameAndDirection(
     direction = "higher";
   }
 
-  // 明示 metric name がある場合、direction がまだ unknown ならキーワード推定を再試行
+  // 明示 metric name がある場合、direction がまだ unknown なら metricName 由来 → キーワードの順で推定
   if (explicitName && direction === "unknown") {
-    if (/(速く|高速化|latency|\btime\b|duration|\bms\b|\bsec\b|秒|実行時間|短縮|減ら|削減|小さい|lower)/.test(q)) {
+    const inferredFromName = inferDirectionFromMetricName(explicitName);
+    if (inferredFromName !== "unknown") {
+      direction = inferredFromName;
+    } else if (/(速く|高速化|latency|\btime\b|duration|\bms\b|\bsec\b|秒|実行時間|短縮|減ら|削減|小さい|lower)/.test(q)) {
       direction = "lower";
-    } else if (/(上げ|大きい|高い|higher|改善|向上)/.test(q)) {
+    } else if (/(上げ|大きい|高い|higher|向上)/.test(q)) {
       direction = "higher";
     }
   }
@@ -267,12 +283,25 @@ function detectMeasurementMethod(
     };
   }
 
-  // 2. Wall-clock: 速度・時間系キーワード
+  // 2. Wall-clock: 速度・時間系キーワード（最も信頼度が高い）
   if (/(速く|高速化|latency|\btime\b|duration|\bms\b|\bsec\b|秒|実行時間|短縮)/.test(q)) {
     return {
       measurementMethod: "wall_clock",
       extractionRule: "autoresearch_run の durationSeconds を primary metric として使う",
       extractionConfidence: 1.0,
+      metricExtractionReady: true,
+    };
+  }
+
+  // 3. Wall-clock: metricName に時間系パターンが含まれる場合
+  if (
+    metricName &&
+    /(duration|latency|time|seconds|sec|_ms$|\bms\b|total_ms)/i.test(metricName)
+  ) {
+    return {
+      measurementMethod: "wall_clock",
+      extractionRule: "autoresearch_run の durationSeconds を primary metric として使う",
+      extractionConfidence: 0.9,
       metricExtractionReady: true,
     };
   }
@@ -793,6 +822,7 @@ export function evaluateQueryStatically(query: string): QueryEvaluation {
 
   // ── Broad query detection ──
   const broad = isBroadQuery(trimmed);
+  const effectiveBroad = broad && !metricInfo.name && !benchmarkCommand && scope.length === 0;
 
   // ── Readiness gate ──
   const readiness = computeReadiness(
@@ -819,7 +849,7 @@ export function evaluateQueryStatically(query: string): QueryEvaluation {
   const decision = decide(
     riskFlags,
     objective,
-    broad,
+    effectiveBroad,
     metricInfo.name,
     metricInfo.direction,
     benchmarkCommand,
@@ -838,7 +868,7 @@ export function evaluateQueryStatically(query: string): QueryEvaluation {
     readiness.checksReady,
     scope,
     riskFlags,
-    broad
+    effectiveBroad
   );
 
   // ── Contract draft ──
@@ -873,17 +903,17 @@ export function evaluateQueryStatically(query: string): QueryEvaluation {
   const warnings = buildWarnings(checksPolicy, scope);
 
   // ── Ambiguity flags ──
-  const ambiguityFlags = buildAmbiguityFlags(broad, metricInfo.name, scope);
+  const ambiguityFlags = buildAmbiguityFlags(effectiveBroad, metricInfo.name, scope);
 
   // ── Suggested rewrite ──
   const suggestedRewrite = buildSuggestedRewrite(
-    decision, broad, metricInfo.name, metricInfo.direction,
+    decision, effectiveBroad, metricInfo.name, metricInfo.direction,
     benchmarkCommand, measurementInfo.measurementMethod
   );
 
   // ── Clarifying questions ──
   const clarifyingQuestions = buildClarifyingQuestions(
-    metricInfo.name, benchmarkCommand, scope, broad,
+    metricInfo.name, benchmarkCommand, scope, effectiveBroad,
     measurementInfo.metricExtractionReady, checksPolicy
   );
 
