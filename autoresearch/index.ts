@@ -50,8 +50,13 @@ import {
 	ensureAutoresearchDir,
 	appendEvent,
 	appendDecision,
+	appendContractRun,
+	appendContractMetric,
 	validateWritePaths,
 	matchesAnyPattern,
+	filterInternalPaths,
+	validateCommandSafety,
+	resolveCwdInsideRepo,
 	type AutoresearchContractV1,
 	type LockFile,
 	type ContractV1ValidationResult,
@@ -1469,9 +1474,20 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					successDefinition: `${metricName} improves in ${metricDirection} direction`,
 				},
 				scope: {
-					allowedWritePaths: [],
-					forbiddenWritePaths: [],
-					immutableReadPaths: [],
+					allowedWritePaths: ["src/**", "tests/**", "lib/**"],
+					forbiddenWritePaths: [
+						"benchmarks/**",
+						"fixtures/**",
+						"package-lock.json",
+						"pnpm-lock.yaml",
+						"yarn.lock",
+					],
+					immutableReadPaths: [
+						"package.json",
+						"package-lock.json",
+						"pnpm-lock.yaml",
+						"yarn.lock",
+					],
 					requireGit: true,
 					requireCleanGitWorktree: true,
 				},
@@ -1551,6 +1567,13 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				``,
 				`- Modifying the benchmark script itself`,
 				`- Changing the metric definition mid-experiment`,
+				``,
+				`## Scope Note`,
+				``,
+				`The default scope is a reasonable starting point. Edit the contract block to match your repo structure:`,
+				`- Adjust allowedWritePaths if source is not in src/ or lib/`,
+				`- Add benchmark/fixture paths to immutableReadPaths if applicable`,
+				`- Add sensitive paths to forbiddenWritePaths`,
 				``,
 				`## Proposed Loop Strategy`,
 				``,
@@ -1687,6 +1710,15 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				}
 			}
 
+			// Command safety validation
+			const safetyErrors = validateCommandSafety(allCommands, ctx.cwd);
+			if (safetyErrors.length > 0) {
+				return {
+					content: [{ type: "text" as const, text: `[ERROR] command safety validation failed:\n${safetyErrors.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}` }],
+					details: { safetyErrors },
+				};
+			}
+
 			if (contract.scope.requireGit && !isGitRepo(ctx.cwd)) {
 				return {
 					content: [{ type: "text" as const, text: `[ERROR] git repo ではありません。contract で requireGit=true が指定されています。` }],
@@ -1722,7 +1754,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			);
 
 			const baselineCommand = contract.evaluation.benchmark.command;
-			const benchmarkCwd = path.resolve(ctx.cwd, baselineCommand.cwd);
+			const benchmarkCwd = resolveCwdInsideRepo(ctx.cwd, baselineCommand.cwd);
 			const baselineRuns: Array<{ runId: string; metric: number; durationSeconds: number }> = [];
 
 			for (let i = 0; i < contract.evaluation.benchmark.repeats; i++) {
@@ -1926,7 +1958,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			// --- Run checks ---
 			const checkResults = new Map<string, boolean>();
 			for (const check of contract.evaluation.checks) {
-				const checkCwd = path.resolve(ctx.cwd, check.command.cwd);
+				const checkCwd = resolveCwdInsideRepo(ctx.cwd, check.command.cwd);
 				const checkResult = await runArgvCommand(
 					{ argv: check.command.argv, cwd: checkCwd, env: check.command.env },
 					check.timeoutSeconds * 1000,
@@ -1936,7 +1968,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			}
 
 			// --- Run benchmark repeats ---
-			const benchmarkCwd = path.resolve(ctx.cwd, contract.evaluation.benchmark.command.cwd);
+			const benchmarkCwd = resolveCwdInsideRepo(ctx.cwd, contract.evaluation.benchmark.command.cwd);
 			const measurements: number[] = [];
 			let benchmarkSucceeded = true;
 			let benchmarkTimedOut = false;
@@ -1965,7 +1997,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			// --- POST state: re-check changed files and immutable hash AFTER benchmark ---
 			// This catches mutations made by checks or benchmark scripts.
-			const changedFiles = getChangedFiles(ctx.cwd);
+			// Filter internal paths (.autoresearch/**, .pi/**) from changedFiles
+			// since these are audit artifacts, not candidate patches.
+			const changedFiles = filterInternalPaths(getChangedFiles(ctx.cwd));
 			const immutableResult = await computeImmutableReadSetHash(ctx.cwd, contract.scope.immutableReadPaths);
 			const immutableReadSetHashMatches = immutableResult.hash === lock.environment.immutableReadSetHash;
 
@@ -1994,6 +2028,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				immutableReadSetHashMatches,
 				contractHashMatches,
 				allMeasurements: measurements,
+				expectedMeasurements: contract.evaluation.benchmark.repeats,
 			};
 
 			const evaluatorResult = evaluateContract(evaluatorInput);
@@ -2043,6 +2078,35 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					metrics: measurements.length > 0 ? { [contract.evaluation.primaryMetric.name]: evaluatorResult.representativeMetric } : {},
 					status: evaluatorResult.decision,
 				} as unknown as Record<string, unknown>);
+			} catch { /* best effort */ }
+
+			// --- Also append to .autoresearch/runs.jsonl and .autoresearch/metrics.jsonl ---
+			try {
+				const now = Date.now();
+				appendContractRun(ctx.cwd, {
+					timestamp: now,
+					contractId: lock.contractId,
+					contractHash: currentHash,
+					iteration: state.runCount + 1,
+					decision: evaluatorResult.decision,
+					measurements,
+					representativeMetric: evaluatorResult.representativeMetric,
+					reference: evaluatorResult.reference,
+					changedFiles,
+					checkResults: Object.fromEntries(checkResults),
+					durationSeconds: 0,
+				});
+				appendContractMetric(ctx.cwd, {
+					timestamp: now,
+					contractId: lock.contractId,
+					contractHash: currentHash,
+					iteration: state.runCount + 1,
+					metricName: contract.evaluation.primaryMetric.name,
+					metricValue: evaluatorResult.representativeMetric,
+					allMeasurements: measurements,
+					aggregateMethod: contract.evaluation.benchmark.aggregate,
+					decision: evaluatorResult.decision,
+				});
 			} catch { /* best effort */ }
 
 			if (evaluatorResult.decision === "keep") {

@@ -267,6 +267,17 @@ export function validateContractV1(value: unknown): ContractV1ValidationResult {
 				errors.push('path pattern "' + p + '" is absolute (must be relative to repo root)');
 			}
 		}
+
+		// rejectIfBenchmarkChanged requires immutableReadPaths
+		if (
+			contract.acceptance.rejectIfBenchmarkChanged &&
+			contract.scope.immutableReadPaths.length === 0
+		) {
+			errors.push(
+				"rejectIfBenchmarkChanged=true requires non-empty immutableReadPaths. " +
+				"Add benchmark-related files to immutableReadPaths for drift detection.",
+			);
+		}
 	}
 
 	return {
@@ -734,6 +745,21 @@ export function ensureAutoresearchDir(cwd: string): void {
 	if (!fs.existsSync(dir)) {
 		fs.mkdirSync(dir, { recursive: true });
 	}
+
+	// Ensure .autoresearch/ is in .gitignore
+	const gitignorePath = path.join(cwd, ".gitignore");
+	try {
+		let gitignore = "";
+		if (fs.existsSync(gitignorePath)) {
+			gitignore = fs.readFileSync(gitignorePath, "utf8");
+		}
+		if (!gitignore.split("\n").some((l) => l.trim() === ".autoresearch" || l.trim() === ".autoresearch/")) {
+			const line = (gitignore.length > 0 && !gitignore.endsWith("\n") ? "\n" : "") + ".autoresearch/\n";
+			fs.appendFileSync(gitignorePath, line, "utf8");
+		}
+	} catch {
+		// best effort — don't fail the operation if .gitignore write fails
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -811,6 +837,48 @@ export function appendDecision(cwd: string, entry: DecisionEntry): void {
 	ensureAutoresearchDir(cwd);
 	const line = JSON.stringify(entry) + "\n";
 	fs.appendFileSync(decisionsPath(cwd), line, "utf8");
+}
+
+// ---------------------------------------------------------------------------
+// Contract-mode run / metric logging
+// ---------------------------------------------------------------------------
+
+export interface ContractRunEntry {
+	timestamp: number;
+	contractId: string;
+	contractHash: string;
+	iteration: number;
+	decision: "keep" | "discard" | "pause";
+	measurements: number[];
+	representativeMetric: number | null;
+	reference: number | null;
+	changedFiles: string[];
+	checkResults: Record<string, boolean>;
+	durationSeconds: number;
+}
+
+export function appendContractRun(cwd: string, entry: ContractRunEntry): void {
+	ensureAutoresearchDir(cwd);
+	const line = JSON.stringify(entry) + "\n";
+	fs.appendFileSync(runsPath(cwd), line, "utf8");
+}
+
+export interface ContractMetricEntry {
+	timestamp: number;
+	contractId: string;
+	contractHash: string;
+	iteration: number;
+	metricName: string;
+	metricValue: number | null;
+	allMeasurements: number[];
+	aggregateMethod: string;
+	decision: "keep" | "discard" | "pause";
+}
+
+export function appendContractMetric(cwd: string, entry: ContractMetricEntry): void {
+	ensureAutoresearchDir(cwd);
+	const line = JSON.stringify(entry) + "\n";
+	fs.appendFileSync(metricsPath(cwd), line, "utf8");
 }
 
 // ---------------------------------------------------------------------------
@@ -893,4 +961,120 @@ export function validateWritePaths(
 	}
 
 	return { violations };
+}
+
+// ---------------------------------------------------------------------------
+// Internal path filtering
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if a path is an internal autoresearch or .pi artifact path.
+ * These should be excluded from candidate changedFiles.
+ */
+export function isInternalArtifactPath(p: string): boolean {
+	const n = p.replace(/\\/g, "/");
+	return (
+		n === ".autoresearch" ||
+		n.startsWith(".autoresearch/") ||
+		n === ".pi" ||
+		n.startsWith(".pi/") ||
+		n === "autoresearch.plan.md"
+	);
+}
+
+/**
+ * Filter internal artifact paths from a list of changed files.
+ */
+export function filterInternalPaths(files: string[]): string[] {
+	return files.filter((f) => !isInternalArtifactPath(f));
+}
+
+// ---------------------------------------------------------------------------
+// Command safety validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate command safety: reject shell invocations, path escapes, etc.
+ */
+export function validateCommandSafety(
+	commands: Array<{ argv: string[]; cwd: string }>,
+	repoRoot: string,
+): string[] {
+	const errors: string[] = [];
+
+	for (let ci = 0; ci < commands.length; ci++) {
+		const cmd = commands[ci];
+		const label = ci === 0 ? "benchmark" : "check[" + (ci - 1) + "]";
+
+		// Reject shell -c invocations
+		const shellNames = ["bash", "sh", "zsh", "fish", "dash", "ksh", "csh", "tcsh"];
+		if (cmd.argv.length >= 2) {
+			const exe = cmd.argv[0];
+			const base = path.basename(exe);
+			if (shellNames.includes(base) && cmd.argv[1] === "-c") {
+				errors.push(
+					label + ": command uses " + exe + " -c (shell string invocation). " +
+					"Use a script file instead: [" + exe + ", \"./script.sh\"]. " +
+					"Shell -c defeats the purpose of argv-based command safety.",
+				);
+			}
+		}
+
+		// Reject sudo / su
+		if (cmd.argv[0] === "sudo" || cmd.argv[0] === "su") {
+			errors.push(
+				label + ": command uses " + cmd.argv[0] + " (privilege escalation rejected).",
+			);
+		}
+
+		// Reject curl|sh patterns (argv containing pipe to shell)
+		const argStr = cmd.argv.join(" ");
+		if (/curl.*\|.*sh|wget.*\|.*sh/.test(argStr)) {
+			errors.push(
+				label + ": command contains curl|sh or wget|sh pattern (remote execution rejected).",
+			);
+		}
+
+		// Reject rm -rf /
+		if (cmd.argv[0] === "rm" && cmd.argv.includes("-rf") && (cmd.argv.includes("/") || cmd.argv.includes("/*"))) {
+			errors.push(
+				label + ": command contains \"rm -rf /\" (destructive operation rejected).",
+			);
+		}
+
+		// Validate cwd resolves inside repo
+		if (path.isAbsolute(cmd.cwd)) {
+			errors.push(
+				label + ": cwd is absolute (\"" + cmd.cwd + "\"). Must be relative to repo root.",
+			);
+		} else if (cmd.cwd.includes("..")) {
+			errors.push(
+				label + ": cwd contains \"..\" (path traversal rejected): \"" + cmd.cwd + "\".",
+			);
+		} else {
+			const resolved = path.resolve(repoRoot, cmd.cwd);
+			const root = path.resolve(repoRoot);
+			if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+				errors.push(
+					label + ": cwd escapes repo root: \"" + cmd.cwd + "\" resolves to \"" + resolved + "\".",
+				);
+			}
+		}
+	}
+
+	return errors;
+}
+
+/**
+ * Resolve a cwd inside the repo, throwing on escape.
+ */
+export function resolveCwdInsideRepo(repoRoot: string, cwd: string): string {
+	if (path.isAbsolute(cwd)) throw new Error("cwd is absolute: " + cwd);
+	if (cwd.includes("..")) throw new Error("cwd contains ..: " + cwd);
+	const resolved = path.resolve(repoRoot, cwd);
+	const root = path.resolve(repoRoot);
+	if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+		throw new Error("cwd escapes repo: " + cwd + " -> " + resolved);
+	}
+	return resolved;
 }

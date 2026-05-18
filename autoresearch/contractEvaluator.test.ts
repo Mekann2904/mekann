@@ -112,6 +112,7 @@ function makeInput(overrides: Partial<EvaluatorInput> = {}): EvaluatorInput {
 		immutableReadSetHashMatches: true,
 		contractHashMatches: true,
 		allMeasurements: [95],
+		expectedMeasurements: 1,
 		...overrides,
 	};
 }
@@ -423,10 +424,58 @@ describe("contractEvaluator", () => {
 			const input = makeInput({
 				contract,
 				allMeasurements: [90, 92, 94], // median = 92
+				expectedMeasurements: 3,
 			});
 			const result = evaluateContract(input);
 			expect(result.decision).toBe("keep");
 			expect(result.representativeMetric).toBe(92);
+		});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Additional P0 tests
+// ---------------------------------------------------------------------------
+
+describe("contractEvaluator P0 additions", () => {
+	describe("partial metric missing in repeats", () => {
+		it("discards when some repeats missing metric", () => {
+			const contract = makeContract({
+				evaluation: {
+					...makeContract().evaluation,
+					benchmark: {
+						...makeContract().evaluation.benchmark,
+						repeats: 3,
+					},
+				},
+			});
+			const input = makeInput({
+				contract,
+				allMeasurements: [95],  // only 1 of 3 repeats has metric
+				expectedMeasurements: 3,
+			});
+			const result = evaluateContract(input);
+			expect(result.decision).toBe("discard");
+			expect(result.reason).toContain("missing in 2 of 3");
+		});
+
+		it("keeps when all repeats have metric", () => {
+			const contract = makeContract({
+				evaluation: {
+					...makeContract().evaluation,
+					benchmark: {
+						...makeContract().evaluation.benchmark,
+						repeats: 3,
+					},
+				},
+			});
+			const input = makeInput({
+				contract,
+				allMeasurements: [90, 92, 94],
+				expectedMeasurements: 3,
+			});
+			const result = evaluateContract(input);
+			expect(result.decision).toBe("keep");
 		});
 	});
 });

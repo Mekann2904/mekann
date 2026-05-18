@@ -3599,6 +3599,11 @@ describe("autoresearchExtension", () => {
 			expect(contractJson.evaluation.benchmark.command.argv[0]).toBe("bash");
 			expect(contractJson.evaluation.benchmark.command.argv[1]).toBe("./autoresearch.sh");
 
+			// Verify default scope is not empty
+			expect(contractJson.scope.allowedWritePaths.length).toBeGreaterThan(0);
+			expect(contractJson.scope.forbiddenWritePaths.length).toBeGreaterThan(0);
+			expect(contractJson.scope.immutableReadPaths.length).toBeGreaterThan(0);
+
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 	});
@@ -3766,6 +3771,38 @@ describe("autoresearchExtension", () => {
 			} finally {
 				fs.rmSync(testDir, { recursive: true, force: true });
 			}
+		});
+	});
+
+	describe("contract mode: command safety validation", () => {
+		it("rejects approve with bash -c in benchmark", async () => {
+			const testDir = createGitTestDir("test-cmd-safety");
+			const ctx = createMockCtx({ cwd: testDir });
+
+			const planTool = pi.tools.find((t) => t.name === "autoresearch_plan")!;
+			await planTool.execute("tc-plan", { query: "test" }, undefined, undefined, ctx);
+
+			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir, stdio: "ignore" });
+			childProcess.execFileSync("git", ["commit", "-m", "add plan"], { cwd: testDir, stdio: "ignore" });
+
+			// Edit plan to use bash -c
+			const planPath_ = path.join(testDir, "autoresearch.plan.md");
+			let planContent = fs.readFileSync(planPath_, "utf8");
+			planContent = planContent.replace(
+				/bash"\s*,\s*"\.\/autoresearch\.sh"/,
+				'bash",\n          "-c",\n          "echo hello"',
+			);
+			fs.writeFileSync(planPath_, planContent, "utf8");
+
+			childProcess.execFileSync("git", ["add", "-A"], { cwd: testDir, stdio: "ignore" });
+			childProcess.execFileSync("git", ["commit", "-m", "edit plan"], { cwd: testDir, stdio: "ignore" });
+
+			const approveTool = pi.tools.find((t) => t.name === "autoresearch_approve")!;
+			const result = await approveTool.execute("tc-approve", {}, undefined, undefined, ctx);
+			expect(result.content[0].text).toContain("[ERROR]");
+			expect(result.content[0].text).toContain("bash -c");
+
+			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 	});
 

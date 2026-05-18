@@ -37,6 +37,8 @@ export interface EvaluatorInput {
 	contractHashMatches: boolean;
 	/** All metric measurements from repeats (for aggregate) */
 	allMeasurements: number[];
+	/** Expected number of measurements (= benchmark.repeats) */
+	expectedMeasurements: number;
 }
 
 export interface EvaluatorResult {
@@ -157,17 +159,35 @@ export function evaluateContract(input: EvaluatorInput): EvaluatorResult {
 		};
 	}
 
-	// 6. Metric missing
+	// 6. Metric missing (complete or partial)
+	const metricComplete = input.allMeasurements.length === input.expectedMeasurements;
+	const totalMissing = input.expectedMeasurements - input.allMeasurements.length;
+
 	if (input.candidateMetric === null || input.allMeasurements.length === 0) {
+		// All repeats missing
 		if (contract.acceptance.rejectIfMetricMissing) {
 			return {
 				decision: contract.failurePolicy.onMetricMissing,
-				reason: "Primary metric not found. Ensure stdout contains METRIC <name>=<number>.",
+				reason: "Primary metric not found in any repeat. Ensure stdout contains METRIC <name>=<number>.",
 				representativeMetric: null,
 				improvement: null,
 				improvementRate: null,
 				reference: null,
-				details: {},
+				details: { expectedMeasurements: input.expectedMeasurements, actualMeasurements: 0 },
+			};
+		}
+	} else if (!metricComplete) {
+		// Partial metric missing: some repeats missing metric
+		if (contract.acceptance.rejectIfMetricMissing) {
+			return {
+				decision: contract.failurePolicy.onMetricMissing,
+				reason: "Primary metric missing in " + totalMissing + " of " + input.expectedMeasurements + " repeats. " +
+					"Partial measurements cannot produce a reliable aggregate.",
+				representativeMetric: input.candidateMetric,
+				improvement: null,
+				improvementRate: null,
+				reference: null,
+				details: { expectedMeasurements: input.expectedMeasurements, actualMeasurements: input.allMeasurements.length, missing: totalMissing },
 			};
 		}
 	}

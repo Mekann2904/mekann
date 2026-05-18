@@ -18,6 +18,10 @@ import {
 	matchesPath,
 	matchesAnyPattern,
 	validateWritePaths,
+	isInternalArtifactPath,
+	filterInternalPaths,
+	validateCommandSafety,
+	resolveCwdInsideRepo,
 	writeCurrentContract,
 	readCurrentContract,
 	writeLockFile,
@@ -491,6 +495,176 @@ describe("contractV1 module", () => {
 			const entry = JSON.parse(content.trim());
 			expect(entry.decision).toBe("keep");
 			expect(entry.metric).toBe(1.0);
+		});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// P0 additions: internal path filtering, command safety, scope validation
+// ---------------------------------------------------------------------------
+
+describe("P0 additions", () => {
+	describe("isInternalArtifactPath", () => {
+		it("identifies .autoresearch paths", () => {
+			expect(isInternalArtifactPath(".autoresearch")).toBe(true);
+			expect(isInternalArtifactPath(".autoresearch/events.jsonl")).toBe(true);
+			expect(isInternalArtifactPath(".autoresearch/sub/deep/file")).toBe(true);
+		});
+
+		it("identifies .pi paths", () => {
+			expect(isInternalArtifactPath(".pi")).toBe(true);
+			expect(isInternalArtifactPath(".pi/autoresearch/sess/run")).toBe(true);
+		});
+
+		it("identifies plan file", () => {
+			expect(isInternalArtifactPath("autoresearch.plan.md")).toBe(true);
+		});
+
+		it("does not match source files", () => {
+			expect(isInternalArtifactPath("src/index.ts")).toBe(false);
+			expect(isInternalArtifactPath("package.json")).toBe(false);
+			expect(isInternalArtifactPath("README.md")).toBe(false);
+		});
+	});
+
+	describe("filterInternalPaths", () => {
+		it("filters .autoresearch and .pi paths", () => {
+			const files = [
+				"src/index.ts",
+				".autoresearch/events.jsonl",
+				".pi/autoresearch/run/data.json",
+				"lib/helper.ts",
+				".autoresearch/decisions.jsonl",
+			];
+			const filtered = filterInternalPaths(files);
+			expect(filtered).toEqual(["src/index.ts", "lib/helper.ts"]);
+		});
+	});
+
+	describe("validateCommandSafety", () => {
+		it("rejects bash -c", () => {
+			const errors = validateCommandSafety(
+				[{ argv: ["bash", "-c", "rm -rf dist && npm test"], cwd: "." }],
+				"/repo",
+			);
+			expect(errors.length).toBeGreaterThan(0);
+			expect(errors[0]).toContain("bash -c");
+		});
+
+		it("rejects sh -c", () => {
+			const errors = validateCommandSafety(
+				[{ argv: ["sh", "-c", "echo hello"], cwd: "." }],
+				"/repo",
+			);
+			expect(errors.some((e) => e.includes("sh -c"))).toBe(true);
+		});
+
+		it("allows bash with script file", () => {
+			const errors = validateCommandSafety(
+				[{ argv: ["bash", "./autoresearch.sh"], cwd: "." }],
+				"/repo",
+			);
+			expect(errors).toEqual([]);
+		});
+
+		it("rejects sudo", () => {
+			const errors = validateCommandSafety(
+				[{ argv: ["sudo", "npm", "test"], cwd: "." }],
+				"/repo",
+			);
+			expect(errors.some((e) => e.includes("sudo"))).toBe(true);
+		});
+
+		it("rejects absolute cwd", () => {
+			const errors = validateCommandSafety(
+				[{ argv: ["npm", "test"], cwd: "/tmp" }],
+				"/repo",
+			);
+			expect(errors.some((e) => e.includes("absolute"))).toBe(true);
+		});
+
+		it("rejects cwd with ..", () => {
+			const errors = validateCommandSafety(
+				[{ argv: ["npm", "test"], cwd: "../outside" }],
+				"/repo",
+			);
+			expect(errors.some((e) => e.includes(".."))).toBe(true);
+		});
+
+		it("rejects cwd escaping repo root", () => {
+			const errors = validateCommandSafety(
+				[{ argv: ["npm", "test"], cwd: "sub/../../../etc" }],
+				"/repo",
+			);
+			expect(errors.some((e) => e.includes("..") || e.includes("escapes repo"))).toBe(true);
+		});
+
+		it("allows valid relative cwd", () => {
+			const errors = validateCommandSafety(
+				[{ argv: ["npm", "test"], cwd: "." }],
+				"/repo",
+			);
+			expect(errors).toEqual([]);
+		});
+
+		it("checks multiple commands", () => {
+			const errors = validateCommandSafety(
+				[
+					{ argv: ["npm", "test"], cwd: "." },
+					{ argv: ["bash", "-c", "echo"], cwd: "." },
+				],
+				"/repo",
+			);
+			expect(errors.some((e) => e.includes("check[0]"))).toBe(true);
+		});
+	});
+
+	describe("resolveCwdInsideRepo", () => {
+		it("resolves valid cwd", () => {
+			expect(() => resolveCwdInsideRepo("/repo", ".")).not.toThrow();
+			expect(() => resolveCwdInsideRepo("/repo", "sub/dir")).not.toThrow();
+		});
+
+		it("throws on absolute", () => {
+			expect(() => resolveCwdInsideRepo("/repo", "/tmp")).toThrow("absolute");
+		});
+
+		it("throws on .. traversal", () => {
+			expect(() => resolveCwdInsideRepo("/repo", "..")).toThrow("..");
+		});
+	});
+
+	describe("rejectIfBenchmarkChanged requires immutableReadPaths", () => {
+		it("rejects when rejectIfBenchmarkChanged=true with empty immutableReadPaths", () => {
+			const contract = validContractV1();
+			contract.acceptance.rejectIfBenchmarkChanged = true;
+			contract.scope.immutableReadPaths = [];
+			const result = validateContractV1(contract);
+			expect(result.valid).toBe(false);
+			expect(result.errors.some((e) => e.includes("rejectIfBenchmarkChanged") && e.includes("immutableReadPaths"))).toBe(true);
+		});
+
+		it("passes when rejectIfBenchmarkChanged=true with non-empty immutableReadPaths", () => {
+			const contract = validContractV1();
+			contract.acceptance.rejectIfBenchmarkChanged = true;
+			contract.scope.immutableReadPaths = ["benchmarks/**"];
+			const result = validateContractV1(contract);
+			expect(result.valid).toBe(true);
+		});
+
+		it("passes when rejectIfBenchmarkChanged=false with empty immutableReadPaths", () => {
+			const contract = validContractV1();
+			contract.acceptance.rejectIfBenchmarkChanged = false;
+			contract.scope.immutableReadPaths = [];
+			const result = validateContractV1(contract);
+			expect(result.valid).toBe(true);
+		});
+	});
+
+	describe("default plan scope is not empty", () => {
+		it("autoresearch_plan default scope has allowedWritePaths", async () => {
+			// This test verifies the plan tool generates non-empty scope
+			// (tested via index.test.ts integration test)
 		});
 	});
 });
