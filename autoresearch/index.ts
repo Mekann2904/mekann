@@ -9,6 +9,7 @@ import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { execFileSync } from "node:child_process";
 
 import {
 	reconstructState,
@@ -114,6 +115,7 @@ import {
 } from "./runner.js";
 import { evaluateQueryStatically } from "./queryEvaluation.js";
 import { renderWidget, directionLabel, type LoopInfo } from "./state.js";
+import { createOrReusePlan, readState as readStateV2, writeState as writeStateV2, appendJournal, generateRunId as generatePlanScopedRunId, createRunArtifacts, getRunDir } from "./layout.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -165,21 +167,16 @@ function bestPointerPath(cwd: string, sessionId: string): string {
 	return path.join(sessionDir(cwd, sessionId), "best.pointer.json");
 }
 
-// ---------------------------------------------------------------------------
-// Widget update
-// ---------------------------------------------------------------------------
-
-function updateWidget(
-	ctx: ExtensionContext,
-	state: ExperimentState,
-	active: boolean,
-	runningInfo?: { startedAt: number; command: string } | null,
-	loopInfo?: LoopInfo,
-): void {
-	if (!ctx.hasUI) return;
-	const lines = renderWidget(state, active, runningInfo ?? undefined, loopInfo);
-	ctx.ui.setWidget("autoresearch", lines ?? undefined);
+function readCurrentPlanContract(cwd: string): ExperimentContract | null {
+	const s = readStateV2(cwd);
+	if (s.currentPlanDir) {
+		try { return JSON.parse(fs.readFileSync(path.join(cwd, s.currentPlanDir, "contract.json"), "utf8")) as ExperimentContract; }
+		catch { return null; /* plan-scoped: do NOT fallback to legacy root contract */ }
+	}
+	return readContract(cwd);
 }
+
+// updateWidget moved inside the factory function to access closure state
 
 // ---------------------------------------------------------------------------
 // System prompt extra (Japanese)
@@ -199,9 +196,9 @@ const SYSTEM_PROMPT_EXTRA = [
 	"6. ユーザーに毎回継続確認しない - 停止されるまで繰り返す",
 	"7. Ralph 方式: 1ターンでは原則1つの実験だけを完了し、次ターンに知見を引き継ぐ",
 	"8. 表示・報告は日本語で行う",
-	"9. `autoresearch.jsonl` に履歴が自動保存される",
-	"10. `autoresearch.md` の Codebase Patterns / 試したことを更新し、次イテレーションの記憶にする",
-	"11. 有望だが今すぐ試さない最適化案は `autoresearch.ideas.md` に追記する",
+	"9. canonical history は `.autoresearch/journal.jsonl`、current state は `.autoresearch/state.json` に保存される。`autoresearch.jsonl` は legacy compatibility log。",
+	"10. `autoresearch.md` は current plan への index。plan 固有の作業記憶は `.autoresearch/plans/<planId>/notes.md` または `plan.md` に追記する。",
+	"11. plan 固有の ideas は `.autoresearch/plans/<planId>/ideas.md`、global backlog が必要な場合のみ `autoresearch.ideas.md` に追記する。",
 	`12. すべての有望な実験が尽きたら ${COMPLETE_MARKER} を返して停止を宣言する`,
 	"",
 	"### long-run benchmark での注意",
@@ -248,6 +245,21 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	let loopIterationCount = 0;
 	let maxLoopIterations: number | null = DEFAULT_MAX_LOOP_ITERATIONS;
 	let lastLoggedRun = 0;
+	// --- Widget update (uses closure state) ---
+	function updateWidget(ctx: ExtensionContext): void {
+		if (!ctx.hasUI) return;
+		const lines = renderWidget(state, active, runningExperiment, loopInfo());
+		ctx.ui.setWidget("autoresearch", lines ?? undefined);
+	}
+
+	function textResponse(text: string) {
+		return { content: [{ type: "text" as const, text }], details: {} } as const;
+	}
+
+	function textDetails(text: string, details: Record<string, unknown>) {
+		return { content: [{ type: "text" as const, text }], details };
+	}
+
 	let agentStartRunCount = 0;
 	let noProgressAgentEnds = 0;
 	let runningExperiment: { startedAt: number; command: string } | null = null;
@@ -290,12 +302,77 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	// ─── session_start ─────────────────────────────────────────
 
 	pi.on("session_start", async (_event, ctx) => {
-		const jp = jsonlPath(ctx.cwd);
-		if (fs.existsSync(jp)) {
-			try {
-				state = reconstructState(fs.readFileSync(jp, "utf8"));
-			} catch {
+		const s2 = readStateV2(ctx.cwd);
+
+		// --- Mode 1: plan-scoped (currentPlanDir exists) ---
+		if (s2.currentPlanDir) {
+			state = freshState();
+			state.sessionId = s2.sessionId ?? state.sessionId;
+
+			// Restore metric/direction ONLY from plan-scoped contract
+			const c = readCurrentPlanContract(ctx.cwd) as any;
+			if (c) {
+				state.name = c.name ?? state.name;
+				state.metricName = c.metricName ?? c.primaryMetric?.name ?? c.evaluation?.primaryMetric?.name ?? state.metricName;
+				state.metricUnit = c.metricUnit ?? c.primaryMetric?.unit ?? state.metricUnit;
+				state.direction = c.direction ?? c.primaryMetric?.direction ?? c.evaluation?.primaryMetric?.direction ?? state.direction;
+			}
+
+			// Restore bestMetric directly from persisted state
+			if (s2.bestMetric) {
+				state.bestMetric = s2.bestMetric.value;
+				state.direction = s2.bestMetric.direction ?? state.direction;
+			}
+
+			// Restore runCount from persisted state or journal
+			if (s2.runCount !== undefined) {
+				state.runCount = s2.runCount;
+			} else if (s2.currentPlanId) {
+				try {
+					const lines = fs.existsSync(path.join(ctx.cwd, ".autoresearch", "journal.jsonl")) ? fs.readFileSync(path.join(ctx.cwd, ".autoresearch", "journal.jsonl"), "utf8").trim().split(/\n+/).filter(Boolean) : [];
+					state.runCount = lines.filter((l) => { try { const e = JSON.parse(l); return e.type === "decision" && e.planId === s2.currentPlanId; } catch { return false; } }).length;
+				} catch { state.runCount = 0; }
+			}
+		}
+		// --- Mode 2: contract-file mode (current.contract.json + current.lock.json) ---
+		else {
+			const contractV1 = readCurrentContract(ctx.cwd);
+			const contractV1Lock = readLockFile(ctx.cwd);
+
+			if (contractV1) {
 				state = freshState();
+				state.sessionId = s2.sessionId ?? state.sessionId;
+
+				// metric/direction from contract file
+				const pm = contractV1.evaluation.primaryMetric;
+				state.metricName = pm.name;
+				state.direction = pm.direction;
+				state.metricUnit = pm.unit ?? state.metricUnit;
+				state.name = contractV1.objective.summary ?? state.name;
+
+				// Restore bestMetric only when contract hash matches AND persisted hash matches
+				if (s2.bestMetric && contractV1Lock) {
+					const currentHash = computeContractHash(contractV1);
+					if (currentHash === contractV1Lock.contractHash && s2.currentContractHash === currentHash) {
+						state.bestMetric = s2.bestMetric.value;
+						state.direction = s2.bestMetric.direction ?? state.direction;
+					}
+				}
+
+				// Restore runCount only when contract hash matches AND persisted hash matches
+				if (s2.runCount !== undefined && contractV1Lock) {
+					const currentHash = computeContractHash(contractV1);
+					if (currentHash === contractV1Lock.contractHash && s2.currentContractHash === currentHash) {
+						state.runCount = s2.runCount;
+					}
+				}
+			} else {
+				// --- Mode 3: legacy JSONL or fresh state ---
+				const jp = jsonlPath(ctx.cwd);
+				if (fs.existsSync(jp)) {
+					try { state = reconstructState(fs.readFileSync(jp, "utf8")); }
+					catch { state = freshState(); }
+				} else state = freshState();
 			}
 		}
 		active = false;
@@ -303,7 +380,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		runningExperiment = null;
 		runResultMap.clear();
 		resetLoopProgress();
-		updateWidget(ctx, state, active, runningExperiment, loopInfo());
+		updateWidget(ctx);
 	});
 
 	// ─── before_agent_start ────────────────────────────────────
@@ -327,7 +404,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		if (hasCompleteMarker(event)) {
 			autoLoop = false;
 			loopPromptQueued = false;
-			updateWidget(ctx, state, active, runningExperiment, loopInfo());
+			updateWidget(ctx);
 			ctx.ui.notify("autoresearch loop を完了マーカーで停止しました", "success");
 			return;
 		}
@@ -337,9 +414,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			noProgressAgentEnds = 0;
 		} else {
 			noProgressAgentEnds++;
-			if (noProgressAgentEnds > NO_PROGRESS_LIMIT) {
+			if (noProgressAgentEnds >= NO_PROGRESS_LIMIT) {
 				autoLoop = false;
-				updateWidget(ctx, state, active, runningExperiment, loopInfo());
+				updateWidget(ctx);
 				ctx.ui.notify(`autoresearch loop を停止しました: ${NO_PROGRESS_LIMIT}回連続で進捗なし`, "warning");
 				return;
 			}
@@ -347,14 +424,14 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 		if (maxLoopIterations !== null && loopIterationCount >= maxLoopIterations) {
 			autoLoop = false;
-			updateWidget(ctx, state, active, runningExperiment, loopInfo());
+			updateWidget(ctx);
 			ctx.ui.notify(`autoresearch loop が上限 ${maxLoopIterations} 回に達したため停止しました`, "info");
 			return;
 		}
 
 		loopIterationCount++;
 		loopPromptQueued = true;
-		updateWidget(ctx, state, active, runningExperiment, loopInfo());
+		updateWidget(ctx);
 		pi.sendUserMessage(loopFollowUpMessage(!madeProgress), { deliverAs: "followUp" });
 	});
 
@@ -369,18 +446,68 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				case "on": { activateAutoresearch(ctx, parts.slice(1).join(" ").trim()); break; }
 				case "off": {
 					active = false; autoLoop = false; loopPromptQueued = false;
-					updateWidget(ctx, state, active, runningExperiment, loopInfo());
+					updateWidget(ctx);
 					ctx.ui.notify("autoresearch モードを無効にしました", "info");
 					break;
 				}
 				case "clear": {
+					const clearAll = parts[1] === "all";
 					const jp = jsonlPath(ctx.cwd);
-					try { if (fs.existsSync(jp)) fs.unlinkSync(jp); } catch {}
-					deleteContract(ctx.cwd); // P0-4: contract ファイルも削除
+					try { if (fs.existsSync(jp)) fs.rmSync(jp, { recursive: true, force: true }); } catch {}
+					deleteContract(ctx.cwd); // legacy root contract
+					const clearWarnings: string[] = [];
+					try {
+						if (clearAll) {
+							fs.rmSync(path.join(ctx.cwd, ".autoresearch"), { recursive: true, force: true });
+							fs.rmSync(path.join(ctx.cwd, ".pi", "autoresearch"), { recursive: true, force: true });
+							// Clean generated root files safely
+							for (const f of ["autoresearch.sh", "autoresearch.checks.sh"]) {
+								const fp = path.join(ctx.cwd, f);
+								try {
+									if (fs.existsSync(fp)) {
+										const content = fs.readFileSync(fp, "utf8");
+										if (content.includes("AUTORESEARCH:generated")) {
+											fs.rmSync(fp, { force: true });
+										} else {
+											clearWarnings.push(`${f} は生成ファイルではないため削除しません`);
+										}
+									}
+								} catch (e) { clearWarnings.push(`${f} の削除に失敗: ${e instanceof Error ? e.message : String(e)}`); }
+							}
+							for (const f of ["autoresearch.md", "autoresearch.plan.md", "autoresearch.ideas.md"]) {
+								const fp = path.join(ctx.cwd, f);
+								try {
+									if (fs.existsSync(fp)) {
+										const content = fs.readFileSync(fp, "utf8");
+										if (content.includes("AUTORESEARCH:BEGIN generated") || content.includes("AUTORESEARCH:generated")) {
+											fs.rmSync(fp, { force: true });
+										} else {
+											clearWarnings.push(`${f} は生成ファイルではないため削除しません`);
+										}
+									}
+								} catch (e) { clearWarnings.push(`${f} の削除に失敗: ${e instanceof Error ? e.message : String(e)}`); }
+							}
+							// autoresearch.jsonl and autoresearch.contract.json are safe to always remove
+							for (const f of ["autoresearch.jsonl", "autoresearch.contract.json"]) {
+								const fp = path.join(ctx.cwd, f);
+								try { if (fs.existsSync(fp)) fs.rmSync(fp, { force: true }); } catch {}
+							}
+						} else {
+							for (const f of ["state.json", "current.plan.json"]) {
+								fs.rmSync(path.join(ctx.cwd, ".autoresearch", f), { force: true });
+							}
+							const disabled = "#!/usr/bin/env bash\n# AUTORESEARCH:generated\necho 'autoresearch current state is cleared. Run autoresearch_init first.' >&2\nexit 1\n";
+							fs.writeFileSync(path.join(ctx.cwd, "autoresearch.sh"), disabled, { mode: 0o755 });
+							fs.writeFileSync(path.join(ctx.cwd, "autoresearch.checks.sh"), disabled, { mode: 0o755 });
+						}
+					} catch {}
 					state = freshState(); active = false; autoLoop = false; runningExperiment = null;
 					runResultMap.clear(); resetLoopProgress();
-					updateWidget(ctx, state, active, runningExperiment, loopInfo());
-					ctx.ui.notify("autoresearch のデータをクリアしました", "info");
+					updateWidget(ctx);
+					ctx.ui.notify(clearAll ? "autoresearch の全データをクリアしました" : "autoresearch の current state をクリアしました", "info");
+					if (clearWarnings.length > 0) {
+						ctx.ui.notify("警告:\n" + clearWarnings.join("\n"), "warning");
+					}
 					break;
 				}
 				case "status": {
@@ -397,13 +524,13 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				}
 				case "loop": {
 					const loopSub = parts[1] || "status";
-					if (loopSub === "on") { autoLoop = true; noProgressAgentEnds = 0; loopPromptQueued = false; updateWidget(ctx, state, active, runningExperiment, loopInfo()); ctx.ui.notify("autoresearch loop を有効にしました", "info"); break; }
-					if (loopSub === "off") { autoLoop = false; loopPromptQueued = false; updateWidget(ctx, state, active, runningExperiment, loopInfo()); ctx.ui.notify("autoresearch loop を無効にしました", "info"); break; }
+					if (loopSub === "on") { autoLoop = true; noProgressAgentEnds = 0; loopPromptQueued = false; updateWidget(ctx); ctx.ui.notify("autoresearch loop を有効にしました", "info"); break; }
+					if (loopSub === "off") { autoLoop = false; loopPromptQueued = false; updateWidget(ctx); ctx.ui.notify("autoresearch loop を無効にしました", "info"); break; }
 					if (loopSub === "max") {
 						const raw = parts[2];
 						if (raw === "none" || raw === "∞" || raw === "infinite") { maxLoopIterations = null; }
 						else { const p = Number(raw); if (!Number.isInteger(p) || p <= 0) { ctx.ui.notify("使い方: loop max <正の整数|none>", "warning"); break; } maxLoopIterations = p; }
-						updateWidget(ctx, state, active, runningExperiment, loopInfo());
+						updateWidget(ctx);
 						ctx.ui.notify(`autoresearch loop max を ${maxLoopIterations ?? "∞"} に設定しました`, "info");
 						break;
 					}
@@ -417,7 +544,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 	function activateAutoresearch(ctx: ExtensionContext, purpose: string): void {
 		active = true; autoLoop = true; resetLoopProgress(); loopPromptQueued = true;
-		updateWidget(ctx, state, active, runningExperiment, loopInfo());
+		updateWidget(ctx);
 		ctx.ui.notify("autoresearch モードを有効にしました(loop ON)", "info");
 		const hasMd = fs.existsSync(mdFilePath(ctx.cwd));
 		let msg: string;
@@ -453,10 +580,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}
 		return { value: null, source: "missing" };
 	}
-	const INACTIVE_RESPONSE = {
-		content: [{ type: "text" as const, text: "[ERROR] autoresearch モードが無効です。\n`/autoresearch on` で有効化してください。" }],
-		details: {},
-	};
+	const INACTIVE_RESPONSE = textResponse("[ERROR] autoresearch モードが無効です。\n`/autoresearch on` で有効化してください。");
 
 	function generateSessionId(name: string): string {
 		const ts = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+$/, "");
@@ -469,14 +593,49 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 	}
 
-	/** Compute next runSeq from runs.jsonl line count (avoids duplication). */
+	/** Compute next runSeq from canonical journal; legacy runs.jsonl is fallback only. */
 	function nextRunSeq(cwd: string, sessionId: string): number {
+		try {
+			const jp = path.join(cwd, ".autoresearch", "journal.jsonl");
+			if (fs.existsSync(jp)) {
+				const currentPlanId = readStateV2(cwd).currentPlanId;
+				const n = fs.readFileSync(jp, "utf8").trim().split(/\n+/).filter(Boolean).filter((l) => { try { const e = JSON.parse(l); return e.type === "run_started" && (!currentPlanId || e.planId === currentPlanId); } catch { return false; } }).length;
+				if (n > 0) return n;
+			}
+		} catch { /* legacy fallback */ }
 		const rlp = runsLedgerPath(cwd, sessionId);
 		const entries = readJsonlEntries(rlp);
 		return entries.length + 1;
 	}
 
-	/** Look up run data: first in memory map, then fallback to artifact manifest.json. */
+	function loadRunFromPlanArtifact(cwd: string, runId: string, planId?: string): ReturnType<typeof loadRunFromArtifact> {
+		const candidates: string[] = [];
+		if (planId) candidates.push(getRunDir(cwd, planId, runId));
+		const plansRoot = path.join(cwd, ".autoresearch", "plans");
+		try {
+			for (const p of fs.readdirSync(plansRoot)) candidates.push(path.join(plansRoot, p, "runs", runId));
+		} catch { /* no plans */ }
+		for (const runDir of candidates) {
+			const manifestPath = path.join(runDir, "manifest.json");
+			if (!fs.existsSync(manifestPath)) continue;
+			try {
+				const m = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+				let checks: ChecksResult = { passed: null, timedOut: false, output: "", stdout: "", stderr: "", durationSeconds: 0 };
+				for (const f of ["checks-result.json", "checks.result.json"]) {
+					const cp = path.join(runDir, f);
+					if (fs.existsSync(cp)) { checks = JSON.parse(fs.readFileSync(cp, "utf8")); break; }
+				}
+				let parsedMetrics: Record<string, number> | null = null;
+				const mp = path.join(runDir, "metrics.json");
+				if (fs.existsSync(mp)) { const parsed = JSON.parse(fs.readFileSync(mp, "utf8")); if (Object.keys(parsed).length > 0) parsedMetrics = parsed; }
+				const result: RunResult = { command: m.command ?? "", exitCode: m.exitCode ?? null, durationSeconds: m.durationSeconds ?? 0, timedOut: m.timedOut ?? false, passed: (m.exitCode === 0) && !m.timedOut, output: "", parsedMetrics, checks, stdout: "", stderr: "", signal: m.signal ?? null, externalRunId: m.externalRunId ?? null, externalArtifactDir: m.externalArtifactDir ?? null, externalSummaryPath: m.externalSummaryPath ?? null, externalViewlogPath: m.externalViewlogPath ?? null, externalMetricsPath: m.externalMetricsPath ?? null, logFilesWritten: m.logFilesWritten ?? false, streamError: m.streamError ?? null };
+				return { result, startedAt: m.startedAt ?? 0, completedAt: m.completedAt ?? 0, createdAt: m.startedAt ?? 0, artifactDir: runDir, runSeq: m.runSeq };
+			} catch { /* try next */ }
+		}
+		return null;
+	}
+
+	/** Look up run data: first in memory map, then canonical plan artifact, then legacy .pi artifact. */
 	function findRunData(piRunId: string, cwd: string): {
 		result: RunResult;
 		checks: ChecksResult;
@@ -491,8 +650,11 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		const mem = runResultMap.get(piRunId);
 		if (mem) return mem;
 
-		// 2. Fallback: load from artifact manifest (survives process restarts)
-		const loaded = loadRunFromArtifact(cwd, state.sessionId, piRunId);
+		// 2. Fallback: load from canonical plan artifact (survives process restarts)
+		const s2 = readStateV2(cwd);
+		let loaded = loadRunFromPlanArtifact(cwd, piRunId, s2.currentPlanId);
+		// 3. Legacy .pi fallback
+		if (!loaded) loaded = loadRunFromArtifact(cwd, state.sessionId, piRunId);
 		if (loaded) {
 			return {
 				result: loaded.result,
@@ -508,9 +670,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		return undefined;
 	}
 
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 	// Tool: autoresearch_evaluate_query
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 
 	pi.registerTool({
 		name: "autoresearch_evaluate_query",
@@ -583,16 +745,13 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				`- checks: ${evaluation.contractDraft.checksCommand ?? "(未定)"}`,
 			].filter(s => s !== false).join("\n");
 
-			return {
-				content: [{ type: "text" as const, text }],
-				details: evaluation,
-			};
+							return textDetails(text, evaluation);
 		},
 	});
 
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 	// Tool: autoresearch_init
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 
 	// P0-4: init は contract 生成の正本
 	// P0-1: git safety を強制
@@ -615,8 +774,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		aggregate: Type.Optional(StringEnum(["single", "median", "mean", "min", "max"] as const, { description: "集計方法。デフォルト: single" })),
 		require_git: Type.Optional(Type.Boolean({ description: "git repo を必須にする。デフォルト: true" })),
 		require_clean_baseline: Type.Optional(Type.Boolean({ description: "clean working tree を必須にする。デフォルト: true" })),
-		allowed_paths: Type.Optional(Type.Object({}, { additionalProperties: Type.String(), description: "許可パスパターンの配列" })),
-		excluded_paths: Type.Optional(Type.Object({}, { additionalProperties: Type.String(), description: "除外パスパターンの配列" })),
+		allowed_paths: Type.Optional(Type.Array(Type.String(), { description: "許可パスパターンの配列" })),
+		excluded_paths: Type.Optional(Type.Array(Type.String(), { description: "除外パスパターンの配列" })),
 	});
 
 	// Validate string enum values for optional fields
@@ -626,15 +785,16 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		return undefined;
 	}
 
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 	// Register autoresearch_init tool
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 
 	pi.registerTool({
 		name: "autoresearch_init",
 		label: "autoresearch init",
 		description:
-			"実験セッションを初期化します。名前・指標・単位・方向を設定し、autoresearch.contract.json と autoresearch.jsonl に保存します。" +
+			"実験 plan を初期化します。plan 固有ファイルを .autoresearch/plans/<planId>/ に保存し、current state を .autoresearch/state.json に記録します。" +
+			" autoresearch.jsonl / autoresearch.contract.json は legacy compatibility 用です。" +
 			"\nP0: git repo 必須、clean baseline 必須(変更可能)。acceptance policy / safety policy も指定可能。",
 		promptSnippet: "実験セッションの初期化",
 		promptGuidelines: [
@@ -645,14 +805,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		async execute(_tc, params, _sig, _ou, ctx) {
 			if (!active) return INACTIVE_RESPONSE;
 
-			// --- P0-4: 既存 contract の再初期化拒否 ---
-			if (contractExists(ctx.cwd)) {
-				const existing = readContract(ctx.cwd);
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] 既に実験契約が存在します (sessionId: ${existing?.sessionId ?? "unknown"}).\n再初期化する場合は、先に /autoresearch clear を実行してください。\n契約ファイル: ${contractFilePath(ctx.cwd)}` }],
-					details: { existingSessionId: existing?.sessionId },
-				};
-			}
+			// v2: init is plan-scoped. Existing plans/contracts are not destroyed; a new
+			// content-addressed plan directory is created or the same planId is reused.
 
 			// --- Extract typed params ---
 			const direction = params.direction === "higher" ? "higher" : "lower";
@@ -674,10 +828,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			const gitViolations = validateGitSafety(ctx.cwd, safetyPolicy);
 			if (gitViolations.length > 0) {
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] git safety 違反のため初期化できません:\n${gitViolations.map((v, i) => `  ${i + 1}. ${v}`).join("\n")}` }],
-					details: { gitViolations },
-				};
+				return textDetails(`[ERROR] git safety 違反のため初期化できません:\n${gitViolations.map((v, i) => `  ${i + 1}. ${v}`).join("\n")}`, { gitViolations });
 			}
 
 			// --- P0-4: Build and validate contract ---
@@ -704,20 +855,28 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			const validation = validateContract(contract);
 			if (!validation.valid) {
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] 契約検証失敗:\n${validation.errors.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}` }],
-					details: { errors: validation.errors },
-				};
+				return textDetails(`[ERROR] 契約検証失敗:\n${validation.errors.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}`, { errors: validation.errors });
 			}
 
-			// --- Write contract file ---
+			// --- Create canonical plan-scoped layout; legacy root contract is best-effort only ---
+			let planRef: { planId: string; planDir: string; reused: boolean };
+			const legacyWarnings: string[] = [];
 			try {
-				writeContract(ctx.cwd, contract);
+				try { writeContract(ctx.cwd, contract); } catch (e) { legacyWarnings.push(`legacy contract: ${e instanceof Error ? e.message : String(e)}`); }
+				const benchmarkCommand = contract.benchmarkCommand === "./autoresearch.sh" ? "echo 'TODO: implement benchmark' >&2\nexit 1\n" : `${contract.benchmarkCommand}\n`;
+				const checksScript = checksMode === "none" ? null : (checksMode === "command" && (params as any).checks_command ? `${(params as any).checks_command}\n` : null);
+				planRef = createOrReusePlan(ctx.cwd, {
+					planMarkdown: `# ${params.name}\n\n${(params as any).objective ?? params.name}\n`,
+					contract,
+					benchmarkScript: `#!/usr/bin/env bash\nset -euo pipefail\n${benchmarkCommand}`,
+					checksScript: checksScript ? `#!/usr/bin/env bash\nset -euo pipefail\n${checksScript}` : null,
+					metricName: params.metric_name,
+					metricDirection: direction,
+					successCriteria: contract.acceptance,
+					constraints: contract.safety,
+				}, sessionId);
 			} catch (e) {
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] 契約ファイル書き込み失敗: ${e instanceof Error ? e.message : String(e)}` }],
-					details: {},
-				};
+									return textResponse(`[ERROR] 契約/plan-scoped ファイル書き込み失敗: ${e instanceof Error ? e.message : String(e)}`);
 			}
 
 			// --- Update state ---
@@ -730,7 +889,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			state.results = [];
 			state.runCount = 0;
 
-			// --- Write JSONL config entry ---
+			// --- Legacy JSONL config entry (compatibility); canonical history is .autoresearch/journal.jsonl ---
 			const jp = jsonlPath(ctx.cwd);
 			try {
 				fs.appendFileSync(jp, JSON.stringify({
@@ -739,10 +898,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					contractVersion: contract.version,
 				}) + "\n");
 			} catch (e) {
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] JSONL 書き込み失敗: ${e instanceof Error ? e.message : String(e)}` }],
-					details: {},
-				};
+				legacyWarnings.push(`legacy jsonl: ${e instanceof Error ? e.message : String(e)}`);
 			}
 
 			try { ensureSessionDir(ctx.cwd); } catch {}
@@ -758,33 +914,32 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				} satisfies EventLedgerEntry);
 			} catch { /* best effort */ }
 
-			updateWidget(ctx, state, active, runningExperiment, loopInfo());
+			updateWidget(ctx);
 
 			let text = `[OK] 初期化完了\n名前: ${state.name}\n指標: ${state.metricName}(${directionLabel(state.direction)})\nsessionId: ${sessionId}`;
-			text += `\n契約: ${contractFilePath(ctx.cwd)}`;
+			text += `\nplanId: ${planRef!.planId}`;
+			text += `\n契約: ${path.relative(ctx.cwd, path.join(planRef!.planDir, "contract.json"))}`;
 			if (baselineCommit) text += `\nbaseline: ${baselineCommit.slice(0, 12)}`;
-			if (validation.warnings.length > 0) {
-				text += `\n\n[WARNING]\n${validation.warnings.map((w, i) => `  ${i + 1}. ${w}`).join("\n")}`;
+			const allWarnings = [...validation.warnings, ...legacyWarnings];
+			if (allWarnings.length > 0) {
+				text += `\n\n[WARNING]\n${allWarnings.map((w, i) => `  ${i + 1}. ${w}`).join("\n")}`;
 			}
 			text += `\n\nacceptance mode: ${contract.acceptance.mode}`;
 			text += `\nchecks mode: ${contract.checks.mode}`;
 			text += `\nbenchmark: ${contract.benchmarkCommand}`;
 
-			return {
-				content: [{ type: "text" as const, text }],
-				details: {
-					name: state.name, metricName: state.metricName, metricUnit: state.metricUnit,
-					direction: state.direction, sessionId, contractVersion: contract.version,
-					acceptance: contract.acceptance, safety: contract.safety,
-					baselineCommit, warnings: validation.warnings,
-				},
-			};
+			return textDetails(text, {
+				name: state.name, metricName: state.metricName, metricUnit: state.metricUnit,
+				direction: state.direction, sessionId, contractVersion: contract.version,
+				acceptance: contract.acceptance, safety: contract.safety,
+				baselineCommit, warnings: allWarnings, planId: planRef!.planId, planDir: path.relative(ctx.cwd, planRef!.planDir),
+			});
 		},
 	});
 
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 	// Tool: autoresearch_run
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 
 	pi.registerTool({
 		name: "autoresearch_run",
@@ -808,31 +963,51 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			if (!active) return INACTIVE_RESPONSE;
 
 			// --- P0-7: Command policy チェック ---
-			const contract = readContract(ctx.cwd);
+			const contract = readCurrentPlanContract(ctx.cwd);
 			if (contract) {
 				const cmdViolations = validateCommand(params.command, contract.safety);
 				if (cmdViolations.length > 0) {
-					return {
-						content: [{ type: "text" as const, text: `[ERROR] コマンドが safety policy に違反しています:\n${cmdViolations.map((v, i) => `  ${i + 1}. ${v}`).join("\n")}` }],
-						details: { violations: cmdViolations },
-					};
+					return textDetails(`[ERROR] コマンドが safety policy に違反しています:\n${cmdViolations.map((v, i) => `  ${i + 1}. ${v}`).join("\n")}`, { violations: cmdViolations });
 				}
 			}
 
 			const timeoutMs = (params.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
-			const piRunId = generatePiRunId(ctx.cwd);
+			let v2State = readStateV2(ctx.cwd);
+			if (!v2State.currentPlanId || !v2State.currentPlanDir) {
+				const planId = "plan-legacy-implicit";
+				const planDir = path.join(".autoresearch", "plans", planId);
+				fs.mkdirSync(path.join(ctx.cwd, planDir, "runs"), { recursive: true });
+				if (!fs.existsSync(path.join(ctx.cwd, planDir, "plan.md"))) fs.writeFileSync(path.join(ctx.cwd, planDir, "plan.md"), "# Legacy autoresearch run\n", "utf8");
+				writeStateV2(ctx.cwd, {
+					...v2State,
+					sessionId: state.sessionId,
+					currentPlanId: planId,
+					currentPlanDir: planDir,
+					latestRunId: undefined,
+					bestRunId: undefined,
+					bestMetric: undefined,
+					runCount: undefined,
+					currentContractHash: undefined,
+				});
+				appendJournal(ctx.cwd, { type: "plan_selected", planId, legacy: true });
+				v2State = readStateV2(ctx.cwd);
+			}
+			const runId = generatePlanScopedRunId(ctx.cwd);
+			const piRunId = runId; // legacy alias accepted by older callers
 			const createdAt = Date.now();
 			const preCommit = getGitShortHash(ctx.cwd);
 
 			runningExperiment = { startedAt: Date.now(), command: params.command };
-			updateWidget(ctx, state, active, runningExperiment, loopInfo());
+			updateWidget(ctx);
 
-			// Create artifact dir BEFORE execution so streaming logs go there
+			// Create plan-scoped artifact dir BEFORE execution so streaming logs go to the canonical location.
 			let artifactDir: string | undefined;
+			let legacyArtifactDir: string | undefined;
 			let artifactFailed = false;
 			try {
-				ensureSessionDir(ctx.cwd);
-				artifactDir = createRunArtifactDir(ctx.cwd, state.sessionId, piRunId, params.command, runningExperiment.startedAt);
+				artifactDir = createRunArtifacts(ctx.cwd, v2State.currentPlanId!, runId).runDir;
+				fs.writeFileSync(path.join(artifactDir, "command.txt"), params.command + "\n", "utf8");
+				try { ensureSessionDir(ctx.cwd); legacyArtifactDir = createRunArtifactDir(ctx.cwd, state.sessionId, runId, params.command, runningExperiment.startedAt); } catch { /* legacy mirror is best-effort */ }
 			} catch (e) {
 				artifactFailed = true;
 			}
@@ -840,37 +1015,51 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			// P0: artifact dir 作成失敗時は benchmark を実行しない(fail-fast)
 			if (!artifactDir || artifactFailed) {
 				runningExperiment = null;
-				updateWidget(ctx, state, active, runningExperiment, loopInfo());
-				return {
-					content: [{ type: "text", text: `[ERROR] artifact directory を作成できないため benchmark を実行しません。\n長時間 run の監査不能を防ぐため、先に修正してください。\nエラー詳細: ディレクトリ ${path.join(ctx.cwd, ".pi", "autoresearch", state.sessionId, "runs", piRunId)} の作成に失敗しました。` }],
-					details: {},
-				};
+				updateWidget(ctx);
+									return textResponse(`[ERROR] artifact directory を作成できないため benchmark を実行しません。\n長時間 run の監査不能を防ぐため、先に修正してください。\nエラー詳細: ディレクトリ .autoresearch/plans/${v2State.currentPlanId}/runs/${piRunId} の作成に失敗しました。`);
 			}
 
-			// Events ledger: started
-			appendToJsonl(eventsLedgerPath(ctx.cwd, state.sessionId), {
-				schemaVersion: 1, event: "started", piRunId, timestamp: createdAt,
-				details: { command: params.command },
-			} satisfies EventLedgerEntry);
+			const runLedgerErrors: string[] = [];
+			// Events ledger: started (canonical journal is fatal; legacy .pi ledger is warning-only)
+			appendJournal(ctx.cwd, { type: "run_started", planId: v2State.currentPlanId, runId: piRunId, command: params.command });
+			try {
+				appendToJsonl(eventsLedgerPath(ctx.cwd, state.sessionId), {
+					schemaVersion: 1, event: "started", piRunId, timestamp: createdAt,
+					details: { command: params.command },
+				} satisfies EventLedgerEntry);
+			} catch (e) { runLedgerErrors.push(`legacy event ledger(started): ${e instanceof Error ? e.message : String(e)}`); }
 
 			// Execute - pass logDir for streaming stdout/stderr
 			const result = await runCommand(params.command, ctx.cwd, timeoutMs, signal, artifactDir);
 			const completedAt = Date.now();
 			const startedAt = runningExperiment.startedAt;
 			runningExperiment = null;
-			updateWidget(ctx, state, active, runningExperiment, loopInfo());
+			updateWidget(ctx);
 
 			// Events ledger: completed / timed_out
-			appendToJsonl(eventsLedgerPath(ctx.cwd, state.sessionId), {
-				schemaVersion: 1, event: result.timedOut ? "timed_out" : "completed",
-				piRunId, timestamp: completedAt,
-				details: { exitCode: result.exitCode, durationSeconds: result.durationSeconds, timedOut: result.timedOut, signal: result.signal },
-			} satisfies EventLedgerEntry);
+			appendJournal(ctx.cwd, { type: "run_finished", planId: v2State.currentPlanId, runId: piRunId, exitCode: result.exitCode, durationSeconds: result.durationSeconds, timedOut: result.timedOut });
+			try {
+				appendToJsonl(eventsLedgerPath(ctx.cwd, state.sessionId), {
+					schemaVersion: 1, event: result.timedOut ? "timed_out" : "completed",
+					piRunId, timestamp: completedAt,
+					details: { exitCode: result.exitCode, durationSeconds: result.durationSeconds, timedOut: result.timedOut, signal: result.signal },
+				} satisfies EventLedgerEntry);
+			} catch (e) { runLedgerErrors.push(`legacy event ledger(completed): ${e instanceof Error ? e.message : String(e)}`); }
 
-			// Checks
+			// Checks: use current plan checks.sh directly; root wrapper is human/legacy entrypoint only.
 			let checks: ChecksResult;
 			if (result.passed) {
-				checks = await runChecks(ctx.cwd, signal, params.checks_timeout_seconds);
+				const planChecks = path.join(ctx.cwd, v2State.currentPlanDir!, "checks.sh");
+				if (fs.existsSync(planChecks)) {
+					const cr = await runArgvCommand(
+					{ argv: ["bash", planChecks], cwd: ctx.cwd },
+					(params.checks_timeout_seconds ?? 300) * 1000,
+					signal,
+				);
+					checks = { passed: cr.passed, timedOut: cr.timedOut, output: cr.output.split("\n").slice(-80).join("\n"), stdout: cr.stdout, stderr: cr.stderr, durationSeconds: cr.durationSeconds };
+				} else {
+					checks = await runChecks(ctx.cwd, signal, params.checks_timeout_seconds); // legacy fallback
+				}
 			} else {
 				checks = { passed: null, timedOut: false, output: "", stdout: "", stderr: "", durationSeconds: 0 };
 			}
@@ -898,20 +1087,39 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			}
 			if (!artifactDir) artifactFailed = true;
 
+			const metrics = result.parsedMetrics ?? (state.metricName === "duration_seconds" ? { duration_seconds: result.durationSeconds } : {});
+			try {
+				fs.writeFileSync(path.join(artifactDir, "git.status.txt"), execFileSync("git", ["status", "--short"], { cwd: ctx.cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }), "utf8");
+				fs.writeFileSync(path.join(artifactDir, "git.diff"), execFileSync("git", ["diff", "--"], { cwd: ctx.cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }), "utf8");
+				if (legacyArtifactDir) {
+					for (const f of ["manifest.json", "command.txt", "stdout.log", "stderr.log", "metrics.json", "result.json", "git.status.txt", "git.diff", "checks.result.json", "checks.stdout.log", "checks.stderr.log"]) {
+						const src = path.join(artifactDir, f);
+						if (fs.existsSync(src)) fs.copyFileSync(src, path.join(legacyArtifactDir, f));
+					}
+				}
+			} catch (e) { runLedgerErrors.push(`artifact enrichment/mirror: ${e instanceof Error ? e.message : String(e)}`); }
+			const canonicalErrors: string[] = [];
+			try { appendJournal(ctx.cwd, { type: "metrics_recorded", planId: v2State.currentPlanId, runId: piRunId, metrics }); }
+			catch (e) { canonicalErrors.push(`canonical journal(metrics_recorded): ${e instanceof Error ? e.message : String(e)}`); }
+			try { writeStateV2(ctx.cwd, { ...readStateV2(ctx.cwd), latestRunId: piRunId }); }
+			catch (e) { canonicalErrors.push(`canonical state(latestRunId): ${e instanceof Error ? e.message : String(e)}`); }
+
 			// Store in memory map AFTER artifact write - artifactFailed reflects actual status
 			runResultMap.set(piRunId, { result, checks, startedAt, completedAt, createdAt, artifactDir, artifactFailed, runSeq });
 
-			appendToJsonl(runsLedgerPath(ctx.cwd, state.sessionId), {
-				schemaVersion: 1, runSeq, piRunId,
-				externalRunId: result.externalRunId,
-				createdAt, startedAt, completedAt,
-				durationSeconds: result.durationSeconds,
-				command: result.command,
-				exitCode: result.exitCode,
-				timedOut: result.timedOut,
-				signal: result.signal,
-				gitCommit: preCommit,
-			} satisfies RunsLedgerEntry);
+			try {
+				appendToJsonl(runsLedgerPath(ctx.cwd, state.sessionId), {
+					schemaVersion: 1, runSeq, piRunId,
+					externalRunId: result.externalRunId,
+					createdAt, startedAt, completedAt,
+					durationSeconds: result.durationSeconds,
+					command: result.command,
+					exitCode: result.exitCode,
+					timedOut: result.timedOut,
+					signal: result.signal,
+					gitCommit: preCommit,
+				} satisfies RunsLedgerEntry);
+			} catch (e) { runLedgerErrors.push(`legacy runs ledger: ${e instanceof Error ? e.message : String(e)}`); }
 
 			// Build response text
 			let text = "";
@@ -921,7 +1129,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			const safeCommand = filterSecrets(result.command);
 			text += `実行時間: ${result.durationSeconds.toFixed(1)}秒\n`;
 			text += `コマンド: ${safeCommand}\n`;
-			text += `piRunId: ${piRunId}\n`;
+			text += `runId: ${runId}\n`;
 
 			if (result.externalRunId) text += `外部 RUN_ID: ${result.externalRunId}\n`;
 			if (result.externalArtifactDir) text += `外部 ARTIFACT_DIR: ${result.externalArtifactDir}\n`;
@@ -930,6 +1138,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			if (result.externalMetricsPath) text += `外部 METRICS_PATH: ${result.externalMetricsPath}\n`;
 
 			if (artifactFailed) text += `[WARNING] artifact 保存に失敗しました。この run は keep できません。\n`;
+			if (canonicalErrors.length > 0) text += `[WARNING] canonical state/history 書き込み失敗: ${canonicalErrors.join(", ")}\n`;
+			if (runLedgerErrors.length > 0) text += `[WARNING] legacy ledger/artifact 書き込み一部失敗: ${runLedgerErrors.join(", ")}\n`;
 
 			if (checks.passed === true) text += `checks: 成功(${checks.durationSeconds.toFixed(1)}秒)\n`;
 			else if (checks.passed === false) {
@@ -950,7 +1160,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			const safeOutput = filterSecrets(result.output);
 			if (safeOutput) text += `\n出力(末尾):\n${safeOutput}`;
-			text += `\npiRunId: ${piRunId}(autoresearch_log の runId に渡してください)`;
+			text += `\nrunId: ${runId}(autoresearch_log の runId に渡してください)`;
 
 			return {
 				content: [{ type: "text", text }],
@@ -971,8 +1181,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					externalSummaryPath: result.externalSummaryPath,
 					externalViewlogPath: result.externalViewlogPath,
 					externalMetricsPath: result.externalMetricsPath,
-					runId: piRunId,
-					piRunId,
+					runId,
+					piRunId: runId,
 					checks: {
 						passed: checks.passed,
 						timedOut: checks.timedOut,
@@ -985,14 +1195,16 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					createdAt,
 					artifactDir,
 					artifactFailed,
+					ledgerErrors: runLedgerErrors.length > 0 ? runLedgerErrors : undefined,
+					canonicalErrors: canonicalErrors.length > 0 ? canonicalErrors : undefined,
 				},
 			};
 		},
 	});
 
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 	// Tool: autoresearch_log
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 
 	pi.registerTool({
 		name: "autoresearch_log",
@@ -1002,13 +1214,13 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"run 後は必ず log を呼ぶ。",
 			"keep: timeout・exitCode!=0・checks失敗・metric不在は拒否。",
-			"runId に piRunId を渡す。",
+			"runId に autoresearch_run の runId を渡す。旧 piRunId も互換 alias として受け付ける。",
 		],
 		parameters: Type.Object({
 			metric: Type.Number({ description: "主指標の値" }),
 			status: StringEnum(["keep", "discard", "crash", "checks_failed"] as const, { description: "結果ステータス" }),
 			description: Type.String({ description: "実験内容の短い説明" }),
-			runId: Type.Optional(Type.String({ description: "autoresearch_run の piRunId" })),
+			runId: Type.Optional(Type.String({ description: "autoresearch_run の runId (旧 piRunId 互換)" })),
 			commit: Type.Optional(Type.String({ description: "Git commit hash(省略時自動)" })),
 			metrics: Type.Optional(Type.Object({}, { additionalProperties: Type.Number(), description: "追加指標" })),
 			memo: Type.Optional(Type.String({ description: "メモ" })),
@@ -1017,8 +1229,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		async execute(_tc, params, _sig, _ou, ctx) {
 			if (!active) return INACTIVE_RESPONSE;
 
-			// --- P0-4: Load experiment contract ---
-			const contract = readContract(ctx.cwd);
+			// --- P0-4: Load experiment contract from current plan (legacy root contract is fallback only) ---
+			const contract = readCurrentPlanContract(ctx.cwd);
 
 			// --- Find run data ---
 			let matchedPiRunId: string | undefined;
@@ -1027,10 +1239,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			if (params.runId) {
 				matchedRunData = findRunData(params.runId, ctx.cwd);
 				if (!matchedRunData) {
-					return {
-						content: [{ type: "text", text: `[ERROR] piRunId "${params.runId}" に対応する run が見つかりません。\nメモリにも artifact にも存在しません。正しい piRunId を指定してください。` }],
-						details: {},
-					};
+											return textResponse(`[ERROR] runId "${params.runId}" に対応する run が見つかりません。\nメモリにも artifact にも存在しません。正しい runId を指定してください。`);
 				}
 				matchedPiRunId = params.runId;
 			} else if (lastRunResult) {
@@ -1038,7 +1247,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				matchedRunData = findRunData(matchedPiRunId, ctx.cwd);
 			} else {
 				if (params.status === "keep") {
-					return { content: [{ type: "text", text: "[ERROR] 対応する autoresearch_run 結果がありません。\n先に autoresearch_run を実行してから autoresearch_log を呼び出してください。" }], details: {} };
+										return textResponse("[ERROR] 対応する autoresearch_run 結果がありません。\n先に autoresearch_run を実行してから autoresearch_log を呼び出してください。");
 				}
 			}
 
@@ -1056,7 +1265,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				const reasons: string[] = [];
 
 				if (!matchedResult) {
-					return { content: [{ type: "text", text: "[ERROR] run 結果が存在しないため keep できません。" }], details: {} };
+										return textResponse("[ERROR] run 結果が存在しないため keep できません。");
 				}
 
 				if (matchedResult.timedOut) reasons.push(`timeout した run は keep できません。`);
@@ -1111,10 +1320,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				}
 
 				if (reasons.length > 0) {
-					return {
-						content: [{ type: "text", text: `[ERROR] keep が拒否されました:\n${reasons.map((r, i) => `  ${i + 1}. ${r}`).join("\n")}\n\nstatus=discard または status=crash または status=checks_failed で記録してください。` }],
-						details: {},
-					};
+					return textResponse(`[ERROR] keep が拒否されました:\n${reasons.map((r, i) => `  ${i + 1}. ${r}`).join("\n")}\n\nstatus=discard または status=crash または status=checks_failed で記録してください。`);
 				}
 
 				// --- P0-2: Acceptance policy 強制 ---
@@ -1128,10 +1334,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					const acceptanceResult = evaluateAcceptance(acceptanceInput);
 
 					if (!acceptanceResult.accepted) {
-						return {
-							content: [{ type: "text", text: `[ERROR] acceptance policy により keep が拒否されました:\n${acceptanceResult.reason}\n\ncandidate: ${effectiveMetric} vs best: ${state.bestMetric}\nacceptance mode: ${contract.acceptance.mode}\nminImprovement: ${(contract.acceptance.minImprovement * 100).toFixed(1)}%\n\nstatus=discard で記録してください。改善が不十分(noise)な場合は、別のアプローチを試してください。` }],
-							details: { acceptanceResult, effectiveMetric, bestMetric: state.bestMetric },
-						};
+													return textDetails(`[ERROR] acceptance policy により keep が拒否されました:\n${acceptanceResult.reason}\n\ncandidate: ${effectiveMetric} vs best: ${state.bestMetric}\nacceptance mode: ${contract.acceptance.mode}\nminImprovement: ${(contract.acceptance.minImprovement * 100).toFixed(1)}%\n\nstatus=discard で記録してください。改善が不十分(noise)な場合は、別のアプローチを試してください。`, { acceptanceResult, effectiveMetric, bestMetric: state.bestMetric });
 					}
 				}
 
@@ -1140,10 +1343,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					const preChangedFiles = getChangedFiles(ctx.cwd);
 					const pathViolations = validateChangedFiles(preChangedFiles, contract.safety);
 					if (pathViolations.length > 0) {
-						return {
-							content: [{ type: "text", text: `[ERROR] 変更ファイルが safety policy に違反:\n${pathViolations.map((v, i) => `  ${i + 1}. ${v}`).join("\n")}\n\nstatus=discard で記録してください。許可されたパス内に収まるように変更してください。` }],
-							details: { pathViolations, changedFiles: preChangedFiles },
-						};
+						return textDetails(`[ERROR] 変更ファイルが safety policy に違反:\n${pathViolations.map((v, i) => `  ${i + 1}. ${v}`).join("\n")}\n\nstatus=discard で記録してください。許可されたパス内に収まるように変更してください。`, { pathViolations, changedFiles: preChangedFiles });
 					}
 				}
 			}
@@ -1186,10 +1386,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					commit = gr.commit ?? commit;
 				} else if (gr.error) {
 					// 案A: commit できない keep は keep ではない。状態を更新せずエラーを返す。
-					return {
-						content: [{ type: "text", text: `[ERROR] git commit に失敗したため keep を記録できません:\n${gr.error}\n\ncommit できない keep は再現性を保証できません。\ngit の状態を確認して再度 autoresearch_log を呼び出してください。` }],
-						details: { gitError: gr.error },
-					};
+											return textDetails(`[ERROR] git commit に失敗したため keep を記録できません:\n${gr.error}\n\ncommit できない keep は再現性を保証できません。\ngit の状態を確認して再度 autoresearch_log を呼び出してください。`, { gitError: gr.error });
 				}
 				entry.postCommit = commit;
 			} else {
@@ -1226,12 +1423,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 					// P0-6: loop を強制停止
 					autoLoop = false;
-					updateWidget(ctx, state, active, runningExperiment, loopInfo());
+					updateWidget(ctx);
 
-					return {
-						content: [{ type: "text", text: `[REVERT_FAILED] 実験 #${run} の revert に失敗しました:\n${revertResult.error}\n\n⚠️ 手動介入が必要です。git の状態を確認し、不要な変更を手動で元してください。\nautoresearch loop を停止しました。` }],
-						details: { run, status: "revert_failed", error: revertResult.error },
-					};
+											return textDetails(`[REVERT_FAILED] 実験 #${run} の revert に失敗しました:\n${revertResult.error}\n\n⚠️ 手動介入が必要です。git の状態を確認し、不要な変更を手動で元してください。\nautoresearch loop を停止しました。`, { run, status: "revert_failed", error: revertResult.error });
 				}
 				entry.postCommit = getGitShortHash(ctx.cwd);
 			}
@@ -1241,9 +1435,23 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			// P0-2: commit 失敗時はここに到達しないため、ここから state を更新する。
 			state.results.push(entry);
 			state.runCount = run;
+			let updatedBest = false;
 			if (params.status === "keep" && isBestMetric(state.bestMetric, effectiveMetric, state.direction)) {
 				state.bestMetric = effectiveMetric;
+				updatedBest = true;
 			}
+			const canonicalErrors: string[] = [];
+			const s2 = readStateV2(ctx.cwd);
+			try { appendJournal(ctx.cwd, { type: "decision", planId: s2.currentPlanId, runId: matchedPiRunId, decision: params.status, reason: params.description, metric: effectiveMetric }); }
+			catch (e) { canonicalErrors.push(`canonical journal(decision): ${e instanceof Error ? e.message : String(e)}`); }
+			try {
+				writeStateV2(ctx.cwd, {
+					...s2,
+					latestRunId: matchedPiRunId ?? s2.latestRunId,
+					bestRunId: updatedBest ? matchedPiRunId : s2.bestRunId,
+					bestMetric: updatedBest ? { name: state.metricName, value: effectiveMetric, direction: state.direction } : s2.bestMetric,
+				});
+			} catch (e) { canonicalErrors.push(`canonical state(decision): ${e instanceof Error ? e.message : String(e)}`); }
 
 			// --- Pointers & ledgers ---
 			const ledgerErrors: string[] = [];
@@ -1341,11 +1549,11 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				}) + "\n";
 				fs.appendFileSync(jp, line);
 			} catch (e) {
-				return { content: [{ type: "text", text: `[ERROR] JSONL 書き込み失敗: ${e instanceof Error ? e.message : String(e)}` }], details: {} };
+				ledgerErrors.push(`legacy jsonl: ${e instanceof Error ? e.message : String(e)}`);
 			}
 
 			lastLoggedRun = run;
-			updateWidget(ctx, state, active, runningExperiment, loopInfo());
+			updateWidget(ctx);
 			if (matchedPiRunId) runResultMap.delete(matchedPiRunId);
 
 			const kept = countByStatus(state.results, "keep");
@@ -1355,7 +1563,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			text += `指標: ${state.metricName}=${effectiveMetric}${state.metricUnit}\n`;
 			if (entry.metricSource) text += `指標ソース: ${entry.metricSource}\n`;
 			text += `コミット: ${commit}\n`;
-			if (entry.piRunId) text += `piRunId: ${entry.piRunId}\n`;
+			if (entry.piRunId) text += `runId: ${entry.piRunId}\n`;
 			if (entry.externalRunId) text += `外部 RUN_ID: ${entry.externalRunId}\n`;
 			text += `\n累計: ${state.runCount}回 / 採用${kept}\n`;
 			if (state.bestMetric !== null) text += `最良: ${state.metricName}=${state.bestMetric}${state.metricUnit}\n`;
@@ -1374,8 +1582,11 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			lastChecks = null; lastRunResult = null; lastRunChecks = null;
 
+			if (canonicalErrors.length > 0) {
+				text += `\n[WARNING] canonical state/history 書き込み失敗: ${canonicalErrors.join(", ")}`;
+			}
 			if (ledgerErrors.length > 0) {
-				text += `\n[WARNING] ledger 書き込み一部失敗: ${ledgerErrors.join(", ")}`;
+				text += `\n[WARNING] legacy ledger 書き込み一部失敗: ${ledgerErrors.join(", ")}`;
 			}
 
 			return {
@@ -1385,15 +1596,16 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					status: params.status, metric: effectiveMetric, metricSource: entry.metricSource, bestMetric: state.bestMetric,
 					kept, commit, preCommit, postCommit: entry.postCommit, changedFiles,
 					externalRunId: entry.externalRunId, externalArtifactDir: entry.externalArtifactDir,
+					canonicalErrors: canonicalErrors.length > 0 ? canonicalErrors : undefined,
 					ledgerErrors: ledgerErrors.length > 0 ? ledgerErrors : undefined,
 				},
 			};
 		},
 	});
 
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 	// Helper functions for contract mode tools
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 
 	function resolvePrimaryMetricFromRun(
 		primaryMetric: AutoresearchContractV1["evaluation"]["primaryMetric"],
@@ -1445,9 +1657,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}
 	}
 
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 	// Tool: autoresearch_plan
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 
 	pi.registerTool({
 		name: "autoresearch_plan",
@@ -1614,10 +1826,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			try {
 				fs.writeFileSync(pp, md, "utf8");
 			} catch (e) {
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] plan file の書き込みに失敗: ${e instanceof Error ? e.message : String(e)}` }],
-					details: {},
-				};
+									return textResponse(`[ERROR] plan file の書き込みに失敗: ${e instanceof Error ? e.message : String(e)}`);
 			}
 
 			const contractHash = computeContractHash(contractDraft);
@@ -1638,16 +1847,13 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			}
 			text += `\nplan を確認・編集した後、autoresearch_approve で承認してください。`;
 
-			return {
-				content: [{ type: "text" as const, text }],
-				details: { planPath: pp, decision: evaluation.decision, contractHash },
-			};
+			return textDetails(text, { planPath: pp, decision: evaluation.decision, contractHash });
 		},
 	});
 
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 	// Tool: autoresearch_approve
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 
 	pi.registerTool({
 		name: "autoresearch_approve",
@@ -1667,10 +1873,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		async execute(_tc, params, signal, _ou, ctx) {
 			const pp = params.plan_path ?? planPath(ctx.cwd);
 			if (!fs.existsSync(pp)) {
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] plan file が見つかりません: ${pp}\n先に autoresearch_plan で plan を生成してください。` }],
-					details: {},
-				};
+									return textResponse(`[ERROR] plan file が見つかりません: ${pp}\n先に autoresearch_plan で plan を生成してください。`);
 			}
 
 			const planMarkdown = fs.readFileSync(pp, "utf8");
@@ -1680,28 +1883,19 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				const block = extractContractBlockFromPlan(planMarkdown);
 				jsonc = block.jsonc;
 			} catch (e) {
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] contract block の抽出に失敗: ${e instanceof Error ? e.message : String(e)}` }],
-					details: {},
-				};
+									return textResponse(`[ERROR] contract block の抽出に失敗: ${e instanceof Error ? e.message : String(e)}`);
 			}
 
 			let contractObj: unknown;
 			try {
 				contractObj = parseJsonc(jsonc);
 			} catch (e) {
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] JSONC の parse に失敗: ${e instanceof Error ? e.message : String(e)}` }],
-					details: {},
-				};
+									return textResponse(`[ERROR] JSONC の parse に失敗: ${e instanceof Error ? e.message : String(e)}`);
 			}
 
 			const validation = validateContractV1(contractObj);
 			if (!validation.valid) {
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] contract の検証に失敗:\n${validation.errors.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}` }],
-					details: { errors: validation.errors },
-				};
+				return textDetails(`[ERROR] contract の検証に失敗:\n${validation.errors.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}`, { errors: validation.errors });
 			}
 
 			const contract = contractObj as AutoresearchContractV1;
@@ -1712,46 +1906,33 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			];
 			for (const cmd of allCommands) {
 				if (!cmd.argv || cmd.argv.length === 0) {
-					return {
-						content: [{ type: "text" as const, text: `[ERROR] command.argv が空です: ${JSON.stringify(cmd)}` }],
-						details: {},
-					};
+											return textResponse(`[ERROR] command.argv が空です: ${JSON.stringify(cmd)}`);
 				}
 			}
 
 			// Command safety validation
 			const safetyErrors = validateCommandSafety(allCommands, ctx.cwd);
 			if (safetyErrors.length > 0) {
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] command safety validation failed:\n${safetyErrors.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}` }],
-					details: { safetyErrors },
-				};
+				return textDetails(`[ERROR] command safety validation failed:\n${safetyErrors.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}`, { safetyErrors });
 			}
 
 			if (contract.scope.requireGit && !isGitRepo(ctx.cwd)) {
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] git repo ではありません。contract で requireGit=true が指定されています。` }],
-					details: {},
-				};
+									return textResponse(`[ERROR] git repo ではありません。contract で requireGit=true が指定されています。`);
 			}
 			if (contract.scope.requireCleanGitWorktree && !isWorkingTreeCleanForContract(ctx.cwd)) {
 				const relevantChangedFiles = getContractRelevantChangedFiles(ctx.cwd);
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] working tree に contract-relevant な未コミット変更があります。contract で requireCleanGitWorktree=true が指定されています。\n対象: ${relevantChangedFiles.join(", ")}\n先に commit または stash してください。` }],
-					details: { changedFiles: relevantChangedFiles },
-				};
+									return textDetails(`[ERROR] working tree に contract-relevant な未コミット変更があります。contract で requireCleanGitWorktree=true が指定されています。\n対象: ${relevantChangedFiles.join(", ")}\n先に commit または stash してください。`, { changedFiles: relevantChangedFiles });
 			}
 
 			const contractHash = computeContractHash(contract);
-			const contractId = "0001";
+			const contractId = `contract-${Date.now()}-${contractHash.slice(7, 15)}`;
 			ensureAutoresearchDir(ctx.cwd);
-			appendEvent(ctx.cwd, {
-				timestamp: Date.now(),
-				contractId,
-				contractHash,
-				event: "approve_started",
-				details: {},
-			});
+
+			function logEvent(event: string, details: Record<string, unknown> = {}): void {
+				appendEvent(ctx.cwd, { timestamp: Date.now(), contractId, contractHash, event, details });
+			}
+
+			logEvent("approve_started");
 
 			const immutableResult = await computeImmutableReadSetHash(
 				ctx.cwd,
@@ -1777,17 +1958,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 				// --- P0: Reject baseline on failure/timeout ---
 				if (!runResult.passed || runResult.timedOut) {
-					appendEvent(ctx.cwd, {
-						timestamp: Date.now(),
-						contractId,
-						contractHash,
-						event: "baseline_run_failed",
-						details: { runIndex: i, runId, exitCode: runResult.exitCode, timedOut: runResult.timedOut },
-					});
-					return {
-						content: [{ type: "text" as const, text: `[ERROR] baseline run ${i + 1}/${contract.evaluation.benchmark.repeats} failed.${runResult.timedOut ? " Timed out." : ""} exitCode=${runResult.exitCode}\nBaseline cannot be established from failed benchmark. Fix the benchmark command and retry.` }],
-						details: { runIndex: i, exitCode: runResult.exitCode, timedOut: runResult.timedOut },
-					};
+					logEvent("baseline_run_failed", { runIndex: i, runId, exitCode: runResult.exitCode, timedOut: runResult.timedOut });
+											return textDetails(`[ERROR] baseline run ${i + 1}/${contract.evaluation.benchmark.repeats} failed.${runResult.timedOut ? " Timed out." : ""} exitCode=${runResult.exitCode}\nBaseline cannot be established from failed benchmark. Fix the benchmark command and retry.`, { runIndex: i, exitCode: runResult.exitCode, timedOut: runResult.timedOut });
 				}
 
 				const metricValue = resolvePrimaryMetricFromRun(contract.evaluation.primaryMetric, runResult);
@@ -1798,28 +1970,13 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					const hasWallClockFallback = source.type === "metric_line" && source.fallback === "wall_clock";
 					const isWallClock = source.type === "wall_clock";
 					if (!hasWallClockFallback && !isWallClock) {
-						appendEvent(ctx.cwd, {
-							timestamp: Date.now(),
-							contractId,
-							contractHash,
-							event: "baseline_metric_missing",
-							details: { runIndex: i, runId, metricName: contract.evaluation.primaryMetric.name },
-						});
-						return {
-							content: [{ type: "text" as const, text: `[ERROR] Primary metric "${contract.evaluation.primaryMetric.name}" not found in baseline run ${i + 1}.\nMetric source is "${source.type}" with no wall_clock fallback.\nEnsure the benchmark outputs METRIC ${contract.evaluation.primaryMetric.name}=<number> to stdout.` }],
-							details: { metricName: contract.evaluation.primaryMetric.name, sourceType: source.type },
-						};
+						logEvent("baseline_metric_missing", { runIndex: i, runId, metricName: contract.evaluation.primaryMetric.name });
+													return textDetails(`[ERROR] Primary metric "${contract.evaluation.primaryMetric.name}" not found in baseline run ${i + 1}.\nMetric source is "${source.type}" with no wall_clock fallback.\nEnsure the benchmark outputs METRIC ${contract.evaluation.primaryMetric.name}=<number> to stdout.`, { metricName: contract.evaluation.primaryMetric.name, sourceType: source.type });
 					}
 				}
 
 				baselineRuns.push({ runId, metric: metricValue ?? runResult.durationSeconds, durationSeconds: runResult.durationSeconds });
-				appendEvent(ctx.cwd, {
-					timestamp: Date.now(),
-					contractId,
-					contractHash,
-					event: "baseline_run_completed",
-					details: { runIndex: i, runId, exitCode: runResult.exitCode, metric: metricValue, durationSeconds: runResult.durationSeconds, timedOut: runResult.timedOut },
-				});
+				logEvent("baseline_run_completed", { runIndex: i, runId, exitCode: runResult.exitCode, metric: metricValue, durationSeconds: runResult.durationSeconds, timedOut: runResult.timedOut });
 			}
 
 			const immutableAfterBaseline = await computeImmutableReadSetHash(
@@ -1827,32 +1984,14 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				contract.scope.immutableReadPaths,
 			);
 			if (immutableAfterBaseline.hash !== immutableResult.hash) {
-				appendEvent(ctx.cwd, {
-					timestamp: Date.now(),
-					contractId,
-					contractHash,
-					event: "baseline_immutable_drift",
-					details: { before: immutableResult.hash, after: immutableAfterBaseline.hash },
-				});
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] baseline benchmark mutated immutableReadPaths.\nBenchmark/read-only files changed during approve; fix the benchmark harness before locking the contract.` }],
-					details: { beforeHash: immutableResult.hash, afterHash: immutableAfterBaseline.hash, warnings: immutableAfterBaseline.warnings },
-				};
+				logEvent("baseline_immutable_drift", { before: immutableResult.hash, after: immutableAfterBaseline.hash });
+									return textDetails(`[ERROR] baseline benchmark mutated immutableReadPaths.\nBenchmark/read-only files changed during approve; fix the benchmark harness before locking the contract.`, { beforeHash: immutableResult.hash, afterHash: immutableAfterBaseline.hash, warnings: immutableAfterBaseline.warnings });
 			}
 
 			const postBaselineChangedFiles = getContractRelevantChangedFiles(ctx.cwd);
 			if (postBaselineChangedFiles.length > 0) {
-				appendEvent(ctx.cwd, {
-					timestamp: Date.now(),
-					contractId,
-					contractHash,
-					event: "baseline_dirty_worktree",
-					details: { changedFiles: postBaselineChangedFiles },
-				});
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] baseline benchmark created contract-relevant dirty files.\n対象: ${postBaselineChangedFiles.join(", ")}\nFix the benchmark so approve leaves the candidate worktree clean.` }],
-					details: { changedFiles: postBaselineChangedFiles },
-				};
+				logEvent("baseline_dirty_worktree", { changedFiles: postBaselineChangedFiles });
+									return textDetails(`[ERROR] baseline benchmark created contract-relevant dirty files.\n対象: ${postBaselineChangedFiles.join(", ")}\nFix the benchmark so approve leaves the candidate worktree clean.`, { changedFiles: postBaselineChangedFiles });
 			}
 
 			const baselineMetrics = baselineRuns.map((r) => r.metric);
@@ -1878,13 +2017,29 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			writeCurrentContract(ctx.cwd, contract);
 			writeLockFile(ctx.cwd, lock);
 
-			appendEvent(ctx.cwd, {
-				timestamp: Date.now(),
-				contractId,
-				contractHash,
-				event: "approve_completed",
-				details: { baselineValue: noise.aggregate, noiseRange: noise.relativeRange, samples: noise.samples.length },
-			});
+			// Initialize in-memory state for contract mode
+			state.name = contract.objective.summary ?? state.name;
+			state.metricName = contract.evaluation.primaryMetric.name;
+			state.metricUnit = contract.evaluation.primaryMetric.unit ?? "";
+			state.direction = contract.evaluation.primaryMetric.direction;
+			state.bestMetric = null;
+			state.runCount = 0;
+
+			// Persist contract-mode state to state.json
+			try {
+				writeStateV2(ctx.cwd, {
+					...readStateV2(ctx.cwd),
+					currentPlanId: undefined,
+					currentPlanDir: undefined,
+					latestRunId: undefined,
+					bestRunId: undefined,
+					bestMetric: undefined,
+					runCount: 0,
+					currentContractHash: contractHash,
+				});
+			} catch { /* best effort */ }
+
+			logEvent("approve_completed", { baselineValue: noise.aggregate, noiseRange: noise.relativeRange, samples: noise.samples.length });
 
 			let text = `[OK] contract を承認し、baseline を測定しました\n`;
 			text += `\n### Baseline\n`;
@@ -1915,16 +2070,13 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			}
 			text += `\nautoresearch_run_contract で実験を開始できます。`;
 
-			return {
-				content: [{ type: "text" as const, text }],
-				details: { contractPath: currentContractPath(ctx.cwd), lockPath: currentLockPath(ctx.cwd), baseline: noise, contractHash, gitCommit },
-			};
+			return textDetails(text, { contractPath: currentContractPath(ctx.cwd), lockPath: currentLockPath(ctx.cwd), baseline: noise, contractHash, gitCommit });
 		},
 	});
 
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 	// Tool: autoresearch_run_contract
-	// ═══════════════════════════════════════════════════════════════
+	// ---
 
 	pi.registerTool({
 		name: "autoresearch_run_contract",
@@ -1948,19 +2100,15 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			const lock = readLockFile(ctx.cwd);
 
 			if (!contract) {
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] current contract が見つかりません。\n先に autoresearch_approve を実行してください。` }],
-					details: {},
-				};
+									return textResponse(`[ERROR] current contract が見つかりません。\n先に autoresearch_approve を実行してください。`);
 			}
 			if (!lock) {
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] lock file が見つかりません。\n先に autoresearch_approve を実行してください。` }],
-					details: {},
-				};
+									return textResponse(`[ERROR] lock file が見つかりません。\n先に autoresearch_approve を実行してください。`);
 			}
 
 			const currentHash = computeContractHash(contract);
+			const logRunEvent = (event: string, details: Record<string, unknown> = {}): void =>
+				appendEvent(ctx.cwd, { timestamp: Date.now(), contractId: lock.contractId, contractHash: currentHash, event, details });
 			const contractHashMatches = currentHash === lock.contractHash;
 
 			if (!contractHashMatches) {
@@ -1974,29 +2122,17 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					reference: null,
 					details: { expected: lock.contractHash, actual: currentHash },
 				});
-				return {
-					content: [{ type: "text" as const, text: `[PAUSE] contract hash が lock と一致しません。\nexpected: ${lock.contractHash}\nactual: ${currentHash}\ncontract が承認後に変更されました。` }],
-					details: { decision: "pause" },
-				};
+									return textDetails(`[PAUSE] contract hash が lock と一致しません。\nexpected: ${lock.contractHash}\nactual: ${currentHash}\ncontract が承認後に変更されました。`, { decision: "pause" });
 			}
 
 			if (contract.scope.requireGit && !isGitRepo(ctx.cwd)) {
-				return {
-					content: [{ type: "text" as const, text: `[ERROR] git repo ではありません。` }],
-					details: {},
-				};
+									return textResponse(`[ERROR] git repo ではありません。`);
 			}
 
 			// Pre-check state (logged for diagnostics only)
 			const preChangedFiles = getChangedFiles(ctx.cwd);
 
-			appendEvent(ctx.cwd, {
-				timestamp: Date.now(),
-				contractId: lock.contractId,
-				contractHash: currentHash,
-				event: "contract_run_started",
-				details: { reason: params.reason, iterationLabel: params.iteration_label, preChangedFilesCount: preChangedFiles.length },
-			});
+			logRunEvent("contract_run_started", { reason: params.reason, iterationLabel: params.iteration_label, preChangedFilesCount: preChangedFiles.length });
 
 			// --- Run checks ---
 			const checkResults = new Map<string, boolean>();
@@ -2029,13 +2165,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				const metricValue = resolvePrimaryMetricFromRun(contract.evaluation.primaryMetric, result);
 				if (metricValue !== null) measurements.push(metricValue);
 
-				appendEvent(ctx.cwd, {
-					timestamp: Date.now(),
-					contractId: lock.contractId,
-					contractHash: currentHash,
-					event: "benchmark_run_completed",
-					details: { runIndex: i, exitCode: result.exitCode, metric: metricValue, durationSeconds: result.durationSeconds, timedOut: result.timedOut },
-				});
+				logRunEvent("benchmark_run_completed", { runIndex: i, exitCode: result.exitCode, metric: metricValue, durationSeconds: result.durationSeconds, timedOut: result.timedOut });
 			}
 
 			// --- POST state: re-check changed files and immutable hash AFTER benchmark ---
@@ -2046,13 +2176,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			const immutableResult = await computeImmutableReadSetHash(ctx.cwd, contract.scope.immutableReadPaths);
 			const immutableReadSetHashMatches = immutableResult.hash === lock.environment.immutableReadSetHash;
 
-			appendEvent(ctx.cwd, {
-				timestamp: Date.now(),
-				contractId: lock.contractId,
-				contractHash: currentHash,
-				event: "post_state_captured",
-				details: { postChangedFilesCount: changedFiles.length, immutableHashMatch: immutableReadSetHashMatches },
-			});
+			logRunEvent("post_state_captured", { postChangedFilesCount: changedFiles.length, immutableHashMatch: immutableReadSetHashMatches });
 
 			const aggregateMethod = contract.evaluation.benchmark.aggregate;
 			const candidateMetric = measurements.length > 0
@@ -2158,20 +2282,34 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				`[autoresearch] ${params.reason ?? "contract run"}\n\nDecision: keep\nMetric: ${evaluatorResult.representativeMetric}\nImprovement: ${evaluatorResult.improvement}\nRate: ${evaluatorResult.improvementRate}`,
 				);
 				if (gr.error) {
-					appendEvent(ctx.cwd, { timestamp: Date.now(), contractId: lock.contractId, contractHash: currentHash, event: "decision_pause", details: { reason: "git commit failed", error: gr.error } });
-					return {
-						content: [{ type: "text" as const, text: `[PAUSE] git commit に失敗しました: ${gr.error}` }],
-						details: { decision: "pause", error: gr.error },
-					};
+					logRunEvent("decision_pause", { reason: "git commit failed", error: gr.error });
+											return textDetails(`[PAUSE] git commit に失敗しました: ${gr.error}`, { decision: "pause", error: gr.error });
 				}
 
 				state.runCount++;
-				if (candidateMetric !== null && isBestMetric(state.bestMetric, candidateMetric, state.direction)) {
+				// Sync direction from contract to ensure consistent best comparison
+				state.direction = contract.evaluation.primaryMetric.direction;
+				const updatedBest = candidateMetric !== null && isBestMetric(state.bestMetric, candidateMetric, state.direction);
+				if (updatedBest) {
 					state.bestMetric = candidateMetric;
 				}
 
-				appendEvent(ctx.cwd, { timestamp: Date.now(), contractId: lock.contractId, contractHash: currentHash, event: "decision_keep", details: { metric: evaluatorResult.representativeMetric, commit: gr.commit } });
-				updateWidget(ctx, state, active, runningExperiment, loopInfo());
+				// Persist bestMetric and runCount to .autoresearch/state.json for contract mode
+				// so that bestMetric survives process restarts.
+				try {
+					const s2 = readStateV2(ctx.cwd);
+					writeStateV2(ctx.cwd, {
+						...s2,
+						runCount: state.runCount,
+						currentContractHash: currentHash,
+						bestMetric: updatedBest
+							? { name: contract.evaluation.primaryMetric.name, value: candidateMetric!, direction: contract.evaluation.primaryMetric.direction }
+							: s2.bestMetric,
+					});
+				} catch { /* best effort: in-memory state is still valid for this session */ }
+
+				logRunEvent("decision_keep", { metric: evaluatorResult.representativeMetric, commit: gr.commit });
+				updateWidget(ctx);
 
 				let text = `[KEEP] 改善が承認されました\n`;
 				text += `metric: ${evaluatorResult.representativeMetric}\n`;
@@ -2181,42 +2319,41 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				text += `reason: ${evaluatorResult.reason}\n`;
 				if (gr.committed) text += `commit: ${gr.commit}\n`;
 				text += `\n次の候補を実装して、再度 autoresearch_run_contract を実行してください。`;
-				return {
-					content: [{ type: "text" as const, text }],
-					details: { decision: "keep", metric: evaluatorResult.representativeMetric, reference: evaluatorResult.reference, improvement: evaluatorResult.improvement, improvementRate: evaluatorResult.improvementRate, commit: gr.commit },
-				};
+				return textDetails(text, { decision: "keep", metric: evaluatorResult.representativeMetric, reference: evaluatorResult.reference, improvement: evaluatorResult.improvement, improvementRate: evaluatorResult.improvementRate, commit: gr.commit });
 			} else if (evaluatorResult.decision === "discard") {
 				const rv = gitAutoRevert(ctx.cwd);
 				if (!rv.reverted) {
-					appendEvent(ctx.cwd, { timestamp: Date.now(), contractId: lock.contractId, contractHash: currentHash, event: "revert_failed", details: { error: rv.error } });
-					return {
-						content: [{ type: "text" as const, text: `[PAUSE] revert に失敗しました: ${rv.error}\n手動介入が必要です。` }],
-						details: { decision: "pause", error: rv.error },
-					};
+					logRunEvent("revert_failed", { error: rv.error });
+											return textDetails(`[PAUSE] revert に失敗しました: ${rv.error}\n手動介入が必要です。`, { decision: "pause", error: rv.error });
 				}
 
 				state.runCount++;
-				appendEvent(ctx.cwd, { timestamp: Date.now(), contractId: lock.contractId, contractHash: currentHash, event: "decision_discard", details: { metric: evaluatorResult.representativeMetric, reason: evaluatorResult.reason } });
-				updateWidget(ctx, state, active, runningExperiment, loopInfo());
+
+				// Persist runCount and currentContractHash for contract mode
+				try {
+					const s2 = readStateV2(ctx.cwd);
+					writeStateV2(ctx.cwd, {
+						...s2,
+						runCount: state.runCount,
+						currentContractHash: currentHash,
+					});
+				} catch { /* best effort */ }
+
+				logRunEvent("decision_discard", { metric: evaluatorResult.representativeMetric, reason: evaluatorResult.reason });
+				updateWidget(ctx);
 
 				let text = `[DISCARD] 改善不十分のため棄却しました\n`;
 				text += `metric: ${evaluatorResult.representativeMetric}\n`;
 				text += `reference: ${evaluatorResult.reference}\n`;
 				text += `reason: ${evaluatorResult.reason}\n`;
 				text += `\nrevert 完了。次の候補を実装して、再度 autoresearch_run_contract を実行してください。`;
-				return {
-					content: [{ type: "text" as const, text }],
-					details: { decision: "discard", metric: evaluatorResult.representativeMetric, reference: evaluatorResult.reference, reason: evaluatorResult.reason },
-				};
+				return textDetails(text, { decision: "discard", metric: evaluatorResult.representativeMetric, reference: evaluatorResult.reference, reason: evaluatorResult.reason });
 			} else {
-				appendEvent(ctx.cwd, { timestamp: Date.now(), contractId: lock.contractId, contractHash: currentHash, event: "decision_pause", details: { reason: evaluatorResult.reason } });
+				logRunEvent("decision_pause", { reason: evaluatorResult.reason });
 				let text = `[PAUSE] 実験を一時停止しました\n`;
 				text += `reason: ${evaluatorResult.reason}\n`;
 				text += `\n変更は working tree に残っています。問題を解決してから再開してください。`;
-				return {
-					content: [{ type: "text" as const, text }],
-					details: { decision: "pause", reason: evaluatorResult.reason },
-				};
+				return textDetails(text, { decision: "pause", reason: evaluatorResult.reason });
 			}
 		},
 	});

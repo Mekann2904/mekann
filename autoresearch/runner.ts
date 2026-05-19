@@ -17,6 +17,16 @@ import { parseMetricLines } from "./state.js";
 // Types
 // ---------------------------------------------------------------------------
 
+/** execFileSync wrapper for git commands with standard options. */
+function gitExecSync(args: string[], cwd: string, timeout = 5_000): string {
+	return execFileSync("git", args, { cwd, encoding: "utf8", timeout, stdio: ["ignore", "pipe", "ignore"] });
+}
+
+/** execFileSync wrapper for git commands that only checks exit code. */
+function gitCheckSync(args: string[], cwd: string, timeout = 5_000): void {
+	execFileSync("git", args, { cwd, encoding: "utf8", timeout, stdio: ["ignore", "pipe", "ignore"] });
+}
+
 export interface ChecksResult {
 	/** null = checks not run (no file or benchmark failed) */
 	passed: boolean | null;
@@ -617,9 +627,7 @@ export async function runArgvCommand(
 
 export function getGitShortHash(cwd: string): string {
 	try {
-		return execFileSync("git", ["rev-parse", "--short", "HEAD"], {
-			cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"],
-		}).trim();
+		return gitExecSync(["rev-parse", "--short", "HEAD"], cwd).trim();
 	} catch {
 		return "unknown";
 	}
@@ -628,9 +636,7 @@ export function getGitShortHash(cwd: string): string {
 /** Get the full commit hash. */
 export function getGitFullHash(cwd: string): string {
 	try {
-		return execFileSync("git", ["rev-parse", "HEAD"], {
-			cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"],
-		}).trim();
+		return gitExecSync(["rev-parse", "HEAD"], cwd).trim();
 	} catch {
 		return "unknown";
 	}
@@ -639,11 +645,9 @@ export function getGitFullHash(cwd: string): string {
 /** Check if the working tree has uncommitted changes. */
 export function isGitDirty(cwd: string): boolean {
 	try {
-		execFileSync("git", ["diff", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] });
-		execFileSync("git", ["diff", "--cached", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] });
-		const untracked = execFileSync("git", ["ls-files", "--others", "--exclude-standard"], {
-			cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"],
-		}).trim();
+		gitCheckSync(["diff", "--quiet"], cwd);
+		gitCheckSync(["diff", "--cached", "--quiet"], cwd);
+		const untracked = gitExecSync(["ls-files", "--others", "--exclude-standard"], cwd).trim();
 		return untracked.length > 0;
 	} catch {
 		return true;
@@ -653,10 +657,7 @@ export function isGitDirty(cwd: string): boolean {
 /** Get list of changed files (staged + unstaged + untracked). */
 export function getChangedFiles(cwd: string): string[] {
 	try {
-		const result = execFileSync(
-			"git", ["status", "--porcelain"],
-			{ cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] },
-		).trim();
+		const result = gitExecSync(["status", "--porcelain"], cwd).trim();
 		if (!result) return [];
 		return result.split("\n").map((line: string) => {
 			const file = line.length >= 3 && line[2] === " " ? line.slice(3) : line.slice(2).trimStart();
@@ -693,7 +694,7 @@ export function generateRunId(): string {
 // ---------------------------------------------------------------------------
 
 /** Get the base artifact directory for all autoresearch sessions. */
-export function getArtifactBaseDir(cwd: string): string {
+function getArtifactBaseDir(cwd: string): string {
 	return path.join(cwd, ".pi", "autoresearch");
 }
 
@@ -728,17 +729,15 @@ export function createRunArtifactDir(
 	fs.writeFileSync(path.join(runDir, "command.txt"), command, "utf8");
 
 	try {
-		const status = execFileSync("git", ["status", "--porcelain"], {
-			cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"],
-		});
+		const status = gitExecSync(["status", "--porcelain"], cwd);
 		fs.writeFileSync(path.join(runDir, "git.status.txt"), status, "utf8");
 	} catch {
 		fs.writeFileSync(path.join(runDir, "git.status.txt"), "(git unavailable)", "utf8");
 	}
 
 	try {
-		const diffUnstaged = execFileSync("git", ["diff"], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
-		const diffStaged = execFileSync("git", ["diff", "--cached"], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
+		const diffUnstaged = gitExecSync(["diff"], cwd, 10_000);
+		const diffStaged = gitExecSync(["diff", "--cached"], cwd, 10_000);
 		fs.writeFileSync(path.join(runDir, "git.diff"), diffUnstaged + (diffStaged ? "\n--- staged ---\n" + diffStaged : ""), "utf8");
 	} catch {
 		fs.writeFileSync(path.join(runDir, "git.diff"), "(git diff unavailable)", "utf8");
@@ -944,7 +943,7 @@ export function loadRunFromArtifact(
 export function gitAutoCommit(cwd: string, message: string): { committed: boolean; commit?: string; error?: string } {
 	try {
 		// Check if we're in a git repo first. If not, no error — just nothing to commit.
-		execFileSync("git", ["rev-parse", "--git-dir"], { cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] });
+		gitCheckSync(["rev-parse", "--git-dir"], cwd);
 	} catch {
 		return { committed: false };
 	}
@@ -959,11 +958,11 @@ export function gitAutoCommit(cwd: string, message: string): { committed: boolea
 		], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
 
 		try {
-			execFileSync("git", ["diff", "--cached", "--quiet"], { cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] });
+			gitCheckSync(["diff", "--cached", "--quiet"], cwd);
 			return { committed: false };
 		} catch { /* diff あり → commit */ }
 
-		execFileSync("git", ["commit", "-m", message], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
+		gitCheckSync(["commit", "-m", message], cwd, 10_000);
 		return { committed: true, commit: getGitShortHash(cwd) };
 	} catch (e) {
 		return { committed: false, error: e instanceof Error ? e.message : String(e) };

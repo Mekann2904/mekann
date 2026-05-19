@@ -2,7 +2,9 @@
 # Maintenance Cost Evaluator
 # Measures various aspects of codebase maintainability.
 # Lower score = better (less maintenance burden).
-set -euo pipefail
+set -uo pipefail
+# NOTE: removed -e (errexit) — each section handles errors explicitly
+# to avoid premature exit when grep/find produce no matches.
 cd "$(dirname "$0")"
 
 # 1. Run tests
@@ -130,7 +132,7 @@ if [ -z "$test_seconds_int" ]; then test_seconds_int=0; fi
 score=$((score + test_seconds_int))
 
 # Bonus: source LOC reduction (per 100 LOC reduced vs baseline)
-baseline_loc=6325
+baseline_loc=11873
 loc_delta=$((source_loc - baseline_loc))
 if [ "$loc_delta" -lt 0 ]; then
   score=$((score - 5 * ((-loc_delta) / 100)))

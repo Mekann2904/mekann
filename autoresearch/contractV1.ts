@@ -727,7 +727,7 @@ export function eventsPath(cwd: string): string {
 	return path.join(cwd, AUTORESEARCH_DIR, "events.jsonl");
 }
 
-export function runsPath(cwd: string): string {
+function runsPath(cwd: string): string {
 	return path.join(cwd, AUTORESEARCH_DIR, "runs.jsonl");
 }
 

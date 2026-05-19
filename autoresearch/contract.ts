@@ -21,13 +21,13 @@ import { execFileSync } from "node:child_process";
 export const ACCEPTANCE_MODES = ["better_than_best", "improvement_threshold", "manual"] as const;
 export type AcceptanceMode = (typeof ACCEPTANCE_MODES)[number];
 
-export const AGGREGATE_METHODS = ["single", "median", "mean", "min", "max"] as const;
+const AGGREGATE_METHODS = ["single", "median", "mean", "min", "max"] as const;
 export type AggregateMethod = (typeof AGGREGATE_METHODS)[number];
 
-export const METRIC_METHODS = ["wall_clock", "stdout_metric", "report_file"] as const;
+const METRIC_METHODS = ["wall_clock", "stdout_metric", "report_file"] as const;
 export type MetricMethod = (typeof METRIC_METHODS)[number];
 
-export const CHECKS_MODES = ["script", "command", "none"] as const;
+const CHECKS_MODES = ["script", "command", "none"] as const;
 export type ChecksMode = (typeof CHECKS_MODES)[number];
 
 /**
