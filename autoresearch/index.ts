@@ -64,7 +64,7 @@ import {
 	type ContractEvent,
 	type DecisionEntry,
 } from "./contractV1.js";
-import { evaluateContract, type EvaluatorInput, type Decision } from "./contractEvaluator.js";
+import { evaluateContract, aggregate, type EvaluatorInput, type Decision } from "./contractEvaluator.js";
 import {
 	contractFilePath,
 	contractExists,
@@ -1634,29 +1634,6 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		return filterInternalPaths(getChangedFiles(cwd));
 	}
 
-	function aggregateMeasurementsFromValues(
-		values: number[],
-		method: "median" | "mean" | "min" | "max",
-	): number | null {
-		if (values.length === 0) return null;
-		if (values.length === 1) return values[0];
-		const sorted = [...values].sort((a, b) => a - b);
-		switch (method) {
-			case "median": {
-				const mid = Math.floor(sorted.length / 2);
-				return sorted.length % 2 === 0
-					? (sorted[mid - 1] + sorted[mid]) / 2
-					: sorted[mid];
-			}
-			case "mean":
-				return values.reduce((s, v) => s + v, 0) / values.length;
-			case "min":
-				return sorted[0];
-			case "max":
-				return sorted[sorted.length - 1];
-		}
-	}
-
 	// ---
 	// Tool: autoresearch_plan
 	// ---
@@ -2180,7 +2157,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			const aggregateMethod = contract.evaluation.benchmark.aggregate;
 			const candidateMetric = measurements.length > 0
-				? aggregateMeasurementsFromValues(measurements, aggregateMethod)
+				? aggregate(measurements, aggregateMethod)
 				: null;
 
 			const evaluatorInput: EvaluatorInput = {

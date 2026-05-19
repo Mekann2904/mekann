@@ -276,7 +276,7 @@ export function evaluateContract(input: EvaluatorInput): EvaluatorResult {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function aggregate(values: number[], method: "median" | "mean" | "min" | "max"): number | null {
+export function aggregate(values: number[], method: "median" | "mean" | "min" | "max"): number | null {
 	if (values.length === 0) return null;
 	if (values.length === 1) return values[0];
 	const sorted = [...values].sort((a, b) => a - b);
