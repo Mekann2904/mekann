@@ -19,7 +19,10 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { appendFileSync, readFileSync } from "node:fs";
 import { AgentControl } from "./agentControl.js";
+import { SubagentClient } from "./ipc.js";
+import { KittyController } from "./kittyControl.js";
 import { formatAgentList, formatWaitResult } from "./types.js";
 import type { ForkTurns } from "./contextFork.js";
 
@@ -111,6 +114,11 @@ const CloseAgentSchema = Type.Object({
 // ─── Extension entry point ───────────────────────────────────────
 
 export default function subagentExtension(pi: ExtensionAPI): void {
+  if (process.env.PI_SUBAGENT_ROLE === "child") {
+    startChildMode(pi);
+    return;
+  }
+
   let control: AgentControl | null = null;
 
   // ─── Flags ────────────────────────────────────────────────────
@@ -139,15 +147,81 @@ export default function subagentExtension(pi: ExtensionAPI): void {
     default: "1000",
   });
 
+  pi.registerFlag("subagent-display", {
+    description: 'Display mode for subagents: "none", "kitty-log", or "kitty-pi"',
+    type: "string",
+    default: "none",
+  });
+
+  pi.registerFlag("subagent-log-dir", {
+    description: "Directory for subagent display logs",
+    type: "string",
+    default: "",
+  });
+
+  pi.registerFlag("subagent-kitten-bin", {
+    description: "kitten binary path/name used for kitty remote control",
+    type: "string",
+    default: "kitten",
+  });
+
+  pi.registerFlag("subagent-pi-command", {
+    description: "command used to start child Pi process in kitty-pi mode",
+    type: "string",
+    default: "pi",
+  });
+
   // ─── Helper: ensure control is initialized ────────────────────
+
+  function readSettingsFile(): Record<string, unknown> {
+    const home = process.env.HOME;
+    const cwd = process.cwd();
+    const paths = [
+      home ? `${home}/.pi/agent/settings.json` : undefined,
+      `${cwd}/.pi/settings.json`,
+    ].filter(Boolean) as string[];
+    for (const p of paths) {
+      try {
+        return JSON.parse(readFileSync(p, "utf8"));
+      } catch { /* ignore */ }
+    }
+    return {};
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function getFlagOrSetting<T = any>(flagName: string, settingsKey: string): T | undefined {
+    // 1) CLI flag (highest priority)
+    const flagVal = pi.getFlag(flagName);
+    if (flagVal !== undefined && flagVal !== null) return flagVal as T;
+    // 2) settings.json "subagent" section
+    try {
+      const settings = readSettingsFile();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sub = (settings as any).subagent;
+      if (sub && sub[settingsKey] !== undefined) return sub[settingsKey] as T;
+    } catch { /* ignore */ }
+    return undefined;
+  }
 
   function ensureControl(): AgentControl {
     if (!control) {
-      const maxAgents = Number(pi.getFlag("subagent-max-agents")) || 4;
-      const maxDepth = Number(pi.getFlag("subagent-max-depth")) || 2;
-      const defaultWait = Number(pi.getFlag("subagent-default-wait-timeout-ms")) || 30000;
-      const minWait = Number(pi.getFlag("subagent-min-wait-timeout-ms")) || 1000;
-      control = new AgentControl(pi, maxAgents, maxDepth, defaultWait, minWait);
+      const maxAgents = Number(getFlagOrSetting("subagent-max-agents", "max-agents")) || 4;
+      const maxDepth = Number(getFlagOrSetting("subagent-max-depth", "max-depth")) || 2;
+      const defaultWait = Number(getFlagOrSetting("subagent-default-wait-timeout-ms", "default-wait-timeout-ms")) || 30000;
+      const minWait = Number(getFlagOrSetting("subagent-min-wait-timeout-ms", "min-wait-timeout-ms")) || 1000;
+      const rawDisplayFlag = getFlagOrSetting<string>("subagent-display", "display");
+      const displayFlag = String(rawDisplayFlag ?? "none");
+      const displayMode = displayFlag === "kitty-log" || displayFlag === "kitty-pi" ? displayFlag : "none";
+      appendFileSync("/tmp/pi-subagent-debug.log", `ensureControl: rawDisplayFlag=${JSON.stringify(rawDisplayFlag)} displayFlag=${displayFlag} displayMode=${displayMode}\n`);
+      const logDirFlag = String(getFlagOrSetting<string>("subagent-log-dir", "log-dir") ?? "").trim();
+      const kittenBin = String(getFlagOrSetting<string>("subagent-kitten-bin", "kitten-bin") ?? "kitten") || "kitten";
+      const piCommand = String(getFlagOrSetting<string>("subagent-pi-command", "pi-command") ?? "pi") || "pi";
+      control = new AgentControl(pi, maxAgents, maxDepth, defaultWait, minWait, {
+        displayMode,
+        logDir: logDirFlag || undefined,
+        kitty: new KittyController(kittenBin),
+        piCommand,
+      });
     }
     return control;
   }
@@ -284,7 +358,7 @@ export default function subagentExtension(pi: ExtensionAPI): void {
     parameters: ListAgentsSchema,
     execute: withCtrl(async (ctrl, params, _ctx) => {
       const result = ctrl.list(params);
-      return toolResult(result.agents.length === 0 ? "(no agents)" : result.agents.map((a) => `${a.status === "completed" || a.status === "shutdown" ? "○" : "●"} ${a.agent_path}${a.nickname ? ` (${a.nickname})` : ""}${a.role ? ` [${a.role}]` : ""} — ${a.status}${a.last_task ? `\n  last: ${a.last_task.slice(0, 80)}` : ""}`).join("\n"), result);
+      return toolResult(result.agents.length === 0 ? "(no agents)" : result.agents.map((a) => `${a.status === "completed" || a.status === "shutdown" ? "○" : "●"} ${a.agent_path}${a.nickname ? ` (${a.nickname})` : ""}${a.role ? ` [${a.role}]` : ""} — ${a.status}${a.display ? ` — display: ${a.display.status === "failed" ? `${a.display.kind}/failed: ${a.display.error}` : `${a.display.kind}/${a.display.status}${a.display.pid ? ` pid=${a.display.pid}` : ""}${a.display.window_id ? ` window=${a.display.window_id}` : ""}`}` : ""}${a.last_task ? `\n  last: ${a.last_task.slice(0, 80)}` : ""}`).join("\n"), result);
     }),
   });
 
@@ -336,6 +410,19 @@ export default function subagentExtension(pi: ExtensionAPI): void {
     },
   });
 
+  pi.registerCommand("focus-agent", {
+    description: "Focus a subagent display window",
+    async handler(args, ctx) {
+      const target = args?.trim();
+      if (!target) {
+        ctx.ui.notify("Usage: /focus-agent <target_path>", "warning");
+        return;
+      }
+      const result = await ensureControl().focus(target, ctx as any);
+      ctx.ui.notify(result.focused ? `Focused: ${target}` : (result.warning ?? `No display for ${target}`), result.focused ? "info" : "warning");
+    },
+  });
+
   pi.registerCommand("close-agent", {
     description: "Close a subagent by path",
     async handler(args, ctx) {
@@ -367,12 +454,50 @@ export default function subagentExtension(pi: ExtensionAPI): void {
   }
 
   pi.on("session_start", async (_event, ctx) => {
+    appendFileSync("/tmp/pi-subagent-debug.log", `session_start: control=${control ? "exists" : "null"}\n`);
     await shutdownControl();
     ensureControl();
     control!.registry.ensureRoot("root");
+    appendFileSync("/tmp/pi-subagent-debug.log", `session_start done: control.displayMode=${(control as any)?.displayMode}\n`);
   });
 
   pi.on("session_shutdown", async () => {
     await shutdownControl();
   });
+}
+async function startChildMode(_pi: ExtensionAPI): Promise<void> {
+  const agentId = process.env.PI_SUBAGENT_ID;
+  const agentPath = process.env.PI_SUBAGENT_PATH;
+  const socketPath = process.env.PI_SUBAGENT_PARENT_SOCKET;
+  const initialMessage = process.env.PI_SUBAGENT_INITIAL_MESSAGE ?? "";
+  if (!agentId || !agentPath || !socketPath) {
+    console.error("subagent child mode requires PI_SUBAGENT_ID, PI_SUBAGENT_PATH, and PI_SUBAGENT_PARENT_SOCKET");
+    process.exitCode = 1;
+    return;
+  }
+  const client = new SubagentClient(socketPath, agentId, agentPath);
+  try {
+    await client.connect();
+    // Current pi extension runtime does not expose a documented current TUI
+    // session injection API here. Intentionally do NOT fall back to
+    // kitten @ send-text: terminal input automation is not an agent control API.
+    const capabilities = ["hello", "status", "shutdown"];
+    await client.send({ type: "hello", agentId, agentPath, pid: process.pid, cwd: process.cwd(), capabilities });
+    await client.send({ type: "status", agentId, status: "running" });
+    if (initialMessage) {
+      await client.send({ type: "log", agentId, line: `[initial message available in env; injection unsupported] ${initialMessage.slice(0, 200)}` });
+    }
+    client.onMessage((msg) => {
+      if (msg.type === "shutdown") {
+        void client.send({ type: "status", agentId, status: "shutdown" }).finally(() => client.close());
+      } else if (msg.type === "followup" || msg.type === "message") {
+        void client.send({ type: "error", id: msg.id, agentId, message: `${msg.type} injection is unsupported by this Pi extension runtime; TODO: implement pi-subagent-runner/current-session API integration.` });
+      } else if (msg.type === "interrupt") {
+        void client.send({ type: "error", id: msg.id, agentId, message: "interrupt is unsupported by this child runtime." });
+      }
+    });
+  } catch (err) {
+    console.error(`subagent child IPC error: ${err instanceof Error ? err.message : String(err)}`);
+    process.exitCode = 1;
+  }
 }

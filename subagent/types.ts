@@ -27,6 +27,36 @@ export function isTerminalStatus(s: AgentStatus): boolean {
 
 // ─── Agent metadata ──────────────────────────────────────────────
 
+export type AgentDisplayKind = "kitty-log" | "kitty-pi";
+
+export interface AgentDisplayRef {
+  kind: AgentDisplayKind;
+  status: "opening" | "open" | "failed" | "closed";
+  windowId?: string;
+  agentId?: string;
+  title: string;
+  cwd: string;
+  logPath?: string;
+  socketPath?: string;
+  pid?: number;
+  error?: string;
+}
+
+export interface AgentDisplayResult {
+  kind: AgentDisplayKind;
+  status: "opening" | "open" | "failed" | "closed";
+  window_id?: string;
+  title?: string;
+  log_path?: string;
+  socket_path?: string;
+  pid?: number;
+  error?: string;
+}
+
+export type AgentRuntime =
+  | { mode: "in_process"; agentId: string; agentPath: string; session: import("@earendil-works/pi-coding-agent").AgentSession; display?: AgentDisplayRef }
+  | { mode: "external_pi"; agentId: string; agentPath: string; socketPath: string; pid?: number; display?: AgentDisplayRef; connected: boolean; capabilities?: string[] };
+
 export interface AgentMetadata {
   agentId: string;
   sessionId: string;
@@ -43,6 +73,7 @@ export interface AgentMetadata {
   open: boolean;
   cancellationRequested: boolean;
   timeoutDeadline?: number;
+  display?: AgentDisplayRef;
 }
 
 // ─── Lifecycle events ────────────────────────────────────────────
@@ -122,6 +153,7 @@ export interface SpawnResult {
   agent_id: string;
   task_name: string;
   status: AgentStatus;
+  display?: AgentDisplayResult;
 }
 
 export interface WaitResult {
@@ -139,6 +171,7 @@ export interface ListResult {
     nickname?: string;
     role?: string;
     depth: number;
+    display?: AgentDisplayResult;
   }>;
 }
 
@@ -268,8 +301,13 @@ export function formatAgentList(agents: AgentMetadata[]): string[] {
     const task = agent.lastTaskMessage
       ? ` — ${truncate(agent.lastTaskMessage, 60)}`
       : "";
+    const display = agent.display
+      ? agent.display.status === "failed"
+        ? ` — display: ${agent.display.kind}/failed: ${agent.display.error ?? "unknown error"}`
+        : ` — display: ${agent.display.kind}/${agent.display.status}${agent.display.pid ? ` pid=${agent.display.pid}` : ""}${agent.display.windowId ? ` window=${agent.display.windowId}` : ""}`
+      : "";
     lines.push(
-      `${statusIcon} ${agent.agentPath}${nickname}${role} — ${agent.status}${task}`,
+      `${statusIcon} ${agent.agentPath}${nickname}${role} — ${agent.status}${display}${task}`,
     );
   }
   return lines;

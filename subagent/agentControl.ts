@@ -9,6 +9,8 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createAgentSession, type AgentSession } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
+import os from "node:os";
+import path from "node:path";
 import { ROOT_PATH, resolveTaskPath } from "./types.js";
 import { AgentRegistry } from "./registry.js";
 import { Mailbox } from "./mailbox.js";
@@ -28,6 +30,10 @@ import type {
   WaitResult,
 } from "./types.js";
 import { isTerminalStatus } from "./types.js";
+import { KittyController } from "./kittyControl.js";
+import { SubagentHub } from "./ipc.js";
+import type { ChildToParent } from "./ipc.js";
+import type { AgentDisplayRef, AgentDisplayResult, AgentRuntime } from "./types.js";
 
 // ─── Default config ──────────────────────────────────────────────
 
@@ -43,16 +49,36 @@ function nextAgentId(): string {
   return `sub_${++agentIdCounter}_${Date.now().toString(36)}`;
 }
 
+export type DisplayMode = "none" | "kitty-log" | "kitty-pi";
+
+export interface AgentControlOptions {
+  displayMode?: DisplayMode;
+  logDir?: string;
+  kitty?: KittyController;
+  hubFactory?: (socketPath: string) => SubagentHub;
+  piCommand?: string;
+  helloTimeoutMs?: number;
+}
+
 // ─── Agent control ───────────────────────────────────────────────
 
 export class AgentControl {
   readonly registry: AgentRegistry;
   readonly mailbox: Mailbox;
+  private runtimes = new Map<string, AgentRuntime>();
+  // Back-compat for existing tests/consumers that inspect childSessions.
   private childSessions = new Map<string, import("@earendil-works/pi-coding-agent").AgentSession>();
+  private hubs = new Map<string, SubagentHub>();
   private pi: import("@earendil-works/pi-coding-agent").ExtensionAPI;
   private defaultWaitTimeout: number;
   private minWaitTimeout: number;
   private lastConsumedSeq = new Map<string, number>();
+  private displayMode: DisplayMode;
+  private logDir: string;
+  private kitty: KittyController;
+  private hubFactory: (socketPath: string) => SubagentHub;
+  private piCommand: string;
+  private helloTimeoutMs: number;
 
   constructor(
     pi: import("@earendil-works/pi-coding-agent").ExtensionAPI,
@@ -60,6 +86,7 @@ export class AgentControl {
     maxDepth?: number,
     defaultWaitTimeout?: number,
     minWaitTimeout?: number,
+    options: AgentControlOptions = {},
   ) {
     this.pi = pi;
     this.registry = new AgentRegistry(
@@ -69,6 +96,14 @@ export class AgentControl {
     this.mailbox = new Mailbox();
     this.defaultWaitTimeout = defaultWaitTimeout ?? DEFAULT_WAIT_TIMEOUT_MS;
     this.minWaitTimeout = minWaitTimeout ?? MIN_WAIT_TIMEOUT_MS;
+    this.displayMode = options.displayMode ?? "none";
+    this.logDir = options.logDir ?? path.join(os.tmpdir(), "pi-subagents");
+    this.kitty = options.kitty ?? new KittyController();
+    this.hubFactory = options.hubFactory ?? ((socketPath) => new SubagentHub(socketPath));
+    this.piCommand = options.piCommand ?? "pi";
+    this.helloTimeoutMs = options.helloTimeoutMs ?? 10_000;
+    // DEBUG: confirm display mode
+    console.error(`[subagent-ext] AgentControl init: displayMode=${this.displayMode}, logDir=${this.logDir}`);
 
     // Forward registry events to mailbox
     this.registry.subscribe((event) => {
@@ -120,8 +155,19 @@ export class AgentControl {
 
   // ─── Helper: finalize agent with error ─────────────────────────────
 
+  private displayResult(display?: AgentDisplayRef): AgentDisplayResult | undefined {
+    if (!display) return undefined;
+    return { kind: display.kind, status: display.status, window_id: display.windowId, title: display.title, log_path: display.logPath, socket_path: display.socketPath, pid: display.pid, error: display.error };
+  }
+
+  private logDisplay(display: AgentDisplayRef | undefined, line: string): void {
+    if (!display || display.status === "closed") return;
+    void this.kitty.appendLog(display, line).catch(() => undefined);
+  }
+
   private finalizeWithError(agentId: string, canonicalPath: string, callerPath: string, err: unknown): void {
     const errorMessage = err instanceof Error ? err.message : String(err);
+    this.logDisplay(this.registry.get(canonicalPath)?.display, `[error] ${errorMessage}`);
     this.registry.updateStatus(canonicalPath, "errored");
     this.mailbox.appendEvent({
       type: "agent_final_message", ...this.evBase(agentId, canonicalPath),
@@ -129,7 +175,7 @@ export class AgentControl {
       message: `Agent error: ${errorMessage}`, status: "errored",
     });
     this.enqueueToMailbox(agentId, canonicalPath, callerPath, `Agent error: ${errorMessage}`, "final_result");
-    this.childSessions.delete(canonicalPath);
+    this.runtimes.delete(canonicalPath);
   }
 
   // ─── spawn_agent ───────────────────────────────────────────────
@@ -166,6 +212,10 @@ export class AgentControl {
     });
 
     try {
+      if (this.displayMode === "kitty-pi") {
+        return await this.spawnExternalPi(params, ctx, callerPath, canonicalPath, depth, reservation, agentId);
+      }
+
       const model = await this.resolveModel(params.model, ctx);
 
       const forkTurns = params.fork_turns ?? 0;
@@ -216,6 +266,15 @@ export class AgentControl {
 
       // Register agent
       const now = Date.now();
+      const display: AgentDisplayRef | undefined = this.displayMode === "kitty-log" ? {
+        kind: "kitty-log",
+        status: "opening",
+        agentId,
+        title: `pi subagent ${canonicalPath}`,
+        cwd: ctx.cwd,
+        logPath: path.join(this.logDir, `${agentId}.log`),
+      } : undefined;
+
       const metadata: AgentMetadata = {
         agentId,
         sessionId: session.sessionId,
@@ -231,13 +290,25 @@ export class AgentControl {
         depth,
         open: true,
         cancellationRequested: false,
+        display,
       };
 
       this.registry.registerAgent(metadata, reservation);
 
+      if (display) {
+        this.logDisplay(display, `[task] ${params.message}`);
+        try {
+          const opened = await this.kitty.launchLogWindow({ agentId, agentPath: canonicalPath, cwd: ctx.cwd, logPath: display.logPath!, title: display.title });
+          this.registry.updateAgent(canonicalPath, { display: opened });
+        } catch (err) {
+          this.registry.updateAgent(canonicalPath, { display: { ...display, status: "failed", error: err instanceof Error ? err.message : String(err) } });
+        }
+      }
+
       // Subscribe to child session events for status tracking
       const unsubscribe = session.subscribe((event) => {
         if (event.type === "agent_start") {
+          this.logDisplay(this.registry.get(canonicalPath)?.display, "[status] running");
           this.registry.updateStatus(canonicalPath, "running");
         } else if (event.type === "agent_end") {
           // Extract final assistant text
@@ -247,6 +318,7 @@ export class AgentControl {
             ? extractTextFromContent(lastAssistant.content) ?? undefined
             : undefined;
 
+          this.logDisplay(this.registry.get(canonicalPath)?.display, `${finalText ?? "(agent completed)"}\n[status] completed`);
           this.registry.updateStatus(canonicalPath, "completed", {
             lastTaskMessage: finalText,
           });
@@ -261,12 +333,14 @@ export class AgentControl {
             status: "completed",
           });
 
+          this.runtimes.delete(canonicalPath);
           this.childSessions.delete(canonicalPath);
           unsubscribe();
         }
       });
 
       // Store session reference
+      this.runtimes.set(canonicalPath, { mode: "in_process", agentId, agentPath: canonicalPath, session, display: this.registry.get(canonicalPath)?.display });
       this.childSessions.set(canonicalPath, session);
 
       // Send initial message in background
@@ -281,6 +355,7 @@ export class AgentControl {
         agent_id: agentId,
         task_name: canonicalPath,
         status: "pending_init",
+        display: this.displayResult(this.registry.get(canonicalPath)?.display),
       };
     } catch (err) {
       // Rollback reservation on failure
@@ -292,6 +367,51 @@ export class AgentControl {
       });
       throw err;
     }
+  }
+
+  private async spawnExternalPi(params: SpawnParams, ctx: ExtensionContext, callerPath: string, canonicalPath: string, depth: number, reservation: any, agentId: string): Promise<SpawnResult> {
+    const now = Date.now();
+    const socketPath = path.join(this.logDir, `${agentId}.sock`);
+    const display: AgentDisplayRef = { kind: "kitty-pi", status: "opening", agentId, title: `pi subagent ${canonicalPath}`, cwd: ctx.cwd, socketPath };
+    const metadata: AgentMetadata = {
+      agentId, sessionId: `external:${agentId}`, parentAgentId: callerPath === ROOT_PATH ? "root" : undefined, parentSessionId: "root",
+      agentPath: canonicalPath, nickname: params.nickname, role: params.role, status: "pending_init", lastTaskMessage: params.message,
+      createdAt: now, updatedAt: now, depth, open: true, cancellationRequested: false, display,
+    };
+    this.registry.registerAgent(metadata, reservation);
+    const hub = this.hubFactory(socketPath);
+    this.hubs.set(agentId, hub);
+    hub.onMessage((m) => this.handleChildMessage(callerPath, canonicalPath, m));
+    await hub.start();
+    this.runtimes.set(canonicalPath, { mode: "external_pi", agentId, agentPath: canonicalPath, socketPath, display, connected: false });
+    try {
+      const opened = await this.kitty.launchPiWindow({ agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: params.message, title: display.title, piCommand: this.piCommand });
+      this.registry.updateAgent(canonicalPath, { display: opened });
+      const rt = this.runtimes.get(canonicalPath); if (rt?.mode === "external_pi") rt.display = opened;
+      const hello = await hub.waitForHello(agentId, this.helloTimeoutMs);
+      const nextDisplay = { ...this.registry.get(canonicalPath)?.display ?? opened, status: "open" as const, pid: hello.pid };
+      this.registry.updateStatus(canonicalPath, "running", { display: nextDisplay });
+      const rt2 = this.runtimes.get(canonicalPath); if (rt2?.mode === "external_pi") { rt2.connected = true; rt2.pid = hello.pid; rt2.capabilities = hello.capabilities; rt2.display = nextDisplay; }
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      const failed = { ...this.registry.get(canonicalPath)?.display ?? display, status: "failed" as const, error };
+      this.registry.updateStatus(canonicalPath, "errored", { display: failed });
+      try { await this.kitty.close(failed); } catch {}
+      throw err;
+    }
+    return { agent_id: agentId, task_name: canonicalPath, status: this.registry.get(canonicalPath)?.status ?? "running", display: this.displayResult(this.registry.get(canonicalPath)?.display) };
+  }
+
+  private handleChildMessage(callerPath: string, agentPath: string, msg: ChildToParent): void {
+    const agent = this.registry.get(agentPath); if (!agent) return;
+    if (msg.type === "status") this.registry.updateStatus(agentPath, msg.status);
+    else if (msg.type === "final") { this.registry.updateStatus(agentPath, msg.status); this.enqueueToMailbox(msg.agentId, agentPath, callerPath, msg.message, "final_result"); this.mailbox.appendEvent({ type: "agent_final_message", ...this.evBase(msg.agentId, agentPath), parentAgentId: callerPath === ROOT_PATH ? undefined : callerPath, message: msg.message, status: msg.status }); }
+    else if (msg.type === "error") { this.registry.updateStatus(agentPath, "errored"); this.enqueueToMailbox(msg.agentId ?? agent.agentId, agentPath, callerPath, `Agent error: ${msg.message}`, "final_result"); }
+    else if (msg.type === "log") this.logDisplay(agent.display, msg.line);
+  }
+
+  private getRuntimeByAgentId(agentId: string): AgentRuntime | undefined {
+    for (const rt of this.runtimes.values()) if (rt.agentId === agentId) return rt;
   }
 
   private enqueueToMailbox(fromAgentId: string, fromPath: string, toPath: string, content: string, kind: "message" | "followup" | "final_result"): void {
@@ -314,7 +434,8 @@ export class AgentControl {
   private resolveTargetSession(target: string, ctx: ExtensionContext): { callerPath: string; targetPath: string; agent: AgentMetadata; childSession: AgentSession | undefined } {
     const callerPath = this.resolveCallerPath(ctx);
     const { targetPath, agent } = this.resolveAgentOrFail(target, callerPath);
-    return { callerPath, targetPath, agent, childSession: this.childSessions.get(targetPath) };
+    const rt = this.runtimes.get(targetPath);
+    return { callerPath, targetPath, agent, childSession: rt?.mode === "in_process" ? rt.session : undefined };
   }
 
   // ─── send_message ──────────────────────────────────────────────
@@ -326,8 +447,13 @@ export class AgentControl {
     const { callerPath, targetPath, agent, childSession } = this.resolveTargetSession(params.target, ctx);
     if (!agent.open || isTerminalStatus(agent.status)) throw new Error(`Agent at ${targetPath} is not open (status: ${agent.status}). Cannot send message.`);
     this.enqueueToMailbox(this.getCallerAgentId(callerPath), callerPath, targetPath, params.message, "message");
+    this.logDisplay(agent.display, `[message from ${callerPath}] ${params.message}`);
 
-    if (childSession) {
+    const rt = this.runtimes.get(targetPath);
+    if (rt?.mode === "external_pi") {
+      if (!rt.capabilities?.includes("message")) throw new Error(`External Pi subagent ${targetPath} does not support message injection.`);
+      await this.hubs.get(rt.agentId)?.send(rt.agentId, { type: "message", id: `msg_${Date.now()}`, fromAgentPath: callerPath, message: params.message });
+    } else if (childSession) {
       await childSession.sendCustomMessage({ customType: "subagent_message", content: `[Message from ${callerPath}]: ${params.message}`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
     }
     return { delivered: true };
@@ -346,14 +472,20 @@ export class AgentControl {
     }
 
     this.enqueueToMailbox(this.getCallerAgentId(callerPath), callerPath, targetPath, params.message, "followup");
+    this.logDisplay(agent.display, `[followup from ${callerPath}] ${params.message}`);
 
     // Update last task message
     this.registry.updateStatus(targetPath, agent.status, {
       lastTaskMessage: params.message,
     });
 
-    // Deliver to child session
-    if (childSession) {
+    // Deliver to child session or external Pi over IPC. Never use kitty send-text here.
+    const rt = this.runtimes.get(targetPath);
+    if (rt?.mode === "external_pi") {
+      if (!rt.capabilities?.includes("followup")) throw new Error(`External Pi subagent ${targetPath} does not support followup injection.`);
+      await this.hubs.get(rt.agentId)?.send(rt.agentId, { type: "followup", id: `fu_${Date.now()}`, message: params.message });
+      return { queued: true, triggered: true };
+    } else if (childSession) {
       const triggered = !childSession.isStreaming;
       await childSession.sendUserMessage(
         `[Follow-up from ${callerPath}]: ${params.message}`,
@@ -422,6 +554,7 @@ export class AgentControl {
         nickname: a.nickname,
         role: a.role,
         depth: a.depth,
+        display: this.displayResult(a.display),
       })),
     };
   }
@@ -457,23 +590,59 @@ export class AgentControl {
   }
 
   private async abortSession(agentPath: string): Promise<void> {
-    const childSession = this.childSessions.get(agentPath);
-    if (!childSession) return;
-    try { await childSession.abort(); } catch { /* best-effort */ }
-    try { childSession.dispose(); } catch { /* best-effort */ }
+    const rt = this.runtimes.get(agentPath);
+    const session = rt?.mode === "in_process" ? rt.session : this.childSessions.get(agentPath);
+    if (!session) return;
+    try { await session.abort(); } catch { /* best-effort */ }
+    try { session.dispose(); } catch { /* best-effort */ }
+    this.runtimes.delete(agentPath);
     this.childSessions.delete(agentPath);
   }
 
   private async closeSingle(agentPath: string): Promise<void> {
-    await this.abortSession(agentPath);
+    const display = this.registry.get(agentPath)?.display;
+    this.logDisplay(display, "[status] shutdown");
+    const rt = this.runtimes.get(agentPath);
+    if (rt?.mode === "external_pi") {
+      try { await this.hubs.get(rt.agentId)?.send(rt.agentId, { type: "shutdown", id: `shutdown_${Date.now()}` }); } catch { /* best-effort */ }
+      try { await this.hubs.get(rt.agentId)?.stop(); } catch { /* best-effort */ }
+      this.hubs.delete(rt.agentId);
+      this.runtimes.delete(agentPath);
+    } else {
+      await this.abortSession(agentPath);
+    }
+    if (display) {
+      try { await this.kitty.close(display); } catch { /* best-effort */ }
+      this.registry.updateAgent(agentPath, { display: { ...display, status: "closed" } });
+    }
     this.registry.close(agentPath, "shutdown");
     this.mailbox.appendEvent({ type: "agent_close_end", ...this.evBase(this.registry.get(agentPath)?.agentId ?? "unknown", agentPath) });
+  }
+
+  async focus(target: string, ctx: ExtensionContext): Promise<{ focused: boolean; warning?: string }> {
+    const callerPath = this.resolveCallerPath(ctx);
+    const { agent } = this.resolveAgentOrFail(target, callerPath);
+    const display = agent.display;
+    if (!display || (display.kind !== "kitty-log" && display.kind !== "kitty-pi") || display.status !== "open") {
+      return { focused: false, warning: `No open kitty display for ${agent.agentPath}.` };
+    }
+    try {
+      await this.kitty.focus(display);
+      return { focused: true };
+    } catch (err) {
+      return { focused: false, warning: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   // ─── Shutdown ──────────────────────────────────────────────────
 
   async shutdown(): Promise<void> {
-    for (const path of [...this.childSessions.keys()]) await this.abortSession(path);
+    for (const agent of this.registry.list()) {
+      if (agent.display && agent.display.status === "open") {
+        try { await this.kitty.close(agent.display); } catch { /* best-effort */ }
+      }
+    }
+    for (const path of [...new Set([...this.runtimes.keys(), ...this.childSessions.keys()])]) await this.closeSingle(path).catch(() => undefined);
     this.registry.clear();
     this.mailbox.clear();
   }

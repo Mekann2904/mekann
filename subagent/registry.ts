@@ -249,11 +249,18 @@ export class AgentRegistry {
     this.publish({ type: "agent_status_changed", agentId: agent.agentId, agentPath: agent.agentPath, previousStatus, newStatus, timestamp: agent.updatedAt });
   }
 
-  updateStatus(agentPath: string, newStatus: AgentStatus, extra?: Partial<Pick<AgentMetadata, "lastTaskMessage" | "timeoutDeadline">>): void {
+  updateStatus(agentPath: string, newStatus: AgentStatus, extra?: Partial<Pick<AgentMetadata, "lastTaskMessage" | "timeoutDeadline" | "display">>): void {
     const agent = this.agents.get(agentPath); if (!agent) return;
     if (extra?.lastTaskMessage !== undefined) agent.lastTaskMessage = extra.lastTaskMessage;
     if (extra?.timeoutDeadline !== undefined) agent.timeoutDeadline = extra.timeoutDeadline;
+    if (extra?.display !== undefined) agent.display = extra.display;
     if (agent.status !== newStatus) this.setStatusAndPublish(agentPath, newStatus);
+    else if (extra) agent.updatedAt = Date.now();
+  }
+
+  updateAgent(agentPath: string, patch: Partial<AgentMetadata>): void {
+    const agent = this.agents.get(agentPath); if (!agent) return;
+    Object.assign(agent, patch, { updatedAt: Date.now() });
   }
 
   close(agentPath: string, status: AgentStatus = "shutdown"): void {
