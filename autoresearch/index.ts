@@ -2,6 +2,9 @@
  * autoresearch - Pi 拡張機能: 自律的実験ループ(日本語 UI)。
  *
  * 長時間・高コストな評価 run も安全に扱える実験コントローラ。
+ *
+ * Tool handler の実装は tools/ 以下に分割済み。
+ * このファイルは thin orchestrator (イベントハンドラ + ツール登録配線)。
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -9,7 +12,6 @@ import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execFileSync } from "node:child_process";
 
 import {
 	reconstructState,
@@ -31,64 +33,33 @@ import {
 	type PointerEntry,
 } from "./state.js";
 import {
-	validateContractV1,
-	extractContractBlockFromPlan,
-	parseJsonc,
-	canonicalJsonPretty,
-	canonicalJsonStringify,
 	computeContractHash,
-	computeImmutableReadSetHash,
-	collectEnvironmentFingerprint,
-	computeBaselineNoise,
-	writeCurrentContract,
 	readCurrentContract,
-	writeLockFile,
 	readLockFile,
 	currentContractPath,
 	currentLockPath,
-	autoresearchDir,
 	planPath,
-	ensureAutoresearchDir,
-	appendEvent,
-	appendDecision,
-	appendContractRun,
-	appendContractMetric,
-	validateWritePaths,
-	matchesAnyPattern,
-	filterInternalPaths,
 	validateCommandSafety,
 	resolveCwdInsideRepo,
 	type AutoresearchContractV1,
 	type LockFile,
-	type ContractV1ValidationResult,
-	type ContractEvent,
-	type DecisionEntry,
 } from "./contractV1.js";
-import { evaluateContract, type EvaluatorInput, type Decision } from "./contractEvaluator.js";
 import {
-	contractFilePath,
-	contractExists,
 	readContract,
-	writeContract,
 	deleteContract,
 	validateGitSafety,
 	validateCommand,
-	validateChangedFiles,
 	validateContract,
 	buildContract,
 	isGitRepo,
-	isWorkingTreeClean,
 	getBaselineCommit,
-	DEFAULT_ACCEPTANCE,
 	DEFAULT_SAFETY,
-	DEFAULT_CHECKS,
 	type ExperimentContract,
 	type AcceptanceMode,
 	type MetricMethod,
 	type ChecksMode,
 	type AggregateMethod,
 } from "./contract.js";
-import { evaluateAcceptance, aggregateMeasurements, type AcceptanceInput } from "./acceptance.js";
 import {
 	runCommand,
 	runArgvCommand,
@@ -102,20 +73,34 @@ import {
 	isGitDirty,
 	generatePiRunId,
 	generateRunId,
-	getRunArtifactDir,
 	createRunArtifactDir,
-	writeRunArtifacts,
-	writeChecksArtifacts,
-	markArtifactComplete,
-	loadRunFromArtifact,
+	filterSecrets,
 	COMPLETE_MARKER,
 	hasCompleteMarker,
 	loopFollowUpMessage,
-	filterSecrets,
 } from "./runner.js";
 import { evaluateQueryStatically } from "./queryEvaluation.js";
-import { renderWidget, directionLabel, type LoopInfo } from "./state.js";
-import { createOrReusePlan, readState as readStateV2, writeState as writeStateV2, appendJournal, generateRunId as generatePlanScopedRunId, createRunArtifacts, getRunDir } from "./layout.js";
+import { directionLabel, type LoopInfo } from "./state.js";
+import {
+	createOrReusePlan,
+	readState as readStateV2,
+	writeState as writeStateV2,
+	appendJournal,
+	generateRunId as generatePlanScopedRunId,
+	createRunArtifacts,
+	getRunDir,
+} from "./layout.js";
+
+// Extracted tool handlers
+import { SessionStore, DEFAULT_MAX_LOOP_ITERATIONS, NO_PROGRESS_LIMIT, DEFAULT_TIMEOUT_SECONDS } from "./tools/sessionStore.js";
+import { executeEvaluateQuery } from "./tools/evaluateQuery.js";
+import { executePlan } from "./tools/plan.js";
+import { executeInit } from "./tools/init.js";
+import { executeRun } from "./tools/run.js";
+import { executeLog } from "./tools/log.js";
+import { executeApprove } from "./tools/approve.js";
+import { executeRunContract } from "./tools/runContract.js";
+import { handleCommand } from "./tools/commandHandler.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -123,12 +108,9 @@ import { createOrReusePlan, readState as readStateV2, writeState as writeStateV2
 
 const JSONL_FILE = "autoresearch.jsonl";
 const MD_FILE = "autoresearch.md";
-const DEFAULT_TIMEOUT_SECONDS = 600;
-const DEFAULT_MAX_LOOP_ITERATIONS = 50;
-const NO_PROGRESS_LIMIT = 2;
 
 // ---------------------------------------------------------------------------
-// Path helpers
+// Path helpers (shared with tool handlers via deps)
 // ---------------------------------------------------------------------------
 
 function jsonlPath(cwd: string): string {
@@ -171,12 +153,24 @@ function readCurrentPlanContract(cwd: string): ExperimentContract | null {
 	const s = readStateV2(cwd);
 	if (s.currentPlanDir) {
 		try { return JSON.parse(fs.readFileSync(path.join(cwd, s.currentPlanDir, "contract.json"), "utf8")) as ExperimentContract; }
-		catch { return null; /* plan-scoped: do NOT fallback to legacy root contract */ }
+		catch { return null; }
 	}
 	return readContract(cwd);
 }
 
-// updateWidget moved inside the factory function to access closure state
+// Shared deps object for tool handlers
+const toolDeps = {
+	readCurrentPlanContract,
+	sessionDir,
+	jsonlPath,
+	eventsLedgerPath,
+	runsLedgerPath,
+	metricsLedgerPath,
+	decisionsLedgerPath,
+	latestPointerPath,
+	bestPointerPath,
+	mdFilePath,
+};
 
 // ---------------------------------------------------------------------------
 // System prompt extra (Japanese)
@@ -239,195 +233,128 @@ const SYSTEM_PROMPT_EXTRA = [
 // ---------------------------------------------------------------------------
 
 export default function autoresearchExtension(pi: ExtensionAPI): void {
-	let active = false;
-	let autoLoop = false;
-	let loopPromptQueued = false;
-	let loopIterationCount = 0;
-	let maxLoopIterations: number | null = DEFAULT_MAX_LOOP_ITERATIONS;
-	let lastLoggedRun = 0;
-	// --- Widget update (uses closure state) ---
-	function updateWidget(ctx: ExtensionContext): void {
-		if (!ctx.hasUI) return;
-		const lines = renderWidget(state, active, runningExperiment, loopInfo());
-		ctx.ui.setWidget("autoresearch", lines ?? undefined);
-	}
-
-	function textResponse(text: string) {
-		return { content: [{ type: "text" as const, text }], details: {} } as const;
-	}
-
-	function textDetails(text: string, details: Record<string, unknown>) {
-		return { content: [{ type: "text" as const, text }], details };
-	}
-
-	let agentStartRunCount = 0;
-	let noProgressAgentEnds = 0;
-	let runningExperiment: { startedAt: number; command: string } | null = null;
-	let lastChecks: ChecksResult | null = null;
-	let lastRunResult: (RunResult & { piRunId: string }) | null = null;
-	let lastRunChecks: ChecksResult | null = null;
-	let state: ExperimentState = freshState();
-
-	/** Map of piRunId → run data for run/log correlation.
-	 *  Falls back to loadRunFromArtifact when empty (survives restarts). */
-	const runResultMap: Map<string, {
-		result: RunResult;
-		checks: ChecksResult;
-		startedAt: number;
-		completedAt: number;
-		createdAt: number;
-		artifactDir?: string;
-		artifactFailed?: boolean;
-		runSeq?: number;
-	}> = new Map();
-
-	function loopInfo(): LoopInfo {
-		return {
-			enabled: autoLoop,
-			iteration: loopIterationCount,
-			maxIterations: maxLoopIterations,
-			noProgress: noProgressAgentEnds,
-			noProgressLimit: NO_PROGRESS_LIMIT,
-		};
-	}
-
-	function resetLoopProgress(): void {
-		loopPromptQueued = false;
-		loopIterationCount = 0;
-		lastLoggedRun = state.runCount;
-		agentStartRunCount = state.runCount;
-		noProgressAgentEnds = 0;
-	}
+	const store = new SessionStore();
 
 	// ─── session_start ─────────────────────────────────────────
 
 	pi.on("session_start", async (_event, ctx) => {
 		const s2 = readStateV2(ctx.cwd);
 
-		// --- Mode 1: plan-scoped (currentPlanDir exists) ---
 		if (s2.currentPlanDir) {
-			state = freshState();
-			state.sessionId = s2.sessionId ?? state.sessionId;
+			store.state = freshState();
+			store.state.sessionId = s2.sessionId ?? store.state.sessionId;
 
-			// Restore metric/direction ONLY from plan-scoped contract
 			const c = readCurrentPlanContract(ctx.cwd) as any;
 			if (c) {
-				state.name = c.name ?? state.name;
-				state.metricName = c.metricName ?? c.primaryMetric?.name ?? c.evaluation?.primaryMetric?.name ?? state.metricName;
-				state.metricUnit = c.metricUnit ?? c.primaryMetric?.unit ?? state.metricUnit;
-				state.direction = c.direction ?? c.primaryMetric?.direction ?? c.evaluation?.primaryMetric?.direction ?? state.direction;
+				store.state.name = c.name ?? store.state.name;
+				store.state.metricName = c.metricName ?? c.primaryMetric?.name ?? c.evaluation?.primaryMetric?.name ?? store.state.metricName;
+				store.state.metricUnit = c.metricUnit ?? c.primaryMetric?.unit ?? store.state.metricUnit;
+				store.state.direction = c.direction ?? c.primaryMetric?.direction ?? c.evaluation?.primaryMetric?.direction ?? store.state.direction;
 			}
 
-			// Restore bestMetric directly from persisted state
 			if (s2.bestMetric) {
-				state.bestMetric = s2.bestMetric.value;
-				state.direction = s2.bestMetric.direction ?? state.direction;
+				store.state.bestMetric = s2.bestMetric.value;
+				store.state.direction = s2.bestMetric.direction ?? store.state.direction;
 			}
 
-			// Restore runCount from persisted state or journal
 			if (s2.runCount !== undefined) {
-				state.runCount = s2.runCount;
+				store.state.runCount = s2.runCount;
 			} else if (s2.currentPlanId) {
 				try {
 					const lines = fs.existsSync(path.join(ctx.cwd, ".autoresearch", "journal.jsonl")) ? fs.readFileSync(path.join(ctx.cwd, ".autoresearch", "journal.jsonl"), "utf8").trim().split(/\n+/).filter(Boolean) : [];
-					state.runCount = lines.filter((l) => { try { const e = JSON.parse(l); return e.type === "decision" && e.planId === s2.currentPlanId; } catch { return false; } }).length;
-				} catch { state.runCount = 0; }
+					store.state.runCount = lines.filter((l) => { try { const e = JSON.parse(l); return e.type === "decision" && e.planId === s2.currentPlanId; } catch { return false; } }).length;
+				} catch { store.state.runCount = 0; }
 			}
-		}
-		// --- Mode 2: contract-file mode (current.contract.json + current.lock.json) ---
-		else {
+		} else {
 			const contractV1 = readCurrentContract(ctx.cwd);
 			const contractV1Lock = readLockFile(ctx.cwd);
 
 			if (contractV1) {
-				state = freshState();
-				state.sessionId = s2.sessionId ?? state.sessionId;
+				store.state = freshState();
+				store.state.sessionId = s2.sessionId ?? store.state.sessionId;
 
-				// metric/direction from contract file
 				const pm = contractV1.evaluation.primaryMetric;
-				state.metricName = pm.name;
-				state.direction = pm.direction;
-				state.metricUnit = pm.unit ?? state.metricUnit;
-				state.name = contractV1.objective.summary ?? state.name;
+				store.state.metricName = pm.name;
+				store.state.direction = pm.direction;
+				store.state.metricUnit = pm.unit ?? store.state.metricUnit;
+				store.state.name = contractV1.objective.summary ?? store.state.name;
 
-				// Restore bestMetric and runCount only when contract hash matches
 				if (contractV1Lock) {
 					const currentHash = computeContractHash(contractV1);
 					const hashMatch = currentHash === contractV1Lock.contractHash && s2.currentContractHash === currentHash;
 					if (hashMatch && s2.bestMetric) {
-						state.bestMetric = s2.bestMetric.value;
-						state.direction = s2.bestMetric.direction ?? state.direction;
+						store.state.bestMetric = s2.bestMetric.value;
+						store.state.direction = s2.bestMetric.direction ?? store.state.direction;
 					}
 					if (hashMatch && s2.runCount !== undefined) {
-						state.runCount = s2.runCount;
+						store.state.runCount = s2.runCount;
 					}
 				}
 			} else {
-				// --- Mode 3: legacy JSONL or fresh state ---
 				const jp = jsonlPath(ctx.cwd);
 				if (fs.existsSync(jp)) {
-					try { state = reconstructState(fs.readFileSync(jp, "utf8")); }
-					catch { state = freshState(); }
-				} else state = freshState();
+					try { store.state = reconstructState(fs.readFileSync(jp, "utf8")); }
+					catch { store.state = freshState(); }
+				} else store.state = freshState();
 			}
 		}
-		active = false;
-		autoLoop = false;
-		runningExperiment = null;
-		runResultMap.clear();
-		resetLoopProgress();
-		updateWidget(ctx);
+		store.active = false;
+		store.autoLoop = false;
+		store.runningExperiment = null;
+		store.runResultMap.clear();
+		store.resetLoopProgress();
+		store.updateWidget(ctx);
 	});
 
 	// ─── before_agent_start ────────────────────────────────────
 
 	pi.on("before_agent_start", async (event, _ctx) => {
-		if (!active) return;
+		if (!store.active) return;
 		return { systemPrompt: event.systemPrompt + SYSTEM_PROMPT_EXTRA };
 	});
 
 	// ─── agent loop watchdog ───────────────────────────────────
 
 	pi.on("agent_start", async () => {
-		loopPromptQueued = false;
-		agentStartRunCount = state.runCount;
+		store.loopPromptQueued = false;
+		store.agentStartRunCount = store.state.runCount;
 	});
 
 	pi.on("agent_end", async (event, ctx) => {
-		if (!active || !autoLoop) return;
-		if (runningExperiment || loopPromptQueued) return;
+		if (!store.active || !store.autoLoop) return;
+		if (store.runningExperiment || store.loopPromptQueued) return;
 
 		if (hasCompleteMarker(event)) {
-			autoLoop = false;
-			loopPromptQueued = false;
-			updateWidget(ctx);
+			store.autoLoop = false;
+			store.loopPromptQueued = false;
+			store.updateWidget(ctx);
 			ctx.ui.notify("autoresearch loop を完了マーカーで停止しました", "success");
 			return;
 		}
 
-		const madeProgress = state.runCount > agentStartRunCount || lastLoggedRun > agentStartRunCount;
+		const madeProgress = store.state.runCount > store.agentStartRunCount || store.lastLoggedRun > store.agentStartRunCount;
 		if (madeProgress) {
-			noProgressAgentEnds = 0;
+			store.noProgressAgentEnds = 0;
 		} else {
-			noProgressAgentEnds++;
-			if (noProgressAgentEnds >= NO_PROGRESS_LIMIT) {
-				autoLoop = false;
-				updateWidget(ctx);
+			store.noProgressAgentEnds++;
+			if (store.noProgressAgentEnds >= NO_PROGRESS_LIMIT) {
+				store.autoLoop = false;
+				store.updateWidget(ctx);
 				ctx.ui.notify(`autoresearch loop を停止しました: ${NO_PROGRESS_LIMIT}回連続で進捗なし`, "warning");
 				return;
 			}
 		}
 
-		if (maxLoopIterations !== null && loopIterationCount >= maxLoopIterations) {
-			autoLoop = false;
-			updateWidget(ctx);
-			ctx.ui.notify(`autoresearch loop が上限 ${maxLoopIterations} 回に達したため停止しました`, "info");
+		if (store.maxLoopIterations !== null && store.loopIterationCount >= store.maxLoopIterations) {
+			store.autoLoop = false;
+			store.updateWidget(ctx);
+			ctx.ui.notify(`autoresearch loop が上限 ${store.maxLoopIterations} 回に達したため停止しました`, "info");
 			return;
 		}
 
-		loopIterationCount++;
-		loopPromptQueued = true;
-		updateWidget(ctx);
+		store.loopIterationCount++;
+		store.loopPromptQueued = true;
+		store.updateWidget(ctx);
 		pi.sendUserMessage(loopFollowUpMessage(!madeProgress), { deliverAs: "followUp" });
 	});
 
@@ -436,239 +363,11 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("autoresearch", {
 		description: "autoresearch モードの管理(on / off / status / clear)",
 		handler: async (args, ctx) => {
-			const parts = (args ?? "").trim().split(/\s+/);
-			const sub = parts[0] || "status";
-			switch (sub) {
-				case "on": { activateAutoresearch(ctx, parts.slice(1).join(" ").trim()); break; }
-				case "off": {
-					active = false; autoLoop = false; loopPromptQueued = false;
-					updateWidget(ctx);
-					ctx.ui.notify("autoresearch モードを無効にしました", "info");
-					break;
-				}
-				case "clear": {
-					const clearAll = parts[1] === "all";
-					const jp = jsonlPath(ctx.cwd);
-					try { if (fs.existsSync(jp)) fs.rmSync(jp, { recursive: true, force: true }); } catch {}
-					deleteContract(ctx.cwd); // legacy root contract
-					const clearWarnings: string[] = [];
-					try {
-						if (clearAll) {
-							fs.rmSync(path.join(ctx.cwd, ".autoresearch"), { recursive: true, force: true });
-							fs.rmSync(path.join(ctx.cwd, ".pi", "autoresearch"), { recursive: true, force: true });
-							// Clean generated root files safely
-							for (const f of ["autoresearch.sh", "autoresearch.checks.sh"]) {
-								const fp = path.join(ctx.cwd, f);
-								try {
-									if (fs.existsSync(fp)) {
-										const content = fs.readFileSync(fp, "utf8");
-										if (content.includes("AUTORESEARCH:generated")) {
-											fs.rmSync(fp, { force: true });
-										} else {
-											clearWarnings.push(`${f} は生成ファイルではないため削除しません`);
-										}
-									}
-								} catch (e) { clearWarnings.push(`${f} の削除に失敗: ${e instanceof Error ? e.message : String(e)}`); }
-							}
-							for (const f of ["autoresearch.md", "autoresearch.plan.md", "autoresearch.ideas.md"]) {
-								const fp = path.join(ctx.cwd, f);
-								try {
-									if (fs.existsSync(fp)) {
-										const content = fs.readFileSync(fp, "utf8");
-										if (content.includes("AUTORESEARCH:BEGIN generated") || content.includes("AUTORESEARCH:generated")) {
-											fs.rmSync(fp, { force: true });
-										} else {
-											clearWarnings.push(`${f} は生成ファイルではないため削除しません`);
-										}
-									}
-								} catch (e) { clearWarnings.push(`${f} の削除に失敗: ${e instanceof Error ? e.message : String(e)}`); }
-							}
-							// autoresearch.jsonl and autoresearch.contract.json are safe to always remove
-							for (const f of ["autoresearch.jsonl", "autoresearch.contract.json"]) {
-								const fp = path.join(ctx.cwd, f);
-								try { if (fs.existsSync(fp)) fs.rmSync(fp, { force: true }); } catch {}
-							}
-						} else {
-							for (const f of ["state.json", "current.plan.json"]) {
-								fs.rmSync(path.join(ctx.cwd, ".autoresearch", f), { force: true });
-							}
-							const disabled = "#!/usr/bin/env bash\n# AUTORESEARCH:generated\necho 'autoresearch current state is cleared. Run autoresearch_init first.' >&2\nexit 1\n";
-							fs.writeFileSync(path.join(ctx.cwd, "autoresearch.sh"), disabled, { mode: 0o755 });
-							fs.writeFileSync(path.join(ctx.cwd, "autoresearch.checks.sh"), disabled, { mode: 0o755 });
-						}
-					} catch {}
-					state = freshState(); active = false; autoLoop = false; runningExperiment = null;
-					runResultMap.clear(); resetLoopProgress();
-					updateWidget(ctx);
-					ctx.ui.notify(clearAll ? "autoresearch の全データをクリアしました" : "autoresearch の current state をクリアしました", "info");
-					if (clearWarnings.length > 0) {
-						ctx.ui.notify("警告:\n" + clearWarnings.join("\n"), "warning");
-					}
-					break;
-				}
-				case "status": {
-					const kept = countByStatus(state.results, "keep");
-					const best = state.bestMetric !== null ? `${state.metricName}=${state.bestMetric}${state.metricUnit}` : "未測定";
-					const maxStr = maxLoopIterations === null ? "∞" : String(maxLoopIterations);
-					ctx.ui.notify(
-						`autoresearch: ${active ? "有効" : "無効"}\n` +
-						`loop: ${autoLoop ? "ON" : "OFF"} (${loopIterationCount}/${maxStr})\n` +
-						`実験回数: ${state.runCount} / 採用: ${kept} / 最良: ${best}`,
-						"info",
-					);
-					break;
-				}
-				case "loop": {
-					const loopSub = parts[1] || "status";
-					if (loopSub === "on") { autoLoop = true; noProgressAgentEnds = 0; loopPromptQueued = false; updateWidget(ctx); ctx.ui.notify("autoresearch loop を有効にしました", "info"); break; }
-					if (loopSub === "off") { autoLoop = false; loopPromptQueued = false; updateWidget(ctx); ctx.ui.notify("autoresearch loop を無効にしました", "info"); break; }
-					if (loopSub === "max") {
-						const raw = parts[2];
-						if (raw === "none" || raw === "∞" || raw === "infinite") { maxLoopIterations = null; }
-						else { const p = Number(raw); if (!Number.isInteger(p) || p <= 0) { ctx.ui.notify("使い方: loop max <正の整数|none>", "warning"); break; } maxLoopIterations = p; }
-						updateWidget(ctx);
-						ctx.ui.notify(`autoresearch loop max を ${maxLoopIterations ?? "∞"} に設定しました`, "info");
-						break;
-					}
-					ctx.ui.notify(`loop: ${autoLoop ? "ON" : "OFF"} iter=${loopIterationCount}`, "info");
-					break;
-				}
-				default: { activateAutoresearch(ctx, (args ?? "").trim()); break; }
-			}
+			await handleCommand(args, ctx, pi, store, toolDeps);
 		},
 	});
 
-	function activateAutoresearch(ctx: ExtensionContext, purpose: string): void {
-		active = true; autoLoop = true; resetLoopProgress(); loopPromptQueued = true;
-		updateWidget(ctx);
-		ctx.ui.notify("autoresearch モードを有効にしました(loop ON)", "info");
-		const hasMd = fs.existsSync(mdFilePath(ctx.cwd));
-		let msg: string;
-		if (hasMd) {
-			msg = "autoresearch.md を読み直して再開してください。";
-			if (purpose) msg += `\n追加コンテキスト: ${purpose}`;
-		} else {
-			msg = "autoresearch モードを有効化しました。" +
-				"目的・指標・実行コマンドを整理して autoresearch.md とベンチマークスクリプトを作成し、実験を開始してください。" +
-				"\n必要なら `/skill:autoresearch-create` で手順を確認できます。";
-			if (purpose) msg += `\n目的: ${purpose}`;
-		}
-		pi.sendUserMessage(msg, { deliverAs: "followUp" });
-	}
-
-	const STATUS_LABELS: Record<string, string> = { keep: "採用", discard: "棄却", crash: "クラッシュ", checks_failed: "checks失敗", revert_failed: "revert失敗" };
-	const STATUS_PREFIX: Record<string, string> = { keep: "[KEEP]", discard: "[DISCARD]", crash: "[CRASH]", checks_failed: "[CHECKS_FAILED]", revert_failed: "[REVERT_FAILED]" };
-
-	function resolvePrimaryMetricValue(
-		metricName: string,
-		runResult: { durationSeconds?: number; parsedMetrics?: Record<string, number> | null },
-	): { value: number | null; source: "stdout_metric" | "wall_clock" | "missing" } {
-		const parsed = runResult.parsedMetrics?.[metricName];
-		if (typeof parsed === "number" && Number.isFinite(parsed)) {
-			return { value: parsed, source: "stdout_metric" };
-		}
-		if (
-			metricName === "duration_seconds" &&
-			typeof runResult.durationSeconds === "number" &&
-			Number.isFinite(runResult.durationSeconds)
-		) {
-			return { value: runResult.durationSeconds, source: "wall_clock" };
-		}
-		return { value: null, source: "missing" };
-	}
-	const INACTIVE_RESPONSE = textResponse("[ERROR] autoresearch モードが無効です。\n`/autoresearch on` で有効化してください。");
-
-	function generateSessionId(name: string): string {
-		const ts = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+$/, "");
-		const slug = name.replace(/[^a-zA-Z0-9\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/g, "-").slice(0, 20);
-		return `${ts}-${slug}`;
-	}
-
-	function ensureSessionDir(cwd: string): void {
-		const dir = sessionDir(cwd, state.sessionId);
-		if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-	}
-
-	/** Compute next runSeq from canonical journal; legacy runs.jsonl is fallback only. */
-	function nextRunSeq(cwd: string, sessionId: string): number {
-		try {
-			const jp = path.join(cwd, ".autoresearch", "journal.jsonl");
-			if (fs.existsSync(jp)) {
-				const currentPlanId = readStateV2(cwd).currentPlanId;
-				const n = fs.readFileSync(jp, "utf8").trim().split(/\n+/).filter(Boolean).filter((l) => { try { const e = JSON.parse(l); return e.type === "run_started" && (!currentPlanId || e.planId === currentPlanId); } catch { return false; } }).length;
-				if (n > 0) return n;
-			}
-		} catch { /* legacy fallback */ }
-		const rlp = runsLedgerPath(cwd, sessionId);
-		const entries = readJsonlEntries(rlp);
-		return entries.length + 1;
-	}
-
-	function loadRunFromPlanArtifact(cwd: string, runId: string, planId?: string): ReturnType<typeof loadRunFromArtifact> {
-		const candidates: string[] = [];
-		if (planId) candidates.push(getRunDir(cwd, planId, runId));
-		const plansRoot = path.join(cwd, ".autoresearch", "plans");
-		try {
-			for (const p of fs.readdirSync(plansRoot)) candidates.push(path.join(plansRoot, p, "runs", runId));
-		} catch { /* no plans */ }
-		for (const runDir of candidates) {
-			const manifestPath = path.join(runDir, "manifest.json");
-			if (!fs.existsSync(manifestPath)) continue;
-			try {
-				const m = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-				let checks: ChecksResult = { passed: null, timedOut: false, output: "", stdout: "", stderr: "", durationSeconds: 0 };
-				for (const f of ["checks-result.json", "checks.result.json"]) {
-					const cp = path.join(runDir, f);
-					if (fs.existsSync(cp)) { checks = JSON.parse(fs.readFileSync(cp, "utf8")); break; }
-				}
-				let parsedMetrics: Record<string, number> | null = null;
-				const mp = path.join(runDir, "metrics.json");
-				if (fs.existsSync(mp)) { const parsed = JSON.parse(fs.readFileSync(mp, "utf8")); if (Object.keys(parsed).length > 0) parsedMetrics = parsed; }
-				const result: RunResult = { command: m.command ?? "", exitCode: m.exitCode ?? null, durationSeconds: m.durationSeconds ?? 0, timedOut: m.timedOut ?? false, passed: (m.exitCode === 0) && !m.timedOut, output: "", parsedMetrics, checks, stdout: "", stderr: "", signal: m.signal ?? null, externalRunId: m.externalRunId ?? null, externalArtifactDir: m.externalArtifactDir ?? null, externalSummaryPath: m.externalSummaryPath ?? null, externalViewlogPath: m.externalViewlogPath ?? null, externalMetricsPath: m.externalMetricsPath ?? null, logFilesWritten: m.logFilesWritten ?? false, streamError: m.streamError ?? null };
-				return { result, startedAt: m.startedAt ?? 0, completedAt: m.completedAt ?? 0, createdAt: m.startedAt ?? 0, artifactDir: runDir, runSeq: m.runSeq };
-			} catch { /* try next */ }
-		}
-		return null;
-	}
-
-	/** Look up run data: first in memory map, then canonical plan artifact, then legacy .pi artifact. */
-	function findRunData(piRunId: string, cwd: string): {
-		result: RunResult;
-		checks: ChecksResult;
-		startedAt: number;
-		completedAt: number;
-		createdAt: number;
-		artifactDir?: string;
-		artifactFailed?: boolean;
-		runSeq?: number;
-	} | undefined {
-		// 1. Memory map
-		const mem = runResultMap.get(piRunId);
-		if (mem) return mem;
-
-		// 2. Fallback: load from canonical plan artifact (survives process restarts)
-		const s2 = readStateV2(cwd);
-		let loaded = loadRunFromPlanArtifact(cwd, piRunId, s2.currentPlanId);
-		// 3. Legacy .pi fallback
-		if (!loaded) loaded = loadRunFromArtifact(cwd, state.sessionId, piRunId);
-		if (loaded) {
-			return {
-				result: loaded.result,
-				checks: loaded.result.checks,
-				startedAt: loaded.startedAt,
-				completedAt: loaded.completedAt,
-				createdAt: loaded.createdAt,
-				artifactDir: loaded.artifactDir,
-				runSeq: loaded.runSeq,
-			};
-		}
-
-		return undefined;
-	}
-
-	// ---
-	// Tool: autoresearch_evaluate_query
-	// ---
+	// ─── Tool: autoresearch_evaluate_query ─────────────────────
 
 	pi.registerTool({
 		name: "autoresearch_evaluate_query",
@@ -684,81 +383,17 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_tc, params, _sig, _ou, _ctx) {
-			// 評価 tool は autoresearch モード有効/無効に関わらず実行可能(read-only)
-			const evaluation = evaluateQueryStatically(params.query);
-			const r = evaluation.readiness;
-			const m = evaluation.contractDraft.primaryMetric;
-
-			const text = [
-				`## クエリ評価結果`,
-				``,
-				`**判定**: ${evaluation.decision}`,
-				``,
-				`### 段階別 readiness`,
-				`- initReady: ${r.initReady}`,
-				`- runReady: ${r.runReady}`,
-				`- metricExtractionReady: ${r.metricExtractionReady}`,
-				`- checksReady: ${r.checksReady}`,
-				`- logReady: ${r.logReady}`,
-				``,
-				`### 測定方法`,
-				`- measurementMethod: ${m.measurementMethod}`,
-				`- extractionConfidence: ${m.extractionConfidence.toFixed(2)}`,
-				`- extractionRule: ${m.extractionRule ?? "(未定)"}`,
-				``,
-				`### checks policy`,
-				evaluation.contractDraft.checksPolicy,
-				``,
-				`### スコア`,
-				`- readiness: ${evaluation.scores.readiness.toFixed(2)}`,
-				`- completeness: ${evaluation.scores.completeness.toFixed(2)}`,
-				`- measurability: ${evaluation.scores.measurability.toFixed(2)}`,
-				`- commandReadiness: ${evaluation.scores.commandReadiness.toFixed(2)}`,
-				`- scopeClarity: ${evaluation.scores.scopeClarity.toFixed(2)}`,
-				`- safety: ${evaluation.scores.safety.toFixed(2)}`,
-				`- reproducibility: ${evaluation.scores.reproducibility.toFixed(2)}`,
-				``,
-				evaluation.contractDraft.missingFields.length > 0
-					? `### 欠落フィールド\n${evaluation.contractDraft.missingFields.map(f => `- ${f}`).join("\n")}\n`
-					: "",
-				evaluation.blockingIssues.length > 0
-					? `### ブロッキング issue\n${evaluation.blockingIssues.map(i => `- ${i}`).join("\n")}\n`
-					: "",
-				evaluation.riskFlags.length > 0
-					? `### リスク\n${evaluation.riskFlags.map(fl => `- ⚠️ ${fl}`).join("\n")}\n`
-					: "",
-				evaluation.suggestedRewrite
-					? `### 推奨書き換え\n${evaluation.suggestedRewrite}\n`
-					: "",
-				evaluation.clarifyingQuestions.length > 0
-					? `### 確認質問\n${evaluation.clarifyingQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n")}\n`
-					: "",
-				`### 実験契約ドラフト`,
-				`- 目的: ${evaluation.contractDraft.objective || "(未定)"}`,
-				`- 対象: ${evaluation.contractDraft.targetScope.length > 0 ? evaluation.contractDraft.targetScope.join(", ") : "(未定)"}`,
-				`- 主指標: ${m.name ?? "(未定)"}(${m.direction})`,
-				`- benchmark: ${evaluation.contractDraft.benchmarkCommand ?? "(未定)"}`,
-				`- checks: ${evaluation.contractDraft.checksCommand ?? "(未定)"}`,
-			].filter(s => s !== false).join("\n");
-
-							return textDetails(text, evaluation);
+			return executeEvaluateQuery(store, params);
 		},
 	});
 
-	// ---
-	// Tool: autoresearch_init
-	// ---
-
-	// P0-4: init は contract 生成の正本
-	// P0-1: git safety を強制
-	// P0-3: acceptance policy を指定可能
+	// ─── Tool: autoresearch_init ───────────────────────────────
 
 	const initParamDefs = Type.Object({
 		name: Type.String({ description: "実験セッションの名前" }),
 		metric_name: Type.String({ description: "主指標名(例: total_ms)" }),
 		metric_unit: Type.Optional(Type.String({ description: "単位(例: ms)" })),
 		direction: Type.Optional(StringEnum(["lower", "higher"] as const, { description: "デフォルト: lower" })),
-		// --- P0: 拡張パラメータ ---
 		objective: Type.Optional(Type.String({ description: "実験目的" })),
 		benchmark_command: Type.Optional(Type.String({ description: "benchmark command (例: ./autoresearch.sh)" })),
 		metric_method: Type.Optional(StringEnum(["wall_clock", "stdout_metric", "report_file"] as const, { description: "測定方法。デフォルト: wall_clock" })),
@@ -773,17 +408,6 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		allowed_paths: Type.Optional(Type.Array(Type.String(), { description: "許可パスパターンの配列" })),
 		excluded_paths: Type.Optional(Type.Array(Type.String(), { description: "除外パスパターンの配列" })),
 	});
-
-	// Validate string enum values for optional fields
-	function validateOptionalEnum<T extends string>(value: unknown, valid: readonly T[], _fieldName: string): T | undefined {
-		if (value === undefined || value === null) return undefined;
-		if (typeof value === "string" && (valid as readonly string[]).includes(value)) return value as T;
-		return undefined;
-	}
-
-	// ---
-	// Register autoresearch_init tool
-	// ---
 
 	pi.registerTool({
 		name: "autoresearch_init",
@@ -800,143 +424,11 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		parameters: initParamDefs as any,
 
 		async execute(_tc, params, _sig, _ou, ctx) {
-			if (!active) return INACTIVE_RESPONSE;
-
-			// v2: init is plan-scoped. Existing plans/contracts are not destroyed; a new
-			// content-addressed plan directory is created or the same planId is reused.
-
-			// --- Extract typed params ---
-			const direction = params.direction === "higher" ? "higher" : "lower";
-			const metricMethod = validateOptionalEnum(params.metric_method, ["wall_clock", "stdout_metric", "report_file"], "metric_method") ?? "wall_clock" as MetricMethod;
-			const checksMode = validateOptionalEnum(params.checks_mode, ["script", "command", "none"], "checks_mode") ?? "script" as ChecksMode;
-			const acceptanceMode = validateOptionalEnum(params.acceptance_mode, ["better_than_best", "improvement_threshold", "manual"], "acceptance_mode") ?? "better_than_best" as AcceptanceMode;
-			const aggregateMethod = validateOptionalEnum(params.aggregate, ["single", "median", "mean", "min", "max"], "aggregate") ?? "single" as AggregateMethod;
-
-			const sessionId = generateSessionId(params.name);
-
-			// --- P0-1: Build safety policy and validate git safety ---
-			const safetyPolicy = {
-				requireGit: (params as any).require_git !== false,
-				requireCleanBaseline: (params as any).require_clean_baseline !== false,
-				allowedPaths: Array.isArray((params as any).allowed_paths) ? (params as any).allowed_paths : [],
-				excludedPaths: Array.isArray((params as any).excluded_paths) ? (params as any).excluded_paths : [],
-				forbiddenCommandPatterns: DEFAULT_SAFETY.forbiddenCommandPatterns,
-			};
-
-			const gitViolations = validateGitSafety(ctx.cwd, safetyPolicy);
-			if (gitViolations.length > 0) {
-				return textDetails(`[ERROR] git safety 違反のため初期化できません:\n${gitViolations.map((v, i) => `  ${i + 1}. ${v}`).join("\n")}`, { gitViolations });
-			}
-
-			// --- P0-4: Build and validate contract ---
-			const contract = buildContract({
-				name: params.name,
-				sessionId,
-				metricName: params.metric_name,
-				metricUnit: params.metric_unit ?? "",
-				direction,
-				metricMethod,
-				benchmarkCommand: (params as any).benchmark_command ?? "./autoresearch.sh",
-				objective: (params as any).objective ?? params.name,
-				checksMode,
-				checksCommand: (params as any).checks_command,
-				acceptanceMode,
-				minImprovement: (params as any).min_improvement,
-				repeat: (params as any).repeat,
-				aggregate: aggregateMethod,
-				requireGit: safetyPolicy.requireGit,
-				requireCleanBaseline: safetyPolicy.requireCleanBaseline,
-				allowedPaths: safetyPolicy.allowedPaths,
-				excludedPaths: safetyPolicy.excludedPaths,
-			});
-
-			const validation = validateContract(contract);
-			if (!validation.valid) {
-				return textDetails(`[ERROR] 契約検証失敗:\n${validation.errors.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}`, { errors: validation.errors });
-			}
-
-			// --- Create canonical plan-scoped layout; legacy root contract is best-effort only ---
-			let planRef: { planId: string; planDir: string; reused: boolean };
-			const legacyWarnings: string[] = [];
-			try {
-				try { writeContract(ctx.cwd, contract); } catch (e) { legacyWarnings.push(`legacy contract: ${e instanceof Error ? e.message : String(e)}`); }
-				const benchmarkCommand = contract.benchmarkCommand === "./autoresearch.sh" ? "echo 'TODO: implement benchmark' >&2\nexit 1\n" : `${contract.benchmarkCommand}\n`;
-				const checksScript = checksMode === "none" ? null : (checksMode === "command" && (params as any).checks_command ? `${(params as any).checks_command}\n` : null);
-				planRef = createOrReusePlan(ctx.cwd, {
-					planMarkdown: `# ${params.name}\n\n${(params as any).objective ?? params.name}\n`,
-					contract,
-					benchmarkScript: `#!/usr/bin/env bash\nset -euo pipefail\n${benchmarkCommand}`,
-					checksScript: checksScript ? `#!/usr/bin/env bash\nset -euo pipefail\n${checksScript}` : null,
-					metricName: params.metric_name,
-					metricDirection: direction,
-					successCriteria: contract.acceptance,
-					constraints: contract.safety,
-				}, sessionId);
-			} catch (e) {
-									return textResponse(`[ERROR] 契約/plan-scoped ファイル書き込み失敗: ${e instanceof Error ? e.message : String(e)}`);
-			}
-
-			// --- Update state ---
-			state.name = params.name;
-			state.metricName = params.metric_name;
-			state.metricUnit = params.metric_unit ?? "";
-			state.sessionId = sessionId;
-			state.direction = direction;
-			state.bestMetric = null;
-			state.results = [];
-			state.runCount = 0;
-
-			// --- Legacy JSONL config entry (compatibility); canonical history is .autoresearch/journal.jsonl ---
-			const jp = jsonlPath(ctx.cwd);
-			try {
-				fs.appendFileSync(jp, JSON.stringify({
-					type: "config", name: state.name, metricName: state.metricName,
-					metricUnit: state.metricUnit, direction: state.direction, sessionId,
-					contractVersion: contract.version,
-				}) + "\n");
-			} catch (e) {
-				legacyWarnings.push(`legacy jsonl: ${e instanceof Error ? e.message : String(e)}`);
-			}
-
-			try { ensureSessionDir(ctx.cwd); } catch {}
-
-			// --- P0-1: Record baseline commit for future diff tracking ---
-			const baselineCommit = getBaselineCommit(ctx.cwd);
-
-			// --- Transaction event: contract_created ---
-			try {
-				appendToJsonl(eventsLedgerPath(ctx.cwd, sessionId), {
-					schemaVersion: 1, event: "contract_created", piRunId: "", timestamp: Date.now(),
-					details: { sessionId, contractVersion: contract.version, baselineCommit },
-				} satisfies EventLedgerEntry);
-			} catch { /* best effort */ }
-
-			updateWidget(ctx);
-
-			let text = `[OK] 初期化完了\n名前: ${state.name}\n指標: ${state.metricName}(${directionLabel(state.direction)})\nsessionId: ${sessionId}`;
-			text += `\nplanId: ${planRef!.planId}`;
-			text += `\n契約: ${path.relative(ctx.cwd, path.join(planRef!.planDir, "contract.json"))}`;
-			if (baselineCommit) text += `\nbaseline: ${baselineCommit.slice(0, 12)}`;
-			const allWarnings = [...validation.warnings, ...legacyWarnings];
-			if (allWarnings.length > 0) {
-				text += `\n\n[WARNING]\n${allWarnings.map((w, i) => `  ${i + 1}. ${w}`).join("\n")}`;
-			}
-			text += `\n\nacceptance mode: ${contract.acceptance.mode}`;
-			text += `\nchecks mode: ${contract.checks.mode}`;
-			text += `\nbenchmark: ${contract.benchmarkCommand}`;
-
-			return textDetails(text, {
-				name: state.name, metricName: state.metricName, metricUnit: state.metricUnit,
-				direction: state.direction, sessionId, contractVersion: contract.version,
-				acceptance: contract.acceptance, safety: contract.safety,
-				baselineCommit, warnings: allWarnings, planId: planRef!.planId, planDir: path.relative(ctx.cwd, planRef!.planDir),
-			});
+			return executeInit(store, params, ctx, toolDeps);
 		},
 	});
 
-	// ---
-	// Tool: autoresearch_run
-	// ---
+	// ─── Tool: autoresearch_run ────────────────────────────────
 
 	pi.registerTool({
 		name: "autoresearch_run",
@@ -958,251 +450,11 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_tc, params, signal, _ou, ctx) {
-			if (!active) return INACTIVE_RESPONSE;
-
-			// --- P0-7: Command policy チェック ---
-			const contract = readCurrentPlanContract(ctx.cwd);
-			if (contract) {
-				const cmdViolations = validateCommand(params.command, contract.safety);
-				if (cmdViolations.length > 0) {
-					return textDetails(`[ERROR] コマンドが safety policy に違反しています:\n${cmdViolations.map((v, i) => `  ${i + 1}. ${v}`).join("\n")}`, { violations: cmdViolations });
-				}
-			}
-
-			const timeoutMs = (params.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
-			let v2State = readStateV2(ctx.cwd);
-			if (!v2State.currentPlanId || !v2State.currentPlanDir) {
-				const planId = "plan-legacy-implicit";
-				const planDir = path.join(".autoresearch", "plans", planId);
-				fs.mkdirSync(path.join(ctx.cwd, planDir, "runs"), { recursive: true });
-				if (!fs.existsSync(path.join(ctx.cwd, planDir, "plan.md"))) fs.writeFileSync(path.join(ctx.cwd, planDir, "plan.md"), "# Legacy autoresearch run\n", "utf8");
-				writeStateV2(ctx.cwd, {
-					...v2State,
-					sessionId: state.sessionId,
-					currentPlanId: planId,
-					currentPlanDir: planDir,
-					latestRunId: undefined,
-					bestRunId: undefined,
-					bestMetric: undefined,
-					runCount: undefined,
-					currentContractHash: undefined,
-				});
-				appendJournal(ctx.cwd, { type: "plan_selected", planId, legacy: true });
-				v2State = readStateV2(ctx.cwd);
-			}
-			const runId = generatePlanScopedRunId(ctx.cwd);
-			const piRunId = runId; // legacy alias accepted by older callers
-			const createdAt = Date.now();
-			const preCommit = getGitShortHash(ctx.cwd);
-
-			runningExperiment = { startedAt: Date.now(), command: params.command };
-			updateWidget(ctx);
-
-			// Create plan-scoped artifact dir BEFORE execution so streaming logs go to the canonical location.
-			let artifactDir: string | undefined;
-			let legacyArtifactDir: string | undefined;
-			let artifactFailed = false;
-			try {
-				artifactDir = createRunArtifacts(ctx.cwd, v2State.currentPlanId!, runId).runDir;
-				fs.writeFileSync(path.join(artifactDir, "command.txt"), params.command + "\n", "utf8");
-				try { ensureSessionDir(ctx.cwd); legacyArtifactDir = createRunArtifactDir(ctx.cwd, state.sessionId, runId, params.command, runningExperiment.startedAt); } catch { /* legacy mirror is best-effort */ }
-			} catch (e) {
-				artifactFailed = true;
-			}
-
-			// P0: artifact dir 作成失敗時は benchmark を実行しない(fail-fast)
-			if (!artifactDir || artifactFailed) {
-				runningExperiment = null;
-				updateWidget(ctx);
-									return textResponse(`[ERROR] artifact directory を作成できないため benchmark を実行しません。\n長時間 run の監査不能を防ぐため、先に修正してください。\nエラー詳細: ディレクトリ .autoresearch/plans/${v2State.currentPlanId}/runs/${piRunId} の作成に失敗しました。`);
-			}
-
-			const runLedgerErrors: string[] = [];
-			// Events ledger: started (canonical journal is fatal; legacy .pi ledger is warning-only)
-			appendJournal(ctx.cwd, { type: "run_started", planId: v2State.currentPlanId, runId: piRunId, command: params.command });
-			try {
-				appendToJsonl(eventsLedgerPath(ctx.cwd, state.sessionId), {
-					schemaVersion: 1, event: "started", piRunId, timestamp: createdAt,
-					details: { command: params.command },
-				} satisfies EventLedgerEntry);
-			} catch (e) { runLedgerErrors.push(`legacy event ledger(started): ${e instanceof Error ? e.message : String(e)}`); }
-
-			// Execute - pass logDir for streaming stdout/stderr
-			const result = await runCommand(params.command, ctx.cwd, timeoutMs, signal, artifactDir);
-			const completedAt = Date.now();
-			const startedAt = runningExperiment.startedAt;
-			runningExperiment = null;
-			updateWidget(ctx);
-
-			// Events ledger: completed / timed_out
-			appendJournal(ctx.cwd, { type: "run_finished", planId: v2State.currentPlanId, runId: piRunId, exitCode: result.exitCode, durationSeconds: result.durationSeconds, timedOut: result.timedOut });
-			try {
-				appendToJsonl(eventsLedgerPath(ctx.cwd, state.sessionId), {
-					schemaVersion: 1, event: result.timedOut ? "timed_out" : "completed",
-					piRunId, timestamp: completedAt,
-					details: { exitCode: result.exitCode, durationSeconds: result.durationSeconds, timedOut: result.timedOut, signal: result.signal },
-				} satisfies EventLedgerEntry);
-			} catch (e) { runLedgerErrors.push(`legacy event ledger(completed): ${e instanceof Error ? e.message : String(e)}`); }
-
-			// Checks: use current plan checks.sh directly; root wrapper is human/legacy entrypoint only.
-			let checks: ChecksResult;
-			if (result.passed) {
-				const planChecks = path.join(ctx.cwd, v2State.currentPlanDir!, "checks.sh");
-				if (fs.existsSync(planChecks)) {
-					const cr = await runArgvCommand(
-					{ argv: ["bash", planChecks], cwd: ctx.cwd },
-					(params.checks_timeout_seconds ?? 300) * 1000,
-					signal,
-				);
-					checks = { passed: cr.passed, timedOut: cr.timedOut, output: cr.output.split("\n").slice(-80).join("\n"), stdout: cr.stdout, stderr: cr.stderr, durationSeconds: cr.durationSeconds };
-				} else {
-					checks = await runChecks(ctx.cwd, signal, params.checks_timeout_seconds); // legacy fallback
-				}
-			} else {
-				checks = { passed: null, timedOut: false, output: "", stdout: "", stderr: "", durationSeconds: 0 };
-			}
-			lastChecks = checks;
-			lastRunResult = { ...result, piRunId };
-			lastRunChecks = checks;
-
-			// Runs ledger - use runs.jsonl line count for runSeq (not state.runCount)
-			const runSeq = nextRunSeq(ctx.cwd, state.sessionId);
-
-			// Write remaining artifacts (manifest, result.json, metrics.json, checks)
-			// P0: 書き込み失敗時は artifactFailed を確実に記録
-			if (artifactDir) {
-				try {
-					writeRunArtifacts(artifactDir, result, piRunId, startedAt, completedAt, runSeq);
-					if (checks.passed !== null) {
-						writeChecksArtifacts(artifactDir, checks);
-					} else {
-						// No checks to run - mark artifact complete now
-						markArtifactComplete(artifactDir);
-					}
-				} catch {
-					artifactFailed = true;
-				}
-			}
-			if (!artifactDir) artifactFailed = true;
-
-			const metrics = result.parsedMetrics ?? (state.metricName === "duration_seconds" ? { duration_seconds: result.durationSeconds } : {});
-			try {
-				fs.writeFileSync(path.join(artifactDir, "git.status.txt"), execFileSync("git", ["status", "--short"], { cwd: ctx.cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }), "utf8");
-				fs.writeFileSync(path.join(artifactDir, "git.diff"), execFileSync("git", ["diff", "--"], { cwd: ctx.cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }), "utf8");
-				if (legacyArtifactDir) {
-					for (const f of ["manifest.json", "command.txt", "stdout.log", "stderr.log", "metrics.json", "result.json", "git.status.txt", "git.diff", "checks.result.json", "checks.stdout.log", "checks.stderr.log"]) {
-						const src = path.join(artifactDir, f);
-						if (fs.existsSync(src)) fs.copyFileSync(src, path.join(legacyArtifactDir, f));
-					}
-				}
-			} catch (e) { runLedgerErrors.push(`artifact enrichment/mirror: ${e instanceof Error ? e.message : String(e)}`); }
-			const canonicalErrors: string[] = [];
-			try { appendJournal(ctx.cwd, { type: "metrics_recorded", planId: v2State.currentPlanId, runId: piRunId, metrics }); }
-			catch (e) { canonicalErrors.push(`canonical journal(metrics_recorded): ${e instanceof Error ? e.message : String(e)}`); }
-			try { writeStateV2(ctx.cwd, { ...readStateV2(ctx.cwd), latestRunId: piRunId }); }
-			catch (e) { canonicalErrors.push(`canonical state(latestRunId): ${e instanceof Error ? e.message : String(e)}`); }
-
-			// Store in memory map AFTER artifact write - artifactFailed reflects actual status
-			runResultMap.set(piRunId, { result, checks, startedAt, completedAt, createdAt, artifactDir, artifactFailed, runSeq });
-
-			try {
-				appendToJsonl(runsLedgerPath(ctx.cwd, state.sessionId), {
-					schemaVersion: 1, runSeq, piRunId,
-					externalRunId: result.externalRunId,
-					createdAt, startedAt, completedAt,
-					durationSeconds: result.durationSeconds,
-					command: result.command,
-					exitCode: result.exitCode,
-					timedOut: result.timedOut,
-					signal: result.signal,
-					gitCommit: preCommit,
-				} satisfies RunsLedgerEntry);
-			} catch (e) { runLedgerErrors.push(`legacy runs ledger: ${e instanceof Error ? e.message : String(e)}`); }
-
-			// Build response text
-			let text = "";
-			if (result.timedOut) text = `[TIMEOUT] タイムアウト(${params.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS}秒)\n`;
-			else if (!result.passed) text = `[FAIL] 失敗(終了コード: ${result.exitCode})\n`;
-			else text = `[OK] 完了\n`;
-			const safeCommand = filterSecrets(result.command);
-			text += `実行時間: ${result.durationSeconds.toFixed(1)}秒\n`;
-			text += `コマンド: ${safeCommand}\n`;
-			text += `runId: ${runId}\n`;
-
-			if (result.externalRunId) text += `外部 RUN_ID: ${result.externalRunId}\n`;
-			if (result.externalArtifactDir) text += `外部 ARTIFACT_DIR: ${result.externalArtifactDir}\n`;
-			if (result.externalSummaryPath) text += `外部 SUMMARY_PATH: ${result.externalSummaryPath}\n`;
-			if (result.externalViewlogPath) text += `外部 VIEWLOG_PATH: ${result.externalViewlogPath}\n`;
-			if (result.externalMetricsPath) text += `外部 METRICS_PATH: ${result.externalMetricsPath}\n`;
-
-			if (artifactFailed) text += `[WARNING] artifact 保存に失敗しました。この run は keep できません。\n`;
-			if (canonicalErrors.length > 0) text += `[WARNING] canonical state/history 書き込み失敗: ${canonicalErrors.join(", ")}\n`;
-			if (runLedgerErrors.length > 0) text += `[WARNING] legacy ledger/artifact 書き込み一部失敗: ${runLedgerErrors.join(", ")}\n`;
-
-			if (checks.passed === true) text += `checks: 成功(${checks.durationSeconds.toFixed(1)}秒)\n`;
-			else if (checks.passed === false) {
-				text += `checks: 失敗\n`;
-				if (checks.output) text += `checks 出力:\n${checks.output}\n`;
-				text += `status=checks_failed で記録してください。\n`;
-			}
-
-			if (result.parsedMetrics) {
-				text += `\n測定指標:\n`;
-				for (const [n, v] of Object.entries(result.parsedMetrics)) text += `  METRIC ${n}=${v}\n`;
-				const primary = result.parsedMetrics[state.metricName];
-				if (primary !== undefined) text += `\n主指標 ${state.metricName}=${primary}${state.metricUnit} を autoresearch_log に報告してください。`;
-			}
-			if (!(result.parsedMetrics && state.metricName in result.parsedMetrics) && state.metricName === "duration_seconds") {
-				text += `\n主指標 duration_seconds=${result.durationSeconds}${state.metricUnit} (wall_clock) を autoresearch_log に報告できます。`;
-			}
-
-			const safeOutput = filterSecrets(result.output);
-			if (safeOutput) text += `\n出力(末尾):\n${safeOutput}`;
-			text += `\nrunId: ${runId}(autoresearch_log の runId に渡してください)`;
-
-			return {
-				content: [{ type: "text", text }],
-				details: {
-					// raw stdout/stderr は secret とサイズの両面で返さない。正本は artifact の stdout.log/stderr.log。
-					command: safeCommand,
-					exitCode: result.exitCode,
-					durationSeconds: result.durationSeconds,
-					timedOut: result.timedOut,
-					passed: result.passed,
-					output: safeOutput,
-					parsedMetrics: result.parsedMetrics,
-					signal: result.signal,
-					logFilesWritten: result.logFilesWritten,
-					streamError: result.streamError,
-					externalRunId: result.externalRunId,
-					externalArtifactDir: result.externalArtifactDir,
-					externalSummaryPath: result.externalSummaryPath,
-					externalViewlogPath: result.externalViewlogPath,
-					externalMetricsPath: result.externalMetricsPath,
-					runId,
-					piRunId: runId,
-					checks: {
-						passed: checks.passed,
-						timedOut: checks.timedOut,
-						durationSeconds: checks.durationSeconds,
-						output: filterSecrets(checks.output),
-					},
-					preCommit,
-					startedAt,
-					completedAt,
-					createdAt,
-					artifactDir,
-					artifactFailed,
-					ledgerErrors: runLedgerErrors.length > 0 ? runLedgerErrors : undefined,
-					canonicalErrors: canonicalErrors.length > 0 ? canonicalErrors : undefined,
-				},
-			};
+			return executeRun(store, params, signal, ctx, toolDeps);
 		},
 	});
 
-	// ---
-	// Tool: autoresearch_log
-	// ---
+	// ─── Tool: autoresearch_log ────────────────────────────────
 
 	pi.registerTool({
 		name: "autoresearch_log",
@@ -1226,416 +478,11 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_tc, params, _sig, _ou, ctx) {
-			if (!active) return INACTIVE_RESPONSE;
-
-			// --- P0-4: Load experiment contract from current plan (legacy root contract is fallback only) ---
-			const contract = readCurrentPlanContract(ctx.cwd);
-
-			// --- Find run data ---
-			let matchedPiRunId: string | undefined;
-			let matchedRunData: ReturnType<typeof findRunData>;
-
-			if (params.runId) {
-				matchedRunData = findRunData(params.runId, ctx.cwd);
-				if (!matchedRunData) {
-											return textResponse(`[ERROR] runId "${params.runId}" に対応する run が見つかりません。\nメモリにも artifact にも存在しません。正しい runId を指定してください。`);
-				}
-				matchedPiRunId = params.runId;
-			} else if (lastRunResult) {
-				matchedPiRunId = lastRunResult.piRunId;
-				matchedRunData = findRunData(matchedPiRunId, ctx.cwd);
-			} else {
-				if (params.status === "keep") {
-										return textResponse("[ERROR] 対応する autoresearch_run 結果がありません。\n先に autoresearch_run を実行してから autoresearch_log を呼び出してください。");
-				}
-			}
-
-			const matchedResult = matchedRunData?.result;
-			const matchedChecks = matchedRunData?.checks;
-			const resolvedPrimaryMetric = matchedResult
-				? resolvePrimaryMetricValue(state.metricName, matchedResult)
-				: { value: null, source: "missing" as const };
-			const effectiveMetric = params.status === "keep" && resolvedPrimaryMetric.value !== null
-				? resolvedPrimaryMetric.value
-				: params.metric;
-
-			// --- keep validation ---
-			if (params.status === "keep") {
-				const reasons: string[] = [];
-
-				if (!matchedResult) {
-										return textResponse("[ERROR] run 結果が存在しないため keep できません。");
-				}
-
-				if (matchedResult.timedOut) reasons.push(`timeout した run は keep できません。`);
-				if (!matchedResult.passed && !matchedResult.timedOut) reasons.push(`失敗した run(exitCode: ${matchedResult.exitCode})は keep できません。`);
-				if (matchedChecks && matchedChecks.passed === false) reasons.push(`checks が失敗しているため keep できません。checks 出力:\n${matchedChecks.output.slice(-500)}`);
-
-				// P0: 主指標が stdout METRIC または duration_seconds wall-clock で解決できることを検証
-				if (resolvedPrimaryMetric.value === null) {
-					reasons.push(
-						`主指標 "${state.metricName}" を解決できません。` +
-						`stdout に METRIC ${state.metricName}=<number> を出力してください。` +
-						`ただし duration_seconds の場合は autoresearch_run が測定した wall-clock durationSeconds を使用できます。`
-					);
-				}
-
-				// P0: artifactFailed + stream error チェック
-				if (runResultMap.has(matchedPiRunId ?? "")) {
-					const rd = runResultMap.get(matchedPiRunId ?? "");
-					if (rd?.artifactFailed) {
-						reasons.push("artifact 保存に失敗した run は監査不能のため keep できません。");
-					}
-					if (rd?.result.streamError) {
-						reasons.push(`stream 書き込みエラー (${rd.result.streamError})。ログが不完全な run は keep できません。`);
-					}
-				}
-
-				// P0: artifactDir + manifest.json + metrics.json の存在確認
-				const artifactDirPath = matchedRunData?.artifactDir
-					?? getRunArtifactDir(ctx.cwd, state.sessionId, matchedPiRunId ?? "");
-				if (!fs.existsSync(artifactDirPath)) {
-					reasons.push("run artifact directory が存在しません。監査不能のため keep できません。");
-				} else {
-					if (!fs.existsSync(path.join(artifactDirPath, "manifest.json"))) {
-						reasons.push("manifest.json が存在しません。監査不能のため keep できません。");
-					} else {
-						// manifest must have artifactComplete=true (incomplete writes don't count)
-						try {
-							const mf = JSON.parse(fs.readFileSync(path.join(artifactDirPath, "manifest.json"), "utf8"));
-							if (mf.artifactComplete !== true) {
-								reasons.push("manifest.json に artifactComplete=true がありません。artifact 書き込みが不完全な run は keep できません。");
-							}
-						} catch {
-							reasons.push("manifest.json の読み取りに失敗しました。監査不能のため keep できません。");
-						}
-					}
-					if (!fs.existsSync(path.join(artifactDirPath, "metrics.json"))) {
-						reasons.push("metrics.json が存在しません。監査不能のため keep できません。");
-					}
-					if (!fs.existsSync(path.join(artifactDirPath, "result.json"))) {
-						reasons.push("result.json が存在しません。監査不能のため keep できません。");
-					}
-				}
-
-				if (reasons.length > 0) {
-					return textResponse(`[ERROR] keep が拒否されました:\n${reasons.map((r, i) => `  ${i + 1}. ${r}`).join("\n")}\n\nstatus=discard または status=crash または status=checks_failed で記録してください。`);
-				}
-
-				// --- P0-2: Acceptance policy 強制 ---
-				if (contract) {
-					const acceptanceInput: AcceptanceInput = {
-						candidateMetric: effectiveMetric,
-						bestMetric: state.bestMetric,
-						direction: state.direction,
-						policy: contract.acceptance,
-					};
-					const acceptanceResult = evaluateAcceptance(acceptanceInput);
-
-					if (!acceptanceResult.accepted) {
-													return textDetails(`[ERROR] acceptance policy により keep が拒否されました:\n${acceptanceResult.reason}\n\ncandidate: ${effectiveMetric} vs best: ${state.bestMetric}\nacceptance mode: ${contract.acceptance.mode}\nminImprovement: ${(contract.acceptance.minImprovement * 100).toFixed(1)}%\n\nstatus=discard で記録してください。改善が不十分(noise)な場合は、別のアプローチを試してください。`, { acceptanceResult, effectiveMetric, bestMetric: state.bestMetric });
-					}
-				}
-
-				// --- P0-1: 変更ファイルが safety policy に収まっているか ---
-				if (contract) {
-					const preChangedFiles = getChangedFiles(ctx.cwd);
-					const pathViolations = validateChangedFiles(preChangedFiles, contract.safety);
-					if (pathViolations.length > 0) {
-						return textDetails(`[ERROR] 変更ファイルが safety policy に違反:\n${pathViolations.map((v, i) => `  ${i + 1}. ${v}`).join("\n")}\n\nstatus=discard で記録してください。許可されたパス内に収まるように変更してください。`, { pathViolations, changedFiles: preChangedFiles });
-					}
-				}
-			}
-
-			// --- Provenance ---
-			const preCommit = getGitShortHash(ctx.cwd);
-			const dirtyBefore = isGitDirty(ctx.cwd);
-			const changedFiles = getChangedFiles(ctx.cwd);
-			let commit = params.commit ?? preCommit;
-			const run = state.runCount + 1;
-
-			// P0: runSeq は run 時採番値を使用(log 順ではなく実行順)
-			const runSeq = matchedRunData?.runSeq ?? run;
-
-			const entry: RunEntry = {
-				type: "run", run, runId: matchedPiRunId, piRunId: matchedPiRunId,
-				commit, metric: effectiveMetric, status: params.status as RunStatus,
-				description: params.description, timestamp: Date.now(),
-				metrics: params.metrics, memo: params.memo,
-				command: matchedResult?.command, exitCode: matchedResult?.exitCode,
-				timedOut: matchedResult?.timedOut, checksPassed: matchedChecks?.passed ?? null,
-				preCommit, dirtyBefore, changedFiles: changedFiles.length > 0 ? changedFiles : undefined,
-				notes: params.memo,
-				createdAt: matchedRunData?.createdAt, startedAt: matchedRunData?.startedAt,
-				completedAt: matchedRunData?.completedAt, durationSeconds: matchedResult?.durationSeconds,
-				externalRunId: matchedResult?.externalRunId ?? null,
-				externalArtifactDir: matchedResult?.externalArtifactDir ?? null,
-				externalSummaryPath: matchedResult?.externalSummaryPath ?? null,
-				externalViewlogPath: matchedResult?.externalViewlogPath ?? null,
-				externalMetricsPath: matchedResult?.externalMetricsPath ?? null,
-				signal: matchedResult?.signal ?? null,
-				metricSource: params.status === "keep" && resolvedPrimaryMetric.source !== "missing" ? resolvedPrimaryMetric.source : undefined,
-			};
-
-			// P0-2: git commit 失敗時は keep を成功扱いにしない。
-			// state.results/runCount/bestMetric は git 成功(または non-keep の revert)後に更新する。
-			if (params.status === "keep") {
-				const gr = gitAutoCommit(ctx.cwd, `${params.description}\n\nResult: ${JSON.stringify({ status: params.status, [state.metricName]: effectiveMetric, metricSource: entry.metricSource })}`);
-				if (gr.committed) {
-					commit = gr.commit ?? commit;
-				} else if (gr.error) {
-					// 案A: commit できない keep は keep ではない。状態を更新せずエラーを返す。
-											return textDetails(`[ERROR] git commit に失敗したため keep を記録できません:\n${gr.error}\n\ncommit できない keep は再現性を保証できません。\ngit の状態を確認して再度 autoresearch_log を呼び出してください。`, { gitError: gr.error });
-				}
-				entry.postCommit = commit;
-			} else {
-				// P0-6: revert エラーを致命扱いにする
-				const revertResult = gitAutoRevert(ctx.cwd);
-				if (!revertResult.reverted && revertResult.error) {
-					// revert 失敗 → revert_failed status で記録し loop を停止
-					const failedEntry: RunEntry = {
-						...entry,
-						status: "revert_failed",
-						postCommit: getGitShortHash(ctx.cwd),
-						dirtyAfter: isGitDirty(ctx.cwd),
-					};
-					failedEntry.commit = commit;
-
-					state.results.push(failedEntry);
-					state.runCount = run;
-
-					// Event ledger: revert_failed
-					try {
-						ensureSessionDir(ctx.cwd);
-						appendToJsonl(eventsLedgerPath(ctx.cwd, state.sessionId), {
-							schemaVersion: 1, event: "revert_failed", piRunId: matchedPiRunId ?? "",
-							timestamp: Date.now(),
-							details: { error: revertResult.error, originalStatus: params.status },
-						} satisfies EventLedgerEntry);
-					} catch { /* best effort */ }
-
-					// Main JSONL
-					try {
-						const jp = jsonlPath(ctx.cwd);
-						fs.appendFileSync(jp, JSON.stringify({ ...failedEntry }) + "\n");
-					} catch { /* best effort */ }
-
-					// P0-6: loop を強制停止
-					autoLoop = false;
-					updateWidget(ctx);
-
-											return textDetails(`[REVERT_FAILED] 実験 #${run} の revert に失敗しました:\n${revertResult.error}\n\n⚠️ 手動介入が必要です。git の状態を確認し、不要な変更を手動で元してください。\nautoresearch loop を停止しました。`, { run, status: "revert_failed", error: revertResult.error });
-				}
-				entry.postCommit = getGitShortHash(ctx.cwd);
-			}
-			entry.dirtyAfter = isGitDirty(ctx.cwd);
-			entry.commit = commit;
-
-			// P0-2: commit 失敗時はここに到達しないため、ここから state を更新する。
-			state.results.push(entry);
-			state.runCount = run;
-			let updatedBest = false;
-			if (params.status === "keep" && isBestMetric(state.bestMetric, effectiveMetric, state.direction)) {
-				state.bestMetric = effectiveMetric;
-				updatedBest = true;
-			}
-			const canonicalErrors: string[] = [];
-			const s2 = readStateV2(ctx.cwd);
-			try { appendJournal(ctx.cwd, { type: "decision", planId: s2.currentPlanId, runId: matchedPiRunId, decision: params.status, reason: params.description, metric: effectiveMetric }); }
-			catch (e) { canonicalErrors.push(`canonical journal(decision): ${e instanceof Error ? e.message : String(e)}`); }
-			try {
-				writeStateV2(ctx.cwd, {
-					...s2,
-					latestRunId: matchedPiRunId ?? s2.latestRunId,
-					bestRunId: updatedBest ? matchedPiRunId : s2.bestRunId,
-					bestMetric: updatedBest ? { name: state.metricName, value: effectiveMetric, direction: state.direction } : s2.bestMetric,
-				});
-			} catch (e) { canonicalErrors.push(`canonical state(decision): ${e instanceof Error ? e.message : String(e)}`); }
-
-			// --- Pointers & ledgers ---
-			const ledgerErrors: string[] = [];
-			try {
-				ensureSessionDir(ctx.cwd);
-			} catch (e) {
-				ledgerErrors.push(`session dir: ${e instanceof Error ? e.message : String(e)}`);
-			}
-
-			// Latest pointer
-			try {
-				writePointer(latestPointerPath(ctx.cwd, state.sessionId), {
-					piRunId: matchedPiRunId ?? "", runSeq, metric: effectiveMetric,
-					timestamp: entry.timestamp, gitCommit: entry.postCommit ?? preCommit,
-				});
-			} catch (e) { ledgerErrors.push(`latest pointer: ${e instanceof Error ? e.message : String(e)}`); }
-
-			// Best pointer
-			if (params.status === "keep") {
-				try {
-					const cur = readPointer(bestPointerPath(ctx.cwd, state.sessionId));
-					if (isBestPointerMetric(effectiveMetric, cur, state.direction)) {
-						writePointer(bestPointerPath(ctx.cwd, state.sessionId), {
-							piRunId: matchedPiRunId ?? "", runSeq, metric: effectiveMetric,
-							timestamp: entry.timestamp, gitCommit: entry.postCommit ?? preCommit,
-						});
-					}
-				} catch (e) { ledgerErrors.push(`best pointer: ${e instanceof Error ? e.message : String(e)}`); }
-			}
-
-			// Metrics ledger
-			try {
-				appendToJsonl(metricsLedgerPath(ctx.cwd, state.sessionId), {
-					schemaVersion: 1, runSeq, piRunId: matchedPiRunId ?? "",
-					externalRunId: matchedResult?.externalRunId ?? null,
-					createdAt: matchedRunData?.createdAt ?? entry.timestamp,
-					startedAt: matchedRunData?.startedAt ?? entry.timestamp,
-					completedAt: matchedRunData?.completedAt ?? entry.timestamp,
-					durationSeconds: matchedResult?.durationSeconds ?? 0,
-					command: matchedResult?.command ?? "", gitCommit: entry.postCommit ?? preCommit,
-					exitCode: matchedResult?.exitCode ?? null, timedOut: matchedResult?.timedOut ?? false,
-					primaryMetricName: state.metricName, primaryMetricValue: effectiveMetric,
-					primaryMetricSource: entry.metricSource,
-					metrics: { ...(params.metrics ?? {}), [state.metricName]: effectiveMetric },
-					externalArtifactDir: matchedResult?.externalArtifactDir ?? null,
-					externalSummaryPath: matchedResult?.externalSummaryPath ?? null,
-					externalViewlogPath: matchedResult?.externalViewlogPath ?? null,
-					externalMetricsPath: matchedResult?.externalMetricsPath ?? null,
-					status: params.status,
-				} as unknown as Record<string, unknown>);
-			} catch (e) { ledgerErrors.push(`metrics ledger: ${e instanceof Error ? e.message : String(e)}`); }
-
-			// Decision ledger
-			try {
-				appendToJsonl(decisionsLedgerPath(ctx.cwd, state.sessionId), {
-					schemaVersion: 1, piRunId: matchedPiRunId ?? "",
-					externalRunId: matchedResult?.externalRunId ?? null,
-					status: params.status, metric: effectiveMetric, metricSource: entry.metricSource,
-					preCommit, postCommit: entry.postCommit ?? preCommit,
-					dirtyBefore, dirtyAfter: entry.dirtyAfter ?? false,
-					changedFiles, timestamp: entry.timestamp,
-					description: params.description, notes: params.memo,
-				} as unknown as Record<string, unknown>);
-			} catch (e) { ledgerErrors.push(`decision ledger: ${e instanceof Error ? e.message : String(e)}`); }
-
-			// Event ledger
-			try {
-				appendToJsonl(eventsLedgerPath(ctx.cwd, state.sessionId), {
-					schemaVersion: 1, event: "logged", piRunId: matchedPiRunId ?? "",
-					timestamp: entry.timestamp, details: { status: params.status, metric: effectiveMetric, metricSource: entry.metricSource, runSeq },
-				} satisfies EventLedgerEntry);
-			} catch (e) { ledgerErrors.push(`event ledger: ${e instanceof Error ? e.message : String(e)}`); }
-
-			// --- Main JSONL ---
-			const jp = jsonlPath(ctx.cwd);
-			try {
-				const line = JSON.stringify({
-					...entry,
-					runId: entry.runId ?? undefined, piRunId: entry.piRunId ?? undefined,
-					metrics: params.metrics ?? undefined, memo: params.memo ?? undefined,
-					metricSource: entry.metricSource ?? undefined,
-					command: entry.command ?? undefined, exitCode: entry.exitCode ?? undefined,
-					timedOut: entry.timedOut ?? undefined, checksPassed: entry.checksPassed ?? undefined,
-					preCommit, postCommit: entry.postCommit ?? undefined,
-					dirtyBefore, dirtyAfter: entry.dirtyAfter ?? undefined,
-					changedFiles: entry.changedFiles ?? undefined, notes: entry.notes ?? undefined,
-					externalRunId: entry.externalRunId ?? undefined,
-					externalArtifactDir: entry.externalArtifactDir ?? undefined,
-					externalSummaryPath: entry.externalSummaryPath ?? undefined,
-					externalViewlogPath: entry.externalViewlogPath ?? undefined,
-					externalMetricsPath: entry.externalMetricsPath ?? undefined,
-					signal: entry.signal ?? undefined,
-					createdAt: entry.createdAt ?? undefined, startedAt: entry.startedAt ?? undefined,
-					completedAt: entry.completedAt ?? undefined, durationSeconds: entry.durationSeconds ?? undefined,
-				}) + "\n";
-				fs.appendFileSync(jp, line);
-			} catch (e) {
-				ledgerErrors.push(`legacy jsonl: ${e instanceof Error ? e.message : String(e)}`);
-			}
-
-			lastLoggedRun = run;
-			updateWidget(ctx);
-			if (matchedPiRunId) runResultMap.delete(matchedPiRunId);
-
-			const kept = countByStatus(state.results, "keep");
-			const prefix = STATUS_PREFIX[params.status] ?? "[UNKNOWN]";
-			let text = `${prefix} 実験 #${run} を記録: ${STATUS_LABELS[params.status] ?? params.status}\n`;
-			text += `説明: ${params.description}\n`;
-			text += `指標: ${state.metricName}=${effectiveMetric}${state.metricUnit}\n`;
-			if (entry.metricSource) text += `指標ソース: ${entry.metricSource}\n`;
-			text += `コミット: ${commit}\n`;
-			if (entry.piRunId) text += `runId: ${entry.piRunId}\n`;
-			if (entry.externalRunId) text += `外部 RUN_ID: ${entry.externalRunId}\n`;
-			text += `\n累計: ${state.runCount}回 / 採用${kept}\n`;
-			if (state.bestMetric !== null) text += `最良: ${state.metricName}=${state.bestMetric}${state.metricUnit}\n`;
-
-			if (!params.runId && matchedPiRunId) text += `\n[WARNING] runId 省略。次回は明示指定してください。`;
-			if (params.status === "keep") {
-				// P0-2: git commit 失敗時は既に return 済みなので、ここは commit 成功時のみ
-				if (entry.postCommit && entry.postCommit !== preCommit) {
-					text += `\n[git] 自動 commit しました: ${entry.postCommit}`;
-				} else {
-					text += `\n[git] 変更なし(commit 不要)`;
-				}
-			} else {
-				text += `\n[git] revert 完了(autoresearch.* / .pi/ は保護)`;
-			}
-
-			lastChecks = null; lastRunResult = null; lastRunChecks = null;
-
-			if (canonicalErrors.length > 0) {
-				text += `\n[WARNING] canonical state/history 書き込み失敗: ${canonicalErrors.join(", ")}`;
-			}
-			if (ledgerErrors.length > 0) {
-				text += `\n[WARNING] legacy ledger 書き込み一部失敗: ${ledgerErrors.join(", ")}`;
-			}
-
-			return {
-				content: [{ type: "text", text }],
-				details: {
-					run, runId: entry.piRunId, piRunId: entry.piRunId,
-					status: params.status, metric: effectiveMetric, metricSource: entry.metricSource, bestMetric: state.bestMetric,
-					kept, commit, preCommit, postCommit: entry.postCommit, changedFiles,
-					externalRunId: entry.externalRunId, externalArtifactDir: entry.externalArtifactDir,
-					canonicalErrors: canonicalErrors.length > 0 ? canonicalErrors : undefined,
-					ledgerErrors: ledgerErrors.length > 0 ? ledgerErrors : undefined,
-				},
-			};
+			return executeLog(store, params, ctx, toolDeps);
 		},
 	});
 
-	// ---
-	// Helper functions for contract mode tools
-	// ---
-
-	function resolvePrimaryMetricFromRun(
-		primaryMetric: AutoresearchContractV1["evaluation"]["primaryMetric"],
-		runResult: { durationSeconds: number; parsedMetrics: Record<string, number> | null },
-	): number | null {
-		if (primaryMetric.source.type === "metric_line") {
-			const parsed = runResult.parsedMetrics?.[primaryMetric.name];
-			if (typeof parsed === "number" && Number.isFinite(parsed)) {
-				return parsed;
-			}
-			if (primaryMetric.source.fallback === "wall_clock") {
-				return runResult.durationSeconds;
-			}
-			return null;
-		} else if (primaryMetric.source.type === "wall_clock") {
-			return runResult.durationSeconds;
-		}
-		return null;
-	}
-
-	function isWorkingTreeCleanForContract(cwd: string): boolean {
-		return filterInternalPaths(getChangedFiles(cwd)).length === 0;
-	}
-
-	function getContractRelevantChangedFiles(cwd: string): string[] {
-		return filterInternalPaths(getChangedFiles(cwd));
-	}
-
-	// ---
-	// Tool: autoresearch_plan
-	// ---
+	// ─── Tool: autoresearch_plan ───────────────────────────────
 
 	pi.registerTool({
 		name: "autoresearch_plan",
@@ -1654,183 +501,11 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_tc, params, _sig, _ou, ctx) {
-			// Use queryEvaluation to help draft the plan
-			const evaluation = evaluateQueryStatically(params.query);
-
-			const m = evaluation.contractDraft.primaryMetric;
-			const metricName = m.name ?? "duration_seconds";
-			const metricDirection = m.direction === "higher" ? "higher" : "lower";
-			const metricSource = m.measurementMethod === "wall_clock" ? "wall_clock" : "metric_line";
-			const suggestedBenchmarkCommand = evaluation.contractDraft.benchmarkCommand ?? "./autoresearch.sh";
-			const contractBenchmarkCommand = "bash ./autoresearch.sh";
-
-			// Build contract JSONC
-			const contractDraft: AutoresearchContractV1 = {
-				schemaVersion: "autoresearch/v1",
-				objective: {
-					summary: evaluation.contractDraft.objective || params.query,
-					successDefinition: `${metricName} improves in ${metricDirection} direction`,
-				},
-				scope: {
-					allowedWritePaths: ["src/**", "tests/**", "lib/**"],
-					forbiddenWritePaths: [
-						"autoresearch.sh",
-						"checks.sh",
-						"benchmarks/**",
-						"benchmark/**",
-						"fixtures/**",
-						"test/fixtures/**",
-						"package-lock.json",
-						"pnpm-lock.yaml",
-						"yarn.lock",
-					],
-					immutableReadPaths: [
-						"autoresearch.sh",
-						"checks.sh",
-						"package.json",
-						"package-lock.json",
-						"pnpm-lock.yaml",
-						"yarn.lock",
-						"benchmarks/**",
-						"benchmark/**",
-						"fixtures/**",
-						"test/fixtures/**",
-					],
-					requireGit: true,
-					requireCleanGitWorktree: true,
-				},
-				evaluation: {
-					benchmark: {
-						command: {
-							argv: ["bash", "./autoresearch.sh"],
-							cwd: ".",
-						},
-						timeoutSeconds: 600,
-						repeats: 3,
-						aggregate: "median",
-					},
-					primaryMetric: {
-						name: metricName,
-						direction: metricDirection,
-						source: metricSource === "wall_clock"
-							? { type: "wall_clock" }
-							: { type: "metric_line", format: "METRIC <name>=<number>", fallback: "wall_clock" },
-					},
-					checks: evaluation.contractDraft.checksCommand
-						? [{
-							name: "default-checks",
-							command: { argv: ["bash", "./checks.sh"], cwd: "." },
-							timeoutSeconds: 300,
-							required: true,
-						}]
-						: [],
-				},
-				acceptance: {
-					mode: "better_than_baseline",
-					minRelativeImprovement: 0.02,
-					requireImprovementAboveNoiseFloor: true,
-					requireAllChecksPass: true,
-					rejectIfMetricMissing: true,
-					rejectIfImmutableReadPathChanged: true,
-					rejectIfForbiddenFilesChanged: true,
-					rejectIfBenchmarkChanged: true,
-				},
-				loop: {
-					maxIterations: 50,
-					maxRuntimeMinutes: 120,
-					maxConsecutiveNoImprovement: 3,
-					maxConsecutiveFailures: 2,
-				},
-				failurePolicy: {
-					onBenchmarkFailure: "discard",
-					onCheckFailure: "discard",
-					onMetricMissing: "discard",
-					onContractViolation: "pause",
-					onRevertFailure: "pause",
-				},
-			};
-
-			// Build plan markdown
-			const md = [
-				`# Autoresearch Plan`,
-				``,
-				`## User Query`,
-				``,
-				params.query,
-				``,
-				`## Interpreted Objective`,
-				``,
-				contractDraft.objective.summary,
-				``,
-				`## Assumptions`,
-				``,
-				...evaluation.contractDraft.constraints.map((c) => `- ${c}`),
-				`- Platform: ${process.platform}`,
-				``,
-				`## Unknowns`,
-				``,
-				...evaluation.clarifyingQuestions.map((q) => `- ${q}`),
-				``,
-				`## Non-goals`,
-				``,
-				`- Modifying the benchmark script itself`,
-				`- Changing the metric definition mid-experiment`,
-				``,
-				`## Scope Note`,
-				``,
-				`The default scope is a reasonable starting point. Edit the contract block to match your repo structure:`,
-				`- Adjust allowedWritePaths if source is not in src/ or lib/`,
-				`- Add benchmark/fixture paths to immutableReadPaths if applicable`,
-				`- Add sensitive paths to forbiddenWritePaths`,
-				``,
-				`## Proposed Loop Strategy`,
-				``,
-				`1. Baseline measurement with current code`,
-				`2. Apply candidate optimization`,
-				`3. Run benchmark with ${contractDraft.evaluation.benchmark.repeats} repeats`,
-				`4. Evaluate against contract acceptance criteria`,
-				`5. Keep if improvement exceeds threshold, otherwise discard and revert`,
-				``,
-				`## Evaluation Contract`,
-				``,
-				"```autoresearch-contract jsonc",
-				JSON.stringify(contractDraft, null, 2),
-				"```",
-			].join("\n");
-
-			// Write plan file
-			const pp = planPath(ctx.cwd);
-			try {
-				fs.writeFileSync(pp, md, "utf8");
-			} catch (e) {
-									return textResponse(`[ERROR] plan file の書き込みに失敗: ${e instanceof Error ? e.message : String(e)}`);
-			}
-
-			const contractHash = computeContractHash(contractDraft);
-
-			let text = `[OK] plan draft を生成しました: ${pp}\n`;
-			text += `\n### Query 評価\n`;
-			text += `判定: ${evaluation.decision}\n`;
-			text += `主指標: ${metricName} (${metricDirection})\n`;
-			text += `benchmark: ${contractBenchmarkCommand}\n`;
-			text += `note: actual benchmark logic should live in autoresearch.sh, or edit the contract argv explicitly. Suggested by query evaluation: ${suggestedBenchmarkCommand}\n`;
-			if (evaluation.blockingIssues.length > 0) {
-				text += `\n### ブロッキング issue\n`;
-				for (const issue of evaluation.blockingIssues) text += `- ${issue}\n`;
-			}
-			if (evaluation.clarifyingQuestions.length > 0) {
-				text += `\n### 確認質問\n`;
-				for (const q of evaluation.clarifyingQuestions) text += `- ${q}\n`;
-			}
-			text += `\nplan を確認・編集した後、autoresearch_approve で承認してください。`;
-
-			return textDetails(text, { planPath: pp, decision: evaluation.decision, contractHash });
+			return executePlan(store, params, ctx);
 		},
 	});
 
-	// ---
-	// Tool: autoresearch_approve
-	// ---
+	// ─── Tool: autoresearch_approve ────────────────────────────
 
 	pi.registerTool({
 		name: "autoresearch_approve",
@@ -1848,212 +523,11 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_tc, params, signal, _ou, ctx) {
-			const pp = params.plan_path ?? planPath(ctx.cwd);
-			if (!fs.existsSync(pp)) {
-									return textResponse(`[ERROR] plan file が見つかりません: ${pp}\n先に autoresearch_plan で plan を生成してください。`);
-			}
-
-			const planMarkdown = fs.readFileSync(pp, "utf8");
-
-			let jsonc: string;
-			try {
-				const block = extractContractBlockFromPlan(planMarkdown);
-				jsonc = block.jsonc;
-			} catch (e) {
-									return textResponse(`[ERROR] contract block の抽出に失敗: ${e instanceof Error ? e.message : String(e)}`);
-			}
-
-			let contractObj: unknown;
-			try {
-				contractObj = parseJsonc(jsonc);
-			} catch (e) {
-									return textResponse(`[ERROR] JSONC の parse に失敗: ${e instanceof Error ? e.message : String(e)}`);
-			}
-
-			const validation = validateContractV1(contractObj);
-			if (!validation.valid) {
-				return textDetails(`[ERROR] contract の検証に失敗:\n${validation.errors.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}`, { errors: validation.errors });
-			}
-
-			const contract = contractObj as AutoresearchContractV1;
-
-			const allCommands = [
-				contract.evaluation.benchmark.command,
-				...contract.evaluation.checks.map((c) => c.command),
-			];
-			for (const cmd of allCommands) {
-				if (!cmd.argv || cmd.argv.length === 0) {
-											return textResponse(`[ERROR] command.argv が空です: ${JSON.stringify(cmd)}`);
-				}
-			}
-
-			// Command safety validation
-			const safetyErrors = validateCommandSafety(allCommands, ctx.cwd);
-			if (safetyErrors.length > 0) {
-				return textDetails(`[ERROR] command safety validation failed:\n${safetyErrors.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}`, { safetyErrors });
-			}
-
-			if (contract.scope.requireGit && !isGitRepo(ctx.cwd)) {
-									return textResponse(`[ERROR] git repo ではありません。contract で requireGit=true が指定されています。`);
-			}
-			if (contract.scope.requireCleanGitWorktree && !isWorkingTreeCleanForContract(ctx.cwd)) {
-				const relevantChangedFiles = getContractRelevantChangedFiles(ctx.cwd);
-									return textDetails(`[ERROR] working tree に contract-relevant な未コミット変更があります。contract で requireCleanGitWorktree=true が指定されています。\n対象: ${relevantChangedFiles.join(", ")}\n先に commit または stash してください。`, { changedFiles: relevantChangedFiles });
-			}
-
-			const contractHash = computeContractHash(contract);
-			const contractId = `contract-${Date.now()}-${contractHash.slice(7, 15)}`;
-			ensureAutoresearchDir(ctx.cwd);
-
-			function logEvent(event: string, details: Record<string, unknown> = {}): void {
-				appendEvent(ctx.cwd, { timestamp: Date.now(), contractId, contractHash, event, details });
-			}
-
-			logEvent("approve_started");
-
-			const immutableResult = await computeImmutableReadSetHash(
-				ctx.cwd,
-				contract.scope.immutableReadPaths,
-			);
-
-			const envFingerprint = await collectEnvironmentFingerprint(
-				ctx.cwd,
-				immutableResult.hash,
-			);
-
-			const baselineCommand = contract.evaluation.benchmark.command;
-			const benchmarkCwd = resolveCwdInsideRepo(ctx.cwd, baselineCommand.cwd);
-			const baselineRuns: Array<{ runId: string; metric: number; durationSeconds: number }> = [];
-
-			for (let i = 0; i < contract.evaluation.benchmark.repeats; i++) {
-				const runId = generatePiRunId(ctx.cwd);
-				const runResult = await runArgvCommand(
-					{ argv: baselineCommand.argv, cwd: benchmarkCwd, env: baselineCommand.env },
-					contract.evaluation.benchmark.timeoutSeconds * 1000,
-					signal,
-				);
-
-				// --- P0: Reject baseline on failure/timeout ---
-				if (!runResult.passed || runResult.timedOut) {
-					logEvent("baseline_run_failed", { runIndex: i, runId, exitCode: runResult.exitCode, timedOut: runResult.timedOut });
-											return textDetails(`[ERROR] baseline run ${i + 1}/${contract.evaluation.benchmark.repeats} failed.${runResult.timedOut ? " Timed out." : ""} exitCode=${runResult.exitCode}\nBaseline cannot be established from failed benchmark. Fix the benchmark command and retry.`, { runIndex: i, exitCode: runResult.exitCode, timedOut: runResult.timedOut });
-				}
-
-				const metricValue = resolvePrimaryMetricFromRun(contract.evaluation.primaryMetric, runResult);
-
-				// --- P0: Reject when metric missing unless explicit wall_clock fallback ---
-				if (metricValue === null) {
-					const source = contract.evaluation.primaryMetric.source;
-					const hasWallClockFallback = source.type === "metric_line" && source.fallback === "wall_clock";
-					const isWallClock = source.type === "wall_clock";
-					if (!hasWallClockFallback && !isWallClock) {
-						logEvent("baseline_metric_missing", { runIndex: i, runId, metricName: contract.evaluation.primaryMetric.name });
-													return textDetails(`[ERROR] Primary metric "${contract.evaluation.primaryMetric.name}" not found in baseline run ${i + 1}.\nMetric source is "${source.type}" with no wall_clock fallback.\nEnsure the benchmark outputs METRIC ${contract.evaluation.primaryMetric.name}=<number> to stdout.`, { metricName: contract.evaluation.primaryMetric.name, sourceType: source.type });
-					}
-				}
-
-				baselineRuns.push({ runId, metric: metricValue ?? runResult.durationSeconds, durationSeconds: runResult.durationSeconds });
-				logEvent("baseline_run_completed", { runIndex: i, runId, exitCode: runResult.exitCode, metric: metricValue, durationSeconds: runResult.durationSeconds, timedOut: runResult.timedOut });
-			}
-
-			const immutableAfterBaseline = await computeImmutableReadSetHash(
-				ctx.cwd,
-				contract.scope.immutableReadPaths,
-			);
-			if (immutableAfterBaseline.hash !== immutableResult.hash) {
-				logEvent("baseline_immutable_drift", { before: immutableResult.hash, after: immutableAfterBaseline.hash });
-									return textDetails(`[ERROR] baseline benchmark mutated immutableReadPaths.\nBenchmark/read-only files changed during approve; fix the benchmark harness before locking the contract.`, { beforeHash: immutableResult.hash, afterHash: immutableAfterBaseline.hash, warnings: immutableAfterBaseline.warnings });
-			}
-
-			const postBaselineChangedFiles = getContractRelevantChangedFiles(ctx.cwd);
-			if (postBaselineChangedFiles.length > 0) {
-				logEvent("baseline_dirty_worktree", { changedFiles: postBaselineChangedFiles });
-									return textDetails(`[ERROR] baseline benchmark created contract-relevant dirty files.\n対象: ${postBaselineChangedFiles.join(", ")}\nFix the benchmark so approve leaves the candidate worktree clean.`, { changedFiles: postBaselineChangedFiles });
-			}
-
-			const baselineMetrics = baselineRuns.map((r) => r.metric);
-			const noise = computeBaselineNoise(baselineMetrics, contract.evaluation.benchmark.aggregate);
-			const gitCommit = getBaselineCommit(ctx.cwd) ?? "unknown";
-
-			const lock: LockFile = {
-				schemaVersion: "autoresearch-lock/v1",
-				contractId,
-				contractHash,
-				approvedAt: Date.now(),
-				approvedBy: "user",
-				baseline: {
-					gitCommit,
-					runs: baselineRuns,
-					aggregate: contract.evaluation.benchmark.aggregate,
-					primaryMetricValue: noise.aggregate,
-					noise,
-				},
-				environment: envFingerprint,
-			};
-
-			writeCurrentContract(ctx.cwd, contract);
-			writeLockFile(ctx.cwd, lock);
-
-			// Initialize in-memory state for contract mode
-			state.name = contract.objective.summary ?? state.name;
-			state.metricName = contract.evaluation.primaryMetric.name;
-			state.metricUnit = contract.evaluation.primaryMetric.unit ?? "";
-			state.direction = contract.evaluation.primaryMetric.direction;
-			state.bestMetric = null;
-			state.runCount = 0;
-
-			// Persist contract-mode state to state.json
-			try {
-				writeStateV2(ctx.cwd, {
-					...readStateV2(ctx.cwd),
-					currentPlanId: undefined,
-					currentPlanDir: undefined,
-					latestRunId: undefined,
-					bestRunId: undefined,
-					bestMetric: undefined,
-					runCount: 0,
-					currentContractHash: contractHash,
-				});
-			} catch { /* best effort */ }
-
-			logEvent("approve_completed", { baselineValue: noise.aggregate, noiseRange: noise.relativeRange, samples: noise.samples.length });
-
-			let text = `[OK] contract を承認し、baseline を測定しました\n`;
-			text += `\n### Baseline\n`;
-			text += `aggregate (${contract.evaluation.benchmark.aggregate}): ${noise.aggregate.toFixed(4)}\n`;
-			text += `samples: ${noise.samples.length}\n`;
-			text += `min: ${noise.min.toFixed(4)}\n`;
-			text += `max: ${noise.max.toFixed(4)}\n`;
-			text += `mean: ${noise.mean.toFixed(4)}\n`;
-			text += `stddev: ${noise.stddev.toFixed(4)}\n`;
-			text += `relativeRange: ${(noise.relativeRange * 100).toFixed(2)}%\n`;
-			text += `\n### Files\n`;
-			text += `contract: ${currentContractPath(ctx.cwd)}\n`;
-			text += `lock: ${currentLockPath(ctx.cwd)}\n`;
-			text += `\n### Acceptance\n`;
-			text += `mode: ${contract.acceptance.mode}\n`;
-			text += `minRelativeImprovement: ${(contract.acceptance.minRelativeImprovement * 100).toFixed(1)}%\n`;
-			if (contract.acceptance.requireImprovementAboveNoiseFloor) {
-				const effective = Math.max(contract.acceptance.minRelativeImprovement, noise.relativeRange);
-				text += `effective threshold (with noise floor): ${(effective * 100).toFixed(2)}%\n`;
-			}
-			if (validation.warnings.length > 0) {
-				text += `\n### Warnings\n`;
-				for (const w of validation.warnings) text += `- ${w}\n`;
-			}
-			if (immutableResult.warnings.length > 0) {
-				text += `\n### Immutable Read Set Warnings\n`;
-				for (const w of immutableResult.warnings) text += `- ${w}\n`;
-			}
-			text += `\nautoresearch_run_contract で実験を開始できます。`;
-
-			return textDetails(text, { contractPath: currentContractPath(ctx.cwd), lockPath: currentLockPath(ctx.cwd), baseline: noise, contractHash, gitCommit });
+			return executeApprove(store, params, signal, ctx, toolDeps);
 		},
 	});
 
-	// ---
-	// Tool: autoresearch_run_contract
-	// ---
+	// ─── Tool: autoresearch_run_contract ───────────────────────
 
 	pi.registerTool({
 		name: "autoresearch_run_contract",
@@ -2073,265 +547,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_tc, params, signal, _ou, ctx) {
-			const contract = readCurrentContract(ctx.cwd);
-			const lock = readLockFile(ctx.cwd);
-
-			if (!contract) {
-									return textResponse(`[ERROR] current contract が見つかりません。\n先に autoresearch_approve を実行してください。`);
-			}
-			if (!lock) {
-									return textResponse(`[ERROR] lock file が見つかりません。\n先に autoresearch_approve を実行してください。`);
-			}
-
-			const currentHash = computeContractHash(contract);
-			const logRunEvent = (event: string, details: Record<string, unknown> = {}): void =>
-				appendEvent(ctx.cwd, { timestamp: Date.now(), contractId: lock.contractId, contractHash: currentHash, event, details });
-			const contractHashMatches = currentHash === lock.contractHash;
-
-			if (!contractHashMatches) {
-				appendDecision(ctx.cwd, {
-					timestamp: Date.now(),
-					contractId: lock.contractId,
-					contractHash: currentHash,
-					decision: "pause",
-					reason: "contract hash mismatch",
-					metric: null,
-					reference: null,
-					details: { expected: lock.contractHash, actual: currentHash },
-				});
-									return textDetails(`[PAUSE] contract hash が lock と一致しません。\nexpected: ${lock.contractHash}\nactual: ${currentHash}\ncontract が承認後に変更されました。`, { decision: "pause" });
-			}
-
-			if (contract.scope.requireGit && !isGitRepo(ctx.cwd)) {
-									return textResponse(`[ERROR] git repo ではありません。`);
-			}
-
-			// Pre-check state (logged for diagnostics only)
-			const preChangedFiles = getChangedFiles(ctx.cwd);
-
-			logRunEvent("contract_run_started", { reason: params.reason, iterationLabel: params.iteration_label, preChangedFilesCount: preChangedFiles.length });
-
-			// --- Run checks ---
-			const checkResults = new Map<string, boolean>();
-			for (const check of contract.evaluation.checks) {
-				const checkCwd = resolveCwdInsideRepo(ctx.cwd, check.command.cwd);
-				const checkResult = await runArgvCommand(
-					{ argv: check.command.argv, cwd: checkCwd, env: check.command.env },
-					check.timeoutSeconds * 1000,
-					signal,
-				);
-				checkResults.set(check.name, checkResult.passed);
-			}
-
-			// --- Run benchmark repeats ---
-			const benchmarkCwd = resolveCwdInsideRepo(ctx.cwd, contract.evaluation.benchmark.command.cwd);
-			const measurements: number[] = [];
-			let benchmarkSucceeded = true;
-			let benchmarkTimedOut = false;
-
-			for (let i = 0; i < contract.evaluation.benchmark.repeats; i++) {
-				const result = await runArgvCommand(
-					{ argv: contract.evaluation.benchmark.command.argv, cwd: benchmarkCwd, env: contract.evaluation.benchmark.command.env },
-					contract.evaluation.benchmark.timeoutSeconds * 1000,
-					signal,
-				);
-
-				if (!result.passed) benchmarkSucceeded = false;
-				if (result.timedOut) benchmarkTimedOut = true;
-
-				const metricValue = resolvePrimaryMetricFromRun(contract.evaluation.primaryMetric, result);
-				if (metricValue !== null) measurements.push(metricValue);
-
-				logRunEvent("benchmark_run_completed", { runIndex: i, exitCode: result.exitCode, metric: metricValue, durationSeconds: result.durationSeconds, timedOut: result.timedOut });
-			}
-
-			// --- POST state: re-check changed files and immutable hash AFTER benchmark ---
-			// This catches mutations made by checks or benchmark scripts.
-			// Filter internal paths (.autoresearch/**, .pi/**) from changedFiles
-			// since these are audit artifacts, not candidate patches.
-			const changedFiles = filterInternalPaths(getChangedFiles(ctx.cwd));
-			const immutableResult = await computeImmutableReadSetHash(ctx.cwd, contract.scope.immutableReadPaths);
-			const immutableReadSetHashMatches = immutableResult.hash === lock.environment.immutableReadSetHash;
-
-			logRunEvent("post_state_captured", { postChangedFilesCount: changedFiles.length, immutableHashMatch: immutableReadSetHashMatches });
-
-			const aggregateMethod = contract.evaluation.benchmark.aggregate;
-			const candidateMetric = measurements.length > 0
-				? aggregateMeasurements(measurements, aggregateMethod)
-				: null;
-
-			const evaluatorInput: EvaluatorInput = {
-				contract,
-				lock,
-				bestMetric: state.bestMetric,
-				candidateMetric,
-				benchmarkSucceeded,
-				benchmarkTimedOut,
-				checkResults,
-				changedFiles,
-				immutableReadSetHashMatches,
-				contractHashMatches,
-				allMeasurements: measurements,
-				expectedMeasurements: contract.evaluation.benchmark.repeats,
-			};
-
-			const evaluatorResult = evaluateContract(evaluatorInput);
-
-			appendDecision(ctx.cwd, {
-				timestamp: Date.now(),
-				contractId: lock.contractId,
-				contractHash: currentHash,
-				decision: evaluatorResult.decision,
-				reason: evaluatorResult.reason,
-				metric: evaluatorResult.representativeMetric,
-				reference: evaluatorResult.reference,
-				details: { ...evaluatorResult.details, measurements, changedFiles, reason: params.reason, iterationLabel: params.iteration_label },
-			});
-
-			// --- Append to runs.jsonl and metrics.jsonl for audit ---
-			try {
-				ensureSessionDir(ctx.cwd);
-				const runSeq = nextRunSeq(ctx.cwd, state.sessionId);
-				const now = Date.now();
-				const postCommit = getGitShortHash(ctx.cwd);
-				appendToJsonl(runsLedgerPath(ctx.cwd, state.sessionId), {
-					schemaVersion: 1, runSeq,
-					piRunId: "contract-" + lock.contractId + "-" + runSeq,
-					externalRunId: null,
-					createdAt: now, startedAt: now, completedAt: now,
-					durationSeconds: 0,
-					command: JSON.stringify(contract.evaluation.benchmark.command.argv),
-					exitCode: evaluatorResult.decision === "keep" ? 0 : 1,
-					timedOut: benchmarkTimedOut,
-					signal: null,
-					gitCommit: postCommit,
-				} satisfies RunsLedgerEntry);
-				appendToJsonl(metricsLedgerPath(ctx.cwd, state.sessionId), {
-					schemaVersion: 1, runSeq,
-					piRunId: "contract-" + lock.contractId + "-" + runSeq,
-					externalRunId: null,
-					createdAt: now, startedAt: now, completedAt: now,
-					durationSeconds: 0,
-					command: JSON.stringify(contract.evaluation.benchmark.command.argv),
-					gitCommit: postCommit,
-					exitCode: evaluatorResult.decision === "keep" ? 0 : 1,
-					timedOut: benchmarkTimedOut,
-					primaryMetricName: contract.evaluation.primaryMetric.name,
-					primaryMetricValue: evaluatorResult.representativeMetric,
-					primaryMetricSource: "contract_evaluator",
-					metrics: measurements.length > 0 ? { [contract.evaluation.primaryMetric.name]: evaluatorResult.representativeMetric } : {},
-					status: evaluatorResult.decision,
-				} as unknown as Record<string, unknown>);
-			} catch { /* best effort */ }
-
-			// --- Also append to .autoresearch/runs.jsonl and .autoresearch/metrics.jsonl ---
-			try {
-				const now = Date.now();
-				appendContractRun(ctx.cwd, {
-					timestamp: now,
-					contractId: lock.contractId,
-					contractHash: currentHash,
-					iteration: state.runCount + 1,
-					decision: evaluatorResult.decision,
-					measurements,
-					representativeMetric: evaluatorResult.representativeMetric,
-					reference: evaluatorResult.reference,
-					changedFiles,
-					checkResults: Object.fromEntries(checkResults),
-					durationSeconds: 0,
-				});
-				appendContractMetric(ctx.cwd, {
-					timestamp: now,
-					contractId: lock.contractId,
-					contractHash: currentHash,
-					iteration: state.runCount + 1,
-					metricName: contract.evaluation.primaryMetric.name,
-					metricValue: evaluatorResult.representativeMetric,
-					allMeasurements: measurements,
-					aggregateMethod: contract.evaluation.benchmark.aggregate,
-					decision: evaluatorResult.decision,
-				});
-			} catch { /* best effort */ }
-
-			if (evaluatorResult.decision === "keep") {
-				const gr = gitAutoCommit(
-					ctx.cwd,
-				`[autoresearch] ${params.reason ?? "contract run"}\n\nDecision: keep\nMetric: ${evaluatorResult.representativeMetric}\nImprovement: ${evaluatorResult.improvement}\nRate: ${evaluatorResult.improvementRate}`,
-				);
-				if (gr.error) {
-					logRunEvent("decision_pause", { reason: "git commit failed", error: gr.error });
-											return textDetails(`[PAUSE] git commit に失敗しました: ${gr.error}`, { decision: "pause", error: gr.error });
-				}
-
-				state.runCount++;
-				// Sync direction from contract to ensure consistent best comparison
-				state.direction = contract.evaluation.primaryMetric.direction;
-				const updatedBest = candidateMetric !== null && isBestMetric(state.bestMetric, candidateMetric, state.direction);
-				if (updatedBest) {
-					state.bestMetric = candidateMetric;
-				}
-
-				// Persist bestMetric and runCount to .autoresearch/state.json for contract mode
-				// so that bestMetric survives process restarts.
-				try {
-					const s2 = readStateV2(ctx.cwd);
-					writeStateV2(ctx.cwd, {
-						...s2,
-						runCount: state.runCount,
-						currentContractHash: currentHash,
-						bestMetric: updatedBest
-							? { name: contract.evaluation.primaryMetric.name, value: candidateMetric!, direction: contract.evaluation.primaryMetric.direction }
-							: s2.bestMetric,
-					});
-				} catch { /* best effort: in-memory state is still valid for this session */ }
-
-				logRunEvent("decision_keep", { metric: evaluatorResult.representativeMetric, commit: gr.commit });
-				updateWidget(ctx);
-
-				let text = `[KEEP] 改善が承認されました\n`;
-				text += `metric: ${evaluatorResult.representativeMetric}\n`;
-				text += `reference: ${evaluatorResult.reference}\n`;
-				text += `improvement: ${evaluatorResult.improvement}\n`;
-				text += `rate: ${((evaluatorResult.improvementRate ?? 0) * 100).toFixed(2)}%\n`;
-				text += `reason: ${evaluatorResult.reason}\n`;
-				if (gr.committed) text += `commit: ${gr.commit}\n`;
-				text += `\n次の候補を実装して、再度 autoresearch_run_contract を実行してください。`;
-				return textDetails(text, { decision: "keep", metric: evaluatorResult.representativeMetric, reference: evaluatorResult.reference, improvement: evaluatorResult.improvement, improvementRate: evaluatorResult.improvementRate, commit: gr.commit });
-			} else if (evaluatorResult.decision === "discard") {
-				const rv = gitAutoRevert(ctx.cwd);
-				if (!rv.reverted) {
-					logRunEvent("revert_failed", { error: rv.error });
-											return textDetails(`[PAUSE] revert に失敗しました: ${rv.error}\n手動介入が必要です。`, { decision: "pause", error: rv.error });
-				}
-
-				state.runCount++;
-
-				// Persist runCount and currentContractHash for contract mode
-				try {
-					const s2 = readStateV2(ctx.cwd);
-					writeStateV2(ctx.cwd, {
-						...s2,
-						runCount: state.runCount,
-						currentContractHash: currentHash,
-					});
-				} catch { /* best effort */ }
-
-				logRunEvent("decision_discard", { metric: evaluatorResult.representativeMetric, reason: evaluatorResult.reason });
-				updateWidget(ctx);
-
-				let text = `[DISCARD] 改善不十分のため棄却しました\n`;
-				text += `metric: ${evaluatorResult.representativeMetric}\n`;
-				text += `reference: ${evaluatorResult.reference}\n`;
-				text += `reason: ${evaluatorResult.reason}\n`;
-				text += `\nrevert 完了。次の候補を実装して、再度 autoresearch_run_contract を実行してください。`;
-				return textDetails(text, { decision: "discard", metric: evaluatorResult.representativeMetric, reference: evaluatorResult.reference, reason: evaluatorResult.reason });
-			} else {
-				logRunEvent("decision_pause", { reason: evaluatorResult.reason });
-				let text = `[PAUSE] 実験を一時停止しました\n`;
-				text += `reason: ${evaluatorResult.reason}\n`;
-				text += `\n変更は working tree に残っています。問題を解決してから再開してください。`;
-				return textDetails(text, { decision: "pause", reason: evaluatorResult.reason });
-			}
+			return executeRunContract(store, params, signal, ctx, toolDeps);
 		},
 	});
 }
