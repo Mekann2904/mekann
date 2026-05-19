@@ -121,11 +121,20 @@
 ### E2: setupLogStreams ヘルパー統合 (KEEP)
 - maintenance_score: 22890 → 22815 (75点改善)
 - duplication_score: 772 → 764
-- 次のステップ: runCommand と runArgvCommand の他の共通部分（sp/spLine/spChunk, killGroup, finish）も統合
+
+### E3: runSpawn統合 (KEEP) — fc3451c
+- maintenance_score: 22815 → 21905 (910点改善)
+- duplication_score 大幅改善
+
+### E4: aggregateMeasurementsFromValues→aggregate統合 (KEEP) — 1a9ecc8
+- maintenance_score: 21905 → 21795 (110点改善)
+- index.ts: 2360→2337行、review_risk: 50→49
+- 重複する集約ロジックをcontractEvaluator.tsのexportに統合
 
 ## 知見
 
 1. **小規模なファイル抽出は逆効果**: ファイル数が増加すると review_risk が増え、max_file_loc の減少を相殺する
 2. **内部重複の削減は有効**: 同じファイル内の重複コードをヘルパーに統合すると duplication_score が改善する
-3. **runCommand/runArgvCommand は最大の重複源**: ストリームセットアップ、spLine/spChunk、killGroup、finish がほぼ同一
-4. **評価スクリプトの tests_passed 出力にバグ**: "failed" が grep できない場合に false になる可能性があるが、実際のテストは通過している
+3. **同一ロジックのimport統合は有効**: 重複関数を一方からexportしてimportする方式は、ファイル数を増やさずに行数を減らせる
+4. **contractV1.tsにもmatchesPattern重複あり**: contractEvaluator.tsとほぼ同一のglobマッチングが2箇所にある
+5. **評価スクリプトの tests_passed 出力にバグ**: "failed" が grep できない場合に false になる可能性があるが、実際のテストは通過している

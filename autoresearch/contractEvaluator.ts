@@ -7,6 +7,7 @@
 
 import type { AutoresearchContractV1, BaselineNoiseSummary, LockFile } from "./contractV1.js";
 import { validateWritePaths, matchesAnyPattern } from "./contractV1.js";
+import { aggregateMeasurements } from "./acceptance.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -195,7 +196,7 @@ export function evaluateContract(input: EvaluatorInput): EvaluatorResult {
 	// 7. Compute aggregate metric. Never coerce an empty measurement set to 0:
 	// even when rejectIfMetricMissing=false, an absent metric is not a valid score.
 	const aggregateMethod = contract.evaluation.benchmark.aggregate;
-	const representative = aggregate(input.allMeasurements, aggregateMethod);
+	const representative = aggregateMeasurements(input.allMeasurements, aggregateMethod);
 	if (representative === null) {
 		return {
 			decision: contract.failurePolicy.onMetricMissing,
@@ -270,28 +271,4 @@ export function evaluateContract(input: EvaluatorInput): EvaluatorResult {
 		reference,
 		details: { requiredImprovement, aggregateMethod },
 	};
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-export function aggregate(values: number[], method: "median" | "mean" | "min" | "max"): number | null {
-	if (values.length === 0) return null;
-	if (values.length === 1) return values[0];
-	const sorted = [...values].sort((a, b) => a - b);
-	switch (method) {
-		case "median": {
-			const mid = Math.floor(sorted.length / 2);
-			return sorted.length % 2 === 0
-				? (sorted[mid - 1] + sorted[mid]) / 2
-				: sorted[mid];
-		}
-		case "mean":
-			return values.reduce((s, v) => s + v, 0) / values.length;
-		case "min":
-			return sorted[0];
-		case "max":
-			return sorted[sorted.length - 1];
-	}
 }

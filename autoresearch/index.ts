@@ -64,7 +64,7 @@ import {
 	type ContractEvent,
 	type DecisionEntry,
 } from "./contractV1.js";
-import { evaluateContract, aggregate, type EvaluatorInput, type Decision } from "./contractEvaluator.js";
+import { evaluateContract, type EvaluatorInput, type Decision } from "./contractEvaluator.js";
 import {
 	contractFilePath,
 	contractExists,
@@ -88,7 +88,7 @@ import {
 	type ChecksMode,
 	type AggregateMethod,
 } from "./contract.js";
-import { evaluateAcceptance, type AcceptanceInput } from "./acceptance.js";
+import { evaluateAcceptance, aggregateMeasurements, type AcceptanceInput } from "./acceptance.js";
 import {
 	runCommand,
 	runArgvCommand,
@@ -2157,7 +2157,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 			const aggregateMethod = contract.evaluation.benchmark.aggregate;
 			const candidateMetric = measurements.length > 0
-				? aggregate(measurements, aggregateMethod)
+				? aggregateMeasurements(measurements, aggregateMethod)
 				: null;
 
 			const evaluatorInput: EvaluatorInput = {
