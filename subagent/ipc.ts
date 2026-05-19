@@ -1,5 +1,6 @@
 import net from "node:net";
-import { unlink } from "node:fs/promises";
+import { mkdir, unlink } from "node:fs/promises";
+import path from "node:path";
 
 export type ParentToChild =
   | { type: "followup"; id: string; message: string }
@@ -46,6 +47,7 @@ export class SubagentHub {
   constructor(public readonly socketPath: string) {}
   async start(): Promise<void> {
     unsupportedOnWindows();
+    await mkdir(path.dirname(this.socketPath), { recursive: true });
     await unlink(this.socketPath).catch((e: any) => { if (e?.code !== "ENOENT") throw e; });
     this.server = net.createServer((sock) => {
       let agentId: string | undefined;

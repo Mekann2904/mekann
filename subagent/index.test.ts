@@ -1032,15 +1032,16 @@ describe("extension entry point", () => {
     expect(names).toContain("close_agent");
   });
 
-  it("registers 3 commands", async () => {
+  it("registers commands", async () => {
     const mock = createMockApi();
     await loadExtension(mock);
     expect(Object.keys(mock._commands)).toContain("agents");
     expect(Object.keys(mock._commands)).toContain("wait-agent");
     expect(Object.keys(mock._commands)).toContain("close-agent");
+    expect(Object.keys(mock._commands)).toContain("focus-agent");
   });
 
-  it("registers 4 flags", async () => {
+  it("registers flags", async () => {
     const mock = createMockApi();
     await loadExtension(mock);
     const flagNames = mock._registeredFlags.map((f) => f.name);
@@ -1048,6 +1049,9 @@ describe("extension entry point", () => {
     expect(flagNames).toContain("subagent-max-depth");
     expect(flagNames).toContain("subagent-default-wait-timeout-ms");
     expect(flagNames).toContain("subagent-min-wait-timeout-ms");
+    expect(flagNames).toContain("subagent-display");
+    expect(flagNames).toContain("subagent-pi-command");
+    expect(flagNames).toContain("subagent-extension-path");
   });
 
   it("registers session_start and session_shutdown hooks", async () => {
@@ -2683,6 +2687,9 @@ describe("extension tool execute handlers", () => {
     );
     expect(r1.details.status).toBe("pending_init");
 
+    const closeTool = mock._registeredTools.find((t: any) => t.name === "close_agent")!;
+    await closeTool.execute("close1", { target: "/root/t1" }, undefined, undefined, baseCtx);
+
     // fork_turns = "none"
     const r2 = await spawnTool.execute(
       "id2",
@@ -2690,6 +2697,7 @@ describe("extension tool execute handlers", () => {
       undefined, undefined, baseCtx,
     );
     expect(r2.details.status).toBe("pending_init");
+    await closeTool.execute("close2", { target: "/root/t2" }, undefined, undefined, baseCtx);
 
     // fork_turns = NaN-like → should become 0
     const r3 = await spawnTool.execute(
@@ -3247,16 +3255,12 @@ describe("index.ts parseForkTurns branches", () => {
     await spawnTool.execute(
       "id1", { task_name: "parent/child1", message: "test" }, undefined, undefined, baseCtx,
     );
-    await spawnTool.execute(
-      "id2", { task_name: "parent/child2", message: "test" }, undefined, undefined, baseCtx,
-    );
 
     const closeTool = mock._registeredTools.find((t: any) => t.name === "close_agent")!;
     const result = await closeTool.execute(
       "id1", { target: "/root/parent" }, undefined, undefined, baseCtx,
     );
     expect(result.details.closed).toContain("/root/parent/child1");
-    expect(result.details.closed).toContain("/root/parent/child2");
     expect(result.details.closed).toContain("/root/parent");
   });
 
@@ -4015,14 +4019,11 @@ describe("AgentControl branch coverage", () => {
     control.registry.registerAgent(makeMeta("/root/parent"), r1);
     const r2 = control.registry.reserveSpawnSlot("/root/parent/child");
     control.registry.registerAgent(makeMeta("/root/parent/child"), r2);
-    const r3 = control.registry.reserveSpawnSlot("/root/parent/child/grandchild");
-    control.registry.registerAgent(makeMeta("/root/parent/child/grandchild"), r3);
 
     const result = await control.close({ target: "/root/parent" }, baseCtx);
-    // Deepest first
-    expect(result.closed[0]).toBe("/root/parent/child/grandchild");
-    expect(result.closed[1]).toBe("/root/parent/child");
-    expect(result.closed[2]).toBe("/root/parent");
+    // Descendant first
+    expect(result.closed[0]).toBe("/root/parent/child");
+    expect(result.closed[1]).toBe("/root/parent");
   });
 
   it("closeSingle: works when agent was already deleted from registry", async () => {

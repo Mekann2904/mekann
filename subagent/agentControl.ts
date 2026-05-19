@@ -37,13 +37,18 @@ import type { AgentDisplayRef, AgentDisplayResult, AgentRuntime } from "./types.
 
 // ─── Default config ──────────────────────────────────────────────
 
-const DEFAULT_MAX_AGENTS = 4;
+// Includes the root agent. Therefore 3 open agents = root + max 2 subagents.
+const DEFAULT_MAX_AGENTS = 3;
+const HARD_MAX_OPEN_AGENTS = 3;
 const DEFAULT_MAX_DEPTH = 2;
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
 const MAX_WAIT_TIMEOUT_MS = 600_000;
 const MIN_WAIT_TIMEOUT_MS = 1_000;
 
 let agentIdCounter = 0;
+
+const processExternalPiSlots = new Set<string>();
+const MAX_EXTERNAL_PI_SUBAGENTS = 2;
 
 function nextAgentId(): string {
   return `sub_${++agentIdCounter}_${Date.now().toString(36)}`;
@@ -57,6 +62,7 @@ export interface AgentControlOptions {
   kitty?: KittyController;
   hubFactory?: (socketPath: string) => SubagentHub;
   piCommand?: string;
+  extensionPath?: string;
   helloTimeoutMs?: number;
 }
 
@@ -78,6 +84,7 @@ export class AgentControl {
   private kitty: KittyController;
   private hubFactory: (socketPath: string) => SubagentHub;
   private piCommand: string;
+  private extensionPath?: string;
   private helloTimeoutMs: number;
 
   constructor(
@@ -90,7 +97,7 @@ export class AgentControl {
   ) {
     this.pi = pi;
     this.registry = new AgentRegistry(
-      maxAgents ?? DEFAULT_MAX_AGENTS,
+      Math.min(maxAgents ?? DEFAULT_MAX_AGENTS, HARD_MAX_OPEN_AGENTS),
       maxDepth ?? DEFAULT_MAX_DEPTH,
     );
     this.mailbox = new Mailbox();
@@ -101,6 +108,7 @@ export class AgentControl {
     this.kitty = options.kitty ?? new KittyController();
     this.hubFactory = options.hubFactory ?? ((socketPath) => new SubagentHub(socketPath));
     this.piCommand = options.piCommand ?? "pi";
+    this.extensionPath = options.extensionPath;
     this.helloTimeoutMs = options.helloTimeoutMs ?? 10_000;
     // DEBUG: confirm display mode
     console.error(`[subagent-ext] AgentControl init: displayMode=${this.displayMode}, logDir=${this.logDir}`);
@@ -370,9 +378,14 @@ export class AgentControl {
   }
 
   private async spawnExternalPi(params: SpawnParams, ctx: ExtensionContext, callerPath: string, canonicalPath: string, depth: number, reservation: any, agentId: string): Promise<SpawnResult> {
+    if (processExternalPiSlots.size >= MAX_EXTERNAL_PI_SUBAGENTS) {
+      throw new Error(`Maximum number of external Pi subagents reached (${MAX_EXTERNAL_PI_SUBAGENTS}). Close an existing agent before spawning another.`);
+    }
+    processExternalPiSlots.add(agentId);
     const now = Date.now();
     const socketPath = path.join(this.logDir, `${agentId}.sock`);
-    const display: AgentDisplayRef = { kind: "kitty-pi", status: "opening", agentId, title: `pi subagent ${canonicalPath}`, cwd: ctx.cwd, socketPath };
+    const logPath = path.join(this.logDir, `${agentId}.kitty-pi.log`);
+    const display: AgentDisplayRef = { kind: "kitty-pi", status: "opening", agentId, title: `pi subagent ${canonicalPath}`, cwd: ctx.cwd, socketPath, logPath };
     const metadata: AgentMetadata = {
       agentId, sessionId: `external:${agentId}`, parentAgentId: callerPath === ROOT_PATH ? "root" : undefined, parentSessionId: "root",
       agentPath: canonicalPath, nickname: params.nickname, role: params.role, status: "pending_init", lastTaskMessage: params.message,
@@ -385,7 +398,7 @@ export class AgentControl {
     await hub.start();
     this.runtimes.set(canonicalPath, { mode: "external_pi", agentId, agentPath: canonicalPath, socketPath, display, connected: false });
     try {
-      const opened = await this.kitty.launchPiWindow({ agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: params.message, title: display.title, piCommand: this.piCommand });
+      const opened = await this.kitty.launchPiWindow({ agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: params.message, logPath, title: display.title, piCommand: this.piCommand, extensionPath: this.extensionPath });
       this.registry.updateAgent(canonicalPath, { display: opened });
       const rt = this.runtimes.get(canonicalPath); if (rt?.mode === "external_pi") rt.display = opened;
       const hello = await hub.waitForHello(agentId, this.helloTimeoutMs);
@@ -396,7 +409,12 @@ export class AgentControl {
       const error = err instanceof Error ? err.message : String(err);
       const failed = { ...this.registry.get(canonicalPath)?.display ?? display, status: "failed" as const, error };
       this.registry.updateStatus(canonicalPath, "errored", { display: failed });
+      this.registry.close(canonicalPath, "errored");
       try { await this.kitty.close(failed); } catch {}
+      try { await hub.stop(); } catch {}
+      this.hubs.delete(agentId);
+      this.runtimes.delete(canonicalPath);
+      processExternalPiSlots.delete(agentId);
       throw err;
     }
     return { agent_id: agentId, task_name: canonicalPath, status: this.registry.get(canonicalPath)?.status ?? "running", display: this.displayResult(this.registry.get(canonicalPath)?.display) };
@@ -607,6 +625,7 @@ export class AgentControl {
       try { await this.hubs.get(rt.agentId)?.send(rt.agentId, { type: "shutdown", id: `shutdown_${Date.now()}` }); } catch { /* best-effort */ }
       try { await this.hubs.get(rt.agentId)?.stop(); } catch { /* best-effort */ }
       this.hubs.delete(rt.agentId);
+      processExternalPiSlots.delete(rt.agentId);
       this.runtimes.delete(agentPath);
     } else {
       await this.abortSession(agentPath);

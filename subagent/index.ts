@@ -20,10 +20,12 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { appendFileSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { AgentControl } from "./agentControl.js";
 import { SubagentClient } from "./ipc.js";
 import { KittyController } from "./kittyControl.js";
 import { formatAgentList, formatWaitResult } from "./types.js";
+import { extractTextFromContent } from "./contextFork.js";
 import type { ForkTurns } from "./contextFork.js";
 
 // ─── Tool parameter schemas ──────────────────────────────────────
@@ -115,7 +117,11 @@ const CloseAgentSchema = Type.Object({
 
 export default function subagentExtension(pi: ExtensionAPI): void {
   if (process.env.PI_SUBAGENT_ROLE === "child") {
-    startChildMode(pi);
+    const g = globalThis as typeof globalThis & { __piSubagentChildStarted?: boolean };
+    if (!g.__piSubagentChildStarted) {
+      g.__piSubagentChildStarted = true;
+      startChildMode(pi);
+    }
     return;
   }
 
@@ -124,9 +130,9 @@ export default function subagentExtension(pi: ExtensionAPI): void {
   // ─── Flags ────────────────────────────────────────────────────
 
   pi.registerFlag("subagent-max-agents", {
-    description: "Maximum number of concurrent subagents (default: 4)",
+    description: "Maximum number of concurrent subagents. Hard-capped at 2 (default: 2)",
     type: "string",
-    default: "4",
+    default: "2",
   });
 
   pi.registerFlag("subagent-max-depth", {
@@ -166,14 +172,21 @@ export default function subagentExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerFlag("subagent-pi-command", {
-    description: "command used to start child Pi process in kitty-pi mode",
+    description: "shell command used to start child Pi process in kitty-pi mode",
     type: "string",
     default: "pi",
+  });
+
+  pi.registerFlag("subagent-extension-path", {
+    description: "extension path passed to child Pi with -e in kitty-pi mode (empty disables explicit loading)",
+    type: "string",
+    default: fileURLToPath(import.meta.url),
   });
 
   // ─── Helper: ensure control is initialized ────────────────────
 
   function readSettingsFile(): Record<string, unknown> {
+    if (process.env.VITEST || process.env.NODE_ENV === "test") return {};
     const home = process.env.HOME;
     const cwd = process.cwd();
     const paths = [
@@ -189,38 +202,45 @@ export default function subagentExtension(pi: ExtensionAPI): void {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function getFlagOrSetting<T = any>(flagName: string, settingsKey: string): T | undefined {
-    // 1) CLI flag (highest priority)
-    const flagVal = pi.getFlag(flagName);
-    if (flagVal !== undefined && flagVal !== null) return flagVal as T;
-    // 2) settings.json "subagent" section
+  function getFlagOrSetting<T = any>(flagName: string, settingsKey: string, defaultValue?: T): T | undefined {
+    const flagVal = pi.getFlag(flagName) as T | undefined;
     try {
       const settings = readSettingsFile();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sub = (settings as any).subagent;
-      if (sub && sub[settingsKey] !== undefined) return sub[settingsKey] as T;
+      if (sub && sub[settingsKey] !== undefined) {
+        // pi.getFlag() returns registered defaults too. Treat the default value
+        // as "not explicitly set" so settings.json can actually configure the
+        // extension. A non-default CLI flag still wins.
+        if (flagVal === undefined || flagVal === null || flagVal === defaultValue) return sub[settingsKey] as T;
+      }
     } catch { /* ignore */ }
-    return undefined;
+    if (flagVal !== undefined && flagVal !== null) return flagVal;
+    return defaultValue;
   }
 
   function ensureControl(): AgentControl {
     if (!control) {
-      const maxAgents = Number(getFlagOrSetting("subagent-max-agents", "max-agents")) || 4;
-      const maxDepth = Number(getFlagOrSetting("subagent-max-depth", "max-depth")) || 2;
-      const defaultWait = Number(getFlagOrSetting("subagent-default-wait-timeout-ms", "default-wait-timeout-ms")) || 30000;
-      const minWait = Number(getFlagOrSetting("subagent-min-wait-timeout-ms", "min-wait-timeout-ms")) || 1000;
-      const rawDisplayFlag = getFlagOrSetting<string>("subagent-display", "display");
+      // AgentRegistry counts the root agent too, so root + max 2 subagents = 3 open agents.
+      const maxSubagents = Math.min(Math.max(Number(getFlagOrSetting("subagent-max-agents", "max-agents", "2")) || 2, 0), 2);
+      const maxAgents = maxSubagents + 1;
+      const maxDepth = Number(getFlagOrSetting("subagent-max-depth", "max-depth", "2")) || 2;
+      const defaultWait = Number(getFlagOrSetting("subagent-default-wait-timeout-ms", "default-wait-timeout-ms", "30000")) || 30000;
+      const minWait = Number(getFlagOrSetting("subagent-min-wait-timeout-ms", "min-wait-timeout-ms", "1000")) || 1000;
+      const rawDisplayFlag = getFlagOrSetting<string>("subagent-display", "display", "none");
       const displayFlag = String(rawDisplayFlag ?? "none");
       const displayMode = displayFlag === "kitty-log" || displayFlag === "kitty-pi" ? displayFlag : "none";
       appendFileSync("/tmp/pi-subagent-debug.log", `ensureControl: rawDisplayFlag=${JSON.stringify(rawDisplayFlag)} displayFlag=${displayFlag} displayMode=${displayMode}\n`);
-      const logDirFlag = String(getFlagOrSetting<string>("subagent-log-dir", "log-dir") ?? "").trim();
-      const kittenBin = String(getFlagOrSetting<string>("subagent-kitten-bin", "kitten-bin") ?? "kitten") || "kitten";
-      const piCommand = String(getFlagOrSetting<string>("subagent-pi-command", "pi-command") ?? "pi") || "pi";
+      const logDirFlag = String(getFlagOrSetting<string>("subagent-log-dir", "log-dir", "") ?? "").trim();
+      const kittenBin = String(getFlagOrSetting<string>("subagent-kitten-bin", "kitten-bin", "kitten") ?? "kitten") || "kitten";
+      const piCommand = String(getFlagOrSetting<string>("subagent-pi-command", "pi-command", "pi") ?? "pi") || "pi";
+      const extensionPath = String(getFlagOrSetting<string>("subagent-extension-path", "extension-path", fileURLToPath(import.meta.url)) ?? fileURLToPath(import.meta.url)).trim();
       control = new AgentControl(pi, maxAgents, maxDepth, defaultWait, minWait, {
         displayMode,
         logDir: logDirFlag || undefined,
         kitty: new KittyController(kittenBin),
         piCommand,
+        extensionPath: extensionPath || undefined,
       });
     }
     return control;
@@ -465,7 +485,7 @@ export default function subagentExtension(pi: ExtensionAPI): void {
     await shutdownControl();
   });
 }
-async function startChildMode(_pi: ExtensionAPI): Promise<void> {
+async function startChildMode(pi: ExtensionAPI): Promise<void> {
   const agentId = process.env.PI_SUBAGENT_ID;
   const agentPath = process.env.PI_SUBAGENT_PATH;
   const socketPath = process.env.PI_SUBAGENT_PARENT_SOCKET;
@@ -475,29 +495,82 @@ async function startChildMode(_pi: ExtensionAPI): Promise<void> {
     process.exitCode = 1;
     return;
   }
+
   const client = new SubagentClient(socketPath, agentId, agentPath);
+  let connected = false;
+  let currentCtx: ExtensionContext | undefined;
+  let initialSent = false;
+
+  async function safeSend(message: Parameters<SubagentClient["send"]>[0]): Promise<void> {
+    if (!connected) return;
+    try { await client.send(message); } catch { /* parent may have gone away */ }
+  }
+
   try {
     await client.connect();
-    // Current pi extension runtime does not expose a documented current TUI
-    // session injection API here. Intentionally do NOT fall back to
-    // kitten @ send-text: terminal input automation is not an agent control API.
-    const capabilities = ["hello", "status", "shutdown"];
-    await client.send({ type: "hello", agentId, agentPath, pid: process.pid, cwd: process.cwd(), capabilities });
-    await client.send({ type: "status", agentId, status: "running" });
-    if (initialMessage) {
-      await client.send({ type: "log", agentId, line: `[initial message available in env; injection unsupported] ${initialMessage.slice(0, 200)}` });
-    }
-    client.onMessage((msg) => {
-      if (msg.type === "shutdown") {
-        void client.send({ type: "status", agentId, status: "shutdown" }).finally(() => client.close());
-      } else if (msg.type === "followup" || msg.type === "message") {
-        void client.send({ type: "error", id: msg.id, agentId, message: `${msg.type} injection is unsupported by this Pi extension runtime; TODO: implement pi-subagent-runner/current-session API integration.` });
-      } else if (msg.type === "interrupt") {
-        void client.send({ type: "error", id: msg.id, agentId, message: "interrupt is unsupported by this child runtime." });
-      }
-    });
+    connected = true;
   } catch (err) {
     console.error(`subagent child IPC error: ${err instanceof Error ? err.message : String(err)}`);
     process.exitCode = 1;
+    return;
   }
+
+  client.onMessage((msg) => {
+    if (msg.type === "shutdown") {
+      void safeSend({ type: "status", agentId, status: "shutdown" })
+        .finally(() => client.close())
+        .finally(() => currentCtx?.shutdown?.());
+      return;
+    }
+    if (msg.type === "message") {
+      pi.sendMessage({
+        customType: "subagent_message",
+        content: `[Message from ${msg.fromAgentPath}]: ${msg.message}`,
+        display: true,
+      }, { deliverAs: "nextTurn", triggerTurn: false });
+      return;
+    }
+    if (msg.type === "followup") {
+      const idle = currentCtx?.isIdle?.() ?? true;
+      pi.sendUserMessage(`[Follow-up from parent]: ${msg.message}`, idle ? undefined : { deliverAs: "followUp" });
+      void safeSend({ type: "status", agentId, status: "running" });
+      return;
+    }
+    if (msg.type === "interrupt") {
+      try { currentCtx?.abort?.(); }
+      catch (err) { void safeSend({ type: "error", id: msg.id, agentId, message: err instanceof Error ? err.message : String(err) }); }
+    }
+  });
+
+  pi.on("session_start", async (_event, ctx) => {
+    currentCtx = ctx;
+    const capabilities = ["hello", "status", "shutdown", "message", "followup", "interrupt"];
+    await safeSend({ type: "hello", agentId, agentPath, pid: process.pid, cwd: ctx.cwd, capabilities });
+    await safeSend({ type: "status", agentId, status: "running" });
+    if (initialMessage && !initialSent) {
+      initialSent = true;
+      queueMicrotask(() => {
+        try { pi.sendUserMessage(initialMessage); }
+        catch (err) { void safeSend({ type: "error", agentId, message: `initial prompt failed: ${err instanceof Error ? err.message : String(err)}` }); }
+      });
+    }
+  });
+
+  pi.on("agent_start", async () => {
+    await safeSend({ type: "status", agentId, status: "running" });
+  });
+
+  pi.on("agent_end", async (event) => {
+    const msgs = (event as any).messages as Array<{ role: string; content: unknown }> | undefined;
+    const lastAssistant = msgs?.filter((m) => m.role === "assistant").pop();
+    const finalText = lastAssistant ? extractTextFromContent(lastAssistant.content as any) : undefined;
+    await safeSend({ type: "status", agentId, status: "completed" });
+    await safeSend({ type: "final", agentId, status: "completed", message: finalText ?? "(agent completed)" });
+  });
+
+  pi.on("session_shutdown", async () => {
+    await safeSend({ type: "status", agentId, status: "shutdown" });
+    await client.close();
+    connected = false;
+  });
 }

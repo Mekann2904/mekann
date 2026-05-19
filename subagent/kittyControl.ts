@@ -20,8 +20,14 @@ export interface LaunchPiWindowParams {
   cwd: string;
   socketPath: string;
   initialMessage: string;
+  logPath?: string;
   title?: string;
   piCommand?: string;
+  extensionPath?: string;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 export class KittyController {
@@ -56,6 +62,34 @@ export class KittyController {
 
   async launchPiWindow(params: LaunchPiWindowParams): Promise<AgentDisplayRef> {
     const title = params.title ?? `pi subagent ${params.agentPath}`;
+    const piCommand = (params.piCommand ?? "pi").trim() || "pi";
+    const extensionArgs = params.extensionPath ? ` -e ${shellQuote(params.extensionPath)}` : "";
+    const logPath = params.logPath;
+    if (logPath) {
+      await mkdir(path.dirname(logPath), { recursive: true });
+      await writeFile(logPath, "", { flag: "a" });
+    }
+    const logFn = logPath ? `log(){ printf '%s\\n' "$*" >> ${shellQuote(logPath)}; }` : `log(){ :; }`;
+    const script = [
+      logFn,
+      `log ${shellQuote(`[launch] ${new Date().toISOString()} agent=${params.agentId} path=${params.agentPath}`)}`,
+      `export PI_SUBAGENT_ROLE=child`,
+      `export PI_SUBAGENT_ID=${shellQuote(params.agentId)}`,
+      `export PI_SUBAGENT_PATH=${shellQuote(params.agentPath)}`,
+      `export PI_SUBAGENT_PARENT_SOCKET=${shellQuote(params.socketPath)}`,
+      `export PI_SUBAGENT_INITIAL_MESSAGE=${shellQuote(params.initialMessage)}`,
+      // Force the child pi shebang (/usr/bin/env node) to resolve to the
+      // same Node.js runtime as the parent pi process. Without this, a kitty
+      // shell can pick an older system/nvm Node and crash inside undici.
+      `export PATH=${shellQuote(path.dirname(process.execPath))}:$PATH`,
+      `log ${shellQuote("[launch] node: ")}$(command -v node) $(node -v 2>/dev/null || true)`,
+      `log ${shellQuote("[launch] command: " + piCommand + extensionArgs)}`,
+      `${piCommand}${extensionArgs}`,
+      `rc=$?`,
+      `log "[exit] pi exited with code $rc"`,
+      `printf '\\n[pi subagent exited with code %s — press Ctrl-D or close this window]\\n' "$rc"`,
+      'exec "${SHELL:-sh}" -l',
+    ].join("; ");
     const { stdout } = await execFile(this.kittenBin, [
       "@", "launch",
       "--type=os-window",
@@ -66,16 +100,10 @@ export class KittyController {
       "--var", `PI_SUBAGENT_PATH=${params.agentPath}`,
       "--copy-env",
       "--allow-remote-control",
-      "env",
-      "PI_SUBAGENT_ROLE=child",
-      `PI_SUBAGENT_ID=${params.agentId}`,
-      `PI_SUBAGENT_PATH=${params.agentPath}`,
-      `PI_SUBAGENT_PARENT_SOCKET=${params.socketPath}`,
-      `PI_SUBAGENT_INITIAL_MESSAGE=${params.initialMessage}`,
-      params.piCommand ?? "pi",
+      "sh", "-lc", script,
     ]);
     const windowId = stdout.trim() || undefined;
-    return { kind: "kitty-pi", status: "open", windowId, agentId: params.agentId, title, cwd: params.cwd, socketPath: params.socketPath };
+    return { kind: "kitty-pi", status: "open", windowId, agentId: params.agentId, title, cwd: params.cwd, socketPath: params.socketPath, logPath };
   }
 
   async appendLog(display: AgentDisplayRef, line: string): Promise<void> {
