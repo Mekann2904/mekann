@@ -350,19 +350,15 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				state.metricUnit = pm.unit ?? state.metricUnit;
 				state.name = contractV1.objective.summary ?? state.name;
 
-				// Restore bestMetric only when contract hash matches AND persisted hash matches
-				if (s2.bestMetric && contractV1Lock) {
+				// Restore bestMetric and runCount only when contract hash matches
+				if (contractV1Lock) {
 					const currentHash = computeContractHash(contractV1);
-					if (currentHash === contractV1Lock.contractHash && s2.currentContractHash === currentHash) {
+					const hashMatch = currentHash === contractV1Lock.contractHash && s2.currentContractHash === currentHash;
+					if (hashMatch && s2.bestMetric) {
 						state.bestMetric = s2.bestMetric.value;
 						state.direction = s2.bestMetric.direction ?? state.direction;
 					}
-				}
-
-				// Restore runCount only when contract hash matches AND persisted hash matches
-				if (s2.runCount !== undefined && contractV1Lock) {
-					const currentHash = computeContractHash(contractV1);
-					if (currentHash === contractV1Lock.contractHash && s2.currentContractHash === currentHash) {
+					if (hashMatch && s2.runCount !== undefined) {
 						state.runCount = s2.runCount;
 					}
 				}
