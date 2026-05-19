@@ -422,10 +422,39 @@ export class AgentControl {
 
   private handleChildMessage(callerPath: string, agentPath: string, msg: ChildToParent): void {
     const agent = this.registry.get(agentPath); if (!agent) return;
-    if (msg.type === "status") this.registry.updateStatus(agentPath, msg.status);
-    else if (msg.type === "final") { this.registry.updateStatus(agentPath, msg.status); this.enqueueToMailbox(msg.agentId, agentPath, callerPath, msg.message, "final_result"); this.mailbox.appendEvent({ type: "agent_final_message", ...this.evBase(msg.agentId, agentPath), parentAgentId: callerPath === ROOT_PATH ? undefined : callerPath, message: msg.message, status: msg.status }); }
-    else if (msg.type === "error") { this.registry.updateStatus(agentPath, "errored"); this.enqueueToMailbox(msg.agentId ?? agent.agentId, agentPath, callerPath, `Agent error: ${msg.message}`, "final_result"); }
-    else if (msg.type === "log") this.logDisplay(agent.display, msg.line);
+    if (msg.type === "status") {
+      this.registry.updateStatus(agentPath, msg.status);
+    } else if (msg.type === "final") {
+      this.registry.updateStatus(agentPath, msg.status);
+      this.enqueueToMailbox(msg.agentId, agentPath, callerPath, msg.message, "final_result");
+      this.mailbox.appendEvent({ type: "agent_final_message", ...this.evBase(msg.agentId, agentPath), parentAgentId: callerPath === ROOT_PATH ? undefined : callerPath, message: msg.message, status: msg.status });
+      void this.autoCloseExternal(agentPath);
+    } else if (msg.type === "error") {
+      this.registry.updateStatus(agentPath, "errored");
+      this.enqueueToMailbox(msg.agentId ?? agent.agentId, agentPath, callerPath, `Agent error: ${msg.message}`, "final_result");
+      void this.autoCloseExternal(agentPath);
+    } else if (msg.type === "log") {
+      this.logDisplay(agent.display, msg.line);
+    }
+  }
+
+  private async autoCloseExternal(agentPath: string): Promise<void> {
+    const rt = this.runtimes.get(agentPath);
+    if (rt?.mode !== "external_pi") return;
+    const agent = this.registry.get(agentPath);
+    const display = agent?.display;
+    // Close kitty window
+    if (display) {
+      try { await this.kitty.close(display); } catch { /* best-effort */ }
+      this.registry.updateAgent(agentPath, { display: { ...display, status: "closed" } });
+    }
+    // Stop IPC hub
+    try { await this.hubs.get(rt.agentId)?.stop(); } catch { /* best-effort */ }
+    this.hubs.delete(rt.agentId);
+    processExternalPiSlots.delete(rt.agentId);
+    this.runtimes.delete(agentPath);
+    this.registry.close(agentPath, agent?.status === "errored" ? "errored" : "completed");
+    this.mailbox.appendEvent({ type: "agent_close_end", ...this.evBase(rt.agentId, agentPath) });
   }
 
   private getRuntimeByAgentId(agentId: string): AgentRuntime | undefined {
