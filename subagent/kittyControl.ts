@@ -25,6 +25,7 @@ export interface LaunchPiWindowParams {
   piCommand?: string;
   extensionPath?: string;
   splitDirection?: "vertical" | "horizontal";
+  modelId?: string;
 }
 
 function shellQuote(value: string): string {
@@ -64,6 +65,7 @@ export class KittyController {
   private buildChildScript(params: LaunchPiWindowParams): string {
     const piCommand = (params.piCommand ?? "pi").trim() || "pi";
     const extensionArgs = params.extensionPath ? ` -e ${shellQuote(params.extensionPath)}` : "";
+    const modelArgs = params.modelId ? ` --model ${shellQuote(params.modelId)}` : "";
     const logPath = params.logPath;
     const logFn = logPath ? `log(){ printf '%s\\n' "$*" >> ${shellQuote(logPath)}; }` : `log(){ :; }`;
     return [
@@ -74,10 +76,11 @@ export class KittyController {
       `export PI_SUBAGENT_PATH=${shellQuote(params.agentPath)}`,
       `export PI_SUBAGENT_PARENT_SOCKET=${shellQuote(params.socketPath)}`,
       `export PI_SUBAGENT_INITIAL_MESSAGE=${shellQuote(params.initialMessage)}`,
+      ...(params.modelId ? [`export PI_SUBAGENT_MODEL=${shellQuote(params.modelId)}`] : []),
       `export PATH=${shellQuote(path.dirname(process.execPath))}:$PATH`,
       `log ${shellQuote("[launch] node: ")}$(command -v node) $(node -v 2>/dev/null || true)`,
-      `log ${shellQuote("[launch] command: " + piCommand + extensionArgs)}`,
-      `${piCommand}${extensionArgs}`,
+      `log ${shellQuote("[launch] command: " + piCommand + extensionArgs + modelArgs)}`,
+      `${piCommand}${extensionArgs}${modelArgs}`,
       `rc=$?`,
       `log "[exit] pi exited with code $rc"`,
       `printf '\\n[pi subagent exited with code %s — press Ctrl-D or close this window]\\n' "$rc"`,

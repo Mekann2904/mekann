@@ -400,7 +400,11 @@ export class AgentControl {
     await hub.start();
     this.runtimes.set(canonicalPath, { mode: "external_pi", agentId, agentPath: canonicalPath, socketPath, display, connected: false });
     try {
-      const launchParams = { agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: params.message, logPath, title: display.title, piCommand: this.piCommand, extensionPath: this.extensionPath };
+      const resolvedOverride = params.model ? await this.resolveModel(params.model, ctx) : undefined;
+      const modelId = resolvedOverride
+        ? `${(resolvedOverride as any).provider ?? ''}/${(resolvedOverride as any).id ?? ''}`
+        : (ctx.model?.provider && ctx.model?.id ? `${ctx.model.provider}/${ctx.model.id}` : undefined);
+      const launchParams = { agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: params.message, logPath, title: display.title, piCommand: this.piCommand, extensionPath: this.extensionPath, modelId };
       const opened = isSplit
         ? await this.kitty.launchPiSplit(launchParams)
         : await this.kitty.launchPiWindow(launchParams);
