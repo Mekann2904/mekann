@@ -191,11 +191,6 @@ export async function runChecks(
 // Shared spawn helpers (extracted from runCommand / runArgvCommand)
 // ---------------------------------------------------------------------------
 
-interface SpawnParams {
-	spawnArgs: Parameters<typeof spawn>;
-	commandLabel: string;
-}
-
 /** Setup streaming log files for stdout/stderr. Returns nulls when logDir is unset. */
 function setupLogStreams(logDir: string | undefined): {
 	stdoutStream: fs.WriteStream | null;
@@ -235,57 +230,21 @@ function setupLogStreams(logDir: string | undefined): {
 	return { stdoutStream, stderrStream, logFilesWritten, streamError };
 }
 
-/** Streaming parse state for METRIC / RUN_ID / ARTIFACT_DIR etc. */
-interface StreamingParseState {
-	metrics: Record<string, number>;
-	extRunId: string | null;
-	extArtifactDir: string | null;
-	extSummaryPath: string | null;
-	extViewlogPath: string | null;
-	extMetricsPath: string | null;
-	stdoutBuf: string;
-	stderrBuf: string;
-}
+// ---------------------------------------------------------------------------
 
-function createStreamingParseState(): StreamingParseState {
-	return {
-		metrics: {},
-		extRunId: null, extArtifactDir: null,
-		extSummaryPath: null, extViewlogPath: null, extMetricsPath: null,
-		stdoutBuf: "", stderrBuf: "",
-	};
-}
-
-function spLine(sp: StreamingParseState, line: string): void {
-	const t = line.trim();
-	if (t.startsWith("METRIC ")) {
-		const rest = t.slice(7);
-		const eq = rest.indexOf("=");
-		if (eq >= 0) {
-			const n = rest.slice(0, eq).trim();
-			const v = Number(rest.slice(eq + 1).trim());
-			if (n && !isNaN(v)) sp.metrics[n] = v;
-		}
-	}
-	const m = t.match(/^(RUN_ID|ARTIFACT_DIR|SUMMARY_PATH|VIEWLOG_PATH|METRICS_PATH)\s+(.+)$/);
-	if (m) switch (m[1]) {
-		case "RUN_ID": sp.extRunId = m[2].trim(); break;
-		case "ARTIFACT_DIR": sp.extArtifactDir = m[2].trim(); break;
-		case "SUMMARY_PATH": sp.extSummaryPath = m[2].trim(); break;
-		case "VIEWLOG_PATH": sp.extViewlogPath = m[2].trim(); break;
-		case "METRICS_PATH": sp.extMetricsPath = m[2].trim(); break;
-	}
-}
-
-function spChunk(sp: StreamingParseState, chunk: string, bufKey: "stdoutBuf" | "stderrBuf"): void {
-	sp[bufKey] += chunk;
-	const lines = sp[bufKey].split("\n");
-	sp[bufKey] = lines.pop() ?? "";
-	for (const l of lines) spLine(sp, l);
-}
-
-/** Shared spawn execution used by both runCommand and runArgvCommand. */
-function runSpawn(params: SpawnParams, timeoutMs: number, signal: AbortSignal | undefined, logDir: string | undefined): Promise<RunResult> {
+/**
+ * シェルコマンドを spawn で実行し、結果を返す。
+ *
+ * @param logDir 指定すると stdout.log / stderr.log に streaming 保存する。
+ *               プロセスクラッシュ時も部分ログが残る。
+ */
+export async function runCommand(
+	command: string,
+	cwd: string,
+	timeoutMs: number,
+	signal?: AbortSignal,
+	logDir?: string,
+): Promise<RunResult> {
 	return new Promise<RunResult>((resolve) => {
 		const t0 = Date.now();
 		let resolved = false;
@@ -293,29 +252,285 @@ function runSpawn(params: SpawnParams, timeoutMs: number, signal: AbortSignal | 
 		let killSignal: string | null = null;
 
 		const { stdoutStream, stderrStream, logFilesWritten, streamError } = setupLogStreams(logDir);
-		const child = spawn(...params.spawnArgs);
+
+		// detached: true で新しいプロセスグループを作成。
+		// 子プロセスが孫プロセスをspawnしていてもグループ全体をkillできる。
+		const child = spawn("bash", ["-c", command], {
+			cwd,
+			stdio: ["ignore", "pipe", "pipe"],
+			detached: true,
+		});
 
 		let stdout = "";
 		let stderr = "";
-		const sp = createStreamingParseState();
+
+		// --- Streaming parse state (captures METRIC/RUN_ID/etc even after 1MB) ---
+		const sp = {
+			metrics: {} as Record<string, number>,
+			extRunId: null as string | null,
+			extArtifactDir: null as string | null,
+			extSummaryPath: null as string | null,
+			extViewlogPath: null as string | null,
+			extMetricsPath: null as string | null,
+			stdoutBuf: "",
+			stderrBuf: "",
+		};
+
+		function spLine(line: string): void {
+			const t = line.trim();
+			if (t.startsWith("METRIC ")) {
+				const rest = t.slice(7);
+				const eq = rest.indexOf("=");
+				if (eq >= 0) {
+					const n = rest.slice(0, eq).trim();
+					const v = Number(rest.slice(eq + 1).trim());
+					if (n && !isNaN(v)) sp.metrics[n] = v;
+				}
+			}
+			const m = t.match(/^(RUN_ID|ARTIFACT_DIR|SUMMARY_PATH|VIEWLOG_PATH|METRICS_PATH)\s+(.+)$/);
+			if (m) switch (m[1]) {
+				case "RUN_ID": sp.extRunId = m[2].trim(); break;
+				case "ARTIFACT_DIR": sp.extArtifactDir = m[2].trim(); break;
+				case "SUMMARY_PATH": sp.extSummaryPath = m[2].trim(); break;
+				case "VIEWLOG_PATH": sp.extViewlogPath = m[2].trim(); break;
+				case "METRICS_PATH": sp.extMetricsPath = m[2].trim(); break;
+			}
+		}
+
+		function spChunk(chunk: string, bufKey: "stdoutBuf" | "stderrBuf"): void {
+			sp[bufKey] += chunk;
+			const lines = sp[bufKey].split("\n");
+			sp[bufKey] = lines.pop() ?? "";
+			for (const l of lines) spLine(l);
+		}
+
+		child.stdout.on("data", (chunk: Buffer) => {
+			const str = chunk.toString("utf8");
+			if (Buffer.byteLength(stdout, "utf8") < CAPTURE_MAX_BYTES) {
+				stdout += str;
+			}
+			// Stream to file (filter secrets)
+			if (stdoutStream) {
+				stdoutStream.write(filterSecrets(str));
+			}
+			// Streaming parse for metrics/external info
+			spChunk(str, "stdoutBuf");
+		});
+
+		child.stderr.on("data", (chunk: Buffer) => {
+			const str = chunk.toString("utf8");
+			if (Buffer.byteLength(stderr, "utf8") < CAPTURE_MAX_BYTES) {
+				stderr += str;
+			}
+			if (stderrStream) {
+				stderrStream.write(filterSecrets(str));
+			}
+			// Streaming parse for metrics (can appear in stderr too)
+			spChunk(str, "stderrBuf");
+		});
+
+		/** Kill the entire process group (leader + all descendants). */
+		function killGroup(sig: string): void {
+			killSignal = sig;
+			try {
+				if (child.pid) process.kill(-child.pid, sig as NodeJS.Signals);
+			} catch { /* already exited */ }
+		}
+
+		let graceTimer: NodeJS.Timeout | null = null;
+		const timer = setTimeout(() => {
+			timedOut = true;
+			killGroup("SIGTERM");
+			// Grace period then SIGKILL
+			graceTimer = setTimeout(() => killGroup("SIGKILL"), 5_000);
+		}, timeoutMs);
+
+		const abortHandler = () => {
+			killGroup("SIGTERM");
+		};
+		signal?.addEventListener("abort", abortHandler, { once: true });
+
+		function finish(code: number | null, sig: string | null) {
+			if (resolved) return;
+			resolved = true;
+			clearTimeout(timer);
+			if (graceTimer) clearTimeout(graceTimer);
+			signal?.removeEventListener("abort", abortHandler);
+
+			const durationSeconds = (Date.now() - t0) / 1000;
+
+			// Flush remaining streaming line buffers
+			if (sp.stdoutBuf) spLine(sp.stdoutBuf);
+			if (sp.stderrBuf) spLine(sp.stderrBuf);
+
+			// Merge: streaming captures everything including >1MB content
+			const combined = stdout + (stderr ? "\n" + stderr : "");
+			const inMemParsed = parseMetricLines(combined);
+			const inMemExt = parseExternalInfo(stdout);
+			const parsed = { ...inMemParsed, ...sp.metrics };
+			const externalInfo: ExternalInfo = {
+				externalRunId: sp.extRunId ?? inMemExt.externalRunId,
+				externalArtifactDir: sp.extArtifactDir ?? inMemExt.externalArtifactDir,
+				externalSummaryPath: sp.extSummaryPath ?? inMemExt.externalSummaryPath,
+				externalViewlogPath: sp.extViewlogPath ?? inMemExt.externalViewlogPath,
+				externalMetricsPath: sp.extMetricsPath ?? inMemExt.externalMetricsPath,
+			};
+
+			const result: RunResult = {
+				command,
+				exitCode: code,
+				durationSeconds,
+				timedOut,
+				passed: code === 0 && !timedOut,
+				output: truncateTail(combined, OUTPUT_MAX_LINES, OUTPUT_MAX_BYTES),
+				parsedMetrics: Object.keys(parsed).length > 0 ? parsed : null,
+				checks: { passed: null, timedOut: false, output: "", stdout: "", stderr: "", durationSeconds: 0 },
+				stdout,
+				stderr,
+				signal: sig,
+				logFilesWritten,
+				streamError,
+				...externalInfo,
+			};
+
+			// Wait for stream flush before resolving
+			const flushes: Promise<void>[] = [];
+			if (stdoutStream && !stdoutStream.destroyed) {
+				flushes.push(new Promise<void>(r => { stdoutStream!.end(() => r()); }));
+			}
+			if (stderrStream && !stderrStream.destroyed) {
+				flushes.push(new Promise<void>(r => { stderrStream!.end(() => r()); }));
+			}
+
+			if (flushes.length > 0) {
+				Promise.all(flushes).then(() => resolve(result));
+			} else {
+				resolve(result);
+			}
+		}
+
+		child.on("close", (code, sig) => finish(code, sig ?? killSignal));
+		child.on("error", (err) => {
+			stderr += `\n${err.message}`;
+			finish(null, null);
+		});
+	});
+}
+
+// ---------------------------------------------------------------------------
+// Argv-based command execution (contract mode)
+// ---------------------------------------------------------------------------
+
+export interface ArgvCommand {
+	argv: string[];
+	cwd: string;
+	env?: {
+		allow?: string[];
+		set?: Record<string, string>;
+	};
+}
+
+/**
+ * Execute a command using argv array (no shell interpolation).
+ * Uses spawn(file, args, { cwd, env }) directly.
+ * Same timeout/METRIC parsing/streaming as runCommand but without bash -c.
+ */
+export async function runArgvCommand(
+	cmd: ArgvCommand,
+	timeoutMs: number,
+	signal?: AbortSignal,
+	logDir?: string,
+): Promise<RunResult> {
+	return new Promise<RunResult>((resolve) => {
+		const t0 = Date.now();
+		let resolved = false;
+		let timedOut = false;
+		let killSignal: string | null = null;
+
+		const { stdoutStream, stderrStream, logFilesWritten, streamError } = setupLogStreams(logDir);
+
+		// Build env: if allow list specified, start empty; otherwise inherit process.env
+		const spawnEnv: Record<string, string | undefined> = cmd.env?.allow
+			? {}
+			: { ...process.env };
+
+		if (cmd.env?.allow) {
+			for (const key of cmd.env.allow) {
+				if (process.env[key] !== undefined) spawnEnv[key] = process.env[key];
+			}
+		}
+		if (cmd.env?.set) {
+			Object.assign(spawnEnv, cmd.env.set);
+		}
+
+		const child = spawn(cmd.argv[0], cmd.argv.slice(1), {
+			cwd: cmd.cwd,
+			env: spawnEnv,
+			stdio: ["ignore", "pipe", "pipe"],
+			detached: true,
+		});
+
+		let stdout = "";
+		let stderr = "";
+
+		const sp = {
+			metrics: {} as Record<string, number>,
+			extRunId: null as string | null,
+			extArtifactDir: null as string | null,
+			extSummaryPath: null as string | null,
+			extViewlogPath: null as string | null,
+			extMetricsPath: null as string | null,
+			stdoutBuf: "",
+			stderrBuf: "",
+		};
+
+		function spLine(line: string): void {
+			const t = line.trim();
+			if (t.startsWith("METRIC ")) {
+				const rest = t.slice(7);
+				const eq = rest.indexOf("=");
+				if (eq >= 0) {
+					const n = rest.slice(0, eq).trim();
+					const v = Number(rest.slice(eq + 1).trim());
+					if (n && !isNaN(v)) sp.metrics[n] = v;
+				}
+			}
+			const m = t.match(/^(RUN_ID|ARTIFACT_DIR|SUMMARY_PATH|VIEWLOG_PATH|METRICS_PATH)\s+(.+)$/);
+			if (m) switch (m[1]) {
+				case "RUN_ID": sp.extRunId = m[2].trim(); break;
+				case "ARTIFACT_DIR": sp.extArtifactDir = m[2].trim(); break;
+				case "SUMMARY_PATH": sp.extSummaryPath = m[2].trim(); break;
+				case "VIEWLOG_PATH": sp.extViewlogPath = m[2].trim(); break;
+				case "METRICS_PATH": sp.extMetricsPath = m[2].trim(); break;
+			}
+		}
+
+		function spChunk(chunk: string, bufKey: "stdoutBuf" | "stderrBuf"): void {
+			sp[bufKey] += chunk;
+			const lines = sp[bufKey].split("\n");
+			sp[bufKey] = lines.pop() ?? "";
+			for (const l of lines) spLine(l);
+		}
 
 		child.stdout.on("data", (chunk: Buffer) => {
 			const str = chunk.toString("utf8");
 			if (Buffer.byteLength(stdout, "utf8") < CAPTURE_MAX_BYTES) stdout += str;
 			if (stdoutStream) stdoutStream.write(filterSecrets(str));
-			spChunk(sp, str, "stdoutBuf");
+			spChunk(str, "stdoutBuf");
 		});
 
 		child.stderr.on("data", (chunk: Buffer) => {
 			const str = chunk.toString("utf8");
 			if (Buffer.byteLength(stderr, "utf8") < CAPTURE_MAX_BYTES) stderr += str;
 			if (stderrStream) stderrStream.write(filterSecrets(str));
-			spChunk(sp, str, "stderrBuf");
+			spChunk(str, "stderrBuf");
 		});
 
 		function killGroup(sig: string): void {
 			killSignal = sig;
-			try { if (child.pid) process.kill(-child.pid, sig as NodeJS.Signals); } catch { /* already exited */ }
+			try {
+				if (child.pid) process.kill(-child.pid, sig as NodeJS.Signals);
+			} catch { /* already exited */ }
 		}
 
 		let graceTimer: NodeJS.Timeout | null = null;
@@ -336,8 +551,9 @@ function runSpawn(params: SpawnParams, timeoutMs: number, signal: AbortSignal | 
 			signal?.removeEventListener("abort", abortHandler);
 
 			const durationSeconds = (Date.now() - t0) / 1000;
-			if (sp.stdoutBuf) spLine(sp, sp.stdoutBuf);
-			if (sp.stderrBuf) spLine(sp, sp.stderrBuf);
+
+			if (sp.stdoutBuf) spLine(sp.stdoutBuf);
+			if (sp.stderrBuf) spLine(sp.stderrBuf);
 
 			const combined = stdout + (stderr ? "\n" + stderr : "");
 			const inMemParsed = parseMetricLines(combined);
@@ -352,13 +568,19 @@ function runSpawn(params: SpawnParams, timeoutMs: number, signal: AbortSignal | 
 			};
 
 			const result: RunResult = {
-				command: params.commandLabel,
-				exitCode: code, durationSeconds, timedOut,
+				command: cmd.argv.join(" "),
+				exitCode: code,
+				durationSeconds,
+				timedOut,
 				passed: code === 0 && !timedOut,
 				output: truncateTail(combined, OUTPUT_MAX_LINES, OUTPUT_MAX_BYTES),
 				parsedMetrics: Object.keys(parsed).length > 0 ? parsed : null,
 				checks: { passed: null, timedOut: false, output: "", stdout: "", stderr: "", durationSeconds: 0 },
-				stdout, stderr, signal: sig, logFilesWritten, streamError,
+				stdout,
+				stderr,
+				signal: sig,
+				logFilesWritten,
+				streamError,
 				...externalInfo,
 			};
 
@@ -384,82 +606,6 @@ function runSpawn(params: SpawnParams, timeoutMs: number, signal: AbortSignal | 
 		});
 	});
 }
-
-// ---------------------------------------------------------------------------
-// Command execution
-// ---------------------------------------------------------------------------
-
-/**
- * シェルコマンドを spawn で実行し、結果を返す。
- *
- * @param logDir 指定すると stdout.log / stderr.log に streaming 保存する。
- *               プロセスクラッシュ時も部分ログが残る。
- */
-export async function runCommand(
-	command: string,
-	cwd: string,
-	timeoutMs: number,
-	signal?: AbortSignal,
-	logDir?: string,
-): Promise<RunResult> {
-	return runSpawn(
-		{
-			spawnArgs: ["bash", ["-c", command], { cwd, stdio: ["ignore", "pipe", "pipe"], detached: true }],
-			commandLabel: command,
-		},
-		timeoutMs,
-		signal,
-		logDir,
-	);
-}
-
-// ---------------------------------------------------------------------------
-// Argv-based command execution (contract mode)
-// ---------------------------------------------------------------------------
-
-export interface ArgvCommand {
-	argv: string[];
-	cwd: string;
-	env?: {
-		allow?: string[];
-		set?: Record<string, string>;
-	};
-}
-
-/**
- * Execute a command using argv array (no shell interpolation).
- * Uses spawn(file, args, { cwd, env }) directly.
- */
-export async function runArgvCommand(
-	cmd: ArgvCommand,
-	timeoutMs: number,
-	signal?: AbortSignal,
-	logDir?: string,
-): Promise<RunResult> {
-	// Build env: if allow list specified, start empty; otherwise inherit process.env
-	const spawnEnv: Record<string, string | undefined> = cmd.env?.allow
-		? {}
-		: { ...process.env };
-	if (cmd.env?.allow) {
-		for (const key of cmd.env.allow) {
-			if (process.env[key] !== undefined) spawnEnv[key] = process.env[key];
-		}
-	}
-	if (cmd.env?.set) {
-		Object.assign(spawnEnv, cmd.env.set);
-	}
-
-	return runSpawn(
-		{
-			spawnArgs: [cmd.argv[0], cmd.argv.slice(1), { cwd: cmd.cwd, env: spawnEnv, stdio: ["ignore", "pipe", "pipe"], detached: true }],
-			commandLabel: cmd.argv.join(" "),
-		},
-		timeoutMs,
-		signal,
-		logDir,
-	);
-}
-
 
 // ---------------------------------------------------------------------------
 // Git helpers

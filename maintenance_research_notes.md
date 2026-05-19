@@ -111,3 +111,21 @@
 ### 優先度低（慎重に）
 
 7. **E7: doc/ ディレクトリの完全削除**（.gitignore で除外されているが、ワーキングツリーに存在）
+
+## 実験結果
+
+### E1: SYSTEM_PROMPT_EXTRA 抽出 (DISCARD)
+- maintenance_score: 22890 (変化なし)
+- 理由: ファイル1つ増加が max_file_loc 減少を相殺
+
+### E2: setupLogStreams ヘルパー統合 (KEEP)
+- maintenance_score: 22890 → 22815 (75点改善)
+- duplication_score: 772 → 764
+- 次のステップ: runCommand と runArgvCommand の他の共通部分（sp/spLine/spChunk, killGroup, finish）も統合
+
+## 知見
+
+1. **小規模なファイル抽出は逆効果**: ファイル数が増加すると review_risk が増え、max_file_loc の減少を相殺する
+2. **内部重複の削減は有効**: 同じファイル内の重複コードをヘルパーに統合すると duplication_score が改善する
+3. **runCommand/runArgvCommand は最大の重複源**: ストリームセットアップ、spLine/spChunk、killGroup、finish がほぼ同一
+4. **評価スクリプトの tests_passed 出力にバグ**: "failed" が grep できない場合に false になる可能性があるが、実際のテストは通過している

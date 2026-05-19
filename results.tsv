@@ -1,1 +1,2 @@
 3ca99f2	22890	true	64.5	discard	SYSTEM_PROMPT_EXTRA抽出	file_count増加がmax_file_loc減少を相殺しreview_risk不変
+e2d5262	22815	true	65.5	keep	ストリームセットアップ重複統合	duplication_score 772→764で80点改善
