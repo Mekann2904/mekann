@@ -264,6 +264,11 @@ export class AgentRegistry {
   }
 
   close(agentPath: string, status: AgentStatus = "shutdown"): void {
+    const agent = this.agents.get(agentPath); if (!agent) return;
+    if (agent.status === status) {
+      Object.assign(agent, { open: false, updatedAt: Date.now() });
+      return;
+    }
     this.setStatusAndPublish(agentPath, status, { open: false });
   }
 

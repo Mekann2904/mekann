@@ -343,6 +343,7 @@ export class AgentControl {
 
           this.runtimes.delete(canonicalPath);
           this.childSessions.delete(canonicalPath);
+          this.registry.close(canonicalPath, "completed");
           unsubscribe();
         }
       });
@@ -627,7 +628,8 @@ export class AgentControl {
       throw new Error("Cannot close the root agent.");
     }
 
-    const agent = this.registry.get(targetPath); if (!agent?.open) throw new Error(`Agent at ${targetPath} is already closed (status: ${agent?.status ?? "unknown"}).`);
+    const agent = this.registry.get(targetPath);
+    if (!agent?.open) return { closed: [] };
 
     // Close descendants first (deepest first)
     const descendants = this.registry.getOpenDescendants(targetPath);

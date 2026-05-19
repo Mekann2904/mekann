@@ -227,7 +227,9 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       const maxSubagents = Math.min(Math.max(Number(getFlagOrSetting("subagent-max-agents", "max-agents", "2")) || 2, 0), 2);
       const maxAgents = maxSubagents + 1;
       const maxDepth = Number(getFlagOrSetting("subagent-max-depth", "max-depth", "2")) || 2;
-      const defaultWait = Number(getFlagOrSetting("subagent-default-wait-timeout-ms", "default-wait-timeout-ms")) || 0;
+      const rawDefaultWait = getFlagOrSetting<string>("subagent-default-wait-timeout-ms", "default-wait-timeout-ms");
+      const parsedDefaultWait = rawDefaultWait === undefined || rawDefaultWait === "" ? undefined : Number(rawDefaultWait);
+      const defaultWait = parsedDefaultWait !== undefined && Number.isFinite(parsedDefaultWait) ? parsedDefaultWait : undefined;
       const minWait = Number(getFlagOrSetting("subagent-min-wait-timeout-ms", "min-wait-timeout-ms", "1000")) || 1000;
       const rawDisplayFlag = getFlagOrSetting<string>("subagent-display", "display", "kitty-split");
       const displayFlag = String(rawDisplayFlag ?? "none");
@@ -281,13 +283,14 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       "Good subagent use cases: repo-wide research across multiple components, comparing independent approaches, splitting investigation/fix/test work, running a review agent while the main agent continues implementation, or delegating a long-running exploratory task.",
       "Do not use subagents for small single-step tasks, one-file edits, simple questions, or work that requires tight step-by-step coordination with the parent. Direct tool use is better for those cases.",
       "For independent tasks, spawn all relevant subagents first, then wait for results. Avoid spawn→wait→spawn serialization unless later tasks depend on earlier results.",
-      "Default workflow: spawn_agent for each independent task → continue useful parent work or spawn more agents → wait_agent to collect updates/results → summarize/merge results → followup_task if more work is needed → close_agent when finished.",
+      "Default workflow: spawn_agent for each independent task → continue useful parent work or spawn more agents → wait_agent to collect updates/results → summarize/merge results → followup_task if more work is needed.",
+      "Subagents are cleaned up automatically after successful completion. Do not call close_agent as routine cleanup after final_result; use close_agent only for cancellation, aborting, or stuck/abnormal agents.",
       "spawn_agent returns immediately; it does not mean the child has finished. Never claim subagent results until wait_agent returns mailbox content or a final_result.",
       "Give each subagent a stable, descriptive task_name such as research/api, research/db, fix/tests, review/security. Relative paths are resolved under /root.",
       "Write the message as a self-contained task brief: include goal, relevant files/commands, constraints, expected output format, and what not to change. Subagents may not know unstated parent context.",
       "Use fork_turns only when the recent conversation is genuinely needed by the child; otherwise include the necessary context directly in message.",
-      "Respect resource limits. There is a concurrent subagent limit, so prefer a small number of high-value agents and close finished agents to free resources.",
-      "If a duplicate task_name is rejected, list_agents to inspect the existing agent or close_agent before reusing that path.",
+      "Respect resource limits. There is a concurrent subagent limit, so prefer a small number of high-value agents. Completed subagents free their slot automatically.",
+      "If a duplicate task_name is rejected, list_agents to inspect whether an agent with that path is still open/running before choosing a different path or aborting it with close_agent.",
     ],
     parameters: SpawnSchema,
     prepareArguments(args: unknown) {
@@ -359,8 +362,9 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     promptGuidelines: [
       "Use wait_agent after spawning subagents to collect lifecycle events and mailbox messages. It returns immediately if updates are pending; otherwise it waits up to timeout_ms.",
       "Use reasonable timeouts: short waits for quick checks, longer waits for substantial research. Do not block indefinitely.",
-      "A mailbox item with kind: final_result is the child agent's completed answer. Read it, incorporate it into your response or next plan, and close the agent if no more work is needed.",
-      "If wait_agent times out, say that the subagent is still running and either continue other useful work or wait again. Do not invent missing results.",
+      "A mailbox item with kind: final_result is the child agent's completed answer. Read it and incorporate it into your response or next plan. Normally you do not need to call close_agent because completed subagents are cleaned up automatically.",
+      "A timeout from wait_agent is not an error. It only means no new subagent result arrived within timeout_ms.",
+      "If wait_agent times out and a subagent is still running, continue other useful work or wait again later. Do not report timeout as a failure unless an explicit error event is returned. Do not invent missing results.",
     ],
     parameters: WaitAgentSchema,
     execute: withCtrl(async (ctrl, params, ctx) => {
@@ -391,7 +395,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       "Close a subagent and all its open descendants. Aborts any running operations.",
     promptSnippet: "Abort or dispose a subagent and its descendants",
     promptGuidelines: [
-      "Use close_agent after collecting a final result when the subagent is no longer needed, or when the user asks to stop/cancel a subagent.",
+      "Use close_agent only when the user asks to cancel/stop a subagent, or when an agent appears stuck and should be aborted.",
+      "Do not call close_agent after every successful final_result; completed subagents are cleaned up automatically.",
       "close_agent aborts running work for the target and its descendants. Do not close an active subagent prematurely unless cancellation is intended.",
     ],
     parameters: CloseAgentSchema,

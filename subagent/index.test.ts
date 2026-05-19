@@ -1963,7 +1963,7 @@ describe("AgentControl", () => {
       ).rejects.toThrow("Cannot close the root agent");
     });
 
-    it("rejects closing already closed agent", async () => {
+    it("is idempotent when closing already closed agent", async () => {
       const pi = createControlMockPi();
       const control = new (AgentControl as any)(pi, 4, 2);
       control.registry.ensureRoot("root");
@@ -1976,7 +1976,7 @@ describe("AgentControl", () => {
 
       await expect(
         control.close({ target: "/root/task1" }, baseCtx),
-      ).rejects.toThrow("already closed");
+      ).resolves.toEqual({ closed: [] });
     });
 
     it("rejects closing non-existent agent", async () => {
@@ -2167,8 +2167,17 @@ describe("AgentControl", () => {
 
       const agent = control.registry.get("/root/task1");
       expect(agent?.status).toBe("completed");
+      expect(agent?.open).toBe(false);
       expect(agent?.lastTaskMessage).toBe("Final answer here");
       expect(unsubscribe).toHaveBeenCalled();
+
+      (createAgentSession as any).mockImplementationOnce(() =>
+        Promise.resolve({ session: { ...mockSession, sessionId: "mock-session-id-2", subscribe: vi.fn(() => vi.fn()) } }),
+      );
+      await expect(control.spawn(
+        { task_name: "task1", message: "reuse same path" },
+        baseCtx,
+      )).resolves.toMatchObject({ task_name: "/root/task1" });
     });
 
     it("handles agent_end with no assistant messages", async () => {
@@ -3721,7 +3730,7 @@ describe("AgentControl branch coverage", () => {
     ).rejects.toThrow("Cannot close the root agent");
   });
 
-  it("close: throws when agent already closed", async () => {
+  it("close: is idempotent when agent already closed", async () => {
     const control = new AgentControl(createPi(), 4, 2);
     control.registry.ensureRoot("root");
     const r = control.registry.reserveSpawnSlot("/root/task1");
@@ -3729,7 +3738,7 @@ describe("AgentControl branch coverage", () => {
 
     await expect(
       control.close({ target: "/root/task1" }, baseCtx),
-    ).rejects.toThrow("already closed");
+    ).resolves.toEqual({ closed: [] });
   });
 
   it("sendMessage: throws when agent is closed", async () => {
@@ -4396,7 +4405,7 @@ describe("registry: registerAgent duplicate open path guard", () => {
 // ─── agentControl: close already-closed agent (line 437) ──────────
 
 describe("agentControl: close edge cases", () => {
-  it("close throws when agent is already closed", async () => {
+  it("close is idempotent when agent is already closed", async () => {
     const mockPi = { getActiveTools: vi.fn(() => []) };
     const { AgentControl } = await import("./agentControl.js");
     const control = new AgentControl(mockPi as any, 4, 2);
@@ -4413,7 +4422,7 @@ describe("agentControl: close edge cases", () => {
 
     const ctx = { cwd: "/tmp", model: { id: "m" }, modelRegistry: { find: () => undefined, getAvailable: () => Promise.resolve([]) } };
     await expect(control.close({ target: "/root/task1" }, ctx as any))
-      .rejects.toThrow("already closed");
+      .resolves.toEqual({ closed: [] });
   });
 
   // Line 466: closeSingle after registry.close — agentId from registry.get() is undefined after close
