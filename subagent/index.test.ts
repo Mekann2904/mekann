@@ -970,7 +970,7 @@ describe("extension entry point", () => {
     const hooks: Record<string, Function> = {};
     const commands: Record<string, { handler: Function; description?: string }> =
       {};
-    let flags: Record<string, unknown> = { "subagent-display": "none" };
+    let flags: Record<string, unknown> = { "subagent-display": "none", "subagent-max-depth": "2" };
     const registeredTools: Array<Record<string, any>> = [];
     const registeredFlags: Array<{ name: string; config: unknown }> = [];
 
@@ -1159,7 +1159,7 @@ describe("followupTask terminal status rejection", () => {
   function createMockApi() {
     const hooks: Record<string, Function> = {};
     const commands: Record<string, { handler: Function; description?: string }> = {};
-    let flags: Record<string, unknown> = { "subagent-display": "none" };
+    let flags: Record<string, unknown> = { "subagent-display": "none", "subagent-max-depth": "2" };
     const registeredTools: Array<Record<string, any>> = [];
     const registeredFlags: Array<{ name: string; config: unknown }> = [];
 
@@ -2546,7 +2546,7 @@ describe("extension tool execute handlers", () => {
   function createMockApi() {
     const hooks: Record<string, Function> = {};
     const commands: Record<string, { handler: Function; description?: string }> = {};
-    let flags: Record<string, unknown> = { "subagent-display": "none" };
+    let flags: Record<string, unknown> = { "subagent-display": "none", "subagent-max-depth": "2" };
     const registeredTools: Array<Record<string, any>> = [];
     const registeredFlags: Array<{ name: string; config: unknown }> = [];
 
@@ -2586,7 +2586,7 @@ describe("extension tool execute handlers", () => {
     const mock = createMockApi();
     const { default: subagentExtension } = await import("./index.js");
     subagentExtension(mock as any);
-    mock._flags = { "subagent-min-wait-timeout-ms": "10", "subagent-display": "none" };
+    mock._flags = { "subagent-min-wait-timeout-ms": "10", "subagent-display": "none", "subagent-max-depth": "2" };
     await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
 
     const spawnTool = mock._registeredTools.find((t: any) => t.name === "spawn_agent")!;
@@ -2760,7 +2760,7 @@ describe("extension command handlers", () => {
   function createMockApi() {
     const hooks: Record<string, Function> = {};
     const commands: Record<string, { handler: Function; description?: string }> = {};
-    let flags: Record<string, unknown> = { "subagent-display": "none" };
+    let flags: Record<string, unknown> = { "subagent-display": "none", "subagent-max-depth": "2" };
     const registeredTools: Array<Record<string, any>> = [];
     const registeredFlags: Array<{ name: string; config: unknown }> = [];
 
@@ -2820,7 +2820,7 @@ describe("extension command handlers", () => {
     const mock = createMockApi();
     const { default: subagentExtension } = await import("./index.js");
     subagentExtension(mock as any);
-    mock._flags = { "subagent-min-wait-timeout-ms": "10", "subagent-display": "none" };
+    mock._flags = { "subagent-min-wait-timeout-ms": "10", "subagent-display": "none", "subagent-max-depth": "2" };
     await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
 
     const notifications: string[] = []
@@ -2838,7 +2838,7 @@ describe("extension command handlers", () => {
     const mock = createMockApi();
     const { default: subagentExtension } = await import("./index.js");
     subagentExtension(mock as any);
-    mock._flags = { "subagent-default-wait-timeout-ms": "50", "subagent-min-wait-timeout-ms": "10", "subagent-display": "none" };
+    mock._flags = { "subagent-default-wait-timeout-ms": "50", "subagent-min-wait-timeout-ms": "10", "subagent-display": "none", "subagent-max-depth": "2" };
     await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
 
     const notifications: string[] = []
@@ -2960,7 +2960,7 @@ describe("index.ts parseForkTurns branches", () => {
   function createMockApi() {
     const hooks: Record<string, Function> = {};
     const commands: Record<string, { handler: Function; description?: string }> = {};
-    let flags: Record<string, unknown> = { "subagent-display": "none" };
+    let flags: Record<string, unknown> = { "subagent-display": "none", "subagent-max-depth": "2" };
     const registeredTools: Array<Record<string, any>> = [];
     const registeredFlags: Array<{ name: string; config: unknown }> = [];
 
@@ -3000,7 +3000,7 @@ describe("index.ts parseForkTurns branches", () => {
     const mock = createMockApi();
     const { default: subagentExtension } = await import("./index.js");
     subagentExtension(mock as any);
-    mock._flags = { "subagent-min-wait-timeout-ms": "10", "subagent-display": "none" };
+    mock._flags = { "subagent-min-wait-timeout-ms": "10", "subagent-display": "none", "subagent-max-depth": "2" };
     await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
     return mock;
   }
@@ -3374,7 +3374,7 @@ describe("index.ts parseForkTurns branches", () => {
     const mock = createMockApi();
     const { default: subagentExtension } = await import("./index.js");
     subagentExtension(mock as any);
-    mock._flags = { "subagent-default-wait-timeout-ms": "50", "subagent-min-wait-timeout-ms": "10", "subagent-display": "none" };
+    mock._flags = { "subagent-default-wait-timeout-ms": "50", "subagent-min-wait-timeout-ms": "10", "subagent-display": "none", "subagent-max-depth": "2" };
     await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
 
     // Spawn and trigger agent_end to get events + mailbox items
@@ -3500,7 +3500,7 @@ describe("index.ts parseForkTurns branches", () => {
     const { default: subagentExtension } = await import("./index.js");
     subagentExtension(mock as any);
     // Set a very short default timeout flag
-    mock._flags = { "subagent-default-wait-timeout-ms": "50", "subagent-min-wait-timeout-ms": "10", "subagent-display": "none" };
+    mock._flags = { "subagent-default-wait-timeout-ms": "50", "subagent-min-wait-timeout-ms": "10", "subagent-display": "none", "subagent-max-depth": "2" };
     await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
 
     const notifications: string[] = [];
@@ -4454,7 +4454,7 @@ describe("extension: /close-agent error handling", () => {
   function createMockApi() {
     const hooks: Record<string, Function> = {};
     const commands: Record<string, { handler: Function; description?: string }> = {};
-    let flags: Record<string, unknown> = { "subagent-display": "none" };
+    let flags: Record<string, unknown> = { "subagent-display": "none", "subagent-max-depth": "2" };
     const registeredTools: Array<Record<string, any>> = [];
     const registeredFlags: Array<{ name: string; config: unknown }> = [];
     return {
@@ -4500,7 +4500,7 @@ describe("extension: wait_agent tool result formatting", () => {
   function createMockApi() {
     const hooks: Record<string, Function> = {};
     const commands: Record<string, { handler: Function; description?: string }> = {};
-    let flags: Record<string, unknown> = { "subagent-display": "none" };
+    let flags: Record<string, unknown> = { "subagent-display": "none", "subagent-max-depth": "2" };
     const registeredTools: Array<Record<string, any>> = [];
     const registeredFlags: Array<{ name: string; config: unknown }> = [];
     return {
@@ -4525,7 +4525,7 @@ describe("extension: wait_agent tool result formatting", () => {
     const mock = createMockApi();
     const { default: subagentExtension } = await import("./index.js");
     subagentExtension(mock as any);
-    mock._flags = { "subagent-min-wait-timeout-ms": "10", "subagent-display": "none" };
+    mock._flags = { "subagent-min-wait-timeout-ms": "10", "subagent-display": "none", "subagent-max-depth": "2" };
     await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
 
     // Manually inject events into the control's mailbox
@@ -4566,7 +4566,7 @@ describe("extension: wait_agent tool result formatting", () => {
     const mock = createMockApi();
     const { default: subagentExtension } = await import("./index.js");
     subagentExtension(mock as any);
-    mock._flags = { "subagent-min-wait-timeout-ms": "10", "subagent-display": "none" };
+    mock._flags = { "subagent-min-wait-timeout-ms": "10", "subagent-display": "none", "subagent-max-depth": "2" };
     await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
 
     const baseCtx = {

@@ -141,13 +141,12 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   pi.registerFlag("subagent-max-depth", {
     description: "Maximum nesting depth for subagents (default: 2)",
     type: "string",
-    default: "2",
+    default: "1",
   });
 
   pi.registerFlag("subagent-default-wait-timeout-ms", {
-    description: "Default wait_agent timeout in ms (default: 30000)",
+    description: "Default wait_agent timeout in ms (unset = no default)",
     type: "string",
-    default: "30000",
   });
 
   pi.registerFlag("subagent-min-wait-timeout-ms", {
@@ -227,8 +226,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       // AgentRegistry counts the root agent too, so root + max 2 subagents = 3 open agents.
       const maxSubagents = Math.min(Math.max(Number(getFlagOrSetting("subagent-max-agents", "max-agents", "2")) || 2, 0), 2);
       const maxAgents = maxSubagents + 1;
-      const maxDepth = Number(getFlagOrSetting("subagent-max-depth", "max-depth", "2")) || 2;
-      const defaultWait = Number(getFlagOrSetting("subagent-default-wait-timeout-ms", "default-wait-timeout-ms", "30000")) || 30000;
+      const maxDepth = Number(getFlagOrSetting("subagent-max-depth", "max-depth", "1")) || 1;
+      const defaultWait = Number(getFlagOrSetting("subagent-default-wait-timeout-ms", "default-wait-timeout-ms")) || 0;
       const minWait = Number(getFlagOrSetting("subagent-min-wait-timeout-ms", "min-wait-timeout-ms", "1000")) || 1000;
       const rawDisplayFlag = getFlagOrSetting<string>("subagent-display", "display", "kitty-split");
       const displayFlag = String(rawDisplayFlag ?? "none");
