@@ -9,17 +9,35 @@ cd "$(dirname "$0")"
 
 # 1. Run tests
 echo "=== Running tests ==="
+# Run tests — capture both stdout and stderr
 test_output=$(npm test 2>&1) || true
 tests_passed=true
-if echo "$test_output" | grep -q "failed"; then
-  tests_passed=false
+# Check for vitest failure indicators in output
+failed_tests=$(echo "$test_output" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+' | awk '{s+=$1}END{print s+0}') || failed_tests=0
+if [ -z "$failed_tests" ]; then failed_tests=0; fi
+if [ "$failed_tests" -gt 0 ]; then tests_passed=false; fi
+# Also check for non-zero exit from npm test
+if ! npm test >/dev/null 2>&1; then
+  # Double-check: vitest may report failures via exit code even without 'failed' text
+  if echo "$test_output" | grep -qiE 'FAIL|Error|failed'; then
+    tests_passed=false
+  fi
 fi
-test_seconds=$(echo "$test_output" | grep -oE 'Duration  [0-9.]+s' | grep -oE '[0-9.]+' | awk '{s+=$1}END{print s}')
-if [ -z "$test_seconds" ]; then
-  # Fallback: sum Duration lines
-  test_seconds=$(echo "$test_output" | grep -oE 'Duration +[0-9.]+s' | grep -oE '[0-9.]+' | awk '{s+=$1}END{print s}')
+# Parse Duration lines: handle both "Duration  1.23s" and "Duration  341ms" formats
+# Step 1: extract all Duration values
+raw_durations=$(echo "$test_output" | grep -oE 'Duration +[0-9.]+(ms|s)' | grep -oE '[0-9.]+(ms|s)')
+test_seconds=0
+if [ -n "$raw_durations" ]; then
+  while IFS= read -r dur; do
+    if echo "$dur" | grep -q 'ms$'; then
+      ms=$(echo "$dur" | grep -oE '[0-9.]+' | awk '{print $1}')
+      test_seconds=$(echo "$test_seconds + $ms / 1000" | bc -l)
+    else
+      s=$(echo "$dur" | grep -oE '[0-9.]+' | awk '{print $1}')
+      test_seconds=$(echo "$test_seconds + $s" | bc -l)
+    fi
+  done <<< "$raw_durations"
 fi
-if [ -z "$test_seconds" ]; then test_seconds="0"; fi
 total_tests=$(echo "$test_output" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' | awk '{s+=$1}END{print s}')
 failed_tests=$(echo "$test_output" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+' | awk '{s+=$1}END{print s+0}') || failed_tests=0
 if [ -z "$failed_tests" ]; then failed_tests=0; fi
@@ -127,7 +145,8 @@ score=$((score + 10 * complexity_score))
 score=$((score + 10 * duplication_score))
 changed_loc_norm=$((changed_loc / 100))
 score=$((score + 5 * changed_loc_norm))
-test_seconds_int=${test_seconds%.*}
+# Round test_seconds to integer for score computation
+test_seconds_int=$(echo "$test_seconds" | awk '{printf "%d", $1}')
 if [ -z "$test_seconds_int" ]; then test_seconds_int=0; fi
 score=$((score + test_seconds_int))
 
@@ -162,7 +181,8 @@ echo "loc_delta: $loc_delta"
 echo ""
 echo "METRIC maintenance_score=$score"
 echo "METRIC tests_passed=$tests_passed"
-echo "METRIC test_seconds=$test_seconds"
+test_seconds_display=$(echo "$test_seconds" | awk '{printf "%.1f", $1}')
+echo "METRIC test_seconds=$test_seconds_display"
 echo "METRIC source_loc=$source_loc"
 echo "METRIC behavior_regressions=$behavior_regressions"
 echo "METRIC type_errors=$type_errors"
