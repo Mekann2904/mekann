@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 # AUTORESEARCH:generated
 set -euo pipefail
-bash ./evaluate_maintenance.sh
+PLAN_DIR="$(node -e "console.log(require('./.autoresearch/state.json').currentPlanDir)")"
+exec "$PLAN_DIR/benchmark.sh" "$@"
