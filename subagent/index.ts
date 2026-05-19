@@ -115,12 +115,15 @@ const CloseAgentSchema = Type.Object({
 
 // ─── Extension entry point ───────────────────────────────────────
 
-export default function subagentExtension(pi: ExtensionAPI): void {
+export default function subagentExtension(pi: ExtensionAPI): void | Promise<void> {
   if (process.env.PI_SUBAGENT_ROLE === "child") {
     const g = globalThis as typeof globalThis & { __piSubagentChildStarted?: boolean };
     if (!g.__piSubagentChildStarted) {
       g.__piSubagentChildStarted = true;
-      startChildMode(pi);
+      // Return the Promise so pi awaits it before emitting session_start.
+      // Without this, session_start fires before IPC handlers are registered
+      // and the child never sends hello / never receives the initial message.
+      return startChildMode(pi);
     }
     return;
   }
