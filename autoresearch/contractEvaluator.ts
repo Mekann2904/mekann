@@ -295,28 +295,3 @@ export function aggregate(values: number[], method: "median" | "mean" | "min" | 
 			return sorted[sorted.length - 1];
 	}
 }
-
-function matchesPattern(pattern: string, filePath: string): boolean {
-	const normPattern = pattern.replace(/\\/g, "/");
-	const normFile = filePath.replace(/\\/g, "/");
-
-	if (normPattern === normFile) return true;
-	if (normPattern.endsWith("/")) {
-		return normFile.startsWith(normPattern) || normFile === normPattern.slice(0, -1);
-	}
-	if (normPattern.includes("*") || normPattern.includes("?")) {
-		let regexStr = normPattern
-			.replace(/[.+^${}()|[\]\\]/g, "\\$&")
-			.replace(/\*\*/g, "<<DOUBLESTAR>>")
-			.replace(/\*/g, "[^/]*")
-			.replace(/<<DOUBLESTAR>>/g, ".*")
-			.replace(/\?/g, "[^/]");
-		regexStr = "^" + regexStr + "$";
-		try {
-			return new RegExp(regexStr).test(normFile);
-		} catch {
-			return false;
-		}
-	}
-	return false;
-}
