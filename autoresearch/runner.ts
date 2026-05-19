@@ -188,6 +188,49 @@ export async function runChecks(
 // ---------------------------------------------------------------------------
 // Command execution
 // ---------------------------------------------------------------------------
+// Shared spawn helpers (extracted from runCommand / runArgvCommand)
+// ---------------------------------------------------------------------------
+
+/** Setup streaming log files for stdout/stderr. Returns nulls when logDir is unset. */
+function setupLogStreams(logDir: string | undefined): {
+	stdoutStream: fs.WriteStream | null;
+	stderrStream: fs.WriteStream | null;
+	logFilesWritten: boolean;
+	streamError: string | null;
+} {
+	let stdoutStream: fs.WriteStream | null = null;
+	let stderrStream: fs.WriteStream | null = null;
+	let logFilesWritten = false;
+	let streamError: string | null = null;
+
+	if (logDir) {
+		try {
+			if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+			stdoutStream = fs.createWriteStream(path.join(logDir, "stdout.log"), { flags: "w" });
+			stderrStream = fs.createWriteStream(path.join(logDir, "stderr.log"), { flags: "w" });
+			logFilesWritten = true;
+		} catch {
+			logFilesWritten = false;
+		}
+	}
+
+	if (stdoutStream) {
+		stdoutStream.on("error", (e) => {
+			streamError = e.message;
+			logFilesWritten = false;
+		});
+	}
+	if (stderrStream) {
+		stderrStream.on("error", (e) => {
+			streamError = e.message;
+			logFilesWritten = false;
+		});
+	}
+
+	return { stdoutStream, stderrStream, logFilesWritten, streamError };
+}
+
+// ---------------------------------------------------------------------------
 
 /**
  * シェルコマンドを spawn で実行し、結果を返す。
@@ -208,36 +251,7 @@ export async function runCommand(
 		let timedOut = false;
 		let killSignal: string | null = null;
 
-		// Streaming log files — created before spawn so partial logs survive crashes
-		let stdoutStream: fs.WriteStream | null = null;
-		let stderrStream: fs.WriteStream | null = null;
-		let logFilesWritten = false;
-		let streamError: string | null = null;
-
-		if (logDir) {
-			try {
-				if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-				stdoutStream = fs.createWriteStream(path.join(logDir, "stdout.log"), { flags: "w" });
-				stderrStream = fs.createWriteStream(path.join(logDir, "stderr.log"), { flags: "w" });
-				logFilesWritten = true;
-			} catch {
-				logFilesWritten = false;
-			}
-		}
-
-		// P0-3: Handle stream errors (disk full, permission error, etc.)
-		if (stdoutStream) {
-			stdoutStream.on("error", (e) => {
-				streamError = e.message;
-				logFilesWritten = false;
-			});
-		}
-		if (stderrStream) {
-			stderrStream.on("error", (e) => {
-				streamError = e.message;
-				logFilesWritten = false;
-			});
-		}
+		const { stdoutStream, stderrStream, logFilesWritten, streamError } = setupLogStreams(logDir);
 
 		// detached: true で新しいプロセスグループを作成。
 		// 子プロセスが孫プロセスをspawnしていてもグループ全体をkillできる。
@@ -433,35 +447,7 @@ export async function runArgvCommand(
 		let timedOut = false;
 		let killSignal: string | null = null;
 
-		// Streaming log files
-		let stdoutStream: fs.WriteStream | null = null;
-		let stderrStream: fs.WriteStream | null = null;
-		let logFilesWritten = false;
-		let streamError: string | null = null;
-
-		if (logDir) {
-			try {
-				if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-				stdoutStream = fs.createWriteStream(path.join(logDir, "stdout.log"), { flags: "w" });
-				stderrStream = fs.createWriteStream(path.join(logDir, "stderr.log"), { flags: "w" });
-				logFilesWritten = true;
-			} catch {
-				logFilesWritten = false;
-			}
-		}
-
-		if (stdoutStream) {
-			stdoutStream.on("error", (e) => {
-				streamError = e.message;
-				logFilesWritten = false;
-			});
-		}
-		if (stderrStream) {
-			stderrStream.on("error", (e) => {
-				streamError = e.message;
-				logFilesWritten = false;
-			});
-		}
+		const { stdoutStream, stderrStream, logFilesWritten, streamError } = setupLogStreams(logDir);
 
 		// Build env: if allow list specified, start empty; otherwise inherit process.env
 		const spawnEnv: Record<string, string | undefined> = cmd.env?.allow
