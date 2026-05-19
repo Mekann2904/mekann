@@ -644,6 +644,13 @@ describe("loopFollowUpMessage", () => {
 		expect(typeof msg).toBe("string");
 		expect(msg.length).toBeGreaterThan(0);
 	});
+
+	it("includes subagent safety guidance", () => {
+		const msg = loopFollowUpMessage(false);
+		expect(msg).toContain("subagent");
+		expect(msg).toContain("autoresearch_run / autoresearch_log");
+		expect(msg).toContain("root");
+	});
 });
 
 describe("markArtifactComplete", () => {

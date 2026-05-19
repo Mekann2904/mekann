@@ -874,8 +874,11 @@ export function loopFollowUpMessage(noProgress: boolean): string {
 		"- autoresearch.md と autoresearch.ideas.md（存在する場合）を読み、過去の学びを踏まえる",
 		"- 原則として1ターンで1つの具体的な実験だけを行う",
 		"- コード変更後は autoresearch_run → autoresearch_log を必ず実行する",
+		"- subagent が利用可能なら、書き込みを伴わないコード調査・ログ要約・失敗原因分析・次実験案の探索に積極的に使う",
+		"- subagent にはファイル編集、autoresearch_run / autoresearch_log、git操作を任せない。実験実行と記録は root が行う",
+		"- subagent の結果は参考情報として統合し、実際に試す実験は1ターンにつき1つだけにする",
 		"- 学んだことを autoresearch.md の Codebase Patterns / 試したこと、または memo に残す",
-		`- 有望な実験が尽きた場合だけ ${COMPLETE_MARKER} を返す`,
+		`- 有望な実験が尽きた場合だけ ${COMPLETE_MARKER} を返す`, 
 		"ユーザーに継続確認せず進めてください。",
 	].join("\n");
 }

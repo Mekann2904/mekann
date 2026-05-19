@@ -211,6 +211,15 @@ describe("autoresearchExtension", () => {
 		);
 	});
 
+	it("adds subagent safety guidance to run/log promptGuidelines", () => {
+		const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
+		const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
+		expect((runTool.promptGuidelines as string[]).join("\n")).toContain("autoresearch_run は root agent が実行する");
+		expect((runTool.promptGuidelines as string[]).join("\n")).toContain("subagent に実行させない");
+		expect((logTool.promptGuidelines as string[]).join("\n")).toContain("autoresearch_log は root agent が実行する");
+		expect((logTool.promptGuidelines as string[]).join("\n")).toContain("subagent に記録・keep/discard判断・git操作を任せない");
+	});
+
 	it("registers session_start, before_agent_start, and loop event handlers", () => {
 		expect(pi.on).toHaveBeenCalledWith("session_start", expect.any(Function));
 		expect(pi.on).toHaveBeenCalledWith("before_agent_start", expect.any(Function));

@@ -111,6 +111,38 @@ pnpm test --run --reporter=dot 2>&1 | tail -50
 pnpm typecheck 2>&1 | grep -i error || true
 ```
 
+## subagent の使い方
+
+subagent 拡張が利用可能な場合、root agent は読み取り専用の補助調査に subagent を積極的に使う。
+
+### subagent に任せてよいこと
+
+- 対象コード・benchmark・checks の読み取り専用調査
+- hot path / bottleneck / suspicious code の探索
+- 過去の `autoresearch.md` / `autoresearch.jsonl` / git log の要約
+- 失敗した実験の原因分析
+- 次に試す小さな実験案の生成
+- root が実装した diff の読み取り専用レビュー
+
+### subagent に任せてはいけないこと
+
+- ファイル編集
+- `autoresearch_run`
+- `autoresearch_log`
+- `autoresearch_init`
+- git commit / revert / checkout / branch 操作
+- 複数の実験を同時に実装・測定すること
+
+root agent は、subagent の final_result を参考情報として統合し、実際に試す実験は1ターンにつき1つだけ選ぶ。
+
+subagent へ依頼するときは必ず以下を明示する:
+
+- 読み取り専用であること
+- ファイルを変更しないこと
+- autoresearch系ツールを呼ばないこと
+- git操作をしないこと
+- 出力は「root が次に試せる小さな実験案」または「調査結果」に限定すること
+
 ## ループ規則
 
 **永遠にループし続ける。** 「続けますか？」と確認しない — ユーザーは自律的な作業を期待している。拡張機能の Ralph-style watchdog が `agent_end` 後に次ターンを自動投入するため、各ターンは完結した1実験に集中する。
