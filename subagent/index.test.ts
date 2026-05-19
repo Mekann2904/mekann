@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createMockApi, loadExtension, type MockApi } from "./test-helpers.js";
 
 // Mock the SDK — must be at top level for vitest hoisting
 vi.mock("@earendil-works/pi-coding-agent", () => ({
@@ -966,60 +967,6 @@ describe("render", () => {
 // ─── Extension entry point ───────────────────────────────────────
 
 describe("extension entry point", () => {
-  function createMockApi() {
-    const hooks: Record<string, Function> = {};
-    const commands: Record<string, { handler: Function; description?: string }> =
-      {};
-    let flags: Record<string, unknown> = { "subagent-display": "none", "subagent-max-depth": "2" };
-    const registeredTools: Array<Record<string, any>> = [];
-    const registeredFlags: Array<{ name: string; config: unknown }> = [];
-
-    return {
-      registerFlag: vi.fn((name: string, config: unknown) => {
-        registeredFlags.push({ name, config });
-      }),
-      registerTool: vi.fn((tool: Record<string, any>) => {
-        registeredTools.push(tool);
-      }),
-      registerCommand: vi.fn((name: string, config: any) => {
-        commands[name] = config;
-      }),
-      on: vi.fn((event: string, handler: Function) => {
-        hooks[event] = handler;
-      }),
-      getFlag: (name: string) => flags[name],
-      getActiveTools: vi.fn(() => []),
-      events: {
-        on: vi.fn(),
-        emit: vi.fn(),
-      },
-      appendEntry: vi.fn(),
-      sendUserMessage: vi.fn(),
-      getSessionSettings: vi.fn(() => ({})),
-      // Test accessors
-      get _hooks() {
-        return hooks;
-      },
-      get _commands() {
-        return commands;
-      },
-      set _flags(f: Record<string, unknown>) {
-        flags = f;
-      },
-      get _registeredTools() {
-        return registeredTools;
-      },
-      get _registeredFlags() {
-        return registeredFlags;
-      },
-    };
-  }
-
-  async function loadExtension(mockApi: ReturnType<typeof createMockApi>) {
-    const { default: subagentExtension } = await import("./index.js");
-    subagentExtension(mockApi as any);
-  }
-
   it("registers 6 tools", async () => {
     const mock = createMockApi();
     await loadExtension(mock);
@@ -1156,44 +1103,6 @@ describe("extension entry point", () => {
 // ─── followupTask terminal status rejection ─────────────────────
 
 describe("followupTask terminal status rejection", () => {
-  function createMockApi() {
-    const hooks: Record<string, Function> = {};
-    const commands: Record<string, { handler: Function; description?: string }> = {};
-    let flags: Record<string, unknown> = { "subagent-display": "none", "subagent-max-depth": "2" };
-    const registeredTools: Array<Record<string, any>> = [];
-    const registeredFlags: Array<{ name: string; config: unknown }> = [];
-
-    return {
-      registerFlag: vi.fn((name: string, config: unknown) => {
-        registeredFlags.push({ name, config });
-      }),
-      registerTool: vi.fn((tool: Record<string, any>) => {
-        registeredTools.push(tool);
-      }),
-      registerCommand: vi.fn((name: string, config: any) => {
-        commands[name] = config;
-      }),
-      on: vi.fn((event: string, handler: Function) => {
-        hooks[event] = handler;
-      }),
-      getFlag: (name: string) => flags[name],
-      getActiveTools: vi.fn(() => []),
-      events: { on: vi.fn(), emit: vi.fn() },
-      appendEntry: vi.fn(),
-      sendUserMessage: vi.fn(),
-      get _hooks() { return hooks; },
-      get _commands() { return commands; },
-      set _flags(f: Record<string, unknown>) { flags = f; },
-      get _registeredTools() { return registeredTools; },
-      get _registeredFlags() { return registeredFlags; },
-    };
-  }
-
-  async function loadExtension(mockApi: ReturnType<typeof createMockApi>) {
-    const { default: subagentExtension } = await import("./index.js");
-    subagentExtension(mockApi as any);
-  }
-
   const baseCtx = {
     cwd: "/tmp/test",
     model: { id: "test-model" },
@@ -2552,39 +2461,6 @@ describe("render additional", () => {
 // ─── Extension tool execute handlers ────────────────────────────
 
 describe("extension tool execute handlers", () => {
-  function createMockApi() {
-    const hooks: Record<string, Function> = {};
-    const commands: Record<string, { handler: Function; description?: string }> = {};
-    let flags: Record<string, unknown> = { "subagent-display": "none", "subagent-max-depth": "2" };
-    const registeredTools: Array<Record<string, any>> = [];
-    const registeredFlags: Array<{ name: string; config: unknown }> = [];
-
-    return {
-      registerFlag: vi.fn((name: string, config: unknown) => {
-        registeredFlags.push({ name, config });
-      }),
-      registerTool: vi.fn((tool: Record<string, any>) => {
-        registeredTools.push(tool);
-      }),
-      registerCommand: vi.fn((name: string, config: any) => {
-        commands[name] = config;
-      }),
-      on: vi.fn((event: string, handler: Function) => {
-        hooks[event] = handler;
-      }),
-      getFlag: (name: string) => flags[name],
-      getActiveTools: vi.fn(() => []),
-      events: { on: vi.fn(), emit: vi.fn() },
-      appendEntry: vi.fn(),
-      sendUserMessage: vi.fn(),
-      get _hooks() { return hooks; },
-      get _commands() { return commands; },
-      set _flags(f: Record<string, unknown>) { flags = f; },
-      get _registeredTools() { return registeredTools; },
-      get _registeredFlags() { return registeredFlags; },
-    };
-  }
-
   const baseCtx = {
     cwd: "/tmp/test",
     model: { id: "test-model" },
@@ -2766,39 +2642,6 @@ describe("extension tool execute handlers", () => {
 // ─── Extension command handlers ─────────────────────────────────
 
 describe("extension command handlers", () => {
-  function createMockApi() {
-    const hooks: Record<string, Function> = {};
-    const commands: Record<string, { handler: Function; description?: string }> = {};
-    let flags: Record<string, unknown> = { "subagent-display": "none", "subagent-max-depth": "2" };
-    const registeredTools: Array<Record<string, any>> = [];
-    const registeredFlags: Array<{ name: string; config: unknown }> = [];
-
-    return {
-      registerFlag: vi.fn((name: string, config: unknown) => {
-        registeredFlags.push({ name, config });
-      }),
-      registerTool: vi.fn((tool: Record<string, any>) => {
-        registeredTools.push(tool);
-      }),
-      registerCommand: vi.fn((name: string, config: any) => {
-        commands[name] = config;
-      }),
-      on: vi.fn((event: string, handler: Function) => {
-        hooks[event] = handler;
-      }),
-      getFlag: (name: string) => flags[name],
-      getActiveTools: vi.fn(() => []),
-      events: { on: vi.fn(), emit: vi.fn() },
-      appendEntry: vi.fn(),
-      sendUserMessage: vi.fn(),
-      get _hooks() { return hooks; },
-      get _commands() { return commands; },
-      set _flags(f: Record<string, unknown>) { flags = f; },
-      get _registeredTools() { return registeredTools; },
-      get _registeredFlags() { return registeredFlags; },
-    };
-  }
-
   const baseCtx = {
     cwd: "/tmp/test",
     model: { id: "test-model" },
@@ -2966,39 +2809,6 @@ describe("extension command handlers", () => {
 // ─── index.ts: parseForkTurns branch coverage ────────────────────
 
 describe("index.ts parseForkTurns branches", () => {
-  function createMockApi() {
-    const hooks: Record<string, Function> = {};
-    const commands: Record<string, { handler: Function; description?: string }> = {};
-    let flags: Record<string, unknown> = { "subagent-display": "none", "subagent-max-depth": "2" };
-    const registeredTools: Array<Record<string, any>> = [];
-    const registeredFlags: Array<{ name: string; config: unknown }> = [];
-
-    return {
-      registerFlag: vi.fn((name: string, config: unknown) => {
-        registeredFlags.push({ name, config });
-      }),
-      registerTool: vi.fn((tool: Record<string, any>) => {
-        registeredTools.push(tool);
-      }),
-      registerCommand: vi.fn((name: string, config: any) => {
-        commands[name] = config;
-      }),
-      on: vi.fn((event: string, handler: Function) => {
-        hooks[event] = handler;
-      }),
-      getFlag: (name: string) => flags[name],
-      getActiveTools: vi.fn(() => []),
-      events: { on: vi.fn(), emit: vi.fn() },
-      appendEntry: vi.fn(),
-      sendUserMessage: vi.fn(),
-      get _hooks() { return hooks; },
-      get _commands() { return commands; },
-      set _flags(f: Record<string, unknown>) { flags = f; },
-      get _registeredTools() { return registeredTools; },
-      get _registeredFlags() { return registeredFlags; },
-    };
-  }
-
   const baseCtx = {
     cwd: "/tmp/test",
     model: { id: "test-model" },
@@ -4460,30 +4270,6 @@ describe("agentControl: close edge cases", () => {
 // ─── Extension: /close-agent non-Error catch (line 349) ──────────
 
 describe("extension: /close-agent error handling", () => {
-  function createMockApi() {
-    const hooks: Record<string, Function> = {};
-    const commands: Record<string, { handler: Function; description?: string }> = {};
-    let flags: Record<string, unknown> = { "subagent-display": "none", "subagent-max-depth": "2" };
-    const registeredTools: Array<Record<string, any>> = [];
-    const registeredFlags: Array<{ name: string; config: unknown }> = [];
-    return {
-      registerFlag: vi.fn((name: string, config: unknown) => { registeredFlags.push({ name, config }); }),
-      registerTool: vi.fn((tool: Record<string, any>) => { registeredTools.push(tool); }),
-      registerCommand: vi.fn((name: string, config: any) => { commands[name] = config; }),
-      on: vi.fn((event: string, handler: Function) => { hooks[event] = handler; }),
-      getFlag: (name: string) => flags[name],
-      getActiveTools: vi.fn(() => []),
-      events: { on: vi.fn(), emit: vi.fn() },
-      appendEntry: vi.fn(),
-      sendUserMessage: vi.fn(),
-      get _hooks() { return hooks; },
-      get _commands() { return commands; },
-      set _flags(f: Record<string, unknown>) { flags = f; },
-      get _registeredTools() { return registeredTools; },
-      get _registeredFlags() { return registeredFlags; },
-    };
-  }
-
   it("close-agent with non-Error thrown shows String(err)", async () => {
     const mock = createMockApi();
     const { default: subagentExtension } = await import("./index.js");
@@ -4506,30 +4292,6 @@ describe("extension: /close-agent error handling", () => {
 // ─── wait_agent tool result formatting (line 265 branches) ─────
 
 describe("extension: wait_agent tool result formatting", () => {
-  function createMockApi() {
-    const hooks: Record<string, Function> = {};
-    const commands: Record<string, { handler: Function; description?: string }> = {};
-    let flags: Record<string, unknown> = { "subagent-display": "none", "subagent-max-depth": "2" };
-    const registeredTools: Array<Record<string, any>> = [];
-    const registeredFlags: Array<{ name: string; config: unknown }> = [];
-    return {
-      registerFlag: vi.fn((name: string, config: unknown) => { registeredFlags.push({ name, config }); }),
-      registerTool: vi.fn((tool: Record<string, any>) => { registeredTools.push(tool); }),
-      registerCommand: vi.fn((name: string, config: any) => { commands[name] = config; }),
-      on: vi.fn((event: string, handler: Function) => { hooks[event] = handler; }),
-      getFlag: (name: string) => flags[name],
-      getActiveTools: vi.fn(() => []),
-      events: { on: vi.fn(), emit: vi.fn() },
-      appendEntry: vi.fn(),
-      sendUserMessage: vi.fn(),
-      get _hooks() { return hooks; },
-      get _commands() { return commands; },
-      set _flags(f: Record<string, unknown>) { flags = f; },
-      get _registeredTools() { return registeredTools; },
-      get _registeredFlags() { return registeredFlags; },
-    };
-  }
-
   it("wait_agent formats events with agent_status_changed and agent_final_message", async () => {
     const mock = createMockApi();
     const { default: subagentExtension } = await import("./index.js");
