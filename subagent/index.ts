@@ -157,7 +157,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   });
 
   pi.registerFlag("subagent-display", {
-    description: 'Display mode for subagents: "none", "kitty-log", or "kitty-pi"',
+    description: 'Display mode for subagents: "none", "kitty-log", "kitty-pi", or "kitty-split"',
     type: "string",
     default: "none",
   });
@@ -232,7 +232,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       const minWait = Number(getFlagOrSetting("subagent-min-wait-timeout-ms", "min-wait-timeout-ms", "1000")) || 1000;
       const rawDisplayFlag = getFlagOrSetting<string>("subagent-display", "display", "none");
       const displayFlag = String(rawDisplayFlag ?? "none");
-      const displayMode = displayFlag === "kitty-log" || displayFlag === "kitty-pi" ? displayFlag : "none";
+      const displayMode = displayFlag === "kitty-log" || displayFlag === "kitty-pi" || displayFlag === "kitty-split" ? displayFlag : "none";
       appendFileSync("/tmp/pi-subagent-debug.log", `ensureControl: rawDisplayFlag=${JSON.stringify(rawDisplayFlag)} displayFlag=${displayFlag} displayMode=${displayMode}\n`);
       const logDirFlag = String(getFlagOrSetting<string>("subagent-log-dir", "log-dir", "") ?? "").trim();
       const kittenBin = String(getFlagOrSetting<string>("subagent-kitten-bin", "kitten-bin", "kitten") ?? "kitten") || "kitten";

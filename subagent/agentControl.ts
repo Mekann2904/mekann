@@ -54,7 +54,7 @@ function nextAgentId(): string {
   return `sub_${++agentIdCounter}_${Date.now().toString(36)}`;
 }
 
-export type DisplayMode = "none" | "kitty-log" | "kitty-pi";
+export type DisplayMode = "none" | "kitty-log" | "kitty-pi" | "kitty-split";
 
 export interface AgentControlOptions {
   displayMode?: DisplayMode;
@@ -220,7 +220,7 @@ export class AgentControl {
     });
 
     try {
-      if (this.displayMode === "kitty-pi") {
+      if (this.displayMode === "kitty-pi" || this.displayMode === "kitty-split") {
         return await this.spawnExternalPi(params, ctx, callerPath, canonicalPath, depth, reservation, agentId);
       }
 
@@ -384,8 +384,10 @@ export class AgentControl {
     processExternalPiSlots.add(agentId);
     const now = Date.now();
     const socketPath = path.join(this.logDir, `${agentId}.sock`);
+    const isSplit = this.displayMode === "kitty-split";
     const logPath = path.join(this.logDir, `${agentId}.kitty-pi.log`);
-    const display: AgentDisplayRef = { kind: "kitty-pi", status: "opening", agentId, title: `pi subagent ${canonicalPath}`, cwd: ctx.cwd, socketPath, logPath };
+    const displayKind = isSplit ? "kitty-split" as const : "kitty-pi" as const;
+    const display: AgentDisplayRef = { kind: displayKind, status: "opening", agentId, title: `pi subagent ${canonicalPath}`, cwd: ctx.cwd, socketPath, logPath };
     const metadata: AgentMetadata = {
       agentId, sessionId: `external:${agentId}`, parentAgentId: callerPath === ROOT_PATH ? "root" : undefined, parentSessionId: "root",
       agentPath: canonicalPath, nickname: params.nickname, role: params.role, status: "pending_init", lastTaskMessage: params.message,
@@ -398,7 +400,10 @@ export class AgentControl {
     await hub.start();
     this.runtimes.set(canonicalPath, { mode: "external_pi", agentId, agentPath: canonicalPath, socketPath, display, connected: false });
     try {
-      const opened = await this.kitty.launchPiWindow({ agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: params.message, logPath, title: display.title, piCommand: this.piCommand, extensionPath: this.extensionPath });
+      const launchParams = { agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: params.message, logPath, title: display.title, piCommand: this.piCommand, extensionPath: this.extensionPath };
+      const opened = isSplit
+        ? await this.kitty.launchPiSplit(launchParams)
+        : await this.kitty.launchPiWindow(launchParams);
       this.registry.updateAgent(canonicalPath, { display: opened });
       const rt = this.runtimes.get(canonicalPath); if (rt?.mode === "external_pi") rt.display = opened;
       const hello = await hub.waitForHello(agentId, this.helloTimeoutMs);
@@ -671,7 +676,7 @@ export class AgentControl {
     const callerPath = this.resolveCallerPath(ctx);
     const { agent } = this.resolveAgentOrFail(target, callerPath);
     const display = agent.display;
-    if (!display || (display.kind !== "kitty-log" && display.kind !== "kitty-pi") || display.status !== "open") {
+    if (!display || (display.kind !== "kitty-log" && display.kind !== "kitty-pi" && display.kind !== "kitty-split") || display.status !== "open") {
       return { focused: false, warning: `No open kitty display for ${agent.agentPath}.` };
     }
     try {
