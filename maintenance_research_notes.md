@@ -131,10 +131,29 @@
 - index.ts: 2360→2337行、review_risk: 50→49
 - 重複する集約ロジックをcontractEvaluator.tsのexportに統合
 
+### E5: contractEvaluator.aggregate→acceptance.aggregateMeasurements統合 (KEEP) — 3db784c
+- maintenance_score: 21660 → 21590 (70点改善)
+- duplication_score: 661→654, LOC: 12747→12731
+- 3箇所にあった集約関数をacceptance.tsの1箇所に統合
+
+### E6: computeContractHash重複呼び出し統合 (KEEP) — 04f415d
+- maintenance_score: 21590 → 21570 (20点改善)
+- duplication_score: 654→652
+- 同一ハッシュ計算の2回呼び出しを1回に統合
+
+### E7: 未使用import削除 (DISCARD)
+- スコア不変。7行削減もreview_risk閾値に届かず
+
+### E8: computeBaselineNoise内集約のヘルパー化 (DISCARD)
+- スコア不変。ヘルパー追加でLOC増加が重複削減を相殺
+
 ## 知見
 
 1. **小規模なファイル抽出は逆効果**: ファイル数が増加すると review_risk が増え、max_file_loc の減少を相殺する
 2. **内部重複の削減は有効**: 同じファイル内の重複コードをヘルパーに統合すると duplication_score が改善する
 3. **同一ロジックのimport統合は有効**: 重複関数を一方からexportしてimportする方式は、ファイル数を増やさずに行数を減らせる
-4. **contractV1.tsにもmatchesPattern重複あり**: contractEvaluator.tsとほぼ同一のglobマッチングが2箇所にある
-5. **評価スクリプトの tests_passed 出力にバグ**: "failed" が grep できない場合に false になる可能性があるが、実際のテストは通過している
+4. **dead codeの削除は有効**: 使われていない関数・importの削除は安全で確実な改善
+5. **評価スクリプトの tests_passed にflakyあり**: 稀にテスト全通過でもtests_passed=falseになる。タイミング問題
+6. **小規模変更の累積効果**: 20-135点の小さな改善が累積して -1320点（5.8%）の改善
+7. **review_riskが最大のコスト要因**: 4900点（全スコアの23%）。削減には50行単位の大幅削減かファイル統合が必要
+8. **重複の大部分はスキーマ定義とAPI定型パターン**: additionalProperties:false や pi.registerTool パターンは統合不適切

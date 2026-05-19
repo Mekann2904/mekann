@@ -4,3 +4,5 @@ e2d5262	22815	true	65.5	keep	ストリームセットアップ重複統合	dupli
 7cedaaa	21660	true	68.0	keep	未使用matchesPattern関数の削除	dead code 25行削除でduplication_score 672→661
 7cedaaa	21660	true	67.8	discard	computeBaselineNoise内の集約をヘルパーに抽出	ヘルパー追加でLOC増加が重複削減を相殺、スコア中立
 7cedaaa	21660	true	72.9	discard	未使用import削除	7行削減もreview_risk閾値に届ずスコア不変
+3db784c	21590	true	76.5	keep	contractEvaluator.aggregate→acceptance.aggregateMeasurements統合	重複関数を単一実装に統合、duplication 661→654
+HEAD	21570	true	70.8	keep	computeContractHash重複呼び出し統合	duplication 654→652、4行削減
