@@ -359,7 +359,7 @@ export class AgentControl {
       // Inherit parent's tool restrictions, then apply authority restrictions.
       const parentActiveTools = this.pi.getActiveTools?.();
       if (parentActiveTools && parentActiveTools.length > 0) {
-        const activeSet = new Set(parentActiveTools);
+        const activeSet = new Set(parentActiveTools.map((t: any) => t.name));
         const allTools = session.agent.state.tools;
         session.agent.state.tools = allTools.filter((t: any) => activeSet.has(t.name));
       }

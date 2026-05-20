@@ -1495,7 +1495,7 @@ describe("AgentControl", () => {
       );
 
       const pi = {
-        getActiveTools: vi.fn(() => ["bash", "read"]),
+        getActiveTools: vi.fn(() => [{ name: "bash" }, { name: "read" }]),
       } as any;
       const control = new (AgentControl as any)(pi, 4, 2);
       control.registry.ensureRoot("root");
