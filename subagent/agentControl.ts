@@ -232,12 +232,15 @@ export class AgentControl {
       authority.mode === "propose_patch" ? "You are running in propose_patch mode." : `You are running in ${authority.mode} mode with structured result reporting.`,
       authority.mode === "edit" ? "You may edit only within granted authority." : "Do not modify files directly.",
       "Investigate the requested task. If no change is needed, return outcome=\"no_change\".",
-      "Return exactly one JSON object conforming to subagent.result.v1.",
+      "Return exactly one JSON object conforming to subagent.result.v1. Output ONLY the raw JSON — no markdown fences, no explanation text.",
     ];
     if (authority.mode === "propose_patch") lines.push(
       "If a change is needed, create a patch proposal.",
       "Use patch.format=\"unified_diff\" and include patch.body. Do not include patch.ref; the parent stores the patch and assigns patch.ref.",
       "Include touched paths, file base hashes, semantic reads/writes, assumptions, effects, public surface delta, validation suggestions, and risk level.",
+      "",
+      "Minimal patch outcome example (fill in real values):",
+      '{"schema":"subagent.result.v1","outcome":"patch","summary":"...","patch":{"format":"unified_diff","body":"--- a/path\\n+++ b/path\\n@@ ...\\n-old\\n+new\\n"},"base":{"files":[{"path":"path","hash":"sha256:..."}]},"scope":{"allowed_paths":["src/"],"touched_paths":["path"]},"semantic":{"reads":[],"writes":[{"kind":"file","name":"path"}],"assumptions":[],"effects":[],"public_surface_delta":[],"risk":{"level":"low"}},"validation":{"suggested":[]}}',
     );
     lines.push(`Granted write_scope: ${JSON.stringify(authority.write_scope ?? [])}`, `Granted semantic_scope: ${JSON.stringify(authority.semantic_scope ?? [])}`);
     return lines.join("\n");
@@ -726,7 +729,12 @@ export class AgentControl {
   async retryAgentResult(params: { result_id: string; reason?: string }, ctx: ExtensionContext) {
     const stored = this.resultStoreFor(ctx.cwd).load(params.result_id);
     const agent = this.registry.get(stored.agent_path);
-    const message = `Your previous patch proposal was rejected because ${params.reason ?? "its assumptions are stale"}.\nOriginal result_id: ${params.result_id}\nRegenerate a patch proposal against the current tree. Do not modify files. Return subagent.result.v1.`;
+    const outcomeHint = stored.result.outcome === "patch"
+      ? "Regenerate a patch proposal against the current tree."
+      : stored.result.outcome === "observation"
+        ? "Regenerate your observation report with the requested additions."
+        : "Regenerate your result.";
+    const message = `Your previous result was rejected because ${params.reason ?? "its assumptions are stale"}.\nOriginal result_id: ${params.result_id}\n${outcomeHint} Do not modify files. Return subagent.result.v1 as raw JSON only (no markdown fences).`;
     if (agent && agent.open && !isTerminalStatus(agent.status)) {
       await this.followupTask({ target: stored.agent_path, message }, ctx);
       return { result_id: params.result_id, status: "retry_requested", mode: "followup" };

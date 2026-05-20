@@ -129,4 +129,38 @@ describe("structured subagent results", () => {
     const decision = evaluateSemanticConflict(incoming, [{ result_id: "old", agent_path: "/root/old", applied_at: 1, reads: [], writes: [{ kind: "symbol", name: "X" }], assumptions: [], effects: [], public_surface_delta: [], validation_result: { ok: true } }]);
     expect(decision.action).toBe("require_regeneration");
   });
+
+  describe("tryParseSubagentResult: JSON extraction from LLM output", () => {
+    const observation: any = {
+      schema: "subagent.result.v1",
+      outcome: "observation",
+      summary: "test",
+      findings: [{ target: { kind: "file", name: "a.ts" }, message: "found" }],
+    };
+
+    it("parses raw JSON directly", () => {
+      expect(tryParseSubagentResult(JSON.stringify(observation)).ok).toBe(true);
+    });
+
+    it("strips markdown code block with language hint", () => {
+      const wrapped = "```json\n" + JSON.stringify(observation, null, 2) + "\n```";
+      expect(tryParseSubagentResult(wrapped).ok).toBe(true);
+    });
+
+    it("strips markdown code block without language hint", () => {
+      const wrapped = "```\n" + JSON.stringify(observation) + "\n```";
+      expect(tryParseSubagentResult(wrapped).ok).toBe(true);
+    });
+
+    it("extracts JSON from surrounding prose", () => {
+      const prose = "Here is the result:\n\n" + JSON.stringify(observation) + "\n\nDone.";
+      expect(tryParseSubagentResult(prose).ok).toBe(true);
+    });
+
+    it("returns parse error for text without JSON", () => {
+      const result = tryParseSubagentResult("no json here");
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toContain("invalid_json");
+    });
+  });
 });

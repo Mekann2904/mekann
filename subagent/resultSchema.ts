@@ -26,9 +26,32 @@ function validEffect(v: unknown): boolean {
   return oneOf(v.change, ["add", "modify", "remove"] as const);
 }
 
+/**
+ * Extract a JSON object from text that may be wrapped in markdown code blocks
+ * or surrounded by prose.  LLMs frequently wrap JSON output in ```json ... ```
+ * even when instructed not to.
+ */
+function extractJSON(text: string): string {
+  const trimmed = text.trim();
+
+  // Try direct parse first (fast path)
+  if (trimmed.startsWith("{")) return trimmed;
+
+  // Strip markdown code block: ```json ... ``` or ``` ... ```
+  const codeBlockMatch = trimmed.match(/^```(?:\w*)\s*\n([\s\S]*?)\n?```\s*$/);
+  if (codeBlockMatch) return codeBlockMatch[1].trim();
+
+  // Fallback: extract outermost { ... }  (handles leading/trailing prose)
+  const first = trimmed.indexOf("{");
+  const last = trimmed.lastIndexOf("}");
+  if (first !== -1 && last > first) return trimmed.slice(first, last + 1);
+
+  return trimmed;
+}
+
 export function tryParseSubagentResult(text: string): ParseResult {
   let raw: unknown;
-  try { raw = JSON.parse(text.trim()); } catch (err) { return { ok: false, error: `invalid_json: ${err instanceof Error ? err.message : String(err)}` }; }
+  try { raw = JSON.parse(extractJSON(text)); } catch (err) { return { ok: false, error: `invalid_json: ${err instanceof Error ? err.message : String(err)}` }; }
   if (!isObj(raw)) return { ok: false, error: "result must be a JSON object" };
   if (raw.schema !== "subagent.result.v1") return { ok: false, error: "schema must be subagent.result.v1" };
   if (!isStr(raw.outcome)) return { ok: false, error: "outcome is required" };
