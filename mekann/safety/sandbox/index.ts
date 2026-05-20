@@ -14,11 +14,12 @@ import { resolveRealPaths, validateWorkspaceRoot } from "./permissions.js";
 import { shouldRequestApproval, yoloApprovalMessage, type YoloApprovalState, readOnlyPolicy, workspaceWritePolicy, yoloPolicy } from "./permissions.js";
 import { DEFAULT_SANDBOX_MODE, parseSandboxMode, modeLabel, SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, PLAN_MODE_STATUS_EVENT, type SandboxPushProfileEvent, type SandboxPopProfileEvent, type PlanModeStatusEvent } from "../policy-core/modes.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
+import { MEKANN_SANDBOX_DEFAULTS } from "../../config.js";
 
 // ─── LLM output truncation ─────────────────────────────────────────
 
-export const DEFAULT_LLM_OUTPUT_MAX_BYTES = 50 * 1024;
-export const DEFAULT_LLM_OUTPUT_MAX_LINES = 2000;
+export const DEFAULT_LLM_OUTPUT_MAX_BYTES = MEKANN_SANDBOX_DEFAULTS.llmOutputMaxBytes;
+export const DEFAULT_LLM_OUTPUT_MAX_LINES = MEKANN_SANDBOX_DEFAULTS.llmOutputMaxLines;
 
 const SANDBOX_PROMPT_POLICY = [
 	"Sandbox policy:",

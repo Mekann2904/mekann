@@ -37,23 +37,24 @@ import type { AgentDisplayRef, AgentDisplayResult, AgentRuntime, ResultContract,
 import { tryParseSubagentResult } from "./resultSchema.js";
 import { resultSummary, SubagentResultStore } from "./resultStore.js";
 import { ApplyQueue } from "./applyQueue.js";
+import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
 
 // ─── Default config ──────────────────────────────────────────────
 
 // Includes the root agent. Therefore 3 open agents = root + max 2 subagents.
-const DEFAULT_MAX_AGENTS = 3;
-const HARD_MAX_OPEN_AGENTS = 3;
-const DEFAULT_MAX_DEPTH = 2;
-const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
-const MAX_WAIT_TIMEOUT_MS = 600_000;
-const MIN_WAIT_TIMEOUT_MS = 1_000;
+const DEFAULT_MAX_AGENTS = MEKANN_SUBAGENT_DEFAULTS.maxOpenAgents;
+const HARD_MAX_OPEN_AGENTS = MEKANN_SUBAGENT_DEFAULTS.maxOpenAgents;
+const DEFAULT_MAX_DEPTH = MEKANN_SUBAGENT_DEFAULTS.maxDepth;
+const DEFAULT_WAIT_TIMEOUT_MS = MEKANN_SUBAGENT_DEFAULTS.defaultWaitTimeoutMs;
+const MAX_WAIT_TIMEOUT_MS = MEKANN_SUBAGENT_DEFAULTS.maxWaitTimeoutMs;
+const MIN_WAIT_TIMEOUT_MS = MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs;
 
-export const DEFAULT_AUTHORITY: SubagentAuthority = { mode: "propose_patch", require_base_hash: true, max_patch_bytes: 50_000 };
+export const DEFAULT_AUTHORITY: SubagentAuthority = { mode: "propose_patch", require_base_hash: true, max_patch_bytes: MEKANN_SUBAGENT_DEFAULTS.maxPatchBytes };
 
 let agentIdCounter = 0;
 
 const processExternalPiSlots = new Set<string>();
-const MAX_EXTERNAL_PI_SUBAGENTS = 2;
+const MAX_EXTERNAL_PI_SUBAGENTS = MEKANN_SUBAGENT_DEFAULTS.externalPiSlots;
 
 function nextAgentId(): string {
   return `sub_${++agentIdCounter}_${Date.now().toString(36)}`;

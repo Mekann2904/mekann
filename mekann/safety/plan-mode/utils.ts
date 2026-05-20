@@ -6,7 +6,7 @@ import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, rmSync,
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
-import { homedir } from "node:os";
+import { getPlanModeConfigPath, MEKANN_CONFIG_VERSION } from "../../config.js";
 
 // Re-export from policy-core — single source of truth for command intent classification.
 // isSafeCommand is a UX guard, NOT a security boundary.
@@ -71,10 +71,10 @@ function isThinkingLevel(value: unknown): value is ThinkingLevel {
 export interface ModelRef { provider: string; modelId: string; }
 
 /** Configuration file shape stored at ~/.pi/agent/plan-mode.json */
-export interface PlanModeConfig { version: 1; models: { main?: ModelRef; plan?: ModelRef; }; thinking: { main?: ThinkingLevel; plan?: ThinkingLevel; }; }
+export interface PlanModeConfig { version: typeof MEKANN_CONFIG_VERSION; models: { main?: ModelRef; plan?: ModelRef; }; thinking: { main?: ThinkingLevel; plan?: ThinkingLevel; }; }
 
 export function createDefaultConfig(): PlanModeConfig {
-	return { version: 1, models: {}, thinking: {} };
+	return { version: MEKANN_CONFIG_VERSION, models: {}, thinking: {} };
 }
 
 export function normalizeConfig(raw: Record<string, unknown>): PlanModeConfig {
@@ -85,7 +85,7 @@ export function normalizeConfig(raw: Record<string, unknown>): PlanModeConfig {
 		if (isThinkingLevel(ti.main)) thinking.main = ti.main;
 		if (isThinkingLevel(ti.plan)) thinking.plan = ti.plan;
 	}
-	return { version: 1, models: (raw.models && typeof raw.models === "object") ? raw.models as PlanModeConfig["models"] : {}, thinking };
+	return { version: MEKANN_CONFIG_VERSION, models: (raw.models && typeof raw.models === "object") ? raw.models as PlanModeConfig["models"] : {}, thinking };
 }
 
 /** "provider/modelId" 文字列を ModelRef にパース（最初の / で分割）。 */
@@ -107,7 +107,7 @@ export function sameModelRef(a: ModelRef | undefined, b: ModelRef | undefined): 
 
 /** ~/.pi/agent/plan-mode.json へのパス（explicitPath で上書き可能）。 */
 export function getConfigPath(explicitPath?: string): string {
-	return explicitPath ?? join(homedir(), ".pi", "agent", "plan-mode.json");
+	return explicitPath ?? getPlanModeConfigPath();
 }
 
 /** Load config from disk, returning a default config on missing/invalid file. */
