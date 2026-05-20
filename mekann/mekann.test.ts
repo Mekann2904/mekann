@@ -31,6 +31,15 @@ const EXPECTED_COMMANDS_BY_MODULE: Record<string, string[]> = {
 	"utils/zip-repo/index.ts": ["zip"],
 };
 
+const EXPECTED_PROMPT_PROVIDERS_BY_MODULE: Record<string, string[]> = {
+	"core/agent-guidelines/index.ts": ["agent-guidelines"],
+	"safety/sandbox/index.ts": ["sandbox"],
+	"safety/plan-mode/index.ts": ["plan-mode"],
+	"autonomy/goal/index.ts": ["goal"],
+	"autonomy/subagent/index.ts": ["subagent"],
+	"autonomy/autoresearch/index.ts": ["autoresearch"],
+};
+
 function read(rel: string): string {
 	return fs.readFileSync(path.join(ROOT, rel), "utf8");
 }
@@ -40,6 +49,21 @@ function registeredNames(source: string, api: "registerTool" | "registerCommand"
 		? /registerTool\(\{[\s\S]*?name:\s*["']([^"']+)["']/g
 		: /registerCommand\(["']([^"']+)["']/g;
 	return [...source.matchAll(pattern)].map((m) => m[1]);
+}
+
+function registeredPromptProviderIds(source: string): string[] {
+	return [...source.matchAll(/registerPromptProvider\(\{[\s\S]*?id:\s*["']([^"']+)["']/g)].map((m) => m[1]);
+}
+
+function sourceFiles(dir: string): string[] {
+	const out: string[] = [];
+	for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+		const full = path.join(dir, entry.name);
+		if (entry.name === "node_modules" || entry.name.endsWith(".test.ts") || entry.name.endsWith(".md")) continue;
+		if (entry.isDirectory()) out.push(...sourceFiles(full));
+		else if (entry.isFile() && entry.name.endsWith(".ts")) out.push(full);
+	}
+	return out;
 }
 
 describe("mekann integrated extension", () => {
@@ -100,5 +124,33 @@ describe("mekann integrated extension", () => {
 		const goal = read("mekann/autonomy/goal/index.ts");
 		expect(goal).toContain("PLAN_MODE_STATUS_EVENT");
 		expect(goal).not.toContain("pi.events.on(\"mekann:plan-mode:status\"");
+	});
+
+	it("keeps prompt-owning modules registered with prompt-core", () => {
+		for (const [rel, expected] of Object.entries(EXPECTED_PROMPT_PROVIDERS_BY_MODULE)) {
+			const actual = registeredPromptProviderIds(read(`mekann/${rel}`));
+			expect(actual).toEqual(expect.arrayContaining(expected));
+		}
+	});
+
+	it("does not bypass cache-friendly prompt with direct before_agent_start injection", () => {
+		const offenders = sourceFiles(MEKANN)
+			.map((file) => path.relative(MEKANN, file))
+			.filter((rel) => rel !== "core/cache-friendly-prompt/index.ts")
+			.filter((rel) => read(`mekann/${rel}`).includes('before_agent_start'));
+		expect(offenders).toEqual([]);
+	});
+
+	it("requires prompt-like constants and loaded prompt files to go through prompt-core", () => {
+		const promptHelperFiles = new Set(["safety/plan-mode/utils.ts"]);
+		const offenders = sourceFiles(MEKANN)
+			.map((file) => path.relative(MEKANN, file))
+			.filter((rel) => rel !== "core/cache-friendly-prompt/index.ts" && !promptHelperFiles.has(rel))
+			.filter((rel) => {
+				const source = read(`mekann/${rel}`);
+				const hasPromptMaterial = /SYSTEM_PROMPT_EXTRA|loadPrompt\(|<proposed_plan>|prompt policy|Prompt fragments/i.test(source);
+				return hasPromptMaterial && !source.includes("registerPromptProvider");
+			});
+		expect(offenders).toEqual([]);
 	});
 });
