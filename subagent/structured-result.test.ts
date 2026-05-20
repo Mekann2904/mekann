@@ -152,6 +152,13 @@ describe("structured subagent results", () => {
       expect(tryParseSubagentResult(wrapped).ok).toBe(true);
     });
 
+    it("extracts JSON from code block surrounded by prose", () => {
+      const wrapped = "Here is the result:\n\n```json\n" + JSON.stringify(observation, null, 2) + "\n```\n\nDone.";
+      const result = tryParseSubagentResult(wrapped);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.result.outcome).toBe("observation");
+    });
+
     it("extracts JSON from surrounding prose", () => {
       const prose = "Here is the result:\n\n" + JSON.stringify(observation) + "\n\nDone.";
       expect(tryParseSubagentResult(prose).ok).toBe(true);

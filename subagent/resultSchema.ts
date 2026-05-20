@@ -37,9 +37,13 @@ function extractJSON(text: string): string {
   // Try direct parse first (fast path)
   if (trimmed.startsWith("{")) return trimmed;
 
-  // Strip markdown code block: ```json ... ``` or ``` ... ```
-  const codeBlockMatch = trimmed.match(/^```(?:\w*)\s*\n([\s\S]*?)\n?```\s*$/);
-  if (codeBlockMatch) return codeBlockMatch[1].trim();
+  // Look for a markdown code block anywhere in the text (not just whole-text match)
+  // Handles: prose + ```json\n{...}\n``` + prose
+  const codeBlockAnywhere = trimmed.match(/```(?:\w*)\s*\n([\s\S]*?)\n?```/);
+  if (codeBlockAnywhere) {
+    const candidate = codeBlockAnywhere[1].trim();
+    if (candidate.startsWith("{")) return candidate;
+  }
 
   // Fallback: extract outermost { ... }  (handles leading/trailing prose)
   const first = trimmed.indexOf("{");
