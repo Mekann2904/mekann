@@ -42,6 +42,11 @@ pi の subagent 機能を実際に呼び出し（spawn_agent, followup_task, sen
 - **修正**: `.map(t => t.name)` を追加して文字列 Set に変換
 - 256 テスト全パス
 
+### ラウンド6: Blog 記事更新 (commit 5cf26a0)
+- §10.6 Silent Enforcement Failure を新設
+- §11 実装済みテーブルに extractJSON / getActiveTools 修正を追加
+- §12 Claim 4 を更新（「実装済み≠動作確認済」の教訓）
+
 ## Memo
 
 - 次セッション開始時にやること:
