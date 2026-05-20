@@ -96,6 +96,7 @@ export async function executeRunContract(
 			candidate = assertCandidateReadyForRun(ctx.cwd, contract, lock, params.candidate_id);
 			updateCandidateStatus(ctx.cwd, params.candidate_id, "evaluating");
 		} catch (e) {
+			try { updateCandidateStatus(ctx.cwd, params.candidate_id, "paused_dirty", { reason: e instanceof Error ? e.message : String(e) }); } catch { /* best effort */ }
 			return store.textDetails(`[PAUSE] candidate precondition failed: ${e instanceof Error ? e.message : String(e)}`, { decision: "pause", candidate_id: params.candidate_id });
 		}
 	}
@@ -107,18 +108,21 @@ export async function executeRunContract(
 
 	logRunEvent("contract_run_started", { reason: params.reason, iterationLabel: params.iteration_label, candidate_id: params.candidate_id, preChangedFilesCount: preChangedFiles.length });
 
-	// --- Run checks ---
+	// --- Run checks by phase ---
 	const checkResults = new Map<string, boolean>();
-	for (const check of contract.evaluation.checks) {
-		const checkCwd = resolveCwdInsideRepo(evaluationCwd, check.command.cwd);
-		const checkResult = await runArgvCommand(
-			{ argv: check.command.argv, cwd: checkCwd, env: check.command.env },
-			check.timeoutSeconds * 1000,
-			signal,
-		);
-		checkResults.set(check.name, checkResult.passed);
-		logRunEvent("check_run_completed", { name: check.name, visibility: checkVisibility(check), phase: checkPhase(check), passed: checkResult.passed, exitCode: checkResult.exitCode, timedOut: checkResult.timedOut });
-	}
+	const runChecksForPhase = async (phase: "pre_benchmark" | "post_benchmark"): Promise<void> => {
+		for (const check of contract.evaluation.checks.filter((c) => checkPhase(c) === phase)) {
+			const checkCwd = resolveCwdInsideRepo(evaluationCwd, check.command.cwd);
+			const checkResult = await runArgvCommand(
+				{ argv: check.command.argv, cwd: checkCwd, env: check.command.env },
+				check.timeoutSeconds * 1000,
+				signal,
+			);
+			checkResults.set(check.name, checkResult.passed);
+			logRunEvent("check_run_completed", { name: check.name, visibility: checkVisibility(check), phase, passed: checkResult.passed, exitCode: checkResult.exitCode, timedOut: checkResult.timedOut });
+		}
+	};
+	await runChecksForPhase("pre_benchmark");
 
 	// --- Run benchmark repeats ---
 	const benchmarkCwd = resolveCwdInsideRepo(evaluationCwd, contract.evaluation.benchmark.command.cwd);
@@ -142,7 +146,9 @@ export async function executeRunContract(
 		logRunEvent("benchmark_run_completed", { runIndex: i, exitCode: result.exitCode, metric: metricValue, durationSeconds: result.durationSeconds, timedOut: result.timedOut });
 	}
 
-	// --- POST state: re-check changed files and immutable hash AFTER benchmark ---
+	await runChecksForPhase("post_benchmark");
+
+	// --- POST state: re-check changed files and immutable hash AFTER benchmark/checks ---
 	// This catches mutations made by checks or benchmark scripts.
 	// Filter internal paths (.autoresearch/**, .pi/**) from changedFiles
 	// since these are audit artifacts, not candidate patches.
@@ -282,6 +288,7 @@ export async function executeRunContract(
 			`[autoresearch] ${params.reason ?? "contract run"}\n\nDecision: keep\nMetric: ${evaluatorResult.representativeMetric}\nImprovement: ${evaluatorResult.improvement}\nRate: ${evaluatorResult.improvementRate}`,
 		);
 		if (gr.error) {
+			if (candidate) updateCandidateStatus(ctx.cwd, candidate.candidate_id, "paused_dirty", { reason: "git commit failed", metric: evaluatorResult.representativeMetric });
 			logRunEvent("decision_pause", { reason: "git commit failed", error: gr.error });
 			return store.textDetails(`[PAUSE] git commit に失敗しました: ${gr.error}`, { decision: "pause", error: gr.error });
 		}
@@ -314,7 +321,7 @@ export async function executeRunContract(
 			try {
 				const source = JSON.parse(fs.readFileSync(path.join(candidateDir(ctx.cwd, candidate.candidate_id), "source-result.json"), "utf8"));
 				if (source.result?.outcome === "patch") {
-					new SubagentResultStore(ctx.cwd).appendSemanticLog({ result_id: source.result_id, agent_path: source.agent_path, applied_at: Date.now(), reads: source.result.semantic.reads, writes: source.result.semantic.writes, assumptions: source.result.semantic.assumptions, effects: source.result.semantic.effects, public_surface_delta: source.result.semantic.public_surface_delta, validation_result: { ok: true, output: `autoresearch candidate kept: ${candidate.candidate_id}` }, candidate_id: candidate.candidate_id } as any);
+					new SubagentResultStore(ctx.cwd).appendSemanticLog({ result_id: source.result_id, agent_path: source.agent_path, applied_at: Date.now(), candidate_id: candidate.candidate_id, materialized_commit: gr.commit, materialized_by: "autoresearch", reads: source.result.semantic.reads, writes: source.result.semantic.writes, assumptions: source.result.semantic.assumptions, effects: source.result.semantic.effects, public_surface_delta: source.result.semantic.public_surface_delta, validation_result: { ok: true, output: `autoresearch candidate kept: ${candidate.candidate_id}` } });
 				}
 			} catch { /* best effort */ }
 		}
@@ -337,6 +344,7 @@ export async function executeRunContract(
 		} else {
 			const rv = gitAutoRevert(ctx.cwd);
 			if (!rv.reverted) {
+				if (candidate) updateCandidateStatus(ctx.cwd, candidate.candidate_id, "paused_dirty", { reason: "git revert failed", metric: evaluatorResult.representativeMetric });
 				logRunEvent("revert_failed", { error: rv.error });
 				return store.textDetails(`[PAUSE] revert に失敗しました: ${rv.error}\n手動介入が必要です。`, { decision: "pause", error: rv.error });
 			}

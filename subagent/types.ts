@@ -422,5 +422,5 @@ export interface SkipRecord { result_id: string; reason: string; }
 export interface ApplyAgentResultsParams { source?: "pending" | "result_ids"; result_ids?: string[]; order?: "fifo"; max_results?: number; rollback_on_failure?: boolean; allow_high_risk?: boolean; }
 export interface ApplyAgentResultsResult { applied: ApplyRecord[]; rejected: RejectRecord[]; needs_review: ReviewRecord[]; skipped: SkipRecord[]; }
 export interface ValidationResult { ok: boolean; command?: ValidationCommand; output?: string; error?: string; }
-export interface SemanticApplyLogEntry { result_id: string; agent_path: string; applied_at: number; reads: SemanticTarget[]; writes: SemanticTarget[]; assumptions: SemanticAssumption[]; effects: SemanticEffect[]; public_surface_delta: PublicSurfaceDelta[]; validation_result: ValidationResult; }
+export interface SemanticApplyLogEntry { result_id: string; agent_path: string; applied_at: number; candidate_id?: string; materialized_commit?: string; materialized_by?: "autoresearch"; reads: SemanticTarget[]; writes: SemanticTarget[]; assumptions: SemanticAssumption[]; effects: SemanticEffect[]; public_surface_delta: PublicSurfaceDelta[]; validation_result: ValidationResult; }
 export interface ResultFilter { status?: StoredResultStatus; outcome?: SubagentResultV1["outcome"]; agent_path?: string; }

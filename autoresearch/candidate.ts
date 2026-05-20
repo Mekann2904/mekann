@@ -217,10 +217,13 @@ export function replayCandidateToMain(cwd: string, contract: AutoresearchContrac
 	if (fullHead(cwd) !== c.base_git_commit) { updateCandidateStatus(cwd, candidateId, "stale_base"); throw new Error("candidate base git commit is stale"); }
 	const dirty = candidateChangedFiles(cwd); if (dirty.length) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`main working tree is dirty: ${dirty.join(", ")}`); }
 	const patchPath = candidatePatchPath(cwd, candidateId);
+	if (sha256Text(fs.readFileSync(patchPath, "utf8")) !== c.patch_sha256) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error("candidate patch hash mismatch before replay"); }
 	execFileSync("git", ["apply", "--check", patchPath], { cwd, stdio: ["ignore", "pipe", "pipe"] });
 	execFileSync("git", ["apply", patchPath], { cwd, stdio: ["ignore", "pipe", "pipe"] });
 	const changed = candidateChangedFiles(cwd); const expected = [...c.touched_paths].sort(); const scope = validateTouchedAgainstContract(changed, contract);
 	if (JSON.stringify(changed) !== JSON.stringify(expected) || !scope.ok) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error("replayed changed files mismatch"); }
+	const replayedDiff = candidateDiffIdentityHash(cwd);
+	if (c.trial?.applied_diff_sha256 && replayedDiff !== c.trial.applied_diff_sha256) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error("replayed diff identity mismatch"); }
 	c.materialization = { ...(c.materialization ?? {}), replayed_to_main: true };
 	writeCandidate(cwd, c);
 	return readCandidate(cwd, candidateId);
