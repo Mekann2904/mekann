@@ -1,20 +1,21 @@
 {
   "schemaVersion": 1,
-  "objective": "pi の subagent 機能を実際に呼び出し（spawn_agent, followup_task, send_message, wait_agent, close_agent）、authority enforcement、result contract、mailbox、lifecycle 管理の振る舞いを実証的に検証する。mock ではなく実際の subagent 呼び出しによるテスト。",
+  "objective": "subagent で特定の同じテストタスク（npm test）を実行し、実行時間を記録・最適化する。特に autoresearch パッケージのテストが49秒と全体の83%を占めているため、そこを重点的に最適化する。",
   "targetScope": [],
-  "benchmarkCommand": "echo \"METRIC verified_behaviors=0\"",
+  "benchmarkCommand": "cd /Users/mekann/github/pi-plugin/mekann && npm test 2>&1",
   "primaryMetric": {
-    "name": "verified_behaviors",
-    "direction": "higher",
-    "method": "stdout_metric",
-    "unit": "behaviors"
+    "name": "total_ms",
+    "direction": "lower",
+    "method": "wall_clock",
+    "unit": "ms"
   },
   "checks": {
-    "mode": "none"
+    "mode": "command",
+    "command": "cd /Users/mekann/github/pi-plugin/mekann && npm test 2>&1 | grep -E 'Tests:.*failed' | grep -v '0 failed' && exit 1 || exit 0"
   },
   "acceptance": {
-    "mode": "better_than_best",
-    "minImprovement": 0,
+    "mode": "improvement_threshold",
+    "minImprovement": 0.05,
     "repeat": 1,
     "aggregate": "single"
   },
@@ -32,7 +33,7 @@
       ":\\(\\)\\s*\\{.*\\}.*:\\("
     ]
   },
-  "createdAt": "2026-05-20T04:42:35.942Z",
-  "sessionId": "20260520T044235-subagent-live-invoca",
+  "createdAt": "2026-05-20T07:44:25.167Z",
+  "sessionId": "20260520T074425-subagent-test-time-o",
   "version": 1
 }

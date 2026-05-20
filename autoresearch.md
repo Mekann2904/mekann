@@ -1,19 +1,19 @@
 # Autoresearch
 
 <!-- AUTORESEARCH:BEGIN generated -->
-Current plan: `.autoresearch/plans/plan-f4133aa0fc86/`
+Current plan: `.autoresearch/plans/plan-b67e68f9ec19/`
 
 ## Current objective
 
-pi の subagent 機能を実際に呼び出し（spawn_agent, followup_task, send_message, wait_agent, close_agent）、authority enforcement、result contract、mailbox、lifecycle 管理の振る舞いを実証的に検証する。mock ではなく実際の subagent 呼び出しによるテスト。
+subagent で特定の同じテストタスク（npm test）を実行し、実行時間を記録・最適化する。特に autoresearch パッケージのテストが49秒と全体の83%を占めているため、そこを重点的に最適化する。
 
 ## Files
 
-- Plan: `.autoresearch/plans/plan-f4133aa0fc86/plan.md`
-- Contract: `.autoresearch/plans/plan-f4133aa0fc86/contract.json`
-- Benchmark: `.autoresearch/plans/plan-f4133aa0fc86/benchmark.sh`
-- Checks: `.autoresearch/plans/plan-f4133aa0fc86/checks.sh`
-- Runs: `.autoresearch/plans/plan-f4133aa0fc86/runs/`
+- Plan: `.autoresearch/plans/plan-b67e68f9ec19/plan.md`
+- Contract: `.autoresearch/plans/plan-b67e68f9ec19/contract.json`
+- Benchmark: `.autoresearch/plans/plan-b67e68f9ec19/benchmark.sh`
+- Checks: `.autoresearch/plans/plan-b67e68f9ec19/checks.sh`
+- Runs: `.autoresearch/plans/plan-b67e68f9ec19/runs/`
 <!-- AUTORESEARCH:END generated -->
 
 ## Codebase Patterns
