@@ -322,6 +322,21 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     return { content: [{ type: "text", text }], details: result };
   }
 
+  function compactWaitResult(result: any) {
+    return {
+      timed_out: result.timed_out,
+      event_count: result.events.length,
+      mailbox_count: result.mailbox.length,
+      events: result.events.map((e: any) => ({
+        type: e.type,
+        agentPath: "agentPath" in e ? e.agentPath : undefined,
+        ...(e.type === "agent_status_changed" ? { previousStatus: e.previousStatus, newStatus: e.newStatus } : {}),
+        ...(e.type === "agent_final_message" ? { message: String(e.message ?? "").slice(0, 500) } : {}),
+      })),
+      mailbox: result.mailbox.map((m: any) => ({ from: m.fromAgentPath, kind: m.kind, content: String(m.content ?? "").slice(0, 500) })),
+    };
+  }
+
   type ToolHandler = (ctrl: AgentControl, params: any, ctx: ExtensionContext) => Promise<any>;
   function withCtrl(handler: ToolHandler) {
     return async (_id: string, params: unknown, _signal: unknown, _onUpdate: unknown, ctx: ExtensionContext) => handler(ensureControl(), params, ctx);
@@ -452,7 +467,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     parameters: WaitAgentSchema,
     execute: withCtrl(async (ctrl, params, ctx) => {
       const result = await ctrl.wait(params, ctx);
-      return toolResult(JSON.stringify({ timed_out: result.timed_out, event_count: result.events.length, mailbox_count: result.mailbox.length, events: result.events.map((e) => ({ type: e.type, agentPath: "agentPath" in e ? (e as any).agentPath : undefined, ...(e.type === "agent_status_changed" ? { previousStatus: (e as any).previousStatus, newStatus: (e as any).newStatus } : {}), ...(e.type === "agent_final_message" ? { message: (e as any).message } : {}) })), mailbox: result.mailbox.map((m) => ({ from: m.fromAgentPath, kind: m.kind, content: m.content.slice(0, 200) })) }, null, 2), result);
+      const compact = compactWaitResult(result);
+      return toolResult(JSON.stringify(compact, null, 2), compact);
     }),
   });
 

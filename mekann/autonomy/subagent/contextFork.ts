@@ -9,6 +9,14 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 
 export type ForkTurns = number | "all" | "none";
 
+export const FORK_CONTEXT_MAX_CHARS = 12_000;
+export const FORK_CONTEXT_MESSAGE_MAX_CHARS = 2_000;
+
+export function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, Math.max(0, maxChars - 80))}\n[omitted: ${text.length - Math.max(0, maxChars - 80)} chars truncated to reduce context]`;
+}
+
 /**
  * Extract forkable text from the parent branch.
  *
@@ -34,7 +42,7 @@ export function extractForkContext(
     // Skip toolResult, bashExecution, custom messages
   }
 
-  if (forkTurns === "all") return pairs;
+  if (forkTurns === "all") return limitForkContext(pairs);
 
   // For numeric N, take the last N user turns + their assistant responses
   const n = typeof forkTurns === "number" ? forkTurns : 0;
@@ -52,7 +60,22 @@ export function extractForkContext(
   if (userIndices.length === 0) return [];
 
   // Return from the first selected user message to the end
-  return pairs.slice(userIndices[0]);
+  return limitForkContext(pairs.slice(userIndices[0]));
+}
+
+function limitForkContext(pairs: Array<{ role: "user" | "assistant"; text: string }>): Array<{ role: "user" | "assistant"; text: string }> {
+  const out: Array<{ role: "user" | "assistant"; text: string }> = [];
+  let used = 0;
+  for (let i = pairs.length - 1; i >= 0; i--) {
+    const text = truncateText(pairs[i].text, FORK_CONTEXT_MESSAGE_MAX_CHARS);
+    const cost = text.length + 32;
+    if (out.length > 0 && used + cost > FORK_CONTEXT_MAX_CHARS) break;
+    out.unshift({ role: pairs[i].role, text });
+    used += cost;
+    if (used >= FORK_CONTEXT_MAX_CHARS) break;
+  }
+  if (out.length < pairs.length) out.unshift({ role: "assistant", text: `[omitted: ${pairs.length - out.length} older forked messages to reduce context]` });
+  return out;
 }
 
 /**

@@ -14,7 +14,7 @@ import path from "node:path";
 import { ROOT_PATH, resolveTaskPath, parentPath } from "./types.js";
 import { AgentRegistry } from "./registry.js";
 import { Mailbox } from "./mailbox.js";
-import { extractForkContext, buildContextPreamble, extractTextFromContent } from "./contextFork.js";
+import { extractForkContext, buildContextPreamble, extractTextFromContent, truncateText } from "./contextFork.js";
 import type {
   AgentMetadata,
   AgentStatus,
@@ -55,6 +55,8 @@ let agentIdCounter = 0;
 
 const processExternalPiSlots = new Set<string>();
 const MAX_EXTERNAL_PI_SUBAGENTS = MEKANN_SUBAGENT_DEFAULTS.externalPiSlots;
+const MAILBOX_CONTENT_MAX_CHARS = 8_000;
+const MESSAGE_INJECTION_MAX_CHARS = 8_000;
 
 function nextAgentId(): string {
   return `sub_${++agentIdCounter}_${Date.now().toString(36)}`;
@@ -247,7 +249,7 @@ export class AgentControl {
   private handleFinalText(agentId: string, canonicalPath: string, callerPath: string, finalText: string | undefined, status: AgentStatus, cwd = process.cwd()): string {
     const text = finalText ?? "(agent completed)";
     const parsed = tryParseSubagentResult(text);
-    let message = text;
+    let message = truncateText(text, MAILBOX_CONTENT_MAX_CHARS);
     const agent = this.registry.get(canonicalPath);
     if (parsed.ok && agent) {
       const stored = this.resultStoreFor(cwd).save(agent, parsed.result);
@@ -556,7 +558,7 @@ export class AgentControl {
   }
 
   private enqueueToMailbox(fromAgentId: string, fromPath: string, toPath: string, content: string, kind: "message" | "followup" | "final_result"): void {
-    this.mailbox.enqueue({ fromAgentId, fromAgentPath: fromPath, toAgentPath: toPath, content, timestamp: Date.now(), kind });
+    this.mailbox.enqueue({ fromAgentId, fromAgentPath: fromPath, toAgentPath: toPath, content: truncateText(content, MAILBOX_CONTENT_MAX_CHARS), timestamp: Date.now(), kind });
   }
 
   private getCallerAgentId(callerPath: string): string {
@@ -587,15 +589,16 @@ export class AgentControl {
   ): Promise<{ delivered: boolean }> {
     const { callerPath, targetPath, agent, childSession } = this.resolveTargetSession(params.target, ctx);
     if (!agent.open || isTerminalStatus(agent.status)) throw new Error(`Agent at ${targetPath} is not open (status: ${agent.status}). Cannot send message.`);
-    this.enqueueToMailbox(this.getCallerAgentId(callerPath), callerPath, targetPath, params.message, "message");
-    this.logDisplay(agent.display, `[message from ${callerPath}] ${params.message}`);
+    const message = truncateText(params.message, MESSAGE_INJECTION_MAX_CHARS);
+    this.enqueueToMailbox(this.getCallerAgentId(callerPath), callerPath, targetPath, message, "message");
+    this.logDisplay(agent.display, `[message from ${callerPath}] ${message}`);
 
     const rt = this.runtimes.get(targetPath);
     if (rt?.mode === "external_pi") {
       if (!rt.capabilities?.includes("message")) throw new Error(`External Pi subagent ${targetPath} does not support message injection.`);
-      await this.hubs.get(rt.agentId)?.send(rt.agentId, { type: "message", id: `msg_${Date.now()}`, fromAgentPath: callerPath, message: params.message });
+      await this.hubs.get(rt.agentId)?.send(rt.agentId, { type: "message", id: `msg_${Date.now()}`, fromAgentPath: callerPath, message });
     } else if (childSession) {
-      await childSession.sendCustomMessage({ customType: "subagent_message", content: `[Message from ${callerPath}]: ${params.message}`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
+      await childSession.sendCustomMessage({ customType: "subagent_message", content: `[Message from ${callerPath}]: ${message}`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
     }
     return { delivered: true };
   }
@@ -612,24 +615,25 @@ export class AgentControl {
       throw new Error(`Cannot follow up a terminal agent (status: ${agent.status}).`);
     }
 
-    this.enqueueToMailbox(this.getCallerAgentId(callerPath), callerPath, targetPath, params.message, "followup");
-    this.logDisplay(agent.display, `[followup from ${callerPath}] ${params.message}`);
+    const message = truncateText(params.message, MESSAGE_INJECTION_MAX_CHARS);
+    this.enqueueToMailbox(this.getCallerAgentId(callerPath), callerPath, targetPath, message, "followup");
+    this.logDisplay(agent.display, `[followup from ${callerPath}] ${message}`);
 
     // Update last task message
     this.registry.updateStatus(targetPath, agent.status, {
-      lastTaskMessage: params.message,
+      lastTaskMessage: message,
     });
 
     // Deliver to child session or external Pi over IPC. Never use kitty send-text here.
     const rt = this.runtimes.get(targetPath);
     if (rt?.mode === "external_pi") {
       if (!rt.capabilities?.includes("followup")) throw new Error(`External Pi subagent ${targetPath} does not support followup injection.`);
-      await this.hubs.get(rt.agentId)?.send(rt.agentId, { type: "followup", id: `fu_${Date.now()}`, message: params.message });
+      await this.hubs.get(rt.agentId)?.send(rt.agentId, { type: "followup", id: `fu_${Date.now()}`, message });
       return { queued: true, triggered: true };
     } else if (childSession) {
       const triggered = !childSession.isStreaming;
       await childSession.sendUserMessage(
-        `[Follow-up from ${callerPath}]: ${params.message}`,
+        `[Follow-up from ${callerPath}]: ${message}`,
         childSession.isStreaming ? { deliverAs: "followUp" } : undefined,
       );
       return { queued: true, triggered };

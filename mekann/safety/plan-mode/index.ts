@@ -12,7 +12,7 @@ import { SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, PLAN_MODE_STATUS
 import { registerPromptProvider, type PromptFragment } from "../../core/prompt-core/index.js";
 
 type PlanPromptStrategy = "cache_friendly" | "token_minimal";
-let PLAN_PROMPT_STRATEGY: PlanPromptStrategy = "cache_friendly";
+let PLAN_PROMPT_STRATEGY: PlanPromptStrategy = "token_minimal";
 
 export default function planModeExtension(pi: ExtensionAPI): void {
 	let configPath: string | undefined;
@@ -202,6 +202,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			}
 			if (state.mode === "main" && state.implementationPlan) {
 				const plan = state.implementationPlan;
+				state.implementationPlan = undefined;
 				fragments.push({
 					id: "plan-mode:implementation-plan",
 					source: "plan-mode",

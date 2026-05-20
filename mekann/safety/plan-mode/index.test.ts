@@ -313,7 +313,7 @@ describe("agent_end hook", () => {
 // ─── prompt provider ───────────────────────────────────────────────
 
 describe("prompt provider", () => {
-	it("plan mode: cache-friendly strategy provides full stable mode policy every time", async () => {
+	it("plan mode: token-minimal strategy sends full policy once then a short stable reminder", async () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
@@ -324,7 +324,7 @@ describe("prompt provider", () => {
 		expect(r1[0]).toMatchObject({ kind: "mode_policy", stability: "stable", scope: "mode" });
 		expect(r1[0].content).toContain("プランモード");
 		expect(r1.find((f) => f.id === "plan-mode:turn-reminder")).toMatchObject({ stability: "dynamic", scope: "turn" });
-		expect(r2[0].content).toBe(r1[0].content);
+		expect(r2[0].content.length).toBeLessThan(r1[0].content.length);
 	});
 
 	it("main mode with implementationPlan: exposes dynamic implementation_plan fragment", async () => {
@@ -339,9 +339,6 @@ describe("prompt provider", () => {
 		const plan = fragments.find((f) => f.kind === "implementation_plan")!;
 		expect(plan.stability).toBe("dynamic");
 		expect(plan.content).toContain("My plan");
-		await collectPromptFragments({ cwd: "/tmp/project" });
-		expect((await collectPromptFragments({ cwd: "/tmp/project" })).some((f) => f.kind === "implementation_plan")).toBe(true);
-		mock._hooks["event:cache-friendly-prompt:dynamic-tail-sent"]({ fragmentIds: ["plan-mode:implementation-plan"] });
 		expect((await collectPromptFragments({ cwd: "/tmp/project" })).some((f) => f.kind === "implementation_plan")).toBe(false);
 	});
 
