@@ -9,7 +9,10 @@
   ],
   "license": "ISC",
   "scripts": {
-    "test": "cd plan-mode && npm test && cd ../sandbox && npm test && cd ../subagent && npm test && cd ../zip-repo && npm test && cd ../autoresearch && npm test && cd ../goal && npm test",
+    "test": "cd prompt-core && npm test && cd ../cache-friendly-prompt && npm test && cd ../agent-guidelines && npm test && cd ../plan-mode && npm test && cd ../sandbox && npm test && cd ../subagent && npm test && cd ../zip-repo && npm test && cd ../autoresearch && npm test && cd ../goal && npm test",
+    "test:prompt-core": "cd prompt-core && npm test",
+    "test:cache-friendly-prompt": "cd cache-friendly-prompt && npm test",
+    "test:agent-guidelines": "cd agent-guidelines && npm test",
     "test:plan-mode": "cd plan-mode && npm test",
     "test:sandbox": "cd sandbox && npm test",
     "test:subagent": "cd subagent && npm test",
@@ -28,7 +31,8 @@
       "./subagent",
       "./autoresearch",
       "./goal",
-      "./agent-guidelines"
+      "./agent-guidelines",
+      "./cache-friendly-prompt"
     ],
     "skills": [
       "./skills"

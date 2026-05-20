@@ -8,6 +8,9 @@ trap "rm -rf $tmpdir" EXIT
 
 declare -A pids
 declare -A names=( [typecheck]="npm run typecheck"
+  [prompt-core]="npm run test:prompt-core"
+  [cache-friendly-prompt]="npm run test:cache-friendly-prompt"
+  [agent-guidelines]="npm run test:agent-guidelines"
   [plan-mode]="npm run test:plan-mode"
   [sandbox]="npm run test:sandbox"
   [subagent]="npm run test:subagent"
@@ -38,5 +41,5 @@ if [ $fail -ne 0 ]; then
   exit 1
 fi
 
-echo "✓ All checks passed (typecheck + 6 test suites)"
+echo "✓ All checks passed (typecheck + 9 test suites)"
 exit 0

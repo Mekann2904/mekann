@@ -29,7 +29,8 @@ import {
   remainingTokens,
 } from "./state.js";
 import { GoalRuntime } from "./runtime.js";
-import { renderGoalSummary, renderNoGoal, renderWidget, renderGoalContext } from "./prompts.js";
+import { registerPromptProvider } from "../prompt-core/index.js";
+import { renderGoalSummary, renderNoGoal, renderWidget, renderGoalPolicy, renderGoalObjectiveContext, renderGoalRuntimeState } from "./prompts.js";
 
 
 // ---------------------------------------------------------------------------
@@ -167,15 +168,49 @@ export default function goalExtension(pi: ExtensionAPI): void {
     }
   });
 
-  // ─── before_agent_start: inject active goal context ───────
+  // ─── Prompt fragments ─────────────────────────────────────
 
-  pi.on("before_agent_start", async (event, ctx) => {
-    if (!isEnabled(ctx) || !store) return {};
-    const goal = store.getGoal();
-    if (!goal || goal.status !== "active") return {};
-    return {
-      systemPrompt: event.systemPrompt + "\n" + renderGoalContext(goal) + "\n",
-    };
+  registerPromptProvider({
+    id: "goal",
+    getFragments() {
+      const goal = store?.getGoal();
+      if (!goal || goal.status !== "active") return [];
+      return [
+        {
+          id: "goal:policy",
+          source: "goal",
+          kind: "goal_policy",
+          stability: "stable",
+          scope: "global",
+          priority: 300,
+          version: "v1",
+          cacheIntent: "prefer_cache",
+          content: renderGoalPolicy(),
+        },
+        {
+          id: "goal:objective",
+          source: "goal",
+          kind: "goal_objective",
+          stability: "semi_stable",
+          scope: "session",
+          priority: 310,
+          version: "v1",
+          cacheIntent: "neutral",
+          content: renderGoalObjectiveContext(goal),
+        },
+        {
+          id: "goal:runtime-state",
+          source: "goal",
+          kind: "goal_runtime_state",
+          stability: "dynamic",
+          scope: "turn",
+          priority: 700,
+          version: "v1",
+          cacheIntent: "avoid_cache",
+          content: renderGoalRuntimeState(goal),
+        },
+      ];
+    },
   });
 
   // ─── Model tools ──────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import goalExtension from "./index.js";
+import { clearPromptProvidersForTests, collectPromptFragments } from "../prompt-core/index.js";
 
 // ---------------------------------------------------------------------------
 // Mock helpers
@@ -74,6 +75,7 @@ function getTool(mockPi: ReturnType<typeof createMockPi>, name: string) {
 // ---------------------------------------------------------------------------
 
 describe("goal lifecycle and events", () => {
+  beforeEach(() => clearPromptProvidersForTests());
   describe("session_start", () => {
     it("clears store/runtime and widget when goals flag is disabled", async () => {
       const mockPi = createMockPi({ getFlag: vi.fn(() => false) });
@@ -239,62 +241,45 @@ describe("goal lifecycle and events", () => {
     });
   });
 
-  describe("before_agent_start", () => {
-    it("returns empty when disabled", async () => {
+  describe("prompt provider", () => {
+    it("registers no before_agent_start direct prompt injection", async () => {
+      const { handlers } = bootstrap();
+      expect(handlers["before_agent_start"]).toBeUndefined();
+    });
+
+    it("returns no fragments when disabled or no active goal", async () => {
       const mockPi = createMockPi({ getFlag: vi.fn(() => false) });
       goalExtension(mockPi as any);
-      const handlers = (mockPi as any)._handlers;
+      await (mockPi as any)._handlers["session_start"]({}, createMockCtx());
+      expect(await collectPromptFragments({ cwd: "/test" })).toEqual([]);
 
-      const ctx = createMockCtx();
-      await handlers["session_start"]({}, ctx);
-
-      const result = await handlers["before_agent_start"](
-        { systemPrompt: "original" },
-        ctx,
-      );
-      expect(result).toEqual({});
+      clearPromptProvidersForTests();
+      bootstrap();
+      expect(await collectPromptFragments({ cwd: "/test" })).toEqual([]);
     });
 
-    it("returns empty when no goal", async () => {
-      const { ctx, handlers } = bootstrap();
-      const result = await handlers["before_agent_start"](
-        { systemPrompt: "original" },
-        ctx,
-      );
-      expect(result).toEqual({});
-    });
-
-    it("returns empty when goal is not active", async () => {
-      const { mockPi, ctx, handlers } = bootstrap();
-
+    it("returns no fragments when goal is not active", async () => {
+      const { mockPi, ctx } = bootstrap();
       const createTool = getTool(mockPi, "create_goal");
       await createTool.execute("tc-1", { objective: "Test" }, undefined, undefined, ctx);
-
-      // Pause the goal
-      const goalCommand = (mockPi as any).registerCommand.mock.calls.find(
-        (call: any[]) => call[0] === "goal",
-      )![1];
+      const goalCommand = (mockPi as any).registerCommand.mock.calls.find((call: any[]) => call[0] === "goal")![1];
       await goalCommand.handler("pause", ctx);
-
-      const result = await handlers["before_agent_start"](
-        { systemPrompt: "original" },
-        ctx,
-      );
-      expect(result).toEqual({});
+      expect(await collectPromptFragments({ cwd: "/test" })).toEqual([]);
     });
 
-    it("injects goal context into system prompt when active", async () => {
-      const { mockPi, ctx, handlers } = bootstrap();
-
+    it("returns stable policy, semi-stable objective, and dynamic runtime for active goal", async () => {
+      const { mockPi, ctx } = bootstrap();
       const createTool = getTool(mockPi, "create_goal");
-      await createTool.execute("tc-1", { objective: "My active goal" }, undefined, undefined, ctx);
-
-      const result = await handlers["before_agent_start"](
-        { systemPrompt: "You are an assistant." },
-        ctx,
-      );
-      expect(result.systemPrompt).toContain("You are an assistant.");
-      expect(result.systemPrompt).toContain("My active goal");
+      await createTool.execute("tc-1", { objective: "My active goal", token_budget: 5000 }, undefined, undefined, ctx);
+      const fragments = await collectPromptFragments({ cwd: "/test" });
+      expect(fragments.map((f) => [f.kind, f.stability])).toEqual([
+        ["goal_policy", "stable"],
+        ["goal_objective", "semi_stable"],
+        ["goal_runtime_state", "dynamic"],
+      ]);
+      expect(fragments[1].content).toContain("My active goal");
+      expect(fragments[1].content).not.toContain("Tokens used");
+      expect(fragments[2].content).toContain("Tokens used");
     });
   });
 

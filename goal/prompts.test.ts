@@ -5,6 +5,9 @@ import {
   continuationPrompt,
   budgetLimitPrompt,
   objectiveUpdatedPrompt,
+  renderGoalPolicy,
+  renderGoalObjectiveContext,
+  renderGoalRuntimeState,
   renderGoalContext,
   renderGoalSummary,
   renderNoGoal,
@@ -126,6 +129,36 @@ describe("goal/prompts", () => {
       const prompt = objectiveUpdatedPrompt("a <b>", "c & d");
       expect(prompt).toContain("&lt;b&gt;");
       expect(prompt).toContain("&amp;");
+    });
+  });
+
+  describe("split cache-friendly goal prompt contexts", () => {
+    it("renderGoalPolicy contains fixed instructions", () => {
+      const policy = renderGoalPolicy();
+      expect(policy).toContain("[Goal Policy]");
+      expect(policy).toContain("update_goal");
+    });
+
+    it("renderGoalObjectiveContext contains objective/status/bounds but not runtime counters", () => {
+      const goal = createMockGoal({ token_budget: 5000 });
+      const text = renderGoalObjectiveContext(goal);
+      expect(text).toContain("Test objective");
+      expect(text).toContain("Status: active");
+      expect(text).toContain("Token budget upper bound: 5000");
+      expect(text).toContain("Max continuations upper bound: 5");
+      expect(text).not.toContain("Tokens used");
+      expect(text).not.toContain("Time used");
+      expect(text).not.toContain("Continuation: 2");
+      expect(text).not.toContain("Remaining tokens");
+    });
+
+    it("renderGoalRuntimeState contains runtime counters", () => {
+      const goal = createMockGoal({ token_budget: 5000 });
+      const text = renderGoalRuntimeState(goal);
+      expect(text).toContain("Tokens used: 100");
+      expect(text).toContain("Remaining tokens: 4900");
+      expect(text).toContain("Time used: 45s");
+      expect(text).toContain("Continuation: 2 / 5");
     });
   });
 

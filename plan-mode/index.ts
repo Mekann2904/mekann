@@ -9,12 +9,17 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Key } from "@earendil-works/pi-tui";
 import { createInitialState, isReadOnlyMode, modeLabel, isPlanReadOnlyCommandIntent, classifyCommandIntent, buildBlockReason, loadPrompt, hashContent, extractProposedPlan, PLAN_MODE_TOOLS, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateConfigField, compactOldProposedPlansInText, type ModelRef, type PlanModeConfig, type ThinkingLevel } from "./utils.js";
 import { SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, PLAN_MODE_STATUS_EVENT, type SandboxPushProfileEvent, type SandboxPopProfileEvent, type PlanModeStatusEvent } from "../policy-core/modes.js";
+import { registerPromptProvider, type PromptFragment } from "../prompt-core/index.js";
+
+type PlanPromptStrategy = "cache_friendly" | "token_minimal";
+let PLAN_PROMPT_STRATEGY: PlanPromptStrategy = "cache_friendly";
 
 export default function planModeExtension(pi: ExtensionAPI): void {
 	let configPath: string | undefined;
 	const state = createInitialState();
 	let suppressModelSelectPersist = false;
 	let suppressThinkingSelectPersist = false;
+	let implementationPlanSeenByOrchestrator = false;
 
 	/** Token for sandbox profile override (set on plan entry, cleared on exit). */
 	let sandboxOverrideToken: string | undefined;
@@ -138,7 +143,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		// 6. Clean up state
 		Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined, savedMainModel: undefined, savedMainThinking: undefined });
 
-		if (plan) { state.implementationPlan = plan; pi.sendUserMessage("保存された plan に従って実装してください。"); }
+		if (plan) { state.implementationPlan = plan; implementationPlanSeenByOrchestrator = false; pi.sendUserMessage("保存された plan に従って実装してください。"); }
 	}
 
 	async function togglePlanMode(ctx: ExtensionContext): Promise<void> {
@@ -150,6 +155,51 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("plan", { description: "プランモード切替", handler: (_args, ctx) => togglePlanMode(ctx) });
 
 	pi.registerShortcut(Key.super("p"), { description: "プランモード切替", handler: (ctx) => togglePlanMode(ctx) });
+
+	registerPromptProvider({
+		id: "plan-mode",
+		getFragments() {
+			const fragments: PromptFragment[] = [];
+			if (isReadOnlyMode(state.mode)) {
+				const fullPrompt = loadPrompt("plan-mode");
+				let content = fullPrompt;
+				if (PLAN_PROMPT_STRATEGY === "token_minimal") {
+					const currentHash = hashContent(fullPrompt);
+					const useFull = !state.planPromptDelivered || state.planPromptHash !== currentHash;
+					if (useFull) { state.planPromptHash = currentHash; state.planPromptDelivered = true; }
+					content = useFull ? fullPrompt : loadPrompt("plan-mode-reminder");
+				}
+				fragments.push({
+					id: "plan-mode:mode-policy",
+					source: "plan-mode",
+					kind: "mode_policy",
+					stability: "stable",
+					scope: "mode",
+					priority: 200,
+					version: "v1",
+					cacheIntent: "prefer_cache",
+					content,
+				});
+			}
+			if (state.mode === "main" && state.implementationPlan) {
+				const plan = state.implementationPlan;
+				fragments.push({
+					id: "plan-mode:implementation-plan",
+					source: "plan-mode",
+					kind: "implementation_plan",
+					stability: "dynamic",
+					scope: "turn",
+					priority: 600,
+					version: "v1",
+					cacheIntent: "avoid_cache",
+					content: `Implementation plan for this turn:\n<plan>\n${plan}\n</plan>`,
+				});
+				if (implementationPlanSeenByOrchestrator) state.implementationPlan = undefined;
+				else implementationPlanSeenByOrchestrator = true;
+			}
+			return fragments;
+		},
+	});
 
 	// ─── Hooks ──────────────────────────────────────────────────────
 
@@ -209,22 +259,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 
 		return { messages };
-	});
-	pi.on("before_agent_start", async (event) => {
-	// Inject implementation plan once into main mode system prompt, then clear it
-		if (state.mode === "main" && state.implementationPlan) {
-			const plan = state.implementationPlan;
-			state.implementationPlan = undefined;
-			return { systemPrompt: `${event.systemPrompt}\n\nImplementation plan for this turn:\n<plan>\n${plan}\n</plan>` };
-		}
-
-		if (!isReadOnlyMode(state.mode)) return;
-		const fullPrompt = loadPrompt("plan-mode");
-		const currentHash = hashContent(fullPrompt);
-		const useFull = !state.planPromptDelivered || state.planPromptHash !== currentHash;
-		if (useFull) { state.planPromptHash = currentHash; state.planPromptDelivered = true; }
-
-		return { systemPrompt: `${event.systemPrompt}\n\n${useFull ? fullPrompt : loadPrompt("plan-mode-reminder")}` };
 	});
 	pi.on("agent_end", async (event, ctx) => {
 		if (state.mode !== "plan") return;

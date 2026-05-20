@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as childProcess from "node:child_process";
+import { clearPromptProvidersForTests, collectPromptFragments } from "../prompt-core/index.js";
 
 // Mock peer dependencies before importing the extension
 vi.mock("@earendil-works/pi-coding-agent", () => ({}));
@@ -171,6 +172,7 @@ describe("autoresearchExtension", () => {
 	let ctx: MockCtx;
 
 	beforeEach(() => {
+		clearPromptProvidersForTests();
 		// Create a unique temp dir for each test and initialize as a clean git repo
 		const testDir = `/tmp/autoresearch-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 		fs.mkdirSync(testDir, { recursive: true });
@@ -227,11 +229,11 @@ describe("autoresearchExtension", () => {
 		expect((logTool.promptGuidelines as string[]).join("\n")).toContain("subagent に記録・keep/discard判断・git操作を任せない");
 	});
 
-	it("registers session_start, before_agent_start, and loop event handlers", () => {
+	it("registers session_start and loop event handlers", () => {
 		expect(pi.on).toHaveBeenCalledWith("session_start", expect.any(Function));
-		expect(pi.on).toHaveBeenCalledWith("before_agent_start", expect.any(Function));
 		expect(pi.on).toHaveBeenCalledWith("agent_start", expect.any(Function));
 		expect(pi.on).toHaveBeenCalledWith("agent_end", expect.any(Function));
+		expect(pi.on).not.toHaveBeenCalledWith("before_agent_start", expect.any(Function));
 	});
 
 	// ── /autoresearch on ────────────────────────────────────────
@@ -331,43 +333,28 @@ describe("autoresearchExtension", () => {
 		});
 	});
 
-	// ── before_agent_start handler ──────────────────────────────
+	// ── prompt provider ─────────────────────────────────────────
 
-	describe("before_agent_start handler", () => {
-		it("does nothing when not active", async () => {
-			const handler = pi.eventHandlers.get("before_agent_start")!;
-			const result = await handler(
-				{ systemPrompt: "original" },
-				createMockCtx(),
-			);
-			expect(result).toBeUndefined();
+	describe("prompt provider", () => {
+		it("returns no fragments when inactive", async () => {
+			expect(await collectPromptFragments({ cwd: ctx.cwd })).toEqual([]);
 		});
 
-		it("appends Japanese instructions when active", async () => {
-			// First activate via command
+		it("returns stable Japanese instructions when active", async () => {
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			await cmdHandler("on", createMockCtx());
-
-			const handler = pi.eventHandlers.get("before_agent_start")!;
-			const result = await handler(
-				{ systemPrompt: "original" },
-				createMockCtx(),
-			);
-			expect(result.systemPrompt).toContain("autoresearch モード");
-			expect(result.systemPrompt).toContain("autoresearch_init");
-			expect(result.systemPrompt).toContain("autoresearch_run");
-			expect(result.systemPrompt).toContain("autoresearch_log");
-			expect(result.systemPrompt).toContain("autoresearch_evaluate_query");
-			expect(result.systemPrompt).toContain("ready_for_run");
-			expect(result.systemPrompt).toContain("ready_for_init");
-			expect(result.systemPrompt).toContain("needs_command");
-			expect(result.systemPrompt).toContain("needs_metric_extraction");
-			expect(result.systemPrompt).toContain("needs_checks_policy");
-			expect(result.systemPrompt).toContain("日本語");
-			// 自動 commit/revert の指示がある
-			expect(result.systemPrompt).toContain("自動で git commit / revert");
-			// ideas.md の指示がある
-			expect(result.systemPrompt).toContain("autoresearch.ideas.md");
+			const fragments = await collectPromptFragments({ cwd: ctx.cwd });
+			expect(fragments).toHaveLength(1);
+			expect(fragments[0]).toMatchObject({ kind: "autoresearch_policy", stability: "stable", scope: "mode", priority: 400 });
+			expect(fragments[0].content).toContain("autoresearch モード");
+			expect(fragments[0].content).toContain("autoresearch_init");
+			expect(fragments[0].content).toContain("autoresearch_run");
+			expect(fragments[0].content).toContain("autoresearch_log");
+			expect(fragments[0].content).toContain("autoresearch_evaluate_query");
+			expect(fragments[0].content).toContain("ready_for_run");
+			expect(fragments[0].content).toContain("日本語");
+			expect(fragments[0].content).toContain("自動で git commit / revert");
+			expect(fragments[0].content).toContain("autoresearch.ideas.md");
 		});
 	});
 

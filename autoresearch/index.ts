@@ -103,6 +103,7 @@ import { executeRunContract } from "./tools/runContract.js";
 import { executeApplyCandidate, executeApplyCandidateIsolated, executeCandidateEscrow, executeListCandidates, executeRejectCandidate, executeShowCandidate } from "./tools/candidates.js";
 import { handleCommand } from "./tools/commandHandler.js";
 import { suggestSubagents } from "./subagentPlanning.js";
+import { registerPromptProvider } from "../prompt-core/index.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -315,11 +316,24 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		store.updateWidget(ctx);
 	});
 
-	// ─── before_agent_start ────────────────────────────────────
+	// ─── Prompt fragments ─────────────────────────────────────
 
-	pi.on("before_agent_start", async (event, _ctx) => {
-		if (!store.active) return;
-		return { systemPrompt: event.systemPrompt + SYSTEM_PROMPT_EXTRA };
+	registerPromptProvider({
+		id: "autoresearch",
+		getFragments() {
+			if (!store.active) return [];
+			return [{
+				id: "autoresearch:policy",
+				source: "autoresearch",
+				kind: "autoresearch_policy",
+				stability: "stable",
+				scope: "mode",
+				priority: 400,
+				version: "v1",
+				cacheIntent: "prefer_cache",
+				content: SYSTEM_PROMPT_EXTRA,
+			}];
+		},
 	});
 
 	// ─── agent loop watchdog ───────────────────────────────────

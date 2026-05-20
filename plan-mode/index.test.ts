@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { clearPromptProvidersForTests, collectPromptFragments } from "../prompt-core/index.js";
 
 // Mock peer dependencies before importing the extension
 vi.mock("@earendil-works/pi-coding-agent", () => ({}));
@@ -115,6 +116,8 @@ function createMockCtx(overrides?: Partial<MockExtensionContext>): MockExtension
 		...overrides,
 	};
 }
+
+beforeEach(() => clearPromptProvidersForTests());
 
 async function loadExtension(mockApi: ReturnType<typeof createMockApi>) {
 	const { default: planModeExtension } = await import("../index.js");
@@ -271,10 +274,10 @@ describe("agent_end hook", () => {
 
 		await mock._hooks.agent_end({ messages }, createMockCtx());
 
-		// Exit plan mode → plan should be injected
+		// Exit plan mode → plan should be exposed as a dynamic fragment
 		await mock._commands["plan"].handler("", createMockCtx());
-		const result = await mock._hooks.before_agent_start({ systemPrompt: "base" });
-		expect(result.systemPrompt).toContain("Step 1: Do something");
+		const fragments = await collectPromptFragments({ cwd: "/tmp/project" });
+		expect(fragments.find((f) => f.kind === "implementation_plan")?.content).toContain("Step 1: Do something");
 	});
 
 	it("main mode: 何もしない", async () => {
@@ -287,8 +290,7 @@ describe("agent_end hook", () => {
 		];
 
 		await mock._hooks.agent_end({ messages }, createMockCtx());
-		const result = await mock._hooks.before_agent_start({ systemPrompt: "base" });
-		expect(result).toBeUndefined();
+		expect(await collectPromptFragments({ cwd: "/tmp/project" })).toEqual([]);
 	});
 
 	it("proposed_plan なし: 何もキャプチャしない", async () => {
@@ -303,69 +305,45 @@ describe("agent_end hook", () => {
 		);
 
 		await mock._commands["plan"].handler("", createMockCtx());
-		const result = await mock._hooks.before_agent_start({ systemPrompt: "base" });
-		if (result) {
-			expect(result.systemPrompt).not.toContain("<plan>");
-		}
+		expect((await collectPromptFragments({ cwd: "/tmp/project" })).some((f) => f.kind === "implementation_plan")).toBe(false);
 	});
 });
 
-// ─── before_agent_start hook ───────────────────────────────────────
+// ─── prompt provider ───────────────────────────────────────────────
 
-describe("before_agent_start hook", () => {
-	it("plan mode: 初回は full prompt を注入", async () => {
+describe("prompt provider", () => {
+	it("plan mode: cache-friendly strategy provides full stable mode policy every time", async () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 		await mock._commands["plan"].handler("", createMockCtx());
 
-		const result = await mock._hooks.before_agent_start({ systemPrompt: "base" });
-		expect(result.systemPrompt).toContain("プランモード");
+		const r1 = await collectPromptFragments({ cwd: "/tmp/project" });
+		const r2 = await collectPromptFragments({ cwd: "/tmp/project" });
+		expect(r1[0]).toMatchObject({ kind: "mode_policy", stability: "stable", scope: "mode" });
+		expect(r1[0].content).toContain("プランモード");
+		expect(r2[0].content).toBe(r1[0].content);
 	});
 
-	it("plan mode: 2回目は reminder を注入", async () => {
+	it("main mode with implementationPlan: exposes dynamic implementation_plan fragment", async () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 		await mock._commands["plan"].handler("", createMockCtx());
+		await mock._hooks.agent_end({ messages: [{ role: "assistant", content: [{ type: "text", text: "<proposed_plan>My plan</proposed_plan>" }] }] }, createMockCtx());
+		await mock._commands["plan"].handler("", createMockCtx());
 
-		await mock._hooks.before_agent_start({ systemPrompt: "base" });
-		const result = await mock._hooks.before_agent_start({ systemPrompt: "base" });
-		expect(result.systemPrompt).toContain("読み取り専用");
+		const fragments = await collectPromptFragments({ cwd: "/tmp/project" });
+		const plan = fragments.find((f) => f.kind === "implementation_plan")!;
+		expect(plan.stability).toBe("dynamic");
+		expect(plan.content).toContain("My plan");
 	});
 
-	it("main mode with implementationPlan: plan を注入してクリア", async () => {
+	it("main mode without implementationPlan: no fragments", async () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
-		await mock._commands["plan"].handler("", createMockCtx());
-
-		// Capture a plan
-		await mock._hooks.agent_end(
-			{ messages: [{ role: "assistant", content: [{ type: "text", text: "<proposed_plan>My plan</proposed_plan>" }] }] },
-			createMockCtx(),
-		);
-
-		// Exit plan mode
-		await mock._commands["plan"].handler("", createMockCtx());
-
-		// First call: plan injected
-		const r1 = await mock._hooks.before_agent_start({ systemPrompt: "base" });
-		expect(r1.systemPrompt).toContain("My plan");
-		expect(r1.systemPrompt).toContain("<plan>");
-
-		// Second call: plan consumed
-		const r2 = await mock._hooks.before_agent_start({ systemPrompt: "base" });
-		expect(r2).toBeUndefined();
-	});
-
-	it("main mode without implementationPlan: 何もしない", async () => {
-		const mock = createMockApi();
-		await loadExtension(mock);
-		await mock._hooks.session_start({}, createMockCtx());
-
-		const result = await mock._hooks.before_agent_start({ systemPrompt: "base" });
-		expect(result).toBeUndefined();
+		expect(await collectPromptFragments({ cwd: "/tmp/project" })).toEqual([]);
 	});
 });
 

@@ -117,6 +117,41 @@ export function objectiveUpdatedPrompt(previous: string, next: string): string {
  * Render the active goal context for injection into the system prompt.
  * Returns an empty string if no active goal.
  */
+export function renderGoalPolicy(): string {
+  return [
+    "[Goal Policy]",
+    "",
+    "- Continue to respect an active goal while answering the user.",
+    "- If the goal is fully achieved and no required work remains, call update_goal with status=\"complete\".",
+    "- Do not mark the goal complete merely because the budget is low or work is paused.",
+    "- Do not pause, resume, clear, or budget-limit the goal through model tools unless explicitly instructed by the user or goal runtime.",
+  ].join("\n");
+}
+
+export function renderGoalObjectiveContext(goal: Goal): string {
+  const lines = [
+    "[Goal Objective]",
+    "",
+    `<goal_objective>${escapeXmlText(goal.objective)}</goal_objective>`,
+    `Status: ${goal.status}`,
+  ];
+  if (goal.token_budget !== null) lines.push(`Token budget upper bound: ${goal.token_budget}`);
+  lines.push(`Max continuations upper bound: ${goal.max_continuations}`);
+  return lines.join("\n");
+}
+
+export function renderGoalRuntimeState(goal: Goal): string {
+  const remaining = remainingTokens(goal);
+  return [
+    "[Goal Runtime State]",
+    "",
+    `Tokens used: ${goal.tokens_used}`,
+    ...(remaining !== null ? [`Remaining tokens: ${remaining}`] : []),
+    `Time used: ${formatDuration(goal.time_used_seconds)}`,
+    `Continuation: ${goal.continuation_count} / ${goal.max_continuations}`,
+  ].join("\n");
+}
+
 export function renderGoalContext(goal: Goal): string {
   if (goal.status !== "active") return "";
   const remaining = remainingTokens(goal);

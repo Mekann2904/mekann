@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { registerPromptProvider } from "../prompt-core/index.js";
 
 const SYSTEM_PROMPT_EXTRA = `
 
@@ -35,8 +36,21 @@ Practical workflow:
 - Reviews: when the user asks for a review, default to a code review. Prioritize bugs, risks, regressions, and missing tests. Lead with findings in severity order, including file and line references. Then list open questions or assumptions. Keep any summary brief and after the findings. If there are no findings, state that clearly and mention residual risks or untested areas.
 `;
 
-export default function agentGuidelinesExtension(pi: ExtensionAPI): void {
-	pi.on("before_agent_start", async (event) => ({
-		systemPrompt: event.systemPrompt + SYSTEM_PROMPT_EXTRA,
-	}));
+export default function agentGuidelinesExtension(_pi: ExtensionAPI): void {
+	registerPromptProvider({
+		id: "agent-guidelines",
+		getFragments() {
+			return [{
+				id: "agent-guidelines:system-prompt-extra",
+				source: "agent-guidelines",
+				kind: "coding_guidelines",
+				stability: "stable",
+				scope: "global",
+				priority: 100,
+				version: "v1",
+				cacheIntent: "prefer_cache",
+				content: SYSTEM_PROMPT_EXTRA,
+			}];
+		},
+	});
 }

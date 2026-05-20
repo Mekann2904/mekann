@@ -1,0 +1,1 @@
+{"name":"prompt-core","version":"1.0.0","description":"Provider-agnostic prompt fragment registry and renderer.","main":"index.ts","scripts":{"test":"vitest run"},"type":"module","devDependencies":{"vitest":"^4.1.6"}}
