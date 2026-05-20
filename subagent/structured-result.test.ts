@@ -115,6 +115,15 @@ describe("structured subagent results", () => {
     expect(safeRepoRelativePath("src/a.ts")).toBe("src/a.ts");
   });
 
+  it("reviews workspace cwd mismatch instead of applying", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
+    const store = new SubagentResultStore(dir);
+    const stored = store.save({ ...agent, workspaceCwd: path.join(dir, "other") }, patch({ base: { files: [{ path: "src/a.ts", hash: "sha256:x" }] } }));
+    const q = new ApplyQueue(store, dir);
+    const res = await q.applyAgentResults();
+    expect(res.needs_review[0]).toMatchObject({ result_id: stored.result_id, reason: "workspace_cwd_mismatch" });
+  });
+
   it("detects applied-write vs incoming-read semantic conflict", () => {
     const incoming = patch({ semantic: { ...patch().semantic, reads: [{ kind: "symbol", name: "X" }], writes: [] } });
     const decision = evaluateSemanticConflict(incoming, [{ result_id: "old", agent_path: "/root/old", applied_at: 1, reads: [], writes: [{ kind: "symbol", name: "X" }], assumptions: [], effects: [], public_surface_delta: [], validation_result: { ok: true } }]);

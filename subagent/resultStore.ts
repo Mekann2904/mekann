@@ -73,5 +73,5 @@ export class SubagentResultStore {
   recoverStaleApplying(maxAgeMs = 10 * 60 * 1000): number { let count = 0; for (const s of this.list({ status: "applying" })) { if ((s.applying_at ?? s.created_at) + maxAgeMs < Date.now()) { this.markNeedsReview(s.result_id, "stale_applying", { applying_at: s.applying_at }); count++; } } return count; }
   markSuperseded(resultId: string, reason?: string): void { const s = this.load(resultId); s.status = "superseded"; s.superseded_reason = reason; this.saveStored(s); }
   appendSemanticLog(entry: SemanticApplyLogEntry): void { appendFileSync(path.join(this.dir, "semantic-log.jsonl"), `${JSON.stringify(entry)}\n`, "utf8"); }
-  readSemanticLog(): SemanticApplyLogEntry[] { const p = path.join(this.dir, "semantic-log.jsonl"); if (!existsSync(p)) return []; return readFileSync(p, "utf8").split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l) as SemanticApplyLogEntry); }
+  readSemanticLog(): SemanticApplyLogEntry[] { const p = path.join(this.dir, "semantic-log.jsonl"); if (!existsSync(p)) return []; return readFileSync(p, "utf8").split(/\r?\n/).filter(Boolean).flatMap((l) => { try { return [JSON.parse(l) as SemanticApplyLogEntry]; } catch { return []; } }); }
 }
