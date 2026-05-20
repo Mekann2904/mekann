@@ -41,7 +41,7 @@ function hashText(s: string): string { return "sha256:" + createHash("sha256").u
 function writeSubagentPatch(cwd: string, patch: string, touched = ["src/a.txt"], status = "pending", outcome = "patch", baseFiles: Array<{ path: string; hash: string }> = []): string {
 	const dir = path.join(cwd, ".pi", "subagent-results"); fs.mkdirSync(dir, { recursive: true });
 	const id = "sar_test_1"; fs.writeFileSync(path.join(dir, `${id}.patch`), patch);
-	fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ result_id: id, agent_id: "a", agent_path: "/root/a", created_at: Date.now(), status, result: { schema: "subagent.result.v1", outcome, summary: "make src", patch: { format: "unified_diff", ref: path.join(dir, `${id}.patch`), bytes: patch.length }, base: { files: baseFiles }, scope: { allowed_paths: ["src"], touched_paths: touched }, semantic: { reads: [], writes: [], assumptions: [], effects: [], public_surface_delta: [], risk: { level: "low" } }, validation: { suggested: [] } } }, null, 2));
+	fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ result_id: id, agent_id: "a", agent_path: "/root/a", created_at: Date.now(), status, authority: { mode: "propose_patch", write_scope: ["src", "forbidden"], require_base_hash: true }, result: { schema: "subagent.result.v1", outcome, summary: "make src", patch: { format: "unified_diff", ref: path.join(dir, `${id}.patch`), bytes: patch.length }, base: { files: baseFiles }, scope: { allowed_paths: ["src"], touched_paths: touched }, semantic: { reads: [], writes: [], assumptions: [], effects: [], public_surface_delta: [], risk: { level: "low" } }, validation: { suggested: [] } } }, null, 2));
 	return id;
 }
 
@@ -144,6 +144,60 @@ describe("autoresearch candidates", () => {
 		const candidate = readCandidate(cwd, res.imported[0].candidate_id);
 		expect(candidate.status).toBe("paused_dirty");
 		expect(candidate.trial?.worktree_path).toBeTruthy();
+	});
+
+	it("accepts canonicalized base paths and normalized new file patch paths", () => {
+		const cwd = tmpRepo(); fs.mkdirSync(path.join(cwd, "src")); fs.writeFileSync(path.join(cwd, "src", "a.txt"), "old\n");
+		execFileSync("git", ["add", "src/a.txt"], { cwd }); execFileSync("git", ["commit", "-m", "src"], { cwd, stdio: "ignore" });
+		const patch = "diff --git a/src/a.txt b/src/a.txt\nindex 3e75765..b6fc4c6 100644\n--- a/src/a.txt\n+++ b/src/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
+		writeSubagentPatch(cwd, patch, ["src/a.txt"], "pending", "patch", [{ path: "src/./a.txt", hash: hashText("old\n") }]);
+		const c = contract();
+		expect(importSubagentResultsAsCandidates(cwd, c, lock(c), { source: "pending" }).imported).toHaveLength(1);
+
+		const cwd2 = tmpRepo();
+		const newPatch = "diff --git a/src/./n.txt b/src/./n.txt\nnew file mode 100644\n--- /dev/null\n+++ b/src/./n.txt\n@@ -0,0 +1 @@\n+n\n";
+		writeSubagentPatch(cwd2, newPatch, ["src/n.txt"]);
+		const c2 = contract();
+		expect(importSubagentResultsAsCandidates(cwd2, c2, lock(c2), { source: "pending" }).imported).toHaveLength(1);
+	});
+
+	it("rejects authority write/semantic scope violations and missing authority scope", () => {
+		const cwd = tmpRepo();
+		const patch = "diff --git a/src/a.txt b/src/a.txt\nnew file mode 100644\n--- /dev/null\n+++ b/src/a.txt\n@@ -0,0 +1 @@\n+a\n";
+		writeSubagentPatch(cwd, patch, ["src/a.txt"]);
+		const jsonPath = path.join(cwd, ".pi", "subagent-results", "sar_test_1.json");
+		const raw = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+		delete raw.authority.write_scope;
+		fs.writeFileSync(jsonPath, JSON.stringify(raw, null, 2));
+		const c = contract();
+		const missing = importSubagentResultsAsCandidates(cwd, c, lock(c), { source: "pending" });
+		expect(missing.skipped[0].reason).toBe("missing_authority_write_scope");
+
+		const cwd2 = tmpRepo(); writeSubagentPatch(cwd2, patch, ["src/a.txt"]);
+		const p2 = path.join(cwd2, ".pi", "subagent-results", "sar_test_1.json");
+		const raw2 = JSON.parse(fs.readFileSync(p2, "utf8")); raw2.authority.write_scope = ["tests"];
+		fs.writeFileSync(p2, JSON.stringify(raw2, null, 2));
+		const c2 = contract();
+		expect(importSubagentResultsAsCandidates(cwd2, c2, lock(c2), { source: "pending" }).skipped[0].reason).toBe("outside_authority_write_scope");
+
+		const cwd3 = tmpRepo(); writeSubagentPatch(cwd3, patch, ["src/a.txt"]);
+		const p3 = path.join(cwd3, ".pi", "subagent-results", "sar_test_1.json");
+		const raw3 = JSON.parse(fs.readFileSync(p3, "utf8"));
+		raw3.authority.semantic_scope = [{ kind: "file", name: "other" }];
+		raw3.result.semantic.reads = [{ kind: "file", name: "src/a.txt" }];
+		fs.writeFileSync(p3, JSON.stringify(raw3, null, 2));
+		const c3 = contract();
+		expect(importSubagentResultsAsCandidates(cwd3, c3, lock(c3), { source: "pending" }).skipped[0].reason).toBe("outside_authority_semantic_scope");
+	});
+
+	it("rejects undeclared public surface deltas", () => {
+		const cwd = tmpRepo();
+		const patch = "diff --git a/src/a.ts b/src/a.ts\nnew file mode 100644\n--- /dev/null\n+++ b/src/a.ts\n@@ -0,0 +1 @@\n+export function foo() {}\n";
+		writeSubagentPatch(cwd, patch, ["src/a.ts"]);
+		const c = contract();
+		const res = importSubagentResultsAsCandidates(cwd, c, lock(c), { source: "pending" });
+		expect(res.imported).toHaveLength(0);
+		expect(res.skipped[0].reason).toBe("undeclared_public_surface_delta");
 	});
 
 	it("rejects base hash mismatch and terminal status transitions", () => {

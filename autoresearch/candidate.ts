@@ -5,7 +5,8 @@ import { execFileSync } from "node:child_process";
 import { computeContractHash, type AutoresearchContractV1, type LockFile } from "./contractV1.js";
 import { filterInternalPaths, matchesAnyPattern } from "./contractV1.js";
 import { SubagentResultStore } from "../subagent/resultStore.js";
-import { extractTouchedPathsFromPatchStrict, isNewFilePatch } from "../subagent/fingerprint.js";
+import { detectPublicSurfaceFromPatch, extractTouchedPathsFromPatchStrict, isNewFilePatch, normalizePublicSurfaceDeltas } from "../subagent/fingerprint.js";
+import { keyOfTarget } from "../subagent/semantic.js";
 import { getChangedFiles } from "./runner.js";
 import { getPlanDir, readState } from "./layout.js";
 
@@ -75,6 +76,7 @@ export function extractTouchedPathsFromPatch(patch: string): string[] {
 }
 export function safeRepoRelativePath(p: string): string | null { const n = p.replace(/\\/g, "/"); if (!n || n.includes("\0") || n.startsWith("/") || /^[A-Za-z]:\//.test(n)) return null; const norm = path.posix.normalize(n); if (norm === "." || norm.startsWith("../") || norm === "..") return null; return norm; }
 function matchesAny(file: string, scopes: string[]): boolean { return scopes.length === 0 || matchesAnyPattern(file, scopes); }
+function surfaceKey(d: { surface: string; name: string; change: string }): string { return `${d.surface}:${d.name}:${d.change}`; }
 function isUnderDir(file: string, dir: string): boolean { const rel = path.relative(path.resolve(dir), path.resolve(file)); return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel); }
 export function candidateChangedFiles(cwd: string): string[] {
 	const out = new Set<string>();
@@ -144,8 +146,21 @@ export function importSubagentResultsAsCandidates(cwd: string, contract: Autores
 			const extracted = extractedTouched.paths;
 			const declared = (stored.result.scope?.touched_paths ?? []).map(safeRepoRelativePath).filter(Boolean).sort();
 			if (JSON.stringify(extracted) !== JSON.stringify(declared)) { result.skipped.push({ result_id: id, reason: "declared_touched_paths_mismatch", details: { declared, extracted } }); continue; }
+			const writeScope = stored.authority?.write_scope ?? [];
+			if (writeScope.length === 0) { result.skipped.push({ result_id: id, reason: "missing_authority_write_scope" }); continue; }
+			const outsideAuthorityPath = extracted.find((p) => !matchesAnyPattern(p, writeScope));
+			if (outsideAuthorityPath) { result.skipped.push({ result_id: id, reason: "outside_authority_write_scope", details: { path: outsideAuthorityPath, write_scope: writeScope } }); continue; }
+			const authoritySem = new Set((stored.authority?.semantic_scope ?? []).map(keyOfTarget));
+			if (authoritySem.size) {
+				const outsideSemantic = [...stored.result.semantic.reads, ...stored.result.semantic.writes].find((t) => !authoritySem.has(keyOfTarget(t)));
+				if (outsideSemantic) { result.skipped.push({ result_id: id, reason: "outside_authority_semantic_scope", details: outsideSemantic }); continue; }
+			}
+			const actualSurface = normalizePublicSurfaceDeltas(detectPublicSurfaceFromPatch(patchText));
+			const declaredSurface = new Set(normalizePublicSurfaceDeltas(stored.result.semantic.public_surface_delta).map(surfaceKey));
+			const undeclaredSurface = actualSurface.filter((d) => !declaredSurface.has(surfaceKey(d)));
+			if (undeclaredSurface.length) { result.skipped.push({ result_id: id, reason: "undeclared_public_surface_delta", details: undeclaredSurface }); continue; }
 			if (stored.authority?.require_base_hash !== false) {
-				const basePaths = new Set(stored.result.base.files.map((f) => f.path));
+				const basePaths = new Set(stored.result.base.files.map((f) => safeRepoRelativePath(f.path)).filter((p): p is string => Boolean(p)));
 				const missingBase = extracted.find((p) => !basePaths.has(p) && !isNewFilePatch(p, patchText));
 				if (missingBase) { result.skipped.push({ result_id: id, reason: "base_hash_mismatch", details: { path: missingBase, reason: "missing_base_hash" } }); continue; }
 			}

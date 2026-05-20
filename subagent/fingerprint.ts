@@ -60,7 +60,7 @@ export function isNewFilePatch(filePath: string, patchText: string): boolean {
     if (lines[i].startsWith("--- /dev/null") && lines[i + 1].startsWith("+++ ")) {
       const raw = lines[i + 1].slice(4).split(/\s+/)[0];
       const cleaned = raw.startsWith("b/") ? raw.slice(2) : raw;
-      if (cleaned === filePath) return true;
+      if (safeRepoRelativePath(cleaned) === filePath) return true;
     }
   }
   return false;
