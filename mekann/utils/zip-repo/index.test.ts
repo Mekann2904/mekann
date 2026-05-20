@@ -58,7 +58,20 @@ describe("formatFileSize", () => {
 	});
 
 	it("1 GB", () => {
-		expect(formatFileSize(1073741824)).toBe("1024.0 MB");
+		expect(formatFileSize(1073741824)).toBe("1.0 GB");
+	});
+
+	it("1.5 GB", () => {
+		expect(formatFileSize(1610612736)).toBe("1.5 GB");
+	});
+
+	it("負の値は拒否", () => {
+		expect(() => formatFileSize(-1)).toThrow(RangeError);
+	});
+
+	it("NaN / Infinity は拒否", () => {
+		expect(() => formatFileSize(Number.NaN)).toThrow(RangeError);
+		expect(() => formatFileSize(Number.POSITIVE_INFINITY)).toThrow(RangeError);
 	});
 });
 

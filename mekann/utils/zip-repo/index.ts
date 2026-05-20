@@ -14,9 +14,13 @@ import { stat, unlink } from "node:fs/promises";
 
 /** バイト数を人間可読に。 */
 export function formatFileSize(bytes: number): string {
+	if (!Number.isFinite(bytes) || bytes < 0) {
+		throw new RangeError("bytes must be a non-negative finite number");
+	}
 	if (bytes < 1024) return `${bytes} B`;
-	if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
-	return `${(bytes / 1048576).toFixed(1)} MB`;
+	if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+	if (bytes < 1024 ** 3) return `${(bytes / (1024 ** 2)).toFixed(1)} MB`;
+	return `${(bytes / (1024 ** 3)).toFixed(1)} GB`;
 }
 
 /** ZIP ファイルパスを生成。 */

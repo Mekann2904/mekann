@@ -55,8 +55,8 @@ let agentIdCounter = 0;
 
 const processExternalPiSlots = new Set<string>();
 const MAX_EXTERNAL_PI_SUBAGENTS = MEKANN_SUBAGENT_DEFAULTS.externalPiSlots;
-const MAILBOX_CONTENT_MAX_CHARS = 8_000;
-const MESSAGE_INJECTION_MAX_CHARS = 8_000;
+const MAILBOX_CONTENT_MAX_CHARS = 2_000;
+const MESSAGE_INJECTION_MAX_CHARS = 4_000;
 
 function nextAgentId(): string {
   return `sub_${++agentIdCounter}_${Date.now().toString(36)}`;
