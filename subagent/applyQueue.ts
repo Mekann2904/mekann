@@ -32,13 +32,21 @@ export class ApplyQueue {
     }
     return result;
   }
-  private reject(out: ApplyAgentResultsResult, id: string, reason: RejectReason, details?: unknown) { this.store.markRejected(id, reason); out.rejected.push({ result_id: id, reason, details }); }
+  private reject(out: ApplyAgentResultsResult, id: string, reason: RejectReason, details?: unknown) { this.store.markRejected(id, reason, details); out.rejected.push({ result_id: id, reason, details }); }
   private review(out: ApplyAgentResultsResult, id: string, reason: string, details?: unknown) { this.store.markNeedsReview(id, reason, details); out.needs_review.push({ result_id: id, reason, details }); }
   private async applyOne(stored: StoredSubagentResult, params: ApplyAgentResultsParams, out: ApplyAgentResultsResult): Promise<void> {
-    try { return await this.applyOneInner(stored, params, out); }
-    catch (err) { return this.review(out, stored.result_id, "apply_engine_exception", { error: err instanceof Error ? err.message : String(err) }); }
+    const state: { patchApplied: boolean; ref?: string } = { patchApplied: false };
+    try { return await this.applyOneInner(stored, params, out, state); }
+    catch (err) {
+      let rollbackAttempted = false; let rollbackOk: boolean | undefined;
+      if (state.patchApplied && state.ref && params.rollback_on_failure !== false) {
+        rollbackAttempted = true;
+        try { await execFile("git", ["apply", "-R", state.ref], { cwd: this.cwd }); rollbackOk = true; } catch { rollbackOk = false; }
+      }
+      return this.review(out, stored.result_id, state.patchApplied ? "apply_engine_exception_after_patch_applied" : "apply_engine_exception", { error: err instanceof Error ? err.message : String(err), patch_applied: state.patchApplied, rollback_attempted: rollbackAttempted, rollback_ok: rollbackOk });
+    }
   }
-  private async applyOneInner(stored: StoredSubagentResult, params: ApplyAgentResultsParams, out: ApplyAgentResultsResult): Promise<void> {
+  private async applyOneInner(stored: StoredSubagentResult, params: ApplyAgentResultsParams, out: ApplyAgentResultsResult, state: { patchApplied: boolean; ref?: string }): Promise<void> {
     if (stored.workspace_cwd && path.resolve(stored.workspace_cwd) !== path.resolve(this.cwd)) return this.review(out, stored.result_id, "workspace_cwd_mismatch", { stored: stored.workspace_cwd, current: this.cwd });
     const r = stored.result;
     if (r.outcome === "no_change" || r.outcome === "observation") { this.store.markSuperseded(stored.result_id, r.outcome); out.skipped.push({ result_id: stored.result_id, reason: r.outcome }); return; }
@@ -47,6 +55,7 @@ export class ApplyQueue {
     this.store.markApplying(stored.result_id);
     const patch = r as PatchProposalResult;
     const ref = patch.patch.ref;
+    state.ref = ref;
     if (!ref || !isUnderDir(ref, this.store.dir)) return this.reject(out, stored.result_id, "invalid_patch_ref");
     const patchText = readFileSync(ref, "utf8");
     const maxBytes = stored.authority?.max_patch_bytes ?? 50_000;
@@ -98,14 +107,14 @@ export class ApplyQueue {
     if (disallowed) return this.reject(out, stored.result_id, "validation_command_not_allowed", disallowed);
 
     try { await execFile("git", ["apply", "--check", ref], { cwd: this.cwd }); } catch (err) { return this.reject(out, stored.result_id, "patch_check_failed", err instanceof Error ? err.message : String(err)); }
-    try { await execFile("git", ["apply", ref], { cwd: this.cwd }); } catch (err) { return this.reject(out, stored.result_id, "patch_check_failed", err instanceof Error ? err.message : String(err)); }
+    try { await execFile("git", ["apply", ref], { cwd: this.cwd }); state.patchApplied = true; } catch (err) { return this.reject(out, stored.result_id, "patch_check_failed", err instanceof Error ? err.message : String(err)); }
 
     const validations: ValidationResult[] = [];
     for (const cmd of validationCommands) {
       const vr = await this.runValidation(cmd);
       validations.push(vr);
       if (!vr.ok) {
-        if (params.rollback_on_failure !== false) { try { await execFile("git", ["apply", "-R", ref], { cwd: this.cwd }); } catch { /* best-effort */ } }
+        if (params.rollback_on_failure !== false) { try { await execFile("git", ["apply", "-R", ref], { cwd: this.cwd }); state.patchApplied = false; } catch { /* best-effort */ } }
         return this.reject(out, stored.result_id, "validation_failed", vr);
       }
     }
@@ -156,5 +165,4 @@ function canonicalizeScopePatterns(scopes: string[]): { ok: true; scopes: string
 function commandKey(cmd: ValidationCommand): string { return cmd.kind === "npm_script" ? JSON.stringify({ kind: "npm_script", script: cmd.script, args: cmd.args ?? [] }) : JSON.stringify({ kind: "shell_allowlisted", command_id: cmd.command_id, args: cmd.args ?? [] }); }
 function dedupeValidationCommands(commands: ValidationCommand[]): ValidationCommand[] { const seen = new Set<string>(); const out: ValidationCommand[] = []; for (const c of commands) { const k = commandKey(c); if (!seen.has(k)) { seen.add(k); out.push(c); } } return out; }
 function surfaceKey(d: { surface: string; name: string; change: string }): string { return `${d.surface}:${d.name}:${d.change}`; }
-function withinAny(file: string, scopes: string[]): boolean { if (scopes.length === 0) return true; const norm = file.replace(/\\/g, "/"); return scopes.some((s) => { const scope = s.replace(/\\/g, "/").replace(/\/$/, ""); return norm === scope || norm.startsWith(scope + "/") || (scope.includes("*") && new RegExp("^" + scope.split("*").map(escapeRe).join(".*") + "$" ).test(norm)); }); }
-function escapeRe(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+function withinAny(file: string, scopes: string[]): boolean { if (scopes.length === 0) return true; const norm = file.replace(/\\/g, "/"); return scopes.some((s) => { const scope = s.replace(/\\/g, "/").replace(/\/$/, ""); return norm === scope || norm.startsWith(scope + "/"); }); }
