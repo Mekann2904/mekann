@@ -142,7 +142,7 @@ close_agent({ target: "/root/research/api_scan" })
 - `--subagent-max-depth` (デフォルト: `2`): ネストの最大深度
 - `--subagent-default-wait-timeout-ms` (デフォルト: なし): `wait_agent` のデフォルトタイムアウト（ms）
 - `--subagent-min-wait-timeout-ms` (デフォルト: `1000`): `wait_agent` の最小タイムアウト（ms）
-- `--subagent-display` (デフォルト: `none`): サブエージェントの表示モード（`none` / `kitty-pi` / `kitty-split`）
+- `--subagent-display` (デフォルト: `kitty-split`): サブエージェントの表示モード（`none` / `kitty-pi` / `kitty-split`）
 - `--subagent-log-dir` (デフォルト: なし): 表示ログの出力ディレクトリ
 - `--subagent-kitten-bin` (デフォルト: `kitten`): `kitten` バイナリのパス
 - `--subagent-pi-command` (デフォルト: `pi`): 子 Pi プロセスの起動コマンド

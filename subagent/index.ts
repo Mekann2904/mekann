@@ -181,7 +181,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   pi.registerFlag("subagent-display", {
     description: 'Display mode for subagents: "none", or "kitty-pi"/"kitty-split" unsafe external Pi when explicitly enabled',
     type: "string",
-    default: "none",
+    default: "kitty-split",
   });
 
   pi.registerFlag("subagent-allow-unsafe-external-pi", {
