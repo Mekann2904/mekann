@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { computeContractHash, type AutoresearchContractV1, type LockFile } from "./contractV1.js";
 import { writeState } from "./layout.js";
 import { createHash } from "node:crypto";
-import { applyCandidate, applyCandidateIsolated, assertCandidateReadyForRun, candidateChangedFiles, candidateEventsPath, importSubagentResultsAsCandidates, listCandidates, updateCandidateStatus } from "./candidate.js";
+import { applyCandidate, applyCandidateIsolated, assertCandidateReadyForRun, candidateChangedFiles, candidateEventsPath, importSubagentResultsAsCandidates, listCandidates, readCandidate, updateCandidateStatus } from "./candidate.js";
 
 function tmpRepo(): string {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arc-test-"));
@@ -103,6 +103,47 @@ describe("autoresearch candidates", () => {
 		const c = contract(); c.scope.allowedWritePaths = ["src/*.ts"];
 		const res = importSubagentResultsAsCandidates(cwd, c, lock(c), { source: "pending" });
 		expect(res.imported).toHaveLength(1);
+	});
+
+	it("rejects unsafe patch paths and missing base hashes for existing touched files", () => {
+		const unsafeCwd = tmpRepo();
+		writeSubagentPatch(unsafeCwd, "diff --git a/../evil.txt b/../evil.txt\n--- a/../evil.txt\n+++ b/../evil.txt\n@@ -1 +1 @@\n-old\n+new\n", ["evil.txt"]);
+		const c1 = contract();
+		const unsafe = importSubagentResultsAsCandidates(unsafeCwd, c1, lock(c1), { source: "pending" });
+		expect(unsafe.imported).toHaveLength(0);
+		expect(unsafe.skipped[0].reason).toBe("unsafe_patch_path");
+
+		const cwd = tmpRepo(); fs.mkdirSync(path.join(cwd, "src")); fs.writeFileSync(path.join(cwd, "src", "a.txt"), "old\n");
+		execFileSync("git", ["add", "src/a.txt"], { cwd }); execFileSync("git", ["commit", "-m", "src"], { cwd, stdio: "ignore" });
+		const patch = "diff --git a/src/a.txt b/src/a.txt\nindex 3e75765..b6fc4c6 100644\n--- a/src/a.txt\n+++ b/src/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
+		writeSubagentPatch(cwd, patch, ["src/a.txt"]);
+		const c2 = contract();
+		const missing = importSubagentResultsAsCandidates(cwd, c2, lock(c2), { source: "pending" });
+		expect(missing.imported).toHaveLength(0);
+		expect(missing.skipped[0].reason).toBe("base_hash_mismatch");
+		expect((missing.skipped[0].details as any).reason).toBe("missing_base_hash");
+	});
+
+	it("does not leave candidates leased when apply check fails", () => {
+		const cwd = tmpRepo();
+		const brokenPatch = "diff --git a/src/b.txt b/src/b.txt\nnew file mode 100644\n--- /dev/null\n+++ b/src/b.txt\n@@ -0,0 +1 @@\n";
+		writeSubagentPatch(cwd, brokenPatch, ["src/b.txt"]);
+		const c = contract(); const res = importSubagentResultsAsCandidates(cwd, c, lock(c), { source: "pending" });
+		expect(res.imported).toHaveLength(1);
+		expect(() => applyCandidate(cwd, c, lock(c), res.imported[0].candidate_id)).toThrow();
+		expect(readCandidate(cwd, res.imported[0].candidate_id).status).toBe("paused_dirty");
+	});
+
+	it("does not leave isolated candidates leased when apply check fails and records worktree path", () => {
+		const cwd = tmpRepo();
+		const brokenPatch = "diff --git a/src/b.txt b/src/b.txt\nnew file mode 100644\n--- /dev/null\n+++ b/src/b.txt\n@@ -0,0 +1 @@\n";
+		writeSubagentPatch(cwd, brokenPatch, ["src/b.txt"]);
+		const c = contract(); const res = importSubagentResultsAsCandidates(cwd, c, lock(c), { source: "pending" });
+		expect(res.imported).toHaveLength(1);
+		expect(() => applyCandidateIsolated(cwd, c, lock(c), res.imported[0].candidate_id)).toThrow();
+		const candidate = readCandidate(cwd, res.imported[0].candidate_id);
+		expect(candidate.status).toBe("paused_dirty");
+		expect(candidate.trial?.worktree_path).toBeTruthy();
 	});
 
 	it("rejects base hash mismatch and terminal status transitions", () => {

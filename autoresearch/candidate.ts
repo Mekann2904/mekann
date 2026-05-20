@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import { computeContractHash, type AutoresearchContractV1, type LockFile } from "./contractV1.js";
 import { filterInternalPaths, matchesAnyPattern } from "./contractV1.js";
 import { SubagentResultStore } from "../subagent/resultStore.js";
+import { extractTouchedPathsFromPatchStrict, isNewFilePatch } from "../subagent/fingerprint.js";
 import { getChangedFiles } from "./runner.js";
 import { getPlanDir, readState } from "./layout.js";
 
@@ -138,9 +139,16 @@ export function importSubagentResultsAsCandidates(cwd: string, contract: Autores
 			const base = validateBaseFileHashesSync(cwd, stored.result.base.files);
 			if (!base.ok) { result.skipped.push({ result_id: id, reason: "base_hash_mismatch", details: base }); continue; }
 			const patchSha = sha256Text(patchText);
-			const extracted = extractTouchedPathsFromPatch(patchText);
+			const extractedTouched = extractTouchedPathsFromPatchStrict(patchText);
+			if (!extractedTouched.ok) { result.skipped.push({ result_id: id, reason: "unsafe_patch_path", details: extractedTouched }); continue; }
+			const extracted = extractedTouched.paths;
 			const declared = (stored.result.scope?.touched_paths ?? []).map(safeRepoRelativePath).filter(Boolean).sort();
 			if (JSON.stringify(extracted) !== JSON.stringify(declared)) { result.skipped.push({ result_id: id, reason: "declared_touched_paths_mismatch", details: { declared, extracted } }); continue; }
+			if (stored.authority?.require_base_hash !== false) {
+				const basePaths = new Set(stored.result.base.files.map((f) => f.path));
+				const missingBase = extracted.find((p) => !basePaths.has(p) && !isNewFilePatch(p, patchText));
+				if (missingBase) { result.skipped.push({ result_id: id, reason: "base_hash_mismatch", details: { path: missingBase, reason: "missing_base_hash" } }); continue; }
+			}
 			const scope = validateTouchedAgainstContract(extracted, contract);
 			if (scope.ok === false) { result.skipped.push({ result_id: id, reason: scope.reason, details: scope.details }); continue; }
 			const duplicate = existing.find((c)=>c.source.result_id === id && c.patch_sha256 === patchSha && c.contract_hash === contractHash);
@@ -182,7 +190,7 @@ export function applyCandidate(cwd: string, contract: AutoresearchContractV1, lo
 		return updateCandidateStatus(cwd, candidateId, "trial_applied");
 	} catch (e) {
 		const latest = readCandidate(cwd, candidateId);
-		if (latest.status === "leased") updateCandidateStatus(cwd, candidateId, "paused_dirty", { reason: e instanceof Error ? e.message : String(e) });
+		if (latest.status === "leased") updateCandidateStatus(cwd, candidateId, "paused_dirty", { reason: e instanceof Error ? e.message : String(e) }, { code: "apply_candidate_failed", message: e instanceof Error ? e.message : String(e) });
 		throw e;
 	}
 }
@@ -209,6 +217,8 @@ export function applyCandidateIsolated(cwd: string, contract: AutoresearchContra
 		if (fullHead(cwd) !== c.base_git_commit) { updateCandidateStatus(cwd, candidateId, "stale_base"); throw new Error("candidate base git commit is stale"); }
 		const dirty = candidateChangedFiles(cwd); if (dirty.length) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`working tree is dirty: ${dirty.join(", ")}`); }
 		const wt = createCandidateWorktree(cwd, c);
+		c.trial = { mode: "isolated_worktree", worktree_path: wt, created_at: Date.now() };
+		writeCandidate(cwd, c);
 		const patchPath = candidatePatchPath(cwd, candidateId);
 		execFileSync("git", ["apply", "--check", patchPath], { cwd: wt, stdio: ["ignore", "pipe", "pipe"] });
 		execFileSync("git", ["apply", patchPath], { cwd: wt, stdio: ["ignore", "pipe", "pipe"] });
@@ -220,7 +230,7 @@ export function applyCandidateIsolated(cwd: string, contract: AutoresearchContra
 		return updateCandidateStatus(cwd, candidateId, "trial_applied");
 	} catch (e) {
 		const latest = readCandidate(cwd, candidateId);
-		if (latest.status === "leased") updateCandidateStatus(cwd, candidateId, "paused_dirty", { reason: e instanceof Error ? e.message : String(e) });
+		if (latest.status === "leased") updateCandidateStatus(cwd, candidateId, "paused_dirty", { reason: e instanceof Error ? e.message : String(e) }, { code: "apply_candidate_isolated_failed", message: e instanceof Error ? e.message : String(e), worktree_path: latest.trial?.worktree_path });
 		throw e;
 	}
 }
