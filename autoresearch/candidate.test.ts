@@ -1,0 +1,68 @@
+import { describe, expect, it } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { execFileSync } from "node:child_process";
+import { computeContractHash, type AutoresearchContractV1, type LockFile } from "./contractV1.js";
+import { writeState } from "./layout.js";
+import { applyCandidate, importSubagentResultsAsCandidates, listCandidates } from "./candidate.js";
+
+function tmpRepo(): string {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arc-test-"));
+	execFileSync("git", ["init"], { cwd: dir, stdio: "ignore" });
+	execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: dir });
+	execFileSync("git", ["config", "user.name", "Test"], { cwd: dir });
+	fs.writeFileSync(path.join(dir, "README.md"), "base\n");
+	execFileSync("git", ["add", "README.md"], { cwd: dir });
+	execFileSync("git", ["commit", "-m", "initial"], { cwd: dir, stdio: "ignore" });
+	fs.mkdirSync(path.join(dir, ".autoresearch", "plans", "plan-test"), { recursive: true });
+	writeState(dir, { version: 2, currentPlanId: "plan-test", currentPlanDir: ".autoresearch/plans/plan-test", updatedAt: new Date().toISOString() });
+	return dir;
+}
+
+function contract(): AutoresearchContractV1 {
+	return {
+		schemaVersion: "autoresearch/v1",
+		objective: { summary: "test", successDefinition: "metric lower" },
+		scope: { allowedWritePaths: ["src"], forbiddenWritePaths: ["forbidden"], immutableReadPaths: ["bench"], requireGit: true, requireCleanGitWorktree: true },
+		evaluation: { benchmark: { command: { argv: ["true"], cwd: "." }, timeoutSeconds: 1, repeats: 1, aggregate: "median" }, primaryMetric: { name: "duration", direction: "lower", source: { type: "wall_clock" } }, checks: [] },
+		acceptance: { mode: "better_than_best", minRelativeImprovement: 0, requireImprovementAboveNoiseFloor: false, requireAllChecksPass: false, rejectIfMetricMissing: true, rejectIfImmutableReadPathChanged: true, rejectIfForbiddenFilesChanged: true, rejectIfBenchmarkChanged: true },
+		loop: { maxIterations: 1, maxRuntimeMinutes: 1, maxConsecutiveNoImprovement: 1, maxConsecutiveFailures: 1 },
+		failurePolicy: { onBenchmarkFailure: "discard", onCheckFailure: "discard", onMetricMissing: "discard", onContractViolation: "pause", onRevertFailure: "pause" },
+	};
+}
+
+function lock(c: AutoresearchContractV1): LockFile {
+	return { schemaVersion: "autoresearch-lock/v1", contractId: "contract-test", contractHash: computeContractHash(c), approvedAt: Date.now(), approvedBy: "test", baseline: { gitCommit: "HEAD", runs: [], aggregate: "median", primaryMetricValue: 1, noise: { samples: [1], mean: 1, median: 1, min: 1, max: 1, stddev: 0, relativeStddev: 0 } }, environment: { immutableReadSetHash: "sha256:x", files: [] } };
+}
+
+function writeSubagentPatch(cwd: string, patch: string, touched = ["src/a.txt"], status = "pending", outcome = "patch"): string {
+	const dir = path.join(cwd, ".pi", "subagent-results"); fs.mkdirSync(dir, { recursive: true });
+	const id = "sar_test_1"; fs.writeFileSync(path.join(dir, `${id}.patch`), patch);
+	fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ result_id: id, agent_id: "a", agent_path: "/root/a", created_at: Date.now(), status, result: { schema: "subagent.result.v1", outcome, summary: "make src", patch: { format: "unified_diff", ref: path.join(dir, `${id}.patch`), bytes: patch.length }, base: { files: [] }, scope: { allowed_paths: ["src"], touched_paths: touched }, semantic: { reads: [], writes: [], assumptions: [], effects: [], public_surface_delta: [], risk: { level: "low" } }, validation: { suggested: [] } } }, null, 2));
+	return id;
+}
+
+describe("autoresearch candidates", () => {
+	it("escrows pending subagent patch without changing result status and applies as trial", () => {
+		const cwd = tmpRepo();
+		const patch = "diff --git a/src/a.txt b/src/a.txt\nnew file mode 100644\nindex 0000000..257cc56\n--- /dev/null\n+++ b/src/a.txt\n@@ -0,0 +1 @@\n+hello\n";
+		const id = writeSubagentPatch(cwd, patch);
+		const c = contract(); const res = importSubagentResultsAsCandidates(cwd, c, lock(c), { source: "pending" });
+		expect(res.imported).toHaveLength(1);
+		expect(JSON.parse(fs.readFileSync(path.join(cwd, ".pi", "subagent-results", `${id}.json`), "utf8")).status).toBe("pending");
+		const applied = applyCandidate(cwd, c, lock(c), res.imported[0].candidate_id);
+		expect(applied.status).toBe("trial_applied");
+		expect(fs.readFileSync(path.join(cwd, "src", "a.txt"), "utf8")).toBe("hello\n");
+	});
+
+	it("skips non-patch and forbidden candidates", () => {
+		const cwd = tmpRepo();
+		writeSubagentPatch(cwd, "diff --git a/forbidden/a.txt b/forbidden/a.txt\n--- /dev/null\n+++ b/forbidden/a.txt\n@@ -0,0 +1 @@\n+x\n", ["forbidden/a.txt"]);
+		const c = contract();
+		const res = importSubagentResultsAsCandidates(cwd, c, lock(c), { source: "pending" });
+		expect(res.imported).toHaveLength(0);
+		expect(res.skipped[0].reason).toBe("outside_allowed_write_paths");
+		expect(listCandidates(cwd)).toHaveLength(0);
+	});
+});

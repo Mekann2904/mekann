@@ -1,0 +1,153 @@
+import * as crypto from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { execFileSync } from "node:child_process";
+import { computeContractHash, type AutoresearchContractV1, type LockFile } from "./contractV1.js";
+import { filterInternalPaths } from "./contractV1.js";
+import { getChangedFiles } from "./runner.js";
+import { getPlanDir, readState } from "./layout.js";
+
+export type CandidateStatus = "pending" | "leased" | "trial_applied" | "evaluating" | "kept" | "discarded" | "stale_base" | "rejected_policy" | "paused_dirty";
+
+export interface AutoresearchCandidateV1 {
+	schema: "autoresearch.candidate.v1";
+	candidate_id: string;
+	source: { kind: "subagent_result"; result_id: string; agent_path: string };
+	contract_hash: string;
+	base_git_commit: string;
+	patch_sha256: string;
+	hypothesis: string;
+	expected_metric: { name: string; direction: "lower" | "higher"; confidence?: number };
+	touched_paths: string[];
+	semantic_risk: "low" | "medium" | "high";
+	status: CandidateStatus;
+	created_at: number;
+	updated_at: number;
+	decision?: { run_id?: string; metric?: number | null; reason?: string; commit?: string };
+}
+
+export interface CandidateImportResult { imported: AutoresearchCandidateV1[]; skipped: Array<{ result_id?: string; reason: string; details?: unknown }>; }
+
+let counter = 0;
+function nextCandidateId(): string { return `arc_${Date.now().toString(36)}_${++counter}`; }
+export function sha256Text(s: string): string { return "sha256:" + crypto.createHash("sha256").update(s, "utf8").digest("hex"); }
+export function fullHead(cwd: string): string { return execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim(); }
+
+export function currentPlanDir(cwd: string): string {
+	const s = readState(cwd);
+	if (!s.currentPlanId) throw new Error("current plan が見つかりません");
+	return s.currentPlanDir ? path.resolve(cwd, s.currentPlanDir) : getPlanDir(cwd, s.currentPlanId);
+}
+export function candidatesDir(cwd: string): string { return path.join(currentPlanDir(cwd), "candidates"); }
+export function candidateDir(cwd: string, id: string): string { assertCandidateId(id); return path.join(candidatesDir(cwd), id); }
+export function candidatePath(cwd: string, id: string): string { return path.join(candidateDir(cwd, id), "candidate.json"); }
+export function candidatePatchPath(cwd: string, id: string): string { return path.join(candidateDir(cwd, id), "patch.diff"); }
+export function assertCandidateId(id: string): void { if (!/^arc_[a-z0-9]+_[0-9]+$/i.test(id)) throw new Error(`Invalid candidate_id: ${id}`); }
+
+export function readCandidate(cwd: string, id: string): AutoresearchCandidateV1 { return JSON.parse(fs.readFileSync(candidatePath(cwd, id), "utf8")); }
+export function writeCandidate(cwd: string, c: AutoresearchCandidateV1): void { fs.mkdirSync(candidateDir(cwd, c.candidate_id), { recursive: true }); fs.writeFileSync(candidatePath(cwd, c.candidate_id), JSON.stringify({ ...c, updated_at: Date.now() }, null, 2) + "\n", "utf8"); }
+export function listCandidates(cwd: string): AutoresearchCandidateV1[] { const dir = candidatesDir(cwd); if (!fs.existsSync(dir)) return []; return fs.readdirSync(dir).flatMap((id) => { try { return [readCandidate(cwd, id)]; } catch { return []; } }).sort((a,b)=>a.created_at-b.created_at); }
+export function updateCandidateStatus(cwd: string, id: string, status: CandidateStatus, decision?: AutoresearchCandidateV1["decision"]): AutoresearchCandidateV1 { const c = readCandidate(cwd, id); c.status = status; if (decision) c.decision = { ...(c.decision ?? {}), ...decision }; writeCandidate(cwd, c); return readCandidate(cwd, id); }
+
+export function extractTouchedPathsFromPatch(patch: string): string[] {
+	const paths = new Set<string>();
+	for (const line of patch.split(/\r?\n/)) {
+		if (!line.startsWith("+++ ") && !line.startsWith("--- ")) continue;
+		const raw = line.slice(4).trim().split(/\s+/)[0];
+		if (raw === "/dev/null") continue;
+		const p = raw.replace(/^a\//, "").replace(/^b\//, "");
+		if (safeRepoRelativePath(p)) paths.add(p);
+	}
+	return [...paths].sort();
+}
+export function safeRepoRelativePath(p: string): string | null { const n = p.replace(/\\/g, "/"); if (!n || n.includes("\0") || n.startsWith("/") || /^[A-Za-z]:\//.test(n)) return null; const norm = path.posix.normalize(n); if (norm === "." || norm.startsWith("../") || norm === "..") return null; return norm; }
+function withinAny(file: string, scopes: string[]): boolean { if (scopes.length === 0) return true; const f = file.replace(/\\/g,"/"); return scopes.some((s)=>{ const scope=s.replace(/\\/g,"/").replace(/\*+$/g,"").replace(/\/$/,""); return f===scope || f.startsWith(scope+"/"); }); }
+function isUnderDir(file: string, dir: string): boolean { const rel = path.relative(path.resolve(dir), path.resolve(file)); return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel); }
+export function candidateChangedFiles(cwd: string): string[] {
+	const out = new Set<string>();
+	for (const f of filterInternalPaths(getChangedFiles(cwd))) {
+		const abs = path.join(cwd, f);
+		if (f.endsWith("/") || (fs.existsSync(abs) && fs.statSync(abs).isDirectory())) {
+			for (const child of walkFiles(abs)) out.add(path.relative(cwd, child).replace(/\\/g, "/"));
+		} else out.add(f.replace(/\\/g, "/"));
+	}
+	return [...out].sort();
+}
+function walkFiles(dir: string): string[] { const out: string[] = []; for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); if (e.isDirectory()) out.push(...walkFiles(p)); else out.push(p); } return out; }
+
+export function validateTouchedAgainstContract(paths: string[], contract: AutoresearchContractV1): { ok: true } | { ok: false; reason: string; details?: unknown } {
+	for (const p of paths) {
+		const safe = safeRepoRelativePath(p); if (!safe) return { ok: false, reason: "unsafe_path", details: p };
+		if (!withinAny(safe, contract.scope.allowedWritePaths)) return { ok: false, reason: "outside_allowed_write_paths", details: { path: safe, allowedWritePaths: contract.scope.allowedWritePaths } };
+		if (withinAny(safe, contract.scope.forbiddenWritePaths)) return { ok: false, reason: "forbidden_write_path", details: safe };
+		if (withinAny(safe, contract.scope.immutableReadPaths)) return { ok: false, reason: "immutable_read_path", details: safe };
+	}
+	return { ok: true };
+}
+
+export function importSubagentResultsAsCandidates(cwd: string, contract: AutoresearchContractV1, lock: LockFile, params: { source?: "pending" | "result_ids"; result_ids?: string[]; max_results?: number }): CandidateImportResult {
+	const result: CandidateImportResult = { imported: [], skipped: [] };
+	const storeDir = path.join(cwd, ".pi", "subagent-results");
+	if (!fs.existsSync(storeDir)) return result;
+	const ids = params.source === "result_ids" ? (params.result_ids ?? []) : fs.readdirSync(storeDir).filter((f)=>/^sar_.*\.json$/.test(f)).map((f)=>f.slice(0,-5));
+	const existing = listCandidates(cwd);
+	const contractHash = computeContractHash(contract);
+	if (contractHash !== lock.contractHash) throw new Error("current contract hash does not match lock");
+	for (const id of ids.slice(0, params.max_results ?? Infinity)) {
+		try {
+			const sourcePath = path.join(storeDir, `${id}.json`);
+			const stored = JSON.parse(fs.readFileSync(sourcePath, "utf8"));
+			if (stored.status !== "pending") { result.skipped.push({ result_id: id, reason: `status:${stored.status}` }); continue; }
+			if (stored.result?.outcome !== "patch") { result.skipped.push({ result_id: id, reason: `outcome:${stored.result?.outcome}` }); continue; }
+			const ref = stored.result.patch?.ref;
+			if (typeof ref !== "string" || !isUnderDir(ref, storeDir)) { result.skipped.push({ result_id: id, reason: "invalid_patch_ref" }); continue; }
+			const patchText = fs.readFileSync(ref, "utf8");
+			const patchSha = sha256Text(patchText);
+			const extracted = extractTouchedPathsFromPatch(patchText);
+			const declared = (stored.result.scope?.touched_paths ?? []).map(safeRepoRelativePath).filter(Boolean).sort();
+			if (JSON.stringify(extracted) !== JSON.stringify(declared)) { result.skipped.push({ result_id: id, reason: "declared_touched_paths_mismatch", details: { declared, extracted } }); continue; }
+			const scope = validateTouchedAgainstContract(extracted, contract);
+			if (scope.ok === false) { result.skipped.push({ result_id: id, reason: scope.reason, details: scope.details }); continue; }
+			const duplicate = existing.find((c)=>c.source.result_id === id && c.patch_sha256 === patchSha && c.contract_hash === contractHash);
+			if (duplicate) { result.skipped.push({ result_id: id, reason: "duplicate", details: duplicate.candidate_id }); continue; }
+			const now = Date.now();
+			const c: AutoresearchCandidateV1 = { schema: "autoresearch.candidate.v1", candidate_id: nextCandidateId(), source: { kind: "subagent_result", result_id: id, agent_path: stored.agent_path }, contract_hash: contractHash, base_git_commit: fullHead(cwd), patch_sha256: patchSha, hypothesis: stored.result.summary, expected_metric: { name: contract.evaluation.primaryMetric.name, direction: contract.evaluation.primaryMetric.direction }, touched_paths: extracted, semantic_risk: stored.result.semantic?.risk?.level ?? "medium", status: "pending", created_at: now, updated_at: now };
+			fs.mkdirSync(candidateDir(cwd, c.candidate_id), { recursive: true });
+			fs.writeFileSync(candidatePatchPath(cwd, c.candidate_id), patchText, "utf8");
+			fs.writeFileSync(path.join(candidateDir(cwd, c.candidate_id), "source-result.json"), JSON.stringify(stored, null, 2) + "\n", "utf8");
+			writeCandidate(cwd, c);
+			result.imported.push(readCandidate(cwd, c.candidate_id)); existing.push(c);
+		} catch (e) { result.skipped.push({ result_id: id, reason: "error", details: e instanceof Error ? e.message : String(e) }); }
+	}
+	return result;
+}
+
+export function applyCandidate(cwd: string, contract: AutoresearchContractV1, lock: LockFile, candidateId: string): AutoresearchCandidateV1 {
+	const c = readCandidate(cwd, candidateId);
+	if (c.status !== "pending") throw new Error(`candidate status must be pending: ${c.status}`);
+	if (c.contract_hash !== lock.contractHash || computeContractHash(contract) !== c.contract_hash) { updateCandidateStatus(cwd, candidateId, "rejected_policy"); throw new Error("candidate contract hash mismatch"); }
+	if (fullHead(cwd) !== c.base_git_commit) { updateCandidateStatus(cwd, candidateId, "stale_base"); throw new Error("candidate base git commit is stale"); }
+	const dirty = candidateChangedFiles(cwd);
+	if (dirty.length) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`working tree is dirty: ${dirty.join(", ")}`); }
+	const patchPath = candidatePatchPath(cwd, candidateId);
+	const patchText = fs.readFileSync(patchPath, "utf8");
+	if (sha256Text(patchText) !== c.patch_sha256) { updateCandidateStatus(cwd, candidateId, "rejected_policy"); throw new Error("candidate patch hash mismatch"); }
+	execFileSync("git", ["apply", "--check", patchPath], { cwd, stdio: ["ignore", "pipe", "pipe"] });
+	execFileSync("git", ["apply", patchPath], { cwd, stdio: ["ignore", "pipe", "pipe"] });
+	const changed = candidateChangedFiles(cwd);
+	const expected = [...c.touched_paths].sort();
+	const scope = validateTouchedAgainstContract(changed, contract);
+	if (JSON.stringify(changed) !== JSON.stringify(expected) || !scope.ok) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`applied changed files mismatch: expected ${expected.join(",")}, actual ${changed.join(",")}`); }
+	return updateCandidateStatus(cwd, candidateId, "trial_applied");
+}
+
+export function assertCandidateReadyForRun(cwd: string, contract: AutoresearchContractV1, lock: LockFile, candidateId: string): AutoresearchCandidateV1 {
+	const c = readCandidate(cwd, candidateId);
+	if (c.status !== "trial_applied" && c.status !== "evaluating") throw new Error(`candidate status must be trial_applied: ${c.status}`);
+	if (c.contract_hash !== lock.contractHash || computeContractHash(contract) !== c.contract_hash) throw new Error("candidate contract hash mismatch");
+	if (sha256Text(fs.readFileSync(candidatePatchPath(cwd, candidateId), "utf8")) !== c.patch_sha256) throw new Error("candidate patch hash mismatch");
+	const changed = candidateChangedFiles(cwd);
+	const expected = [...c.touched_paths].sort();
+	if (JSON.stringify(changed) !== JSON.stringify(expected)) throw new Error(`candidate changed files mismatch: expected ${expected.join(",")}, actual ${changed.join(",")}`);
+	return c;
+}

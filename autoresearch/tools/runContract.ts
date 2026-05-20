@@ -3,6 +3,8 @@
  * index.ts から抽出された contract mode 実験実行ロジック。
  */
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import {
 	computeContractHash,
 	computeImmutableReadSetHash,
@@ -26,6 +28,8 @@ import {
 	gitAutoRevert,
 	getChangedFiles,
 } from "../runner.js";
+import { assertCandidateReadyForRun, candidateChangedFiles, candidateDir, readCandidate, updateCandidateStatus } from "../candidate.js";
+import { SubagentResultStore } from "../../subagent/resultStore.js";
 import { isBestMetric } from "../state.js";
 import { appendToJsonl, type RunsLedgerEntry } from "../state.js";
 import { readState as readStateV2, writeState as writeStateV2 } from "../layout.js";
@@ -35,7 +39,7 @@ import type { ToolResponse, SessionStore } from "./sessionStore.js";
 
 // ─── Params type ──────────────────────────────────────────────
 
-export type RunContractParams = { reason?: string; iteration_label?: string };
+export type RunContractParams = { reason?: string; iteration_label?: string; candidate_id?: string };
 
 // ─── Execute ──────────────────────────────────────────────────
 
@@ -84,10 +88,20 @@ export async function executeRunContract(
 		return store.textResponse(`[ERROR] git repo ではありません。`);
 	}
 
+	let candidate = null as ReturnType<typeof readCandidate> | null;
+	if (params.candidate_id) {
+		try {
+			candidate = assertCandidateReadyForRun(ctx.cwd, contract, lock, params.candidate_id);
+			updateCandidateStatus(ctx.cwd, params.candidate_id, "evaluating");
+		} catch (e) {
+			return store.textDetails(`[PAUSE] candidate precondition failed: ${e instanceof Error ? e.message : String(e)}`, { decision: "pause", candidate_id: params.candidate_id });
+		}
+	}
+
 	// Pre-check state (logged for diagnostics only)
 	const preChangedFiles = getChangedFiles(ctx.cwd);
 
-	logRunEvent("contract_run_started", { reason: params.reason, iterationLabel: params.iteration_label, preChangedFilesCount: preChangedFiles.length });
+	logRunEvent("contract_run_started", { reason: params.reason, iterationLabel: params.iteration_label, candidate_id: params.candidate_id, preChangedFilesCount: preChangedFiles.length });
 
 	// --- Run checks ---
 	const checkResults = new Map<string, boolean>();
@@ -131,7 +145,21 @@ export async function executeRunContract(
 	const immutableResult = await computeImmutableReadSetHash(ctx.cwd, contract.scope.immutableReadPaths);
 	const immutableReadSetHashMatches = immutableResult.hash === lock.environment.immutableReadSetHash;
 
-	logRunEvent("post_state_captured", { postChangedFilesCount: changedFiles.length, immutableHashMatch: immutableReadSetHashMatches });
+	logRunEvent("post_state_captured", { candidate_id: params.candidate_id, postChangedFilesCount: changedFiles.length, immutableHashMatch: immutableReadSetHashMatches });
+
+	if (candidate) {
+		const expected = [...candidate.touched_paths].sort();
+		const actual = candidateChangedFiles(ctx.cwd);
+		if (JSON.stringify(expected) !== JSON.stringify(actual)) {
+			updateCandidateStatus(ctx.cwd, candidate.candidate_id, "paused_dirty");
+			appendDecision(ctx.cwd, {
+				timestamp: Date.now(), contractId: lock.contractId, contractHash: currentHash,
+				decision: "pause", reason: "candidate changed files mismatch", metric: null, reference: null,
+				details: { candidate_id: candidate.candidate_id, expected, actual },
+			});
+			return store.textDetails(`[PAUSE] candidate changed files mismatch\nexpected: ${expected.join(", ")}\nactual: ${actual.join(", ")}`, { decision: "pause", candidate_id: candidate.candidate_id });
+		}
+	}
 
 	const aggregateMethod = contract.evaluation.benchmark.aggregate;
 	const candidateMetric = measurements.length > 0
@@ -163,7 +191,7 @@ export async function executeRunContract(
 		reason: evaluatorResult.reason,
 		metric: evaluatorResult.representativeMetric,
 		reference: evaluatorResult.reference,
-		details: { ...evaluatorResult.details, measurements, changedFiles, reason: params.reason, iterationLabel: params.iteration_label },
+		details: { ...evaluatorResult.details, measurements, changedFiles, reason: params.reason, iterationLabel: params.iteration_label, candidate_id: params.candidate_id },
 	});
 
 	// --- Append to runs.jsonl and metrics.jsonl for audit ---
@@ -217,6 +245,7 @@ export async function executeRunContract(
 			changedFiles,
 			checkResults: Object.fromEntries(checkResults),
 			durationSeconds: 0,
+			details: { candidate_id: params.candidate_id },
 		});
 		appendContractMetric(ctx.cwd, {
 			timestamp: now,
@@ -228,6 +257,7 @@ export async function executeRunContract(
 			allMeasurements: measurements,
 			aggregateMethod: contract.evaluation.benchmark.aggregate,
 			decision: evaluatorResult.decision,
+			details: { candidate_id: params.candidate_id },
 		});
 	} catch { /* best effort */ }
 
@@ -263,7 +293,17 @@ export async function executeRunContract(
 			});
 		} catch { /* best effort: in-memory state is still valid for this session */ }
 
-		logRunEvent("decision_keep", { metric: evaluatorResult.representativeMetric, commit: gr.commit });
+		if (candidate) {
+			updateCandidateStatus(ctx.cwd, candidate.candidate_id, "kept", { metric: evaluatorResult.representativeMetric, reason: evaluatorResult.reason, commit: gr.commit });
+			try {
+				const source = JSON.parse(fs.readFileSync(path.join(candidateDir(ctx.cwd, candidate.candidate_id), "source-result.json"), "utf8"));
+				if (source.result?.outcome === "patch") {
+					new SubagentResultStore(ctx.cwd).appendSemanticLog({ result_id: source.result_id, agent_path: source.agent_path, applied_at: Date.now(), reads: source.result.semantic.reads, writes: source.result.semantic.writes, assumptions: source.result.semantic.assumptions, effects: source.result.semantic.effects, public_surface_delta: source.result.semantic.public_surface_delta, validation_result: { ok: true, output: `autoresearch candidate kept: ${candidate.candidate_id}` }, candidate_id: candidate.candidate_id } as any);
+				}
+			} catch { /* best effort */ }
+		}
+
+		logRunEvent("decision_keep", { candidate_id: params.candidate_id, metric: evaluatorResult.representativeMetric, commit: gr.commit });
 		store.updateWidget(ctx);
 
 		let text = `[KEEP] 改善が承認されました\n`;
@@ -294,7 +334,9 @@ export async function executeRunContract(
 			});
 		} catch { /* best effort */ }
 
-		logRunEvent("decision_discard", { metric: evaluatorResult.representativeMetric, reason: evaluatorResult.reason });
+		if (candidate) updateCandidateStatus(ctx.cwd, candidate.candidate_id, "discarded", { metric: evaluatorResult.representativeMetric, reason: evaluatorResult.reason });
+
+		logRunEvent("decision_discard", { candidate_id: params.candidate_id, metric: evaluatorResult.representativeMetric, reason: evaluatorResult.reason });
 		store.updateWidget(ctx);
 
 		let text = `[DISCARD] 改善不十分のため棄却しました\n`;
@@ -304,7 +346,8 @@ export async function executeRunContract(
 		text += `\nrevert 完了。次の候補を実装して、再度 autoresearch_run_contract を実行してください。`;
 		return store.textDetails(text, { decision: "discard", metric: evaluatorResult.representativeMetric, reference: evaluatorResult.reference, reason: evaluatorResult.reason });
 	} else {
-		logRunEvent("decision_pause", { reason: evaluatorResult.reason });
+		if (candidate) updateCandidateStatus(ctx.cwd, candidate.candidate_id, "paused_dirty", { metric: evaluatorResult.representativeMetric, reason: evaluatorResult.reason });
+		logRunEvent("decision_pause", { candidate_id: params.candidate_id, reason: evaluatorResult.reason });
 		let text = `[PAUSE] 実験を一時停止しました\n`;
 		text += `reason: ${evaluatorResult.reason}\n`;
 		text += `\n変更は working tree に残っています。問題を解決してから再開してください。`;

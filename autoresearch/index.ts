@@ -100,6 +100,7 @@ import { executeRun } from "./tools/run.js";
 import { executeLog } from "./tools/log.js";
 import { executeApprove } from "./tools/approve.js";
 import { executeRunContract } from "./tools/runContract.js";
+import { executeApplyCandidate, executeCandidateEscrow, executeListCandidates, executeRejectCandidate, executeShowCandidate } from "./tools/candidates.js";
 import { handleCommand } from "./tools/commandHandler.js";
 
 // ---------------------------------------------------------------------------
@@ -219,6 +220,13 @@ const SYSTEM_PROMPT_EXTRA = [
 	"`ready_for_run` は `autoresearch_run` 単体ではなく、run 後に checks と log/keep/discard 判断まで安全に進められる状態を意味する。",
 	"`ready_for_run` 以外では `autoresearch_run` に進んではならない。",
 	"`ready_for_init` では `autoresearch_init` は可能だが、run 前に不足を解消する。",
+	"",
+	"### subagent candidate 連携",
+	"",
+	"- autoresearch 中は subagent patch を apply_agent_results で直接適用しない。",
+	"- subagent patch result は autoresearch_candidate_escrow で candidate 化する。",
+	"- 評価は autoresearch_apply_candidate → autoresearch_run_contract({ candidate_id }) の順で行う。",
+	"- subagent は benchmark / git / keep-discard を実行しない。評価と記録は root の autoresearch tool が行う。",
 	"",
 	"動的評価として以下を 0.0〜1.0 で評価してよい(ただし ready 判定は static validator の blocking/risk を優先):",
 	"- semanticAlignment: ユーザ目的と metric が一致しているか",
@@ -527,6 +535,57 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		},
 	});
 
+	// ─── Tool: autoresearch candidates ─────────────────────────
+
+	pi.registerTool({
+		name: "autoresearch_candidate_escrow",
+		label: "autoresearch candidate escrow",
+		description: "pending subagent patch results を autoresearch candidate として escrow する。",
+		promptSnippet: "subagent patch result を candidate 化",
+		promptGuidelines: [
+			"autoresearch 中は apply_agent_results を使わず、この tool で candidate 化してください。",
+			"評価は autoresearch_apply_candidate → autoresearch_run_contract({ candidate_id }) の順で行ってください。",
+		],
+		parameters: Type.Object({
+			source: Type.Optional(Type.Union([Type.Literal("pending"), Type.Literal("result_ids")])),
+			result_ids: Type.Optional(Type.Array(Type.String())),
+			max_results: Type.Optional(Type.Number()),
+		}),
+		async execute(_tc, params, _signal, _ou, ctx) { return executeCandidateEscrow(store, params, ctx); },
+	});
+
+	pi.registerTool({
+		name: "autoresearch_list_candidates",
+		label: "autoresearch list candidates",
+		description: "List autoresearch candidates for the current plan.",
+		parameters: Type.Object({}),
+		async execute(_tc, params, _signal, _ou, ctx) { return executeListCandidates(store, params as Record<string, never>, ctx); },
+	});
+
+	pi.registerTool({
+		name: "autoresearch_show_candidate",
+		label: "autoresearch show candidate",
+		description: "Show an autoresearch candidate, optionally with patch/source content.",
+		parameters: Type.Object({ candidate_id: Type.String(), include_patch: Type.Optional(Type.Boolean()), include_source: Type.Optional(Type.Boolean()) }),
+		async execute(_tc, params, _signal, _ou, ctx) { return executeShowCandidate(store, params, ctx); },
+	});
+
+	pi.registerTool({
+		name: "autoresearch_reject_candidate",
+		label: "autoresearch reject candidate",
+		description: "Reject an autoresearch candidate without changing the source subagent result.",
+		parameters: Type.Object({ candidate_id: Type.String(), reason: Type.Optional(Type.String()) }),
+		async execute(_tc, params, _signal, _ou, ctx) { return executeRejectCandidate(store, params, ctx); },
+	});
+
+	pi.registerTool({
+		name: "autoresearch_apply_candidate",
+		label: "autoresearch apply candidate",
+		description: "Apply one pending autoresearch candidate as a trial patch. Does not mark subagent result applied.",
+		parameters: Type.Object({ candidate_id: Type.String() }),
+		async execute(_tc, params, _signal, _ou, ctx) { return executeApplyCandidate(store, params, ctx); },
+	});
+
 	// ─── Tool: autoresearch_run_contract ───────────────────────
 
 	pi.registerTool({
@@ -544,6 +603,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		parameters: Type.Object({
 			reason: Type.Optional(Type.String({ description: "この run の理由" })),
 			iteration_label: Type.Optional(Type.String({ description: "iteration label" })),
+			candidate_id: Type.Optional(Type.String({ description: "autoresearch candidate id" })),
 		}),
 
 		async execute(_tc, params, signal, _ou, ctx) {

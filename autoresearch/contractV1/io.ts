@@ -172,6 +172,7 @@ export interface ContractRunEntry {
 	changedFiles: string[];
 	checkResults: Record<string, boolean>;
 	durationSeconds: number;
+	details?: Record<string, unknown>;
 }
 
 export function appendContractRun(cwd: string, entry: ContractRunEntry): void {
@@ -190,6 +191,7 @@ export interface ContractMetricEntry {
 	allMeasurements: number[];
 	aggregateMethod: string;
 	decision: "keep" | "discard" | "pause";
+	details?: Record<string, unknown>;
 }
 
 export function appendContractMetric(cwd: string, entry: ContractMetricEntry): void {
