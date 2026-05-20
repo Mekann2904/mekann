@@ -6,7 +6,9 @@
   "description": "自律的実験ループ拡張機能（日本語 UI）— autoresearch for pi",
   "license": "ISC",
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:fast": "vitest run --exclude '**/runner.test.ts' --exclude '**/candidate.test.ts' --exclude '**/contract.test.ts'",
+    "test:slow": "vitest run runner.test.ts candidate.test.ts contract.test.ts"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": ">=0.1.0",

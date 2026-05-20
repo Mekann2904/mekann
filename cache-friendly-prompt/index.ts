@@ -24,6 +24,7 @@ function contentText(content: unknown): string {
   if (!Array.isArray(content)) return "";
   return content.map((part) => typeof part === "object" && part && (part as any).type === "text" && typeof (part as any).text === "string" ? (part as any).text : "").join("\n");
 }
+function fragmentMarkerPrefix(f: PromptFragmentHash): string { return `<!-- fragment:${f.source}:${f.id}:${f.kind}:${f.stability}:`; }
 function messageContainsDynamicMarker(messages: unknown[]): boolean {
   return messages.some((message) => {
     if (!message || typeof message !== "object") return false;
@@ -57,7 +58,7 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
   pi.on("before_provider_request", async (event: any, ctx: any) => {
     const finalText = extractTextFromProviderPayload(event?.payload);
     const lastState = stateByRun.get(runKey(event, ctx)) ?? stateByRun.get(ctx?.cwd ?? "") ?? null;
-    const sentDynamicIds = (lastState?.fragmentHashes ?? []).filter((f) => f.stability === "dynamic" && (finalText.includes(`:${f.id}:`) || finalText.includes(f.id))).map((f) => f.id);
+    const sentDynamicIds = (lastState?.fragmentHashes ?? []).filter((f) => f.stability === "dynamic" && finalText.includes(fragmentMarkerPrefix(f))).map((f) => f.id);
     if (sentDynamicIds.length > 0) {
       try { (pi as any).events?.emit?.("cache-friendly-prompt:dynamic-tail-sent", { fragmentIds: sentDynamicIds }); } catch {}
     }

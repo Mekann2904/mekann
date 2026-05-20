@@ -331,6 +331,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				priority: 400,
 				version: "v1",
 				cacheIntent: "prefer_cache",
+				metadata: { volatileTermsArePolicyReferences: true },
 				content: SYSTEM_PROMPT_EXTRA,
 			}];
 		},

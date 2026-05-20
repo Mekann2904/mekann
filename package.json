@@ -8,6 +8,17 @@
     "pi-extension"
   ],
   "license": "ISC",
+  "workspaces": [
+    "prompt-core",
+    "cache-friendly-prompt",
+    "agent-guidelines",
+    "plan-mode",
+    "sandbox",
+    "subagent",
+    "zip-repo",
+    "autoresearch",
+    "goal"
+  ],
   "scripts": {
     "test": "cd prompt-core && npm test && cd ../cache-friendly-prompt && npm test && cd ../agent-guidelines && npm test && cd ../plan-mode && npm test && cd ../sandbox && npm test && cd ../subagent && npm test && cd ../zip-repo && npm test && cd ../autoresearch && npm test && cd ../goal && npm test",
     "test:prompt-core": "cd prompt-core && npm test",
@@ -18,6 +29,8 @@
     "test:subagent": "cd subagent && npm test",
     "test:zip-repo": "cd zip-repo && npm test",
     "test:autoresearch": "cd autoresearch && npm test",
+    "test:autoresearch:fast": "cd autoresearch && npm run test:fast",
+    "test:autoresearch:slow": "cd autoresearch && npm run test:slow",
     "test:goal": "cd goal && npm test",
     "prepare": "husky",
     "typecheck": "cd sandbox && npm run typecheck && cd ../subagent && npm run typecheck",
