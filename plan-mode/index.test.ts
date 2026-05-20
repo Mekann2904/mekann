@@ -340,7 +340,7 @@ describe("prompt provider", () => {
 		expect(plan.content).toContain("My plan");
 		await collectPromptFragments({ cwd: "/tmp/project" });
 		expect((await collectPromptFragments({ cwd: "/tmp/project" })).some((f) => f.kind === "implementation_plan")).toBe(true);
-		mock._hooks["event:cache-friendly-prompt:dynamic-tail-rendered"]({ fragmentIds: ["plan-mode:implementation-plan"] });
+		mock._hooks["event:cache-friendly-prompt:dynamic-tail-sent"]({ fragmentIds: ["plan-mode:implementation-plan"] });
 		expect((await collectPromptFragments({ cwd: "/tmp/project" })).some((f) => f.kind === "implementation_plan")).toBe(false);
 	});
 

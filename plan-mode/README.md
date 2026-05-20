@@ -166,7 +166,7 @@ interface PlanState {
 | `session_start` | `--plan` フラグがあれば自動で plan mode に入る。モデル・thinking 設定ファイルをロード |
 | `tool_call` | read-only ツール以外をブロック。bash は `classifyCommandIntent()` で UX guard 判定（security boundary は sandbox） |
 | PromptProvider | plan mode中は stable `mode_policy` fragmentを提供。cache-friendly strategyでは毎回 `plan-mode.md` full promptを提供 |
-| cache-friendly dynamic render event | main modeの implementation plan がdynamic tailへ描画された後に消費 |
+| cache-friendly dynamic sent event | provider request payloadに implementation plan marker が確認された後に消費 |
 | `agent_end` | 最後の assistant メッセージから `<proposed_plan>` を抽出して保存 |
 | `turn_end` | ブロックカウンターをリセット |
 | `model_select` | 現在のモードに応じて main/plan 設定を自動更新（`restore` は無視） |

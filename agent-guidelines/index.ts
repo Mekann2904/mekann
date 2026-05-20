@@ -49,6 +49,7 @@ export default function agentGuidelinesExtension(_pi: ExtensionAPI): void {
 				priority: 100,
 				version: "v1",
 				cacheIntent: "prefer_cache",
+				metadata: { volatileTermsArePolicyReferences: true },
 				content: SYSTEM_PROMPT_EXTRA,
 			}];
 		},

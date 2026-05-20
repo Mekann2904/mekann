@@ -1,4 +1,4 @@
-const preferred = new Set(["content", "text", "system", "prompt", "instructions", "messages"]);
+const preferred = new Set(["content", "text", "system", "prompt", "instructions", "messages", "input", "parts", "developer"]);
 function isBinary(value: unknown): boolean { return typeof Buffer !== "undefined" && Buffer.isBuffer(value) || value instanceof ArrayBuffer || ArrayBuffer.isView(value as any); }
 export function extractTextFromProviderPayload(payload: unknown): string {
   const max = 500_000;

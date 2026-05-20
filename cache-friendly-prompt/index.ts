@@ -9,7 +9,16 @@ const stateByRun = new Map<string, LastState>();
 function contextCwd(event: any, ctx: any): string { return event?.systemPromptOptions?.cwd ?? ctx?.cwd ?? process.cwd(); }
 function modelProvider(ctx: any): string | undefined { return ctx?.model?.provider; }
 function modelId(ctx: any): string | undefined { return ctx?.model?.id; }
-function runKey(event: any, ctx: any): string { return String(ctx?.sessionId ?? ctx?.conversationId ?? ctx?.session?.id ?? event?.runId ?? contextCwd(event, ctx) ?? "default"); }
+function runKey(event: any, ctx: any): string { return String(ctx?.sessionId ?? ctx?.conversationId ?? ctx?.session?.id ?? event?.runId ?? ctx?.cwd ?? event?.systemPromptOptions?.cwd ?? "default"); }
+function mergeWarnings(a: PromptInspectionWarning[], b: PromptInspectionWarning[]): PromptInspectionWarning[] {
+  const seen = new Set<string>();
+  const out: PromptInspectionWarning[] = [];
+  for (const w of [...a, ...b]) {
+    const key = `${w.severity}:${w.code}:${w.fragmentId ?? ""}:${w.source ?? ""}:${w.message}`;
+    if (!seen.has(key)) { seen.add(key); out.push(w); }
+  }
+  return out;
+}
 function contentText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
@@ -38,14 +47,20 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
     if (messageContainsDynamicMarker(messages)) return { messages };
     const fragments = await collectPromptFragments({ cwd: ctx?.cwd ?? process.cwd(), provider: modelProvider(ctx), model: modelId(ctx) });
     const rendered = renderPromptFragments(fragments);
+    const key = runKey(event, ctx);
+    const prev = stateByRun.get(key) ?? stateByRun.get(ctx?.cwd ?? "");
+    stateByRun.set(key, { effectiveStablePrefixText: prev?.effectiveStablePrefixText ?? "", effectiveStablePrefixHash: prev?.effectiveStablePrefixHash ?? "", fragmentHashes: rendered.fragmentHashes, warnings: mergeWarnings(prev?.warnings ?? [], rendered.warnings) });
     if (!rendered.dynamicText.trim()) return { messages };
-    try { (pi as any).events?.emit?.("cache-friendly-prompt:dynamic-tail-rendered", { fragmentIds: rendered.fragmentHashes.filter((f) => f.stability === "dynamic").map((f) => f.id) }); } catch {}
     return { messages: [...messages, { role: "user", customType: "cache-friendly-dynamic-context", content: [{ type: "text", text: rendered.dynamicText }] }] };
   });
 
   pi.on("before_provider_request", async (event: any, ctx: any) => {
     const finalText = extractTextFromProviderPayload(event?.payload);
     const lastState = stateByRun.get(runKey(event, ctx)) ?? stateByRun.get(ctx?.cwd ?? "") ?? null;
+    const sentDynamicIds = (lastState?.fragmentHashes ?? []).filter((f) => f.stability === "dynamic" && (finalText.includes(`:${f.id}:`) || finalText.includes(f.id))).map((f) => f.id);
+    if (sentDynamicIds.length > 0) {
+      try { (pi as any).events?.emit?.("cache-friendly-prompt:dynamic-tail-sent", { fragmentIds: sentDynamicIds }); } catch {}
+    }
     const warnings = [...(lastState?.warnings ?? []), ...inspectFinalPayloadText(finalText)];
     if (cfg.logRequests) {
       await appendCacheFriendlyLog(ctx?.cwd ?? process.cwd(), { timestamp: new Date().toISOString(), provider: modelProvider(ctx), model: modelId(ctx), stablePrefixHash: lastState?.effectiveStablePrefixHash ?? "", stablePrefixChars: lastState?.effectiveStablePrefixText.length ?? 0, stablePrefixTokenEstimate: estimateTokens(lastState?.effectiveStablePrefixText ?? ""), totalPromptChars: finalText.length, totalPromptTokenEstimate: estimateTokens(finalText), fragmentHashes: lastState?.fragmentHashes ?? [], warnings });

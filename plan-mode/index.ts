@@ -156,7 +156,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	pi.registerShortcut(Key.super("p"), { description: "プランモード切替", handler: (ctx) => togglePlanMode(ctx) });
 
 	try {
-		pi.events.on("cache-friendly-prompt:dynamic-tail-rendered", (data: unknown) => {
+		pi.events.on("cache-friendly-prompt:dynamic-tail-sent", (data: unknown) => {
 			const ids = (data as { fragmentIds?: unknown }).fragmentIds;
 			if (Array.isArray(ids) && ids.includes("plan-mode:implementation-plan")) state.implementationPlan = undefined;
 		});
