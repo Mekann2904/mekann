@@ -117,13 +117,37 @@ close_agent({ target: "/root/research/api_scan" })
 
 - `/agents [prefix]` — サブエージェントの一覧とステータスを表示
 - `/wait-agent [timeout_ms]` — サブエージェントの更新を待機
+- `/focus-agent <target>` — サブエージェントの表示ウィンドウにフォーカス
 - `/close-agent <target>` — 指定パスのサブエージェントをクローズ
 
 ## 設定フラグ
 
-- `--subagent-max-agents` (デフォルト: `4`): 同時に起動できるエージェントの最大数
+- `--subagent-max-agents` (デフォルト: `2`): 同時に起動できるサブエージェントの最大数（ハードキャップ 2）
 - `--subagent-max-depth` (デフォルト: `2`): ネストの最大深度
-- `--subagent-default-wait-timeout-ms` (デフォルト: `30000`): wait_agent のデフォルトタイムアウト（ms）
+- `--subagent-default-wait-timeout-ms` (デフォルト: なし): `wait_agent` のデフォルトタイムアウト（ms）
+- `--subagent-min-wait-timeout-ms` (デフォルト: `1000`): `wait_agent` の最小タイムアウト（ms）
+- `--subagent-display` (デフォルト: `kitty-split`): サブエージェントの表示モード（`none` / `kitty-log` / `kitty-pi` / `kitty-split`）
+- `--subagent-log-dir` (デフォルト: なし): 表示ログの出力ディレクトリ
+- `--subagent-kitten-bin` (デフォルト: `kitten`): `kitten` バイナリのパス
+- `--subagent-pi-command` (デフォルト: `pi`): 子 Pi プロセスの起動コマンド
+- `--subagent-extension-path` (デフォルト: 自身のパス): 子 Pi に渡す拡張機能パス
+
+### 設定ファイル
+
+フラグに加えて `settings.json`（`~/.pi/agent/settings.json` または `.pi/settings.json`）の `subagent` セクションでも設定可能:
+
+```json
+{
+  "subagent": {
+    "max-agents": "2",
+    "max-depth": "2",
+    "default-wait-timeout-ms": "30000",
+    "display": "kitty-split"
+  }
+}
+```
+
+CLI フラグが明示的に指定されている場合は CLI フラグが優先されます。
 
 ## アーキテクチャ
 

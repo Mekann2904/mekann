@@ -21,3 +21,4 @@ Thumbs.db
 # Pi autoresearch artifacts
 .pi/
 .autoresearch/
+/memo.md

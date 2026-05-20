@@ -184,12 +184,11 @@ interface PlanState {
 ```
 plan-mode/
 ├── index.ts           # 拡張機能エントリポイント。コマンド・ショートカット・hook 登録
-├── state.ts           # 型定義と最小状態管理（Mode, PlanState, createInitialState）
-├── utils.ts           # isSafeCommand, buildBlockReason, loadPrompt, hashContent, extractProposedPlan, モデル設定永続化
+├── utils.ts           # 型定義・状態管理 (PlanState, createInitialState) + ユーティリティ (isSafeCommand, buildBlockReason, loadPrompt, hashContent, extractProposedPlan, モデル設定永続化)
 ├── prompts/
 │   ├── plan-mode.md          # plan mode 初回システムプロンプト
 │   └── plan-mode-reminder.md # plan mode 継続中プロンプト
-├── plan-mode.test.ts  # テストスイート（utils, state, ブロック判定, 統合シナリオ, モデル設定）
+├── plan-mode.test.ts  # テストスイート（utils, ブロック判定, 統合シナリオ, モデル設定）
 ├── package.json
 └── README.md
 ```

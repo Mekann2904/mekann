@@ -36,7 +36,10 @@ mekann/autoresearch は、この2つを組み合わせます。
 
   * [autoresearch_evaluate_query](#autoresearch_evaluate_query)
   * [autoresearch_init](#autoresearch_init)
+  * [autoresearch_plan](#autoresearch_plan)
+  * [autoresearch_approve](#autoresearch_approve)
   * [autoresearch_run](#autoresearch_run)
+  * [autoresearch_run_contract](#autoresearch_run_contract)
   * [autoresearch_log](#autoresearch_log)
 * [出力フォーマット](#出力フォーマット)
 * [自動 git 操作](#自動-git-操作)
@@ -58,13 +61,16 @@ mekann/autoresearch は、この2つを組み合わせます。
 
 この最適化サイクルを自動化します。パフォーマンス改善、バンドルサイズ削減、テスト実行時間の短縮、長時間ベンチマークの評価などに特に有用です。
 
-**autoresearch は、次の4つのツールで構成されます。**
+**autoresearch は、次の7つのツールで構成されます。**
 
 | ツール                            | 役割                                                                   |
 | ------------------------------ | -------------------------------------------------------------------- |
 | `autoresearch_evaluate_query` | ユーザの自然文クエリを評価し、実験契約に変換できるか判定する                                       |
 | `autoresearch_init`            | 実験セッションを初期化する。指標名・単位・改善方向を設定する                                       |
+| `autoresearch_plan`            | 自然文クエリから `autoresearch.plan.md` の draft を生成する                        |
+| `autoresearch_approve`         | plan の contract block を validate し、baseline を測定する                    |
 | `autoresearch_run`             | コマンドを実行し、結果を測定する                                                     |
+| `autoresearch_run_contract`    | contract に従って checks/benchmark/repeats/aggregate/acceptance を実行する      |
 | `autoresearch_log`             | 結果を記録し、`keep` / `discard` を判断する                                      |
 
 ---
@@ -407,6 +413,45 @@ safety: 0
 | `metric_name` | 必須 | 主指標名。例: `total_ms`, `bundle_kb`     |
 | `metric_unit` | 任意 | 単位。例: `ms`, `KB`                    |
 | `direction`   | 任意 | `lower` または `higher`。デフォルトは `lower` |
+| `objective`   | 任意 | 実験目的                              |
+| `benchmark_command` | 任意 | benchmark command (例: `./autoresearch.sh`) |
+| `metric_method` | 任意 | 測定方法。`wall_clock` / `stdout_metric` / `report_file`。デフォルト: `wall_clock` |
+| `checks_mode` | 任意 | checks mode。`script` / `command` / `none`。デフォルト: `script` |
+| `checks_command` | 任意 | checks mode=`command` の場合のコマンド |
+| `acceptance_mode` | 任意 | `better_than_best` / `improvement_threshold` / `manual`。デフォルト: `better_than_best` |
+| `min_improvement` | 任意 | 最小改善率 (0.02 = 2%)。`acceptance_mode=improvement_threshold` で有効 |
+| `repeat`      | 任意 | 測定繰り返し回数。デフォルト: `1`                |
+| `aggregate`   | 任意 | 集計方法。`single` / `median` / `mean` / `min` / `max`。デフォルト: `single` |
+| `require_git` | 任意 | git repo を必須にする。デフォルト: `true`     |
+| `require_clean_baseline` | 任意 | clean working tree を必須にする。デフォルト: `true` |
+| `allowed_paths` | 任意 | 許可パスパターンの配列                      |
+| `excluded_paths` | 任意 | 除外パスパターンの配列                      |
+
+---
+
+### `autoresearch_plan`
+
+自然文 query から `autoresearch.plan.md` の draft を生成します。plan は Markdown + contract block 形式です。baseline 測定は行わず、repo は read-only 調査のみです。
+
+| パラメータ   | 必須 | 説明                 |
+| ------- | -- | ------------------ |
+| `query` | 必須 | ユーザの自然文クエリ         |
+
+plan は人間と agent が議論するための editable document です。contract block の言語指定は `autoresearch-contract jsonc` にしてください。
+
+---
+
+### `autoresearch_approve`
+
+plan の contract block を validate し、baseline を測り、`.autoresearch/current.contract.json` と `.autoresearch/current.lock.json` を作成します。
+
+| パラメータ      | 必須 | 説明                                          |
+| ---------- | -- | ------------------------------------------- |
+| `plan_path` | 任意 | plan file path (デフォルト: `autoresearch.plan.md`) |
+
+approve 前に plan を確認・編集してください。approve 後は contract の変更ができません。
+
+---
 
 ### `autoresearch_run`
 
@@ -435,6 +480,19 @@ safety: 0
 | `commit`      | 任意 | Git commit hash。省略時は自動設定されます                                |
 | `metrics`     | 任意 | 追加指標のオブジェクト                                                 |
 | `memo`        | 任意 | メモ                                                          |
+
+---
+
+### `autoresearch_run_contract`
+
+contract に従って checks / benchmark / repeats / aggregate / acceptance を実行します。keep / discard / pause は agent ではなく evaluator が決定します。benchmark command や metric は受け取りません。
+
+| パラメータ            | 必須 | 説明                  |
+| ---------------- | -- | ------------------- |
+| `reason`         | 任意 | この run の理由          |
+| `iteration_label` | 任意 | iteration label |
+
+contract mode では agent から `status=keep` / `status=discard` を受け取りません。decision は必ず tool 側が返します。
 
 ---
 
