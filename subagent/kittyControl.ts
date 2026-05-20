@@ -6,14 +6,6 @@ import type { AgentDisplayRef } from "./types.js";
 
 const execFile = promisify(execFileCb);
 
-export interface LaunchLogWindowParams {
-  agentId: string;
-  agentPath: string;
-  cwd: string;
-  logPath: string;
-  title?: string;
-}
-
 export interface LaunchPiWindowParams {
   agentId: string;
   agentPath: string;
@@ -34,33 +26,6 @@ function shellQuote(value: string): string {
 
 export class KittyController {
   constructor(private readonly kittenBin = "kitten") {}
-
-  async launchLogWindow(params: LaunchLogWindowParams): Promise<AgentDisplayRef> {
-    await mkdir(path.dirname(params.logPath), { recursive: true });
-    await writeFile(params.logPath, "", { flag: "a" });
-    const title = params.title ?? `pi subagent ${params.agentPath}`;
-    const script = [
-      'logPath="$1"',
-      'agentPath="$2"',
-      'printf "== pi subagent log: %s ==\\n" "$agentPath"',
-      'tail -n +1 -f "$logPath"',
-      'exec "${SHELL:-sh}" -l',
-    ].join("; ");
-    const { stdout } = await execFile(this.kittenBin, [
-      "@", "launch",
-      "--type=os-window",
-      "--cwd", params.cwd,
-      "--title", title,
-      "--os-window-title", title,
-      "--var", `PI_SUBAGENT_ID=${params.agentId}`,
-      "--var", `PI_SUBAGENT_PATH=${params.agentPath}`,
-      "--copy-env",
-      "--allow-remote-control",
-      "sh", "-lc", script, "sh", params.logPath, params.agentPath,
-    ]);
-    const windowId = stdout.trim() || undefined;
-    return { kind: "kitty-log", status: "open", windowId, agentId: params.agentId, title, cwd: params.cwd, logPath: params.logPath };
-  }
 
   private buildChildScript(params: LaunchPiWindowParams): string {
     const piCommand = (params.piCommand ?? "pi").trim() || "pi";

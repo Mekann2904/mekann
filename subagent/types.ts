@@ -27,7 +27,7 @@ export function isTerminalStatus(s: AgentStatus): boolean {
 
 // ─── Agent metadata ──────────────────────────────────────────────
 
-export type AgentDisplayKind = "kitty-log" | "kitty-pi" | "kitty-split";
+export type AgentDisplayKind = "kitty-pi" | "kitty-split";
 
 export interface AgentDisplayRef {
   kind: AgentDisplayKind;

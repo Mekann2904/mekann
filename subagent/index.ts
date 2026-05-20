@@ -179,9 +179,9 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   });
 
   pi.registerFlag("subagent-display", {
-    description: 'Display mode for subagents: "none", "kitty-log" safe in-process log, or "kitty-pi"/"kitty-split" unsafe external Pi when explicitly enabled',
+    description: 'Display mode for subagents: "none", or "kitty-pi"/"kitty-split" unsafe external Pi when explicitly enabled',
     type: "string",
-    default: "kitty-log",
+    default: "none",
   });
 
   pi.registerFlag("subagent-allow-unsafe-external-pi", {
@@ -260,9 +260,9 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       const parsedDefaultWait = rawDefaultWait === undefined || rawDefaultWait === "" ? undefined : Number(rawDefaultWait);
       const defaultWait = parsedDefaultWait !== undefined && Number.isFinite(parsedDefaultWait) ? parsedDefaultWait : undefined;
       const minWait = Number(getFlagOrSetting("subagent-min-wait-timeout-ms", "min-wait-timeout-ms", "1000")) || 1000;
-      const rawDisplayFlag = getFlagOrSetting<string>("subagent-display", "display", "kitty-log");
+      const rawDisplayFlag = getFlagOrSetting<string>("subagent-display", "display", "none");
       const displayFlag = String(rawDisplayFlag ?? "none");
-      const displayMode = displayFlag === "kitty-log" || displayFlag === "kitty-pi" || displayFlag === "kitty-split" ? displayFlag : "none";
+      const displayMode = displayFlag === "kitty-pi" || displayFlag === "kitty-split" ? displayFlag : "none";
       const allowUnsafeExternalPi = /^(1|true|yes|on)$/i.test(
         String(getFlagOrSetting<string>(
           "subagent-allow-unsafe-external-pi",

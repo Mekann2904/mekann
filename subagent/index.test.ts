@@ -4507,17 +4507,8 @@ describe("External Pi safety: kitty-split without unsafe opt-in", () => {
 		},
 	} as any;
 
-	it("kitty-split without unsafe flag spawns in-process agent with kitty-log display", async () => {
+	it("kitty-split without unsafe flag spawns in-process agent with no display", async () => {
 		const fakeKitty = {
-			launchLogWindow: vi.fn(() => Promise.resolve({
-				kind: "kitty-log",
-				status: "open",
-				agentId: "test",
-				title: "test",
-				cwd: "/tmp/test",
-				logPath: "/tmp/test.log",
-				windowId: "w1",
-			})),
 			appendLog: vi.fn(() => Promise.resolve()),
 		};
 
@@ -4535,21 +4526,12 @@ describe("External Pi safety: kitty-split without unsafe opt-in", () => {
 
 		const agent = control.registry.get("/root/task1");
 		expect(agent?.authorityEnforced).toBe(true);
-		expect(agent?.display?.kind).toBe("kitty-log");
+		expect(agent?.display).toBeUndefined();
 		expect(result.status).toBe("pending_init");
 	});
 
-	it("kitty-pi without unsafe flag spawns in-process agent with kitty-log display", async () => {
+	it("kitty-pi without unsafe flag spawns in-process agent with no display", async () => {
 		const fakeKitty = {
-			launchLogWindow: vi.fn(() => Promise.resolve({
-				kind: "kitty-log",
-				status: "open",
-				agentId: "test",
-				title: "test",
-				cwd: "/tmp/test",
-				logPath: "/tmp/test.log",
-				windowId: "w1",
-			})),
 			appendLog: vi.fn(() => Promise.resolve()),
 		};
 
@@ -4567,19 +4549,11 @@ describe("External Pi safety: kitty-split without unsafe opt-in", () => {
 
 		const agent = control.registry.get("/root/task1");
 		expect(agent?.authorityEnforced).toBe(true);
-		expect(agent?.display?.kind).toBe("kitty-log");
+		expect(agent?.display).toBeUndefined();
 	});
 
 	it("list() includes authority and authority_enforced fields", async () => {
 		const fakeKitty = {
-			launchLogWindow: vi.fn(() => Promise.resolve({
-				kind: "kitty-log",
-				status: "open",
-				agentId: "test",
-				title: "test",
-				cwd: "/tmp/test",
-				logPath: "/tmp/test.log",
-			})),
 			appendLog: vi.fn(() => Promise.resolve()),
 		};
 

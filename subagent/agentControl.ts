@@ -59,7 +59,7 @@ function nextAgentId(): string {
   return `sub_${++agentIdCounter}_${Date.now().toString(36)}`;
 }
 
-export type DisplayMode = "none" | "kitty-log" | "kitty-pi" | "kitty-split";
+export type DisplayMode = "none" | "kitty-pi" | "kitty-split";
 
 export interface AgentControlOptions {
   displayMode?: DisplayMode;
@@ -192,21 +192,12 @@ export class AgentControl {
     return this.displayMode === "kitty-pi" || this.displayMode === "kitty-split";
   }
 
-  private shouldSpawnExternalPi(): boolean {
-    // External Pi runs as an independent process. Parent-side tool filtering
-    // cannot enforce authority inside that process.
-    return this.wantsExternalPiDisplay() && this.allowUnsafeExternalPi;
-  }
-
-  private shouldOpenInProcessLogDisplay(): boolean {
-    // If kitty-pi / kitty-split is requested without explicit unsafe opt-in,
-    // downgrade to a safe in-process agent with a kitty log window.
-    return this.displayMode !== "none";
-  }
-
   private logDisplay(display: AgentDisplayRef | undefined, line: string): void {
     if (!display || display.status === "closed") return;
-    void this.kitty.appendLog(display, line).catch(() => undefined);
+    // Only append to log files for external Pi displays that have a logPath
+    if (display.logPath) {
+      void this.kitty.appendLog(display, line).catch(() => undefined);
+    }
   }
 
   private finalizeWithError(agentId: string, canonicalPath: string, callerPath: string, err: unknown): void {
@@ -309,7 +300,7 @@ export class AgentControl {
       const authority = this.normalizeAuthority(params.authority);
       const resultContract = params.result_contract;
 
-      if (this.shouldSpawnExternalPi()) {
+      if (this.wantsExternalPiDisplay() && this.allowUnsafeExternalPi) {
         return await this.spawnExternalPi(params, ctx, callerPath, canonicalPath, depth, reservation, agentId);
       }
 
@@ -376,14 +367,6 @@ export class AgentControl {
 
       // Register agent
       const now = Date.now();
-      const display: AgentDisplayRef | undefined = this.shouldOpenInProcessLogDisplay() ? {
-        kind: "kitty-log",
-        status: "opening",
-        agentId,
-        title: `pi subagent ${canonicalPath}`,
-        cwd: ctx.cwd,
-        logPath: path.join(this.logDir, `${agentId}.log`),
-      } : undefined;
 
       const metadata: AgentMetadata = {
         agentId,
@@ -400,7 +383,7 @@ export class AgentControl {
         depth,
         open: true,
         cancellationRequested: false,
-        display,
+        display: undefined,
         authority,
         authorityEnforced: true,
         workspaceCwd: ctx.cwd,
@@ -409,20 +392,9 @@ export class AgentControl {
 
       this.registry.registerAgent(metadata, reservation);
 
-      if (display) {
-        this.logDisplay(display, `[task] ${params.message}`);
-        try {
-          const opened = await this.kitty.launchLogWindow({ agentId, agentPath: canonicalPath, cwd: ctx.cwd, logPath: display.logPath!, title: display.title });
-          this.registry.updateAgent(canonicalPath, { display: opened });
-        } catch (err) {
-          this.registry.updateAgent(canonicalPath, { display: { ...display, status: "failed", error: err instanceof Error ? err.message : String(err) } });
-        }
-      }
-
       // Subscribe to child session events for status tracking
       const unsubscribe = session.subscribe((event) => {
         if (event.type === "agent_start") {
-          this.logDisplay(this.registry.get(canonicalPath)?.display, "[status] running");
           this.registry.updateStatus(canonicalPath, "running");
         } else if (event.type === "agent_end") {
           // Extract final assistant text
@@ -432,8 +404,7 @@ export class AgentControl {
             ? extractTextFromContent(lastAssistant.content) ?? undefined
             : undefined;
 
-          const finalMessage = this.handleFinalText(agentId, canonicalPath, callerPath, finalText, "completed", ctx.cwd);
-          this.logDisplay(this.registry.get(canonicalPath)?.display, `${finalMessage}\n[status] completed`);
+          this.handleFinalText(agentId, canonicalPath, callerPath, finalText, "completed", ctx.cwd);
 
           this.runtimes.delete(canonicalPath);
           this.childSessions.delete(canonicalPath);
@@ -443,7 +414,7 @@ export class AgentControl {
       });
 
       // Store session reference
-      this.runtimes.set(canonicalPath, { mode: "in_process", agentId, agentPath: canonicalPath, session, display: this.registry.get(canonicalPath)?.display });
+      this.runtimes.set(canonicalPath, { mode: "in_process", agentId, agentPath: canonicalPath, session });
       this.childSessions.set(canonicalPath, session);
 
       // Send initial message in background
@@ -477,7 +448,7 @@ export class AgentControl {
   private async spawnExternalPi(params: SpawnParams, ctx: ExtensionContext, callerPath: string, canonicalPath: string, depth: number, reservation: any, agentId: string): Promise<SpawnResult> {
     if (!this.allowUnsafeExternalPi) {
       throw new Error(
-        "External Pi subagents are disabled because authority cannot be enforced across an independent Pi process. Use subagent-display=none/kitty-log, or set subagent-allow-unsafe-external-pi=true only for fully trusted experiments.",
+        "External Pi subagents are disabled because authority cannot be enforced across an independent Pi process. Use subagent-display=none, or set subagent-allow-unsafe-external-pi=true only for fully trusted experiments.",
       );
     }
 
@@ -822,7 +793,7 @@ export class AgentControl {
     const callerPath = this.resolveCallerPath(ctx);
     const { agent } = this.resolveAgentOrFail(target, callerPath);
     const display = agent.display;
-    if (!display || (display.kind !== "kitty-log" && display.kind !== "kitty-pi" && display.kind !== "kitty-split") || display.status !== "open") {
+    if (!display || (display.kind !== "kitty-pi" && display.kind !== "kitty-split") || display.status !== "open") {
       return { focused: false, warning: `No open kitty display for ${agent.agentPath}.` };
     }
     try {
