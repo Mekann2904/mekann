@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "objective": "blog記事 subagent/blog/2026-05-20.md の内容を論文的形式に昇華する。変更対象は blog 記事のみ。",
+  "objective": "pi の subagent 機能を実際に呼び出し（spawn_agent, followup_task, send_message, wait_agent, close_agent）、authority enforcement、result contract、mailbox、lifecycle 管理の振る舞いを実証的に検証する。mock ではなく実際の subagent 呼び出しによるテスト。",
   "targetScope": [],
-  "benchmarkCommand": "echo \"METRIC refinement_iterations=1\"",
+  "benchmarkCommand": "echo \"METRIC verified_behaviors=0\"",
   "primaryMetric": {
-    "name": "refinement_iterations",
+    "name": "verified_behaviors",
     "direction": "higher",
     "method": "stdout_metric",
-    "unit": "iterations"
+    "unit": "behaviors"
   },
   "checks": {
     "mode": "none"
@@ -32,7 +32,7 @@
       ":\\(\\)\\s*\\{.*\\}.*:\\("
     ]
   },
-  "createdAt": "2026-05-20T03:10:37.035Z",
-  "sessionId": "20260520T031037-blog-article-refinem",
+  "createdAt": "2026-05-20T04:42:35.942Z",
+  "sessionId": "20260520T044235-subagent-live-invoca",
   "version": 1
 }
