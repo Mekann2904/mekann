@@ -4473,3 +4473,158 @@ describe("extractForkContext: skips messages with non-text content", () => {
 		expect(result[0].role).toBe("user");
 	});
 });
+
+// ─── External Pi safety: kitty-split without unsafe flag → in-process ───
+
+describe("External Pi safety: kitty-split without unsafe opt-in", () => {
+	let AgentControl: any;
+	beforeEach(async () => {
+		AgentControl = (await AgentControlModule).AgentControl;
+	});
+
+	function createControlMockPi() {
+		return {
+			getActiveTools: vi.fn(() => []),
+		} as any;
+	}
+
+	const baseCtx = {
+		cwd: "/tmp/test",
+		model: { id: "test-model" },
+		modelRegistry: {
+			find: vi.fn(() => undefined),
+			getAvailable: vi.fn(() => Promise.resolve([{ id: "test-model" }])),
+		},
+	} as any;
+
+	it("kitty-split without unsafe flag spawns in-process agent with kitty-log display", async () => {
+		const fakeKitty = {
+			launchLogWindow: vi.fn(() => Promise.resolve({
+				kind: "kitty-log",
+				status: "open",
+				agentId: "test",
+				title: "test",
+				cwd: "/tmp/test",
+				logPath: "/tmp/test.log",
+				windowId: "w1",
+			})),
+			appendLog: vi.fn(() => Promise.resolve()),
+		};
+
+		const control = new AgentControl(createControlMockPi(), 4, 2, undefined, undefined, {
+			displayMode: "kitty-split",
+			kitty: fakeKitty as any,
+			allowUnsafeExternalPi: false,
+		});
+		control.registry.ensureRoot("root");
+
+		const result = await control.spawn(
+			{ task_name: "task1", message: "test" },
+			baseCtx,
+		);
+
+		const agent = control.registry.get("/root/task1");
+		expect(agent?.authorityEnforced).toBe(true);
+		expect(agent?.display?.kind).toBe("kitty-log");
+		expect(result.status).toBe("pending_init");
+	});
+
+	it("kitty-pi without unsafe flag spawns in-process agent with kitty-log display", async () => {
+		const fakeKitty = {
+			launchLogWindow: vi.fn(() => Promise.resolve({
+				kind: "kitty-log",
+				status: "open",
+				agentId: "test",
+				title: "test",
+				cwd: "/tmp/test",
+				logPath: "/tmp/test.log",
+				windowId: "w1",
+			})),
+			appendLog: vi.fn(() => Promise.resolve()),
+		};
+
+		const control = new AgentControl(createControlMockPi(), 4, 2, undefined, undefined, {
+			displayMode: "kitty-pi",
+			kitty: fakeKitty as any,
+			allowUnsafeExternalPi: false,
+		});
+		control.registry.ensureRoot("root");
+
+		const result = await control.spawn(
+			{ task_name: "task1", message: "test" },
+			baseCtx,
+		);
+
+		const agent = control.registry.get("/root/task1");
+		expect(agent?.authorityEnforced).toBe(true);
+		expect(agent?.display?.kind).toBe("kitty-log");
+	});
+
+	it("list() includes authority and authority_enforced fields", async () => {
+		const fakeKitty = {
+			launchLogWindow: vi.fn(() => Promise.resolve({
+				kind: "kitty-log",
+				status: "open",
+				agentId: "test",
+				title: "test",
+				cwd: "/tmp/test",
+				logPath: "/tmp/test.log",
+			})),
+			appendLog: vi.fn(() => Promise.resolve()),
+		};
+
+		const control = new AgentControl(createControlMockPi(), 4, 2, undefined, undefined, {
+			displayMode: "kitty-split",
+			kitty: fakeKitty as any,
+			allowUnsafeExternalPi: false,
+		});
+		control.registry.ensureRoot("root");
+
+		await control.spawn(
+			{ task_name: "task1", message: "test" },
+			baseCtx,
+		);
+
+		const listResult = control.list({});
+		const agentEntry = listResult.agents.find((a: any) => a.agent_path === "/root/task1");
+		expect(agentEntry).toBeDefined();
+		expect(agentEntry.authority).toBeDefined();
+		expect(agentEntry.authority.mode).toBe("propose_patch");
+		expect(agentEntry.authority_enforced).toBe(true);
+	});
+
+	it("retry spawns as sibling path instead of child", async () => {
+		const control = new AgentControl(createControlMockPi(), 4, 2, undefined, undefined, {
+			displayMode: "none",
+			allowUnsafeExternalPi: false,
+		});
+		control.registry.ensureRoot("root");
+
+		// Simulate a stored result from /root/audit/patch-test
+		const store = control.resultStoreFor("/tmp/test");
+		const fakeAgent = {
+			agentId: "agent-old",
+			agentPath: "/root/audit/patch-test",
+			authority: { mode: "propose_patch" as const, require_base_hash: true, max_patch_bytes: 50000 },
+			authorityEnforced: true,
+			workspaceCwd: "/tmp/test",
+		};
+
+		const stored = store.save(fakeAgent as any, {
+			schema: "subagent.result.v1",
+			outcome: "no_change",
+			summary: "test",
+		} as any);
+
+		// Mark it rejected so retry can proceed
+		store.markRejected(stored.result_id, "manual_reject");
+
+		const spawned = await control.retryAgentResult(
+			{ result_id: stored.result_id, reason: "stale" },
+			baseCtx,
+		);
+
+		// retry path should be sibling: /root/audit/retry_patch-test_* not /root/audit/patch-test/retry_*
+		expect(spawned.spawned.task_name).toMatch(/^\/root\/audit\/retry_patch-test_/);
+	});
+});

@@ -11,7 +11,7 @@ import { createAgentSession, type AgentSession } from "@earendil-works/pi-coding
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import os from "node:os";
 import path from "node:path";
-import { ROOT_PATH, resolveTaskPath } from "./types.js";
+import { ROOT_PATH, resolveTaskPath, parentPath } from "./types.js";
 import { AgentRegistry } from "./registry.js";
 import { Mailbox } from "./mailbox.js";
 import { extractForkContext, buildContextPreamble, extractTextFromContent } from "./contextFork.js";
@@ -69,6 +69,7 @@ export interface AgentControlOptions {
   piCommand?: string;
   extensionPath?: string;
   helloTimeoutMs?: number;
+  allowUnsafeExternalPi?: boolean;
 }
 
 // ─── Agent control ───────────────────────────────────────────────
@@ -91,6 +92,7 @@ export class AgentControl {
   private piCommand: string;
   private extensionPath?: string;
   private helloTimeoutMs: number;
+  private allowUnsafeExternalPi: boolean;
   readonly resultStore: SubagentResultStore;
   private storesByCwd = new Map<string, SubagentResultStore>();
 
@@ -117,6 +119,7 @@ export class AgentControl {
     this.piCommand = options.piCommand ?? "pi";
     this.extensionPath = options.extensionPath;
     this.helloTimeoutMs = options.helloTimeoutMs ?? 10_000;
+    this.allowUnsafeExternalPi = options.allowUnsafeExternalPi ?? false;
     this.resultStore = this.resultStoreFor(process.cwd());
 
     // Forward registry events to mailbox
@@ -183,6 +186,22 @@ export class AgentControl {
   private displayResult(display?: AgentDisplayRef): AgentDisplayResult | undefined {
     if (!display) return undefined;
     return { kind: display.kind, status: display.status, window_id: display.windowId, title: display.title, log_path: display.logPath, socket_path: display.socketPath, pid: display.pid, error: display.error };
+  }
+
+  private wantsExternalPiDisplay(): boolean {
+    return this.displayMode === "kitty-pi" || this.displayMode === "kitty-split";
+  }
+
+  private shouldSpawnExternalPi(): boolean {
+    // External Pi runs as an independent process. Parent-side tool filtering
+    // cannot enforce authority inside that process.
+    return this.wantsExternalPiDisplay() && this.allowUnsafeExternalPi;
+  }
+
+  private shouldOpenInProcessLogDisplay(): boolean {
+    // If kitty-pi / kitty-split is requested without explicit unsafe opt-in,
+    // downgrade to a safe in-process agent with a kitty log window.
+    return this.displayMode !== "none";
   }
 
   private logDisplay(display: AgentDisplayRef | undefined, line: string): void {
@@ -284,13 +303,14 @@ export class AgentControl {
     });
 
     try {
-      if (this.displayMode === "kitty-pi" || this.displayMode === "kitty-split") {
+      const authority = this.normalizeAuthority(params.authority);
+      const resultContract = params.result_contract;
+
+      if (this.shouldSpawnExternalPi()) {
         return await this.spawnExternalPi(params, ctx, callerPath, canonicalPath, depth, reservation, agentId);
       }
 
       const model = await this.resolveModel(params.model, ctx);
-      const authority = this.normalizeAuthority(params.authority);
-      const resultContract = params.result_contract;
 
       const forkTurns = params.fork_turns ?? 0;
 
@@ -346,7 +366,7 @@ export class AgentControl {
 
       // Register agent
       const now = Date.now();
-      const display: AgentDisplayRef | undefined = this.displayMode === "kitty-log" ? {
+      const display: AgentDisplayRef | undefined = this.shouldOpenInProcessLogDisplay() ? {
         kind: "kitty-log",
         status: "opening",
         agentId,
@@ -443,8 +463,13 @@ export class AgentControl {
   }
 
   private async spawnExternalPi(params: SpawnParams, ctx: ExtensionContext, callerPath: string, canonicalPath: string, depth: number, reservation: any, agentId: string): Promise<SpawnResult> {
+    if (!this.allowUnsafeExternalPi) {
+      throw new Error(
+        "External Pi subagents are disabled because authority cannot be enforced across an independent Pi process. Use subagent-display=none/kitty-log, or set subagent-allow-unsafe-external-pi=true only for fully trusted experiments.",
+      );
+    }
+
     const authority = this.normalizeAuthority(params.authority);
-    if (authority.mode === "edit") throw new Error("external Pi subagents do not support edit authority");
     if (processExternalPiSlots.size >= MAX_EXTERNAL_PI_SUBAGENTS) {
       throw new Error(`Maximum number of external Pi subagents reached (${MAX_EXTERNAL_PI_SUBAGENTS}). Close an existing agent before spawning another.`);
     }
@@ -472,7 +497,17 @@ export class AgentControl {
         ? `${(resolvedOverride as any).provider ?? ''}/${(resolvedOverride as any).id ?? ''}`
         : (ctx.model?.provider && ctx.model?.id ? `${ctx.model.provider}/${ctx.model.id}` : undefined);
       const preamble = this.authorityPreamble(authority, params.result_contract);
-      const launchParams = { agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: preamble ? `${preamble}\n\n${params.message}` : params.message, logPath, title: display.title, piCommand: this.piCommand, extensionPath: this.extensionPath, modelId };
+      const externalNotice = [
+        "SECURITY NOTICE: this external Pi process is running with authorityEnforced=false.",
+        "The parent process cannot remove write/edit/bash tools from this process.",
+        `Requested authority mode: ${authority.mode}. Treat it as advisory unless the runtime itself removed tools.`,
+      ].join("\n");
+
+      const launchMessage = [externalNotice, preamble, params.message]
+        .filter(Boolean)
+        .join("\n\n");
+
+      const launchParams = { agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: launchMessage, logPath, title: display.title, piCommand: this.piCommand, extensionPath: this.extensionPath, modelId };
       const opened = isSplit
         ? await this.kitty.launchPiSplit(launchParams)
         : await this.kitty.launchPiWindow(launchParams);
@@ -677,6 +712,9 @@ export class AgentControl {
         role: a.role,
         depth: a.depth,
         display: this.displayResult(a.display),
+        authority: a.authority,
+        authority_enforced: a.authorityEnforced,
+        result_contract: a.resultContract,
       })),
     };
   }
@@ -693,8 +731,10 @@ export class AgentControl {
       await this.followupTask({ target: stored.agent_path, message }, ctx);
       return { result_id: params.result_id, status: "retry_requested", mode: "followup" };
     }
-    const base = stored.agent_path.replace(/^\/root\/?/, "") || "retry";
-    const retryName = `${base}/retry_${Date.now().toString(36)}`;
+    const retryParent = parentPath(stored.agent_path) ?? ROOT_PATH;
+    const originalLeaf = stored.agent_path.split("/").pop() ?? "task";
+    const retryName = `${retryParent}/retry_${originalLeaf}_${Date.now().toString(36)}`;
+
     const spawned = await this.spawn({ task_name: retryName, message, authority: stored.authority, result_contract: "subagent_result_v1" }, ctx);
     return { result_id: params.result_id, status: "retry_spawned", mode: "spawn", spawned };
   }

@@ -179,9 +179,15 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   });
 
   pi.registerFlag("subagent-display", {
-    description: 'Display mode for subagents: "none", "kitty-log", "kitty-pi", or "kitty-split"',
+    description: 'Display mode for subagents: "none", "kitty-log" safe in-process log, or "kitty-pi"/"kitty-split" unsafe external Pi when explicitly enabled',
     type: "string",
-    default: "kitty-split",
+    default: "kitty-log",
+  });
+
+  pi.registerFlag("subagent-allow-unsafe-external-pi", {
+    description: "Allow kitty-pi/kitty-split to launch independent Pi processes. Unsafe: parent-side authority/tool filtering is not enforced.",
+    type: "string",
+    default: "false",
   });
 
   pi.registerFlag("subagent-log-dir", {
@@ -254,20 +260,29 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       const parsedDefaultWait = rawDefaultWait === undefined || rawDefaultWait === "" ? undefined : Number(rawDefaultWait);
       const defaultWait = parsedDefaultWait !== undefined && Number.isFinite(parsedDefaultWait) ? parsedDefaultWait : undefined;
       const minWait = Number(getFlagOrSetting("subagent-min-wait-timeout-ms", "min-wait-timeout-ms", "1000")) || 1000;
-      const rawDisplayFlag = getFlagOrSetting<string>("subagent-display", "display", "kitty-split");
+      const rawDisplayFlag = getFlagOrSetting<string>("subagent-display", "display", "kitty-log");
       const displayFlag = String(rawDisplayFlag ?? "none");
       const displayMode = displayFlag === "kitty-log" || displayFlag === "kitty-pi" || displayFlag === "kitty-split" ? displayFlag : "none";
-      appendFileSync("/tmp/pi-subagent-debug.log", `ensureControl: rawDisplayFlag=${JSON.stringify(rawDisplayFlag)} displayFlag=${displayFlag} displayMode=${displayMode}\n`);
+      const allowUnsafeExternalPi = /^(1|true|yes|on)$/i.test(
+        String(getFlagOrSetting<string>(
+          "subagent-allow-unsafe-external-pi",
+          "allow-unsafe-external-pi",
+          "false",
+        ) ?? "false"),
+      );
+      appendFileSync("/tmp/pi-subagent-debug.log", `ensureControl: rawDisplayFlag=${JSON.stringify(rawDisplayFlag)} displayFlag=${displayFlag} displayMode=${displayMode} allowUnsafeExternalPi=${allowUnsafeExternalPi}\n`);
       const logDirFlag = String(getFlagOrSetting<string>("subagent-log-dir", "log-dir", "") ?? "").trim();
       const kittenBin = String(getFlagOrSetting<string>("subagent-kitten-bin", "kitten-bin", "kitten") ?? "kitten") || "kitten";
       const piCommand = String(getFlagOrSetting<string>("subagent-pi-command", "pi-command", "pi") ?? "pi") || "pi";
       const extensionPath = String(getFlagOrSetting<string>("subagent-extension-path", "extension-path", fileURLToPath(import.meta.url)) ?? fileURLToPath(import.meta.url)).trim();
+
       control = new AgentControl(pi, maxAgents, maxDepth, defaultWait, minWait, {
         displayMode,
         logDir: logDirFlag || undefined,
         kitty: new KittyController(kittenBin),
         piCommand,
         extensionPath: extensionPath || undefined,
+        allowUnsafeExternalPi,
       });
     }
     return control;
@@ -409,7 +424,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     parameters: ListAgentsSchema,
     execute: withCtrl(async (ctrl, params, _ctx) => {
       const result = ctrl.list(params);
-      return toolResult(result.agents.length === 0 ? "(no agents)" : result.agents.map((a) => `${a.status === "completed" || a.status === "shutdown" ? "○" : "●"} ${a.agent_path}${a.nickname ? ` (${a.nickname})` : ""}${a.role ? ` [${a.role}]` : ""} — ${a.status}${a.display ? ` — display: ${a.display.status === "failed" ? `${a.display.kind}/failed: ${a.display.error}` : `${a.display.kind}/${a.display.status}${a.display.pid ? ` pid=${a.display.pid}` : ""}${a.display.window_id ? ` window=${a.display.window_id}` : ""}`}` : ""}${a.last_task ? `\n  last: ${a.last_task.slice(0, 80)}` : ""}`).join("\n"), result);
+      return toolResult(result.agents.length === 0 ? "(no agents)" : result.agents.map((a) => `${a.status === "completed" || a.status === "shutdown" ? "○" : "●"} ${a.agent_path}${a.nickname ? ` (${a.nickname})` : ""}${a.role ? ` [${a.role}]` : ""} — ${a.status}${a.authority ? ` — authority:${a.authority.mode}/${a.authority_enforced === false ? "not_enforced" : "enforced"}` : ""}${a.display ? ` — display: ${a.display.status === "failed" ? `${a.display.kind}/failed: ${a.display.error}` : `${a.display.kind}/${a.display.status}${a.display.pid ? ` pid=${a.display.pid}` : ""}${a.display.window_id ? ` window=${a.display.window_id}` : ""}`}` : ""}${a.last_task ? `\n  last: ${a.last_task.slice(0, 80)}` : ""}`).join("\n"), result);
     }),
   });
 

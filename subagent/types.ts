@@ -178,6 +178,9 @@ export interface ListResult {
     role?: string;
     depth: number;
     display?: AgentDisplayResult;
+    authority?: SubagentAuthority;
+    authority_enforced?: boolean;
+    result_contract?: ResultContract;
   }>;
 }
 
