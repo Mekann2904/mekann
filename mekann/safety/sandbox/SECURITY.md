@@ -143,14 +143,14 @@ This extension uses `@earendil-works/pi-coding-agent` as a peer dependency becau
 ## Recommended Safe Defaults
 
 ```bash
-# Default: workspace_write (safe for most development)
+# Default: yolo (unsandboxed; prompts before effective yolo bash execution)
 pi -e ./sandbox
 
 # Most restrictive: read-only
 pi -e ./sandbox --sandbox-mode read_only
 
-# yolo requires explicit opt-in (NOT the default)
-pi -e ./sandbox --sandbox-mode yolo
+# Sandboxed development mode
+pi -e ./sandbox --sandbox-mode workspace_write
 
 # If you need Homebrew tools (node, python, etc.)
 # Set allowHomebrewPaths in policy or extension config

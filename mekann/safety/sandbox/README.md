@@ -22,7 +22,7 @@ macOS Seatbelt (`sandbox-exec`) による bash ツール用コマンドサンド
 |--------|------|
 | `read_only` | Workspace は読み取り専用。workspace への書き込みは拒否。実行ごとに隔離された `$TMPDIR` のみ書き込み可能。workspace 外のユーザーデータの読み取りは拒否。 |
 | `workspace_write` | Workspace への書き込みを許可。ただし `.git`, `.codex`, `.agents` ディレクトリは保護（書き込み拒否）。シンボリックリンクによる脱出をブロック。 |
-| `yolo` | サンドボックスなし。明示指定のみ。ユーザーの明示的な承認が必要。 |
+| `yolo` | サンドボックスなし。デフォルト。実行時にユーザーの明示的な承認が必要。 |
 
 ## 主要なセキュリティプロパティ
 
@@ -35,7 +35,7 @@ macOS Seatbelt (`sandbox-exec`) による bash ツール用コマンドサンド
 ## 使い方
 
 ```bash
-# Default: workspace_write (サンドボックスあり)
+# Default: yolo (サンドボックスなし)
 pi -e ./sandbox
 
 # 読み取り専用モードで起動

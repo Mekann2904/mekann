@@ -30,6 +30,7 @@ import {
 } from "./state.js";
 import { GoalRuntime } from "./runtime.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
+import { PLAN_MODE_STATUS_EVENT } from "../../safety/policy-core/modes.js";
 import { renderGoalSummary, renderNoGoal, renderWidget, renderGoalPolicy, renderGoalObjectiveContext, renderGoalRuntimeState } from "./prompts.js";
 
 
@@ -58,7 +59,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
   // ─── Plan mode integration ────────────────────────────────────
 
   try {
-    pi.events.on("mekann:plan-mode:status", (data: unknown) => {
+    pi.events.on(PLAN_MODE_STATUS_EVENT, (data: unknown) => {
       if (runtime) {
         const evt = data as { mode: "main" | "plan" };
         runtime.inPlanMode = evt.mode === "plan";
