@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, appendFileSync } from "node:fs";
 import path from "node:path";
-import type { AgentMetadata, ApplyRecord, RejectReason, ResultFilter, SemanticApplyLogEntry, StoredResultStatus, StoredSubagentResult, SubagentResultV1 } from "./types.js";
+import type { AgentMetadata, ApplyRecord, EscrowRecord, RejectReason, ResultFilter, SemanticApplyLogEntry, StoredResultStatus, StoredSubagentResult, SubagentResultV1 } from "./types.js";
 import { tryParseSubagentResult } from "./resultSchema.js";
 
 let counter = 0;
@@ -10,7 +10,7 @@ export function assertValidResultId(id: string): void {
   if (!/^sar_[a-z0-9]+_[0-9]+$/i.test(id)) throw new Error(`Invalid result_id: ${id}`);
 }
 
-const VALID_STATUSES = new Set<StoredResultStatus>(["pending", "applying", "applied", "rejected", "needs_review", "superseded"]);
+const VALID_STATUSES = new Set<StoredResultStatus>(["pending", "escrowed", "applying", "applied", "rejected", "needs_review", "superseded"]);
 
 function isUnderDir(file: string, dir: string): boolean { const rel = path.relative(path.resolve(dir), path.resolve(file)); return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel); }
 
@@ -67,7 +67,8 @@ export class SubagentResultStore {
   }
   private saveStored(stored: StoredSubagentResult): void { writeFileSync(this.jsonPath(stored.result_id), JSON.stringify(this.validateStored(stored, stored.result_id), null, 2), "utf8"); }
   markApplying(resultId: string): void { const s = this.load(resultId); s.status = "applying"; s.applying_at = Date.now(); this.saveStored(s); }
-  markApplied(resultId: string, applyRecord: ApplyRecord): void { const s = this.load(resultId); s.status = "applied"; s.apply_record = applyRecord; delete s.applying_at; delete s.reject_reason; delete s.reject_details; delete s.review_record; delete s.superseded_reason; this.saveStored(s); }
+  markApplied(resultId: string, applyRecord: ApplyRecord): void { const s = this.load(resultId); s.status = "applied"; s.apply_record = applyRecord; delete s.applying_at; delete s.escrow_record; delete s.reject_reason; delete s.reject_details; delete s.review_record; delete s.superseded_reason; this.saveStored(s); }
+  markEscrowed(resultId: string, escrowRecord: EscrowRecord): void { const s = this.load(resultId); s.status = "escrowed"; s.escrow_record = escrowRecord; delete s.applying_at; delete s.apply_record; delete s.reject_reason; delete s.reject_details; delete s.review_record; delete s.superseded_reason; this.saveStored(s); }
   markRejected(resultId: string, reason: RejectReason, details?: unknown): void { const s = this.load(resultId); s.status = "rejected"; s.reject_reason = reason; s.reject_details = details; delete s.applying_at; delete s.apply_record; delete s.review_record; delete s.superseded_reason; this.saveStored(s); }
   markNeedsReview(resultId: string, reason: string, details?: unknown): void { const s = this.load(resultId); s.status = "needs_review"; s.review_record = { result_id: resultId, reason, details }; delete s.applying_at; delete s.apply_record; delete s.reject_reason; delete s.reject_details; delete s.superseded_reason; this.saveStored(s); }
   recoverStaleApplying(maxAgeMs = 10 * 60 * 1000): number { let count = 0; for (const s of this.list({ status: "applying" })) { if ((s.applying_at ?? s.created_at) + maxAgeMs < Date.now()) { this.markNeedsReview(s.result_id, "stale_applying", { applying_at: s.applying_at }); count++; } } return count; }

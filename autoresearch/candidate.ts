@@ -3,7 +3,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import { computeContractHash, type AutoresearchContractV1, type LockFile } from "./contractV1.js";
-import { filterInternalPaths } from "./contractV1.js";
+import { filterInternalPaths, matchesAnyPattern } from "./contractV1.js";
+import { SubagentResultStore } from "../subagent/resultStore.js";
 import { getChangedFiles } from "./runner.js";
 import { getPlanDir, readState } from "./layout.js";
 
@@ -23,7 +24,7 @@ export interface AutoresearchCandidateV1 {
 	status: CandidateStatus;
 	created_at: number;
 	updated_at: number;
-	trial?: { mode: "main_worktree" | "isolated_worktree"; worktree_path?: string; created_at?: number; removed_at?: number };
+	trial?: { mode: "main_worktree" | "isolated_worktree"; worktree_path?: string; created_at?: number; removed_at?: number; applied_diff_sha256?: string };
 	materialization?: { replayed_to_main?: boolean; commit?: string };
 	decision?: { run_id?: string; metric?: number | null; reason?: string; commit?: string };
 }
@@ -33,6 +34,7 @@ export interface CandidateImportResult { imported: AutoresearchCandidateV1[]; sk
 let counter = 0;
 function nextCandidateId(): string { return `arc_${Date.now().toString(36)}_${++counter}`; }
 export function sha256Text(s: string): string { return "sha256:" + crypto.createHash("sha256").update(s, "utf8").digest("hex"); }
+function sha256Buffer(b: Buffer): string { return "sha256:" + crypto.createHash("sha256").update(b).digest("hex"); }
 export function fullHead(cwd: string): string { return execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim(); }
 
 export function currentPlanDir(cwd: string): string {
@@ -57,7 +59,7 @@ const allowedTransitions: Partial<Record<CandidateStatus, CandidateStatus[]>> = 
 	trial_applied: ["evaluating", "paused_dirty", "discarded"],
 	evaluating: ["kept", "discarded", "paused_dirty", "stale_base"],
 };
-export function updateCandidateStatus(cwd: string, id: string, status: CandidateStatus, decision?: AutoresearchCandidateV1["decision"], details?: Record<string, unknown>): AutoresearchCandidateV1 { const c = readCandidate(cwd, id); const from = c.status; const allowed = allowedTransitions[from]; if (from !== status && allowed && !allowed.includes(status)) throw new Error(`invalid candidate status transition: ${from} -> ${status}`); c.status = status; if (decision) c.decision = { ...(c.decision ?? {}), ...decision }; writeCandidate(cwd, c); appendCandidateEvent(cwd, id, { from, to: status, reason: decision?.reason, details }); return readCandidate(cwd, id); }
+export function updateCandidateStatus(cwd: string, id: string, status: CandidateStatus, decision?: AutoresearchCandidateV1["decision"], details?: Record<string, unknown>): AutoresearchCandidateV1 { const c = readCandidate(cwd, id); const from = c.status; if (from !== status) { const allowed = allowedTransitions[from] ?? []; if (!allowed.includes(status)) throw new Error(`invalid candidate status transition: ${from} -> ${status}`); } c.status = status; if (decision) c.decision = { ...(c.decision ?? {}), ...decision }; writeCandidate(cwd, c); appendCandidateEvent(cwd, id, { from, to: status, reason: decision?.reason, details }); return readCandidate(cwd, id); }
 
 export function extractTouchedPathsFromPatch(patch: string): string[] {
 	const paths = new Set<string>();
@@ -71,7 +73,7 @@ export function extractTouchedPathsFromPatch(patch: string): string[] {
 	return [...paths].sort();
 }
 export function safeRepoRelativePath(p: string): string | null { const n = p.replace(/\\/g, "/"); if (!n || n.includes("\0") || n.startsWith("/") || /^[A-Za-z]:\//.test(n)) return null; const norm = path.posix.normalize(n); if (norm === "." || norm.startsWith("../") || norm === "..") return null; return norm; }
-function withinAny(file: string, scopes: string[]): boolean { if (scopes.length === 0) return true; const f = file.replace(/\\/g,"/"); return scopes.some((s)=>{ const scope=s.replace(/\\/g,"/").replace(/\*+$/g,"").replace(/\/$/,""); return f===scope || f.startsWith(scope+"/"); }); }
+function matchesAny(file: string, scopes: string[]): boolean { return scopes.length === 0 || matchesAnyPattern(file, scopes); }
 function isUnderDir(file: string, dir: string): boolean { const rel = path.relative(path.resolve(dir), path.resolve(file)); return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel); }
 export function candidateChangedFiles(cwd: string): string[] {
 	const out = new Set<string>();
@@ -84,13 +86,28 @@ export function candidateChangedFiles(cwd: string): string[] {
 	return [...out].sort();
 }
 function walkFiles(dir: string): string[] { const out: string[] = []; for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); if (e.isDirectory()) out.push(...walkFiles(p)); else out.push(p); } return out; }
+export function candidateDiffIdentityHash(cwd: string): string {
+	const entries = candidateChangedFiles(cwd).map((p) => {
+		const fp = path.join(cwd, p);
+		return { path: p, exists: fs.existsSync(fp), hash: fs.existsSync(fp) && fs.statSync(fp).isFile() ? sha256Buffer(fs.readFileSync(fp)) : null };
+	});
+	return sha256Text(JSON.stringify(entries));
+}
+function validateBaseFileHashesSync(cwd: string, files: Array<{ path: string; hash: string }>): { ok: true } | { ok: false; path: string; expected: string; actual?: string } {
+	for (const f of files) {
+		const safe = safeRepoRelativePath(f.path); if (!safe) return { ok: false, path: f.path, expected: f.hash };
+		try { const actual = sha256Buffer(fs.readFileSync(path.join(cwd, safe))); if (actual !== f.hash) return { ok: false, path: f.path, expected: f.hash, actual }; }
+		catch { return { ok: false, path: f.path, expected: f.hash }; }
+	}
+	return { ok: true };
+}
 
 export function validateTouchedAgainstContract(paths: string[], contract: AutoresearchContractV1): { ok: true } | { ok: false; reason: string; details?: unknown } {
 	for (const p of paths) {
 		const safe = safeRepoRelativePath(p); if (!safe) return { ok: false, reason: "unsafe_path", details: p };
-		if (!withinAny(safe, contract.scope.allowedWritePaths)) return { ok: false, reason: "outside_allowed_write_paths", details: { path: safe, allowedWritePaths: contract.scope.allowedWritePaths } };
-		if (withinAny(safe, contract.scope.forbiddenWritePaths)) return { ok: false, reason: "forbidden_write_path", details: safe };
-		if (withinAny(safe, contract.scope.immutableReadPaths)) return { ok: false, reason: "immutable_read_path", details: safe };
+		if (!matchesAny(safe, contract.scope.allowedWritePaths)) return { ok: false, reason: "outside_allowed_write_paths", details: { path: safe, allowedWritePaths: contract.scope.allowedWritePaths } };
+		if (matchesAnyPattern(safe, contract.scope.forbiddenWritePaths)) return { ok: false, reason: "forbidden_write_path", details: safe };
+		if (matchesAnyPattern(safe, contract.scope.immutableReadPaths)) return { ok: false, reason: "immutable_read_path", details: safe };
 	}
 	return { ok: true };
 }
@@ -103,15 +120,23 @@ export function importSubagentResultsAsCandidates(cwd: string, contract: Autores
 	const existing = listCandidates(cwd);
 	const contractHash = computeContractHash(contract);
 	if (contractHash !== lock.contractHash) throw new Error("current contract hash does not match lock");
+	const store = new SubagentResultStore(cwd);
 	for (const id of ids.slice(0, params.max_results ?? Infinity)) {
 		try {
-			const sourcePath = path.join(storeDir, `${id}.json`);
-			const stored = JSON.parse(fs.readFileSync(sourcePath, "utf8"));
+			const stored = store.load(id);
 			if (stored.status !== "pending") { result.skipped.push({ result_id: id, reason: `status:${stored.status}` }); continue; }
+			if (stored.workspace_cwd && path.resolve(stored.workspace_cwd) !== path.resolve(cwd)) { result.skipped.push({ result_id: id, reason: "workspace_cwd_mismatch", details: stored.workspace_cwd }); continue; }
+			if (stored.authority_enforced === false) { result.skipped.push({ result_id: id, reason: "authority_not_enforced" }); continue; }
 			if (stored.result?.outcome !== "patch") { result.skipped.push({ result_id: id, reason: `outcome:${stored.result?.outcome}` }); continue; }
 			const ref = stored.result.patch?.ref;
 			if (typeof ref !== "string" || !isUnderDir(ref, storeDir)) { result.skipped.push({ result_id: id, reason: "invalid_patch_ref" }); continue; }
 			const patchText = fs.readFileSync(ref, "utf8");
+			const patchBytes = stored.result.patch.bytes ?? Buffer.byteLength(patchText, "utf8");
+			const maxBytes = stored.authority?.max_patch_bytes ?? 50_000;
+			if (patchBytes > maxBytes) { result.skipped.push({ result_id: id, reason: "patch_too_large", details: { bytes: patchBytes, maxBytes } }); continue; }
+			if (stored.result.semantic.risk.level === "high") { result.skipped.push({ result_id: id, reason: "high_risk_requires_review" }); continue; }
+			const base = validateBaseFileHashesSync(cwd, stored.result.base.files);
+			if (!base.ok) { result.skipped.push({ result_id: id, reason: "base_hash_mismatch", details: base }); continue; }
 			const patchSha = sha256Text(patchText);
 			const extracted = extractTouchedPathsFromPatch(patchText);
 			const declared = (stored.result.scope?.touched_paths ?? []).map(safeRepoRelativePath).filter(Boolean).sort();
@@ -126,6 +151,7 @@ export function importSubagentResultsAsCandidates(cwd: string, contract: Autores
 			fs.writeFileSync(candidatePatchPath(cwd, c.candidate_id), patchText, "utf8");
 			fs.writeFileSync(path.join(candidateDir(cwd, c.candidate_id), "source-result.json"), JSON.stringify(stored, null, 2) + "\n", "utf8");
 			writeCandidate(cwd, c);
+			store.markEscrowed(id, { system: "autoresearch", candidate_id: c.candidate_id, contract_hash: contractHash, escrowed_at: now });
 			appendCandidateEvent(cwd, c.candidate_id, { to: "pending", reason: "candidate escrow", details: { result_id: id } });
 			result.imported.push(readCandidate(cwd, c.candidate_id)); existing.push(c);
 		} catch (e) { result.skipped.push({ result_id: id, reason: "error", details: e instanceof Error ? e.message : String(e) }); }
@@ -134,8 +160,9 @@ export function importSubagentResultsAsCandidates(cwd: string, contract: Autores
 }
 
 export function applyCandidate(cwd: string, contract: AutoresearchContractV1, lock: LockFile, candidateId: string): AutoresearchCandidateV1 {
-	const c = readCandidate(cwd, candidateId);
+	let c = readCandidate(cwd, candidateId);
 	if (c.status !== "pending") throw new Error(`candidate status must be pending: ${c.status}`);
+	c = updateCandidateStatus(cwd, candidateId, "leased");
 	if (c.contract_hash !== lock.contractHash || computeContractHash(contract) !== c.contract_hash) { updateCandidateStatus(cwd, candidateId, "rejected_policy"); throw new Error("candidate contract hash mismatch"); }
 	if (fullHead(cwd) !== c.base_git_commit) { updateCandidateStatus(cwd, candidateId, "stale_base"); throw new Error("candidate base git commit is stale"); }
 	const dirty = candidateChangedFiles(cwd);
@@ -149,7 +176,7 @@ export function applyCandidate(cwd: string, contract: AutoresearchContractV1, lo
 	const expected = [...c.touched_paths].sort();
 	const scope = validateTouchedAgainstContract(changed, contract);
 	if (JSON.stringify(changed) !== JSON.stringify(expected) || !scope.ok) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`applied changed files mismatch: expected ${expected.join(",")}, actual ${changed.join(",")}`); }
-	c.trial = { mode: "main_worktree", created_at: Date.now() };
+	c.trial = { mode: "main_worktree", created_at: Date.now(), applied_diff_sha256: candidateDiffIdentityHash(cwd) };
 	writeCandidate(cwd, c);
 	return updateCandidateStatus(cwd, candidateId, "trial_applied");
 }
@@ -168,8 +195,9 @@ export function removeCandidateWorktree(cwd: string, c: AutoresearchCandidateV1)
 	writeCandidate(cwd, c);
 }
 export function applyCandidateIsolated(cwd: string, contract: AutoresearchContractV1, lock: LockFile, candidateId: string): AutoresearchCandidateV1 {
-	const c = readCandidate(cwd, candidateId);
+	let c = readCandidate(cwd, candidateId);
 	if (c.status !== "pending") throw new Error(`candidate status must be pending: ${c.status}`);
+	c = updateCandidateStatus(cwd, candidateId, "leased");
 	if (c.contract_hash !== lock.contractHash || computeContractHash(contract) !== c.contract_hash) { updateCandidateStatus(cwd, candidateId, "rejected_policy"); throw new Error("candidate contract hash mismatch"); }
 	if (fullHead(cwd) !== c.base_git_commit) { updateCandidateStatus(cwd, candidateId, "stale_base"); throw new Error("candidate base git commit is stale"); }
 	const dirty = candidateChangedFiles(cwd); if (dirty.length) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`working tree is dirty: ${dirty.join(", ")}`); }
@@ -180,7 +208,7 @@ export function applyCandidateIsolated(cwd: string, contract: AutoresearchContra
 	const changed = candidateChangedFiles(wt); const expected = [...c.touched_paths].sort();
 	const scope = validateTouchedAgainstContract(changed, contract);
 	if (JSON.stringify(changed) !== JSON.stringify(expected) || !scope.ok) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`isolated changed files mismatch: expected ${expected.join(",")}, actual ${changed.join(",")}`); }
-	c.trial = { mode: "isolated_worktree", worktree_path: wt, created_at: Date.now() };
+	c.trial = { mode: "isolated_worktree", worktree_path: wt, created_at: Date.now(), applied_diff_sha256: candidateDiffIdentityHash(wt) };
 	writeCandidate(cwd, c);
 	return updateCandidateStatus(cwd, candidateId, "trial_applied");
 }
@@ -198,13 +226,18 @@ export function replayCandidateToMain(cwd: string, contract: AutoresearchContrac
 	return readCandidate(cwd, candidateId);
 }
 
+export function candidateEvaluationCwd(cwd: string, c: AutoresearchCandidateV1): string {
+	return c.trial?.mode === "isolated_worktree" && c.trial.worktree_path ? c.trial.worktree_path : cwd;
+}
 export function assertCandidateReadyForRun(cwd: string, contract: AutoresearchContractV1, lock: LockFile, candidateId: string): AutoresearchCandidateV1 {
 	const c = readCandidate(cwd, candidateId);
 	if (c.status !== "trial_applied" && c.status !== "evaluating") throw new Error(`candidate status must be trial_applied: ${c.status}`);
 	if (c.contract_hash !== lock.contractHash || computeContractHash(contract) !== c.contract_hash) throw new Error("candidate contract hash mismatch");
 	if (sha256Text(fs.readFileSync(candidatePatchPath(cwd, candidateId), "utf8")) !== c.patch_sha256) throw new Error("candidate patch hash mismatch");
-	const changed = candidateChangedFiles(cwd);
+	const evalCwd = candidateEvaluationCwd(cwd, c);
+	const changed = candidateChangedFiles(evalCwd);
 	const expected = [...c.touched_paths].sort();
 	if (JSON.stringify(changed) !== JSON.stringify(expected)) throw new Error(`candidate changed files mismatch: expected ${expected.join(",")}, actual ${changed.join(",")}`);
+	if (c.trial?.applied_diff_sha256 && candidateDiffIdentityHash(evalCwd) !== c.trial.applied_diff_sha256) throw new Error("candidate applied diff identity mismatch");
 	return c;
 }

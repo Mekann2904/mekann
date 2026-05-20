@@ -30,7 +30,7 @@ import {
 	gitAutoRevert,
 	getChangedFiles,
 } from "../runner.js";
-import { assertCandidateReadyForRun, candidateChangedFiles, candidateDir, readCandidate, removeCandidateWorktree, replayCandidateToMain, updateCandidateStatus } from "../candidate.js";
+import { assertCandidateReadyForRun, candidateChangedFiles, candidateDiffIdentityHash, candidateDir, candidateEvaluationCwd, readCandidate, removeCandidateWorktree, replayCandidateToMain, updateCandidateStatus } from "../candidate.js";
 import { SubagentResultStore } from "../../subagent/resultStore.js";
 import { isBestMetric } from "../state.js";
 import { appendToJsonl, type RunsLedgerEntry } from "../state.js";
@@ -100,7 +100,7 @@ export async function executeRunContract(
 		}
 	}
 
-	const evaluationCwd = candidate?.trial?.mode === "isolated_worktree" && candidate.trial.worktree_path ? candidate.trial.worktree_path : ctx.cwd;
+	const evaluationCwd = candidate ? candidateEvaluationCwd(ctx.cwd, candidate) : ctx.cwd;
 
 	// Pre-check state (logged for diagnostics only)
 	const preChangedFiles = getChangedFiles(evaluationCwd);
@@ -155,6 +155,12 @@ export async function executeRunContract(
 	if (candidate) {
 		const expected = [...candidate.touched_paths].sort();
 		const actual = candidateChangedFiles(evaluationCwd);
+		const currentDiffHash = candidateDiffIdentityHash(evaluationCwd);
+		if (candidate.trial?.applied_diff_sha256 && currentDiffHash !== candidate.trial.applied_diff_sha256) {
+			updateCandidateStatus(ctx.cwd, candidate.candidate_id, "paused_dirty");
+			appendDecision(ctx.cwd, { timestamp: Date.now(), contractId: lock.contractId, contractHash: currentHash, decision: "pause", reason: "candidate diff identity mismatch", metric: null, reference: null, details: { candidate_id: candidate.candidate_id, expected: candidate.trial.applied_diff_sha256, actual: currentDiffHash } });
+			return store.textDetails(`[PAUSE] candidate diff identity mismatch`, { decision: "pause", candidate_id: candidate.candidate_id });
+		}
 		if (JSON.stringify(expected) !== JSON.stringify(actual)) {
 			updateCandidateStatus(ctx.cwd, candidate.candidate_id, "paused_dirty");
 			appendDecision(ctx.cwd, {
