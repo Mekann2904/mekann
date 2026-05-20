@@ -14,4 +14,4 @@ extensions -> prompt-core registry -> cache-friendly-prompt -> provider
 - Does not manage cache objects
 - Token counts are estimates
 - Full prompts are not logged for privacy
-- MVP keeps minimal module-level last-state; highly concurrent runs may share the most recent stable-prefix metadata for logging only.
+- Stable-prefix log state is keyed by best-effort session/run identifiers when available, then cwd. If Pi does not expose a stable run id, logging correlation is still best-effort.

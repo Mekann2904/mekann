@@ -1184,31 +1184,31 @@ describe("exitPlanMode: plan injection", () => {
 	});
 });
 
-// ─── P1-1: implementationPlan is injected once via system prompt ──────
+// ─── P1-1: implementationPlan is exposed as dynamic context ──────
 
-describe("implementationPlan: system prompt injection", () => {
-	it("implementationPlan は main mode の before_agent_start で system prompt に注入される", () => {
+describe("implementationPlan: dynamic fragment lifecycle", () => {
+	it("implementationPlan は main mode で dynamic context として整形される", () => {
 		const state = createInitialState();
 		state.mode = "main";
 		state.implementationPlan = "1. ファイル A を変更\n2. テストを追加";
 
-		// Simulate: before_agent_start handler
+		// Simulate: dynamic fragment rendering
 		if (state.mode === "main" && state.implementationPlan) {
 			const plan = state.implementationPlan;
 			state.implementationPlan = undefined;
 
-			const systemPrompt = `base prompt\n\nImplementation plan for this turn:\n<plan>\n${plan}\n</plan>`;
-			expect(systemPrompt).toContain("<plan>");
-			expect(systemPrompt).toContain("ファイル A");
+			const dynamicContext = `Implementation plan for this turn:\n<plan>\n${plan}\n</plan>`;
+			expect(dynamicContext).toContain("<plan>");
+			expect(dynamicContext).toContain("ファイル A");
 		}
 	});
 
-	it("implementationPlan は注入後に undefined になる", () => {
+	it("implementationPlan はdynamic tail描画イベント後に undefined になる", () => {
 		const state = createInitialState();
 		state.mode = "main";
 		state.implementationPlan = "test plan";
 
-		// Simulate: before_agent_start handler consumes implementationPlan
+		// Simulate: cache-friendly dynamic tail rendered event consumes implementationPlan
 		if (state.mode === "main" && state.implementationPlan) {
 			const _plan = state.implementationPlan;
 			state.implementationPlan = undefined;
@@ -1217,13 +1217,13 @@ describe("implementationPlan: system prompt injection", () => {
 		expect(state.implementationPlan).toBeUndefined();
 	});
 
-	it("次回の before_agent_start では plan は注入されない", () => {
+	it("消費済みの場合は次回dynamic contextに出ない", () => {
 		const state = createInitialState();
 		state.mode = "main";
 		// implementationPlan was already consumed
 		expect(state.implementationPlan).toBeUndefined();
 
-		// Simulate: second before_agent_start
+		// Simulate: second dynamic context collection
 		let injected = false;
 		if (state.mode === "main" && state.implementationPlan) {
 			injected = true;
@@ -1954,7 +1954,7 @@ describe("PlanState: config mutation", () => {
 		expect(state.implementationPlan).toBe("Test plan");
 		expect(state.pendingPlan).toBeUndefined();
 
-		// 3. before_agent_start consumes implementationPlan
+		// 3. dynamic tail render event consumes implementationPlan
 		if (state.mode === "main" && state.implementationPlan) {
 			const _consumed = state.implementationPlan;
 			state.implementationPlan = undefined;
@@ -2020,11 +2020,11 @@ describe("Integration: full workflow with model config", () => {
 		state.pendingPlan = undefined;
 		state.savedActiveTools = undefined;
 
-		// 6. Main mode: plan injected into system prompt
+		// 6. Main mode: plan is available for dynamic context tail
 		expect(state.implementationPlan).toBe(planText);
 		expect(isReadOnlyMode(state.mode)).toBe(false);
 
-		// 7. Plan consumed after injection
+		// 7. Plan consumed after dynamic tail render
 		state.implementationPlan = undefined;
 		expect(state.implementationPlan).toBeUndefined();
 	});

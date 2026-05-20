@@ -1,7 +1,7 @@
 /**
  * Plan Mode Extension — index.ts のフックテスト。
  *
- * Mock ExtensionAPI を構築し、tool_call, context, before_agent_start,
+ * Mock ExtensionAPI を構築し、tool_call, context, prompt provider,
  * agent_end, turn_end, model_select, thinking_level_select, session_start
  * フックの実際の挙動を検証する。
  *
@@ -86,6 +86,7 @@ function createMockApi() {
 		sendUserMessage: vi.fn((msg: string) => { sentMessages.push(msg); }),
 		appendEntry: vi.fn((type: string, data: unknown) => { appendEntries.push({ type, data }); }),
 		setWidget: vi.fn(),
+		events: { emit: vi.fn(), on: vi.fn((event: string, handler: Function) => { hooks[`event:${event}`] = handler; }) },
 		// Test accessors
 		get _hooks() { return hooks; },
 		get _commands() { return commands; },
@@ -337,6 +338,10 @@ describe("prompt provider", () => {
 		const plan = fragments.find((f) => f.kind === "implementation_plan")!;
 		expect(plan.stability).toBe("dynamic");
 		expect(plan.content).toContain("My plan");
+		await collectPromptFragments({ cwd: "/tmp/project" });
+		expect((await collectPromptFragments({ cwd: "/tmp/project" })).some((f) => f.kind === "implementation_plan")).toBe(true);
+		mock._hooks["event:cache-friendly-prompt:dynamic-tail-rendered"]({ fragmentIds: ["plan-mode:implementation-plan"] });
+		expect((await collectPromptFragments({ cwd: "/tmp/project" })).some((f) => f.kind === "implementation_plan")).toBe(false);
 	});
 
 	it("main mode without implementationPlan: no fragments", async () => {

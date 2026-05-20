@@ -119,7 +119,7 @@ Agent がコードを調査（tool_call は safety check を通過）
   ↓
 Agent が <proposed_plan> で計画を提示
   ↓
-plan で /plan → plan mode を抜け、plan が実行プロンプトとして main に注入される
+plan で /plan → plan mode を抜け、plan が dynamic context tail として main に渡される
 ```
 
 - `<proposed_plan>` がない場合 → そのまま main に戻る（キャンセル扱い）
@@ -165,7 +165,8 @@ interface PlanState {
 |------|-------------------|
 | `session_start` | `--plan` フラグがあれば自動で plan mode に入る。モデル・thinking 設定ファイルをロード |
 | `tool_call` | read-only ツール以外をブロック。bash は `classifyCommandIntent()` で UX guard 判定（security boundary は sandbox） |
-| `before_agent_start` | プロンプト注入: 初回は `plan-mode.md`、以降は `plan-mode-reminder.md` |
+| PromptProvider | plan mode中は stable `mode_policy` fragmentを提供。cache-friendly strategyでは毎回 `plan-mode.md` full promptを提供 |
+| cache-friendly dynamic render event | main modeの implementation plan がdynamic tailへ描画された後に消費 |
 | `agent_end` | 最後の assistant メッセージから `<proposed_plan>` を抽出して保存 |
 | `turn_end` | ブロックカウンターをリセット |
 | `model_select` | 現在のモードに応じて main/plan 設定を自動更新（`restore` は無視） |
@@ -186,8 +187,8 @@ plan-mode/
 ├── index.ts           # 拡張機能エントリポイント。コマンド・ショートカット・hook 登録
 ├── utils.ts           # 型定義・状態管理 (PlanState, createInitialState) + ユーティリティ (isSafeCommand, buildBlockReason, loadPrompt, hashContent, extractProposedPlan, モデル設定永続化)
 ├── prompts/
-│   ├── plan-mode.md          # plan mode 初回システムプロンプト
-│   └── plan-mode-reminder.md # plan mode 継続中プロンプト
+│   ├── plan-mode.md          # plan mode stable policy prompt
+│   └── plan-mode-reminder.md # token_minimal strategy 用 reminder prompt
 ├── plan-mode.test.ts  # テストスイート（utils, ブロック判定, 統合シナリオ, モデル設定）
 ├── package.json
 └── README.md

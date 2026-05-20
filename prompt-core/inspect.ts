@@ -1,15 +1,19 @@
 import type { PromptFragment, PromptInspectionWarning } from "./types.js";
 import { estimateTokens } from "./canonicalize.js";
 
-const volatileTerms = [/current time/i, /current date/i, /timestamp/i, /request[_ ]id/i, /now\(\)/i, /Date\(/, /new Date/i, /latest search/i, /search result/i, /tool result/i, /diagnostics/i, /tokens used/i, /remaining tokens/i, /time used/i, /continuation/i];
-const volatileValues = [/request[_ ]id\s*[:=]\s*\S+/i, /timestamp\s*[:=]\s*\S+/i, /tokens used\s*[:=]?\s*\d+/i, /time used\s*[:=]?\s*\d+/i];
-export function containsVolatileSignal(text: string): boolean { return volatileTerms.some((r) => r.test(text)); }
+const volatileWarningTerms = [/current time/i, /current date/i, /now\(\)/i, /Date\(/, /new Date/i, /latest search/i, /search result/i, /tool result/i, /diagnostics/i, /continuation/i];
+const volatileValuePatterns = [/request[_ ]id\s*[:=]\s*\S+/i, /timestamp\s*[:=]\s*\S+/i, /tokens used\s*[:=]?\s*\d+/i, /time used\s*[:=]?\s*\d+/i, /remaining tokens\s*[:=]?\s*\d+/i];
+export function containsVolatileSignal(text: string): boolean { return volatileValuePatterns.some((r) => r.test(text)) || volatileWarningTerms.some((r) => r.test(text)); }
+function isKnownFixedPolicyReference(source: string | undefined, text: string): boolean {
+  if (source !== "agent-guidelines") return false;
+  return !volatileValuePatterns.some((r) => r.test(text));
+}
 export function inspectFragments(fragments: PromptFragment[]): PromptInspectionWarning[] {
   const warnings: PromptInspectionWarning[] = [];
   for (const f of fragments) {
     if (f.enabled === false) continue;
-    if (f.stability === "stable" && containsVolatileSignal(f.content)) {
-      const error = volatileValues.some((r) => r.test(f.content));
+    if (f.stability === "stable" && containsVolatileSignal(f.content) && !isKnownFixedPolicyReference(f.source, f.content)) {
+      const error = volatileValuePatterns.some((r) => r.test(f.content));
       warnings.push({ severity: error ? "error" : "warning", code: "VOLATILE_VALUE_IN_STABLE_FRAGMENT", message: `Stable fragment may contain volatile runtime state: ${f.id}`, fragmentId: f.id, source: f.source });
     }
     if (f.stability === "dynamic" && f.cacheIntent === "prefer_cache") warnings.push({ severity: "warning", code: "DYNAMIC_FRAGMENT_CACHE_INTENT", message: `Dynamic fragment should not prefer cache: ${f.id}`, fragmentId: f.id, source: f.source });
@@ -25,6 +29,6 @@ export function inspectFinalPayloadText(finalText: string): PromptInspectionWarn
   const i = finalText.indexOf(marker);
   if (i <= 0) return [];
   const before = finalText.slice(Math.max(0, i - 4000), i);
-  if (volatileValues.some((r) => r.test(before))) return [{ severity: "warning", code: "FINAL_PAYLOAD_VOLATILE_BEFORE_STABLE_END", message: "Final payload appears to contain volatile runtime state before stable fragment section." }];
+  if (volatileValuePatterns.some((r) => r.test(before))) return [{ severity: "warning", code: "FINAL_PAYLOAD_VOLATILE_BEFORE_STABLE_END", message: "Final payload appears to contain volatile runtime state before stable fragment section." }];
   return [];
 }

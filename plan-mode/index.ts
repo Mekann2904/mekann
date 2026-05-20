@@ -19,7 +19,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	const state = createInitialState();
 	let suppressModelSelectPersist = false;
 	let suppressThinkingSelectPersist = false;
-	let implementationPlanSeenByOrchestrator = false;
 
 	/** Token for sandbox profile override (set on plan entry, cleared on exit). */
 	let sandboxOverrideToken: string | undefined;
@@ -143,7 +142,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		// 6. Clean up state
 		Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined, savedMainModel: undefined, savedMainThinking: undefined });
 
-		if (plan) { state.implementationPlan = plan; implementationPlanSeenByOrchestrator = false; pi.sendUserMessage("保存された plan に従って実装してください。"); }
+		if (plan) { state.implementationPlan = plan; pi.sendUserMessage("保存された plan に従って実装してください。"); }
 	}
 
 	async function togglePlanMode(ctx: ExtensionContext): Promise<void> {
@@ -155,6 +154,15 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("plan", { description: "プランモード切替", handler: (_args, ctx) => togglePlanMode(ctx) });
 
 	pi.registerShortcut(Key.super("p"), { description: "プランモード切替", handler: (ctx) => togglePlanMode(ctx) });
+
+	try {
+		pi.events.on("cache-friendly-prompt:dynamic-tail-rendered", (data: unknown) => {
+			const ids = (data as { fragmentIds?: unknown }).fragmentIds;
+			if (Array.isArray(ids) && ids.includes("plan-mode:implementation-plan")) state.implementationPlan = undefined;
+		});
+	} catch {
+		// cache-friendly-prompt extension not loaded
+	}
 
 	registerPromptProvider({
 		id: "plan-mode",
@@ -194,8 +202,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 					cacheIntent: "avoid_cache",
 					content: `Implementation plan for this turn:\n<plan>\n${plan}\n</plan>`,
 				});
-				if (implementationPlanSeenByOrchestrator) state.implementationPlan = undefined;
-				else implementationPlanSeenByOrchestrator = true;
 			}
 			return fragments;
 		},
