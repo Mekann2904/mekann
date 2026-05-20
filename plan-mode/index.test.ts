@@ -39,6 +39,24 @@ interface MockExtensionContext {
 	};
 }
 
+/** Write initial config to the real plan-mode.json, restoring (or deleting) on cleanup. */
+function withPlanModeConfig<T>(initial: unknown, fn: (configPath: string) => Promise<T>): Promise<T> {
+	const fs = require("fs");
+	const path = require("path");
+	const os = require("os");
+	const configPath = path.join(os.homedir(), ".pi", "agent", "plan-mode.json");
+	const original = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf-8") : undefined;
+	fs.mkdirSync(path.dirname(configPath), { recursive: true });
+	fs.writeFileSync(configPath, JSON.stringify(initial));
+	return fn(configPath).finally(() => {
+		if (original === undefined) {
+			try { fs.unlinkSync(configPath); } catch {}
+		} else {
+			fs.writeFileSync(configPath, original);
+		}
+	});
+}
+
 function createMockApi() {
 	const hooks: Record<string, Function> = {};
 	const commands: Record<string, { handler: Function }> = {};
@@ -373,23 +391,6 @@ describe("turn_end hook", () => {
 // ─── model_select hook ──────────────────────────────────────────────
 
 describe("model_select hook", () => {
-	function withPlanModeConfig<T>(initial: unknown, fn: (configPath: string) => Promise<T>): Promise<T> {
-		const fs = require("fs");
-		const path = require("path");
-		const os = require("os");
-		const configPath = path.join(os.homedir(), ".pi", "agent", "plan-mode.json");
-		const original = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf-8") : undefined;
-		fs.mkdirSync(path.dirname(configPath), { recursive: true });
-		fs.writeFileSync(configPath, JSON.stringify(initial));
-		return fn(configPath).finally(() => {
-			if (original === undefined) {
-				try { fs.unlinkSync(configPath); } catch {}
-			} else {
-				fs.writeFileSync(configPath, original);
-			}
-		});
-	}
-
 	it("source=restore: 何もしない", async () => {
 		const mock = createMockApi();
 		const ctx = createMockCtx();
@@ -1239,11 +1240,7 @@ describe("session_start: invalid ModelRef cleanup", () => {
 // ─── enterPlanMode: skip saving unregistered model ───────────────────
 
 describe("enterPlanMode: skip saving unregistered model", () => {
-	it("does not save main model if ctx.model is not in registry", async () => {
-		const { writeFileSync, readFileSync } = require("fs");
-		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
-		writeFileSync(configPath, JSON.stringify({ version: 1, models: {}, thinking: {} }));
-
+	it("does not save main model if ctx.model is not in registry", async () => withPlanModeConfig({ version: 1, models: {}, thinking: {} }, async (configPath) => {
 		// ctx.model = anthropic/default, but registry can't find it
 		const ctx = createMockCtx({
 			model: { provider: "anthropic", id: "default-model" },
@@ -1264,18 +1261,11 @@ describe("enterPlanMode: skip saving unregistered model", () => {
 		await mock._commands["plan"].handler("", ctx);
 
 		// Config should NOT have main model
-		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
+		const saved = JSON.parse(require("fs").readFileSync(configPath, "utf-8"));
 		expect(saved.models.main).toBeUndefined();
+	}));
 
-		// Clean up
-		try { require("fs").unlinkSync(configPath); } catch {}
-	});
-
-	it("saves main model if ctx.model IS in registry", async () => {
-		const { writeFileSync, readFileSync } = require("fs");
-		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
-		writeFileSync(configPath, JSON.stringify({ version: 1, models: {}, thinking: {} }));
-
+	it("saves main model if ctx.model IS in registry", async () => withPlanModeConfig({ version: 1, models: {}, thinking: {} }, async (configPath) => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
@@ -1284,12 +1274,9 @@ describe("enterPlanMode: skip saving unregistered model", () => {
 		await mock._commands["plan"].handler("", createMockCtx());
 
 		// Config should have main model
-		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
+		const saved = JSON.parse(require("fs").readFileSync(configPath, "utf-8"));
 		expect(saved.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
-
-		// Clean up
-		try { require("fs").unlinkSync(configPath); } catch {}
-	});
+	}));
 });
 
 // ─── exitPlanMode: clear invalid ModelRef from config ────────────────
