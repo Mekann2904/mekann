@@ -214,7 +214,7 @@ export class AgentControl {
   }
 
   private filterToolsByAuthority(tools: any[], authority: SubagentAuthority): any[] {
-    const deny = new Set(authority.mode === "read_only" ? ["write", "edit", "apply_patch", "bash", "request_elevation"] : authority.mode === "propose_patch" ? ["write", "edit", "apply_patch"] : []);
+    const deny = new Set(authority.mode === "read_only" ? ["write", "edit", "apply_patch", "bash", "request_elevation"] : authority.mode === "propose_patch" ? ["write", "edit", "apply_patch", "bash", "request_elevation"] : []);
     return tools.filter((t: any) => !deny.has(t.name));
   }
 
@@ -360,6 +360,7 @@ export class AgentControl {
         cancellationRequested: false,
         display,
         authority,
+        authorityEnforced: true,
         resultContract,
       };
 
@@ -444,7 +445,7 @@ export class AgentControl {
     const metadata: AgentMetadata = {
       agentId, sessionId: `external:${agentId}`, parentAgentId: callerPath === ROOT_PATH ? "root" : undefined, parentSessionId: "root",
       agentPath: canonicalPath, nickname: params.nickname, role: params.role, status: "pending_init", lastTaskMessage: params.message,
-      createdAt: now, updatedAt: now, depth, open: true, cancellationRequested: false, display, authority, resultContract: params.result_contract,
+      createdAt: now, updatedAt: now, depth, open: true, cancellationRequested: false, display, authority, authorityEnforced: false, resultContract: params.result_contract,
     };
     this.registry.registerAgent(metadata, reservation);
     const hub = this.hubFactory(socketPath);

@@ -24,18 +24,32 @@ export async function checkBaseFileHashes(cwd: string, files: FileFingerprint[])
   return { ok: true };
 }
 
+export function extractTouchedPathsFromPatch(patchText: string): string[] {
+  const paths = new Set<string>();
+  for (const line of patchText.split(/\r?\n/)) {
+    if (!line.startsWith("--- ") && !line.startsWith("+++ ")) continue;
+    const raw = line.slice(4).split(/\s+/)[0];
+    if (raw === "/dev/null") continue;
+    const cleaned = raw.startsWith("a/") || raw.startsWith("b/") ? raw.slice(2) : raw;
+    if (cleaned) paths.add(cleaned);
+  }
+  return [...paths].sort();
+}
+
 export function detectPublicSurfaceFromPatch(patchText: string): PublicSurfaceDelta[] {
+  const seen = new Set<string>();
   const deltas: PublicSurfaceDelta[] = [];
+  const add = (d: PublicSurfaceDelta) => { const k = `${d.surface}:${d.name}:${d.change}`; if (!seen.has(k)) { seen.add(k); deltas.push(d); } };
   const lines = patchText.split(/\r?\n/);
   let current = "";
   for (const line of lines) {
     if (line.startsWith("+++ b/")) current = line.slice(6);
     const rel = current;
-    if (/^(package\.json|tsconfig.*\.json)$/.test(path.basename(rel))) deltas.push({ surface: "config_schema", name: rel, change: "modify", compatibility: "unknown" });
-    if (/migrations\//.test(rel) || /schema\.graphql$/.test(rel) || /openapi\./.test(rel) || /routes\//.test(rel)) deltas.push({ surface: rel.includes("graphql") ? "graphql_schema" : rel.includes("openapi") || rel.includes("routes/") ? "rest_api" : "database_schema", name: rel, change: "modify", compatibility: "unknown" });
+    if (/^(package\.json|tsconfig.*\.json)$/.test(path.basename(rel))) add({ surface: "config_schema", name: rel, change: "modify", compatibility: "unknown" });
+    if (/migrations\//.test(rel) || /schema\.graphql$/.test(rel) || /openapi\./.test(rel) || /routes\//.test(rel)) add({ surface: rel.includes("graphql") ? "graphql_schema" : rel.includes("openapi") || rel.includes("routes/") ? "rest_api" : "database_schema", name: rel, change: "modify", compatibility: "unknown" });
     if ((line.startsWith("+") || line.startsWith("-")) && !line.startsWith("+++") && !line.startsWith("---") && /\.(tsx?|mts|cts)$/.test(rel)) {
       const m = line.slice(1).match(/export\s+(?:async\s+)?(function|class|interface|type|const|enum)\s+([A-Za-z0-9_$]+)/);
-      if (m) deltas.push({ surface: "typescript_export", name: m[2], change: line.startsWith("+") ? "add" : "remove", compatibility: line.startsWith("+") ? "compatible" : "breaking" });
+      if (m) add({ surface: "typescript_export", name: m[2], change: line.startsWith("+") ? "add" : "remove", compatibility: line.startsWith("+") ? "compatible" : "breaking" });
     }
   }
   return deltas;

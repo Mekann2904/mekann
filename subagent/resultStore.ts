@@ -27,7 +27,7 @@ export class SubagentResultStore {
         canonical.patch.bytes = Buffer.byteLength(body, "utf8");
       }
     }
-    const stored: StoredSubagentResult = { result_id: id, agent_id: agent.agentId, agent_path: agent.agentPath, created_at: Date.now(), status: "pending", result: canonical };
+    const stored: StoredSubagentResult = { result_id: id, agent_id: agent.agentId, agent_path: agent.agentPath, created_at: Date.now(), status: "pending", result: canonical, authority: agent.authority, authority_enforced: agent.authorityEnforced };
     writeFileSync(this.jsonPath(id), JSON.stringify(stored, null, 2), "utf8");
     return stored;
   }
@@ -40,6 +40,7 @@ export class SubagentResultStore {
   markApplied(resultId: string, applyRecord: ApplyRecord): void { const s = this.load(resultId); s.status = "applied"; s.apply_record = applyRecord; this.saveStored(s); }
   markRejected(resultId: string, reason: RejectReason): void { const s = this.load(resultId); s.status = "rejected"; s.reject_reason = reason; this.saveStored(s); }
   markNeedsReview(resultId: string, reason: string, details?: unknown): void { const s = this.load(resultId); s.status = "needs_review"; s.review_record = { result_id: resultId, reason, details }; this.saveStored(s); }
+  markSuperseded(resultId: string, reason?: string): void { const s = this.load(resultId); s.status = "superseded"; s.superseded_reason = reason; this.saveStored(s); }
   appendSemanticLog(entry: SemanticApplyLogEntry): void { appendFileSync(path.join(this.dir, "semantic-log.jsonl"), `${JSON.stringify(entry)}\n`, "utf8"); }
   readSemanticLog(): SemanticApplyLogEntry[] { const p = path.join(this.dir, "semantic-log.jsonl"); if (!existsSync(p)) return []; return readFileSync(p, "utf8").split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l) as SemanticApplyLogEntry); }
 }

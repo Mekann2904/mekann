@@ -75,6 +75,7 @@ export interface AgentMetadata {
   timeoutDeadline?: number;
   display?: AgentDisplayRef;
   authority?: SubagentAuthority;
+  authorityEnforced?: boolean;
   resultContract?: ResultContract;
 }
 
@@ -407,8 +408,8 @@ export interface ObservationResult { schema: "subagent.result.v1"; outcome: "obs
 export type SubagentResultV1 = NoChangeResult | PatchProposalResult | BlockedResult | NeedsDecisionResult | ObservationResult;
 
 export type StoredResultStatus = "pending" | "applying" | "applied" | "rejected" | "needs_review" | "superseded";
-export interface StoredSubagentResult { result_id: string; agent_id: string; agent_path: string; created_at: number; status: StoredResultStatus; result: SubagentResultV1; apply_record?: ApplyRecord; reject_reason?: RejectReason; review_record?: ReviewRecord; }
-export type RejectReason = "invalid_schema" | "invalid_patch_ref" | "patch_too_large" | "outside_path_scope" | "outside_semantic_scope" | "base_hash_mismatch" | "semantic_base_mismatch" | "semantic_write_conflict" | "public_surface_barrier" | "undeclared_public_surface_delta" | "patch_check_failed" | "validation_command_not_allowed" | "validation_failed" | "high_risk_requires_review" | "manual_reject" | "require_regeneration" | "not_patch";
+export interface StoredSubagentResult { result_id: string; agent_id: string; agent_path: string; created_at: number; status: StoredResultStatus; result: SubagentResultV1; authority?: SubagentAuthority; authority_enforced?: boolean; apply_record?: ApplyRecord; reject_reason?: RejectReason; review_record?: ReviewRecord; superseded_reason?: string; }
+export type RejectReason = "invalid_schema" | "invalid_patch_ref" | "patch_too_large" | "outside_path_scope" | "outside_semantic_scope" | "base_hash_mismatch" | "semantic_base_mismatch" | "semantic_write_conflict" | "public_surface_barrier" | "undeclared_public_surface_delta" | "patch_check_failed" | "declared_touched_paths_mismatch" | "validation_command_not_allowed" | "validation_failed" | "high_risk_requires_review" | "manual_reject" | "require_regeneration" | "not_patch";
 export interface ApplyRecord { result_id: string; agent_path: string; applied_at: number; patch_ref?: string; validation_result?: ValidationResult; }
 export interface RejectRecord { result_id: string; reason: RejectReason; details?: unknown; }
 export interface ReviewRecord { result_id: string; reason: string; details?: unknown; }

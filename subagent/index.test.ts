@@ -1502,8 +1502,8 @@ describe("AgentControl", () => {
         baseCtx,
       );
       expect(result.status).toBe("pending_init");
-      // Tools should be filtered to only bash and read
-      expect(mockSession.agent.state.tools).toEqual([{ name: "bash" }, { name: "read" }]);
+      // Tools should inherit parent restrictions and then apply default propose_patch restrictions.
+      expect(mockSession.agent.state.tools).toEqual([{ name: "read" }]);
     });
 
     it("passes reasoning_effort as thinkingLevel", async () => {

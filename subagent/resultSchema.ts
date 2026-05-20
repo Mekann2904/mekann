@@ -18,7 +18,8 @@ export function tryParseSubagentResult(text: string): ParseResult {
   } else if (raw.outcome === "patch") {
     if (!isStr(raw.summary)) return { ok: false, error: "summary is required" };
     if (!isObj(raw.patch) || raw.patch.format !== "unified_diff") return { ok: false, error: "patch.format must be unified_diff" };
-    if (!isStr(raw.patch.ref) && !isStr(raw.patch.body)) return { ok: false, error: "patch.ref or patch.body is required" };
+    if (isStr(raw.patch.ref)) return { ok: false, error: "patch.ref is not accepted from subagents; include patch.body" };
+    if (!isStr(raw.patch.body)) return { ok: false, error: "patch.body is required" };
     if (!isObj(raw.base) || !isArr(raw.base.files)) return { ok: false, error: "base.files is required" };
     if (!isObj(raw.scope) || !isArr(raw.scope.allowed_paths) || !isArr(raw.scope.touched_paths)) return { ok: false, error: "scope allowed/touched paths are required" };
     if (!isObj(raw.semantic) || !isArr(raw.semantic.reads) || !isArr(raw.semantic.writes) || !isArr(raw.semantic.assumptions) || !isArr(raw.semantic.effects) || !isArr(raw.semantic.public_surface_delta) || !isObj(raw.semantic.risk) || !isStr(raw.semantic.risk.level)) return { ok: false, error: "semantic metadata is required" };
