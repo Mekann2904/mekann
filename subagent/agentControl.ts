@@ -218,7 +218,7 @@ export class AgentControl {
       "Do not modify files directly.",
       "Investigate the requested task. If no change is needed, return outcome=\"no_change\".",
       "If a change is needed, return exactly one JSON object conforming to subagent.result.v1.",
-      "Use patch.format=\"unified_diff\". Prefer patch.ref when available; if not possible, include transient patch.body and the parent will store it.",
+      "Use patch.format=\"unified_diff\" and include patch.body. Do not include patch.ref; the parent stores the patch and assigns patch.ref.",
       "Include touched paths, file base hashes, semantic reads/writes, assumptions, effects, public surface delta, validation suggestions, and risk level.",
       `Granted write_scope: ${JSON.stringify(authority.write_scope ?? [])}`,
       `Granted semantic_scope: ${JSON.stringify(authority.semantic_scope ?? [])}`,

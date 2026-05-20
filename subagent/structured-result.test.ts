@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { tryParseSubagentResult } from "./resultSchema.js";
-import { resultSummary, SubagentResultStore } from "./resultStore.js";
+import { assertValidResultId, resultSummary, SubagentResultStore } from "./resultStore.js";
 import { evaluateSemanticConflict } from "./semanticConflict.js";
 import { ApplyQueue } from "./applyQueue.js";
 import { extractTouchedPathsFromPatch, isNewFilePatch, normalizePublicSurfaceDeltas } from "./fingerprint.js";
@@ -95,6 +95,15 @@ describe("structured subagent results", () => {
       { surface: "typescript_export", name: "Foo", change: "remove", compatibility: "breaking" },
       { surface: "typescript_export", name: "Foo", change: "add", compatibility: "compatible" },
     ])).toEqual([{ surface: "typescript_export", name: "Foo", change: "modify", compatibility: "breaking" }]);
+  });
+
+  it("rejects invalid result ids", () => {
+    expect(() => assertValidResultId("../../evil")).toThrow("Invalid result_id");
+  });
+
+  it("rejects invalid risk level in schema", () => {
+    const bad = patch({ semantic: { ...patch().semantic, risk: { level: "banana" as any } } });
+    expect(tryParseSubagentResult(JSON.stringify(bad)).ok).toBe(false);
   });
 
   it("detects applied-write vs incoming-read semantic conflict", () => {

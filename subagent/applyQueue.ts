@@ -44,6 +44,7 @@ export class ApplyQueue {
     const declaredTouched = [...patch.scope.touched_paths].sort();
     if (JSON.stringify(actualTouched) !== JSON.stringify(declaredTouched)) return this.reject(out, stored.result_id, "declared_touched_paths_mismatch", { declared: declaredTouched, actual: actualTouched });
     const writeScope = stored.authority?.write_scope ?? [];
+    if (writeScope.length === 0) return this.review(out, stored.result_id, "write_scope is not specified; auto apply requires explicit authority scope", { actualTouched });
     for (const p of actualTouched) if (!withinAny(p, writeScope)) return this.reject(out, stored.result_id, "outside_path_scope", { path: p, write_scope: writeScope });
 
     const authoritySem = new Set((stored.authority?.semantic_scope ?? []).map(keyOfTarget));
@@ -63,9 +64,9 @@ export class ApplyQueue {
     const undeclared = actualSurface.filter((d) => !declaredSurface.has(surfaceKey(d)));
     if (undeclared.length) return this.reject(out, stored.result_id, "undeclared_public_surface_delta", undeclared);
 
-    if (stored.authority_enforced === false && (patch.semantic.risk.level !== "low" || patch.semantic.public_surface_delta.length > 0)) return this.review(out, stored.result_id, "Authority was not enforced for external subagent", { authority_enforced: false });
+    if (stored.authority_enforced === false) return this.review(out, stored.result_id, "Authority was not enforced for external subagent", { authority_enforced: false });
 
-    const conflict = evaluateSemanticConflict(patch, this.store.readSemanticLog());
+    const conflict = evaluateSemanticConflict(patch, this.store.readSemanticLog(), { allowHighRisk: params.allow_high_risk });
     if (conflict.action === "require_regeneration") return this.reject(out, stored.result_id, "require_regeneration", conflict);
     if (conflict.action === "require_review") return this.review(out, stored.result_id, conflict.reason, conflict);
     if (patch.semantic.risk.level === "high" && !params.allow_high_risk) return this.review(out, stored.result_id, "High semantic risk requires review");

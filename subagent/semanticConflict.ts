@@ -8,7 +8,7 @@ export type SemanticConflictDecision =
   | { action: "require_review"; reason: string; details?: unknown }
   | { action: "require_regeneration"; reason: string; invalidated_by: string[] };
 
-export function evaluateSemanticConflict(incoming: PatchProposalResult, appliedLog: SemanticApplyLogEntry[]): SemanticConflictDecision {
+export function evaluateSemanticConflict(incoming: PatchProposalResult, appliedLog: SemanticApplyLogEntry[], options: { allowHighRisk?: boolean } = {}): SemanticConflictDecision {
   const incomingReads = new Set(incoming.semantic.reads.map(keyOfTarget));
   const incomingWrites = new Set(incoming.semantic.writes.map(keyOfTarget));
   for (const entry of appliedLog) {
@@ -21,7 +21,7 @@ export function evaluateSemanticConflict(incoming: PatchProposalResult, appliedL
       if (isBreakingOrUnknown(delta) && [...incomingReads].some((r) => r.includes(delta.name))) return { action: "require_regeneration", reason: `Incoming proposal depends on changed public surface: ${delta.name}`, invalidated_by: [entry.result_id] };
     }
   }
-  if (incoming.semantic.risk.level === "high") return { action: "require_review", reason: "High semantic risk requires review." };
+  if (incoming.semantic.risk.level === "high" && !options.allowHighRisk) return { action: "require_review", reason: "High semantic risk requires review." };
   if (incoming.semantic.public_surface_delta.some(isBreakingOrUnknown)) return { action: "require_review", reason: "Breaking or unknown public surface delta requires review." };
   return { action: "allow" };
 }

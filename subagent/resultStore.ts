@@ -5,6 +5,10 @@ import type { AgentMetadata, ApplyRecord, RejectReason, ResultFilter, SemanticAp
 let counter = 0;
 function nextId(): string { return `sar_${Date.now().toString(36)}_${++counter}`; }
 
+export function assertValidResultId(id: string): void {
+  if (!/^sar_[a-z0-9]+_[0-9]+$/i.test(id)) throw new Error(`Invalid result_id: ${id}`);
+}
+
 export function resultSummary(stored: StoredSubagentResult): string {
   const r: any = stored.result;
   return JSON.stringify({ kind: "subagent_result_available", result_id: stored.result_id, agent_path: stored.agent_path, outcome: r.outcome, summary: r.summary ?? r.reason ?? r.question ?? "", touched_paths: r.scope?.touched_paths ?? [], semantic_risk: r.semantic?.risk?.level });
@@ -13,8 +17,8 @@ export function resultSummary(stored: StoredSubagentResult): string {
 export class SubagentResultStore {
   readonly dir: string;
   constructor(baseDir = process.cwd()) { this.dir = baseDir.endsWith("subagent-results") ? baseDir : path.join(baseDir, ".pi", "subagent-results"); mkdirSync(this.dir, { recursive: true }); }
-  private jsonPath(id: string): string { return path.join(this.dir, `${id}.json`); }
-  private patchPath(id: string): string { return path.join(this.dir, `${id}.patch`); }
+  private jsonPath(id: string): string { assertValidResultId(id); return path.join(this.dir, `${id}.json`); }
+  private patchPath(id: string): string { assertValidResultId(id); return path.join(this.dir, `${id}.patch`); }
   save(agent: AgentMetadata, result: SubagentResultV1): StoredSubagentResult {
     const id = nextId();
     const canonical = structuredClone(result) as SubagentResultV1;
