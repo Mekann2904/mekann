@@ -19,7 +19,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { appendFileSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { AgentControl } from "./agentControl.js";
 import { SubagentClient } from "./ipc.js";
@@ -290,7 +290,6 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
           String(MEKANN_SUBAGENT_DEFAULTS.allowUnsafeExternalPi),
         ) ?? String(MEKANN_SUBAGENT_DEFAULTS.allowUnsafeExternalPi)),
       );
-      appendFileSync("/tmp/pi-subagent-debug.log", `ensureControl: rawDisplayFlag=${JSON.stringify(rawDisplayFlag)} displayFlag=${displayFlag} displayMode=${displayMode} allowUnsafeExternalPi=${allowUnsafeExternalPi}\n`);
       const logDirFlag = String(getFlagOrSetting<string>("subagent-log-dir", "log-dir", MEKANN_SUBAGENT_DEFAULTS.logDir) ?? MEKANN_SUBAGENT_DEFAULTS.logDir).trim();
       const kittenBin = String(getFlagOrSetting<string>("subagent-kitten-bin", "kitten-bin", MEKANN_SUBAGENT_DEFAULTS.kittenBin) ?? MEKANN_SUBAGENT_DEFAULTS.kittenBin) || MEKANN_SUBAGENT_DEFAULTS.kittenBin;
       const piCommand = String(getFlagOrSetting<string>("subagent-pi-command", "pi-command", MEKANN_SUBAGENT_DEFAULTS.piCommand) ?? MEKANN_SUBAGENT_DEFAULTS.piCommand) || MEKANN_SUBAGENT_DEFAULTS.piCommand;
@@ -620,11 +619,9 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   }
 
   pi.on("session_start", async (_event, ctx) => {
-    appendFileSync("/tmp/pi-subagent-debug.log", `session_start: control=${control ? "exists" : "null"}\n`);
     await shutdownControl();
     ensureControl();
     control!.registry.ensureRoot("root");
-    appendFileSync("/tmp/pi-subagent-debug.log", `session_start done: control.displayMode=${(control as any)?.displayMode}\n`);
   });
 
   pi.on("session_shutdown", async () => {

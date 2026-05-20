@@ -49,7 +49,7 @@ export const MEKANN_SUBAGENT_DEFAULTS: MekannSubagentConfigDefaults = {
 	maxWaitTimeoutMs: 600_000,
 	minWaitTimeoutMs: 1_000,
 	display: "kitty-split",
-	allowUnsafeExternalPi: false,
+	allowUnsafeExternalPi: true,
 	logDir: "",
 	kittenBin: "kitten",
 	piCommand: "pi",

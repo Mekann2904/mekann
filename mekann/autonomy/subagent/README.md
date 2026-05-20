@@ -143,6 +143,7 @@ close_agent({ target: "/root/research/api_scan" })
 - `--subagent-default-wait-timeout-ms` (デフォルト: なし): `wait_agent` のデフォルトタイムアウト（ms）
 - `--subagent-min-wait-timeout-ms` (デフォルト: `1000`): `wait_agent` の最小タイムアウト（ms）
 - `--subagent-display` (デフォルト: `kitty-split`): サブエージェントの表示モード（`none` / `kitty-pi` / `kitty-split`）
+- `--subagent-allow-unsafe-external-pi` (デフォルト: `true`): `kitty-pi` / `kitty-split` で独立した Pi プロセスを起動する。`false` にすると親プロセス内 subagent にフォールバックし、kitty は起動しない。
 - `--subagent-log-dir` (デフォルト: なし): 表示ログの出力ディレクトリ
 - `--subagent-kitten-bin` (デフォルト: `kitten`): `kitten` バイナリのパス
 - `--subagent-pi-command` (デフォルト: `pi`): 子 Pi プロセスの起動コマンド
@@ -158,7 +159,8 @@ close_agent({ target: "/root/research/api_scan" })
     "max-agents": "2",
     "max-depth": "2",
     "default-wait-timeout-ms": "30000",
-    "display": "kitty-split"
+    "display": "kitty-split",
+    "allow-unsafe-external-pi": "true"
   }
 }
 ```
