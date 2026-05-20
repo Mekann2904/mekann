@@ -323,6 +323,7 @@ describe("prompt provider", () => {
 		const r2 = await collectPromptFragments({ cwd: "/tmp/project" });
 		expect(r1[0]).toMatchObject({ kind: "mode_policy", stability: "stable", scope: "mode" });
 		expect(r1[0].content).toContain("プランモード");
+		expect(r1.find((f) => f.id === "plan-mode:turn-reminder")).toMatchObject({ stability: "dynamic", scope: "turn" });
 		expect(r2[0].content).toBe(r1[0].content);
 	});
 

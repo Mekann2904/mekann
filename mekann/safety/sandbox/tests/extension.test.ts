@@ -16,6 +16,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { clearPromptProvidersForTests, collectPromptFragments } from "../../../core/prompt-core/index.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -146,6 +147,21 @@ async function loadExtension(mockApi: ReturnType<typeof createMockApi>) {
 	const { default: sandboxExtension } = await import("../index.js");
 	sandboxExtension(mockApi as any);
 }
+
+// ─── Prompt provider ─────────────────────────────────────────────
+
+describe("prompt provider", () => {
+	beforeEach(() => clearPromptProvidersForTests());
+
+	it("registers stable sandbox policy for cache-friendly prompt", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		const fragments = await collectPromptFragments({ cwd: "/tmp/project" });
+		const policy = fragments.find((f) => f.id === "sandbox:policy");
+		expect(policy).toMatchObject({ kind: "sandbox_policy", stability: "stable", scope: "global" });
+		expect(policy?.content).toContain("request_elevation");
+	});
+});
 
 // ─── Flag registration ───────────────────────────────────────────
 

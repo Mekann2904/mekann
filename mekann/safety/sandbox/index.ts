@@ -13,11 +13,21 @@ import { isMacSandboxAvailable, runSandboxedShellMac } from "./macSeatbelt.js";
 import { resolveRealPaths, validateWorkspaceRoot } from "./permissions.js";
 import { shouldRequestApproval, yoloApprovalMessage, type YoloApprovalState, readOnlyPolicy, workspaceWritePolicy, yoloPolicy } from "./permissions.js";
 import { DEFAULT_SANDBOX_MODE, parseSandboxMode, modeLabel, SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, PLAN_MODE_STATUS_EVENT, type SandboxPushProfileEvent, type SandboxPopProfileEvent, type PlanModeStatusEvent } from "../policy-core/modes.js";
+import { registerPromptProvider } from "../../core/prompt-core/index.js";
 
 // ─── LLM output truncation ─────────────────────────────────────────
 
 export const DEFAULT_LLM_OUTPUT_MAX_BYTES = 50 * 1024;
 export const DEFAULT_LLM_OUTPUT_MAX_LINES = 2000;
+
+const SANDBOX_PROMPT_POLICY = [
+	"Sandbox policy:",
+	"- The bash tool may be sandboxed depending on the active mode: read_only, workspace_write, or yolo.",
+	"- In read_only or workspace_write mode, if a legitimate command is blocked by the sandbox, use request_elevation instead of repeatedly retrying the same command.",
+	"- Do not use request_elevation in yolo mode; the sandbox is already disabled there, so use bash directly.",
+	"- Never use request_elevation for dangerous, destructive, or unnecessary operations.",
+	"- When requesting elevation, explain why the command must run outside the sandbox.",
+].join("\n");
 
 export function truncateForLlm(
 	text: string,
@@ -100,6 +110,25 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	pi.registerFlag("no-sandbox", { description: "sandbox を無効化する（明示的 opt-out）", type: "boolean", default: false });
 	pi.registerFlag("sandbox-mode", { description: "初期 sandbox モード (read_only | workspace_write | yolo)", type: "string", default: DEFAULT_SANDBOX_MODE });
 	pi.registerFlag("sandbox-allow-homebrew-paths", { description: "Homebrew paths (/opt/homebrew/bin, /usr/local/bin) を sandbox PATH に追加する。便利だが、sandbox 内から Homebrew 管理バイナリを実行可能にするため信頼境界が広がる", type: "boolean", default: false });
+
+	// ─── Prompt fragments ───────────────────────────────────────────
+
+	registerPromptProvider({
+		id: "sandbox",
+		getFragments() {
+			return [{
+				id: "sandbox:policy",
+				source: "sandbox",
+				kind: "sandbox_policy",
+				stability: "stable",
+				scope: "global",
+				priority: 250,
+				version: "v1",
+				cacheIntent: "prefer_cache",
+				content: SANDBOX_PROMPT_POLICY,
+			}];
+		},
+	});
 
 	// ─── Policy builder ──────────────────────────────────────────────
 

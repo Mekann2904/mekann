@@ -27,6 +27,7 @@ import { KittyController } from "./kittyControl.js";
 import { formatAgentList, formatWaitResult } from "./types.js";
 import { extractTextFromContent } from "./contextFork.js";
 import type { ForkTurns } from "./contextFork.js";
+import { registerPromptProvider } from "../../core/prompt-core/index.js";
 
 // ─── Tool parameter schemas ──────────────────────────────────────
 
@@ -307,6 +308,30 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   function withCtrl(handler: ToolHandler) {
     return async (_id: string, params: unknown, _signal: unknown, _onUpdate: unknown, ctx: ExtensionContext) => handler(ensureControl(), params, ctx);
   }
+
+  // ─── Prompt fragments ────────────────────────────────────────
+
+  registerPromptProvider({
+    id: "subagent",
+    getFragments() {
+      return [{
+        id: "subagent:policy",
+        source: "subagent",
+        kind: "subagent_policy",
+        stability: "stable",
+        scope: "global",
+        priority: 350,
+        version: "v1",
+        cacheIntent: "prefer_cache",
+        content: [
+          "Subagents are available for independent work.",
+          "Use spawn_agent proactively for parallel work, multi-area investigations, comparing approaches, or review/research that can proceed independently.",
+          "For independent tasks, spawn all useful subagents first, then use wait_agent to collect results before summarizing or deciding next steps.",
+          "Do not use subagents for trivial one-file edits or tasks requiring tight step-by-step coordination.",
+        ].join("\n"),
+      }];
+    },
+  });
 
   // ─── Tools ────────────────────────────────────────────────────
 

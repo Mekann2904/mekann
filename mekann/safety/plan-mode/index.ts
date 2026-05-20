@@ -188,6 +188,17 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 					cacheIntent: "prefer_cache",
 					content,
 				});
+				fragments.push({
+					id: "plan-mode:turn-reminder",
+					source: "plan-mode",
+					kind: "current_context",
+					stability: "dynamic",
+					scope: "turn",
+					priority: 650,
+					version: "v1",
+					cacheIntent: "avoid_cache",
+					content: loadPrompt("plan-mode-reminder"),
+				});
 			}
 			if (state.mode === "main" && state.implementationPlan) {
 				const plan = state.implementationPlan;
