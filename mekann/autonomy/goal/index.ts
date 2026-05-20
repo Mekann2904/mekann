@@ -29,7 +29,7 @@ import {
   remainingTokens,
 } from "./state.js";
 import { GoalRuntime } from "./runtime.js";
-import { registerPromptProvider } from "../prompt-core/index.js";
+import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { renderGoalSummary, renderNoGoal, renderWidget, renderGoalPolicy, renderGoalObjectiveContext, renderGoalRuntimeState } from "./prompts.js";
 
 

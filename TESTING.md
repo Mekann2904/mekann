@@ -9,13 +9,13 @@ This repository uses [Vitest](https://vitest.dev/) for testing.
 npm test
 
 # Run tests for specific module
-cd plan-mode && npm test
-cd sandbox && npm test
-cd zip-repo && npm test
+cd mekann/safety/plan-mode && npm test
+cd mekann/safety/sandbox && npm test
+cd mekann/utils/zip-repo && npm test
 
 # Run with coverage
-cd sandbox && npx vitest run --coverage
-cd plan-mode && npx vitest run --coverage
+cd mekann/safety/sandbox && npx vitest run --coverage
+cd mekann/safety/plan-mode && npx vitest run --coverage
 ```
 
 ## Test Structure

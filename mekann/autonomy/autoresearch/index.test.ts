@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as childProcess from "node:child_process";
-import { clearPromptProvidersForTests, collectPromptFragments } from "../prompt-core/index.js";
+import { clearPromptProvidersForTests, collectPromptFragments } from "../../core/prompt-core/index.js";
 
 // Mock peer dependencies before importing the extension
 vi.mock("@earendil-works/pi-coding-agent", () => ({}));
@@ -3257,7 +3257,7 @@ describe("autoresearchExtension", () => {
 
 	describe("P0: .gitignore includes .pi/", () => {
 		it(".gitignore contains .pi/", () => {
-			const gitignorePath = path.resolve(__dirname, "..", ".gitignore");
+			const gitignorePath = path.resolve(__dirname, "../../..", ".gitignore");
 			expect(fs.existsSync(gitignorePath)).toBe(true);
 			const content = fs.readFileSync(gitignorePath, "utf8");
 			expect(content).toContain(".pi/");

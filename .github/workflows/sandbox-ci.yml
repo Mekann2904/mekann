@@ -3,14 +3,14 @@ name: Sandbox CI
 on:
   push:
     paths:
-      - "sandbox/**"
+      - "mekann/safety/sandbox/**"
   pull_request:
     paths:
-      - "sandbox/**"
+      - "mekann/safety/sandbox/**"
 
 defaults:
   run:
-    working-directory: sandbox
+    working-directory: mekann/safety/sandbox
 
 jobs:
   typecheck-and-unit:

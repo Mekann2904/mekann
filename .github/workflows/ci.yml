@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: plan-mode
+        working-directory: mekann/safety/plan-mode
     steps:
       - uses: actions/checkout@v4
 
@@ -40,14 +40,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: plan-mode-coverage
-          path: plan-mode/coverage/
+          path: mekann/safety/plan-mode/coverage/
           retention-days: 7
 
   sandbox-unit:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: sandbox
+        working-directory: mekann/safety/sandbox
     steps:
       - uses: actions/checkout@v4
 
@@ -80,14 +80,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sandbox-unit-coverage
-          path: sandbox/coverage/
+          path: mekann/safety/sandbox/coverage/
           retention-days: 7
 
   sandbox-macos:
     runs-on: macos-latest
     defaults:
       run:
-        working-directory: sandbox
+        working-directory: mekann/safety/sandbox
     steps:
       - uses: actions/checkout@v4
 
@@ -108,7 +108,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: zip-repo
+        working-directory: mekann/utils/zip-repo
     steps:
       - uses: actions/checkout@v4
 
@@ -126,7 +126,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: subagent
+        working-directory: mekann/autonomy/subagent
     steps:
       - uses: actions/checkout@v4
 
@@ -147,7 +147,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: autoresearch
+        working-directory: mekann/autonomy/autoresearch
     steps:
       - uses: actions/checkout@v4
 
@@ -165,7 +165,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: goal
+        working-directory: mekann/autonomy/goal
     steps:
       - uses: actions/checkout@v4
 

@@ -103,7 +103,7 @@ import { executeRunContract } from "./tools/runContract.js";
 import { executeApplyCandidate, executeApplyCandidateIsolated, executeCandidateEscrow, executeListCandidates, executeRejectCandidate, executeShowCandidate } from "./tools/candidates.js";
 import { handleCommand } from "./tools/commandHandler.js";
 import { suggestSubagents } from "./subagentPlanning.js";
-import { registerPromptProvider } from "../prompt-core/index.js";
+import { registerPromptProvider } from "../../core/prompt-core/index.js";
 
 // ---------------------------------------------------------------------------
 // Constants

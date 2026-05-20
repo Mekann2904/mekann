@@ -61,7 +61,7 @@ echo "Source files: $file_count"
 # 5. Typecheck (sandbox + subagent have typecheck scripts)
 echo "=== Type checking ==="
 type_errors=0
-for dir in sandbox subagent; do
+for dir in mekann/safety/sandbox mekann/autonomy/subagent; do
   if [ -f "$dir/package.json" ] && grep -q '"typecheck"' "$dir/package.json"; then
     tc_output=$(cd "$dir" && npx tsc --noEmit --skipLibCheck 2>&1) || true
     tc_errors=$(echo "$tc_output" | grep -c "error TS" || true)

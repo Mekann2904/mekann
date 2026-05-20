@@ -6,14 +6,15 @@ import { describe, it, expect } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = path.resolve(__dirname, "../../..");
+const MEKANN_ROOT = path.join(ROOT, "mekann");
 
 // ---------------------------------------------------------------------------
 // SKILL.md 検証
 // ---------------------------------------------------------------------------
 
 describe("skills/autoresearch-create/SKILL.md", () => {
-	const skillDir = path.join(ROOT, "skills", "autoresearch-create");
+	const skillDir = path.join(MEKANN_ROOT, "skills", "autoresearch-create");
 	const skillPath = path.join(skillDir, "SKILL.md");
 
 	it("ファイルが存在する", () => {
@@ -105,14 +106,14 @@ describe("package.json pi.skills", () => {
 	const pkgPath = path.join(ROOT, "package.json");
 	const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
 
-	it("pi.skills に ./skills が含まれる", () => {
+	it("pi.skills に ./mekann/skills が含まれる", () => {
 		expect(pkg.pi).toBeDefined();
 		expect(pkg.pi.skills).toBeDefined();
-		expect(pkg.pi.skills).toContain("./skills");
+		expect(pkg.pi.skills).toContain("./mekann/skills");
 	});
 
-	it("pi.extensions に ./autoresearch が含まれる", () => {
-		expect(pkg.pi.extensions).toContain("./autoresearch");
+	it("pi.extensions に統合 wrapper ./mekann が含まれる", () => {
+		expect(pkg.pi.extensions).toContain("./mekann");
 	});
 
 	it("package.json が valid JSON", () => {

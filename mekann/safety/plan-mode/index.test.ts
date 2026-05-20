@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { clearPromptProvidersForTests, collectPromptFragments } from "../prompt-core/index.js";
+import { clearPromptProvidersForTests, collectPromptFragments } from "../../core/prompt-core/index.js";
 
 // Mock peer dependencies before importing the extension
 vi.mock("@earendil-works/pi-coding-agent", () => ({}));
@@ -121,7 +121,7 @@ function createMockCtx(overrides?: Partial<MockExtensionContext>): MockExtension
 beforeEach(() => clearPromptProvidersForTests());
 
 async function loadExtension(mockApi: ReturnType<typeof createMockApi>) {
-	const { default: planModeExtension } = await import("../index.js");
+	const { default: planModeExtension } = await import("./index.js");
 	planModeExtension(mockApi as any);
 }
 
@@ -1369,7 +1369,7 @@ describe("updateModeStatus: PLAN_MODE_STATUS_EVENT emission", () => {
 			emit: vi.fn((name: string, data: unknown) => { emittedEvents.push({ name, data }); }),
 		};
 
-		const { default: planModeExtension } = await import("../index.js");
+		const { default: planModeExtension } = await import("./index.js");
 		planModeExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 		emittedEvents.length = 0;
@@ -1389,7 +1389,7 @@ describe("updateModeStatus: PLAN_MODE_STATUS_EVENT emission", () => {
 			emit: vi.fn((name: string, data: unknown) => { emittedEvents.push({ name, data }); }),
 		};
 
-		const { default: planModeExtension } = await import("../index.js");
+		const { default: planModeExtension } = await import("./index.js");
 		planModeExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
@@ -1416,7 +1416,7 @@ describe("updateModeStatus: PLAN_MODE_STATUS_EVENT emission", () => {
 			}),
 		};
 
-		const { default: planModeExtension } = await import("../index.js");
+		const { default: planModeExtension } = await import("./index.js");
 		planModeExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
@@ -1447,7 +1447,7 @@ describe("session_shutdown hook", () => {
 			emit: vi.fn((name: string, data: unknown) => { emittedEvents.push({ name, data }); }),
 		};
 
-		const { default: planModeExtension } = await import("../index.js");
+		const { default: planModeExtension } = await import("./index.js");
 		planModeExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
@@ -1473,7 +1473,7 @@ describe("session_shutdown hook", () => {
 			emit: vi.fn((name: string, data: unknown) => { emittedEvents.push({ name, data }); }),
 		};
 
-		const { default: planModeExtension } = await import("../index.js");
+		const { default: planModeExtension } = await import("./index.js");
 		planModeExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
@@ -1496,7 +1496,7 @@ describe("session_shutdown hook", () => {
 			emit: vi.fn((name: string, data: unknown) => { emittedEvents.push({ name, data }); }),
 		};
 
-		const { default: planModeExtension } = await import("../index.js");
+		const { default: planModeExtension } = await import("./index.js");
 		planModeExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
@@ -1525,7 +1525,7 @@ describe("safeEmit error handling", () => {
 			emit: vi.fn(() => { throw new Error("sandbox not loaded"); }),
 		};
 
-		const { default: planModeExtension } = await import("../index.js");
+		const { default: planModeExtension } = await import("./index.js");
 		planModeExtension(mock);
 
 		// session_start calls safeEmit via updateModeStatus — should not throw
@@ -1548,7 +1548,7 @@ describe("safeEmit error handling", () => {
 			emit: vi.fn(() => { throw new Error("sandbox not loaded"); }),
 		};
 
-		const { default: planModeExtension } = await import("../index.js");
+		const { default: planModeExtension } = await import("./index.js");
 		planModeExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
@@ -1754,7 +1754,7 @@ describe("exitPlanMode: thinking fallback", () => {
 		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
 		require("fs").writeFileSync(configPath, JSON.stringify({ version: 1, models: {}, thinking: {} }));
 
-		const { default: planModeExtension } = await import("../index.js");
+		const { default: planModeExtension } = await import("./index.js");
 		planModeExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 

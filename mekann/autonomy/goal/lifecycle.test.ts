@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import goalExtension from "./index.js";
-import { clearPromptProvidersForTests, collectPromptFragments } from "../prompt-core/index.js";
+import { clearPromptProvidersForTests, collectPromptFragments } from "../../core/prompt-core/index.js";
 
 // ---------------------------------------------------------------------------
 // Mock helpers

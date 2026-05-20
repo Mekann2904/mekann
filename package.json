@@ -2,39 +2,36 @@
   "name": "@mekann/pi-extensions",
   "version": "0.1.0",
   "private": false,
-  "description": "Custom extensions for pi coding agent — plan-mode and zip-repo",
+  "description": "Integrated mekann suite for pi coding agent extensions",
   "keywords": [
     "pi-package",
     "pi-extension"
   ],
   "license": "ISC",
   "workspaces": [
-    "prompt-core",
-    "cache-friendly-prompt",
-    "agent-guidelines",
-    "plan-mode",
-    "sandbox",
-    "subagent",
-    "zip-repo",
-    "autoresearch",
-    "goal"
+    "mekann",
+    "mekann/core/*",
+    "mekann/safety/*",
+    "mekann/autonomy/*",
+    "mekann/utils/*"
   ],
   "scripts": {
-    "test": "cd prompt-core && npm test && cd ../cache-friendly-prompt && npm test && cd ../agent-guidelines && npm test && cd ../plan-mode && npm test && cd ../sandbox && npm test && cd ../subagent && npm test && cd ../zip-repo && npm test && cd ../autoresearch && npm test && cd ../goal && npm test",
-    "test:prompt-core": "cd prompt-core && npm test",
-    "test:cache-friendly-prompt": "cd cache-friendly-prompt && npm test",
-    "test:agent-guidelines": "cd agent-guidelines && npm test",
-    "test:plan-mode": "cd plan-mode && npm test",
-    "test:sandbox": "cd sandbox && npm test",
-    "test:subagent": "cd subagent && npm test",
-    "test:zip-repo": "cd zip-repo && npm test",
-    "test:autoresearch": "cd autoresearch && npm test",
-    "test:autoresearch:fast": "cd autoresearch && npm run test:fast",
-    "test:autoresearch:slow": "cd autoresearch && npm run test:slow",
-    "test:goal": "cd goal && npm test",
+    "test": "npm run test:mekann && npm run test:prompt-core && npm run test:cache-friendly-prompt && npm run test:agent-guidelines && npm run test:plan-mode && npm run test:sandbox && npm run test:subagent && npm run test:zip-repo && npm run test:autoresearch && npm run test:goal",
+    "test:mekann": "cd mekann && npm test",
+    "test:prompt-core": "cd mekann/core/prompt-core && npm test",
+    "test:cache-friendly-prompt": "cd mekann/core/cache-friendly-prompt && npm test",
+    "test:agent-guidelines": "cd mekann/core/agent-guidelines && npm test",
+    "test:plan-mode": "cd mekann/safety/plan-mode && npm test",
+    "test:sandbox": "cd mekann/safety/sandbox && npm test",
+    "test:subagent": "cd mekann/autonomy/subagent && npm test",
+    "test:zip-repo": "cd mekann/utils/zip-repo && npm test",
+    "test:autoresearch": "cd mekann/autonomy/autoresearch && npm test",
+    "test:autoresearch:fast": "cd mekann/autonomy/autoresearch && npm run test:fast",
+    "test:autoresearch:slow": "cd mekann/autonomy/autoresearch && npm run test:slow",
+    "test:goal": "cd mekann/autonomy/goal && npm test",
     "ci": "npm test",
     "prepare": "husky",
-    "typecheck": "cd sandbox && npm run typecheck && cd ../subagent && npm run typecheck",
+    "typecheck": "cd mekann/safety/sandbox && npm run typecheck && cd ../../autonomy/subagent && npm run typecheck",
     "prepush": "bash scripts/prepush-parallel.sh"
   },
   "engines": {
@@ -42,17 +39,10 @@
   },
   "pi": {
     "extensions": [
-      "./plan-mode",
-      "./zip-repo",
-      "./sandbox",
-      "./subagent",
-      "./autoresearch",
-      "./goal",
-      "./agent-guidelines",
-      "./cache-friendly-prompt"
+      "./mekann"
     ],
     "skills": [
-      "./skills"
+      "./mekann/skills"
     ]
   },
   "devDependencies": {
