@@ -967,10 +967,10 @@ describe("render", () => {
 // ─── Extension entry point ───────────────────────────────────────
 
 describe("extension entry point", () => {
-  it("registers 6 tools", async () => {
+  it("registers 11 tools", async () => {
     const mock = createMockApi();
     await loadExtension(mock);
-    expect(mock._registeredTools).toHaveLength(6);
+    expect(mock._registeredTools).toHaveLength(11);
     const names = mock._registeredTools.map((t) => t.name);
     expect(names).toContain("spawn_agent");
     expect(names).toContain("send_message");

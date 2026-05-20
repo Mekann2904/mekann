@@ -30,6 +30,21 @@ import type { ForkTurns } from "./contextFork.js";
 
 // ─── Tool parameter schemas ──────────────────────────────────────
 
+const SemanticTargetSchema = Type.Object({ kind: Type.String(), name: Type.String() });
+const ValidationCommandSchema = Type.Union([
+  Type.Object({ kind: Type.Literal("npm_script"), script: Type.String(), args: Type.Optional(Type.Array(Type.String())) }),
+  Type.Object({ kind: Type.Literal("shell_allowlisted"), command_id: Type.String(), args: Type.Optional(Type.Array(Type.String())) }),
+]);
+const AuthoritySchema = Type.Object({
+  mode: Type.Union([Type.Literal("read_only"), Type.Literal("propose_patch"), Type.Literal("edit")]),
+  write_scope: Type.Optional(Type.Array(Type.String())),
+  semantic_scope: Type.Optional(Type.Array(SemanticTargetSchema)),
+  allowed_commands: Type.Optional(Type.Array(ValidationCommandSchema)),
+  max_patch_bytes: Type.Optional(Type.Number()),
+  require_base_hash: Type.Optional(Type.Boolean()),
+  isolated_worktree: Type.Optional(Type.Union([Type.Literal("required"), Type.Literal("preferred"), Type.Literal("none")])),
+});
+
 const SpawnSchema = Type.Object({
   task_name: Type.String({
     description:
@@ -69,6 +84,8 @@ const SpawnSchema = Type.Object({
       description: "How much parent context to fork into the subagent. Default: none.",
     }),
   ),
+  authority: Type.Optional(AuthoritySchema),
+  result_contract: Type.Optional(Type.Union([Type.Literal("free_text"), Type.Literal("subagent_result_v1")])),
 });
 
 const SendMessageSchema = Type.Object({
@@ -112,6 +129,12 @@ const CloseAgentSchema = Type.Object({
     description: 'Target agent path to close (e.g. "research/api_scan").',
   }),
 });
+
+const ListAgentResultsSchema = Type.Object({ status: Type.Optional(Type.String()), outcome: Type.Optional(Type.String()), agent_path: Type.Optional(Type.String()) });
+const ShowAgentResultSchema = Type.Object({ result_id: Type.String(), include_patch: Type.Optional(Type.Boolean()) });
+const ApplyAgentResultsSchema = Type.Object({ source: Type.Optional(Type.Union([Type.Literal("pending"), Type.Literal("result_ids")])), result_ids: Type.Optional(Type.Array(Type.String())), order: Type.Optional(Type.Literal("fifo")), max_results: Type.Optional(Type.Number()), rollback_on_failure: Type.Optional(Type.Boolean()), allow_high_risk: Type.Optional(Type.Boolean()) });
+const RejectAgentResultSchema = Type.Object({ result_id: Type.String(), reason: Type.Optional(Type.String()) });
+const RetryAgentResultSchema = Type.Object({ result_id: Type.String(), reason: Type.Optional(Type.String()) });
 
 // ─── Extension entry point ───────────────────────────────────────
 
@@ -312,6 +335,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
           role: params.role,
           nickname: params.nickname,
           fork_turns: parseForkTurns(params.fork_turns),
+          authority: params.authority,
+          result_contract: params.result_contract,
         },
         ctx,
       );
@@ -385,6 +410,61 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     execute: withCtrl(async (ctrl, params, _ctx) => {
       const result = ctrl.list(params);
       return toolResult(result.agents.length === 0 ? "(no agents)" : result.agents.map((a) => `${a.status === "completed" || a.status === "shutdown" ? "○" : "●"} ${a.agent_path}${a.nickname ? ` (${a.nickname})` : ""}${a.role ? ` [${a.role}]` : ""} — ${a.status}${a.display ? ` — display: ${a.display.status === "failed" ? `${a.display.kind}/failed: ${a.display.error}` : `${a.display.kind}/${a.display.status}${a.display.pid ? ` pid=${a.display.pid}` : ""}${a.display.window_id ? ` window=${a.display.window_id}` : ""}`}` : ""}${a.last_task ? `\n  last: ${a.last_task.slice(0, 80)}` : ""}`).join("\n"), result);
+    }),
+  });
+
+  pi.registerTool({
+    name: "list_agent_results",
+    label: "List subagent results",
+    description: "List stored structured subagent results.",
+    parameters: ListAgentResultsSchema,
+    execute: withCtrl(async (ctrl, params) => {
+      const result = ctrl.listAgentResults(params);
+      return toolResult(JSON.stringify(result, null, 2), result);
+    }),
+  });
+
+  pi.registerTool({
+    name: "show_agent_result",
+    label: "Show subagent result",
+    description: "Show a stored structured subagent result, optionally including patch content.",
+    parameters: ShowAgentResultSchema,
+    execute: withCtrl(async (ctrl, params) => {
+      const result = ctrl.showAgentResult(params);
+      return toolResult(JSON.stringify(result, null, 2), result);
+    }),
+  });
+
+  pi.registerTool({
+    name: "apply_agent_results",
+    label: "Apply subagent results",
+    description: "Apply pending structured patch proposals from subagents mechanically.",
+    parameters: ApplyAgentResultsSchema,
+    execute: withCtrl(async (ctrl, params) => {
+      const result = await ctrl.applyAgentResults(params);
+      return toolResult(JSON.stringify(result, null, 2), result);
+    }),
+  });
+
+  pi.registerTool({
+    name: "reject_agent_result",
+    label: "Reject subagent result",
+    description: "Reject a stored subagent result.",
+    parameters: RejectAgentResultSchema,
+    execute: withCtrl(async (ctrl, params) => {
+      const result = ctrl.rejectAgentResult(params);
+      return toolResult(JSON.stringify(result, null, 2), result);
+    }),
+  });
+
+  pi.registerTool({
+    name: "retry_agent_result",
+    label: "Retry subagent result",
+    description: "Ask the originating subagent to regenerate a rejected patch proposal when possible.",
+    parameters: RetryAgentResultSchema,
+    execute: withCtrl(async (ctrl, params, ctx) => {
+      const result = await ctrl.retryAgentResult(params, ctx);
+      return toolResult(JSON.stringify(result, null, 2), result);
     }),
   });
 

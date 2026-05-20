@@ -74,6 +74,8 @@ export interface AgentMetadata {
   cancellationRequested: boolean;
   timeoutDeadline?: number;
   display?: AgentDisplayRef;
+  authority?: SubagentAuthority;
+  resultContract?: ResultContract;
 }
 
 // ─── Lifecycle events ────────────────────────────────────────────
@@ -126,6 +128,8 @@ export interface SpawnParams {
   role?: string;
   nickname?: string;
   fork_turns?: number | "all" | "none";
+  authority?: SubagentAuthority;
+  result_contract?: ResultContract;
 }
 
 export interface SendMessageParams {
@@ -358,3 +362,59 @@ function truncate(s: string, maxLen: number): string {
   if (s.length <= maxLen) return s;
   return s.slice(0, maxLen - 1) + "…";
 }
+
+// ─── Structured subagent results / authority ─────────────────────
+
+export type ResultContract = "free_text" | "subagent_result_v1";
+export type SubagentAuthorityMode = "read_only" | "propose_patch" | "edit";
+
+export interface SubagentAuthority {
+  mode: SubagentAuthorityMode;
+  write_scope?: string[];
+  semantic_scope?: SemanticTarget[];
+  allowed_commands?: ValidationCommand[];
+  max_patch_bytes?: number;
+  require_base_hash?: boolean;
+  isolated_worktree?: "required" | "preferred" | "none";
+}
+
+export type SemanticTargetKind = "symbol" | "type" | "api_route" | "graphql_field" | "db_table" | "db_column" | "config_key" | "feature" | "event_payload" | "cli_command" | "file_format" | "test_contract" | "file";
+export interface SemanticTarget { kind: SemanticTargetKind; name: string; }
+export interface SemanticReadWriteSet { reads: SemanticTarget[]; writes: SemanticTarget[]; }
+export type Compatibility = "backward_compatible" | "breaking" | "unknown";
+export type SemanticEffect =
+  | { kind: "api_contract"; target: SemanticTarget; change: "add" | "remove" | "modify"; compatibility: Compatibility }
+  | { kind: "data_model"; target: SemanticTarget; change: "add" | "remove" | "rename" | "type_change" | "semantic_change"; compatibility: Compatibility }
+  | { kind: "behavior"; target: SemanticTarget; description: string; compatibility: Compatibility }
+  | { kind: "config"; target: SemanticTarget; change: "add" | "remove" | "modify"; compatibility: Compatibility }
+  | { kind: "side_effect"; target: SemanticTarget; operation: "read" | "write" | "delete" | "network" | "db" }
+  | { kind: "test_expectation"; target: SemanticTarget; change: "add" | "modify" | "remove" };
+export interface SemanticAssumption { kind: "symbol_signature" | "data_shape" | "behavior" | "config_value" | "dependency_version" | "feature_flag" | "test_contract"; target: SemanticTarget; expected: string; fingerprint?: string; }
+export interface SemanticFingerprint { target: SemanticTarget; hash: string; extractor: string; }
+export type PublicSurfaceKind = "typescript_export" | "rest_api" | "graphql_schema" | "database_schema" | "config_schema" | "cli" | "event_payload" | "file_format";
+export interface PublicSurfaceDelta { surface: PublicSurfaceKind; name: string; change: "add" | "remove" | "modify"; compatibility: "compatible" | "breaking" | "unknown"; }
+export interface SemanticRisk { level: "low" | "medium" | "high"; reasons?: string[]; }
+export type ValidationCommand = { kind: "npm_script"; script: string; args?: string[] } | { kind: "shell_allowlisted"; command_id: string; args?: string[] };
+export interface RequiredCheck { kind: "typecheck" | "unit_test" | "affected_test" | "contract_test" | "public_surface_diff" | "invariant"; target?: string; }
+export interface FileFingerprint { path: string; hash: string; }
+export interface AffectedTarget { target: SemanticTarget; reason?: string; }
+
+export interface NoChangeResult { schema: "subagent.result.v1"; outcome: "no_change"; summary: string; evidence?: string[]; }
+export interface PatchProposalResult { schema: "subagent.result.v1"; outcome: "patch"; summary: string; patch: { format: "unified_diff"; ref?: string; body?: string; bytes?: number }; base: { git_commit?: string; files: FileFingerprint[]; semantic_fingerprints?: SemanticFingerprint[] }; scope: { allowed_paths: string[]; touched_paths: string[]; semantic_scope?: SemanticTarget[] }; semantic: { reads: SemanticTarget[]; writes: SemanticTarget[]; assumptions: SemanticAssumption[]; effects: SemanticEffect[]; public_surface_delta: PublicSurfaceDelta[]; affected_invariants?: string[]; affected_targets?: AffectedTarget[]; risk: SemanticRisk }; validation: { suggested: ValidationCommand[]; required?: RequiredCheck[] }; }
+export interface BlockedResult { schema: "subagent.result.v1"; outcome: "blocked"; reason: string; required_permission?: Partial<SubagentAuthority>; }
+export interface NeedsDecisionResult { schema: "subagent.result.v1"; outcome: "needs_decision"; question: string; options: Array<{ id: string; description: string }>; }
+export interface ObservationResult { schema: "subagent.result.v1"; outcome: "observation"; summary: string; findings: Array<{ target?: SemanticTarget; path?: string; message: string }>; }
+export type SubagentResultV1 = NoChangeResult | PatchProposalResult | BlockedResult | NeedsDecisionResult | ObservationResult;
+
+export type StoredResultStatus = "pending" | "applying" | "applied" | "rejected" | "needs_review" | "superseded";
+export interface StoredSubagentResult { result_id: string; agent_id: string; agent_path: string; created_at: number; status: StoredResultStatus; result: SubagentResultV1; apply_record?: ApplyRecord; reject_reason?: RejectReason; review_record?: ReviewRecord; }
+export type RejectReason = "invalid_schema" | "invalid_patch_ref" | "patch_too_large" | "outside_path_scope" | "outside_semantic_scope" | "base_hash_mismatch" | "semantic_base_mismatch" | "semantic_write_conflict" | "public_surface_barrier" | "undeclared_public_surface_delta" | "patch_check_failed" | "validation_command_not_allowed" | "validation_failed" | "high_risk_requires_review" | "manual_reject" | "require_regeneration" | "not_patch";
+export interface ApplyRecord { result_id: string; agent_path: string; applied_at: number; patch_ref?: string; validation_result?: ValidationResult; }
+export interface RejectRecord { result_id: string; reason: RejectReason; details?: unknown; }
+export interface ReviewRecord { result_id: string; reason: string; details?: unknown; }
+export interface SkipRecord { result_id: string; reason: string; }
+export interface ApplyAgentResultsParams { source?: "pending" | "result_ids"; result_ids?: string[]; order?: "fifo"; max_results?: number; rollback_on_failure?: boolean; allow_high_risk?: boolean; }
+export interface ApplyAgentResultsResult { applied: ApplyRecord[]; rejected: RejectRecord[]; needs_review: ReviewRecord[]; skipped: SkipRecord[]; }
+export interface ValidationResult { ok: boolean; command?: ValidationCommand; output?: string; error?: string; }
+export interface SemanticApplyLogEntry { result_id: string; agent_path: string; applied_at: number; reads: SemanticTarget[]; writes: SemanticTarget[]; assumptions: SemanticAssumption[]; effects: SemanticEffect[]; public_surface_delta: PublicSurfaceDelta[]; validation_result: ValidationResult; }
+export interface ResultFilter { status?: StoredResultStatus; outcome?: SubagentResultV1["outcome"]; agent_path?: string; }

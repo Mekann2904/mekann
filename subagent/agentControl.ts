@@ -33,7 +33,10 @@ import { isTerminalStatus } from "./types.js";
 import { KittyController } from "./kittyControl.js";
 import { SubagentHub } from "./ipc.js";
 import type { ChildToParent } from "./ipc.js";
-import type { AgentDisplayRef, AgentDisplayResult, AgentRuntime } from "./types.js";
+import type { AgentDisplayRef, AgentDisplayResult, AgentRuntime, ResultContract, SubagentAuthority } from "./types.js";
+import { tryParseSubagentResult } from "./resultSchema.js";
+import { resultSummary, SubagentResultStore } from "./resultStore.js";
+import { ApplyQueue } from "./applyQueue.js";
 
 // ─── Default config ──────────────────────────────────────────────
 
@@ -44,6 +47,8 @@ const DEFAULT_MAX_DEPTH = 2;
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
 const MAX_WAIT_TIMEOUT_MS = 600_000;
 const MIN_WAIT_TIMEOUT_MS = 1_000;
+
+export const DEFAULT_AUTHORITY: SubagentAuthority = { mode: "propose_patch", require_base_hash: true, max_patch_bytes: 50_000 };
 
 let agentIdCounter = 0;
 
@@ -86,6 +91,8 @@ export class AgentControl {
   private piCommand: string;
   private extensionPath?: string;
   private helloTimeoutMs: number;
+  readonly resultStore: SubagentResultStore;
+  private applyQueue: ApplyQueue;
 
   constructor(
     pi: import("@earendil-works/pi-coding-agent").ExtensionAPI,
@@ -110,6 +117,8 @@ export class AgentControl {
     this.piCommand = options.piCommand ?? "pi";
     this.extensionPath = options.extensionPath;
     this.helloTimeoutMs = options.helloTimeoutMs ?? 10_000;
+    this.resultStore = new SubagentResultStore(process.cwd());
+    this.applyQueue = new ApplyQueue(this.resultStore, process.cwd());
     // DEBUG: confirm display mode
     console.error(`[subagent-ext] AgentControl init: displayMode=${this.displayMode}, logDir=${this.logDir}`);
 
@@ -186,6 +195,49 @@ export class AgentControl {
     this.runtimes.delete(canonicalPath);
   }
 
+  private normalizeAuthority(authority?: SubagentAuthority): SubagentAuthority {
+    return { ...DEFAULT_AUTHORITY, ...(authority ?? {}) };
+  }
+
+  private authorityPreamble(authority: SubagentAuthority, resultContract?: ResultContract): string | undefined {
+    if (authority.mode !== "propose_patch" && resultContract !== "subagent_result_v1") return undefined;
+    return [
+      "You are running in propose_patch mode.",
+      "Do not modify files directly.",
+      "Investigate the requested task. If no change is needed, return outcome=\"no_change\".",
+      "If a change is needed, return exactly one JSON object conforming to subagent.result.v1.",
+      "Use patch.format=\"unified_diff\". Prefer patch.ref when available; if not possible, include transient patch.body and the parent will store it.",
+      "Include touched paths, file base hashes, semantic reads/writes, assumptions, effects, public surface delta, validation suggestions, and risk level.",
+      `Granted write_scope: ${JSON.stringify(authority.write_scope ?? [])}`,
+      `Granted semantic_scope: ${JSON.stringify(authority.semantic_scope ?? [])}`,
+    ].join("\n");
+  }
+
+  private filterToolsByAuthority(tools: any[], authority: SubagentAuthority): any[] {
+    const deny = new Set(authority.mode === "read_only" ? ["write", "edit", "apply_patch", "bash", "request_elevation"] : authority.mode === "propose_patch" ? ["write", "edit", "apply_patch"] : []);
+    return tools.filter((t: any) => !deny.has(t.name));
+  }
+
+  private handleFinalText(agentId: string, canonicalPath: string, callerPath: string, finalText: string | undefined, status: AgentStatus): string {
+    const text = finalText ?? "(agent completed)";
+    const parsed = tryParseSubagentResult(text);
+    let message = text;
+    const agent = this.registry.get(canonicalPath);
+    if (parsed.ok && agent) {
+      const stored = this.resultStore.save(agent, parsed.result);
+      message = resultSummary(stored);
+    }
+    this.registry.updateStatus(canonicalPath, status, { lastTaskMessage: message });
+    this.enqueueToMailbox(agentId, canonicalPath, callerPath, message, "final_result");
+    this.mailbox.appendEvent({
+      type: "agent_final_message", ...this.evBase(agentId, canonicalPath),
+      parentAgentId: callerPath === ROOT_PATH ? undefined : "root",
+      message,
+      status,
+    });
+    return message;
+  }
+
   // ─── spawn_agent ───────────────────────────────────────────────
 
   async spawn(
@@ -225,10 +277,22 @@ export class AgentControl {
       }
 
       const model = await this.resolveModel(params.model, ctx);
+      const authority = this.normalizeAuthority(params.authority);
+      const resultContract = params.result_contract;
 
       const forkTurns = params.fork_turns ?? 0;
 
       const thinkingLevel = params.reasoning_effort as ThinkingLevel | undefined;
+      const systemPrompts = [
+        buildContextPreamble({
+          agentPath: canonicalPath,
+          parentPath: callerPath,
+          role: params.role,
+          nickname: params.nickname,
+        }),
+      ];
+      const authorityPrompt = this.authorityPreamble(authority, resultContract);
+      if (authorityPrompt) systemPrompts.push(authorityPrompt);
 
       const { session } = await createAgentSession({
         cwd: ctx.cwd,
@@ -237,14 +301,7 @@ export class AgentControl {
         sessionManager: await import("@earendil-works/pi-coding-agent").then((m) =>
           m.SessionManager.inMemory(),
         ),
-        appendSystemPrompt: [
-          buildContextPreamble({
-            agentPath: canonicalPath,
-            parentPath: callerPath,
-            role: params.role,
-            nickname: params.nickname,
-          }),
-        ],
+        appendSystemPrompt: systemPrompts,
       } as any);
 
       // Inject fork context if requested
@@ -264,12 +321,15 @@ export class AgentControl {
         }
       }
 
-      // Inherit parent's tool restrictions
+      // Inherit parent's tool restrictions, then apply authority restrictions.
       const parentActiveTools = this.pi.getActiveTools?.();
       if (parentActiveTools && parentActiveTools.length > 0) {
         const activeSet = new Set(parentActiveTools);
         const allTools = session.agent.state.tools;
         session.agent.state.tools = allTools.filter((t: any) => activeSet.has(t.name));
+      }
+      if ((session as any).agent?.state?.tools) {
+        session.agent.state.tools = this.filterToolsByAuthority(session.agent.state.tools, authority);
       }
 
       // Register agent
@@ -299,6 +359,8 @@ export class AgentControl {
         open: true,
         cancellationRequested: false,
         display,
+        authority,
+        resultContract,
       };
 
       this.registry.registerAgent(metadata, reservation);
@@ -326,20 +388,8 @@ export class AgentControl {
             ? extractTextFromContent(lastAssistant.content) ?? undefined
             : undefined;
 
-          this.logDisplay(this.registry.get(canonicalPath)?.display, `${finalText ?? "(agent completed)"}\n[status] completed`);
-          this.registry.updateStatus(canonicalPath, "completed", {
-            lastTaskMessage: finalText,
-          });
-
-          this.enqueueToMailbox(agentId, canonicalPath, callerPath, finalText ?? "(agent completed)", "final_result");
-
-          // Publish final message lifecycle event
-          this.mailbox.appendEvent({
-            type: "agent_final_message", ...this.evBase(agentId, canonicalPath),
-            parentAgentId: callerPath === ROOT_PATH ? undefined : "root",
-            message: finalText ?? "(agent completed)",
-            status: "completed",
-          });
+          const finalMessage = this.handleFinalText(agentId, canonicalPath, callerPath, finalText, "completed");
+          this.logDisplay(this.registry.get(canonicalPath)?.display, `${finalMessage}\n[status] completed`);
 
           this.runtimes.delete(canonicalPath);
           this.childSessions.delete(canonicalPath);
@@ -379,6 +429,8 @@ export class AgentControl {
   }
 
   private async spawnExternalPi(params: SpawnParams, ctx: ExtensionContext, callerPath: string, canonicalPath: string, depth: number, reservation: any, agentId: string): Promise<SpawnResult> {
+    const authority = this.normalizeAuthority(params.authority);
+    if (authority.mode === "edit") throw new Error("external Pi subagents do not support edit authority");
     if (processExternalPiSlots.size >= MAX_EXTERNAL_PI_SUBAGENTS) {
       throw new Error(`Maximum number of external Pi subagents reached (${MAX_EXTERNAL_PI_SUBAGENTS}). Close an existing agent before spawning another.`);
     }
@@ -392,7 +444,7 @@ export class AgentControl {
     const metadata: AgentMetadata = {
       agentId, sessionId: `external:${agentId}`, parentAgentId: callerPath === ROOT_PATH ? "root" : undefined, parentSessionId: "root",
       agentPath: canonicalPath, nickname: params.nickname, role: params.role, status: "pending_init", lastTaskMessage: params.message,
-      createdAt: now, updatedAt: now, depth, open: true, cancellationRequested: false, display,
+      createdAt: now, updatedAt: now, depth, open: true, cancellationRequested: false, display, authority, resultContract: params.result_contract,
     };
     this.registry.registerAgent(metadata, reservation);
     const hub = this.hubFactory(socketPath);
@@ -405,7 +457,8 @@ export class AgentControl {
       const modelId = resolvedOverride
         ? `${(resolvedOverride as any).provider ?? ''}/${(resolvedOverride as any).id ?? ''}`
         : (ctx.model?.provider && ctx.model?.id ? `${ctx.model.provider}/${ctx.model.id}` : undefined);
-      const launchParams = { agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: params.message, logPath, title: display.title, piCommand: this.piCommand, extensionPath: this.extensionPath, modelId };
+      const preamble = this.authorityPreamble(authority, params.result_contract);
+      const launchParams = { agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: preamble ? `${preamble}\n\n${params.message}` : params.message, logPath, title: display.title, piCommand: this.piCommand, extensionPath: this.extensionPath, modelId };
       const opened = isSplit
         ? await this.kitty.launchPiSplit(launchParams)
         : await this.kitty.launchPiWindow(launchParams);
@@ -435,9 +488,7 @@ export class AgentControl {
     if (msg.type === "status") {
       this.registry.updateStatus(agentPath, msg.status);
     } else if (msg.type === "final") {
-      this.registry.updateStatus(agentPath, msg.status);
-      this.enqueueToMailbox(msg.agentId, agentPath, callerPath, msg.message, "final_result");
-      this.mailbox.appendEvent({ type: "agent_final_message", ...this.evBase(msg.agentId, agentPath), parentAgentId: callerPath === ROOT_PATH ? undefined : callerPath, message: msg.message, status: msg.status });
+      this.handleFinalText(msg.agentId, agentPath, callerPath, msg.message, msg.status);
       void this.autoCloseExternal(agentPath);
     } else if (msg.type === "error") {
       this.registry.updateStatus(agentPath, "errored");
@@ -614,6 +665,19 @@ export class AgentControl {
         display: this.displayResult(a.display),
       })),
     };
+  }
+
+  listAgentResults(params: any = {}) { return { results: this.resultStore.list(params) }; }
+  showAgentResult(params: { result_id: string; include_patch?: boolean }) { return this.applyQueue.showAgentResult(params.result_id, Boolean(params.include_patch)); }
+  async applyAgentResults(params: any = {}) { return this.applyQueue.applyAgentResults(params); }
+  rejectAgentResult(params: { result_id: string; reason?: any }) { return this.applyQueue.rejectAgentResult(params.result_id, params.reason ?? "manual_reject"); }
+  async retryAgentResult(params: { result_id: string; reason?: string }, ctx: ExtensionContext) {
+    const stored = this.resultStore.load(params.result_id);
+    const agent = this.registry.get(stored.agent_path);
+    const message = `Your previous patch proposal was rejected because ${params.reason ?? "its assumptions are stale"}.\nRegenerate a patch proposal against the current tree. Do not modify files. Return subagent.result.v1.`;
+    if (!agent || !agent.open || isTerminalStatus(agent.status)) return { result_id: params.result_id, status: "needs_review", reason: "agent_closed" };
+    await this.followupTask({ target: stored.agent_path, message }, ctx);
+    return { result_id: params.result_id, status: "retry_requested" };
   }
 
   // ─── close_agent ───────────────────────────────────────────────
