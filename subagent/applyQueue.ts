@@ -2,9 +2,9 @@ import { execFile as execFileCb } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import path from "node:path";
-import type { ApplyAgentResultsParams, ApplyAgentResultsResult, ApplyRecord, PatchProposalResult, RejectReason, StoredSubagentResult, ValidationCommand, ValidationResult } from "./types.js";
+import type { ApplyAgentResultsParams, ApplyAgentResultsResult, ApplyRecord, PatchProposalResult, RejectReason, RequiredCheck, StoredSubagentResult, ValidationCommand, ValidationResult } from "./types.js";
 import { SubagentResultStore } from "./resultStore.js";
-import { checkBaseFileHashes, detectPublicSurfaceFromPatch, extractTouchedPathsFromPatch } from "./fingerprint.js";
+import { checkBaseFileHashes, detectPublicSurfaceFromPatch, extractTouchedPathsFromPatch, isNewFilePatch, normalizePublicSurfaceDeltas } from "./fingerprint.js";
 import { evaluateSemanticConflict } from "./semanticConflict.js";
 import { keyOfTarget } from "./semantic.js";
 
@@ -49,11 +49,17 @@ export class ApplyQueue {
     const authoritySem = new Set((stored.authority?.semantic_scope ?? []).map(keyOfTarget));
     if (authoritySem.size) for (const t of [...patch.semantic.reads, ...patch.semantic.writes]) if (!authoritySem.has(keyOfTarget(t))) return this.reject(out, stored.result_id, "outside_semantic_scope", t);
 
+    if (stored.authority?.require_base_hash !== false) {
+      const basePaths = new Set(patch.base.files.map((f) => f.path));
+      for (const p of actualTouched) {
+        if (!basePaths.has(p) && !isNewFilePatch(p, patchText)) return this.reject(out, stored.result_id, "base_hash_mismatch", { path: p, reason: "missing_base_hash" });
+      }
+    }
     const base = await checkBaseFileHashes(this.cwd, patch.base.files);
     if (!base.ok) return this.reject(out, stored.result_id, "base_hash_mismatch", base);
 
-    const actualSurface = detectPublicSurfaceFromPatch(patchText);
-    const declaredSurface = new Set(patch.semantic.public_surface_delta.map(surfaceKey));
+    const actualSurface = normalizePublicSurfaceDeltas(detectPublicSurfaceFromPatch(patchText));
+    const declaredSurface = new Set(normalizePublicSurfaceDeltas(patch.semantic.public_surface_delta).map(surfaceKey));
     const undeclared = actualSurface.filter((d) => !declaredSurface.has(surfaceKey(d)));
     if (undeclared.length) return this.reject(out, stored.result_id, "undeclared_public_surface_delta", undeclared);
 
@@ -64,7 +70,9 @@ export class ApplyQueue {
     if (conflict.action === "require_review") return this.review(out, stored.result_id, conflict.reason, conflict);
     if (patch.semantic.risk.level === "high" && !params.allow_high_risk) return this.review(out, stored.result_id, "High semantic risk requires review");
 
-    const validationCommands = [...patch.validation.suggested];
+    const requiredResolution = this.resolveRequiredChecks(patch.validation.required ?? [], patch.validation.suggested);
+    if (!requiredResolution.ok) return this.review(out, stored.result_id, "Required validation check has no command mapping", requiredResolution);
+    const validationCommands = dedupeValidationCommands([...patch.validation.suggested, ...requiredResolution.commands]);
     const disallowed = validationCommands.find((cmd) => !this.isValidationAllowed(cmd, stored));
     if (disallowed) return this.reject(out, stored.result_id, "validation_command_not_allowed", disallowed);
 
@@ -88,7 +96,18 @@ export class ApplyQueue {
   }
   private isValidationAllowed(cmd: ValidationCommand, stored: StoredSubagentResult): boolean {
     const allowed = stored.authority?.allowed_commands ?? [];
-    return allowed.some((a) => JSON.stringify(a) === JSON.stringify(cmd) || (a.kind === "npm_script" && cmd.kind === "npm_script" && a.script === cmd.script) || (a.kind === "shell_allowlisted" && cmd.kind === "shell_allowlisted" && a.command_id === cmd.command_id));
+    return allowed.some((a) => JSON.stringify(a) === JSON.stringify(cmd));
+  }
+  private resolveRequiredChecks(required: RequiredCheck[], suggested: ValidationCommand[]): { ok: true; commands: ValidationCommand[] } | { ok: false; missing: RequiredCheck[] } {
+    const commands: ValidationCommand[] = [];
+    const missing: RequiredCheck[] = [];
+    for (const check of required) {
+      if (check.command) { commands.push(check.command); continue; }
+      const byConvention = suggested.find((cmd) => cmd.kind === "npm_script" && cmd.script === check.kind);
+      if (byConvention) commands.push(byConvention);
+      else missing.push(check);
+    }
+    return missing.length ? { ok: false, missing } : { ok: true, commands };
   }
   private async runValidation(cmd: ValidationCommand): Promise<ValidationResult> {
     try {
@@ -101,6 +120,7 @@ export class ApplyQueue {
 }
 
 function isUnderDir(file: string, dir: string): boolean { const rel = path.relative(path.resolve(dir), path.resolve(file)); return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel); }
+function dedupeValidationCommands(commands: ValidationCommand[]): ValidationCommand[] { const seen = new Set<string>(); const out: ValidationCommand[] = []; for (const c of commands) { const k = JSON.stringify(c); if (!seen.has(k)) { seen.add(k); out.push(c); } } return out; }
 function surfaceKey(d: { surface: string; name: string; change: string }): string { return `${d.surface}:${d.name}:${d.change}`; }
 function withinAny(file: string, scopes: string[]): boolean { if (scopes.length === 0) return true; const norm = file.replace(/\\/g, "/"); return scopes.some((s) => { const scope = s.replace(/\\/g, "/").replace(/\/$/, ""); return norm === scope || norm.startsWith(scope + "/") || (scope.includes("*") && new RegExp("^" + scope.split("*").map(escapeRe).join(".*") + "$" ).test(norm)); }); }
 function escapeRe(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }

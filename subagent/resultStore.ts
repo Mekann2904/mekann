@@ -27,7 +27,7 @@ export class SubagentResultStore {
         canonical.patch.bytes = Buffer.byteLength(body, "utf8");
       }
     }
-    const stored: StoredSubagentResult = { result_id: id, agent_id: agent.agentId, agent_path: agent.agentPath, created_at: Date.now(), status: "pending", result: canonical, authority: agent.authority, authority_enforced: agent.authorityEnforced };
+    const stored: StoredSubagentResult = { result_id: id, agent_id: agent.agentId, agent_path: agent.agentPath, created_at: Date.now(), status: "pending", result: canonical, authority: agent.authority, authority_enforced: agent.authorityEnforced, workspace_cwd: agent.workspaceCwd };
     writeFileSync(this.jsonPath(id), JSON.stringify(stored, null, 2), "utf8");
     return stored;
   }

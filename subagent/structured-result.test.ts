@@ -6,10 +6,10 @@ import { tryParseSubagentResult } from "./resultSchema.js";
 import { resultSummary, SubagentResultStore } from "./resultStore.js";
 import { evaluateSemanticConflict } from "./semanticConflict.js";
 import { ApplyQueue } from "./applyQueue.js";
-import { extractTouchedPathsFromPatch } from "./fingerprint.js";
+import { extractTouchedPathsFromPatch, isNewFilePatch, normalizePublicSurfaceDeltas } from "./fingerprint.js";
 import type { AgentMetadata, PatchProposalResult } from "./types.js";
 
-const agent: AgentMetadata = { agentId: "a1", sessionId: "s1", agentPath: "/root/task", status: "completed", createdAt: 1, updatedAt: 1, depth: 1, open: false, cancellationRequested: false, authority: { mode: "propose_patch", write_scope: ["src"] }, authorityEnforced: true };
+const agent: AgentMetadata = { agentId: "a1", sessionId: "s1", agentPath: "/root/task", status: "completed", createdAt: 1, updatedAt: 1, depth: 1, open: false, cancellationRequested: false, authority: { mode: "propose_patch", write_scope: ["src"], require_base_hash: false }, authorityEnforced: true };
 
 function patch(overrides: Partial<PatchProposalResult> = {}): PatchProposalResult {
   return {
@@ -71,6 +71,30 @@ describe("structured subagent results", () => {
     const q = new ApplyQueue(store, dir);
     const res = await q.applyAgentResults();
     expect(res.rejected[0].reason).toBe("invalid_patch_ref");
+  });
+
+  it("requires base hash for modified files when enabled", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
+    const store = new SubagentResultStore(dir);
+    const strictAgent = { ...agent, authority: { ...agent.authority!, require_base_hash: true } };
+    const stored = store.save(strictAgent, patch());
+    const q = new ApplyQueue(store, dir);
+    const res = await q.applyAgentResults();
+    expect(res.rejected[0].reason).toBe("base_hash_mismatch");
+    expect(res.rejected[0].details).toMatchObject({ reason: "missing_base_hash", path: "src/a.ts" });
+    expect(stored.result_id).toBeTruthy();
+  });
+
+  it("detects new-file patch as base-hash exempt", () => {
+    const text = "diff --git a/src/new.ts b/src/new.ts\n--- /dev/null\n+++ b/src/new.ts\n@@ -0,0 +1 @@\n+new\n";
+    expect(isNewFilePatch("src/new.ts", text)).toBe(true);
+  });
+
+  it("normalizes public surface add/remove pair to modify", () => {
+    expect(normalizePublicSurfaceDeltas([
+      { surface: "typescript_export", name: "Foo", change: "remove", compatibility: "breaking" },
+      { surface: "typescript_export", name: "Foo", change: "add", compatibility: "compatible" },
+    ])).toEqual([{ surface: "typescript_export", name: "Foo", change: "modify", compatibility: "breaking" }]);
   });
 
   it("detects applied-write vs incoming-read semantic conflict", () => {

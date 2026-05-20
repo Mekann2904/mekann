@@ -9,6 +9,8 @@
 - **結果待機**: `wait_agent` で更新が届くまで、またはタイムアウトまで待機
 - **リソース制限**: 最大エージェント数・最大深度・待機タイムアウトを設定可能
 - **ライフサイクル追跡**: ステータス変更と最終結果の自動通知
+- **構造化 patch proposal**: `subagent.result.v1` を ResultStore に保存し、mailbox には `result_id` と summary だけを返す
+- **機械的 apply queue**: patch 本文・authority・base hash・public surface・validation を親側で検証して適用
 - **グレースフルシャットダウン**: エージェントとその子孫をまとめてクローズ
 
 ## インストール
@@ -64,6 +66,10 @@ spawn_agent({
 - `role`: サブエージェントのロール説明。
 - `nickname`: 短い表示名。
 - `fork_turns`: コンテキスト fork 方法（`"none"`（デフォルト）, `"all"`, またはターン数）。
+- `authority`: サブエージェント権限。`read_only` / `propose_patch` / `edit`、`write_scope`、`semantic_scope`、`allowed_commands`、`require_base_hash` などを指定可能。
+- `result_contract`: `"free_text"` または `"subagent_result_v1"`。structured result を要求する場合に指定する。
+
+`propose_patch` では `write` / `edit` / `apply_patch` / `bash` / `request_elevation` を外し、直接編集ではなく unified diff proposal を返す前提にする。external Pi 表示モードでは authority は prompt-only になり得るため、authority 非強制かつ medium/high risk や public surface 変更を含む result は auto apply せず review に回す。
 
 ### `send_message`
 
@@ -113,6 +119,16 @@ list_agents({ path_prefix: "/root/research" })
 close_agent({ target: "/root/research/api_scan" })
 ```
 
+### Structured result / apply tools
+
+- `list_agent_results({ status?, outcome?, agent_path? })` — `.pi/subagent-results/` に保存された structured result を一覧表示
+- `show_agent_result({ result_id, include_patch? })` — result の詳細を表示。`include_patch` 指定時のみ patch 本文も読む
+- `apply_agent_results({ source?, result_ids?, max_results?, rollback_on_failure?, allow_high_risk? })` — pending patch proposal を FIFO で機械的に検証・適用
+- `reject_agent_result({ result_id, reason? })` — result を手動 reject
+- `retry_agent_result({ result_id, reason? })` — 可能なら元 subagent に再生成を依頼
+
+`apply_agent_results` は subagent の自己申告だけを信用しない。保存済み authority と patch 本文から再計算した actual touched paths を照合し、`require_base_hash !== false` の場合は変更対象ごとの base hash を必須にする。ただし `/dev/null -> b/path` の新規ファイル patch は base hash 不要。`validation.required` は `command` または同名 npm script suggestion に解決できない場合 review 扱いになり、validation allowlist は完全一致で判定される。
+
 ## コマンド
 
 - `/agents [prefix]` — サブエージェントの一覧とステータスを表示
@@ -161,6 +177,8 @@ Root Agent (/root)
 ```
 
 各サブエージェントは独立した `AgentSession`（インメモリセッション）で実行される。親はメールボックスシステムを通じて通信する。終了ステータス（`completed`, `errored`, `shutdown`, `interrupted`）は最終状態であり、クローズされたパスは再利用可能。
+
+Structured result は workspace cwd ごとの `.pi/subagent-results/` に保存される。apply queue も tool 実行時の `ctx.cwd` を使うため、extension process の `process.cwd()` ではなく workspace 基準で base hash check / git apply / validation を行う。public surface delta は簡易 detector で再計算し、add/remove の同一 export は modify に正規化してから declared delta と比較する。
 
 ## 使用例
 

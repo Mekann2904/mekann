@@ -418,8 +418,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     label: "List subagent results",
     description: "List stored structured subagent results.",
     parameters: ListAgentResultsSchema,
-    execute: withCtrl(async (ctrl, params) => {
-      const result = ctrl.listAgentResults(params);
+    execute: withCtrl(async (ctrl, params, ctx) => {
+      const result = ctrl.listAgentResults(params, ctx);
       return toolResult(JSON.stringify(result, null, 2), result);
     }),
   });
@@ -429,8 +429,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     label: "Show subagent result",
     description: "Show a stored structured subagent result, optionally including patch content.",
     parameters: ShowAgentResultSchema,
-    execute: withCtrl(async (ctrl, params) => {
-      const result = ctrl.showAgentResult(params);
+    execute: withCtrl(async (ctrl, params, ctx) => {
+      const result = ctrl.showAgentResult(params, ctx);
       return toolResult(JSON.stringify(result, null, 2), result);
     }),
   });
@@ -440,8 +440,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     label: "Apply subagent results",
     description: "Apply pending structured patch proposals from subagents mechanically.",
     parameters: ApplyAgentResultsSchema,
-    execute: withCtrl(async (ctrl, params) => {
-      const result = await ctrl.applyAgentResults(params);
+    execute: withCtrl(async (ctrl, params, ctx) => {
+      const result = await ctrl.applyAgentResults(params, ctx);
       return toolResult(JSON.stringify(result, null, 2), result);
     }),
   });
@@ -451,8 +451,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     label: "Reject subagent result",
     description: "Reject a stored subagent result.",
     parameters: RejectAgentResultSchema,
-    execute: withCtrl(async (ctrl, params) => {
-      const result = ctrl.rejectAgentResult(params);
+    execute: withCtrl(async (ctrl, params, ctx) => {
+      const result = ctrl.rejectAgentResult(params, ctx);
       return toolResult(JSON.stringify(result, null, 2), result);
     }),
   });

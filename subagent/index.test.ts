@@ -978,6 +978,9 @@ describe("extension entry point", () => {
     expect(names).toContain("wait_agent");
     expect(names).toContain("list_agents");
     expect(names).toContain("close_agent");
+    expect(names).toContain("apply_agent_results");
+    expect(names).toContain("list_agent_results");
+    expect(names).toContain("show_agent_result");
   });
 
   it("registers commands", async () => {

@@ -36,6 +36,38 @@ export function extractTouchedPathsFromPatch(patchText: string): string[] {
   return [...paths].sort();
 }
 
+export function isNewFilePatch(filePath: string, patchText: string): boolean {
+  const lines = patchText.split(/\r?\n/);
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (lines[i].startsWith("--- /dev/null") && lines[i + 1].startsWith("+++ ")) {
+      const raw = lines[i + 1].slice(4).split(/\s+/)[0];
+      const cleaned = raw.startsWith("b/") ? raw.slice(2) : raw;
+      if (cleaned === filePath) return true;
+    }
+  }
+  return false;
+}
+
+export function normalizePublicSurfaceDeltas(deltas: PublicSurfaceDelta[]): PublicSurfaceDelta[] {
+  const byTarget = new Map<string, PublicSurfaceDelta[]>();
+  for (const d of deltas) {
+    const key = `${d.surface}:${d.name}`;
+    byTarget.set(key, [...(byTarget.get(key) ?? []), d]);
+  }
+  const out: PublicSurfaceDelta[] = [];
+  for (const group of byTarget.values()) {
+    const add = group.find((d) => d.change === "add");
+    const remove = group.find((d) => d.change === "remove");
+    if (add && remove) {
+      out.push({ surface: add.surface, name: add.name, change: "modify", compatibility: remove.compatibility === "breaking" ? "breaking" : "unknown" });
+      for (const d of group) if (d.change !== "add" && d.change !== "remove") out.push(d);
+    } else {
+      out.push(...group);
+    }
+  }
+  return out;
+}
+
 export function detectPublicSurfaceFromPatch(patchText: string): PublicSurfaceDelta[] {
   const seen = new Set<string>();
   const deltas: PublicSurfaceDelta[] = [];

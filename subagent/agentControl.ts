@@ -93,6 +93,7 @@ export class AgentControl {
   private helloTimeoutMs: number;
   readonly resultStore: SubagentResultStore;
   private applyQueue: ApplyQueue;
+  private storesByCwd = new Map<string, SubagentResultStore>();
 
   constructor(
     pi: import("@earendil-works/pi-coding-agent").ExtensionAPI,
@@ -117,7 +118,7 @@ export class AgentControl {
     this.piCommand = options.piCommand ?? "pi";
     this.extensionPath = options.extensionPath;
     this.helloTimeoutMs = options.helloTimeoutMs ?? 10_000;
-    this.resultStore = new SubagentResultStore(process.cwd());
+    this.resultStore = this.resultStoreFor(process.cwd());
     this.applyQueue = new ApplyQueue(this.resultStore, process.cwd());
     // DEBUG: confirm display mode
     console.error(`[subagent-ext] AgentControl init: displayMode=${this.displayMode}, logDir=${this.logDir}`);
@@ -147,6 +148,17 @@ export class AgentControl {
 
   private evBase(agentId: string, agentPath: string) {
     return { agentId, agentPath, timestamp: Date.now() };
+  }
+
+  private resultStoreFor(cwd: string): SubagentResultStore {
+    const key = path.resolve(cwd);
+    let store = this.storesByCwd.get(key);
+    if (!store) { store = new SubagentResultStore(key); this.storesByCwd.set(key, store); }
+    return store;
+  }
+
+  private applyQueueFor(cwd: string): ApplyQueue {
+    return new ApplyQueue(this.resultStoreFor(cwd), cwd);
   }
 
   private parentAgentId(callerPath: string): string | undefined {
@@ -218,13 +230,13 @@ export class AgentControl {
     return tools.filter((t: any) => !deny.has(t.name));
   }
 
-  private handleFinalText(agentId: string, canonicalPath: string, callerPath: string, finalText: string | undefined, status: AgentStatus): string {
+  private handleFinalText(agentId: string, canonicalPath: string, callerPath: string, finalText: string | undefined, status: AgentStatus, cwd = process.cwd()): string {
     const text = finalText ?? "(agent completed)";
     const parsed = tryParseSubagentResult(text);
     let message = text;
     const agent = this.registry.get(canonicalPath);
     if (parsed.ok && agent) {
-      const stored = this.resultStore.save(agent, parsed.result);
+      const stored = this.resultStoreFor(cwd).save(agent, parsed.result);
       message = resultSummary(stored);
     }
     this.registry.updateStatus(canonicalPath, status, { lastTaskMessage: message });
@@ -361,6 +373,7 @@ export class AgentControl {
         display,
         authority,
         authorityEnforced: true,
+        workspaceCwd: ctx.cwd,
         resultContract,
       };
 
@@ -389,7 +402,7 @@ export class AgentControl {
             ? extractTextFromContent(lastAssistant.content) ?? undefined
             : undefined;
 
-          const finalMessage = this.handleFinalText(agentId, canonicalPath, callerPath, finalText, "completed");
+          const finalMessage = this.handleFinalText(agentId, canonicalPath, callerPath, finalText, "completed", ctx.cwd);
           this.logDisplay(this.registry.get(canonicalPath)?.display, `${finalMessage}\n[status] completed`);
 
           this.runtimes.delete(canonicalPath);
@@ -445,7 +458,7 @@ export class AgentControl {
     const metadata: AgentMetadata = {
       agentId, sessionId: `external:${agentId}`, parentAgentId: callerPath === ROOT_PATH ? "root" : undefined, parentSessionId: "root",
       agentPath: canonicalPath, nickname: params.nickname, role: params.role, status: "pending_init", lastTaskMessage: params.message,
-      createdAt: now, updatedAt: now, depth, open: true, cancellationRequested: false, display, authority, authorityEnforced: false, resultContract: params.result_contract,
+      createdAt: now, updatedAt: now, depth, open: true, cancellationRequested: false, display, authority, authorityEnforced: false, workspaceCwd: ctx.cwd, resultContract: params.result_contract,
     };
     this.registry.registerAgent(metadata, reservation);
     const hub = this.hubFactory(socketPath);
@@ -489,7 +502,7 @@ export class AgentControl {
     if (msg.type === "status") {
       this.registry.updateStatus(agentPath, msg.status);
     } else if (msg.type === "final") {
-      this.handleFinalText(msg.agentId, agentPath, callerPath, msg.message, msg.status);
+      this.handleFinalText(msg.agentId, agentPath, callerPath, msg.message, msg.status, agent.workspaceCwd ?? process.cwd());
       void this.autoCloseExternal(agentPath);
     } else if (msg.type === "error") {
       this.registry.updateStatus(agentPath, "errored");
@@ -668,12 +681,12 @@ export class AgentControl {
     };
   }
 
-  listAgentResults(params: any = {}) { return { results: this.resultStore.list(params) }; }
-  showAgentResult(params: { result_id: string; include_patch?: boolean }) { return this.applyQueue.showAgentResult(params.result_id, Boolean(params.include_patch)); }
-  async applyAgentResults(params: any = {}) { return this.applyQueue.applyAgentResults(params); }
-  rejectAgentResult(params: { result_id: string; reason?: any }) { return this.applyQueue.rejectAgentResult(params.result_id, params.reason ?? "manual_reject"); }
+  listAgentResults(params: any = {}, ctx?: ExtensionContext) { return { results: this.resultStoreFor(ctx?.cwd ?? process.cwd()).list(params) }; }
+  showAgentResult(params: { result_id: string; include_patch?: boolean }, ctx?: ExtensionContext) { return this.applyQueueFor(ctx?.cwd ?? process.cwd()).showAgentResult(params.result_id, Boolean(params.include_patch)); }
+  async applyAgentResults(params: any = {}, ctx?: ExtensionContext) { return this.applyQueueFor(ctx?.cwd ?? process.cwd()).applyAgentResults(params); }
+  rejectAgentResult(params: { result_id: string; reason?: any }, ctx?: ExtensionContext) { return this.applyQueueFor(ctx?.cwd ?? process.cwd()).rejectAgentResult(params.result_id, params.reason ?? "manual_reject"); }
   async retryAgentResult(params: { result_id: string; reason?: string }, ctx: ExtensionContext) {
-    const stored = this.resultStore.load(params.result_id);
+    const stored = this.resultStoreFor(ctx.cwd).load(params.result_id);
     const agent = this.registry.get(stored.agent_path);
     const message = `Your previous patch proposal was rejected because ${params.reason ?? "its assumptions are stale"}.\nRegenerate a patch proposal against the current tree. Do not modify files. Return subagent.result.v1.`;
     if (!agent || !agent.open || isTerminalStatus(agent.status)) return { result_id: params.result_id, status: "needs_review", reason: "agent_closed" };
