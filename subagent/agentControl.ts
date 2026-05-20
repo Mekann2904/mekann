@@ -691,10 +691,15 @@ export class AgentControl {
   async retryAgentResult(params: { result_id: string; reason?: string }, ctx: ExtensionContext) {
     const stored = this.resultStoreFor(ctx.cwd).load(params.result_id);
     const agent = this.registry.get(stored.agent_path);
-    const message = `Your previous patch proposal was rejected because ${params.reason ?? "its assumptions are stale"}.\nRegenerate a patch proposal against the current tree. Do not modify files. Return subagent.result.v1.`;
-    if (!agent || !agent.open || isTerminalStatus(agent.status)) return { result_id: params.result_id, status: "needs_review", reason: "agent_closed" };
-    await this.followupTask({ target: stored.agent_path, message }, ctx);
-    return { result_id: params.result_id, status: "retry_requested" };
+    const message = `Your previous patch proposal was rejected because ${params.reason ?? "its assumptions are stale"}.\nOriginal result_id: ${params.result_id}\nRegenerate a patch proposal against the current tree. Do not modify files. Return subagent.result.v1.`;
+    if (agent && agent.open && !isTerminalStatus(agent.status)) {
+      await this.followupTask({ target: stored.agent_path, message }, ctx);
+      return { result_id: params.result_id, status: "retry_requested", mode: "followup" };
+    }
+    const base = stored.agent_path.replace(/^\/root\/?/, "") || "retry";
+    const retryName = `${base}/retry_${Date.now().toString(36)}`;
+    const spawned = await this.spawn({ task_name: retryName, message, authority: stored.authority, result_contract: "subagent_result_v1" }, ctx);
+    return { result_id: params.result_id, status: "retry_spawned", mode: "spawn", spawned };
   }
 
   // ─── close_agent ───────────────────────────────────────────────

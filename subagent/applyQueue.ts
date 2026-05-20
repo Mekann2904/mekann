@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 import type { ApplyAgentResultsParams, ApplyAgentResultsResult, ApplyRecord, PatchProposalResult, RejectReason, RequiredCheck, StoredSubagentResult, ValidationCommand, ValidationResult } from "./types.js";
 import { SubagentResultStore } from "./resultStore.js";
-import { checkBaseFileHashes, detectPublicSurfaceFromPatch, extractTouchedPathsFromPatch, isNewFilePatch, normalizePublicSurfaceDeltas, safeRepoRelativePath } from "./fingerprint.js";
+import { checkBaseFileHashes, detectPublicSurfaceFromPatch, extractTouchedPathsFromPatchStrict, isNewFilePatch, normalizePublicSurfaceDeltas, safeRepoRelativePath } from "./fingerprint.js";
 import { evaluateSemanticConflict } from "./semanticConflict.js";
 import { keyOfTarget } from "./semantic.js";
 
@@ -38,6 +38,7 @@ export class ApplyQueue {
     if (r.outcome === "no_change" || r.outcome === "observation") { this.store.markSuperseded(stored.result_id, r.outcome); out.skipped.push({ result_id: stored.result_id, reason: r.outcome }); return; }
     if (r.outcome === "needs_decision") return this.review(out, stored.result_id, r.question);
     if (r.outcome === "blocked") return this.reject(out, stored.result_id, "manual_reject", r.reason);
+    this.store.markApplying(stored.result_id);
     const patch = r as PatchProposalResult;
     const ref = patch.patch.ref;
     if (!ref || !isUnderDir(ref, this.store.dir)) return this.reject(out, stored.result_id, "invalid_patch_ref");
@@ -46,7 +47,9 @@ export class ApplyQueue {
     const patchBytes = patch.patch.bytes ?? Buffer.byteLength(patchText, "utf8");
     if (patchBytes > maxBytes) return this.reject(out, stored.result_id, "patch_too_large", { bytes: patchBytes, maxBytes });
 
-    const actualTouched = extractTouchedPathsFromPatch(patchText);
+    const extractedTouched = extractTouchedPathsFromPatchStrict(patchText);
+    if (!extractedTouched.ok) return this.reject(out, stored.result_id, "declared_touched_paths_mismatch", extractedTouched);
+    const actualTouched = extractedTouched.paths;
     const declaredTouched = patch.scope.touched_paths.map((p) => safeRepoRelativePath(p)).filter((p): p is string => Boolean(p)).sort();
     if (declaredTouched.length !== patch.scope.touched_paths.length) return this.reject(out, stored.result_id, "declared_touched_paths_mismatch", { reason: "unsafe_declared_path", declared: patch.scope.touched_paths });
     for (const f of patch.base.files) if (!safeRepoRelativePath(f.path)) return this.reject(out, stored.result_id, "base_hash_mismatch", { path: f.path, reason: "unsafe_base_path" });

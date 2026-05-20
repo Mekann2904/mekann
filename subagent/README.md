@@ -125,9 +125,9 @@ close_agent({ target: "/root/research/api_scan" })
 - `show_agent_result({ result_id, include_patch? })` — result の詳細を表示。`include_patch` 指定時のみ patch 本文も読む
 - `apply_agent_results({ source?, result_ids?, max_results?, rollback_on_failure?, allow_high_risk? })` — pending patch proposal を FIFO で機械的に検証・適用
 - `reject_agent_result({ result_id, reason? })` — result を手動 reject
-- `retry_agent_result({ result_id, reason? })` — 可能なら元 subagent に再生成を依頼
+- `retry_agent_result({ result_id, reason? })` — 元 subagent が生存中なら followup、終了済みなら `<元path>/retry_<id>` に新規 retry subagent を spawn
 
-`apply_agent_results` は subagent の自己申告だけを信用しない。保存済み authority と patch 本文から再計算した actual touched paths を照合し、repo-relative path validator で absolute path / `..` traversal / NUL を拒否する。`write_scope` 未指定または external Pi などで `authority_enforced=false` の result は auto apply せず review に回す。`require_base_hash !== false` の場合は変更対象ごとの base hash を必須にする。ただし `/dev/null -> b/path` の新規ファイル patch は base hash 不要。`validation.required` は `command` または同名 npm script suggestion に解決できない場合 review 扱いになり、validation allowlist は完全一致で判定される。`result_id` は `sar_<base36time>_<counter>` 形式のみ受け付け、path traversal を拒否する。
+`apply_agent_results` は subagent の自己申告だけを信用しない。保存済み authority と patch 本文から再計算した actual touched paths を照合し、repo-relative path validator で absolute path / `..` traversal / NUL を拒否する。patch 本文内の unsafe path は silent ignore せず、その場で reject する。`write_scope` 未指定または external Pi などで `authority_enforced=false` の result は auto apply せず review に回す。`require_base_hash !== false` の場合は変更対象ごとの base hash を必須にする。ただし `/dev/null -> b/path` の新規ファイル patch は base hash 不要。`validation.required` は `command` または同名 npm script suggestion に解決できない場合 review 扱いになり、validation allowlist は完全一致で判定される。`result_id` は `sar_<base36time>_<counter>` 形式のみ受け付け、path traversal を拒否する。
 
 ## コマンド
 

@@ -11,9 +11,19 @@ const targetKinds = ["symbol", "type", "api_route", "graphql_field", "db_table",
 function validTarget(v: unknown): boolean { return isObj(v) && oneOf(v.kind, targetKinds) && isStr(v.name); }
 function validFileFingerprint(v: unknown): boolean { return isObj(v) && isStr(v.path) && isStr(v.hash); }
 function validValidationCommand(v: unknown): boolean { return isObj(v) && ((v.kind === "npm_script" && isStr(v.script) && (v.args === undefined || isStrArr(v.args))) || (v.kind === "shell_allowlisted" && isStr(v.command_id) && (v.args === undefined || isStrArr(v.args)))); }
-function validPublicSurfaceDelta(v: unknown): boolean { return isObj(v) && isStr(v.surface) && isStr(v.name) && oneOf(v.change, ["add", "remove", "modify"] as const) && oneOf(v.compatibility, ["compatible", "breaking", "unknown"] as const); }
-function validAssumption(v: unknown): boolean { return isObj(v) && isStr(v.kind) && validTarget(v.target) && isStr(v.expected) && (v.fingerprint === undefined || isStr(v.fingerprint)); }
-function validEffect(v: unknown): boolean { return isObj(v) && oneOf(v.kind, ["api_contract", "data_model", "behavior", "config", "side_effect", "test_expectation"] as const) && validTarget(v.target) && (v.compatibility === undefined || oneOf(v.compatibility, ["backward_compatible", "breaking", "unknown"] as const)); }
+const surfaceKinds = ["typescript_export", "rest_api", "graphql_schema", "database_schema", "config_schema", "cli", "event_payload", "file_format"] as const;
+const assumptionKinds = ["symbol_signature", "data_shape", "behavior", "config_value", "dependency_version", "feature_flag", "test_contract"] as const;
+function validPublicSurfaceDelta(v: unknown): boolean { return isObj(v) && oneOf(v.surface, surfaceKinds) && isStr(v.name) && oneOf(v.change, ["add", "remove", "modify"] as const) && oneOf(v.compatibility, ["compatible", "breaking", "unknown"] as const); }
+function validAssumption(v: unknown): boolean { return isObj(v) && oneOf(v.kind, assumptionKinds) && validTarget(v.target) && isStr(v.expected) && (v.fingerprint === undefined || isStr(v.fingerprint)); }
+function validEffect(v: unknown): boolean {
+  if (!isObj(v) || !oneOf(v.kind, ["api_contract", "data_model", "behavior", "config", "side_effect", "test_expectation"] as const) || !validTarget(v.target)) return false;
+  if (v.kind === "api_contract") return oneOf(v.change, ["add", "remove", "modify"] as const) && oneOf(v.compatibility, ["backward_compatible", "breaking", "unknown"] as const);
+  if (v.kind === "data_model") return oneOf(v.change, ["add", "remove", "rename", "type_change", "semantic_change"] as const) && oneOf(v.compatibility, ["backward_compatible", "breaking", "unknown"] as const);
+  if (v.kind === "behavior") return isStr(v.description) && oneOf(v.compatibility, ["backward_compatible", "breaking", "unknown"] as const);
+  if (v.kind === "config") return oneOf(v.change, ["add", "remove", "modify"] as const) && oneOf(v.compatibility, ["backward_compatible", "breaking", "unknown"] as const);
+  if (v.kind === "side_effect") return oneOf(v.operation, ["read", "write", "delete", "network", "db"] as const);
+  return oneOf(v.change, ["add", "modify", "remove"] as const);
+}
 
 export function tryParseSubagentResult(text: string): ParseResult {
   let raw: unknown;

@@ -31,7 +31,9 @@ export function safeRepoRelativePath(p: string): string | undefined {
   return normalized;
 }
 
-export function extractTouchedPathsFromPatch(patchText: string): string[] {
+export type ExtractTouchedPathsResult = { ok: true; paths: string[] } | { ok: false; reason: "unsafe_patch_path"; path: string };
+
+export function extractTouchedPathsFromPatchStrict(patchText: string): ExtractTouchedPathsResult {
   const paths = new Set<string>();
   for (const line of patchText.split(/\r?\n/)) {
     if (!line.startsWith("--- ") && !line.startsWith("+++ ")) continue;
@@ -39,9 +41,15 @@ export function extractTouchedPathsFromPatch(patchText: string): string[] {
     if (raw === "/dev/null") continue;
     const cleaned = raw.startsWith("a/") || raw.startsWith("b/") ? raw.slice(2) : raw;
     const safe = safeRepoRelativePath(cleaned);
-    if (safe) paths.add(safe);
+    if (!safe) return { ok: false, reason: "unsafe_patch_path", path: cleaned };
+    paths.add(safe);
   }
-  return [...paths].sort();
+  return { ok: true, paths: [...paths].sort() };
+}
+
+export function extractTouchedPathsFromPatch(patchText: string): string[] {
+  const extracted = extractTouchedPathsFromPatchStrict(patchText);
+  return extracted.ok ? extracted.paths : [];
 }
 
 export function isNewFilePatch(filePath: string, patchText: string): boolean {

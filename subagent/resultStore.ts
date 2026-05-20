@@ -41,6 +41,7 @@ export class SubagentResultStore {
     return readdirSync(this.dir).filter((f) => /^sar_.*\.json$/.test(f)).map((f) => JSON.parse(readFileSync(path.join(this.dir, f), "utf8")) as StoredSubagentResult).filter((s) => (!filter.status || s.status === filter.status) && (!filter.outcome || s.result.outcome === filter.outcome) && (!filter.agent_path || s.agent_path === filter.agent_path)).sort((a,b)=>a.created_at-b.created_at);
   }
   private saveStored(stored: StoredSubagentResult): void { writeFileSync(this.jsonPath(stored.result_id), JSON.stringify(stored, null, 2), "utf8"); }
+  markApplying(resultId: string): void { const s = this.load(resultId); s.status = "applying"; this.saveStored(s); }
   markApplied(resultId: string, applyRecord: ApplyRecord): void { const s = this.load(resultId); s.status = "applied"; s.apply_record = applyRecord; this.saveStored(s); }
   markRejected(resultId: string, reason: RejectReason): void { const s = this.load(resultId); s.status = "rejected"; s.reject_reason = reason; this.saveStored(s); }
   markNeedsReview(resultId: string, reason: string, details?: unknown): void { const s = this.load(resultId); s.status = "needs_review"; s.review_record = { result_id: resultId, reason, details }; this.saveStored(s); }

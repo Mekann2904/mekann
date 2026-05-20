@@ -6,7 +6,7 @@ import { tryParseSubagentResult } from "./resultSchema.js";
 import { assertValidResultId, resultSummary, SubagentResultStore } from "./resultStore.js";
 import { evaluateSemanticConflict } from "./semanticConflict.js";
 import { ApplyQueue } from "./applyQueue.js";
-import { extractTouchedPathsFromPatch, isNewFilePatch, normalizePublicSurfaceDeltas, safeRepoRelativePath } from "./fingerprint.js";
+import { extractTouchedPathsFromPatch, extractTouchedPathsFromPatchStrict, isNewFilePatch, normalizePublicSurfaceDeltas, safeRepoRelativePath } from "./fingerprint.js";
 import type { AgentMetadata, PatchProposalResult } from "./types.js";
 
 const agent: AgentMetadata = { agentId: "a1", sessionId: "s1", agentPath: "/root/task", status: "completed", createdAt: 1, updatedAt: 1, depth: 1, open: false, cancellationRequested: false, authority: { mode: "propose_patch", write_scope: ["src"], require_base_hash: false }, authorityEnforced: true };
@@ -104,6 +104,10 @@ describe("structured subagent results", () => {
   it("rejects invalid risk level in schema", () => {
     const bad = patch({ semantic: { ...patch().semantic, risk: { level: "banana" as any } } });
     expect(tryParseSubagentResult(JSON.stringify(bad)).ok).toBe(false);
+  });
+
+  it("strict touched path extraction rejects unsafe patch paths", () => {
+    expect(extractTouchedPathsFromPatchStrict("--- a/../outside.ts\n+++ b/../outside.ts\n")).toEqual({ ok: false, reason: "unsafe_patch_path", path: "../outside.ts" });
   });
 
   it("rejects unsafe repo-relative paths", () => {
