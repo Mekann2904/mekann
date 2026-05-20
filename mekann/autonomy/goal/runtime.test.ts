@@ -109,23 +109,40 @@ describe("GoalRuntime", () => {
     // Time: 5 seconds
     expect(updated.time_used_seconds).toBe(5);
 
-    // Advance another 3 seconds and send duplicate timestamp — should be deduped
+    // Advance another 3 seconds and send a distinct message with the same
+    // timestamp. It should still be counted because timestamp alone is not a
+    // safe dedupe key.
     vi.advanceTimersByTime(3000);
     runtime.onMessageEnd(
       {
         message: {
           role: "assistant",
-          timestamp: 12345, // same timestamp
+          timestamp: 12345, // same timestamp, different usage
           usage: { input: 200, output: 100, cacheRead: 0 },
         },
       },
       ctx,
     );
 
-    // Should not have double-counted
-    const afterDup = store.getGoal()!;
-    expect(afterDup.tokens_used).toBe(150);
-    expect(afterDup.time_used_seconds).toBe(5);
+    const afterSameTimestamp = store.getGoal()!;
+    expect(afterSameTimestamp.tokens_used).toBe(450);
+    expect(afterSameTimestamp.time_used_seconds).toBe(8);
+
+    // Exact duplicate event should not be double-counted.
+    runtime.onMessageEnd(
+      {
+        message: {
+          role: "assistant",
+          timestamp: 12345,
+          usage: { input: 200, output: 100, cacheRead: 0 },
+        },
+      },
+      ctx,
+    );
+
+    const afterExactDup = store.getGoal()!;
+    expect(afterExactDup.tokens_used).toBe(450);
+    expect(afterExactDup.time_used_seconds).toBe(8);
   });
 
   // ─── 3. cached input is excluded from token delta ────────────

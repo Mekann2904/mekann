@@ -382,6 +382,16 @@ export async function executeLog(
 		ledgerErrors.push(`legacy jsonl: ${e instanceof Error ? e.message : String(e)}`);
 	}
 
+	if (params.status === "keep") {
+		const gr = gitAutoCommit(ctx.cwd, `autoresearch log: ${params.description}\n\nResult: ${JSON.stringify({ status: params.status, [state.metricName]: effectiveMetric, metricSource: entry.metricSource })}`);
+		if (gr.committed) {
+			commit = gr.commit ?? commit;
+			entry.postCommit = commit;
+		} else if (gr.error) {
+			ledgerErrors.push(`post-log git commit: ${gr.error}`);
+		}
+	}
+
 	store.lastLoggedRun = run;
 	store.updateWidget(ctx);
 	if (matchedPiRunId) store.runResultMap.delete(matchedPiRunId);

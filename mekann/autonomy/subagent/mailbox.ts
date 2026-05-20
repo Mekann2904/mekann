@@ -7,6 +7,8 @@
 
 import type { LifecycleEvent, MailboxItem } from "./types.js";
 
+const MAX_RETAINED_RECORDS = 10_000;
+
 export class Mailbox {
   private seq = 0;
   private items: MailboxItem[] = [];
@@ -23,6 +25,7 @@ export class Mailbox {
   enqueue(item: Omit<MailboxItem, "seq">): MailboxItem {
     const full: MailboxItem = { ...item, seq: ++this.seq };
     this.items.push(full);
+    this.pruneRetainedRecords();
     this.notifyWaiters((ap) => ap === item.toAgentPath);
     return full;
   }
@@ -33,6 +36,7 @@ export class Mailbox {
   appendEvent(event: LifecycleEvent): void {
     (event as any).seq = ++this.seq;
     this.events.push(event);
+    this.pruneRetainedRecords();
     // Notify based on the event's agentPath
     const agentPath =
       "agentPath" in event ? (event as any).agentPath as string : undefined;
@@ -141,6 +145,15 @@ export class Mailbox {
   }
 
   // ─── Internal ────────────────────────────────────────────────
+
+  private pruneRetainedRecords(): void {
+    if (this.items.length > MAX_RETAINED_RECORDS) {
+      this.items = this.items.slice(-MAX_RETAINED_RECORDS);
+    }
+    if (this.events.length > MAX_RETAINED_RECORDS) {
+      this.events = this.events.slice(-MAX_RETAINED_RECORDS);
+    }
+  }
 
   private notifyWaiters(filter?: (agentPath: string) => boolean): void {
     for (const waiter of this.waiters) {

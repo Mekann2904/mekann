@@ -6,6 +6,16 @@ export type CacheFriendlyPromptConfig = { includeBaseSystemPromptInStableHash: b
 const DEFAULT_CONFIG: CacheFriendlyPromptConfig = { includeBaseSystemPromptInStableHash: true, logRequests: true, notifyOnWarnings: false };
 type LastState = { effectiveStablePrefixText: string; effectiveStablePrefixHash: string; fragmentHashes: PromptFragmentHash[]; warnings: PromptInspectionWarning[]; };
 const stateByRun = new Map<string, LastState>();
+const MAX_RUN_STATES = 128;
+function rememberRunState(key: string, state: LastState): void {
+  stateByRun.delete(key);
+  stateByRun.set(key, state);
+  while (stateByRun.size > MAX_RUN_STATES) {
+    const oldest = stateByRun.keys().next().value;
+    if (oldest === undefined) break;
+    stateByRun.delete(oldest);
+  }
+}
 function contextCwd(event: any, ctx: any): string { return event?.systemPromptOptions?.cwd ?? ctx?.cwd ?? process.cwd(); }
 function modelProvider(ctx: any): string | undefined { return ctx?.model?.provider; }
 function modelId(ctx: any): string | undefined { return ctx?.model?.id; }
@@ -42,7 +52,7 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
     const fragments = await collectPromptFragments({ cwd: contextCwd(event, ctx), provider: modelProvider(ctx), model: modelId(ctx) });
     const rendered = renderPromptFragments(fragments);
     const effectiveStablePrefixText = cfg.includeBaseSystemPromptInStableHash ? [event.systemPrompt, rendered.stableText].filter(Boolean).join("\n\n") : rendered.stableText;
-    stateByRun.set(runKey(event, ctx), { effectiveStablePrefixText, effectiveStablePrefixHash: sha256(effectiveStablePrefixText), fragmentHashes: rendered.fragmentHashes, warnings: effectivePrefixWarnings(rendered.warnings, effectiveStablePrefixText) });
+    rememberRunState(runKey(event, ctx), { effectiveStablePrefixText, effectiveStablePrefixHash: sha256(effectiveStablePrefixText), fragmentHashes: rendered.fragmentHashes, warnings: effectivePrefixWarnings(rendered.warnings, effectiveStablePrefixText) });
     return { systemPrompt: [event.systemPrompt, rendered.stableText, rendered.semiStableText].filter(Boolean).join("\n\n") };
   });
 
@@ -54,7 +64,7 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
     const key = runKey(event, ctx);
     const prev = stateByRun.get(key) ?? stateByRun.get(ctx?.cwd ?? "");
     const effectiveStablePrefixText = prev?.effectiveStablePrefixText ?? "";
-    stateByRun.set(key, { effectiveStablePrefixText, effectiveStablePrefixHash: prev?.effectiveStablePrefixHash ?? "", fragmentHashes: rendered.fragmentHashes, warnings: mergeWarnings(prev?.warnings ?? [], effectivePrefixWarnings(rendered.warnings, effectiveStablePrefixText)) });
+    rememberRunState(key, { effectiveStablePrefixText, effectiveStablePrefixHash: prev?.effectiveStablePrefixHash ?? "", fragmentHashes: rendered.fragmentHashes, warnings: mergeWarnings(prev?.warnings ?? [], effectivePrefixWarnings(rendered.warnings, effectiveStablePrefixText)) });
     if (!rendered.dynamicText.trim()) return { messages };
     return { messages: [...messages, { role: "user", customType: "cache-friendly-dynamic-context", content: [{ type: "text", text: rendered.dynamicText }] }] };
   });

@@ -47,6 +47,15 @@ subagent で特定の同じテストタスク（npm test）を実行し、実行
 - §11 実装済みテーブルに extractJSON / getActiveTools 修正を追加
 - §12 Claim 4 を更新（「実装済み≠動作確認済」の教訓）
 
+### ラウンド7: バグ修正 + テスト実行（未記録）
+- subagent/mailbox と cache-friendly-prompt の無制限蓄積を bounded retention 化
+- goal runtime の assistant message dedupe を timestamp 単独から usage 含む key に変更
+- autoresearch runner の `generatePiRunId` が 100回 git を叩いて `runner.test.ts` timeout していたため、短時間 git hash cache を追加
+- `gitAutoCommit` 後は hash cache を invalidate しないと postCommit 判定が古い hash になり、auto commit 済みでも「変更なし」と表示されることを発見・修正
+- keep log の legacy JSONL 書き込み後にも auto commit を行い、記録ファイルが未コミットで残る問題を修正
+- `npm test` 全体: すべて成功（autoresearch 598 tests / goal 217 tests / subagent 256 tests 等）
+- 注意: 現セッションでは autoresearch モードが inactive で、`autoresearch_run` / `autoresearch_log` は tool guard により拒否された。次回は `/autoresearch on` 後に同じ実験を正式記録する。
+
 ## Memo
 
 - 次セッション開始時にやること:

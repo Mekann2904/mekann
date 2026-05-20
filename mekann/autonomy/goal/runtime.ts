@@ -29,8 +29,8 @@ export class GoalRuntime {
   budget_limit_reported_goal_id: string | null = null;
   /** Wall-clock baseline (ms since epoch) for time accounting. */
   last_accounted_wall_clock: number | null = null;
-  /** Set of assistant message timestamps already accounted for tokens. */
-  private accounted_assistant_timestamps: Set<number> = new Set();
+  /** Set of assistant message usage events already accounted for tokens. */
+  private accounted_assistant_usage_keys: Set<string> = new Set();
   /** Whether plan mode is active (suppresses continuation). */
   inPlanMode = false;
   /** Whether budget steering is suppressed for the current turn. */
@@ -87,16 +87,18 @@ export class GoalRuntime {
     if (msg.role !== "assistant") return;
     if (!msg.usage) return;
 
-    // Deduplicate by timestamp
-    const ts = msg.timestamp;
-    if (this.accounted_assistant_timestamps.has(ts)) return;
-    this.accounted_assistant_timestamps.add(ts);
+    // Deduplicate exact repeated message_end events. Timestamp alone is not
+    // unique enough: two distinct assistant messages can be emitted in the same
+    // millisecond, so include usage fields in the key.
+    const usage = msg.usage;
+    const usageKey = [msg.timestamp, usage.input ?? 0, usage.output ?? 0, usage.cacheRead ?? 0].join(":");
+    if (this.accounted_assistant_usage_keys.has(usageKey)) return;
+    this.accounted_assistant_usage_keys.add(usageKey);
 
     const goal = this.store.getGoal();
     if (!goal || goal.status !== "active") return;
 
     // Token delta: exclude cached input tokens
-    const usage = msg.usage;
     const tokenDelta = Math.max(0, (usage.input ?? 0) - (usage.cacheRead ?? 0)) + (usage.output ?? 0);
 
     // Also account accumulated wall-clock time
@@ -328,7 +330,7 @@ export class GoalRuntime {
     this.continuation_active = false;
     this.budget_limit_reported_goal_id = null;
     this.last_accounted_wall_clock = null;
-    this.accounted_assistant_timestamps.clear();
+    this.accounted_assistant_usage_keys.clear();
     this.inPlanMode = false;
     this.suppress_budget_steering = false;
   }

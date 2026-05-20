@@ -78,6 +78,8 @@ const OUTPUT_MAX_BYTES = 4 * 1024; // 4KB
 const CAPTURE_MAX_BYTES = 1024 * 1024; // 1MB
 const CHECKS_OUTPUT_MAX_LINES = 80;
 const DEFAULT_CHECKS_TIMEOUT_SECONDS = 300;
+const GIT_SHORT_HASH_CACHE_MS = 1_000;
+const gitShortHashCache = new Map<string, { value: string; expiresAt: number }>();
 
 // ---------------------------------------------------------------------------
 // Truncation
@@ -466,11 +468,17 @@ export async function runArgvCommand(
 // ---------------------------------------------------------------------------
 
 export function getGitShortHash(cwd: string): string {
+	const key = path.resolve(cwd);
+	const cached = gitShortHashCache.get(key);
+	if (cached && cached.expiresAt > Date.now()) return cached.value;
+	let value = "unknown";
 	try {
-		return gitExecSync(["rev-parse", "--short", "HEAD"], cwd).trim();
+		value = gitExecSync(["rev-parse", "--short", "HEAD"], cwd).trim();
 	} catch {
-		return "unknown";
+		value = "unknown";
 	}
+	gitShortHashCache.set(key, { value, expiresAt: Date.now() + GIT_SHORT_HASH_CACHE_MS });
+	return value;
 }
 
 /** Get the full commit hash. */
@@ -797,12 +805,23 @@ export function gitAutoCommit(cwd: string, message: string): { committed: boolea
 			":(exclude)autoresearch.plan.md",
 		], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
 
+		const rootAutoresearchFiles = [
+			"autoresearch.jsonl",
+			"autoresearch.md",
+			"autoresearch.sh",
+			"autoresearch.checks.sh",
+		].filter((f) => fs.existsSync(path.join(cwd, f)));
+		if (rootAutoresearchFiles.length > 0) {
+			execFileSync("git", ["add", "-f", "--", ...rootAutoresearchFiles], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
+		}
+
 		try {
 			gitCheckSync(["diff", "--cached", "--quiet"], cwd);
 			return { committed: false };
 		} catch { /* diff あり → commit */ }
 
 		gitCheckSync(["commit", "-m", message], cwd, 10_000);
+		gitShortHashCache.delete(path.resolve(cwd));
 		return { committed: true, commit: getGitShortHash(cwd) };
 	} catch (e) {
 		return { committed: false, error: e instanceof Error ? e.message : String(e) };
