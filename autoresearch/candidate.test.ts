@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import { computeContractHash, type AutoresearchContractV1, type LockFile } from "./contractV1.js";
 import { writeState } from "./layout.js";
-import { applyCandidate, importSubagentResultsAsCandidates, listCandidates } from "./candidate.js";
+import { applyCandidate, applyCandidateIsolated, candidateChangedFiles, candidateEventsPath, importSubagentResultsAsCandidates, listCandidates } from "./candidate.js";
 
 function tmpRepo(): string {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arc-test-"));
@@ -54,6 +54,21 @@ describe("autoresearch candidates", () => {
 		const applied = applyCandidate(cwd, c, lock(c), res.imported[0].candidate_id);
 		expect(applied.status).toBe("trial_applied");
 		expect(fs.readFileSync(path.join(cwd, "src", "a.txt"), "utf8")).toBe("hello\n");
+		const events = fs.readFileSync(candidateEventsPath(cwd, applied.candidate_id), "utf8").trim().split(/\n/).map((l) => JSON.parse(l));
+		expect(events.map((e) => e.to)).toEqual(["pending", "trial_applied"]);
+	});
+
+	it("applies candidate in isolated worktree without dirtying main tree", () => {
+		const cwd = tmpRepo();
+		const patch = "diff --git a/src/a.txt b/src/a.txt\nnew file mode 100644\nindex 0000000..257cc56\n--- /dev/null\n+++ b/src/a.txt\n@@ -0,0 +1 @@\n+hello\n";
+		writeSubagentPatch(cwd, patch);
+		const c = contract(); const res = importSubagentResultsAsCandidates(cwd, c, lock(c), { source: "pending" });
+		const applied = applyCandidateIsolated(cwd, c, lock(c), res.imported[0].candidate_id);
+		expect(applied.status).toBe("trial_applied");
+		expect(applied.trial?.mode).toBe("isolated_worktree");
+		expect(fs.existsSync(path.join(cwd, "src", "a.txt"))).toBe(false);
+		expect(candidateChangedFiles(cwd)).toEqual([]);
+		expect(fs.readFileSync(path.join(applied.trial!.worktree_path!, "src", "a.txt"), "utf8")).toBe("hello\n");
 	});
 
 	it("skips non-patch and forbidden candidates", () => {

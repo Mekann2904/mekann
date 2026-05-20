@@ -23,6 +23,8 @@ export interface AutoresearchCandidateV1 {
 	status: CandidateStatus;
 	created_at: number;
 	updated_at: number;
+	trial?: { mode: "main_worktree" | "isolated_worktree"; worktree_path?: string; created_at?: number; removed_at?: number };
+	materialization?: { replayed_to_main?: boolean; commit?: string };
 	decision?: { run_id?: string; metric?: number | null; reason?: string; commit?: string };
 }
 
@@ -47,7 +49,15 @@ export function assertCandidateId(id: string): void { if (!/^arc_[a-z0-9]+_[0-9]
 export function readCandidate(cwd: string, id: string): AutoresearchCandidateV1 { return JSON.parse(fs.readFileSync(candidatePath(cwd, id), "utf8")); }
 export function writeCandidate(cwd: string, c: AutoresearchCandidateV1): void { fs.mkdirSync(candidateDir(cwd, c.candidate_id), { recursive: true }); fs.writeFileSync(candidatePath(cwd, c.candidate_id), JSON.stringify({ ...c, updated_at: Date.now() }, null, 2) + "\n", "utf8"); }
 export function listCandidates(cwd: string): AutoresearchCandidateV1[] { const dir = candidatesDir(cwd); if (!fs.existsSync(dir)) return []; return fs.readdirSync(dir).flatMap((id) => { try { return [readCandidate(cwd, id)]; } catch { return []; } }).sort((a,b)=>a.created_at-b.created_at); }
-export function updateCandidateStatus(cwd: string, id: string, status: CandidateStatus, decision?: AutoresearchCandidateV1["decision"]): AutoresearchCandidateV1 { const c = readCandidate(cwd, id); c.status = status; if (decision) c.decision = { ...(c.decision ?? {}), ...decision }; writeCandidate(cwd, c); return readCandidate(cwd, id); }
+export function candidateEventsPath(cwd: string, id: string): string { return path.join(candidateDir(cwd, id), "events.jsonl"); }
+export function appendCandidateEvent(cwd: string, id: string, entry: { from?: CandidateStatus; to: CandidateStatus; reason?: string; details?: Record<string, unknown> }): void { fs.mkdirSync(candidateDir(cwd, id), { recursive: true }); fs.appendFileSync(candidateEventsPath(cwd, id), JSON.stringify({ timestamp: Date.now(), candidate_id: id, ...entry }) + "\n", "utf8"); }
+const allowedTransitions: Partial<Record<CandidateStatus, CandidateStatus[]>> = {
+	pending: ["leased", "trial_applied", "rejected_policy", "stale_base", "paused_dirty"],
+	leased: ["trial_applied", "rejected_policy", "stale_base", "paused_dirty"],
+	trial_applied: ["evaluating", "paused_dirty", "discarded"],
+	evaluating: ["kept", "discarded", "paused_dirty", "stale_base"],
+};
+export function updateCandidateStatus(cwd: string, id: string, status: CandidateStatus, decision?: AutoresearchCandidateV1["decision"], details?: Record<string, unknown>): AutoresearchCandidateV1 { const c = readCandidate(cwd, id); const from = c.status; const allowed = allowedTransitions[from]; if (from !== status && allowed && !allowed.includes(status)) throw new Error(`invalid candidate status transition: ${from} -> ${status}`); c.status = status; if (decision) c.decision = { ...(c.decision ?? {}), ...decision }; writeCandidate(cwd, c); appendCandidateEvent(cwd, id, { from, to: status, reason: decision?.reason, details }); return readCandidate(cwd, id); }
 
 export function extractTouchedPathsFromPatch(patch: string): string[] {
 	const paths = new Set<string>();
@@ -116,6 +126,7 @@ export function importSubagentResultsAsCandidates(cwd: string, contract: Autores
 			fs.writeFileSync(candidatePatchPath(cwd, c.candidate_id), patchText, "utf8");
 			fs.writeFileSync(path.join(candidateDir(cwd, c.candidate_id), "source-result.json"), JSON.stringify(stored, null, 2) + "\n", "utf8");
 			writeCandidate(cwd, c);
+			appendCandidateEvent(cwd, c.candidate_id, { to: "pending", reason: "candidate escrow", details: { result_id: id } });
 			result.imported.push(readCandidate(cwd, c.candidate_id)); existing.push(c);
 		} catch (e) { result.skipped.push({ result_id: id, reason: "error", details: e instanceof Error ? e.message : String(e) }); }
 	}
@@ -138,7 +149,53 @@ export function applyCandidate(cwd: string, contract: AutoresearchContractV1, lo
 	const expected = [...c.touched_paths].sort();
 	const scope = validateTouchedAgainstContract(changed, contract);
 	if (JSON.stringify(changed) !== JSON.stringify(expected) || !scope.ok) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`applied changed files mismatch: expected ${expected.join(",")}, actual ${changed.join(",")}`); }
+	c.trial = { mode: "main_worktree", created_at: Date.now() };
+	writeCandidate(cwd, c);
 	return updateCandidateStatus(cwd, candidateId, "trial_applied");
+}
+
+export function candidateWorktreePath(cwd: string, candidateId: string): string { return path.join(cwd, ".pi", "autoresearch-worktrees", candidateId); }
+export function createCandidateWorktree(cwd: string, c: AutoresearchCandidateV1): string {
+	const wt = candidateWorktreePath(cwd, c.candidate_id);
+	fs.mkdirSync(path.dirname(wt), { recursive: true });
+	if (!fs.existsSync(wt)) execFileSync("git", ["worktree", "add", wt, c.base_git_commit], { cwd, stdio: ["ignore", "pipe", "pipe"] });
+	return wt;
+}
+export function removeCandidateWorktree(cwd: string, c: AutoresearchCandidateV1): void {
+	const wt = c.trial?.worktree_path ?? candidateWorktreePath(cwd, c.candidate_id);
+	try { execFileSync("git", ["worktree", "remove", "--force", wt], { cwd, stdio: ["ignore", "pipe", "pipe"] }); } catch { if (fs.existsSync(wt)) fs.rmSync(wt, { recursive: true, force: true }); }
+	c.trial = { ...(c.trial ?? { mode: "isolated_worktree" as const }), removed_at: Date.now() };
+	writeCandidate(cwd, c);
+}
+export function applyCandidateIsolated(cwd: string, contract: AutoresearchContractV1, lock: LockFile, candidateId: string): AutoresearchCandidateV1 {
+	const c = readCandidate(cwd, candidateId);
+	if (c.status !== "pending") throw new Error(`candidate status must be pending: ${c.status}`);
+	if (c.contract_hash !== lock.contractHash || computeContractHash(contract) !== c.contract_hash) { updateCandidateStatus(cwd, candidateId, "rejected_policy"); throw new Error("candidate contract hash mismatch"); }
+	if (fullHead(cwd) !== c.base_git_commit) { updateCandidateStatus(cwd, candidateId, "stale_base"); throw new Error("candidate base git commit is stale"); }
+	const dirty = candidateChangedFiles(cwd); if (dirty.length) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`working tree is dirty: ${dirty.join(", ")}`); }
+	const wt = createCandidateWorktree(cwd, c);
+	const patchPath = candidatePatchPath(cwd, candidateId);
+	execFileSync("git", ["apply", "--check", patchPath], { cwd: wt, stdio: ["ignore", "pipe", "pipe"] });
+	execFileSync("git", ["apply", patchPath], { cwd: wt, stdio: ["ignore", "pipe", "pipe"] });
+	const changed = candidateChangedFiles(wt); const expected = [...c.touched_paths].sort();
+	const scope = validateTouchedAgainstContract(changed, contract);
+	if (JSON.stringify(changed) !== JSON.stringify(expected) || !scope.ok) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`isolated changed files mismatch: expected ${expected.join(",")}, actual ${changed.join(",")}`); }
+	c.trial = { mode: "isolated_worktree", worktree_path: wt, created_at: Date.now() };
+	writeCandidate(cwd, c);
+	return updateCandidateStatus(cwd, candidateId, "trial_applied");
+}
+export function replayCandidateToMain(cwd: string, contract: AutoresearchContractV1, candidateId: string): AutoresearchCandidateV1 {
+	const c = readCandidate(cwd, candidateId);
+	if (fullHead(cwd) !== c.base_git_commit) { updateCandidateStatus(cwd, candidateId, "stale_base"); throw new Error("candidate base git commit is stale"); }
+	const dirty = candidateChangedFiles(cwd); if (dirty.length) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`main working tree is dirty: ${dirty.join(", ")}`); }
+	const patchPath = candidatePatchPath(cwd, candidateId);
+	execFileSync("git", ["apply", "--check", patchPath], { cwd, stdio: ["ignore", "pipe", "pipe"] });
+	execFileSync("git", ["apply", patchPath], { cwd, stdio: ["ignore", "pipe", "pipe"] });
+	const changed = candidateChangedFiles(cwd); const expected = [...c.touched_paths].sort(); const scope = validateTouchedAgainstContract(changed, contract);
+	if (JSON.stringify(changed) !== JSON.stringify(expected) || !scope.ok) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error("replayed changed files mismatch"); }
+	c.materialization = { ...(c.materialization ?? {}), replayed_to_main: true };
+	writeCandidate(cwd, c);
+	return readCandidate(cwd, candidateId);
 }
 
 export function assertCandidateReadyForRun(cwd: string, contract: AutoresearchContractV1, lock: LockFile, candidateId: string): AutoresearchCandidateV1 {

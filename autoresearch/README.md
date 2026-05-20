@@ -73,7 +73,9 @@ mekann/autoresearch は、この2つを組み合わせます。
 | `autoresearch_approve`         | plan の contract block を validate し、baseline を測定する                    |
 | `autoresearch_run`             | コマンドを実行し、結果を測定する                                                     |
 | `autoresearch_candidate_escrow` | pending subagent patch result を plan-scoped candidate として凍結する             |
-| `autoresearch_apply_candidate` | candidate を一時適用する。subagent result は `applied` にしない                    |
+| `autoresearch_apply_candidate` | candidate を main worktree に一時適用する。subagent result は `applied` にしない                    |
+| `autoresearch_apply_candidate_isolated` | candidate を `.pi/autoresearch-worktrees/<candidateId>` に一時適用する |
+| `autoresearch_suggest_subagents` | current contract から scout/proposer/critic の spawn payload を提案する |
 | `autoresearch_list_candidates` / `autoresearch_show_candidate` / `autoresearch_reject_candidate` | candidate を確認・棄却する |
 | `autoresearch_run_contract`    | contract に従って checks/benchmark/repeats/aggregate/acceptance を実行する      |
 | `autoresearch_log`             | 結果を記録し、`keep` / `discard` を判断する                                      |
@@ -506,7 +508,9 @@ pending candidate を 1 件だけ trial apply します。`apply_agent_results` 
 | --- | -- | --- |
 | `candidate_id` | 必須 | `arc_...` candidate ID |
 
-関連 tool: `autoresearch_list_candidates`, `autoresearch_show_candidate`, `autoresearch_reject_candidate`。
+関連 tool: `autoresearch_apply_candidate_isolated`, `autoresearch_list_candidates`, `autoresearch_show_candidate`, `autoresearch_reject_candidate`, `autoresearch_suggest_subagents`。
+
+`autoresearch_apply_candidate_isolated` は main worktree を汚さず、`.pi/autoresearch-worktrees/<candidateId>` に candidate patch を適用します。`autoresearch_run_contract({ candidate_id })` は candidate の trial mode に応じて main / isolated worktree のどちらかを評価し、isolated keep の場合だけ main に replay して commit します。
 
 ---
 

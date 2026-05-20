@@ -16,6 +16,8 @@ import {
 	appendContractMetric,
 	filterInternalPaths,
 	resolveCwdInsideRepo,
+	checkVisibility,
+	checkPhase,
 	type AutoresearchContractV1,
 } from "../contractV1.js";
 import { isGitRepo } from "../contract.js";
@@ -28,7 +30,7 @@ import {
 	gitAutoRevert,
 	getChangedFiles,
 } from "../runner.js";
-import { assertCandidateReadyForRun, candidateChangedFiles, candidateDir, readCandidate, updateCandidateStatus } from "../candidate.js";
+import { assertCandidateReadyForRun, candidateChangedFiles, candidateDir, readCandidate, removeCandidateWorktree, replayCandidateToMain, updateCandidateStatus } from "../candidate.js";
 import { SubagentResultStore } from "../../subagent/resultStore.js";
 import { isBestMetric } from "../state.js";
 import { appendToJsonl, type RunsLedgerEntry } from "../state.js";
@@ -98,25 +100,28 @@ export async function executeRunContract(
 		}
 	}
 
+	const evaluationCwd = candidate?.trial?.mode === "isolated_worktree" && candidate.trial.worktree_path ? candidate.trial.worktree_path : ctx.cwd;
+
 	// Pre-check state (logged for diagnostics only)
-	const preChangedFiles = getChangedFiles(ctx.cwd);
+	const preChangedFiles = getChangedFiles(evaluationCwd);
 
 	logRunEvent("contract_run_started", { reason: params.reason, iterationLabel: params.iteration_label, candidate_id: params.candidate_id, preChangedFilesCount: preChangedFiles.length });
 
 	// --- Run checks ---
 	const checkResults = new Map<string, boolean>();
 	for (const check of contract.evaluation.checks) {
-		const checkCwd = resolveCwdInsideRepo(ctx.cwd, check.command.cwd);
+		const checkCwd = resolveCwdInsideRepo(evaluationCwd, check.command.cwd);
 		const checkResult = await runArgvCommand(
 			{ argv: check.command.argv, cwd: checkCwd, env: check.command.env },
 			check.timeoutSeconds * 1000,
 			signal,
 		);
 		checkResults.set(check.name, checkResult.passed);
+		logRunEvent("check_run_completed", { name: check.name, visibility: checkVisibility(check), phase: checkPhase(check), passed: checkResult.passed, exitCode: checkResult.exitCode, timedOut: checkResult.timedOut });
 	}
 
 	// --- Run benchmark repeats ---
-	const benchmarkCwd = resolveCwdInsideRepo(ctx.cwd, contract.evaluation.benchmark.command.cwd);
+	const benchmarkCwd = resolveCwdInsideRepo(evaluationCwd, contract.evaluation.benchmark.command.cwd);
 	const measurements: number[] = [];
 	let benchmarkSucceeded = true;
 	let benchmarkTimedOut = false;
@@ -141,15 +146,15 @@ export async function executeRunContract(
 	// This catches mutations made by checks or benchmark scripts.
 	// Filter internal paths (.autoresearch/**, .pi/**) from changedFiles
 	// since these are audit artifacts, not candidate patches.
-	const changedFiles = filterInternalPaths(getChangedFiles(ctx.cwd));
-	const immutableResult = await computeImmutableReadSetHash(ctx.cwd, contract.scope.immutableReadPaths);
+	const changedFiles = filterInternalPaths(getChangedFiles(evaluationCwd));
+	const immutableResult = await computeImmutableReadSetHash(evaluationCwd, contract.scope.immutableReadPaths);
 	const immutableReadSetHashMatches = immutableResult.hash === lock.environment.immutableReadSetHash;
 
 	logRunEvent("post_state_captured", { candidate_id: params.candidate_id, postChangedFilesCount: changedFiles.length, immutableHashMatch: immutableReadSetHashMatches });
 
 	if (candidate) {
 		const expected = [...candidate.touched_paths].sort();
-		const actual = candidateChangedFiles(ctx.cwd);
+		const actual = candidateChangedFiles(evaluationCwd);
 		if (JSON.stringify(expected) !== JSON.stringify(actual)) {
 			updateCandidateStatus(ctx.cwd, candidate.candidate_id, "paused_dirty");
 			appendDecision(ctx.cwd, {
@@ -191,7 +196,7 @@ export async function executeRunContract(
 		reason: evaluatorResult.reason,
 		metric: evaluatorResult.representativeMetric,
 		reference: evaluatorResult.reference,
-		details: { ...evaluatorResult.details, measurements, changedFiles, reason: params.reason, iterationLabel: params.iteration_label, candidate_id: params.candidate_id },
+		details: { ...evaluatorResult.details, measurements, changedFiles, reason: params.reason, iterationLabel: params.iteration_label, candidate_id: params.candidate_id, checks: contract.evaluation.checks.map((c) => ({ name: c.name, visibility: checkVisibility(c), phase: checkPhase(c) })) },
 	});
 
 	// --- Append to runs.jsonl and metrics.jsonl for audit ---
@@ -262,6 +267,10 @@ export async function executeRunContract(
 	} catch { /* best effort */ }
 
 	if (evaluatorResult.decision === "keep") {
+		if (candidate?.trial?.mode === "isolated_worktree") {
+			try { replayCandidateToMain(ctx.cwd, contract, candidate.candidate_id); }
+			catch (e) { updateCandidateStatus(ctx.cwd, candidate.candidate_id, "paused_dirty", { reason: e instanceof Error ? e.message : String(e) }); return store.textDetails(`[PAUSE] isolated candidate replay failed: ${e instanceof Error ? e.message : String(e)}`, { decision: "pause", candidate_id: candidate.candidate_id }); }
+		}
 		const gr = gitAutoCommit(
 			ctx.cwd,
 			`[autoresearch] ${params.reason ?? "contract run"}\n\nDecision: keep\nMetric: ${evaluatorResult.representativeMetric}\nImprovement: ${evaluatorResult.improvement}\nRate: ${evaluatorResult.improvementRate}`,
@@ -294,7 +303,8 @@ export async function executeRunContract(
 		} catch { /* best effort: in-memory state is still valid for this session */ }
 
 		if (candidate) {
-			updateCandidateStatus(ctx.cwd, candidate.candidate_id, "kept", { metric: evaluatorResult.representativeMetric, reason: evaluatorResult.reason, commit: gr.commit });
+			const latestCandidate = updateCandidateStatus(ctx.cwd, candidate.candidate_id, "kept", { metric: evaluatorResult.representativeMetric, reason: evaluatorResult.reason, commit: gr.commit });
+			if (latestCandidate.trial?.mode === "isolated_worktree") removeCandidateWorktree(ctx.cwd, latestCandidate);
 			try {
 				const source = JSON.parse(fs.readFileSync(path.join(candidateDir(ctx.cwd, candidate.candidate_id), "source-result.json"), "utf8"));
 				if (source.result?.outcome === "patch") {
@@ -316,10 +326,14 @@ export async function executeRunContract(
 		text += `\n次の候補を実装して、再度 autoresearch_run_contract を実行してください。`;
 		return store.textDetails(text, { decision: "keep", metric: evaluatorResult.representativeMetric, reference: evaluatorResult.reference, improvement: evaluatorResult.improvement, improvementRate: evaluatorResult.improvementRate, commit: gr.commit });
 	} else if (evaluatorResult.decision === "discard") {
-		const rv = gitAutoRevert(ctx.cwd);
-		if (!rv.reverted) {
-			logRunEvent("revert_failed", { error: rv.error });
-			return store.textDetails(`[PAUSE] revert に失敗しました: ${rv.error}\n手動介入が必要です。`, { decision: "pause", error: rv.error });
+		if (candidate?.trial?.mode === "isolated_worktree") {
+			removeCandidateWorktree(ctx.cwd, candidate);
+		} else {
+			const rv = gitAutoRevert(ctx.cwd);
+			if (!rv.reverted) {
+				logRunEvent("revert_failed", { error: rv.error });
+				return store.textDetails(`[PAUSE] revert に失敗しました: ${rv.error}\n手動介入が必要です。`, { decision: "pause", error: rv.error });
+			}
 		}
 
 		store.state.runCount++;

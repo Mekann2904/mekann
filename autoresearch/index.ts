@@ -100,8 +100,9 @@ import { executeRun } from "./tools/run.js";
 import { executeLog } from "./tools/log.js";
 import { executeApprove } from "./tools/approve.js";
 import { executeRunContract } from "./tools/runContract.js";
-import { executeApplyCandidate, executeCandidateEscrow, executeListCandidates, executeRejectCandidate, executeShowCandidate } from "./tools/candidates.js";
+import { executeApplyCandidate, executeApplyCandidateIsolated, executeCandidateEscrow, executeListCandidates, executeRejectCandidate, executeShowCandidate } from "./tools/candidates.js";
 import { handleCommand } from "./tools/commandHandler.js";
+import { suggestSubagents } from "./subagentPlanning.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -584,6 +585,27 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		description: "Apply one pending autoresearch candidate as a trial patch. Does not mark subagent result applied.",
 		parameters: Type.Object({ candidate_id: Type.String() }),
 		async execute(_tc, params, _signal, _ou, ctx) { return executeApplyCandidate(store, params, ctx); },
+	});
+
+	pi.registerTool({
+		name: "autoresearch_suggest_subagents",
+		label: "autoresearch suggest subagents",
+		description: "Suggest scout/proposer/critic subagent spawn payloads derived from the current contract.",
+		parameters: Type.Object({}),
+		async execute(_tc, _params, _signal, _ou, ctx) {
+			const contract = readCurrentContract(ctx.cwd);
+			if (!contract) return store.textResponse("[ERROR] current contract が見つかりません。");
+			const result = suggestSubagents(contract);
+			return store.textDetails(JSON.stringify(result, null, 2), result as Record<string, unknown>);
+		},
+	});
+
+	pi.registerTool({
+		name: "autoresearch_apply_candidate_isolated",
+		label: "autoresearch apply candidate isolated",
+		description: "Apply one pending candidate in .pi/autoresearch-worktrees/<candidateId> for isolated evaluation.",
+		parameters: Type.Object({ candidate_id: Type.String() }),
+		async execute(_tc, params, _signal, _ou, ctx) { return executeApplyCandidateIsolated(store, params, ctx); },
 	});
 
 	// ─── Tool: autoresearch_run_contract ───────────────────────

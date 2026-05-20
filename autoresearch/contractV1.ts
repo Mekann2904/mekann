@@ -2,6 +2,8 @@
  * autoresearch/contractV1.ts — Barrel re-export for contractV1/ modules.
  */
 
+export { visibleChecks, evaluatorOnlyChecks, contractViewForAgent, checkVisibility, checkPhase } from "./contractV1/agentView.js";
+
 export {
 	AutoresearchContractV1Schema, type AutoresearchContractV1,
 	type ContractV1ValidationResult, validateContractV1,

@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { readCurrentContract, readLockFile } from "../contractV1.js";
-import { applyCandidate, candidateDir, candidatePatchPath, importSubagentResultsAsCandidates, listCandidates, readCandidate, updateCandidateStatus } from "../candidate.js";
+import { applyCandidate, applyCandidateIsolated, candidateDir, candidatePatchPath, importSubagentResultsAsCandidates, listCandidates, readCandidate, updateCandidateStatus } from "../candidate.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ToolResponse, SessionStore } from "./sessionStore.js";
 
@@ -43,4 +43,11 @@ export function executeApplyCandidate(store: SessionStore, params: ApplyCandidat
 	if (!contract || !lock) return store.textResponse("[ERROR] current contract / lock file が見つかりません。先に autoresearch_approve を実行してください。");
 	try { const c = applyCandidate(ctx.cwd, contract, lock, params.candidate_id); return store.textDetails(JSON.stringify(c, null, 2), c as unknown as Record<string, unknown>); }
 	catch (e) { return store.textResponse(`[ERROR] apply candidate failed: ${e instanceof Error ? e.message : String(e)}`); }
+}
+
+export function executeApplyCandidateIsolated(store: SessionStore, params: ApplyCandidateParams, ctx: ExtensionContext): ToolResponse {
+	const contract = readCurrentContract(ctx.cwd); const lock = readLockFile(ctx.cwd);
+	if (!contract || !lock) return store.textResponse("[ERROR] current contract / lock file が見つかりません。先に autoresearch_approve を実行してください。");
+	try { const c = applyCandidateIsolated(ctx.cwd, contract, lock, params.candidate_id); return store.textDetails(JSON.stringify(c, null, 2), c as unknown as Record<string, unknown>); }
+	catch (e) { return store.textResponse(`[ERROR] apply candidate isolated failed: ${e instanceof Error ? e.message : String(e)}`); }
 }

@@ -65,6 +65,8 @@ const CheckSchema = Type.Object(
 		command: CommandSchema,
 		timeoutSeconds: Type.Number({ minimum: 1 }),
 		required: Type.Boolean(),
+		visibility: Type.Optional(Type.Union([Type.Literal("agent_visible"), Type.Literal("evaluator_only")])),
+		phase: Type.Optional(Type.Union([Type.Literal("pre_benchmark"), Type.Literal("post_benchmark")])),
 	},
 	{ additionalProperties: false },
 );
