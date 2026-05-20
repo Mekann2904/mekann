@@ -22,6 +22,7 @@ pi の subagent 機能を実際に呼び出し（spawn_agent, followup_task, sen
 - pi プロセスは起動時に拡張機能をロードする。コード修正は次回セッション開始まで反映されない
 - in-process (kitty-log) では authority が enforced。外部 Pi (kitty-split) では enforced=false
 - `filterToolsByAuthority`: edit=全ツール, その他=readOnlyAllow のみ
+- `getActiveTools()` はツールオブジェクト配列を返す。文字列配列ではない (commit 6d8b1c8 で修正)
 
 ## 試したこと
 
@@ -34,7 +35,12 @@ pi の subagent 機能を実際に呼び出し（spawn_agent, followup_task, sen
 - extractJSON の code-block-in-prose 対応を修正
 - 実際の LLM 出力サンプルで unit test 検証: 256 テスト全パス
 - **制約発見**: 実行中の pi セッションではコード修正が反映されない
-- 次回セッション開始時に subagent 実証テストを再実行する必要あり
+
+### ラウンド5: P5 bash 除外の根因修正 (commit 6d8b1c8)
+- **subagent 調査で発見**: `getActiveTools()` の戻り値がツールオブジェクト配列なのに `new Set(parentActiveTools)` に入れて `has(toolName)` で検索 → 常に false
+- **影響**: in-process subagent が getActiveTools() を返す環境では全ツールが削除される
+- **修正**: `.map(t => t.name)` を追加して文字列 Set に変換
+- 256 テスト全パス
 
 ## Memo
 
@@ -42,3 +48,4 @@ pi の subagent 機能を実際に呼び出し（spawn_agent, followup_task, sen
   1. observation outcome + code block wrapping の実証（ResultStore 保存確認）
   2. propose_patch + preamble example の効果確認
   3. retry_agent_result の outcome 応答メッセージ確認
+  4. getActiveTools 修正の実証（edit 権限で bash が含まれるか）
