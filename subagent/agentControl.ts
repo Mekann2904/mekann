@@ -92,7 +92,6 @@ export class AgentControl {
   private extensionPath?: string;
   private helloTimeoutMs: number;
   readonly resultStore: SubagentResultStore;
-  private applyQueue: ApplyQueue;
   private storesByCwd = new Map<string, SubagentResultStore>();
 
   constructor(
@@ -119,9 +118,6 @@ export class AgentControl {
     this.extensionPath = options.extensionPath;
     this.helloTimeoutMs = options.helloTimeoutMs ?? 10_000;
     this.resultStore = this.resultStoreFor(process.cwd());
-    this.applyQueue = new ApplyQueue(this.resultStore, process.cwd());
-    // DEBUG: confirm display mode
-    console.error(`[subagent-ext] AgentControl init: displayMode=${this.displayMode}, logDir=${this.logDir}`);
 
     // Forward registry events to mailbox
     this.registry.subscribe((event) => {

@@ -25,9 +25,11 @@ export async function checkBaseFileHashes(cwd: string, files: FileFingerprint[])
 }
 
 export function safeRepoRelativePath(p: string): string | undefined {
-  if (!p || p.includes("\0") || path.isAbsolute(p)) return undefined;
+  if (!p || p.includes("\0") || /^[A-Za-z]:[\\/]/.test(p) || path.isAbsolute(p)) return undefined;
   const normalized = path.posix.normalize(p.replace(/\\/g, "/"));
   if (normalized === "." || normalized.startsWith("../") || normalized.includes("/../")) return undefined;
+  if (normalized === ".git" || normalized.startsWith(".git/")) return undefined;
+  if (normalized === ".pi" || normalized.startsWith(".pi/subagent-results/")) return undefined;
   return normalized;
 }
 
@@ -90,11 +92,28 @@ export function detectPublicSurfaceFromPatch(patchText: string): PublicSurfaceDe
   const add = (d: PublicSurfaceDelta) => { const k = `${d.surface}:${d.name}:${d.change}`; if (!seen.has(k)) { seen.add(k); deltas.push(d); } };
   const lines = patchText.split(/\r?\n/);
   let current = "";
+  let deletedFile = false;
   for (const line of lines) {
-    if (line.startsWith("+++ b/")) current = line.slice(6);
+    if (line.startsWith("diff --git ")) {
+      const m = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+      current = safeRepoRelativePath(m?.[2] ?? "") ?? safeRepoRelativePath(m?.[1] ?? "") ?? "";
+      deletedFile = false;
+      continue;
+    }
+    if (line.startsWith("--- a/")) {
+      current = safeRepoRelativePath(line.slice(6).split(/\s+/)[0]) ?? current;
+      continue;
+    }
+    if (line.startsWith("+++ b/")) {
+      current = safeRepoRelativePath(line.slice(6).split(/\s+/)[0]) ?? current;
+      deletedFile = false;
+      continue;
+    }
+    if (line.startsWith("+++ /dev/null")) { deletedFile = true; continue; }
     const rel = current;
-    if (/^(package\.json|tsconfig.*\.json)$/.test(path.basename(rel))) add({ surface: "config_schema", name: rel, change: "modify", compatibility: "unknown" });
-    if (/migrations\//.test(rel) || /schema\.graphql$/.test(rel) || /openapi\./.test(rel) || /routes\//.test(rel)) add({ surface: rel.includes("graphql") ? "graphql_schema" : rel.includes("openapi") || rel.includes("routes/") ? "rest_api" : "database_schema", name: rel, change: "modify", compatibility: "unknown" });
+    if (!rel) continue;
+    if (/^(package\.json|tsconfig.*\.json)$/.test(path.basename(rel))) add({ surface: "config_schema", name: rel, change: deletedFile ? "remove" : "modify", compatibility: "unknown" });
+    if (/migrations\//.test(rel) || /schema\.graphql$/.test(rel) || /openapi\./.test(rel) || /routes\//.test(rel)) add({ surface: rel.includes("graphql") ? "graphql_schema" : rel.includes("openapi") || rel.includes("routes/") ? "rest_api" : "database_schema", name: rel, change: deletedFile ? "remove" : "modify", compatibility: "unknown" });
     if ((line.startsWith("+") || line.startsWith("-")) && !line.startsWith("+++") && !line.startsWith("---") && /\.(tsx?|mts|cts)$/.test(rel)) {
       const m = line.slice(1).match(/export\s+(?:async\s+)?(function|class|interface|type|const|enum)\s+([A-Za-z0-9_$]+)/);
       if (m) add({ surface: "typescript_export", name: m[2], change: line.startsWith("+") ? "add" : "remove", compatibility: line.startsWith("+") ? "compatible" : "breaking" });

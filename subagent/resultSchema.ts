@@ -11,6 +11,7 @@ const targetKinds = ["symbol", "type", "api_route", "graphql_field", "db_table",
 function validTarget(v: unknown): boolean { return isObj(v) && oneOf(v.kind, targetKinds) && isStr(v.name); }
 function validFileFingerprint(v: unknown): boolean { return isObj(v) && isStr(v.path) && isStr(v.hash); }
 function validValidationCommand(v: unknown): boolean { return isObj(v) && ((v.kind === "npm_script" && isStr(v.script) && (v.args === undefined || isStrArr(v.args))) || (v.kind === "shell_allowlisted" && isStr(v.command_id) && (v.args === undefined || isStrArr(v.args)))); }
+function validRequiredCheck(v: unknown): boolean { return isObj(v) && oneOf(v.kind, ["typecheck", "unit_test", "affected_test", "contract_test", "public_surface_diff", "invariant"] as const) && (v.target === undefined || isStr(v.target)) && (v.command === undefined || validValidationCommand(v.command)); }
 const surfaceKinds = ["typescript_export", "rest_api", "graphql_schema", "database_schema", "config_schema", "cli", "event_payload", "file_format"] as const;
 const assumptionKinds = ["symbol_signature", "data_shape", "behavior", "config_value", "dependency_version", "feature_flag", "test_contract"] as const;
 function validPublicSurfaceDelta(v: unknown): boolean { return isObj(v) && oneOf(v.surface, surfaceKinds) && isStr(v.name) && oneOf(v.change, ["add", "remove", "modify"] as const) && oneOf(v.compatibility, ["compatible", "breaking", "unknown"] as const); }
@@ -42,7 +43,7 @@ export function tryParseSubagentResult(text: string): ParseResult {
     if (!isObj(raw.base) || !isArr(raw.base.files) || !raw.base.files.every(validFileFingerprint)) return { ok: false, error: "base.files is required and must contain path/hash strings" };
     if (!isObj(raw.scope) || !isStrArr(raw.scope.allowed_paths) || !isStrArr(raw.scope.touched_paths)) return { ok: false, error: "scope allowed/touched paths are required string arrays" };
     if (!isObj(raw.semantic) || !isArr(raw.semantic.reads) || !raw.semantic.reads.every(validTarget) || !isArr(raw.semantic.writes) || !raw.semantic.writes.every(validTarget) || !isArr(raw.semantic.assumptions) || !raw.semantic.assumptions.every(validAssumption) || !isArr(raw.semantic.effects) || !raw.semantic.effects.every(validEffect) || !isArr(raw.semantic.public_surface_delta) || !raw.semantic.public_surface_delta.every(validPublicSurfaceDelta) || !isObj(raw.semantic.risk) || !oneOf(raw.semantic.risk.level, ["low", "medium", "high"] as const)) return { ok: false, error: "valid semantic metadata is required" };
-    if (!isObj(raw.validation) || !isArr(raw.validation.suggested) || !raw.validation.suggested.every(validValidationCommand)) return { ok: false, error: "validation.suggested must contain valid validation commands" };
+    if (!isObj(raw.validation) || !isArr(raw.validation.suggested) || !raw.validation.suggested.every(validValidationCommand) || (raw.validation.required !== undefined && (!isArr(raw.validation.required) || !raw.validation.required.every(validRequiredCheck)))) return { ok: false, error: "validation must contain valid suggested commands and required checks" };
   } else if (raw.outcome === "blocked") {
     if (!isStr(raw.reason)) return { ok: false, error: "reason is required" };
   } else if (raw.outcome === "needs_decision") {
