@@ -225,8 +225,9 @@ export class AgentControl {
   }
 
   private filterToolsByAuthority(tools: any[], authority: SubagentAuthority): any[] {
-    const deny = new Set(authority.mode === "read_only" ? ["write", "edit", "apply_patch", "bash", "request_elevation"] : authority.mode === "propose_patch" ? ["write", "edit", "apply_patch", "bash", "request_elevation"] : []);
-    return tools.filter((t: any) => !deny.has(t.name));
+    if (authority.mode === "edit") return tools;
+    const readOnlyAllow = new Set(["read", "grep", "glob", "ls", "list", "search", "rg", "find", "get_goal", "list_agents", "wait_agent"]);
+    return tools.filter((t: any) => readOnlyAllow.has(t.name));
   }
 
   private handleFinalText(agentId: string, canonicalPath: string, callerPath: string, finalText: string | undefined, status: AgentStatus, cwd = process.cwd()): string {

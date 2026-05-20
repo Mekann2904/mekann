@@ -127,7 +127,7 @@ close_agent({ target: "/root/research/api_scan" })
 - `reject_agent_result({ result_id, reason? })` — result を手動 reject
 - `retry_agent_result({ result_id, reason? })` — 元 subagent が生存中なら followup、終了済みなら `<元path>/retry_<id>` に新規 retry subagent を spawn
 
-`apply_agent_results` は subagent の自己申告だけを信用しない。保存済み authority と patch 本文から再計算した actual touched paths を照合し、repo-relative path validator で absolute path / Windows drive-letter path / `.git` / `.pi/subagent-results` / `..` traversal / NUL を拒否する。patch 本文内の unsafe path は silent ignore せず、その場で reject する。`write_scope` 未指定または external Pi などで `authority_enforced=false` の result は auto apply せず review に回す。`require_base_hash !== false` の場合は変更対象ごとの base hash を必須にする。ただし `/dev/null -> b/path` の新規ファイル patch は base hash 不要。`validation.required` は `command` または同名 npm script suggestion に解決できない場合 review 扱いになり、validation allowlist は完全一致で判定される。`result_id` は `sar_<base36time>_<counter>` 形式のみ受け付け、path traversal を拒否する。
+`apply_agent_results` は subagent の自己申告だけを信用しない。保存済み authority と patch 本文から再計算した actual touched paths を照合し、repo-relative path validator で absolute path / Windows drive-letter path / `.git/**` / `.pi/**` / `..` traversal / NUL を拒否する。patch 本文内の unsafe path は silent ignore せず、その場で reject する。`write_scope` 未指定または external Pi などで `authority_enforced=false` の result は auto apply せず review に回す。`require_base_hash !== false` の場合は変更対象ごとの base hash を必須にする。ただし `/dev/null -> b/path` の新規ファイル patch は base hash 不要。`validation.required` は `command` または同名 npm script suggestion に解決できない場合 review 扱いになり、validation allowlist は完全一致で判定される。`result_id` は `sar_<base36time>_<counter>` 形式のみ受け付け、path traversal を拒否する。
 
 ## コマンド
 
@@ -178,7 +178,7 @@ Root Agent (/root)
 
 各サブエージェントは独立した `AgentSession`（インメモリセッション）で実行される。親はメールボックスシステムを通じて通信する。終了ステータス（`completed`, `errored`, `shutdown`, `interrupted`）は最終状態であり、クローズされたパスは再利用可能。
 
-Structured result は workspace cwd ごとの `.pi/subagent-results/` に保存される。apply queue も tool 実行時の `ctx.cwd` を使うため、extension process の `process.cwd()` ではなく workspace 基準で base hash check / git apply / validation を行う。Result schema は enum / path/hash / semantic target kind / semantic assumptions/effects / validation command / validation.required を検証し、public surface delta は `diff --git` ベースの簡易 detector で再計算する。add/remove の同一 export は modify に正規化してから declared delta と比較する。
+Structured result は workspace cwd ごとの `.pi/subagent-results/` に保存される。apply queue も tool 実行時の `ctx.cwd` を使うため、extension process の `process.cwd()` ではなく workspace 基準で base hash check / git apply / validation を行う。Result schema は enum / path/hash / semantic target kind / semantic assumptions/effects / validation command / validation.required を検証し、stored result も load/list 境界で再検証する。壊れた stored JSON は list では skip し、apply/show の direct load では error にする。public surface delta は `diff --git` ベースの簡易 detector で再計算する。add/remove の同一 export は modify に正規化してから declared delta と比較する。
 
 ## 使用例
 

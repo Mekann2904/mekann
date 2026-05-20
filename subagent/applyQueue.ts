@@ -23,6 +23,7 @@ export class ApplyQueue {
   }
   rejectAgentResult(resultId: string, reason: RejectReason = "manual_reject") { this.store.markRejected(resultId, reason); return { result_id: resultId, reason }; }
   async applyAgentResults(params: ApplyAgentResultsParams = {}): Promise<ApplyAgentResultsResult> {
+    this.store.recoverStaleApplying();
     const result: ApplyAgentResultsResult = { applied: [], rejected: [], needs_review: [], skipped: [] };
     const items = (params.source === "result_ids" ? (params.result_ids ?? []).map((id) => this.store.load(id)) : this.store.list({ status: "pending" })).slice(0, params.max_results ?? Infinity);
     for (const stored of items) {

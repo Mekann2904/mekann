@@ -69,8 +69,7 @@ describe("structured subagent results", () => {
     if (stored.result.outcome !== "patch") throw new Error("expected patch");
     writeFileSync(path.join(store.dir, `${stored.result_id}.json`), JSON.stringify({ ...stored, result: { ...stored.result, patch: { format: "unified_diff", ref: "/tmp/outside.patch" } } }), "utf8");
     const q = new ApplyQueue(store, dir);
-    const res = await q.applyAgentResults();
-    expect(res.rejected[0].reason).toBe("invalid_patch_ref");
+    expect(() => q.showAgentResult(stored.result_id, true)).toThrow("Invalid stored patch ref");
   });
 
   it("requires base hash for modified files when enabled", async () => {

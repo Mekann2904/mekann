@@ -29,7 +29,7 @@ export function safeRepoRelativePath(p: string): string | undefined {
   const normalized = path.posix.normalize(p.replace(/\\/g, "/"));
   if (normalized === "." || normalized.startsWith("../") || normalized.includes("/../")) return undefined;
   if (normalized === ".git" || normalized.startsWith(".git/")) return undefined;
-  if (normalized === ".pi" || normalized.startsWith(".pi/subagent-results/")) return undefined;
+  if (normalized === ".pi" || normalized.startsWith(".pi/")) return undefined;
   return normalized;
 }
 
