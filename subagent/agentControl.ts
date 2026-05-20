@@ -339,7 +339,11 @@ export class AgentControl {
         appendSystemPrompt: systemPrompts,
       } as any);
 
-      // Inject fork context if requested
+      // Build fork context block for the child agent.
+      // Instead of injecting raw messages into session.agent.state.messages (which
+      // requires Usage stubs and risks SDK internal crashes during compaction checks),
+      // prepend a text block to the initial user message.
+      let forkContextBlock: string | undefined;
       if (forkTurns !== 0 && forkTurns !== "none") {
         const branch = ctx.sessionManager?.getBranch?.() ?? [];
         const messages = branch
@@ -347,12 +351,15 @@ export class AgentControl {
           .map((e: any) => e.message as any);
         const forkCtx = extractForkContext(messages, forkTurns);
         if (forkCtx.length > 0) {
+          const lines: string[] = [
+            "--- Parent Agent Conversation Context (forked) ---",
+          ];
           for (const msg of forkCtx) {
-            session.agent.state.messages.push({
-              role: msg.role,
-              content: [{ type: "text", text: msg.text }],
-            } as any);
+            const label = msg.role === "user" ? "User" : "Assistant";
+            lines.push(`[${label}]: ${msg.text}`);
           }
+          lines.push("--- End of Forked Context ---");
+          forkContextBlock = lines.join("\n");
         }
       }
 
@@ -440,7 +447,9 @@ export class AgentControl {
       this.childSessions.set(canonicalPath, session);
 
       // Send initial message in background
-      const initialMessage = params.message;
+      const initialMessage = forkContextBlock
+        ? `${forkContextBlock}\n\n${params.message}`
+        : params.message;
       void session
         .prompt(initialMessage)
         .catch((err: unknown) => {

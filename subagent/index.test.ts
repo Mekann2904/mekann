@@ -2234,8 +2234,13 @@ describe("AgentControl", () => {
         ctx,
       );
 
-      // Verify messages were injected
-      expect(mockSession.agent.state.messages).toHaveLength(2);
+      // Verify fork context was prepended to the initial prompt
+      expect(mockSession.prompt).toHaveBeenCalled();
+      const promptArg = (mockSession.prompt as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      expect(promptArg).toContain("Parent Agent Conversation Context (forked)");
+      expect(promptArg).toContain("[User]: Hello");
+      expect(promptArg).toContain("[Assistant]: Hi");
+      expect(promptArg).toContain("test");
     });
 
     it("skips fork context when fork_turns is 0 or none", async () => {
@@ -3701,8 +3706,13 @@ describe("AgentControl branch coverage", () => {
       { task_name: "task1", message: "test", fork_turns: "all" }, ctx,
     );
 
-    // Messages should be injected into the session
-    expect(mockSession.agent.state.messages).toHaveLength(2);
+    // Messages should be prepended to the initial prompt, not injected into state.messages
+    expect(mockSession.prompt).toHaveBeenCalled();
+    const promptArg = (mockSession.prompt as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(promptArg).toContain("Parent Agent Conversation Context (forked)");
+    expect(promptArg).toContain("[User]: Hello");
+    expect(promptArg).toContain("[Assistant]: Hi");
+    expect(promptArg).toContain("test");
     expect(ctx.sessionManager.getBranch).toHaveBeenCalled();
   });
 
