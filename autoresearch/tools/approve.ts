@@ -25,6 +25,7 @@ import {
 	appendEvent,
 	validateCommandSafety,
 	resolveCwdInsideRepo,
+	checkPhase,
 	type AutoresearchContractV1,
 	type LockFile,
 } from "../contractV1.js";
@@ -122,6 +123,25 @@ export async function executeApprove(
 		immutableResult.hash,
 	);
 
+	const checkResults = new Map<string, boolean>();
+	const runChecksForPhase = async (phase: "pre_benchmark" | "post_benchmark"): Promise<ToolResponse | null> => {
+		for (const check of contract.evaluation.checks.filter((c) => checkPhase(c) === phase)) {
+			const checkCwd = resolveCwdInsideRepo(ctx.cwd, check.command.cwd);
+			const checkResult = await runArgvCommand(
+				{ argv: check.command.argv, cwd: checkCwd, env: check.command.env },
+				check.timeoutSeconds * 1000,
+				signal,
+			);
+			checkResults.set(check.name, checkResult.passed);
+			logEvent("baseline_check_completed", { name: check.name, phase, exitCode: checkResult.exitCode, passed: checkResult.passed, timedOut: checkResult.timedOut });
+			if (check.required && !checkResult.passed) return store.textDetails(`[ERROR] baseline ${phase} check failed: ${check.name}`, { check: check.name, phase, exitCode: checkResult.exitCode, timedOut: checkResult.timedOut });
+		}
+		return null;
+	};
+
+	const preCheckFailure = await runChecksForPhase("pre_benchmark");
+	if (preCheckFailure) return preCheckFailure;
+
 	const baselineCommand = contract.evaluation.benchmark.command;
 	const benchmarkCwd = resolveCwdInsideRepo(ctx.cwd, baselineCommand.cwd);
 	const baselineRuns: Array<{ runId: string; metric: number; durationSeconds: number }> = [];
@@ -156,6 +176,9 @@ export async function executeApprove(
 		baselineRuns.push({ runId, metric: metricValue ?? runResult.durationSeconds, durationSeconds: runResult.durationSeconds });
 		logEvent("baseline_run_completed", { runIndex: i, runId, exitCode: runResult.exitCode, metric: metricValue, durationSeconds: runResult.durationSeconds, timedOut: runResult.timedOut });
 	}
+
+	const postCheckFailure = await runChecksForPhase("post_benchmark");
+	if (postCheckFailure) return postCheckFailure;
 
 	const immutableAfterBaseline = await computeImmutableReadSetHash(
 		ctx.cwd,
@@ -217,7 +240,7 @@ export async function executeApprove(
 		});
 	} catch { /* best effort */ }
 
-	logEvent("approve_completed", { baselineValue: noise.aggregate, noiseRange: noise.relativeRange, samples: noise.samples.length });
+	logEvent("approve_completed", { baselineValue: noise.aggregate, noiseRange: noise.relativeRange, samples: noise.samples.length, checkResults: Object.fromEntries(checkResults) });
 
 	let text = `[OK] contract を承認し、baseline を測定しました\n`;
 	text += `\n### Baseline\n`;

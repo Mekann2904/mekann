@@ -163,22 +163,28 @@ export function applyCandidate(cwd: string, contract: AutoresearchContractV1, lo
 	let c = readCandidate(cwd, candidateId);
 	if (c.status !== "pending") throw new Error(`candidate status must be pending: ${c.status}`);
 	c = updateCandidateStatus(cwd, candidateId, "leased");
-	if (c.contract_hash !== lock.contractHash || computeContractHash(contract) !== c.contract_hash) { updateCandidateStatus(cwd, candidateId, "rejected_policy"); throw new Error("candidate contract hash mismatch"); }
-	if (fullHead(cwd) !== c.base_git_commit) { updateCandidateStatus(cwd, candidateId, "stale_base"); throw new Error("candidate base git commit is stale"); }
-	const dirty = candidateChangedFiles(cwd);
-	if (dirty.length) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`working tree is dirty: ${dirty.join(", ")}`); }
-	const patchPath = candidatePatchPath(cwd, candidateId);
-	const patchText = fs.readFileSync(patchPath, "utf8");
-	if (sha256Text(patchText) !== c.patch_sha256) { updateCandidateStatus(cwd, candidateId, "rejected_policy"); throw new Error("candidate patch hash mismatch"); }
-	execFileSync("git", ["apply", "--check", patchPath], { cwd, stdio: ["ignore", "pipe", "pipe"] });
-	execFileSync("git", ["apply", patchPath], { cwd, stdio: ["ignore", "pipe", "pipe"] });
-	const changed = candidateChangedFiles(cwd);
-	const expected = [...c.touched_paths].sort();
-	const scope = validateTouchedAgainstContract(changed, contract);
-	if (JSON.stringify(changed) !== JSON.stringify(expected) || !scope.ok) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`applied changed files mismatch: expected ${expected.join(",")}, actual ${changed.join(",")}`); }
-	c.trial = { mode: "main_worktree", created_at: Date.now(), applied_diff_sha256: candidateDiffIdentityHash(cwd) };
-	writeCandidate(cwd, c);
-	return updateCandidateStatus(cwd, candidateId, "trial_applied");
+	try {
+		if (c.contract_hash !== lock.contractHash || computeContractHash(contract) !== c.contract_hash) { updateCandidateStatus(cwd, candidateId, "rejected_policy"); throw new Error("candidate contract hash mismatch"); }
+		if (fullHead(cwd) !== c.base_git_commit) { updateCandidateStatus(cwd, candidateId, "stale_base"); throw new Error("candidate base git commit is stale"); }
+		const dirty = candidateChangedFiles(cwd);
+		if (dirty.length) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`working tree is dirty: ${dirty.join(", ")}`); }
+		const patchPath = candidatePatchPath(cwd, candidateId);
+		const patchText = fs.readFileSync(patchPath, "utf8");
+		if (sha256Text(patchText) !== c.patch_sha256) { updateCandidateStatus(cwd, candidateId, "rejected_policy"); throw new Error("candidate patch hash mismatch"); }
+		execFileSync("git", ["apply", "--check", patchPath], { cwd, stdio: ["ignore", "pipe", "pipe"] });
+		execFileSync("git", ["apply", patchPath], { cwd, stdio: ["ignore", "pipe", "pipe"] });
+		const changed = candidateChangedFiles(cwd);
+		const expected = [...c.touched_paths].sort();
+		const scope = validateTouchedAgainstContract(changed, contract);
+		if (JSON.stringify(changed) !== JSON.stringify(expected) || !scope.ok) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`applied changed files mismatch: expected ${expected.join(",")}, actual ${changed.join(",")}`); }
+		c.trial = { mode: "main_worktree", created_at: Date.now(), applied_diff_sha256: candidateDiffIdentityHash(cwd) };
+		writeCandidate(cwd, c);
+		return updateCandidateStatus(cwd, candidateId, "trial_applied");
+	} catch (e) {
+		const latest = readCandidate(cwd, candidateId);
+		if (latest.status === "leased") updateCandidateStatus(cwd, candidateId, "paused_dirty", { reason: e instanceof Error ? e.message : String(e) });
+		throw e;
+	}
 }
 
 export function candidateWorktreePath(cwd: string, candidateId: string): string { return path.join(cwd, ".pi", "autoresearch-worktrees", candidateId); }
@@ -198,19 +204,25 @@ export function applyCandidateIsolated(cwd: string, contract: AutoresearchContra
 	let c = readCandidate(cwd, candidateId);
 	if (c.status !== "pending") throw new Error(`candidate status must be pending: ${c.status}`);
 	c = updateCandidateStatus(cwd, candidateId, "leased");
-	if (c.contract_hash !== lock.contractHash || computeContractHash(contract) !== c.contract_hash) { updateCandidateStatus(cwd, candidateId, "rejected_policy"); throw new Error("candidate contract hash mismatch"); }
-	if (fullHead(cwd) !== c.base_git_commit) { updateCandidateStatus(cwd, candidateId, "stale_base"); throw new Error("candidate base git commit is stale"); }
-	const dirty = candidateChangedFiles(cwd); if (dirty.length) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`working tree is dirty: ${dirty.join(", ")}`); }
-	const wt = createCandidateWorktree(cwd, c);
-	const patchPath = candidatePatchPath(cwd, candidateId);
-	execFileSync("git", ["apply", "--check", patchPath], { cwd: wt, stdio: ["ignore", "pipe", "pipe"] });
-	execFileSync("git", ["apply", patchPath], { cwd: wt, stdio: ["ignore", "pipe", "pipe"] });
-	const changed = candidateChangedFiles(wt); const expected = [...c.touched_paths].sort();
-	const scope = validateTouchedAgainstContract(changed, contract);
-	if (JSON.stringify(changed) !== JSON.stringify(expected) || !scope.ok) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`isolated changed files mismatch: expected ${expected.join(",")}, actual ${changed.join(",")}`); }
-	c.trial = { mode: "isolated_worktree", worktree_path: wt, created_at: Date.now(), applied_diff_sha256: candidateDiffIdentityHash(wt) };
-	writeCandidate(cwd, c);
-	return updateCandidateStatus(cwd, candidateId, "trial_applied");
+	try {
+		if (c.contract_hash !== lock.contractHash || computeContractHash(contract) !== c.contract_hash) { updateCandidateStatus(cwd, candidateId, "rejected_policy"); throw new Error("candidate contract hash mismatch"); }
+		if (fullHead(cwd) !== c.base_git_commit) { updateCandidateStatus(cwd, candidateId, "stale_base"); throw new Error("candidate base git commit is stale"); }
+		const dirty = candidateChangedFiles(cwd); if (dirty.length) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`working tree is dirty: ${dirty.join(", ")}`); }
+		const wt = createCandidateWorktree(cwd, c);
+		const patchPath = candidatePatchPath(cwd, candidateId);
+		execFileSync("git", ["apply", "--check", patchPath], { cwd: wt, stdio: ["ignore", "pipe", "pipe"] });
+		execFileSync("git", ["apply", patchPath], { cwd: wt, stdio: ["ignore", "pipe", "pipe"] });
+		const changed = candidateChangedFiles(wt); const expected = [...c.touched_paths].sort();
+		const scope = validateTouchedAgainstContract(changed, contract);
+		if (JSON.stringify(changed) !== JSON.stringify(expected) || !scope.ok) { updateCandidateStatus(cwd, candidateId, "paused_dirty"); throw new Error(`isolated changed files mismatch: expected ${expected.join(",")}, actual ${changed.join(",")}`); }
+		c.trial = { mode: "isolated_worktree", worktree_path: wt, created_at: Date.now(), applied_diff_sha256: candidateDiffIdentityHash(wt) };
+		writeCandidate(cwd, c);
+		return updateCandidateStatus(cwd, candidateId, "trial_applied");
+	} catch (e) {
+		const latest = readCandidate(cwd, candidateId);
+		if (latest.status === "leased") updateCandidateStatus(cwd, candidateId, "paused_dirty", { reason: e instanceof Error ? e.message : String(e) });
+		throw e;
+	}
 }
 export function replayCandidateToMain(cwd: string, contract: AutoresearchContractV1, candidateId: string): AutoresearchCandidateV1 {
 	const c = readCandidate(cwd, candidateId);
