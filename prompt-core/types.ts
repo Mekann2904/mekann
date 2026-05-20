@@ -14,4 +14,4 @@ export type RenderedPrompt = { stableText: string; semiStableText: string; dynam
 export type PromptFragmentHash = { id: string; source: string; kind: PromptFragmentKind; stability: PromptStability; hash: string; };
 export type PromptInspectionSeverity = "info" | "warning" | "error";
 export type PromptInspectionWarning = { severity: PromptInspectionSeverity; code: string; message: string; fragmentId?: string; source?: string; };
-export type CacheFriendlyRequestLog = { timestamp: string; provider?: string; model?: string; stablePrefixHash: string; stablePrefixChars: number; stablePrefixTokenEstimate?: number; totalPromptChars?: number; totalPromptTokenEstimate?: number; fragmentHashes: PromptFragmentHash[]; warnings: PromptInspectionWarning[]; };
+export type CacheFriendlyRequestLog = { timestamp: string; provider?: string; model?: string; stablePrefixHash: string; stablePrefixChars: number; stablePrefixTokenEstimate?: number; totalPromptChars?: number; totalPromptTokenEstimate?: number; promptProviderIds?: string[]; fragmentHashes: PromptFragmentHash[]; warnings: PromptInspectionWarning[]; };

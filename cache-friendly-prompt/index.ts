@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { appendCacheFriendlyLog } from "./logs.js";
-import { collectPromptFragments, estimateTokens, extractTextFromProviderPayload, inspectFinalPayloadText, renderPromptFragments, sha256, type PromptFragmentHash, type PromptInspectionWarning } from "../prompt-core/index.js";
+import { collectPromptFragments, estimateTokens, extractTextFromProviderPayload, inspectFinalPayloadText, inspectStablePrefix, listPromptProviders, renderPromptFragments, sha256, type PromptFragmentHash, type PromptInspectionWarning } from "../prompt-core/index.js";
 
 export type CacheFriendlyPromptConfig = { includeBaseSystemPromptInStableHash: boolean; logRequests: boolean; notifyOnWarnings: boolean; };
 const DEFAULT_CONFIG: CacheFriendlyPromptConfig = { includeBaseSystemPromptInStableHash: true, logRequests: true, notifyOnWarnings: false };
@@ -18,6 +18,9 @@ function mergeWarnings(a: PromptInspectionWarning[], b: PromptInspectionWarning[
     if (!seen.has(key)) { seen.add(key); out.push(w); }
   }
   return out;
+}
+function effectivePrefixWarnings(fragmentWarnings: PromptInspectionWarning[], effectiveStablePrefixText: string): PromptInspectionWarning[] {
+  return mergeWarnings(fragmentWarnings.filter((w) => w.code !== "SHORT_STABLE_PREFIX"), inspectStablePrefix(effectiveStablePrefixText));
 }
 function contentText(content: unknown): string {
   if (typeof content === "string") return content;
@@ -39,7 +42,7 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
     const fragments = await collectPromptFragments({ cwd: contextCwd(event, ctx), provider: modelProvider(ctx), model: modelId(ctx) });
     const rendered = renderPromptFragments(fragments);
     const effectiveStablePrefixText = cfg.includeBaseSystemPromptInStableHash ? [event.systemPrompt, rendered.stableText].filter(Boolean).join("\n\n") : rendered.stableText;
-    stateByRun.set(runKey(event, ctx), { effectiveStablePrefixText, effectiveStablePrefixHash: sha256(effectiveStablePrefixText), fragmentHashes: rendered.fragmentHashes, warnings: rendered.warnings });
+    stateByRun.set(runKey(event, ctx), { effectiveStablePrefixText, effectiveStablePrefixHash: sha256(effectiveStablePrefixText), fragmentHashes: rendered.fragmentHashes, warnings: effectivePrefixWarnings(rendered.warnings, effectiveStablePrefixText) });
     return { systemPrompt: [event.systemPrompt, rendered.stableText, rendered.semiStableText].filter(Boolean).join("\n\n") };
   });
 
@@ -50,21 +53,27 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
     const rendered = renderPromptFragments(fragments);
     const key = runKey(event, ctx);
     const prev = stateByRun.get(key) ?? stateByRun.get(ctx?.cwd ?? "");
-    stateByRun.set(key, { effectiveStablePrefixText: prev?.effectiveStablePrefixText ?? "", effectiveStablePrefixHash: prev?.effectiveStablePrefixHash ?? "", fragmentHashes: rendered.fragmentHashes, warnings: mergeWarnings(prev?.warnings ?? [], rendered.warnings) });
+    const effectiveStablePrefixText = prev?.effectiveStablePrefixText ?? "";
+    stateByRun.set(key, { effectiveStablePrefixText, effectiveStablePrefixHash: prev?.effectiveStablePrefixHash ?? "", fragmentHashes: rendered.fragmentHashes, warnings: mergeWarnings(prev?.warnings ?? [], effectivePrefixWarnings(rendered.warnings, effectiveStablePrefixText)) });
     if (!rendered.dynamicText.trim()) return { messages };
     return { messages: [...messages, { role: "user", customType: "cache-friendly-dynamic-context", content: [{ type: "text", text: rendered.dynamicText }] }] };
   });
 
   pi.on("before_provider_request", async (event: any, ctx: any) => {
     const finalText = extractTextFromProviderPayload(event?.payload);
-    const lastState = stateByRun.get(runKey(event, ctx)) ?? stateByRun.get(ctx?.cwd ?? "") ?? null;
-    const sentDynamicIds = (lastState?.fragmentHashes ?? []).filter((f) => f.stability === "dynamic" && finalText.includes(fragmentMarkerPrefix(f))).map((f) => f.id);
+    const key = runKey(event, ctx);
+    const lastState = stateByRun.get(key) ?? stateByRun.get(ctx?.cwd ?? "") ?? null;
+    const fragments = await collectPromptFragments({ cwd: ctx?.cwd ?? process.cwd(), provider: modelProvider(ctx), model: modelId(ctx) });
+    const rendered = renderPromptFragments(fragments);
+    const fragmentHashes = rendered.fragmentHashes.length > 0 ? rendered.fragmentHashes : lastState?.fragmentHashes ?? [];
+    const sentDynamicIds = fragmentHashes.filter((f) => f.stability === "dynamic" && finalText.includes(fragmentMarkerPrefix(f))).map((f) => f.id);
     if (sentDynamicIds.length > 0) {
       try { (pi as any).events?.emit?.("cache-friendly-prompt:dynamic-tail-sent", { fragmentIds: sentDynamicIds }); } catch {}
     }
-    const warnings = [...(lastState?.warnings ?? []), ...inspectFinalPayloadText(finalText)];
+    const effectiveStablePrefixText = lastState?.effectiveStablePrefixText ?? "";
+    const warnings = mergeWarnings(mergeWarnings(lastState?.warnings ?? [], effectivePrefixWarnings(rendered.warnings, effectiveStablePrefixText)), inspectFinalPayloadText(finalText));
     if (cfg.logRequests) {
-      await appendCacheFriendlyLog(ctx?.cwd ?? process.cwd(), { timestamp: new Date().toISOString(), provider: modelProvider(ctx), model: modelId(ctx), stablePrefixHash: lastState?.effectiveStablePrefixHash ?? "", stablePrefixChars: lastState?.effectiveStablePrefixText.length ?? 0, stablePrefixTokenEstimate: estimateTokens(lastState?.effectiveStablePrefixText ?? ""), totalPromptChars: finalText.length, totalPromptTokenEstimate: estimateTokens(finalText), fragmentHashes: lastState?.fragmentHashes ?? [], warnings });
+      await appendCacheFriendlyLog(ctx?.cwd ?? process.cwd(), { timestamp: new Date().toISOString(), provider: modelProvider(ctx), model: modelId(ctx), stablePrefixHash: lastState?.effectiveStablePrefixHash ?? "", stablePrefixChars: effectiveStablePrefixText.length, stablePrefixTokenEstimate: estimateTokens(effectiveStablePrefixText), totalPromptChars: finalText.length, totalPromptTokenEstimate: estimateTokens(finalText), promptProviderIds: listPromptProviders().map((p) => p.id), fragmentHashes, warnings });
     }
     if (cfg.notifyOnWarnings && warnings.some((w) => w.severity === "error")) ctx?.ui?.notify?.("Cache-friendly prompt warnings detected", "warning");
     return undefined;
