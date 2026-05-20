@@ -32,9 +32,13 @@
     "test:autoresearch:fast": "cd autoresearch && npm run test:fast",
     "test:autoresearch:slow": "cd autoresearch && npm run test:slow",
     "test:goal": "cd goal && npm test",
+    "ci": "npm test",
     "prepare": "husky",
     "typecheck": "cd sandbox && npm run typecheck && cd ../subagent && npm run typecheck",
     "prepush": "bash scripts/prepush-parallel.sh"
+  },
+  "engines": {
+    "node": ">=22.19.0"
   },
   "pi": {
     "extensions": [

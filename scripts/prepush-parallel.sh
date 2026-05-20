@@ -1,6 +1,6 @@
 #!/bin/bash
-# Parallel prepush: runs typecheck + all module tests concurrently
-# Quality-equivalent to sequential execution, but much faster
+# Parallel prepush: runs typecheck + fast module tests concurrently.
+# Full CI should run npm test to include slow autoresearch tests.
 set -euo pipefail
 
 tmpdir=$(mktemp -d)
@@ -15,7 +15,7 @@ declare -A names=( [typecheck]="npm run typecheck"
   [sandbox]="npm run test:sandbox"
   [subagent]="npm run test:subagent"
   [zip-repo]="npm run test:zip-repo"
-  [autoresearch]="npm run test:autoresearch"
+  [autoresearch-fast]="npm run test:autoresearch:fast"
   [goal]="npm run test:goal" )
 
 for name in "${!names[@]}"; do

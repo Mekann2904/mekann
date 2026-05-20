@@ -358,7 +358,7 @@ describe("統合シナリオ: plan mode ワークフロー", () => {
 		expect(plan).toBeDefined();
 		state.pendingPlan = plan;
 
-		// 3. /plan で main に戻る → plan を実行プロンプトとして注入
+		// 3. /plan で main に戻る → plan をdynamic context tail用に保持
 		state.mode = "main";
 		const executionPrompt = `以下の plan に従って実装してください。\n\n<plan>\n${state.pendingPlan}\n</plan>`;
 		expect(executionPrompt).toContain("バリデーターを追加する");
@@ -1150,9 +1150,9 @@ describe("thinking display integration", () => {
 	});
 });
 
-// ─── P0-2: exitPlanMode does not inject plan text into sendUserMessage ──
+// ─── P0-2: exitPlanMode stores plan without sending plan text ──
 
-describe("exitPlanMode: plan injection", () => {
+describe("exitPlanMode: plan handoff", () => {
 	it("pendingPlan があっても plan 本文を sendUserMessage に含めない", () => {
 		const state = createInitialState();
 		state.mode = "plan";
@@ -1208,7 +1208,7 @@ describe("implementationPlan: dynamic fragment lifecycle", () => {
 		state.mode = "main";
 		state.implementationPlan = "test plan";
 
-		// Simulate: cache-friendly dynamic tail rendered event consumes implementationPlan
+		// Simulate: cache-friendly dynamic-tail-sent event consumes implementationPlan
 		if (state.mode === "main" && state.implementationPlan) {
 			const _plan = state.implementationPlan;
 			state.implementationPlan = undefined;
@@ -1954,7 +1954,7 @@ describe("PlanState: config mutation", () => {
 		expect(state.implementationPlan).toBe("Test plan");
 		expect(state.pendingPlan).toBeUndefined();
 
-		// 3. dynamic tail render event consumes implementationPlan
+		// 3. dynamic-tail-sent event consumes implementationPlan
 		if (state.mode === "main" && state.implementationPlan) {
 			const _consumed = state.implementationPlan;
 			state.implementationPlan = undefined;
@@ -2024,7 +2024,7 @@ describe("Integration: full workflow with model config", () => {
 		expect(state.implementationPlan).toBe(planText);
 		expect(isReadOnlyMode(state.mode)).toBe(false);
 
-		// 7. Plan consumed after dynamic tail render
+		// 7. Plan consumed after dynamic-tail-sent
 		state.implementationPlan = undefined;
 		expect(state.implementationPlan).toBeUndefined();
 	});
