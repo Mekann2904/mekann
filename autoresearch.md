@@ -1,17 +1,17 @@
 # Autoresearch
 
 <!-- AUTORESEARCH:BEGIN generated -->
-Current plan: `.autoresearch/plans/plan-c88fa2127460/`
+Current plan: `.autoresearch/plans/plan-c86f3127668f/`
 
 ## Current objective
 
-コードベースの長期的なメンテナンスコストを削減する。振る舞いを維持したまま、将来の人間の作業量を減らす。MAINTAINABILITY_REVIEW.md の推奨事項に優先度順に対処する。
+blog記事 subagent/blog/2026-05-20.md の内容を論文的形式に昇華する。変更対象は blog 記事のみ。
 
 ## Files
 
-- Plan: `.autoresearch/plans/plan-c88fa2127460/plan.md`
-- Contract: `.autoresearch/plans/plan-c88fa2127460/contract.json`
-- Benchmark: `.autoresearch/plans/plan-c88fa2127460/benchmark.sh`
-- Checks: `.autoresearch/plans/plan-c88fa2127460/checks.sh`
-- Runs: `.autoresearch/plans/plan-c88fa2127460/runs/`
+- Plan: `.autoresearch/plans/plan-c86f3127668f/plan.md`
+- Contract: `.autoresearch/plans/plan-c86f3127668f/contract.json`
+- Benchmark: `.autoresearch/plans/plan-c86f3127668f/benchmark.sh`
+- Checks: `.autoresearch/plans/plan-c86f3127668f/checks.sh`
+- Runs: `.autoresearch/plans/plan-c86f3127668f/runs/`
 <!-- AUTORESEARCH:END generated -->

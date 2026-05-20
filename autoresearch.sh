@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 # AUTORESEARCH:generated
-echo 'autoresearch current state is cleared. Run autoresearch_init first.' >&2
-exit 1
+set -euo pipefail
+PLAN_DIR="$(node -e "console.log(require('./.autoresearch/state.json').currentPlanDir)")"
+exec "$PLAN_DIR/benchmark.sh" "$@"
