@@ -1,17 +1,17 @@
 # cache-friendly-prompt
 
-`cache-friendly-prompt` is the final Prompt Orchestrator extension. It collects fragments from other extensions, appends stable/semi-stable context to the system prompt, places dynamic context at the tail, and logs stablePrefixHash/warnings. It improves cache-friendliness but does not guarantee provider cache hits.
+`cache-friendly-prompt` は最終的なプロンプトオーケストレーター拡張です。他の拡張からフラグメントを収集し、システムプロンプトに安定/半安定なコンテキストを前置し、動的コンテキストを末尾に配置します。また、`stablePrefixHash` と警告をログに記録します。キャッシュフレンドリさを向上させますが、プロバイダーのキャッシュヒットを保証するものではありません。
 
 ```text
-extensions -> prompt-core registry -> cache-friendly-prompt -> provider
+拡張機能群 -> prompt-core レジストリ -> cache-friendly-prompt -> プロバイダー
 ```
 
-## Limitations
+## 制限事項
 
-- Does not guarantee cache hits
-- Does not know provider TTL
-- Does not insert cache_control
-- Does not manage cache objects
-- Token counts are estimates
-- Full prompts are not logged for privacy
-- Stable-prefix log state is keyed by best-effort session/run identifiers when available, then cwd. If Pi does not expose a stable run id, logging correlation is still best-effort.
+- キャッシュヒットを保証するものではありません
+- プロバイダーの TTL を把握しません
+- `cache_control` を挿入しません
+- キャッシュオブジェクトを管理しません
+- トークン数は推定値です
+- プライバシー保護のため、プロンプト全体はログに記録されません
+- 安定プレフィックスのログ状態は、利用可能なセッション/ラン識別子（ベストエフォート）に基づき、次にカレントディレクトリ（cwd）をキーとして使用します。Pi が安定したラン ID を公開していない場合も、ログの紐付けはベストエフォートとなります。
