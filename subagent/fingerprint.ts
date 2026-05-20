@@ -24,6 +24,13 @@ export async function checkBaseFileHashes(cwd: string, files: FileFingerprint[])
   return { ok: true };
 }
 
+export function safeRepoRelativePath(p: string): string | undefined {
+  if (!p || p.includes("\0") || path.isAbsolute(p)) return undefined;
+  const normalized = path.posix.normalize(p.replace(/\\/g, "/"));
+  if (normalized === "." || normalized.startsWith("../") || normalized.includes("/../")) return undefined;
+  return normalized;
+}
+
 export function extractTouchedPathsFromPatch(patchText: string): string[] {
   const paths = new Set<string>();
   for (const line of patchText.split(/\r?\n/)) {
@@ -31,7 +38,8 @@ export function extractTouchedPathsFromPatch(patchText: string): string[] {
     const raw = line.slice(4).split(/\s+/)[0];
     if (raw === "/dev/null") continue;
     const cleaned = raw.startsWith("a/") || raw.startsWith("b/") ? raw.slice(2) : raw;
-    if (cleaned) paths.add(cleaned);
+    const safe = safeRepoRelativePath(cleaned);
+    if (safe) paths.add(safe);
   }
   return [...paths].sort();
 }

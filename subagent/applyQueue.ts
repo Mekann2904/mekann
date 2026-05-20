@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 import type { ApplyAgentResultsParams, ApplyAgentResultsResult, ApplyRecord, PatchProposalResult, RejectReason, RequiredCheck, StoredSubagentResult, ValidationCommand, ValidationResult } from "./types.js";
 import { SubagentResultStore } from "./resultStore.js";
-import { checkBaseFileHashes, detectPublicSurfaceFromPatch, extractTouchedPathsFromPatch, isNewFilePatch, normalizePublicSurfaceDeltas } from "./fingerprint.js";
+import { checkBaseFileHashes, detectPublicSurfaceFromPatch, extractTouchedPathsFromPatch, isNewFilePatch, normalizePublicSurfaceDeltas, safeRepoRelativePath } from "./fingerprint.js";
 import { evaluateSemanticConflict } from "./semanticConflict.js";
 import { keyOfTarget } from "./semantic.js";
 
@@ -15,14 +15,20 @@ export class ApplyQueue {
   listAgentResults(filter?: Parameters<SubagentResultStore["list"]>[0]) { return this.store.list(filter); }
   showAgentResult(resultId: string, includePatch = false): StoredSubagentResult & { patch_body?: string } {
     const s = this.store.load(resultId) as StoredSubagentResult & { patch_body?: string };
-    if (includePatch && s.result.outcome === "patch" && s.result.patch.ref) s.patch_body = readFileSync(s.result.patch.ref, "utf8");
+    if (includePatch && s.result.outcome === "patch" && s.result.patch.ref) {
+      if (!isUnderDir(s.result.patch.ref, this.store.dir)) throw new Error("invalid patch ref");
+      s.patch_body = readFileSync(s.result.patch.ref, "utf8");
+    }
     return s;
   }
   rejectAgentResult(resultId: string, reason: RejectReason = "manual_reject") { this.store.markRejected(resultId, reason); return { result_id: resultId, reason }; }
   async applyAgentResults(params: ApplyAgentResultsParams = {}): Promise<ApplyAgentResultsResult> {
     const result: ApplyAgentResultsResult = { applied: [], rejected: [], needs_review: [], skipped: [] };
     const items = (params.source === "result_ids" ? (params.result_ids ?? []).map((id) => this.store.load(id)) : this.store.list({ status: "pending" })).slice(0, params.max_results ?? Infinity);
-    for (const stored of items) await this.applyOne(stored, params, result);
+    for (const stored of items) {
+      if (stored.status !== "pending" && !(stored.status === "needs_review" && params.allow_high_risk)) { result.skipped.push({ result_id: stored.result_id, reason: `status:${stored.status}` }); continue; }
+      await this.applyOne(stored, params, result);
+    }
     return result;
   }
   private reject(out: ApplyAgentResultsResult, id: string, reason: RejectReason, details?: unknown) { this.store.markRejected(id, reason); out.rejected.push({ result_id: id, reason, details }); }
@@ -41,9 +47,12 @@ export class ApplyQueue {
     if (patchBytes > maxBytes) return this.reject(out, stored.result_id, "patch_too_large", { bytes: patchBytes, maxBytes });
 
     const actualTouched = extractTouchedPathsFromPatch(patchText);
-    const declaredTouched = [...patch.scope.touched_paths].sort();
+    const declaredTouched = patch.scope.touched_paths.map((p) => safeRepoRelativePath(p)).filter((p): p is string => Boolean(p)).sort();
+    if (declaredTouched.length !== patch.scope.touched_paths.length) return this.reject(out, stored.result_id, "declared_touched_paths_mismatch", { reason: "unsafe_declared_path", declared: patch.scope.touched_paths });
+    for (const f of patch.base.files) if (!safeRepoRelativePath(f.path)) return this.reject(out, stored.result_id, "base_hash_mismatch", { path: f.path, reason: "unsafe_base_path" });
     if (JSON.stringify(actualTouched) !== JSON.stringify(declaredTouched)) return this.reject(out, stored.result_id, "declared_touched_paths_mismatch", { declared: declaredTouched, actual: actualTouched });
     const writeScope = stored.authority?.write_scope ?? [];
+    if (writeScope.some((s) => s.includes("\0") || path.isAbsolute(s) || safeRepoRelativePath(s.replace(/\*+/g, "x")) === undefined)) return this.review(out, stored.result_id, "write_scope contains unsafe path pattern", { writeScope });
     if (writeScope.length === 0) return this.review(out, stored.result_id, "write_scope is not specified; auto apply requires explicit authority scope", { actualTouched });
     for (const p of actualTouched) if (!withinAny(p, writeScope)) return this.reject(out, stored.result_id, "outside_path_scope", { path: p, write_scope: writeScope });
 
@@ -97,7 +106,7 @@ export class ApplyQueue {
   }
   private isValidationAllowed(cmd: ValidationCommand, stored: StoredSubagentResult): boolean {
     const allowed = stored.authority?.allowed_commands ?? [];
-    return allowed.some((a) => JSON.stringify(a) === JSON.stringify(cmd));
+    return allowed.some((a) => commandKey(a) === commandKey(cmd));
   }
   private resolveRequiredChecks(required: RequiredCheck[], suggested: ValidationCommand[]): { ok: true; commands: ValidationCommand[] } | { ok: false; missing: RequiredCheck[] } {
     const commands: ValidationCommand[] = [];
@@ -121,7 +130,8 @@ export class ApplyQueue {
 }
 
 function isUnderDir(file: string, dir: string): boolean { const rel = path.relative(path.resolve(dir), path.resolve(file)); return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel); }
-function dedupeValidationCommands(commands: ValidationCommand[]): ValidationCommand[] { const seen = new Set<string>(); const out: ValidationCommand[] = []; for (const c of commands) { const k = JSON.stringify(c); if (!seen.has(k)) { seen.add(k); out.push(c); } } return out; }
+function commandKey(cmd: ValidationCommand): string { return cmd.kind === "npm_script" ? JSON.stringify({ kind: "npm_script", script: cmd.script, args: cmd.args ?? [] }) : JSON.stringify({ kind: "shell_allowlisted", command_id: cmd.command_id, args: cmd.args ?? [] }); }
+function dedupeValidationCommands(commands: ValidationCommand[]): ValidationCommand[] { const seen = new Set<string>(); const out: ValidationCommand[] = []; for (const c of commands) { const k = commandKey(c); if (!seen.has(k)) { seen.add(k); out.push(c); } } return out; }
 function surfaceKey(d: { surface: string; name: string; change: string }): string { return `${d.surface}:${d.name}:${d.change}`; }
 function withinAny(file: string, scopes: string[]): boolean { if (scopes.length === 0) return true; const norm = file.replace(/\\/g, "/"); return scopes.some((s) => { const scope = s.replace(/\\/g, "/").replace(/\/$/, ""); return norm === scope || norm.startsWith(scope + "/") || (scope.includes("*") && new RegExp("^" + scope.split("*").map(escapeRe).join(".*") + "$" ).test(norm)); }); }
 function escapeRe(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }

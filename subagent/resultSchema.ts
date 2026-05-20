@@ -7,10 +7,13 @@ function isStr(v: unknown): v is string { return typeof v === "string"; }
 function isArr(v: unknown): v is unknown[] { return Array.isArray(v); }
 function isStrArr(v: unknown): v is string[] { return Array.isArray(v) && v.every(isStr); }
 function oneOf<T extends string>(v: unknown, values: readonly T[]): v is T { return typeof v === "string" && (values as readonly string[]).includes(v); }
-function validTarget(v: unknown): boolean { return isObj(v) && isStr(v.kind) && isStr(v.name); }
+const targetKinds = ["symbol", "type", "api_route", "graphql_field", "db_table", "db_column", "config_key", "feature", "event_payload", "cli_command", "file_format", "test_contract", "file"] as const;
+function validTarget(v: unknown): boolean { return isObj(v) && oneOf(v.kind, targetKinds) && isStr(v.name); }
 function validFileFingerprint(v: unknown): boolean { return isObj(v) && isStr(v.path) && isStr(v.hash); }
 function validValidationCommand(v: unknown): boolean { return isObj(v) && ((v.kind === "npm_script" && isStr(v.script) && (v.args === undefined || isStrArr(v.args))) || (v.kind === "shell_allowlisted" && isStr(v.command_id) && (v.args === undefined || isStrArr(v.args)))); }
 function validPublicSurfaceDelta(v: unknown): boolean { return isObj(v) && isStr(v.surface) && isStr(v.name) && oneOf(v.change, ["add", "remove", "modify"] as const) && oneOf(v.compatibility, ["compatible", "breaking", "unknown"] as const); }
+function validAssumption(v: unknown): boolean { return isObj(v) && isStr(v.kind) && validTarget(v.target) && isStr(v.expected) && (v.fingerprint === undefined || isStr(v.fingerprint)); }
+function validEffect(v: unknown): boolean { return isObj(v) && oneOf(v.kind, ["api_contract", "data_model", "behavior", "config", "side_effect", "test_expectation"] as const) && validTarget(v.target) && (v.compatibility === undefined || oneOf(v.compatibility, ["backward_compatible", "breaking", "unknown"] as const)); }
 
 export function tryParseSubagentResult(text: string): ParseResult {
   let raw: unknown;
@@ -28,7 +31,7 @@ export function tryParseSubagentResult(text: string): ParseResult {
     if (!isStr(raw.patch.body)) return { ok: false, error: "patch.body is required" };
     if (!isObj(raw.base) || !isArr(raw.base.files) || !raw.base.files.every(validFileFingerprint)) return { ok: false, error: "base.files is required and must contain path/hash strings" };
     if (!isObj(raw.scope) || !isStrArr(raw.scope.allowed_paths) || !isStrArr(raw.scope.touched_paths)) return { ok: false, error: "scope allowed/touched paths are required string arrays" };
-    if (!isObj(raw.semantic) || !isArr(raw.semantic.reads) || !raw.semantic.reads.every(validTarget) || !isArr(raw.semantic.writes) || !raw.semantic.writes.every(validTarget) || !isArr(raw.semantic.assumptions) || !isArr(raw.semantic.effects) || !isArr(raw.semantic.public_surface_delta) || !raw.semantic.public_surface_delta.every(validPublicSurfaceDelta) || !isObj(raw.semantic.risk) || !oneOf(raw.semantic.risk.level, ["low", "medium", "high"] as const)) return { ok: false, error: "valid semantic metadata is required" };
+    if (!isObj(raw.semantic) || !isArr(raw.semantic.reads) || !raw.semantic.reads.every(validTarget) || !isArr(raw.semantic.writes) || !raw.semantic.writes.every(validTarget) || !isArr(raw.semantic.assumptions) || !raw.semantic.assumptions.every(validAssumption) || !isArr(raw.semantic.effects) || !raw.semantic.effects.every(validEffect) || !isArr(raw.semantic.public_surface_delta) || !raw.semantic.public_surface_delta.every(validPublicSurfaceDelta) || !isObj(raw.semantic.risk) || !oneOf(raw.semantic.risk.level, ["low", "medium", "high"] as const)) return { ok: false, error: "valid semantic metadata is required" };
     if (!isObj(raw.validation) || !isArr(raw.validation.suggested) || !raw.validation.suggested.every(validValidationCommand)) return { ok: false, error: "validation.suggested must contain valid validation commands" };
   } else if (raw.outcome === "blocked") {
     if (!isStr(raw.reason)) return { ok: false, error: "reason is required" };

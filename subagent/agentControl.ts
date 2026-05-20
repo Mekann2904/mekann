@@ -213,16 +213,19 @@ export class AgentControl {
 
   private authorityPreamble(authority: SubagentAuthority, resultContract?: ResultContract): string | undefined {
     if (authority.mode !== "propose_patch" && resultContract !== "subagent_result_v1") return undefined;
-    return [
-      "You are running in propose_patch mode.",
-      "Do not modify files directly.",
+    const lines = [
+      authority.mode === "propose_patch" ? "You are running in propose_patch mode." : `You are running in ${authority.mode} mode with structured result reporting.`,
+      authority.mode === "edit" ? "You may edit only within granted authority." : "Do not modify files directly.",
       "Investigate the requested task. If no change is needed, return outcome=\"no_change\".",
-      "If a change is needed, return exactly one JSON object conforming to subagent.result.v1.",
+      "Return exactly one JSON object conforming to subagent.result.v1.",
+    ];
+    if (authority.mode === "propose_patch") lines.push(
+      "If a change is needed, create a patch proposal.",
       "Use patch.format=\"unified_diff\" and include patch.body. Do not include patch.ref; the parent stores the patch and assigns patch.ref.",
       "Include touched paths, file base hashes, semantic reads/writes, assumptions, effects, public surface delta, validation suggestions, and risk level.",
-      `Granted write_scope: ${JSON.stringify(authority.write_scope ?? [])}`,
-      `Granted semantic_scope: ${JSON.stringify(authority.semantic_scope ?? [])}`,
-    ].join("\n");
+    );
+    lines.push(`Granted write_scope: ${JSON.stringify(authority.write_scope ?? [])}`, `Granted semantic_scope: ${JSON.stringify(authority.semantic_scope ?? [])}`);
+    return lines.join("\n");
   }
 
   private filterToolsByAuthority(tools: any[], authority: SubagentAuthority): any[] {
