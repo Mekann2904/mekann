@@ -30,9 +30,14 @@ const SANDBOX_PROMPT_POLICY = [
 	"- When requesting elevation, explain why the command must run outside the sandbox.",
 ].join("\n");
 
+export interface TruncateForLlmOptions {
+	maxBytes: number;
+	maxLines: number;
+}
+
 export function truncateForLlm(
 	text: string,
-	opts = { maxBytes: DEFAULT_LLM_OUTPUT_MAX_BYTES, maxLines: DEFAULT_LLM_OUTPUT_MAX_LINES },
+	opts: TruncateForLlmOptions = { maxBytes: DEFAULT_LLM_OUTPUT_MAX_BYTES, maxLines: DEFAULT_LLM_OUTPUT_MAX_LINES },
 ): { text: string; truncated: boolean; originalBytes: number; originalLines: number } {
 	const originalBytes = Buffer.byteLength(text, "utf8");
 	let lines = text.split(/\r?\n/);
