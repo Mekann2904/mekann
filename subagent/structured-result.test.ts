@@ -169,5 +169,40 @@ describe("structured subagent results", () => {
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.error).toContain("invalid_json");
     });
+
+    it("parses real LLM output: prose + code block with table after JSON", () => {
+      // Actual output from pi subagent (F1/F2 experiment)
+      const realLLM = [
+        'Here are the findings, reported as structured JSON using the `subagent.result.v1` schema with outcome `"observation"`:',
+        '',
+        '```json',
+        '{',
+        '  "schema": "subagent.result.v1",',
+        '  "outcome": "observation",',
+        '  "summary": "AgentStatus is a string-union type with 7 possible values.",',
+        '  "findings": [',
+        '    {',
+        '      "path": "subagent/types.ts",',
+        '      "message": "AgentStatus value: \\"pending_init\\""',
+        '    }',
+        '  ]',
+        '}',
+        '```',
+        '',
+        '**Summary:** `AgentStatus` is a string-union type with **7 values**:',
+        '',
+        '| Value | Terminal? |',
+        '|---|---|',
+        '| `"pending_init"` | No |',
+      ].join('\n');
+      const result = tryParseSubagentResult(realLLM);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.result.outcome).toBe("observation");
+        if (result.result.outcome === "observation") {
+          expect(result.result.findings.length).toBeGreaterThanOrEqual(1);
+        }
+      }
+    });
   });
 });
