@@ -27,7 +27,8 @@
       "./sandbox",
       "./subagent",
       "./autoresearch",
-      "./goal"
+      "./goal",
+      "./agent-guidelines"
     ],
     "skills": [
       "./skills"
