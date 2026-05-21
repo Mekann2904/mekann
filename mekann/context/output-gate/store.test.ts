@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as fsp from "node:fs/promises";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { artifactsDir, buildPreview, countLines, createArtifactId, ensureOutputGateDirs, gateTextForLlm, manifestPath, readManifest, safeUtf8Slice, sanitizeManifestSource, saveArtifact, sha256 } from "./store.js";
+import { artifactsDir, buildPreview, countLines, createArtifactId, ensureOutputGateDirs, gateTextForLlm, manifestPath, nextArtifactId, outputGateDir, readManifest, resolveArtifactPath, safeUtf8Slice, sanitizeManifestSource, saveArtifact, sha256, shouldGateOutput } from "./store.js";
 
 async function tmp(): Promise<string> { return fsp.mkdtemp(path.join(os.tmpdir(), "og-store-")); }
 
@@ -82,5 +82,145 @@ describe("output-gate store", () => {
 		expect(result.text).toContain("Failed to store");
 		expect(result.text).toContain("password=[REDACTED]");
 		expect(result.text).not.toContain("password=secret");
+	});
+
+	it("gateTextForLlm returns unhandled for text below threshold", async () => {
+		const cwd = await tmp();
+		const result = await gateTextForLlm({ cwd, toolName: "bash", text: "small", maxInlineBytes: 100 });
+		expect(result.gated).toBe(false);
+		expect(result.handled).toBe(false);
+		expect(result.text).toBe("small");
+	});
+
+	it("gateTextForLlm stores large text successfully", async () => {
+		const cwd = await tmp();
+		const bigText = "x".repeat(200);
+		const result = await gateTextForLlm({ cwd, toolName: "bash", text: bigText, maxInlineBytes: 10 });
+		expect(result.gated).toBe(true);
+		expect(result.handled).toBe(true);
+		expect(result.artifactId).toBeDefined();
+		expect(result.sha256).toBeDefined();
+		expect(result.redacted).toBe(true);
+		expect(result.text).toContain("[output-gate]");
+	});
+
+	it("readManifest rethrows non-ENOENT errors", async () => {
+		const cwd = await tmp();
+		await ensureOutputGateDirs(cwd);
+		// Write a directory as manifest path to cause a read error
+		await fsp.mkdir(manifestPath(cwd), { recursive: true });
+		await expect(readManifest(cwd)).rejects.toThrow();
+	});
+
+	it("sanitizeManifestSource returns fallback for unserializable", () => {
+		// Create an object with a getter that throws
+		const obj: any = {};
+		Object.defineProperty(obj, "bad", { get() { throw new Error("boom"); }, enumerable: true });
+		expect(sanitizeManifestSource(obj)).toBe("[Unserializable source]");
+	});
+
+	it("sanitizeManifestSource returns undefined for undefined input", () => {
+		expect(sanitizeManifestSource(undefined)).toBeUndefined();
+	});
+
+	it("resolveArtifactPath returns undefined for path traversal", async () => {
+		const cwd = await tmp();
+		const entry = { id: "og_evil_1", toolName: "bash", createdAt: 1, cwd, bytes: 1, lines: 1, sha256: "abc", path: "../../etc/passwd", redacted: true };
+		expect(resolveArtifactPath(cwd, entry as any)).toBeUndefined();
+	});
+
+	it("resolveArtifactPath returns undefined for missing file", async () => {
+		const cwd = await tmp();
+		await ensureOutputGateDirs(cwd);
+		const entry = { id: "og_miss_1", toolName: "bash", createdAt: 1, cwd, bytes: 1, lines: 1, sha256: "abc", path: ".pi/output-gate/artifacts/og_miss_1.txt", redacted: true };
+		expect(resolveArtifactPath(cwd, entry as any)).toBeUndefined();
+	});
+
+	it("resolveArtifactPath returns abs path for valid file", async () => {
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "hello", idGenerator: () => "og_reso_1" });
+		const [entry] = await readManifest(cwd);
+		const abs = resolveArtifactPath(cwd, entry);
+		expect(abs).toBeDefined();
+		expect(fs.existsSync(abs!)).toBe(true);
+	});
+
+	it("saveArtifact rejects invalid artifact id", async () => {
+		const cwd = await tmp();
+		await expect(saveArtifact({ cwd, toolName: "bash", text: "x", idGenerator: () => "invalid-id" })).rejects.toThrow("Invalid output-gate artifact id");
+	});
+
+	it("saveArtifact uses nextArtifactId when no idGenerator provided", async () => {
+		const cwd = await tmp();
+		const { entry } = await saveArtifact({ cwd, toolName: "bash", text: "hello", now: () => 12345 });
+		expect(entry.id).toMatch(/^og_[a-z0-9]+_[a-z0-9]+$/);
+	});
+
+	it("saveArtifact with source includes it in manifest entry", async () => {
+		const cwd = await tmp();
+		const { entry } = await saveArtifact({ cwd, toolName: "bash", text: "hello", idGenerator: () => "og_src_1", source: { kind: "tool_result", toolName: "bash" } });
+		expect(entry.source).toEqual({ kind: "tool_result", toolName: "bash" });
+	});
+
+	it("saveArtifact with redacted=true skips redaction", async () => {
+		const cwd = await tmp();
+		const { text } = await saveArtifact({ cwd, toolName: "bash", text: "password=secret", idGenerator: () => "og_red_1", redacted: true });
+		// When redacted=true, text is used as-is without running redactSecrets
+		expect(text).toBe("password=secret");
+	});
+
+	it("saveArtifact with redacted=false applies redaction", async () => {
+		const cwd = await tmp();
+		const { text } = await saveArtifact({ cwd, toolName: "bash", text: "password=secret", idGenerator: () => "og_red_2", redacted: false });
+		expect(text).toContain("password=[REDACTED]");
+		expect(text).not.toContain("password=secret");
+	});
+
+	it("safeUtf8Slice returns empty string for maxBytes <= 0", () => {
+		expect(safeUtf8Slice("hello", 0)).toBe("");
+		expect(safeUtf8Slice("hello", -1)).toBe("");
+	});
+
+	it("safeUtf8Slice from start handles multibyte boundary", () => {
+		// '😀' is 4 bytes, 'abc' is 3 bytes. Slice at 5 bytes should not end with replacement char.
+		const result = safeUtf8Slice("abc😀def", 5, false);
+		expect(result).not.toMatch(/\ufffd$/u);
+		expect(result.length).toBeGreaterThan(0);
+	});
+
+	it("safeUtf8Slice from end returns empty when all chars are multi-byte", () => {
+		// Very small maxBytes with emoji-only string
+		expect(safeUtf8Slice("😀😀😀", 0, true)).toBe("");
+	});
+
+	it("outputGateDir returns correct path", () => {
+		expect(outputGateDir("/project")).toBe(path.join("/project", ".pi", "output-gate"));
+	});
+
+	it("nextArtifactId increments counter", () => {
+		const id1 = nextArtifactId(1000);
+		const id2 = nextArtifactId(1000);
+		expect(id1).not.toBe(id2);
+	});
+
+	it("shouldGateOutput returns false for empty string", () => {
+		expect(shouldGateOutput("")).toBe(false);
+	});
+
+	it("shouldGateOutput returns false when toolName is search_tool_outputs", () => {
+		expect(shouldGateOutput("x".repeat(100), { toolName: "search_tool_outputs" })).toBe(false);
+	});
+
+	it("shouldGateOutput returns true for text exceeding default threshold", () => {
+		// Default is 16KB, so create text larger than that
+		expect(shouldGateOutput("x".repeat(20 * 1024))).toBe(true);
+	});
+
+	it("readManifest skips entries without id or path", async () => {
+		const cwd = await tmp();
+		await ensureOutputGateDirs(cwd);
+		await fsp.writeFile(manifestPath(cwd), JSON.stringify({ id: "bad_id", path: ".pi/output-gate/artifacts/bad.txt" }) + "\n", "utf8");
+		const entries = await readManifest(cwd);
+		expect(entries).toHaveLength(0);
 	});
 });

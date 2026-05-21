@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import * as fsp from "node:fs/promises";
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import outputGateExtension, { buildStoredOutputStub, extractTextContent, shouldGateOutput } from "./index.js";
 import { searchToolOutputs } from "./search.js";
+import { saveArtifact, gateTextForLlm } from "./store.js";
 
 async function tmp(): Promise<string> { return fsp.mkdtemp(path.join(os.tmpdir(), "og-index-")); }
 
@@ -22,6 +24,20 @@ describe("output-gate extension helpers", () => {
 
 	it("extracts text content from Pi tool content", () => {
 		expect(extractTextContent([{ type: "text", text: "a" }, { type: "image", data: "..." }, { type: "text", text: "b" }])).toBe("a\nb");
+	});
+
+	it("extractTextContent returns empty for non-array non-string", () => {
+		expect(extractTextContent(42 as any)).toBe("");
+		expect(extractTextContent(null as any)).toBe("");
+		expect(extractTextContent(undefined as any)).toBe("");
+	});
+
+	it("extractTextContent returns string as-is", () => {
+		expect(extractTextContent("hello")).toBe("hello");
+	});
+
+	it("extractTextContent skips non-text parts", () => {
+		expect(extractTextContent([{ type: "image", data: "x" }])).toBe("");
 	});
 
 	it("build stub contains artifact id, bytes, lines, search_tool_outputs instruction", () => {
@@ -43,5 +59,234 @@ describe("output-gate extension helpers", () => {
 		expect(pi.registerTool.mock.calls[0][0].name).toBe("search_tool_outputs");
 		expect(pi.registerCommand.mock.calls[0][0]).toBe("output-gate");
 		expect(pi.on).toHaveBeenCalledWith("tool_result", expect.any(Function));
+	});
+});
+
+describe("output-gate extension execute handler", () => {
+	it("execute returns content from searchToolOutputs", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const toolDef = pi.registerTool.mock.calls[0][0];
+		const cwd = await tmp();
+		const result = await toolDef.execute("id1", { query: "test" }, undefined, undefined, { cwd });
+		expect(result.content[0].type).toBe("text");
+		expect(result.content[0].text).toBe("No stored tool outputs.");
+		expect(result.details).toEqual({});
+	});
+
+	it("execute uses process.cwd() when ctx is missing", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const toolDef = pi.registerTool.mock.calls[0][0];
+		const result = await toolDef.execute("id1", { query: "test" }, undefined, undefined, undefined);
+		expect(result.content[0].type).toBe("text");
+	});
+
+	it("execute passes artifact, maxResults, contextLines params", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const toolDef = pi.registerTool.mock.calls[0][0];
+		const cwd = await tmp();
+		const result = await toolDef.execute("id1", { query: "test", artifact: "og_art_1", maxResults: 5, contextLines: 2 }, undefined, undefined, { cwd });
+		expect(result).toBeDefined();
+	});
+
+	it("execute handles missing params gracefully", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const toolDef = pi.registerTool.mock.calls[0][0];
+		const cwd = await tmp();
+		const result = await toolDef.execute("id1", {}, undefined, undefined, { cwd });
+		expect(result.content[0].text).toBe("Query is required.");
+	});
+});
+
+describe("output-gate command handler", () => {
+	it("clear command deletes output-gate dir when confirmed", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		// Create the output-gate dir so we can confirm deletion
+		await fsp.mkdir(path.join(cwd, ".pi", "output-gate"), { recursive: true });
+		await fsp.writeFile(path.join(cwd, ".pi", "output-gate", "test.txt"), "data");
+		const confirm = vi.fn().mockResolvedValue(true);
+		const notify = vi.fn();
+		await cmdDef.handler("clear", { cwd, ui: { confirm, notify } });
+		expect(confirm).toHaveBeenCalled();
+		expect(notify).toHaveBeenCalledWith("output-gate artifacts cleared", "info");
+	});
+
+	it("clear command aborts when user declines", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		// Create dir so we can check it still exists after decline
+		await fsp.mkdir(path.join(cwd, ".pi", "output-gate"), { recursive: true });
+		const confirm = vi.fn().mockResolvedValue(false);
+		const notify = vi.fn();
+		await cmdDef.handler("clear", { cwd, ui: { confirm, notify } });
+		expect(confirm).toHaveBeenCalled();
+		expect(notify).not.toHaveBeenCalled();
+		// Dir should still exist
+		expect(fs.existsSync(path.join(cwd, ".pi", "output-gate"))).toBe(true);
+	});
+
+	it("list command shows stored artifacts", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "hello", idGenerator: () => "og_lst_1", now: () => 1000 });
+		const notify = vi.fn();
+		await cmdDef.handler("list", { cwd, ui: { notify } });
+		expect(notify).toHaveBeenCalled();
+		const msg = notify.mock.calls[0][0];
+		expect(msg).toContain("og_lst_1");
+		expect(msg).toContain("bash");
+	});
+
+	it("list command returns 'No stored' when empty", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		const notify = vi.fn();
+		await cmdDef.handler("list", { cwd, ui: { notify } });
+		expect(notify).toHaveBeenCalledWith("No stored tool outputs.", "info");
+	});
+
+	it("status (default arg) shows manifest info", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "hello", idGenerator: () => "og_sts_1", now: () => 1000 });
+		const notify = vi.fn();
+		await cmdDef.handler(undefined, { cwd, ui: { notify } });
+		expect(notify).toHaveBeenCalled();
+		const msg = notify.mock.calls[0][0];
+		expect(msg).toContain("output-gate artifacts: 1");
+		expect(msg).toContain("total bytes");
+	});
+
+	it("getArgumentCompletions returns matching completions", () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		expect(cmdDef.getArgumentCompletions("li")).toEqual([{ value: "list", label: "list" }]);
+		expect(cmdDef.getArgumentCompletions("")).toEqual([{ value: "list", label: "list" }, { value: "clear", label: "clear" }]);
+		expect(cmdDef.getArgumentCompletions("xyz")).toEqual([]);
+	});
+});
+
+describe("output-gate tool_result hook", () => {
+	it("returns undefined for search_tool_outputs tool", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const hookFn = pi.on.mock.calls[0][1];
+		const result = await hookFn({ toolName: "search_tool_outputs", content: [{ type: "text", text: "x".repeat(100) }] }, { cwd: "/tmp" });
+		expect(result).toBeUndefined();
+	});
+
+	it("returns undefined for small tool output", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const hookFn = pi.on.mock.calls[0][1];
+		const result = await hookFn({ toolName: "bash", content: [{ type: "text", text: "small" }] }, { cwd: "/tmp" });
+		expect(result).toBeUndefined();
+	});
+
+	it("gates large tool output and returns stub", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const hookFn = pi.on.mock.calls[0][1];
+		const cwd = await tmp();
+		const bigText = "x".repeat(20 * 1024);
+		const result = await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }] }, { cwd });
+		expect(result).toBeDefined();
+		expect(result.content[0].text).toContain("[output-gate]");
+		expect(result.details.outputGate.stored).toBe(true);
+		expect(result.details.outputGate.bytes).toBe(20 * 1024);
+	});
+
+	it("preserves isError from original event", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const hookFn = pi.on.mock.calls[0][1];
+		const cwd = await tmp();
+		const bigText = "x".repeat(20 * 1024);
+		const result = await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }], isError: true }, { cwd });
+		expect(result.isError).toBe(true);
+	});
+
+	it("omits isError when original event has no isError", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const hookFn = pi.on.mock.calls[0][1];
+		const cwd = await tmp();
+		const bigText = "x".repeat(20 * 1024);
+		const result = await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }] }, { cwd });
+		expect(result.isError).toBeUndefined();
+	});
+
+	it("handles event with name instead of toolName", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const hookFn = pi.on.mock.calls[0][1];
+		const cwd = await tmp();
+		const bigText = "x".repeat(20 * 1024);
+		const result = await hookFn({ name: "bash", content: [{ type: "text", text: bigText }] }, { cwd });
+		expect(result).toBeDefined();
+		expect(result.content[0].text).toContain("[output-gate]");
+	});
+
+	it("merges existing event.details into result", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const hookFn = pi.on.mock.calls[0][1];
+		const cwd = await tmp();
+		const bigText = "x".repeat(20 * 1024);
+		const result = await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }], details: { extra: 42 } }, { cwd });
+		expect(result.details.extra).toBe(42);
+		expect(result.details.outputGate).toBeDefined();
+	});
+
+	it("uses event.cwd over ctx.cwd", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const hookFn = pi.on.mock.calls[0][1];
+		const cwd = await tmp();
+		const bigText = "x".repeat(20 * 1024);
+		const result = await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }], cwd }, { cwd: "/nonexistent" });
+		expect(result).toBeDefined();
+		expect(result.details.outputGate.stored).toBe(true);
+	});
+
+	it("handles storage failure gracefully", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const hookFn = pi.on.mock.calls[0][1];
+		// Use a file as cwd to trigger mkdir failure
+		const cwdBase = await tmp();
+		const cwdFile = path.join(cwdBase, "file");
+		await fsp.writeFile(cwdFile, "x");
+		const bigText = "x".repeat(20 * 1024);
+		const result = await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }], cwd: cwdFile }, {});
+		expect(result).toBeDefined();
+		expect(result.details.outputGate.stored).toBe(false);
+		expect(result.details.outputGate.storageError).toBeDefined();
+	});
+
+	it("extracts text from string content", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const hookFn = pi.on.mock.calls[0][1];
+		const cwd = await tmp();
+		const bigText = "x".repeat(20 * 1024);
+		const result = await hookFn({ toolName: "bash", content: bigText }, { cwd });
+		expect(result).toBeDefined();
+		expect(result.content[0].text).toContain("[output-gate]");
 	});
 });
