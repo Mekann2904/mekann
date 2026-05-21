@@ -62,9 +62,16 @@ const SpawnSchema = Type.Object({
     }),
   ),
   reasoning_effort: Type.Optional(
-    Type.String({
+    Type.Union([
+      Type.Literal("off"),
+      Type.Literal("minimal"),
+      Type.Literal("low"),
+      Type.Literal("medium"),
+      Type.Literal("high"),
+      Type.Literal("xhigh"),
+    ], {
       description:
-        'Reasoning effort level: "off", "minimal", "low", "medium", "high".',
+        'Reasoning effort level. If omitted, the subagent inherits the parent session thinking level deterministically.',
     }),
   ),
   role: Type.Optional(

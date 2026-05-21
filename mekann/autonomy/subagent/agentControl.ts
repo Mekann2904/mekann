@@ -167,21 +167,30 @@ export class AgentControl {
     return callerPath === ROOT_PATH ? undefined : callerPath;
   }
 
-  // ─── Helper: resolve model from params ────────────────────────────
+  // ─── Helper: resolve model / thinking from params ─────────────────
+
+  private resolveThinkingLevel(reasoningEffort: string | undefined): ThinkingLevel | undefined {
+    return (reasoningEffort ?? this.pi.getThinkingLevel?.()) as ThinkingLevel | undefined;
+  }
 
   private async resolveModel(modelOverride: string | undefined, ctx: ExtensionContext) {
     let model = ctx.model;
     if (!modelOverride) return model;
-    const parts = modelOverride.split("/");
-    if (parts.length === 2) {
-      const found = ctx.modelRegistry.find(parts[0], parts[1]);
-      if (!found) throw new Error(`Model not found: ${modelOverride}. Use provider/model_id format.`);
+    const slash = modelOverride.indexOf("/");
+    if (slash > 0 && slash < modelOverride.length - 1) {
+      const provider = modelOverride.slice(0, slash);
+      const modelId = modelOverride.slice(slash + 1);
+      const found = ctx.modelRegistry.find(provider, modelId);
+      if (!found) throw new Error(`Model not found: ${modelOverride}. Use an exact provider/model_id reference.`);
       return found;
     }
     const all = await ctx.modelRegistry.getAvailable();
-    const match = all.find((m) => m.id === modelOverride);
-    if (!match) throw new Error(`Model not found: ${modelOverride}. Available: ${all.map((m) => m.id).join(", ")}`);
-    return match;
+    const matches = all.filter((m) => m.id === modelOverride);
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) {
+      throw new Error(`Ambiguous model id: ${modelOverride}. Use exact provider/model_id. Matches: ${matches.map((m) => `${m.provider}/${m.id}`).join(", ")}`);
+    }
+    if (!matches.length) throw new Error(`Model not found: ${modelOverride}. Available: ${all.map((m) => m.provider ? `${m.provider}/${m.id}` : m.id).join(", ")}`);
   }
 
   // ─── Helper: finalize agent with error ─────────────────────────────
@@ -308,10 +317,11 @@ export class AgentControl {
       }
 
       const model = await this.resolveModel(params.model, ctx);
+      if (!model) throw new Error("No parent model is selected. Specify spawn_agent.model as an exact provider/model_id to avoid falling back to a default model.");
 
       const forkTurns = params.fork_turns ?? 0;
 
-      const thinkingLevel = params.reasoning_effort as ThinkingLevel | undefined;
+      const thinkingLevel = this.resolveThinkingLevel(params.reasoning_effort);
       const systemPrompts = [
         buildContextPreamble({
           agentPath: canonicalPath,
@@ -480,8 +490,10 @@ export class AgentControl {
     try {
       const resolvedOverride = params.model ? await this.resolveModel(params.model, ctx) : undefined;
       const modelId = resolvedOverride
-        ? `${(resolvedOverride as any).provider ?? ''}/${(resolvedOverride as any).id ?? ''}`
+        ? ((resolvedOverride as any).provider && (resolvedOverride as any).id ? `${(resolvedOverride as any).provider}/${(resolvedOverride as any).id}` : undefined)
         : (ctx.model?.provider && ctx.model?.id ? `${ctx.model.provider}/${ctx.model.id}` : undefined);
+      if (!modelId) throw new Error("External Pi subagents require an exact provider/model_id. Specify spawn_agent.model or use in-process subagents.");
+      const thinkingLevel = this.resolveThinkingLevel(params.reasoning_effort);
       const preamble = this.authorityPreamble(authority, params.result_contract);
       const externalNotice = [
         "SECURITY NOTICE: this external Pi process is running with authorityEnforced=false.",
@@ -493,7 +505,7 @@ export class AgentControl {
         .filter(Boolean)
         .join("\n\n");
 
-      const launchParams = { agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: launchMessage, logPath, title: display.title, piCommand: this.piCommand, extensionPath: this.extensionPath, modelId };
+      const launchParams = { agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: launchMessage, logPath, title: display.title, piCommand: this.piCommand, extensionPath: this.extensionPath, modelId, thinkingLevel };
       const opened = isSplit
         ? await this.kitty.launchPiSplit(launchParams)
         : await this.kitty.launchPiWindow(launchParams);

@@ -1439,7 +1439,31 @@ describe("AgentControl", () => {
       ).rejects.toThrow("Model not found: nonexistent");
     });
 
-    it("uses default model when no override", async () => {
+    it("ambiguous bare model id throws instead of picking first provider", async () => {
+      const ctx = {
+        ...baseCtx,
+        modelRegistry: {
+          find: vi.fn(() => undefined),
+          getAvailable: vi.fn(() => Promise.resolve([
+            { provider: "provider-a", id: "same-id" },
+            { provider: "provider-b", id: "same-id" },
+          ])),
+        },
+      } as any;
+
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      await expect(
+        control.spawn(
+          { task_name: "task1", message: "test", model: "same-id" },
+          ctx,
+        ),
+      ).rejects.toThrow("Ambiguous model id: same-id");
+    });
+
+    it("uses parent model when no override", async () => {
       const ctx = {
         ...baseCtx,
         model: { id: "default-model" },
@@ -1454,6 +1478,17 @@ describe("AgentControl", () => {
         ctx,
       );
       expect(result.status).toBe("pending_init");
+    });
+
+    it("fails closed when no parent model and no exact override are available", async () => {
+      const ctx = { ...baseCtx, model: undefined } as any;
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      await expect(
+        control.spawn({ task_name: "task1", message: "test" }, ctx),
+      ).rejects.toThrow("No parent model is selected");
     });
 
     it("rolls back reservation when createAgentSession throws", async () => {
@@ -1510,6 +1545,7 @@ describe("AgentControl", () => {
     });
 
     it("passes reasoning_effort as thinkingLevel", async () => {
+      const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
       const pi = createControlMockPi();
       const control = new (AgentControl as any)(pi, 4, 2);
       control.registry.ensureRoot("root");
@@ -1519,6 +1555,21 @@ describe("AgentControl", () => {
         baseCtx,
       );
       expect(result.status).toBe("pending_init");
+      expect((createAgentSession as any).mock.calls.at(-1)[0]).toMatchObject({ thinkingLevel: "high" });
+    });
+
+    it("inherits parent thinkingLevel when reasoning_effort is omitted", async () => {
+      const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
+      const pi = { ...createControlMockPi(), getThinkingLevel: vi.fn(() => "low") } as any;
+      const control = new (AgentControl as any)(pi, 4, 2);
+      control.registry.ensureRoot("root");
+
+      const result = await control.spawn(
+        { task_name: "task1", message: "test" },
+        baseCtx,
+      );
+      expect(result.status).toBe("pending_init");
+      expect((createAgentSession as any).mock.calls.at(-1)[0]).toMatchObject({ thinkingLevel: "low" });
     });
 
     it("passes role and nickname through", async () => {

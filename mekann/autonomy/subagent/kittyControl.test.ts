@@ -36,9 +36,13 @@ describe("KittyController", () => {
       expect(result.status).toBe("open");
     });
 
-    it("uses model when provided", async () => {
-      const result = await controller.launchPiWindow({ ...baseParams, modelId: "gpt-4" });
+    it("uses model and thinking when provided", async () => {
+      const result = await controller.launchPiWindow({ ...baseParams, modelId: "gpt-4", thinkingLevel: "low" });
       expect(result.status).toBe("open");
+      expect(result.windowId).toContain("--model");
+      expect(result.windowId).toContain("gpt-4");
+      expect(result.windowId).toContain("--thinking");
+      expect(result.windowId).toContain("low");
     });
 
     it("creates log directory and file when logPath provided", async () => {
