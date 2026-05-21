@@ -152,3 +152,67 @@ export function computeStats(events: MekannContextEvent[]): ContextStats {
 export async function clearContext(cwd: string): Promise<void> {
 	await fsp.rm(contextDir(cwd), { recursive: true, force: true });
 }
+
+// ─── Search ─────────────────────────────────────────────────────
+
+export interface SearchEventsInput {
+	cwd: string;
+	query?: string;
+	kind?: MekannContextEventKind;
+	maxResults?: number;
+	priorityMax?: number;
+}
+
+function matchQuery(event: MekannContextEvent, query: string): boolean {
+	const q = query.toLocaleLowerCase();
+	if (event.title.toLocaleLowerCase().includes(q)) return true;
+	if (event.summary.toLocaleLowerCase().includes(q)) return true;
+	if (event.refs) {
+		for (const ref of event.refs) {
+			if (ref.value.toLocaleLowerCase().includes(q)) return true;
+		}
+	}
+	return false;
+}
+
+export async function searchEvents(input: SearchEventsInput): Promise<MekannContextEvent[]> {
+	let events = await readEvents(input.cwd);
+	if (events.length === 0) return [];
+
+	if (input.kind) {
+		events = events.filter((e) => e.kind === input.kind);
+	}
+	if (input.priorityMax != null) {
+		events = events.filter((e) => e.priority <= input.priorityMax!);
+	}
+	if (input.query) {
+		events = events.filter((e) => matchQuery(e, input.query!));
+	}
+
+	// Sort by priority ascending, then createdAt descending
+	events.sort((a, b) => {
+		if (a.priority !== b.priority) return a.priority - b.priority;
+		return b.createdAt - a.createdAt;
+	});
+
+	const maxResults = input.maxResults ?? 20;
+	return events.slice(0, maxResults);
+}
+
+export function formatSearchResult(events: MekannContextEvent[]): string {
+	if (events.length === 0) return "No matching context events.";
+	return events.map((e) => {
+		const lines = [
+			`### ${e.id}  P${e.priority}  ${e.kind}  ${e.title}`,
+			`summary: ${e.summary}`,
+		];
+		if (e.refs && e.refs.length > 0) {
+			lines.push("refs:");
+			for (const ref of e.refs) {
+				lines.push(`  ${ref.type}: ${ref.value}`);
+			}
+		}
+		lines.push(`created: ${new Date(e.createdAt).toISOString()}`);
+		return lines.join("\n");
+	}).join("\n\n");
+}

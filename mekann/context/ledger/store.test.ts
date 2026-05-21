@@ -8,6 +8,8 @@ import {
 	readEvents,
 	computeStats,
 	clearContext,
+	searchEvents,
+	formatSearchResult,
 	createEventId,
 	eventsPath,
 	contextDir,
@@ -140,5 +142,90 @@ describe("context ledger store", () => {
 		expect(fs.existsSync(contextDir(cwd))).toBe(true);
 		await clearContext(cwd);
 		expect(fs.existsSync(contextDir(cwd))).toBe(false);
+	});
+
+	// Search tests
+	it("searchEvents returns all events when no filter", async () => {
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "T1", summary: "s1", idGenerator: () => "ctx_se_1", now: () => 1000 });
+		await appendContextEvent({ cwd, kind: "error", priority: 0, title: "E1", summary: "s2", idGenerator: () => "ctx_se_2", now: () => 2000 });
+		const results = await searchEvents({ cwd });
+		expect(results).toHaveLength(2);
+		// Priority 0 first
+		expect(results[0].id).toBe("ctx_se_2");
+	});
+
+	it("searchEvents filters by kind", async () => {
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "T1", summary: "s1", idGenerator: () => "ctx_sk_1" });
+		await appendContextEvent({ cwd, kind: "error", priority: 0, title: "E1", summary: "s2", idGenerator: () => "ctx_sk_2" });
+		const results = await searchEvents({ cwd, kind: "error" });
+		expect(results).toHaveLength(1);
+		expect(results[0].kind).toBe("error");
+	});
+
+	it("searchEvents filters by query matching title/summary/refs", async () => {
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "Fix login bug", summary: "User reports 500", idGenerator: () => "ctx_sq_1" });
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "Update docs", summary: "Add README section", idGenerator: () => "ctx_sq_2" });
+		const results = await searchEvents({ cwd, query: "login" });
+		expect(results).toHaveLength(1);
+		expect(results[0].id).toBe("ctx_sq_1");
+	});
+
+	it("searchEvents filters by priorityMax", async () => {
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "task", priority: 0, title: "Critical", summary: "c", idGenerator: () => "ctx_sp_1" });
+		await appendContextEvent({ cwd, kind: "task", priority: 3, title: "Low", summary: "l", idGenerator: () => "ctx_sp_2" });
+		const results = await searchEvents({ cwd, priorityMax: 1 });
+		expect(results).toHaveLength(1);
+		expect(results[0].title).toBe("Critical");
+	});
+
+	it("searchEvents respects maxResults", async () => {
+		const cwd = await tmp();
+		for (let i = 0; i < 5; i++) {
+			await appendContextEvent({ cwd, kind: "task", priority: 2, title: `T${i}`, summary: `s${i}`, idGenerator: () => `ctx_sm_${i}` });
+		}
+		const results = await searchEvents({ cwd, maxResults: 2 });
+		expect(results).toHaveLength(2);
+	});
+
+	it("searchEvents matches refs values", async () => {
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "tool_result", priority: 3, title: "Stored", summary: "big output", refs: [{ type: "artifact", value: "og_abc_1" }], idGenerator: () => "ctx_sr_1" });
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "Other", summary: "no ref", idGenerator: () => "ctx_sr_2" });
+		const results = await searchEvents({ cwd, query: "og_abc" });
+		expect(results).toHaveLength(1);
+		expect(results[0].id).toBe("ctx_sr_1");
+	});
+
+	it("searchEvents returns empty for no matches", async () => {
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "T1", summary: "s1", idGenerator: () => "ctx_sn_1" });
+		const results = await searchEvents({ cwd, query: "nonexistent" });
+		expect(results).toHaveLength(0);
+	});
+
+	it("searchEvents returns empty when no events", async () => {
+		const cwd = await tmp();
+		const results = await searchEvents({ cwd });
+		expect(results).toEqual([]);
+	});
+
+	it("formatSearchResult formats events as text", async () => {
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "error", priority: 0, title: "Build failed", summary: "TypeError in foo.ts", refs: [{ type: "file", value: "foo.ts" }], idGenerator: () => "ctx_fmt_1" });
+		const events = await searchEvents({ cwd });
+		const text = formatSearchResult(events);
+		expect(text).toContain("ctx_fmt_1");
+		expect(text).toContain("P0");
+		expect(text).toContain("error");
+		expect(text).toContain("Build failed");
+		expect(text).toContain("file: foo.ts");
+	});
+
+	it("formatSearchResult handles empty events", () => {
+		expect(formatSearchResult([])).toBe("No matching context events.");
 	});
 });

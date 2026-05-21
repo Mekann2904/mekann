@@ -1,10 +1,10 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import * as fsp from "node:fs/promises";
-import { appendContextEvent, readEvents, computeStats, clearContext, eventsPath, contextDir } from "./store.js";
+import { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult, eventsPath, contextDir } from "./store.js";
 import { buildSnapshot } from "./snapshot.js";
 
-export { appendContextEvent, readEvents, computeStats, clearContext } from "./store.js";
+export { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult } from "./store.js";
 export type { MekannContextEvent, MekannContextEventKind, MekannContextRef, AppendEventInput } from "./store.js";
 export { buildSnapshot } from "./snapshot.js";
 
@@ -53,6 +53,44 @@ async function contextLedgerStats(cwd: string): Promise<string> {
 }
 
 export default function contextLedgerExtension(pi: ExtensionAPI): void {
+	const KindEnum = Type.Union([
+		Type.Literal("tool_result"),
+		Type.Literal("user_decision"),
+		Type.Literal("file_change"),
+		Type.Literal("error"),
+		Type.Literal("task"),
+		Type.Literal("plan"),
+		Type.Literal("subagent"),
+	]);
+
+	pi.registerTool({
+		name: "search_context_events",
+		label: "Search Context Events",
+		description: "Search decisions, tasks, errors, plans, and artifact references stored in the context ledger.",
+		promptSnippet: "Search working memory events from the context ledger.",
+		promptGuidelines: [
+			"Use search_context_events for decisions, tasks, errors, plans, and artifact references.",
+			"Use search_tool_outputs for raw log/output snippets stored by output-gate.",
+		],
+		parameters: Type.Object({
+			query: Type.Optional(Type.String({ description: "Search title, summary, and refs" })),
+			kind: Type.Optional(KindEnum),
+			maxResults: Type.Optional(Type.Number({ description: "Maximum events to return (default: 20)" })),
+			priorityMax: Type.Optional(Type.Number({ description: "Only include events with priority <= this value (0-4)" })),
+		}),
+		async execute(_id, params, _signal, _onUpdate, ctx) {
+			const cwd = ctx?.cwd ?? process.cwd();
+			const events = await searchEvents({
+				cwd,
+				query: (params as any).query ? String((params as any).query) : undefined,
+				kind: (params as any).kind,
+				maxResults: (params as any).maxResults == null ? undefined : Number((params as any).maxResults),
+				priorityMax: (params as any).priorityMax == null ? undefined : Number((params as any).priorityMax),
+			});
+			const text = formatSearchResult(events);
+			return { content: [{ type: "text", text }], details: {} };
+		},
+	});
 	pi.registerCommand("context-ledger", {
 		description: "context-ledger events を表示・削除",
 		getArgumentCompletions(prefix: string) {
