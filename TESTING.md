@@ -47,14 +47,20 @@ cd mekann/safety/plan-mode && npx vitest run --coverage
 
 **Coverage**: ~65% statements (index.ts extension body is UI-dependent; pure functions are fully covered)
 
-### output-gate (118 tests)
+### output-gate (120 tests)
 
 | File | Tests | Description |
 |------|-------|-------------|
-| `store.test.ts` | ~45 | Artifact CRUD, manifest JSONL, redaction, preview, SHA-256 |
-| `search.test.ts` | ~30 | rg-backed search, literal/regex, case-sensitive, fallback line scan |
+| `store.test.ts` | ~48 | Artifact CRUD, manifest JSONL, redaction, preview, SHA-256 |
+| `search.test.ts` | ~33 | rg-backed search, literal/regex, case-sensitive, fallback line scan |
 | `index.test.ts` | ~30 | Tool registration, command handler (list/show/stats/purge/clear), tool_result hook |
 | `redact.test.ts` | ~13 | Secret redaction patterns |
+
+### context-ledger (11 tests)
+
+| File | Tests | Description |
+|------|-------|-------------|
+| `store.test.ts` | 11 | Event append, read, stats, clear, validation, corrupt JSONL handling |
 
 ### zip-repo (36 tests)
 
@@ -87,6 +93,7 @@ GitHub Actions runs all tests on every push/PR:
 - `autoresearch`: Ubuntu (unit tests)
 - `goal`: Ubuntu (unit tests)
 - `output-gate`: Ubuntu (unit tests)
+- `ledger`: Ubuntu (unit tests)
 
 ## Pre-push Hook (Husky)
 
@@ -101,7 +108,9 @@ prepush = typecheck + CI prepare + workflow checks + module tests (parallel)
   ├── zip-repo tests
   ├── autoresearch fast tests
   ├── goal tests
-  └── output-gate tests
+  ├── goal tests
+  ├── output-gate tests
+  └── ledger tests
 ```
 
 ```bash

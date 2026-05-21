@@ -212,11 +212,29 @@ jobs:
       - name: Production typecheck
         run: npm run typecheck:prod
 
+  ledger:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mekann/context/ledger
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci --workspaces=false
+
+      - name: Unit tests
+        run: npm test
+
   # ─── Aggregate test count ──────────────────────────────────────────
 
   test-summary:
     runs-on: ubuntu-latest
-    needs: [plan-mode, sandbox-unit, sandbox-macos, zip-repo, subagent, autoresearch, goal, output-gate, typecheck-prod]
+    needs: [plan-mode, sandbox-unit, sandbox-macos, zip-repo, subagent, autoresearch, goal, output-gate, typecheck-prod, ledger]
     if: always()
     steps:
       - name: All tests passed
@@ -231,3 +249,4 @@ jobs:
           echo "  goal: passed"
           echo "  output-gate: passed"
           echo "  typecheck-prod: passed"
+          echo "  ledger: passed"

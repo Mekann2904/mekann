@@ -21,7 +21,8 @@ declare -A names=( [typecheck]="npm run typecheck"
   [zip-repo]="npm run test:zip-repo"
   [autoresearch-fast]="npm run test:autoresearch:fast"
   [goal]="npm run test:goal"
-  [output-gate]="npm run test:output-gate" )
+  [output-gate]="npm run test:output-gate"
+  [ledger]="npm run test:ledger" )
 
 for name in "${!names[@]}"; do
   eval "${names[$name]}" > "$tmpdir/$name.log" 2>&1 & pids[$name]=$!

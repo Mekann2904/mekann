@@ -31,6 +31,7 @@
     "test:autoresearch:slow": "cd mekann/autonomy/autoresearch && npm run test:slow",
     "test:goal": "cd mekann/autonomy/goal && npm test",
     "test:output-gate": "cd mekann/context/output-gate && npm test",
+    "test:ledger": "cd mekann/context/ledger && npm test",
     "ci": "npm test",
     "prepare": "node scripts/prepare-husky.js",
     "check:prepare-ci": "CI=true npm run prepare",

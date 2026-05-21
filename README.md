@@ -15,7 +15,7 @@
 | core | [cache-friendly-prompt](./mekann/core/cache-friendly-prompt/), [agent-guidelines](./mekann/core/agent-guidelines/) |
 | safety | [sandbox](./mekann/safety/sandbox/), [plan-mode](./mekann/safety/plan-mode/) |
 | autonomy | [goal](./mekann/autonomy/goal/), [subagent](./mekann/autonomy/subagent/), [autoresearch](./mekann/autonomy/autoresearch/) |
-| context | [output-gate](./mekann/context/output-gate/) |
+| context | [output-gate](./mekann/context/output-gate/), [ledger](./mekann/context/ledger/) |
 | utils | [zip-repo](./mekann/utils/zip-repo/) |
 | shared | [prompt-core](./mekann/core/prompt-core/), [policy-core](./mekann/safety/policy-core/) |
 
@@ -75,6 +75,17 @@ Large tool output の自動保存と検索。
 - JSONL manifest + artifact file で SQLite 不要
 
 詳細: [output-gate/README.md](./mekann/context/output-gate/README.md)
+
+### context-ledger
+
+Append-only working memory store for agent session context。
+
+- 意思決定、エラー、タスク、plan などの event を JSONL に記録
+- priority (0=critical ~ 4=info) と kind による分類
+- artifact/file/commit への参照を保持
+- output-gate が「巨大出力を失わない仕組み」なら、ledger は「作業判断を失わない仕組み」
+
+詳細: [ledger/README.md](./mekann/context/ledger/README.md)
 
 ### subagent
 
