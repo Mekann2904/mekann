@@ -40,11 +40,13 @@ export interface GateTextOptions {
 export interface GatedTextResult {
 	text: string;
 	gated: boolean;
+	handled: boolean;
 	artifactId?: string;
 	originalBytes: number;
 	originalLines: number;
 	sha256?: string;
 	redacted?: boolean;
+	storageError?: string;
 }
 
 let artifactCounter = 0;
@@ -69,6 +71,24 @@ export function countLines(text: string): number {
 
 export function sha256(text: string): string {
 	return crypto.createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+export function sanitizeManifestSource(source: unknown, maxStringBytes = 2000): unknown {
+	if (source === undefined) return undefined;
+	const seen = new WeakSet<object>();
+	try {
+		return JSON.parse(JSON.stringify(source, (_key, value) => {
+			if (typeof value === "bigint") return value.toString();
+			if (typeof value === "string") return safeUtf8Slice(redactSecrets(value).text, maxStringBytes);
+			if (value && typeof value === "object") {
+				if (seen.has(value)) return "[Circular]";
+				seen.add(value);
+			}
+			return value;
+		}));
+	} catch {
+		return "[Unserializable source]";
+	}
 }
 
 export async function ensureOutputGateDirs(cwd: string): Promise<void> {
@@ -140,7 +160,7 @@ export async function saveArtifact(input: SaveArtifactInput): Promise<{ entry: O
 		sha256: sha256(redacted.text),
 		path: relPath,
 		redacted: true,
-		...(input.source === undefined ? {} : { source: input.source }),
+		...(input.source === undefined ? {} : { source: sanitizeManifestSource(input.source) }),
 	};
 	await fsp.appendFile(manifestPath(input.cwd), `${JSON.stringify(entry)}\n`, "utf8");
 	return { entry, text: redacted.text };
@@ -172,13 +192,14 @@ export function resolveArtifactPath(cwd: string, entry: OutputGateManifestEntry)
 export async function gateTextForLlm(options: GateTextOptions): Promise<GatedTextResult> {
 	const originalBytes = Buffer.byteLength(options.text, "utf8");
 	const originalLines = countLines(options.text);
-	if (!shouldGateOutput(options.text, { toolName: options.toolName, maxInlineBytes: options.maxInlineBytes })) return { text: options.text, gated: false, originalBytes, originalLines };
+	if (!shouldGateOutput(options.text, { toolName: options.toolName, maxInlineBytes: options.maxInlineBytes })) return { text: options.text, gated: false, handled: false, originalBytes, originalLines };
 	try {
 		const saved = await saveArtifact({ cwd: options.cwd, toolName: options.toolName, text: options.text, source: options.source });
 		const preview = buildPreview(saved.text, options.previewBytes ?? MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes);
-		return { text: buildStoredOutputStub(saved.entry, preview), gated: true, artifactId: saved.entry.id, originalBytes, originalLines, sha256: saved.entry.sha256, redacted: true };
+		return { text: buildStoredOutputStub(saved.entry, preview), gated: true, handled: true, artifactId: saved.entry.id, originalBytes, originalLines, sha256: saved.entry.sha256, redacted: true };
 	} catch (error: any) {
+		const message = error?.message ?? String(error);
 		const preview = buildPreview(redactSecrets(options.text).text, options.previewBytes ?? MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes);
-		return { text: `[output-gate] Failed to store large ${options.toolName} output: ${error?.message ?? String(error)}\n\n${preview}`, gated: false, originalBytes, originalLines };
+		return { text: `[output-gate] Failed to store large ${options.toolName} output; showing redacted preview only: ${message}\n\n${preview}`, gated: false, handled: true, originalBytes, originalLines, redacted: true, storageError: message };
 	}
 }

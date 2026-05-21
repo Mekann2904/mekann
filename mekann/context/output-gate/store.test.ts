@@ -3,7 +3,7 @@ import * as fsp from "node:fs/promises";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { artifactsDir, countLines, createArtifactId, ensureOutputGateDirs, manifestPath, readManifest, saveArtifact, sha256 } from "./store.js";
+import { artifactsDir, countLines, createArtifactId, ensureOutputGateDirs, gateTextForLlm, manifestPath, readManifest, sanitizeManifestSource, saveArtifact, sha256 } from "./store.js";
 
 async function tmp(): Promise<string> { return fsp.mkdtemp(path.join(os.tmpdir(), "og-store-")); }
 
@@ -54,5 +54,23 @@ describe("output-gate store", () => {
 		const { entry } = await saveArtifact({ cwd, toolName: "bash", text: "x", idGenerator: () => "og_safe_1" });
 		expect(path.isAbsolute(entry.path)).toBe(false);
 		expect(entry.path.startsWith("..")).toBe(false);
+	});
+
+	it("sanitizes manifest source secrets and unserializable values", () => {
+		const source: any = { token: "token=abc123", nested: {} };
+		source.big = 1n;
+		source.nested.self = source;
+		expect(sanitizeManifestSource(source)).toEqual({ token: "token=[REDACTED]", nested: { self: "[Circular]" }, big: "1" });
+	});
+
+	it("gateTextForLlm returns handled redacted preview when storage fails", async () => {
+		const cwdFile = path.join(await tmp(), "not-a-dir");
+		await fsp.writeFile(cwdFile, "file", "utf8");
+		const result = await gateTextForLlm({ cwd: cwdFile, toolName: "bash", text: `password=secret\n${"x".repeat(200)}`, maxInlineBytes: 10, previewBytes: 300 });
+		expect(result.handled).toBe(true);
+		expect(result.gated).toBe(false);
+		expect(result.text).toContain("Failed to store");
+		expect(result.text).toContain("password=[REDACTED]");
+		expect(result.text).not.toContain("password=secret");
 	});
 });

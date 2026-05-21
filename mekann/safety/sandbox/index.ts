@@ -16,6 +16,7 @@ import { DEFAULT_SANDBOX_MODE, parseSandboxMode, modeLabel, SANDBOX_PUSH_PROFILE
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { MEKANN_SANDBOX_DEFAULTS, MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
 import { gateTextForLlm } from "../../context/output-gate/store.js";
+import { redactSecrets } from "../../context/output-gate/redact.js";
 
 // ─── LLM output truncation ─────────────────────────────────────────
 
@@ -203,24 +204,30 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				cwd: currentCwd || process.cwd(),
 				toolName: "bash",
 				text: output,
-				source: { kind: "sandboxed_bash", command },
+				source: { kind: "sandboxed_bash", command: redactSecrets(command).text.slice(0, 2000) },
 				maxInlineBytes: MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes,
 				previewBytes: MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes,
 			});
-			const shown = gated.gated ? {
+			const shown = gated.handled ? {
 				text: gated.text,
 				truncated: true,
 				originalBytes: gated.originalBytes,
 				originalLines: gated.originalLines,
 			} : truncateForLlm(output);
-			const outputGate = gated.gated ? {
+			const outputGate = gated.handled ? (gated.gated ? {
 				stored: true,
 				artifactId: gated.artifactId,
 				bytes: gated.originalBytes,
 				lines: gated.originalLines,
 				sha256: gated.sha256,
 				redacted: true,
-			} : undefined;
+			} : {
+				stored: false,
+				bytes: gated.originalBytes,
+				lines: gated.originalLines,
+				redacted: true,
+				storageError: gated.storageError,
+			}) : undefined;
 
 			// Detect sandbox permission errors and add elevation hint
 			if (result.code !== 0) {

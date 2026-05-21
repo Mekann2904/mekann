@@ -83,20 +83,26 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 		const text = extractTextContent(event?.content);
 		if (!shouldGateOutput(text, { toolName, maxInlineBytes: MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes })) return undefined;
 		const cwd = event?.cwd ?? ctx?.cwd ?? process.cwd();
-		const gated = await gateTextForLlm({ cwd, toolName, text, source: { kind: "tool_result", details: event?.details }, maxInlineBytes: MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes, previewBytes: MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes });
-		if (!gated.gated) return undefined;
+		const gated = await gateTextForLlm({ cwd, toolName, text, source: { kind: "tool_result", toolName }, maxInlineBytes: MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes, previewBytes: MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes });
+		if (!gated.handled) return undefined;
 		return {
 			content: [{ type: "text", text: gated.text }],
 			isError: event?.isError,
 			details: {
 				...(event?.details ?? {}),
-				outputGate: {
+				outputGate: gated.gated ? {
 					stored: true,
 					artifactId: gated.artifactId,
 					bytes: gated.originalBytes,
 					lines: gated.originalLines,
 					sha256: gated.sha256,
 					redacted: true,
+				} : {
+					stored: false,
+					bytes: gated.originalBytes,
+					lines: gated.originalLines,
+					redacted: true,
+					storageError: gated.storageError,
 				},
 			},
 		};
