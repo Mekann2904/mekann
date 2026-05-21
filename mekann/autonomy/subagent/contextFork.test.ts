@@ -17,10 +17,10 @@ import {
 // ---------------------------------------------------------------------------
 
 function makeUser(text: string) {
-	return { role: "user" as const, content: [{ type: "text" as const, text }] };
+	return { role: "user" as const, content: [{ type: "text" as const, text }], timestamp: Date.now() };
 }
 function makeAssistant(text: string) {
-	return { role: "assistant" as const, content: [{ type: "text" as const, text }] };
+	return { role: "assistant" as const, content: [{ type: "text" as const, text }], timestamp: Date.now() };
 }
 
 // ---------------------------------------------------------------------------
