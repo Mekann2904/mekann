@@ -17,6 +17,18 @@ export interface ModelManagerOptions {
 	onUnavailableRef?: (requested: ModelRef) => void;
 }
 
+/** Pi thinking levels. Kept here so model/thinking persistence is not owned by plan-mode. */
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
+export interface ModeModelPersistenceOptions<Mode extends string> {
+	pi: Pick<ExtensionAPI, "on" | "getThinkingLevel">;
+	getMode: () => Mode;
+	isModelSuppressed?: () => boolean;
+	isThinkingSuppressed?: () => boolean;
+	persistModel: (mode: Mode, ref: ModelRef) => void;
+	persistThinking: (mode: Mode, level: ThinkingLevel) => void;
+}
+
 /** Format a ModelRef as "provider/modelId". */
 export function formatModelRef(ref?: ModelRef): string {
 	return ref ? `${ref.provider}/${ref.modelId}` : "(not set)";
@@ -63,6 +75,31 @@ export async function resolveModelRef(ref: ModelRef, ctx: ExtensionContext): Pro
 		m.id.toLowerCase().includes(needle) || (typeof m.name === "string" && m.name.toLowerCase().includes(needle)),
 	));
 	return model ? { model, resolvedRef: { provider: model.provider, modelId: model.id } } : {};
+}
+
+export function registerModeModelPersistence<Mode extends string>(options: ModeModelPersistenceOptions<Mode>): void {
+	function persistCurrentThinking(mode: Mode): void {
+		if (options.isThinkingSuppressed?.()) return;
+		const level = options.pi.getThinkingLevel?.() as ThinkingLevel | undefined;
+		if (level) options.persistThinking(mode, level);
+	}
+
+	options.pi.on("model_select", async (event) => {
+		if (event.source === "restore") return;
+		if (options.isModelSuppressed?.()) return;
+		const mode = options.getMode();
+		options.persistModel(mode, { provider: event.model.provider, modelId: event.model.id });
+		// Model switching may clamp or apply scoped-model effort before model_select
+		// is emitted. Persist the effective effort here so Shift+Tab/current effort
+		// stays in sync with model management even if no separate thinking event is
+		// observed by extensions.
+		persistCurrentThinking(mode);
+	});
+
+	options.pi.on("thinking_level_select", async (event) => {
+		if (options.isThinkingSuppressed?.()) return;
+		options.persistThinking(options.getMode(), event.level);
+	});
 }
 
 export function createModelManager(options: ModelManagerOptions) {

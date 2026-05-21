@@ -8,7 +8,7 @@ import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
 import { createInitialState, isReadOnlyMode, isPlanReadOnlyCommandIntent, classifyCommandIntent, buildBlockReason, loadPrompt, hashContent, extractProposedPlan, PLAN_MODE_TOOLS, sameModelRef, loadModelConfig, updateConfigField, compactOldProposedPlansInText, type ModelRef, type ThinkingLevel, type MekannMode, type ModeName } from "./utils.js";
-import { createModelManager } from "../../core/model-manager.js";
+import { createModelManager, registerModeModelPersistence } from "../../core/model-manager.js";
 import {
 	SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, PLAN_MODE_STATUS_EVENT,
 	MEKANN_AUTORESEARCH_MODE_EVENT,
@@ -49,20 +49,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	/** Apply a thinking level with suppress guard (safe to call when level is undefined). */
 	function applyThinking(level?: ThinkingLevel): void {
 		if (level) { suppressThinkingSelectPersist = true; try { pi.setThinkingLevel(level); } finally { suppressThinkingSelectPersist = false; } }
-	}
-
-	/**
-	 * Persist the currently effective thinking level for the active mode.
-	 *
-	 * Normally this is handled by thinking_level_select.  Some UI paths (notably
-	 * Shift+Tab cycling in older/newer pi builds) can update the session before
-	 * extensions observe the event, so poll the effective value at stable points
-	 * such as mode transitions and turn_end as a fallback.
-	 */
-	function snapshotCurrentThinking(): void {
-		if (suppressThinkingSelectPersist) return;
-		const level = pi.getThinkingLevel() as ThinkingLevel | undefined;
-		if (level) persistIfChanged("thinking", state.mode, level, (a, b) => a === b);
 	}
 
 	pi.registerFlag("plan", { description: "プランモードで起動（読み取り専用探索）", type: "boolean", default: false });
@@ -126,10 +112,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (previous === target) return;
 
 		const persistCurrentMain = opts?.persistCurrentMain !== false;
-		// Fallback for UI thinking-level changes (Shift+Tab) that may not be
-		// observed through thinking_level_select before the mode changes.
-		if (previous !== "main" || persistCurrentMain) snapshotCurrentThinking();
-
 		// ── Leave the current mode ──
 		if (previous === "plan") {
 			// Notify sandbox of mode change BEFORE popping override
@@ -329,7 +311,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		if (plan) { state.pendingPlan = plan; }
 	});
-	pi.on("turn_end", async () => { snapshotCurrentThinking(); blockCount = 0; lastBlockedTool = ""; lastBlockedInput = ""; });
+	pi.on("turn_end", async () => { blockCount = 0; lastBlockedTool = ""; lastBlockedInput = ""; });
 
 	// Track config changes per-mode
 	function persistIfChanged<T>(
@@ -342,23 +324,19 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (!isEqual(current, value)) updateConfigField(state.modelConfig, section, mode, value, configPath);
 	}
 
-	// Track model changes per-mode
-	pi.on("model_select", async (event, ctx) => {
-		if (event.source === "restore") return;
-		if (suppressModelSelectPersist) return;
-		const ref: ModelRef = { provider: event.model.provider, modelId: event.model.id };
-		// model_select is emitted after pi has selected a concrete model. Persist it
-		// directly instead of re-validating through modelRegistry.find(): some
-		// providers/selector paths can expose a selected model that does not round-trip
-		// through find() in this hook context, which made plan-mode changes fail to
-		// persist. restore events are still ignored above to avoid saving fallback IDs.
-		persistIfChanged("models", state.mode, ref, sameModelRef);
-	});
-
-	// Track thinking level changes per-mode
-	pi.on("thinking_level_select", async (event) => {
-		if (suppressThinkingSelectPersist) return;
-		const level = event.level; persistIfChanged("thinking", state.mode, level, (a, b) => a === b);
+	registerModeModelPersistence({
+		pi,
+		getMode: () => state.mode,
+		isModelSuppressed: () => suppressModelSelectPersist,
+		isThinkingSuppressed: () => suppressThinkingSelectPersist,
+		persistModel: (mode, ref) => {
+			// model_select is emitted after pi has selected a concrete model. Persist it
+			// directly instead of re-validating through modelRegistry.find(): some
+			// providers/selector paths can expose a selected model that does not round-trip
+			// through find() in this hook context, which made changes fail to persist.
+			persistIfChanged("models", mode, ref, sameModelRef);
+		},
+		persistThinking: (mode, level) => persistIfChanged("thinking", mode, level, (a, b) => a === b),
 	});
 	// ─── Autoresearch mode event listener ─────────────────────────
 
