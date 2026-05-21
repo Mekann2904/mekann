@@ -21,4 +21,5 @@ Thumbs.db
 # Pi autoresearch artifacts
 .pi/
 .autoresearch/
+.pi-cache-friendly/
 /memo.md
