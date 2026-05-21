@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, existsSync, mkdirSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { isSafeCommand, isPlanReadOnlyCommandIntent, classifyCommandIntent, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, PLAN_MODE_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateConfigField, createDefaultConfig, getConfigPath, normalizeConfig, compactOldProposedPlansInText, type ModelRef, type ThinkingLevel } from "./utils.js";
@@ -551,6 +551,27 @@ describe("config persistence", () => {
 			expect(staleConfig.models.main).toEqual({ provider: "openai-codex", modelId: "gpt-5.5" });
 		} finally {
 			rmSync(tmpDir, { recursive: true });
+		}
+	});
+
+	it("saveModelConfig reclaims stale lock directories", () => {
+		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
+		const path = `${tmpDir}/plan-mode.json`;
+		const lockPath = `${path}.lock`;
+
+		try {
+			mkdirSync(lockPath);
+			const stale = new Date(Date.now() - 60_000);
+			utimesSync(lockPath, stale, stale);
+
+			const config = createDefaultConfig();
+			config.thinking.main = "high";
+			saveModelConfig(config, path);
+
+			expect(existsSync(lockPath)).toBe(false);
+			expect(loadModelConfig(path).thinking.main).toBe("high");
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
 		}
 	});
 });

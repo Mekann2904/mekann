@@ -13,7 +13,7 @@ declare -A names=( [typecheck]="npm run typecheck"
   [prompt-core]="npm run test:prompt-core"
   [cache-friendly-prompt]="npm run test:cache-friendly-prompt"
   [agent-guidelines]="npm run test:agent-guidelines"
-  [plan-mode]="npm run test:plan-mode"
+  [plan-mode-coverage]="npm run check:coverage:plan-mode"
   [sandbox]="npm run test:sandbox"
   [subagent]="npm run test:subagent"
   [zip-repo]="npm run test:zip-repo"
@@ -43,5 +43,5 @@ if [ $fail -ne 0 ]; then
   exit 1
 fi
 
-echo "✓ All checks passed (workflow checks + CI prepare check + typecheck + 9 test suites)"
+echo "✓ All checks passed (workflow checks + CI prepare check + plan-mode coverage threshold + typecheck + test suites)"
 exit 0
