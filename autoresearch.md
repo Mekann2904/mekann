@@ -56,6 +56,24 @@ subagent で特定の同じテストタスク（npm test）を実行し、実行
 - `npm test` 全体: すべて成功（autoresearch 598 tests / goal 217 tests / subagent 256 tests 等）
 - 注意: 現セッションでは autoresearch モードが inactive で、`autoresearch_run` / `autoresearch_log` は tool guard により拒否された。次回は `/autoresearch on` 後に同じ実験を正式記録する。
 
+### ラウンド8: 機能監査テスト + 軽量修正（autoresearch tool guard により未正式記録）
+- `.autoresearch/feature-audit/FEATURE_LIST.md` に mekann 拡張全体の機能リストと問題一覧を作成
+- 新規テスト 47件を追加し、ContextFork / ResultSchema / ResultStore / ContractEvaluator / GoalRuntime の期待挙動を明文化
+- 低リスク修正として zip-repo の `formatFileSize` に GB 表示と負値/非有限値拒否を追加
+- subagent の mailbox/final_result 注入上限を縮小し、巨大出力による context 圧迫を軽減
+- 確認: 8テストファイル 342 tests 全パス
+- 追加確認: `npm test` を bash で実行し、主要 workspace は全パス（sandbox 466 / subagent 282 / zip-repo 61 / autoresearch 609 / goal 227）
+- 注意: このセッションでも `autoresearch_run` / `autoresearch_init` が `[ERROR] autoresearch モードが無効です` で拒否されたため、正式な `autoresearch_log` までは到達できなかった
+
+### ラウンド9: 残 issue 対応
+- prompt 重複対策: agent-guidelines を短縮し、autoresearch tool promptGuidelines から system prompt と重複する subagent/root 実行ルールを削減
+- plan-mode: 古い `<proposed_plan>` compact を string content にも対応。配列 content は後方 scan にして「本当に最新」の plan だけ残す
+- cache-friendly-prompt: dynamic tail を 12,000 chars で切り詰め、肥大化を抑制
+- autoresearch activation: `/autoresearch on <purpose>` の追加コンテキストを 2,000 chars に制限
+- goal: 未使用の `renderGoalContext` を削除。budget_limited 中に token_budget を十分引き上げた場合は自動的に active 復帰
+- contract evaluator: contract v1 で禁止されている manual acceptance が到達した場合は silently threshold 判定せず pause
+- 確認: targeted 10 test files 653 tests 全パス、`npm test` 主要 workspace 全パス（sandbox 466 / subagent 282 / zip-repo 61 / autoresearch 608 / goal 223）
+
 ## Memo
 
 - 次セッション開始時にやること:

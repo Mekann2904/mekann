@@ -278,8 +278,20 @@ export class GoalStore {
       goal.status = patch.status;
     }
 
+    const previousStatus = goal.status;
+    const previousBudget = goal.token_budget;
+
     if (patch.token_budget !== undefined) {
       goal.token_budget = validateTokenBudget(patch.token_budget);
+      if (
+        previousStatus === "budget_limited" &&
+        patch.status === undefined &&
+        goal.token_budget !== null &&
+        (previousBudget === null || goal.token_budget > previousBudget) &&
+        goal.tokens_used < goal.token_budget
+      ) {
+        goal.status = "active";
+      }
     }
 
     if (patch.continuation_count !== undefined) {

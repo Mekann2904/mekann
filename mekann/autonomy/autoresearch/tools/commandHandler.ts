@@ -125,6 +125,12 @@ export async function handleCommand(
 	}
 }
 
+const AUTORESEARCH_PURPOSE_MAX_CHARS = 2_000;
+function truncatePurpose(purpose: string): string {
+	if (purpose.length <= AUTORESEARCH_PURPOSE_MAX_CHARS) return purpose;
+	return `${purpose.slice(0, AUTORESEARCH_PURPOSE_MAX_CHARS)}\n[omitted: ${purpose.length - AUTORESEARCH_PURPOSE_MAX_CHARS} chars from autoresearch activation context]`;
+}
+
 function activateAutoresearch(
 	ctx: ExtensionContext,
 	pi: ExtensionAPI,
@@ -136,15 +142,16 @@ function activateAutoresearch(
 	store.updateWidget(ctx);
 	ctx.ui.notify("autoresearch モードを有効にしました(loop ON)", "info");
 	const hasMd = fs.existsSync(mdFilePath(ctx.cwd));
+	const safePurpose = purpose ? truncatePurpose(purpose) : "";
 	let msg: string;
 	if (hasMd) {
 		msg = "autoresearch.md を読み直して再開してください。";
-		if (purpose) msg += `\n追加コンテキスト: ${purpose}`;
+		if (safePurpose) msg += `\n追加コンテキスト: ${safePurpose}`;
 	} else {
 		msg = "autoresearch モードを有効化しました。" +
 			"目的・指標・実行コマンドを整理して autoresearch.md とベンチマークスクリプトを作成し、実験を開始してください。" +
 			"\n必要なら `/skill:autoresearch-create` で手順を確認できます。";
-		if (purpose) msg += `\n目的: ${purpose}`;
+		if (safePurpose) msg += `\n目的: ${safePurpose}`;
 	}
 	pi.sendUserMessage(msg, { deliverAs: "followUp" });
 }

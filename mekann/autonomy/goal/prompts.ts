@@ -152,35 +152,6 @@ export function renderGoalRuntimeState(goal: Goal): string {
   ].join("\n");
 }
 
-export function renderGoalContext(goal: Goal): string {
-  if (goal.status !== "active") return "";
-  const remaining = remainingTokens(goal);
-  const lines: string[] = [
-    "[Active Goal Context]",
-    "",
-    `<goal_objective>${escapeXmlText(goal.objective)}</goal_objective>`,
-    `Status: ${goal.status}`,
-  ];
-  if (remaining !== null) {
-    lines.push(`Token budget: ${goal.token_budget} (used: ${goal.tokens_used}, remaining: ${remaining})`);
-  } else {
-    lines.push(`Tokens used: ${goal.tokens_used}`);
-  }
-  lines.push(
-    `Time used: ${formatDuration(goal.time_used_seconds)}`,
-    `Continuation: ${goal.continuation_count} / ${goal.max_continuations}`,
-  );
-  lines.push(
-    "",
-    "Instructions:",
-    '- Continue to respect this active goal while answering the user.',
-    '- If the goal is fully achieved and no required work remains, call update_goal with status="complete".',
-    '- Do not mark the goal complete merely because the budget is low or work is paused.',
-    '- Do not pause, resume, clear, or budget-limit the goal through model tools.',
-  );
-  return lines.join("\n");
-}
-
 // ---------------------------------------------------------------------------
 // UI rendering (merged from render.ts)
 // ---------------------------------------------------------------------------

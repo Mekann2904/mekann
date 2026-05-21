@@ -241,27 +241,8 @@ describe("AR-08: acceptance threshold boundary tests", () => {
 		expect(result.improvementRate).toBeCloseTo(0.5, 1);
 	});
 
-	// manual mode: even with regression, let human decide
-	// NOTE: actual implementation discards on regression even in manual mode.
-	// Recording this as discovered behavior (ISS-16).
-	it("manual mode still discards on regression (discovered behavior)", () => {
-		const contract = makeContract({
-			acceptance: {
-				...makeContract().acceptance,
-				mode: "manual",
-			},
-		});
-		const input = makeInput({
-			contract,
-			candidateMetric: 110, // worse than baseline
-			allMeasurements: [110],
-		});
-		const result = evaluateContract(input);
-		// Implementation still applies regression check in manual mode
-		expect(result.decision).toBe("discard");
-	});
-
-	it("manual mode keeps when improving", () => {
+	// contract v1 forbids manual mode; malformed legacy values should pause.
+	it("manual mode pauses as unsupported contract mode", () => {
 		const contract = makeContract({
 			acceptance: {
 				...makeContract().acceptance,
@@ -274,6 +255,7 @@ describe("AR-08: acceptance threshold boundary tests", () => {
 			allMeasurements: [90],
 		});
 		const result = evaluateContract(input);
-		expect(result.decision).toBe("keep");
+		expect(result.decision).toBe("pause");
+		expect(result.reason).toContain("Unsupported acceptance mode");
 	});
 });

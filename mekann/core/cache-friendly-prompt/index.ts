@@ -7,6 +7,12 @@ const DEFAULT_CONFIG: CacheFriendlyPromptConfig = { includeBaseSystemPromptInSta
 type LastState = { effectiveStablePrefixText: string; effectiveStablePrefixHash: string; fragmentHashes: PromptFragmentHash[]; warnings: PromptInspectionWarning[]; };
 const stateByRun = new Map<string, LastState>();
 const MAX_RUN_STATES = 128;
+const DYNAMIC_CONTEXT_MAX_CHARS = 12_000;
+function truncateDynamicContext(text: string): string {
+  if (text.length <= DYNAMIC_CONTEXT_MAX_CHARS) return text;
+  const omitted = text.length - DYNAMIC_CONTEXT_MAX_CHARS;
+  return `${text.slice(0, DYNAMIC_CONTEXT_MAX_CHARS)}\n\n[cache-friendly-prompt: omitted ${omitted} trailing chars from dynamic context]`;
+}
 function rememberRunState(key: string, state: LastState): void {
   stateByRun.delete(key);
   stateByRun.set(key, state);
@@ -66,7 +72,7 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
     const effectiveStablePrefixText = prev?.effectiveStablePrefixText ?? "";
     rememberRunState(key, { effectiveStablePrefixText, effectiveStablePrefixHash: prev?.effectiveStablePrefixHash ?? "", fragmentHashes: rendered.fragmentHashes, warnings: mergeWarnings(prev?.warnings ?? [], effectivePrefixWarnings(rendered.warnings, effectiveStablePrefixText)) });
     if (!rendered.dynamicText.trim()) return { messages };
-    return { messages: [...messages, { role: "user", customType: "cache-friendly-dynamic-context", content: [{ type: "text", text: rendered.dynamicText }] }] };
+    return { messages: [...messages, { role: "user", customType: "cache-friendly-dynamic-context", content: [{ type: "text", text: truncateDynamicContext(rendered.dynamicText) }] }] };
   });
 
   pi.on("before_provider_request", async (event: any, ctx: any) => {

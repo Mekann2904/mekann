@@ -8,7 +8,6 @@ import {
   renderGoalPolicy,
   renderGoalObjectiveContext,
   renderGoalRuntimeState,
-  renderGoalContext,
   renderGoalSummary,
   renderNoGoal,
   renderWidget,
@@ -159,35 +158,6 @@ describe("goal/prompts", () => {
       expect(text).toContain("Remaining tokens: 4900");
       expect(text).toContain("Time used: 45s");
       expect(text).toContain("Continuation: 2 / 5");
-    });
-  });
-
-  describe("renderGoalContext", () => {
-    it("returns empty string for non-active goal", () => {
-      const goal = createMockGoal({ status: "paused" });
-      expect(renderGoalContext(goal)).toBe("");
-    });
-
-    it("returns context with budget info", () => {
-      const goal = createMockGoal({ token_budget: 5000 });
-      const ctx = renderGoalContext(goal);
-      expect(ctx).toContain("Active Goal Context");
-      expect(ctx).toContain("Test objective");
-      expect(ctx).toContain("Token budget: 5000");
-      expect(ctx).toContain("remaining: 4900");
-    });
-
-    it("returns context without budget info", () => {
-      const goal = createMockGoal({ token_budget: null });
-      const ctx = renderGoalContext(goal);
-      expect(ctx).toContain("Tokens used: 100");
-      expect(ctx).not.toContain("Token budget:");
-    });
-
-    it("includes continuation info", () => {
-      const goal = createMockGoal();
-      const ctx = renderGoalContext(goal);
-      expect(ctx).toContain("2 / 5");
     });
   });
 

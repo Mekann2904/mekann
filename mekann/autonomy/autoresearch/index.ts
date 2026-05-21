@@ -395,8 +395,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			"\nP0: git repo 必須、clean baseline 必須(変更可能)。acceptance policy / safety policy も指定可能。",
 		promptSnippet: "実験セッションの初期化",
 		promptGuidelines: [
-			"autoresearch_init はセッションの最初に一度だけ。既存設定があれば再初期化しない。",
-			"subagent が利用可能なら、plan 作成前の読み取り専用調査や候補案比較に使ってよい。ただし subagent にファイル編集や autoresearch 実行を任せない。",
+			"セッションの最初に一度だけ使う。既存設定があれば再初期化しない。",
 		],
 		parameters: initParamDefs as any,
 
@@ -415,10 +414,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			"autoresearch.checks.sh が存在する場合、benchmark 成功後に自動実行。",
 		promptSnippet: "コマンドを実行して結果を測定",
 		promptGuidelines: [
-			"実行後は必ず autoresearch_log で記録。",
 			"長時間コマンドでは timeout_seconds を明示指定。",
 			"終了しないコマンド(webui 等)は入れない。",
-			"autoresearch_run は root agent が実行する。subagent に実行させない。",
 		],
 		parameters: Type.Object({
 			command: Type.String({ description: "実行するコマンド" }),
@@ -439,10 +436,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		description: "実験結果を記録。keep は自動 commit、discard/crash/checks_failed は自動 revert。",
 		promptSnippet: "実験結果を記録",
 		promptGuidelines: [
-			"run 後は必ず log を呼ぶ。",
 			"keep: timeout・exitCode!=0・checks失敗・metric不在は拒否。",
 			"runId に autoresearch_run の runId を渡す。旧 piRunId も互換 alias として受け付ける。",
-			"autoresearch_log は root agent が実行する。subagent に記録・keep/discard判断・git操作を任せない。",
 		],
 		parameters: Type.Object({
 			metric: Type.Number({ description: "主指標の値" }),
@@ -471,7 +466,6 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"plan は人間と agent が議論するための editable document です。",
 			"contract block の言語指定は `autoresearch-contract jsonc` にしてください。",
-			"subagent が利用可能なら、plan 作成前の読み取り専用調査や候補案比較に使ってよい。ただし subagent にファイル編集や autoresearch 実行を任せない。",
 		],
 		parameters: Type.Object({
 			query: Type.String({ description: "ユーザの自然文クエリ" }),

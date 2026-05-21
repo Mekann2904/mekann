@@ -142,15 +142,8 @@ describe("GL-02-T2: budget exhaustion and user budget increase", () => {
 		let goal = store.getGoal();
 		expect(goal!.status).toBe("budget_limited");
 
-		// User increases budget
+		// User increases budget above tokens_used; goal auto-reactivates.
 		goal = store.updateGoal({ token_budget: 200 });
-		// Status should still be budget_limited because updateGoal doesn't auto-reactivate
-		expect(goal!.status).toBe("budget_limited");
-
-		// Explicit activation needed
-		goal = store.updateGoal({ status: "active" });
-		// But if tokens_used >= token_budget, it clamps back to budget_limited
-		// tokens_used = 100, budget = 200, so 100 < 200 → active
 		expect(goal!.status).toBe("active");
 	});
 });

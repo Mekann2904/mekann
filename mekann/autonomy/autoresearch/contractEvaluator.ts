@@ -209,13 +209,24 @@ export function evaluateContract(input: EvaluatorInput): EvaluatorResult {
 		};
 	}
 
-	// 8. Determine reference value
+	// 8. Determine reference value. Contract v1 forbids manual acceptance;
+	// if a malformed/legacy contract reaches the evaluator, pause instead of
+	// silently applying threshold semantics.
 	let reference: number;
 	if (contract.acceptance.mode === "better_than_baseline") {
 		reference = lock.baseline.primaryMetricValue;
-	} else {
-		// better_than_best
+	} else if (contract.acceptance.mode === "better_than_best") {
 		reference = input.bestMetric ?? lock.baseline.primaryMetricValue;
+	} else {
+		return {
+			decision: "pause",
+			reason: `Unsupported acceptance mode for contract evaluator: ${(contract.acceptance as any).mode}`,
+			representativeMetric: representative,
+			improvement: null,
+			improvementRate: null,
+			reference: null,
+			details: { acceptanceMode: (contract.acceptance as any).mode },
+		};
 	}
 
 	// 9. Compute required improvement

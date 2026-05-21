@@ -258,21 +258,28 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	});
 	pi.on("context", async (event) => {
 		const messages = event.messages;
-		// Scan messages from end (most recent) to find the latest <proposed_plan>
+		// Scan messages from end (most recent) to find the latest <proposed_plan>.
+		// Compact older plans for both string content and text content blocks.
 		let foundLatest = false;
 		for (let i = messages.length - 1; i >= 0; i--) {
 			const msg = messages[i];
 			if (msg.role !== "assistant") continue;
 
-			const textParts = (msg as { content?: unknown }).content;
-			if (!Array.isArray(textParts)) continue;
+			const content = (msg as { content?: unknown }).content;
+			if (typeof content === "string") {
+				if (!/<proposed_plan>[\s\S]*?<\/proposed_plan>/.test(content)) continue;
+				if (!foundLatest) foundLatest = true;
+				else (msg as { content?: unknown }).content = compactOldProposedPlansInText(content);
+				continue;
+			}
+			if (!Array.isArray(content)) continue;
 
-			for (let j = 0; j < textParts.length; j++) {
-				const part = textParts[j] as { type?: string; text?: string };
+			for (let j = content.length - 1; j >= 0; j--) {
+				const part = content[j] as { type?: string; text?: string };
 				if (part.type !== "text" || typeof part.text !== "string") continue;
 				if (!/<proposed_plan>[\s\S]*?<\/proposed_plan>/.test(part.text)) continue;
 
-				if (!foundLatest) foundLatest = true; else textParts[j] = { ...part, text: compactOldProposedPlansInText(part.text) };
+				if (!foundLatest) foundLatest = true; else content[j] = { ...part, text: compactOldProposedPlansInText(part.text) };
 			}
 		}
 
