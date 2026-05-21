@@ -101,4 +101,37 @@ describe("context-ledger extension", () => {
 		expect(result.content[0].text).toContain("ctx_pm_1");
 		expect(result.content[0].text).toContain("ctx_pm_2");
 	});
+
+	it("snapshot --write persists snapshot to disk", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		contextLedgerExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "T1", summary: "s", idGenerator: () => "ctx_sw_1" });
+		const notify = vi.fn();
+		await cmdDef.handler("snapshot --write", { cwd, ui: { notify } });
+		expect(notify).toHaveBeenCalled();
+		const msg = notify.mock.calls[0][0];
+		expect(msg).toContain("Snapshot saved");
+		expect(msg).toContain("latest.xml");
+		// Verify file on disk
+		const { readLatestSnapshot } = await import("./snapshot-store.js");
+		const content = await readLatestSnapshot(cwd);
+		expect(content).toContain("ctx_sw_1");
+	});
+
+	it("snapshot --write --max-bytes 512 persists with budget", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		contextLedgerExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		for (let i = 0; i < 10; i++) {
+			await appendContextEvent({ cwd, kind: "task", priority: 2, title: `Task ${i}`, summary: `Summary ${i}`, idGenerator: () => `ctx_sw_${i}` });
+		}
+		const notify = vi.fn();
+		await cmdDef.handler("snapshot --write --max-bytes 512", { cwd, ui: { notify } });
+		expect(notify).toHaveBeenCalled();
+		const msg = notify.mock.calls[0][0];
+		expect(msg).toContain("Snapshot saved");
+	});
 });

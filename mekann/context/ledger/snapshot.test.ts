@@ -174,4 +174,19 @@ describe("snapshot builder", () => {
 		const xml = notify.mock.calls[0][0];
 		expect(Buffer.byteLength(xml, "utf8")).toBeLessThanOrEqual(250); // some overhead
 	});
+
+	it("command clamps --max-bytes to minimum 256", async () => {
+		const { default: contextLedgerExtension } = await import("./index.js");
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		contextLedgerExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await fsp.mkdtemp(path.join(os.tmpdir(), "og-cmd-"));
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "T1", summary: "s", idGenerator: () => "ctx_clamp_1" });
+		const notify = vi.fn();
+		await cmdDef.handler("snapshot --max-bytes 1", { cwd, ui: { notify } });
+		const xml = notify.mock.calls[0][0];
+		// Should be clamped to 256, not actually 1 byte
+		expect(xml).toContain("ctx_clamp_1");
+		expect(Buffer.byteLength(xml, "utf8")).toBeGreaterThan(1);
+	});
 });

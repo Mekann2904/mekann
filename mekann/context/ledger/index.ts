@@ -3,6 +3,7 @@ import { Type } from "@sinclair/typebox";
 import * as fsp from "node:fs/promises";
 import { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult, eventsPath, contextDir } from "./store.js";
 import { buildSnapshot } from "./snapshot.js";
+import { writeLatestSnapshot, readLatestSnapshot } from "./snapshot-store.js";
 
 export { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult } from "./store.js";
 export type { MekannContextEvent, MekannContextEventKind, MekannContextRef, AppendEventInput } from "./store.js";
@@ -132,10 +133,20 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 
 			if (arg === "snapshot" || arg.startsWith("snapshot")) {
 				const maxBytesMatch = arg.match(/--max-bytes\s+(\d+)/);
-				const maxBytes = maxBytesMatch ? parseInt(maxBytesMatch[1], 10) : undefined;
+				const maxBytes = maxBytesMatch ? Math.max(256, parseInt(maxBytesMatch[1], 10)) : undefined;
+				const shouldWrite = arg.includes("--write");
 				const events = await readEvents(cwd);
 				const xml = buildSnapshot(events, { maxBytes });
-				ctx?.ui?.notify?.(xml, "info");
+
+				if (shouldWrite) {
+					const result = await writeLatestSnapshot(cwd, xml);
+					ctx?.ui?.notify?.(
+						`Snapshot saved:\n  latest: ${result.latestPath}\n  timestamped: ${result.snapshotPath}\n  size: ${result.bytes} bytes`,
+						"info",
+					);
+				} else {
+					ctx?.ui?.notify?.(xml, "info");
+				}
 				return;
 			}
 

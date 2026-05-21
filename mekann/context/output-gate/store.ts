@@ -166,7 +166,7 @@ export function buildStoredOutputStub(entry: OutputGateManifestEntry, preview: s
 
 export function shouldGateOutput(text: string, opts: { toolName?: string; maxInlineBytes?: number } = {}): boolean {
 	if (!text) return false;
-	if (opts.toolName === "search_tool_outputs") return false;
+	if (opts.toolName === "search_tool_outputs" || opts.toolName === "search_context_events") return false;
 	if (text.startsWith("[output-gate]")) return false;
 	return Buffer.byteLength(text, "utf8") > (opts.maxInlineBytes ?? MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes);
 }
