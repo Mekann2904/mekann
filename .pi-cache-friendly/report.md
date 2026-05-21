@@ -1,15 +1,15 @@
 # cache-friendly-prompt レポート
 
-最終更新: 2026-05-21T07:09:59.176Z
+最終更新: 2026-05-21T07:15:53.013Z
 
 ## サマリー
 
-- 総リクエスト数: 867
+- 総リクエスト数: 875
 - 最新 provider/model: zai/glm-5.1
 - 最新 stablePrefixHash: `87244eaa`
 - 最新 stable prefix: 11017 chars
-- 最新 total prompt: 342269 chars
-- 直近同一 hash 継続: 47 requests
+- 最新 total prompt: 346396 chars
+- 直近同一 hash 継続: 55 requests
 - stablePrefixHash 変化回数: 74
 - warning 件数: 48
 
@@ -55,7 +55,7 @@
 | provider/model | requests | unique hashes | latest hash | stable chars | total chars |
 |---|---:|---:|---|---:|---:|
 | openai-codex/gpt-5.5 | 639 | 13 | `a2b8c6a3` | 3963 | 54292 |
-| zai/glm-5.1 | 228 | 7 | `87244eaa` | 11017 | 342269 |
+| zai/glm-5.1 | 236 | 7 | `87244eaa` | 11017 | 346396 |
 
 ## 最近の hash 変化
 

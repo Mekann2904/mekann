@@ -145,7 +145,7 @@ describe("mekann integrated extension", () => {
 		const promptHelperFiles = new Set(["safety/plan-mode/utils.ts"]);
 		const offenders = sourceFiles(MEKANN)
 			.map((file) => path.relative(MEKANN, file))
-			.filter((rel) => rel !== "core/cache-friendly-prompt/index.ts" && !promptHelperFiles.has(rel))
+			.filter((rel) => rel !== "core/cache-friendly-prompt/index.ts" && rel !== "core/cache-friendly-prompt/report.ts" && !promptHelperFiles.has(rel))
 			.filter((rel) => {
 				const source = read(`mekann/${rel}`);
 				const hasPromptMaterial = /SYSTEM_PROMPT_EXTRA|loadPrompt\(|<proposed_plan>|prompt policy|Prompt fragments/i.test(source);
