@@ -260,8 +260,9 @@ function createStreamingParseState(): StreamingParseState {
 
 function spLine(sp: StreamingParseState, line: string): void {
 	const t = line.trim();
-	if (t.startsWith("METRIC ")) {
-		const rest = t.slice(7);
+	// Accept both "METRIC name=value" and "METRIC: name=value"
+	if (t.startsWith("METRIC ") || t.startsWith("METRIC:")) {
+		const rest = t.startsWith("METRIC: ") ? t.slice(8) : t.slice(7);
 		const eq = rest.indexOf("=");
 		if (eq >= 0) {
 			const n = rest.slice(0, eq).trim();

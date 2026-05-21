@@ -266,6 +266,20 @@ describe("parseMetricLines", () => {
 	it("handles whitespace around METRIC", () => {
 		expect(parseMetricLines("  METRIC  x = 1.5  ")).toEqual({ x: 1.5 });
 	});
+
+	it("parses METRIC: colon format", () => {
+		expect(parseMetricLines("METRIC: total_ms=123.4")).toEqual({ total_ms: 123.4 });
+	});
+
+	it("parses multiple METRIC: colon format lines", () => {
+		const output = "METRIC: total_ms=123.4\nMETRIC: other=10";
+		expect(parseMetricLines(output)).toEqual({ total_ms: 123.4, other: 10 });
+	});
+
+	it("handles mixed METRIC and METRIC: formats", () => {
+		const output = "METRIC total_ms=100\nMETRIC: other=200";
+		expect(parseMetricLines(output)).toEqual({ total_ms: 100, other: 200 });
+	});
 });
 
 // ---------------------------------------------------------------------------

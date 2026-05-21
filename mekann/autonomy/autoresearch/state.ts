@@ -341,8 +341,11 @@ export function parseMetricLines(output: string): Record<string, number> {
 	const metrics: Record<string, number> = {};
 	for (const line of output.split("\n")) {
 		const trimmed = line.trim();
-		if (!trimmed.startsWith("METRIC ")) continue;
-		const rest = trimmed.slice(7); // "METRIC ".length === 7
+		// Accept both "METRIC name=value" and "METRIC: name=value"
+		let rest: string;
+		if (trimmed.startsWith("METRIC: ")) rest = trimmed.slice(8); // "METRIC: ".length === 8
+		else if (trimmed.startsWith("METRIC ")) rest = trimmed.slice(7); // "METRIC ".length === 7
+		else continue;
 		const eqIdx = rest.indexOf("=");
 		if (eqIdx < 0) continue;
 		const name = rest.slice(0, eqIdx).trim();

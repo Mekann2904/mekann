@@ -982,6 +982,36 @@ describe("autoresearchExtension", () => {
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 
+		it("parses METRIC: output lines (colon format)", async () => {
+			const testDir = createGitTestDir();
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await cmdHandler("on", ctx);
+
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			await initTool.execute(
+				"tc-init",
+				{ name: "test", metric_name: "total_ms", metric_unit: "ms" },
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
+			const result = await runTool.execute(
+				"tc-run-colon",
+				{ command: "echo 'METRIC: total_ms=42.5' && echo 'METRIC: other=10'" },
+				undefined,
+				undefined,
+				ctx,
+			);
+			expect(result.content[0].text).toContain("METRIC: total_ms=42.5");
+			expect(result.content[0].text).toContain("METRIC: other=10");
+			expect(result.content[0].text).toContain("主指標 total_ms=42.5ms");
+			expect(result.details.parsedMetrics).toMatchObject({ total_ms: 42.5, other: 10 });
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
 		it("runs checks.sh when benchmark passes", async () => {
 			const testDir = createGitTestDir();
 			// Create a checks.sh that exits 0

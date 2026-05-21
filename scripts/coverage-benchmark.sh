@@ -37,8 +37,8 @@ for ws in "${WORKSPACES[@]}"; do
 
   echo ">> $ws" >&2
 
-  # coverage を実行
-  (cd "$wsdir" && npx vitest run --coverage 2>/dev/null) || true
+  # coverage を実行 (全出力を stderr へ)
+  (cd "$wsdir" && npx vitest run --coverage --reporter=silent 2>&2) || true
 
   # coverage-summary.json または coverage-final.json を探す
   SUMMARY_FILE=""
