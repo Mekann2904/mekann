@@ -392,4 +392,24 @@ describe("output-gate tool_result hook", () => {
 		expect(result).toBeDefined();
 		expect(result.content[0].text).toContain("[output-gate]");
 	});
+
+	it("records gated output in context ledger", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const hookFn = pi.on.mock.calls[0][1];
+		const cwd = await tmp();
+		const bigText = "x".repeat(20 * 1024);
+		await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }] }, { cwd });
+
+		// Check that the context ledger has a tool_result event
+		const { readEvents } = await import("../ledger/store.js");
+		const events = await readEvents(cwd);
+		expect(events.length).toBeGreaterThanOrEqual(1);
+		const ledgerEvent = events.find((e: any) => e.kind === "tool_result");
+		expect(ledgerEvent).toBeDefined();
+		expect(ledgerEvent!.title).toContain("bash");
+		expect(ledgerEvent!.title).toContain("stored");
+		expect(ledgerEvent!.refs).toBeDefined();
+		expect(ledgerEvent!.refs![0].type).toBe("artifact");
+	});
 });

@@ -4,6 +4,7 @@ import * as fsp from "node:fs/promises";
 import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
 import { gateTextForLlm, outputGateDir, manifestPath, readManifest, resolveArtifactPath, shouldGateOutput } from "./store.js";
 import { searchToolOutputs } from "./search.js";
+import { appendContextEvent } from "../ledger/store.js";
 
 export { shouldGateOutput, buildStoredOutputStub, buildPreview, gateTextForLlm } from "./store.js";
 
@@ -202,6 +203,23 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 		const cwd = event?.cwd ?? ctx?.cwd ?? process.cwd();
 		const gated = await gateTextForLlm({ cwd, toolName, text, source: { kind: "tool_result", toolName }, maxInlineBytes: MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes, previewBytes: MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes, sessionId: ctx?.sessionId, turnId: ctx?.turnId, toolCallId: event?.toolCallId });
 		if (!gated.handled) return undefined;
+
+		// Record gated output in context ledger (best-effort)
+		if (gated.gated && gated.artifactId) {
+			try {
+				await appendContextEvent({
+					cwd,
+					kind: "tool_result",
+					priority: event?.isError ? 1 : 3,
+					title: `${toolName} output stored`,
+					summary: `Large ${toolName} output stored as ${gated.artifactId} (${gated.originalBytes} bytes, ${gated.originalLines} lines)`,
+					refs: [{ type: "artifact", value: gated.artifactId }],
+					sessionId: ctx?.sessionId,
+					turnId: ctx?.turnId,
+				});
+			} catch { /* best-effort; never block the hook */ }
+		}
+
 		return {
 			content: [{ type: "text", text: gated.text }],
 			...(typeof event?.isError === "boolean" ? { isError: event.isError } : {}),
