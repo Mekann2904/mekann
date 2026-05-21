@@ -2,9 +2,11 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import * as fsp from "node:fs/promises";
 import { appendContextEvent, readEvents, computeStats, clearContext, eventsPath, contextDir } from "./store.js";
+import { buildSnapshot } from "./snapshot.js";
 
 export { appendContextEvent, readEvents, computeStats, clearContext } from "./store.js";
 export type { MekannContextEvent, MekannContextEventKind, MekannContextRef, AppendEventInput } from "./store.js";
+export { buildSnapshot } from "./snapshot.js";
 
 async function contextLedgerStatus(cwd: string): Promise<string> {
 	const events = await readEvents(cwd);
@@ -54,7 +56,7 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("context-ledger", {
 		description: "context-ledger events を表示・削除",
 		getArgumentCompletions(prefix: string) {
-			return ["list", "stats", "clear"].filter((v) => v.startsWith(prefix)).map((value) => ({ value, label: value }));
+			return ["list", "stats", "snapshot", "clear"].filter((v) => v.startsWith(prefix)).map((value) => ({ value, label: value }));
 		},
 		async handler(args: string | undefined, ctx: any) {
 			const cwd = ctx?.cwd ?? process.cwd();
@@ -80,6 +82,13 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 
 			if (arg === "list") {
 				ctx?.ui?.notify?.(await contextLedgerList(cwd), "info");
+				return;
+			}
+
+			if (arg === "snapshot") {
+				const events = await readEvents(cwd);
+				const xml = buildSnapshot(events);
+				ctx?.ui?.notify?.(xml, "info");
 				return;
 			}
 
