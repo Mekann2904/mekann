@@ -84,7 +84,7 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 		if (!gated.handled) return undefined;
 		return {
 			content: [{ type: "text", text: gated.text }],
-			isError: event?.isError,
+			...(typeof event?.isError === "boolean" ? { isError: event.isError } : {}),
 			details: {
 				...(event?.details ?? {}),
 				outputGate: gated.gated ? {

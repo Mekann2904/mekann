@@ -98,13 +98,25 @@ export async function ensureOutputGateDirs(cwd: string): Promise<void> {
 export function safeUtf8Slice(text: string, maxBytes: number, fromEnd = false): string {
 	const buf = Buffer.from(text, "utf8");
 	if (buf.byteLength <= maxBytes) return text;
-	const slice = fromEnd ? buf.subarray(Math.max(0, buf.byteLength - maxBytes)) : buf.subarray(0, maxBytes);
-	let out = slice.toString("utf8");
-	while (out.includes("�") && Buffer.byteLength(out, "utf8") > 0) {
-		out = fromEnd ? slice.subarray(1).toString("utf8") : Buffer.from(out, "utf8").subarray(0, Buffer.byteLength(out, "utf8") - 1).toString("utf8");
-		if (!fromEnd) break;
+	if (maxBytes <= 0) return "";
+
+	if (fromEnd) {
+		let start = Math.max(0, buf.byteLength - maxBytes);
+		while (start < buf.byteLength) {
+			const out = buf.subarray(start).toString("utf8");
+			if (!out.startsWith("�")) return out;
+			start += 1;
+		}
+		return "";
 	}
-	return out.replace(/^�|�$/gu, "");
+
+	let end = Math.min(maxBytes, buf.byteLength);
+	while (end > 0) {
+		const out = buf.subarray(0, end).toString("utf8");
+		if (!out.endsWith("�")) return out;
+		end -= 1;
+	}
+	return "";
 }
 
 export function buildPreview(text: string, previewBytes = MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes): string {

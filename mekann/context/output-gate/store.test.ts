@@ -3,7 +3,7 @@ import * as fsp from "node:fs/promises";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { artifactsDir, countLines, createArtifactId, ensureOutputGateDirs, gateTextForLlm, manifestPath, readManifest, sanitizeManifestSource, saveArtifact, sha256 } from "./store.js";
+import { artifactsDir, buildPreview, countLines, createArtifactId, ensureOutputGateDirs, gateTextForLlm, manifestPath, readManifest, safeUtf8Slice, sanitizeManifestSource, saveArtifact, sha256 } from "./store.js";
 
 async function tmp(): Promise<string> { return fsp.mkdtemp(path.join(os.tmpdir(), "og-store-")); }
 
@@ -54,6 +54,16 @@ describe("output-gate store", () => {
 		const { entry } = await saveArtifact({ cwd, toolName: "bash", text: "x", idGenerator: () => "og_safe_1" });
 		expect(path.isAbsolute(entry.path)).toBe(false);
 		expect(entry.path.startsWith("..")).toBe(false);
+	});
+
+	it("safeUtf8Slice does not hang when tail starts inside a multibyte char", () => {
+		expect(safeUtf8Slice("abc😀def", 5, true)).toBe("def");
+		expect(safeUtf8Slice("abc😀def", 6, true)).toBe("def");
+	});
+
+	it("buildPreview handles unicode without replacement chars at boundaries", () => {
+		const preview = buildPreview(`開始\n${"😀".repeat(100)}\n終了`, 64);
+		expect(preview).not.toMatch(/^�|�$/u);
 	});
 
 	it("sanitizes manifest source secrets and unserializable values", () => {

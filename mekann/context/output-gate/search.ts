@@ -14,6 +14,16 @@ export interface SearchToolOutputsInput {
 	preferRg?: boolean;
 }
 
+function positiveInt(value: unknown, fallback: number): number {
+	const n = Number(value);
+	return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
+function nonNegativeInt(value: unknown, fallback: number): number {
+	const n = Number(value);
+	return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
+}
+
 interface SearchFile { entry: OutputGateManifestEntry; abs: string }
 
 function capText(text: string, maxBytes: number): string {
@@ -79,8 +89,8 @@ export async function fallbackLineScan(input: SearchToolOutputsInput): Promise<s
 	if (files === undefined) return "No stored tool outputs.";
 	if (files.length === 0) return "No matches.";
 	const query = input.query.toLocaleLowerCase();
-	const contextLines = Math.max(0, input.contextLines ?? MEKANN_OUTPUT_GATE_DEFAULTS.defaultContextLines);
-	const maxResults = Math.max(1, input.maxResults ?? MEKANN_OUTPUT_GATE_DEFAULTS.defaultMaxResults);
+	const contextLines = nonNegativeInt(input.contextLines, MEKANN_OUTPUT_GATE_DEFAULTS.defaultContextLines);
+	const maxResults = positiveInt(input.maxResults, MEKANN_OUTPUT_GATE_DEFAULTS.defaultMaxResults);
 	const chunks: string[] = [];
 	let count = 0;
 	for (const file of files) {
@@ -105,8 +115,8 @@ export async function searchToolOutputs(input: SearchToolOutputsInput): Promise<
 	const files = await selectFiles(input.cwd, input.artifact);
 	if (files === undefined) return "No stored tool outputs.";
 	if (files.length === 0) return "No matches.";
-	const maxResults = Math.max(1, input.maxResults ?? MEKANN_OUTPUT_GATE_DEFAULTS.defaultMaxResults);
-	const contextLines = Math.max(0, input.contextLines ?? MEKANN_OUTPUT_GATE_DEFAULTS.defaultContextLines);
+	const maxResults = positiveInt(input.maxResults, MEKANN_OUTPUT_GATE_DEFAULTS.defaultMaxResults);
+	const contextLines = nonNegativeInt(input.contextLines, MEKANN_OUTPUT_GATE_DEFAULTS.defaultContextLines);
 	let result: string | undefined;
 	if (input.preferRg === true) result = await searchWithRg(input.query, files, contextLines, maxResults);
 	if (result === undefined) result = await fallbackLineScan(input);
