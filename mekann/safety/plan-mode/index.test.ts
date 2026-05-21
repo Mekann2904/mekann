@@ -31,6 +31,7 @@ interface MockExtensionContext {
 	model: MockModel | null;
 	modelRegistry: {
 		find: (provider: string, modelId: string) => MockModel | undefined;
+		getAll?: () => MockModel[];
 	};
 	ui: {
 		notify: (msg: string, level?: string) => void;
@@ -1188,10 +1189,10 @@ describe("enterPlanMode: no main model configured", () => {
 	});
 });
 
-// ─── session_start: clear invalid ModelRef from config ──────────────
+// ─── session_start: invalid ModelRef handling ───────────────────────
 
-describe("session_start: invalid ModelRef cleanup", () => {
-	it("session_start clears invalid main model from config", async () => {
+describe("session_start: invalid ModelRef handling", () => {
+	it("session_start keeps invalid main model in config", async () => {
 		const notifications: string[] = [];
 		const ctx = createMockCtx({
 			ui: { ...createMockCtx().ui, notify: (msg: string) => { notifications.push(msg); } },
@@ -1216,9 +1217,9 @@ describe("session_start: invalid ModelRef cleanup", () => {
 		// Should have warned about model not found
 		expect(notifications.some(n => n.includes("見つかりません"))).toBe(true);
 
-		// Config should have been cleared
+		// Config should be preserved instead of destructively cleared.
 		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toBeUndefined();
+		expect(saved.models.main).toEqual({ provider: "zai", modelId: "glm-5.1" });
 
 		// Clean up
 		try { require("fs").unlinkSync(configPath); } catch {}
@@ -1242,6 +1243,32 @@ describe("session_start: invalid ModelRef cleanup", () => {
 		expect(saved.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
 
 		// Clean up
+		try { require("fs").unlinkSync(configPath); } catch {}
+	});
+
+	it("session_start resolves legacy fuzzy model ids and canonicalizes config", async () => {
+		const { writeFileSync, readFileSync } = require("fs");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		writeFileSync(configPath, JSON.stringify({
+			version: 1,
+			models: { main: { provider: "anthropic", modelId: "sonnet" } },
+			thinking: {},
+		}));
+
+		const ctx = createMockCtx({
+			modelRegistry: {
+				find: (provider: string, modelId: string) => modelId === "claude-sonnet-4-5" ? { provider, id: modelId } : undefined,
+				getAll: () => [{ provider: "anthropic", id: "claude-sonnet-4-5" }],
+			},
+		});
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+
+		expect(mock.setModel).toHaveBeenCalledWith({ provider: "anthropic", id: "claude-sonnet-4-5" });
+		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
+		expect(saved.models.main).toEqual({ provider: "anthropic", modelId: "claude-sonnet-4-5" });
+
 		try { require("fs").unlinkSync(configPath); } catch {}
 	});
 });
@@ -1288,10 +1315,10 @@ describe("enterPlanMode: skip saving unregistered model", () => {
 	}));
 });
 
-// ─── exitPlanMode: clear invalid ModelRef from config ────────────────
+// ─── exitPlanMode: invalid ModelRef handling ─────────────────────────
 
-describe("exitPlanMode: clear invalid ModelRef from config", () => {
-	it("clears invalid main model ref from config on exit", async () => {
+describe("exitPlanMode: invalid ModelRef handling", () => {
+	it("keeps invalid main model ref in config on exit", async () => {
 		const notifications: string[] = [];
 		const { writeFileSync, readFileSync } = require("fs");
 		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
@@ -1313,13 +1340,13 @@ describe("exitPlanMode: clear invalid ModelRef from config", () => {
 
 		const mock = createMockApi();
 		await loadExtension(mock);
-		// session_start will try to restore zai/glm-5.1 → fail → clear config
+		// session_start will try to restore zai/glm-5.1 → fail, but keep config
 		await mock._hooks.session_start({}, ctx);
 		expect(notifications.some(n => n.includes("見つかりません"))).toBe(true);
 
-		// Config should already be cleared by session_start
+		// Config should already be preserved by session_start
 		let saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toBeUndefined();
+		expect(saved.models.main).toEqual({ provider: "zai", modelId: "glm-5.1" });
 
 		// Enter plan mode — no main model to save (registry still empty)
 		await mock._commands["plan"].handler("", ctx);
@@ -1328,15 +1355,15 @@ describe("exitPlanMode: clear invalid ModelRef from config", () => {
 		notifications.length = 0;
 		await mock._commands["plan"].handler("", ctx);
 
-		// Config should remain cleared
+		// Config should remain preserved
 		saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toBeUndefined();
+		expect(saved.models.main).toEqual({ provider: "zai", modelId: "glm-5.1" });
 
 		// Clean up
 		try { require("fs").unlinkSync(configPath); } catch {}
 	});
 
-	it("clears invalid savedMainModel (fallback) from config on exit", async () => {
+	it("keeps invalid savedMainModel (fallback) in config on exit", async () => {
 		const notifications: string[] = [];
 		const { writeFileSync, readFileSync } = require("fs");
 		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
@@ -1370,14 +1397,14 @@ describe("exitPlanMode: clear invalid ModelRef from config", () => {
 		// Enter plan mode — saves sonnet as savedMainModel
 		await mock._commands["plan"].handler("", ctx);
 
-		// Exit plan mode — both main ref and fallback fail → config cleared
+		// Exit plan mode — both main ref and fallback fail → config preserved
 		notifications.length = 0;
 		await mock._commands["plan"].handler("", ctx);
 
 		expect(notifications.some(n => n.includes("見つかりません"))).toBe(true);
 
 		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toBeUndefined();
+		expect(saved.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
 
 		// Clean up
 		try { require("fs").unlinkSync(configPath); } catch {}
@@ -1622,17 +1649,17 @@ describe("enterPlanMode: ctx.model is null", () => {
 // The `if (!state.savedActiveTools)` else branch on line 94 is effectively dead code.
 // We keep this describe block for documentation.
 
-// ─── exitPlanMode: fallback restore path (lines 131-132) ────────────
+// ─── exitPlanMode: fallback restore path ────────────────────────────
 
-// NOTE: The fallback branch (lines 131-132) is structurally unreachable through
-// the plan-mode extension alone because enterPlanMode always sets both
-// savedMainModel and modelConfig.models.main to the same value (ctx.model),
-// making sameModelRef() always return true on exit. The fallback exists as
-// defensive code for scenarios where another extension modifies the config.
-// Below we test the related "not_found" cleanup path (line 128).
+// NOTE: The fallback branch is structurally unreachable through the plan-mode
+// extension alone because enterPlanMode always sets both savedMainModel and
+// modelConfig.models.main to the same value (ctx.model), making sameModelRef()
+// always return true on exit. The fallback exists as defensive code for
+// scenarios where another extension modifies the config.
+// Below we test the related "not_found" preservation path.
 
-describe("exitPlanMode: not_found cleanup", () => {
-	it("main model not_found on exit clears config", async () => {
+describe("exitPlanMode: not_found preservation", () => {
+	it("main model not_found on exit keeps config", async () => {
 		// NOTE: The fallback branch on lines 131-132 is structurally unreachable through
 		// the plan-mode extension alone. enterPlanMode always sets both savedMainModel and
 		// modelConfig.models.main to the same value (ctx.model), so sameModelRef() always
@@ -1641,7 +1668,7 @@ describe("exitPlanMode: not_found cleanup", () => {
 		// The fallback exists as defensive code for scenarios where another extension
 		// modifies the config externally between enter and exit.
 		//
-		// This test verifies the "not_found" cleanup path (line 128) works correctly:
+		// This test verifies the "not_found" path warns without clearing config:
 
 		const notifications: string[] = [];
 		const { writeFileSync, readFileSync } = require("fs");
@@ -1675,33 +1702,33 @@ describe("exitPlanMode: not_found cleanup", () => {
 		// Switch phase so registry finds nothing
 		phase = "exit";
 
-		// Exit plan mode — main model will be not_found and cleared from config
+		// Exit plan mode — main model will be not_found and preserved in config
 		notifications.length = 0;
 		await mock._commands["plan"].handler("", ctx);
 
 		// Should have warned about model not found
 		expect(notifications.some(n => n.includes("見つかりません"))).toBe(true);
 
-		// Config should have main cleared
+		// Config should have main preserved
 		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toBeUndefined();
+		expect(saved.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
 
 		// Clean up
 		try { require("fs").unlinkSync(configPath); } catch {}
 	});
 });
 
-// ─── exitPlanMode: fallback model also not_found (lines 131-132) ──────────
+// ─── exitPlanMode: fallback model also not_found ─────────────────────
 
 describe("exitPlanMode: fallback model not_found", () => {
-	// NOTE: Lines 131-132 (fallback model path) are structurally unreachable through
+	// NOTE: The fallback model path is structurally unreachable through
 	// the plan-mode extension alone. enterPlanMode always sets both savedMainModel
 	// and modelConfig.models.main to ctx.model, making sameModelRef() always return
 	// true on exit. The fallback exists for cross-extension scenarios where another
 	// extension modifies models.main between enter and exit.
 	//
 	// This test documents that the path IS reachable when state is externally modified.
-	it("fallback clears config when mainRef differs from savedMainModel", async () => {
+	it("fallback does not clear config when mainRef differs from savedMainModel", async () => {
 		const notifications: string[] = [];
 		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
 
@@ -1734,7 +1761,7 @@ describe("exitPlanMode: fallback model not_found", () => {
 		callPhase = "exit";
 		await mock._commands["plan"].handler("", ctx);
 
-		// Main model was not_found → cleared in config
+		// Main model was not_found → warning only; config is not cleared
 		expect(notifications.some(n => n.includes("見つかりません"))).toBe(true);
 
 		// Clean up

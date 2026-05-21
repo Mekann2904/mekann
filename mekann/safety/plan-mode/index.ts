@@ -7,7 +7,8 @@
 import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
-import { createInitialState, isReadOnlyMode, modeLabel, isPlanReadOnlyCommandIntent, classifyCommandIntent, buildBlockReason, loadPrompt, hashContent, extractProposedPlan, PLAN_MODE_TOOLS, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateConfigField, compactOldProposedPlansInText, type ModelRef, type PlanModeConfig, type ThinkingLevel, type MekannMode, type ModeName } from "./utils.js";
+import { createInitialState, isReadOnlyMode, isPlanReadOnlyCommandIntent, classifyCommandIntent, buildBlockReason, loadPrompt, hashContent, extractProposedPlan, PLAN_MODE_TOOLS, sameModelRef, loadModelConfig, updateConfigField, compactOldProposedPlansInText, type ModelRef, type ThinkingLevel, type MekannMode, type ModeName } from "./utils.js";
+import { createModelManager } from "../../core/model-manager.js";
 import {
 	SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, PLAN_MODE_STATUS_EVENT,
 	MEKANN_AUTORESEARCH_MODE_EVENT,
@@ -54,18 +55,12 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 	// ─── Model helpers ──────────────────────────────────────────────
 
-	/** Result of attempting to set a model via trySetModel. */
-	type ModelLookupResult = "ok" | "not_found" | "no_key";
-
-	/** Try to switch to the model identified by `ref`. Returns the outcome. */
-	async function trySetModel(ref: ModelRef | undefined, ctx: ExtensionContext, label: string): Promise<ModelLookupResult> {
-		if (!ref) return "not_found";
-		const model = ctx.modelRegistry.find(ref.provider, ref.modelId);
-		if (!model) { ctx.ui.notify(`${label}: モデル ${formatModelRef(ref)} が見つかりません。コンフィグをクリアします`, "warning"); return "not_found"; }
-		return withModelSuppressed(async () => {
-			const ok = await pi.setModel(model); if (!ok) { ctx.ui.notify(`${label}: ${formatModelRef(ref)} の API key がありません`, "warning"); return "no_key"; } return "ok";
-		});
-	}
+	const modelManager = createModelManager({
+		pi,
+		withModelSuppressed,
+		onResolvedRef: (_requested, resolved) => updateConfigField(state.modelConfig, "models", state.mode, resolved, configPath),
+	});
+	const { trySetModel } = modelManager;
 
 	function logBlockedTool(extra: Record<string, unknown>) {
 		pi.appendEntry("plan-mode-blocked-tool", { at: Date.now(), mode: state.mode, ...extra });
@@ -102,10 +97,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	async function restoreMainModelAndThinking(ctx: ExtensionContext): Promise<void> {
 		const mainRef = state.modelConfig.models.main;
 		const result = await trySetModel(mainRef, ctx, "Main model");
-		if (result === "not_found") updateConfigField(state.modelConfig, "models", "main", undefined, configPath);
 		if (result !== "ok" && state.savedMainModel && !sameModelRef(mainRef, state.savedMainModel)) {
-			const fbResult = await trySetModel(state.savedMainModel, ctx, "Main model (fallback)");
-			if (fbResult === "not_found") updateConfigField(state.modelConfig, "models", "main", undefined, configPath);
+			await trySetModel(state.savedMainModel, ctx, "Main model (fallback)");
 		}
 		applyThinking(state.modelConfig.thinking.main ?? state.savedMainThinking);
 	}
@@ -398,8 +391,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			await transitionToMode("auto", ctx, { persistCurrentMain: false });
 		} else {
 			if (state.modelConfig.models.main) {
-				const result = await trySetModel(state.modelConfig.models.main, ctx, "Main model");
-				if (result === "not_found") updateConfigField(state.modelConfig, "models", "main", undefined, configPath);
+				await trySetModel(state.modelConfig.models.main, ctx, "Main model");
 			}
 			applyThinking(state.modelConfig.thinking.main);
 		}

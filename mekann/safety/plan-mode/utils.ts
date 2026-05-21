@@ -80,7 +80,24 @@ export function createDefaultConfig(): PlanModeConfig {
 	return { version: MEKANN_CONFIG_VERSION, models: {}, thinking: {} };
 }
 
+function isModelRef(value: unknown): value is ModelRef {
+	return !!value && typeof value === "object" &&
+		typeof (value as Record<string, unknown>).provider === "string" &&
+		typeof (value as Record<string, unknown>).modelId === "string" &&
+		(value as Record<string, unknown>).provider !== "" &&
+		(value as Record<string, unknown>).modelId !== "";
+}
+
 export function normalizeConfig(raw: Record<string, unknown>): PlanModeConfig {
+	const models: PlanModeConfig["models"] = {};
+	const m = raw.models;
+	if (m && typeof m === "object") {
+		const mi = m as Record<string, unknown>;
+		if (isModelRef(mi.main)) models.main = mi.main;
+		if (isModelRef(mi.plan)) models.plan = mi.plan;
+		if (isModelRef(mi.auto)) models.auto = mi.auto;
+	}
+
 	const t = raw.thinking;
 	const thinking: PlanModeConfig["thinking"] = {};
 	if (t && typeof t === "object") {
@@ -89,7 +106,7 @@ export function normalizeConfig(raw: Record<string, unknown>): PlanModeConfig {
 		if (isThinkingLevel(ti.plan)) thinking.plan = ti.plan;
 		if (isThinkingLevel(ti.auto)) thinking.auto = ti.auto;
 	}
-	return { version: MEKANN_CONFIG_VERSION, models: (raw.models && typeof raw.models === "object") ? raw.models as PlanModeConfig["models"] : {}, thinking };
+	return { version: MEKANN_CONFIG_VERSION, models, thinking };
 }
 
 /** "provider/modelId" 文字列を ModelRef にパース（最初の / で分割）。 */
