@@ -216,4 +216,72 @@ describe("context-ledger extension", () => {
 		const xml = notify.mock.calls[0][0];
 		expect(Buffer.byteLength(xml, "utf8")).toBeLessThanOrEqual(350); // some overhead
 	});
+
+	// summarize_session_context tool tests
+	it("summarize_session_context tool is registered", () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		contextLedgerExtension(pi);
+		const toolNames = pi.registerTool.mock.calls.map((c: any) => c[0]?.name);
+		expect(toolNames).toContain("summarize_session_context");
+	});
+
+	it("summarize_session_context has promptGuidelines", () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		contextLedgerExtension(pi);
+		const toolDef = pi.registerTool.mock.calls.find((c: any) => c[0]?.name === "summarize_session_context")[0];
+		expect(toolDef.promptGuidelines.length).toBeGreaterThanOrEqual(2);
+		expect(toolDef.promptGuidelines[0]).toContain("summarize_session_context");
+	});
+
+	it("summarize_session_context returns latest snapshot if available", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		contextLedgerExtension(pi);
+		const toolDef = pi.registerTool.mock.calls.find((c: any) => c[0]?.name === "summarize_session_context")[0];
+		const cwd = await tmp();
+
+		const { writeLatestSnapshot } = await import("./snapshot-store.js");
+		await writeLatestSnapshot(cwd, "<mekann_session_context><cached /></mekann_session_context>\n");
+
+		const result = await toolDef.execute("tc_ss_1", {}, undefined, undefined, { cwd });
+		expect(result.content[0].text).toContain("<cached />");
+	});
+
+	it("summarize_session_context builds from events when no snapshot", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		contextLedgerExtension(pi);
+		const toolDef = pi.registerTool.mock.calls.find((c: any) => c[0]?.name === "summarize_session_context")[0];
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "task", priority: 1, title: "Restore task", summary: "s", idGenerator: () => "ctx_ss_1" });
+
+		const result = await toolDef.execute("tc_ss_2", {}, undefined, undefined, { cwd });
+		expect(result.content[0].text).toContain("ctx_ss_1");
+	});
+
+	it("summarize_session_context rebuild=true ignores latest snapshot", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		contextLedgerExtension(pi);
+		const toolDef = pi.registerTool.mock.calls.find((c: any) => c[0]?.name === "summarize_session_context")[0];
+		const cwd = await tmp();
+
+		const { writeLatestSnapshot } = await import("./snapshot-store.js");
+		await writeLatestSnapshot(cwd, "<mekann_session_context><stale /></mekann_session_context>\n");
+		await appendContextEvent({ cwd, kind: "error", priority: 0, title: "Fresh error", summary: "s", idGenerator: () => "ctx_ss_2" });
+
+		const result = await toolDef.execute("tc_ss_3", { rebuild: true }, undefined, undefined, { cwd });
+		expect(result.content[0].text).toContain("ctx_ss_2");
+		expect(result.content[0].text).not.toContain("stale");
+	});
+
+	it("summarize_session_context respects maxBytes", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		contextLedgerExtension(pi);
+		const toolDef = pi.registerTool.mock.calls.find((c: any) => c[0]?.name === "summarize_session_context")[0];
+		const cwd = await tmp();
+		for (let i = 0; i < 10; i++) {
+			await appendContextEvent({ cwd, kind: "task", priority: 2, title: `Task ${i}`, summary: `Summary ${i}`, idGenerator: () => `ctx_smb_${i}` });
+		}
+
+		const result = await toolDef.execute("tc_ss_4", { maxBytes: 300, rebuild: true }, undefined, undefined, { cwd });
+		expect(Buffer.byteLength(result.content[0].text, "utf8")).toBeLessThanOrEqual(350);
+	});
 });

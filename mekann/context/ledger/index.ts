@@ -99,6 +99,39 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 			return { content: [{ type: "text", text }], details: {} };
 		},
 	});
+
+	pi.registerTool({
+		name: "summarize_session_context",
+		label: "Summarize Session Context",
+		description: "Read the latest session snapshot or rebuild one from context events. Use this to restore working memory after session restart or compaction.",
+		promptSnippet: "Summarize session context for working memory restore.",
+		promptGuidelines: [
+			"Use summarize_session_context to get a compact summary of session state for context restore.",
+			"Use search_context_events for specific decisions, tasks, or errors.",
+			"Use search_tool_outputs for raw log/output snippets.",
+		],
+		parameters: Type.Object({
+			rebuild: Type.Optional(Type.Boolean({ description: "Rebuild from context events instead of reading latest snapshot" })),
+			maxBytes: Type.Optional(Type.Number({ description: "Maximum snapshot bytes (default: 4096, min: 256)" })),
+		}),
+		async execute(_id, params, _signal, _onUpdate, ctx) {
+			const cwd = ctx?.cwd ?? process.cwd();
+			const maxBytes = clampInt((params as any).maxBytes, 4096, 256, 65536);
+			const rebuild = Boolean((params as any).rebuild);
+
+			let xml: string | undefined;
+			if (!rebuild) {
+				xml = await readLatestSnapshot(cwd);
+			}
+			if (!xml) {
+				const events = await readEvents(cwd);
+				xml = buildSnapshot(events, { maxBytes });
+			}
+
+			return { content: [{ type: "text", text: xml }], details: {} };
+		},
+	});
+
 	pi.registerCommand("context-ledger", {
 		description: "context-ledger events を表示・削除",
 		getArgumentCompletions(prefix: string) {
