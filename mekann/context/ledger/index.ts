@@ -102,7 +102,7 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("context-ledger", {
 		description: "context-ledger events を表示・削除",
 		getArgumentCompletions(prefix: string) {
-			return ["list", "stats", "snapshot", "clear"].filter((v) => v.startsWith(prefix)).map((value) => ({ value, label: value }));
+			return ["list", "stats", "snapshot", "restore", "clear"].filter((v) => v.startsWith(prefix)).map((value) => ({ value, label: value }));
 		},
 		async handler(args: string | undefined, ctx: any) {
 			const cwd = ctx?.cwd ?? process.cwd();
@@ -147,6 +147,30 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 				} else {
 					ctx?.ui?.notify?.(xml, "info");
 				}
+				return;
+			}
+
+			if (arg === "restore" || arg.startsWith("restore")) {
+				const maxBytesMatch = arg.match(/--max-bytes\s+(\d+)/);
+				const maxBytes = maxBytesMatch ? Math.max(256, parseInt(maxBytesMatch[1], 10)) : 4096;
+				const rebuild = arg.includes("--rebuild");
+				const shouldWrite = arg.includes("--write");
+
+				let xml: string | undefined;
+
+				if (!rebuild) {
+					xml = await readLatestSnapshot(cwd);
+				}
+
+				if (!xml) {
+					const events = await readEvents(cwd);
+					xml = buildSnapshot(events, { maxBytes });
+					if (shouldWrite) {
+						await writeLatestSnapshot(cwd, xml);
+					}
+				}
+
+				ctx?.ui?.notify?.(xml, "info");
 				return;
 			}
 

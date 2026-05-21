@@ -134,4 +134,86 @@ describe("context-ledger extension", () => {
 		const msg = notify.mock.calls[0][0];
 		expect(msg).toContain("Snapshot saved");
 	});
+
+	// Restore command tests
+	it("restore returns latest snapshot if available", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		contextLedgerExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+
+		// Write a snapshot first
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "Old task", summary: "saved", idGenerator: () => "ctx_rst_1" });
+		const { writeLatestSnapshot } = await import("./snapshot-store.js");
+		await writeLatestSnapshot(cwd, "<mekann_session_context><saved /></mekann_session_context>\n");
+
+		const notify = vi.fn();
+		await cmdDef.handler("restore", { cwd, ui: { notify } });
+		expect(notify).toHaveBeenCalled();
+		expect(notify.mock.calls[0][0]).toContain("<saved />");
+	});
+
+	it("restore builds from events when no snapshot exists", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		contextLedgerExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "error", priority: 0, title: "Build failed", summary: "TypeError", idGenerator: () => "ctx_rst_2" });
+
+		const notify = vi.fn();
+		await cmdDef.handler("restore", { cwd, ui: { notify } });
+		expect(notify).toHaveBeenCalled();
+		expect(notify.mock.calls[0][0]).toContain("ctx_rst_2");
+	});
+
+	it("restore --rebuild ignores latest snapshot", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		contextLedgerExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+
+		// Write stale snapshot
+		const { writeLatestSnapshot } = await import("./snapshot-store.js");
+		await writeLatestSnapshot(cwd, "<mekann_session_context><stale /></mekann_session_context>\n");
+
+		// Add new event
+		await appendContextEvent({ cwd, kind: "task", priority: 1, title: "New task", summary: "fresh", idGenerator: () => "ctx_rst_3" });
+
+		const notify = vi.fn();
+		await cmdDef.handler("restore --rebuild", { cwd, ui: { notify } });
+		expect(notify.mock.calls[0][0]).toContain("ctx_rst_3");
+		expect(notify.mock.calls[0][0]).not.toContain("stale");
+	});
+
+	it("restore --rebuild --write saves rebuilt snapshot", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		contextLedgerExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "Rebuild task", summary: "s", idGenerator: () => "ctx_rst_4" });
+
+		const notify = vi.fn();
+		await cmdDef.handler("restore --rebuild --write", { cwd, ui: { notify } });
+		expect(notify).toHaveBeenCalled();
+
+		// Verify latest.xml was updated
+		const { readLatestSnapshot } = await import("./snapshot-store.js");
+		const content = await readLatestSnapshot(cwd);
+		expect(content).toContain("ctx_rst_4");
+	});
+
+	it("restore respects --max-bytes", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		contextLedgerExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		for (let i = 0; i < 10; i++) {
+			await appendContextEvent({ cwd, kind: "task", priority: 2, title: `Task ${i}`, summary: `Summary ${i}`, idGenerator: () => `ctx_rmb_${i}` });
+		}
+
+		const notify = vi.fn();
+		await cmdDef.handler("restore --max-bytes 300", { cwd, ui: { notify } });
+		const xml = notify.mock.calls[0][0];
+		expect(Buffer.byteLength(xml, "utf8")).toBeLessThanOrEqual(350); // some overhead
+	});
 });
