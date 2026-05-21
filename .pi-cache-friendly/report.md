@@ -1,17 +1,17 @@
 # cache-friendly-prompt レポート
 
-最終更新: 2026-05-21T06:40:44.844Z
+最終更新: 2026-05-21T07:09:59.176Z
 
 ## サマリー
 
-- 総リクエスト数: 811
+- 総リクエスト数: 867
 - 最新 provider/model: zai/glm-5.1
 - 最新 stablePrefixHash: `87244eaa`
 - 最新 stable prefix: 11017 chars
-- 最新 total prompt: 192476 chars
-- 直近同一 hash 継続: 30 requests
-- stablePrefixHash 変化回数: 71
-- warning 件数: 43
+- 最新 total prompt: 342269 chars
+- 直近同一 hash 継続: 47 requests
+- stablePrefixHash 変化回数: 74
+- warning 件数: 48
 
 ## 用語
 
@@ -54,13 +54,16 @@
 
 | provider/model | requests | unique hashes | latest hash | stable chars | total chars |
 |---|---:|---:|---|---:|---:|
-| openai-codex/gpt-5.5 | 630 | 13 | `a2b8c6a3` | 3963 | 16534 |
-| zai/glm-5.1 | 181 | 7 | `87244eaa` | 11017 | 192476 |
+| openai-codex/gpt-5.5 | 639 | 13 | `a2b8c6a3` | 3963 | 54292 |
+| zai/glm-5.1 | 228 | 7 | `87244eaa` | 11017 | 342269 |
 
 ## 最近の hash 変化
 
 | timestamp | provider/model | hash | stable chars | total chars |
 |---|---|---|---:|---:|
+| 2026-05-21T06:50:53.865Z | zai/glm-5.1 | `a2b8c6a3` → `87244eaa` | 11017 | 320788 |
+| 2026-05-21T06:46:50.010Z | openai-codex/gpt-5.5 | `1b175f0c` → `a2b8c6a3` | 3963 | 21173 |
+| 2026-05-21T06:43:31.824Z | openai-codex/gpt-5.5 | `87244eaa` → `1b175f0c` | 4963 | 20879 |
 | 2026-05-21T06:33:03.087Z | zai/glm-5.1 | `a2b8c6a3` → `87244eaa` | 11017 | 169957 |
 | 2026-05-21T06:32:40.993Z | openai-codex/gpt-5.5 | `1b175f0c` → `a2b8c6a3` | 3963 | 16534 |
 | 2026-05-21T06:30:17.005Z | openai-codex/gpt-5.5 | `87244eaa` → `1b175f0c` | 4963 | 14312 |
@@ -78,6 +81,3 @@
 | 2026-05-21T05:01:18.143Z | openai-codex/gpt-5.5 | `be27db66` → `844fbfb3` | 6342 | 7155 |
 | 2026-05-21T05:01:16.246Z | openai-codex/gpt-5.5 | `844fbfb3` → `be27db66` | 11530 | 51548 |
 | 2026-05-21T05:01:11.719Z | openai-codex/gpt-5.5 | `be27db66` → `844fbfb3` | 6342 | 6767 |
-| 2026-05-20T16:05:05.048Z | openai-codex/gpt-5.5 | `aff4edbb` → `be27db66` | 11530 | 18932 |
-| 2026-05-20T15:22:02.392Z | zai/glm-5.1 | `844fbfb3` → `aff4edbb` | 12212 | 62295 |
-| 2026-05-20T15:20:10.487Z | zai/glm-5.1 | `aff4edbb` → `844fbfb3` | 6342 | 41561 |

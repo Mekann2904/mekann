@@ -11,8 +11,8 @@ import { renderWidget, directionLabel, type LoopInfo } from "../state.js";
 
 // ─── Constants ────────────────────────────────────────────────
 
-export const DEFAULT_MAX_LOOP_ITERATIONS = 50;
-export const NO_PROGRESS_LIMIT = 2;
+export const DEFAULT_MAX_LOOP_ITERATIONS = 100;
+export const NO_PROGRESS_LIMIT = 10;
 export const DEFAULT_TIMEOUT_SECONDS = 600;
 
 export const STATUS_LABELS: Record<string, string> = {

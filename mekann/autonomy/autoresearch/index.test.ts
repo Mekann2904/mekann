@@ -355,10 +355,12 @@ describe("autoresearchExtension", () => {
 		it("returns active prompt when active", async () => {
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			await cmdHandler("on", createMockCtx());
-			const fragments = await collectPromptFragments({ cwd: ctx.cwd });
+			const fragments = await collectPromptFragments({ cwd: ctx.cwd, mode: "autoresearch" });
 			expect(fragments).toHaveLength(1);
-			expect(fragments[0]).toMatchObject({ kind: "autoresearch_policy", stability: "stable", scope: "mode", priority: 400 });
+			expect(fragments[0].kind).toBe("autoresearch_policy");
+			expect(fragments[0]).toMatchObject({ stability: "stable", scope: "mode", priority: 400, cacheIntent: "avoid_cache" });
 			expect(fragments[0].content).toContain("autoresearch モード(アクティブ)");
+			expect(fragments[0].content).toContain("dynamic autoresearch context");
 		});
 
 		it("switches to inactive prompt after off", async () => {
@@ -478,16 +480,18 @@ describe("autoresearchExtension", () => {
 			await pi.commands.get("autoresearch")!.handler("on", ctx);
 			pi.sentMessages.length = 0;
 
-			// NO_PROGRESS_LIMIT=2 means stop after 2 consecutive no-progress agent_end events.
-			// Iteration 0: agent_start → agent_end (noProgressAgentEnds becomes 1) → sends followUp
-			// Iteration 1: agent_start → agent_end (noProgressAgentEnds becomes 2 >= 2) → stops
-			for (let i = 0; i < 2; i++) {
+			// NO_PROGRESS_LIMIT=10: iterations 0-8 send followUp, iteration 9 (10th) stops.
+			for (let i = 0; i < 10; i++) {
 				await pi.eventHandlers.get("agent_start")!({}, ctx);
 				await pi.eventHandlers.get("agent_end")!({ messages: [] }, ctx);
 			}
 
 			expect(ctx.ui.notify).toHaveBeenCalledWith(
 				expect.stringContaining("停止しました"),
+				"warning",
+			);
+			expect(ctx.ui.notify).toHaveBeenCalledWith(
+				expect.stringContaining("loop on で再開"),
 				"warning",
 			);
 		});
