@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Goal } from "./state.js";
 import { GoalStore } from "./state.js";
+import type { GoalAction } from "./context-events.js";
 import { GoalRuntime } from "./runtime.js";
 import { renderGoalSummary, renderNoGoal } from "./prompts.js";
 
@@ -8,8 +9,8 @@ export interface GoalCommandDeps {
   getStore(): GoalStore | null;
   getRuntime(): GoalRuntime | null;
   isEnabled(ctx: ExtensionContext): boolean;
-  emitUpdated(ctx: ExtensionContext, goal: Goal): void;
-  emitCleared(ctx: ExtensionContext, threadId: string): void;
+  emitUpdated(ctx: ExtensionContext, goal: Goal, action?: GoalAction): void;
+  emitCleared(ctx: ExtensionContext, threadId: string, goal?: Goal | null): void;
 }
 
 /**
@@ -62,7 +63,7 @@ export function registerGoalCommand(pi: ExtensionAPI, deps: GoalCommandDeps): vo
             runtime.onExternalMutationStarting();
             const updated = store.updateGoal({ status: "paused" }, undefined, "user");
             runtime.onExternalSet(updated);
-            deps.emitUpdated(ctx, updated);
+            deps.emitUpdated(ctx, updated, "paused");
             ctx.ui.notify("Goal paused", "info");
           } catch (e) {
             ctx.ui.notify(`Error: ${e instanceof Error ? e.message : String(e)}`, "error");
@@ -98,7 +99,7 @@ export function registerGoalCommand(pi: ExtensionAPI, deps: GoalCommandDeps): vo
               "user",
             );
             runtime.onExternalSet(updated);
-            deps.emitUpdated(ctx, updated);
+            deps.emitUpdated(ctx, updated, "resumed");
             ctx.ui.notify("Goal resumed", "info");
             runtime.maybeContinueIfIdle(ctx);
           } catch (e) {
@@ -121,7 +122,7 @@ export function registerGoalCommand(pi: ExtensionAPI, deps: GoalCommandDeps): vo
           const threadId = goal.thread_id;
           store.deleteGoal("user");
           runtime.onExternalClear();
-          deps.emitCleared(ctx, threadId);
+          deps.emitCleared(ctx, threadId, goal);
           ctx.ui.notify("Goal cleared", "info");
           break;
         }
@@ -150,7 +151,7 @@ export function registerGoalCommand(pi: ExtensionAPI, deps: GoalCommandDeps): vo
               "user",
             );
             runtime.onExternalSet(updated, previousGoal);
-            deps.emitUpdated(ctx, updated);
+            deps.emitUpdated(ctx, updated, "updated");
             ctx.ui.notify(`Goal updated: ${updated.objective}`, "info");
             runtime.maybeContinueIfIdle(ctx);
           } catch (e) {
@@ -180,7 +181,7 @@ export function registerGoalCommand(pi: ExtensionAPI, deps: GoalCommandDeps): vo
             runtime.onExternalMutationStarting();
             const updated = store.updateGoal({ token_budget: newBudget }, undefined, "user");
             runtime.onExternalSet(updated);
-            deps.emitUpdated(ctx, updated);
+            deps.emitUpdated(ctx, updated, "updated");
             ctx.ui.notify(`Budget set: ${updated.token_budget ?? "unlimited"} (status: ${updated.status})`, "info");
           } catch (e) {
             ctx.ui.notify(`Error: ${e instanceof Error ? e.message : String(e)}`, "error");
@@ -251,7 +252,7 @@ async function handleSetObjective(
       ? store.replaceGoal(ctx.sessionManager.getSessionId(), parsed.objective, "active", parsed.budget, "user")
       : store.createGoal(ctx.sessionManager.getSessionId(), parsed.objective, parsed.budget, "user");
     runtime.onExternalSet(newGoal, previousGoal);
-    deps.emitUpdated(ctx, newGoal);
+    deps.emitUpdated(ctx, newGoal, "set");
     ctx.ui.notify(`Goal set: ${newGoal.objective}`, "info");
     runtime.maybeContinueIfIdle(ctx);
   } catch (e) {

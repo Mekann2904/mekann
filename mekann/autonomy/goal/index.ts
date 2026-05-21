@@ -33,6 +33,7 @@ import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { PLAN_MODE_STATUS_EVENT } from "../../safety/policy-core/modes.js";
 import { renderWidget, renderGoalPolicy, renderGoalObjectiveContext, renderGoalRuntimeState } from "./prompts.js";
 import { registerGoalCommand } from "./command.js";
+import { recordGoalEvent, type GoalAction } from "./context-events.js";
 
 
 // ---------------------------------------------------------------------------
@@ -94,12 +95,30 @@ export default function goalExtension(pi: ExtensionAPI): void {
     ctx.ui.setWidget("goal", lines);
   }
 
-  function emitUpdated(ctx: ExtensionContext, goal: Goal): void {
+  function emitUpdated(ctx: ExtensionContext, goal: Goal, action: GoalAction = "updated"): void {
+    const cwd = (ctx as any)?.cwd ?? process.cwd();
+    recordGoalEvent({
+      action,
+      goal,
+      cwd,
+      sessionId: (ctx as any)?.sessionId,
+      turnId: (ctx as any)?.turnId,
+      branchId: (ctx as any)?.branchId,
+    }).catch(() => {});
     pi.events.emit("goal:updated", { thread_id: goal.thread_id, goal });
     updateWidget(ctx);
   }
 
-  function emitCleared(ctx: ExtensionContext, threadId: string): void {
+  function emitCleared(ctx: ExtensionContext, threadId: string, goal?: Goal | null): void {
+    const cwd = (ctx as any)?.cwd ?? process.cwd();
+    recordGoalEvent({
+      action: "cleared",
+      goal: goal ?? null,
+      cwd,
+      sessionId: (ctx as any)?.sessionId,
+      turnId: (ctx as any)?.turnId,
+      branchId: (ctx as any)?.branchId,
+    }).catch(() => {});
     pi.events.emit("goal:cleared", { thread_id: threadId });
     updateWidget(ctx);
   }
@@ -289,7 +308,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
           "tool",
         );
         runtime.onExternalSet(goal);
-        emitUpdated(ctx, goal);
+        emitUpdated(ctx, goal, "set");
         return {
           content: [{ type: "text" as const, text: `Goal created: ${goal.objective}` }],
           details: { goal },
@@ -356,7 +375,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
         // Synchronize runtime state (clears active_goal_id, wall-clock baseline)
         runtime.onExternalSet(goal, previousGoal);
 
-        emitUpdated(ctx, goal);
+        emitUpdated(ctx, goal, "completed");
         const usageReport = `Final usage: ${goal.tokens_used} tokens, ${goal.time_used_seconds}s`;
 
         return {
