@@ -431,8 +431,8 @@ safety: 0
 | `aggregate`   | 任意 | 集計方法。`single` / `median` / `mean` / `min` / `max`。デフォルト: `single` |
 | `require_git` | 任意 | git repo を必須にする。デフォルト: `true`     |
 | `require_clean_baseline` | 任意 | clean working tree を必須にする。デフォルト: `true` |
-| `allowed_paths` | 任意 | 許可パスパターンの配列                      |
-| `excluded_paths` | 任意 | 除外パスパターンの配列                      |
+| `allowed_paths` | 任意 | 許可パスパターンの配列。正規表現文字列と glob (`mekann/**/*.test.ts` など) を受け付けます |
+| `excluded_paths` | 任意 | 除外パスパターンの配列。正規表現文字列と glob を受け付けます |
 
 ---
 

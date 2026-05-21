@@ -19,12 +19,12 @@ import { parseMetricLines } from "./state.js";
 
 /** execFileSync wrapper for git commands with standard options. */
 function gitExecSync(args: string[], cwd: string, timeout = 5_000): string {
-	return execFileSync("git", args, { cwd, encoding: "utf8", timeout, stdio: ["ignore", "pipe", "ignore"] });
+	return execFileSync("git", args, { cwd, encoding: "utf8", timeout, stdio: ["ignore", "pipe", "pipe"] });
 }
 
 /** execFileSync wrapper for git commands that only checks exit code. */
 function gitCheckSync(args: string[], cwd: string, timeout = 5_000): void {
-	execFileSync("git", args, { cwd, encoding: "utf8", timeout, stdio: ["ignore", "pipe", "ignore"] });
+	execFileSync("git", args, { cwd, encoding: "utf8", timeout, stdio: ["ignore", "pipe", "pipe"] });
 }
 
 export interface ChecksResult {
@@ -798,12 +798,11 @@ export function gitAutoCommit(cwd: string, message: string): { committed: boolea
 
 	try {
 		// Internal artifacts are discussion/audit state, not candidate patches.
-		execFileSync("git", [
-			"add", "-A", "--", ".",
-			":(exclude).pi/**",
-			":(exclude).autoresearch/**",
-			":(exclude)autoresearch.plan.md",
-		], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
+		// Avoid pathspec magic exclusions here: older Git versions and some shells/environments
+		// have proven brittle with `:(exclude)` during auto-commit. Stage normally, then
+		// unstage internal paths using portable pathspecs.
+		execFileSync("git", ["add", "-A", "--", "."], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] });
+		execFileSync("git", ["reset", "--", ".pi", ".autoresearch", "autoresearch.plan.md"], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] });
 
 		const rootAutoresearchFiles = [
 			"autoresearch.jsonl",
@@ -812,7 +811,7 @@ export function gitAutoCommit(cwd: string, message: string): { committed: boolea
 			"autoresearch.checks.sh",
 		].filter((f) => fs.existsSync(path.join(cwd, f)));
 		if (rootAutoresearchFiles.length > 0) {
-			execFileSync("git", ["add", "-f", "--", ...rootAutoresearchFiles], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
+			execFileSync("git", ["add", "-f", "--", ...rootAutoresearchFiles], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] });
 		}
 
 		try {

@@ -197,6 +197,17 @@ describe("contract module", () => {
 			expect(validateChangedFiles(["src/a.ts", "src/b.ts"], safety)).toEqual([]);
 		});
 
+		it("allows glob-style allowedPaths", () => {
+			const safety = { ...DEFAULT_SAFETY, allowedPaths: ["mekann/**/*.test.ts"] };
+			expect(validateChangedFiles(["mekann/context/output-gate/index.test.ts"], safety)).toEqual([]);
+		});
+
+		it("allows glob-style excludedPaths", () => {
+			const safety = { ...DEFAULT_SAFETY, excludedPaths: [".pi-cache-friendly/**"] };
+			const violations = validateChangedFiles([".pi-cache-friendly/report.json"], safety);
+			expect(violations.length).toBeGreaterThan(0);
+		});
+
 		it("rejects files matching excludedPaths", () => {
 			const safety = { ...DEFAULT_SAFETY, excludedPaths: ["\\.env"] };
 			const violations = validateChangedFiles(["src/a.ts", ".env"], safety);

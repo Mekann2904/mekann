@@ -270,19 +270,14 @@ export function validateChangedFiles(
 	for (const file of changedFiles) {
 		// excludedPaths チェック
 		for (const exPattern of safety.excludedPaths) {
-			try {
-				const re = new RegExp(exPattern);
-				if (re.test(file)) {
-					violations.push(`変更ファイル "${file}" は除外パターン "${exPattern}" に一致します。`);
-				}
-			} catch { /* skip invalid */ }
+			if (matchesPathPattern(file, exPattern)) {
+				violations.push(`変更ファイル "${file}" は除外パターン "${exPattern}" に一致します。`);
+			}
 		}
 
 		// allowedPaths チェック (指定されている場合)
 		if (safety.allowedPaths.length > 0) {
-			const allowed = safety.allowedPaths.some((p) => {
-				try { return new RegExp(p).test(file); } catch { return file.startsWith(p); }
-			});
+			const allowed = safety.allowedPaths.some((p) => matchesPathPattern(file, p));
 			if (!allowed) {
 				violations.push(`変更ファイル "${file}" は許可パスに含まれていません。`);
 			}
@@ -290,6 +285,41 @@ export function validateChangedFiles(
 	}
 
 	return violations;
+}
+
+function globToRegExp(pattern: string): RegExp {
+	let out = "^";
+	for (let i = 0; i < pattern.length; i++) {
+		const ch = pattern[i];
+		const next = pattern[i + 1];
+		if (ch === "*") {
+			if (next === "*") {
+				const after = pattern[i + 2];
+				if (after === "/") { out += "(?:.*/)?"; i += 2; }
+				else { out += ".*"; i++; }
+			} else {
+				out += "[^/]*";
+			}
+		} else if (ch === "?") {
+			out += "[^/]";
+		} else {
+			out += ch.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
+		}
+	}
+	return new RegExp(out + "$");
+}
+
+/** Match safety path patterns. Historically these are RegExp strings; glob syntax is also accepted for user-facing ergonomics. */
+export function matchesPathPattern(file: string, pattern: string): boolean {
+	try {
+		if (new RegExp(pattern).test(file)) return true;
+	} catch { /* fall through to glob/prefix handling */ }
+
+	if (pattern.includes("*") || pattern.includes("?")) {
+		try { return globToRegExp(pattern).test(file); } catch { /* fall through */ }
+	}
+
+	return file.startsWith(pattern);
 }
 
 // ---------------------------------------------------------------------------
