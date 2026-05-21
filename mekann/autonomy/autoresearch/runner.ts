@@ -302,14 +302,14 @@ function runSpawn(params: SpawnParams, timeoutMs: number, signal: AbortSignal | 
 		let stderr = "";
 		const sp = createStreamingParseState();
 
-		child.stdout.on("data", (chunk: Buffer) => {
+		child.stdout!.on("data", (chunk: Buffer) => {
 			const str = chunk.toString("utf8");
 			if (Buffer.byteLength(stdout, "utf8") < CAPTURE_MAX_BYTES) stdout += str;
 			if (stdoutStream) stdoutStream.write(filterSecrets(str));
 			spChunk(sp, str, "stdoutBuf");
 		});
 
-		child.stderr.on("data", (chunk: Buffer) => {
+		child.stderr!.on("data", (chunk: Buffer) => {
 			const str = chunk.toString("utf8");
 			if (Buffer.byteLength(stderr, "utf8") < CAPTURE_MAX_BYTES) stderr += str;
 			if (stderrStream) stderrStream.write(filterSecrets(str));

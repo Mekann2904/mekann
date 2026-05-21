@@ -113,7 +113,7 @@ export function loadRunFromPlanArtifact(
 				externalMetricsPath: m.externalMetricsPath ?? null, logFilesWritten: m.logFilesWritten ?? false,
 				streamError: m.streamError ?? null,
 			};
-			return { result, startedAt: m.startedAt ?? 0, completedAt: m.completedAt ?? 0, createdAt: m.startedAt ?? 0, artifactDir: runDir, runSeq: m.runSeq };
+			return { result, checks, startedAt: m.startedAt ?? 0, completedAt: m.completedAt ?? 0, createdAt: m.startedAt ?? 0, artifactDir: runDir, runSeq: m.runSeq };
 		} catch { /* try next */ }
 	}
 	return null;

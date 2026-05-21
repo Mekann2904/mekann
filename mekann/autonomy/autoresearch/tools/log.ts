@@ -8,7 +8,8 @@ import * as path from "node:path";
 
 import type { ExperimentState, RunEntry, RunStatus, EventLedgerEntry } from "../state.js";
 import { isBestMetric, countByStatus, appendToJsonl, readPointer, writePointer, isBestPointerMetric } from "../state.js";
-import type { ExperimentContract, AcceptanceInput } from "../contract.js";
+import type { ExperimentContract } from "../contract.js";
+import type { AcceptanceInput } from "../acceptance.js";
 import { validateChangedFiles } from "../contract.js";
 import { evaluateAcceptance } from "../acceptance.js";
 import { readState as readStateV2, writeState as writeStateV2, appendJournal } from "../layout.js";

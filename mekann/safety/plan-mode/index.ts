@@ -36,7 +36,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	/** Pop sandbox profile override (best-effort; no-op if not active). */
 	function popSandboxOverride(): void {
 		if (!sandboxOverrideToken) return;
-		safeEmit(SANDBOX_POP_PROFILE_EVENT, { owner: "plan-mode", token: sandboxOverrideToken } satisfies SandboxPushProfileEvent);
+		safeEmit(SANDBOX_POP_PROFILE_EVENT, { owner: "plan-mode", token: sandboxOverrideToken } satisfies SandboxPopProfileEvent);
 		sandboxOverrideToken = undefined;
 	}
 

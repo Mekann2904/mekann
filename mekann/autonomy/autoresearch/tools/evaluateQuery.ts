@@ -64,7 +64,7 @@ export function executeEvaluateQuery(
 		`- 主指標: ${m.name ?? "(未定)"}(${m.direction})`,
 		`- benchmark: ${evaluation.contractDraft.benchmarkCommand ?? "(未定)"}`,
 		`- checks: ${evaluation.contractDraft.checksCommand ?? "(未定)"}`,
-	].filter(s => s !== false).join("\n");
+	].filter(Boolean).join("\n");
 
-	return store.textDetails(text, evaluation);
+	return store.textDetails(text, evaluation as unknown as Record<string, unknown>);
 }

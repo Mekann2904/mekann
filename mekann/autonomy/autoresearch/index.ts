@@ -326,12 +326,12 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				store.state.name = c.name ?? store.state.name;
 				store.state.metricName = c.metricName ?? c.primaryMetric?.name ?? c.evaluation?.primaryMetric?.name ?? store.state.metricName;
 				store.state.metricUnit = c.metricUnit ?? c.primaryMetric?.unit ?? store.state.metricUnit;
-				store.state.direction = c.direction ?? c.primaryMetric?.direction ?? c.evaluation?.primaryMetric?.direction ?? store.state.direction;
+				store.state.direction = (c.direction ?? c.primaryMetric?.direction ?? c.evaluation?.primaryMetric?.direction ?? store.state.direction) as "lower" | "higher";
 			}
 
 			if (s2.bestMetric) {
 				store.state.bestMetric = s2.bestMetric.value;
-				store.state.direction = s2.bestMetric.direction ?? store.state.direction;
+				store.state.direction = (s2.bestMetric.direction ?? store.state.direction) as "lower" | "higher";
 			}
 
 			if (s2.runCount !== undefined) {
@@ -352,7 +352,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 				const pm = contractV1.evaluation.primaryMetric;
 				store.state.metricName = pm.name;
-				store.state.direction = pm.direction;
+				store.state.direction = pm.direction as "lower" | "higher";
 				store.state.metricUnit = pm.unit ?? store.state.metricUnit;
 				store.state.name = contractV1.objective.summary ?? store.state.name;
 
@@ -361,7 +361,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					const hashMatch = currentHash === contractV1Lock.contractHash && s2.currentContractHash === currentHash;
 					if (hashMatch && s2.bestMetric) {
 						store.state.bestMetric = s2.bestMetric.value;
-						store.state.direction = s2.bestMetric.direction ?? store.state.direction;
+						store.state.direction = (s2.bestMetric.direction ?? store.state.direction) as "lower" | "higher";
 					}
 					if (hashMatch && s2.runCount !== undefined) {
 						store.state.runCount = s2.runCount;
@@ -392,7 +392,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				return [{
 					id: "autoresearch:inactive-policy",
 					source: "autoresearch",
-					kind: "autoresearch_inactive_policy",
+					kind: "autoresearch_policy",
 					stability: "stable",
 					scope: "mode",
 					priority: 400,
@@ -432,7 +432,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			store.autoLoop = false;
 			store.loopPromptQueued = false;
 			store.updateWidget(ctx);
-			ctx.ui.notify("autoresearch loop を完了マーカーで停止しました", "success");
+			ctx.ui.notify("autoresearch loop を完了マーカーで停止しました", "info");
 			return;
 		}
 
@@ -497,16 +497,16 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		name: Type.String({ description: "実験セッションの名前" }),
 		metric_name: Type.String({ description: "主指標名(例: total_ms)" }),
 		metric_unit: Type.Optional(Type.String({ description: "単位(例: ms)" })),
-		direction: Type.Optional(StringEnum(["lower", "higher"] as const, { description: "デフォルト: lower" })),
+		direction: Type.Optional(StringEnum(["lower", "higher"] as const, { description: "デフォルト: lower" }) as any),
 		objective: Type.Optional(Type.String({ description: "実験目的" })),
 		benchmark_command: Type.Optional(Type.String({ description: "benchmark command (例: ./autoresearch.sh)" })),
-		metric_method: Type.Optional(StringEnum(["wall_clock", "stdout_metric", "report_file"] as const, { description: "測定方法。デフォルト: wall_clock" })),
-		checks_mode: Type.Optional(StringEnum(["script", "command", "none"] as const, { description: "checks mode。デフォルト: script" })),
+		metric_method: Type.Optional(StringEnum(["wall_clock", "stdout_metric", "report_file"] as const, { description: "測定方法。デフォルト: wall_clock" }) as any),
+		checks_mode: Type.Optional(StringEnum(["script", "command", "none"] as const, { description: "checks mode。デフォルト: script" }) as any),
 		checks_command: Type.Optional(Type.String({ description: "checks mode=command の場合のコマンド" })),
-		acceptance_mode: Type.Optional(StringEnum(["better_than_best", "improvement_threshold", "manual"] as const, { description: "acceptance mode。デフォルト: better_than_best" })),
+		acceptance_mode: Type.Optional(StringEnum(["better_than_best", "improvement_threshold", "manual"] as const, { description: "acceptance mode。デフォルト: better_than_best" }) as any),
 		min_improvement: Type.Optional(Type.Number({ description: "最小改善率 (0.02 = 2%)。acceptance_mode=improvement_threshold で有効" })),
 		repeat: Type.Optional(Type.Number({ description: "測定繰り返し回数。デフォルト: 1" })),
-		aggregate: Type.Optional(StringEnum(["single", "median", "mean", "min", "max"] as const, { description: "集計方法。デフォルト: single" })),
+		aggregate: Type.Optional(StringEnum(["single", "median", "mean", "min", "max"] as const, { description: "集計方法。デフォルト: single" }) as any),
 		require_git: Type.Optional(Type.Boolean({ description: "git repo を必須にする。デフォルト: true" })),
 		require_clean_baseline: Type.Optional(Type.Boolean({ description: "clean working tree を必須にする。デフォルト: true" })),
 		allowed_paths: Type.Optional(Type.Array(Type.String(), { description: "許可パスパターンの配列" })),
@@ -527,7 +527,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		parameters: initParamDefs as any,
 
 		async execute(_tc, params, _sig, _ou, ctx) {
-			return executeInit(store, params, ctx, toolDeps);
+			return executeInit(store, params as any, ctx, toolDeps);
 		},
 	});
 
@@ -568,7 +568,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		],
 		parameters: Type.Object({
 			metric: Type.Number({ description: "主指標の値" }),
-			status: StringEnum(["keep", "discard", "crash", "checks_failed"] as const, { description: "結果ステータス" }),
+			status: StringEnum(["keep", "discard", "crash", "checks_failed"] as const, { description: "結果ステータス" }) as any,
 			description: Type.String({ description: "実験内容の短い説明" }),
 			runId: Type.Optional(Type.String({ description: "autoresearch_run の runId (旧 piRunId 互換)" })),
 			commit: Type.Optional(Type.String({ description: "Git commit hash(省略時自動)" })),
@@ -577,7 +577,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		}),
 
 		async execute(_tc, params, _sig, _ou, ctx) {
-			return executeLog(store, params, ctx, toolDeps);
+			return executeLog(store, params as any, ctx, toolDeps);
 		},
 	});
 

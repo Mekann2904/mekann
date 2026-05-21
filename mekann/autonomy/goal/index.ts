@@ -19,7 +19,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import {
   GoalStore,
@@ -78,7 +78,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 
   function isEnabled(ctx: ExtensionContext): boolean {
     if (pi.getFlag("goals") !== true) return false;
-    if (!ctx.sessionManager.isPersisted()) return false;
+    if (!(ctx.sessionManager as any).isPersisted?.()) return false;
     return true;
   }
 
@@ -320,7 +320,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
     parameters: Type.Object({
       status: StringEnum(["complete"] as const, {
         description: "Set to 'complete' when the goal is achieved",
-      }),
+      }) as any,
       expected_goal_id: Type.Optional(
         Type.String({ description: "Optional: expected goal_id for optimistic concurrency" }),
       ),
@@ -328,7 +328,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       if (!isEnabled(ctx) || !store || !runtime) return DISABLED_RESPONSE;
       try {
-        const patch: { status: "complete" } = { status: params.status };
+        const patch: { status: "complete" } = { status: params.status as "complete" };
 
         // Reject if goal status is already complete
         const current = store.getGoal();
@@ -349,7 +349,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
         runtime.onExternalMutationStarting();
         const previousGoal = store.getGoal();
 
-        const goal = store.updateGoal(patch, params.expected_goal_id, "tool");
+        const goal = store.updateGoal(patch, params.expected_goal_id as string | undefined, "tool");
 
         // Suppress budget steering since we're completing
         runtime.suppressBudgetSteering();

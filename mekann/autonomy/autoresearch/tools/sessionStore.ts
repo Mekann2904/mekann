@@ -37,10 +37,10 @@ export interface RunData {
 	runSeq?: number;
 }
 
-export type ToolResponse = Readonly<{
-	content: ReadonlyArray<{ type: "text"; text: string }>;
+export type ToolResponse = {
+	content: { type: "text"; text: string }[];
 	details: Record<string, unknown>;
-}>;
+};
 
 // ─── SessionStore ─────────────────────────────────────────────
 
@@ -63,7 +63,7 @@ export class SessionStore {
 	// ─── Helper methods ────────────────────────────────────
 
 	textResponse(text: string): ToolResponse {
-		return { content: [{ type: "text" as const, text }], details: {} } as const;
+		return { content: [{ type: "text" as const, text }], details: {} };
 	}
 
 	textDetails(text: string, details: Record<string, unknown>): ToolResponse {
@@ -96,7 +96,7 @@ export class SessionStore {
 
 	updateWidget(ctx: ExtensionContext): void {
 		if (!ctx.hasUI) return;
-		const lines = renderWidget(this.state, this.active, this.runningExperiment, this.loopInfo());
+		const lines = renderWidget(this.state, this.active, this.runningExperiment ?? undefined, this.loopInfo());
 		ctx.ui.setWidget("autoresearch", lines ?? undefined);
 	}
 

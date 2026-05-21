@@ -11,10 +11,18 @@
     "pi-extension"
   ],
   "license": "ISC",
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.49",
+    "tinyglobby": "^0.2.16"
+  },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.1.0"
+    "@earendil-works/pi-coding-agent": ">=0.1.0",
+    "@earendil-works/pi-ai": ">=0.1.0",
+    "@earendil-works/pi-tui": ">=0.1.0"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0",
     "vitest": "^4.1.6"
   }
 }

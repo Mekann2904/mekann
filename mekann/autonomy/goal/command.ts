@@ -32,7 +32,7 @@ export function registerGoalCommand(pi: ExtensionAPI, deps: GoalCommandDeps): vo
         ctx.ui.notify(
           !pi.getFlag("goals")
             ? "Goals feature is disabled (enable with --goals flag)"
-            : !ctx.sessionManager.isPersisted()
+            : !(ctx.sessionManager as any).isPersisted?.()
               ? "Goals require a persisted session"
               : "Goal system not initialized",
           "warning",
@@ -99,7 +99,7 @@ export function registerGoalCommand(pi: ExtensionAPI, deps: GoalCommandDeps): vo
             );
             runtime.onExternalSet(updated);
             deps.emitUpdated(ctx, updated);
-            ctx.ui.notify("Goal resumed", "success");
+            ctx.ui.notify("Goal resumed", "info");
             runtime.maybeContinueIfIdle(ctx);
           } catch (e) {
             ctx.ui.notify(`Error: ${e instanceof Error ? e.message : String(e)}`, "error");
@@ -151,7 +151,7 @@ export function registerGoalCommand(pi: ExtensionAPI, deps: GoalCommandDeps): vo
             );
             runtime.onExternalSet(updated, previousGoal);
             deps.emitUpdated(ctx, updated);
-            ctx.ui.notify(`Goal updated: ${updated.objective}`, "success");
+            ctx.ui.notify(`Goal updated: ${updated.objective}`, "info");
             runtime.maybeContinueIfIdle(ctx);
           } catch (e) {
             ctx.ui.notify(`Error: ${e instanceof Error ? e.message : String(e)}`, "error");
@@ -252,7 +252,7 @@ async function handleSetObjective(
       : store.createGoal(ctx.sessionManager.getSessionId(), parsed.objective, parsed.budget, "user");
     runtime.onExternalSet(newGoal, previousGoal);
     deps.emitUpdated(ctx, newGoal);
-    ctx.ui.notify(`Goal set: ${newGoal.objective}`, "success");
+    ctx.ui.notify(`Goal set: ${newGoal.objective}`, "info");
     runtime.maybeContinueIfIdle(ctx);
   } catch (e) {
     ctx.ui.notify(`Error: ${e instanceof Error ? e.message : String(e)}`, "error");

@@ -112,7 +112,7 @@ describe("/goal command", () => {
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringContaining("Goal set: Implement auth"),
-      "success",
+      "info",
     );
   });
 
@@ -148,7 +148,7 @@ describe("/goal command", () => {
     ctx.ui.notify.mockClear();
     await goalCommand.handler("resume", ctx);
 
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Goal resumed", "success");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Goal resumed", "info");
   });
 
   // 7. /goal edit updates objective (mock editor to return new text)
@@ -166,7 +166,7 @@ describe("/goal command", () => {
     );
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringContaining("Updated objective text"),
-      "success",
+      "info",
     );
   });
 
@@ -186,7 +186,7 @@ describe("/goal command", () => {
     );
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringContaining("Replacement objective"),
-      "success",
+      "info",
     );
   });
 
@@ -196,7 +196,7 @@ describe("/goal command", () => {
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringContaining("Build the feature"),
-      "success",
+      "info",
     );
   });
 
@@ -206,7 +206,7 @@ describe("/goal command", () => {
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringContaining("Build the feature"),
-      "success",
+      "info",
     );
   });
 
@@ -272,7 +272,7 @@ describe("/goal command", () => {
 
     ctx.ui.notify.mockClear();
     await goalCommand.handler("resume", ctx);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Goal resumed", "success");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Goal resumed", "info");
   });
 
   // 17. /goal rejects objective containing --budget without a number
@@ -414,7 +414,7 @@ describe("/goal command", () => {
     await goalCommand.handler("set Build the thing", ctx);
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringContaining("Build the thing"),
-      "success",
+      "info",
     );
   });
 
@@ -424,7 +424,7 @@ describe("/goal command", () => {
     await goalCommand.handler("some random objective", ctx);
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringContaining("some random objective"),
-      "success",
+      "info",
     );
   });
 
@@ -584,7 +584,7 @@ describe("/goal command", () => {
     await goalCommand.handler("set My explicit objective", ctx);
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringContaining("Goal set"),
-      "success",
+      "info",
     );
   });
 });
