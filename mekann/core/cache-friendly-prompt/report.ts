@@ -107,8 +107,16 @@ function scalePoints(values: number[], max: number): string {
   }).join(" ");
 }
 
-function renderSvg(rows: ParsedLog[]): string {
-  const sampled = rows.length > MAX_POINTS ? rows.slice(-MAX_POINTS) : rows;
+function sampleRows(rows: ParsedLog[], maxPoints: number | "all"): ParsedLog[] {
+  return maxPoints === "all" || rows.length <= maxPoints ? rows : rows.slice(-maxPoints);
+}
+
+function sampleLabel(sampled: ParsedLog[], maxPoints: number | "all"): string {
+  return maxPoints === "all" ? `全 ${sampled.length} 件` : `最新 ${sampled.length} 件`;
+}
+
+function renderSvg(rows: ParsedLog[], maxPoints: number | "all" = MAX_POINTS): string {
+  const sampled = sampleRows(rows, maxPoints);
   const stable = sampled.map((r) => r.stablePrefixChars ?? 0);
   const total = sampled.map((r) => r.totalPromptChars ?? 0);
   const max = Math.max(1, ...stable, ...total);
@@ -119,7 +127,7 @@ function renderSvg(rows: ParsedLog[]): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}">
   <rect width="100%" height="100%" fill="#0f172a"/>
-  <text x="${PAD_L}" y="18" fill="#e5e7eb" font-family="sans-serif" font-size="14">cache-friendly-prompt 推移（最新 ${sampled.length} 件）</text>
+  <text x="${PAD_L}" y="18" fill="#e5e7eb" font-family="sans-serif" font-size="14">cache-friendly-prompt 推移（${sampleLabel(sampled, maxPoints)}）</text>
   <line x1="${PAD_L}" y1="${SVG_HEIGHT - PAD_B}" x2="${SVG_WIDTH - PAD_R}" y2="${SVG_HEIGHT - PAD_B}" stroke="#475569"/>
   <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${SVG_HEIGHT - PAD_B}" stroke="#475569"/>
   <text x="8" y="${PAD_T + 10}" fill="#94a3b8" font-family="sans-serif" font-size="11">${max}</text>
@@ -135,8 +143,8 @@ function renderSvg(rows: ParsedLog[]): string {
 `;
 }
 
-function renderCacheabilitySvg(rows: ParsedLog[]): string {
-  const sampled = rows.length > MAX_POINTS ? rows.slice(-MAX_POINTS) : rows;
+function renderCacheabilitySvg(rows: ParsedLog[], maxPoints: number | "all" = MAX_POINTS): string {
+  const sampled = sampleRows(rows, maxPoints);
   const reuseScore = sampled.map((r, i) => i > 0 && r.stablePrefixHash === sampled[i - 1]?.stablePrefixHash ? 100 : 0);
   const plotW = SVG_WIDTH - PAD_L - PAD_R;
   const plotH = SVG_HEIGHT - PAD_T - PAD_B;
@@ -154,7 +162,7 @@ function renderCacheabilitySvg(rows: ParsedLog[]): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}">
   <rect width="100%" height="100%" fill="#0f172a"/>
-  <text x="${PAD_L}" y="18" fill="#e5e7eb" font-family="sans-serif" font-size="14">cache-friendly-prompt キャッシュ再利用スコア（最新 ${sampled.length} 件）</text>
+  <text x="${PAD_L}" y="18" fill="#e5e7eb" font-family="sans-serif" font-size="14">cache-friendly-prompt キャッシュ再利用スコア（${sampleLabel(sampled, maxPoints)}）</text>
   <line x1="${PAD_L}" y1="${SVG_HEIGHT - PAD_B}" x2="${SVG_WIDTH - PAD_R}" y2="${SVG_HEIGHT - PAD_B}" stroke="#475569"/>
   <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${SVG_HEIGHT - PAD_B}" stroke="#475569"/>
   <text x="14" y="${PAD_T + 5}" fill="#94a3b8" font-family="sans-serif" font-size="11">100%</text>
@@ -252,8 +260,11 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
 
 ## キャッシュ可能性
 
-![cache-friendly-prompt cacheability score](./cacheability-score.svg)
+![cache-friendly-prompt cacheability score latest 500](./cacheability-score.svg)
 
+![cache-friendly-prompt cacheability score all](./cacheability-score-all.svg)
+
+- 上: 最新最大 ${MAX_POINTS} 件、下: 全件の図です
 - 紫線: reuse score。前回と同じ \`stablePrefixHash\` なら \`100%\`、変化した直後は \`0%\` です
 - 100% に張り付いているほど、同じ stable prefix を継続して送れていることを示します
 - オレンジの縦線は \`stablePrefixHash\` の変化点です
@@ -271,7 +282,9 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
 
 ## 推移
 
-![cache-friendly-prompt trend](./trend.svg)
+![cache-friendly-prompt trend latest 500](./trend.svg)
+
+![cache-friendly-prompt trend all](./trend-all.svg)
 
 ## provider/model 別
 
@@ -295,8 +308,10 @@ export async function generateCacheFriendlyReport(dir: string): Promise<void> {
     const summary = summarize(rows, generatedAt);
     await Promise.all([
       fs.writeFile(path.join(dir, "summary.json"), JSON.stringify(summary, null, 2) + "\n", "utf8"),
-      fs.writeFile(path.join(dir, "trend.svg"), renderSvg(rows), "utf8"),
-      fs.writeFile(path.join(dir, "cacheability-score.svg"), renderCacheabilitySvg(rows), "utf8"),
+      fs.writeFile(path.join(dir, "trend.svg"), renderSvg(rows, MAX_POINTS), "utf8"),
+      fs.writeFile(path.join(dir, "trend-all.svg"), renderSvg(rows, "all"), "utf8"),
+      fs.writeFile(path.join(dir, "cacheability-score.svg"), renderCacheabilitySvg(rows, MAX_POINTS), "utf8"),
+      fs.writeFile(path.join(dir, "cacheability-score-all.svg"), renderCacheabilitySvg(rows, "all"), "utf8"),
       fs.writeFile(path.join(dir, "fragments.svg"), renderFragmentsSvg(rows), "utf8"),
       fs.writeFile(path.join(dir, "report.md"), renderReport(summary, rows), "utf8"),
     ]);
