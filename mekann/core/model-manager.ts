@@ -13,6 +13,8 @@ export interface ModelManagerOptions {
 	withModelSuppressed?: <T>(fn: () => Promise<T>) => Promise<T>;
 	/** Called when a fuzzy/legacy ref is resolved to a concrete provider/model id. */
 	onResolvedRef?: (requested: ModelRef, resolved: ModelRef) => void;
+	/** Called when a persisted ref is not selectable in `/model`. */
+	onUnavailableRef?: (requested: ModelRef) => void;
 }
 
 /** Format a ModelRef as "provider/modelId". */
@@ -39,17 +41,20 @@ function pickBestModel(matches: RegistryModel[]): RegistryModel | undefined {
 /**
  * Resolve persisted model refs robustly.
  *
- * Older configs may contain short/fuzzy ids such as `anthropic/sonnet`. A raw
- * registry.find(provider, id) only accepts exact ids, so resolve against the
- * current registry before giving up.
+ * Older configs may contain short/fuzzy ids such as `anthropic/sonnet`.
+ * Resolve only against models that are selectable in `/model` (`getAvailable`).
+ * Never canonicalize to a model that lacks configured auth, because that can
+ * silently persist an expensive/unavailable model the user never selected.
  */
-export function resolveModelRef(ref: ModelRef, ctx: ExtensionContext): { model?: RegistryModel; resolvedRef?: ModelRef } {
-	const exact = ctx.modelRegistry.find(ref.provider, ref.modelId);
-	if (exact) return { model: exact, resolvedRef: { provider: exact.provider, modelId: exact.id } };
+export async function resolveModelRef(ref: ModelRef, ctx: ExtensionContext): Promise<{ model?: RegistryModel; resolvedRef?: ModelRef }> {
+	const getAvailable = (ctx.modelRegistry as { getAvailable?: () => RegistryModel[] | Promise<RegistryModel[]> }).getAvailable;
+	if (typeof getAvailable !== "function") {
+		const exact = ctx.modelRegistry.find(ref.provider, ref.modelId);
+		return exact ? { model: exact, resolvedRef: { provider: exact.provider, modelId: exact.id } } : {};
+	}
 
-	const getAll = (ctx.modelRegistry as { getAll?: () => RegistryModel[] }).getAll;
-	const allModels = typeof getAll === "function" ? getAll.call(ctx.modelRegistry) : [];
-	const providerModels = allModels.filter((m) => m.provider.toLowerCase() === ref.provider.toLowerCase());
+	const availableModels = await Promise.resolve(getAvailable.call(ctx.modelRegistry));
+	const providerModels = availableModels.filter((m) => m.provider?.toLowerCase() === ref.provider.toLowerCase());
 	if (providerModels.length === 0) return {};
 
 	const needle = ref.modelId.toLowerCase();
@@ -63,9 +68,10 @@ export function resolveModelRef(ref: ModelRef, ctx: ExtensionContext): { model?:
 export function createModelManager(options: ModelManagerOptions) {
 	async function trySetModel(ref: ModelRef | undefined, ctx: ExtensionContext, label: string): Promise<ModelLookupResult> {
 		if (!ref) return "not_found";
-		const { model, resolvedRef } = resolveModelRef(ref, ctx);
+		const { model, resolvedRef } = await resolveModelRef(ref, ctx);
 		if (!model) {
-			ctx.ui.notify(`${label}: モデル ${formatModelRef(ref)} が見つかりません。コンフィグは保持します`, "warning");
+			options.onUnavailableRef?.(ref);
+			ctx.ui.notify(`${label}: モデル ${formatModelRef(ref)} は /model で選択可能なモデルではありません。コンフィグから削除します`, "warning");
 			return "not_found";
 		}
 		if (resolvedRef && !sameModelRef(ref, resolvedRef)) options.onResolvedRef?.(ref, resolvedRef);

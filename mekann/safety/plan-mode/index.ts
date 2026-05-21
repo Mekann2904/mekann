@@ -59,6 +59,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		pi,
 		withModelSuppressed,
 		onResolvedRef: (_requested, resolved) => updateConfigField(state.modelConfig, "models", state.mode, resolved, configPath),
+		onUnavailableRef: () => updateConfigField(state.modelConfig, "models", state.mode, undefined, configPath),
 	});
 	const { trySetModel } = modelManager;
 
