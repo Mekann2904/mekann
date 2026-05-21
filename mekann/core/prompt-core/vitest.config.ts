@@ -3,7 +3,7 @@ export default defineConfig({ test: {
   include: ["*.test.ts"],
   coverage: {
     provider: "v8",
-    reporter: ["json-summary"],
+    reporter: ["json-summary", "text"],
     reportsDirectory: "./coverage",
   },
 } });
