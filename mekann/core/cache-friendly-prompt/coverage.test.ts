@@ -1,0 +1,460 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import * as os from "node:os";
+
+// We mock fs/promises so we can control readFile (input) and capture writeFile calls (output)
+const writtenFiles = new Map<string, string>();
+
+vi.mock("node:fs/promises", () => ({
+  readFile: vi.fn(),
+  writeFile: vi.fn((...args: unknown[]) => {
+    writtenFiles.set(args[0] as string, args[1] as string);
+    return Promise.resolve();
+  }),
+  mkdir: vi.fn(() => Promise.resolve()),
+}));
+
+vi.mock("node:path", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:path")>();
+  return { ...actual };
+});
+
+// Import after mocks are set up
+const { generateCacheFriendlyReport } = await import("./report.js");
+
+function makeLog(overrides: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    timestamp: "2025-01-01T00:00:00.000Z",
+    provider: "test-provider",
+    model: "test-model",
+    stablePrefixHash: "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+    stablePrefixChars: 500,
+    totalPromptChars: 1000,
+    fragmentHashes: [],
+    warnings: [],
+    ...overrides,
+  });
+}
+
+function makeFragmentHash(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "frag1",
+    source: "ext-a",
+    kind: "coding_guidelines",
+    stability: "stable",
+    hash: "hhhh",
+    chars: 100,
+    ...overrides,
+  };
+}
+
+describe("report.ts coverage", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = os.tmpdir();
+    writtenFiles.clear();
+    vi.mocked(fs.readFile).mockReset();
+    vi.mocked(fs.writeFile).mockReset().mockImplementation((...args: unknown[]) => {
+      writtenFiles.set(args[0] as string, args[1] as string);
+      return Promise.resolve();
+    });
+  });
+
+  async function runWithLog(logText: string) {
+    vi.mocked(fs.readFile).mockResolvedValue(logText);
+    await generateCacheFriendlyReport(dir);
+  }
+
+  it("handles empty log (no rows)", async () => {
+    await runWithLog("");
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.totalRequests).toBe(0);
+    expect(summary.latest).toBeUndefined();
+    expect(summary.recentSameHashStreak).toBe(0);
+    expect(summary.stablePrefixHashChanges).toBe(0);
+  });
+
+  it("handles single row with all fields", async () => {
+    await runWithLog(makeLog());
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.totalRequests).toBe(1);
+    expect(summary.latest).toBeDefined();
+    expect(summary.latest.provider).toBe("test-provider");
+    expect(summary.latest.model).toBe("test-model");
+    expect(summary.recentSameHashStreak).toBe(1);
+    expect(summary.stablePrefixHashChanges).toBe(0);
+  });
+
+  it("handles row without provider/model (unknown fallback)", async () => {
+    await runWithLog(makeLog({ provider: undefined, model: undefined }));
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(Object.keys(summary.providers)[0]).toBe("unknown/unknown");
+  });
+
+  it("handles multiple rows with hash changes and streak", async () => {
+    const log = [
+      makeLog({ stablePrefixHash: "hash_aaa" + "a".repeat(56) }),
+      makeLog({ stablePrefixHash: "hash_bbb" + "b".repeat(56) }), // change
+      makeLog({ stablePrefixHash: "hash_bbb" + "b".repeat(56) }), // same
+      makeLog({ stablePrefixHash: "hash_bbb" + "b".repeat(56) }), // same
+    ].join("\n");
+    await runWithLog(log);
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.totalRequests).toBe(4);
+    expect(summary.stablePrefixHashChanges).toBe(1);
+    expect(summary.recentSameHashStreak).toBe(3);
+    // report.md should have hash change rows
+    const report = writtenFiles.get(path.join(dir, "report.md"))!;
+    expect(report).toContain("hash change");
+  });
+
+  it("counts warnings from rows", async () => {
+    const log = [
+      makeLog({ warnings: [{ severity: "error", code: "TEST", message: "w1" }] }),
+      makeLog({ warnings: [{ severity: "warn", code: "X", message: "w2" }, { severity: "warn", code: "Y", message: "w3" }] }),
+    ].join("\n");
+    await runWithLog(log);
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.warningCount).toBe(3);
+  });
+
+  it("handles rows with missing optional numeric fields (nullish coalescing)", async () => {
+    const log = makeLog({ stablePrefixChars: undefined, totalPromptChars: undefined });
+    await runWithLog(log);
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.latest.stablePrefixChars).toBe(0);
+    expect(summary.latest.totalPromptChars).toBe(0);
+  });
+
+  it("handles rows with warnings in SVG render (warning dots)", async () => {
+    const log = [
+      makeLog({ warnings: [{ severity: "error", code: "X", message: "warn" }] }),
+      makeLog({ warnings: [] }),
+      makeLog({ warnings: [{ severity: "warn", code: "Y", message: "w2" }] }),
+    ].join("\n");
+    await runWithLog(log);
+    const svg = writtenFiles.get(path.join(dir, "trend.svg"))!;
+    // Warning dots rendered as red circles
+    expect(svg).toContain("#ef4444");
+  });
+
+  it("renders all 7 output files", async () => {
+    await runWithLog(makeLog());
+    expect(writtenFiles.has(path.join(dir, "summary.json"))).toBe(true);
+    expect(writtenFiles.has(path.join(dir, "trend.svg"))).toBe(true);
+    expect(writtenFiles.has(path.join(dir, "trend-all.svg"))).toBe(true);
+    expect(writtenFiles.has(path.join(dir, "cacheability-score.svg"))).toBe(true);
+    expect(writtenFiles.has(path.join(dir, "cacheability-score-all.svg"))).toBe(true);
+    expect(writtenFiles.has(path.join(dir, "fragments.svg"))).toBe(true);
+    expect(writtenFiles.has(path.join(dir, "report.md"))).toBe(true);
+  });
+
+  it("renders trend-all SVG (maxPoints=all path)", async () => {
+    await runWithLog(makeLog());
+    const svg = writtenFiles.get(path.join(dir, "trend-all.svg"))!;
+    expect(svg).toContain("全 1 件");
+  });
+
+  it("renders trend SVG for sampled rows (>MAX_POINTS triggers sampling)", async () => {
+    // Create 501 rows to trigger sampling
+    const rows = [];
+    for (let i = 0; i < 502; i++) {
+      rows.push(makeLog({ stablePrefixHash: `h${i}` + "x".repeat(60), totalPromptChars: 1000 + i }));
+    }
+    await runWithLog(rows.join("\n"));
+    const svg = writtenFiles.get(path.join(dir, "trend.svg"))!;
+    expect(svg).toContain("最新 500 件");
+  });
+
+  it("renders cacheability SVG with streak and change lines", async () => {
+    const rows = [
+      makeLog({ stablePrefixHash: "aaa" + "a".repeat(61) }),
+      makeLog({ stablePrefixHash: "bbb" + "b".repeat(61) }), // change → score 0
+      makeLog({ stablePrefixHash: "bbb" + "b".repeat(61) }), // same → score 100
+    ];
+    await runWithLog(rows.join("\n"));
+    const svg = writtenFiles.get(path.join(dir, "cacheability-score.svg"))!;
+    expect(svg).toContain("reuse score");
+    expect(svg).toContain("streak: 2 requests");
+    expect(svg).toContain("latest score: 100%");
+    // Change lines in orange
+    expect(svg).toContain("#f59e0b");
+  });
+
+  it("renders fragments SVG with fragment chars", async () => {
+    const log = makeLog({
+      fragmentHashes: [
+        makeFragmentHash({ source: "ext-a", stability: "stable", chars: 200 }),
+        makeFragmentHash({ source: "ext-a", stability: "semi_stable", chars: 100 }),
+        makeFragmentHash({ source: "ext-a", stability: "dynamic", chars: 50 }),
+        makeFragmentHash({ source: "ext-b", stability: "stable", chars: 80 }),
+      ],
+    });
+    await runWithLog(log);
+    const svg = writtenFiles.get(path.join(dir, "fragments.svg"))!;
+    expect(svg).toContain("ext-a");
+    expect(svg).toContain("ext-b");
+    expect(svg).toContain("350 chars");
+  });
+
+  it("renders fragments SVG with empty rows (no fragment chars)", async () => {
+    const log = makeLog({ fragmentHashes: [] });
+    await runWithLog(log);
+    const svg = writtenFiles.get(path.join(dir, "fragments.svg"))!;
+    expect(svg).toContain("fragment chars は新しいログから記録されます");
+  });
+
+  it("renders fragments SVG when no rows have fragment chars (reverse find returns undefined)", async () => {
+    const log = makeLog({
+      fragmentHashes: [makeFragmentHash({ chars: undefined })],
+    });
+    await runWithLog(log);
+    const svg = writtenFiles.get(path.join(dir, "fragments.svg"))!;
+    expect(svg).toContain("fragment chars は新しいログから記録されます");
+  });
+
+  it("renders report.md with provider rows and hash changes", async () => {
+    const rows = [
+      makeLog({ provider: "p1", model: "m1", stablePrefixHash: "aaa" + "a".repeat(61) }),
+      makeLog({ provider: "p2", model: "m2", stablePrefixHash: "bbb" + "b".repeat(61) }),
+      makeLog({ provider: "p1", model: "m1", stablePrefixHash: "ccc" + "c".repeat(61) }),
+    ];
+    await runWithLog(rows.join("\n"));
+    const report = writtenFiles.get(path.join(dir, "report.md"))!;
+    expect(report).toContain("p1/m1");
+    expect(report).toContain("p2/m2");
+    expect(report).toContain("hash change");
+  });
+
+  it("renders report.md with no provider rows (empty providers)", async () => {
+    await runWithLog("");
+    const report = writtenFiles.get(path.join(dir, "report.md"))!;
+    expect(report).toContain("なし");
+  });
+
+  it("handles broken JSON lines gracefully", async () => {
+    const log = [
+      makeLog(),
+      "this is not json",
+      makeLog({ stablePrefixHash: "zzz" + "z".repeat(61) }),
+      "",
+      "  ",
+    ].join("\n");
+    await runWithLog(log);
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    // Only 2 valid rows
+    expect(summary.totalRequests).toBe(2);
+  });
+
+  it("handles scalePoints with zero values (max=0)", async () => {
+    const log = makeLog({ stablePrefixChars: 0, totalPromptChars: 0 });
+    await runWithLog(log);
+    const svg = writtenFiles.get(path.join(dir, "trend.svg"))!;
+    expect(svg).toContain("polyline");
+  });
+
+  it("escapeHtml covers &, <, >, \"", async () => {
+    // Use provider/model with special chars to trigger escapeHtml in report.md
+    const log = makeLog({ provider: 'a&b<c>d"e', model: "m" });
+    await runWithLog(log);
+    const report = writtenFiles.get(path.join(dir, "report.md"))!;
+    expect(report).toContain("&amp;");
+    expect(report).toContain("&lt;");
+    expect(report).toContain("&gt;");
+    expect(report).toContain("&quot;");
+  });
+
+  it("shortHash handles undefined hash", async () => {
+    const log = makeLog({ stablePrefixHash: "" });
+    await runWithLog(log);
+    const report = writtenFiles.get(path.join(dir, "report.md"))!;
+    // Empty hash → shortHash returns ""
+    expect(report).toContain("最新 stablePrefixHash: ``");
+  });
+
+  it("catch block in generateCacheFriendlyReport swallows errors", async () => {
+    vi.mocked(fs.readFile).mockRejectedValue(new Error("file not found"));
+    // Should not throw
+    await expect(generateCacheFriendlyReport(dir)).resolves.toBeUndefined();
+  });
+
+  it("handles single row for scalePoints (values.length === 1)", async () => {
+    await runWithLog(makeLog());
+    const svg = writtenFiles.get(path.join(dir, "trend.svg"))!;
+    // Single point: x should be PAD_L (no offset since length===1)
+    expect(svg).toContain("polyline");
+  });
+
+  it("handles single row in cacheability SVG (sampled.length === 1)", async () => {
+    await runWithLog(makeLog());
+    const svg = writtenFiles.get(path.join(dir, "cacheability-score.svg"))!;
+    expect(svg).toContain("latest score:");
+    // Single point: reuseScore first element is 0 (i > 0 is false)
+    expect(svg).toContain("latest score: 0%");
+  });
+
+  it("covers multiple providers in summary", async () => {
+    const rows = [
+      makeLog({ provider: "p1", model: "m1", stablePrefixHash: "aaa" + "a".repeat(61) }),
+      makeLog({ provider: "p2", model: "m2", stablePrefixHash: "bbb" + "b".repeat(61) }),
+      makeLog({ provider: "p1", model: "m1", stablePrefixHash: "ccc" + "c".repeat(61) }),
+    ];
+    await runWithLog(rows.join("\n"));
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(Object.keys(summary.providers)).toHaveLength(2);
+    expect(summary.providers["p1/m1"].requests).toBe(2);
+    expect(summary.providers["p1/m1"].uniqueStablePrefixHashes).toBe(2);
+    expect(summary.providers["p2/m2"].uniqueStablePrefixHashes).toBe(1);
+  });
+
+  it("renders fragments SVG with multiple sources sorted by total chars", async () => {
+    const log = makeLog({
+      fragmentHashes: [
+        makeFragmentHash({ source: "small", stability: "stable", chars: 10 }),
+        makeFragmentHash({ source: "big", stability: "stable", chars: 500 }),
+        makeFragmentHash({ source: "big", stability: "dynamic", chars: 200 }),
+      ],
+    });
+    await runWithLog(log);
+    const svg = writtenFiles.get(path.join(dir, "fragments.svg"))!;
+    // "big" should appear before "small" (sorted desc by total)
+    const bigIdx = svg.indexOf("big");
+    const smallIdx = svg.indexOf("small");
+    expect(bigIdx).toBeLessThan(smallIdx);
+  });
+
+  it("handles row with warnings in renderSvg (warning circles)", async () => {
+    const log = [
+      makeLog({ warnings: [{ severity: "error", code: "X", message: "w" }] }),
+    ].join("\n");
+    await runWithLog(log);
+    const svg = writtenFiles.get(path.join(dir, "trend.svg"))!;
+    expect(svg).toContain("#ef4444");
+  });
+
+  it("renders report.md change rows using previous row hash", async () => {
+    const rows = [
+      makeLog({ stablePrefixHash: "aaaa" + "a".repeat(60) }),
+      makeLog({ stablePrefixHash: "bbbb" + "b".repeat(60) }),
+    ];
+    await runWithLog(rows.join("\n"));
+    const report = writtenFiles.get(path.join(dir, "report.md"))!;
+    expect(report).toContain("→");
+  });
+
+  // --- Tests for remaining uncovered branches (?? / ?. null-side branches) ---
+
+  it("handles row with warnings=undefined (covers r.warnings?.length ?? 0 → right side)", async () => {
+    // Create a log object without the 'warnings' field at all
+    const obj: Record<string, unknown> = {
+      timestamp: "2025-01-01T00:00:00.000Z",
+      provider: "p",
+      model: "m",
+      stablePrefixHash: "hash1" + "1".repeat(59),
+      stablePrefixChars: 100,
+      totalPromptChars: 200,
+      fragmentHashes: [],
+    };
+    const log = JSON.stringify(obj);
+    await runWithLog(log);
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.warningCount).toBe(0);
+    // Also covers the renderSvg branch for (r.warnings?.length ?? 0)
+    const svg = writtenFiles.get(path.join(dir, "trend.svg"))!;
+    expect(svg).toContain("polyline");
+  });
+
+  it("handles row without fragmentHashes field (covers r.fragmentHashes ?? [])", async () => {
+    // Create JSONL where the object has no fragmentHashes field at all
+    const obj: Record<string, unknown> = {
+      timestamp: "2025-01-01T00:00:00.000Z",
+      provider: "p",
+      model: "m",
+      stablePrefixHash: "hash1" + "1".repeat(59),
+      stablePrefixChars: 100,
+      totalPromptChars: 200,
+      warnings: [],
+    };
+    // Build JSON manually without fragmentHashes
+    const json = JSON.stringify(obj);
+    await runWithLog(json);
+    // Should produce the empty fragments message since no rows have fragmentHashes
+    const svg = writtenFiles.get(path.join(dir, "fragments.svg"))!;
+    expect(svg).toContain("fragment chars は新しいログから記録されます");
+  });
+
+  it("handles fragment with chars=undefined (covers f.chars ?? 0)", async () => {
+    // The renderFragmentsSvg only picks up rows where some fragment has typeof f.chars === "number"
+    // So we need at least one fragment with chars as number, and one without
+    const log = makeLog({
+      fragmentHashes: [
+        {
+          id: "frag-with-chars",
+          source: "ext-a",
+          kind: "coding_guidelines",
+          stability: "stable",
+          hash: "hhh1",
+          chars: 100,
+        },
+        {
+          id: "frag-no-chars",
+          source: "ext-a",
+          kind: "coding_guidelines",
+          stability: "dynamic",
+          hash: "hhh2",
+          // chars is intentionally omitted → f.chars ?? 0 triggers
+        },
+      ],
+    });
+    await runWithLog(log);
+    const svg = writtenFiles.get(path.join(dir, "fragments.svg"))!;
+    expect(svg).toContain("ext-a");
+  });
+
+  it("covers max===0 branch in scalePoints", async () => {
+    // Both stablePrefixChars and totalPromptChars = 0 so max=0
+    const rows = [
+      makeLog({ stablePrefixChars: 0, totalPromptChars: 0 }),
+      makeLog({ stablePrefixChars: 0, totalPromptChars: 0 }),
+    ];
+    await runWithLog(rows.join("\n"));
+    const svg = writtenFiles.get(path.join(dir, "trend.svg"))!;
+    expect(svg).toContain("polyline");
+  });
+
+  it("covers changeRow with stablePrefixChars undefined", async () => {
+    const rows = [
+      makeLog({ stablePrefixHash: "aaa" + "a".repeat(61), stablePrefixChars: undefined }),
+      makeLog({ stablePrefixHash: "bbb" + "b".repeat(61), stablePrefixChars: undefined, totalPromptChars: undefined }),
+    ];
+    await runWithLog(rows.join("\n"));
+    const report = writtenFiles.get(path.join(dir, "report.md"))!;
+    expect(report).toContain("→");
+  });
+
+  it("covers changeRow referencing rows[r.line-2] at boundary (line 1 has change from row 0)", async () => {
+    // First valid row is on line 1 (no preceding broken lines), second is line 2
+    // changeRows accesses rows[r.line - 2] which is rows[-1] → undefined → shortHash(undefined)
+    // Actually: row at line 2 has line=2, so r.line-2=0 → rows[0] is fine
+    // To get rows[-1] we need first valid row to be on line > 1 (broken line before)
+    const brokenAndValid = [
+      "broken json line",
+      makeLog({ stablePrefixHash: "aaa" + "a".repeat(61) }),
+      makeLog({ stablePrefixHash: "bbb" + "b".repeat(61) }),
+    ].join("\n");
+    await runWithLog(brokenAndValid);
+    const report = writtenFiles.get(path.join(dir, "report.md"))!;
+    expect(report).toContain("→");
+  });
+
+  it("covers hashesByProvider.get(key)?.size ?? 0 (first occurrence of provider)", async () => {
+    const rows = [
+      makeLog({ provider: "first", model: "m", stablePrefixHash: "aaa" + "a".repeat(61) }),
+    ];
+    await runWithLog(rows.join("\n"));
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.providers["first/m"].uniqueStablePrefixHashes).toBe(1);
+  });
+});
