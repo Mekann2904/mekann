@@ -17,5 +17,7 @@ Append-only working memory event store for agent session context.
 
 - Records decisions, tasks, errors, plans, file changes, and artifact references
 - `search_context_events` tool for retrieval by query, kind, and priority
-- Commands: `/context-ledger list|stats|snapshot|clear`
-- Snapshot builder generates XML session summaries for compaction/restore
+- `summarize_session_context` tool for session restore after restart or compaction
+- Commands: `/context-ledger list|stats|snapshot|restore|clear`
+- Snapshot builder generates bounded XML session summaries (default 4096 bytes)
+- Persistent snapshots: `.pi/mekann-context/snapshots/latest.xml`

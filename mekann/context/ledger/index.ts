@@ -3,7 +3,7 @@ import { Type } from "@sinclair/typebox";
 import * as fsp from "node:fs/promises";
 import { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult, eventsPath, contextDir } from "./store.js";
 import { buildSnapshot } from "./snapshot.js";
-import { writeLatestSnapshot, readLatestSnapshot, readBoundedLatestSnapshot } from "./snapshot-store.js";
+import { writeLatestSnapshot, readBoundedLatestSnapshot } from "./snapshot-store.js";
 
 export { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult } from "./store.js";
 export type { MekannContextEvent, MekannContextEventKind, MekannContextRef, AppendEventInput } from "./store.js";
