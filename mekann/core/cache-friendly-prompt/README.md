@@ -15,7 +15,7 @@
 | `requests.jsonl` | リクエストごとの stable prefix / total prompt / warning ログ |
 | `summary.json` | 総リクエスト数、直近同一 hash 継続数、provider/model 別集計 |
 | `trend.svg` | `stablePrefixChars` と `totalPromptChars` の推移グラフ |
-| `efficiency.svg` | `stablePrefixChars / totalPromptChars` のキャッシュ効率グラフ |
+| `cacheability-score.svg` | 前回と同じ `stablePrefixHash` なら 100%、変化直後は 0% の cache reuse score グラフ |
 | `report.md` | Zed などのエディタで開きやすい Markdown レポート |
 
 `report.md` を開くと、安定プレフィックスが維持されているか、総プロンプト量がどのように増えているか、hash 変化や warning がいつ発生したかを確認できます。
@@ -28,7 +28,7 @@
 | stablePrefixHash | stable prefix の内容から計算した hash。同じ値が続くほど安定しています |
 | stablePrefixChars | stable prefix の文字数 |
 | totalPromptChars | provider に送られるプロンプト全体の文字数 |
-| cache efficiency | `stablePrefixChars / totalPromptChars`。安定部分が全体に占める割合 |
+| cacheability | 前回と同じ stablePrefixHash なら 100%、変化直後は 0% とするキャッシュ再利用スコア |
 | hash change | stablePrefixHash が前回から変わった地点 |
 | warning | cache-friendly-prompt が検出した注意点 |
 

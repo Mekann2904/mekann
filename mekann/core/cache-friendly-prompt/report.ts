@@ -135,26 +135,26 @@ function renderSvg(rows: ParsedLog[]): string {
 `;
 }
 
-function renderEfficiencySvg(rows: ParsedLog[]): string {
+function renderCacheabilitySvg(rows: ParsedLog[]): string {
   const sampled = rows.length > MAX_POINTS ? rows.slice(-MAX_POINTS) : rows;
-  const ratios = sampled.map((r) => {
-    const total = r.totalPromptChars ?? 0;
-    return total > 0 ? Math.min(1, (r.stablePrefixChars ?? 0) / total) : 0;
-  });
+  const reuseScore = sampled.map((r, i) => i > 0 && r.stablePrefixHash === sampled[i - 1]?.stablePrefixHash ? 100 : 0);
   const plotW = SVG_WIDTH - PAD_L - PAD_R;
   const plotH = SVG_HEIGHT - PAD_T - PAD_B;
   const xFor = (i: number) => PAD_L + (sampled.length === 1 ? 0 : (i / (sampled.length - 1)) * plotW);
-  const points = ratios.map((v, i) => {
+  const points = reuseScore.map((v, i) => {
     const x = xFor(i);
-    const y = PAD_T + plotH - v * plotH;
+    const y = PAD_T + plotH - (v / 100) * plotH;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(" ");
-  const changeLines = sampled.map((r, i) => i > 0 && r.stablePrefixHash !== sampled[i - 1]?.stablePrefixHash ? `<line x1="${xFor(i).toFixed(1)}" y1="${PAD_T}" x2="${xFor(i).toFixed(1)}" y2="${SVG_HEIGHT - PAD_B}" stroke="#f59e0b" stroke-opacity="0.32"/>` : "").filter(Boolean).join("\n  ");
-  const latest = ratios.at(-1) ?? 0;
+  const changeLines = sampled.map((r, i) => i > 0 && r.stablePrefixHash !== sampled[i - 1]?.stablePrefixHash ? `<line x1="${xFor(i).toFixed(1)}" y1="${PAD_T}" x2="${xFor(i).toFixed(1)}" y2="${SVG_HEIGHT - PAD_B}" stroke="#f59e0b" stroke-opacity="0.35"/>` : "").filter(Boolean).join("\n  ");
+  const latest = sampled.at(-1);
+  const latestScore = reuseScore.at(-1) ?? 0;
+  let streak = 0;
+  for (let i = sampled.length - 1; i >= 0 && latest && sampled[i]?.stablePrefixHash === latest.stablePrefixHash; i--) streak++;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}">
   <rect width="100%" height="100%" fill="#0f172a"/>
-  <text x="${PAD_L}" y="18" fill="#e5e7eb" font-family="sans-serif" font-size="14">cache-friendly-prompt キャッシュ効率（最新 ${sampled.length} 件）</text>
+  <text x="${PAD_L}" y="18" fill="#e5e7eb" font-family="sans-serif" font-size="14">cache-friendly-prompt キャッシュ再利用スコア（最新 ${sampled.length} 件）</text>
   <line x1="${PAD_L}" y1="${SVG_HEIGHT - PAD_B}" x2="${SVG_WIDTH - PAD_R}" y2="${SVG_HEIGHT - PAD_B}" stroke="#475569"/>
   <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${SVG_HEIGHT - PAD_B}" stroke="#475569"/>
   <text x="14" y="${PAD_T + 5}" fill="#94a3b8" font-family="sans-serif" font-size="11">100%</text>
@@ -162,9 +162,13 @@ function renderEfficiencySvg(rows: ParsedLog[]): string {
   <text x="28" y="${SVG_HEIGHT - PAD_B}" fill="#94a3b8" font-family="sans-serif" font-size="11">0%</text>
   <line x1="${PAD_L}" y1="${(PAD_T + plotH / 2).toFixed(1)}" x2="${SVG_WIDTH - PAD_R}" y2="${(PAD_T + plotH / 2).toFixed(1)}" stroke="#334155" stroke-dasharray="4 4"/>
   ${changeLines}
-  <polyline fill="none" stroke="#a78bfa" stroke-width="2.5" points="${points}"/>
-  <text x="${SVG_WIDTH - 190}" y="42" fill="#ddd6fe" font-family="sans-serif" font-size="13">latest: ${(latest * 100).toFixed(1)}%</text>
-  <text x="${SVG_WIDTH - 190}" y="62" fill="#fbbf24" font-family="sans-serif" font-size="12">orange: hash change</text>
+  <polyline fill="none" stroke="#a78bfa" stroke-width="2.8" points="${points}"/>
+  <rect x="${SVG_WIDTH - 310}" y="28" width="280" height="118" rx="6" fill="#111827" stroke="#334155"/>
+  <line x1="${SVG_WIDTH - 294}" y1="50" x2="${SVG_WIDTH - 254}" y2="50" stroke="#a78bfa" stroke-width="3"/><text x="${SVG_WIDTH - 246}" y="54" fill="#cbd5e1" font-family="sans-serif" font-size="12">reuse score</text>
+  <text x="${SVG_WIDTH - 294}" y="78" fill="#ddd6fe" font-family="sans-serif" font-size="12">latest score: ${latestScore.toFixed(0)}%</text>
+  <text x="${SVG_WIDTH - 294}" y="98" fill="#cbd5e1" font-family="sans-serif" font-size="12">stable prefix: ${latest?.stablePrefixChars ?? 0} chars</text>
+  <text x="${SVG_WIDTH - 294}" y="118" fill="#cbd5e1" font-family="sans-serif" font-size="12">stable tokens: ${latest?.stablePrefixTokenEstimate ?? 0}</text>
+  <text x="${SVG_WIDTH - 294}" y="138" fill="#fbbf24" font-family="sans-serif" font-size="12">streak: ${streak} requests</text>
 </svg>
 `;
 }
@@ -197,19 +201,21 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
 | stablePrefixHash | stable prefix の内容から計算した hash。同じ値が続くほど、安定部分が変わっていないことを示します。 |
 | stablePrefixChars | stable prefix の文字数。キャッシュ候補になり得る先頭部分の大きさです。 |
 | totalPromptChars | provider に送られるプロンプト全体の文字数。ユーザー発話、会話履歴、tool 結果、read 結果なども含まれ得ます。 |
-| cache efficiency | \`stablePrefixChars / totalPromptChars\`。送信プロンプト全体のうち、安定プレフィックスが占める割合です。 |
+| cacheability | 前回と同じ stablePrefixHash なら 100%、変化した直後は 0% とするキャッシュ再利用スコアです。 |
 | hash change | stablePrefixHash が前回から変わった地点。安定部分が変化したため、キャッシュ再利用が効きにくくなる可能性があります。 |
 | warning | cache-friendly-prompt が検出した注意点。例: stable prefix が短い、payload に不安定な構造がある、など。 |
 | fragment | 各拡張が提供するプロンプト断片。stable / semi-stable / dynamic に分類されます。 |
 | provider/model | リクエスト送信先の provider と model。例: \`openai-codex/gpt-5.5\`。 |
 
-## キャッシュ効率
+## キャッシュ可能性
 
-![cache-friendly-prompt efficiency](./efficiency.svg)
+![cache-friendly-prompt cacheability score](./cacheability-score.svg)
 
-- 線: \`stablePrefixChars / totalPromptChars\` の割合
-- 高いほど、送信プロンプトのうち安定プレフィックスが占める割合が大きいことを示します
+- 紫線: reuse score。前回と同じ \`stablePrefixHash\` なら \`100%\`、変化した直後は \`0%\` です
+- 100% に張り付いているほど、同じ stable prefix を継続して送れていることを示します
 - オレンジの縦線は \`stablePrefixHash\` の変化点です
+- stable prefix の大きさは右上の \`stable prefix\` / \`stable tokens\` に数値で表示します
+- total prompt の大きさは、この図では考慮しません
 
 ## 推移
 
@@ -238,7 +244,7 @@ export async function generateCacheFriendlyReport(dir: string): Promise<void> {
     await Promise.all([
       fs.writeFile(path.join(dir, "summary.json"), JSON.stringify(summary, null, 2) + "\n", "utf8"),
       fs.writeFile(path.join(dir, "trend.svg"), renderSvg(rows), "utf8"),
-      fs.writeFile(path.join(dir, "efficiency.svg"), renderEfficiencySvg(rows), "utf8"),
+      fs.writeFile(path.join(dir, "cacheability-score.svg"), renderCacheabilitySvg(rows), "utf8"),
       fs.writeFile(path.join(dir, "report.md"), renderReport(summary, rows), "utf8"),
     ]);
   } catch { /* report generation must never break agent execution */ }

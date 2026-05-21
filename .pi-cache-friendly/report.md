@@ -1,15 +1,15 @@
 # cache-friendly-prompt レポート
 
-最終更新: 2026-05-21T05:36:57.018Z
+最終更新: 2026-05-21T05:48:23.253Z
 
 ## サマリー
 
-- 総リクエスト数: 703
+- 総リクエスト数: 733
 - 最新 provider/model: openai-codex/gpt-5.5
 - 最新 stablePrefixHash: `87244eaa`
 - 最新 stable prefix: 11017 chars
-- 最新 total prompt: 27906 chars
-- 直近同一 hash 継続: 62 requests
+- 最新 total prompt: 37286 chars
+- 直近同一 hash 継続: 92 requests
 - stablePrefixHash 変化回数: 65
 - warning 件数: 40
 
@@ -21,19 +21,21 @@
 | stablePrefixHash | stable prefix の内容から計算した hash。同じ値が続くほど、安定部分が変わっていないことを示します。 |
 | stablePrefixChars | stable prefix の文字数。キャッシュ候補になり得る先頭部分の大きさです。 |
 | totalPromptChars | provider に送られるプロンプト全体の文字数。ユーザー発話、会話履歴、tool 結果、read 結果なども含まれ得ます。 |
-| cache efficiency | `stablePrefixChars / totalPromptChars`。送信プロンプト全体のうち、安定プレフィックスが占める割合です。 |
+| cacheability | 前回と同じ stablePrefixHash なら 100%、変化した直後は 0% とするキャッシュ再利用スコアです。 |
 | hash change | stablePrefixHash が前回から変わった地点。安定部分が変化したため、キャッシュ再利用が効きにくくなる可能性があります。 |
 | warning | cache-friendly-prompt が検出した注意点。例: stable prefix が短い、payload に不安定な構造がある、など。 |
 | fragment | 各拡張が提供するプロンプト断片。stable / semi-stable / dynamic に分類されます。 |
 | provider/model | リクエスト送信先の provider と model。例: `openai-codex/gpt-5.5`。 |
 
-## キャッシュ効率
+## キャッシュ可能性
 
-![cache-friendly-prompt efficiency](./efficiency.svg)
+![cache-friendly-prompt cacheability score](./cacheability-score.svg)
 
-- 線: `stablePrefixChars / totalPromptChars` の割合
-- 高いほど、送信プロンプトのうち安定プレフィックスが占める割合が大きいことを示します
+- 紫線: reuse score。前回と同じ `stablePrefixHash` なら `100%`、変化した直後は `0%` です
+- 100% に張り付いているほど、同じ stable prefix を継続して送れていることを示します
 - オレンジの縦線は `stablePrefixHash` の変化点です
+- stable prefix の大きさは右上の `stable prefix` / `stable tokens` に数値で表示します
+- total prompt の大きさは、この図では考慮しません
 
 ## 推移
 
@@ -43,7 +45,7 @@
 
 | provider/model | requests | unique hashes | latest hash | stable chars | total chars |
 |---|---:|---:|---|---:|---:|
-| openai-codex/gpt-5.5 | 567 | 11 | `87244eaa` | 11017 | 27906 |
+| openai-codex/gpt-5.5 | 597 | 11 | `87244eaa` | 11017 | 37286 |
 | zai/glm-5.1 | 136 | 6 | `aff4edbb` | 12212 | 219726 |
 
 ## 最近の hash 変化
