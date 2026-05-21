@@ -7,6 +7,7 @@ const MEKANN = path.join(ROOT, "mekann");
 
 const EXPECTED_TOOLS_BY_MODULE: Record<string, string[]> = {
 	"safety/sandbox/index.ts": ["request_elevation"],
+	"context/output-gate/index.ts": ["search_tool_outputs"],
 	"autonomy/goal/index.ts": ["get_goal", "create_goal", "update_goal"],
 	"autonomy/subagent/index.ts": [
 		"spawn_agent", "send_message", "followup_task", "wait_agent", "list_agents",
@@ -29,6 +30,7 @@ const EXPECTED_COMMANDS_BY_MODULE: Record<string, string[]> = {
 	"autonomy/subagent/index.ts": ["agents", "wait-agent", "focus-agent", "close-agent"],
 	"autonomy/autoresearch/index.ts": ["autoresearch"],
 	"utils/zip-repo/index.ts": ["zip"],
+	"context/output-gate/index.ts": ["output-gate"],
 };
 
 const EXPECTED_PROMPT_PROVIDERS_BY_MODULE: Record<string, string[]> = {
@@ -74,15 +76,15 @@ describe("mekann integrated extension", () => {
 	});
 
 	it("has suite entrypoints", () => {
-		for (const rel of ["index.ts", "core/index.ts", "safety/index.ts", "autonomy/index.ts", "utils/index.ts"]) {
+		for (const rel of ["index.ts", "core/index.ts", "safety/index.ts", "autonomy/index.ts", "utils/index.ts", "context/index.ts"]) {
 			expect(fs.existsSync(path.join(MEKANN, rel))).toBe(true);
 		}
 	});
 
 	it("loads suites in the intended top-level order", () => {
 		const source = read("mekann/index.ts");
-		const calls = [...source.matchAll(/await (core|safety|autonomy|utils)\(pi\);/g)].map((m) => m[1]);
-		expect(calls).toEqual(["core", "safety", "autonomy", "utils"]);
+		const calls = [...source.matchAll(/await (core|safety|autonomy|utils|context)\(pi\);/g)].map((m) => m[1]);
+		expect(calls).toEqual(["core", "safety", "autonomy", "utils", "context"]);
 	});
 
 	it("loads sandbox before plan-mode inside safety", () => {

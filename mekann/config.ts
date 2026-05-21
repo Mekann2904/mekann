@@ -61,3 +61,12 @@ export const MEKANN_SANDBOX_DEFAULTS = {
 	llmOutputMaxBytes: 50 * 1024,
 	llmOutputMaxLines: 2000,
 } as const;
+
+export const MEKANN_OUTPUT_GATE_DEFAULTS = {
+	maxInlineBytes: 16 * 1024,
+	previewBytes: 4 * 1024,
+	maxSearchResultBytes: 12 * 1024,
+	defaultContextLines: 3,
+	defaultMaxResults: 10,
+	artifactRetentionMaxFiles: 200,
+} as const;

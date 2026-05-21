@@ -13,10 +13,11 @@
     "mekann/core/*",
     "mekann/safety/*",
     "mekann/autonomy/*",
-    "mekann/utils/*"
+    "mekann/utils/*",
+    "mekann/context/*"
   ],
   "scripts": {
-    "test": "npm run test:mekann && npm run test:prompt-core && npm run test:cache-friendly-prompt && npm run test:agent-guidelines && npm run test:plan-mode && npm run test:sandbox && npm run test:subagent && npm run test:zip-repo && npm run test:autoresearch && npm run test:goal",
+    "test": "npm run test:mekann && npm run test:prompt-core && npm run test:cache-friendly-prompt && npm run test:agent-guidelines && npm run test:plan-mode && npm run test:sandbox && npm run test:subagent && npm run test:zip-repo && npm run test:autoresearch && npm run test:goal && npm run test:output-gate",
     "test:mekann": "cd mekann && npm test",
     "test:prompt-core": "cd mekann/core/prompt-core && npm test",
     "test:cache-friendly-prompt": "cd mekann/core/cache-friendly-prompt && npm test",
@@ -29,6 +30,7 @@
     "test:autoresearch:fast": "cd mekann/autonomy/autoresearch && npm run test:fast",
     "test:autoresearch:slow": "cd mekann/autonomy/autoresearch && npm run test:slow",
     "test:goal": "cd mekann/autonomy/goal && npm test",
+    "test:output-gate": "cd mekann/context/output-gate && npm test",
     "ci": "npm test",
     "prepare": "node scripts/prepare-husky.js",
     "check:prepare-ci": "CI=true npm run prepare",

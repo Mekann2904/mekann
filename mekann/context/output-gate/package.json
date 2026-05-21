@@ -1,0 +1,21 @@
+{
+  "name": "output-gate",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "vitest": "^4.1.6"
+  },
+  "keywords": [
+    "pi-extension"
+  ],
+  "license": "ISC"
+}

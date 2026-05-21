@@ -22,7 +22,14 @@ export type CapabilityProfileName =
  * bash intent is filtered by classifyCommandIntent() as a UX guard,
  * and enforced by sandbox's OS-level policy as the security boundary.
  */
-export const PLAN_MODE_TOOLS = new Set(["read", "grep", "find", "ls", "bash"]);
+export const PLAN_MODE_TOOLS = new Set([
+	"read",
+	"grep",
+	"find",
+	"ls",
+	"bash",
+	"search_tool_outputs",
+]);
 
 // ─── Sandbox modes ────────────────────────────────────────────────
 

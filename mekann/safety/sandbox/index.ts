@@ -14,7 +14,8 @@ import { resolveRealPaths, validateWorkspaceRoot } from "./permissions.js";
 import { shouldRequestApproval, yoloApprovalMessage, type YoloApprovalState, readOnlyPolicy, workspaceWritePolicy, yoloPolicy } from "./permissions.js";
 import { DEFAULT_SANDBOX_MODE, parseSandboxMode, modeLabel, SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, PLAN_MODE_STATUS_EVENT, type SandboxPushProfileEvent, type SandboxPopProfileEvent, type PlanModeStatusEvent } from "../policy-core/modes.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
-import { MEKANN_SANDBOX_DEFAULTS } from "../../config.js";
+import { MEKANN_SANDBOX_DEFAULTS, MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
+import { gateTextForLlm } from "../../context/output-gate/store.js";
 
 // ─── LLM output truncation ─────────────────────────────────────────
 
@@ -198,7 +199,28 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			const policy = buildCurrentPolicy();
 			const result = await runSandboxedShellMac(command, policy, { signal });
 			const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
-			const shown = truncateForLlm(output);
+			const gated = await gateTextForLlm({
+				cwd: currentCwd || process.cwd(),
+				toolName: "bash",
+				text: output,
+				source: { kind: "sandboxed_bash", command },
+				maxInlineBytes: MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes,
+				previewBytes: MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes,
+			});
+			const shown = gated.gated ? {
+				text: gated.text,
+				truncated: true,
+				originalBytes: gated.originalBytes,
+				originalLines: gated.originalLines,
+			} : truncateForLlm(output);
+			const outputGate = gated.gated ? {
+				stored: true,
+				artifactId: gated.artifactId,
+				bytes: gated.originalBytes,
+				lines: gated.originalLines,
+				sha256: gated.sha256,
+				redacted: true,
+			} : undefined;
 
 			// Detect sandbox permission errors and add elevation hint
 			if (result.code !== 0) {
@@ -216,6 +238,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					outputTruncated: shown.truncated,
 					originalOutputBytes: shown.originalBytes,
 					originalOutputLines: shown.originalLines,
+					...(outputGate ? { outputGate } : {}),
 				},
 			};
 		},
