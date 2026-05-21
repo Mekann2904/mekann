@@ -26,7 +26,7 @@ const EXPECTED_TOOLS_BY_MODULE: Record<string, string[]> = {
 const EXPECTED_COMMANDS_BY_MODULE: Record<string, string[]> = {
 	"safety/plan-mode/index.ts": ["plan"],
 	"safety/sandbox/index.ts": ["sandbox"],
-	"autonomy/goal/index.ts": ["goal"],
+	"autonomy/goal/command.ts": ["goal"],
 	"autonomy/subagent/index.ts": ["agents", "wait-agent", "focus-agent", "close-agent"],
 	"autonomy/autoresearch/index.ts": ["autoresearch"],
 	"utils/zip-repo/index.ts": ["zip"],

@@ -29,6 +29,7 @@ import { extractTextFromContent } from "./contextFork.js";
 import type { ForkTurns } from "./contextFork.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { getGlobalSettingsPath, getWorkspaceSettingsPath, MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
+import { registerSubagentFlags } from "./flags.js";
 
 // ─── Tool parameter schemas ──────────────────────────────────────
 
@@ -164,64 +165,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
 
   // ─── Flags ────────────────────────────────────────────────────
 
-  pi.registerFlag("subagent-max-agents", {
-    description: `Maximum number of concurrent subagents. Hard-capped at ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents} (default: ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents})`,
-    type: "string",
-    default: String(MEKANN_SUBAGENT_DEFAULTS.maxSubagents),
-  });
-
-  pi.registerFlag("subagent-max-depth", {
-    description: `Maximum nesting depth for subagents (default: ${MEKANN_SUBAGENT_DEFAULTS.maxDepth})`,
-    type: "string",
-    default: String(MEKANN_SUBAGENT_DEFAULTS.maxDepth),
-  });
-
-  pi.registerFlag("subagent-default-wait-timeout-ms", {
-    description: "Default wait_agent timeout in ms (unset = no default)",
-    type: "string",
-  });
-
-  pi.registerFlag("subagent-min-wait-timeout-ms", {
-    description: `Minimum wait_agent timeout in ms (default: ${MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs})`,
-    type: "string",
-    default: String(MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs),
-  });
-
-  pi.registerFlag("subagent-display", {
-    description: 'Display mode for subagents: "kitty-split" (default), "kitty-pi", or "none" for in-process agents',
-    type: "string",
-    default: MEKANN_SUBAGENT_DEFAULTS.display,
-  });
-
-  pi.registerFlag("subagent-allow-unsafe-external-pi", {
-    description: "Allow kitty-pi/kitty-split to launch independent Pi processes. Disable to force in-process agents with parent-side authority/tool filtering.",
-    type: "string",
-    default: String(MEKANN_SUBAGENT_DEFAULTS.allowUnsafeExternalPi),
-  });
-
-  pi.registerFlag("subagent-log-dir", {
-    description: "Directory for subagent display logs",
-    type: "string",
-    default: MEKANN_SUBAGENT_DEFAULTS.logDir,
-  });
-
-  pi.registerFlag("subagent-kitten-bin", {
-    description: "kitten binary path/name used for kitty remote control",
-    type: "string",
-    default: MEKANN_SUBAGENT_DEFAULTS.kittenBin,
-  });
-
-  pi.registerFlag("subagent-pi-command", {
-    description: "shell command used to start child Pi process in kitty-pi mode",
-    type: "string",
-    default: MEKANN_SUBAGENT_DEFAULTS.piCommand,
-  });
-
-  pi.registerFlag("subagent-extension-path", {
-    description: "extension path passed to child Pi with -e in kitty-pi mode (empty disables explicit loading)",
-    type: "string",
-    default: fileURLToPath(import.meta.url),
-  });
+  const extensionPathDefault = fileURLToPath(import.meta.url);
+  registerSubagentFlags(pi, extensionPathDefault);
 
   // ─── Helper: ensure control is initialized ────────────────────
 
@@ -300,7 +245,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       const logDirFlag = String(getFlagOrSetting<string>("subagent-log-dir", "log-dir", MEKANN_SUBAGENT_DEFAULTS.logDir) ?? MEKANN_SUBAGENT_DEFAULTS.logDir).trim();
       const kittenBin = String(getFlagOrSetting<string>("subagent-kitten-bin", "kitten-bin", MEKANN_SUBAGENT_DEFAULTS.kittenBin) ?? MEKANN_SUBAGENT_DEFAULTS.kittenBin) || MEKANN_SUBAGENT_DEFAULTS.kittenBin;
       const piCommand = String(getFlagOrSetting<string>("subagent-pi-command", "pi-command", MEKANN_SUBAGENT_DEFAULTS.piCommand) ?? MEKANN_SUBAGENT_DEFAULTS.piCommand) || MEKANN_SUBAGENT_DEFAULTS.piCommand;
-      const extensionPath = String(getFlagOrSetting<string>("subagent-extension-path", "extension-path", fileURLToPath(import.meta.url)) ?? fileURLToPath(import.meta.url)).trim();
+      const extensionPath = String(getFlagOrSetting<string>("subagent-extension-path", "extension-path", extensionPathDefault) ?? extensionPathDefault).trim();
 
       control = new AgentControl(pi, maxAgents, maxDepth, defaultWait, minWait, {
         displayMode,
