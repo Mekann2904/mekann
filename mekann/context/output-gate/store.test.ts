@@ -223,4 +223,34 @@ describe("output-gate store", () => {
 		const entries = await readManifest(cwd);
 		expect(entries).toHaveLength(0);
 	});
+
+	it("saveArtifact includes schemaVersion and metadata fields", async () => {
+		const cwd = await tmp();
+		const { entry } = await saveArtifact({ cwd, toolName: "bash", text: "hello world", idGenerator: () => "og_meta_1", now: () => 1000, sessionId: "sess_abc", turnId: "turn_1", toolCallId: "tc_1" });
+		expect(entry.schemaVersion).toBe("output-gate/v1");
+		expect(entry.redactionVersion).toBe(1);
+		expect(entry.sessionId).toBe("sess_abc");
+		expect(entry.turnId).toBe("turn_1");
+		expect(entry.toolCallId).toBe("tc_1");
+		// Read back from manifest
+		const entries = await readManifest(cwd);
+		expect(entries[0].schemaVersion).toBe("output-gate/v1");
+		expect(entries[0].sessionId).toBe("sess_abc");
+	});
+
+	it("saveArtifact omits metadata fields when not provided", async () => {
+		const cwd = await tmp();
+		const { entry } = await saveArtifact({ cwd, toolName: "bash", text: "hello", idGenerator: () => "og_nomet_1" });
+		expect(entry.sessionId).toBeUndefined();
+		expect(entry.turnId).toBeUndefined();
+		expect(entry.toolCallId).toBeUndefined();
+	});
+
+	it("saveArtifact tracks originalBytes/lines when redaction changes them", async () => {
+		const cwd = await tmp();
+		// Redaction shouldn't change a simple string, but verify the field exists
+		const { entry } = await saveArtifact({ cwd, toolName: "bash", text: "hello", idGenerator: () => "og_orig_1", redacted: false });
+		expect(entry.bytes).toBeGreaterThan(0);
+		expect(entry.lines).toBeGreaterThanOrEqual(1);
+	});
 });

@@ -6,15 +6,24 @@ import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
 import { redactSecrets } from "./redact.js";
 
 export interface OutputGateManifestEntry {
+	schemaVersion?: "output-gate/v1";
 	id: string;
 	toolName: string;
 	createdAt: number;
 	cwd: string;
 	bytes: number;
 	lines: number;
+	originalBytes?: number;
+	originalLines?: number;
 	sha256: string;
 	path: string;
 	redacted: boolean;
+	redactionVersion?: number;
+	sessionId?: string;
+	turnId?: string;
+	toolCallId?: string;
+	branchId?: string;
+	commandHash?: string;
 	source?: unknown;
 }
 
@@ -26,6 +35,11 @@ export interface SaveArtifactInput {
 	redacted?: boolean;
 	idGenerator?: (createdAt: number) => string;
 	now?: () => number;
+	sessionId?: string;
+	turnId?: string;
+	toolCallId?: string;
+	branchId?: string;
+	commandHash?: string;
 }
 
 export interface GateTextOptions {
@@ -35,6 +49,11 @@ export interface GateTextOptions {
 	source?: unknown;
 	maxInlineBytes?: number;
 	previewBytes?: number;
+	sessionId?: string;
+	turnId?: string;
+	toolCallId?: string;
+	branchId?: string;
+	commandHash?: string;
 }
 
 export interface GatedTextResult {
@@ -162,16 +181,27 @@ export async function saveArtifact(input: SaveArtifactInput): Promise<{ entry: O
 	const relPath = path.relative(input.cwd, artifactAbs);
 	if (relPath.startsWith("..") || path.isAbsolute(relPath)) throw new Error("Artifact path escaped cwd");
 	await fsp.writeFile(artifactAbs, redacted.text, "utf8");
+	const originalBytes = Buffer.byteLength(input.text, "utf8");
+	const originalLines = countLines(input.text);
 	const entry: OutputGateManifestEntry = {
+		schemaVersion: "output-gate/v1",
 		id,
 		toolName: input.toolName,
 		createdAt,
 		cwd: input.cwd,
 		bytes: Buffer.byteLength(redacted.text, "utf8"),
 		lines: countLines(redacted.text),
+		...(originalBytes !== Buffer.byteLength(redacted.text, "utf8") ? { originalBytes } : {}),
+		...(originalLines !== countLines(redacted.text) ? { originalLines } : {}),
 		sha256: sha256(redacted.text),
 		path: relPath,
 		redacted: true,
+		redactionVersion: 1,
+		...(input.sessionId ? { sessionId: input.sessionId } : {}),
+		...(input.turnId ? { turnId: input.turnId } : {}),
+		...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
+		...(input.branchId ? { branchId: input.branchId } : {}),
+		...(input.commandHash ? { commandHash: input.commandHash } : {}),
 		...(input.source === undefined ? {} : { source: sanitizeManifestSource(input.source) }),
 	};
 	await fsp.appendFile(manifestPath(input.cwd), `${JSON.stringify(entry)}\n`, "utf8");
@@ -206,7 +236,7 @@ export async function gateTextForLlm(options: GateTextOptions): Promise<GatedTex
 	const originalLines = countLines(options.text);
 	if (!shouldGateOutput(options.text, { toolName: options.toolName, maxInlineBytes: options.maxInlineBytes })) return { text: options.text, gated: false, handled: false, originalBytes, originalLines };
 	try {
-		const saved = await saveArtifact({ cwd: options.cwd, toolName: options.toolName, text: options.text, source: options.source });
+		const saved = await saveArtifact({ cwd: options.cwd, toolName: options.toolName, text: options.text, source: options.source, sessionId: options.sessionId, turnId: options.turnId, toolCallId: options.toolCallId, branchId: options.branchId, commandHash: options.commandHash });
 		const preview = buildPreview(saved.text, options.previewBytes ?? MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes);
 		return { text: buildStoredOutputStub(saved.entry, preview), gated: true, handled: true, artifactId: saved.entry.id, originalBytes, originalLines, sha256: saved.entry.sha256, redacted: true };
 	} catch (error: any) {
