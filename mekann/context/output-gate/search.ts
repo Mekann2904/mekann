@@ -49,29 +49,61 @@ async function selectFiles(cwd: string, artifact?: string): Promise<SearchFile[]
 	return files;
 }
 
+interface PendingChunk {
+	entry: OutputGateManifestEntry;
+	matchLine: number;
+	lines: string[];
+	counted: boolean;
+}
+
+function flushChunk(chunk: PendingChunk): string {
+	return header(chunk.entry, chunk.matchLine) + "\n" + chunk.lines.join("\n");
+}
+
 function parseRgOutput(stdout: string, files: SearchFile[], maxResults: number): string {
 	const byPath = new Map(files.map((f) => [path.resolve(f.abs), f.entry]));
 	const chunks: string[] = [];
-	let current = "";
-	let currentCounted = false;
+	let pending: PendingChunk | null = null;
 	let count = 0;
+	const separatorRe = /^--$/;
+
 	for (const rawLine of stdout.split(/\r?\n/)) {
 		if (!rawLine) continue;
+
+		// rg emits "--" between non-contiguous groups
+		if (separatorRe.test(rawLine)) {
+			if (pending) { chunks.push(flushChunk(pending)); pending = null; }
+			continue;
+		}
+
 		const match = rawLine.match(/^(.+?)(?:[:-])(\d+)([:-])(.*)$/);
 		if (!match) continue;
 		const entry = byPath.get(path.resolve(match[1]));
 		if (!entry) continue;
 		const isMatch = match[3] === ":";
-		if (isMatch && !currentCounted) {
+		const lineStr = `${match[2]}: ${match[4]}`;
+
+		if (isMatch) {
+			// Flush previous pending chunk if it belongs to a different match
+			if (pending) {
+				chunks.push(flushChunk(pending));
+				pending = null;
+			}
 			if (count >= maxResults) break;
 			count += 1;
-			currentCounted = true;
+			pending = { entry, matchLine: Number(match[2]), lines: [lineStr], counted: true };
+		} else {
+			// Context line — append to pending or start pending if none
+			if (!pending) {
+				pending = { entry, matchLine: Number(match[2]), lines: [lineStr], counted: false };
+			} else {
+				pending.lines.push(lineStr);
+			}
 		}
-		if (!current) current = header(entry, Number(match[2]));
-		current += `\n${match[2]}: ${match[4]}`;
-		if (isMatch) { chunks.push(current); current = ""; currentCounted = false; }
 	}
-	if (current && count < maxResults) chunks.push(current);
+
+	// Flush final pending chunk
+	if (pending) chunks.push(flushChunk(pending));
 	return chunks.join("\n\n");
 }
 
@@ -79,6 +111,7 @@ async function searchWithRg(query: string, files: SearchFile[], contextLines: nu
 	return new Promise((resolve) => {
 		const args = [
 			"-n",
+			"-H",
 			"-C", String(contextLines),
 			literal ? "-F" : undefined,
 			caseSensitive ? undefined : "-i",

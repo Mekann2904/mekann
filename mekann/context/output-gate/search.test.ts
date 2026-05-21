@@ -217,4 +217,34 @@ describe("search output-gate artifacts", () => {
 		expect(out).toContain("1: TypeError");
 		expect(out).not.toContain("2: typeerror");
 	});
+
+	// Single artifact and after-context tests
+	it("searchToolOutputs with preferRg=true works with a single artifact", async () => {
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "hello world", idGenerator: () => "og_single_1" });
+		const out = await searchToolOutputs({ cwd, query: "hello", preferRg: true, contextLines: 0 });
+		expect(out).toContain("og_single_1");
+		expect(out).toContain("hello world");
+	});
+
+	it("rg search preserves after-context lines", async () => {
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "alpha\nbeta\ngamma\ndelta\nepsilon", idGenerator: () => "og_after_1" });
+		await saveArtifact({ cwd, toolName: "read", text: "extra", idGenerator: () => "og_after_2" });
+		const out = await searchToolOutputs({ cwd, query: "gamma", preferRg: true, contextLines: 1 });
+		expect(out).toContain("og_after_1");
+		expect(out).toContain("2: beta"); // before context
+		expect(out).toContain("3: gamma"); // match
+		expect(out).toContain("4: delta"); // after context
+	});
+
+	it("rg search with artifact filter works on single artifact", async () => {
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "hello earth", idGenerator: () => "og_filt_1" });
+		await saveArtifact({ cwd, toolName: "read", text: "hello mars", idGenerator: () => "og_filt_2" });
+		const out = await searchToolOutputs({ cwd, query: "hello", artifact: "og_filt_2", preferRg: true, contextLines: 0 });
+		expect(out).toContain("og_filt_2");
+		expect(out).toContain("hello mars");
+		expect(out).not.toContain("og_filt_1");
+	});
 });

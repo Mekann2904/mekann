@@ -11,7 +11,13 @@ npm test
 # Run tests for specific module
 cd mekann/safety/plan-mode && npm test
 cd mekann/safety/sandbox && npm test
-cd mekann/utils/zip-repo && npm test
+cd mekann/context/output-gate && npm test
+
+# Production typecheck (all mekann code, no tests)
+npm run typecheck:prod
+
+# Full typecheck chain (prod + sandbox + subagent)
+npm run typecheck
 
 # Run with coverage
 cd mekann/safety/sandbox && npx vitest run --coverage
@@ -41,16 +47,38 @@ cd mekann/safety/plan-mode && npx vitest run --coverage
 
 **Coverage**: ~65% statements (index.ts extension body is UI-dependent; pure functions are fully covered)
 
+### output-gate (118 tests)
+
+| File | Tests | Description |
+|------|-------|-------------|
+| `store.test.ts` | ~45 | Artifact CRUD, manifest JSONL, redaction, preview, SHA-256 |
+| `search.test.ts` | ~30 | rg-backed search, literal/regex, case-sensitive, fallback line scan |
+| `index.test.ts` | ~30 | Tool registration, command handler (list/show/stats/purge/clear), tool_result hook |
+| `redact.test.ts` | ~13 | Secret redaction patterns |
+
 ### zip-repo (36 tests)
 
 | File | Tests | Description |
 |------|-------|-------------|
 | `index.test.ts` | 36 | Pure utility functions extracted from handler |
 
+## Type Checking
+
+```bash
+# Production code only (recommended gate)
+npm run typecheck:prod
+
+# Full chain: prod + workspace typechecks
+npm run typecheck
+```
+
+`tsconfig.prod.json` includes `mekann/**/*.ts` and excludes test files. This is the primary gate for ensuring the integrated extension compiles cleanly.
+
 ## CI
 
 GitHub Actions runs all tests on every push/PR:
 
+- `typecheck-prod`: Production typecheck for all mekann code
 - `plan-mode`: Ubuntu (unit tests)
 - `sandbox-unit`: Ubuntu (unit tests only)
 - `sandbox-macos`: macOS (full integration with sandbox-exec)
@@ -58,21 +86,22 @@ GitHub Actions runs all tests on every push/PR:
 - `subagent`: Ubuntu (unit tests + typecheck)
 - `autoresearch`: Ubuntu (unit tests)
 - `goal`: Ubuntu (unit tests)
+- `output-gate`: Ubuntu (unit tests)
 
 ## Pre-push Hook (Husky)
 
 `git push` 前に [Husky](https://typicode.github.io/husky/) が自動的に `npm run prepush` を実行する。
 
 ```
-prepush = typecheck + npm test
-  ├── sandbox typecheck
-  ├── subagent typecheck
-  ├── plan-mode tests
+prepush = typecheck + CI prepare + workflow checks + module tests (parallel)
+  ├── typecheck (sandbox + subagent)
+  ├── plan-mode coverage threshold
   ├── sandbox tests
   ├── subagent tests
   ├── zip-repo tests
-  ├── autoresearch tests
-  └── goal tests
+  ├── autoresearch fast tests
+  ├── goal tests
+  └── output-gate tests
 ```
 
 ```bash
@@ -81,6 +110,7 @@ npm run prepush
 
 # 型チェックのみ
 npm run typecheck
+npm run typecheck:prod
 
 # hook を一時的に無視して push
 git push --no-verify

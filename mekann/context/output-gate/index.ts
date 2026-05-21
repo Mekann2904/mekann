@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import * as fsp from "node:fs/promises";
 import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
-import { gateTextForLlm, outputGateDir, manifestPath, readManifest, resolveArtifactPath, artifactsDir, shouldGateOutput } from "./store.js";
+import { gateTextForLlm, outputGateDir, manifestPath, readManifest, resolveArtifactPath, shouldGateOutput } from "./store.js";
 import { searchToolOutputs } from "./search.js";
 
 export { shouldGateOutput, buildStoredOutputStub, buildPreview, gateTextForLlm } from "./store.js";
@@ -77,7 +77,6 @@ async function outputGatePurge(cwd: string, keep: number): Promise<string> {
 	if (entries.length <= keep) return `Only ${entries.length} artifacts, nothing to purge (keep=${keep}).`;
 	const sorted = [...entries].sort((a, b) => b.createdAt - a.createdAt);
 	const toRemove = sorted.slice(keep);
-	const artifacts = artifactsDir(cwd);
 	let removed = 0;
 	for (const entry of toRemove) {
 		const abs = resolveArtifactPath(cwd, entry);
