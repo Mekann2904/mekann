@@ -40,6 +40,9 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 			artifact: Type.Optional(Type.String({ description: "Optional output-gate artifact id" })),
 			maxResults: Type.Optional(Type.Number({ description: "Maximum matching snippets" })),
 			contextLines: Type.Optional(Type.Number({ description: "Context lines around each match" })),
+			preferRg: Type.Optional(Type.Boolean({ description: "Use ripgrep for search (default: true)" })),
+			literal: Type.Optional(Type.Boolean({ description: "Treat query as fixed string, not regex (default: true)" })),
+			caseSensitive: Type.Optional(Type.Boolean({ description: "Case-sensitive search (default: false)" })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const cwd = ctx?.cwd ?? process.cwd();
@@ -49,6 +52,9 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 				artifact: (params as any).artifact ? String((params as any).artifact) : undefined,
 				maxResults: (params as any).maxResults === undefined ? undefined : Number((params as any).maxResults),
 				contextLines: (params as any).contextLines === undefined ? undefined : Number((params as any).contextLines),
+				preferRg: (params as any).preferRg === undefined ? undefined : Boolean((params as any).preferRg),
+				literal: (params as any).literal === undefined ? undefined : Boolean((params as any).literal),
+				caseSensitive: (params as any).caseSensitive === undefined ? undefined : Boolean((params as any).caseSensitive),
 			});
 			return { content: [{ type: "text", text }], details: {} };
 		},

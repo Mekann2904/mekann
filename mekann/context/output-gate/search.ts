@@ -12,6 +12,8 @@ export interface SearchToolOutputsInput {
 	contextLines?: number;
 	maxSearchResultBytes?: number;
 	preferRg?: boolean;
+	literal?: boolean;
+	caseSensitive?: boolean;
 }
 
 function positiveInt(value: unknown, fallback: number): number {
@@ -73,9 +75,18 @@ function parseRgOutput(stdout: string, files: SearchFile[], maxResults: number):
 	return chunks.join("\n\n");
 }
 
-async function searchWithRg(query: string, files: SearchFile[], contextLines: number, maxResults: number): Promise<string | undefined> {
+async function searchWithRg(query: string, files: SearchFile[], contextLines: number, maxResults: number, literal = true, caseSensitive = false): Promise<string | undefined> {
 	return new Promise((resolve) => {
-		execFile("rg", ["-n", "-C", String(contextLines), "--", query, ...files.map((f) => f.abs)], { shell: false, maxBuffer: 10 * 1024 * 1024 }, (error, stdout) => {
+		const args = [
+			"-n",
+			"-C", String(contextLines),
+			literal ? "-F" : undefined,
+			caseSensitive ? undefined : "-i",
+			"--",
+			query,
+			...files.map((f) => f.abs),
+		].filter(Boolean) as string[];
+		execFile("rg", args, { shell: false, maxBuffer: 10 * 1024 * 1024 }, (error, stdout) => {
 			if (!error && stdout) return resolve(parseRgOutput(stdout, files, maxResults));
 			const code = (error as any)?.code;
 			if (code === 1) return resolve("");
@@ -88,7 +99,8 @@ export async function fallbackLineScan(input: SearchToolOutputsInput): Promise<s
 	const files = await selectFiles(input.cwd, input.artifact);
 	if (files === undefined) return "No stored tool outputs.";
 	if (files.length === 0) return "No matches.";
-	const query = input.query.toLocaleLowerCase();
+	const caseSensitive = input.caseSensitive === true;
+	const queryForMatch = caseSensitive ? input.query : input.query.toLocaleLowerCase();
 	const contextLines = nonNegativeInt(input.contextLines, MEKANN_OUTPUT_GATE_DEFAULTS.defaultContextLines);
 	const maxResults = positiveInt(input.maxResults, MEKANN_OUTPUT_GATE_DEFAULTS.defaultMaxResults);
 	const chunks: string[] = [];
@@ -97,7 +109,8 @@ export async function fallbackLineScan(input: SearchToolOutputsInput): Promise<s
 		const raw = await fsp.readFile(file.abs, "utf8");
 		const lines = raw.split(/\r?\n/);
 		for (let i = 0; i < lines.length; i++) {
-			if (!lines[i].toLocaleLowerCase().includes(query)) continue;
+			const lineForMatch = caseSensitive ? lines[i] : lines[i].toLocaleLowerCase();
+			if (!lineForMatch.includes(queryForMatch)) continue;
 			if (count >= maxResults) return chunks.join("\n\n") || "No matches.";
 			count += 1;
 			const start = Math.max(0, i - contextLines);
@@ -117,9 +130,12 @@ export async function searchToolOutputs(input: SearchToolOutputsInput): Promise<
 	if (files.length === 0) return "No matches.";
 	const maxResults = positiveInt(input.maxResults, MEKANN_OUTPUT_GATE_DEFAULTS.defaultMaxResults);
 	const contextLines = nonNegativeInt(input.contextLines, MEKANN_OUTPUT_GATE_DEFAULTS.defaultContextLines);
+	const preferRg = input.preferRg !== false; // default true
+	const literal = input.literal !== false; // default true
+	const caseSensitive = input.caseSensitive === true;
 	let result: string | undefined;
-	if (input.preferRg === true) result = await searchWithRg(input.query, files, contextLines, maxResults);
-	if (result === undefined) result = await fallbackLineScan(input);
+	if (preferRg) result = await searchWithRg(input.query, files, contextLines, maxResults, literal, caseSensitive);
+	if (result === undefined) result = await fallbackLineScan({ ...input, caseSensitive });
 	if (!result) result = "No matches.";
 	return capText(result, input.maxSearchResultBytes ?? MEKANN_OUTPUT_GATE_DEFAULTS.maxSearchResultBytes);
 }

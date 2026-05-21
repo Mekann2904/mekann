@@ -170,4 +170,51 @@ describe("search output-gate artifacts", () => {
 		const out = await searchToolOutputs({ cwd, query: "match", preferRg: true, maxSearchResultBytes: 100 });
 		expect(out).toContain("truncated");
 	});
+
+	// literal and caseSensitive tests
+	it("fallbackLineScan with caseSensitive=true matches case exactly", async () => {
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "TypeError\ntypeerror\nTYPEERROR", idGenerator: () => "og_cs1_1" });
+		const out = await fallbackLineScan({ cwd, query: "TypeError", caseSensitive: true, contextLines: 0 });
+		expect(out).toContain("og_cs1_1");
+		expect(out).toContain("1: TypeError");
+		expect(out).not.toContain("2: typeerror");
+		expect(out).not.toContain("3: TYPEERROR");
+	});
+
+	it("fallbackLineScan with caseSensitive=false is case-insensitive", async () => {
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "TypeError\ntypeerror", idGenerator: () => "og_cs2_1" });
+		const out = await fallbackLineScan({ cwd, query: "TypeError", caseSensitive: false, contextLines: 0 });
+		expect(out).toContain("1: TypeError");
+		expect(out).toContain("2: typeerror");
+	});
+
+	it("searchToolOutputs with literal=true treats query as fixed string via rg", async () => {
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "file.txt: error\nother", idGenerator: () => "og_lit1_1" });
+		await saveArtifact({ cwd, toolName: "read", text: "extra", idGenerator: () => "og_lit1_2" });
+		// With literal=true (default), the dot is not a regex wildcard
+		const out = await searchToolOutputs({ cwd, query: "file.txt", preferRg: true, literal: true, contextLines: 0 });
+		expect(out).toContain("og_lit1_1");
+		expect(out).toContain("file.txt: error");
+	});
+
+	it("searchToolOutputs with literal=false allows regex via rg", async () => {
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "abc123def\nnope", idGenerator: () => "og_lit2_1" });
+		await saveArtifact({ cwd, toolName: "read", text: "extra", idGenerator: () => "og_lit2_2" });
+		const out = await searchToolOutputs({ cwd, query: "abc.*def", preferRg: true, literal: false, contextLines: 0 });
+		expect(out).toContain("og_lit2_1");
+		expect(out).toContain("abc123def");
+	});
+
+	it("searchToolOutputs with caseSensitive=true via rg", async () => {
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "TypeError\ntypeerror", idGenerator: () => "og_cs3_1" });
+		await saveArtifact({ cwd, toolName: "read", text: "extra", idGenerator: () => "og_cs3_2" });
+		const out = await searchToolOutputs({ cwd, query: "TypeError", preferRg: true, caseSensitive: true, contextLines: 0 });
+		expect(out).toContain("1: TypeError");
+		expect(out).not.toContain("2: typeerror");
+	});
 });
