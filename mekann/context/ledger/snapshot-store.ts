@@ -1,3 +1,4 @@
+import * as crypto from "node:crypto";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { contextDir } from "./store.js";
@@ -14,7 +15,8 @@ export function latestSnapshotPath(cwd: string): string {
 
 export function timestampedSnapshotPath(cwd: string, now: number): string {
 	const ts = new Date(now).toISOString().replace(/[:.]/g, "-");
-	return path.join(snapshotsDir(cwd), `snapshot-${ts}.xml`);
+	const suffix = crypto.randomBytes(3).toString("hex");
+	return path.join(snapshotsDir(cwd), `snapshot-${ts}-${suffix}.xml`);
 }
 
 // ─── Write ─────────────────────────────────────────────────────

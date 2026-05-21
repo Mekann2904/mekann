@@ -211,6 +211,10 @@ describe("output-gate store", () => {
 		expect(shouldGateOutput("x".repeat(100), { toolName: "search_tool_outputs" })).toBe(false);
 	});
 
+	it("shouldGateOutput returns false when toolName is search_context_events", () => {
+		expect(shouldGateOutput("x".repeat(100), { toolName: "search_context_events" })).toBe(false);
+	});
+
 	it("shouldGateOutput returns true for text exceeding default threshold", () => {
 		// Default is 16KB, so create text larger than that
 		expect(shouldGateOutput("x".repeat(20 * 1024))).toBe(true);

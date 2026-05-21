@@ -59,7 +59,7 @@ Use `search_tool_outputs` for raw log/output snippets stored by output-gate.
 | `/context-ledger snapshot --max-bytes N` | Build snapshot with byte budget (min 256) |
 | `/context-ledger snapshot --write` | Save snapshot to `.pi/mekann-context/snapshots/` |
 | `/context-ledger snapshot --write --max-bytes 4096` | Save budgeted snapshot |
-| `/context-ledger clear` | Delete all events (with confirmation) |
+| `/context-ledger clear` | Delete context ledger data including events and snapshots (with confirmation) |
 
 ## Design
 
@@ -67,6 +67,5 @@ This module intentionally avoids:
 - SQLite / FTS5 / embeddings
 - Mutation of existing events
 - Automatic injection into prompts (future)
-- Persistent snapshot files (future)
 
 The ledger is a raw event stream. Compaction and summarization happen at read time.

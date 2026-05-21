@@ -53,10 +53,10 @@ describe("snapshot-store", () => {
 		expect(content).toBe("new\n");
 	});
 
-	it("timestampedSnapshotPath generates valid filename", () => {
+	it("timestampedSnapshotPath generates valid filename with random suffix", () => {
 		const cwd = "/tmp/project";
 		const ts = timestampedSnapshotPath(cwd, 1700000000000);
-		expect(ts).toMatch(/snapshot-.*\.xml$/);
+		expect(ts).toMatch(/snapshot-.*-[0-9a-f]{6}\.xml$/);
 		expect(ts).toContain("snapshots");
 	});
 
