@@ -30,7 +30,9 @@
     "test:autoresearch:slow": "cd mekann/autonomy/autoresearch && npm run test:slow",
     "test:goal": "cd mekann/autonomy/goal && npm test",
     "ci": "npm test",
-    "prepare": "husky",
+    "prepare": "node scripts/prepare-husky.js",
+    "check:prepare-ci": "CI=true npm run prepare",
+    "check:workflows": "bash scripts/check-workflows.sh",
     "typecheck": "cd mekann/safety/sandbox && npm run typecheck && cd ../../autonomy/subagent && npm run typecheck",
     "prepush": "bash scripts/prepush-parallel.sh"
   },
