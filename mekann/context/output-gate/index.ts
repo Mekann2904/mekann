@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import * as fsp from "node:fs/promises";
 import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
-import { gateTextForLlm, outputGateDir, manifestPath, readManifest, shouldGateOutput } from "./store.js";
+import { gateTextForLlm, outputGateDir, manifestPath, readManifest, resolveArtifactPath, artifactsDir, shouldGateOutput } from "./store.js";
 import { searchToolOutputs } from "./search.js";
 
 export { shouldGateOutput, buildStoredOutputStub, buildPreview, gateTextForLlm } from "./store.js";
@@ -26,6 +26,80 @@ async function outputGateList(cwd: string): Promise<string> {
 	const entries = (await readManifest(cwd)).sort((a, b) => b.createdAt - a.createdAt).slice(0, 20);
 	if (entries.length === 0) return "No stored tool outputs.";
 	return entries.map((e) => `${e.id}\t${e.toolName}\t${e.bytes} bytes\t${new Date(e.createdAt).toISOString()}\t${e.path}`).join("\n");
+}
+
+async function outputGateStats(cwd: string): Promise<string> {
+	const entries = await readManifest(cwd);
+	if (entries.length === 0) return "No stored tool outputs.";
+	const totalBytes = entries.reduce((sum, e) => sum + e.bytes, 0);
+	const totalLines = entries.reduce((sum, e) => sum + e.lines, 0);
+	const byTool = new Map<string, number>();
+	for (const e of entries) byTool.set(e.toolName, (byTool.get(e.toolName) ?? 0) + 1);
+	const toolBreakdown = [...byTool.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => `  ${name}: ${count}`).join("\n");
+	const oldest = new Date(Math.min(...entries.map((e) => e.createdAt))).toISOString();
+	const newest = new Date(Math.max(...entries.map((e) => e.createdAt))).toISOString();
+	return [
+		`output-gate stats`,
+		`  artifacts: ${entries.length}`,
+		`  total bytes: ${totalBytes}`,
+		`  total lines: ${totalLines}`,
+		`  retention max: ${MEKANN_OUTPUT_GATE_DEFAULTS.artifactRetentionMaxFiles}`,
+		`  oldest: ${oldest}`,
+		`  newest: ${newest}`,
+		`by tool:`,
+		toolBreakdown,
+		`manifest: ${manifestPath(cwd)}`,
+	].join("\n");
+}
+
+async function outputGateShow(cwd: string, artifactId: string): Promise<string> {
+	const entries = await readManifest(cwd);
+	const entry = entries.find((e) => e.id === artifactId);
+	if (!entry) return `Artifact not found: ${artifactId}`;
+	const abs = resolveArtifactPath(cwd, entry);
+	const lines: string[] = [
+		`id: ${entry.id}`,
+		`tool: ${entry.toolName}`,
+		`bytes: ${entry.bytes}`,
+		`lines: ${entry.lines}`,
+		`sha256: ${entry.sha256}`,
+		`created: ${new Date(entry.createdAt).toISOString()}`,
+		`path: ${entry.path}`,
+		`redacted: ${entry.redacted}`,
+	];
+	if (abs) lines.push(`file: ${abs}`, `file exists: true`);
+	else lines.push(`file exists: false`);
+	return lines.join("\n");
+}
+
+async function outputGatePurge(cwd: string, keep: number): Promise<string> {
+	const entries = await readManifest(cwd);
+	if (entries.length <= keep) return `Only ${entries.length} artifacts, nothing to purge (keep=${keep}).`;
+	const sorted = [...entries].sort((a, b) => b.createdAt - a.createdAt);
+	const toRemove = sorted.slice(keep);
+	const artifacts = artifactsDir(cwd);
+	let removed = 0;
+	for (const entry of toRemove) {
+		const abs = resolveArtifactPath(cwd, entry);
+		if (abs) {
+			try { await fsp.unlink(abs); removed++; } catch { /* ignore */ }
+		}
+	}
+	// Rewrite manifest with kept entries only
+	const kept = sorted.slice(0, keep);
+	await fsp.writeFile(manifestPath(cwd), kept.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf8");
+	return `Purged ${removed} artifacts. Kept ${kept.length} (most recent).`;
+}
+
+function parseKeepArg(args: string | undefined): number | undefined {
+	const match = args?.match(/--keep\s+(\d+)/);
+	return match ? parseInt(match[1], 10) : undefined;
+}
+
+function parseShowArg(args: string | undefined): string | undefined {
+	const trimmed = args?.trim() ?? "";
+	if (trimmed.startsWith("show ")) return trimmed.slice(5).trim();
+	return undefined;
 }
 
 export default function outputGateExtension(pi: ExtensionAPI): void {
@@ -63,11 +137,20 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("output-gate", {
 		description: "output-gate artifacts を表示・削除",
 		getArgumentCompletions(prefix: string) {
-			return ["list", "clear"].filter((v) => v.startsWith(prefix)).map((value) => ({ value, label: value }));
+			return ["list", "clear", "stats", "show", "purge"].filter((v) => v.startsWith(prefix)).map((value) => ({ value, label: value }));
 		},
 		async handler(args: string | undefined, ctx: any) {
 			const cwd = ctx?.cwd ?? process.cwd();
-			const arg = args?.trim();
+			const arg = args?.trim() ?? "";
+
+			// show <artifactId>
+			const showId = parseShowArg(arg);
+			if (showId) {
+				const message = await outputGateShow(cwd, showId);
+				ctx?.ui?.notify?.(message, "info");
+				return;
+			}
+
 			if (arg === "clear") {
 				const ok = await ctx?.ui?.confirm?.("Clear output-gate artifacts?", `Delete ${outputGateDir(cwd)} ?`);
 				if (ok === false) return;
@@ -75,8 +158,26 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 				ctx?.ui?.notify?.("output-gate artifacts cleared", "info");
 				return;
 			}
-			const message = arg === "list" ? await outputGateList(cwd) : await outputGateStatus(cwd);
-			ctx?.ui?.notify?.(message, "info");
+
+			if (arg === "stats") {
+				ctx?.ui?.notify?.(await outputGateStats(cwd), "info");
+				return;
+			}
+
+			if (arg === "list") {
+				ctx?.ui?.notify?.(await outputGateList(cwd), "info");
+				return;
+			}
+
+			if (arg.startsWith("purge")) {
+				const keep = parseKeepArg(arg) ?? MEKANN_OUTPUT_GATE_DEFAULTS.artifactRetentionMaxFiles;
+				const message = await outputGatePurge(cwd, keep);
+				ctx?.ui?.notify?.(message, "info");
+				return;
+			}
+
+			// default: status
+			ctx?.ui?.notify?.(await outputGateStatus(cwd), "info");
 		},
 	});
 

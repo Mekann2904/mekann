@@ -5,7 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import outputGateExtension, { buildStoredOutputStub, extractTextContent, shouldGateOutput } from "./index.js";
 import { searchToolOutputs } from "./search.js";
-import { saveArtifact, gateTextForLlm } from "./store.js";
+import { saveArtifact, gateTextForLlm, readManifest } from "./store.js";
 
 async function tmp(): Promise<string> { return fsp.mkdtemp(path.join(os.tmpdir(), "og-index-")); }
 
@@ -176,8 +176,83 @@ describe("output-gate command handler", () => {
 		outputGateExtension(pi);
 		const cmdDef = pi.registerCommand.mock.calls[0][1];
 		expect(cmdDef.getArgumentCompletions("li")).toEqual([{ value: "list", label: "list" }]);
-		expect(cmdDef.getArgumentCompletions("")).toEqual([{ value: "list", label: "list" }, { value: "clear", label: "clear" }]);
+		expect(cmdDef.getArgumentCompletions("")).toEqual([{ value: "list", label: "list" }, { value: "clear", label: "clear" }, { value: "stats", label: "stats" }, { value: "show", label: "show" }, { value: "purge", label: "purge" }]);
 		expect(cmdDef.getArgumentCompletions("xyz")).toEqual([]);
+	});
+
+	it("stats command shows aggregate stats", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "hello world", idGenerator: () => "og_stats_1", now: () => 1000 });
+		await saveArtifact({ cwd, toolName: "read", text: "foo bar baz", idGenerator: () => "og_stats_2", now: () => 2000 });
+		const notify = vi.fn();
+		await cmdDef.handler("stats", { cwd, ui: { notify } });
+		const msg = notify.mock.calls[0][0];
+		expect(msg).toContain("artifacts: 2");
+		expect(msg).toContain("total bytes");
+		expect(msg).toContain("total lines");
+		expect(msg).toContain("bash: 1");
+		expect(msg).toContain("read: 1");
+	});
+
+	it("show command displays artifact details", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "hello world", idGenerator: () => "og_show_1", now: () => 1000 });
+		const notify = vi.fn();
+		await cmdDef.handler("show og_show_1", { cwd, ui: { notify } });
+		const msg = notify.mock.calls[0][0];
+		expect(msg).toContain("id: og_show_1");
+		expect(msg).toContain("tool: bash");
+		expect(msg).toContain("bytes:");
+		expect(msg).toContain("sha256:");
+	});
+
+	it("show command reports missing artifact", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		const notify = vi.fn();
+		await cmdDef.handler("show og_nonexistent", { cwd, ui: { notify } });
+		const msg = notify.mock.calls[0][0];
+		expect(msg).toContain("Artifact not found");
+	});
+
+	it("purge --keep 1 retains only most recent artifact", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "first", idGenerator: () => "og_prg_1", now: () => 1000 });
+		await saveArtifact({ cwd, toolName: "read", text: "second", idGenerator: () => "og_prg_2", now: () => 2000 });
+		await saveArtifact({ cwd, toolName: "bash", text: "third", idGenerator: () => "og_prg_3", now: () => 3000 });
+		const notify = vi.fn();
+		await cmdDef.handler("purge --keep 1", { cwd, ui: { notify } });
+		const msg = notify.mock.calls[0][0];
+		expect(msg).toContain("Purged 2");
+		expect(msg).toContain("Kept 1");
+		// Verify manifest was rewritten
+		const remaining = await readManifest(cwd);
+		expect(remaining).toHaveLength(1);
+		expect(remaining[0].id).toBe("og_prg_3");
+	});
+
+	it("purge without --keep uses default retention", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		// Create only 1 artifact - should not be purged
+		await saveArtifact({ cwd, toolName: "bash", text: "only", idGenerator: () => "og_prgd_1", now: () => 1000 });
+		const notify = vi.fn();
+		await cmdDef.handler("purge", { cwd, ui: { notify } });
+		const msg = notify.mock.calls[0][0];
+		expect(msg).toContain("nothing to purge");
 	});
 });
 
