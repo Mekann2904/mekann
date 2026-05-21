@@ -53,6 +53,11 @@ async function contextLedgerStats(cwd: string): Promise<string> {
 }
 
 export default function contextLedgerExtension(pi: ExtensionAPI): void {
+	function clampInt(value: unknown, fallback: number, min: number, max: number): number {
+		const n = Number(value);
+		if (!Number.isFinite(n)) return fallback;
+		return Math.max(min, Math.min(max, Math.trunc(n)));
+	}
 	const KindEnum = Type.Union([
 		Type.Literal("tool_result"),
 		Type.Literal("user_decision"),
@@ -84,8 +89,10 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 				cwd,
 				query: (params as any).query ? String((params as any).query) : undefined,
 				kind: (params as any).kind,
-				maxResults: (params as any).maxResults == null ? undefined : Number((params as any).maxResults),
-				priorityMax: (params as any).priorityMax == null ? undefined : Number((params as any).priorityMax),
+				maxResults: clampInt((params as any).maxResults, 20, 1, 100),
+				priorityMax: (params as any).priorityMax == null
+					? undefined
+					: clampInt((params as any).priorityMax, 4, 0, 4),
 			});
 			const text = formatSearchResult(events);
 			return { content: [{ type: "text", text }], details: {} };

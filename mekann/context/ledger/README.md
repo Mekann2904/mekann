@@ -22,6 +22,7 @@ interface MekannContextEvent {
   cwd: string;
   sessionId?: string;
   turnId?: string;
+  toolCallId?: string;
   branchId?: string;
   priority: 0 | 1 | 2 | 3 | 4;  // 0=critical, 4=info
   title: string;
@@ -32,6 +33,20 @@ interface MekannContextEvent {
   }>;
 }
 ```
+
+## Tool
+
+`search_context_events` — search decisions, tasks, errors, plans, and artifact references.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `query` | (none) | Search title, summary, and ref values |
+| `kind` | (all) | Filter by event kind |
+| `priorityMax` | (all) | Only events with priority ≤ this (0–4) |
+| `maxResults` | 20 | Maximum events to return (1–100) |
+
+Use `search_context_events` for decisions, tasks, errors, and plans.
+Use `search_tool_outputs` for raw log/output snippets stored by output-gate.
 
 ## Commands
 
@@ -48,6 +63,7 @@ interface MekannContextEvent {
 This module intentionally avoids:
 - SQLite / FTS5 / embeddings
 - Mutation of existing events
-- Automatic injection into prompts (future: snapshot builder)
+- Automatic injection into prompts (future)
+- Persistent snapshot files (future)
 
 The ledger is a raw event stream. Compaction and summarization happen at read time.
