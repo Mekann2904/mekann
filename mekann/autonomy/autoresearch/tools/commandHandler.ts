@@ -9,6 +9,23 @@ import { deleteContract } from "../contract.js";
 import { freshState } from "../state.js";
 import type { SessionStore } from "./sessionStore.js";
 
+/** Archive a root-level file into .autoresearch/archived/ with a timestamp suffix. */
+function archiveFile(cwd: string, filename: string, warnings: string[]): void {
+	const src = path.join(cwd, filename);
+	if (!fs.existsSync(src)) return;
+	const archivedDir = path.join(cwd, ".autoresearch", "archived");
+	fs.mkdirSync(archivedDir, { recursive: true });
+	const ts = new Date().toISOString().replace(/[:.]/g, "-");
+	const dest = path.join(archivedDir, `${filename}.${ts}`);
+	try {
+		fs.renameSync(src, dest);
+	} catch {
+		try { fs.copyFileSync(src, dest); fs.rmSync(src, { force: true }); } catch (e) {
+			warnings.push(`${filename} の退避に失敗: ${e instanceof Error ? e.message : String(e)}`);
+		}
+	}
+}
+
 export async function handleCommand(
 	args: string | undefined,
 	ctx: ExtensionContext,
@@ -77,9 +94,24 @@ export async function handleCommand(
 					for (const f of ["state.json", "current.plan.json"]) {
 						fs.rmSync(path.join(ctx.cwd, ".autoresearch", f), { force: true });
 					}
-					const disabled = "#!/usr/bin/env bash\n# AUTORESEARCH:generated\necho 'autoresearch current state is cleared. Run autoresearch_init first.' >&2\nexit 1\n";
-					fs.writeFileSync(path.join(ctx.cwd, "autoresearch.sh"), disabled, { mode: 0o755 });
-					fs.writeFileSync(path.join(ctx.cwd, "autoresearch.checks.sh"), disabled, { mode: 0o755 });
+					// Archive root-level autoresearch files so the next task starts fresh
+					for (const f of ["autoresearch.md", "autoresearch.plan.md", "autoresearch.ideas.md"]) {
+						archiveFile(ctx.cwd, f, clearWarnings);
+					}
+					// Remove generated wrapper scripts
+					for (const f of ["autoresearch.sh", "autoresearch.checks.sh"]) {
+						const fp = path.join(ctx.cwd, f);
+						try {
+							if (fs.existsSync(fp)) {
+								const content = fs.readFileSync(fp, "utf8");
+								if (content.includes("AUTORESEARCH:generated")) {
+									fs.rmSync(fp, { force: true });
+								} else {
+									clearWarnings.push(`${f} は生成ファイルではないため削除しません`);
+								}
+							}
+						} catch (e) { clearWarnings.push(`${f} の削除に失敗: ${e instanceof Error ? e.message : String(e)}`); }
+					}
 				}
 			} catch {}
 			store.state = freshState(); store.active = false; store.autoLoop = false; store.runningExperiment = null;
@@ -141,10 +173,14 @@ function activateAutoresearch(
 	store.active = true; store.autoLoop = true; store.resetLoopProgress(); store.loopPromptQueued = true;
 	store.updateWidget(ctx);
 	ctx.ui.notify("autoresearch モードを有効にしました(loop ON)", "info");
+	// Resume detection: check canonical state files, not autoresearch.md
+	const stateJsonPath = path.join(ctx.cwd, ".autoresearch", "state.json");
+	const currentPlanPath = path.join(ctx.cwd, ".autoresearch", "current.plan.json");
+	const hasResumableState = fs.existsSync(stateJsonPath) || fs.existsSync(currentPlanPath);
 	const hasMd = fs.existsSync(mdFilePath(ctx.cwd));
 	const safePurpose = purpose ? truncatePurpose(purpose) : "";
 	let msg: string;
-	if (hasMd) {
+	if (hasResumableState && hasMd) {
 		msg = "autoresearch.md を読み直して再開してください。";
 		if (safePurpose) msg += `\n追加コンテキスト: ${safePurpose}`;
 	} else {

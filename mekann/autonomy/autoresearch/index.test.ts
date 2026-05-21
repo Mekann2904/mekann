@@ -691,9 +691,22 @@ describe("autoresearchExtension", () => {
 	// ── /autoresearch on with autoresearch.md ────────────────────
 
 	describe("/autoresearch on with existing autoresearch.md", () => {
-		it("sends resume message when autoresearch.md exists", async () => {
+		it("sends new-task message when only autoresearch.md exists (no state)", async () => {
 			const testDir = createGitTestDir("test-ar-md");
 			fs.writeFileSync(path.join(testDir, "autoresearch.md"), "# Test");
+			const handler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await handler("on", ctx);
+			expect(pi.sentMessages[pi.sentMessages.length - 1].msg).not.toContain("再開");
+			expect(pi.sentMessages[pi.sentMessages.length - 1].msg).toContain("autoresearch モードを有効化しました");
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
+		it("sends resume message when both autoresearch.md and state.json exist", async () => {
+			const testDir = createGitTestDir("test-ar-md-resume");
+			fs.writeFileSync(path.join(testDir, "autoresearch.md"), "# Test");
+			fs.mkdirSync(path.join(testDir, ".autoresearch"), { recursive: true });
+			fs.writeFileSync(path.join(testDir, ".autoresearch", "state.json"), JSON.stringify({ version: 2, currentPlanId: "plan-test" }));
 			const handler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
 			await handler("on", ctx);
@@ -702,15 +715,29 @@ describe("autoresearchExtension", () => {
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 
-		it("sends resume message in default case with md and extra context", async () => {
-			const testDir = createGitTestDir("test-ar-md");
+		it("sends resume message in default case with md and state and extra context", async () => {
+			const testDir = createGitTestDir("test-ar-md-ctx");
 			fs.writeFileSync(path.join(testDir, "autoresearch.md"), "# Test");
+			fs.mkdirSync(path.join(testDir, ".autoresearch"), { recursive: true });
+			fs.writeFileSync(path.join(testDir, ".autoresearch", "state.json"), JSON.stringify({ version: 2, currentPlanId: "plan-test" }));
 			const handler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx({ cwd: testDir });
 			await handler("高速化したい", ctx);
 			const msg = pi.sentMessages[pi.sentMessages.length - 1].msg;
 			expect(msg).toContain("autoresearch.md");
 			expect(msg).toContain("追加コンテキスト: 高速化したい");
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
+
+		it("sends new-task message with purpose when md exists but no state", async () => {
+			const testDir = createGitTestDir("test-ar-md-nostate");
+			fs.writeFileSync(path.join(testDir, "autoresearch.md"), "# Test");
+			const handler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await handler("高速化したい", ctx);
+			const msg = pi.sentMessages[pi.sentMessages.length - 1].msg;
+			expect(msg).not.toContain("再開");
+			expect(msg).toContain("目的: 高速化したい");
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
 	});

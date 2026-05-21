@@ -2,11 +2,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="220" viewBox="0 0 960 220">
   <rect width="100%" height="100%" fill="#0f172a"/>
   <text x="20" y="26" fill="#e5e7eb" font-family="sans-serif" font-size="15">拡張機能ごとのコンテキスト注入量</text>
-  <text x="20" y="48" fill="#94a3b8" font-family="sans-serif" font-size="12">latest: no fragment size data</text>
+  <text x="20" y="48" fill="#94a3b8" font-family="sans-serif" font-size="12">latest: 2026-05-21T06:28:02.579Z</text>
   <rect x="610" y="18" width="300" height="34" rx="6" fill="#111827" stroke="#334155"/>
   <rect x="626" y="30" width="18" height="8" fill="#22c55e"/><text x="650" y="38" fill="#cbd5e1" font-family="sans-serif" font-size="11">stable</text>
   <rect x="704" y="30" width="18" height="8" fill="#38bdf8"/><text x="728" y="38" fill="#cbd5e1" font-family="sans-serif" font-size="11">semi-stable</text>
   <rect x="820" y="30" width="18" height="8" fill="#a78bfa"/><text x="844" y="38" fill="#cbd5e1" font-family="sans-serif" font-size="11">dynamic</text>
-  <text x="20" y="90" fill="#cbd5e1" font-family="sans-serif" font-size="13">fragment chars は新しいログから記録されます。次回リクエスト後に表示されます。</text>
   
+  <text x="20" y="87" fill="#cbd5e1" font-family="sans-serif" font-size="12">sandbox</text>
+  <rect x="190" y="72" width="734" height="18" fill="#1e293b" rx="3"/>
+  <rect x="190" y="72" width="734.0" height="18" fill="#22c55e" rx="3"/>
+  <rect x="924.0" y="72" width="0.0" height="18" fill="#38bdf8"/>
+  <rect x="924.0" y="72" width="0.0" height="18" fill="#a78bfa"/>
+  <text x="920" y="86" fill="#e5e7eb" font-family="sans-serif" font-size="11" text-anchor="end">552 chars</text>
+  <text x="20" y="119" fill="#cbd5e1" font-family="sans-serif" font-size="12">subagent</text>
+  <rect x="190" y="104" width="734" height="18" fill="#1e293b" rx="3"/>
+  <rect x="190" y="104" width="574.4" height="18" fill="#22c55e" rx="3"/>
+  <rect x="764.4" y="104" width="0.0" height="18" fill="#38bdf8"/>
+  <rect x="764.4" y="104" width="0.0" height="18" fill="#a78bfa"/>
+  <text x="920" y="118" fill="#e5e7eb" font-family="sans-serif" font-size="11" text-anchor="end">432 chars</text>
+  <text x="20" y="151" fill="#cbd5e1" font-family="sans-serif" font-size="12">agent-guidelines</text>
+  <rect x="190" y="136" width="734" height="18" fill="#1e293b" rx="3"/>
+  <rect x="190" y="136" width="547.8" height="18" fill="#22c55e" rx="3"/>
+  <rect x="737.8" y="136" width="0.0" height="18" fill="#38bdf8"/>
+  <rect x="737.8" y="136" width="0.0" height="18" fill="#a78bfa"/>
+  <text x="920" y="150" fill="#e5e7eb" font-family="sans-serif" font-size="11" text-anchor="end">412 chars</text>
 </svg>
