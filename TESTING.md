@@ -56,11 +56,12 @@ cd mekann/safety/plan-mode && npx vitest run --coverage
 | `index.test.ts` | ~30 | Tool registration, command handler (list/show/stats/purge/clear), tool_result hook |
 | `redact.test.ts` | ~13 | Secret redaction patterns |
 
-### context-ledger (11 tests)
+### context-ledger (20 tests)
 
 | File | Tests | Description |
 |------|-------|-------------|
 | `store.test.ts` | 11 | Event append, read, stats, clear, validation, corrupt JSONL handling |
+| `snapshot.test.ts` | 9 | XML snapshot generation, grouping, sorting, refs, escaping, truncation, mutation safety |
 
 ### zip-repo (36 tests)
 

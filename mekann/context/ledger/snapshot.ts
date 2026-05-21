@@ -63,7 +63,7 @@ export function buildSnapshot(events: MekannContextEvent[], options: SnapshotOpt
 
 	let filtered = options.kinds
 		? events.filter((e) => options.kinds!.includes(e.kind))
-		: events;
+		: [...events];
 
 	// Sort by priority (ascending = most important first), then by createdAt (newest first)
 	filtered = filtered.sort((a, b) => {

@@ -40,6 +40,7 @@ interface MekannContextEvent {
 | `/context-ledger` | Show status |
 | `/context-ledger list` | List recent events (newest 20) |
 | `/context-ledger stats` | Aggregate stats by kind and priority |
+| `/context-ledger snapshot` | Build XML session snapshot from events |
 | `/context-ledger clear` | Delete all events (with confirmation) |
 
 ## Design

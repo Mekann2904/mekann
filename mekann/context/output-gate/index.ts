@@ -216,6 +216,8 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 					refs: [{ type: "artifact", value: gated.artifactId }],
 					sessionId: ctx?.sessionId,
 					turnId: ctx?.turnId,
+					toolCallId: event?.toolCallId,
+					branchId: ctx?.branchId ?? event?.branchId,
 				});
 			} catch { /* best-effort; never block the hook */ }
 		}

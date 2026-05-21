@@ -114,4 +114,14 @@ describe("snapshot builder", () => {
 		expect(xml).not.toContain("A".repeat(200));
 		expect(xml).toContain("…");
 	});
+
+	it("does not mutate input event order", () => {
+		const events = [
+			makeEvent({ id: "ctx_mut_1", kind: "task", priority: 2, title: "A", summary: "a", createdAt: 1000 }),
+			makeEvent({ id: "ctx_mut_2", kind: "task", priority: 0, title: "B", summary: "b", createdAt: 2000 }),
+		];
+		const before = events.map((e) => e.id);
+		buildSnapshot(events);
+		expect(events.map((e) => e.id)).toEqual(before);
+	});
 });

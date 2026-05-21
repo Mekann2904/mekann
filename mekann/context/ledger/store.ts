@@ -26,6 +26,7 @@ export interface MekannContextEvent {
 	cwd: string;
 	sessionId?: string;
 	turnId?: string;
+	toolCallId?: string;
 	branchId?: string;
 	priority: 0 | 1 | 2 | 3 | 4;
 	title: string;
@@ -67,6 +68,7 @@ export interface AppendEventInput {
 	refs?: MekannContextRef[];
 	sessionId?: string;
 	turnId?: string;
+	toolCallId?: string;
 	branchId?: string;
 	idGenerator?: (createdAt: number) => string;
 	now?: () => number;
@@ -88,6 +90,7 @@ export async function appendContextEvent(input: AppendEventInput): Promise<Mekan
 		summary: input.summary,
 		...(input.sessionId ? { sessionId: input.sessionId } : {}),
 		...(input.turnId ? { turnId: input.turnId } : {}),
+		...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
 		...(input.branchId ? { branchId: input.branchId } : {}),
 		...(input.refs && input.refs.length > 0 ? { refs: input.refs } : {}),
 	};

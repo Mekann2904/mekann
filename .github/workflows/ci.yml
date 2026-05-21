@@ -207,7 +207,7 @@ jobs:
           node-version: "22"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --workspaces --include-workspace-root
 
       - name: Production typecheck
         run: npm run typecheck:prod

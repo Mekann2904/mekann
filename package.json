@@ -17,7 +17,7 @@
     "mekann/context/*"
   ],
   "scripts": {
-    "test": "npm run test:mekann && npm run test:prompt-core && npm run test:cache-friendly-prompt && npm run test:agent-guidelines && npm run test:plan-mode && npm run test:sandbox && npm run test:subagent && npm run test:zip-repo && npm run test:autoresearch && npm run test:goal && npm run test:output-gate",
+    "test": "npm run test:mekann && npm run test:prompt-core && npm run test:cache-friendly-prompt && npm run test:agent-guidelines && npm run test:plan-mode && npm run test:sandbox && npm run test:subagent && npm run test:zip-repo && npm run test:autoresearch && npm run test:goal && npm run test:output-gate && npm run test:ledger",
     "test:mekann": "cd mekann && npm test",
     "test:prompt-core": "cd mekann/core/prompt-core && npm test",
     "test:cache-friendly-prompt": "cd mekann/core/cache-friendly-prompt && npm test",
