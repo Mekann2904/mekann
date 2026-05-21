@@ -6,5 +6,6 @@ A lightweight output gate for Pi tool results.
 - `.pi/output-gate/manifest.jsonl` records metadata.
 - The LLM receives a compact stub with a preview and artifact id.
 - `search_tool_outputs` performs lexical search over stored artifacts.
+- Automatic retention cleanup is not implemented yet; use `/output-gate clear` to delete stored artifacts.
 
 This module intentionally avoids SQLite, embeddings, MCP, and custom sandbox execution.

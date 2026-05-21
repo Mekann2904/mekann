@@ -108,7 +108,7 @@ export async function searchToolOutputs(input: SearchToolOutputsInput): Promise<
 	const maxResults = Math.max(1, input.maxResults ?? MEKANN_OUTPUT_GATE_DEFAULTS.defaultMaxResults);
 	const contextLines = Math.max(0, input.contextLines ?? MEKANN_OUTPUT_GATE_DEFAULTS.defaultContextLines);
 	let result: string | undefined;
-	if (input.preferRg !== false) result = await searchWithRg(input.query, files, contextLines, maxResults);
+	if (input.preferRg === true) result = await searchWithRg(input.query, files, contextLines, maxResults);
 	if (result === undefined) result = await fallbackLineScan(input);
 	if (!result) result = "No matches.";
 	return capText(result, input.maxSearchResultBytes ?? MEKANN_OUTPUT_GATE_DEFAULTS.maxSearchResultBytes);

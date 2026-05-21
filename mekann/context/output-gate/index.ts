@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import * as fsp from "node:fs/promises";
 import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
 import { gateTextForLlm, outputGateDir, manifestPath, readManifest, shouldGateOutput } from "./store.js";
@@ -34,16 +35,12 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 		description: "Search large tool outputs stored by output-gate and return small snippets.",
 		promptSnippet: "Search snippets from large tool outputs stored as output-gate artifacts.",
 		promptGuidelines: ["Use search_tool_outputs with an artifact id from an output-gate stub to retrieve relevant snippets."],
-		parameters: {
-			type: "object",
-			required: ["query"],
-			properties: {
-				query: { type: "string", description: "Search query (rg regex when rg is available; substring fallback otherwise)" },
-				artifact: { type: "string", description: "Optional output-gate artifact id" },
-				maxResults: { type: "number", description: "Maximum matching snippets" },
-				contextLines: { type: "number", description: "Context lines around each match" },
-			},
-		},
+		parameters: Type.Object({
+			query: Type.String({ description: "Search query" }),
+			artifact: Type.Optional(Type.String({ description: "Optional output-gate artifact id" })),
+			maxResults: Type.Optional(Type.Number({ description: "Maximum matching snippets" })),
+			contextLines: Type.Optional(Type.Number({ description: "Context lines around each match" })),
+		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const cwd = ctx?.cwd ?? process.cwd();
 			const text = await searchToolOutputs({
