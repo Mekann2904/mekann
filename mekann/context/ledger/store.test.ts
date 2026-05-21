@@ -228,4 +228,31 @@ describe("context ledger store", () => {
 	it("formatSearchResult handles empty events", () => {
 		expect(formatSearchResult([])).toBe("No matching context events.");
 	});
-});
+
+	it("formatSearchResult truncates long title, summary, and refs", () => {
+		const longTitle = "t".repeat(200);
+		const longSummary = "s".repeat(1000);
+		const longRef = "r".repeat(300);
+		const event: MekannContextEvent = {
+			schemaVersion: "mekann-context/v1",
+			id: "ctx_trunc_1",
+			kind: "task",
+			priority: 2,
+			title: longTitle,
+			summary: longSummary,
+			refs: [{ type: "artifact", value: longRef }],
+			createdAt: Date.now(),
+			cwd: "/tmp",
+		};
+		const text = formatSearchResult([event]);
+		// Title line should be truncated
+		const titleLine = text.split("\n").find((l) => l.startsWith("###"))!;
+		expect(titleLine.length).toBeLessThan(longTitle.length + 50);
+		// Summary should be truncated
+		const summaryLine = text.split("\n").find((l) => l.startsWith("summary:"))!;
+		expect(summaryLine.length).toBeLessThan(longSummary.length);
+		// Ref value should be truncated
+		const refLine = text.split("\n").find((l) => l.includes("artifact:"))!;
+		expect(refLine.length).toBeLessThan(longRef.length);
+	});
+});;

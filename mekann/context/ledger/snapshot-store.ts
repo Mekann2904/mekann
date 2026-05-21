@@ -57,3 +57,10 @@ export async function readLatestSnapshot(cwd: string): Promise<string | undefine
 		return undefined;
 	}
 }
+
+export async function readBoundedLatestSnapshot(cwd: string, maxBytes: number): Promise<string | undefined> {
+	const xml = await readLatestSnapshot(cwd);
+	if (!xml) return undefined;
+	if (Buffer.byteLength(xml, "utf8") <= maxBytes) return xml;
+	return undefined;
+}

@@ -3,7 +3,7 @@ import { Type } from "@sinclair/typebox";
 import * as fsp from "node:fs/promises";
 import { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult, eventsPath, contextDir } from "./store.js";
 import { buildSnapshot } from "./snapshot.js";
-import { writeLatestSnapshot, readLatestSnapshot } from "./snapshot-store.js";
+import { writeLatestSnapshot, readLatestSnapshot, readBoundedLatestSnapshot } from "./snapshot-store.js";
 
 export { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult } from "./store.js";
 export type { MekannContextEvent, MekannContextEventKind, MekannContextRef, AppendEventInput } from "./store.js";
@@ -121,7 +121,7 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 
 			let xml: string | undefined;
 			if (!rebuild) {
-				xml = await readLatestSnapshot(cwd);
+				xml = await readBoundedLatestSnapshot(cwd, maxBytes);
 			}
 			if (!xml) {
 				const events = await readEvents(cwd);
@@ -166,7 +166,8 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 
 			if (arg === "snapshot" || arg.startsWith("snapshot")) {
 				const maxBytesMatch = arg.match(/--max-bytes\s+(\d+)/);
-				const maxBytes = maxBytesMatch ? Math.max(256, parseInt(maxBytesMatch[1], 10)) : undefined;
+				const unbounded = arg.includes("--unbounded");
+				const maxBytes = unbounded ? undefined : (maxBytesMatch ? Math.max(256, parseInt(maxBytesMatch[1], 10)) : 4096);
 				const shouldWrite = arg.includes("--write");
 				const events = await readEvents(cwd);
 				const xml = buildSnapshot(events, { maxBytes });
@@ -192,7 +193,7 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 				let xml: string | undefined;
 
 				if (!rebuild) {
-					xml = await readLatestSnapshot(cwd);
+					xml = await readBoundedLatestSnapshot(cwd, maxBytes);
 				}
 
 				if (!xml) {

@@ -64,4 +64,20 @@ describe("snapshot-store", () => {
 		const cwd = "/tmp/project";
 		expect(snapshotsDir(cwd)).toBe(path.join(cwd, ".pi/mekann-context/snapshots"));
 	});
+
+	it("readBoundedLatestSnapshot returns undefined when content exceeds maxBytes", async () => {
+		const cwd = await tmp();
+		const xml = "<mekann_session_context>" + "x".repeat(500) + "</mekann_session_context>\n";
+		await writeLatestSnapshot(cwd, xml, () => 1700000000000);
+		const result = await (await import("./snapshot-store.js")).readBoundedLatestSnapshot(cwd, 100);
+		expect(result).toBeUndefined();
+	});
+
+	it("readBoundedLatestSnapshot returns content when within maxBytes", async () => {
+		const cwd = await tmp();
+		const xml = "<mekann_session_context />\n";
+		await writeLatestSnapshot(cwd, xml, () => 1700000000000);
+		const result = await (await import("./snapshot-store.js")).readBoundedLatestSnapshot(cwd, 1024);
+		expect(result).toBe(xml);
+	});
 });

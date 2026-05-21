@@ -197,7 +197,7 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 
 	pi.on("tool_result", async (event: any, ctx: any) => {
 		const toolName = String(event?.toolName ?? event?.name ?? "tool");
-		if (toolName === "search_tool_outputs" || toolName === "search_context_events") return undefined;
+		if (toolName === "search_tool_outputs" || toolName === "search_context_events" || toolName === "summarize_session_context") return undefined;
 		const text = extractTextContent(event?.content);
 		if (!shouldGateOutput(text, { toolName, maxInlineBytes: MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes })) return undefined;
 		const cwd = event?.cwd ?? ctx?.cwd ?? process.cwd();

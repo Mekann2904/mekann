@@ -153,6 +153,13 @@ export async function clearContext(cwd: string): Promise<void> {
 	await fsp.rm(contextDir(cwd), { recursive: true, force: true });
 }
 
+// ─── Helpers ────────────────────────────────────────────────────
+
+function truncate(str: string, maxLen: number): string {
+	if (str.length <= maxLen) return str;
+	return str.slice(0, maxLen - 1) + "…";
+}
+
 // ─── Search ─────────────────────────────────────────────────────
 
 export interface SearchEventsInput {
@@ -203,13 +210,13 @@ export function formatSearchResult(events: MekannContextEvent[]): string {
 	if (events.length === 0) return "No matching context events.";
 	return events.map((e) => {
 		const lines = [
-			`### ${e.id}  P${e.priority}  ${e.kind}  ${e.title}`,
-			`summary: ${e.summary}`,
+			`### ${e.id}  P${e.priority}  ${e.kind}  ${truncate(e.title, 160)}`,
+			`summary: ${truncate(e.summary, 800)}`,
 		];
 		if (e.refs && e.refs.length > 0) {
 			lines.push("refs:");
-			for (const ref of e.refs) {
-				lines.push(`  ${ref.type}: ${ref.value}`);
+			for (const ref of e.refs.slice(0, 10)) {
+				lines.push(`  ${ref.type}: ${truncate(ref.value, 200)}`);
 			}
 		}
 		lines.push(`created: ${new Date(e.createdAt).toISOString()}`);
