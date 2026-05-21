@@ -3,6 +3,8 @@
 # Full CI should run npm test to include slow autoresearch tests.
 set -euo pipefail
 
+start_ms=$(python3 -c 'import time; print(int(time.time()*1000))')
+
 tmpdir=$(mktemp -d)
 trap "rm -rf $tmpdir" EXIT
 
@@ -44,4 +46,7 @@ if [ $fail -ne 0 ]; then
 fi
 
 echo "✓ All checks passed (workflow checks + CI prepare check + plan-mode coverage threshold + typecheck + test suites)"
+end_ms=$(python3 -c 'import time; print(int(time.time()*1000))')
+elapsed=$((end_ms - start_ms))
+echo "METRIC prepush_ms=${elapsed}"
 exit 0

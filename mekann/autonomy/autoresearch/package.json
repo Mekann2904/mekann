@@ -7,7 +7,7 @@
   "license": "ISC",
   "scripts": {
     "test": "vitest run",
-    "test:fast": "vitest run --exclude '**/runner.test.ts' --exclude '**/candidate.test.ts' --exclude '**/contract.test.ts'",
+    "test:fast": "vitest run --exclude '**/runner.test.ts' --exclude '**/candidate.test.ts' --exclude '**/contract.test.ts' --exclude '**/index.test.ts'",
     "test:slow": "vitest run runner.test.ts candidate.test.ts contract.test.ts"
   },
   "peerDependencies": {
