@@ -1,5 +1,8 @@
 /**
- * /autoresearch コマンドハンドラ + activateAutoresearch
+ * mekann/autonomy/autoresearch/tools/commandHandler.ts
+ * /autoresearch コマンドのサブコマンド処理と mode event 通知を担当する。
+ * autoresearch の有効化、無効化、状態クリアを薄くまとめるために存在する。
+ * 関連ファイル: mekann/autonomy/autoresearch/index.ts, mekann/autonomy/autoresearch/tools/sessionStore.ts, mekann/safety/policy-core/modes.ts
  */
 
 import * as fs from "node:fs";
@@ -11,7 +14,7 @@ import type { SessionStore } from "./sessionStore.js";
 import {
 	MEKANN_AUTORESEARCH_MODE_EVENT,
 	type AutoresearchModeEvent,
-} from "../../safety/policy-core/modes.js";
+} from "../../../safety/policy-core/modes.js";
 
 /** Archive a root-level file into .autoresearch/archived/ with a timestamp suffix. */
 function archiveFile(cwd: string, filename: string, warnings: string[]): void {
