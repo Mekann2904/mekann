@@ -1,36 +1,36 @@
-# Plan Mode Extension
+# plan-mode
 
 Codex-inspired plan mode — 実装前に考えさせるための読み取り専用モード。
 
 plan は **テキストコンテキスト** です。Todo ではありません。
 システムは plan を解析・進捗管理せず、実行時の追加コンテキストとして渡すだけです。
 
-## Commands
+## コマンド
 
-| Command | Description |
-|---------|-------------|
+| コマンド | 説明 |
+|---|---|
 | `/plan` | トグル: main ↔ plan |
 
-## Shortcuts
+## ショートカット
 
-| Shortcut | Description |
-|----------|-------------|
+| ショートカット | 説明 |
+|---|---|
 | `Cmd+P` (`super+p`) | `/plan` と同じ |
 
-## CLI Flag
+## CLI フラグ
 
 ```bash
 pi --plan  # プランモードで起動
 ```
 
-## Modes
+## モード
 
-| Mode | Tools | Description |
-|------|-------|-------------|
+| モード | ツール | 説明 |
+|---|---|---|
 | `main` | All | 通常モード（全ツール使用可能） |
 | `plan` | read-only (`read`, `grep`, `find`, `ls`, `bash`) | 調査と計画のみ |
 
-### Bash in Plan Mode
+### plan mode 中の bash
 
 `bash` ツールは plan mode でも表示され、読み取り専用コマンドのみ実行可能。
 
@@ -180,7 +180,7 @@ interface PlanState {
 - **2回目**: 再試行の無意味さを警告。`<proposed_plan>` の出力を促す
 - **3回目**: 即時停止を要求。「絶対に再試行しないでください」
 
-## Architecture
+## アーキテクチャ
 
 ```
 plan-mode/

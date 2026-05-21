@@ -1,17 +1,17 @@
-# pi extensions by mekann
+# mekann の pi 拡張
 
-Custom extensions for [pi](https://pi.dev) coding agent.
+[pi](https://pi.dev) coding agent 向けのカスタム拡張集です。
 
 ---
 
-## Extension
+## 拡張
 
 ### [mekann](./mekann/)
 
 `mekann` は複数の pi 拡張を用途別 suite としてまとめた統合拡張です。
 
-| Suite | Modules |
-|-------|---------|
+| スイート | モジュール |
+|---|---|
 | core | [cache-friendly-prompt](./mekann/core/cache-friendly-prompt/), [agent-guidelines](./mekann/core/agent-guidelines/) |
 | safety | [sandbox](./mekann/safety/sandbox/), [plan-mode](./mekann/safety/plan-mode/) |
 | autonomy | [goal](./mekann/autonomy/goal/), [subagent](./mekann/autonomy/subagent/), [autoresearch](./mekann/autonomy/autoresearch/) |
@@ -22,7 +22,7 @@ Custom extensions for [pi](https://pi.dev) coding agent.
 
 ---
 
-## Modules
+## 機能一覧
 
 ### plan-mode
 
@@ -100,7 +100,7 @@ Codex-inspired goal 機能 — thread/session に紐づく永続的な objective
 
 ---
 
-## Install
+## インストール
 
 `~/.pi/agent/settings.json` の `extensions` にパスを追加:
 

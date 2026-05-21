@@ -1,4 +1,4 @@
-# Policy Core
+# policy-core
 
 plan-mode と sandbox 拡張間で共有するポリシー語彙と bash コマンド intent 分類。
 **sandbox mode 型・parsing・label の単一定義点 (single source of truth)。**

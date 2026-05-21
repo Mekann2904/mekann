@@ -1,4 +1,4 @@
-# Goal Extension
+# goal
 
 pi coding agent 向けの、スレッドローカルな永続 goal 管理 extension。アイドル時の自動継続、トークン/時間予算の追跡、plan-mode 連携を提供します。
 

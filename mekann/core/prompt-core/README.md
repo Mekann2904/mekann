@@ -1,9 +1,21 @@
 # prompt-core
 
-`prompt-core` is a shared registry and rendering layer for provider-agnostic cache-friendly prompt fragments. It does not call provider cache APIs. It exists to make stable prefix construction deterministic across Pi extensions.
+`prompt-core` は、プロバイダー非依存のプロンプト断片レジストリと描画レイヤーです。pi 拡張間で、キャッシュに向いた安定プレフィックスを決定的に構築するための共有基盤として使います。
 
 ```text
-extensions -> prompt-core registry -> cache-friendly-prompt -> provider
+拡張機能群 -> prompt-core レジストリ -> cache-friendly-prompt -> プロバイダー
 ```
 
-It separates fragments into stable, semi-stable, and dynamic sections, canonicalizes text, sorts fragments deterministically, and computes hashes for inspection/logging.
+## 機能
+
+- プロンプト断片を `stable` / `semi-stable` / `dynamic` に分類
+- テキストを正規化して差分を安定化
+- 優先度・ID による決定的な並び替え
+- 描画結果や安定プレフィックスのハッシュを生成
+- inspection / logging 用の情報を提供
+
+## 注意点
+
+- プロバイダーのキャッシュ API は呼び出しません
+- キャッシュヒットを保証するものではありません
+- 実際の最終プロンプト組み立ては `cache-friendly-prompt` が担当します

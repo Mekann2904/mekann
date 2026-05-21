@@ -1,4 +1,4 @@
-# Sandbox Extension
+# sandbox
 
 macOS Seatbelt (`sandbox-exec`) による bash ツール用コマンドサンドボックス化 Pi 拡張機能。
 

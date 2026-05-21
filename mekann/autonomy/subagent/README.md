@@ -1,4 +1,4 @@
-# Subagent Extension
+# subagent
 
 [pi coding agent](https://github.com/nicepkg/pi) 用のマルチエージェント実行システム。親エージェントがサブエージェントを非同期で起動し、メールボックス・イベント経由で通信し、リソース制限付きレジストリで管理する。
 
