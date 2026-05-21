@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "objective": "全mekannワークスペースのテストカバレッジ(Stmts%)を最大化する。現在最低のsubagent(62%), output-gate(61%)を中心に、全体カバレッジを80%→90%以上に引き上げる。",
+  "targetScope": [],
+  "benchmarkCommand": "bash scripts/measure-coverage.sh",
+  "primaryMetric": {
+    "name": "coverage_pct",
+    "direction": "higher",
+    "method": "stdout_metric",
+    "unit": "%"
+  },
+  "checks": {
+    "mode": "command",
+    "command": "npm test 2>&1 | tail -5"
+  },
+  "acceptance": {
+    "mode": "improvement_threshold",
+    "minImprovement": 0.02,
+    "repeat": 1,
+    "aggregate": "single"
+  },
+  "safety": {
+    "requireGit": true,
+    "requireCleanBaseline": false,
+    "allowedPaths": [
+      "mekann/**/*.test.ts",
+      "mekann/**/*.test.mjs",
+      "scripts/**",
+      ".autoresearch/**",
+      "autoresearch.*",
+      "autoresearch.md",
+      ".pi-cache-friendly/**",
+      ".pi/**"
+    ],
+    "excludedPaths": [
+      "**/node_modules/**",
+      "doc/**"
+    ],
+    "forbiddenCommandPatterns": [
+      "\\bsudo\\b",
+      "\\brm\\s+-rf\\s+/",
+      "\\bdd\\s+if=",
+      "\\bmkfs\\.",
+      "\\bformat\\b.*:",
+      ":\\(\\)\\s*\\{.*\\}.*:\\("
+    ]
+  },
+  "createdAt": "2026-05-21T09:59:33.571Z",
+  "sessionId": "20260521T095933-maximize-test-covera",
+  "version": 1
+}
