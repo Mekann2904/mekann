@@ -105,7 +105,7 @@ describe("SubagentResultStore: status transitions", () => {
     try {
       const store = new SubagentResultStore(dir);
       const stored = store.save(agent, observation());
-      store.markEscrowed(stored.result_id, { result_id: stored.result_id, agent_path: "/root/task", escrowed_at: Date.now(), candidate_id: "c1" });
+      store.markEscrowed(stored.result_id, { system: "autoresearch", candidate_id: "c1", contract_hash: "hash", escrowed_at: Date.now() });
       const loaded = store.load(stored.result_id);
       expect(loaded.status).toBe("escrowed");
       expect(loaded.escrow_record).toBeDefined();

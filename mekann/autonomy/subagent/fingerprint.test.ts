@@ -270,31 +270,31 @@ describe("isNewFilePatch", () => {
 describe("normalizePublicSurfaceDeltas", () => {
   it("merges add+remove into modify", () => {
     const deltas = [
-      { surface: "typescript_export", name: "foo", change: "add" as const, compatibility: "compatible" as const },
-      { surface: "typescript_export", name: "foo", change: "remove" as const, compatibility: "breaking" as const },
+      { surface: "typescript_export" as const, name: "foo", change: "add" as const, compatibility: "compatible" as const },
+      { surface: "typescript_export" as const, name: "foo", change: "remove" as const, compatibility: "breaking" as const },
     ];
     const result = normalizePublicSurfaceDeltas(deltas);
     expect(result).toEqual([
-      { surface: "typescript_export", name: "foo", change: "modify", compatibility: "breaking" },
+      { surface: "typescript_export" as const, name: "foo", change: "modify", compatibility: "breaking" },
     ]);
   });
 
   it("keeps add+remove with non-breaking compatibility as unknown", () => {
     const deltas = [
-      { surface: "rest_api", name: "x", change: "add" as const, compatibility: "compatible" as const },
-      { surface: "rest_api", name: "x", change: "remove" as const, compatibility: "compatible" as const },
+      { surface: "rest_api" as const, name: "x", change: "add" as const, compatibility: "compatible" as const },
+      { surface: "rest_api" as const, name: "x", change: "remove" as const, compatibility: "compatible" as const },
     ];
     const result = normalizePublicSurfaceDeltas(deltas);
     expect(result).toEqual([
-      { surface: "rest_api", name: "x", change: "modify", compatibility: "unknown" },
+      { surface: "rest_api" as const, name: "x", change: "modify", compatibility: "unknown" },
     ]);
   });
 
   it("keeps other changes alongside add+remove pair", () => {
     const deltas = [
-      { surface: "s", name: "n", change: "add" as const, compatibility: "compatible" as const },
-      { surface: "s", name: "n", change: "remove" as const, compatibility: "breaking" as const },
-      { surface: "s", name: "n", change: "modify" as const, compatibility: "unknown" as const },
+      { surface: "typescript_export" as const, name: "n", change: "add" as const, compatibility: "compatible" as const },
+      { surface: "typescript_export" as const, name: "n", change: "remove" as const, compatibility: "breaking" as const },
+      { surface: "typescript_export" as const, name: "n", change: "modify" as const, compatibility: "unknown" as const },
     ];
     const result = normalizePublicSurfaceDeltas(deltas);
     expect(result).toHaveLength(2);
@@ -304,7 +304,7 @@ describe("normalizePublicSurfaceDeltas", () => {
 
   it("passes through deltas without add+remove pair", () => {
     const deltas = [
-      { surface: "s", name: "n", change: "modify" as const, compatibility: "unknown" as const },
+      { surface: "typescript_export" as const, name: "n", change: "modify" as const, compatibility: "unknown" as const },
     ];
     expect(normalizePublicSurfaceDeltas(deltas)).toEqual(deltas);
   });
@@ -315,8 +315,8 @@ describe("normalizePublicSurfaceDeltas", () => {
 
   it("handles multiple independent targets", () => {
     const deltas = [
-      { surface: "s", name: "a", change: "add" as const, compatibility: "compatible" as const },
-      { surface: "s", name: "b", change: "remove" as const, compatibility: "breaking" as const },
+      { surface: "typescript_export" as const, name: "a", change: "add" as const, compatibility: "compatible" as const },
+      { surface: "typescript_export" as const, name: "b", change: "remove" as const, compatibility: "breaking" as const },
     ];
     const result = normalizePublicSurfaceDeltas(deltas);
     expect(result).toHaveLength(2);

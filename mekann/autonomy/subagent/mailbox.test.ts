@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Mailbox } from "./mailbox.js";
-import type { LifecycleEvent, MailboxItem } from "./types.js";
+import type { MailboxItem } from "./types.js";
 
 describe("Mailbox", () => {
   let mailbox: Mailbox;
+  const mailboxItem = (toAgentPath: string, content: string): Omit<MailboxItem, "seq"> => ({
+    toAgentPath,
+    fromAgentId: "root",
+    fromAgentPath: "/root",
+    content,
+    timestamp: Date.now(),
+    kind: "message",
+  });
 
   beforeEach(() => {
     mailbox = new Mailbox();
@@ -11,24 +19,24 @@ describe("Mailbox", () => {
 
   describe("enqueue", () => {
     it("adds item with monotonic sequence id", () => {
-      const item = mailbox.enqueue({ toAgentPath: "/root/task1", fromAgentPath: "/root", message: "hello" });
+      const item = mailbox.enqueue(mailboxItem("/root/task1", "hello"));
       expect(item.seq).toBe(1);
       expect(item.toAgentPath).toBe("/root/task1");
-      expect(item.message).toBe("hello");
+      expect(item.content).toBe("hello");
     });
 
     it("increments seq for each item", () => {
-      const item1 = mailbox.enqueue({ toAgentPath: "/root/task1", fromAgentPath: "/root", message: "a" });
-      const item2 = mailbox.enqueue({ toAgentPath: "/root/task2", fromAgentPath: "/root", message: "b" });
+      const item1 = mailbox.enqueue(mailboxItem("/root/task1", "a"));
+      const item2 = mailbox.enqueue(mailboxItem("/root/task2", "b"));
       expect(item1.seq).toBeLessThan(item2.seq);
     });
 
     it("notifies waiting consumers", async () => {
       const waitPromise = mailbox.waitForUpdate("/root/task1", 0, 500);
-      mailbox.enqueue({ toAgentPath: "/root/task1", fromAgentPath: "/root", message: "hello" });
+      mailbox.enqueue(mailboxItem("/root/task1", "hello"));
       const result = await waitPromise;
       expect(result.mailbox).toHaveLength(1);
-      expect(result.mailbox[0].message).toBe("hello");
+      expect(result.mailbox[0].content).toBe("hello");
     });
   });
 
@@ -82,26 +90,26 @@ describe("Mailbox", () => {
 
   describe("pendingFor", () => {
     it("returns items for matching agent path", () => {
-      mailbox.enqueue({ toAgentPath: "/root/task1", fromAgentPath: "/root", message: "a" });
-      mailbox.enqueue({ toAgentPath: "/root/task2", fromAgentPath: "/root", message: "b" });
-      mailbox.enqueue({ toAgentPath: "/root/task1", fromAgentPath: "/root", message: "c" });
+      mailbox.enqueue(mailboxItem("/root/task1", "a"));
+      mailbox.enqueue(mailboxItem("/root/task2", "b"));
+      mailbox.enqueue(mailboxItem("/root/task1", "c"));
 
       const pending = mailbox.pendingFor("/root/task1");
       expect(pending).toHaveLength(2);
-      expect(pending.map((i) => i.message)).toEqual(["a", "c"]);
+      expect(pending.map((i) => i.content)).toEqual(["a", "c"]);
     });
 
     it("respects afterSeq filter", () => {
-      const item1 = mailbox.enqueue({ toAgentPath: "/root/task1", fromAgentPath: "/root", message: "a" });
-      mailbox.enqueue({ toAgentPath: "/root/task1", fromAgentPath: "/root", message: "b" });
+      const item1 = mailbox.enqueue(mailboxItem("/root/task1", "a"));
+      mailbox.enqueue(mailboxItem("/root/task1", "b"));
 
       const pending = mailbox.pendingFor("/root/task1", item1.seq);
       expect(pending).toHaveLength(1);
-      expect(pending[0].message).toBe("b");
+      expect(pending[0].content).toBe("b");
     });
 
     it("returns empty for non-matching path", () => {
-      mailbox.enqueue({ toAgentPath: "/root/task1", fromAgentPath: "/root", message: "a" });
+      mailbox.enqueue(mailboxItem("/root/task1", "a"));
       expect(mailbox.pendingFor("/root/task2")).toEqual([]);
     });
   });
@@ -172,7 +180,7 @@ describe("Mailbox", () => {
 
   describe("allItems", () => {
     it("returns copy of all items", () => {
-      mailbox.enqueue({ toAgentPath: "/root/task1", fromAgentPath: "/root", message: "a" });
+      mailbox.enqueue(mailboxItem("/root/task1", "a"));
       const items = mailbox.allItems();
       expect(items).toHaveLength(1);
       items.push({} as any);
@@ -182,7 +190,7 @@ describe("Mailbox", () => {
 
   describe("waitForUpdate", () => {
     it("returns immediately if there are pending items", async () => {
-      mailbox.enqueue({ toAgentPath: "/root/task1", fromAgentPath: "/root", message: "hello" });
+      mailbox.enqueue(mailboxItem("/root/task1", "hello"));
       const result = await mailbox.waitForUpdate("/root/task1", 0, 500);
       expect(result.mailbox).toHaveLength(1);
     });
@@ -209,7 +217,7 @@ describe("Mailbox", () => {
 
   describe("clear", () => {
     it("clears all items and events", () => {
-      mailbox.enqueue({ toAgentPath: "/root/task1", fromAgentPath: "/root", message: "a" });
+      mailbox.enqueue(mailboxItem("/root/task1", "a"));
       mailbox.appendEvent({
         type: "agent_status_changed",
         agentId: "a1",
@@ -237,7 +245,7 @@ describe("Mailbox", () => {
     it("prunes items when exceeding MAX_RETAINED_RECORDS", () => {
       // Enqueue many items
       for (let i = 0; i < 10_100; i++) {
-        mailbox.enqueue({ toAgentPath: "/root/task1", fromAgentPath: "/root", message: `msg ${i}` });
+        mailbox.enqueue(mailboxItem("/root/task1", `msg ${i}`));
       }
       const items = mailbox.allItems();
       expect(items.length).toBeLessThanOrEqual(10_000);

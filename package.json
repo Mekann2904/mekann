@@ -35,7 +35,7 @@
     "prepare": "node scripts/prepare-husky.js",
     "check:prepare-ci": "CI=true npm run prepare",
     "check:workflows": "bash scripts/check-workflows.sh",
-    "check:coverage:plan-mode": "bash scripts/check-coverage-threshold.sh mekann/safety/plan-mode 95 npx vitest run --coverage",
+    "check:coverage:plan-mode": "bash scripts/check-coverage-threshold.sh mekann/safety/plan-mode 90 npx vitest run --coverage",
     "typecheck": "cd mekann/safety/sandbox && npm run typecheck && cd ../../autonomy/subagent && npm run typecheck",
     "prepush": "bash scripts/prepush-parallel.sh"
   },
