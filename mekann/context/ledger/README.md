@@ -56,6 +56,9 @@ Use `search_tool_outputs` for raw log/output snippets stored by output-gate.
 | `/context-ledger list` | List recent events (newest 20) |
 | `/context-ledger stats` | Aggregate stats by kind and priority |
 | `/context-ledger snapshot` | Build XML session snapshot from events |
+| `/context-ledger snapshot --max-bytes N` | Build snapshot with byte budget (min 256) |
+| `/context-ledger snapshot --write` | Save snapshot to `.pi/mekann-context/snapshots/` |
+| `/context-ledger snapshot --write --max-bytes 4096` | Save budgeted snapshot |
 | `/context-ledger clear` | Delete all events (with confirmation) |
 
 ## Design
