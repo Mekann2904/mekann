@@ -255,6 +255,21 @@ describe("context hook", () => {
 		expect(result.messages[0].content[0].text).toBe("hello");
 		expect(result.messages[1].content[0].text).toBe("no plan here");
 	});
+
+	it("string content の古い proposed_plan も compact する", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		const messages = [
+			{ role: "assistant", content: "<proposed_plan>old string plan</proposed_plan>" },
+			{ role: "assistant", content: "<proposed_plan>latest string plan</proposed_plan>" },
+		];
+
+		const result = await mock._hooks.context({ messages });
+		expect(result.messages[0].content).toContain("[omitted: superseded plan]");
+		expect(result.messages[1].content).toContain("latest string plan");
+	});
 });
 
 // ─── agent_end hook ────────────────────────────────────────────────
@@ -339,6 +354,19 @@ describe("prompt provider", () => {
 		const plan = fragments.find((f) => f.kind === "implementation_plan")!;
 		expect(plan.stability).toBe("dynamic");
 		expect(plan.content).toContain("My plan");
+		expect((await collectPromptFragments({ cwd: "/tmp/project" })).some((f) => f.kind === "implementation_plan")).toBe(false);
+	});
+
+	it("dynamic-tail-sent event clears queued implementationPlan", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+		await mock._commands["plan"].handler("", createMockCtx());
+		await mock._hooks.agent_end({ messages: [{ role: "assistant", content: [{ type: "text", text: "<proposed_plan>Queued plan</proposed_plan>" }] }] }, createMockCtx());
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		mock._hooks["event:cache-friendly-prompt:dynamic-tail-sent"]({ fragmentIds: ["plan-mode:implementation-plan"] });
+
 		expect((await collectPromptFragments({ cwd: "/tmp/project" })).some((f) => f.kind === "implementation_plan")).toBe(false);
 	});
 
