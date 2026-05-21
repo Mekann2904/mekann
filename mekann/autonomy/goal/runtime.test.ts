@@ -774,4 +774,58 @@ describe("GoalRuntime", () => {
     const goal = store.getGoal();
     expect(goal!.status).toBe("paused");
   });
+
+  // ─── Goal event callback ──────────────────────────────────────
+
+  it("invokes goalEventCallback on budget exhaustion", () => {
+    const persistFn = vi.fn();
+    const store = new GoalStore(persistFn);
+    const pi = createMockPi() as any;
+    const onGoalEvent = vi.fn();
+    const runtime = new GoalRuntime(store, pi, onGoalEvent);
+    const ctx = createMockCtx();
+
+    const goal = store.createGoal("test-thread-1", "Build feature", 1000);
+    runtime.onSessionStart(ctx);
+    runtime.onAgentStart();
+    runtime.onTurnStart({ turnId: "t1" }, ctx);
+    runtime.onMessageEnd(
+      {
+        message: {
+          role: "assistant",
+          timestamp: 12345,
+          usage: { input: 800, output: 500, cacheRead: 0 },
+        },
+      },
+      ctx,
+    );
+
+    expect(onGoalEvent).toHaveBeenCalledWith("budget_exhausted", expect.objectContaining({
+      status: "budget_limited",
+    }));
+  });
+
+  it("invokes goalEventCallback on continuation limit", () => {
+    const persistFn = vi.fn();
+    const store = new GoalStore(persistFn);
+    const pi = createMockPi() as any;
+    const onGoalEvent = vi.fn();
+    const runtime = new GoalRuntime(store, pi, onGoalEvent);
+    const ctx = createMockCtx();
+
+    const goal = store.createGoal("test-thread-1", "Build feature");
+    store.updateGoal({ continuation_count: 5, max_continuations: 5 }, goal.goal_id, "runtime");
+    runtime.onSessionStart(ctx);
+    runtime.onAgentStart();
+    // End the turn so active_turn_marker is false
+    runtime.onTurnEnd({ turnIndex: 0 }, ctx);
+    runtime.onAgentEnd({ messages: [] } as any, ctx);
+
+    // Trigger idle continuation check
+    runtime.maybeContinueIfIdle(ctx);
+
+    expect(onGoalEvent).toHaveBeenCalledWith("continuation_limit", expect.objectContaining({
+      status: "paused",
+    }));
+  });
 });

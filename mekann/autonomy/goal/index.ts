@@ -144,7 +144,17 @@ export default function goalExtension(pi: ExtensionAPI): void {
       }
     }
     store = GoalStore.fromEntries(goalEntries, persist);
-    runtime = new GoalRuntime(store, pi);
+    runtime = new GoalRuntime(store, pi, (action, goal) => {
+      const cwd = (ctx as any)?.cwd ?? process.cwd();
+      recordGoalEvent({
+        action: action as GoalAction,
+        goal,
+        cwd,
+        sessionId: (ctx as any)?.sessionId,
+        turnId: (ctx as any)?.turnId,
+        branchId: (ctx as any)?.branchId,
+      }).catch(() => {});
+    });
     runtime.onSessionStart(ctx);
     updateWidget(ctx);
   });

@@ -13,9 +13,12 @@ import { continuationPrompt, budgetLimitPrompt, objectiveUpdatedPrompt } from ".
 // GoalRuntime
 // ---------------------------------------------------------------------------
 
+export type GoalEventCallback = (action: string, goal: Goal) => void;
+
 export class GoalRuntime {
   private store: GoalStore;
   private pi: ExtensionAPI;
+  private readonly goalEventCallback?: GoalEventCallback;
 
   // ─── Runtime state ────────────────────────────────────────────
 
@@ -36,9 +39,10 @@ export class GoalRuntime {
   /** Whether budget steering is suppressed for the current turn. */
   private suppress_budget_steering = false;
 
-  constructor(store: GoalStore, pi: ExtensionAPI) {
+  constructor(store: GoalStore, pi: ExtensionAPI, goalEventCallback?: GoalEventCallback) {
     this.store = store;
     this.pi = pi;
+    this.goalEventCallback = goalEventCallback;
   }
 
   // ─── Accessors ────────────────────────────────────────────────
@@ -234,6 +238,7 @@ export class GoalRuntime {
           "runtime",
         );
         this.active_goal_id = null;
+        this.goalEventCallback?.("continuation_limit", updated);
         this.pi.sendUserMessage(
           `Goal automatically paused after ${goal.max_continuations} continuations. Use /goal resume to continue or /goal edit to adjust the objective.`,
           { deliverAs: "followUp" },
@@ -316,6 +321,8 @@ export class GoalRuntime {
     if (this.suppress_budget_steering) return;
     if (this.budget_limit_reported_goal_id === goal.goal_id) return;
     this.budget_limit_reported_goal_id = goal.goal_id;
+
+    this.goalEventCallback?.("budget_exhausted", goal);
 
     this.pi.sendUserMessage(
       budgetLimitPrompt(goal),
