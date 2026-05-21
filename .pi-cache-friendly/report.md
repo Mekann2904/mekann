@@ -1,16 +1,16 @@
 # cache-friendly-prompt レポート
 
-最終更新: 2026-05-21T09:41:42.982Z
+最終更新: 2026-05-21T10:02:16.108Z
 
 ## サマリー
 
-- 総リクエスト数: 1101
-- 最新 provider/model: openai-codex/gpt-5.5
-- 最新 stablePrefixHash: `6ac4c0d8`
-- 最新 stable prefix: 11491 chars
-- 最新 total prompt: 58519 chars
-- 直近同一 hash 継続: 5 requests
-- stablePrefixHash 変化回数: 82
+- 総リクエスト数: 1131
+- 最新 provider/model: zai/glm-5.1
+- 最新 stablePrefixHash: `3ad70518`
+- 最新 stable prefix: 12940 chars
+- 最新 total prompt: 42912 chars
+- 直近同一 hash 継続: 24 requests
+- stablePrefixHash 変化回数: 83
 - warning 件数: 48
 
 ## 用語
@@ -54,13 +54,14 @@
 
 | provider/model | requests | unique hashes | latest hash | stable chars | total chars |
 |---|---:|---:|---|---:|---:|
-| openai-codex/gpt-5.5 | 750 | 16 | `6ac4c0d8` | 11491 | 58519 |
-| zai/glm-5.1 | 351 | 8 | `6ac4c0d8` | 11491 | 387808 |
+| openai-codex/gpt-5.5 | 756 | 16 | `6ac4c0d8` | 11491 | 62842 |
+| zai/glm-5.1 | 375 | 9 | `3ad70518` | 12940 | 42912 |
 
 ## 最近の hash 変化
 
 | timestamp | provider/model | hash | stable chars | total chars |
 |---|---|---|---:|---:|
+| 2026-05-21T09:47:31.408Z | zai/glm-5.1 | `6ac4c0d8` → `3ad70518` | 12940 | 13100 |
 | 2026-05-21T09:15:01.302Z | openai-codex/gpt-5.5 | `8812ecae` → `6ac4c0d8` | 11491 | 34784 |
 | 2026-05-21T09:02:42.297Z | openai-codex/gpt-5.5 | `df0e77b3` → `8812ecae` | 4437 | 21653 |
 | 2026-05-21T09:01:16.755Z | openai-codex/gpt-5.5 | `6ac4c0d8` → `df0e77b3` | 5437 | 20644 |
@@ -80,4 +81,3 @@
 | 2026-05-21T06:11:12.264Z | openai-codex/gpt-5.5 | `87244eaa` → `1b175f0c` | 4963 | 5349 |
 | 2026-05-21T05:18:49.561Z | openai-codex/gpt-5.5 | `be27db66` → `87244eaa` | 11017 | 11052 |
 | 2026-05-21T05:02:00.675Z | openai-codex/gpt-5.5 | `844fbfb3` → `be27db66` | 11530 | 52572 |
-| 2026-05-21T05:01:38.098Z | openai-codex/gpt-5.5 | `be27db66` → `844fbfb3` | 6342 | 7155 |

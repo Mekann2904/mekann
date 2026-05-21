@@ -1,31 +1,31 @@
 {
-  "generatedAt": "2026-05-21T09:41:42.982Z",
-  "totalRequests": 1101,
+  "generatedAt": "2026-05-21T10:02:16.108Z",
+  "totalRequests": 1131,
   "latest": {
-    "timestamp": "2026-05-21T09:41:42.975Z",
-    "provider": "openai-codex",
-    "model": "gpt-5.5",
-    "stablePrefixHash": "6ac4c0d86feb13aee52da7da5c690d15c2345e01faacfaa9bc51f6f18263368e",
-    "stablePrefixChars": 11491,
-    "totalPromptChars": 58519
+    "timestamp": "2026-05-21T10:02:16.101Z",
+    "provider": "zai",
+    "model": "glm-5.1",
+    "stablePrefixHash": "3ad705184e135f344ede95100af2eb85499c0a9dbf70d34c131da17f2091ac8d",
+    "stablePrefixChars": 12940,
+    "totalPromptChars": 42912
   },
-  "recentSameHashStreak": 5,
-  "stablePrefixHashChanges": 82,
+  "recentSameHashStreak": 24,
+  "stablePrefixHashChanges": 83,
   "warningCount": 48,
   "providers": {
     "zai/glm-5.1": {
-      "requests": 351,
-      "uniqueStablePrefixHashes": 8,
-      "latestStablePrefixHash": "6ac4c0d86feb13aee52da7da5c690d15c2345e01faacfaa9bc51f6f18263368e",
-      "latestStablePrefixChars": 11491,
-      "latestTotalPromptChars": 387808
+      "requests": 375,
+      "uniqueStablePrefixHashes": 9,
+      "latestStablePrefixHash": "3ad705184e135f344ede95100af2eb85499c0a9dbf70d34c131da17f2091ac8d",
+      "latestStablePrefixChars": 12940,
+      "latestTotalPromptChars": 42912
     },
     "openai-codex/gpt-5.5": {
-      "requests": 750,
+      "requests": 756,
       "uniqueStablePrefixHashes": 16,
       "latestStablePrefixHash": "6ac4c0d86feb13aee52da7da5c690d15c2345e01faacfaa9bc51f6f18263368e",
       "latestStablePrefixChars": 11491,
-      "latestTotalPromptChars": 58519
+      "latestTotalPromptChars": 62842
     }
   }
 }
