@@ -4,5 +4,10 @@ export default defineConfig({
 	test: {
 		environment: "node",
 		globals: false,
+		coverage: {
+			provider: "v8",
+			reporter: ["json-summary"],
+			reportsDirectory: "./coverage",
+		},
 	},
 });
