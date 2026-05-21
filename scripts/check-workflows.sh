@@ -10,3 +10,10 @@ fi
 
 wrkflw validate --exit-code .github/workflows
 wrkflw list --jobs >/dev/null
+
+if grep -R "run: npm ci$" .github/workflows >/dev/null; then
+  echo "Bare 'npm ci' in workflow subdirectories can skip workspace devDependencies." >&2
+  echo "Use 'npm ci --workspaces=false' for package-local installs." >&2
+  grep -R -n "run: npm ci$" .github/workflows >&2
+  exit 1
+fi
