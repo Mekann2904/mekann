@@ -173,6 +173,49 @@ function renderCacheabilitySvg(rows: ParsedLog[]): string {
 `;
 }
 
+function renderFragmentsSvg(rows: ParsedLog[]): string {
+  const latest = [...rows].reverse().find((r) => (r.fragmentHashes ?? []).some((f) => typeof f.chars === "number"));
+  const items = new Map<string, { stable: number; semi_stable: number; dynamic: number }>();
+  for (const f of latest?.fragmentHashes ?? []) {
+    const cur = items.get(f.source) ?? { stable: 0, semi_stable: 0, dynamic: 0 };
+    cur[f.stability] += f.chars ?? 0;
+    items.set(f.source, cur);
+  }
+  const rowsData = [...items.entries()].sort((a, b) => (b[1].stable + b[1].semi_stable + b[1].dynamic) - (a[1].stable + a[1].semi_stable + a[1].dynamic));
+  const max = Math.max(1, ...rowsData.map(([, v]) => v.stable + v.semi_stable + v.dynamic));
+  const barX = 190;
+  const barW = SVG_WIDTH - barX - 36;
+  const rowH = 32;
+  const height = Math.max(220, 86 + rowsData.length * rowH);
+  const bars = rowsData.map(([source, v], i) => {
+    const y = 72 + i * rowH;
+    const stableW = (v.stable / max) * barW;
+    const semiW = (v.semi_stable / max) * barW;
+    const dynW = (v.dynamic / max) * barW;
+    const total = v.stable + v.semi_stable + v.dynamic;
+    return `<text x="20" y="${y + 15}" fill="#cbd5e1" font-family="sans-serif" font-size="12">${escapeHtml(source)}</text>
+  <rect x="${barX}" y="${y}" width="${barW}" height="18" fill="#1e293b" rx="3"/>
+  <rect x="${barX}" y="${y}" width="${stableW.toFixed(1)}" height="18" fill="#22c55e" rx="3"/>
+  <rect x="${(barX + stableW).toFixed(1)}" y="${y}" width="${semiW.toFixed(1)}" height="18" fill="#38bdf8"/>
+  <rect x="${(barX + stableW + semiW).toFixed(1)}" y="${y}" width="${dynW.toFixed(1)}" height="18" fill="#a78bfa"/>
+  <text x="${barX + barW - 4}" y="${y + 14}" fill="#e5e7eb" font-family="sans-serif" font-size="11" text-anchor="end">${total} chars</text>`;
+  }).join("\n  ");
+  const empty = rowsData.length === 0 ? `<text x="20" y="90" fill="#cbd5e1" font-family="sans-serif" font-size="13">fragment chars は新しいログから記録されます。次回リクエスト後に表示されます。</text>` : "";
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${SVG_WIDTH}" height="${height}" viewBox="0 0 ${SVG_WIDTH} ${height}">
+  <rect width="100%" height="100%" fill="#0f172a"/>
+  <text x="20" y="26" fill="#e5e7eb" font-family="sans-serif" font-size="15">拡張機能ごとのコンテキスト注入量</text>
+  <text x="20" y="48" fill="#94a3b8" font-family="sans-serif" font-size="12">latest: ${latest?.timestamp ?? "no fragment size data"}</text>
+  <rect x="610" y="18" width="300" height="34" rx="6" fill="#111827" stroke="#334155"/>
+  <rect x="626" y="30" width="18" height="8" fill="#22c55e"/><text x="650" y="38" fill="#cbd5e1" font-family="sans-serif" font-size="11">stable</text>
+  <rect x="704" y="30" width="18" height="8" fill="#38bdf8"/><text x="728" y="38" fill="#cbd5e1" font-family="sans-serif" font-size="11">semi-stable</text>
+  <rect x="820" y="30" width="18" height="8" fill="#a78bfa"/><text x="844" y="38" fill="#cbd5e1" font-family="sans-serif" font-size="11">dynamic</text>
+  ${empty}
+  ${bars}
+</svg>
+`;
+}
+
 function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string {
   const latest = summary.latest;
   const providerRows = Object.entries(summary.providers).sort((a, b) => b[1].requests - a[1].requests).map(([k, v]) => `| ${escapeHtml(k)} | ${v.requests} | ${v.uniqueStablePrefixHashes} | \`${shortHash(v.latestStablePrefixHash)}\` | ${v.latestStablePrefixChars} | ${v.latestTotalPromptChars} |`).join("\n");
@@ -217,6 +260,15 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
 - stable prefix の大きさは右上の \`stable prefix\` / \`stable tokens\` に数値で表示します
 - total prompt の大きさは、この図では考慮しません
 
+## 拡張機能ごとのコンテキスト注入量
+
+![cache-friendly-prompt fragments](./fragments.svg)
+
+- 緑: stable。キャッシュ候補の先頭部分に入る拡張コンテキストです
+- 水色: semi-stable。比較的変化しにくいセッション文脈です
+- 紫: dynamic。毎ターン変わりやすく、末尾側に追加される文脈です
+- 文字数は fragment 本文ベースです。古いログにはサイズ情報がないため、新しいリクエスト以降に表示されます
+
 ## 推移
 
 ![cache-friendly-prompt trend](./trend.svg)
@@ -245,6 +297,7 @@ export async function generateCacheFriendlyReport(dir: string): Promise<void> {
       fs.writeFile(path.join(dir, "summary.json"), JSON.stringify(summary, null, 2) + "\n", "utf8"),
       fs.writeFile(path.join(dir, "trend.svg"), renderSvg(rows), "utf8"),
       fs.writeFile(path.join(dir, "cacheability-score.svg"), renderCacheabilitySvg(rows), "utf8"),
+      fs.writeFile(path.join(dir, "fragments.svg"), renderFragmentsSvg(rows), "utf8"),
       fs.writeFile(path.join(dir, "report.md"), renderReport(summary, rows), "utf8"),
     ]);
   } catch { /* report generation must never break agent execution */ }

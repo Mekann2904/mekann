@@ -1,15 +1,15 @@
 # cache-friendly-prompt レポート
 
-最終更新: 2026-05-21T05:48:23.253Z
+最終更新: 2026-05-21T06:01:05.123Z
 
 ## サマリー
 
-- 総リクエスト数: 733
+- 総リクエスト数: 746
 - 最新 provider/model: openai-codex/gpt-5.5
 - 最新 stablePrefixHash: `87244eaa`
 - 最新 stable prefix: 11017 chars
-- 最新 total prompt: 37286 chars
-- 直近同一 hash 継続: 92 requests
+- 最新 total prompt: 41299 chars
+- 直近同一 hash 継続: 105 requests
 - stablePrefixHash 変化回数: 65
 - warning 件数: 40
 
@@ -37,6 +37,15 @@
 - stable prefix の大きさは右上の `stable prefix` / `stable tokens` に数値で表示します
 - total prompt の大きさは、この図では考慮しません
 
+## 拡張機能ごとのコンテキスト注入量
+
+![cache-friendly-prompt fragments](./fragments.svg)
+
+- 緑: stable。キャッシュ候補の先頭部分に入る拡張コンテキストです
+- 水色: semi-stable。比較的変化しにくいセッション文脈です
+- 紫: dynamic。毎ターン変わりやすく、末尾側に追加される文脈です
+- 文字数は fragment 本文ベースです。古いログにはサイズ情報がないため、新しいリクエスト以降に表示されます
+
 ## 推移
 
 ![cache-friendly-prompt trend](./trend.svg)
@@ -45,7 +54,7 @@
 
 | provider/model | requests | unique hashes | latest hash | stable chars | total chars |
 |---|---:|---:|---|---:|---:|
-| openai-codex/gpt-5.5 | 597 | 11 | `87244eaa` | 11017 | 37286 |
+| openai-codex/gpt-5.5 | 610 | 11 | `87244eaa` | 11017 | 41299 |
 | zai/glm-5.1 | 136 | 6 | `aff4edbb` | 12212 | 219726 |
 
 ## 最近の hash 変化

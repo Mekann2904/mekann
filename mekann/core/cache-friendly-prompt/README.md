@@ -16,6 +16,7 @@
 | `summary.json` | 総リクエスト数、直近同一 hash 継続数、provider/model 別集計 |
 | `trend.svg` | `stablePrefixChars` と `totalPromptChars` の推移グラフ |
 | `cacheability-score.svg` | 前回と同じ `stablePrefixHash` なら 100%、変化直後は 0% の cache reuse score グラフ |
+| `fragments.svg` | 拡張機能ごとの stable / semi-stable / dynamic コンテキスト注入量グラフ |
 | `report.md` | Zed などのエディタで開きやすい Markdown レポート |
 
 `report.md` を開くと、安定プレフィックスが維持されているか、総プロンプト量がどのように増えているか、hash 変化や warning がいつ発生したかを確認できます。
