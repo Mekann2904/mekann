@@ -191,6 +191,17 @@ const SYSTEM_PROMPT_EXTRA = [
 	"- 1ターン1実験を目安に、日本語で簡潔に報告する。ideas は必要時のみ autoresearch.ideas.md 等へ保存し、全候補が尽きたら " + COMPLETE_MARKER + " を返して停止する。",
 ].join("\n");
 
+const SYSTEM_PROMPT_INACTIVE = [
+	"",
+	"## autoresearch モード(OFF)",
+	"",
+	"- autoresearch は現在 OFF。",
+	"- ユーザーが明示的に `/autoresearch on` を実行するまで、autoresearch の実験ループ・候補評価・継続タスクを開始/再開しない。",
+	"- 現在のユーザー依頼を通常の依頼として扱う。修正・調査・質問・レビューなど、依頼内容に従って対応する。",
+	"- autoresearch_run / autoresearch_log / autoresearch_init / autoresearch_plan / autoresearch_run_contract は使わない。",
+	"- autoresearch.md / .autoresearch/ は、ユーザーが明示した場合、または現在の依頼を理解するために必要な場合だけ参照する。",
+].join("\n");
+
 // ---------------------------------------------------------------------------
 // Extension factory
 // ---------------------------------------------------------------------------
@@ -274,7 +285,20 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	registerPromptProvider({
 		id: "autoresearch",
 		getFragments() {
-			if (!store.active) return [];
+			if (!store.active) {
+				return [{
+					id: "autoresearch:inactive-policy",
+					source: "autoresearch",
+					kind: "autoresearch_inactive_policy",
+					stability: "stable",
+					scope: "mode",
+					priority: 400,
+					version: "v1",
+					cacheIntent: "prefer_cache",
+					metadata: { volatileTermsArePolicyReferences: true },
+					content: SYSTEM_PROMPT_INACTIVE,
+				}];
+			}
 			return [{
 				id: "autoresearch:policy",
 				source: "autoresearch",

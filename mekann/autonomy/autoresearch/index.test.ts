@@ -291,6 +291,10 @@ describe("autoresearchExtension", () => {
 				expect.stringContaining("無効"),
 				"info",
 			);
+			expect(ctx.ui.notify).toHaveBeenCalledWith(
+				expect.stringContaining("自動再開しません"),
+				"info",
+			);
 		});
 	});
 
@@ -338,25 +342,32 @@ describe("autoresearchExtension", () => {
 	// ── prompt provider ─────────────────────────────────────────
 
 	describe("prompt provider", () => {
-		it("returns no fragments when inactive", async () => {
-			expect(await collectPromptFragments({ cwd: ctx.cwd })).toEqual([]);
+		it("returns inactive guard prompt when inactive", async () => {
+			const fragments = await collectPromptFragments({ cwd: ctx.cwd });
+			expect(fragments).toHaveLength(1);
+			expect(fragments[0]).toMatchObject({ kind: "autoresearch_inactive_policy", stability: "stable", scope: "mode", priority: 400 });
+			expect(fragments[0].content).toContain("autoresearch モード(OFF)");
+			expect(fragments[0].content).toContain("/autoresearch on");
+			expect(fragments[0].content).toContain("通常の依頼として扱う");
+			expect(fragments[0].content).toContain("autoresearch_run");
 		});
 
-		it("returns stable Japanese instructions when active", async () => {
+		it("returns active prompt when active", async () => {
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			await cmdHandler("on", createMockCtx());
 			const fragments = await collectPromptFragments({ cwd: ctx.cwd });
 			expect(fragments).toHaveLength(1);
 			expect(fragments[0]).toMatchObject({ kind: "autoresearch_policy", stability: "stable", scope: "mode", priority: 400 });
-			expect(fragments[0].content).toContain("autoresearch モード");
-			expect(fragments[0].content).toContain("autoresearch_init");
-			expect(fragments[0].content).toContain("autoresearch_run");
-			expect(fragments[0].content).toContain("autoresearch_log");
-			expect(fragments[0].content).toContain("autoresearch_evaluate_query");
-			expect(fragments[0].content).toContain("ready_for_run");
-			expect(fragments[0].content).toContain("日本語");
-			expect(fragments[0].content).toContain("自動で git commit / revert");
-			expect(fragments[0].content).toContain("autoresearch.ideas.md");
+			expect(fragments[0].content).toContain("autoresearch モード(アクティブ)");
+		});
+
+		it("switches to inactive prompt after off", async () => {
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			await cmdHandler("on", createMockCtx());
+			await cmdHandler("off", createMockCtx());
+			const fragments = await collectPromptFragments({ cwd: ctx.cwd });
+			expect(fragments).toHaveLength(1);
+			expect(fragments[0].content).toContain("autoresearch モード(OFF)");
 		});
 	});
 

@@ -1,17 +1,17 @@
 # cache-friendly-prompt レポート
 
-最終更新: 2026-05-21T06:28:02.583Z
+最終更新: 2026-05-21T06:40:44.844Z
 
 ## サマリー
 
-- 総リクエスト数: 777
+- 総リクエスト数: 811
 - 最新 provider/model: zai/glm-5.1
 - 最新 stablePrefixHash: `87244eaa`
 - 最新 stable prefix: 11017 chars
-- 最新 total prompt: 110787 chars
-- 直近同一 hash 継続: 15 requests
-- stablePrefixHash 変化回数: 68
-- warning 件数: 42
+- 最新 total prompt: 192476 chars
+- 直近同一 hash 継続: 30 requests
+- stablePrefixHash 変化回数: 71
+- warning 件数: 43
 
 ## 用語
 
@@ -54,13 +54,16 @@
 
 | provider/model | requests | unique hashes | latest hash | stable chars | total chars |
 |---|---:|---:|---|---:|---:|
-| openai-codex/gpt-5.5 | 626 | 13 | `a2b8c6a3` | 3963 | 8887 |
-| zai/glm-5.1 | 151 | 7 | `87244eaa` | 11017 | 110787 |
+| openai-codex/gpt-5.5 | 630 | 13 | `a2b8c6a3` | 3963 | 16534 |
+| zai/glm-5.1 | 181 | 7 | `87244eaa` | 11017 | 192476 |
 
 ## 最近の hash 変化
 
 | timestamp | provider/model | hash | stable chars | total chars |
 |---|---|---|---:|---:|
+| 2026-05-21T06:33:03.087Z | zai/glm-5.1 | `a2b8c6a3` → `87244eaa` | 11017 | 169957 |
+| 2026-05-21T06:32:40.993Z | openai-codex/gpt-5.5 | `1b175f0c` → `a2b8c6a3` | 3963 | 16534 |
+| 2026-05-21T06:30:17.005Z | openai-codex/gpt-5.5 | `87244eaa` → `1b175f0c` | 4963 | 14312 |
 | 2026-05-21T06:22:29.275Z | zai/glm-5.1 | `a2b8c6a3` → `87244eaa` | 11017 | 78722 |
 | 2026-05-21T06:19:25.853Z | openai-codex/gpt-5.5 | `1b175f0c` → `a2b8c6a3` | 3963 | 9091 |
 | 2026-05-21T06:11:12.264Z | openai-codex/gpt-5.5 | `87244eaa` → `1b175f0c` | 4963 | 5349 |
@@ -78,6 +81,3 @@
 | 2026-05-20T16:05:05.048Z | openai-codex/gpt-5.5 | `aff4edbb` → `be27db66` | 11530 | 18932 |
 | 2026-05-20T15:22:02.392Z | zai/glm-5.1 | `844fbfb3` → `aff4edbb` | 12212 | 62295 |
 | 2026-05-20T15:20:10.487Z | zai/glm-5.1 | `aff4edbb` → `844fbfb3` | 6342 | 41561 |
-| 2026-05-20T15:20:06.259Z | zai/glm-5.1 | `844fbfb3` → `aff4edbb` | 12212 | 61548 |
-| 2026-05-20T15:20:00.690Z | zai/glm-5.1 | `aff4edbb` → `844fbfb3` | 6342 | 7126 |
-| 2026-05-20T15:16:34.070Z | zai/glm-5.1 | `844fbfb3` → `aff4edbb` | 12212 | 31015 |

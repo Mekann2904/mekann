@@ -47,7 +47,7 @@ export async function handleCommand(
 		case "off": {
 			store.active = false; store.autoLoop = false; store.loopPromptQueued = false;
 			store.updateWidget(ctx);
-			ctx.ui.notify("autoresearch モードを無効にしました", "info");
+			ctx.ui.notify("autoresearch モードを無効にしました。明示的に /autoresearch on するまで自動再開しません。", "info");
 			break;
 		}
 		case "clear": {
