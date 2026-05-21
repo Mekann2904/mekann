@@ -130,9 +130,11 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 				return;
 			}
 
-			if (arg === "snapshot") {
+			if (arg === "snapshot" || arg.startsWith("snapshot")) {
+				const maxBytesMatch = arg.match(/--max-bytes\s+(\d+)/);
+				const maxBytes = maxBytesMatch ? parseInt(maxBytesMatch[1], 10) : undefined;
 				const events = await readEvents(cwd);
-				const xml = buildSnapshot(events);
+				const xml = buildSnapshot(events, { maxBytes });
 				ctx?.ui?.notify?.(xml, "info");
 				return;
 			}

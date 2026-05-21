@@ -16,6 +16,7 @@ export interface SnapshotOptions {
 	maxEvents?: number;
 	maxTitleLen?: number;
 	maxSummaryLen?: number;
+	maxBytes?: number;
 	kinds?: MekannContextEventKind[];
 }
 
@@ -60,6 +61,7 @@ export function buildSnapshot(events: MekannContextEvent[], options: SnapshotOpt
 	const maxEvents = options.maxEvents ?? 50;
 	const maxTitleLen = options.maxTitleLen ?? 120;
 	const maxSummaryLen = options.maxSummaryLen ?? 300;
+	const maxBytes = options.maxBytes ?? 0; // 0 = unlimited
 
 	let filtered = options.kinds
 		? events.filter((e) => options.kinds!.includes(e.kind))
@@ -79,11 +81,21 @@ export function buildSnapshot(events: MekannContextEvent[], options: SnapshotOpt
 		return "<mekann_session_context />\n";
 	}
 
-	// Group by kind
+	// Build full snapshot first, then trim if maxBytes is set
+	let xml = buildSnapshotXml(filtered, maxTitleLen, maxSummaryLen);
+
+	if (maxBytes > 0 && Buffer.byteLength(xml, "utf8") > maxBytes) {
+		xml = trimSnapshotToBudget(filtered, maxTitleLen, maxSummaryLen, maxBytes);
+	}
+
+	return xml;
+}
+
+function buildSnapshotXml(events: MekannContextEvent[], maxTitleLen: number, maxSummaryLen: number): string {
 	const kindOrder: MekannContextEventKind[] = ["error", "task", "plan", "user_decision", "file_change", "tool_result", "subagent"];
 	const sections: SnapshotSection[] = [];
 	for (const kind of kindOrder) {
-		const kindEvents = filtered.filter((e) => e.kind === kind);
+		const kindEvents = events.filter((e) => e.kind === kind);
 		if (kindEvents.length > 0) {
 			sections.push({ label: `${kind}_events`, events: kindEvents });
 		}
@@ -95,4 +107,34 @@ export function buildSnapshot(events: MekannContextEvent[], options: SnapshotOpt
 	}).join("\n");
 
 	return `<mekann_session_context>\n${sectionXml}\n</mekann_session_context>\n`;
+}
+
+function trimSnapshotToBudget(
+	events: MekannContextEvent[],
+	maxTitleLen: number,
+	maxSummaryLen: number,
+	maxBytes: number,
+): string {
+	// Remove events from lowest priority / oldest first until within budget
+	// Dropping order: P4 → P3 → P2 (tool_result/subagent before task/plan/error)
+	const dropOrder: MekannContextEventKind[] = ["subagent", "tool_result", "file_change", "user_decision", "plan", "task", "error"];
+
+	const remaining = [...events];
+	for (const dropKind of dropOrder) {
+		// Drop from highest priority first within each kind
+		for (let pri = 4; pri >= 0; pri--) {
+			for (let i = remaining.length - 1; i >= 0; i--) {
+				if (remaining[i].kind === dropKind && remaining[i].priority === pri) {
+					remaining.splice(i, 1);
+					const candidate = buildSnapshotXml(remaining, maxTitleLen, maxSummaryLen);
+					if (Buffer.byteLength(candidate, "utf8") <= maxBytes) {
+						return candidate;
+					}
+				}
+			}
+		}
+	}
+
+	// If still over budget, return whatever fits
+	return buildSnapshotXml(remaining, maxTitleLen, maxSummaryLen);
 }

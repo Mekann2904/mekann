@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import * as fsp from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { MekannContextEvent } from "./store.js";
+import { appendContextEvent } from "./store.js";
 import { buildSnapshot } from "./snapshot.js";
 
 function makeEvent(overrides: Partial<MekannContextEvent> & Pick<MekannContextEvent, "id" | "kind" | "priority" | "title" | "summary">): MekannContextEvent {
@@ -123,5 +127,51 @@ describe("snapshot builder", () => {
 		const before = events.map((e) => e.id);
 		buildSnapshot(events);
 		expect(events.map((e) => e.id)).toEqual(before);
+	});
+
+	it("respects maxBytes budget", () => {
+		const events = [
+			makeEvent({ id: "ctx_bgt_1", kind: "error", priority: 0, title: "Critical error", summary: "Something broke badly" }),
+			makeEvent({ id: "ctx_bgt_2", kind: "task", priority: 2, title: "Regular task", summary: "Normal work item" }),
+			makeEvent({ id: "ctx_bgt_3", kind: "subagent", priority: 4, title: "Subagent note", summary: "Minor info" }),
+		];
+		// Build with small budget — should drop subagent (P4) first
+		const xml = buildSnapshot(events, { maxBytes: 500 });
+		expect(xml).toContain("ctx_bgt_1"); // P0 error always kept
+		expect(xml).not.toContain("ctx_bgt_3"); // P4 subagent dropped first
+	});
+
+	it("drops low-priority events before high-priority within budget", () => {
+		const events = [
+			makeEvent({ id: "ctx_bp_1", kind: "error", priority: 0, title: "Critical", summary: "Must keep" }),
+			makeEvent({ id: "ctx_bp_2", kind: "task", priority: 2, title: "Medium", summary: "Should keep" }),
+			makeEvent({ id: "ctx_bp_3", kind: "task", priority: 4, title: "Info level", summary: "Drop me" }),
+		];
+		const xml = buildSnapshot(events, { maxBytes: 400 });
+		expect(xml).toContain("ctx_bp_1"); // P0 kept
+		expect(xml).not.toContain("ctx_bp_3"); // P4 dropped
+	});
+
+	it("maxBytes=0 means unlimited", () => {
+		const events = Array.from({ length: 20 }, (_, i) =>
+			makeEvent({ id: `ctx_unl_${i}`, kind: "task", priority: 2, title: `T${i}`, summary: `s${i}` })
+		);
+		const xml = buildSnapshot(events, { maxBytes: 0 });
+		expect(xml).toContain("ctx_unl_0");
+		expect(xml).toContain("ctx_unl_19");
+	});
+
+	it("snapshot command passes maxBytes from argument", async () => {
+		const { default: contextLedgerExtension } = await import("./index.js");
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		contextLedgerExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await fsp.mkdtemp(path.join(os.tmpdir(), "og-cmd-"));
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "T1", summary: "s", idGenerator: () => "ctx_cmd_1" });
+		const notify = vi.fn();
+		await cmdDef.handler("snapshot --max-bytes 200", { cwd, ui: { notify } });
+		expect(notify).toHaveBeenCalled();
+		const xml = notify.mock.calls[0][0];
+		expect(Buffer.byteLength(xml, "utf8")).toBeLessThanOrEqual(250); // some overhead
 	});
 });
