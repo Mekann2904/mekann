@@ -75,7 +75,20 @@ export interface SandboxPopProfileEvent { owner: string; token: string; }
 export const PLAN_MODE_STATUS_EVENT = "mekann:plan-mode:status";
 
 /** Payload for plan-mode status broadcast. */
-export interface PlanModeStatusEvent { mode: "main" | "plan"; }
+export interface PlanModeStatusEvent { mode: "main" | "plan" | "auto"; }
+
+// ─── Autoresearch mode notification ─────────────────────────────
+
+/** Event name for autoresearch → plan-mode mode notification. */
+export const MEKANN_AUTORESEARCH_MODE_EVENT = "mekann:autoresearch:mode";
+
+/** Payload for autoresearch mode notification. */
+export interface AutoresearchModeEvent {
+	/** true = autoresearch activated (mode should become "auto"), false = deactivated (mode should return to "main"). */
+	active: boolean;
+	/** Optional purpose text passed through from /autoresearch <purpose>. */
+	purpose?: string;
+}
 /**
  * Policy Core — Command Intent Classification.
  *

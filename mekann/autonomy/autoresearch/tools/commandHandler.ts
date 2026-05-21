@@ -8,6 +8,10 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { deleteContract } from "../contract.js";
 import { freshState } from "../state.js";
 import type { SessionStore } from "./sessionStore.js";
+import {
+	MEKANN_AUTORESEARCH_MODE_EVENT,
+	type AutoresearchModeEvent,
+} from "../../safety/policy-core/modes.js";
 
 /** Archive a root-level file into .autoresearch/archived/ with a timestamp suffix. */
 function archiveFile(cwd: string, filename: string, warnings: string[]): void {
@@ -41,13 +45,16 @@ export async function handleCommand(
 
 	switch (sub) {
 		case "on": {
-			activateAutoresearch(ctx, pi, store, parts.slice(1).join(" ").trim(), deps.mdFilePath);
+			const purpose = parts.slice(1).join(" ").trim();
+			activateAutoresearch(ctx, pi, store, purpose, deps.mdFilePath);
+			safeEmitMode(pi, true, purpose || undefined);
 			break;
 		}
 		case "off": {
 			store.active = false; store.autoLoop = false; store.loopPromptQueued = false;
 			store.updateWidget(ctx);
 			ctx.ui.notify("autoresearch モードを無効にしました。明示的に /autoresearch on するまで自動再開しません。", "info");
+			safeEmitMode(pi, false);
 			break;
 		}
 		case "clear": {
@@ -152,8 +159,18 @@ export async function handleCommand(
 		}
 		default: {
 			activateAutoresearch(ctx, pi, store, (args ?? "").trim(), deps.mdFilePath);
+			safeEmitMode(pi, true, (args ?? "").trim() || undefined);
 			break;
 		}
+	}
+}
+
+/** Emit autoresearch mode event so plan-mode can update its mode state. */
+function safeEmitMode(pi: ExtensionAPI, active: boolean, purpose?: string): void {
+	try {
+		pi.events.emit(MEKANN_AUTORESEARCH_MODE_EVENT, { active, purpose } satisfies AutoresearchModeEvent);
+	} catch {
+		// plan-mode extension not loaded
 	}
 }
 
@@ -163,7 +180,7 @@ function truncatePurpose(purpose: string): string {
 	return `${purpose.slice(0, AUTORESEARCH_PURPOSE_MAX_CHARS)}\n[omitted: ${purpose.length - AUTORESEARCH_PURPOSE_MAX_CHARS} chars from autoresearch activation context]`;
 }
 
-function activateAutoresearch(
+export function activateAutoresearch(
 	ctx: ExtensionContext,
 	pi: ExtensionAPI,
 	store: SessionStore,

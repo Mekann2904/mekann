@@ -7,8 +7,13 @@
 import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
-import { createInitialState, isReadOnlyMode, modeLabel, isPlanReadOnlyCommandIntent, classifyCommandIntent, buildBlockReason, loadPrompt, hashContent, extractProposedPlan, PLAN_MODE_TOOLS, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateConfigField, compactOldProposedPlansInText, type ModelRef, type PlanModeConfig, type ThinkingLevel } from "./utils.js";
-import { SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, PLAN_MODE_STATUS_EVENT, type SandboxPushProfileEvent, type SandboxPopProfileEvent, type PlanModeStatusEvent } from "../policy-core/modes.js";
+import { createInitialState, isReadOnlyMode, modeLabel, isPlanReadOnlyCommandIntent, classifyCommandIntent, buildBlockReason, loadPrompt, hashContent, extractProposedPlan, PLAN_MODE_TOOLS, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateConfigField, compactOldProposedPlansInText, type ModelRef, type PlanModeConfig, type ThinkingLevel, type MekannMode, type ModeName } from "./utils.js";
+import {
+	SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, PLAN_MODE_STATUS_EVENT,
+	MEKANN_AUTORESEARCH_MODE_EVENT,
+	type SandboxPushProfileEvent, type SandboxPopProfileEvent, type PlanModeStatusEvent,
+	type AutoresearchModeEvent,
+} from "../policy-core/modes.js";
 import { registerPromptProvider, type PromptFragment } from "../../core/prompt-core/index.js";
 
 type PlanPromptStrategy = "cache_friendly" | "token_minimal";
@@ -24,13 +29,13 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	let sandboxOverrideToken: string | undefined;
 
 	function safeEmit(event: string, data: unknown): void {
-		try { pi.events.emit(event, data); } catch { /* sandbox extension not loaded */ }
+		try { pi.events.emit(event, data); } catch { /* sandbox / autoresearch extension not loaded */ }
 	}
 
 	/** Pop sandbox profile override (best-effort; no-op if not active). */
 	function popSandboxOverride(): void {
 		if (!sandboxOverrideToken) return;
-		safeEmit(SANDBOX_POP_PROFILE_EVENT, { owner: "plan-mode", token: sandboxOverrideToken } satisfies SandboxPopProfileEvent);
+		safeEmit(SANDBOX_POP_PROFILE_EVENT, { owner: "plan-mode", token: sandboxOverrideToken } satisfies SandboxPushProfileEvent);
 		sandboxOverrideToken = undefined;
 	}
 
@@ -62,8 +67,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		});
 	}
 
-
-
 	function logBlockedTool(extra: Record<string, unknown>) {
 		pi.appendEntry("plan-mode-blocked-tool", { at: Date.now(), mode: state.mode, ...extra });
 	}
@@ -75,59 +78,28 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		safeEmit(PLAN_MODE_STATUS_EVENT, { mode: state.mode } satisfies PlanModeStatusEvent);
 	}
 
-	// ─── Mode transitions ───────────────────────────────────────────
+	// ─── Common helpers for mode transitions ───────────────────────
 
-	async function enterPlanMode(ctx: ExtensionContext, opts?: { persistCurrentMain?: boolean }): Promise<void> {
-		const persistCurrentMain = opts?.persistCurrentMain !== false;
-
-		// 1. Snapshot & persist current main model (only when explicitly toggling, not --plan startup)
-		if (persistCurrentMain) {
-			const _m = ctx.model;
-			const mainRef = _m ? { provider: _m.provider, modelId: _m.id } as ModelRef : undefined;
-			// Only persist if the model actually exists in the registry (skip fallback models from failed restores)
-			if (mainRef && ctx.modelRegistry.find(mainRef.provider, mainRef.modelId)) {
-				state.savedMainModel = mainRef;
-				updateConfigField(state.modelConfig, "models", "main", mainRef, configPath);
-			}
-			const mainThinking = pi.getThinkingLevel();
-			state.savedMainThinking = mainThinking;
-			updateConfigField(state.modelConfig, "thinking", "main", mainThinking, configPath);
+	/** Snapshot & persist current main model/thinking (called before leaving main). */
+	function snapshotMain(ctx: ExtensionContext): void {
+		const _m = ctx.model;
+		const mainRef = _m ? { provider: _m.provider, modelId: _m.id } as ModelRef : undefined;
+		if (mainRef && ctx.modelRegistry.find(mainRef.provider, mainRef.modelId)) {
+			state.savedMainModel = mainRef;
+			updateConfigField(state.modelConfig, "models", "main", mainRef, configPath);
 		}
-
-		// 2. Enter plan mode (restrict tools)
-		if (!state.savedActiveTools) state.savedActiveTools = pi.getActiveTools();
-		state.mode = "plan";
-		Object.assign(state, { pendingPlan: undefined, implementationPlan: undefined, planPromptDelivered: false, planPromptHash: undefined });
-		pi.setActiveTools([...PLAN_MODE_TOOLS]);
-
-		// 3. Push sandbox profile override (best-effort; no-op if sandbox extension is absent)
-		sandboxOverrideToken = `plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-		safeEmit(SANDBOX_PUSH_PROFILE_EVENT, { owner: "plan-mode", token: sandboxOverrideToken, profile: "plan_read_only" } satisfies SandboxPushProfileEvent);
-
-		// 4. Switch to plan model if configured
-		const planRef = state.modelConfig.models.plan;
-		if (planRef) await trySetModel(planRef, ctx, "Plan model");
-
-		// 5. Switch to plan thinking level if configured
-		applyThinking(state.modelConfig.thinking.plan);
-		updateModeStatus(ctx);
+		const mainThinking = pi.getThinkingLevel();
+		state.savedMainThinking = mainThinking;
+		updateConfigField(state.modelConfig, "thinking", "main", mainThinking, configPath);
 	}
 
-	async function exitPlanMode(ctx: ExtensionContext): Promise<void> {
-		// 1. Switch state to main BEFORE restoring model so model_select hook updates the correct mode
-		const plan = state.pendingPlan;
-		state.mode = "main";
+	/** Save active tools on first transition away from main. */
+	function saveActiveToolsIfFirst(): void {
+		if (!state.savedActiveTools) state.savedActiveTools = pi.getActiveTools();
+	}
 
-		// 2. Notify sandbox of mode change BEFORE popping override to avoid stale display
-		updateModeStatus(ctx);
-
-		// 3. Pop sandbox profile override
-		popSandboxOverride();
-
-		// 4. Restore tools
-		if (state.savedActiveTools) { pi.setActiveTools(state.savedActiveTools); state.savedActiveTools = undefined; }
-
-		// 5. Restore main model
+	/** Restore main model, thinking, and tools from any non-main mode. */
+	async function restoreMainModelAndThinking(ctx: ExtensionContext): Promise<void> {
 		const mainRef = state.modelConfig.models.main;
 		const result = await trySetModel(mainRef, ctx, "Main model");
 		if (result === "not_found") updateConfigField(state.modelConfig, "models", "main", undefined, configPath);
@@ -135,23 +107,76 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			const fbResult = await trySetModel(state.savedMainModel, ctx, "Main model (fallback)");
 			if (fbResult === "not_found") updateConfigField(state.modelConfig, "models", "main", undefined, configPath);
 		}
-
-		// 5. Restore main thinking level
 		applyThinking(state.modelConfig.thinking.main ?? state.savedMainThinking);
-
-		// 6. Clean up state
-		Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined, savedMainModel: undefined, savedMainThinking: undefined });
-
-		if (plan) { state.implementationPlan = plan; pi.sendUserMessage("保存された plan に従って実装してください。"); }
 	}
 
+	// ─── Mode transitions ───────────────────────────────────────────
+
+	/** Transition to a target mode from any current mode. */
+	async function transitionToMode(target: MekannMode, ctx: ExtensionContext, opts?: { persistCurrentMain?: boolean; purpose?: string }): Promise<void> {
+		const previous = state.mode;
+		if (previous === target) return;
+
+		const persistCurrentMain = opts?.persistCurrentMain !== false;
+
+		// ── Leave the current mode ──
+		if (previous === "plan") {
+			// Notify sandbox of mode change BEFORE popping override
+			state.mode = target;
+			updateModeStatus(ctx);
+			popSandboxOverride();
+			if (state.savedActiveTools) { pi.setActiveTools(state.savedActiveTools); state.savedActiveTools = undefined; }
+			if (target === "main" && state.pendingPlan) {
+				state.implementationPlan = state.pendingPlan;
+			}
+			Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined });
+		} else if (previous === "auto") {
+			// Leaving auto — just update mode
+			if (state.mode !== target) state.mode = target;
+		} else {
+			// main → other
+			if (state.mode !== target) state.mode = target;
+		}
+
+		// ── Snapshot main model/thinking if leaving main ──
+		if (previous === "main" && persistCurrentMain) {
+			snapshotMain(ctx);
+		}
+
+		// ── Enter the target mode ──
+		if (target === "plan") {
+			saveActiveToolsIfFirst();
+			pi.setActiveTools([...PLAN_MODE_TOOLS]);
+			sandboxOverrideToken = `plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+			safeEmit(SANDBOX_PUSH_PROFILE_EVENT, { owner: "plan-mode", token: sandboxOverrideToken, profile: "plan_read_only" } satisfies SandboxPushProfileEvent);
+			const planRef = state.modelConfig.models.plan;
+			if (planRef) await trySetModel(planRef, ctx, "Plan model");
+			applyThinking(state.modelConfig.thinking.plan);
+		} else if (target === "auto") {
+			// Auto mode: no tool restrictions, no sandbox override
+			const autoRef = state.modelConfig.models.auto;
+			if (autoRef) await trySetModel(autoRef, ctx, "Auto model");
+			applyThinking(state.modelConfig.thinking.auto);
+		} else {
+			// target === "main"
+			await restoreMainModelAndThinking(ctx);
+			Object.assign(state, { savedMainModel: undefined, savedMainThinking: undefined });
+			if (state.implementationPlan) {
+				pi.sendUserMessage("保存された plan に従って実装してください。");
+			}
+		}
+
+		if (previous !== "plan") updateModeStatus(ctx);
+	}
+
+	/** Toggle plan mode on/off. */
 	async function togglePlanMode(ctx: ExtensionContext): Promise<void> {
-		if (state.mode === "main") await enterPlanMode(ctx); else await exitPlanMode(ctx);
+		if (state.mode === "plan") await transitionToMode("main", ctx);
+		else await transitionToMode("plan", ctx);
 	}
 
 	// ─── Commands ───────────────────────────────────────────────────
-
-	pi.registerCommand("plan", { description: "プランモード切替", handler: (_args, ctx) => togglePlanMode(ctx) });
+	// Note: /plan command is registered below (after session_start) to capture lastCtx.
 
 	pi.registerShortcut(Key.super("p"), { description: "プランモード切替", handler: (ctx) => togglePlanMode(ctx) });
 
@@ -298,7 +323,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	// Track config changes per-mode
 	function persistIfChanged<T>(
 		section: "models" | "thinking",
-		mode: "main" | "plan",
+		mode: ModeName,
 		value: T | undefined,
 		isEqual: (a: T | undefined, b: T | undefined) => boolean,
 	): void {
@@ -324,14 +349,53 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (suppressThinkingSelectPersist) return;
 		const level = event.level; persistIfChanged("thinking", state.mode, level, (a, b) => a === b);
 	});
+	// ─── Autoresearch mode event listener ─────────────────────────
+
+	/** Last known ctx for event-driven transitions (set on session_start / command hooks). */
+	let lastCtx: ExtensionContext | undefined;
+
+	try {
+		pi.events.on(MEKANN_AUTORESEARCH_MODE_EVENT, (data: unknown) => {
+			const evt = data as AutoresearchModeEvent;
+			if (!evt) return;
+			if (evt.active) {
+				// autoresearch activated → switch to auto mode
+				if (state.mode === "auto") return; // already there
+				const ctx = lastCtx;
+				if (ctx) {
+					transitionToMode("auto", ctx, { purpose: evt.purpose });
+				} else {
+					// No ctx available yet — just set state. Model will be corrected on next ctx.
+					state.mode = "auto";
+				}
+			} else {
+				// autoresearch deactivated → return to main
+				if (state.mode !== "auto") return;
+				const ctx = lastCtx;
+				if (ctx) {
+					transitionToMode("main", ctx);
+				} else {
+					state.mode = "main";
+				}
+			}
+		});
+	} catch {
+		// events not available
+	}
+
+	pi.registerFlag("auto", { description: "auto(autoresearch)モードで起動", type: "boolean", default: false });
+
 	pi.on("session_start", async (_event, ctx) => {
+		lastCtx = ctx;
 		// Load config
 		configPath = undefined; // use default path
 		const loaded = loadModelConfig();
 		state.modelConfig = loaded;
 
 		if (pi.getFlag("plan") === true) {
-			await enterPlanMode(ctx, { persistCurrentMain: false });
+			await transitionToMode("plan", ctx, { persistCurrentMain: false });
+		} else if (pi.getFlag("auto") === true) {
+			await transitionToMode("auto", ctx, { persistCurrentMain: false });
 		} else {
 			if (state.modelConfig.models.main) {
 				const result = await trySetModel(state.modelConfig.models.main, ctx, "Main model");
@@ -341,6 +405,10 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 		updateModeStatus(ctx);
 	});
+
+	// Update lastCtx on every command so event handlers have a fresh context
+	const origPlanHandler = (_args: string, ctx: ExtensionContext) => { lastCtx = ctx; return togglePlanMode(ctx); };
+	pi.registerCommand("plan", { description: "プランモード切替", handler: origPlanHandler });
 
 	// Clean up sandbox override on session shutdown
 	 pi.on("session_shutdown", async () => { popSandboxOverride(); });

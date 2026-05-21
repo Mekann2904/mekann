@@ -70,8 +70,11 @@ function isThinkingLevel(value: unknown): value is ThinkingLevel {
 /** Provider + modelId pair identifying a specific model. */
 export interface ModelRef { provider: string; modelId: string; }
 
+/** All mode names managed by plan-mode extension. */
+export type ModeName = "main" | "plan" | "auto";
+
 /** Configuration file shape stored at ~/.pi/agent/plan-mode.json */
-export interface PlanModeConfig { version: typeof MEKANN_CONFIG_VERSION; models: { main?: ModelRef; plan?: ModelRef; }; thinking: { main?: ThinkingLevel; plan?: ThinkingLevel; }; }
+export interface PlanModeConfig { version: typeof MEKANN_CONFIG_VERSION; models: { main?: ModelRef; plan?: ModelRef; auto?: ModelRef; }; thinking: { main?: ThinkingLevel; plan?: ThinkingLevel; auto?: ThinkingLevel; }; }
 
 export function createDefaultConfig(): PlanModeConfig {
 	return { version: MEKANN_CONFIG_VERSION, models: {}, thinking: {} };
@@ -84,6 +87,7 @@ export function normalizeConfig(raw: Record<string, unknown>): PlanModeConfig {
 		const ti = t as Record<string, unknown>;
 		if (isThinkingLevel(ti.main)) thinking.main = ti.main;
 		if (isThinkingLevel(ti.plan)) thinking.plan = ti.plan;
+		if (isThinkingLevel(ti.auto)) thinking.auto = ti.auto;
 	}
 	return { version: MEKANN_CONFIG_VERSION, models: (raw.models && typeof raw.models === "object") ? raw.models as PlanModeConfig["models"] : {}, thinking };
 }
@@ -205,7 +209,7 @@ export function saveModelConfig(config: PlanModeConfig, explicitPath?: string): 
 export function updateConfigField<T>(
 	config: PlanModeConfig,
 	section: "models" | "thinking",
-	mode: "main" | "plan",
+	mode: ModeName,
 	value: T | undefined,
 	path?: string,
 ): void {
@@ -221,17 +225,23 @@ export function updateConfigField<T>(
 }
 
 
-export type Mode = "main" | "plan";
-export function isReadOnlyMode(mode: Mode): boolean {
+/** @deprecated Use ModeName for config keys, MekannMode for the runtime mode. */
+export type Mode = MekannMode;
+
+/** Runtime mode managed by plan-mode extension. */
+export type MekannMode = "main" | "plan" | "auto";
+
+export function isReadOnlyMode(mode: MekannMode): boolean {
 	return mode === "plan";
 }
 
-export function modeLabel(mode: Mode): string {
-	return mode === "plan" ? "PLAN MODE" : "";
+export function modeLabel(mode: MekannMode): string {
+	if (mode === "plan") return "PLAN MODE";
+	return "";
 }
 
 export interface PlanState {
-	mode: Mode;
+	mode: MekannMode;
 	pendingPlan?: string;
 	/** Plan text to inject once into main mode's system prompt, then cleared. */
 	implementationPlan?: string;
@@ -240,12 +250,12 @@ export interface PlanState {
 	planPromptDelivered: boolean;
 	/** Persisted model preferences for each mode. */
 	modelConfig: PlanModeConfig;
-	/** Snapshot of the main-mode model before entering plan mode (for fallback restore). */
+	/** Snapshot of the main-mode model before entering a non-main mode (for fallback restore). */
 	savedMainModel?: ModelRef;
-	/** Snapshot of the main-mode thinking level before entering plan mode (for fallback restore). */
+	/** Snapshot of the main-mode thinking level before entering a non-main mode (for fallback restore). */
 	savedMainThinking?: ThinkingLevel;
 }
 
 export function createInitialState(modelConfig?: PlanModeConfig): PlanState {
-	return { mode: "main", planPromptDelivered: false, modelConfig: modelConfig ?? { version: 1, models: {}, thinking: {} } };
+	return { mode: "main", planPromptDelivered: false, modelConfig: modelConfig ?? createDefaultConfig() };
 }
