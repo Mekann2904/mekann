@@ -188,13 +188,13 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   });
 
   pi.registerFlag("subagent-display", {
-    description: 'Display mode for subagents: "none", or "kitty-pi"/"kitty-split" unsafe external Pi when explicitly enabled',
+    description: 'Display mode for subagents: "kitty-split" (default), "kitty-pi", or "none" for in-process agents',
     type: "string",
     default: MEKANN_SUBAGENT_DEFAULTS.display,
   });
 
   pi.registerFlag("subagent-allow-unsafe-external-pi", {
-    description: "Allow kitty-pi/kitty-split to launch independent Pi processes. Unsafe: parent-side authority/tool filtering is not enforced.",
+    description: "Allow kitty-pi/kitty-split to launch independent Pi processes. Disable to force in-process agents with parent-side authority/tool filtering.",
     type: "string",
     default: String(MEKANN_SUBAGENT_DEFAULTS.allowUnsafeExternalPi),
   });

@@ -1003,6 +1003,10 @@ describe("extension entry point", () => {
     expect(flagNames).toContain("subagent-display");
     expect(flagNames).toContain("subagent-pi-command");
     expect(flagNames).toContain("subagent-extension-path");
+    const displayFlag = mock._registeredFlags.find((f) => f.name === "subagent-display")!;
+    const unsafeFlag = mock._registeredFlags.find((f) => f.name === "subagent-allow-unsafe-external-pi")!;
+    expect((displayFlag.config as any).default).toBe("kitty-split");
+    expect((unsafeFlag.config as any).default).toBe("true");
   });
 
   it("registers session_start and session_shutdown hooks", async () => {
