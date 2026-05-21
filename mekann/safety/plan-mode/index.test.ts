@@ -651,6 +651,23 @@ describe("thinking_level_select: plan mode path", () => {
 		// thinking_level_select with same level → no change
 		await mock._hooks.thinking_level_select({ level: "xhigh" });
 	});
+
+	it("Shift+Tab 相当の変更を mode transition 時に fallback 保存する", async () => withPlanModeConfig({ version: 1, models: {}, thinking: {} }, async (configPath) => {
+		const fs = require("fs");
+		const mock = createMockApi();
+		const ctx = createMockCtx();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, ctx);
+		await mock._commands["plan"].handler("", ctx);
+
+		// Simulate a UI path that updates the effective level without the extension
+		// receiving thinking_level_select before leaving plan mode.
+		mock.setThinkingLevel("high");
+		await mock._commands["plan"].handler("", ctx);
+
+		const saved = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+		expect(saved.thinking.plan).toBe("high");
+	}));
 });
 
 // ─── enterPlanMode/exitPlanMode with model/thinking config ──────

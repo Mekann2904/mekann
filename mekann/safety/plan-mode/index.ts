@@ -51,6 +51,20 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (level) { suppressThinkingSelectPersist = true; try { pi.setThinkingLevel(level); } finally { suppressThinkingSelectPersist = false; } }
 	}
 
+	/**
+	 * Persist the currently effective thinking level for the active mode.
+	 *
+	 * Normally this is handled by thinking_level_select.  Some UI paths (notably
+	 * Shift+Tab cycling in older/newer pi builds) can update the session before
+	 * extensions observe the event, so poll the effective value at stable points
+	 * such as mode transitions and turn_end as a fallback.
+	 */
+	function snapshotCurrentThinking(): void {
+		if (suppressThinkingSelectPersist) return;
+		const level = pi.getThinkingLevel() as ThinkingLevel | undefined;
+		if (level) persistIfChanged("thinking", state.mode, level, (a, b) => a === b);
+	}
+
 	pi.registerFlag("plan", { description: "プランモードで起動（読み取り専用探索）", type: "boolean", default: false });
 
 	// ─── Model helpers ──────────────────────────────────────────────
@@ -112,6 +126,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (previous === target) return;
 
 		const persistCurrentMain = opts?.persistCurrentMain !== false;
+		// Fallback for UI thinking-level changes (Shift+Tab) that may not be
+		// observed through thinking_level_select before the mode changes.
+		if (previous !== "main" || persistCurrentMain) snapshotCurrentThinking();
 
 		// ── Leave the current mode ──
 		if (previous === "plan") {
@@ -312,7 +329,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		if (plan) { state.pendingPlan = plan; }
 	});
-	pi.on("turn_end", async () => { blockCount = 0; lastBlockedTool = ""; lastBlockedInput = ""; });
+	pi.on("turn_end", async () => { snapshotCurrentThinking(); blockCount = 0; lastBlockedTool = ""; lastBlockedInput = ""; });
 
 	// Track config changes per-mode
 	function persistIfChanged<T>(
