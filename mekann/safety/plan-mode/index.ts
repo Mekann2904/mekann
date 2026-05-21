@@ -318,7 +318,12 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (!lastAssistant) return;
 		const plan = extractProposedPlan(lastAssistant.content.filter((b): b is TextContent => b.type === "text").map(b => b.text).join("\n"));
 
-		if (plan) { state.pendingPlan = plan; recordPlanEvent({ cwd: (ctx as any)?.cwd ?? process.cwd(), title: "Plan proposed", summary: plan.slice(0, 300), kind: "plan", priority: 2, sessionId: (ctx as any)?.sessionId, turnId: (ctx as any)?.turnId, branchId: (ctx as any)?.branchId }).catch(() => {}); }
+		if (plan && plan !== state.pendingPlan) {
+			state.pendingPlan = plan;
+			recordPlanEvent({ cwd: (ctx as any)?.cwd ?? process.cwd(), title: "Plan proposed", summary: plan.slice(0, 300), kind: "plan", priority: 2, sessionId: (ctx as any)?.sessionId, turnId: (ctx as any)?.turnId, branchId: (ctx as any)?.branchId }).catch(() => {});
+		} else if (plan && plan === state.pendingPlan) {
+			state.pendingPlan = plan;
+		}
 	});
 	pi.on("turn_end", async () => { blockCount = 0; lastBlockedTool = ""; lastBlockedInput = ""; });
 

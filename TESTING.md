@@ -111,7 +111,6 @@ prepush = typecheck + CI prepare + workflow checks + module tests (parallel)
   ├── zip-repo tests
   ├── autoresearch fast tests
   ├── goal tests
-  ├── goal tests
   ├── output-gate tests
   └── ledger tests
 ```

@@ -42,7 +42,7 @@ export interface RecordGoalEventInput {
 	branchId?: string;
 }
 
-function goalPriority(action: GoalAction): 0 | 1 | 2 | 3 | 4 {
+export function goalPriority(action: GoalAction): 0 | 1 | 2 | 3 | 4 {
 	switch (action) {
 		case "set":
 		case "resumed":
@@ -58,19 +58,19 @@ function goalPriority(action: GoalAction): 0 | 1 | 2 | 3 | 4 {
 	}
 }
 
-function goalKind(action: GoalAction): "task" | "error" {
+export function goalKind(action: GoalAction): "task" | "error" {
 	if (action === "budget_exhausted" || action === "continuation_limit") return "error";
 	return "task";
 }
 
-function goalTitle(action: GoalAction, goal?: Goal | null): string {
+export function goalTitle(action: GoalAction, goal?: Goal | null): string {
 	const prefix = `Goal ${action}`;
 	if (!goal) return prefix;
 	const shortObj = goal.objective.length > 80 ? goal.objective.slice(0, 79) + "…" : goal.objective;
 	return `${prefix}: ${shortObj}`;
 }
 
-function goalSummary(action: GoalAction, goal?: Goal | null): string {
+export function goalSummary(action: GoalAction, goal?: Goal | null): string {
 	if (!goal) return `Goal ${action}`;
 	const parts = [
 		`goal_id=${goal.goal_id}`,
