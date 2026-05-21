@@ -1,0 +1,31 @@
+{
+  "generatedAt": "2026-05-21T05:36:57.018Z",
+  "totalRequests": 703,
+  "latest": {
+    "timestamp": "2026-05-21T05:36:53.043Z",
+    "provider": "openai-codex",
+    "model": "gpt-5.5",
+    "stablePrefixHash": "87244eaad02500904d0bcb16300b711983d4117d719e99a2b4e90c8e3d7fe68c",
+    "stablePrefixChars": 11017,
+    "totalPromptChars": 27906
+  },
+  "recentSameHashStreak": 62,
+  "stablePrefixHashChanges": 65,
+  "warningCount": 40,
+  "providers": {
+    "zai/glm-5.1": {
+      "requests": 136,
+      "uniqueStablePrefixHashes": 6,
+      "latestStablePrefixHash": "aff4edbb927bd0a2d0055641d5557b1b16c1b1687ec2386bad12b096eef014a8",
+      "latestStablePrefixChars": 12212,
+      "latestTotalPromptChars": 219726
+    },
+    "openai-codex/gpt-5.5": {
+      "requests": 567,
+      "uniqueStablePrefixHashes": 11,
+      "latestStablePrefixHash": "87244eaad02500904d0bcb16300b711983d4117d719e99a2b4e90c8e3d7fe68c",
+      "latestStablePrefixChars": 11017,
+      "latestTotalPromptChars": 27906
+    }
+  }
+}

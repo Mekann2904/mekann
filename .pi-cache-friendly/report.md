@@ -1,0 +1,72 @@
+# cache-friendly-prompt レポート
+
+最終更新: 2026-05-21T05:36:57.018Z
+
+## サマリー
+
+- 総リクエスト数: 703
+- 最新 provider/model: openai-codex/gpt-5.5
+- 最新 stablePrefixHash: `87244eaa`
+- 最新 stable prefix: 11017 chars
+- 最新 total prompt: 27906 chars
+- 直近同一 hash 継続: 62 requests
+- stablePrefixHash 変化回数: 65
+- warning 件数: 40
+
+## 用語
+
+| 用語 | 説明 |
+|---|---|
+| stable prefix | provider に送るプロンプトの先頭に置かれる、変化しにくい部分。system prompt や stable fragment を含みます。 |
+| stablePrefixHash | stable prefix の内容から計算した hash。同じ値が続くほど、安定部分が変わっていないことを示します。 |
+| stablePrefixChars | stable prefix の文字数。キャッシュ候補になり得る先頭部分の大きさです。 |
+| totalPromptChars | provider に送られるプロンプト全体の文字数。ユーザー発話、会話履歴、tool 結果、read 結果なども含まれ得ます。 |
+| cache efficiency | `stablePrefixChars / totalPromptChars`。送信プロンプト全体のうち、安定プレフィックスが占める割合です。 |
+| hash change | stablePrefixHash が前回から変わった地点。安定部分が変化したため、キャッシュ再利用が効きにくくなる可能性があります。 |
+| warning | cache-friendly-prompt が検出した注意点。例: stable prefix が短い、payload に不安定な構造がある、など。 |
+| fragment | 各拡張が提供するプロンプト断片。stable / semi-stable / dynamic に分類されます。 |
+| provider/model | リクエスト送信先の provider と model。例: `openai-codex/gpt-5.5`。 |
+
+## キャッシュ効率
+
+![cache-friendly-prompt efficiency](./efficiency.svg)
+
+- 線: `stablePrefixChars / totalPromptChars` の割合
+- 高いほど、送信プロンプトのうち安定プレフィックスが占める割合が大きいことを示します
+- オレンジの縦線は `stablePrefixHash` の変化点です
+
+## 推移
+
+![cache-friendly-prompt trend](./trend.svg)
+
+## provider/model 別
+
+| provider/model | requests | unique hashes | latest hash | stable chars | total chars |
+|---|---:|---:|---|---:|---:|
+| openai-codex/gpt-5.5 | 567 | 11 | `87244eaa` | 11017 | 27906 |
+| zai/glm-5.1 | 136 | 6 | `aff4edbb` | 12212 | 219726 |
+
+## 最近の hash 変化
+
+| timestamp | provider/model | hash | stable chars | total chars |
+|---|---|---|---:|---:|
+| 2026-05-21T05:18:49.561Z | openai-codex/gpt-5.5 | `be27db66` → `87244eaa` | 11017 | 11052 |
+| 2026-05-21T05:02:00.675Z | openai-codex/gpt-5.5 | `844fbfb3` → `be27db66` | 11530 | 52572 |
+| 2026-05-21T05:01:38.098Z | openai-codex/gpt-5.5 | `be27db66` → `844fbfb3` | 6342 | 7155 |
+| 2026-05-21T05:01:36.438Z | openai-codex/gpt-5.5 | `844fbfb3` → `be27db66` | 11530 | 52572 |
+| 2026-05-21T05:01:28.835Z | openai-codex/gpt-5.5 | `be27db66` → `844fbfb3` | 6342 | 7155 |
+| 2026-05-21T05:01:28.545Z | openai-codex/gpt-5.5 | `844fbfb3` → `be27db66` | 11530 | 52093 |
+| 2026-05-21T05:01:22.826Z | openai-codex/gpt-5.5 | `be27db66` → `844fbfb3` | 6342 | 7155 |
+| 2026-05-21T05:01:22.584Z | openai-codex/gpt-5.5 | `844fbfb3` → `be27db66` | 11530 | 51607 |
+| 2026-05-21T05:01:18.143Z | openai-codex/gpt-5.5 | `be27db66` → `844fbfb3` | 6342 | 7155 |
+| 2026-05-21T05:01:16.246Z | openai-codex/gpt-5.5 | `844fbfb3` → `be27db66` | 11530 | 51548 |
+| 2026-05-21T05:01:11.719Z | openai-codex/gpt-5.5 | `be27db66` → `844fbfb3` | 6342 | 6767 |
+| 2026-05-20T16:05:05.048Z | openai-codex/gpt-5.5 | `aff4edbb` → `be27db66` | 11530 | 18932 |
+| 2026-05-20T15:22:02.392Z | zai/glm-5.1 | `844fbfb3` → `aff4edbb` | 12212 | 62295 |
+| 2026-05-20T15:20:10.487Z | zai/glm-5.1 | `aff4edbb` → `844fbfb3` | 6342 | 41561 |
+| 2026-05-20T15:20:06.259Z | zai/glm-5.1 | `844fbfb3` → `aff4edbb` | 12212 | 61548 |
+| 2026-05-20T15:20:00.690Z | zai/glm-5.1 | `aff4edbb` → `844fbfb3` | 6342 | 7126 |
+| 2026-05-20T15:16:34.070Z | zai/glm-5.1 | `844fbfb3` → `aff4edbb` | 12212 | 31015 |
+| 2026-05-20T15:14:35.739Z | zai/glm-5.1 | `aff4edbb` → `844fbfb3` | 6342 | 434245 |
+| 2026-05-20T15:14:30.211Z | zai/glm-5.1 | `844fbfb3` → `aff4edbb` | 12212 | 30916 |
+| 2026-05-20T15:12:24.942Z | zai/glm-5.1 | `aff4edbb` → `844fbfb3` | 6342 | 7995 |
