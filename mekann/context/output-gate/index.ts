@@ -67,6 +67,15 @@ async function outputGateShow(cwd: string, artifactId: string): Promise<string> 
 		`path: ${entry.path}`,
 		`redacted: ${entry.redacted}`,
 	];
+	if (entry.schemaVersion) lines.push(`schemaVersion: ${entry.schemaVersion}`);
+	if (entry.redactionVersion != null) lines.push(`redactionVersion: ${entry.redactionVersion}`);
+	if (entry.originalBytes != null) lines.push(`originalBytes: ${entry.originalBytes}`);
+	if (entry.originalLines != null) lines.push(`originalLines: ${entry.originalLines}`);
+	if (entry.sessionId) lines.push(`sessionId: ${entry.sessionId}`);
+	if (entry.turnId) lines.push(`turnId: ${entry.turnId}`);
+	if (entry.toolCallId) lines.push(`toolCallId: ${entry.toolCallId}`);
+	if (entry.branchId) lines.push(`branchId: ${entry.branchId}`);
+	if (entry.commandHash) lines.push(`commandHash: ${entry.commandHash}`);
 	if (abs) lines.push(`file: ${abs}`, `file exists: true`);
 	else lines.push(`file exists: false`);
 	return lines.join("\n");
@@ -151,8 +160,13 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 			}
 
 			if (arg === "clear") {
-				const ok = await ctx?.ui?.confirm?.("Clear output-gate artifacts?", `Delete ${outputGateDir(cwd)} ?`);
-				if (ok === false) return;
+				const confirmFn = ctx?.ui?.confirm;
+				if (typeof confirmFn !== "function") {
+					ctx?.ui?.notify?.("clear requires interactive confirmation", "warning");
+					return;
+				}
+				const ok = await confirmFn("Clear output-gate artifacts?", `Delete ${outputGateDir(cwd)} ?`);
+				if (!ok) return;
 				await fsp.rm(outputGateDir(cwd), { recursive: true, force: true });
 				ctx?.ui?.notify?.("output-gate artifacts cleared", "info");
 				return;

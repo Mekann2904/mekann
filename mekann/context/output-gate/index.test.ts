@@ -133,6 +133,19 @@ describe("output-gate command handler", () => {
 		expect(fs.existsSync(path.join(cwd, ".pi", "output-gate"))).toBe(true);
 	});
 
+	it("clear command refuses without confirm function", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		await fsp.mkdir(path.join(cwd, ".pi", "output-gate"), { recursive: true });
+		const notify = vi.fn();
+		await cmdDef.handler("clear", { cwd, ui: { notify } });
+		expect(notify).toHaveBeenCalledWith("clear requires interactive confirmation", "warning");
+		// Dir should still exist
+		expect(fs.existsSync(path.join(cwd, ".pi", "output-gate"))).toBe(true);
+	});
+
 	it("list command shows stored artifacts", async () => {
 		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
 		outputGateExtension(pi);
@@ -210,6 +223,21 @@ describe("output-gate command handler", () => {
 		expect(msg).toContain("tool: bash");
 		expect(msg).toContain("bytes:");
 		expect(msg).toContain("sha256:");
+	});
+
+	it("show command displays metadata fields when present", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "hello", idGenerator: () => "og_showm_1", now: () => 1000, sessionId: "sess_1", turnId: "turn_1", toolCallId: "tc_1" });
+		const notify = vi.fn();
+		await cmdDef.handler("show og_showm_1", { cwd, ui: { notify } });
+		const msg = notify.mock.calls[0][0];
+		expect(msg).toContain("sessionId: sess_1");
+		expect(msg).toContain("turnId: turn_1");
+		expect(msg).toContain("toolCallId: tc_1");
+		expect(msg).toContain("schemaVersion: output-gate/v1");
 	});
 
 	it("show command reports missing artifact", async () => {
