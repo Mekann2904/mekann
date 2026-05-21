@@ -48,6 +48,13 @@ interface MekannContextEvent {
 Use `search_context_events` for decisions, tasks, errors, and plans.
 Use `search_tool_outputs` for raw log/output snippets stored by output-gate.
 
+`summarize_session_context` — read or rebuild a compact session snapshot for working memory restore.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `rebuild` | `false` | Rebuild from context events instead of reading latest snapshot |
+| `maxBytes` | 4096 | Maximum snapshot bytes (256–65536) |
+
 ## Commands
 
 | Command | Description |
@@ -59,6 +66,10 @@ Use `search_tool_outputs` for raw log/output snippets stored by output-gate.
 | `/context-ledger snapshot --max-bytes N` | Build snapshot with byte budget (min 256) |
 | `/context-ledger snapshot --write` | Save snapshot to `.pi/mekann-context/snapshots/` |
 | `/context-ledger snapshot --write --max-bytes 4096` | Save budgeted snapshot |
+| `/context-ledger restore` | Return latest snapshot or build from events |
+| `/context-ledger restore --rebuild` | Rebuild from events ignoring latest snapshot |
+| `/context-ledger restore --rebuild --write` | Rebuild and persist to disk |
+| `/context-ledger restore --max-bytes 4096` | Restore with byte budget (default 4096) |
 | `/context-ledger clear` | Delete context ledger data including events and snapshots (with confirmation) |
 
 ## Design
