@@ -6,6 +6,8 @@ import { evaluateQueryStatically } from "./queryEvaluation.js";
 import { computeContractHash, filterInternalPaths, planPath, readCurrentContract, readLockFile, type AutoresearchContractV1 } from "./contractV1.js";
 import { getPlanDir, readState, writeState } from "./layout.js";
 import { getChangedFiles } from "./runner.js";
+import { importSubagentResultsAsCandidates, readCandidate } from "./candidate.js";
+import { SubagentResultStore } from "../subagent/resultStore.js";
 
 export type ScaleStatus = "none" | "planning" | "approved" | "running" | "draining" | "paused" | "stopped";
 
@@ -281,13 +283,13 @@ export function computeNextScaleAction(cwd: string): ScaleAction | null {
 	if (s.generation === 0) return action("start_generation", "generation_started", "Autoresearch test-time scaling の次 action: generation 1 を開始してください。完了後に autoresearch_scale_complete_action に action_id と result.summary を渡してください。");
 	const phase = s.phase ?? "need_scouts";
 	if (phase === "need_scouts") return action("spawn_scouts", "role_tasks_started", scoutInstruction(), scoutToolCalls(cwd, s));
-	if (phase === "waiting_scouts") return action("wait_scout_results", "structured_hypotheses", waitScoutInstruction(), waitToolCalls());
+	if (phase === "waiting_scouts") return action("wait_scout_results", "structured_hypotheses", waitScoutInstruction(), [...(waitToolCalls() ?? []), { tool: "autoresearch_scale_ingest", params: {} }]);
 	if (phase === "need_scoring") return action("score_hypotheses", "hypotheses_scored", "structured hypotheses を rule-based scoring で順位付けします。この action は root agent の追加判断を必要としません。autoresearch_scale_complete_action に action_id と result.summary を渡してください。");
 	if (phase === "need_proposer") return action("spawn_proposer", "proposal_task_started", proposerInstruction(s), proposerToolCalls(cwd, s));
-	if (phase === "waiting_proposer") return action("wait_proposer_result", "candidate_imported", waitProposerInstruction(), [...(waitToolCalls() ?? []), { tool: "autoresearch_candidate_escrow", params: { source: "pending", max_results: 1 } }]);
+	if (phase === "waiting_proposer") return action("wait_proposer_result", "candidate_imported", waitProposerInstruction(), [...(waitToolCalls() ?? []), { tool: "autoresearch_scale_ingest", params: {} }]);
 	if (phase === "need_critic") return action("spawn_critic", "critic_task_started", criticInstruction(s), criticToolCalls(cwd, s));
-	if (phase === "waiting_critic") return action("wait_critic_result", "critic_findings_recorded", waitCriticInstruction(), waitToolCalls());
-	if (phase === "need_candidate_eval") return action("evaluate_candidate", "candidate_evaluation_finished", evaluateCandidateInstruction(s), evaluationToolCalls(s));
+	if (phase === "waiting_critic") return action("wait_critic_result", "critic_findings_recorded", waitCriticInstruction(), [...(waitToolCalls() ?? []), { tool: "autoresearch_scale_ingest", params: {} }]);
+	if (phase === "need_candidate_eval") return action("evaluate_candidate", "candidate_evaluation_finished", evaluateCandidateInstruction(s), [...(evaluationToolCalls(s) ?? []), { tool: "autoresearch_scale_ingest", params: {} }]);
 	if (phase === "generation_review") return action("generation_review", "generation_reviewed", "historian 観点で generation summary / survivor / failure memory を整理してください。新しい patch は作らず、result.summary に次世代で増やす slot / 避ける strategy / evidence_pattern を記録してください。");
 	return null;
 }
@@ -655,6 +657,65 @@ function buildStrategySurvivors(state: ScaleStateV1, result: Record<string, unkn
 	if ((state.criticFindings ?? []).length > 0) survivors.push({ kind: "role_template", name: "critic:metric_hacking_scope_risk", score: 1, note: "critic findings recorded" });
 	if (typeof result.evidence_pattern === "string") survivors.push({ kind: "evidence_pattern", name: result.evidence_pattern, score: 1, note: "reported by historian" });
 	return survivors;
+}
+
+export function ingestScaleAction(cwd: string): ScaleStateV1 {
+	const s = readScaleState(cwd);
+	if (!s?.activeAction) throw new Error("active scale action がありません");
+	const store = new SubagentResultStore(cwd);
+	if (s.activeAction.type === "wait_scout_results") {
+		const scoutResults = store.list({ status: "pending" }).filter((r) => r.agent_path.includes("/scale/scout") || r.agent_path.includes("scale/scout"));
+		const hypotheses = scoutResults.flatMap((r) => hypothesesFromStoredResult(r.result));
+		return completeScaleAction(cwd, { action_id: s.activeAction.action_id, result: { summary: `ingested ${hypotheses.length} scout hypotheses`, hypotheses } });
+	}
+	if (s.activeAction.type === "wait_proposer_result") {
+		const contract = readCurrentContract(cwd);
+		const lock = readLockFile(cwd);
+		if (!contract || !lock) throw new Error("current contract / lock file が見つかりません");
+		const imported = importSubagentResultsAsCandidates(cwd, contract, lock, { source: "pending", max_results: 1 }).imported;
+		return completeScaleAction(cwd, { action_id: s.activeAction.action_id, result: { summary: `imported ${imported.length} candidates`, candidate_ids: imported.map((c) => c.candidate_id) } });
+	}
+	if (s.activeAction.type === "wait_critic_result") {
+		const criticResults = store.list({ status: "pending" }).filter((r) => r.agent_path.includes("/scale/critic") || r.agent_path.includes("scale/critic"));
+		const findings = criticResults.flatMap((r) => findingsFromStoredResult(r.result, (s.candidateIds ?? [])[0]));
+		return completeScaleAction(cwd, { action_id: s.activeAction.action_id, result: { summary: `ingested ${findings.length} critic findings`, findings } });
+	}
+	if (s.activeAction.type === "evaluate_candidate") {
+		const candidateId = (s.candidateIds ?? [])[0];
+		if (!candidateId) return completeScaleAction(cwd, { action_id: s.activeAction.action_id, result: { summary: "no candidate to evaluate" } });
+		const c = readCandidate(cwd, candidateId);
+		if (c.status !== "kept" && c.status !== "discarded") throw new Error(`candidate evaluation is not finished: ${candidateId} status=${c.status}`);
+		return completeScaleAction(cwd, { action_id: s.activeAction.action_id, result: { summary: c.decision?.reason ?? c.status, candidate_id: candidateId, decision: c.status === "kept" ? "keep" : "discard", metric: c.decision?.metric ?? null, checks_passed: c.status === "kept" } });
+	}
+	throw new Error(`ingest unsupported for action: ${s.activeAction.type}`);
+}
+
+function hypothesesFromStoredResult(result: unknown): Array<{ slot: string; hypothesis: string; rationale?: string; suggested_paths: string[]; expected_evidence: string[]; risk: "low" | "medium" | "high" }> {
+	const raw = JSON.stringify(result);
+	const parsed = extractFirstJsonArray(raw);
+	if (parsed) return parseHypotheses(parsed).map(({ slot, hypothesis, rationale, suggested_paths, expected_evidence, risk }) => ({ slot, hypothesis, rationale, suggested_paths, expected_evidence, risk }));
+	const r = result as any;
+	const summary = typeof r?.summary === "string" ? r.summary : typeof r?.reason === "string" ? r.reason : "subagent observation";
+	return [{ slot: "unknown", hypothesis: summary, suggested_paths: [], expected_evidence: Array.isArray(r?.evidence) ? r.evidence.filter((e: unknown): e is string => typeof e === "string") : [], risk: "medium" }];
+}
+
+function findingsFromStoredResult(result: unknown, fallbackCandidateId?: string): Array<{ candidate_id?: string; severity?: string; finding: string }> {
+	const raw = JSON.stringify(result);
+	const parsed = extractFirstJsonArray(raw);
+	if (parsed) {
+		const findings = parseCriticFindings(parsed);
+		if (findings.length > 0) return findings.map((f) => ({ candidate_id: f.candidate_id ?? fallbackCandidateId, severity: f.severity, finding: f.finding }));
+	}
+	const r = result as any;
+	const summary = typeof r?.summary === "string" ? r.summary : typeof r?.reason === "string" ? r.reason : "critic completed without structured findings";
+	return [{ candidate_id: fallbackCandidateId, severity: "info", finding: summary }];
+}
+
+function extractFirstJsonArray(raw: string): unknown[] | null {
+	const start = raw.indexOf("[");
+	const end = raw.lastIndexOf("]");
+	if (start < 0 || end <= start) return null;
+	try { const parsed = JSON.parse(raw.slice(start, end + 1)); return Array.isArray(parsed) ? parsed : null; } catch { return null; }
 }
 
 export function claimNextAction(cwd: string): ScaleAction | null {

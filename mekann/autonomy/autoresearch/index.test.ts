@@ -192,7 +192,7 @@ describe("autoresearchExtension", () => {
 	// ── Registration ────────────────────────────────────────────
 
 	it("registers tools with correct names", () => {
-		expect(pi.registerTool).toHaveBeenCalledTimes(17);
+		expect(pi.registerTool).toHaveBeenCalledTimes(18);
 		expect(pi.tools.map((t) => t.name)).toEqual([
 			"autoresearch_evaluate_query",
 			"autoresearch_init",
@@ -209,6 +209,7 @@ describe("autoresearchExtension", () => {
 			"autoresearch_apply_candidate_isolated",
 			"autoresearch_scale_next",
 			"autoresearch_scale_complete_action",
+			"autoresearch_scale_ingest",
 			"autoresearch_scale_status",
 			"autoresearch_run_contract",
 		]);

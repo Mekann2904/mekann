@@ -108,6 +108,7 @@ import {
 	buildScalingPlan,
 	claimNextAction,
 	completeScaleAction,
+	ingestScaleAction,
 	createPlanningScaleState,
 	nextActionMessage,
 	requestScaleStop,
@@ -811,6 +812,21 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			try {
 				const s = completeScaleAction(ctx.cwd, params as any);
 				return store.textDetails(`[OK] scale action を記録しました: status=${s.status} generation=${s.generation}`, s as unknown as Record<string, unknown>);
+			} catch (e) {
+				return store.textResponse(`[ERROR] ${e instanceof Error ? e.message : String(e)}`);
+			}
+		},
+	});
+
+	pi.registerTool({
+		name: "autoresearch_scale_ingest",
+		label: "autoresearch scale ingest",
+		description: "現在の scale action に対応する tool/subagent/candidate 結果を自動取り込みし、events/state/summary を更新します。",
+		parameters: Type.Object({}),
+		async execute(_tc, _params, _signal, _ou, ctx) {
+			try {
+				const s = ingestScaleAction(ctx.cwd);
+				return store.textDetails(`[OK] scale action result を取り込みました: status=${s.status} phase=${s.phase ?? "none"} generation=${s.generation}`, s as unknown as Record<string, unknown>);
 			} catch (e) {
 				return store.textResponse(`[ERROR] ${e instanceof Error ? e.message : String(e)}`);
 			}
