@@ -4,9 +4,9 @@ import { promisify } from "node:util";
 import path from "node:path";
 import type { ApplyAgentResultsParams, ApplyAgentResultsResult, ApplyRecord, PatchProposalResult, RejectReason, RequiredCheck, StoredSubagentResult, ValidationCommand, ValidationResult } from "./types.js";
 import { SubagentResultStore } from "./resultStore.js";
-import { checkBaseFileHashes, detectPublicSurfaceFromPatch, extractTouchedPathsFromPatchStrict, isNewFilePatch, normalizePublicSurfaceDeltas, safeRepoRelativePath } from "./fingerprint.js";
+import { safeRepoRelativePath } from "./fingerprint.js";
 import { evaluateSemanticConflict } from "./semanticConflict.js";
-import { keyOfTarget } from "./semantic.js";
+import { evaluatePatchProposalForApply, firstFinding, type PatchProposalFinding } from "./patchProposalPolicy.js";
 
 const execFile = promisify(execFileCb);
 
@@ -57,43 +57,27 @@ export class ApplyQueue {
     const ref = patch.patch.ref;
     state.ref = ref;
     if (!ref || !isUnderDir(ref, this.store.dir)) return this.reject(out, stored.result_id, "invalid_patch_ref");
-    const patchText = readFileSync(ref, "utf8");
-    const maxBytes = stored.authority?.max_patch_bytes ?? 50_000;
-    const patchBytes = patch.patch.bytes ?? Buffer.byteLength(patchText, "utf8");
-    if (patchBytes > maxBytes) return this.reject(out, stored.result_id, "patch_too_large", { bytes: patchBytes, maxBytes });
-
-    const extractedTouched = extractTouchedPathsFromPatchStrict(patchText);
-    if (!extractedTouched.ok) return this.reject(out, stored.result_id, "declared_touched_paths_mismatch", extractedTouched);
-    const actualTouched = extractedTouched.paths;
-    const declaredTouched = patch.scope.touched_paths.map((p) => safeRepoRelativePath(p)).filter((p): p is string => Boolean(p)).sort();
-    if (declaredTouched.length !== patch.scope.touched_paths.length) return this.reject(out, stored.result_id, "declared_touched_paths_mismatch", { reason: "unsafe_declared_path", declared: patch.scope.touched_paths });
-    for (const f of patch.base.files) if (!safeRepoRelativePath(f.path)) return this.reject(out, stored.result_id, "base_hash_mismatch", { path: f.path, reason: "unsafe_base_path" });
-    if (JSON.stringify(actualTouched) !== JSON.stringify(declaredTouched)) return this.reject(out, stored.result_id, "declared_touched_paths_mismatch", { declared: declaredTouched, actual: actualTouched });
     const writeScope = stored.authority?.write_scope ?? [];
     const canonicalWriteScope = canonicalizeScopePatterns(writeScope);
     if (!canonicalWriteScope.ok) return this.review(out, stored.result_id, "write_scope contains unsafe path pattern", { writeScope, unsafe: canonicalWriteScope.unsafe });
+
+    const policy = evaluatePatchProposalForApply({
+      cwd: this.cwd,
+      proposal: patch,
+      authority: stored.authority ? { ...stored.authority, write_scope: canonicalWriteScope.scopes } : undefined,
+      authorityEnforced: stored.authority_enforced,
+      patchRefRootDir: this.store.dir,
+      writeScopeMatcher: withinAny,
+      requireWriteScope: false,
+    });
+    if (policy.kind !== "allow") {
+      const finding = firstFinding(policy.findings);
+      if (policy.kind === "review") return this.review(out, stored.result_id, applyFindingReviewReason(finding), finding?.details ?? policy.findings);
+      return this.reject(out, stored.result_id, applyFindingRejectReason(finding), finding?.details ?? policy.findings);
+    }
+    const actualTouched = policy.touchedPaths;
     if (canonicalWriteScope.scopes.length === 0) return this.review(out, stored.result_id, "write_scope is not specified; auto apply requires explicit authority scope", { actualTouched });
     for (const p of actualTouched) if (isReviewOnlyPath(p)) return this.review(out, stored.result_id, "execution_sensitive_path_requires_review", { path: p });
-    for (const p of actualTouched) if (!withinAny(p, canonicalWriteScope.scopes)) return this.reject(out, stored.result_id, "outside_path_scope", { path: p, write_scope: canonicalWriteScope.scopes });
-
-    const authoritySem = new Set((stored.authority?.semantic_scope ?? []).map(keyOfTarget));
-    if (authoritySem.size) for (const t of [...patch.semantic.reads, ...patch.semantic.writes]) if (!authoritySem.has(keyOfTarget(t))) return this.reject(out, stored.result_id, "outside_semantic_scope", t);
-
-    if (stored.authority?.require_base_hash !== false) {
-      const basePaths = new Set(patch.base.files.map((f) => f.path));
-      for (const p of actualTouched) {
-        if (!basePaths.has(p) && !isNewFilePatch(p, patchText)) return this.reject(out, stored.result_id, "base_hash_mismatch", { path: p, reason: "missing_base_hash" });
-      }
-    }
-    const base = await checkBaseFileHashes(this.cwd, patch.base.files);
-    if (!base.ok) return this.reject(out, stored.result_id, "base_hash_mismatch", base);
-
-    const actualSurface = normalizePublicSurfaceDeltas(detectPublicSurfaceFromPatch(patchText));
-    const declaredSurface = new Set(normalizePublicSurfaceDeltas(patch.semantic.public_surface_delta).map(surfaceKey));
-    const undeclared = actualSurface.filter((d) => !declaredSurface.has(surfaceKey(d)));
-    if (undeclared.length) return this.reject(out, stored.result_id, "undeclared_public_surface_delta", undeclared);
-
-    if (stored.authority_enforced === false) return this.review(out, stored.result_id, "Authority was not enforced for external subagent", { authority_enforced: false });
 
     const conflict = evaluateSemanticConflict(patch, this.store.readSemanticLog(), { allowHighRisk: params.allow_high_risk });
     if (conflict.action === "require_regeneration") return this.reject(out, stored.result_id, "require_regeneration", conflict);
@@ -149,6 +133,24 @@ export class ApplyQueue {
   }
 }
 
+function applyFindingRejectReason(finding?: PatchProposalFinding): RejectReason {
+  switch (finding?.kind) {
+    case "invalid_patch_ref": return "invalid_patch_ref";
+    case "patch_too_large": return "patch_too_large";
+    case "base_hash_mismatch": return "base_hash_mismatch";
+    case "outside_authority_write_scope": return "outside_path_scope";
+    case "outside_authority_semantic_scope": return "outside_semantic_scope";
+    case "undeclared_public_surface_delta": return "undeclared_public_surface_delta";
+    case "high_risk_requires_review": return "high_risk_requires_review";
+    case "unsafe_patch_path":
+    case "declared_touched_paths_mismatch": return "declared_touched_paths_mismatch";
+    default: return "manual_reject";
+  }
+}
+function applyFindingReviewReason(finding?: PatchProposalFinding): string {
+  if (finding?.kind === "authority_not_enforced") return "Authority was not enforced for external subagent";
+  return finding?.kind ?? "patch proposal requires review";
+}
 function isUnderDir(file: string, dir: string): boolean { const rel = path.relative(path.resolve(dir), path.resolve(file)); return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel); }
 function isReviewOnlyPath(file: string): boolean { return file === ".husky" || file.startsWith(".husky/"); }
 function canonicalizeScopePatterns(scopes: string[]): { ok: true; scopes: string[] } | { ok: false; unsafe: string } {
@@ -164,5 +166,4 @@ function canonicalizeScopePatterns(scopes: string[]): { ok: true; scopes: string
 }
 function commandKey(cmd: ValidationCommand): string { return cmd.kind === "npm_script" ? JSON.stringify({ kind: "npm_script", script: cmd.script, args: cmd.args ?? [] }) : JSON.stringify({ kind: "shell_allowlisted", command_id: cmd.command_id, args: cmd.args ?? [] }); }
 function dedupeValidationCommands(commands: ValidationCommand[]): ValidationCommand[] { const seen = new Set<string>(); const out: ValidationCommand[] = []; for (const c of commands) { const k = commandKey(c); if (!seen.has(k)) { seen.add(k); out.push(c); } } return out; }
-function surfaceKey(d: { surface: string; name: string; change: string }): string { return `${d.surface}:${d.name}:${d.change}`; }
 function withinAny(file: string, scopes: string[]): boolean { if (scopes.length === 0) return true; const norm = file.replace(/\\/g, "/"); return scopes.some((s) => { const scope = s.replace(/\\/g, "/").replace(/\/$/, ""); return norm === scope || norm.startsWith(scope + "/"); }); }

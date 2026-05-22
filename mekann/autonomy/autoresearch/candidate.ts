@@ -5,8 +5,7 @@ import { execFileSync } from "node:child_process";
 import { computeContractHash, type AutoresearchContractV1, type LockFile } from "./contractV1.js";
 import { filterInternalPaths, matchesAnyPattern } from "./contractV1.js";
 import { SubagentResultStore } from "../subagent/resultStore.js";
-import { detectPublicSurfaceFromPatch, extractTouchedPathsFromPatchStrict, isNewFilePatch, normalizePublicSurfaceDeltas } from "../subagent/fingerprint.js";
-import { keyOfTarget } from "../subagent/semantic.js";
+import { evaluatePatchProposalForCandidate, firstFinding, type PatchProposalFinding } from "../subagent/patchProposalPolicy.js";
 import { getChangedFiles } from "./runner.js";
 import { getPlanDir, readState } from "./layout.js";
 
@@ -32,6 +31,12 @@ export interface AutoresearchCandidateV1 {
 }
 
 export interface CandidateImportResult { imported: AutoresearchCandidateV1[]; skipped: Array<{ result_id?: string; reason: string; details?: unknown }>; }
+
+function candidateFindingReason(finding?: PatchProposalFinding): string {
+	if (!finding) return "patch_proposal_policy_rejected";
+	if (finding.kind === "authority_not_enforced") return "authority_not_enforced";
+	return finding.kind;
+}
 
 let counter = 0;
 function nextCandidateId(): string { return `arc_${Date.now().toString(36)}_${++counter}`; }
@@ -76,8 +81,6 @@ export function extractTouchedPathsFromPatch(patch: string): string[] {
 }
 export function safeRepoRelativePath(p: string): string | null { const n = p.replace(/\\/g, "/"); if (!n || n.includes("\0") || n.startsWith("/") || /^[A-Za-z]:\//.test(n)) return null; const norm = path.posix.normalize(n); if (norm === "." || norm.startsWith("../") || norm === "..") return null; return norm; }
 function matchesAny(file: string, scopes: string[]): boolean { return scopes.length === 0 || matchesAnyPattern(file, scopes); }
-function surfaceKey(d: { surface: string; name: string; change: string }): string { return `${d.surface}:${d.name}:${d.change}`; }
-function isUnderDir(file: string, dir: string): boolean { const rel = path.relative(path.resolve(dir), path.resolve(file)); return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel); }
 export function candidateChangedFiles(cwd: string): string[] {
 	const out = new Set<string>();
 	for (const f of filterInternalPaths(getChangedFiles(cwd))) {
@@ -96,15 +99,6 @@ export function candidateDiffIdentityHash(cwd: string): string {
 	});
 	return sha256Text(JSON.stringify(entries));
 }
-function validateBaseFileHashesSync(cwd: string, files: Array<{ path: string; hash: string }>): { ok: true } | { ok: false; path: string; expected: string; actual?: string } {
-	for (const f of files) {
-		const safe = safeRepoRelativePath(f.path); if (!safe) return { ok: false, path: f.path, expected: f.hash };
-		try { const actual = sha256Buffer(fs.readFileSync(path.join(cwd, safe))); if (actual !== f.hash) return { ok: false, path: f.path, expected: f.hash, actual }; }
-		catch { return { ok: false, path: f.path, expected: f.hash }; }
-	}
-	return { ok: true };
-}
-
 export function validateTouchedAgainstContract(paths: string[], contract: AutoresearchContractV1): { ok: true } | { ok: false; reason: string; details?: unknown } {
 	for (const p of paths) {
 		const safe = safeRepoRelativePath(p); if (!safe) return { ok: false, reason: "unsafe_path", details: p };
@@ -131,39 +125,22 @@ export function importSubagentResultsAsCandidates(cwd: string, contract: Autores
 			if (stored.workspace_cwd && path.resolve(stored.workspace_cwd) !== path.resolve(cwd)) { result.skipped.push({ result_id: id, reason: "workspace_cwd_mismatch", details: stored.workspace_cwd }); continue; }
 			if (stored.authority_enforced === false) { result.skipped.push({ result_id: id, reason: "authority_not_enforced" }); continue; }
 			if (stored.result?.outcome !== "patch") { result.skipped.push({ result_id: id, reason: `outcome:${stored.result?.outcome}` }); continue; }
-			const ref = stored.result.patch?.ref;
-			if (typeof ref !== "string" || !isUnderDir(ref, storeDir)) { result.skipped.push({ result_id: id, reason: "invalid_patch_ref" }); continue; }
-			const patchText = fs.readFileSync(ref, "utf8");
-			const patchBytes = stored.result.patch.bytes ?? Buffer.byteLength(patchText, "utf8");
-			const maxBytes = stored.authority?.max_patch_bytes ?? 50_000;
-			if (patchBytes > maxBytes) { result.skipped.push({ result_id: id, reason: "patch_too_large", details: { bytes: patchBytes, maxBytes } }); continue; }
-			if (stored.result.semantic.risk.level === "high") { result.skipped.push({ result_id: id, reason: "high_risk_requires_review" }); continue; }
-			const base = validateBaseFileHashesSync(cwd, stored.result.base.files);
-			if (!base.ok) { result.skipped.push({ result_id: id, reason: "base_hash_mismatch", details: base }); continue; }
+			const policy = evaluatePatchProposalForCandidate({
+				cwd,
+				proposal: stored.result,
+				authority: stored.authority,
+				authorityEnforced: stored.authority_enforced,
+				patchRefRootDir: storeDir,
+				writeScopeMatcher: (file, writeScope) => matchesAnyPattern(file, writeScope),
+			});
+			if (policy.kind !== "allow") {
+				const finding = firstFinding(policy.findings);
+				result.skipped.push({ result_id: id, reason: candidateFindingReason(finding), details: finding?.details ?? policy.findings });
+				continue;
+			}
+			const patchText = policy.patchText;
 			const patchSha = sha256Text(patchText);
-			const extractedTouched = extractTouchedPathsFromPatchStrict(patchText);
-			if (!extractedTouched.ok) { result.skipped.push({ result_id: id, reason: "unsafe_patch_path", details: extractedTouched }); continue; }
-			const extracted = extractedTouched.paths;
-			const declared = (stored.result.scope?.touched_paths ?? []).map(safeRepoRelativePath).filter(Boolean).sort();
-			if (JSON.stringify(extracted) !== JSON.stringify(declared)) { result.skipped.push({ result_id: id, reason: "declared_touched_paths_mismatch", details: { declared, extracted } }); continue; }
-			const writeScope = stored.authority?.write_scope ?? [];
-			if (writeScope.length === 0) { result.skipped.push({ result_id: id, reason: "missing_authority_write_scope" }); continue; }
-			const outsideAuthorityPath = extracted.find((p) => !matchesAnyPattern(p, writeScope));
-			if (outsideAuthorityPath) { result.skipped.push({ result_id: id, reason: "outside_authority_write_scope", details: { path: outsideAuthorityPath, write_scope: writeScope } }); continue; }
-			const authoritySem = new Set((stored.authority?.semantic_scope ?? []).map(keyOfTarget));
-			if (authoritySem.size) {
-				const outsideSemantic = [...stored.result.semantic.reads, ...stored.result.semantic.writes].find((t) => !authoritySem.has(keyOfTarget(t)));
-				if (outsideSemantic) { result.skipped.push({ result_id: id, reason: "outside_authority_semantic_scope", details: outsideSemantic }); continue; }
-			}
-			const actualSurface = normalizePublicSurfaceDeltas(detectPublicSurfaceFromPatch(patchText));
-			const declaredSurface = new Set(normalizePublicSurfaceDeltas(stored.result.semantic.public_surface_delta).map(surfaceKey));
-			const undeclaredSurface = actualSurface.filter((d) => !declaredSurface.has(surfaceKey(d)));
-			if (undeclaredSurface.length) { result.skipped.push({ result_id: id, reason: "undeclared_public_surface_delta", details: undeclaredSurface }); continue; }
-			if (stored.authority?.require_base_hash !== false) {
-				const basePaths = new Set(stored.result.base.files.map((f) => safeRepoRelativePath(f.path)).filter((p): p is string => Boolean(p)));
-				const missingBase = extracted.find((p) => !basePaths.has(p) && !isNewFilePatch(p, patchText));
-				if (missingBase) { result.skipped.push({ result_id: id, reason: "base_hash_mismatch", details: { path: missingBase, reason: "missing_base_hash" } }); continue; }
-			}
+			const extracted = policy.touchedPaths;
 			const scope = validateTouchedAgainstContract(extracted, contract);
 			if (scope.ok === false) { result.skipped.push({ result_id: id, reason: scope.reason, details: scope.details }); continue; }
 			const duplicate = existing.find((c)=>c.source.result_id === id && c.patch_sha256 === patchSha && c.contract_hash === contractHash);
