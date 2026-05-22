@@ -37,7 +37,7 @@ export interface ScaleHypothesisRecord {
 	status: "new" | "scored" | "assigned" | "exhausted";
 }
 
-export type ScalePhase = "need_scouts" | "waiting_scouts" | "need_scoring" | "need_proposer" | "waiting_proposer" | "need_critic" | "waiting_critic" | "need_candidate_eval" | "generation_review";
+export type ScalePhase = "need_scouts" | "waiting_scouts" | "need_scoring" | "need_proposer" | "waiting_proposer" | "need_critic" | "waiting_critic" | "need_candidate_eval" | "need_historian" | "waiting_historian" | "generation_review";
 
 export interface ScaleStateV1 {
 	version: 1;
@@ -290,7 +290,9 @@ export function computeNextScaleAction(cwd: string): ScaleAction | null {
 	if (phase === "need_critic") return action("spawn_critic", "critic_task_started", criticInstruction(s), criticToolCalls(cwd, s));
 	if (phase === "waiting_critic") return action("wait_critic_result", "critic_findings_recorded", waitCriticInstruction(), [...(waitToolCalls() ?? []), { tool: "autoresearch_scale_ingest", params: {} }]);
 	if (phase === "need_candidate_eval") return action("evaluate_candidate", "candidate_evaluation_finished", evaluateCandidateInstruction(s), [...(evaluationToolCalls(s) ?? []), { tool: "autoresearch_scale_ingest", params: {} }]);
-	if (phase === "generation_review") return action("generation_review", "generation_reviewed", "historian 観点で generation summary / survivor / failure memory を整理してください。新しい patch は作らず、result.summary に次世代で増やす slot / 避ける strategy / evidence_pattern を記録してください。");
+	if (phase === "need_historian") return action("spawn_historian", "historian_task_started", historianInstruction(s), historianToolCalls(cwd, s));
+	if (phase === "waiting_historian") return action("wait_historian_result", "generation_reviewed", waitHistorianInstruction(), [...(waitToolCalls() ?? []), { tool: "autoresearch_scale_ingest", params: {} }]);
+	if (phase === "generation_review") return action("generation_review", "generation_reviewed", "historian 結果を generation summary / survivor / failure memory として確定してください。新しい patch は作らず、result.summary に次世代で増やす slot / 避ける strategy / evidence_pattern を記録してください。");
 	return null;
 }
 
@@ -439,6 +441,36 @@ function evaluationToolCalls(s: ScaleStateV1): ScaleAction["tool_calls"] {
 	];
 }
 
+function historianInstruction(s: ScaleStateV1): string {
+	return [
+		"historian subagent を起動し、この generation の evidence / failures / survivors / role effectiveness を整理してください。",
+		"新しい patch や benchmark は実行しません。",
+		`Generation: ${s.generation}`,
+		`Hypotheses: ${JSON.stringify((s.hypotheses ?? []).map(({ id, slot, score, status }) => ({ id, slot, score, status })))}`,
+		`Critic findings: ${JSON.stringify(s.criticFindings ?? [])}`,
+		`Best candidate: ${s.bestCandidateId ?? "none"}`,
+		"Return summary and optional evidence_pattern name useful for future generations.",
+	].join("\n");
+}
+
+function historianToolCalls(_cwd: string, s: ScaleStateV1): ScaleAction["tool_calls"] {
+	return [{
+		tool: "spawn_agent",
+		params: {
+			task_name: `scale/historian-generation-${s.generation}`,
+			message: historianInstruction(s),
+			authority: { mode: "read_only" },
+		},
+	}];
+}
+
+function waitHistorianInstruction(): string {
+	return [
+		"wait_agent で historian result を回収してください。",
+		"完了後は autoresearch_scale_ingest を呼び、summary / evidence_pattern を generation_review に反映します。",
+	].join("\n");
+}
+
 export function startScale(cwd: string): ScaleStateV1 {
 	const s = readScaleState(cwd);
 	if (!s) throw new Error("承認済み scaling state が見つかりません。先に /autoresearch-scale <目的文> と autoresearch_approve を実行してください。");
@@ -475,9 +507,18 @@ function validateStartPreconditions(cwd: string, state: ScaleStateV1): string | 
 export function requestScaleStop(cwd: string): ScaleStateV1 {
 	const s = readScaleState(cwd);
 	if (!s) throw new Error("scaling state が見つかりません");
-	const next: ScaleStateV1 = { ...s, status: s.activeAction ? "draining" : "stopped", stopRequested: true };
+	const activeType = s.activeAction?.type;
+	const shouldDrain = activeType === "evaluate_candidate";
+	const next: ScaleStateV1 = {
+		...s,
+		status: shouldDrain ? "draining" : "stopped",
+		stopRequested: true,
+		activeAction: shouldDrain ? s.activeAction : undefined,
+		resources: shouldDrain ? s.resources : { ...s.resources, subagentsUsed: 0 },
+	};
 	writeScaleState(cwd, next);
 	appendScaleEvent(cwd, { type: "stop_requested", from: s.status, gracefulStopBoundary: "candidate" });
+	if (!shouldDrain && activeType) appendScaleEvent(cwd, { type: "role_tasks_ignored", reason: "graceful stop only waits for active candidate evaluation", activeAction: s.activeAction });
 	if (next.status === "stopped") appendScaleEvent(cwd, { type: "stopped", generation: next.generation });
 	updateScaleSummary(cwd, next);
 	return next;
@@ -510,13 +551,13 @@ export function completeScaleAction(cwd: string, params: { action_id: string; st
 		next.hypotheses = records;
 		next.queues = { ...next.queues, hypotheses: records.length };
 		next.resources = { ...next.resources, subagentsUsed: 0 };
-		next.phase = records.length > 0 ? "need_scoring" : "generation_review";
+		next.phase = records.length > 0 ? "need_scoring" : "need_historian";
 		for (const h of records) appendScaleEvent(cwd, { type: "hypothesis_created", hypothesis: h });
 		appendScaleEvent(cwd, { type: "role_task_finished", role: "scout", producedHypotheses: records.length });
 	} else if (s.activeAction.type === "score_hypotheses") {
 		const scored = scoreHypotheses(next.hypotheses ?? []);
 		next.hypotheses = scored;
-		next.phase = scored.some((h) => h.status === "scored") ? "need_proposer" : "generation_review";
+		next.phase = scored.some((h) => h.status === "scored") ? "need_proposer" : "need_historian";
 		appendScaleEvent(cwd, { type: "ranking_updated", kind: "hypothesis", hypotheses: scored.map(({ id, slot, score, risk }) => ({ id, slot, score, risk })) });
 	} else if (s.activeAction.type === "spawn_proposer") {
 		const selected = selectNextHypothesis(next);
@@ -529,7 +570,7 @@ export function completeScaleAction(cwd: string, params: { action_id: string; st
 		next.candidateIds = candidateIds;
 		next.queues = { ...next.queues, proposals: 0, candidates: candidateIds.length };
 		next.resources = { ...next.resources, subagentsUsed: 0 };
-		next.phase = candidateIds.length > 0 ? "need_critic" : "generation_review";
+		next.phase = candidateIds.length > 0 ? "need_critic" : "need_historian";
 		for (const id of candidateIds) appendScaleEvent(cwd, { type: "candidate_imported", candidate_id: id });
 		appendScaleEvent(cwd, { type: "role_task_finished", role: "proposer", candidateIds });
 	} else if (s.activeAction.type === "spawn_critic") {
@@ -559,7 +600,15 @@ export function completeScaleAction(cwd: string, params: { action_id: string; st
 		}
 		next.candidateIds = (next.candidateIds ?? []).filter((id) => id !== candidateId);
 		next.queues = { ...next.queues, candidates: next.candidateIds.length };
-		next.phase = next.candidateIds.length > 0 ? "need_candidate_eval" : "generation_review";
+		next.phase = next.candidateIds.length > 0 ? "need_candidate_eval" : "need_historian";
+	} else if (s.activeAction.type === "spawn_historian") {
+		next.phase = "waiting_historian";
+		next.resources = { ...next.resources, subagentsUsed: numberResult(result.started_count, 1) };
+		appendScaleEvent(cwd, { type: "role_task_started", role: "historian", generation: next.generation });
+	} else if (s.activeAction.type === "wait_historian_result") {
+		next.resources = { ...next.resources, subagentsUsed: 0 };
+		next.phase = "generation_review";
+		appendScaleEvent(cwd, { type: "role_task_finished", role: "historian", summary: result.summary, evidence_pattern: result.evidence_pattern });
 	} else if (s.activeAction.type === "generation_review") {
 		const survivors = buildStrategySurvivors(next, result);
 		next.strategySurvivors = [...(next.strategySurvivors ?? []), ...survivors];
@@ -680,6 +729,11 @@ export function ingestScaleAction(cwd: string): ScaleStateV1 {
 		const findings = criticResults.flatMap((r) => findingsFromStoredResult(r.result, (s.candidateIds ?? [])[0]));
 		return completeScaleAction(cwd, { action_id: s.activeAction.action_id, result: { summary: `ingested ${findings.length} critic findings`, findings } });
 	}
+	if (s.activeAction.type === "wait_historian_result") {
+		const historianResults = store.list({ status: "pending" }).filter((r) => r.agent_path.includes("/scale/historian") || r.agent_path.includes("scale/historian"));
+		const summary = historianResults.map((r) => (r.result as any).summary ?? (r.result as any).reason ?? "historian completed").join("\n") || "historian result unavailable";
+		return completeScaleAction(cwd, { action_id: s.activeAction.action_id, result: { summary, evidence_pattern: inferEvidencePattern(summary) } });
+	}
 	if (s.activeAction.type === "evaluate_candidate") {
 		const candidateId = (s.candidateIds ?? [])[0];
 		if (!candidateId) return completeScaleAction(cwd, { action_id: s.activeAction.action_id, result: { summary: "no candidate to evaluate" } });
@@ -716,6 +770,14 @@ function extractFirstJsonArray(raw: string): unknown[] | null {
 	const end = raw.lastIndexOf("]");
 	if (start < 0 || end <= start) return null;
 	try { const parsed = JSON.parse(raw.slice(start, end + 1)); return Array.isArray(parsed) ? parsed : null; } catch { return null; }
+}
+
+function inferEvidencePattern(summary: string): string | undefined {
+	if (/cheap|targeted|small/i.test(summary)) return "cheap_evidence";
+	if (/check|test/i.test(summary)) return "checks";
+	if (/bench|metric|performance|latency/i.test(summary)) return "benchmark";
+	if (/critic|risk|scope|metric hacking/i.test(summary)) return "critic_finding";
+	return undefined;
 }
 
 export function claimNextAction(cwd: string): ScaleAction | null {
