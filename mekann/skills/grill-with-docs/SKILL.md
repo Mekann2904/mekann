@@ -5,6 +5,10 @@ description: Grilling session that challenges your plan against the existing dom
 
 <what-to-do>
 
+## Language policy
+
+Use Japanese explicitly for all interaction with the user: questions, recommendations, explanations, summaries, and documentation updates you create during the session. Keep existing project terms, code identifiers, file names, and quoted text in their original language when needed, but explain them in Japanese.
+
 Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
 
 Ask the questions one at a time, waiting for feedback on each question before continuing.
@@ -55,11 +59,11 @@ Create files lazily — only when you have something to write. If no `CONTEXT.md
 
 ### Challenge against the glossary
 
-When the user uses a term that conflicts with the existing language in `CONTEXT.md`, call it out immediately. "Your glossary defines 'cancellation' as X, but you seem to mean Y — which is it?"
+When the user uses a term that conflicts with the existing language in `CONTEXT.md`, call it out immediately in Japanese. Example: 「用語集では 'cancellation' は X と定義されていますが、今は Y の意味で使っているように見えます。どちらに揃えますか？」
 
 ### Sharpen fuzzy language
 
-When the user uses vague or overloaded terms, propose a precise canonical term. "You're saying 'account' — do you mean the Customer or the User? Those are different things."
+When the user uses vague or overloaded terms, propose a precise canonical term in Japanese. Example: 「'account' と言っていますが、Customer のことですか？ それとも User ですか？ この2つは別概念です。」
 
 ### Discuss concrete scenarios
 
@@ -67,7 +71,7 @@ When domain relationships are being discussed, stress-test them with specific sc
 
 ### Cross-reference with code
 
-When the user states how something works, check whether the code agrees. If you find a contradiction, surface it: "Your code cancels entire Orders, but you just said partial cancellation is possible — which is right?"
+When the user states how something works, check whether the code agrees. If you find a contradiction, surface it in Japanese. Example: 「コード上は Order 全体をキャンセルしていますが、今の説明では部分キャンセルが可能とのことでした。どちらが正ですか？」
 
 ### Update CONTEXT.md inline
 
