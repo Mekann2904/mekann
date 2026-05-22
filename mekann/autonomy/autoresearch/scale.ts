@@ -248,9 +248,9 @@ export function buildScalingPlan(query: string): { markdown: string; contract: A
 		"", "## Role Mix", "", "- scout: structured hypotheses を作る", "- proposer: 1 hypothesis から 1 patch proposal を作る", "- critic: scope / metric hacking / hidden side effect を監査する", "- historian: failure memory と strategy survivor を整理する",
 		"", "## Generation Policy", "", "- hypothesis は rule-based scoring + critic comments で順位づける", "- candidate evaluation は slot diversity round-robin で行う", "- benchmark は初期値では逐次実行する", "- candidate / hypothesis / strategy survivor を別カテゴリで残す",
 		"", "## Evidence Policy", "", "- contract, checks, benchmark, git diff, scope validation, revert 可能性を中心証拠にする", "- Negative-control hypothesis は弱い patch ではなく評価系の sanity check とする", "- COMPLETE marker は停止ではなく exploration exhaustion として記録する",
-		"", "## Stop / Pause Policy", "", "- `/autoresearch-scale stop` は graceful stop。現在の candidate evaluation を完了してから止める", "- safety pause は contract violation / unexpected dirty workspace / revert failure / resource error / human decision required で使う", "- winning candidate は pending adoption として保持し、main worktree には自動反映しない",
+		"", "## Stop / Pause Policy", "", "- `/autoresearch-scale stop` は graceful stop。現在の candidate evaluation を完了してから止める", "- safety pause は contract violation / unexpected dirty workspace / revert failure / resource exhausted or unavailable after degradation / unsafe or irreversible decision required に限定する", "- no improvement / weak candidate / critic finding / unresolved unknown / benchmark or check failure は pause ではなく discard / exhaustion / failure memory で処理する", "- winning candidate は pending adoption として保持し、main worktree には自動反映しない",
 		"", "## Assumptions", "", ...evaluation.contractDraft.constraints.map((c) => `- ${c}`), `- Platform: ${process.platform}`,
-		"", "## Unknowns", "", ...evaluation.clarifyingQuestions.map((q) => `- ${q}`),
+		"", "## Autonomous assumptions / unresolved unknowns", "", "- clarifying questions must not be surfaced as user prompts during scaling; resolve from contract / plan / repo docs / code, or record an autonomous assumption", ...evaluation.clarifyingQuestions.map((q) => `- ${q}`),
 		"", "## Evaluation Contract", "", "```autoresearch-contract jsonc", JSON.stringify(contract, null, 2), "```",
 	].join("\n");
 	return { markdown, contract, contractHash: computeContractHash(contract), decision: evaluation.decision, blockingIssues: evaluation.blockingIssues, clarifyingQuestions: evaluation.clarifyingQuestions };
@@ -298,7 +298,7 @@ export function computeNextScaleAction(cwd: string): ScaleAction | null {
 	const s = readScaleState(cwd);
 	if (!s || s.status !== "running") return null;
 	if (s.activeAction) return s.activeAction;
-	if (s.generation === 0) return action("start_generation", "generation_started", "Autoresearch test-time scaling の次 action: generation 1 を開始してください。完了後に autoresearch_scale_complete_action に action_id と result.summary を渡してください。");
+	if (s.generation === 0) return action("start_generation", "generation_started", "Autoresearch test-time scaling supervisor の内部 action: generation 1 を開始します。ユーザ判断を求めず、完了後に autoresearch_scale_complete_action へ action_id と result.summary を渡してください。");
 	const phase = s.phase ?? "need_scouts";
 	if (phase === "need_scouts") return action("spawn_scouts", "role_tasks_started", scoutInstruction(), scoutToolCalls(cwd, s));
 	if (phase === "waiting_scouts") return action("wait_scout_results", "structured_hypotheses", waitScoutInstruction(), [...(waitToolCalls() ?? []), { tool: "autoresearch_scale_ingest", params: {} }]);
@@ -894,7 +894,8 @@ export function claimNextAction(cwd: string): ScaleAction | null {
 
 export function nextActionMessage(action: ScaleAction): string {
 	const lines = [
-		"Autoresearch test-time scaling supervisor instruction:",
+		"Autoresearch test-time scaling supervisor internal instruction:",
+		"このメッセージは root agent が自律的に実行するための内部指示です。ユーザへの判断依頼ではありません。",
 		`- action_id: ${action.action_id}`,
 		`- type: ${action.type}`,
 		`- expected completion: ${action.expected_completion.type}`,
@@ -902,9 +903,9 @@ export function nextActionMessage(action: ScaleAction): string {
 		action.instruction,
 	];
 	if (action.tool_calls && action.tool_calls.length > 0) {
-		lines.push("", "Suggested tool calls:");
+		lines.push("", "Internal tool calls to execute autonomously:");
 		for (const call of action.tool_calls) lines.push(`- ${call.tool}: ${JSON.stringify(call.params)}`);
 	}
-	lines.push("", "完了後は autoresearch_scale_complete_action を呼び、action_id と result.summary を記録してください。");
+	lines.push("", "完了後はユーザに質問せず、autoresearch_scale_complete_action を呼び、action_id と result.summary を記録してください。");
 	return lines.join("\n");
 }
