@@ -123,15 +123,17 @@ Codex-inspired goal 機能 — thread/session に紐づく永続的な objective
 
 ---
 
-## Vendored skills (mattpocock/skills)
+## Imported skills (mattpocock/skills)
 
-[mattpocock/skills](https://github.com/mattpocock/skills) を `vendor/mattpocock-skills` に git subtree で vendoring しています。
+[mattpocock/skills](https://github.com/mattpocock/skills) を `vendor/mattpocock-skills` に git subtree で取り込み、公開対象 skill を `mekann/skills` にコピーしています。
+Pi coding agent が読むのは `mekann/skills` 側です。
+
 現在は以下の 2 skill を Pi package として公開しています。
 
-| Skill | Path |
+| Skill | Pi-maintained path |
 |---|---|
-| grill-with-docs | `./vendor/mattpocock-skills/skills/engineering/grill-with-docs` |
-| improve-codebase-architecture | `./vendor/mattpocock-skills/skills/engineering/improve-codebase-architecture` |
+| grill-with-docs | `./mekann/skills/grill-with-docs` |
+| improve-codebase-architecture | `./mekann/skills/improve-codebase-architecture` |
 
 ### Upstream の更新
 
@@ -139,13 +141,14 @@ Codex-inspired goal 機能 — thread/session に紐づく永続的な objective
 npm run update:mattpocock-skills
 ```
 
-内部的には `git subtree pull --squash` が実行されます。
+内部的には `vendor/mattpocock-skills` を `git subtree pull --squash` で更新し、公開対象 skill を `mekann/skills` にコピーします。
+その後、pi 開発者が `mekann/skills` 側を pi 向けに編集します。
 
 ### 注意事項
 
 - `vendor/mattpocock-skills` 配下は直接編集しないでください（upstream mirror として扱います）。
-- Pi 固有の補正が必要な場合は、`mekann/skills/` 側に adapter skill を追加してください。
-- 他の upstream skill を公開したい場合は `package.json` の `pi.skills` に path を追加してください。
+- `mekann/skills` 配下は Pi-maintained copy です。Pi 固有の編集はここに行います。
+- 他の upstream skill を公開したい場合は、update script のコピー対象に追加し、`mekann/skills` 側を pi 向けに編集してください。
 
 詳細: [docs/vendor/mattpocock-skills.md](./docs/vendor/mattpocock-skills.md)
 
