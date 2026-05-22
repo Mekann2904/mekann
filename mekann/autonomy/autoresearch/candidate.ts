@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { computeContractHash, type AutoresearchContractV1, type LockFile } from "./contractV1.js";
 import { filterInternalPaths, matchesAnyPattern } from "./contractV1.js";
 import { SubagentResultStore } from "../subagent/resultStore.js";
-import { evaluatePatchProposalForCandidate, firstFinding, type PatchProposalFinding } from "../subagent/patchProposalPolicy.js";
+import { admitPatchProposal } from "../subagent/patchProposalIntake.js";
 import { getChangedFiles } from "./runner.js";
 import { getPlanDir, readState } from "./layout.js";
 
@@ -31,12 +31,6 @@ export interface AutoresearchCandidateV1 {
 }
 
 export interface CandidateImportResult { imported: AutoresearchCandidateV1[]; skipped: Array<{ result_id?: string; reason: string; details?: unknown }>; }
-
-function candidateFindingReason(finding?: PatchProposalFinding): string {
-	if (!finding) return "patch_proposal_policy_rejected";
-	if (finding.kind === "authority_not_enforced") return "authority_not_enforced";
-	return finding.kind;
-}
 
 let counter = 0;
 function nextCandidateId(): string { return `arc_${Date.now().toString(36)}_${++counter}`; }
@@ -123,24 +117,23 @@ export function importSubagentResultsAsCandidates(cwd: string, contract: Autores
 			const stored = store.load(id);
 			if (stored.status !== "pending") { result.skipped.push({ result_id: id, reason: `status:${stored.status}` }); continue; }
 			if (stored.workspace_cwd && path.resolve(stored.workspace_cwd) !== path.resolve(cwd)) { result.skipped.push({ result_id: id, reason: "workspace_cwd_mismatch", details: stored.workspace_cwd }); continue; }
-			if (stored.authority_enforced === false) { result.skipped.push({ result_id: id, reason: "authority_not_enforced" }); continue; }
 			if (stored.result?.outcome !== "patch") { result.skipped.push({ result_id: id, reason: `outcome:${stored.result?.outcome}` }); continue; }
-			const policy = evaluatePatchProposalForCandidate({
+			const intake = admitPatchProposal({
 				cwd,
 				proposal: stored.result,
 				authority: stored.authority,
 				authorityEnforced: stored.authority_enforced,
 				patchRefRootDir: storeDir,
+				profile: "candidate_escrow",
 				writeScopeMatcher: (file, writeScope) => matchesAnyPattern(file, writeScope),
 			});
-			if (policy.kind !== "allow") {
-				const finding = firstFinding(policy.findings);
-				result.skipped.push({ result_id: id, reason: candidateFindingReason(finding), details: finding?.details ?? policy.findings });
+			if (intake.kind !== "allow") {
+				result.skipped.push({ result_id: id, reason: intake.reason, details: intake.details });
 				continue;
 			}
-			const patchText = policy.patchText;
-			const patchSha = sha256Text(patchText);
-			const extracted = policy.touchedPaths;
+			const patchText = intake.patchText;
+			const patchSha = intake.patchSha256;
+			const extracted = intake.touchedPaths;
 			const scope = validateTouchedAgainstContract(extracted, contract);
 			if (scope.ok === false) { result.skipped.push({ result_id: id, reason: scope.reason, details: scope.details }); continue; }
 			const duplicate = existing.find((c)=>c.source.result_id === id && c.patch_sha256 === patchSha && c.contract_hash === contractHash);

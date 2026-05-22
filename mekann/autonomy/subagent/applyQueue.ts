@@ -4,9 +4,8 @@ import { promisify } from "node:util";
 import path from "node:path";
 import type { ApplyAgentResultsParams, ApplyAgentResultsResult, ApplyRecord, PatchProposalResult, RejectReason, RequiredCheck, StoredSubagentResult, ValidationCommand, ValidationResult } from "./types.js";
 import { SubagentResultStore } from "./resultStore.js";
-import { safeRepoRelativePath } from "./fingerprint.js";
 import { evaluateSemanticConflict } from "./semanticConflict.js";
-import { evaluatePatchProposalForApply, firstFinding, type PatchProposalFinding } from "./patchProposalPolicy.js";
+import { admitPatchProposal } from "./patchProposalIntake.js";
 
 const execFile = promisify(execFileCb);
 
@@ -57,26 +56,20 @@ export class ApplyQueue {
     const ref = patch.patch.ref;
     state.ref = ref;
     if (!ref || !isUnderDir(ref, this.store.dir)) return this.reject(out, stored.result_id, "invalid_patch_ref");
-    const writeScope = stored.authority?.write_scope ?? [];
-    const canonicalWriteScope = canonicalizeScopePatterns(writeScope);
-    if (!canonicalWriteScope.ok) return this.review(out, stored.result_id, "write_scope contains unsafe path pattern", { writeScope, unsafe: canonicalWriteScope.unsafe });
-
-    const policy = evaluatePatchProposalForApply({
+    const intake = admitPatchProposal({
       cwd: this.cwd,
       proposal: patch,
-      authority: stored.authority ? { ...stored.authority, write_scope: canonicalWriteScope.scopes } : undefined,
+      authority: stored.authority,
       authorityEnforced: stored.authority_enforced,
       patchRefRootDir: this.store.dir,
-      writeScopeMatcher: withinAny,
-      requireWriteScope: false,
+      profile: "subagent_apply",
     });
-    if (policy.kind !== "allow") {
-      const finding = firstFinding(policy.findings);
-      if (policy.kind === "review") return this.review(out, stored.result_id, applyFindingReviewReason(finding), finding?.details ?? policy.findings);
-      return this.reject(out, stored.result_id, applyFindingRejectReason(finding), finding?.details ?? policy.findings);
+    if (intake.kind !== "allow") {
+      if (intake.kind === "review") return this.review(out, stored.result_id, intake.reason, intake.details);
+      return this.reject(out, stored.result_id, intake.reason as RejectReason, intake.details);
     }
-    const actualTouched = policy.touchedPaths;
-    if (canonicalWriteScope.scopes.length === 0) return this.review(out, stored.result_id, "write_scope is not specified; auto apply requires explicit authority scope", { actualTouched });
+    const actualTouched = intake.touchedPaths;
+    if (intake.canonicalWriteScope.length === 0) return this.review(out, stored.result_id, "write_scope is not specified; auto apply requires explicit authority scope", { actualTouched });
     for (const p of actualTouched) if (isReviewOnlyPath(p)) return this.review(out, stored.result_id, "execution_sensitive_path_requires_review", { path: p });
 
     const conflict = evaluateSemanticConflict(patch, this.store.readSemanticLog(), { allowHighRisk: params.allow_high_risk });
@@ -133,37 +126,7 @@ export class ApplyQueue {
   }
 }
 
-function applyFindingRejectReason(finding?: PatchProposalFinding): RejectReason {
-  switch (finding?.kind) {
-    case "invalid_patch_ref": return "invalid_patch_ref";
-    case "patch_too_large": return "patch_too_large";
-    case "base_hash_mismatch": return "base_hash_mismatch";
-    case "outside_authority_write_scope": return "outside_path_scope";
-    case "outside_authority_semantic_scope": return "outside_semantic_scope";
-    case "undeclared_public_surface_delta": return "undeclared_public_surface_delta";
-    case "high_risk_requires_review": return "high_risk_requires_review";
-    case "unsafe_patch_path":
-    case "declared_touched_paths_mismatch": return "declared_touched_paths_mismatch";
-    default: return "manual_reject";
-  }
-}
-function applyFindingReviewReason(finding?: PatchProposalFinding): string {
-  if (finding?.kind === "authority_not_enforced") return "Authority was not enforced for external subagent";
-  return finding?.kind ?? "patch proposal requires review";
-}
 function isUnderDir(file: string, dir: string): boolean { const rel = path.relative(path.resolve(dir), path.resolve(file)); return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel); }
 function isReviewOnlyPath(file: string): boolean { return file === ".husky" || file.startsWith(".husky/"); }
-function canonicalizeScopePatterns(scopes: string[]): { ok: true; scopes: string[] } | { ok: false; unsafe: string } {
-  const out: string[] = [];
-  for (const scope of scopes) {
-    if (scope.includes("\0") || /^[A-Za-z]:[\\/]/.test(scope) || path.isAbsolute(scope)) return { ok: false, unsafe: scope };
-    const placeholder = scope.replace(/\*+/g, "__STAR__");
-    const safe = safeRepoRelativePath(placeholder);
-    if (!safe) return { ok: false, unsafe: scope };
-    out.push(safe.replace(/__STAR__/g, "*"));
-  }
-  return { ok: true, scopes: out };
-}
 function commandKey(cmd: ValidationCommand): string { return cmd.kind === "npm_script" ? JSON.stringify({ kind: "npm_script", script: cmd.script, args: cmd.args ?? [] }) : JSON.stringify({ kind: "shell_allowlisted", command_id: cmd.command_id, args: cmd.args ?? [] }); }
 function dedupeValidationCommands(commands: ValidationCommand[]): ValidationCommand[] { const seen = new Set<string>(); const out: ValidationCommand[] = []; for (const c of commands) { const k = commandKey(c); if (!seen.has(k)) { seen.add(k); out.push(c); } } return out; }
-function withinAny(file: string, scopes: string[]): boolean { if (scopes.length === 0) return true; const norm = file.replace(/\\/g, "/"); return scopes.some((s) => { const scope = s.replace(/\\/g, "/").replace(/\/$/, ""); return norm === scope || norm.startsWith(scope + "/"); }); }

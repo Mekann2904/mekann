@@ -20,6 +20,10 @@ _Avoid_: patch response, diff result
 The module that decides whether a patch proposal can move to the next stage by checking patch safety, declared touched paths, authority scope, base hashes, and public surface declarations. It produces findings that candidate escrow and subagent apply can interpret differently.
 _Avoid_: PatchProposalValidator, SubagentResultTrust
 
+**Patch proposal intake**:
+The deepened module that receives a patch proposal from a subagent result and turns it into an admission outcome for a specific downstream adapter, such as candidate escrow or subagent apply. Patch proposal intake owns profile-specific decision semantics, reason mapping, and audit payload shaping so callers do not reinterpret PatchProposalPolicy findings themselves.
+_Avoid_: patch import, proposal gate, patch validation wrapper
+
 **Candidate escrow**:
 The autoresearch step that stores a trusted patch proposal as an experiment candidate without applying it to the main worktree. Candidate escrow preserves the patch for later evaluation under the autoresearch contract.
 _Avoid_: candidate import, patch staging
