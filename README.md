@@ -123,6 +123,34 @@ Codex-inspired goal 機能 — thread/session に紐づく永続的な objective
 
 ---
 
+## Vendored skills (mattpocock/skills)
+
+[mattpocock/skills](https://github.com/mattpocock/skills) を `vendor/mattpocock-skills` に git subtree で vendoring しています。
+現在は以下の 2 skill を Pi package として公開しています。
+
+| Skill | Path |
+|---|---|
+| grill-with-docs | `./vendor/mattpocock-skills/skills/engineering/grill-with-docs` |
+| improve-codebase-architecture | `./vendor/mattpocock-skills/skills/engineering/improve-codebase-architecture` |
+
+### Upstream の更新
+
+```bash
+npm run update:mattpocock-skills
+```
+
+内部的には `git subtree pull --squash` が実行されます。
+
+### 注意事項
+
+- `vendor/mattpocock-skills` 配下は直接編集しないでください（upstream mirror として扱います）。
+- Pi 固有の補正が必要な場合は、`mekann/skills/` 側に adapter skill を追加してください。
+- 他の upstream skill を公開したい場合は `package.json` の `pi.skills` に path を追加してください。
+
+詳細: [docs/vendor/mattpocock-skills.md](./docs/vendor/mattpocock-skills.md)
+
+---
+
 ## インストール
 
 `~/.pi/agent/settings.json` の `extensions` にパスを追加:
