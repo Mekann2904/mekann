@@ -50,9 +50,7 @@
       "./mekann"
     ],
     "skills": [
-      "./mekann/skills",
-      "./vendor/mattpocock-skills/skills/engineering/grill-with-docs",
-      "./vendor/mattpocock-skills/skills/engineering/improve-codebase-architecture"
+      "./mekann/skills"
     ]
   },
   "devDependencies": {
