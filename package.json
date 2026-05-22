@@ -39,7 +39,8 @@
     "check:coverage:plan-mode": "bash scripts/check-coverage-threshold.sh mekann/safety/plan-mode 90 npx vitest run --coverage",
     "typecheck:prod": "tsc -p tsconfig.prod.json",
     "typecheck": "npm run typecheck:prod && cd mekann/safety/sandbox && npm run typecheck && cd ../../autonomy/subagent && npm run typecheck",
-    "prepush": "bash scripts/prepush-parallel.sh"
+    "prepush": "bash scripts/prepush-parallel.sh",
+    "update:mattpocock-skills": "bash scripts/update-mattpocock-skills.sh"
   },
   "engines": {
     "node": ">=22.19.0"
@@ -49,7 +50,9 @@
       "./mekann"
     ],
     "skills": [
-      "./mekann/skills"
+      "./mekann/skills",
+      "./vendor/mattpocock-skills/skills/engineering/grill-with-docs",
+      "./vendor/mattpocock-skills/skills/engineering/improve-codebase-architecture"
     ]
   },
   "devDependencies": {
