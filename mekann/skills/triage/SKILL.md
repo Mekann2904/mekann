@@ -1,6 +1,6 @@
 ---
 name: triage
-description: Triage issues through a state machine driven by triage roles. Use when user wants to create an issue, triage issues, review incoming bugs or feature requests, prepare issues for an coding agent, or manage issue workflow.
+description: Triage issues through a state machine driven by triage roles. Use when user wants to create an issue, triage issues, review incoming bugs or feature requests, prepare issues for a coding agent, or manage issue workflow.
 ---
 
 > 謝辞: この skill は [mattpocock/skills](https://github.com/mattpocock/skills) をもとに Pi / Mekann 向けに翻案したものです。元の発想・構成・ワークフローは Matt Pocock 氏によるものです。
@@ -36,7 +36,7 @@ Five **state** roles:
 
 - `needs-triage` — maintainer needs to evaluate
 - `needs-info` — waiting on reporter for more information
-- `ready-for-agent` — fully specified, ready for an coding agent
+- `ready-for-agent` — fully specified, ready for a coding agent
 - `ready-for-human` — needs human implementation
 - `wontfix` — will not be actioned
 

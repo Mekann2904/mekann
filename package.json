@@ -40,6 +40,7 @@
     "typecheck:prod": "tsc -p tsconfig.prod.json",
     "typecheck": "npm run typecheck:prod && cd mekann/safety/sandbox && npm run typecheck && cd ../../autonomy/subagent && npm run typecheck",
     "prepush": "bash scripts/prepush-parallel.sh",
+    "check:mattpocock-skills": "node scripts/check-mattpocock-skills.js",
     "update:mattpocock-skills": "bash scripts/update-mattpocock-skills.sh"
   },
   "engines": {
