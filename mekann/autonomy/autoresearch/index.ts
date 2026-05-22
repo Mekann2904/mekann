@@ -103,6 +103,19 @@ import { executeRunContract } from "./tools/runContract.js";
 import { executeApplyCandidate, executeApplyCandidateIsolated, executeCandidateEscrow, executeListCandidates, executeRejectCandidate, executeShowCandidate } from "./tools/candidates.js";
 import { handleCommand } from "./tools/commandHandler.js";
 import { suggestSubagents } from "./subagentPlanning.js";
+import {
+	appendScaleEvent,
+	buildScalingPlan,
+	claimNextAction,
+	completeScaleAction,
+	createPlanningScaleState,
+	nextActionMessage,
+	requestScaleStop,
+	startScale,
+	statusText as scaleStatusText,
+	readScaleState,
+	type ScaleRuntimeStore,
+} from "./scale.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 
 
@@ -311,6 +324,7 @@ const SYSTEM_PROMPT_INACTIVE = [
 
 export default function autoresearchExtension(pi: ExtensionAPI): void {
 	const store = new SessionStore();
+	const scaleStore: ScaleRuntimeStore = { active: false, promptQueued: false };
 
 	// ─── session_start ─────────────────────────────────────────
 
@@ -380,6 +394,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		store.runningExperiment = null;
 		store.runResultMap.clear();
 		store.resetLoopProgress();
+		const scaleState = readScaleState(ctx.cwd);
+		scaleStore.active = scaleState?.status === "running" || scaleState?.status === "draining";
+		scaleStore.promptQueued = false;
 		store.updateWidget(ctx);
 	});
 
@@ -421,10 +438,24 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 	pi.on("agent_start", async () => {
 		store.loopPromptQueued = false;
+		scaleStore.promptQueued = false;
 		store.agentStartRunCount = store.state.runCount;
 	});
 
 	pi.on("agent_end", async (event, ctx) => {
+		const scaleState = readScaleState(ctx.cwd);
+		if (scaleStore.active && scaleState?.status === "running" && !scaleStore.promptQueued) {
+			if (hasCompleteMarker(event)) {
+				// Scale mode treats COMPLETE as exploration exhaustion, not as research stop.
+				try { appendScaleEvent(ctx.cwd, { type: "exploration_exhausted", source: "complete_marker" }); } catch { /* best effort */ }
+			}
+			const action = claimNextAction(ctx.cwd);
+			if (action) {
+				scaleStore.promptQueued = true;
+				pi.sendUserMessage(nextActionMessage(action), { deliverAs: "followUp" });
+			}
+			return;
+		}
 		if (!store.active || !store.autoLoop) return;
 		if (store.runningExperiment || store.loopPromptQueued) return;
 
@@ -468,6 +499,58 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		description: "autoresearch モードの管理(on / off / status / clear)",
 		handler: async (args, ctx) => {
 			await handleCommand(args, ctx, pi, store, toolDeps);
+		},
+	});
+
+	pi.registerCommand("autoresearch-scale", {
+		description: "autoresearch test-time scaling supervisor の管理(start / stop / status / <目的文>)",
+		handler: async (args, ctx) => {
+			const raw = (args ?? "").trim();
+			try {
+				if (raw === "status" || raw === "") {
+					ctx.ui.notify(scaleStatusText(ctx.cwd), "info");
+					return;
+				}
+				if (raw === "start") {
+					store.active = true;
+					store.autoLoop = false;
+					const s = startScale(ctx.cwd);
+					scaleStore.active = true;
+					scaleStore.promptQueued = false;
+					store.updateWidget(ctx);
+					ctx.ui.notify(`autoresearch-scale を開始しました: generation=${s.generation}`, "info");
+					const action = claimNextAction(ctx.cwd);
+					if (action) {
+						scaleStore.promptQueued = true;
+						pi.sendUserMessage(nextActionMessage(action), { deliverAs: "followUp" });
+					}
+					return;
+				}
+				if (raw === "stop") {
+					const s = requestScaleStop(ctx.cwd);
+					scaleStore.active = s.status === "draining";
+					scaleStore.promptQueued = false;
+					ctx.ui.notify(s.status === "draining" ? "autoresearch-scale は graceful stopping です" : "autoresearch-scale を停止しました", "info");
+					return;
+				}
+
+				const plan = buildScalingPlan(raw);
+				fs.writeFileSync(planPath(ctx.cwd), plan.markdown, "utf8");
+				createPlanningScaleState(ctx.cwd);
+				store.active = true;
+				store.autoLoop = false;
+				scaleStore.active = false;
+				scaleStore.promptQueued = false;
+				store.updateWidget(ctx);
+				let msg = `[OK] scaling plan draft を生成しました: ${planPath(ctx.cwd)}\n`;
+				msg += `判定: ${plan.decision}\n主指標: ${plan.contract.evaluation.primaryMetric.name} (${plan.contract.evaluation.primaryMetric.direction})\n`;
+				if (plan.blockingIssues.length > 0) msg += `\nブロッキング issue:\n${plan.blockingIssues.map((i) => `- ${i}`).join("\n")}\n`;
+				if (plan.clarifyingQuestions.length > 0) msg += `\n確認質問:\n${plan.clarifyingQuestions.map((q) => `- ${q}`).join("\n")}\n`;
+				msg += "\nplan を確認・編集した後、autoresearch_approve を実行してください。承認後に /autoresearch-scale start で開始できます。";
+				ctx.ui.notify(msg, "info");
+			} catch (e) {
+				ctx.ui.notify(`[ERROR] autoresearch-scale: ${e instanceof Error ? e.message : String(e)}`, "error");
+			}
 		},
 	});
 
@@ -695,6 +778,54 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		description: "Apply one pending candidate in .pi/autoresearch-worktrees/<candidateId> for isolated evaluation.",
 		parameters: Type.Object({ candidate_id: Type.String() }),
 		async execute(_tc, params, _signal, _ou, ctx) { return executeApplyCandidateIsolated(store, params, ctx); },
+	});
+
+	// ─── Tools: autoresearch scale supervisor ───────────────────
+
+	pi.registerTool({
+		name: "autoresearch_scale_next",
+		label: "autoresearch scale next",
+		description: "Autoresearch test-time scaling の次の単一 supervisor action を取得します。通常は agent_end hook が自動注入します。",
+		parameters: Type.Object({}),
+		async execute(_tc, _params, _signal, _ou, ctx) {
+			try {
+				const action = claimNextAction(ctx.cwd);
+				if (!action) return store.textResponse("[OK] 次 action はありません。");
+				return store.textDetails(nextActionMessage(action), action as unknown as Record<string, unknown>);
+			} catch (e) {
+				return store.textResponse(`[ERROR] ${e instanceof Error ? e.message : String(e)}`);
+			}
+		},
+	});
+
+	pi.registerTool({
+		name: "autoresearch_scale_complete_action",
+		label: "autoresearch scale complete action",
+		description: "Autoresearch test-time scaling の action 完了を記録し、events/state/summary を更新します。",
+		parameters: Type.Object({
+			action_id: Type.String(),
+			status: Type.Optional(StringEnum(["ok", "failed"] as const) as any),
+			result: Type.Optional(Type.Object({}, { additionalProperties: true })),
+		}),
+		async execute(_tc, params, _signal, _ou, ctx) {
+			try {
+				const s = completeScaleAction(ctx.cwd, params as any);
+				return store.textDetails(`[OK] scale action を記録しました: status=${s.status} generation=${s.generation}`, s as unknown as Record<string, unknown>);
+			} catch (e) {
+				return store.textResponse(`[ERROR] ${e instanceof Error ? e.message : String(e)}`);
+			}
+		},
+	});
+
+	pi.registerTool({
+		name: "autoresearch_scale_status",
+		label: "autoresearch scale status",
+		description: "Autoresearch test-time scaling の状態を表示します。",
+		parameters: Type.Object({}),
+		async execute(_tc, _params, _signal, _ou, ctx) {
+			const text = scaleStatusText(ctx.cwd);
+			return store.textDetails(text, { status: text });
+		},
 	});
 
 	// ─── Tool: autoresearch_run_contract ───────────────────────

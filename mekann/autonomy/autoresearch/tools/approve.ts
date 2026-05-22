@@ -32,6 +32,7 @@ import {
 import { isGitRepo, getBaselineCommit } from "../contract.js";
 import { runArgvCommand, generatePiRunId } from "../runner.js";
 import { readState as readStateV2, writeState as writeStateV2 } from "../layout.js";
+import { initializeScalingStateForApprovedContract, isScalingContract } from "../scale.js";
 import { isWorkingTreeCleanForContract, getContractRelevantChangedFiles, resolvePrimaryMetricFromRun, runContractChecksForPhase, validateContractPreconditions } from "./sharedHelpers.js";
 
 // ─── Params type ──────────────────────────────────────────────
@@ -229,19 +230,30 @@ export async function executeApprove(
 	store.state.bestMetric = null;
 	store.state.runCount = 0;
 
-	// Persist contract-mode state to state.json
+	// Persist state. Scaling contracts keep plan-scoped state so candidate escrow
+	// and the scale supervisor can recover from the current plan after compaction.
+	let scalingPlan: { planId: string; planDir: string } | null = null;
 	try {
-		writeStateV2(ctx.cwd, {
-			...readStateV2(ctx.cwd),
-			currentPlanId: undefined,
-			currentPlanDir: undefined,
-			latestRunId: undefined,
-			bestRunId: undefined,
-			bestMetric: undefined,
-			runCount: 0,
-			currentContractHash: contractHash,
-		});
-	} catch { /* best effort */ }
+		if (isScalingContract(contract)) {
+			scalingPlan = initializeScalingStateForApprovedContract(ctx.cwd, contract, contractHash, planMarkdown);
+		} else {
+			writeStateV2(ctx.cwd, {
+				...readStateV2(ctx.cwd),
+				currentPlanId: undefined,
+				currentPlanDir: undefined,
+				latestRunId: undefined,
+				bestRunId: undefined,
+				bestMetric: undefined,
+				runCount: 0,
+				currentContractHash: contractHash,
+			});
+		}
+	} catch (e) {
+		if (isScalingContract(contract)) {
+			return store.textResponse(`[ERROR] scaling state の初期化に失敗: ${e instanceof Error ? e.message : String(e)}`);
+		}
+		/* best effort for legacy contract-mode state */
+	}
 
 	logEvent("approve_completed", { baselineValue: noise.aggregate, noiseRange: noise.relativeRange, samples: noise.samples.length, checkResults: Object.fromEntries(allCheckResults) });
 
@@ -272,7 +284,13 @@ export async function executeApprove(
 		text += `\n### Immutable Read Set Warnings\n`;
 		for (const w of immutableResult.warnings) text += `- ${w}\n`;
 	}
-	text += `\nautoresearch_run_contract で実験を開始できます。`;
+	if (scalingPlan) {
+		text += `\n### Autoresearch scale\n`;
+		text += `scaling state: ${scalingPlan.planDir}/scaling/state.json\n`;
+		text += `次に /autoresearch-scale start で supervisor を開始できます。`;
+	} else {
+		text += `\nautoresearch_run_contract で実験を開始できます。`;
+	}
 
-	return store.textDetails(text, { contractPath: currentContractPath(ctx.cwd), lockPath: currentLockPath(ctx.cwd), baseline: noise, contractHash, gitCommit });
+	return store.textDetails(text, { contractPath: currentContractPath(ctx.cwd), lockPath: currentLockPath(ctx.cwd), baseline: noise, contractHash, gitCommit, scalingPlan });
 }
