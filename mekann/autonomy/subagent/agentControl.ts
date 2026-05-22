@@ -32,7 +32,6 @@ import type {
 import { isTerminalStatus } from "./types.js";
 import { KittyController } from "./kittyControl.js";
 import { SubagentHub } from "./ipc.js";
-import type { ChildToParent } from "./ipc.js";
 import type { AgentDisplayRef, AgentDisplayResult, AgentRuntime, ResultContract, SubagentAuthority } from "./types.js";
 import type { SubagentResultStore } from "./resultStore.js";
 import { ApplyQueue } from "./applyQueue.js";
@@ -424,86 +423,38 @@ export class AgentControl {
     };
     this.registry.registerAgent(metadata, reservation);
     const hub = this.hubFactory(socketPath);
-    this.lifecycle.setHub(agentId, hub);
-    hub.onMessage((m) => this.handleChildMessage(callerPath, canonicalPath, m));
-    await hub.start();
-    this.lifecycle.setRuntime(canonicalPath, { mode: "external_pi", agentId, agentPath: canonicalPath, socketPath, display, connected: false });
-    try {
-      const resolvedOverride = params.model ? await this.resolveModel(params.model, ctx) : undefined;
-      const modelId = resolvedOverride
-        ? ((resolvedOverride as any).provider && (resolvedOverride as any).id ? `${(resolvedOverride as any).provider}/${(resolvedOverride as any).id}` : undefined)
-        : (ctx.model?.provider && ctx.model?.id ? `${ctx.model.provider}/${ctx.model.id}` : undefined);
-      if (!modelId) throw new Error("External Pi subagents require an exact provider/model_id. Specify spawn_agent.model or use in-process subagents.");
-      const thinkingLevel = this.resolveThinkingLevel(params.reasoning_effort);
-      const preamble = this.authorityPreamble(authority, params.result_contract);
-      const externalNotice = [
-        "SECURITY NOTICE: this external Pi process is running with authorityEnforced=false.",
-        "The parent process cannot remove write/edit/bash tools from this process.",
-        `Requested authority mode: ${authority.mode}. Treat it as advisory unless the runtime itself removed tools.`,
-      ].join("\n");
+    const resolvedOverride = params.model ? await this.resolveModel(params.model, ctx) : undefined;
+    const modelId = resolvedOverride
+      ? ((resolvedOverride as any).provider && (resolvedOverride as any).id ? `${(resolvedOverride as any).provider}/${(resolvedOverride as any).id}` : undefined)
+      : (ctx.model?.provider && ctx.model?.id ? `${ctx.model.provider}/${ctx.model.id}` : undefined);
+    if (!modelId) throw new Error("External Pi subagents require an exact provider/model_id. Specify spawn_agent.model or use in-process subagents.");
+    const thinkingLevel = this.resolveThinkingLevel(params.reasoning_effort);
+    const preamble = this.authorityPreamble(authority, params.result_contract);
+    const externalNotice = [
+      "SECURITY NOTICE: this external Pi process is running with authorityEnforced=false.",
+      "The parent process cannot remove write/edit/bash tools from this process.",
+      `Requested authority mode: ${authority.mode}. Treat it as advisory unless the runtime itself removed tools.`,
+    ].join("\n");
 
-      const launchMessage = [externalNotice, preamble, params.message]
-        .filter(Boolean)
-        .join("\n\n");
+    const launchMessage = [externalNotice, preamble, params.message]
+      .filter(Boolean)
+      .join("\n\n");
 
-      const launchParams = { agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: launchMessage, logPath, title: display.title, piCommand: this.piCommand, extensionPath: this.extensionPath, modelId, thinkingLevel };
-      const opened = isSplit
-        ? await this.kitty.launchPiSplit(launchParams)
-        : await this.kitty.launchPiWindow(launchParams);
-      this.registry.updateAgent(canonicalPath, { display: opened });
-      const rt = this.lifecycle.getRuntime(canonicalPath); if (rt?.mode === "external_pi") rt.display = opened;
-      const hello = await hub.waitForHello(agentId, this.helloTimeoutMs);
-      const nextDisplay = { ...this.registry.get(canonicalPath)?.display ?? opened, status: "open" as const, pid: hello.pid };
-      this.registry.updateStatus(canonicalPath, "running", { display: nextDisplay });
-      const rt2 = this.lifecycle.getRuntime(canonicalPath); if (rt2?.mode === "external_pi") { rt2.connected = true; rt2.pid = hello.pid; rt2.capabilities = hello.capabilities; rt2.display = nextDisplay; }
-    } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
-      const failed = { ...this.registry.get(canonicalPath)?.display ?? display, status: "failed" as const, error };
-      this.registry.updateStatus(canonicalPath, "errored", { display: failed });
-      this.registry.close(canonicalPath, "errored");
-      try { await this.kitty.close(failed); } catch {}
-      try { await hub.stop(); } catch {}
-      this.lifecycle.deleteHub(agentId);
-      this.lifecycle.deleteRuntime(canonicalPath);
-      processExternalPiSlots.delete(agentId);
-      throw err;
-    }
+    const launchParams = { agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: launchMessage, logPath, title: display.title, piCommand: this.piCommand, extensionPath: this.extensionPath, modelId, thinkingLevel };
+    await this.lifecycle.registerExternalPiRuntime({
+      agentId,
+      agentPath: canonicalPath,
+      callerPath,
+      socketPath,
+      display,
+      hub,
+      kitty: this.kitty,
+      launchParams,
+      displayMode: displayKind,
+      helloTimeoutMs: this.helloTimeoutMs,
+      onClosed: (id) => processExternalPiSlots.delete(id),
+    });
     return { agent_id: agentId, task_name: canonicalPath, status: this.registry.get(canonicalPath)?.status ?? "running", display: this.displayResult(this.registry.get(canonicalPath)?.display) };
-  }
-
-  private handleChildMessage(callerPath: string, agentPath: string, msg: ChildToParent): void {
-    const agent = this.registry.get(agentPath); if (!agent) return;
-    if (msg.type === "status") {
-      this.registry.updateStatus(agentPath, msg.status);
-    } else if (msg.type === "final") {
-      this.handleFinalText(msg.agentId, agentPath, callerPath, msg.message, msg.status, agent.workspaceCwd ?? process.cwd());
-      void this.autoCloseExternal(agentPath);
-    } else if (msg.type === "error") {
-      this.registry.updateStatus(agentPath, "errored");
-      this.enqueueToMailbox(msg.agentId ?? agent.agentId, agentPath, callerPath, `Agent error: ${msg.message}`, "final_result");
-      void this.autoCloseExternal(agentPath);
-    } else if (msg.type === "log") {
-      this.logDisplay(agent.display, msg.line);
-    }
-  }
-
-  private async autoCloseExternal(agentPath: string): Promise<void> {
-    const rt = this.lifecycle.getRuntime(agentPath);
-    if (rt?.mode !== "external_pi") return;
-    const agent = this.registry.get(agentPath);
-    const display = agent?.display;
-    // Close kitty window
-    if (display) {
-      try { await this.kitty.close(display); } catch { /* best-effort */ }
-      this.registry.updateAgent(agentPath, { display: { ...display, status: "closed" } });
-    }
-    // Stop IPC hub
-    try { await this.lifecycle.getHub(rt.agentId)?.stop(); } catch { /* best-effort */ }
-    this.lifecycle.deleteHub(rt.agentId);
-    processExternalPiSlots.delete(rt.agentId);
-    this.lifecycle.deleteRuntime(agentPath);
-    this.registry.close(agentPath, agent?.status === "errored" ? "errored" : "completed");
-    this.mailbox.appendEvent({ type: "agent_close_end", ...this.evBase(rt.agentId, agentPath) });
   }
 
   private getRuntimeByAgentId(agentId: string): AgentRuntime | undefined {
