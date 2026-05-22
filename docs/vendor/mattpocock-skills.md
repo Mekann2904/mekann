@@ -1,6 +1,10 @@
 # mattpocock-skills import policy
 
-This repository imports selected skills from `mattpocock/skills`.
+This repository imports the engineering skills from [mattpocock/skills](https://github.com/mattpocock/skills) and maintains Pi-oriented adaptations of them.
+
+## Acknowledgement
+
+The original ideas, structure, and workflows for these engineering skills were created by Matt Pocock. Mekann adapts them for Pi coding agent, including Pi tool names, Pi subagent workflow, Japanese-language use, and local package layout.
 
 ## Directories
 
@@ -11,9 +15,10 @@ This repository imports selected skills from `mattpocock/skills`.
 
 - Do not edit files under `vendor/mattpocock-skills` directly.
 - Treat `vendor/mattpocock-skills` as an upstream mirror only.
-- The update command copies selected upstream skills into `mekann/skills`.
+- The update command copies all upstream `skills/engineering/*` skill directories into `mekann/skills`.
 - Pi developers edit the copied files under `mekann/skills` to make them suitable for Pi.
 - Pi coding agents read only the `mekann/skills` copies exposed by `package.json`.
+- Keep attribution / acknowledgement text in the copied skills when adapting them.
 
 ## Update flow
 
@@ -24,16 +29,31 @@ npm run update:mattpocock-skills
 The command:
 
 1. Updates `vendor/mattpocock-skills` from upstream with git subtree.
-2. Copies the exposed upstream skills into `mekann/skills`.
-3. Overwrites the existing copied skill directories.
+2. Copies every upstream engineering skill from `vendor/mattpocock-skills/skills/engineering/*` into `mekann/skills`.
+3. Overwrites the existing copied engineering skill directories.
 
-After running it, review the diff under `mekann/skills` and edit those files for Pi before committing.
+After running it, review the diff under `mekann/skills` and edit those files for Pi before committing. In particular, re-check:
 
-## Exposed skills
+- Claude-specific or non-Pi tool names.
+- Slash-command assumptions.
+- Subagent instructions that should use Pi `spawn_agent` / `wait_agent` vocabulary.
+- Japanese language policy.
+- Attribution / acknowledgement text.
+- References to `AGENTS.md`, `docs/agents/`, issue tracker labels, `CONTEXT.md`, and ADRs.
 
-The Pi package currently exposes:
+## Exposed engineering skills
 
-* `grill-with-docs` from `mekann/skills/grill-with-docs`
-* `improve-codebase-architecture` from `mekann/skills/improve-codebase-architecture`
+The Pi package exposes `./mekann/skills` via `package.json`, and the update script currently imports all upstream engineering skills:
 
-Other upstream skills are not exposed unless they are copied into `mekann/skills` and included by the package skill configuration.
+- `diagnose`
+- `grill-with-docs`
+- `improve-codebase-architecture`
+- `prototype`
+- `setup-matt-pocock-skills`
+- `tdd`
+- `to-issues`
+- `to-prd`
+- `triage`
+- `zoom-out`
+
+Mekann-specific skills may also live in `mekann/skills`, but they are not copied from `vendor/mattpocock-skills`.
