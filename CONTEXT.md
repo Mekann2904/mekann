@@ -69,16 +69,36 @@ A composite evaluation approach for hard-to-measure autoresearch tasks that comb
 _Avoid_: LLM-only judgment, subjective vibes
 
 **Autoresearch test-time scaling**:
-ユーザが停止するまで autoresearch の推論時計算量を増やし、複数の仮説・候補・評価・反省を並行または世代的に進めて研究品質を高める方式。既存の `autoresearch loop` を置き換えるものではなく、候補集団と証拠に基づく探索方針の更新を supervisor が管理する別モード。
-_Avoid_: autoresearch loop replacement, background daemon, unchecked agent autonomy
+ユーザが停止するまで autoresearch の推論時計算量を増やし、複数の仮説・候補・評価・反省を並行または世代的に進めて研究品質を高める方式。通常の研究ループ中にユーザ判断を求めず、不可逆または高リスクな安全境界だけをユーザ制御として残す。
+_Avoid_: autoresearch loop replacement, background daemon, unchecked agent autonomy, interactive research loop
 
 **Scaling plan**:
 Autoresearch test-time scaling の開始時に生成される `autoresearch.plan.md` の拡張形で、通常の評価契約に加えて探索集団、役割配分、世代更新、証拠、失敗記憶、停止・一時停止方針を記述する plan。別ファイルではなく既存 plan 形式を拡張し、contract 内で scaling mode と supervisor policy を明示し、研究状態は対象 plan 配下の scaling state として保持する。
 _Avoid_: separate scale plan file, informal research notes, normal loop plan
 
 **Supervisor policy**:
-Autoresearch test-time scaling の supervisor が読む契約化された探索方針で、候補集団、役割配分、世代更新、証拠重視、失敗記憶、resource 上限、stop / pause / exhaustion の扱い、hypothesis slots を定義する。Markdown の説明ではなく contract 内の構造化データとして保持し、compaction 後も plan 配下の scaling state から再開できるようにする。
-_Avoid_: markdown-only strategy, hidden agent preference, ad hoc loop prompt
+Autoresearch test-time scaling の supervisor が読む契約化された探索方針で、候補集団、役割配分、世代更新、証拠重視、失敗記憶、resource 上限、stop / safety pause / exhaustion の扱い、hypothesis slots を定義する。通常の候補採否や仮説選択や unknown 解決をユーザ判断へ逃がさず、安全境界に関わる停止理由だけを扱う。
+_Avoid_: markdown-only strategy, hidden agent preference, ad hoc loop prompt, human-in-the-loop fallback
+
+**Autonomous assumption**:
+Autoresearch test-time scaling が unknown に遭遇したとき、ユーザへ質問せずに contract、plan、repo docs、code から解決を試み、解決不能なら明示的な仮定として記録して探索を続けるための前提。仮定が contract violation や不可逆変更につながる場合だけ safety pause の対象になる。
+_Avoid_: clarifying question, user instruction request, hidden assumption
+
+**Safety pause**:
+Autoresearch test-time scaling が自律探索を一時停止してユーザ制御へ戻す安全境界で、停止理由は contract violation、unexpected dirty workspace、revert failure、resource exhausted or unavailable、unsafe or irreversible decision required に限定される。改善なし、仮説枯渇、弱い candidate、critic finding、未解決 unknown、benchmark/check 失敗は safety pause ではなく discard、exhaustion、failure memory で処理する。
+_Avoid_: human decision required, low-confidence pause, no-improvement pause, resource error
+
+**Resource degradation**:
+Autoresearch test-time scaling が subagent、evaluation、worktree、benchmark、tool、timeout などの resource 制約に遭遇したとき、すぐ safety pause せず、並列度削減、cheap evidence への切替、historian 省略、generation 縮小、残候補の exhaustion 記録などで自律的に縮退して継続する扱い。縮退しても contract を満たせず継続不能な場合だけ resource exhausted or unavailable として safety pause する。
+_Avoid_: resource error, immediate pause, ask user for more resources
+
+**Autonomy status**:
+Autoresearch test-time scaling がユーザへ返す観測用の進捗表示で、現在 phase、generation、resource 使用量、best candidate、次に自律実行する action、直近の evidence や discard 理由、summary file path を示す。ユーザに操縦を求める質問ではなく、通常実行中は stop、pending adoption、safety pause の修復または許可以外の判断依頼を表示しない。
+_Avoid_: next-step question, hypothesis approval prompt, clarifying question dump
+
+**Pending adoption**:
+Autoresearch test-time scaling が winning candidate を選び、証拠・critic finding・benchmark/check 結果・採用用 patch をまとめたが、main worktree への最終反映はまだ行っていない状態。研究としての最良案提示までは自走し、プロジェクト状態を変える採用はユーザ制御として残す。
+_Avoid_: auto-merge, auto-commit, final adoption
 
 **Hypothesis slot**:
 Autoresearch test-time scaling の初期探索多様性を確保するための仮説カテゴリ。Scaling plan には固定 slot と目的文由来 slot を置き、具体的な hypothesis は contract 承認後に scout が埋める。
@@ -96,9 +116,9 @@ _Avoid_: conversation memory, markdown-only notes, root-level global scaling sta
 ユーザが Autoresearch test-time scaling の停止を要求した後、現在の candidate evaluation を安全に完了してから止める停止方式。内部 state では `draining`、UI では `graceful stopping` と表示する。新しい仮説・候補・generation は開始せず、実行中 candidate の checks、benchmark、decision、revert または materialization、証拠、失敗理由を研究状態に反映してから stop する。
 _Avoid_: immediate abort, dirty stop, abandoned candidate evaluation
 
-**Safety pause**:
-Supervisor が contract violation、予期しない dirty workspace、revert failure、resource error、人間判断待ちなどを検出し、安全に続行できないため研究を一時停止する状態。Safety pause は研究完了ではなく、必要な人間入力や状態修復後に再開できる。
-_Avoid_: user stop, exhaustion, silent failure
+**Critic finding**:
+Autoresearch test-time scaling の critic が出す、scope violation、metric hacking、hidden side effect、expected evidence の弱さに関する監査指摘。Critic finding は evidence と ranking input であり、candidate の直接 discard、loop の pause、ユーザ判断要求、最終 ranking decision は行わない。
+_Avoid_: critic decision, judge verdict, pause command
 
 **Exploration exhaustion**:
 特定の探索軌道や役割が有望な次候補を出せなくなった状態。Autoresearch test-time scaling では研究全体の完了ではなく、失敗記憶として保存し、別の仮説・観点・file cluster・実装戦略へ探索分布を移す信号として扱う。既存 autoresearch loop の `COMPLETE` marker は scale 中には停止理由ではなく、この exploration exhaustion の証拠として記録する。

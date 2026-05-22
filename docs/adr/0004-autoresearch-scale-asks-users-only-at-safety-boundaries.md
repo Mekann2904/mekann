@@ -1,0 +1,3 @@
+# Autoresearch scale asks users only at safety boundaries
+
+Autoresearch test-time scaling is a higher-autonomy research mode, so its normal loop must not ask the user to choose hypotheses, approve weak candidates, resolve unknowns, or interpret critic findings. The supervisor treats unknowns as autonomous assumptions, uses critic findings only as evidence and ranking input, degrades resource usage before pausing, and runs winning candidates up to pending adoption; only main-worktree adoption, contract violations, unsafe or irreversible decisions, unrecoverable workspace/revert problems, or unavailable required resources return control to the user.
