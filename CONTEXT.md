@@ -68,6 +68,42 @@ _Avoid_: goal, benchmark script, simple automation
 A composite evaluation approach for hard-to-measure autoresearch tasks that combines mechanical checks, structured acceptance criteria, LLM critics or judges, and human review where needed. LLM judgment is useful but should be calibrated against human or expert review before it becomes a trusted decision source.
 _Avoid_: LLM-only judgment, subjective vibes
 
+**Autoresearch test-time scaling**:
+ユーザが停止するまで autoresearch の推論時計算量を増やし、複数の仮説・候補・評価・反省を並行または世代的に進めて研究品質を高める方式。既存の `autoresearch loop` を置き換えるものではなく、候補集団と証拠に基づく探索方針の更新を supervisor が管理する別モード。
+_Avoid_: autoresearch loop replacement, background daemon, unchecked agent autonomy
+
+**Scaling plan**:
+Autoresearch test-time scaling の開始時に生成される `autoresearch.plan.md` の拡張形で、通常の評価契約に加えて探索集団、役割配分、世代更新、証拠、失敗記憶、停止・一時停止方針を記述する plan。別ファイルではなく既存 plan 形式を拡張し、contract 内で scaling mode と supervisor policy を明示し、研究状態は対象 plan 配下の scaling state として保持する。
+_Avoid_: separate scale plan file, informal research notes, normal loop plan
+
+**Supervisor policy**:
+Autoresearch test-time scaling の supervisor が読む契約化された探索方針で、候補集団、役割配分、世代更新、証拠重視、失敗記憶、resource 上限、stop / pause / exhaustion の扱い、hypothesis slots を定義する。Markdown の説明ではなく contract 内の構造化データとして保持し、compaction 後も plan 配下の scaling state から再開できるようにする。
+_Avoid_: markdown-only strategy, hidden agent preference, ad hoc loop prompt
+
+**Hypothesis slot**:
+Autoresearch test-time scaling の初期探索多様性を確保するための仮説カテゴリ。Scaling plan には固定 slot と目的文由来 slot を置き、具体的な hypothesis は contract 承認後に scout が埋める。
+_Avoid_: concrete patch idea before approval, single-track next step, unbounded brainstorming
+
+**Negative-control hypothesis**:
+候補 patch を作るためではなく、benchmark、checks、metric、cheap check と full benchmark の相関など、評価系が候補比較に使えるほど安定しているかを疑う hypothesis slot。Autoresearch test-time scaling では評価環境の信頼性も研究対象に含める。
+_Avoid_: intentionally weak patch, wasted candidate, random no-op change
+
+**Scaling state**:
+Autoresearch test-time scaling の研究状態の正本で、対象 plan の `.autoresearch/plans/<planId>/scaling/` 配下に保持される append-only event log、再開用 snapshot、prompt / compaction 用 summary の集合。仮説、候補、評価、証拠、失敗、方針更新、scout / proposer / critic / historian の role task を event として記録し、会話 context ではなく scaling state から研究を復元する。
+_Avoid_: conversation memory, markdown-only notes, root-level global scaling state
+
+**Graceful stop**:
+ユーザが Autoresearch test-time scaling の停止を要求した後、現在の candidate evaluation を安全に完了してから止める停止方式。内部 state では `draining`、UI では `graceful stopping` と表示する。新しい仮説・候補・generation は開始せず、実行中 candidate の checks、benchmark、decision、revert または materialization、証拠、失敗理由を研究状態に反映してから stop する。
+_Avoid_: immediate abort, dirty stop, abandoned candidate evaluation
+
+**Safety pause**:
+Supervisor が contract violation、予期しない dirty workspace、revert failure、resource error、人間判断待ちなどを検出し、安全に続行できないため研究を一時停止する状態。Safety pause は研究完了ではなく、必要な人間入力や状態修復後に再開できる。
+_Avoid_: user stop, exhaustion, silent failure
+
+**Exploration exhaustion**:
+特定の探索軌道や役割が有望な次候補を出せなくなった状態。Autoresearch test-time scaling では研究全体の完了ではなく、失敗記憶として保存し、別の仮説・観点・file cluster・実装戦略へ探索分布を移す信号として扱う。既存 autoresearch loop の `COMPLETE` marker は scale 中には停止理由ではなく、この exploration exhaustion の証拠として記録する。
+_Avoid_: complete, final success, user stop
+
 ### Runtime context
 
 **Runtime context management**:
