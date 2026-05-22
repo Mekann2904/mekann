@@ -366,7 +366,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				if (state.mode === "auto") return; // already there
 				const ctx = lastCtx;
 				if (ctx) {
-					transitionToMode("auto", ctx, { purpose: evt.purpose });
+					return transitionToMode("auto", ctx, { purpose: evt.purpose });
 				} else {
 					// No ctx available yet — just set state. Model will be corrected on next ctx.
 					state.mode = "auto";
@@ -376,7 +376,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				if (state.mode !== "auto") return;
 				const ctx = lastCtx;
 				if (ctx) {
-					transitionToMode("main", ctx);
+					return transitionToMode("main", ctx);
 				} else {
 					state.mode = "main";
 				}

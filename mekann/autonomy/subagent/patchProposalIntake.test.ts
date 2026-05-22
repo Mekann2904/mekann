@@ -68,6 +68,7 @@ describe("Patch proposal intake", () => {
     });
 
     expect(result.kind).toBe("reject");
+    if (result.kind !== "reject") return;
     expect(result.reason).toBe("authority_not_enforced");
   }));
 
