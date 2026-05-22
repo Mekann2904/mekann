@@ -1,23 +1,22 @@
 # mekann
 
-`mekann` は、pi coding agent 向けの複数の拡張機能を安定した順序で読み込む統合拡張です。
+`mekann` は、Mekann の Pi extension suite を安定した順序で読み込む wrapper extension です。
 
-## スイート
+## 読み込む suite
 
-| スイート | 機能 |
+| Suite | Feature |
 |---|---|
-| core | `cache-friendly-prompt`, `agent-guidelines`, `prompt-core` |
-| safety | `sandbox`, `plan-mode`, `policy-core` |
-| autonomy | `goal`, `subagent`, `autoresearch` |
-| utils | `zip-repo` |
+| [`core`](./core/) | `prompt-core`, `cache-friendly-prompt`, `agent-guidelines` |
+| [`safety`](./safety/) | `sandbox`, `plan-mode`, `policy-core` |
+| [`autonomy`](./autonomy/) | `goal`, `subagent`, `autoresearch` |
+| [`context`](./context/) | `output-gate`, `context-ledger` |
+| [`utils`](./utils/) | `zip-repo` |
 
-## 読み込み順
+## 読み込み順の意図
 
-`sandbox` は `plan-mode` より先に初期化されます。これにより、plan mode の読み取り専用プロファイル変更イベントを sandbox 側で一貫して扱えます。
+`sandbox` は `plan-mode` より先に初期化します。`plan-mode` は UX-level の計画モードであり、実行制限の hard boundary は `sandbox` が担うためです。
 
 ## 使い方
-
-`~/.pi/agent/settings.json` の `extensions` にこのディレクトリを追加します。
 
 ```json
 {

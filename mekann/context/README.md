@@ -1,23 +1,10 @@
 # context suite
 
-Context-management helpers for mekann Pi extensions.
+`context` は **runtime context management** のための suite です。project language を定義する [`CONTEXT.md`](../../CONTEXT.md) とは別物です。
 
-## output-gate
+| Feature | 役割 |
+|---|---|
+| [`output-gate`](./output-gate/) | 大きな raw tool output を外部保存し、検索可能な artifact reference を残す |
+| [`context-ledger`](./ledger/) | 決定・タスク・エラー・plan などの作業記憶 event を保存する |
 
-Stores large tool outputs as redacted plain-text artifacts under `.pi/output-gate/` and returns a short stub to the model. Use `search_tool_outputs` to retrieve snippets from stored artifacts.
-
-- Automatic gating of tool outputs exceeding a size threshold
-- `rg`-backed literal search with fallback line scan
-- Commands: `/output-gate list|show|stats|purge|clear`
-- Manifest metadata: sessionId, turnId, toolCallId, branchId, SHA-256
-
-## context-ledger
-
-Append-only working memory event store for agent session context.
-
-- Records decisions, tasks, errors, plans, file changes, and artifact references
-- `search_context_events` tool for retrieval by query, kind, and priority
-- `summarize_session_context` tool for session restore after restart or compaction
-- Commands: `/context-ledger list|stats|snapshot|restore|clear`
-- Snapshot builder generates bounded XML session summaries (default 4096 bytes)
-- Persistent snapshots: `.pi/mekann-context/snapshots/latest.xml`
+`output-gate` は raw evidence、`context-ledger` は解釈済みの session state を扱います。

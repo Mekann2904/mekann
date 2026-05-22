@@ -1,18 +1,16 @@
-# autoresearch-create
+# autoresearch-create skill
 
-`autoresearch-create` は、ユーザーが「autoresearch して」「この指標を改善して」などと依頼したときに、実験ループの準備を支援するスキルです。
+`autoresearch-create` は、user が「autoresearch して」「この指標を改善して」などと依頼したときに、autoresearch の開始準備を支援する skill です。
 
-## 機能
+## 役割
 
-- 目的・評価指標・改善方向を整理する
-- ベンチマークコマンドと正確性チェックを確認する
-- `autoresearch.md` や `autoresearch.sh` の作成を支援する
-- `autoresearch_init` / `autoresearch_run` / `autoresearch_log` などの利用手順を案内する
+- 目的・metric・改善方向を整理する
+- benchmark command と checks を確認する
+- plan / contract draft の作成を支援する
+- autoresearch tool の使いどころを案内する
 
-## 使い方
+## 境界
 
-通常は pi の skill 読み込み機構から参照されます。統合パッケージでは `package.json` の `pi.skills` に `./mekann/skills` が登録されています。
+Skill は runtime feature ではありません。Pi coding agent が読む task-specific instruction package です。
 
-## 実体
-
-詳細な手順は [`SKILL.md`](./SKILL.md) に記述されています。
+詳細な手順は [`SKILL.md`](./SKILL.md) にあります。

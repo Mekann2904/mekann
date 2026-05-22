@@ -1,44 +1,13 @@
 # cache-friendly-prompt
 
-`cache-friendly-prompt` は最終的なプロンプトオーケストレーター拡張です。他の拡張からフラグメントを収集し、システムプロンプトに安定/半安定なコンテキストを前置し、動的コンテキストを末尾に配置します。また、`stablePrefixHash` と警告をログに記録します。キャッシュフレンドリさを向上させますが、プロバイダーのキャッシュヒットを保証するものではありません。
+`cache-friendly-prompt` は、`prompt-core` に集まった prompt fragment を cache されやすい順序で最終 prompt に配置する feature です。
 
-```text
-拡張機能群 -> prompt-core レジストリ -> cache-friendly-prompt -> プロバイダー
-```
+## 役割
 
-## 自動レポート
+- stable content を前方へ置く
+- dynamic content を後方へ寄せる
+- cacheability signal を report する
 
-`logRequests` が有効な場合、カレントディレクトリの `.pi-cache-friendly/` に以下を自動生成します。
+## 注意
 
-| ファイル | 内容 |
-|---|---|
-| `requests.jsonl` | リクエストごとの stable prefix / total prompt / warning ログ |
-| `summary.json` | 総リクエスト数、直近同一 hash 継続数、provider/model 別集計 |
-| `trend.svg` | `stablePrefixChars` と `totalPromptChars` の推移グラフ |
-| `cacheability-score.svg` | 前回と同じ `stablePrefixHash` なら 100%、変化直後は 0% の cache reuse score グラフ |
-| `fragments.svg` | 拡張機能ごとの stable / semi-stable / dynamic コンテキスト注入量グラフ |
-| `report.md` | Zed などのエディタで開きやすい Markdown レポート |
-
-`report.md` を開くと、安定プレフィックスが維持されているか、総プロンプト量がどのように増えているか、hash 変化や warning がいつ発生したかを確認できます。
-
-### レポート内の主な用語
-
-| 用語 | 説明 |
-|---|---|
-| stable prefix | provider に送るプロンプトの先頭に置かれる、変化しにくい部分 |
-| stablePrefixHash | stable prefix の内容から計算した hash。同じ値が続くほど安定しています |
-| stablePrefixChars | stable prefix の文字数 |
-| totalPromptChars | provider に送られるプロンプト全体の文字数 |
-| cacheability | 前回と同じ stablePrefixHash なら 100%、変化直後は 0% とするキャッシュ再利用スコア |
-| hash change | stablePrefixHash が前回から変わった地点 |
-| warning | cache-friendly-prompt が検出した注意点 |
-
-## 制限事項
-
-- キャッシュヒットを保証するものではありません
-- プロバイダーの TTL を把握しません
-- `cache_control` を挿入しません
-- キャッシュオブジェクトを管理しません
-- トークン数は推定値です
-- プライバシー保護のため、プロンプト全体はログに記録されません
-- 安定プレフィックスのログ状態は、利用可能なセッション/ラン識別子（ベストエフォート）に基づき、次にカレントディレクトリ（cwd）をキーとして使用します。Pi が安定したラン ID を公開していない場合も、ログの紐付けはベストエフォートとなります。
+これは provider cache hit を保証する機能ではありません。provider 固有 API の cache layer でもありません。

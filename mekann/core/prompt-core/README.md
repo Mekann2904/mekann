@@ -1,21 +1,13 @@
 # prompt-core
 
-`prompt-core` は、プロバイダー非依存のプロンプト断片レジストリと描画レイヤーです。pi 拡張間で、キャッシュに向いた安定プレフィックスを決定的に構築するための共有基盤として使います。
+`prompt-core` は、Mekann feature が prompt fragment を登録し、決定的な順序で render するための基盤です。
 
-```text
-拡張機能群 -> prompt-core レジストリ -> cache-friendly-prompt -> プロバイダー
-```
+## 役割
 
-## 機能
+- stable / semi-stable / dynamic な prompt fragment を扱う
+- feature 間で prompt contribution の順序を揃える
+- provider に依存しない形で prompt を組み立てる
 
-- プロンプト断片を `stable` / `semi-stable` / `dynamic` に分類
-- テキストを正規化して差分を安定化
-- 優先度・ID による決定的な並び替え
-- 描画結果や安定プレフィックスのハッシュを生成
-- inspection / logging 用の情報を提供
+## 境界
 
-## 注意点
-
-- プロバイダーのキャッシュ API は呼び出しません
-- キャッシュヒットを保証するものではありません
-- 実際の最終プロンプト組み立ては `cache-friendly-prompt` が担当します
+`prompt-core` は provider cache API を呼びません。cache-friendly な最終配置は [`cache-friendly-prompt`](../cache-friendly-prompt/) が担当します。

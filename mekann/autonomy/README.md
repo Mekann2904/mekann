@@ -1,17 +1,11 @@
-# autonomy
+# autonomy suite
 
-`autonomy` は、pi coding agent が長めの作業を自律的・並列的・評価可能に進めるための機能をまとめたスイートです。
+`autonomy` は、Pi coding agent の **自律的な作業**を支える suite です。長い作業、並列調査、実験的な候補評価を扱います。
 
-## 機能
-
-| 機能 | 説明 |
+| Feature | 使う場面 |
 |---|---|
-| [`goal`](./goal/) | セッションに紐づく永続 goal とアイドル時の自動継続 |
-| [`subagent`](./subagent/) | バックグラウンドサブエージェントの起動・通信・結果管理 |
-| [`autoresearch`](./autoresearch/) | コード変更を測定し、改善候補を評価する実験コントローラー |
+| [`goal`](./goal/) | 一般目的を session/thread に保持し、予算内で継続したい |
+| [`subagent`](./subagent/) | 独立調査・fresh review・patch proposal を context isolation 付きで任せたい |
+| [`autoresearch`](./autoresearch/) | 候補生成と calibrated evaluation を伴う高自律な研究を進めたい |
 
-## 使い分け
-
-- 作業目的を継続的に追わせたい場合は `goal`
-- 独立した調査や修正を並列化したい場合は `subagent`
-- ベンチマークや指標で改善を判断したい場合は `autoresearch`
+`goal` は一般目的、`autoresearch` は評価契約を持つ研究モードです。混同しないでください。

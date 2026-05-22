@@ -1,167 +1,58 @@
-# mekann の pi 拡張
+# Mekann Pi extension suite
 
-[pi](https://pi.dev) coding agent 向けのカスタム拡張集です。
+Mekann は、Pi coding agent の **自律的な作業**を安全に伸ばすための Pi extension suite です。
 
----
+このリポジトリでは、機能を次の単位で整理します。
 
-## 拡張
+- **Pi extension suite**: `core` / `safety` / `autonomy` / `context` / `utils` のような読み込み・配布のまとまり
+- **Feature**: `sandbox` や `subagent` のように、責任を持つ個別機能
+- **Skill**: エージェントが特定作業のために読む手順書。runtime tool を提供する feature ではありません
 
-### [mekann](./mekann/)
+用語の詳細は [`CONTEXT.md`](./CONTEXT.md) を参照してください。
 
-`mekann` は複数の pi 拡張を用途別 suite としてまとめた統合拡張です。
+## 全体像
 
-| スイート | モジュール |
-|---|---|
-| core | [cache-friendly-prompt](./mekann/core/cache-friendly-prompt/), [agent-guidelines](./mekann/core/agent-guidelines/) |
-| safety | [sandbox](./mekann/safety/sandbox/), [plan-mode](./mekann/safety/plan-mode/) |
-| autonomy | [goal](./mekann/autonomy/goal/), [subagent](./mekann/autonomy/subagent/), [autoresearch](./mekann/autonomy/autoresearch/) |
-| context | [output-gate](./mekann/context/output-gate/), [ledger](./mekann/context/ledger/) |
-| utils | [zip-repo](./mekann/utils/zip-repo/) |
-| shared | [prompt-core](./mekann/core/prompt-core/), [policy-core](./mekann/safety/policy-core/) |
+| Suite | 役割 | Feature |
+|---|---|---|
+| [`core`](./mekann/core/) | prompt の土台と常時ガイドライン | [`prompt-core`](./mekann/core/prompt-core/), [`cache-friendly-prompt`](./mekann/core/cache-friendly-prompt/), [`agent-guidelines`](./mekann/core/agent-guidelines/) |
+| [`safety`](./mekann/safety/) | 自律性を許容するための安全境界 | [`sandbox`](./mekann/safety/sandbox/), [`plan-mode`](./mekann/safety/plan-mode/), [`policy-core`](./mekann/safety/policy-core/) |
+| [`autonomy`](./mekann/autonomy/) | 長い作業・並列作業・実験的作業の継続 | [`goal`](./mekann/autonomy/goal/), [`subagent`](./mekann/autonomy/subagent/), [`autoresearch`](./mekann/autonomy/autoresearch/) |
+| [`context`](./mekann/context/) | runtime context management | [`output-gate`](./mekann/context/output-gate/), [`context-ledger`](./mekann/context/ledger/) |
+| [`utils`](./mekann/utils/) | 小さな人間向け補助機能 | [`zip-repo`](./mekann/utils/zip-repo/) |
 
-`mekann` wrapper がロード順を管理します。特に `sandbox` は `plan-mode` より先に初期化されます。
+## 代表的な使い分け
 
----
-
-## 機能一覧
-
-### plan-mode
-
-Codex-inspired plan mode — 実装前に考えさせるための読み取り専用モード。
-
-- `/plan` または `Cmd+P` で main ↔ plan をトグル
-- Plan mode: read-only（`bash` は読み取り専用 intent のみ UX guard で許可、security は sandbox が担当）
-- 計画が `<proposed_plan>` で提示され、main に戻ると実行プロンプトとして注入
-- 連続ブロックで段階的に警告を強化するエスカレーション機構
-- `pi --plan` で plan mode から起動可能
-- main / plan それぞれにモデルと thinking effort を設定・永続化可能
-
-詳細: [plan-mode/README.md](./mekann/safety/plan-mode/README.md)
-
-### sandbox
-
-macOS Seatbelt による bash ツール用サンドボックス。
-
-**注意: bash ツールのみが対象。エージェント全体のサンドボックスではない。**
-
-- 3 段階のモード: `read_only` / `workspace_write` / `yolo`
-- デフォルト: `yolo`（サンドボックスなし）
-- `workspace_write`（サンドボックスあり）は明示指定のみ
-- `/sandbox [mode]` でモード表示・変更（Tab で補完）
-- `request_elevation` ツール: ブロック時に一時的な権限昇格をリクエスト可能
-- default deny: 必要な許可だけを明示的に付与
-- 環境変数は allowlist 方式（secret は子プロセスに渡さない）
-- Isolated HOME / Bash startup files 無効化
-
-詳細: [sandbox/README.md](./mekann/safety/sandbox/README.md) / [sandbox/SECURITY.md](./mekann/safety/sandbox/SECURITY.md)
-
-### zip-repo
-
-Git リポジトリの作業ツリー現状を ZIP アーカイブし、クリップボードにコピー。
-
-- `/zip` で即座に ZIP 化
-- HEAD + 未コミット変更をオーバーレイして作業ツリーの現状そのものを取得
-- macOS `osascript` でクリップボードにファイル参照としてコピー
-
-詳細: [zip-repo/README.md](./mekann/utils/zip-repo/README.md)
-
-### output-gate
-
-Large tool output の自動保存と検索。
-
-- 閾値を超える tool output を自動的に redact + 保存
-- `search_tool_outputs` で rg-backed 固定文字列検索
-- `/output-gate list|show|stats|purge|clear` で管理
-- JSONL manifest + artifact file で SQLite 不要
-
-詳細: [output-gate/README.md](./mekann/context/output-gate/README.md)
-
-### context-ledger
-
-Append-only working memory store for agent session context。
-
-- 意思決定、エラー、タスク、plan などの event を JSONL に記録
-- priority (0=critical ~ 4=info) と kind による分類
-- artifact/file/commit への参照を保持
-- output-gate が「巨大出力を失わない仕組み」なら、ledger は「作業判断を失わない仕組み」
-
-詳細: [ledger/README.md](./mekann/context/ledger/README.md)
-
-### subagent
-
-バックグラウンドサブエージェントの管理拡張機能。
-
-### autoresearch
-
-自律的実験ループ — コード変更が指標に与える影響を自動測定・記録・管理する。
-
-- `/autoresearch <目的>` または `/autoresearch on` で開始
-- `autoresearch_evaluate_query` / `autoresearch_init` / `autoresearch_run` / `autoresearch_log` の4ツールを提供
-- `keep` は自動 git commit、`discard` / `crash` / `checks_failed` は自動 revert
-- `autoresearch.checks.sh` で正確性チェック（テスト・型チェック等）を自動実行
-- **最小構成**: finalize / hooks / ダッシュボード / compaction / confidence score / auto-resume は未移植
-
-#### autoresearch-create skill
-
-`autoresearch-create` skill により、ユーザーが「autoresearchして」と頼んだときに、目的・指標・コマンドを整理して実験ループを自動開始できる。エージェントが skill を読み込み、`autoresearch.md` と `autoresearch.sh` の作成から実験ループの実行までを自律的に行う。
-
-### goal
-
-Codex-inspired goal 機能 — thread/session に紐づく永続的な objective を設定し、アイドル時に agent が自律継続する。
-
-- `/goal <objective>` で goal を設定（`--budget <n>` でトークン予算指定可能）
-- `/goal` で status/objective/usage/budget を表示
-- `/goal edit` で objective を編集
-- `/goal pause` / `/goal resume` で一時停止・再開
-- `/goal clear` で削除
-- `/goal budget <n|none>` で予算設定
-- active goal がある状態で agent が idle になると自動 continuation
-- token budget 到達時に `budget_limited` に移行し、agent は勝手に作業を続けない
-- plan mode 中は continuation を抑制
-- model は `update_goal(status="complete")` のみ実行可能
-- `get_goal` / `create_goal` / `update_goal` の3ツールを提供
-
----
-
-## Imported skills (mattpocock/skills)
-
-[mattpocock/skills](https://github.com/mattpocock/skills) を `vendor/mattpocock-skills` に git subtree で取り込み、公開対象 skill を `mekann/skills` にコピーしています。
-Pi coding agent が読むのは `mekann/skills` 側です。
-
-現在は以下の 2 skill を Pi package として公開しています。
-
-| Skill | Pi-maintained path |
-|---|---|
-| grill-with-docs | `./mekann/skills/grill-with-docs` |
-| improve-codebase-architecture | `./mekann/skills/improve-codebase-architecture` |
-
-### Upstream の更新
-
-```bash
-npm run update:mattpocock-skills
-```
-
-内部的には `vendor/mattpocock-skills` を `git subtree pull --squash` で更新し、公開対象 skill を `mekann/skills` にコピーします。
-その後、pi 開発者が `mekann/skills` 側を pi 向けに編集します。
-
-### 注意事項
-
-- `vendor/mattpocock-skills` 配下は直接編集しないでください（upstream mirror として扱います）。
-- `mekann/skills` 配下は Pi-maintained copy です。Pi 固有の編集はここに行います。
-- 他の upstream skill を公開したい場合は、update script のコピー対象に追加し、`mekann/skills` 側を pi 向けに編集してください。
-
-詳細: [docs/vendor/mattpocock-skills.md](./docs/vendor/mattpocock-skills.md)
-
----
+- 実装前に読み取り専用で考えたい: [`plan-mode`](./mekann/safety/plan-mode/)
+- `bash` tool の実行を OS レベルで制限したい: [`sandbox`](./mekann/safety/sandbox/)
+- 大きな tool output を context window に入れすぎたくない: [`output-gate`](./mekann/context/output-gate/)
+- 決定・タスク・エラーなどの作業記憶を残したい: [`context-ledger`](./mekann/context/ledger/)
+- 独立調査や fresh review を別 context で走らせたい: [`subagent`](./mekann/autonomy/subagent/)
+- 一般目的を継続追跡したい: [`goal`](./mekann/autonomy/goal/)
+- 候補生成と評価を伴う高自律な研究をしたい: [`autoresearch`](./mekann/autonomy/autoresearch/)
+- 作業ツリーを ZIP として共有したい: [`zip-repo`](./mekann/utils/zip-repo/)
 
 ## インストール
 
-`~/.pi/agent/settings.json` の `extensions` にパスを追加:
+`~/.pi/agent/settings.json` の `extensions` に `mekann` ディレクトリを追加します。
 
 ```json
 {
-  "extensions": [
-    "/path/to/this/repo/mekann"
-  ]
+  "extensions": ["/path/to/this/repo/mekann"]
 }
 ```
+
+Pi package としては `package.json` の `pi.extensions` / `pi.skills` から参照されます。
+
+## 開発
+
+```bash
+npm test
+npm run typecheck
+```
+
+個別 feature の詳細は各 README を参照してください。
+
+## Skills
+
+Pi coding agent が読む Pi-maintained skill は [`mekann/skills`](./mekann/skills/) 配下に置きます。
+`vendor/mattpocock-skills` は upstream skill mirror であり、直接編集しません。

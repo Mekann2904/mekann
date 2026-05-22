@@ -1,17 +1,11 @@
-# core
+# core suite
 
-`core` は、プロンプト構築とエージェント基本方針に関する共有機能をまとめたスイートです。
+`core` は、Mekann feature が prompt を安全かつ決定的に組み立てるための土台です。
 
-## 機能
-
-| 機能 | 説明 |
+| Feature | 役割 |
 |---|---|
-| [`prompt-core`](./prompt-core/) | プロンプト断片を安定・半安定・動的セクションに分けて登録・描画する共有基盤 |
-| [`cache-friendly-prompt`](./cache-friendly-prompt/) | `prompt-core` の断片を使い、キャッシュに向いた順序でシステムプロンプトを組み立てる最終オーケストレーター |
-| [`agent-guidelines`](./agent-guidelines/) | coding agent 向けの安定した行動指針をプロンプト断片として追加 |
+| [`prompt-core`](./prompt-core/) | prompt fragment registry と renderer |
+| [`cache-friendly-prompt`](./cache-friendly-prompt/) | cache されやすい順序で最終 prompt を組み立てる orchestrator |
+| [`agent-guidelines`](./agent-guidelines/) | 常時適用される coding-agent guideline を提供する |
 
-## 方針
-
-- プロンプトの安定部分をできるだけ前方に置く
-- 拡張間で決定的な順序になるように描画する
-- プロバイダー固有のキャッシュ API には依存しない
+`prompt-core` は provider cache API を呼びません。cache friendliness は `cache-friendly-prompt` が扱います。

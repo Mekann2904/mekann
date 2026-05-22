@@ -1,20 +1,13 @@
 # agent-guidelines
 
-`agent-guidelines` は、pi coding agent に共通の作業方針を追加する拡張機能です。
+`agent-guidelines` は、通常の coding-agent 作業に常時適用する agent guideline を prompt fragment として提供します。
 
-## 機能
+## 役割
 
 - 小さく正しい変更を優先する
-- 無関係なリファクタリングや整形差分を避ける
-- ユーザーの未コミット作業を保護する
-- 予期しない同時編集があれば停止して確認する
+- unrelated refactor や formatting churn を避ける
+- user work を壊さない
 - 実行した検証を正直に報告する
-- レビュー時は重要度順に指摘し、ファイルパスと行番号を示す
+- review では重要度順に findings を出す
 
-## 仕組み
-
-この拡張は `prompt-core` に安定プロンプト断片としてガイドラインを登録します。頻繁に変化しない内容として扱うことで、`cache-friendly-prompt` と組み合わせたときにプロンプトキャッシュに乗りやすくなります。
-
-## 使い方
-
-通常は統合拡張 [`mekann`](../../) 経由で読み込まれます。単体で使う場合は pi の extension としてこのディレクトリを指定してください。
+Skill は task-specific workflow ですが、agent guideline は広く常時適用される行動規則です。

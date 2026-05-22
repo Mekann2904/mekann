@@ -1,17 +1,15 @@
 # policy-core
 
-plan-mode と sandbox 拡張間で共有するポリシー語彙と bash コマンド intent 分類。
-**sandbox mode 型・parsing・label の単一定義点 (single source of truth)。**
+`policy-core` は、Mekann の safety feature が policy 判定を共有するための小さな基盤です。
 
-## 構成
+## 位置づけ
 
-| ファイル | 内容 |
-|---------|------|
-| `modes.ts` | `SandboxMode` 型、`DEFAULT_SANDBOX_MODE`、`parseSandboxMode()`、`modeLabel()`、`PLAN_MODE_TOOLS`、capability profile 名、inter-extension event 型、bash コマンドの intent 分類 (`classifyCommandIntent`, `isPlanReadOnlyCommandIntent`) |
+- `safety` suite の feature です
+- 単体で user-facing command を提供することは目的にしません
+- `sandbox` や `plan-mode` などが、判定結果・理由・重大度を揃えるために使います
 
-## 設計原則
+## 原則
 
-- **policy-core が mode の単一定義点**: `SandboxMode` 型、`parseSandboxMode()`、`modeLabel()` はここでのみ定義される。`sandbox/permissions.ts` は re-export のみ。
-- **command intent は UX filter**: `classifyCommandIntent()` は security boundary ではなく、plan workflow 上の UX filter。
-- **security boundary は sandbox**: 実際の bash 実行制限は sandbox 拡張の OS-level Seatbelt policy が担当。
-- **profile → sandbox mode mapping は sandbox 側で restrict-only に行う**: event override は `plan_read_only` / `sandbox_read_only` のような制限強化のみ受け付け、`workspace_write` / `yolo` への緩和は `/sandbox` command と承認フローに限定する。
+- policy 判定は説明可能にする
+- 実行制限の hard boundary と UX-level guide を混同しない
+- caller が安全上の意味を再解釈しなくてよい形で結果を返す

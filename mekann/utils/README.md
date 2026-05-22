@@ -1,15 +1,9 @@
-# utils
+# utils suite
 
-`utils` は、日常的な作業を補助する小さなユーティリティ拡張をまとめたスイートです。
+`utils` は、人間の作業を少し楽にする軽量な utility feature を置く suite です。
 
-## 機能
-
-| 機能 | 説明 |
+| Feature | 役割 |
 |---|---|
-| [`zip-repo`](./zip-repo/) | Git 作業ツリーの現状を ZIP 化し、macOS のクリップボードへコピー |
+| [`zip-repo`](./zip-repo/) | Git worktree の現在状態を ZIP 化し、macOS clipboard にコピーする |
 
-## 方針
-
-- 単一目的の小さなコマンドとして提供する
-- 既存の Git 作業ツリーを壊さない
-- 成功・失敗をユーザーに明確に通知する
+自律性・安全境界・runtime context management を担う機能は、それぞれ `autonomy` / `safety` / `context` suite に置きます。

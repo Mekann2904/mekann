@@ -1,38 +1,18 @@
 # output-gate
 
-A lightweight output gate for Pi tool results.
+`output-gate` は、大きな raw tool output を inline conversation から外し、検索可能な artifact として保存する runtime context management feature です。
 
-- Large tool outputs are redacted and saved to `.pi/output-gate/artifacts/`.
-- `.pi/output-gate/manifest.jsonl` records metadata (schema version, session/turn/tool-call IDs, SHA-256, etc.).
-- The LLM receives a compact stub with a preview and artifact id.
-- `search_tool_outputs` performs rg-backed literal search over stored artifacts (fallback to line scan if rg unavailable).
+## 何を解決するか
 
-## Commands
+大きな command output をそのまま context window に入れると、推論品質と費用に悪影響が出ます。`output-gate` は raw evidence を保存しつつ、会話には小さな artifact reference だけを残します。
 
-| Command | Description |
-|---------|-------------|
-| `/output-gate` | Show status (artifact count, total bytes) |
-| `/output-gate list` | List recent artifacts (newest 20) |
-| `/output-gate show <id>` | Show artifact metadata |
-| `/output-gate stats` | Aggregate stats (counts, bytes, lines, tool breakdown) |
-| `/output-gate purge [--keep N]` | Remove oldest artifacts, keep N most recent (default: 200 from config) |
-| `/output-gate clear` | Delete all artifacts (with confirmation) |
+## 主な機能
 
-## Search
+- 閾値を超える output を artifact file に保存
+- manifest に tool 名・byte 数・hash などを記録
+- `search_tool_outputs` で artifact を検索
+- 必要な snippet だけを再取得
 
-`search_tool_outputs` parameters:
+## 境界
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `query` | (required) | Search string |
-| `artifact` | (all) | Restrict to a specific artifact id |
-| `preferRg` | `true` | Use ripgrep when available |
-| `literal` | `true` | Treat query as fixed string (not regex) |
-| `caseSensitive` | `false` | Case-sensitive matching |
-| `maxResults` | 10 | Maximum matching snippets |
-| `contextLines` | 3 | Context lines around each match |
-
-## Design
-
-This module intentionally avoids SQLite, embeddings, MCP, and custom sandbox execution.
-All storage is plain text files + JSONL manifest, searchable via `rg` or built-in fallback.
+`output-gate` は raw log dump を扱います。決定・タスク・エラーなどの解釈済み event は [`context-ledger`](../ledger/) の責任です。
