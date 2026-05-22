@@ -10,6 +10,7 @@ import { importSubagentResultsAsCandidates, readCandidate } from "./candidate.js
 import { SubagentResultStore } from "../subagent/resultStore.js";
 
 export type ScaleStatus = "none" | "planning" | "approved" | "running" | "draining" | "paused" | "stopped";
+export type SafetyPauseReason = "contract_violation" | "unexpected_dirty_workspace" | "revert_failure" | "resource_exhausted_or_unavailable" | "unsafe_or_irreversible_decision_required";
 
 export interface ScaleRuntimeStore {
 	active: boolean;
@@ -37,6 +38,19 @@ export interface ScaleHypothesisRecord {
 	status: "new" | "scored" | "assigned" | "exhausted";
 }
 
+export interface ScalePlanningBacklogItem {
+	id: string;
+	kind: "out_of_contract_opportunity";
+	summary: string;
+	why_out_of_contract: string;
+	suggested_contract_change: string;
+	related_candidate_id?: string;
+	related_hypothesis_id?: string;
+	evidence?: string[];
+	risk: "low" | "medium" | "high";
+	priority: "low" | "medium" | "high";
+}
+
 export type ScalePhase = "need_scouts" | "waiting_scouts" | "need_scoring" | "need_proposer" | "waiting_proposer" | "need_critic" | "waiting_critic" | "need_candidate_eval" | "need_historian" | "waiting_historian" | "generation_review";
 
 export interface ScaleStateV1 {
@@ -47,6 +61,7 @@ export interface ScaleStateV1 {
 	generation: number;
 	activeAction?: ScaleAction;
 	stopRequested?: boolean;
+	pauseReasonCode?: SafetyPauseReason;
 	pauseReason?: string;
 	bestCandidateId?: string;
 	pendingAdoptionCandidateId?: string;
@@ -55,6 +70,7 @@ export interface ScaleStateV1 {
 	candidateIds?: string[];
 	criticFindings?: Array<{ candidate_id?: string; severity?: string; finding: string }>;
 	strategySurvivors?: Array<{ kind: "slot" | "role_template" | "evidence_pattern"; name: string; score?: number; note?: string }>;
+	planningBacklog?: ScalePlanningBacklogItem[];
 	queues: { hypotheses: number; proposals: number; candidates: number };
 	resources: { subagentsUsed: number; subagentsMax: number; evaluationsUsed: number; evaluationsMax: number; worktreesUsed: number; worktreesMax: number };
 	createdAt: string;
@@ -158,9 +174,28 @@ export function updateScaleSummary(cwd: string, state: ScaleStateV1): void {
 		`Queues: hypotheses=${state.queues.hypotheses} proposals=${state.queues.proposals} candidates=${state.queues.candidates}`,
 		`Resources: subagents=${state.resources.subagentsUsed}/${state.resources.subagentsMax} evaluations=${state.resources.evaluationsUsed}/${state.resources.evaluationsMax} worktrees=${state.resources.worktreesUsed}/${state.resources.worktreesMax}`,
 		`Pending adoption: ${state.pendingAdoptionCandidateId ?? "none"}`,
+		`Planning backlog: ${state.planningBacklog?.length ?? 0}`,
 		`Phase: ${state.phase ?? "none"}`,
 	];
+	if (state.pauseReasonCode) lines.push(`Pause reason code: ${state.pauseReasonCode}`);
 	if (state.pauseReason) lines.push(`Pause reason: ${state.pauseReason}`);
+	if (state.planningBacklog?.length) {
+		lines.push("", "## Planning backlog", "", "次回 planning の入力候補。running 中の scope 変更要求ではありません。");
+		for (const item of state.planningBacklog) {
+			lines.push(
+				"",
+				`### ${item.id}`,
+				`- Priority: ${item.priority}`,
+				`- Risk: ${item.risk}`,
+				`- Summary: ${item.summary}`,
+				`- Why out of contract: ${item.why_out_of_contract}`,
+				`- Suggested contract change: ${item.suggested_contract_change}`,
+			);
+			if (item.related_candidate_id) lines.push(`- Related candidate: ${item.related_candidate_id}`);
+			if (item.related_hypothesis_id) lines.push(`- Related hypothesis: ${item.related_hypothesis_id}`);
+			if (item.evidence?.length) lines.push("- Evidence:", ...item.evidence.map((e) => `  - ${e}`));
+		}
+	}
 	fs.writeFileSync(path.join(dir, "latest-summary.md"), lines.join("\n") + "\n", "utf8");
 }
 
@@ -276,7 +311,7 @@ export function statusText(cwd: string): string {
 	const s = readScaleState(cwd);
 	if (!s) {
 		const planning = path.join(cwd, ".autoresearch", "scale.planning.json");
-		if (fs.existsSync(planning)) return "autoresearch-scale: planning\nplan: autoresearch.plan.md\n次: plan を確認・編集して autoresearch_approve を実行してください。";
+		if (fs.existsSync(planning)) return "autoresearch-scale: planning\nplan: autoresearch.plan.md\n次: 自走開始前の評価契約を確認し、問題なければ autoresearch_approve を実行してください。";
 		return "autoresearch-scale: none";
 	}
 	const uiState = s.status === "draining" ? "graceful stopping" : s.status;
@@ -288,8 +323,10 @@ export function statusText(cwd: string): string {
 		`queues: hypotheses=${s.queues.hypotheses} proposals=${s.queues.proposals} candidates=${s.queues.candidates}`,
 		`resources: subagents=${s.resources.subagentsUsed}/${s.resources.subagentsMax} evaluations=${s.resources.evaluationsUsed}/${s.resources.evaluationsMax} worktrees=${s.resources.worktreesUsed}/${s.resources.worktreesMax}`,
 		`pending adoption: ${s.pendingAdoptionCandidateId ?? "none"}`,
+		`planning backlog: ${s.planningBacklog?.length ?? 0}`,
 		`phase: ${s.phase ?? "none"}`,
 		`summary: ${path.relative(cwd, scaleSummaryPath(cwd, s.planId))}`,
+		s.pauseReasonCode ? `pause reason code: ${s.pauseReasonCode}` : undefined,
 		s.pauseReason ? `pause reason: ${s.pauseReason}` : undefined,
 	].filter(Boolean).join("\n");
 }
@@ -310,7 +347,7 @@ export function computeNextScaleAction(cwd: string): ScaleAction | null {
 	if (phase === "need_candidate_eval") return action("evaluate_candidate", "candidate_evaluation_finished", evaluateCandidateInstruction(s), [...(evaluationToolCalls(s) ?? []), { tool: "autoresearch_scale_ingest", params: {} }]);
 	if (phase === "need_historian") return action("spawn_historian", "historian_task_started", historianInstruction(s), historianToolCalls(cwd, s));
 	if (phase === "waiting_historian") return action("wait_historian_result", "generation_reviewed", waitHistorianInstruction(), [...(waitToolCalls() ?? []), { tool: "autoresearch_scale_ingest", params: {} }]);
-	if (phase === "generation_review") return action("generation_review", "generation_reviewed", "historian 結果を generation summary / survivor / failure memory として確定してください。新しい patch は作らず、result.summary に次世代で増やす slot / 避ける strategy / evidence_pattern を記録してください。");
+	if (phase === "generation_review") return action("generation_review", "generation_reviewed", "historian 結果を generation summary / survivor / failure memory として確定してください。新しい patch は作らず、result.summary に次世代で増やす slot / 避ける strategy / evidence_pattern を記録してください。現在 contract では評価・採用できないが次回 planning で探索価値がある発見は、ユーザに scope 変更を求めず result.planning_backlog に入れてください。");
 	return null;
 }
 
@@ -496,13 +533,13 @@ export function startScale(cwd: string): ScaleStateV1 {
 	if (!["approved", "stopped", "paused", "running"].includes(s.status)) throw new Error(`現在の状態から start できません: ${s.status}`);
 	const resumeError = validateStartPreconditions(cwd, s);
 	if (resumeError) {
-		const paused: ScaleStateV1 = { ...s, status: "paused", pauseReason: resumeError };
+		const paused: ScaleStateV1 = { ...s, status: "paused", pauseReasonCode: resumeError.code, pauseReason: resumeError.message };
 		writeScaleState(cwd, paused);
-		appendScaleEvent(cwd, { type: "paused", reason: resumeError });
+		appendScaleEvent(cwd, { type: "paused", reasonCode: resumeError.code, reason: resumeError.message });
 		updateScaleSummary(cwd, paused);
-		throw new Error(resumeError);
+		throw new Error(resumeError.message);
 	}
-	const next: ScaleStateV1 = { ...s, status: "running", stopRequested: false, pauseReason: undefined };
+	const next: ScaleStateV1 = { ...s, status: "running", stopRequested: false, pauseReasonCode: undefined, pauseReason: undefined };
 	if (s.status === "stopped") next.generation = s.generation + 1;
 	writeScaleState(cwd, next);
 	appendScaleEvent(cwd, { type: "scaling_started", from: s.status, generation: next.generation });
@@ -510,16 +547,16 @@ export function startScale(cwd: string): ScaleStateV1 {
 	return next;
 }
 
-function validateStartPreconditions(cwd: string, state: ScaleStateV1): string | null {
+function validateStartPreconditions(cwd: string, state: ScaleStateV1): { code: SafetyPauseReason; message: string } | null {
 	const contract = readCurrentContract(cwd);
 	const lock = readLockFile(cwd);
-	if (!contract) return "current contract が見つかりません";
-	if (!lock) return "lock file が見つかりません";
+	if (!contract) return { code: "contract_violation", message: "current contract が見つかりません" };
+	if (!lock) return { code: "contract_violation", message: "lock file が見つかりません" };
 	const currentHash = computeContractHash(contract);
-	if (currentHash !== lock.contractHash) return "contract hash mismatch";
-	if (state.contractHash && state.contractHash !== currentHash) return "scaling state contract hash mismatch";
+	if (currentHash !== lock.contractHash) return { code: "contract_violation", message: "contract hash mismatch" };
+	if (state.contractHash && state.contractHash !== currentHash) return { code: "contract_violation", message: "scaling state contract hash mismatch" };
 	const changed = filterInternalPaths(getChangedFiles(cwd));
-	if (changed.length > 0) return `contract-relevant dirty workspace: ${changed.join(", ")}`;
+	if (changed.length > 0) return { code: "unexpected_dirty_workspace", message: `contract-relevant dirty workspace: ${changed.join(", ")}` };
 	return null;
 }
 
@@ -571,8 +608,9 @@ export function completeScaleAction(cwd: string, params: { action_id: string; st
 
 	if (params.status === "failed") {
 		next.status = "paused";
+		next.pauseReasonCode = parseSafetyPauseReason(result.pause_reason_code) ?? "resource_exhausted_or_unavailable";
 		next.pauseReason = String(result.summary ?? `${s.activeAction.type} failed`);
-		events.push({ type: "paused", reason: next.pauseReason });
+		events.push({ type: "paused", reasonCode: next.pauseReasonCode, reason: next.pauseReason });
 	} else {
 		const handler = COMPLETE_ACTION_HANDLERS[s.activeAction.type];
 		if (handler) {
@@ -694,9 +732,11 @@ function completeWaitHistorianResult(state: ScaleStateV1, result: Record<string,
 
 function completeGenerationReview(state: ScaleStateV1, result: Record<string, unknown>): CompleteActionOutcome {
 	const survivors = buildStrategySurvivors(state, result);
+	const planningBacklog = parsePlanningBacklog(result.planning_backlog);
 	const next = {
 		...state,
 		strategySurvivors: [...(state.strategySurvivors ?? []), ...survivors],
+		planningBacklog: [...(state.planningBacklog ?? []), ...planningBacklog],
 		generation: state.generation + 1,
 		phase: "need_scouts" as const,
 		hypotheses: [],
@@ -706,8 +746,45 @@ function completeGenerationReview(state: ScaleStateV1, result: Record<string, un
 	};
 	return { state: next, events: [
 		{ type: "summary_updated", generation: state.generation, summary: result.summary },
-		{ type: "policy_adjusted", generation: state.generation, basis: result, strategySurvivors: survivors },
+		...planningBacklog.map((item) => ({ type: "planning_backlog_item_added", item })),
+		{ type: "policy_adjusted", generation: state.generation, basis: result, strategySurvivors: survivors, planningBacklog },
 	] };
+}
+
+function parsePlanningBacklog(value: unknown): ScalePlanningBacklogItem[] {
+	if (!Array.isArray(value)) return [];
+	return value.flatMap((v, i) => {
+		if (!v || typeof v !== "object") return [];
+		const r = v as Record<string, unknown>;
+		const summary = typeof r.summary === "string" ? r.summary.trim() : "";
+		const why = typeof r.why_out_of_contract === "string" ? r.why_out_of_contract.trim() : "";
+		const change = typeof r.suggested_contract_change === "string" ? r.suggested_contract_change.trim() : "";
+		if (!summary || !why || !change) return [];
+		const risk = r.risk === "low" || r.risk === "high" ? r.risk : "medium";
+		const priority = r.priority === "low" || r.priority === "high" ? r.priority : "medium";
+		return [{
+			id: `backlog_${Date.now().toString(36)}_${i}`,
+			kind: "out_of_contract_opportunity" as const,
+			summary,
+			why_out_of_contract: why,
+			suggested_contract_change: change,
+			related_candidate_id: typeof r.related_candidate_id === "string" ? r.related_candidate_id : undefined,
+			related_hypothesis_id: typeof r.related_hypothesis_id === "string" ? r.related_hypothesis_id : undefined,
+			evidence: stringArray(r.evidence),
+			risk,
+			priority,
+		}];
+	});
+}
+
+function parseSafetyPauseReason(value: unknown): SafetyPauseReason | undefined {
+	return value === "contract_violation"
+		|| value === "unexpected_dirty_workspace"
+		|| value === "revert_failure"
+		|| value === "resource_exhausted_or_unavailable"
+		|| value === "unsafe_or_irreversible_decision_required"
+		? value
+		: undefined;
 }
 
 function numberResult(value: unknown, fallback: number): number {
@@ -906,6 +983,6 @@ export function nextActionMessage(action: ScaleAction): string {
 		lines.push("", "Internal tool calls to execute autonomously:");
 		for (const call of action.tool_calls) lines.push(`- ${call.tool}: ${JSON.stringify(call.params)}`);
 	}
-	lines.push("", "完了後はユーザに質問せず、autoresearch_scale_complete_action を呼び、action_id と result.summary を記録してください。");
+	lines.push("", "完了後はユーザに質問せず、autoresearch_scale_complete_action を呼び、action_id と result.summary を記録してください。failed completion の場合は可能なら result.pause_reason_code に contract_violation / unexpected_dirty_workspace / revert_failure / resource_exhausted_or_unavailable / unsafe_or_irreversible_decision_required のいずれかを入れてください。");
 	return lines.join("\n");
 }

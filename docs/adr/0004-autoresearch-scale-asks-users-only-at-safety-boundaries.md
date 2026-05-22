@@ -1,3 +1,5 @@
 # Autoresearch scale asks users only at safety boundaries
 
 Autoresearch test-time scaling is a higher-autonomy research mode, so its normal loop must not ask the user to choose hypotheses, approve weak candidates, resolve unknowns, or interpret critic findings. The supervisor treats unknowns as autonomous assumptions, uses critic findings only as evidence and ranking input, degrades resource usage before pausing, and runs winning candidates up to pending adoption; only main-worktree adoption, contract violations, unsafe or irreversible decisions, unrecoverable workspace/revert problems, or unavailable required resources return control to the user.
+
+The planning-to-approved boundary is the only normal user-confirmation point because it fixes the evaluation contract before autonomous work starts. After approval, the contract is immutable for that run: if scaling finds a promising idea outside the contract, it records an out-of-contract opportunity in the scaling state's planning backlog instead of asking the user to change scope mid-run.
