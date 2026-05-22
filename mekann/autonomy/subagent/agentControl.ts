@@ -34,9 +34,9 @@ import { KittyController } from "./kittyControl.js";
 import { SubagentHub } from "./ipc.js";
 import type { ChildToParent } from "./ipc.js";
 import type { AgentDisplayRef, AgentDisplayResult, AgentRuntime, ResultContract, SubagentAuthority } from "./types.js";
-import { tryParseSubagentResult } from "./resultSchema.js";
-import { resultSummary, SubagentResultStore } from "./resultStore.js";
+import type { SubagentResultStore } from "./resultStore.js";
 import { ApplyQueue } from "./applyQueue.js";
+import { SubagentLifecycle } from "./subagentLifecycle.js";
 import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
 
 // ─── Default config ──────────────────────────────────────────────
@@ -55,7 +55,6 @@ let agentIdCounter = 0;
 
 const processExternalPiSlots = new Set<string>();
 const MAX_EXTERNAL_PI_SUBAGENTS = MEKANN_SUBAGENT_DEFAULTS.externalPiSlots;
-const MAILBOX_CONTENT_MAX_CHARS = 2_000;
 const MESSAGE_INJECTION_MAX_CHARS = 4_000;
 
 function nextAgentId(): string {
@@ -97,7 +96,7 @@ export class AgentControl {
   private helloTimeoutMs: number;
   private allowUnsafeExternalPi: boolean;
   readonly resultStore: SubagentResultStore;
-  private storesByCwd = new Map<string, SubagentResultStore>();
+  private readonly lifecycle: SubagentLifecycle;
 
   constructor(
     pi: import("@earendil-works/pi-coding-agent").ExtensionAPI,
@@ -123,7 +122,8 @@ export class AgentControl {
     this.extensionPath = options.extensionPath;
     this.helloTimeoutMs = options.helloTimeoutMs ?? 10_000;
     this.allowUnsafeExternalPi = options.allowUnsafeExternalPi ?? false;
-    this.resultStore = this.resultStoreFor(process.cwd());
+    this.lifecycle = new SubagentLifecycle(this.registry, this.mailbox, process.cwd());
+    this.resultStore = this.lifecycle.resultStore;
 
     // Forward registry events to mailbox
     this.registry.subscribe((event) => {
@@ -153,10 +153,7 @@ export class AgentControl {
   }
 
   private resultStoreFor(cwd: string): SubagentResultStore {
-    const key = path.resolve(cwd);
-    let store = this.storesByCwd.get(key);
-    if (!store) { store = new SubagentResultStore(key); this.storesByCwd.set(key, store); }
-    return store;
+    return this.lifecycle.resultStoreFor(path.resolve(cwd));
   }
 
   private applyQueueFor(cwd: string): ApplyQueue {
@@ -256,23 +253,7 @@ export class AgentControl {
   }
 
   private handleFinalText(agentId: string, canonicalPath: string, callerPath: string, finalText: string | undefined, status: AgentStatus, cwd = process.cwd()): string {
-    const text = finalText ?? "(agent completed)";
-    const parsed = tryParseSubagentResult(text);
-    let message = truncateText(text, MAILBOX_CONTENT_MAX_CHARS);
-    const agent = this.registry.get(canonicalPath);
-    if (parsed.ok && agent) {
-      const stored = this.resultStoreFor(cwd).save(agent, parsed.result);
-      message = resultSummary(stored);
-    }
-    this.registry.updateStatus(canonicalPath, status, { lastTaskMessage: message });
-    this.enqueueToMailbox(agentId, canonicalPath, callerPath, message, "final_result");
-    this.mailbox.appendEvent({
-      type: "agent_final_message", ...this.evBase(agentId, canonicalPath),
-      parentAgentId: callerPath === ROOT_PATH ? undefined : "root",
-      message,
-      status,
-    });
-    return message;
+    return this.lifecycle.handleFinalText({ agentId, agentPath: canonicalPath, callerPath, finalText, status, cwd });
   }
 
   // ─── spawn_agent ───────────────────────────────────────────────
@@ -570,7 +551,7 @@ export class AgentControl {
   }
 
   private enqueueToMailbox(fromAgentId: string, fromPath: string, toPath: string, content: string, kind: "message" | "followup" | "final_result"): void {
-    this.mailbox.enqueue({ fromAgentId, fromAgentPath: fromPath, toAgentPath: toPath, content: truncateText(content, MAILBOX_CONTENT_MAX_CHARS), timestamp: Date.now(), kind });
+    this.lifecycle.enqueueToMailbox(fromAgentId, fromPath, toPath, content, kind);
   }
 
   private getCallerAgentId(callerPath: string): string {

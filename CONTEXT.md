@@ -12,6 +12,10 @@ _Avoid_: plugin bundle, package group
 The structured outcome produced by a subagent and stored for later review, application, or escrow. A subagent result may be a patch proposal, observation, no-change result, blocked result, or decision request.
 _Avoid_: child output, agent response
 
+**Subagent lifecycle**:
+The module shape that owns how a subagent is spawned, connected, run, finalized, and recorded. Subagent lifecycle concentrates spawn-to-final-result behavior so display, IPC, registry, mailbox, authority preamble, and result storage do not leak across unrelated callers.
+_Avoid_: agent orchestration, child session manager, runtime wrapper
+
 **Patch proposal**:
 A subagent result whose outcome is `patch` and whose payload includes a unified diff plus declared base, scope, semantic metadata, and validation hints. A patch proposal is not trusted merely because it exists.
 _Avoid_: patch response, diff result
