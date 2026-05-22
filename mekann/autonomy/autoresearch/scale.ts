@@ -94,7 +94,7 @@ export function scaleStatePath(cwd: string, planId?: string): string { return pa
 export function scaleEventsPath(cwd: string, planId?: string): string { return path.join(scalingDir(cwd, planId), "events.jsonl"); }
 export function scaleSummaryPath(cwd: string, planId?: string): string { return path.join(scalingDir(cwd, planId), "latest-summary.md"); }
 
-export function defaultScaleState(planId: string, contractHash: string, status: ScaleStatus = "approved"): ScaleStateV1 {
+export function defaultScaleState(planId: string, contractHash: string, status: ScaleStatus = "approved", contract?: AutoresearchContractV1): ScaleStateV1 {
 	const ts = nowIso();
 	return {
 		version: 1,
@@ -103,10 +103,28 @@ export function defaultScaleState(planId: string, contractHash: string, status: 
 		contractHash,
 		generation: 0,
 		queues: { hypotheses: 0, proposals: 0, candidates: 0 },
-		resources: { subagentsUsed: 0, subagentsMax: 2, evaluationsUsed: 0, evaluationsMax: 1, worktreesUsed: 0, worktreesMax: 2 },
+		resources: scaleResourcesFromContract(contract),
 		createdAt: ts,
 		updatedAt: ts,
 	};
+}
+
+function scaleResourcesFromContract(contract?: AutoresearchContractV1): ScaleStateV1["resources"] {
+	const scaling = (contract as any)?.scaling;
+	const roles = scaling?.roles ?? {};
+	const resources = scaling?.resources ?? {};
+	return {
+		subagentsUsed: 0,
+		subagentsMax: Math.max(0, numberConfig(roles.scouts, 2)),
+		evaluationsUsed: 0,
+		evaluationsMax: Math.max(1, numberConfig(resources.maxConcurrentEvaluations, 1)),
+		worktreesUsed: 0,
+		worktreesMax: Math.max(1, numberConfig(resources.maxActiveWorktrees, 2)),
+	};
+}
+
+function numberConfig(value: unknown, fallback: number): number {
+	return typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : fallback;
 }
 
 export function readScaleState(cwd: string): ScaleStateV1 | null {
@@ -163,7 +181,7 @@ export function initializeScalingStateForApprovedContract(cwd: string, contract:
 		bestRunId: undefined,
 		bestMetric: undefined,
 	});
-	const state = defaultScaleState(planId, contractHash, "approved");
+	const state = defaultScaleState(planId, contractHash, "approved", contract);
 	writeScaleState(cwd, state);
 	appendScaleEvent(cwd, { type: "scaling_approved", planId, contractHash });
 	updateScaleSummary(cwd, state);
@@ -309,11 +327,12 @@ function scoutInstruction(): string {
 	].join("\n");
 }
 
-function scoutToolCalls(cwd: string, _s: ScaleStateV1): ScaleAction["tool_calls"] {
+function scoutToolCalls(cwd: string, s: ScaleStateV1): ScaleAction["tool_calls"] {
 	const contract = readCurrentContract(cwd) as any;
 	const slots = [...(contract?.scaling?.population?.baselineSlots ?? BASELINE_HYPOTHESIS_SLOTS), ...(contract?.scaling?.population?.objectiveDerivedSlots ?? [])];
+	const scoutCount = Math.min(Math.max(0, numberConfig(contract?.scaling?.roles?.scouts, s.resources.subagentsMax)), Math.max(0, s.resources.subagentsMax - s.resources.subagentsUsed));
 	const scopeNote = `Allowed write paths: ${JSON.stringify(contract?.scope?.allowedWritePaths ?? [])}\nForbidden write paths: ${JSON.stringify(contract?.scope?.forbiddenWritePaths ?? [])}`;
-	return [0, 1].map((i) => ({
+	return Array.from({ length: scoutCount }, (_, i) => ({
 		tool: "spawn_agent",
 		params: {
 			task_name: `scale/scout-${Date.now().toString(36)}-${i + 1}`,
@@ -524,110 +543,171 @@ export function requestScaleStop(cwd: string): ScaleStateV1 {
 	return next;
 }
 
+type CompleteActionOutcome = { state: ScaleStateV1; events: Array<Record<string, unknown>> };
+type CompleteActionHandler = (state: ScaleStateV1, result: Record<string, unknown>) => CompleteActionOutcome;
+
+const COMPLETE_ACTION_HANDLERS: Record<string, CompleteActionHandler> = {
+	start_generation: completeStartGeneration,
+	spawn_scouts: completeSpawnScouts,
+	wait_scout_results: completeWaitScoutResults,
+	score_hypotheses: completeScoreHypotheses,
+	spawn_proposer: completeSpawnProposer,
+	wait_proposer_result: completeWaitProposerResult,
+	spawn_critic: completeSpawnCritic,
+	wait_critic_result: completeWaitCriticResult,
+	evaluate_candidate: completeEvaluateCandidate,
+	spawn_historian: completeSpawnHistorian,
+	wait_historian_result: completeWaitHistorianResult,
+	generation_review: completeGenerationReview,
+};
+
 export function completeScaleAction(cwd: string, params: { action_id: string; status?: "ok" | "failed"; result?: Record<string, unknown> }): ScaleStateV1 {
 	const s = readScaleState(cwd);
 	if (!s) throw new Error("scaling state が見つかりません");
 	if (!s.activeAction || s.activeAction.action_id !== params.action_id) throw new Error("action_id が active action と一致しません");
-	let next: ScaleStateV1 = { ...s, activeAction: undefined };
 	const result = params.result ?? {};
-	appendScaleEvent(cwd, { type: params.status === "failed" ? "action_failed" : "action_completed", action: s.activeAction, result });
+	const events: Array<Record<string, unknown>> = [{ type: params.status === "failed" ? "action_failed" : "action_completed", action: s.activeAction, result }];
+	let next: ScaleStateV1 = { ...s, activeAction: undefined };
+
 	if (params.status === "failed") {
 		next.status = "paused";
 		next.pauseReason = String(result.summary ?? `${s.activeAction.type} failed`);
-		appendScaleEvent(cwd, { type: "paused", reason: next.pauseReason });
-	} else if (s.activeAction.type === "start_generation") {
-		next.generation = Math.max(1, s.generation + 1);
-		next.phase = "need_scouts";
-		next.hypotheses = [];
-		next.candidateIds = [];
-		next.queues = { hypotheses: 0, proposals: 0, candidates: 0 };
-		appendScaleEvent(cwd, { type: "generation_started", generation: next.generation });
-	} else if (s.activeAction.type === "spawn_scouts") {
-		next.phase = "waiting_scouts";
-		next.resources = { ...next.resources, subagentsUsed: numberResult(result.started_count, 0) };
-		appendScaleEvent(cwd, { type: "role_task_started", role: "scout", count: next.resources.subagentsUsed });
-	} else if (s.activeAction.type === "wait_scout_results") {
-		const records = parseHypotheses(result.hypotheses);
-		next.hypotheses = records;
-		next.queues = { ...next.queues, hypotheses: records.length };
-		next.resources = { ...next.resources, subagentsUsed: 0 };
-		next.phase = records.length > 0 ? "need_scoring" : "need_historian";
-		for (const h of records) appendScaleEvent(cwd, { type: "hypothesis_created", hypothesis: h });
-		appendScaleEvent(cwd, { type: "role_task_finished", role: "scout", producedHypotheses: records.length });
-	} else if (s.activeAction.type === "score_hypotheses") {
-		const scored = scoreHypotheses(next.hypotheses ?? []);
-		next.hypotheses = scored;
-		next.phase = scored.some((h) => h.status === "scored") ? "need_proposer" : "need_historian";
-		appendScaleEvent(cwd, { type: "ranking_updated", kind: "hypothesis", hypotheses: scored.map(({ id, slot, score, risk }) => ({ id, slot, score, risk })) });
-	} else if (s.activeAction.type === "spawn_proposer") {
-		const selected = selectNextHypothesis(next);
-		next.hypotheses = (next.hypotheses ?? []).map((h) => h.id === (result.hypothesis_id ?? selected?.id) ? { ...h, status: "assigned" } : h);
-		next.phase = "waiting_proposer";
-		next.resources = { ...next.resources, subagentsUsed: numberResult(result.started_count, 1) };
-		appendScaleEvent(cwd, { type: "role_task_started", role: "proposer", hypothesisId: result.hypothesis_id ?? selected?.id });
-	} else if (s.activeAction.type === "wait_proposer_result") {
-		const candidateIds = stringArray(result.candidate_ids);
-		next.candidateIds = candidateIds;
-		next.queues = { ...next.queues, proposals: 0, candidates: candidateIds.length };
-		next.resources = { ...next.resources, subagentsUsed: 0 };
-		next.phase = candidateIds.length > 0 ? "need_critic" : "need_historian";
-		for (const id of candidateIds) appendScaleEvent(cwd, { type: "candidate_imported", candidate_id: id });
-		appendScaleEvent(cwd, { type: "role_task_finished", role: "proposer", candidateIds });
-	} else if (s.activeAction.type === "spawn_critic") {
-		next.phase = "waiting_critic";
-		next.resources = { ...next.resources, subagentsUsed: numberResult(result.started_count, 1) };
-		appendScaleEvent(cwd, { type: "role_task_started", role: "critic", candidateId: result.candidate_id ?? (next.candidateIds ?? [])[0] });
-	} else if (s.activeAction.type === "wait_critic_result") {
-		const findings = parseCriticFindings(result.findings);
-		next.criticFindings = [...(next.criticFindings ?? []), ...findings];
-		next.resources = { ...next.resources, subagentsUsed: 0 };
-		next.phase = "need_candidate_eval";
-		appendScaleEvent(cwd, { type: "role_task_finished", role: "critic", findings });
-		for (const f of findings) appendScaleEvent(cwd, { type: "evidence_recorded", pattern: { kind: "critic_finding", ...f } });
-	} else if (s.activeAction.type === "evaluate_candidate") {
-		const candidateId = typeof result.candidate_id === "string" ? result.candidate_id : (next.candidateIds ?? [])[0];
-		if (candidateId) {
-			appendScaleEvent(cwd, { type: "candidate_evaluation_started", candidate_id: candidateId });
-			appendScaleEvent(cwd, { type: "candidate_evaluation_finished", candidate_id: candidateId, decision: result.decision, metric: result.metric, summary: result.summary });
-			appendScaleEvent(cwd, { type: "evidence_recorded", candidate_id: candidateId, patterns: [
-				{ kind: "benchmark", metric: result.metric ?? null },
-				{ kind: "checks", passed: result.checks_passed ?? null },
-			] });
-			if (result.decision === "keep") {
-				next.bestCandidateId = candidateId;
-				next.pendingAdoptionCandidateId = candidateId;
-			}
+		events.push({ type: "paused", reason: next.pauseReason });
+	} else {
+		const handler = COMPLETE_ACTION_HANDLERS[s.activeAction.type];
+		if (handler) {
+			const outcome = handler(next, result);
+			next = outcome.state;
+			events.push(...outcome.events);
 		}
-		next.candidateIds = (next.candidateIds ?? []).filter((id) => id !== candidateId);
-		next.queues = { ...next.queues, candidates: next.candidateIds.length };
-		next.phase = next.candidateIds.length > 0 ? "need_candidate_eval" : "need_historian";
-	} else if (s.activeAction.type === "spawn_historian") {
-		next.phase = "waiting_historian";
-		next.resources = { ...next.resources, subagentsUsed: numberResult(result.started_count, 1) };
-		appendScaleEvent(cwd, { type: "role_task_started", role: "historian", generation: next.generation });
-	} else if (s.activeAction.type === "wait_historian_result") {
-		next.resources = { ...next.resources, subagentsUsed: 0 };
-		next.phase = "generation_review";
-		appendScaleEvent(cwd, { type: "role_task_finished", role: "historian", summary: result.summary, evidence_pattern: result.evidence_pattern });
-	} else if (s.activeAction.type === "generation_review") {
-		const survivors = buildStrategySurvivors(next, result);
-		next.strategySurvivors = [...(next.strategySurvivors ?? []), ...survivors];
-		appendScaleEvent(cwd, { type: "summary_updated", generation: next.generation, summary: result.summary });
-		appendScaleEvent(cwd, { type: "policy_adjusted", generation: next.generation, basis: result, strategySurvivors: survivors });
-		next.generation += 1;
-		next.phase = "need_scouts";
-		next.hypotheses = [];
-		next.candidateIds = [];
-		next.criticFindings = [];
-		next.queues = { hypotheses: 0, proposals: 0, candidates: 0 };
 	}
+
 	if (next.status === "draining") {
 		next.status = "stopped";
-		appendScaleEvent(cwd, { type: "stopped", generation: next.generation });
+		events.push({ type: "stopped", generation: next.generation });
 	}
+	for (const event of events) appendScaleEvent(cwd, event);
 	writeScaleState(cwd, next);
 	updateScaleSummary(cwd, next);
 	return next;
+}
+
+function completeStartGeneration(state: ScaleStateV1): CompleteActionOutcome {
+	const next = {
+		...state,
+		generation: Math.max(1, state.generation + 1),
+		phase: "need_scouts" as const,
+		hypotheses: [],
+		candidateIds: [],
+		queues: { hypotheses: 0, proposals: 0, candidates: 0 },
+	};
+	return { state: next, events: [{ type: "generation_started", generation: next.generation }] };
+}
+
+function completeSpawnScouts(state: ScaleStateV1, result: Record<string, unknown>): CompleteActionOutcome {
+	const next = { ...state, phase: "waiting_scouts" as const, resources: { ...state.resources, subagentsUsed: numberResult(result.started_count, 0) } };
+	return { state: next, events: [{ type: "role_task_started", role: "scout", count: next.resources.subagentsUsed }] };
+}
+
+function completeWaitScoutResults(state: ScaleStateV1, result: Record<string, unknown>): CompleteActionOutcome {
+	const records = parseHypotheses(result.hypotheses);
+	const next = {
+		...state,
+		hypotheses: records,
+		queues: { ...state.queues, hypotheses: records.length },
+		resources: { ...state.resources, subagentsUsed: 0 },
+		phase: records.length > 0 ? "need_scoring" as const : "need_historian" as const,
+	};
+	return { state: next, events: [...records.map((h) => ({ type: "hypothesis_created", hypothesis: h })), { type: "role_task_finished", role: "scout", producedHypotheses: records.length }] };
+}
+
+function completeScoreHypotheses(state: ScaleStateV1): CompleteActionOutcome {
+	const scored = scoreHypotheses(state.hypotheses ?? []);
+	const next = { ...state, hypotheses: scored, phase: scored.some((h) => h.status === "scored") ? "need_proposer" as const : "need_historian" as const };
+	return { state: next, events: [{ type: "ranking_updated", kind: "hypothesis", hypotheses: scored.map(({ id, slot, score, risk }) => ({ id, slot, score, risk })) }] };
+}
+
+function completeSpawnProposer(state: ScaleStateV1, result: Record<string, unknown>): CompleteActionOutcome {
+	const selected = selectNextHypothesis(state);
+	const hypothesisId = result.hypothesis_id ?? selected?.id;
+	const next = {
+		...state,
+		hypotheses: (state.hypotheses ?? []).map((h) => h.id === hypothesisId ? { ...h, status: "assigned" as const } : h),
+		phase: "waiting_proposer" as const,
+		resources: { ...state.resources, subagentsUsed: numberResult(result.started_count, 1) },
+	};
+	return { state: next, events: [{ type: "role_task_started", role: "proposer", hypothesisId }] };
+}
+
+function completeWaitProposerResult(state: ScaleStateV1, result: Record<string, unknown>): CompleteActionOutcome {
+	const candidateIds = stringArray(result.candidate_ids);
+	const next = {
+		...state,
+		candidateIds,
+		queues: { ...state.queues, proposals: 0, candidates: candidateIds.length },
+		resources: { ...state.resources, subagentsUsed: 0 },
+		phase: candidateIds.length > 0 ? "need_critic" as const : "need_historian" as const,
+	};
+	return { state: next, events: [...candidateIds.map((id) => ({ type: "candidate_imported", candidate_id: id })), { type: "role_task_finished", role: "proposer", candidateIds }] };
+}
+
+function completeSpawnCritic(state: ScaleStateV1, result: Record<string, unknown>): CompleteActionOutcome {
+	const next = { ...state, phase: "waiting_critic" as const, resources: { ...state.resources, subagentsUsed: numberResult(result.started_count, 1) } };
+	return { state: next, events: [{ type: "role_task_started", role: "critic", candidateId: result.candidate_id ?? (next.candidateIds ?? [])[0] }] };
+}
+
+function completeWaitCriticResult(state: ScaleStateV1, result: Record<string, unknown>): CompleteActionOutcome {
+	const findings = parseCriticFindings(result.findings);
+	const next = { ...state, criticFindings: [...(state.criticFindings ?? []), ...findings], resources: { ...state.resources, subagentsUsed: 0 }, phase: "need_candidate_eval" as const };
+	return { state: next, events: [{ type: "role_task_finished", role: "critic", findings }, ...findings.map((f) => ({ type: "evidence_recorded", pattern: { kind: "critic_finding", ...f } }))] };
+}
+
+function completeEvaluateCandidate(state: ScaleStateV1, result: Record<string, unknown>): CompleteActionOutcome {
+	const candidateId = typeof result.candidate_id === "string" ? result.candidate_id : (state.candidateIds ?? [])[0];
+	const events: Array<Record<string, unknown>> = [];
+	let next = state;
+	if (candidateId) {
+		events.push(
+			{ type: "candidate_evaluation_started", candidate_id: candidateId },
+			{ type: "candidate_evaluation_finished", candidate_id: candidateId, decision: result.decision, metric: result.metric, summary: result.summary },
+			{ type: "evidence_recorded", candidate_id: candidateId, patterns: [
+				{ kind: "benchmark", metric: result.metric ?? null },
+				{ kind: "checks", passed: result.checks_passed ?? null },
+			] },
+		);
+		if (result.decision === "keep") next = { ...next, bestCandidateId: candidateId, pendingAdoptionCandidateId: candidateId };
+	}
+	const candidateIds = (next.candidateIds ?? []).filter((id) => id !== candidateId);
+	next = { ...next, candidateIds, queues: { ...next.queues, candidates: candidateIds.length }, phase: candidateIds.length > 0 ? "need_candidate_eval" as const : "need_historian" as const };
+	return { state: next, events };
+}
+
+function completeSpawnHistorian(state: ScaleStateV1, result: Record<string, unknown>): CompleteActionOutcome {
+	const next = { ...state, phase: "waiting_historian" as const, resources: { ...state.resources, subagentsUsed: numberResult(result.started_count, 1) } };
+	return { state: next, events: [{ type: "role_task_started", role: "historian", generation: next.generation }] };
+}
+
+function completeWaitHistorianResult(state: ScaleStateV1, result: Record<string, unknown>): CompleteActionOutcome {
+	const next = { ...state, resources: { ...state.resources, subagentsUsed: 0 }, phase: "generation_review" as const };
+	return { state: next, events: [{ type: "role_task_finished", role: "historian", summary: result.summary, evidence_pattern: result.evidence_pattern }] };
+}
+
+function completeGenerationReview(state: ScaleStateV1, result: Record<string, unknown>): CompleteActionOutcome {
+	const survivors = buildStrategySurvivors(state, result);
+	const next = {
+		...state,
+		strategySurvivors: [...(state.strategySurvivors ?? []), ...survivors],
+		generation: state.generation + 1,
+		phase: "need_scouts" as const,
+		hypotheses: [],
+		candidateIds: [],
+		criticFindings: [],
+		queues: { hypotheses: 0, proposals: 0, candidates: 0 },
+	};
+	return { state: next, events: [
+		{ type: "summary_updated", generation: state.generation, summary: result.summary },
+		{ type: "policy_adjusted", generation: state.generation, basis: result, strategySurvivors: survivors },
+	] };
 }
 
 function numberResult(value: unknown, fallback: number): number {
@@ -708,40 +788,59 @@ function buildStrategySurvivors(state: ScaleStateV1, result: Record<string, unkn
 	return survivors;
 }
 
+type IngestActionHandler = (cwd: string, state: ScaleStateV1) => ScaleStateV1;
+
+const INGEST_ACTION_HANDLERS: Record<string, IngestActionHandler> = {
+	wait_scout_results: ingestScoutResults,
+	wait_proposer_result: ingestProposerResult,
+	wait_critic_result: ingestCriticResult,
+	wait_historian_result: ingestHistorianResult,
+	evaluate_candidate: ingestCandidateEvaluation,
+};
+
 export function ingestScaleAction(cwd: string): ScaleStateV1 {
 	const s = readScaleState(cwd);
 	if (!s?.activeAction) throw new Error("active scale action がありません");
+	const handler = INGEST_ACTION_HANDLERS[s.activeAction.type];
+	if (!handler) throw new Error(`ingest unsupported for action: ${s.activeAction.type}`);
+	return handler(cwd, s);
+}
+
+function ingestScoutResults(cwd: string, state: ScaleStateV1): ScaleStateV1 {
 	const store = new SubagentResultStore(cwd);
-	if (s.activeAction.type === "wait_scout_results") {
-		const scoutResults = store.list({ status: "pending" }).filter((r) => r.agent_path.includes("/scale/scout") || r.agent_path.includes("scale/scout"));
-		const hypotheses = scoutResults.flatMap((r) => hypothesesFromStoredResult(r.result));
-		return completeScaleAction(cwd, { action_id: s.activeAction.action_id, result: { summary: `ingested ${hypotheses.length} scout hypotheses`, hypotheses } });
-	}
-	if (s.activeAction.type === "wait_proposer_result") {
-		const contract = readCurrentContract(cwd);
-		const lock = readLockFile(cwd);
-		if (!contract || !lock) throw new Error("current contract / lock file が見つかりません");
-		const imported = importSubagentResultsAsCandidates(cwd, contract, lock, { source: "pending", max_results: 1 }).imported;
-		return completeScaleAction(cwd, { action_id: s.activeAction.action_id, result: { summary: `imported ${imported.length} candidates`, candidate_ids: imported.map((c) => c.candidate_id) } });
-	}
-	if (s.activeAction.type === "wait_critic_result") {
-		const criticResults = store.list({ status: "pending" }).filter((r) => r.agent_path.includes("/scale/critic") || r.agent_path.includes("scale/critic"));
-		const findings = criticResults.flatMap((r) => findingsFromStoredResult(r.result, (s.candidateIds ?? [])[0]));
-		return completeScaleAction(cwd, { action_id: s.activeAction.action_id, result: { summary: `ingested ${findings.length} critic findings`, findings } });
-	}
-	if (s.activeAction.type === "wait_historian_result") {
-		const historianResults = store.list({ status: "pending" }).filter((r) => r.agent_path.includes("/scale/historian") || r.agent_path.includes("scale/historian"));
-		const summary = historianResults.map((r) => (r.result as any).summary ?? (r.result as any).reason ?? "historian completed").join("\n") || "historian result unavailable";
-		return completeScaleAction(cwd, { action_id: s.activeAction.action_id, result: { summary, evidence_pattern: inferEvidencePattern(summary) } });
-	}
-	if (s.activeAction.type === "evaluate_candidate") {
-		const candidateId = (s.candidateIds ?? [])[0];
-		if (!candidateId) return completeScaleAction(cwd, { action_id: s.activeAction.action_id, result: { summary: "no candidate to evaluate" } });
-		const c = readCandidate(cwd, candidateId);
-		if (c.status !== "kept" && c.status !== "discarded") throw new Error(`candidate evaluation is not finished: ${candidateId} status=${c.status}`);
-		return completeScaleAction(cwd, { action_id: s.activeAction.action_id, result: { summary: c.decision?.reason ?? c.status, candidate_id: candidateId, decision: c.status === "kept" ? "keep" : "discard", metric: c.decision?.metric ?? null, checks_passed: c.status === "kept" } });
-	}
-	throw new Error(`ingest unsupported for action: ${s.activeAction.type}`);
+	const scoutResults = store.list({ status: "pending" }).filter((r) => r.agent_path.includes("/scale/scout") || r.agent_path.includes("scale/scout"));
+	const hypotheses = scoutResults.flatMap((r) => hypothesesFromStoredResult(r.result));
+	return completeScaleAction(cwd, { action_id: state.activeAction!.action_id, result: { summary: `ingested ${hypotheses.length} scout hypotheses`, hypotheses } });
+}
+
+function ingestProposerResult(cwd: string, state: ScaleStateV1): ScaleStateV1 {
+	const contract = readCurrentContract(cwd);
+	const lock = readLockFile(cwd);
+	if (!contract || !lock) throw new Error("current contract / lock file が見つかりません");
+	const imported = importSubagentResultsAsCandidates(cwd, contract, lock, { source: "pending", max_results: 1 }).imported;
+	return completeScaleAction(cwd, { action_id: state.activeAction!.action_id, result: { summary: `imported ${imported.length} candidates`, candidate_ids: imported.map((c) => c.candidate_id) } });
+}
+
+function ingestCriticResult(cwd: string, state: ScaleStateV1): ScaleStateV1 {
+	const store = new SubagentResultStore(cwd);
+	const criticResults = store.list({ status: "pending" }).filter((r) => r.agent_path.includes("/scale/critic") || r.agent_path.includes("scale/critic"));
+	const findings = criticResults.flatMap((r) => findingsFromStoredResult(r.result, (state.candidateIds ?? [])[0]));
+	return completeScaleAction(cwd, { action_id: state.activeAction!.action_id, result: { summary: `ingested ${findings.length} critic findings`, findings } });
+}
+
+function ingestHistorianResult(cwd: string, state: ScaleStateV1): ScaleStateV1 {
+	const store = new SubagentResultStore(cwd);
+	const historianResults = store.list({ status: "pending" }).filter((r) => r.agent_path.includes("/scale/historian") || r.agent_path.includes("scale/historian"));
+	const summary = historianResults.map((r) => (r.result as any).summary ?? (r.result as any).reason ?? "historian completed").join("\n") || "historian result unavailable";
+	return completeScaleAction(cwd, { action_id: state.activeAction!.action_id, result: { summary, evidence_pattern: inferEvidencePattern(summary) } });
+}
+
+function ingestCandidateEvaluation(cwd: string, state: ScaleStateV1): ScaleStateV1 {
+	const candidateId = (state.candidateIds ?? [])[0];
+	if (!candidateId) return completeScaleAction(cwd, { action_id: state.activeAction!.action_id, result: { summary: "no candidate to evaluate" } });
+	const c = readCandidate(cwd, candidateId);
+	if (c.status !== "kept" && c.status !== "discarded") throw new Error(`candidate evaluation is not finished: ${candidateId} status=${c.status}`);
+	return completeScaleAction(cwd, { action_id: state.activeAction!.action_id, result: { summary: c.decision?.reason ?? c.status, candidate_id: candidateId, decision: c.status === "kept" ? "keep" : "discard", metric: c.decision?.metric ?? null, checks_passed: c.status === "kept" } });
 }
 
 function hypothesesFromStoredResult(result: unknown): Array<{ slot: string; hypothesis: string; rationale?: string; suggested_paths: string[]; expected_evidence: string[]; risk: "low" | "medium" | "high" }> {
