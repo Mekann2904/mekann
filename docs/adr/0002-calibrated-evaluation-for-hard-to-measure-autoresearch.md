@@ -1,0 +1,3 @@
+# Use calibrated evaluation for hard-to-measure autoresearch
+
+For autoresearch tasks where a simple numeric metric is difficult or misleading, Mekann will treat LLM judgment as one signal inside a calibrated evaluation process rather than as the sole source of truth. Mechanical checks, structured acceptance criteria, LLM critics or judges, and human or expert review should be combined as appropriate so high-autonomy research can evaluate candidates without relying on uncalibrated subjective judgment.
