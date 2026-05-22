@@ -3,8 +3,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { evaluateQueryStatically } from "./queryEvaluation.js";
-import { computeContractHash, planPath, type AutoresearchContractV1 } from "./contractV1.js";
+import { computeContractHash, filterInternalPaths, planPath, readCurrentContract, readLockFile, type AutoresearchContractV1 } from "./contractV1.js";
 import { getPlanDir, readState, writeState } from "./layout.js";
+import { getChangedFiles } from "./runner.js";
 
 export type ScaleStatus = "none" | "planning" | "approved" | "running" | "draining" | "paused" | "stopped";
 
@@ -18,6 +19,8 @@ export interface ScaleAction {
 	type: string;
 	instruction: string;
 	expected_completion: { type: string; required_fields: string[] };
+	/** Concrete tool calls the root agent should perform for this action. */
+	tool_calls?: Array<{ tool: string; params: Record<string, unknown> }>;
 }
 
 export interface ScaleHypothesisRecord {
@@ -32,7 +35,7 @@ export interface ScaleHypothesisRecord {
 	status: "new" | "scored" | "assigned" | "exhausted";
 }
 
-export type ScalePhase = "need_scouts" | "waiting_scouts" | "need_scoring" | "need_proposer" | "waiting_proposer" | "need_candidate_eval" | "generation_review";
+export type ScalePhase = "need_scouts" | "waiting_scouts" | "need_scoring" | "need_proposer" | "waiting_proposer" | "need_critic" | "waiting_critic" | "need_candidate_eval" | "generation_review";
 
 export interface ScaleStateV1 {
 	version: 1;
@@ -48,6 +51,8 @@ export interface ScaleStateV1 {
 	phase?: ScalePhase;
 	hypotheses?: ScaleHypothesisRecord[];
 	candidateIds?: string[];
+	criticFindings?: Array<{ candidate_id?: string; severity?: string; finding: string }>;
+	strategySurvivors?: Array<{ kind: "slot" | "role_template" | "evidence_pattern"; name: string; score?: number; note?: string }>;
 	queues: { hypotheses: number; proposals: number; candidates: number };
 	resources: { subagentsUsed: number; subagentsMax: number; evaluationsUsed: number; evaluationsMax: number; worktreesUsed: number; worktreesMax: number };
 	createdAt: string;
@@ -275,18 +280,20 @@ export function computeNextScaleAction(cwd: string): ScaleAction | null {
 	if (s.activeAction) return s.activeAction;
 	if (s.generation === 0) return action("start_generation", "generation_started", "Autoresearch test-time scaling の次 action: generation 1 を開始してください。完了後に autoresearch_scale_complete_action に action_id と result.summary を渡してください。");
 	const phase = s.phase ?? "need_scouts";
-	if (phase === "need_scouts") return action("spawn_scouts", "role_tasks_started", scoutInstruction());
-	if (phase === "waiting_scouts") return action("wait_scout_results", "structured_hypotheses", waitScoutInstruction());
+	if (phase === "need_scouts") return action("spawn_scouts", "role_tasks_started", scoutInstruction(), scoutToolCalls(cwd, s));
+	if (phase === "waiting_scouts") return action("wait_scout_results", "structured_hypotheses", waitScoutInstruction(), waitToolCalls());
 	if (phase === "need_scoring") return action("score_hypotheses", "hypotheses_scored", "structured hypotheses を rule-based scoring で順位付けします。この action は root agent の追加判断を必要としません。autoresearch_scale_complete_action に action_id と result.summary を渡してください。");
-	if (phase === "need_proposer") return action("spawn_proposer", "proposal_task_started", proposerInstruction(s));
-	if (phase === "waiting_proposer") return action("wait_proposer_result", "candidate_imported", waitProposerInstruction());
-	if (phase === "need_candidate_eval") return action("evaluate_candidate", "candidate_evaluation_finished", evaluateCandidateInstruction(s));
-	if (phase === "generation_review") return action("generation_review", "generation_reviewed", "historian 観点で generation summary / survivor / failure memory を整理してください。新しい patch は作らず、result.summary に次世代で増やす slot / 避ける strategy / evidence pattern を記録してください。");
+	if (phase === "need_proposer") return action("spawn_proposer", "proposal_task_started", proposerInstruction(s), proposerToolCalls(cwd, s));
+	if (phase === "waiting_proposer") return action("wait_proposer_result", "candidate_imported", waitProposerInstruction(), [...(waitToolCalls() ?? []), { tool: "autoresearch_candidate_escrow", params: { source: "pending", max_results: 1 } }]);
+	if (phase === "need_critic") return action("spawn_critic", "critic_task_started", criticInstruction(s), criticToolCalls(cwd, s));
+	if (phase === "waiting_critic") return action("wait_critic_result", "critic_findings_recorded", waitCriticInstruction(), waitToolCalls());
+	if (phase === "need_candidate_eval") return action("evaluate_candidate", "candidate_evaluation_finished", evaluateCandidateInstruction(s), evaluationToolCalls(s));
+	if (phase === "generation_review") return action("generation_review", "generation_reviewed", "historian 観点で generation summary / survivor / failure memory を整理してください。新しい patch は作らず、result.summary に次世代で増やす slot / 避ける strategy / evidence_pattern を記録してください。");
 	return null;
 }
 
-function action(type: string, completionType: string, instruction: string): ScaleAction {
-	return { action_id: scaleActionId(), type, instruction, expected_completion: { type: completionType, required_fields: ["summary"] } };
+function action(type: string, completionType: string, instruction: string, toolCalls?: ScaleAction["tool_calls"]): ScaleAction {
+	return { action_id: scaleActionId(), type, instruction, expected_completion: { type: completionType, required_fields: ["summary"] }, tool_calls: toolCalls };
 }
 
 function scoutInstruction(): string {
@@ -297,6 +304,29 @@ function scoutInstruction(): string {
 		"spawn 後、起動した task 数を result.started_count に入れて autoresearch_scale_complete_action を呼んでください。",
 	].join("\n");
 }
+
+function scoutToolCalls(cwd: string, _s: ScaleStateV1): ScaleAction["tool_calls"] {
+	const contract = readCurrentContract(cwd) as any;
+	const slots = [...(contract?.scaling?.population?.baselineSlots ?? BASELINE_HYPOTHESIS_SLOTS), ...(contract?.scaling?.population?.objectiveDerivedSlots ?? [])];
+	const scopeNote = `Allowed write paths: ${JSON.stringify(contract?.scope?.allowedWritePaths ?? [])}\nForbidden write paths: ${JSON.stringify(contract?.scope?.forbiddenWritePaths ?? [])}`;
+	return [0, 1].map((i) => ({
+		tool: "spawn_agent",
+		params: {
+			task_name: `scale/scout-${Date.now().toString(36)}-${i + 1}`,
+			message: [
+				"Read-only scout for Autoresearch test-time scaling.",
+				"目的: hypothesis slots を具体的な structured hypotheses に変換する。編集・benchmark・autoresearch tools は禁止。",
+				`Objective: ${contract?.objective?.summary ?? "unknown"}`,
+				`Slots: ${JSON.stringify(slots)}`,
+				scopeNote,
+				"Return Japanese concise findings. Include structured hypotheses array with slot, hypothesis, rationale, suggested_paths, expected_evidence, risk.",
+			].join("\n"),
+			authority: { mode: "read_only" },
+		},
+	}));
+}
+
+function waitToolCalls(): ScaleAction["tool_calls"] { return [{ tool: "wait_agent", params: { timeout_ms: 30000 } }]; }
 
 function waitScoutInstruction(): string {
 	return [
@@ -316,10 +346,75 @@ function proposerInstruction(s: ScaleStateV1): string {
 	].join("\n");
 }
 
+function proposerToolCalls(cwd: string, s: ScaleStateV1): ScaleAction["tool_calls"] {
+	const contract = readCurrentContract(cwd) as any;
+	const h = selectNextHypothesis(s);
+	if (!h) return [];
+	return [{
+		tool: "spawn_agent",
+		params: {
+			task_name: `scale/proposer-${h.id}`,
+			message: [
+				"Patch proposer for Autoresearch test-time scaling.",
+				"1 hypothesis から 1 つだけ minimal patch proposal を作る。benchmark は実行しない。main worktree へ直接 apply しない。",
+				`Hypothesis ID: ${h.id}`,
+				`Slot: ${h.slot}`,
+				`Hypothesis: ${h.hypothesis}`,
+				`Expected evidence: ${h.expected_evidence.join("; ")}`,
+				`Suggested paths: ${h.suggested_paths.join(", ")}`,
+				`Allowed write paths: ${JSON.stringify(contract?.scope?.allowedWritePaths ?? [])}`,
+				`Forbidden write paths: ${JSON.stringify(contract?.scope?.forbiddenWritePaths ?? [])}`,
+				"Return subagent.result.v1 patch proposal as raw JSON only.",
+			].join("\n"),
+			authority: { mode: "propose_patch", write_scope: contract?.scope?.allowedWritePaths ?? [], require_base_hash: true, isolated_worktree: "preferred", max_patch_bytes: 50000 },
+			result_contract: "subagent_result_v1",
+		},
+	}];
+}
+
 function waitProposerInstruction(): string {
 	return [
 		"wait_agent で proposer の patch proposal result を回収し、autoresearch_candidate_escrow で candidate 化してください。",
 		"完了後、autoresearch_scale_complete_action の result.candidate_ids に escrow された candidate_id 配列を渡してください。",
+	].join("\n");
+}
+
+function criticInstruction(s: ScaleStateV1): string {
+	const candidateId = (s.candidateIds ?? [])[0];
+	return [
+		"candidate を評価前に critic subagent へ read-only review させてください。",
+		candidateId ? `candidate_id=${candidateId}` : "candidate_id がありません。result.summary に exhaustion を記録してください。",
+		"critic は scope violation、metric hacking、hidden side effect、expected_evidence の弱さを指摘します。ranking decision は critic に委ねません。",
+		"spawn 後、result.candidate_id と result.started_count を渡して complete_action してください。",
+	].join("\n");
+}
+
+function criticToolCalls(cwd: string, s: ScaleStateV1): ScaleAction["tool_calls"] {
+	const contract = readCurrentContract(cwd) as any;
+	const candidateId = (s.candidateIds ?? [])[0];
+	if (!candidateId) return [];
+	return [{
+		tool: "spawn_agent",
+		params: {
+			task_name: `scale/critic-${candidateId}`,
+			message: [
+				"Read-only critic for Autoresearch test-time scaling candidate.",
+				`Candidate ID: ${candidateId}`,
+				"Review scope violation, metric hacking risk, hidden side effects, and evidence weakness. Do not edit files. Do not decide keep/discard.",
+				`Allowed write paths: ${JSON.stringify(contract?.scope?.allowedWritePaths ?? [])}`,
+				`Forbidden write paths: ${JSON.stringify(contract?.scope?.forbiddenWritePaths ?? [])}`,
+				"Return findings as: [{ candidate_id, severity, finding }].",
+			].join("\n"),
+			authority: { mode: "read_only" },
+		},
+	}];
+}
+
+function waitCriticInstruction(): string {
+	return [
+		"wait_agent で critic result を回収し、findings を structured に要約してください。",
+		"完了後、autoresearch_scale_complete_action の result.findings に配列で渡してください。",
+		"形式: { candidate_id?, severity?, finding }。critic findings は ranking を直接変えず risk_note / policy adjustment の材料にします。",
 	].join("\n");
 }
 
@@ -333,16 +428,46 @@ function evaluateCandidateInstruction(s: ScaleStateV1): string {
 	].join("\n");
 }
 
+function evaluationToolCalls(s: ScaleStateV1): ScaleAction["tool_calls"] {
+	const candidateId = (s.candidateIds ?? [])[0];
+	if (!candidateId) return [];
+	return [
+		{ tool: "autoresearch_apply_candidate_isolated", params: { candidate_id: candidateId } },
+		{ tool: "autoresearch_run_contract", params: { candidate_id: candidateId, reason: "autoresearch-scale candidate evaluation", iteration_label: `generation-${s.generation}` } },
+	];
+}
+
 export function startScale(cwd: string): ScaleStateV1 {
 	const s = readScaleState(cwd);
 	if (!s) throw new Error("承認済み scaling state が見つかりません。先に /autoresearch-scale <目的文> と autoresearch_approve を実行してください。");
 	if (!["approved", "stopped", "paused", "running"].includes(s.status)) throw new Error(`現在の状態から start できません: ${s.status}`);
+	const resumeError = validateStartPreconditions(cwd, s);
+	if (resumeError) {
+		const paused: ScaleStateV1 = { ...s, status: "paused", pauseReason: resumeError };
+		writeScaleState(cwd, paused);
+		appendScaleEvent(cwd, { type: "paused", reason: resumeError });
+		updateScaleSummary(cwd, paused);
+		throw new Error(resumeError);
+	}
 	const next: ScaleStateV1 = { ...s, status: "running", stopRequested: false, pauseReason: undefined };
 	if (s.status === "stopped") next.generation = s.generation + 1;
 	writeScaleState(cwd, next);
 	appendScaleEvent(cwd, { type: "scaling_started", from: s.status, generation: next.generation });
 	updateScaleSummary(cwd, next);
 	return next;
+}
+
+function validateStartPreconditions(cwd: string, state: ScaleStateV1): string | null {
+	const contract = readCurrentContract(cwd);
+	const lock = readLockFile(cwd);
+	if (!contract) return "current contract が見つかりません";
+	if (!lock) return "lock file が見つかりません";
+	const currentHash = computeContractHash(contract);
+	if (currentHash !== lock.contractHash) return "contract hash mismatch";
+	if (state.contractHash && state.contractHash !== currentHash) return "scaling state contract hash mismatch";
+	const changed = filterInternalPaths(getChangedFiles(cwd));
+	if (changed.length > 0) return `contract-relevant dirty workspace: ${changed.join(", ")}`;
+	return null;
 }
 
 export function requestScaleStop(cwd: string): ScaleStateV1 {
@@ -402,13 +527,29 @@ export function completeScaleAction(cwd: string, params: { action_id: string; st
 		next.candidateIds = candidateIds;
 		next.queues = { ...next.queues, proposals: 0, candidates: candidateIds.length };
 		next.resources = { ...next.resources, subagentsUsed: 0 };
-		next.phase = candidateIds.length > 0 ? "need_candidate_eval" : "generation_review";
+		next.phase = candidateIds.length > 0 ? "need_critic" : "generation_review";
 		for (const id of candidateIds) appendScaleEvent(cwd, { type: "candidate_imported", candidate_id: id });
 		appendScaleEvent(cwd, { type: "role_task_finished", role: "proposer", candidateIds });
+	} else if (s.activeAction.type === "spawn_critic") {
+		next.phase = "waiting_critic";
+		next.resources = { ...next.resources, subagentsUsed: numberResult(result.started_count, 1) };
+		appendScaleEvent(cwd, { type: "role_task_started", role: "critic", candidateId: result.candidate_id ?? (next.candidateIds ?? [])[0] });
+	} else if (s.activeAction.type === "wait_critic_result") {
+		const findings = parseCriticFindings(result.findings);
+		next.criticFindings = [...(next.criticFindings ?? []), ...findings];
+		next.resources = { ...next.resources, subagentsUsed: 0 };
+		next.phase = "need_candidate_eval";
+		appendScaleEvent(cwd, { type: "role_task_finished", role: "critic", findings });
+		for (const f of findings) appendScaleEvent(cwd, { type: "evidence_recorded", pattern: { kind: "critic_finding", ...f } });
 	} else if (s.activeAction.type === "evaluate_candidate") {
 		const candidateId = typeof result.candidate_id === "string" ? result.candidate_id : (next.candidateIds ?? [])[0];
 		if (candidateId) {
+			appendScaleEvent(cwd, { type: "candidate_evaluation_started", candidate_id: candidateId });
 			appendScaleEvent(cwd, { type: "candidate_evaluation_finished", candidate_id: candidateId, decision: result.decision, metric: result.metric, summary: result.summary });
+			appendScaleEvent(cwd, { type: "evidence_recorded", candidate_id: candidateId, patterns: [
+				{ kind: "benchmark", metric: result.metric ?? null },
+				{ kind: "checks", passed: result.checks_passed ?? null },
+			] });
 			if (result.decision === "keep") {
 				next.bestCandidateId = candidateId;
 				next.pendingAdoptionCandidateId = candidateId;
@@ -418,12 +559,15 @@ export function completeScaleAction(cwd: string, params: { action_id: string; st
 		next.queues = { ...next.queues, candidates: next.candidateIds.length };
 		next.phase = next.candidateIds.length > 0 ? "need_candidate_eval" : "generation_review";
 	} else if (s.activeAction.type === "generation_review") {
+		const survivors = buildStrategySurvivors(next, result);
+		next.strategySurvivors = [...(next.strategySurvivors ?? []), ...survivors];
 		appendScaleEvent(cwd, { type: "summary_updated", generation: next.generation, summary: result.summary });
-		appendScaleEvent(cwd, { type: "policy_adjusted", generation: next.generation, basis: result });
+		appendScaleEvent(cwd, { type: "policy_adjusted", generation: next.generation, basis: result, strategySurvivors: survivors });
 		next.generation += 1;
 		next.phase = "need_scouts";
 		next.hypotheses = [];
 		next.candidateIds = [];
+		next.criticFindings = [];
 		next.queues = { hypotheses: 0, proposals: 0, candidates: 0 };
 	}
 	if (next.status === "draining") {
@@ -441,6 +585,21 @@ function numberResult(value: unknown, fallback: number): number {
 
 function stringArray(value: unknown): string[] {
 	return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+function parseCriticFindings(value: unknown): Array<{ candidate_id?: string; severity?: string; finding: string }> {
+	if (!Array.isArray(value)) return [];
+	return value.flatMap((v) => {
+		if (!v || typeof v !== "object") return [];
+		const r = v as Record<string, unknown>;
+		const finding = typeof r.finding === "string" ? r.finding.trim() : "";
+		if (!finding) return [];
+		return [{
+			candidate_id: typeof r.candidate_id === "string" ? r.candidate_id : undefined,
+			severity: typeof r.severity === "string" ? r.severity : undefined,
+			finding,
+		}];
+	});
 }
 
 function parseHypotheses(value: unknown): ScaleHypothesisRecord[] {
@@ -478,7 +637,24 @@ function scoreHypotheses(hypotheses: ScaleHypothesisRecord[]): ScaleHypothesisRe
 }
 
 function selectNextHypothesis(s: ScaleStateV1): ScaleHypothesisRecord | undefined {
-	return [...(s.hypotheses ?? [])].filter((h) => h.status === "scored").sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
+	const available = [...(s.hypotheses ?? [])].filter((h) => h.status === "scored");
+	if (available.length === 0) return undefined;
+	const assignedBySlot = new Map<string, number>();
+	for (const h of s.hypotheses ?? []) if (h.status === "assigned") assignedBySlot.set(h.slot, (assignedBySlot.get(h.slot) ?? 0) + 1);
+	return available.sort((a, b) => {
+		const slotDelta = (assignedBySlot.get(a.slot) ?? 0) - (assignedBySlot.get(b.slot) ?? 0);
+		if (slotDelta !== 0) return slotDelta;
+		return (b.score ?? 0) - (a.score ?? 0);
+	})[0];
+}
+
+function buildStrategySurvivors(state: ScaleStateV1, result: Record<string, unknown>): Array<{ kind: "slot" | "role_template" | "evidence_pattern"; name: string; score?: number; note?: string }> {
+	const survivors: Array<{ kind: "slot" | "role_template" | "evidence_pattern"; name: string; score?: number; note?: string }> = [];
+	const bestSlot = [...(state.hypotheses ?? [])].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0]?.slot;
+	if (bestSlot) survivors.push({ kind: "slot", name: bestSlot, score: 1, note: "highest scored hypothesis slot in generation" });
+	if ((state.criticFindings ?? []).length > 0) survivors.push({ kind: "role_template", name: "critic:metric_hacking_scope_risk", score: 1, note: "critic findings recorded" });
+	if (typeof result.evidence_pattern === "string") survivors.push({ kind: "evidence_pattern", name: result.evidence_pattern, score: 1, note: "reported by historian" });
+	return survivors;
 }
 
 export function claimNextAction(cwd: string): ScaleAction | null {
@@ -495,14 +671,18 @@ export function claimNextAction(cwd: string): ScaleAction | null {
 }
 
 export function nextActionMessage(action: ScaleAction): string {
-	return [
+	const lines = [
 		"Autoresearch test-time scaling supervisor instruction:",
 		`- action_id: ${action.action_id}`,
 		`- type: ${action.type}`,
 		`- expected completion: ${action.expected_completion.type}`,
 		"",
 		action.instruction,
-		"",
-		"完了後は autoresearch_scale_complete_action を呼び、action_id と result.summary を記録してください。",
-	].join("\n");
+	];
+	if (action.tool_calls && action.tool_calls.length > 0) {
+		lines.push("", "Suggested tool calls:");
+		for (const call of action.tool_calls) lines.push(`- ${call.tool}: ${JSON.stringify(call.params)}`);
+	}
+	lines.push("", "完了後は autoresearch_scale_complete_action を呼び、action_id と result.summary を記録してください。");
+	return lines.join("\n");
 }
