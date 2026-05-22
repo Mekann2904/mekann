@@ -1,6 +1,7 @@
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
+import { spreadSessionMeta } from "../output-gate/store.js";
 
 // ─── Schema ─────────────────────────────────────────────────────
 
@@ -88,10 +89,7 @@ export async function appendContextEvent(input: AppendEventInput): Promise<Mekan
 		priority: input.priority,
 		title: input.title,
 		summary: input.summary,
-		...(input.sessionId ? { sessionId: input.sessionId } : {}),
-		...(input.turnId ? { turnId: input.turnId } : {}),
-		...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
-		...(input.branchId ? { branchId: input.branchId } : {}),
+		...spreadSessionMeta(input),
 		...(input.refs && input.refs.length > 0 ? { refs: input.refs } : {}),
 	};
 	await fsp.appendFile(eventsPath(input.cwd), `${JSON.stringify(event)}\n`, "utf8");
@@ -155,9 +153,16 @@ export async function clearContext(cwd: string): Promise<void> {
 
 // ─── Helpers ────────────────────────────────────────────────────
 
-function truncate(str: string, maxLen: number): string {
+export function truncate(str: string, maxLen: number): string {
 	if (str.length <= maxLen) return str;
 	return str.slice(0, maxLen - 1) + "…";
+}
+
+export function sortByPriorityThenNewest<T extends { priority: number; createdAt: number }>(events: T[]): T[] {
+	return events.sort((a, b) => {
+		if (a.priority !== b.priority) return a.priority - b.priority;
+		return b.createdAt - a.createdAt;
+	});
 }
 
 // ─── Search ─────────────────────────────────────────────────────
@@ -197,10 +202,7 @@ export async function searchEvents(input: SearchEventsInput): Promise<MekannCont
 	}
 
 	// Sort by priority ascending, then createdAt descending
-	events.sort((a, b) => {
-		if (a.priority !== b.priority) return a.priority - b.priority;
-		return b.createdAt - a.createdAt;
-	});
+	sortByPriorityThenNewest(events);
 
 	const maxResults = input.maxResults ?? 20;
 	return events.slice(0, maxResults);

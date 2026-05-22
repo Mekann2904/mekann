@@ -4,6 +4,7 @@ import * as fsp from "node:fs/promises";
 import { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult, eventsPath, contextDir } from "./store.js";
 import { buildSnapshot } from "./snapshot.js";
 import { writeLatestSnapshot, readBoundedLatestSnapshot } from "./snapshot-store.js";
+import { handleClear } from "../output-gate/index.js";
 
 export { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult } from "./store.js";
 export type { MekannContextEvent, MekannContextEventKind, MekannContextRef, AppendEventInput } from "./store.js";
@@ -96,7 +97,7 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 					: clampInt((params as any).priorityMax, 4, 0, 4),
 			});
 			const text = formatSearchResult(events);
-			return { content: [{ type: "text", text }], details: {} };
+			return { content: [{ type: "text", text }], details: {} as Record<string, unknown> };
 		},
 	});
 
@@ -142,15 +143,7 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 			const arg = args?.trim() ?? "";
 
 			if (arg === "clear") {
-				const confirmFn = ctx?.ui?.confirm;
-				if (typeof confirmFn !== "function") {
-					ctx?.ui?.notify?.("clear requires interactive confirmation", "warning");
-					return;
-				}
-				const ok = await confirmFn("Clear context ledger?", `Delete ${contextDir(cwd)} ?`);
-				if (!ok) return;
-				await clearContext(cwd);
-				ctx?.ui?.notify?.("context-ledger cleared", "info");
+				await handleClear(ctx, "context-ledger", contextDir(cwd), async () => { await clearContext(cwd); });
 				return;
 			}
 

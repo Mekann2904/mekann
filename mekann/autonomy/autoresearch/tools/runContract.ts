@@ -35,7 +35,7 @@ import { SubagentResultStore } from "../../subagent/resultStore.js";
 import { isBestMetric } from "../state.js";
 import { appendToJsonl, type RunsLedgerEntry } from "../state.js";
 import { readState as readStateV2, writeState as writeStateV2 } from "../layout.js";
-import { resolvePrimaryMetricFromRun, ensureSessionDir, nextRunSeq } from "./sharedHelpers.js";
+import { resolvePrimaryMetricFromRun, ensureSessionDir, nextRunSeq, runContractChecksForPhase, validateContractPreconditions } from "./sharedHelpers.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ToolResponse, SessionStore } from "./sessionStore.js";
 
@@ -86,8 +86,9 @@ export async function executeRunContract(
 		return store.textDetails(`[PAUSE] contract hash が lock と一致しません。\nexpected: ${lock.contractHash}\nactual: ${currentHash}\ncontract が承認後に変更されました。`, { decision: "pause" });
 	}
 
-	if (contract.scope.requireGit && !isGitRepo(ctx.cwd)) {
-		return store.textResponse(`[ERROR] git repo ではありません。`);
+	const precondError = validateContractPreconditions(contract, ctx.cwd, store);
+	if (precondError) {
+		return store.textResponse(`[ERROR] ${precondError}`);
 	}
 
 	let candidate = null as ReturnType<typeof readCandidate> | null;
@@ -109,20 +110,9 @@ export async function executeRunContract(
 	logRunEvent("contract_run_started", { reason: params.reason, iterationLabel: params.iteration_label, candidate_id: params.candidate_id, preChangedFilesCount: preChangedFiles.length });
 
 	// --- Run checks by phase ---
-	const checkResults = new Map<string, boolean>();
-	const runChecksForPhase = async (phase: "pre_benchmark" | "post_benchmark"): Promise<void> => {
-		for (const check of contract.evaluation.checks.filter((c) => checkPhase(c) === phase)) {
-			const checkCwd = resolveCwdInsideRepo(evaluationCwd, check.command.cwd);
-			const checkResult = await runArgvCommand(
-				{ argv: check.command.argv, cwd: checkCwd, env: check.command.env },
-				check.timeoutSeconds * 1000,
-				signal,
-			);
-			checkResults.set(check.name, checkResult.passed);
-			logRunEvent("check_run_completed", { name: check.name, visibility: checkVisibility(check), phase, passed: checkResult.passed, exitCode: checkResult.exitCode, timedOut: checkResult.timedOut });
-		}
-	};
-	await runChecksForPhase("pre_benchmark");
+	const preCheckResults = await runContractChecksForPhase(contract, "pre_benchmark", evaluationCwd, signal,
+		(name, phase, passed, exitCode, timedOut) => logRunEvent("check_run_completed", { name, visibility: checkVisibility(contract.evaluation.checks.find((c) => c.name === name)!), phase, passed, exitCode, timedOut }),
+	);
 
 	// --- Run benchmark repeats ---
 	const benchmarkCwd = resolveCwdInsideRepo(evaluationCwd, contract.evaluation.benchmark.command.cwd);
@@ -146,7 +136,12 @@ export async function executeRunContract(
 		logRunEvent("benchmark_run_completed", { runIndex: i, exitCode: result.exitCode, metric: metricValue, durationSeconds: result.durationSeconds, timedOut: result.timedOut });
 	}
 
-	await runChecksForPhase("post_benchmark");
+	const postCheckResults = await runContractChecksForPhase(contract, "post_benchmark", evaluationCwd, signal,
+		(name, phase, passed, exitCode, timedOut) => logRunEvent("check_run_completed", { name, visibility: checkVisibility(contract.evaluation.checks.find((c) => c.name === name)!), phase, passed, exitCode, timedOut }),
+	);
+
+	// Merge check results
+	const checkResults = new Map([...preCheckResults, ...postCheckResults]);
 
 	// --- POST state: re-check changed files and immutable hash AFTER benchmark/checks ---
 	// This catches mutations made by checks or benchmark scripts.
@@ -295,7 +290,7 @@ export async function executeRunContract(
 
 		store.state.runCount++;
 		// Sync direction from contract to ensure consistent best comparison
-		store.state.direction = contract.evaluation.primaryMetric.direction;
+	store.state.direction = contract.evaluation.primaryMetric.direction;
 		const updatedBest = candidateMetric !== null && isBestMetric(store.state.bestMetric, candidateMetric, store.state.direction);
 		if (updatedBest) {
 			store.state.bestMetric = candidateMetric;

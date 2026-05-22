@@ -82,7 +82,7 @@ describe("AgentControl.list()", () => {
       nickname: "R1",
       role: "researcher",
       depth: 1,
-      authority: { mode: "observe", require_base_hash: false },
+      authority: { mode: "read_only", require_base_hash: false },
       authorityEnforced: false,
     });
 
@@ -97,7 +97,7 @@ describe("AgentControl.list()", () => {
     expect(listed.nickname).toBe("R1");
     expect(listed.role).toBe("researcher");
     expect(listed.depth).toBe(1);
-    expect(listed.authority).toEqual({ mode: "observe", require_base_hash: false });
+    expect(listed.authority).toEqual({ mode: "read_only", require_base_hash: false });
     expect(listed.authority_enforced).toBe(false);
     expect(listed.result_contract).toBeUndefined();
     expect(listed.display).toBeUndefined();
@@ -111,6 +111,7 @@ describe("AgentControl.list()", () => {
         status: "open",
         windowId: "w1",
         title: "task1 window",
+        cwd: "/tmp",
         logPath: "/tmp/log.txt",
         socketPath: "/tmp/sock",
         pid: 1234,

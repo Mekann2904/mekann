@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { ApplyQueue } from "./applyQueue.js";
 import { SubagentResultStore } from "./resultStore.js";
-import type { AgentMetadata, PatchProposalResult } from "./types.js";
+import type { AgentMetadata, PatchProposalResult, PublicSurfaceDelta } from "./types.js";
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -48,7 +48,7 @@ import { keyOfTarget } from "./semantic.js";
 function resetMocks() {
   vi.mocked(extractTouchedPathsFromPatchStrict).mockReturnValue({ ok: true, paths: ["src/a.ts"] });
   vi.mocked(detectPublicSurfaceFromPatch).mockReturnValue([]);
-  vi.mocked(normalizePublicSurfaceDeltas).mockImplementation((d: unknown) => d as unknown[]);
+  vi.mocked(normalizePublicSurfaceDeltas).mockImplementation((d: PublicSurfaceDelta[]) => d);
   vi.mocked(checkBaseFileHashes).mockResolvedValue({ ok: true });
   vi.mocked(isNewFilePatch).mockReturnValue(false);
   vi.mocked(safeRepoRelativePath).mockImplementation((p: string) => p);

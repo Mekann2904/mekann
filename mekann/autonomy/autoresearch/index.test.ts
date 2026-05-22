@@ -345,7 +345,7 @@ describe("autoresearchExtension", () => {
 		it("returns inactive guard prompt when inactive", async () => {
 			const fragments = await collectPromptFragments({ cwd: ctx.cwd });
 			expect(fragments).toHaveLength(1);
-			expect(fragments[0]).toMatchObject({ kind: "autoresearch_inactive_policy", stability: "stable", scope: "mode", priority: 400 });
+			expect(fragments[0]).toMatchObject({ kind: "autoresearch_policy", stability: "stable", scope: "mode", priority: 400 });
 			expect(fragments[0].content).toContain("autoresearch モード(OFF)");
 			expect(fragments[0].content).toContain("/autoresearch on");
 			expect(fragments[0].content).toContain("通常の依頼として扱う");
@@ -538,7 +538,7 @@ describe("autoresearchExtension", () => {
 			expect(pi.sentMessages).toHaveLength(0);
 			expect(ctx.ui.notify).toHaveBeenCalledWith(
 				expect.stringContaining("完了マーカー"),
-				"success",
+				"info",
 			);
 		});
 	});
@@ -1941,7 +1941,7 @@ describe("autoresearchExtension", () => {
 			expect(pi.sentMessages).toHaveLength(0);
 			expect(ctx.ui.notify).toHaveBeenCalledWith(
 				expect.stringContaining("完了マーカー"),
-				"success",
+				"info",
 			);
 		});
 	});

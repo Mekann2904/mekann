@@ -642,22 +642,9 @@ export function writeRunArtifacts(
 		artifactComplete: false as boolean, // will be set to true after checks
 		piRunId,
 		runSeq,
-		command: result.command,
 		startedAt,
 		completedAt,
-		durationSeconds: result.durationSeconds,
-		exitCode: result.exitCode,
-		timedOut: result.timedOut,
-		signal: result.signal,
-		externalRunId: result.externalRunId,
-		externalArtifactDir: result.externalArtifactDir,
-		externalSummaryPath: result.externalSummaryPath,
-		externalViewlogPath: result.externalViewlogPath,
-		externalMetricsPath: result.externalMetricsPath,
-		parsedMetrics: result.parsedMetrics,
-		checks: result.checks,
-		logFilesWritten: result.logFilesWritten,
-		streamError: result.streamError,
+		...result,
 	};
 	fs.writeFileSync(path.join(runDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
 }

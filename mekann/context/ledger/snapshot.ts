@@ -25,10 +25,7 @@ interface SnapshotSection {
 	events: MekannContextEvent[];
 }
 
-function truncate(str: string, maxLen: number): string {
-	if (str.length <= maxLen) return str;
-	return str.slice(0, maxLen - 1) + "…";
-}
+import { truncate, sortByPriorityThenNewest } from "./store.js";
 
 function escapeXml(str: string): string {
 	return str
@@ -68,10 +65,7 @@ export function buildSnapshot(events: MekannContextEvent[], options: SnapshotOpt
 		: [...events];
 
 	// Sort by priority (ascending = most important first), then by createdAt (newest first)
-	filtered = filtered.sort((a, b) => {
-		if (a.priority !== b.priority) return a.priority - b.priority;
-		return b.createdAt - a.createdAt;
-	});
+	filtered = sortByPriorityThenNewest(filtered);
 
 	if (filtered.length > maxEvents) {
 		filtered = filtered.slice(0, maxEvents);

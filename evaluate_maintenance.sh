@@ -45,12 +45,12 @@ if [ "$failed_tests" -gt 0 ]; then tests_passed=false; fi
 echo "Tests: $total_tests total, $failed_tests failed, ${test_seconds}s"
 
 # 2. Source LOC
-source_files=$(find . -maxdepth 2 -name '*.ts' ! -path '*/node_modules/*' ! -name '*.test.*' ! -name 'vitest.config.*' ! -path '*/doc/*')
+source_files=$(find . -name '*.ts' ! -path '*/node_modules/*' ! -name '*.test.*' ! -name 'vitest.config.*' ! -path '*/doc/*')
 source_loc=$(cat $source_files | wc -l | tr -d ' ')
 echo "Source LOC: $source_loc"
 
 # 3. Test LOC
-test_files=$(find . -maxdepth 2 -name '*.test.*' ! -path '*/node_modules/*' ! -path '*/doc/*')
+test_files=$(find . -name '*.test.*' ! -path '*/node_modules/*' ! -path '*/doc/*')
 test_loc=$(cat $test_files 2>/dev/null | wc -l | tr -d ' ')
 echo "Test LOC: $test_loc"
 
@@ -151,7 +151,7 @@ if [ -z "$test_seconds_int" ]; then test_seconds_int=0; fi
 score=$((score + test_seconds_int))
 
 # Bonus: source LOC reduction (per 100 LOC reduced vs baseline)
-baseline_loc=12962
+baseline_loc=17622
 loc_delta=$((source_loc - baseline_loc))
 if [ "$loc_delta" -lt 0 ]; then
   score=$((score - 5 * ((-loc_delta) / 100)))

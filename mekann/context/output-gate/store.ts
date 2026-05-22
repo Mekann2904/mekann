@@ -3,6 +3,16 @@ import * as fsp from "node:fs/promises";
 import * as crypto from "node:crypto";
 import * as path from "node:path";
 import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
+
+/** Spread optional session metadata fields into an object. */
+export function spreadSessionMeta(input: { sessionId?: string; turnId?: string; toolCallId?: string; branchId?: string }): Record<string, string> {
+	const out: Record<string, string> = {};
+	if (input.sessionId) out.sessionId = input.sessionId;
+	if (input.turnId) out.turnId = input.turnId;
+	if (input.toolCallId) out.toolCallId = input.toolCallId;
+	if (input.branchId) out.branchId = input.branchId;
+	return out;
+}
 import { redactSecrets } from "./redact.js";
 
 export interface OutputGateManifestEntry {
@@ -197,10 +207,7 @@ export async function saveArtifact(input: SaveArtifactInput): Promise<{ entry: O
 		path: relPath,
 		redacted: true,
 		redactionVersion: 1,
-		...(input.sessionId ? { sessionId: input.sessionId } : {}),
-		...(input.turnId ? { turnId: input.turnId } : {}),
-		...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
-		...(input.branchId ? { branchId: input.branchId } : {}),
+		...spreadSessionMeta(input),
 		...(input.commandHash ? { commandHash: input.commandHash } : {}),
 		...(input.source === undefined ? {} : { source: sanitizeManifestSource(input.source) }),
 	};

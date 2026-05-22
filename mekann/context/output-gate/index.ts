@@ -6,6 +6,22 @@ import { gateTextForLlm, outputGateDir, manifestPath, readManifest, resolveArtif
 import { searchToolOutputs } from "./search.js";
 import { appendContextEvent } from "../ledger/store.js";
 
+/** Generic clear handler pattern with confirmation. */
+export async function handleClear(ctx: any, label: string, dir: string, clearFn: () => Promise<void>): Promise<void> {
+	const confirmFn = ctx?.ui?.confirm;
+	if (typeof confirmFn !== "function") {
+		ctx?.ui?.notify?.("clear requires interactive confirmation", "warning");
+		return;
+	}
+	const ok = await confirmFn(`Clear ${label}?`, `Delete ${dir} ?`);
+	if (!ok) return;
+	await clearFn();
+	ctx?.ui?.notify?.(`${label} cleared`, "info");
+}
+
+/** Parse arg and dispatch status/list/stats/clear subcommands. */
+function textResponse(text: string): { content: Array<{ type: "text"; text: string }>; details: Record<string, unknown> } { return { content: [{ type: "text" as const, text }], details: {} }; }
+
 export { shouldGateOutput, buildStoredOutputStub, buildPreview, gateTextForLlm } from "./store.js";
 
 export function extractTextContent(content: unknown): string {
@@ -139,7 +155,7 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 				literal: (params as any).literal === undefined ? undefined : Boolean((params as any).literal),
 				caseSensitive: (params as any).caseSensitive === undefined ? undefined : Boolean((params as any).caseSensitive),
 			});
-			return { content: [{ type: "text", text }], details: {} };
+			return textResponse(text);
 		},
 	});
 
@@ -161,15 +177,9 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 			}
 
 			if (arg === "clear") {
-				const confirmFn = ctx?.ui?.confirm;
-				if (typeof confirmFn !== "function") {
-					ctx?.ui?.notify?.("clear requires interactive confirmation", "warning");
-					return;
-				}
-				const ok = await confirmFn("Clear output-gate artifacts?", `Delete ${outputGateDir(cwd)} ?`);
-				if (!ok) return;
-				await fsp.rm(outputGateDir(cwd), { recursive: true, force: true });
-				ctx?.ui?.notify?.("output-gate artifacts cleared", "info");
+				await handleClear(ctx, "output-gate artifacts", outputGateDir(cwd), async () => {
+					await fsp.rm(outputGateDir(cwd), { recursive: true, force: true });
+				});
 				return;
 			}
 

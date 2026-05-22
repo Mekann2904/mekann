@@ -32,7 +32,7 @@ import {
 import { isGitRepo, getBaselineCommit } from "../contract.js";
 import { runArgvCommand, generatePiRunId } from "../runner.js";
 import { readState as readStateV2, writeState as writeStateV2 } from "../layout.js";
-import { isWorkingTreeCleanForContract, getContractRelevantChangedFiles, resolvePrimaryMetricFromRun } from "./sharedHelpers.js";
+import { isWorkingTreeCleanForContract, getContractRelevantChangedFiles, resolvePrimaryMetricFromRun, runContractChecksForPhase, validateContractPreconditions } from "./sharedHelpers.js";
 
 // ─── Params type ──────────────────────────────────────────────
 
@@ -95,8 +95,9 @@ export async function executeApprove(
 		return store.textDetails(`[ERROR] command safety validation failed:\n${safetyErrors.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}`, { safetyErrors });
 	}
 
-	if (contract.scope.requireGit && !isGitRepo(ctx.cwd)) {
-		return store.textResponse(`[ERROR] git repo ではありません。contract で requireGit=true が指定されています。`);
+	const precondError = validateContractPreconditions(contract, ctx.cwd, store);
+	if (precondError) {
+		return store.textResponse(`[ERROR] ${precondError}`);
 	}
 	if (contract.scope.requireCleanGitWorktree && !isWorkingTreeCleanForContract(ctx.cwd)) {
 		const relevantChangedFiles = getContractRelevantChangedFiles(ctx.cwd);
@@ -123,24 +124,19 @@ export async function executeApprove(
 		immutableResult.hash,
 	);
 
-	const checkResults = new Map<string, boolean>();
-	const runChecksForPhase = async (phase: "pre_benchmark" | "post_benchmark"): Promise<ToolResponse | null> => {
-		for (const check of contract.evaluation.checks.filter((c) => checkPhase(c) === phase)) {
-			const checkCwd = resolveCwdInsideRepo(ctx.cwd, check.command.cwd);
-			const checkResult = await runArgvCommand(
-				{ argv: check.command.argv, cwd: checkCwd, env: check.command.env },
-				check.timeoutSeconds * 1000,
-				signal,
-			);
-			checkResults.set(check.name, checkResult.passed);
-			logEvent("baseline_check_completed", { name: check.name, phase, exitCode: checkResult.exitCode, passed: checkResult.passed, timedOut: checkResult.timedOut });
-			if (check.required && !checkResult.passed) return store.textDetails(`[ERROR] baseline ${phase} check failed: ${check.name}`, { check: check.name, phase, exitCode: checkResult.exitCode, timedOut: checkResult.timedOut });
-		}
-		return null;
-	};
-
-	const preCheckFailure = await runChecksForPhase("pre_benchmark");
-	if (preCheckFailure) return preCheckFailure;
+	const preCheckResults = await runContractChecksForPhase(contract, "pre_benchmark", ctx.cwd, signal,
+		(name, phase, passed, exitCode, timedOut) => {
+			logEvent("baseline_check_completed", { name, phase, exitCode, passed, timedOut });
+			const check = contract.evaluation.checks.find((c) => c.name === name);
+			if (check?.required && !passed) return store.textDetails(`[ERROR] baseline ${phase} check failed: ${name}`, { check: name, phase, exitCode, timedOut });
+			return undefined as unknown as void;
+		},
+	);
+	// Check required failures
+	for (const [name, passed] of preCheckResults) {
+		const check = contract.evaluation.checks.find((c) => c.name === name);
+		if (check?.required && !passed) return store.textDetails(`[ERROR] baseline pre_benchmark check failed: ${name}`, { check: name, phase: "pre_benchmark" });
+	}
 
 	const baselineCommand = contract.evaluation.benchmark.command;
 	const benchmarkCwd = resolveCwdInsideRepo(ctx.cwd, baselineCommand.cwd);
@@ -177,8 +173,15 @@ export async function executeApprove(
 		logEvent("baseline_run_completed", { runIndex: i, runId, exitCode: runResult.exitCode, metric: metricValue, durationSeconds: runResult.durationSeconds, timedOut: runResult.timedOut });
 	}
 
-	const postCheckFailure = await runChecksForPhase("post_benchmark");
-	if (postCheckFailure) return postCheckFailure;
+	const postCheckResults = await runContractChecksForPhase(contract, "post_benchmark", ctx.cwd, signal,
+		(name, phase, passed, exitCode, timedOut) => logEvent("baseline_check_completed", { name, phase, exitCode, passed, timedOut }),
+	);
+	const allCheckResults = new Map([...preCheckResults, ...postCheckResults]);
+	// Check required failures in post-benchmark
+	for (const [name, passed] of postCheckResults) {
+		const check = contract.evaluation.checks.find((c) => c.name === name);
+		if (check?.required && !passed) return store.textDetails(`[ERROR] baseline post_benchmark check failed: ${name}`, { check: name, phase: "post_benchmark" });
+	}
 
 	const immutableAfterBaseline = await computeImmutableReadSetHash(
 		ctx.cwd,
@@ -240,7 +243,7 @@ export async function executeApprove(
 		});
 	} catch { /* best effort */ }
 
-	logEvent("approve_completed", { baselineValue: noise.aggregate, noiseRange: noise.relativeRange, samples: noise.samples.length, checkResults: Object.fromEntries(checkResults) });
+	logEvent("approve_completed", { baselineValue: noise.aggregate, noiseRange: noise.relativeRange, samples: noise.samples.length, checkResults: Object.fromEntries(allCheckResults) });
 
 	let text = `[OK] contract を承認し、baseline を測定しました\n`;
 	text += `\n### Baseline\n`;

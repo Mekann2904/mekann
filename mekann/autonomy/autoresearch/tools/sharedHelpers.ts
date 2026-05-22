@@ -6,15 +6,49 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ChecksResult, RunResult } from "../runner.js";
+import { runArgvCommand as _runArgvCommand, getChangedFiles, loadRunFromArtifact } from "../runner.js";
 import { readJsonlEntries } from "../state.js";
-import { readState as readStateV2 } from "../layout.js";
-import { getChangedFiles, loadRunFromArtifact } from "../runner.js";
-import { filterInternalPaths } from "../contractV1.js";
-import { getRunDir } from "../layout.js";
-import type { AutoresearchContractV1 } from "../contractV1.js";
+import { readState as readStateV2, getRunDir } from "../layout.js";
+import { filterInternalPaths, checkPhase as _checkPhase, resolveCwdInsideRepo as _resolveCwdInsideRepo, type AutoresearchContractV1 } from "../contractV1.js";
+import { isGitRepo } from "../contract.js";
 import type { SessionStore, RunData } from "./sessionStore.js";
 
 // ─── resolvePrimaryMetricFromRun ──────────────────────────────
+
+/** Run all contract checks for a given phase, returning results map. */
+export async function runContractChecksForPhase(
+	contract: AutoresearchContractV1,
+	phase: "pre_benchmark" | "post_benchmark",
+	evaluationCwd: string,
+	signal: AbortSignal | undefined,
+	onCheckComplete: (name: string, phase: string, passed: boolean, exitCode: number | null, timedOut: boolean) => void,
+): Promise<Map<string, boolean>> {
+	const checkResults = new Map<string, boolean>();
+	for (const check of contract.evaluation.checks.filter((c) => _checkPhase(c) === phase)) {
+		const checkCwd = _resolveCwdInsideRepo(evaluationCwd, check.command.cwd);
+		const checkResult = await _runArgvCommand(
+			{ argv: check.command.argv, cwd: checkCwd, env: check.command.env },
+			check.timeoutSeconds * 1000,
+			signal,
+		);
+		checkResults.set(check.name, checkResult.passed);
+		onCheckComplete(check.name, phase, checkResult.passed, checkResult.exitCode, checkResult.timedOut);
+	}
+	return checkResults;
+}
+
+/** Validate git repo requirement and set metric direction from contract. */
+export function validateContractPreconditions(
+	contract: AutoresearchContractV1,
+	cwd: string,
+	store: SessionStore,
+): string | null {
+	if (contract.scope.requireGit && !isGitRepo(cwd)) {
+		return "not a git repository";
+	}
+	store.state.direction = contract.evaluation.primaryMetric.direction;
+	return null;
+}
 
 export function resolvePrimaryMetricFromRun(
 	primaryMetric: AutoresearchContractV1["evaluation"]["primaryMetric"],
