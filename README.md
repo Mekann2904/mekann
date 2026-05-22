@@ -69,3 +69,9 @@ Pi coding agent が読む Pi-maintained skill は [`mekann/skills`](./mekann/ski
 - `to-prd`
 - `triage`
 - `zoom-out`
+
+## 謝辞
+
+Engineering skills の多くは [mattpocock/skills](https://github.com/mattpocock/skills) に由来します。元の発想・構成・ワークフローは Matt Pocock 氏によるものです。
+
+Mekann では、それらを Pi coding agent 向けに翻案・調整して利用しています。これらの skills と、その背後にあるワークフローの考え方を公開してくださった Matt Pocock 氏に感謝します。

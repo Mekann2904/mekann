@@ -4,6 +4,8 @@ description: Sets up an `## Agent skills` block in AGENTS.md (or another project
 disable-model-invocation: true
 ---
 
+> 謝辞: この skill は [mattpocock/skills](https://github.com/mattpocock/skills) をもとに Pi / Mekann 向けに翻案したものです。元の発想・構成・ワークフローは Matt Pocock 氏によるものです。
+
 # Setup Engineering Skills
 
 ## Language policy
