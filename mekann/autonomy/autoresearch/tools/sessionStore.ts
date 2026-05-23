@@ -8,6 +8,7 @@ import type { ChecksResult, RunResult } from "../runner.js";
 import type { ExperimentState, RunEntry } from "../state.js";
 import { freshState, isBestMetric, countByStatus } from "../state.js";
 import { renderWidget, directionLabel, type LoopInfo } from "../state.js";
+import { truncateToWidth } from "@earendil-works/pi-tui";
 
 // ─── Constants ────────────────────────────────────────────────
 
@@ -97,7 +98,12 @@ export class SessionStore {
 	updateWidget(ctx: ExtensionContext): void {
 		if (!ctx.hasUI) return;
 		const lines = renderWidget(this.state, this.active, this.runningExperiment ?? undefined, this.loopInfo());
-		ctx.ui.setWidget("autoresearch", lines ?? undefined);
+		ctx.ui.setWidget("autoresearch", lines ? (_tui: unknown, _theme: any) => ({
+			invalidate() {},
+			render(width: number): string[] {
+				return lines.map(l => truncateToWidth(l, width));
+			},
+		}) : undefined);
 	}
 
 	resolvePrimaryMetricValue(

@@ -32,6 +32,7 @@ import { GoalRuntime } from "./runtime.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { PLAN_MODE_STATUS_EVENT } from "../../safety/policy-core/modes.js";
 import { renderWidget, renderGoalPolicy, renderGoalObjectiveContext, renderGoalRuntimeState } from "./prompts.js";
+import { truncateToWidth } from "@earendil-works/pi-tui";
 import { registerGoalCommand } from "./command.js";
 import { recordGoalEvent, type GoalAction } from "./context-events.js";
 
@@ -92,7 +93,12 @@ export default function goalExtension(pi: ExtensionAPI): void {
     if (!ctx.hasUI) return;
     const goal = store?.getGoal() ?? null;
     const lines = renderWidget(goal);
-    ctx.ui.setWidget("goal", lines);
+    ctx.ui.setWidget("goal", lines ? (_tui: unknown, _theme: any) => ({
+      invalidate() {},
+      render(width: number): string[] {
+        return lines.map(l => truncateToWidth(l, width));
+      },
+    }) : undefined);
   }
 
   function emitUpdated(ctx: ExtensionContext, goal: Goal, action: GoalAction = "updated"): void {

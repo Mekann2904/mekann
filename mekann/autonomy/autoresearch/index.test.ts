@@ -322,7 +322,7 @@ describe("autoresearchExtension", () => {
 			const handler = pi.commands.get("autoresearch")!.handler;
 			const ctx = createMockCtx();
 			await handler("on", ctx);
-			expect(ctx.ui.setWidget).toHaveBeenCalledWith("autoresearch", expect.any(Array));
+			expect(ctx.ui.setWidget).toHaveBeenCalledWith("autoresearch", expect.any(Function));
 		});
 
 		it("sends autoresearch.md resume message when file exists", async () => {
@@ -450,7 +450,7 @@ describe("autoresearchExtension", () => {
 			const ctx = createMockCtx();
 			await handler("テストを高速化したい", ctx);
 
-			expect(ctx.ui.setWidget).toHaveBeenCalledWith("autoresearch", expect.any(Array));
+			expect(ctx.ui.setWidget).toHaveBeenCalledWith("autoresearch", expect.any(Function));
 			expect(ctx.ui.notify).toHaveBeenCalledWith(
 				expect.stringContaining("有効"),
 				"info",
@@ -465,7 +465,7 @@ describe("autoresearchExtension", () => {
 			const ctx = createMockCtx();
 			// 'optimize' is not on/off/status/clear → treated as purpose
 			await handler("optimize", ctx);
-			expect(ctx.ui.setWidget).toHaveBeenCalledWith("autoresearch", expect.any(Array));
+			expect(ctx.ui.setWidget).toHaveBeenCalledWith("autoresearch", expect.any(Function));
 		});
 	});
 
