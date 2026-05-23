@@ -133,7 +133,18 @@ export async function fallbackLineScan(input: SearchToolOutputsInput): Promise<s
 	if (files === undefined) return "No stored tool outputs.";
 	if (files.length === 0) return "No matches.";
 	const caseSensitive = input.caseSensitive === true;
-	const queryForMatch = caseSensitive ? input.query : input.query.toLocaleLowerCase();
+	let matchesLine: (line: string) => boolean;
+	if (input.literal === false) {
+		try {
+			const re = new RegExp(input.query, caseSensitive ? "" : "i");
+			matchesLine = (line: string) => re.test(line);
+		} catch {
+			matchesLine = () => false;
+		}
+	} else {
+		const queryForMatch = caseSensitive ? input.query : input.query.toLocaleLowerCase();
+		matchesLine = (line: string) => (caseSensitive ? line : line.toLocaleLowerCase()).includes(queryForMatch);
+	}
 	const contextLines = nonNegativeInt(input.contextLines, MEKANN_OUTPUT_GATE_DEFAULTS.defaultContextLines);
 	const maxResults = positiveInt(input.maxResults, MEKANN_OUTPUT_GATE_DEFAULTS.defaultMaxResults);
 	const chunks: string[] = [];
@@ -142,8 +153,7 @@ export async function fallbackLineScan(input: SearchToolOutputsInput): Promise<s
 		const raw = await fsp.readFile(file.abs, "utf8");
 		const lines = raw.split(/\r?\n/);
 		for (let i = 0; i < lines.length; i++) {
-			const lineForMatch = caseSensitive ? lines[i] : lines[i].toLocaleLowerCase();
-			if (!lineForMatch.includes(queryForMatch)) continue;
+			if (!matchesLine(lines[i])) continue;
 			if (count >= maxResults) return chunks.join("\n\n") || "No matches.";
 			count += 1;
 			const start = Math.max(0, i - contextLines);
@@ -168,7 +178,7 @@ export async function searchToolOutputs(input: SearchToolOutputsInput): Promise<
 	const caseSensitive = input.caseSensitive === true;
 	let result: string | undefined;
 	if (preferRg) result = await searchWithRg(input.query, files, contextLines, maxResults, literal, caseSensitive);
-	if (result === undefined) result = await fallbackLineScan({ ...input, caseSensitive });
+	if (result === undefined || (result === "" && !literal)) result = await fallbackLineScan({ ...input, caseSensitive, literal });
 	if (!result) result = "No matches.";
 	return capText(result, input.maxSearchResultBytes ?? MEKANN_OUTPUT_GATE_DEFAULTS.maxSearchResultBytes);
 }

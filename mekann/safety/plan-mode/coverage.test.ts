@@ -115,6 +115,7 @@ function withPlanModeConfig<T>(initial: unknown, fn: (configPath: string) => Pro
 	const os = require("os");
 	const configPath = path.join(os.homedir(), ".pi", "agent", "plan-mode.json");
 	const original = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf-8") : undefined;
+	fs.mkdirSync(path.dirname(configPath), { recursive: true });
 	fs.writeFileSync(configPath, JSON.stringify(initial));
 	return fn(configPath).finally(() => {
 		if (original !== undefined) fs.writeFileSync(configPath, original);
