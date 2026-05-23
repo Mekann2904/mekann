@@ -57,6 +57,8 @@ npm run typecheck
 Pi coding agent が読む Pi-maintained skill は [`mekann/skills`](./mekann/skills/) 配下に置きます。
 `vendor/mattpocock-skills` は upstream skill mirror であり、直接編集しません。
 
+Skill の使い分け、代表 workflow、組み合わせパターンは [Skills Guide](./docs/skills.md) を参照してください。
+
 現在、`mattpocock/skills` の engineering skills を Pi 向けに取り込んでいます。
 
 - `diagnose`
