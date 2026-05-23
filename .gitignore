@@ -28,3 +28,7 @@ autoresearch.jsonl
 autoresearch.md
 autoresearch.sh
 autoresearch.checks.sh
+
+# Local evaluation artifacts
+/evaluate_maintenance.sh
+/results.tsv
