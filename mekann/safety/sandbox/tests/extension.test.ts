@@ -716,8 +716,8 @@ describe("status bar", () => {
 		const ctx = createMockCtx();
 		await mock._hooks.session_start({}, ctx);
 
-		// Status bar should be set
-		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", expect.any(Array), expect.any(Object));
+		// Status bar should be set (render function)
+		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", expect.any(Function), expect.any(Object));
 	});
 
 	it("yolo 時は [!] アイコン", async () => {
@@ -730,7 +730,11 @@ describe("status bar", () => {
 		const ctx = createMockCtx();
 		await mock._hooks.session_start({}, ctx);
 
-		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", expect.arrayContaining([expect.stringContaining("yolo")]), expect.any(Object));
+		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", expect.any(Function), expect.any(Object));
+		// Verify the rendered content contains "yolo"
+		const yoloCall = ctx.ui.setWidget.mock.calls.find(c => typeof c[1] === "function");
+		const widget = yoloCall![1](undefined, ctx.ui.theme);
+		expect(widget.render(80)).toEqual(expect.arrayContaining([expect.stringContaining("yolo")]));
 	});
 
 	it("yolo 時は yolo 表示", async () => {
@@ -743,7 +747,10 @@ describe("status bar", () => {
 		const ctx = createMockCtx();
 		await mock._hooks.session_start({}, ctx);
 
-		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", expect.arrayContaining([expect.stringContaining("yolo")]), expect.any(Object));
+		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", expect.any(Function), expect.any(Object));
+		const yoloCall = ctx.ui.setWidget.mock.calls.find(c => typeof c[1] === "function");
+		const widget = yoloCall![1](undefined, ctx.ui.theme);
+		expect(widget.render(80)).toEqual(expect.arrayContaining([expect.stringContaining("yolo")]));
 	});
 });
 
@@ -924,8 +931,8 @@ describe("resolveRealPaths error fallback", () => {
 		// Should not throw — should fall back to [cwd]
 		await mock._hooks.session_start({}, ctx);
 
-		// Should have enabled sandbox
-		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", expect.any(Array), expect.any(Object));
+		// Should have enabled sandbox (render function)
+		expect(ctx.ui.setWidget).toHaveBeenCalledWith("sandbox", expect.any(Function), expect.any(Object));
 	});
 });
 
@@ -1257,12 +1264,17 @@ describe("PLAN_MODE_STATUS_EVENT validation", () => {
 		// Emit plan mode status — should trigger updateStatusBar via lastCtx
 		mock._eventHandlers["mekann:plan-mode:status"]({ mode: "plan" });
 
-		// setWidget should have been called with a label containing "plan"
+		// setWidget should have been called with a render function
 		expect(ctx.ui.setWidget).toHaveBeenCalledWith(
 			"sandbox",
-			expect.arrayContaining([expect.stringContaining("plan")]),
+			expect.any(Function),
 			expect.any(Object),
 		);
+		// Verify the rendered content contains "plan"
+		const planCall = ctx.ui.setWidget.mock.calls.filter(c => typeof c[1] === "function");
+		const lastPlanCall = planCall[planCall.length - 1];
+		const widget = lastPlanCall[1](undefined, ctx.ui.theme);
+		expect(widget.render(80)).toEqual(expect.arrayContaining([expect.stringContaining("plan")]));
 	});
 
 	it("mode: main で setWidget から plan ラベルが消える", async () => {
@@ -1284,7 +1296,9 @@ describe("PLAN_MODE_STATUS_EVENT validation", () => {
 		// The last setWidget call should NOT contain "plan"
 		const lastCall = ctx.ui.setWidget.mock.calls[ctx.ui.setWidget.mock.calls.length - 1];
 		expect(lastCall[0]).toBe("sandbox");
-		const label = lastCall[1][0] as string;
+		const widget = lastCall[1](undefined, ctx.ui.theme);
+		const rendered = widget.render(80);
+		const label = rendered[0] as string;
 		expect(label).not.toContain("plan");
 		expect(label).toContain("yolo");
 	});
@@ -1316,8 +1330,9 @@ describe("PLAN_MODE_STATUS_EVENT validation", () => {
 		// planModeStatus should still be "plan" after all invalid payloads
 		// Verify by checking the last setWidget call
 		const lastCall = ctx.ui.setWidget.mock.calls[ctx.ui.setWidget.mock.calls.length - 1];
-		const label = lastCall[1][0] as string;
-		expect(label).toContain("plan");
+		const widget = lastCall[1](undefined, ctx.ui.theme);
+		const rendered = widget.render(80);
+		expect(rendered[0]).toContain("plan");
 	});
 });
 
@@ -2029,8 +2044,10 @@ describe("status bar: combined states", () => {
 
 		// Verify status bar includes plan label
 		const lastCall = ctx.ui.setWidget.mock.calls[ctx.ui.setWidget.mock.calls.length - 1];
-		expect(lastCall[1][0]).toContain("plan");
-		expect(lastCall[1][0]).toContain("yolo");
+		const widget = lastCall[1](undefined, ctx.ui.theme);
+		const rendered = widget.render(80);
+		expect(rendered[0]).toContain("plan");
+		expect(rendered[0]).toContain("yolo");
 	});
 
 	it("sandboxEnabled=false の時、updateStatusBar は widget をクリアする", async () => {
