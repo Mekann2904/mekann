@@ -7,7 +7,7 @@
 
 import type { BashOperations, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createBashTool } from "@earendil-works/pi-coding-agent";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth, truncateToWidth } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import type { SandboxMode, SandboxPolicy } from "./permissions.js";
 import { isMacSandboxAvailable, runSandboxedShellMac } from "./macSeatbelt.js";
@@ -393,11 +393,14 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		label += ctx.ui.theme.fg("dim", effectiveMode());
 		ctx.ui.setWidget("sandbox", (_tui: unknown, theme: any) => ({
 			invalidate() {},
-			render(width: number): string[] {
-				if (!rightStatus) return [label];
+			render(w: number): string[] {
+				if (!rightStatus) return [truncateToWidth(label, w)];
 				const right = theme.fg("dim", rightStatus);
-				const padding = " ".repeat(Math.max(1, width - visibleWidth(label) - visibleWidth(right)));
-				return [label + padding + right];
+				const lw = visibleWidth(label);
+				const rw = visibleWidth(right);
+				if (lw + rw + 1 > w) return [truncateToWidth(label, w)];
+				const padding = " ".repeat(Math.max(1, w - lw - rw));
+				return [truncateToWidth(label + padding + right, w)];
 			},
 		}), { placement: "belowEditor" });
 	}
