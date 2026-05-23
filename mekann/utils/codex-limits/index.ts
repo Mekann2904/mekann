@@ -9,8 +9,8 @@ import type {
 import { truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 
 const CODEX_PROVIDER_ID = "openai-codex";
-const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const DEFAULT_TIMEOUT_MS = 15_000;
+const CODEX_BIN_ENV = "CODEX_BIN";
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const STATUS_KEY = "codex-usage";
 const USAGE_SETTINGS_URL = "https://chatgpt.com/codex/settings/usage";
@@ -19,7 +19,7 @@ const LIMIT_VALUE_COLUMN = 12;
 const MAX_ERROR_BODY_CHARS = 600;
 const RESET_FOREGROUND = "\x1b[39m";
 
-type UsageSource = "pi-auth" | "codex-app-server";
+type UsageSource = "codex-app-server";
 type PiModel = NonNullable<ExtensionContext["model"]>;
 export type CodexUsageModel = Pick<PiModel, "id" | "name" | "provider">;
 
@@ -72,36 +72,6 @@ export type NormalizedCredits = {
 	balance?: string;
 };
 
-type RateLimitStatusPayload = {
-	plan_type?: unknown;
-	rate_limit?: unknown;
-	additional_rate_limits?: unknown;
-	credits?: unknown;
-};
-
-type BackendRateLimitDetails = {
-	primary_window?: unknown;
-	secondary_window?: unknown;
-};
-
-type BackendWindowSnapshot = {
-	used_percent?: unknown;
-	limit_window_seconds?: unknown;
-	reset_at?: unknown;
-};
-
-type BackendAdditionalRateLimit = {
-	limit_name?: unknown;
-	metered_feature?: unknown;
-	rate_limit?: unknown;
-};
-
-type BackendCreditsSnapshot = {
-	has_credits?: unknown;
-	unlimited?: unknown;
-	balance?: unknown;
-};
-
 type AppServerRateLimitResponse = {
 	rateLimits?: unknown;
 	rateLimitsByLimitId?: unknown;
@@ -138,6 +108,8 @@ type PendingRpc = {
 	resolve: (value: unknown) => void;
 	reject: (error: Error) => void;
 };
+
+type ServerRequestHandler = (method: string, params: unknown) => Promise<unknown> | unknown;
 
 export default function codexUsage(pi: ExtensionAPI): void {
 	let cache: CachedReport | undefined;
@@ -238,7 +210,8 @@ export default function codexUsage(pi: ExtensionAPI): void {
 		}
 
 		if (!result.ok) {
-			usageStatusLines = ["Codex usage error"];
+			const message = result.errors[0]?.message ?? "unknown error";
+			usageStatusLines = [`Codex usage error: ${truncateToWidth(message, 100, "...")}`];
 			updateUsageWidget(ctx);
 			scheduleStatuslineRefresh(ctx);
 			return;
@@ -490,115 +463,62 @@ async function queryUsage(
 	const errors: UsageQueryError[] = [];
 
 	try {
-		const report = await queryViaPiAuth(ctx, options.timeoutMs);
+		const report = await queryViaCodexAppServerWithPiAuth(ctx, options.timeoutMs);
 		return { ok: true, report };
 	} catch (cause) {
-		errors.push({ source: "pi-auth", message: errorMessage(cause), cause });
+		errors.push({ source: "codex-app-server", message: `Pi auth: ${errorMessage(cause)}`, cause });
 	}
 
 	try {
-		const report = await queryViaCodexAppServer(options.timeoutMs);
+		const report = await queryViaCodexAppServerCliAuth(options.timeoutMs);
 		return { ok: true, report };
 	} catch (cause) {
-		errors.push({ source: "codex-app-server", message: errorMessage(cause), cause });
+		errors.push({ source: "codex-app-server", message: `Codex CLI auth: ${errorMessage(cause)}`, cause });
 	}
 
 	return { ok: false, errors };
 }
 
-async function queryViaPiAuth(
-	ctx: ExtensionContext,
-	timeoutMs: number,
-): Promise<CodexUsageReport> {
-	const auth = await resolvePiCodexAuth(ctx);
-	if (!auth) {
-		throw new Error(
-			"No Pi OpenAI Codex subscription auth was available. Use a Pi OpenAI Codex model or run /login for OpenAI ChatGPT Plus/Pro (Codex).",
-		);
-	}
-
-	const response = await fetchWithTimeout(CODEX_USAGE_URL, { headers: auth.headers }, timeoutMs);
-	const text = await response.text();
-	if (!response.ok) {
-		throw new Error(
-			`Codex usage endpoint returned ${response.status} ${response.statusText}: ${redactErrorBody(text)}`,
-		);
-	}
-
-	const payload = parseJsonObject(text, "Codex usage endpoint response");
-	return normalizeBackendPayload(payload as RateLimitStatusPayload, Date.now(), "pi-auth");
-}
-
-async function resolvePiCodexAuth(
-	ctx: ExtensionContext,
-): Promise<{ headers: Record<string, string> } | undefined> {
-	const models = codexAuthCandidateModels(ctx);
-	const errors: string[] = [];
-
-	for (const model of models) {
-		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-		if (!auth.ok) {
-			errors.push(auth.error);
-			continue;
-		}
-
-		const headers = { ...(auth.headers ?? {}) };
-		if (!hasHeader(headers, "Authorization") && auth.apiKey) {
-			headers.Authorization = `Bearer ${auth.apiKey}`;
-		}
-		if (!hasHeader(headers, "User-Agent")) {
-			headers["User-Agent"] = "pi-codex-usage";
-		}
-		if (hasHeader(headers, "Authorization")) {
-			return { headers };
-		}
-	}
-
-	if (errors.length > 0) {
-		throw new Error(errors.join("; "));
-	}
-	return undefined;
-}
-
-function codexAuthCandidateModels(ctx: ExtensionContext): PiModel[] {
-	const candidates: PiModel[] = [];
-	const seen = new Set<string>();
-	const add = (model: PiModel | undefined) => {
-		if (!model || model.provider !== CODEX_PROVIDER_ID) return;
-		const key = `${model.provider}/${model.id}`;
-		if (seen.has(key)) return;
-		seen.add(key);
-		candidates.push(model);
-	};
-
-	add(ctx.model);
-	for (const model of ctx.modelRegistry.getAvailable()) add(model);
-	for (const model of ctx.modelRegistry.getAll()) add(model);
-	return candidates;
-}
-
-async function fetchWithTimeout(
-	url: string,
-	init: RequestInit,
-	timeoutMs: number,
-): Promise<Response> {
-	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort(), timeoutMs);
+async function queryViaCodexAppServerWithPiAuth(ctx: ExtensionContext, timeoutMs: number): Promise<CodexUsageReport> {
+	const client = new CodexAppServerClient(timeoutMs);
 	try {
-		return await fetch(url, { ...init, signal: controller.signal });
-	} catch (error) {
-		if (controller.signal.aborted) {
-			throw new Error(
-				`Timed out after ${Math.round(timeoutMs / 1000)}s while fetching Codex usage.`,
-			);
-		}
-		throw error;
+		const auth = await resolvePiCodexAuth(ctx);
+		client.onServerRequest(async (method) => {
+			if (method !== "account/chatgptAuthTokens/refresh") {
+				throw new Error(`Unsupported Codex app-server request: ${method}`);
+			}
+			const refreshed = await resolvePiCodexAuth(ctx);
+			return { accessToken: refreshed.accessToken, chatgptAccountId: refreshed.accountId };
+		});
+		await client.start();
+		await client.request("initialize", {
+			clientInfo: {
+				name: "pi_codex_usage",
+				title: "Pi Codex Usage",
+				version: "0.1.0",
+			},
+			capabilities: {
+				experimentalApi: true,
+				optOutNotificationMethods: [],
+			},
+		});
+		client.notify("initialized");
+		await client.request("account/login/start", {
+			type: "chatgptAuthTokens",
+			accessToken: auth.accessToken,
+			chatgptAccountId: auth.accountId,
+		});
+		const result = await client.request("account/rateLimits/read", {});
+		return normalizeAppServerResponse(
+			assertObject(result, "account/rateLimits/read result") as AppServerRateLimitResponse,
+			Date.now(),
+		);
 	} finally {
-		clearTimeout(timeout);
+		client.dispose();
 	}
 }
 
-async function queryViaCodexAppServer(timeoutMs: number): Promise<CodexUsageReport> {
+async function queryViaCodexAppServerCliAuth(timeoutMs: number): Promise<CodexUsageReport> {
 	const client = new CodexAppServerClient(timeoutMs);
 	try {
 		await client.start();
@@ -608,20 +528,64 @@ async function queryViaCodexAppServer(timeoutMs: number): Promise<CodexUsageRepo
 				title: "Pi Codex Usage",
 				version: "0.1.0",
 			},
-			capabilities: {
-				experimentalApi: false,
-				requestAttestation: false,
-				optOutNotificationMethods: [],
-			},
 		});
 		client.notify("initialized");
-		const result = await client.request("account/rateLimits/read", undefined);
+		await assertChatGptAccount(client);
+		const result = await client.request("account/rateLimits/read", {});
 		return normalizeAppServerResponse(
 			assertObject(result, "account/rateLimits/read result") as AppServerRateLimitResponse,
 			Date.now(),
 		);
 	} finally {
 		client.dispose();
+	}
+}
+
+async function resolvePiCodexAuth(ctx: ExtensionContext): Promise<{ accessToken: string; accountId: string }> {
+	const accessToken = await ctx.modelRegistry.getApiKeyForProvider(CODEX_PROVIDER_ID);
+	if (!accessToken) {
+		throw new Error("Pi is not logged in to openai-codex. Run Pi /login for OpenAI Codex.");
+	}
+	const accountId = extractChatGptAccountId(accessToken);
+	if (!accountId) {
+		throw new Error("Pi openai-codex token does not contain chatgpt_account_id.");
+	}
+	return { accessToken, accountId };
+}
+
+function extractChatGptAccountId(token: string): string | undefined {
+	try {
+		const [, payload] = token.split(".");
+		if (!payload) return undefined;
+		const json = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Record<string, unknown>;
+		const auth = json["https://api.openai.com/auth"];
+		if (!auth || typeof auth !== "object") return undefined;
+		const accountId = (auth as { chatgpt_account_id?: unknown }).chatgpt_account_id;
+		return typeof accountId === "string" && accountId.length > 0 ? accountId : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+async function assertChatGptAccount(client: CodexAppServerClient): Promise<void> {
+	const accountResult = assertObject(
+		await client.request("account/read", { refreshToken: true }),
+		"account/read result",
+	);
+	const account = accountResult.account;
+	if (!account || typeof account !== "object" || Array.isArray(account)) {
+		throw new Error("Codex CLI is not logged in. Run `codex login` with ChatGPT.");
+	}
+	const accountType = (account as { type?: unknown }).type;
+	if (accountType === "apiKey") {
+		throw new Error(
+			"Codex CLI is logged in with an API key. ChatGPT subscription rate limits require ChatGPT login. Run `codex logout` then `codex login` with ChatGPT.",
+		);
+	}
+	if (accountType !== "chatgpt" && accountType !== "chatgptAuthTokens") {
+		throw new Error(
+			`Unsupported Codex auth mode: ${String(accountType)}. Expected chatgpt or chatgptAuthTokens.`,
+		);
 	}
 }
 
@@ -632,17 +596,23 @@ class CodexAppServerClient {
 	private readonly pending = new Map<number, PendingRpc>();
 	private startPromise?: Promise<void>;
 	private exitError?: Error;
+	private serverRequestHandler?: ServerRequestHandler;
 	private readonly timeoutMs: number;
 
 	constructor(timeoutMs: number) {
 		this.timeoutMs = timeoutMs;
 	}
 
+	onServerRequest(handler: ServerRequestHandler): void {
+		this.serverRequestHandler = handler;
+	}
+
 	start(): Promise<void> {
 		if (this.startPromise) return this.startPromise;
 
 		this.startPromise = new Promise((resolve, reject) => {
-			const child = spawn("codex", ["app-server", "--listen", "stdio://"], {
+			const codexBin = process.env[CODEX_BIN_ENV] || "codex";
+			const child = spawn(codexBin, ["app-server", "--listen", "stdio://"], {
 				stdio: ["pipe", "pipe", "pipe"],
 			});
 			this.child = child;
@@ -662,7 +632,7 @@ class CodexAppServerClient {
 
 			child.once("error", (error) => {
 				clearTimeout(startupTimeout);
-				reject(new Error(`Failed to start codex app-server: ${error.message}`));
+				reject(new Error(`Failed to start codex app-server (${codexBin}). Set ${CODEX_BIN_ENV} if codex is not on PATH: ${error.message}`));
 				this.rejectAll(error);
 			});
 
@@ -680,7 +650,9 @@ class CodexAppServerClient {
 			});
 
 			const lines = createInterface({ input: child.stdout });
-			lines.on("line", (line) => this.handleLine(line));
+			lines.on("line", (line) => {
+				void this.handleLine(line);
+			});
 		});
 
 		return this.startPromise;
@@ -715,14 +687,14 @@ class CodexAppServerClient {
 			});
 		});
 
-		child.stdin.write(`${JSON.stringify(payload)}\n`);
+		this.write(payload);
 		return response;
 	}
 
-	notify(method: string): void {
+	notify(method: string, params: unknown = {}): void {
 		const child = this.child;
 		if (!child?.stdin.writable) return;
-		child.stdin.write(`${JSON.stringify({ method })}\n`);
+		this.write({ method, params });
 	}
 
 	dispose(): void {
@@ -738,8 +710,8 @@ class CodexAppServerClient {
 		this.child = undefined;
 	}
 
-	private handleLine(line: string): void {
-		let parsed: RpcResponse;
+	private async handleLine(line: string): Promise<void> {
+		let parsed: RpcResponse & { method?: unknown; params?: unknown };
 		try {
 			parsed = JSON.parse(line) as RpcResponse;
 		} catch {
@@ -747,6 +719,15 @@ class CodexAppServerClient {
 		}
 
 		if (typeof parsed.id !== "number") return;
+		if (typeof parsed.method === "string" && parsed.result === undefined && parsed.error === undefined) {
+			try {
+				const result = this.serverRequestHandler ? await this.serverRequestHandler(parsed.method, parsed.params) : {};
+				this.write({ id: parsed.id, result });
+			} catch (error) {
+				this.write({ id: parsed.id, error: { message: errorMessage(error) } });
+			}
+			return;
+		}
 		const pending = this.pending.get(parsed.id);
 		if (!pending) return;
 		this.pending.delete(parsed.id);
@@ -761,90 +742,16 @@ class CodexAppServerClient {
 		pending.resolve(parsed.result);
 	}
 
+	private write(value: unknown): void {
+		const child = this.child;
+		if (!child?.stdin.writable) return;
+		child.stdin.write(`${JSON.stringify(value)}\n`);
+	}
+
 	private rejectAll(error: Error): void {
 		for (const pending of this.pending.values()) pending.reject(error);
 		this.pending.clear();
 	}
-}
-
-export function normalizeBackendPayload(
-	payload: RateLimitStatusPayload,
-	capturedAt: number,
-	source: UsageSource,
-): CodexUsageReport {
-	const snapshots: NormalizedRateLimitSnapshot[] = [];
-	const planType = asString(payload.plan_type);
-	const primary = normalizeBackendSnapshot("codex", undefined, payload.rate_limit, payload.credits);
-	if (primary) snapshots.push(primary);
-
-	const additional = Array.isArray(payload.additional_rate_limits)
-		? payload.additional_rate_limits
-		: [];
-	for (const item of additional) {
-		const additionalLimit = assertObject(
-			item,
-			"additional rate limit",
-		) as BackendAdditionalRateLimit;
-		const limitId =
-			asString(additionalLimit.metered_feature) ?? asString(additionalLimit.limit_name);
-		if (!limitId) continue;
-		const snapshot = normalizeBackendSnapshot(
-			limitId,
-			asString(additionalLimit.limit_name),
-			additionalLimit.rate_limit,
-			undefined,
-		);
-		if (snapshot) snapshots.push(snapshot);
-	}
-
-	if (snapshots.length === 0) {
-		throw new Error("Codex usage endpoint returned no displayable rate-limit windows.");
-	}
-
-	return { source, capturedAt, planType, snapshots };
-}
-
-function normalizeBackendSnapshot(
-	limitId: string,
-	limitName: string | undefined,
-	rateLimit: unknown,
-	credits: unknown,
-): NormalizedRateLimitSnapshot | undefined {
-	if (rateLimit === null || rateLimit === undefined) {
-		const normalizedCredits = normalizeBackendCredits(credits);
-		return normalizedCredits ? { limitId, limitName, credits: normalizedCredits } : undefined;
-	}
-
-	const details = assertObject(rateLimit, "rate limit") as BackendRateLimitDetails;
-	const primary = normalizeBackendWindow(details.primary_window);
-	const secondary = normalizeBackendWindow(details.secondary_window);
-	const normalizedCredits = normalizeBackendCredits(credits);
-
-	if (!primary && !secondary && !normalizedCredits) return undefined;
-	return { limitId, limitName, primary, secondary, credits: normalizedCredits };
-}
-
-function normalizeBackendWindow(value: unknown): NormalizedRateLimitWindow | undefined {
-	if (value === null || value === undefined) return undefined;
-	const window = assertObject(value, "rate-limit window") as BackendWindowSnapshot;
-	const usedPercent = asNumber(window.used_percent);
-	if (usedPercent === undefined) return undefined;
-	const limitSeconds = asNumber(window.limit_window_seconds);
-	const resetsAt = asNumber(window.reset_at);
-	return {
-		usedPercent,
-		windowMinutes: limitSeconds && limitSeconds > 0 ? Math.ceil(limitSeconds / 60) : undefined,
-		resetsAt,
-	};
-}
-
-function normalizeBackendCredits(value: unknown): NormalizedCredits | undefined {
-	if (value === null || value === undefined) return undefined;
-	const credits = assertObject(value, "credits") as BackendCreditsSnapshot;
-	const hasCredits = asBoolean(credits.has_credits);
-	const unlimited = asBoolean(credits.unlimited);
-	if (hasCredits === undefined || unlimited === undefined) return undefined;
-	return { hasCredits, unlimited, balance: asString(credits.balance) };
 }
 
 export function normalizeAppServerResponse(
@@ -1111,7 +1018,7 @@ function formatWindow(window: NormalizedRateLimitWindow, includeReset = false): 
 
 function formatCompactWindow(label: string, window: NormalizedRateLimitWindow): string {
 	const remaining = 100 - clampPercent(window.usedPercent);
-	return `${label} ${progressBar(remaining)} ${remaining.toFixed(0)}%`;
+	return `${label} ${progressBar(remaining)} ${remaining.toFixed(0).padStart(3)}%`;
 }
 
 function progressBar(percentRemaining: number): string {
@@ -1165,12 +1072,11 @@ function formatDateTime(date: Date): string {
 function formatQueryErrors(errors: UsageQueryError[]): string {
 	const lines = ["Unable to read Codex usage."];
 	for (const error of errors) {
-		const source = error.source === "pi-auth" ? "Pi auth direct" : "Codex app-server fallback";
-		lines.push(`- ${source}: ${error.message}`);
+		lines.push(`- Codex app-server: ${error.message}`);
 	}
 	lines.push("");
 	lines.push(
-		"Tip: use a Pi OpenAI Codex model or run /login for OpenAI ChatGPT Plus/Pro. If Pi auth is unavailable, install Codex CLI and run codex login for the fallback.",
+		"Tip: install Codex CLI and run codex login, then retry /codex-status.",
 	);
 	return lines.join("\n");
 }
@@ -1183,16 +1089,6 @@ function formatNumber(value: number, fallback: string): string {
 function clampPercent(value: number): number {
 	if (!Number.isFinite(value)) return 0;
 	return Math.min(100, Math.max(0, value));
-}
-
-function parseJsonObject(text: string, description: string): Record<string, unknown> {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(text) as unknown;
-	} catch (error) {
-		throw new Error(`${description} was not valid JSON: ${errorMessage(error)}`);
-	}
-	return assertObject(parsed, description);
 }
 
 function assertObject(value: unknown, description: string): Record<string, unknown> {
@@ -1219,9 +1115,6 @@ function asBoolean(value: unknown): boolean | undefined {
 	return typeof value === "boolean" ? value : undefined;
 }
 
-function hasHeader(headers: Record<string, string>, name: string): boolean {
-	return Object.keys(headers).some((key) => key.toLowerCase() === name.toLowerCase());
-}
 
 function redactErrorBody(body: string): string {
 	return truncateEnd(

@@ -3,7 +3,6 @@ import {
 	formatCodexUsageReport,
 	formatCodexUsageStatusline,
 	normalizeAppServerResponse,
-	normalizeBackendPayload,
 	parseArgs,
 } from "./index.js";
 
@@ -16,26 +15,6 @@ describe("codex usage", () => {
 			value: { clearStatusline: false, refresh: true, statusline: false, timeoutMs: 30_000 },
 		});
 		expect(parseArgs("--timeout 121")).toMatchObject({ ok: false });
-	});
-
-	it("normalizes backend usage payloads", () => {
-		const report = normalizeBackendPayload({
-			plan_type: "plus",
-			rate_limit: {
-				primary_window: { used_percent: 25, limit_window_seconds: 18_000, reset_at: 1_800_000_000 },
-				secondary_window: { used_percent: "80", limit_window_seconds: 604_800, reset_at: "1_800_500_000" },
-			},
-			additional_rate_limits: [{
-				limit_name: "GPT-5 Codex",
-				metered_feature: "gpt_5_codex",
-				rate_limit: { primary_window: { used_percent: 50 } },
-			}],
-		}, capturedAt, "pi-auth");
-
-		expect(report).toMatchObject({ source: "pi-auth", planType: "plus" });
-		expect(report.snapshots).toHaveLength(2);
-		expect(report.snapshots[0].primary).toMatchObject({ usedPercent: 25, windowMinutes: 300 });
-		expect(report.snapshots[0].secondary).toMatchObject({ usedPercent: 80, windowMinutes: 10080 });
 	});
 
 	it("normalizes codex app-server responses", () => {
@@ -60,7 +39,7 @@ describe("codex usage", () => {
 
 	it("formats footer usage lines for the selected Codex model-specific limit", () => {
 		const status = formatCodexUsageStatusline({
-			source: "pi-auth",
+			source: "codex-app-server",
 			capturedAt,
 			snapshots: [
 				{ limitId: "codex", primary: { usedPercent: 10 }, secondary: { usedPercent: 40 } },
@@ -75,7 +54,7 @@ describe("codex usage", () => {
 
 	it("formats a readable report", () => {
 		const report = formatCodexUsageReport({
-			source: "pi-auth",
+			source: "codex-app-server",
 			capturedAt,
 			snapshots: [{
 				limitId: "codex",
