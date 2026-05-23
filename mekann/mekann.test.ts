@@ -30,6 +30,7 @@ const EXPECTED_COMMANDS_BY_MODULE: Record<string, string[]> = {
 	"autonomy/subagent/index.ts": ["agents", "wait-agent", "focus-agent", "close-agent"],
 	"autonomy/autoresearch/index.ts": ["autoresearch"],
 	"utils/zip-repo/index.ts": ["zip"],
+	"utils/codex-limits/index.ts": ["codex-status"],
 	"context/output-gate/index.ts": ["output-gate"],
 };
 

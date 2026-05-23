@@ -5,7 +5,7 @@
   "main": "index.ts",
   "type": "module",
   "scripts": {
-    "test": "vitest run mekann.test.ts"
+    "test": "vitest run mekann.test.ts utils/**/*.test.ts"
   },
   "keywords": [
     "pi-extension"

@@ -7,6 +7,7 @@
 
 import type { BashOperations, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createBashTool } from "@earendil-works/pi-coding-agent";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import type { SandboxMode, SandboxPolicy } from "./permissions.js";
 import { isMacSandboxAvailable, runSandboxedShellMac } from "./macSeatbelt.js";
@@ -86,6 +87,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 	/** Current plan-mode mode (received via event from plan-mode extension). */
 	let planModeStatus: "main" | "plan" | undefined;
+	let rightStatus: string | undefined;
 
 	/** Compute the effective sandbox mode, respecting override stack. */
 	function effectiveMode(): SandboxMode {
@@ -389,7 +391,15 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		let label = "";
 		if (planModeStatus) label = ctx.ui.theme.fg(planModeStatus === "plan" ? "warning" : "dim", planModeStatus) + " ";
 		label += ctx.ui.theme.fg("dim", effectiveMode());
-		ctx.ui.setWidget("sandbox", [label], { placement: "belowEditor" });
+		ctx.ui.setWidget("sandbox", (_tui: unknown, theme: any) => ({
+			invalidate() {},
+			render(width: number): string[] {
+				if (!rightStatus) return [label];
+				const right = theme.fg("dim", rightStatus);
+				const padding = " ".repeat(Math.max(1, width - visibleWidth(label) - visibleWidth(right)));
+				return [label + padding + right];
+			},
+		}), { placement: "belowEditor" });
 	}
 	function refreshStatusBar() { if (lastCtx) updateStatusBar(lastCtx); }
 
@@ -495,6 +505,12 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		planModeStatus = event.mode;
 		refreshStatusBar();
 	});
+	pi.events.on("mekann:codex-usage:status", (data: unknown) => {
+		if (data != null && typeof data !== "object") return;
+		const event = data as { text?: unknown } | undefined;
+		rightStatus = typeof event?.text === "string" && event.text.trim() ? event.text : undefined;
+		refreshStatusBar();
+	});
 
 	pi.on("session_shutdown", async () => {
 		sandboxEnabled = false;
@@ -503,6 +519,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		startupBlockedReason = undefined;
 		profileOverrideStack.length = 0;
 		planModeStatus = undefined;
+		rightStatus = undefined;
 		lastCtx = undefined;
 			resetYoloApproval();
 	});
