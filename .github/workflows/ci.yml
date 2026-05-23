@@ -21,7 +21,7 @@ jobs:
         run: npm ci --workspaces=false
 
       - name: Unit tests with coverage
-        run: npx vitest run --coverage
+        run: npx vitest run --coverage --fileParallelism=false
 
       - name: Coverage threshold check
         run: |

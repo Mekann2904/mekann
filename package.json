@@ -36,7 +36,7 @@
     "prepare": "node scripts/prepare-husky.js",
     "check:prepare-ci": "CI=true npm run prepare",
     "check:workflows": "bash scripts/check-workflows.sh",
-    "check:coverage:plan-mode": "bash scripts/check-coverage-threshold.sh mekann/safety/plan-mode 90 npx vitest run --coverage",
+    "check:coverage:plan-mode": "bash scripts/check-coverage-threshold.sh mekann/safety/plan-mode 90 npx vitest run --coverage --fileParallelism=false",
     "typecheck:prod": "tsc -p tsconfig.prod.json",
     "typecheck": "npm run typecheck:prod && cd mekann/safety/sandbox && npm run typecheck && cd ../../autonomy/subagent && npm run typecheck",
     "prepush": "bash scripts/prepush-parallel.sh",
@@ -55,8 +55,15 @@
     ]
   },
   "devDependencies": {
+    "@earendil-works/pi-agent-core": "0.75.3",
+    "@earendil-works/pi-ai": "0.75.3",
+    "@earendil-works/pi-coding-agent": "0.75.3",
+    "@earendil-works/pi-tui": "0.75.3",
+    "@sinclair/typebox": "^0.34.49",
     "@vitest/coverage-v8": "^4.1.6",
+    "fast-check": "^4.8.0",
     "husky": "^9.1.7",
+    "tinyglobby": "^0.2.16",
     "vitest": "^4.1.6"
   },
   "optionalDependencies": {
