@@ -792,7 +792,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			try {
 				const action = claimNextAction(ctx.cwd);
 				if (!action) return store.textResponse("[OK] 次 action はありません。");
-				return store.textDetails(nextActionMessage(action), action as unknown as Record<string, unknown>);
+				return store.textDetails(nextActionMessage(action), { ...action } as Record<string, unknown>);
 			} catch (e) {
 				return store.textResponse(`[ERROR] ${e instanceof Error ? e.message : String(e)}`);
 			}
