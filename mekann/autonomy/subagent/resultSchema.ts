@@ -31,24 +31,60 @@ function validEffect(v: unknown): boolean {
  * or surrounded by prose.  LLMs frequently wrap JSON output in ```json ... ```
  * even when instructed not to.
  */
+function balancedJsonObjects(text: string): string[] {
+  const out: string[] = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) { escaped = false; continue; }
+      if (ch === "\\") { escaped = true; continue; }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}" && depth > 0) {
+      depth--;
+      if (depth === 0 && start >= 0) out.push(text.slice(start, i + 1));
+    }
+  }
+  return out;
+}
+
+function looksLikeSubagentResult(candidate: string): boolean {
+  try {
+    const raw = JSON.parse(candidate) as unknown;
+    return isObj(raw) && raw.schema === "subagent.result.v1";
+  } catch { return false; }
+}
+
 function extractJSON(text: string): string {
   const trimmed = text.trim();
 
   // Try direct parse first (fast path)
-  if (trimmed.startsWith("{")) return trimmed;
+  if (trimmed.startsWith("{") && looksLikeSubagentResult(trimmed)) return trimmed;
 
-  // Look for a markdown code block anywhere in the text (not just whole-text match)
-  // Handles: prose + ```json\n{...}\n``` + prose
-  const codeBlockAnywhere = trimmed.match(/```(?:\w*)\s*\n([\s\S]*?)\n?```/);
-  if (codeBlockAnywhere) {
-    const candidate = codeBlockAnywhere[1].trim();
-    if (candidate.startsWith("{")) return candidate;
+  // Look for markdown code blocks anywhere in the text. Prefer the block that
+  // actually contains the subagent result; models sometimes include other JSON
+  // snippets before the final structured result.
+  const codeBlocks = [...trimmed.matchAll(/```(?:\w*)\s*\n([\s\S]*?)\n?```/g)].map((m) => m[1].trim());
+  for (const block of codeBlocks) {
+    if (block.startsWith("{") && looksLikeSubagentResult(block)) return block;
+    const nested = balancedJsonObjects(block).find(looksLikeSubagentResult);
+    if (nested) return nested;
   }
 
-  // Fallback: extract outermost { ... }  (handles leading/trailing prose)
-  const first = trimmed.indexOf("{");
-  const last = trimmed.lastIndexOf("}");
-  if (first !== -1 && last > first) return trimmed.slice(first, last + 1);
+  // Fallback: scan balanced JSON objects and choose the one with the expected
+  // schema. This avoids the old "first { to last }" behaviour, which failed
+  // when prose or logs contained another JSON object before/after the result.
+  const candidate = balancedJsonObjects(trimmed).find(looksLikeSubagentResult);
+  if (candidate) return candidate;
 
   return trimmed;
 }

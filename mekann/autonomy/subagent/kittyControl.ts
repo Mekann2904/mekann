@@ -35,6 +35,10 @@ export class KittyController {
     const thinkingArgs = params.thinkingLevel ? ` --thinking ${shellQuote(params.thinkingLevel)}` : "";
     const logPath = params.logPath;
     const logFn = logPath ? `log(){ printf '%s\\n' "$*" >> ${shellQuote(logPath)}; }` : `log(){ :; }`;
+    const command = `${piCommand}${extensionArgs}${modelArgs}${thinkingArgs}`;
+    const runCommand = logPath
+      ? `rcfile=$(mktemp); ( ${command}; printf '%s' "$?" > "$rcfile" ) 2>&1 | tee -a ${shellQuote(logPath)}; rc=$(cat "$rcfile" 2>/dev/null || printf '1'); rm -f "$rcfile"`
+      : `${command}; rc=$?`;
     return [
       logFn,
       `log ${shellQuote(`[launch] ${new Date().toISOString()} agent=${params.agentId} path=${params.agentPath}`)}`,
@@ -47,9 +51,8 @@ export class KittyController {
       ...(params.thinkingLevel ? [`export PI_SUBAGENT_THINKING=${shellQuote(params.thinkingLevel)}`] : []),
       `export PATH=${shellQuote(path.dirname(process.execPath))}:$PATH`,
       `log ${shellQuote("[launch] node: ")}$(command -v node) $(node -v 2>/dev/null || true)`,
-      `log ${shellQuote("[launch] command: " + piCommand + extensionArgs + modelArgs + thinkingArgs)}`,
-      `${piCommand}${extensionArgs}${modelArgs}${thinkingArgs}`,
-      `rc=$?`,
+      `log ${shellQuote("[launch] command: " + command)}`,
+      runCommand,
       `log "[exit] pi exited with code $rc"`,
       `printf '\\n[pi subagent exited with code %s — press Ctrl-D or close this window]\\n' "$rc"`,
       'exec "${SHELL:-sh}" -l',

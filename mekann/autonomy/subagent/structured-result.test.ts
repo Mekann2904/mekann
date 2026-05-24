@@ -164,6 +164,29 @@ describe("structured subagent results", () => {
       expect(tryParseSubagentResult(prose).ok).toBe(true);
     });
 
+    it("extracts the subagent result when other JSON appears in prose first", () => {
+      const prose = [
+        'Tool returned {"timed_out":false,"mailbox":[]}.',
+        'Now I have all the data needed. Let me compile the final report.',
+        JSON.stringify(observation),
+      ].join("\n\n");
+      const result = tryParseSubagentResult(prose);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.result.schema).toBe("subagent.result.v1");
+    });
+
+    it("extracts the subagent result from the right code block", () => {
+      const prose = [
+        "```json",
+        '{"kind":"debug","value":1}',
+        "```",
+        "```json",
+        JSON.stringify(observation),
+        "```",
+      ].join("\n");
+      expect(tryParseSubagentResult(prose).ok).toBe(true);
+    });
+
     it("returns parse error for text without JSON", () => {
       const result = tryParseSubagentResult("no json here");
       expect(result.ok).toBe(false);
