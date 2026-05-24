@@ -1,10 +1,10 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { normalizeActualCacheUsage, type NormalizedActualCacheUsage } from "./actualUsage.js";
-import { appendActualUsageLog, appendCacheFriendlyLog } from "./logs.js";
+import { appendActualUsageLog, appendCacheFriendlyLog, configureCacheFriendlyReports, type ReportGenerationMode } from "./logs.js";
 import { canonicalizeText, collectPromptFragments, estimateTokens, extractTextFromProviderPayload, hashFragment, inspectFinalPayloadText, inspectStablePrefix, listPromptProviders, renderPromptFragments, sha256, type CacheFriendlyRequestRole, type PromptFragmentHash, type PromptInspectionWarning, type RunKeySource } from "../prompt-core/index.js";
 
-export type CacheFriendlyPromptConfig = { /** @deprecated stablePrefixHash is stable-only; base system is tracked by baseSystemHash/providerPrefixHash. */ includeBaseSystemPromptInStableHash?: boolean; logRequests: boolean; notifyOnWarnings: boolean; };
-const DEFAULT_CONFIG: CacheFriendlyPromptConfig = { logRequests: true, notifyOnWarnings: false };
+export type CacheFriendlyPromptConfig = { /** @deprecated stablePrefixHash is stable-only; base system is tracked by baseSystemHash/providerPrefixHash. */ includeBaseSystemPromptInStableHash?: boolean; logRequests: boolean; notifyOnWarnings: boolean; reportMode: ReportGenerationMode; reportDebounceMs: number; };
+const DEFAULT_CONFIG: CacheFriendlyPromptConfig = { logRequests: true, notifyOnWarnings: false, reportMode: "debounce", reportDebounceMs: 1000 };
 type LastState = {
   runKey: string;
   runKeySource: RunKeySource;
@@ -178,6 +178,7 @@ function messageContainsDynamicMarker(messages: unknown[]): boolean {
 
 export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: Partial<CacheFriendlyPromptConfig>): void {
   const cfg = { ...DEFAULT_CONFIG, ...config };
+  configureCacheFriendlyReports({ mode: cfg.reportMode, debounceMs: cfg.reportDebounceMs });
   pi.on("before_agent_start", async (event: any, ctx: any) => {
     const fragments = await collectPromptFragments({ cwd: contextCwd(event, ctx), provider: modelProvider(ctx), model: modelId(ctx) });
     const rendered = renderPromptFragments(fragments);
