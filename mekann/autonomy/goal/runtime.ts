@@ -86,7 +86,7 @@ export class GoalRuntime {
 
   // ─── Lifecycle: message_end ────────────────────────────────────
 
-  onMessageEnd(event: { message: { role: string; usage?: { input?: number; output?: number; cacheRead?: number }; timestamp: number } }, _ctx: ExtensionContext): void {
+  onMessageEnd(event: { message: { role: string; usage?: { input?: number; inputTotal?: number; output?: number; cacheRead?: number }; timestamp: number } }, _ctx: ExtensionContext): void {
     const msg = event.message;
     if (msg.role !== "assistant") return;
     if (!msg.usage) return;
@@ -102,8 +102,12 @@ export class GoalRuntime {
     const goal = this.store.getGoal();
     if (!goal || goal.status !== "active") return;
 
-    // Token delta: exclude cached input tokens
-    const tokenDelta = Math.max(0, (usage.input ?? 0) - (usage.cacheRead ?? 0)) + (usage.output ?? 0);
+    // Token delta: exclude cached input tokens.
+    // inputTotal/input means total input tokens including cache-read/cache-write tokens.
+    // Provider raw usage must be normalized before this point; this is a
+    // non-cached-token budget proxy, not provider billing/cost accounting.
+    const inputTotal = usage.inputTotal ?? usage.input ?? 0;
+    const tokenDelta = Math.max(0, inputTotal - (usage.cacheRead ?? 0)) + (usage.output ?? 0);
 
     // Also account accumulated wall-clock time
     this.accountUsage(this.consumeWallClockSeconds(), tokenDelta);

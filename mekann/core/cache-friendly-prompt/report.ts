@@ -27,6 +27,9 @@ type CacheFriendlySummary = {
     totalPromptChars: number;
   };
   recentSameReuseKeyStreak: number;
+  adjacentPrefixReuseRate: number | null;
+  windowPrefixReuseRate: number | null;
+  uniqueReuseKeyRatio: number | null;
   recentSameHashStreak: number;
   stablePrefixHashChanges: number;
   featureCacheablePrefixHashChanges: number;
@@ -68,6 +71,34 @@ function reuseKey(row: ParsedLog): string {
   return row.providerPrefixHash ?? row.featureCacheablePrefixHash ?? row.stablePrefixHash ?? "";
 }
 
+function scopedReuseKey(row: ParsedLog): string {
+  return `${row.provider ?? "unknown"}:${row.model ?? "unknown"}:${reuseKey(row)}`;
+}
+
+function rate(num: number, den: number): number | null {
+  return den > 0 ? num / den : null;
+}
+
+function computeAdjacentPrefixReuseRate(rows: ParsedLog[]): number | null {
+  if (rows.length < 2) return null;
+  let hits = 0;
+  for (let i = 1; i < rows.length; i++) if (scopedReuseKey(rows[i]) === scopedReuseKey(rows[i - 1])) hits++;
+  return hits / (rows.length - 1);
+}
+
+function computeWindowPrefixReuseRate(rows: ParsedLog[], windowSize = 50): number | null {
+  if (rows.length === 0) return null;
+  let hits = 0;
+  const recent = new Map<string, number>();
+  rows.forEach((row, index) => {
+    const key = scopedReuseKey(row);
+    const prevIndex = recent.get(key);
+    if (prevIndex !== undefined && index - prevIndex <= windowSize) hits++;
+    recent.set(key, index);
+  });
+  return hits / rows.length;
+}
+
 function countChanges(rows: ParsedLog[], value: (row: ParsedLog) => string | undefined): number {
   let changes = 0;
   for (let i = 1; i < rows.length; i++) if ((value(rows[i]) ?? "") !== (value(rows[i - 1]) ?? "")) changes++;
@@ -77,8 +108,8 @@ function countChanges(rows: ParsedLog[], value: (row: ParsedLog) => string | und
 function summarize(rows: ParsedLog[], generatedAt: string): CacheFriendlySummary {
   const latest = rows.at(-1);
   let streak = 0;
-  const latestReuseKey = latest ? reuseKey(latest) : "";
-  for (let i = rows.length - 1; i >= 0 && latest && reuseKey(rows[i]) === latestReuseKey; i--) streak++;
+  const latestReuseKey = latest ? scopedReuseKey(latest) : "";
+  for (let i = rows.length - 1; i >= 0 && latest && scopedReuseKey(rows[i]) === latestReuseKey; i--) streak++;
   let stableHashStreak = 0;
   const latestStablePrefixHash = latest?.stablePrefixHash ?? "";
   for (let i = rows.length - 1; i >= 0 && latest && (rows[i]?.stablePrefixHash ?? "") === latestStablePrefixHash; i--) stableHashStreak++;
@@ -114,6 +145,9 @@ function summarize(rows: ParsedLog[], generatedAt: string): CacheFriendlySummary
       totalPromptChars: latest.totalPromptChars ?? 0,
     } : undefined,
     recentSameReuseKeyStreak: streak,
+    adjacentPrefixReuseRate: computeAdjacentPrefixReuseRate(rows),
+    windowPrefixReuseRate: computeWindowPrefixReuseRate(rows),
+    uniqueReuseKeyRatio: rate(new Set(rows.map(scopedReuseKey)).size, rows.length),
     recentSameHashStreak: stableHashStreak,
     stablePrefixHashChanges: countChanges(rows, (r) => r.stablePrefixHash),
     featureCacheablePrefixHashChanges: countChanges(rows, (r) => r.featureCacheablePrefixHash),
@@ -149,7 +183,7 @@ function renderSvg(rows: ParsedLog[], maxPoints: number | "all" = MAX_POINTS): s
   const total = sampled.map((r) => r.totalPromptChars ?? 0);
   const max = Math.max(1, ...stable, ...providerPrefix, ...total);
   const changeXs: number[] = [];
-  for (let i = 1; i < sampled.length; i++) if (reuseKey(sampled[i]) !== reuseKey(sampled[i - 1])) changeXs.push(i);
+  for (let i = 1; i < sampled.length; i++) if (scopedReuseKey(sampled[i]) !== scopedReuseKey(sampled[i - 1])) changeXs.push(i);
   const plotW = SVG_WIDTH - PAD_L - PAD_R;
   const xFor = (i: number) => PAD_L + (sampled.length === 1 ? 0 : (i / (sampled.length - 1)) * plotW);
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -175,25 +209,25 @@ function renderSvg(rows: ParsedLog[], maxPoints: number | "all" = MAX_POINTS): s
 
 function renderCacheabilitySvg(rows: ParsedLog[], maxPoints: number | "all" = MAX_POINTS): string {
   const sampled = sampleRows(rows, maxPoints);
-  const reuseScore = sampled.map((r, i) => i > 0 && reuseKey(r) === reuseKey(sampled[i - 1]) ? 100 : 0);
+  const adjacentPrefixContinuityScore = sampled.map((r, i) => i > 0 && scopedReuseKey(r) === scopedReuseKey(sampled[i - 1]) ? 100 : 0);
   const plotW = SVG_WIDTH - PAD_L - PAD_R;
   const plotH = SVG_HEIGHT - PAD_T - PAD_B;
   const xFor = (i: number) => PAD_L + (sampled.length === 1 ? 0 : (i / (sampled.length - 1)) * plotW);
-  const points = reuseScore.map((v, i) => {
+  const points = adjacentPrefixContinuityScore.map((v, i) => {
     const x = xFor(i);
     const y = PAD_T + plotH - (v / 100) * plotH;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(" ");
-  const changeLines = sampled.map((r, i) => i > 0 && reuseKey(r) !== reuseKey(sampled[i - 1]) ? `<line x1="${xFor(i).toFixed(1)}" y1="${PAD_T}" x2="${xFor(i).toFixed(1)}" y2="${SVG_HEIGHT - PAD_B}" stroke="#f59e0b" stroke-opacity="0.35"/>` : "").filter(Boolean).join("\n  ");
+  const changeLines = sampled.map((r, i) => i > 0 && scopedReuseKey(r) !== scopedReuseKey(sampled[i - 1]) ? `<line x1="${xFor(i).toFixed(1)}" y1="${PAD_T}" x2="${xFor(i).toFixed(1)}" y2="${SVG_HEIGHT - PAD_B}" stroke="#f59e0b" stroke-opacity="0.35"/>` : "").filter(Boolean).join("\n  ");
   const latest = sampled.at(-1);
-  const latestScore = reuseScore.at(-1) ?? 0;
+  const latestScore = adjacentPrefixContinuityScore.at(-1) ?? 0;
   let streak = 0;
-  const latestReuseKey = latest ? reuseKey(latest) : "";
-  for (let i = sampled.length - 1; i >= 0 && latest && reuseKey(sampled[i]) === latestReuseKey; i--) streak++;
+  const latestReuseKey = latest ? scopedReuseKey(latest) : "";
+  for (let i = sampled.length - 1; i >= 0 && latest && scopedReuseKey(sampled[i]) === latestReuseKey; i--) streak++;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}">
   <rect width="100%" height="100%" fill="#0f172a"/>
-  <text x="${PAD_L}" y="18" fill="#e5e7eb" font-family="sans-serif" font-size="14">cache-friendly-prompt キャッシュ再利用スコア（${sampleLabel(sampled, maxPoints)}）</text>
+  <text x="${PAD_L}" y="18" fill="#e5e7eb" font-family="sans-serif" font-size="14">cache-friendly-prompt 隣接prefix継続proxy（${sampleLabel(sampled, maxPoints)}）</text>
   <line x1="${PAD_L}" y1="${SVG_HEIGHT - PAD_B}" x2="${SVG_WIDTH - PAD_R}" y2="${SVG_HEIGHT - PAD_B}" stroke="#475569"/>
   <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${SVG_HEIGHT - PAD_B}" stroke="#475569"/>
   <text x="14" y="${PAD_T + 5}" fill="#94a3b8" font-family="sans-serif" font-size="11">100%</text>
@@ -203,8 +237,8 @@ function renderCacheabilitySvg(rows: ParsedLog[], maxPoints: number | "all" = MA
   ${changeLines}
   <polyline fill="none" stroke="#a78bfa" stroke-width="2.8" points="${points}"/>
   <rect x="${SVG_WIDTH - 310}" y="28" width="280" height="118" rx="6" fill="#111827" stroke="#334155"/>
-  <line x1="${SVG_WIDTH - 294}" y1="50" x2="${SVG_WIDTH - 254}" y2="50" stroke="#a78bfa" stroke-width="3"/><text x="${SVG_WIDTH - 246}" y="54" fill="#cbd5e1" font-family="sans-serif" font-size="12">reuse score</text>
-  <text x="${SVG_WIDTH - 294}" y="78" fill="#ddd6fe" font-family="sans-serif" font-size="12">latest score: ${latestScore.toFixed(0)}%</text>
+  <line x1="${SVG_WIDTH - 294}" y1="50" x2="${SVG_WIDTH - 254}" y2="50" stroke="#a78bfa" stroke-width="3"/><text x="${SVG_WIDTH - 246}" y="54" fill="#cbd5e1" font-family="sans-serif" font-size="12">adjacent prefix proxy</text>
+  <text x="${SVG_WIDTH - 294}" y="78" fill="#ddd6fe" font-family="sans-serif" font-size="12">latest proxy: ${latestScore.toFixed(0)}%</text>
   <text x="${SVG_WIDTH - 294}" y="98" fill="#cbd5e1" font-family="sans-serif" font-size="12">provider prefix: ${latest?.providerPrefixChars ?? latest?.featureCacheablePrefixChars ?? latest?.stablePrefixChars ?? 0} chars</text>
   <text x="${SVG_WIDTH - 294}" y="118" fill="#cbd5e1" font-family="sans-serif" font-size="12">provider tokens: ${latest?.providerPrefixTokenEstimate ?? latest?.featureCacheablePrefixTokenEstimate ?? latest?.stablePrefixTokenEstimate ?? 0}</text>
   <text x="${SVG_WIDTH - 294}" y="138" fill="#fbbf24" font-family="sans-serif" font-size="12">streak: ${streak} requests</text>
@@ -258,7 +292,7 @@ function renderFragmentsSvg(rows: ParsedLog[]): string {
 function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string {
   const latest = summary.latest;
   const providerRows = Object.entries(summary.providers).sort((a, b) => b[1].requests - a[1].requests).map(([k, v]) => `| ${escapeHtml(k)} | ${v.requests} | ${v.uniqueReuseKeys} | \`${shortHash(v.latestReuseKey)}\` | ${v.latestProviderPrefixChars ?? v.latestStablePrefixChars} | ${v.latestStablePrefixChars} | ${v.latestTotalPromptChars} |`).join("\n");
-  const changes = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined })).filter((x): x is { row: ParsedLog; prev: ParsedLog } => Boolean(x.prev) && reuseKey(x.row) !== reuseKey(x.prev)).slice(-20).reverse();
+  const changes = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined })).filter((x): x is { row: ParsedLog; prev: ParsedLog } => Boolean(x.prev) && scopedReuseKey(x.row) !== scopedReuseKey(x.prev)).slice(-20).reverse();
   const changeRows = changes.map(({ row, prev }) => `| ${row.timestamp} | ${escapeHtml(providerKey(row))} | \`${shortHash(reuseKey(prev))}\` → \`${shortHash(reuseKey(row))}\` | ${row.providerPrefixChars ?? row.featureCacheablePrefixChars ?? row.stablePrefixChars ?? 0} | ${row.stablePrefixChars ?? 0} | ${row.totalPromptChars ?? 0} |`).join("\n") || "| なし |  |  |  |  | |";
   return `# cache-friendly-prompt レポート
 
@@ -276,6 +310,9 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
 - featureCacheablePrefixHash 変化回数: ${summary.featureCacheablePrefixHashChanges}
 - providerPrefixHash 変化回数: ${summary.providerPrefixHashChanges}
 - warning 件数: ${summary.warningCount}
+- adjacent prefix reuse proxy: ${summary.adjacentPrefixReuseRate === null ? "n/a" : `${(summary.adjacentPrefixReuseRate * 100).toFixed(1)}%`}
+- window prefix reuse proxy（直近50件）: ${summary.windowPrefixReuseRate === null ? "n/a" : `${(summary.windowPrefixReuseRate * 100).toFixed(1)}%`}
+- unique scoped reuse key ratio: ${summary.uniqueReuseKeyRatio === null ? "n/a" : `${(summary.uniqueReuseKeyRatio * 100).toFixed(1)}%`}
 
 ## 用語
 
@@ -287,7 +324,9 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
 | stablePrefixChars | stable fragment 部分だけの文字数です。 |
 | providerPrefixChars | providerPrefixHash の対象になる前方 prefix の文字数です。 |
 | totalPromptChars | provider に送られるプロンプト全体の文字数。ユーザー発話、会話履歴、tool 結果、read 結果なども含まれ得ます。 |
-| prefix reuse proxy | 前回と同じ reuse key なら 100%、変化した直後は 0% とする再利用 proxy です。reuse key は providerPrefixHash → featureCacheablePrefixHash → stablePrefixHash の順で選びます。providerPrefixHash / featureCacheablePrefixHash がない旧ログでは stablePrefixHash に fallback します。 |
+| adjacent prefix reuse proxy | 直前リクエストと同じ scoped reuse key なら 100%、変化した直後は 0% とする prefix continuity proxy です。actual provider cache hit rate ではありません。 |
+| window prefix reuse proxy | 直近50リクエスト内に同じ scoped reuse key が出ていた割合です。adjacent-only より provider cache store に近い proxy ですが、これも actual hit rate ではありません。 |
+| scoped reuse key | \`provider/model/reuse key\` の組です。reuse key は providerPrefixHash → featureCacheablePrefixHash → stablePrefixHash の順で選びます。providerPrefixHash / featureCacheablePrefixHash がない旧ログでは stablePrefixHash に fallback します。 |
 | hash change | reuse key が前回から変わった地点。provider cache 再利用が効きにくくなる可能性があります。 |
 | warning | cache-friendly-prompt が検出した注意点。例: stable prefix が短い、payload に不安定な構造がある、など。 |
 | fragment | 各拡張が提供するプロンプト断片。stable / semi-stable / dynamic に分類されます。 |
@@ -300,9 +339,9 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
 ![cache-friendly-prompt cacheability score all](./cacheability-score-all.svg)
 
 - 上: 最新最大 ${MAX_POINTS} 件、下: 全件の図です
-- 紫線: prefix reuse proxy。前回と同じ reuse key なら \`100%\`、変化した直後は \`0%\` です
-- reuse key は \`providerPrefixHash ?? featureCacheablePrefixHash ?? stablePrefixHash\` です
-- 100% に張り付いているほど、provider cache に効き得る前方 prefix を継続して送れている可能性が高いことを示します
+- 紫線: adjacent prefix reuse proxy。直前と同じ scoped reuse key なら \`100%\`、変化した直後は \`0%\` です
+- scoped reuse key は \`provider/model/(providerPrefixHash ?? featureCacheablePrefixHash ?? stablePrefixHash)\` です
+- 100% に張り付いているほど、provider cache に効き得る前方 prefix を隣接リクエスト間で継続して送れている可能性が高いことを示します。actual provider cache hit rate ではありません
 - オレンジの縦線は reuse key の変化点です
 - provider prefix の大きさは右上の \`provider prefix\` / \`provider tokens\` に数値で表示します
 - total prompt の大きさは、この図では考慮しません

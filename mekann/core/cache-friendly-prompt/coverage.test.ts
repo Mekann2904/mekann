@@ -176,9 +176,9 @@ describe("report.ts coverage", () => {
     ];
     await runWithLog(rows.join("\n"));
     const svg = writtenFiles.get(path.join(dir, "cacheability-score.svg"))!;
-    expect(svg).toContain("reuse score");
+    expect(svg).toContain("adjacent prefix proxy");
     expect(svg).toContain("streak: 2 requests");
-    expect(svg).toContain("latest score: 100%");
+    expect(svg).toContain("latest proxy: 100%");
     // Change lines in orange
     expect(svg).toContain("#f59e0b");
   });
@@ -290,9 +290,9 @@ describe("report.ts coverage", () => {
   it("handles single row in cacheability SVG (sampled.length === 1)", async () => {
     await runWithLog(makeLog());
     const svg = writtenFiles.get(path.join(dir, "cacheability-score.svg"))!;
-    expect(svg).toContain("latest score:");
-    // Single point: reuseScore first element is 0 (i > 0 is false)
-    expect(svg).toContain("latest score: 0%");
+    expect(svg).toContain("latest proxy:");
+    // Single point: adjacentPrefixContinuityScore first element is 0 (i > 0 is false)
+    expect(svg).toContain("latest proxy: 0%");
   });
 
   it("covers multiple providers in summary", async () => {
