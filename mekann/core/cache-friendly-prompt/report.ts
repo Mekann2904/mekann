@@ -54,6 +54,9 @@ type CacheFriendlySummary = {
   stablePrefixHashChanges: number;
   featureCacheablePrefixHashChanges: number;
   providerPrefixHashChanges: number;
+  providerModelSwitches: number;
+  providerSwitches: number;
+  modelSwitchesWithinProvider: number;
   warningCount: number;
   providers: Record<string, ProviderSummary>;
   actualRequestCount: number;
@@ -354,6 +357,9 @@ function summarize(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], genera
     stablePrefixHashChanges: countChanges(rows, (r) => r.stablePrefixHash),
     featureCacheablePrefixHashChanges: countChanges(rows, (r) => r.featureCacheablePrefixHash),
     providerPrefixHashChanges: countChanges(rows, (r) => r.providerPrefixHash),
+    providerModelSwitches: countChanges(rows, providerKey),
+    providerSwitches: countChanges(rows, (r) => r.provider),
+    modelSwitchesWithinProvider: rows.reduce((n, row, i) => i > 0 && (row.provider ?? "") === (rows[i - 1].provider ?? "") && (row.model ?? "") !== (rows[i - 1].model ?? "") ? n + 1 : n, 0),
     warningCount: rows.reduce((n, r) => n + (r.warnings?.length ?? 0), 0),
     providers,
     ...actual,
@@ -612,6 +618,12 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
     ["cacheMissTokens", summary.actualCacheMissTokens],
     ["weighted cacheableReadRate", formatPct(summary.actualCacheableReadRateWeighted)],
   ]);
+  const providerModelSwitchRows = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined }))
+    .filter((x): x is { row: ParsedLog; prev: ParsedLog } => x.prev !== undefined && providerKey(x.row) !== providerKey(x.prev))
+    .slice(-20)
+    .reverse()
+    .map(({ row, prev }) => `| ${row.timestamp} | ${escapeHtml(providerKey(prev))} → ${escapeHtml(providerKey(row))} | \`${shortHash(reuseKey(prev))}\` → \`${shortHash(reuseKey(row))}\` | ${row.provider === prev.provider ? "model" : "provider"} | ${row.providerPrefixChars ?? 0} | ${row.totalPromptChars ?? 0} |`)
+    .join("\n") || "| なし |  |  |  |  | |";
   const baseSystemRows = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined }))
     .filter((x): x is { row: ParsedLog; prev: ParsedLog } => x.prev !== undefined && (x.row.baseSystemHash ?? "") !== (x.prev.baseSystemHash ?? ""))
     .slice(-20)
@@ -627,6 +639,9 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
     ["stablePrefixHashChanges", summary.stablePrefixHashChanges],
     ["featureCacheablePrefixHashChanges", summary.featureCacheablePrefixHashChanges],
     ["providerPrefixHashChanges", summary.providerPrefixHashChanges],
+    ["provider/model switches", summary.providerModelSwitches],
+    ["provider switches", summary.providerSwitches],
+    ["model switches within provider", summary.modelSwitchesWithinProvider],
   ]);
   return `# cache-friendly-prompt レポート
 
@@ -750,7 +765,15 @@ ${promptProviderModelGraphRows}
 |---|---:|---:|---|---:|---:|---:|
 ${providerRows || "| なし | 0 | 0 |  | 0 | 0 | 0 |"}
 
-## 7. Base system prompt stability
+## 7. Provider/model switching
+
+Provider cache is usually scoped by provider/model. Frequent switching can lower global hit rate even when each provider/model is healthy.
+
+| timestamp | provider/model switch | reuse key | switch type | provider prefix chars | total chars |
+|---|---|---|---|---:|---:|
+${providerModelSwitchRows}
+
+## 8. Base system prompt stability
 
 \`stablePrefixHash\` が安定しているのに \`providerPrefixHash\` が変わる場合、base system prompt 側が揺れている可能性があります。この表は base system prompt hash の変化だけを抜き出します。
 
@@ -758,13 +781,13 @@ ${providerRows || "| なし | 0 | 0 |  | 0 | 0 | 0 |"}
 |---|---|---|---|---:|---:|
 ${baseSystemRows}
 
-## 8. 最近の scoped reuse key 変化 / Recent scoped reuse key changes
+## 9. 最近の scoped reuse key 変化 / Recent scoped reuse key changes
 
 | timestamp | provider/model | reuse key | likely change reason | provider prefix Δchars | total Δchars | provider prefix chars | stable chars | total chars |
 |---|---|---|---|---:|---:|---:|---:|---:|
 ${changeRows}
 
-## 9. Glossary
+## 10. Glossary
 
 | term | meaning |
 |---|---|

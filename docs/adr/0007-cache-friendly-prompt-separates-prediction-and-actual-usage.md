@@ -40,6 +40,10 @@ Provider usage schemas differ. The normalizer records:
 
 This is especially important for Pi normalized usage because `usage.input` may represent either total input or non-cached input depending on upstream semantics.
 
+## Provider/model switching
+
+Reports track adjacent provider/model switches because provider caches are generally scoped by provider/model. A lower global hit rate can be caused by routing changes even when warm hit rate for each provider/model remains healthy.
+
 ## Cold vs warm attribution
 
 Reports separate actual usage into cold and warm rows. Cold means the first row for a `provider/model/prefix hash` key in the current log; warm means later rows with the same key. Warm hit rate is the more useful signal for steady-state cache behavior because first-use rows may be unavoidable misses.

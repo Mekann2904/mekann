@@ -45,6 +45,18 @@ actual usage rows also include prefix snapshot metadata when available:
 
 まずここを見て、stable / semi-stable に runtime 値が混ざっていないかを確認してください。
 
+## provider/model switching
+
+Provider cache is usually scoped by provider/model. `report.md` records adjacent provider/model switches so global hit rate can be interpreted separately from model routing changes.
+
+Summary fields:
+
+- `providerModelSwitches`
+- `providerSwitches`
+- `modelSwitchesWithinProvider`
+
+The “Provider/model switching” table shows recent switches with reuse key changes and prompt sizes.
+
 ## cold vs warm actual hit rate
 
 `report.md` separates actual usage into cold and warm rows. Cold means the first row for a `provider/model/prefix hash` key in the current log; warm means later rows with the same key.
