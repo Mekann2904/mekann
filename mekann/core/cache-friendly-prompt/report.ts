@@ -1,8 +1,10 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { CacheFriendlyRequestLog } from "../prompt-core/index.js";
+import type { ActualUsageLog } from "./actualUsage.js";
 
 type ParsedLog = CacheFriendlyRequestLog & { line: number };
+type ParsedActualUsageLog = ActualUsageLog & { line: number };
 
 type ProviderSummary = {
   requests: number;
@@ -38,6 +40,15 @@ type CacheFriendlySummary = {
   providerPrefixHashChanges: number;
   warningCount: number;
   providers: Record<string, ProviderSummary>;
+  actualRequestCount: number;
+  actualTokenHitRateAvg: number | null;
+  actualTokenHitRateWeighted: number | null;
+  actualCacheableReadRateAvg: number | null;
+  actualCacheableReadRateWeighted: number | null;
+  actualCacheReadTokens: number;
+  actualCacheWriteTokens: number;
+  actualCacheMissTokens: number;
+  actualInputTotalTokens: number;
 };
 
 const MAX_POINTS = 500;
@@ -62,6 +73,15 @@ function escapeHtml(s: string): string {
 
 function readRows(text: string): ParsedLog[] {
   const rows: ParsedLog[] = [];
+  for (const [i, line] of text.split(/\n/).entries()) {
+    if (!line.trim()) continue;
+    try { rows.push({ ...JSON.parse(line), line: i + 1 }); } catch { /* ignore broken historical lines */ }
+  }
+  return rows;
+}
+
+function readActualRows(text: string): ParsedActualUsageLog[] {
+  const rows: ParsedActualUsageLog[] = [];
   for (const [i, line] of text.split(/\n/).entries()) {
     if (!line.trim()) continue;
     try { rows.push({ ...JSON.parse(line), line: i + 1 }); } catch { /* ignore broken historical lines */ }
@@ -109,7 +129,30 @@ function countChanges(rows: ParsedLog[], value: (row: ParsedLog) => string | und
   return changes;
 }
 
-function summarize(rows: ParsedLog[], generatedAt: string): CacheFriendlySummary {
+function mean(values: Array<number | null | undefined>): number | null {
+  const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  return nums.length > 0 ? nums.reduce((sum, v) => sum + v, 0) / nums.length : null;
+}
+
+function summarizeActual(actualRows: ParsedActualUsageLog[]) {
+  const actualCacheReadTokens = actualRows.reduce((sum, row) => sum + (row.cacheReadTokens ?? 0), 0);
+  const actualCacheWriteTokens = actualRows.reduce((sum, row) => sum + (row.cacheWriteTokens ?? 0), 0);
+  const actualCacheMissTokens = actualRows.reduce((sum, row) => sum + (row.cacheMissTokens ?? 0), 0);
+  const actualInputTotalTokens = actualRows.reduce((sum, row) => sum + (row.inputTotalTokens ?? 0), 0);
+  return {
+    actualRequestCount: actualRows.length,
+    actualTokenHitRateAvg: mean(actualRows.map((r) => r.tokenHitRate)),
+    actualTokenHitRateWeighted: rate(actualCacheReadTokens, actualInputTotalTokens),
+    actualCacheableReadRateAvg: mean(actualRows.map((r) => r.cacheableReadRate)),
+    actualCacheableReadRateWeighted: rate(actualCacheReadTokens, actualCacheReadTokens + actualCacheWriteTokens),
+    actualCacheReadTokens,
+    actualCacheWriteTokens,
+    actualCacheMissTokens,
+    actualInputTotalTokens,
+  };
+}
+
+function summarize(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], generatedAt: string): CacheFriendlySummary {
   const latest = rows.at(-1);
   let streak = 0;
   const latestReuseKey = latest ? scopedReuseKey(latest) : "";
@@ -138,6 +181,7 @@ function summarize(rows: ParsedLog[], generatedAt: string): CacheFriendlySummary
     };
   }
   const uniqueScopedReuseKeyRatio = rate(new Set(rows.map(scopedReuseKey)).size, rows.length);
+  const actual = summarizeActual(actualRows);
   return {
     generatedAt,
     totalRequests: rows.length,
@@ -160,6 +204,7 @@ function summarize(rows: ParsedLog[], generatedAt: string): CacheFriendlySummary
     providerPrefixHashChanges: countChanges(rows, (r) => r.providerPrefixHash),
     warningCount: rows.reduce((n, r) => n + (r.warnings?.length ?? 0), 0),
     providers,
+    ...actual,
   };
 }
 
@@ -174,11 +219,11 @@ function scalePoints(values: number[], max: number): string {
   }).join(" ");
 }
 
-function sampleRows(rows: ParsedLog[], maxPoints: number | "all"): ParsedLog[] {
+function sampleRows<T>(rows: T[], maxPoints: number | "all"): T[] {
   return maxPoints === "all" || rows.length <= maxPoints ? rows : rows.slice(-maxPoints);
 }
 
-function sampleLabel(sampled: ParsedLog[], maxPoints: number | "all"): string {
+function sampleLabel(sampled: unknown[], maxPoints: number | "all"): string {
   return maxPoints === "all" ? `全 ${sampled.length} 件` : `最新 ${sampled.length} 件`;
 }
 
@@ -252,6 +297,37 @@ function renderCacheabilitySvg(rows: ParsedLog[], maxPoints: number | "all" = MA
 `;
 }
 
+function renderActualHitRateSvg(rows: ParsedActualUsageLog[], maxPoints: number | "all" = MAX_POINTS): string {
+  const sampled = sampleRows(rows, maxPoints);
+  const plotW = SVG_WIDTH - PAD_L - PAD_R;
+  const plotH = SVG_HEIGHT - PAD_T - PAD_B;
+  const xFor = (i: number) => PAD_L + (sampled.length === 1 ? 0 : (i / Math.max(1, sampled.length - 1)) * plotW);
+  const yFor = (v: number | null | undefined) => PAD_T + plotH - ((v ?? 0) * plotH);
+  const points = sampled.map((row, i) => `${xFor(i).toFixed(1)},${yFor(row.tokenHitRate).toFixed(1)}`).join(" ");
+  const cacheablePoints = sampled.filter((row) => row.cacheableReadRate !== null).map((row) => `${xFor(sampled.indexOf(row)).toFixed(1)},${yFor(row.cacheableReadRate).toFixed(1)}`).join(" ");
+  const latest = sampled.at(-1);
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}">
+  <rect width="100%" height="100%" fill="#0f172a"/>
+  <text x="${PAD_L}" y="18" fill="#e5e7eb" font-family="sans-serif" font-size="14">actual provider cache hit rate（${sampleLabel(sampled, maxPoints)}）</text>
+  <line x1="${PAD_L}" y1="${SVG_HEIGHT - PAD_B}" x2="${SVG_WIDTH - PAD_R}" y2="${SVG_HEIGHT - PAD_B}" stroke="#475569"/>
+  <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${SVG_HEIGHT - PAD_B}" stroke="#475569"/>
+  <text x="14" y="${PAD_T + 5}" fill="#94a3b8" font-family="sans-serif" font-size="11">100%</text>
+  <text x="22" y="${PAD_T + plotH / 2}" fill="#94a3b8" font-family="sans-serif" font-size="11">50%</text>
+  <text x="28" y="${SVG_HEIGHT - PAD_B}" fill="#94a3b8" font-family="sans-serif" font-size="11">0%</text>
+  <line x1="${PAD_L}" y1="${(PAD_T + plotH / 2).toFixed(1)}" x2="${SVG_WIDTH - PAD_R}" y2="${(PAD_T + plotH / 2).toFixed(1)}" stroke="#334155" stroke-dasharray="4 4"/>
+  <polyline fill="none" stroke="#22c55e" stroke-width="2.8" points="${points}"/>
+  ${cacheablePoints ? `<polyline fill="none" stroke="#38bdf8" stroke-width="2.2" points="${cacheablePoints}"/>` : ""}
+  <rect x="${SVG_WIDTH - 330}" y="28" width="300" height="124" rx="6" fill="#111827" stroke="#334155"/>
+  <line x1="${SVG_WIDTH - 314}" y1="50" x2="${SVG_WIDTH - 274}" y2="50" stroke="#22c55e" stroke-width="3"/><text x="${SVG_WIDTH - 266}" y="54" fill="#cbd5e1" font-family="sans-serif" font-size="12">tokenHitRate</text>
+  <line x1="${SVG_WIDTH - 314}" y1="72" x2="${SVG_WIDTH - 274}" y2="72" stroke="#38bdf8" stroke-width="3"/><text x="${SVG_WIDTH - 266}" y="76" fill="#cbd5e1" font-family="sans-serif" font-size="12">cacheableReadRate</text>
+  <text x="${SVG_WIDTH - 314}" y="102" fill="#ddd6fe" font-family="sans-serif" font-size="12">latest: ${latest?.tokenHitRate === null || latest?.tokenHitRate === undefined ? "n/a" : `${(latest.tokenHitRate * 100).toFixed(1)}%`}</text>
+  <text x="${SVG_WIDTH - 314}" y="122" fill="#cbd5e1" font-family="sans-serif" font-size="12">read/input: ${latest?.cacheReadTokens ?? 0}/${latest?.inputTotalTokens ?? 0}</text>
+  <text x="${SVG_WIDTH - 314}" y="142" fill="#94a3b8" font-family="sans-serif" font-size="12">provider usage tokens, not proxy</text>
+</svg>
+`;
+}
+
 function renderFragmentsSvg(rows: ParsedLog[]): string {
   const latest = [...rows].reverse().find((r) => (r.fragmentHashes ?? []).some((f) => typeof f.chars === "number"));
   const items = new Map<string, { stable: number; semi_stable: number; dynamic: number }>();
@@ -295,10 +371,14 @@ function renderFragmentsSvg(rows: ParsedLog[]): string {
 `;
 }
 
+function formatPct(value: number | null): string {
+  return value === null ? "n/a" : `${(value * 100).toFixed(1)}%`;
+}
+
 function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string {
   const latest = summary.latest;
   const providerRows = Object.entries(summary.providers).sort((a, b) => b[1].requests - a[1].requests).map(([k, v]) => `| ${escapeHtml(k)} | ${v.requests} | ${v.uniqueReuseKeys} | \`${shortHash(v.latestReuseKey)}\` | ${v.latestProviderPrefixChars ?? v.latestStablePrefixChars} | ${v.latestStablePrefixChars} | ${v.latestTotalPromptChars} |`).join("\n");
-  const changes = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined })).filter((x): x is { row: ParsedLog; prev: ParsedLog } => Boolean(x.prev) && scopedReuseKey(x.row) !== scopedReuseKey(x.prev)).slice(-20).reverse();
+  const changes = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined })).filter((x): x is { row: ParsedLog; prev: ParsedLog } => x.prev !== undefined && scopedReuseKey(x.row) !== scopedReuseKey(x.prev)).slice(-20).reverse();
   const changeRows = changes.map(({ row, prev }) => `| ${row.timestamp} | ${escapeHtml(providerKey(prev))} → ${escapeHtml(providerKey(row))} | \`${shortHash(reuseKey(prev))}\` → \`${shortHash(reuseKey(row))}\` | ${row.providerPrefixChars ?? row.featureCacheablePrefixChars ?? row.stablePrefixChars ?? 0} | ${row.stablePrefixChars ?? 0} | ${row.totalPromptChars ?? 0} |`).join("\n") || "| なし |  |  |  |  | |";
   return `# cache-friendly-prompt レポート
 
@@ -319,6 +399,10 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
 - adjacent prefix reuse proxy: ${summary.adjacentPrefixReuseRate === null ? "n/a" : `${(summary.adjacentPrefixReuseRate * 100).toFixed(1)}%`}
 - window prefix reuse proxy（直近50件）: ${summary.windowPrefixReuseRate === null ? "n/a" : `${(summary.windowPrefixReuseRate * 100).toFixed(1)}%`}
 - unique scoped reuse key ratio: ${summary.uniqueScopedReuseKeyRatio === null ? "n/a" : `${(summary.uniqueScopedReuseKeyRatio * 100).toFixed(1)}%`}
+- actual provider usage requests: ${summary.actualRequestCount}
+- actual token hit rate weighted: ${formatPct(summary.actualTokenHitRateWeighted)}
+- actual cacheable read rate weighted: ${formatPct(summary.actualCacheableReadRateWeighted)}
+- actual cache read/write/miss/input tokens: ${summary.actualCacheReadTokens}/${summary.actualCacheWriteTokens}/${summary.actualCacheMissTokens}/${summary.actualInputTotalTokens}
 
 ## 用語
 
@@ -337,6 +421,21 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
 | warning | cache-friendly-prompt が検出した注意点。例: stable prefix が短い、payload に不安定な構造がある、など。 |
 | fragment | 各拡張が提供するプロンプト断片。stable / semi-stable / dynamic に分類されます。 |
 | provider/model | リクエスト送信先の provider と model。例: \`openai-codex/gpt-5.5\`。 |
+| actual provider cache hit rate | provider usage token 由来の実 cache read 率です。prefix continuity proxy とは別系統です。 |
+| tokenHitRate | \`cacheReadTokens / inputTotalTokens\`。全入力 token のうち cache read された割合です。 |
+| cacheableReadRate | \`cacheReadTokens / (cacheReadTokens + cacheWriteTokens)\`。write token が分かる provider で、cache 対象領域のうち read できた割合です。 |
+
+## Actual provider cache hit rate
+
+This section is based on provider usage tokens, not prefix continuity proxy.
+
+![actual provider cache hit rate](./actual-hit-rate.svg)
+
+- request 平均 tokenHitRate: ${formatPct(summary.actualTokenHitRateAvg)}
+- token 加重 tokenHitRate: ${formatPct(summary.actualTokenHitRateWeighted)}
+- request 平均 cacheableReadRate: ${formatPct(summary.actualCacheableReadRateAvg)}
+- token 加重 cacheableReadRate: ${formatPct(summary.actualCacheableReadRateWeighted)}
+- cacheRead/cacheWrite/cacheMiss/inputTotal tokens: ${summary.actualCacheReadTokens}/${summary.actualCacheWriteTokens}/${summary.actualCacheMissTokens}/${summary.actualInputTotalTokens}
 
 ## キャッシュ可能性
 
@@ -381,18 +480,23 @@ ${changeRows}
 `;
 }
 
+async function readIfExists(filePath: string): Promise<string> {
+  try { return await fs.readFile(filePath, "utf8"); } catch { return ""; }
+}
+
 export async function generateCacheFriendlyReport(dir: string): Promise<void> {
   try {
-    const logPath = path.join(dir, "requests.jsonl");
-    const rows = readRows(await fs.readFile(logPath, "utf8"));
+    const rows = readRows(await readIfExists(path.join(dir, "requests.jsonl")));
+    const actualRows = readActualRows(await readIfExists(path.join(dir, "actual-usage.jsonl")));
     const generatedAt = new Date().toISOString();
-    const summary = summarize(rows, generatedAt);
+    const summary = summarize(rows, actualRows, generatedAt);
     await Promise.all([
       fs.writeFile(path.join(dir, "summary.json"), JSON.stringify(summary, null, 2) + "\n", "utf8"),
       fs.writeFile(path.join(dir, "trend.svg"), renderSvg(rows, MAX_POINTS), "utf8"),
       fs.writeFile(path.join(dir, "trend-all.svg"), renderSvg(rows, "all"), "utf8"),
       fs.writeFile(path.join(dir, "cacheability-score.svg"), renderCacheabilitySvg(rows, MAX_POINTS), "utf8"),
       fs.writeFile(path.join(dir, "cacheability-score-all.svg"), renderCacheabilitySvg(rows, "all"), "utf8"),
+      fs.writeFile(path.join(dir, "actual-hit-rate.svg"), renderActualHitRateSvg(actualRows, MAX_POINTS), "utf8"),
       fs.writeFile(path.join(dir, "fragments.svg"), renderFragmentsSvg(rows), "utf8"),
       fs.writeFile(path.join(dir, "report.md"), renderReport(summary, rows), "utf8"),
     ]);

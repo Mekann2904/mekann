@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { appendCacheFriendlyLog } from "./logs.js";
+import { normalizeActualCacheUsage } from "./actualUsage.js";
+import { appendActualUsageLog, appendCacheFriendlyLog } from "./logs.js";
 import { canonicalizeText, collectPromptFragments, estimateTokens, extractTextFromProviderPayload, hashFragment, inspectFinalPayloadText, inspectStablePrefix, listPromptProviders, renderPromptFragments, sha256, type PromptFragmentHash, type PromptInspectionWarning, type RunKeySource } from "../prompt-core/index.js";
 
 export type CacheFriendlyPromptConfig = { /** @deprecated stablePrefixHash is stable-only; base system is tracked by baseSystemHash/providerPrefixHash. */ includeBaseSystemPromptInStableHash?: boolean; logRequests: boolean; notifyOnWarnings: boolean; };
@@ -205,6 +206,37 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
       });
     }
     if (cfg.notifyOnWarnings && warnings.some((w) => w.severity === "error")) ctx?.ui?.notify?.("Cache-friendly prompt warnings detected", "warning");
+    return undefined;
+  });
+
+  pi.on("message_end", async (event: any, ctx: any) => {
+    const message = event?.message;
+    if (message?.role !== "assistant") return undefined;
+    const rawUsage = message?.usage;
+    if (!rawUsage) return undefined;
+    const provider = modelProvider(ctx) ?? pickString(message.provider, event?.provider);
+    const normalized = normalizeActualCacheUsage(provider, rawUsage);
+    if (!normalized) return undefined;
+    const { runKey } = runKeyWithSource(event, ctx);
+    const requestId = requestIdOf(event, ctx);
+    const lastState = (requestId ? stateByRequestId.get(requestId) : undefined) ?? stateByRun.get(runKey) ?? stateByRun.get(ctx?.cwd ?? "") ?? null;
+    await appendActualUsageLog(ctx?.cwd ?? process.cwd(), {
+      timestamp: new Date().toISOString(),
+      requestId,
+      runKey,
+      provider,
+      model: modelId(ctx) ?? pickString(message.model, event?.model),
+      providerPrefixHash: lastState?.providerPrefixHash,
+      inputTotalTokens: normalized.inputTotalTokens,
+      outputTokens: normalized.outputTokens,
+      cacheReadTokens: normalized.cacheReadTokens,
+      cacheWriteTokens: normalized.cacheWriteTokens,
+      cacheMissTokens: normalized.cacheMissTokens,
+      tokenHitRate: normalized.tokenHitRate,
+      cacheableReadRate: normalized.cacheableReadRate,
+      usageSource: normalized.usageSource,
+      rawUsage,
+    });
     return undefined;
   });
 }
