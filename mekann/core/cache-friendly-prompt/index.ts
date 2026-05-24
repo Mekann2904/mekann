@@ -67,7 +67,10 @@ function requestIdOf(event: any, ctx: any): string | undefined {
 }
 function messageTimestamp(message: any): string {
   const timestamp = message?.timestamp;
-  if (typeof timestamp === "number" && Number.isFinite(timestamp)) return new Date(timestamp).toISOString();
+  if (typeof timestamp === "number" && Number.isFinite(timestamp)) {
+    const ms = timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
+    return new Date(ms).toISOString();
+  }
   if (typeof timestamp === "string" && timestamp.trim()) {
     const ms = Date.parse(timestamp);
     if (Number.isFinite(ms)) return new Date(ms).toISOString();
@@ -246,6 +249,7 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
   });
 
   pi.on("message_end", async (event: any, ctx: any) => {
+    if (!cfg.logRequests) return undefined;
     const message = event?.message;
     if (message?.role !== "assistant") return undefined;
     const rawUsage = message?.usage;

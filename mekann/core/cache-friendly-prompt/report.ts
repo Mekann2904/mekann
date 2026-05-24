@@ -103,11 +103,18 @@ function readRows(text: string): ParsedLog[] {
   return rows;
 }
 
+function isActualUsageRow(row: any): row is ActualUsageLog {
+  return row && typeof row === "object" && typeof row.inputTotalTokens === "number" && typeof row.outputTokens === "number" && typeof row.cacheReadTokens === "number";
+}
+
 function readActualRows(text: string): ParsedActualUsageLog[] {
   const rows: ParsedActualUsageLog[] = [];
   for (const [i, line] of text.split(/\n/).entries()) {
     if (!line.trim()) continue;
-    try { rows.push({ ...JSON.parse(line), line: i + 1 }); } catch { /* ignore broken historical lines */ }
+    try {
+      const parsed = JSON.parse(line);
+      if (isActualUsageRow(parsed)) rows.push({ ...parsed, line: i + 1 });
+    } catch { /* ignore broken historical lines */ }
   }
   return rows;
 }

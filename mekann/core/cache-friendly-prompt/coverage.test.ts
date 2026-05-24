@@ -62,8 +62,13 @@ describe("report.ts coverage", () => {
     });
   });
 
-  async function runWithLog(logText: string) {
-    vi.mocked(fs.readFile).mockResolvedValue(logText);
+  async function runWithLog(requestLogText: string, actualLogText = "") {
+    vi.mocked(fs.readFile).mockImplementation((filePath: any) => {
+      const p = String(filePath);
+      if (p.endsWith("requests.jsonl")) return Promise.resolve(requestLogText);
+      if (p.endsWith("actual-usage.jsonl")) return Promise.resolve(actualLogText);
+      return Promise.reject(new Error("not found"));
+    });
     await generateCacheFriendlyReport(dir);
   }
 
@@ -140,13 +145,14 @@ describe("report.ts coverage", () => {
     expect(svg).toContain("#ef4444");
   });
 
-  it("renders all 7 output files", async () => {
+  it("renders all 8 output files", async () => {
     await runWithLog(makeLog());
     expect(writtenFiles.has(path.join(dir, "summary.json"))).toBe(true);
     expect(writtenFiles.has(path.join(dir, "trend.svg"))).toBe(true);
     expect(writtenFiles.has(path.join(dir, "trend-all.svg"))).toBe(true);
     expect(writtenFiles.has(path.join(dir, "cacheability-score.svg"))).toBe(true);
     expect(writtenFiles.has(path.join(dir, "cacheability-score-all.svg"))).toBe(true);
+    expect(writtenFiles.has(path.join(dir, "actual-hit-rate.svg"))).toBe(true);
     expect(writtenFiles.has(path.join(dir, "fragments.svg"))).toBe(true);
     expect(writtenFiles.has(path.join(dir, "report.md"))).toBe(true);
   });
@@ -246,6 +252,31 @@ describe("report.ts coverage", () => {
     const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
     // Only 2 valid rows
     expect(summary.totalRequests).toBe(2);
+  });
+
+  it("ignores invalid actual usage rows", async () => {
+    const actualRows = [
+      makeLog(),
+      "not json",
+      JSON.stringify({ inputTotalTokens: 10, outputTokens: 1, cacheReadTokens: 5, tokenHitRate: 0.5, cacheableReadRate: null, usageSource: "provider_raw_usage" }),
+    ].join("\n");
+    await runWithLog("", actualRows);
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.actualRequestCount).toBe(1);
+    expect(summary.actualInputTotalTokens).toBe(10);
+  });
+
+  it("computes weighted cacheableReadRate only from rows with cacheWriteTokens", async () => {
+    const actualRows = [
+      JSON.stringify({ timestamp: "2025-01-01T00:00:00.000Z", provider: "openai", model: "gpt", inputTotalTokens: 2000, outputTokens: 100, cacheReadTokens: 1000, tokenHitRate: 0.5, cacheableReadRate: null, usageSource: "provider_raw_usage" }),
+      JSON.stringify({ timestamp: "2025-01-01T00:00:01.000Z", provider: "anthropic", model: "claude", inputTotalTokens: 2000, outputTokens: 100, cacheReadTokens: 600, cacheWriteTokens: 400, tokenHitRate: 0.3, cacheableReadRate: 0.6, usageSource: "provider_raw_usage" }),
+    ].join("\n");
+    await runWithLog("", actualRows);
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.actualTokenHitRateWeighted).toBeCloseTo(1600 / 4000);
+    expect(summary.actualCacheableReadRateWeighted).toBeCloseTo(600 / 1000);
+    expect(summary.actualByProvider.openai.weightedCacheableReadRate).toBeNull();
+    expect(summary.actualByProvider.anthropic.weightedCacheableReadRate).toBeCloseTo(600 / 1000);
   });
 
   it("handles scalePoints with zero values (max=0)", async () => {
