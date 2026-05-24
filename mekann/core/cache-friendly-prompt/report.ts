@@ -482,6 +482,8 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
   const actualProviderModelRows = renderActualSummaryRows(summary.actualByProviderModel);
   const actualProviderGraphRows = Object.keys(summary.actualByProvider).sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./actual-hit-rate-provider-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const actualProviderModelGraphRows = Object.keys(summary.actualByProviderModel).sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./actual-hit-rate-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
+  const promptProviderGraphRows = [...new Set(rows.map((row) => row.provider ?? "unknown"))].sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./trend-provider-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
+  const promptProviderModelGraphRows = [...new Set(rows.map(providerKey))].sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./trend-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const changes = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined })).filter((x): x is { row: ParsedLog; prev: ParsedLog } => x.prev !== undefined && scopedReuseKey(x.row) !== scopedReuseKey(x.prev)).slice(-20).reverse();
   const changeRows = changes.map(({ row, prev }) => `| ${row.timestamp} | ${escapeHtml(providerKey(prev))} → ${escapeHtml(providerKey(row))} | \`${shortHash(reuseKey(prev))}\` → \`${shortHash(reuseKey(row))}\` | ${row.providerPrefixChars ?? row.featureCacheablePrefixChars ?? row.stablePrefixChars ?? 0} | ${row.stablePrefixChars ?? 0} | ${row.totalPromptChars ?? 0} |`).join("\n") || "| なし |  |  |  |  | |";
   const overviewRows = renderMetricRows([
@@ -577,9 +579,25 @@ ${proxyRows}
 
 ## 4. Prompt size trends
 
+This section is based on proxy request logs. It can include providers/models that do not have actual usage rows.
+
+### 4.1 Overall
+
 ![cache-friendly-prompt trend latest 500](./trend.svg)
 
 ![cache-friendly-prompt trend all](./trend-all.svg)
+
+### 4.2 By provider
+
+| provider | graph |
+|---|---|
+${promptProviderGraphRows}
+
+### 4.3 By provider/model
+
+| provider/model | graph |
+|---|---|
+${promptProviderModelGraphRows}
 
 ## 5. Prompt fragments
 
@@ -632,6 +650,14 @@ export async function generateCacheFriendlyReport(dir: string): Promise<void> {
       const groupRows = actualRows.filter((row) => actualProviderModelKey(row) === key);
       return fs.writeFile(path.join(dir, `actual-hit-rate-${actualGraphSlug(key)}.svg`), renderActualHitRateSvg(groupRows, MAX_POINTS, `actual provider cache hit rate: ${key}`), "utf8");
     });
+    const promptProviderGraphWrites = [...new Set(rows.map((row) => row.provider ?? "unknown"))].map((key) => {
+      const groupRows = rows.filter((row) => (row.provider ?? "unknown") === key);
+      return fs.writeFile(path.join(dir, `trend-provider-${actualGraphSlug(key)}.svg`), renderSvg(groupRows, MAX_POINTS), "utf8");
+    });
+    const promptProviderModelGraphWrites = [...new Set(rows.map(providerKey))].map((key) => {
+      const groupRows = rows.filter((row) => providerKey(row) === key);
+      return fs.writeFile(path.join(dir, `trend-${actualGraphSlug(key)}.svg`), renderSvg(groupRows, MAX_POINTS), "utf8");
+    });
     await Promise.all([
       fs.writeFile(path.join(dir, "summary.json"), JSON.stringify(summary, null, 2) + "\n", "utf8"),
       fs.writeFile(path.join(dir, "trend.svg"), renderSvg(rows, MAX_POINTS), "utf8"),
@@ -641,6 +667,8 @@ export async function generateCacheFriendlyReport(dir: string): Promise<void> {
       fs.writeFile(path.join(dir, "actual-hit-rate.svg"), renderActualHitRateSvg(actualRows, MAX_POINTS, "actual provider cache hit rate: overall"), "utf8"),
       ...actualProviderGraphWrites,
       ...actualGraphWrites,
+      ...promptProviderGraphWrites,
+      ...promptProviderModelGraphWrites,
       fs.writeFile(path.join(dir, "fragments.svg"), renderFragmentsSvg(rows), "utf8"),
       fs.writeFile(path.join(dir, "report.md"), renderReport(summary, rows), "utf8"),
     ]);
