@@ -178,7 +178,7 @@ describe("snapshot builder", () => {
 		expect(Buffer.byteLength(xml, "utf8")).toBeLessThanOrEqual(320); // watermark overhead
 	});
 
-	it("command clamps --max-bytes to minimum 256", async () => {
+	it("command clamps --max-bytes to minimum 512", async () => {
 		const { default: contextLedgerExtension } = await import("./index.js");
 		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
 		contextLedgerExtension(pi);
@@ -188,7 +188,7 @@ describe("snapshot builder", () => {
 		const notify = vi.fn();
 		await cmdDef.handler("snapshot --max-bytes 1", { cwd, ui: { notify } });
 		const xml = notify.mock.calls[0][0];
-		// Should be clamped to 256, not actually 1 byte
+		// Should be clamped to 512, not actually 1 byte
 		expect(xml).toContain("<mekann_session_context");
 		expect(Buffer.byteLength(xml, "utf8")).toBeGreaterThan(1);
 	});

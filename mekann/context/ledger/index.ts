@@ -131,7 +131,7 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 		],
 		parameters: Type.Object({
 			rebuild: Type.Optional(Type.Boolean({ description: "Rebuild from context events instead of reading latest snapshot" })),
-			maxBytes: Type.Optional(Type.Number({ description: "Maximum snapshot bytes (default: 4096, min: 256)" })),
+			maxBytes: Type.Optional(Type.Number({ description: "Maximum snapshot bytes (default: 4096, min: 512)" })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const cwd = ctx?.cwd ?? process.cwd();

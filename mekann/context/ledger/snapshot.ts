@@ -76,7 +76,11 @@ export function snapshotWatermarkMatches(xml: string, events: MekannContextEvent
 	if (!root) return false;
 	const attr = (name: string) => root.match(new RegExp(`${name}="([^"]*)"`))?.[1] ?? "";
 	const validUntil = attr("validUntil");
-	if (validUntil && Date.now() >= Date.parse(validUntil)) return false;
+	if (validUntil) {
+		const validUntilMs = Date.parse(validUntil);
+		if (!Number.isFinite(validUntilMs)) return false;
+		if (Date.now() >= validUntilMs) return false;
+	}
 	return attr("schemaVersion") === expected.schemaVersion
 		&& Number(attr("sourceEventCount")) === expected.sourceEventCount
 		&& attr("lastEventId") === expected.lastEventId
@@ -120,7 +124,8 @@ export function buildSnapshot(events: MekannContextEvent[] | ProjectedContextEve
 	const maxEvents = options.maxEvents ?? 50;
 	const maxTitleLen = options.maxTitleLen ?? 120;
 	const maxSummaryLen = options.maxSummaryLen ?? 300;
-	const maxBytes = options.maxBytes ?? 0; // 0 = unlimited
+	const rawMaxBytes = options.maxBytes ?? 0; // 0 = unlimited
+	const maxBytes = rawMaxBytes > 0 ? Math.max(512, rawMaxBytes) : 0;
 	const now = options.now ?? Date.now();
 
 	const sourceEvents = (events.length > 0 && "effectiveStatus" in events[0])

@@ -160,9 +160,11 @@ function requireValidEventInput(input: AppendEventInput, status: MekannContextEv
 	if (!VALID_STATUSES.has(status)) throw new Error(`Invalid context event status: ${status}`);
 	if (!Number.isInteger(input.priority) || input.priority < 0 || input.priority > 4) throw new Error("priority must be an integer from 0 to 4");
 	nonEmptyString(input.cwd, "cwd");
-	nonEmptyString(input.title, "title");
-	nonEmptyString(input.summary, "summary");
-	if (input.summary.length > 4000) throw new Error("summary must be 4000 characters or less");
+	const title = input.title.trim();
+	const summary = input.summary.trim();
+	nonEmptyString(title, "title");
+	nonEmptyString(summary, "summary");
+	if (summary.length > 4000) throw new Error("summary must be 4000 characters or less");
 	if (!VALID_EVIDENCE_LEVELS.has(input.evidenceLevel)) throw new Error(`Invalid evidenceLevel: ${input.evidenceLevel}`);
 	if (input.expiresAt != null && !Number.isFinite(input.expiresAt)) throw new Error("expiresAt must be a finite number");
 	for (const field of ["supersedes", "resolves", "invalidates"] as const) requireStringArray(input[field], field);
@@ -189,6 +191,8 @@ export async function appendContextEvent(input: AppendEventInput): Promise<Mekan
 	if (!/^ctx_[a-z0-9]+_[a-z0-9]+(?:_[a-f0-9]+)?$/.test(id)) throw new Error(`Invalid context event id: ${id}`);
 	const status = input.status ?? "active";
 	requireValidEventInput(input, status);
+	const title = input.title.trim();
+	const summary = input.summary.trim();
 
 	const scope = { ...(input.scope ?? {}) };
 	if (input.branchId && !scope.branchId) scope.branchId = input.branchId;
@@ -200,8 +204,8 @@ export async function appendContextEvent(input: AppendEventInput): Promise<Mekan
 		createdAt,
 		cwd: input.cwd,
 		priority: input.priority,
-		title: input.title,
-		summary: input.summary,
+		title,
+		summary,
 		evidenceLevel: input.evidenceLevel,
 		...spreadLedgerSessionMeta(input),
 		...(Object.keys(scope).length > 0 ? { scope } : {}),
