@@ -40,6 +40,14 @@ Provider usage schemas differ. The normalizer records:
 
 This is especially important for Pi normalized usage because `usage.input` may represent either total input or non-cached input depending on upstream semantics.
 
+## Cold vs warm attribution
+
+Reports separate actual usage into cold and warm rows. Cold means the first row for a `provider/model/prefix hash` key in the current log; warm means later rows with the same key. Warm hit rate is the more useful signal for steady-state cache behavior because first-use rows may be unavoidable misses.
+
+## Request role attribution
+
+Actual usage is grouped by `requestRole` so reports can distinguish main-agent cache behavior from subagent/tool requests. Subagents often have different task briefs, forked context, authority metadata, and isolated worktree paths, so a single global hit rate can hide role-specific cache regressions.
+
 ## Dynamic tail placement guard
 
 Dynamic fragments belong in the volatile tail, not in cacheable system/developer prefix fields. The provider-request inspection therefore warns when the dynamic marker appears in `system`, `developer`, `instructions`, or system/developer message content, and when extracted payload text shows dynamic context before the stable marker. This guards against provider adapter and hook ordering regressions.

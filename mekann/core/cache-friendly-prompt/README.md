@@ -45,6 +45,30 @@ actual usage rows also include prefix snapshot metadata when available:
 
 まずここを見て、stable / semi-stable に runtime 値が混ざっていないかを確認してください。
 
+## cold vs warm actual hit rate
+
+`report.md` separates actual usage into cold and warm rows. Cold means the first row for a `provider/model/prefix hash` key in the current log; warm means later rows with the same key.
+
+Summary fields:
+
+- `actualColdRequestCount`
+- `actualColdTokenHitRateWeighted`
+- `actualWarmRequestCount`
+- `actualWarmTokenHitRateWeighted`
+- `actualByWarmState`
+
+This helps avoid judging cache behavior from unavoidable first-use misses.
+
+## main vs subagent actual hit rate
+
+`report.md` groups actual provider usage by `requestRole` (`main`, `subagent`, `tool`, `unknown`). This makes it easy to see whether subagent task briefs, forked context, or authority metadata are lowering cache hit rate independently of the main agent.
+
+Generated artifacts include:
+
+- summary field: `actualByRequestRole`
+- report table: “By request role”
+- graphs: `actual-hit-rate-role-<role>.svg`
+
 ## dynamic tail placement guard
 
 Dynamic fragments should stay in the volatile user-message tail. `before_provider_request` inspects the provider payload and emits `DYNAMIC_CONTEXT_IN_CACHEABLE_PREFIX` if the dynamic marker appears in cacheable fields such as `system`, `developer`, `instructions`, or system/developer message content. It also emits `DYNAMIC_CONTEXT_BEFORE_STABLE_PREFIX` if extracted provider text shows dynamic content before the stable marker.

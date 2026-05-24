@@ -66,11 +66,17 @@ type CacheFriendlySummary = {
   actualMatchedRequestCount: number;
   actualMatchedTokenHitRateWeighted: number | null;
   actualMatchedTokenHitRatePercentiles: PercentileSummary;
+  actualColdRequestCount: number;
+  actualColdTokenHitRateWeighted: number | null;
+  actualWarmRequestCount: number;
+  actualWarmTokenHitRateWeighted: number | null;
+  actualByWarmState: Record<string, ActualProviderSummary>;
   actualCacheWriteTokens: number;
   actualCacheMissTokens: number;
   actualInputTotalTokens: number;
   actualByProvider: Record<string, ActualProviderSummary>;
   actualByProviderModel: Record<string, ActualProviderSummary>;
+  actualByRequestRole: Record<string, ActualProviderSummary>;
 };
 
 const MAX_POINTS = 500;
@@ -95,6 +101,10 @@ function actualProviderKey(row: ParsedActualUsageLog): string {
 
 function actualProviderModelKey(row: ParsedActualUsageLog): string {
   return `${row.provider ?? "unknown"}/${row.model ?? "unknown"}`;
+}
+
+function actualRequestRoleKey(row: ParsedActualUsageLog): string {
+  return row.requestRole ?? "unknown";
 }
 
 function shortHash(hash: string | undefined): string {
@@ -250,10 +260,21 @@ function groupActualRows(rows: ParsedActualUsageLog[], keyOf: (row: ParsedActual
   return Object.fromEntries([...groups.entries()].map(([key, groupRows]) => [key, summarizeActualGroup(groupRows)]));
 }
 
+function actualWarmState(row: ParsedActualUsageLog, seen: Set<string>): "cold" | "warm" {
+  const key = `${row.provider ?? "unknown"}/${row.model ?? "unknown"}/${row.providerPrefixHash ?? row.featureCacheablePrefixHash ?? row.stablePrefixHash ?? "uncacheable"}`;
+  if (seen.has(key)) return "warm";
+  seen.add(key);
+  return "cold";
+}
+
 function summarizeActual(actualRows: ParsedActualUsageLog[]) {
   const actual = summarizeActualGroup(actualRows);
   const matchedRows = actualRows.filter((row) => row.correlationConfidence === "requestId_matched");
   const matched = summarizeActualGroup(matchedRows);
+  const seenWarmKeys = new Set<string>();
+  const rowsWithWarmState = actualRows.map((row) => ({ row, warmState: actualWarmState(row, seenWarmKeys) }));
+  const coldRows = rowsWithWarmState.filter((x) => x.warmState === "cold").map((x) => x.row);
+  const warmRows = rowsWithWarmState.filter((x) => x.warmState === "warm").map((x) => x.row);
   return {
     actualRequestCount: actual.requests,
     actualTokenHitRateAvg: actual.averageTokenHitRate,
@@ -262,6 +283,14 @@ function summarizeActual(actualRows: ParsedActualUsageLog[]) {
     actualMatchedRequestCount: matched.requests,
     actualMatchedTokenHitRateWeighted: matched.weightedTokenHitRate,
     actualMatchedTokenHitRatePercentiles: percentiles(matchedRows.map((r) => r.tokenHitRate)),
+    actualColdRequestCount: coldRows.length,
+    actualColdTokenHitRateWeighted: summarizeActualGroup(coldRows).weightedTokenHitRate,
+    actualWarmRequestCount: warmRows.length,
+    actualWarmTokenHitRateWeighted: summarizeActualGroup(warmRows).weightedTokenHitRate,
+    actualByWarmState: {
+      cold: summarizeActualGroup(coldRows),
+      warm: summarizeActualGroup(warmRows),
+    },
     actualCacheableReadRateAvg: actual.averageCacheableReadRate,
     actualCacheableReadRateWeighted: actual.weightedCacheableReadRate,
     actualCacheReadTokens: actual.cacheReadTokens,
@@ -270,6 +299,7 @@ function summarizeActual(actualRows: ParsedActualUsageLog[]) {
     actualInputTotalTokens: actual.inputTotalTokens,
     actualByProvider: groupActualRows(actualRows, actualProviderKey),
     actualByProviderModel: groupActualRows(actualRows, actualProviderModelKey),
+    actualByRequestRole: groupActualRows(actualRows, actualRequestRoleKey),
   };
 }
 
@@ -546,8 +576,11 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
   const providerRows = Object.entries(summary.providers).sort((a, b) => b[1].requests - a[1].requests).map(([k, v]) => `| ${escapeHtml(k)} | ${v.requests} | ${v.uniqueReuseKeys} | \`${shortHash(v.latestReuseKey)}\` | ${v.latestProviderPrefixChars ?? v.latestStablePrefixChars} | ${v.latestStablePrefixChars} | ${v.latestTotalPromptChars} |`).join("\n");
   const actualProviderRows = renderActualSummaryRows(summary.actualByProvider);
   const actualProviderModelRows = renderActualSummaryRows(summary.actualByProviderModel);
+  const actualRequestRoleRows = renderActualSummaryRows(summary.actualByRequestRole);
+  const actualWarmStateRows = renderActualSummaryRows(summary.actualByWarmState);
   const actualProviderGraphRows = Object.keys(summary.actualByProvider).sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./actual-hit-rate-provider-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const actualProviderModelGraphRows = Object.keys(summary.actualByProviderModel).sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./actual-hit-rate-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
+  const actualRequestRoleGraphRows = Object.keys(summary.actualByRequestRole).sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./actual-hit-rate-role-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const promptProviderGraphRows = [...new Set(rows.map((row) => row.provider ?? "unknown"))].sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./trend-provider-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const promptProviderModelGraphRows = [...new Set(rows.map(providerKey))].sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./trend-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const promptRoleGraphRows = [...new Set(rows.map(requestRoleKey))].sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./trend-role-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
@@ -569,6 +602,10 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
     ["requestId_matched usage requests", summary.actualMatchedRequestCount],
     ["requestId_matched weighted tokenHitRate", formatPct(summary.actualMatchedTokenHitRateWeighted)],
     ["requestId_matched tokenHitRate percentiles", formatPercentiles(summary.actualMatchedTokenHitRatePercentiles)],
+    ["cold usage requests", summary.actualColdRequestCount],
+    ["cold weighted tokenHitRate", formatPct(summary.actualColdTokenHitRateWeighted)],
+    ["warm usage requests", summary.actualWarmRequestCount],
+    ["warm weighted tokenHitRate", formatPct(summary.actualWarmTokenHitRateWeighted)],
     ["cacheReadTokens", summary.actualCacheReadTokens],
     ["inputTotalTokens", summary.actualInputTotalTokens],
     ["outputTokens", Object.values(summary.actualByProvider).reduce((sum, v) => sum + v.outputTokens, 0)],
@@ -625,11 +662,31 @@ ${actualProviderModelRows}
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 ${actualProviderRows}
 
-### 2.4 Actual graphs
+### 2.4 By request role
+
+| request role | requests | input tokens | output tokens | cache read tokens | cache write tokens | cache miss tokens | weighted tokenHitRate | avg tokenHitRate | weighted cacheableReadRate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+${actualRequestRoleRows}
+
+### 2.5 Cold vs warm
+
+Cold means first actual usage row for a provider/model/prefix hash key in the current log. Warm means later rows with the same key.
+
+| warm state | requests | input tokens | output tokens | cache read tokens | cache write tokens | cache miss tokens | weighted tokenHitRate | avg tokenHitRate | weighted cacheableReadRate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+${actualWarmStateRows}
+
+### 2.6 Actual graphs
 
 #### Overall
 
 ![actual provider cache hit rate overall](./actual-hit-rate.svg)
+
+#### By request role
+
+| request role | graph |
+|---|---|
+${actualRequestRoleGraphRows}
 
 #### By provider
 
@@ -742,6 +799,10 @@ export async function generateCacheFriendlyReport(dir: string): Promise<void> {
       const groupRows = actualRows.filter((row) => actualProviderModelKey(row) === key);
       return fs.writeFile(path.join(dir, `actual-hit-rate-${actualGraphSlug(key)}.svg`), renderActualHitRateSvg(groupRows, MAX_POINTS, `actual provider cache hit rate: ${key}`), "utf8");
     });
+    const actualRequestRoleGraphWrites = Object.keys(summary.actualByRequestRole).map((key) => {
+      const groupRows = actualRows.filter((row) => actualRequestRoleKey(row) === key);
+      return fs.writeFile(path.join(dir, `actual-hit-rate-role-${actualGraphSlug(key)}.svg`), renderActualHitRateSvg(groupRows, MAX_POINTS, `actual provider cache hit rate by request role: ${key}`), "utf8");
+    });
     const promptRoleGraphWrites = [...new Set(rows.map(requestRoleKey))].map((key) => {
       const groupRows = rows.filter((row) => requestRoleKey(row) === key);
       return fs.writeFile(path.join(dir, `trend-role-${actualGraphSlug(key)}.svg`), renderSvg(groupRows, MAX_POINTS), "utf8");
@@ -763,6 +824,7 @@ export async function generateCacheFriendlyReport(dir: string): Promise<void> {
       fs.writeFile(path.join(dir, "actual-hit-rate.svg"), renderActualHitRateSvg(actualRows, MAX_POINTS, "actual provider cache hit rate: overall"), "utf8"),
       ...actualProviderGraphWrites,
       ...actualGraphWrites,
+      ...actualRequestRoleGraphWrites,
       ...promptRoleGraphWrites,
       ...promptProviderGraphWrites,
       ...promptProviderModelGraphWrites,
