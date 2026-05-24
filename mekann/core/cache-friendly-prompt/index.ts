@@ -175,6 +175,33 @@ function messageContainsDynamicMarker(messages: unknown[]): boolean {
     return msg.customType === "cache-friendly-dynamic-context" || contentText(msg.content).includes("<!-- prompt-fragments:Dynamic turn context -->");
   });
 }
+function payloadDynamicPlacementWarnings(payload: unknown): PromptInspectionWarning[] {
+  const warnings: PromptInspectionWarning[] = [];
+  const dynamicMarker = "<!-- prompt-fragments:Dynamic turn context -->";
+  const stableMarker = "<!-- prompt-fragments:Stable extension instructions -->";
+  const seen = new WeakSet<object>();
+  function textHasDynamic(value: unknown): boolean { return typeof value === "string" ? value.includes(dynamicMarker) : contentText(value).includes(dynamicMarker); }
+  function visit(value: unknown, path: string): void {
+    if (!value || typeof value !== "object") return;
+    if (seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) { value.forEach((v, i) => visit(v, `${path}[${i}]`)); return; }
+    const obj = value as Record<string, unknown>;
+    const role = typeof obj.role === "string" ? obj.role.toLowerCase() : "";
+    const cacheableFieldNames = ["system", "developer", "instructions"];
+    for (const field of cacheableFieldNames) {
+      if (textHasDynamic(obj[field])) warnings.push({ severity: "error", code: "DYNAMIC_CONTEXT_IN_CACHEABLE_PREFIX", message: `Dynamic context marker appears in cacheable ${field} payload field (${path}.${field}).` });
+    }
+    if ((role === "system" || role === "developer") && textHasDynamic(obj.content)) warnings.push({ severity: "error", code: "DYNAMIC_CONTEXT_IN_CACHEABLE_PREFIX", message: `Dynamic context marker appears in ${role} message content (${path}.content).` });
+    for (const [key, child] of Object.entries(obj)) visit(child, `${path}.${key}`);
+  }
+  visit(payload, "payload");
+  const finalText = extractTextFromProviderPayload(payload);
+  const dynamicIndex = finalText.indexOf(dynamicMarker);
+  const stableIndex = finalText.indexOf(stableMarker);
+  if (dynamicIndex >= 0 && stableIndex >= 0 && dynamicIndex < stableIndex) warnings.push({ severity: "warning", code: "DYNAMIC_CONTEXT_BEFORE_STABLE_PREFIX", message: "Dynamic context marker appears before stable fragment marker in extracted provider payload text." });
+  return warnings;
+}
 
 export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: Partial<CacheFriendlyPromptConfig>): void {
   const cfg = { ...DEFAULT_CONFIG, ...config };
@@ -251,7 +278,7 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
     if (sentDynamicIds.length > 0) {
       try { (pi as any).events?.emit?.("cache-friendly-prompt:dynamic-tail-sent", { fragmentIds: sentDynamicIds }); } catch {}
     }
-    const warnings = mergeWarnings(lastState?.injectedWarnings ?? [], inspectFinalPayloadText(finalText));
+    const warnings = mergeWarnings(mergeWarnings(lastState?.injectedWarnings ?? [], inspectFinalPayloadText(finalText)), payloadDynamicPlacementWarnings(event?.payload));
     if (lastState) {
       lastState.totalPromptChars = finalText.length;
       lastState.totalPromptTokenEstimate = estimateTokens(finalText);

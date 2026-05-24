@@ -40,6 +40,10 @@ Provider usage schemas differ. The normalizer records:
 
 This is especially important for Pi normalized usage because `usage.input` may represent either total input or non-cached input depending on upstream semantics.
 
+## Dynamic tail placement guard
+
+Dynamic fragments belong in the volatile tail, not in cacheable system/developer prefix fields. The provider-request inspection therefore warns when the dynamic marker appears in `system`, `developer`, `instructions`, or system/developer message content, and when extracted payload text shows dynamic context before the stable marker. This guards against provider adapter and hook ordering regressions.
+
 ## Base system prompt stability
 
 `stablePrefixHash` intentionally excludes the base system prompt. `providerPrefixHash` includes the base system prompt plus stable and semi-stable fragments, so it is closer to the prefix that provider cache sees. Reports therefore track `baseSystemHashChanges` and list recent `baseSystemHash` changes separately. If stable fragment hashes are constant but provider prefix hashes change, base system prompt volatility is the first thing to inspect.

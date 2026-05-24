@@ -45,6 +45,12 @@ actual usage rows also include prefix snapshot metadata when available:
 
 まずここを見て、stable / semi-stable に runtime 値が混ざっていないかを確認してください。
 
+## dynamic tail placement guard
+
+Dynamic fragments should stay in the volatile user-message tail. `before_provider_request` inspects the provider payload and emits `DYNAMIC_CONTEXT_IN_CACHEABLE_PREFIX` if the dynamic marker appears in cacheable fields such as `system`, `developer`, `instructions`, or system/developer message content. It also emits `DYNAMIC_CONTEXT_BEFORE_STABLE_PREFIX` if extracted provider text shows dynamic content before the stable marker.
+
+These warnings are intended to catch provider adapter or hook ordering regressions that accidentally move turn-specific context into the cacheable prefix.
+
 ## base system prompt stability
 
 `stablePrefixHash` は stable fragment だけを見る診断用 hash です。provider cache に近いのは base system prompt も含む `providerPrefixHash` です。
