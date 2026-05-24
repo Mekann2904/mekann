@@ -38,6 +38,15 @@ describe("Mailbox", () => {
       expect(result.mailbox).toHaveLength(1);
       expect(result.mailbox[0].content).toBe("hello");
     });
+
+    it("notifies all matching waiters from a stable snapshot", async () => {
+      const wait1 = mailbox.waitForUpdate("/root/task1", 0, 500);
+      const wait2 = mailbox.waitForUpdate("/root/task1", 0, 500);
+      mailbox.enqueue(mailboxItem("/root/task1", "hello"));
+      const [result1, result2] = await Promise.all([wait1, wait2]);
+      expect(result1.mailbox).toHaveLength(1);
+      expect(result2.mailbox).toHaveLength(1);
+    });
   });
 
   describe("appendEvent", () => {

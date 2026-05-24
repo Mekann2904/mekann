@@ -69,8 +69,22 @@ export class SubagentHub {
   }
   waitForHello(agentId: string, timeoutMs: number): Promise<Extract<ChildToParent,{type:"hello"}>> {
     return new Promise((resolve, reject) => {
-      const t = setTimeout(() => { off(); reject(new Error(`hello timeout for ${agentId}`)); }, timeoutMs);
-      const off = this.onMessage((m) => { if (m.type === "hello" && m.agentId === agentId) { clearTimeout(t); off(); resolve(m); } });
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout>;
+      const cleanup = () => { clearTimeout(timer); off(); };
+      const fail = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error(`hello timeout for ${agentId}`));
+      };
+      const off = this.onMessage((m) => {
+        if (m.type !== "hello" || m.agentId !== agentId || settled) return;
+        settled = true;
+        cleanup();
+        resolve(m);
+      });
+      timer = setTimeout(fail, timeoutMs);
     });
   }
   async send(agentId: string, message: ParentToChild): Promise<void> {

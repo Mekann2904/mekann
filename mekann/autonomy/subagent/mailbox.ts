@@ -104,21 +104,24 @@ export class Mailbox {
 
     // Wait for notification
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        this.waiters.delete(waiter);
-        const mb = this.pendingFor(agentPath, afterSeq);
-        const ev = this.pendingEventsFor(agentPath, afterSeq);
-        resolve({ events: ev, mailbox: mb });
-      }, timeoutMs);
-
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout>;
       const waiter = {
         agentPath,
         afterSeq,
         resolve: (value: { events: LifecycleEvent[]; mailbox: MailboxItem[] }) => {
+          if (settled) return;
+          settled = true;
           clearTimeout(timer);
+          this.waiters.delete(waiter);
           resolve(value);
         },
       };
+      timer = setTimeout(() => {
+        const mb = this.pendingFor(agentPath, afterSeq);
+        const ev = this.pendingEventsFor(agentPath, afterSeq);
+        waiter.resolve({ events: ev, mailbox: mb });
+      }, timeoutMs);
       this.waiters.add(waiter);
     });
   }
@@ -156,12 +159,11 @@ export class Mailbox {
   }
 
   private notifyWaiters(filter?: (agentPath: string) => boolean): void {
-    for (const waiter of this.waiters) {
+    for (const waiter of [...this.waiters]) {
       if (filter && !filter(waiter.agentPath)) continue;
       const mb = this.pendingFor(waiter.agentPath, waiter.afterSeq);
       const ev = this.pendingEventsFor(waiter.agentPath, waiter.afterSeq);
       if (mb.length > 0 || ev.length > 0) {
-        this.waiters.delete(waiter);
         waiter.resolve({ events: ev, mailbox: mb });
       }
     }
