@@ -18,6 +18,7 @@ export interface CodexWebSearchDetails {
 	model: string;
 	modelSource?: ModelResolutionSource;
 	effort?: CodexReasoningEffort;
+	searchContextSize?: "low" | "medium" | "high";
 	searchCalls: CodexWebSearchResult["searchCalls"];
 	citations: CodexWebSearchResult["citations"];
 	usage?: CodexWebSearchResult["usage"];

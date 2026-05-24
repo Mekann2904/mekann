@@ -11,7 +11,10 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ToolDefinition, ToolRenderResultOptions } from "@earendil-works/pi-coding-agent";
+import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { Component } from "@earendil-works/pi-tui";
+import { Text } from "@earendil-works/pi-tui";
 import { MEKANN_CODEX_DEFAULTS, MEKANN_CODEX_WEB_SEARCH_DEFAULTS } from "../../config.js";
 import {
 	CodexError,
@@ -193,6 +196,7 @@ function buildSuccessResult(
 	result: Awaited<ReturnType<typeof fetchCodexWebSearch>>,
 	modelSource?: ModelResolutionSource,
 	effort?: CodexReasoningEffort,
+	searchContextSize?: SearchContextSize,
 ): AgentToolResult<CodexWebSearchDetails> {
 	const text = formatResultText(result);
 	const details: CodexWebSearchDetails = {
@@ -200,6 +204,7 @@ function buildSuccessResult(
 		model: result.model,
 		modelSource,
 		effort,
+		searchContextSize,
 		searchCalls: result.searchCalls,
 		citations: result.citations,
 		usage: result.usage,
@@ -207,6 +212,68 @@ function buildSuccessResult(
 		streaming: false,
 	};
 	return { content: [{ type: "text", text }], details };
+}
+
+// ---------------------------------------------------------------------------
+// Metadata footer formatting
+// ---------------------------------------------------------------------------
+
+function formatMetadataLine(details: CodexWebSearchDetails): string {
+	const parts: string[] = [];
+
+	parts.push(details.model);
+
+	if (details.effort) {
+		parts.push(`effort: ${details.effort}`);
+	}
+
+	if (details.searchContextSize) {
+		parts.push(`context: ${details.searchContextSize}`);
+	}
+
+	if (details.searchCalls.length > 0) {
+		parts.push(`${details.searchCalls.length} search${details.searchCalls.length !== 1 ? "es" : ""}`);
+	}
+
+	if (details.usage?.totalTokens) {
+		parts.push(`${details.usage.totalTokens} tokens`);
+	}
+
+	return parts.join(" \u00b7 ");
+}
+
+// ---------------------------------------------------------------------------
+// Custom renderResult with metadata footer
+// ---------------------------------------------------------------------------
+
+function formatDisplayText(text: string): string {
+	return text
+		// Bold markdown markers make raw tool output noisy in the TUI.
+		.replace(/\*\*([^*]+)\*\*/g, "$1")
+		// Render markdown links as readable plain text while preserving URLs.
+		.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 — $2");
+}
+
+class CodexWebSearchResultComponent implements Component {
+	private readonly text: Text;
+
+	constructor(text: string, details: CodexWebSearchDetails) {
+		const displayText = formatDisplayText(text);
+		const metadataLine = formatMetadataLine(details);
+		this.text = new Text(
+			metadataLine ? `${displayText}\n\n${metadataLine}` : displayText,
+			0,
+			0,
+		);
+	}
+
+	render(width: number): string[] {
+		return this.text.render(width);
+	}
+
+	invalidate(): void {
+		this.text.invalidate();
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -236,6 +303,19 @@ const codexWebSearchTool: ToolDefinition<typeof CodexWebSearchParams, CodexWebSe
 
 	executionMode: "parallel",
 
+	renderResult(
+		result: AgentToolResult<CodexWebSearchDetails>,
+		_options: ToolRenderResultOptions,
+		_theme: Theme,
+		_context: unknown,
+	): Component {
+		const text = result.content
+			.filter((c): c is { type: "text"; text: string } => c.type === "text")
+			.map((c) => c.text)
+			.join("");
+		return new CodexWebSearchResultComponent(text, result.details);
+	},
+
 	async execute(
 		_toolCallId: string,
 		params: Params,
@@ -256,10 +336,12 @@ const codexWebSearchTool: ToolDefinition<typeof CodexWebSearchParams, CodexWebSe
 		const externalWebAccess = MEKANN_CODEX_WEB_SEARCH_DEFAULTS.externalWebAccess;
 		const defaultSearchContextSize = MEKANN_CODEX_WEB_SEARCH_DEFAULTS.defaultSearchContextSize;
 
+		const searchContextSize = params.searchContextSize ?? defaultSearchContextSize;
+
 		const runSearch = (model: string, effort?: CodexReasoningEffort) =>
 			fetchCodexWebSearch({
 				query: params.query,
-				searchContextSize: params.searchContextSize ?? defaultSearchContextSize,
+				searchContextSize,
 				token: auth.token,
 				accountId: auth.accountId,
 				model,
@@ -272,7 +354,7 @@ const codexWebSearchTool: ToolDefinition<typeof CodexWebSearchParams, CodexWebSe
 
 		try {
 			const result = await runSearch(resolved.model, resolved.effort);
-			return buildSuccessResult(result, resolved.source, resolved.effort);
+			return buildSuccessResult(result, resolved.source, resolved.effort, searchContextSize);
 		} catch (error) {
 			// Retry: model not found → invalidate cache, retry with Codex default
 			if (isModelAvailabilityError(error)) {
@@ -285,13 +367,13 @@ const codexWebSearchTool: ToolDefinition<typeof CodexWebSearchParams, CodexWebSe
 				const fallbackModel = findModelById(refreshed.models, refreshed.defaultModelId);
 				const fallbackEffort = normalizeReasoningEffortForModel(resolved.effort, fallbackModel);
 				const result = await runSearch(refreshed.defaultModelId, fallbackEffort);
-				return buildSuccessResult(result, "codex_default", fallbackEffort);
+				return buildSuccessResult(result, "codex_default", fallbackEffort, searchContextSize);
 			}
 
 			// Retry: reasoning parameter not supported → retry without effort
 			if (isReasoningParameterError(error) && resolved.effort) {
 				const result = await runSearch(resolved.model);
-				return buildSuccessResult(result, resolved.source);
+				return buildSuccessResult(result, resolved.source, undefined, searchContextSize);
 			}
 
 			// Re-throw with user-friendly message
