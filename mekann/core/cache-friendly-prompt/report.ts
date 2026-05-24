@@ -357,7 +357,12 @@ function renderCacheabilitySvg(rows: ParsedLog[], maxPoints: number | "all" = MA
 `;
 }
 
-function renderActualHitRateSvg(rows: ParsedActualUsageLog[], maxPoints: number | "all" = MAX_POINTS): string {
+function actualGraphSlug(key: string): string {
+  const slug = key.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return slug || "unknown";
+}
+
+function renderActualHitRateSvg(rows: ParsedActualUsageLog[], maxPoints: number | "all" = MAX_POINTS, title = "actual provider cache hit rate"): string {
   const sampled = sampleRows(rows, maxPoints);
   const plotW = SVG_WIDTH - PAD_L - PAD_R;
   const plotH = SVG_HEIGHT - PAD_T - PAD_B;
@@ -369,7 +374,7 @@ function renderActualHitRateSvg(rows: ParsedActualUsageLog[], maxPoints: number 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}">
   <rect width="100%" height="100%" fill="#0f172a"/>
-  <text x="${PAD_L}" y="18" fill="#e5e7eb" font-family="sans-serif" font-size="14">actual provider cache hit rate（${sampleLabel(sampled, maxPoints)}）</text>
+  <text x="${PAD_L}" y="18" fill="#e5e7eb" font-family="sans-serif" font-size="14">${escapeHtml(title)}（${sampleLabel(sampled, maxPoints)}）</text>
   <line x1="${PAD_L}" y1="${SVG_HEIGHT - PAD_B}" x2="${SVG_WIDTH - PAD_R}" y2="${SVG_HEIGHT - PAD_B}" stroke="#475569"/>
   <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${SVG_HEIGHT - PAD_B}" stroke="#475569"/>
   <text x="14" y="${PAD_T + 5}" fill="#94a3b8" font-family="sans-serif" font-size="11">100%</text>
@@ -442,122 +447,147 @@ function renderActualSummaryRows(summaryByKey: Record<string, ActualProviderSumm
     .join("\n") || "| なし | 0 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | n/a |";
 }
 
+function renderMetricRows(rows: Array<[string, string | number]>): string {
+  return rows.map(([name, value]) => `| ${escapeHtml(name)} | ${value} |`).join("\n");
+}
+
 function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string {
   const latest = summary.latest;
+  const latestProviderModel = latest ? `${latest.provider ?? "unknown"}/${latest.model ?? "unknown"}` : "なし";
   const providerRows = Object.entries(summary.providers).sort((a, b) => b[1].requests - a[1].requests).map(([k, v]) => `| ${escapeHtml(k)} | ${v.requests} | ${v.uniqueReuseKeys} | \`${shortHash(v.latestReuseKey)}\` | ${v.latestProviderPrefixChars ?? v.latestStablePrefixChars} | ${v.latestStablePrefixChars} | ${v.latestTotalPromptChars} |`).join("\n");
   const actualProviderRows = renderActualSummaryRows(summary.actualByProvider);
   const actualProviderModelRows = renderActualSummaryRows(summary.actualByProviderModel);
+  const actualProviderGraphRows = Object.keys(summary.actualByProvider).sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./actual-hit-rate-provider-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
+  const actualProviderModelGraphRows = Object.keys(summary.actualByProviderModel).sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./actual-hit-rate-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const changes = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined })).filter((x): x is { row: ParsedLog; prev: ParsedLog } => x.prev !== undefined && scopedReuseKey(x.row) !== scopedReuseKey(x.prev)).slice(-20).reverse();
   const changeRows = changes.map(({ row, prev }) => `| ${row.timestamp} | ${escapeHtml(providerKey(prev))} → ${escapeHtml(providerKey(row))} | \`${shortHash(reuseKey(prev))}\` → \`${shortHash(reuseKey(row))}\` | ${row.providerPrefixChars ?? row.featureCacheablePrefixChars ?? row.stablePrefixChars ?? 0} | ${row.stablePrefixChars ?? 0} | ${row.totalPromptChars ?? 0} |`).join("\n") || "| なし |  |  |  |  | |";
+  const overviewRows = renderMetricRows([
+    ["requests in proxy log", summary.totalRequests],
+    ["latest provider/model", latestProviderModel],
+    ["最新 stablePrefixHash", latest ? `\`${shortHash(latest.stablePrefixHash)}\`` : "なし"],
+    ["latest stable prefix chars", latest?.stablePrefixChars ?? 0],
+    ["latest total prompt chars", latest?.totalPromptChars ?? 0],
+    ["warnings", summary.warningCount],
+  ]);
+  const actualRows = renderMetricRows([
+    ["actual usage requests", summary.actualRequestCount],
+    ["weighted tokenHitRate", formatPct(summary.actualTokenHitRateWeighted)],
+    ["average tokenHitRate", formatPct(summary.actualTokenHitRateAvg)],
+    ["cacheReadTokens", summary.actualCacheReadTokens],
+    ["inputTotalTokens", summary.actualInputTotalTokens],
+    ["outputTokens", Object.values(summary.actualByProvider).reduce((sum, v) => sum + v.outputTokens, 0)],
+    ["cacheMissTokens", summary.actualCacheMissTokens],
+    ["weighted cacheableReadRate", formatPct(summary.actualCacheableReadRateWeighted)],
+  ]);
+  const proxyRows = renderMetricRows([
+    ["adjacentPrefixReuseRate", formatPct(summary.adjacentPrefixReuseRate)],
+    ["windowPrefixReuseRate (latest 50)", formatPct(summary.windowPrefixReuseRate)],
+    ["uniqueScopedReuseKeyRatio", formatPct(summary.uniqueScopedReuseKeyRatio)],
+    ["recentSameReuseKeyStreak", `${summary.recentSameReuseKeyStreak} requests`],
+    ["stablePrefixHashChanges", summary.stablePrefixHashChanges],
+    ["featureCacheablePrefixHashChanges", summary.featureCacheablePrefixHashChanges],
+    ["providerPrefixHashChanges", summary.providerPrefixHashChanges],
+  ]);
   return `# cache-friendly-prompt レポート
 
 最終更新: ${summary.generatedAt}
 
-## サマリー
+## 1. Overview
 
-- 総リクエスト数: ${summary.totalRequests}
-- 最新 provider/model: ${latest ? `${latest.provider ?? "unknown"}/${latest.model ?? "unknown"}` : "なし"}
-- 最新 stablePrefixHash: ${latest ? `\`${shortHash(latest.stablePrefixHash)}\`` : "なし"}
-- 最新 stable prefix: ${latest?.stablePrefixChars ?? 0} chars
-- 最新 total prompt: ${latest?.totalPromptChars ?? 0} chars
-- 直近同一 reuse key 継続: ${summary.recentSameReuseKeyStreak} requests
-- stablePrefixHash 変化回数: ${summary.stablePrefixHashChanges}
-- featureCacheablePrefixHash 変化回数: ${summary.featureCacheablePrefixHashChanges}
-- providerPrefixHash 変化回数: ${summary.providerPrefixHashChanges}
-- warning 件数: ${summary.warningCount}
-- adjacent prefix reuse proxy: ${summary.adjacentPrefixReuseRate === null ? "n/a" : `${(summary.adjacentPrefixReuseRate * 100).toFixed(1)}%`}
-- window prefix reuse proxy（直近50件）: ${summary.windowPrefixReuseRate === null ? "n/a" : `${(summary.windowPrefixReuseRate * 100).toFixed(1)}%`}
-- unique scoped reuse key ratio: ${summary.uniqueScopedReuseKeyRatio === null ? "n/a" : `${(summary.uniqueScopedReuseKeyRatio * 100).toFixed(1)}%`}
-- actual provider usage requests: ${summary.actualRequestCount}
-- actual token hit rate weighted: ${formatPct(summary.actualTokenHitRateWeighted)}
-- actual cacheable read rate weighted: ${formatPct(summary.actualCacheableReadRateWeighted)}
-- actual cache read/write/miss/input tokens: ${summary.actualCacheReadTokens}/${summary.actualCacheWriteTokens}/${summary.actualCacheMissTokens}/${summary.actualInputTotalTokens}
+このレポートは、ログから直接計算できる値だけを表示します。推測の評価文や良し悪しの判定は載せません。
 
-## 用語
+| metric | value |
+|---|---:|
+${overviewRows}
 
-| 用語 | 説明 |
-|---|---|
-| stablePrefixHash | stable fragment だけから計算した分類診断用 hash。system prompt や semi-stable は含みません。 |
-| featureCacheablePrefixHash | cache-friendly-prompt が制御する stable + semi-stable prefix の hash。 |
-| providerPrefixHash | base system prompt + stable + semi-stable から計算した raw-ish hash。provider SDK の最終 serialization そのものではありませんが、実 cache usage との相関用です。 |
-| stablePrefixChars | stable fragment 部分だけの文字数です。 |
-| providerPrefixChars | providerPrefixHash の対象になる前方 prefix の文字数です。 |
-| totalPromptChars | provider に送られるプロンプト全体の文字数。ユーザー発話、会話履歴、tool 結果、read 結果なども含まれ得ます。 |
-| adjacent prefix reuse proxy | 直前リクエストと同じ scoped reuse key なら 100%、変化した直後は 0% とする prefix continuity proxy です。actual provider cache hit rate ではありません。 |
-| window prefix reuse proxy | 直近50リクエスト内に同じ scoped reuse key が出ていた割合です。adjacent-only より provider cache store に近い proxy ですが、これも actual hit rate ではありません。 |
-| scoped reuse key | \`provider/model/reuse key\` の組です。reuse key は providerPrefixHash → featureCacheablePrefixHash → stablePrefixHash の順で選びます。providerPrefixHash / featureCacheablePrefixHash がない旧ログでは stablePrefixHash に fallback します。 |
-| hash change | reuse key が前回から変わった地点。provider cache 再利用が効きにくくなる可能性があります。 |
-| warning | cache-friendly-prompt が検出した注意点。例: stable prefix が短い、payload に不安定な構造がある、など。 |
-| fragment | 各拡張が提供するプロンプト断片。stable / semi-stable / dynamic に分類されます。 |
-| provider/model | リクエスト送信先の provider と model。例: \`openai-codex/gpt-5.5\`。 |
-| actual provider cache hit rate | provider usage token 由来の実 cache read 率です。prefix continuity proxy とは別系統です。 |
-| tokenHitRate | \`cacheReadTokens / inputTotalTokens\`。全入力 token のうち cache read された割合です。 |
-| cacheableReadRate | \`cacheReadTokens / (cacheReadTokens + cacheWriteTokens)\`。write token が分かる provider で、cache 対象領域のうち read できた割合です。 |
-
-## Actual provider cache hit rate
+## 2. Actual provider cache hit rate
 
 This section is based on provider usage tokens, not prefix continuity proxy.
 
-![actual provider cache hit rate](./actual-hit-rate.svg)
+### 2.1 Overall
 
-- request 平均 tokenHitRate: ${formatPct(summary.actualTokenHitRateAvg)}
-- token 加重 tokenHitRate: ${formatPct(summary.actualTokenHitRateWeighted)}
-- request 平均 cacheableReadRate: ${formatPct(summary.actualCacheableReadRateAvg)}
-- token 加重 cacheableReadRate: ${formatPct(summary.actualCacheableReadRateWeighted)}
-- cacheRead/cacheWrite/cacheMiss/inputTotal tokens: ${summary.actualCacheReadTokens}/${summary.actualCacheWriteTokens}/${summary.actualCacheMissTokens}/${summary.actualInputTotalTokens}
+| metric | value |
+|---|---:|
+${actualRows}
 
-### Actual cache usage by provider
-
-| provider | requests | input tokens | output tokens | cache read tokens | cache write tokens | cache miss tokens | weighted tokenHitRate | avg tokenHitRate | weighted cacheableReadRate |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-${actualProviderRows}
-
-### Actual cache usage by provider/model
+### 2.2 By provider/model
 
 | provider/model | requests | input tokens | output tokens | cache read tokens | cache write tokens | cache miss tokens | weighted tokenHitRate | avg tokenHitRate | weighted cacheableReadRate |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 ${actualProviderModelRows}
 
-## キャッシュ可能性
+### 2.3 By provider
+
+| provider | requests | input tokens | output tokens | cache read tokens | cache write tokens | cache miss tokens | weighted tokenHitRate | avg tokenHitRate | weighted cacheableReadRate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+${actualProviderRows}
+
+### 2.4 Actual graphs
+
+#### Overall
+
+![actual provider cache hit rate overall](./actual-hit-rate.svg)
+
+#### By provider
+
+| provider | graph |
+|---|---|
+${actualProviderGraphRows}
+
+#### By provider/model
+
+| provider/model | graph |
+|---|---|
+${actualProviderModelGraphRows}
+
+## 3. Prefix continuity proxy
+
+This is not actual provider cache hit rate.
+
+| metric | value |
+|---|---:|
+${proxyRows}
 
 ![cache-friendly-prompt cacheability score latest 500](./cacheability-score.svg)
 
 ![cache-friendly-prompt cacheability score all](./cacheability-score-all.svg)
 
-- 上: 最新最大 ${MAX_POINTS} 件、下: 全件の図です
-- 紫線: adjacent prefix reuse proxy。直前と同じ scoped reuse key なら \`100%\`、変化した直後は \`0%\` です
-- scoped reuse key は \`provider/model/(providerPrefixHash ?? featureCacheablePrefixHash ?? stablePrefixHash)\` です
-- 100% に張り付いているほど、provider cache に効き得る前方 prefix を隣接リクエスト間で継続して送れている可能性が高いことを示します。actual provider cache hit rate ではありません
-- オレンジの縦線は reuse key の変化点です
-- provider prefix の大きさは右上の \`provider prefix\` / \`provider tokens\` に数値で表示します
-- total prompt の大きさは、この図では考慮しません
-
-## 拡張機能ごとのコンテキスト注入量
-
-![cache-friendly-prompt fragments](./fragments.svg)
-
-- 緑: stable。キャッシュ候補の先頭部分に入る拡張コンテキストです
-- 水色: semi-stable。比較的変化しにくいセッション文脈です
-- 紫: dynamic。毎ターン変わりやすく、末尾側に追加される文脈です
-- 文字数は fragment 本文ベースです。古いログにはサイズ情報がないため、新しいリクエスト以降に表示されます
-
-## 推移
+## 4. Prompt size trends
 
 ![cache-friendly-prompt trend latest 500](./trend.svg)
 
 ![cache-friendly-prompt trend all](./trend-all.svg)
 
-## provider/model 別
+## 5. Prompt fragments
+
+![cache-friendly-prompt fragments](./fragments.svg)
+
+## 6. Provider/model proxy details
 
 | provider/model | requests | unique reuse keys | latest reuse key | provider prefix chars | stable chars | total chars |
 |---|---:|---:|---|---:|---:|---:|
 ${providerRows || "| なし | 0 | 0 |  | 0 | 0 | 0 |"}
 
-## 最近の scoped reuse key 変化
+## 7. 最近の scoped reuse key 変化 / Recent scoped reuse key changes
 
 | timestamp | provider/model | reuse key | provider prefix chars | stable chars | total chars |
 |---|---|---|---:|---:|---:|
 ${changeRows}
+
+## 8. Glossary
+
+| term | meaning |
+|---|---|
+| actual provider cache hit rate | provider usage token 由来の実 cache read 率です。prefix continuity proxy とは別系統です。 |
+| tokenHitRate | \`cacheReadTokens / inputTotalTokens\`。全入力 token のうち cache read された割合です。 |
+| cacheableReadRate | \`cacheReadTokens / (cacheReadTokens + cacheWriteTokens)\`。write token が分かる provider で、cache 対象領域のうち read できた割合です。 |
+| prefix continuity proxy | 同じ scoped reuse key が継続しているかを示す proxy 指標です。actual provider cache hit rate ではありません。 |
+| scoped reuse key | \`provider/model/reuse key\` の組です。reuse key は providerPrefixHash → featureCacheablePrefixHash → stablePrefixHash の順で選びます。 |
+| stablePrefixHash | stable fragment だけから計算した分類診断用 hash。system prompt や semi-stable は含みません。 |
+| featureCacheablePrefixHash | cache-friendly-prompt が制御する stable + semi-stable prefix の hash。 |
+| providerPrefixHash | base system prompt + stable + semi-stable から計算した raw-ish hash。provider SDK の最終 serialization そのものではありません。 |
+| hash change | reuse key が前回から変わった地点です。 |
+| fragment | 各拡張が提供するプロンプト断片。stable / semi-stable / dynamic に分類されます。 |
 `;
 }
 
@@ -571,13 +601,23 @@ export async function generateCacheFriendlyReport(dir: string): Promise<void> {
     const actualRows = readActualRows(await readIfExists(path.join(dir, "actual-usage.jsonl")));
     const generatedAt = new Date().toISOString();
     const summary = summarize(rows, actualRows, generatedAt);
+    const actualProviderGraphWrites = Object.keys(summary.actualByProvider).map((key) => {
+      const groupRows = actualRows.filter((row) => actualProviderKey(row) === key);
+      return fs.writeFile(path.join(dir, `actual-hit-rate-provider-${actualGraphSlug(key)}.svg`), renderActualHitRateSvg(groupRows, MAX_POINTS, `actual provider cache hit rate: ${key}`), "utf8");
+    });
+    const actualGraphWrites = Object.keys(summary.actualByProviderModel).map((key) => {
+      const groupRows = actualRows.filter((row) => actualProviderModelKey(row) === key);
+      return fs.writeFile(path.join(dir, `actual-hit-rate-${actualGraphSlug(key)}.svg`), renderActualHitRateSvg(groupRows, MAX_POINTS, `actual provider cache hit rate: ${key}`), "utf8");
+    });
     await Promise.all([
       fs.writeFile(path.join(dir, "summary.json"), JSON.stringify(summary, null, 2) + "\n", "utf8"),
       fs.writeFile(path.join(dir, "trend.svg"), renderSvg(rows, MAX_POINTS), "utf8"),
       fs.writeFile(path.join(dir, "trend-all.svg"), renderSvg(rows, "all"), "utf8"),
       fs.writeFile(path.join(dir, "cacheability-score.svg"), renderCacheabilitySvg(rows, MAX_POINTS), "utf8"),
       fs.writeFile(path.join(dir, "cacheability-score-all.svg"), renderCacheabilitySvg(rows, "all"), "utf8"),
-      fs.writeFile(path.join(dir, "actual-hit-rate.svg"), renderActualHitRateSvg(actualRows, MAX_POINTS), "utf8"),
+      fs.writeFile(path.join(dir, "actual-hit-rate.svg"), renderActualHitRateSvg(actualRows, MAX_POINTS, "actual provider cache hit rate: overall"), "utf8"),
+      ...actualProviderGraphWrites,
+      ...actualGraphWrites,
       fs.writeFile(path.join(dir, "fragments.svg"), renderFragmentsSvg(rows), "utf8"),
       fs.writeFile(path.join(dir, "report.md"), renderReport(summary, rows), "utf8"),
     ]);

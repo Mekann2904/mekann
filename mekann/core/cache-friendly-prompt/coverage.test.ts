@@ -323,7 +323,7 @@ describe("report.ts coverage", () => {
     await runWithLog(log);
     const report = writtenFiles.get(path.join(dir, "report.md"))!;
     // Empty hash → shortHash returns ""
-    expect(report).toContain("最新 stablePrefixHash: ``");
+    expect(report).toContain("| 最新 stablePrefixHash | `` |");
   });
 
   it("catch block in generateCacheFriendlyReport swallows errors", async () => {
