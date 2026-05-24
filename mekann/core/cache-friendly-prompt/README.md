@@ -34,6 +34,17 @@ actual usage rows also include prefix snapshot metadata when available:
 
 比較用の hit rate を出す場合は、まず `correlationConfidence === "requestId_matched"` の rows だけで再集計してください。
 
+## prefix change attribution
+
+`report.md` の “Recent scoped reuse key changes” は、前回 request と今回 request の差分から cacheable prefix を壊した可能性がある要因を表示します。
+
+- changed hash family: `baseSystemHash`, `stablePrefixHash`, `semiStableHash`, `featureCacheablePrefixHash`, `providerPrefixHash`
+- changed / added / removed fragment ids
+- provider prefix chars delta
+- total prompt chars delta
+
+まずここを見て、stable / semi-stable に runtime 値が混ざっていないかを確認してください。
+
 ## report generation
 
 ログ append ごとの report 再生成は重くなるため、既定では debounce されます。

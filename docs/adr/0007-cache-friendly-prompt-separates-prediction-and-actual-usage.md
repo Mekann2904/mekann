@@ -40,6 +40,10 @@ Provider usage schemas differ. The normalizer records:
 
 This is especially important for Pi normalized usage because `usage.input` may represent either total input or non-cached input depending on upstream semantics.
 
+## Prefix change attribution
+
+Reports include recent scoped reuse key changes with best-effort attribution. The attribution compares adjacent request rows and lists changed hash families, changed/added/removed fragment ids, and prompt-size deltas. This does not prove provider cache invalidation by itself, but it gives the first place to inspect when actual cache hit rate drops.
+
 ## Report generation
 
 Report generation is intentionally configurable. Long-running sessions should avoid regenerating the full report on every append; the extension defaults to debounced report generation. Tests and short local runs can use immediate generation. Automation may disable inline report generation and call `generateCacheFriendlyReport(dir)` explicitly.

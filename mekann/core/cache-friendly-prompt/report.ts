@@ -135,6 +135,39 @@ function reuseKey(row: ParsedLog): string {
   return row.providerPrefixHash || row.featureCacheablePrefixHash || row.stablePrefixHash || "";
 }
 
+function fragmentKey(f: { source: string; id: string; kind: string; stability: string }): string {
+  return `${f.source}:${f.id}:${f.kind}:${f.stability}`;
+}
+
+function describeFragmentDiff(prev: ParsedLog, row: ParsedLog): string {
+  const reasons: string[] = [];
+  if ((prev.baseSystemHash ?? "") !== (row.baseSystemHash ?? "")) reasons.push("baseSystemHash");
+  if ((prev.stablePrefixHash ?? "") !== (row.stablePrefixHash ?? "")) reasons.push("stablePrefixHash");
+  if ((prev.semiStableHash ?? "") !== (row.semiStableHash ?? "")) reasons.push("semiStableHash");
+  if ((prev.featureCacheablePrefixHash ?? "") !== (row.featureCacheablePrefixHash ?? "")) reasons.push("featureCacheablePrefixHash");
+  if ((prev.providerPrefixHash ?? "") !== (row.providerPrefixHash ?? "")) reasons.push("providerPrefixHash");
+
+  const prevFragments = new Map((prev.fragmentHashes ?? []).map((f) => [fragmentKey(f), f]));
+  const nextFragments = new Map((row.fragmentHashes ?? []).map((f) => [fragmentKey(f), f]));
+  const added: string[] = [];
+  const removed: string[] = [];
+  const changed: string[] = [];
+  for (const [key, f] of nextFragments) {
+    const prevF = prevFragments.get(key);
+    if (!prevF) added.push(`${f.stability}:${f.source}/${f.id}`);
+    else if (prevF.hash !== f.hash) changed.push(`${f.stability}:${f.source}/${f.id}`);
+  }
+  for (const [key, f] of prevFragments) if (!nextFragments.has(key)) removed.push(`${f.stability}:${f.source}/${f.id}`);
+
+  const parts = [
+    reasons.length ? `hashes: ${reasons.join(", ")}` : "hashes: scoped key only",
+    changed.length ? `changed: ${changed.slice(0, 6).join(", ")}${changed.length > 6 ? ", …" : ""}` : "",
+    added.length ? `added: ${added.slice(0, 4).join(", ")}${added.length > 4 ? ", …" : ""}` : "",
+    removed.length ? `removed: ${removed.slice(0, 4).join(", ")}${removed.length > 4 ? ", …" : ""}` : "",
+  ].filter(Boolean);
+  return parts.join("; ");
+}
+
 function scopedReuseKey(row: ParsedLog): string {
   const key = reuseKey(row);
   if (!key) return `uncacheable:${row.line}`;
@@ -517,7 +550,7 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
   const promptProviderModelGraphRows = [...new Set(rows.map(providerKey))].sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./trend-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const promptRoleGraphRows = [...new Set(rows.map(requestRoleKey))].sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./trend-role-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const changes = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined })).filter((x): x is { row: ParsedLog; prev: ParsedLog } => x.prev !== undefined && scopedReuseKey(x.row) !== scopedReuseKey(x.prev)).slice(-20).reverse();
-  const changeRows = changes.map(({ row, prev }) => `| ${row.timestamp} | ${escapeHtml(providerKey(prev))} → ${escapeHtml(providerKey(row))} | \`${shortHash(reuseKey(prev))}\` → \`${shortHash(reuseKey(row))}\` | ${row.providerPrefixChars ?? row.featureCacheablePrefixChars ?? row.stablePrefixChars ?? 0} | ${row.stablePrefixChars ?? 0} | ${row.totalPromptChars ?? 0} |`).join("\n") || "| なし |  |  |  |  | |";
+  const changeRows = changes.map(({ row, prev }) => `| ${row.timestamp} | ${escapeHtml(providerKey(prev))} → ${escapeHtml(providerKey(row))} | \`${shortHash(reuseKey(prev))}\` → \`${shortHash(reuseKey(row))}\` | ${escapeHtml(describeFragmentDiff(prev, row))} | ${(row.providerPrefixChars ?? row.featureCacheablePrefixChars ?? row.stablePrefixChars ?? 0) - (prev.providerPrefixChars ?? prev.featureCacheablePrefixChars ?? prev.stablePrefixChars ?? 0)} | ${(row.totalPromptChars ?? 0) - (prev.totalPromptChars ?? 0)} | ${row.providerPrefixChars ?? row.featureCacheablePrefixChars ?? row.stablePrefixChars ?? 0} | ${row.stablePrefixChars ?? 0} | ${row.totalPromptChars ?? 0} |`).join("\n") || "| なし |  |  |  |  |  |  |  | |";
   const overviewRows = renderMetricRows([
     ["requests in proxy log", summary.totalRequests],
     ["latest provider/model", latestProviderModel],
@@ -653,8 +686,8 @@ ${providerRows || "| なし | 0 | 0 |  | 0 | 0 | 0 |"}
 
 ## 7. 最近の scoped reuse key 変化 / Recent scoped reuse key changes
 
-| timestamp | provider/model | reuse key | provider prefix chars | stable chars | total chars |
-|---|---|---|---:|---:|---:|
+| timestamp | provider/model | reuse key | likely change reason | provider prefix Δchars | total Δchars | provider prefix chars | stable chars | total chars |
+|---|---|---|---|---:|---:|---:|---:|---:|
 ${changeRows}
 
 ## 8. Glossary
