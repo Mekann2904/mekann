@@ -192,6 +192,27 @@ function messageContainsDynamicMarker(messages: unknown[]): boolean {
     return msg.customType === "cache-friendly-dynamic-context" || contentText(msg.content).includes("<!-- prompt-fragments:Dynamic turn context -->");
   });
 }
+function extractCacheablePrefixPayloadText(payload: unknown): string {
+  const chunks: string[] = [];
+  const seen = new WeakSet<object>();
+  function addText(value: unknown): void {
+    const text = typeof value === "string" ? value : contentText(value);
+    if (text.trim()) chunks.push(text);
+  }
+  function visit(value: unknown): void {
+    if (!value || typeof value !== "object") return;
+    if (seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    const obj = value as Record<string, unknown>;
+    for (const field of ["system", "developer", "instructions"]) addText(obj[field]);
+    const role = typeof obj.role === "string" ? obj.role.toLowerCase() : "";
+    if (role === "system" || role === "developer") addText(obj.content);
+    for (const child of Object.values(obj)) visit(child);
+  }
+  visit(payload);
+  return chunks.join("\n");
+}
 function payloadDynamicPlacementWarnings(payload: unknown): PromptInspectionWarning[] {
   const warnings: PromptInspectionWarning[] = [];
   const dynamicMarker = "<!-- prompt-fragments:Dynamic turn context -->";
@@ -295,7 +316,8 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
     if (sentDynamicIds.length > 0) {
       try { (pi as any).events?.emit?.("cache-friendly-prompt:dynamic-tail-sent", { fragmentIds: sentDynamicIds }); } catch {}
     }
-    const warnings = mergeWarnings(mergeWarnings(lastState?.injectedWarnings ?? [], inspectFinalPayloadText(finalText)), payloadDynamicPlacementWarnings(event?.payload));
+    const cacheablePrefixPayloadText = extractCacheablePrefixPayloadText(event?.payload);
+    const warnings = mergeWarnings(mergeWarnings(lastState?.injectedWarnings ?? [], inspectFinalPayloadText(cacheablePrefixPayloadText)), payloadDynamicPlacementWarnings(event?.payload));
     if (lastState) {
       lastState.totalPromptChars = finalText.length;
       lastState.totalPromptTokenEstimate = estimateTokens(finalText);

@@ -68,6 +68,10 @@ Reports separate actual usage into cold and warm rows. Cold means the first row 
 
 Actual usage is grouped by `requestRole` so reports can distinguish main-agent cache behavior from subagent/tool requests. Subagents often have different task briefs, forked context, authority metadata, and isolated worktree paths, so a single global hit rate can hide role-specific cache regressions.
 
+## Cacheable-prefix volatility guard
+
+Volatility-before-stable warnings are evaluated against structurally cacheable provider payload fields rather than fully flattened payload text. This avoids false positives where user-message runtime text happens to be traversed before system/developer stable markers.
+
 ## Dynamic tail placement guard
 
 Dynamic fragments belong in the volatile tail, not in cacheable system/developer prefix fields. The provider-request inspection therefore warns when the dynamic marker appears in `system`, `developer`, `instructions`, or system/developer message content, and when extracted payload text shows dynamic context before the stable marker. This guards against provider adapter and hook ordering regressions.

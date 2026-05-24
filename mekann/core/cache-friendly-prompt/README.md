@@ -114,6 +114,10 @@ Generated artifacts include:
 - report table: “By request role”
 - graphs: `actual-hit-rate-role-<role>.svg`
 
+## cacheable-prefix volatility guard
+
+`FINAL_PAYLOAD_VOLATILE_BEFORE_STABLE_END` is now evaluated against structurally cacheable payload fields only (`system`, `developer`, `instructions`, and system/developer message content). User-message volatile text before a stable marker in flattened payload extraction is ignored, reducing false positives from provider payload traversal order.
+
 ## dynamic tail placement guard
 
 Dynamic fragments should stay in the volatile user-message tail. `before_provider_request` inspects the provider payload and emits `DYNAMIC_CONTEXT_IN_CACHEABLE_PREFIX` if the dynamic marker appears in cacheable fields such as `system`, `developer`, `instructions`, or system/developer message content. It also emits `DYNAMIC_CONTEXT_BEFORE_STABLE_PREFIX` if extracted provider text shows dynamic content before the stable marker.
