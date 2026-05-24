@@ -421,15 +421,19 @@ describe("autoresearchExtension", () => {
 			expect(fragments[0].content).toContain("autoresearch_run");
 		});
 
-		it("returns active prompt when active", async () => {
+		it("returns active policy and dynamic context when active", async () => {
 			const cmdHandler = pi.commands.get("autoresearch")!.handler;
 			await cmdHandler("on", createMockCtx());
 			const fragments = await collectPromptFragments({ cwd: ctx.cwd, mode: "autoresearch" });
-			expect(fragments).toHaveLength(1);
-			expect(fragments[0].kind).toBe("autoresearch_policy");
-			expect(fragments[0]).toMatchObject({ stability: "stable", scope: "mode", priority: 400, cacheIntent: "avoid_cache" });
-			expect(fragments[0].content).toContain("autoresearch モード(アクティブ)");
-			expect(fragments[0].content).toContain("dynamic autoresearch context");
+			expect(fragments).toHaveLength(2);
+			const policy = fragments.find((f) => f.id === "autoresearch:policy")!;
+			const activeContext = fragments.find((f) => f.id === "autoresearch:active-context")!;
+			expect(policy.kind).toBe("autoresearch_policy");
+			expect(policy).toMatchObject({ stability: "stable", scope: "mode", priority: 400, cacheIntent: "prefer_cache" });
+			expect(policy.content).toContain("autoresearch モード(アクティブ)");
+			expect(policy.content).not.toContain("### autoresearch 現在状態");
+			expect(activeContext).toMatchObject({ kind: "autoresearch_state", stability: "dynamic", scope: "turn", priority: 750, cacheIntent: "avoid_cache" });
+			expect(activeContext.content).toContain("### autoresearch 現在状態");
 		});
 
 		it("switches to inactive prompt after off", async () => {

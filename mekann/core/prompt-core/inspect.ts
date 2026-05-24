@@ -16,6 +16,7 @@ export function inspectFragments(fragments: PromptFragment[]): PromptInspectionW
       const error = hasVolatileValuePattern(f.content);
       warnings.push({ severity: error ? "error" : "warning", code: "VOLATILE_VALUE_IN_STABLE_FRAGMENT", message: `Stable fragment may contain volatile runtime state: ${f.id}`, fragmentId: f.id, source: f.source });
     }
+    if (f.stability === "stable" && f.cacheIntent === "avoid_cache") warnings.push({ severity: "error", code: "STABLE_FRAGMENT_AVOID_CACHE_CONFLICT", message: `Stable fragment cannot avoid cache: ${f.id}`, fragmentId: f.id, source: f.source });
     if (f.stability === "dynamic" && f.cacheIntent === "prefer_cache") warnings.push({ severity: "warning", code: "DYNAMIC_FRAGMENT_CACHE_INTENT", message: `Dynamic fragment should not prefer cache: ${f.id}`, fragmentId: f.id, source: f.source });
     if (f.kind === "unknown" && f.stability === "stable") warnings.push({ severity: "warning", code: "UNKNOWN_FRAGMENT_NOT_STABLE", message: `Unknown fragment should not be stable: ${f.id}`, fragmentId: f.id, source: f.source });
   }

@@ -420,18 +420,31 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					content: SYSTEM_PROMPT_INACTIVE,
 				}];
 			}
-			return [{
-				id: "autoresearch:policy",
-				source: "autoresearch",
-				kind: "autoresearch_policy",
-				stability: "stable",
-				scope: "mode",
-				priority: 400,
-				version: "v1",
-				cacheIntent: "avoid_cache",
-				metadata: { volatileTermsArePolicyReferences: true },
-				content: SYSTEM_PROMPT_EXTRA + "\n" + buildActiveContext(ctx.cwd, store),
-			}];
+			return [
+				{
+					id: "autoresearch:policy",
+					source: "autoresearch",
+					kind: "autoresearch_policy",
+					stability: "stable",
+					scope: "mode",
+					priority: 400,
+					version: "v1",
+					cacheIntent: "prefer_cache",
+					metadata: { volatileTermsArePolicyReferences: true },
+					content: SYSTEM_PROMPT_EXTRA,
+				},
+				{
+					id: "autoresearch:active-context",
+					source: "autoresearch",
+					kind: "autoresearch_state",
+					stability: "dynamic",
+					scope: "turn",
+					priority: 750,
+					version: "v1",
+					cacheIntent: "avoid_cache",
+					content: buildActiveContext(ctx.cwd, store),
+				},
+			];
 		},
 	});
 

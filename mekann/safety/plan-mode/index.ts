@@ -197,12 +197,12 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			const fragments: PromptFragment[] = [];
 			if (isReadOnlyMode(state.mode)) {
 				const fullPrompt = loadPrompt("plan-mode");
-				let content = fullPrompt;
 				if (PLAN_PROMPT_STRATEGY === "token_minimal") {
 					const currentHash = hashContent(fullPrompt);
-					const useFull = !state.planPromptDelivered || state.planPromptHash !== currentHash;
-					if (useFull) { state.planPromptHash = currentHash; state.planPromptDelivered = true; }
-					content = useFull ? fullPrompt : loadPrompt("plan-mode-reminder");
+					if (!state.planPromptDelivered || state.planPromptHash !== currentHash) {
+						state.planPromptHash = currentHash;
+						state.planPromptDelivered = true;
+					}
 				}
 				fragments.push({
 					id: "plan-mode:mode-policy",
@@ -213,7 +213,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 					priority: 200,
 					version: "v1",
 					cacheIntent: "prefer_cache",
-					content,
+					content: fullPrompt,
 				});
 				fragments.push({
 					id: "plan-mode:turn-reminder",

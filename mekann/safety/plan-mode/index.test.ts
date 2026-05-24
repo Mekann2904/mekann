@@ -329,7 +329,7 @@ describe("agent_end hook", () => {
 // ─── prompt provider ───────────────────────────────────────────────
 
 describe("prompt provider", () => {
-	it("plan mode: token-minimal strategy sends full policy once then a short stable reminder", async () => {
+	it("plan mode: token-minimal strategy keeps stable policy content stable and uses a dynamic reminder", async () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
@@ -340,7 +340,7 @@ describe("prompt provider", () => {
 		expect(r1[0]).toMatchObject({ kind: "mode_policy", stability: "stable", scope: "mode" });
 		expect(r1[0].content).toContain("プランモード");
 		expect(r1.find((f) => f.id === "plan-mode:turn-reminder")).toMatchObject({ stability: "dynamic", scope: "turn" });
-		expect(r2[0].content.length).toBeLessThan(r1[0].content.length);
+		expect(r2[0].content).toBe(r1[0].content);
 	});
 
 	it("main mode with implementationPlan: exposes dynamic implementation_plan fragment", async () => {

@@ -242,6 +242,18 @@ _Avoid_: final prompt orchestrator, provider cache layer
 The final prompt orchestrator that collects prompt fragments through prompt core, places stable and semi-stable content toward the front, dynamic content near the tail, and reports cacheability signals. It improves cache friendliness but does not guarantee provider cache reuse.
 _Avoid_: prompt core, cache guarantee
 
+**Actual cache usage**:
+Provider-reported token usage that shows whether a prompt request actually reused cached input, such as cache read tokens, cache write tokens, and cache hit rate. It is effect telemetry for cache-friendly prompt, not the same thing as a stable prefix hash or other cacheability prediction.
+_Avoid_: cache prediction, stable prefix streak, cache guarantee
+
+**Fragment stability**:
+The prompt-fragment classification that determines cache-friendly prompt placement: stable content belongs in the stable prefix, semi-stable content follows it, and dynamic content belongs near the turn tail. Fragment stability is the ordering source of truth; it must not be silently overridden by cache intent.
+_Avoid_: cache intent, provider cache status
+
+**Cache intent**:
+A prompt-fragment declaration of cache-related intention used for diagnostics and future provider hints. Cache intent does not decide fragment placement; contradictions such as stable content with avoid-cache intent should be surfaced as diagnostics rather than auto-corrected.
+_Avoid_: fragment stability, ordering rule
+
 ### Codex
 
 **Codex web search**:
