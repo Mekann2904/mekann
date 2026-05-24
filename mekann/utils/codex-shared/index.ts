@@ -2,7 +2,7 @@
  * Codex shared module — re-exports all shared primitives.
  */
 
-export type { CodexErrorKind, CodexModel, SearchContextSize } from "./types.js";
+export type { CodexErrorKind, CodexModel, CodexReasoningEffort, SearchContextSize } from "./types.js";
 export { extractAccountIdFromToken } from "./auth.js";
 export {
 	normalizeCodexBaseUrl,
@@ -18,6 +18,7 @@ export {
 	classifyEventErrorMessage,
 	isAuthError,
 	isModelAvailabilityError,
+	isReasoningParameterError,
 } from "./errors.js";
 export {
 	fetchCodexModels,

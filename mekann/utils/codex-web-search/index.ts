@@ -17,7 +17,9 @@ import {
 	CodexError,
 	extractAccountIdFromToken,
 	isModelAvailabilityError,
+	isReasoningParameterError,
 } from "../codex-shared/index.js";
+import type { CodexReasoningEffort } from "../codex-shared/types.js";
 import {
 	getCachedCodexModels,
 	invalidateCodexModelsCache,
@@ -25,7 +27,7 @@ import {
 import type { SearchContextSize } from "../codex-shared/types.js";
 import { fetchCodexWebSearch } from "./search.js";
 import { formatResultText } from "./result.js";
-import type { CodexWebSearchDetails } from "./result.js";
+import type { CodexWebSearchDetails, ModelResolutionSource } from "./result.js";
 
 // ---------------------------------------------------------------------------
 // Tool schema
@@ -78,6 +80,63 @@ async function resolveCodexAuth(ctx: ExtensionContext): Promise<{
 }
 
 // ---------------------------------------------------------------------------
+// Model + effort resolution
+// ---------------------------------------------------------------------------
+
+interface ResolvedModelAndEffort {
+	model: string;
+	effort?: CodexReasoningEffort;
+	source: ModelResolutionSource;
+}
+
+/**
+ * Resolve the web search model and reasoning effort:
+ *
+ * 1. config.model explicitly set → use it (+ config.effort if set)
+ * 2. Current provider is openai-codex → use ctx.model (+ same effort),
+ *    fallback to Codex default if model not in available list
+ * 3. Current provider is other → try nonCodexDefaultModel with effort: low,
+ *    fallback to Codex default if not available
+ */
+async function resolveModelAndEffort(
+	ctx: ExtensionContext,
+	token: string,
+	accountId: string,
+	baseUrl: string,
+): Promise<ResolvedModelAndEffort> {
+	const configModel = MEKANN_CODEX_WEB_SEARCH_DEFAULTS.model;
+	const configEffort = MEKANN_CODEX_WEB_SEARCH_DEFAULTS.effort as CodexReasoningEffort | undefined;
+
+	// 1. Config override
+	if (configModel) {
+		return { model: configModel, effort: configEffort ?? undefined, source: "explicit" };
+	}
+
+	const isCodexProvider = ctx.model?.provider === CODEX_PROVIDER_ID;
+	const cached = await getCachedCodexModels({ token, accountId, baseUrl });
+	const availableIds = cached.modelIds;
+
+	// 2. Codex provider → use current model, fallback to Codex default
+	if (isCodexProvider && ctx.model?.id) {
+		if (availableIds.has(ctx.model.id)) {
+			return { model: ctx.model.id, effort: configEffort ?? undefined, source: "current_codex" };
+		}
+		// Current model not available for web search → fallback
+		return { model: cached.defaultModelId, effort: configEffort ?? undefined, source: "codex_default" };
+	}
+
+	// 3. Non-codex provider → try non-codex default model, then Codex default
+	const nonCodexModel = MEKANN_CODEX_WEB_SEARCH_DEFAULTS.nonCodexDefaultModel;
+	const nonCodexEffort = MEKANN_CODEX_WEB_SEARCH_DEFAULTS.nonCodexDefaultEffort as CodexReasoningEffort;
+
+	if (availableIds.has(nonCodexModel)) {
+		return { model: nonCodexModel, effort: nonCodexEffort, source: "non_codex_default" };
+	}
+
+	return { model: cached.defaultModelId, effort: nonCodexEffort, source: "codex_default" };
+}
+
+// ---------------------------------------------------------------------------
 // Streaming helper with throttled onUpdate
 // ---------------------------------------------------------------------------
 
@@ -118,9 +177,29 @@ function createStreamingCallback(
 		}
 	};
 
-	const getAccumulatedText = () => accumulatedText;
+	return { handleDelta };
+}
 
-	return { handleDelta, getAccumulatedText };
+// ---------------------------------------------------------------------------
+// Result helper
+// ---------------------------------------------------------------------------
+
+function buildSuccessResult(
+	result: Awaited<ReturnType<typeof fetchCodexWebSearch>>,
+	modelSource?: ModelResolutionSource,
+): AgentToolResult<CodexWebSearchDetails> {
+	const text = formatResultText(result);
+	const details: CodexWebSearchDetails = {
+		responseId: result.responseId,
+		model: result.model,
+		modelSource,
+		searchCalls: result.searchCalls,
+		citations: result.citations,
+		usage: result.usage,
+		rawText: result.text,
+		streaming: false,
+	};
+	return { content: [{ type: "text", text }], details };
 }
 
 // ---------------------------------------------------------------------------
@@ -161,118 +240,58 @@ const codexWebSearchTool: ToolDefinition<typeof CodexWebSearchParams, CodexWebSe
 		const auth = await resolveCodexAuth(ctx);
 		const baseUrl = MEKANN_CODEX_DEFAULTS.baseUrl;
 
-		// Resolve model (with retry on model availability errors)
-		let modelId: string | undefined =
-			MEKANN_CODEX_WEB_SEARCH_DEFAULTS.model;
-		if (!modelId) {
-			const cached = await getCachedCodexModels({
-				token: auth.token,
-				accountId: auth.accountId,
-				baseUrl,
-			});
-			modelId = cached.defaultModelId;
-		}
+		// Resolve model + effort
+		const resolved = await resolveModelAndEffort(ctx, auth.token, auth.accountId, baseUrl);
 
 		// Streaming callback
-		const { handleDelta, getAccumulatedText } =
-			createStreamingCallback(onUpdate);
+		const { handleDelta } = createStreamingCallback(onUpdate);
 
-		const externalWebAccess =
-			MEKANN_CODEX_WEB_SEARCH_DEFAULTS.externalWebAccess;
-		const defaultSearchContextSize =
-			MEKANN_CODEX_WEB_SEARCH_DEFAULTS.defaultSearchContextSize;
+		const externalWebAccess = MEKANN_CODEX_WEB_SEARCH_DEFAULTS.externalWebAccess;
+		const defaultSearchContextSize = MEKANN_CODEX_WEB_SEARCH_DEFAULTS.defaultSearchContextSize;
 
-		try {
-			const result = await fetchCodexWebSearch({
+		const runSearch = (model: string, effort?: CodexReasoningEffort) =>
+			fetchCodexWebSearch({
 				query: params.query,
-				searchContextSize:
-					params.searchContextSize ?? defaultSearchContextSize,
+				searchContextSize: params.searchContextSize ?? defaultSearchContextSize,
 				token: auth.token,
 				accountId: auth.accountId,
-				model: modelId,
+				model,
 				baseUrl,
 				externalWebAccess,
+				effort,
 				signal: signal ?? undefined,
 				onTextDelta: handleDelta,
 			});
 
-			const text = formatResultText(result);
-
-			const details: CodexWebSearchDetails = {
-				responseId: result.responseId,
-				model: result.model,
-				searchCalls: result.searchCalls,
-				citations: result.citations,
-				usage: result.usage,
-				rawText: result.text,
-				streaming: false,
-			};
-
-			return {
-				content: [{ type: "text", text }],
-				details,
-			};
+		try {
+			const result = await runSearch(resolved.model, resolved.effort);
+			return buildSuccessResult(result, resolved.source);
 		} catch (error) {
+			// Retry: model not found → invalidate cache, retry with Codex default
 			if (isModelAvailabilityError(error)) {
-				// Invalidate cache and retry once
-				invalidateCodexModelsCache({
-					baseUrl,
-					accountId: auth.accountId,
-				});
+				invalidateCodexModelsCache({ baseUrl, accountId: auth.accountId });
 				const refreshed = await getCachedCodexModels({
 					token: auth.token,
 					accountId: auth.accountId,
 					baseUrl,
 				});
-
-				const result = await fetchCodexWebSearch({
-					query: params.query,
-					searchContextSize:
-						params.searchContextSize ?? defaultSearchContextSize,
-					token: auth.token,
-					accountId: auth.accountId,
-					model: refreshed.defaultModelId,
-					baseUrl,
-					externalWebAccess,
-					signal: signal ?? undefined,
-					onTextDelta: handleDelta,
-				});
-
-				const text = formatResultText(result);
-
-				const details: CodexWebSearchDetails = {
-					responseId: result.responseId,
-					model: result.model,
-					searchCalls: result.searchCalls,
-					citations: result.citations,
-					usage: result.usage,
-					rawText: result.text,
-					streaming: false,
-				};
-
-				return {
-					content: [{ type: "text", text }],
-					details,
-				};
+				const result = await runSearch(refreshed.defaultModelId);
+				return buildSuccessResult(result, "codex_default");
 			}
 
-			// Classify and return as error result
-			const message =
-				error instanceof CodexError
-					? error.message
-					: error instanceof Error
-						? error.message
-						: String(error);
+			// Retry: reasoning parameter not supported → retry without effort
+			if (isReasoningParameterError(error) && resolved.effort) {
+				const result = await runSearch(resolved.model);
+				return buildSuccessResult(result, resolved.source);
+			}
 
-			const kind =
-				error instanceof CodexError
-					? error.kind
-					: "unknown";
-
-			// Re-throw CodexError with user-friendly messages.
-			// The Pi framework will display the error to the LLM and user.
+			// Re-throw with user-friendly message
 			if (error instanceof CodexError) {
-				throw new CodexError(error.kind, formatUserErrorMessage(error.kind, error.message), error.status);
+				throw new CodexError(
+					error.kind,
+					formatUserErrorMessage(error.kind, error.message),
+					error.status,
+				);
 			}
 			throw new CodexError(
 				"unknown",

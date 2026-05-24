@@ -81,9 +81,15 @@ export const MEKANN_CODEX_WEB_SEARCH_DEFAULTS = {
 	externalWebAccess: true,
 	defaultSearchContextSize: "medium",
 	model: undefined,
+	effort: undefined,
+	nonCodexDefaultModel: "gpt-5.5",
+	nonCodexDefaultEffort: "low",
 } as const satisfies {
 	enabled: boolean;
 	externalWebAccess: boolean;
 	defaultSearchContextSize: "low" | "medium" | "high";
 	model: string | undefined;
+	effort: string | undefined;
+	nonCodexDefaultModel: string;
+	nonCodexDefaultEffort: string;
 };

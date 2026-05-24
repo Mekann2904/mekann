@@ -21,6 +21,7 @@ export interface CodexWebSearchOptions {
 	baseUrl?: string;
 	externalWebAccess?: boolean;
 	searchContextSize?: SearchContextSize;
+	effort?: import("../codex-shared/types.js").CodexReasoningEffort;
 	signal?: AbortSignal;
 	onTextDelta?: (delta: string) => void;
 	fetchImpl?: typeof fetch;
@@ -215,7 +216,7 @@ export async function fetchCodexWebSearch(
 // ---------------------------------------------------------------------------
 
 function buildWebSearchRequestBody(options: CodexWebSearchOptions) {
-	return {
+	const body: Record<string, unknown> = {
 		model: options.model,
 		instructions:
 			"You are a concise web search assistant. Use web search, answer the query, and preserve source citations from annotations.",
@@ -239,6 +240,12 @@ function buildWebSearchRequestBody(options: CodexWebSearchOptions) {
 		stream: true,
 		include: [],
 	};
+
+	if (options.effort) {
+		body.reasoning = { effort: options.effort };
+	}
+
+	return body;
 }
 
 function collectOutputItem(

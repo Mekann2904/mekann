@@ -68,6 +68,7 @@ export interface CodexModelsCacheEntry {
 	models: CodexModel[];
 	defaultModelId: string;
 	expiresAt: number;
+	modelIds: Set<string>;
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -116,6 +117,7 @@ export async function getCachedCodexModels(
 			models,
 			defaultModelId: defaultModel ?? models[0]?.id ?? "",
 			expiresAt: Date.now() + ttlMs,
+			modelIds: new Set(models.map((m) => m.id)),
 		};
 		cache.set(key, entry);
 		return entry;

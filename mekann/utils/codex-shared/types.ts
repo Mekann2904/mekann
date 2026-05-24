@@ -6,6 +6,14 @@
 
 export type CodexErrorKind = "auth" | "rate_limit" | "transport" | "timeout" | "schema" | "unknown";
 
+export type CodexReasoningEffort =
+	| "none"
+	| "minimal"
+	| "low"
+	| "medium"
+	| "high"
+	| "xhigh";
+
 export interface CodexModel {
 	id: string;
 	name?: string;

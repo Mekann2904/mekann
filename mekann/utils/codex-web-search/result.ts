@@ -6,9 +6,16 @@
 
 import type { CodexWebSearchResult } from "./search.js";
 
+export type ModelResolutionSource =
+	| "explicit"
+	| "current_codex"
+	| "non_codex_default"
+	| "codex_default";
+
 export interface CodexWebSearchDetails {
 	responseId?: string;
 	model: string;
+	modelSource?: ModelResolutionSource;
 	searchCalls: CodexWebSearchResult["searchCalls"];
 	citations: CodexWebSearchResult["citations"];
 	usage?: CodexWebSearchResult["usage"];

@@ -59,3 +59,14 @@ export function isModelAvailabilityError(error: unknown): boolean {
 		msg.includes("unsupported model")
 	);
 }
+
+export function isReasoningParameterError(error: unknown): boolean {
+	if (!(error instanceof CodexError)) return false;
+	if (error.status !== 400) return false;
+	const msg = error.message.toLowerCase();
+	return (
+		msg.includes("reasoning") ||
+		msg.includes("effort") ||
+		msg.includes("invalid_request")
+	);
+}
