@@ -18,13 +18,14 @@ import {
 	extractAccountIdFromToken,
 	isModelAvailabilityError,
 	isReasoningParameterError,
+	normalizeReasoningEffortForModel,
+	findModelById,
 } from "../codex-shared/index.js";
-import type { CodexReasoningEffort } from "../codex-shared/types.js";
+import type { CodexReasoningEffort, SearchContextSize } from "../codex-shared/types.js";
 import {
 	getCachedCodexModels,
 	invalidateCodexModelsCache,
 } from "../codex-shared/models.js";
-import type { SearchContextSize } from "../codex-shared/types.js";
 import { fetchCodexWebSearch } from "./search.js";
 import { formatResultText } from "./result.js";
 import type { CodexWebSearchDetails, ModelResolutionSource } from "./result.js";
@@ -119,10 +120,12 @@ async function resolveModelAndEffort(
 	// 2. Codex provider → use current model, fallback to Codex default
 	if (isCodexProvider && ctx.model?.id) {
 		if (availableIds.has(ctx.model.id)) {
-			return { model: ctx.model.id, effort: configEffort ?? undefined, source: "current_codex" };
+			const model = findModelById(cached.models, ctx.model.id);
+			return { model: ctx.model.id, effort: normalizeReasoningEffortForModel(configEffort, model), source: "current_codex" };
 		}
 		// Current model not available for web search → fallback
-		return { model: cached.defaultModelId, effort: configEffort ?? undefined, source: "codex_default" };
+		const fallbackModel = findModelById(cached.models, cached.defaultModelId);
+		return { model: cached.defaultModelId, effort: normalizeReasoningEffortForModel(configEffort, fallbackModel), source: "codex_default" };
 	}
 
 	// 3. Non-codex provider → try non-codex default model, then Codex default
@@ -130,10 +133,12 @@ async function resolveModelAndEffort(
 	const nonCodexEffort = MEKANN_CODEX_WEB_SEARCH_DEFAULTS.nonCodexDefaultEffort as CodexReasoningEffort;
 
 	if (availableIds.has(nonCodexModel)) {
-		return { model: nonCodexModel, effort: nonCodexEffort, source: "non_codex_default" };
+		const model = findModelById(cached.models, nonCodexModel);
+		return { model: nonCodexModel, effort: normalizeReasoningEffortForModel(nonCodexEffort, model), source: "non_codex_default" };
 	}
 
-	return { model: cached.defaultModelId, effort: nonCodexEffort, source: "codex_default" };
+	const fallbackModel = findModelById(cached.models, cached.defaultModelId);
+	return { model: cached.defaultModelId, effort: normalizeReasoningEffortForModel(nonCodexEffort, fallbackModel), source: "codex_default" };
 }
 
 // ---------------------------------------------------------------------------
@@ -187,12 +192,14 @@ function createStreamingCallback(
 function buildSuccessResult(
 	result: Awaited<ReturnType<typeof fetchCodexWebSearch>>,
 	modelSource?: ModelResolutionSource,
+	effort?: CodexReasoningEffort,
 ): AgentToolResult<CodexWebSearchDetails> {
 	const text = formatResultText(result);
 	const details: CodexWebSearchDetails = {
 		responseId: result.responseId,
 		model: result.model,
 		modelSource,
+		effort,
 		searchCalls: result.searchCalls,
 		citations: result.citations,
 		usage: result.usage,
@@ -265,7 +272,7 @@ const codexWebSearchTool: ToolDefinition<typeof CodexWebSearchParams, CodexWebSe
 
 		try {
 			const result = await runSearch(resolved.model, resolved.effort);
-			return buildSuccessResult(result, resolved.source);
+			return buildSuccessResult(result, resolved.source, resolved.effort);
 		} catch (error) {
 			// Retry: model not found → invalidate cache, retry with Codex default
 			if (isModelAvailabilityError(error)) {
@@ -275,8 +282,10 @@ const codexWebSearchTool: ToolDefinition<typeof CodexWebSearchParams, CodexWebSe
 					accountId: auth.accountId,
 					baseUrl,
 				});
-				const result = await runSearch(refreshed.defaultModelId);
-				return buildSuccessResult(result, "codex_default");
+				const fallbackModel = findModelById(refreshed.models, refreshed.defaultModelId);
+				const fallbackEffort = normalizeReasoningEffortForModel(resolved.effort, fallbackModel);
+				const result = await runSearch(refreshed.defaultModelId, fallbackEffort);
+				return buildSuccessResult(result, "codex_default", fallbackEffort);
 			}
 
 			// Retry: reasoning parameter not supported → retry without effort

@@ -66,7 +66,6 @@ export function isReasoningParameterError(error: unknown): boolean {
 	const msg = error.message.toLowerCase();
 	return (
 		msg.includes("reasoning") ||
-		msg.includes("effort") ||
-		msg.includes("invalid_request")
+		msg.includes("effort")
 	);
 }

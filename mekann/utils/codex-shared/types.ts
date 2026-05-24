@@ -18,6 +18,7 @@ export interface CodexModel {
 	id: string;
 	name?: string;
 	isDefault?: boolean;
+	supportedReasoningEfforts?: CodexReasoningEffort[];
 }
 
 export type SearchContextSize = "low" | "medium" | "high";

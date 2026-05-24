@@ -7,6 +7,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import type { CodexReasoningEffort } from "./utils/codex-shared/types.js";
+
 export const MEKANN_CONFIG_VERSION = 1 as const;
 
 export function getPiAgentConfigDir(home = homedir()): string {
@@ -89,7 +91,7 @@ export const MEKANN_CODEX_WEB_SEARCH_DEFAULTS = {
 	externalWebAccess: boolean;
 	defaultSearchContextSize: "low" | "medium" | "high";
 	model: string | undefined;
-	effort: string | undefined;
+	effort: CodexReasoningEffort | undefined;
 	nonCodexDefaultModel: string;
-	nonCodexDefaultEffort: string;
+	nonCodexDefaultEffort: CodexReasoningEffort;
 };

@@ -4,6 +4,7 @@
  * Formats the raw CodexWebSearchResult into LLM-facing text and structured details.
  */
 
+import type { CodexReasoningEffort } from "../codex-shared/types.js";
 import type { CodexWebSearchResult } from "./search.js";
 
 export type ModelResolutionSource =
@@ -16,6 +17,7 @@ export interface CodexWebSearchDetails {
 	responseId?: string;
 	model: string;
 	modelSource?: ModelResolutionSource;
+	effort?: CodexReasoningEffort;
 	searchCalls: CodexWebSearchResult["searchCalls"];
 	citations: CodexWebSearchResult["citations"];
 	usage?: CodexWebSearchResult["usage"];

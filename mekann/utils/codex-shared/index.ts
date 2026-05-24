@@ -27,5 +27,7 @@ export {
 	invalidateCodexModelsCache,
 	clearCodexModelsCache,
 	codexModelsCacheKey,
+	normalizeReasoningEffortForModel,
+	findModelById,
 } from "./models.js";
 export type { CodexModelsCacheEntry } from "./models.js";

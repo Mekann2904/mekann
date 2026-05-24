@@ -4,7 +4,7 @@
  * Framework-independent. No Pi imports.
  */
 
-import type { CodexModel } from "./types.js";
+import type { CodexModel, CodexReasoningEffort } from "./types.js";
 import { CodexError, classifyHttpStatus } from "./errors.js";
 import { buildCodexHeaders, getDefaultClientVersion, resolveCodexEndpoint } from "./client.js";
 
@@ -44,20 +44,98 @@ export async function fetchCodexModels(options: {
 			id?: string;
 			model?: string;
 			display_name?: string;
+			displayName?: string;
 			is_default?: boolean;
+			isDefault?: boolean;
+			supported_reasoning_efforts?: Array<{ effort?: string; reasoningEffort?: string }>;
+			supportedReasoningEfforts?: Array<{ effort?: string; reasoningEffort?: string }>;
+		}>;
+		data?: Array<{
+			slug?: string;
+			id?: string;
+			model?: string;
+			display_name?: string;
+			displayName?: string;
+			is_default?: boolean;
+			isDefault?: boolean;
+			supported_reasoning_efforts?: Array<{ effort?: string; reasoningEffort?: string }>;
+			supportedReasoningEfforts?: Array<{ effort?: string; reasoningEffort?: string }>;
 		}>;
 	};
-	return (data.models ?? [])
+	const rawModels = data.models ?? data.data ?? [];
+	return rawModels
 		.map((m) => ({
 			id: m.slug ?? m.id ?? m.model ?? "",
-			name: m.display_name,
-			isDefault: m.is_default,
+			name: m.display_name ?? m.displayName,
+			isDefault: m.is_default ?? m.isDefault,
+			supportedReasoningEfforts: normalizeReasoningEfforts(
+				m.supported_reasoning_efforts ?? m.supportedReasoningEfforts,
+			),
 		}))
 		.filter((m) => m.id.length > 0);
 }
 
 export function selectDefaultModel(models: CodexModel[]): string | undefined {
 	return (models.find((m) => m.isDefault) ?? models[0])?.id;
+}
+
+// ---------------------------------------------------------------------------
+// Effort normalization
+// ---------------------------------------------------------------------------
+
+const VALID_REASONING_EFFORTS = new Set<string>([
+	"none",
+	"minimal",
+	"low",
+	"medium",
+	"high",
+	"xhigh",
+]);
+
+function normalizeReasoningEfforts(
+	raw?: Array<{ effort?: string; reasoningEffort?: string }>,
+): CodexReasoningEffort[] | undefined {
+	if (!raw || !Array.isArray(raw)) return undefined;
+	const efforts = raw
+		.map((entry) => entry.effort ?? entry.reasoningEffort)
+		.filter((v): v is string => typeof v === "string")
+		.filter((v) => VALID_REASONING_EFFORTS.has(v)) as CodexReasoningEffort[];
+	return efforts.length > 0 ? efforts : undefined;
+}
+
+/**
+ * Normalize the requested effort for a given model.
+ * If the model lists supportedReasoningEfforts, validate against it.
+ * Falls back to "low" if the requested effort is unsupported, or undefined if
+ * even "low" is not supported.
+ */
+export function normalizeReasoningEffortForModel(
+	requested: CodexReasoningEffort | undefined,
+	model: CodexModel | undefined,
+): CodexReasoningEffort | undefined {
+	if (!requested) return undefined;
+
+	const supported = model?.supportedReasoningEfforts;
+	if (!supported || supported.length === 0) {
+		return requested;
+	}
+
+	if (supported.includes(requested)) {
+		return requested;
+	}
+
+	if (supported.includes("low")) {
+		return "low";
+	}
+
+	return undefined;
+}
+
+/**
+ * Find a CodexModel by ID from a list.
+ */
+export function findModelById(models: CodexModel[], id: string): CodexModel | undefined {
+	return models.find((m) => m.id === id);
 }
 
 // ---------------------------------------------------------------------------
