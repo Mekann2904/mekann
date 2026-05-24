@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { normalizeActualCacheUsage, type NormalizedActualCacheUsage } from "./actualUsage.js";
 import { appendActualUsageLog, appendCacheFriendlyLog, configureCacheFriendlyReports, type ReportGenerationMode } from "./logs.js";
-import { canonicalizeText, collectPromptFragments, estimateTokens, extractTextFromProviderPayload, hashFragment, inspectFinalPayloadText, inspectStablePrefix, listPromptProviders, renderPromptFragments, sha256, type CacheFriendlyRequestRole, type PromptFragmentHash, type PromptInspectionWarning, type RunKeySource } from "../prompt-core/index.js";
+import { canonicalizeText, collectPromptFragments, estimateTokens, extractTextFromProviderPayload, hashFragment, inspectBaseSystemPrompt, inspectFinalPayloadText, inspectStablePrefix, listPromptProviders, renderPromptFragments, sha256, type CacheFriendlyRequestRole, type PromptFragmentHash, type PromptInspectionWarning, type RunKeySource } from "../prompt-core/index.js";
 
 export type CacheFriendlyPromptConfig = { /** @deprecated stablePrefixHash is stable-only; base system is tracked by baseSystemHash/providerPrefixHash. */ includeBaseSystemPromptInStableHash?: boolean; logRequests: boolean; notifyOnWarnings: boolean; reportMode: ReportGenerationMode; reportDebounceMs: number; };
 const DEFAULT_CONFIG: CacheFriendlyPromptConfig = { logRequests: true, notifyOnWarnings: false, reportMode: "debounce", reportDebounceMs: 1000 };
@@ -287,7 +287,7 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
       providerPrefixTokenEstimate: estimateTokens(providerPrefixText),
       injectedStableFragmentHashes: rendered.stableFragments.map(hashFragment),
       injectedSemiStableFragmentHashes: rendered.semiStableFragments.map(hashFragment),
-      injectedWarnings: effectivePrefixWarnings(rendered.warnings, providerPrefixText),
+      injectedWarnings: mergeWarnings(effectivePrefixWarnings(rendered.warnings, providerPrefixText), inspectBaseSystemPrompt(stableBaseSystemText)),
     };
     rememberRunState(runKey, state);
     return { systemPrompt: [stableBaseSystemText, rendered.stableText, rendered.semiStableText, volatileRuntimeText ? `<!-- cache-friendly-prompt:Volatile runtime context -->\n${volatileRuntimeText}` : ""].filter(Boolean).join("\n\n") };

@@ -74,6 +74,15 @@ export function inspectFragments(fragments: PromptFragment[]): PromptInspectionW
 export function inspectStablePrefix(stablePrefixText: string): PromptInspectionWarning[] {
   return estimateTokens(stablePrefixText) < 1024 ? [{ severity: "info", code: "SHORT_STABLE_PREFIX", message: "Stable prefix is short; provider cache benefit may be limited." }] : [];
 }
+
+export function inspectBaseSystemPrompt(baseSystemText: string): PromptInspectionWarning[] {
+  const warnings: PromptInspectionWarning[] = [];
+  if (!baseSystemText.trim()) return warnings;
+  if (containsVolatileSignal(baseSystemText)) warnings.push({ severity: hasVolatileValuePattern(baseSystemText) ? "warning" : "info", code: "BASE_SYSTEM_VOLATILE_SIGNAL", message: "Base system prompt contains volatile runtime-like state before cache-friendly fragments." });
+  if (/\/Users\/[^\s)<>]+|\/tmp\/[^\s)<>]+/.test(baseSystemText)) warnings.push({ severity: "info", code: "BASE_SYSTEM_ABSOLUTE_PATH", message: "Base system prompt contains absolute paths; consider moving path-heavy runtime context behind cacheable fragments." });
+  if (/<available_skills>[\s\S]*?<\/available_skills>/.test(baseSystemText)) warnings.push({ severity: "info", code: "BASE_SYSTEM_AVAILABLE_SKILLS_BLOCK", message: "Base system prompt contains available skills metadata before cache-friendly fragments." });
+  return warnings;
+}
 export function inspectFinalPayloadText(finalText: string, contextLabel?: string): PromptInspectionWarning[] {
   const marker = "<!-- prompt-fragments:Stable extension instructions -->";
   const i = finalText.indexOf(marker);

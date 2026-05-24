@@ -194,6 +194,10 @@ _Avoid_: full conversation dump, context starvation
 A subagent delegation that has been accepted but is waiting for an open execution slot. A queued subagent is still visible as an agent so the parent can observe pending work instead of relying on memory or re-spawning attempts.
 _Avoid_: hidden spawn backlog, failed spawn, background promise
 
+**Subagent spawn queue**:
+The bounded global FIFO queue for accepted subagent delegations that cannot start immediately because execution slots are full. The queue preserves accepted work across turns without treating queued work as failed or forcing the parent agent to remember every pending delegation.
+_Avoid_: per-parent scheduler, unbounded backlog, retry loop
+
 **Subagent lifecycle**:
 The module shape that owns how a subagent is spawned, connected, run, finalized, and recorded. Subagent lifecycle concentrates spawn-to-final-result behavior so display, IPC, registry, mailbox, authority preamble, and result storage do not leak across unrelated callers.
 _Avoid_: agent orchestration, child session manager, runtime wrapper

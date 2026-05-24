@@ -62,6 +62,20 @@ Stable and semi-stable fragments are sorted deterministically by stability, prio
 
 If this warning appears, give the fragments distinct ids, sources, kinds, or priorities so cacheable prefix rendering does not depend on registration or collection order.
 
+## recent low-hit actual rows
+
+`report.md` includes “Recent low-hit actual rows” for request-level `tokenHitRate < 80%`. It shows provider/model, role, input tokens, `baseSystemHash`, `providerPrefixHash`, total prompt chars, and correlation confidence so regressions can be inspected without ad-hoc scripts.
+
+## base system volatility audit
+
+The base system prompt is inspected for volatile/runtime-like content before cache-friendly fragments. Warnings include:
+
+- `BASE_SYSTEM_VOLATILE_SIGNAL`
+- `BASE_SYSTEM_ABSOLUTE_PATH`
+- `BASE_SYSTEM_AVAILABLE_SKILLS_BLOCK`
+
+These warnings help identify Pi/core prompt content that may still sit before the cacheable extension prefix.
+
 ## base system hash hit-rate attribution
 
 `actual-usage.jsonl` includes `baseSystemHash` when a request snapshot can be correlated. `report.md` groups actual usage by short base system hash so main/subagent base prompt differences can be measured separately from extension fragment differences.

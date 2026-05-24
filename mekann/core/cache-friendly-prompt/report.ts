@@ -589,6 +589,15 @@ function formatPct(value: number | null): string {
   return value === null ? "n/a" : `${(value * 100).toFixed(1)}%`;
 }
 
+function renderLowHitRows(rows: ParsedActualUsageLog[], limit = 20): string {
+  return rows
+    .filter((row) => typeof row.tokenHitRate === "number" && Number.isFinite(row.tokenHitRate) && row.tokenHitRate < 0.8)
+    .slice(-limit)
+    .reverse()
+    .map((row) => `| ${row.timestamp} | ${escapeHtml(`${row.provider ?? "unknown"}/${row.model ?? "unknown"}`)} | ${row.requestRole ?? "unknown"} | ${formatPct(row.tokenHitRate)} | ${row.inputTotalTokens ?? 0} | \`${shortHash(row.baseSystemHash)}\` | \`${shortHash(row.providerPrefixHash)}\` | ${row.totalPromptChars ?? 0} | ${row.correlationConfidence ?? "missing"} |`)
+    .join("\n") || "| なし |  |  |  |  |  |  |  | |";
+}
+
 function renderActualSummaryRows(summaryByKey: Record<string, ActualProviderSummary>): string {
   return Object.entries(summaryByKey)
     .sort((a, b) => b[1].inputTotalTokens - a[1].inputTotalTokens || b[1].requests - a[1].requests)
@@ -600,10 +609,11 @@ function renderMetricRows(rows: Array<[string, string | number]>): string {
   return rows.map(([name, value]) => `| ${escapeHtml(name)} | ${value} |`).join("\n");
 }
 
-function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string {
+function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[], actualRows: ParsedActualUsageLog[]): string {
   const latest = summary.latest;
   const latestProviderModel = latest ? `${latest.provider ?? "unknown"}/${latest.model ?? "unknown"}` : "なし";
   const providerRows = Object.entries(summary.providers).sort((a, b) => b[1].requests - a[1].requests).map(([k, v]) => `| ${escapeHtml(k)} | ${v.requests} | ${v.uniqueReuseKeys} | \`${shortHash(v.latestReuseKey)}\` | ${v.latestProviderPrefixChars ?? v.latestStablePrefixChars} | ${v.latestStablePrefixChars} | ${v.latestTotalPromptChars} |`).join("\n");
+  const lowHitRows = renderLowHitRows(actualRows);
   const actualProviderRows = renderActualSummaryRows(summary.actualByProvider);
   const actualProviderModelRows = renderActualSummaryRows(summary.actualByProviderModel);
   const actualRequestRoleRows = renderActualSummaryRows(summary.actualByRequestRole);
@@ -628,7 +638,7 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
     ["dynamic truncations", summary.dynamicTruncationCount],
     ["dynamic truncation omitted chars", summary.dynamicTruncationOmittedChars],
   ]);
-  const actualRows = renderMetricRows([
+  const actualMetricRows = renderMetricRows([
     ["actual usage requests", summary.actualRequestCount],
     ["weighted tokenHitRate", formatPct(summary.actualTokenHitRateWeighted)],
     ["average tokenHitRate", formatPct(summary.actualTokenHitRateAvg)],
@@ -696,7 +706,7 @@ This section is based on provider usage tokens, not prefix continuity proxy.
 
 | metric | value |
 |---|---:|
-${actualRows}
+${actualMetricRows}
 
 ### 2.2 By provider/model
 
@@ -763,6 +773,14 @@ ${actualProviderGraphRows}
 | provider/model | graph |
 |---|---|
 ${actualProviderModelGraphRows}
+
+### 2.9 Recent low-hit actual rows
+
+Rows with request-level \`tokenHitRate < 80%\`.
+
+| timestamp | provider/model | role | tokenHitRate | input tokens | baseSystemHash | providerPrefixHash | total chars | correlation |
+|---|---|---|---:|---:|---|---|---:|---|
+${lowHitRows}
 
 ## 3. Prefix continuity proxy
 
@@ -909,7 +927,7 @@ export async function generateCacheFriendlyReport(dir: string): Promise<void> {
       ...promptProviderGraphWrites,
       ...promptProviderModelGraphWrites,
       fs.writeFile(path.join(dir, "fragments.svg"), renderFragmentsSvg(rows), "utf8"),
-      fs.writeFile(path.join(dir, "report.md"), renderReport(summary, rows), "utf8"),
+      fs.writeFile(path.join(dir, "report.md"), renderReport(summary, rows, actualRows), "utf8"),
     ]);
   } catch { /* report generation must never break agent execution */ }
 }
