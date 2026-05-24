@@ -224,6 +224,27 @@ _Avoid_: final prompt orchestrator, provider cache layer
 The final prompt orchestrator that collects prompt fragments through prompt core, places stable and semi-stable content toward the front, dynamic content near the tail, and reports cacheability signals. It improves cache friendliness but does not guarantee provider cache reuse.
 _Avoid_: prompt core, cache guarantee
 
+### Codex
+
+**Codex web search**:
+A Pi extension tool that exposes the ChatGPT Codex backend-api web search endpoint as an LLM-callable tool. The agent sends a query and receives streamed text, search call metadata, and URL citations.
+_Avoid_: codex-search (ambiguous with code search), web search tool (too generic)
+
+**Codex search tool input**:
+The parameters the LLM provides when calling codex web search: `query` (required) and `searchContextSize` (optional, default `medium`). All other options (authentication, model, network policy) are resolved internally.
+_Avoid_: tool options, tool config
+
+**Codex search execution policy**:
+A host-side configuration controlling whether the tool may cross the external network boundary (`externalWebAccess`). This is not a search quality parameter but an execution permission. When `false`, the tool is either unregistered or returns an explicit unavailability error.
+_Avoid_: search mode, network setting
+
+**Codex shared**:
+The `codex-shared` module inside the utils suite, containing Codex API client primitives shared by `codex-limits` and `codex-web-search`: base URL normalization, auth header generation, account ID extraction, error types and classification, model fetching, model selection, and the in-memory model cache. It does not depend on Pi tool framework types.
+_Avoid_: codex-core, codex-base
+
+**Codex shared dependency rule**:
+`codex-shared` must not depend on Pi tool framework types or on `codex-limits` / `codex-web-search`. Pi-context–aware auth resolution belongs in each tool module or a thin adapter, not in `codex-shared`.
+
 ## Example dialogue
 
 Developer: “Should this be a goal or autoresearch?”

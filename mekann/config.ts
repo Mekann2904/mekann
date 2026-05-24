@@ -70,3 +70,20 @@ export const MEKANN_OUTPUT_GATE_DEFAULTS = {
 	defaultMaxResults: 10,
 	artifactRetentionMaxFiles: 200,
 } as const;
+
+export const MEKANN_CODEX_DEFAULTS = {
+	baseUrl: "https://chatgpt.com/backend-api",
+	modelCacheTtlMs: 5 * 60 * 1000,
+} as const;
+
+export const MEKANN_CODEX_WEB_SEARCH_DEFAULTS = {
+	enabled: true,
+	externalWebAccess: true,
+	defaultSearchContextSize: "medium",
+	model: undefined,
+} as const satisfies {
+	enabled: boolean;
+	externalWebAccess: boolean;
+	defaultSearchContextSize: "low" | "medium" | "high";
+	model: string | undefined;
+};
