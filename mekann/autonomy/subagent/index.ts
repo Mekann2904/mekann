@@ -146,9 +146,34 @@ const ApplyAgentResultsSchema = Type.Object({ source: Type.Optional(Type.Union([
 const RejectAgentResultSchema = Type.Object({ result_id: Type.String(), reason: Type.Optional(Type.String()) });
 const RetryAgentResultSchema = Type.Object({ result_id: Type.String(), reason: Type.Optional(Type.String()) });
 
+function registerSubagentPromptProvider(): void {
+  registerPromptProvider({
+    id: "subagent",
+    getFragments() {
+      return [{
+        id: "subagent:policy",
+        source: "subagent",
+        kind: "subagent_policy",
+        stability: "stable",
+        scope: "global",
+        priority: 350,
+        version: "v1",
+        cacheIntent: "prefer_cache",
+        content: [
+          "Subagents are available for independent work.",
+          "Use spawn_agent proactively for parallel work, multi-area investigations, comparing approaches, or review/research that can proceed independently.",
+          "For independent tasks, spawn all useful subagents first, then use wait_agent to collect results before summarizing or deciding next steps.",
+          "Do not use subagents for trivial one-file edits or tasks requiring tight step-by-step coordination.",
+        ].join("\n"),
+      }];
+    },
+  });
+}
+
 // ─── Extension entry point ───────────────────────────────────────
 
 export default function subagentExtension(pi: ExtensionAPI): void | Promise<void> {
+  registerSubagentPromptProvider();
   if (process.env.PI_SUBAGENT_ROLE === "child") {
     const g = globalThis as typeof globalThis & { __piSubagentChildStarted?: boolean };
     if (!g.__piSubagentChildStarted) {
@@ -293,30 +318,6 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   function withCtrl(handler: ToolHandler) {
     return async (_id: string, params: unknown, _signal: unknown, _onUpdate: unknown, ctx: ExtensionContext) => handler(ensureControl(), params, ctx);
   }
-
-  // ─── Prompt fragments ────────────────────────────────────────
-
-  registerPromptProvider({
-    id: "subagent",
-    getFragments() {
-      return [{
-        id: "subagent:policy",
-        source: "subagent",
-        kind: "subagent_policy",
-        stability: "stable",
-        scope: "global",
-        priority: 350,
-        version: "v1",
-        cacheIntent: "prefer_cache",
-        content: [
-          "Subagents are available for independent work.",
-          "Use spawn_agent proactively for parallel work, multi-area investigations, comparing approaches, or review/research that can proceed independently.",
-          "For independent tasks, spawn all useful subagents first, then use wait_agent to collect results before summarizing or deciding next steps.",
-          "Do not use subagents for trivial one-file edits or tasks requiring tight step-by-step coordination.",
-        ].join("\n"),
-      }];
-    },
-  });
 
   // ─── Tools ────────────────────────────────────────────────────
 
