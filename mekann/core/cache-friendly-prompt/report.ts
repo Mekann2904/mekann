@@ -6,9 +6,12 @@ type ParsedLog = CacheFriendlyRequestLog & { line: number };
 
 type ProviderSummary = {
   requests: number;
+  uniqueReuseKeys: number;
   uniqueStablePrefixHashes: number;
+  latestReuseKey: string;
   latestStablePrefixHash: string;
   latestStablePrefixChars: number;
+  latestProviderPrefixChars: number;
   latestTotalPromptChars: number;
 };
 
@@ -23,8 +26,11 @@ type CacheFriendlySummary = {
     stablePrefixChars: number;
     totalPromptChars: number;
   };
+  recentSameReuseKeyStreak: number;
   recentSameHashStreak: number;
   stablePrefixHashChanges: number;
+  featureCacheablePrefixHashChanges: number;
+  providerPrefixHashChanges: number;
   warningCount: number;
   providers: Record<string, ProviderSummary>;
 };
@@ -58,23 +64,35 @@ function readRows(text: string): ParsedLog[] {
   return rows;
 }
 
+function reuseKey(row: ParsedLog): string {
+  return row.providerPrefixHash ?? row.featureCacheablePrefixHash ?? row.stablePrefixHash ?? "";
+}
+
+function countChanges(rows: ParsedLog[], value: (row: ParsedLog) => string | undefined): number {
+  let changes = 0;
+  for (let i = 1; i < rows.length; i++) if ((value(rows[i]) ?? "") !== (value(rows[i - 1]) ?? "")) changes++;
+  return changes;
+}
+
 function summarize(rows: ParsedLog[], generatedAt: string): CacheFriendlySummary {
   const latest = rows.at(-1);
-  let changes = 0;
-  for (let i = 1; i < rows.length; i++) if (rows[i]?.stablePrefixHash !== rows[i - 1]?.stablePrefixHash) changes++;
   let streak = 0;
-  for (let i = rows.length - 1; i >= 0 && latest && rows[i]?.stablePrefixHash === latest.stablePrefixHash; i--) streak++;
+  const latestReuseKey = latest ? reuseKey(latest) : "";
+  for (let i = rows.length - 1; i >= 0 && latest && reuseKey(rows[i]) === latestReuseKey; i--) streak++;
   const providers: Record<string, ProviderSummary> = {};
   const hashesByProvider = new Map<string, Set<string>>();
   for (const row of rows) {
     const key = providerKey(row);
     hashesByProvider.set(key, hashesByProvider.get(key) ?? new Set<string>());
-    hashesByProvider.get(key)?.add(row.stablePrefixHash);
+    hashesByProvider.get(key)?.add(reuseKey(row));
     providers[key] = {
       requests: (providers[key]?.requests ?? 0) + 1,
+      uniqueReuseKeys: hashesByProvider.get(key)?.size ?? 0,
       uniqueStablePrefixHashes: hashesByProvider.get(key)?.size ?? 0,
+      latestReuseKey: reuseKey(row),
       latestStablePrefixHash: row.stablePrefixHash,
       latestStablePrefixChars: row.stablePrefixChars ?? 0,
+      latestProviderPrefixChars: row.providerPrefixChars ?? 0,
       latestTotalPromptChars: row.totalPromptChars ?? 0,
     };
   }
@@ -89,8 +107,11 @@ function summarize(rows: ParsedLog[], generatedAt: string): CacheFriendlySummary
       stablePrefixChars: latest.stablePrefixChars ?? 0,
       totalPromptChars: latest.totalPromptChars ?? 0,
     } : undefined,
+    recentSameReuseKeyStreak: streak,
     recentSameHashStreak: streak,
-    stablePrefixHashChanges: changes,
+    stablePrefixHashChanges: countChanges(rows, (r) => r.stablePrefixHash),
+    featureCacheablePrefixHashChanges: countChanges(rows, (r) => r.featureCacheablePrefixHash),
+    providerPrefixHashChanges: countChanges(rows, (r) => r.providerPrefixHash),
     warningCount: rows.reduce((n, r) => n + (r.warnings?.length ?? 0), 0),
     providers,
   };
@@ -118,10 +139,11 @@ function sampleLabel(sampled: ParsedLog[], maxPoints: number | "all"): string {
 function renderSvg(rows: ParsedLog[], maxPoints: number | "all" = MAX_POINTS): string {
   const sampled = sampleRows(rows, maxPoints);
   const stable = sampled.map((r) => r.stablePrefixChars ?? 0);
+  const providerPrefix = sampled.map((r) => r.providerPrefixChars ?? r.featureCacheablePrefixChars ?? r.stablePrefixChars ?? 0);
   const total = sampled.map((r) => r.totalPromptChars ?? 0);
-  const max = Math.max(1, ...stable, ...total);
+  const max = Math.max(1, ...stable, ...providerPrefix, ...total);
   const changeXs: number[] = [];
-  for (let i = 1; i < sampled.length; i++) if (sampled[i]?.stablePrefixHash !== sampled[i - 1]?.stablePrefixHash) changeXs.push(i);
+  for (let i = 1; i < sampled.length; i++) if (reuseKey(sampled[i]) !== reuseKey(sampled[i - 1])) changeXs.push(i);
   const plotW = SVG_WIDTH - PAD_L - PAD_R;
   const xFor = (i: number) => PAD_L + (sampled.length === 1 ? 0 : (i / (sampled.length - 1)) * plotW);
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -134,18 +156,20 @@ function renderSvg(rows: ParsedLog[], maxPoints: number | "all" = MAX_POINTS): s
   <text x="20" y="${SVG_HEIGHT - PAD_B}" fill="#94a3b8" font-family="sans-serif" font-size="11">0</text>
   ${changeXs.map((i) => `<line x1="${xFor(i).toFixed(1)}" y1="${PAD_T}" x2="${xFor(i).toFixed(1)}" y2="${SVG_HEIGHT - PAD_B}" stroke="#f59e0b" stroke-opacity="0.28"/>`).join("\n  ")}
   <polyline fill="none" stroke="#38bdf8" stroke-width="2" points="${scalePoints(total, max)}"/>
+  <polyline fill="none" stroke="#fbbf24" stroke-width="2" points="${scalePoints(providerPrefix, max)}"/>
   <polyline fill="none" stroke="#22c55e" stroke-width="2" points="${scalePoints(stable, max)}"/>
   ${sampled.map((r, i) => (r.warnings?.length ?? 0) > 0 ? `<circle cx="${xFor(i).toFixed(1)}" cy="${PAD_T + 8}" r="3" fill="#ef4444"/>` : "").filter(Boolean).join("\n  ")}
-  <rect x="${SVG_WIDTH - 250}" y="28" width="220" height="62" rx="6" fill="#111827" stroke="#334155"/>
-  <line x1="${SVG_WIDTH - 236}" y1="48" x2="${SVG_WIDTH - 196}" y2="48" stroke="#38bdf8" stroke-width="3"/><text x="${SVG_WIDTH - 188}" y="52" fill="#cbd5e1" font-family="sans-serif" font-size="12">totalPromptChars</text>
-  <line x1="${SVG_WIDTH - 236}" y1="68" x2="${SVG_WIDTH - 196}" y2="68" stroke="#22c55e" stroke-width="3"/><text x="${SVG_WIDTH - 188}" y="72" fill="#cbd5e1" font-family="sans-serif" font-size="12">stablePrefixChars</text>
+  <rect x="${SVG_WIDTH - 280}" y="28" width="250" height="82" rx="6" fill="#111827" stroke="#334155"/>
+  <line x1="${SVG_WIDTH - 266}" y1="48" x2="${SVG_WIDTH - 226}" y2="48" stroke="#38bdf8" stroke-width="3"/><text x="${SVG_WIDTH - 218}" y="52" fill="#cbd5e1" font-family="sans-serif" font-size="12">totalPromptChars</text>
+  <line x1="${SVG_WIDTH - 266}" y1="68" x2="${SVG_WIDTH - 226}" y2="68" stroke="#fbbf24" stroke-width="3"/><text x="${SVG_WIDTH - 218}" y="72" fill="#cbd5e1" font-family="sans-serif" font-size="12">providerPrefixChars</text>
+  <line x1="${SVG_WIDTH - 266}" y1="88" x2="${SVG_WIDTH - 226}" y2="88" stroke="#22c55e" stroke-width="3"/><text x="${SVG_WIDTH - 218}" y="92" fill="#cbd5e1" font-family="sans-serif" font-size="12">stablePrefixChars</text>
 </svg>
 `;
 }
 
 function renderCacheabilitySvg(rows: ParsedLog[], maxPoints: number | "all" = MAX_POINTS): string {
   const sampled = sampleRows(rows, maxPoints);
-  const reuseScore = sampled.map((r, i) => i > 0 && r.stablePrefixHash === sampled[i - 1]?.stablePrefixHash ? 100 : 0);
+  const reuseScore = sampled.map((r, i) => i > 0 && reuseKey(r) === reuseKey(sampled[i - 1]) ? 100 : 0);
   const plotW = SVG_WIDTH - PAD_L - PAD_R;
   const plotH = SVG_HEIGHT - PAD_T - PAD_B;
   const xFor = (i: number) => PAD_L + (sampled.length === 1 ? 0 : (i / (sampled.length - 1)) * plotW);
@@ -154,11 +178,12 @@ function renderCacheabilitySvg(rows: ParsedLog[], maxPoints: number | "all" = MA
     const y = PAD_T + plotH - (v / 100) * plotH;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(" ");
-  const changeLines = sampled.map((r, i) => i > 0 && r.stablePrefixHash !== sampled[i - 1]?.stablePrefixHash ? `<line x1="${xFor(i).toFixed(1)}" y1="${PAD_T}" x2="${xFor(i).toFixed(1)}" y2="${SVG_HEIGHT - PAD_B}" stroke="#f59e0b" stroke-opacity="0.35"/>` : "").filter(Boolean).join("\n  ");
+  const changeLines = sampled.map((r, i) => i > 0 && reuseKey(r) !== reuseKey(sampled[i - 1]) ? `<line x1="${xFor(i).toFixed(1)}" y1="${PAD_T}" x2="${xFor(i).toFixed(1)}" y2="${SVG_HEIGHT - PAD_B}" stroke="#f59e0b" stroke-opacity="0.35"/>` : "").filter(Boolean).join("\n  ");
   const latest = sampled.at(-1);
   const latestScore = reuseScore.at(-1) ?? 0;
   let streak = 0;
-  for (let i = sampled.length - 1; i >= 0 && latest && sampled[i]?.stablePrefixHash === latest.stablePrefixHash; i--) streak++;
+  const latestReuseKey = latest ? reuseKey(latest) : "";
+  for (let i = sampled.length - 1; i >= 0 && latest && reuseKey(sampled[i]) === latestReuseKey; i--) streak++;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}">
   <rect width="100%" height="100%" fill="#0f172a"/>
@@ -174,8 +199,8 @@ function renderCacheabilitySvg(rows: ParsedLog[], maxPoints: number | "all" = MA
   <rect x="${SVG_WIDTH - 310}" y="28" width="280" height="118" rx="6" fill="#111827" stroke="#334155"/>
   <line x1="${SVG_WIDTH - 294}" y1="50" x2="${SVG_WIDTH - 254}" y2="50" stroke="#a78bfa" stroke-width="3"/><text x="${SVG_WIDTH - 246}" y="54" fill="#cbd5e1" font-family="sans-serif" font-size="12">reuse score</text>
   <text x="${SVG_WIDTH - 294}" y="78" fill="#ddd6fe" font-family="sans-serif" font-size="12">latest score: ${latestScore.toFixed(0)}%</text>
-  <text x="${SVG_WIDTH - 294}" y="98" fill="#cbd5e1" font-family="sans-serif" font-size="12">stable prefix: ${latest?.stablePrefixChars ?? 0} chars</text>
-  <text x="${SVG_WIDTH - 294}" y="118" fill="#cbd5e1" font-family="sans-serif" font-size="12">stable tokens: ${latest?.stablePrefixTokenEstimate ?? 0}</text>
+  <text x="${SVG_WIDTH - 294}" y="98" fill="#cbd5e1" font-family="sans-serif" font-size="12">provider prefix: ${latest?.providerPrefixChars ?? latest?.featureCacheablePrefixChars ?? latest?.stablePrefixChars ?? 0} chars</text>
+  <text x="${SVG_WIDTH - 294}" y="118" fill="#cbd5e1" font-family="sans-serif" font-size="12">provider tokens: ${latest?.providerPrefixTokenEstimate ?? latest?.featureCacheablePrefixTokenEstimate ?? latest?.stablePrefixTokenEstimate ?? 0}</text>
   <text x="${SVG_WIDTH - 294}" y="138" fill="#fbbf24" font-family="sans-serif" font-size="12">streak: ${streak} requests</text>
 </svg>
 `;
@@ -226,9 +251,9 @@ function renderFragmentsSvg(rows: ParsedLog[]): string {
 
 function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string {
   const latest = summary.latest;
-  const providerRows = Object.entries(summary.providers).sort((a, b) => b[1].requests - a[1].requests).map(([k, v]) => `| ${escapeHtml(k)} | ${v.requests} | ${v.uniqueStablePrefixHashes} | \`${shortHash(v.latestStablePrefixHash)}\` | ${v.latestStablePrefixChars} | ${v.latestTotalPromptChars} |`).join("\n");
-  const changes = rows.filter((r, i) => i > 0 && r.stablePrefixHash !== rows[i - 1]?.stablePrefixHash).slice(-20).reverse();
-  const changeRows = changes.map((r) => `| ${r.timestamp} | ${escapeHtml(providerKey(r))} | \`${shortHash(rows[r.line - 2]?.stablePrefixHash)}\` → \`${shortHash(r.stablePrefixHash)}\` | ${r.stablePrefixChars ?? 0} | ${r.totalPromptChars ?? 0} |`).join("\n") || "| なし |  |  |  |  |";
+  const providerRows = Object.entries(summary.providers).sort((a, b) => b[1].requests - a[1].requests).map(([k, v]) => `| ${escapeHtml(k)} | ${v.requests} | ${v.uniqueReuseKeys} | \`${shortHash(v.latestReuseKey)}\` | ${v.latestProviderPrefixChars || v.latestStablePrefixChars} | ${v.latestStablePrefixChars} | ${v.latestTotalPromptChars} |`).join("\n");
+  const changes = rows.filter((r, i) => i > 0 && reuseKey(r) !== reuseKey(rows[i - 1])).slice(-20).reverse();
+  const changeRows = changes.map((r) => `| ${r.timestamp} | ${escapeHtml(providerKey(r))} | \`${shortHash(reuseKey(rows[r.line - 2]))}\` → \`${shortHash(reuseKey(r))}\` | ${r.providerPrefixChars ?? r.featureCacheablePrefixChars ?? r.stablePrefixChars ?? 0} | ${r.stablePrefixChars ?? 0} | ${r.totalPromptChars ?? 0} |`).join("\n") || "| なし |  |  |  |  | |";
   return `# cache-friendly-prompt レポート
 
 最終更新: ${summary.generatedAt}
@@ -240,20 +265,24 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
 - 最新 stablePrefixHash: ${latest ? `\`${shortHash(latest.stablePrefixHash)}\`` : "なし"}
 - 最新 stable prefix: ${latest?.stablePrefixChars ?? 0} chars
 - 最新 total prompt: ${latest?.totalPromptChars ?? 0} chars
-- 直近同一 hash 継続: ${summary.recentSameHashStreak} requests
+- 直近同一 reuse key 継続: ${summary.recentSameReuseKeyStreak} requests
 - stablePrefixHash 変化回数: ${summary.stablePrefixHashChanges}
+- featureCacheablePrefixHash 変化回数: ${summary.featureCacheablePrefixHashChanges}
+- providerPrefixHash 変化回数: ${summary.providerPrefixHashChanges}
 - warning 件数: ${summary.warningCount}
 
 ## 用語
 
 | 用語 | 説明 |
 |---|---|
-| stable prefix | provider に送るプロンプトの先頭に置かれる、変化しにくい部分。system prompt や stable fragment を含みます。 |
-| stablePrefixHash | stable prefix の内容から計算した hash。同じ値が続くほど、安定部分が変わっていないことを示します。 |
-| stablePrefixChars | stable prefix の文字数。キャッシュ候補になり得る先頭部分の大きさです。 |
+| stablePrefixHash | stable fragment だけから計算した分類診断用 hash。system prompt や semi-stable は含みません。 |
+| featureCacheablePrefixHash | cache-friendly-prompt が制御する stable + semi-stable prefix の hash。 |
+| providerPrefixHash | base system prompt + stable + semi-stable から計算した raw-ish hash。provider SDK の最終 serialization そのものではありませんが、実 cache usage との相関用です。 |
+| stablePrefixChars | stable fragment 部分だけの文字数です。 |
+| providerPrefixChars | providerPrefixHash の対象になる前方 prefix の文字数です。 |
 | totalPromptChars | provider に送られるプロンプト全体の文字数。ユーザー発話、会話履歴、tool 結果、read 結果なども含まれ得ます。 |
-| cacheability | 前回と同じ stablePrefixHash なら 100%、変化した直後は 0% とするキャッシュ再利用スコアです。 |
-| hash change | stablePrefixHash が前回から変わった地点。安定部分が変化したため、キャッシュ再利用が効きにくくなる可能性があります。 |
+| prefix reuse proxy | 前回と同じ reuse key なら 100%、変化した直後は 0% とする再利用 proxy です。reuse key は providerPrefixHash → featureCacheablePrefixHash → stablePrefixHash の順で選びます。 |
+| hash change | reuse key が前回から変わった地点。provider cache 再利用が効きにくくなる可能性があります。 |
 | warning | cache-friendly-prompt が検出した注意点。例: stable prefix が短い、payload に不安定な構造がある、など。 |
 | fragment | 各拡張が提供するプロンプト断片。stable / semi-stable / dynamic に分類されます。 |
 | provider/model | リクエスト送信先の provider と model。例: \`openai-codex/gpt-5.5\`。 |
@@ -265,10 +294,11 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
 ![cache-friendly-prompt cacheability score all](./cacheability-score-all.svg)
 
 - 上: 最新最大 ${MAX_POINTS} 件、下: 全件の図です
-- 紫線: reuse score。前回と同じ \`stablePrefixHash\` なら \`100%\`、変化した直後は \`0%\` です
-- 100% に張り付いているほど、同じ stable prefix を継続して送れていることを示します
-- オレンジの縦線は \`stablePrefixHash\` の変化点です
-- stable prefix の大きさは右上の \`stable prefix\` / \`stable tokens\` に数値で表示します
+- 紫線: prefix reuse proxy。前回と同じ reuse key なら \`100%\`、変化した直後は \`0%\` です
+- reuse key は \`providerPrefixHash ?? featureCacheablePrefixHash ?? stablePrefixHash\` です
+- 100% に張り付いているほど、provider cache に効き得る前方 prefix を継続して送れている可能性が高いことを示します
+- オレンジの縦線は reuse key の変化点です
+- provider prefix の大きさは右上の \`provider prefix\` / \`provider tokens\` に数値で表示します
 - total prompt の大きさは、この図では考慮しません
 
 ## 拡張機能ごとのコンテキスト注入量
@@ -288,14 +318,14 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
 
 ## provider/model 別
 
-| provider/model | requests | unique hashes | latest hash | stable chars | total chars |
-|---|---:|---:|---|---:|---:|
-${providerRows || "| なし | 0 | 0 |  | 0 | 0 |"}
+| provider/model | requests | unique reuse keys | latest reuse key | provider prefix chars | stable chars | total chars |
+|---|---:|---:|---|---:|---:|---:|
+${providerRows || "| なし | 0 | 0 |  | 0 | 0 | 0 |"}
 
 ## 最近の hash 変化
 
-| timestamp | provider/model | hash | stable chars | total chars |
-|---|---|---|---:|---:|
+| timestamp | provider/model | reuse key | provider prefix chars | stable chars | total chars |
+|---|---|---|---:|---:|---:|
 ${changeRows}
 `;
 }

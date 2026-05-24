@@ -40,5 +40,5 @@ export function renderPromptFragments(fragments: PromptFragment[]): RenderedProm
   const stableText = renderSection("Stable extension instructions", stable);
   const semiStableText = renderSection("Semi-stable session context", semi);
   const dynamicText = renderSection("Dynamic turn context", dynamic);
-  return { stableText, semiStableText, dynamicText, stablePrefixText: stableText, stablePrefixHash: sha256(stableText), fragmentHashes: rendered.map(hashFragment), warnings: [...limited.warnings, ...inspectFragments(rendered), ...inspectStablePrefix(stableText)] };
+  return { stableText, semiStableText, dynamicText, stablePrefixText: stableText, stablePrefixHash: sha256(stableText), stableFragments: stable, semiStableFragments: semi, dynamicFragments: dynamic, fragmentHashes: rendered.map(hashFragment), warnings: [...limited.warnings, ...inspectFragments(rendered), ...inspectStablePrefix(stableText)] };
 }
