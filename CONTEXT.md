@@ -190,6 +190,10 @@ _Avoid_: context compression, multitasking in one context
 The principle for subagent delegation that gives the subagent the task goal, constraints, expected output, and relevant starting points, while avoiding unnecessary parent conversation that would undermine context isolation. Parent context is forked only when it is genuinely needed for correctness or safety.
 _Avoid_: full conversation dump, context starvation
 
+**Queued subagent**:
+A subagent delegation that has been accepted but is waiting for an open execution slot. A queued subagent is still visible as an agent so the parent can observe pending work instead of relying on memory or re-spawning attempts.
+_Avoid_: hidden spawn backlog, failed spawn, background promise
+
 **Subagent lifecycle**:
 The module shape that owns how a subagent is spawned, connected, run, finalized, and recorded. Subagent lifecycle concentrates spawn-to-final-result behavior so display, IPC, registry, mailbox, authority preamble, and result storage do not leak across unrelated callers.
 _Avoid_: agent orchestration, child session manager, runtime wrapper

@@ -68,6 +68,10 @@ Reports separate actual usage into cold and warm rows. Cold means the first row 
 
 Actual usage is grouped by `requestRole` so reports can distinguish main-agent cache behavior from subagent/tool requests. Subagents often have different task briefs, forked context, authority metadata, and isolated worktree paths, so a single global hit rate can hide role-specific cache regressions.
 
+## Volatile runtime context placement
+
+The extension moves known volatile base system prompt lines such as current date and working directory after stable/semi-stable fragments. The information remains available, but daily date changes and workspace path changes no longer sit before the cacheable extension prefix.
+
 ## Cacheable-prefix volatility guard
 
 Volatility-before-stable warnings are evaluated against structurally cacheable provider payload fields rather than fully flattened payload text. This avoids false positives where user-message runtime text happens to be traversed before system/developer stable markers.

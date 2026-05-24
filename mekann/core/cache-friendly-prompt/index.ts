@@ -167,6 +167,16 @@ function runKeyWithSource(event: any, ctx: any): { runKey: string; runKeySource:
 }
 function joinPromptPartsRaw(parts: Array<string | undefined | null>): string { return parts.filter((p): p is string => typeof p === "string" && p.length > 0).join("\n\n"); }
 function joinPromptPartsCanonical(parts: Array<string | undefined | null>): string { return parts.map((p) => typeof p === "string" ? canonicalizeText(p) : "").filter(Boolean).join("\n\n"); }
+function splitVolatileRuntimeBlock(systemPrompt: string): { stableBaseSystemText: string; volatileRuntimeText: string } {
+  const volatileLine = /^\s*(Current date|Current working directory|Current cwd|Working directory)\s*:/i;
+  const stableLines: string[] = [];
+  const volatileLines: string[] = [];
+  for (const line of systemPrompt.split(/\n/)) {
+    if (volatileLine.test(line)) volatileLines.push(line);
+    else stableLines.push(line);
+  }
+  return { stableBaseSystemText: stableLines.join("\n").trimEnd(), volatileRuntimeText: volatileLines.join("\n").trim() };
+}
 function mergeWarnings(a: PromptInspectionWarning[], b: PromptInspectionWarning[]): PromptInspectionWarning[] {
   const seen = new Set<string>();
   const out: PromptInspectionWarning[] = [];
@@ -248,8 +258,9 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
     const fragments = await collectPromptFragments({ cwd: contextCwd(event, ctx), provider: modelProvider(ctx), model: modelId(ctx) });
     const rendered = renderPromptFragments(fragments);
     const baseSystemText = typeof event.systemPrompt === "string" ? event.systemPrompt : "";
+    const { stableBaseSystemText, volatileRuntimeText } = splitVolatileRuntimeBlock(baseSystemText);
     const featureCacheablePrefixText = joinPromptPartsCanonical([rendered.stableText, rendered.semiStableText]);
-    const providerPrefixText = joinPromptPartsRaw([baseSystemText, rendered.stableText, rendered.semiStableText]);
+    const providerPrefixText = joinPromptPartsRaw([stableBaseSystemText, rendered.stableText, rendered.semiStableText]);
     const { runKey, runKeySource } = runKeyWithSource(event, ctx);
     const requestId = requestIdOf(event, ctx);
     const { requestRole, requestRoleSource } = requestRoleOf(event, ctx);
@@ -261,7 +272,7 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
       requestRoleSource,
       snapshotSource: "before_agent_start",
       createdAt: new Date().toISOString(),
-      baseSystemHash: baseSystemText ? sha256(canonicalizeText(baseSystemText)) : undefined,
+      baseSystemHash: stableBaseSystemText ? sha256(canonicalizeText(stableBaseSystemText)) : undefined,
       stablePrefixHash: sha256(canonicalizeText(rendered.stableText)),
       semiStableHash: rendered.semiStableText ? sha256(canonicalizeText(rendered.semiStableText)) : undefined,
       featureCacheablePrefixHash: sha256(featureCacheablePrefixText),
@@ -279,7 +290,7 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
       injectedWarnings: effectivePrefixWarnings(rendered.warnings, providerPrefixText),
     };
     rememberRunState(runKey, state);
-    return { systemPrompt: [event.systemPrompt, rendered.stableText, rendered.semiStableText].filter(Boolean).join("\n\n") };
+    return { systemPrompt: [stableBaseSystemText, rendered.stableText, rendered.semiStableText, volatileRuntimeText ? `<!-- cache-friendly-prompt:Volatile runtime context -->\n${volatileRuntimeText}` : ""].filter(Boolean).join("\n\n") };
   });
 
   pi.on("context", async (event: any, ctx: any) => {

@@ -114,6 +114,17 @@ Generated artifacts include:
 - report table: “By request role”
 - graphs: `actual-hit-rate-role-<role>.svg`
 
+## volatile runtime context placement
+
+`before_agent_start` moves simple volatile runtime lines from the base system prompt to after stable/semi-stable fragments:
+
+- `Current date:`
+- `Current working directory:`
+- `Current cwd:`
+- `Working directory:`
+
+This keeps date/cwd changes from invalidating the earlier cacheable prefix while preserving the information later in the system prompt under `cache-friendly-prompt:Volatile runtime context`.
+
 ## cacheable-prefix volatility guard
 
 `FINAL_PAYLOAD_VOLATILE_BEFORE_STABLE_END` is now evaluated against structurally cacheable payload fields only (`system`, `developer`, `instructions`, and system/developer message content). User-message volatile text before a stable marker in flattened payload extraction is ignored, reducing false positives from provider payload traversal order.
