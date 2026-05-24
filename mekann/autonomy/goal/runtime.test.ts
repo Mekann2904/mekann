@@ -145,6 +145,36 @@ describe("GoalRuntime", () => {
     expect(afterExactDup.time_used_seconds).toBe(8);
   });
 
+  it("dedupes message usage using inputTotal when input is absent", () => {
+    const { runtime, ctx, store } = setupRuntimeWithGoal();
+
+    runtime.onTurnStart({ turnIndex: 0 }, ctx);
+
+    runtime.onMessageEnd(
+      {
+        message: {
+          role: "assistant",
+          timestamp: 123,
+          usage: { inputTotal: 100, output: 10, cacheRead: 0 },
+        },
+      },
+      ctx,
+    );
+
+    runtime.onMessageEnd(
+      {
+        message: {
+          role: "assistant",
+          timestamp: 123,
+          usage: { inputTotal: 200, output: 10, cacheRead: 0 },
+        },
+      },
+      ctx,
+    );
+
+    expect(store.getGoal()!.tokens_used).toBe(320);
+  });
+
   // ─── 3. cached input is excluded from token delta ────────────
 
   it("cached input is excluded from token delta", () => {

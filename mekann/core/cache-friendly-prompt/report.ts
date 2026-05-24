@@ -29,6 +29,8 @@ type CacheFriendlySummary = {
   recentSameReuseKeyStreak: number;
   adjacentPrefixReuseRate: number | null;
   windowPrefixReuseRate: number | null;
+  uniqueScopedReuseKeyRatio: number | null;
+  /** @deprecated Use uniqueScopedReuseKeyRatio. */
   uniqueReuseKeyRatio: number | null;
   recentSameHashStreak: number;
   stablePrefixHashChanges: number;
@@ -68,11 +70,13 @@ function readRows(text: string): ParsedLog[] {
 }
 
 function reuseKey(row: ParsedLog): string {
-  return row.providerPrefixHash ?? row.featureCacheablePrefixHash ?? row.stablePrefixHash ?? "";
+  return row.providerPrefixHash || row.featureCacheablePrefixHash || row.stablePrefixHash || "";
 }
 
 function scopedReuseKey(row: ParsedLog): string {
-  return `${row.provider ?? "unknown"}:${row.model ?? "unknown"}:${reuseKey(row)}`;
+  const key = reuseKey(row);
+  if (!key) return `uncacheable:${row.line}`;
+  return `${row.provider ?? "unknown"}:${row.model ?? "unknown"}:${key}`;
 }
 
 function rate(num: number, den: number): number | null {
@@ -133,6 +137,7 @@ function summarize(rows: ParsedLog[], generatedAt: string): CacheFriendlySummary
       latestTotalPromptChars: row.totalPromptChars ?? 0,
     };
   }
+  const uniqueScopedReuseKeyRatio = rate(new Set(rows.map(scopedReuseKey)).size, rows.length);
   return {
     generatedAt,
     totalRequests: rows.length,
@@ -147,7 +152,8 @@ function summarize(rows: ParsedLog[], generatedAt: string): CacheFriendlySummary
     recentSameReuseKeyStreak: streak,
     adjacentPrefixReuseRate: computeAdjacentPrefixReuseRate(rows),
     windowPrefixReuseRate: computeWindowPrefixReuseRate(rows),
-    uniqueReuseKeyRatio: rate(new Set(rows.map(scopedReuseKey)).size, rows.length),
+    uniqueScopedReuseKeyRatio,
+    uniqueReuseKeyRatio: uniqueScopedReuseKeyRatio,
     recentSameHashStreak: stableHashStreak,
     stablePrefixHashChanges: countChanges(rows, (r) => r.stablePrefixHash),
     featureCacheablePrefixHashChanges: countChanges(rows, (r) => r.featureCacheablePrefixHash),
@@ -293,7 +299,7 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
   const latest = summary.latest;
   const providerRows = Object.entries(summary.providers).sort((a, b) => b[1].requests - a[1].requests).map(([k, v]) => `| ${escapeHtml(k)} | ${v.requests} | ${v.uniqueReuseKeys} | \`${shortHash(v.latestReuseKey)}\` | ${v.latestProviderPrefixChars ?? v.latestStablePrefixChars} | ${v.latestStablePrefixChars} | ${v.latestTotalPromptChars} |`).join("\n");
   const changes = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined })).filter((x): x is { row: ParsedLog; prev: ParsedLog } => Boolean(x.prev) && scopedReuseKey(x.row) !== scopedReuseKey(x.prev)).slice(-20).reverse();
-  const changeRows = changes.map(({ row, prev }) => `| ${row.timestamp} | ${escapeHtml(providerKey(row))} | \`${shortHash(reuseKey(prev))}\` → \`${shortHash(reuseKey(row))}\` | ${row.providerPrefixChars ?? row.featureCacheablePrefixChars ?? row.stablePrefixChars ?? 0} | ${row.stablePrefixChars ?? 0} | ${row.totalPromptChars ?? 0} |`).join("\n") || "| なし |  |  |  |  | |";
+  const changeRows = changes.map(({ row, prev }) => `| ${row.timestamp} | ${escapeHtml(providerKey(prev))} → ${escapeHtml(providerKey(row))} | \`${shortHash(reuseKey(prev))}\` → \`${shortHash(reuseKey(row))}\` | ${row.providerPrefixChars ?? row.featureCacheablePrefixChars ?? row.stablePrefixChars ?? 0} | ${row.stablePrefixChars ?? 0} | ${row.totalPromptChars ?? 0} |`).join("\n") || "| なし |  |  |  |  | |";
   return `# cache-friendly-prompt レポート
 
 最終更新: ${summary.generatedAt}
@@ -312,7 +318,7 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
 - warning 件数: ${summary.warningCount}
 - adjacent prefix reuse proxy: ${summary.adjacentPrefixReuseRate === null ? "n/a" : `${(summary.adjacentPrefixReuseRate * 100).toFixed(1)}%`}
 - window prefix reuse proxy（直近50件）: ${summary.windowPrefixReuseRate === null ? "n/a" : `${(summary.windowPrefixReuseRate * 100).toFixed(1)}%`}
-- unique scoped reuse key ratio: ${summary.uniqueReuseKeyRatio === null ? "n/a" : `${(summary.uniqueReuseKeyRatio * 100).toFixed(1)}%`}
+- unique scoped reuse key ratio: ${summary.uniqueScopedReuseKeyRatio === null ? "n/a" : `${(summary.uniqueScopedReuseKeyRatio * 100).toFixed(1)}%`}
 
 ## 用語
 
@@ -367,7 +373,7 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
 |---|---:|---:|---|---:|---:|---:|
 ${providerRows || "| なし | 0 | 0 |  | 0 | 0 | 0 |"}
 
-## 最近の hash 変化
+## 最近の scoped reuse key 変化
 
 | timestamp | provider/model | reuse key | provider prefix chars | stable chars | total chars |
 |---|---|---|---:|---:|---:|

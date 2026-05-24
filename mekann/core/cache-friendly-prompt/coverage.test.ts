@@ -449,6 +449,56 @@ describe("report.ts coverage", () => {
     expect(report).toContain("→");
   });
 
+  it("does not count same reuse hash across different provider/model as adjacent reuse", async () => {
+    const rows = [
+      makeLog({ provider: "openai", model: "gpt-a", stablePrefixHash: "a".repeat(64) }),
+      makeLog({ provider: "deepseek", model: "deepseek-chat", stablePrefixHash: "a".repeat(64) }),
+    ];
+    await runWithLog(rows.join("\n"));
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.adjacentPrefixReuseRate).toBe(0);
+  });
+
+  it("counts A-B-A as window reuse but not adjacent reuse", async () => {
+    const rows = [
+      makeLog({ stablePrefixHash: "a".repeat(64) }),
+      makeLog({ stablePrefixHash: "b".repeat(64) }),
+      makeLog({ stablePrefixHash: "a".repeat(64) }),
+    ];
+    await runWithLog(rows.join("\n"));
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.adjacentPrefixReuseRate).toBe(0);
+    expect(summary.windowPrefixReuseRate).toBeCloseTo(1 / 3);
+  });
+
+  it("does not treat empty reuse keys as reusable", async () => {
+    const rows = [
+      makeLog({ stablePrefixHash: "" }),
+      makeLog({ stablePrefixHash: "" }),
+    ];
+    await runWithLog(rows.join("\n"));
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.adjacentPrefixReuseRate).toBe(0);
+  });
+
+  it("writes uniqueScopedReuseKeyRatio and deprecated uniqueReuseKeyRatio alias", async () => {
+    await runWithLog(makeLog());
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.uniqueScopedReuseKeyRatio).toBe(1);
+    expect(summary.uniqueReuseKeyRatio).toBe(summary.uniqueScopedReuseKeyRatio);
+  });
+
+  it("shows provider/model transition for scoped reuse key changes", async () => {
+    const rows = [
+      makeLog({ provider: "p1", model: "m1", stablePrefixHash: "a".repeat(64) }),
+      makeLog({ provider: "p2", model: "m2", stablePrefixHash: "a".repeat(64) }),
+    ];
+    await runWithLog(rows.join("\n"));
+    const report = writtenFiles.get(path.join(dir, "report.md"))!;
+    expect(report).toContain("最近の scoped reuse key 変化");
+    expect(report).toContain("p1/m1 → p2/m2");
+  });
+
   it("covers hashesByProvider.get(key)?.size ?? 0 (first occurrence of provider)", async () => {
     const rows = [
       makeLog({ provider: "first", model: "m", stablePrefixHash: "aaa" + "a".repeat(61) }),

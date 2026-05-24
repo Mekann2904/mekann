@@ -95,7 +95,8 @@ export class GoalRuntime {
     // unique enough: two distinct assistant messages can be emitted in the same
     // millisecond, so include usage fields in the key.
     const usage = msg.usage;
-    const usageKey = [msg.timestamp, usage.input ?? 0, usage.output ?? 0, usage.cacheRead ?? 0].join(":");
+    const inputTotal = usage.inputTotal ?? usage.input ?? 0;
+    const usageKey = [msg.timestamp, inputTotal, usage.output ?? 0, usage.cacheRead ?? 0].join(":");
     if (this.accounted_assistant_usage_keys.has(usageKey)) return;
     this.accounted_assistant_usage_keys.add(usageKey);
 
@@ -106,7 +107,6 @@ export class GoalRuntime {
     // inputTotal/input means total input tokens including cache-read/cache-write tokens.
     // Provider raw usage must be normalized before this point; this is a
     // non-cached-token budget proxy, not provider billing/cost accounting.
-    const inputTotal = usage.inputTotal ?? usage.input ?? 0;
     const tokenDelta = Math.max(0, inputTotal - (usage.cacheRead ?? 0)) + (usage.output ?? 0);
 
     // Also account accumulated wall-clock time
