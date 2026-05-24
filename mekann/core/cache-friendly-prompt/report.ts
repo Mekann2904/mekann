@@ -78,6 +78,10 @@ function providerKey(row: ParsedLog): string {
   return `${row.provider ?? "unknown"}/${row.model ?? "unknown"}`;
 }
 
+function requestRoleKey(row: ParsedLog): string {
+  return row.requestRole ?? "unknown";
+}
+
 function actualProviderKey(row: ParsedActualUsageLog): string {
   return row.provider ?? "unknown";
 }
@@ -484,6 +488,7 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
   const actualProviderModelGraphRows = Object.keys(summary.actualByProviderModel).sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./actual-hit-rate-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const promptProviderGraphRows = [...new Set(rows.map((row) => row.provider ?? "unknown"))].sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./trend-provider-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const promptProviderModelGraphRows = [...new Set(rows.map(providerKey))].sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./trend-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
+  const promptRoleGraphRows = [...new Set(rows.map(requestRoleKey))].sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./trend-role-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const changes = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined })).filter((x): x is { row: ParsedLog; prev: ParsedLog } => x.prev !== undefined && scopedReuseKey(x.row) !== scopedReuseKey(x.prev)).slice(-20).reverse();
   const changeRows = changes.map(({ row, prev }) => `| ${row.timestamp} | ${escapeHtml(providerKey(prev))} → ${escapeHtml(providerKey(row))} | \`${shortHash(reuseKey(prev))}\` → \`${shortHash(reuseKey(row))}\` | ${row.providerPrefixChars ?? row.featureCacheablePrefixChars ?? row.stablePrefixChars ?? 0} | ${row.stablePrefixChars ?? 0} | ${row.totalPromptChars ?? 0} |`).join("\n") || "| なし |  |  |  |  | |";
   const overviewRows = renderMetricRows([
@@ -587,13 +592,19 @@ This section is based on proxy request logs. It can include providers/models tha
 
 ![cache-friendly-prompt trend all](./trend-all.svg)
 
-### 4.2 By provider
+### 4.2 By request role
+
+| request role | graph |
+|---|---|
+${promptRoleGraphRows}
+
+### 4.3 By provider
 
 | provider | graph |
 |---|---|
 ${promptProviderGraphRows}
 
-### 4.3 By provider/model
+### 4.4 By provider/model
 
 | provider/model | graph |
 |---|---|
@@ -650,6 +661,10 @@ export async function generateCacheFriendlyReport(dir: string): Promise<void> {
       const groupRows = actualRows.filter((row) => actualProviderModelKey(row) === key);
       return fs.writeFile(path.join(dir, `actual-hit-rate-${actualGraphSlug(key)}.svg`), renderActualHitRateSvg(groupRows, MAX_POINTS, `actual provider cache hit rate: ${key}`), "utf8");
     });
+    const promptRoleGraphWrites = [...new Set(rows.map(requestRoleKey))].map((key) => {
+      const groupRows = rows.filter((row) => requestRoleKey(row) === key);
+      return fs.writeFile(path.join(dir, `trend-role-${actualGraphSlug(key)}.svg`), renderSvg(groupRows, MAX_POINTS), "utf8");
+    });
     const promptProviderGraphWrites = [...new Set(rows.map((row) => row.provider ?? "unknown"))].map((key) => {
       const groupRows = rows.filter((row) => (row.provider ?? "unknown") === key);
       return fs.writeFile(path.join(dir, `trend-provider-${actualGraphSlug(key)}.svg`), renderSvg(groupRows, MAX_POINTS), "utf8");
@@ -667,6 +682,7 @@ export async function generateCacheFriendlyReport(dir: string): Promise<void> {
       fs.writeFile(path.join(dir, "actual-hit-rate.svg"), renderActualHitRateSvg(actualRows, MAX_POINTS, "actual provider cache hit rate: overall"), "utf8"),
       ...actualProviderGraphWrites,
       ...actualGraphWrites,
+      ...promptRoleGraphWrites,
       ...promptProviderGraphWrites,
       ...promptProviderModelGraphWrites,
       fs.writeFile(path.join(dir, "fragments.svg"), renderFragmentsSvg(rows), "utf8"),

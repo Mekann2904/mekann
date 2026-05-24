@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { normalizeActualCacheUsage, type NormalizedActualCacheUsage } from "./actualUsage.js";
 import { appendActualUsageLog, appendCacheFriendlyLog } from "./logs.js";
-import { canonicalizeText, collectPromptFragments, estimateTokens, extractTextFromProviderPayload, hashFragment, inspectFinalPayloadText, inspectStablePrefix, listPromptProviders, renderPromptFragments, sha256, type PromptFragmentHash, type PromptInspectionWarning, type RunKeySource } from "../prompt-core/index.js";
+import { canonicalizeText, collectPromptFragments, estimateTokens, extractTextFromProviderPayload, hashFragment, inspectFinalPayloadText, inspectStablePrefix, listPromptProviders, renderPromptFragments, sha256, type CacheFriendlyRequestRole, type PromptFragmentHash, type PromptInspectionWarning, type RunKeySource } from "../prompt-core/index.js";
 
 export type CacheFriendlyPromptConfig = { /** @deprecated stablePrefixHash is stable-only; base system is tracked by baseSystemHash/providerPrefixHash. */ includeBaseSystemPromptInStableHash?: boolean; logRequests: boolean; notifyOnWarnings: boolean; };
 const DEFAULT_CONFIG: CacheFriendlyPromptConfig = { logRequests: true, notifyOnWarnings: false };
@@ -9,6 +9,8 @@ type LastState = {
   runKey: string;
   runKeySource: RunKeySource;
   requestId?: string;
+  requestRole?: CacheFriendlyRequestRole;
+  requestRoleSource?: string;
   snapshotSource: "before_agent_start";
   createdAt: string;
   baseSystemHash?: string;
@@ -64,6 +66,23 @@ function pickString(...values: unknown[]): string | undefined {
 }
 function requestIdOf(event: any, ctx: any): string | undefined {
   return pickString(event?.requestId, event?.request_id, event?.id, event?.message?.requestId, event?.message?.request_id, event?.response?.requestId, event?.response?.id, ctx?.requestId, ctx?.request_id);
+}
+function requestRoleOf(event: any, ctx: any): { requestRole: CacheFriendlyRequestRole; requestRoleSource: string } {
+  const explicit = pickString(event?.requestRole, event?.role, event?.agentRole, ctx?.requestRole, ctx?.role, ctx?.agentRole);
+  if (explicit) {
+    const normalized = explicit.toLowerCase();
+    if (normalized.includes("subagent") || normalized.includes("sub-agent") || normalized === "child") return { requestRole: "subagent", requestRoleSource: `explicit:${explicit}` };
+    if (normalized.includes("tool")) return { requestRole: "tool", requestRoleSource: `explicit:${explicit}` };
+    if (normalized.includes("main") || normalized === "root") return { requestRole: "main", requestRoleSource: `explicit:${explicit}` };
+  }
+  const agentPath = pickString(event?.agentPath, event?.agent_path, event?.agent?.path, ctx?.agentPath, ctx?.agent_path, ctx?.agent?.path);
+  if (agentPath) {
+    if (agentPath === "/root" || agentPath === "root") return { requestRole: "main", requestRoleSource: "agentPath" };
+    if (agentPath.startsWith("/root/") || agentPath.includes("subagent")) return { requestRole: "subagent", requestRoleSource: "agentPath" };
+  }
+  const taskName = pickString(event?.taskName, event?.task_name, ctx?.taskName, ctx?.task_name);
+  if (taskName) return { requestRole: "subagent", requestRoleSource: "taskName" };
+  return { requestRole: "unknown", requestRoleSource: "unavailable" };
 }
 function messageTimestamp(message: any): string {
   const timestamp = message?.timestamp;
@@ -158,10 +177,13 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
     const providerPrefixText = joinPromptPartsRaw([baseSystemText, rendered.stableText, rendered.semiStableText]);
     const { runKey, runKeySource } = runKeyWithSource(event, ctx);
     const requestId = requestIdOf(event, ctx);
+    const { requestRole, requestRoleSource } = requestRoleOf(event, ctx);
     const state: LastState = {
       runKey,
       runKeySource,
       requestId,
+      requestRole,
+      requestRoleSource,
       snapshotSource: "before_agent_start",
       createdAt: new Date().toISOString(),
       baseSystemHash: baseSystemText ? sha256(canonicalizeText(baseSystemText)) : undefined,
@@ -220,6 +242,8 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
         runKey,
         runKeySource,
         requestId,
+        requestRole: lastState?.requestRole ?? requestRoleOf(event, ctx).requestRole,
+        requestRoleSource: lastState?.requestRoleSource ?? requestRoleOf(event, ctx).requestRoleSource,
         snapshotSource: lastState?.snapshotSource ?? "missing",
         correlationConfidence: requestId && lastState?.requestId === requestId ? "requestId_matched" : lastState ? "runKey_latest" : "missing",
         provider: modelProvider(ctx),
@@ -270,6 +294,8 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
       timestamp: messageTimestamp(message),
       requestId,
       runKey,
+      requestRole: lastState?.requestRole ?? requestRoleOf(event, ctx).requestRole,
+      requestRoleSource: lastState?.requestRoleSource ?? requestRoleOf(event, ctx).requestRoleSource,
       provider,
       model: modelId(ctx) ?? pickString(message.model, event?.model),
       providerPrefixHash: lastState?.providerPrefixHash,

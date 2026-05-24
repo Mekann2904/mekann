@@ -12,6 +12,8 @@ export type ActualUsageLog = NormalizedActualCacheUsage & {
   timestamp: string;
   requestId?: string;
   runKey?: string;
+  requestRole?: "main" | "subagent" | "tool" | "unknown";
+  requestRoleSource?: string;
   provider?: string;
   model?: string;
   providerPrefixHash?: string;
