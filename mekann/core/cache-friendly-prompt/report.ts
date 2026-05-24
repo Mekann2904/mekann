@@ -364,31 +364,54 @@ function actualGraphSlug(key: string): string {
 
 function renderActualHitRateSvg(rows: ParsedActualUsageLog[], maxPoints: number | "all" = MAX_POINTS, title = "actual provider cache hit rate"): string {
   const sampled = sampleRows(rows, maxPoints);
+  const height = 430;
+  const padT = 40;
+  const padB = 112;
   const plotW = SVG_WIDTH - PAD_L - PAD_R;
-  const plotH = SVG_HEIGHT - PAD_T - PAD_B;
+  const plotH = height - padT - padB;
+  const axisBottom = height - padB;
+  const legendY = axisBottom + 34;
   const xFor = (i: number) => PAD_L + (sampled.length === 1 ? 0 : (i / Math.max(1, sampled.length - 1)) * plotW);
-  const yFor = (v: number | null | undefined) => PAD_T + plotH - ((v ?? 0) * plotH);
-  const points = sampled.map((row, i) => `${xFor(i).toFixed(1)},${yFor(row.tokenHitRate).toFixed(1)}`).join(" ");
-  const cacheablePoints = sampled.filter((row) => row.cacheableReadRate !== null).map((row) => `${xFor(sampled.indexOf(row)).toFixed(1)},${yFor(row.cacheableReadRate).toFixed(1)}`).join(" ");
+  const yFor = (v: number) => padT + plotH - (v * plotH);
+  const lineSegments = (valueOf: (row: ParsedActualUsageLog) => number | null | undefined) => {
+    const segments: string[] = [];
+    let current: string[] = [];
+    sampled.forEach((row, i) => {
+      const value = valueOf(row);
+      if (value === null || value === undefined || !Number.isFinite(value)) {
+        if (current.length > 0) segments.push(current.join(" "));
+        current = [];
+        return;
+      }
+      current.push(`${xFor(i).toFixed(1)},${yFor(Math.max(0, Math.min(1, value))).toFixed(1)}`);
+    });
+    if (current.length > 0) segments.push(current.join(" "));
+    return segments;
+  };
+  const tokenHitRateSegments = lineSegments((row) => row.tokenHitRate);
+  const cacheableReadRateSegments = lineSegments((row) => row.cacheableReadRate);
+  const nullMarkers = sampled.map((row, i) => row.tokenHitRate === null ? `<circle cx="${xFor(i).toFixed(1)}" cy="${axisBottom}" r="3" fill="#64748b"/>` : "").filter(Boolean).join("\n  ");
   const latest = sampled.at(-1);
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}">
+<svg xmlns="http://www.w3.org/2000/svg" width="${SVG_WIDTH}" height="${height}" viewBox="0 0 ${SVG_WIDTH} ${height}">
   <rect width="100%" height="100%" fill="#0f172a"/>
-  <text x="${PAD_L}" y="18" fill="#e5e7eb" font-family="sans-serif" font-size="14">${escapeHtml(title)}（${sampleLabel(sampled, maxPoints)}）</text>
-  <line x1="${PAD_L}" y1="${SVG_HEIGHT - PAD_B}" x2="${SVG_WIDTH - PAD_R}" y2="${SVG_HEIGHT - PAD_B}" stroke="#475569"/>
-  <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${SVG_HEIGHT - PAD_B}" stroke="#475569"/>
-  <text x="14" y="${PAD_T + 5}" fill="#94a3b8" font-family="sans-serif" font-size="11">100%</text>
-  <text x="22" y="${PAD_T + plotH / 2}" fill="#94a3b8" font-family="sans-serif" font-size="11">50%</text>
-  <text x="28" y="${SVG_HEIGHT - PAD_B}" fill="#94a3b8" font-family="sans-serif" font-size="11">0%</text>
-  <line x1="${PAD_L}" y1="${(PAD_T + plotH / 2).toFixed(1)}" x2="${SVG_WIDTH - PAD_R}" y2="${(PAD_T + plotH / 2).toFixed(1)}" stroke="#334155" stroke-dasharray="4 4"/>
-  <polyline fill="none" stroke="#22c55e" stroke-width="2.8" points="${points}"/>
-  ${cacheablePoints ? `<polyline fill="none" stroke="#38bdf8" stroke-width="2.2" points="${cacheablePoints}"/>` : ""}
-  <rect x="${SVG_WIDTH - 330}" y="28" width="300" height="124" rx="6" fill="#111827" stroke="#334155"/>
-  <line x1="${SVG_WIDTH - 314}" y1="50" x2="${SVG_WIDTH - 274}" y2="50" stroke="#22c55e" stroke-width="3"/><text x="${SVG_WIDTH - 266}" y="54" fill="#cbd5e1" font-family="sans-serif" font-size="12">tokenHitRate</text>
-  <line x1="${SVG_WIDTH - 314}" y1="72" x2="${SVG_WIDTH - 274}" y2="72" stroke="#38bdf8" stroke-width="3"/><text x="${SVG_WIDTH - 266}" y="76" fill="#cbd5e1" font-family="sans-serif" font-size="12">cacheableReadRate</text>
-  <text x="${SVG_WIDTH - 314}" y="102" fill="#ddd6fe" font-family="sans-serif" font-size="12">latest: ${latest?.tokenHitRate === null || latest?.tokenHitRate === undefined ? "n/a" : `${(latest.tokenHitRate * 100).toFixed(1)}%`}</text>
-  <text x="${SVG_WIDTH - 314}" y="122" fill="#cbd5e1" font-family="sans-serif" font-size="12">read/input: ${latest?.cacheReadTokens ?? 0}/${latest?.inputTotalTokens ?? 0}</text>
-  <text x="${SVG_WIDTH - 314}" y="142" fill="#94a3b8" font-family="sans-serif" font-size="12">provider usage tokens, not proxy</text>
+  <text x="${PAD_L}" y="22" fill="#e5e7eb" font-family="sans-serif" font-size="14">${escapeHtml(title)}（${sampleLabel(sampled, maxPoints)}）</text>
+  <line x1="${PAD_L}" y1="${axisBottom}" x2="${SVG_WIDTH - PAD_R}" y2="${axisBottom}" stroke="#475569"/>
+  <line x1="${PAD_L}" y1="${padT}" x2="${PAD_L}" y2="${axisBottom}" stroke="#475569"/>
+  <text x="14" y="${padT + 5}" fill="#94a3b8" font-family="sans-serif" font-size="11">100%</text>
+  <text x="22" y="${padT + plotH / 2}" fill="#94a3b8" font-family="sans-serif" font-size="11">50%</text>
+  <text x="28" y="${axisBottom}" fill="#94a3b8" font-family="sans-serif" font-size="11">0%</text>
+  <line x1="${PAD_L}" y1="${(padT + plotH / 2).toFixed(1)}" x2="${SVG_WIDTH - PAD_R}" y2="${(padT + plotH / 2).toFixed(1)}" stroke="#334155" stroke-dasharray="4 4"/>
+  ${tokenHitRateSegments.map((points) => `<polyline fill="none" stroke="#22c55e" stroke-width="2.8" points="${points}"/>`).join("\n  ")}
+  ${cacheableReadRateSegments.map((points) => `<polyline fill="none" stroke="#38bdf8" stroke-width="2.2" points="${points}"/>`).join("\n  ")}
+  ${nullMarkers}
+  <rect x="${PAD_L}" y="${axisBottom + 16}" width="${plotW}" height="78" rx="6" fill="#111827" stroke="#334155"/>
+  <line x1="${PAD_L + 18}" y1="${legendY}" x2="${PAD_L + 58}" y2="${legendY}" stroke="#22c55e" stroke-width="3"/><text x="${PAD_L + 68}" y="${legendY + 4}" fill="#cbd5e1" font-family="sans-serif" font-size="12">tokenHitRate</text>
+  <line x1="${PAD_L + 190}" y1="${legendY}" x2="${PAD_L + 230}" y2="${legendY}" stroke="#38bdf8" stroke-width="3"/><text x="${PAD_L + 240}" y="${legendY + 4}" fill="#cbd5e1" font-family="sans-serif" font-size="12">cacheableReadRate</text>
+  <circle cx="${PAD_L + 390}" cy="${legendY}" r="3" fill="#64748b"/><text x="${PAD_L + 402}" y="${legendY + 4}" fill="#cbd5e1" font-family="sans-serif" font-size="12">n/a</text>
+  <text x="${PAD_L + 18}" y="${legendY + 28}" fill="#ddd6fe" font-family="sans-serif" font-size="12">latest: ${latest?.tokenHitRate === null || latest?.tokenHitRate === undefined ? "n/a" : `${(latest.tokenHitRate * 100).toFixed(1)}%`}</text>
+  <text x="${PAD_L + 160}" y="${legendY + 28}" fill="#cbd5e1" font-family="sans-serif" font-size="12">read/input: ${latest?.cacheReadTokens ?? 0}/${latest?.inputTotalTokens ?? 0}</text>
+  <text x="${PAD_L + 420}" y="${legendY + 28}" fill="#94a3b8" font-family="sans-serif" font-size="12">provider usage tokens, not proxy</text>
 </svg>
 `;
 }
