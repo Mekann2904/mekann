@@ -85,6 +85,7 @@ type CacheFriendlySummary = {
   actualByProviderModel: Record<string, ActualProviderSummary>;
   actualByRequestRole: Record<string, ActualProviderSummary>;
   actualByProviderPrefixHash: Record<string, ActualProviderSummary>;
+  actualByBaseSystemHash: Record<string, ActualProviderSummary>;
 };
 
 const MAX_POINTS = 500;
@@ -118,6 +119,10 @@ function actualRequestRoleKey(row: ParsedActualUsageLog): string {
 function actualProviderPrefixHashKey(row: ParsedActualUsageLog): string {
   const hash = row.providerPrefixHash ?? row.featureCacheablePrefixHash ?? row.stablePrefixHash;
   return hash ? shortHash(hash) : "missing";
+}
+
+function actualBaseSystemHashKey(row: ParsedActualUsageLog): string {
+  return row.baseSystemHash ? shortHash(row.baseSystemHash) : "missing";
 }
 
 function shortHash(hash: string | undefined): string {
@@ -314,6 +319,7 @@ function summarizeActual(actualRows: ParsedActualUsageLog[]) {
     actualByProviderModel: groupActualRows(actualRows, actualProviderModelKey),
     actualByRequestRole: groupActualRows(actualRows, actualRequestRoleKey),
     actualByProviderPrefixHash: groupActualRows(actualRows, actualProviderPrefixHashKey),
+    actualByBaseSystemHash: groupActualRows(actualRows, actualBaseSystemHashKey),
   };
 }
 
@@ -603,6 +609,7 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
   const actualRequestRoleRows = renderActualSummaryRows(summary.actualByRequestRole);
   const actualWarmStateRows = renderActualSummaryRows(summary.actualByWarmState);
   const actualProviderPrefixHashRows = renderActualSummaryRows(summary.actualByProviderPrefixHash);
+  const actualBaseSystemHashRows = renderActualSummaryRows(summary.actualByBaseSystemHash);
   const actualProviderGraphRows = Object.keys(summary.actualByProvider).sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./actual-hit-rate-provider-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const actualProviderModelGraphRows = Object.keys(summary.actualByProviderModel).sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./actual-hit-rate-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const actualRequestRoleGraphRows = Object.keys(summary.actualByRequestRole).sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./actual-hit-rate-role-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
@@ -717,7 +724,15 @@ This table is useful when a small set of provider prefix hashes has different ac
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 ${actualProviderPrefixHashRows}
 
-### 2.6 Cold vs warm
+### 2.6 By base system hash
+
+This table helps distinguish extension fragment stability from base system prompt differences between main and subagent runtimes.
+
+| baseSystemHash | requests | input tokens | output tokens | cache read tokens | cache write tokens | cache miss tokens | weighted tokenHitRate | avg tokenHitRate | weighted cacheableReadRate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+${actualBaseSystemHashRows}
+
+### 2.7 Cold vs warm
 
 Cold means first actual usage row for a provider/model/prefix hash key in the current log. Warm means later rows with the same key.
 
@@ -725,7 +740,7 @@ Cold means first actual usage row for a provider/model/prefix hash key in the cu
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 ${actualWarmStateRows}
 
-### 2.7 Actual graphs
+### 2.8 Actual graphs
 
 #### Overall
 

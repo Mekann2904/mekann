@@ -62,6 +62,14 @@ Stable and semi-stable fragments are sorted deterministically by stability, prio
 
 If this warning appears, give the fragments distinct ids, sources, kinds, or priorities so cacheable prefix rendering does not depend on registration or collection order.
 
+## base system hash hit-rate attribution
+
+`actual-usage.jsonl` includes `baseSystemHash` when a request snapshot can be correlated. `report.md` groups actual usage by short base system hash so main/subagent base prompt differences can be measured separately from extension fragment differences.
+
+Summary field:
+
+- `actualByBaseSystemHash`
+
 ## provider prefix hash hit-rate attribution
 
 `report.md` groups actual usage by short `providerPrefixHash`. This makes it easy to compare hashes such as `8f37820c` and `d8f6ac77` directly and identify whether a specific prefix shape has lower actual cache reads.

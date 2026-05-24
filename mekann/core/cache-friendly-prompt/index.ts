@@ -373,6 +373,7 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
       provider,
       model: actualModel,
       correlationConfidence,
+      baseSystemHash: lastState?.baseSystemHash,
       stablePrefixHash: lastState?.stablePrefixHash,
       featureCacheablePrefixHash: lastState?.featureCacheablePrefixHash,
       providerPrefixHash: lastState?.providerPrefixHash,
