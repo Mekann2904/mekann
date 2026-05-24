@@ -74,11 +74,14 @@ export function inspectFragments(fragments: PromptFragment[]): PromptInspectionW
 export function inspectStablePrefix(stablePrefixText: string): PromptInspectionWarning[] {
   return estimateTokens(stablePrefixText) < 1024 ? [{ severity: "info", code: "SHORT_STABLE_PREFIX", message: "Stable prefix is short; provider cache benefit may be limited." }] : [];
 }
-export function inspectFinalPayloadText(finalText: string): PromptInspectionWarning[] {
+export function inspectFinalPayloadText(finalText: string, contextLabel?: string): PromptInspectionWarning[] {
   const marker = "<!-- prompt-fragments:Stable extension instructions -->";
   const i = finalText.indexOf(marker);
   if (i <= 0) return [];
   const before = finalText.slice(Math.max(0, i - 4000), i);
-  if (volatileValuePatterns.some((r) => r.test(before))) return [{ severity: "warning", code: "FINAL_PAYLOAD_VOLATILE_BEFORE_STABLE_END", message: "Final payload appears to contain volatile runtime state before stable fragment section." }];
-  return [];
+  const matched = volatileValuePatterns.find((r) => r.test(before));
+  if (!matched) return [];
+  const compactSnippet = before.replace(/\s+/g, " ").trim().slice(-220);
+  const location = contextLabel ? ` in ${contextLabel}` : "";
+  return [{ severity: "warning", code: "FINAL_PAYLOAD_VOLATILE_BEFORE_STABLE_END", message: `Final payload appears to contain volatile runtime state before stable fragment section${location}; pattern=${matched.source}; snippet=${JSON.stringify(compactSnippet)}` }];
 }

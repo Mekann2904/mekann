@@ -192,26 +192,26 @@ function messageContainsDynamicMarker(messages: unknown[]): boolean {
     return msg.customType === "cache-friendly-dynamic-context" || contentText(msg.content).includes("<!-- prompt-fragments:Dynamic turn context -->");
   });
 }
-function extractCacheablePrefixPayloadText(payload: unknown): string {
-  const chunks: string[] = [];
+function inspectCacheablePrefixPayloadText(payload: unknown): PromptInspectionWarning[] {
+  const warnings: PromptInspectionWarning[] = [];
   const seen = new WeakSet<object>();
-  function addText(value: unknown): void {
+  function addText(value: unknown, label: string): void {
     const text = typeof value === "string" ? value : contentText(value);
-    if (text.trim()) chunks.push(text);
+    if (text.trim()) warnings.push(...inspectFinalPayloadText(text, label));
   }
-  function visit(value: unknown): void {
+  function visit(value: unknown, path: string): void {
     if (!value || typeof value !== "object") return;
     if (seen.has(value)) return;
     seen.add(value);
-    if (Array.isArray(value)) { value.forEach(visit); return; }
+    if (Array.isArray(value)) { value.forEach((v, i) => visit(v, `${path}[${i}]`)); return; }
     const obj = value as Record<string, unknown>;
-    for (const field of ["system", "developer", "instructions"]) addText(obj[field]);
+    for (const field of ["system", "developer", "instructions"]) addText(obj[field], `${path}.${field}`);
     const role = typeof obj.role === "string" ? obj.role.toLowerCase() : "";
-    if (role === "system" || role === "developer") addText(obj.content);
-    for (const child of Object.values(obj)) visit(child);
+    if (role === "system" || role === "developer") addText(obj.content, `${path}.${role}.content`);
+    for (const [key, child] of Object.entries(obj)) visit(child, `${path}.${key}`);
   }
-  visit(payload);
-  return chunks.join("\n");
+  visit(payload, "payload");
+  return warnings;
 }
 function payloadDynamicPlacementWarnings(payload: unknown): PromptInspectionWarning[] {
   const warnings: PromptInspectionWarning[] = [];
@@ -316,8 +316,7 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
     if (sentDynamicIds.length > 0) {
       try { (pi as any).events?.emit?.("cache-friendly-prompt:dynamic-tail-sent", { fragmentIds: sentDynamicIds }); } catch {}
     }
-    const cacheablePrefixPayloadText = extractCacheablePrefixPayloadText(event?.payload);
-    const warnings = mergeWarnings(mergeWarnings(lastState?.injectedWarnings ?? [], inspectFinalPayloadText(cacheablePrefixPayloadText)), payloadDynamicPlacementWarnings(event?.payload));
+    const warnings = mergeWarnings(mergeWarnings(lastState?.injectedWarnings ?? [], inspectCacheablePrefixPayloadText(event?.payload)), payloadDynamicPlacementWarnings(event?.payload));
     if (lastState) {
       lastState.totalPromptChars = finalText.length;
       lastState.totalPromptTokenEstimate = estimateTokens(finalText);
