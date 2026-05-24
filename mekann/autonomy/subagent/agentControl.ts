@@ -422,39 +422,46 @@ export class AgentControl {
       createdAt: now, updatedAt: now, depth, open: true, cancellationRequested: false, display, authority, authorityEnforced: false, workspaceCwd: ctx.cwd, resultContract: params.result_contract,
     };
     this.registry.registerAgent(metadata, reservation);
-    const hub = this.hubFactory(socketPath);
-    const resolvedOverride = params.model ? await this.resolveModel(params.model, ctx) : undefined;
-    const modelId = resolvedOverride
-      ? ((resolvedOverride as any).provider && (resolvedOverride as any).id ? `${(resolvedOverride as any).provider}/${(resolvedOverride as any).id}` : undefined)
-      : (ctx.model?.provider && ctx.model?.id ? `${ctx.model.provider}/${ctx.model.id}` : undefined);
-    if (!modelId) throw new Error("External Pi subagents require an exact provider/model_id. Specify spawn_agent.model or use in-process subagents.");
-    const thinkingLevel = this.resolveThinkingLevel(params.reasoning_effort);
-    const preamble = this.authorityPreamble(authority, params.result_contract);
-    const externalNotice = [
-      "SECURITY NOTICE: this external Pi process is running with authorityEnforced=false.",
-      "The parent process cannot remove write/edit/bash tools from this process.",
-      `Requested authority mode: ${authority.mode}. Treat it as advisory unless the runtime itself removed tools.`,
-    ].join("\n");
+    try {
+      const hub = this.hubFactory(socketPath);
+      const resolvedOverride = params.model ? await this.resolveModel(params.model, ctx) : undefined;
+      const modelId = resolvedOverride
+        ? ((resolvedOverride as any).provider && (resolvedOverride as any).id ? `${(resolvedOverride as any).provider}/${(resolvedOverride as any).id}` : undefined)
+        : (ctx.model?.provider && ctx.model?.id ? `${ctx.model.provider}/${ctx.model.id}` : undefined);
+      if (!modelId) throw new Error("External Pi subagents require an exact provider/model_id. Specify spawn_agent.model or use in-process subagents.");
+      const thinkingLevel = this.resolveThinkingLevel(params.reasoning_effort);
+      const preamble = this.authorityPreamble(authority, params.result_contract);
+      const externalNotice = [
+        "SECURITY NOTICE: this external Pi process is running with authorityEnforced=false.",
+        "The parent process cannot remove write/edit/bash tools from this process.",
+        `Requested authority mode: ${authority.mode}. Treat it as advisory unless the runtime itself removed tools.`,
+      ].join("\n");
 
-    const launchMessage = [externalNotice, preamble, params.message]
-      .filter(Boolean)
-      .join("\n\n");
+      const launchMessage = [externalNotice, preamble, params.message]
+        .filter(Boolean)
+        .join("\n\n");
 
-    const launchParams = { agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: launchMessage, logPath, title: display.title, piCommand: this.piCommand, extensionPath: this.extensionPath, modelId, thinkingLevel };
-    await this.lifecycle.registerExternalPiRuntime({
-      agentId,
-      agentPath: canonicalPath,
-      callerPath,
-      socketPath,
-      display,
-      hub,
-      kitty: this.kitty,
-      launchParams,
-      displayMode: displayKind,
-      helloTimeoutMs: this.helloTimeoutMs,
-      onClosed: (id) => processExternalPiSlots.delete(id),
-    });
-    return { agent_id: agentId, task_name: canonicalPath, status: this.registry.get(canonicalPath)?.status ?? "running", display: this.displayResult(this.registry.get(canonicalPath)?.display) };
+      const launchParams = { agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: launchMessage, logPath, title: display.title, piCommand: this.piCommand, extensionPath: this.extensionPath, modelId, thinkingLevel };
+      await this.lifecycle.registerExternalPiRuntime({
+        agentId,
+        agentPath: canonicalPath,
+        callerPath,
+        socketPath,
+        display,
+        hub,
+        kitty: this.kitty,
+        launchParams,
+        displayMode: displayKind,
+        helloTimeoutMs: this.helloTimeoutMs,
+        onClosed: (id) => processExternalPiSlots.delete(id),
+      });
+      return { agent_id: agentId, task_name: canonicalPath, status: this.registry.get(canonicalPath)?.status ?? "running", display: this.displayResult(this.registry.get(canonicalPath)?.display) };
+    } catch (err) {
+      processExternalPiSlots.delete(agentId);
+      this.lifecycle.deleteRuntime(canonicalPath);
+      this.registry.close(canonicalPath, "errored");
+      throw err;
+    }
   }
 
   private getRuntimeByAgentId(agentId: string): AgentRuntime | undefined {

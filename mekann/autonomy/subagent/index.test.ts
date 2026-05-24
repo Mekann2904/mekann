@@ -4607,6 +4607,35 @@ describe("External Pi safety: kitty-split without unsafe opt-in", () => {
 		expect(agent?.display).toBeUndefined();
 	});
 
+	it("external Pi spawn failure does not leave a ghost open agent", async () => {
+		const fakeKitty = {
+			appendLog: vi.fn(() => Promise.resolve()),
+			close: vi.fn(() => Promise.resolve()),
+		};
+
+		const control = new AgentControl(createControlMockPi(), 3, 2, undefined, undefined, {
+			displayMode: "kitty-split",
+			kitty: fakeKitty as any,
+			allowUnsafeExternalPi: true,
+		});
+		control.registry.ensureRoot("root");
+
+		await expect(control.spawn(
+			{ task_name: "bad-external", message: "test" },
+			baseCtx,
+		)).rejects.toThrow("External Pi subagents require an exact provider/model_id");
+
+		const ghost = control.registry.get("/root/bad-external");
+		expect(ghost?.open).toBe(false);
+		expect(control.openCount).toBe(1);
+
+		await expect(control.spawn(
+			{ task_name: "next-task", message: "test" },
+			baseCtx,
+		)).rejects.toThrow("External Pi subagents require an exact provider/model_id");
+		expect(control.openCount).toBe(1);
+	});
+
 	it("list() includes authority and authority_enforced fields", async () => {
 		const fakeKitty = {
 			appendLog: vi.fn(() => Promise.resolve()),
