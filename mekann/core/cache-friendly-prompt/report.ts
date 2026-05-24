@@ -80,15 +80,18 @@ function summarize(rows: ParsedLog[], generatedAt: string): CacheFriendlySummary
   const latestReuseKey = latest ? reuseKey(latest) : "";
   for (let i = rows.length - 1; i >= 0 && latest && reuseKey(rows[i]) === latestReuseKey; i--) streak++;
   const providers: Record<string, ProviderSummary> = {};
-  const hashesByProvider = new Map<string, Set<string>>();
+  const reuseKeysByProvider = new Map<string, Set<string>>();
+  const stableHashesByProvider = new Map<string, Set<string>>();
   for (const row of rows) {
     const key = providerKey(row);
-    hashesByProvider.set(key, hashesByProvider.get(key) ?? new Set<string>());
-    hashesByProvider.get(key)?.add(reuseKey(row));
+    reuseKeysByProvider.set(key, reuseKeysByProvider.get(key) ?? new Set<string>());
+    stableHashesByProvider.set(key, stableHashesByProvider.get(key) ?? new Set<string>());
+    reuseKeysByProvider.get(key)?.add(reuseKey(row));
+    stableHashesByProvider.get(key)?.add(row.stablePrefixHash ?? "");
     providers[key] = {
       requests: (providers[key]?.requests ?? 0) + 1,
-      uniqueReuseKeys: hashesByProvider.get(key)?.size ?? 0,
-      uniqueStablePrefixHashes: hashesByProvider.get(key)?.size ?? 0,
+      uniqueReuseKeys: reuseKeysByProvider.get(key)?.size ?? 0,
+      uniqueStablePrefixHashes: stableHashesByProvider.get(key)?.size ?? 0,
       latestReuseKey: reuseKey(row),
       latestStablePrefixHash: row.stablePrefixHash,
       latestStablePrefixChars: row.stablePrefixChars ?? 0,
@@ -251,9 +254,9 @@ function renderFragmentsSvg(rows: ParsedLog[]): string {
 
 function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string {
   const latest = summary.latest;
-  const providerRows = Object.entries(summary.providers).sort((a, b) => b[1].requests - a[1].requests).map(([k, v]) => `| ${escapeHtml(k)} | ${v.requests} | ${v.uniqueReuseKeys} | \`${shortHash(v.latestReuseKey)}\` | ${v.latestProviderPrefixChars || v.latestStablePrefixChars} | ${v.latestStablePrefixChars} | ${v.latestTotalPromptChars} |`).join("\n");
-  const changes = rows.filter((r, i) => i > 0 && reuseKey(r) !== reuseKey(rows[i - 1])).slice(-20).reverse();
-  const changeRows = changes.map((r) => `| ${r.timestamp} | ${escapeHtml(providerKey(r))} | \`${shortHash(reuseKey(rows[r.line - 2]))}\` → \`${shortHash(reuseKey(r))}\` | ${r.providerPrefixChars ?? r.featureCacheablePrefixChars ?? r.stablePrefixChars ?? 0} | ${r.stablePrefixChars ?? 0} | ${r.totalPromptChars ?? 0} |`).join("\n") || "| なし |  |  |  |  | |";
+  const providerRows = Object.entries(summary.providers).sort((a, b) => b[1].requests - a[1].requests).map(([k, v]) => `| ${escapeHtml(k)} | ${v.requests} | ${v.uniqueReuseKeys} | \`${shortHash(v.latestReuseKey)}\` | ${v.latestProviderPrefixChars ?? v.latestStablePrefixChars} | ${v.latestStablePrefixChars} | ${v.latestTotalPromptChars} |`).join("\n");
+  const changes = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined })).filter((x): x is { row: ParsedLog; prev: ParsedLog } => Boolean(x.prev) && reuseKey(x.row) !== reuseKey(x.prev)).slice(-20).reverse();
+  const changeRows = changes.map(({ row, prev }) => `| ${row.timestamp} | ${escapeHtml(providerKey(row))} | \`${shortHash(reuseKey(prev))}\` → \`${shortHash(reuseKey(row))}\` | ${row.providerPrefixChars ?? row.featureCacheablePrefixChars ?? row.stablePrefixChars ?? 0} | ${row.stablePrefixChars ?? 0} | ${row.totalPromptChars ?? 0} |`).join("\n") || "| なし |  |  |  |  | |";
   return `# cache-friendly-prompt レポート
 
 最終更新: ${summary.generatedAt}

@@ -1,5 +1,5 @@
 import type { PromptFragment, PromptInspectionWarning, RenderedPrompt } from "./types.js";
-import { normalizeFragment, sortFragments } from "./canonicalize.js";
+import { canonicalizeText, normalizeFragment, sortFragments } from "./canonicalize.js";
 import { hashFragment, sha256 } from "./hash.js";
 import { inspectFragments, inspectStablePrefix } from "./inspect.js";
 const DYNAMIC_TOTAL_MAX_CHARS = 24_000;
@@ -40,5 +40,5 @@ export function renderPromptFragments(fragments: PromptFragment[]): RenderedProm
   const stableText = renderSection("Stable extension instructions", stable);
   const semiStableText = renderSection("Semi-stable session context", semi);
   const dynamicText = renderSection("Dynamic turn context", dynamic);
-  return { stableText, semiStableText, dynamicText, stablePrefixText: stableText, stablePrefixHash: sha256(stableText), stableFragments: stable, semiStableFragments: semi, dynamicFragments: dynamic, fragmentHashes: rendered.map(hashFragment), warnings: [...limited.warnings, ...inspectFragments(rendered), ...inspectStablePrefix(stableText)] };
+  return { stableText, semiStableText, dynamicText, stablePrefixText: stableText, stablePrefixHash: sha256(canonicalizeText(stableText)), stableFragments: stable, semiStableFragments: semi, dynamicFragments: dynamic, fragmentHashes: rendered.map(hashFragment), warnings: [...limited.warnings, ...inspectFragments(rendered), ...inspectStablePrefix(stableText)] };
 }
