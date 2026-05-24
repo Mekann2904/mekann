@@ -30,6 +30,8 @@ type ActualProviderSummary = {
   weightedCacheableReadRate: number | null;
 };
 
+type PercentileSummary = { p50: number | null; p90: number | null; p99: number | null };
+
 type CacheFriendlySummary = {
   generatedAt: string;
   totalRequests: number;
@@ -59,6 +61,10 @@ type CacheFriendlySummary = {
   actualCacheableReadRateAvg: number | null;
   actualCacheableReadRateWeighted: number | null;
   actualCacheReadTokens: number;
+  actualTokenHitRatePercentiles: PercentileSummary;
+  actualMatchedRequestCount: number;
+  actualMatchedTokenHitRateWeighted: number | null;
+  actualMatchedTokenHitRatePercentiles: PercentileSummary;
   actualCacheWriteTokens: number;
   actualCacheMissTokens: number;
   actualInputTotalTokens: number;
@@ -170,6 +176,17 @@ function mean(values: Array<number | null | undefined>): number | null {
   return nums.length > 0 ? nums.reduce((sum, v) => sum + v, 0) / nums.length : null;
 }
 
+function percentile(values: Array<number | null | undefined>, p: number): number | null {
+  const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v)).sort((a, b) => a - b);
+  if (nums.length === 0) return null;
+  const index = Math.ceil((p / 100) * nums.length) - 1;
+  return nums[Math.max(0, Math.min(nums.length - 1, index))];
+}
+
+function percentiles(values: Array<number | null | undefined>): PercentileSummary {
+  return { p50: percentile(values, 50), p90: percentile(values, 90), p99: percentile(values, 99) };
+}
+
 function summarizeActualGroup(rows: ParsedActualUsageLog[]): ActualProviderSummary {
   const inputTotalTokens = rows.reduce((sum, row) => sum + (row.inputTotalTokens ?? 0), 0);
   const outputTokens = rows.reduce((sum, row) => sum + (row.outputTokens ?? 0), 0);
@@ -201,10 +218,16 @@ function groupActualRows(rows: ParsedActualUsageLog[], keyOf: (row: ParsedActual
 
 function summarizeActual(actualRows: ParsedActualUsageLog[]) {
   const actual = summarizeActualGroup(actualRows);
+  const matchedRows = actualRows.filter((row) => row.correlationConfidence === "requestId_matched");
+  const matched = summarizeActualGroup(matchedRows);
   return {
     actualRequestCount: actual.requests,
     actualTokenHitRateAvg: actual.averageTokenHitRate,
     actualTokenHitRateWeighted: actual.weightedTokenHitRate,
+    actualTokenHitRatePercentiles: percentiles(actualRows.map((r) => r.tokenHitRate)),
+    actualMatchedRequestCount: matched.requests,
+    actualMatchedTokenHitRateWeighted: matched.weightedTokenHitRate,
+    actualMatchedTokenHitRatePercentiles: percentiles(matchedRows.map((r) => r.tokenHitRate)),
     actualCacheableReadRateAvg: actual.averageCacheableReadRate,
     actualCacheableReadRateWeighted: actual.weightedCacheableReadRate,
     actualCacheReadTokens: actual.cacheReadTokens,
@@ -463,6 +486,10 @@ function renderFragmentsSvg(rows: ParsedLog[]): string {
 `;
 }
 
+function formatPercentiles(value: PercentileSummary): string {
+  return `p50 ${formatPct(value.p50)} / p90 ${formatPct(value.p90)} / p99 ${formatPct(value.p99)}`;
+}
+
 function formatPct(value: number | null): string {
   return value === null ? "n/a" : `${(value * 100).toFixed(1)}%`;
 }
@@ -503,6 +530,10 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
     ["actual usage requests", summary.actualRequestCount],
     ["weighted tokenHitRate", formatPct(summary.actualTokenHitRateWeighted)],
     ["average tokenHitRate", formatPct(summary.actualTokenHitRateAvg)],
+    ["request-level tokenHitRate percentiles", formatPercentiles(summary.actualTokenHitRatePercentiles)],
+    ["requestId_matched usage requests", summary.actualMatchedRequestCount],
+    ["requestId_matched weighted tokenHitRate", formatPct(summary.actualMatchedTokenHitRateWeighted)],
+    ["requestId_matched tokenHitRate percentiles", formatPercentiles(summary.actualMatchedTokenHitRatePercentiles)],
     ["cacheReadTokens", summary.actualCacheReadTokens],
     ["inputTotalTokens", summary.actualInputTotalTokens],
     ["outputTokens", Object.values(summary.actualByProvider).reduce((sum, v) => sum + v.outputTokens, 0)],

@@ -31,6 +31,12 @@ type LastState = {
   injectedWarnings: PromptInspectionWarning[];
   latestDynamicFragmentHashes?: PromptFragmentHash[];
   latestDynamicCollectedAt?: string;
+  dynamicContextTruncated?: boolean;
+  dynamicContextOriginalChars?: number;
+  dynamicContextRenderedChars?: number;
+  dynamicContextLimitChars?: number;
+  totalPromptChars?: number;
+  totalPromptTokenEstimate?: number;
 };
 const stateByRun = new Map<string, LastState>();
 const stateByRequestId = new Map<string, LastState>();
@@ -38,10 +44,11 @@ const actualUsageKeys = new Set<string>();
 const MAX_RUN_STATES = 128;
 const MAX_ACTUAL_USAGE_KEYS = 512;
 const DYNAMIC_CONTEXT_MAX_CHARS = 12_000;
-function truncateDynamicContext(text: string): string {
-  if (text.length <= DYNAMIC_CONTEXT_MAX_CHARS) return text;
+function truncateDynamicContext(text: string): { text: string; truncated: boolean; originalChars: number; renderedChars: number; limitChars: number } {
+  if (text.length <= DYNAMIC_CONTEXT_MAX_CHARS) return { text, truncated: false, originalChars: text.length, renderedChars: text.length, limitChars: DYNAMIC_CONTEXT_MAX_CHARS };
   const omitted = text.length - DYNAMIC_CONTEXT_MAX_CHARS;
-  return `${text.slice(0, DYNAMIC_CONTEXT_MAX_CHARS)}\n\n[cache-friendly-prompt: omitted ${omitted} trailing chars from dynamic context]`;
+  const rendered = `${text.slice(0, DYNAMIC_CONTEXT_MAX_CHARS)}\n\n[cache-friendly-prompt: omitted ${omitted} trailing chars from dynamic context]`;
+  return { text: rendered, truncated: true, originalChars: text.length, renderedChars: rendered.length, limitChars: DYNAMIC_CONTEXT_MAX_CHARS };
 }
 function rememberRunState(key: string, state: LastState): void {
   const previous = stateByRun.get(key);
@@ -216,14 +223,20 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
     const rendered = renderPromptFragments(fragments);
     const { runKey } = runKeyWithSource(event, ctx);
     const prev = stateByRun.get(runKey) ?? stateByRun.get(ctx?.cwd ?? "");
+    const truncated = truncateDynamicContext(rendered.dynamicText);
     if (prev) {
       prev.latestDynamicFragmentHashes = rendered.dynamicFragments.map(hashFragment);
       prev.latestDynamicCollectedAt = new Date().toISOString();
-      prev.injectedWarnings = mergeWarnings(prev.injectedWarnings, rendered.warnings.filter((w) => w.fragmentId ? rendered.dynamicFragments.some((f) => f.id === w.fragmentId) : false));
+      prev.dynamicContextTruncated = truncated.truncated;
+      prev.dynamicContextOriginalChars = truncated.originalChars;
+      prev.dynamicContextRenderedChars = truncated.renderedChars;
+      prev.dynamicContextLimitChars = truncated.limitChars;
+      const truncationWarning: PromptInspectionWarning[] = truncated.truncated ? [{ severity: "warning", code: "DYNAMIC_CONTEXT_TRUNCATED", message: `Dynamic context was truncated from ${truncated.originalChars} to ${truncated.renderedChars} chars before injection.` }] : [];
+      prev.injectedWarnings = mergeWarnings(prev.injectedWarnings, [...rendered.warnings.filter((w) => w.fragmentId ? rendered.dynamicFragments.some((f) => f.id === w.fragmentId) : false), ...truncationWarning]);
       rememberRunState(prev.runKey, prev);
     }
     if (!rendered.dynamicText.trim()) return { messages };
-    return { messages: [...messages, { role: "user", customType: "cache-friendly-dynamic-context", content: [{ type: "text", text: truncateDynamicContext(rendered.dynamicText) }] }] };
+    return { messages: [...messages, { role: "user", customType: "cache-friendly-dynamic-context", content: [{ type: "text", text: truncated.text }] }] };
   });
 
   pi.on("before_provider_request", async (event: any, ctx: any) => {
@@ -238,6 +251,11 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
       try { (pi as any).events?.emit?.("cache-friendly-prompt:dynamic-tail-sent", { fragmentIds: sentDynamicIds }); } catch {}
     }
     const warnings = mergeWarnings(lastState?.injectedWarnings ?? [], inspectFinalPayloadText(finalText));
+    if (lastState) {
+      lastState.totalPromptChars = finalText.length;
+      lastState.totalPromptTokenEstimate = estimateTokens(finalText);
+      rememberRunState(lastState.runKey, lastState);
+    }
     if (cfg.logRequests) {
       await appendCacheFriendlyLog(ctx?.cwd ?? process.cwd(), {
         timestamp: new Date().toISOString(),
@@ -271,6 +289,10 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
         injectedSemiStableFragmentHashes: lastState?.injectedSemiStableFragmentHashes ?? [],
         latestDynamicFragmentHashes: lastState?.latestDynamicFragmentHashes,
         latestDynamicCollectedAt: lastState?.latestDynamicCollectedAt,
+        dynamicContextTruncated: lastState?.dynamicContextTruncated,
+        dynamicContextOriginalChars: lastState?.dynamicContextOriginalChars,
+        dynamicContextRenderedChars: lastState?.dynamicContextRenderedChars,
+        dynamicContextLimitChars: lastState?.dynamicContextLimitChars,
         warnings,
       });
     }
@@ -292,6 +314,7 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
     const { runKey } = runKeyWithSource(event, ctx);
     const requestId = requestIdOf(event, ctx);
     const lastState = (requestId ? stateByRequestId.get(requestId) : undefined) ?? stateByRun.get(runKey) ?? stateByRun.get(ctx?.cwd ?? "") ?? null;
+    const correlationConfidence = requestId && lastState?.requestId === requestId ? "requestId_matched" : lastState ? "runKey_latest" : "missing";
     await appendActualUsageLog(ctx?.cwd ?? process.cwd(), {
       timestamp: messageTimestamp(message),
       requestId,
@@ -300,7 +323,19 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
       requestRoleSource: lastState?.requestRoleSource ?? requestRoleOf(event, ctx).requestRoleSource,
       provider,
       model: modelId(ctx) ?? pickString(message.model, event?.model),
+      correlationConfidence,
+      stablePrefixHash: lastState?.stablePrefixHash,
+      featureCacheablePrefixHash: lastState?.featureCacheablePrefixHash,
       providerPrefixHash: lastState?.providerPrefixHash,
+      providerPrefixChars: lastState?.providerPrefixChars,
+      stablePrefixChars: lastState?.stablePrefixChars,
+      semiStableChars: lastState?.semiStableChars,
+      totalPromptChars: lastState?.totalPromptChars,
+      latestDynamicFragmentHashes: lastState?.latestDynamicFragmentHashes,
+      dynamicContextTruncated: lastState?.dynamicContextTruncated,
+      dynamicContextOriginalChars: lastState?.dynamicContextOriginalChars,
+      dynamicContextRenderedChars: lastState?.dynamicContextRenderedChars,
+      dynamicContextLimitChars: lastState?.dynamicContextLimitChars,
       inputTotalTokens: normalized.inputTotalTokens,
       outputTokens: normalized.outputTokens,
       cacheReadTokens: normalized.cacheReadTokens,
