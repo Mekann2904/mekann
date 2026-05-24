@@ -34,12 +34,33 @@ export interface SnapshotWatermark {
 	sourceEventCount: number;
 	lastEventId: string;
 	eventLogHash: string;
+	validUntil?: string;
 }
 
 export function computeSnapshotWatermark(events: MekannContextEvent[], now = Date.now()): SnapshotWatermark {
 	const ordered = [...events].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
 	const hash = crypto.createHash("sha256");
-	for (const event of ordered) hash.update(`${event.id}\t${event.createdAt}\t${event.schemaVersion}\n`);
+	for (const event of ordered) {
+		hash.update(JSON.stringify({
+			id: event.id,
+			schemaVersion: event.schemaVersion,
+			kind: event.kind,
+			status: event.status,
+			priority: event.priority,
+			title: event.title,
+			summary: event.summary,
+			evidenceLevel: event.evidenceLevel,
+			refs: event.refs,
+			scope: event.scope,
+			supersedes: event.supersedes,
+			resolves: event.resolves,
+			invalidates: event.invalidates,
+			expiresAt: event.expiresAt,
+			createdAt: event.createdAt,
+			cwd: event.cwd,
+		}));
+		hash.update("\n");
+	}
 	return {
 		schemaVersion: "mekann-context-snapshot/v2",
 		generatedAt: new Date(now).toISOString(),
@@ -54,6 +75,8 @@ export function snapshotWatermarkMatches(xml: string, events: MekannContextEvent
 	const root = xml.match(/<mekann_session_context\b([^>]*)>/)?.[1];
 	if (!root) return false;
 	const attr = (name: string) => root.match(new RegExp(`${name}="([^"]*)"`))?.[1] ?? "";
+	const validUntil = attr("validUntil");
+	if (validUntil && Date.now() >= Date.parse(validUntil)) return false;
 	return attr("schemaVersion") === expected.schemaVersion
 		&& Number(attr("sourceEventCount")) === expected.sourceEventCount
 		&& attr("lastEventId") === expected.lastEventId
@@ -109,6 +132,8 @@ export function buildSnapshot(events: MekannContextEvent[] | ProjectedContextEve
 		: projectContextEvents(events as MekannContextEvent[]);
 
 	filtered = filtered.filter((e) => (e.effectiveStatus === "active" || e.effectiveStatus === "blocked") && !(e.expiresAt != null && e.expiresAt < now));
+	const expiring = filtered.map((e) => e.expiresAt).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+	if (expiring.length > 0) watermark.validUntil = new Date(Math.min(...expiring)).toISOString();
 
 	if (options.kinds) filtered = filtered.filter((e) => options.kinds!.includes(e.kind));
 
@@ -137,7 +162,8 @@ function buildSnapshotXml(events: ProjectedContextEvent[], maxTitleLen: number, 
 		const eventXmls = s.events.map((e) => formatEvent(e, maxTitleLen, maxSummaryLen)).join("\n");
 		return `  <${s.label}>\n${eventXmls}\n  </${s.label}>`;
 	}).join("\n");
-	return `<mekann_session_context schemaVersion="${watermark.schemaVersion}" generatedAt="${watermark.generatedAt}" sourceEventCount="${watermark.sourceEventCount}" lastEventId="${escapeXml(watermark.lastEventId)}" eventLogHash="${watermark.eventLogHash}">\n${sectionXml}\n</mekann_session_context>\n`;
+	const validUntil = watermark.validUntil ? ` validUntil="${escapeXml(watermark.validUntil)}"` : "";
+	return `<mekann_session_context schemaVersion="${watermark.schemaVersion}" generatedAt="${watermark.generatedAt}" sourceEventCount="${watermark.sourceEventCount}" lastEventId="${escapeXml(watermark.lastEventId)}" eventLogHash="${watermark.eventLogHash}"${validUntil}>\n${sectionXml}\n</mekann_session_context>\n`;
 }
 
 function trimSnapshotToBudget(events: ProjectedContextEvent[], maxTitleLen: number, maxSummaryLen: number, maxBytes: number, watermark: SnapshotWatermark): string {

@@ -131,6 +131,30 @@ function nonEmptyString(value: string, name: string): void {
 	if (typeof value !== "string" || value.trim().length === 0) throw new Error(`${name} is required`);
 }
 
+function requireStringArray(value: unknown, name: string): void {
+	if (value == null) return;
+	if (!Array.isArray(value) || !value.every((v) => typeof v === "string" && v.length > 0)) throw new Error(`${name} must be a string array`);
+}
+
+function requireScope(value: unknown): void {
+	if (value == null) return;
+	if (typeof value !== "object" || Array.isArray(value)) throw new Error("scope must be an object");
+	const scope = value as MekannContextScope;
+	for (const key of ["paths", "symbols"] as const) requireStringArray(scope[key], `scope.${key}`);
+	for (const key of ["project", "goalId", "planId", "branchId", "subagentId"] as const) {
+		if (scope[key] != null && typeof scope[key] !== "string") throw new Error(`scope.${key} must be a string`);
+	}
+}
+
+function requireRefs(value: unknown): void {
+	if (value == null) return;
+	if (!Array.isArray(value)) throw new Error("refs must be an array");
+	for (const ref of value as MekannContextRef[]) {
+		if (!VALID_REF_TYPES.has(ref.type) || typeof ref.value !== "string" || ref.value.length === 0) throw new Error("Invalid context event ref");
+		if (ref.role && !VALID_REF_ROLES.has(ref.role)) throw new Error(`Invalid context event ref role: ${ref.role}`);
+	}
+}
+
 function requireValidEventInput(input: AppendEventInput, status: MekannContextEventStatus): void {
 	if (!VALID_KINDS.has(input.kind)) throw new Error(`Invalid context event kind: ${input.kind}`);
 	if (!VALID_STATUSES.has(status)) throw new Error(`Invalid context event status: ${status}`);
@@ -138,16 +162,12 @@ function requireValidEventInput(input: AppendEventInput, status: MekannContextEv
 	nonEmptyString(input.cwd, "cwd");
 	nonEmptyString(input.title, "title");
 	nonEmptyString(input.summary, "summary");
+	if (input.summary.length > 4000) throw new Error("summary must be 4000 characters or less");
 	if (!VALID_EVIDENCE_LEVELS.has(input.evidenceLevel)) throw new Error(`Invalid evidenceLevel: ${input.evidenceLevel}`);
 	if (input.expiresAt != null && !Number.isFinite(input.expiresAt)) throw new Error("expiresAt must be a finite number");
-	for (const field of ["supersedes", "resolves", "invalidates"] as const) {
-		const values = input[field];
-		if (values != null && !values.every((v) => typeof v === "string" && v.length > 0)) throw new Error(`${field} must be a string array`);
-	}
-	for (const ref of input.refs ?? []) {
-		if (!VALID_REF_TYPES.has(ref.type) || typeof ref.value !== "string" || ref.value.length === 0) throw new Error("Invalid context event ref");
-		if (ref.role && !VALID_REF_ROLES.has(ref.role)) throw new Error(`Invalid context event ref role: ${ref.role}`);
-	}
+	for (const field of ["supersedes", "resolves", "invalidates"] as const) requireStringArray(input[field], field);
+	requireRefs(input.refs);
+	requireScope(input.scope);
 }
 
 function nonEmptyArray<T>(items: T[] | undefined): T[] | undefined {
@@ -201,6 +221,22 @@ function isStringArray(value: unknown): value is string[] {
 	return Array.isArray(value) && value.every((v) => typeof v === "string" && v.length > 0);
 }
 
+function isScopeLike(value: unknown): boolean {
+	if (value == null) return true;
+	if (typeof value !== "object" || Array.isArray(value)) return false;
+	const scope = value as MekannContextScope;
+	if (scope.paths != null && !isStringArray(scope.paths)) return false;
+	if (scope.symbols != null && !isStringArray(scope.symbols)) return false;
+	for (const key of ["project", "goalId", "planId", "branchId", "subagentId"] as const) if (scope[key] != null && typeof scope[key] !== "string") return false;
+	return true;
+}
+
+function areRefsLike(value: unknown): boolean {
+	if (value == null) return true;
+	if (!Array.isArray(value)) return false;
+	return value.every((ref: MekannContextRef) => VALID_REF_TYPES.has(ref.type) && typeof ref.value === "string" && ref.value.length > 0 && (ref.role == null || VALID_REF_ROLES.has(ref.role)));
+}
+
 function isEventLike(event: any): event is MekannContextEvent {
 	return event?.schemaVersion === "mekann-context/v2"
 		&& /^ctx_[a-z0-9]+_[a-z0-9]+(?:_[a-f0-9]+)?$/.test(event.id)
@@ -208,14 +244,19 @@ function isEventLike(event: any): event is MekannContextEvent {
 		&& VALID_STATUSES.has(event.status)
 		&& Number.isInteger(event.priority) && event.priority >= 0 && event.priority <= 4
 		&& typeof event.title === "string" && event.title.trim().length > 0
-		&& typeof event.summary === "string" && event.summary.trim().length > 0
+		&& typeof event.summary === "string" && event.summary.trim().length > 0 && event.summary.length <= 4000
 		&& VALID_EVIDENCE_LEVELS.has(event.evidenceLevel)
 		&& typeof event.cwd === "string" && event.cwd.trim().length > 0
 		&& Number.isFinite(event.createdAt)
 		&& (event.expiresAt == null || Number.isFinite(event.expiresAt))
 		&& (event.supersedes == null || isStringArray(event.supersedes))
 		&& (event.resolves == null || isStringArray(event.resolves))
-		&& (event.invalidates == null || isStringArray(event.invalidates));
+		&& (event.invalidates == null || isStringArray(event.invalidates))
+		&& areRefsLike(event.refs)
+		&& isScopeLike(event.scope)
+		&& (event.sessionId == null || typeof event.sessionId === "string")
+		&& (event.turnId == null || typeof event.turnId === "string")
+		&& (event.toolCallId == null || typeof event.toolCallId === "string");
 }
 
 export async function readEvents(cwd: string): Promise<MekannContextEvent[]> {

@@ -278,14 +278,17 @@ describe("context ledger store", () => {
 		const longTitle = "t".repeat(200);
 		const longSummary = "s".repeat(1000);
 		const longRef = "r".repeat(300);
-		const event: MekannContextEvent = {
-			schemaVersion: "mekann-context/v2",
+			const event = {
+			schemaVersion: "mekann-context/v2" as const,
 			id: "ctx_trunc_1",
-			kind: "task",
-			priority: 2,
+			kind: "task" as const,
+			status: "active" as const,
+			effectiveStatus: "active" as const,
+			priority: 2 as const,
 			title: longTitle,
 			summary: longSummary,
-			refs: [{ type: "artifact", value: longRef }],
+			evidenceLevel: "observed" as const,
+			refs: [{ type: "artifact" as const, value: longRef }],
 			createdAt: Date.now(),
 			cwd: "/tmp",
 		};

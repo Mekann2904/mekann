@@ -135,7 +135,7 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const cwd = ctx?.cwd ?? process.cwd();
-			const maxBytes = clampInt((params as any).maxBytes, 4096, 256, 65536);
+			const maxBytes = clampInt((params as any).maxBytes, 4096, 512, 65536);
 			const rebuild = Boolean((params as any).rebuild);
 
 			const events = await readEvents(cwd);
@@ -179,7 +179,7 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 			if (arg === "snapshot" || arg.startsWith("snapshot")) {
 				const maxBytesMatch = arg.match(/--max-bytes\s+(\d+)/);
 				const unbounded = arg.includes("--unbounded");
-				const maxBytes = unbounded ? undefined : (maxBytesMatch ? Math.max(256, parseInt(maxBytesMatch[1], 10)) : 4096);
+				const maxBytes = unbounded ? undefined : (maxBytesMatch ? Math.max(512, parseInt(maxBytesMatch[1], 10)) : 4096);
 				const shouldWrite = arg.includes("--write");
 				const events = await readEvents(cwd);
 				const xml = buildSnapshot(events, { maxBytes });
@@ -198,7 +198,7 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 
 			if (arg === "restore" || arg.startsWith("restore")) {
 				const maxBytesMatch = arg.match(/--max-bytes\s+(\d+)/);
-				const maxBytes = maxBytesMatch ? Math.max(256, parseInt(maxBytesMatch[1], 10)) : 4096;
+				const maxBytes = maxBytesMatch ? Math.max(512, parseInt(maxBytesMatch[1], 10)) : 4096;
 				const rebuild = arg.includes("--rebuild");
 				const shouldWrite = arg.includes("--write");
 
