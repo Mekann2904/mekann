@@ -39,6 +39,12 @@ describe("normalizeActualCacheUsage", () => {
       usage: { input: 21760, output: 46, cacheRead: 45056, cacheWrite: 0, totalTokens: 66862 },
       expected: { inputTotalTokens: 66816, outputTokens: 46, cacheReadTokens: 45056, tokenHitRate: 45056 / 66816, cacheableReadRate: null },
     },
+    {
+      name: "pi normalized without totalTokens but impossible total-input semantics",
+      provider: "openai-codex",
+      usage: { input: 312, output: 359, cacheRead: 72192, cacheWrite: 0 },
+      expected: { inputTotalTokens: 72504, outputTokens: 359, cacheReadTokens: 72192, tokenHitRate: 72192 / 72504, cacheableReadRate: null },
+    },
   ])("normalizes $name usage", ({ provider, usage, expected }) => {
     expect(normalizeActualCacheUsage(provider, usage)).toEqual(expect.objectContaining(expected));
   });

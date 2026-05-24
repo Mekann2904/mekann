@@ -71,7 +71,9 @@ export function normalizeActualCacheUsage(provider: string | undefined, usage: u
     const observedInputParts = inputTokens + outputTokens + cacheReadTokens + (rawCacheWriteTokens ?? 0);
     const inferredInputTotalTokens = totalTokens !== undefined && Math.abs(totalTokens - observedInputParts) <= 1
       ? inputTokens + cacheReadTokens + (rawCacheWriteTokens ?? 0)
-      : inputTokens;
+      : cacheReadTokens > inputTokens || (rawCacheWriteTokens ?? 0) > 0
+        ? inputTokens + cacheReadTokens + (rawCacheWriteTokens ?? 0)
+        : inputTokens;
     const inputTotalTokens = numberOf(u.inputTotal) ?? inferredInputTotalTokens;
     return finish({ inputTotalTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheMissTokens }, "pi_normalized_usage");
   }
