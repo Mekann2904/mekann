@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { normalizeActualCacheUsage } from "./actualUsage.js";
+import { normalizeActualCacheUsage, type NormalizedActualCacheUsage } from "./actualUsage.js";
 import { appendActualUsageLog, appendCacheFriendlyLog } from "./logs.js";
 import { canonicalizeText, collectPromptFragments, estimateTokens, extractTextFromProviderPayload, hashFragment, inspectFinalPayloadText, inspectStablePrefix, listPromptProviders, renderPromptFragments, sha256, type PromptFragmentHash, type PromptInspectionWarning, type RunKeySource } from "../prompt-core/index.js";
 
@@ -32,7 +32,9 @@ type LastState = {
 };
 const stateByRun = new Map<string, LastState>();
 const stateByRequestId = new Map<string, LastState>();
+const actualUsageKeys = new Set<string>();
 const MAX_RUN_STATES = 128;
+const MAX_ACTUAL_USAGE_KEYS = 512;
 const DYNAMIC_CONTEXT_MAX_CHARS = 12_000;
 function truncateDynamicContext(text: string): string {
   if (text.length <= DYNAMIC_CONTEXT_MAX_CHARS) return text;
@@ -62,6 +64,40 @@ function pickString(...values: unknown[]): string | undefined {
 }
 function requestIdOf(event: any, ctx: any): string | undefined {
   return pickString(event?.requestId, event?.request_id, event?.id, event?.message?.requestId, event?.message?.request_id, event?.response?.requestId, event?.response?.id, ctx?.requestId, ctx?.request_id);
+}
+function messageTimestamp(message: any): string {
+  const timestamp = message?.timestamp;
+  if (typeof timestamp === "number" && Number.isFinite(timestamp)) return new Date(timestamp).toISOString();
+  if (typeof timestamp === "string" && timestamp.trim()) {
+    const ms = Date.parse(timestamp);
+    if (Number.isFinite(ms)) return new Date(ms).toISOString();
+  }
+  return new Date().toISOString();
+}
+function actualUsageKey(event: any, ctx: any, message: any, normalized: NormalizedActualCacheUsage): string {
+  const { runKey } = runKeyWithSource(event, ctx);
+  return [
+    ctx?.cwd ?? "",
+    runKey,
+    requestIdOf(event, ctx) ?? "",
+    message?.id ?? event?.messageId ?? event?.id ?? "",
+    message?.timestamp ?? "",
+    normalized.inputTotalTokens,
+    normalized.outputTokens,
+    normalized.cacheReadTokens,
+    normalized.cacheWriteTokens ?? "",
+    normalized.cacheMissTokens ?? "",
+  ].join(":");
+}
+function rememberActualUsageKey(key: string): boolean {
+  if (actualUsageKeys.has(key)) return false;
+  actualUsageKeys.add(key);
+  while (actualUsageKeys.size > MAX_ACTUAL_USAGE_KEYS) {
+    const oldest = actualUsageKeys.keys().next().value;
+    if (oldest === undefined) break;
+    actualUsageKeys.delete(oldest);
+  }
+  return true;
 }
 function runKeyWithSource(event: any, ctx: any): { runKey: string; runKeySource: RunKeySource } {
   const candidates: Array<[RunKeySource, unknown]> = [
@@ -217,11 +253,13 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
     const provider = modelProvider(ctx) ?? pickString(message.provider, event?.provider);
     const normalized = normalizeActualCacheUsage(provider, rawUsage);
     if (!normalized) return undefined;
+    const key = actualUsageKey(event, ctx, message, normalized);
+    if (!rememberActualUsageKey(key)) return undefined;
     const { runKey } = runKeyWithSource(event, ctx);
     const requestId = requestIdOf(event, ctx);
     const lastState = (requestId ? stateByRequestId.get(requestId) : undefined) ?? stateByRun.get(runKey) ?? stateByRun.get(ctx?.cwd ?? "") ?? null;
     await appendActualUsageLog(ctx?.cwd ?? process.cwd(), {
-      timestamp: new Date().toISOString(),
+      timestamp: messageTimestamp(message),
       requestId,
       runKey,
       provider,

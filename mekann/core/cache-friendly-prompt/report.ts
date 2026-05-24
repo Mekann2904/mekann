@@ -17,6 +17,19 @@ type ProviderSummary = {
   latestTotalPromptChars: number;
 };
 
+type ActualProviderSummary = {
+  requests: number;
+  inputTotalTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  cacheMissTokens: number;
+  averageTokenHitRate: number | null;
+  weightedTokenHitRate: number | null;
+  averageCacheableReadRate: number | null;
+  weightedCacheableReadRate: number | null;
+};
+
 type CacheFriendlySummary = {
   generatedAt: string;
   totalRequests: number;
@@ -49,6 +62,8 @@ type CacheFriendlySummary = {
   actualCacheWriteTokens: number;
   actualCacheMissTokens: number;
   actualInputTotalTokens: number;
+  actualByProvider: Record<string, ActualProviderSummary>;
+  actualByProviderModel: Record<string, ActualProviderSummary>;
 };
 
 const MAX_POINTS = 500;
@@ -60,6 +75,14 @@ const PAD_T = 24;
 const PAD_B = 42;
 
 function providerKey(row: ParsedLog): string {
+  return `${row.provider ?? "unknown"}/${row.model ?? "unknown"}`;
+}
+
+function actualProviderKey(row: ParsedActualUsageLog): string {
+  return row.provider ?? "unknown";
+}
+
+function actualProviderModelKey(row: ParsedActualUsageLog): string {
   return `${row.provider ?? "unknown"}/${row.model ?? "unknown"}`;
 }
 
@@ -134,21 +157,49 @@ function mean(values: Array<number | null | undefined>): number | null {
   return nums.length > 0 ? nums.reduce((sum, v) => sum + v, 0) / nums.length : null;
 }
 
-function summarizeActual(actualRows: ParsedActualUsageLog[]) {
-  const actualCacheReadTokens = actualRows.reduce((sum, row) => sum + (row.cacheReadTokens ?? 0), 0);
-  const actualCacheWriteTokens = actualRows.reduce((sum, row) => sum + (row.cacheWriteTokens ?? 0), 0);
-  const actualCacheMissTokens = actualRows.reduce((sum, row) => sum + (row.cacheMissTokens ?? 0), 0);
-  const actualInputTotalTokens = actualRows.reduce((sum, row) => sum + (row.inputTotalTokens ?? 0), 0);
+function summarizeActualGroup(rows: ParsedActualUsageLog[]): ActualProviderSummary {
+  const inputTotalTokens = rows.reduce((sum, row) => sum + (row.inputTotalTokens ?? 0), 0);
+  const outputTokens = rows.reduce((sum, row) => sum + (row.outputTokens ?? 0), 0);
+  const cacheReadTokens = rows.reduce((sum, row) => sum + (row.cacheReadTokens ?? 0), 0);
+  const cacheWriteTokens = rows.reduce((sum, row) => sum + (row.cacheWriteTokens ?? 0), 0);
+  const cacheMissTokens = rows.reduce((sum, row) => sum + (row.cacheMissTokens ?? 0), 0);
+  const cacheableRows = rows.filter((row) => row.cacheWriteTokens !== undefined);
+  const cacheableReadTokens = cacheableRows.reduce((sum, row) => sum + (row.cacheReadTokens ?? 0), 0);
+  const cacheableWriteTokens = cacheableRows.reduce((sum, row) => sum + (row.cacheWriteTokens ?? 0), 0);
   return {
-    actualRequestCount: actualRows.length,
-    actualTokenHitRateAvg: mean(actualRows.map((r) => r.tokenHitRate)),
-    actualTokenHitRateWeighted: rate(actualCacheReadTokens, actualInputTotalTokens),
-    actualCacheableReadRateAvg: mean(actualRows.map((r) => r.cacheableReadRate)),
-    actualCacheableReadRateWeighted: rate(actualCacheReadTokens, actualCacheReadTokens + actualCacheWriteTokens),
-    actualCacheReadTokens,
-    actualCacheWriteTokens,
-    actualCacheMissTokens,
-    actualInputTotalTokens,
+    requests: rows.length,
+    inputTotalTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    cacheMissTokens,
+    averageTokenHitRate: mean(rows.map((r) => r.tokenHitRate)),
+    weightedTokenHitRate: rate(cacheReadTokens, inputTotalTokens),
+    averageCacheableReadRate: mean(rows.map((r) => r.cacheableReadRate)),
+    weightedCacheableReadRate: cacheableRows.length > 0 ? rate(cacheableReadTokens, cacheableReadTokens + cacheableWriteTokens) : null,
+  };
+}
+
+function groupActualRows(rows: ParsedActualUsageLog[], keyOf: (row: ParsedActualUsageLog) => string): Record<string, ActualProviderSummary> {
+  const groups = new Map<string, ParsedActualUsageLog[]>();
+  for (const row of rows) groups.set(keyOf(row), [...(groups.get(keyOf(row)) ?? []), row]);
+  return Object.fromEntries([...groups.entries()].map(([key, groupRows]) => [key, summarizeActualGroup(groupRows)]));
+}
+
+function summarizeActual(actualRows: ParsedActualUsageLog[]) {
+  const actual = summarizeActualGroup(actualRows);
+  return {
+    actualRequestCount: actual.requests,
+    actualTokenHitRateAvg: actual.averageTokenHitRate,
+    actualTokenHitRateWeighted: actual.weightedTokenHitRate,
+    actualCacheableReadRateAvg: actual.averageCacheableReadRate,
+    actualCacheableReadRateWeighted: actual.weightedCacheableReadRate,
+    actualCacheReadTokens: actual.cacheReadTokens,
+    actualCacheWriteTokens: actual.cacheWriteTokens,
+    actualCacheMissTokens: actual.cacheMissTokens,
+    actualInputTotalTokens: actual.inputTotalTokens,
+    actualByProvider: groupActualRows(actualRows, actualProviderKey),
+    actualByProviderModel: groupActualRows(actualRows, actualProviderModelKey),
   };
 }
 
@@ -375,9 +426,18 @@ function formatPct(value: number | null): string {
   return value === null ? "n/a" : `${(value * 100).toFixed(1)}%`;
 }
 
+function renderActualSummaryRows(summaryByKey: Record<string, ActualProviderSummary>): string {
+  return Object.entries(summaryByKey)
+    .sort((a, b) => b[1].inputTotalTokens - a[1].inputTotalTokens || b[1].requests - a[1].requests)
+    .map(([key, v]) => `| ${escapeHtml(key)} | ${v.requests} | ${v.inputTotalTokens} | ${v.outputTokens} | ${v.cacheReadTokens} | ${v.cacheWriteTokens} | ${v.cacheMissTokens} | ${formatPct(v.weightedTokenHitRate)} | ${formatPct(v.averageTokenHitRate)} | ${formatPct(v.weightedCacheableReadRate)} |`)
+    .join("\n") || "| なし | 0 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | n/a |";
+}
+
 function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string {
   const latest = summary.latest;
   const providerRows = Object.entries(summary.providers).sort((a, b) => b[1].requests - a[1].requests).map(([k, v]) => `| ${escapeHtml(k)} | ${v.requests} | ${v.uniqueReuseKeys} | \`${shortHash(v.latestReuseKey)}\` | ${v.latestProviderPrefixChars ?? v.latestStablePrefixChars} | ${v.latestStablePrefixChars} | ${v.latestTotalPromptChars} |`).join("\n");
+  const actualProviderRows = renderActualSummaryRows(summary.actualByProvider);
+  const actualProviderModelRows = renderActualSummaryRows(summary.actualByProviderModel);
   const changes = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined })).filter((x): x is { row: ParsedLog; prev: ParsedLog } => x.prev !== undefined && scopedReuseKey(x.row) !== scopedReuseKey(x.prev)).slice(-20).reverse();
   const changeRows = changes.map(({ row, prev }) => `| ${row.timestamp} | ${escapeHtml(providerKey(prev))} → ${escapeHtml(providerKey(row))} | \`${shortHash(reuseKey(prev))}\` → \`${shortHash(reuseKey(row))}\` | ${row.providerPrefixChars ?? row.featureCacheablePrefixChars ?? row.stablePrefixChars ?? 0} | ${row.stablePrefixChars ?? 0} | ${row.totalPromptChars ?? 0} |`).join("\n") || "| なし |  |  |  |  | |";
   return `# cache-friendly-prompt レポート
@@ -436,6 +496,18 @@ This section is based on provider usage tokens, not prefix continuity proxy.
 - request 平均 cacheableReadRate: ${formatPct(summary.actualCacheableReadRateAvg)}
 - token 加重 cacheableReadRate: ${formatPct(summary.actualCacheableReadRateWeighted)}
 - cacheRead/cacheWrite/cacheMiss/inputTotal tokens: ${summary.actualCacheReadTokens}/${summary.actualCacheWriteTokens}/${summary.actualCacheMissTokens}/${summary.actualInputTotalTokens}
+
+### Actual cache usage by provider
+
+| provider | requests | input tokens | output tokens | cache read tokens | cache write tokens | cache miss tokens | weighted tokenHitRate | avg tokenHitRate | weighted cacheableReadRate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+${actualProviderRows}
+
+### Actual cache usage by provider/model
+
+| provider/model | requests | input tokens | output tokens | cache read tokens | cache write tokens | cache miss tokens | weighted tokenHitRate | avg tokenHitRate | weighted cacheableReadRate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+${actualProviderModelRows}
 
 ## キャッシュ可能性
 
