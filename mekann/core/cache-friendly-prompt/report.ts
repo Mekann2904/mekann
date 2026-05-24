@@ -50,6 +50,7 @@ type CacheFriendlySummary = {
   /** @deprecated Use uniqueScopedReuseKeyRatio. */
   uniqueReuseKeyRatio: number | null;
   recentSameHashStreak: number;
+  baseSystemHashChanges: number;
   stablePrefixHashChanges: number;
   featureCacheablePrefixHashChanges: number;
   providerPrefixHashChanges: number;
@@ -319,6 +320,7 @@ function summarize(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], genera
     uniqueScopedReuseKeyRatio,
     uniqueReuseKeyRatio: uniqueScopedReuseKeyRatio,
     recentSameHashStreak: stableHashStreak,
+    baseSystemHashChanges: countChanges(rows, (r) => r.baseSystemHash),
     stablePrefixHashChanges: countChanges(rows, (r) => r.stablePrefixHash),
     featureCacheablePrefixHashChanges: countChanges(rows, (r) => r.featureCacheablePrefixHash),
     providerPrefixHashChanges: countChanges(rows, (r) => r.providerPrefixHash),
@@ -573,11 +575,18 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
     ["cacheMissTokens", summary.actualCacheMissTokens],
     ["weighted cacheableReadRate", formatPct(summary.actualCacheableReadRateWeighted)],
   ]);
+  const baseSystemRows = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined }))
+    .filter((x): x is { row: ParsedLog; prev: ParsedLog } => x.prev !== undefined && (x.row.baseSystemHash ?? "") !== (x.prev.baseSystemHash ?? ""))
+    .slice(-20)
+    .reverse()
+    .map(({ row, prev }) => `| ${row.timestamp} | ${escapeHtml(providerKey(prev))} → ${escapeHtml(providerKey(row))} | \`${shortHash(prev.baseSystemHash)}\` → \`${shortHash(row.baseSystemHash)}\` | \`${shortHash(prev.providerPrefixHash)}\` → \`${shortHash(row.providerPrefixHash)}\` | ${(row.providerPrefixChars ?? 0) - (prev.providerPrefixChars ?? 0)} | ${row.providerPrefixChars ?? 0} |`)
+    .join("\n") || "| なし |  |  |  |  | |";
   const proxyRows = renderMetricRows([
     ["adjacentPrefixReuseRate", formatPct(summary.adjacentPrefixReuseRate)],
     ["windowPrefixReuseRate (latest 50)", formatPct(summary.windowPrefixReuseRate)],
     ["uniqueScopedReuseKeyRatio", formatPct(summary.uniqueScopedReuseKeyRatio)],
     ["recentSameReuseKeyStreak", `${summary.recentSameReuseKeyStreak} requests`],
+    ["baseSystemHashChanges", summary.baseSystemHashChanges],
     ["stablePrefixHashChanges", summary.stablePrefixHashChanges],
     ["featureCacheablePrefixHashChanges", summary.featureCacheablePrefixHashChanges],
     ["providerPrefixHashChanges", summary.providerPrefixHashChanges],
@@ -684,13 +693,21 @@ ${promptProviderModelGraphRows}
 |---|---:|---:|---|---:|---:|---:|
 ${providerRows || "| なし | 0 | 0 |  | 0 | 0 | 0 |"}
 
-## 7. 最近の scoped reuse key 変化 / Recent scoped reuse key changes
+## 7. Base system prompt stability
+
+\`stablePrefixHash\` が安定しているのに \`providerPrefixHash\` が変わる場合、base system prompt 側が揺れている可能性があります。この表は base system prompt hash の変化だけを抜き出します。
+
+| timestamp | provider/model | baseSystemHash | providerPrefixHash | provider prefix Δchars | provider prefix chars |
+|---|---|---|---|---:|---:|
+${baseSystemRows}
+
+## 8. 最近の scoped reuse key 変化 / Recent scoped reuse key changes
 
 | timestamp | provider/model | reuse key | likely change reason | provider prefix Δchars | total Δchars | provider prefix chars | stable chars | total chars |
 |---|---|---|---|---:|---:|---:|---:|---:|
 ${changeRows}
 
-## 8. Glossary
+## 9. Glossary
 
 | term | meaning |
 |---|---|

@@ -45,6 +45,12 @@ actual usage rows also include prefix snapshot metadata when available:
 
 まずここを見て、stable / semi-stable に runtime 値が混ざっていないかを確認してください。
 
+## base system prompt stability
+
+`stablePrefixHash` は stable fragment だけを見る診断用 hash です。provider cache に近いのは base system prompt も含む `providerPrefixHash` です。
+
+`report.md` には “Base system prompt stability” セクションがあり、`baseSystemHash` の変化を抜き出します。`stablePrefixHash` が安定しているのに `providerPrefixHash` が変わる場合は、Pi 本体や provider adapter が作る base system prompt 側に runtime 値が混ざっていないかを確認してください。
+
 ## stable / semi-stable volatility audit
 
 `prompt-core` は stable / semi-stable fragment に runtime 値が混ざっていないかを検査します。

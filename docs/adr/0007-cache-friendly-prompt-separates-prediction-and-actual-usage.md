@@ -40,6 +40,10 @@ Provider usage schemas differ. The normalizer records:
 
 This is especially important for Pi normalized usage because `usage.input` may represent either total input or non-cached input depending on upstream semantics.
 
+## Base system prompt stability
+
+`stablePrefixHash` intentionally excludes the base system prompt. `providerPrefixHash` includes the base system prompt plus stable and semi-stable fragments, so it is closer to the prefix that provider cache sees. Reports therefore track `baseSystemHashChanges` and list recent `baseSystemHash` changes separately. If stable fragment hashes are constant but provider prefix hashes change, base system prompt volatility is the first thing to inspect.
+
 ## Prefix change attribution
 
 Reports include recent scoped reuse key changes with best-effort attribution. The attribution compares adjacent request rows and lists changed hash families, changed/added/removed fragment ids, and prompt-size deltas. This does not prove provider cache invalidation by itself, but it gives the first place to inspect when actual cache hit rate drops.
