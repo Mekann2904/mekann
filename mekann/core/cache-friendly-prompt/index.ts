@@ -68,6 +68,8 @@ function requestIdOf(event: any, ctx: any): string | undefined {
   return pickString(event?.requestId, event?.request_id, event?.id, event?.message?.requestId, event?.message?.request_id, event?.response?.requestId, event?.response?.id, ctx?.requestId, ctx?.request_id);
 }
 function requestRoleOf(event: any, ctx: any): { requestRole: CacheFriendlyRequestRole; requestRoleSource: string } {
+  const envRole = pickString(process.env.PI_SUBAGENT_ROLE);
+  if (envRole === "child") return { requestRole: "subagent", requestRoleSource: "env:PI_SUBAGENT_ROLE" };
   const explicit = pickString(event?.requestRole, event?.role, event?.agentRole, ctx?.requestRole, ctx?.role, ctx?.agentRole);
   if (explicit) {
     const normalized = explicit.toLowerCase();
@@ -82,7 +84,7 @@ function requestRoleOf(event: any, ctx: any): { requestRole: CacheFriendlyReques
   }
   const taskName = pickString(event?.taskName, event?.task_name, ctx?.taskName, ctx?.task_name);
   if (taskName) return { requestRole: "subagent", requestRoleSource: "taskName" };
-  return { requestRole: "unknown", requestRoleSource: "unavailable" };
+  return { requestRole: "main", requestRoleSource: "default:root-process" };
 }
 function messageTimestamp(message: any): string {
   const timestamp = message?.timestamp;
