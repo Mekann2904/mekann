@@ -5,7 +5,7 @@
  * Never throws — ledger write failure must not block goal mutations.
  */
 
-import type { Goal, GoalStatus } from "./state.js";
+import type { Goal, GoalSource, GoalStatus } from "./state.js";
 
 // Lazy import to avoid hard coupling at module level.
 // If context/ledger/store is not available (e.g., in isolated tests), recording is silently skipped.
@@ -40,6 +40,7 @@ export interface RecordGoalEventInput {
 	sessionId?: string;
 	turnId?: string;
 	branchId?: string;
+	source?: GoalSource;
 }
 
 export function goalPriority(action: GoalAction): 0 | 1 | 2 | 3 | 4 {
@@ -70,6 +71,13 @@ export function goalTitle(action: GoalAction, goal?: Goal | null): string {
 	return `${prefix}: ${shortObj}`;
 }
 
+export function goalEvidenceLevel(action: GoalAction, source?: GoalSource): "observed" | "tool_reported" | "user_decided" {
+	if (action === "budget_exhausted" || action === "continuation_limit") return "observed";
+	if (source === "user") return "user_decided";
+	if (source === "tool") return "tool_reported";
+	return "observed";
+}
+
 export function goalSummary(action: GoalAction, goal?: Goal | null): string {
 	if (!goal) return `Goal ${action}`;
 	const parts = [
@@ -98,9 +106,10 @@ export async function recordGoalEvent(input: RecordGoalEventInput): Promise<void
 			priority: goalPriority(input.action),
 			title: goalTitle(input.action, input.goal),
 			summary: goalSummary(input.action, input.goal),
+			evidenceLevel: goalEvidenceLevel(input.action, input.source),
+			scope: input.goal ? { goalId: input.goal.goal_id, ...(input.branchId ? { branchId: input.branchId } : {}) } : (input.branchId ? { branchId: input.branchId } : undefined),
 			sessionId: input.sessionId,
 			turnId: input.turnId,
-			branchId: input.branchId,
 		});
 	} catch {
 		// best-effort: never block

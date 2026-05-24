@@ -101,7 +101,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
     }) : undefined);
   }
 
-  function emitUpdated(ctx: ExtensionContext, goal: Goal, action: GoalAction = "updated"): void {
+  function emitUpdated(ctx: ExtensionContext, goal: Goal, action: GoalAction = "updated", source: "user" | "tool" | "runtime" = "user"): void {
     const cwd = (ctx as any)?.cwd ?? process.cwd();
     recordGoalEvent({
       action,
@@ -110,12 +110,13 @@ export default function goalExtension(pi: ExtensionAPI): void {
       sessionId: (ctx as any)?.sessionId,
       turnId: (ctx as any)?.turnId,
       branchId: (ctx as any)?.branchId,
+      source,
     }).catch(() => {});
     pi.events.emit("goal:updated", { thread_id: goal.thread_id, goal });
     updateWidget(ctx);
   }
 
-  function emitCleared(ctx: ExtensionContext, threadId: string, goal?: Goal | null): void {
+  function emitCleared(ctx: ExtensionContext, threadId: string, goal?: Goal | null, source: "user" | "runtime" = "user"): void {
     const cwd = (ctx as any)?.cwd ?? process.cwd();
     recordGoalEvent({
       action: "cleared",
@@ -124,6 +125,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
       sessionId: (ctx as any)?.sessionId,
       turnId: (ctx as any)?.turnId,
       branchId: (ctx as any)?.branchId,
+      source,
     }).catch(() => {});
     pi.events.emit("goal:cleared", { thread_id: threadId });
     updateWidget(ctx);
@@ -159,6 +161,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
         sessionId: (ctx as any)?.sessionId,
         turnId: (ctx as any)?.turnId,
         branchId: (ctx as any)?.branchId,
+        source: "runtime",
       }).catch(() => {});
     });
     runtime.onSessionStart(ctx);
@@ -324,7 +327,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
           "tool",
         );
         runtime.onExternalSet(goal);
-        emitUpdated(ctx, goal, "set");
+        emitUpdated(ctx, goal, "set", "tool");
         return {
           content: [{ type: "text" as const, text: `Goal created: ${goal.objective}` }],
           details: { goal },
@@ -391,7 +394,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
         // Synchronize runtime state (clears active_goal_id, wall-clock baseline)
         runtime.onExternalSet(goal, previousGoal);
 
-        emitUpdated(ctx, goal, "completed");
+        emitUpdated(ctx, goal, "completed", "tool");
         const usageReport = `Final usage: ${goal.tokens_used} tokens, ${goal.time_used_seconds}s`;
 
         return {

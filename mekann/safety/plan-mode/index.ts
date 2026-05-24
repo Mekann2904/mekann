@@ -18,7 +18,7 @@ import {
 import { registerPromptProvider, type PromptFragment } from "../../core/prompt-core/index.js";
 
 // Lazy import for best-effort context ledger recording
-async function recordPlanEvent(input: { cwd: string; title: string; summary: string; kind: "plan" | "user_decision"; priority: 0 | 1 | 2 | 3 | 4; sessionId?: string; turnId?: string; branchId?: string }): Promise<void> {
+async function recordPlanEvent(input: { cwd: string; title: string; summary: string; kind: "plan" | "user_decision"; priority: 0 | 1 | 2 | 3 | 4; evidenceLevel: "agent_inferred" | "user_decided"; sessionId?: string; turnId?: string; branchId?: string }): Promise<void> {
 	try {
 		const { appendContextEvent } = await import("../../context/ledger/store.js");
 		await appendContextEvent(input);
@@ -129,7 +129,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			if (state.savedActiveTools) { pi.setActiveTools(state.savedActiveTools); state.savedActiveTools = undefined; }
 			if (target === "main" && state.pendingPlan) {
 				state.implementationPlan = state.pendingPlan;
-				recordPlanEvent({ cwd: (ctx as any)?.cwd ?? process.cwd(), title: "Plan carried to main mode", summary: state.pendingPlan.slice(0, 300), kind: "plan", priority: 1, sessionId: (ctx as any)?.sessionId, turnId: (ctx as any)?.turnId, branchId: (ctx as any)?.branchId }).catch(() => {});
+				recordPlanEvent({ cwd: (ctx as any)?.cwd ?? process.cwd(), title: "Plan carried to main mode", summary: state.pendingPlan.slice(0, 300), kind: "plan", priority: 1, evidenceLevel: "agent_inferred", sessionId: (ctx as any)?.sessionId, turnId: (ctx as any)?.turnId, branchId: (ctx as any)?.branchId }).catch(() => {});
 			}
 			Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined });
 		} else if (previous === "auto") {
@@ -320,7 +320,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		if (plan && plan !== state.pendingPlan) {
 			state.pendingPlan = plan;
-			recordPlanEvent({ cwd: (ctx as any)?.cwd ?? process.cwd(), title: "Plan proposed", summary: plan.slice(0, 300), kind: "plan", priority: 2, sessionId: (ctx as any)?.sessionId, turnId: (ctx as any)?.turnId, branchId: (ctx as any)?.branchId }).catch(() => {});
+			recordPlanEvent({ cwd: (ctx as any)?.cwd ?? process.cwd(), title: "Plan proposed", summary: plan.slice(0, 300), kind: "plan", priority: 2, evidenceLevel: "agent_inferred", sessionId: (ctx as any)?.sessionId, turnId: (ctx as any)?.turnId, branchId: (ctx as any)?.branchId }).catch(() => {});
 		} else if (plan && plan === state.pendingPlan) {
 			state.pendingPlan = plan;
 		}

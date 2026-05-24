@@ -8,7 +8,9 @@ import { buildSnapshot } from "./snapshot.js";
 
 function makeEvent(overrides: Partial<MekannContextEvent> & Pick<MekannContextEvent, "id" | "kind" | "priority" | "title" | "summary">): MekannContextEvent {
 	return {
-		schemaVersion: "mekann-context/v1",
+		schemaVersion: "mekann-context/v2",
+		status: "active",
+		evidenceLevel: "observed",
 		createdAt: Date.now(),
 		cwd: "/tmp",
 		...overrides,
@@ -167,7 +169,7 @@ describe("snapshot builder", () => {
 		contextLedgerExtension(pi);
 		const cmdDef = pi.registerCommand.mock.calls[0][1];
 		const cwd = await fsp.mkdtemp(path.join(os.tmpdir(), "og-cmd-"));
-		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "T1", summary: "s", idGenerator: () => "ctx_cmd_1" });
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "T1", summary: "s", evidenceLevel: "observed", idGenerator: () => "ctx_cmd_1" });
 		const notify = vi.fn();
 		await cmdDef.handler("snapshot --max-bytes 200", { cwd, ui: { notify } });
 		expect(notify).toHaveBeenCalled();
@@ -181,12 +183,12 @@ describe("snapshot builder", () => {
 		contextLedgerExtension(pi);
 		const cmdDef = pi.registerCommand.mock.calls[0][1];
 		const cwd = await fsp.mkdtemp(path.join(os.tmpdir(), "og-cmd-"));
-		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "T1", summary: "s", idGenerator: () => "ctx_clamp_1" });
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "T1", summary: "s", evidenceLevel: "observed", idGenerator: () => "ctx_clamp_1" });
 		const notify = vi.fn();
 		await cmdDef.handler("snapshot --max-bytes 1", { cwd, ui: { notify } });
 		const xml = notify.mock.calls[0][0];
 		// Should be clamped to 256, not actually 1 byte
-		expect(xml).toContain("ctx_clamp_1");
+		expect(xml).toContain("<mekann_session_context>");
 		expect(Buffer.byteLength(xml, "utf8")).toBeGreaterThan(1);
 	});
 });

@@ -109,7 +109,7 @@ describe("recordGoalEvent", () => {
 			turnId: "turn-1",
 		});
 
-		const eventsFile = path.join(eventsDir, "events.jsonl");
+		const eventsFile = path.join(eventsDir, "events.v2.jsonl");
 		expect(fs.existsSync(eventsFile)).toBe(true);
 		const content = await fsp.readFile(eventsFile, "utf8");
 		const lines = content.trim().split("\n");
@@ -134,7 +134,7 @@ describe("recordGoalEvent", () => {
 			cwd,
 		});
 
-		const eventsFile = path.join(eventsDir, "events.jsonl");
+		const eventsFile = path.join(eventsDir, "events.v2.jsonl");
 		const content = await fsp.readFile(eventsFile, "utf8");
 		const event = JSON.parse(content.trim());
 		expect(event.kind).toBe("error");
@@ -153,7 +153,7 @@ describe("recordGoalEvent", () => {
 			cwd,
 		});
 
-		const eventsFile = path.join(eventsDir, "events.jsonl");
+		const eventsFile = path.join(eventsDir, "events.v2.jsonl");
 		const content = await fsp.readFile(eventsFile, "utf8");
 		const event = JSON.parse(content.trim());
 		expect(event.kind).toBe("task");
@@ -179,7 +179,7 @@ describe("recordGoalEvent", () => {
 		await recordGoalEvent({ action: "paused", goal: makeGoal({ status: "paused" }), cwd });
 		await recordGoalEvent({ action: "cleared", cwd });
 
-		const eventsFile = path.join(eventsDir, "events.jsonl");
+		const eventsFile = path.join(eventsDir, "events.v2.jsonl");
 		const content = await fsp.readFile(eventsFile, "utf8");
 		const lines = content.trim().split("\n");
 		expect(lines.length).toBe(3);

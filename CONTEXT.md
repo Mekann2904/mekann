@@ -150,6 +150,24 @@ _Avoid_: context ledger, summary, decision log
 A runtime context-management feature that stores meaningful working-memory events such as decisions, tasks, errors, plans, file changes, and artifact references. Context ledger preserves interpreted session state, while output gate preserves raw tool output.
 _Avoid_: output gate, raw log dump
 
+**Context event**:
+A context-ledger record of a meaningful working-memory fact, decision, task, error, plan, or boundary. A context event stores interpreted state, not raw output; raw evidence belongs in output-gate artifacts and is linked through references.
+_Avoid_: raw log entry, conversation message
+
+**Effective context status**:
+The current status of a context event after projecting append-only context events and their relations. It is distinct from the event's stored status, which records what the event declared when it was written.
+_Avoid_: stored status, mutable event status
+
+**Context event relation**:
+A forward append-only link from a newer context event to older context events that it supersedes, resolves, or invalidates. Reverse links such as `resolvedBy` are projection results, not persisted event fields.
+_Avoid_: mutable back-reference, status update
+
+**Context control plane**:
+Agent の次の行動に必要な情報だけを、出自・状態・有効期限・安全境界・関連 scope にもとづいて、保存、索引化、検索、復元、失効、注入するための横断的な設計レイヤー。`output-gate`、`context-ledger`、snapshot、prompt hooks、artifact search、cache-friendly prompt を束ねる考え方であり、単一の feature 名ではない。
+
+It controls what information is allowed to become active runtime context. A feature owns a concrete responsibility and implementation surface; the context control plane is the coordination layer that defines how context-related features interact. Do not confuse this with Project context: Project context is the shared glossary and project-level knowledge in `CONTEXT.md`, while the context control plane is a runtime architecture concept.
+_Avoid_: memory feature, conversation summary, context-mode clone
+
 **Context isolation**:
 The deliberate separation of task context so an agent can reason about one coherent task without being polluted by unrelated details, compressed summaries, or the parent agent's prior assumptions. Subagents provide context isolation by receiving only the context needed for their delegated task.
 _Avoid_: context compression, shared scratchpad

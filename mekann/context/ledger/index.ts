@@ -1,13 +1,13 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import * as fsp from "node:fs/promises";
-import { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult, eventsPath, contextDir } from "./store.js";
+import { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult, eventsPath, contextDir, projectContextEvents } from "./store.js";
 import { buildSnapshot } from "./snapshot.js";
 import { writeLatestSnapshot, readBoundedLatestSnapshot } from "./snapshot-store.js";
 import { handleClear } from "../output-gate/index.js";
 
-export { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult } from "./store.js";
-export type { MekannContextEvent, MekannContextEventKind, MekannContextRef, AppendEventInput } from "./store.js";
+export { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult, projectContextEvents } from "./store.js";
+export type { MekannContextEvent, MekannContextEventKind, MekannContextRef, AppendEventInput, ProjectedContextEvent, MekannContextEventStatus, MekannContextEvidenceLevel, MekannContextScope } from "./store.js";
 export { buildSnapshot } from "./snapshot.js";
 
 async function contextLedgerStatus(cwd: string): Promise<string> {
@@ -23,11 +23,12 @@ async function contextLedgerStatus(cwd: string): Promise<string> {
 }
 
 async function contextLedgerList(cwd: string): Promise<string> {
-	const events = (await readEvents(cwd)).sort((a, b) => b.createdAt - a.createdAt).slice(0, 20);
+	const events = projectContextEvents(await readEvents(cwd)).sort((a, b) => b.createdAt - a.createdAt).slice(0, 20);
 	if (events.length === 0) return "No context events.";
-	return events.map((e) =>
-		`${e.id}\tP${e.priority}\t${e.kind}\t${e.title}\t${new Date(e.createdAt).toISOString()}`
-	).join("\n");
+	return events.map((e) => {
+		const status = e.effectiveStatus === e.status ? `status=${e.status}` : `status=${e.status} effective=${e.effectiveStatus}`;
+		return `${e.id}\tP${e.priority}\t${e.kind}\t${status}\t${e.title}\t${new Date(e.createdAt).toISOString()}`;
+	}).join("\n");
 }
 
 async function contextLedgerStats(cwd: string): Promise<string> {
@@ -42,6 +43,14 @@ async function contextLedgerStats(cwd: string): Promise<string> {
 		.sort((a, b) => Number(a[0]) - Number(b[0]))
 		.map(([p, count]) => `  P${p}: ${count}`)
 		.join("\n");
+	const statusBreakdown = Object.entries(stats.byStatus)
+		.sort((a, b) => a[0].localeCompare(b[0]))
+		.map(([status, count]) => `  ${status}: ${count}`)
+		.join("\n");
+	const effectiveStatusBreakdown = Object.entries(stats.byEffectiveStatus)
+		.sort((a, b) => a[0].localeCompare(b[0]))
+		.map(([status, count]) => `  ${status}: ${count}`)
+		.join("\n");
 	return [
 		"context-ledger stats",
 		"  events: " + stats.totalEvents,
@@ -51,6 +60,10 @@ async function contextLedgerStats(cwd: string): Promise<string> {
 		kindBreakdown,
 		"by priority:",
 		priorityBreakdown,
+		"by status:",
+		statusBreakdown,
+		"by effective status:",
+		effectiveStatusBreakdown,
 	].join("\n");
 }
 
@@ -68,6 +81,11 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 		Type.Literal("task"),
 		Type.Literal("plan"),
 		Type.Literal("subagent"),
+		Type.Literal("git"),
+		Type.Literal("rule"),
+		Type.Literal("constraint"),
+		Type.Literal("autoresearch"),
+		Type.Literal("safety_boundary"),
 	]);
 
 	pi.registerTool({

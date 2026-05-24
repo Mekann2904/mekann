@@ -48,8 +48,8 @@ describe("context-ledger extension", () => {
 
 		const toolDef = pi.registerTool.mock.calls.find((c: any) => c[0]?.name === "search_context_events")[0];
 		const cwd = await tmp();
-		await appendContextEvent({ cwd, kind: "error", priority: 0, title: "Build failed", summary: "TypeError in foo.ts", idGenerator: () => "ctx_ext_1" });
-		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "Update docs", summary: "Add README", idGenerator: () => "ctx_ext_2" });
+		await appendContextEvent({ cwd, kind: "error", priority: 0, title: "Build failed", summary: "TypeError in foo.ts", evidenceLevel: "observed", idGenerator: () => "ctx_ext_1" });
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "Update docs", summary: "Add README", evidenceLevel: "observed", idGenerator: () => "ctx_ext_2" });
 
 		const result = await toolDef.execute("tc2", { query: "Build" }, undefined, undefined, { cwd });
 		expect(result.content[0].text).toContain("ctx_ext_1");
@@ -63,8 +63,8 @@ describe("context-ledger extension", () => {
 
 		const toolDef = pi.registerTool.mock.calls.find((c: any) => c[0]?.name === "search_context_events")[0];
 		const cwd = await tmp();
-		await appendContextEvent({ cwd, kind: "error", priority: 0, title: "E1", summary: "e", idGenerator: () => "ctx_kf_1" });
-		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "T1", summary: "t", idGenerator: () => "ctx_kf_2" });
+		await appendContextEvent({ cwd, kind: "error", priority: 0, title: "E1", summary: "e", evidenceLevel: "observed", idGenerator: () => "ctx_kf_1" });
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "T1", summary: "t", evidenceLevel: "observed", idGenerator: () => "ctx_kf_2" });
 
 		const result = await toolDef.execute("tc3", { kind: "task" }, undefined, undefined, { cwd });
 		expect(result.content[0].text).toContain("ctx_kf_2");
@@ -78,7 +78,7 @@ describe("context-ledger extension", () => {
 		const toolDef = pi.registerTool.mock.calls.find((c: any) => c[0]?.name === "search_context_events")[0];
 		const cwd = await tmp();
 		for (let i = 0; i < 5; i++) {
-			await appendContextEvent({ cwd, kind: "task", priority: 2, title: `T${i}`, summary: `s${i}`, idGenerator: () => `ctx_cl_${i}` });
+			await appendContextEvent({ cwd, kind: "task", priority: 2, title: `T${i}`, summary: `s${i}`, evidenceLevel: "observed", idGenerator: () => `ctx_cl_${i}` });
 		}
 
 		// maxResults = -1 should clamp to 1
@@ -93,8 +93,8 @@ describe("context-ledger extension", () => {
 
 		const toolDef = pi.registerTool.mock.calls.find((c: any) => c[0]?.name === "search_context_events")[0];
 		const cwd = await tmp();
-		await appendContextEvent({ cwd, kind: "task", priority: 0, title: "Critical", summary: "c", idGenerator: () => "ctx_pm_1" });
-		await appendContextEvent({ cwd, kind: "task", priority: 3, title: "Low", summary: "l", idGenerator: () => "ctx_pm_2" });
+		await appendContextEvent({ cwd, kind: "task", priority: 0, title: "Critical", summary: "c", evidenceLevel: "observed", idGenerator: () => "ctx_pm_1" });
+		await appendContextEvent({ cwd, kind: "task", priority: 3, title: "Low", summary: "l", evidenceLevel: "observed", idGenerator: () => "ctx_pm_2" });
 
 		// priorityMax = 10 should clamp to 4 (include all)
 		const result = await toolDef.execute("tc5", { priorityMax: 10 }, undefined, undefined, { cwd });
@@ -107,7 +107,7 @@ describe("context-ledger extension", () => {
 		contextLedgerExtension(pi);
 		const cmdDef = pi.registerCommand.mock.calls[0][1];
 		const cwd = await tmp();
-		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "T1", summary: "s", idGenerator: () => "ctx_sw_1" });
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "T1", summary: "s", evidenceLevel: "observed", idGenerator: () => "ctx_sw_1" });
 		const notify = vi.fn();
 		await cmdDef.handler("snapshot --write", { cwd, ui: { notify } });
 		expect(notify).toHaveBeenCalled();
@@ -126,7 +126,7 @@ describe("context-ledger extension", () => {
 		const cmdDef = pi.registerCommand.mock.calls[0][1];
 		const cwd = await tmp();
 		for (let i = 0; i < 10; i++) {
-			await appendContextEvent({ cwd, kind: "task", priority: 2, title: `Task ${i}`, summary: `Summary ${i}`, idGenerator: () => `ctx_sw_${i}` });
+			await appendContextEvent({ cwd, kind: "task", priority: 2, title: `Task ${i}`, summary: `Summary ${i}`, evidenceLevel: "observed", idGenerator: () => `ctx_sw_${i}` });
 		}
 		const notify = vi.fn();
 		await cmdDef.handler("snapshot --write --max-bytes 512", { cwd, ui: { notify } });
@@ -143,7 +143,7 @@ describe("context-ledger extension", () => {
 		const cwd = await tmp();
 
 		// Write a snapshot first
-		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "Old task", summary: "saved", idGenerator: () => "ctx_rst_1" });
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "Old task", summary: "saved", evidenceLevel: "observed", idGenerator: () => "ctx_rst_1" });
 		const { writeLatestSnapshot } = await import("./snapshot-store.js");
 		await writeLatestSnapshot(cwd, "<mekann_session_context><saved /></mekann_session_context>\n");
 
@@ -158,7 +158,7 @@ describe("context-ledger extension", () => {
 		contextLedgerExtension(pi);
 		const cmdDef = pi.registerCommand.mock.calls[0][1];
 		const cwd = await tmp();
-		await appendContextEvent({ cwd, kind: "error", priority: 0, title: "Build failed", summary: "TypeError", idGenerator: () => "ctx_rst_2" });
+		await appendContextEvent({ cwd, kind: "error", priority: 0, title: "Build failed", summary: "TypeError", evidenceLevel: "observed", idGenerator: () => "ctx_rst_2" });
 
 		const notify = vi.fn();
 		await cmdDef.handler("restore", { cwd, ui: { notify } });
@@ -177,7 +177,7 @@ describe("context-ledger extension", () => {
 		await writeLatestSnapshot(cwd, "<mekann_session_context><stale /></mekann_session_context>\n");
 
 		// Add new event
-		await appendContextEvent({ cwd, kind: "task", priority: 1, title: "New task", summary: "fresh", idGenerator: () => "ctx_rst_3" });
+		await appendContextEvent({ cwd, kind: "task", priority: 1, title: "New task", summary: "fresh", evidenceLevel: "observed", idGenerator: () => "ctx_rst_3" });
 
 		const notify = vi.fn();
 		await cmdDef.handler("restore --rebuild", { cwd, ui: { notify } });
@@ -190,7 +190,7 @@ describe("context-ledger extension", () => {
 		contextLedgerExtension(pi);
 		const cmdDef = pi.registerCommand.mock.calls[0][1];
 		const cwd = await tmp();
-		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "Rebuild task", summary: "s", idGenerator: () => "ctx_rst_4" });
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "Rebuild task", summary: "s", evidenceLevel: "observed", idGenerator: () => "ctx_rst_4" });
 
 		const notify = vi.fn();
 		await cmdDef.handler("restore --rebuild --write", { cwd, ui: { notify } });
@@ -208,7 +208,7 @@ describe("context-ledger extension", () => {
 		const cmdDef = pi.registerCommand.mock.calls[0][1];
 		const cwd = await tmp();
 		for (let i = 0; i < 10; i++) {
-			await appendContextEvent({ cwd, kind: "task", priority: 2, title: `Task ${i}`, summary: `Summary ${i}`, idGenerator: () => `ctx_rmb_${i}` });
+			await appendContextEvent({ cwd, kind: "task", priority: 2, title: `Task ${i}`, summary: `Summary ${i}`, evidenceLevel: "observed", idGenerator: () => `ctx_rmb_${i}` });
 		}
 
 		const notify = vi.fn();
@@ -251,7 +251,7 @@ describe("context-ledger extension", () => {
 		contextLedgerExtension(pi);
 		const toolDef = pi.registerTool.mock.calls.find((c: any) => c[0]?.name === "summarize_session_context")[0];
 		const cwd = await tmp();
-		await appendContextEvent({ cwd, kind: "task", priority: 1, title: "Restore task", summary: "s", idGenerator: () => "ctx_ss_1" });
+		await appendContextEvent({ cwd, kind: "task", priority: 1, title: "Restore task", summary: "s", evidenceLevel: "observed", idGenerator: () => "ctx_ss_1" });
 
 		const result = await toolDef.execute("tc_ss_2", {}, undefined, undefined, { cwd });
 		expect(result.content[0].text).toContain("ctx_ss_1");
@@ -265,7 +265,7 @@ describe("context-ledger extension", () => {
 
 		const { writeLatestSnapshot } = await import("./snapshot-store.js");
 		await writeLatestSnapshot(cwd, "<mekann_session_context><stale /></mekann_session_context>\n");
-		await appendContextEvent({ cwd, kind: "error", priority: 0, title: "Fresh error", summary: "s", idGenerator: () => "ctx_ss_2" });
+		await appendContextEvent({ cwd, kind: "error", priority: 0, title: "Fresh error", summary: "s", evidenceLevel: "observed", idGenerator: () => "ctx_ss_2" });
 
 		const result = await toolDef.execute("tc_ss_3", { rebuild: true }, undefined, undefined, { cwd });
 		expect(result.content[0].text).toContain("ctx_ss_2");
@@ -278,7 +278,7 @@ describe("context-ledger extension", () => {
 		const toolDef = pi.registerTool.mock.calls.find((c: any) => c[0]?.name === "summarize_session_context")[0];
 		const cwd = await tmp();
 		for (let i = 0; i < 10; i++) {
-			await appendContextEvent({ cwd, kind: "task", priority: 2, title: `Task ${i}`, summary: `Summary ${i}`, idGenerator: () => `ctx_smb_${i}` });
+			await appendContextEvent({ cwd, kind: "task", priority: 2, title: `Task ${i}`, summary: `Summary ${i}`, evidenceLevel: "observed", idGenerator: () => `ctx_smb_${i}` });
 		}
 
 		const result = await toolDef.execute("tc_ss_4", { maxBytes: 300, rebuild: true }, undefined, undefined, { cwd });
