@@ -47,6 +47,10 @@ function providerFamily(provider?: string): string {
   return (provider ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+function providerReportsCacheWrite(providerKey: string): boolean {
+  return providerKey.includes("anthropic") || providerKey.includes("bedrock") || providerKey.includes("minimax") || providerKey.includes("openrouter");
+}
+
 function hasPiNormalizedUsage(usage: Record<string, unknown>): boolean {
   return ["inputTotal", "input", "output", "cacheRead", "cacheWrite", "cacheMiss"].some((key) => key in usage);
 }
@@ -57,11 +61,18 @@ export function normalizeActualCacheUsage(provider: string | undefined, usage: u
   const providerKey = providerFamily(provider);
 
   if (hasPiNormalizedUsage(u)) {
-    const inputTotalTokens = numberOf(u.inputTotal) ?? numberOf(u.input) ?? 0;
+    const inputTokens = numberOf(u.input) ?? 0;
     const outputTokens = numberOf(u.output) ?? 0;
     const cacheReadTokens = numberOf(u.cacheRead) ?? 0;
-    const cacheWriteTokens = numberOf(u.cacheWrite);
+    const rawCacheWriteTokens = numberOf(u.cacheWrite);
+    const cacheWriteTokens = providerReportsCacheWrite(providerKey) ? rawCacheWriteTokens : rawCacheWriteTokens && rawCacheWriteTokens > 0 ? rawCacheWriteTokens : undefined;
     const cacheMissTokens = numberOf(u.cacheMiss);
+    const totalTokens = numberOf(u.totalTokens);
+    const observedInputParts = inputTokens + outputTokens + cacheReadTokens + (rawCacheWriteTokens ?? 0);
+    const inferredInputTotalTokens = totalTokens !== undefined && Math.abs(totalTokens - observedInputParts) <= 1
+      ? inputTokens + cacheReadTokens + (rawCacheWriteTokens ?? 0)
+      : inputTokens;
+    const inputTotalTokens = numberOf(u.inputTotal) ?? inferredInputTotalTokens;
     return finish({ inputTotalTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheMissTokens }, "pi_normalized_usage");
   }
 

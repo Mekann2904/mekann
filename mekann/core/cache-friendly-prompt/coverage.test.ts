@@ -279,6 +279,27 @@ describe("report.ts coverage", () => {
     expect(summary.actualByProvider.anthropic.weightedCacheableReadRate).toBeCloseTo(600 / 1000);
   });
 
+  it("re-normalizes historical actual usage rows from rawUsage", async () => {
+    const actualRows = JSON.stringify({
+      timestamp: "2025-01-01T00:00:00.000Z",
+      provider: "openai-codex",
+      model: "gpt",
+      inputTotalTokens: 21760,
+      outputTokens: 46,
+      cacheReadTokens: 45056,
+      cacheWriteTokens: 0,
+      tokenHitRate: 45056 / 21760,
+      cacheableReadRate: 1,
+      usageSource: "pi_normalized_usage",
+      rawUsage: { input: 21760, output: 46, cacheRead: 45056, cacheWrite: 0, totalTokens: 66862 },
+    });
+    await runWithLog("", actualRows);
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.actualInputTotalTokens).toBe(66816);
+    expect(summary.actualTokenHitRateWeighted).toBeCloseTo(45056 / 66816);
+    expect(summary.actualCacheableReadRateWeighted).toBeNull();
+  });
+
   it("handles scalePoints with zero values (max=0)", async () => {
     const log = makeLog({ stablePrefixChars: 0, totalPromptChars: 0 });
     await runWithLog(log);

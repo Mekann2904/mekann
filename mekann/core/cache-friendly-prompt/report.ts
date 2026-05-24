@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { CacheFriendlyRequestLog } from "../prompt-core/index.js";
-import type { ActualUsageLog } from "./actualUsage.js";
+import { normalizeActualCacheUsage, type ActualUsageLog } from "./actualUsage.js";
 
 type ParsedLog = CacheFriendlyRequestLog & { line: number };
 type ParsedActualUsageLog = ActualUsageLog & { line: number };
@@ -113,7 +113,9 @@ function readActualRows(text: string): ParsedActualUsageLog[] {
     if (!line.trim()) continue;
     try {
       const parsed = JSON.parse(line);
-      if (isActualUsageRow(parsed)) rows.push({ ...parsed, line: i + 1 });
+      if (!isActualUsageRow(parsed)) continue;
+      const normalized = parsed.rawUsage !== undefined ? normalizeActualCacheUsage(parsed.provider, parsed.rawUsage) : null;
+      rows.push({ ...parsed, ...(normalized ?? {}), line: i + 1 });
     } catch { /* ignore broken historical lines */ }
   }
   return rows;

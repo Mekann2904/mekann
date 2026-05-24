@@ -33,6 +33,12 @@ describe("normalizeActualCacheUsage", () => {
       usage: { input: 0, output: 10, cacheRead: 0 },
       expected: { inputTotalTokens: 0, outputTokens: 10, cacheReadTokens: 0, tokenHitRate: null, cacheableReadRate: null },
     },
+    {
+      name: "pi normalized with non-cached input and cache read totals",
+      provider: "openai-codex",
+      usage: { input: 21760, output: 46, cacheRead: 45056, cacheWrite: 0, totalTokens: 66862 },
+      expected: { inputTotalTokens: 66816, outputTokens: 46, cacheReadTokens: 45056, tokenHitRate: 45056 / 66816, cacheableReadRate: null },
+    },
   ])("normalizes $name usage", ({ provider, usage, expected }) => {
     expect(normalizeActualCacheUsage(provider, usage)).toEqual(expect.objectContaining(expected));
   });
