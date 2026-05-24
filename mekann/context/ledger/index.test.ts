@@ -136,7 +136,7 @@ describe("context-ledger extension", () => {
 	});
 
 	// Restore command tests
-	it("restore returns latest snapshot if available", async () => {
+	it("restore rebuilds stale latest snapshot", async () => {
 		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
 		contextLedgerExtension(pi);
 		const cmdDef = pi.registerCommand.mock.calls[0][1];
@@ -150,7 +150,8 @@ describe("context-ledger extension", () => {
 		const notify = vi.fn();
 		await cmdDef.handler("restore", { cwd, ui: { notify } });
 		expect(notify).toHaveBeenCalled();
-		expect(notify.mock.calls[0][0]).toContain("<saved />");
+		expect(notify.mock.calls[0][0]).toContain("ctx_rst_1");
+		expect(notify.mock.calls[0][0]).not.toContain("<saved />");
 	});
 
 	it("restore builds from events when no snapshot exists", async () => {
@@ -214,7 +215,7 @@ describe("context-ledger extension", () => {
 		const notify = vi.fn();
 		await cmdDef.handler("restore --max-bytes 300", { cwd, ui: { notify } });
 		const xml = notify.mock.calls[0][0];
-		expect(Buffer.byteLength(xml, "utf8")).toBeLessThanOrEqual(350); // some overhead
+		expect(Buffer.byteLength(xml, "utf8")).toBeLessThanOrEqual(400); // watermark overhead
 	});
 
 	// summarize_session_context tool tests
@@ -233,7 +234,7 @@ describe("context-ledger extension", () => {
 		expect(toolDef.promptGuidelines[0]).toContain("summarize_session_context");
 	});
 
-	it("summarize_session_context returns latest snapshot if available", async () => {
+	it("summarize_session_context rebuilds stale latest snapshot", async () => {
 		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
 		contextLedgerExtension(pi);
 		const toolDef = pi.registerTool.mock.calls.find((c: any) => c[0]?.name === "summarize_session_context")[0];
@@ -243,7 +244,8 @@ describe("context-ledger extension", () => {
 		await writeLatestSnapshot(cwd, "<mekann_session_context><cached /></mekann_session_context>\n");
 
 		const result = await toolDef.execute("tc_ss_1", {}, undefined, undefined, { cwd });
-		expect(result.content[0].text).toContain("<cached />");
+		expect(result.content[0].text).toContain("schemaVersion=\"mekann-context-snapshot/v2\"");
+		expect(result.content[0].text).not.toContain("<cached />");
 	});
 
 	it("summarize_session_context builds from events when no snapshot", async () => {

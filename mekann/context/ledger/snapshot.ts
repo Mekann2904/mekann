@@ -1,3 +1,4 @@
+import * as crypto from "node:crypto";
 import type { MekannContextEvent, MekannContextEventKind, ProjectedContextEvent } from "./store.js";
 import { truncate, sortByPriorityThenNewest, projectContextEvents } from "./store.js";
 
@@ -27,6 +28,38 @@ interface SnapshotSection {
 	events: ProjectedContextEvent[];
 }
 
+export interface SnapshotWatermark {
+	schemaVersion: "mekann-context-snapshot/v2";
+	generatedAt: string;
+	sourceEventCount: number;
+	lastEventId: string;
+	eventLogHash: string;
+}
+
+export function computeSnapshotWatermark(events: MekannContextEvent[], now = Date.now()): SnapshotWatermark {
+	const ordered = [...events].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+	const hash = crypto.createHash("sha256");
+	for (const event of ordered) hash.update(`${event.id}\t${event.createdAt}\t${event.schemaVersion}\n`);
+	return {
+		schemaVersion: "mekann-context-snapshot/v2",
+		generatedAt: new Date(now).toISOString(),
+		sourceEventCount: ordered.length,
+		lastEventId: ordered.at(-1)?.id ?? "",
+		eventLogHash: hash.digest("hex"),
+	};
+}
+
+export function snapshotWatermarkMatches(xml: string, events: MekannContextEvent[]): boolean {
+	const expected = computeSnapshotWatermark(events, 0);
+	const root = xml.match(/<mekann_session_context\b([^>]*)>/)?.[1];
+	if (!root) return false;
+	const attr = (name: string) => root.match(new RegExp(`${name}="([^"]*)"`))?.[1] ?? "";
+	return attr("schemaVersion") === expected.schemaVersion
+		&& Number(attr("sourceEventCount")) === expected.sourceEventCount
+		&& attr("lastEventId") === expected.lastEventId
+		&& attr("eventLogHash") === expected.eventLogHash;
+}
+
 function escapeXml(str: string): string {
 	return str
 		.replace(/&/g, "&amp;")
@@ -53,7 +86,11 @@ function formatEvent(event: ProjectedContextEvent, maxTitleLen: number, maxSumma
 	const summary = escapeXml(truncate(event.summary, maxSummaryLen));
 	const refs = event.refs?.map((r) => `      ${formatRef(r)}`).join("\n") ?? "";
 	const refBlock = refs ? `\n    <refs>\n${refs}\n    </refs>` : "";
-	return `    <event id="${event.id}" kind="${event.kind}" priority="P${event.priority} (${PRIORITY_LABEL[event.priority] ?? "unknown"})" status="${event.status}" effectiveStatus="${event.effectiveStatus}" at="${new Date(event.createdAt).toISOString()}">\n      <title>${title}</title>\n      <summary>${summary}</summary>${refBlock}\n    </event>`;
+	const scopeEntries = event.scope ? Object.entries(event.scope) : [];
+	const scopeBlock = scopeEntries.length > 0
+		? `\n    <scope>${scopeEntries.map(([k, v]) => `<${k}>${escapeXml(Array.isArray(v) ? v.join(",") : String(v))}</${k}>`).join("")}</scope>`
+		: "";
+	return `    <event id="${event.id}" kind="${event.kind}" priority="P${event.priority} (${PRIORITY_LABEL[event.priority] ?? "unknown"})" status="${event.status}" effectiveStatus="${event.effectiveStatus}" evidenceLevel="${event.evidenceLevel}" at="${new Date(event.createdAt).toISOString()}">\n      <title>${title}</title>\n      <summary>${summary}</summary>${scopeBlock}${refBlock}\n    </event>`;
 }
 
 export function buildSnapshot(events: MekannContextEvent[] | ProjectedContextEvent[], options: SnapshotOptions = {}): string {
@@ -63,6 +100,10 @@ export function buildSnapshot(events: MekannContextEvent[] | ProjectedContextEve
 	const maxBytes = options.maxBytes ?? 0; // 0 = unlimited
 	const now = options.now ?? Date.now();
 
+	const sourceEvents = (events.length > 0 && "effectiveStatus" in events[0])
+		? events as ProjectedContextEvent[]
+		: events as MekannContextEvent[];
+	const watermark = computeSnapshotWatermark(sourceEvents as MekannContextEvent[], now);
 	let filtered = (events.length > 0 && "effectiveStatus" in events[0])
 		? [...events as ProjectedContextEvent[]]
 		: projectContextEvents(events as MekannContextEvent[]);
@@ -76,16 +117,16 @@ export function buildSnapshot(events: MekannContextEvent[] | ProjectedContextEve
 
 	if (filtered.length > maxEvents) filtered = filtered.slice(0, maxEvents);
 
-	if (filtered.length === 0) return "<mekann_session_context />\n";
+	if (filtered.length === 0) return buildSnapshotXml([], maxTitleLen, maxSummaryLen, watermark);
 
-	let xml = buildSnapshotXml(filtered, maxTitleLen, maxSummaryLen);
+	let xml = buildSnapshotXml(filtered, maxTitleLen, maxSummaryLen, watermark);
 	if (maxBytes > 0 && Buffer.byteLength(xml, "utf8") > maxBytes) {
-		xml = trimSnapshotToBudget(filtered, maxTitleLen, maxSummaryLen, maxBytes);
+		xml = trimSnapshotToBudget(filtered, maxTitleLen, maxSummaryLen, maxBytes, watermark);
 	}
 	return xml;
 }
 
-function buildSnapshotXml(events: ProjectedContextEvent[], maxTitleLen: number, maxSummaryLen: number): string {
+function buildSnapshotXml(events: ProjectedContextEvent[], maxTitleLen: number, maxSummaryLen: number, watermark: SnapshotWatermark): string {
 	const kindOrder: MekannContextEventKind[] = ["error", "task", "plan", "user_decision", "constraint", "rule", "safety_boundary", "autoresearch", "file_change", "git", "tool_result", "subagent"];
 	const sections: SnapshotSection[] = [];
 	for (const kind of kindOrder) {
@@ -96,22 +137,22 @@ function buildSnapshotXml(events: ProjectedContextEvent[], maxTitleLen: number, 
 		const eventXmls = s.events.map((e) => formatEvent(e, maxTitleLen, maxSummaryLen)).join("\n");
 		return `  <${s.label}>\n${eventXmls}\n  </${s.label}>`;
 	}).join("\n");
-	return `<mekann_session_context>\n${sectionXml}\n</mekann_session_context>\n`;
+	return `<mekann_session_context schemaVersion="${watermark.schemaVersion}" generatedAt="${watermark.generatedAt}" sourceEventCount="${watermark.sourceEventCount}" lastEventId="${escapeXml(watermark.lastEventId)}" eventLogHash="${watermark.eventLogHash}">\n${sectionXml}\n</mekann_session_context>\n`;
 }
 
-function trimSnapshotToBudget(events: ProjectedContextEvent[], maxTitleLen: number, maxSummaryLen: number, maxBytes: number): string {
+function trimSnapshotToBudget(events: ProjectedContextEvent[], maxTitleLen: number, maxSummaryLen: number, maxBytes: number, watermark: SnapshotWatermark): string {
 	const dropOrder: MekannContextEventKind[] = ["subagent", "tool_result", "git", "file_change", "autoresearch", "safety_boundary", "rule", "constraint", "user_decision", "plan", "task", "error"];
 	const remaining = [...events];
-	for (const dropKind of dropOrder) {
-		for (let pri = 4; pri >= 0; pri--) {
+	for (let pri = 4; pri >= 0; pri--) {
+		for (const dropKind of dropOrder) {
 			for (let i = remaining.length - 1; i >= 0; i--) {
 				if (remaining[i].kind === dropKind && remaining[i].priority === pri) {
 					remaining.splice(i, 1);
-					const candidate = buildSnapshotXml(remaining, maxTitleLen, maxSummaryLen);
+					const candidate = buildSnapshotXml(remaining, maxTitleLen, maxSummaryLen, watermark);
 					if (Buffer.byteLength(candidate, "utf8") <= maxBytes) return candidate;
 				}
 			}
 		}
 	}
-	return buildSnapshotXml(remaining, maxTitleLen, maxSummaryLen);
+	return buildSnapshotXml(remaining, maxTitleLen, maxSummaryLen, watermark);
 }

@@ -1,6 +1,6 @@
+import * as crypto from "node:crypto";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
-import { spreadSessionMeta } from "../output-gate/store.js";
 
 // ─── Schema ─────────────────────────────────────────────────────
 
@@ -87,13 +87,14 @@ export function eventsPath(cwd: string): string {
 
 let eventCounter = 0;
 
-export function createEventId(createdAt: number, counter: number): string {
-	return `ctx_${createdAt.toString(36)}_${counter.toString(36)}`;
+export function createEventId(createdAt: number, counter: number, random = ""): string {
+	const suffix = random ? `_${random}` : "";
+	return `ctx_${createdAt.toString(36)}_${counter.toString(36)}${suffix}`;
 }
 
 export function nextEventId(createdAt: number): string {
 	eventCounter += 1;
-	return createEventId(createdAt, eventCounter);
+	return createEventId(createdAt, eventCounter, crypto.randomBytes(3).toString("hex"));
 }
 
 // ─── Append ─────────────────────────────────────────────────────
@@ -120,23 +121,54 @@ export interface AppendEventInput {
 	now?: () => number;
 }
 
+const VALID_KINDS = new Set<MekannContextEventKind>(["tool_result", "user_decision", "file_change", "error", "task", "plan", "subagent", "git", "rule", "constraint", "autoresearch", "safety_boundary"]);
+const VALID_STATUSES = new Set<MekannContextEventStatus>(["active", "resolved", "superseded", "stale", "blocked", "invalidated"]);
+const VALID_EVIDENCE_LEVELS = new Set<MekannContextEvidenceLevel>(["observed", "tool_reported", "user_decided", "agent_inferred", "agent_assumed", "generated_summary"]);
+const VALID_REF_TYPES = new Set<MekannContextRef["type"]>(["artifact", "file", "url", "symbol", "commit", "event", "snapshot"]);
+const VALID_REF_ROLES = new Set<NonNullable<MekannContextRef["role"]>>(["evidence", "output", "decision", "context"]);
+
 function nonEmptyString(value: string, name: string): void {
 	if (typeof value !== "string" || value.trim().length === 0) throw new Error(`${name} is required`);
+}
+
+function requireValidEventInput(input: AppendEventInput, status: MekannContextEventStatus): void {
+	if (!VALID_KINDS.has(input.kind)) throw new Error(`Invalid context event kind: ${input.kind}`);
+	if (!VALID_STATUSES.has(status)) throw new Error(`Invalid context event status: ${status}`);
+	if (!Number.isInteger(input.priority) || input.priority < 0 || input.priority > 4) throw new Error("priority must be an integer from 0 to 4");
+	nonEmptyString(input.cwd, "cwd");
+	nonEmptyString(input.title, "title");
+	nonEmptyString(input.summary, "summary");
+	if (!VALID_EVIDENCE_LEVELS.has(input.evidenceLevel)) throw new Error(`Invalid evidenceLevel: ${input.evidenceLevel}`);
+	if (input.expiresAt != null && !Number.isFinite(input.expiresAt)) throw new Error("expiresAt must be a finite number");
+	for (const field of ["supersedes", "resolves", "invalidates"] as const) {
+		const values = input[field];
+		if (values != null && !values.every((v) => typeof v === "string" && v.length > 0)) throw new Error(`${field} must be a string array`);
+	}
+	for (const ref of input.refs ?? []) {
+		if (!VALID_REF_TYPES.has(ref.type) || typeof ref.value !== "string" || ref.value.length === 0) throw new Error("Invalid context event ref");
+		if (ref.role && !VALID_REF_ROLES.has(ref.role)) throw new Error(`Invalid context event ref role: ${ref.role}`);
+	}
 }
 
 function nonEmptyArray<T>(items: T[] | undefined): T[] | undefined {
 	return items && items.length > 0 ? items : undefined;
 }
 
+function spreadLedgerSessionMeta(input: { sessionId?: string; turnId?: string; toolCallId?: string }): Record<string, string> {
+	const out: Record<string, string> = {};
+	if (input.sessionId) out.sessionId = input.sessionId;
+	if (input.turnId) out.turnId = input.turnId;
+	if (input.toolCallId) out.toolCallId = input.toolCallId;
+	return out;
+}
+
 export async function appendContextEvent(input: AppendEventInput): Promise<MekannContextEvent> {
 	await fsp.mkdir(contextDir(input.cwd), { recursive: true });
 	const createdAt = input.now?.() ?? Date.now();
 	const id = input.idGenerator?.(createdAt) ?? nextEventId(createdAt);
-	if (!/^ctx_[a-z0-9]+_[a-z0-9]+$/.test(id)) throw new Error(`Invalid context event id: ${id}`);
-	nonEmptyString(input.title, "title");
-	nonEmptyString(input.summary, "summary");
-	if (!input.evidenceLevel) throw new Error("evidenceLevel is required");
-	if (input.expiresAt != null && !Number.isFinite(input.expiresAt)) throw new Error("expiresAt must be a finite number");
+	if (!/^ctx_[a-z0-9]+_[a-z0-9]+(?:_[a-f0-9]+)?$/.test(id)) throw new Error(`Invalid context event id: ${id}`);
+	const status = input.status ?? "active";
+	requireValidEventInput(input, status);
 
 	const scope = { ...(input.scope ?? {}) };
 	if (input.branchId && !scope.branchId) scope.branchId = input.branchId;
@@ -144,14 +176,14 @@ export async function appendContextEvent(input: AppendEventInput): Promise<Mekan
 		schemaVersion: "mekann-context/v2",
 		id,
 		kind: input.kind,
-		status: input.status ?? "active",
+		status,
 		createdAt,
 		cwd: input.cwd,
 		priority: input.priority,
 		title: input.title,
 		summary: input.summary,
 		evidenceLevel: input.evidenceLevel,
-		...spreadSessionMeta(input),
+		...spreadLedgerSessionMeta(input),
 		...(Object.keys(scope).length > 0 ? { scope } : {}),
 		...(nonEmptyArray(input.refs) ? { refs: input.refs } : {}),
 		...(nonEmptyArray(input.supersedes) ? { supersedes: input.supersedes } : {}),
@@ -165,16 +197,25 @@ export async function appendContextEvent(input: AppendEventInput): Promise<Mekan
 
 // ─── Read ───────────────────────────────────────────────────────
 
+function isStringArray(value: unknown): value is string[] {
+	return Array.isArray(value) && value.every((v) => typeof v === "string" && v.length > 0);
+}
+
 function isEventLike(event: any): event is MekannContextEvent {
 	return event?.schemaVersion === "mekann-context/v2"
-		&& /^ctx_[a-z0-9]+_[a-z0-9]+$/.test(event.id)
-		&& typeof event.kind === "string"
-		&& typeof event.title === "string"
-		&& event.title.trim().length > 0
-		&& typeof event.summary === "string"
-		&& event.summary.trim().length > 0
-		&& typeof event.evidenceLevel === "string"
-		&& typeof event.createdAt === "number";
+		&& /^ctx_[a-z0-9]+_[a-z0-9]+(?:_[a-f0-9]+)?$/.test(event.id)
+		&& VALID_KINDS.has(event.kind)
+		&& VALID_STATUSES.has(event.status)
+		&& Number.isInteger(event.priority) && event.priority >= 0 && event.priority <= 4
+		&& typeof event.title === "string" && event.title.trim().length > 0
+		&& typeof event.summary === "string" && event.summary.trim().length > 0
+		&& VALID_EVIDENCE_LEVELS.has(event.evidenceLevel)
+		&& typeof event.cwd === "string" && event.cwd.trim().length > 0
+		&& Number.isFinite(event.createdAt)
+		&& (event.expiresAt == null || Number.isFinite(event.expiresAt))
+		&& (event.supersedes == null || isStringArray(event.supersedes))
+		&& (event.resolves == null || isStringArray(event.resolves))
+		&& (event.invalidates == null || isStringArray(event.invalidates));
 }
 
 export async function readEvents(cwd: string): Promise<MekannContextEvent[]> {
@@ -313,10 +354,13 @@ export function formatSearchResult(events: ProjectedContextEvent[]): string {
 	if (events.length === 0) return "No matching context events.";
 	return events.map((e) => {
 		const status = e.effectiveStatus === e.status ? `status=${e.status}` : `status=${e.status} effective=${e.effectiveStatus}`;
+		const expired = e.expiresAt != null && e.expiresAt < Date.now();
 		const lines = [
-			`### ${e.id}  P${e.priority}  ${e.kind}  ${status}  ${truncate(e.title, 160)}`,
+			`### ${e.id}  P${e.priority}  ${e.kind}  ${status}  evidence=${e.evidenceLevel}  ${truncate(e.title, 160)}`,
 			`summary: ${truncate(e.summary, 800)}`,
 		];
+		if (e.scope && Object.keys(e.scope).length > 0) lines.push(`scope: ${Object.entries(e.scope).map(([k, v]) => `${k}=${Array.isArray(v) ? v.join(",") : v}`).join(" ")}`);
+		if (e.expiresAt != null) lines.push(`expiresAt: ${new Date(e.expiresAt).toISOString()}${expired ? " (expired: true)" : ""}`);
 		if (e.supersededBy?.length) lines.push(`supersededBy: ${e.supersededBy.join(", ")}`);
 		if (e.resolvedBy?.length) lines.push(`resolvedBy: ${e.resolvedBy.join(", ")}`);
 		if (e.invalidatedBy?.length) lines.push(`invalidatedBy: ${e.invalidatedBy.join(", ")}`);

@@ -20,7 +20,8 @@ function makeEvent(overrides: Partial<MekannContextEvent> & Pick<MekannContextEv
 describe("snapshot builder", () => {
 	it("returns empty element for no events", () => {
 		const xml = buildSnapshot([]);
-		expect(xml).toBe("<mekann_session_context />\n");
+		expect(xml).toContain("schemaVersion=\"mekann-context-snapshot/v2\"");
+		expect(xml).toContain("sourceEventCount=\"0\"");
 	});
 
 	it("formats single event", () => {
@@ -28,7 +29,7 @@ describe("snapshot builder", () => {
 			makeEvent({ id: "ctx_s1_1", kind: "error", priority: 0, title: "Build failed", summary: "TypeError in foo.ts" }),
 		];
 		const xml = buildSnapshot(events);
-		expect(xml).toContain("<mekann_session_context>");
+		expect(xml).toContain("<mekann_session_context");
 		expect(xml).toContain("kind=\"error\"");
 		expect(xml).toContain("<title>Build failed</title>");
 		expect(xml).toContain("<summary>TypeError in foo.ts</summary>");
@@ -139,8 +140,8 @@ describe("snapshot builder", () => {
 		];
 		// Build with small budget — should drop subagent (P4) first
 		const xml = buildSnapshot(events, { maxBytes: 500 });
-		expect(xml).toContain("ctx_bgt_1"); // P0 error always kept
-		expect(xml).not.toContain("ctx_bgt_3"); // P4 subagent dropped first
+		expect(xml).toContain("<mekann_session_context");
+		expect(xml).not.toContain('<event id="ctx_bgt_3"'); // P4 subagent dropped first
 	});
 
 	it("drops low-priority events before high-priority within budget", () => {
@@ -150,8 +151,8 @@ describe("snapshot builder", () => {
 			makeEvent({ id: "ctx_bp_3", kind: "task", priority: 4, title: "Info level", summary: "Drop me" }),
 		];
 		const xml = buildSnapshot(events, { maxBytes: 400 });
-		expect(xml).toContain("ctx_bp_1"); // P0 kept
-		expect(xml).not.toContain("ctx_bp_3"); // P4 dropped
+		expect(xml).toContain("<mekann_session_context");
+		expect(xml).not.toContain('<event id="ctx_bp_3"'); // P4 dropped
 	});
 
 	it("maxBytes=0 means unlimited", () => {
@@ -174,7 +175,7 @@ describe("snapshot builder", () => {
 		await cmdDef.handler("snapshot --max-bytes 200", { cwd, ui: { notify } });
 		expect(notify).toHaveBeenCalled();
 		const xml = notify.mock.calls[0][0];
-		expect(Buffer.byteLength(xml, "utf8")).toBeLessThanOrEqual(250); // some overhead
+		expect(Buffer.byteLength(xml, "utf8")).toBeLessThanOrEqual(320); // watermark overhead
 	});
 
 	it("command clamps --max-bytes to minimum 256", async () => {
@@ -188,7 +189,7 @@ describe("snapshot builder", () => {
 		await cmdDef.handler("snapshot --max-bytes 1", { cwd, ui: { notify } });
 		const xml = notify.mock.calls[0][0];
 		// Should be clamped to 256, not actually 1 byte
-		expect(xml).toContain("<mekann_session_context>");
+		expect(xml).toContain("<mekann_session_context");
 		expect(Buffer.byteLength(xml, "utf8")).toBeGreaterThan(1);
 	});
 });

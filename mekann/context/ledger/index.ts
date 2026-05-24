@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import * as fsp from "node:fs/promises";
 import { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult, eventsPath, contextDir, projectContextEvents } from "./store.js";
-import { buildSnapshot } from "./snapshot.js";
+import { buildSnapshot, snapshotWatermarkMatches } from "./snapshot.js";
 import { writeLatestSnapshot, readBoundedLatestSnapshot } from "./snapshot-store.js";
 import { handleClear } from "../output-gate/index.js";
 
@@ -138,12 +138,13 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 			const maxBytes = clampInt((params as any).maxBytes, 4096, 256, 65536);
 			const rebuild = Boolean((params as any).rebuild);
 
+			const events = await readEvents(cwd);
 			let xml: string | undefined;
 			if (!rebuild) {
-				xml = await readBoundedLatestSnapshot(cwd, maxBytes);
+				const cached = await readBoundedLatestSnapshot(cwd, maxBytes);
+				if (cached && snapshotWatermarkMatches(cached, events)) xml = cached;
 			}
 			if (!xml) {
-				const events = await readEvents(cwd);
 				xml = buildSnapshot(events, { maxBytes });
 			}
 
@@ -207,8 +208,9 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 					xml = await readBoundedLatestSnapshot(cwd, maxBytes);
 				}
 
-				if (!xml) {
-					const events = await readEvents(cwd);
+				const events = await readEvents(cwd);
+
+				if (!xml || !snapshotWatermarkMatches(xml, events)) {
 					xml = buildSnapshot(events, { maxBytes });
 					if (shouldWrite) {
 						await writeLatestSnapshot(cwd, xml);

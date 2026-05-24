@@ -10,6 +10,7 @@ import {
 	clearContext,
 	searchEvents,
 	formatSearchResult,
+	projectContextEvents,
 	createEventId,
 	eventsPath,
 	contextDir,
@@ -62,7 +63,8 @@ describe("context ledger store", () => {
 		});
 		expect(event.sessionId).toBe("sess_1");
 		expect(event.turnId).toBe("turn_1");
-		expect(event.branchId).toBe("br_1");
+		expect((event as any).branchId).toBeUndefined();
+		expect(event.scope?.branchId).toBe("br_1");
 		expect(event.refs).toHaveLength(2);
 		expect(event.refs![0].type).toBe("file");
 	});
@@ -134,6 +136,49 @@ describe("context ledger store", () => {
 		const stats = computeStats([]);
 		expect(stats.totalEvents).toBe(0);
 		expect(stats.byKind).toEqual({});
+	});
+
+	it("projectContextEvents computes reverse relations and effective status priority", () => {
+		const base = (id: string): any => ({
+			schemaVersion: "mekann-context/v2",
+			id,
+			kind: "task",
+			status: "active",
+			priority: 2,
+			title: id,
+			summary: id,
+			evidenceLevel: "observed",
+			createdAt: 1000,
+			cwd: "/tmp",
+		});
+		const projected = projectContextEvents([
+			base("ctx_rel_1"),
+			{ ...base("ctx_rel_2"), status: "resolved", resolves: ["ctx_rel_1"] },
+			{ ...base("ctx_rel_3"), status: "active", supersedes: ["ctx_rel_1"] },
+			{ ...base("ctx_rel_4"), status: "active", invalidates: ["ctx_rel_1"] },
+		]);
+		const target = projected.find((e) => e.id === "ctx_rel_1")!;
+		expect(target.resolvedBy).toEqual(["ctx_rel_2"]);
+		expect(target.supersededBy).toEqual(["ctx_rel_3"]);
+		expect(target.invalidatedBy).toEqual(["ctx_rel_4"]);
+		expect(target.effectiveStatus).toBe("invalidated");
+	});
+
+	it("projectContextEvents does not stale expired events", () => {
+		const projected = projectContextEvents([{
+			schemaVersion: "mekann-context/v2",
+			id: "ctx_exp_1",
+			kind: "constraint",
+			status: "active",
+			priority: 1,
+			title: "Expired",
+			summary: "Expired but projection does not change status",
+			evidenceLevel: "agent_assumed",
+			expiresAt: 1,
+			createdAt: 1000,
+			cwd: "/tmp",
+		}]);
+		expect(projected[0].effectiveStatus).toBe("active");
 	});
 
 	it("clearContext removes the context directory", async () => {
