@@ -706,7 +706,14 @@ export class AgentControl {
     return this.registry.list(pathPrefix);
   }
 
-  list(params: ListAgentsParams): ListResult {
+  list(params: ListAgentsParams, ctx?: ExtensionContext): ListResult {
+    const callerPath = ctx ? this.resolveCallerPath(ctx) : ROOT_PATH;
+    const afterSeq = this.lastConsumedSeq.get(callerPath) ?? 0;
+    const unreadFinalResultPaths = new Set(
+      this.mailbox.pendingFor(callerPath, afterSeq)
+        .filter((item) => item.kind === "final_result")
+        .map((item) => item.fromAgentPath),
+    );
     const agents = this.registry.list(params.path_prefix);
     return {
       agents: agents.map((a) => ({
@@ -723,6 +730,7 @@ export class AgentControl {
         result_contract: a.resultContract,
         queue_position: a.queuePosition,
         queued_ahead: a.queuedAhead,
+        unread_final_result: unreadFinalResultPaths.has(a.agentPath) || undefined,
       })),
     };
   }

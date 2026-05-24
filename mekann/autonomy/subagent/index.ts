@@ -439,9 +439,11 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       "Use list_agents when you are unsure which subagents exist, need to verify status, need a target path for followup_task/close_agent, or need to diagnose duplicate task_name errors.",
     ],
     parameters: ListAgentsSchema,
-    execute: withCtrl(async (ctrl, params, _ctx) => {
-      const result = ctrl.list(params);
-      return toolResult(result.agents.length === 0 ? "(no agents)" : result.agents.map((a) => `${a.status === "completed" || a.status === "shutdown" ? "○" : "●"} ${a.agent_path}${a.nickname ? ` (${a.nickname})` : ""}${a.role ? ` [${a.role}]` : ""} — ${a.status}${a.authority ? ` — authority:${a.authority.mode}/${a.authority_enforced === false ? "not_enforced" : "enforced"}` : ""}${a.display ? ` — display: ${a.display.status === "failed" ? `${a.display.kind}/failed: ${a.display.error}` : `${a.display.kind}/${a.display.status}${a.display.pid ? ` pid=${a.display.pid}` : ""}${a.display.window_id ? ` window=${a.display.window_id}` : ""}`}` : ""}${a.last_task ? `\n  last: ${a.last_task.slice(0, 80)}` : ""}`).join("\n"), result);
+    execute: withCtrl(async (ctrl, params, ctx) => {
+      const result = ctrl.list(params, ctx);
+      const unreadCount = result.agents.filter((a) => a.unread_final_result).length;
+      const header = unreadCount > 0 ? `Unread final_results: ${unreadCount}. Run wait_agent to collect them.\n` : "";
+      return toolResult(result.agents.length === 0 ? "(no agents)" : header + result.agents.map((a) => `${a.status === "completed" || a.status === "shutdown" ? "○" : "●"} ${a.agent_path}${a.nickname ? ` (${a.nickname})` : ""}${a.role ? ` [${a.role}]` : ""} — ${a.status}${a.unread_final_result ? " — unread final_result" : ""}${a.authority ? ` — authority:${a.authority.mode}/${a.authority_enforced === false ? "not_enforced" : "enforced"}` : ""}${a.display ? ` — display: ${a.display.status === "failed" ? `${a.display.kind}/failed: ${a.display.error}` : `${a.display.kind}/${a.display.status}${a.display.pid ? ` pid=${a.display.pid}` : ""}${a.display.window_id ? ` window=${a.display.window_id}` : ""}`}` : ""}${a.last_task ? `\n  last: ${a.last_task.slice(0, 80)}` : ""}`).join("\n"), result);
     }),
   });
 

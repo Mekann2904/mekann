@@ -188,6 +188,7 @@ export interface ListResult {
     result_contract?: ResultContract;
     queue_position?: number;
     queued_ahead?: number;
+    unread_final_result?: boolean;
   }>;
 }
 
