@@ -40,6 +40,10 @@ Provider usage schemas differ. The normalizer records:
 
 This is especially important for Pi normalized usage because `usage.input` may represent either total input or non-cached input depending on upstream semantics.
 
+## Cacheable fragment ordering
+
+Stable and semi-stable fragments must have deterministic ordering independent of provider registration or collection order. The renderer sorts by stability, priority, source, kind, and id. If two cacheable fragments share the same ordering key, reports include `CACHEABLE_FRAGMENT_ORDER_TIE` because rendering would otherwise depend on input order.
+
 ## Provider/model switching
 
 Reports track adjacent provider/model switches because provider caches are generally scoped by provider/model. A lower global hit rate can be caused by routing changes even when warm hit rate for each provider/model remains healthy.

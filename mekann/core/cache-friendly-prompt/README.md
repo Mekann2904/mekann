@@ -45,6 +45,12 @@ actual usage rows also include prefix snapshot metadata when available:
 
 まずここを見て、stable / semi-stable に runtime 値が混ざっていないかを確認してください。
 
+## cacheable fragment ordering audit
+
+Stable and semi-stable fragments are sorted deterministically by stability, priority, source, kind, and id. `prompt-core` warns with `CACHEABLE_FRAGMENT_ORDER_TIE` when two cacheable fragments share the same ordering key, because the final tie-breaker would fall back to provider input order.
+
+If this warning appears, give the fragments distinct ids, sources, kinds, or priorities so cacheable prefix rendering does not depend on registration or collection order.
+
 ## provider/model switching
 
 Provider cache is usually scoped by provider/model. `report.md` records adjacent provider/model switches so global hit rate can be interpreted separately from model routing changes.

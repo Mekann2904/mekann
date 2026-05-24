@@ -37,6 +37,26 @@ function hasVolatileValuePattern(text: string): boolean { return volatileValuePa
 function allowsPolicyReference(fragment: PromptFragment): boolean {
   return fragment.metadata?.volatileTermsArePolicyReferences === true && !hasVolatileValuePattern(fragment.content);
 }
+function orderingKey(fragment: PromptFragment): string {
+  return `${fragment.stability}:${fragment.priority}:${fragment.source}:${fragment.kind}:${fragment.id}`;
+}
+
+export function inspectFragmentOrdering(fragments: PromptFragment[]): PromptInspectionWarning[] {
+  const warnings: PromptInspectionWarning[] = [];
+  const seen = new Map<string, PromptFragment>();
+  for (const f of fragments) {
+    if (f.enabled === false || f.stability === "dynamic") continue;
+    const key = orderingKey(f);
+    const prev = seen.get(key);
+    if (prev) {
+      warnings.push({ severity: "warning", code: "CACHEABLE_FRAGMENT_ORDER_TIE", message: `Cacheable fragments share the same deterministic ordering key; render order falls back to provider input order: ${prev.source}/${prev.id} and ${f.source}/${f.id}`, fragmentId: f.id, source: f.source });
+    } else {
+      seen.set(key, f);
+    }
+  }
+  return warnings;
+}
+
 export function inspectFragments(fragments: PromptFragment[]): PromptInspectionWarning[] {
   const warnings: PromptInspectionWarning[] = [];
   for (const f of fragments) {
