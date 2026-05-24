@@ -45,6 +45,17 @@ actual usage rows also include prefix snapshot metadata when available:
 
 まずここを見て、stable / semi-stable に runtime 値が混ざっていないかを確認してください。
 
+## dynamic tail size and truncation
+
+Dynamic context is placed in the volatile tail, but it still contributes to total input tokens and can reduce request-level `tokenHitRate` by increasing the denominator. The report tracks dynamic truncation telemetry:
+
+- `dynamicTruncationCount`
+- `dynamicTruncationOriginalChars`
+- `dynamicTruncationRenderedChars`
+- `dynamicTruncationOmittedChars`
+
+The “Dynamic tail size / truncation” table lists recent truncations and the dynamic fragment ids involved. Use this to replace huge tool/log/file context with summaries, artifact ids, or targeted snippets.
+
 ## cacheable fragment ordering audit
 
 Stable and semi-stable fragments are sorted deterministically by stability, priority, source, kind, and id. `prompt-core` warns with `CACHEABLE_FRAGMENT_ORDER_TIE` when two cacheable fragments share the same ordering key, because the final tie-breaker would fall back to provider input order.

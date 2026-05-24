@@ -40,6 +40,10 @@ Provider usage schemas differ. The normalizer records:
 
 This is especially important for Pi normalized usage because `usage.input` may represent either total input or non-cached input depending on upstream semantics.
 
+## Dynamic tail size
+
+Dynamic context belongs in the volatile tail, but large dynamic tails still increase total input tokens and may reduce request-level hit-rate ratios. Reports therefore track dynamic truncation counts, original/rendered/omitted chars, and recent fragment ids involved in truncation.
+
 ## Cacheable fragment ordering
 
 Stable and semi-stable fragments must have deterministic ordering independent of provider registration or collection order. The renderer sorts by stability, priority, source, kind, and id. If two cacheable fragments share the same ordering key, reports include `CACHEABLE_FRAGMENT_ORDER_TIE` because rendering would otherwise depend on input order.

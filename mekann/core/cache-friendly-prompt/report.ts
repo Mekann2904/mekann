@@ -57,6 +57,10 @@ type CacheFriendlySummary = {
   providerModelSwitches: number;
   providerSwitches: number;
   modelSwitchesWithinProvider: number;
+  dynamicTruncationCount: number;
+  dynamicTruncationOriginalChars: number;
+  dynamicTruncationRenderedChars: number;
+  dynamicTruncationOmittedChars: number;
   warningCount: number;
   providers: Record<string, ProviderSummary>;
   actualRequestCount: number;
@@ -335,6 +339,9 @@ function summarize(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], genera
     };
   }
   const uniqueScopedReuseKeyRatio = rate(new Set(rows.map(scopedReuseKey)).size, rows.length);
+  const dynamicTruncatedRows = rows.filter((row) => row.dynamicContextTruncated === true);
+  const dynamicTruncationOriginalChars = dynamicTruncatedRows.reduce((sum, row) => sum + (row.dynamicContextOriginalChars ?? 0), 0);
+  const dynamicTruncationRenderedChars = dynamicTruncatedRows.reduce((sum, row) => sum + (row.dynamicContextRenderedChars ?? 0), 0);
   const actual = summarizeActual(actualRows);
   return {
     generatedAt,
@@ -360,6 +367,10 @@ function summarize(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], genera
     providerModelSwitches: countChanges(rows, providerKey),
     providerSwitches: countChanges(rows, (r) => r.provider),
     modelSwitchesWithinProvider: rows.reduce((n, row, i) => i > 0 && (row.provider ?? "") === (rows[i - 1].provider ?? "") && (row.model ?? "") !== (rows[i - 1].model ?? "") ? n + 1 : n, 0),
+    dynamicTruncationCount: dynamicTruncatedRows.length,
+    dynamicTruncationOriginalChars,
+    dynamicTruncationRenderedChars,
+    dynamicTruncationOmittedChars: Math.max(0, dynamicTruncationOriginalChars - dynamicTruncationRenderedChars),
     warningCount: rows.reduce((n, r) => n + (r.warnings?.length ?? 0), 0),
     providers,
     ...actual,
@@ -599,6 +610,8 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
     ["latest stable prefix chars", latest?.stablePrefixChars ?? 0],
     ["latest total prompt chars", latest?.totalPromptChars ?? 0],
     ["warnings", summary.warningCount],
+    ["dynamic truncations", summary.dynamicTruncationCount],
+    ["dynamic truncation omitted chars", summary.dynamicTruncationOmittedChars],
   ]);
   const actualRows = renderMetricRows([
     ["actual usage requests", summary.actualRequestCount],
@@ -618,6 +631,11 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
     ["cacheMissTokens", summary.actualCacheMissTokens],
     ["weighted cacheableReadRate", formatPct(summary.actualCacheableReadRateWeighted)],
   ]);
+  const dynamicTruncationRows = rows.filter((row) => row.dynamicContextTruncated === true)
+    .slice(-20)
+    .reverse()
+    .map((row) => `| ${row.timestamp} | ${escapeHtml(providerKey(row))} | ${row.dynamicContextOriginalChars ?? 0} | ${row.dynamicContextRenderedChars ?? 0} | ${Math.max(0, (row.dynamicContextOriginalChars ?? 0) - (row.dynamicContextRenderedChars ?? 0))} | ${row.dynamicContextLimitChars ?? 0} | ${row.latestDynamicFragmentHashes?.map((f) => `${f.source}/${f.id}`).slice(0, 6).join(", ") ?? ""} |`)
+    .join("\n") || "| なし |  |  |  |  |  | |";
   const providerModelSwitchRows = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined }))
     .filter((x): x is { row: ParsedLog; prev: ParsedLog } => x.prev !== undefined && providerKey(x.row) !== providerKey(x.prev))
     .slice(-20)
@@ -765,7 +783,15 @@ ${promptProviderModelGraphRows}
 |---|---:|---:|---|---:|---:|---:|
 ${providerRows || "| なし | 0 | 0 |  | 0 | 0 | 0 |"}
 
-## 7. Provider/model switching
+## 7. Dynamic tail size / truncation
+
+Dynamic context is intentionally placed in the volatile tail, but very large dynamic tails still increase total input tokens and can lower request-level tokenHitRate. This table shows recent dynamic truncations.
+
+| timestamp | provider/model | original chars | rendered chars | omitted chars | limit chars | dynamic fragments |
+|---|---|---:|---:|---:|---:|---|
+${dynamicTruncationRows}
+
+## 8. Provider/model switching
 
 Provider cache is usually scoped by provider/model. Frequent switching can lower global hit rate even when each provider/model is healthy.
 
@@ -773,7 +799,7 @@ Provider cache is usually scoped by provider/model. Frequent switching can lower
 |---|---|---|---|---:|---:|
 ${providerModelSwitchRows}
 
-## 8. Base system prompt stability
+## 9. Base system prompt stability
 
 \`stablePrefixHash\` が安定しているのに \`providerPrefixHash\` が変わる場合、base system prompt 側が揺れている可能性があります。この表は base system prompt hash の変化だけを抜き出します。
 
@@ -781,13 +807,13 @@ ${providerModelSwitchRows}
 |---|---|---|---|---:|---:|
 ${baseSystemRows}
 
-## 9. 最近の scoped reuse key 変化 / Recent scoped reuse key changes
+## 10. 最近の scoped reuse key 変化 / Recent scoped reuse key changes
 
 | timestamp | provider/model | reuse key | likely change reason | provider prefix Δchars | total Δchars | provider prefix chars | stable chars | total chars |
 |---|---|---|---|---:|---:|---:|---:|---:|
 ${changeRows}
 
-## 10. Glossary
+## 11. Glossary
 
 | term | meaning |
 |---|---|
