@@ -58,6 +58,12 @@ describe("KittyController", () => {
         try { rmSync(tmp, { recursive: true }); } catch {}
       }
     });
+
+    it("does not pipe child Pi through tee when logPath is provided", async () => {
+      const result = await controller.launchPiWindow({ ...baseParams, logPath: "/tmp/subagent.log" });
+      expect(result.windowId).not.toContain("tee -a");
+      expect(result.windowId).toContain("pi");
+    });
   });
 
   describe("launchPiSplit", () => {

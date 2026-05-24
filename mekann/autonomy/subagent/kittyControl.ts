@@ -36,9 +36,10 @@ export class KittyController {
     const logPath = params.logPath;
     const logFn = logPath ? `log(){ printf '%s\\n' "$*" >> ${shellQuote(logPath)}; }` : `log(){ :; }`;
     const command = `${piCommand}${extensionArgs}${modelArgs}${thinkingArgs}`;
-    const runCommand = logPath
-      ? `rcfile=$(mktemp); ( ${command}; printf '%s' "$?" > "$rcfile" ) 2>&1 | tee -a ${shellQuote(logPath)}; rc=$(cat "$rcfile" 2>/dev/null || printf '1'); rm -f "$rcfile"`
-      : `${command}; rc=$?`;
+    // Keep the child Pi attached directly to the kitty TTY. Piping through tee
+    // makes stdout non-TTY, which breaks Pi's interactive TUI rendering/input.
+    // Log structured lifecycle lines via log()/IPC instead of capturing raw TUI.
+    const runCommand = `${command}; rc=$?`;
     return [
       logFn,
       `log ${shellQuote(`[launch] ${new Date().toISOString()} agent=${params.agentId} path=${params.agentPath}`)}`,
