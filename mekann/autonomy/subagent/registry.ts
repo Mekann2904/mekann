@@ -40,6 +40,14 @@ export class AgentRegistry {
     return this.reservations.size;
   }
 
+  get executionSlotCount(): number {
+    return this.filterAgents(a => a.open && a.status !== "queued").length;
+  }
+
+  hasExecutionCapacity(): boolean {
+    return this.executionSlotCount + this.reservedCount < this._maxAgents;
+  }
+
   constructor(maxAgents: number, maxDepth: number) {
     this._maxAgents = maxAgents;
     this._maxDepth = maxDepth;
@@ -82,15 +90,16 @@ export class AgentRegistry {
    */
   reserveSpawnSlot(path: string): Reservation {
     // Check open count + reserved-but-not-committed count
-    const activeCount = this.openCount + this.reservedCount;
+    const activeCount = this.executionSlotCount + this.reservedCount;
     if (activeCount >= this._maxAgents) {
       throw new Error(
         `Maximum number of open agents reached (${this._maxAgents}). Close existing agents before spawning new ones.`,
       );
     }
-    // Duplicate open path check (includes reserved paths)
+    // Duplicate open path check (includes reserved paths). A queued agent at
+    // the same path is the accepted delegation being promoted into a slot.
     const existing = this.agents.get(path);
-    if (existing && existing.open) {
+    if (existing && existing.open && existing.status !== "queued") {
       throw new Error(
         `An open agent already exists at path "${path}" (agent_id: ${existing.agentId}). Close it first or use a different path.`,
       );
@@ -110,6 +119,20 @@ export class AgentRegistry {
     this.reservations.add(reservation);
     this.reservedPaths.add(path);
     return reservation;
+  }
+
+  assertPathAvailable(path: string): void {
+    const existing = this.agents.get(path);
+    if (existing && existing.open) {
+      throw new Error(
+        `An open agent already exists at path "${path}" (agent_id: ${existing.agentId}). Close it first or use a different path.`,
+      );
+    }
+    if (this.reservedPaths.has(path)) {
+      throw new Error(
+        `An agent reservation already exists at path "${path}". Wait for the pending spawn to complete or use a different path.`,
+      );
+    }
   }
 
   rollbackReservation(reservation: Reservation): void {
@@ -146,6 +169,19 @@ export class AgentRegistry {
     return root;
   }
 
+  registerQueuedAgent(metadata: AgentMetadata): void {
+    this.assertPathAvailable(metadata.agentPath);
+    this.agents.set(metadata.agentPath, metadata);
+    this.publish({
+      type: "agent_status_changed",
+      agentId: metadata.agentId,
+      agentPath: metadata.agentPath,
+      previousStatus: "pending_init",
+      newStatus: "queued",
+      timestamp: Date.now(),
+    });
+  }
+
   /**
    * Register a new subagent. Consumes the reservation.
    * Rejects duplicate open task paths and depth violations.
@@ -167,7 +203,7 @@ export class AgentRegistry {
 
     // Duplicate open path check (already checked at reservation time, but guard again for safety)
     const existing = this.agents.get(metadata.agentPath);
-    if (existing && existing.open) {
+    if (existing && existing.open && existing.status !== "queued") {
       throw new Error(
         `An open agent already exists at path "${metadata.agentPath}" (agent_id: ${existing.agentId}). Close it first or use a different path.`,
       );

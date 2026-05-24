@@ -5,6 +5,7 @@
 // ─── Agent status ────────────────────────────────────────────────
 
 export type AgentStatus =
+  | "queued"
   | "pending_init"
   | "running"
   | "interrupted"
@@ -78,6 +79,8 @@ export interface AgentMetadata {
   authorityEnforced?: boolean;
   workspaceCwd?: string;
   resultContract?: ResultContract;
+  queuePosition?: number;
+  queuedAhead?: number;
 }
 
 // ─── Lifecycle events ────────────────────────────────────────────
@@ -160,6 +163,8 @@ export interface SpawnResult {
   task_name: string;
   status: AgentStatus;
   display?: AgentDisplayResult;
+  queue_position?: number;
+  queued_ahead?: number;
 }
 
 export interface WaitResult {
@@ -181,6 +186,8 @@ export interface ListResult {
     authority?: SubagentAuthority;
     authority_enforced?: boolean;
     result_contract?: ResultContract;
+    queue_position?: number;
+    queued_ahead?: number;
   }>;
 }
 

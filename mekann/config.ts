@@ -30,6 +30,7 @@ export function getWorkspaceSettingsPath(cwd = process.cwd()): string {
 export interface MekannSubagentConfigDefaults {
 	maxSubagents: number;
 	maxOpenAgents: number;
+	maxQueuedSubagents: number;
 	maxDepth: number;
 	defaultWaitTimeoutMs: number;
 	maxWaitTimeoutMs: number;
@@ -46,6 +47,7 @@ export interface MekannSubagentConfigDefaults {
 export const MEKANN_SUBAGENT_DEFAULTS: MekannSubagentConfigDefaults = {
 	maxSubagents: 2,
 	maxOpenAgents: 3,
+	maxQueuedSubagents: 8,
 	maxDepth: 2,
 	defaultWaitTimeoutMs: 30_000,
 	maxWaitTimeoutMs: 600_000,

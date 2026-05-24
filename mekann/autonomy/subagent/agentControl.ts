@@ -44,6 +44,7 @@ import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
 const DEFAULT_MAX_AGENTS = MEKANN_SUBAGENT_DEFAULTS.maxOpenAgents;
 const HARD_MAX_OPEN_AGENTS = MEKANN_SUBAGENT_DEFAULTS.maxOpenAgents;
 const DEFAULT_MAX_DEPTH = MEKANN_SUBAGENT_DEFAULTS.maxDepth;
+const DEFAULT_MAX_QUEUED_SUBAGENTS = MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents;
 const DEFAULT_WAIT_TIMEOUT_MS = MEKANN_SUBAGENT_DEFAULTS.defaultWaitTimeoutMs;
 const MAX_WAIT_TIMEOUT_MS = MEKANN_SUBAGENT_DEFAULTS.maxWaitTimeoutMs;
 const MIN_WAIT_TIMEOUT_MS = MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs;
@@ -71,6 +72,17 @@ export interface AgentControlOptions {
   extensionPath?: string;
   helloTimeoutMs?: number;
   allowUnsafeExternalPi?: boolean;
+  maxQueuedSubagents?: number;
+}
+
+interface QueuedSpawn {
+  params: SpawnParams;
+  ctx: ExtensionContext;
+  callerPath: string;
+  canonicalPath: string;
+  depth: number;
+  agentId: string;
+  queuedMessages: string[];
 }
 
 // ─── Agent control ───────────────────────────────────────────────
@@ -94,6 +106,9 @@ export class AgentControl {
   private extensionPath?: string;
   private helloTimeoutMs: number;
   private allowUnsafeExternalPi: boolean;
+  private maxQueuedSubagents: number;
+  private spawnQueue: QueuedSpawn[] = [];
+  private drainingSpawnQueue = false;
   readonly resultStore: SubagentResultStore;
   private readonly lifecycle: SubagentLifecycle;
 
@@ -121,6 +136,7 @@ export class AgentControl {
     this.extensionPath = options.extensionPath;
     this.helloTimeoutMs = options.helloTimeoutMs ?? 10_000;
     this.allowUnsafeExternalPi = options.allowUnsafeExternalPi ?? false;
+    this.maxQueuedSubagents = options.maxQueuedSubagents ?? DEFAULT_MAX_QUEUED_SUBAGENTS;
     this.lifecycle = new SubagentLifecycle(this.registry, this.mailbox, process.cwd());
     this.runtimes = this.lifecycle.runtimes;
     this.childSessions = this.lifecycle.childSessions;
@@ -245,6 +261,36 @@ export class AgentControl {
     return this.lifecycle.handleFinalText({ agentId, agentPath: canonicalPath, callerPath, finalText, status, cwd });
   }
 
+  private scheduleDrainSpawnQueue(): void {
+    queueMicrotask(() => { void this.drainSpawnQueue(); });
+  }
+
+  private async drainSpawnQueue(): Promise<void> {
+    if (this.drainingSpawnQueue) return;
+    this.drainingSpawnQueue = true;
+    try {
+      while (this.spawnQueue.length > 0 && this.registry.hasExecutionCapacity()) {
+        const item = this.spawnQueue.shift()!;
+        this.refreshQueuePositions();
+        const agent = this.registry.get(item.canonicalPath);
+        if (!agent?.open || agent.status !== "queued") continue;
+        try {
+          await this.startSpawn(item.params, item.ctx, item.callerPath, item.canonicalPath, item.depth, item.agentId, item.queuedMessages);
+        } catch (err) {
+          this.registry.updateStatus(item.canonicalPath, "errored");
+          this.registry.close(item.canonicalPath, "errored");
+          this.mailbox.appendEvent({ type: "agent_spawn_end", ...this.evBase(item.agentId, item.canonicalPath), success: false, error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+    } finally {
+      this.drainingSpawnQueue = false;
+    }
+  }
+
+  private refreshQueuePositions(): void {
+    this.spawnQueue.forEach((item, index) => this.registry.updateAgent(item.canonicalPath, { queuePosition: index + 1, queuedAhead: index }));
+  }
+
   // ─── spawn_agent ───────────────────────────────────────────────
 
   async spawn(
@@ -268,11 +314,57 @@ export class AgentControl {
       );
     }
 
-    // Reserve slot + path atomically before async session creation
+    this.registry.assertPathAvailable(canonicalPath);
+    const agentId = nextAgentId();
+
+    if (!this.registry.hasExecutionCapacity()) {
+      if (this.spawnQueue.length >= this.maxQueuedSubagents) {
+        throw new Error(`Maximum queued subagents reached (${this.maxQueuedSubagents}). Wait for queued work to start or close queued agents before spawning more.`);
+      }
+      const now = Date.now();
+      const item: QueuedSpawn = { params, ctx, callerPath, canonicalPath, depth, agentId, queuedMessages: [] };
+      this.spawnQueue.push(item);
+      const queuePosition = this.spawnQueue.length;
+      const metadata: AgentMetadata = {
+        agentId,
+        sessionId: `queued:${agentId}`,
+        parentAgentId: callerPath === ROOT_PATH ? "root" : undefined,
+        parentSessionId: "root",
+        agentPath: canonicalPath,
+        nickname: params.nickname,
+        role: params.role,
+        status: "queued",
+        lastTaskMessage: params.message,
+        createdAt: now,
+        updatedAt: now,
+        depth,
+        open: true,
+        cancellationRequested: false,
+        authority: this.normalizeAuthority(params.authority),
+        authorityEnforced: true,
+        workspaceCwd: ctx.cwd,
+        resultContract: params.result_contract,
+        queuePosition,
+        queuedAhead: queuePosition - 1,
+      };
+      this.registry.registerQueuedAgent(metadata);
+      return { agent_id: agentId, task_name: canonicalPath, status: "queued", queue_position: queuePosition, queued_ahead: queuePosition - 1 };
+    }
+
+    return this.startSpawn(params, ctx, callerPath, canonicalPath, depth, agentId, []);
+  }
+
+  private async startSpawn(
+    params: SpawnParams,
+    ctx: ExtensionContext,
+    callerPath: string,
+    canonicalPath: string,
+    depth: number,
+    agentId: string,
+    queuedMessages: string[],
+  ): Promise<SpawnResult> {
     const reservation = this.registry.reserveSpawnSlot(canonicalPath);
 
-    // Publish spawn begin event
-    const agentId = nextAgentId();
     this.mailbox.appendEvent({
       type: "agent_spawn_begin", ...this.evBase(agentId, canonicalPath),
       parentAgentId: callerPath === ROOT_PATH ? undefined : callerPath,
@@ -283,7 +375,7 @@ export class AgentControl {
       const resultContract = params.result_contract;
 
       if (this.wantsExternalPiDisplay() && this.allowUnsafeExternalPi) {
-        return await this.spawnExternalPi(params, ctx, callerPath, canonicalPath, depth, reservation, agentId);
+        return await this.spawnExternalPi(params, ctx, callerPath, canonicalPath, depth, reservation, agentId, queuedMessages);
       }
 
       const model = await this.resolveModel(params.model, ctx);
@@ -375,10 +467,14 @@ export class AgentControl {
 
       this.registry.registerAgent(metadata, reservation);
 
-      const initialMessage = forkContextBlock
+      const baseInitialMessage = forkContextBlock
         ? `${forkContextBlock}\n\n${params.message}`
         : params.message;
-      this.lifecycle.registerInProcessRuntime({ agentId, agentPath: canonicalPath, callerPath, session, initialMessage, cwd: ctx.cwd });
+      const queuedMessagesBlock = queuedMessages.length > 0
+        ? `\n\n--- Queued parent messages ---\n${queuedMessages.map((m, i) => `[${i + 1}] ${m}`).join("\n\n")}\n--- End queued parent messages ---`
+        : "";
+      const initialMessage = `${baseInitialMessage}${queuedMessagesBlock}`;
+      this.lifecycle.registerInProcessRuntime({ agentId, agentPath: canonicalPath, callerPath, session, initialMessage, cwd: ctx.cwd, onSettled: () => this.scheduleDrainSpawnQueue() });
 
       return {
         agent_id: agentId,
@@ -398,7 +494,7 @@ export class AgentControl {
     }
   }
 
-  private async spawnExternalPi(params: SpawnParams, ctx: ExtensionContext, callerPath: string, canonicalPath: string, depth: number, reservation: any, agentId: string): Promise<SpawnResult> {
+  private async spawnExternalPi(params: SpawnParams, ctx: ExtensionContext, callerPath: string, canonicalPath: string, depth: number, reservation: any, agentId: string, queuedMessages: string[] = []): Promise<SpawnResult> {
     if (!this.allowUnsafeExternalPi) {
       throw new Error(
         "External Pi subagents are disabled because authority cannot be enforced across an independent Pi process. Use subagent-display=none, or set subagent-allow-unsafe-external-pi=true only for fully trusted experiments.",
@@ -437,7 +533,10 @@ export class AgentControl {
         `Requested authority mode: ${authority.mode}. Treat it as advisory unless the runtime itself removed tools.`,
       ].join("\n");
 
-      const launchMessage = [externalNotice, preamble, params.message]
+      const queuedMessagesBlock = queuedMessages.length > 0
+        ? `--- Queued parent messages ---\n${queuedMessages.map((m, i) => `[${i + 1}] ${m}`).join("\n\n")}\n--- End queued parent messages ---`
+        : undefined;
+      const launchMessage = [externalNotice, preamble, params.message, queuedMessagesBlock]
         .filter(Boolean)
         .join("\n\n");
 
@@ -453,7 +552,7 @@ export class AgentControl {
         launchParams,
         displayMode: displayKind,
         helloTimeoutMs: this.helloTimeoutMs,
-        onClosed: (id) => processExternalPiSlots.delete(id),
+        onClosed: (id) => { processExternalPiSlots.delete(id); this.scheduleDrainSpawnQueue(); },
       });
       return { agent_id: agentId, task_name: canonicalPath, status: this.registry.get(canonicalPath)?.status ?? "running", display: this.displayResult(this.registry.get(canonicalPath)?.display) };
     } catch (err) {
@@ -503,6 +602,11 @@ export class AgentControl {
     const message = truncateText(params.message, MESSAGE_INJECTION_MAX_CHARS);
     this.enqueueToMailbox(this.getCallerAgentId(callerPath), callerPath, targetPath, message, "message");
     this.logDisplay(agent.display, `[message from ${callerPath}] ${message}`);
+    if (agent.status === "queued") {
+      const queued = this.spawnQueue.find((item) => item.canonicalPath === targetPath);
+      if (queued) queued.queuedMessages.push(message);
+      return { delivered: true };
+    }
 
     const rt = this.lifecycle.getRuntime(targetPath);
     if (rt?.mode === "external_pi") {
@@ -524,6 +628,9 @@ export class AgentControl {
     if (targetPath === ROOT_PATH) throw new Error("Cannot send followup_task to the root agent.");
     if (!agent.open || isTerminalStatus(agent.status)) {
       throw new Error(`Cannot follow up a terminal agent (status: ${agent.status}).`);
+    }
+    if (agent.status === "queued") {
+      throw new Error("Agent is queued and cannot receive followup_task until it is running. Use send_message to add pre-start context, or wait_agent until the agent starts.");
     }
 
     const message = truncateText(params.message, MESSAGE_INJECTION_MAX_CHARS);
@@ -614,6 +721,8 @@ export class AgentControl {
         authority: a.authority,
         authority_enforced: a.authorityEnforced,
         result_contract: a.resultContract,
+        queue_position: a.queuePosition,
+        queued_ahead: a.queuedAhead,
       })),
     };
   }
@@ -685,6 +794,11 @@ export class AgentControl {
   }
 
   private async closeSingle(agentPath: string): Promise<void> {
+    const queuedIndex = this.spawnQueue.findIndex((item) => item.canonicalPath === agentPath);
+    if (queuedIndex >= 0) {
+      this.spawnQueue.splice(queuedIndex, 1);
+      this.refreshQueuePositions();
+    }
     const display = this.registry.get(agentPath)?.display;
     this.logDisplay(display, "[status] shutdown");
     const rt = this.lifecycle.getRuntime(agentPath);
@@ -703,6 +817,7 @@ export class AgentControl {
     }
     this.registry.close(agentPath, "shutdown");
     this.mailbox.appendEvent({ type: "agent_close_end", ...this.evBase(this.registry.get(agentPath)?.agentId ?? "unknown", agentPath) });
+    this.scheduleDrainSpawnQueue();
   }
 
   async focus(target: string, ctx: ExtensionContext): Promise<{ focused: boolean; warning?: string }> {

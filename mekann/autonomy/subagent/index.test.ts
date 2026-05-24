@@ -1342,6 +1342,27 @@ describe("AgentControl", () => {
       expect(result.status).toBe("pending_init");
     });
 
+    it("queues excess spawns as visible agents and handles queued messaging", async () => {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 2, 2, undefined, undefined, { maxQueuedSubagents: 2 });
+      control.registry.ensureRoot("root");
+
+      const first = await control.spawn({ task_name: "task1", message: "run now" }, baseCtx);
+      const second = await control.spawn({ task_name: "task2", message: "run later" }, baseCtx);
+
+      expect(first.status).toBe("pending_init");
+      expect(second.status).toBe("queued");
+      expect(second.queue_position).toBe(1);
+      expect(second.queued_ahead).toBe(0);
+      expect(control.list({}).agents.find((a: any) => a.agent_path === "/root/task2")?.status).toBe("queued");
+
+      await expect(control.sendMessage({ target: "task2", message: "extra context" }, baseCtx)).resolves.toEqual({ delivered: true });
+      await expect(control.followupTask({ target: "task2", message: "do more" }, baseCtx)).rejects.toThrow("Use send_message to add pre-start context");
+
+      await control.close({ target: "task2" }, baseCtx);
+      expect(control.list({}).agents.find((a: any) => a.agent_path === "/root/task2")?.status).toBe("shutdown");
+    });
+
     it("throws on depth exceeded", async () => {
       const pi = createControlMockPi();
       const control = new (AgentControl as any)(pi, 4, 1); // max depth 1

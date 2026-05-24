@@ -161,6 +161,7 @@ function registerSubagentPromptProvider(): void {
         cacheIntent: "prefer_cache",
         content: [
           "Subagents are available for independent work.",
+          `Current subagent limits: max running subagents = ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents}, max queued subagents = ${MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents}. Excess spawns are queued FIFO and remain visible to list_agents/wait_agent.`,
           "Use spawn_agent proactively for parallel work, multi-area investigations, comparing approaches, or review/research that can proceed independently.",
           "For independent tasks, spawn all useful subagents first, then use wait_agent to collect results before summarizing or deciding next steps.",
           "Do not use subagents for trivial one-file edits or tasks requiring tight step-by-step coordination.",
@@ -250,6 +251,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
         MEKANN_SUBAGENT_DEFAULTS.maxSubagents,
       );
       const maxAgents = maxSubagents + 1;
+      const maxQueuedDefault = String(maxSubagents * 4);
+      const maxQueuedSubagents = Math.max(Number(getFlagOrSetting("subagent-max-queued-agents", "max-queued-agents", maxQueuedDefault)) || maxSubagents * 4, 0);
       const maxDepthDefault = String(MEKANN_SUBAGENT_DEFAULTS.maxDepth);
       const maxDepth = Number(getFlagOrSetting("subagent-max-depth", "max-depth", maxDepthDefault)) || MEKANN_SUBAGENT_DEFAULTS.maxDepth;
       const rawDefaultWait = getFlagOrSetting<string>("subagent-default-wait-timeout-ms", "default-wait-timeout-ms");
@@ -279,6 +282,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
         piCommand,
         extensionPath: extensionPath || undefined,
         allowUnsafeExternalPi,
+        maxQueuedSubagents,
       });
     }
     return control;
@@ -325,7 +329,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     name: "spawn_agent",
     label: "Spawn subagent",
     description:
-      "Spawn a new subagent that runs asynchronously. Returns immediately with the agent ID and path. Use wait_agent to get results.",
+      `Spawn a new subagent that runs asynchronously. Returns immediately with the agent ID and path. Up to ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents} subagents run concurrently by default; excess spawns are queued FIFO up to ${MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents} queued subagents. Use wait_agent to get results.`,
     promptSnippet: "Run an independent task in a background subagent and later collect its result",
     promptGuidelines: [
       "Subagents are background worker agents. Use them proactively when the user asks for parallel work, multi-agent work, independent investigations, or when a task naturally splits into separate areas that can be done concurrently.",
@@ -338,7 +342,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       "Give each subagent a stable, descriptive task_name such as research/api, research/db, fix/tests, review/security. Relative paths are resolved under /root.",
       "Write the message as a self-contained task brief: include goal, relevant files/commands, constraints, expected output format, and what not to change. Subagents may not know unstated parent context.",
       "Use fork_turns only when the recent conversation is genuinely needed by the child; otherwise include the necessary context directly in message.",
-      "Respect resource limits. There is a concurrent subagent limit, so prefer a small number of high-value agents. Completed subagents free their slot automatically.",
+      `Respect resource limits. By default, max running subagents = ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents} and max queued subagents = ${MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents}; excess accepted spawns return status=\"queued\" with queue_position/queued_ahead and start automatically when a slot opens.`,
+      "Use list_agents or wait_agent to observe queued/running/completed status. close_agent can cancel queued agents. send_message can add pre-start context to queued agents; followup_task requires a running agent.",
       "If a duplicate task_name is rejected, list_agents to inspect whether an agent with that path is still open/running before choosing a different path or aborting it with close_agent.",
     ],
     parameters: SpawnSchema,
