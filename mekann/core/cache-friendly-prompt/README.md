@@ -45,6 +45,20 @@ actual usage rows also include prefix snapshot metadata when available:
 
 まずここを見て、stable / semi-stable に runtime 値が混ざっていないかを確認してください。
 
+## stable / semi-stable volatility audit
+
+`prompt-core` は stable / semi-stable fragment に runtime 値が混ざっていないかを検査します。
+
+Examples that are flagged:
+
+- `requestId`, `sessionId`, `conversationId`, `runId`
+- `timestamp`, `current date`, `current time`
+- `tokens used`, `remaining tokens`, `token budget`
+- `cwd`, absolute user/tmp paths
+- `git status`, `open files`, `current file`, diagnostics/tool/search results
+
+Stable fragment の具体的な runtime 値は error、semi-stable fragment の volatile signal は warning として report に残ります。
+
 ## report generation
 
 ログ append ごとの report 再生成は重くなるため、既定では debounce されます。

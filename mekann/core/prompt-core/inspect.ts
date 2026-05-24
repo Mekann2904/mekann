@@ -1,8 +1,37 @@
 import type { PromptFragment, PromptInspectionWarning } from "./types.js";
 import { estimateTokens } from "./canonicalize.js";
 
-const volatileWarningTerms = [/current time/i, /current date/i, /now\(\)/i, /Date\(/, /new Date/i, /latest search/i, /search result/i, /tool result/i, /diagnostics/i, /continuation/i];
-const volatileValuePatterns = [/request[_ ]id\s*[:=]\s*\S+/i, /timestamp\s*[:=]\s*\S+/i, /tokens used\s*[:=]?\s*\d+/i, /time used\s*[:=]?\s*\d+/i, /remaining tokens\s*[:=]?\s*\d+/i];
+const volatileWarningTerms = [
+  /current time/i,
+  /current date/i,
+  /now\(\)/i,
+  /Date\(/,
+  /new Date/i,
+  /latest search/i,
+  /search result/i,
+  /tool result/i,
+  /diagnostics/i,
+  /continuation/i,
+  /git status/i,
+  /open files?/i,
+  /current file/i,
+  /recent (tool|command|search|context)/i,
+];
+const volatileValuePatterns = [
+  /request[_ -]?id\s*[:=]\s*\S+/i,
+  /session[_ -]?id\s*[:=]\s*\S+/i,
+  /conversation[_ -]?id\s*[:=]\s*\S+/i,
+  /run[_ -]?id\s*[:=]\s*\S+/i,
+  /timestamp\s*[:=]\s*\S+/i,
+  /tokens used\s*[:=]?\s*\d+/i,
+  /time used\s*[:=]?\s*\d+/i,
+  /remaining tokens\s*[:=]?\s*\d+/i,
+  /token budget\s*[:=]?\s*\d+/i,
+  /cwd\s*[:=]\s*\S+/i,
+  /working directory\s*[:=]\s*\S+/i,
+  /\/Users\/[^\s)]+/,
+  /\/tmp\/[^\s)]+/,
+];
 export function containsVolatileSignal(text: string): boolean { return volatileValuePatterns.some((r) => r.test(text)) || volatileWarningTerms.some((r) => r.test(text)); }
 function hasVolatileValuePattern(text: string): boolean { return volatileValuePatterns.some((r) => r.test(text)); }
 function allowsPolicyReference(fragment: PromptFragment): boolean {
@@ -12,9 +41,9 @@ export function inspectFragments(fragments: PromptFragment[]): PromptInspectionW
   const warnings: PromptInspectionWarning[] = [];
   for (const f of fragments) {
     if (f.enabled === false) continue;
-    if (f.stability === "stable" && containsVolatileSignal(f.content) && !allowsPolicyReference(f)) {
-      const error = hasVolatileValuePattern(f.content);
-      warnings.push({ severity: error ? "error" : "warning", code: "VOLATILE_VALUE_IN_STABLE_FRAGMENT", message: `Stable fragment may contain volatile runtime state: ${f.id}`, fragmentId: f.id, source: f.source });
+    if ((f.stability === "stable" || f.stability === "semi_stable") && containsVolatileSignal(f.content) && !allowsPolicyReference(f)) {
+      const error = f.stability === "stable" && hasVolatileValuePattern(f.content);
+      warnings.push({ severity: error ? "error" : "warning", code: f.stability === "stable" ? "VOLATILE_VALUE_IN_STABLE_FRAGMENT" : "VOLATILE_VALUE_IN_SEMI_STABLE_FRAGMENT", message: `${f.stability === "stable" ? "Stable" : "Semi-stable"} fragment may contain volatile runtime state: ${f.id}`, fragmentId: f.id, source: f.source });
     }
     if (f.stability === "stable" && f.cacheIntent === "avoid_cache") warnings.push({ severity: "error", code: "STABLE_FRAGMENT_AVOID_CACHE_CONFLICT", message: `Stable fragment cannot avoid cache: ${f.id}`, fragmentId: f.id, source: f.source });
     if (f.stability === "dynamic" && f.cacheIntent === "prefer_cache") warnings.push({ severity: "warning", code: "DYNAMIC_FRAGMENT_CACHE_INTENT", message: `Dynamic fragment should not prefer cache: ${f.id}`, fragmentId: f.id, source: f.source });
