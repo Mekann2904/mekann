@@ -48,6 +48,10 @@ Dynamic context belongs in the volatile tail, but large dynamic tails still incr
 
 Stable and semi-stable fragments must have deterministic ordering independent of provider registration or collection order. The renderer sorts by stability, priority, source, kind, and id. If two cacheable fragments share the same ordering key, reports include `CACHEABLE_FRAGMENT_ORDER_TIE` because rendering would otherwise depend on input order.
 
+## Provider prefix hash attribution
+
+Reports group actual usage by `providerPrefixHash` so different prefix shapes can be compared directly. This is the primary diagnostic for cases where role-specific prompt fragments, such as subagent policy, create distinct cache behavior.
+
 ## Provider/model switching
 
 Reports track adjacent provider/model switches because provider caches are generally scoped by provider/model. A lower global hit rate can be caused by routing changes even when warm hit rate for each provider/model remains healthy.

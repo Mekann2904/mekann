@@ -62,6 +62,14 @@ Stable and semi-stable fragments are sorted deterministically by stability, prio
 
 If this warning appears, give the fragments distinct ids, sources, kinds, or priorities so cacheable prefix rendering does not depend on registration or collection order.
 
+## provider prefix hash hit-rate attribution
+
+`report.md` groups actual usage by short `providerPrefixHash`. This makes it easy to compare hashes such as `8f37820c` and `d8f6ac77` directly and identify whether a specific prefix shape has lower actual cache reads.
+
+Summary field:
+
+- `actualByProviderPrefixHash`
+
 ## provider/model switching
 
 Provider cache is usually scoped by provider/model. `report.md` records adjacent provider/model switches so global hit rate can be interpreted separately from model routing changes.
