@@ -67,8 +67,10 @@ export function normalizeActualCacheUsage(provider: string | undefined, usage: u
 
   if (providerKey.includes("deepseek") || "prompt_cache_hit_tokens" in u || "prompt_cache_miss_tokens" in u) {
     const cacheReadTokens = numberOf(u.prompt_cache_hit_tokens) ?? 0;
-    const cacheMissTokens = numberOf(u.prompt_cache_miss_tokens) ?? 0;
-    const inputTotalTokens = cacheReadTokens + cacheMissTokens;
+    const cacheMissTokens = numberOf(u.prompt_cache_miss_tokens);
+    const inputTotalTokens = cacheMissTokens !== undefined
+      ? cacheReadTokens + cacheMissTokens
+      : numberOf(u.prompt_tokens) ?? numberOf(u.input_tokens) ?? cacheReadTokens;
     const outputTokens = numberOf(u.completion_tokens) ?? numberOf(u.output_tokens) ?? 0;
     return finish({ inputTotalTokens, outputTokens, cacheReadTokens, cacheMissTokens }, "provider_raw_usage");
   }

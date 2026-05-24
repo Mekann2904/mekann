@@ -77,14 +77,18 @@ function messageTimestamp(message: any): string {
   }
   return new Date().toISOString();
 }
-function actualUsageKey(event: any, ctx: any, message: any, normalized: NormalizedActualCacheUsage): string {
+function actualUsageKey(event: any, ctx: any, message: any, normalized: NormalizedActualCacheUsage): string | null {
+  const requestId = requestIdOf(event, ctx);
+  const messageId = pickString(message?.id, event?.messageId, event?.id);
+  const timestamp = message?.timestamp;
+  if (!requestId && !messageId && timestamp === undefined) return null;
   const { runKey } = runKeyWithSource(event, ctx);
   return [
     ctx?.cwd ?? "",
     runKey,
-    requestIdOf(event, ctx) ?? "",
-    message?.id ?? event?.messageId ?? event?.id ?? "",
-    message?.timestamp ?? "",
+    requestId ?? "",
+    messageId ?? "",
+    timestamp ?? "",
     normalized.inputTotalTokens,
     normalized.outputTokens,
     normalized.cacheReadTokens,
@@ -258,7 +262,7 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
     const normalized = normalizeActualCacheUsage(provider, rawUsage);
     if (!normalized) return undefined;
     const key = actualUsageKey(event, ctx, message, normalized);
-    if (!rememberActualUsageKey(key)) return undefined;
+    if (key && !rememberActualUsageKey(key)) return undefined;
     const { runKey } = runKeyWithSource(event, ctx);
     const requestId = requestIdOf(event, ctx);
     const lastState = (requestId ? stateByRequestId.get(requestId) : undefined) ?? stateByRun.get(runKey) ?? stateByRun.get(ctx?.cwd ?? "") ?? null;

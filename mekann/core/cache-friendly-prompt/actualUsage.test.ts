@@ -16,6 +16,12 @@ describe("normalizeActualCacheUsage", () => {
       expected: { inputTotalTokens: 2000, outputTokens: 100, cacheReadTokens: 1500, cacheMissTokens: 500, tokenHitRate: 0.75, cacheableReadRate: null },
     },
     {
+      name: "deepseek-compatible fallback without miss tokens",
+      provider: "deepseek",
+      usage: { prompt_tokens: 2000, completion_tokens: 100, prompt_cache_hit_tokens: 0 },
+      expected: { inputTotalTokens: 2000, outputTokens: 100, cacheReadTokens: 0, tokenHitRate: 0, cacheableReadRate: null },
+    },
+    {
       name: "anthropic",
       provider: "anthropic",
       usage: { input_tokens: 500, cache_read_input_tokens: 1000, cache_creation_input_tokens: 500, output_tokens: 100 },
