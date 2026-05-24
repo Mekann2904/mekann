@@ -21,14 +21,14 @@ Do not mix prefix prediction/proxy metrics with provider actual cache usage metr
 
 Actual usage rows include request snapshot metadata when available:
 
-- `correlationConfidence`: `requestId_matched`, `runKey_latest`, or `missing`
+- `correlationConfidence`: `requestId_matched`, `providerModel_fifo`, `runKey_latest`, or `missing`
 - `stablePrefixHash`
 - `featureCacheablePrefixHash`
 - `providerPrefixHash`
 - prefix and prompt sizes
 - latest dynamic fragment hashes
 
-`requestId_matched` rows are the strongest basis for comparative hit-rate claims. `runKey_latest` rows are useful operational telemetry but can be contaminated when hook ordering or request interleaving changes.
+`requestId_matched` rows are the strongest basis for comparative hit-rate claims. When request ids are unavailable, `providerModel_fifo` correlates the next message-end usage event with the oldest queued provider/model request snapshot for the same run key. `runKey_latest` rows are useful operational telemetry but can be contaminated when hook ordering or request interleaving changes.
 
 ## Usage normalization
 

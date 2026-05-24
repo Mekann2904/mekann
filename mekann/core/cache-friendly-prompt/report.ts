@@ -276,7 +276,7 @@ function actualWarmState(row: ParsedActualUsageLog, seen: Set<string>): "cold" |
 
 function summarizeActual(actualRows: ParsedActualUsageLog[]) {
   const actual = summarizeActualGroup(actualRows);
-  const matchedRows = actualRows.filter((row) => row.correlationConfidence === "requestId_matched");
+  const matchedRows = actualRows.filter((row) => row.correlationConfidence === "requestId_matched" || row.correlationConfidence === "providerModel_fifo");
   const matched = summarizeActualGroup(matchedRows);
   const seenWarmKeys = new Set<string>();
   const rowsWithWarmState = actualRows.map((row) => ({ row, warmState: actualWarmState(row, seenWarmKeys) }));
@@ -618,9 +618,9 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
     ["weighted tokenHitRate", formatPct(summary.actualTokenHitRateWeighted)],
     ["average tokenHitRate", formatPct(summary.actualTokenHitRateAvg)],
     ["request-level tokenHitRate percentiles", formatPercentiles(summary.actualTokenHitRatePercentiles)],
-    ["requestId_matched usage requests", summary.actualMatchedRequestCount],
-    ["requestId_matched weighted tokenHitRate", formatPct(summary.actualMatchedTokenHitRateWeighted)],
-    ["requestId_matched tokenHitRate percentiles", formatPercentiles(summary.actualMatchedTokenHitRatePercentiles)],
+    ["correlated usage requests", summary.actualMatchedRequestCount],
+    ["correlated weighted tokenHitRate", formatPct(summary.actualMatchedTokenHitRateWeighted)],
+    ["correlated tokenHitRate percentiles", formatPercentiles(summary.actualMatchedTokenHitRatePercentiles)],
     ["cold usage requests", summary.actualColdRequestCount],
     ["cold weighted tokenHitRate", formatPct(summary.actualColdTokenHitRateWeighted)],
     ["warm usage requests", summary.actualWarmRequestCount],

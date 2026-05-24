@@ -26,13 +26,13 @@ Pi normalized usage は provider ごとの semantics が曖昧な場合があり
 
 actual usage rows also include prefix snapshot metadata when available:
 
-- `correlationConfidence`: `requestId_matched` / `runKey_latest` / `missing`
+- `correlationConfidence`: `requestId_matched` / `providerModel_fifo` / `runKey_latest` / `missing`
 - `stablePrefixHash`, `featureCacheablePrefixHash`, `providerPrefixHash`
 - `stablePrefixChars`, `semiStableChars`, `providerPrefixChars`, `totalPromptChars`
 - `latestDynamicFragmentHashes`
 - dynamic truncation metadata (`dynamicContextTruncated`, original/rendered/limit chars)
 
-比較用の hit rate を出す場合は、まず `correlationConfidence === "requestId_matched"` の rows だけで再集計してください。
+比較用の hit rate を出す場合は、まず `correlationConfidence === "requestId_matched"` or `"providerModel_fifo"` の rows だけで再集計してください。`requestId_matched` が最強で、request id がない provider/runtime では `providerModel_fifo` が次善の correlation です。
 
 ## prefix change attribution
 

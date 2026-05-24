@@ -31,7 +31,7 @@ export type ActualUsageLog = NormalizedActualCacheUsage & {
   requestRoleSource?: string;
   provider?: string;
   model?: string;
-  correlationConfidence?: "requestId_matched" | "runKey_latest" | "missing";
+  correlationConfidence?: "requestId_matched" | "providerModel_fifo" | "runKey_latest" | "missing";
   stablePrefixHash?: string;
   featureCacheablePrefixHash?: string;
   providerPrefixHash?: string;

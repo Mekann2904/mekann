@@ -40,8 +40,10 @@ type LastState = {
 };
 const stateByRun = new Map<string, LastState>();
 const stateByRequestId = new Map<string, LastState>();
+const stateQueuesByProviderModel = new Map<string, LastState[]>();
 const actualUsageKeys = new Set<string>();
 const MAX_RUN_STATES = 128;
+const MAX_PROVIDER_MODEL_QUEUE = 32;
 const MAX_ACTUAL_USAGE_KEYS = 512;
 const DYNAMIC_CONTEXT_MAX_CHARS = 12_000;
 function truncateDynamicContext(text: string): { text: string; truncated: boolean; originalChars: number; renderedChars: number; limitChars: number } {
@@ -67,6 +69,21 @@ function rememberRunState(key: string, state: LastState): void {
 function contextCwd(event: any, ctx: any): string { return event?.systemPromptOptions?.cwd ?? ctx?.cwd ?? process.cwd(); }
 function modelProvider(ctx: any): string | undefined { return ctx?.model?.provider; }
 function modelId(ctx: any): string | undefined { return ctx?.model?.id; }
+function providerModelQueueKey(runKey: string, provider?: string, model?: string): string { return `${runKey}:${provider ?? "unknown"}:${model ?? "unknown"}`; }
+function rememberProviderModelState(runKey: string, provider: string | undefined, model: string | undefined, state: LastState): void {
+  const key = providerModelQueueKey(runKey, provider, model);
+  const queue = stateQueuesByProviderModel.get(key) ?? [];
+  queue.push(state);
+  while (queue.length > MAX_PROVIDER_MODEL_QUEUE) queue.shift();
+  stateQueuesByProviderModel.set(key, queue);
+}
+function takeProviderModelState(runKey: string, provider?: string, model?: string): LastState | undefined {
+  const key = providerModelQueueKey(runKey, provider, model);
+  const queue = stateQueuesByProviderModel.get(key);
+  const state = queue?.shift();
+  if (queue && queue.length === 0) stateQueuesByProviderModel.delete(key);
+  return state;
+}
 function pickString(...values: unknown[]): string | undefined {
   for (const value of values) if (typeof value === "string" && value.trim()) return value.trim();
   return undefined;
@@ -283,6 +300,7 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
       lastState.totalPromptChars = finalText.length;
       lastState.totalPromptTokenEstimate = estimateTokens(finalText);
       rememberRunState(lastState.runKey, lastState);
+      rememberProviderModelState(runKey, modelProvider(ctx), modelId(ctx), lastState);
     }
     if (cfg.logRequests) {
       await appendCacheFriendlyLog(ctx?.cwd ?? process.cwd(), {
@@ -341,8 +359,11 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
     if (key && !rememberActualUsageKey(key)) return undefined;
     const { runKey } = runKeyWithSource(event, ctx);
     const requestId = requestIdOf(event, ctx);
-    const lastState = (requestId ? stateByRequestId.get(requestId) : undefined) ?? stateByRun.get(runKey) ?? stateByRun.get(ctx?.cwd ?? "") ?? null;
-    const correlationConfidence = requestId && lastState?.requestId === requestId ? "requestId_matched" : lastState ? "runKey_latest" : "missing";
+    const actualModel = modelId(ctx) ?? pickString(message.model, event?.model);
+    const requestMatchedState = requestId ? stateByRequestId.get(requestId) : undefined;
+    const fifoState = requestMatchedState ? undefined : takeProviderModelState(runKey, provider, actualModel);
+    const lastState = requestMatchedState ?? fifoState ?? stateByRun.get(runKey) ?? stateByRun.get(ctx?.cwd ?? "") ?? null;
+    const correlationConfidence = requestMatchedState ? "requestId_matched" : fifoState ? "providerModel_fifo" : lastState ? "runKey_latest" : "missing";
     await appendActualUsageLog(ctx?.cwd ?? process.cwd(), {
       timestamp: messageTimestamp(message),
       requestId,
@@ -350,7 +371,7 @@ export default function cacheFriendlyPromptExtension(pi: ExtensionAPI, config?: 
       requestRole: lastState?.requestRole ?? requestRoleOf(event, ctx).requestRole,
       requestRoleSource: lastState?.requestRoleSource ?? requestRoleOf(event, ctx).requestRoleSource,
       provider,
-      model: modelId(ctx) ?? pickString(message.model, event?.model),
+      model: actualModel,
       correlationConfidence,
       stablePrefixHash: lastState?.stablePrefixHash,
       featureCacheablePrefixHash: lastState?.featureCacheablePrefixHash,
