@@ -79,6 +79,9 @@ function summarize(rows: ParsedLog[], generatedAt: string): CacheFriendlySummary
   let streak = 0;
   const latestReuseKey = latest ? reuseKey(latest) : "";
   for (let i = rows.length - 1; i >= 0 && latest && reuseKey(rows[i]) === latestReuseKey; i--) streak++;
+  let stableHashStreak = 0;
+  const latestStablePrefixHash = latest?.stablePrefixHash ?? "";
+  for (let i = rows.length - 1; i >= 0 && latest && (rows[i]?.stablePrefixHash ?? "") === latestStablePrefixHash; i--) stableHashStreak++;
   const providers: Record<string, ProviderSummary> = {};
   const reuseKeysByProvider = new Map<string, Set<string>>();
   const stableHashesByProvider = new Map<string, Set<string>>();
@@ -111,7 +114,7 @@ function summarize(rows: ParsedLog[], generatedAt: string): CacheFriendlySummary
       totalPromptChars: latest.totalPromptChars ?? 0,
     } : undefined,
     recentSameReuseKeyStreak: streak,
-    recentSameHashStreak: streak,
+    recentSameHashStreak: stableHashStreak,
     stablePrefixHashChanges: countChanges(rows, (r) => r.stablePrefixHash),
     featureCacheablePrefixHashChanges: countChanges(rows, (r) => r.featureCacheablePrefixHash),
     providerPrefixHashChanges: countChanges(rows, (r) => r.providerPrefixHash),
@@ -284,7 +287,7 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[]): string 
 | stablePrefixChars | stable fragment 部分だけの文字数です。 |
 | providerPrefixChars | providerPrefixHash の対象になる前方 prefix の文字数です。 |
 | totalPromptChars | provider に送られるプロンプト全体の文字数。ユーザー発話、会話履歴、tool 結果、read 結果なども含まれ得ます。 |
-| prefix reuse proxy | 前回と同じ reuse key なら 100%、変化した直後は 0% とする再利用 proxy です。reuse key は providerPrefixHash → featureCacheablePrefixHash → stablePrefixHash の順で選びます。 |
+| prefix reuse proxy | 前回と同じ reuse key なら 100%、変化した直後は 0% とする再利用 proxy です。reuse key は providerPrefixHash → featureCacheablePrefixHash → stablePrefixHash の順で選びます。providerPrefixHash / featureCacheablePrefixHash がない旧ログでは stablePrefixHash に fallback します。 |
 | hash change | reuse key が前回から変わった地点。provider cache 再利用が効きにくくなる可能性があります。 |
 | warning | cache-friendly-prompt が検出した注意点。例: stable prefix が短い、payload に不安定な構造がある、など。 |
 | fragment | 各拡張が提供するプロンプト断片。stable / semi-stable / dynamic に分類されます。 |
