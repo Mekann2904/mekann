@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { fetchKittyAvatar, renderKittyAvatar, renderKittyImage } from "./avatar.js";
 import { parseDashboardArgs } from "./args.js";
+import { installDashboardCleanup } from "./cleanup.js";
 import { createContributionSvg } from "./contribution-image.js";
 import { collectCurrentRepo } from "./current-repo.js";
 import { collectGitHubDashboard } from "./github.js";
@@ -11,6 +12,7 @@ import { DashboardApp } from "./app.js";
 import type { DashboardViewModel } from "./view-model.js";
 
 async function main(): Promise<void> {
+	installDashboardCleanup();
 	const args = parseDashboardArgs(process.argv.slice(2));
 	if (!args.ok) {
 		console.error(args.error);
@@ -23,8 +25,14 @@ async function main(): Promise<void> {
 		collectCurrentRepo(args.value.cwd),
 	]);
 	const profile = github.ok ? { ok: true as const, profile: github.data.profile } : github;
-	const avatar = github.ok ? await fetchKittyAvatar(github.data.profile.avatarUrl, { enabled: args.value.avatar }) : undefined;
-	const contributionImage = github.ok ? await createContributionSvg(github.data.contributionDays, { enabled: true }) : undefined;
+	const terminalWidth = process.stdout.columns || 140;
+	const terminalHeight = process.stdout.rows || 40;
+	const avatarColumns = Math.max(22, Math.min(34, Math.floor(terminalWidth * 0.16)));
+	const avatarRows = Math.max(11, Math.min(17, Math.floor(terminalHeight * 0.18)));
+	const graphColumns = Math.max(86, Math.min(terminalWidth - 8, Math.floor(terminalWidth * 0.78)));
+	const graphRows = Math.max(10, Math.min(15, Math.floor(terminalHeight * 0.16)));
+	const avatar = github.ok ? await fetchKittyAvatar(github.data.profile.avatarUrl, { enabled: args.value.avatar, columns: avatarColumns, rows: avatarRows }) : undefined;
+	const contributionImage = github.ok ? await createContributionSvg(github.data.contributionDays, { enabled: true, columns: graphColumns, rows: graphRows }) : undefined;
 	const viewModel: DashboardViewModel = {
 		profile,
 		avatar,
@@ -45,8 +53,8 @@ async function renderDashboard(vm: DashboardViewModel): Promise<void> {
 	const renderer = await createCliRenderer({ exitOnCtrlC: true });
 	createRoot(renderer).render(React.createElement(DashboardApp, { vm }));
 	setTimeout(() => {
-		void renderKittyAvatar(vm.avatar, { x: 3, y: 4 });
-		void renderKittyImage(vm.contributionImage, { x: 3, y: 15 });
+		void renderKittyAvatar(vm.avatar, { x: 4, y: 3 });
+		void renderKittyImage(vm.contributionImage, { x: 4, y: (vm.avatar?.ok ? vm.avatar.rows + 11 : 17) });
 	}, 300).unref?.();
 }
 

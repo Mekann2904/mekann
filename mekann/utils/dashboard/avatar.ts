@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { registerCleanupPath } from "./cleanup.js";
 
 export type DashboardAvatarResult = { ok: true; path: string; columns: number; rows: number } | { ok: false; error: string };
 
@@ -13,6 +14,7 @@ export async function fetchKittyAvatar(url: string | undefined, options: { enabl
 		if (!response.ok) return { ok: false, error: `Avatar download failed: ${response.status}` };
 		const bytes = Buffer.from(await response.arrayBuffer());
 		const dir = await mkdtemp(join(tmpdir(), "mekann-dashboard-avatar-"));
+		registerCleanupPath(dir);
 		const path = join(dir, "avatar.png");
 		await writeFile(path, bytes);
 		return { ok: true, path, columns: options.columns ?? 18, rows: options.rows ?? 8 };
