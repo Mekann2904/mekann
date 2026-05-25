@@ -92,6 +92,9 @@ class DashboardPiComponent implements Component {
 	private cachedHeight?: number;
 	private avatarImage: Image | undefined;
 	private graphImage: Image | undefined;
+	private _debugMime = '';
+	private _debugDims = '';
+	private _debugImageCreated = '';
 
 	constructor(
 		private readonly vm: DashboardViewModel,
@@ -106,9 +109,18 @@ class DashboardPiComponent implements Component {
 		if (avatarBase64) {
 			const mimeType = avatarMimeType ?? guessImageMime(avatarBase64);
 			const dims = getImageDimensions(avatarBase64, mimeType);
+			this._debugMime = mimeType;
+			this._debugDims = dims ? `${dims.widthPx}x${dims.heightPx}` : 'null';
 			if (dims) {
 				this.avatarImage = new Image(avatarBase64, mimeType, imageTheme, { maxWidthCells: 20, maxHeightCells: 8 }, dims);
+				this._debugImageCreated = 'yes';
+			} else {
+				this._debugImageCreated = 'no (dims null)';
 			}
+		} else {
+			this._debugMime = 'N/A';
+			this._debugDims = 'N/A';
+			this._debugImageCreated = 'no (no base64)';
 		}
 
 		if (graphBase64) {
@@ -143,9 +155,12 @@ class DashboardPiComponent implements Component {
 			// Avatar image takes full-width rows (Pi TUI preserves image lines as-is)
 			if (this.avatarImage) {
 				const avatarLines = this.avatarImage.render(w);
+				const hasImageSeq = avatarLines.some(l => l.includes("\x1b_G"));
+				const totalBytes = avatarLines.reduce((s, l) => s + l.length, 0);
+				lines.push(`${MUTED}[avatar render: ${avatarLines.length} lines, ${totalBytes} bytes, hasKitty=${hasImageSeq}]${RESET}`);
 				lines.push(...avatarLines);
 			} else {
-				lines.push(`${MUTED}[avatar: no image object — check mime/fetch]${RESET}`);
+				lines.push(`${MUTED}[avatar: no image object created]${RESET}`);
 			}
 			lines.push(`${GREEN}@${p.login}${p.name ? `${MUTED} · ${WHITE}${p.name}${RESET}` : ""}`);
 			if (p.bio) lines.push(`${MUTED}${p.bio}${RESET}`);
@@ -157,6 +172,7 @@ class DashboardPiComponent implements Component {
 
 		// ── debug info (temporary) ────────────────────────────────────
 		lines.push(`${MUTED}[debug] ${this.avatarDebug}${RESET}`);
+		lines.push(`${MUTED}[debug] mime=${this._debugMime} dims=${this._debugDims} imageCreated=${this._debugImageCreated}${RESET}`);
 		lines.push(""); // spacer
 
 		lines.push(""); // spacer
