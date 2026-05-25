@@ -467,7 +467,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	pi.events.on(PLAN_MODE_STATUS_EVENT, (data: unknown) => {
 		if (data == null || typeof data !== "object") return;
 		const event = data as Partial<PlanModeStatusEvent>;
-		if (event.mode !== "main" && event.mode !== "plan") return;
+		if (event.mode !== "main" && event.mode !== "plan" && event.mode !== "sub") return;
 		safetyProfile.planModeStatus = event.mode;
 		refreshStatusBar();
 	});

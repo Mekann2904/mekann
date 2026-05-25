@@ -127,16 +127,19 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			updateModeStatus(ctx);
 			popSandboxOverride();
 			if (state.savedActiveTools) { pi.setActiveTools(state.savedActiveTools); state.savedActiveTools = undefined; }
-			if (target === "main" && state.pendingPlan) {
+			if ((target === "main" || target === "sub") && state.pendingPlan) {
 				state.implementationPlan = state.pendingPlan;
-				recordPlanEvent({ cwd: (ctx as any)?.cwd ?? process.cwd(), title: "Plan carried to main mode", summary: state.pendingPlan.slice(0, 300), kind: "plan", priority: 1, evidenceLevel: "agent_inferred", sessionId: (ctx as any)?.sessionId, turnId: (ctx as any)?.turnId, branchId: (ctx as any)?.branchId }).catch(() => {});
+				recordPlanEvent({ cwd: (ctx as any)?.cwd ?? process.cwd(), title: `Plan carried to ${target} mode`, summary: state.pendingPlan.slice(0, 300), kind: "plan", priority: 1, evidenceLevel: "agent_inferred", sessionId: (ctx as any)?.sessionId, turnId: (ctx as any)?.turnId, branchId: (ctx as any)?.branchId }).catch(() => {});
 			}
-			Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined });
+			Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined, modeBeforePlan: undefined });
 		} else if (previous === "auto") {
 			// Leaving auto — just update mode
 			if (state.mode !== target) state.mode = target;
+			state.modeBeforeAuto = undefined;
 		} else {
-			// main → other
+			// main/sub → other
+			if (target === "plan" && (previous === "main" || previous === "sub")) state.modeBeforePlan = previous;
+			if (target === "auto" && (previous === "main" || previous === "sub")) state.modeBeforeAuto = previous;
 			if (state.mode !== target) state.mode = target;
 		}
 
@@ -159,6 +162,14 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			const autoRef = state.modelConfig.models.auto;
 			if (autoRef) await trySetModel(autoRef, ctx, "Auto model");
 			applyThinking(state.modelConfig.thinking.auto);
+		} else if (target === "sub") {
+			// Sub mode: main-like permissions, subagent-oriented prompt, per-mode model/thinking
+			const subRef = state.modelConfig.models.sub;
+			if (subRef) await trySetModel(subRef, ctx, "Sub model");
+			applyThinking(state.modelConfig.thinking.sub);
+			if (state.implementationPlan) {
+				pi.sendUserMessage("保存された plan に従って実装してください。");
+			}
 		} else {
 			// target === "main"
 			await restoreMainModelAndThinking(ctx);
@@ -173,14 +184,21 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 	/** Toggle plan mode on/off. */
 	async function togglePlanMode(ctx: ExtensionContext): Promise<void> {
-		if (state.mode === "plan") await transitionToMode("main", ctx);
+		if (state.mode === "plan") await transitionToMode(state.modeBeforePlan ?? "main", ctx);
 		else await transitionToMode("plan", ctx);
+	}
+
+	/** Toggle sub mode on/off. */
+	async function toggleSubMode(ctx: ExtensionContext): Promise<void> {
+		if (state.mode === "sub") await transitionToMode("main", ctx);
+		else await transitionToMode("sub", ctx);
 	}
 
 	// ─── Commands ───────────────────────────────────────────────────
 	// Note: /plan command is registered below (after session_start) to capture lastCtx.
 
 	pi.registerShortcut(Key.super("p"), { description: "プランモード切替", handler: (ctx) => togglePlanMode(ctx) });
+	pi.registerShortcut(Key.super("s"), { description: "Sub mode 切替", handler: (ctx) => toggleSubMode(ctx) });
 
 	try {
 		pi.events.on("cache-friendly-prompt:dynamic-tail-sent", (data: unknown) => {
@@ -227,7 +245,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 					content: loadPrompt("plan-mode-reminder"),
 				});
 			}
-			if (state.mode === "main" && state.implementationPlan) {
+			if ((state.mode === "main" || state.mode === "sub") && state.implementationPlan) {
 				const plan = state.implementationPlan;
 				state.implementationPlan = undefined;
 				fragments.push({
@@ -240,6 +258,19 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 					version: "v1",
 					cacheIntent: "avoid_cache",
 					content: `Implementation plan for this turn:\n<plan>\n${plan}\n</plan>`,
+				});
+			}
+			if (state.mode === "sub") {
+				fragments.push({
+					id: "plan-mode:sub-mode-policy",
+					source: "plan-mode",
+					kind: "mode_policy",
+					stability: "stable",
+					scope: "mode",
+					priority: 210,
+					version: "v1",
+					cacheIntent: "prefer_cache",
+					content: loadPrompt("sub-mode"),
 				});
 			}
 			return fragments;
@@ -364,6 +395,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			if (evt.active) {
 				// autoresearch activated → switch to auto mode
 				if (state.mode === "auto") return; // already there
+				if (state.mode === "main" || state.mode === "sub") state.modeBeforeAuto = state.mode;
 				const ctx = lastCtx;
 				if (ctx) {
 					return transitionToMode("auto", ctx, { purpose: evt.purpose });
@@ -375,10 +407,12 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				// autoresearch deactivated → return to main
 				if (state.mode !== "auto") return;
 				const ctx = lastCtx;
+				const target = state.modeBeforeAuto ?? "main";
 				if (ctx) {
-					return transitionToMode("main", ctx);
+					return transitionToMode(target, ctx);
 				} else {
-					state.mode = "main";
+					state.mode = target;
+					state.modeBeforeAuto = undefined;
 				}
 			}
 		});
@@ -387,6 +421,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	}
 
 	pi.registerFlag("auto", { description: "auto(autoresearch)モードで起動", type: "boolean", default: false });
+	pi.registerFlag("sub", { description: "sub mode で起動（subagent 並列活用）", type: "boolean", default: false });
 
 	pi.on("session_start", async (_event, ctx) => {
 		lastCtx = ctx;
@@ -399,6 +434,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			await transitionToMode("plan", ctx, { persistCurrentMain: false });
 		} else if (pi.getFlag("auto") === true) {
 			await transitionToMode("auto", ctx, { persistCurrentMain: false });
+		} else if (pi.getFlag("sub") === true) {
+			await transitionToMode("sub", ctx, { persistCurrentMain: false });
 		} else {
 			if (state.modelConfig.models.main) {
 				await trySetModel(state.modelConfig.models.main, ctx, "Main model");
@@ -411,6 +448,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	// Update lastCtx on every command so event handlers have a fresh context
 	const origPlanHandler = (_args: string, ctx: ExtensionContext) => { lastCtx = ctx; return togglePlanMode(ctx); };
 	pi.registerCommand("plan", { description: "プランモード切替", handler: origPlanHandler });
+	const origSubHandler = (_args: string, ctx: ExtensionContext) => { lastCtx = ctx; return toggleSubMode(ctx); };
+	pi.registerCommand("sub", { description: "Sub mode 切替", handler: origSubHandler });
 
 	// Clean up sandbox override on session shutdown
 	 pi.on("session_shutdown", async () => { popSandboxOverride(); });

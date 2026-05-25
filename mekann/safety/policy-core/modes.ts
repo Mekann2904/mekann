@@ -82,7 +82,7 @@ export interface SandboxPopProfileEvent { owner: string; token: string; }
 export const PLAN_MODE_STATUS_EVENT = "mekann:plan-mode:status";
 
 /** Payload for plan-mode status broadcast. */
-export interface PlanModeStatusEvent { mode: "main" | "plan" | "auto"; }
+export interface PlanModeStatusEvent { mode: "main" | "plan" | "auto" | "sub"; }
 
 // ─── Autoresearch mode notification ─────────────────────────────
 

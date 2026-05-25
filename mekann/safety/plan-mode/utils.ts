@@ -71,10 +71,10 @@ function isThinkingLevel(value: unknown): value is ThinkingLevel {
 export interface ModelRef { provider: string; modelId: string; }
 
 /** All mode names managed by plan-mode extension. */
-export type ModeName = "main" | "plan" | "auto";
+export type ModeName = "main" | "plan" | "auto" | "sub";
 
 /** Configuration file shape stored at ~/.pi/agent/plan-mode.json */
-export interface PlanModeConfig { version: typeof MEKANN_CONFIG_VERSION; models: { main?: ModelRef; plan?: ModelRef; auto?: ModelRef; }; thinking: { main?: ThinkingLevel; plan?: ThinkingLevel; auto?: ThinkingLevel; }; }
+export interface PlanModeConfig { version: typeof MEKANN_CONFIG_VERSION; models: { main?: ModelRef; plan?: ModelRef; auto?: ModelRef; sub?: ModelRef; }; thinking: { main?: ThinkingLevel; plan?: ThinkingLevel; auto?: ThinkingLevel; sub?: ThinkingLevel; }; }
 
 export function createDefaultConfig(): PlanModeConfig {
 	return { version: MEKANN_CONFIG_VERSION, models: {}, thinking: {} };
@@ -96,6 +96,7 @@ export function normalizeConfig(raw: Record<string, unknown>): PlanModeConfig {
 		if (isModelRef(mi.main)) models.main = mi.main;
 		if (isModelRef(mi.plan)) models.plan = mi.plan;
 		if (isModelRef(mi.auto)) models.auto = mi.auto;
+		if (isModelRef(mi.sub)) models.sub = mi.sub;
 	}
 
 	const t = raw.thinking;
@@ -105,6 +106,7 @@ export function normalizeConfig(raw: Record<string, unknown>): PlanModeConfig {
 		if (isThinkingLevel(ti.main)) thinking.main = ti.main;
 		if (isThinkingLevel(ti.plan)) thinking.plan = ti.plan;
 		if (isThinkingLevel(ti.auto)) thinking.auto = ti.auto;
+		if (isThinkingLevel(ti.sub)) thinking.sub = ti.sub;
 	}
 	return { version: MEKANN_CONFIG_VERSION, models, thinking };
 }
@@ -246,7 +248,7 @@ export function updateConfigField<T>(
 export type Mode = MekannMode;
 
 /** Runtime mode managed by plan-mode extension. */
-export type MekannMode = "main" | "plan" | "auto";
+export type MekannMode = "main" | "plan" | "auto" | "sub";
 
 export function isReadOnlyMode(mode: MekannMode): boolean {
 	return mode === "plan";
@@ -271,6 +273,10 @@ export interface PlanState {
 	savedMainModel?: ModelRef;
 	/** Snapshot of the main-mode thinking level before entering a non-main mode (for fallback restore). */
 	savedMainThinking?: ThinkingLevel;
+	/** Mode to restore after leaving plan mode. */
+	modeBeforePlan?: Exclude<MekannMode, "plan" | "auto">;
+	/** Mode to restore after leaving auto mode. */
+	modeBeforeAuto?: Exclude<MekannMode, "plan" | "auto">;
 }
 
 export function createInitialState(modelConfig?: PlanModeConfig): PlanState {

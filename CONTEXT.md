@@ -236,6 +236,10 @@ _Avoid_: patch merge, result execution
 A safety feature for read-only investigation and plan formation before implementation. Plan mode is a UX-level collaboration mode; its command intent checks guide the agent but are not the hard security boundary.
 _Avoid_: sandbox, execution guard, todo list
 
+**Sub mode**:
+A collaboration mode that behaves like main mode while biasing the agent toward proactive subagent delegation and parallel execution for independent investigation, review, exploration, or editing work. Sub mode has its own model and thinking preferences, but it is not a safety boundary and does not change workspace permissions.
+_Avoid_: subagent, auto mode, plan mode, sandbox profile
+
 **Sandbox**:
 A safety feature that enforces execution restrictions for the `bash` tool, primarily through OS-level policy when enabled. Sandbox is the hard runtime boundary for command execution, while plan mode is the planning UX that can request a read-only sandbox profile.
 _Avoid_: plan mode, agent-wide security boundary

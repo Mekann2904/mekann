@@ -28,7 +28,7 @@ export class SafetyProfileState {
 	private profileOverrideStack: SafetyProfileEntry[] = [];
 	private disabled = false;
 	private baseMode: SandboxMode;
-	planModeStatus: "main" | "plan" | undefined;
+	planModeStatus: "main" | "plan" | "sub" | undefined;
 	rightStatus: string | undefined;
 
 	constructor(baseMode: SandboxMode) {
