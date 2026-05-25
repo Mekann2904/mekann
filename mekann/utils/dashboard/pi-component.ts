@@ -188,20 +188,6 @@ class DashboardPiComponent implements Component {
 
 		lines.push(""); // spacer
 
-		// ── current repo + codex usage row ─────────────────────────────
-		const halfW = Math.floor((w - 2) / 2);
-		const repoLines = [
-			`${GREEN}${formatCurrentRepoLine(this.vm.currentRepo)}${RESET}`,
-		];
-		const codexLines = [
-			`${GREEN}${this.vm.codexUsage.message}${RESET}`,
-			`${MUTED}Detailed Pi Usage tab: coming next${RESET}`,
-		];
-		const bottomH = 5;
-		lines.push(...rowBox([
-			{ title: "CURRENT REPO", lines: repoLines, width: halfW, height: bottomH },
-			{ title: "CODEX USAGE", lines: codexLines, width: w - halfW - 2, height: bottomH },
-		]));
 
 		// ── fill to full height ────────────────────────────────────────
 		while (lines.length < h - 1) lines.push("");
