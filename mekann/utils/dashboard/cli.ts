@@ -51,12 +51,14 @@ async function main(): Promise<void> {
 }
 
 async function renderDashboard(vm: DashboardViewModel): Promise<void> {
-	const [{ createCliRenderer }, { createRoot }, React, { DashboardApp }] = await Promise.all([
-		import("@opentui/core"),
-		import("@opentui/react"),
-		import("react"),
-		import("./app.js"),
-	]);
+	// Import OpenTUI modules sequentially. Bun 1.3.x can evaluate
+	// @opentui/core and @opentui/react in a racy order when they are imported
+	// concurrently, which surfaces as:
+	// "ReferenceError: Cannot access 'TextNodeRenderable' before initialization".
+	const { createCliRenderer } = await import("@opentui/core");
+	const { createRoot } = await import("@opentui/react");
+	const React = await import("react");
+	const { DashboardApp } = await import("./app.js");
 	const renderer = await createCliRenderer({ exitOnCtrlC: true });
 	createRoot(renderer).render(React.createElement(DashboardApp, { vm }));
 	if (vm.avatar?.ok || vm.contributionImage?.ok) {

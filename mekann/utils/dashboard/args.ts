@@ -11,7 +11,7 @@ export function parseDashboardArgs(argv: string[], env: NodeJS.ProcessEnv = proc
 	let refresh = false;
 	let avatar = true;
 	let images = env.MEKANN_DASHBOARD_IMAGES !== "0";
-	let interactive = env.MEKANN_DASHBOARD_INTERACTIVE === "1";
+	let interactive = env.MEKANN_DASHBOARD_INTERACTIVE !== "0";
 
 	for (let index = 0; index < argv.length; index++) {
 		const token = argv[index];

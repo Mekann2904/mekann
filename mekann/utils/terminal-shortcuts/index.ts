@@ -20,13 +20,14 @@ type LauncherStrategy = "pass-through" | "kitty-split-longer-side";
 const DASHBOARD_BIN = resolve(dirname(fileURLToPath(import.meta.url)), "../dashboard/bin/mekann-dashboard.js");
 
 const BUILT_IN_SHORTCUTS: Record<string, TerminalShortcut> = {
-	"/dashboard": { mode: "argv", argv: [process.execPath, DASHBOARD_BIN, "--text"] },
+	"/dashboard": { mode: "argv", argv: [process.execPath, DASHBOARD_BIN, "--interactive"] },
 	lg: { mode: "argv", argv: ["lazygit"] },
 	zed: { mode: "argv", argv: ["zed", "."] },
 	"zed .": { mode: "argv", argv: ["zed", "."] },
 };
 
-const BUILT_IN_SPLIT_SHORTCUTS = new Set(["lg"]);
+const BUILT_IN_SPLIT_SHORTCUTS = new Set(["/dashboard", "lg"]);
+const SPLIT_ONLY_SHORTCUTS = new Set(["/dashboard"]);
 
 function parseShortcutEnv(value: string | undefined): Record<string, TerminalShortcut> {
 	if (!value) return {};
@@ -134,12 +135,19 @@ function spawnShortcut(shortcut: TerminalShortcut, cwd: string): SpawnSyncReturn
 	return spawnSync(shell, shellArgs(shell, shortcut.command), { cwd, stdio: "inherit", env });
 }
 
-async function runKittySplitLongerSide(ctx: ExtensionContext, shortcut: TerminalShortcut): Promise<number> {
+async function runKittySplitLongerSide(ctx: ExtensionContext, shortcutName: string, shortcut: TerminalShortcut): Promise<number> {
 	const argv = shortcutCommandArgv(shortcut);
 	if (argv.length === 0) return 1;
 
 	try {
-		await new KittyControl().launchSplitLongerSide({ cwd: ctx.cwd, argv, matchCurrentWindow: true });
+		await new KittyControl().launchSplitLongerSide({
+			cwd: ctx.cwd,
+			argv,
+			matchCurrentWindow: true,
+			copyEnv: true,
+			hold: SPLIT_ONLY_SHORTCUTS.has(shortcutName),
+			title: shortcutName,
+		});
 		return 0;
 	} catch {
 		return 1;
@@ -198,8 +206,13 @@ async function runPassThroughTerminal(ctx: ExtensionContext, shortcut: TerminalS
 async function runTerminalShortcut(ctx: ExtensionContext, shortcutName: string, shortcut: TerminalShortcut): Promise<number> {
 	const strategy = getLauncherStrategy(shortcutName);
 	if (strategy === "kitty-split-longer-side") {
-		const exitCode = await runKittySplitLongerSide(ctx, shortcut);
+		const exitCode = await runKittySplitLongerSide(ctx, shortcutName, shortcut);
 		if (exitCode === 0) return 0;
+
+		// Dashboard runs its own interactive TUI. Do not hand Pi's current TTY to it:
+		// OpenTUI and Pi can leave terminal scroll/input state inconsistent after
+		// pass-through. Keep it isolated in a Kitty split instead.
+		if (SPLIT_ONLY_SHORTCUTS.has(shortcutName)) return 1;
 
 		// Split launches do not take over Pi's TTY, so they are allowed while the
 		// agent is streaming. If split launch fails during streaming, do not fall

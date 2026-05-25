@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { parseDashboardArgs } from "./args.js";
 
 describe("parseDashboardArgs", () => {
-	it("uses cwd from PWD by default", () => {
-		expect(parseDashboardArgs([], { PWD: "/repo" } as NodeJS.ProcessEnv)).toEqual({ ok: true, value: { cwd: "/repo", refresh: false, avatar: true, images: true, interactive: false } });
+	it("uses cwd from PWD and interactive mode by default", () => {
+		expect(parseDashboardArgs([], { PWD: "/repo" } as NodeJS.ProcessEnv)).toEqual({ ok: true, value: { cwd: "/repo", refresh: false, avatar: true, images: true, interactive: true } });
 	});
 
 	it("parses supported options", () => {
@@ -11,7 +11,7 @@ describe("parseDashboardArgs", () => {
 	});
 
 	it("can disable images from the environment", () => {
-		expect(parseDashboardArgs([], { MEKANN_DASHBOARD_IMAGES: "0" } as NodeJS.ProcessEnv)).toEqual({ ok: true, value: { cwd: process.cwd(), refresh: false, avatar: true, images: false, interactive: false } });
+		expect(parseDashboardArgs([], { MEKANN_DASHBOARD_IMAGES: "0" } as NodeJS.ProcessEnv)).toEqual({ ok: true, value: { cwd: process.cwd(), refresh: false, avatar: true, images: false, interactive: true } });
 	});
 
 	it("can force text mode", () => {

@@ -19,6 +19,7 @@ export interface KittyLaunchOptions {
 	title?: string;
 	vars?: Record<string, string>;
 	copyEnv?: boolean;
+	hold?: boolean;
 	allowRemoteControl?: boolean;
 	matchCurrentWindow?: boolean;
 	timeoutMs?: number;
@@ -100,6 +101,7 @@ export class KittyControl {
 			args.push("--var", `${key}=${value}`);
 		}
 		if (options.copyEnv) args.push("--copy-env");
+		if (options.hold) args.push("--hold");
 		if (options.allowRemoteControl) args.push("--allow-remote-control");
 		if (options.matchCurrentWindow && process.env.KITTY_WINDOW_ID) {
 			args.push("--match", `id:${process.env.KITTY_WINDOW_ID}`);
