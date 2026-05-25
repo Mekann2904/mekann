@@ -248,6 +248,29 @@ export class AgentControl {
 
   // ─── spawn_agent ───────────────────────────────────────────────
 
+  private lifecycleAdapters() {
+    return {
+      pi: this.pi,
+      displayMode: this.displayMode,
+      logDir: this.logDir,
+      kitty: this.kitty,
+      hubFactory: this.hubFactory,
+      piCommand: this.piCommand,
+      extensionPath: this.extensionPath,
+      helloTimeoutMs: this.helloTimeoutMs,
+      allowUnsafeExternalPi: this.allowUnsafeExternalPi,
+      maxQueuedSubagents: this.maxQueuedSubagents,
+      maxExternalPiSubagents: MAX_EXTERNAL_PI_SUBAGENTS,
+      externalPiSlots: processExternalPiSlots,
+      normalizeAuthority: (authority: SubagentAuthority | undefined) => this.normalizeAuthority(authority),
+      authorityPreamble: (authority: SubagentAuthority, resultContract?: ResultContract) => this.authorityPreamble(authority, resultContract),
+      filterToolsByAuthority: (tools: any[], authority: SubagentAuthority) => this.filterToolsByAuthority(tools, authority),
+      resolveModel: (modelOverride: string | undefined, spawnCtx: ExtensionContext) => this.resolveModel(modelOverride, spawnCtx),
+      resolveThinkingLevel: (reasoningEffort: string | undefined) => this.resolveThinkingLevel(reasoningEffort),
+      displayResult: (display?: AgentDisplayRef) => this.displayResult(display),
+    };
+  }
+
   async spawn(
     params: SpawnParams,
     ctx: ExtensionContext,
@@ -257,26 +280,7 @@ export class AgentControl {
       ctx,
       callerPath: this.resolveCallerPath(ctx),
       agentId: nextAgentId(),
-      adapters: {
-        pi: this.pi,
-        displayMode: this.displayMode,
-        logDir: this.logDir,
-        kitty: this.kitty,
-        hubFactory: this.hubFactory,
-        piCommand: this.piCommand,
-        extensionPath: this.extensionPath,
-        helloTimeoutMs: this.helloTimeoutMs,
-        allowUnsafeExternalPi: this.allowUnsafeExternalPi,
-        maxQueuedSubagents: this.maxQueuedSubagents,
-        maxExternalPiSubagents: MAX_EXTERNAL_PI_SUBAGENTS,
-        externalPiSlots: processExternalPiSlots,
-        normalizeAuthority: (authority) => this.normalizeAuthority(authority),
-        authorityPreamble: (authority, resultContract) => this.authorityPreamble(authority, resultContract),
-        filterToolsByAuthority: (tools, authority) => this.filterToolsByAuthority(tools, authority),
-        resolveModel: (modelOverride, spawnCtx) => this.resolveModel(modelOverride, spawnCtx),
-        resolveThinkingLevel: (reasoningEffort) => this.resolveThinkingLevel(reasoningEffort),
-        displayResult: (display) => this.displayResult(display),
-      },
+      adapters: this.lifecycleAdapters(),
     });
   }
 
@@ -389,7 +393,8 @@ export class AgentControl {
   }
 
   private async closeSingle(agentPath: string): Promise<void> {
-    await this.lifecycle.closeRuntime(agentPath, { kitty: this.kitty, externalPiSlots: processExternalPiSlots });
+    const adapters = this.lifecycleAdapters();
+    await this.lifecycle.closeRuntime(agentPath, { kitty: this.kitty, externalPiSlots: processExternalPiSlots, drainAdapters: adapters });
   }
 
   async focus(target: string, ctx: ExtensionContext): Promise<{ focused: boolean; warning?: string }> {

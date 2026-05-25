@@ -157,4 +157,21 @@ describe("SubagentLifecycle", () => {
     expect(registry.get("/root/running")?.status).toBe("shutdown");
     expect(lifecycle.getRuntime("/root/running")).toBeUndefined();
   });
+
+  it("drains queued subagents when closeRuntime opens an execution slot", async () => {
+    const registry = new AgentRegistry(2, 2);
+    const mailbox = new Mailbox();
+    const lifecycle = new SubagentLifecycle(registry, mailbox, ctx.cwd);
+    const runtimeAdapters = adapters();
+
+    await lifecycle.spawnDelegation({ params: { task_name: "running", message: "go" }, ctx, callerPath: "/root", agentId: "sub_running", adapters: runtimeAdapters });
+    await lifecycle.spawnDelegation({ params: { task_name: "queued", message: "wait" }, ctx, callerPath: "/root", agentId: "sub_queued", adapters: runtimeAdapters });
+    expect(registry.get("/root/queued")?.status).toBe("queued");
+
+    await lifecycle.closeRuntime("/root/running", { kitty: runtimeAdapters.kitty, externalPiSlots: runtimeAdapters.externalPiSlots, drainAdapters: runtimeAdapters });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(registry.get("/root/queued")?.status).toBe("pending_init");
+    expect(lifecycle.getRuntime("/root/queued")).toBeDefined();
+  });
 });
