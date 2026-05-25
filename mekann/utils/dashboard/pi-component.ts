@@ -1,9 +1,4 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import {
-	type Component,
-	truncateToWidth,
-	visibleWidth,
-} from "@earendil-works/pi-tui";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, writeFile } from "node:fs/promises";
@@ -29,6 +24,81 @@ const AVATAR_COLS = 20;
 const AVATAR_ROWS = 8;
 const GRAPH_COLS = 140;
 const GRAPH_ROWS = 10;
+
+// ── string width helpers (replaces pi-tui truncateToWidth/visibleWidth) ─
+
+/** Strip ANSI escape sequences to get the visible text. */
+function stripAnsi(s: string): string {
+	return s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/\x1b\][^\x07]*\x07/g, "").replace(/\x1b_G[^\x1b]*\x1b\\/g, "");
+}
+
+/** Return the visible (cell) width of a string, ignoring ANSI escapes. */
+function visibleWidth(s: string): number {
+	const stripped = stripAnsi(s);
+	let w = 0;
+	for (const ch of stripped) {
+		const cp = ch.codePointAt(0)!;
+		w += cp >= 0x1100 &&
+			(cp <= 0x115f || cp === 0x2329 || cp === 0x232a ||
+				(0x2e80 <= cp && cp <= 0xa4cf && cp !== 0x303f) ||
+				(0xac00 <= cp && cp <= 0xd7a3) ||
+				(0xf900 <= cp && cp <= 0xfaff) ||
+				(0xfe10 <= cp && cp <= 0xfe19) ||
+				(0xfe30 <= cp && cp <= 0xfe6f) ||
+				(0xff01 <= cp && cp <= 0xff60) ||
+				(0xffe0 <= cp && cp <= 0xffe6) ||
+				(0x1f300 <= cp && cp <= 0x1f64f) ||
+				(0x1f900 <= cp && cp <= 0x1f9ff) ||
+				(0x20000 <= cp && cp <= 0x2fffd) ||
+				(0x30000 <= cp && cp <= 0x3fffd))
+			? 2 : 1;
+	}
+	return w;
+}
+
+/** Truncate a string to `maxWidth` visible cells, preserving ANSI sequences. */
+function truncateToWidth(s: string, maxWidth: number): string {
+	let visible = 0;
+	let inEscape = false;
+	let result = "";
+	for (let i = 0; i < s.length; i++) {
+		const ch = s[i]!;
+		if (ch === "\x1b") { inEscape = true; result += ch; continue; }
+		if (inEscape) {
+			result += ch;
+			if (/[A-Za-z]/.test(ch) || ch === "\\" || ch === "\x07") inEscape = false;
+			continue;
+		}
+		const cp = ch.codePointAt(0)!;
+		const cw = cp >= 0x1100 &&
+			(cp <= 0x115f || cp === 0x2329 || cp === 0x232a ||
+				(0x2e80 <= cp && cp <= 0xa4cf && cp !== 0x303f) ||
+				(0xac00 <= cp && cp <= 0xd7a3) ||
+				(0xf900 <= cp && cp <= 0xfaff) ||
+				(0xfe10 <= cp && cp <= 0xfe19) ||
+				(0xfe30 <= cp && cp <= 0xfe6f) ||
+				(0xff01 <= cp && cp <= 0xff60) ||
+				(0xffe0 <= cp && cp <= 0xffe6) ||
+				(0x1f300 <= cp && cp <= 0x1f64f) ||
+				(0x1f900 <= cp && cp <= 0x1f9ff) ||
+				(0x20000 <= cp && cp <= 0x2fffd) ||
+				(0x30000 <= cp && cp <= 0x3fffd))
+			? 2 : 1;
+		if (visible + cw > maxWidth) {
+			return result + RESET;
+		}
+		visible += cw;
+		result += ch;
+	}
+	return result;
+}
+
+// ── Component interface (minimal, replaces pi-tui Component) ───────────
+interface Component {
+	render(width: number): string[];
+	handleInput?(data: string): void;
+	invalidate(): void;
+}
 
 // ── helpers ───────────────────────────────────────────────────────────
 function padEnd(value: string, width: number, fill = " "): string {
@@ -161,7 +231,6 @@ class DashboardPiComponent implements Component {
 	getGraphLineIndex(): number {
 		const lines = this.cachedLines;
 		if (!lines) return -1;
-		// Find the "Contribution graph" label line
 		return lines.findIndex((l) => l.includes("Contribution graph"));
 	}
 
@@ -295,8 +364,6 @@ export default function dashboard(pi: ExtensionAPI): void {
 						render: (width) => {
 							const lines = component.render(width);
 							// Place images via kitten icat after first render.
-							// The TUI's differential rendering won't touch unchanged
-							// empty placeholder lines, so the images persist.
 							if (!imagesPlaced) {
 								imagesPlaced = true;
 								setTimeout(() => {
@@ -304,7 +371,7 @@ export default function dashboard(pi: ExtensionAPI): void {
 										placeImageIcat(avatarPath, 0, 1, AVATAR_COLS, AVATAR_ROWS);
 									}
 									if (graphPath) {
-										const graphRow = component.getGraphLineIndex() + 1; // +1 to skip the label line
+										const graphRow = component.getGraphLineIndex() + 1;
 										if (graphRow > 0) {
 											placeImageIcat(graphPath, graphRow, 1, GRAPH_COLS, GRAPH_ROWS);
 										}
