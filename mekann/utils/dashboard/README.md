@@ -1,26 +1,38 @@
 # dashboard
 
-`dashboard` は `/dashboard` command から Pi TUI 内で起動される human-facing dashboard feature です。OpenTUI 版 CLI は standalone/debug 用として残しています。
+`dashboard` は `/dashboard` コマンドから Pi TUI overlay 内で起動される human-facing dashboard feature です。
 
 ## 起動
 
 ```bash
-/dashboard
-
-# standalone/debug only
-mekann-dashboard
+/dashboard           # Pi 内で起動
+mekann-dashboard     # CLI テキスト出力
 mekann-dashboard --cwd /path/to/repo
 mekann-dashboard --no-avatar
+mekann-dashboard --text
 ```
 
-`/dashboard` は Pi TUI component として表示されます。Pi の current TTY を OpenTUI に渡す pass-through 起動は、Pi TUI の scroll/input state と競合するため使いません。
+`/dashboard` は Pi TUI overlay component として表示されます。画像（avatar, contribution graph）は `kitten icat --place` で配置し、TUI overlay compositor をバイパスします。
+
+## アーキテクチャ
+
+```
+terminal.ts          ANSI colors + string width utilities (shared)
+layout.ts            box/padEnd/contribution text (shared)
+data.ts              data collection + image file management
+pi-component.ts      Pi Component class + extension registration
+render.ts            CLI text rendering
+view-model.ts        types (DashboardViewModel / CliDashboardViewModel)
+avatar.ts            image fetch + kitten icat placement
+contribution-image.ts SVG/PNG generation
+github.ts            GitHub GraphQL API
+current-repo.ts      git repo info
+```
 
 ## MVP vertical slice
 
-現在の slice は以下を提供します。
-
 - GitHub profile を `gh api graphql` で取得し、失敗時は `GITHUB_TOKEN` に fallback
-- current repo の branch / staged / unstaged / untracked / ahead-behind / latest commit を表示
-- contribution graph / activity summary / Codex usage は次 slice 用 placeholder
-
-Standalone/debug 用の OpenTUI CLI は現時点で Bun ベースのため、`mekann-dashboard` wrapper は `bun` を起動します。
+- Avatar 画像を Kitty terminal に表示（非 Kitty 環境では省略）
+- Contribution graph を PNG で生成し Kitty terminal に表示（テキストフォールバックあり）
+- Activity summary（contributions, PRs, issues, reviews）
+- Current repo の branch / staged / unstaged / untracked / ahead-behind / latest commit

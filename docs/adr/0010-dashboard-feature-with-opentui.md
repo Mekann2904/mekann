@@ -1,17 +1,49 @@
-# Dashboard feature uses OpenTUI and separates GitHub activity from local git activity
+# Dashboard feature uses Pi TUI overlay + kitten icat for rendering
 
-Mekann will add `/dashboard` as a human-facing terminal dashboard implemented by a dedicated `mekann/utils/dashboard/` utility feature, with `terminal-shortcuts` acting only as the launch surface. The Dashboard feature will use OpenTUI directly inside this repo because the goal is an interactive dashboard experience rather than a text command report, and it will treat GitHub activity as GitHub API/GraphQL-backed data instead of inferring it from local `git log`.
+Mekann の `/dashboard` コマンドは Pi TUI overlay 内で動作する human-facing terminal dashboard である。画像描画には `kitten icat --place` を使い、TUI overlay compositor をバイパスする。
 
-## Considered Options
+## Context
 
-- Put all behavior in `terminal-shortcuts`: rejected because GitHub data collection, local repo collection, Codex usage summarization, and OpenTUI rendering are a real feature boundary rather than a simple alias.
-- Build a separate dashboard CLI package: rejected for the MVP because it adds a package boundary before the OpenTUI integration risk is understood.
-- Infer GitHub contribution data from local git history: rejected because local git activity and GitHub activity are different concepts and should not be presented as the same data.
+当初は OpenTUI（独立した TUI フレームワーク）を Pi の TTY で直接起動する設計だったが、Pi と OpenTUI の両方が同じ TTY の terminal modes / cursor state / alternate screen を制御しようとして競合が起きた。Pi の TUI overlay 内で dashboard を描画する方針に変更した。
+
+Pi TUI の `Image` コンポーネント（Kitty graphics escape sequence を生成）を使ったところ、overlay compositor の `compositeLineAt` が画像行の後に 130 バイトの padding spaces を追加し、Kitty image cells を上書きして画像が見えなくなるバグを発見した。このため画像配置は `kitten icat --place` で行い、overlay pipeline を完全にバイパスする設計になった。
+
+## Decision
+
+- `/dashboard` は Pi TUI overlay component として描画される
+- アバター画像と contribution graph の画像は `kitten icat --place` で配置し、TUI overlay compositor をバイパスする
+- テキスト要素（profile, stats, boxes）は通常の TUI overlay rendering で描画する
+- OpenTUI / React への依存は削除済み
+- CLI テキストモード（`mekann-dashboard --text`）は `render.ts` が担当し、Pi TUI に依存しない
+
+## Module structure
+
+```
+dashboard/
+  terminal.ts          ANSI colors + string width utilities (shared)
+  layout.ts            box/padEnd/contribution text (shared)
+  data.ts              data collection + image file management
+  pi-component.ts      Pi Component class + extension registration
+  render.ts            CLI text rendering
+  view-model.ts        types (DashboardViewModel / CliDashboardViewModel)
+  avatar.ts            image fetch + kitten icat placement
+  contribution-image.ts SVG/PNG generation
+  github.ts            GitHub GraphQL API
+  current-repo.ts      git repo info
+  cleanup.ts           temp file cleanup
+  args.ts              CLI argument parsing
+  cli.ts               CLI entry point
+```
 
 ## Consequences
 
-- `mekann/utils/dashboard/` owns dashboard data collection and OpenTUI rendering.
-- `/dashboard` is launched as a terminal shortcut, defaulting to pass-through while still allowing the existing Kitty split strategy by configuration.
-- GitHub identity and activity are resolved from `gh` CLI first, with `GITHUB_TOKEN` fallback.
-- The MVP overview focuses on profile, contribution graph, activity summary, current repo, and Codex usage summary.
-- Network or authentication failures should be shown as panel-level errors rather than preventing the entire dashboard from opening.
+- OpenTUI / React への依存が不要になった
+- Pi TUI overlay compositor の `compositeLineAt` が Kitty image cells を破壊するバグを回避できる
+- 画像配置は `kitten icat --place` に依存する（Kitty terminal が必要）
+- 非 Kitty 環境では contribution graph がテキストフォールバック表示になる
+- GitHub identity and activity are resolved from `gh` CLI first, with `GITHUB_TOKEN` fallback
+- Network or authentication failures are shown as panel-level errors
+
+## Supersedes
+
+ADR-0010 (Dashboard feature uses OpenTUI)
