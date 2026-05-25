@@ -98,13 +98,15 @@ class DashboardPiComponent implements Component {
 		avatarBase64: string | undefined,
 		graphBase64: string | undefined,
 		private readonly close: () => void,
+		avatarMimeType?: string,
 	) {
 		const imageTheme: ImageTheme = { fallbackColor: (s) => `${MUTED}${s}${RESET}` };
 
 		if (avatarBase64) {
-			const dims = getImageDimensions(avatarBase64, "image/png");
+			const mimeType = avatarMimeType ?? guessImageMime(avatarBase64);
+			const dims = getImageDimensions(avatarBase64, mimeType);
 			if (dims) {
-				this.avatarImage = new Image(avatarBase64, "image/png", imageTheme, { maxWidthCells: 20, maxHeightCells: 8 }, dims);
+				this.avatarImage = new Image(avatarBase64, mimeType, imageTheme, { maxWidthCells: 20, maxHeightCells: 8 }, dims);
 			}
 		}
 
@@ -233,8 +235,9 @@ export function createDashboardPiComponent(
 	avatarBase64: string | undefined,
 	graphBase64: string | undefined,
 	close: () => void,
+	avatarMimeType?: string,
 ): Component {
-	return new DashboardPiComponent(vm, avatarBase64, graphBase64, close);
+	return new DashboardPiComponent(vm, avatarBase64, graphBase64, close, avatarMimeType);
 }
 
 // ── data collection ───────────────────────────────────────────────────
@@ -256,13 +259,16 @@ async function collectDashboardViewModel(cwd: string): Promise<DashboardViewMode
 	};
 }
 
-async function fetchAvatarBase64(url: string | undefined): Promise<string | undefined> {
+async function fetchAvatarBase64(url: string | undefined): Promise<{ base64: string; mimeType: string } | undefined> {
 	if (!url) return undefined;
 	try {
-		const resp = await fetch(url);
+		// Request a small PNG via size parameter; GitHub avatars support ?s= query
+		const sizedUrl = url.includes("?") ? `${url}&s=160` : `${url}?s=160`;
+		const resp = await fetch(sizedUrl);
 		if (!resp.ok) return undefined;
+		const contentType = resp.headers.get("content-type") ?? "image/png";
 		const buf = Buffer.from(await resp.arrayBuffer());
-		return buf.toString("base64");
+		return { base64: buf.toString("base64"), mimeType: contentType };
 	} catch {
 		return undefined;
 	}
@@ -284,20 +290,35 @@ async function generateGraphBase64(days: Array<{ date: string; count: number; le
 }
 
 // ── extension registration ────────────────────────────────────────────
+
+export function guessImageMime(base64: string): string {
+	const header = Buffer.from(base64.slice(0, 24), "base64");
+	// PNG: 89 50 4E 47
+	if (header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4e && header[3] === 0x47) return "image/png";
+	// JPEG: FF D8 FF
+	if (header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff) return "image/jpeg";
+	// GIF: GIF87a / GIF89a
+	if (header.slice(0, 3).toString("ascii") === "GIF") return "image/gif";
+	// WebP: RIFF....WEBP
+	if (header.slice(0, 4).toString("ascii") === "RIFF" && header.slice(8, 12).toString("ascii") === "WEBP") return "image/webp";
+	return "image/png";
+}
 export default function dashboard(pi: ExtensionAPI): void {
 	pi.registerCommand("dashboard", {
 		description: "Open the Mekann dashboard in Pi TUI",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify("Loading dashboard...", "info");
 			const vm = await collectDashboardViewModel(ctx.cwd);
-			const [avatarBase64, graphBase64] = await Promise.all([
+			const [avatarResult, graphBase64] = await Promise.all([
 				fetchAvatarBase64(vm.profile.ok ? vm.profile.profile.avatarUrl : undefined),
 				generateGraphBase64(vm.contributionGraph.days),
 			]);
+			const avatarBase64 = avatarResult?.base64;
+			const avatarMimeType = avatarResult?.mimeType;
 			ctx.ui.setFooter(() => ({ render: () => [], invalidate: () => {} }));
 			try {
 				await ctx.ui.custom<void>((tui, _theme, _keybindings, done) => {
-					const component = createDashboardPiComponent(vm, avatarBase64, graphBase64, () => done(undefined));
+					const component = createDashboardPiComponent(vm, avatarBase64, graphBase64, () => done(undefined), avatarMimeType);
 					return {
 						render: (width) => component.render(width),
 						handleInput: (data) => {
