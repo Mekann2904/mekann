@@ -4,20 +4,8 @@ import * as fsp from "node:fs/promises";
 import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
 import { gateTextForLlm, outputGateDir, manifestPath, readManifest, resolveArtifactPath, shouldGateOutput } from "./store.js";
 import { searchToolOutputs } from "./search.js";
-import { appendContextEvent } from "../ledger/store.js";
-
-/** Generic clear handler pattern with confirmation. */
-export async function handleClear(ctx: any, label: string, dir: string, clearFn: () => Promise<void>): Promise<void> {
-	const confirmFn = ctx?.ui?.confirm;
-	if (typeof confirmFn !== "function") {
-		ctx?.ui?.notify?.("clear requires interactive confirmation", "warning");
-		return;
-	}
-	const ok = await confirmFn(`Clear ${label}?`, `Delete ${dir} ?`);
-	if (!ok) return;
-	await clearFn();
-	ctx?.ui?.notify?.(`${label} cleared`, "info");
-}
+import { handleClear } from "../clear.js";
+import { recordToolOutputArtifact } from "../recording.js";
 
 /** Parse arg and dispatch status/list/stats/clear subcommands. */
 function textResponse(text: string): { content: Array<{ type: "text"; text: string }>; details: Record<string, unknown> } { return { content: [{ type: "text" as const, text }], details: {} }; }
@@ -214,23 +202,20 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 		const gated = await gateTextForLlm({ cwd, toolName, text, source: { kind: "tool_result", toolName }, maxInlineBytes: MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes, previewBytes: MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes, sessionId: ctx?.sessionId, turnId: ctx?.turnId, toolCallId: event?.toolCallId, branchId: ctx?.branchId ?? event?.branchId });
 		if (!gated.handled) return undefined;
 
-		// Record gated output in context ledger (best-effort)
+		// Record gated output without exposing context-ledger storage details to output-gate.
 		if (gated.gated && gated.artifactId) {
-			try {
-				await appendContextEvent({
-					cwd,
-					kind: "tool_result",
-					priority: event?.isError ? 1 : 3,
-					title: `${toolName} output stored`,
-					summary: `Large ${toolName} output stored as ${gated.artifactId} (${gated.originalBytes} bytes, ${gated.originalLines} lines)`,
-					evidenceLevel: "tool_reported",
-					refs: [{ type: "artifact", value: gated.artifactId, role: "output" }],
-					sessionId: ctx?.sessionId,
-					turnId: ctx?.turnId,
-					toolCallId: event?.toolCallId,
-					branchId: ctx?.branchId ?? event?.branchId,
-				});
-			} catch { /* best-effort; never block the hook */ }
+			await recordToolOutputArtifact({
+				cwd,
+				toolName,
+				artifactId: gated.artifactId,
+				originalBytes: gated.originalBytes,
+				originalLines: gated.originalLines,
+				isError: event?.isError,
+				sessionId: ctx?.sessionId,
+				turnId: ctx?.turnId,
+				toolCallId: event?.toolCallId,
+				branchId: ctx?.branchId ?? event?.branchId,
+			});
 		}
 
 		return {

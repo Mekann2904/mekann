@@ -154,6 +154,10 @@ _Avoid_: output gate, raw log dump
 A context-ledger record of a meaningful working-memory fact, decision, task, error, plan, or boundary. A context event stores interpreted state, not raw output; raw evidence belongs in output-gate artifacts and is linked through references.
 _Avoid_: raw log entry, conversation message
 
+**Context recording**:
+Runtime context-management responsibility for turning an observed fact from another feature into a context event without exposing context-ledger storage details to that feature. Context recording is the seam between features that observe meaningful work, such as output-gate artifact creation, and context ledger, which persists interpreted session state.
+_Avoid_: context-ledger implementation, raw artifact storage, generic event bus
+
 **Effective context status**:
 The current status of a context event after projecting append-only context events and their relations. It is distinct from the event's stored status, which records what the event declared when it was written.
 _Avoid_: stored status, mutable event status

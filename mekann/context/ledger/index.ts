@@ -4,7 +4,7 @@ import * as fsp from "node:fs/promises";
 import { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult, eventsPath, contextDir, projectContextEvents } from "./store.js";
 import { buildSnapshot, snapshotWatermarkMatches } from "./snapshot.js";
 import { writeLatestSnapshot, readBoundedLatestSnapshot } from "./snapshot-store.js";
-import { handleClear } from "../output-gate/index.js";
+import { handleClear } from "../clear.js";
 
 export { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult, projectContextEvents } from "./store.js";
 export type { MekannContextEvent, MekannContextEventKind, MekannContextRef, AppendEventInput, ProjectedContextEvent, MekannContextEventStatus, MekannContextEvidenceLevel, MekannContextScope } from "./store.js";
