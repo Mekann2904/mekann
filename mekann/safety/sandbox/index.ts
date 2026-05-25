@@ -14,6 +14,7 @@ import { isMacSandboxAvailable, runSandboxedShellMac } from "./macSeatbelt.js";
 import { resolveRealPaths, validateWorkspaceRoot } from "./permissions.js";
 import { shouldRequestApproval, yoloApprovalMessage, type YoloApprovalState, readOnlyPolicy, workspaceWritePolicy, yoloPolicy } from "./permissions.js";
 import { DEFAULT_SANDBOX_MODE, parseSandboxMode, modeLabel, SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, PLAN_MODE_STATUS_EVENT, type SandboxPushProfileEvent, type SandboxPopProfileEvent, type PlanModeStatusEvent } from "../policy-core/modes.js";
+import { SafetyProfileState } from "../policy-core/safetyProfile.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { MEKANN_SANDBOX_DEFAULTS, MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
 import { gateTextForLlm } from "../../context/output-gate/store.js";
@@ -60,13 +61,13 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// ─── State ───────────────────────────────────────────────────────
 
 	let sandboxEnabled = false;
-	let currentMode: SandboxMode = DEFAULT_SANDBOX_MODE;
+	const safetyProfile = new SafetyProfileState(DEFAULT_SANDBOX_MODE);
 	let sandboxAvailable = false;
 	let resolvedWorkspaceRoots: string[] = [];
 	let resolvedWritableRoots: string[] = [];
 	let currentCwd = "";
 	// SECURITY: true only when user explicitly opted out via --no-sandbox
-	let explicitlyDisabled = false;
+	let explicitlyDisabled = false; safetyProfile.setExplicitlyDisabled(false);
 
 	// SECURITY: When set, bash execute() always refuses (unless --no-sandbox).
 	// Set on unsafe workspace root or sandbox-init failure.
@@ -75,28 +76,10 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// Last UI context for updating status bar after profile override push/pop.
 	let lastCtx: any | undefined;
 
-	// ─── Profile override stack (plan-mode coordination) ──────────
+	// ─── Safety profile state (plan-mode coordination) ─────────────
 
-	/** Override entries pushed by other extensions (e.g. plan-mode). */
-	const profileOverrideStack: { owner: string; token: string; mode: SandboxMode }[] = [];
-
-	function removeProfileEntry(predicate: (e: { owner: string; token: string; mode: SandboxMode }) => boolean): void {
-		const idx = profileOverrideStack.findIndex(predicate);
-		if (idx >= 0) profileOverrideStack.splice(idx, 1);
-	}
-
-	/** Current plan-mode mode (received via event from plan-mode extension). */
-	let planModeStatus: "main" | "plan" | undefined;
-	let rightStatus: string | undefined;
-
-	/** Compute the effective sandbox mode, respecting override stack. */
-	function effectiveMode(): SandboxMode {
-		if (explicitlyDisabled) return currentMode; // overrides don't apply when disabled
-		return profileOverrideStack.length > 0 ? profileOverrideStack[profileOverrideStack.length - 1].mode : currentMode;
-	}
-
-	// SECURITY: Mode ranking (lower = more restrictive). Used for restrict-only override policy.
-	const MODE_RANK: Record<SandboxMode, number> = { read_only: 0, workspace_write: 1, yolo: 2 };
+	/** Compute the effective sandbox mode, respecting safety profile overrides. */
+	function effectiveMode(): SandboxMode { return safetyProfile.effectiveMode(); }
 
 	// SECURITY: yolo の承認状態
 	const yoloState: YoloApprovalState = { yoloApproved: false };
@@ -353,24 +336,24 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			if (newMode === "yolo") {
 				// If override is active, effective mode won't be yolo even after base change.
 				// Save the base mode but defer approval until yolo actually becomes effective.
-				if (profileOverrideStack.length > 0) {
+				if (safetyProfile.overrideCount() > 0) {
 					// Override active — save base, defer approval
-					currentMode = newMode;
-			resetYoloApproval();
+					safetyProfile.setBaseMode(newMode);
+					resetYoloApproval();
 					refreshStatusBar();
 					ctx.ui.notify("base モードを yolo に設定しました。override 終了後、bash tool 実行時に yolo 承認を求めます。direct bash は承認済みになるまで拒否されます。", "info");
 					return;
 				}
 				const ok = await ctx.ui.confirm("[!] サンドボックスを無効化しますか？", yoloApprovalMessage());
 				if (!ok) { ctx.ui.notify("モード変更はキャンセルされました", "info"); return; }
-								yoloState.yoloApproved = true;
-							yoloState.yoloApprovedAt = new Date();
-							yoloState.yoloApprovedReason = "コマンド /sandbox で承認";
+				yoloState.yoloApproved = true;
+				yoloState.yoloApprovedAt = new Date();
+				yoloState.yoloApprovedReason = "コマンド /sandbox で承認";
 			} else {
-			resetYoloApproval();
+				resetYoloApproval();
 			}
 
-			currentMode = newMode;
+			safetyProfile.setBaseMode(newMode);
 			refreshStatusBar();
 			ctx.ui.notify(`サンドボックスモードを変更しました: ${effectiveMode()}`, "info");
 		})();
@@ -389,13 +372,13 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	function updateStatusBar(ctx: any): void {
 		if (explicitlyDisabled || !sandboxEnabled) { ctx.ui.setWidget("sandbox", undefined); return; }
 		let label = "";
-		if (planModeStatus) label = ctx.ui.theme.fg(planModeStatus === "plan" ? "warning" : "dim", planModeStatus) + " ";
+		if (safetyProfile.planModeStatus) label = ctx.ui.theme.fg(safetyProfile.planModeStatus === "plan" ? "warning" : "dim", safetyProfile.planModeStatus) + " ";
 		label += ctx.ui.theme.fg("dim", effectiveMode());
 		ctx.ui.setWidget("sandbox", (_tui: unknown, theme: any) => ({
 			invalidate() {},
 			render(w: number): string[] {
-				if (!rightStatus) return [truncateToWidth(label, w)];
-				const right = theme.fg("dim", rightStatus);
+				if (!safetyProfile.rightStatus) return [truncateToWidth(label, w)];
+				const right = theme.fg("dim", safetyProfile.rightStatus);
 				const lw = visibleWidth(label);
 				const rw = visibleWidth(right);
 				if (lw + rw + 1 > w) return [truncateToWidth(label, w)];
@@ -416,7 +399,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		// --no-sandbox: explicit opt-out
 		const noSandbox = pi.getFlag("no-sandbox") as boolean;
 		if (noSandbox) {
-			explicitlyDisabled = true;
+			explicitlyDisabled = true; safetyProfile.setExplicitlyDisabled(true);
 			sandboxAvailable = false;
 			disableSandbox("--no-sandbox によりサンドボックスは明示的に無効化されました", "warning");
 			return;
@@ -426,7 +409,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		const modeFlag = pi.getFlag("sandbox-mode") as string;
 		if (modeFlag) {
 			const parsed = parseSandboxMode(modeFlag);
-			if (parsed) currentMode = parsed; else { currentMode = DEFAULT_SANDBOX_MODE; ctx.ui.notify(`無効な --sandbox-mode: ${modeFlag}。デフォルトの ${DEFAULT_SANDBOX_MODE} を使用します`, "warning"); }
+			if (parsed) safetyProfile.setBaseMode(parsed); else { safetyProfile.setBaseMode(DEFAULT_SANDBOX_MODE); ctx.ui.notify(`無効な --sandbox-mode: ${modeFlag}。デフォルトの ${DEFAULT_SANDBOX_MODE} を使用します`, "warning"); }
 		}
 
 		// SECURITY: FAIL-CLOSED on unsafe workspace root (all modes)
@@ -467,37 +450,17 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	pi.events.on(SANDBOX_PUSH_PROFILE_EVENT, (data: unknown) => {
 		const event = data as SandboxPushProfileEvent;
 		if (!event.token || !event.profile) return;
-
-		// SECURITY: Only accept restrict-only profiles via events.
-		// workspace_write / yolo overrides must go through /sandbox command or approval flow.
-		if (event.profile !== "plan_read_only" && event.profile !== "sandbox_read_only") {
-			logProfileRejection(event, "unsupported-profile-for-event-override");
+		const decision = safetyProfile.pushProfile(event.owner, event.token, event.profile);
+		if (!decision.ok) {
+			logProfileRejection(event, decision.reason, { requestedMode: decision.requestedMode, baseMode: safetyProfile.getBaseMode() });
 			return;
 		}
-
-		// Both plan_read_only and sandbox_read_only map to "read_only" mode.
-		const mode: SandboxMode = "read_only";
-
-		// SECURITY: Reject escalation — override must be equally or more restrictive.
-		if (MODE_RANK[mode] > MODE_RANK[currentMode]) {
-			logProfileRejection(event, "override-escalation-rejected", { requestedMode: mode, baseMode: currentMode });
-			return;
-		}
-
-		// Remove any existing entry with the same token to prevent duplicates
-		removeProfileEntry((e) => e.token === event.token);
-
-		profileOverrideStack.push({ owner: event.owner, token: event.token, mode });
-
-		// Update status bar to reflect effective mode change
 		refreshStatusBar();
 	});
 	pi.events.on(SANDBOX_POP_PROFILE_EVENT, (data: unknown) => {
 		const event = data as SandboxPopProfileEvent;
 		if (!event.token) return;
-		removeProfileEntry((e) => e.owner === event.owner && e.token === event.token);
-
-		// Update status bar to reflect effective mode change
+		safetyProfile.popProfile(event.owner, event.token);
 		refreshStatusBar();
 	});
 	// Listen for plan-mode status updates to render a combined status line
@@ -505,25 +468,25 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		if (data == null || typeof data !== "object") return;
 		const event = data as Partial<PlanModeStatusEvent>;
 		if (event.mode !== "main" && event.mode !== "plan") return;
-		planModeStatus = event.mode;
+		safetyProfile.planModeStatus = event.mode;
 		refreshStatusBar();
 	});
 	pi.events.on("mekann:codex-usage:status", (data: unknown) => {
 		if (data != null && typeof data !== "object") return;
 		const event = data as { text?: unknown } | undefined;
-		rightStatus = typeof event?.text === "string" && event.text.trim() ? event.text : undefined;
+		safetyProfile.rightStatus = typeof event?.text === "string" && event.text.trim() ? event.text : undefined;
 		refreshStatusBar();
 	});
 
 	pi.on("session_shutdown", async () => {
 		sandboxEnabled = false;
 		sandboxAvailable = false;
-		explicitlyDisabled = false;
+		explicitlyDisabled = false; safetyProfile.setExplicitlyDisabled(false);
 		startupBlockedReason = undefined;
-		profileOverrideStack.length = 0;
-		planModeStatus = undefined;
-		rightStatus = undefined;
+		safetyProfile.clearProfiles();
+		safetyProfile.planModeStatus = undefined;
+		safetyProfile.rightStatus = undefined;
 		lastCtx = undefined;
-			resetYoloApproval();
+		resetYoloApproval();
 	});
 }
