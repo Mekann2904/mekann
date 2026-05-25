@@ -22,6 +22,10 @@ _Avoid_: context suite, context window, implementation notes, design scratchpad
 A small, single-purpose helper primarily for human convenience rather than agent autonomy, safety boundaries, or runtime context control. Utility features belong in the `utils` suite and should stay lightweight.
 _Avoid_: autonomy feature, safety feature, core feature
 
+**Terminal shortcut**:
+An exact user input alias that launches a terminal-oriented command for the human operator instead of sending the input to the agent. Terminal shortcuts are utility features and are distinct from shell aliases because Pi resolves them before normal prompt handling.
+_Avoid_: shell alias, slash command, prompt shortcut
+
 **Skill**:
 A task-specific instruction package that a Pi coding agent reads to perform a particular kind of work. A skill is not an extension feature because it does not provide runtime tools or commands; it connects project context, ADRs, supporting docs, and action patterns into an executable workflow for the agent.
 _Avoid_: feature, command, runtime extension
