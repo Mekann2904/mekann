@@ -26,13 +26,19 @@ export async function createContributionSvg(days: ContributionDay[] | undefined,
 		const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 		const monthLabels: string[] = [];
 		let lastMonth = -1;
+		let lastLabelX = -Infinity;
+		const MIN_MONTH_SPACING = 30;
 		const rects = recent.map((day, index) => {
 			const date = new Date(`${day.date}T00:00:00`);
 			const week = Math.floor(index / 7);
 			const dow = index % 7;
 			if (!Number.isNaN(date.getTime()) && date.getMonth() !== lastMonth) {
 				lastMonth = date.getMonth();
-				monthLabels.push(`<text x="${left + week * (cell + gap)}" y="14" fill="#9ca3af" font-size="12">${months[lastMonth]}</text>`);
+				const x = left + week * (cell + gap);
+				if (x - lastLabelX >= MIN_MONTH_SPACING) {
+					monthLabels.push(`<text x="${x}" y="14" fill="#9ca3af" font-size="12">${months[lastMonth]}</text>`);
+					lastLabelX = x;
+				}
 			}
 			return `<rect x="${left + week * (cell + gap)}" y="${top + dow * (cell + gap)}" width="${cell}" height="${cell}" fill="${levelColor(day.level)}"/>`;
 		}).join("\n");
