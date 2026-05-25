@@ -98,6 +98,7 @@ export class AgentControl {
   private maxQueuedSubagents: number;
   readonly resultStore: SubagentResultStore;
   private readonly lifecycle: SubagentLifecycle;
+  private drainQueueOnClose = true;
 
   constructor(
     pi: import("@earendil-works/pi-coding-agent").ExtensionAPI,
@@ -394,7 +395,11 @@ export class AgentControl {
 
   private async closeSingle(agentPath: string): Promise<void> {
     const adapters = this.lifecycleAdapters();
-    await this.lifecycle.closeRuntime(agentPath, { kitty: this.kitty, externalPiSlots: processExternalPiSlots, drainAdapters: adapters });
+    await this.lifecycle.closeRuntime(agentPath, {
+      kitty: this.kitty,
+      externalPiSlots: processExternalPiSlots,
+      ...(this.drainQueueOnClose ? { drainAdapters: adapters } : {}),
+    });
   }
 
   async focus(target: string, ctx: ExtensionContext): Promise<{ focused: boolean; warning?: string }> {
@@ -420,7 +425,12 @@ export class AgentControl {
         try { await this.kitty.close(agent.display); } catch { /* best-effort */ }
       }
     }
-    for (const path of [...new Set([...this.lifecycle.runtimePaths(), ...this.lifecycle.childSessionPaths()])]) await this.closeSingle(path).catch(() => undefined);
+    this.drainQueueOnClose = false;
+    try {
+      for (const path of [...new Set([...this.lifecycle.runtimePaths(), ...this.lifecycle.childSessionPaths()])]) await this.closeSingle(path).catch(() => undefined);
+    } finally {
+      this.drainQueueOnClose = true;
+    }
     this.registry.clear();
     this.mailbox.clear();
   }
