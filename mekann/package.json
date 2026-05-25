@@ -16,7 +16,9 @@
   "license": "ISC",
   "dependencies": {
     "@opentui/core": "^0.2.15",
+    "@opentui/react": "^0.2.15",
     "@sinclair/typebox": "^0.34.49",
+    "react": "^19.2.3",
     "tinyglobby": "^0.2.16"
   },
   "peerDependencies": {

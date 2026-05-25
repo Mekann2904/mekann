@@ -15,20 +15,24 @@ export async function fetchKittyAvatar(url: string | undefined, options: { enabl
 		const dir = await mkdtemp(join(tmpdir(), "mekann-dashboard-avatar-"));
 		const path = join(dir, "avatar.png");
 		await writeFile(path, bytes);
-		return { ok: true, path, columns: options.columns ?? 14, rows: options.rows ?? 7 };
+		return { ok: true, path, columns: options.columns ?? 18, rows: options.rows ?? 8 };
 	} catch (error) {
 		return { ok: false, error: error instanceof Error ? error.message : String(error) };
 	}
 }
 
 export async function renderKittyAvatar(avatar: DashboardAvatarResult | undefined, options: { x: number; y: number }): Promise<void> {
-	if (!avatar?.ok) return;
+	await renderKittyImage(avatar, options);
+}
+
+export async function renderKittyImage(image: { ok: true; path: string; columns: number; rows: number } | { ok: false; error: string } | undefined, options: { x: number; y: number }): Promise<void> {
+	if (!image?.ok) return;
 	try {
 		// `kitten icat` writes Kitty graphics escape sequences to stdout. Use
 		// inherited stdio; capturing stdout makes the image disappear.
-		spawnSync("kitten", ["icat", "--silent", "--transfer-mode=file", "--place", `${avatar.columns}x${avatar.rows}@${options.x}x${options.y}`, avatar.path], { stdio: "inherit" });
+		spawnSync("kitten", ["icat", "--silent", "--transfer-mode=file", "--align=left", "--scale-up=yes", "--place", `${image.columns}x${image.rows}@${options.x}x${options.y}`, image.path], { stdio: "inherit" });
 	} catch {
-		// Avatar rendering is cosmetic; keep the dashboard usable.
+		// Image rendering is cosmetic; keep the dashboard usable.
 	}
 }
 

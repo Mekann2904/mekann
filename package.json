@@ -60,6 +60,7 @@
     "@earendil-works/pi-coding-agent": "0.75.3",
     "@earendil-works/pi-tui": "0.75.3",
     "@sinclair/typebox": "^0.34.49",
+    "@types/react": "^19.2.15",
     "@vitest/coverage-v8": "^4.1.6",
     "fast-check": "^4.8.0",
     "husky": "^9.1.7",
@@ -68,5 +69,9 @@
   },
   "optionalDependencies": {
     "@rolldown/binding-linux-x64-gnu": "^1.0.1"
+  },
+  "dependencies": {
+    "@opentui/react": "^0.2.15",
+    "react": "^19.2.6"
   }
 }

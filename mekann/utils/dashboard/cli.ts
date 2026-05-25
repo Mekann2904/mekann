@@ -1,9 +1,13 @@
 #!/usr/bin/env bun
-import { fetchKittyAvatar, renderKittyAvatar } from "./avatar.js";
+import { fetchKittyAvatar, renderKittyAvatar, renderKittyImage } from "./avatar.js";
 import { parseDashboardArgs } from "./args.js";
+import { createContributionSvg } from "./contribution-image.js";
 import { collectCurrentRepo } from "./current-repo.js";
 import { collectGitHubDashboard } from "./github.js";
-import { dashboardTextColor, renderDashboardText } from "./render.js";
+import { createCliRenderer } from "@opentui/core";
+import { createRoot } from "@opentui/react";
+import React from "react";
+import { DashboardApp } from "./app.js";
 import type { DashboardViewModel } from "./view-model.js";
 
 async function main(): Promise<void> {
@@ -20,9 +24,11 @@ async function main(): Promise<void> {
 	]);
 	const profile = github.ok ? { ok: true as const, profile: github.data.profile } : github;
 	const avatar = github.ok ? await fetchKittyAvatar(github.data.profile.avatarUrl, { enabled: args.value.avatar }) : undefined;
+	const contributionImage = github.ok ? await createContributionSvg(github.data.contributionDays, { enabled: true }) : undefined;
 	const viewModel: DashboardViewModel = {
 		profile,
 		avatar,
+		contributionImage,
 		currentRepo,
 		contributionGraph: github.ok
 			? { status: "loading", message: "", days: github.data.contributionDays }
@@ -36,18 +42,12 @@ async function main(): Promise<void> {
 }
 
 async function renderDashboard(vm: DashboardViewModel): Promise<void> {
-	const { createCliRenderer, Text } = await import("@opentui/core");
 	const renderer = await createCliRenderer({ exitOnCtrlC: true });
-	renderer.root.add(Text({ content: renderDashboardText(vm), fg: dashboardTextColor }));
-	setTimeout(() => void renderKittyAvatar(vm.avatar, { x: 3, y: 3 }), 250).unref?.();
-	process.stdin.setRawMode?.(true);
-	process.stdin.resume();
-	process.stdin.on("data", (chunk) => {
-		if (chunk.toString() === "q") {
-			renderer.destroy?.();
-			process.exit(0);
-		}
-	});
+	createRoot(renderer).render(React.createElement(DashboardApp, { vm }));
+	setTimeout(() => {
+		void renderKittyAvatar(vm.avatar, { x: 3, y: 4 });
+		void renderKittyImage(vm.contributionImage, { x: 3, y: 15 });
+	}, 300).unref?.();
 }
 
 void main().catch((error) => {

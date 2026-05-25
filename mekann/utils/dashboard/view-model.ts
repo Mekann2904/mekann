@@ -4,6 +4,7 @@ import type { ContributionDay, GitHubActivitySummary, GitHubProfileResult } from
 export type DashboardViewModel = {
 	profile: GitHubProfileResult;
 	avatar?: { ok: true; path: string; columns: number; rows: number } | { ok: false; error: string };
+	contributionImage?: { ok: true; path: string; columns: number; rows: number } | { ok: false; error: string };
 	currentRepo: CurrentRepoSummary;
 	contributionGraph: { status: "placeholder" | "loading" | "error"; message: string; days?: ContributionDay[] };
 	activitySummary: { status: "placeholder" | "loading" | "error" | "ready"; message: string; summary?: GitHubActivitySummary };

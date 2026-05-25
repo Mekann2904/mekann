@@ -1,4 +1,5 @@
-export { fetchKittyAvatar, isLikelyKitty, renderKittyAvatar } from "./avatar.js";
+export { fetchKittyAvatar, isLikelyKitty, renderKittyAvatar, renderKittyImage } from "./avatar.js";
+export { createContributionSvg } from "./contribution-image.js";
 export { parseDashboardArgs } from "./args.js";
 export { collectCurrentRepo, parseAheadBehind, parsePorcelainStatus } from "./current-repo.js";
 export { collectGitHubProfile, parseGitHubViewer } from "./github.js";
