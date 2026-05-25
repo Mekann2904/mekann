@@ -132,12 +132,6 @@ class DashboardPiComponent implements Component {
 		const w = Math.max(20, width);
 		const h = Math.max(10, height);
 
-		// ── title bar ──────────────────────────────────────────────────
-		const titleLeft = `${BOLD}● ● ●   ◉ GitHub Dashboard${RESET}`;
-		const titleRight = `${MUTED}[ Pi TUI ]${RESET}`;
-		const titlePad = Math.max(1, w - visibleWidth(titleLeft) - visibleWidth(titleRight));
-		lines.push(titleLeft + " ".repeat(titlePad) + titleRight);
-
 		// ── profile + avatar row ───────────────────────────────────────
 		// The avatar is rendered via kitten icat --place (not through the
 		// TUI overlay pipeline) because the overlay compositor adds padding
@@ -342,8 +336,7 @@ export default function dashboard(pi: ExtensionAPI): void {
 							// re-render unchanged empty placeholder lines, so the image persists.
 							if (!avatarPlaced && avatarPath) {
 								avatarPlaced = true;
-								// Row 1 = line index after the title bar
-								setTimeout(() => placeAvatarIcat(avatarPath, 1, 1), 80);
+																setTimeout(() => placeAvatarIcat(avatarPath, 0, 1), 80);
 							}
 							return lines;
 						},

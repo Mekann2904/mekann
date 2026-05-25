@@ -14,8 +14,7 @@ describe("DashboardPiComponent", () => {
 		const component = createDashboardPiComponent(baseVm, undefined, undefined, () => {});
 		const lines = component.render(80);
 		const joined = lines.join("\n");
-		expect(joined).toContain("GitHub Dashboard");
-		expect(joined).toContain("[ Pi TUI ]");
+		expect(joined).toContain("@Mekann2904");
 		expect(lines.length).toBeGreaterThan(0);
 	});
 
@@ -39,14 +38,14 @@ describe("DashboardPiComponent", () => {
 		expect(joined).toContain("@Mekann2904");
 		// The 8 placeholder lines (empty) should be between title and profile
 		const loginIndex = lines.findIndex(l => l.includes("@Mekann2904"));
-		expect(loginIndex).toBe(9); // title(0) + 8 avatar lines(1-8)
+		expect(loginIndex).toBe(8); // 8 avatar lines(0-7)
 	});
 
 	it("does not reserve avatar lines when avatarPath is undefined", () => {
 		const component = createDashboardPiComponent(baseVm, undefined, undefined, () => {});
 		const lines = component.render(120);
 		const loginIndex = lines.findIndex(l => l.includes("@Mekann2904"));
-		expect(loginIndex).toBe(1); // title(0) + login(1)
+		expect(loginIndex).toBe(0); // first line
 	});
 
 	it("closes on q", () => {
