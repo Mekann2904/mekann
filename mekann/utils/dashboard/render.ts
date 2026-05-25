@@ -4,12 +4,12 @@
 
 import { contributionText, box, rowBox, padEnd, type BoxConfig } from "./layout.js";
 import { truncatePlain, visibleWidth, dashboardTextColor } from "./terminal.js";
-import type { DashboardViewModel } from "./view-model.js";
+import type { CliDashboardViewModel } from "./view-model.js";
 import { formatCurrentRepoLine } from "./view-model.js";
 
 export { dashboardTextColor };
 
-export function renderDashboardText(vm: DashboardViewModel, width = process.stdout.columns || 120): string {
+export function renderDashboardText(vm: CliDashboardViewModel, width = process.stdout.columns || 120): string {
 	const w = Math.max(20, Math.min(width, 140));
 	const profileIndent = vm.avatar?.ok ? " ".repeat(vm.avatar.columns + 4) : "";
 	const profile = vm.profile.ok

@@ -6,7 +6,7 @@ import { createContributionSvg } from "./contribution-image.js";
 import { collectCurrentRepo } from "./current-repo.js";
 import { collectGitHubDashboard } from "./github.js";
 import { renderDashboardText } from "./render.js";
-import type { DashboardViewModel } from "./view-model.js";
+import type { CliDashboardViewModel } from "./view-model.js";
 
 async function main(): Promise<void> {
 	const args = parseDashboardArgs(process.argv.slice(2));
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
 	if (args.value.images) installDashboardCleanup();
 	const avatar = github.ok ? await fetchKittyAvatar(github.data.profile.avatarUrl, { enabled: args.value.avatar && args.value.images, columns: avatarColumns, rows: avatarRows }) : undefined;
 	const contributionImage = github.ok ? await createContributionSvg(github.data.contributionDays, { enabled: args.value.images, columns: graphColumns, rows: graphRows }) : undefined;
-	const viewModel: DashboardViewModel = {
+	const viewModel: CliDashboardViewModel = {
 		profile,
 		avatar,
 		contributionImage,
@@ -50,7 +50,7 @@ async function main(): Promise<void> {
 	console.log(renderDashboardText(viewModel, terminalWidth));
 }
 
-async function renderDashboard(_vm: DashboardViewModel): Promise<void> {
+async function renderDashboard(_vm: CliDashboardViewModel): Promise<void> {
 	console.error("Interactive mode (OpenTUI) has been removed. Use /dashboard in Pi instead.");
 	process.exitCode = 1;
 }
