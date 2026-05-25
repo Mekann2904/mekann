@@ -12,13 +12,23 @@ type TerminalShortcut =
 		command: string;
 	};
 
-type LauncherStrategy = "pass-through";
+type LauncherStrategy = "pass-through" | "kitty-split-longer-side";
+
+type KittyWindowLike = {
+	id?: number;
+	is_focused?: boolean;
+	columns?: number;
+	lines?: number;
+	[key: string]: unknown;
+};
 
 const BUILT_IN_SHORTCUTS: Record<string, TerminalShortcut> = {
 	lg: { mode: "argv", argv: ["lazygit"] },
 	zed: { mode: "argv", argv: ["zed", "."] },
 	"zed .": { mode: "argv", argv: ["zed", "."] },
 };
+
+const BUILT_IN_SPLIT_SHORTCUTS = new Set(["lg"]);
 
 function parseShortcutEnv(value: string | undefined): Record<string, TerminalShortcut> {
 	if (!value) return {};
@@ -42,7 +52,29 @@ function getShortcuts(): Record<string, TerminalShortcut> {
 	};
 }
 
-function getLauncherStrategy(): LauncherStrategy {
+function parseShortcutList(value: string | undefined): Set<string> {
+	return new Set(
+		(value ?? "")
+			.split(",")
+			.map((entry) => entry.trim())
+			.filter(Boolean),
+	);
+}
+
+function getLauncherStrategy(shortcutName: string): LauncherStrategy {
+	const configured = process.env.MEKANN_TERMINAL_STRATEGY?.trim();
+	if (configured === "pass-through" || configured === "kitty-split-longer-side") {
+		return configured;
+	}
+
+	const splitShortcuts = new Set([
+		...BUILT_IN_SPLIT_SHORTCUTS,
+		...parseShortcutList(process.env.MEKANN_TERMINAL_SPLIT_SHORTCUTS),
+	]);
+	if (splitShortcuts.has(shortcutName)) {
+		return "kitty-split-longer-side";
+	}
+
 	return "pass-through";
 }
 
@@ -77,6 +109,13 @@ function shortcutLabel(shortcut: TerminalShortcut): string {
 	return shortcut.mode === "argv" ? shortcut.argv.join(" ") : shortcut.command;
 }
 
+function shortcutCommandArgv(shortcut: TerminalShortcut): string[] {
+	if (shortcut.mode === "argv") return shortcut.argv;
+
+	const shell = process.env.SHELL || "/bin/sh";
+	return [shell, ...shellArgs(shell, shortcut.command)];
+}
+
 function spawnShortcut(shortcut: TerminalShortcut, cwd: string): SpawnSyncReturns<Buffer> {
 	const env = {
 		...process.env,
@@ -95,6 +134,65 @@ function spawnShortcut(shortcut: TerminalShortcut, cwd: string): SpawnSyncReturn
 
 	const shell = process.env.SHELL || "/bin/sh";
 	return spawnSync(shell, shellArgs(shell, shortcut.command), { cwd, stdio: "inherit", env });
+}
+
+function collectKittyWindows(value: unknown, windows: KittyWindowLike[] = []): KittyWindowLike[] {
+	if (!value || typeof value !== "object") return windows;
+	if (Array.isArray(value)) {
+		for (const item of value) collectKittyWindows(item, windows);
+		return windows;
+	}
+
+	const object = value as KittyWindowLike;
+	if (typeof object.id === "number" && (typeof object.columns === "number" || typeof object.lines === "number")) {
+		windows.push(object);
+	}
+	for (const child of Object.values(object)) {
+		collectKittyWindows(child, windows);
+	}
+	return windows;
+}
+
+function currentKittyWindowSize(): { columns: number; lines: number } | undefined {
+	const result = spawnSync("kitten", ["@", "ls"], { encoding: "utf8", timeout: 2000 });
+	if (result.status !== 0 || !result.stdout) return undefined;
+
+	try {
+		const windows = collectKittyWindows(JSON.parse(result.stdout));
+		const currentWindowId = Number(process.env.KITTY_WINDOW_ID);
+		const current = Number.isFinite(currentWindowId) ? windows.find((window) => window.id === currentWindowId) : undefined;
+		const focused = windows.find((window) => window.is_focused);
+		const window = current ?? focused;
+		if (typeof window?.columns === "number" && typeof window.lines === "number") {
+			return { columns: window.columns, lines: window.lines };
+		}
+	} catch {
+		return undefined;
+	}
+	return undefined;
+}
+
+function kittySplitLocation(): "vsplit" | "hsplit" {
+	const size = currentKittyWindowSize();
+	if (!size) return "vsplit";
+
+	// Terminal cells are usually taller than they are wide, so compare columns
+	// against roughly two times the line count to approximate the visually longer side.
+	return size.columns >= size.lines * 2 ? "vsplit" : "hsplit";
+}
+
+function runKittySplitLongerSide(ctx: ExtensionContext, shortcut: TerminalShortcut): number {
+	const argv = shortcutCommandArgv(shortcut);
+	if (argv.length === 0) return 1;
+
+	const args = ["@", "launch", "--type=window", `--location=${kittySplitLocation()}`, "--cwd", ctx.cwd];
+	if (process.env.KITTY_WINDOW_ID) {
+		args.push("--match", `id:${process.env.KITTY_WINDOW_ID}`);
+	}
+	args.push(...argv);
+
+	const result = spawnSync("kitten", args, { encoding: "utf8", timeout: 5000 });
+	return result.status === 0 ? 0 : 1;
 }
 
 async function runPassThroughTerminal(ctx: ExtensionContext, shortcut: TerminalShortcut): Promise<number> {
@@ -146,12 +244,13 @@ async function runPassThroughTerminal(ctx: ExtensionContext, shortcut: TerminalS
 	});
 }
 
-async function runTerminalShortcut(ctx: ExtensionContext, shortcut: TerminalShortcut): Promise<number> {
-	const strategy = getLauncherStrategy();
-	if (strategy === "pass-through") {
-		return await runPassThroughTerminal(ctx, shortcut);
+async function runTerminalShortcut(ctx: ExtensionContext, shortcutName: string, shortcut: TerminalShortcut): Promise<number> {
+	const strategy = getLauncherStrategy(shortcutName);
+	if (strategy === "kitty-split-longer-side") {
+		const exitCode = runKittySplitLongerSide(ctx, shortcut);
+		if (exitCode === 0) return 0;
 	}
-	return 1;
+	return await runPassThroughTerminal(ctx, shortcut);
 }
 
 export default function terminalShortcuts(pi: ExtensionAPI): void {
@@ -164,7 +263,7 @@ export default function terminalShortcuts(pi: ExtensionAPI): void {
 
 		if (!ctx.hasUI || !ctx.isIdle()) return { action: "handled" };
 
-		await runTerminalShortcut(ctx, shortcut);
+		await runTerminalShortcut(ctx, text, shortcut);
 		return { action: "handled" };
 	});
 }
