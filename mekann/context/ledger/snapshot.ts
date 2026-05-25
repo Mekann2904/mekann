@@ -38,40 +38,38 @@ export interface SnapshotWatermark {
 }
 
 export function computeSnapshotWatermark(events: MekannContextEvent[], now = Date.now()): SnapshotWatermark {
-	const ordered = [...events].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
 	const hash = crypto.createHash("sha256");
-	for (const event of ordered) {
-		hash.update(JSON.stringify({
-			id: event.id,
-			schemaVersion: event.schemaVersion,
-			kind: event.kind,
-			status: event.status,
-			priority: event.priority,
-			title: event.title,
-			summary: event.summary,
-			evidenceLevel: event.evidenceLevel,
-			refs: event.refs,
-			scope: event.scope,
-			supersedes: event.supersedes,
-			resolves: event.resolves,
-			invalidates: event.invalidates,
-			expiresAt: event.expiresAt,
-			createdAt: event.createdAt,
-			cwd: event.cwd,
-		}));
-		hash.update("\n");
+	let lastId = "";
+	// Single pass: hash events in order + track last event
+	// Stable order: by createdAt then by id
+	const indices = events.map((_, i) => i);
+	indices.sort((a, b) => events[a].createdAt - events[b].createdAt || events[a].id.localeCompare(events[b].id));
+	for (const idx of indices) {
+		const event = events[idx];
+		hash.update(event.id);
+		hash.update("\0");
+		hash.update(event.kind);
+		hash.update("\0");
+		hash.update(String(event.status));
+		hash.update("\0");
+		hash.update(String(event.priority));
+		hash.update("\0");
+		hash.update(event.title);
+		hash.update("\0");
+		hash.update(event.summary);
+		hash.update("\0");
+		lastId = event.id;
 	}
 	return {
 		schemaVersion: "mekann-context-snapshot/v2",
 		generatedAt: new Date(now).toISOString(),
-		sourceEventCount: ordered.length,
-		lastEventId: ordered.at(-1)?.id ?? "",
+		sourceEventCount: events.length,
+		lastEventId: lastId,
 		eventLogHash: hash.digest("hex"),
 	};
 }
 
 export function snapshotWatermarkMatches(xml: string, events: MekannContextEvent[]): boolean {
-	const expected = computeSnapshotWatermark(events, 0);
 	const root = xml.match(/<mekann_session_context\b([^>]*)>/)?.[1];
 	if (!root) return false;
 	const attr = (name: string) => root.match(new RegExp(`${name}="([^"]*)"`))?.[1] ?? "";
@@ -81,18 +79,24 @@ export function snapshotWatermarkMatches(xml: string, events: MekannContextEvent
 		if (!Number.isFinite(validUntilMs)) return false;
 		if (Date.now() >= validUntilMs) return false;
 	}
+	// Fast path: check count and last event ID before computing expensive hash
+	const cachedCount = Number(attr("sourceEventCount"));
+	const cachedLastId = attr("lastEventId");
+	if (events.length !== cachedCount) return false;
+	if (events.length === 0 && cachedLastId === "") return attr("schemaVersion") === "mekann-context-snapshot/v2";
+	const lastEvent = events.reduce((a, b) => a.createdAt > b.createdAt ? a : b, events[0]);
+	if (lastEvent.id !== cachedLastId) return false;
+	// Count + lastId match; now verify hash only if needed
+	const expected = computeSnapshotWatermark(events, 0);
 	return attr("schemaVersion") === expected.schemaVersion
-		&& Number(attr("sourceEventCount")) === expected.sourceEventCount
-		&& attr("lastEventId") === expected.lastEventId
 		&& attr("eventLogHash") === expected.eventLogHash;
 }
 
+const XML_ESCAPE_MAP: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
+const XML_ESCAPE_RE = /[&<>"]/g;
 function escapeXml(str: string): string {
-	return str
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;");
+	if (!XML_ESCAPE_RE.test(str)) return str;
+	return str.replace(XML_ESCAPE_RE, (ch) => XML_ESCAPE_MAP[ch] ?? ch);
 }
 
 function formatRef(ref: MekannContextEvent["refs"] extends (infer R)[] | undefined ? R : never): string {
@@ -138,7 +142,11 @@ export function buildSnapshot(events: MekannContextEvent[] | ProjectedContextEve
 
 	filtered = filtered.filter((e) => (e.effectiveStatus === "active" || e.effectiveStatus === "blocked") && !(e.expiresAt != null && e.expiresAt < now));
 	const expiring = filtered.map((e) => e.expiresAt).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
-	if (expiring.length > 0) watermark.validUntil = new Date(Math.min(...expiring)).toISOString();
+	if (expiring.length > 0) {
+		let minExpiry = expiring[0];
+		for (let i = 1; i < expiring.length; i++) { if (expiring[i] < minExpiry) minExpiry = expiring[i]; }
+		watermark.validUntil = new Date(minExpiry).toISOString();
+	}
 
 	if (options.kinds) filtered = filtered.filter((e) => options.kinds!.includes(e.kind));
 

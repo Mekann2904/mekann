@@ -95,7 +95,13 @@ export function nextArtifactId(createdAt: number): string {
 
 export function countLines(text: string): number {
 	if (text.length === 0) return 0;
-	return text.split(/\r?\n/).length;
+	let count = 1;
+	for (let i = 0; i < text.length; i++) {
+		const ch = text.charCodeAt(i);
+		if (ch === 0x0A /* LF */) count++;
+		else if (ch === 0x0D /* CR */) { count++; if (i + 1 < text.length && text.charCodeAt(i + 1) === 0x0A) i++; }
+	}
+	return count;
 }
 
 export function sha256(text: string): string {
@@ -104,20 +110,25 @@ export function sha256(text: string): string {
 
 export function sanitizeManifestSource(source: unknown, maxStringBytes = 2000): unknown {
 	if (source === undefined) return undefined;
+	if (source === null || typeof source !== "object") return source;
 	const seen = new WeakSet<object>();
-	try {
-		return JSON.parse(JSON.stringify(source, (_key, value) => {
-			if (typeof value === "bigint") return value.toString();
-			if (typeof value === "string") return safeUtf8Slice(redactSecrets(value).text, maxStringBytes);
-			if (value && typeof value === "object") {
-				if (seen.has(value)) return "[Circular]";
-				seen.add(value);
-			}
-			return value;
-		}));
-	} catch {
-		return "[Unserializable source]";
+	function sanitize(value: unknown): unknown {
+		if (value === undefined || value === null) return value;
+		if (typeof value === "bigint") return value.toString();
+		if (typeof value === "string") return safeUtf8Slice(redactSecrets(value).text, maxStringBytes);
+		if (typeof value !== "object") return value;
+		if (seen.has(value as object)) return "[Circular]";
+		seen.add(value as object);
+		if (Array.isArray(value)) return value.map(sanitize);
+		const out: Record<string, unknown> = {};
+		for (const [k, v] of Object.entries(value)) {
+			try { out[k] = sanitize(v); }
+			catch { out[k] = "[Unserializable]"; }
+		}
+		return out;
 	}
+	try { return sanitize(source); }
+	catch { return "[Unserializable source]"; }
 }
 
 export async function ensureOutputGateDirs(cwd: string): Promise<void> {

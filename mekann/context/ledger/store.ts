@@ -184,6 +184,8 @@ function spreadLedgerSessionMeta(input: { sessionId?: string; turnId?: string; t
 	return out;
 }
 
+const MAX_EVENTS = 2_000;
+
 export async function appendContextEvent(input: AppendEventInput): Promise<MekannContextEvent> {
 	await fsp.mkdir(contextDir(input.cwd), { recursive: true });
 	const createdAt = input.now?.() ?? Date.now();
@@ -215,7 +217,10 @@ export async function appendContextEvent(input: AppendEventInput): Promise<Mekan
 		...(nonEmptyArray(input.invalidates) ? { invalidates: input.invalidates } : {}),
 		...(input.expiresAt != null ? { expiresAt: input.expiresAt } : {}),
 	};
-	await fsp.appendFile(eventsPath(input.cwd), `${JSON.stringify(event)}\n`, "utf8");
+	const filePath = eventsPath(input.cwd);
+	await fsp.appendFile(filePath, `${JSON.stringify(event)}\n`, "utf8");
+	// Periodically prune the event log to prevent unbounded growth
+	await pruneEventLog(input.cwd, filePath);
 	return event;
 }
 
@@ -283,10 +288,55 @@ export async function readEvents(cwd: string): Promise<MekannContextEvent[]> {
 	return out;
 }
 
+// ─── Pruning ──────────────────────────────────────────────────────
+
+let lastPruneCheck = 0;
+const PRUNE_CHECK_INTERVAL_MS = 30_000; // check at most every 30s
+const PRUNE_RETAIN_MS = 2 * 60 * 60 * 1000; // retain non-active events for 2 hours
+
+async function pruneEventLog(cwd: string, filePath: string): Promise<void> {
+	const now = Date.now();
+	if (now - lastPruneCheck < PRUNE_CHECK_INTERVAL_MS) return;
+	lastPruneCheck = now;
+	try {
+		const stat = await fsp.stat(filePath).catch(() => undefined);
+		if (!stat) return;
+		// Rough estimate: if file is small enough, skip
+		const lineEstimate = stat.size / 500; // average ~500 bytes per JSON event
+		if (lineEstimate < MAX_EVENTS) return;
+		const raw = await fsp.readFile(filePath, "utf8");
+		const lines = raw.split(/\r?\n/);
+		if (lines.length <= MAX_EVENTS) return;
+		// Parse, filter, and compact
+		const kept: MekannContextEvent[] = [];
+		const pruneCutoff = now - PRUNE_RETAIN_MS;
+		for (const line of lines) {
+			if (!line.trim()) continue;
+			try {
+				const event = JSON.parse(line);
+				if (!isEventLike(event)) continue;
+				// Always keep active events
+				if (event.status === "active") { kept.push(event); continue; }
+				// Keep recent non-active events
+				if (event.createdAt > pruneCutoff) { kept.push(event); continue; }
+				// Drop old superseded/resolved/stale/invalidated events
+			} catch { /* skip corrupt */ }
+		}
+		if (kept.length < lines.filter((l) => l.trim()).length) {
+			const compacted = kept.map((e) => JSON.stringify(e)).join("\n") + "\n";
+			await fsp.writeFile(filePath, compacted, "utf8");
+		}
+	} catch {
+		// Pruning must never break event appending
+	}
+}
+
 // ─── Projection ─────────────────────────────────────────────────
 
 function pushId(obj: Record<string, string[] | undefined>, key: string, value: string): void {
-	obj[key] = [...(obj[key] ?? []), value];
+	const arr = obj[key];
+	if (arr) arr.push(value);
+	else obj[key] = [value];
 }
 
 export function projectContextEvents(events: MekannContextEvent[]): ProjectedContextEvent[] {
@@ -340,8 +390,15 @@ export function computeStats(events: ProjectedContextEvent[] | MekannContextEven
 		byStatus[e.status] = (byStatus[e.status] ?? 0) + 1;
 		byEffectiveStatus[e.effectiveStatus] = (byEffectiveStatus[e.effectiveStatus] ?? 0) + 1;
 	}
-	const oldest = new Date(Math.min(...projected.map((e) => e.createdAt))).toISOString();
-	const newest = new Date(Math.max(...projected.map((e) => e.createdAt))).toISOString();
+	let oldestTs = projected[0].createdAt;
+	let newestTs = projected[0].createdAt;
+	for (let i = 1; i < projected.length; i++) {
+		const ts = projected[i].createdAt;
+		if (ts < oldestTs) oldestTs = ts;
+		if (ts > newestTs) newestTs = ts;
+	}
+	const oldest = new Date(oldestTs).toISOString();
+	const newest = new Date(newestTs).toISOString();
 	return { totalEvents: projected.length, byKind, byPriority, byStatus, byEffectiveStatus, oldest, newest };
 }
 
