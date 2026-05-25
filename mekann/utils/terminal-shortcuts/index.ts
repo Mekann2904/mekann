@@ -1,5 +1,7 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { readSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { KittyControl } from "../kitty-control/index.js";
 
@@ -15,7 +17,10 @@ type TerminalShortcut =
 
 type LauncherStrategy = "pass-through" | "kitty-split-longer-side";
 
+const DASHBOARD_BIN = resolve(dirname(fileURLToPath(import.meta.url)), "../dashboard/bin/mekann-dashboard.js");
+
 const BUILT_IN_SHORTCUTS: Record<string, TerminalShortcut> = {
+	"/dashboard": { mode: "argv", argv: [process.execPath, DASHBOARD_BIN] },
 	lg: { mode: "argv", argv: ["lazygit"] },
 	zed: { mode: "argv", argv: ["zed", "."] },
 	"zed .": { mode: "argv", argv: ["zed", "."] },
@@ -207,6 +212,18 @@ async function runTerminalShortcut(ctx: ExtensionContext, shortcutName: string, 
 }
 
 export default function terminalShortcuts(pi: ExtensionAPI): void {
+	pi.registerCommand("dashboard", {
+		description: "Open the Mekann OpenTUI dashboard",
+		handler: async (_args, ctx) => {
+			const shortcut = getShortcuts()["/dashboard"];
+			if (!shortcut) {
+				ctx.ui.notify("/dashboard shortcut is unavailable.", "warning");
+				return;
+			}
+			await runTerminalShortcut(ctx, "/dashboard", shortcut);
+		},
+	});
+
 	pi.on("input", async (event, ctx) => {
 		if (event.source !== "interactive") return { action: "continue" };
 

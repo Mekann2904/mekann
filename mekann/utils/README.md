@@ -6,6 +6,7 @@
 |---|---|
 | [`zip-repo`](./zip-repo/) | Git worktree の現在状態を ZIP 化し、macOS clipboard にコピーする |
 | [`codex-limits`](./codex-limits/) | Codex (ChatGPT subscription) の使用量を表示する |
+| [`dashboard`](./dashboard/) | `/dashboard` から OpenTUI dashboard を起動する |
 | [`codex-web-search`](./codex-web-search/) | 現在のモデルに関わらず Codex 経由の Web 検索を使う |
 | [`terminal-shortcuts`](./terminal-shortcuts/) | `lg` や `zed` の完全一致入力を agent prompt ではなく terminal command として起動する |
 

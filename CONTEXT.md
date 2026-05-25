@@ -26,6 +26,26 @@ _Avoid_: autonomy feature, safety feature, core feature
 An exact user input alias that launches a terminal-oriented command for the human operator instead of sending the input to the agent. Terminal shortcuts are utility features and are distinct from shell aliases because Pi resolves them before normal prompt handling.
 _Avoid_: shell alias, slash command, prompt shortcut
 
+**Dashboard feature**:
+A utility feature that presents human-facing project and usage status in an interactive terminal dashboard. It owns data collection and OpenTUI rendering for `/dashboard`, while `terminal-shortcuts` remains only the launch surface.
+_Avoid_: dashboard shortcut, status command, prompt report
+
+**GitHub dashboard identity**:
+The authenticated GitHub account shown in the Dashboard feature, including display name, login, avatar, profile URL, and repository/activity aggregates. It is resolved from `gh` CLI first and from `GITHUB_TOKEN` only when `gh` is unavailable.
+_Avoid_: local git user, repo author, GitHub config
+
+**GitHub activity**:
+The authenticated account's contribution, pull request, issue, review, repository, and social activity as reported by GitHub APIs. Dashboard GitHub activity is network-backed and should not be inferred from local `git log`.
+_Avoid_: local git activity, commit history, repo activity
+
+**Local git activity**:
+Activity and repository state derived from the current local checkout, such as branch, recent commits, changed files, and uncommitted work. It is a separate Dashboard view from GitHub activity and must not be presented as GitHub contribution data.
+_Avoid_: GitHub activity, contribution graph
+
+**Dashboard avatar**:
+The GitHub dashboard identity's profile image rendered in the Dashboard feature. It targets Kitty's graphics protocol because Kitty is the recommended terminal for Mekann terminal integrations.
+_Avoid_: text-only profile marker, local account icon
+
 **Kitty-first terminal integration**:
 Mekann's terminal-adjacent UX is optimized for Kitty remote control because Kitty is the recommended terminal for this project. Kitty-specific launch behavior must preserve terminal-safe fallback behavior for non-Kitty environments. Kitty split launches may run while Pi is not idle because they do not take over Pi's TTY; pass-through fallback remains idle-only because it suspends Pi and hands over the current terminal.
 _Avoid_: Kitty-only integration, terminal lock-in, best-effort terminal support
@@ -293,7 +313,7 @@ A host-side configuration controlling whether the tool may cross the external ne
 _Avoid_: search mode, network setting
 
 **Codex usage**:
-A utils suite feature that reads ChatGPT subscription usage and Codex rate-limit windows, then presents them through `/codex-status` and the Pi footer. Its core responsibility is usage retrieval and normalized usage reporting; Pi command registration and footer rendering are adapters around it.
+A utils suite feature that reads ChatGPT subscription usage and Codex rate-limit windows, then presents them through `/codex-status` and the Pi footer. Its core responsibility is usage retrieval and normalized usage reporting; Pi command registration and footer rendering are adapters around it. The Dashboard feature may embed Codex usage as the first LLM usage panel, but broader Pi-wide LLM usage is a separate expansion.
 _Avoid_: codex-status (command-specific), codex usage query (implementation-specific), codex-limits (package name)
 
 **Codex shared**:

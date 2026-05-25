@@ -6,6 +6,7 @@
 
 | Input | 実行される command |
 |---|---|
+| `/dashboard` | `mekann-dashboard` |
 | `lg` | `lazygit` |
 | `zed` | `zed .` |
 | `zed .` | `zed .` |
