@@ -1,7 +1,8 @@
 /**
  * codex-web-search — Pi tool registration entry point.
  *
- * Registers the `codex_web_search` tool with Pi's extension framework.
+ * Thin adapter: resolves auth from Pi context, delegates to CodexWebSearchRuntime,
+ * and renders results via Pi's TUI framework.
  */
 
 import { Type } from "typebox";
@@ -16,22 +17,11 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import { Text } from "@earendil-works/pi-tui";
 import { MEKANN_CODEX_DEFAULTS, MEKANN_CODEX_WEB_SEARCH_DEFAULTS } from "../../config.js";
-import {
-	CodexError,
-	extractAccountIdFromToken,
-	isModelAvailabilityError,
-	isReasoningParameterError,
-	normalizeReasoningEffortForModel,
-	findModelById,
-} from "../codex-shared/index.js";
-import type { CodexReasoningEffort, SearchContextSize } from "../codex-shared/types.js";
-import {
-	getCachedCodexModels,
-	invalidateCodexModelsCache,
-} from "../codex-shared/models.js";
-import { fetchCodexWebSearch } from "./search.js";
-import { formatResultText } from "./result.js";
-import type { CodexWebSearchDetails, ModelResolutionSource } from "./result.js";
+import { CodexError, extractAccountIdFromToken } from "../codex-shared/index.js";
+import type { SearchContextSize } from "../codex-shared/types.js";
+import type { CodexWebSearchDetails } from "./result.js";
+import { CodexWebSearchRuntime } from "./runtime.js";
+import type { CodexWebSearchConfig } from "./runtime.js";
 
 // ---------------------------------------------------------------------------
 // Tool schema
@@ -84,134 +74,55 @@ async function resolveCodexAuth(ctx: ExtensionContext): Promise<{
 }
 
 // ---------------------------------------------------------------------------
-// Model + effort resolution
+// Config → Runtime config
 // ---------------------------------------------------------------------------
 
-interface ResolvedModelAndEffort {
-	model: string;
-	effort?: CodexReasoningEffort;
-	source: ModelResolutionSource;
-}
-
-/**
- * Resolve the web search model and reasoning effort:
- *
- * 1. config.model explicitly set → use it (+ config.effort if set)
- * 2. Current provider is openai-codex → use ctx.model (+ same effort),
- *    fallback to Codex default if model not in available list
- * 3. Current provider is other → try nonCodexDefaultModel with effort: low,
- *    fallback to Codex default if not available
- */
-async function resolveModelAndEffort(
-	ctx: ExtensionContext,
-	token: string,
-	accountId: string,
-	baseUrl: string,
-): Promise<ResolvedModelAndEffort> {
-	const configModel = MEKANN_CODEX_WEB_SEARCH_DEFAULTS.model;
-	const configEffort = MEKANN_CODEX_WEB_SEARCH_DEFAULTS.effort as CodexReasoningEffort | undefined;
-
-	// 1. Config override
-	if (configModel) {
-		return { model: configModel, effort: configEffort ?? undefined, source: "explicit" };
-	}
-
-	const isCodexProvider = ctx.model?.provider === CODEX_PROVIDER_ID;
-	const cached = await getCachedCodexModels({ token, accountId, baseUrl });
-	const availableIds = cached.modelIds;
-
-	// 2. Codex provider → use current model, fallback to Codex default
-	if (isCodexProvider && ctx.model?.id) {
-		if (availableIds.has(ctx.model.id)) {
-			const model = findModelById(cached.models, ctx.model.id);
-			return { model: ctx.model.id, effort: normalizeReasoningEffortForModel(configEffort, model), source: "current_codex" };
-		}
-		// Current model not available for web search → fallback
-		const fallbackModel = findModelById(cached.models, cached.defaultModelId);
-		return { model: cached.defaultModelId, effort: normalizeReasoningEffortForModel(configEffort, fallbackModel), source: "codex_default" };
-	}
-
-	// 3. Non-codex provider → try non-codex default model, then Codex default
-	const nonCodexModel = MEKANN_CODEX_WEB_SEARCH_DEFAULTS.nonCodexDefaultModel;
-	const nonCodexEffort = MEKANN_CODEX_WEB_SEARCH_DEFAULTS.nonCodexDefaultEffort as CodexReasoningEffort;
-
-	if (availableIds.has(nonCodexModel)) {
-		const model = findModelById(cached.models, nonCodexModel);
-		return { model: nonCodexModel, effort: normalizeReasoningEffortForModel(nonCodexEffort, model), source: "non_codex_default" };
-	}
-
-	const fallbackModel = findModelById(cached.models, cached.defaultModelId);
-	return { model: cached.defaultModelId, effort: normalizeReasoningEffortForModel(nonCodexEffort, fallbackModel), source: "codex_default" };
+function buildRuntimeConfig(): CodexWebSearchConfig {
+	return {
+		model: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.model,
+		effort: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.effort ?? undefined,
+		nonCodexDefaultModel: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.nonCodexDefaultModel,
+		nonCodexDefaultEffort: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.nonCodexDefaultEffort,
+		defaultSearchContextSize: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.defaultSearchContextSize,
+		externalWebAccess: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.externalWebAccess,
+		baseUrl: MEKANN_CODEX_DEFAULTS.baseUrl,
+	};
 }
 
 // ---------------------------------------------------------------------------
-// Streaming helper with throttled onUpdate
+// Pi streaming adapter
 // ---------------------------------------------------------------------------
 
-const STREAM_THROTTLE_MS = 50;
-
-function createStreamingCallback(
+function createPiStreamingCallback(
 	onUpdate: AgentToolUpdateCallback<CodexWebSearchDetails> | undefined,
 ) {
-	let accumulatedText = "";
-	let lastUpdateAt = 0;
-	let pendingTimer: ReturnType<typeof setTimeout> | undefined;
-
-	const emitUpdate = () => {
+	// The runtime calls onTextDelta with accumulated text.
+	// We translate to Pi's AgentToolUpdateCallback format.
+	return (accumulatedText: string) => {
 		onUpdate?.({
 			content: [{ type: "text" as const, text: accumulatedText }],
 			details: { streaming: true } as CodexWebSearchDetails,
 		});
 	};
-
-	const handleDelta = (delta: string) => {
-		accumulatedText += delta;
-
-		const now = Date.now();
-		const elapsed = now - lastUpdateAt;
-
-		if (elapsed >= STREAM_THROTTLE_MS) {
-			lastUpdateAt = now;
-			emitUpdate();
-			return;
-		}
-
-		if (!pendingTimer) {
-			pendingTimer = setTimeout(() => {
-				pendingTimer = undefined;
-				lastUpdateAt = Date.now();
-				emitUpdate();
-			}, STREAM_THROTTLE_MS - elapsed);
-		}
-	};
-
-	return { handleDelta };
 }
 
 // ---------------------------------------------------------------------------
-// Result helper
+// Error formatting
 // ---------------------------------------------------------------------------
 
-function buildSuccessResult(
-	result: Awaited<ReturnType<typeof fetchCodexWebSearch>>,
-	modelSource?: ModelResolutionSource,
-	effort?: CodexReasoningEffort,
-	searchContextSize?: SearchContextSize,
-): AgentToolResult<CodexWebSearchDetails> {
-	const text = formatResultText(result);
-	const details: CodexWebSearchDetails = {
-		responseId: result.responseId,
-		model: result.model,
-		modelSource,
-		effort,
-		searchContextSize,
-		searchCalls: result.searchCalls,
-		citations: result.citations,
-		usage: result.usage,
-		rawText: result.text,
-		streaming: false,
-	};
-	return { content: [{ type: "text", text }], details };
+function formatUserErrorMessage(kind: string): string {
+	switch (kind) {
+		case "auth":
+			return "Codex auth is required. Run Pi /login for OpenAI Codex.";
+		case "rate_limit":
+			return "Codex rate limit reached. Please wait a moment and try again.";
+		case "timeout":
+			return "Codex web search timed out. Please try again.";
+		case "transport":
+			return "Codex connection error. Please check your network and try again.";
+		default:
+			return "Codex web search failed. Please try again later.";
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -242,17 +153,15 @@ function formatMetadataLine(details: CodexWebSearchDetails): string {
 	return parts.join(" \u00b7 ");
 }
 
-// ---------------------------------------------------------------------------
-// Custom renderResult with metadata footer
-// ---------------------------------------------------------------------------
-
 function formatDisplayText(text: string): string {
 	return text
-		// Bold markdown markers make raw tool output noisy in the TUI.
 		.replace(/\*\*([^*]+)\*\*/g, "$1")
-		// Render markdown links as readable plain text while preserving URLs.
 		.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 — $2");
 }
+
+// ---------------------------------------------------------------------------
+// TUI Component
+// ---------------------------------------------------------------------------
 
 class CodexWebSearchResultComponent implements Component {
 	private readonly text: Text;
@@ -279,6 +188,8 @@ class CodexWebSearchResultComponent implements Component {
 // ---------------------------------------------------------------------------
 // Tool definition
 // ---------------------------------------------------------------------------
+
+const runtime = new CodexWebSearchRuntime(buildRuntimeConfig());
 
 const codexWebSearchTool: ToolDefinition<typeof CodexWebSearchParams, CodexWebSearchDetails> = {
 	name: "codex_web_search",
@@ -323,64 +234,35 @@ const codexWebSearchTool: ToolDefinition<typeof CodexWebSearchParams, CodexWebSe
 		onUpdate: AgentToolUpdateCallback<CodexWebSearchDetails> | undefined,
 		ctx: ExtensionContext,
 	): Promise<AgentToolResult<CodexWebSearchDetails>> {
-		// Resolve auth
+		// 1. Resolve auth from Pi context
 		const auth = await resolveCodexAuth(ctx);
-		const baseUrl = MEKANN_CODEX_DEFAULTS.baseUrl;
 
-		// Resolve model + effort
-		const resolved = await resolveModelAndEffort(ctx, auth.token, auth.accountId, baseUrl);
+		// 2. Adapt Pi streaming callback
+		const piOnTextDelta = createPiStreamingCallback(onUpdate);
 
-		// Streaming callback
-		const { handleDelta } = createStreamingCallback(onUpdate);
-
-		const externalWebAccess = MEKANN_CODEX_WEB_SEARCH_DEFAULTS.externalWebAccess;
-		const defaultSearchContextSize = MEKANN_CODEX_WEB_SEARCH_DEFAULTS.defaultSearchContextSize;
-
-		const searchContextSize = params.searchContextSize ?? defaultSearchContextSize;
-
-		const runSearch = (model: string, effort?: CodexReasoningEffort) =>
-			fetchCodexWebSearch({
+		// 3. Delegate to runtime
+		try {
+			const output = await runtime.execute({
 				query: params.query,
-				searchContextSize,
+				searchContextSize: params.searchContextSize,
 				token: auth.token,
 				accountId: auth.accountId,
-				model,
-				baseUrl,
-				externalWebAccess,
-				effort,
+				currentModel: ctx.model
+					? { id: ctx.model.id, provider: ctx.model.provider }
+					: undefined,
+				onTextDelta: piOnTextDelta,
 				signal: signal ?? undefined,
-				onTextDelta: handleDelta,
 			});
 
-		try {
-			const result = await runSearch(resolved.model, resolved.effort);
-			return buildSuccessResult(result, resolved.source, resolved.effort, searchContextSize);
+			return {
+				content: [{ type: "text", text: output.text }],
+				details: output.details,
+			};
 		} catch (error) {
-			// Retry: model not found → invalidate cache, retry with Codex default
-			if (isModelAvailabilityError(error)) {
-				invalidateCodexModelsCache({ baseUrl, accountId: auth.accountId });
-				const refreshed = await getCachedCodexModels({
-					token: auth.token,
-					accountId: auth.accountId,
-					baseUrl,
-				});
-				const fallbackModel = findModelById(refreshed.models, refreshed.defaultModelId);
-				const fallbackEffort = normalizeReasoningEffortForModel(resolved.effort, fallbackModel);
-				const result = await runSearch(refreshed.defaultModelId, fallbackEffort);
-				return buildSuccessResult(result, "codex_default", fallbackEffort, searchContextSize);
-			}
-
-			// Retry: reasoning parameter not supported → retry without effort
-			if (isReasoningParameterError(error) && resolved.effort) {
-				const result = await runSearch(resolved.model);
-				return buildSuccessResult(result, resolved.source, undefined, searchContextSize);
-			}
-
-			// Re-throw with user-friendly message
 			if (error instanceof CodexError) {
 				throw new CodexError(
 					error.kind,
-					formatUserErrorMessage(error.kind, error.message),
+					formatUserErrorMessage(error.kind),
 					error.status,
 				);
 			}
@@ -391,24 +273,6 @@ const codexWebSearchTool: ToolDefinition<typeof CodexWebSearchParams, CodexWebSe
 		}
 	},
 };
-
-function formatUserErrorMessage(
-	kind: string,
-	_message: string,
-): string {
-	switch (kind) {
-		case "auth":
-			return "Codex auth is required. Run Pi /login for OpenAI Codex.";
-		case "rate_limit":
-			return "Codex rate limit reached. Please wait a moment and try again.";
-		case "timeout":
-			return "Codex web search timed out. Please try again.";
-		case "transport":
-			return "Codex connection error. Please check your network and try again.";
-		default:
-			return "Codex web search failed. Please try again later.";
-	}
-}
 
 // ---------------------------------------------------------------------------
 // Registration
