@@ -99,6 +99,7 @@ class DashboardPiComponent implements Component {
 		graphBase64: string | undefined,
 		private readonly close: () => void,
 		avatarMimeType?: string,
+		private readonly avatarDebug?: string,
 	) {
 		const imageTheme: ImageTheme = { fallbackColor: (s) => `${MUTED}${s}${RESET}` };
 
@@ -143,6 +144,8 @@ class DashboardPiComponent implements Component {
 			if (this.avatarImage) {
 				const avatarLines = this.avatarImage.render(w);
 				lines.push(...avatarLines);
+			} else {
+				lines.push(`${MUTED}[avatar: no image object — check mime/fetch]${RESET}`);
 			}
 			lines.push(`${GREEN}@${p.login}${p.name ? `${MUTED} · ${WHITE}${p.name}${RESET}` : ""}`);
 			if (p.bio) lines.push(`${MUTED}${p.bio}${RESET}`);
@@ -151,6 +154,10 @@ class DashboardPiComponent implements Component {
 		} else {
 			lines.push(`${MUTED}GitHub profile unavailable: ${profile.error}${RESET}`);
 		}
+
+		// ── debug info (temporary) ────────────────────────────────────
+		lines.push(`${MUTED}[debug] ${this.avatarDebug}${RESET}`);
+		lines.push(""); // spacer
 
 		lines.push(""); // spacer
 
@@ -236,8 +243,9 @@ export function createDashboardPiComponent(
 	graphBase64: string | undefined,
 	close: () => void,
 	avatarMimeType?: string,
+	avatarDebug?: string,
 ): Component {
-	return new DashboardPiComponent(vm, avatarBase64, graphBase64, close, avatarMimeType);
+	return new DashboardPiComponent(vm, avatarBase64, graphBase64, close, avatarMimeType, avatarDebug);
 }
 
 // ── data collection ───────────────────────────────────────────────────
@@ -315,10 +323,15 @@ export default function dashboard(pi: ExtensionAPI): void {
 			]);
 			const avatarBase64 = avatarResult?.base64;
 			const avatarMimeType = avatarResult?.mimeType;
+			const avatarDebug = avatarResult
+				? `avatar fetched: ${avatarResult.mimeType} ${avatarResult.base64.length} chars`
+				: vm.profile.ok
+					? `avatar fetch failed (url=${vm.profile.profile.avatarUrl ?? "undefined"})`
+					: `profile not ok: ${vm.profile.error}`;
 			ctx.ui.setFooter(() => ({ render: () => [], invalidate: () => {} }));
 			try {
 				await ctx.ui.custom<void>((tui, _theme, _keybindings, done) => {
-					const component = createDashboardPiComponent(vm, avatarBase64, graphBase64, () => done(undefined), avatarMimeType);
+					const component = createDashboardPiComponent(vm, avatarBase64, graphBase64, () => done(undefined), avatarMimeType, avatarDebug);
 					return {
 						render: (width) => component.render(width),
 						handleInput: (data) => {
