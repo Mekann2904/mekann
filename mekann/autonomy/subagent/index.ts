@@ -262,7 +262,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       const minWait = Number(getFlagOrSetting("subagent-min-wait-timeout-ms", "min-wait-timeout-ms", minWaitDefault)) || MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs;
       const rawDisplayFlag = getFlagOrSetting<string>("subagent-display", "display", MEKANN_SUBAGENT_DEFAULTS.display);
       const displayFlag = String(rawDisplayFlag ?? MEKANN_SUBAGENT_DEFAULTS.display);
-      const displayMode = displayFlag === "kitty-pi" || displayFlag === "kitty-split" ? displayFlag : "none";
+      const requestedDisplayMode = displayFlag === "kitty-pi" || displayFlag === "kitty-split" ? displayFlag : "none";
+      const displayMode = requestedDisplayMode.startsWith("kitty-") && !process.env.KITTY_WINDOW_ID ? "none" : requestedDisplayMode;
       const allowUnsafeExternalPi = /^(1|true|yes|on)$/i.test(
         String(getFlagOrSetting<string>(
           "subagent-allow-unsafe-external-pi",

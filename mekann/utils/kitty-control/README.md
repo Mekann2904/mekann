@@ -15,4 +15,4 @@
 
 ## Fallback policy
 
-Kitty remote control が使えない場合、この utility は例外または `undefined` を返します。呼び出し側は pass-through や existing display fallback を維持してください。
+Kitty remote control が使えない場合、この utility は例外または `undefined` を返します。呼び出し側は pass-through や existing display fallback を維持してください。Subagent display は non-Kitty 環境では Kitty display mode を無効化し、in-process subagent として動作します。
