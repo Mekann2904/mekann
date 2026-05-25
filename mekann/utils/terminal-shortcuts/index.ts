@@ -16,6 +16,8 @@ type LauncherStrategy = "pass-through";
 
 const BUILT_IN_SHORTCUTS: Record<string, TerminalShortcut> = {
 	lg: { mode: "argv", argv: ["lazygit"] },
+	zed: { mode: "argv", argv: ["zed", "."] },
+	"zed .": { mode: "argv", argv: ["zed", "."] },
 };
 
 function parseShortcutEnv(value: string | undefined): Record<string, TerminalShortcut> {
