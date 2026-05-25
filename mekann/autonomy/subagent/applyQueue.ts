@@ -1,132 +1,120 @@
-import { execFile as execFileCb } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { promisify } from "node:util";
 import path from "node:path";
-import type { ApplyAgentResultsParams, ApplyAgentResultsResult, ApplyRecord, PatchProposalResult, RejectReason, RequiredCheck, StoredSubagentResult, ValidationCommand, ValidationResult } from "./types.js";
+import type { ApplyAgentResultsParams, ApplyAgentResultsResult, ApplyRecord, RejectReason, StoredSubagentResult } from "./types.js";
 import { SubagentResultStore } from "./resultStore.js";
-import { evaluateSemanticConflict } from "./semanticConflict.js";
-import { admitPatchProposal } from "./patchProposalIntake.js";
+import { ExecFileGitPatchAdapter } from "./gitPatchAdapter.js";
+import { ExecFileValidationRunner } from "./validationRunner.js";
+import { ResultStoreSemanticLogReader } from "./resultStoreAdapter.js";
+import { PatchApplicationPipeline, type PatchApplicationDecision } from "./patchApplicationPipeline.js";
 
-const execFile = promisify(execFileCb);
-
-export class ApplyQueue {
-  constructor(private readonly store: SubagentResultStore, private readonly cwd = process.cwd(), private readonly shellAllowlist: Record<string, string> = {}) {}
-  listAgentResults(filter?: Parameters<SubagentResultStore["list"]>[0]) { return this.store.list(filter); }
-  showAgentResult(resultId: string, includePatch = false): StoredSubagentResult & { patch_body?: string } {
-    const s = this.store.load(resultId) as StoredSubagentResult & { patch_body?: string };
-    if (includePatch && s.result.outcome === "patch" && s.result.patch.ref) {
-      if (!isUnderDir(s.result.patch.ref, this.store.dir)) throw new Error("invalid patch ref");
-      s.patch_body = readFileSync(s.result.patch.ref, "utf8");
-    }
-    return s;
-  }
-  rejectAgentResult(resultId: string, reason: RejectReason = "manual_reject") { this.store.markRejected(resultId, reason); return { result_id: resultId, reason }; }
-  async applyAgentResults(params: ApplyAgentResultsParams = {}): Promise<ApplyAgentResultsResult> {
-    this.store.recoverStaleApplying();
-    const result: ApplyAgentResultsResult = { applied: [], rejected: [], needs_review: [], skipped: [] };
-    const items = (params.source === "result_ids" ? (params.result_ids ?? []).map((id) => this.store.load(id)) : this.store.list({ status: "pending" })).slice(0, params.max_results ?? Infinity);
-    for (const stored of items) {
-      if (stored.status !== "pending" && !(stored.status === "needs_review" && params.allow_high_risk)) { result.skipped.push({ result_id: stored.result_id, reason: `status:${stored.status}` }); continue; }
-      await this.applyOne(stored, params, result);
-    }
-    return result;
-  }
-  private reject(out: ApplyAgentResultsResult, id: string, reason: RejectReason, details?: unknown) { this.store.markRejected(id, reason, details); out.rejected.push({ result_id: id, reason, details }); }
-  private review(out: ApplyAgentResultsResult, id: string, reason: string, details?: unknown) { this.store.markNeedsReview(id, reason, details); out.needs_review.push({ result_id: id, reason, details }); }
-  private async applyOne(stored: StoredSubagentResult, params: ApplyAgentResultsParams, out: ApplyAgentResultsResult): Promise<void> {
-    const state: { patchApplied: boolean; ref?: string } = { patchApplied: false };
-    try { return await this.applyOneInner(stored, params, out, state); }
-    catch (err) {
-      let rollbackAttempted = false; let rollbackOk: boolean | undefined;
-      if (state.patchApplied && state.ref && params.rollback_on_failure !== false) {
-        rollbackAttempted = true;
-        try { await execFile("git", ["apply", "-R", state.ref], { cwd: this.cwd }); rollbackOk = true; } catch { rollbackOk = false; }
-      }
-      return this.review(out, stored.result_id, state.patchApplied ? "apply_engine_exception_after_patch_applied" : "apply_engine_exception", { error: err instanceof Error ? err.message : String(err), patch_applied: state.patchApplied, rollback_attempted: rollbackAttempted, rollback_ok: rollbackOk });
-    }
-  }
-  private async applyOneInner(stored: StoredSubagentResult, params: ApplyAgentResultsParams, out: ApplyAgentResultsResult, state: { patchApplied: boolean; ref?: string }): Promise<void> {
-    if (stored.workspace_cwd && path.resolve(stored.workspace_cwd) !== path.resolve(this.cwd)) return this.review(out, stored.result_id, "workspace_cwd_mismatch", { stored: stored.workspace_cwd, current: this.cwd });
-    const r = stored.result;
-    if (r.outcome === "no_change" || r.outcome === "observation") { this.store.markSuperseded(stored.result_id, r.outcome); out.skipped.push({ result_id: stored.result_id, reason: r.outcome }); return; }
-    if (r.outcome === "needs_decision") return this.review(out, stored.result_id, r.question);
-    if (r.outcome === "blocked") return this.reject(out, stored.result_id, "manual_reject", r.reason);
-    this.store.markApplying(stored.result_id);
-    const patch = r as PatchProposalResult;
-    const ref = patch.patch.ref;
-    state.ref = ref;
-    if (!ref || !isUnderDir(ref, this.store.dir)) return this.reject(out, stored.result_id, "invalid_patch_ref");
-    const intake = admitPatchProposal({
-      cwd: this.cwd,
-      proposal: patch,
-      authority: stored.authority,
-      authorityEnforced: stored.authority_enforced,
-      patchRefRootDir: this.store.dir,
-      profile: "subagent_apply",
-    });
-    if (intake.kind !== "allow") {
-      if (intake.kind === "review") return this.review(out, stored.result_id, intake.reason, intake.details);
-      return this.reject(out, stored.result_id, intake.reason as RejectReason, intake.details);
-    }
-    const actualTouched = intake.touchedPaths;
-    if (intake.canonicalWriteScope.length === 0) return this.review(out, stored.result_id, "write_scope is not specified; auto apply requires explicit authority scope", { actualTouched });
-    for (const p of actualTouched) if (isReviewOnlyPath(p)) return this.review(out, stored.result_id, "execution_sensitive_path_requires_review", { path: p });
-
-    const conflict = evaluateSemanticConflict(patch, this.store.readSemanticLog(), { allowHighRisk: params.allow_high_risk });
-    if (conflict.action === "require_regeneration") return this.reject(out, stored.result_id, "require_regeneration", conflict);
-    if (conflict.action === "require_review") return this.review(out, stored.result_id, conflict.reason, conflict);
-    if (patch.semantic.risk.level === "high" && !params.allow_high_risk) return this.review(out, stored.result_id, "High semantic risk requires review");
-
-    const requiredResolution = this.resolveRequiredChecks(patch.validation.required ?? [], patch.validation.suggested);
-    if (!requiredResolution.ok) return this.review(out, stored.result_id, "Required validation check has no command mapping", requiredResolution);
-    const validationCommands = dedupeValidationCommands([...patch.validation.suggested, ...requiredResolution.commands]);
-    const disallowed = validationCommands.find((cmd) => !this.isValidationAllowed(cmd, stored));
-    if (disallowed) return this.reject(out, stored.result_id, "validation_command_not_allowed", disallowed);
-
-    try { await execFile("git", ["apply", "--check", ref], { cwd: this.cwd }); } catch (err) { return this.reject(out, stored.result_id, "patch_check_failed", err instanceof Error ? err.message : String(err)); }
-    try { await execFile("git", ["apply", ref], { cwd: this.cwd }); state.patchApplied = true; } catch (err) { return this.reject(out, stored.result_id, "patch_check_failed", err instanceof Error ? err.message : String(err)); }
-
-    const validations: ValidationResult[] = [];
-    for (const cmd of validationCommands) {
-      const vr = await this.runValidation(cmd);
-      validations.push(vr);
-      if (!vr.ok) {
-        if (params.rollback_on_failure !== false) { try { await execFile("git", ["apply", "-R", ref], { cwd: this.cwd }); state.patchApplied = false; } catch { /* best-effort */ } }
-        return this.reject(out, stored.result_id, "validation_failed", vr);
-      }
-    }
-    const validationResult: ValidationResult = validations.find((v) => !v.ok) ?? { ok: true, output: validations.map((v) => v.output).filter(Boolean).join("\n") };
-    const applyRecord: ApplyRecord = { result_id: stored.result_id, agent_path: stored.agent_path, applied_at: Date.now(), patch_ref: ref, validation_result: validationResult };
-    this.store.markApplied(stored.result_id, applyRecord);
-    this.store.appendSemanticLog({ result_id: stored.result_id, agent_path: stored.agent_path, applied_at: applyRecord.applied_at, reads: patch.semantic.reads, writes: patch.semantic.writes, assumptions: patch.semantic.assumptions, effects: patch.semantic.effects, public_surface_delta: patch.semantic.public_surface_delta, validation_result: validationResult });
-    out.applied.push(applyRecord);
-  }
-  private isValidationAllowed(cmd: ValidationCommand, stored: StoredSubagentResult): boolean {
-    const allowed = stored.authority?.allowed_commands ?? [];
-    return allowed.some((a) => commandKey(a) === commandKey(cmd));
-  }
-  private resolveRequiredChecks(required: RequiredCheck[], suggested: ValidationCommand[]): { ok: true; commands: ValidationCommand[] } | { ok: false; missing: RequiredCheck[] } {
-    const commands: ValidationCommand[] = [];
-    const missing: RequiredCheck[] = [];
-    for (const check of required) {
-      if (check.command) { commands.push(check.command); continue; }
-      const byConvention = suggested.find((cmd) => cmd.kind === "npm_script" && cmd.script === check.kind);
-      if (byConvention) commands.push(byConvention);
-      else missing.push(check);
-    }
-    return missing.length ? { ok: false, missing } : { ok: true, commands };
-  }
-  private async runValidation(cmd: ValidationCommand): Promise<ValidationResult> {
-    try {
-      if (cmd.kind === "npm_script") { const r = await execFile("npm", ["run", cmd.script, "--", ...(cmd.args ?? [])], { cwd: this.cwd }); return { ok: true, command: cmd, output: `${r.stdout}${r.stderr}` }; }
-      const bin = this.shellAllowlist[cmd.command_id];
-      if (!bin) return { ok: false, command: cmd, error: "command_id not configured" };
-      const r = await execFile(bin, cmd.args ?? [], { cwd: this.cwd }); return { ok: true, command: cmd, output: `${r.stdout}${r.stderr}` };
-    } catch (err) { return { ok: false, command: cmd, error: err instanceof Error ? err.message : String(err) }; }
-  }
+function isUnderDir(file: string, dir: string): boolean {
+	const rel = path.relative(path.resolve(dir), path.resolve(file));
+	return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
 }
 
-function isUnderDir(file: string, dir: string): boolean { const rel = path.relative(path.resolve(dir), path.resolve(file)); return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel); }
-function isReviewOnlyPath(file: string): boolean { return file === ".husky" || file.startsWith(".husky/"); }
-function commandKey(cmd: ValidationCommand): string { return cmd.kind === "npm_script" ? JSON.stringify({ kind: "npm_script", script: cmd.script, args: cmd.args ?? [] }) : JSON.stringify({ kind: "shell_allowlisted", command_id: cmd.command_id, args: cmd.args ?? [] }); }
-function dedupeValidationCommands(commands: ValidationCommand[]): ValidationCommand[] { const seen = new Set<string>(); const out: ValidationCommand[] = []; for (const c of commands) { const k = commandKey(c); if (!seen.has(k)) { seen.add(k); out.push(c); } } return out; }
+export class ApplyQueue {
+	private readonly pipeline: PatchApplicationPipeline;
+
+	constructor(
+		private readonly store: SubagentResultStore,
+		private readonly cwd = process.cwd(),
+		private readonly shellAllowlist: Record<string, string> = {},
+	) {
+		this.pipeline = new PatchApplicationPipeline({
+			cwd: this.cwd,
+			patchRefRootDir: this.store.dir,
+			git: new ExecFileGitPatchAdapter(this.cwd),
+			validator: new ExecFileValidationRunner(this.cwd, this.shellAllowlist),
+			semanticLog: new ResultStoreSemanticLogReader(this.store),
+		});
+	}
+
+	listAgentResults(filter?: Parameters<SubagentResultStore["list"]>[0]) {
+		return this.store.list(filter);
+	}
+
+	showAgentResult(resultId: string, includePatch = false): StoredSubagentResult & { patch_body?: string } {
+		const s = this.store.load(resultId) as StoredSubagentResult & { patch_body?: string };
+		if (includePatch && s.result.outcome === "patch" && s.result.patch.ref) {
+			if (!isUnderDir(s.result.patch.ref, this.store.dir)) throw new Error("invalid patch ref");
+			s.patch_body = readFileSync(s.result.patch.ref, "utf8");
+		}
+		return s;
+	}
+
+	rejectAgentResult(resultId: string, reason: RejectReason = "manual_reject") {
+		this.store.markRejected(resultId, reason);
+		return { result_id: resultId, reason };
+	}
+
+	async applyAgentResults(params: ApplyAgentResultsParams = {}): Promise<ApplyAgentResultsResult> {
+		this.store.recoverStaleApplying();
+		const result: ApplyAgentResultsResult = { applied: [], rejected: [], needs_review: [], skipped: [] };
+		const items = (params.source === "result_ids"
+			? (params.result_ids ?? []).map((id) => this.store.load(id))
+			: this.store.list({ status: "pending" })
+		).slice(0, params.max_results ?? Infinity);
+
+		for (const stored of items) {
+			if (stored.status !== "pending" && !(stored.status === "needs_review" && params.allow_high_risk)) {
+				result.skipped.push({ result_id: stored.result_id, reason: `status:${stored.status}` });
+				continue;
+			}
+			await this.applyOne(stored, params, result);
+		}
+		return result;
+	}
+
+	private reject(out: ApplyAgentResultsResult, id: string, reason: RejectReason, details?: unknown) {
+		this.store.markRejected(id, reason, details);
+		out.rejected.push({ result_id: id, reason, details });
+	}
+
+	private review(out: ApplyAgentResultsResult, id: string, reason: string, details?: unknown) {
+		this.store.markNeedsReview(id, reason, details);
+		out.needs_review.push({ result_id: id, reason, details });
+	}
+
+	private async applyOne(
+		stored: StoredSubagentResult,
+		params: ApplyAgentResultsParams,
+		out: ApplyAgentResultsResult,
+	): Promise<void> {
+		// Preserve the previous trust-transition state marker: only patch results
+		// in the current workspace enter the transient applying state. Preliminary
+		// outcomes (no_change/observation/needs_decision/blocked) and workspace
+		// mismatches should not be marked applying.
+		if (
+			stored.result.outcome === "patch" &&
+			(!stored.workspace_cwd || path.resolve(stored.workspace_cwd) === path.resolve(this.cwd))
+		) {
+			this.store.markApplying(stored.result_id);
+		}
+		const decision = await this.pipeline.apply({ stored, params });
+		this.applyDecision(decision, stored, out);
+	}
+
+	private applyDecision(
+		decision: PatchApplicationDecision,
+		stored: StoredSubagentResult,
+		out: ApplyAgentResultsResult,
+	): void {
+		switch (decision.kind) {
+			case "applied":
+				this.store.markApplied(stored.result_id, decision.record);
+				this.store.appendSemanticLog(decision.semanticLog);
+				out.applied.push(decision.record);
+				break;
+			case "rejected":
+				this.reject(out, stored.result_id, decision.reason, decision.details);
+				break;
+			case "needs_review":
+				this.review(out, stored.result_id, decision.reason, decision.details);
+				break;
+			case "skipped":
+				this.store.markSuperseded(stored.result_id, decision.reason);
+				out.skipped.push({ result_id: stored.result_id, reason: decision.reason });
+				break;
+		}
+	}
+}
