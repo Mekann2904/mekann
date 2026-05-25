@@ -308,6 +308,37 @@ export class SubagentLifecycle {
     }
   }
 
+  async closeRuntime(agentPath: string, adapters: Pick<SpawnDelegationAdapters, "kitty" | "externalPiSlots">): Promise<void> {
+    this.removeQueued(agentPath);
+    const agent = this.registry.get(agentPath);
+    const display = agent?.display;
+    this.logDisplay(display, "[status] shutdown", adapters.kitty);
+
+    const rt = this.getRuntime(agentPath);
+    if (rt?.mode === "external_pi") {
+      try { await this.getHub(rt.agentId)?.send(rt.agentId, { type: "shutdown", id: `shutdown_${Date.now()}` }); } catch { /* best-effort */ }
+      try { await this.getHub(rt.agentId)?.stop(); } catch { /* best-effort */ }
+      this.deleteHub(rt.agentId);
+      adapters.externalPiSlots.delete(rt.agentId);
+      this.deleteRuntime(agentPath);
+    } else {
+      const session = rt?.mode === "in_process" ? rt.session : this.getChildSession(agentPath);
+      if (session) {
+        try { await session.abort(); } catch { /* best-effort */ }
+        try { session.dispose(); } catch { /* best-effort */ }
+      }
+      this.deleteRuntime(agentPath);
+      this.deleteChildSession(agentPath);
+    }
+
+    if (display) {
+      try { await adapters.kitty.close(display); } catch { /* best-effort */ }
+      this.registry.updateAgent(agentPath, { display: { ...display, status: "closed" } });
+    }
+    this.registry.close(agentPath, "shutdown");
+    this.mailbox.appendEvent({ type: "agent_close_end", agentId: this.registry.get(agentPath)?.agentId ?? "unknown", agentPath, timestamp: Date.now() });
+  }
+
   getChildSession(agentPath: string): AgentSession | undefined { return this.childSessions.get(agentPath); }
   setChildSession(agentPath: string, session: AgentSession): void { this.childSessions.set(agentPath, session); }
   deleteChildSession(agentPath: string): void { this.childSessions.delete(agentPath); }

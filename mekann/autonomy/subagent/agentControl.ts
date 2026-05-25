@@ -163,20 +163,12 @@ export class AgentControl {
     return resolveTaskPath(trimmed, callerPath);
   }
 
-  private evBase(agentId: string, agentPath: string) {
-    return { agentId, agentPath, timestamp: Date.now() };
-  }
-
   private resultStoreFor(cwd: string): SubagentResultStore {
     return this.lifecycle.resultStoreFor(path.resolve(cwd));
   }
 
   private applyQueueFor(cwd: string): ApplyQueue {
     return new ApplyQueue(this.resultStoreFor(cwd), cwd);
-  }
-
-  private parentAgentId(callerPath: string): string | undefined {
-    return callerPath === ROOT_PATH ? undefined : callerPath;
   }
 
   // ─── Helper: resolve model / thinking from params ─────────────────
@@ -210,10 +202,6 @@ export class AgentControl {
   private displayResult(display?: AgentDisplayRef): AgentDisplayResult | undefined {
     if (!display) return undefined;
     return { kind: display.kind, status: display.status, window_id: display.windowId, title: display.title, log_path: display.logPath, socket_path: display.socketPath, pid: display.pid, error: display.error };
-  }
-
-  private wantsExternalPiDisplay(): boolean {
-    return this.displayMode === "kitty-pi" || this.displayMode === "kitty-split";
   }
 
   private logDisplay(display: AgentDisplayRef | undefined, line: string): void {
@@ -290,14 +278,6 @@ export class AgentControl {
         displayResult: (display) => this.displayResult(display),
       },
     });
-  }
-
-  private getRuntimeByAgentId(agentId: string): AgentRuntime | undefined {
-    return this.lifecycle.getRuntimeByAgentId(agentId);
-  }
-
-  private enqueueToMailbox(fromAgentId: string, fromPath: string, toPath: string, content: string, kind: "message" | "followup" | "final_result"): void {
-    this.sessionControl.enqueueToMailbox(fromAgentId, fromPath, toPath, content, kind);
   }
 
   private getCallerAgentId(callerPath: string): string {
@@ -408,37 +388,8 @@ export class AgentControl {
     return { closed };
   }
 
-  private async abortSession(agentPath: string): Promise<void> {
-    const rt = this.lifecycle.getRuntime(agentPath);
-    const session = rt?.mode === "in_process" ? rt.session : this.lifecycle.getChildSession(agentPath);
-    if (!session) return;
-    try { await session.abort(); } catch { /* best-effort */ }
-    try { session.dispose(); } catch { /* best-effort */ }
-    this.lifecycle.deleteRuntime(agentPath);
-    this.lifecycle.deleteChildSession(agentPath);
-  }
-
   private async closeSingle(agentPath: string): Promise<void> {
-    this.lifecycle.removeQueued(agentPath);
-    const display = this.registry.get(agentPath)?.display;
-    this.logDisplay(display, "[status] shutdown");
-    const rt = this.lifecycle.getRuntime(agentPath);
-    if (rt?.mode === "external_pi") {
-      try { await this.lifecycle.getHub(rt.agentId)?.send(rt.agentId, { type: "shutdown", id: `shutdown_${Date.now()}` }); } catch { /* best-effort */ }
-      try { await this.lifecycle.getHub(rt.agentId)?.stop(); } catch { /* best-effort */ }
-      this.lifecycle.deleteHub(rt.agentId);
-      processExternalPiSlots.delete(rt.agentId);
-      this.lifecycle.deleteRuntime(agentPath);
-    } else {
-      await this.abortSession(agentPath);
-    }
-    if (display) {
-      try { await this.kitty.close(display); } catch { /* best-effort */ }
-      this.registry.updateAgent(agentPath, { display: { ...display, status: "closed" } });
-    }
-    this.registry.close(agentPath, "shutdown");
-    this.mailbox.appendEvent({ type: "agent_close_end", ...this.evBase(this.registry.get(agentPath)?.agentId ?? "unknown", agentPath) });
-    // Queue draining is owned by SubagentLifecycle and is triggered when runtimes settle.
+    await this.lifecycle.closeRuntime(agentPath, { kitty: this.kitty, externalPiSlots: processExternalPiSlots });
   }
 
   async focus(target: string, ctx: ExtensionContext): Promise<{ focused: boolean; warning?: string }> {
