@@ -1,10 +1,14 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { execFile as execFileCb } from "node:child_process";
+import { promisify } from "node:util";
+import { mkdtemp, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerCleanupPath } from "./cleanup.js";
 import type { ContributionDay } from "./github.js";
 
-export type DashboardImage = { ok: true; path: string; columns: number; rows: number } | { ok: false; error: string };
+const execFile = promisify(execFileCb);
+
+export type DashboardImage = { ok: true; path: string; columns: number; rows: number; pngPath?: string } | { ok: false; error: string };
 
 export async function createContributionSvg(days: ContributionDay[] | undefined, options: { enabled: boolean; columns?: number; rows?: number } = { enabled: true }): Promise<DashboardImage | undefined> {
 	if (!options.enabled || !days?.length) return undefined;
@@ -52,7 +56,18 @@ ${rects}
 		registerCleanupPath(dir);
 		const path = join(dir, "contributions.svg");
 		await writeFile(path, svg);
-		return { ok: true, path, columns, rows };
+
+		// Convert SVG to PNG for Kitty graphics protocol (SVG is not a supported image format)
+		let pngPath: string | undefined;
+		try {
+			const png = join(dir, "contributions.png");
+			await execFile("rsvg-convert", ["--format", "png", "--output", png, path], { timeout: 5000 });
+			pngPath = png;
+		} catch {
+			// PNG conversion optional; SVG path remains for text fallback
+		}
+
+		return { ok: true, path, columns, rows, pngPath };
 	} catch (error) {
 		return { ok: false, error: error instanceof Error ? error.message : String(error) };
 	}

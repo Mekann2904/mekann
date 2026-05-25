@@ -27,7 +27,7 @@ An exact user input alias that launches a terminal-oriented command for the huma
 _Avoid_: shell alias, slash command, prompt shortcut
 
 **Dashboard feature**:
-A utility feature that presents human-facing project and usage status in an interactive terminal dashboard. It owns data collection and OpenTUI rendering for `/dashboard`, while `terminal-shortcuts` remains only the launch surface. Because the Dashboard feature runs an independent OpenTUI app, it must not use terminal shortcut pass-through on Pi's current TTY; that can leave Pi's scroll/input state inconsistent after returning. Launch `/dashboard` isolated in a Kitty split instead, and keep errors visible there with hold behavior.
+A utility feature that presents human-facing project and usage status in an interactive terminal dashboard. It owns data collection and Pi TUI rendering for `/dashboard`; OpenTUI rendering is standalone/debug-only and must not be launched on Pi's current TTY. Because an independent OpenTUI app owns terminal modes, input, cursor state, and alternate screen state, pass-through dashboard launches can leave Pi's scroll/input state inconsistent after returning. If the OpenTUI dashboard is needed, run it in a separate PTY such as a Kitty split or tmux pane; in-session `/dashboard` should remain a Pi TUI component.
 _Avoid_: dashboard shortcut, status command, prompt report, pass-through dashboard
 
 **GitHub dashboard identity**:

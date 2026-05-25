@@ -6,7 +6,7 @@ const GREEN = "#4ade80";
 type Box = { title: string; lines: string[]; width: number; height?: number };
 
 export function renderDashboardText(vm: DashboardViewModel, width = process.stdout.columns || 120): string {
-	const contentWidth = Math.max(80, Math.min(width - 4, 140));
+	const contentWidth = Math.max(20, Math.min(width, 140));
 	const profileIndent = vm.avatar?.ok ? "                  " : "";
 	const profile = vm.profile.ok
 		? [
@@ -49,7 +49,7 @@ export const dashboardTextColor = GREEN;
 
 function titleLine(width: number): string {
 	const left = "● ● ●   ◉ GitHub Dashboard";
-	const right = "[ OpenTUI ]";
+	const right = "[ Pi TUI ]";
 	return `${left}${" ".repeat(Math.max(1, width - visible(left) - visible(right)))}${right}`;
 }
 
