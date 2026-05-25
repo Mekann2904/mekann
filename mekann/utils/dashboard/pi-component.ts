@@ -8,6 +8,11 @@ import {
 	getImageDimensions,
 } from "@earendil-works/pi-tui";
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { registerCleanupPath } from "./cleanup.js";
 import { collectCurrentRepo } from "./current-repo.js";
 import { collectGitHubDashboard } from "./github.js";
 import type { DashboardViewModel } from "./view-model.js";
@@ -21,6 +26,10 @@ const BLUE = "\x1b[38;2;139;213;255m";
 const YELLOW = "\x1b[38;2;244;211;94m";
 const BOLD = "\x1b[1m";
 const RESET = "\x1b[0m";
+
+// ── avatar layout constants ───────────────────────────────────────────
+const AVATAR_COLS = 20;
+const AVATAR_ROWS = 8;
 
 // ── helpers ───────────────────────────────────────────────────────────
 function isDashboardImageLine(line: string): boolean {
@@ -90,38 +99,20 @@ class DashboardPiComponent implements Component {
 	private cachedLines?: string[];
 	private cachedWidth?: number;
 	private cachedHeight?: number;
-	private avatarImage: Image | undefined;
 	private graphImage: Image | undefined;
-	private _debugMime = '';
-	private _debugDims = '';
-	private _debugImageCreated = '';
+
+	/** Absolute path to the downloaded avatar image file (for kitten icat). */
+	private readonly avatarPath: string | undefined;
 
 	constructor(
 		private readonly vm: DashboardViewModel,
-		avatarBase64: string | undefined,
+		private readonly avatarFilePath: string | undefined,
 		graphBase64: string | undefined,
 		private readonly close: () => void,
-		avatarMimeType?: string,
-		private readonly avatarDebug?: string,
 	) {
-		const imageTheme: ImageTheme = { fallbackColor: (s) => `${MUTED}${s}${RESET}` };
+		this.avatarPath = avatarFilePath;
 
-		if (avatarBase64) {
-			const mimeType = avatarMimeType ?? guessImageMime(avatarBase64);
-			const dims = getImageDimensions(avatarBase64, mimeType);
-			this._debugMime = mimeType;
-			this._debugDims = dims ? `${dims.widthPx}x${dims.heightPx}` : 'null';
-			if (dims) {
-				this.avatarImage = new Image(avatarBase64, mimeType, imageTheme, { maxWidthCells: 20, maxHeightCells: 8 }, dims);
-				this._debugImageCreated = 'yes';
-			} else {
-				this._debugImageCreated = 'no (dims null)';
-			}
-		} else {
-			this._debugMime = 'N/A';
-			this._debugDims = 'N/A';
-			this._debugImageCreated = 'no (no base64)';
-		}
+		const imageTheme: ImageTheme = { fallbackColor: (s) => `${MUTED}${s}${RESET}` };
 
 		if (graphBase64) {
 			const dims = getImageDimensions(graphBase64, "image/png");
@@ -148,19 +139,16 @@ class DashboardPiComponent implements Component {
 		lines.push(titleLeft + " ".repeat(titlePad) + titleRight);
 
 		// ── profile + avatar row ───────────────────────────────────────
+		// The avatar is rendered via kitten icat --place (not through the
+		// TUI overlay pipeline) because the overlay compositor adds padding
+		// spaces that overwrite Kitty image cells.
 		const profile = this.vm.profile;
 
 		if (profile.ok) {
 			const p = profile.profile;
-			// Avatar image takes full-width rows (Pi TUI preserves image lines as-is)
-			if (this.avatarImage) {
-				const avatarLines = this.avatarImage.render(w);
-				const hasImageSeq = avatarLines.some(l => l.includes("\x1b_G"));
-				const totalBytes = avatarLines.reduce((s, l) => s + l.length, 0);
-				lines.push(`${MUTED}[avatar render: ${avatarLines.length} lines, ${totalBytes} bytes, hasKitty=${hasImageSeq}]${RESET}`);
-				lines.push(...avatarLines);
-			} else {
-				lines.push(`${MUTED}[avatar: no image object created]${RESET}`);
+			// Reserve AVATAR_ROWS empty lines for the kitten-icat image
+			if (this.avatarPath) {
+				for (let i = 0; i < AVATAR_ROWS; i++) lines.push("");
 			}
 			lines.push(`${GREEN}@${p.login}${p.name ? `${MUTED} · ${WHITE}${p.name}${RESET}` : ""}`);
 			if (p.bio) lines.push(`${MUTED}${p.bio}${RESET}`);
@@ -169,11 +157,6 @@ class DashboardPiComponent implements Component {
 		} else {
 			lines.push(`${MUTED}GitHub profile unavailable: ${profile.error}${RESET}`);
 		}
-
-		// ── debug info (temporary) ────────────────────────────────────
-		lines.push(`${MUTED}[debug] ${this.avatarDebug}${RESET}`);
-		lines.push(`${MUTED}[debug] mime=${this._debugMime} dims=${this._debugDims} imageCreated=${this._debugImageCreated}${RESET}`);
-		lines.push(""); // spacer
 
 		lines.push(""); // spacer
 
@@ -255,13 +238,11 @@ class DashboardPiComponent implements Component {
 
 export function createDashboardPiComponent(
 	vm: DashboardViewModel,
-	avatarBase64: string | undefined,
+	avatarFilePath: string | undefined,
 	graphBase64: string | undefined,
 	close: () => void,
-	avatarMimeType?: string,
-	avatarDebug?: string,
 ): Component {
-	return new DashboardPiComponent(vm, avatarBase64, graphBase64, close, avatarMimeType, avatarDebug);
+	return new DashboardPiComponent(vm, avatarFilePath, graphBase64, close);
 }
 
 // ── data collection ───────────────────────────────────────────────────
@@ -283,16 +264,22 @@ async function collectDashboardViewModel(cwd: string): Promise<DashboardViewMode
 	};
 }
 
-async function fetchAvatarBase64(url: string | undefined): Promise<{ base64: string; mimeType: string } | undefined> {
+/**
+ * Download the avatar image to a temp file suitable for `kitten icat`.
+ * Returns the absolute path to the file, or undefined on failure.
+ */
+async function downloadAvatarToFile(url: string | undefined): Promise<string | undefined> {
 	if (!url) return undefined;
 	try {
-		// Request a small PNG via size parameter; GitHub avatars support ?s= query
 		const sizedUrl = url.includes("?") ? `${url}&s=160` : `${url}?s=160`;
 		const resp = await fetch(sizedUrl);
 		if (!resp.ok) return undefined;
-		const contentType = resp.headers.get("content-type") ?? "image/png";
 		const buf = Buffer.from(await resp.arrayBuffer());
-		return { base64: buf.toString("base64"), mimeType: contentType };
+		const dir = await mkdtemp(join(tmpdir(), "mekann-dashboard-avatar-"));
+		registerCleanupPath(dir);
+		const path = join(dir, "avatar.jpg");
+		await writeFile(path, buf);
+		return path;
 	} catch {
 		return undefined;
 	}
@@ -313,43 +300,53 @@ async function generateGraphBase64(days: Array<{ date: string; count: number; le
 	}
 }
 
-// ── extension registration ────────────────────────────────────────────
-
-export function guessImageMime(base64: string): string {
-	const header = Buffer.from(base64.slice(0, 24), "base64");
-	// PNG: 89 50 4E 47
-	if (header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4e && header[3] === 0x47) return "image/png";
-	// JPEG: FF D8 FF
-	if (header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff) return "image/jpeg";
-	// GIF: GIF87a / GIF89a
-	if (header.slice(0, 3).toString("ascii") === "GIF") return "image/gif";
-	// WebP: RIFF....WEBP
-	if (header.slice(0, 4).toString("ascii") === "RIFF" && header.slice(8, 12).toString("ascii") === "WEBP") return "image/webp";
-	return "image/png";
+/**
+ * Place the avatar image on the terminal using `kitten icat --place`.
+ * This bypasses the TUI overlay compositor, which adds padding spaces
+ * that overwrite Kitty image cells and make images invisible.
+ */
+function placeAvatarIcat(avatarPath: string, row: number, col: number): void {
+	try {
+		spawnSync("kitten", [
+			"icat", "--silent", "--transfer-mode=file",
+			"--align=left", "--scale-up=yes",
+			"--place", `${AVATAR_COLS}x${AVATAR_ROWS}@${col}x${row}`,
+			avatarPath,
+		], { stdio: "inherit", timeout: 3000 });
+	} catch {
+		// Image rendering is cosmetic; keep the dashboard usable.
+	}
 }
+
+// ── extension registration ────────────────────────────────────────────
 export default function dashboard(pi: ExtensionAPI): void {
 	pi.registerCommand("dashboard", {
 		description: "Open the Mekann dashboard in Pi TUI",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify("Loading dashboard...", "info");
 			const vm = await collectDashboardViewModel(ctx.cwd);
-			const [avatarResult, graphBase64] = await Promise.all([
-				fetchAvatarBase64(vm.profile.ok ? vm.profile.profile.avatarUrl : undefined),
+			const [avatarPath, graphBase64] = await Promise.all([
+				downloadAvatarToFile(vm.profile.ok ? vm.profile.profile.avatarUrl : undefined),
 				generateGraphBase64(vm.contributionGraph.days),
 			]);
-			const avatarBase64 = avatarResult?.base64;
-			const avatarMimeType = avatarResult?.mimeType;
-			const avatarDebug = avatarResult
-				? `avatar fetched: ${avatarResult.mimeType} ${avatarResult.base64.length} chars`
-				: vm.profile.ok
-					? `avatar fetch failed (url=${vm.profile.profile.avatarUrl ?? "undefined"})`
-					: `profile not ok: ${vm.profile.error}`;
 			ctx.ui.setFooter(() => ({ render: () => [], invalidate: () => {} }));
 			try {
+				let avatarPlaced = false;
 				await ctx.ui.custom<void>((tui, _theme, _keybindings, done) => {
-					const component = createDashboardPiComponent(vm, avatarBase64, graphBase64, () => done(undefined), avatarMimeType, avatarDebug);
+					const component = createDashboardPiComponent(vm, avatarPath, graphBase64, () => done(undefined));
 					return {
-						render: (width) => component.render(width),
+						render: (width) => {
+							const lines = component.render(width);
+							// Place avatar via kitten icat on first render, AFTER the TUI
+							// has written its output. The TUI's differential rendering won't
+							// re-render unchanged empty placeholder lines, so the image persists.
+							if (!avatarPlaced && avatarPath) {
+								avatarPlaced = true;
+								// Row 1 = line index after the title bar
+								setTimeout(() => placeAvatarIcat(avatarPath, 1, 1), 80);
+							}
+							return lines;
+						},
 						handleInput: (data) => {
 							component.handleInput?.(data);
 							tui.requestRender();
