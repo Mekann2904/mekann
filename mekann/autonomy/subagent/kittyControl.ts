@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { mkdir, appendFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { AgentDisplayRef } from "./types.js";
+import { KittyControl } from "../../utils/kitty-control/index.js";
 
 const execFile = promisify(execFileCb);
 
@@ -26,7 +27,11 @@ function shellQuote(value: string): string {
 }
 
 export class KittyController {
-  constructor(private readonly kittenBin = "kitten") {}
+  private readonly kitty: KittyControl;
+
+  constructor(private readonly kittenBin = "kitten") {
+    this.kitty = new KittyControl(kittenBin);
+  }
 
   private buildChildScript(params: LaunchPiWindowParams): string {
     const piCommand = (params.piCommand ?? "pi").trim() || "pi";
@@ -92,20 +97,21 @@ export class KittyController {
       await writeFile(logPath, "", { flag: "a" });
     }
     const script = this.buildChildScript(params);
-    const splitLocation = params.splitDirection === "horizontal" ? "vsplit" : "hsplit";
-    const { stdout } = await execFile(this.kittenBin, [
-      "@", "launch",
-      "--type=window",
-      "--location", splitLocation,
-      "--cwd", params.cwd,
-      "--title", title,
-      "--var", `PI_SUBAGENT_ID=${params.agentId}`,
-      "--var", `PI_SUBAGENT_PATH=${params.agentPath}`,
-      "--copy-env",
-      "--allow-remote-control",
-      "sh", "-lc", script,
-    ]);
-    const windowId = stdout.trim() || undefined;
+    const location = params.splitDirection
+      ? params.splitDirection === "horizontal" ? "vsplit" : "hsplit"
+      : await this.kitty.longerSideSplitLocation();
+    const { windowId } = await this.kitty.launchWindow({
+      cwd: params.cwd,
+      location,
+      title,
+      vars: {
+        PI_SUBAGENT_ID: params.agentId,
+        PI_SUBAGENT_PATH: params.agentPath,
+      },
+      copyEnv: true,
+      allowRemoteControl: true,
+      argv: ["sh", "-lc", script],
+    });
     return { kind: "kitty-split", status: "open", windowId, agentId: params.agentId, title, cwd: params.cwd, socketPath: params.socketPath, logPath };
   }
 

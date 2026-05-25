@@ -26,6 +26,10 @@ _Avoid_: autonomy feature, safety feature, core feature
 An exact user input alias that launches a terminal-oriented command for the human operator instead of sending the input to the agent. Terminal shortcuts are utility features and are distinct from shell aliases because Pi resolves them before normal prompt handling.
 _Avoid_: shell alias, slash command, prompt shortcut
 
+**Kitty-first terminal integration**:
+Mekann's terminal-adjacent UX is optimized for Kitty remote control because Kitty is the recommended terminal for this project. Kitty-specific launch behavior must preserve terminal-safe fallback behavior for non-Kitty environments. Kitty split launches may run while Pi is not idle because they do not take over Pi's TTY; pass-through fallback remains idle-only because it suspends Pi and hands over the current terminal.
+_Avoid_: Kitty-only integration, terminal lock-in, best-effort terminal support
+
 **Skill**:
 A task-specific instruction package that a Pi coding agent reads to perform a particular kind of work. A skill is not an extension feature because it does not provide runtime tools or commands; it connects project context, ADRs, supporting docs, and action patterns into an executable workflow for the agent.
 _Avoid_: feature, command, runtime extension
