@@ -30,18 +30,25 @@ describe("DashboardPiComponent", () => {
 		}
 	});
 
-	it("reserves avatar placeholder lines when avatarPath is set", () => {
-		const component = createDashboardPiComponent(baseVm, "/tmp/fake-avatar.jpg", undefined, () => {});
+	it("reserves avatar placeholder lines when avatarResult is ok", () => {
+		const component = createDashboardPiComponent(baseVm, { ok: true, path: "/tmp/fake-avatar.jpg", columns: 20, rows: 8 }, undefined, () => {});
 		const lines = component.render(120);
 		const loginIndex = lines.findIndex(l => l.includes("@Mekann2904"));
 		expect(loginIndex).toBe(8); // 8 avatar lines(0-7) then login(8)
 	});
 
-	it("does not reserve avatar lines when avatarPath is undefined", () => {
+	it("does not reserve avatar lines when avatarResult is undefined", () => {
 		const component = createDashboardPiComponent(baseVm, undefined, undefined, () => {});
 		const lines = component.render(120);
 		const loginIndex = lines.findIndex(l => l.includes("@Mekann2904"));
 		expect(loginIndex).toBe(0); // login is first line
+	});
+
+	it("does not reserve avatar lines when avatarResult is error", () => {
+		const component = createDashboardPiComponent(baseVm, { ok: false, error: "Kitty unavailable" }, undefined, () => {});
+		const lines = component.render(120);
+		const loginIndex = lines.findIndex(l => l.includes("@Mekann2904"));
+		expect(loginIndex).toBe(0);
 	});
 
 	it("reserves graph placeholder lines when graphPath is set", () => {
@@ -49,7 +56,6 @@ describe("DashboardPiComponent", () => {
 		const lines = component.render(120);
 		const graphIdx = lines.findIndex(l => l.includes("Contribution graph"));
 		expect(graphIdx).toBeGreaterThanOrEqual(0);
-		// After label, there should be GRAPH_ROWS (10) empty lines
 		for (let i = 1; i <= 10; i++) {
 			expect(lines[graphIdx + i]?.trim()).toBe("");
 		}
