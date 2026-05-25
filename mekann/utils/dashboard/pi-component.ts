@@ -1,11 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
-	Image,
 	type Component,
-	type ImageTheme,
 	truncateToWidth,
 	visibleWidth,
-	getImageDimensions,
 } from "@earendil-works/pi-tui";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -30,21 +27,12 @@ const RESET = "\x1b[0m";
 // ── avatar layout constants ───────────────────────────────────────────
 const AVATAR_COLS = 20;
 const AVATAR_ROWS = 8;
+const GRAPH_COLS = 140;
+const GRAPH_ROWS = 10;
 
 // ── helpers ───────────────────────────────────────────────────────────
-function isDashboardImageLine(line: string): boolean {
-	return line.startsWith("\x1b_G");
-}
-
 function padEnd(value: string, width: number, fill = " "): string {
 	return value + fill.repeat(Math.max(0, width - visibleWidth(value)));
-}
-
-function center(value: string, width: number): string {
-	const vw = visibleWidth(value);
-	if (vw >= width) return value;
-	const left = Math.floor((width - vw) / 2);
-	return " ".repeat(left) + value + " ".repeat(width - vw - left);
 }
 
 function box(title: string, lines: string[], width: number, height?: number): string[] {
@@ -59,20 +47,7 @@ function box(title: string, lines: string[], width: number, height?: number): st
 	];
 }
 
-function rowBox(boxes: { title: string; lines: string[]; width: number; height: number }[]): string[] {
-	const rendered = boxes.map((b) => box(b.title, b.lines, b.width, b.height));
-	const heights = rendered.map((r) => r.length);
-	const maxH = Math.max(...heights);
-	return Array.from({ length: maxH }, (_, i) =>
-		rendered.map((r, j) => {
-			const line = r[i];
-			if (line === undefined) return " ".repeat(boxes[j]!.width);
-			return line.length < boxes[j]!.width ? line + " ".repeat(boxes[j]!.width - line.length) : line.slice(0, boxes[j]!.width);
-		}).join(""),
-	);
-}
-
-// ── contribution graph (text) ─────────────────────────────────────────
+// ── contribution graph (text fallback) ────────────────────────────────
 function contributionText(days: Array<{ date: string; level: string }>): string[] {
 	const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 	const recent = days.slice(-140);
@@ -99,28 +74,13 @@ class DashboardPiComponent implements Component {
 	private cachedLines?: string[];
 	private cachedWidth?: number;
 	private cachedHeight?: number;
-	private graphImage: Image | undefined;
-
-	/** Absolute path to the downloaded avatar image file (for kitten icat). */
-	private readonly avatarPath: string | undefined;
 
 	constructor(
 		private readonly vm: DashboardViewModel,
 		private readonly avatarFilePath: string | undefined,
-		graphBase64: string | undefined,
+		private readonly graphFilePath: string | undefined,
 		private readonly close: () => void,
-	) {
-		this.avatarPath = avatarFilePath;
-
-		const imageTheme: ImageTheme = { fallbackColor: (s) => `${MUTED}${s}${RESET}` };
-
-		if (graphBase64) {
-			const dims = getImageDimensions(graphBase64, "image/png");
-			if (dims) {
-				this.graphImage = new Image(graphBase64, "image/png", imageTheme, { maxWidthCells: 140, maxHeightCells: 10 }, dims);
-			}
-		}
-	}
+	) {}
 
 	render(width: number): string[] {
 		const height = process.stdout.rows || 40;
@@ -133,15 +93,12 @@ class DashboardPiComponent implements Component {
 		const h = Math.max(10, height);
 
 		// ── profile + avatar row ───────────────────────────────────────
-		// The avatar is rendered via kitten icat --place (not through the
-		// TUI overlay pipeline) because the overlay compositor adds padding
-		// spaces that overwrite Kitty image cells.
 		const profile = this.vm.profile;
 
 		if (profile.ok) {
 			const p = profile.profile;
 			// Reserve AVATAR_ROWS empty lines for the kitten-icat image
-			if (this.avatarPath) {
+			if (this.avatarFilePath) {
 				for (let i = 0; i < AVATAR_ROWS; i++) lines.push("");
 			}
 			lines.push(`${GREEN}@${p.login}${p.name ? `${MUTED} · ${WHITE}${p.name}${RESET}` : ""}`);
@@ -165,7 +122,6 @@ class DashboardPiComponent implements Component {
 				["Issues", String(s.issuesOpened), WHITE],
 				["Reviews", String(s.reviews), MUTED],
 			];
-			const statW = Math.floor((w - stats.length + 1) / stats.length);
 			const statRow = stats.map(([label, value, color]) => {
 				return `${BOLD}${color}${value}${RESET} ${MUTED}${label}${RESET}`;
 			}).join(" ");
@@ -175,19 +131,18 @@ class DashboardPiComponent implements Component {
 		lines.push(""); // spacer
 
 		// ── contribution graph ─────────────────────────────────────────
-		const graphH = 7;
-		if (this.graphImage) {
+		if (this.graphFilePath) {
+			// Reserve GRAPH_ROWS empty lines for the kitten-icat graph
 			const label = `${WHITE}Contribution graph${RESET}  ${MUTED}GitHub activity${RESET}`;
-			const graphLines = this.graphImage.render(w - 4);
-			lines.push(padEnd(label, w), ...graphLines);
+			lines.push(padEnd(label, w));
+			for (let i = 0; i < GRAPH_ROWS; i++) lines.push("");
 		} else if (this.vm.contributionGraph.days?.length) {
-			lines.push(...box("CONTRIBUTION GRAPH", contributionText(this.vm.contributionGraph.days), w, graphH + 2));
+			lines.push(...box("CONTRIBUTION GRAPH", contributionText(this.vm.contributionGraph.days), w, 9));
 		} else {
 			lines.push(...box("CONTRIBUTION GRAPH", [this.vm.contributionGraph.message || "unavailable"], w, 4));
 		}
 
 		lines.push(""); // spacer
-
 
 		// ── fill to full height ────────────────────────────────────────
 		while (lines.length < h - 1) lines.push("");
@@ -196,10 +151,18 @@ class DashboardPiComponent implements Component {
 		const footer = `${MUTED}q Quit   r Refresh   /dashboard${RESET}`;
 		lines.push(padEnd(footer, w));
 
-		this.cachedLines = lines.map((l) => isDashboardImageLine(l) ? l : truncateToWidth(l, w));
+		this.cachedLines = lines.map((l) => truncateToWidth(l, w));
 		this.cachedWidth = width;
 		this.cachedHeight = height;
 		return this.cachedLines;
+	}
+
+	/** Return the line index where the graph image should be placed. */
+	getGraphLineIndex(): number {
+		const lines = this.cachedLines;
+		if (!lines) return -1;
+		// Find the "Contribution graph" label line
+		return lines.findIndex((l) => l.includes("Contribution graph"));
 	}
 
 	handleInput?(data: string): void {
@@ -219,10 +182,10 @@ class DashboardPiComponent implements Component {
 export function createDashboardPiComponent(
 	vm: DashboardViewModel,
 	avatarFilePath: string | undefined,
-	graphBase64: string | undefined,
+	graphFilePath: string | undefined,
 	close: () => void,
-): Component {
-	return new DashboardPiComponent(vm, avatarFilePath, graphBase64, close);
+): DashboardPiComponent {
+	return new DashboardPiComponent(vm, avatarFilePath, graphFilePath, close);
 }
 
 // ── data collection ───────────────────────────────────────────────────
@@ -265,37 +228,51 @@ async function downloadAvatarToFile(url: string | undefined): Promise<string | u
 	}
 }
 
-async function generateGraphBase64(days: Array<{ date: string; count: number; level: string }> | undefined): Promise<string | undefined> {
+/**
+ * Generate the contribution graph PNG and return the file path.
+ * Returns undefined if PNG generation fails (text fallback will be used).
+ */
+async function generateGraphFile(days: Array<{ date: string; count: number; level: string }> | undefined): Promise<string | undefined> {
 	if (!days?.length) return undefined;
 	try {
 		const { createContributionSvg } = await import("./contribution-image.js");
 		const result = await createContributionSvg(days, { enabled: true });
-		if (!result?.ok) return undefined;
-		// Prefer PNG (Kitty graphics protocol does not support SVG)
-		const imagePath = result.pngPath ?? result.path;
-		const imageBytes = readFileSync(imagePath);
-		return imageBytes.toString("base64");
+		if (!result?.ok || !result.pngPath) return undefined;
+		return result.pngPath;
 	} catch {
 		return undefined;
 	}
 }
 
 /**
- * Place the avatar image on the terminal using `kitten icat --place`.
- * This bypasses the TUI overlay compositor, which adds padding spaces
- * that overwrite Kitty image cells and make images invisible.
+ * Place an image on the terminal using `kitten icat --place`.
+ * Bypasses the TUI overlay compositor which destroys Kitty image cells.
  */
-function placeAvatarIcat(avatarPath: string, row: number, col: number): void {
+function placeImageIcat(imagePath: string, row: number, col: number, cols: number, rows: number): void {
 	try {
 		spawnSync("kitten", [
 			"icat", "--silent", "--transfer-mode=file",
 			"--align=left", "--scale-up=yes",
-			"--place", `${AVATAR_COLS}x${AVATAR_ROWS}@${col}x${row}`,
-			avatarPath,
+			"--place", `${cols}x${rows}@${col}x${row}`,
+			imagePath,
 		], { stdio: "inherit", timeout: 3000 });
 	} catch {
 		// Image rendering is cosmetic; keep the dashboard usable.
 	}
+}
+
+// ── MIME detection (exported for testing) ─────────────────────────────
+export function guessImageMime(base64: string): string {
+	const header = Buffer.from(base64.slice(0, 24), "base64");
+	// PNG: 89 50 4E 47
+	if (header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4e && header[3] === 0x47) return "image/png";
+	// JPEG: FF D8 FF
+	if (header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff) return "image/jpeg";
+	// GIF: GIF87a / GIF89a
+	if (header.slice(0, 3).toString("ascii") === "GIF") return "image/gif";
+	// WebP: RIFF....WEBP
+	if (header.slice(0, 4).toString("ascii") === "RIFF" && header.slice(8, 12).toString("ascii") === "WEBP") return "image/webp";
+	return "image/png";
 }
 
 // ── extension registration ────────────────────────────────────────────
@@ -305,24 +282,34 @@ export default function dashboard(pi: ExtensionAPI): void {
 		handler: async (_args, ctx) => {
 			ctx.ui.notify("Loading dashboard...", "info");
 			const vm = await collectDashboardViewModel(ctx.cwd);
-			const [avatarPath, graphBase64] = await Promise.all([
+			const [avatarPath, graphPath] = await Promise.all([
 				downloadAvatarToFile(vm.profile.ok ? vm.profile.profile.avatarUrl : undefined),
-				generateGraphBase64(vm.contributionGraph.days),
+				generateGraphFile(vm.contributionGraph.days),
 			]);
 			ctx.ui.setFooter(() => ({ render: () => [], invalidate: () => {} }));
 			try {
-				let avatarPlaced = false;
+				let imagesPlaced = false;
 				await ctx.ui.custom<void>((tui, _theme, _keybindings, done) => {
-					const component = createDashboardPiComponent(vm, avatarPath, graphBase64, () => done(undefined));
+					const component = createDashboardPiComponent(vm, avatarPath, graphPath, () => done(undefined));
 					return {
 						render: (width) => {
 							const lines = component.render(width);
-							// Place avatar via kitten icat on first render, AFTER the TUI
-							// has written its output. The TUI's differential rendering won't
-							// re-render unchanged empty placeholder lines, so the image persists.
-							if (!avatarPlaced && avatarPath) {
-								avatarPlaced = true;
-																setTimeout(() => placeAvatarIcat(avatarPath, 0, 1), 80);
+							// Place images via kitten icat after first render.
+							// The TUI's differential rendering won't touch unchanged
+							// empty placeholder lines, so the images persist.
+							if (!imagesPlaced) {
+								imagesPlaced = true;
+								setTimeout(() => {
+									if (avatarPath) {
+										placeImageIcat(avatarPath, 0, 1, AVATAR_COLS, AVATAR_ROWS);
+									}
+									if (graphPath) {
+										const graphRow = component.getGraphLineIndex() + 1; // +1 to skip the label line
+										if (graphRow > 0) {
+											placeImageIcat(graphPath, graphRow, 1, GRAPH_COLS, GRAPH_ROWS);
+										}
+									}
+								}, 80);
 							}
 							return lines;
 						},
