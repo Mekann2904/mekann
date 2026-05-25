@@ -12,15 +12,15 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import os from "node:os";
 import path from "node:path";
 import { ROOT_PATH, resolveTaskPath, parentPath } from "./types.js";
+import { AgentSessionControl } from "./agentSession.js";
 import { AgentRegistry } from "./registry.js";
 import { Mailbox } from "./mailbox.js";
-import { extractForkContext, buildContextPreamble, truncateText } from "./contextFork.js";
+import { extractForkContext, buildContextPreamble } from "./contextFork.js";
 import type {
   AgentMetadata,
   AgentStatus,
   CloseAgentParams,
   FollowupTaskParams,
-  LifecycleEvent,
   ListAgentsParams,
   ListResult,
   SendMessageParams,
@@ -55,7 +55,6 @@ let agentIdCounter = 0;
 
 const processExternalPiSlots = new Set<string>();
 const MAX_EXTERNAL_PI_SUBAGENTS = MEKANN_SUBAGENT_DEFAULTS.externalPiSlots;
-const MESSAGE_INJECTION_MAX_CHARS = 4_000;
 
 function nextAgentId(): string {
   return `sub_${++agentIdCounter}_${Date.now().toString(36)}`;
@@ -97,7 +96,7 @@ export class AgentControl {
   private pi: import("@earendil-works/pi-coding-agent").ExtensionAPI;
   private defaultWaitTimeout: number;
   private minWaitTimeout: number;
-  private lastConsumedSeq = new Map<string, number>();
+  private sessionControl!: AgentSessionControl;
   private displayMode: DisplayMode;
   private logDir: string;
   private kitty: KittyController;
@@ -142,6 +141,16 @@ export class AgentControl {
     this.childSessions = this.lifecycle.childSessions;
     this.hubs = this.lifecycle.hubs;
     this.resultStore = this.lifecycle.resultStore;
+    this.sessionControl = new AgentSessionControl({
+      registry: this.registry,
+      mailbox: this.mailbox,
+      resolveCallerPath: (ctx) => this.resolveCallerPath(ctx),
+      resolveTarget: (target, callerPath) => this.resolveTarget(target, callerPath),
+      getRuntime: (agentPath) => this.lifecycle.getRuntime(agentPath),
+      getHub: (agentId) => this.lifecycle.getHub(agentId),
+      displayResult: (display) => this.displayResult(display),
+      logDisplay: (display, line) => this.logDisplay(display, line),
+    });
 
     // Forward registry events to mailbox
     this.registry.subscribe((event) => {
@@ -568,27 +577,21 @@ export class AgentControl {
   }
 
   private enqueueToMailbox(fromAgentId: string, fromPath: string, toPath: string, content: string, kind: "message" | "followup" | "final_result"): void {
-    this.lifecycle.enqueueToMailbox(fromAgentId, fromPath, toPath, content, kind);
+    this.sessionControl.enqueueToMailbox(fromAgentId, fromPath, toPath, content, kind);
   }
 
   private getCallerAgentId(callerPath: string): string {
-    return this.registry.get(callerPath)?.agentId ?? "root";
+    return this.sessionControl.getCallerAgentId(callerPath);
   }
 
   /** Resolve target path + lookup agent. Throws if not found. */
   private resolveAgentOrFail(target: string, callerPath: string): { targetPath: string; agent: AgentMetadata } {
-    const targetPath = this.resolveTarget(target, callerPath);
-    const agent = this.registry.get(targetPath);
-    if (!agent) throw new Error(`Agent not found: ${targetPath}`);
-    return { targetPath, agent };
+    return this.sessionControl.resolveAgentOrFail(target, callerPath);
   }
 
   /** Resolve target agent path + get child session. Shared by sendMessage/followupTask. */
   private resolveTargetSession(target: string, ctx: ExtensionContext): { callerPath: string; targetPath: string; agent: AgentMetadata; childSession: AgentSession | undefined } {
-    const callerPath = this.resolveCallerPath(ctx);
-    const { targetPath, agent } = this.resolveAgentOrFail(target, callerPath);
-    const rt = this.lifecycle.getRuntime(targetPath);
-    return { callerPath, targetPath, agent, childSession: rt?.mode === "in_process" ? rt.session : undefined };
+    return this.sessionControl.resolveTargetSession(target, ctx);
   }
 
   // ─── send_message ──────────────────────────────────────────────
@@ -597,25 +600,11 @@ export class AgentControl {
     params: SendMessageParams,
     ctx: ExtensionContext,
   ): Promise<{ delivered: boolean }> {
-    const { callerPath, targetPath, agent, childSession } = this.resolveTargetSession(params.target, ctx);
-    if (!agent.open || isTerminalStatus(agent.status)) throw new Error(`Agent at ${targetPath} is not open (status: ${agent.status}). Cannot send message.`);
-    const message = truncateText(params.message, MESSAGE_INJECTION_MAX_CHARS);
-    this.enqueueToMailbox(this.getCallerAgentId(callerPath), callerPath, targetPath, message, "message");
-    this.logDisplay(agent.display, `[message from ${callerPath}] ${message}`);
-    if (agent.status === "queued") {
+    return this.sessionControl.sendMessage(params, ctx, (targetPath, message) => {
       const queued = this.spawnQueue.find((item) => item.canonicalPath === targetPath);
       if (queued) queued.queuedMessages.push(message);
-      return { delivered: true };
-    }
-
-    const rt = this.lifecycle.getRuntime(targetPath);
-    if (rt?.mode === "external_pi") {
-      if (!rt.capabilities?.includes("message")) throw new Error(`External Pi subagent ${targetPath} does not support message injection.`);
-      await this.lifecycle.getHub(rt.agentId)?.send(rt.agentId, { type: "message", id: `msg_${Date.now()}`, fromAgentPath: callerPath, message });
-    } else if (childSession) {
-      await childSession.sendCustomMessage({ customType: "subagent_message", content: `[Message from ${callerPath}]: ${message}`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
-    }
-    return { delivered: true };
+      return Boolean(queued);
+    });
   }
 
   // ─── followup_task ─────────────────────────────────────────────
@@ -624,40 +613,7 @@ export class AgentControl {
     params: FollowupTaskParams,
     ctx: ExtensionContext,
   ): Promise<{ queued: boolean; triggered: boolean }> {
-    const { callerPath, targetPath, agent, childSession } = this.resolveTargetSession(params.target, ctx);
-    if (targetPath === ROOT_PATH) throw new Error("Cannot send followup_task to the root agent.");
-    if (!agent.open || isTerminalStatus(agent.status)) {
-      throw new Error(`Cannot follow up a terminal agent (status: ${agent.status}).`);
-    }
-    if (agent.status === "queued") {
-      throw new Error("Agent is queued and cannot receive followup_task until it is running. Use send_message to add pre-start context, or wait_agent until the agent starts.");
-    }
-
-    const message = truncateText(params.message, MESSAGE_INJECTION_MAX_CHARS);
-    this.enqueueToMailbox(this.getCallerAgentId(callerPath), callerPath, targetPath, message, "followup");
-    this.logDisplay(agent.display, `[followup from ${callerPath}] ${message}`);
-
-    // Update last task message
-    this.registry.updateStatus(targetPath, agent.status, {
-      lastTaskMessage: message,
-    });
-
-    // Deliver to child session or external Pi over IPC. Never use kitty send-text here.
-    const rt = this.lifecycle.getRuntime(targetPath);
-    if (rt?.mode === "external_pi") {
-      if (!rt.capabilities?.includes("followup")) throw new Error(`External Pi subagent ${targetPath} does not support followup injection.`);
-      await this.lifecycle.getHub(rt.agentId)?.send(rt.agentId, { type: "followup", id: `fu_${Date.now()}`, message });
-      return { queued: true, triggered: true };
-    } else if (childSession) {
-      const triggered = !childSession.isStreaming;
-      await childSession.sendUserMessage(
-        `[Follow-up from ${callerPath}]: ${message}`,
-        childSession.isStreaming ? { deliverAs: "followUp" } : undefined,
-      );
-      return { queued: true, triggered };
-    }
-
-    return { queued: true, triggered: false };
+    return this.sessionControl.followupTask(params, ctx);
   }
 
   // ─── wait_agent ────────────────────────────────────────────────
@@ -666,37 +622,7 @@ export class AgentControl {
     params: WaitAgentParams,
     ctx: ExtensionContext,
   ): Promise<WaitResult> {
-    const callerPath = this.resolveCallerPath(ctx);
-
-    const timeoutMs = clampTimeout(
-      params.timeout_ms ?? this.defaultWaitTimeout,
-      this.minWaitTimeout,
-    );
-
-    const beforeSeq = this.lastConsumedSeq.get(callerPath) ?? 0;
-
-    const result = await this.mailbox.waitForUpdate(
-      callerPath,
-      beforeSeq,
-      timeoutMs,
-    );
-
-    // Update consumed seq to prevent re-delivery
-    const maxSeq = Math.max(
-      ...result.mailbox.map((m) => m.seq),
-      ...result.events.map((e) => "seq" in e ? (e as any).seq as number : 0),
-      beforeSeq,
-    );
-    this.lastConsumedSeq.set(callerPath, maxSeq);
-
-    const timedOut =
-      result.events.length === 0 && result.mailbox.length === 0;
-
-    return {
-      timed_out: timedOut,
-      events: result.events,
-      mailbox: result.mailbox,
-    };
+    return this.sessionControl.wait(params, ctx, this.defaultWaitTimeout, this.minWaitTimeout);
   }
 
   // ─── list_agents ───────────────────────────────────────────────
@@ -707,32 +633,7 @@ export class AgentControl {
   }
 
   list(params: ListAgentsParams, ctx?: ExtensionContext): ListResult {
-    const callerPath = ctx ? this.resolveCallerPath(ctx) : ROOT_PATH;
-    const afterSeq = this.lastConsumedSeq.get(callerPath) ?? 0;
-    const unreadFinalResultPaths = new Set(
-      this.mailbox.pendingFor(callerPath, afterSeq)
-        .filter((item) => item.kind === "final_result")
-        .map((item) => item.fromAgentPath),
-    );
-    const agents = this.registry.list(params.path_prefix);
-    return {
-      agents: agents.map((a) => ({
-        agent_id: a.agentId,
-        agent_path: a.agentPath,
-        status: a.status,
-        last_task: a.lastTaskMessage,
-        nickname: a.nickname,
-        role: a.role,
-        depth: a.depth,
-        display: this.displayResult(a.display),
-        authority: a.authority,
-        authority_enforced: a.authorityEnforced,
-        result_contract: a.resultContract,
-        queue_position: a.queuePosition,
-        queued_ahead: a.queuedAhead,
-        unread_final_result: unreadFinalResultPaths.has(a.agentPath) || undefined,
-      })),
-    };
+    return this.sessionControl.list(params, ctx);
   }
 
   listAgentResults(params: any = {}, ctx?: ExtensionContext) { return { results: this.resultStoreFor(ctx?.cwd ?? process.cwd()).list(params) }; }
@@ -861,11 +762,5 @@ export class AgentControl {
   get openCount(): number {
     return this.registry.openCount;
   }
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────
-
-function clampTimeout(ms: number, minMs: number = MIN_WAIT_TIMEOUT_MS): number {
-  return Math.max(minMs, Math.min(ms, MAX_WAIT_TIMEOUT_MS));
 }
 
