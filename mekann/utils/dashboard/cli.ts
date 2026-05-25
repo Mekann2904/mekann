@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { fetchKittyAvatar, renderKittyAvatar, renderKittyImage } from "./avatar.js";
+import { fetchKittyAvatar } from "./avatar.js";
 import { parseDashboardArgs } from "./args.js";
 import { installDashboardCleanup } from "./cleanup.js";
 import { createContributionSvg } from "./contribution-image.js";
@@ -50,23 +50,9 @@ async function main(): Promise<void> {
 	console.log(renderDashboardText(viewModel, terminalWidth));
 }
 
-async function renderDashboard(vm: DashboardViewModel): Promise<void> {
-	// Import OpenTUI modules sequentially. Bun 1.3.x can evaluate
-	// @opentui/core and @opentui/react in a racy order when they are imported
-	// concurrently, which surfaces as:
-	// "ReferenceError: Cannot access 'TextNodeRenderable' before initialization".
-	const { createCliRenderer } = await import("@opentui/core");
-	const { createRoot } = await import("@opentui/react");
-	const React = await import("react");
-	const { DashboardApp } = await import("./app.js");
-	const renderer = await createCliRenderer({ exitOnCtrlC: true });
-	createRoot(renderer).render(React.createElement(DashboardApp, { vm }));
-	if (vm.avatar?.ok || vm.contributionImage?.ok) {
-		setTimeout(() => {
-			void renderKittyAvatar(vm.avatar, { x: 4, y: 3 });
-			void renderKittyImage(vm.contributionImage, { x: 4, y: (vm.avatar?.ok ? vm.avatar.rows + 11 : 17) });
-		}, 300).unref?.();
-	}
+async function renderDashboard(_vm: DashboardViewModel): Promise<void> {
+	console.error("Interactive mode (OpenTUI) has been removed. Use /dashboard in Pi instead.");
+	process.exitCode = 1;
 }
 
 void main().catch((error) => {

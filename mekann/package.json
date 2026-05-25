@@ -4,9 +4,6 @@
   "description": "Integrated mekann suite for pi coding agent extensions.",
   "main": "index.ts",
   "type": "module",
-  "bin": {
-    "mekann-dashboard": "./utils/dashboard/bin/mekann-dashboard.js"
-  },
   "scripts": {
     "test": "vitest run mekann.test.ts utils/**/*.test.ts"
   },
@@ -15,10 +12,7 @@
   ],
   "license": "ISC",
   "dependencies": {
-    "@opentui/core": "^0.2.15",
-    "@opentui/react": "^0.2.15",
     "@sinclair/typebox": "^0.34.49",
-    "react": "^19.2.3",
     "tinyglobby": "^0.2.16"
   },
   "peerDependencies": {
