@@ -46,6 +46,12 @@ export function parseGitHubViewer(value: unknown): GitHubProfile {
 }
 
 const VIEWER_QUERY = `query { viewer { login name bio location url avatarUrl } }`;
+const DEFAULT_GITHUB_TIMEOUT_MS = 5000;
+
+function timeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+	const parsed = Number(env.MEKANN_DASHBOARD_GITHUB_TIMEOUT_MS);
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_GITHUB_TIMEOUT_MS;
+}
 
 function dashboardQuery(from: string, to: string): string {
 	return `query {
@@ -71,17 +77,25 @@ async function fromToken(token: string): Promise<GitHubProfile> {
 	return parseGitHubViewer(parsed.data?.viewer);
 }
 
-async function runGhGraphql(query: string): Promise<unknown> {
-	const { stdout } = await execFileAsync("gh", ["api", "graphql", "-f", `query=${query}`], { maxBuffer: 8 * 1024 * 1024 });
+async function runGhGraphql(query: string, timeout = timeoutMs()): Promise<unknown> {
+	const { stdout } = await execFileAsync("gh", ["api", "graphql", "-f", `query=${query}`], { maxBuffer: 8 * 1024 * 1024, timeout });
 	return JSON.parse(stdout);
 }
 
-async function runTokenGraphql(token: string, query: string): Promise<unknown> {
-	const response = await fetch("https://api.github.com/graphql", {
-		method: "POST",
-		headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "user-agent": "mekann-dashboard" },
-		body: JSON.stringify({ query }),
-	});
+async function runTokenGraphql(token: string, query: string, timeout = timeoutMs()): Promise<unknown> {
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), timeout);
+	let response: Response;
+	try {
+		response = await fetch("https://api.github.com/graphql", {
+			method: "POST",
+			headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "user-agent": "mekann-dashboard" },
+			body: JSON.stringify({ query }),
+			signal: controller.signal,
+		});
+	} finally {
+		clearTimeout(timer);
+	}
 	if (!response.ok) throw new Error(`GitHub GraphQL failed: ${response.status} ${response.statusText}`);
 	const parsed = await response.json() as { errors?: unknown };
 	if (parsed.errors) throw new Error(`GitHub GraphQL returned errors: ${JSON.stringify(parsed.errors).slice(0, 300)}`);
@@ -93,12 +107,13 @@ export async function collectGitHubDashboard(env: NodeJS.ProcessEnv = process.en
 	const fromDate = new Date(now);
 	fromDate.setDate(fromDate.getDate() - 365);
 	const query = dashboardQuery(fromDate.toISOString(), to);
+	const timeout = timeoutMs(env);
 	try {
-		return { ok: true, data: normalizeDashboardResponse(await runGhGraphql(query), now) };
+		return { ok: true, data: normalizeDashboardResponse(await runGhGraphql(query, timeout), now) };
 	} catch (ghError) {
 		if (env.GITHUB_TOKEN) {
 			try {
-				return { ok: true, data: normalizeDashboardResponse(await runTokenGraphql(env.GITHUB_TOKEN, query), now) };
+				return { ok: true, data: normalizeDashboardResponse(await runTokenGraphql(env.GITHUB_TOKEN, query, timeout), now) };
 			} catch (tokenError) {
 				return { ok: false, error: `gh failed: ${message(ghError)}; GITHUB_TOKEN failed: ${message(tokenError)}` };
 			}

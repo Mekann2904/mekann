@@ -3,6 +3,12 @@ import { basename } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const DEFAULT_GIT_TIMEOUT_MS = 2000;
+
+function timeoutMs(): number {
+	const parsed = Number(process.env.MEKANN_DASHBOARD_GIT_TIMEOUT_MS);
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_GIT_TIMEOUT_MS;
+}
 
 export type CurrentRepoSummary = {
 	ok: true;
@@ -33,7 +39,7 @@ export function parseAheadBehind(output: string): { kind: "counts"; ahead: numbe
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {
-	const { stdout } = await execFileAsync("git", args, { cwd, maxBuffer: 1024 * 1024 });
+	const { stdout } = await execFileAsync("git", args, { cwd, maxBuffer: 1024 * 1024, timeout: timeoutMs() });
 	return stdout.trimEnd();
 }
 

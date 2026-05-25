@@ -20,7 +20,7 @@ type LauncherStrategy = "pass-through" | "kitty-split-longer-side";
 const DASHBOARD_BIN = resolve(dirname(fileURLToPath(import.meta.url)), "../dashboard/bin/mekann-dashboard.js");
 
 const BUILT_IN_SHORTCUTS: Record<string, TerminalShortcut> = {
-	"/dashboard": { mode: "argv", argv: [process.execPath, DASHBOARD_BIN] },
+	"/dashboard": { mode: "argv", argv: [process.execPath, DASHBOARD_BIN, "--text"] },
 	lg: { mode: "argv", argv: ["lazygit"] },
 	zed: { mode: "argv", argv: ["zed", "."] },
 	"zed .": { mode: "argv", argv: ["zed", "."] },

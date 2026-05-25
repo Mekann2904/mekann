@@ -5,14 +5,10 @@ import { installDashboardCleanup } from "./cleanup.js";
 import { createContributionSvg } from "./contribution-image.js";
 import { collectCurrentRepo } from "./current-repo.js";
 import { collectGitHubDashboard } from "./github.js";
-import { createCliRenderer } from "@opentui/core";
-import { createRoot } from "@opentui/react";
-import React from "react";
-import { DashboardApp } from "./app.js";
+import { renderDashboardText } from "./render.js";
 import type { DashboardViewModel } from "./view-model.js";
 
 async function main(): Promise<void> {
-	installDashboardCleanup();
 	const args = parseDashboardArgs(process.argv.slice(2));
 	if (!args.ok) {
 		console.error(args.error);
@@ -31,8 +27,9 @@ async function main(): Promise<void> {
 	const avatarRows = Math.max(11, Math.min(17, Math.floor(terminalHeight * 0.18)));
 	const graphColumns = Math.max(86, Math.min(terminalWidth - 8, Math.floor(terminalWidth * 0.78)));
 	const graphRows = Math.max(10, Math.min(15, Math.floor(terminalHeight * 0.16)));
-	const avatar = github.ok ? await fetchKittyAvatar(github.data.profile.avatarUrl, { enabled: args.value.avatar, columns: avatarColumns, rows: avatarRows }) : undefined;
-	const contributionImage = github.ok ? await createContributionSvg(github.data.contributionDays, { enabled: true, columns: graphColumns, rows: graphRows }) : undefined;
+	if (args.value.images) installDashboardCleanup();
+	const avatar = github.ok ? await fetchKittyAvatar(github.data.profile.avatarUrl, { enabled: args.value.avatar && args.value.images, columns: avatarColumns, rows: avatarRows }) : undefined;
+	const contributionImage = github.ok ? await createContributionSvg(github.data.contributionDays, { enabled: args.value.images, columns: graphColumns, rows: graphRows }) : undefined;
 	const viewModel: DashboardViewModel = {
 		profile,
 		avatar,
@@ -46,16 +43,28 @@ async function main(): Promise<void> {
 			: { status: "error", message: github.error },
 		codexUsage: { status: "placeholder", message: "Codex usage summary: coming next" },
 	};
-	await renderDashboard(viewModel);
+	if (args.value.interactive) {
+		await renderDashboard(viewModel);
+		return;
+	}
+	console.log(renderDashboardText(viewModel, terminalWidth));
 }
 
 async function renderDashboard(vm: DashboardViewModel): Promise<void> {
+	const [{ createCliRenderer }, { createRoot }, React, { DashboardApp }] = await Promise.all([
+		import("@opentui/core"),
+		import("@opentui/react"),
+		import("react"),
+		import("./app.js"),
+	]);
 	const renderer = await createCliRenderer({ exitOnCtrlC: true });
 	createRoot(renderer).render(React.createElement(DashboardApp, { vm }));
-	setTimeout(() => {
-		void renderKittyAvatar(vm.avatar, { x: 4, y: 3 });
-		void renderKittyImage(vm.contributionImage, { x: 4, y: (vm.avatar?.ok ? vm.avatar.rows + 11 : 17) });
-	}, 300).unref?.();
+	if (vm.avatar?.ok || vm.contributionImage?.ok) {
+		setTimeout(() => {
+			void renderKittyAvatar(vm.avatar, { x: 4, y: 3 });
+			void renderKittyImage(vm.contributionImage, { x: 4, y: (vm.avatar?.ok ? vm.avatar.rows + 11 : 17) });
+		}, 300).unref?.();
+	}
 }
 
 void main().catch((error) => {

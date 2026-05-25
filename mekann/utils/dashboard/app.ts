@@ -20,14 +20,16 @@ export function DashboardApp({ vm }: { vm: DashboardViewModel }): React.ReactEle
 		if (key.name === "q" || key.name === "escape") process.exit(0);
 	});
 
-	return h("box", { style: { width: "100%", height: "100%", flexDirection: "column", paddingLeft: 3, paddingRight: 3, paddingTop: 1, gap: 1 } },
-		h(Hero, { vm, height: heroHeight }),
-		h(StatsStrip, { vm, compact, height: statsHeight }),
-		h(ContributionSection, { vm, height: graphHeight }),
-		compact
-			? h("box", { style: { flexDirection: "column", gap: 1, height: detailsHeight } }, h(CurrentRepo, { vm }), h(Codex, { vm }))
-			: h("box", { style: { flexDirection: "row", gap: 6, height: detailsHeight } }, h(CurrentRepo, { vm }), h(Codex, { vm })),
-		h(Footer),
+	return h("scrollbox", { focused: true, scrollY: true, scrollX: false, style: { width: "100%", height: "100%" } },
+		h("box", { style: { width: "100%", flexDirection: "column", paddingLeft: 3, paddingRight: 3, paddingTop: 1, gap: 1 } },
+			h(Hero, { vm, height: heroHeight }),
+			h(StatsStrip, { vm, compact, height: statsHeight }),
+			h(ContributionSection, { vm, height: graphHeight }),
+			compact
+				? h("box", { style: { flexDirection: "column", gap: 1, height: detailsHeight } }, h(CurrentRepo, { vm }), h(Codex, { vm }))
+				: h("box", { style: { flexDirection: "row", gap: 6, height: detailsHeight } }, h(CurrentRepo, { vm }), h(Codex, { vm })),
+			h(Footer),
+		),
 	);
 }
 
