@@ -1,30 +1,44 @@
 /**
- * Data collection for the dashboard — assembles the ViewModel and downloads images.
+ * Data collection for the dashboard — assembles the ViewModel and prepares images.
  */
 
 import { readFileSync } from "node:fs";
-import { fetchKittyAvatar } from "./avatar.js";
-import { registerCleanupPath } from "./cleanup.js";
-import { createContributionSvg } from "./contribution-image.js";
+import { prepareDashboardImages, type DashboardAvatarResult } from "./image-pipeline.js";
 import { collectCurrentRepo } from "./current-repo.js";
 import { collectGitHubDashboard } from "./github.js";
 import type { DashboardViewModel } from "./view-model.js";
 
-// ── avatar layout constants ───────────────────────────────────────────
+// ── default layout constants ───────────────────────────────────────────
 export const AVATAR_COLS = 20;
 export const AVATAR_ROWS = 8;
 export const GRAPH_COLS = 140;
 export const GRAPH_ROWS = 10;
 
+// ── data options ──────────────────────────────────────────────────────
+export interface DashboardDataOptions {
+	cwd: string;
+	images?: boolean;
+	avatar?: boolean;
+	avatarSize?: { columns: number; rows: number };
+}
+
 // ── data result ───────────────────────────────────────────────────────
 export interface DashboardData {
 	vm: DashboardViewModel;
-	avatarResult: Awaited<ReturnType<typeof fetchKittyAvatar>>;
+	avatarResult: DashboardAvatarResult | undefined;
 	graphPath: string | undefined;
 }
 
 /** Collect all dashboard data: profile, repo, activity, and images. */
-export async function collectDashboardData(cwd: string): Promise<DashboardData> {
+export async function collectDashboardData(options: string | DashboardDataOptions): Promise<DashboardData> {
+	const opts: DashboardDataOptions = typeof options === "string"
+		? { cwd: options }
+		: options;
+	const { cwd } = opts;
+	const enableImages = opts.images ?? true;
+	const enableAvatar = opts.avatar ?? true;
+	const avatarSize = opts.avatarSize ?? { columns: AVATAR_COLS, rows: AVATAR_ROWS };
+
 	const [github, currentRepo] = await Promise.all([
 		collectGitHubDashboard(),
 		collectCurrentRepo(cwd),
@@ -40,32 +54,23 @@ export async function collectDashboardData(cwd: string): Promise<DashboardData> 
 		profile: github.ok ? { ok: true, profile: github.data.profile } : github,
 		currentRepo,
 		contributionGraph: github.ok
-			? { status: "loading", message: "", days: github.data.contributionDays }
+			? { status: "ready", data: github.data.contributionDays }
 			: { status: "error", message: github.error },
 		activitySummary: github.ok
-			? { status: "ready", message: "", summary: github.data.activity }
+			? { status: "ready", data: github.data.activity }
 			: { status: "error", message: github.error },
 		codexUsage: { status: "placeholder", message: "Codex usage summary: coming next" },
 	};
 
-	const [avatarResult, graphPath] = await Promise.all([
-		fetchKittyAvatar(sizedUrl, { enabled: true, columns: AVATAR_COLS, rows: AVATAR_ROWS }),
-		generateGraphFile(vm.contributionGraph.days),
-	]);
+	const { avatarResult, graphPath } = await prepareDashboardImages({
+		avatarUrl: sizedUrl,
+		contributionDays: vm.contributionGraph.status === "ready" ? vm.contributionGraph.data : undefined,
+		images: enableImages,
+		avatar: enableAvatar,
+		avatarSize,
+	});
 
 	return { vm, avatarResult, graphPath };
-}
-
-/** Generate contribution graph PNG, return file path or undefined. */
-async function generateGraphFile(days: Array<{ date: string; count: number; level: string }> | undefined): Promise<string | undefined> {
-	if (!days?.length) return undefined;
-	try {
-		const result = await createContributionSvg(days, { enabled: true });
-		if (!result?.ok || !result.pngPath) return undefined;
-		return result.pngPath;
-	} catch {
-		return undefined;
-	}
 }
 
 // ── MIME detection (exported for testing) ─────────────────────────────

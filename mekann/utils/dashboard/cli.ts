@@ -1,12 +1,8 @@
 #!/usr/bin/env bun
-import { fetchKittyAvatar } from "./avatar.js";
 import { parseDashboardArgs } from "./args.js";
 import { installDashboardCleanup } from "./cleanup.js";
-import { createContributionSvg } from "./contribution-image.js";
-import { collectCurrentRepo } from "./current-repo.js";
-import { collectGitHubDashboard } from "./github.js";
+import { collectDashboardData, type DashboardData } from "./data.js";
 import { renderDashboardText } from "./render.js";
-import type { CliDashboardViewModel } from "./view-model.js";
 
 async function main(): Promise<void> {
 	const args = parseDashboardArgs(process.argv.slice(2));
@@ -16,41 +12,27 @@ async function main(): Promise<void> {
 		return;
 	}
 
-	const [github, currentRepo] = await Promise.all([
-		collectGitHubDashboard(),
-		collectCurrentRepo(args.value.cwd),
-	]);
-	const profile = github.ok ? { ok: true as const, profile: github.data.profile } : github;
+	if (args.value.images) installDashboardCleanup();
 	const terminalWidth = process.stdout.columns || 140;
 	const terminalHeight = process.stdout.rows || 40;
-	const avatarColumns = Math.max(22, Math.min(34, Math.floor(terminalWidth * 0.16)));
-	const avatarRows = Math.max(11, Math.min(17, Math.floor(terminalHeight * 0.18)));
-	const graphColumns = Math.max(86, Math.min(terminalWidth - 8, Math.floor(terminalWidth * 0.78)));
-	const graphRows = Math.max(10, Math.min(15, Math.floor(terminalHeight * 0.16)));
-	if (args.value.images) installDashboardCleanup();
-	const avatar = github.ok ? await fetchKittyAvatar(github.data.profile.avatarUrl, { enabled: args.value.avatar && args.value.images, columns: avatarColumns, rows: avatarRows }) : undefined;
-	const contributionImage = github.ok ? await createContributionSvg(github.data.contributionDays, { enabled: args.value.images, columns: graphColumns, rows: graphRows }) : undefined;
-	const viewModel: CliDashboardViewModel = {
-		profile,
-		avatar,
-		contributionImage,
-		currentRepo,
-		contributionGraph: github.ok
-			? { status: "loading", message: "", days: github.data.contributionDays }
-			: { status: "error", message: github.error },
-		activitySummary: github.ok
-			? { status: "ready", message: "", summary: github.data.activity }
-			: { status: "error", message: github.error },
-		codexUsage: { status: "placeholder", message: "Codex usage summary: coming next" },
-	};
+	const data = await collectDashboardData({
+		cwd: args.value.cwd,
+		images: args.value.images,
+		avatar: args.value.avatar,
+		avatarSize: {
+			columns: Math.max(22, Math.min(34, Math.floor(terminalWidth * 0.16))),
+			rows: Math.max(11, Math.min(17, Math.floor(terminalHeight * 0.18))),
+		},
+	});
+
 	if (args.value.interactive) {
-		await renderDashboard(viewModel);
+		await renderDashboard(data);
 		return;
 	}
-	console.log(renderDashboardText(viewModel, terminalWidth));
+	console.log(renderDashboardText(data, terminalWidth));
 }
 
-async function renderDashboard(_vm: CliDashboardViewModel): Promise<void> {
+async function renderDashboard(_data: DashboardData): Promise<void> {
 	console.error("Interactive mode (OpenTUI) has been removed. Use /dashboard in Pi instead.");
 	process.exitCode = 1;
 }

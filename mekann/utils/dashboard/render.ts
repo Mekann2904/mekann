@@ -4,37 +4,39 @@
 
 import { contributionText, box, rowBox, padEnd, type BoxConfig } from "./layout.js";
 import { truncatePlain, visibleWidth, dashboardTextColor } from "./terminal.js";
-import type { CliDashboardViewModel } from "./view-model.js";
+import type { DashboardData } from "./data.js";
 import { formatCurrentRepoLine } from "./view-model.js";
 
 export { dashboardTextColor };
 
-export function renderDashboardText(vm: CliDashboardViewModel, width = process.stdout.columns || 120): string {
+export function renderDashboardText(data: DashboardData, width = process.stdout.columns || 120): string {
+	const vm = data.vm;
 	const w = Math.max(20, Math.min(width, 140));
-	const profileIndent = vm.avatar?.ok ? " ".repeat(vm.avatar.columns + 4) : "";
+	const profileIndent = data.avatarResult?.ok ? " ".repeat(data.avatarResult.columns + 4) : "";
 	const profile = vm.profile.ok
 		? [
 			`${profileIndent}@${vm.profile.profile.login}${vm.profile.profile.name ? ` · ${vm.profile.profile.name}` : ""}`,
 			`${profileIndent}${vm.profile.profile.bio ?? ""}`,
 			vm.profile.profile.location ? `${profileIndent}⌖ ${vm.profile.profile.location}` : "",
 			`${profileIndent}${vm.profile.profile.url ?? ""}`,
-			vm.avatar && !vm.avatar.ok ? `avatar: ${vm.avatar.error}` : "",
+			data.avatarResult && !data.avatarResult.ok ? `avatar: ${data.avatarResult.error}` : "",
 		].filter(Boolean)
 		: [`GitHub profile error`, truncatePlain(vm.profile.error, w - 8)];
 
 	const currentRepo = [formatCurrentRepoLine(vm.currentRepo)];
-	const graph = vm.contributionGraph.days?.length
-		? contributionText(vm.contributionGraph.days)
-		: [`GitHub activity error: ${vm.contributionGraph.message}`];
-	const activity = vm.activitySummary.summary ? [
-		`Contributions this week   ${vm.activitySummary.summary.contributionsThisWeek}`,
-		`Contributions this month  ${vm.activitySummary.summary.contributionsThisMonth}`,
-		`Active days this year     ${vm.activitySummary.summary.activeDaysThisYear}`,
-		`Pull requests             ${vm.activitySummary.summary.pullRequests}`,
-		`Issues opened             ${vm.activitySummary.summary.issuesOpened}`,
-		`Reviews                   ${vm.activitySummary.summary.reviews}`,
-	] : [`GitHub activity error: ${vm.activitySummary.message}`];
-	const codex = [vm.codexUsage.message, "Detailed Pi Usage tab: coming next"];
+	const graph = vm.contributionGraph.status === "ready" && vm.contributionGraph.data.length
+		? contributionText(vm.contributionGraph.data)
+		: [`GitHub activity error: ${vm.contributionGraph.status === "error" ? vm.contributionGraph.message : "unavailable"}`];
+	const activity = vm.activitySummary.status === "ready" ? [
+		`Contributions this week   ${vm.activitySummary.data.contributionsThisWeek}`,
+		`Contributions this month  ${vm.activitySummary.data.contributionsThisMonth}`,
+		`Active days this year     ${vm.activitySummary.data.activeDaysThisYear}`,
+		`Pull requests             ${vm.activitySummary.data.pullRequests}`,
+		`Issues opened             ${vm.activitySummary.data.issuesOpened}`,
+		`Reviews                   ${vm.activitySummary.data.reviews}`,
+	] : [`GitHub activity error: ${vm.activitySummary.status === "error" ? vm.activitySummary.message : "unavailable"}`];
+	const codexMsg = (vm.codexUsage.status === "placeholder" || vm.codexUsage.status === "error") ? vm.codexUsage.message : vm.codexUsage.data;
+	const codex = [codexMsg, "Detailed Pi Usage tab: coming next"];
 
 	return [
 		titleLine(w),

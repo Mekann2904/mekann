@@ -1,29 +1,30 @@
 import type { CurrentRepoSummary } from "./current-repo.js";
 import type { ContributionDay, GitHubActivitySummary, GitHubProfileResult } from "./github.js";
 
-// ── image result (shared between CLI and Pi) ──────────────────────────
-export type ImageResult =
-	| { ok: true; path: string; columns: number; rows: number }
-	| { ok: false; error: string };
+// ── generic panel state ───────────────────────────────────────────────
+export type Panel<T> =
+	| { status: "ready"; data: T }
+	| { status: "loading" }
+	| { status: "error"; message: string }
+	| { status: "placeholder"; message: string };
 
-// ── shared state types ────────────────────────────────────────────────
-export type ContributionGraphState = { status: "placeholder" | "loading" | "error"; message: string; days?: ContributionDay[] };
-export type ActivitySummaryState = { status: "placeholder" | "loading" | "error" | "ready"; message: string; summary?: GitHubActivitySummary };
-export type CodexUsageState = { status: "placeholder" | "loading" | "error"; message: string };
+/** Extract data from a panel, or undefined if not ready. */
+export function panelData<T>(panel: Panel<T>): T | undefined {
+	return panel.status === "ready" ? panel.data : undefined;
+}
 
-// ── base ViewModel (shared by CLI and Pi) ─────────────────────────────
+/** Extract message from a panel (error or placeholder), or undefined. */
+export function panelMessage(panel: Panel<unknown>): string | undefined {
+	return (panel.status === "error" || panel.status === "placeholder") ? panel.message : undefined;
+}
+
+// ── ViewModel ─────────────────────────────────────────────────────────
 export type DashboardViewModel = {
 	profile: GitHubProfileResult;
 	currentRepo: CurrentRepoSummary;
-	contributionGraph: ContributionGraphState;
-	activitySummary: ActivitySummaryState;
-	codexUsage: CodexUsageState;
-};
-
-// ── CLI-only ViewModel (extends base with image results) ──────────────
-export type CliDashboardViewModel = DashboardViewModel & {
-	avatar?: ImageResult;
-	contributionImage?: ImageResult;
+	contributionGraph: Panel<ContributionDay[]>;
+	activitySummary: Panel<GitHubActivitySummary>;
+	codexUsage: Panel<string>;
 };
 
 // ── formatting ────────────────────────────────────────────────────────

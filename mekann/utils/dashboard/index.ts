@@ -11,6 +11,7 @@ export { parseDashboardArgs } from "./args.js";
 
 // Data collection (used by CLI)
 export { collectDashboardData } from "./data.js";
+export type { DashboardData, DashboardDataOptions } from "./data.js";
 
 // Rendering (used by CLI)
 export { renderDashboardText, dashboardTextColor } from "./render.js";
@@ -19,11 +20,9 @@ export { renderDashboardText, dashboardTextColor } from "./render.js";
 export { formatCurrentRepoLine } from "./view-model.js";
 export type { DashboardViewModel } from "./view-model.js";
 
-// Avatar utilities (used by CLI)
-export { fetchKittyAvatar, isLikelyKitty, renderKittyImage } from "./avatar.js";
-
-// Cleanup (used by CLI)
-export { cleanupDashboardResourcesSync, installDashboardCleanup, registerCleanupPath } from "./cleanup.js";
+// Image pipeline (preferred import path for image operations)
+export { isLikelyKitty, renderKittyImage, installDashboardCleanup, cleanupDashboardResourcesSync, registerCleanupPath } from "./image-pipeline.js";
+export type { DashboardAvatarResult, DashboardImageAssets, PrepareImageOptions } from "./image-pipeline.js";
 
 // GitHub (used by tests and CLI)
 export { collectGitHubProfile, parseGitHubViewer } from "./github.js";
