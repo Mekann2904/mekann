@@ -280,6 +280,10 @@ _Avoid_: tool options, tool config
 A host-side configuration controlling whether the tool may cross the external network boundary (`externalWebAccess`). This is not a search quality parameter but an execution permission. When `false`, the tool is either unregistered or returns an explicit unavailability error.
 _Avoid_: search mode, network setting
 
+**Codex usage**:
+A utils suite feature that reads ChatGPT subscription usage and Codex rate-limit windows, then presents them through `/codex-status` and the Pi footer. Its core responsibility is usage retrieval and normalized usage reporting; Pi command registration and footer rendering are adapters around it.
+_Avoid_: codex-status (command-specific), codex usage query (implementation-specific), codex-limits (package name)
+
 **Codex shared**:
 The `codex-shared` module inside the utils suite, containing Codex API client primitives shared by `codex-limits` and `codex-web-search`: base URL normalization, auth header generation, account ID extraction, error types and classification, model fetching, model selection, and the in-memory model cache. It does not depend on Pi tool framework types.
 _Avoid_: codex-core, codex-base
