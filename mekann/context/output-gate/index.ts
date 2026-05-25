@@ -1,108 +1,56 @@
+/**
+ * output-gate — Pi tool/command/hook registration entry point.
+ *
+ * Thin adapter: builds OutputGateController from config, delegates all
+ * use-cases, and converts between Pi event types and controller I/O.
+ */
+
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import * as fsp from "node:fs/promises";
 import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
-import { gateTextForLlm, outputGateDir, manifestPath, readManifest, resolveArtifactPath, shouldGateOutput } from "./store.js";
-import { searchToolOutputs } from "./search.js";
+import { outputGateDir } from "./store.js";
 import { handleClear } from "../clear.js";
 import { recordToolOutputArtifact } from "../recording.js";
+import { OutputGateController } from "./controller.js";
+import type { SearchToolOutputsInput } from "./search.js";
 
-/** Parse arg and dispatch status/list/stats/clear subcommands. */
-function textResponse(text: string): { content: Array<{ type: "text"; text: string }>; details: Record<string, unknown> } { return { content: [{ type: "text" as const, text }], details: {} }; }
+// ---------------------------------------------------------------------------
+// Re-exports (backward compatibility)
+// ---------------------------------------------------------------------------
 
 export { shouldGateOutput, buildStoredOutputStub, buildPreview, gateTextForLlm } from "./store.js";
+export { extractTextContent } from "./controller.js";
 
-export function extractTextContent(content: unknown): string {
-	if (typeof content === "string") return content;
-	if (!Array.isArray(content)) return "";
-	return content
-		.filter((part: any) => part?.type === "text" && typeof part.text === "string")
-		.map((part: any) => part.text)
-		.join("\n");
+// ---------------------------------------------------------------------------
+// Controller instance
+// ---------------------------------------------------------------------------
+
+function createController(): OutputGateController {
+	return new OutputGateController({
+		config: {
+			maxInlineBytes: MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes,
+			previewBytes: MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes,
+			artifactRetentionMaxFiles: MEKANN_OUTPUT_GATE_DEFAULTS.artifactRetentionMaxFiles,
+		},
+		recorder: { recordToolOutputArtifact },
+	});
 }
 
-async function outputGateStatus(cwd: string): Promise<string> {
-	const entries = await readManifest(cwd);
-	const totalBytes = entries.reduce((sum, e) => sum + e.bytes, 0);
-	return [`output-gate artifacts: ${entries.length}`, `total bytes: ${totalBytes}`, `manifest: ${manifestPath(cwd)}`].join("\n");
+// ---------------------------------------------------------------------------
+// Pi response helper
+// ---------------------------------------------------------------------------
+
+function textResponse(text: string): {
+	content: Array<{ type: "text"; text: string }>;
+	details: Record<string, unknown>;
+} {
+	return { content: [{ type: "text" as const, text }], details: {} };
 }
 
-async function outputGateList(cwd: string): Promise<string> {
-	const entries = (await readManifest(cwd)).sort((a, b) => b.createdAt - a.createdAt).slice(0, 20);
-	if (entries.length === 0) return "No stored tool outputs.";
-	return entries.map((e) => `${e.id}\t${e.toolName}\t${e.bytes} bytes\t${new Date(e.createdAt).toISOString()}\t${e.path}`).join("\n");
-}
-
-async function outputGateStats(cwd: string): Promise<string> {
-	const entries = await readManifest(cwd);
-	if (entries.length === 0) return "No stored tool outputs.";
-	const totalBytes = entries.reduce((sum, e) => sum + e.bytes, 0);
-	const totalLines = entries.reduce((sum, e) => sum + e.lines, 0);
-	const byTool = new Map<string, number>();
-	for (const e of entries) byTool.set(e.toolName, (byTool.get(e.toolName) ?? 0) + 1);
-	const toolBreakdown = [...byTool.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => `  ${name}: ${count}`).join("\n");
-	const oldest = new Date(Math.min(...entries.map((e) => e.createdAt))).toISOString();
-	const newest = new Date(Math.max(...entries.map((e) => e.createdAt))).toISOString();
-	return [
-		`output-gate stats`,
-		`  artifacts: ${entries.length}`,
-		`  total bytes: ${totalBytes}`,
-		`  total lines: ${totalLines}`,
-		`  retention max: ${MEKANN_OUTPUT_GATE_DEFAULTS.artifactRetentionMaxFiles}`,
-		`  oldest: ${oldest}`,
-		`  newest: ${newest}`,
-		`by tool:`,
-		toolBreakdown,
-		`manifest: ${manifestPath(cwd)}`,
-	].join("\n");
-}
-
-async function outputGateShow(cwd: string, artifactId: string): Promise<string> {
-	const entries = await readManifest(cwd);
-	const entry = entries.find((e) => e.id === artifactId);
-	if (!entry) return `Artifact not found: ${artifactId}`;
-	const abs = resolveArtifactPath(cwd, entry);
-	const lines: string[] = [
-		`id: ${entry.id}`,
-		`tool: ${entry.toolName}`,
-		`bytes: ${entry.bytes}`,
-		`lines: ${entry.lines}`,
-		`sha256: ${entry.sha256}`,
-		`created: ${new Date(entry.createdAt).toISOString()}`,
-		`path: ${entry.path}`,
-		`redacted: ${entry.redacted}`,
-	];
-	if (entry.schemaVersion) lines.push(`schemaVersion: ${entry.schemaVersion}`);
-	if (entry.redactionVersion != null) lines.push(`redactionVersion: ${entry.redactionVersion}`);
-	if (entry.originalBytes != null) lines.push(`originalBytes: ${entry.originalBytes}`);
-	if (entry.originalLines != null) lines.push(`originalLines: ${entry.originalLines}`);
-	if (entry.sessionId) lines.push(`sessionId: ${entry.sessionId}`);
-	if (entry.turnId) lines.push(`turnId: ${entry.turnId}`);
-	if (entry.toolCallId) lines.push(`toolCallId: ${entry.toolCallId}`);
-	if (entry.branchId) lines.push(`branchId: ${entry.branchId}`);
-	if (entry.commandHash) lines.push(`commandHash: ${entry.commandHash}`);
-	if (abs) lines.push(`file: ${abs}`, `file exists: true`);
-	else lines.push(`file exists: false`);
-	return lines.join("\n");
-}
-
-async function outputGatePurge(cwd: string, keep: number): Promise<string> {
-	const entries = await readManifest(cwd);
-	if (entries.length <= keep) return `Only ${entries.length} artifacts, nothing to purge (keep=${keep}).`;
-	const sorted = [...entries].sort((a, b) => b.createdAt - a.createdAt);
-	const toRemove = sorted.slice(keep);
-	let removed = 0;
-	for (const entry of toRemove) {
-		const abs = resolveArtifactPath(cwd, entry);
-		if (abs) {
-			try { await fsp.unlink(abs); removed++; } catch { /* ignore */ }
-		}
-	}
-	// Rewrite manifest with kept entries only
-	const kept = sorted.slice(0, keep);
-	await fsp.writeFile(manifestPath(cwd), kept.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf8");
-	return `Purged ${removed} artifacts. Kept ${kept.length} (most recent).`;
-}
+// ---------------------------------------------------------------------------
+// Command arg parsing (adapter-level)
+// ---------------------------------------------------------------------------
 
 function parseKeepArg(args: string | undefined): number | undefined {
 	const match = args?.match(/--keep\s+(\d+)/);
@@ -115,42 +63,87 @@ function parseShowArg(args: string | undefined): string | undefined {
 	return undefined;
 }
 
+// ---------------------------------------------------------------------------
+// Registration
+// ---------------------------------------------------------------------------
+
 export default function outputGateExtension(pi: ExtensionAPI): void {
+	const controller = createController();
+
+	// --- search_tool_outputs tool ---
 	pi.registerTool({
 		name: "search_tool_outputs",
 		label: "Search Stored Tool Outputs",
-		description: "Search large tool outputs stored by output-gate and return small snippets.",
-		promptSnippet: "Search snippets from large tool outputs stored as output-gate artifacts.",
-		promptGuidelines: ["Use search_tool_outputs with an artifact id from an output-gate stub to retrieve relevant snippets."],
+		description:
+			"Search large tool outputs stored by output-gate and return small snippets.",
+		promptSnippet:
+			"Search snippets from large tool outputs stored as output-gate artifacts.",
+		promptGuidelines: [
+			"Use search_tool_outputs with an artifact id from an output-gate stub to retrieve relevant snippets.",
+		],
 		parameters: Type.Object({
 			query: Type.String({ description: "Search query" }),
-			artifact: Type.Optional(Type.String({ description: "Optional output-gate artifact id" })),
-			maxResults: Type.Optional(Type.Number({ description: "Maximum matching snippets" })),
-			contextLines: Type.Optional(Type.Number({ description: "Context lines around each match" })),
-			preferRg: Type.Optional(Type.Boolean({ description: "Use ripgrep for search (default: true)" })),
-			literal: Type.Optional(Type.Boolean({ description: "Treat query as fixed string, not regex (default: true)" })),
-			caseSensitive: Type.Optional(Type.Boolean({ description: "Case-sensitive search (default: false)" })),
+			artifact: Type.Optional(
+				Type.String({ description: "Optional output-gate artifact id" }),
+			),
+			maxResults: Type.Optional(
+				Type.Number({ description: "Maximum matching snippets" }),
+			),
+			contextLines: Type.Optional(
+				Type.Number({ description: "Context lines around each match" }),
+			),
+			preferRg: Type.Optional(
+				Type.Boolean({ description: "Use ripgrep for search (default: true)" }),
+			),
+			literal: Type.Optional(
+				Type.Boolean({
+					description: "Treat query as fixed string, not regex (default: true)",
+				}),
+			),
+			caseSensitive: Type.Optional(
+				Type.Boolean({ description: "Case-sensitive search (default: false)" }),
+			),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const cwd = ctx?.cwd ?? process.cwd();
-			const text = await searchToolOutputs({
+			const text = await controller.search({
 				cwd,
 				query: String((params as any).query ?? ""),
-				artifact: (params as any).artifact ? String((params as any).artifact) : undefined,
-				maxResults: (params as any).maxResults === undefined ? undefined : Number((params as any).maxResults),
-				contextLines: (params as any).contextLines === undefined ? undefined : Number((params as any).contextLines),
-				preferRg: (params as any).preferRg === undefined ? undefined : Boolean((params as any).preferRg),
-				literal: (params as any).literal === undefined ? undefined : Boolean((params as any).literal),
-				caseSensitive: (params as any).caseSensitive === undefined ? undefined : Boolean((params as any).caseSensitive),
-			});
+				artifact: (params as any).artifact
+					? String((params as any).artifact)
+					: undefined,
+				maxResults:
+					(params as any).maxResults === undefined
+						? undefined
+						: Number((params as any).maxResults),
+				contextLines:
+					(params as any).contextLines === undefined
+						? undefined
+						: Number((params as any).contextLines),
+				preferRg:
+					(params as any).preferRg === undefined
+						? undefined
+						: Boolean((params as any).preferRg),
+				literal:
+					(params as any).literal === undefined
+						? undefined
+						: Boolean((params as any).literal),
+				caseSensitive:
+					(params as any).caseSensitive === undefined
+						? undefined
+						: Boolean((params as any).caseSensitive),
+			} satisfies SearchToolOutputsInput);
 			return textResponse(text);
 		},
 	});
 
+	// --- output-gate command ---
 	pi.registerCommand("output-gate", {
 		description: "output-gate artifacts を表示・削除",
 		getArgumentCompletions(prefix: string) {
-			return ["list", "clear", "stats", "show", "purge"].filter((v) => v.startsWith(prefix)).map((value) => ({ value, label: value }));
+			return ["list", "clear", "stats", "show", "purge"]
+				.filter((v) => v.startsWith(prefix))
+				.map((value) => ({ value, label: value }));
 		},
 		async handler(args: string | undefined, ctx: any) {
 			const cwd = ctx?.cwd ?? process.cwd();
@@ -159,8 +152,7 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 			// show <artifactId>
 			const showId = parseShowArg(arg);
 			if (showId) {
-				const message = await outputGateShow(cwd, showId);
-				ctx?.ui?.notify?.(message, "info");
+				ctx?.ui?.notify?.(await controller.show(cwd, showId), "info");
 				return;
 			}
 
@@ -172,72 +164,43 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 			}
 
 			if (arg === "stats") {
-				ctx?.ui?.notify?.(await outputGateStats(cwd), "info");
+				ctx?.ui?.notify?.(await controller.stats(cwd), "info");
 				return;
 			}
 
 			if (arg === "list") {
-				ctx?.ui?.notify?.(await outputGateList(cwd), "info");
+				ctx?.ui?.notify?.(await controller.list(cwd), "info");
 				return;
 			}
 
 			if (arg.startsWith("purge")) {
-				const keep = parseKeepArg(arg) ?? MEKANN_OUTPUT_GATE_DEFAULTS.artifactRetentionMaxFiles;
-				const message = await outputGatePurge(cwd, keep);
-				ctx?.ui?.notify?.(message, "info");
+				const keep =
+					parseKeepArg(arg) ??
+					MEKANN_OUTPUT_GATE_DEFAULTS.artifactRetentionMaxFiles;
+				ctx?.ui?.notify?.(await controller.purge(cwd, keep), "info");
 				return;
 			}
 
 			// default: status
-			ctx?.ui?.notify?.(await outputGateStatus(cwd), "info");
+			ctx?.ui?.notify?.(await controller.status(cwd), "info");
 		},
 	});
 
+	// --- tool_result hook ---
 	pi.on("tool_result", async (event: any, ctx: any) => {
 		const toolName = String(event?.toolName ?? event?.name ?? "tool");
-		if (toolName === "search_tool_outputs" || toolName === "search_context_events" || toolName === "summarize_session_context") return undefined;
-		const text = extractTextContent(event?.content);
-		if (!shouldGateOutput(text, { toolName, maxInlineBytes: MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes })) return undefined;
 		const cwd = event?.cwd ?? ctx?.cwd ?? process.cwd();
-		const gated = await gateTextForLlm({ cwd, toolName, text, source: { kind: "tool_result", toolName }, maxInlineBytes: MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes, previewBytes: MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes, sessionId: ctx?.sessionId, turnId: ctx?.turnId, toolCallId: event?.toolCallId, branchId: ctx?.branchId ?? event?.branchId });
-		if (!gated.handled) return undefined;
 
-		// Record gated output without exposing context-ledger storage details to output-gate.
-		if (gated.gated && gated.artifactId) {
-			await recordToolOutputArtifact({
-				cwd,
-				toolName,
-				artifactId: gated.artifactId,
-				originalBytes: gated.originalBytes,
-				originalLines: gated.originalLines,
-				isError: event?.isError,
-				sessionId: ctx?.sessionId,
-				turnId: ctx?.turnId,
-				toolCallId: event?.toolCallId,
-				branchId: ctx?.branchId ?? event?.branchId,
-			});
-		}
-
-		return {
-			content: [{ type: "text", text: gated.text }],
-			...(typeof event?.isError === "boolean" ? { isError: event.isError } : {}),
-			details: {
-				...(event?.details ?? {}),
-				outputGate: gated.gated ? {
-					stored: true,
-					artifactId: gated.artifactId,
-					bytes: gated.originalBytes,
-					lines: gated.originalLines,
-					sha256: gated.sha256,
-					redacted: true,
-				} : {
-					stored: false,
-					bytes: gated.originalBytes,
-					lines: gated.originalLines,
-					redacted: true,
-					storageError: gated.storageError,
-				},
-			},
-		};
+		return controller.handleToolResult({
+			cwd,
+			toolName,
+			content: event?.content,
+			details: event?.details,
+			isError: event?.isError,
+			sessionId: ctx?.sessionId,
+			turnId: ctx?.turnId,
+			toolCallId: event?.toolCallId,
+			branchId: ctx?.branchId ?? event?.branchId,
+		});
 	});
 }
