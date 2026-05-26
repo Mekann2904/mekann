@@ -41,15 +41,17 @@ interface MockExtensionContext {
 	};
 }
 
-/** Write initial config to the real plan-mode.json, restoring (or deleting) on cleanup. */
+/** Write initial config to the real mekann.json, restoring (or deleting) on cleanup. */
 function withPlanModeConfig<T>(initial: unknown, fn: (configPath: string) => Promise<T>): Promise<T> {
 	const fs = require("fs");
 	const path = require("path");
 	const os = require("os");
-	const configPath = path.join(os.homedir(), ".pi", "agent", "plan-mode.json");
+	const configPath = path.join(os.homedir(), ".pi", "agent", "mekann.json");
 	const original = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf-8") : undefined;
 	fs.mkdirSync(path.dirname(configPath), { recursive: true });
-	fs.writeFileSync(configPath, JSON.stringify(initial));
+	// Wrap in mekann settings format
+	const wrapped = { version: 1, features: { "plan-mode": initial } };
+	fs.writeFileSync(configPath, JSON.stringify(wrapped));
 	return fn(configPath).finally(() => {
 		if (original === undefined) {
 			try { fs.unlinkSync(configPath); } catch {}
@@ -430,7 +432,7 @@ describe("model_select hook", () => {
 		}, ctx);
 
 		const saved = JSON.parse(require("fs").readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toEqual({ provider: "openai-codex", modelId: "gpt-5.5" });
+		expect(saved.features["plan-mode"].models.main).toEqual({ provider: "openai-codex", modelId: "gpt-5.5" });
 	}));
 
 	it("model_select は registry.find に依存せず選択済みモデルを保存する", async () => withPlanModeConfig({ version: 1, models: {}, thinking: {} }, async (configPath) => {
@@ -447,7 +449,7 @@ describe("model_select hook", () => {
 		}, ctx);
 
 		const saved = JSON.parse(require("fs").readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
+		expect(saved.features["plan-mode"].models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
 	}));
 
 	it("model_select 時に effective thinking level も model 管理側で保存する", async () => withPlanModeConfig({ version: 1, models: {}, thinking: {} }, async (configPath) => {
@@ -463,7 +465,7 @@ describe("model_select hook", () => {
 		}, ctx);
 
 		const saved = JSON.parse(require("fs").readFileSync(configPath, "utf-8"));
-		expect(saved.thinking.main).toBe("high");
+		expect(saved.features["plan-mode"].thinking.main).toBe("high");
 	}));
 
 	it("plan mode: /model 相当のモデル変更が plan config に反映される", async () => withPlanModeConfig({ version: 1, models: {}, thinking: {} }, async (configPath) => {
@@ -484,7 +486,7 @@ describe("model_select hook", () => {
 		}, ctx);
 
 		const saved = JSON.parse(require("fs").readFileSync(configPath, "utf-8"));
-		expect(saved.models.plan).toEqual({ provider: "openai-codex", modelId: "gpt-5.5" });
+		expect(saved.features["plan-mode"].models.plan).toEqual({ provider: "openai-codex", modelId: "gpt-5.5" });
 	}));
 });
 
@@ -1158,11 +1160,10 @@ describe("suppress flags during mode transitions", () => {
 
 		// Pre-create a config with thinking levels
 		const { writeFileSync } = require("fs");
-		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "mekann.json");
 		writeFileSync(configPath, JSON.stringify({
 			version: 1,
-			models: {},
-			thinking: { main: "high", plan: "low" },
+			features: { "plan-mode": { version: 1, models: {}, thinking: { main: "high", plan: "low" } } },
 		}));
 
 		await loadExtension(mock);
@@ -1184,7 +1185,7 @@ describe("exitPlanMode: remaining branch coverage", () => {
 	it("no saved thinking level: exitPlanMode skips thinking restore", async () => {
 		const mock = createMockApi();
 		// Delete config to start fresh
-		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "mekann.json");
 		try { require("fs").unlinkSync(configPath); } catch {}
 
 		await loadExtension(mock);
@@ -1207,7 +1208,7 @@ describe("enterPlanMode: no main model configured", () => {
 	it("enters plan mode without main model: savedMainModel undefined", async () => {
 		const mock = createMockApi();
 		// Delete config to ensure no main model
-		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "mekann.json");
 		try { require("fs").unlinkSync(configPath); } catch {}
 
 		await loadExtension(mock);
@@ -1238,11 +1239,10 @@ describe("session_start: invalid ModelRef handling", () => {
 
 		// Pre-create a config with an invalid model ref
 		const { writeFileSync, readFileSync, existsSync } = require("fs");
-		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "mekann.json");
 		writeFileSync(configPath, JSON.stringify({
 			version: 1,
-			models: { main: { provider: "zai", modelId: "glm-5.1" } },
-			thinking: {},
+			features: { "plan-mode": { version: 1, models: { main: { provider: "zai", modelId: "glm-5.1" } }, thinking: {} } },
 		}));
 
 		const mock = createMockApi();
@@ -1254,7 +1254,7 @@ describe("session_start: invalid ModelRef handling", () => {
 
 		// Config should be removed because the model is not selectable in /model.
 		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toBeUndefined()
+		expect(saved.features["plan-mode"].models.main).toBeUndefined()
 
 		// Clean up
 		try { require("fs").unlinkSync(configPath); } catch {}
@@ -1262,11 +1262,10 @@ describe("session_start: invalid ModelRef handling", () => {
 
 	it("session_start with valid main model does NOT clear config", async () => {
 		const { writeFileSync, readFileSync } = require("fs");
-		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "mekann.json");
 		writeFileSync(configPath, JSON.stringify({
 			version: 1,
-			models: { main: { provider: "anthropic", modelId: "sonnet" } },
-			thinking: {},
+			features: { "plan-mode": { version: 1, models: { main: { provider: "anthropic", modelId: "sonnet" } }, thinking: {} } },
 		}));
 
 		const mock = createMockApi();
@@ -1275,7 +1274,7 @@ describe("session_start: invalid ModelRef handling", () => {
 
 		// Config should still have the main model
 		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
+		expect(saved.features["plan-mode"].models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
 
 		// Clean up
 		try { require("fs").unlinkSync(configPath); } catch {}
@@ -1283,11 +1282,10 @@ describe("session_start: invalid ModelRef handling", () => {
 
 	it("session_start resolves legacy fuzzy model ids and canonicalizes config", async () => {
 		const { writeFileSync, readFileSync } = require("fs");
-		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "mekann.json");
 		writeFileSync(configPath, JSON.stringify({
 			version: 1,
-			models: { main: { provider: "anthropic", modelId: "sonnet" } },
-			thinking: {},
+			features: { "plan-mode": { version: 1, models: { main: { provider: "anthropic", modelId: "sonnet" } }, thinking: {} } },
 		}));
 
 		const ctx = createMockCtx({
@@ -1302,7 +1300,7 @@ describe("session_start: invalid ModelRef handling", () => {
 
 		expect(mock.setModel).toHaveBeenCalledWith({ provider: "anthropic", id: "claude-sonnet-4-5" });
 		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toEqual({ provider: "anthropic", modelId: "claude-sonnet-4-5" });
+		expect(saved.features["plan-mode"].models.main).toEqual({ provider: "anthropic", modelId: "claude-sonnet-4-5" });
 
 		try { require("fs").unlinkSync(configPath); } catch {}
 	});
@@ -1333,7 +1331,7 @@ describe("enterPlanMode: skip saving unregistered model", () => {
 
 		// Config should NOT have main model
 		const saved = JSON.parse(require("fs").readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toBeUndefined();
+		expect(saved.features["plan-mode"].models.main).toBeUndefined();
 	}));
 
 	it("saves main model if ctx.model IS in registry", async () => withPlanModeConfig({ version: 1, models: {}, thinking: {} }, async (configPath) => {
@@ -1346,7 +1344,7 @@ describe("enterPlanMode: skip saving unregistered model", () => {
 
 		// Config should have main model
 		const saved = JSON.parse(require("fs").readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
+		expect(saved.features["plan-mode"].models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
 	}));
 });
 
@@ -1356,13 +1354,12 @@ describe("exitPlanMode: invalid ModelRef handling", () => {
 	it("removes invalid main model ref from config on exit", async () => {
 		const notifications: string[] = [];
 		const { writeFileSync, readFileSync } = require("fs");
-		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "mekann.json");
 
 		// Pre-set a main model so session_start saves it, then exitPlanMode will try to restore
 		writeFileSync(configPath, JSON.stringify({
 			version: 1,
-			models: { main: { provider: "zai", modelId: "glm-5.1" } },
-			thinking: {},
+			features: { "plan-mode": { version: 1, models: { main: { provider: "zai", modelId: "glm-5.1" } }, thinking: {} } },
 		}));
 
 		// Registry can't find anything
@@ -1381,7 +1378,7 @@ describe("exitPlanMode: invalid ModelRef handling", () => {
 
 		// Config should already be removed by session_start
 		let saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toBeUndefined()
+		expect(saved.features["plan-mode"].models.main).toBeUndefined()
 
 		// Enter plan mode — no main model to save (registry still empty)
 		await mock._commands["plan"].handler("", ctx);
@@ -1392,7 +1389,7 @@ describe("exitPlanMode: invalid ModelRef handling", () => {
 
 		// Config should remain removed
 		saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toBeUndefined()
+		expect(saved.features["plan-mode"].models.main).toBeUndefined()
 
 		// Clean up
 		try { require("fs").unlinkSync(configPath); } catch {}
@@ -1401,13 +1398,12 @@ describe("exitPlanMode: invalid ModelRef handling", () => {
 	it("removes invalid savedMainModel (fallback) from config on exit", async () => {
 		const notifications: string[] = [];
 		const { writeFileSync, readFileSync } = require("fs");
-		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "mekann.json");
 
 		// Pre-set a main model that the registry CAN find (for session_start)
 		writeFileSync(configPath, JSON.stringify({
 			version: 1,
-			models: { main: { provider: "anthropic", modelId: "sonnet" } },
-			thinking: {},
+			features: { "plan-mode": { version: 1, models: { main: { provider: "anthropic", modelId: "sonnet" } }, thinking: {} } },
 		}));
 
 		// After entering plan mode, make registry unable to find anything
@@ -1439,7 +1435,7 @@ describe("exitPlanMode: invalid ModelRef handling", () => {
 		expect(notifications.some(n => n.includes("選択可能"))).toBe(true);
 
 		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toBeUndefined();
+		expect(saved.features["plan-mode"].models.main).toBeUndefined();
 
 		// Clean up
 		try { require("fs").unlinkSync(configPath); } catch {}
@@ -1656,8 +1652,8 @@ describe("safeEmit error handling", () => {
 describe("enterPlanMode: ctx.model is null", () => {
 	it("skips saving main model when ctx.model is null", async () => {
 		const { writeFileSync, readFileSync } = require("fs");
-		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
-		writeFileSync(configPath, JSON.stringify({ version: 1, models: {}, thinking: {} }));
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "mekann.json");
+		writeFileSync(configPath, JSON.stringify({ version: 1, features: { "plan-mode": { version: 1, models: {}, thinking: {} } } }));
 
 		const ctx = createMockCtx({ model: null });
 		const mock = createMockApi();
@@ -1669,7 +1665,7 @@ describe("enterPlanMode: ctx.model is null", () => {
 
 		// Config should NOT have main model saved
 		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toBeUndefined();
+		expect(saved.features["plan-mode"].models.main).toBeUndefined();
 
 		// Exit plan mode — should not crash
 		await mock._commands["plan"].handler("", ctx);
@@ -1707,7 +1703,7 @@ describe("exitPlanMode: not_found cleanup", () => {
 
 		const notifications: string[] = [];
 		const { writeFileSync, readFileSync } = require("fs");
-		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "mekann.json");
 
 		// Config: main = google/gemini-pro (different from ctx.model)
 		writeFileSync(configPath, JSON.stringify({
@@ -1746,7 +1742,7 @@ describe("exitPlanMode: not_found cleanup", () => {
 
 		// Config should have main removed
 		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toBeUndefined();
+		expect(saved.features["plan-mode"].models.main).toBeUndefined();
 
 		// Clean up
 		try { require("fs").unlinkSync(configPath); } catch {}
@@ -1765,7 +1761,7 @@ describe("exitPlanMode: fallback model not_found", () => {
 	// This test documents that the path IS reachable when state is externally modified.
 	it("fallback does not clear config when mainRef differs from savedMainModel", async () => {
 		const notifications: string[] = [];
-		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "mekann.json");
 
 		let callPhase = "enter";
 		const ctx = createMockCtx({
@@ -1810,9 +1806,9 @@ describe("exitPlanMode: thinking fallback", () => {
 		let lastThinkingLevel = "";
 		mock.setThinkingLevel = vi.fn((level: string) => { lastThinkingLevel = level; });
 
-		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "mekann.json");
 		// No thinking config
-		require("fs").writeFileSync(configPath, JSON.stringify({ version: 1, models: {}, thinking: {} }));
+		require("fs").writeFileSync(configPath, JSON.stringify({ version: 1, features: { "plan-mode": { version: 1, models: {}, thinking: {} } } }));
 
 		await loadExtension(mock);
 		// getThinkingLevel returns "medium" → saved as savedMainThinking on enterPlanMode
@@ -1839,8 +1835,8 @@ describe("exitPlanMode: thinking fallback", () => {
 		mock.getThinkingLevel = () => undefined;
 		mock.setThinkingLevel = vi.fn();
 
-		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "plan-mode.json");
-		require("fs").writeFileSync(configPath, JSON.stringify({ version: 1, models: {}, thinking: {} }));
+		const configPath = require("path").join(require("os").homedir(), ".pi", "agent", "mekann.json");
+		require("fs").writeFileSync(configPath, JSON.stringify({ version: 1, features: { "plan-mode": { version: 1, models: {}, thinking: {} } } }));
 
 		const { default: planModeExtension } = await import("./index.js");
 		planModeExtension(mock);

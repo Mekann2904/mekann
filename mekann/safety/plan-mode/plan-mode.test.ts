@@ -596,17 +596,23 @@ describe("createInitialState with config", () => {
 
 describe("mode switch model simulation", () => {
 	it("main → plan saves main model to config", () => {
-		const config = createDefaultConfig();
-		const state = createInitialState(config);
-		expect(state.mode).toBe("main");
+		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
+		const path = `${tmpDir}/mekann.json`;
+		try {
+			const config = createDefaultConfig();
+			const state = createInitialState(config);
+			expect(state.mode).toBe("main");
 
-		// Simulate: entering plan mode, current model = anthropic/sonnet
-		state.savedMainModel = { provider: "anthropic", modelId: "sonnet" };
-		updateConfigField(state.modelConfig, "models", "main", state.savedMainModel);
-		state.mode = "plan";
+			// Simulate: entering plan mode, current model = anthropic/sonnet
+			state.savedMainModel = { provider: "anthropic", modelId: "sonnet" };
+			updateConfigField(state.modelConfig, "models", "main", state.savedMainModel, path);
+			state.mode = "plan";
 
-		expect(state.modelConfig.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
-		expect(state.savedMainModel).toEqual({ provider: "anthropic", modelId: "sonnet" });
+			expect(state.modelConfig.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
+			expect(state.savedMainModel).toEqual({ provider: "anthropic", modelId: "sonnet" });
+		} finally {
+			rmSync(tmpDir, { recursive: true });
+		}
 	});
 
 	it("plan → main restores main model from config", () => {
@@ -639,31 +645,43 @@ describe("mode switch model simulation", () => {
 	});
 
 	it("model_select in main mode updates main config", () => {
-		const config = createDefaultConfig();
-		const state = createInitialState(config);
-		state.mode = "main";
+		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
+		const path = `${tmpDir}/mekann.json`;
+		try {
+			const config = createDefaultConfig();
+			const state = createInitialState(config);
+			state.mode = "main";
 
-		// Simulate: user selected a new model in main mode
-		const newRef: ModelRef = { provider: "google", modelId: "gemini-2.5-pro" };
-		if (state.mode === "main") {
-			updateConfigField(state.modelConfig, "models", "main", newRef);
+			// Simulate: user selected a new model in main mode
+			const newRef: ModelRef = { provider: "google", modelId: "gemini-2.5-pro" };
+			if (state.mode === "main") {
+				updateConfigField(state.modelConfig, "models", "main", newRef, path);
+			}
+
+			expect(state.modelConfig.models.main).toEqual({ provider: "google", modelId: "gemini-2.5-pro" });
+		} finally {
+			rmSync(tmpDir, { recursive: true });
 		}
-
-		expect(state.modelConfig.models.main).toEqual({ provider: "google", modelId: "gemini-2.5-pro" });
 	});
 
 	it("model_select in plan mode updates plan config", () => {
-		const config = createDefaultConfig();
-		const state = createInitialState(config);
-		state.mode = "plan";
+		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
+		const path = `${tmpDir}/mekann.json`;
+		try {
+			const config = createDefaultConfig();
+			const state = createInitialState(config);
+			state.mode = "plan";
 
-		// Simulate: user selected a new model in plan mode
-		const newRef: ModelRef = { provider: "google", modelId: "gemini-2.5-flash" };
-		if (state.mode === "plan") {
-			updateConfigField(state.modelConfig, "models", "plan", newRef);
+			// Simulate: user selected a new model in plan mode
+			const newRef: ModelRef = { provider: "google", modelId: "gemini-2.5-flash" };
+			if (state.mode === "plan") {
+				updateConfigField(state.modelConfig, "models", "plan", newRef, path);
+			}
+
+			expect(state.modelConfig.models.plan).toEqual({ provider: "google", modelId: "gemini-2.5-flash" });
+		} finally {
+			rmSync(tmpDir, { recursive: true });
 		}
-
-		expect(state.modelConfig.models.plan).toEqual({ provider: "google", modelId: "gemini-2.5-flash" });
 	});
 });
 
@@ -712,22 +730,28 @@ describe("suppressModelSelectPersist guard", () => {
 
 describe("enterPlanMode persistCurrentMain option", () => {
 	it("default (persistCurrentMain=true) saves current model", () => {
-		const config = createDefaultConfig();
-		const state = createInitialState(config);
-		state.mode = "main";
+		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
+		const path = `${tmpDir}/mekann.json`;
+		try {
+			const config = createDefaultConfig();
+			const state = createInitialState(config);
+			state.mode = "main";
 
-		// Simulate: user toggles /plan — persistCurrentMain defaults to true
-		const persistCurrentMain = true;
-		const currentMain: ModelRef = { provider: "anthropic", modelId: "sonnet" };
+			// Simulate: user toggles /plan — persistCurrentMain defaults to true
+			const persistCurrentMain = true;
+			const currentMain: ModelRef = { provider: "anthropic", modelId: "sonnet" };
 
-		if (persistCurrentMain) {
-			state.savedMainModel = currentMain;
-			updateConfigField(state.modelConfig, "models", "main", currentMain);
+			if (persistCurrentMain) {
+				state.savedMainModel = currentMain;
+				updateConfigField(state.modelConfig, "models", "main", currentMain, path);
+			}
+
+			state.mode = "plan";
+			expect(state.savedMainModel).toEqual({ provider: "anthropic", modelId: "sonnet" });
+			expect(state.modelConfig.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
+		} finally {
+			rmSync(tmpDir, { recursive: true });
 		}
-
-		state.mode = "plan";
-		expect(state.savedMainModel).toEqual({ provider: "anthropic", modelId: "sonnet" });
-		expect(state.modelConfig.models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
 	});
 
 	it("persistCurrentMain=false (--plan startup) does NOT overwrite config", () => {
@@ -920,7 +944,7 @@ describe("thinking config persistence", () => {
 			// Write a config without "thinking" field (old format)
 			writeFileSync(path, JSON.stringify({
 				version: 1,
-				models: { main: { provider: "anthropic", modelId: "sonnet" } },
+				features: { "plan-mode": { models: { main: { provider: "anthropic", modelId: "sonnet" } } } },
 			}, null, 2));
 
 			const loaded = loadModelConfig(path);
@@ -938,8 +962,7 @@ describe("thinking config persistence", () => {
 		try {
 			writeFileSync(path, JSON.stringify({
 				version: 1,
-				models: {},
-				thinking: { main: "ultra", plan: "high", extra: "low" },
+				features: { "plan-mode": { models: {}, thinking: { main: "ultra", plan: "high", extra: "low" } } },
 			}, null, 2));
 
 			const loaded = loadModelConfig(path);
@@ -1024,18 +1047,24 @@ describe("normalizeConfig", () => {
 
 describe("thinking mode switch simulation", () => {
 	it("main → plan saves main thinking to config", () => {
-		const config = createDefaultConfig();
-		const state = createInitialState(config);
-		expect(state.mode).toBe("main");
+		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
+		const path = `${tmpDir}/mekann.json`;
+		try {
+			const config = createDefaultConfig();
+			const state = createInitialState(config);
+			expect(state.mode).toBe("main");
 
-		// Simulate: entering plan mode, current thinking = high
-		const currentThinking: ThinkingLevel = "high";
-		state.savedMainThinking = currentThinking;
-		updateConfigField(state.modelConfig, "thinking", "main", currentThinking);
-		state.mode = "plan";
+			// Simulate: entering plan mode, current thinking = high
+			const currentThinking: ThinkingLevel = "high";
+			state.savedMainThinking = currentThinking;
+			updateConfigField(state.modelConfig, "thinking", "main", currentThinking, path);
+			state.mode = "plan";
 
-		expect(state.modelConfig.thinking.main).toBe("high");
-		expect(state.savedMainThinking).toBe("high");
+			expect(state.modelConfig.thinking.main).toBe("high");
+			expect(state.savedMainThinking).toBe("high");
+		} finally {
+			rmSync(tmpDir, { recursive: true });
+		}
 	});
 
 	it("plan config thinking is used when entering plan", () => {
@@ -1106,29 +1135,41 @@ describe("thinking mode switch simulation", () => {
 
 describe("thinking event simulation", () => {
 	it("thinking_level_select in main mode updates thinking.main", () => {
-		const config = createDefaultConfig();
-		const state = createInitialState(config);
-		state.mode = "main";
+		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
+		const path = `${tmpDir}/mekann.json`;
+		try {
+			const config = createDefaultConfig();
+			const state = createInitialState(config);
+			state.mode = "main";
 
-		const newLevel: ThinkingLevel = "high";
-		if (state.mode === "main") {
-			updateConfigField(state.modelConfig, "thinking", "main", newLevel);
+			const newLevel: ThinkingLevel = "high";
+			if (state.mode === "main") {
+				updateConfigField(state.modelConfig, "thinking", "main", newLevel, path);
+			}
+
+			expect(state.modelConfig.thinking.main).toBe("high");
+		} finally {
+			rmSync(tmpDir, { recursive: true });
 		}
-
-		expect(state.modelConfig.thinking.main).toBe("high");
 	});
 
 	it("thinking_level_select in plan mode updates thinking.plan", () => {
-		const config = createDefaultConfig();
-		const state = createInitialState(config);
-		state.mode = "plan";
+		const tmpDir = mkdtempSync(`/tmp/plan-mode-test-`);
+		const path = `${tmpDir}/mekann.json`;
+		try {
+			const config = createDefaultConfig();
+			const state = createInitialState(config);
+			state.mode = "plan";
 
-		const newLevel: ThinkingLevel = "xhigh";
-		if (state.mode === "plan") {
-			updateConfigField(state.modelConfig, "thinking", "plan", newLevel);
+			const newLevel: ThinkingLevel = "xhigh";
+			if (state.mode === "plan") {
+				updateConfigField(state.modelConfig, "thinking", "plan", newLevel, path);
+			}
+
+			expect(state.modelConfig.thinking.plan).toBe("xhigh");
+		} finally {
+			rmSync(tmpDir, { recursive: true });
 		}
-
-		expect(state.modelConfig.thinking.plan).toBe("xhigh");
 	});
 
 	it("suppressThinkingSelectPersist prevents update", () => {
@@ -1933,7 +1974,7 @@ describe("getConfigPath", () => {
 	it("パスを渡さないと ~/.pi/agent/plan-mode.json を返す", () => {
 		const path = getConfigPath();
 		expect(path).toContain(".pi");
-		expect(path).toContain("plan-mode.json");
+		expect(path).toContain("mekann.json");
 	});
 });
 

@@ -108,15 +108,16 @@ async function loadExtension(mockApi: ReturnType<typeof createMockApi>) {
 	planModeExtension(mockApi as any);
 }
 
-/** Write initial config to real plan-mode.json, restoring (or deleting) on cleanup. */
+/** Write initial config to real mekann.json, restoring (or deleting) on cleanup. */
 function withPlanModeConfig<T>(initial: unknown, fn: (configPath: string) => Promise<T>): Promise<T> {
 	const fs = require("fs");
 	const path = require("path");
 	const os = require("os");
-	const configPath = path.join(os.homedir(), ".pi", "agent", "plan-mode.json");
+	const configPath = path.join(os.homedir(), ".pi", "agent", "mekann.json");
 	const original = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf-8") : undefined;
 	fs.mkdirSync(path.dirname(configPath), { recursive: true });
-	fs.writeFileSync(configPath, JSON.stringify(initial));
+	const wrapped = { version: 1, features: { "plan-mode": initial } };
+	fs.writeFileSync(configPath, JSON.stringify(wrapped));
 	return fn(configPath).finally(() => {
 		if (original !== undefined) fs.writeFileSync(configPath, original);
 		else { try { fs.unlinkSync(configPath); } catch {} }
@@ -393,7 +394,7 @@ describe("utils.ts: withConfigLock stale lock (L176-178)", () => {
 		saveModelConfig(config, configPath);
 
 		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.models.main).toEqual({ provider: "test", modelId: "stale-test" });
+		expect(saved.features["plan-mode"].models.main).toEqual({ provider: "test", modelId: "stale-test" });
 
 		rmSync(tmpDir, { recursive: true, force: true });
 	});
