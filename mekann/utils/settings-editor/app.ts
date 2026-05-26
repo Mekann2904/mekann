@@ -1,5 +1,6 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
+import type { ScrollBoxRenderable } from "@opentui/core";
 import type { EffectiveSetting, SettingsScope } from "../../settings/types.js";
 import type { ModelCatalogItem } from "./model-ipc.js";
 
@@ -383,13 +384,18 @@ function DiffOverlay(p: { drafts: Record<string, DraftChange>; items: EffectiveS
 }
 
 function ModelPickerOverlay(p: { models: ModelCatalogItem[]; selected: number }) {
-	const visible = p.models.slice(Math.max(0, p.selected - 6), Math.min(p.models.length, p.selected + 10));
-	const offset = Math.max(0, p.selected - 6);
-	const rows = visible.map((m, idx) => {
-		const i = offset + idx;
+	const scrollRef = useRef<ScrollBoxRenderable>(null);
+
+	useEffect(() => {
+		const id = `model-row-${p.selected}`;
+		scrollRef.current?.scrollChildIntoView(id);
+	}, [p.selected, p.models.length]);
+
+	const rows = p.models.map((m, i) => {
 		const isSel = i === p.selected;
 		return el("box", {
 			key: `${m.provider}/${m.modelId}`,
+			id: `model-row-${i}`,
 			style: { flexDirection: "row", height: 1, backgroundColor: isSel ? C.bgSelected : C.bg, paddingLeft: 1, paddingRight: 1 },
 		},
 			el("text", { fg: isSel ? C.fgBright : C.fg, content: `${isSel ? "▸" : " "} ${pad(`${m.provider}/${m.modelId}`, 44)} ` }),
@@ -399,12 +405,16 @@ function ModelPickerOverlay(p: { models: ModelCatalogItem[]; selected: number })
 	});
 
 	return el("box", {
-		style: { position: "absolute", top: 3, left: 2, right: 2, bottom: 3, borderStyle: "rounded", borderColor: C.cyan, backgroundColor: C.overlayBg, padding: 1, flexDirection: "column", gap: 0 },
+		style: { position: "absolute", top: 1, left: 2, right: 2, bottom: 2, borderStyle: "rounded", borderColor: C.cyan, backgroundColor: C.overlayBg, padding: 1, flexDirection: "column", gap: 0 },
 	},
 		el("text", { fg: C.cyan, content: "Select Model" }),
 		el("text", { fg: C.fgDim, content: "↑↓ navigate · Enter select · Esc cancel" }),
-		el("text", { fg: C.fgDim, content: "" }),
-		...rows,
+		el("scrollbox", {
+			ref: scrollRef,
+			style: { width: "100%", flexGrow: 1, backgroundColor: C.bg },
+			scrollY: true,
+			viewportCulling: true,
+		}, ...rows),
 	);
 }
 
