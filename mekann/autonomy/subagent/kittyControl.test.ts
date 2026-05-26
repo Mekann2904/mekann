@@ -36,9 +36,10 @@ describe("KittyController", () => {
       expect(result.status).toBe("open");
     });
 
-    it("uses model and thinking when provided", async () => {
+    it("uses sub mode, model and thinking when provided", async () => {
       const result = await controller.launchPiWindow({ ...baseParams, modelId: "gpt-4", thinkingLevel: "low" });
       expect(result.status).toBe("open");
+      expect(result.windowId).toContain("--sub");
       expect(result.windowId).toContain("--model");
       expect(result.windowId).toContain("gpt-4");
       expect(result.windowId).toContain("--thinking");
