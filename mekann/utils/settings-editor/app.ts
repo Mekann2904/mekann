@@ -76,15 +76,13 @@ function supportedThinking(
 		: (item.schema.enumValues ?? []);
 }
 
-// ─── Tokyo Night + Pi dark fusion palette ─────────────────────────
+// ─── Tokyo Night dark palette ──────────────────────────────────────
 
 const C = {
-	// OpenTUI currently expects concrete colors here; string rgba()/transparent
-	// renders as fallback magenta in some terminals. Use Tokyo Night hex colors.
-	bg: "#1a1b26",
-	bgPanel: "#1f2335",
+	// Base backgrounds — deep black tones
+	bg: "#11111b",
+	bgPanel: "#181825",
 	bgSelected: "#33467c",
-	bgHover: "#24283b",
 
 	// Text — Tokyo Night tones
 	fg: "#c0caf5",
@@ -105,14 +103,14 @@ const C = {
 
 	// UI chrome
 	border: "#3b4261",
-	inputBg: "#16161e",
-	overlayBg: "#16161e",
-	statusBarBg: "#16161e",
-	statusKeyBg: "#0f1018",
-	titleBarBg: "#1f2335",
-	groupHeaderBg: "#24283b",
-	rowEvenBg: "#1f2335",
-	rowOddBg: "#1a1b26",
+	inputBg: "#0d0d14",
+	overlayBg: "#0d0d14",
+	statusBarBg: "#0d0d14",
+	statusKeyBg: "#09090f",
+	titleBarBg: "#181825",
+	groupHeaderBg: "#1e1e2e",
+	rowEvenBg: "#151520",
+	rowOddBg: "#11111b",
 };
 
 // ─── Feature group info ───────────────────────────────────────────
@@ -190,9 +188,10 @@ function FeatureHeader(p: { feature: string }) {
 	);
 }
 
+
 function ColumnHeader() {
 	return el("box", {
-		style: { flexDirection: "row", width: "100%", height: 1, backgroundColor: C.bg, paddingLeft: 3, paddingRight: 1 },
+		style: { flexDirection: "row", width: "100%", height: 1, paddingLeft: 3, paddingRight: 1 },
 	},
 		el("text", { fg: C.fgDim, content: pad("SETTING", 24) }),
 		el("text", { fg: C.fgDim, content: pad("VALUE", 28) }),
@@ -206,17 +205,27 @@ function StatusBar(p: {
 	draftCount: number;
 	diagnosticsCount: number;
 	mode: AppMode;
+	currentType: string;
 }) {
 	const scopeColor = p.scope === "global" ? C.purple : C.cyan;
 	const modeLabel: Record<AppMode, string> = { list: "BROWSE", edit: "EDIT", models: "MODEL PICK", diff: "DIFF" };
 	const modeColor: Record<AppMode, string> = { list: C.green, edit: C.yellow, models: C.cyan, diff: C.purple };
+
+	// Contextual Enter hint based on current setting type
+	let enterHint = "open";
+	if (p.mode === "list") {
+		if (p.currentType === "modelRef") enterHint = "pick model";
+		else if (p.currentType === "enum") enterHint = "cycle";
+		else if (p.currentType === "boolean") enterHint = "toggle";
+		else enterHint = "edit";
+	}
 
 	const statusChildren: React.ReactNode[] = [
 		el("text", { fg: modeColor[p.mode], content: ` ${modeLabel[p.mode]} ` }),
 		el("text", { fg: C.fgDim, content: " │ " }),
 		el("text", { fg: scopeColor, content: `${p.scope}` }),
 		el("text", { fg: C.fgDim, content: " │ " }),
-		el("text", { fg: p.draftCount > 0 ? C.green : C.fgDim, content: `drafts:${p.draftCount}` }),
+		el("text", { fg: p.draftCount > 0 ? C.green : C.fgDim, content: `${p.draftCount} draft${p.draftCount !== 1 ? "s" : ""}` }),
 	];
 	if (p.diagnosticsCount > 0) {
 		statusChildren.push(
@@ -239,10 +248,8 @@ function StatusBar(p: {
 			style: { flexDirection: "row", width: "100%", height: 1, backgroundColor: C.statusKeyBg, paddingLeft: 1, paddingRight: 1, alignItems: "center" },
 		},
 			el("text", { fg: C.fgDim, content: " ↑↓ " }), el("text", { fg: C.fg, content: "nav" }),
-			el("text", { fg: C.fgDim, content: "  e " }), el("text", { fg: C.fg, content: "edit" }),
-			el("text", { fg: C.fgDim, content: "  m " }), el("text", { fg: C.fg, content: "model" }),
-			el("text", { fg: C.fgDim, content: "  Space " }), el("text", { fg: C.fg, content: "cycle" }),
-			el("text", { fg: C.fgDim, content: "  g/w " }), el("text", { fg: C.fg, content: "scope" }),
+			el("text", { fg: C.fgDim, content: "  ⏎ " }), el("text", { fg: C.accent, content: enterHint }),
+			el("text", { fg: C.fgDim, content: "  Tab " }), el("text", { fg: C.fg, content: "scope" }),
 			el("text", { fg: C.fgDim, content: "  d " }), el("text", { fg: C.fg, content: "diff" }),
 			el("text", { fg: C.fgDim, content: "  a " }), el("text", { fg: C.green, content: "apply" }),
 			el("text", { fg: C.fgDim, content: "  q " }), el("text", { fg: C.fgDim, content: "quit" }),
@@ -286,6 +293,10 @@ function DetailPanel(p: {
 		el("box", { style: { flexDirection: "row" } },
 			el("text", { fg: C.fgDim, content: "Save to: " }),
 			el("text", { fg: p.scope === "global" ? C.purple : C.cyan, content: p.scope }),
+		),
+		el("box", { style: { flexDirection: "row" } },
+			el("text", { fg: C.fgDim, content: "Type: " }),
+			el("text", { fg: C.teal, content: p.item.schema.type === "modelRef" ? "model" : p.item.schema.type }),
 		),
 		el("box", { style: { flexDirection: "row" } },
 			el("text", { fg: C.fgDim, content: "Default: " }),
@@ -455,15 +466,25 @@ export function SettingsEditorApp({
 		if (key.name === "q") { onQuit(); return; }
 		if (key.name === "up") setSelected((i) => Math.max(0, i - 1));
 		else if (key.name === "down") setSelected((i) => Math.min(items.length - 1, i + 1));
-		else if (key.name === "g") { setScope("global"); setMessage("save scope → global"); }
-		else if (key.name === "w") { setScope("workspace"); setMessage("save scope → workspace"); }
+		else if (key.name === "tab") {
+			setScope((s) => s === "global" ? "workspace" : "global");
+			setMessage(`save scope → ${scope === "global" ? "workspace" : "global"}`);
+		}
 		else if (key.name === "d") setMode(mode === "diff" ? "list" : "diff");
-		else if (key.name === "e" && current) { setBuffer(shownValue === "(unset)" ? "" : shownValue); setMode("edit"); setMessage(`editing ${itemId(current)}`); }
-		else if (key.name === "m" && current?.schema.type === "modelRef") { setModelSelected(0); setMode("models"); setMessage("pick a model"); }
-		else if (key.name === "space" && current?.schema.type === "enum") {
-			const values = current.feature === "plan-mode" && current.key.startsWith("thinking.") ? supportedThinking(models, current, items) : (current.schema.enumValues ?? []);
-			const idx = Math.max(0, values.indexOf(shownValue));
-			stage(current, values[(idx + 1) % values.length] ?? "");
+		// Enter: context-sensitive action based on setting type
+		else if ((key.name === "return" || key.name === "enter") && current) {
+			if (current.schema.type === "modelRef") {
+				setModelSelected(0); setMode("models"); setMessage("pick a model");
+			} else if (current.schema.type === "enum") {
+				const values = current.feature === "plan-mode" && current.key.startsWith("thinking.") ? supportedThinking(models, current, items) : (current.schema.enumValues ?? []);
+				const idx = Math.max(0, values.indexOf(shownValue));
+				stage(current, values[(idx + 1) % values.length] ?? "");
+			} else if (current.schema.type === "boolean") {
+				const cur = current.effectiveValue;
+				stage(current, String(!cur));
+			} else {
+				setBuffer(shownValue === "(unset)" ? "" : shownValue); setMode("edit"); setMessage(`editing ${itemId(current)}`);
+			}
 		} else if (key.name === "a" && !applying) {
 			const changes = Object.values(drafts);
 			if (changes.length === 0) { setMessage("no drafts to apply"); return; }
@@ -523,7 +544,7 @@ export function SettingsEditorApp({
 			el(DetailPanel, { item: current, draft: currentDraft, models, allItems: items, scope }),
 		),
 		// Status bar
-		el(StatusBar, { message, scope, draftCount: Object.keys(drafts).length, diagnosticsCount: diagnostics.length, mode }),
+		el(StatusBar, { message, scope, draftCount: Object.keys(drafts).length, diagnosticsCount: diagnostics.length, mode, currentType: current?.schema.type ?? "" }),
 		// Overlays
 		...(mode === "edit" && current ? [el(EditOverlay, { settingKey: itemId(current), buffer, type: current.schema.type })] : []),
 		...(mode === "diff" ? [el(DiffOverlay, { drafts, items })] : []),
