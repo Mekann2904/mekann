@@ -190,7 +190,7 @@ describe("buildBlockReason", () => {
 	it("2回目のブロック: 警告が強化される", () => {
 		const reason = buildBlockReason("edit", { path: "file.ts" }, 2);
 		expect(reason).toContain("2回目のブロック");
-		expect(reason).toContain("<implementation_brief>");
+		expect(reason).toContain("読み取り専用");
 	});
 
 	it("3回以上のブロック: 最高レベルの警告", () => {
