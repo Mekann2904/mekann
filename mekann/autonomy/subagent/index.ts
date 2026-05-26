@@ -19,7 +19,6 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { AgentControl } from "./agentControl.js";
 import { SubagentClient } from "./ipc.js";
@@ -29,7 +28,8 @@ import type { SpawnParams, SpawnResult } from "./types.js";
 import { extractTextFromContent } from "./contextFork.js";
 import type { ForkTurns } from "./contextFork.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
-import { getGlobalSettingsPath, getWorkspaceSettingsPath, MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
+import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
+import { featureConfig } from "../../settings/featureConfig.js";
 import { registerSubagentFlags } from "./flags.js";
 
 let sharedSpawnAgent: ((params: SpawnParams, ctx: ExtensionContext) => Promise<SpawnResult>) | undefined;
@@ -206,30 +206,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
 
   function readSettingsFile(): Record<string, unknown> {
     if (process.env.VITEST || process.env.NODE_ENV === "test") return {};
-    const paths = [
-      process.env.HOME ? getGlobalSettingsPath(process.env.HOME) : undefined,
-      getWorkspaceSettingsPath(),
-    ].filter(Boolean) as string[];
-    let merged: Record<string, unknown> = {};
-    for (const p of paths) {
-      try {
-        const parsed = JSON.parse(readFileSync(p, "utf8"));
-        if (parsed && typeof parsed === "object") {
-          const obj = parsed as Record<string, unknown>;
-          const previousSubagent = (merged.subagent && typeof merged.subagent === "object")
-            ? merged.subagent as Record<string, unknown>
-            : {};
-          merged = { ...merged, ...obj };
-          if (obj.subagent && typeof obj.subagent === "object") {
-            merged.subagent = {
-              ...previousSubagent,
-              ...(obj.subagent as Record<string, unknown>),
-            };
-          }
-        }
-      } catch { /* ignore */ }
-    }
-    return merged;
+    return { subagent: featureConfig("subagent") };
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -255,22 +232,24 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       // AgentRegistry counts the root agent too, so root + max 2 subagents = 3 open agents.
       const maxSubagentsDefault = String(MEKANN_SUBAGENT_DEFAULTS.maxSubagents);
       const maxSubagents = Math.min(
-        Math.max(Number(getFlagOrSetting("subagent-max-agents", "max-agents", maxSubagentsDefault)) || MEKANN_SUBAGENT_DEFAULTS.maxSubagents, 0),
-        MEKANN_SUBAGENT_DEFAULTS.maxSubagents,
+        Math.max(Number(getFlagOrSetting("subagent-max-agents", "maxSubagents", maxSubagentsDefault)) || MEKANN_SUBAGENT_DEFAULTS.maxSubagents, 0),
+        4,
       );
-      const maxAgents = maxSubagents + 1;
+      const configuredMaxOpenAgents = Number(getFlagOrSetting("subagent-max-open-agents", "maxOpenAgents", String(maxSubagents + 1))) || maxSubagents + 1;
+      const maxAgents = Math.max(configuredMaxOpenAgents, maxSubagents + 1);
       const maxQueuedDefault = String(maxSubagents * 4);
-      const maxQueuedSubagents = Math.max(Number(getFlagOrSetting("subagent-max-queued-agents", "max-queued-agents", maxQueuedDefault)) || maxSubagents * 4, 0);
+      const maxQueuedSubagents = Math.max(Number(getFlagOrSetting("subagent-max-queued-agents", "maxQueuedSubagents", maxQueuedDefault)) || maxSubagents * 4, 0);
       const maxDepthDefault = String(MEKANN_SUBAGENT_DEFAULTS.maxDepth);
-      const maxDepth = Number(getFlagOrSetting("subagent-max-depth", "max-depth", maxDepthDefault)) || MEKANN_SUBAGENT_DEFAULTS.maxDepth;
-      const rawDefaultWait = getFlagOrSetting<string>("subagent-default-wait-timeout-ms", "default-wait-timeout-ms");
+      const maxDepth = Number(getFlagOrSetting("subagent-max-depth", "maxDepth", maxDepthDefault)) || MEKANN_SUBAGENT_DEFAULTS.maxDepth;
+      const rawDefaultWait = getFlagOrSetting<string>("subagent-default-wait-timeout-ms", "defaultWaitTimeoutMs");
       const parsedDefaultWait = rawDefaultWait === undefined || rawDefaultWait === "" ? undefined : Number(rawDefaultWait);
       const defaultWait = parsedDefaultWait !== undefined && Number.isFinite(parsedDefaultWait) ? parsedDefaultWait : undefined;
       const minWaitDefault = String(MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs);
-      const minWait = Number(getFlagOrSetting("subagent-min-wait-timeout-ms", "min-wait-timeout-ms", minWaitDefault)) || MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs;
-      const rawDisplayFlag = getFlagOrSetting<string>("subagent-display", "display", MEKANN_SUBAGENT_DEFAULTS.display);
-      const displayFlag = String(rawDisplayFlag ?? MEKANN_SUBAGENT_DEFAULTS.display);
-      const requestedDisplayMode = displayFlag === "kitty-pi" || displayFlag === "kitty-split" ? displayFlag : "none";
+      const minWait = Number(getFlagOrSetting("subagent-min-wait-timeout-ms", "minWaitTimeoutMs", minWaitDefault)) || MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs;
+      const rawDisplayFlag = getFlagOrSetting<string>("subagent-display", "display", "external-split");
+      const displayFlag = String(rawDisplayFlag ?? "external-split");
+      const displayMap: Record<string, "none" | "kitty-pi" | "kitty-split"> = { none: "none", "external-pi": "kitty-pi", "external-split": "kitty-split", "kitty-pi": "kitty-pi", "kitty-split": "kitty-split" };
+      const requestedDisplayMode = displayMap[displayFlag] ?? "none";
       const displayMode = requestedDisplayMode.startsWith("kitty-") && !process.env.KITTY_WINDOW_ID ? "none" : requestedDisplayMode;
       const allowUnsafeExternalPi = /^(1|true|yes|on)$/i.test(
         String(getFlagOrSetting<string>(
@@ -283,6 +262,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       const kittenBin = String(getFlagOrSetting<string>("subagent-kitten-bin", "kitten-bin", MEKANN_SUBAGENT_DEFAULTS.kittenBin) ?? MEKANN_SUBAGENT_DEFAULTS.kittenBin) || MEKANN_SUBAGENT_DEFAULTS.kittenBin;
       const piCommand = String(getFlagOrSetting<string>("subagent-pi-command", "pi-command", MEKANN_SUBAGENT_DEFAULTS.piCommand) ?? MEKANN_SUBAGENT_DEFAULTS.piCommand) || MEKANN_SUBAGENT_DEFAULTS.piCommand;
       const extensionPath = String(getFlagOrSetting<string>("subagent-extension-path", "extension-path", extensionPathDefault) ?? extensionPathDefault).trim();
+      const externalPiSlots = Number(getFlagOrSetting("subagent-external-pi-slots", "externalPiSlots", String(MEKANN_SUBAGENT_DEFAULTS.externalPiSlots))) || MEKANN_SUBAGENT_DEFAULTS.externalPiSlots;
 
       control = new AgentControl(pi, maxAgents, maxDepth, defaultWait, minWait, {
         displayMode,
@@ -292,6 +272,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
         extensionPath: extensionPath || undefined,
         allowUnsafeExternalPi,
         maxQueuedSubagents,
+        externalPiSlots,
       });
     }
     return control;

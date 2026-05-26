@@ -2,11 +2,12 @@
  * Plan Mode — ユーティリティ関数
  */
 
-import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, rmSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
-import { getPlanModeConfigPath, MEKANN_CONFIG_VERSION } from "../../config.js";
+import { MEKANN_CONFIG_VERSION } from "../../config.js";
+import { getGlobalMekannSettingsPath, loadSettings, saveSettingsChecked } from "../../settings/store.js";
 
 // Re-export from policy-core — single source of truth for command intent classification.
 // isSafeCommand is a UX guard, NOT a security boundary.
@@ -130,92 +131,23 @@ export function sameModelRef(a: ModelRef | undefined, b: ModelRef | undefined): 
 
 /** ~/.pi/agent/plan-mode.json へのパス（explicitPath で上書き可能）。 */
 export function getConfigPath(explicitPath?: string): string {
-	return explicitPath ?? getPlanModeConfigPath();
+	return explicitPath ?? getGlobalMekannSettingsPath();
 }
 
 /** Load config from disk, returning a default config on missing/invalid file. */
 export function loadModelConfig(explicitPath?: string): PlanModeConfig {
-	const configPath = getConfigPath(explicitPath);
-	if (!existsSync(configPath)) return createDefaultConfig();
-	try {
-		const raw = readFileSync(configPath, "utf-8");
-		const parsed = JSON.parse(raw);
-		if (parsed && parsed.version === 1) return normalizeConfig(parsed);
-	} catch {
-		// fall through to default
-	}
-	return createDefaultConfig();
+	const loaded = loadSettings(explicitPath ?? getGlobalMekannSettingsPath());
+	const feature = loaded.settings.features["plan-mode"] ?? {};
+	return normalizeConfig({ version: 1, models: feature.models, thinking: feature.thinking });
 }
 
-/** Sleep synchronously; used only while waiting for the cross-process config lock. */
-function sleepSync(ms: number): void {
-	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-}
-
-/**
- * Cross-process mutex for plan-mode config updates.
- *
- * `mkdir` is atomic on local filesystems, so a lock directory gives us a small
- * dependency-free critical section shared by all pi processes.  Stale locks are
- * reclaimed to avoid a crashed pi permanently blocking config writes.
- */
-function withConfigLock<T>(configPath: string, fn: () => T): T {
-	const dir = dirname(configPath);
-	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-
-	const lockPath = `${configPath}.lock`;
-	const timeoutMs = 5_000;
-	const staleMs = 30_000;
-	const start = Date.now();
-
-	for (;;) {
-		try {
-			mkdirSync(lockPath);
-		} catch (error) {
-			if ((error as { code?: string }).code !== "EEXIST") throw error;
-
-			try {
-				if (Date.now() - statSync(lockPath).mtimeMs > staleMs) {
-					rmSync(lockPath, { recursive: true, force: true });
-					continue;
-				}
-			} catch (statError) {
-				if ((statError as { code?: string }).code !== "ENOENT") throw statError;
-				continue;
-			}
-
-			if (Date.now() - start > timeoutMs) throw new Error(`plan-mode config lock timeout: ${lockPath}`);
-			sleepSync(25);
-			continue;
-		}
-
-		try {
-			writeFileSync(join(lockPath, "owner.json"), JSON.stringify({ pid: process.pid, at: new Date().toISOString() }) + "\n", "utf-8");
-			return fn();
-		} finally {
-			rmSync(lockPath, { recursive: true, force: true });
-		}
-	}
-}
-
-/** 設定を write-then-rename で原子的に保存（呼び出し側は lock 済み）。 */
-function writeModelConfigUnlocked(config: PlanModeConfig, configPath: string): void {
-	const tmp = `${configPath}.tmp.${process.pid}.${Date.now()}`;
-	const json = JSON.stringify(config, null, 2) + "\n";
-	writeFileSync(tmp, json, "utf-8");
-	try {
-		renameSync(tmp, configPath);
-	} catch {
-		// renameSync may fail across partitions; fall back to direct write
-		writeFileSync(configPath, json, "utf-8");
-		rmSync(tmp, { force: true });
-	}
-}
-
-/** 設定を排他ロック下で write-then-rename により原子的に保存。 */
+/** 設定を Mekann settings file に保存。 */
 export function saveModelConfig(config: PlanModeConfig, explicitPath?: string): void {
 	const configPath = getConfigPath(explicitPath);
-	withConfigLock(configPath, () => writeModelConfigUnlocked(config, configPath));
+	const loaded = loadSettings(configPath);
+	const next = loaded.settings;
+	next.features["plan-mode"] = { ...(next.features["plan-mode"] ?? {}), models: config.models, thinking: config.thinking };
+	saveSettingsChecked(configPath, next, loaded.hash);
 }
 
 /** 特定モードの config field を更新して保存。undefined でクリア。
@@ -232,15 +164,12 @@ export function updateConfigField<T>(
 	value: T | undefined,
 	path?: string,
 ): void {
-	const configPath = getConfigPath(path);
-	withConfigLock(configPath, () => {
-		const latest = loadModelConfig(path);
-		config.version = latest.version;
-		config.models = { ...latest.models };
-		config.thinking = { ...latest.thinking };
-		if (value) (config[section] as Record<string, T>)[mode] = value; else delete (config[section] as Record<string, T>)[mode];
-		writeModelConfigUnlocked(config, configPath);
-	});
+	const latest = loadModelConfig(path);
+	config.version = latest.version;
+	config.models = { ...latest.models };
+	config.thinking = { ...latest.thinking };
+	if (value) (config[section] as Record<string, T>)[mode] = value; else delete (config[section] as Record<string, T>)[mode];
+	saveModelConfig(config, path);
 }
 
 

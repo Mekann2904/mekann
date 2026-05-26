@@ -1,0 +1,3 @@
+# Mekann settings use dedicated mekann.json files
+
+Mekann feature settings are stored in Mekann-owned configuration files such as `~/.pi/agent/mekann.json` and workspace `.pi/mekann.json`, rather than being mixed into Pi's `settings.json`. This keeps Pi-level extension loading separate from Mekann feature configuration, lets the Mekann settings editor present global/workspace effective values clearly, and avoids preserving `plan-mode.json` as a permanent special case; existing `plan-mode.json` settings should be migrated explicitly during this change rather than silently auto-migrated in future sessions.

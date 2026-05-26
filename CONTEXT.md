@@ -86,6 +86,14 @@ _Avoid_: Pi overlay, pass-through UI, background TUI
 The architectural choice of whether a Mekann extension UI appears as Pi TUI overlay, Terminal pass-through, or External split UI. Pi TUI overlay uses Pi TUI; External split UI may use OpenTUI. Terminal-emulator-specific launching is owned by shared terminal infrastructure rather than individual features. Feature safety constraints and supported placements take precedence over user launch preferences.
 _Avoid_: TUI framework preference, renderer choice, terminal styling
 
+**Mekann settings editor**:
+A Mekann-owned External split UI for discovering, diagnosing, and safely editing Mekann feature settings. It does not own Pi's extension-loading settings and should distinguish global defaults from workspace overrides when both exist.
+_Avoid_: Pi settings editor, settings.json editor, config file browser, Pi TUI settings overlay
+
+**Mekann settings file**:
+A Mekann-owned configuration file for persisted Mekann feature settings, with global and workspace variants such as `~/.pi/agent/mekann.json` and `.pi/mekann.json`. It is separate from Pi's `settings.json`, which owns Pi-level configuration such as extension loading.
+_Avoid_: Pi settings.json, plan-mode.json, extension settings file
+
 **User launch preference**:
 A user-configurable preference for how an eligible terminal-oriented action should open, such as pass-through or split-longer-side. User-facing launch preference names are terminal-emulator-independent; terminal adapters translate them into Kitty, iTerm2, or other emulator-specific commands. User launch preferences apply only inside the placements and safety constraints supported by the feature.
 _Avoid_: feature placement requirement, safety override, TUI framework selection, kitty-specific strategy name

@@ -54,7 +54,6 @@ export const DEFAULT_AUTHORITY: SubagentAuthority = { mode: "propose_patch", req
 let agentIdCounter = 0;
 
 const processExternalPiSlots = new Set<string>();
-const MAX_EXTERNAL_PI_SUBAGENTS = MEKANN_SUBAGENT_DEFAULTS.externalPiSlots;
 
 function nextAgentId(): string {
   return `sub_${++agentIdCounter}_${Date.now().toString(36)}`;
@@ -72,6 +71,7 @@ export interface AgentControlOptions {
   helloTimeoutMs?: number;
   allowUnsafeExternalPi?: boolean;
   maxQueuedSubagents?: number;
+  externalPiSlots?: number;
 }
 
 // ─── Agent control ───────────────────────────────────────────────
@@ -96,6 +96,7 @@ export class AgentControl {
   private helloTimeoutMs: number;
   private allowUnsafeExternalPi: boolean;
   private maxQueuedSubagents: number;
+  private maxExternalPiSubagents: number;
   readonly resultStore: SubagentResultStore;
   private readonly lifecycle: SubagentLifecycle;
   private drainQueueOnClose = true;
@@ -125,6 +126,7 @@ export class AgentControl {
     this.helloTimeoutMs = options.helloTimeoutMs ?? 10_000;
     this.allowUnsafeExternalPi = options.allowUnsafeExternalPi ?? false;
     this.maxQueuedSubagents = options.maxQueuedSubagents ?? DEFAULT_MAX_QUEUED_SUBAGENTS;
+    this.maxExternalPiSubagents = options.externalPiSlots ?? MEKANN_SUBAGENT_DEFAULTS.externalPiSlots;
     this.lifecycle = new SubagentLifecycle(this.registry, this.mailbox, process.cwd());
     this.runtimes = this.lifecycle.runtimes;
     this.childSessions = this.lifecycle.childSessions;
@@ -261,7 +263,7 @@ export class AgentControl {
       helloTimeoutMs: this.helloTimeoutMs,
       allowUnsafeExternalPi: this.allowUnsafeExternalPi,
       maxQueuedSubagents: this.maxQueuedSubagents,
-      maxExternalPiSubagents: MAX_EXTERNAL_PI_SUBAGENTS,
+      maxExternalPiSubagents: this.maxExternalPiSubagents,
       externalPiSlots: processExternalPiSlots,
       normalizeAuthority: (authority: SubagentAuthority | undefined) => this.normalizeAuthority(authority),
       authorityPreamble: (authority: SubagentAuthority, resultContract?: ResultContract) => this.authorityPreamble(authority, resultContract),
