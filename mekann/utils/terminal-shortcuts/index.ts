@@ -1,19 +1,11 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { readSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { KittyControl } from "../kitty-control/index.js";
+import { launchWithTerminalEmulator, shellArgs, terminalActionLabel, type LaunchPreference, type TerminalAction } from "../terminal/index.js";
 
-type TerminalShortcut =
-	| {
-		mode: "argv";
-		argv: string[];
-	}
-	| {
-		mode: "shell";
-		command: string;
-	};
+type TerminalShortcut = TerminalAction;
 
-type LauncherStrategy = "pass-through" | "kitty-split-longer-side";
+type LauncherStrategy = Extract<LaunchPreference, "pass-through" | "split-longer-side">;
 
 const BUILT_IN_SHORTCUTS: Record<string, TerminalShortcut> = {
 	lg: { mode: "argv", argv: ["lazygit"] },
@@ -57,7 +49,7 @@ function parseShortcutList(value: string | undefined): Set<string> {
 
 function getLauncherStrategy(shortcutName: string): LauncherStrategy {
 	const configured = process.env.MEKANN_TERMINAL_STRATEGY?.trim();
-	if (configured === "pass-through" || configured === "kitty-split-longer-side") {
+	if (configured === "pass-through" || configured === "split-longer-side") {
 		return configured;
 	}
 
@@ -66,23 +58,10 @@ function getLauncherStrategy(shortcutName: string): LauncherStrategy {
 		...parseShortcutList(process.env.MEKANN_TERMINAL_SPLIT_SHORTCUTS),
 	]);
 	if (splitShortcuts.has(shortcutName)) {
-		return "kitty-split-longer-side";
+		return "split-longer-side";
 	}
 
 	return "pass-through";
-}
-
-function shellArgs(shell: string, command: string): string[] {
-	const base = shell.split("/").pop() ?? "";
-
-	// Use a login, non-interactive shell for shell-mode shortcuts.
-	// Interactive shells enable job control and can leave Pi in a background
-	// terminal process group after full-screen TUI commands exit, which causes
-	// `suspended (tty output)` when Pi tries to repaint.
-	if (base.includes("zsh") || base.includes("bash") || base.includes("fish")) {
-		return ["-lc", command];
-	}
-	return ["-c", command];
 }
 
 function waitForEnter(): void {
@@ -97,17 +76,6 @@ function waitForEnter(): void {
 	} catch {
 		// Pi will restart its TUI anyway.
 	}
-}
-
-function shortcutLabel(shortcut: TerminalShortcut): string {
-	return shortcut.mode === "argv" ? shortcut.argv.join(" ") : shortcut.command;
-}
-
-function shortcutCommandArgv(shortcut: TerminalShortcut): string[] {
-	if (shortcut.mode === "argv") return shortcut.argv;
-
-	const shell = process.env.SHELL || "/bin/sh";
-	return [shell, ...shellArgs(shell, shortcut.command)];
 }
 
 function spawnShortcut(shortcut: TerminalShortcut, cwd: string): SpawnSyncReturns<Buffer> {
@@ -130,23 +98,17 @@ function spawnShortcut(shortcut: TerminalShortcut, cwd: string): SpawnSyncReturn
 	return spawnSync(shell, shellArgs(shell, shortcut.command), { cwd, stdio: "inherit", env });
 }
 
-async function runKittySplitLongerSide(ctx: ExtensionContext, shortcutName: string, shortcut: TerminalShortcut): Promise<number> {
-	const argv = shortcutCommandArgv(shortcut);
-	if (argv.length === 0) return 1;
-
-	try {
-		await new KittyControl().launchSplitLongerSide({
-			cwd: ctx.cwd,
-			argv,
-			matchCurrentWindow: true,
-			copyEnv: true,
-			hold: SPLIT_ONLY_SHORTCUTS.has(shortcutName),
-			title: shortcutName,
-		});
-		return 0;
-	} catch {
-		return 1;
-	}
+async function runSplitLongerSide(ctx: ExtensionContext, shortcutName: string, shortcut: TerminalShortcut): Promise<number> {
+	const result = await launchWithTerminalEmulator({
+		cwd: ctx.cwd,
+		action: shortcut,
+		preference: "split-longer-side",
+		matchCurrentWindow: true,
+		copyEnv: true,
+		hold: SPLIT_ONLY_SHORTCUTS.has(shortcutName),
+		title: shortcutName,
+	});
+	return result.ok ? 0 : 1;
 }
 
 async function runPassThroughTerminal(ctx: ExtensionContext, shortcut: TerminalShortcut): Promise<number> {
@@ -168,14 +130,14 @@ async function runPassThroughTerminal(ctx: ExtensionContext, shortcut: TerminalS
 		try {
 			const result = spawnShortcut(shortcut, ctx.cwd);
 			if (result.error) {
-				process.stderr.write(`[pi] failed to launch ${shortcutLabel(shortcut)}: ${result.error.message}\n`);
+				process.stderr.write(`[pi] failed to launch ${terminalActionLabel(shortcut)}: ${result.error.message}\n`);
 				exitCode = 1;
 			} else {
 				exitCode = typeof result.status === "number" ? result.status : result.signal ? 130 : 1;
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			process.stderr.write(`[pi] failed to launch ${shortcutLabel(shortcut)}: ${message}\n`);
+			process.stderr.write(`[pi] failed to launch ${terminalActionLabel(shortcut)}: ${message}\n`);
 			exitCode = 1;
 		}
 
@@ -200,8 +162,8 @@ async function runPassThroughTerminal(ctx: ExtensionContext, shortcut: TerminalS
 
 async function runTerminalShortcut(ctx: ExtensionContext, shortcutName: string, shortcut: TerminalShortcut): Promise<number> {
 	const strategy = getLauncherStrategy(shortcutName);
-	if (strategy === "kitty-split-longer-side") {
-		const exitCode = await runKittySplitLongerSide(ctx, shortcutName, shortcut);
+	if (strategy === "split-longer-side") {
+		const exitCode = await runSplitLongerSide(ctx, shortcutName, shortcut);
 		if (exitCode === 0) return 0;
 
 		// Dashboard runs its own interactive TUI. Do not hand Pi's current TTY to it:

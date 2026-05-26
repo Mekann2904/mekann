@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import { mkdir, appendFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { AgentDisplayRef } from "./types.js";
-import { KittyControl } from "../../utils/kitty-control/index.js";
+import { KittyControl } from "../../utils/terminal/kitty/index.js";
 
 const execFile = promisify(execFileCb);
 

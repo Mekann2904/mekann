@@ -35,8 +35,16 @@ A small, single-purpose helper primarily for human convenience rather than agent
 _Avoid_: autonomy feature, safety feature, core feature
 
 **Terminal shortcut**:
-An exact user input alias that launches a terminal-oriented command for the human operator instead of sending the input to the agent. Terminal shortcuts are utility features and are distinct from shell aliases because Pi resolves them before normal prompt handling.
+An exact user input alias that resolves to a Terminal action for the human operator instead of sending the input to the agent. Terminal shortcuts are utility features and are distinct from shell aliases because Pi resolves them before normal prompt handling.
 _Avoid_: shell alias, slash command, prompt shortcut
+
+**Terminal action**:
+A human-operated command or shell action that can be launched by a Terminal shortcut. Terminal action defines what runs; User launch preference defines how an eligible action opens. Terminal actions may fall back from split launch to idle Terminal pass-through when the action supports it.
+_Avoid_: launch strategy, shortcut name, TUI placement
+
+**External UI feature**:
+A Mekann feature whose UI is intentionally launched outside Pi's active TUI, usually to run an independent OpenTUI application. External UI features require a supported External split UI capability and must not fall back to Terminal pass-through.
+_Avoid_: terminal action, pass-through fallback, Pi TUI overlay
 
 **Dashboard feature**:
 A utility feature that presents human-facing project and usage status in an interactive terminal dashboard. It owns data collection and Pi TUI rendering for `/dashboard`. Images (avatar, contribution graph) are placed via `kitten icat --place` to bypass the TUI overlay compositor, which adds padding spaces that overwrite Kitty image cells. CLI text-mode rendering is available via `mekann-dashboard --text`.
@@ -61,6 +69,38 @@ _Avoid_: text-only profile marker, local account icon
 **Kitty-first terminal integration**:
 Mekann's terminal-adjacent UX is optimized for Kitty remote control because Kitty is the recommended terminal for this project. Kitty-specific launch behavior must preserve terminal-safe fallback behavior for non-Kitty environments. Kitty split launches may run while Pi is not idle because they do not take over Pi's TTY; pass-through fallback remains idle-only because it suspends Pi and hands over the current terminal.
 _Avoid_: Kitty-only integration, terminal lock-in, best-effort terminal support
+
+**Pi TUI overlay**:
+A UI rendered inside Pi's active TUI while Pi keeps ownership of the current TTY. Pi TUI overlay uses Pi TUI and must not run OpenTUI in-place.
+_Avoid_: in-Pi OpenTUI, embedded OpenTUI, direct OpenTUI overlay
+
+**Terminal pass-through**:
+A human-operated terminal action that temporarily stops Pi's TUI and hands the current TTY to a child command. Terminal pass-through is allowed only when Pi is idle and should not be used to run OpenTUI-style independent TUI applications in-place.
+_Avoid_: Pi TUI overlay, external split UI, background TUI
+
+**External split UI**:
+A UI launched into a separate terminal-emulator-managed pane or window instead of being rendered inside Pi's current TTY. External split UI may use OpenTUI because it does not take over Pi's TTY.
+_Avoid_: Pi overlay, pass-through UI, background TUI
+
+**Terminal UI placement**:
+The architectural choice of whether a Mekann extension UI appears as Pi TUI overlay, Terminal pass-through, or External split UI. Pi TUI overlay uses Pi TUI; External split UI may use OpenTUI. Terminal-emulator-specific launching is owned by shared terminal infrastructure rather than individual features. Feature safety constraints and supported placements take precedence over user launch preferences.
+_Avoid_: TUI framework preference, renderer choice, terminal styling
+
+**User launch preference**:
+A user-configurable preference for how an eligible terminal-oriented action should open, such as pass-through or split-longer-side. User-facing launch preference names are terminal-emulator-independent; terminal adapters translate them into Kitty, iTerm2, or other emulator-specific commands. User launch preferences apply only inside the placements and safety constraints supported by the feature.
+_Avoid_: feature placement requirement, safety override, TUI framework selection, kitty-specific strategy name
+
+**Terminal emulator capability**:
+A terminal emulator's supported integration surface, such as remote control, split creation, image rendering, window sizing, or environment propagation. Capability detection is separate from TUI framework selection.
+_Avoid_: TUI capability, Kitty feature flag, renderer support
+
+**Terminal emulator adapter**:
+A shared implementation that hides terminal-emulator-specific commands and protocols behind a Mekann-facing API. Terminal-emulator-specific implementations live under `utils/terminal/<emulator>/`, such as `utils/terminal/kitty/`. Feature code should not directly assemble Kitty, iTerm2, or other emulator-specific control commands.
+_Avoid_: feature-local terminal control, inline kitty command, per-feature emulator logic
+
+**TUI framework selection**:
+The choice of which TUI framework renders a Mekann UI after its placement is known. Pi TUI overlay selects Pi TUI; External split UI may select OpenTUI when the terminal emulator can provide an isolated surface. Shared TUI placement and framework-selection rules live under `utils/tui/`, separate from terminal-emulator adapters.
+_Avoid_: terminal emulator detection, renderer preference, styling choice
 
 **Skill**:
 A task-specific instruction package that a Pi coding agent reads to perform a particular kind of work. A skill is not an extension feature because it does not provide runtime tools or commands; it connects project context, ADRs, supporting docs, and action patterns into an executable workflow for the agent.

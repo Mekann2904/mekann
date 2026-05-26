@@ -17,8 +17,8 @@
 - attachment がある場合でも shortcut を優先します。
 - agent が idle でない場合は agent に送らず、何もしません。
 - 既定では Pi TUI を一時停止し、現在の terminal を command に渡します。
-- built-in の `lg` と split 指定された shortcut は、Kitty 上で現在の window の長い方に split pane を作って起動します。
-- Kitty split が使えない場合は pass-through に fallback します。
+- built-in の `lg` と split 指定された shortcut は、対応 terminal emulator 上で現在の window の長い方に split pane を作って起動します。
+- split が使えない場合は pass-through に fallback します。
 - pass-through 成功時は Pi TUI に自動復帰します。
 - pass-through で起動失敗や非 0 exit code の場合だけ、terminal 側で Enter 待ちします。
 - session entry、agent context、Pi notification は作りません。
@@ -35,7 +35,7 @@ MEKANN_TERMINAL_SHORTCUTS='vi=nvim .,fz=fzf' pi
 
 ## Launcher strategy
 
-既定は `pass-through` です。ただし built-in の `lg` は Kitty split を試します。追加で特定 shortcut を Kitty split にしたい場合は `MEKANN_TERMINAL_SPLIT_SHORTCUTS` に comma-separated で指定します。
+既定は `pass-through` です。ただし built-in の `lg` は split を試します。追加で特定 shortcut を split にしたい場合は `MEKANN_TERMINAL_SPLIT_SHORTCUTS` に comma-separated で指定します。
 
 ```bash
 MEKANN_TERMINAL_SPLIT_SHORTCUTS='zed' pi
@@ -45,10 +45,10 @@ MEKANN_TERMINAL_SPLIT_SHORTCUTS='zed' pi
 
 ```bash
 MEKANN_TERMINAL_STRATEGY=pass-through pi
-MEKANN_TERMINAL_STRATEGY=kitty-split-longer-side pi
+MEKANN_TERMINAL_STRATEGY=split-longer-side pi
 ```
 
-`kitty-split-longer-side` は `kitten @ launch` を使うため、環境によっては `kitty.conf` で remote control を有効にする必要があります。
+Kitty での `split-longer-side` は `kitten @ launch` を使うため、環境によっては `kitty.conf` で remote control を有効にする必要があります。
 
 ```conf
 allow_remote_control yes

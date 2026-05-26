@@ -14,6 +14,7 @@
 
 | Utility | 役割 |
 |---|---|
-| [`kitty-control`](./kitty-control/) | 推奨 terminal である Kitty の remote control を使う共通 adapter。non-Kitty fallback は呼び出し側が維持する |
+| [`terminal/kitty`](./terminal/kitty/) | 推奨 terminal である Kitty の remote control を使う terminal emulator adapter |
+| [`tui`](./tui/) | TUI placement と framework selection の共有ルール |
 
 自律性・安全境界・runtime context management を担う機能は、それぞれ `autonomy` / `safety` / `context` suite に置きます。
