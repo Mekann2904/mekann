@@ -10,7 +10,7 @@
 | [`safety`](./safety/) | `sandbox`, `plan-mode`, `policy-core` |
 | [`autonomy`](./autonomy/) | `goal`, `subagent`, `autoresearch` |
 | [`context`](./context/) | `output-gate`, `context-ledger` |
-| [`utils`](./utils/) | `zip-repo`, `codex-limits`, `codex-web-search`, `terminal-shortcuts` |
+| [`utils`](./utils/) | `zip-repo`, `codex-limits`, `dashboard`, `codex-web-search`, `terminal-shortcuts`, `settings-editor` |
 
 ## 読み込み順の意図
 

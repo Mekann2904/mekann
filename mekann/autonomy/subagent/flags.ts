@@ -27,13 +27,13 @@ export function registerSubagentFlags(pi: ExtensionAPI, extensionPathDefault: st
   });
 
   pi.registerFlag("subagent-display", {
-    description: 'Display mode for subagents: "kitty-split" (default), "kitty-pi", or "none" for in-process agents',
+    description: 'Display mode for subagents: "external-split" (default), "external-pi", or "none". Legacy aliases "kitty-split" and "kitty-pi" are accepted.',
     type: "string",
-    default: MEKANN_SUBAGENT_DEFAULTS.display,
+    default: "external-split",
   });
 
   pi.registerFlag("subagent-allow-unsafe-external-pi", {
-    description: "Allow kitty-pi/kitty-split to launch independent Pi processes. Disable to force in-process agents with parent-side authority/tool filtering.",
+    description: "Allow external-pi/external-split to launch independent Pi processes. Disable to force in-process agents with parent-side authority/tool filtering.",
     type: "string",
     default: String(MEKANN_SUBAGENT_DEFAULTS.allowUnsafeExternalPi),
   });
@@ -51,13 +51,13 @@ export function registerSubagentFlags(pi: ExtensionAPI, extensionPathDefault: st
   });
 
   pi.registerFlag("subagent-pi-command", {
-    description: "shell command used to start child Pi process in kitty-pi mode",
+    description: "shell command used to start child Pi process in external-pi/external-split mode",
     type: "string",
     default: MEKANN_SUBAGENT_DEFAULTS.piCommand,
   });
 
   pi.registerFlag("subagent-extension-path", {
-    description: "extension path passed to child Pi with -e in kitty-pi mode (empty disables explicit loading)",
+    description: "extension path passed to child Pi with -e in external-pi/external-split mode (empty disables explicit loading)",
     type: "string",
     default: extensionPathDefault,
   });

@@ -15,7 +15,8 @@
 - interactive mode の通常入力だけを対象にします。
 - 入力は trim 後に case-sensitive な完全一致で判定します。
 - attachment がある場合でも shortcut を優先します。
-- agent が idle でない場合は agent に送らず、何もしません。
+- pass-through shortcut は agent が idle でない場合、agent に送らず、何もしません。
+- split shortcut は Pi の current TTY を奪わないため、agent が idle でない場合でも split 起動を試します。split 起動に失敗した場合、non-idle 中は pass-through に fallback しません。
 - 既定では Pi TUI を一時停止し、現在の terminal を command に渡します。
 - built-in の `lg` と split 指定された shortcut は、対応 terminal emulator 上で現在の window の長い方に split pane を作って起動します。
 - split が使えない場合は pass-through に fallback します。

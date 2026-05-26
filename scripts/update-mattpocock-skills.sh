@@ -46,4 +46,5 @@ NODE
   cp -R "$source" "$destination"
 done
 
+echo "Running post-import validation. If this fails after an upstream copy, adapt mekann/skills for Pi and rerun npm run check:mattpocock-skills."
 npm run check:mattpocock-skills

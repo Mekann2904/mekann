@@ -85,7 +85,7 @@ npm run typecheck
 
 ## CI
 
-GitHub Actions runs all tests on every push/PR:
+GitHub Actions runs the production typecheck and the listed module test suites on every push/PR:
 
 - `typecheck-prod`: Production typecheck for all mekann code
 - `plan-mode`: Ubuntu (unit tests)
@@ -105,7 +105,7 @@ GitHub Actions runs all tests on every push/PR:
 ```
 prepush = typecheck + CI prepare + workflow checks + module tests (parallel)
   ├── typecheck (sandbox + subagent)
-  ├── plan-mode coverage threshold
+  ├── plan-mode coverage threshold (85% line coverage)
   ├── sandbox tests
   ├── subagent tests
   ├── zip-repo tests

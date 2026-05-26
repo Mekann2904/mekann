@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { parseDashboardArgs } from "./args.js";
 import { installDashboardCleanup } from "./cleanup.js";
-import { collectDashboardData, type DashboardData } from "./data.js";
+import { collectDashboardData } from "./data.js";
 import { renderDashboardText } from "./render.js";
 
 async function main(): Promise<void> {
@@ -26,15 +26,11 @@ async function main(): Promise<void> {
 	});
 
 	if (args.value.interactive) {
-		await renderDashboard(data);
+		console.error("Interactive mode has been removed. Use /dashboard in Pi, or run mekann-dashboard for text output.");
+		process.exitCode = 1;
 		return;
 	}
 	console.log(renderDashboardText(data, terminalWidth));
-}
-
-async function renderDashboard(_data: DashboardData): Promise<void> {
-	console.error("Interactive mode (OpenTUI) has been removed. Use /dashboard in Pi instead.");
-	process.exitCode = 1;
 }
 
 void main().catch((error) => {

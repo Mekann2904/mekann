@@ -14,7 +14,7 @@ Use Japanese explicitly for all interaction with the user: questions, recommenda
 
 Break a plan into independently-grabbable issues using vertical slices (tracer bullets).
 
-The issue tracker and triage label vocabulary should have been provided to you — run the `setup-matt-pocock-skills` skill if not.
+The issue tracker and triage label vocabulary should have been provided to you — run the `setup-matt-pocock-skills` skill if not. When publishing, apply exactly one category role (`bug` or `enhancement`) plus the appropriate state role.
 
 ## Process
 
@@ -58,7 +58,7 @@ Iterate until the user approves the breakdown.
 
 ### 5. Publish the issues to the issue tracker
 
-For each approved slice, publish a new issue to the issue tracker. Use the issue body template below. These issues are considered ready for coding agents, so publish them with the correct triage label unless instructed otherwise.
+For each approved slice, publish a new issue to the issue tracker. Use the issue body template below. These issues are considered ready for coding agents, so publish them with the correct category role and `ready-for-agent` state role unless instructed otherwise.
 
 Publish issues in dependency order (blockers first) so you can reference real issue identifiers in the "Blocked by" field.
 

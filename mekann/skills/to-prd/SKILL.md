@@ -12,7 +12,7 @@ Use Japanese explicitly for all interaction with the user: questions, recommenda
 
 This skill takes the current conversation context and codebase understanding and produces a PRD. Do NOT interview the user — just synthesize what you already know.
 
-The issue tracker and triage label vocabulary should have been provided to you — run the `setup-matt-pocock-skills` skill if not.
+The issue tracker and triage label vocabulary should have been provided to you — run the `setup-matt-pocock-skills` skill if not. When publishing, apply the `enhancement` category role plus the `ready-for-agent` state role unless the current context clearly says this PRD is for a bug.
 
 ## Process
 
@@ -22,9 +22,9 @@ The issue tracker and triage label vocabulary should have been provided to you �
 
 A deep module (as opposed to a shallow module) is one which encapsulates a lot of functionality in a simple, testable interface which rarely changes.
 
-Check with the user that these modules match their expectations. Check with the user which modules they want tests written for.
+Do not stop for a module-selection interview. Infer module and testing decisions from the existing context. If an important decision is genuinely unresolved, record it in the PRD as an assumption or open question instead of asking a new question.
 
-3. Write the PRD using the template below, then publish it to the project issue tracker. Apply the `ready-for-agent` triage label - no need for additional triage.
+3. Write the PRD using the template below, then publish it to the project issue tracker. Apply the appropriate category role plus the `ready-for-agent` state role - no need for additional triage.
 
 <prd-template>
 

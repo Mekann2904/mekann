@@ -15,16 +15,8 @@ export function getPiAgentConfigDir(home = homedir()): string {
 	return join(home, ".pi", "agent");
 }
 
-export function getPlanModeConfigPath(home = homedir()): string {
+export function getLegacyPlanModeConfigPath(home = homedir()): string {
 	return join(getPiAgentConfigDir(home), "plan-mode.json");
-}
-
-export function getGlobalSettingsPath(home = homedir()): string {
-	return join(getPiAgentConfigDir(home), "settings.json");
-}
-
-export function getWorkspaceSettingsPath(cwd = process.cwd()): string {
-	return join(cwd, ".pi", "settings.json");
 }
 
 export interface MekannSubagentConfigDefaults {

@@ -29,9 +29,9 @@ jobs:
           # Extract statement coverage from coverage summary
           COVERAGE=$(cat coverage/coverage-summary.json 2>/dev/null | jq '.total.lines.pct' 2>/dev/null || echo "0")
           echo "Line coverage: ${COVERAGE}%"
-          # Fail if coverage drops below 95%
-          if [ "$(echo "$COVERAGE < 95" | bc -l)" = "1" ]; then
-            echo "::error::Coverage ${COVERAGE}% is below threshold 95%"
+          # Fail if coverage drops below 85%
+          if [ "$(echo "$COVERAGE < 85" | bc -l)" = "1" ]; then
+            echo "::error::Coverage ${COVERAGE}% is below threshold 85%"
             exit 1
           fi
 

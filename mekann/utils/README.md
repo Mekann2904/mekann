@@ -9,6 +9,7 @@
 | [`dashboard`](./dashboard/) | `/dashboard` から Pi TUI dashboard を起動する |
 | [`codex-web-search`](./codex-web-search/) | 現在のモデルに関わらず Codex 経由の Web 検索を使う |
 | [`terminal-shortcuts`](./terminal-shortcuts/) | `lg` や `zed` の完全一致入力を agent prompt ではなく terminal command として起動する |
+| [`settings-editor`](./settings-editor/) | `/mekann-settings` から global/workspace の `mekann.json` feature settings を編集する |
 
 ## Internal utilities
 

@@ -64,7 +64,7 @@ export interface ModelRef { provider: string; modelId: string; }
 /** All mode names managed by plan-mode extension. */
 export type ModeName = "main" | "plan" | "read_only" | "auto" | "sub";
 
-/** Configuration file shape stored at ~/.pi/agent/plan-mode.json */
+/** Configuration file shape stored under the `plan-mode` feature in ~/.pi/agent/mekann.json */
 export interface PlanModeConfig { version: typeof MEKANN_CONFIG_VERSION; models: { main?: ModelRef; plan?: ModelRef; read_only?: ModelRef; auto?: ModelRef; sub?: ModelRef; }; thinking: { main?: ThinkingLevel; plan?: ThinkingLevel; read_only?: ThinkingLevel; auto?: ThinkingLevel; sub?: ThinkingLevel; }; }
 
 export function createDefaultConfig(): PlanModeConfig {
@@ -121,7 +121,7 @@ export function sameModelRef(a: ModelRef | undefined, b: ModelRef | undefined): 
 	return a === b ? true : !a || !b ? false : a.provider === b.provider && a.modelId === b.modelId;
 }
 
-/** ~/.pi/agent/plan-mode.json へのパス（explicitPath で上書き可能）。 */
+/** ~/.pi/agent/mekann.json へのパス（explicitPath で上書き可能）。 */
 export function getConfigPath(explicitPath?: string): string {
 	return explicitPath ?? getGlobalMekannSettingsPath();
 }

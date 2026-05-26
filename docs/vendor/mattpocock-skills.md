@@ -34,7 +34,7 @@ The command:
 2. Reads `scripts/mattpocock-skills.manifest.json`.
 3. Copies each manifest-declared upstream engineering skill from `vendor/mattpocock-skills/skills/engineering/*` into `mekann/skills`.
 4. Fails if an import would overwrite a protected local skill.
-5. Runs `npm run check:mattpocock-skills` as a post-import validation gate.
+5. Runs `npm run check:mattpocock-skills` as a post-import validation gate. This gate may fail immediately after a fresh upstream copy because Pi adaptations need to be reapplied; treat that as the signal to review and adapt the copied files, then rerun the check.
 
 You can also run the validation independently:
 
@@ -55,7 +55,7 @@ The current gate warns on:
 - Upstream engineering skills not listed in the manifest.
 - Possible Claude-only tool names or slash-command assumptions.
 
-After running the update, review the diff under `mekann/skills` and edit those files for Pi before committing. In particular, re-check:
+After running the update, review the diff under `mekann/skills`, edit those files for Pi, and rerun `npm run check:mattpocock-skills` before committing. In particular, re-check:
 
 - Claude-specific or non-Pi tool names.
 - Slash-command assumptions.
@@ -79,4 +79,4 @@ The Pi package exposes `./mekann/skills` via `package.json`, and the manifest cu
 - `triage`
 - `zoom-out`
 
-Mekann-specific skills may also live in `mekann/skills`, but they are not copied from `vendor/mattpocock-skills`.
+Mekann-specific skills may also live in `mekann/skills`, but they are not copied from `vendor/mattpocock-skills`. Add local-only skills to `protectedLocalSkills` so future upstream imports cannot overwrite them.

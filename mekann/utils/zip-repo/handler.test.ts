@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
+import { execFile } from "node:child_process";
 
 // Mock child_process.execFile
 const execResults: Map<string, { stdout: string; stderr?: string } | Error | string> = new Map();
@@ -65,6 +66,7 @@ describe("/zip command handler", () => {
 		mock = createMockApi();
 		zipExtension(mock as any);
 		execResults.clear();
+		vi.mocked(execFile).mockClear();
 	});
 
 	it("registers /zip command", () => {
@@ -88,7 +90,7 @@ describe("/zip command handler", () => {
 		);
 	});
 
-	it("successful dirty repo: git archive + overlay", async () => {
+	it("successful dirty repo: default worktree mode uses git archive + overlay", async () => {
 		execResults.set("git", { stdout: "" });
 		execResults.set("git rev-parse --show-toplevel", { stdout: "/tmp/project\n" });
 		execResults.set("git rev-parse --short=12 HEAD", { stdout: "abc123\n" });
@@ -100,10 +102,56 @@ describe("/zip command handler", () => {
 		const ctx = createMockCtx();
 		await mock._commands["zip"].handler("", ctx);
 
+		expect(execFile).toHaveBeenCalledWith("/usr/bin/zip", expect.any(Array), expect.any(Object), expect.any(Function));
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
 			expect.stringContaining("Copied to clipboard"),
 			"info",
 		);
+	});
+
+	it("--head archives HEAD only without dirty worktree overlay", async () => {
+		execResults.set("git", { stdout: "" });
+		execResults.set("git rev-parse --show-toplevel", { stdout: "/tmp/project\n" });
+		execResults.set("git rev-parse --short=12 HEAD", { stdout: "abc123\n" });
+		execResults.set("git status --porcelain", { stdout: "M file.ts\n?? new.ts\n" });
+		execResults.set("git archive --format=zip --prefix=project/ --output=/tmp/project-abc123.zip HEAD", { stdout: "" });
+		execResults.set("osascript", { stdout: "" });
+
+		const ctx = createMockCtx();
+		await mock._commands["zip"].handler("--head", ctx);
+
+		expect(execFile).not.toHaveBeenCalledWith("/usr/bin/zip", expect.any(Array), expect.any(Object), expect.any(Function));
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("Copied to clipboard"),
+			"info",
+		);
+	});
+
+	it("--worktree explicitly uses dirty worktree overlay", async () => {
+		execResults.set("git", { stdout: "" });
+		execResults.set("git rev-parse --show-toplevel", { stdout: "/tmp/project\n" });
+		execResults.set("git rev-parse --short=12 HEAD", { stdout: "abc123\n" });
+		execResults.set("git status --porcelain", { stdout: "M file.ts\n?? new.ts\n" });
+		execResults.set("git archive --format=zip --prefix=project/ --output=/tmp/project-abc123.zip HEAD", { stdout: "" });
+		execResults.set("/usr/bin/zip", { stdout: "" });
+		execResults.set("osascript", { stdout: "" });
+
+		const ctx = createMockCtx();
+		await mock._commands["zip"].handler("--worktree", ctx);
+
+		expect(execFile).toHaveBeenCalledWith("/usr/bin/zip", expect.any(Array), expect.any(Object), expect.any(Function));
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("Copied to clipboard"),
+			"info",
+		);
+	});
+
+	it("unknown option reports usage without running git", async () => {
+		const ctx = createMockCtx();
+		await mock._commands["zip"].handler("--bad", ctx);
+
+		expect(execFile).not.toHaveBeenCalled();
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Usage: /zip [--head|--worktree]", "error");
 	});
 
 	it("not a git repo: error notification", async () => {

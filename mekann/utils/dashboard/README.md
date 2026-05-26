@@ -6,13 +6,15 @@
 
 ```bash
 /dashboard           # Pi 内で起動
-mekann-dashboard     # CLI テキスト出力
+mekann-dashboard     # CLI テキスト出力（default）
 mekann-dashboard --cwd /path/to/repo
 mekann-dashboard --no-avatar
 mekann-dashboard --text
 ```
 
 `/dashboard` は Pi TUI overlay component として表示されます。画像（avatar, contribution graph）は `kitten icat --place` で配置し、TUI overlay compositor をバイパスします。
+
+`mekann-dashboard` は package `bin` として公開される text CLI です。OpenTUI interactive mode は削除済みのため、interactive dashboard は Pi 内の `/dashboard` を使います。
 
 ## アーキテクチャ
 

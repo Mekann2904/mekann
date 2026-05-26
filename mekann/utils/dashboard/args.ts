@@ -11,7 +11,7 @@ export function parseDashboardArgs(argv: string[], env: NodeJS.ProcessEnv = proc
 	let refresh = false;
 	let avatar = true;
 	let images = env.MEKANN_DASHBOARD_IMAGES !== "0";
-	let interactive = env.MEKANN_DASHBOARD_INTERACTIVE !== "0";
+	let interactive = env.MEKANN_DASHBOARD_INTERACTIVE === "1";
 
 	for (let index = 0; index < argv.length; index++) {
 		const token = argv[index];
@@ -36,8 +36,7 @@ export function parseDashboardArgs(argv: string[], env: NodeJS.ProcessEnv = proc
 			continue;
 		}
 		if (token === "--interactive") {
-			interactive = true;
-			continue;
+			return { ok: false, error: "Interactive mode has been removed. Use /dashboard in Pi, or run mekann-dashboard for text output." };
 		}
 		if (token === "--text") {
 			interactive = false;
@@ -46,7 +45,7 @@ export function parseDashboardArgs(argv: string[], env: NodeJS.ProcessEnv = proc
 			continue;
 		}
 		if (token === "--help" || token === "-h") {
-			return { ok: false, error: "Usage: mekann-dashboard [--cwd path] [--refresh] [--no-avatar] [--no-images] [--interactive|--text]" };
+			return { ok: false, error: "Usage: mekann-dashboard [--cwd path] [--refresh] [--no-avatar] [--no-images] [--text]" };
 		}
 		return { ok: false, error: `Unknown option: ${token}` };
 	}

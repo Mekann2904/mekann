@@ -1,6 +1,8 @@
 /**
  * Zip Repo Extension — archive working tree as ZIP to clipboard (macOS).
- * /zip — always includes HEAD + uncommitted changes.
+ * /zip — includes HEAD + uncommitted changes by default.
+ * /zip --head — archives committed HEAD only.
+ * /zip --worktree — explicitly includes HEAD + uncommitted changes.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -100,10 +102,25 @@ export function parseGitStatus(stdout: string): { deleted: string[]; modified: s
 	return { deleted, modified };
 }
 
+export type ZipMode = "head" | "worktree";
+
+export function parseZipMode(args: string): { ok: true; mode: ZipMode } | { ok: false; error: string } {
+	const tokens = args.trim().split(/\s+/).filter(Boolean);
+	if (tokens.length === 0) return { ok: true, mode: "worktree" };
+	if (tokens.length === 1 && tokens[0] === "--head") return { ok: true, mode: "head" };
+	if (tokens.length === 1 && tokens[0] === "--worktree") return { ok: true, mode: "worktree" };
+	return { ok: false, error: "Usage: /zip [--head|--worktree]" };
+}
+
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("zip", {
 		description: "Archive working tree as ZIP and copy to clipboard (macOS)",
-		handler: async (_args, ctx) => {
+		handler: async (args, ctx) => {
+			const parsed = parseZipMode(String(args ?? ""));
+			if (!parsed.ok) {
+				ctx.ui.notify(parsed.error, "error");
+				return;
+			}
 			let repoRoot: string;
 			let shortHead = "nohead";
 			try {
@@ -129,7 +146,7 @@ export default function (pi: ExtensionAPI) {
 			try {
 				await execFileAsync("git", ["archive", "--format=zip", `--prefix=${basename(repoRoot)}/`, `--output=${zipPath}`, "HEAD"], { cwd: repoRoot });
 
-				if (dirty) await prepareWorktreeZip(repoRoot, basename(repoRoot), zipPath);
+				if (parsed.mode === "worktree" && dirty) await prepareWorktreeZip(repoRoot, basename(repoRoot), zipPath);
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
 				ctx.ui.notify(`Failed to create ZIP: ${msg}`, "error");

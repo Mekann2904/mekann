@@ -222,7 +222,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       const sub = (settings as any).subagent;
       if (sub && sub[settingsKey] !== undefined) {
         // pi.getFlag() returns registered defaults too. Treat the default value
-        // as "not explicitly set" so settings.json can actually configure the
+        // as "not explicitly set" so mekann.json can actually configure the
         // extension. A non-default CLI flag still wins.
         if (flagVal === undefined || flagVal === null || flagVal === defaultValue) return sub[settingsKey] as T;
       }
