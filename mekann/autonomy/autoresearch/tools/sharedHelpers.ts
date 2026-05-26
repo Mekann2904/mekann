@@ -10,7 +10,7 @@ import { runArgvCommand as _runArgvCommand, getChangedFiles, loadRunFromArtifact
 import { readJsonlEntries } from "../state.js";
 import { readState as readStateV2, getRunDir } from "../layout.js";
 import { filterInternalPaths, checkPhase as _checkPhase, resolveCwdInsideRepo as _resolveCwdInsideRepo, type AutoresearchContractV1 } from "../contractV1.js";
-import { isGitRepo } from "../contract.js";
+import { isGitRepo } from "../git.js";
 import type { SessionStore, RunData } from "./sessionStore.js";
 
 // ─── resolvePrimaryMetricFromRun ──────────────────────────────

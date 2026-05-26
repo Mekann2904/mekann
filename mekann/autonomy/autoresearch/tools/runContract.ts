@@ -20,7 +20,7 @@ import {
 	checkPhase,
 	type AutoresearchContractV1,
 } from "../contractV1.js";
-import { isGitRepo } from "../contract.js";
+import { isGitRepo } from "../git.js";
 import { aggregateMeasurements } from "../acceptance.js";
 import { evaluateContract, type EvaluatorInput } from "../contractEvaluator.js";
 import {

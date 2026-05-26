@@ -29,7 +29,7 @@ import {
 	type AutoresearchContractV1,
 	type LockFile,
 } from "../contractV1.js";
-import { isGitRepo, getBaselineCommit } from "../contract.js";
+import { isGitRepo, getBaselineCommit } from "../git.js";
 import { runArgvCommand, generatePiRunId } from "../runner.js";
 import { readState as readStateV2, writeState as writeStateV2 } from "../layout.js";
 import { initializeScalingStateForApprovedContract, isScalingContract } from "../scale.js";

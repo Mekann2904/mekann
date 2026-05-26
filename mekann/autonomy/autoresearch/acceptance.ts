@@ -8,6 +8,8 @@
  * acceptance policy を満たさなければ tool 側で keep を拒否する。
  */
 
+// Types re-exported from contract.ts for backward compatibility with the legacy init→run→log flow.
+// New code should use contractV1/schema.ts types directly.
 import type { AcceptancePolicy, AcceptanceMode, AggregateMethod } from "./contract.js";
 
 // ---------------------------------------------------------------------------

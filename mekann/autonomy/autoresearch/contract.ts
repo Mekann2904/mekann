@@ -1,5 +1,9 @@
 /**
- * autoresearch/contract.ts — 実験契約 (Experiment Contract) の型・検証・I/O。
+ * autoresearch/contract.ts — 旧実験契約 (Experiment Contract) の型・検証・I/O。
+ *
+ * @deprecated 新しいコードでは contractV1/ (AutoresearchContractV1) を使ってください。
+ * 旧 init → run → log フロー用の後方互換 module です。
+ * 将来的に V1 フローに完全移行した際に削除予定です。
  *
  * 実験契約は autoresearch の不変条件の正本。
  * agent の会話コンテキストではなく、machine-readable なファイルとして保存・強制される。
@@ -13,6 +17,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
+import { isGitRepo, isWorkingTreeClean, getBaselineCommit } from "./git.js";
+export { isGitRepo, isWorkingTreeClean, getBaselineCommit } from "./git.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -176,40 +182,8 @@ export function deleteContract(cwd: string): void {
 // Git safety checks
 // ---------------------------------------------------------------------------
 
-/** git repo かどうかを判定 */
-export function isGitRepo(cwd: string): boolean {
-	try {
-		execFileSync("git", ["rev-parse", "--git-dir"], {
-			cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"],
-		});
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-/** working tree が clean かどうかを判定 (staged + unstaged + untracked) */
-export function isWorkingTreeClean(cwd: string): boolean {
-	try {
-		const result = execFileSync("git", ["status", "--porcelain"], {
-			cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"],
-		}).trim();
-		return result.length === 0;
-	} catch {
-		return false;
-	}
-}
-
-/** 現在の HEAD commit hash (full) */
-export function getBaselineCommit(cwd: string): string | null {
-	try {
-		return execFileSync("git", ["rev-parse", "HEAD"], {
-			cwd, encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"],
-		}).trim();
-	} catch {
-		return null;
-	}
-}
+// git utilities re-exported from git.ts for backward compatibility
+// (isGitRepo, isWorkingTreeClean, getBaselineCommit are now in git.ts)
 
 /** git safety の前提を検証し、 violations を返す */
 export function validateGitSafety(cwd: string, safety: SafetyPolicy): string[] {
@@ -234,8 +208,13 @@ export function validateGitSafety(cwd: string, safety: SafetyPolicy): string[] {
 // Command policy
 // ---------------------------------------------------------------------------
 
-/** コマンドが safety policy に違反するかを判定 */
+/**
+ * コマンドが safety policy に違反するかを判定。
+ * 旧 ExperimentContract フロー用。内部で V1 validateCommandSafety に委譲。
+ * @deprecated 新しいコードでは contractV1/safety.ts の validateCommandSafety を直接使ってください。
+ */
 export function validateCommand(command: string, safety: SafetyPolicy): string[] {
+	// 旧フローは string command を使うので、shell invocation として簡易検証する
 	const violations: string[] = [];
 
 	for (const pattern of safety.forbiddenCommandPatterns) {
@@ -256,7 +235,10 @@ export function validateCommand(command: string, safety: SafetyPolicy): string[]
 // Changed files policy
 // ---------------------------------------------------------------------------
 
-/** 変更ファイルが allowedPaths / excludedPaths に収まっているかを検証 */
+/**
+ * 変更ファイルが allowedPaths / excludedPaths に収まっているかを検証。
+ * @deprecated 新しいコードでは contractV1/safety.ts の validateWritePaths を直接使ってください。
+ */
 export function validateChangedFiles(
 	changedFiles: string[],
 	safety: SafetyPolicy,

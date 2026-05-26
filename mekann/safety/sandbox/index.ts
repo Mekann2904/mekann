@@ -17,8 +17,7 @@ import { DEFAULT_SANDBOX_MODE, parseSandboxMode, modeLabel, SANDBOX_PUSH_PROFILE
 import { SafetyProfileState } from "../policy-core/safetyProfile.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { MEKANN_SANDBOX_DEFAULTS, MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
-import { gateTextForLlm } from "../../context/output-gate/store.js";
-import { redactSecrets } from "../../context/output-gate/redact.js";
+import { gateTextForLlm, redactSecrets } from "../../context/tool-output/index.js";
 
 // ─── LLM output truncation ─────────────────────────────────────────
 

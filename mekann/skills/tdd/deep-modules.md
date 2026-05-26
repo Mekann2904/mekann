@@ -1,33 +1,27 @@
 # Deep Modules
 
-From "A Philosophy of Software Design":
+このファイルは TDD skill 内で使う短い excerpt です。architecture 語彙の正本は [`../improve-codebase-architecture/LANGUAGE.md`](../improve-codebase-architecture/LANGUAGE.md) です。用語を変更するときは正本を先に更新してください。
 
-**Deep module** = small interface + lots of implementation
+## TDD で使う最小語彙
 
-```
-┌─────────────────────┐
-│   Small Interface   │  ← Few methods, simple params
-├─────────────────────┤
-│                     │
-│                     │
-│  Deep Implementation│  ← Complex logic hidden
-│                     │
-│                     │
-└─────────────────────┘
-```
+- **Module** — interface と implementation を持つもの。
+- **Interface** — caller と test が知る必要のある全て。型だけでなく、不変条件・順序・error mode も含む。
+- **Implementation** — module の内側。
+- **Depth** — interface から得られる leverage。小さい interface の裏に多くの behaviour があるほど deep。
+- **Deep** — small interface, substantial implementation.
+- **Shallow** — interface が implementation と同じくらい複雑。
+- **Seam** — interface が置かれる場所。test は seam を越えて module を使う。
+- **Adapter** — seam に置かれる具体 implementation。
+- **Leverage** — caller/test が小さい interface から得る能力。
+- **Locality** — change, bugs, knowledge, verification が一箇所に集中すること。
 
-**Shallow module** = large interface + little implementation (avoid)
+## TDD での使い方
 
-```
-┌─────────────────────────────────┐
-│       Large Interface           │  ← Many methods, complex params
-├─────────────────────────────────┤
-│  Thin Implementation            │  ← Just passes through
-└─────────────────────────────────┘
-```
+Tests should cross the same **interface** as real callers. If a test needs to reach past the **interface** into the **implementation**, the **Module** is probably the wrong shape.
 
-When designing interfaces, ask:
+Ask during refactor:
 
-- Can I reduce the number of methods?
-- Can I simplify the parameters?
-- Can I hide more complexity inside?
+- Can this **Module** expose fewer facts at its **interface**?
+- Can this **Module** hide more behaviour in its **implementation**?
+- Does this **seam** have real variation? Remember: one **adapter** = hypothetical seam; two **adapters** = real seam.
+- Does the change improve **leverage** for callers and **locality** for maintainers?
