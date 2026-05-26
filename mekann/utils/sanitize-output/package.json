@@ -1,0 +1,15 @@
+{
+  "name": "sanitize-output",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.ts",
+  "description": "Optimized sanitizeBinaryOutput using regex-based replacement instead of Array.from+filter+join",
+  "license": "ISC",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.6",
+    "vitest": "^4.1.6"
+  }
+}
