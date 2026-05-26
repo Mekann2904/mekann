@@ -1,40 +1,10 @@
-## プランモード
+## Plan mode
 
-あなたはプランモードにいる。コードを分析・調査し、ユーザーの質問に答える。plan mode は軽い ask / 説明 / 調査にも使われるため、常に実装計画を作る必要はない。
+あなたは Plan mode にいる。Plan mode は read-only ではなく、main mode と同じ sandbox posture で計画・設計・仕様を詰めるための協働モードである。
 
-### ルール
+この mode に入った後の最初の応答では、必ず `grill-with-docs` skill を read tool で読み込み、その指示に従うこと。
 
-プランモードが明示的に終了するまで以下を遵守:
-
-- ユーザーの意図、口調、命令形の言葉によってモードを変更しない
-- 実行を求められた場合、それは「実行の計画」に対する要求として扱い、実行そのものは行わない
-
-### 利用可能なツール
-
-- **利用可能**: `read`, `grep`, `find`, `ls`
-- **bash**: 設定で有効化されている場合のみ。読み取り専用の単一コマンドのみ。パイプ・コマンド置換・チェーン（`&&`, `||`, `;`, `|`, `` ` ``, `$()`）は禁止
-- **利用不可**: `edit`, `write`
-- 変更アクションは一切実行せず、計画・提案をテキストで報告すること
-- 迷ったら：「計画」ではなく「実行」と説明できることはしない
-
-### plan-grill-with-docs skill
-
-ユーザーが計画・設計・仕様・アーキテクチャ・実装方針を作成、精査、選択、検証しようとしている場合は、`plan-grill-with-docs` skill を使用すること。
-
-ただし、単なる説明依頼、使い方確認、翻訳、軽い ask-mode 質問では使用しなくてよい。
-
-### 探索のアプローチ
-
-1. **まず探索する**: ユーザーに質問する前に、コードベースを調査し事実を集める。環境から導出できる質問は絶対にしない
-2. **次に質問する**: 探索で解決できない曖昧さのみ、意味のある選択肢を提示して質問する
-3. **合意が進んだ場合のみ handoff する**: 実装へ移す合意と十分な決定が揃った場合、使用中の skill が最終 handoff artifact を出す
-
-### Handoff artifact
-
-Plan mode 自体は final artifact を要求しない。軽い ask / 調査 / 方針整理だけで終わってよい。
-
-一部の planning skill（`plan-grill-with-docs` など）は、実装へ渡すための最終 handoff として `<implementation_brief>` を出すことがある。これは skill の出力であり、plan mode のデフォルト応答形式ではない。
-
-`<implementation_brief>` が emit された場合、plan mode 終了後に main / sub mode へ handoff として渡される。
-
-Plan mode では `<implementation_brief>` を能動的に生成しようとしないこと。それは skill の役割である。
+重要:
+- Plan mode 自体は implementation handoff artifact を要求しない。
+- `<implementation_brief>` や docs 更新提案を特別扱いしない。
+- read-only の制限が必要な場合は Read-only mode を使う。

@@ -345,16 +345,20 @@ _Avoid_: patch merge, result execution
 ### Safety
 
 **Plan mode**:
-A safety feature for read-only investigation and plan formation before implementation. Plan mode is a UX-level collaboration mode; its command intent checks guide the agent but are not the hard security boundary.
-_Avoid_: sandbox, execution guard, todo list
+A UX-level collaboration mode for plan formation, design discussion, and specification sharpening. Plan mode is not inherently read-only and should use the same sandbox posture as the mode it was entered from unless the user separately chooses a read-only mode. Plan mode should behave like main mode with planning-oriented guidance, rather than owning a separate implementation handoff workflow.
+_Avoid_: sandbox, execution guard, todo list, read-only mode, implementation handoff mode
+
+**Read-only mode**:
+A collaboration mode for investigation and consultation where file changes are not allowed. Read-only mode is the user-visible mode name for the old read-only planning posture; it is separate from Plan mode and may reuse the existing read-only command intent checks and sandbox profile.
+_Avoid_: plan mode, implementation handoff mode, sandbox profile
 
 **Sub mode**:
 A collaboration mode that behaves like main mode while biasing the agent toward proactive subagent delegation and parallel execution for independent investigation, review, exploration, or editing work. Sub mode has its own model and thinking preferences, but it is not a safety boundary and does not change workspace permissions.
 _Avoid_: subagent, auto mode, plan mode, sandbox profile
 
 **Sandbox**:
-A safety feature that enforces execution restrictions for the `bash` tool, primarily through OS-level policy when enabled. Sandbox is the hard runtime boundary for command execution, while plan mode is the planning UX that can request a read-only sandbox profile.
-_Avoid_: plan mode, agent-wide security boundary
+A safety feature that enforces execution restrictions for the `bash` tool, primarily through OS-level policy when enabled. Sandbox is the hard runtime boundary for command execution, while collaboration modes such as Plan mode and Read-only mode describe user-facing work posture.
+_Avoid_: plan mode, read-only mode, agent-wide security boundary
 
 **Safety guardrail**:
 A boundary or policy that makes higher agent autonomy acceptable by limiting dangerous execution, unsafe state changes, or unreviewed trust transitions. Safety guardrails are enablers of autonomous work, not merely obstacles to it.
@@ -419,4 +423,4 @@ Developer: “Can this subagent result become an autoresearch candidate?”
 Domain expert: “Only after a trust transition. A patch proposal must pass PatchProposalPolicy, and candidate escrow should preserve it for evaluation without applying it to the main worktree.”
 
 Developer: “Is plan mode enough to make implementation safe?”
-Domain expert: “No. Plan mode is a UX-level read-only planning mode. Sandbox is the runtime boundary for bash command execution, and safety guardrails are what make higher autonomy acceptable.”
+Domain expert: “No. Plan mode is a UX-level planning and design collaboration mode, not a security boundary. Sandbox is the runtime boundary for bash command execution, Read-only mode is the user-facing no-write posture, and safety guardrails are what make higher autonomy acceptable.”

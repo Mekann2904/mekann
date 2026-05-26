@@ -10,4 +10,3 @@
 | [`grill-with-docs`](./grill-with-docs/) | 計画を既存のドメイン語彙・コード実態・ADR に照らして詰め、必要に応じて CONTEXT.md / ADR を更新する |
 | [`improve-codebase-architecture`](./improve-codebase-architecture/) | codebase の浅い module、悪い seam、低い locality / leverage を調査し、architecture 改善候補を HTML report として提示する |
 | [`mekann-pi-skill-dev`](./mekann-pi-skill-dev/) | Mekann の Pi 向け skill を開発・更新・導入する |
-| [`plan-grill-with-docs`](./plan-grill-with-docs/) | plan mode 中の計画・設計・方針検討を read-only で詰め、docs 更新は提案として出す |

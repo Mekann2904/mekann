@@ -1045,7 +1045,7 @@ describe("tool execute: Case 2 inline approval flow", () => {
 // ─── Profile override: restrict-only policy ─────────────────────
 
 describe("profile override: restrict-only policy", () => {
-	it("base workspace_write で plan_read_only push → effective mode が read_only", async () => {
+	it("base workspace_write で read_only push → effective mode が read_only", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
@@ -1054,11 +1054,11 @@ describe("profile override: restrict-only policy", () => {
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
-		// Push plan_read_only override
+		// Push read_only override
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "plan-mode",
 			token: "plan-123",
-			profile: "plan_read_only",
+			profile: "read_only",
 		});
 
 		// Effective mode should be read_only now
@@ -1162,11 +1162,11 @@ describe("profile override: restrict-only policy", () => {
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
-		// Push plan_read_only
+		// Push read_only
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "plan-mode",
 			token: "plan-789",
-			profile: "plan_read_only",
+			profile: "read_only",
 		});
 
 		// Pop it
@@ -1196,11 +1196,11 @@ describe("profile override: restrict-only policy", () => {
 
 		const setWidgetCallCount = ctx.ui.setWidget.mock.calls.length;
 
-		// Push plan_read_only
+		// Push read_only
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "plan-mode",
 			token: "plan-status-test",
-			profile: "plan_read_only",
+			profile: "read_only",
 		});
 
 		expect(ctx.ui.setWidget).toHaveBeenCalledTimes(setWidgetCallCount + 1);
@@ -1582,11 +1582,11 @@ describe("/sandbox command: yolo with override active", () => {
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
-		// Push plan_read_only override
+		// Push read_only override
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "plan-mode",
 			token: "plan-defer-test",
-			profile: "plan_read_only",
+			profile: "read_only",
 		});
 
 		const notifications: string[] = [];
@@ -1771,7 +1771,7 @@ describe("profile override: pop with non-matching token", () => {
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "plan-mode",
 			token: "token-A",
-			profile: "plan_read_only",
+			profile: "read_only",
 		});
 
 		// Pop with different token
@@ -1806,7 +1806,7 @@ describe("profile override: stack behavior", () => {
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "ext-a",
 			token: "token-a",
-			profile: "plan_read_only",
+			profile: "read_only",
 		});
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "ext-b",
@@ -1862,7 +1862,7 @@ describe("profile override: stack behavior", () => {
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "ext-a",
 			token: "token-dup",
-			profile: "plan_read_only",
+			profile: "read_only",
 		});
 
 		// Push again with same token (should replace)
@@ -1905,7 +1905,7 @@ describe("profile override: invalid payloads", () => {
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "test",
 			// no token
-			profile: "plan_read_only",
+			profile: "read_only",
 		});
 
 		// No rejection logged, no state change
@@ -1947,7 +1947,7 @@ describe("profile override: invalid payloads", () => {
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "test",
 			token: "pop-no-token",
-			profile: "plan_read_only",
+			profile: "read_only",
 		});
 
 		// Pop without token
@@ -1986,7 +1986,7 @@ describe("profile override: escalation rejection", () => {
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "test",
 			token: "ro-same-level",
-			profile: "plan_read_only",
+			profile: "read_only",
 		});
 
 		const newRejectCount = mock.appendEntry.mock.calls.filter(
@@ -2014,7 +2014,7 @@ describe("profile override: escalation rejection", () => {
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "test",
 			token: "ww-to-ro",
-			profile: "plan_read_only",
+			profile: "read_only",
 		});
 
 		const notifications: string[] = [];
@@ -2080,7 +2080,7 @@ describe("session_shutdown: full reset", () => {
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "test",
 			token: "shutdown-test",
-			profile: "plan_read_only",
+			profile: "read_only",
 		});
 
 		// Set plan mode status
@@ -2313,7 +2313,7 @@ describe("profile override: escalation rejection", () => {
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "test",
 			token: "ro-same",
-			profile: "plan_read_only",
+			profile: "read_only",
 		});
 
 		const notifications: string[] = [];
@@ -2385,7 +2385,7 @@ describe("refreshStatusBar: no lastCtx", () => {
 			mock._eventHandlers["mekann:sandbox:push-profile"]({
 				owner: "test",
 				token: "no-ctx-test",
-				profile: "plan_read_only",
+				profile: "read_only",
 			});
 		}).not.toThrow();
 	});

@@ -14,9 +14,9 @@ import { getGlobalMekannSettingsPath, loadSettings, saveSettingsChecked } from "
 export { classifyCommandIntent, isPlanReadOnlyCommandIntent, isSafeCommand, type CommandIntent, type CommandIntentKind } from "../policy-core/modes.js";
 
 // Re-export tool list from policy-core.
-export { PLAN_MODE_TOOLS } from "../policy-core/modes.js";
+export { READ_ONLY_MODE_TOOLS } from "../policy-core/modes.js";
 export function buildBlockReason(toolName: string, input: Record<string, unknown>, blockCount: number): string {
-	const H = "【プランモード・読み取り専用】";
+	const H = "【Read-only mode】";
 	const toolLabel = ({ edit: "ファイル編集", write: "ファイル作成/上書き" } as Record<string, string>)[toolName] || toolName;
 
 	if (blockCount >= 3) {
@@ -26,7 +26,7 @@ export function buildBlockReason(toolName: string, input: Record<string, unknown
 		return `${H}\n⚠ ${toolLabel}は実行できません（${blockCount}回目のブロック）。\n再度試行しても同じ結果になります。\n読み取り専用の分析を続け、結果をテキストで報告してください。`;
 	}
 
-	return `${H}\n${toolLabel}「${typeof input?.path === "string" ? input.path : "unknown"}」はブロックされました。\nプランモードではファイル変更は一切禁止。\n代わりに変更内容をテキストで報告してください。`;
+	return `${H}\n${toolLabel}「${typeof input?.path === "string" ? input.path : "unknown"}」はブロックされました。\nRead-only mode ではファイル変更は一切禁止。\n代わりに変更内容をテキストで報告してください。`;
 }
 
 export function hashContent(content: string): string {
@@ -45,27 +45,6 @@ export function loadPrompt(name: string, vars?: Record<string, string>): string 
 	return content;
 }
 
-export function extractImplementationBrief(message: string): string | undefined {
-	const current = message.match(/<implementation_brief>\s*([\s\S]*?)\s*<\/implementation_brief>/);
-	if (current?.[1]?.trim()) return current[1].trim();
-	// Legacy read compatibility: old plan-mode prompts emitted <proposed_plan>.
-	const legacy = message.match(/<proposed_plan>\s*([\s\S]*?)\s*<\/proposed_plan>/);
-	return legacy?.[1]?.trim() || undefined;
-}
-
-/** @deprecated Use extractImplementationBrief. */
-export const extractProposedPlan = extractImplementationBrief;
-
-/** implementation handoff blocks を短いプレースホルダーに置換（context hook 用）。 */
-export function compactOldImplementationBriefsInText(text: string): string {
-	return text
-		.replace(/<implementation_brief>\s*[\s\S]*?\s*<\/implementation_brief>/g, "<implementation_brief>[omitted: superseded brief]</implementation_brief>")
-		.replace(/<proposed_plan>\s*[\s\S]*?\s*<\/proposed_plan>/g, "<proposed_plan>[omitted: superseded plan]</proposed_plan>");
-}
-
-/** @deprecated Use compactOldImplementationBriefsInText. */
-export const compactOldProposedPlansInText = compactOldImplementationBriefsInText;
-
 // ─── Thinking level ───────────────────────────────────────────────
 
 /** Pi thinking levels. */
@@ -83,10 +62,10 @@ function isThinkingLevel(value: unknown): value is ThinkingLevel {
 export interface ModelRef { provider: string; modelId: string; }
 
 /** All mode names managed by plan-mode extension. */
-export type ModeName = "main" | "plan" | "auto" | "sub";
+export type ModeName = "main" | "plan" | "read_only" | "auto" | "sub";
 
 /** Configuration file shape stored at ~/.pi/agent/plan-mode.json */
-export interface PlanModeConfig { version: typeof MEKANN_CONFIG_VERSION; models: { main?: ModelRef; plan?: ModelRef; auto?: ModelRef; sub?: ModelRef; }; thinking: { main?: ThinkingLevel; plan?: ThinkingLevel; auto?: ThinkingLevel; sub?: ThinkingLevel; }; }
+export interface PlanModeConfig { version: typeof MEKANN_CONFIG_VERSION; models: { main?: ModelRef; plan?: ModelRef; read_only?: ModelRef; auto?: ModelRef; sub?: ModelRef; }; thinking: { main?: ThinkingLevel; plan?: ThinkingLevel; read_only?: ThinkingLevel; auto?: ThinkingLevel; sub?: ThinkingLevel; }; }
 
 export function createDefaultConfig(): PlanModeConfig {
 	return { version: MEKANN_CONFIG_VERSION, models: {}, thinking: {} };
@@ -107,6 +86,7 @@ export function normalizeConfig(raw: Record<string, unknown>): PlanModeConfig {
 		const mi = m as Record<string, unknown>;
 		if (isModelRef(mi.main)) models.main = mi.main;
 		if (isModelRef(mi.plan)) models.plan = mi.plan;
+		if (isModelRef(mi.read_only)) models.read_only = mi.read_only;
 		if (isModelRef(mi.auto)) models.auto = mi.auto;
 		if (isModelRef(mi.sub)) models.sub = mi.sub;
 	}
@@ -117,6 +97,7 @@ export function normalizeConfig(raw: Record<string, unknown>): PlanModeConfig {
 		const ti = t as Record<string, unknown>;
 		if (isThinkingLevel(ti.main)) thinking.main = ti.main;
 		if (isThinkingLevel(ti.plan)) thinking.plan = ti.plan;
+		if (isThinkingLevel(ti.read_only)) thinking.read_only = ti.read_only;
 		if (isThinkingLevel(ti.auto)) thinking.auto = ti.auto;
 		if (isThinkingLevel(ti.sub)) thinking.sub = ti.sub;
 	}
@@ -188,22 +169,20 @@ export function updateConfigField<T>(
 export type Mode = MekannMode;
 
 /** Runtime mode managed by plan-mode extension. */
-export type MekannMode = "main" | "plan" | "auto" | "sub";
+export type MekannMode = "main" | "plan" | "read_only" | "auto" | "sub";
 
 export function isReadOnlyMode(mode: MekannMode): boolean {
-	return mode === "plan";
+	return mode === "read_only";
 }
 
 export function modeLabel(mode: MekannMode): string {
 	if (mode === "plan") return "PLAN MODE";
+	if (mode === "read_only") return "READ-ONLY MODE";
 	return "";
 }
 
 export interface PlanState {
 	mode: MekannMode;
-	pendingImplementationBrief?: string;
-	/** Implementation brief to inject once into main/sub mode's system prompt, then cleared. */
-	implementationBrief?: string;
 	savedActiveTools?: string[];
 	planPromptHash?: string;
 	planPromptDelivered: boolean;
@@ -214,7 +193,7 @@ export interface PlanState {
 	/** Snapshot of the main-mode thinking level before entering a non-main mode (for fallback restore). */
 	savedMainThinking?: ThinkingLevel;
 	/** Mode to restore after leaving plan mode. */
-	modeBeforePlan?: Exclude<MekannMode, "plan" | "auto">;
+	modeBeforePlan?: Exclude<MekannMode, "plan" | "read_only" | "auto">;
 	/** Mode to restore after leaving auto mode. */
 	modeBeforeAuto?: Exclude<MekannMode, "plan" | "auto">;
 }

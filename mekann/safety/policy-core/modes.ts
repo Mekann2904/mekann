@@ -9,7 +9,7 @@
 
 /** Well-known capability profile names. */
 export type CapabilityProfileName =
-	| "plan_read_only"
+	| "read_only"
 	| "sandbox_read_only"
 	| "workspace_write"
 	| "yolo";
@@ -17,12 +17,12 @@ export type CapabilityProfileName =
 // ─── Plan mode tools ──────────────────────────────────────────────
 
 /**
- * Tools available in plan mode.
+ * Tools available in read-only mode.
  * Includes bash for read-only investigation commands;
  * bash intent is filtered by classifyCommandIntent() as a UX guard,
  * and enforced by sandbox's OS-level policy as the security boundary.
  */
-export const PLAN_MODE_TOOLS = new Set([
+export const READ_ONLY_MODE_TOOLS = new Set([
 	"read",
 	"grep",
 	"find",
@@ -82,7 +82,7 @@ export interface SandboxPopProfileEvent { owner: string; token: string; }
 export const PLAN_MODE_STATUS_EVENT = "mekann:plan-mode:status";
 
 /** Payload for plan-mode status broadcast. */
-export interface PlanModeStatusEvent { mode: "main" | "plan" | "auto" | "sub"; }
+export interface PlanModeStatusEvent { mode: "main" | "plan" | "read_only" | "auto" | "sub"; }
 
 // ─── Autoresearch mode notification ─────────────────────────────
 
@@ -150,7 +150,7 @@ const SAFE_REDIRECT_PATTERN = /\s*2>\/dev\/null\b|\s*2>&1\b|\s*>\/dev\/null\b/g;
 
 /** Classification result for a command's intent. */
 export type CommandIntentKind =
-	| "plan_read_only"   // Read-only command suitable for plan mode
+	| "read_only"        // Read-only command suitable for read-only workflows
 	| "destructive"      // Matches a known destructive pattern
 	| "shell_meta"       // Contains shell metacharacters (pipes, chains, etc.)
 	| "unknown"          // Does not match any known safe pattern
@@ -180,7 +180,7 @@ export function classifyCommandIntent(command: string): CommandIntent {
 	const cleaned = stripped.replace(SAFE_REDIRECT_PATTERN, "");
 	if (SHELL_META_PATTERNS.some((p) => p.test(cleaned))) return { allowedInPlanReadOnly: false, kind: "shell_meta", reason: "シェルメタ文字を含みます（パイプ・チェーン・コマンド置換・リダイレクト等）" };
 	if (DESTRUCTIVE_PATTERNS.some((p) => p.test(cleaned))) return { allowedInPlanReadOnly: false, kind: "destructive", reason: "破壊的または変更を伴うコマンドパターンに一致します" };
-	if (SAFE_PATTERNS.some((p) => p.test(cleaned))) return { allowedInPlanReadOnly: true, kind: "plan_read_only", reason: "読み取り専用コマンド" };
+	if (SAFE_PATTERNS.some((p) => p.test(cleaned))) return { allowedInPlanReadOnly: true, kind: "read_only", reason: "読み取り専用コマンド" };
 	return { allowedInPlanReadOnly: false, kind: "unknown", reason: "既知の安全なコマンドパターンに一致しません" };
 }
 

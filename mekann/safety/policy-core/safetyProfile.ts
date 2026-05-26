@@ -14,7 +14,7 @@ const MODE_RANK: Record<SandboxMode, number> = { read_only: 0, workspace_write: 
 
 export function modeForCapabilityProfile(profile: CapabilityProfileName): SandboxMode | undefined {
 	switch (profile) {
-		case "plan_read_only":
+		case "read_only":
 		case "sandbox_read_only":
 			return "read_only";
 		case "workspace_write":
@@ -28,7 +28,7 @@ export class SafetyProfileState {
 	private profileOverrideStack: SafetyProfileEntry[] = [];
 	private disabled = false;
 	private baseMode: SandboxMode;
-	planModeStatus: "main" | "plan" | "sub" | undefined;
+	planModeStatus: "main" | "plan" | "read_only" | "sub" | undefined;
 	rightStatus: string | undefined;
 
 	constructor(baseMode: SandboxMode) {

@@ -1,7 +1,7 @@
 import type { FeatureSettingsSchema, SettingSchema } from "../../settings/types.js";
 import type { ModelRef, ThinkingLevel } from "./utils.js";
 
-const modes = ["main", "plan", "auto", "sub"] as const;
+const modes = ["main", "plan", "read_only", "auto", "sub"] as const;
 const thinkingValues = ["off", "minimal", "low", "medium", "high", "xhigh"];
 
 function modelSetting(mode: typeof modes[number]): SettingSchema<ModelRef | undefined> {

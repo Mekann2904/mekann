@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync, existsSync, mkdirSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { isSafeCommand, isPlanReadOnlyCommandIntent, classifyCommandIntent, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, PLAN_MODE_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateConfigField, createDefaultConfig, getConfigPath, normalizeConfig, compactOldProposedPlansInText, type ModelRef, type ThinkingLevel } from "./utils.js";
+import { isSafeCommand, isPlanReadOnlyCommandIntent, classifyCommandIntent, extractProposedPlan, buildBlockReason, loadPrompt, hashContent, READ_ONLY_MODE_TOOLS, parseModelRef, formatModelRef, sameModelRef, loadModelConfig, saveModelConfig, updateConfigField, createDefaultConfig, getConfigPath, normalizeConfig, compactOldProposedPlansInText, type ModelRef, type ThinkingLevel } from "./utils.js";
 import { type Mode, type PlanState, createInitialState, isReadOnlyMode, modeLabel } from "./utils.js";
 
 // isPlanReadOnlyCommandIntent — bash コマンドの intent 分類 (UX guard, not security)
@@ -293,7 +293,7 @@ function shouldBlockToolCall(
 	input: Record<string, unknown> | null | undefined,
 ): boolean {
 	if (!isReadOnlyMode(mode)) return false;
-	if (PLAN_MODE_TOOLS.has(toolName) && toolName !== "bash") return false;
+	if (READ_ONLY_MODE_TOOLS.has(toolName) && toolName !== "bash") return false;
 
 	if (toolName === "bash") {
 		const safeInput = input ?? {};
@@ -1450,20 +1450,20 @@ describe("PlanState mutation edge cases", () => {
 	});
 });
 
-// ─── PLAN_MODE_TOOLS coverage ─────────────────────────────────────
+// ─── READ_ONLY_MODE_TOOLS coverage ─────────────────────────────────────
 
-describe("PLAN_MODE_TOOLS", () => {
+describe("READ_ONLY_MODE_TOOLS", () => {
 	it("read, grep, find, ls, bash を含む", () => {
-		expect(PLAN_MODE_TOOLS.has("read")).toBe(true);
-		expect(PLAN_MODE_TOOLS.has("grep")).toBe(true);
-		expect(PLAN_MODE_TOOLS.has("find")).toBe(true);
-		expect(PLAN_MODE_TOOLS.has("ls")).toBe(true);
-		expect(PLAN_MODE_TOOLS.has("bash")).toBe(true);
+		expect(READ_ONLY_MODE_TOOLS.has("read")).toBe(true);
+		expect(READ_ONLY_MODE_TOOLS.has("grep")).toBe(true);
+		expect(READ_ONLY_MODE_TOOLS.has("find")).toBe(true);
+		expect(READ_ONLY_MODE_TOOLS.has("ls")).toBe(true);
+		expect(READ_ONLY_MODE_TOOLS.has("bash")).toBe(true);
 	});
 
 	it("edit, write を含まない", () => {
-		expect(PLAN_MODE_TOOLS.has("edit")).toBe(false);
-		expect(PLAN_MODE_TOOLS.has("write")).toBe(false);
+		expect(READ_ONLY_MODE_TOOLS.has("edit")).toBe(false);
+		expect(READ_ONLY_MODE_TOOLS.has("write")).toBe(false);
 	});
 });
 
