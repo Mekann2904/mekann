@@ -7,6 +7,8 @@ description: Test-driven development with red-green-refactor loop. Use when user
 
 # Test-Driven Development
 
+For cost-aware TDD where the current parent model writes the spec patch and review while a configured implementation model proposes implementation patches, use [`delegated-tdd`](../delegated-tdd/SKILL.md) instead of this general TDD workflow.
+
 ## Language policy
 
 Use Japanese explicitly for all interaction with the user: questions, recommendations, explanations, summaries, issue/PRD/report text, and documentation updates created during the session. Keep existing project terms, code identifiers, file names, labels, and quoted text in their original language when needed, but explain them in Japanese.

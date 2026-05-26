@@ -14,7 +14,8 @@ Mekann の skill は、Pi coding agent が特定作業のために読む workflo
 | PRD や計画を実装 ticket に分解したい | [`to-issues`](../mekann/skills/to-issues/SKILL.md) | `triage`, `tdd` |
 | issue を整理したい | [`triage`](../mekann/skills/triage/SKILL.md) | `grill-with-docs`, `diagnose`, `tdd` |
 | バグや性能劣化を調べたい | [`diagnose`](../mekann/skills/diagnose/SKILL.md) | `tdd`, `improve-codebase-architecture` |
-| TDD で実装したい | [`tdd`](../mekann/skills/tdd/SKILL.md) | `diagnose`, `improve-codebase-architecture` |
+| TDD で実装したい | [`tdd`](../mekann/skills/tdd/SKILL.md) | `diagnose`, `improve-codebase-architecture`, `delegated-tdd` |
+| コストを抑えて TDD 実装反復を委譲したい | [`delegated-tdd`](../mekann/skills/delegated-tdd/SKILL.md) | `tdd`, `diagnose` |
 | コードベースの構造を改善したい | [`improve-codebase-architecture`](../mekann/skills/improve-codebase-architecture/SKILL.md) | `grill-with-docs`, `to-issues`, `tdd` |
 | 知らないコード領域の全体像が欲しい | [`zoom-out`](../mekann/skills/zoom-out/SKILL.md) | 目的に応じて任意の skill |
 | engineering skills の初期設定をしたい | [`setup-matt-pocock-skills`](../mekann/skills/setup-matt-pocock-skills/SKILL.md) | `triage`, `to-prd`, `to-issues` |
@@ -33,7 +34,7 @@ grill-with-docs → prototype（必要なら）→ to-prd → to-issues → tdd
 - UI、状態機械、データモデルなどを触って確かめたい場合は `prototype` を挟む。
 - 目的地が固まったら `to-prd` で PRD にする。
 - PRD を `to-issues` で tracer bullet 型の vertical slice に分解する。
-- 各 issue を `tdd` で red-green-refactor しながら実装する。
+- 各 issue を `tdd` で red-green-refactor しながら実装する。実装反復コストを抑えたい場合は `delegated-tdd` を使う。
 
 ### バグを直す
 
@@ -43,7 +44,7 @@ triage（issue 起点なら）→ diagnose → tdd
 
 - issue 起点なら `triage` で状態、再現情報、agent-ready かを確認する。
 - `diagnose` で再現ループを作り、仮説を立て、計測し、原因を特定する。
-- correct seam があるなら `tdd` で regression test を先に書いて修正する。
+- correct seam があるなら `tdd` で regression test を先に書いて修正する。繰り返し実装を別モデルへ任せたい場合は `delegated-tdd` を使う。
 - correct seam がない場合は、修正後に `improve-codebase-architecture` を検討する。
 
 ### 大きなリファクタリングや構造改善を進める
@@ -159,6 +160,20 @@ grill-with-docs / to-prd で目的を固める → autoresearch-create
   - 「この issue を TDD で実装して」
   - 「red-green-refactor で進めて」
   - 「まず外部挙動のテストを書いてから修正して」
+
+#### delegated-tdd
+
+- 詳細: [`mekann/skills/delegated-tdd/SKILL.md`](../mekann/skills/delegated-tdd/SKILL.md)
+- できること: 現在の親モデルが問題把握・設計・spec patch・レビューを担当し、設定済み implementation model に implementation patch proposal の反復を委譲する。
+- 使うタイミング: TDD の実装反復コストを抑えたいとき。機能追加、bug fix、複数ファイル変更など、テスト駆動の反復が見込まれるとき。
+- 入力: 実装する issue、期待される挙動、`delegatedTdd.implementationModel` 設定、cheap checks / acceptance checks の候補。
+- 出力: spec patch、implementation patch、checks 結果、親モデルによる最終レビュー。
+- 次に使う skill: `tdd`, `diagnose`。
+- 重要な注意: implementation model はテストを編集しない。`delegatedTdd.implementationModel` が未設定なら fail-closed し、親モデルを暗黙継承しない。
+- 呼び出し例:
+  - 「この issue を delegated-tdd で実装して」
+  - 「gpt-5.5 で設計とレビュー、glm で実装反復する形で TDD して」
+  - 「コストを抑えるため実装だけ subagent に委譲して」
 
 #### diagnose
 

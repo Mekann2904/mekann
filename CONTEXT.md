@@ -88,6 +88,26 @@ _Avoid_: autonomous work, background continuation
 A general-purpose autonomous-continuation objective attached to a session or thread. A goal lets the agent keep pursuing a user-defined objective across turns, within continuation and budget limits, without turning the task into a metric-driven experiment.
 _Avoid_: experiment contract, benchmark target
 
+**Delegated implementation loop**:
+A cost-aware collaboration pattern where a planning/review model defines the problem, architecture, implementation instructions, and tests, while an implementation model performs the edit-and-test loop until the agreed checks pass. The implementation model treats the tests as fixed; if the tests appear wrong or unexecutable, it returns a test correction request instead of weakening the specification.
+_Avoid_: model priority, generic model routing, cheap-model fallback
+
+**Delegated implementation brief**:
+The structured Markdown handoff from the planning/review model to the implementation model in a delegated implementation loop. It names the goal, fixed tests, allowed implementation scope, forbidden changes, cheap checks, acceptance checks, blocked-state response, and expected patch-proposal output.
+_Avoid_: freeform implementation prompt, model routing contract, autoresearch contract
+
+**Failure handoff**:
+The check-failure evidence passed from the parent loop back to the implementation model during a delegated implementation loop. It normally includes the full failure output, but long output should flow through context-control features such as output gate so the implementation model receives a preview plus artifact reference instead of oversized inline logs.
+_Avoid_: failure summary, failure excerpt, raw log dumping
+
+**Spec patch**:
+The test or specification-facing change produced by the planning/review model in a delegated implementation loop. A spec patch is kept separate from the implementation patch so failures and reviews can distinguish an invalid specification from an incomplete implementation.
+_Avoid_: test tweak, implementation patch, merged fix patch
+
+**Implementation patch**:
+The production-code change proposed by the implementation model in a delegated implementation loop. An implementation patch is evaluated against the fixed spec patch and should not weaken or rewrite the tests that define the task.
+_Avoid_: spec patch, all-in-one patch, test-changing fix
+
 **Autoresearch**:
 A higher-autonomy research mode for persistent investigation, candidate generation, and evaluation when ordinary pair programming or goal continuation would be too slow or shallow. Autoresearch is currently metric-driven by default, but the intended concept also includes future non-metric or hard-to-measure research tasks that still need disciplined autonomous evaluation.
 _Avoid_: goal, benchmark script, simple automation
