@@ -7,7 +7,7 @@ description: Test-driven development with red-green-refactor loop. Use when user
 
 # Test-Driven Development
 
-For cost-aware TDD where the current parent model writes the spec patch and review while a configured implementation model proposes implementation patches, use [`delegated-tdd`](../delegated-tdd/SKILL.md) instead of this general TDD workflow.
+For fixed-spec implementation delegation where the current parent model owns the spec and review while a configured implementation model proposes implementation patches, use [`implementation-delegation`](../implementation-delegation/SKILL.md) instead of this general TDD workflow.
 
 ## Language policy
 

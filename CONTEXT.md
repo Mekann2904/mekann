@@ -14,6 +14,18 @@ _Avoid_: plugin bundle, package group, feature boundary
 A responsibility-bearing capability inside a Pi extension suite, such as `sandbox`, `plan-mode`, `subagent`, `autoresearch`, `output-gate`, or `context-ledger`. Features are the preferred unit for design discussion when behavior or ownership is being clarified.
 _Avoid_: module, package, suite
 
+**Implementation delegation**:
+A sub-mode strategy where an agent specializes in bounded implementation patch proposals against fixed specification evidence supplied by its parent. It is not a workflow used directly by main, plan, or auto mode agents.
+_Avoid_: delegated TDD, implementation subagent workflow, model-cost TDD
+
+**Fixed spec artifact**:
+A structured implementation-delegation input that names the fixed specification evidence for an implementation attempt, including specification files or assertions plus cheap checks. It is the minimum contract that prevents natural-language-only implementation delegation.
+_Avoid_: prompt brief, test notes, task description
+
+**Implementation agent**:
+A sub-mode agent running the implementation-delegation strategy that may propose bounded production implementation patches, but does not own design, fixed specification, scope expansion, or final review.
+_Avoid_: delegated TDD agent, coding helper, autonomous implementer
+
 **Project context**:
 The shared project language and domain knowledge recorded in `CONTEXT.md` so AI agents and human developers interpret Mekann concepts consistently. It is distinct from the `context` suite, which provides runtime context-management features, and from the model's `context window`, which is the active token budget available during inference.
 _Avoid_: context suite, context window, implementation notes, design scratchpad

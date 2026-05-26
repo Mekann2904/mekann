@@ -25,11 +25,19 @@ import { AgentControl } from "./agentControl.js";
 import { SubagentClient } from "./ipc.js";
 import { KittyController } from "./kittyControl.js";
 import { formatAgentList, formatWaitResult } from "./types.js";
+import type { SpawnParams, SpawnResult } from "./types.js";
 import { extractTextFromContent } from "./contextFork.js";
 import type { ForkTurns } from "./contextFork.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { getGlobalSettingsPath, getWorkspaceSettingsPath, MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
 import { registerSubagentFlags } from "./flags.js";
+
+let sharedSpawnAgent: ((params: SpawnParams, ctx: ExtensionContext) => Promise<SpawnResult>) | undefined;
+
+export async function spawnAgentFromFeature(params: SpawnParams, ctx: ExtensionContext): Promise<SpawnResult> {
+  if (!sharedSpawnAgent) throw new Error("subagent feature is not initialized");
+  return sharedSpawnAgent(params, ctx);
+}
 
 // ─── Tool parameter schemas ──────────────────────────────────────
 
@@ -318,6 +326,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       mailbox: result.mailbox.map((m: any) => ({ from: m.fromAgentPath, kind: m.kind, content: String(m.content ?? "").slice(0, 500) })),
     };
   }
+
+  sharedSpawnAgent = (params, ctx) => ensureControl().spawn(params, ctx);
 
   type ToolHandler = (ctrl: AgentControl, params: any, ctx: ExtensionContext) => Promise<any>;
   function withCtrl(handler: ToolHandler) {
