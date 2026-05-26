@@ -13,6 +13,7 @@ import {
 	projectContextEvents,
 	createEventId,
 	eventsPath,
+	rotatedEventsPath,
 	contextDir,
 } from "./store.js";
 
@@ -303,4 +304,115 @@ describe("context ledger store", () => {
 		const refLine = text.split("\n").find((l) => l.includes("artifact:"))!;
 		expect(refLine.length).toBeLessThan(longRef.length);
 	});
-});;
+
+	// ─── Rotation tests ────────────────────────────────────
+
+	describe("rotation", () => {
+		it("does not rotate when file is under size limit", async () => {
+			const cwd = await tmp();
+			const ep = eventsPath(cwd);
+			// Write events that keep the file well under 1KB
+			for (let i = 0; i < 3; i++) {
+				await appendContextEvent({
+					cwd,
+					kind: "task",
+					priority: 2,
+					title: `T${i}`,
+					summary: `s${i}`,
+					evidenceLevel: "observed",
+					idGenerator: () => `ctx_rot_node_${i}`,
+					now: () => 1000 + i,
+					maxFileSizeBytes: 1024,
+				});
+			}
+			// No rotated file should exist
+			const exists = fs.existsSync(rotatedEventsPath(cwd));
+			expect(exists).toBe(false);
+			const events = await readEvents(cwd);
+			expect(events).toHaveLength(3);
+		});
+
+		it("rotates when file exceeds size limit", async () => {
+			const cwd = await tmp();
+			const ep = eventsPath(cwd);
+			// Write enough events to exceed 1KB
+			for (let i = 0; i < 10; i++) {
+				await appendContextEvent({
+					cwd,
+					kind: "task",
+					priority: 2,
+					title: `T${i}`,
+					summary: "summary text that adds bytes to push past limit",
+					evidenceLevel: "observed",
+					idGenerator: () => `ctx_rot_big_${i}`,
+					now: () => 1000 + i,
+					maxFileSizeBytes: 1024,
+				});
+			}
+			// Rotated file should exist
+			expect(fs.existsSync(rotatedEventsPath(cwd))).toBe(true);
+			// Current file should have the last appended event
+			const raw = await fsp.readFile(ep, "utf8");
+			expect(raw).toContain("ctx_rot_big_9");
+			// Rotated file should contain events from the previous generation
+			const rotRaw = await fsp.readFile(rotatedEventsPath(cwd), "utf8");
+			expect(rotRaw).toContain("ctx_rot_big_");
+		});
+
+		it("reads events from both current and rotated file", async () => {
+			const cwd = await tmp();
+			// Pre-populate a rotated file with 2 events
+			await fsp.mkdir(contextDir(cwd), { recursive: true });
+			const rp = rotatedEventsPath(cwd);
+			await fsp.writeFile(rp, [
+				JSON.stringify({ schemaVersion: "mekann-context/v2", id: "ctx_rot_old_1", kind: "task", status: "active", priority: 2, title: "Old1", summary: "o1", evidenceLevel: "observed", createdAt: 100, cwd }),
+				JSON.stringify({ schemaVersion: "mekann-context/v2", id: "ctx_rot_old_2", kind: "task", status: "active", priority: 2, title: "Old2", summary: "o2", evidenceLevel: "observed", createdAt: 200, cwd }),
+			].join("\n") + "\n", "utf8");
+			// Write 1 event to current file
+			await appendContextEvent({
+				cwd,
+				kind: "task",
+				priority: 2,
+				title: "New",
+				summary: "n",
+				evidenceLevel: "observed",
+				idGenerator: () => "ctx_rot_new_1",
+				now: () => 300,
+			});
+			const events = await readEvents(cwd);
+			expect(events).toHaveLength(3);
+			expect(events.map((e) => e.id)).toEqual(["ctx_rot_old_1", "ctx_rot_old_2", "ctx_rot_new_1"]);
+		});
+
+		it("rotation replaces existing rotated file", async () => {
+			const cwd = await tmp();
+			await fsp.mkdir(contextDir(cwd), { recursive: true });
+			const rp = rotatedEventsPath(cwd);
+			// Pre-existing rotated file
+			await fsp.writeFile(rp, JSON.stringify({ schemaVersion: "mekann-context/v2", id: "ctx_rot_prev_1", kind: "task", status: "active", priority: 2, title: "Prev", summary: "p", evidenceLevel: "observed", createdAt: 50, cwd }) + "\n", "utf8");
+			// Write enough events to trigger rotation
+			for (let i = 0; i < 10; i++) {
+				await appendContextEvent({
+					cwd,
+					kind: "task",
+					priority: 2,
+					title: `T${i}`,
+					summary: "summary text that adds bytes to push past limit",
+					evidenceLevel: "observed",
+					idGenerator: () => `ctx_rot_rep_${i}`,
+					now: () => 1000 + i,
+					maxFileSizeBytes: 1024,
+				});
+			}
+			// Old rotated content should be gone
+			if (fs.existsSync(rp)) {
+				const raw = await fsp.readFile(rp, "utf8");
+				expect(raw).not.toContain("ctx_rot_prev_1");
+			}
+			// All events readable (current + rotated) — only ctx_rot_rep_* events, prev_1 is lost
+			const events = await readEvents(cwd);
+			expect(events.length).toBeGreaterThanOrEqual(1);
+			expect(events.every((e) => e.id.startsWith("ctx_rot_rep_"))).toBe(true);
+		});
+	});
+});

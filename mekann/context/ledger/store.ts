@@ -83,6 +83,12 @@ export function eventsPath(cwd: string): string {
 	return path.join(contextDir(cwd), "events.v2.jsonl");
 }
 
+export function rotatedEventsPath(cwd: string): string {
+	return path.join(contextDir(cwd), "events.v2.jsonl.1");
+}
+
+const DEFAULT_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
 // ─── ID Generation ──────────────────────────────────────────────
 
 let eventCounter = 0;
@@ -117,6 +123,7 @@ export interface AppendEventInput {
 	turnId?: string;
 	toolCallId?: string;
 	branchId?: string;
+	maxFileSizeBytes?: number;
 	idGenerator?: (createdAt: number) => string;
 	now?: () => number;
 }
@@ -219,6 +226,8 @@ export async function appendContextEvent(input: AppendEventInput): Promise<Mekan
 	};
 	const filePath = eventsPath(input.cwd);
 	await fsp.appendFile(filePath, `${JSON.stringify(event)}\n`, "utf8");
+	// Rotate if file exceeds size limit
+	await rotateIfNeeded(input.cwd, filePath, input.maxFileSizeBytes);
 	// Periodically prune the event log to prevent unbounded growth
 	await pruneEventLog(input.cwd, filePath);
 	return event;
@@ -268,8 +277,7 @@ function isEventLike(event: any): event is MekannContextEvent {
 		&& (event.toolCallId == null || typeof event.toolCallId === "string");
 }
 
-export async function readEvents(cwd: string): Promise<MekannContextEvent[]> {
-	const file = eventsPath(cwd);
+async function readJsonlFile(file: string): Promise<MekannContextEvent[]> {
 	let raw = "";
 	try {
 		raw = await fsp.readFile(file, "utf8");
@@ -288,11 +296,31 @@ export async function readEvents(cwd: string): Promise<MekannContextEvent[]> {
 	return out;
 }
 
+export async function readEvents(cwd: string): Promise<MekannContextEvent[]> {
+	const rotated = await readJsonlFile(rotatedEventsPath(cwd));
+	const current = await readJsonlFile(eventsPath(cwd));
+	return [...rotated, ...current];
+}
+
 // ─── Pruning ──────────────────────────────────────────────────────
 
 let lastPruneCheck = 0;
 const PRUNE_CHECK_INTERVAL_MS = 30_000; // check at most every 30s
 const PRUNE_RETAIN_MS = 2 * 60 * 60 * 1000; // retain non-active events for 2 hours
+
+async function rotateIfNeeded(cwd: string, filePath: string, maxBytes?: number): Promise<void> {
+	const limit = maxBytes ?? DEFAULT_MAX_FILE_SIZE_BYTES;
+	try {
+		const stat = await fsp.stat(filePath).catch(() => undefined);
+		if (!stat || stat.size < limit) return;
+		const rp = rotatedEventsPath(cwd);
+		// Move current file → .1 (overwriting any previous .1)
+		await fsp.rename(filePath, rp);
+		// New empty current file will be created on next append
+	} catch {
+		// Rotation must never break event appending
+	}
+}
 
 async function pruneEventLog(cwd: string, filePath: string): Promise<void> {
 	const now = Date.now();
