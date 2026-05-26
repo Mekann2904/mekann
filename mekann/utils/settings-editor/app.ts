@@ -1,104 +1,532 @@
-import React, { useMemo, useState } from "react";
-import { useKeyboard } from "@opentui/react";
+import React, { useCallback, useMemo, useState } from "react";
+import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import type { EffectiveSetting, SettingsScope } from "../../settings/types.js";
 import type { ModelCatalogItem } from "./model-ipc.js";
 
-export interface DraftChange { feature: string; key: string; scope: SettingsScope; raw: string; }
+// ─── createElement shorthand ──────────────────────────────────────
+
+function el(
+	type: string | React.ComponentType<any>,
+	props: Record<string, unknown> | null,
+	...children: React.ReactNode[]
+) {
+	return React.createElement(type as any, props as any, ...children);
+}
+
+// ─── Types ────────────────────────────────────────────────────────
+
+export interface DraftChange {
+	feature: string;
+	key: string;
+	scope: SettingsScope;
+	raw: string;
+}
 export interface SettingsEditorAppProps {
-  effective: EffectiveSetting[];
-  diagnostics: string[];
-  models: ModelCatalogItem[];
-  onApply: (changes: DraftChange[]) => Promise<string | undefined>;
-  onQuit: () => void;
-}
-function el(type: string, props: Record<string, unknown>, ...children: React.ReactNode[]) { return React.createElement(type, props, ...children); }
-function itemId(i: EffectiveSetting): string { return `${i.feature}.${i.key}`; }
-function valueText(value: unknown): string { if (value === undefined) return ""; if (value && typeof value === "object") { const v = value as Record<string, unknown>; if (typeof v.provider === "string" && typeof v.modelId === "string") return `${v.provider}/${v.modelId}`; return JSON.stringify(value); } return String(value); }
-function fit(s: string, n: number): string { const text = s.length > n ? `${s.slice(0, Math.max(0, n - 1))}…` : s; return text.length >= n ? text : text + " ".repeat(n - text.length); }
-function supportedThinking(models: ModelCatalogItem[], item: EffectiveSetting, items: EffectiveSetting[]): string[] {
-  const mode = item.key.split(".")[1];
-  const modelItem = items.find((i) => i.feature === "plan-mode" && i.key === `models.${mode}`);
-  const modelText = valueText(modelItem?.effectiveValue);
-  const model = models.find((m) => `${m.provider}/${m.modelId}` === modelText);
-  return model?.supportedThinkingLevels?.length ? model.supportedThinkingLevels : (item.schema.enumValues ?? []);
+	effective: EffectiveSetting[];
+	diagnostics: string[];
+	models: ModelCatalogItem[];
+	onApply: (changes: DraftChange[]) => Promise<string | undefined>;
+	onQuit: () => void;
 }
 
-export function SettingsEditorApp({ effective, diagnostics, models, onApply, onQuit }: SettingsEditorAppProps) {
-  const [selected, setSelected] = useState(0);
-  const [scope, setScope] = useState<SettingsScope>("global");
-  const [mode, setMode] = useState<"list" | "edit" | "models" | "diff">("list");
-  const [buffer, setBuffer] = useState("");
-  const [modelSelected, setModelSelected] = useState(0);
-  const [drafts, setDrafts] = useState<Record<string, DraftChange>>({});
-  const [message, setMessage] = useState("↑/↓ select  e edit  m model  Space cycle  g/w scope  d diff  a apply  q quit");
-  const items = useMemo(() => effective, [effective]);
-  const current = items[Math.min(selected, Math.max(0, items.length - 1))];
-  const currentDraft = current ? drafts[itemId(current)] : undefined;
-  const shownValue = currentDraft?.raw ?? valueText(current?.effectiveValue);
+type AppMode = "list" | "edit" | "models" | "diff";
 
-  function stage(item: EffectiveSetting, raw: string) {
-    setDrafts((d) => ({ ...d, [itemId(item)]: { feature: item.feature, key: item.key, scope, raw } }));
-    setMessage(`staged ${itemId(item)} to ${scope}; press a to apply`);
-  }
+// ─── Helpers ──────────────────────────────────────────────────────
 
-  useKeyboard((key) => {
-    if (key.ctrl && key.name === "c") { onQuit(); return; }
-    if (mode === "edit") {
-      if (key.name === "escape") { setMode("list"); setMessage("edit cancelled"); return; }
-      if (key.name === "backspace" || key.name === "delete") { setBuffer((b) => b.slice(0, -1)); return; }
-      if (key.name === "return" || key.name === "enter") { if (current) stage(current, buffer); setMode("list"); return; }
-      if (key.sequence && key.sequence.length === 1 && !key.ctrl && !key.meta) setBuffer((b) => b + key.sequence);
-      return;
-    }
-    if (mode === "models") {
-      if (key.name === "escape") { setMode("list"); return; }
-      if (key.name === "up") setModelSelected((i) => Math.max(0, i - 1));
-      else if (key.name === "down") setModelSelected((i) => Math.min(models.length - 1, i + 1));
-      else if ((key.name === "return" || key.name === "enter") && current && models[modelSelected]) { const m = models[modelSelected]; stage(current, `${m.provider}/${m.modelId}`); setMode("list"); }
-      return;
-    }
-    if (key.name === "q") { onQuit(); return; }
-    if (key.name === "up") setSelected((i) => Math.max(0, i - 1));
-    else if (key.name === "down") setSelected((i) => Math.min(items.length - 1, i + 1));
-    else if (key.name === "g") { setScope("global"); setMessage("save scope: global"); }
-    else if (key.name === "w") { setScope("workspace"); setMessage("save scope: workspace"); }
-    else if (key.name === "d") setMode(mode === "diff" ? "list" : "diff");
-    else if (key.name === "e" && current) { setBuffer(shownValue); setMode("edit"); setMessage(`editing ${itemId(current)}`); }
-    else if (key.name === "m" && current?.schema.type === "modelRef") { setModelSelected(0); setMode("models"); setMessage("select model with ↑/↓ Enter"); }
-    else if (key.name === "space" && current?.schema.type === "enum") { const values = current.feature === "plan-mode" && current.key.startsWith("thinking.") ? supportedThinking(models, current, items) : (current.schema.enumValues ?? []); const idx = Math.max(0, values.indexOf(shownValue)); stage(current, values[(idx + 1) % values.length] ?? ""); }
-    else if (key.name === "a") { const changes = Object.values(drafts); void onApply(changes).then((err) => { if (err) setMessage(`apply failed: ${err}`); else { setDrafts({}); setMessage("applied; restart Pi to use new settings"); } }); }
-  });
+function itemId(i: EffectiveSetting): string {
+	return `${i.feature}.${i.key}`;
+}
 
-  const lines: string[] = [];
-  lines.push("Mekann Settings Editor");
-  lines.push("======================");
-  lines.push(`Models: ${models.length}    Diagnostics: ${diagnostics.length}    Scope: ${scope}    Drafts: ${Object.keys(drafts).length}`);
-  lines.push(message);
-  if (mode === "edit") lines.push(`EDIT ${itemId(current)}: ${buffer}_`);
-  lines.push("");
+function valueText(value: unknown): string {
+	if (value === undefined) return "(unset)";
+	if (value === null) return "(null)";
+	if (value && typeof value === "object") {
+		const v = value as Record<string, unknown>;
+		if (typeof v.provider === "string" && typeof v.modelId === "string")
+			return `${v.provider}/${v.modelId}`;
+		return JSON.stringify(value);
+	}
+	return String(value);
+}
 
-  if (mode === "models") {
-    lines.push("Model select"); lines.push("------------");
-    models.slice(Math.max(0, modelSelected - 8), modelSelected + 12).forEach((m, offset) => {
-      const idx = Math.max(0, modelSelected - 8) + offset;
-      lines.push(`${idx === modelSelected ? ">" : " "}${fit(`${m.provider}/${m.modelId}`, 42)} ${m.reasoning ? "reasoning" : ""}`);
-    });
-  } else if (mode === "diff") {
-    lines.push("Draft diff / Apply preview"); lines.push("--------------------------");
-    for (const change of Object.values(drafts)) {
-      const base = items.find((i) => i.feature === change.feature && i.key === change.key);
-      lines.push(`${change.feature}.${change.key} (${change.scope})`);
-      lines.push(`- ${valueText(base?.effectiveValue) || "(unset)"}`);
-      lines.push(`+ ${change.raw || "(unset)"}`);
-    }
-    if (Object.keys(drafts).length === 0) lines.push("(no draft changes)");
-  } else {
-    let lastFeature = "";
-    items.forEach((item, i) => {
-      if (item.feature !== lastFeature) { lastFeature = item.feature; lines.push(`[${lastFeature}]`); lines.push(`${fit("Setting", 22)} ${fit("Effective", 30)} ${fit("Src", 9)}`); lines.push(`${"-".repeat(22)} ${"-".repeat(30)} ${"-".repeat(9)}`); }
-      const marker = i === selected ? ">" : " "; const draft = drafts[itemId(item)];
-      lines.push(`${marker}${fit(item.key, 21)} ${fit((draft?.raw ?? valueText(item.effectiveValue)) || "(unset)", 30)} ${fit((draft ? draft.scope : item.source) + (item.schema.restartRequired ? "*" : ""), 9)}`);
-    });
-  }
-  return el("box", { flexDirection: "column", padding: 1 }, el("text", { fg: "white", content: lines.join("\n") }));
+function pad(s: string, n: number): string {
+	return s.length >= n ? s.slice(0, n) : s + " ".repeat(n - s.length);
+}
+
+function truncate(s: string, max: number): string {
+	if (s.length <= max) return s;
+	return s.slice(0, Math.max(0, max - 1)) + "…";
+}
+
+function supportedThinking(
+	models: ModelCatalogItem[],
+	item: EffectiveSetting,
+	items: EffectiveSetting[],
+): string[] {
+	const mode = item.key.split(".")[1];
+	const modelItem = items.find(
+		(i) => i.feature === "plan-mode" && i.key === `models.${mode}`,
+	);
+	const modelText = valueText(modelItem?.effectiveValue);
+	const model = models.find(
+		(m) => `${m.provider}/${m.modelId}` === modelText,
+	);
+	return model?.supportedThinkingLevels?.length
+		? model.supportedThinkingLevels
+		: (item.schema.enumValues ?? []);
+}
+
+// ─── Tokyo Night + Pi dark fusion palette ─────────────────────────
+
+const C = {
+	// OpenTUI currently expects concrete colors here; string rgba()/transparent
+	// renders as fallback magenta in some terminals. Use Tokyo Night hex colors.
+	bg: "#1a1b26",
+	bgPanel: "#1f2335",
+	bgSelected: "#33467c",
+	bgHover: "#24283b",
+
+	// Text — Tokyo Night tones
+	fg: "#c0caf5",
+	fgDim: "#565f89",
+	fgBright: "#d4d4d4",
+
+	// Accent — Tokyo Night blue + Pi dark teal
+	accent: "#7aa2f7",
+	accentDim: "#3b4261",
+	teal: "#8abeb7",
+
+	// Semantic — no red family
+	green: "#9ece6a",
+	yellow: "#e0af68",
+	cyan: "#7dcfff",
+	purple: "#bb9af7",
+	orange: "#ff9e64",
+
+	// UI chrome
+	border: "#3b4261",
+	inputBg: "#16161e",
+	overlayBg: "#16161e",
+	statusBarBg: "#16161e",
+	statusKeyBg: "#0f1018",
+	titleBarBg: "#1f2335",
+	groupHeaderBg: "#24283b",
+	rowEvenBg: "#1f2335",
+	rowOddBg: "#1a1b26",
+};
+
+// ─── Feature group info ───────────────────────────────────────────
+
+interface FeatureGroup {
+	feature: string;
+	items: EffectiveSetting[];
+	startIndex: number;
+}
+
+function buildFeatureGroups(items: EffectiveSetting[]): FeatureGroup[] {
+	const groups: FeatureGroup[] = [];
+	let current: FeatureGroup | null = null;
+	for (let i = 0; i < items.length; i++) {
+		const item = items[i];
+		if (!current || current.feature !== item.feature) {
+			current = { feature: item.feature, items: [], startIndex: i };
+			groups.push(current);
+		}
+		current.items.push(item);
+	}
+	return groups;
+}
+
+function featureIcon(feature: string): string {
+	switch (feature) {
+		case "plan-mode": return "◈";
+		case "sandbox": return "⊘";
+		case "subagent": return "⟐";
+		case "output-gate": return "◫";
+		default: return "◇";
+	}
+}
+
+function typeIcon(type: string): string {
+	switch (type) {
+		case "modelRef": return "⊕";
+		case "enum": return "◉";
+		case "number": return "#";
+		case "boolean": return "☐";
+		default: return "·";
+	}
+}
+
+// ─── Sub-components ───────────────────────────────────────────────
+
+function SettingRow(p: {
+	item: EffectiveSetting;
+	index: number;
+	isSelected: boolean;
+	hasDraft: boolean;
+	draftScope: string;
+}) {
+	const bgColor = p.isSelected ? C.bgSelected : p.index % 2 === 0 ? C.rowEvenBg : C.rowOddBg;
+	const keyColor = p.isSelected ? C.fgBright : C.accent;
+	const valColor = p.hasDraft ? C.green : C.fg;
+	const srcColor = p.hasDraft ? C.yellow : C.fgDim;
+	const restartIcon = p.item.schema.restartRequired ? " ↻" : "";
+
+	return el("box", {
+		style: { flexDirection: "row", width: "100%", height: 1, backgroundColor: bgColor, paddingLeft: 1, paddingRight: 1, alignItems: "center" },
+	},
+		el("text", { fg: C.fgDim, content: `${typeIcon(p.item.schema.type)} ` }),
+		el("text", { fg: keyColor, content: pad(p.item.key, 24) }),
+		el("text", { fg: valColor, content: pad(valueText(p.item.effectiveValue), 28) }),
+		el("text", { fg: srcColor, content: truncate((p.hasDraft ? `${p.draftScope}*` : p.item.source) + restartIcon, 10) }),
+	);
+}
+
+function FeatureHeader(p: { feature: string }) {
+	return el("box", {
+		style: { flexDirection: "row", width: "100%", height: 1, backgroundColor: C.groupHeaderBg, paddingLeft: 1 },
+	},
+		el("text", { fg: C.fgBright, content: `${featureIcon(p.feature)} ${p.feature.toUpperCase()}` }),
+	);
+}
+
+function ColumnHeader() {
+	return el("box", {
+		style: { flexDirection: "row", width: "100%", height: 1, backgroundColor: C.bg, paddingLeft: 3, paddingRight: 1 },
+	},
+		el("text", { fg: C.fgDim, content: pad("SETTING", 24) }),
+		el("text", { fg: C.fgDim, content: pad("VALUE", 28) }),
+		el("text", { fg: C.fgDim, content: "SOURCE" }),
+	);
+}
+
+function StatusBar(p: {
+	message: string;
+	scope: SettingsScope;
+	draftCount: number;
+	diagnosticsCount: number;
+	mode: AppMode;
+}) {
+	const scopeColor = p.scope === "global" ? C.purple : C.cyan;
+	const modeLabel: Record<AppMode, string> = { list: "BROWSE", edit: "EDIT", models: "MODEL PICK", diff: "DIFF" };
+	const modeColor: Record<AppMode, string> = { list: C.green, edit: C.yellow, models: C.cyan, diff: C.purple };
+
+	const statusChildren: React.ReactNode[] = [
+		el("text", { fg: modeColor[p.mode], content: ` ${modeLabel[p.mode]} ` }),
+		el("text", { fg: C.fgDim, content: " │ " }),
+		el("text", { fg: scopeColor, content: `${p.scope}` }),
+		el("text", { fg: C.fgDim, content: " │ " }),
+		el("text", { fg: p.draftCount > 0 ? C.green : C.fgDim, content: `drafts:${p.draftCount}` }),
+	];
+	if (p.diagnosticsCount > 0) {
+		statusChildren.push(
+			el("text", { fg: C.fgDim, content: " │ " }),
+			el("text", { fg: C.orange, content: `⚠ ${p.diagnosticsCount}` }),
+		);
+	}
+	statusChildren.push(
+		el("box", { style: { flexGrow: 1 } }),
+		el("text", { fg: C.fgDim, content: truncate(p.message, 60) }),
+	);
+
+	return el("box", {
+		style: { position: "absolute", bottom: 0, width: "100%", height: 2, flexDirection: "column" },
+	},
+		el("box", {
+			style: { flexDirection: "row", width: "100%", height: 1, backgroundColor: C.statusBarBg, paddingLeft: 1, paddingRight: 1, alignItems: "center" },
+		}, ...statusChildren),
+		el("box", {
+			style: { flexDirection: "row", width: "100%", height: 1, backgroundColor: C.statusKeyBg, paddingLeft: 1, paddingRight: 1, alignItems: "center" },
+		},
+			el("text", { fg: C.fgDim, content: " ↑↓ " }), el("text", { fg: C.fg, content: "nav" }),
+			el("text", { fg: C.fgDim, content: "  e " }), el("text", { fg: C.fg, content: "edit" }),
+			el("text", { fg: C.fgDim, content: "  m " }), el("text", { fg: C.fg, content: "model" }),
+			el("text", { fg: C.fgDim, content: "  Space " }), el("text", { fg: C.fg, content: "cycle" }),
+			el("text", { fg: C.fgDim, content: "  g/w " }), el("text", { fg: C.fg, content: "scope" }),
+			el("text", { fg: C.fgDim, content: "  d " }), el("text", { fg: C.fg, content: "diff" }),
+			el("text", { fg: C.fgDim, content: "  a " }), el("text", { fg: C.green, content: "apply" }),
+			el("text", { fg: C.fgDim, content: "  q " }), el("text", { fg: C.fgDim, content: "quit" }),
+		),
+	);
+}
+
+function DetailPanel(p: {
+	item: EffectiveSetting | undefined;
+	draft: DraftChange | undefined;
+	models: ModelCatalogItem[];
+	allItems: EffectiveSetting[];
+	scope: SettingsScope;
+}) {
+	if (!p.item) {
+		return el("box", {
+			style: { flexGrow: 1, borderStyle: "rounded", borderColor: C.border, backgroundColor: C.overlayBg, padding: 1, flexDirection: "column" },
+		}, el("text", { fg: C.fgDim, content: "Select a setting to view details" }));
+	}
+
+	const id = itemId(p.item);
+	const shown = p.draft?.raw ?? valueText(p.item.effectiveValue);
+	const isModel = p.item.schema.type === "modelRef";
+	const modelMatch = isModel ? p.models.find((m) => `${m.provider}/${m.modelId}` === shown) : null;
+
+	const children: React.ReactNode[] = [
+		el("box", { style: { flexDirection: "row" } },
+			el("text", { fg: C.accent, content: `${featureIcon(p.item.feature)} ` }),
+			el("text", { fg: C.fgBright, content: id }),
+			el("text", { fg: C.fgDim, content: ` (${p.item.schema.type})` }),
+		),
+		el("text", { fg: C.fg, content: p.item.schema.description }),
+		el("box", { style: { flexDirection: "row" } },
+			el("text", { fg: C.fgDim, content: "Value: " }),
+			el("text", { fg: p.draft ? C.green : C.fgBright, content: truncate(shown, 50) }),
+		),
+		el("box", { style: { flexDirection: "row" } },
+			el("text", { fg: C.fgDim, content: "Source: " }),
+			el("text", { fg: p.item.source === "default" ? C.fgDim : C.teal, content: p.item.source }),
+		),
+		el("box", { style: { flexDirection: "row" } },
+			el("text", { fg: C.fgDim, content: "Save to: " }),
+			el("text", { fg: p.scope === "global" ? C.purple : C.cyan, content: p.scope }),
+		),
+		el("box", { style: { flexDirection: "row" } },
+			el("text", { fg: C.fgDim, content: "Default: " }),
+			el("text", { fg: C.fgDim, content: valueText(p.item.schema.defaultValue) }),
+		),
+	];
+
+	if (p.item.schema.restartRequired) {
+		children.push(el("box", { style: { flexDirection: "row" } },
+			el("text", { fg: C.orange, content: "⚠ Restart required" }),
+		));
+	}
+	if (p.item.schema.enumValues && p.item.schema.enumValues.length > 0) {
+		children.push(
+			el("text", { fg: C.fgDim, content: "Options:" }),
+			el("text", { fg: C.fg, content: `  ${p.item.schema.enumValues.join(" │ ")}` }),
+		);
+	}
+	if (modelMatch) {
+		children.push(
+			el("text", { fg: C.fgDim, content: "Model:" }),
+			el("text", { fg: C.fg, content: `  ${modelMatch.label} (${modelMatch.providerLabel})` }),
+		);
+		if (modelMatch.reasoning) children.push(el("text", { fg: C.teal, content: "  ✓ reasoning" }));
+		if (modelMatch.supportedThinkingLevels.length > 0) {
+			children.push(el("text", { fg: C.fgDim, content: `  thinking: ${modelMatch.supportedThinkingLevels.join(", ")}` }));
+		}
+	}
+	for (const d of p.item.diagnostics) {
+		children.push(el("text", { fg: C.orange, content: `⚠ ${d}` }));
+	}
+
+	return el("box", {
+		style: { flexGrow: 1, borderStyle: "rounded", borderColor: C.border, backgroundColor: C.overlayBg, padding: 1, flexDirection: "column", gap: 1 },
+	}, ...children);
+}
+
+function EditOverlay(p: { settingKey: string; buffer: string; type: string }) {
+	return el("box", {
+		style: { position: "absolute", top: 4, left: 4, right: 4, height: 5, borderStyle: "rounded", borderColor: C.yellow, backgroundColor: C.overlayBg, padding: 1, flexDirection: "column", gap: 0 },
+	},
+		el("box", { style: { flexDirection: "row" } },
+			el("text", { fg: C.yellow, content: "EDIT " }),
+			el("text", { fg: C.fgBright, content: p.settingKey }),
+			el("text", { fg: C.fgDim, content: ` (${p.type})` }),
+		),
+		el("box", { style: { flexDirection: "row", backgroundColor: C.inputBg, height: 1, paddingLeft: 1 } },
+			el("text", { fg: C.fg, content: p.buffer }),
+			el("text", { fg: C.accent, content: "█" }),
+		),
+		el("text", { fg: C.fgDim, content: "Enter confirm · Esc cancel" }),
+	);
+}
+
+function DiffOverlay(p: { drafts: Record<string, DraftChange>; items: EffectiveSetting[] }) {
+	const entries = Object.entries(p.drafts);
+	const children: React.ReactNode[] = [
+		el("text", { fg: C.purple, content: "Draft Diff · Apply Preview" }),
+	];
+	if (entries.length === 0) {
+		children.push(el("text", { fg: C.fgDim, content: "  (no draft changes)" }));
+	} else {
+		for (const [key, change] of entries) {
+			const base = p.items.find((i) => i.feature === change.feature && i.key === change.key);
+			children.push(
+				el("box", { key, style: { flexDirection: "column" } },
+					el("box", { style: { flexDirection: "row" } },
+						el("text", { fg: C.accent, content: key }),
+						el("text", { fg: C.fgDim, content: ` (${change.scope})` }),
+					),
+					el("text", { fg: C.orange, content: `- ${valueText(base?.effectiveValue) || "(unset)"}` }),
+					el("text", { fg: C.green, content: `+ ${change.raw || "(unset)"}` }),
+				),
+			);
+		}
+		children.push(el("text", { fg: C.green, content: "Press a to apply · Esc to close" }));
+	}
+
+	return el("box", {
+		style: { position: "absolute", top: 3, left: 2, right: 2, bottom: 3, borderStyle: "rounded", borderColor: C.purple, backgroundColor: C.overlayBg, padding: 1, flexDirection: "column", gap: 1 },
+	}, ...children);
+}
+
+function ModelPickerOverlay(p: { models: ModelCatalogItem[]; selected: number }) {
+	const visible = p.models.slice(Math.max(0, p.selected - 6), Math.min(p.models.length, p.selected + 10));
+	const offset = Math.max(0, p.selected - 6);
+	const rows = visible.map((m, idx) => {
+		const i = offset + idx;
+		const isSel = i === p.selected;
+		return el("box", {
+			key: `${m.provider}/${m.modelId}`,
+			style: { flexDirection: "row", height: 1, backgroundColor: isSel ? C.bgSelected : C.bg, paddingLeft: 1, paddingRight: 1 },
+		},
+			el("text", { fg: isSel ? C.fgBright : C.fg, content: `${isSel ? "▸" : " "} ${pad(`${m.provider}/${m.modelId}`, 44)} ` }),
+			m.reasoning ? el("text", { fg: isSel ? C.fgBright : C.teal, content: "reasoning " }) : null,
+			el("text", { fg: C.fgDim, content: m.label }),
+		);
+	});
+
+	return el("box", {
+		style: { position: "absolute", top: 3, left: 2, right: 2, bottom: 3, borderStyle: "rounded", borderColor: C.cyan, backgroundColor: C.overlayBg, padding: 1, flexDirection: "column", gap: 0 },
+	},
+		el("text", { fg: C.cyan, content: "Select Model" }),
+		el("text", { fg: C.fgDim, content: "↑↓ navigate · Enter select · Esc cancel" }),
+		el("text", { fg: C.fgDim, content: "" }),
+		...rows,
+	);
+}
+
+// ─── Main App ─────────────────────────────────────────────────────
+
+export function SettingsEditorApp({
+	effective,
+	diagnostics,
+	models,
+	onApply,
+	onQuit,
+}: SettingsEditorAppProps) {
+	useTerminalDimensions();
+
+	const [selected, setSelected] = useState(0);
+	const [scope, setScope] = useState<SettingsScope>("global");
+	const [mode, setMode] = useState<AppMode>("list");
+	const [buffer, setBuffer] = useState("");
+	const [modelSelected, setModelSelected] = useState(0);
+	const [drafts, setDrafts] = useState<Record<string, DraftChange>>({});
+	const [message, setMessage] = useState("Welcome to Mekann Settings Editor");
+	const [applying, setApplying] = useState(false);
+
+	const items = useMemo(() => effective, [effective]);
+	const groups = useMemo(() => buildFeatureGroups(items), [items]);
+	const current = items[Math.min(selected, Math.max(0, items.length - 1))];
+	const currentDraft = current ? drafts[itemId(current)] : undefined;
+	const shownValue = currentDraft?.raw ?? valueText(current?.effectiveValue);
+
+	const stage = useCallback(
+		(item: EffectiveSetting, raw: string) => {
+			setDrafts((d) => ({ ...d, [itemId(item)]: { feature: item.feature, key: item.key, scope, raw } }));
+			setMessage(`staged ${itemId(item)} → ${scope}`);
+		},
+		[scope],
+	);
+
+	// ─── Keyboard ──────────────────────────────────────────────
+
+	useKeyboard((key) => {
+		if (key.ctrl && key.name === "c") { onQuit(); return; }
+
+		if (mode === "edit") {
+			if (key.name === "escape") { setMode("list"); setMessage("edit cancelled"); return; }
+			if (key.name === "backspace" || key.name === "delete") { setBuffer((b) => b.slice(0, -1)); return; }
+			if (key.name === "return" || key.name === "enter") { if (current) stage(current, buffer); setMode("list"); return; }
+			if (key.sequence && key.sequence.length === 1 && !key.ctrl && !key.meta) setBuffer((b) => b + key.sequence);
+			return;
+		}
+
+		if (mode === "models") {
+			if (key.name === "escape") { setMode("list"); return; }
+			if (key.name === "up") setModelSelected((i) => Math.max(0, i - 1));
+			else if (key.name === "down") setModelSelected((i) => Math.min(models.length - 1, i + 1));
+			else if ((key.name === "return" || key.name === "enter") && current && models[modelSelected]) {
+				const m = models[modelSelected]; stage(current, `${m.provider}/${m.modelId}`); setMode("list");
+			}
+			return;
+		}
+
+		if (key.name === "q") { onQuit(); return; }
+		if (key.name === "up") setSelected((i) => Math.max(0, i - 1));
+		else if (key.name === "down") setSelected((i) => Math.min(items.length - 1, i + 1));
+		else if (key.name === "g") { setScope("global"); setMessage("save scope → global"); }
+		else if (key.name === "w") { setScope("workspace"); setMessage("save scope → workspace"); }
+		else if (key.name === "d") setMode(mode === "diff" ? "list" : "diff");
+		else if (key.name === "e" && current) { setBuffer(shownValue === "(unset)" ? "" : shownValue); setMode("edit"); setMessage(`editing ${itemId(current)}`); }
+		else if (key.name === "m" && current?.schema.type === "modelRef") { setModelSelected(0); setMode("models"); setMessage("pick a model"); }
+		else if (key.name === "space" && current?.schema.type === "enum") {
+			const values = current.feature === "plan-mode" && current.key.startsWith("thinking.") ? supportedThinking(models, current, items) : (current.schema.enumValues ?? []);
+			const idx = Math.max(0, values.indexOf(shownValue));
+			stage(current, values[(idx + 1) % values.length] ?? "");
+		} else if (key.name === "a" && !applying) {
+			const changes = Object.values(drafts);
+			if (changes.length === 0) { setMessage("no drafts to apply"); return; }
+			setApplying(true);
+			void onApply(changes).then((err) => {
+				setApplying(false);
+				if (err) setMessage(`✗ ${err}`);
+				else { setDrafts({}); setMessage("✓ applied — restart Pi to use new settings"); }
+			});
+		}
+	});
+
+	// ─── Build setting rows with group headers ─────────────────
+
+	const rows: React.ReactNode[] = [];
+	for (let gi = 0; gi < groups.length; gi++) {
+		const group = groups[gi];
+		rows.push(el(FeatureHeader, { feature: group.feature, key: `h-${group.feature}` }));
+		if (gi === 0) rows.push(el(ColumnHeader, { key: "col-header" }));
+		for (let j = 0; j < group.items.length; j++) {
+			const i = group.startIndex + j;
+			const item = group.items[j];
+			const draft = drafts[itemId(item)];
+			rows.push(el(SettingRow, {
+				key: itemId(item),
+				item, index: i,
+				isSelected: i === selected,
+				hasDraft: !!draft,
+				draftScope: draft?.scope ?? "",
+			}));
+		}
+	}
+
+	// ─── Render ────────────────────────────────────────────────
+
+	return el("box", {
+		style: { flexDirection: "row", width: "100%", height: "100%", backgroundColor: C.bg },
+	},
+		// Left panel: Settings list
+		el("box", { style: { width: "65%", height: "100%", flexDirection: "column", paddingBottom: 2 } },
+			el("box", { style: { width: "100%", height: 1, backgroundColor: C.titleBarBg, flexDirection: "row", paddingLeft: 1, paddingRight: 1, alignItems: "center" } },
+				el("text", { fg: C.fgBright, content: " Mekann Settings" }),
+				el("box", { style: { flexGrow: 1 } }),
+				el("text", { fg: C.fgDim, content: `${items.length} settings · ${models.length} models` }),
+			),
+			el("scrollbox", {
+				style: { width: "100%", flexGrow: 1, backgroundColor: C.bg },
+				scrollY: true,
+				viewportCulling: true,
+			}, ...rows),
+		),
+		// Right panel: Detail
+		el("box", { style: { width: "35%", height: "100%", flexDirection: "column", paddingBottom: 2, paddingRight: 1 } },
+			el("box", { style: { width: "100%", height: 1, backgroundColor: C.groupHeaderBg, flexDirection: "row", paddingLeft: 1, alignItems: "center" } },
+				el("text", { fg: C.fgBright, content: " Detail" }),
+			),
+			el(DetailPanel, { item: current, draft: currentDraft, models, allItems: items, scope }),
+		),
+		// Status bar
+		el(StatusBar, { message, scope, draftCount: Object.keys(drafts).length, diagnosticsCount: diagnostics.length, mode }),
+		// Overlays
+		...(mode === "edit" && current ? [el(EditOverlay, { settingKey: itemId(current), buffer, type: current.schema.type })] : []),
+		...(mode === "diff" ? [el(DiffOverlay, { drafts, items })] : []),
+		...(mode === "models" ? [el(ModelPickerOverlay, { models, selected: modelSelected })] : []),
+	);
 }
