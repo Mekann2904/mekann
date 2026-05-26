@@ -35,7 +35,11 @@ export function renderDashboardText(data: DashboardData, width = process.stdout.
 		`Issues opened             ${vm.activitySummary.data.issuesOpened}`,
 		`Reviews                   ${vm.activitySummary.data.reviews}`,
 	] : [`GitHub activity error: ${vm.activitySummary.status === "error" ? vm.activitySummary.message : "unavailable"}`];
-	const codexMsg = (vm.codexUsage.status === "placeholder" || vm.codexUsage.status === "error") ? vm.codexUsage.message : vm.codexUsage.data;
+	const codexMsg = vm.codexUsage.status === "ready"
+		? vm.codexUsage.data
+		: vm.codexUsage.status === "loading"
+			? "Codex usage loading..."
+			: vm.codexUsage.message;
 	const codex = [codexMsg, "Detailed Pi Usage tab: coming next"];
 
 	return [
