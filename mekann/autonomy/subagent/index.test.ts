@@ -1016,6 +1016,30 @@ describe("extension entry point", () => {
     expect(mock._hooks["session_shutdown"]).toBeDefined();
   });
 
+  it("spawn_agent promptGuidelines require English task briefs and parent-facing output", async () => {
+    const mock = createMockApi();
+    await loadExtension(mock);
+    const spawnTool = mock._registeredTools.find((t: any) => t.name === "spawn_agent")!;
+    const guidelines: string[] = spawnTool.promptGuidelines;
+    const joined = guidelines.join("\n");
+    // English instruction requirement
+    expect(joined).toContain("in English");
+    // Parent-facing output requirement
+    expect(joined).toContain("parent agent, not for humans");
+    expect(joined).toContain("compact structured results");
+  });
+
+  it("send_message and followup_task promptGuidelines require English", async () => {
+    const mock = createMockApi();
+    await loadExtension(mock);
+    const sendMsgTool = mock._registeredTools.find((t: any) => t.name === "send_message")!;
+    const followupTool = mock._registeredTools.find((t: any) => t.name === "followup_task")!;
+    const sendJoined = (sendMsgTool.promptGuidelines as string[]).join("\n");
+    const followupJoined = (followupTool.promptGuidelines as string[]).join("\n");
+    expect(sendJoined).toContain("English");
+    expect(followupJoined).toContain("English");
+  });
+
   it("list_agents tool returns empty when no agents spawned", async () => {
     const mock = createMockApi();
     await loadExtension(mock);

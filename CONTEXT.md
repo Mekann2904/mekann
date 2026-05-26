@@ -299,8 +299,12 @@ The act of assigning a coherent, bounded task to a subagent so the parent agent 
 _Avoid_: context compression, multitasking in one context
 
 **Minimal sufficient context**:
-The principle for subagent delegation that gives the subagent the task goal, constraints, expected output, and relevant starting points, while avoiding unnecessary parent conversation that would undermine context isolation. Parent context is forked only when it is genuinely needed for correctness or safety.
+The principle for subagent delegation that gives the subagent the task goal, constraints, expected output, and relevant starting points, while avoiding unnecessary parent conversation that would undermine context isolation. Parent context is forked only when it is genuinely needed for correctness or safety. Delegation briefs are written in English by default to improve model consistency and cost efficiency, even when the user-facing conversation is Japanese.
 _Avoid_: full conversation dump, context starvation
+
+**Parent-facing subagent output**:
+A subagent result style optimized for the parent agent's downstream reasoning, validation, and merge decisions rather than direct human readability. It should be concise, structured, evidence-oriented, and avoid polished prose unless explicitly requested. For `subagent_result_v1` contracts the child emits raw JSON; for free-text results, terse bullet sections or key-value blocks are preferred.
+_Avoid_: human-readable report, polished summary, narrative output
 
 **Queued subagent**:
 A subagent delegation that has been accepted but is waiting for an open execution slot. A queued subagent is still visible as an agent so the parent can observe pending work instead of relying on memory or re-spawning attempts.

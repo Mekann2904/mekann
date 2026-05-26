@@ -165,7 +165,7 @@ function registerSubagentPromptProvider(): void {
         stability: "stable",
         scope: "global",
         priority: 350,
-        version: "v1",
+        version: "v2",
         cacheIntent: "prefer_cache",
         content: [
           "Subagents are available for independent work.",
@@ -173,6 +173,9 @@ function registerSubagentPromptProvider(): void {
           "Use spawn_agent proactively for parallel work, multi-area investigations, comparing approaches, or review/research that can proceed independently.",
           "For independent tasks, spawn all useful subagents first, then use wait_agent to collect results before summarizing or deciding next steps.",
           "Do not use subagents for trivial one-file edits or tasks requiring tight step-by-step coordination.",
+          "When delegating to a subagent, write the task message in English regardless of the user-facing conversation language. English instructions are more consistent and cost-efficient for model processing.",
+          "Subagent outputs are for the parent agent, not for direct human consumption. Ask subagents for compact, structured, cost-efficient findings.",
+          "Preferred subagent output style: concise, structured, evidence/path-oriented. No greetings, apologies, narrative summaries, or polished prose. Include only what the parent needs to decide, merge, validate, or continue.",
         ].join("\n"),
       }];
     },
@@ -332,11 +335,12 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       "Subagents are cleaned up automatically after successful completion. Do not call close_agent as routine cleanup after final_result; use close_agent only for cancellation, aborting, or stuck/abnormal agents.",
       "spawn_agent returns immediately; it does not mean the child has finished. Never claim subagent results until wait_agent returns mailbox content or a final_result.",
       "Give each subagent a stable, descriptive task_name such as research/api, research/db, fix/tests, review/security. Relative paths are resolved under /root.",
-      "Write the message as a self-contained task brief: include goal, relevant files/commands, constraints, expected output format, and what not to change. Subagents may not know unstated parent context.",
+      "Write the message as a self-contained task brief in English: include goal, relevant files/commands, constraints, expected output format, and what not to change. Subagents may not know unstated parent context. English is required even if the user-facing conversation is in another language.",
       "Use fork_turns only when the recent conversation is genuinely needed by the child; otherwise include the necessary context directly in message.",
       `Respect resource limits. By default, max running subagents = ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents} and max queued subagents = ${MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents}; excess accepted spawns return status=\"queued\" with queue_position/queued_ahead and start automatically when a slot opens.`,
       "Use list_agents or wait_agent to observe queued/running/completed status. close_agent can cancel queued agents. send_message can add pre-start context to queued agents; followup_task requires a running agent.",
       "If a duplicate task_name is rejected, list_agents to inspect whether an agent with that path is still open/running before choosing a different path or aborting it with close_agent.",
+      "Subagent output is for the parent agent, not for humans. Request compact structured results: findings, file paths, key decisions, risks, next actions. Avoid greetings, apologies, narrative summaries, or polished prose in subagent responses. For result_contract=subagent_result_v1 the child already emits raw JSON; for free_text results, ask the child to use terse bullet sections.",
     ],
     parameters: SpawnSchema,
     prepareArguments(args: unknown) {
@@ -376,6 +380,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     promptGuidelines: [
       "Use send_message only to provide additional context or a note to a subagent without triggering a new turn.",
       "If you want the subagent to perform additional work, use followup_task instead of send_message.",
+      "Write messages to subagents in English, consistent with the task delegation language.",
     ],
     parameters: SendMessageSchema,
     execute: withCtrl(async (ctrl, params, ctx) => {
@@ -393,6 +398,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     promptGuidelines: [
       "Use followup_task when an existing subagent should do more work, refine its previous answer, check another file, or continue from its current context.",
       "If the target subagent is idle, followup_task starts a new turn; if it is running, the task is queued. Use wait_agent afterward to collect the result.",
+      "Write follow-up instructions in English, consistent with the initial task delegation language.",
     ],
     parameters: FollowupTaskSchema,
     execute: withCtrl(async (ctrl, params, ctx) => {
