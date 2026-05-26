@@ -162,10 +162,12 @@ function SettingRow(p: {
 	index: number;
 	isSelected: boolean;
 	hasDraft: boolean;
+	draftValue: string;
 	draftScope: string;
 }) {
 	const bgColor = p.isSelected ? C.bgSelected : p.index % 2 === 0 ? C.rowEvenBg : C.rowOddBg;
 	const keyColor = p.isSelected ? C.fgBright : C.accent;
+	const displayValue = p.hasDraft ? p.draftValue : valueText(p.item.effectiveValue);
 	const valColor = p.hasDraft ? C.green : C.fg;
 	const srcColor = p.hasDraft ? C.yellow : C.fgDim;
 	const restartIcon = p.item.schema.restartRequired ? " ↻" : "";
@@ -175,7 +177,7 @@ function SettingRow(p: {
 	},
 		el("text", { fg: C.fgDim, content: `${typeIcon(p.item.schema.type)} ` }),
 		el("text", { fg: keyColor, content: pad(p.item.key, 24) }),
-		el("text", { fg: valColor, content: pad(valueText(p.item.effectiveValue), 28) }),
+		el("text", { fg: valColor, content: pad(displayValue, 28) }),
 		el("text", { fg: srcColor, content: truncate((p.hasDraft ? `${p.draftScope}*` : p.item.source) + restartIcon, 10) }),
 	);
 }
@@ -513,6 +515,7 @@ export function SettingsEditorApp({
 				item, index: i,
 				isSelected: i === selected,
 				hasDraft: !!draft,
+				draftValue: draft?.raw ?? "",
 				draftScope: draft?.scope ?? "",
 			}));
 		}
