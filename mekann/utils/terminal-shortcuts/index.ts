@@ -1,7 +1,10 @@
-import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { execFile as execFileCb, spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { readSync } from "node:fs";
+import { promisify } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { launchWithTerminalEmulator, shellArgs, terminalActionLabel, type LaunchPreference, type TerminalAction } from "../terminal/index.js";
+
+const execFile = promisify(execFileCb);
 
 type TerminalShortcut = TerminalAction;
 
@@ -98,6 +101,20 @@ function spawnShortcut(shortcut: TerminalShortcut, cwd: string): SpawnSyncReturn
 	return spawnSync(shell, shellArgs(shell, shortcut.command), { cwd, stdio: "inherit", env });
 }
 
+const openedWindowIds: string[] = [];
+
+async function closeOpenedWindows(): Promise<void> {
+	const ids = [...openedWindowIds];
+	openedWindowIds.length = 0;
+	for (const id of ids) {
+		try {
+			await execFile("kitten", ["@", "close-window", "--match", `id:${id}`], { timeout: 3000 });
+		} catch {
+			// Window may already be closed by the user; ignore.
+		}
+	}
+}
+
 async function runSplitLongerSide(ctx: ExtensionContext, shortcutName: string, shortcut: TerminalShortcut): Promise<number> {
 	const result = await launchWithTerminalEmulator({
 		cwd: ctx.cwd,
@@ -108,6 +125,9 @@ async function runSplitLongerSide(ctx: ExtensionContext, shortcutName: string, s
 		hold: SPLIT_ONLY_SHORTCUTS.has(shortcutName),
 		title: shortcutName,
 	});
+	if (result.ok && result.windowId) {
+		openedWindowIds.push(result.windowId);
+	}
 	return result.ok ? 0 : 1;
 }
 
@@ -182,6 +202,11 @@ async function runTerminalShortcut(ctx: ExtensionContext, shortcutName: string, 
 }
 
 export default function terminalShortcuts(pi: ExtensionAPI): void {
+	pi.on("session_shutdown", async (event) => {
+		if (event.reason !== "quit") return;
+		await closeOpenedWindows();
+	});
+
 	pi.on("input", async (event, ctx) => {
 		if (event.source !== "interactive") return { action: "continue" };
 
