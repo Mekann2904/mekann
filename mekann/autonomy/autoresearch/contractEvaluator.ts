@@ -125,7 +125,7 @@ export function evaluateContract(input: EvaluatorInput): EvaluatorResult {
 	// 4. Benchmark failure
 	if (!input.benchmarkSucceeded || input.benchmarkTimedOut) {
 		const policy = input.benchmarkTimedOut
-			? contract.failurePolicy.onBenchmarkFailure
+			? (contract.failurePolicy.onBenchmarkTimeout ?? contract.failurePolicy.onBenchmarkFailure)
 			: contract.failurePolicy.onBenchmarkFailure;
 		return {
 			decision: policy,

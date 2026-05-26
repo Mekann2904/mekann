@@ -437,6 +437,62 @@ describe("contractEvaluator", () => {
 // Additional P0 tests
 // ---------------------------------------------------------------------------
 
+describe("contractEvaluator: onBenchmarkTimeout policy", () => {
+		describe("timeout uses dedicated policy", () => {
+			it("pauses when benchmark times out and onBenchmarkTimeout is pause", () => {
+				const contract = makeContract({
+					failurePolicy: {
+						...makeContract().failurePolicy,
+						onBenchmarkFailure: "discard",
+						onBenchmarkTimeout: "pause",
+					},
+				});
+				const input = makeInput({
+					contract,
+					benchmarkSucceeded: false,
+					benchmarkTimedOut: true,
+				});
+				const result = evaluateContract(input);
+				expect(result.decision).toBe("pause");
+				expect(result.reason).toContain("timed out");
+			});
+
+			it("falls back to onBenchmarkFailure when onBenchmarkTimeout is not set", () => {
+				const contract = makeContract({
+					failurePolicy: {
+						...makeContract().failurePolicy,
+						onBenchmarkFailure: "discard",
+					},
+				});
+				const input = makeInput({
+					contract,
+					benchmarkSucceeded: false,
+					benchmarkTimedOut: true,
+				});
+				const result = evaluateContract(input);
+				expect(result.decision).toBe("discard");
+			});
+
+			it("still uses onBenchmarkFailure for non-timeout failures (regression)", () => {
+				const contract = makeContract({
+					failurePolicy: {
+						...makeContract().failurePolicy,
+						onBenchmarkFailure: "pause",
+						onBenchmarkTimeout: "discard",
+					},
+				});
+				const input = makeInput({
+					contract,
+					benchmarkSucceeded: false,
+					benchmarkTimedOut: false,
+				});
+				const result = evaluateContract(input);
+				expect(result.decision).toBe("pause");
+				expect(result.reason).not.toContain("timed out");
+			});
+		});
+	});
+
 describe("contractEvaluator P0 additions", () => {
 	describe("partial metric missing in repeats", () => {
 		it("discards when some repeats missing metric", () => {

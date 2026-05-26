@@ -144,6 +144,7 @@ const LoopSchema = Type.Object(
 const FailurePolicySchema = Type.Object(
 	{
 		onBenchmarkFailure: Type.Union([Type.Literal("discard"), Type.Literal("pause")]),
+		onBenchmarkTimeout: Type.Optional(Type.Union([Type.Literal("discard"), Type.Literal("pause")])),
 		onCheckFailure: Type.Union([Type.Literal("discard"), Type.Literal("pause")]),
 		onMetricMissing: Type.Union([Type.Literal("discard"), Type.Literal("pause")]),
 		onContractViolation: Type.Literal("pause"),
