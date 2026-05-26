@@ -17,12 +17,15 @@ import { DEFAULT_SANDBOX_MODE, parseSandboxMode, modeLabel, SANDBOX_PUSH_PROFILE
 import { SafetyProfileState } from "../policy-core/safetyProfile.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { MEKANN_SANDBOX_DEFAULTS, MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
+import { featureConfig } from "../../settings/featureConfig.js";
 import { gateTextForLlm, redactSecrets } from "../../context/tool-output/index.js";
 
 // ─── LLM output truncation ─────────────────────────────────────────
 
 export const DEFAULT_LLM_OUTPUT_MAX_BYTES = MEKANN_SANDBOX_DEFAULTS.llmOutputMaxBytes;
 export const DEFAULT_LLM_OUTPUT_MAX_LINES = MEKANN_SANDBOX_DEFAULTS.llmOutputMaxLines;
+export function getEffectiveLlmOutputMaxBytes(): number { return Number(featureConfig("sandbox").llmOutputMaxBytes) || DEFAULT_LLM_OUTPUT_MAX_BYTES; }
+export function getEffectiveLlmOutputMaxLines(): number { return Number(featureConfig("sandbox").llmOutputMaxLines) || DEFAULT_LLM_OUTPUT_MAX_LINES; }
 
 const SANDBOX_PROMPT_POLICY = [
 	"Sandbox policy:",
@@ -40,7 +43,7 @@ export interface TruncateForLlmOptions {
 
 export function truncateForLlm(
 	text: string,
-	opts: TruncateForLlmOptions = { maxBytes: DEFAULT_LLM_OUTPUT_MAX_BYTES, maxLines: DEFAULT_LLM_OUTPUT_MAX_LINES },
+	opts: TruncateForLlmOptions = { maxBytes: getEffectiveLlmOutputMaxBytes(), maxLines: getEffectiveLlmOutputMaxLines() },
 ): { text: string; truncated: boolean; originalBytes: number; originalLines: number } {
 	const originalBytes = Buffer.byteLength(text, "utf8");
 	let lines = text.split(/\r?\n/);
@@ -189,8 +192,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				toolName: "bash",
 				text: output,
 				source: { kind: "sandboxed_bash", command: redactSecrets(command).text.slice(0, 2000) },
-				maxInlineBytes: MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes,
-				previewBytes: MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes,
+				maxInlineBytes: Number(featureConfig("output-gate").maxInlineBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes,
+				previewBytes: Number(featureConfig("output-gate").previewBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes,
 			});
 			const shown = gated.handled ? {
 				text: gated.text,

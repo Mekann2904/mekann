@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
+import { featureConfig } from "../../settings/featureConfig.js";
 import { readManifest, resolveArtifactPath, type OutputGateManifestEntry } from "./store.js";
 
 export interface SearchToolOutputsInput {
@@ -145,8 +146,8 @@ export async function fallbackLineScan(input: SearchToolOutputsInput): Promise<s
 		const queryForMatch = caseSensitive ? input.query : input.query.toLocaleLowerCase();
 		matchesLine = (line: string) => (caseSensitive ? line : line.toLocaleLowerCase()).includes(queryForMatch);
 	}
-	const contextLines = nonNegativeInt(input.contextLines, MEKANN_OUTPUT_GATE_DEFAULTS.defaultContextLines);
-	const maxResults = positiveInt(input.maxResults, MEKANN_OUTPUT_GATE_DEFAULTS.defaultMaxResults);
+	const contextLines = nonNegativeInt(input.contextLines, Number(featureConfig("output-gate").defaultContextLines) || MEKANN_OUTPUT_GATE_DEFAULTS.defaultContextLines);
+	const maxResults = positiveInt(input.maxResults, Number(featureConfig("output-gate").defaultMaxResults) || MEKANN_OUTPUT_GATE_DEFAULTS.defaultMaxResults);
 	const chunks: string[] = [];
 	let count = 0;
 	for (const file of files) {
@@ -171,8 +172,8 @@ export async function searchToolOutputs(input: SearchToolOutputsInput): Promise<
 	const files = await selectFiles(input.cwd, input.artifact);
 	if (files === undefined) return "No stored tool outputs.";
 	if (files.length === 0) return "No matches.";
-	const maxResults = positiveInt(input.maxResults, MEKANN_OUTPUT_GATE_DEFAULTS.defaultMaxResults);
-	const contextLines = nonNegativeInt(input.contextLines, MEKANN_OUTPUT_GATE_DEFAULTS.defaultContextLines);
+	const maxResults = positiveInt(input.maxResults, Number(featureConfig("output-gate").defaultMaxResults) || MEKANN_OUTPUT_GATE_DEFAULTS.defaultMaxResults);
+	const contextLines = nonNegativeInt(input.contextLines, Number(featureConfig("output-gate").defaultContextLines) || MEKANN_OUTPUT_GATE_DEFAULTS.defaultContextLines);
 	const preferRg = input.preferRg !== false; // default true
 	const literal = input.literal !== false; // default true
 	const caseSensitive = input.caseSensitive === true;
@@ -180,5 +181,5 @@ export async function searchToolOutputs(input: SearchToolOutputsInput): Promise<
 	if (preferRg) result = await searchWithRg(input.query, files, contextLines, maxResults, literal, caseSensitive);
 	if (result === undefined || (result === "" && !literal)) result = await fallbackLineScan({ ...input, caseSensitive, literal });
 	if (!result) result = "No matches.";
-	return capText(result, input.maxSearchResultBytes ?? MEKANN_OUTPUT_GATE_DEFAULTS.maxSearchResultBytes);
+	return capText(result, input.maxSearchResultBytes ?? (Number(featureConfig("output-gate").maxSearchResultBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.maxSearchResultBytes));
 }

@@ -3,6 +3,7 @@ import * as fsp from "node:fs/promises";
 import * as crypto from "node:crypto";
 import * as path from "node:path";
 import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
+import { featureConfig } from "../../settings/featureConfig.js";
 
 /** Spread optional session metadata fields into an object. */
 export function spreadSessionMeta(input: { sessionId?: string; turnId?: string; toolCallId?: string; branchId?: string }): Record<string, string> {
@@ -159,7 +160,8 @@ export function safeUtf8Slice(text: string, maxBytes: number, fromEnd = false): 
 	return "";
 }
 
-export function buildPreview(text: string, previewBytes = MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes): string {
+export function buildPreview(text: string, previewBytes?: number): string {
+	previewBytes = previewBytes ?? (Number(featureConfig("output-gate").previewBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes);
 	const total = Buffer.byteLength(text, "utf8");
 	if (total <= previewBytes) return text;
 	const half = Math.max(1, Math.floor((previewBytes - 80) / 2));
@@ -189,7 +191,7 @@ export function shouldGateOutput(text: string, opts: { toolName?: string; maxInl
 	if (!text) return false;
 	if (opts.toolName === "search_tool_outputs" || opts.toolName === "search_context_events" || opts.toolName === "summarize_session_context") return false;
 	if (text.startsWith("[output-gate]")) return false;
-	return Buffer.byteLength(text, "utf8") > (opts.maxInlineBytes ?? MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes);
+	return Buffer.byteLength(text, "utf8") > (opts.maxInlineBytes ?? (Number(featureConfig("output-gate").maxInlineBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes));
 }
 
 export async function saveArtifact(input: SaveArtifactInput): Promise<{ entry: OutputGateManifestEntry; text: string }> {
@@ -255,11 +257,11 @@ export async function gateTextForLlm(options: GateTextOptions): Promise<GatedTex
 	if (!shouldGateOutput(options.text, { toolName: options.toolName, maxInlineBytes: options.maxInlineBytes })) return { text: options.text, gated: false, handled: false, originalBytes, originalLines };
 	try {
 		const saved = await saveArtifact({ cwd: options.cwd, toolName: options.toolName, text: options.text, source: options.source, sessionId: options.sessionId, turnId: options.turnId, toolCallId: options.toolCallId, branchId: options.branchId, commandHash: options.commandHash });
-		const preview = buildPreview(saved.text, options.previewBytes ?? MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes);
+		const preview = buildPreview(saved.text, options.previewBytes ?? (Number(featureConfig("output-gate").previewBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes));
 		return { text: buildStoredOutputStub(saved.entry, preview), gated: true, handled: true, artifactId: saved.entry.id, originalBytes, originalLines, sha256: saved.entry.sha256, redacted: true };
 	} catch (error: any) {
 		const message = error?.message ?? String(error);
-		const preview = buildPreview(redactSecrets(options.text).text, options.previewBytes ?? MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes);
+		const preview = buildPreview(redactSecrets(options.text).text, options.previewBytes ?? (Number(featureConfig("output-gate").previewBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes));
 		return { text: `[output-gate] Failed to store large ${options.toolName} output; showing redacted preview only: ${message}\n\n${preview}`, gated: false, handled: true, originalBytes, originalLines, redacted: true, storageError: message };
 	}
 }

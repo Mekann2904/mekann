@@ -9,6 +9,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import * as fsp from "node:fs/promises";
 import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
+import { featureConfig } from "../../settings/featureConfig.js";
 import { outputGateDir } from "./store.js";
 import { handleClear } from "../clear.js";
 import { recordToolOutputArtifact } from "../recording.js";
@@ -27,11 +28,12 @@ export { extractTextContent } from "./controller.js";
 // ---------------------------------------------------------------------------
 
 function createController(): OutputGateController {
+	const cfg = featureConfig("output-gate");
 	return new OutputGateController({
 		config: {
-			maxInlineBytes: MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes,
-			previewBytes: MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes,
-			artifactRetentionMaxFiles: MEKANN_OUTPUT_GATE_DEFAULTS.artifactRetentionMaxFiles,
+			maxInlineBytes: Number(cfg.maxInlineBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes,
+			previewBytes: Number(cfg.previewBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes,
+			artifactRetentionMaxFiles: Number(cfg.artifactRetentionMaxFiles) || MEKANN_OUTPUT_GATE_DEFAULTS.artifactRetentionMaxFiles,
 		},
 		recorder: { recordToolOutputArtifact },
 	});
@@ -176,7 +178,8 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 			if (arg.startsWith("purge")) {
 				const keep =
 					parseKeepArg(arg) ??
-					MEKANN_OUTPUT_GATE_DEFAULTS.artifactRetentionMaxFiles;
+					(Number(featureConfig("output-gate").artifactRetentionMaxFiles) ||
+					MEKANN_OUTPUT_GATE_DEFAULTS.artifactRetentionMaxFiles);
 				ctx?.ui?.notify?.(await controller.purge(cwd, keep), "info");
 				return;
 			}

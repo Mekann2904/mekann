@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { flattenEffective, diagnosticsForUnknownKeys } from "./effective.js";
-import { mekannSettingsSchemas } from "./registry.js";
+import { findSettingSchema, mekannSettingsSchemas } from "./registry.js";
 import type { LoadedSettings } from "./store.js";
 
 function loaded(features: Record<string, Record<string, unknown>>): LoadedSettings {
@@ -18,5 +18,115 @@ describe("mekann settings core", () => {
     const diags = diagnosticsForUnknownKeys(mekannSettingsSchemas, loaded({ subagent: { nope: true } }), loaded({ mystery: {} }));
     expect(diags.join("\n")).toContain("subagent.nope");
     expect(diags.join("\n")).toContain("unknown feature mystery");
+  });
+
+  it("falls back to global when no workspace override", () => {
+    const eff = flattenEffective(mekannSettingsSchemas, loaded({ subagent: { maxSubagents: 4 } }), loaded({}));
+    const item = eff.find((e) => e.feature === "subagent" && e.key === "maxSubagents");
+    expect(item?.effectiveValue).toBe(4);
+    expect(item?.source).toBe("global");
+  });
+
+  it("uses default when neither global nor workspace is set", () => {
+    const eff = flattenEffective(mekannSettingsSchemas, loaded({}), loaded({}));
+    const item = eff.find((e) => e.feature === "subagent" && e.key === "maxSubagents");
+    expect(item?.effectiveValue).toBe(2);
+    expect(item?.source).toBe("default");
+  });
+
+  it("warns when workspace override equals default", () => {
+    const eff = flattenEffective(mekannSettingsSchemas, loaded({}), loaded({ subagent: { maxSubagents: 2 } }));
+    const item = eff.find((e) => e.feature === "subagent" && e.key === "maxSubagents");
+    expect(item?.diagnostics).toContain("workspace override が default と同じです");
+  });
+});
+
+describe("settings registry", () => {
+  const featureNames = ["plan-mode", "sandbox", "subagent", "output-gate"];
+
+  it("registers all expected features", () => {
+    const registered = mekannSettingsSchemas.map((s) => s.feature);
+    for (const name of featureNames) expect(registered).toContain(name);
+  });
+
+  it("every setting has a valid key, type, and validate function", () => {
+    for (const schema of mekannSettingsSchemas) {
+      for (const setting of schema.settings) {
+        expect(setting.key).toBeTruthy();
+        expect(["number", "string", "boolean", "enum", "modelRef"]).toContain(setting.type);
+        expect(typeof setting.validate).toBe("function");
+        expect(setting.scopes).toContain("global");
+        expect(setting.scopes).toContain("workspace");
+      }
+    }
+  });
+
+  it("validates accepts valid values for all settings", () => {
+    for (const schema of mekannSettingsSchemas) {
+      for (const setting of schema.settings) {
+        const errors = setting.validate(setting.defaultValue);
+        expect(errors).toEqual([]);
+      }
+    }
+  });
+
+  it("findSettingSchema locates a known setting", () => {
+    const s = findSettingSchema("subagent", "maxSubagents");
+    expect(s?.type).toBe("number");
+  });
+
+  it("findSettingSchema returns undefined for unknown", () => {
+    expect(findSettingSchema("nope", "x")).toBeUndefined();
+  });
+});
+
+describe("sandbox schema", () => {
+  it("has sandbox settings with correct defaults", () => {
+    const schema = mekannSettingsSchemas.find((s) => s.feature === "sandbox")!;
+    expect(schema.settings).toHaveLength(2);
+    const bytes = schema.settings.find((s) => s.key === "llmOutputMaxBytes")!;
+    expect(bytes.defaultValue).toBe(50 * 1024);
+    const lines = schema.settings.find((s) => s.key === "llmOutputMaxLines")!;
+    expect(lines.defaultValue).toBe(2000);
+  });
+
+  it("rejects out-of-range values", () => {
+    const schema = mekannSettingsSchemas.find((s) => s.feature === "sandbox")!;
+    const bytes = schema.settings.find((s) => s.key === "llmOutputMaxBytes")!;
+    expect(bytes.validate(0)).toBeTruthy();
+    expect(bytes.validate(51200)).toEqual([]);
+  });
+});
+
+describe("output-gate schema", () => {
+  it("has 6 output-gate settings", () => {
+    const schema = mekannSettingsSchemas.find((s) => s.feature === "output-gate")!;
+    expect(schema.settings).toHaveLength(6);
+  });
+
+  it("flattenEffective resolves all output-gate settings", () => {
+    const eff = flattenEffective(mekannSettingsSchemas, loaded({ "output-gate": { maxInlineBytes: 8192 } }), loaded({}));
+    const item = eff.find((e) => e.feature === "output-gate" && e.key === "maxInlineBytes");
+    expect(item?.effectiveValue).toBe(8192);
+    expect(item?.source).toBe("global");
+  });
+});
+
+describe("plan-mode schema", () => {
+  it("has model and thinking settings for 4 modes", () => {
+    const schema = mekannSettingsSchemas.find((s) => s.feature === "plan-mode")!;
+    const modes = ["main", "plan", "auto", "sub"];
+    for (const mode of modes) {
+      expect(schema.settings.find((s) => s.key === `models.${mode}`)).toBeDefined();
+      expect(schema.settings.find((s) => s.key === `thinking.${mode}`)).toBeDefined();
+    }
+  });
+
+  it("validates modelRef accepts undefined and valid objects", () => {
+    const schema = mekannSettingsSchemas.find((s) => s.feature === "plan-mode")!;
+    const model = schema.settings.find((s) => s.key === "models.main")!;
+    expect(model.validate(undefined)).toEqual([]);
+    expect(model.validate({ provider: "p", modelId: "m" })).toEqual([]);
+    expect(model.validate({ provider: "", modelId: "" }).length).toBeGreaterThan(0);
   });
 });

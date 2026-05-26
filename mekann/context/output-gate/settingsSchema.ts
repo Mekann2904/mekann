@@ -1,0 +1,24 @@
+import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
+import type { FeatureSettingsSchema, SettingSchema } from "../../settings/types.js";
+
+function num(key: string, category: string, defaultValue: number, min: number, max: number, description: string): SettingSchema<number> {
+  return { key, type: "number", defaultValue, description, category, scopes: ["global", "workspace"], restartRequired: false, validate(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || !Number.isInteger(n)) return ["整数である必要があります"];
+    if (n < min || n > max) return [`${min}〜${max} の範囲で指定してください`];
+    return [];
+  } };
+}
+
+export const outputGateSettingsSchema: FeatureSettingsSchema = {
+  feature: "output-gate",
+  title: "Output Gate",
+  settings: [
+    num("maxInlineBytes", "Limits", MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes, 1024, 1048576, "ツール出力のインライン表示上限バイト数。"),
+    num("previewBytes", "Limits", MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes, 256, 65536, "プレビュー表示バイト数。"),
+    num("maxSearchResultBytes", "Limits", MEKANN_OUTPUT_GATE_DEFAULTS.maxSearchResultBytes, 1024, 65536, "検索結果の最大バイト数。"),
+    num("defaultContextLines", "Search", MEKANN_OUTPUT_GATE_DEFAULTS.defaultContextLines, 0, 50, "検索結果のデフォルトコンテキスト行数。"),
+    num("defaultMaxResults", "Search", MEKANN_OUTPUT_GATE_DEFAULTS.defaultMaxResults, 1, 100, "検索結果のデフォルト最大件数。"),
+    num("artifactRetentionMaxFiles", "Retention", MEKANN_OUTPUT_GATE_DEFAULTS.artifactRetentionMaxFiles, 10, 1000, "保持する artifact ファイルの最大数。"),
+  ],
+};
