@@ -44,7 +44,7 @@ export class SubagentHub {
   private server?: net.Server;
   private clients = new Map<string, net.Socket>();
   private listeners = new Set<Listener<ChildToParent>>();
-  constructor(public readonly socketPath: string) {}
+  constructor(public readonly socketPath: string) { unsupportedOnWindows(); }
   async start(): Promise<void> {
     unsupportedOnWindows();
     await mkdir(path.dirname(this.socketPath), { recursive: true });
@@ -99,7 +99,7 @@ export class SubagentHub {
 export class SubagentClient {
   private socket?: net.Socket;
   private listeners = new Set<Listener<ParentToChild>>();
-  constructor(private readonly socketPath: string, private readonly agentId: string, private readonly agentPath: string) {}
+  constructor(private readonly socketPath: string, private readonly agentId: string, private readonly agentPath: string) { unsupportedOnWindows(); }
   async connect(): Promise<void> {
     unsupportedOnWindows();
     this.socket = net.createConnection(this.socketPath);

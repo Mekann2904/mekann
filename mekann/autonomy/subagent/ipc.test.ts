@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
 import net from "node:net";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -224,6 +224,45 @@ describe.skipIf(isWindows)("SubagentClient", () => {
 
     await client.close();
     await hub.stop();
+  });
+});
+
+describe("Windows early check in constructors", () => {
+  let originalPlatform: PropertyDescriptor;
+
+  beforeEach(() => {
+    originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', originalPlatform);
+  });
+
+  it("SubagentHub constructor throws on win32", () => {
+    expect(() => new SubagentHub("C:\\test.sock")).toThrow("not supported on Windows");
+  });
+
+  it("SubagentClient constructor throws on win32", () => {
+    expect(() => new SubagentClient("C:\\test.sock", "a1", "/root")).toThrow("not supported on Windows");
+  });
+
+  it("error message is descriptive", () => {
+    expect(() => new SubagentHub("C:\\test.sock")).toThrow(
+      /Subagent IPC.*not supported on Windows/i
+    );
+  });
+});
+
+describe("Non-Windows constructors work (regression)", () => {
+  it("SubagentHub constructor succeeds on non-Windows", () => {
+    if (isWindows) return;
+    expect(() => new SubagentHub("/tmp/test.sock")).not.toThrow();
+  });
+
+  it("SubagentClient constructor succeeds on non-Windows", () => {
+    if (isWindows) return;
+    expect(() => new SubagentClient("/tmp/test.sock", "a1", "/root")).not.toThrow();
   });
 });
 
