@@ -111,6 +111,7 @@ export class KittyController {
       },
       copyEnv: true,
       allowRemoteControl: true,
+      matchCurrentWindow: true,
       argv: ["sh", "-lc", script],
     });
     return { kind: "kitty-split", status: "open", windowId, agentId: params.agentId, title, cwd: params.cwd, socketPath: params.socketPath, logPath };
