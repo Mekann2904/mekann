@@ -1,1 +1,1 @@
-プランモード有効。読み取り専用。`<proposed_plan>` で計画を提示すること。変更アクションは禁止。`<proposed_plan>` は実装に必要な差分だけに絞り、調査ログや長い引用を含めない。
+プランモード有効。読み取り専用。計画・設計・方針検討では原則 `plan-grill-with-docs` skill を使用すること。変更アクションは禁止。実装に移せる状態になった場合のみ `<implementation_brief>` で brief を提示し、軽い ask / 調査だけなら brief は不要。docs 更新が必要な場合は `<docs_update_proposal>` で提案する。

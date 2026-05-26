@@ -20,10 +20,10 @@ export function buildBlockReason(toolName: string, input: Record<string, unknown
 	const toolLabel = ({ edit: "ファイル編集", write: "ファイル作成/上書き" } as Record<string, string>)[toolName] || toolName;
 
 	if (blockCount >= 3) {
-		return `${H}\n⚠ ${toolLabel}は実行できません。${blockCount}回ブロック済みです。\n今すぐ停止し、分析結果を報告してください。\n絶対に再試行しないでください。\n代わりに <proposed_plan> ブロックで実装計画を出力してください。`;
+		return `${H}\n⚠ ${toolLabel}は実行できません。${blockCount}回ブロック済みです。\n今すぐ停止し、分析結果を報告してください。\n絶対に再試行しないでください。\n代わりに <implementation_brief> ブロックで実装 brief を出力してください。`;
 	}
 	if (blockCount >= 2) {
-		return `${H}\n⚠ ${toolLabel}は実行できません（${blockCount}回目のブロック）。\n再度試行しても同じ結果になります。\n読み取り専用の分析を続け、最終的に <proposed_plan> ブロックで結果を出力してください。`;
+		return `${H}\n⚠ ${toolLabel}は実行できません（${blockCount}回目のブロック）。\n再度試行しても同じ結果になります。\n読み取り専用の分析を続け、最終的に必要なら <implementation_brief> ブロックで結果を出力してください。`;
 	}
 
 	return `${H}\n${toolLabel}「${typeof input?.path === "string" ? input.path : "unknown"}」はブロックされました。\nプランモードではファイル変更は一切禁止。\n代わりに変更内容をテキストで報告してください。`;
@@ -45,15 +45,26 @@ export function loadPrompt(name: string, vars?: Record<string, string>): string 
 	return content;
 }
 
-export function extractProposedPlan(message: string): string | undefined {
-	const match = message.match(/<proposed_plan>\s*([\s\S]*?)\s*<\/proposed_plan>/);
-	return match?.[1]?.trim() || undefined;
+export function extractImplementationBrief(message: string): string | undefined {
+	const current = message.match(/<implementation_brief>\s*([\s\S]*?)\s*<\/implementation_brief>/);
+	if (current?.[1]?.trim()) return current[1].trim();
+	// Legacy read compatibility: old plan-mode prompts emitted <proposed_plan>.
+	const legacy = message.match(/<proposed_plan>\s*([\s\S]*?)\s*<\/proposed_plan>/);
+	return legacy?.[1]?.trim() || undefined;
 }
 
-/** <proposed_plan> ブロックを短いプレースホルダーに置換（context hook 用）。 */
-export function compactOldProposedPlansInText(text: string): string {
-	return text.replace(/<proposed_plan>\s*[\s\S]*?\s*<\/proposed_plan>/g, "<proposed_plan>[omitted: superseded plan]</proposed_plan>");
+/** @deprecated Use extractImplementationBrief. */
+export const extractProposedPlan = extractImplementationBrief;
+
+/** implementation handoff blocks を短いプレースホルダーに置換（context hook 用）。 */
+export function compactOldImplementationBriefsInText(text: string): string {
+	return text
+		.replace(/<implementation_brief>\s*[\s\S]*?\s*<\/implementation_brief>/g, "<implementation_brief>[omitted: superseded brief]</implementation_brief>")
+		.replace(/<proposed_plan>\s*[\s\S]*?\s*<\/proposed_plan>/g, "<proposed_plan>[omitted: superseded plan]</proposed_plan>");
 }
+
+/** @deprecated Use compactOldImplementationBriefsInText. */
+export const compactOldProposedPlansInText = compactOldImplementationBriefsInText;
 
 // ─── Thinking level ───────────────────────────────────────────────
 
@@ -190,9 +201,9 @@ export function modeLabel(mode: MekannMode): string {
 
 export interface PlanState {
 	mode: MekannMode;
-	pendingPlan?: string;
-	/** Plan text to inject once into main mode's system prompt, then cleared. */
-	implementationPlan?: string;
+	pendingImplementationBrief?: string;
+	/** Implementation brief to inject once into main/sub mode's system prompt, then cleared. */
+	implementationBrief?: string;
 	savedActiveTools?: string[];
 	planPromptHash?: string;
 	planPromptDelivered: boolean;

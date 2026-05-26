@@ -345,7 +345,7 @@ describe("prompt provider", () => {
 		expect(r2[0].content).toBe(r1[0].content);
 	});
 
-	it("main mode with implementationPlan: exposes dynamic implementation_plan fragment", async () => {
+	it("main mode with implementationBrief: exposes dynamic implementation_plan fragment", async () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
@@ -360,7 +360,7 @@ describe("prompt provider", () => {
 		expect((await collectPromptFragments({ cwd: "/tmp/project" })).some((f) => f.kind === "implementation_plan")).toBe(false);
 	});
 
-	it("dynamic-tail-sent event clears queued implementationPlan", async () => {
+	it("dynamic-tail-sent event clears queued implementationBrief", async () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
@@ -368,12 +368,12 @@ describe("prompt provider", () => {
 		await mock._hooks.agent_end({ messages: [{ role: "assistant", content: [{ type: "text", text: "<proposed_plan>Queued plan</proposed_plan>" }] }] }, createMockCtx());
 		await mock._commands["plan"].handler("", createMockCtx());
 
-		mock._hooks["event:cache-friendly-prompt:dynamic-tail-sent"]({ fragmentIds: ["plan-mode:implementation-plan"] });
+		mock._hooks["event:cache-friendly-prompt:dynamic-tail-sent"]({ fragmentIds: ["plan-mode:implementation-brief"] });
 
 		expect((await collectPromptFragments({ cwd: "/tmp/project" })).some((f) => f.kind === "implementation_plan")).toBe(false);
 	});
 
-	it("main mode without implementationPlan: no fragments", async () => {
+	it("main mode without implementationBrief: no fragments", async () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
@@ -597,7 +597,7 @@ describe("sendUserMessage on exit plan mode", () => {
 		);
 
 		await mock._commands["plan"].handler("", createMockCtx());
-		expect(mock._sentMessages).toContain("保存された plan に従って実装してください。");
+		expect(mock._sentMessages).toContain("保存された implementation brief に従って実装してください。");
 	});
 
 	it("plan なし: メッセージ送信なし", async () => {

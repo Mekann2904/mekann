@@ -119,7 +119,12 @@ describe("isPlanReadOnlyCommandIntent (isSafeCommand)", () => {
 
 // extractProposedPlan — plan テキスト抽出
 describe("extractProposedPlan", () => {
-	it("<proposed_plan> の中身を取り出す", () => {
+	it("<implementation_brief> の中身を優先して取り出す", () => {
+		const msg = `<proposed_plan>legacy</proposed_plan>\n<implementation_brief>current brief</implementation_brief>`;
+		expect(extractProposedPlan(msg)).toBe("current brief");
+	});
+
+	it("<proposed_plan> の中身を legacy 互換で取り出す", () => {
 		const msg = `
 分析結果に基づき、以下のプランを提案します。
 
@@ -185,7 +190,7 @@ describe("buildBlockReason", () => {
 	it("2回目のブロック: 警告が強化される", () => {
 		const reason = buildBlockReason("edit", { path: "file.ts" }, 2);
 		expect(reason).toContain("2回目のブロック");
-		expect(reason).toContain("<proposed_plan>");
+		expect(reason).toContain("<implementation_brief>");
 	});
 
 	it("3回以上のブロック: 最高レベルの警告", () => {
@@ -205,13 +210,13 @@ describe("loadPrompt", () => {
 	it("plan-mode.md を読み込める", () => {
 		const prompt = loadPrompt("plan-mode");
 		expect(prompt).toContain("プランモード");
-		expect(prompt).toContain("<proposed_plan>");
+		expect(prompt).toContain("<implementation_brief>");
 	});
 
 	it("plan-mode-reminder.md を読み込める", () => {
 		const prompt = loadPrompt("plan-mode-reminder");
 		expect(prompt).toContain("読み取り専用");
-		expect(prompt).toContain("<proposed_plan>");
+		expect(prompt).toContain("<implementation_brief>");
 	});
 
 	it("存在しないファイルはエラーを投げる", () => {
@@ -265,7 +270,7 @@ describe("State", () => {
 	it("初期状態は main", () => {
 		const state = createInitialState();
 		expect(state.mode).toBe("main");
-		expect(state.pendingPlan).toBeUndefined();
+		expect(state.pendingImplementationBrief).toBeUndefined();
 		expect(state.savedActiveTools).toBeUndefined();
 		expect(state.planPromptDelivered).toBe(false);
 	});
@@ -356,17 +361,17 @@ describe("統合シナリオ: plan mode ワークフロー", () => {
 `;
 		const plan = extractProposedPlan(assistantMsg);
 		expect(plan).toBeDefined();
-		state.pendingPlan = plan;
+		state.pendingImplementationBrief = plan;
 
 		// 3. /plan で main に戻る → plan をdynamic context tail用に保持
 		state.mode = "main";
-		const executionPrompt = `以下の plan に従って実装してください。\n\n<plan>\n${state.pendingPlan}\n</plan>`;
+		const executionPrompt = `以下の plan に従って実装してください。\n\n<plan>\n${state.pendingImplementationBrief}\n</plan>`;
 		expect(executionPrompt).toContain("バリデーターを追加する");
 		expect(executionPrompt).toContain("<plan>");
 		expect(executionPrompt).toContain("</plan>");
 
 		// 4. main に戻ったのでツール制限なし
-		state.pendingPlan = undefined;
+		state.pendingImplementationBrief = undefined;
 		state.savedActiveTools = undefined;
 		expect(isReadOnlyMode(state.mode)).toBe(false);
 	});
@@ -378,12 +383,12 @@ describe("統合シナリオ: plan mode ワークフロー", () => {
 		const assistantMsg = "まだ分析中です。";
 		const plan = extractProposedPlan(assistantMsg);
 		expect(plan).toBeUndefined();
-		// pendingPlan は設定されない
-		expect(state.pendingPlan).toBeUndefined();
+		// pendingImplementationBrief は設定されない
+		expect(state.pendingImplementationBrief).toBeUndefined();
 
 		// /plan で main に戻る → キャンセル
 		state.mode = "main";
-		expect(state.pendingPlan).toBeUndefined();
+		expect(state.pendingImplementationBrief).toBeUndefined();
 	});
 
 	it("--plan フラグでの起動", () => {
@@ -791,17 +796,17 @@ describe("exitPlanMode ordering", () => {
 		config.models.main = { provider: "anthropic", modelId: "sonnet" };
 		const state = createInitialState(config);
 		state.mode = "plan";
-		state.pendingPlan = "test plan";
+		state.pendingImplementationBrief = "test plan";
 
 		// Simulate: exitPlanMode sets mode=main BEFORE trySetModel
-		const plan = state.pendingPlan;
+		const plan = state.pendingImplementationBrief;
 		state.mode = "main";
 		// Now model_select would fire (from trySetModel), and it should update "main" config
 		expect(state.mode).toBe("main");
 
 		// Cleanup
-		Object.assign(state, { pendingPlan: undefined });
-		expect(state.pendingPlan).toBeUndefined();
+		Object.assign(state, { pendingImplementationBrief: undefined });
+		expect(state.pendingImplementationBrief).toBeUndefined();
 	});
 });
 
@@ -1215,49 +1220,49 @@ describe("thinking display integration", () => {
 // ─── P0-2: exitPlanMode stores plan without sending plan text ──
 
 describe("exitPlanMode: plan handoff", () => {
-	it("pendingPlan があっても plan 本文を sendUserMessage に含めない", () => {
+	it("pendingImplementationBrief があっても plan 本文を sendUserMessage に含めない", () => {
 		const state = createInitialState();
 		state.mode = "plan";
-		state.pendingPlan = "1. ファイル A を変更\n2. テストを追加";
+		state.pendingImplementationBrief = "1. ファイル A を変更\n2. テストを追加";
 
-		// Simulate: exitPlanMode captures plan and sets implementationPlan
-		const plan = state.pendingPlan;
+		// Simulate: exitPlanMode captures plan and sets implementationBrief
+		const plan = state.pendingImplementationBrief;
 		state.mode = "main";
-		state.implementationPlan = plan;
+		state.implementationBrief = plan;
 		// Old behavior would be: sendUserMessage(`<plan>\n${plan}\n</plan>`)
-		// New behavior: sendUserMessage("保存された plan に従って実装してください。")
-		const sentMessage = "保存された plan に従って実装してください。";
+		// New behavior: sendUserMessage("保存された implementation brief に従って実装してください。")
+		const sentMessage = "保存された implementation brief に従って実装してください。";
 		expect(sentMessage).not.toContain("<plan>");
 		expect(sentMessage).not.toContain("ファイル A");
-		expect(state.implementationPlan).toContain("ファイル A");
+		expect(state.implementationBrief).toContain("ファイル A");
 	});
 
-	it("pendingPlan がなければ implementationPlan も設定されない", () => {
+	it("pendingImplementationBrief がなければ implementationBrief も設定されない", () => {
 		const state = createInitialState();
 		state.mode = "plan";
 
-		const plan = state.pendingPlan;
+		const plan = state.pendingImplementationBrief;
 		state.mode = "main";
 		if (plan) {
-			state.implementationPlan = plan;
+			state.implementationBrief = plan;
 		}
 
-		expect(state.implementationPlan).toBeUndefined();
+		expect(state.implementationBrief).toBeUndefined();
 	});
 });
 
-// ─── P1-1: implementationPlan is exposed as dynamic context ──────
+// ─── P1-1: implementationBrief is exposed as dynamic context ──────
 
-describe("implementationPlan: dynamic fragment lifecycle", () => {
-	it("implementationPlan は main mode で dynamic context として整形される", () => {
+describe("implementationBrief: dynamic fragment lifecycle", () => {
+	it("implementationBrief は main mode で dynamic context として整形される", () => {
 		const state = createInitialState();
 		state.mode = "main";
-		state.implementationPlan = "1. ファイル A を変更\n2. テストを追加";
+		state.implementationBrief = "1. ファイル A を変更\n2. テストを追加";
 
 		// Simulate: dynamic fragment rendering
-		if (state.mode === "main" && state.implementationPlan) {
-			const plan = state.implementationPlan;
-			state.implementationPlan = undefined;
+		if (state.mode === "main" && state.implementationBrief) {
+			const plan = state.implementationBrief;
+			state.implementationBrief = undefined;
 
 			const dynamicContext = `Implementation plan for this turn:\n<plan>\n${plan}\n</plan>`;
 			expect(dynamicContext).toContain("<plan>");
@@ -1265,29 +1270,29 @@ describe("implementationPlan: dynamic fragment lifecycle", () => {
 		}
 	});
 
-	it("implementationPlan はdynamic tail描画イベント後に undefined になる", () => {
+	it("implementationBrief はdynamic tail描画イベント後に undefined になる", () => {
 		const state = createInitialState();
 		state.mode = "main";
-		state.implementationPlan = "test plan";
+		state.implementationBrief = "test plan";
 
-		// Simulate: cache-friendly dynamic-tail-sent event consumes implementationPlan
-		if (state.mode === "main" && state.implementationPlan) {
-			const _plan = state.implementationPlan;
-			state.implementationPlan = undefined;
+		// Simulate: cache-friendly dynamic-tail-sent event consumes implementationBrief
+		if (state.mode === "main" && state.implementationBrief) {
+			const _plan = state.implementationBrief;
+			state.implementationBrief = undefined;
 		}
 
-		expect(state.implementationPlan).toBeUndefined();
+		expect(state.implementationBrief).toBeUndefined();
 	});
 
 	it("消費済みの場合は次回dynamic contextに出ない", () => {
 		const state = createInitialState();
 		state.mode = "main";
-		// implementationPlan was already consumed
-		expect(state.implementationPlan).toBeUndefined();
+		// implementationBrief was already consumed
+		expect(state.implementationBrief).toBeUndefined();
 
 		// Simulate: second dynamic context collection
 		let injected = false;
-		if (state.mode === "main" && state.implementationPlan) {
+		if (state.mode === "main" && state.implementationBrief) {
 			injected = true;
 		}
 		expect(injected).toBe(false);
@@ -2000,29 +2005,29 @@ describe("normalizeConfig: edge cases", () => {
 // ─── State with config mutation tests ──────────────────────────────
 
 describe("PlanState: config mutation", () => {
-	it("implementationPlan のライフサイクル", () => {
+	it("implementationBrief のライフサイクル", () => {
 		const state = createInitialState();
 
 		// 1. Plan mode: assistant creates a plan
 		state.mode = "plan";
-		state.pendingPlan = "Test plan";
+		state.pendingImplementationBrief = "Test plan";
 
-		// 2. Exit plan mode: pendingPlan → implementationPlan
-		const plan = state.pendingPlan;
+		// 2. Exit plan mode: pendingImplementationBrief → implementationBrief
+		const plan = state.pendingImplementationBrief;
 		state.mode = "main";
-		state.implementationPlan = plan;
-		state.pendingPlan = undefined;
+		state.implementationBrief = plan;
+		state.pendingImplementationBrief = undefined;
 
-		expect(state.implementationPlan).toBe("Test plan");
-		expect(state.pendingPlan).toBeUndefined();
+		expect(state.implementationBrief).toBe("Test plan");
+		expect(state.pendingImplementationBrief).toBeUndefined();
 
-		// 3. dynamic-tail-sent event consumes implementationPlan
-		if (state.mode === "main" && state.implementationPlan) {
-			const _consumed = state.implementationPlan;
-			state.implementationPlan = undefined;
+		// 3. dynamic-tail-sent event consumes implementationBrief
+		if (state.mode === "main" && state.implementationBrief) {
+			const _consumed = state.implementationBrief;
+			state.implementationBrief = undefined;
 		}
 
-		expect(state.implementationPlan).toBeUndefined();
+		expect(state.implementationBrief).toBeUndefined();
 	});
 
 	it("連続した plan → main → plan → main サイクル", () => {
@@ -2030,20 +2035,20 @@ describe("PlanState: config mutation", () => {
 
 		// First cycle
 		state.mode = "plan";
-		state.pendingPlan = "Plan 1";
+		state.pendingImplementationBrief = "Plan 1";
 		state.mode = "main";
-		state.implementationPlan = state.pendingPlan;
-		state.pendingPlan = undefined;
-		state.implementationPlan = undefined;
+		state.implementationBrief = state.pendingImplementationBrief;
+		state.pendingImplementationBrief = undefined;
+		state.implementationBrief = undefined;
 
 		// Second cycle
 		state.mode = "plan";
-		state.pendingPlan = "Plan 2";
+		state.pendingImplementationBrief = "Plan 2";
 		state.mode = "main";
-		state.implementationPlan = state.pendingPlan;
-		state.pendingPlan = undefined;
+		state.implementationBrief = state.pendingImplementationBrief;
+		state.pendingImplementationBrief = undefined;
 
-		expect(state.implementationPlan).toBe("Plan 2");
+		expect(state.implementationBrief).toBe("Plan 2");
 	});
 });
 
@@ -2074,21 +2079,21 @@ describe("Integration: full workflow with model config", () => {
 
 		// 4. Assistant generates plan
 		const planText = "1. Refactor module X\n2. Add tests";
-		state.pendingPlan = planText;
+		state.pendingImplementationBrief = planText;
 
 		// 5. Toggle back to main
 		state.mode = "main";
-		state.implementationPlan = state.pendingPlan;
-		state.pendingPlan = undefined;
+		state.implementationBrief = state.pendingImplementationBrief;
+		state.pendingImplementationBrief = undefined;
 		state.savedActiveTools = undefined;
 
 		// 6. Main mode: plan is available for dynamic context tail
-		expect(state.implementationPlan).toBe(planText);
+		expect(state.implementationBrief).toBe(planText);
 		expect(isReadOnlyMode(state.mode)).toBe(false);
 
 		// 7. Plan consumed after dynamic-tail-sent
-		state.implementationPlan = undefined;
-		expect(state.implementationPlan).toBeUndefined();
+		state.implementationBrief = undefined;
+		expect(state.implementationBrief).toBeUndefined();
 	});
 });
 

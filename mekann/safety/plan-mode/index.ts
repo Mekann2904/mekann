@@ -7,7 +7,7 @@
 import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
-import { createInitialState, isReadOnlyMode, isPlanReadOnlyCommandIntent, classifyCommandIntent, buildBlockReason, loadPrompt, hashContent, extractProposedPlan, PLAN_MODE_TOOLS, sameModelRef, loadModelConfig, updateConfigField, compactOldProposedPlansInText, type ModelRef, type ThinkingLevel, type MekannMode, type ModeName } from "./utils.js";
+import { createInitialState, isReadOnlyMode, isPlanReadOnlyCommandIntent, classifyCommandIntent, buildBlockReason, loadPrompt, hashContent, extractImplementationBrief, PLAN_MODE_TOOLS, sameModelRef, loadModelConfig, updateConfigField, compactOldImplementationBriefsInText, type ModelRef, type ThinkingLevel, type MekannMode, type ModeName } from "./utils.js";
 import { createModelManager, registerModeModelPersistence } from "../../core/model-manager.js";
 import {
 	SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, PLAN_MODE_STATUS_EVENT,
@@ -127,11 +127,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			updateModeStatus(ctx);
 			popSandboxOverride();
 			if (state.savedActiveTools) { pi.setActiveTools(state.savedActiveTools); state.savedActiveTools = undefined; }
-			if ((target === "main" || target === "sub") && state.pendingPlan) {
-				state.implementationPlan = state.pendingPlan;
-				recordPlanEvent({ cwd: (ctx as any)?.cwd ?? process.cwd(), title: `Plan carried to ${target} mode`, summary: state.pendingPlan.slice(0, 300), kind: "plan", priority: 1, evidenceLevel: "agent_inferred", sessionId: (ctx as any)?.sessionId, turnId: (ctx as any)?.turnId, branchId: (ctx as any)?.branchId }).catch(() => {});
+			if ((target === "main" || target === "sub") && state.pendingImplementationBrief) {
+				state.implementationBrief = state.pendingImplementationBrief;
+				recordPlanEvent({ cwd: (ctx as any)?.cwd ?? process.cwd(), title: `Implementation brief carried to ${target} mode`, summary: state.pendingImplementationBrief.slice(0, 300), kind: "plan", priority: 1, evidenceLevel: "agent_inferred", sessionId: (ctx as any)?.sessionId, turnId: (ctx as any)?.turnId, branchId: (ctx as any)?.branchId }).catch(() => {});
 			}
-			Object.assign(state, { pendingPlan: undefined, planPromptDelivered: false, planPromptHash: undefined, modeBeforePlan: undefined });
+			Object.assign(state, { pendingImplementationBrief: undefined, planPromptDelivered: false, planPromptHash: undefined, modeBeforePlan: undefined });
 		} else if (previous === "auto") {
 			// Leaving auto — just update mode
 			if (state.mode !== target) state.mode = target;
@@ -167,15 +167,15 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			const subRef = state.modelConfig.models.sub;
 			if (subRef) await trySetModel(subRef, ctx, "Sub model");
 			applyThinking(state.modelConfig.thinking.sub);
-			if (state.implementationPlan) {
-				pi.sendUserMessage("保存された plan に従って実装してください。");
+			if (state.implementationBrief) {
+				pi.sendUserMessage("保存された implementation brief に従って実装してください。");
 			}
 		} else {
 			// target === "main"
 			await restoreMainModelAndThinking(ctx);
 			Object.assign(state, { savedMainModel: undefined, savedMainThinking: undefined });
-			if (state.implementationPlan) {
-				pi.sendUserMessage("保存された plan に従って実装してください。");
+			if (state.implementationBrief) {
+				pi.sendUserMessage("保存された implementation brief に従って実装してください。");
 			}
 		}
 
@@ -203,7 +203,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	try {
 		pi.events.on("cache-friendly-prompt:dynamic-tail-sent", (data: unknown) => {
 			const ids = (data as { fragmentIds?: unknown }).fragmentIds;
-			if (Array.isArray(ids) && ids.includes("plan-mode:implementation-plan")) state.implementationPlan = undefined;
+			if (Array.isArray(ids) && (ids.includes("plan-mode:implementation-brief") || ids.includes("plan-mode:implementation-plan"))) state.implementationBrief = undefined;
 		});
 	} catch {
 		// cache-friendly-prompt extension not loaded
@@ -245,11 +245,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 					content: loadPrompt("plan-mode-reminder"),
 				});
 			}
-			if ((state.mode === "main" || state.mode === "sub") && state.implementationPlan) {
-				const plan = state.implementationPlan;
-				state.implementationPlan = undefined;
+			if ((state.mode === "main" || state.mode === "sub") && state.implementationBrief) {
+				const brief = state.implementationBrief;
+				state.implementationBrief = undefined;
 				fragments.push({
-					id: "plan-mode:implementation-plan",
+					id: "plan-mode:implementation-brief",
 					source: "plan-mode",
 					kind: "implementation_plan",
 					stability: "dynamic",
@@ -257,7 +257,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 					priority: 600,
 					version: "v1",
 					cacheIntent: "avoid_cache",
-					content: `Implementation plan for this turn:\n<plan>\n${plan}\n</plan>`,
+					content: `Implementation brief for this turn:\n<plan>\n${brief}\n</plan>`,
 				});
 			}
 			if (state.mode === "sub") {
@@ -316,7 +316,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	});
 	pi.on("context", async (event) => {
 		const messages = event.messages;
-		// Scan messages from end (most recent) to find the latest <proposed_plan>.
+		// Scan messages from end (most recent) to find the latest <implementation_brief> (or legacy <proposed_plan>).
 		// Compact older plans for both string content and text content blocks.
 		let foundLatest = false;
 		for (let i = messages.length - 1; i >= 0; i--) {
@@ -325,9 +325,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 			const content = (msg as { content?: unknown }).content;
 			if (typeof content === "string") {
-				if (!/<proposed_plan>[\s\S]*?<\/proposed_plan>/.test(content)) continue;
+				if (!/<(implementation_brief|proposed_plan)>[\s\S]*?<\/\1>/.test(content)) continue;
 				if (!foundLatest) foundLatest = true;
-				else (msg as { content?: unknown }).content = compactOldProposedPlansInText(content);
+				else (msg as { content?: unknown }).content = compactOldImplementationBriefsInText(content);
 				continue;
 			}
 			if (!Array.isArray(content)) continue;
@@ -335,9 +335,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			for (let j = content.length - 1; j >= 0; j--) {
 				const part = content[j] as { type?: string; text?: string };
 				if (part.type !== "text" || typeof part.text !== "string") continue;
-				if (!/<proposed_plan>[\s\S]*?<\/proposed_plan>/.test(part.text)) continue;
+				if (!/<(implementation_brief|proposed_plan)>[\s\S]*?<\/\1>/.test(part.text)) continue;
 
-				if (!foundLatest) foundLatest = true; else content[j] = { ...part, text: compactOldProposedPlansInText(part.text) };
+				if (!foundLatest) foundLatest = true; else content[j] = { ...part, text: compactOldImplementationBriefsInText(part.text) };
 			}
 		}
 
@@ -347,13 +347,13 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (state.mode !== "plan") return;
 		const lastAssistant = [...event.messages].reverse().find((m): m is AssistantMessage => m.role === "assistant" && Array.isArray(m.content));
 		if (!lastAssistant) return;
-		const plan = extractProposedPlan(lastAssistant.content.filter((b): b is TextContent => b.type === "text").map(b => b.text).join("\n"));
+		const brief = extractImplementationBrief(lastAssistant.content.filter((b): b is TextContent => b.type === "text").map(b => b.text).join("\n"));
 
-		if (plan && plan !== state.pendingPlan) {
-			state.pendingPlan = plan;
-			recordPlanEvent({ cwd: (ctx as any)?.cwd ?? process.cwd(), title: "Plan proposed", summary: plan.slice(0, 300), kind: "plan", priority: 2, evidenceLevel: "agent_inferred", sessionId: (ctx as any)?.sessionId, turnId: (ctx as any)?.turnId, branchId: (ctx as any)?.branchId }).catch(() => {});
-		} else if (plan && plan === state.pendingPlan) {
-			state.pendingPlan = plan;
+		if (brief && brief !== state.pendingImplementationBrief) {
+			state.pendingImplementationBrief = brief;
+			recordPlanEvent({ cwd: (ctx as any)?.cwd ?? process.cwd(), title: "Implementation brief proposed", summary: brief.slice(0, 300), kind: "plan", priority: 2, evidenceLevel: "agent_inferred", sessionId: (ctx as any)?.sessionId, turnId: (ctx as any)?.turnId, branchId: (ctx as any)?.branchId }).catch(() => {});
+		} else if (brief && brief === state.pendingImplementationBrief) {
+			state.pendingImplementationBrief = brief;
 		}
 	});
 	pi.on("turn_end", async () => { blockCount = 0; lastBlockedTool = ""; lastBlockedInput = ""; });
