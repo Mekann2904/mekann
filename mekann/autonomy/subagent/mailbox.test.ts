@@ -248,6 +248,30 @@ describe("Mailbox", () => {
       expect(result.events).toEqual([]);
       expect(result.mailbox).toEqual([]);
     });
+
+    it("cleans up timer handles for pending waiters", () => {
+      vi.useFakeTimers();
+      const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+
+      // Register a waiter with a long timeout
+      void mailbox.waitForUpdate("/root/task1", 0, 30_000);
+
+      // Clear should clean up the timer
+      mailbox.clear();
+
+      // clearTimeout must have been called for the waiter's timer
+      expect(clearTimeoutSpy).toHaveBeenCalled();
+
+      // Advancing past the timeout should not trigger any timer callback
+      // (pendingFor / pendingEventsFor should not be invoked)
+      const pendingForSpy = vi.spyOn(mailbox as any, "pendingFor");
+      vi.advanceTimersByTime(60_000);
+      expect(pendingForSpy).not.toHaveBeenCalled();
+
+      pendingForSpy.mockRestore();
+      clearTimeoutSpy.mockRestore();
+      vi.useRealTimers();
+    });
   });
 
   describe("pruning", () => {
