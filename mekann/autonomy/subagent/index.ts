@@ -175,6 +175,7 @@ function registerSubagentPromptProvider(): void {
           "Do not use subagents for trivial one-file edits or tasks requiring tight step-by-step coordination.",
           "When delegating to a subagent, write the task message in English regardless of the user-facing conversation language. English instructions are more consistent and cost-efficient for model processing.",
           "Subagent outputs are for the parent agent, not for direct human consumption. Ask subagents for compact, structured, cost-efficient findings.",
+          "Subagents run silent by default: do not ask them to emit progress reports, status updates, greetings, or narrated execution. They should emit an assistant message only for the final result, a blocked state, or an explicit parent decision request.",
           "Preferred subagent output style: concise, structured, evidence/path-oriented. No greetings, apologies, narrative summaries, or polished prose. Include only what the parent needs to decide, merge, validate, or continue.",
         ].join("\n"),
       }];

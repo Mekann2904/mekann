@@ -104,6 +104,7 @@ describe("buildContextPreamble", () => {
     expect(preamble).toContain("/root/task1");
     expect(preamble).toContain("/root");
     expect(preamble).toContain("Subagent Context");
+    expect(preamble).toContain("Default execution style: silent.");
   });
 
   it("includes role when provided", () => {
@@ -131,6 +132,17 @@ describe("buildContextPreamble", () => {
     });
     expect(preamble).not.toContain("Role:");
     expect(preamble).not.toContain("Nickname:");
+  });
+
+  it("instructs subagents to avoid progress narration by default", () => {
+    const preamble = buildContextPreamble({
+      agentPath: "/root/task1",
+      parentPath: "/root",
+    });
+    expect(preamble).toContain("Do not emit progress reports");
+    expect(preamble).toContain("Use tool calls as needed without announcing them");
+    expect(preamble).toContain("Emit an assistant message only for the final result");
+    expect(preamble).toContain("Final output is for the parent agent, not a human");
   });
 });
 

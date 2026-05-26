@@ -97,6 +97,11 @@ export function buildContextPreamble(opts: {
   if (opts.nickname) lines.push(`Nickname: ${opts.nickname}`);
   lines.push(
     "",
+    "Default execution style: silent.",
+    "Do not emit progress reports, status updates, greetings, or narrated execution.",
+    "Use tool calls as needed without announcing them.",
+    "Emit an assistant message only for the final result, a blocked state, or an explicit parent decision request.",
+    "Final output is for the parent agent, not a human; keep it compact and evidence-oriented.",
     "Communication: When you are done, provide your final result. The parent agent will receive it via wait_agent.",
     "Do not attempt to communicate with the parent agent directly.",
   );

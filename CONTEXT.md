@@ -306,6 +306,10 @@ _Avoid_: full conversation dump, context starvation
 A subagent result style optimized for the parent agent's downstream reasoning, validation, and merge decisions rather than direct human readability. It should be concise, structured, evidence-oriented, and avoid polished prose unless explicitly requested. For `subagent_result_v1` contracts the child emits raw JSON; for free-text results, terse bullet sections or key-value blocks are preferred.
 _Avoid_: human-readable report, polished summary, narrative output
 
+**Silent subagent execution**:
+The default subagent behavior where a subagent avoids assistant-message progress reports, greetings, status narration, and human-facing play-by-play while it works. The subagent should use tool calls as needed and emit an assistant message only for its final result, a blocked state, or an explicit parent decision request.
+_Avoid_: progress reporting, narrated execution, human-facing subagent log
+
 **Queued subagent**:
 A subagent delegation that has been accepted but is waiting for an open execution slot. A queued subagent is still visible as an agent so the parent can observe pending work instead of relying on memory or re-spawning attempts.
 _Avoid_: hidden spawn backlog, failed spawn, background promise

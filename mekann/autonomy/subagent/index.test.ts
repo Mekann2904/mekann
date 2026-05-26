@@ -221,6 +221,7 @@ describe("contextFork", () => {
       });
       expect(preamble).toContain("/root/research");
       expect(preamble).toContain("/root");
+      expect(preamble).toContain("Default execution style: silent.");
     });
 
     it("includes role and nickname", () => {
