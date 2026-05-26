@@ -302,10 +302,10 @@ describe("index.ts: leaving auto mode transition (L128)", () => {
 		// Deactivate → goes through L126-128 (previous=auto, target=main)
 		await mock._hooks[AR_EVENT_KEY]({ active: false });
 
-		// Now toggle plan from main
-		await mock._commands["plan"].handler("", ctx);
+		// Now toggle read-only from main
+		await mock._commands["read-only"].handler("", ctx);
 
-		// Should be in plan mode — edit blocked
+		// Should be in read-only mode — edit blocked
 		const result = await mock._hooks.tool_call({ toolName: "edit", input: { path: "file.ts" } });
 		expect(result).toBeDefined();
 		expect(result.block).toBe(true);
