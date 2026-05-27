@@ -33,14 +33,16 @@ No default:
 
 ## Exit checkpoint
 
-After the selected skill reaches a stopping point:
+After the selected skill reaches a stopping point, route by plan readiness:
 
-- continue the same skill
-- switch to another skill
-- update docs/planning artifacts
-- create PRD/issues if appropriate
-- emit `<main_mode_handoff>` if implementation-ready
-- ask the user if an unresolved high-impact decision remains
+- Large / multi-slice / multi-PR plan → to-issues
+- Product / spec still unclear → to-prd
+- Small, clear, implementation-ready plan → tdd planning / emit `<main_mode_handoff>`
+- Architectural risk remains → improve-codebase-architecture
+- UI / state / interaction uncertainty remains → prototype
+- Unresolved bug cause → diagnose
+- Unresolved high-impact decision → ask the user
+- Otherwise → update docs/planning artifacts and continue or stop
 
 ## Plan-mode limits
 
