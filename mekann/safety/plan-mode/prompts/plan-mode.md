@@ -26,10 +26,16 @@ Skill selection:
 - UI alternatives, state model uncertainty, interaction design → prototype
 - Small, clear implementation task → tdd
 
-No default:
+Start with grilling:
 
-- Do not fall back to grill-with-docs merely because routing is uncertain.
-- If routing is uncertain, ask a short routing question before reading a skill.
+- When user intent is ambiguous, requirements are unclear, or terminology is fuzzy, route to grill-with-docs first.
+- If routing is still genuinely unclear after considering the above, ask a short routing question.
+
+## Grill first
+
+Shared understanding comes before artifacts. Do not produce a PRD, issues, or plan document before completing the grilling step. Plans produced without grilling are likely to be wrong.
+
+Call proceed_to_main only after the current skill (especially grill-with-docs) has completed and the user has clearly approved implementation. If the user says "implement" or "go ahead" while grilling is still in progress, finish grilling first.
 
 ## Process chain
 
@@ -41,7 +47,7 @@ Use this progression when appropriate:
    - If the idea, requirements, terminology, or design trade-offs are unclear → grill-with-docs
 
 2. Destination
-   - If the feature is large enough that the desired outcome should be durable and reviewable → to-prd
+   - If shared understanding is reached and the feature is large enough that the desired outcome should be durable and reviewable → to-prd
 
 3. Journey
    - If the destination is too large for one implementation slice → to-issues
@@ -55,7 +61,7 @@ Use this progression when appropriate:
 6. Prototype
    - If UI, state model, or interaction behavior is uncertain → prototype
 
-Do not force every request through every step. Choose the shortest chain that preserves shared understanding, clear destination, sliced journey, and a strong feedback loop.
+Do not force every request through every step. Choose the shortest chain that preserves shared understanding, clear destination, sliced journey, and a strong feedback loop. When shared understanding is not yet reached, do not skip grilling.
 
 ## Exit checkpoint
 

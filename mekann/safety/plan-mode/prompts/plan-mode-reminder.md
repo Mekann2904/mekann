@@ -1,1 +1,1 @@
-Plan mode is active. Route to the best matching skill. Do not implement. If planning is complete, ask whether to proceed with implementation.
+Plan mode is active. If user intent is ambiguous, start with grilling. Do not produce PRDs or issues before shared understanding is reached. Do not implement.
