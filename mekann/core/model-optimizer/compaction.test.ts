@@ -211,8 +211,9 @@ describe("registerCompactionObserver — before_agent_start hint injection", () 
 	}
 
 	function stateWithPendingHint(api = "openai-codex-responses"): ActiveOptimizationState {
+		const provider = api === "openai-codex-responses" ? "openai-codex" : "openai";
+		const model = mockModel(api, provider, "gpt-5.5-codex");
 		const s = createActiveOptimizationState();
-		const model = mockModel(api, "openai-codex", "gpt-5.5-codex");
 		s.enabled = true;
 		s.postCompactionHintEnabled = true;
 		s.activeModule = optimizerModules.find((m) => m.supports(model));
@@ -336,8 +337,9 @@ describe("non-target API behaviour", () => {
 
 describe("handleBeforeAgentStart — stale hint guard", () => {
 	function stateWithPendingHint(api = "openai-codex-responses"): ActiveOptimizationState {
+		const provider = api === "openai-codex-responses" ? "openai-codex" : "openai";
+		const model = mockModel(api, provider, "gpt-5.5-codex");
 		const s = createActiveOptimizationState();
-		const model = mockModel(api, "openai-codex", "gpt-5.5-codex");
 		s.enabled = true;
 		s.postCompactionHintEnabled = true;
 		s.activeModule = optimizerModules.find((m) => m.supports(model));

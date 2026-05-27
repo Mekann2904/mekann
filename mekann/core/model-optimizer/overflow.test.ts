@@ -41,13 +41,18 @@ describe("optimizer module selection", () => {
 	});
 
 	it("selects openai module for openai-codex-responses", () => {
-		const mod = optimizerModules.find((m) => m.supports(mockModel("openai-codex-responses")));
+		const mod = optimizerModules.find((m) => m.supports(mockModel("openai-codex-responses", "openai-codex")));
 		expect(mod).toBe(openaiModule);
 	});
 
-	it("selects openai module for azure-openai-responses", () => {
-		const mod = optimizerModules.find((m) => m.supports(mockModel("azure-openai-responses")));
-		expect(mod).toBe(openaiModule);
+	it("does NOT select openai module for azure-openai-responses", () => {
+		const mod = optimizerModules.find((m) => m.supports(mockModel("azure-openai-responses", "azure-openai-responses")));
+		expect(mod).toBeUndefined();
+	});
+
+	it("does NOT select openai module for non-openai provider using openai-completions", () => {
+		const mod = optimizerModules.find((m) => m.supports(mockModel("openai-completions", "openrouter")));
+		expect(mod).toBeUndefined();
 	});
 
 	it("returns no module for non-target APIs", () => {
@@ -152,9 +157,9 @@ function driveOverflow(
 	return result;
 }
 
-function stateForApi(api: string): ActiveOptimizationState {
+function stateForApi(api: string, provider?: string): ActiveOptimizationState {
 	const s = createActiveOptimizationState();
-	const model = mockModel(api);
+	const model = mockModel(api, provider ?? (api === "openai-codex-responses" ? "openai-codex" : "openai"));
 	const mod = optimizerModules.find((m) => m.supports(model));
 	s.activeModule = mod;
 	s.provider = model.provider;
@@ -201,11 +206,14 @@ it("normalizes Codex exact overflow message with embedded newline", () => {
 	expect(r?.errorMessage).toMatch(/^context_length_exceeded:/);
 });
 
-// ---- azure-openai-responses ----
+// ---- azure-openai-responses (excluded) ----
 
-it("normalizes azure-openai-responses overflow", () => {
-	const r = driveOverflow(stateForApi("azure-openai-responses"), makeMsg("Error: prompt exceeds the context window of 128000 tokens"));
-	expect(r?.errorMessage).toMatch(/^context_length_exceeded:/);
+it("does NOT normalize azure-openai-responses overflow (not supported)", () => {
+	const s = stateForApi("azure-openai-responses");
+	s.activeModule = undefined;
+	s.enabled = false;
+	const r = driveOverflow(s, makeMsg("Error: prompt exceeds the context window of 128000 tokens"));
+	expect(r).toBeUndefined();
 });
 
 // ---- idempotency ----

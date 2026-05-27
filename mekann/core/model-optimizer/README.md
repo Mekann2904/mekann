@@ -35,12 +35,11 @@ model-optimizer/               ← root orchestrator
 
 ### openai
 
-| API protocol | Family | Overflow | Compaction hint |
-|---|---|---|---|
-| `openai-completions` | `openaiFamily` | ✓ | 汎用 hint |
-| `openai-responses` | `openaiFamily` | ✓ | 汎用 hint |
-| `azure-openai-responses` | `openaiFamily` | ✓ | 汎用 hint |
-| `openai-codex-responses` | `openaiCodex` | ✓ | コード特化 hint |
+| API protocol | Provider | Family | Overflow | Compaction hint |
+|---|---|---|---|---|
+| `openai-completions` | `openai` | `openaiFamily` | ✓ | 汎用 hint |
+| `openai-responses` | `openai` | `openaiFamily` | ✓ | 汎用 hint |
+| `openai-codex-responses` | `openai-codex` | `openaiCodex` | ✓ | コード特化 hint |
 
 ## Features
 

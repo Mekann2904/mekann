@@ -1,8 +1,8 @@
 /**
  * model-optimizer/openai — OpenAI-family optimizer module.
  *
- * Covers: openai-completions, openai-responses, azure-openai-responses,
- * openai-codex-responses.
+ * Covers: openai-completions, openai-responses, openai-codex-responses.
+ * Only models whose provider is "openai" or "openai-codex" are supported.
  */
 
 import type { Api, Model } from "@earendil-works/pi-ai";
@@ -12,14 +12,19 @@ import { buildOpenaiCompactionHint } from "./compaction.js";
 import { openaiOptimizerSettings } from "./settings.js";
 
 // ---------------------------------------------------------------------------
-// API → family key mapping
+// API × provider whitelist
 // ---------------------------------------------------------------------------
 
 const OPENAI_API_FAMILIES: Record<string, string> = {
 	"openai-completions": "openaiFamily",
 	"openai-responses": "openaiFamily",
-	"azure-openai-responses": "openaiFamily",
 	"openai-codex-responses": "openaiCodex",
+};
+
+const OPENAI_API_PROVIDERS: Record<string, string[]> = {
+	"openai-completions": ["openai"],
+	"openai-responses": ["openai"],
+	"openai-codex-responses": ["openai-codex"],
 };
 
 // ---------------------------------------------------------------------------
@@ -30,7 +35,9 @@ export const openaiModule: ProviderOptimizerModule = {
 	id: "openai",
 
 	supports(model: Model<Api>): boolean {
-		return model.api in OPENAI_API_FAMILIES;
+		if (!(model.api in OPENAI_API_FAMILIES)) return false;
+		const allowed = OPENAI_API_PROVIDERS[model.api];
+		return !!allowed && allowed.includes(model.provider);
 	},
 
 	familyKey(model: Model<Api>): string | undefined {
