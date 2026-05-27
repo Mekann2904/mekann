@@ -214,8 +214,6 @@ export interface PlanState {
 	modeBeforePlan?: Exclude<MekannMode, "plan" | "read_only" | "auto">;
 	/** Mode to restore after leaving auto mode. */
 	modeBeforeAuto?: Exclude<MekannMode, "plan" | "auto">;
-	/** Whether the current plan session emitted an implementation-ready summary. */
-	implementationReadyAvailable?: boolean;
 }
 
 export function createInitialState(modelConfig?: PlanModeConfig): PlanState {

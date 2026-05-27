@@ -65,21 +65,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		pi.appendEntry("plan-mode-blocked-tool", { at: Date.now(), mode: state.mode, ...extra });
 	}
 
-	function messageText(message: unknown): string {
-		if (!message || typeof message !== "object") return "";
-		const content = (message as { content?: unknown }).content;
-		if (typeof content === "string") return content;
-		if (!Array.isArray(content)) return "";
-		return content
-			.map((block) => block && typeof block === "object" && (block as { type?: unknown }).type === "text" && typeof (block as { text?: unknown }).text === "string" ? (block as { text: string }).text : "")
-			.filter(Boolean)
-			.join("\n");
-	}
-
-	function containsImplementationReadySummary(text: string): boolean {
-		return /(^|\n)\s*(?:\*\*)?Implementation-ready:(?:\*\*)?/i.test(text);
-	}
-
 	// ─── Status bar ────────────────────────────────────────────────────
 
 	/** Notify sandbox extension of current mode so it can render a combined status line. */
@@ -151,7 +136,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		// ── Enter the target mode ──
 		if (target === "plan") {
-			state.implementationReadyAvailable = false;
 			const planRef = state.modelConfig.models.plan;
 			if (planRef) await trySetModel(planRef, ctx, "Plan model");
 			applyThinking(state.modelConfig.thinking.plan);
@@ -212,7 +196,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			const fragments: PromptFragment[] = [];
 			if (state.mode === "main") {
 				fragments.push({
-					id: "plan-mode:main-mode-handoff",
+					id: "plan-mode:main-mode-implementation",
 					source: "plan-mode",
 					kind: "mode_policy",
 					stability: "stable",
@@ -220,7 +204,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 					priority: 205,
 					version: "v1",
 					cacheIntent: "prefer_cache",
-					content: loadPrompt("main-mode-handoff"),
+					content: loadPrompt("main-mode-implementation"),
 				});
 			}
 			if (state.mode === "plan") {
@@ -389,16 +373,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 	pi.registerFlag("auto", { description: "auto(autoresearch)モードで起動", type: "boolean", default: false });
 	pi.registerFlag("sub", { description: "sub mode で起動（subagent 並列活用）", type: "boolean", default: false });
-
-	pi.on("agent_end", async (event, ctx?: ExtensionContext) => {
-		if (state.mode !== "plan") return;
-		const messages = Array.isArray((event as { messages?: unknown }).messages) ? (event as { messages: unknown[] }).messages : [];
-		if (messages.some((message) => containsImplementationReadySummary(messageText(message)))) {
-			state.implementationReadyAvailable = true;
-			const transitionCtx = ctx ?? lastCtx;
-			if (transitionCtx) await transitionToMode(state.modeBeforePlan ?? "main", transitionCtx);
-		}
-	});
 
 	pi.on("session_start", async (_event, ctx) => {
 		lastCtx = ctx;

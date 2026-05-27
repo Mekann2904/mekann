@@ -98,11 +98,11 @@ describe("plan-mode extension", () => {
 		await mock._commands["plan"].handler("", createMockCtx());
 		let fragments = await collectPromptFragments({ cwd: "/tmp/project" });
 		expect(fragments.some((f) => f.id === "plan-mode:mode-policy" && f.content.includes("grill-with-docs"))).toBe(true);
-		expect(fragments.some((f) => f.id === "plan-mode:mode-policy" && f.content.includes("implementation-ready summary"))).toBe(true);
+		expect(fragments.some((f) => f.id === "plan-mode:mode-policy" && f.content.includes("Ask the user whether they want to proceed with implementation"))).toBe(true);
 
 		await mock._commands["plan"].handler("", createMockCtx());
 		fragments = await collectPromptFragments({ cwd: "/tmp/project" });
-		expect(fragments.some((f) => f.id === "plan-mode:main-mode-handoff" && f.content.includes("Main mode is the primary implementation mode"))).toBe(true);
+		expect(fragments.some((f) => f.id === "plan-mode:main-mode-implementation" && f.content.includes("Main mode is the primary implementation mode"))).toBe(true);
 		expect(mock.sendUserMessage).not.toHaveBeenCalled();
 
 		await mock._commands["read-only"].handler("", createMockCtx());
@@ -110,32 +110,12 @@ describe("plan-mode extension", () => {
 		expect(fragments.some((f) => f.id === "plan-mode:read-only-policy" && f.content.includes("Read-only mode"))).toBe(true);
 	});
 
-	it("exits plan mode after an implementation-ready summary without auto-starting implementation", async () => {
+	it("does not auto-exit or auto-start implementation from plan output", async () => {
 		const mock = createMockApi();
 		await loadExtension(mock);
 		await mock._hooks.session_start({}, createMockCtx());
 
 		await mock._commands["plan"].handler("", createMockCtx());
-		await mock._hooks.agent_end({
-			type: "agent_end",
-			messages: [
-				{ role: "assistant", content: [{ type: "text", text: "**Implementation-ready:**\n\n- **Objective:** test" }] },
-			],
-		}, createMockCtx());
-
-		const fragments = await collectPromptFragments({ cwd: "/tmp/project" });
-		expect(fragments.some((f) => f.id === "plan-mode:main-mode-handoff")).toBe(true);
-		expect(fragments.some((f) => f.id === "plan-mode:mode-policy")).toBe(false);
-		expect(mock.sendUserMessage).not.toHaveBeenCalled();
-	});
-
-	it("does not exit plan mode for ordinary plan output", async () => {
-		const mock = createMockApi();
-		await loadExtension(mock);
-		await mock._hooks.session_start({}, createMockCtx());
-
-		await mock._commands["plan"].handler("", createMockCtx());
-		await mock._hooks.agent_end({ messages: [{ role: "assistant", content: [{ type: "text", text: "Plan:\n- Do something later" }] }] }, createMockCtx());
 
 		const fragments = await collectPromptFragments({ cwd: "/tmp/project" });
 		expect(fragments.some((f) => f.id === "plan-mode:mode-policy")).toBe(true);
