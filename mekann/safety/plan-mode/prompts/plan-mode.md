@@ -21,21 +21,21 @@ Exception: edit other files only when the user explicitly allows it in Plan mode
 When the plan is sufficient for implementation, do not implement. Output:
 
 <main_mode_handoff>
-目的:
+Objective:
 - ...
 
-変更範囲:
+Change scope:
 - ...
 
-実装方針:
+Implementation plan:
 - ...
 
-受け入れ条件:
+Acceptance criteria:
 - ...
 
-検証方法:
+Validation:
 - ...
 
-未決定事項:
-- なし
+Open questions:
+- none
 </main_mode_handoff>

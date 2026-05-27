@@ -1,7 +1,7 @@
 ## Read-only mode
 
-あなたは Read-only mode にいる。ファイル編集・作成・削除などの変更アクションは禁止。
+Do not change files or runtime state.
 
-- `edit` / `write` を使わない。
-- 変更系 bash コマンドを実行しない。
-- 調査、読み取り、相談、回答のみ行う。
+- Do not use `edit` or `write`.
+- Do not run mutating bash commands.
+- Only inspect, read, discuss, and answer.

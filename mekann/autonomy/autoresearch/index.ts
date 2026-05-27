@@ -573,14 +573,14 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "autoresearch_evaluate_query",
 		label: "autoresearch evaluate query",
-		description: "ユーザの自然文クエリを評価し、autoresearch 実験契約に変換できるか判定します。",
-		promptSnippet: "自然文クエリの評価",
+		description: "Evaluate whether a natural-language request can become an autoresearch contract.",
+		promptSnippet: "Evaluate an autoresearch request.",
 		promptGuidelines: [
-			"autoresearch 開始前に、ユーザの目的が曖昧な場合に呼び出す。",
-			"評価結果に従って、必要に応じて metric や command の確認を行う。",
+			"Use before autoresearch when the user objective is ambiguous.",
+			"Ask for missing metric or command details when required.",
 		],
 		parameters: Type.Object({
-			query: Type.String({ description: "ユーザの自然文クエリ" }),
+			query: Type.String({ description: "User request." }),
 		}),
 
 		async execute(_tc, params, _sig, _ou, _ctx) {
@@ -591,35 +591,33 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	// ─── Tool: autoresearch_init ───────────────────────────────
 
 	const initParamDefs = Type.Object({
-		name: Type.String({ description: "実験セッションの名前" }),
-		metric_name: Type.String({ description: "主指標名(例: total_ms)" }),
-		metric_unit: Type.Optional(Type.String({ description: "単位(例: ms)" })),
-		direction: Type.Optional(StringEnum(["lower", "higher"] as const, { description: "デフォルト: lower" }) as any),
-		objective: Type.Optional(Type.String({ description: "実験目的" })),
-		benchmark_command: Type.Optional(Type.String({ description: "benchmark command (例: ./autoresearch.sh)" })),
-		metric_method: Type.Optional(StringEnum(["wall_clock", "stdout_metric", "report_file"] as const, { description: "測定方法。デフォルト: wall_clock" }) as any),
-		checks_mode: Type.Optional(StringEnum(["script", "command", "none"] as const, { description: "checks mode。デフォルト: script" }) as any),
-		checks_command: Type.Optional(Type.String({ description: "checks mode=command の場合のコマンド" })),
-		acceptance_mode: Type.Optional(StringEnum(["better_than_best", "improvement_threshold", "manual"] as const, { description: "acceptance mode。デフォルト: better_than_best" }) as any),
-		min_improvement: Type.Optional(Type.Number({ description: "最小改善率 (0.02 = 2%)。acceptance_mode=improvement_threshold で有効" })),
-		repeat: Type.Optional(Type.Number({ description: "測定繰り返し回数。デフォルト: 1" })),
-		aggregate: Type.Optional(StringEnum(["single", "median", "mean", "min", "max"] as const, { description: "集計方法。デフォルト: single" }) as any),
-		require_git: Type.Optional(Type.Boolean({ description: "git repo を必須にする。デフォルト: true" })),
-		require_clean_baseline: Type.Optional(Type.Boolean({ description: "clean working tree を必須にする。デフォルト: true" })),
-		allowed_paths: Type.Optional(Type.Array(Type.String(), { description: "許可パスパターンの配列" })),
-		excluded_paths: Type.Optional(Type.Array(Type.String(), { description: "除外パスパターンの配列" })),
+		name: Type.String({ description: "Experiment name." }),
+		metric_name: Type.String({ description: "Primary metric name, e.g. total_ms." }),
+		metric_unit: Type.Optional(Type.String({ description: "Metric unit, e.g. ms." })),
+		direction: Type.Optional(StringEnum(["lower", "higher"] as const, { description: "Default: lower." }) as any),
+		objective: Type.Optional(Type.String({ description: "Experiment objective." })),
+		benchmark_command: Type.Optional(Type.String({ description: "Benchmark command, e.g. ./autoresearch.sh." })),
+		metric_method: Type.Optional(StringEnum(["wall_clock", "stdout_metric", "report_file"] as const, { description: "Metric method. Default: wall_clock." }) as any),
+		checks_mode: Type.Optional(StringEnum(["script", "command", "none"] as const, { description: "Checks mode. Default: script." }) as any),
+		checks_command: Type.Optional(Type.String({ description: "Checks command when checks_mode=command." })),
+		acceptance_mode: Type.Optional(StringEnum(["better_than_best", "improvement_threshold", "manual"] as const, { description: "Acceptance mode. Default: better_than_best." }) as any),
+		min_improvement: Type.Optional(Type.Number({ description: "Minimum improvement ratio, e.g. 0.02." })),
+		repeat: Type.Optional(Type.Number({ description: "Measurement repeats. Default: 1." })),
+		aggregate: Type.Optional(StringEnum(["single", "median", "mean", "min", "max"] as const, { description: "Aggregation method. Default: single." }) as any),
+		require_git: Type.Optional(Type.Boolean({ description: "Require a git repo. Default: true." })),
+		require_clean_baseline: Type.Optional(Type.Boolean({ description: "Require a clean baseline. Default: true." })),
+		allowed_paths: Type.Optional(Type.Array(Type.String(), { description: "Allowed path patterns." })),
+		excluded_paths: Type.Optional(Type.Array(Type.String(), { description: "Excluded path patterns." })),
 	});
 
 	pi.registerTool({
 		name: "autoresearch_init",
 		label: "autoresearch init",
 		description:
-			"実験 plan を初期化します。plan 固有ファイルを .autoresearch/plans/<planId>/ に保存し、current state を .autoresearch/state.json に記録します。" +
-			" autoresearch.jsonl / autoresearch.contract.json は legacy compatibility 用です。" +
-			"\nP0: git repo 必須、clean baseline 必須(変更可能)。acceptance policy / safety policy も指定可能。",
-		promptSnippet: "実験セッションの初期化",
+			"Initialize an autoresearch plan and state under .autoresearch/.",
+		promptSnippet: "Initialize an autoresearch session.",
 		promptGuidelines: [
-			"セッションの最初に一度だけ使う。既存設定があれば再初期化しない。",
+			"Use once at session start; do not reinitialize existing config.",
 		],
 		parameters: initParamDefs as any,
 
@@ -634,17 +632,16 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		name: "autoresearch_run",
 		label: "autoresearch run",
 		description:
-			"シェルコマンドを実行し、実行時間と出力を記録。METRIC / RUN_ID / ARTIFACT_DIR 等を自動パース。" +
-			"autoresearch.checks.sh が存在する場合、benchmark 成功後に自動実行。",
-		promptSnippet: "コマンドを実行して結果を測定",
+			"Run a benchmark command, record output/time, parse METRIC/RUN_ID/ARTIFACT_DIR, and run checks when configured.",
+		promptSnippet: "Run and measure a benchmark command.",
 		promptGuidelines: [
-			"長時間コマンドでは timeout_seconds を明示指定。",
-			"終了しないコマンド(webui 等)は入れない。",
+			"Set timeout_seconds for long commands.",
+			"Do not run non-terminating commands such as web UIs.",
 		],
 		parameters: Type.Object({
-			command: Type.String({ description: "実行するコマンド" }),
-			timeout_seconds: Type.Optional(Type.Number({ description: "タイムアウト秒数(デフォルト: 600)" })),
-			checks_timeout_seconds: Type.Optional(Type.Number({ description: "checks のタイムアウト秒数(デフォルト: 300)" })),
+			command: Type.String({ description: "Command to run." }),
+			timeout_seconds: Type.Optional(Type.Number({ description: "Timeout seconds. Default: 600." })),
+			checks_timeout_seconds: Type.Optional(Type.Number({ description: "Checks timeout seconds. Default: 300." })),
 		}),
 
 		async execute(_tc, params, signal, _ou, ctx) {
@@ -657,20 +654,20 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "autoresearch_log",
 		label: "autoresearch log",
-		description: "実験結果を記録。keep は自動 commit、discard/crash/checks_failed は自動 revert。",
-		promptSnippet: "実験結果を記録",
+		description: "Record an experiment result; keep commits, discard/crash/checks_failed revert.",
+		promptSnippet: "Record an experiment result.",
 		promptGuidelines: [
-			"keep: timeout・exitCode!=0・checks失敗・metric不在は拒否。",
-			"runId に autoresearch_run の runId を渡す。旧 piRunId も互換 alias として受け付ける。",
+			"Do not keep timeouts, nonzero exits, failed checks, or missing metrics.",
+			"Pass the runId from autoresearch_run; piRunId is accepted as a legacy alias.",
 		],
 		parameters: Type.Object({
-			metric: Type.Number({ description: "主指標の値" }),
-			status: StringEnum(["keep", "discard", "crash", "checks_failed"] as const, { description: "結果ステータス" }) as any,
-			description: Type.String({ description: "実験内容の短い説明" }),
-			runId: Type.Optional(Type.String({ description: "autoresearch_run の runId (旧 piRunId 互換)" })),
-			commit: Type.Optional(Type.String({ description: "Git commit hash(省略時自動)" })),
-			metrics: Type.Optional(Type.Object({}, { additionalProperties: Type.Number(), description: "追加指標" })),
-			memo: Type.Optional(Type.String({ description: "メモ" })),
+			metric: Type.Number({ description: "Primary metric value." }),
+			status: StringEnum(["keep", "discard", "crash", "checks_failed"] as const, { description: "Result status." }) as any,
+			description: Type.String({ description: "Short experiment description." }),
+			runId: Type.Optional(Type.String({ description: "runId from autoresearch_run." })),
+			commit: Type.Optional(Type.String({ description: "Git commit hash; auto when omitted." })),
+			metrics: Type.Optional(Type.Object({}, { additionalProperties: Type.Number(), description: "Additional metrics." })),
+			memo: Type.Optional(Type.String({ description: "Memo." })),
 		}),
 
 		async execute(_tc, params, _sig, _ou, ctx) {
@@ -684,15 +681,14 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		name: "autoresearch_plan",
 		label: "autoresearch plan",
 		description:
-			"自然文 query から autoresearch.plan.md の draft を生成する。" +
-			"plan は Markdown + contract block 形式。baseline 測定はしない。repo は read-only 調査のみ。",
-		promptSnippet: "実験 plan の draft を生成",
+			"Draft autoresearch.plan.md from a natural-language query without running baseline measurement.",
+		promptSnippet: "Draft an autoresearch plan.",
 		promptGuidelines: [
-			"plan は人間と agent が議論するための editable document です。",
-			"contract block の言語指定は `autoresearch-contract jsonc` にしてください。",
+			"Treat the plan as an editable discussion document.",
+			"Use `autoresearch-contract jsonc` for the contract block language.",
 		],
 		parameters: Type.Object({
-			query: Type.String({ description: "ユーザの自然文クエリ" }),
+			query: Type.String({ description: "User request." }),
 		}),
 
 		async execute(_tc, params, _sig, _ou, ctx) {
@@ -706,15 +702,14 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		name: "autoresearch_approve",
 		label: "autoresearch approve",
 		description:
-			"plan の contract block を validate し、baseline を測り、" +
-			".autoresearch/current.contract.json と .autoresearch/current.lock.json を作成する。",
-		promptSnippet: "contract を承認して baseline を測定",
+			"Validate the plan contract, measure baseline, and write current contract/lock files.",
+		promptSnippet: "Approve a contract and measure baseline.",
 		promptGuidelines: [
-			"approve 前に plan を確認・編集してください。",
-			"approve 後は contract の変更ができません。",
+			"Review or edit the plan before approval.",
+			"Do not change the contract after approval.",
 		],
 		parameters: Type.Object({
-			plan_path: Type.Optional(Type.String({ description: "plan file path (default: autoresearch.plan.md)" })),
+			plan_path: Type.Optional(Type.String({ description: "Plan file path. Default: autoresearch.plan.md." })),
 		}),
 
 		async execute(_tc, params, signal, _ou, ctx) {
@@ -727,11 +722,11 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "autoresearch_candidate_escrow",
 		label: "autoresearch candidate escrow",
-		description: "pending subagent patch results を autoresearch candidate として escrow する。",
-		promptSnippet: "subagent patch result を candidate 化",
+		description: "Escrow pending subagent patch results as autoresearch candidates.",
+		promptSnippet: "Escrow subagent patch results as candidates.",
 		promptGuidelines: [
-			"autoresearch 中は apply_agent_results を使わず、この tool で candidate 化してください。",
-			"評価は autoresearch_apply_candidate → autoresearch_run_contract({ candidate_id }) の順で行ってください。",
+			"During autoresearch, use this tool instead of apply_agent_results.",
+			"Evaluate via autoresearch_apply_candidate, then autoresearch_run_contract({ candidate_id }).",
 		],
 		parameters: Type.Object({
 			source: Type.Optional(Type.Union([Type.Literal("pending"), Type.Literal("result_ids")])),
@@ -799,7 +794,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "autoresearch_scale_next",
 		label: "autoresearch scale next",
-		description: "Autoresearch test-time scaling の次の単一 supervisor action を取得します。通常は agent_end hook が自動注入します。",
+		description: "Get the next autoresearch scaling supervisor action.",
 		parameters: Type.Object({}),
 		async execute(_tc, _params, _signal, _ou, ctx) {
 			try {
@@ -815,7 +810,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "autoresearch_scale_complete_action",
 		label: "autoresearch scale complete action",
-		description: "Autoresearch test-time scaling の action 完了を記録し、events/state/summary を更新します。",
+		description: "Record completion of an autoresearch scaling action.",
 		parameters: Type.Object({
 			action_id: Type.String(),
 			status: Type.Optional(StringEnum(["ok", "failed"] as const) as any),
@@ -834,7 +829,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "autoresearch_scale_ingest",
 		label: "autoresearch scale ingest",
-		description: "現在の scale action に対応する tool/subagent/candidate 結果を自動取り込みし、events/state/summary を更新します。",
+		description: "Ingest tool/subagent/candidate results for the active scale action.",
 		parameters: Type.Object({}),
 		async execute(_tc, _params, _signal, _ou, ctx) {
 			try {
@@ -849,7 +844,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "autoresearch_scale_status",
 		label: "autoresearch scale status",
-		description: "Autoresearch test-time scaling の状態を表示します。",
+		description: "Show autoresearch scaling status.",
 		parameters: Type.Object({}),
 		async execute(_tc, _params, _signal, _ou, ctx) {
 			const text = scaleStatusText(ctx.cwd);
@@ -863,16 +858,14 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		name: "autoresearch_run_contract",
 		label: "autoresearch run contract",
 		description:
-			"contract に従って checks/benchmark/repeats/aggregate/acceptance を実行する。" +
-			"keep/discard/pause は agent ではなく evaluator が決める。" +
-			"benchmark command や metric は受け取らない。",
-		promptSnippet: "contract mode で実験を実行",
+			"Run checks, benchmark, repeats, aggregation, and acceptance from the approved contract.",
+		promptSnippet: "Run an approved contract evaluation.",
 		promptGuidelines: [
-			"contract mode では agent から status=keep/status=discard を受け取らない。",
-			"decision は必ず tool 側が返す。",
+			"Do not provide keep/discard status in contract mode.",
+			"Let the evaluator return the decision.",
 		],
 		parameters: Type.Object({
-			reason: Type.Optional(Type.String({ description: "この run の理由" })),
+			reason: Type.Optional(Type.String({ description: "Reason for this run." })),
 			iteration_label: Type.Optional(Type.String({ description: "iteration label" })),
 			candidate_id: Type.Optional(Type.String({ description: "autoresearch candidate id" })),
 		}),

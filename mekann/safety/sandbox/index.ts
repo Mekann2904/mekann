@@ -243,15 +243,14 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "request_elevation",
 		label: "サンドボックス権限昇格リクエスト",
-		description: "現在のサンドボックスポリシーでブロックされたコマンドを実行するため、一時的な権限昇格をリクエストする。ユーザーに理由とコマンドが表示され、明示的な承認が必要。サンドボックスが正当な操作をブロックした場合にのみ使用すること（例: 依存関係のインストール、システムパスへのアクセス）。",
-		promptSnippet: "ブロックされたコマンドの一時的なサンドボックスバイパスをリクエスト",
+		description: "Request user-approved temporary elevation for a legitimate command blocked by the active sandbox.",
+		promptSnippet: "Request temporary sandbox elevation for a blocked command.",
 		promptGuidelines: [
-			"request_elevation はサンドボックスがアクティブなモード（read_only または workspace_write）でコマンドがブロックされた場合にのみ使用する。",
-			"yolo モードではサンドボックスが無効なため、request_elevation は不要。直接 bash ツールを使用すること。",
-			"コマンドがサンドボックス外で実行されるべき理由を必ず説明すること。",
-			"危険または破壊的な操作には request_elevation を使用しないこと。",
+			"Use only when read_only or workspace_write sandbox blocks a necessary command.",
+			"Do not use in yolo mode; use bash directly.",
+			"Explain why the command must run outside the sandbox; never elevate dangerous or destructive commands.",
 		],
-		parameters: Type.Object({ command: Type.String({ description: "サンドボックス外で実行する必要があるコマンド" }), reason: Type.String({ description: "このコマンドがサンドボックスをバイパスする必要がある理由" }) }),
+		parameters: Type.Object({ command: Type.String({ description: "Command to run outside the sandbox." }), reason: Type.String({ description: "Why this command needs sandbox bypass." }) }),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const { command, reason } = params;
 			if (explicitlyDisabled) return { content: [{ type: "text", text: "サンドボックスは既に無効化されています (--no-sandbox)。bash ツールを直接使用してください。" }], details: {} };

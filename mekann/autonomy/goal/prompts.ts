@@ -62,11 +62,10 @@ export function continuationPrompt(goal: Goal): string {
     formatUsage(goal),
     ``,
     `Instructions:`,
-    `1. Assess whether the objective has been fully achieved.`,
-    `2. If the objective is genuinely complete, call update_goal with status="complete".`,
-    `3. If not complete, continue working on the remaining tasks.`,
-    `4. Do NOT mark the goal as complete unless all required work is done.`,
-    `5. If the token budget is nearly exhausted, avoid starting large new tasks.`,
+    `- If the objective is complete, call update_goal with status="complete".`,
+    `- Otherwise continue remaining work.`,
+    `- Do not mark complete while required work remains.`,
+    `- If the token budget is low, avoid large new tasks.`,
   ].join("\n");
 }
 
@@ -84,13 +83,10 @@ export function budgetLimitPrompt(goal: Goal): string {
     `Remaining: ${remaining}`,
     `Time used: ${formatDuration(goal.time_used_seconds)}`,
     ``,
-    `The token budget for this goal has been reached.`,
-    ``,
     `Instructions:`,
-    `1. If the objective is fully achieved, call update_goal with status="complete".`,
-    `2. If not complete, report the current progress to the user and wait for instructions.`,
-    `3. Do NOT start new significant work without user confirmation.`,
-    `4. Summarize what has been accomplished and what remains.`,
+    `- If the objective is complete, call update_goal with status="complete".`,
+    `- Otherwise summarize progress and remaining work, then wait.`,
+    `- Do not start significant new work without user confirmation.`,
   ].join("\n");
 }
 
@@ -106,10 +102,9 @@ export function objectiveUpdatedPrompt(previous: string, next: string): string {
     `New objective: ${escapeXmlText(next)}`,
     ``,
     `Instructions:`,
-    `1. The goal objective has been changed by the user.`,
-    `2. Follow the new objective from now on.`,
-    `3. Do not continue work based on the old objective.`,
-    `4. If the new objective invalidates in-progress work, pivot accordingly.`,
+    `- Follow the new objective now.`,
+    `- Do not continue old-objective work.`,
+    `- Pivot if in-progress work is invalidated.`,
   ].join("\n");
 }
 
@@ -121,10 +116,10 @@ export function renderGoalPolicy(): string {
   return [
     "[Goal Policy]",
     "",
-    "- Continue to respect an active goal while answering the user.",
-    "- If the goal is fully achieved and no required work remains, call update_goal with status=\"complete\".",
-    "- Do not mark the goal complete merely because the budget is low or work is paused.",
-    "- Do not pause, resume, clear, or budget-limit the goal through model tools unless explicitly instructed by the user or goal runtime.",
+    "- Respect the active goal while answering the user.",
+    "- If the goal is complete, call update_goal with status=\"complete\".",
+    "- Do not mark complete because budget is low or work is paused.",
+    "- Do not pause, resume, clear, or budget-limit unless explicitly instructed.",
   ].join("\n");
 }
 
