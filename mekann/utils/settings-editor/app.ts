@@ -447,6 +447,7 @@ export function SettingsEditorApp({
 	const [drafts, setDrafts] = useState<Record<string, DraftChange>>({});
 	const [message, setMessage] = useState("Welcome to Mekann Settings Editor");
 	const [applying, setApplying] = useState(false);
+	const lastSettingClickRef = useRef<{ index: number; at: number } | null>(null);
 
 	const items = useMemo(() => effective, [effective]);
 	const groups = useMemo(() => buildFeatureGroups(items), [items]);
@@ -465,6 +466,40 @@ export function SettingsEditorApp({
 		},
 		[scope],
 	);
+
+	const shownValueFor = useCallback((item: EffectiveSetting): string => {
+		return drafts[itemId(item)]?.raw ?? valueText(item.effectiveValue);
+	}, [drafts]);
+
+	const activateSetting = useCallback((item: EffectiveSetting) => {
+		const shown = shownValueFor(item);
+		if (item.schema.type === "modelRef") {
+			setModelSelected(0); setMode("models"); setMessage("pick a model");
+		} else if (item.schema.type === "enum") {
+			const values = item.feature === "plan-mode" && item.key.startsWith("thinking.") ? supportedThinking(models, item, items) : (item.schema.enumValues ?? []);
+			const idx = Math.max(0, values.indexOf(shown));
+			stage(item, values[(idx + 1) % values.length] ?? "");
+		} else if (item.schema.type === "boolean") {
+			const draft = drafts[itemId(item)]?.raw;
+			const cur = draft === undefined ? item.effectiveValue : /^(true|1|yes|on)$/i.test(draft);
+			stage(item, String(!cur));
+		} else {
+			setBuffer(shown === "(unset)" ? "" : shown); setMode("edit"); setMessage(`editing ${itemId(item)}`);
+		}
+	}, [drafts, items, models, shownValueFor, stage]);
+
+	const selectSettingByMouse = useCallback((index: number) => {
+		const now = Date.now();
+		const last = lastSettingClickRef.current;
+		setSelected(index);
+		if (last && last.index === index && now - last.at <= 400) {
+			lastSettingClickRef.current = null;
+			const item = items[index];
+			if (item) activateSetting(item);
+			return;
+		}
+		lastSettingClickRef.current = { index, at: now };
+	}, [activateSetting, items]);
 
 	// ─── Keyboard ──────────────────────────────────────────────
 
@@ -499,18 +534,7 @@ export function SettingsEditorApp({
 		else if (key.name === "d") setMode(mode === "diff" ? "list" : "diff");
 		// Enter: context-sensitive action based on setting type
 		else if ((key.name === "return" || key.name === "enter") && current) {
-			if (current.schema.type === "modelRef") {
-				setModelSelected(0); setMode("models"); setMessage("pick a model");
-			} else if (current.schema.type === "enum") {
-				const values = current.feature === "plan-mode" && current.key.startsWith("thinking.") ? supportedThinking(models, current, items) : (current.schema.enumValues ?? []);
-				const idx = Math.max(0, values.indexOf(shownValue));
-				stage(current, values[(idx + 1) % values.length] ?? "");
-			} else if (current.schema.type === "boolean") {
-				const cur = current.effectiveValue;
-				stage(current, String(!cur));
-			} else {
-				setBuffer(shownValue === "(unset)" ? "" : shownValue); setMode("edit"); setMessage(`editing ${itemId(current)}`);
-			}
+			activateSetting(current);
 		} else if (key.name === "a" && !applying) {
 			const changes = Object.values(drafts);
 			if (changes.length === 0) { setMessage("no drafts to apply"); return; }
@@ -541,7 +565,7 @@ export function SettingsEditorApp({
 				hasDraft: !!draft,
 				draftValue: draft?.raw ?? "",
 				draftScope: draft?.scope ?? "",
-				onSelect: setSelected,
+				onSelect: selectSettingByMouse,
 			}));
 		}
 	}
