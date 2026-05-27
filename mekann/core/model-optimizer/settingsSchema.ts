@@ -70,6 +70,18 @@ export const modelOptimizerSettingsSchema: FeatureSettingsSchema = {
 			"使用量とレイテンシの session-local 計測を有効にする。",
 		),
 		bool(
+			"compactionObserver.enabled",
+			"Features",
+			true,
+			"compaction lifecycle の観測を有効にする。",
+		),
+		bool(
+			"postCompactionHint.enabled",
+			"Features",
+			true,
+			"compaction 後の次 turn で provider-aware continuation hint を注入する。",
+		),
+		bool(
 			"debugLogging",
 			"Features",
 			false,

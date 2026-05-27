@@ -49,7 +49,8 @@ function showStatus(
 		`Profile:       ${state.profile?.displayName ?? "(none)"}`,
 		`Overflow recv: ${state.overflowRecoveryEnabled ? "on" : "off"}`,
 		`Metrics:       ${state.metricsEnabled ? "on" : "off"}`,
-		`Compaction:    reserved (future)`,
+		`Compaction obs: ${state.compactionObserverEnabled ? "on" : "off"}`,
+		`Post-comp hint: ${state.postCompactionHintEnabled ? "on" : "off"}`,
 		`Debug log:     ${state.enableDebugLogging ? "on" : "off"}`,
 	];
 	ctx.ui.notify(lines.join("\n"), "info");
@@ -73,6 +74,8 @@ function showStats(
 		`Total tokens:       ${totalTokens.toLocaleString()} (in ${m.totalInputTokens.toLocaleString()} / out ${m.totalOutputTokens.toLocaleString()})`,
 		`Avg latency:        ${avgLatency}`,
 		`Overflow recovered: ${m.overflowRecoveries}`,
+		`Compactions:       ${m.compactionsObserved} observed / ${m.compactionsCompleted} completed`,
+		`Post-comp hints:   ${m.postCompactionHintsInjected}`,
 	];
 
 	// Per-provider breakdown

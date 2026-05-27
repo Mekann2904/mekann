@@ -25,6 +25,8 @@ export function createActiveOptimizationState(): ActiveOptimizationState {
 		featureEnabled: true,
 		overflowRecoveryEnabled: true,
 		metricsEnabled: true,
+		compactionObserverEnabled: true,
+		postCompactionHintEnabled: true,
 		enableDebugLogging: false,
 		providerEnabled: {},
 		metrics: createMetrics(),

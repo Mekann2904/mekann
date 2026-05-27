@@ -43,6 +43,15 @@ export interface ProviderMetrics {
 	totalOutputTokens: number;
 }
 
+/** Snapshot recorded at the start of a compaction. */
+export interface CompactionRecord {
+	provider?: string;
+	modelId?: string;
+	tokensBefore?: number;
+	firstKeptEntryId?: string;
+	at: number;
+}
+
 /** Session-local metrics collected by the optimizer. */
 export interface ModelOptimizerMetrics {
 	requestsObserved: number;
@@ -50,6 +59,10 @@ export interface ModelOptimizerMetrics {
 	totalInputTokens: number;
 	totalOutputTokens: number;
 	overflowRecoveries: number;
+	compactionsObserved: number;
+	compactionsCompleted: number;
+	postCompactionHintsInjected: number;
+	lastCompaction?: CompactionRecord;
 	byProvider: Record<string, ProviderMetrics>;
 	byModel: Record<string, ModelMetrics>;
 }
@@ -62,6 +75,9 @@ export function createMetrics(): ModelOptimizerMetrics {
 		totalInputTokens: 0,
 		totalOutputTokens: 0,
 		overflowRecoveries: 0,
+		compactionsObserved: 0,
+		compactionsCompleted: 0,
+		postCompactionHintsInjected: 0,
 		byProvider: {},
 		byModel: {},
 	};
@@ -89,6 +105,16 @@ export interface ActiveOptimizationState {
 	enableDebugLogging: boolean;
 	/** Per-provider enable flags from settings (openai.enabled / openaiCodex.enabled). */
 	providerEnabled: Record<string, boolean>;
+	/** Whether compaction observer is enabled via settings. */
+	compactionObserverEnabled: boolean;
+	/** Whether post-compaction hint injection is enabled via settings. */
+	postCompactionHintEnabled: boolean;
 	/** Session-local metrics accumulator. */
 	metrics: ModelOptimizerMetrics;
+	/** Pending post-compaction hint. Set by session_compact, consumed by before_agent_start. */
+	pendingPostCompactionHint?: {
+		provider: OptimizedProviderId;
+		modelId?: string;
+		createdAt: number;
+	};
 }
