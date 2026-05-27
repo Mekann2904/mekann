@@ -11,6 +11,11 @@ That left one lifecycle gap: Main mode may finish one implementation slice while
 ## Decision
 Main mode should treat implementation completion as another checkpoint, not always as the end of the whole workflow.
 
+Plan/Main transitions may be initiated by LLM-callable tools rather than only by slash commands:
+
+- `proceed_to_main` exits Plan mode when the user clearly approves implementation in natural language.
+- `return_to_plan` returns from Main mode when implementation reveals that planning must be repaired.
+
 When Main mode completes work:
 
 - If the whole requested flow is complete, report what changed, report validation, and return to the neutral next-instruction state.
@@ -25,3 +30,5 @@ When Main mode completes work:
 
 ## Consequences
 Main mode can participate in a larger skill chain without pretending every implementation completion is final. Multi-slice work remains efficient because planned, unblocked slices can continue through TDD without unnecessary Plan mode churn. At the same time, newly discovered uncertainty routes back to Plan mode so planning-oriented skills can repair the destination or journey before more code is changed.
+
+Natural-language workflow can now avoid the old deadlock where Plan mode asked for implementation approval but had no LLM-callable way to leave Plan mode after the user said yes.

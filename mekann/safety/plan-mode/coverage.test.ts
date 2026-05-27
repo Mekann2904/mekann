@@ -48,6 +48,7 @@ interface MockExtensionContext {
 function createMockApi(options?: { setModelResult?: boolean }) {
 	const hooks: Record<string, Function> = {};
 	const commands: Record<string, { handler: Function }> = {};
+	const tools: Record<string, any> = {};
 	let flags: Record<string, unknown> = {};
 	let activeTools: string[] = ["read", "bash", "edit", "write"];
 	const sentMessages: string[] = [];
@@ -57,6 +58,7 @@ function createMockApi(options?: { setModelResult?: boolean }) {
 
 	const api = {
 		registerFlag: vi.fn(),
+		registerTool: vi.fn((tool: any) => { tools[tool.name] = tool; }),
 		registerCommand: vi.fn((name: string, config: { handler: Function }) => {
 			commands[name] = config;
 		}),
@@ -76,6 +78,7 @@ function createMockApi(options?: { setModelResult?: boolean }) {
 		events: { emit: vi.fn(), on: vi.fn((event: string, handler: Function) => { hooks[`event:${event}`] = handler; }) },
 		get _hooks() { return hooks; },
 		get _commands() { return commands; },
+		get _tools() { return tools; },
 		set _flags(f: Record<string, unknown>) { flags = f; },
 		get _activeTools() { return activeTools; },
 		get _sentMessages() { return sentMessages; },

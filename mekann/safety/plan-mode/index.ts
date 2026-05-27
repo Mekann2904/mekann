@@ -5,6 +5,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
 import { Key } from "@earendil-works/pi-tui";
 import { createInitialState, isReadOnlyMode, isPlanReadOnlyCommandIntent, classifyCommandIntent, buildBlockReason, loadPrompt, hashContent, READ_ONLY_MODE_TOOLS, sameModelRef, loadModelConfig, updateConfigField, type ModelRef, type ThinkingLevel, type MekannMode, type ModeName } from "./utils.js";
 import { createModelManager, registerModeModelPersistence } from "../../core/model-manager.js";
@@ -18,6 +19,10 @@ import { registerPromptProvider, type PromptFragment } from "../../core/prompt-c
 
 type PlanPromptStrategy = "cache_friendly" | "token_minimal";
 let PLAN_PROMPT_STRATEGY: PlanPromptStrategy = "token_minimal";
+
+function stringEnum(values: readonly string[], description: string) {
+	return Type.Union(values.map((value) => Type.Literal(value)), { description });
+}
 
 export default function planModeExtension(pi: ExtensionAPI): void {
 	let configPath: string | undefined;
@@ -177,6 +182,57 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (state.mode === "read_only") await transitionToMode("main", ctx);
 		else await transitionToMode("read_only", ctx);
 	}
+
+	// ─── LLM-callable mode transition tools ─────────────────────────
+
+	pi.registerTool({
+		name: "proceed_to_main",
+		label: "Proceed to Main mode",
+		description: "Exit Plan mode and continue in Main mode after the user clearly approves implementation in natural language.",
+		promptSnippet: "Exit Plan mode after clear user approval and continue implementation in Main mode.",
+		promptGuidelines: [
+			"Use proceed_to_main only when Plan mode is active and the user clearly approves implementation in natural language.",
+			"Do not use proceed_to_main to skip unresolved planning questions.",
+		],
+		parameters: Type.Object({
+			reason: Type.String({ description: "Why Main mode should start now." }),
+			implementationIntent: Type.String({ description: "What Main mode should implement from the completed plan." }),
+			suggestedSkill: Type.Optional(stringEnum(["tdd"], "Suggested implementation feedback loop.")),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			if (state.mode !== "plan") {
+				return { content: [{ type: "text" as const, text: "[ERROR] proceed_to_main can only be used from Plan mode." }], details: { ok: false, error: "not_in_plan_mode", mode: state.mode } };
+			}
+			await transitionToMode("main", ctx);
+			pi.appendEntry("plan-mode-transition", { at: Date.now(), tool: "proceed_to_main", from: "plan", to: "main", reason: params.reason, implementationIntent: params.implementationIntent, suggestedSkill: params.suggestedSkill });
+			return { content: [{ type: "text" as const, text: "Plan mode exited. Main mode is active; implement the approved plan." }], details: { ok: true, from: "plan", to: "main", implementationIntent: params.implementationIntent, suggestedSkill: params.suggestedSkill ?? null } };
+		},
+	});
+
+	pi.registerTool({
+		name: "return_to_plan",
+		label: "Return to Plan mode",
+		description: "Return from Main mode to Plan mode when implementation reveals that the plan needs repair or more decisions.",
+		promptSnippet: "Return to Plan mode when implementation reveals a planning gap, architecture risk, UI uncertainty, unresolved bug cause, or high-impact decision.",
+		promptGuidelines: [
+			"Use return_to_plan when Main mode discovers that planning must be repaired before more code changes.",
+			"Do not use return_to_plan merely to repeat planning that to-issues already completed for a clear next slice.",
+		],
+		parameters: Type.Object({
+			reason: Type.String({ description: "Why planning must resume now." }),
+			planningNeed: stringEnum(["spec_gap", "architecture_risk", "ui_uncertainty", "bug_cause_unresolved", "high_impact_decision", "next_slice_needs_planning"], "The planning need discovered during implementation."),
+			suggestedSkill: stringEnum(["grill-with-docs", "to-prd", "to-issues", "improve-codebase-architecture", "prototype", "diagnose"], "Smallest useful planning skill to resume with."),
+			summary: Type.Optional(Type.String({ description: "Short context for the planning turn." })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			if (state.mode !== "main") {
+				return { content: [{ type: "text" as const, text: "[ERROR] return_to_plan can only be used from Main mode." }], details: { ok: false, error: "not_in_main_mode", mode: state.mode } };
+			}
+			await transitionToMode("plan", ctx);
+			pi.appendEntry("plan-mode-transition", { at: Date.now(), tool: "return_to_plan", from: "main", to: "plan", reason: params.reason, planningNeed: params.planningNeed, suggestedSkill: params.suggestedSkill, summary: params.summary });
+			return { content: [{ type: "text" as const, text: `Returned to Plan mode. Resume with ${params.suggestedSkill}.` }], details: { ok: true, from: "main", to: "plan", planningNeed: params.planningNeed, suggestedSkill: params.suggestedSkill, summary: params.summary ?? null } };
+		},
+	});
 
 	/** Toggle sub mode on/off. */
 	async function toggleSubMode(ctx: ExtensionContext): Promise<void> {

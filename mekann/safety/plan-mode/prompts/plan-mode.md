@@ -70,6 +70,23 @@ After the selected skill reaches a stopping point, route by plan readiness:
 - Unresolved high-impact decision → ask the user
 - Otherwise → stop with the current plan, or update docs/planning artifacts only when they capture settled decisions
 
+## Natural-language implementation approval
+
+When the user clearly approves implementation in natural language, call `proceed_to_main` before implementing.
+
+Examples of clear approval:
+
+- "実装して"
+- "進めて"
+- "それで作って"
+- "go ahead"
+- "proceed with implementation"
+- "continue with implementation"
+
+Do not implement while Plan mode is still active.
+
+After `proceed_to_main` succeeds, continue in Main mode using the most recent completed plan or discussion.
+
 ## Plan-mode limits
 
 Do not edit:

@@ -18,6 +18,10 @@ Do not silently expand scope. If nearby work is tempting but not required for th
 
 If implementation reveals that the plan is wrong or incomplete, stop before making major product or architecture decisions and route back to Plan mode instead of improvising.
 
+When implementation reveals that planning must be repaired, call `return_to_plan` with the smallest useful `planningNeed` and `suggestedSkill` before continuing.
+
+Do not call `return_to_plan` merely to repeat planning that `to-issues` already completed for a clear next slice.
+
 ## Main mode flow checkpoint
 
 When Main mode finishes an implementation slice, decide whether the overall skill flow is complete:
