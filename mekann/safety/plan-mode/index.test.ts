@@ -98,10 +98,48 @@ describe("plan-mode extension", () => {
 		await mock._commands["plan"].handler("", createMockCtx());
 		let fragments = await collectPromptFragments({ cwd: "/tmp/project" });
 		expect(fragments.some((f) => f.id === "plan-mode:mode-policy" && f.content.includes("grill-with-docs"))).toBe(true);
+		expect(fragments.some((f) => f.id === "plan-mode:mode-policy" && f.content.includes("<main_mode_handoff>"))).toBe(true);
 
 		await mock._commands["plan"].handler("", createMockCtx());
+		fragments = await collectPromptFragments({ cwd: "/tmp/project" });
+		expect(fragments.some((f) => f.id === "plan-mode:main-mode-handoff" && f.content.includes("current implementation request"))).toBe(true);
+		expect(mock.sendUserMessage).not.toHaveBeenCalled();
+
 		await mock._commands["read-only"].handler("", createMockCtx());
 		fragments = await collectPromptFragments({ cwd: "/tmp/project" });
 		expect(fragments.some((f) => f.id === "plan-mode:read-only-policy" && f.content.includes("Read-only mode"))).toBe(true);
+	});
+
+	it("sends main-mode handoff only after plan mode emitted a handoff block", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		await mock._commands["plan"].handler("", createMockCtx());
+		await mock._hooks.agent_end({
+			type: "agent_end",
+			messages: [
+				{ role: "assistant", content: [{ type: "text", text: "<main_mode_handoff>\n目的: test\n</main_mode_handoff>" }] },
+			],
+		}, createMockCtx());
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		expect(mock.sendUserMessage).toHaveBeenCalledWith(expect.stringContaining("Follow the latest `<main_mode_handoff>`"));
+	});
+
+	it("does not reuse an old handoff after entering plan mode again", async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		await mock._commands["plan"].handler("", createMockCtx());
+		await mock._hooks.agent_end({ messages: [{ role: "assistant", content: [{ type: "text", text: "<main_mode_handoff>x</main_mode_handoff>" }] }] }, createMockCtx());
+		await mock._commands["plan"].handler("", createMockCtx());
+		mock.sendUserMessage.mockClear();
+
+		await mock._commands["plan"].handler("", createMockCtx());
+		await mock._commands["plan"].handler("", createMockCtx());
+
+		expect(mock.sendUserMessage).not.toHaveBeenCalled();
 	});
 });

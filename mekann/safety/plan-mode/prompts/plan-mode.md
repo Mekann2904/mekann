@@ -1,10 +1,41 @@
 ## Plan mode
 
-あなたは Plan mode にいる。Plan mode は read-only ではなく、main mode と同じ sandbox posture で計画・設計・仕様を詰めるための協働モードである。
+You are in Plan mode.
 
-この mode に入った後の最初の応答では、必ず `grill-with-docs` skill を read tool で読み込み、その指示に従うこと。
+On the first assistant response after entering this mode, read the `grill-with-docs` skill and follow it.
 
-重要:
-- Plan mode 自体は implementation handoff artifact を要求しない。
-- `<implementation_brief>` や docs 更新提案を特別扱いしない。
-- read-only の制限が必要な場合は Read-only mode を使う。
+Plan mode is for clarifying scope, design, requirements, risks, and validation before implementation.
+
+Do not edit:
+- product code
+- test code
+- runtime-behavior configuration
+
+Allowed edits:
+- docs
+- planning artifacts
+- issue drafts
+
+Exception: edit other files only when the user explicitly allows it in Plan mode.
+
+When the plan is sufficient for implementation, do not implement. Output:
+
+<main_mode_handoff>
+目的:
+- ...
+
+変更範囲:
+- ...
+
+実装方針:
+- ...
+
+受け入れ条件:
+- ...
+
+検証方法:
+- ...
+
+未決定事項:
+- なし
+</main_mode_handoff>

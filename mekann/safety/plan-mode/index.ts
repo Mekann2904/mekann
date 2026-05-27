@@ -66,6 +66,25 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		pi.appendEntry("plan-mode-blocked-tool", { at: Date.now(), mode: state.mode, ...extra });
 	}
 
+	function triggerMainModeHandoffTurn(): void {
+		pi.sendUserMessage("Follow the latest `<main_mode_handoff>` in the conversation and start implementing it. If it has unresolved items that require user input, ask before editing.");
+	}
+
+	function messageText(message: unknown): string {
+		if (!message || typeof message !== "object") return "";
+		const content = (message as { content?: unknown }).content;
+		if (typeof content === "string") return content;
+		if (!Array.isArray(content)) return "";
+		return content
+			.map((block) => block && typeof block === "object" && (block as { type?: unknown }).type === "text" && typeof (block as { text?: unknown }).text === "string" ? (block as { text: string }).text : "")
+			.filter(Boolean)
+			.join("\n");
+	}
+
+	function containsMainModeHandoff(text: string): boolean {
+		return /<main_mode_handoff\b[\s\S]*?<\/main_mode_handoff>/i.test(text);
+	}
+
 	// ─── Status bar ────────────────────────────────────────────────────
 
 	/** Notify sandbox extension of current mode so it can render a combined status line. */
@@ -140,6 +159,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		// ── Enter the target mode ──
 		if (target === "plan") {
+			state.mainModeHandoffAvailable = false;
 			const planRef = state.modelConfig.models.plan;
 			if (planRef) await trySetModel(planRef, ctx, "Plan model");
 			applyThinking(state.modelConfig.thinking.plan);
@@ -165,6 +185,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			// target === "main"
 			await restoreMainModelAndThinking(ctx);
 			Object.assign(state, { savedMainModel: undefined, savedMainThinking: undefined });
+			if (previous === "plan" && state.mainModeHandoffAvailable) triggerMainModeHandoffTurn();
 		}
 
 		if (previous !== "plan") updateModeStatus(ctx);
@@ -198,6 +219,19 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		id: "plan-mode",
 		getFragments() {
 			const fragments: PromptFragment[] = [];
+			if (state.mode === "main") {
+				fragments.push({
+					id: "plan-mode:main-mode-handoff",
+					source: "plan-mode",
+					kind: "mode_policy",
+					stability: "stable",
+					scope: "mode",
+					priority: 205,
+					version: "v1",
+					cacheIntent: "prefer_cache",
+					content: loadPrompt("main-mode-handoff"),
+				});
+			}
 			if (state.mode === "plan") {
 				const fullPrompt = loadPrompt("plan-mode");
 				if (PLAN_PROMPT_STRATEGY === "token_minimal") {
@@ -364,6 +398,14 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 	pi.registerFlag("auto", { description: "auto(autoresearch)モードで起動", type: "boolean", default: false });
 	pi.registerFlag("sub", { description: "sub mode で起動（subagent 並列活用）", type: "boolean", default: false });
+
+	pi.on("agent_end", async (event) => {
+		if (state.mode !== "plan") return;
+		const messages = Array.isArray((event as { messages?: unknown }).messages) ? (event as { messages: unknown[] }).messages : [];
+		if (messages.some((message) => containsMainModeHandoff(messageText(message)))) {
+			state.mainModeHandoffAvailable = true;
+		}
+	});
 
 	pi.on("session_start", async (_event, ctx) => {
 		lastCtx = ctx;
