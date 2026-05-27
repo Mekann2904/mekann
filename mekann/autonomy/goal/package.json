@@ -1,7 +1,7 @@
 {
   "name": "goal",
   "version": "1.0.0",
-  "description": "Persistent thread-local goals with idle continuation, token/time budget tracking, and plan-mode integration.",
+  "description": "Persistent thread-local goals with idle continuation, token/time budget tracking.",
   "main": "index.ts",
   "scripts": {
     "test": "vitest run"

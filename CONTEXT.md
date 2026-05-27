@@ -11,7 +11,7 @@ A grouped set of pi extensions loaded together by the `mekann` wrapper. A suite 
 _Avoid_: plugin bundle, package group, feature boundary
 
 **Feature**:
-A responsibility-bearing capability inside a Pi extension suite, such as `sandbox`, `plan-mode`, `subagent`, `autoresearch`, `output-gate`, or `context-ledger`. Features are the preferred unit for design discussion when behavior or ownership is being clarified.
+A responsibility-bearing capability inside a Pi extension suite, such as `sandbox`, `modes`, `subagent`, `autoresearch`, `output-gate`, or `context-ledger`. Features are the preferred unit for design discussion when behavior or ownership is being clarified.
 _Avoid_: module, package, suite
 
 **Implementation delegation**:
@@ -92,7 +92,7 @@ _Avoid_: Pi settings editor, settings.json editor, config file browser, Pi TUI s
 
 **Mekann settings file**:
 A Mekann-owned configuration file for persisted Mekann feature settings, with global and workspace variants such as `~/.pi/agent/mekann.json` and `.pi/mekann.json`. It is separate from Pi's `settings.json`, which owns Pi-level configuration such as extension loading.
-_Avoid_: Pi settings.json, plan-mode.json, extension settings file
+_Avoid_: Pi settings.json, extension settings file
 
 **User launch preference**:
 A user-configurable preference for how an eligible terminal-oriented action should open, such as pass-through or split-longer-side. User-facing launch preference names are terminal-emulator-independent; terminal adapters translate them into Kitty, iTerm2, or other emulator-specific commands. User launch preferences apply only inside the placements and safety constraints supported by the feature.
@@ -349,19 +349,19 @@ _Avoid_: patch merge, result execution
 ### Safety
 
 **Plan mode**:
-A UX-level collaboration mode for plan formation, design discussion, and specification sharpening. Plan mode is not inherently read-only and should use the same sandbox posture as the mode it was entered from unless the user separately chooses a read-only mode. Plan mode should behave like main mode with planning-oriented guidance, rather than owning a separate implementation handoff workflow.
-_Avoid_: sandbox, execution guard, todo list, read-only mode, implementation handoff mode
+Deprecated. Removed in favour of skills-based planning workflows and the read-only collaboration mode.
+_Avoid_: plan mode, implementation handoff mode
 
 **Read-only mode**:
-A collaboration mode for investigation and consultation where file changes are not allowed. Read-only mode is the user-visible mode name for the old read-only planning posture; it is separate from Plan mode and may reuse the existing read-only command intent checks and sandbox profile.
-_Avoid_: plan mode, implementation handoff mode, sandbox profile
+A collaboration mode for investigation and consultation where file changes are not allowed. Read-only mode may reuse the existing read-only command intent checks and sandbox profile.
+_Avoid_: implementation handoff mode, sandbox profile
 
 **Sub mode**:
 A collaboration mode that behaves like main mode while biasing the agent toward proactive subagent delegation and parallel execution for independent investigation, review, exploration, or editing work. Sub mode has its own model and thinking preferences, but it is not a safety boundary and does not change workspace permissions.
-_Avoid_: subagent, auto mode, plan mode, sandbox profile
+_Avoid_: subagent, auto mode, sandbox profile
 
 **Sandbox**:
-A safety feature that enforces execution restrictions for the `bash` tool, primarily through OS-level policy when enabled. Sandbox is the hard runtime boundary for command execution, while collaboration modes such as Plan mode and Read-only mode describe user-facing work posture.
+A safety feature that enforces execution restrictions for the `bash` tool, primarily through OS-level policy when enabled. Sandbox is the hard runtime boundary for command execution, while collaboration modes such as Read-only mode describe user-facing work posture.
 _Avoid_: plan mode, read-only mode, agent-wide security boundary
 
 **Safety guardrail**:
@@ -413,7 +413,7 @@ The `codex-shared` module inside the utils suite, containing Codex API client pr
 _Avoid_: codex-core, codex-base
 
 **Codex shared dependency rule**:
-`codex-shared` must not depend on Pi tool framework types or on `codex-limits` / `codex-web-search`. Pi-context–aware auth resolution belongs in each tool module or a thin adapter, not in `codex-shared`.
+`codex-shared` must not depend on Pi tool framework types or on `codex-limits` / `codex-web-search`. Pi-context-aware auth resolution belongs in each tool module or a thin adapter, not in `codex-shared`.
 
 ### Development workflow
 
@@ -423,14 +423,11 @@ _Avoid_: upstream skill mirror, vendored dependency, build-time reference
 
 ## Example dialogue
 
-Developer: “Should this be a goal or autoresearch?”
-Domain expert: “Use a goal when the agent should keep pursuing a general objective. Use autoresearch when the task needs higher-autonomy research, repeated candidate generation, and disciplined evaluation.”
+Developer: "Should this be a goal or autoresearch?"
+Domain expert: "Use a goal when the agent should keep pursuing a general objective. Use autoresearch when the task needs higher-autonomy research, repeated candidate generation, and disciplined evaluation."
 
-Developer: “Why not just keep all investigation details in the parent agent?”
-Domain expert: “That pollutes the context window. Use subagent delegation with minimal sufficient context for isolated exploration or fresh review, then bring back a structured subagent result.”
+Developer: "Why not just keep all investigation details in the parent agent?"
+Domain expert: "That pollutes the context window. Use subagent delegation with minimal sufficient context for isolated exploration or fresh review, then bring back a structured subagent result."
 
-Developer: “Can this subagent result become an autoresearch candidate?”
-Domain expert: “Only after a trust transition. A patch proposal must pass PatchProposalPolicy, and candidate escrow should preserve it for evaluation without applying it to the main worktree.”
-
-Developer: “Is plan mode enough to make implementation safe?”
-Domain expert: “No. Plan mode is a UX-level planning and design collaboration mode, not a security boundary. Sandbox is the runtime boundary for bash command execution, Read-only mode is the user-facing no-write posture, and safety guardrails are what make higher autonomy acceptable.”
+Developer: "Can this subagent result become an autoresearch candidate?"
+Domain expert: "Only after a trust transition. A patch proposal must pass PatchProposalPolicy, and candidate escrow should preserve it for evaluation without applying it to the main worktree."

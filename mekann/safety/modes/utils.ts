@@ -1,5 +1,5 @@
 /**
- * Plan Mode — ユーティリティ関数
+ * Modes — ユーティリティ関数
  */
 
 import { readFileSync } from "node:fs";
@@ -11,7 +11,7 @@ import { getGlobalMekannSettingsPath, loadSettings, saveSettingsChecked } from "
 
 // Re-export from policy-core — single source of truth for command intent classification.
 // isSafeCommand is a UX guard, NOT a security boundary.
-export { classifyCommandIntent, isPlanReadOnlyCommandIntent, isSafeCommand, type CommandIntent, type CommandIntentKind } from "../policy-core/modes.js";
+export { classifyCommandIntent, isReadOnlyCommandIntent, isSafeCommand, type CommandIntent, type CommandIntentKind } from "../policy-core/modes.js";
 
 // Re-export tool list from policy-core.
 export { READ_ONLY_MODE_TOOLS } from "../policy-core/modes.js";
@@ -61,13 +61,13 @@ function isThinkingLevel(value: unknown): value is ThinkingLevel {
 /** Provider + modelId pair identifying a specific model. */
 export interface ModelRef { provider: string; modelId: string; }
 
-/** All mode names managed by plan-mode extension. */
-export type ModeName = "main" | "plan" | "read_only" | "auto" | "sub";
+/** All mode names managed by modes extension. */
+export type ModeName = "main" | "read_only" | "auto" | "sub";
 
-/** Configuration file shape stored under the `plan-mode` feature in ~/.pi/agent/mekann.json */
-export interface PlanModeConfig { version: typeof MEKANN_CONFIG_VERSION; models: { main?: ModelRef; plan?: ModelRef; read_only?: ModelRef; auto?: ModelRef; sub?: ModelRef; }; thinking: { main?: ThinkingLevel; plan?: ThinkingLevel; read_only?: ThinkingLevel; auto?: ThinkingLevel; sub?: ThinkingLevel; }; }
+/** Configuration file shape stored under the `modes` feature in ~/.pi/agent/mekann.json */
+export interface ModesConfig { version: typeof MEKANN_CONFIG_VERSION; models: { main?: ModelRef; read_only?: ModelRef; auto?: ModelRef; sub?: ModelRef; }; thinking: { main?: ThinkingLevel; read_only?: ThinkingLevel; auto?: ThinkingLevel; sub?: ThinkingLevel; }; }
 
-export function createDefaultConfig(): PlanModeConfig {
+export function createDefaultConfig(): ModesConfig {
 	return { version: MEKANN_CONFIG_VERSION, models: {}, thinking: {} };
 }
 
@@ -79,24 +79,22 @@ function isModelRef(value: unknown): value is ModelRef {
 		(value as Record<string, unknown>).modelId !== "";
 }
 
-export function normalizeConfig(raw: Record<string, unknown>): PlanModeConfig {
-	const models: PlanModeConfig["models"] = {};
+export function normalizeConfig(raw: Record<string, unknown>): ModesConfig {
+	const models: ModesConfig["models"] = {};
 	const m = raw.models;
 	if (m && typeof m === "object") {
 		const mi = m as Record<string, unknown>;
 		if (isModelRef(mi.main)) models.main = mi.main;
-		if (isModelRef(mi.plan)) models.plan = mi.plan;
 		if (isModelRef(mi.read_only)) models.read_only = mi.read_only;
 		if (isModelRef(mi.auto)) models.auto = mi.auto;
 		if (isModelRef(mi.sub)) models.sub = mi.sub;
 	}
 
 	const t = raw.thinking;
-	const thinking: PlanModeConfig["thinking"] = {};
+	const thinking: ModesConfig["thinking"] = {};
 	if (t && typeof t === "object") {
 		const ti = t as Record<string, unknown>;
 		if (isThinkingLevel(ti.main)) thinking.main = ti.main;
-		if (isThinkingLevel(ti.plan)) thinking.plan = ti.plan;
 		if (isThinkingLevel(ti.read_only)) thinking.read_only = ti.read_only;
 		if (isThinkingLevel(ti.auto)) thinking.auto = ti.auto;
 		if (isThinkingLevel(ti.sub)) thinking.sub = ti.sub;
@@ -127,30 +125,24 @@ export function getConfigPath(explicitPath?: string): string {
 }
 
 /** Load config from disk, returning a default config on missing/invalid file. */
-export function loadModelConfig(explicitPath?: string): PlanModeConfig {
+export function loadModelConfig(explicitPath?: string): ModesConfig {
 	const loaded = loadSettings(explicitPath ?? getGlobalMekannSettingsPath());
-	const feature = loaded.settings.features["plan-mode"] ?? {};
+	const feature = loaded.settings.features["modes"] ?? {};
 	return normalizeConfig({ version: 1, models: feature.models, thinking: feature.thinking });
 }
 
 /** 設定を Mekann settings file に保存。 */
-export function saveModelConfig(config: PlanModeConfig, explicitPath?: string): void {
+export function saveModelConfig(config: ModesConfig, explicitPath?: string): void {
 	const configPath = getConfigPath(explicitPath);
 	const loaded = loadSettings(configPath);
 	const next = loaded.settings;
-	next.features["plan-mode"] = { ...(next.features["plan-mode"] ?? {}), models: config.models, thinking: config.thinking };
+	next.features["modes"] = { ...(next.features["modes"] ?? {}), models: config.models, thinking: config.thinking };
 	saveSettingsChecked(configPath, next, loaded.hash);
 }
 
-/** 特定モードの config field を更新して保存。undefined でクリア。
- *
- * Multiple pi sessions can keep this object in memory for a long time.  Reload
- * the latest on-disk config before applying the requested field update so an
- * unrelated write (e.g. thinking.main) does not resurrect stale model refs from
- * an older session.
- */
+/** 特定モードの config field を更新して保存。undefined でクリア。 */
 export function updateConfigField<T>(
-	config: PlanModeConfig,
+	config: ModesConfig,
 	section: "models" | "thinking",
 	mode: ModeName,
 	value: T | undefined,
@@ -161,13 +153,13 @@ export function updateConfigField<T>(
 	for (let attempt = 0; attempt < 3; attempt++) {
 		try {
 			const loaded = loadSettings(configPath);
-			const feature = loaded.settings.features["plan-mode"] ?? {};
+			const feature = loaded.settings.features["modes"] ?? {};
 			const latest = normalizeConfig({ version: 1, models: feature.models, thinking: feature.thinking });
 			if (value !== undefined) (latest[section] as Record<string, T>)[mode] = value;
 			else delete (latest[section] as Record<string, T>)[mode];
 
 			const next = loaded.settings;
-			next.features["plan-mode"] = { ...feature, models: latest.models, thinking: latest.thinking };
+			next.features["modes"] = { ...feature, models: latest.models, thinking: latest.thinking };
 			saveSettingsChecked(configPath, next, loaded.hash);
 
 			config.version = latest.version;
@@ -186,36 +178,31 @@ export function updateConfigField<T>(
 /** @deprecated Use ModeName for config keys, MekannMode for the runtime mode. */
 export type Mode = MekannMode;
 
-/** Runtime mode managed by plan-mode extension. */
-export type MekannMode = "main" | "plan" | "read_only" | "auto" | "sub";
+/** Runtime mode managed by modes extension. */
+export type MekannMode = "main" | "read_only" | "auto" | "sub";
 
 export function isReadOnlyMode(mode: MekannMode): boolean {
 	return mode === "read_only";
 }
 
 export function modeLabel(mode: MekannMode): string {
-	if (mode === "plan") return "PLAN MODE";
 	if (mode === "read_only") return "READ-ONLY MODE";
 	return "";
 }
 
-export interface PlanState {
+export interface ModesState {
 	mode: MekannMode;
 	savedActiveTools?: string[];
-	planPromptHash?: string;
-	planPromptDelivered: boolean;
 	/** Persisted model preferences for each mode. */
-	modelConfig: PlanModeConfig;
+	modelConfig: ModesConfig;
 	/** Snapshot of the main-mode model before entering a non-main mode (for fallback restore). */
 	savedMainModel?: ModelRef;
 	/** Snapshot of the main-mode thinking level before entering a non-main mode (for fallback restore). */
 	savedMainThinking?: ThinkingLevel;
-	/** Mode to restore after leaving plan mode. */
-	modeBeforePlan?: Exclude<MekannMode, "plan" | "read_only" | "auto">;
 	/** Mode to restore after leaving auto mode. */
-	modeBeforeAuto?: Exclude<MekannMode, "plan" | "auto">;
+	modeBeforeAuto?: Exclude<MekannMode, "auto">;
 }
 
-export function createInitialState(modelConfig?: PlanModeConfig): PlanState {
-	return { mode: "main", planPromptDelivered: false, modelConfig: modelConfig ?? createDefaultConfig() };
+export function createInitialState(modelConfig?: ModesConfig): ModesState {
+	return { mode: "main", modelConfig: modelConfig ?? createDefaultConfig() };
 }

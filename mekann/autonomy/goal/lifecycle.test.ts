@@ -283,41 +283,6 @@ describe("goal lifecycle and events", () => {
     });
   });
 
-  describe("plan mode integration", () => {
-    it("sets runtime.inPlanMode when plan-mode event fires", async () => {
-      const { mockPi, ctx } = bootstrap();
-
-      // Find the plan-mode event handler
-      const planModeHandler = mockPi.events.on.mock.calls.find(
-        (call: any[]) => call[0] === "mekann:plan-mode:status",
-      );
-      expect(planModeHandler).toBeDefined();
-
-      // Fire plan mode event
-      const handler = planModeHandler![1] as Function;
-      handler({ mode: "plan" });
-
-      // Fire main mode event
-      handler({ mode: "main" });
-
-      // No assertion on internal state, just verify handler doesn't throw
-    });
-
-    it("handles missing plan-mode event gracefully", async () => {
-      // Create extension with events.on that throws
-      const mockPi = createMockPi({
-        events: {
-          emit: vi.fn(),
-          on: vi.fn(() => {
-            throw new Error("plan-mode not loaded");
-          }),
-        },
-      });
-      // Should not throw during initialization
-      expect(() => goalExtension(mockPi as any)).not.toThrow();
-    });
-  });
-
   describe("emitUpdated and emitCleared", () => {
     it("emits goal:updated event and updates widget on create", async () => {
       const { mockPi, ctx } = bootstrap();

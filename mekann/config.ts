@@ -15,10 +15,6 @@ export function getPiAgentConfigDir(home = homedir()): string {
 	return join(home, ".pi", "agent");
 }
 
-export function getLegacyPlanModeConfigPath(home = homedir()): string {
-	return join(getPiAgentConfigDir(home), "plan-mode.json");
-}
-
 export interface MekannSubagentConfigDefaults {
 	maxSubagents: number;
 	maxOpenAgents: number;

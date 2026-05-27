@@ -70,7 +70,7 @@ function supportedThinking(
 ): string[] {
 	const mode = item.key.split(".")[1];
 	const modelItem = items.find(
-		(i) => i.feature === "plan-mode" && i.key === `models.${mode}`,
+		(i) => i.feature === "modes" && i.key === `models.${mode}`,
 	);
 	// Check draft first, then effective value
 	const draft = modelItem ? drafts[itemId(modelItem)] : undefined;
@@ -129,7 +129,7 @@ function featureIcon(_feature: string): string { return ""; }
 
 function featureTitle(feature: string): string {
 	switch (feature) {
-		case "plan-mode": return "Plan Mode";
+		case "modes": return "Collaboration Modes";
 		case "sandbox": return "Sandbox";
 		case "subagent": return "Subagent";
 		case "output-gate": return "Output Gate";
@@ -139,7 +139,7 @@ function featureTitle(feature: string): string {
 
 function featureOrder(feature: string): number {
 	const order: Record<string, number> = {
-		"plan-mode": 0,
+		"modes": 0,
 		"sandbox": 1,
 		"subagent": 2,
 		"output-gate": 3,
@@ -439,9 +439,9 @@ function DetailPanel(p: {
 	// Enum options (use model-specific thinking levels for thinking settings)
 	if (p.item.schema.enumValues && p.item.schema.enumValues.length > 0) {
 		let enumDisplay = p.item.schema.enumValues;
-		if (p.item.feature === "plan-mode" && p.item.key.startsWith("thinking.")) {
+		if (p.item.feature === "modes" && p.item.key.startsWith("thinking.")) {
 			const mode = p.item.key.split(".")[1];
-			const modelItem = p.allItems.find((i) => i.feature === "plan-mode" && i.key === `models.${mode}`);
+			const modelItem = p.allItems.find((i) => i.feature === "modes" && i.key === `models.${mode}`);
 			if (modelItem) {
 				const modelKey = p.drafts[itemId(modelItem)]?.raw ?? valueText(modelItem.effectiveValue);
 				const thinkingModel = p.models.find((m) => `${m.provider}/${m.modelId}` === modelKey);
@@ -473,9 +473,9 @@ function DetailPanel(p: {
 	}
 
 	// For thinking settings, show which model drives the options
-	if (p.item.feature === "plan-mode" && p.item.key.startsWith("thinking.")) {
+	if (p.item.feature === "modes" && p.item.key.startsWith("thinking.")) {
 		const mode = p.item.key.split(".")[1];
-		const modelItem = p.allItems.find((i) => i.feature === "plan-mode" && i.key === `models.${mode}`);
+		const modelItem = p.allItems.find((i) => i.feature === "modes" && i.key === `models.${mode}`);
 		if (modelItem) {
 			const modelKey = p.drafts[itemId(modelItem)]?.raw ?? valueText(modelItem.effectiveValue);
 			const thinkingModel = p.models.find((m) => `${m.provider}/${m.modelId}` === modelKey);
@@ -737,7 +737,7 @@ export function SettingsEditorApp({
 		if (item.schema.type === "modelRef") {
 			setModelSelected(0); setMode("models"); setMessage("pick a model");
 		} else if (item.schema.type === "enum") {
-			const values = item.feature === "plan-mode" && item.key.startsWith("thinking.") ? supportedThinking(models, item, items, drafts) : (item.schema.enumValues ?? []);
+			const values = item.feature === "modes" && item.key.startsWith("thinking.") ? supportedThinking(models, item, items, drafts) : (item.schema.enumValues ?? []);
 			const idx = Math.max(0, values.indexOf(shown));
 			stage(item, values[(idx + 1) % values.length] ?? "");
 		} else if (item.schema.type === "boolean") {

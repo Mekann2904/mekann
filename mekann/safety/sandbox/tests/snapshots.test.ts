@@ -111,7 +111,7 @@ describe("SBPL policy snapshots", () => {
 
 // ─── isSafeCommand regression ────────────────────────────────────
 //
-// These security boundary tests live in plan-mode/plan-mode.test.ts.
+// These security boundary tests live in modes/index.test.ts.
 // Cross-module security regression is covered by the isSafeCommand
 // exhaustive tests there (safe commands, dangerous commands, edge cases).
 

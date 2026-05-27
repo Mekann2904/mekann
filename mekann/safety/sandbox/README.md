@@ -22,6 +22,6 @@
 - secret を子プロセスに渡しにくくする environment handling
 - isolated HOME / shell startup file 無効化
 
-## plan-mode との関係
+## modes との関係
 
-`plan-mode` は UX-level の read-only planning mode です。実際の command execution boundary は `sandbox` が担います。
+`modes` 拡張の read-only mode は、入場時に `mekann:sandbox:push-profile` イベントを発行し、sandbox の effective mode を `read_only` にオーバーライドする。read-only mode 終了時に `mekann:sandbox:pop-profile` で元のモードに復元する。

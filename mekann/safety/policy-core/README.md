@@ -6,7 +6,7 @@
 
 - `safety` suite の feature です
 - 単体で user-facing command を提供することは目的にしません
-- `sandbox` や `plan-mode` などが、判定結果・理由・重大度を揃えるために使います
+- `sandbox` や `modes` などが、判定結果・理由・重大度を揃えるために使います
 
 ## 原則
 

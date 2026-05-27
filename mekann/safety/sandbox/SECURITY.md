@@ -180,15 +180,15 @@ Only `--no-sandbox` (explicit opt-out) bypasses this hard block.
 
 This ordering ensures yolo approval is never requested for an unsafe workspace root.
 
-## Relationship with plan-mode
+## Relationship with modes
 
-`plan-mode` 拡張は plan mode 入場時に `mekann:sandbox:push-profile` イベントを発行し、sandbox の effective mode を `read_only` にオーバーライドする。plan mode 終了時に `mekann:sandbox:pop-profile` で元のモードに復元する。
+`modes` 拡張の read-only mode は、入場時に `mekann:sandbox:push-profile` イベントを発行し、sandbox の effective mode を `read_only` にオーバーライドする。read-only mode 終了時に `mekann:sandbox:pop-profile` で元のモードに復元する。
 
 重要事項:
-- `read_only` モードの強制は **OS-level Seatbelt policy** による。plan-mode の command intent 正規表現に依存しない。
-- plan-mode の `classifyCommandIntent()` は UX フィルタであり、security boundary ではない。
-- sandbox が未導入または `--no-sandbox` の場合、plan-mode は単独で command intent 分類による保守的なガードを提供する。
-- plan override 中に `/sandbox yolo` しても、effective mode は `read_only` のまま。plan 終了後に base mode へ戻る。
+- `read_only` モードの強制は **OS-level Seatbelt policy** による。command intent 正規表現に依存しない。
+- `classifyCommandIntent()` は UX フィルタであり、security boundary ではない。
+- sandbox が未導入または `--no-sandbox` の場合、modes 拡張は単独で command intent 分類による保守的なガードを提供する。
+- plan override 中に `/sandbox yolo` しても、effective mode は `read_only` のまま。read-only 終了後に base mode へ戻る。
 
 ## Known Limitations
 

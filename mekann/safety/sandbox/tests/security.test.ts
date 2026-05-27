@@ -10,7 +10,7 @@
  * 3. Sandbox mode enforcement (read_only, workspace_write, yolo)
  *
  * Note: Command intent classification (isSafeCommand / classifyCommandIntent)
- * was moved to policy-core/ and is tested in plan-mode tests.
+ * was moved to policy-core/ and is tested in modes tests.
  * It is a UX filter, not a security boundary.
  */
 

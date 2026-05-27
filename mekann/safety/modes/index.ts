@@ -1,30 +1,21 @@
 /**
- * Plan Mode Extension — 計画協働モードと読み取り専用モードのトグル。
- * /plan で main ↔ plan を切り替え。--plan フラグで plan モード起動。
- * main / plan それぞれにモデルを設定・永続化可能。
+ * Modes Extension — コラボレーションモードのトグル。
+ * main / read_only / auto / sub を管理。各モードでモデルを設定・永続化可能。
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
 import { Key } from "@earendil-works/pi-tui";
-import { createInitialState, isReadOnlyMode, isPlanReadOnlyCommandIntent, classifyCommandIntent, buildBlockReason, loadPrompt, hashContent, READ_ONLY_MODE_TOOLS, sameModelRef, loadModelConfig, updateConfigField, type ModelRef, type ThinkingLevel, type MekannMode, type ModeName } from "./utils.js";
+import { createInitialState, isReadOnlyMode, isReadOnlyCommandIntent, classifyCommandIntent, buildBlockReason, loadPrompt, READ_ONLY_MODE_TOOLS, sameModelRef, loadModelConfig, updateConfigField, type ModelRef, type ThinkingLevel, type MekannMode, type ModeName } from "./utils.js";
 import { createModelManager, registerModeModelPersistence } from "../../core/model-manager.js";
 import {
-	SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, PLAN_MODE_STATUS_EVENT,
+	SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, MODE_STATUS_EVENT,
 	MEKANN_AUTORESEARCH_MODE_EVENT,
-	type SandboxPushProfileEvent, type SandboxPopProfileEvent, type PlanModeStatusEvent,
+	type SandboxPushProfileEvent, type SandboxPopProfileEvent, type ModeStatusEvent,
 	type AutoresearchModeEvent,
 } from "../policy-core/modes.js";
 import { registerPromptProvider, type PromptFragment } from "../../core/prompt-core/index.js";
 
-type PlanPromptStrategy = "cache_friendly" | "token_minimal";
-let PLAN_PROMPT_STRATEGY: PlanPromptStrategy = "token_minimal";
-
-function stringEnum(values: readonly string[], description: string) {
-	return Type.Union(values.map((value) => Type.Literal(value)), { description });
-}
-
-export default function planModeExtension(pi: ExtensionAPI): void {
+export default function modesExtension(pi: ExtensionAPI): void {
 	let configPath: string | undefined;
 	const state = createInitialState();
 	let suppressModelSelectPersist = false;
@@ -55,8 +46,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (level) { suppressThinkingSelectPersist = true; try { pi.setThinkingLevel(level); } finally { suppressThinkingSelectPersist = false; } }
 	}
 
-	pi.registerFlag("plan", { description: "プランモードで起動", type: "boolean", default: false });
-
 	// ─── Model helpers ──────────────────────────────────────────────
 
 	const modelManager = createModelManager({
@@ -67,14 +56,14 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	const { trySetModel } = modelManager;
 
 	function logBlockedTool(extra: Record<string, unknown>) {
-		pi.appendEntry("plan-mode-blocked-tool", { at: Date.now(), mode: state.mode, ...extra });
+		pi.appendEntry("modes-blocked-tool", { at: Date.now(), mode: state.mode, ...extra });
 	}
 
 	// ─── Status bar ────────────────────────────────────────────────────
 
 	/** Notify sandbox extension of current mode so it can render a combined status line. */
 	function updateModeStatus(_ctx: ExtensionContext): void {
-		safeEmit(PLAN_MODE_STATUS_EVENT, { mode: state.mode } satisfies PlanModeStatusEvent);
+		safeEmit(MODE_STATUS_EVENT, { mode: state.mode } satisfies ModeStatusEvent);
 	}
 
 	// ─── Common helpers for mode transitions ───────────────────────
@@ -98,8 +87,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (mainRef) {
 			await trySetModel(mainRef, ctx, "Main model");
 		} else if (state.savedMainModel) {
-			// Only use the startup/current-model snapshot when no explicit main model is configured.
-			// If models.main exists, it is the user's source of truth; do not try unrelated Pi defaults.
 			await trySetModel(state.savedMainModel, ctx, "Main model (fallback)");
 		}
 		applyThinking(state.modelConfig.thinking.main ?? state.savedMainThinking);
@@ -113,23 +100,17 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (previous === target) return;
 
 		// ── Leave the current mode ──
-		if (previous === "plan") {
-			state.mode = target;
-			updateModeStatus(ctx);
-			Object.assign(state, { planPromptDelivered: false, planPromptHash: undefined, modeBeforePlan: undefined });
-		} else if (previous === "read_only") {
+		if (previous === "read_only") {
 			if (target === "auto") state.modeBeforeAuto = previous;
 			state.mode = target;
 			updateModeStatus(ctx);
 			popSandboxOverride();
 			if (state.savedActiveTools) { pi.setActiveTools(state.savedActiveTools); state.savedActiveTools = undefined; }
 		} else if (previous === "auto") {
-			// Leaving auto — just update mode
 			if (state.mode !== target) state.mode = target;
 			state.modeBeforeAuto = undefined;
 		} else {
 			// main/sub → other
-			if (target === "plan" && (previous === "main" || previous === "sub")) state.modeBeforePlan = previous;
 			if (target === "auto" && (previous === "main" || previous === "sub")) state.modeBeforeAuto = previous;
 			if (state.mode !== target) state.mode = target;
 		}
@@ -140,11 +121,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 
 		// ── Enter the target mode ──
-		if (target === "plan") {
-			const planRef = state.modelConfig.models.plan;
-			if (planRef) await trySetModel(planRef, ctx, "Plan model");
-			applyThinking(state.modelConfig.thinking.plan);
-		} else if (target === "read_only") {
+		if (target === "read_only") {
 			saveActiveToolsIfFirst();
 			pi.setActiveTools([...READ_ONLY_MODE_TOOLS]);
 			readOnlySandboxOverrideToken = `read-only-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -153,12 +130,10 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			if (readOnlyRef) await trySetModel(readOnlyRef, ctx, "Read-only model");
 			applyThinking(state.modelConfig.thinking.read_only);
 		} else if (target === "auto") {
-			// Auto mode: no tool restrictions, no sandbox override
 			const autoRef = state.modelConfig.models.auto;
 			if (autoRef) await trySetModel(autoRef, ctx, "Auto model");
 			applyThinking(state.modelConfig.thinking.auto);
 		} else if (target === "sub") {
-			// Sub mode: main-like permissions, subagent-oriented prompt, per-mode model/thinking
 			const subRef = state.modelConfig.models.sub;
 			if (subRef) await trySetModel(subRef, ctx, "Sub model");
 			applyThinking(state.modelConfig.thinking.sub);
@@ -168,13 +143,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			Object.assign(state, { savedMainModel: undefined, savedMainThinking: undefined });
 		}
 
-		if (previous !== "plan") updateModeStatus(ctx);
-	}
-
-	/** Toggle plan mode on/off. */
-	async function togglePlanMode(ctx: ExtensionContext): Promise<void> {
-		if (state.mode === "plan") await transitionToMode(state.modeBeforePlan ?? "main", ctx);
-		else await transitionToMode("plan", ctx);
+		updateModeStatus(ctx);
 	}
 
 	/** Toggle read-only mode on/off. */
@@ -183,57 +152,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		else await transitionToMode("read_only", ctx);
 	}
 
-	// ─── LLM-callable mode transition tools ─────────────────────────
-
-	pi.registerTool({
-		name: "proceed_to_main",
-		label: "Proceed to Main mode",
-		description: "Exit Plan mode and continue in Main mode after the user clearly approves implementation in natural language.",
-		promptSnippet: "Exit Plan mode after clear user approval and continue implementation in Main mode.",
-		promptGuidelines: [
-			"Use proceed_to_main only when Plan mode is active and the user clearly approves implementation in natural language.",
-			"Do not use proceed_to_main to skip unresolved planning questions.",
-		],
-		parameters: Type.Object({
-			reason: Type.String({ description: "Why Main mode should start now." }),
-			implementationIntent: Type.String({ description: "What Main mode should implement from the completed plan." }),
-			suggestedSkill: Type.Optional(stringEnum(["tdd"], "Suggested implementation feedback loop.")),
-		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			if (state.mode !== "plan") {
-				return { content: [{ type: "text" as const, text: "[ERROR] proceed_to_main can only be used from Plan mode." }], details: { ok: false, error: "not_in_plan_mode", mode: state.mode } };
-			}
-			await transitionToMode("main", ctx);
-			pi.appendEntry("plan-mode-transition", { at: Date.now(), tool: "proceed_to_main", from: "plan", to: "main", reason: params.reason, implementationIntent: params.implementationIntent, suggestedSkill: params.suggestedSkill });
-			return { content: [{ type: "text" as const, text: "Plan mode exited. Main mode is active; implement the approved plan." }], details: { ok: true, from: "plan", to: "main", implementationIntent: params.implementationIntent, suggestedSkill: params.suggestedSkill ?? null } };
-		},
-	});
-
-	pi.registerTool({
-		name: "return_to_plan",
-		label: "Return to Plan mode",
-		description: "Return from Main mode to Plan mode when implementation reveals that the plan needs repair or more decisions.",
-		promptSnippet: "Return to Plan mode when implementation reveals a planning gap, architecture risk, UI uncertainty, unresolved bug cause, or high-impact decision.",
-		promptGuidelines: [
-			"Use return_to_plan when Main mode discovers that planning must be repaired before more code changes.",
-			"Do not use return_to_plan merely to repeat planning that to-issues already completed for a clear next slice.",
-		],
-		parameters: Type.Object({
-			reason: Type.String({ description: "Why planning must resume now." }),
-			planningNeed: stringEnum(["spec_gap", "architecture_risk", "ui_uncertainty", "bug_cause_unresolved", "high_impact_decision", "next_slice_needs_planning"], "The planning need discovered during implementation."),
-			suggestedSkill: stringEnum(["grill-with-docs", "to-prd", "to-issues", "improve-codebase-architecture", "prototype", "diagnose"], "Smallest useful planning skill to resume with."),
-			summary: Type.Optional(Type.String({ description: "Short context for the planning turn." })),
-		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			if (state.mode !== "main") {
-				return { content: [{ type: "text" as const, text: "[ERROR] return_to_plan can only be used from Main mode." }], details: { ok: false, error: "not_in_main_mode", mode: state.mode } };
-			}
-			await transitionToMode("plan", ctx);
-			pi.appendEntry("plan-mode-transition", { at: Date.now(), tool: "return_to_plan", from: "main", to: "plan", reason: params.reason, planningNeed: params.planningNeed, suggestedSkill: params.suggestedSkill, summary: params.summary });
-			return { content: [{ type: "text" as const, text: `Returned to Plan mode. Resume with ${params.suggestedSkill}.` }], details: { ok: true, from: "main", to: "plan", planningNeed: params.planningNeed, suggestedSkill: params.suggestedSkill, summary: params.summary ?? null } };
-		},
-	});
-
 	/** Toggle sub mode on/off. */
 	async function toggleSubMode(ctx: ExtensionContext): Promise<void> {
 		if (state.mode === "sub") await transitionToMode("main", ctx);
@@ -241,65 +159,18 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	}
 
 	// ─── Commands ───────────────────────────────────────────────────
-	// Note: /plan command is registered below (after session_start) to capture lastCtx.
 
-	pi.registerShortcut(Key.super("p"), { description: "プランモード切替", handler: (ctx) => togglePlanMode(ctx) });
 	pi.registerShortcut(Key.super("s"), { description: "Sub mode 切替", handler: (ctx) => toggleSubMode(ctx) });
 
 	registerPromptProvider({
-		id: "plan-mode",
+		id: "modes",
 		getFragments() {
 			const fragments: PromptFragment[] = [];
-			if (state.mode === "main") {
-				fragments.push({
-					id: "plan-mode:main-mode-implementation",
-					source: "plan-mode",
-					kind: "mode_policy",
-					stability: "stable",
-					scope: "mode",
-					priority: 205,
-					version: "v1",
-					cacheIntent: "prefer_cache",
-					content: loadPrompt("main-mode-implementation"),
-				});
-			}
-			if (state.mode === "plan") {
-				const fullPrompt = loadPrompt("plan-mode");
-				if (PLAN_PROMPT_STRATEGY === "token_minimal") {
-					const currentHash = hashContent(fullPrompt);
-					if (!state.planPromptDelivered || state.planPromptHash !== currentHash) {
-						state.planPromptHash = currentHash;
-						state.planPromptDelivered = true;
-					}
-				}
-				fragments.push({
-					id: "plan-mode:mode-policy",
-					source: "plan-mode",
-					kind: "mode_policy",
-					stability: "stable",
-					scope: "mode",
-					priority: 200,
-					version: "v1",
-					cacheIntent: "prefer_cache",
-					content: fullPrompt,
-				});
-				fragments.push({
-					id: "plan-mode:turn-reminder",
-					source: "plan-mode",
-					kind: "current_context",
-					stability: "dynamic",
-					scope: "turn",
-					priority: 650,
-					version: "v1",
-					cacheIntent: "avoid_cache",
-					content: loadPrompt("plan-mode-reminder"),
-				});
-			}
 
 			if (state.mode === "read_only") {
 				fragments.push({
-					id: "plan-mode:read-only-policy",
-					source: "plan-mode",
+					id: "modes:read-only-policy",
+					source: "modes",
 					kind: "mode_policy",
 					stability: "stable",
 					scope: "mode",
@@ -311,8 +182,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			}
 			if (state.mode === "sub") {
 				fragments.push({
-					id: "plan-mode:sub-mode-policy",
-					source: "plan-mode",
+					id: "modes:sub-mode-policy",
+					source: "modes",
 					kind: "mode_policy",
 					stability: "stable",
 					scope: "mode",
@@ -341,9 +212,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		if (toolName === "bash") {
 			const command = String(input.command ?? "");
-			// UX guard: classify command intent for plan mode.
+			// UX guard: classify command intent for read-only mode.
 			// Security boundary is the sandbox extension's OS-level policy.
-			if (!isPlanReadOnlyCommandIntent(command)) {
+			if (!isReadOnlyCommandIntent(command)) {
 				const intent = classifyCommandIntent(command);
 				logBlockedTool({ toolName: "bash", command, blockCount: 1, reason: `not-read-only-intent:${intent.kind}` });
 				return { block: true, reason: `Read-only mode is active. Command intent "${intent.kind}" is not allowed:\n${command}\n理由: ${intent.reason}` };
@@ -382,10 +253,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		isModelSuppressed: () => suppressModelSelectPersist,
 		isThinkingSuppressed: () => suppressThinkingSelectPersist,
 		persistModel: (mode, ref) => {
-			// model_select is emitted after pi has selected a concrete model. Persist it
-			// directly instead of re-validating through modelRegistry.find(): some
-			// providers/selector paths can expose a selected model that does not round-trip
-			// through find() in this hook context, which made changes fail to persist.
 			persistIfChanged("models", mode, ref, sameModelRef);
 		},
 		persistThinking: (mode, level) => persistIfChanged("thinking", mode, level, (a, b) => a === b),
@@ -407,7 +274,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				if (ctx) {
 					return transitionToMode("auto", ctx, { purpose: evt.purpose });
 				} else {
-					// No ctx available yet — just set state. Model will be corrected on next ctx.
 					state.mode = "auto";
 				}
 			} else {
@@ -432,14 +298,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 	pi.on("session_start", async (_event, ctx) => {
 		lastCtx = ctx;
-		// Load config
-		configPath = undefined; // use default path
+		configPath = undefined;
 		const loaded = loadModelConfig();
 		state.modelConfig = loaded;
 
-		if (pi.getFlag("plan") === true) {
-			await transitionToMode("plan", ctx, { persistCurrentMain: false });
-		} else if (pi.getFlag("auto") === true) {
+		if (pi.getFlag("auto") === true) {
 			await transitionToMode("auto", ctx, { persistCurrentMain: false });
 		} else if (pi.getFlag("sub") === true) {
 			await transitionToMode("sub", ctx, { persistCurrentMain: false });
@@ -452,9 +315,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		updateModeStatus(ctx);
 	});
 
-	// Update lastCtx on every command so event handlers have a fresh context
-	const origPlanHandler = (_args: string, ctx: ExtensionContext) => { lastCtx = ctx; return togglePlanMode(ctx); };
-	pi.registerCommand("plan", { description: "プランモード切替", handler: origPlanHandler });
 	const origReadOnlyHandler = (_args: string, ctx: ExtensionContext) => { lastCtx = ctx; return toggleReadOnlyMode(ctx); };
 	pi.registerCommand("read-only", { description: "Read-only mode 切替", handler: origReadOnlyHandler });
 	const origSubHandler = (_args: string, ctx: ExtensionContext) => { lastCtx = ctx; return toggleSubMode(ctx); };

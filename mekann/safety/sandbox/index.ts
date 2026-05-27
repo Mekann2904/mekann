@@ -13,7 +13,7 @@ import type { SandboxMode, SandboxPolicy } from "./permissions.js";
 import { isMacSandboxAvailable, runSandboxedShellMac } from "./macSeatbelt.js";
 import { resolveRealPaths, validateWorkspaceRoot } from "./permissions.js";
 import { shouldRequestApproval, yoloApprovalMessage, type YoloApprovalState, readOnlyPolicy, workspaceWritePolicy, yoloPolicy } from "./permissions.js";
-import { DEFAULT_SANDBOX_MODE, parseSandboxMode, modeLabel, SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, PLAN_MODE_STATUS_EVENT, type SandboxPushProfileEvent, type SandboxPopProfileEvent, type PlanModeStatusEvent } from "../policy-core/modes.js";
+import { DEFAULT_SANDBOX_MODE, parseSandboxMode, modeLabel, SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, MODE_STATUS_EVENT, type SandboxPushProfileEvent, type SandboxPopProfileEvent, type ModeStatusEvent } from "../policy-core/modes.js";
 import { SafetyProfileState } from "../policy-core/safetyProfile.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { MEKANN_SANDBOX_DEFAULTS, MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
@@ -78,7 +78,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// Last UI context for updating status bar after profile override push/pop.
 	let lastCtx: any | undefined;
 
-	// ─── Safety profile state (plan-mode coordination) ─────────────
+	// ─── Safety profile state (modes coordination) ─────────────────
 
 	/** Compute the effective sandbox mode, respecting safety profile overrides. */
 	function effectiveMode(): SandboxMode { return safetyProfile.effectiveMode(); }
@@ -373,7 +373,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	function updateStatusBar(ctx: any): void {
 		if (explicitlyDisabled || !sandboxEnabled) { ctx.ui.setWidget("sandbox", undefined); return; }
 		let label = "";
-		if (safetyProfile.planModeStatus) label = ctx.ui.theme.fg(safetyProfile.planModeStatus === "plan" ? "warning" : "dim", safetyProfile.planModeStatus) + " ";
+		if (safetyProfile.modeStatus) label = ctx.ui.theme.fg(safetyProfile.modeStatus === "read_only" ? "warning" : "dim", safetyProfile.modeStatus) + " ";
 		label += ctx.ui.theme.fg("dim", effectiveMode());
 		ctx.ui.setWidget("sandbox", (_tui: unknown, theme: any) => ({
 			invalidate() {},
@@ -446,7 +446,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		ctx.ui.notify(`サンドボックス有効: ${modeLabel(effectiveMode())}`, "info");
 	});
 
-	// ─── Profile override events (plan-mode coordination) ───────────
+	// ─── Profile override events (modes coordination) ───────────────
 
 	pi.events.on(SANDBOX_PUSH_PROFILE_EVENT, (data: unknown) => {
 		const event = data as SandboxPushProfileEvent;
@@ -464,12 +464,12 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		safetyProfile.popProfile(event.owner, event.token);
 		refreshStatusBar();
 	});
-	// Listen for plan-mode status updates to render a combined status line
-	pi.events.on(PLAN_MODE_STATUS_EVENT, (data: unknown) => {
+	// Listen for modes status updates to render a combined status line
+	pi.events.on(MODE_STATUS_EVENT, (data: unknown) => {
 		if (data == null || typeof data !== "object") return;
-		const event = data as Partial<PlanModeStatusEvent>;
-		if (event.mode !== "main" && event.mode !== "plan" && event.mode !== "sub") return;
-		safetyProfile.planModeStatus = event.mode;
+		const event = data as Partial<ModeStatusEvent>;
+		if (event.mode !== "main" && event.mode !== "read_only" && event.mode !== "sub") return;
+		safetyProfile.modeStatus = event.mode;
 		refreshStatusBar();
 	});
 	pi.events.on("mekann:codex-usage:status", (data: unknown) => {
@@ -485,7 +485,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		explicitlyDisabled = false; safetyProfile.setExplicitlyDisabled(false);
 		startupBlockedReason = undefined;
 		safetyProfile.clearProfiles();
-		safetyProfile.planModeStatus = undefined;
+		safetyProfile.modeStatus = undefined;
 		safetyProfile.rightStatus = undefined;
 		lastCtx = undefined;
 		resetYoloApproval();

@@ -1,7 +1,7 @@
 import type { FeatureSettingsSchema, SettingSchema } from "../../settings/types.js";
 import type { ModelRef, ThinkingLevel } from "./utils.js";
 
-const modes = ["main", "plan", "read_only", "auto", "sub"] as const;
+const modes = ["main", "read_only", "auto", "sub"] as const;
 const thinkingValues = ["off", "minimal", "low", "medium", "high", "xhigh"];
 
 function modelSetting(mode: typeof modes[number]): SettingSchema<ModelRef | undefined> {
@@ -36,8 +36,8 @@ function thinkingSetting(mode: typeof modes[number]): SettingSchema<ThinkingLeve
   };
 }
 
-export const planModeSettingsSchema: FeatureSettingsSchema = {
-  feature: "plan-mode",
-  title: "Plan mode",
+export const modesSettingsSchema: FeatureSettingsSchema = {
+  feature: "modes",
+  title: "Collaboration Modes",
   settings: modes.flatMap((m) => [modelSetting(m), thinkingSetting(m)]),
 };

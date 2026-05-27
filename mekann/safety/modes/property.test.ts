@@ -1,10 +1,10 @@
 /**
- * isPlanReadOnlyCommandIntent (was isSafeCommand) — Property-based テスト。
+ * isReadOnlyCommandIntent (was isSafeCommand) — Property-based テスト。
  *
  * fast-check を使い、以下の不変条件 (invariants) を検証する:
  *
  * 1. **対称性**: safe なコマンドは destructive pattern にマッチしない
- * 2. **メタ文字拒否**: シェルメタ文字を含むコマンドは常に not plan-read-only
+ * 2. **メタ文字拒否**: シェルメタ文字を含むコマンドは常に not read-only
  * 3. **リダイレクトストリッピング**: 2>/dev/null 付きで safe → 元も safe (または unsafe → 依然 unsafe)
  * 4. **決定性**: 同じ入力 → 同じ結果
  * 5. **エッジケース**: 空文字列、空白のみ、非常に長い文字列
@@ -18,11 +18,11 @@
 
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { isSafeCommand, isPlanReadOnlyCommandIntent } from "./utils.js";
+import { isSafeCommand, isReadOnlyCommandIntent } from "./utils.js";
 
 // ─── Invariant 1: Safe commands never match destructive patterns ──
 
-describe("isPlanReadOnlyCommandIntent: property-based invariants", () => {
+describe("isReadOnlyCommandIntent: property-based invariants", () => {
 	// All known safe command prefixes (from SAFE_PATTERNS)
 	const SAFE_PREFIXES = [
 		"cat", "head", "tail", "less", "more", "grep", "ls", "pwd", "echo",

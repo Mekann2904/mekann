@@ -1,7 +1,7 @@
 {
-  "name": "plan-mode",
+  "name": "modes",
   "version": "1.0.0",
-  "description": "Codex-inspired plan mode that separates code analysis/planning from implementation, with separate model selection for each phase.",
+  "description": "Collaboration mode manager for main / read_only / auto / sub modes with per-mode model and thinking configuration.",
   "main": "index.ts",
   "scripts": {
     "test": "vitest run"

@@ -2,7 +2,7 @@
  * Policy Core — Shared Mode Definitions.
  *
  * Single source of truth for sandbox mode types, parsing, labels,
- * plan-mode tool lists, capability profile names, and inter-extension event payloads.
+ * read-only mode tools, capability profile names, and inter-extension event payloads.
  */
 
 // ─── Capability profiles ──────────────────────────────────────────
@@ -14,7 +14,7 @@ export type CapabilityProfileName =
 	| "workspace_write"
 	| "yolo";
 
-// ─── Plan mode tools ──────────────────────────────────────────────
+// ─── Read-only mode tools ─────────────────────────────────────────
 
 /**
  * Tools available in read-only mode.
@@ -36,7 +36,7 @@ export const READ_ONLY_MODE_TOOLS = new Set([
 /** The canonical set of sandbox mode names. */
 export const SANDBOX_MODES = ["read_only", "workspace_write", "yolo"] as const;
 
-/** Sandbox mode type — the single definition used by both sandbox and plan-mode. */
+/** Sandbox mode type — the single definition used by both sandbox and modes. */
 export type SandboxMode = (typeof SANDBOX_MODES)[number];
 
 /** Default sandbox mode. */
@@ -68,7 +68,7 @@ export function modeLabel(mode: SandboxMode): string {
 
 // ─── Inter-extension events ───────────────────────────────────────
 
-/** Event names for plan-mode ↔ sandbox coordination via pi.events. */
+/** Event names for modes ↔ sandbox coordination via pi.events. */
 export const SANDBOX_PUSH_PROFILE_EVENT = "mekann:sandbox:push-profile";
 export const SANDBOX_POP_PROFILE_EVENT = "mekann:sandbox:pop-profile";
 
@@ -78,15 +78,15 @@ export interface SandboxPushProfileEvent { owner: string; token: string; profile
 /** Payload for popping a profile override from the sandbox stack. */
 export interface SandboxPopProfileEvent { owner: string; token: string; }
 
-/** Event name for plan-mode → sandbox mode status coordination. */
-export const PLAN_MODE_STATUS_EVENT = "mekann:plan-mode:status";
+/** Event name for modes → sandbox mode status coordination. */
+export const MODE_STATUS_EVENT = "mekann:modes:status";
 
-/** Payload for plan-mode status broadcast. */
-export interface PlanModeStatusEvent { mode: "main" | "plan" | "read_only" | "auto" | "sub"; }
+/** Payload for mode status broadcast. */
+export interface ModeStatusEvent { mode: "main" | "read_only" | "auto" | "sub"; }
 
 // ─── Autoresearch mode notification ─────────────────────────────
 
-/** Event name for autoresearch → plan-mode mode notification. */
+/** Event name for autoresearch → modes mode notification. */
 export const MEKANN_AUTORESEARCH_MODE_EVENT = "mekann:autoresearch:mode";
 
 /** Payload for autoresearch mode notification. */
@@ -158,8 +158,8 @@ export type CommandIntentKind =
 
 /** Structured result of command intent classification. */
 export interface CommandIntent {
-	/** Whether this command is allowed in plan read-only mode. */
-	allowedInPlanReadOnly: boolean;
+	/** Whether this command is allowed in read-only mode. */
+	allowedInReadOnly: boolean;
 	/** The classified intent kind. */
 	kind: CommandIntentKind;
 	/** Human-readable reason for the classification. */
@@ -171,33 +171,33 @@ export interface CommandIntent {
 /**
  * Classify a shell command's intent.
  *
- * This is a UX filter for plan-mode workflows, NOT a security boundary.
+ * This is a UX filter for read-only workflows, NOT a security boundary.
  * Security enforcement is handled by the sandbox extension's OS-level policy.
  */
 export function classifyCommandIntent(command: string): CommandIntent {
 	const stripped = command.trim();
-	if (!stripped) return { allowedInPlanReadOnly: false, kind: "empty", reason: "空のコマンドです" };
+	if (!stripped) return { allowedInReadOnly: false, kind: "empty", reason: "空のコマンドです" };
 	const cleaned = stripped.replace(SAFE_REDIRECT_PATTERN, "");
-	if (SHELL_META_PATTERNS.some((p) => p.test(cleaned))) return { allowedInPlanReadOnly: false, kind: "shell_meta", reason: "シェルメタ文字を含みます（パイプ・チェーン・コマンド置換・リダイレクト等）" };
-	if (DESTRUCTIVE_PATTERNS.some((p) => p.test(cleaned))) return { allowedInPlanReadOnly: false, kind: "destructive", reason: "破壊的または変更を伴うコマンドパターンに一致します" };
-	if (SAFE_PATTERNS.some((p) => p.test(cleaned))) return { allowedInPlanReadOnly: true, kind: "read_only", reason: "読み取り専用コマンド" };
-	return { allowedInPlanReadOnly: false, kind: "unknown", reason: "既知の安全なコマンドパターンに一致しません" };
+	if (SHELL_META_PATTERNS.some((p) => p.test(cleaned))) return { allowedInReadOnly: false, kind: "shell_meta", reason: "シェルメタ文字を含みます（パイプ・チェーン・コマンド置換・リダイレクト等）" };
+	if (DESTRUCTIVE_PATTERNS.some((p) => p.test(cleaned))) return { allowedInReadOnly: false, kind: "destructive", reason: "破壊的または変更を伴うコマンドパターンに一致します" };
+	if (SAFE_PATTERNS.some((p) => p.test(cleaned))) return { allowedInReadOnly: true, kind: "read_only", reason: "読み取り専用コマンド" };
+	return { allowedInReadOnly: false, kind: "unknown", reason: "既知の安全なコマンドパターンに一致しません" };
 }
 
 /**
- * Quick boolean check: is this command allowed in plan read-only mode?
+ * Quick boolean check: is this command allowed in read-only mode?
  *
  * Convenience wrapper around classifyCommandIntent().
  * This is a UX guard, NOT a security boundary.
  */
-export function isPlanReadOnlyCommandIntent(command: string): boolean {
-	return classifyCommandIntent(command).allowedInPlanReadOnly;
+export function isReadOnlyCommandIntent(command: string): boolean {
+	return classifyCommandIntent(command).allowedInReadOnly;
 }
 
 /**
- * @deprecated Use isPlanReadOnlyCommandIntent() instead.
+ * @deprecated Use isReadOnlyCommandIntent() instead.
  * This alias exists for backward compatibility during migration.
  */
 export function isSafeCommand(command: string): boolean {
-	return isPlanReadOnlyCommandIntent(command);
+	return isReadOnlyCommandIntent(command);
 }

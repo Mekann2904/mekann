@@ -1056,7 +1056,7 @@ describe("profile override: restrict-only policy", () => {
 
 		// Push read_only override
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
-			owner: "plan-mode",
+			owner: "modes",
 			token: "plan-123",
 			profile: "read_only",
 		});
@@ -1164,14 +1164,14 @@ describe("profile override: restrict-only policy", () => {
 
 		// Push read_only
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
-			owner: "plan-mode",
+			owner: "modes",
 			token: "plan-789",
 			profile: "read_only",
 		});
 
 		// Pop it
 		mock._eventHandlers["mekann:sandbox:pop-profile"]({
-			owner: "plan-mode",
+			owner: "modes",
 			token: "plan-789",
 		});
 
@@ -1198,7 +1198,7 @@ describe("profile override: restrict-only policy", () => {
 
 		// Push read_only
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
-			owner: "plan-mode",
+			owner: "modes",
 			token: "plan-status-test",
 			profile: "read_only",
 		});
@@ -1207,7 +1207,7 @@ describe("profile override: restrict-only policy", () => {
 
 		// Pop it
 		mock._eventHandlers["mekann:sandbox:pop-profile"]({
-			owner: "plan-mode",
+			owner: "modes",
 			token: "plan-status-test",
 		});
 
@@ -1248,9 +1248,9 @@ describe("request_elevation: startup block", () => {
 	});
 });
 
-// ─── PLAN_MODE_STATUS_EVENT validation ─────────────────────────────
+// ─── MODE_STATUS_EVENT validation ─────────────────────────────
 
-describe("PLAN_MODE_STATUS_EVENT validation", () => {
+describe("MODE_STATUS_EVENT validation", () => {
 	it("mode: plan で setWidget が plan を含むラベルを表示", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
@@ -1262,7 +1262,7 @@ describe("PLAN_MODE_STATUS_EVENT validation", () => {
 		await mock._hooks.session_start({}, ctx);
 
 		// Emit plan mode status — should trigger updateStatusBar via lastCtx
-		mock._eventHandlers["mekann:plan-mode:status"]({ mode: "plan" });
+		mock._eventHandlers["mekann:modes:status"]({ mode: "read_only" });
 
 		// setWidget should have been called with a render function
 		expect(ctx.ui.setWidget).toHaveBeenCalledWith(
@@ -1288,10 +1288,10 @@ describe("PLAN_MODE_STATUS_EVENT validation", () => {
 		await mock._hooks.session_start({}, ctx);
 
 		// First set plan
-		mock._eventHandlers["mekann:plan-mode:status"]({ mode: "plan" });
+		mock._eventHandlers["mekann:modes:status"]({ mode: "read_only" });
 
 		// Then set main — should trigger updateStatusBar via lastCtx
-		mock._eventHandlers["mekann:plan-mode:status"]({ mode: "main" });
+		mock._eventHandlers["mekann:modes:status"]({ mode: "main" });
 
 		// The last setWidget call should NOT contain "plan"
 		const lastCall = ctx.ui.setWidget.mock.calls[ctx.ui.setWidget.mock.calls.length - 1];
@@ -1303,7 +1303,7 @@ describe("PLAN_MODE_STATUS_EVENT validation", () => {
 		expect(label).toContain("yolo");
 	});
 
-	it("invalid payload では planModeStatus が変わらない", async () => {
+	it("invalid payload では modeStatus が変わらない", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
@@ -1314,20 +1314,20 @@ describe("PLAN_MODE_STATUS_EVENT validation", () => {
 		await mock._hooks.session_start({}, ctx);
 
 		// Set plan mode first
-		mock._eventHandlers["mekann:plan-mode:status"]({ mode: "plan" });
+		mock._eventHandlers["mekann:modes:status"]({ mode: "read_only" });
 
 		// Send invalid payloads — should be ignored
-		mock._eventHandlers["mekann:plan-mode:status"](undefined);
-		mock._eventHandlers["mekann:plan-mode:status"](null);
-		mock._eventHandlers["mekann:plan-mode:status"]({});
-		mock._eventHandlers["mekann:plan-mode:status"]({ mode: undefined });
-		mock._eventHandlers["mekann:plan-mode:status"]({ mode: null });
-		mock._eventHandlers["mekann:plan-mode:status"]({ mode: "invalid" });
-		mock._eventHandlers["mekann:plan-mode:status"]({ mode: 123 });
-		mock._eventHandlers["mekann:plan-mode:status"]("string");
-		mock._eventHandlers["mekann:plan-mode:status"](42);
+		mock._eventHandlers["mekann:modes:status"](undefined);
+		mock._eventHandlers["mekann:modes:status"](null);
+		mock._eventHandlers["mekann:modes:status"]({});
+		mock._eventHandlers["mekann:modes:status"]({ mode: undefined });
+		mock._eventHandlers["mekann:modes:status"]({ mode: null });
+		mock._eventHandlers["mekann:modes:status"]({ mode: "invalid" });
+		mock._eventHandlers["mekann:modes:status"]({ mode: 123 });
+		mock._eventHandlers["mekann:modes:status"]("string");
+		mock._eventHandlers["mekann:modes:status"](42);
 
-		// planModeStatus should still be "plan" after all invalid payloads
+		// modeStatus should still be "plan" after all invalid payloads
 		// Verify by checking the last setWidget call
 		const lastCall = ctx.ui.setWidget.mock.calls[ctx.ui.setWidget.mock.calls.length - 1];
 		const widget = lastCall[1](undefined, ctx.ui.theme);
@@ -1584,7 +1584,7 @@ describe("/sandbox command: yolo with override active", () => {
 
 		// Push read_only override
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
-			owner: "plan-mode",
+			owner: "modes",
 			token: "plan-defer-test",
 			profile: "read_only",
 		});
@@ -1769,14 +1769,14 @@ describe("profile override: pop with non-matching token", () => {
 
 		// Push with token A
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
-			owner: "plan-mode",
+			owner: "modes",
 			token: "token-A",
 			profile: "read_only",
 		});
 
 		// Pop with different token
 		mock._eventHandlers["mekann:sandbox:pop-profile"]({
-			owner: "plan-mode",
+			owner: "modes",
 			token: "token-B",
 		});
 
@@ -2026,10 +2026,10 @@ describe("profile override: escalation rejection", () => {
 	});
 });
 
-// ─── Status bar: planModeStatus + explicitlyDisabled ───────────────
+// ─── Status bar: modeStatus + explicitlyDisabled ───────────────
 
 describe("status bar: combined states", () => {
-	it("planModeStatus=plan の時、status bar に plan ラベルが含まれる", async () => {
+	it("modeStatus=plan の時、status bar に plan ラベルが含まれる", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
@@ -2040,7 +2040,7 @@ describe("status bar: combined states", () => {
 		await mock._hooks.session_start({}, ctx);
 
 		// Set plan mode status
-		mock._eventHandlers["mekann:plan-mode:status"]({ mode: "plan" });
+		mock._eventHandlers["mekann:modes:status"]({ mode: "read_only" });
 
 		// Verify status bar includes plan label
 		const lastCall = ctx.ui.setWidget.mock.calls[ctx.ui.setWidget.mock.calls.length - 1];
@@ -2067,7 +2067,7 @@ describe("status bar: combined states", () => {
 // ─── session_shutdown resets all state ─────────────────────────────
 
 describe("session_shutdown: full reset", () => {
-	it("profileOverrideStack と planModeStatus をリセットする", async () => {
+	it("profileOverrideStack と modeStatus をリセットする", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
@@ -2084,7 +2084,7 @@ describe("session_shutdown: full reset", () => {
 		});
 
 		// Set plan mode status
-		mock._eventHandlers["mekann:plan-mode:status"]({ mode: "plan" });
+		mock._eventHandlers["mekann:modes:status"]({ mode: "read_only" });
 
 		// Shutdown
 		await mock._hooks.session_shutdown();

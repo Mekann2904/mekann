@@ -168,12 +168,12 @@ export async function handleCommand(
 	}
 }
 
-/** Emit autoresearch mode event so plan-mode can update its mode state. */
+/** Emit autoresearch mode event so modes can update its mode state. */
 function safeEmitMode(pi: ExtensionAPI, active: boolean, purpose?: string): void {
 	try {
 		pi.events.emit(MEKANN_AUTORESEARCH_MODE_EVENT, { active, purpose } satisfies AutoresearchModeEvent);
 	} catch {
-		// plan-mode extension not loaded
+		// modes extension not loaded
 	}
 }
 

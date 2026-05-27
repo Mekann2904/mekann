@@ -34,7 +34,7 @@ export class GoalRuntime {
   last_accounted_wall_clock: number | null = null;
   /** Set of assistant message usage events already accounted for tokens. */
   private accounted_assistant_usage_keys: Set<string> = new Set();
-  /** Whether plan mode is active (suppresses continuation). */
+  /** Whether idle continuation should be suppressed. */
   inPlanMode = false;
   /** Whether budget steering is suppressed for the current turn. */
   private suppress_budget_steering = false;

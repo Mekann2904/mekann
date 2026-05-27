@@ -30,7 +30,6 @@ import {
 } from "./state.js";
 import { GoalRuntime } from "./runtime.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
-import { PLAN_MODE_STATUS_EVENT } from "../../safety/policy-core/modes.js";
 import { renderWidget, renderGoalPolicy, renderGoalObjectiveContext, renderGoalRuntimeState } from "./prompts.js";
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import { registerGoalCommand } from "./command.js";
@@ -58,19 +57,6 @@ export default function goalExtension(pi: ExtensionAPI): void {
     type: "boolean",
     default: true,
   });
-
-  // ─── Plan mode integration ────────────────────────────────────
-
-  try {
-    pi.events.on(PLAN_MODE_STATUS_EVENT, (data: unknown) => {
-      if (runtime) {
-        const evt = data as { mode: "main" | "plan" };
-        runtime.inPlanMode = evt.mode === "plan";
-      }
-    });
-  } catch {
-    // plan-mode extension not loaded
-  }
 
   // ─── Helpers ──────────────────────────────────────────────────
 

@@ -24,7 +24,7 @@ const EXPECTED_TOOLS_BY_MODULE: Record<string, string[]> = {
 };
 
 const EXPECTED_COMMANDS_BY_MODULE: Record<string, string[]> = {
-	"safety/plan-mode/index.ts": ["plan"],
+	"safety/modes/index.ts": ["read-only", "sub"],
 	"safety/sandbox/index.ts": ["sandbox"],
 	"autonomy/goal/command.ts": ["goal"],
 	"autonomy/subagent/index.ts": ["agents", "wait-agent", "focus-agent", "close-agent"],
@@ -37,7 +37,7 @@ const EXPECTED_COMMANDS_BY_MODULE: Record<string, string[]> = {
 const EXPECTED_PROMPT_PROVIDERS_BY_MODULE: Record<string, string[]> = {
 	"core/agent-guidelines/index.ts": ["agent-guidelines"],
 	"safety/sandbox/index.ts": ["sandbox"],
-	"safety/plan-mode/index.ts": ["plan-mode"],
+	"safety/modes/index.ts": ["modes"],
 	"autonomy/goal/index.ts": ["goal"],
 	"autonomy/subagent/index.ts": ["subagent"],
 	"autonomy/autoresearch/index.ts": ["autoresearch"],
@@ -88,9 +88,9 @@ describe("mekann integrated extension", () => {
 		expect(calls).toEqual(["core", "safety", "autonomy", "utils", "context"]);
 	});
 
-	it("loads sandbox before plan-mode inside safety", () => {
+	it("loads sandbox before modes inside safety", () => {
 		const source = read("mekann/safety/index.ts");
-		expect(source.indexOf("sandbox(pi);")).toBeLessThan(source.indexOf("planMode(pi);"));
+		expect(source.indexOf("sandbox(pi);")).toBeLessThan(source.indexOf("modes(pi);"));
 	});
 
 	it("keeps autonomy modules in goal, subagent, autoresearch order", () => {
@@ -123,10 +123,10 @@ describe("mekann integrated extension", () => {
 		}
 	});
 
-	it("uses policy-core constants for plan-mode coordination outside tests", () => {
+	it("uses policy-core constants for modes coordination outside tests", () => {
 		const goal = read("mekann/autonomy/goal/index.ts");
-		expect(goal).toContain("PLAN_MODE_STATUS_EVENT");
-		expect(goal).not.toContain("pi.events.on(\"mekann:plan-mode:status\"");
+		expect(goal).toContain("MODE_STATUS_EVENT");
+		expect(goal).not.toContain("pi.events.on(\"mekann:modes:status\"");
 	});
 
 	it("keeps prompt-owning modules registered with prompt-core", () => {
@@ -145,7 +145,7 @@ describe("mekann integrated extension", () => {
 	});
 
 	it("requires prompt-like constants and loaded prompt files to go through prompt-core", () => {
-		const promptHelperFiles = new Set(["safety/plan-mode/utils.ts"]);
+		const promptHelperFiles = new Set(["safety/modes/utils.ts"]);
 		const offenders = sourceFiles(MEKANN)
 			.map((file) => path.relative(MEKANN, file))
 			.filter((rel) => rel !== "core/cache-friendly-prompt/index.ts" && rel !== "core/cache-friendly-prompt/report.ts" && !promptHelperFiles.has(rel))

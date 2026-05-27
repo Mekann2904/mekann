@@ -10,9 +10,9 @@ describe("SafetyProfileState", () => {
 	it("applies restrict-only overrides to effective mode", () => {
 		const state = new SafetyProfileState("workspace_write");
 		expect(state.effectiveMode()).toBe("workspace_write");
-		expect(state.pushProfile("plan-mode", "t1", "read_only")).toMatchObject({ ok: true, mode: "read_only" });
+		expect(state.pushProfile("modes", "t1", "read_only")).toMatchObject({ ok: true, mode: "read_only" });
 		expect(state.effectiveMode()).toBe("read_only");
-		state.popProfile("plan-mode", "t1");
+		state.popProfile("modes", "t1");
 		expect(state.effectiveMode()).toBe("workspace_write");
 	});
 
@@ -24,7 +24,7 @@ describe("SafetyProfileState", () => {
 
 	it("ignores overrides while explicitly disabled", () => {
 		const state = new SafetyProfileState("yolo");
-		state.pushProfile("plan-mode", "t1", "read_only");
+		state.pushProfile("modes", "t1", "read_only");
 		expect(state.effectiveMode()).toBe("read_only");
 		state.setExplicitlyDisabled(true);
 		expect(state.effectiveMode()).toBe("yolo");

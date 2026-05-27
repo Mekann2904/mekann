@@ -15,7 +15,7 @@ export interface ModelManagerOptions {
 	onResolvedRef?: (requested: ModelRef, resolved: ModelRef) => void;
 }
 
-/** Pi thinking levels. Kept here so model/thinking persistence is not owned by plan-mode. */
+/** Pi thinking levels. Kept here so model/thinking persistence is not owned by modes. */
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export interface ModeModelPersistenceOptions<Mode extends string> {

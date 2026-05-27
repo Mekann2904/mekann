@@ -42,7 +42,7 @@ describe("mekann settings core", () => {
 });
 
 describe("settings registry", () => {
-  const featureNames = ["plan-mode", "sandbox", "subagent", "output-gate", "codex-shared", "codex-web-search"];
+  const featureNames = ["modes", "sandbox", "subagent", "output-gate", "codex-shared", "codex-web-search"];
 
   it("registers all expected features", () => {
     const registered = mekannSettingsSchemas.map((s) => s.feature);
@@ -112,10 +112,10 @@ describe("output-gate schema", () => {
   });
 });
 
-describe("plan-mode schema", () => {
+describe("modes schema", () => {
   it("has model and thinking settings for 4 modes", () => {
-    const schema = mekannSettingsSchemas.find((s) => s.feature === "plan-mode")!;
-    const modes = ["main", "plan", "auto", "sub"];
+    const schema = mekannSettingsSchemas.find((s) => s.feature === "modes")!;
+    const modes = ["main", "read_only", "auto", "sub"];
     for (const mode of modes) {
       expect(schema.settings.find((s) => s.key === `models.${mode}`)).toBeDefined();
       expect(schema.settings.find((s) => s.key === `thinking.${mode}`)).toBeDefined();
@@ -123,7 +123,7 @@ describe("plan-mode schema", () => {
   });
 
   it("validates modelRef accepts undefined and valid objects", () => {
-    const schema = mekannSettingsSchemas.find((s) => s.feature === "plan-mode")!;
+    const schema = mekannSettingsSchemas.find((s) => s.feature === "modes")!;
     const model = schema.settings.find((s) => s.key === "models.main")!;
     expect(model.validate(undefined)).toEqual([]);
     expect(model.validate({ provider: "p", modelId: "m" })).toEqual([]);

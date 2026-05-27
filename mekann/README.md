@@ -7,14 +7,14 @@
 | Suite | Feature |
 |---|---|
 | [`core`](./core/) | `prompt-core`, `cache-friendly-prompt`, `agent-guidelines` |
-| [`safety`](./safety/) | `sandbox`, `plan-mode`, `policy-core` |
+| [`safety`](./safety/) | `sandbox`, `modes`, `policy-core` |
 | [`autonomy`](./autonomy/) | `goal`, `subagent`, `autoresearch` |
 | [`context`](./context/) | `output-gate`, `context-ledger` |
 | [`utils`](./utils/) | `zip-repo`, `codex-limits`, `dashboard`, `codex-web-search`, `terminal-shortcuts`, `settings-editor` |
 
 ## 読み込み順の意図
 
-`sandbox` は `plan-mode` より先に初期化します。`plan-mode` は UX-level の計画モードであり、実行制限の hard boundary は `sandbox` が担うためです。
+`sandbox` は `modes` より先に初期化します。`modes` は UX-level のコラボレーションモード管理であり、実行制限の hard boundary は `sandbox` が担うためです。
 
 ## 使い方
 

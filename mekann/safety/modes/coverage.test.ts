@@ -1,5 +1,5 @@
 /**
- * Coverage tests for plan-mode — targets uncovered lines in index.ts and utils.ts.
+ * Coverage tests for modes — targets uncovered lines in index.ts and utils.ts.
  *
  * index.ts uncovered:
  *   - L128: auto→other transition (state.mode !== target)
@@ -107,8 +107,8 @@ function createMockCtx(overrides?: Partial<MockExtensionContext>): MockExtension
 }
 
 async function loadExtension(mockApi: ReturnType<typeof createMockApi>) {
-	const { default: planModeExtension } = await import("./index.js");
-	planModeExtension(mockApi as any);
+	const { default: modesExtension } = await import("./index.js");
+	modesExtension(mockApi as any);
 }
 
 /** Write initial config to real mekann.json, restoring (or deleting) on cleanup. */
@@ -119,7 +119,7 @@ function withPlanModeConfig<T>(initial: unknown, fn: (configPath: string) => Pro
 	const configPath = path.join(os.homedir(), ".pi", "agent", "mekann.json");
 	const original = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf-8") : undefined;
 	fs.mkdirSync(path.dirname(configPath), { recursive: true });
-	const wrapped = { version: 1, features: { "plan-mode": initial } };
+	const wrapped = { version: 1, features: { "modes": initial } };
 	fs.writeFileSync(configPath, JSON.stringify(wrapped));
 	return fn(configPath).finally(() => {
 		if (original !== undefined) fs.writeFileSync(configPath, original);
@@ -336,7 +336,7 @@ describe("index.ts: persisted model restore failures", () => {
 		expect(mock.setModel).not.toHaveBeenCalled();
 		expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("設定は保持します"), "warning");
 		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.features["plan-mode"].models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
+		expect(saved.features["modes"].models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
 	}));
 
 	it("keeps saved auto model when registry is temporarily unavailable during mode transition", async () => withPlanModeConfig({
@@ -356,7 +356,7 @@ describe("index.ts: persisted model restore failures", () => {
 
 		expect(mock.setModel).not.toHaveBeenCalled();
 		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.features["plan-mode"].models.auto).toEqual({ provider: "openai", modelId: "gpt-5" });
+		expect(saved.features["modes"].models.auto).toEqual({ provider: "openai", modelId: "gpt-5" });
 	}));
 
 	it("retries startup restore when available models are populated shortly after session_start", async () => withPlanModeConfig({
@@ -488,14 +488,14 @@ describe("utils.ts: config persistence edge cases", () => {
 		updateConfigField(config, "thinking", "main", "off", configPath);
 
 		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.features["plan-mode"].thinking.main).toBe("off");
+		expect(saved.features["modes"].thinking.main).toBe("off");
 		rmSync(tmpDir, { recursive: true, force: true });
 	});
 
 	it("stale lock is reclaimed and save succeeds", async () => {
 		const { saveModelConfig, createDefaultConfig } = await import("./utils.js");
 		const tmpDir = mkdtempSync(join(tmpdir(), "plan-stale-test-"));
-		const configPath = join(tmpDir, "plan-mode.json");
+		const configPath = join(tmpDir, "modes.json");
 
 		// Create a stale lock (mtime > 30s ago)
 		const lockPath = `${configPath}.lock`;
@@ -514,7 +514,7 @@ describe("utils.ts: config persistence edge cases", () => {
 		saveModelConfig(config, configPath);
 
 		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
-		expect(saved.features["plan-mode"].models.main).toEqual({ provider: "test", modelId: "stale-test" });
+		expect(saved.features["modes"].models.main).toEqual({ provider: "test", modelId: "stale-test" });
 
 		rmSync(tmpDir, { recursive: true, force: true });
 	});

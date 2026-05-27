@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 import React from "react";
-import { existsSync } from "node:fs";
-import { getLegacyPlanModeConfigPath } from "../../config.js";
 import { getGlobalMekannSettingsPath, getWorkspaceMekannSettingsPath, loadSettings, saveSettingsChecked, setFeatureValue } from "../../settings/store.js";
 import { mekannSettingsSchemas } from "../../settings/registry.js";
 import { diagnosticsForUnknownKeys, flattenEffective } from "../../settings/effective.js";
@@ -14,7 +12,6 @@ export async function runSettingsEditorCli(argv = process.argv.slice(2)): Promis
   const workspace = loadSettings(getWorkspaceMekannSettingsPath());
   const effective = flattenEffective(mekannSettingsSchemas, global, workspace);
   const diagnostics = diagnosticsForUnknownKeys(mekannSettingsSchemas, global, workspace);
-  if (existsSync(getLegacyPlanModeConfigPath())) diagnostics.push("legacy plan-mode.json が残っています。mekann.json へ移行済みなら削除/退避してください。");
   const models = await fetchModelCatalog(process.env.MEKANN_SETTINGS_MODEL_SOCKET, process.env.MEKANN_SETTINGS_MODEL_TOKEN);
   if (diagnose) {
     console.log(`Mekann settings: ${effective.length} items, ${models.length} models`);

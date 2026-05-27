@@ -6,8 +6,8 @@ import { emptySettings, loadSettings, saveSettingsChecked, setFeatureValue } fro
 
 describe("settings store", () => {
   it("sets nested feature values", () => {
-    const next = setFeatureValue(emptySettings(), "plan-mode", "models.main", { provider: "p", modelId: "m" });
-    expect(next.features["plan-mode"].models).toEqual({ main: { provider: "p", modelId: "m" } });
+    const next = setFeatureValue(emptySettings(), "modes", "models.main", { provider: "p", modelId: "m" });
+    expect(next.features["modes"].models).toEqual({ main: { provider: "p", modelId: "m" } });
   });
 
   it("rejects concurrent writes by hash", () => {
