@@ -66,14 +66,17 @@ function supportedThinking(
 	models: ModelCatalogItem[],
 	item: EffectiveSetting,
 	items: EffectiveSetting[],
+	drafts: Record<string, DraftChange>,
 ): string[] {
 	const mode = item.key.split(".")[1];
 	const modelItem = items.find(
 		(i) => i.feature === "plan-mode" && i.key === `models.${mode}`,
 	);
-	const modelText = valueText(modelItem?.effectiveValue);
+	// Check draft first, then effective value
+	const draft = modelItem ? drafts[itemId(modelItem)] : undefined;
+	const modelKey = draft?.raw ?? valueText(modelItem?.effectiveValue);
 	const model = models.find(
-		(m) => `${m.provider}/${m.modelId}` === modelText,
+		(m) => `${m.provider}/${m.modelId}` === modelKey,
 	);
 	return model?.supportedThinkingLevels?.length
 		? model.supportedThinkingLevels
@@ -389,6 +392,7 @@ function ContentHeader(p: { feature: string; count: number; featureGroups: Featu
 function DetailPanel(p: {
 	item: EffectiveSetting;
 	draft: DraftChange | undefined;
+	drafts: Record<string, DraftChange>;
 	models: ModelCatalogItem[];
 	allItems: EffectiveSetting[];
 	scope: SettingsScope;
@@ -432,17 +436,29 @@ function DetailPanel(p: {
 		children.push(el("text", { fg: C.orange, content: "⚠ Restart required for changes to take effect" }));
 	}
 
-	// Enum options
+	// Enum options (use model-specific thinking levels for thinking settings)
 	if (p.item.schema.enumValues && p.item.schema.enumValues.length > 0) {
+		let enumDisplay = p.item.schema.enumValues;
+		if (p.item.feature === "plan-mode" && p.item.key.startsWith("thinking.")) {
+			const mode = p.item.key.split(".")[1];
+			const modelItem = p.allItems.find((i) => i.feature === "plan-mode" && i.key === `models.${mode}`);
+			if (modelItem) {
+				const modelKey = p.drafts[itemId(modelItem)]?.raw ?? valueText(modelItem.effectiveValue);
+				const thinkingModel = p.models.find((m) => `${m.provider}/${m.modelId}` === modelKey);
+				if (thinkingModel?.supportedThinkingLevels?.length) {
+					enumDisplay = thinkingModel.supportedThinkingLevels;
+				}
+			}
+		}
 		children.push(
 			el("box", { style: { flexDirection: "row" } },
 				el("text", { fg: C.fgDim, content: "Options: " }),
-				el("text", { fg: C.teal, content: p.item.schema.enumValues.join(" │ ") }),
+				el("text", { fg: C.teal, content: enumDisplay.join(" │ ") }),
 			),
 		);
 	}
 
-	// Model info
+	// Model info (for modelRef settings)
 	if (modelMatch) {
 		children.push(
 			el("box", { style: { flexDirection: "row" } },
@@ -453,6 +469,18 @@ function DetailPanel(p: {
 		);
 		if (modelMatch.supportedThinkingLevels.length > 0) {
 			children.push(el("text", { fg: C.fgDim, content: `  thinking: ${modelMatch.supportedThinkingLevels.join(", ")}` }));
+		}
+	}
+
+	// For thinking settings, show which model drives the options
+	if (p.item.feature === "plan-mode" && p.item.key.startsWith("thinking.")) {
+		const mode = p.item.key.split(".")[1];
+		const modelItem = p.allItems.find((i) => i.feature === "plan-mode" && i.key === `models.${mode}`);
+		if (modelItem) {
+			const modelKey = p.drafts[itemId(modelItem)]?.raw ?? valueText(modelItem.effectiveValue);
+			const thinkingModel = p.models.find((m) => `${m.provider}/${m.modelId}` === modelKey);
+			const label = thinkingModel ? `${thinkingModel.label} (${thinkingModel.providerLabel})` : modelKey;
+			children.push(el("text", { fg: C.fgDim, content: `Model:   ${label}` }));
 		}
 	}
 
@@ -709,7 +737,7 @@ export function SettingsEditorApp({
 		if (item.schema.type === "modelRef") {
 			setModelSelected(0); setMode("models"); setMessage("pick a model");
 		} else if (item.schema.type === "enum") {
-			const values = item.feature === "plan-mode" && item.key.startsWith("thinking.") ? supportedThinking(models, item, items) : (item.schema.enumValues ?? []);
+			const values = item.feature === "plan-mode" && item.key.startsWith("thinking.") ? supportedThinking(models, item, items, drafts) : (item.schema.enumValues ?? []);
 			const idx = Math.max(0, values.indexOf(shown));
 			stage(item, values[(idx + 1) % values.length] ?? "");
 		} else if (item.schema.type === "boolean") {
@@ -881,7 +909,7 @@ export function SettingsEditorApp({
 				}, ...rows),
 				// Inline detail panel (conditional)
 				...(showDetail
-					? [el(DetailPanel, { item: current, draft: currentDraft, models, allItems: items, scope })]
+					? [el(DetailPanel, { item: current, draft: currentDraft, drafts, models, allItems: items, scope })]
 					: []
 				),
 			),
