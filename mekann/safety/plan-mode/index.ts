@@ -93,18 +93,12 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 	// ─── Common helpers for mode transitions ───────────────────────
 
-	/** Snapshot current main model/thinking before leaving main. Persist only for ordinary interactive transitions. */
-	function snapshotMain(ctx: ExtensionContext, opts?: { persist?: boolean }): void {
-		const persist = opts?.persist !== false;
+	/** Snapshot current main model/thinking before leaving main. Do not persist here; user selections are persisted by model/thinking events. */
+	function snapshotMain(ctx: ExtensionContext): void {
 		const _m = ctx.model;
 		const mainRef = _m ? { provider: _m.provider, modelId: _m.id } as ModelRef : undefined;
-		if (mainRef) {
-			state.savedMainModel = mainRef;
-			if (persist) updateConfigField(state.modelConfig, "models", "main", mainRef, configPath);
-		}
-		const mainThinking = pi.getThinkingLevel();
-		state.savedMainThinking = mainThinking;
-		if (persist) updateConfigField(state.modelConfig, "thinking", "main", mainThinking, configPath);
+		if (mainRef) state.savedMainModel = mainRef;
+		state.savedMainThinking = pi.getThinkingLevel();
 	}
 
 	/** Save active tools on first transition away from main. */
@@ -115,8 +109,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	/** Restore main model, thinking, and tools from any non-main mode. */
 	async function restoreMainModelAndThinking(ctx: ExtensionContext): Promise<void> {
 		const mainRef = state.modelConfig.models.main;
-		const result = await trySetModel(mainRef, ctx, "Main model");
-		if (result !== "ok" && state.savedMainModel && !sameModelRef(mainRef, state.savedMainModel)) {
+		if (mainRef) {
+			await trySetModel(mainRef, ctx, "Main model");
+		} else if (state.savedMainModel) {
+			// Only use the startup/current-model snapshot when no explicit main model is configured.
+			// If models.main exists, it is the user's source of truth; do not try unrelated Pi defaults.
 			await trySetModel(state.savedMainModel, ctx, "Main model (fallback)");
 		}
 		applyThinking(state.modelConfig.thinking.main ?? state.savedMainThinking);
@@ -125,11 +122,10 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	// ─── Mode transitions ───────────────────────────────────────────
 
 	/** Transition to a target mode from any current mode. */
-	async function transitionToMode(target: MekannMode, ctx: ExtensionContext, opts?: { persistCurrentMain?: boolean; purpose?: string }): Promise<void> {
+	async function transitionToMode(target: MekannMode, ctx: ExtensionContext, _opts?: { persistCurrentMain?: boolean; purpose?: string }): Promise<void> {
 		const previous = state.mode;
 		if (previous === target) return;
 
-		const persistCurrentMain = opts?.persistCurrentMain !== false;
 		// ── Leave the current mode ──
 		if (previous === "plan") {
 			state.mode = target;
@@ -154,7 +150,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		// ── Snapshot main model/thinking if leaving main ──
 		if (previous === "main") {
-			snapshotMain(ctx, { persist: persistCurrentMain });
+			snapshotMain(ctx);
 		}
 
 		// ── Enter the target mode ──

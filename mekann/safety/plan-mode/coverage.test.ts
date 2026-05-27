@@ -377,7 +377,7 @@ describe("index.ts: persisted model restore failures", () => {
 });
 
 describe("index.ts: startup flag main restore snapshots", () => {
-	it("restores initial main model after --plan startup even when models.main is unset", async () => withPlanModeConfig({
+	it("restores initial main model after --plan startup when models.main is unset", async () => withPlanModeConfig({
 		models: { plan: { provider: "openai", modelId: "gpt-5" } },
 	}, async () => {
 		const mock = createMockApi();
@@ -390,6 +390,32 @@ describe("index.ts: startup flag main restore snapshots", () => {
 
 		expect(mock.setModel).toHaveBeenCalledWith({ provider: "openai", id: "gpt-5" });
 		expect(mock.setModel).toHaveBeenCalledWith({ provider: "anthropic", id: "sonnet" });
+	}));
+
+	it("does not try startup snapshot fallback when explicit models.main restore fails", async () => withPlanModeConfig({
+		models: {
+			main: { provider: "openai-codex", modelId: "gpt-5.5" },
+			plan: { provider: "openai", modelId: "gpt-5" },
+		},
+	}, async () => {
+		const mock = createMockApi();
+		mock._flags = { plan: true };
+		await loadExtension(mock);
+		const ctx = createMockCtx({
+			model: { provider: "anthropic", id: "sonnet" },
+			modelRegistry: {
+				find: (provider: string, modelId: string) => ({ provider, id: modelId }),
+				getAvailable: () => [{ provider: "openai", id: "gpt-5" }],
+			},
+		});
+
+		await mock._hooks.session_start({}, ctx);
+		await mock._commands["plan"].handler("", ctx);
+
+		expect(mock.setModel).toHaveBeenCalledWith({ provider: "openai", id: "gpt-5" });
+		expect(mock.setModel).not.toHaveBeenCalledWith({ provider: "anthropic", id: "sonnet" });
+		expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("openai-codex/gpt-5.5"), "warning");
+		expect(ctx.ui.notify).not.toHaveBeenCalledWith(expect.stringContaining("anthropic/sonnet"), "warning");
 	}));
 });
 
@@ -506,9 +532,7 @@ describe("utils.ts: config persistence edge cases", () => {
 // ═══════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════
-// index.ts: L102 — restoreMainModelAndThinking fallback path
-// This path requires state.modelConfig.models.main to differ from savedMainModel
-// after snapshotMain has run. Since snapshotMain writes both, this requires
-// external config mutation between plan entry and exit. The line is tested
-// by the existing test suite in multi-session scenarios.
+// index.ts: restoreMainModelAndThinking fallback path
+// snapshotMain is intentionally in-memory only; model_select/thinking events own persistence.
+// The fallback path is covered by startup flag tests where models.main is unset.
 // ═══════════════════════════════════════════════════════════════════
