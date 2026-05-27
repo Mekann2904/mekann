@@ -415,6 +415,12 @@ _Avoid_: codex-core, codex-base
 **Codex shared dependency rule**:
 `codex-shared` must not depend on Pi tool framework types or on `codex-limits` / `codex-web-search`. Pi-context–aware auth resolution belongs in each tool module or a thin adapter, not in `codex-shared`.
 
+### Development workflow
+
+**OSS reference library**:
+A local collection of full-cloned major OSS repositories under `vendor/oss/` used as implementation reference when building Mekann extensions. The agent reads source code from these repositories when the user directs it to consult a specific project for architecture patterns, API design, or implementation ideas. Cloned via `npm run clone:oss` and updated via `npm run update:oss`. The directory is git-ignored and is not part of the Mekann build.
+_Avoid_: upstream skill mirror, vendored dependency, build-time reference
+
 ## Example dialogue
 
 Developer: “Should this be a goal or autoresearch?”

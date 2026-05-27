@@ -32,3 +32,6 @@ autoresearch.checks.sh
 # Local evaluation artifacts
 /evaluate_maintenance.sh
 /results.tsv
+
+# OSS reference library
+/vendor/oss/
