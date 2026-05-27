@@ -53,7 +53,18 @@ export function diagnosticsForUnknownKeys(schemas: FeatureSettingsSchema[], glob
       const keys = known.get(feature);
       if (!keys) { messages.push(`${scope}: unknown feature ${feature}`); continue; }
       if (!values || typeof values !== "object") continue;
-      for (const key of leafPaths(values)) if (!keys.has(key)) messages.push(`${scope}: ${feature}.${key} は unknown key です`);
+      for (const key of leafPaths(values)) {
+        if (!keys.has(key)) {
+          // A leaf path like "models.main.provider" may be a sub-key of a
+          // known setting "models.main" (e.g. modelRef objects). Skip those.
+          let isSubkey = false;
+          const parts = key.split(".");
+          for (let i = parts.length - 1; i >= 1; i--) {
+            if (keys.has(parts.slice(0, i).join("."))) { isSubkey = true; break; }
+          }
+          if (!isSubkey) messages.push(`${scope}: ${feature}.${key} は unknown key です`);
+        }
+      }
     }
   }
   return messages;
