@@ -158,6 +158,10 @@ function typeIcon(type: string): string {
 
 // ─── Sub-components ───────────────────────────────────────────────
 
+function isLeftMouse(event: any): boolean {
+	return event?.button === "left" || event?.button === 0 || event?.button === undefined;
+}
+
 function SettingRow(p: {
 	item: EffectiveSetting;
 	index: number;
@@ -165,6 +169,7 @@ function SettingRow(p: {
 	hasDraft: boolean;
 	draftValue: string;
 	draftScope: string;
+	onSelect: (index: number) => void;
 }) {
 	const bgColor = p.isSelected ? C.bgSelected : p.index % 2 === 0 ? C.rowEvenBg : C.rowOddBg;
 	const keyColor = p.isSelected ? C.fgBright : C.accent;
@@ -174,7 +179,9 @@ function SettingRow(p: {
 	const restartIcon = p.item.schema.restartRequired ? " ↻" : "";
 
 	return el("box", {
+		id: `setting-row-${p.index}`,
 		style: { flexDirection: "row", width: "100%", height: 1, backgroundColor: bgColor, paddingLeft: 1, paddingRight: 1, alignItems: "center" },
+		onMouseDown: (event: any) => { if (isLeftMouse(event)) { p.onSelect(p.index); event?.stopPropagation?.(); } },
 	},
 		el("text", { fg: C.fgDim, content: `${typeIcon(p.item.schema.type)} ` }),
 		el("text", { fg: keyColor, content: pad(p.item.key, 24) }),
@@ -250,7 +257,8 @@ function StatusBar(p: {
 		el("box", {
 			style: { flexDirection: "row", width: "100%", height: 1, backgroundColor: C.statusKeyBg, paddingLeft: 1, paddingRight: 1, alignItems: "center" },
 		},
-			el("text", { fg: C.fgDim, content: " ↑↓ " }), el("text", { fg: C.fg, content: "nav" }),
+			el("text", { fg: C.fgDim, content: " ↑↓/wheel " }), el("text", { fg: C.fg, content: "nav" }),
+			el("text", { fg: C.fgDim, content: "  click " }), el("text", { fg: C.fg, content: "select" }),
 			el("text", { fg: C.fgDim, content: "  ⏎ " }), el("text", { fg: C.accent, content: enterHint }),
 			el("text", { fg: C.fgDim, content: "  Tab " }), el("text", { fg: C.fg, content: "scope" }),
 			el("text", { fg: C.fgDim, content: "  d " }), el("text", { fg: C.fg, content: "diff" }),
@@ -383,7 +391,7 @@ function DiffOverlay(p: { drafts: Record<string, DraftChange>; items: EffectiveS
 	}, ...children);
 }
 
-function ModelPickerOverlay(p: { models: ModelCatalogItem[]; selected: number }) {
+function ModelPickerOverlay(p: { models: ModelCatalogItem[]; selected: number; onSelect: (index: number) => void }) {
 	const scrollRef = useRef<ScrollBoxRenderable>(null);
 
 	useEffect(() => {
@@ -397,6 +405,7 @@ function ModelPickerOverlay(p: { models: ModelCatalogItem[]; selected: number })
 			key: `${m.provider}/${m.modelId}`,
 			id: `model-row-${i}`,
 			style: { flexDirection: "row", height: 1, backgroundColor: isSel ? C.bgSelected : C.bg, paddingLeft: 1, paddingRight: 1 },
+			onMouseDown: (event: any) => { if (isLeftMouse(event)) { p.onSelect(i); event?.stopPropagation?.(); } },
 		},
 			el("text", { fg: isSel ? C.fgBright : C.fg, content: `${isSel ? "▸" : " "} ${pad(`${m.provider}/${m.modelId}`, 44)} ` }),
 			m.reasoning ? el("text", { fg: isSel ? C.fgBright : C.teal, content: "reasoning " }) : null,
@@ -408,7 +417,7 @@ function ModelPickerOverlay(p: { models: ModelCatalogItem[]; selected: number })
 		style: { position: "absolute", top: 1, left: 2, right: 2, bottom: 2, borderStyle: "rounded", borderColor: C.cyan, backgroundColor: C.overlayBg, padding: 1, flexDirection: "column", gap: 0 },
 	},
 		el("text", { fg: C.cyan, content: "Select Model" }),
-		el("text", { fg: C.fgDim, content: "↑↓ navigate · Enter select · Esc cancel" }),
+		el("text", { fg: C.fgDim, content: "↑↓ navigate · click select · wheel scroll · Enter select · Esc cancel" }),
 		el("scrollbox", {
 			ref: scrollRef,
 			style: { width: "100%", flexGrow: 1, backgroundColor: C.bg },
@@ -428,6 +437,7 @@ export function SettingsEditorApp({
 	onQuit,
 }: SettingsEditorAppProps) {
 	useTerminalDimensions();
+	const settingsScrollRef = useRef<ScrollBoxRenderable>(null);
 
 	const [selected, setSelected] = useState(0);
 	const [scope, setScope] = useState<SettingsScope>("global");
@@ -443,6 +453,10 @@ export function SettingsEditorApp({
 	const current = items[Math.min(selected, Math.max(0, items.length - 1))];
 	const currentDraft = current ? drafts[itemId(current)] : undefined;
 	const shownValue = currentDraft?.raw ?? valueText(current?.effectiveValue);
+
+	useEffect(() => {
+		settingsScrollRef.current?.scrollChildIntoView(`setting-row-${selected}`);
+	}, [selected, items.length]);
 
 	const stage = useCallback(
 		(item: EffectiveSetting, raw: string) => {
@@ -527,6 +541,7 @@ export function SettingsEditorApp({
 				hasDraft: !!draft,
 				draftValue: draft?.raw ?? "",
 				draftScope: draft?.scope ?? "",
+				onSelect: setSelected,
 			}));
 		}
 	}
@@ -544,9 +559,11 @@ export function SettingsEditorApp({
 				el("text", { fg: C.fgDim, content: `${items.length} settings · ${models.length} models` }),
 			),
 			el("scrollbox", {
+				ref: settingsScrollRef,
 				style: { width: "100%", flexGrow: 1, backgroundColor: C.bg },
 				scrollY: true,
 				viewportCulling: true,
+				focused: true,
 			}, ...rows),
 		),
 		// Right panel: Detail
@@ -561,6 +578,6 @@ export function SettingsEditorApp({
 		// Overlays
 		...(mode === "edit" && current ? [el(EditOverlay, { settingKey: itemId(current), buffer, type: current.schema.type })] : []),
 		...(mode === "diff" ? [el(DiffOverlay, { drafts, items })] : []),
-		...(mode === "models" ? [el(ModelPickerOverlay, { models, selected: modelSelected })] : []),
+		...(mode === "models" ? [el(ModelPickerOverlay, { models, selected: modelSelected, onSelect: setModelSelected })] : []),
 	);
 }

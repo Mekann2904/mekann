@@ -26,7 +26,7 @@ export async function runSettingsEditorCli(argv = process.argv.slice(2)): Promis
   // when imported concurrently. Import core first, then the React renderer.
   const { createCliRenderer } = await import("@opentui/core");
   const { createRoot } = await import("@opentui/react");
-  const renderer = await createCliRenderer({ exitOnCtrlC: false });
+  const renderer = await createCliRenderer({ exitOnCtrlC: false, useMouse: true, enableMouseMovement: true });
   const root = createRoot(renderer);
   const apply = async (changes: DraftChange[]): Promise<string | undefined> => {
     const byScope = new Map<"global" | "workspace", DraftChange[]>();
