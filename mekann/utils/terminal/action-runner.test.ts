@@ -14,10 +14,14 @@ import type { TerminalLaunchResult } from "./types.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-type RunCall = {
-	ctx: TerminalActionRunContext;
-	input: TerminalActionRunInput;
-};
+function newSilentRunner(config: ConstructorParameters<typeof TerminalActionRunner>[0] = {}) {
+	return new TerminalActionRunner({
+		writeStdout: () => undefined,
+		writeStderr: () => undefined,
+		waitForEnter: () => undefined,
+		...config,
+	});
+}
 
 function mockSpawn(exitCode = 0): SpawnAction & { calls: Array<{ action: any; cwd: string }> } {
 	const calls: Array<{ action: any; cwd: string }> = [];
@@ -106,7 +110,7 @@ describe("TerminalActionRunner", () => {
 		it("returns 0 on successful split and tracks window id", async () => {
 			const launch = mockLaunch([{ ok: true, windowId: "w1" }]);
 			const close = mockCloseWindow();
-			const runner = new TerminalActionRunner({
+			const runner = newSilentRunner({
 				launchWithTerminalEmulator: launch,
 				closeWindow: close,
 			});
@@ -122,7 +126,7 @@ describe("TerminalActionRunner", () => {
 		it("falls back to pass-through when split fails and idle and not splitOnly", async () => {
 			const launch = mockLaunch([{ ok: false, reason: "unsupported" }]);
 			const spawn = mockSpawn(0);
-			const runner = new TerminalActionRunner({
+			const runner = newSilentRunner({
 				launchWithTerminalEmulator: launch,
 				spawnAction: spawn,
 			});
@@ -135,7 +139,7 @@ describe("TerminalActionRunner", () => {
 		it("does not fall back to pass-through when splitOnly", async () => {
 			const launch = mockLaunch([{ ok: false, reason: "unsupported" }]);
 			const spawn = mockSpawn(0);
-			const runner = new TerminalActionRunner({
+			const runner = newSilentRunner({
 				launchWithTerminalEmulator: launch,
 				spawnAction: spawn,
 			});
@@ -151,7 +155,7 @@ describe("TerminalActionRunner", () => {
 		it("does not fall back to pass-through when not idle", async () => {
 			const launch = mockLaunch([{ ok: false, reason: "unsupported" }]);
 			const spawn = mockSpawn(0);
-			const runner = new TerminalActionRunner({
+			const runner = newSilentRunner({
 				launchWithTerminalEmulator: launch,
 				spawnAction: spawn,
 			});
@@ -167,7 +171,7 @@ describe("TerminalActionRunner", () => {
 	describe("pass-through", () => {
 		it("returns exit code from spawned process", async () => {
 			const spawn = mockSpawn(42);
-			const runner = new TerminalActionRunner({ spawnAction: spawn });
+			const runner = newSilentRunner({ spawnAction: spawn });
 
 			const exitCode = await runner.run(mkCtx(), passThroughInput);
 			expect(exitCode).toBe(42);
@@ -175,7 +179,7 @@ describe("TerminalActionRunner", () => {
 
 		it("returns 1 when hasUI is false", async () => {
 			const spawn = mockSpawn(0);
-			const runner = new TerminalActionRunner({ spawnAction: spawn });
+			const runner = newSilentRunner({ spawnAction: spawn });
 
 			const exitCode = await runner.run(
 				mkCtx({ hasUI: false }),
@@ -187,7 +191,7 @@ describe("TerminalActionRunner", () => {
 
 		it("returns 1 when not idle", async () => {
 			const spawn = mockSpawn(0);
-			const runner = new TerminalActionRunner({ spawnAction: spawn });
+			const runner = newSilentRunner({ spawnAction: spawn });
 
 			const exitCode = await runner.run(
 				mkCtx({ isIdle: () => false }),
@@ -200,7 +204,7 @@ describe("TerminalActionRunner", () => {
 		it("stops and starts TUI control around spawn", async () => {
 			const { runSection, tuiCalls } = mockPassThroughSection();
 			const spawn = mockSpawn(0);
-			const runner = new TerminalActionRunner({ spawnAction: spawn });
+			const runner = newSilentRunner({ spawnAction: spawn });
 
 			await runner.run(mkCtx({ runPassThroughSection: runSection }), passThroughInput);
 			expect(tuiCalls.stop).toBe(1);
@@ -218,7 +222,7 @@ describe("TerminalActionRunner", () => {
 				signal: null,
 				error: new Error("spawn failed"),
 			});
-			const runner = new TerminalActionRunner({ spawnAction: spawn });
+			const runner = newSilentRunner({ spawnAction: spawn });
 
 			const exitCode = await runner.run(mkCtx(), passThroughInput);
 			expect(exitCode).toBe(1);
@@ -228,7 +232,7 @@ describe("TerminalActionRunner", () => {
 			const spawn: SpawnAction = () => {
 				throw new Error("unexpected");
 			};
-			const runner = new TerminalActionRunner({ spawnAction: spawn });
+			const runner = newSilentRunner({ spawnAction: spawn });
 
 			const exitCode = await runner.run(mkCtx(), passThroughInput);
 			expect(exitCode).toBe(1);
@@ -244,7 +248,7 @@ describe("TerminalActionRunner", () => {
 				{ ok: true, windowId: "w2" },
 			]);
 			const close = mockCloseWindow();
-			const runner = new TerminalActionRunner({
+			const runner = newSilentRunner({
 				launchWithTerminalEmulator: launch,
 				closeWindow: close,
 			});
@@ -265,7 +269,7 @@ describe("TerminalActionRunner", () => {
 			const close: CloseWindow = async () => {
 				throw new Error("window not found");
 			};
-			const runner = new TerminalActionRunner({
+			const runner = newSilentRunner({
 				launchWithTerminalEmulator: launch,
 				closeWindow: close,
 			});

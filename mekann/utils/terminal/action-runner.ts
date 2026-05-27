@@ -53,6 +53,9 @@ export interface TerminalActionRunnerConfig {
 	) => Promise<TerminalLaunchResult>;
 	closeWindow?: CloseWindow;
 	spawnAction?: SpawnAction;
+	writeStdout?: (text: string) => void;
+	writeStderr?: (text: string) => void;
+	waitForEnter?: () => void;
 }
 
 export interface TerminalActionRunInput {
@@ -104,6 +107,9 @@ export class TerminalActionRunner {
 	) => Promise<TerminalLaunchResult>;
 	private readonly closeWindowFn: CloseWindow;
 	private readonly spawnFn: SpawnAction;
+	private readonly writeStdout: (text: string) => void;
+	private readonly writeStderr: (text: string) => void;
+	private readonly waitForEnterFn: () => void;
 	private readonly openedWindowIds: string[] = [];
 
 	constructor(config: TerminalActionRunnerConfig = {}) {
@@ -121,6 +127,9 @@ export class TerminalActionRunner {
 				);
 			});
 		this.spawnFn = config.spawnAction ?? defaultSpawnAction;
+		this.writeStdout = config.writeStdout ?? ((text) => process.stdout.write(text));
+		this.writeStderr = config.writeStderr ?? ((text) => process.stderr.write(text));
+		this.waitForEnterFn = config.waitForEnter ?? (() => this.defaultWaitForEnter());
 	}
 
 	// ── Split launch ───────────────────────────────────────────────
@@ -164,13 +173,13 @@ export class TerminalActionRunner {
 			tui.stop();
 
 			// Reset enough terminal state before handing the real TTY to the child.
-			process.stdout.write("\x1b[0m\x1b[?25h\x1b[2J\x1b[H");
+			this.writeStdout("\x1b[0m\x1b[?25h\x1b[2J\x1b[H");
 
 			let exitCode = 1;
 			try {
 				const result = this.spawnFn(action, ctx.cwd);
 				if (result.error) {
-					process.stderr.write(
+					this.writeStderr(
 						`[pi] failed to launch ${terminalActionLabel(action)}: ${result.error.message}\n`,
 					);
 					exitCode = 1;
@@ -185,17 +194,17 @@ export class TerminalActionRunner {
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : String(error);
-				process.stderr.write(
+				this.writeStderr(
 					`[pi] failed to launch ${terminalActionLabel(action)}: ${message}\n`,
 				);
 				exitCode = 1;
 			}
 
 			if (exitCode !== 0) {
-				this.waitForEnter();
+				this.waitForEnterFn();
 			}
 
-			process.stdout.write("\x1b[0m");
+			this.writeStdout("\x1b[0m");
 			tui.start();
 			tui.requestRender(true);
 
@@ -208,8 +217,8 @@ export class TerminalActionRunner {
 		});
 	}
 
-	private waitForEnter(): void {
-		process.stdout.write(
+	private defaultWaitForEnter(): void {
+		this.writeStdout(
 			"\n[pi] command failed; press Enter to return to pi...",
 		);
 		const buf = Buffer.alloc(1);
