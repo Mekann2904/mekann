@@ -69,6 +69,8 @@ function showStatus(
 		`Compaction obs: ${state.compactionObserverEnabled ? "on" : "off"}`,
 		`Post-comp hint: ${state.postCompactionHintEnabled ? "on" : "off"}`,
 		`Debug log:     ${state.enableDebugLogging ? "on" : "off"}`,
+		"",
+		"Hook-based / no provider override",
 	];
 	ctx.ui.notify(lines.join("\n"), "info");
 }

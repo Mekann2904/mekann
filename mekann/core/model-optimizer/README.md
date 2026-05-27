@@ -105,3 +105,62 @@ mekann/core/model-optimizer/
 ├── package.json
 └── vitest.config.ts
 ```
+
+## Known Limitations
+
+| Limitation | Reason | Mitigation |
+|---|---|---|
+| Overflow detection uses regex matching on `errorMessage`, not structured `error.code` | Pi extension lifecycle only exposes the message-level error text | Unit tests cover known OpenAPI/Codex overflow texts. If a new message variant appears, add a regex to `profiles.ts` |
+| Codex CLI's unique error text (`Codex ran out of room…`) is not covered | Pi uses the Codex API (not CLI), so CLI-specific errors are unlikely to appear | Add a CLI pattern to `profiles.ts` if `codex-cli` becomes a pi provider |
+| Provider override is not implemented | Would require wrapping pi's existing provider definitions and handling streaming/tool-calling/compatibility | See Phase 4 design notes |
+| Custom compaction summaries are not implemented | Pi's default compaction works well for general use; replacing it risks summary quality | See Phase 4 design notes |
+
+## Manual Verification Checklist
+
+Run these smoke checks after deployment or during development:
+
+### Commands
+
+- [ ] `/model-optimizer` → shows help with "Subcommands:"
+- [ ] `/model-optimizer help` → same as above
+- [ ] `/model-optimizer unknown` → shows help (not error)
+- [ ] `/model-optimizer status` → shows active provider, profile, toggles
+- [ ] `/model-optimizer stats` → shows metrics (zero prior to activity)
+
+### Provider Detection
+
+- [ ] Switch to `openai` model → `/model-optimizer status` shows `Active: yes`, `Profile: OpenAI`
+- [ ] Switch to `openai-codex` model → `/model-optimizer status` shows `Active: yes`, `Profile: OpenAI Codex`
+- [ ] Switch to non-target model (e.g. `anthropic`) → `/model-optimizer status` shows `Active: no`, `Profile: (none)`
+
+### Debug Logging
+
+- [ ] Set `debugLogging: true` → model select triggers `model-optimizer: provider=…` notify
+- [ ] Trigger `/compact` with debug on → `model-optimizer: compaction observed` notify appears
+- [ ] After compaction, send next prompt → `model-optimizer: post-compaction hint injected` notify appears
+- [ ] Set `debugLogging: false` → none of the above appear
+
+### Post-compaction Hint
+
+- [ ] Send several prompts to build up context, then `/compact`
+- [ ] Next prompt → check that `before_agent_start` received the provider-aware hint (verified via debug log)
+- [ ] `/model-optimizer stats` → `Post-comp hints: 1`
+- [ ] Second prompt after compaction → no new hint injected (one-shot)
+
+### Metrics
+
+- [ ] Send prompts on `openai` or `openai-codex` → `/model-optimizer stats` shows `Requests observed: N`
+- [ ] `Total tokens` and `Avg latency` are non-zero
+- [ ] `─── by provider ───` breakdown appears
+
+### Overflow Recovery
+
+- [ ] Hard to trigger in live environment. Covered by `overflow.test.ts` fixture tests.
+- [ ] 29 test cases covering: OpenAPI overflow text, Codex exact fixture, already-canonical, rate-limit, timeout, network, auth errors
+
+### Settings Toggle
+
+- [ ] Set `model-optimizer.enabled: false` → `/model-optimizer status` shows `Enabled: no`, `Active: no`
+- [ ] Set `overflowRecovery.enabled: false` → status shows `Overflow recv: off`
+- [ ] Set `metrics.enabled: false` → no metrics recorded after prompts
+- [ ] Set `postCompactionHint.enabled: false` → no hint injected after `/compact`
