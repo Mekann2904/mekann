@@ -47,7 +47,7 @@ Use this progression when appropriate:
    - If the destination is too large for one implementation slice → to-issues
 
 4. Feedback loop
-   - If a slice is small and implementation-ready → tdd planning / implementation-ready summary
+   - If a slice is small and implementation-ready → tdd
 
 5. Architecture rescue
    - If TDD boundaries are unclear, modules are shallow, or implementation would deepen coupling → improve-codebase-architecture
@@ -63,12 +63,12 @@ After the selected skill reaches a stopping point, route by plan readiness:
 
 - Large / multi-slice / multi-PR plan → to-issues
 - Product / spec still unclear → to-prd
-- Small, clear, implementation-ready plan → tdd planning / output implementation-ready summary
+- Small, clear, implementation-ready plan → tdd
 - Architectural risk remains → improve-codebase-architecture
 - UI / state / interaction uncertainty remains → prototype
 - Unresolved bug cause → diagnose
 - Unresolved high-impact decision → ask the user
-- Otherwise → update docs/planning artifacts and continue or stop
+- Otherwise → stop with the current plan, or update docs/planning artifacts only when they capture settled decisions
 
 ## Plan-mode limits
 
