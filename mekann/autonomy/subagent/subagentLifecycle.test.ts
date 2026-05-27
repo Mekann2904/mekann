@@ -70,6 +70,13 @@ function adapters(overrides: Partial<SpawnDelegationAdapters> = {}): SpawnDelega
 const ctx = { cwd: "/tmp/subagent-lifecycle-test", model: { id: "model" }, modelRegistry: { find: vi.fn(), getAvailable: vi.fn() } } as any;
 
 describe("SubagentLifecycle", () => {
+  /** Create a lifecycle with adapters initialized for tests that need spawn/close. */
+  function lifecycleWithAdapters(registry: AgentRegistry, mailbox: Mailbox, cwd: string, overrides: Partial<SpawnDelegationAdapters> = {}): SubagentLifecycle {
+    const lc = new SubagentLifecycle(registry, mailbox, cwd);
+    lc.initAdapters(adapters(overrides));
+    return lc;
+  }
+
   it("stores structured subagent results and enqueues a final_result", () => {
     const cwd = mkdtempSync(path.join(tmpdir(), "sl-"));
     try {
@@ -118,7 +125,7 @@ describe("SubagentLifecycle", () => {
   it("owns queued subagent admission and queued messages", async () => {
     const registry = new AgentRegistry(1, 2);
     const mailbox = new Mailbox();
-    const lifecycle = new SubagentLifecycle(registry, mailbox, ctx.cwd);
+    const lifecycle = lifecycleWithAdapters(registry, mailbox, ctx.cwd);
 
     const result = await lifecycle.spawnDelegation({
       params: { task_name: "queued", message: "wait" },
@@ -139,7 +146,7 @@ describe("SubagentLifecycle", () => {
     session.dispose.mockClear();
     const registry = new AgentRegistry(2, 2);
     const mailbox = new Mailbox();
-    const lifecycle = new SubagentLifecycle(registry, mailbox, ctx.cwd);
+    const lifecycle = lifecycleWithAdapters(registry, mailbox, ctx.cwd);
     const runtimeAdapters = adapters();
 
     await lifecycle.spawnDelegation({
@@ -161,7 +168,7 @@ describe("SubagentLifecycle", () => {
   it("drains queued subagents when closeRuntime opens an execution slot", async () => {
     const registry = new AgentRegistry(2, 2);
     const mailbox = new Mailbox();
-    const lifecycle = new SubagentLifecycle(registry, mailbox, ctx.cwd);
+    const lifecycle = lifecycleWithAdapters(registry, mailbox, ctx.cwd);
     const runtimeAdapters = adapters();
 
     await lifecycle.spawnDelegation({ params: { task_name: "running", message: "go" }, ctx, callerPath: "/root", agentId: "sub_running", adapters: runtimeAdapters });

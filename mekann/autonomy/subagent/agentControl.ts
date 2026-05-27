@@ -153,6 +153,9 @@ export class AgentControl {
     this.registry.subscribe((event) => {
       this.mailbox.appendEvent(event);
     });
+
+    // Wire spawner with resolved adapters (one-time, idempotent)
+    this.lifecycle.initAdapters(this.lifecycleAdapters());
   }
 
   // ─── Helper: resolve caller's agent path from context ──────────
