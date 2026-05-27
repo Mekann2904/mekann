@@ -13,8 +13,6 @@ export interface ModelManagerOptions {
 	withModelSuppressed?: <T>(fn: () => Promise<T>) => Promise<T>;
 	/** Called when a fuzzy/legacy ref is resolved to a concrete provider/model id. */
 	onResolvedRef?: (requested: ModelRef, resolved: ModelRef) => void;
-	/** Called when a persisted ref is not selectable in `/model`. */
-	onUnavailableRef?: (requested: ModelRef) => void;
 }
 
 /** Pi thinking levels. Kept here so model/thinking persistence is not owned by plan-mode. */
@@ -48,6 +46,21 @@ function pickBestModel(matches: RegistryModel[]): RegistryModel | undefined {
 	const aliases = matches.filter((m) => isAliasLike(m.id));
 	const pool = aliases.length > 0 ? aliases : matches;
 	return [...pool].sort((a, b) => b.id.localeCompare(a.id))[0];
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function resolveModelRefWithStartupRetry(ref: ModelRef, ctx: ExtensionContext): Promise<{ model?: RegistryModel; resolvedRef?: ModelRef }> {
+	const delays = [0, 100, 300] as const;
+	let last: { model?: RegistryModel; resolvedRef?: ModelRef } = {};
+	for (const delay of delays) {
+		if (delay > 0) await sleep(delay);
+		last = await resolveModelRef(ref, ctx);
+		if (last.model) return last;
+	}
+	return last;
 }
 
 /**
@@ -105,10 +118,9 @@ export function registerModeModelPersistence<Mode extends string>(options: ModeM
 export function createModelManager(options: ModelManagerOptions) {
 	async function trySetModel(ref: ModelRef | undefined, ctx: ExtensionContext, label: string): Promise<ModelLookupResult> {
 		if (!ref) return "not_found";
-		const { model, resolvedRef } = await resolveModelRef(ref, ctx);
+		const { model, resolvedRef } = await resolveModelRefWithStartupRetry(ref, ctx);
 		if (!model) {
-			options.onUnavailableRef?.(ref);
-			ctx.ui.notify(`${label}: モデル ${formatModelRef(ref)} は /model で選択可能なモデルではありません。コンフィグから削除します`, "warning");
+			ctx.ui.notify(`${label}: モデル ${formatModelRef(ref)} は /model で選択可能なモデルではないため、今回は復元できませんでした。設定は保持します`, "warning");
 			return "not_found";
 		}
 		if (resolvedRef && !sameModelRef(ref, resolvedRef)) options.onResolvedRef?.(ref, resolvedRef);

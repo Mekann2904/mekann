@@ -315,6 +315,84 @@ describe("index.ts: leaving auto mode transition (L128)", () => {
 // ═══════════════════════════════════════════════════════════════════
 // index.ts: L387 — session_start with --auto flag
 // ═══════════════════════════════════════════════════════════════════
+describe("index.ts: persisted model restore failures", () => {
+	it("keeps saved main model when registry is temporarily unavailable on session_start", async () => withPlanModeConfig({
+		models: { main: { provider: "anthropic", modelId: "sonnet" } },
+	}, async (configPath) => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		const ctx = createMockCtx({
+			modelRegistry: {
+				find: () => undefined,
+				getAvailable: () => [],
+			},
+		});
+
+		await mock._hooks.session_start({}, ctx);
+
+		expect(mock.setModel).not.toHaveBeenCalled();
+		expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("設定は保持します"), "warning");
+		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
+		expect(saved.features["plan-mode"].models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
+	}));
+
+	it("keeps saved auto model when registry is temporarily unavailable during mode transition", async () => withPlanModeConfig({
+		models: { auto: { provider: "openai", modelId: "gpt-5" } },
+	}, async (configPath) => {
+		const mock = createMockApi();
+		mock._flags = { auto: true };
+		await loadExtension(mock);
+		const ctx = createMockCtx({
+			modelRegistry: {
+				find: () => undefined,
+				getAvailable: () => [],
+			},
+		});
+
+		await mock._hooks.session_start({}, ctx);
+
+		expect(mock.setModel).not.toHaveBeenCalled();
+		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
+		expect(saved.features["plan-mode"].models.auto).toEqual({ provider: "openai", modelId: "gpt-5" });
+	}));
+
+	it("retries startup restore when available models are populated shortly after session_start", async () => withPlanModeConfig({
+		models: { main: { provider: "anthropic", modelId: "sonnet" } },
+	}, async () => {
+		const mock = createMockApi();
+		await loadExtension(mock);
+		let calls = 0;
+		const ctx = createMockCtx({
+			modelRegistry: {
+				find: () => undefined,
+				getAvailable: () => (++calls === 1 ? [] : [{ provider: "anthropic", id: "sonnet" }]),
+			},
+		});
+
+		await mock._hooks.session_start({}, ctx);
+
+		expect(calls).toBe(2);
+		expect(mock.setModel).toHaveBeenCalledWith({ provider: "anthropic", id: "sonnet" });
+	}));
+});
+
+describe("index.ts: startup flag main restore snapshots", () => {
+	it("restores initial main model after --plan startup even when models.main is unset", async () => withPlanModeConfig({
+		models: { plan: { provider: "openai", modelId: "gpt-5" } },
+	}, async () => {
+		const mock = createMockApi();
+		mock._flags = { plan: true };
+		await loadExtension(mock);
+		const ctx = createMockCtx({ model: { provider: "anthropic", id: "sonnet" } });
+
+		await mock._hooks.session_start({}, ctx);
+		await mock._commands["plan"].handler("", ctx);
+
+		expect(mock.setModel).toHaveBeenCalledWith({ provider: "openai", id: "gpt-5" });
+		expect(mock.setModel).toHaveBeenCalledWith({ provider: "anthropic", id: "sonnet" });
+	}));
+});
+
 describe("index.ts: session_start with --auto flag (L387)", () => {
 	it("session_start with auto flag transitions to auto mode", async () => withPlanModeConfig({
 		version: 1,
@@ -371,7 +449,20 @@ describe("index.ts: session_start with --auto flag (L387)", () => {
 // ═══════════════════════════════════════════════════════════════════
 // utils.ts: withConfigLock stale lock handling (L176-178, L181-182, L185-186)
 // ═══════════════════════════════════════════════════════════════════
-describe("utils.ts: withConfigLock stale lock (L176-178)", () => {
+describe("utils.ts: config persistence edge cases", () => {
+	it("updateConfigField preserves explicit thinking off instead of treating it as clear", async () => {
+		const { updateConfigField, createDefaultConfig } = await import("./utils.js");
+		const tmpDir = mkdtempSync(join(tmpdir(), "plan-thinking-off-test-"));
+		const configPath = join(tmpDir, "mekann.json");
+		const config = createDefaultConfig();
+
+		updateConfigField(config, "thinking", "main", "off", configPath);
+
+		const saved = JSON.parse(readFileSync(configPath, "utf-8"));
+		expect(saved.features["plan-mode"].thinking.main).toBe("off");
+		rmSync(tmpDir, { recursive: true, force: true });
+	});
+
 	it("stale lock is reclaimed and save succeeds", async () => {
 		const { saveModelConfig, createDefaultConfig } = await import("./utils.js");
 		const tmpDir = mkdtempSync(join(tmpdir(), "plan-stale-test-"));

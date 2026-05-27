@@ -156,12 +156,30 @@ export function updateConfigField<T>(
 	value: T | undefined,
 	path?: string,
 ): void {
-	const latest = loadModelConfig(path);
-	config.version = latest.version;
-	config.models = { ...latest.models };
-	config.thinking = { ...latest.thinking };
-	if (value) (config[section] as Record<string, T>)[mode] = value; else delete (config[section] as Record<string, T>)[mode];
-	saveModelConfig(config, path);
+	const configPath = getConfigPath(path);
+	let lastError: unknown;
+	for (let attempt = 0; attempt < 3; attempt++) {
+		try {
+			const loaded = loadSettings(configPath);
+			const feature = loaded.settings.features["plan-mode"] ?? {};
+			const latest = normalizeConfig({ version: 1, models: feature.models, thinking: feature.thinking });
+			if (value !== undefined) (latest[section] as Record<string, T>)[mode] = value;
+			else delete (latest[section] as Record<string, T>)[mode];
+
+			const next = loaded.settings;
+			next.features["plan-mode"] = { ...feature, models: latest.models, thinking: latest.thinking };
+			saveSettingsChecked(configPath, next, loaded.hash);
+
+			config.version = latest.version;
+			config.models = { ...latest.models };
+			config.thinking = { ...latest.thinking };
+			return;
+		} catch (error) {
+			lastError = error;
+			if (!(error instanceof Error) || !error.message.includes("settings changed concurrently")) throw error;
+		}
+	}
+	throw lastError;
 }
 
 

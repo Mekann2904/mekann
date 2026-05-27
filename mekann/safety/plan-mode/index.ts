@@ -58,7 +58,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		pi,
 		withModelSuppressed,
 		onResolvedRef: (_requested, resolved) => updateConfigField(state.modelConfig, "models", state.mode, resolved, configPath),
-		onUnavailableRef: () => updateConfigField(state.modelConfig, "models", state.mode, undefined, configPath),
 	});
 	const { trySetModel } = modelManager;
 
@@ -94,17 +93,18 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 	// ─── Common helpers for mode transitions ───────────────────────
 
-	/** Snapshot & persist current main model/thinking (called before leaving main). */
-	function snapshotMain(ctx: ExtensionContext): void {
+	/** Snapshot current main model/thinking before leaving main. Persist only for ordinary interactive transitions. */
+	function snapshotMain(ctx: ExtensionContext, opts?: { persist?: boolean }): void {
+		const persist = opts?.persist !== false;
 		const _m = ctx.model;
 		const mainRef = _m ? { provider: _m.provider, modelId: _m.id } as ModelRef : undefined;
-		if (mainRef && ctx.modelRegistry.find(mainRef.provider, mainRef.modelId)) {
+		if (mainRef) {
 			state.savedMainModel = mainRef;
-			updateConfigField(state.modelConfig, "models", "main", mainRef, configPath);
+			if (persist) updateConfigField(state.modelConfig, "models", "main", mainRef, configPath);
 		}
 		const mainThinking = pi.getThinkingLevel();
 		state.savedMainThinking = mainThinking;
-		updateConfigField(state.modelConfig, "thinking", "main", mainThinking, configPath);
+		if (persist) updateConfigField(state.modelConfig, "thinking", "main", mainThinking, configPath);
 	}
 
 	/** Save active tools on first transition away from main. */
@@ -153,8 +153,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 
 		// ── Snapshot main model/thinking if leaving main ──
-		if (previous === "main" && persistCurrentMain) {
-			snapshotMain(ctx);
+		if (previous === "main") {
+			snapshotMain(ctx, { persist: persistCurrentMain });
 		}
 
 		// ── Enter the target mode ──
