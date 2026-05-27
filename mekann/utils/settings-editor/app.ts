@@ -528,7 +528,7 @@ function StatusBar(p: {
 			el("text", { fg: C.fgDim, content: " ↑↓/wheel " }), el("text", { fg: C.fg, content: "nav" }),
 			el("text", { fg: C.fgDim, content: "  ←→ " }), el("text", { fg: C.fg, content: "feature" }),
 			el("text", { fg: C.fgDim, content: "  click " }), el("text", { fg: C.fg, content: "select" }),
-			el("text", { fg: C.fgDim, content: "  ⏎ " }), el("text", { fg: C.accent, content: enterHint }),
+			el("text", { fg: C.fgDim, content: "  click²/⏎ " }), el("text", { fg: C.accent, content: enterHint }),
 			el("text", { fg: C.fgDim, content: "  Tab " }), el("text", { fg: C.fg, content: "scope" }),
 			el("text", { fg: C.fgDim, content: "  d " }), el("text", { fg: C.fg, content: "diff" }),
 			el("text", { fg: C.fgDim, content: "  a " }), el("text", { fg: C.green, content: "apply" }),
@@ -659,7 +659,6 @@ export function SettingsEditorApp({
 	const [drafts, setDrafts] = useState<Record<string, DraftChange>>({});
 	const [message, setMessage] = useState("Welcome to Mekann Settings Editor");
 	const [applying, setApplying] = useState(false);
-	const lastSettingClickRef = useRef<{ index: number; at: number } | null>(null);
 
 	const items = useMemo(() => effective, [effective]);
 	const groups = useMemo(() => buildFeatureGroups(items), [items]);
@@ -731,17 +730,15 @@ export function SettingsEditorApp({
 	}, [current, models, modelSelected, stage]);
 
 	const selectSettingByMouse = useCallback((index: number) => {
-		const now = Date.now();
-		const last = lastSettingClickRef.current;
-		setSelected(index);
-		if (last && last.index === index && now - last.at <= 400) {
-			lastSettingClickRef.current = null;
+		if (index === selected) {
+			// Already selected: single click activates (cycle/toggle/pick)
 			const item = featureItems[index];
 			if (item) activateSetting(item);
 			return;
 		}
-		lastSettingClickRef.current = { index, at: now };
-	}, [activateSetting, featureItems]);
+		// Not selected yet: just select it
+		setSelected(index);
+	}, [selected, activateSetting, featureItems]);
 
 	// ─── Keyboard ──────────────────────────────────────────────
 
