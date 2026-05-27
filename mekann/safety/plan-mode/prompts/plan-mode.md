@@ -31,6 +31,32 @@ No default:
 - Do not fall back to grill-with-docs merely because routing is uncertain.
 - If routing is uncertain, ask a short routing question before reading a skill.
 
+## Process chain
+
+Prefer composing skills into the smallest necessary engineering process.
+
+Use this progression when appropriate:
+
+1. Shared understanding
+   - If the idea, requirements, terminology, or design trade-offs are unclear → grill-with-docs
+
+2. Destination
+   - If the feature is large enough that the desired outcome should be durable and reviewable → to-prd
+
+3. Journey
+   - If the destination is too large for one implementation slice → to-issues
+
+4. Feedback loop
+   - If a slice is small and implementation-ready → tdd planning / implementation-ready summary
+
+5. Architecture rescue
+   - If TDD boundaries are unclear, modules are shallow, or implementation would deepen coupling → improve-codebase-architecture
+
+6. Prototype
+   - If UI, state model, or interaction behavior is uncertain → prototype
+
+Do not force every request through every step. Choose the shortest chain that preserves shared understanding, clear destination, sliced journey, and a strong feedback loop.
+
 ## Exit checkpoint
 
 After the selected skill reaches a stopping point, route by plan readiness:
