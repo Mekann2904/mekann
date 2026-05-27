@@ -1,7 +1,7 @@
 /**
  * model-optimizer — session-local metrics collection.
  *
- * Tracks latency, token usage, and cost for assistant messages on
+ * Tracks latency and token usage for assistant messages on
  * openai / openai-codex providers.  All data is in-memory and scoped to the
  * current session.
  */

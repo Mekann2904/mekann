@@ -29,6 +29,68 @@ interface BeforeAgentStartEvent {
 	systemPrompt?: string;
 }
 
+// Maximum age (ms) for a pending post-compaction hint before it is discarded
+// as stale.  Prevents hints from ancient compactions being injected after
+// provider switches or setting toggles.
+const STALE_HINT_TTL_MS = 5 * 60 * 1000;
+
+// ---------------------------------------------------------------------------
+// before_agent_start handler (extracted for testability)
+// ---------------------------------------------------------------------------
+
+export function handleBeforeAgentStart(
+	state: ActiveOptimizationState,
+	event: { systemPrompt?: string },
+	_now: number = Date.now(),
+): { systemPrompt: string } | undefined {
+	const pending = state.pendingPostCompactionHint;
+	if (!pending) return undefined;
+
+	// Always consume — even if we end up discarding, the hint must not linger.
+	state.pendingPostCompactionHint = undefined;
+
+	// Discard stale hints: disabled, feature off, provider mismatch, or TTL expired.
+	if (!state.enabled) return undefined;
+	if (!state.postCompactionHintEnabled) return undefined;
+	if (pending.provider !== state.profile?.provider) return undefined;
+	if (_now - pending.createdAt > STALE_HINT_TTL_MS) return undefined;
+
+	const hint = getPostCompactionHint(pending.provider);
+	const currentPrompt = (event as BeforeAgentStartEvent).systemPrompt ?? "";
+
+	state.metrics.postCompactionHintsInjected++;
+
+	return {
+		systemPrompt: currentPrompt
+			? `${currentPrompt}\n\n${hint}`
+			: hint,
+	};
+}
+
+// ---------------------------------------------------------------------------
+// Registration helper for before_agent_start
+// ---------------------------------------------------------------------------
+
+function registerPostCompactionHintInjection(
+	pi: ExtensionAPI,
+	state: ActiveOptimizationState,
+): void {
+	pi.on("before_agent_start", (event, ctx: ExtensionContext) => {
+		const result = handleBeforeAgentStart(state, event);
+
+		if (!result) return undefined;
+
+		if (state.enableDebugLogging) {
+			ctx.ui.notify(
+				`model-optimizer: post-compaction hint injected (${state.profile?.displayName ?? "?"})`,
+				"info",
+			);
+		}
+
+		return result;
+	});
+}
+
 // ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
@@ -91,34 +153,5 @@ export function registerCompactionObserver(
 
 	// ── before_agent_start — inject pending hint into systemPrompt ──
 
-	pi.on("before_agent_start", (event, ctx: ExtensionContext) => {
-		const pending = state.pendingPostCompactionHint;
-		if (!pending) return;
-		if (!state.enabled) return;
-		if (!state.postCompactionHintEnabled) return;
-
-		// Consume the hint exactly once
-		state.pendingPostCompactionHint = undefined;
-
-		const hint = getPostCompactionHint(pending.provider);
-		const e = event as BeforeAgentStartEvent;
-		const currentPrompt = e.systemPrompt ?? "";
-
-		state.metrics.postCompactionHintsInjected++;
-
-		if (state.enableDebugLogging) {
-			ctx.ui.notify(
-				`model-optimizer: post-compaction hint injected (${pending.provider})`,
-				"info",
-			);
-		}
-
-		return {
-			systemPrompt: currentPrompt
-				? `${currentPrompt}
-
-${hint}`
-				: hint,
-		};
-	});
+	registerPostCompactionHintInjection(pi, state);
 }

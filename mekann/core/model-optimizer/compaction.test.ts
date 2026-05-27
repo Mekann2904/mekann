@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from "vitest";
 import { createActiveOptimizationState } from "./activeProfile.js";
-import { registerCompactionObserver } from "./compaction.js";
+import { registerCompactionObserver, handleBeforeAgentStart } from "./compaction.js";
 import { getPostCompactionHint } from "./prompts.js";
 import { getOptimizationProfile } from "./profiles.js";
 import type { ActiveOptimizationState } from "./types.js";
@@ -376,5 +376,92 @@ describe("non-target provider behaviour", () => {
 		expect(s.metrics.compactionsObserved).toBe(1);
 		expect(s.metrics.compactionsCompleted).toBe(1);
 		expect(s.pendingPostCompactionHint).toBeDefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// handleBeforeAgentStart — stale hint guard tests
+// ---------------------------------------------------------------------------
+
+describe("handleBeforeAgentStart — stale hint guard", () => {
+	function stateWithPendingHint(): ActiveOptimizationState {
+		const s = createActiveOptimizationState();
+		s.enabled = true;
+		s.postCompactionHintEnabled = true;
+		s.profile = getOptimizationProfile("openai-codex");
+		s.provider = "openai-codex";
+		s.modelId = "gpt-5.5-codex";
+		s.pendingPostCompactionHint = {
+			provider: "openai-codex",
+			modelId: "gpt-5.5-codex",
+			createdAt: Date.now(),
+		};
+		return s;
+	}
+
+	it("consumes hint even when state.enabled is false", () => {
+		const s = stateWithPendingHint();
+		s.enabled = false;
+		const result = handleBeforeAgentStart(s, { systemPrompt: "test" });
+		expect(result).toBeUndefined();
+		expect(s.pendingPostCompactionHint).toBeUndefined();
+	});
+
+	it("consumes hint even when postCompactionHintEnabled is false", () => {
+		const s = stateWithPendingHint();
+		s.postCompactionHintEnabled = false;
+		const result = handleBeforeAgentStart(s, { systemPrompt: "test" });
+		expect(result).toBeUndefined();
+		expect(s.pendingPostCompactionHint).toBeUndefined();
+	});
+
+	it("consumes hint when provider has switched away", () => {
+		const s = stateWithPendingHint();
+		// Simulate provider switch: pending is openai-codex but current is openai
+		s.profile = getOptimizationProfile("openai");
+		s.provider = "openai";
+		const result = handleBeforeAgentStart(s, { systemPrompt: "test" });
+		expect(result).toBeUndefined();
+		expect(s.pendingPostCompactionHint).toBeUndefined();
+	});
+
+	it("discards hint older than STALE_HINT_TTL_MS (5 min)", () => {
+		const s = stateWithPendingHint();
+		const now = Date.now();
+		const staleCreatedAt = now - 5 * 60 * 1000 - 1; // just over 5 min ago
+		s.pendingPostCompactionHint!.createdAt = staleCreatedAt;
+		const result = handleBeforeAgentStart(s, { systemPrompt: "test" }, now);
+		expect(result).toBeUndefined();
+		expect(s.pendingPostCompactionHint).toBeUndefined();
+		expect(s.metrics.postCompactionHintsInjected).toBe(0);
+	});
+
+	it("injects hint exactly at TTL boundary", () => {
+		const s = stateWithPendingHint();
+		const now = Date.now();
+		const boundaryCreatedAt = now - 5 * 60 * 1000; // exactly 5 min ago
+		s.pendingPostCompactionHint!.createdAt = boundaryCreatedAt;
+		const result = handleBeforeAgentStart(s, { systemPrompt: "test" }, now);
+		expect(result).toBeDefined();
+		expect(result!.systemPrompt).toContain("file paths");
+		expect(s.metrics.postCompactionHintsInjected).toBe(1);
+	});
+
+	it("injects hint when fresh and provider matches", () => {
+		const s = stateWithPendingHint();
+		const result = handleBeforeAgentStart(s, { systemPrompt: "base" });
+		expect(result).toBeDefined();
+		expect(result!.systemPrompt).toContain("base");
+		expect(result!.systemPrompt).toContain("file paths");
+		expect(s.pendingPostCompactionHint).toBeUndefined();
+		expect(s.metrics.postCompactionHintsInjected).toBe(1);
+	});
+
+	it("returns undefined when no pending hint", () => {
+		const s = stateWithPendingHint();
+		s.pendingPostCompactionHint = undefined;
+		const result = handleBeforeAgentStart(s, { systemPrompt: "test" });
+		expect(result).toBeUndefined();
+		expect(s.metrics.postCompactionHintsInjected).toBe(0);
 	});
 });

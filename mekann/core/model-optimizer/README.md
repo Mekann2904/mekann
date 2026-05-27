@@ -77,6 +77,13 @@ All settings are in `mekann settings.json` under the `model-optimizer` feature:
 | `postCompactionHint.enabled` | `true` | Enable post-compaction continuation hints |
 | `debugLogging` | `false` | Show debug notifications for key events |
 
+## Settings refresh timing
+
+Settings are re-read on `session_start` (new session, session restore, `/reload`).
+Changing `mekann settings.json` while a session is running does **not** take effect
+until the next session start or `/reload`. The `restartRequired: false` schema flag
+means Pi does not need to be restarted — but a session boundary is required.
+
 ## Non-goals (explicitly out of scope)
 
 - **Provider override** — We do not replace or wrap pi's existing `openai` / `openai-codex` providers.
