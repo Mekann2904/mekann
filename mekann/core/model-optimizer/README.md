@@ -41,6 +41,12 @@ model-optimizer/               ← root orchestrator
 | `openai-responses` | `openai` | `openaiFamily` | ✓ | 汎用 hint |
 | `openai-codex-responses` | `openai-codex` | `openaiCodex` | ✓ | コード特化 hint |
 
+### deepseek
+
+| Provider | Model | Family | Overflow | Compaction hint |
+|---|---|---|---|---|
+| `deepseek` | `deepseek` | `deepseek` | ✓ | DeepSeek 特化 hint |
+
 ## Features
 
 | # | 機能 | Hook | やること |
@@ -57,6 +63,7 @@ model-optimizer/               ← root orchestrator
 | `enabled` | `true` | Master on/off |
 | `openaiFamily.enabled` | `true` | OpenAI API family (openai-responses, openai-completions, azure-openai-responses) |
 | `openaiCodex.enabled` | `true` | OpenAI Codex API (openai-codex-responses) |
+| `deepseek.enabled` | `true` | DeepSeek API |
 | `overflowRecovery.enabled` | `true` | Overflow error normalization |
 | `metrics.enabled` | `true` | Session-local metrics |
 | `compactionObserver.enabled` | `true` | Compaction lifecycle observation |

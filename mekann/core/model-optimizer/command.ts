@@ -43,7 +43,9 @@ function showHelp(
 	ctx: ExtensionCommandContext,
 ): void {
 	ctx.ui.notify([
-		"model-optimizer — OpenAI‑family provider‑aware optimizer",
+		"model-optimizer — multi‑provider lifecycle optimizer",
+		"",
+		"Supported providers: openai, openai-codex, deepseek",
 		"",
 		"Subcommands:",
 		"  status     Show active provider, profile, and feature toggles",

@@ -6,7 +6,9 @@ import { describe, it, expect } from "vitest";
 import { createActiveOptimizationState } from "./activeProfile.js";
 import { registerCompactionObserver, handleBeforeAgentStart } from "./compaction.js";
 import { openaiModule } from "./openai/index.js";
+import { deepseekModule } from "./deepseek/index.js";
 import { OPENAI_POST_COMPACTION_HINT, CODEX_POST_COMPACTION_HINT } from "./openai/compaction.js";
+import { DEEPSEEK_POST_COMPACTION_HINT } from "./deepseek/compaction.js";
 import { optimizerModules } from "./modules.js";
 import type { ActiveOptimizationState } from "./types.js";
 import type { Api, Model } from "@earendil-works/pi-ai";
@@ -410,6 +412,196 @@ describe("handleBeforeAgentStart — stale hint guard", () => {
 		const s = stateWithPendingHint();
 		s.pendingPostCompactionHint = undefined;
 		const result = handleBeforeAgentStart(s, { systemPrompt: "test" });
+		expect(result).toBeUndefined();
+		expect(s.metrics.postCompactionHintsInjected).toBe(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// DeepSeek compaction hint content
+// ---------------------------------------------------------------------------
+
+describe("deepseek compaction hints", () => {
+	it("has objective-preserving content", () => {
+		expect(DEEPSEEK_POST_COMPACTION_HINT).toContain("ORIGINAL OBJECTIVE");
+		expect(DEEPSEEK_POST_COMPACTION_HINT).toContain("negative constraints");
+	});
+
+	it("has tool-use continuation content", () => {
+		expect(DEEPSEEK_POST_COMPACTION_HINT).toContain("tool use");
+		expect(DEEPSEEK_POST_COMPACTION_HINT).toContain("reasoning");
+	});
+
+	it("mentions verbatim preservation of constraints", () => {
+		expect(DEEPSEEK_POST_COMPACTION_HINT).toContain("verbatim");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// DeepSeek compaction observer — session_before_compact / session_compact
+// ---------------------------------------------------------------------------
+
+describe("DeepSeek compaction observer", () => {
+	function driveBeforeCompact(state: ActiveOptimizationState): void {
+		const stubCtx = {} as never;
+		const pi = {
+			on(_event: string, handler: (...args: unknown[]) => unknown) {
+				if (_event === "session_before_compact") {
+					handler({ preparation: { tokensBefore: 50000, firstKeptEntryId: "entry-ds" } }, stubCtx);
+				}
+			},
+		} as never;
+		registerCompactionObserver(pi as Parameters<typeof registerCompactionObserver>[0], state);
+	}
+
+	function driveCompact(state: ActiveOptimizationState): void {
+		const stubCtx = {} as never;
+		const pi = {
+			on(_event: string, handler: (...args: unknown[]) => unknown) {
+				if (_event === "session_compact") handler(undefined, stubCtx);
+			},
+		} as never;
+		registerCompactionObserver(pi as Parameters<typeof registerCompactionObserver>[0], state);
+	}
+
+	function deepseekEnabledState(): ActiveOptimizationState {
+		const s = createActiveOptimizationState();
+		const model = mockModel("openai-completions", "deepseek", "deepseek");
+		s.enabled = true;
+		s.compactionObserverEnabled = true;
+		s.postCompactionHintEnabled = true;
+		s.activeModule = optimizerModules.find((m) => m.supports(model));
+		s.provider = "deepseek";
+		s.modelId = "deepseek";
+		s.api = "openai-completions";
+		return s;
+	}
+
+	it("records compaction observer for DeepSeek", () => {
+		const s = deepseekEnabledState();
+		expect(s.metrics.compactionsObserved).toBe(0);
+		driveBeforeCompact(s);
+		expect(s.metrics.compactionsObserved).toBe(1);
+		expect(s.metrics.lastCompaction?.provider).toBe("deepseek");
+		expect(s.metrics.lastCompaction?.modelId).toBe("deepseek");
+	});
+
+	it("records compaction completed for DeepSeek", () => {
+		const s = deepseekEnabledState();
+		driveCompact(s);
+		expect(s.metrics.compactionsCompleted).toBe(1);
+	});
+
+	it("sets pending hint with DeepSeek api after compaction", () => {
+		const s = deepseekEnabledState();
+		expect(s.pendingPostCompactionHint).toBeUndefined();
+		driveCompact(s);
+		expect(s.pendingPostCompactionHint).toBeDefined();
+		expect(s.pendingPostCompactionHint?.api).toBe("openai-completions");
+	});
+
+	it("does nothing when state.enabled is false", () => {
+		const s = deepseekEnabledState();
+		s.enabled = false;
+		driveBeforeCompact(s);
+		driveCompact(s);
+		expect(s.metrics.compactionsObserved).toBe(0);
+		expect(s.metrics.compactionsCompleted).toBe(0);
+		expect(s.pendingPostCompactionHint).toBeUndefined();
+	});
+
+	it("does not set hint when postCompactionHintEnabled is false", () => {
+		const s = deepseekEnabledState();
+		s.postCompactionHintEnabled = false;
+		driveCompact(s);
+		expect(s.metrics.compactionsCompleted).toBe(1);
+		expect(s.pendingPostCompactionHint).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// DeepSeek post-compaction hint — before_agent_start
+// ---------------------------------------------------------------------------
+
+describe("DeepSeek post-compaction hint injection", () => {
+	function driveBeforeAgentStart(
+		state: ActiveOptimizationState,
+		existingSystemPrompt?: string,
+	): string | undefined {
+		let returnedSystemPrompt: string | undefined;
+		const stubCtx = {} as never;
+		const pi = {
+			on(_event: string, handler: (...args: unknown[]) => unknown) {
+				if (_event === "before_agent_start") {
+					const result = handler({ systemPrompt: existingSystemPrompt }, stubCtx);
+					if (result && typeof result === "object" && "systemPrompt" in result) {
+						returnedSystemPrompt = (result as { systemPrompt?: string }).systemPrompt;
+					}
+				}
+			},
+		} as never;
+		registerCompactionObserver(pi as Parameters<typeof registerCompactionObserver>[0], state);
+		return returnedSystemPrompt;
+	}
+
+	function deepseekStateWithPendingHint(): ActiveOptimizationState {
+		const model = mockModel("openai-completions", "deepseek", "deepseek");
+		const s = createActiveOptimizationState();
+		s.enabled = true;
+		s.postCompactionHintEnabled = true;
+		s.activeModule = optimizerModules.find((m) => m.supports(model));
+		s.provider = "deepseek";
+		s.modelId = "deepseek";
+		s.api = "openai-completions";
+		s.pendingPostCompactionHint = { api: "openai-completions", modelId: "deepseek", createdAt: Date.now() };
+		return s;
+	}
+
+	it("injects DeepSeek hint into systemPrompt when pending exists", () => {
+		const s = deepseekStateWithPendingHint();
+		const result = driveBeforeAgentStart(s);
+		expect(result).toContain("ORIGINAL OBJECTIVE");
+		expect(result).toContain("tool use");
+		expect(s.metrics.postCompactionHintsInjected).toBe(1);
+	});
+
+	it("appends hint to existing systemPrompt", () => {
+		const s = deepseekStateWithPendingHint();
+		const result = driveBeforeAgentStart(s, "Existing DeepSeek prompt.");
+		expect(result).toContain("Existing DeepSeek prompt.");
+		expect(result).toContain("ORIGINAL OBJECTIVE");
+		expect(s.pendingPostCompactionHint).toBeUndefined();
+	});
+
+	it("consumes hint only once (clears pending)", () => {
+		const s = deepseekStateWithPendingHint();
+		driveBeforeAgentStart(s);
+		expect(s.pendingPostCompactionHint).toBeUndefined();
+		const result2 = driveBeforeAgentStart(s);
+		expect(result2).toBeUndefined();
+		expect(s.metrics.postCompactionHintsInjected).toBe(1);
+	});
+
+	it("does nothing when no pending hint", () => {
+		const s = deepseekStateWithPendingHint();
+		s.pendingPostCompactionHint = undefined;
+		const result = driveBeforeAgentStart(s);
+		expect(result).toBeUndefined();
+		expect(s.metrics.postCompactionHintsInjected).toBe(0);
+	});
+
+	it("does nothing when postCompactionHintEnabled is false", () => {
+		const s = deepseekStateWithPendingHint();
+		s.postCompactionHintEnabled = false;
+		const result = driveBeforeAgentStart(s);
+		expect(result).toBeUndefined();
+		expect(s.metrics.postCompactionHintsInjected).toBe(0);
+	});
+
+	it("does nothing when state.enabled is false", () => {
+		const s = deepseekStateWithPendingHint();
+		s.enabled = false;
+		const result = driveBeforeAgentStart(s);
 		expect(result).toBeUndefined();
 		expect(s.metrics.postCompactionHintsInjected).toBe(0);
 	});

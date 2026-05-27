@@ -12,7 +12,9 @@
 
 import type { ProviderOptimizerModule } from "./types.js";
 import { openaiModule } from "./openai/index.js";
+import { deepseekModule } from "./deepseek/index.js";
 
 export const optimizerModules: ProviderOptimizerModule[] = [
 	openaiModule,
+	deepseekModule,
 ];

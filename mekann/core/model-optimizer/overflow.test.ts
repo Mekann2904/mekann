@@ -4,7 +4,9 @@
 
 import { describe, it, expect } from "vitest";
 import { openaiModule } from "./openai/index.js";
+import { deepseekModule } from "./deepseek/index.js";
 import { isOpenaiOverflow } from "./openai/overflow.js";
+import { isDeepseekOverflow } from "./deepseek/overflow.js";
 import { createActiveOptimizationState } from "./activeProfile.js";
 import { registerOverflowRecovery } from "./overflow.js";
 import { optimizerModules } from "./modules.js";
@@ -287,4 +289,125 @@ it("does nothing for empty errorMessage", () => {
 it("does nothing for missing errorMessage", () => {
 	const r = driveOverflow(stateForApi("openai-responses"), { role: "assistant", stopReason: "error" });
 	expect(r).toBeUndefined();
+});
+
+// ---------------------------------------------------------------------------
+// DeepSeek module selection
+// ---------------------------------------------------------------------------
+
+describe("DeepSeek module selection", () => {
+	it("selects deepseek module for provider=deepseek id=deepseek", () => {
+		const mod = optimizerModules.find((m) => m.supports(mockModel("openai-completions", "deepseek", "deepseek")));
+		expect(mod).toBe(deepseekModule);
+	});
+
+	it("does NOT select deepseek module for different model id", () => {
+		const mod = optimizerModules.find((m) => m.supports(mockModel("openai-completions", "deepseek", "deepseek-chat")));
+		expect(mod).toBeUndefined();
+	});
+
+	it("does NOT select deepseek module for different provider with same model id", () => {
+		const mod = optimizerModules.find((m) => m.id === "deepseek" && m.supports(mockModel("openai-completions", "openai", "deepseek")));
+		expect(mod).toBeUndefined();
+	});
+
+	it("does NOT select deepseek module for deepseek-reasoner alias", () => {
+		const mod = optimizerModules.find((m) => m.supports(mockModel("openai-completions", "deepseek", "deepseek-reasoner")));
+		expect(mod).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// DeepSeek overflow detection
+// ---------------------------------------------------------------------------
+
+describe("deepseek overflow detection", () => {
+	it("detects context_length_exceeded", () => {
+		expect(isDeepseekOverflow("Error: context_length_exceeded")).toBe(true);
+	});
+
+	it("detects exceeds the context window", () => {
+		expect(isDeepseekOverflow("Error: prompt exceeds the context window of 128000 tokens")).toBe(true);
+	});
+
+	it("detects maximum context length", () => {
+		expect(isDeepseekOverflow("maximum context length exceeded")).toBe(true);
+	});
+
+	it("does NOT match rate limit", () => {
+		expect(isDeepseekOverflow("rate limit exceeded")).toBe(false);
+	});
+
+	it("does NOT match auth error", () => {
+		expect(isDeepseekOverflow("Incorrect API key provided: sk-...")).toBe(false);
+	});
+
+	it("does NOT match timeout", () => {
+		expect(isDeepseekOverflow("Request timed out")).toBe(false);
+	});
+
+	it("does NOT match network error", () => {
+		expect(isDeepseekOverflow("Network error: connect ECONNREFUSED")).toBe(false);
+	});
+
+	it("does NOT match quota exceeded", () => {
+		expect(isDeepseekOverflow("You exceeded your current quota, please check your plan and billing details")).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// DeepSeek overflow recovery — hook dispatch tests
+// ---------------------------------------------------------------------------
+
+describe("DeepSeek overflow recovery", () => {
+	function deepseekState(): ActiveOptimizationState {
+		const s = createActiveOptimizationState();
+		const model = mockModel("openai-completions", "deepseek", "deepseek");
+		const mod = optimizerModules.find((m) => m.supports(model));
+		s.activeModule = mod;
+		s.provider = "deepseek";
+		s.modelId = "deepseek";
+		s.api = "openai-completions";
+		s.enabled = !!(mod && s.featureEnabled);
+		return s;
+	}
+
+	it("normalizes DeepSeek context_length_exceeded", () => {
+		const r = driveOverflow(deepseekState(), makeMsg("Error: context_length_exceeded"));
+		expect(r?.errorMessage).toBe("context_length_exceeded: Error: context_length_exceeded");
+	});
+
+	it("normalizes DeepSeek exceeds the context window", () => {
+		const r = driveOverflow(deepseekState(), makeMsg("Error: prompt exceeds the context window of 128000 tokens"));
+		expect(r?.errorMessage).toBe("context_length_exceeded: Error: prompt exceeds the context window of 128000 tokens");
+	});
+
+	it("does NOT normalize rate limit errors", () => {
+		const r = driveOverflow(deepseekState(), makeMsg("rate limit exceeded"));
+		expect(r).toBeUndefined();
+	});
+
+	it("does NOT normalize auth errors", () => {
+		const r = driveOverflow(deepseekState(), makeMsg("invalid api key"));
+		expect(r).toBeUndefined();
+	});
+
+	it("does not double-prefix messages already starting with context_length_exceeded:", () => {
+		const r = driveOverflow(deepseekState(), makeMsg("context_length_exceeded: prompt too long"));
+		expect(r).toBeUndefined();
+	});
+
+	it("does nothing when state.enabled is false", () => {
+		const s = deepseekState();
+		s.enabled = false;
+		const r = driveOverflow(s, makeMsg("exceeds the context window"));
+		expect(r).toBeUndefined();
+	});
+
+	it("does nothing when overflowRecoveryEnabled is false", () => {
+		const s = deepseekState();
+		s.overflowRecoveryEnabled = false;
+		const r = driveOverflow(s, makeMsg("exceeds the context window"));
+		expect(r).toBeUndefined();
+	});
 });
