@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { CodexWebSearchRuntime } from "./runtime.js";
 import type { CodexWebSearchConfig, CodexWebSearchRuntimeInput } from "./runtime.js";
 import { CodexError } from "../codex-shared/errors.js";
+import { isOverloadedError } from "../codex-shared/errors.js";
 import { clearCodexModelsCache } from "../codex-shared/models.js";
 import type { CodexReasoningEffort, SearchContextSize } from "../codex-shared/types.js";
 
@@ -96,6 +97,11 @@ function messageDoneEvent(text: string, annotations: Array<{ title: string; url:
 
 function failedEvent(message: string): string {
 	return `event: response.failed\ndata: {"error":{"message":"${message}"}}`;
+}
+
+function failedEventWithCode(code: string, message: string): string {
+	const msgJson = JSON.stringify(message);
+	return `event: response.failed\ndata: {"error":{"code":"${code}","message":${msgJson}}}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -245,5 +251,100 @@ describe("CodexWebSearchRuntime", () => {
 			} as any),
 		);
 		expect(output.details.modelSource).toBe("explicit");
+	});
+
+	it("retries on server_is_overloaded SSE error and succeeds on second attempt", async () => {
+		const overloadedBody = createSseBody([
+			failedEventWithCode("server_is_overloaded", "Our servers are currently overloaded. Please try again later."),
+		]);
+		const successBody = createSseBody([
+			createdEvent("r-retry"),
+			messageDoneEvent("Retry succeeded"),
+			completedEvent(),
+		]);
+
+		let callCount = 0;
+		const fetchImpl = (() => {
+			callCount++;
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				text: () => Promise.resolve(""),
+				body: callCount === 1 ? overloadedBody : successBody,
+				headers: new Headers(),
+			});
+		}) as any as typeof fetch;
+
+		const config = defaultConfig();
+		config.model = "test-model";
+
+		const runtime = new CodexWebSearchRuntime(config);
+		const output = await runtime.execute(
+			makeInput({ fetchImpl } as any),
+		);
+
+		expect(callCount).toBe(2);
+		expect(output.text).toContain("Retry succeeded");
+		expect(output.details.responseId).toBe("r-retry");
+	});
+
+	it("retries up to 2 times on persistent overloaded errors, then throws", async () => {
+		const makeOverloadedBody = () => createSseBody([
+			failedEventWithCode("server_is_overloaded", "Our servers are currently overloaded."),
+		]);
+
+		let callCount = 0;
+		const fetchImpl = (() => {
+			callCount++;
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				text: () => Promise.resolve(""),
+				body: makeOverloadedBody(),
+				headers: new Headers(),
+			});
+		}) as any as typeof fetch;
+
+		const config = defaultConfig();
+		config.model = "test-model";
+
+		const runtime = new CodexWebSearchRuntime(config);
+
+		const error = await runtime
+			.execute(makeInput({ fetchImpl } as any))
+			.catch((e) => e);
+
+		expect(callCount).toBe(3); // initial + 2 retries
+		expect(error).toBeInstanceOf(CodexError);
+		expect(isOverloadedError(error)).toBe(true);
+	}, 15000);
+
+	it("does not retry non-overloaded SSE errors", async () => {
+		const failBody = createSseBody([
+			failedEvent("rate limit exceeded"),
+		]);
+
+		let callCount = 0;
+		const fetchImpl = (() => {
+			callCount++;
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				text: () => Promise.resolve(""),
+				body: failBody,
+				headers: new Headers(),
+			});
+		}) as any as typeof fetch;
+
+		const config = defaultConfig();
+		config.model = "test-model";
+
+		const runtime = new CodexWebSearchRuntime(config);
+
+		await expect(
+			runtime.execute(makeInput({ fetchImpl } as any)),
+		).rejects.toThrow(CodexError);
+
+		expect(callCount).toBe(1); // no retry
 	});
 });

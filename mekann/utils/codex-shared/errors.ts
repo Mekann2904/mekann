@@ -32,11 +32,13 @@ export function classifyError(error: unknown): CodexErrorKind {
 export function classifyHttpStatus(status: number): CodexErrorKind {
 	if (status === 401 || status === 403) return "auth";
 	if (status === 429) return "rate_limit";
+	if (status === 503) return "overloaded";
 	return "transport";
 }
 
 export function classifyEventErrorMessage(message: string): CodexErrorKind {
 	const lower = message.toLowerCase();
+	if (/server[-_ ]?is[-_ ]?overloaded|service[-_ ]?unavailable|overloaded|slow_down/.test(lower)) return "overloaded";
 	if (/rate[- ]?limit|too many requests|quota|429/.test(lower)) return "rate_limit";
 	if (/auth|unauthori[sz]ed|forbidden|401|403/.test(lower)) return "auth";
 	if (/timeout|timed out/.test(lower)) return "timeout";
@@ -68,4 +70,8 @@ export function isReasoningParameterError(error: unknown): boolean {
 		msg.includes("reasoning") ||
 		msg.includes("effort")
 	);
+}
+
+export function isOverloadedError(error: unknown): boolean {
+	return error instanceof CodexError && error.kind === "overloaded";
 }

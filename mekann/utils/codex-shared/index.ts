@@ -19,6 +19,7 @@ export {
 	isAuthError,
 	isModelAvailabilityError,
 	isReasoningParameterError,
+	isOverloadedError,
 } from "./errors.js";
 export {
 	fetchCodexModels,

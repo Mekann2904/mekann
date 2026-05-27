@@ -10,6 +10,7 @@ import {
 	CodexError,
 	isModelAvailabilityError,
 	isReasoningParameterError,
+	isOverloadedError,
 	normalizeReasoningEffortForModel,
 	findModelById,
 } from "../codex-shared/index.js";
@@ -20,6 +21,24 @@ import {
 import { fetchCodexWebSearch } from "./search.js";
 import { formatResultText } from "./result.js";
 import type { CodexWebSearchDetails, ModelResolutionSource } from "./result.js";
+
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+	return new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(new DOMException("The operation was aborted.", "AbortError"));
+			return;
+		}
+		const timer = setTimeout(resolve, ms);
+		signal?.addEventListener("abort", () => {
+			clearTimeout(timer);
+			reject(new DOMException("The operation was aborted.", "AbortError"));
+		}, { once: true });
+	});
+}
 
 // ---------------------------------------------------------------------------
 // Config (injected, not imported)
@@ -178,6 +197,23 @@ export class CodexWebSearchRuntime {
 			if (isReasoningParameterError(error) && resolved.effort) {
 				const result = await runSearch(resolved.model);
 				return this.buildOutput(result, resolved.source, undefined, searchContextSize);
+			}
+
+			// Retry: server overloaded → exponential backoff, up to 2 retries
+			if (isOverloadedError(error)) {
+				const MAX_OVERLOADED_RETRIES = 2;
+				const BASE_DELAY_MS = 2_000;
+
+				for (let attempt = 1; attempt <= MAX_OVERLOADED_RETRIES; attempt++) {
+					const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+					await sleep(delay, input.signal);
+					try {
+						const result = await runSearch(resolved.model, resolved.effort);
+						return this.buildOutput(result, resolved.source, resolved.effort, searchContextSize);
+					} catch (retryError) {
+						if (!isOverloadedError(retryError)) throw retryError;
+					}
+				}
 			}
 
 			throw error;

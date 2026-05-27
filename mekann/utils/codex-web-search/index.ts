@@ -153,7 +153,9 @@ function formatUserErrorMessage(kind: string): string {
 			return "Codex web search timed out. Please try again.";
 		case "transport":
 			return "Codex connection error. Please check your network and try again.";
-		default:
+		case "overloaded":
+		return "Codex servers are currently overloaded. Please wait a moment and try again.";
+	default:
 			return "Codex web search failed. Please try again later.";
 	}
 }

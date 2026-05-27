@@ -6,6 +6,7 @@ import {
 	classifyEventErrorMessage,
 	isAuthError,
 	isModelAvailabilityError,
+	isOverloadedError,
 } from "./errors.js";
 
 describe("CodexError", () => {
@@ -56,6 +57,7 @@ describe("classifyHttpStatus", () => {
 	it("429 → rate_limit", () => expect(classifyHttpStatus(429)).toBe("rate_limit"));
 	it("500 → transport", () => expect(classifyHttpStatus(500)).toBe("transport"));
 	it("404 → transport", () => expect(classifyHttpStatus(404)).toBe("transport"));
+	it("503 → overloaded", () => expect(classifyHttpStatus(503)).toBe("overloaded"));
 });
 
 describe("classifyEventErrorMessage", () => {
@@ -91,6 +93,15 @@ describe("classifyEventErrorMessage", () => {
 
 	it("unrecognized → unknown", () => {
 		expect(classifyEventErrorMessage("something else")).toBe("unknown");
+	});
+
+	it("overloaded patterns", () => {
+		expect(classifyEventErrorMessage("server_is_overloaded")).toBe("overloaded");
+		expect(classifyEventErrorMessage("Server is overloaded")).toBe("overloaded");
+		expect(classifyEventErrorMessage("service_unavailable_error")).toBe("overloaded");
+		expect(classifyEventErrorMessage("Service Unavailable")).toBe("overloaded");
+		expect(classifyEventErrorMessage("Our servers are currently overloaded")).toBe("overloaded");
+		expect(classifyEventErrorMessage("slow_down")).toBe("overloaded");
 	});
 });
 
@@ -132,5 +143,21 @@ describe("isModelAvailabilityError", () => {
 
 	it("returns false for non-CodexError", () => {
 		expect(isModelAvailabilityError(new Error("model_not_found"))).toBe(false);
+	});
+});
+
+describe("isOverloadedError", () => {
+	it("returns true for overloaded CodexError", () => {
+		expect(isOverloadedError(new CodexError("overloaded", "server_is_overloaded"))).toBe(true);
+	});
+
+	it("returns false for non-overloaded CodexError", () => {
+		expect(isOverloadedError(new CodexError("transport", "fail", 500))).toBe(false);
+		expect(isOverloadedError(new CodexError("rate_limit", "slow", 429))).toBe(false);
+	});
+
+	it("returns false for non-CodexError", () => {
+		expect(isOverloadedError(new Error("overloaded"))).toBe(false);
+		expect(isOverloadedError(null)).toBe(false);
 	});
 });

@@ -4,7 +4,7 @@
  * Framework-independent Codex API types shared by codex-limits and codex-web-search.
  */
 
-export type CodexErrorKind = "auth" | "rate_limit" | "transport" | "timeout" | "schema" | "unknown";
+export type CodexErrorKind = "auth" | "rate_limit" | "overloaded" | "transport" | "timeout" | "schema" | "unknown";
 
 export type CodexReasoningEffort =
 	| "none"
