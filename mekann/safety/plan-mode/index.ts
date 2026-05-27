@@ -65,10 +65,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		pi.appendEntry("plan-mode-blocked-tool", { at: Date.now(), mode: state.mode, ...extra });
 	}
 
-	function triggerMainModeHandoffTurn(): void {
-		pi.sendUserMessage("Follow the latest `<main_mode_handoff>` in the conversation and start implementing it. If it has unresolved items that require user input, ask before editing.");
-	}
-
 	function messageText(message: unknown): string {
 		if (!message || typeof message !== "object") return "";
 		const content = (message as { content?: unknown }).content;
@@ -80,8 +76,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			.join("\n");
 	}
 
-	function containsMainModeHandoff(text: string): boolean {
-		return /<main_mode_handoff\b[\s\S]*?<\/main_mode_handoff>/i.test(text);
+	function containsImplementationReadySummary(text: string): boolean {
+		return /(^|\n)\s*(?:\*\*)?Implementation-ready:(?:\*\*)?/i.test(text);
 	}
 
 	// ─── Status bar ────────────────────────────────────────────────────
@@ -155,7 +151,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 		// ── Enter the target mode ──
 		if (target === "plan") {
-			state.mainModeHandoffAvailable = false;
+			state.implementationReadyAvailable = false;
 			const planRef = state.modelConfig.models.plan;
 			if (planRef) await trySetModel(planRef, ctx, "Plan model");
 			applyThinking(state.modelConfig.thinking.plan);
@@ -181,7 +177,6 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			// target === "main"
 			await restoreMainModelAndThinking(ctx);
 			Object.assign(state, { savedMainModel: undefined, savedMainThinking: undefined });
-			if (previous === "plan" && state.mainModeHandoffAvailable) triggerMainModeHandoffTurn();
 		}
 
 		if (previous !== "plan") updateModeStatus(ctx);
@@ -395,11 +390,13 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	pi.registerFlag("auto", { description: "auto(autoresearch)モードで起動", type: "boolean", default: false });
 	pi.registerFlag("sub", { description: "sub mode で起動（subagent 並列活用）", type: "boolean", default: false });
 
-	pi.on("agent_end", async (event) => {
+	pi.on("agent_end", async (event, ctx?: ExtensionContext) => {
 		if (state.mode !== "plan") return;
 		const messages = Array.isArray((event as { messages?: unknown }).messages) ? (event as { messages: unknown[] }).messages : [];
-		if (messages.some((message) => containsMainModeHandoff(messageText(message)))) {
-			state.mainModeHandoffAvailable = true;
+		if (messages.some((message) => containsImplementationReadySummary(messageText(message)))) {
+			state.implementationReadyAvailable = true;
+			const transitionCtx = ctx ?? lastCtx;
+			if (transitionCtx) await transitionToMode(state.modeBeforePlan ?? "main", transitionCtx);
 		}
 	});
 

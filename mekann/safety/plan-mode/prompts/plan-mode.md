@@ -24,7 +24,7 @@ Skill selection:
 - Existing PRD, plan, or spec needing breakdown → to-issues
 - Architecture, refactoring, coupling, testability, module boundaries → improve-codebase-architecture
 - UI alternatives, state model uncertainty, interaction design → prototype
-- Small, clear implementation task → tdd planning / implementation-ready summary
+- Small, clear implementation task → tdd
 
 No default:
 

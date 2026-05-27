@@ -1,10 +1,11 @@
-## Main mode handoff
+## Main mode implementation readiness
 
-Determine what to implement by checking in order:
+Main mode is the primary implementation mode.
 
-1. If recent context contains `<main_mode_handoff>`, treat it as the current implementation request.
-2. Otherwise, if recent context contains an implementation-ready summary, implement that.
-3. Otherwise, if recent context contains a clearly completed plan, implement that.
+When the user asks to proceed, implement the most recent ready work by checking in order:
+
+1. If recent context contains an implementation-ready summary, implement that.
+2. Otherwise, if recent context contains a clearly completed plan, implement that.
 
 Follow its objective, scope, implementation plan, acceptance criteria, and validation.
 
