@@ -142,6 +142,29 @@ describe("overflow recovery — normalization", () => {
 		expect(r?.errorMessage).toMatch(/^context_length_exceeded:/);
 	});
 
+	// Codex OSS exact overflow fixture (codex-api/src/sse/responses.rs tests)
+	it("normalizes Codex exact overflow message", () => {
+		const r = driveOverflow(
+			stateFor("openai-codex"),
+			makeMsg(
+				"Your input exceeds the context window of this model. Please adjust your input and try again.",
+			),
+		);
+		expect(r?.errorMessage).toBe(
+			"context_length_exceeded: Your input exceeds the context window of this model. Please adjust your input and try again.",
+		);
+	});
+
+	it("normalizes Codex exact overflow message with embedded newline", () => {
+		const r = driveOverflow(
+			stateFor("openai-codex"),
+			makeMsg(
+				"Your input exceeds the context window of this model. Please adjust your input and try\nagain.",
+			),
+		);
+		expect(r?.errorMessage).toMatch(/^context_length_exceeded:/);
+	});
+
 	// ---- idempotency ----
 
 	it("does not double-prefix messages already starting with context_length_exceeded:", () => {

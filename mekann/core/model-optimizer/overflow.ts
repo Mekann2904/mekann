@@ -13,8 +13,10 @@
  * Both OpenAI's "exceeds the context window" and our canonical
  * "context_length_exceeded:" prefix match this fallback.
  *
- * pi also has NON_OVERFLOW_PATTERNS excluding rate-limit / throttling
- * messages, so a false-positive rewrite would be caught by pi's second guard.
+ * pi also has a small NON_OVERFLOW_PATTERNS guard excluding common
+ * throttling and rate-limit strings.  We keep this extension's own regexes
+ * narrow; a false positive not matching those exclusions would still be
+ * treated as overflow after rewriting.
  *
  * ## How Codex does it
  *
