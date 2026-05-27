@@ -5,8 +5,9 @@ import { subagentSettingsSchema } from "../autonomy/subagent/settingsSchema.js";
 import { outputGateSettingsSchema } from "../context/output-gate/settingsSchema.js";
 import { codexSharedSettingsSchema } from "../utils/codex-shared/settingsSchema.js";
 import { codexWebSearchSettingsSchema } from "../utils/codex-web-search/settingsSchema.js";
+import { modelOptimizerSettingsSchema } from "../core/model-optimizer/settingsSchema.js";
 
-export const mekannSettingsSchemas: FeatureSettingsSchema[] = [planModeSettingsSchema, sandboxSettingsSchema, subagentSettingsSchema, outputGateSettingsSchema, codexSharedSettingsSchema, codexWebSearchSettingsSchema];
+export const mekannSettingsSchemas: FeatureSettingsSchema[] = [planModeSettingsSchema, sandboxSettingsSchema, subagentSettingsSchema, outputGateSettingsSchema, codexSharedSettingsSchema, codexWebSearchSettingsSchema, modelOptimizerSettingsSchema];
 export function findSettingSchema(feature: string, key: string) {
   return mekannSettingsSchemas.find((s) => s.feature === feature)?.settings.find((s) => s.key === key);
 }
