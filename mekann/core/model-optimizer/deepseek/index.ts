@@ -1,9 +1,10 @@
 /**
  * model-optimizer/deepseek — DeepSeek optimizer module.
  *
- * Covers: the `deepseek` model on the `deepseek` provider only.
- * Matches strictly on `model.provider === "deepseek"` AND `model.id === "deepseek"`
- * to avoid enabling for OpenAI-compatible third-party providers.
+ * Covers: all models on the `deepseek` provider.
+ * Matches on `model.provider === "deepseek"` to support current and future
+ * DeepSeek models (deepseek-v4-flash, deepseek-v4-pro, etc.) while avoiding
+ * enabling for OpenAI-compatible third-party providers.
  */
 
 import type { Api, Model } from "@earendil-works/pi-ai";
@@ -20,7 +21,7 @@ export const deepseekModule: ProviderOptimizerModule = {
 	id: "deepseek",
 
 	supports(model: Model<Api>): boolean {
-		return model.provider === "deepseek" && model.id === "deepseek";
+		return model.provider === "deepseek";
 	},
 
 	familyKey(_model: Model<Api>): string | undefined {

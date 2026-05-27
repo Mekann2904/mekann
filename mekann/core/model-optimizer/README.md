@@ -43,9 +43,9 @@ model-optimizer/               ← root orchestrator
 
 ### deepseek
 
-| Provider | Model | Family | Overflow | Compaction hint |
+| Provider | Models | Family | Overflow | Compaction hint |
 |---|---|---|---|---|
-| `deepseek` | `deepseek` | `deepseek` | ✓ | DeepSeek 特化 hint |
+| `deepseek` | all (deepseek-v4-flash, deepseek-v4-pro, …) | `deepseek` | ✓ | DeepSeek 特化 hint |
 
 ## Features
 

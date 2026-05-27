@@ -296,23 +296,23 @@ it("does nothing for missing errorMessage", () => {
 // ---------------------------------------------------------------------------
 
 describe("DeepSeek module selection", () => {
-	it("selects deepseek module for provider=deepseek id=deepseek", () => {
-		const mod = optimizerModules.find((m) => m.supports(mockModel("openai-completions", "deepseek", "deepseek")));
+	it("selects deepseek module for provider=deepseek, id=deepseek-v4-flash", () => {
+		const mod = optimizerModules.find((m) => m.supports(mockModel("openai-completions", "deepseek", "deepseek-v4-flash")));
 		expect(mod).toBe(deepseekModule);
 	});
 
-	it("does NOT select deepseek module for different model id", () => {
-		const mod = optimizerModules.find((m) => m.supports(mockModel("openai-completions", "deepseek", "deepseek-chat")));
+	it("selects deepseek module for provider=deepseek, id=deepseek-v4-pro", () => {
+		const mod = optimizerModules.find((m) => m.supports(mockModel("openai-completions", "deepseek", "deepseek-v4-pro")));
+		expect(mod).toBe(deepseekModule);
+	});
+
+	it("does NOT select deepseek module for different provider with deepseek-like model id", () => {
+		const mod = optimizerModules.find((m) => m.id === "deepseek" && m.supports(mockModel("openai-completions", "openai", "deepseek-v4-flash")));
 		expect(mod).toBeUndefined();
 	});
 
-	it("does NOT select deepseek module for different provider with same model id", () => {
-		const mod = optimizerModules.find((m) => m.id === "deepseek" && m.supports(mockModel("openai-completions", "openai", "deepseek")));
-		expect(mod).toBeUndefined();
-	});
-
-	it("does NOT select deepseek module for deepseek-reasoner alias", () => {
-		const mod = optimizerModules.find((m) => m.supports(mockModel("openai-completions", "deepseek", "deepseek-reasoner")));
+	it("does NOT select deepseek module for non-deepseek provider", () => {
+		const mod = optimizerModules.find((m) => m.id === "deepseek" && m.supports(mockModel("openai-completions", "openrouter", "deepseek-v4-flash")));
 		expect(mod).toBeUndefined();
 	});
 });
@@ -362,11 +362,11 @@ describe("deepseek overflow detection", () => {
 describe("DeepSeek overflow recovery", () => {
 	function deepseekState(): ActiveOptimizationState {
 		const s = createActiveOptimizationState();
-		const model = mockModel("openai-completions", "deepseek", "deepseek");
+		const model = mockModel("openai-completions", "deepseek", "deepseek-v4-flash");
 		const mod = optimizerModules.find((m) => m.supports(model));
 		s.activeModule = mod;
 		s.provider = "deepseek";
-		s.modelId = "deepseek";
+		s.modelId = "deepseek-v4-flash";
 		s.api = "openai-completions";
 		s.enabled = !!(mod && s.featureEnabled);
 		return s;

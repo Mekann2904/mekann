@@ -466,13 +466,13 @@ describe("DeepSeek compaction observer", () => {
 
 	function deepseekEnabledState(): ActiveOptimizationState {
 		const s = createActiveOptimizationState();
-		const model = mockModel("openai-completions", "deepseek", "deepseek");
+		const model = mockModel("openai-completions", "deepseek", "deepseek-v4-flash");
 		s.enabled = true;
 		s.compactionObserverEnabled = true;
 		s.postCompactionHintEnabled = true;
 		s.activeModule = optimizerModules.find((m) => m.supports(model));
 		s.provider = "deepseek";
-		s.modelId = "deepseek";
+		s.modelId = "deepseek-v4-flash";
 		s.api = "openai-completions";
 		return s;
 	}
@@ -483,7 +483,7 @@ describe("DeepSeek compaction observer", () => {
 		driveBeforeCompact(s);
 		expect(s.metrics.compactionsObserved).toBe(1);
 		expect(s.metrics.lastCompaction?.provider).toBe("deepseek");
-		expect(s.metrics.lastCompaction?.modelId).toBe("deepseek");
+		expect(s.metrics.lastCompaction?.modelId).toBe("deepseek-v4-flash");
 	});
 
 	it("records compaction completed for DeepSeek", () => {
@@ -545,15 +545,15 @@ describe("DeepSeek post-compaction hint injection", () => {
 	}
 
 	function deepseekStateWithPendingHint(): ActiveOptimizationState {
-		const model = mockModel("openai-completions", "deepseek", "deepseek");
+		const model = mockModel("openai-completions", "deepseek", "deepseek-v4-flash");
 		const s = createActiveOptimizationState();
 		s.enabled = true;
 		s.postCompactionHintEnabled = true;
 		s.activeModule = optimizerModules.find((m) => m.supports(model));
 		s.provider = "deepseek";
-		s.modelId = "deepseek";
+		s.modelId = "deepseek-v4-flash";
 		s.api = "openai-completions";
-		s.pendingPostCompactionHint = { api: "openai-completions", modelId: "deepseek", createdAt: Date.now() };
+		s.pendingPostCompactionHint = { api: "openai-completions", modelId: "deepseek-v4-flash", createdAt: Date.now() };
 		return s;
 	}
 
