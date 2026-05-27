@@ -7,8 +7,9 @@
 
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { readSync } from "node:fs";
-import { shellArgs, terminalActionLabel, type TerminalAction } from "./actions.js";
-import { launchWithTerminalEmulator, type TerminalLaunchResult } from "./launch.js";
+import { shellArgs, terminalActionLabel } from "./actions.js";
+import { launchWithTerminalEmulator } from "./launch.js";
+import type { TerminalAction, TerminalLaunchResult } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Adapter interfaces (injected, Pi-free)

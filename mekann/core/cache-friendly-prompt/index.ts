@@ -451,6 +451,7 @@ export default function cacheFriendlyPromptExtension(
 			model: actualModel,
 			correlationConfidence: lookup.correlationConfidence,
 			normalized,
+			usageSource: normalized.usageSource,
 			rawUsage,
 			state: lookup.state,
 			fallbackRequestRole: fallbackRole,

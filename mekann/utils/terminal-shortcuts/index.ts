@@ -91,8 +91,8 @@ function adaptRunContext(ctx: ExtensionContext): TerminalActionRunContext {
 		cwd: ctx.cwd,
 		hasUI: ctx.hasUI,
 		isIdle: () => ctx.isIdle(),
-		runPassThroughSection: (fn) =>
-			ctx.ui.custom<number>((tui, _theme, _keybindings, done) => {
+		runPassThroughSection: <T,>(fn: (tui: TerminalTuiControl) => T): Promise<T> =>
+			ctx.ui.custom<T>((tui, _theme, _keybindings, done) => {
 				const control: TerminalTuiControl = {
 					stop: () => tui.stop(),
 					start: () => tui.start(),
@@ -101,7 +101,7 @@ function adaptRunContext(ctx: ExtensionContext): TerminalActionRunContext {
 				const result = fn(control);
 				done(result);
 				return { render: () => [], invalidate: () => {} };
-			}),
+			}) as unknown as Promise<T>,
 	};
 }
 

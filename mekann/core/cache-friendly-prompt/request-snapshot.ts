@@ -19,6 +19,7 @@ import {
 	type CacheFriendlyRequestRole,
 	type PromptFragmentHash,
 	type PromptInspectionWarning,
+	type PromptFragment,
 	type RunKeySource,
 } from "../prompt-core/index.js";
 import { sha256 } from "../prompt-core/hash.js";
@@ -369,10 +370,10 @@ export function createInitialSnapshot(
 		),
 		providerPrefixChars: providerPrefixText.length,
 		providerPrefixTokenEstimate: estimateTokens(providerPrefixText),
-		injectedStableFragmentHashes: rendered.stableFragments.map(
+		injectedStableFragmentHashes: (rendered.stableFragments as PromptFragment[]).map(
 			hashFragment,
 		),
-		injectedSemiStableFragmentHashes: rendered.semiStableFragments.map(
+		injectedSemiStableFragmentHashes: (rendered.semiStableFragments as PromptFragment[]).map(
 			hashFragment,
 		),
 		injectedWarnings: mergeWarnings(
@@ -409,7 +410,7 @@ export function applyDynamicContext(
 
 	return {
 		...prev,
-		latestDynamicFragmentHashes: input.dynamicFragments.map(hashFragment),
+		latestDynamicFragmentHashes: (input.dynamicFragments as PromptFragment[]).map(hashFragment),
 		latestDynamicCollectedAt: new Date().toISOString(),
 		dynamicContextTruncated: truncated.truncated,
 		dynamicContextOriginalChars: truncated.originalChars,
@@ -538,6 +539,7 @@ export interface ActualUsageLogInput {
 	model: string | undefined;
 	correlationConfidence: "requestId_matched" | "providerModel_fifo" | "runKey_latest" | "missing";
 	normalized: NormalizedActualCacheUsage;
+	usageSource: "pi_normalized_usage" | "provider_raw_usage";
 	rawUsage?: unknown;
 	state: PromptRequestSnapshotState | null;
 	fallbackRequestRole?: CacheFriendlyRequestRole;
@@ -578,7 +580,7 @@ export function buildActualUsageLog(
 		cacheMissTokens: input.normalized.cacheMissTokens,
 		tokenHitRate: input.normalized.tokenHitRate,
 		cacheableReadRate: input.normalized.cacheableReadRate,
-		usageSource: input.normalized.usageSource,
+		usageSource: input.usageSource,
 		rawUsage: input.rawUsage,
 	};
 }
