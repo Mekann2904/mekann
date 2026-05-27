@@ -41,6 +41,7 @@ function applyModel(
 	state: ActiveOptimizationState,
 	provider: string | undefined,
 	modelId: string | undefined,
+	ctx?: ExtensionContext,
 ): void {
 	const profile = getOptimizationProfile(provider);
 	const providerAllowed = !provider || state.providerEnabled[provider] !== false;
@@ -50,6 +51,13 @@ function applyModel(
 	state.modelId = modelId;
 	state.enabled = enabled;
 	state.lastSelectedAt = Date.now();
+
+	if (state.enableDebugLogging && ctx) {
+		ctx.ui.notify(
+			`model-optimizer: provider=${provider ?? "?"}, model=${modelId ?? "?"}, profile=${profile?.displayName ?? "none"}, enabled=${enabled}`,
+			"info",
+		);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -61,11 +69,12 @@ export function registerActiveProfileTracking(
 	state: ActiveOptimizationState,
 ): void {
 	// Model switch via /model, Ctrl+P, or session restore
-	pi.on("model_select", (event) => {
+	pi.on("model_select", (event, ctx: ExtensionContext) => {
 		applyModel(
 			state,
 			event.model.provider,
 			event.model.id,
+			ctx,
 		);
 	});
 
@@ -73,7 +82,7 @@ export function registerActiveProfileTracking(
 	pi.on("session_start", (_event, ctx: ExtensionContext) => {
 		const model = ctx.model;
 		if (model) {
-			applyModel(state, model.provider, model.id);
+			applyModel(state, model.provider, model.id, ctx);
 		}
 	});
 }

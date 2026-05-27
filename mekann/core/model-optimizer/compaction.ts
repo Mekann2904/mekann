@@ -10,10 +10,25 @@
  * behaviour is left intact.
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ActiveOptimizationState, OptimizedProviderId } from "./types.js";
 import { getOptimizationProfile } from "./profiles.js";
 import { getPostCompactionHint } from "./prompts.js";
+
+// ---------------------------------------------------------------------------
+// Weakly‑typed event shapes (pi does not export full event types)
+// ---------------------------------------------------------------------------
+
+interface SessionBeforeCompactEvent {
+	preparation: {
+		tokensBefore?: number;
+		firstKeptEntryId?: string;
+	};
+}
+
+interface BeforeAgentStartEvent {
+	systemPrompt?: string;
+}
 
 // ---------------------------------------------------------------------------
 // Registration
@@ -25,32 +40,46 @@ export function registerCompactionObserver(
 ): void {
 	// ── session_before_compact — record observation, do NOT replace compaction ──
 
-	pi.on("session_before_compact", (event) => {
+	pi.on("session_before_compact", (event, ctx: ExtensionContext) => {
 		if (!state.enabled) return;
 		if (!state.compactionObserverEnabled) return;
 
 		state.metrics.compactionsObserved++;
 
-		const preparation = (event as { preparation?: { tokensBefore?: number; firstKeptEntryId?: string } }).preparation;
+		const e = event as SessionBeforeCompactEvent;
 
 		state.metrics.lastCompaction = {
 			provider: state.provider,
 			modelId: state.modelId,
-			tokensBefore: preparation?.tokensBefore,
-			firstKeptEntryId: preparation?.firstKeptEntryId,
+			tokensBefore: e.preparation?.tokensBefore,
+			firstKeptEntryId: e.preparation?.firstKeptEntryId,
 			at: Date.now(),
 		};
+
+		if (state.enableDebugLogging) {
+			ctx.ui.notify(
+				`model-optimizer: compaction observed (${state.profile?.displayName ?? "?"}), tokensBefore=${e.preparation?.tokensBefore ?? "?"}`,
+				"info",
+			);
+		}
 
 		// Never return a custom compaction — let pi handle the default
 	});
 
 	// ── session_compact — mark completion, set up post-compaction hint ──
 
-	pi.on("session_compact", () => {
+	pi.on("session_compact", (_event, ctx: ExtensionContext) => {
 		if (!state.enabled) return;
 		if (!state.compactionObserverEnabled) return;
 
 		state.metrics.compactionsCompleted++;
+
+		if (state.enableDebugLogging) {
+			ctx.ui.notify(
+				"model-optimizer: compaction completed",
+				"info",
+			);
+		}
 
 		if (state.postCompactionHintEnabled && state.profile) {
 			state.pendingPostCompactionHint = {
@@ -63,7 +92,7 @@ export function registerCompactionObserver(
 
 	// ── before_agent_start — inject pending hint into systemPrompt ──
 
-	pi.on("before_agent_start", (event, _ctx) => {
+	pi.on("before_agent_start", (event, ctx: ExtensionContext) => {
 		const pending = state.pendingPostCompactionHint;
 		if (!pending) return;
 		if (!state.enabled) return;
@@ -73,13 +102,23 @@ export function registerCompactionObserver(
 		state.pendingPostCompactionHint = undefined;
 
 		const hint = getPostCompactionHint(pending.provider);
-		const currentPrompt = (event as { systemPrompt?: string }).systemPrompt ?? "";
+		const e = event as BeforeAgentStartEvent;
+		const currentPrompt = e.systemPrompt ?? "";
 
 		state.metrics.postCompactionHintsInjected++;
 
+		if (state.enableDebugLogging) {
+			ctx.ui.notify(
+				`model-optimizer: post-compaction hint injected (${pending.provider})`,
+				"info",
+			);
+		}
+
 		return {
 			systemPrompt: currentPrompt
-				? `${currentPrompt}\n\n${hint}`
+				? `${currentPrompt}
+
+${hint}`
 				: hint,
 		};
 	});

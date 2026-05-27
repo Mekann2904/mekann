@@ -1,9 +1,11 @@
 /**
  * model-optimizer — /model-optimizer slash command.
  *
- * Registers:
- *   /model-optimizer status — show current provider/profile/settings
- *   /model-optimizer stats  — show session-local metrics
+ * Subcommands:
+ *   /model-optimizer              → help
+ *   /model-optimizer status       → show current provider/profile/settings
+ *   /model-optimizer stats        → show session-local metrics
+ *   /model-optimizer help         → show usage
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -24,8 +26,10 @@ export function registerCommands(
 
 			if (sub === "stats" || sub === "s") {
 				showStats(ctx, state);
-			} else {
+			} else if (sub === "status") {
 				showStatus(ctx, state);
+			} else {
+				showHelp(ctx);
 			}
 		},
 	});
@@ -34,6 +38,19 @@ export function registerCommands(
 // ---------------------------------------------------------------------------
 // Display helpers
 // ---------------------------------------------------------------------------
+
+function showHelp(
+	ctx: ExtensionCommandContext,
+): void {
+	ctx.ui.notify([
+		"model-optimizer — OpenAI‑family provider‑aware optimizer",
+		"",
+		"Subcommands:",
+		"  status     Show active provider, profile, and feature toggles",
+		"  stats      Show session‑local metrics (tokens, latency, compactions)",
+		"  help       Show this help",
+	].join("\n"), "info");
+}
 
 function showStatus(
 	ctx: ExtensionCommandContext,
@@ -77,6 +94,17 @@ function showStats(
 		`Compactions:       ${m.compactionsObserved} observed / ${m.compactionsCompleted} completed`,
 		`Post-comp hints:   ${m.postCompactionHintsInjected}`,
 	];
+
+	// Last compaction snapshot
+	const lc = m.lastCompaction;
+	if (lc) {
+		const when = new Date(lc.at).toLocaleTimeString();
+		lines.push(`Last compaction:   ${when} — ${lc.provider ?? "?"}/${lc.modelId ?? "?"}` +
+			`${lc.tokensBefore != null ? `, ${lc.tokensBefore.toLocaleString()} tokens before` : ""}`);
+		if (lc.firstKeptEntryId) {
+			lines.push(`  firstKeptEntryId: ${lc.firstKeptEntryId}`);
+		}
+	}
 
 	// Per-provider breakdown
 	const providers = Object.keys(m.byProvider).sort();

@@ -219,7 +219,7 @@ describe("overflow recovery increments metrics", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Command registration
+// Command registration + help behaviour
 // ---------------------------------------------------------------------------
 
 describe("registerCommands", () => {
@@ -234,5 +234,94 @@ describe("registerCommands", () => {
 		registerCommands(pi as never, state);
 		expect(commands.length).toBe(1);
 		expect(commands[0]?.name).toBe("model-optimizer");
+	});
+
+	it("empty args shows help", () => {
+		const state = createActiveOptimizationState();
+		let notified = "";
+		const fakeCtx = { ui: { notify(msg: string) { notified = msg; } } };
+		const pi = {
+			registerCommand(
+				_name: string,
+				opts: { handler: (args: unknown, ctx: typeof fakeCtx) => void },
+			) {
+				opts.handler("", fakeCtx);
+			},
+		};
+		registerCommands(pi as never, state);
+		expect(notified).toContain("Subcommands");
+	});
+
+	it("unknown subcommand shows help", () => {
+		const state = createActiveOptimizationState();
+		let notified = "";
+		const fakeCtx = { ui: { notify(msg: string) { notified = msg; } } };
+		const pi = {
+			registerCommand(
+				_name: string,
+				opts: { handler: (args: unknown, ctx: typeof fakeCtx) => void },
+			) {
+				opts.handler("unknown", fakeCtx);
+			},
+		};
+		registerCommands(pi as never, state);
+		expect(notified).toContain("Subcommands");
+	});
+
+	it("status shows status info", () => {
+		const state = createActiveOptimizationState();
+		let notified = "";
+		const fakeCtx = { ui: { notify(msg: string) { notified = msg; } } };
+		const pi = {
+			registerCommand(
+				_name: string,
+				opts: { handler: (args: unknown, ctx: typeof fakeCtx) => void },
+			) {
+				opts.handler("status", fakeCtx);
+			},
+		};
+		registerCommands(pi as never, state);
+		expect(notified).toContain("Model Optimizer Status");
+	});
+
+	it("stats shows metrics", () => {
+		const state = createActiveOptimizationState();
+		let notified = "";
+		const fakeCtx = { ui: { notify(msg: string) { notified = msg; } } };
+		const pi = {
+			registerCommand(
+				_name: string,
+				opts: { handler: (args: unknown, ctx: typeof fakeCtx) => void },
+			) {
+				opts.handler("stats", fakeCtx);
+			},
+		};
+		registerCommands(pi as never, state);
+		expect(notified).toContain("Model Optimizer Stats");
+	});
+
+	it("stats shows last compaction when available", () => {
+		const state = createActiveOptimizationState();
+		state.metrics.lastCompaction = {
+			provider: "openai",
+			modelId: "gpt-5.5",
+			tokensBefore: 50000,
+			firstKeptEntryId: "entry-abc",
+			at: Date.now(),
+		};
+		let notified = "";
+		const fakeCtx = { ui: { notify(msg: string) { notified = msg; } } };
+		const pi = {
+			registerCommand(
+				_name: string,
+				opts: { handler: (args: unknown, ctx: typeof fakeCtx) => void },
+			) {
+				opts.handler("stats", fakeCtx);
+			},
+		};
+		registerCommands(pi as never, state);
+		expect(notified).toContain("Last compaction");
+		expect(notified).toContain("50,000");
+		expect(notified).toContain("entry-abc");
 	});
 });

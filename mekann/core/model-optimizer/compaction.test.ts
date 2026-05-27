@@ -37,12 +37,14 @@ describe("registerCompactionObserver — session_before_compact", () => {
 		tokensBefore?: number,
 		firstKeptEntryId?: string,
 	): void {
+		const stubCtx = {} as never;
 		const pi = {
 			on(_event: string, handler: (...args: unknown[]) => unknown) {
 				if (_event === "session_before_compact") {
-					handler({
-						preparation: { tokensBefore, firstKeptEntryId },
-					});
+					handler(
+						{ preparation: { tokensBefore, firstKeptEntryId } },
+						stubCtx,
+					);
 				}
 			},
 		} as never;
@@ -96,10 +98,11 @@ describe("registerCompactionObserver — session_before_compact", () => {
 	it("does not return a custom compaction", () => {
 		const s = enabledState();
 		let returned: unknown = "NOT_SET";
+		const stubCtx = {} as never;
 		const pi = {
 			on(_event: string, handler: (...args: unknown[]) => unknown) {
 				if (_event === "session_before_compact") {
-					returned = handler({ preparation: {} });
+					returned = handler({ preparation: {} }, stubCtx);
 				}
 			},
 		} as never;
@@ -117,9 +120,10 @@ describe("registerCompactionObserver — session_before_compact", () => {
 
 describe("registerCompactionObserver — session_compact", () => {
 	function driveCompact(state: ActiveOptimizationState): void {
+		const stubCtx = {} as never;
 		const pi = {
 			on(_event: string, handler: (...args: unknown[]) => unknown) {
-				if (_event === "session_compact") handler();
+				if (_event === "session_compact") handler(undefined, stubCtx);
 			},
 		} as never;
 		registerCompactionObserver(
@@ -181,12 +185,14 @@ describe("registerCompactionObserver — before_agent_start hint injection", () 
 		existingSystemPrompt?: string,
 	): string | undefined {
 		let returnedSystemPrompt: string | undefined;
+		const stubCtx = {} as never;
 		const pi = {
 			on(_event: string, handler: (...args: unknown[]) => unknown) {
 				if (_event === "before_agent_start") {
-					const result = handler({
-						systemPrompt: existingSystemPrompt,
-					});
+					const result = handler(
+						{ systemPrompt: existingSystemPrompt },
+						stubCtx,
+					);
 					if (result && typeof result === "object" && "systemPrompt" in result) {
 						returnedSystemPrompt = (
 							result as { systemPrompt?: string }
@@ -265,5 +271,110 @@ describe("registerCompactionObserver — before_agent_start hint injection", () 
 		const result = driveBeforeAgentStart(s);
 		expect(result).toBeUndefined();
 		expect(s.metrics.postCompactionHintsInjected).toBe(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Non-target provider — integration-style tests
+// ---------------------------------------------------------------------------
+
+describe("non-target provider behaviour", () => {
+	function driveCompactionForProvider(provider: string, modelId: string) {
+		const s = createActiveOptimizationState();
+		s.compactionObserverEnabled = true;
+		s.postCompactionHintEnabled = true;
+		s.profile = getOptimizationProfile(provider);
+		s.provider = provider;
+		s.modelId = modelId;
+		// enabled = true only when a target profile exists
+		s.enabled = !!(s.featureEnabled && s.profile);
+		return s;
+	}
+
+	function driveMetricsForProvider(provider: string, modelId: string) {
+		const s = createActiveOptimizationState();
+		s.metricsEnabled = true;
+		s.profile = getOptimizationProfile(provider);
+		s.provider = provider;
+		s.modelId = modelId;
+		// enabled depends on profile existence
+		s.enabled = !!(s.featureEnabled && s.profile);
+		return s;
+	}
+
+	it("does not record compaction observer for non-target provider", () => {
+		const s = driveCompactionForProvider("anthropic", "claude-opus-5");
+		const stubCtx = {} as never;
+		const pi = {
+			on(_event: string, handler: (...args: unknown[]) => unknown) {
+				if (_event === "session_before_compact") {
+					handler(
+						{ preparation: { tokensBefore: 50000 } },
+						stubCtx,
+					);
+				}
+				if (_event === "session_compact") {
+					handler(undefined, stubCtx);
+				}
+			},
+		} as never;
+		registerCompactionObserver(
+			pi as Parameters<typeof registerCompactionObserver>[0],
+			s,
+		);
+		expect(s.metrics.compactionsObserved).toBe(0);
+		expect(s.metrics.compactionsCompleted).toBe(0);
+		expect(s.pendingPostCompactionHint).toBeUndefined();
+	});
+
+	it("does not inject post-compaction hint for non-target provider", () => {
+		const s = driveCompactionForProvider("anthropic", "claude-opus-5");
+		s.pendingPostCompactionHint = {
+			provider: "openai",
+			modelId: "gpt-5.5",
+			createdAt: Date.now(),
+		};
+		// enabled is false because no profile for anthropic
+		let result: unknown = undefined;
+		const stubCtx = {} as never;
+		const pi = {
+			on(_event: string, handler: (...args: unknown[]) => unknown) {
+				if (_event === "before_agent_start") {
+					result = handler(
+						{ systemPrompt: "base" },
+						stubCtx,
+					);
+				}
+			},
+		} as never;
+		registerCompactionObserver(
+			pi as Parameters<typeof registerCompactionObserver>[0],
+			s,
+		);
+		expect(result).toBeUndefined();
+		expect(s.metrics.postCompactionHintsInjected).toBe(0);
+	});
+
+	it("records compaction observer and hints for target provider", () => {
+		const s = driveCompactionForProvider("openai", "gpt-5.5");
+		s.enabled = true; // profile exists
+		const stubCtx = {} as never;
+		const pi = {
+			on(_event: string, handler: (...args: unknown[]) => unknown) {
+				if (_event === "session_before_compact") {
+					handler({ preparation: {} }, stubCtx);
+				}
+				if (_event === "session_compact") {
+					handler(undefined, stubCtx);
+				}
+			},
+		} as never;
+		registerCompactionObserver(
+			pi as Parameters<typeof registerCompactionObserver>[0],
+			s,
+		);
+		expect(s.metrics.compactionsObserved).toBe(1);
+		expect(s.metrics.compactionsCompleted).toBe(1);
+		expect(s.pendingPostCompactionHint).toBeDefined();
 	});
 });
