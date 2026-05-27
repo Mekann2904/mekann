@@ -11,8 +11,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { ActiveOptimizationState, OptimizedProviderId } from "./types.js";
-import { getOptimizationProfile } from "./profiles.js";
+import type { ActiveOptimizationState } from "./types.js";
 import { getPostCompactionHint } from "./prompts.js";
 
 // ---------------------------------------------------------------------------

@@ -5,9 +5,6 @@
 /** Providers that are currently optimized. */
 export type OptimizedProviderId = "openai" | "openai-codex";
 
-/** Compaction hint style per provider family. */
-export type CompactionStyle = "standard-openai" | "codex-code-preserving";
-
 /**
  * Static profile describing provider-specific optimization data.
  *
@@ -19,8 +16,6 @@ export interface ModelOptimizationProfile {
 	displayName: string;
 	/** Regex patterns that indicate a context-overflow error for this provider. */
 	overflowPatterns: RegExp[];
-	/** Compaction hint style (reserved for Phase 2). */
-	compactionStyle: CompactionStyle;
 }
 
 // ---------------------------------------------------------------------------

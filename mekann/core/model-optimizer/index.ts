@@ -11,14 +11,13 @@
  * provider definitions are left untouched.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createActiveOptimizationState, registerActiveProfileTracking } from "./activeProfile.js";
 import { registerOverflowRecovery } from "./overflow.js";
 import { registerMetrics } from "./metrics.js";
 import { registerCompactionObserver } from "./compaction.js";
 import { registerCommands } from "./command.js";
 import { featureValue } from "../../settings/featureConfig.js";
-import { getOptimizationProfile } from "./profiles.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -36,7 +35,7 @@ function readBool(feature: string, key: string, fallback: boolean): boolean {
 export default function modelOptimizer(pi: ExtensionAPI): void {
 	const state = createActiveOptimizationState();
 
-	function refreshRuntimeConfig(model?: { provider: string; id: string }): void {
+	function refreshRuntimeConfig(): void {
 		state.featureEnabled = readBool("model-optimizer", "enabled", true);
 		state.overflowRecoveryEnabled = readBool("model-optimizer", "overflowRecovery.enabled", true);
 		state.metricsEnabled = readBool("model-optimizer", "metrics.enabled", true);
@@ -49,18 +48,9 @@ export default function modelOptimizer(pi: ExtensionAPI): void {
 			"openai-codex": readBool("model-optimizer", "openaiCodex.enabled", true),
 		};
 
-		// Re-evaluate enabled with current provider (avoids race with activeProfile's session_start)
-		if (model) {
-			const profile = getOptimizationProfile(model.provider);
-			const providerAllowed = state.providerEnabled[model.provider] !== false;
-			state.profile = profile;
-			state.provider = model.provider;
-			state.modelId = model.id;
-			state.enabled = !!(state.featureEnabled && profile && providerAllowed);
-		} else {
-			state.enabled = !!(state.featureEnabled && state.profile
-				&& state.providerEnabled[state.provider ?? ""] !== false);
-		}
+		// Re-evaluate enabled: activeProfile.ts owns provider/model/profile state
+		state.enabled = !!(state.featureEnabled && state.profile
+			&& state.providerEnabled[state.provider ?? ""] !== false);
 	}
 
 	// Initial read
@@ -81,8 +71,9 @@ export default function modelOptimizer(pi: ExtensionAPI): void {
 	// Slash command: /model-optimizer status | stats
 	registerCommands(pi, state);
 
-	// Re-read settings on every session start
-	pi.on("session_start", (_event, ctx: ExtensionContext) => {
-		refreshRuntimeConfig(ctx.model);
+	// Re-read settings on every session start (activeProfile.ts already
+	// tracks provider/model/profile via its own session_start handler)
+	pi.on("session_start", () => {
+		refreshRuntimeConfig();
 	});
 }

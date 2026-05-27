@@ -22,6 +22,10 @@ export function registerMetrics(
 	pi.on("message_start", (event) => {
 		if (!state.enabled) return;
 		if (!state.metricsEnabled) return;
+
+		// Clear any stale pending start from a previous unpaired message_start
+		pendingAssistantStart = undefined;
+
 		if ((event.message as { role?: string }).role !== "assistant") return;
 		pendingAssistantStart = Date.now();
 	});

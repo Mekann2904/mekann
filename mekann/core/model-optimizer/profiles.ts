@@ -20,7 +20,6 @@ export const OPENAI_PROFILE: ModelOptimizationProfile = {
 		/maximum context length/i,
 		/exceeds the context window/i,
 	],
-	compactionStyle: "standard-openai",
 };
 
 export const OPENAI_CODEX_PROFILE: ModelOptimizationProfile = {
@@ -31,7 +30,6 @@ export const OPENAI_CODEX_PROFILE: ModelOptimizationProfile = {
 		/maximum context length/i,
 		/exceeds the context window/i,
 	],
-	compactionStyle: "codex-code-preserving",
 };
 
 const PROFILES: Record<OptimizedProviderId, ModelOptimizationProfile> = {
