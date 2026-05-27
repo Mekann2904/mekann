@@ -5,6 +5,7 @@ import codexWebSearch from "./codex-web-search/index.js";
 import dashboard from "./dashboard/pi-component.js";
 import terminalShortcuts from "./terminal-shortcuts/index.js";
 import settingsEditor from "./settings-editor/index.js";
+import startupClear from "./terminal/startup-clear.js";
 
 export default function utilsSuite(pi: ExtensionAPI): void {
 	zipRepo(pi);
@@ -13,4 +14,5 @@ export default function utilsSuite(pi: ExtensionAPI): void {
 	dashboard(pi);
 	terminalShortcuts(pi);
 	settingsEditor(pi);
+	startupClear(pi);
 }

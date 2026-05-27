@@ -70,6 +70,10 @@ _Avoid_: text-only profile marker, local account icon
 Mekann's terminal-adjacent UX is optimized for Kitty remote control because Kitty is the recommended terminal for this project. Kitty-specific launch behavior must preserve terminal-safe fallback behavior for non-Kitty environments. Kitty split launches may run while Pi is not idle because they do not take over Pi's TTY; pass-through fallback remains idle-only because it suspends Pi and hands over the current terminal.
 _Avoid_: Kitty-only integration, terminal lock-in, best-effort terminal support
 
+**Startup terminal clear**:
+A utility behavior that clears the terminal screen via ANSI escape sequence when Pi fires `session_start` with reason `startup`. It is controlled by the `terminal.clearOnStartup` global setting (default: `true`) and lives in `utils/terminal/`. It does not fire on `reload`, `new`, `resume`, or `fork`.
+_Avoid_: boot screen clear, session reset, TUI clear
+
 **Pi TUI overlay**:
 A UI rendered inside Pi's active TUI while Pi keeps ownership of the current TTY. Pi TUI overlay uses Pi TUI and must not run OpenTUI in-place.
 _Avoid_: in-Pi OpenTUI, embedded OpenTUI, direct OpenTUI overlay
