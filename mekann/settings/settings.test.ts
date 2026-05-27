@@ -42,7 +42,7 @@ describe("mekann settings core", () => {
 });
 
 describe("settings registry", () => {
-  const featureNames = ["plan-mode", "sandbox", "subagent", "output-gate"];
+  const featureNames = ["plan-mode", "sandbox", "subagent", "output-gate", "codex-shared", "codex-web-search"];
 
   it("registers all expected features", () => {
     const registered = mekannSettingsSchemas.map((s) => s.feature);

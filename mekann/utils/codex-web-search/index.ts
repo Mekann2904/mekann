@@ -17,8 +17,9 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import { Text } from "@earendil-works/pi-tui";
 import { MEKANN_CODEX_DEFAULTS, MEKANN_CODEX_WEB_SEARCH_DEFAULTS } from "../../config.js";
+import { featureConfig } from "../../settings/featureConfig.js";
 import { CodexError, extractAccountIdFromToken } from "../codex-shared/index.js";
-import type { SearchContextSize } from "../codex-shared/types.js";
+import type { CodexReasoningEffort, SearchContextSize } from "../codex-shared/types.js";
 import type { CodexWebSearchDetails } from "./result.js";
 import { CodexWebSearchRuntime } from "./runtime.js";
 import type { CodexWebSearchConfig } from "./runtime.js";
@@ -77,16 +78,48 @@ async function resolveCodexAuth(ctx: ExtensionContext): Promise<{
 // Config → Runtime config
 // ---------------------------------------------------------------------------
 
+function pickString(value: unknown, fallback: string): string {
+	return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
+}
+
+function pickOptionalString(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function pickBoolean(value: unknown, fallback: boolean): boolean {
+	return typeof value === "boolean" ? value : fallback;
+}
+
+function pickEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+	return allowed.includes(value as T) ? value as T : fallback;
+}
+
+function pickNumber(value: unknown, fallback: number): number {
+	const n = Number(value);
+	return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+function pickOptionalEffort(value: unknown): CodexReasoningEffort | undefined {
+	return (["none", "minimal", "low", "medium", "high", "xhigh"] as const).includes(value as CodexReasoningEffort) ? value as CodexReasoningEffort : undefined;
+}
+
 function buildRuntimeConfig(): CodexWebSearchConfig {
+	const shared = featureConfig("codex-shared");
+	const web = featureConfig("codex-web-search");
 	return {
-		model: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.model,
-		effort: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.effort ?? undefined,
-		nonCodexDefaultModel: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.nonCodexDefaultModel,
-		nonCodexDefaultEffort: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.nonCodexDefaultEffort,
-		defaultSearchContextSize: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.defaultSearchContextSize,
-		externalWebAccess: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.externalWebAccess,
-		baseUrl: MEKANN_CODEX_DEFAULTS.baseUrl,
+		model: pickOptionalString(web.model) ?? MEKANN_CODEX_WEB_SEARCH_DEFAULTS.model,
+		effort: pickOptionalEffort(web.effort) ?? MEKANN_CODEX_WEB_SEARCH_DEFAULTS.effort,
+		nonCodexDefaultModel: pickString(web.nonCodexDefaultModel, MEKANN_CODEX_WEB_SEARCH_DEFAULTS.nonCodexDefaultModel),
+		nonCodexDefaultEffort: pickEnum(web.nonCodexDefaultEffort, ["none", "minimal", "low", "medium", "high", "xhigh"] as const, MEKANN_CODEX_WEB_SEARCH_DEFAULTS.nonCodexDefaultEffort),
+		defaultSearchContextSize: pickEnum(web.defaultSearchContextSize, ["low", "medium", "high"] as const, MEKANN_CODEX_WEB_SEARCH_DEFAULTS.defaultSearchContextSize),
+		externalWebAccess: pickBoolean(web.externalWebAccess, MEKANN_CODEX_WEB_SEARCH_DEFAULTS.externalWebAccess),
+		baseUrl: pickString(shared.baseUrl, MEKANN_CODEX_DEFAULTS.baseUrl),
+		modelCacheTtlMs: pickNumber(shared.modelCacheTtlMs, MEKANN_CODEX_DEFAULTS.modelCacheTtlMs),
 	};
+}
+
+function isCodexWebSearchEnabled(): boolean {
+	return pickBoolean(featureConfig("codex-web-search").enabled, MEKANN_CODEX_WEB_SEARCH_DEFAULTS.enabled);
 }
 
 // ---------------------------------------------------------------------------
@@ -189,8 +222,6 @@ class CodexWebSearchResultComponent implements Component {
 // Tool definition
 // ---------------------------------------------------------------------------
 
-const runtime = new CodexWebSearchRuntime(buildRuntimeConfig());
-
 const codexWebSearchTool: ToolDefinition<typeof CodexWebSearchParams, CodexWebSearchDetails> = {
 	name: "codex_web_search",
 	label: "Codex Web Search",
@@ -234,6 +265,14 @@ const codexWebSearchTool: ToolDefinition<typeof CodexWebSearchParams, CodexWebSe
 		onUpdate: AgentToolUpdateCallback<CodexWebSearchDetails> | undefined,
 		ctx: ExtensionContext,
 	): Promise<AgentToolResult<CodexWebSearchDetails>> {
+		if (!isCodexWebSearchEnabled()) {
+			const text = "Codex web search is disabled by Mekann settings.";
+			return {
+				content: [{ type: "text", text }],
+				details: { model: "disabled", searchCalls: [], citations: [], rawText: text },
+			};
+		}
+
 		// 1. Resolve auth from Pi context
 		const auth = await resolveCodexAuth(ctx);
 
@@ -242,6 +281,7 @@ const codexWebSearchTool: ToolDefinition<typeof CodexWebSearchParams, CodexWebSe
 
 		// 3. Delegate to runtime
 		try {
+			const runtime = new CodexWebSearchRuntime(buildRuntimeConfig());
 			const output = await runtime.execute({
 				query: params.query,
 				searchContextSize: params.searchContextSize,

@@ -40,6 +40,8 @@ export interface CodexWebSearchConfig {
 	externalWebAccess: boolean;
 	/** Codex API base URL. */
 	baseUrl: string;
+	/** Codex model catalog cache TTL in ms. */
+	modelCacheTtlMs: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -162,7 +164,7 @@ export class CodexWebSearchRuntime {
 					token: input.token,
 					accountId: input.accountId,
 					baseUrl: this.config.baseUrl,
-				});
+				}, this.config.modelCacheTtlMs);
 				const fallbackModel = findModelById(refreshed.models, refreshed.defaultModelId);
 				const fallbackEffort = normalizeReasoningEffortForModel(
 					resolved.effort,
@@ -202,7 +204,7 @@ export class CodexWebSearchRuntime {
 			token: input.token,
 			accountId: input.accountId,
 			baseUrl: this.config.baseUrl,
-		});
+		}, this.config.modelCacheTtlMs);
 		const availableIds = cached.modelIds;
 
 		// 2. Codex provider → use current model, fallback to Codex default

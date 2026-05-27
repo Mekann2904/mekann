@@ -27,9 +27,9 @@ export function registerSubagentFlags(pi: ExtensionAPI, extensionPathDefault: st
   });
 
   pi.registerFlag("subagent-display", {
-    description: 'Display mode for subagents: "external-split" (default), "external-pi", or "none". Legacy aliases "kitty-split" and "kitty-pi" are accepted.',
+    description: 'Display mode for subagents: "external-split" (default), "external-pi", or "none".',
     type: "string",
-    default: "external-split",
+    default: MEKANN_SUBAGENT_DEFAULTS.display,
   });
 
   pi.registerFlag("subagent-allow-unsafe-external-pi", {

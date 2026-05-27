@@ -250,20 +250,20 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       const minWait = Number(getFlagOrSetting("subagent-min-wait-timeout-ms", "minWaitTimeoutMs", minWaitDefault)) || MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs;
       const rawDisplayFlag = getFlagOrSetting<string>("subagent-display", "display", "external-split");
       const displayFlag = String(rawDisplayFlag ?? "external-split");
-      const displayMap: Record<string, "none" | "kitty-pi" | "kitty-split"> = { none: "none", "external-pi": "kitty-pi", "external-split": "kitty-split", "kitty-pi": "kitty-pi", "kitty-split": "kitty-split" };
+      const displayMap: Record<string, "none" | "kitty-pi" | "kitty-split"> = { none: "none", "external-pi": "kitty-pi", "external-split": "kitty-split" };
       const requestedDisplayMode = displayMap[displayFlag] ?? "none";
       const displayMode = requestedDisplayMode.startsWith("kitty-") && !process.env.KITTY_WINDOW_ID ? "none" : requestedDisplayMode;
       const allowUnsafeExternalPi = /^(1|true|yes|on)$/i.test(
         String(getFlagOrSetting<string>(
           "subagent-allow-unsafe-external-pi",
-          "allow-unsafe-external-pi",
+          "allowUnsafeExternalPi",
           String(MEKANN_SUBAGENT_DEFAULTS.allowUnsafeExternalPi),
         ) ?? String(MEKANN_SUBAGENT_DEFAULTS.allowUnsafeExternalPi)),
       );
       const logDirFlag = String(getFlagOrSetting<string>("subagent-log-dir", "log-dir", MEKANN_SUBAGENT_DEFAULTS.logDir) ?? MEKANN_SUBAGENT_DEFAULTS.logDir).trim();
       const kittenBin = String(getFlagOrSetting<string>("subagent-kitten-bin", "kitten-bin", MEKANN_SUBAGENT_DEFAULTS.kittenBin) ?? MEKANN_SUBAGENT_DEFAULTS.kittenBin) || MEKANN_SUBAGENT_DEFAULTS.kittenBin;
       const piCommand = String(getFlagOrSetting<string>("subagent-pi-command", "pi-command", MEKANN_SUBAGENT_DEFAULTS.piCommand) ?? MEKANN_SUBAGENT_DEFAULTS.piCommand) || MEKANN_SUBAGENT_DEFAULTS.piCommand;
-      const extensionPath = String(getFlagOrSetting<string>("subagent-extension-path", "extension-path", extensionPathDefault) ?? extensionPathDefault).trim();
+      const extensionPath = String(getFlagOrSetting<string>("subagent-extension-path", "extensionPath", extensionPathDefault) ?? extensionPathDefault).trim();
       const externalPiSlots = Number(getFlagOrSetting("subagent-external-pi-slots", "externalPiSlots", String(MEKANN_SUBAGENT_DEFAULTS.externalPiSlots))) || MEKANN_SUBAGENT_DEFAULTS.externalPiSlots;
 
       control = new AgentControl(pi, maxAgents, maxDepth, defaultWait, minWait, {

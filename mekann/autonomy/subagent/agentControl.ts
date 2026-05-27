@@ -37,6 +37,7 @@ import type { SubagentResultStore } from "./resultStore.js";
 import { ApplyQueue } from "./applyQueue.js";
 import { SubagentLifecycle } from "./subagentLifecycle.js";
 import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
+import { featureConfig } from "../../settings/featureConfig.js";
 
 // ─── Default config ──────────────────────────────────────────────
 
@@ -60,6 +61,11 @@ function nextAgentId(): string {
 }
 
 export type DisplayMode = "none" | "kitty-pi" | "kitty-split";
+
+function getEffectiveMaxPatchBytes(): number {
+  const configured = Number(featureConfig("subagent").maxPatchBytes);
+  return Number.isFinite(configured) && configured > 0 ? configured : MEKANN_SUBAGENT_DEFAULTS.maxPatchBytes;
+}
 
 export interface AgentControlOptions {
   displayMode?: DisplayMode;
@@ -216,7 +222,7 @@ export class AgentControl {
   }
 
   private normalizeAuthority(authority?: SubagentAuthority): SubagentAuthority {
-    return { ...DEFAULT_AUTHORITY, ...(authority ?? {}) };
+    return { ...DEFAULT_AUTHORITY, max_patch_bytes: getEffectiveMaxPatchBytes(), ...(authority ?? {}) };
   }
 
   private authorityPreamble(authority: SubagentAuthority, resultContract?: ResultContract): string | undefined {

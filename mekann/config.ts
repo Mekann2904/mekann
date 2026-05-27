@@ -27,7 +27,7 @@ export interface MekannSubagentConfigDefaults {
 	defaultWaitTimeoutMs: number;
 	maxWaitTimeoutMs: number;
 	minWaitTimeoutMs: number;
-	display: "none" | "kitty-pi" | "kitty-split";
+	display: "none" | "external-pi" | "external-split";
 	allowUnsafeExternalPi: boolean;
 	logDir: string;
 	kittenBin: string;
@@ -44,7 +44,7 @@ export const MEKANN_SUBAGENT_DEFAULTS: MekannSubagentConfigDefaults = {
 	defaultWaitTimeoutMs: 30_000,
 	maxWaitTimeoutMs: 600_000,
 	minWaitTimeoutMs: 1_000,
-	display: "kitty-split",
+	display: "external-split",
 	allowUnsafeExternalPi: true,
 	logDir: "",
 	kittenBin: "kitten",

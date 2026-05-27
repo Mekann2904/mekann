@@ -40,6 +40,11 @@ export async function runSettingsEditorCli(argv = process.argv.slice(2)): Promis
         if (!item) return `unknown setting: ${change.feature}.${change.key}`;
         let value: unknown = change.raw === "" ? undefined : change.raw;
         if (item.schema.type === "number" && change.raw !== "") value = Number(change.raw);
+        if (item.schema.type === "boolean" && change.raw !== "") {
+          if (/^(true|1|yes|on)$/i.test(change.raw)) value = true;
+          else if (/^(false|0|no|off)$/i.test(change.raw)) value = false;
+          else return `${change.feature}.${change.key}: boolean は true/false で入力してください`;
+        }
         if (item.schema.type === "modelRef" && change.raw !== "") {
           const idx = change.raw.indexOf("/");
           if (idx <= 0 || idx === change.raw.length - 1) return `${change.feature}.${change.key}: provider/modelId 形式で入力してください`;

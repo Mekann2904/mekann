@@ -11,7 +11,7 @@
 ## 利用箇所
 
 - `terminal-shortcuts`: `lg` などの shortcut を external split UI として開く
-- `subagent`: `kitty-split` display mode で subagent Pi を長い方に split する
+- `subagent`: `external-split` display mode の Kitty adapter として subagent Pi を長い方に split する
 
 ## Fallback policy
 
