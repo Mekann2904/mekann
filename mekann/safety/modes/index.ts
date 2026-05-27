@@ -180,19 +180,6 @@ export default function modesExtension(pi: ExtensionAPI): void {
 					content: loadPrompt("read-only-mode"),
 				});
 			}
-			if (state.mode === "sub") {
-				fragments.push({
-					id: "modes:sub-mode-policy",
-					source: "modes",
-					kind: "mode_policy",
-					stability: "stable",
-					scope: "mode",
-					priority: 210,
-					version: "v1",
-					cacheIntent: "prefer_cache",
-					content: loadPrompt("sub-mode"),
-				});
-			}
 			return fragments;
 		},
 	});
