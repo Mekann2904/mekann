@@ -2,9 +2,9 @@
  * model-optimizer — compaction lifecycle observer and post-compaction hints.
  *
  * Observes session_before_compact / session_compact to record compaction
- * events in metrics, and injects a provider-aware continuation hint on the
+ * events in metrics, and injects a profile-aware continuation hint on the
  * next before_agent_start when a compaction just completed and the active
- * provider is openai or openai-codex.
+ * API protocol has a known optimization profile.
  *
  * Custom compaction summaries are never returned — pi's default compaction
  * behaviour is left intact.
@@ -12,7 +12,6 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ActiveOptimizationState } from "./types.js";
-import { getPostCompactionHint } from "./prompts.js";
 
 // ---------------------------------------------------------------------------
 // Weakly‑typed event shapes (pi does not export full event types)
@@ -31,7 +30,7 @@ interface BeforeAgentStartEvent {
 
 // Maximum age (ms) for a pending post-compaction hint before it is discarded
 // as stale.  Prevents hints from ancient compactions being injected after
-// provider switches or setting toggles.
+// model switches or setting toggles.
 const STALE_HINT_TTL_MS = 5 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
@@ -49,13 +48,16 @@ export function handleBeforeAgentStart(
 	// Always consume — even if we end up discarding, the hint must not linger.
 	state.pendingPostCompactionHint = undefined;
 
-	// Discard stale hints: disabled, feature off, provider mismatch, or TTL expired.
+	// Discard stale hints: disabled, feature off, api mismatch, or TTL expired.
 	if (!state.enabled) return undefined;
 	if (!state.postCompactionHintEnabled) return undefined;
-	if (pending.provider !== state.profile?.provider) return undefined;
+	if (pending.api !== state.api) return undefined;
 	if (_now - pending.createdAt > STALE_HINT_TTL_MS) return undefined;
 
-	const hint = getPostCompactionHint(pending.provider);
+	const profile = state.profile;
+	if (!profile) return undefined;
+
+	const hint = profile.postCompactionHint;
 	const currentPrompt = (event as BeforeAgentStartEvent).systemPrompt ?? "";
 
 	state.metrics.postCompactionHintsInjected++;
@@ -82,7 +84,7 @@ function registerPostCompactionHintInjection(
 
 		if (state.enableDebugLogging) {
 			ctx.ui.notify(
-				`model-optimizer: post-compaction hint injected (${state.profile?.displayName ?? "?"})`,
+				`model-optimizer: post-compaction hint injected (api=${state.api ?? "?"})`,
 				"info",
 			);
 		}
@@ -119,7 +121,7 @@ export function registerCompactionObserver(
 
 		if (state.enableDebugLogging) {
 			ctx.ui.notify(
-				`model-optimizer: compaction observed (${state.profile?.displayName ?? "?"}), tokensBefore=${e.preparation?.tokensBefore ?? "?"}`,
+				`model-optimizer: compaction observed (api=${state.api ?? "?"}), tokensBefore=${e.preparation?.tokensBefore ?? "?"}`,
 				"info",
 			);
 		}
@@ -142,9 +144,9 @@ export function registerCompactionObserver(
 			);
 		}
 
-		if (state.postCompactionHintEnabled && state.profile) {
+		if (state.postCompactionHintEnabled && state.profile && state.api) {
 			state.pendingPostCompactionHint = {
-				provider: state.profile.provider,
+				api: state.api,
 				modelId: state.modelId,
 				createdAt: Date.now(),
 			};

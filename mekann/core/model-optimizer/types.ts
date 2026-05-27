@@ -1,21 +1,19 @@
 /**
- * model-optimizer — type definitions for provider-aware model optimization.
+ * model-optimizer — type definitions for API-based model optimization.
  */
-
-/** Providers that are currently optimized. */
-export type OptimizedProviderId = "openai" | "openai-codex";
 
 /**
- * Static profile describing provider-specific optimization data.
+ * Static profile describing optimization data for a specific API protocol.
  *
- * This is pure provider metadata.  Runtime enable/disable decisions are
- * stored in ActiveOptimizationState and driven by mekann settings.
+ * Profiles are resolved from `Model.api` via `API_FAMILY_MAP` in profiles.ts.
+ * Runtime enable/disable decisions are stored in ActiveOptimizationState
+ * and driven by mekann settings.
  */
-export interface ModelOptimizationProfile {
-	provider: OptimizedProviderId;
-	displayName: string;
-	/** Regex patterns that indicate a context-overflow error for this provider. */
+export interface OptimizationProfile {
+	/** Regex patterns that indicate a context-overflow error for this API. */
 	overflowPatterns: RegExp[];
+	/** Prompt hint injected after compaction for this API protocol. */
+	postCompactionHint: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -84,10 +82,12 @@ export function createMetrics(): ModelOptimizerMetrics {
 
 /** Runtime state for the currently active model/provider. */
 export interface ActiveOptimizationState {
-	profile?: ModelOptimizationProfile;
+	profile?: OptimizationProfile;
 	provider?: string;
 	modelId?: string;
-	/** Master on/off: featureEnabled AND current provider is a known target. */
+	/** API protocol string from the current model (e.g. "openai-responses"). */
+	api?: string;
+	/** Master on/off: featureEnabled AND current api has a known profile. */
 	enabled: boolean;
 	lastSelectedAt?: number;
 	/** Whether the optimizer master toggle (model-optimizer.enabled) is on. */
@@ -98,8 +98,8 @@ export interface ActiveOptimizationState {
 	metricsEnabled: boolean;
 	/** Whether debug-log notifications are enabled. */
 	enableDebugLogging: boolean;
-	/** Per-provider enable flags from settings (openai.enabled / openaiCodex.enabled). */
-	providerEnabled: Record<string, boolean>;
+	/** Per-API-family enable flags from settings (openaiFamily.enabled / openaiCodex.enabled). */
+	apiFamilyEnabled: Record<string, boolean>;
 	/** Whether compaction observer is enabled via settings. */
 	compactionObserverEnabled: boolean;
 	/** Whether post-compaction hint injection is enabled via settings. */
@@ -108,7 +108,7 @@ export interface ActiveOptimizationState {
 	metrics: ModelOptimizerMetrics;
 	/** Pending post-compaction hint. Set by session_compact, consumed by before_agent_start. */
 	pendingPostCompactionHint?: {
-		provider: OptimizedProviderId;
+		api: string;
 		modelId?: string;
 		createdAt: number;
 	};

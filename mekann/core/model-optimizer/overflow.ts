@@ -1,7 +1,7 @@
 /**
  * model-optimizer — context overflow recovery.
  *
- * Monitors assistant message_end events for provider-specific context-overflow
+ * Monitors assistant message_end events for API-specific context-overflow
  * errors and rewrites the errorMessage to the canonical
  * "context_length_exceeded:" prefix so pi's built-in auto-compaction and retry
  * machinery can kick in.
@@ -22,7 +22,7 @@
  *
  * Codex uses structured error.code == "context_length_exceeded" in its SSE
  * response parser (codex-api/src/sse/responses.rs).  pi extensions don't have
- * direct access to the structured error code, so we normalise provider-specific
+ * direct access to the structured error code, so we normalise API-specific
  * message text into the canonical prefix.
  *
  * Safety rules:
@@ -66,8 +66,10 @@ export function registerOverflowRecovery(
 		state.metrics.overflowRecoveries++;
 
 		if (state.enableDebugLogging) {
+			const providerName = ctx.modelRegistry?.getProviderDisplayName(state.provider ?? "")
+				?? state.provider ?? "?";
 			ctx.ui.notify(
-				`model-optimizer: overflow detected for ${profile.displayName}`,
+				`model-optimizer: overflow detected for ${providerName} (api=${state.api ?? "?"})`,
 				"info",
 			);
 		}

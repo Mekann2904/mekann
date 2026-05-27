@@ -5,25 +5,42 @@
 import { describe, it, expect } from "vitest";
 import { createActiveOptimizationState } from "./activeProfile.js";
 import { registerCompactionObserver, handleBeforeAgentStart } from "./compaction.js";
-import { getPostCompactionHint } from "./prompts.js";
-import { getOptimizationProfile } from "./profiles.js";
+import { resolveProfile, CODEX_PROFILE, OPENAI_FAMILY_PROFILE } from "./profiles.js";
 import type { ActiveOptimizationState } from "./types.js";
+import type { Api, Model } from "@earendil-works/pi-ai";
 
 // ---------------------------------------------------------------------------
-// Prompt hints
+// Mock Model helper
 // ---------------------------------------------------------------------------
 
-describe("getPostCompactionHint", () => {
-	it("returns codex-specific hint for openai-codex", () => {
-		const hint = getPostCompactionHint("openai-codex");
-		expect(hint).toContain("file paths");
-		expect(hint).toContain("commands executed");
+function mockModel(api: string, provider = "openai", id = "test-model"): Model<Api> {
+	return {
+		api: api as Api,
+		provider,
+		id,
+		name: id,
+		baseUrl: "https://api.example.com",
+		reasoning: false,
+		input: ["text"],
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 128000,
+		maxTokens: 4096,
+	} as Model<Api>;
+}
+
+// ---------------------------------------------------------------------------
+// Post-compaction hint content
+// ---------------------------------------------------------------------------
+
+describe("post-compaction hints", () => {
+	it("codex profile has code-specific hint", () => {
+		expect(CODEX_PROFILE.postCompactionHint).toContain("file paths");
+		expect(CODEX_PROFILE.postCompactionHint).toContain("commands executed");
 	});
 
-	it("returns standard hint for openai", () => {
-		const hint = getPostCompactionHint("openai");
-		expect(hint).toContain("key decisions");
-		expect(hint).not.toContain("file paths");
+	it("openai family profile has standard hint", () => {
+		expect(OPENAI_FAMILY_PROFILE.postCompactionHint).toContain("key decisions");
+		expect(OPENAI_FAMILY_PROFILE.postCompactionHint).not.toContain("file paths");
 	});
 });
 
@@ -55,13 +72,15 @@ describe("registerCompactionObserver — session_before_compact", () => {
 		);
 	}
 
-	function enabledState(): ActiveOptimizationState {
+	function enabledState(api = "openai-responses"): ActiveOptimizationState {
 		const s = createActiveOptimizationState();
+		const model = mockModel(api);
 		s.enabled = true;
 		s.compactionObserverEnabled = true;
-		s.profile = getOptimizationProfile("openai");
-		s.provider = "openai";
-		s.modelId = "gpt-5.5";
+		s.profile = resolveProfile(model);
+		s.provider = model.provider;
+		s.modelId = model.id;
+		s.api = api;
 		return s;
 	}
 
@@ -132,14 +151,16 @@ describe("registerCompactionObserver — session_compact", () => {
 		);
 	}
 
-	function enabledState(): ActiveOptimizationState {
+	function enabledState(api = "openai-codex-responses"): ActiveOptimizationState {
 		const s = createActiveOptimizationState();
+		const model = mockModel(api, "openai-codex", "gpt-5.5-codex");
 		s.enabled = true;
 		s.compactionObserverEnabled = true;
 		s.postCompactionHintEnabled = true;
-		s.profile = getOptimizationProfile("openai-codex");
-		s.provider = "openai-codex";
-		s.modelId = "gpt-5.5-codex";
+		s.profile = resolveProfile(model);
+		s.provider = model.provider;
+		s.modelId = model.id;
+		s.api = api;
 		return s;
 	}
 
@@ -150,12 +171,12 @@ describe("registerCompactionObserver — session_compact", () => {
 		expect(s.metrics.compactionsCompleted).toBe(1);
 	});
 
-	it("sets pendingPostCompactionHint", () => {
+	it("sets pendingPostCompactionHint with api", () => {
 		const s = enabledState();
 		expect(s.pendingPostCompactionHint).toBeUndefined();
 		driveCompact(s);
 		expect(s.pendingPostCompactionHint).toBeDefined();
-		expect(s.pendingPostCompactionHint?.provider).toBe("openai-codex");
+		expect(s.pendingPostCompactionHint?.api).toBe("openai-codex-responses");
 	});
 
 	it("does not set hint when postCompactionHintEnabled is false", () => {
@@ -208,15 +229,17 @@ describe("registerCompactionObserver — before_agent_start hint injection", () 
 		return returnedSystemPrompt;
 	}
 
-	function stateWithPendingHint(): ActiveOptimizationState {
+	function stateWithPendingHint(api = "openai-codex-responses"): ActiveOptimizationState {
 		const s = createActiveOptimizationState();
+		const model = mockModel(api, "openai-codex", "gpt-5.5-codex");
 		s.enabled = true;
 		s.postCompactionHintEnabled = true;
-		s.profile = getOptimizationProfile("openai-codex");
-		s.provider = "openai-codex";
-		s.modelId = "gpt-5.5-codex";
+		s.profile = resolveProfile(model);
+		s.provider = model.provider;
+		s.modelId = model.id;
+		s.api = api;
 		s.pendingPostCompactionHint = {
-			provider: "openai-codex",
+			api,
 			modelId: "gpt-5.5-codex",
 			createdAt: Date.now(),
 		};
@@ -275,35 +298,26 @@ describe("registerCompactionObserver — before_agent_start hint injection", () 
 });
 
 // ---------------------------------------------------------------------------
-// Non-target provider — integration-style tests
+// Non-target API — integration-style tests
 // ---------------------------------------------------------------------------
 
-describe("non-target provider behaviour", () => {
-	function driveCompactionForProvider(provider: string, modelId: string) {
+describe("non-target API behaviour", () => {
+	function driveCompactionForApi(api: string, provider: string, modelId: string) {
 		const s = createActiveOptimizationState();
+		const model = mockModel(api, provider, modelId);
 		s.compactionObserverEnabled = true;
 		s.postCompactionHintEnabled = true;
-		s.profile = getOptimizationProfile(provider);
+		s.profile = resolveProfile(model);
 		s.provider = provider;
 		s.modelId = modelId;
+		s.api = api;
 		// enabled = true only when a target profile exists
 		s.enabled = !!(s.featureEnabled && s.profile);
 		return s;
 	}
 
-	function driveMetricsForProvider(provider: string, modelId: string) {
-		const s = createActiveOptimizationState();
-		s.metricsEnabled = true;
-		s.profile = getOptimizationProfile(provider);
-		s.provider = provider;
-		s.modelId = modelId;
-		// enabled depends on profile existence
-		s.enabled = !!(s.featureEnabled && s.profile);
-		return s;
-	}
-
-	it("does not record compaction observer for non-target provider", () => {
-		const s = driveCompactionForProvider("anthropic", "claude-opus-5");
+	it("does not record compaction observer for non-target API", () => {
+		const s = driveCompactionForApi("anthropic-messages", "anthropic", "claude-opus-5");
 		const stubCtx = {} as never;
 		const pi = {
 			on(_event: string, handler: (...args: unknown[]) => unknown) {
@@ -327,14 +341,14 @@ describe("non-target provider behaviour", () => {
 		expect(s.pendingPostCompactionHint).toBeUndefined();
 	});
 
-	it("does not inject post-compaction hint for non-target provider", () => {
-		const s = driveCompactionForProvider("anthropic", "claude-opus-5");
+	it("does not inject post-compaction hint for non-target API", () => {
+		const s = driveCompactionForApi("anthropic-messages", "anthropic", "claude-opus-5");
 		s.pendingPostCompactionHint = {
-			provider: "openai",
+			api: "openai-responses",
 			modelId: "gpt-5.5",
 			createdAt: Date.now(),
 		};
-		// enabled is false because no profile for anthropic
+		// enabled is false because no profile for anthropic-messages
 		let result: unknown = undefined;
 		const stubCtx = {} as never;
 		const pi = {
@@ -355,8 +369,8 @@ describe("non-target provider behaviour", () => {
 		expect(s.metrics.postCompactionHintsInjected).toBe(0);
 	});
 
-	it("records compaction observer and hints for target provider", () => {
-		const s = driveCompactionForProvider("openai", "gpt-5.5");
+	it("records compaction observer and hints for target API", () => {
+		const s = driveCompactionForApi("openai-responses", "openai", "gpt-5.5");
 		s.enabled = true; // profile exists
 		const stubCtx = {} as never;
 		const pi = {
@@ -384,15 +398,17 @@ describe("non-target provider behaviour", () => {
 // ---------------------------------------------------------------------------
 
 describe("handleBeforeAgentStart — stale hint guard", () => {
-	function stateWithPendingHint(): ActiveOptimizationState {
+	function stateWithPendingHint(api = "openai-codex-responses"): ActiveOptimizationState {
 		const s = createActiveOptimizationState();
+		const model = mockModel(api, "openai-codex", "gpt-5.5-codex");
 		s.enabled = true;
 		s.postCompactionHintEnabled = true;
-		s.profile = getOptimizationProfile("openai-codex");
-		s.provider = "openai-codex";
-		s.modelId = "gpt-5.5-codex";
+		s.profile = resolveProfile(model);
+		s.provider = model.provider;
+		s.modelId = model.id;
+		s.api = api;
 		s.pendingPostCompactionHint = {
-			provider: "openai-codex",
+			api,
 			modelId: "gpt-5.5-codex",
 			createdAt: Date.now(),
 		};
@@ -415,11 +431,13 @@ describe("handleBeforeAgentStart — stale hint guard", () => {
 		expect(s.pendingPostCompactionHint).toBeUndefined();
 	});
 
-	it("consumes hint when provider has switched away", () => {
-		const s = stateWithPendingHint();
-		// Simulate provider switch: pending is openai-codex but current is openai
-		s.profile = getOptimizationProfile("openai");
-		s.provider = "openai";
+	it("consumes hint when API has switched away", () => {
+		const s = stateWithPendingHint("openai-codex-responses");
+		// Simulate API switch: pending is openai-codex-responses but current is openai-responses
+		const newModel = mockModel("openai-responses");
+		s.profile = resolveProfile(newModel);
+		s.provider = newModel.provider;
+		s.api = "openai-responses";
 		const result = handleBeforeAgentStart(s, { systemPrompt: "test" });
 		expect(result).toBeUndefined();
 		expect(s.pendingPostCompactionHint).toBeUndefined();
@@ -447,7 +465,7 @@ describe("handleBeforeAgentStart — stale hint guard", () => {
 		expect(s.metrics.postCompactionHintsInjected).toBe(1);
 	});
 
-	it("injects hint when fresh and provider matches", () => {
+	it("injects hint when fresh and API matches", () => {
 		const s = stateWithPendingHint();
 		const result = handleBeforeAgentStart(s, { systemPrompt: "base" });
 		expect(result).toBeDefined();

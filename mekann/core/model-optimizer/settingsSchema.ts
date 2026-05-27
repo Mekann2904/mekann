@@ -3,6 +3,9 @@
  *
  * Registered in mekann/settings/registry.ts so users can toggle feature
  * behaviour via `mekann settings.json`.
+ *
+ * Per-provider settings have been replaced by per-API-family settings
+ * that align with the `model.api`–driven classification in profiles.ts.
  */
 
 import type { FeatureSettingsSchema, SettingSchema } from "../../settings/types.js";
@@ -46,16 +49,16 @@ export const modelOptimizerSettingsSchema: FeatureSettingsSchema = {
 			"model-optimizer 拡張全体の有効/無効。",
 		),
 		bool(
-			"openai.enabled",
-			"Providers",
+			"openaiFamily.enabled",
+			"API Families",
 			true,
-			"openai provider 向けの最適化を有効にする。",
+			"OpenAI API ファミリ (openai-responses, openai-completions, azure-openai-responses) 向けの最適化を有効にする。",
 		),
 		bool(
 			"openaiCodex.enabled",
-			"Providers",
+			"API Families",
 			true,
-			"openai-codex provider 向けの最適化を有効にする。",
+			"OpenAI Codex API (openai-codex-responses) 向けの最適化を有効にする。",
 		),
 		bool(
 			"overflowRecovery.enabled",

@@ -7,7 +7,7 @@ import { createMetrics, type ActiveOptimizationState } from "./types.js";
 import { createActiveOptimizationState } from "./activeProfile.js";
 import { registerMetrics } from "./metrics.js";
 import { registerOverflowRecovery } from "./overflow.js";
-import { getOptimizationProfile } from "./profiles.js";
+import { resolveProfile } from "./profiles.js";
 import { registerCommands } from "./command.js";
 
 // ---------------------------------------------------------------------------
@@ -170,11 +170,13 @@ describe("registerMetrics", () => {
 // ---------------------------------------------------------------------------
 
 describe("overflow recovery increments metrics", () => {
-	function stateFor(provider: string): ActiveOptimizationState {
+	function stateFor(api: string, provider = "openai"): ActiveOptimizationState {
 		const s = createActiveOptimizationState();
-		const profile = getOptimizationProfile(provider);
+		const model = { api, provider, id: "test-model" } as any;
+		const profile = resolveProfile(model);
 		s.profile = profile ?? undefined;
 		s.provider = provider;
+		s.api = api;
 		s.enabled = !!(profile && s.featureEnabled);
 		s.metrics = createMetrics();
 		return s;
@@ -192,26 +194,26 @@ describe("overflow recovery increments metrics", () => {
 	}
 
 	it("increments overflowRecoveries on normalization", () => {
-		const s = stateFor("openai");
+		const s = stateFor("openai-responses");
 		expect(s.metrics.overflowRecoveries).toBe(0);
 		driveOverflow(s, "exceeds the context window of 128000 tokens");
 		expect(s.metrics.overflowRecoveries).toBe(1);
 	});
 
 	it("does not increment when already canonical", () => {
-		const s = stateFor("openai");
+		const s = stateFor("openai-responses");
 		driveOverflow(s, "context_length_exceeded: prompt too long");
 		expect(s.metrics.overflowRecoveries).toBe(0);
 	});
 
 	it("does not increment for rate limit errors", () => {
-		const s = stateFor("openai");
+		const s = stateFor("openai-responses");
 		driveOverflow(s, "rate limit exceeded");
 		expect(s.metrics.overflowRecoveries).toBe(0);
 	});
 
 	it("does not increment when disabled", () => {
-		const s = stateFor("openai");
+		const s = stateFor("openai-responses");
 		s.overflowRecoveryEnabled = false;
 		driveOverflow(s, "exceeds the context window");
 		expect(s.metrics.overflowRecoveries).toBe(0);

@@ -139,7 +139,7 @@ describe("mekann integrated extension", () => {
 	it("does not bypass cache-friendly prompt with direct before_agent_start injection", () => {
 		const offenders = sourceFiles(MEKANN)
 			.map((file) => path.relative(MEKANN, file))
-			.filter((rel) => rel !== "core/cache-friendly-prompt/index.ts" && rel !== "core/prompt-core/types.ts" && rel !== "core/model-optimizer/compaction.ts" && rel !== "core/model-optimizer/types.ts")
+			.filter((rel) => rel !== "core/cache-friendly-prompt/index.ts" && rel !== "core/prompt-core/types.ts" && rel !== "core/model-optimizer/compaction.ts" && rel !== "core/model-optimizer/types.ts" && rel !== "core/model-optimizer/profiles.ts")
 			.filter((rel) => read(`mekann/${rel}`).includes('before_agent_start'));
 		expect(offenders).toEqual([]);
 	});
