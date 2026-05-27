@@ -24,7 +24,7 @@ Skill selection:
 - Existing PRD, plan, or spec needing breakdown → to-issues
 - Architecture, refactoring, coupling, testability, module boundaries → improve-codebase-architecture
 - UI alternatives, state model uncertainty, interaction design → prototype
-- Small, clear implementation task → tdd planning / main-mode handoff
+- Small, clear implementation task → tdd planning / implementation-ready summary
 
 No default:
 
@@ -37,7 +37,7 @@ After the selected skill reaches a stopping point, route by plan readiness:
 
 - Large / multi-slice / multi-PR plan → to-issues
 - Product / spec still unclear → to-prd
-- Small, clear, implementation-ready plan → tdd planning / emit `<main_mode_handoff>`
+- Small, clear, implementation-ready plan → tdd planning / output implementation-ready summary
 - Architectural risk remains → improve-codebase-architecture
 - UI / state / interaction uncertainty remains → prototype
 - Unresolved bug cause → diagnose
@@ -58,24 +58,13 @@ Allowed edits:
 
 Exception: edit other files only when the user explicitly allows it in Plan mode.
 
-When the plan is sufficient for implementation, do not implement. Output:
+When the plan is sufficient for implementation, do not implement. Output an implementation-ready summary:
 
-<main_mode_handoff>
-Objective:
-- ...
+**Implementation-ready:**
 
-Change scope:
-- ...
-
-Implementation plan:
-- ...
-
-Acceptance criteria:
-- ...
-
-Validation:
-- ...
-
-Open questions:
-- none
-</main_mode_handoff>
+- **Objective:**
+- **Scope:**
+- **Implementation plan:**
+- **Acceptance criteria:**
+- **Validation:**
+- **Open questions:**

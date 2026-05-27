@@ -98,7 +98,7 @@ describe("plan-mode extension", () => {
 		await mock._commands["plan"].handler("", createMockCtx());
 		let fragments = await collectPromptFragments({ cwd: "/tmp/project" });
 		expect(fragments.some((f) => f.id === "plan-mode:mode-policy" && f.content.includes("grill-with-docs"))).toBe(true);
-		expect(fragments.some((f) => f.id === "plan-mode:mode-policy" && f.content.includes("<main_mode_handoff>"))).toBe(true);
+		expect(fragments.some((f) => f.id === "plan-mode:mode-policy" && f.content.includes("implementation-ready summary"))).toBe(true);
 
 		await mock._commands["plan"].handler("", createMockCtx());
 		fragments = await collectPromptFragments({ cwd: "/tmp/project" });
