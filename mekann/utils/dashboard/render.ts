@@ -5,11 +5,13 @@
 import { contributionText, box, rowBox, padEnd, type BoxConfig } from "./layout.js";
 import { truncatePlain, visibleWidth, dashboardTextColor } from "./terminal.js";
 import type { DashboardData } from "./data.js";
+import type { DashboardRenderModel } from "./view-model-assembler.js";
 import { formatCurrentRepoLine } from "./view-model.js";
 
 export { dashboardTextColor };
 
-export function renderDashboardText(data: DashboardData, width = process.stdout.columns || 120): string {
+export function renderDashboardText(source: DashboardData | DashboardRenderModel, width = process.stdout.columns || 120): string {
+	const data = isLegacyData(source) ? source : renderModelToLegacyData(source);
 	const vm = data.vm;
 	const w = Math.max(20, Math.min(width, 140));
 	const profileIndent = data.avatarResult?.ok ? " ".repeat(data.avatarResult.columns + 4) : "";
@@ -64,4 +66,21 @@ function titleLine(width: number): string {
 function footerLine(width: number): string {
 	const text = "q Quit   r Refresh   /dashboard";
 	return `└${"─".repeat(Math.max(0, width - 2 - visibleWidth(text)))} ${text}┘`;
+}
+
+// ── Type discrimination ───────────────────────────────────────────
+
+function isLegacyData(source: unknown): source is DashboardData {
+	return typeof source === "object" && source !== null && "avatarResult" in source;
+}
+
+function renderModelToLegacyData(model: DashboardRenderModel): DashboardData {
+	const { vm, images } = model;
+	return {
+		vm,
+		avatarResult: images.avatar
+			? { ok: true, path: images.avatar.path, columns: images.avatar.columns, rows: images.avatar.rows }
+			: undefined,
+		graphPath: images.contributionGraph?.path,
+	};
 }

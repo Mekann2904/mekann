@@ -1,20 +1,27 @@
 /**
- * Data collection for the dashboard — assembles the ViewModel and prepares images.
+ * data.ts — Backward-compatible shim over DashboardViewModelAssembler.
+ *
+ * Preserves the existing `DashboardData` / `collectDashboardData` interface
+ * so existing consumers (cli.ts, tests) continue to work unchanged.
+ * Internally delegates to `assembleDashboardRenderModel`.
  */
 
 import { readFileSync } from "node:fs";
-import { prepareDashboardImages, type DashboardAvatarResult } from "./image-pipeline.js";
-import { collectCurrentRepo } from "./current-repo.js";
-import { collectGitHubDashboard } from "./github.js";
+import type { DashboardAvatarResult } from "./image-pipeline.js";
 import type { DashboardViewModel } from "./view-model.js";
+import {
+	assembleDashboardRenderModel,
+	AVATAR_COLS,
+	AVATAR_ROWS,
+	GRAPH_COLS,
+	GRAPH_ROWS,
+	type DashboardAssemblyOptions,
+} from "./view-model-assembler.js";
 
-// ── default layout constants ───────────────────────────────────────────
-export const AVATAR_COLS = 20;
-export const AVATAR_ROWS = 8;
-export const GRAPH_COLS = 140;
-export const GRAPH_ROWS = 10;
+// Re-export constants for backward compatibility
+export { AVATAR_COLS, AVATAR_ROWS, GRAPH_COLS, GRAPH_ROWS };
 
-// ── data options ──────────────────────────────────────────────────────
+// ── data options (preserved interface) ──────────────────────────────
 export interface DashboardDataOptions {
 	cwd: string;
 	images?: boolean;
@@ -22,7 +29,7 @@ export interface DashboardDataOptions {
 	avatarSize?: { columns: number; rows: number };
 }
 
-// ── data result ───────────────────────────────────────────────────────
+// ── data result (preserved interface) ───────────────────────────────
 export interface DashboardData {
 	vm: DashboardViewModel;
 	avatarResult: DashboardAvatarResult | undefined;
@@ -30,47 +37,20 @@ export interface DashboardData {
 }
 
 /** Collect all dashboard data: profile, repo, activity, and images. */
-export async function collectDashboardData(options: string | DashboardDataOptions): Promise<DashboardData> {
-	const opts: DashboardDataOptions = typeof options === "string"
-		? { cwd: options }
-		: options;
-	const { cwd } = opts;
-	const enableImages = opts.images ?? true;
-	const enableAvatar = opts.avatar ?? true;
-	const avatarSize = opts.avatarSize ?? { columns: AVATAR_COLS, rows: AVATAR_ROWS };
+export async function collectDashboardData(
+	options: string | DashboardDataOptions,
+): Promise<DashboardData> {
+	const model = await assembleDashboardRenderModel(options);
 
-	const [github, currentRepo] = await Promise.all([
-		collectGitHubDashboard(),
-		collectCurrentRepo(cwd),
-	]);
-
-	const avatarUrl = github.ok ? github.data.profile.avatarUrl : undefined;
-	// Use sized URL for efficient download
-	const sizedUrl = avatarUrl
-		? (avatarUrl.includes("?") ? `${avatarUrl}&s=160` : `${avatarUrl}?s=160`)
+	// Convert placement intents back to legacy shape
+	const avatarResult: DashboardAvatarResult | undefined = model.images.avatar
+		? { ok: true, path: model.images.avatar.path, columns: model.images.avatar.columns, rows: model.images.avatar.rows }
 		: undefined;
 
-	const vm: DashboardViewModel = {
-		profile: github.ok ? { ok: true, profile: github.data.profile } : github,
-		currentRepo,
-		contributionGraph: github.ok
-			? { status: "ready", data: github.data.contributionDays }
-			: { status: "error", message: github.error },
-		activitySummary: github.ok
-			? { status: "ready", data: github.data.activity }
-			: { status: "error", message: github.error },
-		codexUsage: { status: "placeholder", message: "Codex usage summary: coming next" },
-	};
+	const graphPath: string | undefined =
+		model.images.contributionGraph?.path;
 
-	const { avatarResult, graphPath } = await prepareDashboardImages({
-		avatarUrl: sizedUrl,
-		contributionDays: vm.contributionGraph.status === "ready" ? vm.contributionGraph.data : undefined,
-		images: enableImages,
-		avatar: enableAvatar,
-		avatarSize,
-	});
-
-	return { vm, avatarResult, graphPath };
+	return { vm: model.vm, avatarResult, graphPath };
 }
 
 // ── MIME detection (exported for testing) ─────────────────────────────

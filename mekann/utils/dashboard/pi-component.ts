@@ -6,8 +6,8 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { renderKittyImage } from "./avatar.js";
-import type { DashboardAvatarResult } from "./avatar.js";
-import { GRAPH_COLS, GRAPH_ROWS, collectDashboardData, type DashboardData } from "./data.js";
+import { assembleDashboardRenderModel, GRAPH_COLS, GRAPH_ROWS } from "./view-model-assembler.js";
+import type { DashboardRenderModel, DashboardImagePlacement } from "./view-model-assembler.js";
 import { renderOverlayLines } from "./overlay-render.js";
 
 // ── Component interface (minimal) ─────────────────────────────────────
@@ -24,7 +24,7 @@ class DashboardPiComponent implements Component {
 	private cachedHeight?: number;
 
 	constructor(
-		private readonly data: DashboardData,
+		private readonly model: DashboardRenderModel,
 		private readonly close: () => void,
 	) {}
 
@@ -34,7 +34,9 @@ class DashboardPiComponent implements Component {
 			return this.cachedResult.lines;
 		}
 
-		const result = renderOverlayLines(this.data, width, height);
+		// Build legacy DashboardData shape for overlay-render
+		const data = renderModelToLegacyData(this.model);
+		const result = renderOverlayLines(data, width, height);
 		this.cachedResult = result;
 		this.cachedWidth = width;
 		this.cachedHeight = height;
@@ -59,10 +61,23 @@ class DashboardPiComponent implements Component {
 }
 
 export function createDashboardPiComponent(
-	data: DashboardData,
+	model: DashboardRenderModel,
 	close: () => void,
 ): DashboardPiComponent {
-	return new DashboardPiComponent(data, close);
+	return new DashboardPiComponent(model, close);
+}
+
+// ── Legacy data conversion (for overlay-render compatibility) ─────────
+
+function renderModelToLegacyData(model: DashboardRenderModel) {
+	const { vm, images } = model;
+	return {
+		vm,
+		avatarResult: images.avatar
+			? { ok: true as const, path: images.avatar.path, columns: images.avatar.columns, rows: images.avatar.rows }
+			: undefined,
+		graphPath: images.contributionGraph?.path,
+	};
 }
 
 // ── Pi extension registration ─────────────────────────────────────────
@@ -71,27 +86,30 @@ export default function dashboard(pi: ExtensionAPI): void {
 		description: "Open the Mekann dashboard in Pi TUI",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify("Loading dashboard...", "info");
-			const data = await collectDashboardData(ctx.cwd);
-			const { avatarResult, graphPath } = data;
+			const model = await assembleDashboardRenderModel(ctx.cwd);
 			ctx.ui.setFooter(() => ({ render: () => [], invalidate: () => {} }));
 			try {
 				let imagesPlaced = false;
 				await ctx.ui.custom<void>((tui, _theme, _keybindings, done) => {
-					const component = createDashboardPiComponent(data, () => done(undefined));
+					const component = createDashboardPiComponent(model, () => done(undefined));
 					return {
 						render: (width) => {
 							const lines = component.render(width);
 							if (!imagesPlaced) {
 								imagesPlaced = true;
 								setTimeout(() => {
-									if (avatarResult?.ok) {
-										renderKittyImage(avatarResult, { x: 1, y: 0 });
+									const { images } = model;
+									if (images.avatar) {
+										renderKittyImage(
+											{ ok: true, path: images.avatar.path, columns: images.avatar.columns, rows: images.avatar.rows },
+											{ x: 1, y: 0 },
+										);
 									}
-									if (graphPath) {
+									if (images.contributionGraph) {
 										const graphRow = component.getGraphLineIndex() + 1;
 										if (graphRow > 0) {
 											renderKittyImage(
-												{ ok: true, path: graphPath, columns: GRAPH_COLS, rows: GRAPH_ROWS },
+												{ ok: true, path: images.contributionGraph.path, columns: GRAPH_COLS, rows: GRAPH_ROWS },
 												{ x: 1, y: graphRow },
 											);
 										}
