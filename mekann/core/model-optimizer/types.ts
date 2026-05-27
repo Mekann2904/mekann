@@ -23,6 +23,54 @@ export interface ModelOptimizationProfile {
 	compactionStyle: CompactionStyle;
 }
 
+// ---------------------------------------------------------------------------
+// Metrics
+// ---------------------------------------------------------------------------
+
+/** Per-model usage metrics aggregated over the current session. */
+export interface ModelMetrics {
+	requests: number;
+	totalLatencyMs: number;
+	totalInputTokens: number;
+	totalOutputTokens: number;
+}
+
+/** Per-provider usage metrics aggregated over the current session. */
+export interface ProviderMetrics {
+	requests: number;
+	totalLatencyMs: number;
+	totalInputTokens: number;
+	totalOutputTokens: number;
+}
+
+/** Session-local metrics collected by the optimizer. */
+export interface ModelOptimizerMetrics {
+	requestsObserved: number;
+	totalLatencyMs: number;
+	totalInputTokens: number;
+	totalOutputTokens: number;
+	overflowRecoveries: number;
+	byProvider: Record<string, ProviderMetrics>;
+	byModel: Record<string, ModelMetrics>;
+}
+
+/** Create a fresh zeroed metrics object. */
+export function createMetrics(): ModelOptimizerMetrics {
+	return {
+		requestsObserved: 0,
+		totalLatencyMs: 0,
+		totalInputTokens: 0,
+		totalOutputTokens: 0,
+		overflowRecoveries: 0,
+		byProvider: {},
+		byModel: {},
+	};
+}
+
+// ---------------------------------------------------------------------------
+// Active state
+// ---------------------------------------------------------------------------
+
 /** Runtime state for the currently active model/provider. */
 export interface ActiveOptimizationState {
 	profile?: ModelOptimizationProfile;
@@ -35,8 +83,12 @@ export interface ActiveOptimizationState {
 	featureEnabled: boolean;
 	/** Whether overflow recovery is enabled via settings. */
 	overflowRecoveryEnabled: boolean;
+	/** Whether metrics collection is enabled via settings. */
+	metricsEnabled: boolean;
 	/** Whether debug-log notifications are enabled. */
 	enableDebugLogging: boolean;
 	/** Per-provider enable flags from settings (openai.enabled / openaiCodex.enabled). */
 	providerEnabled: Record<string, boolean>;
+	/** Session-local metrics accumulator. */
+	metrics: ModelOptimizerMetrics;
 }

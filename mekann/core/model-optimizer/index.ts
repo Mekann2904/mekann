@@ -3,8 +3,9 @@
  *
  * Detects when an openai or openai-codex model is selected and enables:
  * - Context overflow error normalization (→ pi auto-compaction/retry)
- * - Provider-specific compaction hints (Phase 2)
- * - Lightweight usage/latency metrics (Phase 2)
+ * - Session-local metrics (latency, tokens, overflow recoveries)
+ * - /model-optimizer status / stats commands
+ * - Provider-specific compaction hints (Phase 3)
  *
  * No provider override or custom streaming is performed — the existing pi
  * provider definitions are left untouched.
@@ -13,6 +14,8 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createActiveOptimizationState, registerActiveProfileTracking } from "./activeProfile.js";
 import { registerOverflowRecovery } from "./overflow.js";
+import { registerMetrics } from "./metrics.js";
+import { registerCommands } from "./command.js";
 import { featureValue } from "../../settings/featureConfig.js";
 import { getOptimizationProfile } from "./profiles.js";
 
@@ -35,6 +38,7 @@ export default function modelOptimizer(pi: ExtensionAPI): void {
 	function refreshRuntimeConfig(model?: { provider: string; id: string }): void {
 		state.featureEnabled = readBool("model-optimizer", "enabled", true);
 		state.overflowRecoveryEnabled = readBool("model-optimizer", "overflowRecovery.enabled", true);
+		state.metricsEnabled = readBool("model-optimizer", "metrics.enabled", true);
 		state.enableDebugLogging = readBool("model-optimizer", "debugLogging", false);
 
 		state.providerEnabled = {
@@ -64,6 +68,12 @@ export default function modelOptimizer(pi: ExtensionAPI): void {
 
 	// Overflow recovery (message_end hook)
 	registerOverflowRecovery(pi, state);
+
+	// Metrics collection (message_start / message_end hooks)
+	registerMetrics(pi, state);
+
+	// Slash command: /model-optimizer status | stats
+	registerCommands(pi, state);
 
 	// Re-read settings on every session start
 	pi.on("session_start", (_event, ctx: ExtensionContext) => {

@@ -63,6 +63,8 @@ export function registerOverflowRecovery(
 		);
 		if (!matched) return;
 
+		state.metrics.overflowRecoveries++;
+
 		if (state.enableDebugLogging) {
 			ctx.ui.notify(
 				`model-optimizer: overflow detected for ${profile.displayName}`,

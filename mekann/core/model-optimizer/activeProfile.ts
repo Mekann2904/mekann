@@ -8,6 +8,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ActiveOptimizationState } from "./types.js";
+import { createMetrics } from "./types.js";
 import { getOptimizationProfile } from "./profiles.js";
 
 // ---------------------------------------------------------------------------
@@ -23,8 +24,10 @@ export function createActiveOptimizationState(): ActiveOptimizationState {
 		lastSelectedAt: undefined,
 		featureEnabled: true,
 		overflowRecoveryEnabled: true,
+		metricsEnabled: true,
 		enableDebugLogging: false,
 		providerEnabled: {},
+		metrics: createMetrics(),
 	};
 }
 

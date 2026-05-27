@@ -67,6 +67,12 @@ export const modelOptimizerSettingsSchema: FeatureSettingsSchema = {
 			"context overflow エラーの自動正規化を有効にする。",
 		),
 		bool(
+			"metrics.enabled",
+			"Features",
+			true,
+			"使用量とレイテンシの session-local 計測を有効にする。",
+		),
+		bool(
 			"debugLogging",
 			"Features",
 			false,
