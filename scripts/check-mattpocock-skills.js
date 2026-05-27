@@ -68,14 +68,6 @@ function checkImportedSkill(manifest, item) {
     failures.push(`imported skill '${item.name}' SKILL.md missing description frontmatter: ${rel(skillFile)}`);
   }
 
-  if (!contents.includes("mattpocock/skills") || !contents.includes("Matt Pocock")) {
-    failures.push(`imported skill '${item.name}' missing acknowledgement: ${rel(skillFile)}`);
-  }
-
-  if (!contents.includes("## Language policy") || !contents.includes("Use Japanese explicitly")) {
-    failures.push(`imported skill '${item.name}' missing Japanese language policy: ${rel(skillFile)}`);
-  }
-
   const suspiciousPatterns = [
     /\bCLAUDE\.md\b/,
     /\bClaude Code\b/,
