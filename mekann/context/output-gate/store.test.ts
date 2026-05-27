@@ -220,8 +220,8 @@ describe("output-gate store", () => {
 	});
 
 	it("shouldGateOutput returns true for text exceeding default threshold", () => {
-		// Default is 16KB, so create text larger than that
-		expect(shouldGateOutput("x".repeat(20 * 1024))).toBe(true);
+		// Default is 48KB, so create text larger than that
+		expect(shouldGateOutput("x".repeat(64 * 1024))).toBe(true);
 	});
 
 	it("readManifest skips entries without id or path", async () => {

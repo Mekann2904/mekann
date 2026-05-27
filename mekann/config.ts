@@ -59,8 +59,8 @@ export const MEKANN_SANDBOX_DEFAULTS = {
 } as const;
 
 export const MEKANN_OUTPUT_GATE_DEFAULTS = {
-	maxInlineBytes: 16 * 1024,
-	previewBytes: 4 * 1024,
+	maxInlineBytes: 48 * 1024,
+	previewBytes: 8 * 1024,
 	maxSearchResultBytes: 12 * 1024,
 	defaultContextLines: 3,
 	defaultMaxResults: 10,

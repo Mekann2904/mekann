@@ -22,8 +22,8 @@ async function tmp(): Promise<string> {
 
 function defaultConfig(): OutputGateControllerConfig {
 	return {
-		maxInlineBytes: 16 * 1024,
-		previewBytes: 4 * 1024,
+		maxInlineBytes: 48 * 1024,
+		previewBytes: 8 * 1024,
 		artifactRetentionMaxFiles: 200,
 	};
 }
@@ -38,7 +38,7 @@ function createController(
 	});
 }
 
-function bigText(size = 20 * 1024): string {
+function bigText(size = 64 * 1024): string {
 	return "x".repeat(size);
 }
 
@@ -115,7 +115,7 @@ describe("OutputGateController handleToolResult", () => {
 		expect(result!.content[0].text).toContain("[output-gate]");
 		expect(result!.details.outputGate.stored).toBe(true);
 		expect(result!.details.outputGate.artifactId).toBeDefined();
-		expect(result!.details.outputGate.bytes).toBe(20 * 1024);
+		expect(result!.details.outputGate.bytes).toBe(64 * 1024);
 	});
 
 	it("handles storage failure with stored=false and storageError", async () => {
@@ -216,7 +216,7 @@ describe("OutputGateController handleToolResult", () => {
 		expect(calls).toHaveLength(1);
 		expect(calls[0].toolName).toBe("bash");
 		expect(calls[0].artifactId).toMatch(/^og_/);
-		expect(calls[0].originalBytes).toBe(20 * 1024);
+		expect(calls[0].originalBytes).toBe(64 * 1024);
 		expect(calls[0].isError).toBe(false);
 		expect(calls[0].sessionId).toBe("sess_1");
 		expect(calls[0].turnId).toBe("turn_1");

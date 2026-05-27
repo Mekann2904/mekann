@@ -306,12 +306,12 @@ describe("output-gate tool_result hook", () => {
 		outputGateExtension(pi);
 		const hookFn = pi.on.mock.calls[0][1];
 		const cwd = await tmp();
-		const bigText = "x".repeat(20 * 1024);
+		const bigText = "x".repeat(64 * 1024);
 		const result = await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }] }, { cwd });
 		expect(result).toBeDefined();
 		expect(result.content[0].text).toContain("[output-gate]");
 		expect(result.details.outputGate.stored).toBe(true);
-		expect(result.details.outputGate.bytes).toBe(20 * 1024);
+		expect(result.details.outputGate.bytes).toBe(64 * 1024);
 	});
 
 	it("preserves isError from original event", async () => {
@@ -319,7 +319,7 @@ describe("output-gate tool_result hook", () => {
 		outputGateExtension(pi);
 		const hookFn = pi.on.mock.calls[0][1];
 		const cwd = await tmp();
-		const bigText = "x".repeat(20 * 1024);
+		const bigText = "x".repeat(64 * 1024);
 		const result = await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }], isError: true }, { cwd });
 		expect(result.isError).toBe(true);
 	});
@@ -329,7 +329,7 @@ describe("output-gate tool_result hook", () => {
 		outputGateExtension(pi);
 		const hookFn = pi.on.mock.calls[0][1];
 		const cwd = await tmp();
-		const bigText = "x".repeat(20 * 1024);
+		const bigText = "x".repeat(64 * 1024);
 		const result = await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }] }, { cwd });
 		expect(result.isError).toBeUndefined();
 	});
@@ -339,7 +339,7 @@ describe("output-gate tool_result hook", () => {
 		outputGateExtension(pi);
 		const hookFn = pi.on.mock.calls[0][1];
 		const cwd = await tmp();
-		const bigText = "x".repeat(20 * 1024);
+		const bigText = "x".repeat(64 * 1024);
 		const result = await hookFn({ name: "bash", content: [{ type: "text", text: bigText }] }, { cwd });
 		expect(result).toBeDefined();
 		expect(result.content[0].text).toContain("[output-gate]");
@@ -350,7 +350,7 @@ describe("output-gate tool_result hook", () => {
 		outputGateExtension(pi);
 		const hookFn = pi.on.mock.calls[0][1];
 		const cwd = await tmp();
-		const bigText = "x".repeat(20 * 1024);
+		const bigText = "x".repeat(64 * 1024);
 		const result = await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }], details: { extra: 42 } }, { cwd });
 		expect(result.details.extra).toBe(42);
 		expect(result.details.outputGate).toBeDefined();
@@ -361,7 +361,7 @@ describe("output-gate tool_result hook", () => {
 		outputGateExtension(pi);
 		const hookFn = pi.on.mock.calls[0][1];
 		const cwd = await tmp();
-		const bigText = "x".repeat(20 * 1024);
+		const bigText = "x".repeat(64 * 1024);
 		const result = await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }], cwd }, { cwd: "/nonexistent" });
 		expect(result).toBeDefined();
 		expect(result.details.outputGate.stored).toBe(true);
@@ -375,7 +375,7 @@ describe("output-gate tool_result hook", () => {
 		const cwdBase = await tmp();
 		const cwdFile = path.join(cwdBase, "file");
 		await fsp.writeFile(cwdFile, "x");
-		const bigText = "x".repeat(20 * 1024);
+		const bigText = "x".repeat(64 * 1024);
 		const result = await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }], cwd: cwdFile }, {});
 		expect(result).toBeDefined();
 		expect(result.details.outputGate.stored).toBe(false);
@@ -387,7 +387,7 @@ describe("output-gate tool_result hook", () => {
 		outputGateExtension(pi);
 		const hookFn = pi.on.mock.calls[0][1];
 		const cwd = await tmp();
-		const bigText = "x".repeat(20 * 1024);
+		const bigText = "x".repeat(64 * 1024);
 		const result = await hookFn({ toolName: "bash", content: bigText }, { cwd });
 		expect(result).toBeDefined();
 		expect(result.content[0].text).toContain("[output-gate]");
@@ -398,7 +398,7 @@ describe("output-gate tool_result hook", () => {
 		outputGateExtension(pi);
 		const hookFn = pi.on.mock.calls[0][1];
 		const cwd = await tmp();
-		const bigText = "x".repeat(20 * 1024);
+		const bigText = "x".repeat(64 * 1024);
 		await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }] }, { cwd });
 
 		// Check that the context ledger has a tool_result event
