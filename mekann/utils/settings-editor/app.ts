@@ -31,6 +31,7 @@ export interface SettingsEditorAppProps {
 }
 
 type AppMode = "list" | "edit" | "models" | "diff";
+const ALL_FEATURE = "__all__";
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
@@ -121,15 +122,7 @@ const C = {
 
 // ─── Feature group helpers ────────────────────────────────────────
 
-function featureIcon(feature: string): string {
-	switch (feature) {
-		case "plan-mode": return "◈";
-		case "sandbox": return "⊘";
-		case "subagent": return "⟐";
-		case "output-gate": return "◫";
-		default: return "◇";
-	}
-}
+function featureIcon(_feature: string): string { return ""; }
 
 function featureTitle(feature: string): string {
 	switch (feature) {
@@ -151,15 +144,7 @@ function featureOrder(feature: string): number {
 	return order[feature] ?? 99;
 }
 
-function typeIcon(type: string): string {
-	switch (type) {
-		case "modelRef": return "⊕";
-		case "enum": return "◉";
-		case "number": return "#";
-		case "boolean": return "☐";
-		default: return "·";
-	}
-}
+function typeIcon(_type: string): string { return ""; }
 
 interface FeatureGroup {
 	feature: string;
@@ -237,6 +222,37 @@ function Sidebar(p: {
 		},
 			el("text", { fg: C.fgBright, content: "⚙ Mekann" }),
 		),
+		// "All" row
+		el("box", {
+			key: "sidebar-all",
+			style: {
+				flexDirection: "row",
+				width: "100%",
+				height: 1,
+				backgroundColor: p.activeFeature === ALL_FEATURE ? C.bgSelected : C.sidebarBg,
+				paddingLeft: 2,
+				paddingRight: 1,
+				alignItems: "center",
+			},
+			onMouseDown: (event: any) => {
+				if (isLeftMouse(event)) {
+					p.onSelectFeature(ALL_FEATURE);
+					event?.stopPropagation?.();
+				}
+			},
+		},
+			el("text", { fg: p.activeFeature === ALL_FEATURE ? C.fgBright : C.fg, content: "All" }),
+			el("box", { style: { flexGrow: 1 } }),
+			el("text", { fg: C.fgDim, content: `${p.totalItems}` }),
+			...(Object.keys(p.drafts).length > 0
+				? [el("text", { fg: C.fgDim, content: " " }), el("text", { fg: C.green, content: `${Object.keys(p.drafts).length}` })]
+				: []
+			),
+			...(p.diagnostics.length > 0
+				? [el("text", { fg: C.fgDim, content: " " }), el("text", { fg: C.orange, content: "⚠" })]
+				: []
+			),
+		),
 		// Feature list
 		...p.groups.map((group) => {
 			const isActive = group.feature === p.activeFeature;
@@ -298,6 +314,16 @@ function Sidebar(p: {
 	);
 }
 
+// ─── Feature Header ─────────────────────────────────────────────
+
+function FeatureHeader(p: { feature: string }) {
+	return el("box", {
+		style: { flexDirection: "row", width: "100%", height: 1, backgroundColor: C.groupHeaderBg, paddingLeft: 1, alignItems: "center" },
+	},
+		el("text", { fg: C.fgBright, content: featureTitle(p.feature).toUpperCase() }),
+	);
+}
+
 // ─── Setting Row ──────────────────────────────────────────────────
 
 function SettingRow(p: {
@@ -343,19 +369,18 @@ function ColumnHeader() {
 // ─── Content Header ───────────────────────────────────────────────
 
 function ContentHeader(p: { feature: string; count: number; featureGroups: FeatureGroup[] }) {
-	const icon = featureIcon(p.feature);
-	const title = featureTitle(p.feature);
-	const featureIndex = p.featureGroups.findIndex((g) => g.feature === p.feature) + 1;
+	const isAll = p.feature === ALL_FEATURE;
+	const title = isAll ? "All Settings" : featureTitle(p.feature);
+	const featureIndex = isAll ? 0 : p.featureGroups.findIndex((g) => g.feature === p.feature) + 1;
 	const totalFeatures = p.featureGroups.length;
 
 	return el("box", {
 		style: { width: "100%", height: 1, backgroundColor: C.titleBarBg, flexDirection: "row", paddingLeft: 1, paddingRight: 1, alignItems: "center" },
 	},
-		el("text", { fg: C.accent, content: `${icon} ` }),
 		el("text", { fg: C.fgBright, content: title }),
 		el("text", { fg: C.fgDim, content: ` · ${p.count} setting${p.count !== 1 ? "s" : ""}` }),
 		el("box", { style: { flexGrow: 1 } }),
-		el("text", { fg: C.fgDim, content: `${featureIndex}/${totalFeatures}` }),
+		el("text", { fg: C.fgDim, content: isAll ? `${totalFeatures} features` : `${featureIndex}/${totalFeatures}` }),
 	);
 }
 
@@ -560,24 +585,42 @@ function DiffOverlay(p: { drafts: Record<string, DraftChange>; items: EffectiveS
 	}, ...children);
 }
 
-function ModelPickerOverlay(p: { models: ModelCatalogItem[]; selected: number; onSelect: (index: number) => void }) {
+function ModelPickerOverlay(p: { models: ModelCatalogItem[]; selected: number; onSelect: (index: number) => void; onConfirm: () => void }) {
 	const scrollRef = useRef<ScrollBoxRenderable>(null);
+	const lastClickRef = useRef<{ index: number; at: number } | null>(null);
 
 	useEffect(() => {
 		const id = `model-row-${p.selected}`;
 		scrollRef.current?.scrollChildIntoView(id);
 	}, [p.selected, p.models.length]);
 
+	const handleClick = useCallback((i: number, event: any) => {
+		if (!isLeftMouse(event)) return;
+		event?.stopPropagation?.();
+		const now = Date.now();
+		const last = lastClickRef.current;
+		p.onSelect(i);
+		if (last && last.index === i && now - last.at <= 400) {
+			lastClickRef.current = null;
+			p.onConfirm();
+			return;
+		}
+		lastClickRef.current = { index: i, at: now };
+	}, [p]);
+
 	const rows = p.models.map((m, i) => {
 		const isSel = i === p.selected;
 		return el("box", {
 			key: `${m.provider}/${m.modelId}`,
 			id: `model-row-${i}`,
-			style: { flexDirection: "row", height: 1, backgroundColor: isSel ? C.bgSelected : C.bg, paddingLeft: 1, paddingRight: 1 },
-			onMouseDown: (event: any) => { if (isLeftMouse(event)) { p.onSelect(i); event?.stopPropagation?.(); } },
+			style: { flexDirection: "row", width: "100%", height: 1, backgroundColor: isSel ? C.bgSelected : C.bg, paddingLeft: 1, paddingRight: 1, alignItems: "center" },
 		},
-			el("text", { fg: isSel ? C.fgBright : C.fg, content: `${isSel ? "▸" : " "} ${pad(`${m.provider}/${m.modelId}`, 44)} ` }),
-			m.reasoning ? el("text", { fg: isSel ? C.fgBright : C.teal, content: "reasoning " }) : null,
+			el("text", {
+				fg: isSel ? C.fgBright : C.fg,
+				content: `${isSel ? "▸" : " "} ${pad(`${m.provider}/${m.modelId}`, 44)} `,
+				onMouseDown: (event: any) => handleClick(i, event),
+			}),
+			...(m.reasoning ? [el("text", { fg: isSel ? C.fgBright : C.teal, content: "reasoning " })] : []),
 			el("text", { fg: C.fgDim, content: m.label }),
 		);
 	});
@@ -586,7 +629,7 @@ function ModelPickerOverlay(p: { models: ModelCatalogItem[]; selected: number; o
 		style: { position: "absolute", top: 1, left: 2, right: 2, bottom: 2, borderStyle: "rounded", borderColor: C.cyan, backgroundColor: C.overlayBg, padding: 1, flexDirection: "column", gap: 0 },
 	},
 		el("text", { fg: C.cyan, content: "Select Model" }),
-		el("text", { fg: C.fgDim, content: "↑↓ navigate · click select · wheel scroll · Enter select · Esc cancel" }),
+		el("text", { fg: C.fgDim, content: "↑↓ navigate · click select · dbl-click/Enter confirm · Esc cancel" }),
 		el("scrollbox", {
 			ref: scrollRef,
 			style: { width: "100%", flexGrow: 1, backgroundColor: C.bg },
@@ -621,18 +664,16 @@ export function SettingsEditorApp({
 	const items = useMemo(() => effective, [effective]);
 	const groups = useMemo(() => buildFeatureGroups(items), [items]);
 
-	// Active feature state (defaults to first group)
-	const [activeFeature, setActiveFeature] = useState<string>(
-		() => groups.length > 0 ? groups[0].feature : "",
-	);
+	// Active feature state (defaults to "All")
+	const [activeFeature, setActiveFeature] = useState<string>(ALL_FEATURE);
 	const activeGroup = useMemo(
 		() => groups.find((g) => g.feature === activeFeature),
 		[groups, activeFeature],
 	);
-	// Settings for the currently active feature
+	// Settings for the currently active feature (all items when "All")
 	const featureItems = useMemo(
-		() => activeGroup?.items ?? [],
-		[activeGroup],
+		() => activeFeature === ALL_FEATURE ? items : (activeGroup?.items ?? []),
+		[activeFeature, activeGroup, items],
 	);
 
 	const current = featureItems[Math.min(selected, Math.max(0, featureItems.length - 1))];
@@ -642,7 +683,7 @@ export function SettingsEditorApp({
 	const switchFeature = useCallback((feature: string) => {
 		setActiveFeature(feature);
 		setSelected(0);
-		setMessage(`Switched to ${featureTitle(feature)}`);
+		setMessage(feature === ALL_FEATURE ? "Showing all settings" : `Switched to ${featureTitle(feature)}`);
 		// close any open overlays
 		if (mode !== "list") setMode("list");
 	}, [mode]);
@@ -681,6 +722,14 @@ export function SettingsEditorApp({
 		}
 	}, [drafts, items, models, shownValueFor, stage]);
 
+	// Model picker confirm
+	const confirmModel = useCallback(() => {
+		if (!current || !models[modelSelected]) return;
+		const m = models[modelSelected];
+		stage(current, `${m.provider}/${m.modelId}`);
+		setMode("list");
+	}, [current, models, modelSelected, stage]);
+
 	const selectSettingByMouse = useCallback((index: number) => {
 		const now = Date.now();
 		const last = lastSettingClickRef.current;
@@ -712,22 +761,24 @@ export function SettingsEditorApp({
 			if (key.name === "up") setModelSelected((i) => Math.max(0, i - 1));
 			else if (key.name === "down") setModelSelected((i) => Math.min(models.length - 1, i + 1));
 			else if ((key.name === "return" || key.name === "enter") && current && models[modelSelected]) {
-				const m = models[modelSelected]; stage(current, `${m.provider}/${m.modelId}`); setMode("list");
+				confirmModel();
 			}
 			return;
 		}
 
-		// Feature navigation: ←→ keys
+		// Feature navigation: ←→ keys (cycle through All + features)
 		if (key.name === "left") {
-			const idx = groups.findIndex((g) => g.feature === activeFeature);
-			const prev = groups[Math.max(0, idx - 1)];
-			if (prev && prev.feature !== activeFeature) switchFeature(prev.feature);
+			const features = [ALL_FEATURE, ...groups.map((g) => g.feature)];
+			const idx = features.indexOf(activeFeature);
+			const prev = features[idx <= 0 ? features.length - 1 : idx - 1];
+			if (prev && prev !== activeFeature) switchFeature(prev);
 			return;
 		}
 		if (key.name === "right") {
-			const idx = groups.findIndex((g) => g.feature === activeFeature);
-			const next = groups[Math.min(groups.length - 1, idx + 1)];
-			if (next && next.feature !== activeFeature) switchFeature(next.feature);
+			const features = [ALL_FEATURE, ...groups.map((g) => g.feature)];
+			const idx = features.indexOf(activeFeature);
+			const next = features[idx >= features.length - 1 ? 0 : idx + 1];
+			if (next && next !== activeFeature) switchFeature(next);
 			return;
 		}
 
@@ -756,18 +807,41 @@ export function SettingsEditorApp({
 	// ─── Build setting rows for active feature ─────────────────
 
 	const rows: React.ReactNode[] = [];
-	for (let j = 0; j < featureItems.length; j++) {
-		const item = featureItems[j];
-		const draft = drafts[itemId(item)];
-		rows.push(el(SettingRow, {
-			key: itemId(item),
-			item, index: j,
-			isSelected: j === selected,
-			hasDraft: !!draft,
-			draftValue: draft?.raw ?? "",
-			draftScope: draft?.scope ?? "",
-			onSelect: selectSettingByMouse,
-		}));
+	const isAll = activeFeature === ALL_FEATURE;
+	if (isAll) {
+		let globalIdx = 0;
+		for (let gi = 0; gi < groups.length; gi++) {
+			const group = groups[gi];
+			rows.push(el(FeatureHeader, { feature: group.feature, key: `h-${group.feature}` }));
+			for (let j = 0; j < group.items.length; j++) {
+				const item = group.items[j];
+				const draft = drafts[itemId(item)];
+				rows.push(el(SettingRow, {
+					key: itemId(item),
+					item, index: globalIdx,
+					isSelected: globalIdx === selected,
+					hasDraft: !!draft,
+					draftValue: draft?.raw ?? "",
+					draftScope: draft?.scope ?? "",
+					onSelect: selectSettingByMouse,
+				}));
+				globalIdx++;
+			}
+		}
+	} else {
+		for (let j = 0; j < featureItems.length; j++) {
+			const item = featureItems[j];
+			const draft = drafts[itemId(item)];
+			rows.push(el(SettingRow, {
+				key: itemId(item),
+				item, index: j,
+				isSelected: j === selected,
+				hasDraft: !!draft,
+				draftValue: draft?.raw ?? "",
+				draftScope: draft?.scope ?? "",
+				onSelect: selectSettingByMouse,
+			}));
+		}
 	}
 
 	// ─── Render ────────────────────────────────────────────────
@@ -820,6 +894,6 @@ export function SettingsEditorApp({
 		// ── Overlays ──
 		...(mode === "edit" && current ? [el(EditOverlay, { settingKey: itemId(current), buffer, type: current.schema.type })] : []),
 		...(mode === "diff" ? [el(DiffOverlay, { drafts, items })] : []),
-		...(mode === "models" ? [el(ModelPickerOverlay, { models, selected: modelSelected, onSelect: setModelSelected })] : []),
+		...(mode === "models" ? [el(ModelPickerOverlay, { models, selected: modelSelected, onSelect: setModelSelected, onConfirm: confirmModel })] : []),
 	);
 }
