@@ -19,12 +19,6 @@ export function registerMetrics(
 ): void {
 	let pendingAssistantStart: number | undefined;
 
-	pi.on("message_start", (_event) => {
-		if (!state.enabled) return;
-		if (!state.metricsEnabled) return;
-		// pi fires message_start for every role; we only want assistant
-	});
-
 	pi.on("message_start", (event) => {
 		if (!state.enabled) return;
 		if (!state.metricsEnabled) return;

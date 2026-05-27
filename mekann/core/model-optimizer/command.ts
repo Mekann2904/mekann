@@ -49,7 +49,7 @@ function showStatus(
 		`Profile:       ${state.profile?.displayName ?? "(none)"}`,
 		`Overflow recv: ${state.overflowRecoveryEnabled ? "on" : "off"}`,
 		`Metrics:       ${state.metricsEnabled ? "on" : "off"}`,
-		`Compaction:    reserved (Phase 2)`,
+		`Compaction:    reserved (future)`,
 		`Debug log:     ${state.enableDebugLogging ? "on" : "off"}`,
 	];
 	ctx.ui.notify(lines.join("\n"), "info");

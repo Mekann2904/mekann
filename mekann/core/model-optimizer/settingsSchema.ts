@@ -3,9 +3,6 @@
  *
  * Registered in mekann/settings/registry.ts so users can toggle feature
  * behaviour via `mekann settings.json`.
- *
- * Settings with "(Phase 2)" in the description are reserved for future
- * implementation and have no runtime effect yet.
  */
 
 import type { FeatureSettingsSchema, SettingSchema } from "../../settings/types.js";
