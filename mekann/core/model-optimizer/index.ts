@@ -1,5 +1,5 @@
 /**
- * model-optimizer — API-based model optimizer for OpenAI-family models.
+ * model-optimizer — root orchestrator.
  *
  * Detects when a model with a known API protocol is selected and enables:
  * - Context overflow error normalization (→ pi auto-compaction/retry)
@@ -7,9 +7,8 @@
  * - /model-optimizer status / stats commands
  * - Compaction lifecycle observer + post-compaction hints
  *
- * Classification is driven by `Model.api` (KnownApi) rather than provider
- * string.  No provider override or custom streaming is performed — the
- * existing pi provider definitions are left untouched.
+ * Provider-specific logic is delegated to optimizer modules (e.g. `openai/`).
+ * This root only handles model tracking, settings, and hook dispatch.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -18,8 +17,8 @@ import { registerOverflowRecovery } from "./overflow.js";
 import { registerMetrics } from "./metrics.js";
 import { registerCompactionObserver } from "./compaction.js";
 import { registerCommands } from "./command.js";
+import { optimizerModules } from "./modules.js";
 import { featureValue } from "../../settings/featureConfig.js";
-import { resolveFamilyKey } from "./profiles.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -45,15 +44,23 @@ export default function modelOptimizer(pi: ExtensionAPI): void {
 		state.postCompactionHintEnabled = readBool("model-optimizer", "postCompactionHint.enabled", true);
 		state.enableDebugLogging = readBool("model-optimizer", "debugLogging", false);
 
-		state.apiFamilyEnabled = {
-			openaiFamily: readBool("model-optimizer", "openaiFamily.enabled", true),
-			openaiCodex: readBool("model-optimizer", "openaiCodex.enabled", true),
-		};
+		// Collect per-family settings from all modules
+		const familyEnabled: Record<string, boolean> = {};
+		for (const mod of optimizerModules) {
+			for (const s of mod.settings) {
+				familyEnabled[s.key.replace(/\.enabled$/, "").split(".").pop()!] = readBool("model-optimizer", s.key, s.defaultValue as boolean);
+			}
+		}
+		state.apiFamilyEnabled = familyEnabled;
 
-		// Re-evaluate enabled based on current api → family key → setting
-		const familyKey = state.api ? resolveFamilyKey(state.api) : undefined;
-		state.enabled = !!(state.featureEnabled && state.profile
-			&& (!familyKey || state.apiFamilyEnabled[familyKey] !== false));
+		// Re-evaluate enabled based on current module + family setting
+		if (state.api && state.activeModule) {
+			const familyKey = state.activeModule.familyKey(
+				{ api: state.api as any, provider: state.provider!, id: state.modelId! } as any,
+			);
+			state.enabled = !!(state.featureEnabled && state.activeModule
+				&& (!familyKey || state.apiFamilyEnabled[familyKey] !== false));
+		}
 	}
 
 	// Initial read
@@ -74,8 +81,7 @@ export default function modelOptimizer(pi: ExtensionAPI): void {
 	// Slash command: /model-optimizer status | stats
 	registerCommands(pi, state);
 
-	// Re-read settings on every session start (activeProfile.ts already
-	// tracks provider/model/api via its own session_start handler)
+	// Re-read settings on every session start
 	pi.on("session_start", () => {
 		refreshRuntimeConfig();
 	});

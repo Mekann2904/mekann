@@ -1,40 +1,56 @@
-# 0016. Model optimizer classifies by API protocol, not provider string
+# 0016. Model optimizer uses provider-specific modules, not hardcoded profiles
 
 ## Status
 Accepted
 
 ## Context
-The `model-optimizer` feature originally classified models by `provider` string (`"openai"` / `"openai-codex"`) using hardcoded `if` comparisons. This had several problems:
+The `model-optimizer` feature originally classified models by `provider` string (`"openai"` / `"openai-codex"`) using hardcoded `if` comparisons, then was refactored to classify by `Model.api` with a central `API_FAMILY_MAP` and `OptimizationProfile` objects.
 
-1. **Wrong axis.** Overflow patterns and compaction hints depend on the API protocol (how errors are phrased, what kind of tasks the model handles), not the provider name. The same provider can serve multiple APIs (e.g. `openai` serves both `openai-completions` and `openai-responses`).
-
-2. **Hardcoded.** Adding a new provider required editing four files: `types.ts` (`OptimizedProviderId`), `profiles.ts` (profile + lookup), `settingsSchema.ts` (per-provider setting), and `index.ts` (setting read + enabled check).
-
-3. **Duplicate profiles.** `OPENAI_PROFILE` and `OPENAI_CODEX_PROFILE` had identical `overflowPatterns`. The only real difference was the post-compaction hint text.
-
-4. **Ignored Pi's model metadata.** Pi provides `Model.api` (a `KnownApi` union) and `ModelRegistry.getProviderDisplayName()`, but model-optimizer duplicated this information in its own types.
-
-5. **Missing `azure-openai-responses`.** This API uses the same overflow patterns as `openai-responses` but was not supported because the provider string did not match `"openai"`.
+The profile-based approach had limited expressiveness:
+- Overflow detection was limited to regex matching. No way to express custom detection logic per provider.
+- Error rewriting was always the same prefix pattern. No way to customize per provider.
+- Compaction hints were static strings. No way to generate dynamic hints based on context.
+- All provider-specific data was in a single flat `profiles.ts`. Adding a provider meant editing shared files.
 
 ## Decision
-Replace provider-string classification with API-protocol classification using `Model.api` from Pi's `@earendil-works/pi-ai` types.
+Replace the flat profile-based architecture with a **provider module** architecture.
 
-Specific changes:
-- **Single source of truth:** `API_FAMILY_MAP` in `profiles.ts` maps API strings to `{ familyKey, profile }`. Adding a new API requires one entry in this map.
-- **`OptimizationProfile` replaces `ModelOptimizationProfile`:** Drops `provider` and `displayName` fields, adds `postCompactionHint`. Profiles are data objects looked up by API, not by provider.
-- **`apiFamilyEnabled` replaces `providerEnabled`:** Settings are keyed by API family (`openaiFamily`, `openaiCodex`) instead of provider string.
-- **`pendingPostCompactionHint` uses `api` instead of `provider`:** Compaction hint matching checks the API protocol, which correctly invalidates the hint when the user switches between APIs (e.g. `openai-codex-responses` → `openai-responses`).
-- **`prompts.ts` deleted:** Hint text lives directly on profile objects.
-- **`displayName` removed:** `ctx.modelRegistry.getProviderDisplayName()` is used instead of maintaining a duplicate.
+Each provider optimizer module implements `ProviderOptimizerModule`:
+```ts
+interface ProviderOptimizerModule {
+  id: string;
+  supports(model: Model<Api>): boolean;
+  familyKey(model: Model<Api>): string | undefined;
+  detectOverflow(ctx): boolean;
+  rewriteOverflow(ctx): string;
+  buildPostCompactionHint(ctx): string | undefined;
+  settings: SettingSchema<boolean>[];
+}
+```
+
+Modules live in their own directories under `model-optimizer/`:
+```
+model-optimizer/
+├── openai/           ← OpenAI-family module
+│   ├── index.ts
+│   ├── overflow.ts
+│   ├── compaction.ts
+│   └── settings.ts
+└── (future: deepseek/, etc.)
+```
+
+The root orchestrator (`index.ts`, `overflow.ts`, `compaction.ts`) only:
+1. Finds the active module via `optimizerModules.find(m => m.supports(model))`
+2. Dispatches hook events to the active module's methods
 
 ## Rationale
-- `Model.api` is the correct classification axis because error message formats and task profiles are properties of the API protocol, not the provider.
-- Pi already provides `KnownApi` as a union type covering all supported APIs; leveraging it avoids drift.
-- `API_FAMILY_MAP` makes the relationship between API → setting key → profile explicit and centralized.
-- `azure-openai-responses` is now supported without any code changes beyond the initial map entry.
+- Modules can express arbitrary detection, rewriting, and hint logic — not just regex and static text.
+- Adding a provider means creating a directory and registering in `modules.ts` — no root file edits.
+- Each module owns its own settings, keeping the root schema clean.
+- The root orchestrator remains thin and provider-agnostic.
 
 ## Consequences
-- Models with unknown `api` values receive no optimization (same as before for unknown providers).
-- Per-provider settings (`openai.enabled`, `openaiCodex.enabled`) have been replaced by per-API-family settings (`openaiFamily.enabled`, `openaiCodex.enabled`). Users with custom `mekann.json` settings for the old keys will need to update them.
-- The `OptimizedProviderId` type and `prompts.ts` file have been removed.
-- Future API additions (e.g. `mistral-conversations`) require only a `API_FAMILY_MAP` entry and optionally a new settings key.
+- `OptimizationProfile`, `profiles.ts`, `openai/profile.ts` removed.
+- Root `overflow.ts` and `compaction.ts` are dispatchers, not implementors.
+- Module interface is the contract for all provider optimizers.
+- Future providers (DeepSeek, etc.) follow the same pattern without touching root code.

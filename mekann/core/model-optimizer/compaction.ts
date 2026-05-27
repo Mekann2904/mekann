@@ -2,9 +2,9 @@
  * model-optimizer — compaction lifecycle observer and post-compaction hints.
  *
  * Observes session_before_compact / session_compact to record compaction
- * events in metrics, and injects a profile-aware continuation hint on the
+ * events in metrics, and injects a module-aware continuation hint on the
  * next before_agent_start when a compaction just completed and the active
- * API protocol has a known optimization profile.
+ * module supports the current API.
  *
  * Custom compaction summaries are never returned — pi's default compaction
  * behaviour is left intact.
@@ -54,10 +54,13 @@ export function handleBeforeAgentStart(
 	if (pending.api !== state.api) return undefined;
 	if (_now - pending.createdAt > STALE_HINT_TTL_MS) return undefined;
 
-	const profile = state.profile;
-	if (!profile) return undefined;
+	const module = state.activeModule;
+	if (!module) return undefined;
 
-	const hint = profile.postCompactionHint;
+	const modelStub = { provider: state.provider!, id: state.modelId!, api: state.api } as any;
+	const hint = module.buildPostCompactionHint({ model: modelStub });
+	if (!hint) return undefined;
+
 	const currentPrompt = (event as BeforeAgentStartEvent).systemPrompt ?? "";
 
 	state.metrics.postCompactionHintsInjected++;
@@ -84,7 +87,7 @@ function registerPostCompactionHintInjection(
 
 		if (state.enableDebugLogging) {
 			ctx.ui.notify(
-				`model-optimizer: post-compaction hint injected (api=${state.api ?? "?"})`,
+				`model-optimizer: post-compaction hint injected (api=${state.api ?? "?"}, module=${state.activeModule?.id ?? "?"})`,
 				"info",
 			);
 		}
@@ -144,7 +147,7 @@ export function registerCompactionObserver(
 			);
 		}
 
-		if (state.postCompactionHintEnabled && state.profile && state.api) {
+		if (state.postCompactionHintEnabled && state.activeModule && state.api) {
 			state.pendingPostCompactionHint = {
 				api: state.api,
 				modelId: state.modelId,

@@ -1,10 +1,8 @@
 /**
  * model-optimizer — context overflow recovery.
  *
- * Monitors assistant message_end events for API-specific context-overflow
- * errors and rewrites the errorMessage to the canonical
- * "context_length_exceeded:" prefix so pi's built-in auto-compaction and retry
- * machinery can kick in.
+ * Monitors assistant message_end events and delegates overflow detection
+ * and rewriting to the active provider optimizer module.
  *
  * ## How pi detects overflow
  *
@@ -14,16 +12,9 @@
  * "context_length_exceeded:" prefix match this fallback.
  *
  * pi also has a small NON_OVERFLOW_PATTERNS guard excluding common
- * throttling and rate-limit strings.  We keep this extension's own regexes
- * narrow; a false positive not matching those exclusions would still be
- * treated as overflow after rewriting.
- *
- * ## How Codex does it
- *
- * Codex uses structured error.code == "context_length_exceeded" in its SSE
- * response parser (codex-api/src/sse/responses.rs).  pi extensions don't have
- * direct access to the structured error code, so we normalise API-specific
- * message text into the canonical prefix.
+ * throttling and rate-limit strings.  Provider modules keep their own
+ * detection narrow; a false positive not matching those exclusions would
+ * still be treated as overflow after rewriting.
  *
  * Safety rules:
  * - Only fires when state.enabled and state.overflowRecoveryEnabled are true.
@@ -55,21 +46,26 @@ export function registerOverflowRecovery(
 		// Already canonical — avoid double prefix
 		if (errorMessage.startsWith("context_length_exceeded:")) return;
 
-		const profile = state.profile;
-		if (!profile) return;
+		const module = state.activeModule;
+		if (!module) return;
 
-		const matched = profile.overflowPatterns.some((pattern) =>
-			pattern.test(errorMessage),
-		);
-		if (!matched) return;
+		// We need a model object for the module methods.  Construct a minimal one.
+		// The model was stored at applyModel time but the module methods need it.
+		// Since state.provider/modelId/api are set, we can pass a stub.
+		const modelStub = { provider: state.provider!, id: state.modelId!, api: state.api } as any;
+
+		const detected = module.detectOverflow({ model: modelStub, errorMessage });
+		if (!detected) return;
 
 		state.metrics.overflowRecoveries++;
+
+		const rewritten = module.rewriteOverflow({ model: modelStub, errorMessage });
 
 		if (state.enableDebugLogging) {
 			const providerName = ctx.modelRegistry?.getProviderDisplayName(state.provider ?? "")
 				?? state.provider ?? "?";
 			ctx.ui.notify(
-				`model-optimizer: overflow detected for ${providerName} (api=${state.api ?? "?"})`,
+				`model-optimizer: overflow detected for ${providerName} (api=${state.api ?? "?"}, module=${module.id})`,
 				"info",
 			);
 		}
@@ -77,7 +73,7 @@ export function registerOverflowRecovery(
 		return {
 			message: {
 				...event.message,
-				errorMessage: `context_length_exceeded: ${errorMessage}`,
+				errorMessage: rewritten,
 			},
 		};
 	});

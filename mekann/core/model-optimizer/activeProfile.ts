@@ -1,18 +1,18 @@
 /**
- * model-optimizer — active profile tracking.
+ * model-optimizer — active module tracking.
  *
- * Listens to model_select and session_start to keep the current api/model
- * state up to date.  The active state is consulted by overflow and metrics
- * hooks to decide whether optimization should be active for the current turn.
+ * Listens to model_select and session_start to keep the current module/api/model
+ * state up to date.  The active state is consulted by overflow, metrics, and
+ * compaction hooks to decide whether optimization should be active.
  *
- * Classification is driven by `Model.api` rather than provider string.
+ * Module selection is driven by `Model.api` via the module registry.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ActiveOptimizationState } from "./types.js";
 import { createMetrics } from "./types.js";
-import { resolveProfile, resolveFamilyKey } from "./profiles.js";
+import { optimizerModules } from "./modules.js";
 
 // ---------------------------------------------------------------------------
 // State factory
@@ -20,7 +20,7 @@ import { resolveProfile, resolveFamilyKey } from "./profiles.js";
 
 export function createActiveOptimizationState(): ActiveOptimizationState {
 	return {
-		profile: undefined,
+		activeModule: undefined,
 		provider: undefined,
 		modelId: undefined,
 		api: undefined,
@@ -46,11 +46,11 @@ function applyModel(
 	model: Model<Api>,
 	ctx?: ExtensionContext,
 ): void {
-	const profile = resolveProfile(model);
-	const familyKey = resolveFamilyKey(model.api);
+	const activeModule = optimizerModules.find((m) => m.supports(model));
+	const familyKey = activeModule?.familyKey(model);
 	const familyAllowed = !familyKey || state.apiFamilyEnabled[familyKey] !== false;
-	const enabled = !!(state.featureEnabled && profile && familyAllowed);
-	state.profile = profile;
+	const enabled = !!(state.featureEnabled && activeModule && familyAllowed);
+	state.activeModule = activeModule;
 	state.provider = model.provider;
 	state.modelId = model.id;
 	state.api = model.api;
@@ -61,7 +61,7 @@ function applyModel(
 		const providerName = ctx.modelRegistry?.getProviderDisplayName(model.provider)
 			?? model.provider;
 		ctx.ui.notify(
-			`model-optimizer: provider=${providerName}, model=${model.id}, api=${model.api}, enabled=${enabled}`,
+			`model-optimizer: provider=${providerName}, model=${model.id}, api=${model.api}, module=${activeModule?.id ?? "none"}, enabled=${enabled}`,
 			"info",
 		);
 	}

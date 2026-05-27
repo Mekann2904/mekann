@@ -63,7 +63,7 @@ function showStatus(
 		`Active:        ${state.enabled ? "yes" : "no"}`,
 		`Provider:      ${state.provider ?? "(none)"}`,
 		`Model:         ${state.modelId ?? "(none)"}`,
-		`API:           ${state.api ?? "(none)"}`,
+		`Module:        ${state.activeModule?.id ?? "(none)"}`,
 		`Overflow recv: ${state.overflowRecoveryEnabled ? "on" : "off"}`,
 		`Metrics:       ${state.metricsEnabled ? "on" : "off"}`,
 		`Compaction obs: ${state.compactionObserverEnabled ? "on" : "off"}`,

@@ -7,8 +7,28 @@ import { createMetrics, type ActiveOptimizationState } from "./types.js";
 import { createActiveOptimizationState } from "./activeProfile.js";
 import { registerMetrics } from "./metrics.js";
 import { registerOverflowRecovery } from "./overflow.js";
-import { resolveProfile } from "./profiles.js";
+import { optimizerModules } from "./modules.js";
 import { registerCommands } from "./command.js";
+import type { Api, Model } from "@earendil-works/pi-ai";
+
+// ---------------------------------------------------------------------------
+// Mock Model helper
+// ---------------------------------------------------------------------------
+
+function mockModel(api: string, provider = "openai", id = "test-model"): Model<Api> {
+	return {
+		api: api as Api,
+		provider,
+		id,
+		name: id,
+		baseUrl: "https://api.example.com",
+		reasoning: false,
+		input: ["text"],
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 128000,
+		maxTokens: 4096,
+	} as Model<Api>;
+}
 
 // ---------------------------------------------------------------------------
 // Metrics factory
@@ -38,7 +58,6 @@ interface FakeMessage {
 	usage?: { input?: number; output?: number; cacheRead?: number };
 }
 
-/** Drive a message_start → message_end pair through the metrics hooks. */
 function drivePair(state: ActiveOptimizationState, provider: string, modelId: string, usage: FakeMessage["usage"] = {}): void {
 	state.provider = provider;
 	state.modelId = modelId;
@@ -54,27 +73,14 @@ function drivePair(state: ActiveOptimizationState, provider: string, modelId: st
 
 	registerMetrics(pi as never, state);
 
-	// message_start (assistant)
 	const startMsg: FakeMessage = { role: "assistant" };
-	for (const h of handlers["message_start"] ?? []) {
-		h({ message: startMsg });
-	}
+	for (const h of handlers["message_start"] ?? []) h({ message: startMsg });
 
-	// Allow a tiny delay so latency > 0
-	// (we don't actually need real time, just verify the path)
-
-	// message_end (assistant)
 	const endMsg: FakeMessage = {
 		role: "assistant",
-		usage: {
-			input: usage?.input ?? 100,
-			output: usage?.output ?? 50,
-			cacheRead: usage?.cacheRead ?? 0,
-		},
+		usage: { input: usage?.input ?? 100, output: usage?.output ?? 50, cacheRead: usage?.cacheRead ?? 0 },
 	};
-	for (const h of handlers["message_end"] ?? []) {
-		h({ message: endMsg });
-	}
+	for (const h of handlers["message_end"] ?? []) h({ message: endMsg });
 }
 
 describe("registerMetrics", () => {
@@ -95,15 +101,9 @@ describe("registerMetrics", () => {
 		state.modelId = "gpt-5.5";
 
 		const handlers: Record<string, Array<(...a: unknown[]) => unknown>> = {};
-		const pi = {
-			on(event: string, handler: (...a: unknown[]) => unknown) {
-				(handlers[event] ??= []).push(handler);
-			},
-		};
+		const pi = { on(event: string, handler: (...a: unknown[]) => unknown) { (handlers[event] ??= []).push(handler); } };
 		registerMetrics(pi as never, state);
-		for (const h of handlers["message_end"] ?? []) {
-			h({ message: { role: "assistant", usage: { input: 10, output: 10 } } });
-		}
+		for (const h of handlers["message_end"] ?? []) h({ message: { role: "assistant", usage: { input: 10, output: 10 } } });
 		expect(state.metrics.requestsObserved).toBe(0);
 	});
 
@@ -116,15 +116,9 @@ describe("registerMetrics", () => {
 		state.modelId = "gpt-5.5";
 
 		const handlers: Record<string, Array<(...a: unknown[]) => unknown>> = {};
-		const pi = {
-			on(event: string, handler: (...a: unknown[]) => unknown) {
-				(handlers[event] ??= []).push(handler);
-			},
-		};
+		const pi = { on(event: string, handler: (...a: unknown[]) => unknown) { (handlers[event] ??= []).push(handler); } };
 		registerMetrics(pi as never, state);
-		for (const h of handlers["message_end"] ?? []) {
-			h({ message: { role: "assistant", usage: { input: 10, output: 10 } } });
-		}
+		for (const h of handlers["message_end"] ?? []) h({ message: { role: "assistant", usage: { input: 10, output: 10 } } });
 		expect(state.metrics.requestsObserved).toBe(0);
 	});
 
@@ -135,23 +129,15 @@ describe("registerMetrics", () => {
 		state.metricsEnabled = true;
 
 		const handlers: Record<string, Array<(...a: unknown[]) => unknown>> = {};
-		const pi = {
-			on(event: string, handler: (...a: unknown[]) => unknown) {
-				(handlers[event] ??= []).push(handler);
-			},
-		};
+		const pi = { on(event: string, handler: (...a: unknown[]) => unknown) { (handlers[event] ??= []).push(handler); } };
 		registerMetrics(pi as never, state);
-		for (const h of handlers["message_end"] ?? []) {
-			h({ message: { role: "user" } });
-		}
+		for (const h of handlers["message_end"] ?? []) h({ message: { role: "user" } });
 		expect(state.metrics.requestsObserved).toBe(0);
 	});
 
 	it("accumulates per-provider and per-model breakdowns", () => {
 		const state = createActiveOptimizationState();
 		state.metrics = createMetrics();
-
-		// Two requests: openai + openai-codex
 		drivePair(state, "openai", "gpt-5.5", { input: 100, output: 50 });
 		drivePair(state, "openai-codex", "gpt-5.5-codex", { input: 200, output: 100 });
 
@@ -170,14 +156,14 @@ describe("registerMetrics", () => {
 // ---------------------------------------------------------------------------
 
 describe("overflow recovery increments metrics", () => {
-	function stateFor(api: string, provider = "openai"): ActiveOptimizationState {
+	function stateForApi(api: string, provider = "openai"): ActiveOptimizationState {
 		const s = createActiveOptimizationState();
-		const model = { api, provider, id: "test-model" } as any;
-		const profile = resolveProfile(model);
-		s.profile = profile ?? undefined;
+		const model = mockModel(api, provider);
+		const mod = optimizerModules.find((m) => m.supports(model));
+		s.activeModule = mod;
 		s.provider = provider;
 		s.api = api;
-		s.enabled = !!(profile && s.featureEnabled);
+		s.enabled = !!(mod && s.featureEnabled);
 		s.metrics = createMetrics();
 		return s;
 	}
@@ -189,31 +175,30 @@ describe("overflow recovery increments metrics", () => {
 				handler({ message: { role: "assistant", stopReason: "error", errorMessage } }, ctx);
 			},
 		} as never;
-
 		registerOverflowRecovery(pi as Parameters<typeof registerOverflowRecovery>[0], state);
 	}
 
 	it("increments overflowRecoveries on normalization", () => {
-		const s = stateFor("openai-responses");
+		const s = stateForApi("openai-responses");
 		expect(s.metrics.overflowRecoveries).toBe(0);
 		driveOverflow(s, "exceeds the context window of 128000 tokens");
 		expect(s.metrics.overflowRecoveries).toBe(1);
 	});
 
 	it("does not increment when already canonical", () => {
-		const s = stateFor("openai-responses");
+		const s = stateForApi("openai-responses");
 		driveOverflow(s, "context_length_exceeded: prompt too long");
 		expect(s.metrics.overflowRecoveries).toBe(0);
 	});
 
 	it("does not increment for rate limit errors", () => {
-		const s = stateFor("openai-responses");
+		const s = stateForApi("openai-responses");
 		driveOverflow(s, "rate limit exceeded");
 		expect(s.metrics.overflowRecoveries).toBe(0);
 	});
 
 	it("does not increment when disabled", () => {
-		const s = stateFor("openai-responses");
+		const s = stateForApi("openai-responses");
 		s.overflowRecoveryEnabled = false;
 		driveOverflow(s, "exceeds the context window");
 		expect(s.metrics.overflowRecoveries).toBe(0);
@@ -243,10 +228,7 @@ describe("registerCommands", () => {
 		let notified = "";
 		const fakeCtx = { ui: { notify(msg: string) { notified = msg; } } };
 		const pi = {
-			registerCommand(
-				_name: string,
-				opts: { handler: (args: unknown, ctx: typeof fakeCtx) => void },
-			) {
+			registerCommand(_name: string, opts: { handler: (args: unknown, ctx: typeof fakeCtx) => void }) {
 				opts.handler("", fakeCtx);
 			},
 		};
@@ -259,10 +241,7 @@ describe("registerCommands", () => {
 		let notified = "";
 		const fakeCtx = { ui: { notify(msg: string) { notified = msg; } } };
 		const pi = {
-			registerCommand(
-				_name: string,
-				opts: { handler: (args: unknown, ctx: typeof fakeCtx) => void },
-			) {
+			registerCommand(_name: string, opts: { handler: (args: unknown, ctx: typeof fakeCtx) => void }) {
 				opts.handler("unknown", fakeCtx);
 			},
 		};
@@ -275,10 +254,7 @@ describe("registerCommands", () => {
 		let notified = "";
 		const fakeCtx = { ui: { notify(msg: string) { notified = msg; } } };
 		const pi = {
-			registerCommand(
-				_name: string,
-				opts: { handler: (args: unknown, ctx: typeof fakeCtx) => void },
-			) {
+			registerCommand(_name: string, opts: { handler: (args: unknown, ctx: typeof fakeCtx) => void }) {
 				opts.handler("status", fakeCtx);
 			},
 		};
@@ -291,10 +267,7 @@ describe("registerCommands", () => {
 		let notified = "";
 		const fakeCtx = { ui: { notify(msg: string) { notified = msg; } } };
 		const pi = {
-			registerCommand(
-				_name: string,
-				opts: { handler: (args: unknown, ctx: typeof fakeCtx) => void },
-			) {
+			registerCommand(_name: string, opts: { handler: (args: unknown, ctx: typeof fakeCtx) => void }) {
 				opts.handler("stats", fakeCtx);
 			},
 		};
@@ -314,10 +287,7 @@ describe("registerCommands", () => {
 		let notified = "";
 		const fakeCtx = { ui: { notify(msg: string) { notified = msg; } } };
 		const pi = {
-			registerCommand(
-				_name: string,
-				opts: { handler: (args: unknown, ctx: typeof fakeCtx) => void },
-			) {
+			registerCommand(_name: string, opts: { handler: (args: unknown, ctx: typeof fakeCtx) => void }) {
 				opts.handler("stats", fakeCtx);
 			},
 		};

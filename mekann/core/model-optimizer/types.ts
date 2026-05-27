@@ -1,19 +1,62 @@
 /**
- * model-optimizer — type definitions for API-based model optimization.
+ * model-optimizer — type definitions.
+ *
+ * The optimizer is structured as a root orchestrator that delegates to
+ * provider-specific optimizer modules.  Each module lives in its own
+ * directory (e.g. `openai/`) and implements `ProviderOptimizerModule`.
  */
 
+import type { Api, Model } from "@earendil-works/pi-ai";
+import type { SettingSchema } from "../../settings/types.js";
+
+// ---------------------------------------------------------------------------
+// Module interface
+// ---------------------------------------------------------------------------
+
 /**
- * Static profile describing optimization data for a specific API protocol.
+ * A provider-specific optimizer module.
  *
- * Profiles are resolved from `Model.api` via `API_FAMILY_MAP` in profiles.ts.
- * Runtime enable/disable decisions are stored in ActiveOptimizationState
- * and driven by mekann settings.
+ * Modules live in subdirectories (e.g. `openai/`, `deepseek/`) and declare
+ * which APIs they support, how to detect overflow, what compaction hints to
+ * inject, and what settings they expose.
+ *
+ * All methods receive `Model<Api>` so they can branch on `model.api` when
+ * needed.  The root orchestrator handles lifecycle hook registration and
+ * dispatches to the active module.
  */
-export interface OptimizationProfile {
-	/** Regex patterns that indicate a context-overflow error for this API. */
-	overflowPatterns: RegExp[];
-	/** Prompt hint injected after compaction for this API protocol. */
-	postCompactionHint: string;
+export interface ProviderOptimizerModule {
+	/** Unique module identifier (e.g. "openai", "deepseek"). */
+	id: string;
+
+	/** Whether this module handles the given model (typically by `model.api`). */
+	supports(model: Model<Api>): boolean;
+
+	/**
+	 * Settings family key for the given model.
+	 * Returns `undefined` if the model is not supported.
+	 */
+	familyKey(model: Model<Api>): string | undefined;
+
+	/**
+	 * Detect whether an error message is a context-overflow error.
+	 * Return `true` if the message should be rewritten.
+	 */
+	detectOverflow(ctx: { model: Model<Api>; errorMessage: string }): boolean;
+
+	/**
+	 * Rewrite an overflow error message.
+	 * Default canonical form: `context_length_exceeded: <original>`.
+	 */
+	rewriteOverflow(ctx: { model: Model<Api>; errorMessage: string }): string;
+
+	/**
+	 * Build a post-compaction continuation hint.
+	 * Return `undefined` to skip hint injection.
+	 */
+	buildPostCompactionHint(ctx: { model: Model<Api> }): string | undefined;
+
+	/** Settings contributed by this module. */
+	settings: SettingSchema<boolean>[];
 }
 
 // ---------------------------------------------------------------------------
@@ -82,12 +125,13 @@ export function createMetrics(): ModelOptimizerMetrics {
 
 /** Runtime state for the currently active model/provider. */
 export interface ActiveOptimizationState {
-	profile?: OptimizationProfile;
+	/** Currently active optimizer module, or undefined if no module supports the current model. */
+	activeModule?: ProviderOptimizerModule;
 	provider?: string;
 	modelId?: string;
 	/** API protocol string from the current model (e.g. "openai-responses"). */
 	api?: string;
-	/** Master on/off: featureEnabled AND current api has a known profile. */
+	/** Master on/off: featureEnabled AND active module exists AND family enabled. */
 	enabled: boolean;
 	lastSelectedAt?: number;
 	/** Whether the optimizer master toggle (model-optimizer.enabled) is on. */
@@ -98,7 +142,7 @@ export interface ActiveOptimizationState {
 	metricsEnabled: boolean;
 	/** Whether debug-log notifications are enabled. */
 	enableDebugLogging: boolean;
-	/** Per-API-family enable flags from settings (openaiFamily.enabled / openaiCodex.enabled). */
+	/** Per-API-family enable flags from settings. */
 	apiFamilyEnabled: Record<string, boolean>;
 	/** Whether compaction observer is enabled via settings. */
 	compactionObserverEnabled: boolean;
