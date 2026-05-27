@@ -15,15 +15,15 @@ A responsibility-bearing capability inside a Pi extension suite, such as `sandbo
 _Avoid_: module, package, suite
 
 **Implementation delegation**:
-A sub-mode strategy where an agent specializes in bounded implementation patch proposals against fixed specification evidence supplied by its parent. It is not a workflow used directly by main, plan, or auto mode agents.
+Deprecated. Sub mode now behaves the same as main mode. The former implementation-delegation strategy has been removed; sub mode agents have full design, implementation, review, and research capabilities.
 _Avoid_: delegated TDD, implementation subagent workflow, model-cost TDD
 
 **Fixed spec artifact**:
-A structured implementation-delegation input that names the fixed specification evidence for an implementation attempt, including specification files or assertions plus cheap checks. It is the minimum contract that prevents natural-language-only implementation delegation.
+Deprecated. No longer used as a sub-mode input contract.
 _Avoid_: prompt brief, test notes, task description
 
 **Implementation agent**:
-A sub-mode agent running the implementation-delegation strategy that may propose bounded production implementation patches, but does not own design, fixed specification, scope expansion, or final review.
+Deprecated. Sub mode agents now have the same capabilities as main mode agents.
 _Avoid_: delegated TDD agent, coding helper, autonomous implementer
 
 **Project context**:

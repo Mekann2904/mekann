@@ -7,7 +7,7 @@ description: Test-driven development with red-green-refactor loop. Use when user
 
 # Test-Driven Development
 
-For fixed-spec implementation delegation where the current parent model owns the spec and review while a configured implementation model proposes implementation patches, the parent agent should launch a sub mode implementation agent with explicit fixed spec, scope, and checks. The [`implementation-delegation`](../implementation-delegation/SKILL.md) strategy is applied in sub mode; do not treat it as a direct main-mode workflow replacement for TDD.
+For fixed-spec implementation delegation, the parent agent may launch a sub mode implementation agent with explicit fixed spec, scope, and checks. Sub mode now operates with the same capabilities as main mode.
 
 ## Language policy
 

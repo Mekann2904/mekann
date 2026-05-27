@@ -33,7 +33,7 @@ grill-with-docs → prototype（必要なら）→ to-prd → to-issues → tdd
 - UI、状態機械、データモデルなどを触って確かめたい場合は `prototype` を挟む。
 - 目的地が固まったら `to-prd` で PRD にする。
 - PRD を `to-issues` で tracer bullet 型の vertical slice に分解する。
-- 各 issue を `tdd` で red-green-refactor しながら実装する。fixed spec に基づく実装 patch proposal の委譲は、親 agent が `spawn_agent` で sub mode implementation agent を起動することで行い、`implementation-delegation` を通常 workflow skill として直接呼ばない。
+- 各 issue を `tdd` で red-green-refactor しながら実装する。sub mode は main mode と同じ能力を持つため、`spawn_agent` で起動した sub mode agent にもフルの設計・実装・テスト権限がある。
 
 ### バグを直す
 
@@ -160,15 +160,9 @@ grill-with-docs / to-prd で目的を固める → autoresearch-create
   - 「red-green-refactor で進めて」
   - 「まず外部挙動のテストを書いてから修正して」
 
-#### implementation-delegation
+#### ~~implementation-delegation~~ (deprecated)
 
-- 詳細: [`mekann/skills/implementation-delegation/SKILL.md`](../mekann/skills/implementation-delegation/SKILL.md)
-- 位置づけ: 通常 workflow skill ではなく、sub mode agent に自動適用される strategy。
-- できること: 親 agent が設計、fixed spec artifact、checks、final review を保持し、sub-mode implementation agent に production patch proposal だけを委譲する。
-- 使うタイミング: fixed spec と cheap checks が明確で、親 agent が `spawn_agent` で実装反復だけを別モデルへ任せたいとき。
-- 入力: 親 agent から subagent message に渡す fixed spec artifact、allowed implementation scope、cheap checks / acceptance checks。
-- 出力: implementation agent の patch proposal、checks 結果、親モデルによる最終レビュー。
-- 重要な注意: main / plan / auto mode agent は `implementation-delegation` を直接 workflow として呼ばない。implementation agent は tests/spec を編集しない。
+Sub mode は main mode と同じ挙動になりました。implementation-delegation strategy は削除されました。
 
 #### diagnose
 
