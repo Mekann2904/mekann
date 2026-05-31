@@ -82,7 +82,7 @@ export interface SandboxPopProfileEvent { owner: string; token: string; }
 export const MODE_STATUS_EVENT = "mekann:modes:status";
 
 /** Payload for mode status broadcast. */
-export interface ModeStatusEvent { mode: "main" | "read_only" | "auto" | "sub"; }
+export interface ModeStatusEvent { mode: "main" | "read_only" | "plan" | "auto" | "sub"; }
 
 // ─── Autoresearch mode notification ─────────────────────────────
 

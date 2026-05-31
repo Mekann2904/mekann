@@ -373,7 +373,10 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	function updateStatusBar(ctx: any): void {
 		if (explicitlyDisabled || !sandboxEnabled) { ctx.ui.setWidget("sandbox", undefined); return; }
 		let label = "";
-		if (safetyProfile.modeStatus) label = ctx.ui.theme.fg(safetyProfile.modeStatus === "read_only" ? "warning" : "dim", safetyProfile.modeStatus) + " ";
+		if (safetyProfile.modeStatus) {
+			const modeStatusLabel = safetyProfile.modeStatus === "read_only" ? "plan" : safetyProfile.modeStatus;
+			label = ctx.ui.theme.fg(safetyProfile.modeStatus === "read_only" || safetyProfile.modeStatus === "plan" ? "warning" : "dim", modeStatusLabel) + " ";
+		}
 		label += ctx.ui.theme.fg("dim", effectiveMode());
 		ctx.ui.setWidget("sandbox", (_tui: unknown, theme: any) => ({
 			invalidate() {},
@@ -468,7 +471,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	pi.events.on(MODE_STATUS_EVENT, (data: unknown) => {
 		if (data == null || typeof data !== "object") return;
 		const event = data as Partial<ModeStatusEvent>;
-		if (event.mode !== "main" && event.mode !== "read_only" && event.mode !== "sub") return;
+		if (event.mode !== "main" && event.mode !== "read_only" && event.mode !== "plan" && event.mode !== "sub") return;
 		safetyProfile.modeStatus = event.mode;
 		refreshStatusBar();
 	});
