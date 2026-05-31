@@ -4661,6 +4661,43 @@ describe("External Pi safety: kitty-split without unsafe opt-in", () => {
 		expect(agent?.display).toBeUndefined();
 	});
 
+	it("external Pi accepts final result after terminal status advisory", async () => {
+		let childListener: ((message: any) => void) | undefined;
+		const fakeHub = {
+			onMessage: vi.fn((listener: (message: any) => void) => { childListener = listener; return vi.fn(); }),
+			start: vi.fn(() => Promise.resolve()),
+			waitForHello: vi.fn(() => Promise.resolve({ type: "hello", agentId: "sub_external", agentPath: "/root/external-status-first", pid: 123, cwd: "/tmp/test", capabilities: ["followup", "message"] })),
+			stop: vi.fn(() => Promise.resolve()),
+			send: vi.fn(() => Promise.resolve()),
+		};
+		const fakeKitty = {
+			appendLog: vi.fn(() => Promise.resolve()),
+			close: vi.fn(() => Promise.resolve()),
+			launchPiSplit: vi.fn(() => Promise.resolve({ kind: "kitty-split", status: "open", windowId: "w1", agentId: "sub_external", title: "external", cwd: "/tmp/test" })),
+		};
+		const ctx = { ...baseCtx, model: { id: "test-model", provider: "test-provider" } } as any;
+
+		const control = new AgentControl(createControlMockPi(), 3, 2, undefined, undefined, {
+			displayMode: "kitty-split",
+			kitty: fakeKitty as any,
+			hubFactory: vi.fn(() => fakeHub),
+			allowUnsafeExternalPi: true,
+			externalPiSlots: 1,
+		});
+		control.registry.ensureRoot("root");
+
+		await control.spawn({ task_name: "external-status-first", message: "test" }, ctx);
+		expect(childListener).toBeDefined();
+
+		childListener!({ type: "status", agentId: "sub_external", status: "completed" });
+		childListener!({ type: "final", agentId: "sub_external", status: "completed", message: "done after status" });
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const finals = control.mailbox.pendingFor("/root").filter((item: any) => item.kind === "final_result");
+		expect(finals).toHaveLength(1);
+		expect(finals[0].content).toBe("done after status");
+	});
+
 	it("external Pi emits only one final result when duplicate or late messages arrive", async () => {
 		let childListener: ((message: any) => void) | undefined;
 		const fakeHub = {

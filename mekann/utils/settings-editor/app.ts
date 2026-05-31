@@ -96,8 +96,24 @@ function pad(s: string, n: number): string {
 }
 
 function truncate(s: string, max: number): string {
+	if (max <= 0) return "";
 	if (s.length <= max) return s;
 	return s.slice(0, Math.max(0, max - 1)) + "…";
+}
+
+interface SettingsColumns {
+	key: number;
+	value: number;
+	source: number;
+}
+
+function settingsColumns(contentWidth: number): SettingsColumns {
+	// Row padding (left 3 + right 1) and type icon take 6 cells.
+	const available = Math.max(12, contentWidth - 6);
+	const source = Math.max(4, Math.min(10, Math.floor(available * 0.18)));
+	const key = Math.max(7, Math.min(24, Math.floor(available * 0.38)));
+	const value = Math.max(1, available - key - source);
+	return { key, value, source };
 }
 
 function supportedThinking(
@@ -395,6 +411,7 @@ function SettingRow(p: {
 	hasDraft: boolean;
 	draftValue: string;
 	draftScope: string;
+	columns: SettingsColumns;
 	onSelect: (index: number) => void;
 }) {
 	const bgColor = p.isSelected ? C.bgSelected : p.index % 2 === 0 ? C.rowEvenBg : C.rowOddBg;
@@ -412,21 +429,22 @@ function SettingRow(p: {
 		onMouseDown: (event: any) => { if (isLeftMouse(event)) { p.onSelect(p.index); event?.stopPropagation?.(); } },
 	},
 		el("text", { fg: C.fgDim, content: `${typeIcon(p.item.schema.type)} ` }),
-		el("text", { fg: keyColor, content: pad(displayKey, 24) }),
-		el("text", { fg: valColor, content: pad(displayValue, 28) }),
-		el("text", { fg: srcColor, content: truncate((p.hasDraft ? `${p.draftScope}*` : p.item.source) + restartIcon, 10) }),
+		el("text", { fg: keyColor, content: pad(displayKey, p.columns.key) }),
+		el("text", { fg: valColor, content: pad(displayValue, p.columns.value) }),
+		el("text", { fg: srcColor, content: truncate((p.hasDraft ? `${p.draftScope}*` : p.item.source) + restartIcon, p.columns.source) }),
 	);
 }
 
 // ─── Column Header ────────────────────────────────────────────────
 
-function ColumnHeader() {
+function ColumnHeader(p: { columns: SettingsColumns }) {
 	return el("box", {
 		style: { flexDirection: "row", width: "100%", height: 1, backgroundColor: C.groupHeaderBg, paddingLeft: 3, paddingRight: 1 },
 	},
-		el("text", { fg: C.fgDim, content: pad("SETTING", 24) }),
-		el("text", { fg: C.fgDim, content: pad("VALUE", 28) }),
-		el("text", { fg: C.fgDim, content: "SOURCE" }),
+		el("text", { fg: C.fgDim, content: "  " }),
+		el("text", { fg: C.fgDim, content: pad("SETTING", p.columns.key) }),
+		el("text", { fg: C.fgDim, content: pad("VALUE", p.columns.value) }),
+		el("text", { fg: C.fgDim, content: truncate("SOURCE", p.columns.source) }),
 	);
 }
 
@@ -737,7 +755,7 @@ export function SettingsEditorApp({
 	onApply,
 	onQuit,
 }: SettingsEditorAppProps) {
-	useTerminalDimensions();
+	const { width: terminalWidth } = useTerminalDimensions();
 	const settingsScrollRef = useRef<ScrollBoxRenderable>(null);
 
 	const [selected, setSelected] = useState(0);
@@ -902,6 +920,10 @@ export function SettingsEditorApp({
 
 	// ─── Build setting rows for active feature ─────────────────
 
+	const showSidebar = terminalWidth >= 64;
+	const sidebarWidth = showSidebar ? 27 : 0;
+	const contentWidth = Math.max(20, terminalWidth - sidebarWidth - 1);
+	const columns = settingsColumns(contentWidth);
 	const rows: React.ReactNode[] = [];
 	const isAll = activeFeature === ALL_FEATURE;
 	if (isAll) {
@@ -925,6 +947,7 @@ export function SettingsEditorApp({
 					hasDraft: !!draft,
 					draftValue: draft?.raw ?? "",
 					draftScope: draft?.scope ?? "",
+					columns,
 					onSelect: selectSettingByMouse,
 				}));
 				globalIdx++;
@@ -947,6 +970,7 @@ export function SettingsEditorApp({
 				hasDraft: !!draft,
 				draftValue: draft?.raw ?? "",
 				draftScope: draft?.scope ?? "",
+				columns,
 				onSelect: selectSettingByMouse,
 			}));
 		}
@@ -954,7 +978,7 @@ export function SettingsEditorApp({
 
 	// ─── Render ────────────────────────────────────────────────
 
-	const showDetail = current !== undefined && mode === "list";
+	const showDetail = current !== undefined && mode === "list" && contentWidth >= 56;
 
 	return el("box", {
 		style: { flexDirection: "column", width: "100%", height: "100%", backgroundColor: C.bg },
@@ -964,7 +988,7 @@ export function SettingsEditorApp({
 			style: { flexDirection: "row", width: "100%", flexGrow: 1, paddingBottom: 2 },
 		},
 			// Sidebar
-			el(Sidebar, {
+			...(showSidebar ? [el(Sidebar, {
 				groups,
 				activeFeature,
 				drafts,
@@ -972,17 +996,17 @@ export function SettingsEditorApp({
 				totalItems: items.length,
 				totalModels: models.length,
 				onSelectFeature: switchFeature,
-			}),
+			})] : []),
 			// Vertical separator
-			el("box", {
+			...(showSidebar ? [el("box", {
 				style: { width: 1, height: "100%", backgroundColor: C.separator },
-			}),
+			})] : []),
 			// Content area
 			el("box", {
 				style: { flexGrow: 1, height: "100%", flexDirection: "column", backgroundColor: C.contentBg, paddingRight: 1 },
 			},
 				el(ContentHeader, { feature: activeFeature, count: featureItems.length, featureGroups: groups }),
-				el(ColumnHeader, {}),
+				el(ColumnHeader, { columns }),
 				el("scrollbox", {
 					ref: settingsScrollRef,
 					style: { width: "100%", flexGrow: 1, backgroundColor: C.contentBg },

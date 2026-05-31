@@ -414,9 +414,18 @@ export class SubagentSpawner {
   private handleExternalChildMessage(callerPath: string, agentPath: string, msg: ChildToParent, kitty: KittyController, onClosed?: (agentId: string) => void): void {
     const { registry, runtimes, finalizer, mailbox, adapters } = this.deps;
     const agent = registry.get(agentPath); if (!agent) return;
-    if (isTerminalStatus(agent.status) && msg.type !== "log") return;
+    if (isTerminalStatus(agent.status) && msg.type !== "log" && msg.type !== "final") return;
+    if (isTerminalStatus(agent.status) && msg.type === "final") {
+      const alreadyDelivered = mailbox.pendingFor(callerPath).some((item) => item.kind === "final_result" && item.fromAgentPath === agentPath);
+      if (alreadyDelivered) return;
+    }
 
     if (msg.type === "status") {
+      // A terminal status from an external child is only advisory until the
+      // corresponding final/error message is received. Child mode sends
+      // status:completed immediately before final; closing the registry here
+      // would make the final result get ignored by the terminal-status guard.
+      if (msg.status === "completed" || msg.status === "errored") return;
       registry.updateStatus(agentPath, msg.status);
     } else if (msg.type === "final") {
       finalizer.handleFinalText({ agentId: msg.agentId, agentPath, callerPath, finalText: msg.message, status: msg.status, cwd: agent.workspaceCwd ?? process.cwd() });
