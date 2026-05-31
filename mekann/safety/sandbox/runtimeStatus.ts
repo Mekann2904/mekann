@@ -8,7 +8,7 @@ export type SandboxRuntimeStatus =
 	| { kind: "disabled_by_flag"; flag: "--no-sandbox" }
 	| { kind: "blocked"; reason: string; recoverableBy: SandboxRecoveryAction }
 	| { kind: "unavailable"; reason: string; recoverableBy: SandboxRecoveryAction }
-	| { kind: "active"; mode: SandboxMode; sandboxAvailable: boolean; profileOverrides: number; workspaceRoots: string[] };
+	| { kind: "active"; mode: SandboxMode; sandboxAvailable: boolean; profileOverrides: number; workspaceRoots: string[]; bashMode?: string; allowlistCount?: number };
 
 export function formatSandboxRuntimeStatus(status: SandboxRuntimeStatus): string {
 	switch (status.kind) {
@@ -25,6 +25,7 @@ export function formatSandboxRuntimeStatus(status: SandboxRuntimeStatus): string
 				`sandbox: active (${status.mode} / ${modeLabel(status.mode)})`,
 				`sandbox-exec: ${status.sandboxAvailable ? "available" : "not required"}`,
 				`profile overrides: ${status.profileOverrides}`,
+				`bash mode: ${status.bashMode ?? "sandboxed"}${status.allowlistCount === undefined ? "" : ` (${status.allowlistCount} allowlisted)`}`,
 				`workspace roots: ${status.workspaceRoots.length ? status.workspaceRoots.join(", ") : "(unresolved)"}`,
 			].join("\n");
 	}

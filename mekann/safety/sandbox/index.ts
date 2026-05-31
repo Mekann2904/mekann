@@ -19,6 +19,7 @@ import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { featureValue } from "../../settings/featureConfig.js";
 import { formatSandboxedBashOutputForLlm } from "./output.js";
 import { formatSandboxRuntimeStatus, type SandboxRuntimeStatus } from "./runtimeStatus.js";
+import { appendWorkspaceBashAllowlistCommand, getBashAllowlist, getBashMode, isBashCommandAllowed, setWorkspaceBashMode, type BashMode } from "./bashPolicy.js";
 
 export { DEFAULT_LLM_OUTPUT_MAX_BYTES, DEFAULT_LLM_OUTPUT_MAX_LINES, getEffectiveLlmOutputMaxBytes, getEffectiveLlmOutputMaxLines, truncateForLlm } from "./truncation.js";
 export type { TruncateForLlmOptions } from "./truncation.js";
@@ -57,7 +58,13 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// ─── Safety profile state (modes coordination) ─────────────────
 
 	/** Compute the effective sandbox mode, respecting safety profile overrides. */
-	function effectiveMode(): SandboxMode { return safetyProfile.effectiveMode(); }
+	function effectiveMode(): SandboxMode {
+		return getBashMode(currentCwd || process.cwd()) === "yolo" ? "yolo" : safetyProfile.effectiveMode();
+	}
+	function effectiveBashMode(cwd = currentCwd || process.cwd()): BashMode {
+		const mode = getBashMode(cwd);
+		return mode === "sandboxed" && effectiveMode() === "yolo" ? "yolo" : mode;
+	}
 
 	// SECURITY: yolo の承認状態
 	const yoloState: YoloApprovalState = { yoloApproved: false };
@@ -120,6 +127,29 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 	const SANDBOX_BLOCK_HINT = " このコマンドの実行が必要な場合は、request_elevation ツールを使ってユーザーに許可を求めてください。";
 
+	async function enforceBashPolicy(command: string, ctx: any): Promise<void> {
+		const cwd = currentCwd || ctx?.cwd || process.cwd();
+		const bashMode = getBashMode(cwd);
+		if (bashMode === "sandboxed" || bashMode === "yolo") return;
+		if (bashMode === "off") throw new Error("bash は sandbox.bashMode=off により拒否されました。read/edit/write などの構造化 tool を使用してください。");
+		if (isBashCommandAllowed(command, getBashAllowlist(cwd))) return;
+
+		const ok = await ctx.ui.confirm(
+			"[!] allowlist 外の bash command",
+			`この bash command は sandbox.bashAllowlist にありません。\n\n${command}\n\n今回実行を許可しますか？`,
+		);
+		if (!ok) throw new Error("bash command はユーザーにより拒否されました。sandbox.bashAllowlist にありません。");
+
+		if (featureValue("sandbox", "allowPersistentBashApprovals", cwd) === false) return;
+		const persist = await ctx.ui.confirm(
+			"bash command を永続許可しますか？",
+			"この workspace の .pi/mekann.json に exact match として追加しますか？\n\nNo の場合は今回だけ許可します。",
+		);
+		if (!persist) return;
+		appendWorkspaceBashAllowlistCommand(cwd, command);
+		ctx.ui.notify("bash command を workspace mekann.json の sandbox.bashAllowlist に追加しました。", "info");
+	}
+
 	// ─── Bash tool override ──────────────────────────────────────────
 
 	// NOTE: localBash is created lazily on session_start with the correct ctx.cwd.
@@ -139,6 +169,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		label: "bash (サンドボックス)",
 		async execute(id, params, signal, onUpdate, ctx) {
 			const command = String(params.command ?? "");
+
+			await enforceBashPolicy(command, ctx);
 
 			// ── Case 1: Explicitly disabled via --no-sandbox ─────────
 			if (explicitlyDisabled) return getLocalBash().execute(id, params, signal, onUpdate);
@@ -265,6 +297,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// sandboxed operations for direct `!`/`!!` user bash instead of throwing an
 	// extension error into the UI.
 	pi.on("user_bash", () => {
+		const bashMode = getBashMode(currentCwd || process.cwd());
+		if (bashMode === "off") return blockedUserBashResult("bash は sandbox.bashMode=off により拒否されました。");
 		if (explicitlyDisabled || effectiveMode() === "yolo") return undefined;
 		if (startupBlockedReason) return blockedUserBashResult(`${startupBlockedReason}。--no-sandbox で明示的に無効化しない限り、直接 bash 実行は拒否されます。`);
 		return { operations: sandboxedUserBashOperations() };
@@ -283,7 +317,12 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			} as SandboxRuntimeStatus;
 		}
 		if (!sandboxEnabled) return { kind: "blocked", reason: "session has not initialized sandbox yet", recoverableBy: "none" };
-		return { kind: "active", mode: effectiveMode(), sandboxAvailable, profileOverrides: safetyProfile.overrideCount(), workspaceRoots: resolvedWorkspaceRoots };
+		const cwd = currentCwd || process.cwd();
+		return { kind: "active", mode: effectiveMode(), sandboxAvailable, profileOverrides: safetyProfile.overrideCount(), workspaceRoots: resolvedWorkspaceRoots, bashMode: effectiveBashMode(cwd), allowlistCount: getBashAllowlist(cwd).length };
+	}
+
+	function parseBashMode(value: string | undefined): BashMode | undefined {
+		return value === "off" || value === "ask" || value === "sandboxed" || value === "yolo" ? value : undefined;
 	}
 
 	function changeMode(args: string | undefined, ctx: any): Promise<void> {
@@ -292,6 +331,22 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			const modeStr = args?.trim();
 			if (!modeStr || modeStr === "status") {
 				ctx.ui.notify(formatSandboxRuntimeStatus(currentRuntimeStatus()), startupBlockedReason ? "error" : "info");
+				return;
+			}
+			const parts = modeStr.split(/\s+/);
+			if (parts[0] === "bash") {
+				const newBashMode = parseBashMode(parts[1]);
+				if (!newBashMode) {
+					ctx.ui.notify("無効な bash mode: 指定可能: off, ask, sandboxed, yolo", "error");
+					return;
+				}
+				if (newBashMode === "yolo") {
+					const ok = await ctx.ui.confirm("[!] bash yolo を有効化しますか？", "bash:yolo は OS sandbox なしで bash を実行します。workspace の mekann.json に保存しますか？");
+					if (!ok) { ctx.ui.notify("bash mode 変更はキャンセルされました", "info"); return; }
+				}
+				setWorkspaceBashMode(ctx.cwd ?? currentCwd ?? process.cwd(), newBashMode);
+				refreshStatusBar();
+				ctx.ui.notify(`bash mode を変更しました: ${newBashMode}`, "info");
 				return;
 			}
 			const newMode = parseSandboxMode(modeStr);
@@ -330,7 +385,8 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("sandbox", {
 		description: "サンドボックスモードを表示・変更",
 		getArgumentCompletions(prefix: string) {
-			const f = ["read_only", "workspace_write", "yolo"].filter((m) => m.startsWith(prefix)).map((m) => ({ value: m, label: m }));
+			const candidates = ["status", "read_only", "workspace_write", "yolo", "bash off", "bash ask", "bash sandboxed", "bash yolo"];
+			const f = candidates.filter((m) => m.startsWith(prefix)).map((m) => ({ value: m, label: m }));
 			return f.length ? f : null;
 		},
 		handler: changeMode,
@@ -343,7 +399,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		if (safetyProfile.modeStatus) {
 			label = ctx.ui.theme.fg(safetyProfile.modeStatus === "read_only" ? "warning" : "dim", safetyProfile.modeStatus) + " ";
 		}
-		label += ctx.ui.theme.fg("dim", effectiveMode());
+		label += ctx.ui.theme.fg("dim", `bash:${effectiveBashMode(currentCwd || ctx.cwd || process.cwd())}`);
 		ctx.ui.setWidget("sandbox", (_tui: unknown, theme: any) => ({
 			invalidate() {},
 			render(w: number): string[] {
