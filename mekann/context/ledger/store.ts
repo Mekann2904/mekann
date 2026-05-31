@@ -226,7 +226,7 @@ export async function appendContextEvent(input: AppendEventInput): Promise<Mekan
 	};
 	const filePath = eventsPath(input.cwd);
 	await fsp.appendFile(filePath, `${JSON.stringify(event)}\n`, "utf8");
-	// Rotate if file exceeds size limit
+	// Rotate after appending, preserving the just-appended event in current.
 	await rotateIfNeeded(input.cwd, filePath, input.maxFileSizeBytes);
 	// Periodically prune the event log to prevent unbounded growth
 	await pruneEventLog(input.cwd, filePath);
@@ -313,10 +313,14 @@ async function rotateIfNeeded(cwd: string, filePath: string, maxBytes?: number):
 	try {
 		const stat = await fsp.stat(filePath).catch(() => undefined);
 		if (!stat || stat.size < limit) return;
+		const raw = await fsp.readFile(filePath, "utf8");
+		const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
+		if (lines.length <= 1) return;
 		const rp = rotatedEventsPath(cwd);
-		// Move current file → .1 (overwriting any previous .1)
-		await fsp.rename(filePath, rp);
-		// New empty current file will be created on next append
+		// Keep the newest event in the current file so readers never observe a
+		// missing current log immediately after rotation.
+		await fsp.writeFile(rp, `${lines.slice(0, -1).join("\n")}\n`, "utf8");
+		await fsp.writeFile(filePath, `${lines[lines.length - 1]}\n`, "utf8");
 	} catch {
 		// Rotation must never break event appending
 	}
