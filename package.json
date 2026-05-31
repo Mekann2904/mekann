@@ -7,7 +7,7 @@
     "pi-package",
     "pi-extension"
   ],
-  "license": "ISC",
+  "license": "MIT",
   "bin": {
     "mekann-dashboard": "./mekann/utils/dashboard/cli.ts"
   },

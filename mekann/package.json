@@ -10,7 +10,7 @@
   "keywords": [
     "pi-extension"
   ],
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "@sinclair/typebox": "^0.34.49",
     "tinyglobby": "^0.2.16"

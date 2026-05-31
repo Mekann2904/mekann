@@ -4,7 +4,7 @@
   "type": "module",
   "main": "index.ts",
   "description": "自律的実験ループ拡張機能（日本語 UI）— autoresearch for pi",
-  "license": "ISC",
+  "license": "MIT",
   "scripts": {
     "test": "vitest run",
     "test:fast": "vitest run --exclude '**/runner.test.ts' --exclude '**/candidate.test.ts' --exclude '**/contract.test.ts' --exclude '**/index.test.ts'",

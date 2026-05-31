@@ -4,7 +4,7 @@
   "type": "module",
   "main": "index.ts",
   "description": "Scan-based truncateTail/truncateHead replacing split('\\n') full-line array allocation",
-  "license": "ISC",
+  "license": "MIT",
   "scripts": {
     "test": "vitest run"
   },

@@ -4,7 +4,7 @@
   "type": "module",
   "main": "index.ts",
   "description": "Archive the current Git repository as ZIP and copy it to the macOS clipboard. Supports /zip, /zip --head, /zip --worktree.",
-  "license": "ISC",
+  "license": "MIT",
   "scripts": {
     "test": "vitest run"
   },

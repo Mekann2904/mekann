@@ -4,7 +4,7 @@
   "type": "module",
   "main": "index.ts",
   "description": "Worker pool for image resize operations to avoid per-call Worker creation overhead",
-  "license": "ISC",
+  "license": "MIT",
   "scripts": {
     "test": "vitest run"
   },

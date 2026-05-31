@@ -4,7 +4,7 @@
   "type": "module",
   "main": "index.ts",
   "description": "Optimized sanitizeBinaryOutput using regex-based replacement instead of Array.from+filter+join",
-  "license": "ISC",
+  "license": "MIT",
   "scripts": {
     "test": "vitest run"
   },
