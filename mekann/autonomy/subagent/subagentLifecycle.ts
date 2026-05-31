@@ -57,10 +57,10 @@ export class SubagentLifecycle {
     // Queue is created eagerly; spawner is wired in initAdapters().
     // The onDrain callback defers to spawner which will exist by the time
     // drain actually runs (drain uses queueMicrotask, so it's always async).
-    this.queue = new SpawnQueue(registry, (item) => {
+    this.queue = new SpawnQueue(registry, async (item) => {
       if (!this.spawner) throw new Error("SubagentLifecycle adapters not initialized. Call initAdapters() first.");
-      return this.spawner.startSpawnFromQueue(item);
-    });
+      await this.spawner.startSpawnFromQueue(item);
+    }, { maxQueueMs: 10 * 60 * 1000 });
   }
 
   /**
@@ -161,6 +161,11 @@ export class SubagentLifecycle {
 
   enqueueToMailbox(fromAgentId: string, fromPath: string, toPath: string, content: string, kind: "message" | "followup" | "final_result"): void {
     this.finalizer.enqueueToMailbox(fromAgentId, fromPath, toPath, content, kind);
+  }
+
+  /** Register a pending retry link for chain tracking. */
+  registerRetryLink(agentPath: string, originalResultId: string): void {
+    this.finalizer.registerRetryLink(agentPath, originalResultId);
   }
 
   // ─── Spawn & Close (delegate to spawner) ──────────────────────

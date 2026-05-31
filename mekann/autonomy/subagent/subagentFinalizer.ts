@@ -20,6 +20,8 @@ const MAILBOX_CONTENT_MAX_CHARS = 2_000;
 export class SubagentFinalizer {
   private storesByCwd = new Map<string, SubagentResultStore>();
   readonly resultStore: SubagentResultStore;
+  /** Maps retry agent path → original result_id for chain linking. */
+  private pendingRetryLinks = new Map<string, string>();
 
   constructor(
     private readonly registry: AgentRegistry,
@@ -45,7 +47,14 @@ export class SubagentFinalizer {
     let message = truncateText(text, MAILBOX_CONTENT_MAX_CHARS);
     const agent = this.registry.get(input.agentPath);
     if (parsed.ok && agent) {
-      const stored = this.resultStoreFor(input.cwd ?? process.cwd()).save(agent, parsed.result);
+      const store = this.resultStoreFor(input.cwd ?? process.cwd());
+      const stored = store.save(agent, parsed.result);
+      // Link retry chain if this agent was spawned as a retry
+      const originalId = this.pendingRetryLinks.get(input.agentPath);
+      if (originalId) {
+        this.pendingRetryLinks.delete(input.agentPath);
+        try { store.linkRetry(originalId, stored.result_id); } catch { /* best-effort */ }
+      }
       message = resultSummary(stored);
     }
     this.registry.updateStatus(input.agentPath, input.status, { lastTaskMessage: message });
@@ -86,5 +95,10 @@ export class SubagentFinalizer {
       timestamp: Date.now(),
       kind,
     });
+  }
+
+  /** Register a pending retry link: when agentPath finishes, its result will be linked to originalResultId. */
+  registerRetryLink(agentPath: string, originalResultId: string): void {
+    this.pendingRetryLinks.set(agentPath, originalResultId);
   }
 }

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, appendFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, appendFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import type { AgentMetadata, ApplyRecord, EscrowRecord, RejectReason, ResultFilter, SemanticApplyLogEntry, StoredResultStatus, StoredSubagentResult, SubagentResultV1 } from "./types.js";
 import { tryParseSubagentResult } from "./resultSchema.js";
@@ -73,6 +73,75 @@ export class SubagentResultStore {
   markNeedsReview(resultId: string, reason: string, details?: unknown): void { const s = this.load(resultId); s.status = "needs_review"; s.review_record = { result_id: resultId, reason, details }; delete s.applying_at; delete s.apply_record; delete s.reject_reason; delete s.reject_details; delete s.superseded_reason; this.saveStored(s); }
   recoverStaleApplying(maxAgeMs = 10 * 60 * 1000): number { let count = 0; for (const s of this.list({ status: "applying" })) { if ((s.applying_at ?? s.created_at) + maxAgeMs < Date.now()) { this.markNeedsReview(s.result_id, "stale_applying", { applying_at: s.applying_at }); count++; } } return count; }
   markSuperseded(resultId: string, reason?: string): void { const s = this.load(resultId); s.status = "superseded"; s.superseded_reason = reason; delete s.applying_at; delete s.apply_record; delete s.reject_reason; delete s.reject_details; delete s.review_record; this.saveStored(s); }
+
+  /**
+   * Prune old results that have reached a terminal state beyond the given TTL.
+   * Returns the number of pruned results.
+   * Terminal states: applied, rejected, superseded, needs_review.
+   */
+  pruneStaleResults(maxAgeMs = 7 * 24 * 60 * 60 * 1000): number {
+    const cutoff = Date.now() - maxAgeMs;
+    let pruned = 0;
+    const terminalStatuses = new Set<StoredResultStatus>(["applied", "rejected", "superseded", "needs_review"]);
+    for (const s of this.list()) {
+      if (terminalStatuses.has(s.status) && s.created_at < cutoff) {
+        try {
+          const jsonPath = this.jsonPath(s.result_id);
+          const patchPath = this.patchPath(s.result_id);
+          if (existsSync(jsonPath)) { unlinkSync(jsonPath); }
+          if (existsSync(patchPath)) { unlinkSync(patchPath); }
+          pruned++;
+        } catch {
+          // best-effort; skip on error
+        }
+      }
+    }
+    return pruned;
+  }
+
+  /** Prune results that have been in "pending" status for too long (stale orphans). */
+  pruneOrphanedPending(maxAgeMs = 24 * 60 * 60 * 1000): number {
+    const cutoff = Date.now() - maxAgeMs;
+    let pruned = 0;
+    for (const s of this.list({ status: "pending" })) {
+      if (s.created_at < cutoff) {
+        this.markSuperseded(s.result_id, "orphaned_pending");
+        pruned++;
+      }
+    }
+    return pruned;
+  }
+
+  /**
+   * Link a retry: update original result with superseded_by,
+   * and return the retry_count for the chain.
+   */
+  linkRetry(originalId: string, retryId: string): number {
+    const original = this.load(originalId);
+    const retryCount = (original.retry_count ?? 0) + 1;
+    // Update original to point to retry
+    const updated = this.load(originalId);
+    updated.superseded_by = retryId;
+    updated.status = "superseded";
+    updated.superseded_reason = "retry";
+    this.saveStored(updated);
+    // Stamp retry chain on the new result
+    const retry = this.load(retryId);
+    retry.retry_count = retryCount;
+    retry.retry_of = original.retry_of ?? originalId;
+    this.saveStored(retry);
+    return retryCount;
+  }
+
+  /** Get the retry count for a result chain (follows retry_of links). */
+  getRetryCount(resultId: string): number {
+    try {
+      const stored = this.load(resultId);
+      return stored.retry_count ?? 0;
+    } catch {
+      return 0;
+    }
+  }
   appendSemanticLog(entry: SemanticApplyLogEntry): void { appendFileSync(path.join(this.dir, "semantic-log.jsonl"), `${JSON.stringify(entry)}\n`, "utf8"); }
   readSemanticLog(): SemanticApplyLogEntry[] { const p = path.join(this.dir, "semantic-log.jsonl"); if (!existsSync(p)) return []; return readFileSync(p, "utf8").split(/\r?\n/).filter(Boolean).flatMap((l) => { try { return [JSON.parse(l) as SemanticApplyLogEntry]; } catch { return []; } }); }
 }

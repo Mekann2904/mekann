@@ -216,22 +216,19 @@ export class PatchApplicationPipeline {
 			return { kind: "rejected", result_id: id, reason: "patch_check_failed", details: err instanceof Error ? err.message : String(err) };
 		}
 
-		// 15. Run validation commands
-		const validations: ValidationResult[] = [];
-		for (const cmd of validationCommands) {
-			const vr = await this.deps.validator.run(cmd);
-			validations.push(vr);
-			if (!vr.ok) {
-				if (params.rollback_on_failure !== false) {
-					try {
-						await this.deps.git.rollback(ref);
-						state.patchApplied = false;
-					} catch {
-						/* best-effort */
-					}
+		// 15. Run validation commands in parallel
+		const validations = await this.deps.validator.runAll(validationCommands);
+		const firstFailure = validations.find((v) => !v.ok);
+		if (firstFailure) {
+			if (params.rollback_on_failure !== false) {
+				try {
+					await this.deps.git.rollback(ref);
+					state.patchApplied = false;
+				} catch {
+					/* best-effort */
 				}
-				return { kind: "rejected", result_id: id, reason: "validation_failed", details: vr };
 			}
+			return { kind: "rejected", result_id: id, reason: "validation_failed", details: { ...firstFailure, all_validations: validations } };
 		}
 
 		// 16. Success

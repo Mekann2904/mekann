@@ -27,6 +27,9 @@ export interface ValidationRunner {
 	isAllowed(cmd: ValidationCommand, stored: StoredSubagentResult): boolean;
 
 	run(cmd: ValidationCommand): Promise<ValidationResult>;
+
+	/** Run multiple validation commands in parallel. */
+	runAll(commands: ValidationCommand[]): Promise<ValidationResult[]>;
 }
 
 export class ExecFileValidationRunner implements ValidationRunner {
@@ -92,6 +95,11 @@ export class ExecFileValidationRunner implements ValidationRunner {
 				error: err instanceof Error ? err.message : String(err),
 			};
 		}
+	}
+
+	async runAll(commands: ValidationCommand[]): Promise<ValidationResult[]> {
+		if (commands.length === 0) return [];
+		return Promise.all(commands.map((cmd) => this.run(cmd)));
 	}
 }
 

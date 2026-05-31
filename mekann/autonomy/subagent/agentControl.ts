@@ -250,8 +250,17 @@ export class AgentControl {
 
   private filterToolsByAuthority(tools: any[], authority: SubagentAuthority): any[] {
     if (authority.mode === "edit") return tools;
-    const readOnlyAllow = new Set(["read", "grep", "glob", "ls", "list", "search", "rg", "find", "get_goal", "list_agents", "wait_agent"]);
-    return tools.filter((t: any) => readOnlyAllow.has(t.name));
+    // For read_only and propose_patch, only allow non-destructive tools.
+    const readOnlyPatterns = [
+      /^read$/, /^grep$/, /^glob$/, /^ls$/, /^list$/, /^search$/, /^rg$/, /^find$/,
+      /^get_goal$/, /^list_agents$/, /^wait_agent$/, /^send_message$/,
+      /^codex_web_search$/, /^search_tool_outputs$/, /^search_context_events$/,
+      /^summarize_session_context$/, /^request_elevation$/,
+    ];
+    return tools.filter((t: any) => {
+      const name: string = t.name ?? "";
+      return readOnlyPatterns.some((pat) => pat.test(name));
+    });
   }
 
   private handleFinalText(agentId: string, canonicalPath: string, callerPath: string, finalText: string | undefined, status: AgentStatus, cwd = process.cwd()): string {
@@ -353,7 +362,16 @@ export class AgentControl {
   async applyAgentResults(params: any = {}, ctx?: ExtensionContext) { return this.applyQueueFor(ctx?.cwd ?? process.cwd()).applyAgentResults(params); }
   rejectAgentResult(params: { result_id: string; reason?: any }, ctx?: ExtensionContext) { return this.applyQueueFor(ctx?.cwd ?? process.cwd()).rejectAgentResult(params.result_id, params.reason ?? "manual_reject"); }
   async retryAgentResult(params: { result_id: string; reason?: string }, ctx: ExtensionContext) {
-    const stored = this.resultStoreFor(ctx.cwd).load(params.result_id);
+    const store = this.resultStoreFor(ctx.cwd);
+    const stored = store.load(params.result_id);
+
+    // Enforce max retry limit (default 3)
+    const maxRetries = 3;
+    const currentRetries = store.getRetryCount(params.result_id);
+    if (currentRetries >= maxRetries) {
+      return { result_id: params.result_id, status: "retry_limit_reached", retries: currentRetries };
+    }
+
     const agent = this.registry.get(stored.agent_path);
     const outcomeHint = stored.result.outcome === "patch"
       ? "Regenerate a patch proposal against the current tree."
@@ -361,16 +379,23 @@ export class AgentControl {
         ? "Regenerate your observation report with the requested additions."
         : "Regenerate your result.";
     const message = `Your previous result was rejected because ${params.reason ?? "its assumptions are stale"}.\nOriginal result_id: ${params.result_id}\n${outcomeHint} Do not modify files. Return subagent.result.v1 as raw JSON only (no markdown fences).`;
+
+    // If agent is alive and not terminal, send followup
     if (agent && agent.open && !isTerminalStatus(agent.status)) {
       await this.followupTask({ target: stored.agent_path, message }, ctx);
-      return { result_id: params.result_id, status: "retry_requested", mode: "followup" };
+      return { result_id: params.result_id, status: "retry_requested", mode: "followup", retries: currentRetries };
     }
+
+    // Otherwise re-spawn
     const retryParent = parentPath(stored.agent_path) ?? ROOT_PATH;
     const originalLeaf = stored.agent_path.split("/").pop() ?? "task";
     const retryName = `${retryParent}/retry_${originalLeaf}_${Date.now().toString(36)}`;
 
     const spawned = await this.spawn({ task_name: retryName, message, authority: stored.authority, result_contract: "subagent_result_v1" }, ctx);
-    return { result_id: params.result_id, status: "retry_spawned", mode: "spawn", spawned };
+    // Register retry chain link
+    const retryPath = spawned.task_name;
+    this.lifecycle.registerRetryLink(retryPath, params.result_id);
+    return { result_id: params.result_id, status: "retry_spawned", mode: "spawn", spawned, retries: currentRetries };
   }
 
   // ─── close_agent ───────────────────────────────────────────────

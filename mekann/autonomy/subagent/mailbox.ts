@@ -9,6 +9,26 @@ import type { LifecycleEvent, MailboxItem } from "./types.js";
 
 const MAX_RETAINED_RECORDS = 10_000;
 
+/** Compact status-change chains: keep only the last status per agent in a window. */
+function compactStatusEvents(events: LifecycleEvent[]): LifecycleEvent[] {
+  const out: LifecycleEvent[] = [];
+  const lastStatusByAgent = new Map<string, LifecycleEvent>();
+  for (const event of events) {
+    if (event.type === "agent_status_changed") {
+      lastStatusByAgent.set(event.agentPath, event);
+    } else {
+      if (lastStatusByAgent.size > 0) {
+        for (const [, last] of lastStatusByAgent) out.push(last);
+        lastStatusByAgent.clear();
+      }
+      out.push(event);
+    }
+  }
+  // Flush remaining
+  for (const [, last] of lastStatusByAgent) out.push(last);
+  return out;
+}
+
 export class Mailbox {
   private seq = 0;
   private items: MailboxItem[] = [];
@@ -134,6 +154,30 @@ export class Mailbox {
   }
 
   /**
+   * Snapshot current state for an agent path without waiting.
+   * Returns events + mailbox items with seq > afterSeq.
+   */
+  snapshot(agentPath: string, afterSeq = 0): { events: LifecycleEvent[]; mailbox: MailboxItem[] } {
+    return {
+      events: this.pendingEventsFor(agentPath, afterSeq),
+      mailbox: this.pendingFor(agentPath, afterSeq),
+    };
+  }
+
+  /**
+   * Get the most recent final result mailbox item for an agent path.
+   */
+  latestFinalResult(agentPath: string): MailboxItem | undefined {
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const item = this.items[i];
+      if (item.toAgentPath === agentPath && item.kind === "final_result") {
+        return item;
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Clear all state. Used on session_shutdown.
    */
   clear(): void {
@@ -154,7 +198,7 @@ export class Mailbox {
       this.items = this.items.slice(-MAX_RETAINED_RECORDS);
     }
     if (this.events.length > MAX_RETAINED_RECORDS) {
-      this.events = this.events.slice(-MAX_RETAINED_RECORDS);
+      this.events = compactStatusEvents(this.events.slice(-MAX_RETAINED_RECORDS));
     }
   }
 

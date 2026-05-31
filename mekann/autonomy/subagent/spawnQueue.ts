@@ -1,7 +1,7 @@
 /**
  * SpawnQueue — bounded FIFO queue for subagent spawn delegations.
  *
- * Owns queue admission, position tracking, and drain scheduling.
+ * Owns queue admission, position tracking, drain scheduling, and timeout.
  * Calls onDrain callback when an execution slot opens.
  * Pure data structure — no spawn logic lives here.
  */
@@ -14,13 +14,20 @@ export interface QueueAdmission {
   queuedAhead: number;
 }
 
+export interface QueueTimeoutOptions {
+  /** Max milliseconds a queued agent can wait before being auto-rejected. Default: no timeout. */
+  maxQueueMs?: number;
+}
+
 export class SpawnQueue {
   private items: QueuedSpawnDelegation[] = [];
   private draining = false;
+  private timeoutTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     private readonly registry: AgentRegistry,
     private readonly onDrain: (item: QueuedSpawnDelegation) => Promise<void>,
+    private readonly timeoutOptions: QueueTimeoutOptions = {},
   ) {}
 
   get length(): number {
@@ -31,6 +38,7 @@ export class SpawnQueue {
     this.items.push(item);
     const position = this.items.length;
     this.refreshPositions();
+    this.startTimeout(item);
     return { position, queuedAhead: position - 1 };
   }
 
@@ -38,6 +46,7 @@ export class SpawnQueue {
     const index = this.items.findIndex((i) => i.canonicalPath === agentPath);
     if (index < 0) return false;
     this.items.splice(index, 1);
+    this.clearTimeout(agentPath);
     this.refreshPositions();
     return true;
   }
@@ -87,5 +96,30 @@ export class SpawnQueue {
         queuedAhead: index,
       });
     });
+  }
+
+  // ─── Timeout management ──────────────────────────────────────
+
+  private startTimeout(item: QueuedSpawnDelegation): void {
+    const maxMs = this.timeoutOptions.maxQueueMs;
+    if (!maxMs || maxMs <= 0) return;
+    this.clearTimeout(item.canonicalPath);
+    const timer = setTimeout(() => {
+      const stillQueued = this.items.some((i) => i.canonicalPath === item.canonicalPath);
+      if (!stillQueued) return;
+      this.remove(item.canonicalPath);
+      this.registry.updateStatus(item.canonicalPath, "errored");
+      this.registry.close(item.canonicalPath, "shutdown");
+    }, maxMs);
+    timer.unref();
+    this.timeoutTimers.set(item.canonicalPath, timer);
+  }
+
+  private clearTimeout(agentPath: string): void {
+    const existing = this.timeoutTimers.get(agentPath);
+    if (existing) {
+      clearTimeout(existing);
+      this.timeoutTimers.delete(agentPath);
+    }
   }
 }

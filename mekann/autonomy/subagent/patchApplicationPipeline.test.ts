@@ -88,6 +88,7 @@ function mockValidator(overrides: Partial<ValidationRunner> = {}): ValidationRun
 		dedupe: vi.fn((cmds: ValidationCommand[]) => cmds),
 		isAllowed: vi.fn().mockReturnValue(true),
 		run: vi.fn().mockResolvedValue({ ok: true, output: "" } as ValidationResult),
+		runAll: vi.fn().mockResolvedValue([] as ValidationResult[]),
 		...overrides,
 	};
 }
@@ -485,7 +486,7 @@ describe("PatchApplicationPipeline", () => {
 	it("rolls back patch on validation failure when rollback_on_failure is enabled", async () => {
 		const git = mockGit();
 		const validator = mockValidator({
-			run: vi.fn().mockResolvedValue({ ok: false, error: "test failed" } as ValidationResult),
+			runAll: vi.fn().mockResolvedValue([{ ok: false, error: "test failed" } as ValidationResult]),
 		});
 		const { pipeline, store, agent, cleanup } = setup({ git, validator });
 		try {
@@ -510,7 +511,7 @@ describe("PatchApplicationPipeline", () => {
 	it("does not rollback when rollback_on_failure is false", async () => {
 		const git = mockGit();
 		const validator = mockValidator({
-			run: vi.fn().mockResolvedValue({ ok: false, error: "test failed" } as ValidationResult),
+			runAll: vi.fn().mockResolvedValue([{ ok: false, error: "test failed" } as ValidationResult]),
 		});
 		const { pipeline, store, agent, cleanup } = setup({ git, validator });
 		try {
@@ -572,13 +573,9 @@ describe("PatchApplicationPipeline", () => {
 	it("attempts rollback when exception occurs after patch is applied", async () => {
 		const git = mockGit();
 		const validator = mockValidator();
-		// Make resolveRequiredChecks throw AFTER apply succeeds by making
-		// the flow reach validation but then throw
-		let runCallCount = 0;
-		(validator.run as any).mockImplementation(() => {
-			runCallCount++;
-			if (runCallCount === 1) throw new Error("validation crashed");
-			return { ok: true, output: "" };
+		// Make runAll throw after apply succeeds
+		(validator.runAll as any).mockImplementation(() => {
+			throw new Error("validation crashed");
 		});
 		const { pipeline, store, agent, cleanup } = setup({ git, validator });
 		try {

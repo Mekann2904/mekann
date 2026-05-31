@@ -49,6 +49,7 @@ export class ApplyQueue {
 
 	async applyAgentResults(params: ApplyAgentResultsParams = {}): Promise<ApplyAgentResultsResult> {
 		this.store.recoverStaleApplying();
+		this.store.pruneOrphanedPending();
 		const result: ApplyAgentResultsResult = { applied: [], rejected: [], needs_review: [], skipped: [] };
 		const items = (params.source === "result_ids"
 			? (params.result_ids ?? []).map((id) => this.store.load(id))
