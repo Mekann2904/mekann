@@ -16,16 +16,12 @@ import { shouldRequestApproval, yoloApprovalMessage, type YoloApprovalState, rea
 import { DEFAULT_SANDBOX_MODE, parseSandboxMode, modeLabel, SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, MODE_STATUS_EVENT, type SandboxPushProfileEvent, type SandboxPopProfileEvent, type ModeStatusEvent } from "../policy-core/modes.js";
 import { SafetyProfileState } from "../policy-core/safetyProfile.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
-import { MEKANN_SANDBOX_DEFAULTS, MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
-import { featureConfig, featureValue } from "../../settings/featureConfig.js";
-import { gateTextForLlm, redactSecrets } from "../../context/tool-output/index.js";
+import { featureValue } from "../../settings/featureConfig.js";
+import { formatSandboxedBashOutputForLlm } from "./output.js";
+import { formatSandboxRuntimeStatus, type SandboxRuntimeStatus } from "./runtimeStatus.js";
 
-// ─── LLM output truncation ─────────────────────────────────────────
-
-export const DEFAULT_LLM_OUTPUT_MAX_BYTES = MEKANN_SANDBOX_DEFAULTS.llmOutputMaxBytes;
-export const DEFAULT_LLM_OUTPUT_MAX_LINES = MEKANN_SANDBOX_DEFAULTS.llmOutputMaxLines;
-export function getEffectiveLlmOutputMaxBytes(): number { return Number(featureConfig("sandbox").llmOutputMaxBytes) || DEFAULT_LLM_OUTPUT_MAX_BYTES; }
-export function getEffectiveLlmOutputMaxLines(): number { return Number(featureConfig("sandbox").llmOutputMaxLines) || DEFAULT_LLM_OUTPUT_MAX_LINES; }
+export { DEFAULT_LLM_OUTPUT_MAX_BYTES, DEFAULT_LLM_OUTPUT_MAX_LINES, getEffectiveLlmOutputMaxBytes, getEffectiveLlmOutputMaxLines, truncateForLlm } from "./truncation.js";
+export type { TruncateForLlmOptions } from "./truncation.js";
 
 const SANDBOX_PROMPT_POLICY = [
 	"Sandbox policy:",
@@ -36,31 +32,9 @@ const SANDBOX_PROMPT_POLICY = [
 	"- When requesting elevation, explain why the command must run outside the sandbox.",
 ].join("\n");
 
-export interface TruncateForLlmOptions {
-	maxBytes: number;
-	maxLines: number;
-}
-
-export function truncateForLlm(
-	text: string,
-	opts: TruncateForLlmOptions = { maxBytes: getEffectiveLlmOutputMaxBytes(), maxLines: getEffectiveLlmOutputMaxLines() },
-): { text: string; truncated: boolean; originalBytes: number; originalLines: number } {
-	const originalBytes = Buffer.byteLength(text, "utf8");
-	let lines = text.split(/\r?\n/);
-	const originalLines = text.length === 0 ? 0 : lines.length;
-	let truncated = false;
-
-	if (lines.length > opts.maxLines) { lines = lines.slice(0, opts.maxLines); truncated = true; }
-	let out = lines.join("\n");
-	if (Buffer.byteLength(out, "utf8") > opts.maxBytes) { out = Buffer.from(out, "utf8").subarray(0, opts.maxBytes).toString("utf8").replace(/\uFFFD$/u, ""); truncated = true; }
-
-	if (truncated) out += `\n\n[...出力が切り詰められました: 元の ${originalBytes} バイト、${originalLines} 行; 最大 ${opts.maxBytes} バイト / ${opts.maxLines} 行...]`;
-
-	return { text: out, truncated, originalBytes, originalLines };
-}
-
 export default function sandboxExtension(pi: ExtensionAPI): void {
-	if (featureValue("sandbox", "enabled") === false) return;
+	const enabledBySetting = featureValue("sandbox", "enabled") !== false;
+	if (!enabledBySetting) return;
 
 	// ─── State ───────────────────────────────────────────────────────
 
@@ -189,34 +163,11 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			const policy = buildCurrentPolicy();
 			const result = await runSandboxedShellMac(command, policy, { signal });
 			const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
-			const gated = await gateTextForLlm({
+			const { shown, outputGate } = await formatSandboxedBashOutputForLlm({
 				cwd: currentCwd || process.cwd(),
-				toolName: "bash",
-				text: output,
-				source: { kind: "sandboxed_bash", command: redactSecrets(command).text.slice(0, 2000) },
-				maxInlineBytes: Number(featureConfig("output-gate").maxInlineBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes,
-				previewBytes: Number(featureConfig("output-gate").previewBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes,
+				command,
+				output,
 			});
-			const shown = gated.handled ? {
-				text: gated.text,
-				truncated: true,
-				originalBytes: gated.originalBytes,
-				originalLines: gated.originalLines,
-			} : truncateForLlm(output);
-			const outputGate = gated.handled ? (gated.gated ? {
-				stored: true,
-				artifactId: gated.artifactId,
-				bytes: gated.originalBytes,
-				lines: gated.originalLines,
-				sha256: gated.sha256,
-				redacted: true,
-			} : {
-				stored: false,
-				bytes: gated.originalBytes,
-				lines: gated.originalLines,
-				redacted: true,
-				storageError: gated.storageError,
-			}) : undefined;
 
 			// Detect sandbox permission errors and add elevation hint
 			if (result.code !== 0) {
@@ -320,13 +271,27 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	});
 
 	// ─── Commands ────────────────────────────────────────────────────
+	function currentRuntimeStatus(): SandboxRuntimeStatus {
+		if (!enabledBySetting) return { kind: "disabled_by_setting" };
+		if (explicitlyDisabled) return { kind: "disabled_by_flag", flag: "--no-sandbox" };
+		if (startupBlockedReason) {
+			const unavailable = /sandbox-exec|サンドボックスが必要/.test(startupBlockedReason);
+			return {
+				kind: unavailable ? "unavailable" : "blocked",
+				reason: startupBlockedReason,
+				recoverableBy: unavailable ? "change_mode_or_restart" : "restart_with_no_sandbox",
+			} as SandboxRuntimeStatus;
+		}
+		if (!sandboxEnabled) return { kind: "blocked", reason: "session has not initialized sandbox yet", recoverableBy: "none" };
+		return { kind: "active", mode: effectiveMode(), sandboxAvailable, profileOverrides: safetyProfile.overrideCount(), workspaceRoots: resolvedWorkspaceRoots };
+	}
+
 	function changeMode(args: string | undefined, ctx: any): Promise<void> {
 		return (async () => {
 			lastCtx = ctx;
 			const modeStr = args?.trim();
-			if (!modeStr) {
-				if (startupBlockedReason) { ctx.ui.notify(`blocked: ${startupBlockedReason}`, "error"); return; }
-				ctx.ui.notify(effectiveMode(), "info");
+			if (!modeStr || modeStr === "status") {
+				ctx.ui.notify(formatSandboxRuntimeStatus(currentRuntimeStatus()), startupBlockedReason ? "error" : "info");
 				return;
 			}
 			const newMode = parseSandboxMode(modeStr);
