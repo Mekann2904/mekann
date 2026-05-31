@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
-import { ROOT_PATH, resolveTaskPath } from "./types.js";
+import { ROOT_PATH, resolveTaskPath, isTerminalStatus } from "./types.js";
 import type { AgentDisplayRef, AgentDisplayResult, AgentMetadata, AgentRuntime, AgentStatus, ResultContract, SpawnParams, SpawnResult, SubagentAuthority } from "./types.js";
 import { extractForkContext, extractLastAssistantText, truncateText } from "./contextFork.js";
 import type { ForkTurns } from "./contextFork.js";
@@ -328,21 +328,29 @@ export class SubagentSpawner {
 
   private registerInProcessRuntime(input: { agentId: string; agentPath: string; callerPath: string; session: AgentSession; initialMessage: string; cwd: string; onSettled?: () => void }): void {
     const { runtimes, finalizer, registry, adapters } = this.deps;
+    let settled = false;
+
+    const settle = (fn: () => void): void => {
+      if (settled) return;
+      settled = true;
+      try { fn(); } finally { unsubscribe(); input.onSettled?.(); }
+    };
 
     const unsubscribe = input.session.subscribe((event) => {
+      if (settled) return;
       if (event.type === "agent_start") {
         registry.updateStatus(input.agentPath, "running");
       } else if (event.type === "agent_end") {
-        const msgs = (event as any).messages as AgentMessage[] | undefined;
-        const finalText = extractLastAssistantText(msgs as any) ?? undefined;
+        settle(() => {
+          const msgs = (event as any).messages as AgentMessage[] | undefined;
+          const finalText = extractLastAssistantText(msgs as any) ?? undefined;
 
-        finalizer.handleFinalText({ agentId: input.agentId, agentPath: input.agentPath, callerPath: input.callerPath, finalText, status: "completed", cwd: input.cwd });
+          finalizer.handleFinalText({ agentId: input.agentId, agentPath: input.agentPath, callerPath: input.callerPath, finalText, status: "completed", cwd: input.cwd });
 
-        runtimes.deleteRuntime(input.agentPath);
-        runtimes.deleteChildSession(input.agentPath);
-        registry.close(input.agentPath, "completed");
-        input.onSettled?.();
-        unsubscribe();
+          runtimes.deleteRuntime(input.agentPath);
+          runtimes.deleteChildSession(input.agentPath);
+          registry.close(input.agentPath, "completed");
+        });
       }
     });
 
@@ -350,10 +358,11 @@ export class SubagentSpawner {
     runtimes.setChildSession(input.agentPath, input.session);
 
     void input.session.prompt(input.initialMessage).catch((err: unknown) => {
-      finalizer.finalizeWithError(input.agentId, input.agentPath, input.callerPath, err);
-      runtimes.deleteRuntime(input.agentPath);
-      runtimes.deleteChildSession(input.agentPath);
-      input.onSettled?.();
+      settle(() => {
+        finalizer.finalizeWithError(input.agentId, input.agentPath, input.callerPath, err);
+        runtimes.deleteRuntime(input.agentPath);
+        runtimes.deleteChildSession(input.agentPath);
+      });
     });
   }
 
@@ -405,6 +414,7 @@ export class SubagentSpawner {
   private handleExternalChildMessage(callerPath: string, agentPath: string, msg: ChildToParent, kitty: KittyController, onClosed?: (agentId: string) => void): void {
     const { registry, runtimes, finalizer, mailbox, adapters } = this.deps;
     const agent = registry.get(agentPath); if (!agent) return;
+    if (isTerminalStatus(agent.status) && msg.type !== "log") return;
 
     if (msg.type === "status") {
       registry.updateStatus(agentPath, msg.status);

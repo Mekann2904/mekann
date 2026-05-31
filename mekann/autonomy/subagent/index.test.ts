@@ -2235,9 +2235,10 @@ describe("AgentControl", () => {
 
     it("handles prompt rejection with finalizeWithError", async () => {
       const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
+      const unsubscribe = vi.fn();
       const mockSession = {
         sessionId: "mock-session-id",
-        subscribe: vi.fn(() => vi.fn()),
+        subscribe: vi.fn(() => unsubscribe),
         prompt: vi.fn(() => Promise.reject(new Error("prompt failed"))),
         sendCustomMessage: vi.fn(() => Promise.resolve()),
         sendUserMessage: vi.fn(() => Promise.resolve()),
@@ -2254,7 +2255,7 @@ describe("AgentControl", () => {
       const control = new (AgentControl as any)(pi, 4, 2);
       control.registry.ensureRoot("root");
 
-      const result = await control.spawn(
+      await control.spawn(
         { task_name: "task1", message: "test" },
         baseCtx,
       );
@@ -2264,6 +2265,9 @@ describe("AgentControl", () => {
 
       const agent = control.registry.get("/root/task1");
       expect(agent?.status).toBe("errored");
+      expect(agent?.open).toBe(false);
+      expect(control.openCount).toBe(1);
+      expect(unsubscribe).toHaveBeenCalledOnce();
     });
 
     it("handles prompt rejection with non-Error", async () => {
@@ -2297,6 +2301,8 @@ describe("AgentControl", () => {
 
       const agent = control.registry.get("/root/task1");
       expect(agent?.status).toBe("errored");
+      expect(agent?.open).toBe(false);
+      expect(control.openCount).toBe(1);
     });
   });
 
@@ -4653,6 +4659,44 @@ describe("External Pi safety: kitty-split without unsafe opt-in", () => {
 		const agent = control.registry.get("/root/task1");
 		expect(agent?.authorityEnforced).toBe(true);
 		expect(agent?.display).toBeUndefined();
+	});
+
+	it("external Pi emits only one final result when duplicate or late messages arrive", async () => {
+		let childListener: ((message: any) => void) | undefined;
+		const fakeHub = {
+			onMessage: vi.fn((listener: (message: any) => void) => { childListener = listener; return vi.fn(); }),
+			start: vi.fn(() => Promise.resolve()),
+			waitForHello: vi.fn(() => Promise.resolve({ type: "hello", agentId: "sub_external", agentPath: "/root/external", pid: 123, cwd: "/tmp/test", capabilities: ["followup", "message"] })),
+			stop: vi.fn(() => Promise.resolve()),
+			send: vi.fn(() => Promise.resolve()),
+		};
+		const fakeKitty = {
+			appendLog: vi.fn(() => Promise.resolve()),
+			close: vi.fn(() => Promise.resolve()),
+			launchPiSplit: vi.fn(() => Promise.resolve({ kind: "kitty-split", status: "open", windowId: "w1", agentId: "sub_external", title: "external", cwd: "/tmp/test" })),
+		};
+		const ctx = { ...baseCtx, model: { id: "test-model", provider: "test-provider" } } as any;
+
+		const control = new AgentControl(createControlMockPi(), 3, 2, undefined, undefined, {
+			displayMode: "kitty-split",
+			kitty: fakeKitty as any,
+			hubFactory: vi.fn(() => fakeHub),
+			allowUnsafeExternalPi: true,
+			externalPiSlots: 1,
+		});
+		control.registry.ensureRoot("root");
+
+		await control.spawn({ task_name: "external", message: "test" }, ctx);
+		expect(childListener).toBeDefined();
+
+		childListener!({ type: "final", agentId: "sub_external", status: "completed", message: "done once" });
+		childListener!({ type: "status", agentId: "sub_external", status: "running" });
+		childListener!({ type: "final", agentId: "sub_external", status: "completed", message: "done twice" });
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const finals = control.mailbox.pendingFor("/root").filter((item: any) => item.kind === "final_result");
+		expect(finals).toHaveLength(1);
+		expect(finals[0].content).toBe("done once");
 	});
 
 	it("external Pi spawn failure does not leave a ghost open agent", async () => {

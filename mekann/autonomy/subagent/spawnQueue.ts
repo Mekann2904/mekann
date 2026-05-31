@@ -75,6 +75,7 @@ export class SpawnQueue {
     try {
       while (this.items.length > 0 && this.registry.hasExecutionCapacity()) {
         const item = this.items.shift()!;
+        this.clearTimeout(item.canonicalPath);
         this.refreshPositions();
         const agent = this.registry.get(item.canonicalPath);
         if (!agent?.open || agent.status !== "queued") continue;

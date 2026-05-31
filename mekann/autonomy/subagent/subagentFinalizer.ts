@@ -74,6 +74,7 @@ export class SubagentFinalizer {
   finalizeWithError(agentId: string, agentPath: string, callerPath: string, err: unknown): void {
     const errorMessage = err instanceof Error ? err.message : String(err);
     this.registry.updateStatus(agentPath, "errored");
+    this.registry.close(agentPath, "errored");
     this.mailbox.appendEvent({
       type: "agent_final_message",
       agentId,
