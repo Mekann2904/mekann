@@ -66,7 +66,9 @@ export class AgentSessionControl {
     const rt = this.deps.getRuntime(targetPath);
     if (rt?.mode === "external_pi") {
       if (!rt.capabilities?.includes("message")) throw new Error(`External Pi subagent ${targetPath} does not support message injection.`);
-      await this.deps.getHub(rt.agentId)?.send(rt.agentId, { type: "message", id: `msg_${Date.now()}`, fromAgentPath: callerPath, message });
+      const hub = this.deps.getHub(rt.agentId);
+      if (!hub) throw new Error(`External Pi subagent ${targetPath} has no connected IPC hub.`);
+      await hub.send(rt.agentId, { type: "message", id: `msg_${Date.now()}`, fromAgentPath: callerPath, message });
     } else if (childSession) {
       await childSession.sendCustomMessage({ customType: "subagent_message", content: `[Message from ${callerPath}]: ${message}`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
     }
@@ -87,7 +89,9 @@ export class AgentSessionControl {
     const rt = this.deps.getRuntime(targetPath);
     if (rt?.mode === "external_pi") {
       if (!rt.capabilities?.includes("followup")) throw new Error(`External Pi subagent ${targetPath} does not support followup injection.`);
-      await this.deps.getHub(rt.agentId)?.send(rt.agentId, { type: "followup", id: `fu_${Date.now()}`, message });
+      const hub = this.deps.getHub(rt.agentId);
+      if (!hub) throw new Error(`External Pi subagent ${targetPath} has no connected IPC hub.`);
+      await hub.send(rt.agentId, { type: "followup", id: `fu_${Date.now()}`, message });
       return { queued: true, triggered: true };
     }
     if (childSession) {

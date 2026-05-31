@@ -339,7 +339,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       `Respect resource limits. By default, max running subagents = ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents} and max queued subagents = ${MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents}; excess accepted spawns return status=\"queued\" with queue_position/queued_ahead and start automatically when a slot opens.`,
       "Use list_agents or wait_agent to observe queued/running/completed status. close_agent can cancel queued agents. send_message can add pre-start context to queued agents; followup_task requires a running agent.",
       "If a duplicate task_name is rejected, list_agents to inspect whether an agent with that path is still open/running before choosing a different path or aborting it with close_agent.",
-      "Subagent output is for the parent agent, not for humans. Request compact structured results: findings, file paths, key decisions, risks, next actions. Avoid greetings, apologies, narrative summaries, or polished prose in subagent responses. For result_contract=subagent_result_v1 the child already emits raw JSON; for free_text results, ask the child to use terse bullet sections.",
+      "Subagent output is for the parent agent, not for humans. Request compact structured results: findings, file paths, key decisions, risks, next actions. Avoid greetings, apologies, narrative summaries, or polished prose in subagent responses. For result_contract=subagent_result_v1 the child emits only raw JSON; put any desired report shape, language, or bullet sections inside JSON fields such as summary/evidence/validation. Use outcome=observation for read-only research/review, no_change only for verified no-op, patch only for concrete patch proposals, blocked for authority/environment blockers, and needs_decision only for explicit parent decisions. For free_text results, ask the child to use terse bullet sections.",
     ],
     parameters: SpawnSchema,
     prepareArguments(args: unknown) {
@@ -606,6 +606,7 @@ async function startChildMode(pi: ExtensionAPI): Promise<void> {
   const agentPath = process.env.PI_SUBAGENT_PATH;
   const socketPath = process.env.PI_SUBAGENT_PARENT_SOCKET;
   const initialMessage = process.env.PI_SUBAGENT_INITIAL_MESSAGE ?? "";
+  const nonce = process.env.PI_SUBAGENT_NONCE;
   if (!agentId || !agentPath || !socketPath) {
     console.error("subagent child mode requires PI_SUBAGENT_ID, PI_SUBAGENT_PATH, and PI_SUBAGENT_PARENT_SOCKET");
     process.exitCode = 1;
@@ -661,7 +662,7 @@ async function startChildMode(pi: ExtensionAPI): Promise<void> {
   pi.on("session_start", async (_event, ctx) => {
     currentCtx = ctx;
     const capabilities = ["hello", "status", "shutdown", "message", "followup", "interrupt"];
-    await safeSend({ type: "hello", agentId, agentPath, pid: process.pid, cwd: ctx.cwd, capabilities });
+    await safeSend({ type: "hello", agentId, agentPath, pid: process.pid, cwd: ctx.cwd, capabilities, nonce });
     await safeSend({ type: "status", agentId, status: "running" });
     if (initialMessage && !initialSent) {
       initialSent = true;

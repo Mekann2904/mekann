@@ -9,7 +9,7 @@ export type ParentToChild =
   | { type: "shutdown"; id: string };
 
 export type ChildToParent =
-  | { type: "hello"; agentId: string; agentPath: string; pid: number; cwd: string; capabilities: string[] }
+  | { type: "hello"; agentId: string; agentPath: string; pid: number; cwd: string; capabilities: string[]; nonce?: string }
   | { type: "status"; agentId: string; status: "pending_init" | "running" | "completed" | "errored" | "shutdown" }
   | { type: "final"; agentId: string; status: "completed" | "errored" | "shutdown"; message: string }
   | { type: "log"; agentId: string; line: string }
@@ -24,17 +24,29 @@ function unsupportedOnWindows(): void {
 function writeJson(sock: net.Socket, msg: unknown): Promise<void> {
   return new Promise((resolve, reject) => sock.write(`${JSON.stringify(msg)}\n`, (err) => err ? reject(err) : resolve()));
 }
+const MAX_JSONL_LINE_BYTES = 1024 * 1024;
+
 function attachParser<T>(sock: net.Socket, emit: (m: T) => void, onParseError: (message: string) => void): void {
   let buf = "";
   sock.setEncoding("utf8");
   sock.on("data", (chunk) => {
     buf += chunk;
+    if (Buffer.byteLength(buf, "utf8") > MAX_JSONL_LINE_BYTES) {
+      onParseError(`IPC line exceeds ${MAX_JSONL_LINE_BYTES} bytes`);
+      sock.destroy();
+      return;
+    }
     for (;;) {
       const idx = buf.indexOf("\n");
       if (idx < 0) break;
       const line = buf.slice(0, idx).trim();
       buf = buf.slice(idx + 1);
       if (!line) continue;
+      if (Buffer.byteLength(line, "utf8") > MAX_JSONL_LINE_BYTES) {
+        onParseError(`IPC line exceeds ${MAX_JSONL_LINE_BYTES} bytes`);
+        sock.destroy();
+        return;
+      }
       try { emit(JSON.parse(line) as T); } catch (err) { onParseError(err instanceof Error ? err.message : String(err)); }
     }
   });
@@ -44,7 +56,7 @@ export class SubagentHub {
   private server?: net.Server;
   private clients = new Map<string, net.Socket>();
   private listeners = new Set<Listener<ChildToParent>>();
-  constructor(public readonly socketPath: string) { unsupportedOnWindows(); }
+  constructor(public readonly socketPath: string, private readonly expectedAgentId?: string, private readonly expectedNonce?: string) { unsupportedOnWindows(); }
   async start(): Promise<void> {
     unsupportedOnWindows();
     await mkdir(path.dirname(this.socketPath), { recursive: true });
@@ -52,7 +64,25 @@ export class SubagentHub {
     this.server = net.createServer((sock) => {
       let agentId: string | undefined;
       attachParser<ChildToParent>(sock, (msg) => {
-        if (msg.type === "hello") { agentId = msg.agentId; this.clients.set(agentId, sock); }
+        if (!agentId && msg.type !== "hello" && (this.expectedAgentId || this.expectedNonce)) {
+          this.emit({ type: "error", message: "IPC protocol error: first child message must be hello" });
+          sock.destroy();
+          return;
+        }
+        if (msg.type === "hello") {
+          if (this.expectedAgentId && msg.agentId !== this.expectedAgentId) {
+            this.emit({ type: "error", agentId: msg.agentId, message: `IPC hello agentId mismatch: expected ${this.expectedAgentId}` });
+            sock.destroy();
+            return;
+          }
+          if (this.expectedNonce && msg.nonce !== this.expectedNonce) {
+            this.emit({ type: "error", agentId: msg.agentId, message: "IPC hello nonce mismatch" });
+            sock.destroy();
+            return;
+          }
+          agentId = msg.agentId;
+          this.clients.set(agentId, sock);
+        }
         this.emit(msg);
       }, (message) => this.emit({ type: "error", agentId, message: `IPC parse error: ${message}` }));
       sock.on("close", () => { if (agentId) this.clients.delete(agentId); });
@@ -99,7 +129,7 @@ export class SubagentHub {
 export class SubagentClient {
   private socket?: net.Socket;
   private listeners = new Set<Listener<ParentToChild>>();
-  constructor(private readonly socketPath: string, private readonly agentId: string, private readonly agentPath: string) { unsupportedOnWindows(); }
+  constructor(private readonly socketPath: string, private readonly agentId: string, private readonly agentPath: string, private readonly nonce?: string) { unsupportedOnWindows(); }
   async connect(): Promise<void> {
     unsupportedOnWindows();
     this.socket = net.createConnection(this.socketPath);

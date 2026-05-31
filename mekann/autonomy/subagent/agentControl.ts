@@ -71,7 +71,7 @@ export interface AgentControlOptions {
   displayMode?: DisplayMode;
   logDir?: string;
   kitty?: KittyController;
-  hubFactory?: (socketPath: string) => SubagentHub;
+  hubFactory?: (socketPath: string, expectedAgentId?: string, expectedNonce?: string) => SubagentHub;
   piCommand?: string;
   extensionPath?: string;
   helloTimeoutMs?: number;
@@ -96,7 +96,7 @@ export class AgentControl {
   private displayMode: DisplayMode;
   private logDir: string;
   private kitty: KittyController;
-  private hubFactory: (socketPath: string) => SubagentHub;
+  private hubFactory: (socketPath: string, expectedAgentId?: string, expectedNonce?: string) => SubagentHub;
   private piCommand: string;
   private extensionPath?: string;
   private helloTimeoutMs: number;
@@ -126,7 +126,7 @@ export class AgentControl {
     this.displayMode = options.displayMode ?? "none";
     this.logDir = options.logDir ?? path.join(os.tmpdir(), "pi-subagents");
     this.kitty = options.kitty ?? new KittyController();
-    this.hubFactory = options.hubFactory ?? ((socketPath) => new SubagentHub(socketPath));
+    this.hubFactory = options.hubFactory ?? ((socketPath, expectedAgentId, expectedNonce) => new SubagentHub(socketPath, expectedAgentId, expectedNonce));
     this.piCommand = options.piCommand ?? "pi";
     this.extensionPath = options.extensionPath;
     this.helloTimeoutMs = options.helloTimeoutMs ?? 10_000;
@@ -233,8 +233,11 @@ export class AgentControl {
     const lines = [
       authority.mode === "propose_patch" ? "You are running in propose_patch mode." : `You are running in ${authority.mode} mode with structured result reporting.`,
       authority.mode === "edit" ? "You may edit only within granted authority." : "Do not modify files directly.",
-      "Investigate the requested task. If no change is needed, return outcome=\"no_change\".",
       "Return exactly one JSON object conforming to subagent.result.v1. Output ONLY the raw JSON — no markdown fences, no explanation text.",
+      "Outcome selection: use outcome=\"observation\" for research/review findings without a patch; outcome=\"no_change\" only when you verified no action is needed; outcome=\"patch\" only for a concrete patch proposal; outcome=\"blocked\" when authority/environment prevents completion; outcome=\"needs_decision\" only when a parent decision is explicitly required.",
+      "If the parent asks for bullets, sections, or a specific language, put that content inside JSON fields such as summary, evidence, assumptions, or validation.suggested while keeping the outer response raw JSON.",
+      "Minimal observation example: {\"schema\":\"subagent.result.v1\",\"outcome\":\"observation\",\"summary\":\"findings...\",\"evidence\":[\"path:line\"]}",
+      "Minimal blocked example: {\"schema\":\"subagent.result.v1\",\"outcome\":\"blocked\",\"summary\":\"blocked reason...\",\"evidence\":[]}",
     ];
     if (authority.mode === "propose_patch") lines.push(
       "If a change is needed, create a patch proposal.",

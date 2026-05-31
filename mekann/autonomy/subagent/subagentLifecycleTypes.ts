@@ -32,7 +32,7 @@ export interface SpawnDelegationAdapters {
   displayMode: "none" | "kitty-pi" | "kitty-split";
   logDir?: string;
   kitty: KittyController;
-  hubFactory: (socketPath: string) => SubagentHub;
+  hubFactory: (socketPath: string, expectedAgentId?: string, expectedNonce?: string) => SubagentHub;
   piCommand: string;
   extensionPath?: string;
   helloTimeoutMs: number;

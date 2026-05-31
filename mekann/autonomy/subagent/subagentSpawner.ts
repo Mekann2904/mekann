@@ -10,12 +10,14 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AgentSession, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createAgentSession } from "@earendil-works/pi-coding-agent";
+import crypto from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
 import { ROOT_PATH, resolveTaskPath } from "./types.js";
 import type { AgentDisplayRef, AgentDisplayResult, AgentMetadata, AgentRuntime, AgentStatus, ResultContract, SpawnParams, SpawnResult, SubagentAuthority } from "./types.js";
-import { buildContextPreamble, extractForkContext, extractTextFromContent, truncateText } from "./contextFork.js";
+import { extractForkContext, extractTextFromContent, truncateText } from "./contextFork.js";
+import type { ForkTurns } from "./contextFork.js";
 import type { Mailbox } from "./mailbox.js";
 import { AgentRegistry } from "./registry.js";
 import type { ChildToParent, SubagentHub } from "./ipc.js";
@@ -141,6 +143,52 @@ export class SubagentSpawner {
     }
   }
 
+  // ─── Internal: prompt assembly ───────────────────────────────────
+
+  private buildStableSubagentPolicyPrompt(): string {
+    return [
+      "## Subagent Execution Policy",
+      "",
+      "Default execution style: silent.",
+      "Do not emit progress reports, status updates, greetings, or narrated execution.",
+      "Use tool calls as needed without announcing them.",
+      "Emit an assistant message only for the final result, a blocked state, or an explicit parent decision request.",
+      "Final output is for the parent agent, not a human; keep it compact and evidence-oriented.",
+      "Communication: When you are done, provide your final result. The parent agent will receive it via wait_agent.",
+      "Do not attempt to communicate with the parent agent directly.",
+    ].join("\n");
+  }
+
+  private buildVolatileContextBlock(input: { params: SpawnParams; ctx: ExtensionContext; callerPath: string; canonicalPath: string; forkTurns: ForkTurns }): string {
+    const lines = [
+      "## Subagent Context",
+      "",
+      `You are a subagent at path: ${input.canonicalPath}`,
+      `Parent agent path: ${input.callerPath}`,
+    ];
+    if (input.params.role) lines.push(`Role: ${input.params.role}`);
+    if (input.params.nickname) lines.push(`Nickname: ${input.params.nickname}`);
+    lines.push("");
+    if (input.forkTurns !== 0 && input.forkTurns !== "none") {
+      const branch = input.ctx.sessionManager?.getBranch?.() ?? [];
+      const messages = branch.filter((e: any) => e.type === "message").map((e: any) => e.message as any);
+      const forkCtx = extractForkContext(messages, input.forkTurns);
+      if (forkCtx.length > 0) {
+        lines.push("--- Parent Agent Conversation Context (forked) ---");
+        for (const msg of forkCtx) lines.push(`[${msg.role === "user" ? "User" : "Assistant"}]: ${msg.text}`);
+        lines.push("--- End of Forked Context ---");
+      }
+    }
+    return lines.join("\n");
+  }
+
+  private buildLaunchMessage(input: { externalNotice?: string; preamble?: string; volatileContextBlock: string; taskMessage: string; queuedMessages: string[] }): string {
+    const queuedMessagesBlock = input.queuedMessages.length > 0
+      ? `--- Queued parent messages ---\n${input.queuedMessages.map((m, i) => `[${i + 1}] ${m}`).join("\n\n")}\n--- End queued parent messages ---`
+      : undefined;
+    return [input.externalNotice, input.preamble, input.volatileContextBlock, input.taskMessage, queuedMessagesBlock].filter(Boolean).join("\n\n");
+  }
+
   // ─── Internal: start spawn ───────────────────────────────────────
 
   private async startSpawn(item: QueuedSpawnDelegation): Promise<SpawnResult> {
@@ -162,7 +210,7 @@ export class SubagentSpawner {
 
       const forkTurns = params.fork_turns ?? 0;
       const thinkingLevel = adapters.resolveThinkingLevel(params.reasoning_effort);
-      const systemPrompts = [buildContextPreamble({ agentPath: canonicalPath, parentPath: callerPath, role: params.role, nickname: params.nickname })];
+      const systemPrompts = [this.buildStableSubagentPolicyPrompt()];
       const authorityPrompt = adapters.authorityPreamble(authority, resultContract);
       if (authorityPrompt) systemPrompts.push(authorityPrompt);
 
@@ -174,18 +222,7 @@ export class SubagentSpawner {
         appendSystemPrompt: systemPrompts,
       } as any);
 
-      let forkContextBlock: string | undefined;
-      if (forkTurns !== 0 && forkTurns !== "none") {
-        const branch = ctx.sessionManager?.getBranch?.() ?? [];
-        const messages = branch.filter((e: any) => e.type === "message").map((e: any) => e.message as any);
-        const forkCtx = extractForkContext(messages, forkTurns);
-        if (forkCtx.length > 0) {
-          const lines = ["--- Parent Agent Conversation Context (forked) ---"];
-          for (const msg of forkCtx) lines.push(`[${msg.role === "user" ? "User" : "Assistant"}]: ${msg.text}`);
-          lines.push("--- End of Forked Context ---");
-          forkContextBlock = lines.join("\n");
-        }
-      }
+      const volatileContextBlock = this.buildVolatileContextBlock({ params, ctx, callerPath, canonicalPath, forkTurns });
 
       const parentActiveTools = adapters.pi.getActiveTools?.();
       if (parentActiveTools && parentActiveTools.length > 0) {
@@ -204,11 +241,8 @@ export class SubagentSpawner {
         authority, authorityEnforced: true, workspaceCwd: ctx.cwd, resultContract,
       }, reservation);
 
-      const baseInitialMessage = forkContextBlock ? `${forkContextBlock}\n\n${params.message}` : params.message;
-      const queuedMessagesBlock = queuedMessages.length > 0
-        ? `\n\n--- Queued parent messages ---\n${queuedMessages.map((m, i) => `[${i + 1}] ${m}`).join("\n\n")}\n--- End queued parent messages ---`
-        : "";
-      this.registerInProcessRuntime({ agentId, agentPath: canonicalPath, callerPath, session, initialMessage: `${baseInitialMessage}${queuedMessagesBlock}`, cwd: ctx.cwd, onSettled: () => this.deps.queue.scheduleDrain() });
+      const launchMessage = this.buildLaunchMessage({ externalNotice: undefined, preamble: undefined, volatileContextBlock, taskMessage: params.message, queuedMessages });
+      this.registerInProcessRuntime({ agentId, agentPath: canonicalPath, callerPath, session, initialMessage: launchMessage, cwd: ctx.cwd, onSettled: () => this.deps.queue.scheduleDrain() });
 
       return { agent_id: agentId, task_name: canonicalPath, status: "pending_init", display: adapters.displayResult(registry.get(canonicalPath)?.display) };
     } catch (err) {
@@ -242,19 +276,20 @@ export class SubagentSpawner {
     }, reservation as any);
 
     try {
-      const hub = adapters.hubFactory(socketPath);
+      const nonce = crypto.randomBytes(24).toString("base64url");
+      const hub = adapters.hubFactory(socketPath, agentId, nonce);
       const resolvedOverride = params.model ? await adapters.resolveModel(params.model, ctx) : undefined;
       const modelId = resolvedOverride ? ((resolvedOverride as any).provider && (resolvedOverride as any).id ? `${(resolvedOverride as any).provider}/${(resolvedOverride as any).id}` : undefined) : (ctx.model?.provider && ctx.model?.id ? `${ctx.model.provider}/${ctx.model.id}` : undefined);
       if (!modelId) throw new Error("External Pi subagents require an exact provider/model_id. Specify spawn_agent.model or use in-process subagents.");
       const thinkingLevel = adapters.resolveThinkingLevel(params.reasoning_effort);
       const preamble = adapters.authorityPreamble(authority, params.result_contract);
       const externalNotice = ["SECURITY NOTICE: this external Pi process is running with authorityEnforced=false.", "The parent process cannot remove write/edit/bash tools from this process.", `Requested authority mode: ${authority.mode}. Treat it as advisory unless the runtime itself removed tools.`].join("\n");
-      const queuedMessagesBlock = queuedMessages.length > 0 ? `--- Queued parent messages ---\n${queuedMessages.map((m, i) => `[${i + 1}] ${m}`).join("\n\n")}\n--- End queued parent messages ---` : undefined;
-      const launchMessage = [externalNotice, preamble, params.message, queuedMessagesBlock].filter(Boolean).join("\n\n");
+      const volatileContextBlock = this.buildVolatileContextBlock({ params, ctx, callerPath, canonicalPath, forkTurns: params.fork_turns ?? 0 });
+      const launchMessage = this.buildLaunchMessage({ externalNotice, preamble, volatileContextBlock, taskMessage: params.message, queuedMessages });
 
       await this.registerExternalPiRuntime({
         agentId, agentPath: canonicalPath, callerPath, socketPath, display, hub, kitty: adapters.kitty,
-        launchParams: { agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: launchMessage, logPath, title: display.title, piCommand: adapters.piCommand, extensionPath: adapters.extensionPath, modelId, thinkingLevel },
+        launchParams: { agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: launchMessage, logPath, title: display.title, piCommand: adapters.piCommand, extensionPath: adapters.extensionPath, modelId, thinkingLevel, nonce },
         displayMode: displayKind,
         helloTimeoutMs: adapters.helloTimeoutMs,
         onClosed: (id) => { adapters.externalPiSlots.delete(id); this.deps.queue.scheduleDrain(); },

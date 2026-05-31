@@ -60,7 +60,10 @@ export class SubagentLifecycle {
     this.queue = new SpawnQueue(registry, async (item) => {
       if (!this.spawner) throw new Error("SubagentLifecycle adapters not initialized. Call initAdapters() first.");
       await this.spawner.startSpawnFromQueue(item);
-    }, { maxQueueMs: 10 * 60 * 1000 });
+    }, { maxQueueMs: 10 * 60 * 1000 }, (item, reason) => {
+      this.finalizer.enqueueToMailbox(item.agentId, item.canonicalPath, item.callerPath, `Agent error: ${reason}`, "final_result");
+      this.mailbox.appendEvent({ type: "agent_final_message", agentId: item.agentId, agentPath: item.canonicalPath, timestamp: Date.now(), parentAgentId: item.callerPath === "/root" ? undefined : "root", message: `Agent error: ${reason}`, status: "errored" });
+    });
   }
 
   /**

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, appendFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, appendFileSync, unlinkSync, renameSync, statSync } from "node:fs";
 import path from "node:path";
 import type { AgentMetadata, ApplyRecord, EscrowRecord, RejectReason, ResultFilter, SemanticApplyLogEntry, StoredResultStatus, StoredSubagentResult, SubagentResultV1 } from "./types.js";
 import { tryParseSubagentResult } from "./resultSchema.js";
@@ -30,14 +30,20 @@ export class SubagentResultStore {
     if (canonical.outcome === "patch") {
       const body = canonical.patch.body;
       if (body !== undefined) {
-        writeFileSync(this.patchPath(id), body, "utf8");
+        const patchPath = this.patchPath(id);
+        const tmpPatchPath = `${patchPath}.tmp`;
+        writeFileSync(tmpPatchPath, body, "utf8");
+        renameSync(tmpPatchPath, patchPath);
         delete canonical.patch.body;
-        canonical.patch.ref = this.patchPath(id);
+        canonical.patch.ref = patchPath;
         canonical.patch.bytes = Buffer.byteLength(body, "utf8");
       }
     }
     const stored: StoredSubagentResult = { result_id: id, agent_id: agent.agentId, agent_path: agent.agentPath, created_at: Date.now(), status: "pending", result: canonical, authority: agent.authority, authority_enforced: agent.authorityEnforced, workspace_cwd: agent.workspaceCwd };
-    writeFileSync(this.jsonPath(id), JSON.stringify(stored, null, 2), "utf8");
+    const jsonPath = this.jsonPath(id);
+    const tmpJsonPath = `${jsonPath}.tmp`;
+    writeFileSync(tmpJsonPath, JSON.stringify(stored, null, 2), "utf8");
+    renameSync(tmpJsonPath, jsonPath);
     return stored;
   }
   private validateStored(raw: unknown, expectedId?: string): StoredSubagentResult {
@@ -50,8 +56,11 @@ export class SubagentResultStore {
     const resultForSchema = structuredClone(s.result) as any;
     if (resultForSchema?.outcome === "patch") {
       if (typeof resultForSchema.patch?.ref !== "string" || !isUnderDir(resultForSchema.patch.ref, this.dir)) throw new Error("Invalid stored patch ref");
+      if (!existsSync(resultForSchema.patch.ref)) throw new Error("Stored patch ref is missing");
+      const patchBytes = statSync(resultForSchema.patch.ref).size;
+      if (typeof resultForSchema.patch.bytes === "number" && resultForSchema.patch.bytes !== patchBytes) throw new Error("Stored patch byte size mismatch");
       delete resultForSchema.patch.ref;
-      resultForSchema.patch.body = "diff --git a/placeholder b/placeholder\n";
+      resultForSchema.patch.body = readFileSync((s.result as any).patch.ref, "utf8");
     }
     const parsed = tryParseSubagentResult(JSON.stringify(resultForSchema));
     if (!parsed.ok) throw new Error(`Invalid stored result schema: ${parsed.error}`);
@@ -65,7 +74,12 @@ export class SubagentResultStore {
       try { return [this.validateStored(JSON.parse(readFileSync(path.join(this.dir, f), "utf8")), id)]; } catch { return []; }
     }).filter((s) => (!filter.status || s.status === filter.status) && (!filter.outcome || s.result.outcome === filter.outcome) && (!filter.agent_path || s.agent_path === filter.agent_path)).sort((a,b)=>a.created_at-b.created_at);
   }
-  private saveStored(stored: StoredSubagentResult): void { writeFileSync(this.jsonPath(stored.result_id), JSON.stringify(this.validateStored(stored, stored.result_id), null, 2), "utf8"); }
+  private saveStored(stored: StoredSubagentResult): void {
+    const jsonPath = this.jsonPath(stored.result_id);
+    const tmpJsonPath = `${jsonPath}.tmp`;
+    writeFileSync(tmpJsonPath, JSON.stringify(this.validateStored(stored, stored.result_id), null, 2), "utf8");
+    renameSync(tmpJsonPath, jsonPath);
+  }
   markApplying(resultId: string): void { const s = this.load(resultId); s.status = "applying"; s.applying_at = Date.now(); this.saveStored(s); }
   markApplied(resultId: string, applyRecord: ApplyRecord): void { const s = this.load(resultId); s.status = "applied"; s.apply_record = applyRecord; delete s.applying_at; delete s.escrow_record; delete s.reject_reason; delete s.reject_details; delete s.review_record; delete s.superseded_reason; this.saveStored(s); }
   markEscrowed(resultId: string, escrowRecord: EscrowRecord): void { const s = this.load(resultId); s.status = "escrowed"; s.escrow_record = escrowRecord; delete s.applying_at; delete s.apply_record; delete s.reject_reason; delete s.reject_details; delete s.review_record; delete s.superseded_reason; this.saveStored(s); }

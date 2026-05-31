@@ -20,6 +20,7 @@ export interface LaunchPiWindowParams {
   splitDirection?: "vertical" | "horizontal";
   modelId?: string;
   thinkingLevel?: string;
+  nonce?: string;
 }
 
 function shellQuote(value: string): string {
@@ -54,6 +55,7 @@ export class KittyController {
       `export PI_SUBAGENT_PATH=${shellQuote(params.agentPath)}`,
       `export PI_SUBAGENT_PARENT_SOCKET=${shellQuote(params.socketPath)}`,
       `export PI_SUBAGENT_INITIAL_MESSAGE=${shellQuote(params.initialMessage)}`,
+      ...(params.nonce ? [`export PI_SUBAGENT_NONCE=${shellQuote(params.nonce)}`] : []),
       ...(params.modelId ? [`export PI_SUBAGENT_MODEL=${shellQuote(params.modelId)}`] : []),
       ...(params.thinkingLevel ? [`export PI_SUBAGENT_THINKING=${shellQuote(params.thinkingLevel)}`] : []),
       `export PATH=${shellQuote(path.dirname(process.execPath))}:$PATH`,

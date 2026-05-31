@@ -28,6 +28,7 @@ export class SpawnQueue {
     private readonly registry: AgentRegistry,
     private readonly onDrain: (item: QueuedSpawnDelegation) => Promise<void>,
     private readonly timeoutOptions: QueueTimeoutOptions = {},
+    private readonly onQueueError?: (item: QueuedSpawnDelegation, reason: string) => void,
   ) {}
 
   get length(): number {
@@ -79,7 +80,9 @@ export class SpawnQueue {
         if (!agent?.open || agent.status !== "queued") continue;
         try {
           await this.onDrain(item);
-        } catch {
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          this.onQueueError?.(item, `queue drain failed: ${reason}`);
           this.registry.updateStatus(item.canonicalPath, "errored");
           this.registry.close(item.canonicalPath, "errored");
         }
@@ -108,8 +111,9 @@ export class SpawnQueue {
       const stillQueued = this.items.some((i) => i.canonicalPath === item.canonicalPath);
       if (!stillQueued) return;
       this.remove(item.canonicalPath);
+      this.onQueueError?.(item, `queue timeout after ${maxMs}ms`);
       this.registry.updateStatus(item.canonicalPath, "errored");
-      this.registry.close(item.canonicalPath, "shutdown");
+      this.registry.close(item.canonicalPath, "errored");
     }, maxMs);
     timer.unref();
     this.timeoutTimers.set(item.canonicalPath, timer);
