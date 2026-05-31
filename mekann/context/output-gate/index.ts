@@ -196,16 +196,21 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 		const toolName = String(event?.toolName ?? event?.name ?? "tool");
 		const cwd = event?.cwd ?? ctx?.cwd ?? process.cwd();
 
-		return controller.handleToolResult({
-			cwd,
-			toolName,
-			content: event?.content,
-			details: event?.details,
-			isError: event?.isError,
-			sessionId: ctx?.sessionId,
-			turnId: ctx?.turnId,
-			toolCallId: event?.toolCallId,
-			branchId: ctx?.branchId ?? event?.branchId,
-		});
+		try {
+			return await controller.handleToolResult({
+				cwd,
+				toolName,
+				content: event?.content,
+				details: event?.details,
+				isError: event?.isError,
+				sessionId: ctx?.sessionId,
+				turnId: ctx?.turnId,
+				toolCallId: event?.toolCallId,
+				branchId: ctx?.branchId ?? event?.branchId,
+			});
+		} catch {
+			// Fail-open: output-gate must never break or replace the original tool result.
+			return undefined;
+		}
 	});
 }

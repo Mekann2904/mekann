@@ -177,6 +177,20 @@ describe("OutputGateController handleToolResult", () => {
 		expect(result!.details.outputGate).toBeDefined();
 	});
 
+	it("does not gate results that already have outputGate details", async () => {
+		const cwd = await tmp();
+		const controller = createController();
+		const result = await controller.handleToolResult({
+			cwd,
+			toolName: "bash",
+			content: bigText(),
+			details: { outputGate: { stored: true, artifactId: "og_existing_1" } },
+		});
+
+		expect(result).toBeUndefined();
+		expect(await readManifest(cwd)).toHaveLength(0);
+	});
+
 	it("extracts text from string content", async () => {
 		const cwd = await tmp();
 		const controller = createController();

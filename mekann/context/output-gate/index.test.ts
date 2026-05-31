@@ -60,6 +60,20 @@ describe("output-gate extension helpers", () => {
 		expect(pi.registerCommand.mock.calls[0][0]).toBe("output-gate");
 		expect(pi.on).toHaveBeenCalledWith("tool_result", expect.any(Function));
 	});
+
+	it("tool_result hook fails open when output-gate processing throws", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const hook = pi.on.mock.calls.find(([event]: [string]) => event === "tool_result")![1];
+		const throwingPart = {};
+		Object.defineProperty(throwingPart, "type", {
+			get() {
+				throw new Error("bad content shape");
+			},
+		});
+
+		await expect(hook({ toolName: "bash", content: [throwingPart] }, { cwd: "/tmp" })).resolves.toBeUndefined();
+	});
 });
 
 describe("output-gate extension execute handler", () => {

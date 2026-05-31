@@ -76,6 +76,12 @@ export function extractTextContent(content: unknown): string {
 		.join("\n");
 }
 
+export function hasExistingOutputGateDetails(details: Record<string, unknown> | undefined): boolean {
+	if (!details) return false;
+	const value = details.outputGate;
+	return !!value && typeof value === "object";
+}
+
 // ---------------------------------------------------------------------------
 // Controller
 // ---------------------------------------------------------------------------
@@ -101,6 +107,7 @@ export class OutputGateController {
 	): Promise<ToolResultOutput | undefined> {
 		const toolName = input.toolName;
 		if (IGNORED_TOOLS.has(toolName)) return undefined;
+		if (hasExistingOutputGateDetails(input.details)) return undefined;
 
 		const text = extractTextContent(input.content);
 		if (!shouldGateOutput(text, { toolName, maxInlineBytes: this.config.maxInlineBytes }))
