@@ -85,14 +85,15 @@ export async function collectGitHubDashboard(env: NodeJS.ProcessEnv = process.en
 	try {
 		return { ok: true, data: normalizeDashboardResponse(await runGhGraphql(query, timeout), now) };
 	} catch (ghError) {
-		if (env.GITHUB_TOKEN) {
+		const token = githubToken(env);
+		if (token) {
 			try {
-				return { ok: true, data: normalizeDashboardResponse(await runTokenGraphql(env.GITHUB_TOKEN, query, timeout), now) };
+				return { ok: true, data: normalizeDashboardResponse(await runTokenGraphql(token.value, query, timeout), now) };
 			} catch (tokenError) {
-				return { ok: false, error: `gh failed: ${message(ghError)}; GITHUB_TOKEN failed: ${message(tokenError)}` };
+				return { ok: false, error: `gh failed: ${message(ghError)}; ${token.name} failed: ${message(tokenError)}` };
 			}
 		}
-		return { ok: false, error: `gh failed: ${message(ghError)}; set GITHUB_TOKEN as fallback` };
+		return { ok: false, error: `gh failed: ${message(ghError)}; run gh auth login or set GITHUB_TOKEN/GH_TOKEN` };
 	}
 }
 
@@ -100,17 +101,29 @@ export async function collectGitHubProfile(env: NodeJS.ProcessEnv = process.env)
 	try {
 		return { ok: true, profile: await fromGh() };
 	} catch (ghError) {
-		if (env.GITHUB_TOKEN) {
+		const token = githubToken(env);
+		if (token) {
 			try {
-				return { ok: true, profile: await fromToken(env.GITHUB_TOKEN) };
+				return { ok: true, profile: await fromToken(token.value) };
 			} catch (tokenError) {
-				return { ok: false, error: `gh failed: ${message(ghError)}; GITHUB_TOKEN failed: ${message(tokenError)}` };
+				return { ok: false, error: `gh failed: ${message(ghError)}; ${token.name} failed: ${message(tokenError)}` };
 			}
 		}
-		return { ok: false, error: `gh failed: ${message(ghError)}; set GITHUB_TOKEN as fallback` };
+		return { ok: false, error: `gh failed: ${message(ghError)}; run gh auth login or set GITHUB_TOKEN/GH_TOKEN` };
 	}
 }
 
+function githubToken(env: NodeJS.ProcessEnv): { name: "GITHUB_TOKEN" | "GH_TOKEN"; value: string } | undefined {
+	if (env.GITHUB_TOKEN) return { name: "GITHUB_TOKEN", value: env.GITHUB_TOKEN };
+	if (env.GH_TOKEN) return { name: "GH_TOKEN", value: env.GH_TOKEN };
+	return undefined;
+}
+
 function message(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
+	const text = error instanceof Error ? error.message : String(error);
+	const authHint = "To get started with GitHub CLI";
+	if (text.includes(authHint) || text.includes("gh auth login") || text.includes("GH_TOKEN")) {
+		return "GitHub CLI is not authenticated";
+	}
+	return text.replace(/\s+/g, " ").trim().slice(0, 300);
 }
