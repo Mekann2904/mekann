@@ -88,7 +88,7 @@ export interface AgentControlOptions {
 export class AgentControl {
   readonly registry: AgentRegistry;
   readonly mailbox: Mailbox;
-  // Back-compat for existing tests/consumers that inspect childSessions/runtimes.
+  // Deprecated test seam: lifecycle owns runtime maps; production code uses lifecycle commands.
   private runtimes!: Map<string, AgentRuntime>;
   private childSessions!: Map<string, import("@earendil-works/pi-coding-agent").AgentSession>;
   private hubs!: Map<string, SubagentHub>;
@@ -151,8 +151,8 @@ export class AgentControl {
       mailbox: this.mailbox,
       resolveCallerPath: (ctx) => this.resolveCallerPath(ctx),
       resolveTarget: (target, callerPath) => this.resolveTarget(target, callerPath),
-      getRuntime: (agentPath) => this.lifecycle.getRuntime(agentPath),
-      getHub: (agentId) => this.lifecycle.getHub(agentId),
+      getRuntime: (agentPath) => this.lifecycle.runtimeForSession(agentPath),
+      getHub: (agentId) => this.lifecycle.hubForSession(agentId),
       displayResult: (display) => this.displayResult(display),
       logDisplay: (display, line) => this.logDisplay(display, line),
     });

@@ -3,6 +3,21 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { EffectiveSetting, SettingsScope } from "../../settings/types.js";
 import type { ModelCatalogItem } from "./model-ipc.js";
+import {
+	ALL_FEATURE,
+	cancelEdit,
+	clearDraftsAfterApply,
+	initialSettingsEditorState,
+	itemId,
+	openEdit,
+	openModelPicker,
+	selectFeature,
+	stageDraft,
+	toggleScope,
+	type DraftChange,
+	type SettingsEditorMode,
+} from "./state.js";
+export type { DraftChange } from "./state.js";
 
 // ─── createElement shorthand ──────────────────────────────────────
 
@@ -16,12 +31,6 @@ function el(
 
 // ─── Types ────────────────────────────────────────────────────────
 
-export interface DraftChange {
-	feature: string;
-	key: string;
-	scope: SettingsScope;
-	raw: string;
-}
 export interface ApplyResult {
 	error?: string;
 	effective?: EffectiveSetting[];
@@ -36,14 +45,9 @@ export interface SettingsEditorAppProps {
 	onQuit: () => void;
 }
 
-type AppMode = "list" | "edit" | "models" | "diff";
-const ALL_FEATURE = "__all__";
+type AppMode = SettingsEditorMode;
 
 // ─── Helpers ──────────────────────────────────────────────────────
-
-function itemId(i: EffectiveSetting): string {
-	return `${i.feature}.${i.key}`;
-}
 
 function valueText(value: unknown): string {
 	if (value === undefined) return "(unset)";
@@ -758,13 +762,14 @@ export function SettingsEditorApp({
 	const { width: terminalWidth } = useTerminalDimensions();
 	const settingsScrollRef = useRef<ScrollBoxRenderable>(null);
 
-	const [selected, setSelected] = useState(0);
-	const [scope, setScope] = useState<SettingsScope>("global");
-	const [mode, setMode] = useState<AppMode>("list");
-	const [buffer, setBuffer] = useState("");
-	const [modelSelected, setModelSelected] = useState(0);
-	const [drafts, setDrafts] = useState<Record<string, DraftChange>>({});
-	const [message, setMessage] = useState("Welcome to Mekann Settings Editor");
+	const [editor, setEditor] = useState(initialSettingsEditorState);
+	const { selected, scope, mode, buffer, modelSelected, drafts, message, activeFeature } = editor;
+	const setSelected = (value: number | ((n: number) => number)) => setEditor((s) => ({ ...s, selected: typeof value === "function" ? value(s.selected) : value }));
+	const setMode = (mode: AppMode) => setEditor((s) => ({ ...s, mode }));
+	const setBuffer = (value: string | ((s: string) => string)) => setEditor((s) => ({ ...s, buffer: typeof value === "function" ? value(s.buffer) : value }));
+	const setModelSelected = (value: number | ((n: number) => number)) => setEditor((s) => ({ ...s, modelSelected: typeof value === "function" ? value(s.modelSelected) : value }));
+	const setDrafts = (value: Record<string, DraftChange> | ((d: Record<string, DraftChange>) => Record<string, DraftChange>)) => setEditor((s) => ({ ...s, drafts: typeof value === "function" ? value(s.drafts) : value }));
+	const setMessage = (message: string) => setEditor((s) => ({ ...s, message }));
 	const [applying, setApplying] = useState(false);
 	const [displayedEffective, setDisplayedEffective] = useState(effective);
 	const [displayedDiagnostics, setDisplayedDiagnostics] = useState(diagnostics);
@@ -775,8 +780,6 @@ export function SettingsEditorApp({
 	const items = useMemo(() => displayedEffective, [displayedEffective]);
 	const groups = useMemo(() => buildFeatureGroups(items), [items]);
 
-	// Active feature state (defaults to "All")
-	const [activeFeature, setActiveFeature] = useState<string>(ALL_FEATURE);
 	const activeGroup = useMemo(
 		() => groups.find((g) => g.feature === activeFeature),
 		[groups, activeFeature],
@@ -792,11 +795,7 @@ export function SettingsEditorApp({
 
 	// When switching features, reset selected and scroll
 	const switchFeature = useCallback((feature: string) => {
-		setActiveFeature(feature);
-		setSelected(0);
-		setMessage(feature === ALL_FEATURE ? "Showing all settings" : `Switched to ${featureTitle(feature)}`);
-		// close any open overlays
-		if (mode !== "list") setMode("list");
+		setEditor((s) => selectFeature(s, feature, featureTitle(feature)));
 	}, [mode]);
 
 	// Scroll selected row into view
@@ -806,8 +805,7 @@ export function SettingsEditorApp({
 
 	const stage = useCallback(
 		(item: EffectiveSetting, raw: string) => {
-			setDrafts((d) => ({ ...d, [itemId(item)]: { feature: item.feature, key: item.key, scope, raw } }));
-			setMessage(`staged ${itemId(item)} → ${scope}`);
+			setEditor((s) => stageDraft(s, item, raw));
 		},
 		[scope],
 	);
@@ -819,7 +817,7 @@ export function SettingsEditorApp({
 	const activateSetting = useCallback((item: EffectiveSetting) => {
 		const shown = shownValueFor(item);
 		if (item.schema.type === "modelRef") {
-			setModelSelected(0); setMode("models"); setMessage("pick a model");
+			setEditor(openModelPicker);
 		} else if (item.schema.type === "enum") {
 			const values = item.feature === "modes" && item.key.startsWith("thinking.") ? supportedThinking(models, item, items, drafts) : (item.schema.enumValues ?? []);
 			const idx = Math.max(0, values.indexOf(shown));
@@ -829,7 +827,7 @@ export function SettingsEditorApp({
 			const cur = draft === undefined ? item.effectiveValue : /^(true|1|yes|on)$/i.test(draft);
 			stage(item, String(!cur));
 		} else {
-			setBuffer(shown === "(unset)" ? "" : shown); setMode("edit"); setMessage(`editing ${itemId(item)}`);
+			setEditor((s) => openEdit(s, item, shown));
 		}
 	}, [drafts, items, models, shownValueFor, stage]);
 
@@ -858,7 +856,7 @@ export function SettingsEditorApp({
 		if (key.ctrl && key.name === "c") { onQuit(); return; }
 
 		if (mode === "edit") {
-			if (key.name === "escape") { setMode("list"); setMessage("edit cancelled"); return; }
+			if (key.name === "escape") { setEditor(cancelEdit); return; }
 			if (key.name === "backspace" || key.name === "delete") { setBuffer((b) => b.slice(0, -1)); return; }
 			if (key.name === "return" || key.name === "enter") { if (current) stage(current, buffer); setMode("list"); return; }
 			if (key.sequence && key.sequence.length === 1 && !key.ctrl && !key.meta) setBuffer((b) => b + key.sequence);
@@ -895,8 +893,7 @@ export function SettingsEditorApp({
 		if (key.name === "up") setSelected((i) => Math.max(0, i - 1));
 		else if (key.name === "down") setSelected((i) => Math.min(featureItems.length - 1, i + 1));
 		else if (key.name === "tab") {
-			setScope((s) => s === "global" ? "workspace" : "global");
-			setMessage(`save scope → ${scope === "global" ? "workspace" : "global"}`);
+			setEditor(toggleScope);
 		}
 		else if (key.name === "d") setMode(mode === "diff" ? "list" : "diff");
 		else if ((key.name === "return" || key.name === "enter") && current) {
@@ -911,8 +908,7 @@ export function SettingsEditorApp({
 				else {
 					if (result.effective) setDisplayedEffective(result.effective);
 					if (result.diagnostics) setDisplayedDiagnostics(result.diagnostics);
-					setDrafts({});
-					setMessage("✓ applied — settings view refreshed");
+					setEditor(clearDraftsAfterApply);
 				}
 			});
 		}

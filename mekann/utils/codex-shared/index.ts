@@ -4,6 +4,8 @@
 
 export type { CodexErrorKind, CodexModel, CodexReasoningEffort, SearchContextSize } from "./types.js";
 export { extractAccountIdFromToken } from "./auth.js";
+export { resolveCodexAccountSession } from "./account-session.js";
+export type { CodexAccountSession, CodexAccessTokenProvider } from "./account-session.js";
 export {
 	normalizeCodexBaseUrl,
 	resolveCodexEndpoint,

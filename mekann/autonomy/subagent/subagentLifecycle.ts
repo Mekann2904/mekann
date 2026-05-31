@@ -29,7 +29,7 @@ export class SubagentLifecycle {
   private spawner!: SubagentSpawner;
   private adaptersInitialized = false;
 
-  /** Back-compat typed access for existing tests/consumers. */
+  /** @deprecated Compatibility test seam; production callers should use lifecycle methods. */
   readonly compatibilityMaps: RuntimeStoreMaps;
 
   constructor(
@@ -81,8 +81,14 @@ export class SubagentLifecycle {
 
   // ─── Runtime accessors (back-compat) ──────────────────────────
 
-  getRuntime(agentPath: string): AgentRuntime | undefined {
+  /** Runtime lookup for AgentSessionControl; keeps RuntimeStore behind this seam. */
+  runtimeForSession(agentPath: string): AgentRuntime | undefined {
     return this._runtimes.getRuntime(agentPath);
+  }
+
+  /** @deprecated use runtimeForSession or lifecycle commands instead. */
+  getRuntime(agentPath: string): AgentRuntime | undefined {
+    return this.runtimeForSession(agentPath);
   }
 
   setRuntime(agentPath: string, runtime: AgentRuntime): void {
@@ -121,8 +127,14 @@ export class SubagentLifecycle {
     this._runtimes.setHub(agentId, hub);
   }
 
-  getHub(agentId: string): SubagentHub | undefined {
+  /** Hub lookup for AgentSessionControl; keeps RuntimeStore behind this seam. */
+  hubForSession(agentId: string): SubagentHub | undefined {
     return this._runtimes.getHub(agentId);
+  }
+
+  /** @deprecated use hubForSession or lifecycle commands instead. */
+  getHub(agentId: string): SubagentHub | undefined {
+    return this.hubForSession(agentId);
   }
 
   deleteHub(agentId: string): void {

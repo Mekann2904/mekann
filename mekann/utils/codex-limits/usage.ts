@@ -1,7 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { extractAccountIdFromToken } from "../codex-shared/index.js";
+import { resolveCodexAccountSession } from "../codex-shared/index.js";
 
 const CODEX_PROVIDER_ID = "openai-codex";
 const CODEX_BIN_ENV = "CODEX_BIN";
@@ -209,15 +209,13 @@ async function queryViaCodexAppServerCliAuth(timeoutMs: number): Promise<CodexUs
 }
 
 async function resolvePiCodexAuth(ctx: ExtensionContext): Promise<{ accessToken: string; accountId: string }> {
-	const accessToken = await ctx.modelRegistry.getApiKeyForProvider(CODEX_PROVIDER_ID);
-	if (!accessToken) {
-		throw new Error("Pi is not logged in to openai-codex. Run Pi /login for OpenAI Codex.");
-	}
-	const accountId = extractAccountIdFromToken(accessToken);
-	if (!accountId) {
-		throw new Error("Pi openai-codex token does not contain chatgpt_account_id.");
-	}
-	return { accessToken, accountId };
+	return resolveCodexAccountSession(
+		() => ctx.modelRegistry.getApiKeyForProvider(CODEX_PROVIDER_ID),
+		{
+			missingTokenMessage: "Pi is not logged in to openai-codex. Run Pi /login for OpenAI Codex.",
+			missingAccountIdMessage: "Pi openai-codex token does not contain chatgpt_account_id.",
+		},
+	);
 }
 
 async function assertChatGptAccount(client: CodexAppServerClient): Promise<void> {
