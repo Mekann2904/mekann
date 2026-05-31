@@ -34,7 +34,7 @@ export default function codexUsage(pi: ExtensionAPI): void {
 
 	const updateUsageWidget = (ctx: ExtensionContext) => {
 		ctx.ui.setWidget("codex-usage", undefined);
-		pi.events.emit("mekann:codex-usage:status", { text: usageStatusLines[0] });
+		pi.events.emit("mekann:codex-usage:status", { text: usageStatusLines.join(" ") });
 		if (usageStatusLines.length === 0) {
 			ctx.ui.setFooter(undefined);
 			return;
@@ -45,7 +45,7 @@ export default function codexUsage(pi: ExtensionAPI): void {
 				dispose: unsub,
 				invalidate() {},
 				render(width: number): string[] {
-					return renderCodexFooter(ctx, footerData, theme, width, usageStatusLines[1], pi.getThinkingLevel());
+					return renderCodexFooter(ctx, footerData, theme, width, usageStatusLines.join(" ") || undefined, pi.getThinkingLevel());
 				},
 			} satisfies Component & { dispose(): void };
 		});

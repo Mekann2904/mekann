@@ -52,6 +52,23 @@ describe("codex usage", () => {
 		expect(status).not.toContain("📊 codex");
 	});
 
+	it("keeps both 5h and weekly limits in compact status text", () => {
+		const status = formatCodexUsageStatusline({
+			source: "codex-app-server",
+			capturedAt,
+			snapshots: [{
+				limitId: "codex",
+				primary: { usedPercent: 25 },
+				secondary: { usedPercent: 80 },
+			}],
+		}, { provider: "openai-codex", id: "gpt-5", name: "GPT-5" });
+
+		expect(status).toContain("5h");
+		expect(status).toContain("75%");
+		expect(status).toContain("wk");
+		expect(status).toContain("20%");
+	});
+
 	it("formats a readable report", () => {
 		const report = formatCodexUsageReport({
 			source: "codex-app-server",
