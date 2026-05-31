@@ -4,7 +4,7 @@ import { getGlobalMekannSettingsPath, getWorkspaceMekannSettingsPath, loadSettin
 import { mekannSettingsSchemas } from "../../settings/registry.js";
 import { diagnosticsForUnknownKeys, flattenEffective } from "../../settings/effective.js";
 import { fetchModelCatalog } from "./model-ipc.js";
-import { SettingsEditorApp, type DraftChange } from "./app.js";
+import { SettingsEditorApp, type ApplyResult, type DraftChange } from "./app.js";
 
 export async function runSettingsEditorCli(argv = process.argv.slice(2)): Promise<void> {
   const diagnose = argv.includes("--diagnose");
@@ -25,7 +25,7 @@ export async function runSettingsEditorCli(argv = process.argv.slice(2)): Promis
   const { createRoot } = await import("@opentui/react");
   const renderer = await createCliRenderer({ exitOnCtrlC: false, useMouse: true, enableMouseMovement: true });
   const root = createRoot(renderer);
-  const apply = async (changes: DraftChange[]): Promise<string | undefined> => {
+  const apply = async (changes: DraftChange[]): Promise<ApplyResult> => {
     const byScope = new Map<"global" | "workspace", DraftChange[]>();
     for (const change of changes) byScope.set(change.scope, [...(byScope.get(change.scope) ?? []), change]);
     for (const [scope, scopedChanges] of byScope.entries()) {
@@ -34,26 +34,31 @@ export async function runSettingsEditorCli(argv = process.argv.slice(2)): Promis
       let next = loaded.settings;
       for (const change of scopedChanges) {
         const item = effective.find((e) => e.feature === change.feature && e.key === change.key);
-        if (!item) return `unknown setting: ${change.feature}.${change.key}`;
+        if (!item) return { error: `unknown setting: ${change.feature}.${change.key}` };
         let value: unknown = change.raw === "" ? undefined : change.raw;
         if (item.schema.type === "number" && change.raw !== "") value = Number(change.raw);
         if (item.schema.type === "boolean" && change.raw !== "") {
           if (/^(true|1|yes|on)$/i.test(change.raw)) value = true;
           else if (/^(false|0|no|off)$/i.test(change.raw)) value = false;
-          else return `${change.feature}.${change.key}: boolean は true/false で入力してください`;
+          else return { error: `${change.feature}.${change.key}: boolean は true/false で入力してください` };
         }
         if (item.schema.type === "modelRef" && change.raw !== "") {
           const idx = change.raw.indexOf("/");
-          if (idx <= 0 || idx === change.raw.length - 1) return `${change.feature}.${change.key}: provider/modelId 形式で入力してください`;
+          if (idx <= 0 || idx === change.raw.length - 1) return { error: `${change.feature}.${change.key}: provider/modelId 形式で入力してください` };
           value = { provider: change.raw.slice(0, idx), modelId: change.raw.slice(idx + 1) };
         }
         const errors = item.schema.validate(value);
-        if (errors.length > 0) return `${change.feature}.${change.key}: ${errors.join(", ")}`;
+        if (errors.length > 0) return { error: `${change.feature}.${change.key}: ${errors.join(", ")}` };
         next = setFeatureValue(next, change.feature, change.key, value);
       }
-      try { saveSettingsChecked(path, next, loaded.hash); } catch (e) { return (e as Error).message; }
+      try { saveSettingsChecked(path, next, loaded.hash); } catch (e) { return { error: (e as Error).message }; }
     }
-    return undefined;
+    const nextGlobal = loadSettings(getGlobalMekannSettingsPath());
+    const nextWorkspace = loadSettings(getWorkspaceMekannSettingsPath());
+    return {
+      effective: flattenEffective(mekannSettingsSchemas, nextGlobal, nextWorkspace),
+      diagnostics: diagnosticsForUnknownKeys(mekannSettingsSchemas, nextGlobal, nextWorkspace),
+    };
   };
   root.render(React.createElement(SettingsEditorApp, { effective, diagnostics, models, onApply: apply, onQuit: () => renderer.destroy() }));
   process.stdin?.resume?.();

@@ -22,11 +22,17 @@ export interface DraftChange {
 	scope: SettingsScope;
 	raw: string;
 }
+export interface ApplyResult {
+	error?: string;
+	effective?: EffectiveSetting[];
+	diagnostics?: string[];
+}
+
 export interface SettingsEditorAppProps {
 	effective: EffectiveSetting[];
 	diagnostics: string[];
 	models: ModelCatalogItem[];
-	onApply: (changes: DraftChange[]) => Promise<string | undefined>;
+	onApply: (changes: DraftChange[]) => Promise<ApplyResult>;
 	onQuit: () => void;
 }
 
@@ -699,8 +705,13 @@ export function SettingsEditorApp({
 	const [drafts, setDrafts] = useState<Record<string, DraftChange>>({});
 	const [message, setMessage] = useState("Welcome to Mekann Settings Editor");
 	const [applying, setApplying] = useState(false);
+	const [displayedEffective, setDisplayedEffective] = useState(effective);
+	const [displayedDiagnostics, setDisplayedDiagnostics] = useState(diagnostics);
 
-	const items = useMemo(() => effective, [effective]);
+	useEffect(() => setDisplayedEffective(effective), [effective]);
+	useEffect(() => setDisplayedDiagnostics(diagnostics), [diagnostics]);
+
+	const items = useMemo(() => displayedEffective, [displayedEffective]);
 	const groups = useMemo(() => buildFeatureGroups(items), [items]);
 
 	// Active feature state (defaults to "All")
@@ -833,10 +844,15 @@ export function SettingsEditorApp({
 			const changes = Object.values(drafts);
 			if (changes.length === 0) { setMessage("no drafts to apply"); return; }
 			setApplying(true);
-			void onApply(changes).then((err) => {
+			void onApply(changes).then((result) => {
 				setApplying(false);
-				if (err) setMessage(`✗ ${err}`);
-				else { setDrafts({}); setMessage("✓ applied — restart Pi to use new settings"); }
+				if (result.error) setMessage(`✗ ${result.error}`);
+				else {
+					if (result.effective) setDisplayedEffective(result.effective);
+					if (result.diagnostics) setDisplayedDiagnostics(result.diagnostics);
+					setDrafts({});
+					setMessage("✓ applied — settings view refreshed");
+				}
 			});
 		}
 	});
@@ -897,7 +913,7 @@ export function SettingsEditorApp({
 				groups,
 				activeFeature,
 				drafts,
-				diagnostics,
+				diagnostics: displayedDiagnostics,
 				totalItems: items.length,
 				totalModels: models.length,
 				onSelectFeature: switchFeature,
@@ -927,7 +943,7 @@ export function SettingsEditorApp({
 			),
 		),
 		// ── Status bar ──
-		el(StatusBar, { message, scope, draftCount: Object.keys(drafts).length, diagnosticsCount: diagnostics.length, mode, currentType: current?.schema.type ?? "" }),
+		el(StatusBar, { message, scope, draftCount: Object.keys(drafts).length, diagnosticsCount: displayedDiagnostics.length, mode, currentType: current?.schema.type ?? "" }),
 		// ── Overlays ──
 		...(mode === "edit" && current ? [el(EditOverlay, { settingKey: itemId(current), buffer, type: current.schema.type })] : []),
 		...(mode === "diff" ? [el(DiffOverlay, { drafts, items })] : []),
