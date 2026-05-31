@@ -203,7 +203,7 @@ describe("output-gate command handler", () => {
 		outputGateExtension(pi);
 		const cmdDef = pi.registerCommand.mock.calls[0][1];
 		expect(cmdDef.getArgumentCompletions("li")).toEqual([{ value: "list", label: "list" }]);
-		expect(cmdDef.getArgumentCompletions("")).toEqual([{ value: "list", label: "list" }, { value: "clear", label: "clear" }, { value: "stats", label: "stats" }, { value: "show", label: "show" }, { value: "purge", label: "purge" }]);
+		expect(cmdDef.getArgumentCompletions("")).toEqual([{ value: "list", label: "list" }, { value: "clear", label: "clear" }, { value: "stats", label: "stats" }, { value: "show", label: "show" }, { value: "purge", label: "purge" }, { value: "enable-tools", label: "enable-tools" }, { value: "disable-tools", label: "disable-tools" }]);
 		expect(cmdDef.getArgumentCompletions("xyz")).toEqual([]);
 	});
 

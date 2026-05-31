@@ -10,7 +10,9 @@ import { Type } from "@sinclair/typebox";
 import * as fsp from "node:fs/promises";
 import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
 import { featureConfig, featureValue } from "../../settings/featureConfig.js";
-import { outputGateDir } from "./store.js";
+import { featureStringValue } from "../../settings/enabled.js";
+import { setToolsActive } from "../../settings/toolSurface.js";
+import { outputGateDir, readManifest } from "./store.js";
 import { handleClear } from "../clear.js";
 import { recordToolOutputArtifact } from "../recording.js";
 import { OutputGateController } from "./controller.js";
@@ -69,10 +71,20 @@ function parseShowArg(args: string | undefined): string | undefined {
 // Registration
 // ---------------------------------------------------------------------------
 
+const OUTPUT_GATE_TOOL_NAMES = ["search_tool_outputs"] as const;
+
 export default function outputGateExtension(pi: ExtensionAPI): void {
 	if (featureValue("output-gate", "enabled") === false) return;
 
 	const controller = createController();
+	let searchToolActive = false;
+
+	async function syncSearchToolSurface(cwd: string): Promise<void> {
+		const surface = featureStringValue("output-gate", "toolSurface", "artifact");
+		const active = surface === "always" || (surface === "artifact" && (await readManifest(cwd)).length > 0);
+		searchToolActive = active;
+		setToolsActive(pi, OUTPUT_GATE_TOOL_NAMES, active);
+	}
 
 	// --- search_tool_outputs tool ---
 	pi.registerTool({
@@ -145,13 +157,27 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("output-gate", {
 		description: "output-gate artifacts を表示・削除",
 		getArgumentCompletions(prefix: string) {
-			return ["list", "clear", "stats", "show", "purge"]
+			return ["list", "clear", "stats", "show", "purge", "enable-tools", "disable-tools"]
 				.filter((v) => v.startsWith(prefix))
 				.map((value) => ({ value, label: value }));
 		},
 		async handler(args: string | undefined, ctx: any) {
 			const cwd = ctx?.cwd ?? process.cwd();
 			const arg = args?.trim() ?? "";
+
+			if (arg === "enable-tools") {
+				searchToolActive = true;
+				setToolsActive(pi, OUTPUT_GATE_TOOL_NAMES, true);
+				ctx?.ui?.notify?.("output-gate search tools enabled", "info");
+				return;
+			}
+
+			if (arg === "disable-tools") {
+				searchToolActive = false;
+				setToolsActive(pi, OUTPUT_GATE_TOOL_NAMES, false);
+				ctx?.ui?.notify?.("output-gate search tools disabled", "info");
+				return;
+			}
 
 			// show <artifactId>
 			const showId = parseShowArg(arg);
@@ -164,6 +190,7 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 				await handleClear(ctx, "output-gate artifacts", outputGateDir(cwd), async () => {
 					await fsp.rm(outputGateDir(cwd), { recursive: true, force: true });
 				});
+				await syncSearchToolSurface(cwd);
 				return;
 			}
 
@@ -183,6 +210,7 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 					(Number(featureConfig("output-gate").artifactRetentionMaxFiles) ||
 					MEKANN_OUTPUT_GATE_DEFAULTS.artifactRetentionMaxFiles);
 				ctx?.ui?.notify?.(await controller.purge(cwd, keep), "info");
+				await syncSearchToolSurface(cwd);
 				return;
 			}
 
@@ -197,7 +225,7 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 		const cwd = event?.cwd ?? ctx?.cwd ?? process.cwd();
 
 		try {
-			return await controller.handleToolResult({
+			const result = await controller.handleToolResult({
 				cwd,
 				toolName,
 				content: event?.content,
@@ -208,9 +236,20 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 				toolCallId: event?.toolCallId,
 				branchId: ctx?.branchId ?? event?.branchId,
 			});
+			if ((result?.details?.outputGate as any)?.stored === true) await syncSearchToolSurface(cwd);
+			return result;
 		} catch {
 			// Fail-open: output-gate must never break or replace the original tool result.
 			return undefined;
 		}
+	});
+
+	pi.on("session_start", async (_event: any, ctx: any) => {
+		await syncSearchToolSurface(ctx?.cwd ?? process.cwd());
+	});
+
+	pi.on("session_shutdown", async () => {
+		if (searchToolActive) setToolsActive(pi, OUTPUT_GATE_TOOL_NAMES, false);
+		searchToolActive = false;
 	});
 }

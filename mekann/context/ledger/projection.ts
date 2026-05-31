@@ -99,7 +99,7 @@ export async function summarizeSessionContextText(input: {
 	return xml;
 }
 
-export const CONTEXT_LEDGER_COMMAND_COMPLETIONS = ["list", "stats", "snapshot", "restore", "clear"] as const;
+export const CONTEXT_LEDGER_COMMAND_COMPLETIONS = ["list", "stats", "snapshot", "restore", "clear", "enable-tools", "disable-tools"] as const;
 
 export type ContextLedgerCommandResult =
 	| { kind: "notify"; text: string; level: "info" }

@@ -125,8 +125,12 @@ describe("mekann integrated extension", () => {
 		});
 		const goal = await import("./autonomy/goal/index.js");
 		const autoresearch = await import("./autonomy/autoresearch/index.js");
+		const outputGate = await import("./context/output-gate/index.js");
+		const contextLedger = await import("./context/ledger/index.js");
 		expect(() => goal.default(makePi() as any)).not.toThrow();
 		expect(() => autoresearch.default(makePi() as any)).not.toThrow();
+		expect(() => outputGate.default(makePi() as any)).not.toThrow();
+		expect(() => contextLedger.default(makePi() as any)).not.toThrow();
 	});
 
 	it("keeps command ownership separated across modules", () => {

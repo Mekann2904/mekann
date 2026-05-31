@@ -2,7 +2,10 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult, projectContextEvents } from "./store.js";
 import { buildSnapshot } from "./snapshot.js";
+import { readLatestSnapshot } from "./snapshot-store.js";
 import { handleClear } from "../clear.js";
+import { featureStringValue } from "../../settings/enabled.js";
+import { setToolsActive } from "../../settings/toolSurface.js";
 import {
 	CONTEXT_LEDGER_COMMAND_COMPLETIONS,
 	clampInt,
@@ -15,7 +18,23 @@ export { appendContextEvent, readEvents, computeStats, clearContext, searchEvent
 export type { MekannContextEvent, MekannContextEventKind, MekannContextRef, AppendEventInput, ProjectedContextEvent, MekannContextEventStatus, MekannContextEvidenceLevel, MekannContextScope } from "./store.js";
 export { buildSnapshot } from "./snapshot.js";
 
+const CONTEXT_LEDGER_TOOL_NAMES = ["search_context_events", "summarize_session_context"] as const;
+
 export default function contextLedgerExtension(pi: ExtensionAPI): void {
+	let manualToolsActive = false;
+
+	function shouldExposeContextLedgerTools(): boolean {
+		return featureStringValue("context-ledger", "toolSurface", "on-demand") === "always" || manualToolsActive;
+	}
+
+	function syncContextLedgerToolSurface(): void {
+		setToolsActive(pi, CONTEXT_LEDGER_TOOL_NAMES, shouldExposeContextLedgerTools());
+	}
+
+	function setManualToolsActive(active: boolean): void {
+		manualToolsActive = active;
+		syncContextLedgerToolSurface();
+	}
 	const KindEnum = Type.Union([
 		Type.Literal("tool_result"),
 		Type.Literal("user_decision"),
@@ -91,6 +110,18 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 		},
 		async handler(args: string | undefined, ctx: any) {
 			const cwd = ctx?.cwd ?? process.cwd();
+			const arg = args?.trim() ?? "";
+			if (arg === "enable-tools") {
+				setManualToolsActive(true);
+				ctx?.ui?.notify?.("context-ledger tools enabled", "info");
+				return;
+			}
+			if (arg === "disable-tools") {
+				setManualToolsActive(false);
+				ctx?.ui?.notify?.("context-ledger tools disabled", "info");
+				return;
+			}
+			if (arg === "restore" || arg.startsWith("restore")) setManualToolsActive(true);
 			const result = await runContextLedgerCommand(cwd, args);
 			if (result.kind === "clear") {
 				await handleClear(ctx, result.label, result.targetDir, result.clear);
@@ -98,6 +129,24 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 			}
 			ctx?.ui?.notify?.(result.text, result.level);
 		},
+	});
+
+	pi.on("session_start", async (event: any, ctx: any) => {
+		const cwd = ctx?.cwd ?? process.cwd();
+		manualToolsActive = false;
+		if ((event?.reason === "resume" || event?.reason === "reload" || event?.reason === "fork") && await readLatestSnapshot(cwd)) {
+			manualToolsActive = true;
+		}
+		syncContextLedgerToolSurface();
+	});
+
+	pi.on("session_compact", async () => {
+		setManualToolsActive(true);
+	});
+
+	pi.on("session_shutdown", async () => {
+		manualToolsActive = false;
+		syncContextLedgerToolSurface();
 	});
 }
 
