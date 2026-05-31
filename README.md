@@ -1,7 +1,5 @@
 # Mekann Pi extension suite
 
-[![CI](https://github.com/Mekann2904/mekann/actions/workflows/ci.yml/badge.svg)](https://github.com/Mekann2904/mekann/actions/workflows/ci.yml)
-
 Mekann は、Pi coding agent の **自律的な作業**を安全に伸ばすための Pi extension suite です。
 
 このリポジトリでは、機能を次の単位で整理します。
