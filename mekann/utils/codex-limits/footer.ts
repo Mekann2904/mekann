@@ -10,7 +10,7 @@ export function renderCodexFooter(
 	},
 	theme: { fg(name: string, text: string): string },
 	width: number,
-	secondUsageLine: string | undefined,
+	usageLine: string | undefined,
 	thinkingLevel: string | undefined,
 ): string[] {
 	let pwd = ctx.sessionManager.getCwd();
@@ -21,7 +21,7 @@ export function renderCodexFooter(
 	const sessionName = ctx.sessionManager.getSessionName();
 	if (sessionName) pwd = `${pwd} • ${sessionName}`;
 
-	const pwdLine = alignFooterLeftRight(theme.fg("dim", pwd), secondUsageLine ? theme.fg("dim", secondUsageLine) : "", width, theme);
+	const pwdLine = alignFooterLeftRight(theme.fg("dim", pwd), usageLine ? theme.fg("dim", usageLine) : "", width, theme);
 	return [pwdLine, renderDefaultStatsLine(ctx, footerData, theme, width, thinkingLevel)];
 }
 
