@@ -1,6 +1,6 @@
 import type { SpawnParams } from "./types.js";
 
-export type SubagentExpectedValue =
+export type SubagentRoiCategory =
   | "parallel_search"
   | "fault_localization"
   | "candidate_generation"
@@ -27,7 +27,7 @@ export interface SpawnCostAdvice {
 const SOFT_HINT_AFTER_SPAWNS = 1;
 const STRONG_HINT_AFTER_SPAWNS = 4;
 
-const GOOD_EXPECTED_VALUES = new Set<SubagentExpectedValue>([
+const GOOD_ROI_CATEGORIES = new Set<SubagentRoiCategory>([
   "parallel_search",
   "fault_localization",
   "candidate_generation",
@@ -49,12 +49,12 @@ export function subagentBudgetHint(spawnCount: number): string | undefined {
 export function evaluateSpawnCost(input: SpawnCostPolicyInput): SpawnCostAdvice {
   const reasons: string[] = [];
   const p = input.params;
-  const expected = p.expected_value;
+  const roiCategory = p.roi_category;
   const justification = p.justification?.trim();
 
-  if (!expected) reasons.push("expected_value is missing");
-  else if (expected === "other") reasons.push("expected_value=other is not a strong ROI signal");
-  else if (!GOOD_EXPECTED_VALUES.has(expected)) reasons.push(`unknown expected_value=${expected}`);
+  if (!roiCategory) reasons.push("roi_category is missing");
+  else if (roiCategory === "other") reasons.push("roi_category=other is not a strong ROI signal");
+  else if (!GOOD_ROI_CATEGORIES.has(roiCategory)) reasons.push(`unknown roi_category=${roiCategory}`);
 
   if (!justification) reasons.push("justification is missing");
   if (input.sessionSpawnCount >= SOFT_HINT_AFTER_SPAWNS) reasons.push(`session already has ${input.sessionSpawnCount} prior subagent spawn(s)`);
@@ -62,10 +62,10 @@ export function evaluateSpawnCost(input: SpawnCostPolicyInput): SpawnCostAdvice 
 
   const text = `${p.task_name}\n${p.message}`.toLowerCase();
   if (/\b(simple|quick|small|one[- ]file|single[- ]file|just|only)\b/.test(text)) reasons.push("task wording looks small; direct tools may be cheaper");
-  if ((p.cost_intent ?? "standard") === "expensive" && expected !== "fault_localization" && expected !== "candidate_generation") reasons.push("cost_intent=expensive without a high-ROI expected_value");
+  if ((p.cost_intent ?? "standard") === "expensive" && roiCategory !== "fault_localization" && roiCategory !== "candidate_generation") reasons.push("cost_intent=expensive without a high-ROI roi_category");
 
   if (reasons.length === 0) return { level: "none", reasons: [] };
-  const strong = input.sessionSpawnCount >= STRONG_HINT_AFTER_SPAWNS || (!expected && !justification);
+  const strong = input.sessionSpawnCount >= STRONG_HINT_AFTER_SPAWNS || (!roiCategory && !justification);
   return {
     level: strong ? "warning" : "note",
     reasons,

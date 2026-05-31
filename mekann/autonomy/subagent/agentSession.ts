@@ -129,7 +129,7 @@ export class AgentSessionControl {
         authority: a.authority,
         authority_enforced: a.authorityEnforced,
         result_contract: a.resultContract,
-        expected_value: a.expectedValue,
+        roi_category: a.roiCategory,
         justification: a.justification,
         cost_intent: a.costIntent,
         subagent_type: a.subagentType,

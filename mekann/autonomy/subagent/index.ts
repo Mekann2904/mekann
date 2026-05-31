@@ -56,7 +56,7 @@ const AuthoritySchema = Type.Object({
   isolated_worktree: Type.Optional(Type.Union([Type.Literal("required"), Type.Literal("preferred"), Type.Literal("none")])),
 });
 
-const ExpectedValueSchema = Type.Union([
+const RoiCategorySchema = Type.Union([
   Type.Literal("parallel_search"),
   Type.Literal("fault_localization"),
   Type.Literal("candidate_generation"),
@@ -64,7 +64,10 @@ const ExpectedValueSchema = Type.Union([
   Type.Literal("verification"),
   Type.Literal("large_context_isolation"),
   Type.Literal("other"),
-]);
+], {
+  description:
+    'ROI category for spawning. Must be exactly one of: "parallel_search", "fault_localization", "candidate_generation", "fresh_review", "verification", "large_context_isolation", "other". Do not put prose here; put prose in justification.',
+});
 const CostIntentSchema = Type.Union([Type.Literal("cheap"), Type.Literal("standard"), Type.Literal("expensive")]);
 const SubagentTypeSchema = Type.Union([Type.Literal("explore"), Type.Literal("verify"), Type.Literal("review"), Type.Literal("patch")]);
 
@@ -116,7 +119,7 @@ const SpawnSchema = Type.Object({
   ),
   authority: Type.Optional(AuthoritySchema),
   result_contract: Type.Optional(Type.Union([Type.Literal("free_text"), Type.Literal("subagent_result_v1")])),
-  expected_value: Type.Optional(ExpectedValueSchema),
+  roi_category: Type.Optional(RoiCategorySchema),
   justification: Type.Optional(Type.String({ description: "Why this subagent is worth the extra child-loop cost." })),
   cost_intent: Type.Optional(CostIntentSchema),
   type: Type.Optional(SubagentTypeSchema),
@@ -188,7 +191,7 @@ function registerSubagentPromptProvider(): void {
           `Limits: ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents} running, ${MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents} queued by default. Extra spawns queue FIFO and remain visible to list_agents/wait_agent.`,
           "Before spawning, check that at least 3 ROI conditions hold: natural decomposition, independent evidence, parent-verifiable result, high failure cost, too many reads/tool calls for local context, comparable candidates, or explicit user request for parallel/multi-agent work.",
           "Do not spawn for short Q&A, simple summaries, single grep/read, 1-3 file cross-references, single-file edits, tightly coupled implementation, ambiguous requirements, verifier-less debate, or multiple agents reading the same files with the same goal.",
-          "Use expected_value and justification when spawning so the cost can be audited.",
+          "Use roi_category and justification when spawning so the cost can be audited. roi_category must be exactly one of: parallel_search | fault_localization | candidate_generation | fresh_review | verification | large_context_isolation | other. Put prose in justification, not roi_category.",
           "Spawn all genuinely independent tasks first, then wait_agent before summarizing or deciding next steps. Do not repeatedly wait by reflex; do non-overlapping local work while subagents run.",
           "Write subagent task messages in English.",
           "Request compact, structured, evidence/path-oriented results for the parent agent only.",
@@ -361,7 +364,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       "Give each subagent a stable, descriptive task_name such as research/api, research/db, fix/tests, review/security. Relative paths are resolved under /root.",
       "Write the message as a self-contained task brief in English: include goal, relevant files/commands, constraints, expected output format, and what not to change. Subagents may not know unstated parent context. English is required even if the user-facing conversation is in another language.",
       "Use fork_turns only when the recent conversation is genuinely needed by the child; otherwise include the necessary context directly in message.",
-      "Set expected_value and justification so subagent cost can be audited. Use type=explore for wide read-only investigation, verify for narrow checks, review for fresh review, and patch for bounded patch proposals.",
+      "Set roi_category to exactly one enum value: parallel_search | fault_localization | candidate_generation | fresh_review | verification | large_context_isolation | other. Put natural-language reasoning in justification, not roi_category. Use type=explore for wide read-only investigation, verify for narrow checks, review for fresh review, and patch for bounded patch proposals.",
       `Respect resource limits. By default, max running subagents = ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents} and max queued subagents = ${MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents}; excess accepted spawns return status=\"queued\" with queue_position/queued_ahead and start automatically when a slot opens.`,
       "Use list_agents or wait_agent to observe queued/running/completed status. close_agent can cancel queued agents. send_message can add pre-start context to queued agents; followup_task requires a running agent.",
       "If a duplicate task_name is rejected, list_agents to inspect whether an agent with that path is still open/running before choosing a different path or aborting it with close_agent.",
@@ -389,7 +392,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
           fork_turns: parseForkTurns(params.fork_turns),
           authority: params.authority,
           result_contract: params.result_contract,
-          expected_value: params.expected_value,
+          roi_category: params.roi_category,
           justification: params.justification,
           cost_intent: params.cost_intent,
           type: params.type,

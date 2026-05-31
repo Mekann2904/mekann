@@ -79,7 +79,7 @@ export interface AgentMetadata {
   authorityEnforced?: boolean;
   workspaceCwd?: string;
   resultContract?: ResultContract;
-  expectedValue?: SpawnParams["expected_value"];
+  roiCategory?: SpawnParams["roi_category"];
   justification?: string;
   costIntent?: SpawnParams["cost_intent"];
   subagentType?: SpawnParams["type"];
@@ -139,7 +139,7 @@ export interface SpawnParams {
   fork_turns?: number | "all" | "none";
   authority?: SubagentAuthority;
   result_contract?: ResultContract;
-  expected_value?: "parallel_search" | "fault_localization" | "candidate_generation" | "fresh_review" | "verification" | "large_context_isolation" | "other";
+  roi_category?: "parallel_search" | "fault_localization" | "candidate_generation" | "fresh_review" | "verification" | "large_context_isolation" | "other";
   justification?: string;
   cost_intent?: "cheap" | "standard" | "expensive";
   type?: "explore" | "verify" | "review" | "patch";
@@ -195,7 +195,7 @@ export interface ListResult {
     authority?: SubagentAuthority;
     authority_enforced?: boolean;
     result_contract?: ResultContract;
-    expected_value?: SpawnParams["expected_value"];
+    roi_category?: SpawnParams["roi_category"];
     justification?: string;
     cost_intent?: SpawnParams["cost_intent"];
     subagent_type?: SpawnParams["type"];

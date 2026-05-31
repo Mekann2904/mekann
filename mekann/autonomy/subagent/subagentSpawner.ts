@@ -92,7 +92,7 @@ export class SubagentSpawner {
         authorityEnforced: true,
         workspaceCwd: ctx.cwd,
         resultContract: params.result_contract,
-        expectedValue: params.expected_value,
+        roiCategory: params.roi_category,
         justification: params.justification,
         costIntent: params.cost_intent,
         subagentType: params.type,
@@ -257,7 +257,7 @@ export class SubagentSpawner {
         agentPath: canonicalPath, nickname: params.nickname, role: params.role, status: "pending_init", lastTaskMessage: params.message,
         createdAt: now, updatedAt: now, depth, open: true, cancellationRequested: false, display: undefined,
         authority, authorityEnforced: true, workspaceCwd: ctx.cwd, resultContract,
-        expectedValue: params.expected_value, justification: params.justification, costIntent: params.cost_intent, subagentType: params.type,
+        roiCategory: params.roi_category, justification: params.justification, costIntent: params.cost_intent, subagentType: params.type,
       }, reservation);
 
       const launchMessage = this.buildLaunchMessage({ externalNotice: undefined, preamble: undefined, volatileContextBlock, taskMessage: params.message, queuedMessages });
@@ -292,7 +292,7 @@ export class SubagentSpawner {
       agentId, sessionId: `external:${agentId}`, parentAgentId: callerPath === ROOT_PATH ? "root" : undefined, parentSessionId: "root",
       agentPath: canonicalPath, nickname: params.nickname, role: params.role, status: "pending_init", lastTaskMessage: params.message,
       createdAt: now, updatedAt: now, depth, open: true, cancellationRequested: false, display, authority, authorityEnforced: false, workspaceCwd: ctx.cwd, resultContract: params.result_contract,
-      expectedValue: params.expected_value, justification: params.justification, costIntent: params.cost_intent, subagentType: params.type,
+      roiCategory: params.roi_category, justification: params.justification, costIntent: params.cost_intent, subagentType: params.type,
     }, reservation as any);
 
     try {
