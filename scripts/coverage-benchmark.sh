@@ -10,7 +10,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORKSPACES=(
   "mekann/autonomy/subagent"
   "mekann/autonomy/goal"
-  "mekann/safety/plan-mode"
+  "mekann/safety/modes"
   "mekann/safety/sandbox"
   "mekann/context/output-gate"
   "mekann/core/prompt-core"

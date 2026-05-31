@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: mekann/safety/plan-mode
+        working-directory: mekann/safety/modes
     steps:
       - uses: actions/checkout@v4
 
@@ -40,7 +40,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: plan-mode-coverage
-          path: mekann/safety/plan-mode/coverage/
+          path: mekann/safety/modes/coverage/
           retention-days: 7
 
   sandbox-unit:

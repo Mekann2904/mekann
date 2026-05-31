@@ -10,7 +10,7 @@ PACKAGES=(
   mekann/core/prompt-core
   mekann/core/cache-friendly-prompt
   mekann/core/agent-guidelines
-  mekann/safety/plan-mode
+  mekann/safety/modes
   mekann/safety/sandbox
   mekann/autonomy/subagent
   mekann/utils/zip-repo
