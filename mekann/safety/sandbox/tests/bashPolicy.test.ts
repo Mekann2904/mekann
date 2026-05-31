@@ -1,5 +1,8 @@
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { isBashCommandAllowed, normalizeBashCommand, parseBashAllowlist } from "../bashPolicy.js";
+import { appendWorkspaceBashAllowlistCommand, getBashAllowlist, getBashMode, isBashCommandAllowed, normalizeBashCommand, parseBashAllowlist, setWorkspaceBashMode } from "../bashPolicy.js";
 
 describe("bash policy helpers", () => {
 	it("parses newline allowlist", () => {
@@ -15,4 +18,21 @@ describe("bash policy helpers", () => {
 		expect(isBashCommandAllowed("npm test -- --watch", ["npm test"])).toBe(false);
 	});
 
+	it("returns configured bash mode and falls back for invalid values", () => {
+		const cwd = mkdtempSync(join(tmpdir(), "bash-policy-"));
+		setWorkspaceBashMode(cwd, "ask");
+		expect(getBashMode(cwd)).toBe("ask");
+
+		writeFileSync(join(cwd, ".pi", "mekann.json"), JSON.stringify({ version: 1, features: { sandbox: { bashMode: "invalid" } } }));
+		expect(getBashMode(cwd)).toBe("sandboxed");
+	});
+
+	it("persists unique normalized allowlist commands", () => {
+		const cwd = mkdtempSync(join(tmpdir(), "bash-allowlist-"));
+		appendWorkspaceBashAllowlistCommand(cwd, " npm   test ");
+		appendWorkspaceBashAllowlistCommand(cwd, "npm test");
+
+		expect(getBashAllowlist(cwd)).toEqual(["npm test"]);
+		expect(readFileSync(join(cwd, ".pi", "mekann.json"), "utf8")).toContain("npm test");
+	});
 });
