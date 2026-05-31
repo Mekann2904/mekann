@@ -77,9 +77,9 @@ export class AgentSessionControl {
 
   async followupTask(params: { target: string; message: string }, ctx: ExtensionContext): Promise<{ queued: boolean; triggered: boolean }> {
     const { callerPath, targetPath, agent, childSession } = this.resolveTargetSession(params.target, ctx);
-    if (targetPath === ROOT_PATH) throw new Error("Cannot send followup_task to the root agent.");
+    if (targetPath === ROOT_PATH) throw new Error("Cannot send message_agent mode=task to the root agent.");
     if (!agent.open || isTerminalStatus(agent.status)) throw new Error(`Cannot follow up a terminal agent (status: ${agent.status}).`);
-    if (agent.status === "queued") throw new Error("Agent is queued and cannot receive followup_task until it is running. Use send_message to add pre-start context, or wait_agent until the agent starts.");
+    if (agent.status === "queued") throw new Error("Agent is queued and cannot receive message_agent mode=task until it is running. Use message_agent mode=note to add pre-start context, or wait_agent until the agent starts.");
 
     const message = truncateText(params.message, MESSAGE_INJECTION_MAX_CHARS);
     this.enqueueToMailbox(this.getCallerAgentId(callerPath), callerPath, targetPath, message, "followup");

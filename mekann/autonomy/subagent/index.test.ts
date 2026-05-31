@@ -1148,8 +1148,8 @@ describe("followupTask terminal status rejection", () => {
       undefined, undefined, baseCtx,
     );
 
-    // Access the AgentControl via the followup_task tool's closure
-    const followupTool = mockApi._registeredTools.find((t) => t.name === "followup_task")!;
+    // Access the AgentControl via the message_agent tool's closure
+    const followupTool = mockApi._registeredTools.find((t) => t.name === "message_agent")!;
     return { mockApi, followupTool };
   }
 
@@ -1378,7 +1378,7 @@ describe("AgentControl", () => {
       expect(control.list({}).agents.find((a: any) => a.agent_path === "/root/task2")?.status).toBe("queued");
 
       await expect(control.sendMessage({ target: "task2", message: "extra context" }, baseCtx)).resolves.toEqual({ delivered: true });
-      await expect(control.followupTask({ target: "task2", message: "do more" }, baseCtx)).rejects.toThrow("Use send_message to add pre-start context");
+      await expect(control.followupTask({ target: "task2", message: "do more" }, baseCtx)).rejects.toThrow("Use message_agent mode=note to add pre-start context");
 
       await control.close({ target: "task2" }, baseCtx);
       expect(control.list({}).agents.find((a: any) => a.agent_path === "/root/task2")?.status).toBe("shutdown");
@@ -1752,7 +1752,7 @@ describe("AgentControl", () => {
           { target: "/root", message: "hello" },
           baseCtx,
         ),
-      ).rejects.toThrow("Cannot send followup_task to the root agent");
+      ).rejects.toThrow("Cannot send message_agent mode=task to the root agent");
     });
 
     it("queues followup when no child session exists", async () => {
@@ -3027,7 +3027,7 @@ describe("index.ts parseForkTurns branches", () => {
     expect(result.content[0].text).toContain("Do something specific");
   });
 
-  it("followup_task with triggered=false (streaming) shows 'queued'", async () => {
+  it("message_agent mode=task with triggered=false (streaming) shows 'queued'", async () => {
     // To get triggered=false, the child session must be streaming
     const mock = await setupExtension();
     const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
@@ -3099,9 +3099,9 @@ describe("index.ts parseForkTurns branches", () => {
     const waitResult = await waitTool.execute(
       "id1", { timeout_ms: 50 }, undefined, undefined, baseCtx,
     );
-    // Should have mailbox items or events (the send_message enqueued to /root/task1, not /root)
+    // Should have mailbox items or events (the message_agent mode=note enqueued to /root/task1, not /root)
     // Actually, since the caller is /root, mailbox items sent TO /root are what we get
-    // send_message goes TO task1, not to root, so root won't see it
+    // message_agent mode=note goes TO task1, not to root, so root won't see it
     // But we should see lifecycle events from the spawns
     // The spawn_end events have agentPath = /root/task1, /root/task2 which don't match /root
     // However spawn_begin events are for all paths
@@ -3348,7 +3348,7 @@ describe("index.ts parseForkTurns branches", () => {
     // which has no specific agentPath filter... actually it does.
 
     // Let's just directly add an event for /root
-    // We can get the control via the followup_task tool's handler
+    // We can get the control via the message_agent tool's handler
     // Actually, we can just add another spawn which publishes spawn_begin/spawn_end events
     // Those events are at the spawned agent's path, not /root.
 
@@ -3679,7 +3679,7 @@ describe("AgentControl branch coverage", () => {
 
     await expect(
       control.followupTask({ target: "/root", message: "hi" }, baseCtx),
-    ).rejects.toThrow("Cannot send followup_task to the root agent");
+    ).rejects.toThrow("Cannot send message_agent mode=task to the root agent");
   });
 
   it("followupTask: with childSession that is streaming → queued not triggered", async () => {

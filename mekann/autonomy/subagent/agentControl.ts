@@ -258,7 +258,7 @@ export class AgentControl {
     // For read_only and propose_patch, only allow non-destructive tools.
     const readOnlyPatterns = [
       /^read$/, /^grep$/, /^glob$/, /^ls$/, /^list$/, /^search$/, /^rg$/, /^find$/,
-      /^get_goal$/, /^list_agents$/, /^wait_agent$/, /^message_agent$/,
+      /^get_goal$/, /^list_agents$/, /^wait_agent$/,
       /^codex_web_search$/, /^search_tool_outputs$/, /^search_context_events$/,
       /^summarize_session_context$/, /^request_elevation$/,
     ];
