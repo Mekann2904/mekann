@@ -30,6 +30,8 @@ import {
 } from "./state.js";
 import { GoalRuntime } from "./runtime.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
+import { featureStringValue } from "../../settings/enabled.js";
+import { setToolsActive } from "../../settings/toolSurface.js";
 import { renderWidget, renderGoalPolicy, renderGoalObjectiveContext, renderGoalRuntimeState } from "./prompts.js";
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import { registerGoalCommand } from "./command.js";
@@ -42,6 +44,7 @@ import { MODE_STATUS_EVENT } from "../../safety/policy-core/modes.js";
 // ---------------------------------------------------------------------------
 
 const CUSTOM_TYPE = "goal-state";
+const GOAL_TOOL_NAMES = ["get_goal", "create_goal", "update_goal"] as const;
 void MODE_STATUS_EVENT;
 
 // ---------------------------------------------------------------------------
@@ -77,7 +80,22 @@ export default function goalExtension(pi: ExtensionAPI): void {
     details: {},
   };
 
+  function shouldExposeGoalTools(): boolean {
+    const surface = featureStringValue("goal", "toolSurface", "slash");
+    if (surface === "always") return true;
+    if (surface === "active") {
+      const goal = store?.getGoal();
+      return goal?.status === "active";
+    }
+    return false;
+  }
+
+  function syncGoalToolSurface(): void {
+    setToolsActive(pi, GOAL_TOOL_NAMES, shouldExposeGoalTools());
+  }
+
   function updateWidget(ctx: ExtensionContext): void {
+    syncGoalToolSurface();
     if (!ctx.hasUI) return;
     const goal = store?.getGoal() ?? null;
     const lines = renderWidget(goal);
@@ -160,6 +178,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
     runtime?.onSessionShutdown();
     store = null;
     runtime = null;
+    syncGoalToolSurface();
   });
 
   // ─── Agent lifecycle ──────────────────────────────────────────

@@ -41,6 +41,7 @@ export async function handleCommand(
 	deps: {
 		jsonlPath: (cwd: string) => string;
 		mdFilePath: (cwd: string) => string;
+		onSurfaceChange?: () => void;
 	},
 ): Promise<void> {
 	const parts = (args ?? "").trim().split(/\s+/);
@@ -50,11 +51,13 @@ export async function handleCommand(
 		case "on": {
 			const purpose = parts.slice(1).join(" ").trim();
 			activateAutoresearch(ctx, pi, store, purpose, deps.mdFilePath);
+			deps.onSurfaceChange?.();
 			safeEmitMode(pi, true, purpose || undefined);
 			break;
 		}
 		case "off": {
 			store.active = false; store.autoLoop = false; store.loopPromptQueued = false;
+			deps.onSurfaceChange?.();
 			store.updateWidget(ctx);
 			ctx.ui.notify("autoresearch モードを無効にしました。明示的に /autoresearch on するまで自動再開しません。", "info");
 			safeEmitMode(pi, false);
@@ -126,6 +129,7 @@ export async function handleCommand(
 			} catch {}
 			store.state = freshState(); store.active = false; store.autoLoop = false; store.runningExperiment = null;
 			store.runResultMap.clear(); store.resetLoopProgress();
+			deps.onSurfaceChange?.();
 			store.updateWidget(ctx);
 			ctx.ui.notify(clearAll ? "autoresearch の全データをクリアしました" : "autoresearch の current state をクリアしました", "info");
 			if (clearWarnings.length > 0) {
@@ -162,6 +166,7 @@ export async function handleCommand(
 		}
 		default: {
 			activateAutoresearch(ctx, pi, store, (args ?? "").trim(), deps.mdFilePath);
+			deps.onSurfaceChange?.();
 			safeEmitMode(pi, true, (args ?? "").trim() || undefined);
 			break;
 		}

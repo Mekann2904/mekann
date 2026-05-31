@@ -111,6 +111,24 @@ describe("mekann integrated extension", () => {
 		}
 	});
 
+	it("does not call action methods while goal/autoresearch extensions are loading", async () => {
+		const makePi = () => ({
+			registerFlag() {},
+			getFlag() { return true; },
+			appendEntry() {},
+			on() {},
+			registerCommand() {},
+			registerTool() {},
+			events: { emit() {} },
+			getActiveTools() { throw new Error("action method called during extension loading"); },
+			setActiveTools() { throw new Error("action method called during extension loading"); },
+		});
+		const goal = await import("./autonomy/goal/index.js");
+		const autoresearch = await import("./autonomy/autoresearch/index.js");
+		expect(() => goal.default(makePi() as any)).not.toThrow();
+		expect(() => autoresearch.default(makePi() as any)).not.toThrow();
+	});
+
 	it("keeps command ownership separated across modules", () => {
 		const owners = new Map<string, string>();
 		for (const [rel, expected] of Object.entries(EXPECTED_COMMANDS_BY_MODULE)) {

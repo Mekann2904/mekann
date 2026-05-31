@@ -118,6 +118,8 @@ import {
 	type ScaleRuntimeStore,
 } from "./scale.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
+import { featureStringValue } from "../../settings/enabled.js";
+import { setToolsActive } from "../../settings/toolSurface.js";
 
 
 // ---------------------------------------------------------------------------
@@ -126,6 +128,26 @@ import { registerPromptProvider } from "../../core/prompt-core/index.js";
 
 const JSONL_FILE = "autoresearch.jsonl";
 const MD_FILE = "autoresearch.md";
+const AUTORESEARCH_TOOL_NAMES = [
+	"autoresearch_evaluate_query",
+	"autoresearch_init",
+	"autoresearch_run",
+	"autoresearch_log",
+	"autoresearch_plan",
+	"autoresearch_approve",
+	"autoresearch_candidate_escrow",
+	"autoresearch_list_candidates",
+	"autoresearch_show_candidate",
+	"autoresearch_reject_candidate",
+	"autoresearch_apply_candidate",
+	"autoresearch_suggest_subagents",
+	"autoresearch_apply_candidate_isolated",
+	"autoresearch_scale_next",
+	"autoresearch_scale_complete_action",
+	"autoresearch_scale_ingest",
+	"autoresearch_scale_status",
+	"autoresearch_run_contract",
+] as const;
 
 // ---------------------------------------------------------------------------
 // Path helpers (shared with tool handlers via deps)
@@ -327,6 +349,16 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	const store = new SessionStore();
 	const scaleStore: ScaleRuntimeStore = { active: false, promptQueued: false };
 
+	function shouldExposeAutoresearchTools(): boolean {
+		const surface = featureStringValue("autoresearch", "toolSurface", "active");
+		if (surface === "always") return true;
+		return store.active || scaleStore.active;
+	}
+
+	function syncAutoresearchToolSurface(): void {
+		setToolsActive(pi, AUTORESEARCH_TOOL_NAMES, shouldExposeAutoresearchTools());
+	}
+
 	// ─── session_start ─────────────────────────────────────────
 
 	pi.on("session_start", async (_event, ctx) => {
@@ -398,6 +430,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		const scaleState = readScaleState(ctx.cwd);
 		scaleStore.active = scaleState?.status === "running" || scaleState?.status === "draining";
 		scaleStore.promptQueued = false;
+		syncAutoresearchToolSurface();
 		store.updateWidget(ctx);
 	});
 
@@ -407,18 +440,20 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		id: "autoresearch",
 		getFragments(ctx) {
 			if (!store.active) {
-				return [{
-					id: "autoresearch:inactive-policy",
-					source: "autoresearch",
-					kind: "autoresearch_policy",
-					stability: "stable",
-					scope: "mode",
-					priority: 400,
-					version: "v1",
-					cacheIntent: "prefer_cache",
-					metadata: { volatileTermsArePolicyReferences: true },
-					content: SYSTEM_PROMPT_INACTIVE,
-				}];
+				return featureStringValue("autoresearch", "toolSurface", "active") === "always"
+					? [{
+						id: "autoresearch:inactive-policy",
+						source: "autoresearch",
+						kind: "autoresearch_policy",
+						stability: "stable",
+						scope: "mode",
+						priority: 400,
+						version: "v1",
+						cacheIntent: "prefer_cache",
+						metadata: { volatileTermsArePolicyReferences: true },
+						content: SYSTEM_PROMPT_INACTIVE,
+					}]
+					: [];
 			}
 			return [
 				{
@@ -512,7 +547,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("autoresearch", {
 		description: "autoresearch モードの管理(on / off / status / clear)",
 		handler: async (args, ctx) => {
-			await handleCommand(args, ctx, pi, store, toolDeps);
+			await handleCommand(args, ctx, pi, store, { ...toolDeps, onSurfaceChange: syncAutoresearchToolSurface });
 		},
 	});
 
@@ -531,6 +566,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					const s = startScale(ctx.cwd);
 					scaleStore.active = true;
 					scaleStore.promptQueued = false;
+					syncAutoresearchToolSurface();
 					store.updateWidget(ctx);
 					ctx.ui.notify(`autoresearch-scale を開始しました: generation=${s.generation}`, "info");
 					const action = claimNextAction(ctx.cwd);
@@ -544,6 +580,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 					const s = requestScaleStop(ctx.cwd);
 					scaleStore.active = s.status === "draining";
 					scaleStore.promptQueued = false;
+					syncAutoresearchToolSurface();
 					ctx.ui.notify(s.status === "draining" ? "autoresearch-scale は graceful stopping です" : "autoresearch-scale を停止しました", "info");
 					return;
 				}
@@ -555,6 +592,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 				store.autoLoop = false;
 				scaleStore.active = false;
 				scaleStore.promptQueued = false;
+				syncAutoresearchToolSurface();
 				store.updateWidget(ctx);
 				let msg = `[OK] scaling plan draft を生成しました: ${planPath(ctx.cwd)}\n`;
 				msg += `判定: ${plan.decision}\n主指標: ${plan.contract.evaluation.primaryMetric.name} (${plan.contract.evaluation.primaryMetric.direction})\n`;
