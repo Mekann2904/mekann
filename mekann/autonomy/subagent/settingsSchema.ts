@@ -3,6 +3,7 @@ import type { FeatureSettingsSchema, SettingSchema } from "../../settings/types.
 
 export type SubagentDisplaySetting = "none" | "external-pi" | "external-split";
 export const subagentDisplayValues = ["none", "external-pi", "external-split"] as const;
+export const subagentReasoningEffortValues = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
 
 function num(key: string, category: string, defaultValue: number, min: number, max: number, description: string): SettingSchema<number> {
   return { key, type: "number", defaultValue, description, category, scopes: ["global", "workspace"], restartRequired: true, validate(value) {
@@ -35,6 +36,8 @@ export const subagentSettingsSchema: FeatureSettingsSchema = {
     num("maxWaitTimeoutMs", "Timeouts", MEKANN_SUBAGENT_DEFAULTS.maxWaitTimeoutMs, 1000, 600000, "wait timeout の上限 ms。"),
     { key: "display", type: "enum", defaultValue: MEKANN_SUBAGENT_DEFAULTS.display, description: "subagent 表示方法。", category: "Display", scopes: ["global", "workspace"], restartRequired: true, enumValues: [...subagentDisplayValues], validate(value) { return subagentDisplayValues.includes(value as SubagentDisplaySetting) ? [] : ["display は none | external-pi | external-split のいずれかです"]; } },
     bool("allowUnsafeExternalPi", "Display", MEKANN_SUBAGENT_DEFAULTS.allowUnsafeExternalPi, "external-pi/external-split で独立 Pi process を起動することを許可します。"),
+    bool("allowNestedSubagents", "Capacity", MEKANN_SUBAGENT_DEFAULTS.allowNestedSubagents, "subagent からさらに subagent を spawn することを許可します。通常は cost storm 防止のため false にします。"),
+    { key: "defaultReasoningEffort", type: "enum", defaultValue: MEKANN_SUBAGENT_DEFAULTS.defaultReasoningEffort, description: "spawn_agent.reasoning_effort 未指定時の subagent reasoning effort。", category: "Cost", scopes: ["global", "workspace"], restartRequired: true, enumValues: [...subagentReasoningEffortValues], validate(value) { return subagentReasoningEffortValues.includes(value as any) ? [] : ["defaultReasoningEffort が不正です"]; } },
     str("logDir", "Display", MEKANN_SUBAGENT_DEFAULTS.logDir, "subagent display log directory。空文字なら default location を使います。"),
     str("kittenBin", "Display", MEKANN_SUBAGENT_DEFAULTS.kittenBin, "Kitty remote control に使う kitten binary path/name。"),
     str("piCommand", "Display", MEKANN_SUBAGENT_DEFAULTS.piCommand, "external-pi/external-split で child Pi process を起動する shell command。"),

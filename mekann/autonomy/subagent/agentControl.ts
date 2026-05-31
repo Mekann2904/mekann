@@ -38,12 +38,13 @@ import { ApplyQueue } from "./applyQueue.js";
 import { SubagentLifecycle } from "./subagentLifecycle.js";
 import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
 import { featureConfig } from "../../settings/featureConfig.js";
+import { evaluateSpawnCost } from "./subagentCostPolicy.js";
 
 // ─── Default config ──────────────────────────────────────────────
 
 // Includes the root agent. Therefore 3 open agents = root + max 2 subagents.
 const DEFAULT_MAX_AGENTS = MEKANN_SUBAGENT_DEFAULTS.maxOpenAgents;
-const HARD_MAX_OPEN_AGENTS = MEKANN_SUBAGENT_DEFAULTS.maxOpenAgents;
+const HARD_MAX_OPEN_AGENTS = 8;
 const DEFAULT_MAX_DEPTH = MEKANN_SUBAGENT_DEFAULTS.maxDepth;
 const DEFAULT_MAX_QUEUED_SUBAGENTS = MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents;
 const DEFAULT_WAIT_TIMEOUT_MS = MEKANN_SUBAGENT_DEFAULTS.defaultWaitTimeoutMs;
@@ -78,6 +79,8 @@ export interface AgentControlOptions {
   allowUnsafeExternalPi?: boolean;
   maxQueuedSubagents?: number;
   externalPiSlots?: number;
+  allowNestedSubagents?: boolean;
+  defaultReasoningEffort?: string;
 }
 
 // ─── Agent control ───────────────────────────────────────────────
@@ -103,6 +106,9 @@ export class AgentControl {
   private allowUnsafeExternalPi: boolean;
   private maxQueuedSubagents: number;
   private maxExternalPiSubagents: number;
+  private allowNestedSubagents: boolean;
+  private defaultReasoningEffort: string;
+  private sessionSpawnCount = 0;
   readonly resultStore: SubagentResultStore;
   private readonly lifecycle: SubagentLifecycle;
   private drainQueueOnClose = true;
@@ -132,7 +138,9 @@ export class AgentControl {
     this.helloTimeoutMs = options.helloTimeoutMs ?? 10_000;
     this.allowUnsafeExternalPi = options.allowUnsafeExternalPi ?? false;
     this.maxQueuedSubagents = options.maxQueuedSubagents ?? DEFAULT_MAX_QUEUED_SUBAGENTS;
-    this.maxExternalPiSubagents = options.externalPiSlots ?? MEKANN_SUBAGENT_DEFAULTS.externalPiSlots;
+    this.maxExternalPiSubagents = options.externalPiSlots ?? (this.allowUnsafeExternalPi && this.displayMode !== "none" ? 1 : MEKANN_SUBAGENT_DEFAULTS.externalPiSlots);
+    this.allowNestedSubagents = options.allowNestedSubagents ?? MEKANN_SUBAGENT_DEFAULTS.allowNestedSubagents;
+    this.defaultReasoningEffort = options.defaultReasoningEffort ?? MEKANN_SUBAGENT_DEFAULTS.defaultReasoningEffort;
     this.lifecycle = new SubagentLifecycle(this.registry, this.mailbox, process.cwd());
     this.runtimes = this.lifecycle.runtimes;
     this.childSessions = this.lifecycle.childSessions;
@@ -186,7 +194,7 @@ export class AgentControl {
   // ─── Helper: resolve model / thinking from params ─────────────────
 
   private resolveThinkingLevel(reasoningEffort: string | undefined): ThinkingLevel | undefined {
-    return (reasoningEffort ?? this.pi.getThinkingLevel?.()) as ThinkingLevel | undefined;
+    return (reasoningEffort ?? this.defaultReasoningEffort) as ThinkingLevel | undefined;
   }
 
   private async resolveModel(modelOverride: string | undefined, ctx: ExtensionContext) {
@@ -252,7 +260,8 @@ export class AgentControl {
   }
 
   private filterToolsByAuthority(tools: any[], authority: SubagentAuthority): any[] {
-    if (authority.mode === "edit") return tools;
+    const withoutNested = this.allowNestedSubagents ? tools : tools.filter((t: any) => (t.name ?? "") !== "spawn_agent");
+    if (authority.mode === "edit") return withoutNested;
     // For read_only and propose_patch, only allow non-destructive tools.
     const readOnlyPatterns = [
       /^read$/, /^grep$/, /^glob$/, /^ls$/, /^list$/, /^search$/, /^rg$/, /^find$/,
@@ -260,8 +269,9 @@ export class AgentControl {
       /^codex_web_search$/, /^search_tool_outputs$/, /^search_context_events$/,
       /^summarize_session_context$/, /^request_elevation$/,
     ];
-    return tools.filter((t: any) => {
+    return withoutNested.filter((t: any) => {
       const name: string = t.name ?? "";
+      if (!this.allowNestedSubagents && name === "spawn_agent") return false;
       return readOnlyPatterns.some((pat) => pat.test(name));
     });
   }
@@ -295,17 +305,46 @@ export class AgentControl {
     };
   }
 
+  private applySubagentTypeDefaults(params: SpawnParams): SpawnParams {
+    if (!params.type) return params;
+    const mode = params.type === "patch" ? "propose_patch" : "read_only";
+    const typeInstruction: Record<string, string> = {
+      explore: "Subagent type: explore. Wide-net read-only investigation; return one distilled answer with path/line evidence. Stop as soon as you can answer.",
+      verify: "Subagent type: verify. Narrow check; return VERIFIED / NOT VERIFIED / INCONCLUSIVE with evidence. Do not expand scope.",
+      review: "Subagent type: review. Fresh review; look for concrete risks, missed cases, or evidence gaps. Do not make changes.",
+      patch: "Subagent type: patch. Produce a bounded patch proposal only within the requested scope; include validation suggestions.",
+    };
+    return {
+      ...params,
+      authority: params.authority ?? { mode },
+      result_contract: params.result_contract ?? (params.type === "patch" ? "subagent_result_v1" : params.result_contract),
+      message: `${typeInstruction[params.type]}\n\n${params.message}`,
+    };
+  }
+
   async spawn(
     params: SpawnParams,
     ctx: ExtensionContext,
   ): Promise<SpawnResult> {
-    return this.lifecycle.spawnDelegation({
-      params,
+    const effectiveParams = this.applySubagentTypeDefaults(params);
+    const advice = evaluateSpawnCost({
+      params: effectiveParams,
+      sessionSpawnCount: this.sessionSpawnCount,
+      openSubagents: Math.max(0, this.registry.list().filter((a) => a.open).length - 1),
+      queuedSubagents: this.registry.list().filter((a) => a.status === "queued").length,
+    });
+    const result = await this.lifecycle.spawnDelegation({
+      params: effectiveParams,
       ctx,
       callerPath: this.resolveCallerPath(ctx),
       agentId: nextAgentId(),
       adapters: this.lifecycleAdapters(),
     });
+    this.sessionSpawnCount++;
+    if (advice.level !== "none" && advice.message) {
+      result.cost_advice = { level: advice.level, message: advice.message, reasons: advice.reasons };
+    }
+    return result;
   }
 
   private getCallerAgentId(callerPath: string): string {

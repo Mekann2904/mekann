@@ -30,23 +30,27 @@ export interface MekannSubagentConfigDefaults {
 	piCommand: string;
 	maxPatchBytes: number;
 	externalPiSlots: number;
+	allowNestedSubagents: boolean;
+	defaultReasoningEffort: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 }
 
 export const MEKANN_SUBAGENT_DEFAULTS: MekannSubagentConfigDefaults = {
-	maxSubagents: 2,
-	maxOpenAgents: 3,
-	maxQueuedSubagents: 8,
+	maxSubagents: 1,
+	maxOpenAgents: 2,
+	maxQueuedSubagents: 2,
 	maxDepth: 2,
 	defaultWaitTimeoutMs: 30_000,
 	maxWaitTimeoutMs: 600_000,
 	minWaitTimeoutMs: 1_000,
-	display: "external-split",
-	allowUnsafeExternalPi: true,
+	display: "none",
+	allowUnsafeExternalPi: false,
 	logDir: "",
 	kittenBin: "kitten",
 	piCommand: "pi",
 	maxPatchBytes: 50_000,
-	externalPiSlots: 2,
+	externalPiSlots: 0,
+	allowNestedSubagents: false,
+	defaultReasoningEffort: "low",
 };
 
 export const MEKANN_SANDBOX_DEFAULTS = {

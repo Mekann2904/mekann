@@ -56,6 +56,18 @@ const AuthoritySchema = Type.Object({
   isolated_worktree: Type.Optional(Type.Union([Type.Literal("required"), Type.Literal("preferred"), Type.Literal("none")])),
 });
 
+const ExpectedValueSchema = Type.Union([
+  Type.Literal("parallel_search"),
+  Type.Literal("fault_localization"),
+  Type.Literal("candidate_generation"),
+  Type.Literal("fresh_review"),
+  Type.Literal("verification"),
+  Type.Literal("large_context_isolation"),
+  Type.Literal("other"),
+]);
+const CostIntentSchema = Type.Union([Type.Literal("cheap"), Type.Literal("standard"), Type.Literal("expensive")]);
+const SubagentTypeSchema = Type.Union([Type.Literal("explore"), Type.Literal("verify"), Type.Literal("review"), Type.Literal("patch")]);
+
 const SpawnSchema = Type.Object({
   task_name: Type.String({
     description:
@@ -104,6 +116,10 @@ const SpawnSchema = Type.Object({
   ),
   authority: Type.Optional(AuthoritySchema),
   result_contract: Type.Optional(Type.Union([Type.Literal("free_text"), Type.Literal("subagent_result_v1")])),
+  expected_value: Type.Optional(ExpectedValueSchema),
+  justification: Type.Optional(Type.String({ description: "Why this subagent is worth the extra child-loop cost." })),
+  cost_intent: Type.Optional(CostIntentSchema),
+  type: Type.Optional(SubagentTypeSchema),
 });
 
 const SendMessageSchema = Type.Object({
@@ -168,10 +184,12 @@ function registerSubagentPromptProvider(): void {
         version: "v2",
         cacheIntent: "prefer_cache",
         content: [
-          "Use subagents for independent parallel work, multi-area investigations, comparisons, research, or review.",
-          `Limits: ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents} running, ${MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents} queued. Extra spawns queue FIFO and remain visible to list_agents/wait_agent.`,
-          "Spawn all independent tasks first, then wait_agent before summarizing or deciding next steps.",
-          "Do not use subagents for trivial one-file edits or tightly coordinated work.",
+          "Prefer direct tools. Use subagents only when they buy independent exploration, candidate diversity, fresh review, verification, or large-context isolation.",
+          `Limits: ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents} running, ${MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents} queued by default. Extra spawns queue FIFO and remain visible to list_agents/wait_agent.`,
+          "Before spawning, check that at least 3 ROI conditions hold: natural decomposition, independent evidence, parent-verifiable result, high failure cost, too many reads/tool calls for local context, comparable candidates, or explicit user request for parallel/multi-agent work.",
+          "Do not spawn for short Q&A, simple summaries, single grep/read, 1-3 file cross-references, single-file edits, tightly coupled implementation, ambiguous requirements, verifier-less debate, or multiple agents reading the same files with the same goal.",
+          "Use expected_value and justification when spawning so the cost can be audited.",
+          "Spawn all genuinely independent tasks first, then wait_agent before summarizing or deciding next steps. Do not repeatedly wait by reflex; do non-overlapping local work while subagents run.",
           "Write subagent task messages in English.",
           "Request compact, structured, evidence/path-oriented results for the parent agent only.",
           "Do not request progress reports, greetings, apologies, narration, or polished prose.",
@@ -239,8 +257,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       );
       const configuredMaxOpenAgents = Number(getFlagOrSetting("subagent-max-open-agents", "maxOpenAgents", String(maxSubagents + 1))) || maxSubagents + 1;
       const maxAgents = Math.max(configuredMaxOpenAgents, maxSubagents + 1);
-      const maxQueuedDefault = String(maxSubagents * 4);
-      const maxQueuedSubagents = Math.max(Number(getFlagOrSetting("subagent-max-queued-agents", "maxQueuedSubagents", maxQueuedDefault)) || maxSubagents * 4, 0);
+      const maxQueuedDefault = String(MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents);
+      const maxQueuedSubagents = Math.max(Number(getFlagOrSetting("subagent-max-queued-agents", "maxQueuedSubagents", maxQueuedDefault)) || MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents, 0);
       const maxDepthDefault = String(MEKANN_SUBAGENT_DEFAULTS.maxDepth);
       const maxDepth = Number(getFlagOrSetting("subagent-max-depth", "maxDepth", maxDepthDefault)) || MEKANN_SUBAGENT_DEFAULTS.maxDepth;
       const rawDefaultWait = getFlagOrSetting<string>("subagent-default-wait-timeout-ms", "defaultWaitTimeoutMs");
@@ -248,8 +266,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       const defaultWait = parsedDefaultWait !== undefined && Number.isFinite(parsedDefaultWait) ? parsedDefaultWait : undefined;
       const minWaitDefault = String(MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs);
       const minWait = Number(getFlagOrSetting("subagent-min-wait-timeout-ms", "minWaitTimeoutMs", minWaitDefault)) || MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs;
-      const rawDisplayFlag = getFlagOrSetting<string>("subagent-display", "display", "external-split");
-      const displayFlag = String(rawDisplayFlag ?? "external-split");
+      const rawDisplayFlag = getFlagOrSetting<string>("subagent-display", "display", MEKANN_SUBAGENT_DEFAULTS.display);
+      const displayFlag = String(rawDisplayFlag ?? MEKANN_SUBAGENT_DEFAULTS.display);
       const displayMap: Record<string, "none" | "kitty-pi" | "kitty-split"> = { none: "none", "external-pi": "kitty-pi", "external-split": "kitty-split" };
       const requestedDisplayMode = displayMap[displayFlag] ?? "none";
       const displayMode = requestedDisplayMode.startsWith("kitty-") && !process.env.KITTY_WINDOW_ID ? "none" : requestedDisplayMode;
@@ -265,6 +283,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       const piCommand = String(getFlagOrSetting<string>("subagent-pi-command", "pi-command", MEKANN_SUBAGENT_DEFAULTS.piCommand) ?? MEKANN_SUBAGENT_DEFAULTS.piCommand) || MEKANN_SUBAGENT_DEFAULTS.piCommand;
       const extensionPath = String(getFlagOrSetting<string>("subagent-extension-path", "extensionPath", extensionPathDefault) ?? extensionPathDefault).trim();
       const externalPiSlots = Number(getFlagOrSetting("subagent-external-pi-slots", "externalPiSlots", String(MEKANN_SUBAGENT_DEFAULTS.externalPiSlots))) || MEKANN_SUBAGENT_DEFAULTS.externalPiSlots;
+      const allowNestedSubagents = /^(1|true|yes|on)$/i.test(String(getFlagOrSetting<string>("subagent-allow-nested", "allowNestedSubagents", String(MEKANN_SUBAGENT_DEFAULTS.allowNestedSubagents)) ?? String(MEKANN_SUBAGENT_DEFAULTS.allowNestedSubagents)));
+      const defaultReasoningEffort = String(getFlagOrSetting<string>("subagent-default-reasoning-effort", "defaultReasoningEffort", MEKANN_SUBAGENT_DEFAULTS.defaultReasoningEffort) ?? MEKANN_SUBAGENT_DEFAULTS.defaultReasoningEffort);
 
       control = new AgentControl(pi, maxAgents, maxDepth, defaultWait, minWait, {
         displayMode,
@@ -275,6 +295,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
         allowUnsafeExternalPi,
         maxQueuedSubagents,
         externalPiSlots,
+        allowNestedSubagents,
+        defaultReasoningEffort,
       });
     }
     return control;
@@ -326,16 +348,18 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       `Spawn a new subagent that runs asynchronously. Returns immediately with the agent ID and path. Up to ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents} subagents run concurrently by default; excess spawns are queued FIFO up to ${MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents} queued subagents. Use wait_agent to get results.`,
     promptSnippet: "Run an independent task in a background subagent and later collect its result",
     promptGuidelines: [
-      "Subagents are background worker agents. Use them proactively when the user asks for parallel work, multi-agent work, independent investigations, or when a task naturally splits into separate areas that can be done concurrently.",
-      "Good subagent use cases: repo-wide research across multiple components, comparing independent approaches, splitting investigation/fix/test work, running a review agent while the main agent continues implementation, or delegating a long-running exploratory task.",
-      "Do not use subagents for small single-step tasks, one-file edits, simple questions, or work that requires tight step-by-step coordination with the parent. Direct tool use is better for those cases.",
-      "For independent tasks, spawn all relevant subagents first, then wait for results. Avoid spawn→wait→spawn serialization unless later tasks depend on earlier results.",
+      "Subagents are expensive child loops. Prefer direct tools; use spawn_agent only when it buys independent exploration, candidate diversity, fresh review, verification, or large-context isolation.",
+      "Good subagent use cases: repo-wide research across distinct components, fault localization with multiple independent hypotheses, comparing patch candidates, fresh review of a concrete risk, or high-value research with separable branches.",
+      "Do not use subagents for small single-step tasks, one-file edits, simple questions, 1-3 file cross-references, single grep/read, tightly coupled implementation, ambiguous requirements, verifier-less debate, or work that requires tight step-by-step coordination with the parent. Direct tool use is better for those cases.",
+      "Before spawning, check that at least 3 ROI conditions hold: natural decomposition, independent evidence, parent-verifiable result, high failure cost, too many local reads/tool calls, comparable candidates, or explicit user request for parallel/multi-agent work.",
+      "For genuinely independent tasks, spawn all relevant subagents first, then wait for results. Avoid spawn→wait→spawn serialization unless later tasks depend on earlier results.",
       "Default workflow: spawn_agent for each independent task → continue useful parent work or spawn more agents → wait_agent to collect updates/results → summarize/merge results → followup_task if more work is needed.",
       "Subagents are cleaned up automatically after successful completion. Do not call close_agent as routine cleanup after final_result; use close_agent only for cancellation, aborting, or stuck/abnormal agents.",
       "spawn_agent returns immediately; it does not mean the child has finished. Never claim subagent results until wait_agent returns mailbox content or a final_result.",
       "Give each subagent a stable, descriptive task_name such as research/api, research/db, fix/tests, review/security. Relative paths are resolved under /root.",
       "Write the message as a self-contained task brief in English: include goal, relevant files/commands, constraints, expected output format, and what not to change. Subagents may not know unstated parent context. English is required even if the user-facing conversation is in another language.",
       "Use fork_turns only when the recent conversation is genuinely needed by the child; otherwise include the necessary context directly in message.",
+      "Set expected_value and justification so subagent cost can be audited. Use type=explore for wide read-only investigation, verify for narrow checks, review for fresh review, and patch for bounded patch proposals.",
       `Respect resource limits. By default, max running subagents = ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents} and max queued subagents = ${MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents}; excess accepted spawns return status=\"queued\" with queue_position/queued_ahead and start automatically when a slot opens.`,
       "Use list_agents or wait_agent to observe queued/running/completed status. close_agent can cancel queued agents. send_message can add pre-start context to queued agents; followup_task requires a running agent.",
       "If a duplicate task_name is rejected, list_agents to inspect whether an agent with that path is still open/running before choosing a different path or aborting it with close_agent.",
@@ -363,6 +387,10 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
           fork_turns: parseForkTurns(params.fork_turns),
           authority: params.authority,
           result_contract: params.result_contract,
+          expected_value: params.expected_value,
+          justification: params.justification,
+          cost_intent: params.cost_intent,
+          type: params.type,
         },
         ctx,
       );

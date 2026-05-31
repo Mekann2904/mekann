@@ -79,6 +79,10 @@ export interface AgentMetadata {
   authorityEnforced?: boolean;
   workspaceCwd?: string;
   resultContract?: ResultContract;
+  expectedValue?: SpawnParams["expected_value"];
+  justification?: string;
+  costIntent?: SpawnParams["cost_intent"];
+  subagentType?: SpawnParams["type"];
   queuePosition?: number;
   queuedAhead?: number;
 }
@@ -135,6 +139,10 @@ export interface SpawnParams {
   fork_turns?: number | "all" | "none";
   authority?: SubagentAuthority;
   result_contract?: ResultContract;
+  expected_value?: "parallel_search" | "fault_localization" | "candidate_generation" | "fresh_review" | "verification" | "large_context_isolation" | "other";
+  justification?: string;
+  cost_intent?: "cheap" | "standard" | "expensive";
+  type?: "explore" | "verify" | "review" | "patch";
 }
 
 export interface SendMessageParams {
@@ -165,6 +173,7 @@ export interface SpawnResult {
   display?: AgentDisplayResult;
   queue_position?: number;
   queued_ahead?: number;
+  cost_advice?: { level: "note" | "warning"; message: string; reasons: string[] };
 }
 
 export interface WaitResult {
@@ -186,6 +195,10 @@ export interface ListResult {
     authority?: SubagentAuthority;
     authority_enforced?: boolean;
     result_contract?: ResultContract;
+    expected_value?: SpawnParams["expected_value"];
+    justification?: string;
+    cost_intent?: SpawnParams["cost_intent"];
+    subagent_type?: SpawnParams["type"];
     queue_position?: number;
     queued_ahead?: number;
     unread_final_result?: boolean;

@@ -27,7 +27,7 @@ export function registerSubagentFlags(pi: ExtensionAPI, extensionPathDefault: st
   });
 
   pi.registerFlag("subagent-display", {
-    description: 'Display mode for subagents: "external-split" (default), "external-pi", or "none".',
+    description: 'Display mode for subagents: "none" (default), "external-pi", or "external-split".',
     type: "string",
     default: MEKANN_SUBAGENT_DEFAULTS.display,
   });
@@ -60,5 +60,17 @@ export function registerSubagentFlags(pi: ExtensionAPI, extensionPathDefault: st
     description: "extension path passed to child Pi with -e in external-pi/external-split mode (empty disables explicit loading)",
     type: "string",
     default: extensionPathDefault,
+  });
+
+  pi.registerFlag("subagent-allow-nested", {
+    description: "Allow subagents to call spawn_agent recursively (default false to prevent cost storms)",
+    type: "string",
+    default: String(MEKANN_SUBAGENT_DEFAULTS.allowNestedSubagents),
+  });
+
+  pi.registerFlag("subagent-default-reasoning-effort", {
+    description: `Default reasoning effort for subagents when spawn_agent.reasoning_effort is omitted (default: ${MEKANN_SUBAGENT_DEFAULTS.defaultReasoningEffort})`,
+    type: "string",
+    default: MEKANN_SUBAGENT_DEFAULTS.defaultReasoningEffort,
   });
 }

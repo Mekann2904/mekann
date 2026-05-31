@@ -15,7 +15,7 @@ import { extractTextFromContent, truncateText } from "./contextFork.js";
 import type { FinalizeSubagentInput } from "./subagentLifecycle.js";
 import { ROOT_PATH } from "./types.js";
 
-const MAILBOX_CONTENT_MAX_CHARS = 2_000;
+const MAILBOX_CONTENT_MAX_CHARS = 1_200;
 
 export class SubagentFinalizer {
   private storesByCwd = new Map<string, SubagentResultStore>();
