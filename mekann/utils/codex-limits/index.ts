@@ -34,7 +34,7 @@ export default function codexUsage(pi: ExtensionAPI): void {
 
 	const updateUsageWidget = (ctx: ExtensionContext) => {
 		ctx.ui.setWidget("codex-usage", undefined);
-		pi.events.emit("mekann:codex-usage:status", { text: usageStatusLines[0] });
+		pi.events.emit("mekann:codex-usage:status", { text: formatSandboxUsageLine(usageStatusLines) });
 		if (usageStatusLines.length === 0) {
 			ctx.ui.setFooter(undefined);
 			return;
@@ -45,7 +45,7 @@ export default function codexUsage(pi: ExtensionAPI): void {
 				dispose: unsub,
 				invalidate() {},
 				render(width: number): string[] {
-					return renderCodexFooter(ctx, footerData, theme, width, usageStatusLines[1], pi.getThinkingLevel());
+					return renderCodexFooter(ctx, footerData, theme, width, formatFooterUsageLine(usageStatusLines), pi.getThinkingLevel());
 				},
 			} satisfies Component & { dispose(): void };
 		});
@@ -272,6 +272,14 @@ export function parseArgs(
 
 function isOpenAICodexModel(model: Pick<CodexUsageModel, "provider"> | undefined): boolean {
 	return model?.provider === CODEX_PROVIDER_ID;
+}
+
+export function formatSandboxUsageLine(lines: string[]): string | undefined {
+	return lines.length > 1 ? lines[0] : undefined;
+}
+
+export function formatFooterUsageLine(lines: string[]): string | undefined {
+	return lines.length === 1 ? lines[0] : lines[1];
 }
 
 function sameLines(left: string[], right: string[]): boolean {

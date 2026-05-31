@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
 	formatCodexUsageReport,
 	formatCodexUsageStatusline,
+	formatFooterUsageLine,
+	formatSandboxUsageLine,
 	normalizeAppServerResponse,
 	parseArgs,
 } from "./index.js";
@@ -50,6 +52,16 @@ describe("codex usage", () => {
 		expect(status).toContain("5h");
 		expect(status).toContain("75%");
 		expect(status).not.toContain("📊 codex");
+	});
+
+	it("splits multiple compact limit lines between sandbox status and footer", () => {
+		expect(formatSandboxUsageLine(["5h 75%", "wk 20%"])).toBe("5h 75%");
+		expect(formatFooterUsageLine(["5h 75%", "wk 20%"])).toBe("wk 20%");
+	});
+
+	it("keeps a single compact limit line in the footer without duplicating it into sandbox status", () => {
+		expect(formatSandboxUsageLine(["5h 75%"])).toBeUndefined();
+		expect(formatFooterUsageLine(["5h 75%"])).toBe("5h 75%");
 	});
 
 	it("keeps both 5h and weekly limits in compact status text", () => {
