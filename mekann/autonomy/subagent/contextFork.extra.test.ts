@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractForkContext, extractTextFromContent, truncateText, buildContextPreamble } from "./contextFork.js";
+import { extractForkContext, extractLastAssistantText, extractTextFromContent, truncateText, buildContextPreamble } from "./contextFork.js";
 
 describe("extractTextFromContent", () => {
   it("returns string content directly", () => {
@@ -44,6 +44,21 @@ describe("extractTextFromContent", () => {
       { type: "text", text: "actual text" },
     ];
     expect(extractTextFromContent(content)).toBe("actual text");
+  });
+
+  it("ignores serialized tool-call-only text", () => {
+    expect(extractTextFromContent('<tool_call UserRepository.ReadFile tool_name read>{"file_path":"x"}</tool_call>')).toBeNull();
+    expect(extractTextFromContent('<|pi_token|>begin_token|>tool_use<|pi_token|>read<|pi_token|>filename<|pi_token|>x')).toBeNull();
+  });
+});
+
+describe("extractLastAssistantText", () => {
+  it("skips trailing assistant tool-call-only messages and returns the last textual assistant message", () => {
+    const messages = [
+      { role: "assistant", content: [{ type: "text", text: "final answer" }] },
+      { role: "assistant", content: '<tool_call UserRepository.ReadFile tool_name read>{"file_path":"x"}</tool_call>' },
+    ];
+    expect(extractLastAssistantText(messages)).toBe("final answer");
   });
 });
 

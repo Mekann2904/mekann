@@ -111,14 +111,33 @@ export function buildContextPreamble(opts: {
 // ─── Content extraction ───────────────────────────────────────────────
 
 /** Extract text from message content (string or content block array). */
+export function isLikelyToolOnlyText(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+  return trimmed.startsWith("<tool_call ")
+    || trimmed.startsWith("<|pi_token|>begin_token|>tool_use")
+    || /^<\|[^>]+\|>tool_use/.test(trimmed);
+}
+
 export function extractTextFromContent(content: unknown): string | null {
-  if (typeof content === "string") return content;
+  if (typeof content === "string") return isLikelyToolOnlyText(content) ? null : content;
   if (Array.isArray(content)) {
     const texts: string[] = [];
     for (const block of content) {
-      if (block && typeof block === "object" && "type" in block && block.type === "text" && "text" in block && typeof block.text === "string") texts.push(block.text);
+      if (block && typeof block === "object" && "type" in block && block.type === "text" && "text" in block && typeof block.text === "string" && !isLikelyToolOnlyText(block.text)) texts.push(block.text);
     }
     return texts.length > 0 ? texts.join("\n") : null;
+  }
+  return null;
+}
+
+export function extractLastAssistantText(messages: Array<{ role: string; content: unknown }> | undefined): string | null {
+  if (!messages) return null;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== "assistant") continue;
+    const text = extractTextFromContent(msg.content);
+    if (text) return text;
   }
   return null;
 }

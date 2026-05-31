@@ -16,7 +16,7 @@ import path from "node:path";
 
 import { ROOT_PATH, resolveTaskPath } from "./types.js";
 import type { AgentDisplayRef, AgentDisplayResult, AgentMetadata, AgentRuntime, AgentStatus, ResultContract, SpawnParams, SpawnResult, SubagentAuthority } from "./types.js";
-import { extractForkContext, extractTextFromContent, truncateText } from "./contextFork.js";
+import { extractForkContext, extractLastAssistantText, truncateText } from "./contextFork.js";
 import type { ForkTurns } from "./contextFork.js";
 import type { Mailbox } from "./mailbox.js";
 import { AgentRegistry } from "./registry.js";
@@ -28,6 +28,7 @@ import { SubagentFinalizer } from "./subagentFinalizer.js";
 import type { QueuedSpawnDelegation, SpawnDelegationAdapters } from "./subagentLifecycle.js";
 
 const MAILBOX_CONTENT_MAX_CHARS = 2_000;
+const SDK_BASE_TOOL_NAMES = ["read", "grep", "find", "ls", "bash", "edit", "write"] as const;
 
 export interface SubagentSpawnerDeps {
   adapters: SpawnDelegationAdapters;
@@ -186,6 +187,17 @@ export class SubagentSpawner {
     return lines.join("\n");
   }
 
+  private baseToolNamesForAuthority(authority: SubagentAuthority, parentActiveTools?: Array<{ name?: string } | string>): string[] {
+    const authorityAllowed = authority.mode === "edit"
+      ? [...SDK_BASE_TOOL_NAMES]
+      : ["read", "grep", "find", "ls"];
+    const parentActiveNames = parentActiveTools?.map((t) => typeof t === "string" ? t : t.name).filter((name): name is string => Boolean(name));
+    if (!parentActiveNames || parentActiveNames.length === 0) return authorityAllowed;
+    const active = new Set(parentActiveNames);
+    const intersection = authorityAllowed.filter((name) => active.has(name));
+    return intersection.length > 0 ? intersection : authorityAllowed;
+  }
+
   private buildLaunchMessage(input: { externalNotice?: string; preamble?: string; volatileContextBlock: string; taskMessage: string; queuedMessages: string[] }): string {
     const queuedMessagesBlock = input.queuedMessages.length > 0
       ? `--- Queued parent messages ---\n${input.queuedMessages.map((m, i) => `[${i + 1}] ${m}`).join("\n\n")}\n--- End queued parent messages ---`
@@ -218,9 +230,12 @@ export class SubagentSpawner {
       const authorityPrompt = adapters.authorityPreamble(authority, resultContract);
       if (authorityPrompt) systemPrompts.push(authorityPrompt);
 
+      const parentActiveTools = adapters.pi.getActiveTools?.();
       const { session } = await createAgentSession({
         cwd: ctx.cwd,
         model,
+        modelRegistry: ctx.modelRegistry,
+        tools: this.baseToolNamesForAuthority(authority, parentActiveTools),
         ...(thinkingLevel ? { thinkingLevel } : {}),
         sessionManager: await import("@earendil-works/pi-coding-agent").then((m) => m.SessionManager.inMemory()),
         appendSystemPrompt: systemPrompts,
@@ -228,9 +243,8 @@ export class SubagentSpawner {
 
       const volatileContextBlock = this.buildVolatileContextBlock({ params, ctx, callerPath, canonicalPath, forkTurns });
 
-      const parentActiveTools = adapters.pi.getActiveTools?.();
       if (parentActiveTools && parentActiveTools.length > 0) {
-        const activeSet = new Set(parentActiveTools.map((t: any) => t.name));
+        const activeSet = new Set(parentActiveTools.map((t: any) => typeof t === "string" ? t : t.name));
         session.agent.state.tools = session.agent.state.tools.filter((t: any) => activeSet.has(t.name));
       }
       if ((session as any).agent?.state?.tools) {
@@ -320,8 +334,7 @@ export class SubagentSpawner {
         registry.updateStatus(input.agentPath, "running");
       } else if (event.type === "agent_end") {
         const msgs = (event as any).messages as AgentMessage[] | undefined;
-        const lastAssistant = msgs?.filter((m) => m.role === "assistant").pop();
-        const finalText = lastAssistant ? extractTextFromContent(lastAssistant.content) ?? undefined : undefined;
+        const finalText = extractLastAssistantText(msgs as any) ?? undefined;
 
         finalizer.handleFinalText({ agentId: input.agentId, agentPath: input.agentPath, callerPath: input.callerPath, finalText, status: "completed", cwd: input.cwd });
 

@@ -25,7 +25,7 @@ import { SubagentClient } from "./ipc.js";
 import { KittyController } from "./kittyControl.js";
 import { formatAgentList, formatWaitResult } from "./types.js";
 import type { SpawnParams, SpawnResult } from "./types.js";
-import { extractTextFromContent } from "./contextFork.js";
+import { extractLastAssistantText } from "./contextFork.js";
 import type { ForkTurns } from "./contextFork.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
@@ -707,8 +707,7 @@ async function startChildMode(pi: ExtensionAPI): Promise<void> {
 
   pi.on("agent_end", async (event) => {
     const msgs = (event as any).messages as Array<{ role: string; content: unknown }> | undefined;
-    const lastAssistant = msgs?.filter((m) => m.role === "assistant").pop();
-    const finalText = lastAssistant ? extractTextFromContent(lastAssistant.content as any) : undefined;
+    const finalText = extractLastAssistantText(msgs) ?? undefined;
     await safeSend({ type: "status", agentId, status: "completed" });
     await safeSend({ type: "final", agentId, status: "completed", message: finalText ?? "(agent completed)" });
   });
