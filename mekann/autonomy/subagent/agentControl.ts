@@ -32,7 +32,7 @@ import type {
 import { isTerminalStatus } from "./types.js";
 import { KittyController } from "./kittyControl.js";
 import { SubagentHub } from "./ipc.js";
-import type { AgentDisplayRef, AgentDisplayResult, AgentRuntime, ResultContract, SubagentAuthority } from "./types.js";
+import type { AgentDisplayRef, AgentDisplayResult, ResultContract, SubagentAuthority } from "./types.js";
 import type { SubagentResultStore } from "./resultStore.js";
 import { ApplyQueue } from "./applyQueue.js";
 import { SubagentLifecycle } from "./subagentLifecycle.js";
@@ -88,10 +88,6 @@ export interface AgentControlOptions {
 export class AgentControl {
   readonly registry: AgentRegistry;
   readonly mailbox: Mailbox;
-  // Deprecated test seam: lifecycle owns runtime maps; production code uses lifecycle commands.
-  private runtimes!: Map<string, AgentRuntime>;
-  private childSessions!: Map<string, import("@earendil-works/pi-coding-agent").AgentSession>;
-  private hubs!: Map<string, SubagentHub>;
   private pi: import("@earendil-works/pi-coding-agent").ExtensionAPI;
   private defaultWaitTimeout: number;
   private minWaitTimeout: number;
@@ -142,9 +138,6 @@ export class AgentControl {
     this.allowNestedSubagents = options.allowNestedSubagents ?? MEKANN_SUBAGENT_DEFAULTS.allowNestedSubagents;
     this.defaultReasoningEffort = options.defaultReasoningEffort ?? MEKANN_SUBAGENT_DEFAULTS.defaultReasoningEffort;
     this.lifecycle = new SubagentLifecycle(this.registry, this.mailbox, process.cwd());
-    this.runtimes = this.lifecycle.compatibilityMaps.runtimes;
-    this.childSessions = this.lifecycle.compatibilityMaps.childSessions;
-    this.hubs = this.lifecycle.compatibilityMaps.hubs;
     this.resultStore = this.lifecycle.resultStore;
     this.sessionControl = new AgentSessionControl({
       registry: this.registry,

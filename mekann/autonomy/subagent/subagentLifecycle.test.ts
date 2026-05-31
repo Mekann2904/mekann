@@ -162,7 +162,7 @@ describe("SubagentLifecycle", () => {
     expect(session.abort).toHaveBeenCalledOnce();
     expect(session.dispose).toHaveBeenCalledOnce();
     expect(registry.get("/root/running")?.status).toBe("shutdown");
-    expect(lifecycle.getRuntime("/root/running")).toBeUndefined();
+    expect(lifecycle.runtimeForSession("/root/running")).toBeUndefined();
   });
 
   it("drains queued subagents when closeRuntime opens an execution slot", async () => {
@@ -179,6 +179,6 @@ describe("SubagentLifecycle", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(registry.get("/root/queued")?.status).toBe("pending_init");
-    expect(lifecycle.getRuntime("/root/queued")).toBeDefined();
+    expect(lifecycle.runtimeForSession("/root/queued")).toBeDefined();
   });
 });

@@ -17,6 +17,8 @@ import {
 } from "./image-pipeline.js";
 import type { ContributionDay } from "./github-parse.js";
 import type { DashboardViewModel, Panel } from "./view-model.js";
+import { buildCodexUsagePanel, liveCodexUsagePanelSource, type CodexUsagePanelSource } from "./codex-usage-panel.js";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -59,6 +61,7 @@ export interface DashboardAssemblyOptions {
 	images?: boolean;
 	avatar?: boolean;
 	avatarSize?: { columns: number; rows: number };
+	ctx?: ExtensionContext;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +81,7 @@ export interface DashboardAssemblyDeps {
 		avatarResult: DashboardAvatarResult | undefined;
 		graphPath: string | undefined;
 	}>;
+	codexUsageSource: CodexUsagePanelSource;
 }
 
 // ---------------------------------------------------------------------------
@@ -99,9 +103,10 @@ export async function assembleDashboardRenderModel(
 		rows: AVATAR_ROWS,
 	};
 
-	const [github, currentRepo] = await Promise.all([
+	const [github, currentRepo, codexUsage] = await Promise.all([
 		d.collectGitHubDashboard(),
 		d.collectCurrentRepo(cwd),
+		buildCodexUsagePanel(d.codexUsageSource, opts.ctx),
 	]);
 
 	const avatarUrl = github.ok ? github.data.profile.avatarUrl : undefined;
@@ -122,10 +127,7 @@ export async function assembleDashboardRenderModel(
 		activitySummary: github.ok
 			? { status: "ready", data: github.data.activity }
 			: { status: "error", message: github.error },
-		codexUsage: {
-			status: "placeholder",
-			message: "Codex usage summary: coming next",
-		},
+		codexUsage,
 	};
 
 	const imageAssets = await d.prepareImages({
@@ -175,4 +177,5 @@ const defaultDeps: DashboardAssemblyDeps = {
 			avatar: opts.avatar,
 			avatarSize: opts.avatarSize,
 		}),
+	codexUsageSource: liveCodexUsagePanelSource,
 };

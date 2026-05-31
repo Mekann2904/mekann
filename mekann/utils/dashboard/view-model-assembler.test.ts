@@ -41,6 +41,17 @@ function mkDeps(overrides: Partial<DashboardAssemblyDeps> = {}): DashboardAssemb
 			avatarResult: undefined,
 			graphPath: undefined,
 		}),
+		codexUsageSource: {
+			query: async () => ({
+				ok: true,
+				report: {
+					source: "codex-app-server",
+					capturedAt: 1,
+					planType: "pro",
+					snapshots: [{ limitId: "primary", primary: { usedPercent: 42 } }],
+				},
+			}),
+		},
 		...overrides,
 	};
 }
@@ -62,7 +73,7 @@ describe("assembleDashboardRenderModel", () => {
 		expect(model.vm.currentRepo.ok).toBe(true);
 		expect(model.vm.contributionGraph.status).toBe("ready");
 		expect(model.vm.activitySummary.status).toBe("ready");
-		expect(model.vm.codexUsage.status).toBe("placeholder");
+		expect(model.vm.codexUsage.status).toBe("ready");
 	});
 
 	it("produces error panels when GitHub fails", async () => {
@@ -83,15 +94,27 @@ describe("assembleDashboardRenderModel", () => {
 		expect(model.vm.activitySummary.status).toBe("error");
 	});
 
-	it("preserves codex usage placeholder", async () => {
+	it("builds codex usage panel from adapter", async () => {
 		const model = await assembleDashboardRenderModel(
 			{ cwd: "/tmp" },
 			mkDeps(),
 		);
-		expect(model.vm.codexUsage.status).toBe("placeholder");
-		if (model.vm.codexUsage.status === "placeholder") {
-			expect(model.vm.codexUsage.message).toBe("Codex usage summary: coming next");
+		expect(model.vm.codexUsage.status).toBe("ready");
+		if (model.vm.codexUsage.status === "ready") {
+			expect(model.vm.codexUsage.data).toContain("42% used");
 		}
+	});
+
+	it("renders codex usage adapter errors", async () => {
+		const model = await assembleDashboardRenderModel(
+			{ cwd: "/tmp" },
+			mkDeps({
+				codexUsageSource: {
+					query: async () => ({ ok: false, errors: [{ source: "codex-app-server", message: "no auth" }] }),
+				},
+			}),
+		);
+		expect(model.vm.codexUsage).toEqual({ status: "error", message: "no auth" });
 	});
 
 	it("returns empty images when images disabled", async () => {

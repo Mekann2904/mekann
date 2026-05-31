@@ -883,51 +883,56 @@ async function readIfExists(filePath: string): Promise<string> {
   try { return await fs.readFile(filePath, "utf8"); } catch { return ""; }
 }
 
+type ReportArtifact = { fileName: string; content: string };
+
+function buildCacheFriendlyReportArtifacts(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], generatedAt: string): ReportArtifact[] {
+  const summary = summarize(rows, actualRows, generatedAt);
+  const artifacts: ReportArtifact[] = [
+    { fileName: "summary.json", content: JSON.stringify(summary, null, 2) + "\n" },
+    { fileName: "trend.svg", content: renderSvg(rows, MAX_POINTS) },
+    { fileName: "trend-all.svg", content: renderSvg(rows, "all") },
+    { fileName: "cacheability-score.svg", content: renderCacheabilitySvg(rows, MAX_POINTS) },
+    { fileName: "cacheability-score-all.svg", content: renderCacheabilitySvg(rows, "all") },
+    { fileName: "actual-hit-rate.svg", content: renderActualHitRateSvg(actualRows, MAX_POINTS, "actual provider cache hit rate: overall") },
+    { fileName: "fragments.svg", content: renderFragmentsSvg(rows) },
+    { fileName: "report.md", content: renderReport(summary, rows, actualRows) },
+  ];
+  for (const key of Object.keys(summary.actualByProvider)) {
+    const groupRows = actualRows.filter((row) => actualProviderKey(row) === key);
+    artifacts.push({ fileName: `actual-hit-rate-provider-${actualGraphSlug(key)}.svg`, content: renderActualHitRateSvg(groupRows, MAX_POINTS, `actual provider cache hit rate: ${key}`) });
+  }
+  for (const key of Object.keys(summary.actualByProviderModel)) {
+    const groupRows = actualRows.filter((row) => actualProviderModelKey(row) === key);
+    artifacts.push({ fileName: `actual-hit-rate-${actualGraphSlug(key)}.svg`, content: renderActualHitRateSvg(groupRows, MAX_POINTS, `actual provider cache hit rate: ${key}`) });
+  }
+  for (const key of Object.keys(summary.actualByRequestRole)) {
+    const groupRows = actualRows.filter((row) => actualRequestRoleKey(row) === key);
+    artifacts.push({ fileName: `actual-hit-rate-role-${actualGraphSlug(key)}.svg`, content: renderActualHitRateSvg(groupRows, MAX_POINTS, `actual provider cache hit rate by request role: ${key}`) });
+  }
+  for (const key of [...new Set(rows.map(requestRoleKey))]) {
+    const groupRows = rows.filter((row) => requestRoleKey(row) === key);
+    artifacts.push({ fileName: `trend-role-${actualGraphSlug(key)}.svg`, content: renderSvg(groupRows, MAX_POINTS) });
+  }
+  for (const key of [...new Set(rows.map((row) => row.provider ?? "unknown"))]) {
+    const groupRows = rows.filter((row) => (row.provider ?? "unknown") === key);
+    artifacts.push({ fileName: `trend-provider-${actualGraphSlug(key)}.svg`, content: renderSvg(groupRows, MAX_POINTS) });
+  }
+  for (const key of [...new Set(rows.map(providerKey))]) {
+    const groupRows = rows.filter((row) => providerKey(row) === key);
+    artifacts.push({ fileName: `trend-${actualGraphSlug(key)}.svg`, content: renderSvg(groupRows, MAX_POINTS) });
+  }
+  return artifacts;
+}
+
+export function buildCacheFriendlyReportArtifactsForTest(requestLogText: string, actualUsageLogText: string, generatedAt: string): ReportArtifact[] {
+  return buildCacheFriendlyReportArtifacts(readRows(requestLogText), readActualRows(actualUsageLogText), generatedAt);
+}
+
 export async function generateCacheFriendlyReport(dir: string): Promise<void> {
   try {
     const rows = readRows(await readIfExists(path.join(dir, "requests.jsonl")));
     const actualRows = readActualRows(await readIfExists(path.join(dir, "actual-usage.jsonl")));
-    const generatedAt = new Date().toISOString();
-    const summary = summarize(rows, actualRows, generatedAt);
-    const actualProviderGraphWrites = Object.keys(summary.actualByProvider).map((key) => {
-      const groupRows = actualRows.filter((row) => actualProviderKey(row) === key);
-      return fs.writeFile(path.join(dir, `actual-hit-rate-provider-${actualGraphSlug(key)}.svg`), renderActualHitRateSvg(groupRows, MAX_POINTS, `actual provider cache hit rate: ${key}`), "utf8");
-    });
-    const actualGraphWrites = Object.keys(summary.actualByProviderModel).map((key) => {
-      const groupRows = actualRows.filter((row) => actualProviderModelKey(row) === key);
-      return fs.writeFile(path.join(dir, `actual-hit-rate-${actualGraphSlug(key)}.svg`), renderActualHitRateSvg(groupRows, MAX_POINTS, `actual provider cache hit rate: ${key}`), "utf8");
-    });
-    const actualRequestRoleGraphWrites = Object.keys(summary.actualByRequestRole).map((key) => {
-      const groupRows = actualRows.filter((row) => actualRequestRoleKey(row) === key);
-      return fs.writeFile(path.join(dir, `actual-hit-rate-role-${actualGraphSlug(key)}.svg`), renderActualHitRateSvg(groupRows, MAX_POINTS, `actual provider cache hit rate by request role: ${key}`), "utf8");
-    });
-    const promptRoleGraphWrites = [...new Set(rows.map(requestRoleKey))].map((key) => {
-      const groupRows = rows.filter((row) => requestRoleKey(row) === key);
-      return fs.writeFile(path.join(dir, `trend-role-${actualGraphSlug(key)}.svg`), renderSvg(groupRows, MAX_POINTS), "utf8");
-    });
-    const promptProviderGraphWrites = [...new Set(rows.map((row) => row.provider ?? "unknown"))].map((key) => {
-      const groupRows = rows.filter((row) => (row.provider ?? "unknown") === key);
-      return fs.writeFile(path.join(dir, `trend-provider-${actualGraphSlug(key)}.svg`), renderSvg(groupRows, MAX_POINTS), "utf8");
-    });
-    const promptProviderModelGraphWrites = [...new Set(rows.map(providerKey))].map((key) => {
-      const groupRows = rows.filter((row) => providerKey(row) === key);
-      return fs.writeFile(path.join(dir, `trend-${actualGraphSlug(key)}.svg`), renderSvg(groupRows, MAX_POINTS), "utf8");
-    });
-    await Promise.all([
-      fs.writeFile(path.join(dir, "summary.json"), JSON.stringify(summary, null, 2) + "\n", "utf8"),
-      fs.writeFile(path.join(dir, "trend.svg"), renderSvg(rows, MAX_POINTS), "utf8"),
-      fs.writeFile(path.join(dir, "trend-all.svg"), renderSvg(rows, "all"), "utf8"),
-      fs.writeFile(path.join(dir, "cacheability-score.svg"), renderCacheabilitySvg(rows, MAX_POINTS), "utf8"),
-      fs.writeFile(path.join(dir, "cacheability-score-all.svg"), renderCacheabilitySvg(rows, "all"), "utf8"),
-      fs.writeFile(path.join(dir, "actual-hit-rate.svg"), renderActualHitRateSvg(actualRows, MAX_POINTS, "actual provider cache hit rate: overall"), "utf8"),
-      ...actualProviderGraphWrites,
-      ...actualGraphWrites,
-      ...actualRequestRoleGraphWrites,
-      ...promptRoleGraphWrites,
-      ...promptProviderGraphWrites,
-      ...promptProviderModelGraphWrites,
-      fs.writeFile(path.join(dir, "fragments.svg"), renderFragmentsSvg(rows), "utf8"),
-      fs.writeFile(path.join(dir, "report.md"), renderReport(summary, rows, actualRows), "utf8"),
-    ]);
+    const artifacts = buildCacheFriendlyReportArtifacts(rows, actualRows, new Date().toISOString());
+    await Promise.all(artifacts.map((artifact) => fs.writeFile(path.join(dir, artifact.fileName), artifact.content, "utf8")));
   } catch { /* report generation must never break agent execution */ }
 }

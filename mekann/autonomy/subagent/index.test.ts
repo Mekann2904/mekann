@@ -4367,19 +4367,11 @@ describe("agentControl: close edge cases", () => {
     const events: any[] = [];
     control.mailbox.appendEvent = (event: any) => { events.push(event); };
 
-    // Register an agent with a child session
-    const r = control.registry.reserveSpawnSlot("/root/task1");
-    control.registry.registerAgent({
-      agentId: "a1", sessionId: "s1", agentPath: "/root/task1",
-      status: "running" as const, createdAt: Date.now(), updatedAt: Date.now(),
-      depth: 1, open: true, cancellationRequested: false,
-    }, r);
-
-    // Add a fake child session
-    const fakeSession = { abort: vi.fn(() => Promise.resolve()), dispose: vi.fn() };
-    (control as any).childSessions.set("/root/task1", fakeSession);
-
     const ctx = { cwd: "/tmp", model: { id: "m" }, modelRegistry: { find: () => undefined, getAvailable: () => Promise.resolve([]) } };
+    await control.spawn({ task_name: "task1", message: "run" }, ctx as any);
+    const runtime = (control as any).lifecycle.runtimeForSession("/root/task1");
+    if (runtime?.mode === "in_process") runtime.session.abort = vi.fn(() => Promise.resolve());
+
     await control.close({ target: "/root/task1" }, ctx as any);
 
     // Verify close_end event was published

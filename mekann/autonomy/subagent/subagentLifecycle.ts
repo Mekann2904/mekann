@@ -2,8 +2,7 @@
  * SubagentLifecycle — thin facade over SpawnQueue, RuntimeStore,
  * SubagentFinalizer, and SubagentSpawner.
  *
- * Preserves the original public interface so callers (AgentControl, tests)
- * do not change. Every method delegates to the appropriate sub-module.
+ * Owns the spawn-to-final-result seam and keeps runtime maps private.
  */
 
 import type { AgentSession, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -14,7 +13,7 @@ import { Mailbox } from "./mailbox.js";
 import { AgentRegistry } from "./registry.js";
 import { SubagentResultStore } from "./resultStore.js";
 import { SpawnQueue } from "./spawnQueue.js";
-import { RuntimeStore, type RuntimeStoreMaps } from "./runtimeStore.js";
+import { RuntimeStore } from "./runtimeStore.js";
 import { SubagentFinalizer } from "./subagentFinalizer.js";
 import { SubagentSpawner, type CloseRuntimeAdapters } from "./subagentSpawner.js";
 
@@ -29,9 +28,6 @@ export class SubagentLifecycle {
   private spawner!: SubagentSpawner;
   private adaptersInitialized = false;
 
-  /** @deprecated Compatibility test seam; production callers should use lifecycle methods. */
-  readonly compatibilityMaps: RuntimeStoreMaps;
-
   constructor(
     private readonly registry: AgentRegistry,
     private readonly mailbox: Mailbox,
@@ -40,8 +36,6 @@ export class SubagentLifecycle {
     this.finalizer = new SubagentFinalizer(registry, mailbox, cwd);
     this._runtimes = new RuntimeStore();
     this.resultStore = this.finalizer.resultStore;
-
-    this.compatibilityMaps = this._runtimes.mapsForCompatibility();
 
     // Queue is created eagerly; spawner is wired in initAdapters().
     // The onDrain callback defers to spawner which will exist by the time
@@ -86,19 +80,6 @@ export class SubagentLifecycle {
     return this._runtimes.getRuntime(agentPath);
   }
 
-  /** @deprecated use runtimeForSession or lifecycle commands instead. */
-  getRuntime(agentPath: string): AgentRuntime | undefined {
-    return this.runtimeForSession(agentPath);
-  }
-
-  setRuntime(agentPath: string, runtime: AgentRuntime): void {
-    this._runtimes.setRuntime(agentPath, runtime);
-  }
-
-  deleteRuntime(agentPath: string): void {
-    this._runtimes.deleteRuntime(agentPath);
-  }
-
   runtimePaths(): string[] {
     return this._runtimes.runtimePaths();
   }
@@ -111,34 +92,13 @@ export class SubagentLifecycle {
     return this._runtimes.getChildSession(agentPath);
   }
 
-  setChildSession(agentPath: string, session: AgentSession): void {
-    this._runtimes.setChildSession(agentPath, session);
-  }
-
-  deleteChildSession(agentPath: string): void {
-    this._runtimes.deleteChildSession(agentPath);
-  }
-
   childSessionPaths(): string[] {
     return this._runtimes.childSessionPaths();
-  }
-
-  setHub(agentId: string, hub: SubagentHub): void {
-    this._runtimes.setHub(agentId, hub);
   }
 
   /** Hub lookup for AgentSessionControl; keeps RuntimeStore behind this seam. */
   hubForSession(agentId: string): SubagentHub | undefined {
     return this._runtimes.getHub(agentId);
-  }
-
-  /** @deprecated use hubForSession or lifecycle commands instead. */
-  getHub(agentId: string): SubagentHub | undefined {
-    return this.hubForSession(agentId);
-  }
-
-  deleteHub(agentId: string): void {
-    this._runtimes.deleteHub(agentId);
   }
 
   // ─── Queue accessors (back-compat) ────────────────────────────

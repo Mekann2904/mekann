@@ -12,12 +12,12 @@ import { Type } from "@sinclair/typebox";
 import type { SandboxMode, SandboxPolicy } from "./permissions.js";
 import { isMacSandboxAvailable, runSandboxedShellMac } from "./macSeatbelt.js";
 import { resolveRealPaths, validateWorkspaceRoot } from "./permissions.js";
-import { shouldRequestApproval, yoloApprovalMessage, type YoloApprovalState, readOnlyPolicy, workspaceWritePolicy, yoloPolicy } from "./permissions.js";
+import { yoloApprovalMessage, type YoloApprovalState, readOnlyPolicy, workspaceWritePolicy, yoloPolicy } from "./permissions.js";
 import { DEFAULT_SANDBOX_MODE, parseSandboxMode, modeLabel, SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, MODE_STATUS_EVENT, type SandboxPushProfileEvent, type SandboxPopProfileEvent, type ModeStatusEvent } from "../policy-core/modes.js";
 import { SafetyProfileState } from "../policy-core/safetyProfile.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { featureValue } from "../../settings/featureConfig.js";
-import { formatSandboxedBashOutputForLlm } from "./output.js";
+import { SandboxExecutionControl, SANDBOX_BLOCK_HINT } from "./executionControl.js";
 import { formatSandboxRuntimeStatus, type SandboxRuntimeStatus } from "./runtimeStatus.js";
 import { appendWorkspaceBashAllowlistCommand, getBashAllowlist, getBashMode, isBashCommandAllowed, setWorkspaceBashMode, type BashMode } from "./bashPolicy.js";
 
@@ -123,9 +123,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		}
 	}
 
-	// ─── Elevation hint for error messages ─────────────────────────
-
-	const SANDBOX_BLOCK_HINT = " このコマンドの実行が必要な場合は、request_elevation ツールを使ってユーザーに許可を求めてください。";
+	// ─── Bash policy ───────────────────────────────────────────────
 
 	async function enforceBashPolicy(command: string, ctx: any): Promise<void> {
 		const cwd = currentCwd || ctx?.cwd || process.cwd();
@@ -161,6 +159,17 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		const cwd = currentCwd || process.cwd(); if (!localBash || localBash._cwd !== cwd) localBash = Object.assign(createBashTool(cwd), { _cwd: cwd }); return localBash;
 	}
 
+	const executionControl = new SandboxExecutionControl({
+		isExplicitlyDisabled: () => explicitlyDisabled,
+		startupBlockedReason: () => startupBlockedReason,
+		isSandboxAvailable: () => sandboxAvailable,
+		effectiveMode,
+		buildCurrentPolicy,
+		cwd: () => currentCwd || process.cwd(),
+		confirm: (title, message) => lastCtx.ui.confirm(title, message),
+		runUnsandboxed: (id, params, signal, onUpdate) => getLocalBash().execute(id, params as any, signal, onUpdate as any),
+	});
+
 	// Dummy initial localBash for registerTool spread (will be replaced on session_start)
 	const initialBash = createBashTool(process.cwd());
 
@@ -168,58 +177,10 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		...initialBash,
 		label: "bash (サンドボックス)",
 		async execute(id, params, signal, onUpdate, ctx) {
+			lastCtx = ctx;
 			const command = String(params.command ?? "");
-
 			await enforceBashPolicy(command, ctx);
-
-			// ── Case 1: Explicitly disabled via --no-sandbox ─────────
-			if (explicitlyDisabled) return getLocalBash().execute(id, params, signal, onUpdate);
-
-			// ── Hard block: startup failure (unsafe root / sandbox unavailable) ──
-			if (startupBlockedReason) throw new Error(`${startupBlockedReason}${SANDBOX_BLOCK_HINT}`);
-
-			// ── Case 2: yolo (unsandboxed) ────
-			if (effectiveMode() === "yolo") return getLocalBash().execute(id, params, signal, onUpdate);
-
-			// ── Case 3: sandbox-exec unavailable → REFUSE (fail-closed) ─
-			if (!sandboxAvailable) throw new Error("サンドボックスが必要ですが /usr/bin/sandbox-exec が利用できません。サンドボックス強制なしではコマンドを実行できません。--no-sandbox で明示的に無効化してください（非推奨）。" + SANDBOX_BLOCK_HINT);
-
-			// ── Case 4: Normal sandboxed execution (read_only / workspace_write) ──
-			const approval = shouldRequestApproval(effectiveMode(), command);
-			if (approval.needsApproval && approval.reason) {
-				const ok = await ctx.ui.confirm("[!] コマンドの承認が必要です", `サンドボックスモード: ${modeLabel(effectiveMode())}\nコマンド: ${command}\n理由: ${approval.reason}\n\nこのコマンドを許可しますか？`);
-				if (!ok) throw new Error(`コマンドがブロックされました: ${approval.reason}`);
-			}
-
-			// Execute via sandbox (runSandboxedShellMac takes shell string, not argv)
-			const policy = buildCurrentPolicy();
-			const result = await runSandboxedShellMac(command, policy, { signal });
-			const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
-			const { shown, outputGate } = await formatSandboxedBashOutputForLlm({
-				cwd: currentCwd || process.cwd(),
-				command,
-				output,
-			});
-
-			// Detect sandbox permission errors and add elevation hint
-			if (result.code !== 0) {
-				const isPermissionError = /Operation not permitted|Permission denied|EPERM|EACCES/.test(shown.text);
-				const hint = isPermissionError ? SANDBOX_BLOCK_HINT : "";
-				throw new Error(`サンドボックスコマンドが終了コード ${result.code} で終了しました${shown.text ? `:\n${shown.text}` : ""}${hint}`);
-			}
-
-			return {
-				content: [{ type: "text", text: shown.text || "(出力なし)" }],
-				details: {
-					sandboxed: true,
-					mode: effectiveMode(),
-					exitCode: result.code,
-					outputTruncated: shown.truncated,
-					originalOutputBytes: shown.originalBytes,
-					originalOutputLines: shown.originalLines,
-					...(outputGate ? { outputGate } : {}),
-				},
-			};
+			return executionControl.executeBash(id, params, signal, onUpdate);
 		},
 	});
 

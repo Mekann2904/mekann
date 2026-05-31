@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
+  SessionManager: { inMemory: vi.fn(() => ({})) },
   createAgentSession: vi.fn(() =>
     Promise.resolve({
       session: {
@@ -304,17 +305,7 @@ describe("AgentControl.shutdown()", () => {
     const control = new AgentControlAny(createMockPi(), 4, 2);
     control.kitty = { close: kittyClose, focus: vi.fn(), appendLog: vi.fn() };
 
-    registerTestAgent(control, "/root/task1");
-
-    // Put entries in runtimes map — closeSingle will be called for them
-    control.runtimes.set("/root/task1", {
-      mode: "in_process",
-      agentId: "agent-root_task1",
-      session: {
-        abort: vi.fn(() => Promise.resolve()),
-        dispose: vi.fn(),
-      },
-    });
+    await control.spawn({ task_name: "task1", message: "run" }, baseCtx);
 
     // Spy on closeSingle to verify it's called
     const closeSingleSpy = vi.spyOn(control as any, "closeSingle");
@@ -329,17 +320,9 @@ describe("AgentControl.shutdown()", () => {
     const control = new AgentControlAny(createMockPi(), 4, 2);
     control.kitty = { close: vi.fn(() => Promise.resolve()), appendLog: vi.fn() };
 
-    registerTestAgent(control, "/root/task1");
-
-    // Make closeSingle fail by having an abort that rejects
-    control.runtimes.set("/root/task1", {
-      mode: "in_process",
-      agentId: "agent-root_task1",
-      session: {
-        abort: vi.fn(() => Promise.reject(new Error("abort failed"))),
-        dispose: vi.fn(),
-      },
-    });
+    await control.spawn({ task_name: "task1", message: "run" }, baseCtx);
+    const runtime = control.lifecycle.runtimeForSession("/root/task1");
+    if (runtime?.mode === "in_process") runtime.session.abort = vi.fn(() => Promise.reject(new Error("abort failed")));
 
     // Should not throw — catch(() => undefined) handles it
     await expect(control.shutdown()).resolves.toBeUndefined();
