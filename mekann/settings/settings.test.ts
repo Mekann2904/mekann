@@ -30,19 +30,19 @@ describe("mekann settings core", () => {
   it("uses default when neither global nor workspace is set", () => {
     const eff = flattenEffective(mekannSettingsSchemas, loaded({}), loaded({}));
     const item = eff.find((e) => e.feature === "subagent" && e.key === "maxSubagents");
-    expect(item?.effectiveValue).toBe(2);
+    expect(item?.effectiveValue).toBe(1);
     expect(item?.source).toBe("default");
   });
 
   it("warns when workspace override equals default", () => {
-    const eff = flattenEffective(mekannSettingsSchemas, loaded({}), loaded({ subagent: { maxSubagents: 2 } }));
+    const eff = flattenEffective(mekannSettingsSchemas, loaded({}), loaded({ subagent: { maxSubagents: 1 } }));
     const item = eff.find((e) => e.feature === "subagent" && e.key === "maxSubagents");
     expect(item?.diagnostics).toContain("workspace override が default と同じです");
   });
 });
 
 describe("settings registry", () => {
-  const featureNames = ["modes", "sandbox", "subagent", "output-gate", "codex-shared", "codex-web-search"];
+  const featureNames = ["modes", "sandbox", "subagent", "output-gate", "codex-shared", "codex-web-search", "codex-limits", "dashboard", "model-optimizer", "terminal"];
 
   it("registers all expected features", () => {
     const registered = mekannSettingsSchemas.map((s) => s.feature);
@@ -83,7 +83,8 @@ describe("settings registry", () => {
 describe("sandbox schema", () => {
   it("has sandbox settings with correct defaults", () => {
     const schema = mekannSettingsSchemas.find((s) => s.feature === "sandbox")!;
-    expect(schema.settings).toHaveLength(2);
+    expect(schema.settings).toHaveLength(3);
+    expect(schema.settings.find((s) => s.key === "enabled")?.defaultValue).toBe(true);
     const bytes = schema.settings.find((s) => s.key === "llmOutputMaxBytes")!;
     expect(bytes.defaultValue).toBe(50 * 1024);
     const lines = schema.settings.find((s) => s.key === "llmOutputMaxLines")!;
@@ -99,9 +100,10 @@ describe("sandbox schema", () => {
 });
 
 describe("output-gate schema", () => {
-  it("has 6 output-gate settings", () => {
+  it("has output-gate settings", () => {
     const schema = mekannSettingsSchemas.find((s) => s.feature === "output-gate")!;
-    expect(schema.settings).toHaveLength(6);
+    expect(schema.settings).toHaveLength(7);
+    expect(schema.settings.find((s) => s.key === "enabled")?.defaultValue).toBe(true);
   });
 
   it("flattenEffective resolves all output-gate settings", () => {

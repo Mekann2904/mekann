@@ -10,10 +10,15 @@ function num(key: string, category: string, defaultValue: number, min: number, m
   } };
 }
 
+function bool(key: string, category: string, defaultValue: boolean, description: string): SettingSchema<boolean> {
+  return { key, type: "boolean", defaultValue, description, category, scopes: ["global", "workspace"], restartRequired: true, validate(value) { return typeof value === "boolean" ? [] : ["boolean である必要があります"]; } };
+}
+
 export const outputGateSettingsSchema: FeatureSettingsSchema = {
   feature: "output-gate",
   title: "Output Gate",
   settings: [
+    bool("enabled", "General", true, "tool_result hook による大出力保存・stub 化と search_tool_outputs を有効にします。"),
     num("maxInlineBytes", "Limits", MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes, 1024, 1048576, "ツール出力のインライン表示上限バイト数。"),
     num("previewBytes", "Limits", MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes, 256, 65536, "プレビュー表示バイト数。"),
     num("maxSearchResultBytes", "Limits", MEKANN_OUTPUT_GATE_DEFAULTS.maxSearchResultBytes, 1024, 65536, "検索結果の最大バイト数。"),

@@ -7,8 +7,10 @@ import { codexSharedSettingsSchema } from "../utils/codex-shared/settingsSchema.
 import { codexWebSearchSettingsSchema } from "../utils/codex-web-search/settingsSchema.js";
 import { modelOptimizerSettingsSchema } from "../core/model-optimizer/settingsSchema.js";
 import { terminalSettingsSchema } from "../utils/terminal/settingsSchema.js";
+import { codexLimitsSettingsSchema } from "../utils/codex-limits/settingsSchema.js";
+import { dashboardSettingsSchema } from "../utils/dashboard/settingsSchema.js";
 
-export const mekannSettingsSchemas: FeatureSettingsSchema[] = [modesSettingsSchema, sandboxSettingsSchema, subagentSettingsSchema, outputGateSettingsSchema, codexSharedSettingsSchema, codexWebSearchSettingsSchema, modelOptimizerSettingsSchema, terminalSettingsSchema];
+export const mekannSettingsSchemas: FeatureSettingsSchema[] = [modesSettingsSchema, sandboxSettingsSchema, subagentSettingsSchema, outputGateSettingsSchema, codexSharedSettingsSchema, codexWebSearchSettingsSchema, codexLimitsSettingsSchema, dashboardSettingsSchema, modelOptimizerSettingsSchema, terminalSettingsSchema];
 export function findSettingSchema(feature: string, key: string) {
   return mekannSettingsSchemas.find((s) => s.feature === feature)?.settings.find((s) => s.key === key);
 }

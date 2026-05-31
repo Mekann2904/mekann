@@ -17,7 +17,7 @@ import { DEFAULT_SANDBOX_MODE, parseSandboxMode, modeLabel, SANDBOX_PUSH_PROFILE
 import { SafetyProfileState } from "../policy-core/safetyProfile.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { MEKANN_SANDBOX_DEFAULTS, MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
-import { featureConfig } from "../../settings/featureConfig.js";
+import { featureConfig, featureValue } from "../../settings/featureConfig.js";
 import { gateTextForLlm, redactSecrets } from "../../context/tool-output/index.js";
 
 // ─── LLM output truncation ─────────────────────────────────────────
@@ -60,6 +60,8 @@ export function truncateForLlm(
 }
 
 export default function sandboxExtension(pi: ExtensionAPI): void {
+	if (featureValue("sandbox", "enabled") === false) return;
+
 	// ─── State ───────────────────────────────────────────────────────
 
 	let sandboxEnabled = false;

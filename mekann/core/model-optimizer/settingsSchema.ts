@@ -2,7 +2,7 @@
  * model-optimizer — settings schema.
  *
  * Registered in mekann/settings/registry.ts so users can toggle feature
- * behaviour via `mekann settings.json`.
+ * behaviour via Mekann-owned `mekann.json` files.
  *
  * Base settings are defined here.  Per-module settings are contributed
  * by each provider optimizer module and concatenated at build time.

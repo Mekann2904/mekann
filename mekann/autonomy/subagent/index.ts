@@ -29,7 +29,7 @@ import { extractLastAssistantText } from "./contextFork.js";
 import type { ForkTurns } from "./contextFork.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
-import { featureConfig } from "../../settings/featureConfig.js";
+import { featureConfig, featureValue } from "../../settings/featureConfig.js";
 import { registerSubagentFlags } from "./flags.js";
 
 let sharedSpawnAgent: ((params: SpawnParams, ctx: ExtensionContext) => Promise<SpawnResult>) | undefined;
@@ -202,6 +202,8 @@ function registerSubagentPromptProvider(): void {
 // ─── Extension entry point ───────────────────────────────────────
 
 export default function subagentExtension(pi: ExtensionAPI): void | Promise<void> {
+  if (featureValue("subagent", "enabled") === false) return;
+
   registerSubagentPromptProvider();
   if (process.env.PI_SUBAGENT_ROLE === "child") {
     const g = globalThis as typeof globalThis & { __piSubagentChildStarted?: boolean };

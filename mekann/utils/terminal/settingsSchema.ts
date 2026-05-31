@@ -6,7 +6,7 @@ const bool = (key: string, category: string, defaultValue: boolean, description:
 	defaultValue,
 	description,
 	category,
-	scopes: ["global"],
+	scopes: ["global", "workspace"],
 	restartRequired: false,
 	validate(value) {
 		return typeof value === "boolean" ? [] : ["boolean である必要があります"];

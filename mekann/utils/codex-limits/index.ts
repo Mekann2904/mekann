@@ -4,6 +4,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, type Component } from "@earendil-works/pi-tui";
+import { featureValue } from "../../settings/featureConfig.js";
 import { renderCodexFooter } from "./footer.js";
 import { CodexUsageState, queryUsage, type CodexUsageReport } from "./usage.js";
 import { formatCodexUsageFooterLines, formatCodexUsageReport, formatQueryErrors, type CodexUsageModel } from "./format.js";
@@ -24,6 +25,8 @@ type QueryUsageOptions = {
 };
 
 export default function codexUsage(pi: ExtensionAPI): void {
+	if (featureValue("codex-limits", "enabled") === false) return;
+
 	const usageState = new CodexUsageState(CACHE_TTL_MS);
 	let statuslineClearTimer: ReturnType<typeof setTimeout> | undefined;
 	let statuslineRefreshTimer: ReturnType<typeof setTimeout> | undefined;

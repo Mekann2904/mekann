@@ -5,6 +5,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { featureValue } from "../../settings/featureConfig.js";
 import { renderKittyImage } from "./avatar.js";
 import { assembleDashboardRenderModel, GRAPH_COLS, GRAPH_ROWS } from "./view-model-assembler.js";
 import type { DashboardRenderModel, DashboardImagePlacement } from "./view-model-assembler.js";
@@ -82,6 +83,8 @@ function renderModelToLegacyData(model: DashboardRenderModel) {
 
 // ── Pi extension registration ─────────────────────────────────────────
 export default function dashboard(pi: ExtensionAPI): void {
+	if (featureValue("dashboard", "enabled") === false) return;
+
 	pi.registerCommand("dashboard", {
 		description: "Open the Mekann dashboard in Pi TUI",
 		handler: async (_args, ctx) => {

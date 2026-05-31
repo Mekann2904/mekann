@@ -10,10 +10,15 @@ function num(key: string, category: string, defaultValue: number, min: number, m
   } };
 }
 
+function bool(key: string, category: string, defaultValue: boolean, description: string): SettingSchema<boolean> {
+  return { key, type: "boolean", defaultValue, description, category, scopes: ["global", "workspace"], restartRequired: true, validate(value) { return typeof value === "boolean" ? [] : ["boolean である必要があります"]; } };
+}
+
 export const sandboxSettingsSchema: FeatureSettingsSchema = {
   feature: "sandbox",
   title: "Sandbox",
   settings: [
+    bool("enabled", "General", true, "bash tool の sandbox override と /sandbox command を有効にします。false の場合、Pi 標準 bash tool に干渉しません。"),
     num("llmOutputMaxBytes", "Limits", MEKANN_SANDBOX_DEFAULTS.llmOutputMaxBytes, 1024, 1_048_576, "LLM 出力の最大バイト数。"),
     num("llmOutputMaxLines", "Limits", MEKANN_SANDBOX_DEFAULTS.llmOutputMaxLines, 100, 50_000, "LLM 出力の最大行数。"),
   ],

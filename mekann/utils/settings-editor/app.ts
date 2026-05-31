@@ -133,6 +133,12 @@ function featureTitle(feature: string): string {
 		case "sandbox": return "Sandbox";
 		case "subagent": return "Subagent";
 		case "output-gate": return "Output Gate";
+		case "codex-shared": return "Codex Shared";
+		case "codex-web-search": return "Codex Web Search";
+		case "codex-limits": return "Codex Limits";
+		case "dashboard": return "Dashboard";
+		case "model-optimizer": return "Model Optimizer";
+		case "terminal": return "Terminal";
 		default: return feature;
 	}
 }
@@ -143,6 +149,12 @@ function featureOrder(feature: string): number {
 		"sandbox": 1,
 		"subagent": 2,
 		"output-gate": 3,
+		"codex-shared": 4,
+		"codex-web-search": 5,
+		"codex-limits": 6,
+		"dashboard": 7,
+		"model-optimizer": 8,
+		"terminal": 9,
 	};
 	return order[feature] ?? 99;
 }

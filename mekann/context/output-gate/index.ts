@@ -9,7 +9,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import * as fsp from "node:fs/promises";
 import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
-import { featureConfig } from "../../settings/featureConfig.js";
+import { featureConfig, featureValue } from "../../settings/featureConfig.js";
 import { outputGateDir } from "./store.js";
 import { handleClear } from "../clear.js";
 import { recordToolOutputArtifact } from "../recording.js";
@@ -70,6 +70,8 @@ function parseShowArg(args: string | undefined): string | undefined {
 // ---------------------------------------------------------------------------
 
 export default function outputGateExtension(pi: ExtensionAPI): void {
+	if (featureValue("output-gate", "enabled") === false) return;
+
 	const controller = createController();
 
 	// --- search_tool_outputs tool ---
