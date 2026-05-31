@@ -3,31 +3,23 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { createMetrics, type ActiveOptimizationState } from "./types.js";
+import { createMetrics, type ActiveOptimizationState, type OptimizerModel } from "./types.js";
 import { createActiveOptimizationState } from "./activeProfile.js";
 import { registerMetrics } from "./metrics.js";
 import { registerOverflowRecovery } from "./overflow.js";
 import { optimizerModules } from "./modules.js";
 import { registerCommands } from "./command.js";
-import type { Api, Model } from "@earendil-works/pi-ai";
 
 // ---------------------------------------------------------------------------
 // Mock Model helper
 // ---------------------------------------------------------------------------
 
-function mockModel(api: string, provider = "openai", id = "test-model"): Model<Api> {
+function mockModel(api: string, provider = "openai", id = "test-model"): OptimizerModel {
 	return {
-		api: api as Api,
+		api,
 		provider,
 		id,
-		name: id,
-		baseUrl: "https://api.example.com",
-		reasoning: false,
-		input: ["text"],
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: 128000,
-		maxTokens: 4096,
-	} as Model<Api>;
+	};
 }
 
 // ---------------------------------------------------------------------------

@@ -5,8 +5,7 @@
  * Only models whose provider is "openai" or "openai-codex" are supported.
  */
 
-import type { Api, Model } from "@earendil-works/pi-ai";
-import type { ProviderOptimizerModule } from "../types.js";
+import type { OptimizerModel, ProviderOptimizerModule } from "../types.js";
 import { isOpenaiOverflow } from "./overflow.js";
 import { buildOpenaiCompactionHint } from "./compaction.js";
 import { openaiOptimizerSettings } from "./settings.js";
@@ -34,25 +33,25 @@ const OPENAI_API_PROVIDERS: Record<string, string[]> = {
 export const openaiModule: ProviderOptimizerModule = {
 	id: "openai",
 
-	supports(model: Model<Api>): boolean {
+	supports(model: OptimizerModel): boolean {
 		if (!(model.api in OPENAI_API_FAMILIES)) return false;
 		const allowed = OPENAI_API_PROVIDERS[model.api];
 		return !!allowed && allowed.includes(model.provider);
 	},
 
-	familyKey(model: Model<Api>): string | undefined {
+	familyKey(model: OptimizerModel): string | undefined {
 		return OPENAI_API_FAMILIES[model.api];
 	},
 
-	detectOverflow(ctx: { model: Model<Api>; errorMessage: string }): boolean {
+	detectOverflow(ctx: { model: OptimizerModel; errorMessage: string }): boolean {
 		return isOpenaiOverflow(ctx.errorMessage);
 	},
 
-	rewriteOverflow(ctx: { model: Model<Api>; errorMessage: string }): string {
+	rewriteOverflow(ctx: { model: OptimizerModel; errorMessage: string }): string {
 		return `context_length_exceeded: ${ctx.errorMessage}`;
 	},
 
-	buildPostCompactionHint(ctx: { model: Model<Api> }): string {
+	buildPostCompactionHint(ctx: { model: OptimizerModel }): string {
 		return buildOpenaiCompactionHint(ctx.model.api);
 	},
 

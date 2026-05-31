@@ -9,8 +9,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { Api, Model } from "@earendil-works/pi-ai";
-import type { ActiveOptimizationState } from "./types.js";
+import type { ActiveOptimizationState, OptimizerModel } from "./types.js";
 import { createMetrics } from "./types.js";
 import { optimizerModules } from "./modules.js";
 
@@ -43,7 +42,7 @@ export function createActiveOptimizationState(): ActiveOptimizationState {
 
 function applyModel(
 	state: ActiveOptimizationState,
-	model: Model<Api>,
+	model: OptimizerModel,
 	ctx?: ExtensionContext,
 ): void {
 	const activeModule = optimizerModules.find((m) => m.supports(model));

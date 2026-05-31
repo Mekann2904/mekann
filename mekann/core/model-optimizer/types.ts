@@ -6,7 +6,6 @@
  * directory (e.g. `openai/`) and implements `ProviderOptimizerModule`.
  */
 
-import type { Api, Model } from "@earendil-works/pi-ai";
 import type { SettingSchema } from "../../settings/types.js";
 
 // ---------------------------------------------------------------------------
@@ -20,40 +19,46 @@ import type { SettingSchema } from "../../settings/types.js";
  * which APIs they support, how to detect overflow, what compaction hints to
  * inject, and what settings they expose.
  *
- * All methods receive `Model<Api>` so they can branch on `model.api` when
- * needed.  The root orchestrator handles lifecycle hook registration and
- * dispatches to the active module.
+ * All methods receive the small structural model surface needed by optimizer
+ * modules.  This keeps shared settings/typecheck paths independent from the
+ * concrete pi-ai package while remaining compatible with pi-ai's Model<Api>.
  */
+export interface OptimizerModel {
+	api: string;
+	id: string;
+	provider: string;
+}
+
 export interface ProviderOptimizerModule {
 	/** Unique module identifier (e.g. "openai", "deepseek"). */
 	id: string;
 
 	/** Whether this module handles the given model (typically by `model.api`). */
-	supports(model: Model<Api>): boolean;
+	supports(model: OptimizerModel): boolean;
 
 	/**
 	 * Settings family key for the given model.
 	 * Returns `undefined` if the model is not supported.
 	 */
-	familyKey(model: Model<Api>): string | undefined;
+	familyKey(model: OptimizerModel): string | undefined;
 
 	/**
 	 * Detect whether an error message is a context-overflow error.
 	 * Return `true` if the message should be rewritten.
 	 */
-	detectOverflow(ctx: { model: Model<Api>; errorMessage: string }): boolean;
+	detectOverflow(ctx: { model: OptimizerModel; errorMessage: string }): boolean;
 
 	/**
 	 * Rewrite an overflow error message.
 	 * Default canonical form: `context_length_exceeded: <original>`.
 	 */
-	rewriteOverflow(ctx: { model: Model<Api>; errorMessage: string }): string;
+	rewriteOverflow(ctx: { model: OptimizerModel; errorMessage: string }): string;
 
 	/**
 	 * Build a post-compaction continuation hint.
 	 * Return `undefined` to skip hint injection.
 	 */
-	buildPostCompactionHint(ctx: { model: Model<Api> }): string | undefined;
+	buildPostCompactionHint(ctx: { model: OptimizerModel }): string | undefined;
 
 	/** Settings contributed by this module. */
 	settings: SettingSchema<boolean>[];

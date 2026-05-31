@@ -7,8 +7,7 @@
  * enabling for OpenAI-compatible third-party providers.
  */
 
-import type { Api, Model } from "@earendil-works/pi-ai";
-import type { ProviderOptimizerModule } from "../types.js";
+import type { OptimizerModel, ProviderOptimizerModule } from "../types.js";
 import { isDeepseekOverflow } from "./overflow.js";
 import { DEEPSEEK_POST_COMPACTION_HINT } from "./compaction.js";
 import { deepseekOptimizerSettings } from "./settings.js";
@@ -20,23 +19,23 @@ import { deepseekOptimizerSettings } from "./settings.js";
 export const deepseekModule: ProviderOptimizerModule = {
 	id: "deepseek",
 
-	supports(model: Model<Api>): boolean {
+	supports(model: OptimizerModel): boolean {
 		return model.provider === "deepseek";
 	},
 
-	familyKey(_model: Model<Api>): string | undefined {
+	familyKey(_model: OptimizerModel): string | undefined {
 		return "deepseek";
 	},
 
-	detectOverflow(ctx: { model: Model<Api>; errorMessage: string }): boolean {
+	detectOverflow(ctx: { model: OptimizerModel; errorMessage: string }): boolean {
 		return isDeepseekOverflow(ctx.errorMessage);
 	},
 
-	rewriteOverflow(ctx: { model: Model<Api>; errorMessage: string }): string {
+	rewriteOverflow(ctx: { model: OptimizerModel; errorMessage: string }): string {
 		return `context_length_exceeded: ${ctx.errorMessage}`;
 	},
 
-	buildPostCompactionHint(_ctx: { model: Model<Api> }): string {
+	buildPostCompactionHint(_ctx: { model: OptimizerModel }): string {
 		return DEEPSEEK_POST_COMPACTION_HINT;
 	},
 
