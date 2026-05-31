@@ -57,6 +57,10 @@ export class CodexUsageState {
 
 	constructor(private readonly cacheTtlMs: number) {}
 
+	getCachedReport(): CachedCodexUsageReport | undefined {
+		return this.cache;
+	}
+
 	getFreshCachedReport(now = Date.now()): CachedCodexUsageReport | undefined {
 		return this.cache && now - this.cache.createdAt < this.cacheTtlMs ? this.cache : undefined;
 	}

@@ -13,7 +13,7 @@ export { formatCodexUsageFooterLines, formatCodexUsageReport, formatCodexUsageSt
 
 const CODEX_PROVIDER_ID = "openai-codex";
 const DEFAULT_TIMEOUT_MS = 15_000;
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = 60 * 1000;
 const STATUS_KEY = "codex-usage";
 const RESET_FOREGROUND = "\x1b[39m";
 
@@ -90,8 +90,11 @@ export default function codexUsage(pi: ExtensionAPI): void {
 	) => {
 		if (statuslineClearTimer) clearTimeout(statuslineClearTimer);
 		statuslineClearTimer = undefined;
-		usageStatusLines = formatCodexUsageFooterLines(report, options.model);
-		updateUsageWidget(ctx);
+		const nextLines = formatCodexUsageFooterLines(report, options.model);
+		if (!sameLines(usageStatusLines, nextLines)) {
+			usageStatusLines = nextLines;
+			updateUsageWidget(ctx);
+		}
 		if (options.autoRefresh) scheduleStatuslineRefresh(ctx);
 		else scheduleTemporaryStatuslineClear(ctx);
 	};
@@ -113,8 +116,17 @@ export default function codexUsage(pi: ExtensionAPI): void {
 			return;
 		}
 
-		usageStatusLines = ["checking Codex usage"];
-		updateUsageWidget(ctx);
+		const staleCached = usageState.getCachedReport();
+		if (staleCached) {
+			const staleLines = formatCodexUsageFooterLines(staleCached.report, model);
+			if (!sameLines(usageStatusLines, staleLines)) {
+				usageStatusLines = staleLines;
+				updateUsageWidget(ctx);
+			}
+		} else {
+			usageStatusLines = ["checking Codex usage"];
+			updateUsageWidget(ctx);
+		}
 		const result = await queryUsage(ctx, { timeoutMs: DEFAULT_TIMEOUT_MS });
 		if (!usageState.isCurrentRequest(requestId)) return;
 		if (!isOpenAICodexModel(ctx.model)) {
@@ -262,6 +274,9 @@ function isOpenAICodexModel(model: Pick<CodexUsageModel, "provider"> | undefined
 	return model?.provider === CODEX_PROVIDER_ID;
 }
 
+function sameLines(left: string[], right: string[]): boolean {
+	return left.length === right.length && left.every((line, index) => line === right[index]);
+}
 
 function showReport(
 	ctx: ExtensionCommandContext,
