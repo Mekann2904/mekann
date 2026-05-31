@@ -1,3 +1,4 @@
+import { boolSetting } from "../../settings/simpleSchema.js";
 import type { FeatureSettingsSchema, SettingSchema } from "../../settings/types.js";
 import type { ModelRef, ThinkingLevel } from "./utils.js";
 
@@ -39,5 +40,8 @@ function thinkingSetting(mode: typeof modes[number]): SettingSchema<ThinkingLeve
 export const modesSettingsSchema: FeatureSettingsSchema = {
   feature: "modes",
   title: "Collaboration Modes",
-  settings: modes.flatMap((m) => [modelSetting(m), thinkingSetting(m)]),
+  settings: [
+    boolSetting("enabled", "General", true, "read-only/sub mode commands と mode instructions を有効にします。false の場合、LLM-visible surface を登録しません。", true),
+    ...modes.flatMap((m) => [modelSetting(m), thinkingSetting(m)]),
+  ],
 };

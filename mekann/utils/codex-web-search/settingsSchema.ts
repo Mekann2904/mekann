@@ -21,7 +21,7 @@ export const codexWebSearchSettingsSchema: FeatureSettingsSchema = {
 	feature: "codex-web-search",
 	title: "Codex Web Search",
 	settings: [
-		bool("enabled", "Access", MEKANN_CODEX_WEB_SEARCH_DEFAULTS.enabled, "Codex web search tool executionを有効にします。false の場合も tool 登録は維持され、実行時に無効化メッセージを返します。"),
+		bool("enabled", "Access", MEKANN_CODEX_WEB_SEARCH_DEFAULTS.enabled, "Codex web search tool を有効にします。false の場合、LLM-visible tool surface を登録しません。"),
 		bool("externalWebAccess", "Access", MEKANN_CODEX_WEB_SEARCH_DEFAULTS.externalWebAccess, "Codex web search request の external_web_access を有効にします。"),
 		{ key: "defaultSearchContextSize", type: "enum", defaultValue: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.defaultSearchContextSize, description: "searchContextSize 未指定時のデフォルト。", category: "Search", scopes: ["global", "workspace"], restartRequired: false, enumValues: searchContextValues, validate(value) { return searchContextValues.includes(value as SearchContextSize) ? [] : ["low | medium | high のいずれかです"]; } },
 		optionalStr("model", "Model", MEKANN_CODEX_WEB_SEARCH_DEFAULTS.model, "Codex web search に使う明示 model id。unset の場合は自動解決します。"),
