@@ -57,6 +57,38 @@ function valueText(value: unknown): string {
 	return String(value);
 }
 
+function modeLabel(mode: string): string {
+	switch (mode) {
+		case "main": return "Main";
+		case "sub": return "Subagent";
+		case "auto": return "Auto";
+		case "read_only": return "Read-only";
+		default: return mode;
+	}
+}
+
+function modeFromSetting(item: EffectiveSetting): string | undefined {
+	if (item.feature !== "modes") return undefined;
+	return item.key.split(".")[1];
+}
+
+function displaySettingKey(item: EffectiveSetting): string {
+	if (item.feature === "modes") {
+		const [kind, mode] = item.key.split(".");
+		if (kind === "models" && mode) return "Model";
+		if (kind === "thinking" && mode) return "Thinking";
+	}
+	return item.key;
+}
+
+function displaySettingValue(item: EffectiveSetting, raw: string): string {
+	if (item.feature === "modes" && raw === "(unset)") {
+		if (item.key.startsWith("models.")) return "inherit current model";
+		if (item.key.startsWith("thinking.")) return "inherit current thinking";
+	}
+	return raw;
+}
+
 function pad(s: string, n: number): string {
 	if (n <= 0) return "";
 	if (s.length >= n) return truncate(s, Math.max(1, n - 1)) + " ";
@@ -345,6 +377,15 @@ function FeatureHeader(p: { feature: string }) {
 	);
 }
 
+function ModeHeader(p: { mode: string }) {
+	return el("box", {
+		style: { flexDirection: "row", width: "100%", height: 1, backgroundColor: C.separator, paddingLeft: 3, alignItems: "center" },
+	},
+		el("text", { fg: C.cyan, content: modeLabel(p.mode) }),
+		el("text", { fg: C.fgDim, content: " mode" }),
+	);
+}
+
 // ─── Setting Row ──────────────────────────────────────────────────
 
 function SettingRow(p: {
@@ -358,18 +399,20 @@ function SettingRow(p: {
 }) {
 	const bgColor = p.isSelected ? C.bgSelected : p.index % 2 === 0 ? C.rowEvenBg : C.rowOddBg;
 	const keyColor = p.isSelected ? C.fgBright : C.accent;
-	const displayValue = p.hasDraft ? p.draftValue : valueText(p.item.effectiveValue);
+	const displayKey = displaySettingKey(p.item);
+	const rawValue = p.hasDraft ? p.draftValue : valueText(p.item.effectiveValue);
+	const displayValue = displaySettingValue(p.item, rawValue);
 	const valColor = p.hasDraft ? C.green : C.fg;
 	const srcColor = p.hasDraft ? C.yellow : C.fgDim;
 	const restartIcon = p.item.schema.restartRequired ? " ↻" : "";
 
 	return el("box", {
 		id: `setting-row-${p.index}`,
-		style: { flexDirection: "row", width: "100%", height: 1, backgroundColor: bgColor, paddingLeft: 1, paddingRight: 1, alignItems: "center" },
+		style: { flexDirection: "row", width: "100%", height: 1, backgroundColor: bgColor, paddingLeft: 3, paddingRight: 1, alignItems: "center" },
 		onMouseDown: (event: any) => { if (isLeftMouse(event)) { p.onSelect(p.index); event?.stopPropagation?.(); } },
 	},
 		el("text", { fg: C.fgDim, content: `${typeIcon(p.item.schema.type)} ` }),
-		el("text", { fg: keyColor, content: pad(p.item.key, 24) }),
+		el("text", { fg: keyColor, content: pad(displayKey, 24) }),
 		el("text", { fg: valColor, content: pad(displayValue, 28) }),
 		el("text", { fg: srcColor, content: truncate((p.hasDraft ? `${p.draftScope}*` : p.item.source) + restartIcon, 10) }),
 	);
@@ -865,9 +908,15 @@ export function SettingsEditorApp({
 		let globalIdx = 0;
 		for (let gi = 0; gi < groups.length; gi++) {
 			const group = groups[gi];
+			let lastMode: string | undefined;
 			rows.push(el(FeatureHeader, { feature: group.feature, key: `h-${group.feature}` }));
 			for (let j = 0; j < group.items.length; j++) {
 				const item = group.items[j];
+				const mode = modeFromSetting(item);
+				if (mode && mode !== lastMode) {
+					rows.push(el(ModeHeader, { mode, key: `mh-${group.feature}-${mode}` }));
+					lastMode = mode;
+				}
 				const draft = drafts[itemId(item)];
 				rows.push(el(SettingRow, {
 					key: itemId(item),
@@ -882,8 +931,14 @@ export function SettingsEditorApp({
 			}
 		}
 	} else {
+		let lastMode: string | undefined;
 		for (let j = 0; j < featureItems.length; j++) {
 			const item = featureItems[j];
+			const mode = modeFromSetting(item);
+			if (mode && mode !== lastMode) {
+				rows.push(el(ModeHeader, { mode, key: `mh-${mode}` }));
+				lastMode = mode;
+			}
 			const draft = drafts[itemId(item)];
 			rows.push(el(SettingRow, {
 				key: itemId(item),
