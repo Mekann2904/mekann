@@ -5,9 +5,11 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, type Component } from "@earendil-works/pi-tui";
 import { featureValue } from "../../settings/featureConfig.js";
+import { parseArgs } from "./args.js";
 import { renderCodexFooter } from "./footer.js";
 import { CodexUsageState, queryUsage, type CodexUsageReport } from "./usage.js";
 import { formatCodexUsageFooterLines, formatCodexUsageReport, formatQueryErrors, type CodexUsageModel } from "./format.js";
+export { parseArgs } from "./args.js";
 export { normalizeAppServerResponse } from "./usage.js";
 export { formatCodexUsageFooterLines, formatCodexUsageReport, formatCodexUsageStatusline } from "./format.js";
 
@@ -15,13 +17,6 @@ const CODEX_PROVIDER_ID = "openai-codex";
 const DEFAULT_TIMEOUT_MS = 15_000;
 const CACHE_TTL_MS = 60 * 1000;
 const RESET_FOREGROUND = "\x1b[39m";
-
-type QueryUsageOptions = {
-	clearStatusline: boolean;
-	refresh: boolean;
-	statusline: boolean;
-	timeoutMs: number;
-};
 
 export default function codexUsage(pi: ExtensionAPI): void {
 	if (featureValue("codex-limits", "enabled") === false) return;
@@ -225,50 +220,6 @@ export default function codexUsage(pi: ExtensionAPI): void {
 }
 
 
-
-export function parseArgs(
-	args: string,
-): { ok: true; value: QueryUsageOptions } | { ok: false; error: string } {
-	const tokens = args.trim().split(/\s+/).filter(Boolean);
-	let clearStatusline = false;
-	let refresh = false;
-	let statusline = true;
-	let timeoutMs = DEFAULT_TIMEOUT_MS;
-
-	for (let index = 0; index < tokens.length; index++) {
-		const token = tokens[index];
-		if (token === "--clear-statusline") {
-			clearStatusline = true;
-			continue;
-		}
-		if (token === "--no-statusline") {
-			statusline = false;
-			continue;
-		}
-		if (token === "--refresh") {
-			refresh = true;
-			continue;
-		}
-		if (token === "--timeout") {
-			const rawValue = tokens[index + 1];
-			if (!rawValue)
-				return { ok: false, error: "Usage: /codex-status [--refresh] [--timeout seconds]" };
-			const parsed = Number(rawValue);
-			if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 120) {
-				return { ok: false, error: "--timeout must be a number of seconds between 1 and 120." };
-			}
-			timeoutMs = Math.round(parsed * 1000);
-			index += 1;
-			continue;
-		}
-		return {
-			ok: false,
-			error: `Unknown option: ${token}. Usage: /codex-status [--refresh] [--no-statusline] [--clear-statusline] [--timeout seconds]`,
-		};
-	}
-
-	return { ok: true, value: { clearStatusline, refresh, statusline, timeoutMs } };
-}
 
 function isOpenAICodexModel(model: Pick<CodexUsageModel, "provider"> | undefined): boolean {
 	return model?.provider === CODEX_PROVIDER_ID;

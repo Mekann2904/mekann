@@ -183,13 +183,13 @@ function formatDateTime(date: Date): string {
 }
 
 export function formatQueryErrors(errors: UsageQueryError[]): string {
-	const lines = ["Unable to read Codex usage."];
+	const lines = ["Codex 使用状況を取得できませんでした。"];
 	for (const error of errors) {
 		lines.push(`- Codex app-server: ${error.message}`);
 	}
 	lines.push("");
 	lines.push(
-		"Tip: install Codex CLI and run codex login, then retry /codex-status.",
+		"ヒント: Codex CLI をインストールして `codex login` を実行してから、/codex-status を再試行してください。",
 	);
 	return lines.join("\n");
 }
