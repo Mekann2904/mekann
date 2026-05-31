@@ -7,6 +7,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { featureValue } from "../../settings/featureConfig.js";
 import { renderKittyImage } from "./avatar.js";
+import { clearDashboardTerminalArtifactsSync } from "./cleanup.js";
 import { assembleDashboardRenderModel, GRAPH_COLS, GRAPH_ROWS } from "./view-model-assembler.js";
 import type { DashboardRenderModel, DashboardImagePlacement } from "./view-model-assembler.js";
 import { renderOverlayLines } from "./overlay-render.js";
@@ -132,6 +133,7 @@ export default function dashboard(pi: ExtensionAPI): void {
 					overlayOptions: { width: "100%", maxHeight: "100%", row: 0, col: 0, margin: 0 },
 				});
 			} finally {
+				clearDashboardTerminalArtifactsSync();
 				ctx.ui.setFooter(undefined);
 			}
 		},

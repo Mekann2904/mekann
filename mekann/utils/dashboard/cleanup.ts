@@ -20,7 +20,7 @@ export function installDashboardCleanup(): void {
 }
 
 export function cleanupDashboardResourcesSync(): void {
-	clearKittyImages();
+	clearDashboardTerminalArtifactsSync();
 	for (const path of cleanupPaths) {
 		try {
 			rmSync(path, { recursive: true, force: true });
@@ -31,11 +31,25 @@ export function cleanupDashboardResourcesSync(): void {
 	cleanupPaths.clear();
 }
 
+export function clearDashboardTerminalArtifactsSync(): void {
+	clearKittyImages();
+	clearTerminalScreen();
+}
+
 function clearKittyImages(): void {
 	if (process.env.VITEST) return;
 	if (!process.env.KITTY_WINDOW_ID && !process.env.TERM?.toLowerCase().includes("kitty")) return;
 	try {
 		process.stdout.write("\x1b_Ga=d,d=A\x1b\\");
+	} catch {
+		// Best-effort cleanup only.
+	}
+}
+
+function clearTerminalScreen(): void {
+	if (process.env.VITEST) return;
+	try {
+		process.stdout.write("\x1b[2J\x1b[H");
 	} catch {
 		// Best-effort cleanup only.
 	}
