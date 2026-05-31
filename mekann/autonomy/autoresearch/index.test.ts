@@ -4093,7 +4093,7 @@ describe("autoresearchExtension", () => {
 
 	// ── State isolation tests ───────────────────────────────────────────
 
-	describe("state isolation: contract mode vs plan mode", () => {
+	describe("state isolation: contract mode vs plan-scoped mode", () => {
 		function createApproveFlowDir(prefix: string): string {
 			const testDir = createGitTestDir(prefix);
 			fs.writeFileSync(path.join(testDir, "autoresearch.sh"), "#!/usr/bin/env bash\necho METRIC duration_seconds=1\n");

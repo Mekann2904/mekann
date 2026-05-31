@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  plan-mode:
+  modes:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -39,7 +39,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: plan-mode-coverage
+          name: modes-coverage
           path: mekann/safety/modes/coverage/
           retention-days: 7
 
@@ -228,13 +228,13 @@ jobs:
 
   test-summary:
     runs-on: ubuntu-latest
-    needs: [plan-mode, sandbox-unit, sandbox-macos, zip-repo, subagent, autoresearch, goal, output-gate, typecheck-prod, ledger]
+    needs: [modes, sandbox-unit, sandbox-macos, zip-repo, subagent, autoresearch, goal, output-gate, typecheck-prod, ledger]
     if: always()
     steps:
       - name: All tests passed
         run: |
           echo "✅ All test suites completed"
-          echo "  plan-mode: passed"
+          echo "  modes: passed"
           echo "  sandbox-unit: passed"
           echo "  sandbox-macos: passed"
           echo "  zip-repo: passed"

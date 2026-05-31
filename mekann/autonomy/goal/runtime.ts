@@ -35,7 +35,7 @@ export class GoalRuntime {
   /** Set of assistant message usage events already accounted for tokens. */
   private accounted_assistant_usage_keys: Set<string> = new Set();
   /** Whether idle continuation should be suppressed. */
-  inPlanMode = false;
+  continuationSuppressed = false;
   /** Whether budget steering is suppressed for the current turn. */
   private suppress_budget_steering = false;
 
@@ -216,7 +216,7 @@ export class GoalRuntime {
     // Check all preconditions
     if (this.pi.getFlag("goals") !== true) return;
     if (!(ctx.sessionManager as any).isPersisted?.()) return;
-    if (this.inPlanMode) return;
+    if (this.continuationSuppressed) return;
     if (this.active_turn_marker) return;
     if (this.continuation_active) return;
 
@@ -342,7 +342,7 @@ export class GoalRuntime {
     this.budget_limit_reported_goal_id = null;
     this.last_accounted_wall_clock = null;
     this.accounted_assistant_usage_keys.clear();
-    this.inPlanMode = false;
+    this.continuationSuppressed = false;
     this.suppress_budget_steering = false;
   }
 }

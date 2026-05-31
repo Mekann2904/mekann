@@ -6,7 +6,7 @@
  * - `get_goal`, `create_goal`, `update_goal` model tools
  * - Automatic idle continuation for active goals
  * - Token/time budget tracking
- * - Plan mode integration
+ * - Continuation suppression integration
  *
  * Usage:
  *   /goal <objective>           — Set a new goal

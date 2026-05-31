@@ -112,7 +112,7 @@ async function loadExtension(mockApi: ReturnType<typeof createMockApi>) {
 }
 
 /** Write initial config to real mekann.json, restoring (or deleting) on cleanup. */
-function withPlanModeConfig<T>(initial: unknown, fn: (configPath: string) => Promise<T>): Promise<T> {
+function withModesConfig<T>(initial: unknown, fn: (configPath: string) => Promise<T>): Promise<T> {
 	const fs = require("fs");
 	const path = require("path");
 	const os = require("os");
@@ -135,7 +135,7 @@ const AR_EVENT_KEY = "event:mekann:autoresearch:mode";
 // index.ts: L150-152 — auto mode entry in transitionToMode
 // ═══════════════════════════════════════════════════════════════════
 describe("index.ts: auto mode transition (L150-152)", () => {
-	it("transitionToMode auto sets auto model and thinking", async () => withPlanModeConfig({
+	it("transitionToMode auto sets auto model and thinking", async () => withModesConfig({
 		version: 1,
 		models: { auto: { provider: "openai", modelId: "gpt-5" } },
 		thinking: { auto: "high" },
@@ -155,7 +155,7 @@ describe("index.ts: auto mode transition (L150-152)", () => {
 		expect(mock.setModel).toHaveBeenCalled();
 	}));
 
-	it("transitionToMode auto without configured auto model skips model set", async () => withPlanModeConfig({
+	it("transitionToMode auto without configured auto model skips model set", async () => withModesConfig({
 		version: 1,
 		models: {},
 		thinking: {},
@@ -178,7 +178,7 @@ describe("index.ts: auto mode transition (L150-152)", () => {
 // index.ts: L348-367 — MEKANN_AUTORESEARCH_MODE_EVENT handler
 // ═══════════════════════════════════════════════════════════════════
 describe("index.ts: autoresearch event handler (L348-367)", () => {
-	it("autoresearch activate when already auto — early return (L352)", async () => withPlanModeConfig({
+	it("autoresearch activate when already auto — early return (L352)", async () => withModesConfig({
 		version: 1, models: {}, thinking: {},
 	}, async () => {
 		const mock = createMockApi();
@@ -196,7 +196,7 @@ describe("index.ts: autoresearch event handler (L348-367)", () => {
 		expect(mock.setModel.mock.calls.length).toBe(setModelCallsBefore);
 	}));
 
-	it("autoresearch activate without ctx — sets mode directly (L357-358)", async () => withPlanModeConfig({
+	it("autoresearch activate without ctx — sets mode directly (L357-358)", async () => withModesConfig({
 		version: 1, models: {}, thinking: {},
 	}, async () => {
 		const mock = createMockApi();
@@ -211,7 +211,7 @@ describe("index.ts: autoresearch event handler (L348-367)", () => {
 		expect(mock._hooks[AR_EVENT_KEY]).toBeDefined();
 	}));
 
-	it("autoresearch deactivate without ctx — sets mode directly (L367)", async () => withPlanModeConfig({
+	it("autoresearch deactivate without ctx — sets mode directly (L367)", async () => withModesConfig({
 		version: 1, models: {}, thinking: {},
 	}, async () => {
 		const mock = createMockApi();
@@ -226,7 +226,7 @@ describe("index.ts: autoresearch event handler (L348-367)", () => {
 		expect(mock._hooks[AR_EVENT_KEY]).toBeDefined();
 	}));
 
-	it("autoresearch deactivate when not in auto — early return (L362)", async () => withPlanModeConfig({
+	it("autoresearch deactivate when not in auto — early return (L362)", async () => withModesConfig({
 		version: 1, models: {}, thinking: {},
 	}, async () => {
 		const mock = createMockApi();
@@ -242,7 +242,7 @@ describe("index.ts: autoresearch event handler (L348-367)", () => {
 		expect(mock.setModel.mock.calls.length).toBe(setModelCallsBefore);
 	}));
 
-	it("autoresearch activate with ctx — full transition (L354-355)", async () => withPlanModeConfig({
+	it("autoresearch activate with ctx — full transition (L354-355)", async () => withModesConfig({
 		version: 1, models: { auto: { provider: "openai", modelId: "gpt-5" } },
 		thinking: { auto: "low" },
 	}, async () => {
@@ -256,7 +256,7 @@ describe("index.ts: autoresearch event handler (L348-367)", () => {
 		expect(mock.setModel).toHaveBeenCalledWith({ provider: "openai", id: "gpt-5" });
 	}));
 
-	it("autoresearch deactivate with ctx — transitions back to main (L364-365)", async () => withPlanModeConfig({
+	it("autoresearch deactivate with ctx — transitions back to main (L364-365)", async () => withModesConfig({
 		version: 1, models: { main: { provider: "anthropic", modelId: "sonnet" } },
 		thinking: { main: "medium" },
 	}, async () => {
@@ -291,7 +291,7 @@ describe("index.ts: autoresearch event handler (L348-367)", () => {
 // index.ts: L128 — auto→main transition where state.mode !== target
 // ═══════════════════════════════════════════════════════════════════
 describe("index.ts: leaving auto mode transition (L128)", () => {
-	it("auto→main via autoresearch deactivate then plan toggle", async () => withPlanModeConfig({
+	it("auto→main via autoresearch deactivate then read-only toggle", async () => withModesConfig({
 		version: 1, models: {}, thinking: {},
 	}, async () => {
 		const mock = createMockApi();
@@ -319,7 +319,7 @@ describe("index.ts: leaving auto mode transition (L128)", () => {
 // index.ts: L387 — session_start with --auto flag
 // ═══════════════════════════════════════════════════════════════════
 describe("index.ts: persisted model restore failures", () => {
-	it("keeps saved main model when registry is temporarily unavailable on session_start", async () => withPlanModeConfig({
+	it("keeps saved main model when registry is temporarily unavailable on session_start", async () => withModesConfig({
 		models: { main: { provider: "anthropic", modelId: "sonnet" } },
 	}, async (configPath) => {
 		const mock = createMockApi();
@@ -339,7 +339,7 @@ describe("index.ts: persisted model restore failures", () => {
 		expect(saved.features["modes"].models.main).toEqual({ provider: "anthropic", modelId: "sonnet" });
 	}));
 
-	it("keeps saved auto model when registry is temporarily unavailable during mode transition", async () => withPlanModeConfig({
+	it("keeps saved auto model when registry is temporarily unavailable during mode transition", async () => withModesConfig({
 		models: { auto: { provider: "openai", modelId: "gpt-5" } },
 	}, async (configPath) => {
 		const mock = createMockApi();
@@ -359,7 +359,7 @@ describe("index.ts: persisted model restore failures", () => {
 		expect(saved.features["modes"].models.auto).toEqual({ provider: "openai", modelId: "gpt-5" });
 	}));
 
-	it("retries startup restore when available models are populated shortly after session_start", async () => withPlanModeConfig({
+	it("retries startup restore when available models are populated shortly after session_start", async () => withModesConfig({
 		models: { main: { provider: "anthropic", modelId: "sonnet" } },
 	}, async () => {
 		const mock = createMockApi();
@@ -380,29 +380,29 @@ describe("index.ts: persisted model restore failures", () => {
 });
 
 describe("index.ts: startup flag main restore snapshots", () => {
-	it("restores initial main model after --plan startup when models.main is unset", async () => withPlanModeConfig({
-		models: { plan: { provider: "openai", modelId: "gpt-5" } },
+	it("restores initial main model after --read-only startup when models.main is unset", async () => withModesConfig({
+		models: { read_only: { provider: "openai", modelId: "gpt-5" } },
 	}, async () => {
 		const mock = createMockApi();
-		mock._flags = { plan: true };
+		mock._flags = { 'read-only': true };
 		await loadExtension(mock);
 		const ctx = createMockCtx({ model: { provider: "anthropic", id: "sonnet" } });
 
 		await mock._hooks.session_start({}, ctx);
-		await mock._commands["plan"].handler("", ctx);
+		await mock._commands["read-only"].handler("", ctx);
 
 		expect(mock.setModel).toHaveBeenCalledWith({ provider: "openai", id: "gpt-5" });
 		expect(mock.setModel).toHaveBeenCalledWith({ provider: "anthropic", id: "sonnet" });
 	}));
 
-	it("does not try startup snapshot fallback when explicit models.main restore fails", async () => withPlanModeConfig({
+	it("does not try startup snapshot fallback when explicit models.main restore fails", async () => withModesConfig({
 		models: {
 			main: { provider: "openai-codex", modelId: "gpt-5.5" },
-			plan: { provider: "openai", modelId: "gpt-5" },
+			read_only: { provider: "openai", modelId: "gpt-5" },
 		},
 	}, async () => {
 		const mock = createMockApi();
-		mock._flags = { plan: true };
+		mock._flags = { 'read-only': true };
 		await loadExtension(mock);
 		const ctx = createMockCtx({
 			model: { provider: "anthropic", id: "sonnet" },
@@ -413,7 +413,7 @@ describe("index.ts: startup flag main restore snapshots", () => {
 		});
 
 		await mock._hooks.session_start({}, ctx);
-		await mock._commands["plan"].handler("", ctx);
+		await mock._commands["read-only"].handler("", ctx);
 
 		expect(mock.setModel).toHaveBeenCalledWith({ provider: "openai", id: "gpt-5" });
 		expect(mock.setModel).not.toHaveBeenCalledWith({ provider: "anthropic", id: "sonnet" });
@@ -423,13 +423,13 @@ describe("index.ts: startup flag main restore snapshots", () => {
 });
 
 describe("index.ts: session_start with --auto flag (L387)", () => {
-	it("session_start with auto flag transitions to auto mode", async () => withPlanModeConfig({
+	it("session_start with auto flag transitions to auto mode", async () => withModesConfig({
 		version: 1,
 		models: { auto: { provider: "openai", modelId: "gpt-5" } },
 		thinking: { auto: "high" },
 	}, async () => {
 		const mock = createMockApi();
-		mock._flags = { auto: true, plan: false };
+		mock._flags = { auto: true, 'read-only': false };
 		const ctx = createMockCtx();
 		await loadExtension(mock);
 
@@ -440,11 +440,11 @@ describe("index.ts: session_start with --auto flag (L387)", () => {
 		expect(mock._thinkingLevel).toBe("high");
 	}));
 
-	it("session_start with auto flag but no auto model configured", async () => withPlanModeConfig({
+	it("session_start with auto flag but no auto model configured", async () => withModesConfig({
 		version: 1, models: {}, thinking: {},
 	}, async () => {
 		const mock = createMockApi();
-		mock._flags = { auto: true, plan: false };
+		mock._flags = { auto: true, 'read-only': false };
 		const ctx = createMockCtx();
 		await loadExtension(mock);
 
@@ -454,13 +454,13 @@ describe("index.ts: session_start with --auto flag (L387)", () => {
 		expect(mock.events.emit).toHaveBeenCalled();
 	}));
 
-	it("session_start with auto flag sets auto thinking level", async () => withPlanModeConfig({
+	it("session_start with auto flag sets auto thinking level", async () => withModesConfig({
 		version: 1,
 		models: { auto: { provider: "openai", modelId: "gpt-5" } },
 		thinking: { auto: "high" },
 	}, async () => {
 		const mock = createMockApi();
-		mock._flags = { auto: true, plan: false };
+		mock._flags = { auto: true, 'read-only': false };
 		const ctx = createMockCtx({
 			modelRegistry: {
 				find: (provider: string, modelId: string) => ({ provider, id: modelId }),
@@ -481,7 +481,7 @@ describe("index.ts: session_start with --auto flag (L387)", () => {
 describe("utils.ts: config persistence edge cases", () => {
 	it("updateConfigField preserves explicit thinking off instead of treating it as clear", async () => {
 		const { updateConfigField, createDefaultConfig } = await import("./utils.js");
-		const tmpDir = mkdtempSync(join(tmpdir(), "plan-thinking-off-test-"));
+		const tmpDir = mkdtempSync(join(tmpdir(), "modes-thinking-off-test-"));
 		const configPath = join(tmpDir, "mekann.json");
 		const config = createDefaultConfig();
 
@@ -494,7 +494,7 @@ describe("utils.ts: config persistence edge cases", () => {
 
 	it("stale lock is reclaimed and save succeeds", async () => {
 		const { saveModelConfig, createDefaultConfig } = await import("./utils.js");
-		const tmpDir = mkdtempSync(join(tmpdir(), "plan-stale-test-"));
+		const tmpDir = mkdtempSync(join(tmpdir(), "modes-stale-test-"));
 		const configPath = join(tmpDir, "modes.json");
 
 		// Create a stale lock (mtime > 30s ago)

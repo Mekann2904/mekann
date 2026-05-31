@@ -82,7 +82,7 @@ export interface SandboxPopProfileEvent { owner: string; token: string; }
 export const MODE_STATUS_EVENT = "mekann:modes:status";
 
 /** Payload for mode status broadcast. */
-export interface ModeStatusEvent { mode: "main" | "read_only" | "plan" | "auto" | "sub"; }
+export interface ModeStatusEvent { mode: "main" | "read_only" | "auto" | "sub"; }
 
 // ─── Autoresearch mode notification ─────────────────────────────
 
@@ -102,7 +102,7 @@ export interface AutoresearchModeEvent {
  * This module is a UX filter, NOT a security boundary.
  * The actual enforcement is performed by the sandbox extension's
  * OS-level Seatbelt policy. These heuristics provide early UX feedback
- * in plan mode (and other read-only workflows) before a command reaches
+ * in read-only workflows before a command reaches
  * the sandbox layer.
  */
 

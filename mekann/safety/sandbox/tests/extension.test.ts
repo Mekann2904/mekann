@@ -1057,7 +1057,7 @@ describe("profile override: restrict-only policy", () => {
 		// Push read_only override
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "modes",
-			token: "plan-123",
+			token: "read-only-123",
 			profile: "read_only",
 		});
 
@@ -1165,14 +1165,14 @@ describe("profile override: restrict-only policy", () => {
 		// Push read_only
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "modes",
-			token: "plan-789",
+			token: "read-only-789",
 			profile: "read_only",
 		});
 
 		// Pop it
 		mock._eventHandlers["mekann:sandbox:pop-profile"]({
 			owner: "modes",
-			token: "plan-789",
+			token: "read-only-789",
 		});
 
 		// Effective mode should be back to workspace_write
@@ -1199,7 +1199,7 @@ describe("profile override: restrict-only policy", () => {
 		// Push read_only
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "modes",
-			token: "plan-status-test",
+			token: "read-only-status-test",
 			profile: "read_only",
 		});
 
@@ -1208,7 +1208,7 @@ describe("profile override: restrict-only policy", () => {
 		// Pop it
 		mock._eventHandlers["mekann:sandbox:pop-profile"]({
 			owner: "modes",
-			token: "plan-status-test",
+			token: "read-only-status-test",
 		});
 
 		expect(ctx.ui.setWidget).toHaveBeenCalledTimes(setWidgetCallCount + 2);
@@ -1251,7 +1251,7 @@ describe("request_elevation: startup block", () => {
 // ─── MODE_STATUS_EVENT validation ─────────────────────────────
 
 describe("MODE_STATUS_EVENT validation", () => {
-	it("mode: plan で setWidget が plan を含むラベルを表示", async () => {
+	it("mode: read_only で setWidget が read_only を含むラベルを表示", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
@@ -1261,7 +1261,7 @@ describe("MODE_STATUS_EVENT validation", () => {
 		const ctx = createMockCtx();
 		await mock._hooks.session_start({}, ctx);
 
-		// Emit plan mode status — should trigger updateStatusBar via lastCtx
+		// Emit read_only mode status — should trigger updateStatusBar via lastCtx
 		mock._eventHandlers["mekann:modes:status"]({ mode: "read_only" });
 
 		// setWidget should have been called with a render function
@@ -1270,14 +1270,14 @@ describe("MODE_STATUS_EVENT validation", () => {
 			expect.any(Function),
 			expect.any(Object),
 		);
-		// Verify the rendered content contains "plan"
-		const planCall = ctx.ui.setWidget.mock.calls.filter(c => typeof c[1] === "function");
-		const lastPlanCall = planCall[planCall.length - 1];
-		const widget = lastPlanCall[1](undefined, ctx.ui.theme);
-		expect(widget.render(80)).toEqual(expect.arrayContaining([expect.stringContaining("plan")]));
+		// Verify the rendered content contains "read_only"
+		const readOnlyCall = ctx.ui.setWidget.mock.calls.filter(c => typeof c[1] === "function");
+		const lastReadOnlyCall = readOnlyCall[readOnlyCall.length - 1];
+		const widget = lastReadOnlyCall[1](undefined, ctx.ui.theme);
+		expect(widget.render(80)).toEqual(expect.arrayContaining([expect.stringContaining("read_only")]));
 	});
 
-	it("mode: main で setWidget から plan ラベルが消える", async () => {
+	it("mode: main で setWidget から read_only ラベルが消える", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
@@ -1287,19 +1287,19 @@ describe("MODE_STATUS_EVENT validation", () => {
 		const ctx = createMockCtx();
 		await mock._hooks.session_start({}, ctx);
 
-		// First set plan
+		// First set read_only
 		mock._eventHandlers["mekann:modes:status"]({ mode: "read_only" });
 
 		// Then set main — should trigger updateStatusBar via lastCtx
 		mock._eventHandlers["mekann:modes:status"]({ mode: "main" });
 
-		// The last setWidget call should NOT contain "plan"
+		// The last setWidget call should NOT contain "read_only"
 		const lastCall = ctx.ui.setWidget.mock.calls[ctx.ui.setWidget.mock.calls.length - 1];
 		expect(lastCall[0]).toBe("sandbox");
 		const widget = lastCall[1](undefined, ctx.ui.theme);
 		const rendered = widget.render(80);
 		const label = rendered[0] as string;
-		expect(label).not.toContain("plan");
+		expect(label).not.toContain("read_only");
 		expect(label).toContain("yolo");
 	});
 
@@ -1313,7 +1313,7 @@ describe("MODE_STATUS_EVENT validation", () => {
 		const ctx = createMockCtx();
 		await mock._hooks.session_start({}, ctx);
 
-		// Set plan mode first
+		// Set read_only mode first
 		mock._eventHandlers["mekann:modes:status"]({ mode: "read_only" });
 
 		// Send invalid payloads — should be ignored
@@ -1327,12 +1327,12 @@ describe("MODE_STATUS_EVENT validation", () => {
 		mock._eventHandlers["mekann:modes:status"]("string");
 		mock._eventHandlers["mekann:modes:status"](42);
 
-		// modeStatus should still be "plan" after all invalid payloads
+		// modeStatus should still be "read_only" after all invalid payloads
 		// Verify by checking the last setWidget call
 		const lastCall = ctx.ui.setWidget.mock.calls[ctx.ui.setWidget.mock.calls.length - 1];
 		const widget = lastCall[1](undefined, ctx.ui.theme);
 		const rendered = widget.render(80);
-		expect(rendered[0]).toContain("plan");
+		expect(rendered[0]).toContain("read_only");
 	});
 });
 
@@ -1585,7 +1585,7 @@ describe("/sandbox command: yolo with override active", () => {
 		// Push read_only override
 		mock._eventHandlers["mekann:sandbox:push-profile"]({
 			owner: "modes",
-			token: "plan-defer-test",
+			token: "read-only-defer-test",
 			profile: "read_only",
 		});
 
@@ -2029,7 +2029,7 @@ describe("profile override: escalation rejection", () => {
 // ─── Status bar: modeStatus + explicitlyDisabled ───────────────
 
 describe("status bar: combined states", () => {
-	it("modeStatus=plan の時、status bar に plan ラベルが含まれる", async () => {
+	it("modeStatus=read_only の時、status bar に read_only ラベルが含まれる", async () => {
 		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
 
@@ -2039,14 +2039,14 @@ describe("status bar: combined states", () => {
 		const ctx = createMockCtx();
 		await mock._hooks.session_start({}, ctx);
 
-		// Set plan mode status
+		// Set read_only mode status
 		mock._eventHandlers["mekann:modes:status"]({ mode: "read_only" });
 
-		// Verify status bar includes plan label
+		// Verify status bar includes read_only label
 		const lastCall = ctx.ui.setWidget.mock.calls[ctx.ui.setWidget.mock.calls.length - 1];
 		const widget = lastCall[1](undefined, ctx.ui.theme);
 		const rendered = widget.render(80);
-		expect(rendered[0]).toContain("plan");
+		expect(rendered[0]).toContain("read_only");
 		expect(rendered[0]).toContain("yolo");
 	});
 
@@ -2083,7 +2083,7 @@ describe("session_shutdown: full reset", () => {
 			profile: "read_only",
 		});
 
-		// Set plan mode status
+		// Set read_only mode status
 		mock._eventHandlers["mekann:modes:status"]({ mode: "read_only" });
 
 		// Shutdown

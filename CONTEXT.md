@@ -352,10 +352,6 @@ _Avoid_: patch merge, result execution
 
 ### Safety
 
-**Plan mode**:
-Deprecated. Removed in favour of skills-based planning workflows and the read-only collaboration mode.
-_Avoid_: plan mode, implementation handoff mode
-
 **Read-only mode**:
 A collaboration mode for investigation and consultation where file changes are not allowed. Read-only mode may reuse the existing read-only command intent checks and sandbox profile.
 _Avoid_: implementation handoff mode, sandbox profile
@@ -366,7 +362,7 @@ _Avoid_: subagent, auto mode, sandbox profile
 
 **Sandbox**:
 A safety feature that enforces execution restrictions for the `bash` tool, primarily through OS-level policy when enabled. Sandbox is the hard runtime boundary for command execution, while collaboration modes such as Read-only mode describe user-facing work posture.
-_Avoid_: plan mode, read-only mode, agent-wide security boundary
+_Avoid_: read-only mode, agent-wide security boundary
 
 **Safety guardrail**:
 A boundary or policy that makes higher agent autonomy acceptable by limiting dangerous execution, unsafe state changes, or unreviewed trust transitions. Safety guardrails are enablers of autonomous work, not merely obstacles to it.

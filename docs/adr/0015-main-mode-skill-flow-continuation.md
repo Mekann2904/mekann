@@ -1,26 +1,21 @@
-# 0015. Continue unfinished skill flows after Main mode work
+# 0015. Continue unfinished skill flows after implementation work
 
 ## Status
-Accepted
+Superseded
 
 ## Context
-Plan mode routes planning work through skills such as `grill-with-docs`, `to-prd`, `to-issues`, `prototype`, `improve-codebase-architecture`, `diagnose`, and `tdd`. Once a plan is small and clear enough to implement, the agent asks whether to proceed and then Main mode performs the implementation work.
+Planning work is routed through skills such as `grill-with-docs`, `to-prd`, `to-issues`, `prototype`, `improve-codebase-architecture`, `diagnose`, and `tdd`. Once a plan is small and clear enough to implement, the agent asks whether to proceed and then main-mode implementation work begins.
 
-That left one lifecycle gap: Main mode may finish one implementation slice while the larger skill flow is not yet complete. For example, `to-issues` may create several independently grabbable vertical slices, and Main mode may complete only the first slice. During implementation, the agent may also discover that the original plan has a specification gap, architectural risk, UI uncertainty, or an unresolved bug cause.
+That left one lifecycle gap: implementation may finish one slice while the larger skill flow is not yet complete. For example, `to-issues` may create several independently grabbable vertical slices, and implementation may complete only the first slice. During implementation, the agent may also discover that the original plan has a specification gap, architectural risk, UI uncertainty, or an unresolved bug cause.
 
 ## Decision
-Main mode should treat implementation completion as another checkpoint, not always as the end of the whole workflow.
+Implementation completion is a checkpoint, not always the end of the whole workflow.
 
-Plan/Main transitions may be initiated by LLM-callable tools rather than only by slash commands:
-
-- `proceed_to_main` exits Plan mode when the user clearly approves implementation in natural language.
-- `return_to_plan` returns from Main mode when implementation reveals that planning must be repaired.
-
-When Main mode completes work:
+When implementation work completes:
 
 - If the whole requested flow is complete, report what changed, report validation, and return to the neutral next-instruction state.
-- If a multi-slice / multi-issue flow remains and the next slice is already small and clear, ask whether to continue with the next unblocked slice and continue directly with `tdd` when the user agrees. Do not re-enter Plan mode merely to repeat planning that `to-issues` already completed.
-- If implementation invalidates the plan or reveals a missing decision, re-enter Plan mode at the smallest useful skill:
+- If a multi-slice / multi-issue flow remains and the next slice is already small and clear, ask whether to continue with the next unblocked slice and continue directly with `tdd` when the user agrees.
+- If implementation invalidates the plan or reveals a missing decision, re-enter the smallest useful skill:
   - specification or terminology gap → `grill-with-docs` or `to-prd`
   - architecture, boundary, coupling, or testability risk → `improve-codebase-architecture`
   - UI, state, or interaction uncertainty → `prototype`
@@ -29,6 +24,4 @@ When Main mode completes work:
 - If implementation is blocked and no skill clearly applies, stop and ask the user for direction.
 
 ## Consequences
-Main mode can participate in a larger skill chain without pretending every implementation completion is final. Multi-slice work remains efficient because planned, unblocked slices can continue through TDD without unnecessary Plan mode churn. At the same time, newly discovered uncertainty routes back to Plan mode so planning-oriented skills can repair the destination or journey before more code is changed.
-
-Natural-language workflow can now avoid the old deadlock where Plan mode asked for implementation approval but had no LLM-callable way to leave Plan mode after the user said yes.
+Main implementation work can participate in a larger skill chain without pretending every implementation completion is final. Multi-slice work remains efficient because planned, unblocked slices can continue through TDD without unnecessary mode churn. Newly discovered uncertainty routes back to the relevant planning skill so the destination or journey can be repaired before more code is changed.

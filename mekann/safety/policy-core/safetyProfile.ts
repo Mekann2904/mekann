@@ -28,7 +28,7 @@ export class SafetyProfileState {
 	private profileOverrideStack: SafetyProfileEntry[] = [];
 	private disabled = false;
 	private baseMode: SandboxMode;
-	modeStatus: "main" | "read_only" | "plan" | "sub" | undefined;
+	modeStatus: "main" | "read_only" | "sub" | undefined;
 	rightStatus: string | undefined;
 
 	constructor(baseMode: SandboxMode) {

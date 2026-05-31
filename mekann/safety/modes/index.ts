@@ -21,7 +21,7 @@ export default function modesExtension(pi: ExtensionAPI): void {
 	let suppressModelSelectPersist = false;
 	let suppressThinkingSelectPersist = false;
 
-	/** Token for sandbox profile override (set on plan entry, cleared on exit). */
+	/** Token for sandbox profile override (set on read-only entry, cleared on exit). */
 	let readOnlySandboxOverrideToken: string | undefined;
 
 	function safeEmit(event: string, data: unknown): void {
@@ -294,7 +294,7 @@ export default function modesExtension(pi: ExtensionAPI): void {
 	}
 
 	pi.registerFlag("auto", { description: "auto(autoresearch)モードで起動", type: "boolean", default: false });
-	pi.registerFlag("plan", { description: "read-only mode で起動（旧 plan mode 互換）", type: "boolean", default: false });
+	pi.registerFlag("read-only", { description: "read-only mode で起動", type: "boolean", default: false });
 	pi.registerFlag("sub", { description: "sub mode で起動（subagent 並列活用）", type: "boolean", default: false });
 
 	pi.on("session_start", async (_event, ctx) => {
@@ -305,7 +305,7 @@ export default function modesExtension(pi: ExtensionAPI): void {
 
 		if (pi.getFlag("auto") === true) {
 			await transitionToMode("auto", ctx, { persistCurrentMain: false });
-		} else if (pi.getFlag("plan") === true) {
+		} else if (pi.getFlag("read-only") === true) {
 			await transitionToMode("read_only", ctx, { persistCurrentMain: false });
 		} else if (pi.getFlag("sub") === true) {
 			await transitionToMode("sub", ctx, { persistCurrentMain: false });
@@ -320,7 +320,6 @@ export default function modesExtension(pi: ExtensionAPI): void {
 
 	const origReadOnlyHandler = (_args: string, ctx: ExtensionContext) => { lastCtx = ctx; return toggleReadOnlyMode(ctx); };
 	pi.registerCommand("read-only", { description: "Read-only mode 切替", handler: origReadOnlyHandler });
-	pi.registerCommand("plan", { description: "Read-only mode 切替（旧 plan mode 互換）", handler: origReadOnlyHandler });
 	const origSubHandler = (_args: string, ctx: ExtensionContext) => { lastCtx = ctx; return toggleSubMode(ctx); };
 	pi.registerCommand("sub", { description: "Sub mode 切替", handler: origSubHandler });
 

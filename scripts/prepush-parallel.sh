@@ -15,7 +15,7 @@ declare -A names=( [typecheck]="npm run typecheck"
   [prompt-core]="npm run test:prompt-core"
   [cache-friendly-prompt]="npm run test:cache-friendly-prompt"
   [agent-guidelines]="npm run test:agent-guidelines"
-  [plan-mode-coverage]="npm run check:coverage:plan-mode"
+  [modes-coverage]="npm run check:coverage:modes"
   [sandbox]="npm run test:sandbox"
   [subagent]="npm run test:subagent"
   [zip-repo]="npm run test:zip-repo"
@@ -47,7 +47,7 @@ if [ $fail -ne 0 ]; then
   exit 1
 fi
 
-echo "✓ All checks passed (workflow checks + CI prepare check + plan-mode coverage threshold + typecheck + test suites)"
+echo "✓ All checks passed (workflow checks + CI prepare check + modes coverage threshold + typecheck + test suites)"
 end_ms=$(python3 -c 'import time; print(int(time.time()*1000))')
 elapsed=$((end_ms - start_ms))
 echo "METRIC prepush_ms=${elapsed}"

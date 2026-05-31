@@ -241,12 +241,12 @@ describe("GoalRuntime", () => {
     expect(goal.time_used_seconds).toBe(3);
   });
 
-  // ─── 6. plan mode suppresses goal continuation ───────────────
+  // ─── 6. continuation suppression prevents goal continuation ───────────────
 
-  it("plan mode suppresses goal continuation", () => {
+  it("continuation suppression prevents goal continuation", () => {
     const { runtime, pi, ctx } = setupRuntimeWithGoal();
 
-    runtime.inPlanMode = true;
+    runtime.continuationSuppressed = true;
     runtime.maybeContinueIfIdle(ctx);
 
     expect(pi.sendUserMessage).not.toHaveBeenCalled();
@@ -730,7 +730,7 @@ describe("GoalRuntime", () => {
   it("reset clears all runtime state", () => {
     const { runtime, ctx } = setupRuntimeWithGoal();
     runtime.onTurnStart({ turnIndex: 0 }, ctx);
-    runtime.inPlanMode = true;
+    runtime.continuationSuppressed = true;
     runtime.continuation_active = true;
     runtime.suppress_budget_steering = true;
 
@@ -739,7 +739,7 @@ describe("GoalRuntime", () => {
     expect(runtime.active_goal_id).toBeNull();
     expect(runtime.active_turn_marker).toBe(false);
     expect(runtime.continuation_active).toBe(false);
-    expect(runtime.inPlanMode).toBe(false);
+    expect(runtime.continuationSuppressed).toBe(false);
     expect(runtime.suppress_budget_steering).toBe(false);
   });
 
@@ -748,12 +748,12 @@ describe("GoalRuntime", () => {
   it("onSessionShutdown resets runtime", () => {
     const { runtime, ctx } = setupRuntimeWithGoal();
     runtime.onTurnStart({ turnIndex: 0 }, ctx);
-    runtime.inPlanMode = true;
+    runtime.continuationSuppressed = true;
 
     runtime.onSessionShutdown();
 
     expect(runtime.active_goal_id).toBeNull();
-    expect(runtime.inPlanMode).toBe(false);
+    expect(runtime.continuationSuppressed).toBe(false);
   });
 
   // ─── 37. maybeContinueIfIdle rejects when goal has empty objective ──

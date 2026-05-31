@@ -1,21 +1,18 @@
-# 0014. Separate Plan mode from Read-only mode
+# 0014. Retire the planning collaboration mode and keep read-only explicit
 
 ## Status
-Accepted
+Superseded
 
 ## Context
-Plan mode used to combine two concerns: planning/design collaboration and a read-only safety posture. That made the name misleading once planning workflows needed to update domain docs inline through `grill-with-docs`, and it also encouraged treating Plan mode as a security boundary.
+The old planning collaboration mode combined planning/design discussion with a read-only safety posture. That naming became misleading once planning workflows moved to skills such as `grill-with-docs`, `to-prd`, `to-issues`, `prototype`, `improve-codebase-architecture`, `diagnose`, and `tdd`.
 
 ## Decision
-Separate the concerns.
+Remove the dedicated planning collaboration mode from runtime code.
 
-- Plan mode is a UX-level collaboration mode for planning, design discussion, and specification sharpening.
-- Plan mode is not inherently read-only and uses the same sandbox posture as the mode it was entered from.
-- Read-only mode is the user-facing no-write posture and owns the old read-only tool restrictions and sandbox override.
-- Add runtime mode `read_only` and `/read-only`.
-- Rename the sandbox capability profile from `read_only` to `read_only` without an alias.
-- Remove `plan-grill-with-docs`; Plan mode instructs the agent to read and follow `grill-with-docs` instead.
-- Remove Plan mode's implementation brief handoff workflow.
+- Planning is handled by skills in normal conversation flow.
+- Read-only mode is the user-facing no-write posture and owns read-only tool restrictions plus the sandbox override.
+- Keep runtime mode `read_only` and `/read-only`.
+- Do not keep the old planning command, startup flag, status labels, or package/script/workflow names.
 
 ## Consequences
-Plan mode can update docs during planning sessions when the active sandbox allows it. Users who want investigation without file changes explicitly enter Read-only mode. Future code should avoid using Plan mode as a synonym for read-only execution.
+There is one explicit no-write posture: Read-only mode. Planning remains a workflow concern, not a runtime mode or safety boundary.

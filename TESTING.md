@@ -9,7 +9,7 @@ This repository uses [Vitest](https://vitest.dev/) for testing.
 npm test
 
 # Run tests for specific module
-cd mekann/safety/plan-mode && npm test
+cd mekann/safety/modes && npm test
 cd mekann/safety/sandbox && npm test
 cd mekann/context/output-gate && npm test
 
@@ -21,19 +21,21 @@ npm run typecheck
 
 # Run with coverage
 cd mekann/safety/sandbox && npx vitest run --coverage
-cd mekann/safety/plan-mode && npx vitest run --coverage
+cd mekann/safety/modes && npx vitest run --coverage
 ```
 
 ## Test Structure
 
-### plan-mode (313 tests)
+### modes
 
-| File | Tests | Description |
-|------|-------|-------------|
-| `plan-mode.test.ts` | 276 | utils.ts + state.ts + integration scenarios |
-| `index.test.ts` | 37 | Extension hooks via mock API |
+| File | Description |
+|------|-------------|
+| `coverage.test.ts` | Mode transitions, startup flags, model/thinking restoration |
+| `index.test.ts` | Extension hooks via mock API |
+| `property.test.ts` | Command-intent property tests |
+| `settingsSchema.test.ts` | Settings schema validation |
 
-**Coverage**: 79.5% statements, 71.7% branches (index.ts was 0% → 73.7%)
+**Coverage gate**: 85% line coverage
 
 ### sandbox (283 tests)
 
@@ -88,7 +90,7 @@ npm run typecheck
 GitHub Actions runs the production typecheck and the listed module test suites on every push/PR:
 
 - `typecheck-prod`: Production typecheck for all mekann code
-- `plan-mode`: Ubuntu (unit tests)
+- `modes`: Ubuntu (unit tests)
 - `sandbox-unit`: Ubuntu (unit tests only)
 - `sandbox-macos`: macOS (full integration with sandbox-exec)
 - `zip-repo`: Ubuntu (unit tests)
@@ -105,7 +107,7 @@ GitHub Actions runs the production typecheck and the listed module test suites o
 ```
 prepush = typecheck + CI prepare + workflow checks + module tests (parallel)
   ├── typecheck (sandbox + subagent)
-  ├── plan-mode coverage threshold (85% line coverage)
+  ├── modes coverage threshold (85% line coverage)
   ├── sandbox tests
   ├── subagent tests
   ├── zip-repo tests

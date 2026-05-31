@@ -188,7 +188,7 @@ This ordering ensures yolo approval is never requested for an unsafe workspace r
 - `read_only` モードの強制は **OS-level Seatbelt policy** による。command intent 正規表現に依存しない。
 - `classifyCommandIntent()` は UX フィルタであり、security boundary ではない。
 - sandbox が未導入または `--no-sandbox` の場合、modes 拡張は単独で command intent 分類による保守的なガードを提供する。
-- plan override 中に `/sandbox yolo` しても、effective mode は `read_only` のまま。read-only 終了後に base mode へ戻る。
+- read-only override 中に `/sandbox yolo` しても、effective mode は `read_only` のまま。read-only 終了後に base mode へ戻る。
 
 ## Known Limitations
 

@@ -86,7 +86,6 @@ export function normalizeConfig(raw: Record<string, unknown>): ModesConfig {
 		const mi = m as Record<string, unknown>;
 		if (isModelRef(mi.main)) models.main = mi.main;
 		if (isModelRef(mi.read_only)) models.read_only = mi.read_only;
-		else if (isModelRef(mi.plan)) models.read_only = mi.plan;
 		if (isModelRef(mi.auto)) models.auto = mi.auto;
 		if (isModelRef(mi.sub)) models.sub = mi.sub;
 	}
@@ -97,7 +96,6 @@ export function normalizeConfig(raw: Record<string, unknown>): ModesConfig {
 		const ti = t as Record<string, unknown>;
 		if (isThinkingLevel(ti.main)) thinking.main = ti.main;
 		if (isThinkingLevel(ti.read_only)) thinking.read_only = ti.read_only;
-		else if (isThinkingLevel(ti.plan)) thinking.read_only = ti.plan;
 		if (isThinkingLevel(ti.auto)) thinking.auto = ti.auto;
 		if (isThinkingLevel(ti.sub)) thinking.sub = ti.sub;
 	}
