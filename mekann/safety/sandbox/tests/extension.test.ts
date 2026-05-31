@@ -281,7 +281,7 @@ describe("session_start hook", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", statusCtx);
-		expect(notifications[0]).toBe("yolo");
+		expect(notifications[0]).toContain("sandbox: active (yolo");
 	});
 
 	it("unsafe workspace root (/): sandbox を無効化する", async () => {
@@ -326,8 +326,8 @@ describe("session_shutdown hook", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", statusCtx);
-		// After shutdown, effectiveMode() returns currentMode (yolo by default)
-		expect(notifications[0]).toBe("yolo");
+		// After shutdown, sandbox is no longer initialized.
+		expect(notifications[0]).toContain("sandbox: blocked");
 	});
 });
 
@@ -393,8 +393,7 @@ describe("/sandbox command", () => {
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 
-		// When explicitly disabled, effectiveMode() returns currentMode (yolo default)
-		expect(notifications[0]).toBe("yolo");
+		expect(notifications[0]).toContain("sandbox: disabled by --no-sandbox");
 	});
 
 	it("sandbox 有効時のステータス", async () => {
@@ -412,7 +411,7 @@ describe("/sandbox command", () => {
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 
-		expect(notifications[0]).toBe("yolo");
+		expect(notifications[0]).toContain("sandbox: active (yolo");
 	});
 });
 
@@ -431,7 +430,7 @@ describe("/sandbox mode change", () => {
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 
-		expect(notifications[0]).toBe("yolo");
+		expect(notifications[0]).toContain("sandbox: disabled by --no-sandbox");
 	});
 
 	it("read_only: モードを変更", async () => {
@@ -584,7 +583,7 @@ describe("/sandbox getArgumentCompletions", () => {
 		await loadExtension(mock);
 
 		const completions = mock._commands["sandbox"]!.getArgumentCompletions!("");
-		expect(completions.length).toBe(3);
+		expect(completions.length).toBe(8);
 	});
 });
 
@@ -688,7 +687,7 @@ describe("session lifecycle", () => {
 		ctx.ui.notify = vi.fn((msg: string) => { notifications.push(msg); });
 		await mock._commands["sandbox"].handler("", ctx);
 		// After restart with no flags, default is yolo, approved at session_start
-		expect(notifications[0]).toBe("yolo");
+		expect(notifications[0]).toContain("sandbox: active (yolo");
 	});
 });
 
@@ -1067,7 +1066,7 @@ describe("profile override: restrict-only policy", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
-		expect(notifications[0]).toBe("read_only");
+		expect(notifications[0]).toContain("sandbox: active (read_only");
 	});
 
 	it("base read_only で workspace_write push → reject", async () => {
@@ -1098,7 +1097,7 @@ describe("profile override: restrict-only policy", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
-		expect(notifications[0]).toBe("read_only");
+		expect(notifications[0]).toContain("sandbox: active (read_only");
 	});
 
 	it("base workspace_write で yolo push → reject", async () => {
@@ -1128,7 +1127,7 @@ describe("profile override: restrict-only policy", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
-		expect(notifications[0]).toBe("workspace_write");
+		expect(notifications[0]).toContain("sandbox: active (workspace_write");
 	});
 
 	it("unknown profile は reject", async () => {
@@ -1181,7 +1180,7 @@ describe("profile override: restrict-only policy", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
-		expect(notifications[0]).toBe("workspace_write");
+		expect(notifications[0]).toContain("sandbox: active (workspace_write");
 	});
 
 	it("push/pop 後に setWidget が呼ばれる (lastCtx がある場合)", async () => {
@@ -1353,7 +1352,7 @@ describe("sandbox default mode", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
-		expect(notifications[0]).toBe("yolo");
+		expect(notifications[0]).toContain("sandbox: active (yolo");
 	});
 
 	it("workspace_write は明示指定した場合のみ effective mode になる", async () => {
@@ -1370,7 +1369,7 @@ describe("sandbox default mode", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
-		expect(notifications[0]).toBe("workspace_write");
+		expect(notifications[0]).toContain("sandbox: active (workspace_write");
 	});
 });
 
@@ -1562,9 +1561,9 @@ describe("/sandbox command: no args with startup blocked", () => {
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 
-		expect(notifications[0]).toContain("blocked:");
+		expect(notifications[0]).toContain("sandbox: unavailable");
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("blocked:"),
+			expect.stringContaining("sandbox: unavailable"),
 			"error",
 		);
 	});
@@ -1751,7 +1750,7 @@ describe("profile override: sandbox_read_only", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
-		expect(notifications[0]).toBe("read_only");
+		expect(notifications[0]).toContain("sandbox: active (read_only");
 	});
 });
 
@@ -1786,7 +1785,7 @@ describe("profile override: pop with non-matching token", () => {
 		});
 		await mock._commands["sandbox"].handler("", ctx);
 		// Should still be read_only (override not popped)
-		expect(notifications[0]).toBe("read_only");
+		expect(notifications[0]).toContain("sandbox: active (read_only");
 	});
 });
 
@@ -1820,7 +1819,7 @@ describe("profile override: stack behavior", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
-		expect(notifications[0]).toBe("read_only");
+		expect(notifications[0]).toContain("sandbox: active (read_only");
 
 		// Pop first one
 		mock._eventHandlers["mekann:sandbox:pop-profile"]({
@@ -1833,7 +1832,7 @@ describe("profile override: stack behavior", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
-		expect(notifications[0]).toBe("read_only"); // still read_only (ext-b still active)
+		expect(notifications[0]).toContain("sandbox: active (read_only"); // still read_only (ext-b still active)
 
 		// Pop second one
 		mock._eventHandlers["mekann:sandbox:pop-profile"]({
@@ -1846,7 +1845,7 @@ describe("profile override: stack behavior", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
-		expect(notifications[0]).toBe("yolo"); // back to base mode
+		expect(notifications[0]).toContain("sandbox: active (yolo"); // back to base mode
 	});
 
 	it("同じ token で再 push は既存エントリを置き換える", async () => {
@@ -1883,7 +1882,7 @@ describe("profile override: stack behavior", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
-		expect(notifications[0]).toBe("yolo"); // back to base
+		expect(notifications[0]).toContain("sandbox: active (yolo"); // back to base
 	});
 });
 
@@ -1962,7 +1961,7 @@ describe("profile override: invalid payloads", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", statusCtx);
-		expect(notifications[0]).toBe("read_only");
+		expect(notifications[0]).toContain("sandbox: active (read_only");
 	});
 });
 
@@ -1999,7 +1998,7 @@ describe("profile override: escalation rejection", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
-		expect(notifications[0]).toBe("read_only");
+		expect(notifications[0]).toContain("sandbox: active (read_only");
 	});
 
 	it("workspace_write base で read_only push は成功する (より制限的)", async () => {
@@ -2022,7 +2021,7 @@ describe("profile override: escalation rejection", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
-		expect(notifications[0]).toBe("read_only");
+		expect(notifications[0]).toContain("sandbox: active (read_only");
 	});
 });
 
@@ -2089,13 +2088,13 @@ describe("session_shutdown: full reset", () => {
 		// Shutdown
 		await mock._hooks.session_shutdown();
 
-		// All state should be reset — /sandbox shows yolo (default mode)
+		// All state should be reset — /sandbox reports uninitialized until the next session_start.
 		const notifications: string[] = [];
 		const ctx = createMockCtx({
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
-		expect(notifications[0]).toBe("yolo");
+		expect(notifications[0]).toContain("sandbox: blocked");
 
 		// user_bash should be allowed (yolo default after reset)
 		expect(mock._hooks.user_bash()).toBeUndefined();
@@ -2235,7 +2234,7 @@ describe("bash tool: workspace_write sandboxed with policy builder", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", modeCtx);
-		expect(notifications[0]).toBe("workspace_write");
+		expect(notifications[0]).toContain("sandbox: active (workspace_write");
 
 		// Execute sandboxed command
 		const tool = mock._registeredTools[0];
@@ -2321,7 +2320,7 @@ describe("profile override: escalation rejection", () => {
 			ui: { ...createMockCtx().ui, notify: vi.fn((msg: string) => { notifications.push(msg); }) },
 		});
 		await mock._commands["sandbox"].handler("", ctx);
-		expect(notifications[0]).toBe("read_only");
+		expect(notifications[0]).toContain("sandbox: active (read_only");
 	});
 });
 
