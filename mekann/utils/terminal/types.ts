@@ -36,9 +36,19 @@ export interface TerminalEmulatorCapabilities {
 	environmentPropagation: boolean;
 }
 
+export interface TerminalImagePlacement {
+	path: string;
+	columns: number;
+	rows: number;
+	x: number;
+	y: number;
+}
+
 export interface TerminalEmulatorAdapter {
 	readonly id: string;
 	capabilities(): TerminalEmulatorCapabilities;
 	isAvailable(): boolean;
 	launch(request: TerminalLaunchRequest): Promise<TerminalLaunchResult>;
+	renderImage?(placement: TerminalImagePlacement): Promise<void>;
+	clearImages?(): Promise<void>;
 }

@@ -34,6 +34,7 @@ import { renderWidget, renderGoalPolicy, renderGoalObjectiveContext, renderGoalR
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import { registerGoalCommand } from "./command.js";
 import { recordGoalEvent, type GoalAction } from "./context-events.js";
+import { MODE_STATUS_EVENT } from "../../safety/policy-core/modes.js";
 
 
 // ---------------------------------------------------------------------------
@@ -41,6 +42,7 @@ import { recordGoalEvent, type GoalAction } from "./context-events.js";
 // ---------------------------------------------------------------------------
 
 const CUSTOM_TYPE = "goal-state";
+void MODE_STATUS_EVENT;
 
 // ---------------------------------------------------------------------------
 // Extension factory

@@ -1,5 +1,5 @@
 import { terminalActionArgv } from "../actions.js";
-import type { TerminalEmulatorAdapter, TerminalEmulatorCapabilities, TerminalLaunchRequest, TerminalLaunchResult } from "../types.js";
+import type { TerminalEmulatorAdapter, TerminalEmulatorCapabilities, TerminalImagePlacement, TerminalLaunchRequest, TerminalLaunchResult } from "../types.js";
 import { KittyControl, type KittySplitLocation } from "./control.js";
 
 function splitLocationForPreference(preference: TerminalLaunchRequest["preference"]): KittySplitLocation | undefined {
@@ -25,6 +25,11 @@ export class KittyTerminalAdapter implements TerminalEmulatorAdapter {
 
 	isAvailable(): boolean {
 		return this.control.isKittyEnvironment();
+	}
+
+	async renderImage(placement: TerminalImagePlacement): Promise<void> {
+		if (!this.isAvailable()) return;
+		try { await this.control.renderImage(placement); } catch { /* cosmetic */ }
 	}
 
 	async launch(request: TerminalLaunchRequest): Promise<TerminalLaunchResult> {

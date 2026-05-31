@@ -14,7 +14,7 @@ import { Mailbox } from "./mailbox.js";
 import { AgentRegistry } from "./registry.js";
 import { SubagentResultStore } from "./resultStore.js";
 import { SpawnQueue } from "./spawnQueue.js";
-import { RuntimeStore } from "./runtimeStore.js";
+import { RuntimeStore, type RuntimeStoreMaps } from "./runtimeStore.js";
 import { SubagentFinalizer } from "./subagentFinalizer.js";
 import { SubagentSpawner, type CloseRuntimeAdapters } from "./subagentSpawner.js";
 
@@ -29,16 +29,8 @@ export class SubagentLifecycle {
   private spawner!: SubagentSpawner;
   private adaptersInitialized = false;
 
-  /**
-   * Back-compat public maps. AgentControl reads these directly:
-   *   this.runtimes = this.lifecycle.runtimes;
-   *   this.childSessions = this.lifecycle.childSessions;
-   *   this.hubs = this.lifecycle.hubs;
-   * We expose the RuntimeStore's internal maps as readonly references.
-   */
-  readonly runtimes: Map<string, AgentRuntime>;
-  readonly childSessions: Map<string, AgentSession>;
-  readonly hubs: Map<string, SubagentHub>;
+  /** Back-compat typed access for existing tests/consumers. */
+  readonly compatibilityMaps: RuntimeStoreMaps;
 
   constructor(
     private readonly registry: AgentRegistry,
@@ -49,10 +41,7 @@ export class SubagentLifecycle {
     this._runtimes = new RuntimeStore();
     this.resultStore = this.finalizer.resultStore;
 
-    // Expose internal maps for back-compat
-    this.runtimes = (this._runtimes as any).runtimes;
-    this.childSessions = (this._runtimes as any).childSessions;
-    this.hubs = (this._runtimes as any).hubs;
+    this.compatibilityMaps = this._runtimes.mapsForCompatibility();
 
     // Queue is created eagerly; spawner is wired in initAdapters().
     // The onDrain callback defers to spawner which will exist by the time

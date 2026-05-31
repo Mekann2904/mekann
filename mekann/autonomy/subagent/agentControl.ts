@@ -142,9 +142,9 @@ export class AgentControl {
     this.allowNestedSubagents = options.allowNestedSubagents ?? MEKANN_SUBAGENT_DEFAULTS.allowNestedSubagents;
     this.defaultReasoningEffort = options.defaultReasoningEffort ?? MEKANN_SUBAGENT_DEFAULTS.defaultReasoningEffort;
     this.lifecycle = new SubagentLifecycle(this.registry, this.mailbox, process.cwd());
-    this.runtimes = this.lifecycle.runtimes;
-    this.childSessions = this.lifecycle.childSessions;
-    this.hubs = this.lifecycle.hubs;
+    this.runtimes = this.lifecycle.compatibilityMaps.runtimes;
+    this.childSessions = this.lifecycle.compatibilityMaps.childSessions;
+    this.hubs = this.lifecycle.compatibilityMaps.hubs;
     this.resultStore = this.lifecycle.resultStore;
     this.sessionControl = new AgentSessionControl({
       registry: this.registry,

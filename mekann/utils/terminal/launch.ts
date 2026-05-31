@@ -1,5 +1,5 @@
 import { KittyTerminalAdapter } from "./kitty/adapter.js";
-import type { TerminalEmulatorAdapter, TerminalLaunchRequest, TerminalLaunchResult } from "./types.js";
+import type { TerminalEmulatorAdapter, TerminalImagePlacement, TerminalLaunchRequest, TerminalLaunchResult } from "./types.js";
 
 export function detectTerminalEmulatorAdapters(): TerminalEmulatorAdapter[] {
 	return [new KittyTerminalAdapter()].filter((adapter) => adapter.isAvailable());
@@ -21,4 +21,15 @@ export async function launchWithTerminalEmulator(
 
 export async function launchExternalUi(request: Omit<TerminalLaunchRequest, "preference"> & { preference?: Exclude<TerminalLaunchRequest["preference"], "pass-through"> }): Promise<TerminalLaunchResult> {
 	return await launchWithTerminalEmulator({ ...request, preference: request.preference ?? "split-longer-side" });
+}
+
+export async function renderTerminalImage(
+	placement: TerminalImagePlacement,
+	adapters = detectTerminalEmulatorAdapters(),
+): Promise<void> {
+	for (const adapter of adapters) {
+		if (!adapter.capabilities().image || !adapter.renderImage) continue;
+		await adapter.renderImage(placement);
+		return;
+	}
 }

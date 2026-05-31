@@ -9,6 +9,12 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { AgentRuntime } from "./types.js";
 import type { SubagentHub } from "./ipc.js";
 
+export interface RuntimeStoreMaps {
+  runtimes: Map<string, AgentRuntime>;
+  childSessions: Map<string, AgentSession>;
+  hubs: Map<string, SubagentHub>;
+}
+
 export class RuntimeStore {
   readonly runtimes = new Map<string, AgentRuntime>();
   readonly childSessions = new Map<string, AgentSession>();
@@ -30,6 +36,14 @@ export class RuntimeStore {
 
   runtimePaths(): string[] {
     return [...this.runtimes.keys()];
+  }
+
+  mapsForCompatibility(): RuntimeStoreMaps {
+    return {
+      runtimes: this.runtimes,
+      childSessions: this.childSessions,
+      hubs: this.hubs,
+    };
   }
 
   getRuntimeByAgentId(agentId: string): AgentRuntime | undefined {

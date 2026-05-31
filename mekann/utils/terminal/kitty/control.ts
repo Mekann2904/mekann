@@ -1,4 +1,4 @@
-import { execFile as execFileCb } from "node:child_process";
+import { execFile as execFileCb, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFile = promisify(execFileCb);
@@ -90,6 +90,10 @@ export class KittyControl {
 	async launchSplitLongerSide(options: KittyLaunchOptions): Promise<KittyLaunchResult> {
 		const location = await this.longerSideSplitLocation();
 		return await this.launchWindow({ ...options, location });
+	}
+
+	async renderImage(options: { path: string; columns: number; rows: number; x: number; y: number }): Promise<void> {
+		spawnSync(this.kittenBin, ["icat", "--silent", "--transfer-mode=file", "--align=left", "--scale-up=yes", "--place", `${options.columns}x${options.rows}@${options.x}x${options.y}`, options.path], { stdio: "inherit" });
 	}
 
 	async launchWindow(options: KittyLaunchOptions & { location: KittySplitLocation }): Promise<KittyLaunchResult> {

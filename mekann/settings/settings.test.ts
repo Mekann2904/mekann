@@ -83,8 +83,11 @@ describe("settings registry", () => {
 describe("sandbox schema", () => {
   it("has sandbox settings with correct defaults", () => {
     const schema = mekannSettingsSchemas.find((s) => s.feature === "sandbox")!;
-    expect(schema.settings).toHaveLength(3);
+    expect(schema.settings).toHaveLength(6);
     expect(schema.settings.find((s) => s.key === "enabled")?.defaultValue).toBe(true);
+    expect(schema.settings.find((s) => s.key === "bashMode")?.defaultValue).toBe("sandboxed");
+    expect(schema.settings.find((s) => s.key === "bashAllowlist")?.defaultValue).toBe("");
+    expect(schema.settings.find((s) => s.key === "allowPersistentBashApprovals")?.defaultValue).toBe(true);
     const bytes = schema.settings.find((s) => s.key === "llmOutputMaxBytes")!;
     expect(bytes.defaultValue).toBe(50 * 1024);
     const lines = schema.settings.find((s) => s.key === "llmOutputMaxLines")!;

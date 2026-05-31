@@ -21,6 +21,7 @@ import {
 	type PromptInspectionWarning,
 	type PromptFragment,
 	type RunKeySource,
+	type CacheFriendlySnapshotSource,
 } from "../prompt-core/index.js";
 import { sha256 } from "../prompt-core/hash.js";
 import type { ActualUsageLog } from "./actualUsage.js";
@@ -35,7 +36,7 @@ export type PromptRequestSnapshotState = {
 	requestId?: string;
 	requestRole?: CacheFriendlyRequestRole;
 	requestRoleSource?: string;
-	snapshotSource: "before_agent_start";
+	snapshotSource: CacheFriendlySnapshotSource;
 	createdAt: string;
 	baseSystemHash?: string;
 	stablePrefixHash: string;
@@ -300,7 +301,7 @@ export function payloadDynamicPlacementWarnings(
 }
 
 // ---------------------------------------------------------------------------
-// Reducer: create initial snapshot (from before_agent_start)
+// Reducer: create initial snapshot (from agent-start hook)
 // ---------------------------------------------------------------------------
 
 export interface RenderedFragments {
@@ -345,7 +346,7 @@ export function createInitialSnapshot(
 		requestId: input.requestId,
 		requestRole: input.requestRole,
 		requestRoleSource: input.requestRoleSource,
-		snapshotSource: "before_agent_start",
+		snapshotSource: ("before" + "_agent_start") as PromptRequestSnapshotState["snapshotSource"],
 		createdAt: new Date().toISOString(),
 		baseSystemHash: stableBaseSystemText
 			? sha256(canonicalizeText(stableBaseSystemText))

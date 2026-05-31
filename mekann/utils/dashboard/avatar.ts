@@ -1,7 +1,7 @@
-import { spawnSync } from "node:child_process";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { renderTerminalImage } from "../terminal/launch.js";
 import { registerCleanupPath } from "./cleanup.js";
 
 export type DashboardAvatarResult = { ok: true; path: string; columns: number; rows: number } | { ok: false; error: string };
@@ -29,13 +29,7 @@ export async function renderKittyAvatar(avatar: DashboardAvatarResult | undefine
 
 export async function renderKittyImage(image: { ok: true; path: string; columns: number; rows: number } | { ok: false; error: string } | undefined, options: { x: number; y: number }): Promise<void> {
 	if (!image?.ok) return;
-	try {
-		// `kitten icat` writes Kitty graphics escape sequences to stdout. Use
-		// inherited stdio; capturing stdout makes the image disappear.
-		spawnSync("kitten", ["icat", "--silent", "--transfer-mode=file", "--align=left", "--scale-up=yes", "--place", `${image.columns}x${image.rows}@${options.x}x${options.y}`, image.path], { stdio: "inherit" });
-	} catch {
-		// Image rendering is cosmetic; keep the dashboard usable.
-	}
+	await renderTerminalImage({ path: image.path, columns: image.columns, rows: image.rows, x: options.x, y: options.y });
 }
 
 export function isLikelyKitty(env: NodeJS.ProcessEnv = process.env): boolean {
