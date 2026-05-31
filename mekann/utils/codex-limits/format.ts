@@ -131,23 +131,6 @@ function normalizedKeyHasToken(key: string, token: string): boolean {
 	);
 }
 
-function formatStatuslinePrefix(snapshot: NormalizedRateLimitSnapshot): string {
-	if (isPrimaryCodexSnapshot(snapshot)) return "codex";
-	const label = snapshot.limitName ?? snapshot.limitId;
-	return `codex ${compactLimitLabel(label)}`;
-}
-
-function compactLimitLabel(label: string): string {
-	const normalized = label.replace(/[_-]+/g, " ").trim();
-	const codexVariant = normalized.match(/\bcodex\s+(.+)$/i)?.[1]?.trim();
-	const compact = codexVariant || normalized;
-	return compact.toLowerCase().replace(/\s+/g, " ");
-}
-
-function formatRemainingPercent(window: NormalizedRateLimitWindow): string {
-	return `${(100 - clampPercent(window.usedPercent)).toFixed(0)}%`;
-}
-
 function isPrimaryCodexSnapshot(snapshot: NormalizedRateLimitSnapshot): boolean {
 	return (
 		normalizedUsageKey(snapshot.limitId) === "codex" ||
@@ -159,12 +142,6 @@ function formatWindowLine(label: string, window: NormalizedRateLimitWindow, incl
 	const remaining = 100 - clampPercent(window.usedPercent);
 	const reset = includeReset && window.resetsAt ? `  更新 ${formatResetDateTime(window.resetsAt)}` : "";
 	return `${label.padEnd(LIMIT_VALUE_COLUMN)}${progressBar(remaining)} ${remaining.toFixed(0).padStart(3)}%${reset}`;
-}
-
-function formatWindow(window: NormalizedRateLimitWindow, includeReset = false): string {
-	const remaining = 100 - clampPercent(window.usedPercent);
-	const reset = includeReset && window.resetsAt ? `  更新 ${formatResetDateTime(window.resetsAt)}` : "";
-	return `${progressBar(remaining)} ${remaining.toFixed(0).padStart(3)}%${reset}`;
 }
 
 function formatCompactWindow(label: string, window: NormalizedRateLimitWindow): string {
@@ -183,21 +160,6 @@ function formatCredits(credits: NormalizedCredits): string {
 	const balance = credits.balance?.trim();
 	if (!balance) return "credits available";
 	return `${formatNumber(Number(balance), balance)} credits`;
-}
-
-function formatReset(epochSeconds: number): string {
-	const reset = new Date(epochSeconds * 1000);
-	if (Number.isNaN(reset.getTime())) return "at an unknown time";
-
-	const now = new Date();
-	const time = `${reset.getHours().toString().padStart(2, "0")}:${reset
-		.getMinutes()
-		.toString()
-		.padStart(2, "0")}`;
-	if (reset.toDateString() === now.toDateString()) return time;
-	const day = reset.getDate().toString();
-	const month = reset.toLocaleDateString(undefined, { month: "short" });
-	return `${time} on ${day} ${month}`;
 }
 
 function formatCapturedAt(epochMs: number): string {

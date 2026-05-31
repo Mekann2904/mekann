@@ -14,7 +14,6 @@ export { formatCodexUsageFooterLines, formatCodexUsageReport, formatCodexUsageSt
 const CODEX_PROVIDER_ID = "openai-codex";
 const DEFAULT_TIMEOUT_MS = 15_000;
 const CACHE_TTL_MS = 60 * 1000;
-const STATUS_KEY = "codex-usage";
 const RESET_FOREGROUND = "\x1b[39m";
 
 type QueryUsageOptions = {
@@ -34,7 +33,8 @@ export default function codexUsage(pi: ExtensionAPI): void {
 
 	const updateUsageWidget = (ctx: ExtensionContext) => {
 		ctx.ui.setWidget("codex-usage", undefined);
-		pi.events.emit("mekann:codex-usage:status", { text: formatSandboxUsageLine(usageStatusLines) });
+		const placement = placeUsageLines(usageStatusLines);
+		pi.events.emit("mekann:codex-usage:status", { text: placement.sandboxLine });
 		if (usageStatusLines.length === 0) {
 			ctx.ui.setFooter(undefined);
 			return;
@@ -45,7 +45,7 @@ export default function codexUsage(pi: ExtensionAPI): void {
 				dispose: unsub,
 				invalidate() {},
 				render(width: number): string[] {
-					return renderCodexFooter(ctx, footerData, theme, width, formatFooterUsageLine(usageStatusLines), pi.getThinkingLevel());
+					return renderCodexFooter(ctx, footerData, theme, width, placeUsageLines(usageStatusLines).footerLine, pi.getThinkingLevel());
 				},
 			} satisfies Component & { dispose(): void };
 		});
@@ -274,12 +274,16 @@ function isOpenAICodexModel(model: Pick<CodexUsageModel, "provider"> | undefined
 	return model?.provider === CODEX_PROVIDER_ID;
 }
 
-export function formatSandboxUsageLine(lines: string[]): string | undefined {
-	return lines.length > 1 ? lines[0] : undefined;
-}
+export type CodexUsagePlacement = {
+	sandboxLine?: string;
+	footerLine?: string;
+};
 
-export function formatFooterUsageLine(lines: string[]): string | undefined {
-	return lines.length === 1 ? lines[0] : lines[1];
+export function placeUsageLines(lines: string[]): CodexUsagePlacement {
+	return {
+		sandboxLine: lines.length > 1 ? lines[0] : undefined,
+		footerLine: lines.length === 1 ? lines[0] : lines[1],
+	};
 }
 
 function sameLines(left: string[], right: string[]): boolean {
