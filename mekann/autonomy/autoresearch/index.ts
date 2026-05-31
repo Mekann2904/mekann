@@ -763,7 +763,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		description: "Escrow pending subagent patch results as autoresearch candidates.",
 		promptSnippet: "Escrow subagent patch results as candidates.",
 		promptGuidelines: [
-			"During autoresearch, use this tool instead of apply_agent_results.",
+			"During autoresearch, use this tool instead of agent_results({ action: 'apply' }).",
 			"Evaluate via autoresearch_apply_candidate, then autoresearch_run_contract({ candidate_id }).",
 		],
 		parameters: Type.Object({

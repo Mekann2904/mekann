@@ -5,15 +5,15 @@
  * communicate via mailboxes/events, and are managed through a registry
  * with resource limits.
  *
- * Tools: spawn_agent, send_message, followup_task, wait_agent,
- *        list_agents, close_agent
+ * Tools: spawn_agent, message_agent, wait_agent,
+ *        list_agents, close_agent, agent_results
  * Commands: /agents, /wait-agent, /close-agent
  *
  * Usage:
  *   spawn_agent({ task_name:"research/api_scan", message:"API 層を調査して" })
  *   list_agents()
  *   wait_agent({ timeout_ms: 30000 })
- *   followup_task({ target:"research/api_scan", message:"auth 周辺も確認して" })
+ *   message_agent({ target:"research/api_scan", message:"auth 周辺も確認して", mode:"task" })
  *   close_agent({ target:"/root/research/api_scan" })
  */
 
@@ -125,7 +125,7 @@ const SpawnSchema = Type.Object({
   type: Type.Optional(SubagentTypeSchema),
 });
 
-const SendMessageSchema = Type.Object({
+const MessageAgentSchema = Type.Object({
   target: Type.String({
     description:
       'Target agent path (e.g. "research/api_scan" or "/root/research/api_scan").',
@@ -133,15 +133,8 @@ const SendMessageSchema = Type.Object({
   message: Type.String({
     description: "Message to send to the target agent.",
   }),
-});
-
-const FollowupTaskSchema = Type.Object({
-  target: Type.String({
-    description:
-      'Target agent path (e.g. "research/api_scan").',
-  }),
-  message: Type.String({
-    description: "Follow-up task message.",
+  mode: Type.Union([Type.Literal("note"), Type.Literal("task")], {
+    description: "note queues context without triggering a turn; task queues a follow-up task and triggers a turn when idle.",
   }),
 });
 
@@ -167,11 +160,23 @@ const CloseAgentSchema = Type.Object({
   }),
 });
 
-const ListAgentResultsSchema = Type.Object({ status: Type.Optional(Type.String()), outcome: Type.Optional(Type.String()), agent_path: Type.Optional(Type.String()) });
-const ShowAgentResultSchema = Type.Object({ result_id: Type.String(), include_patch: Type.Optional(Type.Boolean()) });
-const ApplyAgentResultsSchema = Type.Object({ source: Type.Optional(Type.Union([Type.Literal("pending"), Type.Literal("result_ids")])), result_ids: Type.Optional(Type.Array(Type.String())), order: Type.Optional(Type.Literal("fifo")), max_results: Type.Optional(Type.Number()), rollback_on_failure: Type.Optional(Type.Boolean()), allow_high_risk: Type.Optional(Type.Boolean()) });
-const RejectAgentResultSchema = Type.Object({ result_id: Type.String(), reason: Type.Optional(Type.String()) });
-const RetryAgentResultSchema = Type.Object({ result_id: Type.String(), reason: Type.Optional(Type.String()) });
+const AgentResultsSchema = Type.Object({
+  action: Type.Union([Type.Literal("list"), Type.Literal("show"), Type.Literal("apply"), Type.Literal("reject"), Type.Literal("retry")], {
+    description: "Structured subagent result action.",
+  }),
+  status: Type.Optional(Type.String()),
+  outcome: Type.Optional(Type.String()),
+  agent_path: Type.Optional(Type.String()),
+  result_id: Type.Optional(Type.String()),
+  include_patch: Type.Optional(Type.Boolean()),
+  source: Type.Optional(Type.Union([Type.Literal("pending"), Type.Literal("result_ids")])),
+  result_ids: Type.Optional(Type.Array(Type.String())),
+  order: Type.Optional(Type.Literal("fifo")),
+  max_results: Type.Optional(Type.Number()),
+  rollback_on_failure: Type.Optional(Type.Boolean()),
+  allow_high_risk: Type.Optional(Type.Boolean()),
+  reason: Type.Optional(Type.String()),
+});
 
 function registerSubagentPromptProvider(): void {
   registerPromptProvider({
@@ -361,7 +366,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       "Do not use subagents for small single-step tasks, one-file edits, simple questions, 1-3 file cross-references, single grep/read, tightly coupled implementation, ambiguous requirements, verifier-less debate, or work that requires tight step-by-step coordination with the parent. Direct tool use is better for those cases.",
       "Before spawning, check that at least 3 ROI conditions hold: natural decomposition, independent evidence, parent-verifiable result, high failure cost, too many local reads/tool calls, comparable candidates, or explicit user request for parallel/multi-agent work.",
       "For genuinely independent tasks, spawn all relevant subagents first, then wait for results. Avoid spawn→wait→spawn serialization unless later tasks depend on earlier results.",
-      "Default workflow: spawn_agent for each independent task → continue useful parent work or spawn more agents → wait_agent to collect updates/results → summarize/merge results → followup_task if more work is needed.",
+      "Default workflow: spawn_agent for each independent task → continue useful parent work or spawn more agents → wait_agent to collect updates/results → summarize/merge results → message_agent(mode=task) if more work is needed.",
       "Subagents are cleaned up automatically after successful completion. Do not call close_agent as routine cleanup after final_result; use close_agent only for cancellation, aborting, or stuck/abnormal agents.",
       "spawn_agent returns immediately; it does not mean the child has finished. Never claim subagent results until wait_agent returns mailbox content or a final_result.",
       "Give each subagent a stable, descriptive task_name such as research/api, research/db, fix/tests, review/security. Relative paths are resolved under /root.",
@@ -369,7 +374,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       "Use fork_turns only when the recent conversation is genuinely needed by the child; otherwise include the necessary context directly in message.",
       "Set roi_category to exactly one enum value: parallel_search | fault_localization | candidate_generation | fresh_review | verification | large_context_isolation | other. Put natural-language reasoning in justification, not roi_category. Use type=explore for wide read-only investigation, verify for narrow checks, review for fresh review, and patch for bounded patch proposals.",
       `Respect resource limits. By default, max running subagents = ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents} and max queued subagents = ${MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents}; excess accepted spawns return status=\"queued\" with queue_position/queued_ahead and start automatically when a slot opens.`,
-      "Use list_agents or wait_agent to observe queued/running/completed status. close_agent can cancel queued agents. send_message can add pre-start context to queued agents; followup_task requires a running agent.",
+      "Use list_agents or wait_agent to observe queued/running/completed status. close_agent can cancel queued agents. message_agent(mode=note) can add pre-start context; message_agent(mode=task) requires a running or idle agent.",
       "If a duplicate task_name is rejected, list_agents to inspect whether an agent with that path is still open/running before choosing a different path or aborting it with close_agent.",
       "Subagent output is for the parent agent, not for humans. Request compact structured results: findings, file paths, key decisions, risks, next actions. Avoid greetings, apologies, narrative summaries, or polished prose in subagent responses. For result_contract=subagent_result_v1 the child emits only raw JSON; put any desired report shape, language, or bullet sections inside JSON fields such as summary/evidence/validation. Use outcome=observation for read-only research/review, no_change only for verified no-op, patch only for concrete patch proposals, blocked for authority/environment blockers, and needs_decision only for explicit parent decisions. For free_text results, ask the child to use terse bullet sections.",
     ],
@@ -407,37 +412,23 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   });
 
   pi.registerTool({
-    name: "send_message",
-    label: "Send message to subagent",
+    name: "message_agent",
+    label: "Message subagent",
     description:
-      "Send a message to a subagent without triggering a new turn. The message is queued in the agent's mailbox.",
-    promptSnippet: "Deliver context or a note to a subagent without starting new work",
+      "Send a note or follow-up task to an existing subagent. mode=note queues context without starting work; mode=task triggers a turn when idle or queues the task if running.",
+    promptSnippet: "Send context or a follow-up task to a subagent",
     promptGuidelines: [
-      "Use send_message only to provide additional context or a note to a subagent without triggering a new turn.",
-      "If you want the subagent to perform additional work, use followup_task instead of send_message.",
-      "Write messages to subagents in English, consistent with the task delegation language.",
+      "Use mode=note only to provide additional context without triggering a new turn.",
+      "Use mode=task when the subagent should do more work, refine a previous answer, or continue from its current context.",
+      "Write messages to subagents in English, consistent with the initial delegation language.",
     ],
-    parameters: SendMessageSchema,
+    parameters: MessageAgentSchema,
     execute: withCtrl(async (ctrl, params, ctx) => {
-      const result = await ctrl.sendMessage(params, ctx);
-      return toolResult(`Message delivered: ${result.delivered}`, result);
-    }),
-  });
-
-  pi.registerTool({
-    name: "followup_task",
-    label: "Send follow-up task to subagent",
-    description:
-      "Send a follow-up task to a subagent. If the agent is idle, triggers a new turn. If running, queues the message.",
-    promptSnippet: "Ask an existing subagent to perform additional work",
-    promptGuidelines: [
-      "Use followup_task when an existing subagent should do more work, refine its previous answer, check another file, or continue from its current context.",
-      "If the target subagent is idle, followup_task starts a new turn; if it is running, the task is queued. Use wait_agent afterward to collect the result.",
-      "Write follow-up instructions in English, consistent with the initial task delegation language.",
-    ],
-    parameters: FollowupTaskSchema,
-    execute: withCtrl(async (ctrl, params, ctx) => {
-      const result = await ctrl.followupTask(params, ctx);
+      if (params.mode === "note") {
+        const result = await ctrl.sendMessage({ target: params.target, message: params.message }, ctx);
+        return toolResult(`Message delivered: ${result.delivered}`, result);
+      }
+      const result = await ctrl.followupTask({ target: params.target, message: params.message }, ctx);
       return toolResult(`Follow-up ${result.triggered ? "triggered new turn" : "queued"}: queued=${result.queued}, triggered=${result.triggered}`, result);
     }),
   });
@@ -469,7 +460,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     description: "List all agents, optionally filtered by path prefix.",
     promptSnippet: "Inspect subagent paths, statuses, and last tasks",
     promptGuidelines: [
-      "Use list_agents when you are unsure which subagents exist, need to verify status, need a target path for followup_task/close_agent, or need to diagnose duplicate task_name errors.",
+      "Use list_agents when you are unsure which subagents exist, need to verify status, need a target path for message_agent/close_agent, or need to diagnose duplicate task_name errors.",
     ],
     parameters: ListAgentsSchema,
     execute: withCtrl(async (ctrl, params, ctx) => {
@@ -481,56 +472,34 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   });
 
   pi.registerTool({
-    name: "list_agent_results",
-    label: "List subagent results",
-    description: "List stored structured subagent results.",
-    parameters: ListAgentResultsSchema,
+    name: "agent_results",
+    label: "Manage subagent results",
+    description: "List, show, apply, reject, or retry stored structured subagent results.",
+    parameters: AgentResultsSchema,
     execute: withCtrl(async (ctrl, params, ctx) => {
-      const result = ctrl.listAgentResults(params, ctx);
-      return toolResult(JSON.stringify(result, null, 2), result);
-    }),
-  });
-
-  pi.registerTool({
-    name: "show_agent_result",
-    label: "Show subagent result",
-    description: "Show a stored structured subagent result, optionally including patch content.",
-    parameters: ShowAgentResultSchema,
-    execute: withCtrl(async (ctrl, params, ctx) => {
-      const result = ctrl.showAgentResult(params, ctx);
-      return toolResult(JSON.stringify(result, null, 2), result);
-    }),
-  });
-
-  pi.registerTool({
-    name: "apply_agent_results",
-    label: "Apply subagent results",
-    description: "Apply pending structured patch proposals from subagents mechanically.",
-    parameters: ApplyAgentResultsSchema,
-    execute: withCtrl(async (ctrl, params, ctx) => {
-      const result = await ctrl.applyAgentResults(params, ctx);
-      return toolResult(JSON.stringify(result, null, 2), result);
-    }),
-  });
-
-  pi.registerTool({
-    name: "reject_agent_result",
-    label: "Reject subagent result",
-    description: "Reject a stored subagent result.",
-    parameters: RejectAgentResultSchema,
-    execute: withCtrl(async (ctrl, params, ctx) => {
-      const result = ctrl.rejectAgentResult(params, ctx);
-      return toolResult(JSON.stringify(result, null, 2), result);
-    }),
-  });
-
-  pi.registerTool({
-    name: "retry_agent_result",
-    label: "Retry subagent result",
-    description: "Ask the originating subagent to regenerate a rejected patch proposal when possible.",
-    parameters: RetryAgentResultSchema,
-    execute: withCtrl(async (ctrl, params, ctx) => {
-      const result = await ctrl.retryAgentResult(params, ctx);
+      let result: unknown;
+      switch (params.action) {
+        case "list":
+          result = ctrl.listAgentResults({ status: params.status, outcome: params.outcome, agent_path: params.agent_path }, ctx);
+          break;
+        case "show":
+          if (!params.result_id) throw new Error("result_id is required for action=show");
+          result = ctrl.showAgentResult({ result_id: params.result_id, include_patch: params.include_patch }, ctx);
+          break;
+        case "apply":
+          result = await ctrl.applyAgentResults({ source: params.source, result_ids: params.result_ids, order: params.order, max_results: params.max_results, rollback_on_failure: params.rollback_on_failure, allow_high_risk: params.allow_high_risk }, ctx);
+          break;
+        case "reject":
+          if (!params.result_id) throw new Error("result_id is required for action=reject");
+          result = ctrl.rejectAgentResult({ result_id: params.result_id, reason: params.reason }, ctx);
+          break;
+        case "retry":
+          if (!params.result_id) throw new Error("result_id is required for action=retry");
+          result = await ctrl.retryAgentResult({ result_id: params.result_id, reason: params.reason }, ctx);
+          break;
+        default:
+          throw new Error(`Unknown agent_results action: ${String(params.action)}`);
+      }
       return toolResult(JSON.stringify(result, null, 2), result);
     }),
   });

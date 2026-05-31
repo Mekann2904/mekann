@@ -2,8 +2,7 @@
  * Coverage tests for uncovered lines in index.ts (449-555, 600-685).
  *
  * Covers:
- * - Tool execute handlers: list_agent_results, show_agent_result,
- *   apply_agent_results, reject_agent_result, retry_agent_result, close_agent
+ * - Tool execute handlers: agent_results, close_agent
  * - Command handlers: /agents, /wait-agent, /focus-agent, /close-agent
  * - startChildMode function (child-mode IPC lifecycle)
  *
@@ -74,43 +73,43 @@ function makeCommandCtx(notifications: string[] = []) {
 // ─── Tool execute handlers (lines 449-510) ───────────────────────
 
 describe("tool execute handlers — result & close tools", () => {
-  it("list_agent_results returns results via tool execute", async () => {
+  it("agent_results action=list returns results via tool execute", async () => {
     const mock = await setupWithSession();
-    const tool = getTool(mock, "list_agent_results");
-    const result = await tool.execute("id1", {}, undefined, undefined, baseCtx);
+    const tool = getTool(mock, "agent_results");
+    const result = await tool.execute("id1", { action: "list" }, undefined, undefined, baseCtx);
     expect(result.content[0].text).toBeDefined();
     expect(result.details).toBeDefined();
   });
 
-  it("show_agent_result throws for nonexistent result_id", async () => {
+  it("agent_results action=show throws for nonexistent result_id", async () => {
     const mock = await setupWithSession();
-    const tool = getTool(mock, "show_agent_result");
+    const tool = getTool(mock, "agent_results");
     await expect(
-      tool.execute("id1", { result_id: "nonexistent" }, undefined, undefined, baseCtx),
+      tool.execute("id1", { action: "show", result_id: "nonexistent" }, undefined, undefined, baseCtx),
     ).rejects.toThrow();
   });
 
-  it("apply_agent_results calls applyAgentResults", async () => {
+  it("agent_results action=apply calls applyAgentResults", async () => {
     const mock = await setupWithSession();
-    const tool = getTool(mock, "apply_agent_results");
-    const result = await tool.execute("id1", {}, undefined, undefined, baseCtx);
+    const tool = getTool(mock, "agent_results");
+    const result = await tool.execute("id1", { action: "apply" }, undefined, undefined, baseCtx);
     expect(result.content[0].text).toBeDefined();
     expect(result.details).toBeDefined();
   });
 
-  it("reject_agent_result throws for nonexistent result_id", async () => {
+  it("agent_results action=reject throws for nonexistent result_id", async () => {
     const mock = await setupWithSession();
-    const tool = getTool(mock, "reject_agent_result");
+    const tool = getTool(mock, "agent_results");
     await expect(
-      tool.execute("id1", { result_id: "nonexistent" }, undefined, undefined, baseCtx),
+      tool.execute("id1", { action: "reject", result_id: "nonexistent" }, undefined, undefined, baseCtx),
     ).rejects.toThrow();
   });
 
-  it("retry_agent_result throws for nonexistent result_id", async () => {
+  it("agent_results action=retry throws for nonexistent result_id", async () => {
     const mock = await setupWithSession();
-    const tool = getTool(mock, "retry_agent_result");
+    const tool = getTool(mock, "agent_results");
     await expect(
-      tool.execute("id1", { result_id: "nonexistent" }, undefined, undefined, baseCtx),
+      tool.execute("id1", { action: "retry", result_id: "nonexistent" }, undefined, undefined, baseCtx),
     ).rejects.toThrow();
   });
 

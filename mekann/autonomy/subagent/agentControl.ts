@@ -1,7 +1,7 @@
 /**
  * Subagent Extension — Agent control plane.
  *
- * Implements spawn_agent, send_message, followup_task, wait_agent,
+ * Implements spawn_agent, message_agent, wait_agent,
  * list_agents, close_agent. Uses AgentRegistry, Mailbox, and
  * createAgentSession from the pi SDK.
  */
@@ -258,7 +258,7 @@ export class AgentControl {
     // For read_only and propose_patch, only allow non-destructive tools.
     const readOnlyPatterns = [
       /^read$/, /^grep$/, /^glob$/, /^ls$/, /^list$/, /^search$/, /^rg$/, /^find$/,
-      /^get_goal$/, /^list_agents$/, /^wait_agent$/, /^send_message$/,
+      /^get_goal$/, /^list_agents$/, /^wait_agent$/, /^message_agent$/,
       /^codex_web_search$/, /^search_tool_outputs$/, /^search_context_events$/,
       /^summarize_session_context$/, /^request_elevation$/,
     ];
@@ -354,7 +354,7 @@ export class AgentControl {
     return this.sessionControl.resolveTargetSession(target, ctx);
   }
 
-  // ─── send_message ──────────────────────────────────────────────
+  // ─── message_agent(mode=note) ─────────────────────────────────
 
   async sendMessage(
     params: SendMessageParams,
@@ -363,7 +363,7 @@ export class AgentControl {
     return this.sessionControl.sendMessage(params, ctx, (targetPath, message) => this.lifecycle.queueMessageToQueued(targetPath, message));
   }
 
-  // ─── followup_task ─────────────────────────────────────────────
+  // ─── message_agent(mode=task) ─────────────────────────────────
 
   async followupTask(
     params: FollowupTaskParams,

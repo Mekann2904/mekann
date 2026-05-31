@@ -21,10 +21,10 @@
 
 - `spawn_agent`: subagent を開始
 - `wait_agent`: lifecycle event / mailbox / final result を待つ
-- `followup_task`: 追加作業を依頼
+- `message_agent`: `mode=note` で文脈追加、`mode=task` で追加作業を依頼
 - `list_agents`: 状態を確認
 - `close_agent`: cancellation が必要なときだけ中止
-- `apply_agent_results`: policy check 後に patch proposal を適用
+- `agent_results`: structured result の list/show/apply/reject/retry
 
 ## Patch proposal の扱い
 

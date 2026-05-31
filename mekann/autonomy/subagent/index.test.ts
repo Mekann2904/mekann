@@ -968,20 +968,17 @@ describe("render", () => {
 // ─── Extension entry point ───────────────────────────────────────
 
 describe("extension entry point", () => {
-  it("registers 11 tools", async () => {
+  it("registers 6 tools", async () => {
     const mock = createMockApi();
     await loadExtension(mock);
-    expect(mock._registeredTools).toHaveLength(11);
+    expect(mock._registeredTools).toHaveLength(6);
     const names = mock._registeredTools.map((t) => t.name);
     expect(names).toContain("spawn_agent");
-    expect(names).toContain("send_message");
-    expect(names).toContain("followup_task");
+    expect(names).toContain("message_agent");
     expect(names).toContain("wait_agent");
     expect(names).toContain("list_agents");
     expect(names).toContain("close_agent");
-    expect(names).toContain("apply_agent_results");
-    expect(names).toContain("list_agent_results");
-    expect(names).toContain("show_agent_result");
+    expect(names).toContain("agent_results");
   });
 
   it("registers commands", async () => {
@@ -1032,15 +1029,12 @@ describe("extension entry point", () => {
     expect(joined).toContain("compact structured results");
   });
 
-  it("send_message and followup_task promptGuidelines require English", async () => {
+  it("message_agent promptGuidelines require English", async () => {
     const mock = createMockApi();
     await loadExtension(mock);
-    const sendMsgTool = mock._registeredTools.find((t: any) => t.name === "send_message")!;
-    const followupTool = mock._registeredTools.find((t: any) => t.name === "followup_task")!;
-    const sendJoined = (sendMsgTool.promptGuidelines as string[]).join("\n");
-    const followupJoined = (followupTool.promptGuidelines as string[]).join("\n");
-    expect(sendJoined).toContain("English");
-    expect(followupJoined).toContain("English");
+    const messageTool = mock._registeredTools.find((t: any) => t.name === "message_agent")!;
+    const joined = (messageTool.promptGuidelines as string[]).join("\n");
+    expect(joined).toContain("English");
   });
 
   it("list_agents tool returns empty when no agents spawned", async () => {
@@ -2601,23 +2595,23 @@ describe("extension tool execute handlers", () => {
     return mock;
   }
 
-  it("send_message tool handler", async () => {
+  it("message_agent note mode tool handler", async () => {
     const mock = await setupWithAgent();
-    const tool = mock._registeredTools.find((t: any) => t.name === "send_message")!;
+    const tool = mock._registeredTools.find((t: any) => t.name === "message_agent")!;
     const result = await tool.execute(
       "id1",
-      { target: "/root/task1", message: "hello" },
+      { target: "/root/task1", message: "hello", mode: "note" },
       undefined, undefined, baseCtx,
     );
     expect(result.content[0].text).toContain("Message delivered: true");
   });
 
-  it("followup_task tool handler", async () => {
+  it("message_agent task mode tool handler", async () => {
     const mock = await setupWithAgent();
-    const tool = mock._registeredTools.find((t: any) => t.name === "followup_task")!;
+    const tool = mock._registeredTools.find((t: any) => t.name === "message_agent")!;
     const result = await tool.execute(
       "id1",
-      { target: "/root/task1", message: "more work" },
+      { target: "/root/task1", message: "more work", mode: "task" },
       undefined, undefined, baseCtx,
     );
     expect(result.content[0].text).toContain("queued=true");
@@ -3057,9 +3051,9 @@ describe("index.ts parseForkTurns branches", () => {
       "id1", { task_name: "task1", message: "test" }, undefined, undefined, baseCtx,
     );
 
-    const followupTool = mock._registeredTools.find((t: any) => t.name === "followup_task")!;
+    const followupTool = mock._registeredTools.find((t: any) => t.name === "message_agent")!;
     const result = await followupTool.execute(
-      "id1", { target: "/root/task1", message: "more work" }, undefined, undefined, baseCtx,
+      "id1", { target: "/root/task1", message: "more work", mode: "task" }, undefined, undefined, baseCtx,
     );
     // Should show "queued" not "triggered new turn"
     expect(result.content[0].text).toContain("Follow-up queued:");
@@ -3094,10 +3088,10 @@ describe("index.ts parseForkTurns branches", () => {
       "id2", { task_name: "task2", message: "test2" }, undefined, undefined, baseCtx,
     );
 
-    // Use the send_message tool to queue a mailbox item
-    const sendTool = mock._registeredTools.find((t: any) => t.name === "send_message")!;
+    // Use the message_agent tool to queue a mailbox item
+    const sendTool = mock._registeredTools.find((t: any) => t.name === "message_agent")!;
     await sendTool.execute(
-      "id1", { target: "/root/task1", message: "hello" }, undefined, undefined, baseCtx,
+      "id1", { target: "/root/task1", message: "hello", mode: "note" }, undefined, undefined, baseCtx,
     );
 
     // Now wait should see mailbox items for /root

@@ -10,9 +10,7 @@ const EXPECTED_TOOLS_BY_MODULE: Record<string, string[]> = {
 	"context/output-gate/index.ts": ["search_tool_outputs"],
 	"autonomy/goal/index.ts": ["get_goal", "create_goal", "update_goal"],
 	"autonomy/subagent/index.ts": [
-		"spawn_agent", "send_message", "followup_task", "wait_agent", "list_agents",
-		"list_agent_results", "show_agent_result", "apply_agent_results", "reject_agent_result",
-		"retry_agent_result", "close_agent",
+		"spawn_agent", "message_agent", "wait_agent", "list_agents", "agent_results", "close_agent",
 	],
 	"autonomy/autoresearch/index.ts": [
 		"autoresearch_evaluate_query", "autoresearch_init", "autoresearch_run", "autoresearch_log",
