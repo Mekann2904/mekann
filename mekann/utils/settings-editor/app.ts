@@ -74,6 +74,7 @@ export function SettingsEditorApp({
 
 	const items = useMemo(() => displayedEffective, [displayedEffective]);
 	const groups = useMemo(() => buildFeatureGroups(items), [items]);
+	const orderedItems = useMemo(() => groups.flatMap((g) => g.items), [groups]);
 
 	const activeGroup = useMemo(
 		() => groups.find((g) => g.feature === activeFeature),
@@ -81,8 +82,8 @@ export function SettingsEditorApp({
 	);
 	// Settings for the currently active feature (all items when "All")
 	const featureItems = useMemo(
-		() => activeFeature === ALL_FEATURE ? items : (activeGroup?.items ?? []),
-		[activeFeature, activeGroup, items],
+		() => activeFeature === ALL_FEATURE ? orderedItems : (activeGroup?.items ?? []),
+		[activeFeature, activeGroup, orderedItems],
 	);
 
 	const current = featureItems[Math.min(selected, Math.max(0, featureItems.length - 1))];

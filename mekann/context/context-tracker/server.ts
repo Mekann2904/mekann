@@ -161,6 +161,31 @@ function toolOutputBreakdown(): Contributor[] {
   return items;
 }
 
+function outputBudgetStats(): { calls: number; originalBytes: number; compactBytes: number; savedBytes: number; savingsPct: number; byKind: Contributor[] } {
+  const byKind = new Map<string, { original: number; compact: number; calls: number }>();
+  let calls = 0;
+  let originalBytes = 0;
+  let compactBytes = 0;
+  for (const s of state.samples) {
+    if (s.phase !== "tool_end") continue;
+    const ob = s.summary?.outputBudget as any;
+    if (!ob || typeof ob !== "object") continue;
+    const original = Number(ob.originalBytes ?? 0);
+    const compact = Number(ob.compactBytes ?? 0);
+    if (!Number.isFinite(original) || !Number.isFinite(compact) || original <= 0) continue;
+    calls++;
+    originalBytes += original;
+    compactBytes += compact;
+    const kind = String(ob.kind ?? "unknown");
+    const cur = byKind.get(kind) ?? { original: 0, compact: 0, calls: 0 };
+    cur.original += original; cur.compact += compact; cur.calls++;
+    byKind.set(kind, cur);
+  }
+  const savedBytes = Math.max(0, originalBytes - compactBytes);
+  const items: Contributor[] = [...byKind.entries()].map(([label, v]) => ({ label: `${label} (${v.calls})`, bytes: Math.max(0, v.original - v.compact), pct: v.original > 0 ? Math.round((1 - v.compact / v.original) * 100) : 0 })).sort((a, b) => b.bytes - a.bytes).slice(0, 12);
+  return { calls, originalBytes, compactBytes, savedBytes, savingsPct: originalBytes > 0 ? Math.round((1 - compactBytes / originalBytes) * 1000) / 10 : 0, byKind: items };
+}
+
 // ─── alerts ──────────────────────────────────────────────────────
 
 interface Alert {
@@ -550,6 +575,7 @@ function renderDashboard(): string {
   const sysBytes = numLatest("systemPromptBytes");
   const breakdown = payloadBreakdown();
   const outputBreakdown = toolOutputBreakdown();
+  const outputBudget = outputBudgetStats();
   const alerts = computeAlerts();
   const samples = state.samples.slice(-50).reverse();
   const totalTools = state.tools.size;
@@ -604,6 +630,17 @@ ${toolSchemaTable()}
 <h2>Output weight (cumulative)</h2>
 ${outputBreakdown.length === 0 ? '<span class="dim">No tool output data</span>' : `<table><thead><tr><th>Tool</th><th>Output</th><th></th></tr></thead><tbody>${outputBreakdown.map((c) => `<tr><td>${esc(c.label)}</td><td>${fmtBytes(c.bytes)}</td><td><div class="bar"><span style="width:${Math.max(1, c.pct)}%"></span></div></td></tr>`).join("")}</tbody></table>`}
 </div>
+</div>
+
+<h2>Output Budget savings</h2>
+<div class="grid4">
+<div class="panel"><div class="label">Compacted calls</div><div class="metric">${esc(outputBudget.calls)}</div><div class="sub">tool results touched</div></div>
+<div class="panel"><div class="label">Raw output</div><div class="metric">${fmtBytes(outputBudget.originalBytes)}</div><div class="sub">before compact view</div></div>
+<div class="panel"><div class="label">Shown output</div><div class="metric">${fmtBytes(outputBudget.compactBytes)}</div><div class="sub">after compact view</div></div>
+<div class="panel"><div class="label">Saved</div><div class="metric">${fmtBytes(outputBudget.savedBytes)}</div><div class="sub">${outputBudget.savingsPct.toFixed(1)}% reduction</div></div>
+</div>
+<div class="panel" style="margin-top:10px">
+${outputBudget.byKind.length === 0 ? '<span class="dim">No output-budget data yet</span>' : `<table><thead><tr><th>Kind</th><th>Saved</th><th>Reduction</th></tr></thead><tbody>${outputBudget.byKind.map((c) => `<tr><td>${esc(c.label)}</td><td>${fmtBytes(c.bytes)}</td><td><div class="bar"><span style="width:${Math.max(1, c.pct)}%"></span></div> ${c.pct}%</td></tr>`).join("")}</tbody></table>`}
 </div>
 
 <div class="spacer"></div>
@@ -697,6 +734,7 @@ export function getContextMonitorSnapshot() {
     alerts: computeAlerts(),
     payloadBreakdown: payloadBreakdown(),
     toolOutputBreakdown: toolOutputBreakdown(),
+    outputBudget: outputBudgetStats(),
     contextIntelligence: getContextIntelligenceReport("report", 10),
     decisions: state.decisions.slice(-20),
   };
