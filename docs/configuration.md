@@ -72,6 +72,23 @@ Pi 上では `/mekann-settings` を使って設定を確認・編集できます
 
 `display` は `none`、`external-pi`、`external-split` のいずれかです。Kitty 以外では表示機能が制限される場合があります。
 
+### Command Normalization
+
+```json
+{
+  "version": 1,
+  "features": {
+    "command-normalization": {
+      "enabled": true,
+      "bashEnabled": true,
+      "recordNormalization": false
+    }
+  }
+}
+```
+
+単純な `bash` command を parse-friendly な形式へ実行前に正規化します。旧 `output-budget` 設定は互換 alias として読み取られますが、新規設定では `command-normalization` を使ってください。
+
 ### Output Gate
 
 ```json
@@ -132,4 +149,4 @@ Pi 上では `/mekann-settings` を使って設定を確認・編集できます
 
 ## Registered features
 
-現在 registry にある feature settings は、`modes`、`sandbox`、`subagent`、`output-gate`、`codex-shared`、`codex-web-search`、`codex-limits`、`dashboard`、`model-optimizer`、`terminal` です。詳細な key、default、validation は各 `settingsSchema.ts` を正とします。
+現在 registry にある feature settings は、`modes`、`sandbox`、`subagent`、`command-normalization`、`output-gate`、`context-ledger`、`context-tracker`、`cacheable-context`、`codex-shared`、`codex-web-search`、`codex-limits`、`dashboard`、`model-optimizer`、`terminal` です。詳細な key、default、validation は各 `settingsSchema.ts` を正とします。

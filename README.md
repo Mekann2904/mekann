@@ -32,13 +32,14 @@ Mekann は実験的な Pi extension suite です。API、設定、runtime behavi
 | [`core`](./mekann/core/) | prompt の土台と常時ガイドライン | [`prompt-core`](./mekann/core/prompt-core/), [`cache-friendly-prompt`](./mekann/core/cache-friendly-prompt/), [`agent-guidelines`](./mekann/core/agent-guidelines/) |
 | [`safety`](./mekann/safety/) | 自律性を許容するための安全境界 | [`sandbox`](./mekann/safety/sandbox/), [`modes`](./mekann/safety/modes/), [`policy-core`](./mekann/safety/policy-core/) |
 | [`autonomy`](./mekann/autonomy/) | 長い作業・並列作業・実験的作業の継続 | [`goal`](./mekann/autonomy/goal/), [`subagent`](./mekann/autonomy/subagent/), [`autoresearch`](./mekann/autonomy/autoresearch/) |
-| [`context`](./mekann/context/) | runtime context management | [`output-gate`](./mekann/context/output-gate/), [`context-ledger`](./mekann/context/ledger/) |
+| [`context`](./mekann/context/) | runtime context management | [`command-normalization`](./mekann/context/command-normalization/), [`output-gate`](./mekann/context/output-gate/), [`context-ledger`](./mekann/context/ledger/) |
 | [`utils`](./mekann/utils/) | 小さな人間向け補助機能 | [`zip-repo`](./mekann/utils/zip-repo/), [`codex-limits`](./mekann/utils/codex-limits/), [`dashboard`](./mekann/utils/dashboard/), [`codex-web-search`](./mekann/utils/codex-web-search/), [`terminal-shortcuts`](./mekann/utils/terminal-shortcuts/), [`settings-editor`](./mekann/utils/settings-editor/) |
 
 ## 代表的な使い分け
 
 - 実装前に読み取り専用で考えたい: [`modes`](./mekann/safety/modes/) の read-only mode
 - `bash` tool の実行を OS レベルで制限したい: [`sandbox`](./mekann/safety/sandbox/)
+- `bash` command を parse-friendly な形に揃えたい: [`command-normalization`](./mekann/context/command-normalization/)
 - 大きな tool output を context window に入れすぎたくない: [`output-gate`](./mekann/context/output-gate/)
 - 決定・タスク・エラーなどの作業記憶を残したい: [`context-ledger`](./mekann/context/ledger/)
 - 独立調査や fresh review を別 context で走らせたい: [`subagent`](./mekann/autonomy/subagent/)

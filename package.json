@@ -20,7 +20,7 @@
     "mekann/context/*"
   ],
   "scripts": {
-    "test": "npm run test:mekann && npm run test:prompt-core && npm run test:cache-friendly-prompt && npm run test:agent-guidelines && npm run test:model-optimizer && npm run test:modes && npm run test:sandbox && npm run test:subagent && npm run test:zip-repo && npm run test:autoresearch && npm run test:goal && npm run test:output-gate && npm run test:ledger",
+    "test": "npm run test:mekann && npm run test:prompt-core && npm run test:cache-friendly-prompt && npm run test:agent-guidelines && npm run test:model-optimizer && npm run test:modes && npm run test:sandbox && npm run test:subagent && npm run test:zip-repo && npm run test:autoresearch && npm run test:goal && npm run test:command-normalization && npm run test:output-gate && npm run test:ledger",
     "test:mekann": "cd mekann && npm test",
     "test:prompt-core": "cd mekann/core/prompt-core && npm test",
     "test:cache-friendly-prompt": "cd mekann/core/cache-friendly-prompt && npm test",
@@ -34,6 +34,7 @@
     "test:autoresearch:fast": "cd mekann/autonomy/autoresearch && npm run test:fast",
     "test:autoresearch:slow": "cd mekann/autonomy/autoresearch && npm run test:slow",
     "test:goal": "cd mekann/autonomy/goal && npm test",
+    "test:command-normalization": "cd mekann && npx vitest run context/command-normalization/index.test.ts",
     "test:output-gate": "cd mekann/context/output-gate && npm test",
     "test:ledger": "cd mekann/context/ledger && npm test",
     "ci": "npm test",

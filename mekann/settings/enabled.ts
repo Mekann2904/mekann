@@ -9,12 +9,24 @@ function getPathValue(obj: Record<string, unknown>, key: string): unknown {
 	return cur;
 }
 
+const FEATURE_ALIASES: Record<string, string[]> = {
+	"command-normalization": ["output-budget"],
+};
+
+function featureNamesWithAliases(feature: string): string[] {
+	return [...(FEATURE_ALIASES[feature] ?? []), feature];
+}
+
+function mergeFeatureConfigs(settings: ReturnType<typeof loadSettings>["settings"], feature: string): Record<string, unknown> {
+	return Object.assign({}, ...featureNamesWithAliases(feature).map((name) => settings.features[name] ?? {}));
+}
+
 function rawFeatureConfig(feature: string, cwd = process.cwd()): Record<string, unknown> {
 	const global = loadSettings(getGlobalMekannSettingsPath());
 	const workspace = loadSettings(getWorkspaceMekannSettingsPath(cwd));
 	return {
-		...(global.settings.features[feature] ?? {}),
-		...(workspace.settings.features[feature] ?? {}),
+		...mergeFeatureConfigs(global.settings, feature),
+		...mergeFeatureConfigs(workspace.settings, feature),
 	};
 }
 

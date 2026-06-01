@@ -3,12 +3,43 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import commandNormalization from "./index.js";
+import { featureBooleanValue, isFeatureEnabled } from "../../settings/enabled.js";
 
 let cwd: string | undefined;
 
 afterEach(async () => {
 	if (cwd) await rm(cwd, { recursive: true, force: true });
 	cwd = undefined;
+});
+
+describe("command-normalization settings compatibility", () => {
+	it("honors deprecated output-budget settings as aliases", async () => {
+		cwd = await mkdtemp(join(tmpdir(), "mekann-command-normalization-alias-"));
+		await mkdir(join(cwd, ".pi"), { recursive: true });
+		await writeFile(join(cwd, ".pi", "mekann.json"), JSON.stringify({
+			version: 1,
+			features: { "output-budget": { enabled: false, bashEnabled: false, recordNormalization: true } },
+		}, null, 2));
+
+		expect(isFeatureEnabled("command-normalization", cwd)).toBe(false);
+		expect(featureBooleanValue("command-normalization", "bashEnabled", true, cwd)).toBe(false);
+		expect(featureBooleanValue("command-normalization", "recordNormalization", false, cwd)).toBe(true);
+	});
+
+	it("lets command-normalization settings override deprecated output-budget aliases", async () => {
+		cwd = await mkdtemp(join(tmpdir(), "mekann-command-normalization-alias-"));
+		await mkdir(join(cwd, ".pi"), { recursive: true });
+		await writeFile(join(cwd, ".pi", "mekann.json"), JSON.stringify({
+			version: 1,
+			features: {
+				"output-budget": { enabled: false, bashEnabled: false },
+				"command-normalization": { enabled: true, bashEnabled: true },
+			},
+		}, null, 2));
+
+		expect(isFeatureEnabled("command-normalization", cwd)).toBe(true);
+		expect(featureBooleanValue("command-normalization", "bashEnabled", false, cwd)).toBe(true);
+	});
 });
 
 describe("command-normalization recording", () => {
