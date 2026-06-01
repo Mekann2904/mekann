@@ -32,6 +32,7 @@ export interface MekannSubagentConfigDefaults {
 	externalPiSlots: number;
 	allowNestedSubagents: boolean;
 	defaultReasoningEffort: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+	toolSurface: "always" | "spawn-only";
 }
 
 export const MEKANN_SUBAGENT_DEFAULTS: MekannSubagentConfigDefaults = {
@@ -51,6 +52,7 @@ export const MEKANN_SUBAGENT_DEFAULTS: MekannSubagentConfigDefaults = {
 	externalPiSlots: 1,
 	allowNestedSubagents: false,
 	defaultReasoningEffort: "low",
+	toolSurface: "spawn-only",
 };
 
 export const MEKANN_SANDBOX_DEFAULTS = {

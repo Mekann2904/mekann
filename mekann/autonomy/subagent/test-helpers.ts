@@ -12,6 +12,7 @@ export function createMockApi() {
 	let flags: Record<string, unknown> = { "subagent-display": "none", "subagent-max-depth": "2" };
 	const registeredTools: Array<Record<string, any>> = [];
 	const registeredFlags: Array<{ name: string; config: unknown }> = [];
+	let activeTools: string[] = [];
 
 	return {
 		registerFlag: vi.fn((name: string, config: unknown) => {
@@ -27,7 +28,8 @@ export function createMockApi() {
 			hooks[event] = handler;
 		}),
 		getFlag: (name: string) => flags[name],
-		getActiveTools: vi.fn(() => []),
+		getActiveTools: vi.fn(() => activeTools),
+		setActiveTools: vi.fn((toolNames: string[]) => { activeTools = [...toolNames]; }),
 		events: {
 			on: vi.fn(),
 			emit: vi.fn(),
@@ -49,6 +51,9 @@ export function createMockApi() {
 		},
 		get _registeredFlags() {
 			return registeredFlags;
+		},
+		get _activeTools() {
+			return activeTools;
 		},
 	};
 }

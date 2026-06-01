@@ -981,6 +981,27 @@ describe("extension entry point", () => {
     expect(names).toContain("agent_results");
   });
 
+  it("keeps only spawn_agent active for subagent surface at session start", async () => {
+    const mock = createMockApi();
+    await loadExtension(mock);
+    await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
+    expect(mock._activeTools).not.toContain("message_agent");
+    expect(mock._activeTools).not.toContain("wait_agent");
+    expect(mock._activeTools).not.toContain("list_agents");
+    expect(mock._activeTools).not.toContain("close_agent");
+    expect(mock._activeTools).not.toContain("agent_results");
+  });
+
+  it("activates subagent management tools after spawn", async () => {
+    const mock = createMockApi();
+    await loadExtension(mock);
+    await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
+    const spawnTool = mock._registeredTools.find((t: any) => t.name === "spawn_agent")!;
+    await spawnTool.execute("id1", { task_name: "task1", message: "test" }, undefined, undefined, { cwd: "/tmp/test", model: { id: "test-model" } });
+    expect(mock._activeTools).toEqual(expect.arrayContaining(["message_agent", "wait_agent", "list_agents", "close_agent"]));
+    expect(mock._activeTools).not.toContain("agent_results");
+  });
+
   it("registers commands", async () => {
     const mock = createMockApi();
     await loadExtension(mock);

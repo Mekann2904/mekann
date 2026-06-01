@@ -30,9 +30,14 @@ import type { ForkTurns } from "./contextFork.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
 import { featureConfig, featureValue } from "../../settings/featureConfig.js";
+import { featureStringValue } from "../../settings/enabled.js";
+import { setToolsActive } from "../../settings/toolSurface.js";
 import { registerSubagentFlags } from "./flags.js";
 
 let sharedSpawnAgent: ((params: SpawnParams, ctx: ExtensionContext) => Promise<SpawnResult>) | undefined;
+
+const SUBAGENT_MANAGEMENT_TOOL_NAMES = ["message_agent", "wait_agent", "list_agents", "close_agent"] as const;
+const SUBAGENT_RESULT_TOOL_NAMES = ["agent_results"] as const;
 
 export async function spawnAgentFromFeature(params: SpawnParams, ctx: ExtensionContext): Promise<SpawnResult> {
   if (!sharedSpawnAgent) throw new Error("subagent feature is not initialized");
@@ -345,11 +350,38 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     };
   }
 
-  sharedSpawnAgent = (params, ctx) => ensureControl().spawn(params, ctx);
+  function hasInteractiveSubagentState(ctrl: AgentControl): boolean {
+    return ctrl.listAgents().some((agent: any) => agent.agentPath !== "/root" && (agent.open || agent.unread_final_result || agent.status === "queued" || agent.status === "pending_init" || agent.status === "running"));
+  }
+
+  function hasPendingAgentResults(ctrl: AgentControl, ctx?: ExtensionContext): boolean {
+    try { return ctrl.listAgentResults({ status: "pending" }, ctx).results.length > 0; }
+    catch { return false; }
+  }
+
+  function syncSubagentToolSurface(ctx?: ExtensionContext): void {
+    const ctrl = control;
+    if (!ctrl) return;
+    const surface = featureStringValue("subagent", "toolSurface", MEKANN_SUBAGENT_DEFAULTS.toolSurface);
+    if (surface === "always") {
+      setToolsActive(pi, [...SUBAGENT_MANAGEMENT_TOOL_NAMES, ...SUBAGENT_RESULT_TOOL_NAMES], true);
+      return;
+    }
+    setToolsActive(pi, SUBAGENT_MANAGEMENT_TOOL_NAMES, hasInteractiveSubagentState(ctrl));
+    setToolsActive(pi, SUBAGENT_RESULT_TOOL_NAMES, hasPendingAgentResults(ctrl, ctx));
+  }
+
+  sharedSpawnAgent = async (params, ctx) => {
+    try { return await ensureControl().spawn(params, ctx); }
+    finally { syncSubagentToolSurface(ctx); }
+  };
 
   type ToolHandler = (ctrl: AgentControl, params: any, ctx: ExtensionContext) => Promise<any>;
   function withCtrl(handler: ToolHandler) {
-    return async (_id: string, params: unknown, _signal: unknown, _onUpdate: unknown, ctx: ExtensionContext) => handler(ensureControl(), params, ctx);
+    return async (_id: string, params: unknown, _signal: unknown, _onUpdate: unknown, ctx: ExtensionContext) => {
+      try { return await handler(ensureControl(), params, ctx); }
+      finally { syncSubagentToolSurface(ctx); }
+    };
   }
 
   // ─── Tools ────────────────────────────────────────────────────
@@ -532,6 +564,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       const agents = ctrl.listAgents(prefix);
       const lines = formatAgentList(agents);
       ctx.ui.notify(lines.join("\n"), "info");
+      syncSubagentToolSurface(ctx as any);
     },
   });
 
@@ -550,6 +583,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
         result.timed_out,
       );
       ctx.ui.notify(lines.join("\n"), "info");
+      syncSubagentToolSurface(ctx as any);
     },
   });
 
@@ -563,6 +597,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       }
       const result = await ensureControl().focus(target, ctx as any);
       ctx.ui.notify(result.focused ? `Focused: ${target}` : (result.warning ?? `No display for ${target}`), result.focused ? "info" : "warning");
+      syncSubagentToolSurface(ctx as any);
     },
   });
 
@@ -586,6 +621,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
           `Error: ${err instanceof Error ? err.message : String(err)}`,
           "error",
         );
+      } finally {
+        syncSubagentToolSurface(ctx as any);
       }
     },
   });
@@ -600,9 +637,11 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     await shutdownControl();
     ensureControl();
     control!.registry.ensureRoot("root");
+    syncSubagentToolSurface(ctx as any);
   });
 
   pi.on("session_shutdown", async () => {
+    setToolsActive(pi, [...SUBAGENT_MANAGEMENT_TOOL_NAMES, ...SUBAGENT_RESULT_TOOL_NAMES], false);
     await shutdownControl();
   });
 }
