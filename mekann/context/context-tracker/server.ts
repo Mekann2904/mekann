@@ -50,12 +50,27 @@ function esc(v: unknown): string {
   return String(v ?? "—").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]!));
 }
 
+function currentScope(): { cwd?: string; sessionId?: string } {
+  const latest = scopedSamples().at(-1);
+  return { cwd: latest?.cwd, sessionId: latest?.sessionId };
+}
+
+function scopedSamples(): ContextMonitorSample[] {
+  const scope = currentScope();
+  return state.samples.filter((sample) => {
+    if (scope.cwd && sample.cwd && sample.cwd !== scope.cwd) return false;
+    if (scope.sessionId && sample.sessionId && sample.sessionId !== scope.sessionId) return false;
+    return true;
+  });
+}
+
 // ─── data access ─────────────────────────────────────────────────
 
 /** Walk backwards to find the most recent known value for key. */
 function latestVal(key: string): unknown {
-  for (let i = state.samples.length - 1; i >= 0; i--) {
-    const v = state.samples[i].summary?.[key];
+  const samples = scopedSamples();
+  for (let i = samples.length - 1; i >= 0; i--) {
+    const v = samples[i].summary?.[key];
     if (v !== undefined) return v;
   }
   return undefined;
@@ -63,8 +78,9 @@ function latestVal(key: string): unknown {
 
 function prevVal(key: string): unknown {
   let seen = false;
-  for (let i = state.samples.length - 1; i >= 0; i--) {
-    const v = state.samples[i].summary?.[key];
+  const samples = scopedSamples();
+  for (let i = samples.length - 1; i >= 0; i--) {
+    const v = samples[i].summary?.[key];
     if (v !== undefined) {
       if (seen) return v;
       seen = true;
@@ -110,7 +126,7 @@ function payloadBreakdown(): Contributor[] {
 
 function toolOutputBreakdown(): Contributor[] {
   const map = new Map<string, number>();
-  for (const s of state.samples) {
+  for (const s of scopedSamples()) {
     if (s.phase !== "tool_end") continue;
     const name = String(s.summary?.toolName ?? "?");
     const bytes = Number(s.summary?.resultBytes ?? 0);
@@ -141,8 +157,9 @@ interface OptimizationRecommendation {
 }
 
 function latestSampleWith(key: string): ContextMonitorSample | undefined {
-  for (let i = state.samples.length - 1; i >= 0; i--) {
-    if (state.samples[i].summary?.[key] !== undefined) return state.samples[i];
+  const samples = scopedSamples();
+  for (let i = samples.length - 1; i >= 0; i--) {
+    if (samples[i].summary?.[key] !== undefined) return samples[i];
   }
   return undefined;
 }
@@ -155,7 +172,7 @@ function contextWindowEstimate(): number | null {
 }
 
 function growthRate() {
-  const provider = state.samples.filter((s) => s.phase === "provider_request").slice(-8);
+  const provider = scopedSamples().filter((s) => s.phase === "provider_request").slice(-8);
   if (provider.length < 2) return { tokensPerRequest: 0, payloadBytesPerRequest: 0 };
   const first = provider[0];
   const last = provider.at(-1)!;
@@ -252,7 +269,7 @@ function recommendations(): OptimizationRecommendation[] {
 }
 
 export function getContextIntelligenceReport(action = "report", limit = 20) {
-  const latest = state.samples.at(-1) ?? null;
+  const latest = scopedSamples().at(-1) ?? null;
   const health = computeHealthScore();
   const growth = growthRate();
   const base = {
@@ -274,7 +291,7 @@ export function getContextIntelligenceReport(action = "report", limit = 20) {
   };
   if (action === "health") return base;
   if (action === "top_contributors") return { ...base, topContributors: topContributors(limit), topMessages: topMessageItems(limit) };
-  if (action === "timeline") return { ...base, timeline: state.samples.slice(-limit) };
+  if (action === "timeline") return { ...base, timeline: scopedSamples().slice(-limit) };
   if (action === "recommendations") return { ...base, recommendations: recommendations() };
   if (action === "budget") return { ...base, budget: { systemPromptPctTarget: 15, recentMessagesPctTarget: 35, summariesPctTarget: 15, toolResultsPctTarget: 20, retrievedContextPctTarget: 10, reservePctTarget: 5 }, actualBreakdown: payloadBreakdown() };
   return { ...base, topContributors: topContributors(limit), recommendations: recommendations(), payloadBreakdown: payloadBreakdown(), toolOutputBreakdown: toolOutputBreakdown(), topMessages: topMessageItems(limit) };
@@ -307,7 +324,7 @@ function computeAlerts(): Alert[] {
 // ─── HTML dashboard ──────────────────────────────────────────────
 
 function payloadTrendBars(): string {
-  const last20 = state.samples.filter((s) => s.phase === "provider_request").slice(-20);
+  const last20 = scopedSamples().filter((s) => s.phase === "provider_request").slice(-20);
   if (last20.length === 0) return '<span class="dim">No data</span>';
   const max = Math.max(...last20.map((s) => Number(s.summary?.payloadBytes ?? 0)), 1);
   return last20
@@ -330,8 +347,9 @@ function toolSchemaTable(): string {
 }
 
 function latestCacheableContextSample(): ContextMonitorSample | undefined {
-  for (let i = state.samples.length - 1; i >= 0; i--) {
-    if (state.samples[i].phase === "cacheable_context") return state.samples[i];
+  const samples = scopedSamples();
+  for (let i = samples.length - 1; i >= 0; i--) {
+    if (samples[i].phase === "cacheable_context") return samples[i];
   }
   return undefined;
 }
@@ -401,7 +419,7 @@ a:hover{text-decoration:underline}
 }
 
 function cacheFriendlyDirForDashboard(): string {
-  const cwd = state.samples.at(-1)?.cwd ?? process.cwd();
+  const cwd = scopedSamples().at(-1)?.cwd ?? process.cwd();
   return path.join(cwd, ".pi-cache-friendly");
 }
 
@@ -502,7 +520,7 @@ ${webNav()}
 }
 
 function renderDashboard(): string {
-  const latest = state.samples.at(-1);
+  const latest = scopedSamples().at(-1);
   const tokens = latestVal("contextTokens");
   const percent = latestVal("contextPercent");
   const payload = numLatest("payloadBytes");
@@ -515,7 +533,7 @@ function renderDashboard(): string {
   const breakdown = payloadBreakdown();
   const outputBreakdown = toolOutputBreakdown();
   const alerts = computeAlerts();
-  const samples = state.samples.slice(-50).reverse();
+  const samples = scopedSamples().slice(-50).reverse();
   const totalTools = state.tools.size;
   const schemaTotal = state.toolSchemaTotalBytes;
   const compactions = state.compactionCount;
@@ -523,7 +541,7 @@ function renderDashboard(): string {
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Context Monitor — Mekann</title><style>${dashboardStyle()}</style></head><body><main>
 ${webNav()}
 <h1>Context Monitor</h1>
-<div class="sub">live context pressure — live update 2s — samples ${state.samples.length} — tools ${totalTools} — compactions ${compactions}</div>
+<div class="sub">live context pressure — live update 2s — samples ${scopedSamples().length} — tools ${totalTools} — compactions ${compactions}</div>
 
 <h2>Realtime metrics</h2>
 <div class="grid4">
@@ -652,9 +670,9 @@ export function recordCompaction(): void {
 export function getContextMonitorSnapshot() {
   return {
     server: { port: state.port, url: state.port ? `http://127.0.0.1:${state.port}` : undefined },
-    latest: state.samples.at(-1) ?? null,
+    latest: scopedSamples().at(-1) ?? null,
     cacheableContext: latestCacheableContextSample()?.summary ?? null,
-    sampleCount: state.samples.length,
+    sampleCount: scopedSamples().length,
     tools: [...state.tools.values()],
     compactionCount: state.compactionCount,
     lastCompactionAt: state.lastCompactionAt ?? null,
@@ -684,7 +702,7 @@ export async function ensureContextMonitorServer(preferredPort = 0): Promise<{ p
     }
     if (url.pathname === "/health") return json(res, 200, { ok: true });
     if (url.pathname === "/snapshot") return json(res, 200, getContextMonitorSnapshot());
-    if (url.pathname === "/events") return json(res, 200, { samples: state.samples });
+    if (url.pathname === "/events") return json(res, 200, { samples: scopedSamples() });
     if (url.pathname === "/tools") return json(res, 200, { tools: [...state.tools.values()], totalBytes: state.toolSchemaTotalBytes });
     if (url.pathname === "/llm/context-report") return json(res, 200, getContextIntelligenceReport(String(url.searchParams.get("action") ?? "report"), Number(url.searchParams.get("limit") ?? 20)));
     if (url.pathname === "/llm/context-health") return json(res, 200, getContextIntelligenceReport("health"));

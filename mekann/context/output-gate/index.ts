@@ -14,7 +14,7 @@ import { featureStringValue } from "../../settings/enabled.js";
 import { setToolsActive } from "../../settings/toolSurface.js";
 import { outputGateDir, readManifest } from "./store.js";
 import { handleClear } from "../clear.js";
-import { recordToolOutputArtifact } from "../recording.js";
+import { recordToolOutputArtifact, recordToolSchemaObservation } from "../recording.js";
 import { OutputGateController } from "./controller.js";
 import type { SearchToolOutputsInput } from "./search.js";
 
@@ -87,6 +87,7 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 	}
 
 	// --- search_tool_outputs tool ---
+	void recordToolSchemaObservation("search_tool_outputs", {});
 	pi.registerTool({
 		name: "search_tool_outputs",
 		label: "Search Stored Tool Outputs",

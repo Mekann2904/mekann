@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { spawn } from "node:child_process";
 import { featureConfig, featureValue } from "../../settings/featureConfig.js";
-import { ensureContextMonitorServer, recordContextMonitorSample, recordToolSchema, recordCompaction } from "./server.js";
+import { ensureContextMonitorServer, recordContextMonitorSample, recordCompaction } from "./server.js";
 
 // ─── helpers ─────────────────────────────────────────────────────
 
@@ -75,18 +75,6 @@ function selectedToolNames(options: any): string[] {
   return selected.map((t: any) => String(t?.name ?? t)).filter(Boolean);
 }
 
-/** Wrap pi.registerTool so every tool's schema bytes get tracked once. */
-function wrapRegisterTool(pi: ExtensionAPI): void {
-  const original = pi.registerTool.bind(pi);
-  pi.registerTool = (def: any) => {
-    if (def?.name && typeof def.name === "string") {
-      const schemaBytes = byteLen(def.parameters ?? {});
-      recordToolSchema(def.name, schemaBytes);
-    }
-    return original(def);
-  };
-}
-
 // ─── extension ───────────────────────────────────────────────────
 
 export default function contextTrackerExtension(pi: ExtensionAPI): void {
@@ -95,8 +83,6 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
   const port = Number(cfg.port ?? 0) || 0;
   const autoStartServer = cfg.autoStartServer === true;
   let serverUrl = "";
-
-  wrapRegisterTool(pi);
 
   async function startServer(ctx?: any): Promise<void> {
     const server = await ensureContextMonitorServer(port);

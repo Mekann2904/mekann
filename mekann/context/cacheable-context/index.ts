@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { featureConfig, featureValue } from "../../settings/featureConfig.js";
 import { featureStringValue, isFeatureEnabled } from "../../settings/enabled.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
-import { recordContextMonitorSample } from "../context-tracker/server.js";
+import { recordContextObservation } from "../recording.js";
 import { normalizePromptSurface } from "../surface-policy.js";
 import { buildCacheableContext, collectSourceHashes, isManifestFresh, readManifest, type CacheableContextConfig, type Manifest } from "./builder.js";
 
@@ -28,7 +28,7 @@ function trackCacheableContext(cwd: string, manifest: Manifest, currentCfg: Cach
   const key = `${manifest.prefixHash}:${manifest.configHash}`;
   if (lastTrackedPrefixByCwd.get(cwd) === key) return;
   lastTrackedPrefixByCwd.set(cwd, key);
-  recordContextMonitorSample({
+  void recordContextObservation({
     cwd,
     phase: "cacheable_context",
     summary: {
