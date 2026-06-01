@@ -14,6 +14,49 @@ function countMessages(messages: unknown): { count: number; bytes: number } {
   return { count: messages.length, bytes: byteLen(messages) };
 }
 
+function shortSource(message: any): string {
+  const role = String(message?.role ?? message?.type ?? "message");
+  const tool = message?.toolName ?? message?.name;
+  const custom = message?.customType;
+  if (tool) return `${role}:${tool}`;
+  if (custom) return `${role}:${custom}`;
+  const text = typeof message?.content === "string" ? message.content : JSON.stringify(message?.content ?? "");
+  return `${role}:${text.slice(0, 80).replace(/\s+/g, " ")}`;
+}
+
+function messageBreakdown(messages: unknown, limit = 20): Array<Record<string, unknown>> {
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .map((message: any, index) => {
+      const bytes = byteLen(message);
+      return {
+        index,
+        role: String(message?.role ?? message?.type ?? "message"),
+        source: shortSource(message),
+        bytes,
+        estimatedTokens: Math.ceil(bytes / 4),
+      };
+    })
+    .sort((a, b) => Number(b.bytes) - Number(a.bytes))
+    .slice(0, limit);
+}
+
+function systemPromptParts(options: any, systemPrompt: unknown): Array<Record<string, unknown>> {
+  const parts: Array<Record<string, unknown>> = [
+    { name: "systemPromptTotal", bytes: byteLen(systemPrompt ?? "") },
+  ];
+  const contextFiles = Array.isArray(options?.contextFiles) ? options.contextFiles : [];
+  for (const [index, file] of contextFiles.entries()) {
+    parts.push({ name: `contextFile:${file?.path ?? index}`, bytes: byteLen(file?.content ?? file) });
+  }
+  const skills = Array.isArray(options?.skills) ? options.skills : [];
+  parts.push({ name: "skillsIndex", bytes: byteLen(skills) });
+  parts.push({ name: "toolSnippets", bytes: byteLen(options?.toolSnippets ?? []) });
+  parts.push({ name: "promptGuidelines", bytes: byteLen(options?.promptGuidelines ?? []) });
+  parts.push({ name: "appendSystemPrompt", bytes: byteLen(options?.appendSystemPrompt ?? "") });
+  return parts.filter((p) => Number(p.bytes) > 0).sort((a, b) => Number(b.bytes) - Number(a.bytes));
+}
+
 function selectedToolNames(options: any): string[] {
   const selected = options?.selectedTools;
   if (!Array.isArray(selected)) return [];
@@ -74,6 +117,7 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
     publish(ctx, "prompt", {
       promptBytes: byteLen(event?.prompt ?? ""),
       systemPromptBytes: byteLen(event?.systemPrompt ?? ctx?.getSystemPrompt?.() ?? ""),
+      systemPromptParts: systemPromptParts(event?.systemPromptOptions, event?.systemPrompt ?? ctx?.getSystemPrompt?.() ?? ""),
       toolCount: toolNames.length,
       tools: toolNames,
       contextFileCount: Array.isArray(event?.systemPromptOptions?.contextFiles) ? event.systemPromptOptions.contextFiles.length : undefined,
@@ -83,7 +127,11 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
 
   pi.on("context", async (event: any, ctx: any) => {
     const m = countMessages(event?.messages);
-    publish(ctx, "context", { messageCount: m.count, messageBytes: m.bytes });
+    publish(ctx, "context", {
+      messageCount: m.count,
+      messageBytes: m.bytes,
+      messageBreakdown: messageBreakdown(event?.messages),
+    });
   });
 
   pi.on("before_provider_request", async (event: any, ctx: any) => {
@@ -92,7 +140,9 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
 
   pi.on("tool_execution_end", async (event: any, ctx: any) => {
     publish(ctx, "tool_end", {
+      toolCallId: event?.toolCallId,
       toolName: event?.toolName,
+      argsBytes: byteLen(event?.args),
       resultBytes: byteLen(event?.result),
       isError: Boolean(event?.isError),
     });

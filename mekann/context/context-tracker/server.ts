@@ -27,12 +27,13 @@ interface ContextMonitorState {
   nextId: number;
   compactionCount: number;
   lastCompactionAt?: number;
+  decisions: Array<{ at: number; decision: unknown }>;
 }
 
 const KEY = Symbol.for("mekann.contextMonitor.server.v1");
 
 function initState(): ContextMonitorState {
-  return { samples: [], tools: new Map(), toolSchemaTotalBytes: 0, nextId: 1, compactionCount: 0 };
+  return { samples: [], tools: new Map(), toolSchemaTotalBytes: 0, nextId: 1, compactionCount: 0, decisions: [] };
 }
 
 const state: ContextMonitorState = (globalThis as any)[KEY] ?? ((globalThis as any)[KEY] = initState());
@@ -152,6 +153,159 @@ function toolOutputBreakdown(): Contributor[] {
 interface Alert {
   level: "warn" | "info";
   text: string;
+}
+
+interface OptimizationRecommendation {
+  priority: "high" | "medium" | "low";
+  action: string;
+  expectedSavingsBytes: number;
+  qualityRisk: "low" | "medium" | "high";
+  reason: string;
+}
+
+function latestSampleWith(key: string): ContextMonitorSample | undefined {
+  for (let i = state.samples.length - 1; i >= 0; i--) {
+    if (state.samples[i].summary?.[key] !== undefined) return state.samples[i];
+  }
+  return undefined;
+}
+
+function contextWindowEstimate(): number | null {
+  const tokens = Number(latestVal("contextTokens"));
+  const percent = Number(latestVal("contextPercent"));
+  if (!Number.isFinite(tokens) || !Number.isFinite(percent) || percent <= 0) return null;
+  return Math.round(tokens / (percent / 100));
+}
+
+function growthRate() {
+  const provider = state.samples.filter((s) => s.phase === "provider_request").slice(-8);
+  if (provider.length < 2) return { tokensPerRequest: 0, payloadBytesPerRequest: 0 };
+  const first = provider[0];
+  const last = provider.at(-1)!;
+  const n = provider.length - 1;
+  return {
+    tokensPerRequest: Math.round((Number(last.summary?.contextTokens ?? 0) - Number(first.summary?.contextTokens ?? 0)) / n),
+    payloadBytesPerRequest: Math.round((Number(last.summary?.payloadBytes ?? 0) - Number(first.summary?.payloadBytes ?? 0)) / n),
+  };
+}
+
+function topMessageItems(limit = 20) {
+  const sample = latestSampleWith("messageBreakdown");
+  const items = Array.isArray(sample?.summary?.messageBreakdown) ? sample!.summary.messageBreakdown as any[] : [];
+  return items.slice(0, limit).map((m, index) => ({
+    rank: index + 1,
+    type: m.role ?? "message",
+    source: m.source ?? m.role ?? "message",
+    bytes: Number(m.bytes ?? 0),
+    estimatedTokens: Math.ceil(Number(m.bytes ?? 0) / 4),
+    policy: Number(m.bytes ?? 0) > 24 * 1024 ? "SUMMARIZE" : Number(m.bytes ?? 0) > 8 * 1024 ? "RETRIEVE" : "KEEP",
+    reason: Number(m.bytes ?? 0) > 24 * 1024 ? "Large message or tool result dominates live context" : "Within normal per-item budget",
+  }));
+}
+
+function topContributors(limit = 12) {
+  const payloadItems = payloadBreakdown().map((c) => ({
+    type: "payload_component",
+    source: c.label,
+    bytes: c.bytes,
+    percent: c.pct,
+    action: c.label === "Messages" && c.pct > 60 ? "classify_recent_messages_and_summarize_low_value_items" : c.label === "System prompt" && c.pct > 25 ? "audit_system_prompt_and_lazy_load_optional_guidance" : "watch",
+  }));
+  const toolItems = toolOutputBreakdown().map((c) => ({
+    type: "tool_output_cumulative",
+    source: c.label,
+    bytes: c.bytes,
+    percent: c.pct,
+    action: c.bytes > 48 * 1024 ? "store_raw_output_externally_and_retrieve_snippets" : "watch",
+  }));
+  const messageItems = topMessageItems(limit).map((m) => ({
+    type: "message_item",
+    source: m.source,
+    bytes: m.bytes,
+    percent: 0,
+    action: m.policy === "SUMMARIZE" ? "replace_with_summary_or_external_reference" : "watch",
+  }));
+  return [...payloadItems, ...toolItems, ...messageItems]
+    .sort((a, b) => b.bytes - a.bytes)
+    .slice(0, limit)
+    .map((c, i) => ({ rank: i + 1, ...c }));
+}
+
+function computeHealthScore(): { score: number; risk: "low" | "medium" | "high" | "critical"; reasons: string[] } {
+  let score = 100;
+  const reasons: string[] = [];
+  const percent = Number(latestVal("contextPercent"));
+  const breakdown = payloadBreakdown();
+  const msgPct = breakdown.find((c) => c.label === "Messages")?.pct ?? 0;
+  const sysPct = breakdown.find((c) => c.label === "System prompt")?.pct ?? 0;
+  const growth = growthRate();
+  const lastResultBytes = numLatest("resultBytes");
+
+  if (Number.isFinite(percent)) {
+    if (percent > 85) { score -= 45; reasons.push("Context is near overflow."); }
+    else if (percent > 70) { score -= 30; reasons.push("Context pressure is high."); }
+    else if (percent > 45) { score -= 15; reasons.push("Context pressure is rising."); }
+  }
+  if (msgPct > 75) { score -= 12; reasons.push("Messages dominate payload; retention classification is recommended."); }
+  if (sysPct > 30) { score -= 10; reasons.push("System prompt occupies a large share; audit always-on instructions."); }
+  if (growth.tokensPerRequest > 5000 || growth.payloadBytesPerRequest > 24 * 1024) { score -= 12; reasons.push("Recent growth rate is high."); }
+  if (lastResultBytes > 64 * 1024) { score -= 10; reasons.push("Last tool result is large and should be summarized or externalized."); }
+  score = Math.max(0, Math.min(100, score));
+  const risk = score < 35 ? "critical" : score < 55 ? "high" : score < 75 ? "medium" : "low";
+  if (reasons.length === 0) reasons.push("No immediate context pressure detected.");
+  return { score, risk, reasons };
+}
+
+function recommendations(): OptimizationRecommendation[] {
+  const recs: OptimizationRecommendation[] = [];
+  const breakdown = payloadBreakdown();
+  const msg = breakdown.find((c) => c.label === "Messages");
+  const sys = breakdown.find((c) => c.label === "System prompt");
+  const largestMessage = topMessageItems(1)[0];
+  const toolTotal = toolOutputBreakdown().reduce((s, c) => s + c.bytes, 0);
+  const health = computeHealthScore();
+
+  if (largestMessage && largestMessage.bytes > 24 * 1024) recs.push({ priority: "high", action: "summarize_largest_message_item", expectedSavingsBytes: Math.round(largestMessage.bytes * 0.75), qualityRisk: "low", reason: `Largest message item is ${fmtBytes(largestMessage.bytes)}.` });
+  if (msg && msg.pct > 65) recs.push({ priority: "medium", action: "classify_message_retention", expectedSavingsBytes: Math.round(msg.bytes * 0.25), qualityRisk: "medium", reason: `Messages are ${msg.pct}% of payload.` });
+  if (toolTotal > 64 * 1024) recs.push({ priority: "medium", action: "externalize_tool_outputs", expectedSavingsBytes: Math.round(toolTotal * 0.5), qualityRisk: "low", reason: `Cumulative tool output is ${fmtBytes(toolTotal)}.` });
+  if (sys && sys.pct > 25) recs.push({ priority: "low", action: "audit_system_prompt", expectedSavingsBytes: Math.round(sys.bytes * 0.15), qualityRisk: "medium", reason: `System prompt is ${sys.pct}% of payload.` });
+  if (health.risk === "high" || health.risk === "critical") recs.push({ priority: "high", action: "trigger_targeted_compaction", expectedSavingsBytes: Math.round(numLatest("messageBytes") * 0.45), qualityRisk: "medium", reason: `Health risk is ${health.risk}.` });
+  if (recs.length === 0) recs.push({ priority: "low", action: "no_action_monitor_only", expectedSavingsBytes: 0, qualityRisk: "low", reason: "Context pressure is low; keep monitoring." });
+  return recs;
+}
+
+export function getContextIntelligenceReport(action = "report", limit = 20) {
+  const latest = state.samples.at(-1) ?? null;
+  const health = computeHealthScore();
+  const growth = growthRate();
+  const base = {
+    generatedAt: Date.now(),
+    action,
+    server: { port: state.port, url: state.port ? `http://127.0.0.1:${state.port}` : undefined },
+    health,
+    context: {
+      tokens: latestVal("contextTokens") ?? null,
+      window: contextWindowEstimate(),
+      percent: latestVal("contextPercent") ?? null,
+      payloadBytes: numLatest("payloadBytes"),
+      messageBytes: numLatest("messageBytes"),
+      systemPromptBytes: numLatest("systemPromptBytes"),
+    },
+    growth,
+    alerts: computeAlerts(),
+    compactions: { count: state.compactionCount, lastAt: state.lastCompactionAt ?? null },
+  };
+  if (action === "health") return base;
+  if (action === "top_contributors") return { ...base, topContributors: topContributors(limit), topMessages: topMessageItems(limit) };
+  if (action === "timeline") return { ...base, timeline: state.samples.slice(-limit) };
+  if (action === "recommendations") return { ...base, recommendations: recommendations() };
+  if (action === "budget") return { ...base, budget: { systemPromptPctTarget: 15, recentMessagesPctTarget: 35, summariesPctTarget: 15, toolResultsPctTarget: 20, retrievedContextPctTarget: 10, reservePctTarget: 5 }, actualBreakdown: payloadBreakdown() };
+  return { ...base, topContributors: topContributors(limit), recommendations: recommendations(), payloadBreakdown: payloadBreakdown(), toolOutputBreakdown: toolOutputBreakdown(), topMessages: topMessageItems(limit) };
+}
+
+export function recordContextDecision(decision: unknown): void {
+  state.decisions.push({ at: Date.now(), decision });
+  if (state.decisions.length > 100) state.decisions.splice(0, state.decisions.length - 100);
 }
 
 function computeAlerts(): Alert[] {
@@ -392,6 +546,8 @@ export function getContextMonitorSnapshot() {
     alerts: computeAlerts(),
     payloadBreakdown: payloadBreakdown(),
     toolOutputBreakdown: toolOutputBreakdown(),
+    contextIntelligence: getContextIntelligenceReport("report", 10),
+    decisions: state.decisions.slice(-20),
   };
 }
 
@@ -405,7 +561,25 @@ export async function ensureContextMonitorServer(preferredPort = 0): Promise<{ p
     if (url.pathname === "/snapshot") return json(res, 200, getContextMonitorSnapshot());
     if (url.pathname === "/events") return json(res, 200, { samples: state.samples });
     if (url.pathname === "/tools") return json(res, 200, { tools: [...state.tools.values()], totalBytes: state.toolSchemaTotalBytes });
-    return json(res, 404, { error: "not_found", endpoints: ["/", "/health", "/snapshot", "/events", "/tools"] });
+    if (url.pathname === "/llm/context-report") return json(res, 200, getContextIntelligenceReport(String(url.searchParams.get("action") ?? "report"), Number(url.searchParams.get("limit") ?? 20)));
+    if (url.pathname === "/llm/context-health") return json(res, 200, getContextIntelligenceReport("health"));
+    if (url.pathname === "/llm/context-top-contributors") return json(res, 200, getContextIntelligenceReport("top_contributors", Number(url.searchParams.get("limit") ?? 20)));
+    if (url.pathname === "/llm/context-timeline") return json(res, 200, getContextIntelligenceReport("timeline", Number(url.searchParams.get("limit") ?? 50)));
+    if (url.pathname === "/llm/context-recommendations") return json(res, 200, getContextIntelligenceReport("recommendations"));
+    if (url.pathname === "/llm/context-budget") return json(res, 200, getContextIntelligenceReport("budget"));
+    if (url.pathname === "/llm/context-decision" && req.method === "POST") {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      req.on("end", () => {
+        const text = Buffer.concat(chunks).toString("utf8");
+        let body: unknown = text;
+        try { body = JSON.parse(text); } catch {}
+        recordContextDecision(body);
+        json(res, 200, { ok: true });
+      });
+      return;
+    }
+    return json(res, 404, { error: "not_found", endpoints: ["/", "/health", "/snapshot", "/events", "/tools", "/llm/context-report", "/llm/context-recommendations"] });
   });
   state.server.unref();
 
