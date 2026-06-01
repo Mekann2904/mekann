@@ -159,7 +159,7 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
     description: "Show context pressure monitor status and local server URL",
     async handler(_args: string | undefined, ctx: any) {
       await startServer(ctx);
-      ctx.ui.notify(`Context monitor: ${serverUrl}\nOpen in browser for dashboard. JSON endpoints: ${serverUrl}/snapshot ${serverUrl}/events ${serverUrl}/tools`, "info");
+      ctx.ui.notify(`Context monitor: ${serverUrl}\nDashboard: ${serverUrl}/dashboard\nCache efficiency: ${serverUrl}/cache-efficiency\nJSON endpoints: ${serverUrl}/snapshot ${serverUrl}/events ${serverUrl}/tools ${serverUrl}/cache-efficiency/snapshot`, "info");
     },
   });
 }

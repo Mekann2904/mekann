@@ -1,5 +1,8 @@
+import * as fs from "node:fs/promises";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import * as path from "node:path";
+import type { CacheFriendlySummary, ActualProviderSummary } from "../../core/cache-friendly-prompt/reportTypes.js";
 
 // ─── types ───────────────────────────────────────────────────────
 
@@ -53,6 +56,11 @@ function html(res: http.ServerResponse, body: string): void {
   res.end(body);
 }
 
+function svg(res: http.ServerResponse, body: string): void {
+  res.writeHead(200, { "content-type": "image/svg+xml; charset=utf-8", "cache-control": "no-store" });
+  res.end(body);
+}
+
 function fmtBytes(n: number): string {
   if (!Number.isFinite(n) || n < 0) return "—";
   if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(2)} MB`;
@@ -67,6 +75,11 @@ function fmtDelta(prev: number | undefined, cur: number): string {
   const sign = d > 0 ? "+" : "";
   const cls = d > 0 ? "warn" : "ok";
   return `<span class="${cls}">${sign}${fmtBytes(d)}</span>`;
+}
+
+function fmtPct(v: unknown): string {
+  const n = Number(v);
+  return Number.isFinite(n) ? `${(n * 100).toFixed(1)}%` : "n/a";
 }
 
 function esc(v: unknown): string {
@@ -374,6 +387,130 @@ function cacheableContextTable(): string {
 ${fragments.length === 0 ? "" : `<div class="spacer"></div><table><thead><tr><th>Fragment</th><th>Source</th><th>Size</th></tr></thead><tbody>${fragments.map((f) => `<tr><td>${esc(f.id)}</td><td class="dim">${esc(f.source)}</td><td>${fmtBytes(Number(f.chars ?? 0))}</td></tr>`).join("")}</tbody></table>`}`;
 }
 
+function dashboardStyle(): string {
+  return `:root{--bg:#1a1b26;--surface:#24283b;--border:#3b4261;--text:#c0caf5;--dim:#565f89;--accent:#7aa2f7;--cyan:#7dcfff;--green:#9ece6a;--red:#f7768e;--orange:#ff9e64;--purple:#bb9af7;--heading:#c0caf5}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;line-height:1.5}
+main{max-width:1280px;margin:0 auto;padding:24px}
+h1{font-size:20px;font-weight:600;color:var(--heading);margin-bottom:4px}
+h2{font-size:14px;font-weight:600;color:var(--heading);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.sub{color:var(--dim);font-size:12px;margin-bottom:20px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:0;padding:16px}
+.panel h2{margin-top:0}
+.graph{width:100%;background:#0f172a;border:1px solid var(--border);display:block}
+.metric{font-size:24px;font-weight:700;color:var(--accent)}
+.metric .delta{font-size:12px;font-weight:400;margin-left:6px}
+.label{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+td,th{padding:6px 10px;text-align:left;border-bottom:1px solid var(--border)}
+th{color:var(--dim);font-weight:600;font-size:11px}
+.bar{height:8px;background:#1e2030;border-radius:0;overflow:hidden;min-width:60px}
+.bar span{display:block;height:100%;background:var(--accent)}
+.trend-bar{display:inline-flex;flex-direction:column;align-items:center;width:18px;margin-right:2px;vertical-align:bottom}
+.trend-bar span{display:block;width:12px;background:var(--accent)}
+.trend-bar small{font-size:9px;color:var(--dim);margin-top:2px}
+.legend{display:flex;gap:12px;margin-bottom:8px;font-size:11px}
+.legend span{display:inline-flex;align-items:center;gap:4px}
+.legend i{display:inline-block;width:10px;height:10px;border:1px solid var(--border)}
+.tag{display:inline-block;border:1px solid var(--border);padding:2px 6px;margin:2px;font-size:11px;color:var(--text)}
+.alert{display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px}
+.alert:last-child{border-bottom:none}
+.alert .icon{font-weight:700}
+.alert.warn .icon{color:var(--orange)}
+.alert.info .icon{color:var(--accent)}
+.warn{color:var(--orange)}
+.ok{color:var(--green)}
+.dim{color:var(--dim)}
+.accent{color:var(--accent)}
+a{color:var(--cyan);text-decoration:none}
+a:hover{text-decoration:underline}
+.spacer{height:20px}
+@media(max-width:900px){.grid2,.grid3,.grid4{grid-template-columns:1fr}}`;
+}
+
+function cacheFriendlyDirForDashboard(): string {
+  const cwd = state.samples.at(-1)?.cwd ?? process.cwd();
+  return path.join(cwd, ".pi-cache-friendly");
+}
+
+async function readCacheEfficiencySummary(): Promise<{ dir: string; summary: CacheFriendlySummary | null }> {
+  const dir = cacheFriendlyDirForDashboard();
+  try {
+    return { dir, summary: JSON.parse(await fs.readFile(path.join(dir, "summary.json"), "utf8")) as CacheFriendlySummary };
+  } catch {
+    return { dir, summary: null };
+  }
+}
+
+async function readCacheEfficiencySvg(name: string): Promise<string | null> {
+  if (!/^[a-z0-9][a-z0-9-]*\.svg$/i.test(name)) return null;
+  try { return await fs.readFile(path.join(cacheFriendlyDirForDashboard(), name), "utf8"); } catch { return null; }
+}
+
+function graphImg(name: string, alt: string): string {
+  return `<img class="graph" src="/cache-efficiency/artifacts/${encodeURIComponent(name)}" alt="${esc(alt)}">`;
+}
+
+function actualRows(summaryByKey: Record<string, ActualProviderSummary> | undefined, limit = 10): string {
+  const entries = Object.entries(summaryByKey ?? {}).sort((a, b) => b[1].inputTotalTokens - a[1].inputTotalTokens || b[1].requests - a[1].requests).slice(0, limit);
+  if (entries.length === 0) return '<span class="dim">No actual usage data</span>';
+  return `<table><thead><tr><th>Key</th><th>Req</th><th>Input</th><th>Read</th><th>Write</th><th>Miss</th><th>Hit</th><th>Cacheable read</th></tr></thead><tbody>${entries.map(([key, v]) => `<tr><td>${esc(key)}</td><td>${v.requests}</td><td>${esc(v.inputTotalTokens)}</td><td>${esc(v.cacheReadTokens)}</td><td>${esc(v.cacheWriteTokens)}</td><td>${esc(v.cacheMissTokens)}</td><td class="accent">${fmtPct(v.weightedTokenHitRate)}</td><td>${fmtPct(v.weightedCacheableReadRate)}</td></tr>`).join("")}</tbody></table>`;
+}
+
+async function renderCacheEfficiencyDashboard(): Promise<string> {
+  const { dir, summary } = await readCacheEfficiencySummary();
+  if (!summary) {
+    return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cache Efficiency — Mekann</title><style>${dashboardStyle()}</style></head><body><main><h1>Cache Efficiency</h1><div class="sub">actual provider cache hit rate — live update 5s</div><div class="panel"><h2>No data yet</h2><p class="dim">${esc(path.join(dir, "summary.json"))} がまだありません。cache-friendly-prompt telemetry が 1 回以上記録されると表示されます。</p></div></main></body></html>`;
+  }
+  const latest = summary.latest;
+  const hit = summary.actualTokenHitRateWeighted;
+  const warmHit = summary.actualWarmTokenHitRateWeighted;
+  const coldHit = summary.actualColdTokenHitRateWeighted;
+  const proxy = summary.windowPrefixReuseRate;
+  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cache Efficiency — Mekann</title><style>${dashboardStyle()}</style></head><body><main>
+<h1>Cache Efficiency</h1>
+<div class="sub">actual provider cache hit rate — live update 5s — ${esc(dir)} — generated ${esc(summary.generatedAt)}</div>
+<h2>Realtime metrics</h2>
+<div class="grid4">
+<div class="panel"><div class="label">Weighted token hit rate</div><div class="metric">${fmtPct(hit)}</div><div class="sub">cacheReadTokens / inputTotalTokens</div></div>
+<div class="panel"><div class="label">Warm hit rate</div><div class="metric">${fmtPct(warmHit)}</div><div class="sub">${summary.actualWarmRequestCount} warm requests</div></div>
+<div class="panel"><div class="label">Cold hit rate</div><div class="metric">${fmtPct(coldHit)}</div><div class="sub">${summary.actualColdRequestCount} cold requests</div></div>
+<div class="panel"><div class="label">Prefix reuse proxy</div><div class="metric">${fmtPct(proxy)}</div><div class="sub">latest 50 window</div></div>
+</div>
+<h2>Token totals</h2>
+<div class="grid4">
+<div class="panel"><div class="label">Actual requests</div><div class="metric">${summary.actualRequestCount}</div><div class="sub">correlated ${summary.actualMatchedRequestCount}</div></div>
+<div class="panel"><div class="label">Input tokens</div><div class="metric">${summary.actualInputTotalTokens}</div><div class="sub">provider usage</div></div>
+<div class="panel"><div class="label">Cache read</div><div class="metric">${summary.actualCacheReadTokens}</div><div class="sub">reused tokens</div></div>
+<div class="panel"><div class="label">Cache miss/write</div><div class="metric">${summary.actualCacheMissTokens}</div><div class="sub">write ${summary.actualCacheWriteTokens}</div></div>
+</div>
+<div class="spacer"></div>
+<div class="grid2">
+<div class="panel"><h2>Latest prefix</h2><table><tbody><tr><td>Provider/model</td><td class="accent">${esc(`${latest?.provider ?? "unknown"}/${latest?.model ?? "unknown"}`)}</td></tr><tr><td>Stable prefix hash</td><td class="dim">${esc(String(latest?.stablePrefixHash ?? "").slice(0, 12))}</td></tr><tr><td>Stable chars</td><td>${esc(latest?.stablePrefixChars ?? 0)}</td></tr><tr><td>Total prompt chars</td><td>${esc(latest?.totalPromptChars ?? 0)}</td></tr></tbody></table></div>
+<div class="panel"><h2>Proxy stability</h2><table><tbody><tr><td>Adjacent reuse rate</td><td class="accent">${fmtPct(summary.adjacentPrefixReuseRate)}</td></tr><tr><td>Same key streak</td><td>${summary.recentSameReuseKeyStreak} requests</td></tr><tr><td>Provider prefix hash changes</td><td>${summary.providerPrefixHashChanges}</td></tr><tr><td>Warnings</td><td>${summary.warningCount}</td></tr></tbody></table></div>
+</div>
+<div class="spacer"></div>
+<h2>Actual provider cache hit rate</h2>
+<div class="panel">${graphImg("actual-hit-rate.svg", "actual provider cache hit rate overall")}</div>
+<div class="spacer"></div>
+<h2>Prefix continuity proxy</h2>
+<div class="panel">${graphImg("cacheability-score.svg", "prefix continuity proxy")}</div>
+<div class="spacer"></div>
+<h2>Prompt size trends</h2>
+<div class="grid2"><div class="panel">${graphImg("trend.svg", "prompt size trend")}</div><div class="panel">${graphImg("fragments.svg", "prompt fragments")}</div></div>
+<div class="spacer"></div>
+<h2>By provider/model</h2><div class="panel">${actualRows(summary.actualByProviderModel)}</div>
+<div class="spacer"></div>
+<h2>By request role</h2><div class="panel">${actualRows(summary.actualByRequestRole)}</div>
+<div class="spacer"></div>
+<h2>By provider prefix hash</h2><div class="panel">${actualRows(summary.actualByProviderPrefixHash)}</div>
+<p class="sub" style="margin-top:20px">JSON: <a href="/cache-efficiency/snapshot">/cache-efficiency/snapshot</a> / Existing report: <a href="/snapshot">/snapshot</a></p>
+</main><script>(()=>{async function refresh(){try{const r=await fetch(location.pathname+'?partial=1',{cache:'no-store'});if(!r.ok)return;const h=await r.text();const d=new DOMParser().parseFromString(h,'text/html');const n=d.querySelector('main')?.innerHTML??'';const m=document.querySelector('main');if(n&&m&&n!==m.innerHTML){const y=scrollY;m.innerHTML=n;scrollTo({top:y,behavior:'instant'});}}catch{}}setInterval(refresh,5000);})();</script></body></html>`;
+}
+
 function renderDashboard(): string {
   const latest = state.samples.at(-1);
   const tokens = latestVal("contextTokens");
@@ -517,7 +654,7 @@ ${samples.map((s) => {
 </tbody></table>
 </div>
 
-<p class="sub" style="margin-top:20px">JSON: <a href="/snapshot">/snapshot</a> <a href="/events">/events</a> <a href="/tools">/tools</a> <a href="/health">/health</a></p>
+<p class="sub" style="margin-top:20px">Pages: <a href="/cache-efficiency">/cache-efficiency</a> / JSON: <a href="/snapshot">/snapshot</a> <a href="/events">/events</a> <a href="/tools">/tools</a> <a href="/health">/health</a></p>
 </main><script>
 (() => {
   let last = document.querySelector('main')?.innerHTML ?? '';
@@ -583,8 +720,17 @@ export async function ensureContextMonitorServer(preferredPort = 0): Promise<{ p
   if (state.server?.listening && state.port) return { port: state.port, url: `http://127.0.0.1:${state.port}`, reused: true };
 
   state.server = http.createServer((req, res) => {
+    void (async () => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (url.pathname === "/" || url.pathname === "/dashboard") return html(res, renderDashboard());
+    if (url.pathname === "/cache-efficiency") return html(res, await renderCacheEfficiencyDashboard());
+    if (url.pathname === "/cache-efficiency/snapshot") return json(res, 200, await readCacheEfficiencySummary());
+    if (url.pathname.startsWith("/cache-efficiency/artifacts/")) {
+      const name = decodeURIComponent(url.pathname.slice("/cache-efficiency/artifacts/".length));
+      const body = await readCacheEfficiencySvg(name);
+      if (body !== null) return svg(res, body);
+      return json(res, 404, { error: "not_found" });
+    }
     if (url.pathname === "/health") return json(res, 200, { ok: true });
     if (url.pathname === "/snapshot") return json(res, 200, getContextMonitorSnapshot());
     if (url.pathname === "/events") return json(res, 200, { samples: state.samples });
@@ -607,7 +753,8 @@ export async function ensureContextMonitorServer(preferredPort = 0): Promise<{ p
       });
       return;
     }
-    return json(res, 404, { error: "not_found", endpoints: ["/", "/health", "/snapshot", "/events", "/tools", "/llm/context-report", "/llm/context-recommendations"] });
+    return json(res, 404, { error: "not_found", endpoints: ["/", "/cache-efficiency", "/cache-efficiency/snapshot", "/health", "/snapshot", "/events", "/tools", "/llm/context-report", "/llm/context-recommendations"] });
+    })().catch((error) => json(res, 500, { error: "internal_error", message: String(error?.message ?? error) }));
   });
   state.server.unref();
 
