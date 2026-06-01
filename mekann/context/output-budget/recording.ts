@@ -1,6 +1,6 @@
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
-import type { OutputBudgetKind } from "./formatters.js";
+import type { OutputBudgetKind } from "./command.js";
 
 export interface NormalizationRecord {
 	version: 1;

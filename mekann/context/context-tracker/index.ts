@@ -152,13 +152,11 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_execution_end", async (event: any, ctx: any) => {
-    const outputBudget = event?.details?.outputBudget ?? event?.result?.details?.outputBudget;
     publish(ctx, "tool_end", {
       toolCallId: event?.toolCallId,
       toolName: event?.toolName,
       argsBytes: byteLen(event?.args),
       resultBytes: byteLen(event?.result),
-      ...(outputBudget && typeof outputBudget === "object" ? { outputBudget } : {}),
       isError: Boolean(event?.isError),
     });
   });

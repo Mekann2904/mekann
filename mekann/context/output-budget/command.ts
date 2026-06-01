@@ -1,4 +1,4 @@
-import type { OutputBudgetKind } from "./formatters.js";
+export type OutputBudgetKind = "grep" | "list" | "git";
 
 const SHELL_OPERATORS = /[|;&<>`$(){}]/;
 const IGNORE_DIRS = [".git", "node_modules", "vendor", "target", "dist", "build", ".next", "coverage"];
@@ -60,7 +60,6 @@ export function classifyBashCommand(command: string): OutputBudgetKind | null {
 	const bin = parts[0];
 	if (bin === "rg" || bin === "grep") return "grep";
 	if (bin === "ls" || bin === "tree" || bin === "find") return "list";
-	if (bin === "cat" || bin === "head" || bin === "tail") return "read";
 	if (bin === "git") return "git";
 	return null;
 }
@@ -74,8 +73,3 @@ export function normalizeBashCommand(command: string, kind: OutputBudgetKind): s
 	return null;
 }
 
-export function kindForToolResult(toolName: string): OutputBudgetKind | null {
-	if (toolName === "read") return "read";
-	if (toolName === "grep") return "grep";
-	return null;
-}

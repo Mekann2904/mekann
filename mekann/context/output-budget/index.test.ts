@@ -25,11 +25,11 @@ describe("output-budget normalization recording", () => {
 
 		const call = { toolName: "bash", toolCallId: "tc_rec_1", input: { command: "rg needle src" } };
 		await handlers.tool_call(call, { cwd });
-		expect(call.input.command).toBe("rg -n -H -0 --no-heading --no-ignore-vcs needle src");
+		expect(call.input.command).toBe("rg -n -H -0 --no-heading needle src");
 
 		const raw = "src/a.ts\u000010:needle one\nsrc/b.ts\u000020:needle two\n";
 		const result = await handlers.tool_result({ toolName: "bash", toolCallId: "tc_rec_1", content: [{ type: "text", text: raw }], isError: false }, { cwd });
-		expect(result.content[0].text).toContain("2 matches in 2 files");
+		expect(result).toBeUndefined();
 
 		const log = await readFile(join(cwd, ".mekann", "output-budget", "normalization.jsonl"), "utf8");
 		const record = JSON.parse(log.trim());
@@ -38,11 +38,11 @@ describe("output-budget normalization recording", () => {
 			toolCallId: "tc_rec_1",
 			kind: "grep",
 			originalCommand: "rg needle src",
-			normalizedCommand: "rg -n -H -0 --no-heading --no-ignore-vcs needle src",
+			normalizedCommand: "rg -n -H -0 --no-heading needle src",
 			changed: true,
-			result: { originalBytes: Buffer.byteLength(raw), compacted: true, isError: false },
+			result: { originalBytes: Buffer.byteLength(raw), compacted: false, isError: false },
 		});
-		expect(record.result.compactBytes).toBeGreaterThan(0);
+		expect(record.result.compactBytes).toBeUndefined();
 		expect(log).not.toContain("needle one");
 	});
 });

@@ -11,10 +11,6 @@ export default async function context(pi: ExtensionAPI): Promise<void> {
 			isFeatureEnabled("context-tracker") ? profileStartupStep("import:context/context-tracker", () => import("./context-tracker/index.js")) : undefined,
 			isFeatureEnabled("cacheable-context") ? profileStartupStep("import:context/cacheable-context", () => import("./cacheable-context/index.js")) : undefined,
 		]));
-		modules[0]?.default(pi);
-		modules[1]?.default(pi);
-		modules[2]?.default(pi);
-		modules[3]?.default(pi);
-		modules[4]?.default(pi);
+		for (const module of modules) module?.default(pi);
 	});
 }
