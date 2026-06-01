@@ -1,4 +1,4 @@
-export type OutputBudgetKind = "grep" | "list" | "git";
+export type CommandNormalizationKind = "grep" | "list" | "git";
 
 const SHELL_OPERATORS = /[|;&<>`$(){}]/;
 const IGNORE_DIRS = [".git", "node_modules", "vendor", "target", "dist", "build", ".next", "coverage"];
@@ -54,7 +54,7 @@ function normalizeGit(args: string[]): string | null {
 	return null;
 }
 
-export function classifyBashCommand(command: string): OutputBudgetKind | null {
+export function classifyBashCommand(command: string): CommandNormalizationKind | null {
 	const parts = splitSimpleCommand(command);
 	if (!parts) return null;
 	const bin = parts[0];
@@ -64,7 +64,7 @@ export function classifyBashCommand(command: string): OutputBudgetKind | null {
 	return null;
 }
 
-export function normalizeBashCommand(command: string, kind: OutputBudgetKind): string | null {
+export function normalizeBashCommand(command: string, kind: CommandNormalizationKind): string | null {
 	const parts = splitSimpleCommand(command);
 	if (!parts) return null;
 	const [bin, ...args] = parts;

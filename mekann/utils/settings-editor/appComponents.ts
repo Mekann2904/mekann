@@ -175,7 +175,7 @@ export function featureTitle(feature: string): string {
 		case "modes": return "Collaboration Modes";
 		case "sandbox": return "Sandbox";
 		case "subagent": return "Subagent";
-		case "output-budget": return "Output Budget";
+		case "command-normalization": return "Command Normalization";
 		case "output-gate": return "Output Gate";
 		case "codex-shared": return "Codex Shared";
 		case "codex-web-search": return "Codex Web Search";
@@ -192,7 +192,7 @@ function featureOrder(feature: string): number {
 		"modes": 0,
 		"sandbox": 1,
 		"subagent": 2,
-		"output-budget": 3,
+		"command-normalization": 3,
 		"output-gate": 4,
 		"codex-shared": 5,
 		"codex-web-search": 6,

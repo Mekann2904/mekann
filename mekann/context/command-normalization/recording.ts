@@ -1,30 +1,28 @@
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
-import type { OutputBudgetKind } from "./command.js";
+import type { CommandNormalizationKind } from "./command.js";
 
 export interface NormalizationRecord {
 	version: 1;
 	timestamp: string;
 	toolCallId?: string;
-	kind: OutputBudgetKind;
+	kind: CommandNormalizationKind;
 	cwd: string;
 	originalCommand: string;
 	normalizedCommand: string;
 	changed: boolean;
 	result?: {
-		originalBytes: number;
-		compactBytes?: number;
-		compacted: boolean;
+		outputBytes: number;
 		isError?: boolean;
 	};
 }
 
-export function outputBudgetLogPath(cwd: string): string {
-	return path.join(cwd, ".mekann", "output-budget", "normalization.jsonl");
+export function commandNormalizationLogPath(cwd: string): string {
+	return path.join(cwd, ".mekann", "command-normalization", "normalization.jsonl");
 }
 
 export async function appendNormalizationRecord(cwd: string, record: NormalizationRecord): Promise<void> {
-	const file = outputBudgetLogPath(cwd);
+	const file = commandNormalizationLogPath(cwd);
 	await fsp.mkdir(path.dirname(file), { recursive: true });
 	await fsp.appendFile(file, `${JSON.stringify(record)}\n`, "utf8");
 }

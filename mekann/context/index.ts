@@ -5,7 +5,7 @@ import { profileStartupStep } from "../startupProfile.js";
 export default async function context(pi: ExtensionAPI): Promise<void> {
 	await profileStartupStep("suite-context", async () => {
 		const modules = await profileStartupStep("context-imports", () => Promise.all([
-			isFeatureEnabled("output-budget") ? profileStartupStep("import:context/output-budget", () => import("./output-budget/index.js")) : undefined,
+			isFeatureEnabled("command-normalization") ? profileStartupStep("import:context/command-normalization", () => import("./command-normalization/index.js")) : undefined,
 			isFeatureEnabled("output-gate") ? profileStartupStep("import:context/output-gate", () => import("./output-gate/index.js")) : undefined,
 			isFeatureEnabled("context-ledger") ? profileStartupStep("import:context/ledger", () => import("./ledger/index.js")) : undefined,
 			isFeatureEnabled("context-tracker") ? profileStartupStep("import:context/context-tracker", () => import("./context-tracker/index.js")) : undefined,

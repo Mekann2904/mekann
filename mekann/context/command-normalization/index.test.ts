@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import outputBudget from "./index.js";
+import commandNormalization from "./index.js";
 
 let cwd: string | undefined;
 
@@ -11,17 +11,17 @@ afterEach(async () => {
 	cwd = undefined;
 });
 
-describe("output-budget normalization recording", () => {
+describe("command-normalization recording", () => {
 	it("records original command, normalized command, and result byte metrics only when enabled", async () => {
-		cwd = await mkdtemp(join(tmpdir(), "mekann-output-budget-"));
+		cwd = await mkdtemp(join(tmpdir(), "mekann-command-normalization-"));
 		await mkdir(join(cwd, ".pi"), { recursive: true });
 		await writeFile(join(cwd, ".pi", "mekann.json"), JSON.stringify({
 			version: 1,
-			features: { "output-budget": { recordNormalization: true } },
+			features: { "command-normalization": { recordNormalization: true } },
 		}, null, 2));
 
 		const handlers: Record<string, Function> = {};
-		outputBudget({ on: (name: string, handler: Function) => { handlers[name] = handler; } } as any);
+		commandNormalization({ on: (name: string, handler: Function) => { handlers[name] = handler; } } as any);
 
 		const call = { toolName: "bash", toolCallId: "tc_rec_1", input: { command: "rg needle src" } };
 		await handlers.tool_call(call, { cwd });
@@ -31,7 +31,7 @@ describe("output-budget normalization recording", () => {
 		const result = await handlers.tool_result({ toolName: "bash", toolCallId: "tc_rec_1", content: [{ type: "text", text: raw }], isError: false }, { cwd });
 		expect(result).toBeUndefined();
 
-		const log = await readFile(join(cwd, ".mekann", "output-budget", "normalization.jsonl"), "utf8");
+		const log = await readFile(join(cwd, ".mekann", "command-normalization", "normalization.jsonl"), "utf8");
 		const record = JSON.parse(log.trim());
 		expect(record).toMatchObject({
 			version: 1,
@@ -40,9 +40,10 @@ describe("output-budget normalization recording", () => {
 			originalCommand: "rg needle src",
 			normalizedCommand: "rg -n -H -0 --no-heading needle src",
 			changed: true,
-			result: { originalBytes: Buffer.byteLength(raw), compacted: false, isError: false },
+			result: { outputBytes: Buffer.byteLength(raw), isError: false },
 		});
-		expect(record.result.compactBytes).toBeUndefined();
+		expect(record.result).not.toHaveProperty("compacted");
+		expect(record.result).not.toHaveProperty("compactBytes");
 		expect(log).not.toContain("needle one");
 	});
 });

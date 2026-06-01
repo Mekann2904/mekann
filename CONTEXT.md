@@ -258,6 +258,10 @@ _Avoid_: project context, context suite, long-term memory
 A runtime context-management feature that stores large raw tool outputs outside the inline conversation and leaves a searchable artifact reference behind. Output gate preserves raw evidence without forcing the model to carry the whole output in its active context.
 _Avoid_: context ledger, summary, decision log
 
+**Command normalization**:
+A runtime context-management feature that rewrites simple bash tool commands into parse-friendly, bounded forms before execution without changing the search target or evidence owner. Command normalization does not compact raw output; large raw output belongs to Output gate.
+_Avoid_: output budget, output compaction, raw output storage
+
 **Context ledger**:
 A runtime context-management feature that stores meaningful working-memory events such as decisions, tasks, errors, plans, file changes, and artifact references. Context ledger preserves interpreted session state, while output gate preserves raw tool output.
 _Avoid_: output gate, raw log dump

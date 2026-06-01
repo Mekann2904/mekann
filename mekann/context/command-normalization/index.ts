@@ -1,12 +1,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import { featureBooleanValue } from "../../settings/enabled.js";
-import { classifyBashCommand, normalizeBashCommand, type OutputBudgetKind } from "./command.js";
+import { classifyBashCommand, normalizeBashCommand, type CommandNormalizationKind } from "./command.js";
 import { normalizeGrepLikeCommand } from "./grep.js";
 import { appendNormalizationRecord, type NormalizationRecord } from "./recording.js";
 
-type OutputPlan = { kind: OutputBudgetKind; command: string; originalCommand: string; record?: NormalizationRecord };
-const plans = new Map<string, OutputPlan>();
+type NormalizationPlan = { record: NormalizationRecord };
+const normalizationPlans = new Map<string, NormalizationPlan>();
 
 function textContent(content: unknown): string {
 	if (typeof content === "string") return content;
@@ -14,10 +14,12 @@ function textContent(content: unknown): string {
 	return (content as Array<any>).filter((part) => part?.type === "text" && typeof part.text === "string").map((part) => part.text).join("\n");
 }
 
-export default function outputBudget(pi: ExtensionAPI): void {
+const FEATURE = "command-normalization";
+
+export default function commandNormalization(pi: ExtensionAPI): void {
 	pi.on("tool_call", async (event: any, ctx: any) => {
 		try {
-			if (!featureBooleanValue("output-budget", "bashEnabled", true, ctx?.cwd)) return;
+			if (!featureBooleanValue(FEATURE, "bashEnabled", true, ctx?.cwd)) return;
 			if (!isToolCallEventType("bash", event)) return;
 			const command = event?.input?.command;
 			if (typeof command !== "string") return;
@@ -28,8 +30,9 @@ export default function outputBudget(pi: ExtensionAPI): void {
 			if (normalized && normalized !== command) event.input.command = normalized;
 			const id = (event as any).toolCallId ?? (event as any).id;
 			const effectiveCommand = normalized ?? command;
-			const recordEnabled = featureBooleanValue("output-budget", "recordNormalization", false, ctx?.cwd);
-			const record = recordEnabled ? {
+			const recordEnabled = featureBooleanValue(FEATURE, "recordNormalization", false, ctx?.cwd);
+			if (!recordEnabled) return;
+			const record = {
 				version: 1 as const,
 				timestamp: new Date().toISOString(),
 				...(typeof id === "string" ? { toolCallId: id } : {}),
@@ -38,26 +41,25 @@ export default function outputBudget(pi: ExtensionAPI): void {
 				originalCommand: command,
 				normalizedCommand: effectiveCommand,
 				changed: effectiveCommand !== command,
-			} : undefined;
-			if (typeof id === "string") plans.set(id, { kind, command: effectiveCommand, originalCommand: command, record });
+			};
+			if (typeof id === "string") normalizationPlans.set(id, { record });
 		} catch {
-			// Fail open: output-budget must never block tool execution.
+			// Fail open: command-normalization must never block tool execution.
 		}
 	});
 
 	pi.on("tool_result", async (event: any, ctx: any) => {
 		try {
 			const id = event?.toolCallId;
-			const plan = typeof id === "string" ? plans.get(id) : undefined;
-			if (typeof id === "string") plans.delete(id);
-			if (!plan?.record) return undefined;
+			const plan = typeof id === "string" ? normalizationPlans.get(id) : undefined;
+			if (typeof id === "string") normalizationPlans.delete(id);
+			if (!plan) return undefined;
 
 			const text = textContent(event?.content);
 			await appendNormalizationRecord(ctx?.cwd ?? process.cwd(), {
 				...plan.record,
 				result: {
-					originalBytes: Buffer.byteLength(text),
-					compacted: false,
+					outputBytes: Buffer.byteLength(text),
 					...(typeof event?.isError === "boolean" ? { isError: event.isError } : {}),
 				},
 			});
