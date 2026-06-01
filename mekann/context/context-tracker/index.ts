@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { spawn } from "node:child_process";
 import { featureConfig, featureValue } from "../../settings/featureConfig.js";
 import { ensureContextMonitorServer, recordContextMonitorSample, recordToolSchema, recordCompaction } from "./server.js";
 
@@ -22,6 +23,17 @@ function shortSource(message: any): string {
   if (custom) return `${role}:${custom}`;
   const text = typeof message?.content === "string" ? message.content : JSON.stringify(message?.content ?? "");
   return `${role}:${text.slice(0, 80).replace(/\s+/g, " ")}`;
+}
+
+function openUrl(url: string): void {
+  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
+  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
+  try {
+    const child = spawn(command, args, { detached: true, stdio: "ignore" });
+    child.unref();
+  } catch {
+    // Best-effort convenience only; the command notification still exposes the URL.
+  }
 }
 
 function messageBreakdown(messages: unknown, limit = 20): Array<Record<string, unknown>> {
@@ -159,6 +171,7 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
     description: "Show Mekann Web UI local server URL",
     async handler(_args: string | undefined, ctx: any) {
       await startServer(ctx);
+      openUrl(serverUrl);
       ctx.ui.notify(`Mekann Web UI: ${serverUrl}\nContext Monitor: ${serverUrl}/dashboard\nCache Efficiency: ${serverUrl}/cache-efficiency\nJSON endpoints: ${serverUrl}/snapshot ${serverUrl}/events ${serverUrl}/tools ${serverUrl}/cache-efficiency/snapshot`, "info");
     },
   });
