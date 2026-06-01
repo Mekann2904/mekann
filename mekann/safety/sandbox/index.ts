@@ -16,7 +16,7 @@ import { yoloApprovalMessage, type YoloApprovalState, readOnlyPolicy, workspaceW
 import { DEFAULT_SANDBOX_MODE, parseSandboxMode, modeLabel, SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, MODE_STATUS_EVENT, type SandboxPushProfileEvent, type SandboxPopProfileEvent, type ModeStatusEvent } from "../policy-core/modes.js";
 import { SafetyProfileState } from "../policy-core/safetyProfile.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
-import { featureValue } from "../../settings/featureConfig.js";
+import { featureBooleanValue, isFeatureEnabled } from "../../settings/enabled.js";
 import { SandboxExecutionControl, SANDBOX_BLOCK_HINT } from "./executionControl.js";
 import { formatSandboxRuntimeStatus, type SandboxRuntimeStatus } from "./runtimeStatus.js";
 import { appendWorkspaceBashAllowlistCommand, getBashAllowlist, getBashMode, isBashCommandAllowed, setWorkspaceBashMode, type BashMode } from "./bashPolicy.js";
@@ -34,7 +34,7 @@ const SANDBOX_PROMPT_POLICY = [
 ].join("\n");
 
 export default function sandboxExtension(pi: ExtensionAPI): void {
-	const enabledBySetting = featureValue("sandbox", "enabled") !== false;
+	const enabledBySetting = isFeatureEnabled("sandbox");
 	if (!enabledBySetting) return;
 
 	// ─── State ───────────────────────────────────────────────────────
@@ -138,7 +138,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		);
 		if (!ok) throw new Error("bash command はユーザーにより拒否されました。sandbox.bashAllowlist にありません。");
 
-		if (featureValue("sandbox", "allowPersistentBashApprovals", cwd) === false) return;
+		if (!featureBooleanValue("sandbox", "allowPersistentBashApprovals", true, cwd)) return;
 		const persist = await ctx.ui.confirm(
 			"bash command を永続許可しますか？",
 			"この workspace の .pi/mekann.json に exact match として追加しますか？\n\nNo の場合は今回だけ許可します。",

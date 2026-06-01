@@ -29,7 +29,7 @@ import { extractLastAssistantText } from "./contextFork.js";
 import type { ForkTurns } from "./contextFork.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
-import { featureConfig, featureValue } from "../../settings/featureConfig.js";
+import { featureRawConfig, isFeatureEnabled } from "../../settings/enabled.js";
 import { setToolsActive } from "../../settings/toolSurface.js";
 import { projectFeatureToolSurface } from "../../settings/toolSurfaceProjection.js";
 import { registerSubagentFlags } from "./flags.js";
@@ -215,7 +215,7 @@ function registerSubagentPromptProvider(): void {
 // ─── Extension entry point ───────────────────────────────────────
 
 export default function subagentExtension(pi: ExtensionAPI): void | Promise<void> {
-  if (featureValue("subagent", "enabled") === false) return;
+  if (!isFeatureEnabled("subagent")) return;
 
   registerSubagentPromptProvider();
   if (process.env.PI_SUBAGENT_ROLE === "child") {
@@ -241,7 +241,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
 
   function readSettingsFile(): Record<string, unknown> {
     if (process.env.VITEST || process.env.NODE_ENV === "test") return {};
-    return { subagent: featureConfig("subagent") };
+    return { subagent: featureRawConfig("subagent") };
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

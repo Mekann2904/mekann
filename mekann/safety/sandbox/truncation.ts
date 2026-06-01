@@ -1,10 +1,10 @@
 import { MEKANN_SANDBOX_DEFAULTS } from "../../config.js";
-import { featureConfig } from "../../settings/featureConfig.js";
+import { featureRawConfig } from "../../settings/enabled.js";
 
 export const DEFAULT_LLM_OUTPUT_MAX_BYTES = MEKANN_SANDBOX_DEFAULTS.llmOutputMaxBytes;
 export const DEFAULT_LLM_OUTPUT_MAX_LINES = MEKANN_SANDBOX_DEFAULTS.llmOutputMaxLines;
-export function getEffectiveLlmOutputMaxBytes(): number { return Number(featureConfig("sandbox").llmOutputMaxBytes) || DEFAULT_LLM_OUTPUT_MAX_BYTES; }
-export function getEffectiveLlmOutputMaxLines(): number { return Number(featureConfig("sandbox").llmOutputMaxLines) || DEFAULT_LLM_OUTPUT_MAX_LINES; }
+export function getEffectiveLlmOutputMaxBytes(): number { return Number(featureRawConfig("sandbox").llmOutputMaxBytes) || DEFAULT_LLM_OUTPUT_MAX_BYTES; }
+export function getEffectiveLlmOutputMaxLines(): number { return Number(featureRawConfig("sandbox").llmOutputMaxLines) || DEFAULT_LLM_OUTPUT_MAX_LINES; }
 
 export interface TruncateForLlmOptions {
 	maxBytes: number;

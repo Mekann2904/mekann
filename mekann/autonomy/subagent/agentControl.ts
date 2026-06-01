@@ -37,7 +37,7 @@ import type { SubagentResultStore } from "./resultStore.js";
 import { ApplyQueue } from "./applyQueue.js";
 import { SubagentLifecycle } from "./subagentLifecycle.js";
 import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
-import { featureConfig } from "../../settings/featureConfig.js";
+import { featureRawConfig } from "../../settings/enabled.js";
 import { evaluateSpawnCost } from "./subagentCostPolicy.js";
 
 // ─── Default config ──────────────────────────────────────────────
@@ -64,7 +64,7 @@ function nextAgentId(): string {
 export type DisplayMode = "none" | "kitty-pi" | "kitty-split";
 
 function getEffectiveMaxPatchBytes(): number {
-  const configured = Number(featureConfig("subagent").maxPatchBytes);
+  const configured = Number(featureRawConfig("subagent").maxPatchBytes);
   return Number.isFinite(configured) && configured > 0 ? configured : MEKANN_SUBAGENT_DEFAULTS.maxPatchBytes;
 }
 

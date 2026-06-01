@@ -526,7 +526,7 @@ ${webNav()}
 <div class="panel">${graphImg("cacheability-score.svg", "prefix continuity proxy")}</div>
 <div class="spacer"></div>
 <h2>Prompt size trends</h2>
-<div class="grid2"><div class="panel">${graphImg("trend.svg", "prompt size trend")}</div><div class="panel">${graphImg("fragments.svg", "prompt fragments")}</div></div>
+<div class="grid2"><div class="panel">${graphImg("trend.svg", "prompt size trend")}</div><div class="panel">${graphImg("fragments.svg", "fragment size chart")}</div></div>
 <div class="spacer"></div>
 <h2>By provider/model</h2><div class="panel">${actualRows(summary.actualByProviderModel)}</div>
 <div class="spacer"></div>

@@ -1,10 +1,10 @@
 import { getWorkspaceMekannSettingsPath, loadSettings, saveSettingsChecked, setFeatureValue } from "../../settings/store.js";
-import { featureValue } from "../../settings/featureConfig.js";
+import { featureRawConfig } from "../../settings/enabled.js";
 
 export type BashMode = "off" | "ask" | "sandboxed" | "yolo";
 
 export function getBashMode(cwd = process.cwd()): BashMode {
-	const value = featureValue("sandbox", "bashMode", cwd);
+	const value = featureRawConfig("sandbox", cwd).bashMode;
 	return value === "off" || value === "ask" || value === "sandboxed" || value === "yolo" ? value : "sandboxed";
 }
 
@@ -15,7 +15,7 @@ export function parseBashAllowlist(value: unknown): string[] {
 }
 
 export function getBashAllowlist(cwd = process.cwd()): string[] {
-	return parseBashAllowlist(featureValue("sandbox", "bashAllowlist", cwd));
+	return parseBashAllowlist(featureRawConfig("sandbox", cwd).bashAllowlist);
 }
 
 export function isBashCommandAllowed(command: string, allowlist: string[]): boolean {

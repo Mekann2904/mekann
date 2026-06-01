@@ -5,11 +5,8 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { featureValue } from "../../settings/featureConfig.js";
-import { renderKittyImage } from "./avatar.js";
-import { clearDashboardTerminalArtifactsSync } from "./cleanup.js";
-import { assembleDashboardRenderModel, GRAPH_COLS, GRAPH_ROWS } from "./view-model-assembler.js";
-import type { DashboardRenderModel, DashboardImagePlacement } from "./view-model-assembler.js";
+import { isFeatureEnabled } from "../../settings/enabled.js";
+import type { DashboardRenderModel } from "./view-model-assembler.js";
 import { renderOverlayLines } from "./overlay-render.js";
 
 // ── Component interface (minimal) ─────────────────────────────────────
@@ -84,12 +81,18 @@ function renderModelToLegacyData(model: DashboardRenderModel) {
 
 // ── Pi extension registration ─────────────────────────────────────────
 export default function dashboard(pi: ExtensionAPI): void {
-	if (featureValue("dashboard", "enabled") === false) return;
+	if (!isFeatureEnabled("dashboard")) return;
 
 	pi.registerCommand("dashboard", {
 		description: "Open the Mekann dashboard in Pi TUI",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify("Loading dashboard...", "info");
+			const [{ renderKittyImage }, { clearDashboardTerminalArtifactsSync }, assembler] = await Promise.all([
+				import("./avatar.js"),
+				import("./cleanup.js"),
+				import("./view-model-assembler.js"),
+			]);
+			const { assembleDashboardRenderModel, GRAPH_COLS, GRAPH_ROWS } = assembler;
 			const model = await assembleDashboardRenderModel(ctx.cwd);
 			ctx.ui.setFooter(() => ({ render: () => [], invalidate: () => {} }));
 			try {

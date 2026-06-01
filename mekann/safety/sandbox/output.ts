@@ -1,5 +1,5 @@
 import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
-import { featureConfig } from "../../settings/featureConfig.js";
+import { featureRawConfig } from "../../settings/enabled.js";
 import { gateTextForLlm, redactSecrets } from "../../context/tool-output/index.js";
 import { truncateForLlm } from "./truncation.js";
 
@@ -28,8 +28,8 @@ export async function formatSandboxedBashOutputForLlm(input: {
 			toolName: "bash",
 			text: input.output,
 			source: { kind: "sandboxed_bash", command: redactSecrets(input.command).text.slice(0, 2000) },
-			maxInlineBytes: Number(featureConfig("output-gate").maxInlineBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes,
-			previewBytes: Number(featureConfig("output-gate").previewBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes,
+			maxInlineBytes: Number(featureRawConfig("output-gate").maxInlineBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes,
+			previewBytes: Number(featureRawConfig("output-gate").previewBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes,
 		});
 		const shown = gated.handled ? {
 			text: gated.text,

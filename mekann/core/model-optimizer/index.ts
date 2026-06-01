@@ -18,15 +18,14 @@ import { registerMetrics } from "./metrics.js";
 import { registerCompactionObserver } from "./compaction.js";
 import { registerCommands } from "./command.js";
 import { optimizerModules } from "./modules.js";
-import { featureValue } from "../../settings/featureConfig.js";
+import { featureBooleanValue } from "../../settings/enabled.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function readBool(feature: string, key: string, fallback: boolean): boolean {
-	const v = featureValue(feature, key);
-	return typeof v === "boolean" ? v : fallback;
+	return featureBooleanValue(feature, key, fallback);
 }
 
 // ---------------------------------------------------------------------------
