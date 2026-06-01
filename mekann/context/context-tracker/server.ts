@@ -427,6 +427,11 @@ th{color:var(--dim);font-weight:600;font-size:11px}
 .accent{color:var(--accent)}
 a{color:var(--cyan);text-decoration:none}
 a:hover{text-decoration:underline}
+.nav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px}
+.nav a{border:1px solid var(--border);padding:6px 10px;background:var(--surface)}
+.card-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.card-list .panel{display:block;color:var(--text)}
+.card-list .panel strong{display:block;color:var(--heading);font-size:15px;margin-bottom:6px}
 .spacer{height:20px}
 @media(max-width:900px){.grid2,.grid3,.grid4{grid-template-columns:1fr}}`;
 }
@@ -454,6 +459,26 @@ function graphImg(name: string, alt: string): string {
   return `<img class="graph" src="/cache-efficiency/artifacts/${encodeURIComponent(name)}" alt="${esc(alt)}">`;
 }
 
+function webNav(): string {
+  return `<nav class="nav"><a href="/">Home</a><a href="/dashboard">Context Monitor</a><a href="/cache-efficiency">Cache Efficiency</a><a href="/snapshot">Snapshot</a><a href="/events">Events</a><a href="/tools">Tools</a><a href="/llm/context-report">LLM Report</a><a href="/health">Health</a></nav>`;
+}
+
+function renderHome(): string {
+  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mekann Web UI</title><style>${dashboardStyle()}</style></head><body><main>
+${webNav()}
+<h1>Mekann Web UI</h1>
+<div class="sub">context control plane pages and JSON endpoints</div>
+<div class="card-list">
+<a class="panel" href="/dashboard"><strong>Context Monitor</strong><span class="dim">Live context pressure, prompt payload, tools, alerts, and recent events.</span></a>
+<a class="panel" href="/cache-efficiency"><strong>Cache Efficiency</strong><span class="dim">Provider cache hit rate, prefix reuse, and cache-friendly prompt telemetry.</span></a>
+<a class="panel" href="/snapshot"><strong>Snapshot JSON</strong><span class="dim">Current monitor state, alerts, context intelligence, and decisions.</span></a>
+<a class="panel" href="/events"><strong>Events JSON</strong><span class="dim">Recorded context monitor samples.</span></a>
+<a class="panel" href="/tools"><strong>Tools JSON</strong><span class="dim">Registered tool schema sizes and total tool schema weight.</span></a>
+<a class="panel" href="/llm/context-report"><strong>LLM Context Report</strong><span class="dim">Context intelligence report endpoint for agents and humans.</span></a>
+</div>
+</main></body></html>`;
+}
+
 function actualRows(summaryByKey: Record<string, ActualProviderSummary> | undefined, limit = 10): string {
   const entries = Object.entries(summaryByKey ?? {}).sort((a, b) => b[1].inputTotalTokens - a[1].inputTotalTokens || b[1].requests - a[1].requests).slice(0, limit);
   if (entries.length === 0) return '<span class="dim">No actual usage data</span>';
@@ -463,7 +488,7 @@ function actualRows(summaryByKey: Record<string, ActualProviderSummary> | undefi
 async function renderCacheEfficiencyDashboard(): Promise<string> {
   const { dir, summary } = await readCacheEfficiencySummary();
   if (!summary) {
-    return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cache Efficiency — Mekann</title><style>${dashboardStyle()}</style></head><body><main><h1>Cache Efficiency</h1><div class="sub">actual provider cache hit rate — live update 5s</div><div class="panel"><h2>No data yet</h2><p class="dim">${esc(path.join(dir, "summary.json"))} がまだありません。cache-friendly-prompt telemetry が 1 回以上記録されると表示されます。</p></div></main></body></html>`;
+    return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cache Efficiency — Mekann</title><style>${dashboardStyle()}</style></head><body><main>${webNav()}<h1>Cache Efficiency</h1><div class="sub">actual provider cache hit rate — live update 5s</div><div class="panel"><h2>No data yet</h2><p class="dim">${esc(path.join(dir, "summary.json"))} がまだありません。cache-friendly-prompt telemetry が 1 回以上記録されると表示されます。</p></div></main></body></html>`;
   }
   const latest = summary.latest;
   const hit = summary.actualTokenHitRateWeighted;
@@ -471,6 +496,7 @@ async function renderCacheEfficiencyDashboard(): Promise<string> {
   const coldHit = summary.actualColdTokenHitRateWeighted;
   const proxy = summary.windowPrefixReuseRate;
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cache Efficiency — Mekann</title><style>${dashboardStyle()}</style></head><body><main>
+${webNav()}
 <h1>Cache Efficiency</h1>
 <div class="sub">actual provider cache hit rate — live update 5s — ${esc(dir)} — generated ${esc(summary.generatedAt)}</div>
 <h2>Realtime metrics</h2>
@@ -530,48 +556,8 @@ function renderDashboard(): string {
   const schemaTotal = state.toolSchemaTotalBytes;
   const compactions = state.compactionCount;
 
-  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Context Monitor — Mekann</title><style>
-:root{--bg:#1a1b26;--surface:#24283b;--border:#3b4261;--text:#c0caf5;--dim:#565f89;--accent:#7aa2f7;--cyan:#7dcfff;--green:#9ece6a;--red:#f7768e;--orange:#ff9e64;--purple:#bb9af7;--heading:#c0caf5}
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;line-height:1.5}
-main{max-width:1280px;margin:0 auto;padding:24px}
-h1{font-size:20px;font-weight:600;color:var(--heading);margin-bottom:4px}
-h2{font-size:14px;font-weight:600;color:var(--heading);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
-.sub{color:var(--dim);font-size:12px;margin-bottom:20px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
-.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px}
-.panel{background:var(--surface);border:1px solid var(--border);border-radius:0;padding:16px}
-.panel h2{margin-top:0}
-.metric{font-size:24px;font-weight:700;color:var(--accent)}
-.metric .delta{font-size:12px;font-weight:400;margin-left:6px}
-.label{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
-table{width:100%;border-collapse:collapse;font-size:12px}
-td,th{padding:6px 10px;text-align:left;border-bottom:1px solid var(--border)}
-th{color:var(--dim);font-weight:600;font-size:11px}
-.bar{height:8px;background:#1e2030;border-radius:0;overflow:hidden;min-width:60px}
-.bar span{display:block;height:100%;background:var(--accent)}
-.trend-bar{display:inline-flex;flex-direction:column;align-items:center;width:18px;margin-right:2px;vertical-align:bottom}
-.trend-bar span{display:block;width:12px;background:var(--accent)}
-.trend-bar small{font-size:9px;color:var(--dim);margin-top:2px}
-.legend{display:flex;gap:12px;margin-bottom:8px;font-size:11px}
-.legend span{display:inline-flex;align-items:center;gap:4px}
-.legend i{display:inline-block;width:10px;height:10px;border:1px solid var(--border)}
-.tag{display:inline-block;border:1px solid var(--border);padding:2px 6px;margin:2px;font-size:11px;color:var(--text)}
-.alert{display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px}
-.alert:last-child{border-bottom:none}
-.alert .icon{font-weight:700}
-.alert.warn .icon{color:var(--orange)}
-.alert.info .icon{color:var(--accent)}
-.warn{color:var(--orange)}
-.ok{color:var(--green)}
-.dim{color:var(--dim)}
-.accent{color:var(--accent)}
-a{color:var(--cyan);text-decoration:none}
-a:hover{text-decoration:underline}
-.spacer{height:20px}
-@media(max-width:900px){.grid2,.grid3,.grid4{grid-template-columns:1fr}}
-</style></head><body><main>
+  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Context Monitor — Mekann</title><style>${dashboardStyle()}</style></head><body><main>
+${webNav()}
 <h1>Context Monitor</h1>
 <div class="sub">live context pressure — live update 2s — samples ${state.samples.length} — tools ${totalTools} — compactions ${compactions}</div>
 
@@ -722,7 +708,8 @@ export async function ensureContextMonitorServer(preferredPort = 0): Promise<{ p
   state.server = http.createServer((req, res) => {
     void (async () => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    if (url.pathname === "/" || url.pathname === "/dashboard") return html(res, renderDashboard());
+    if (url.pathname === "/") return html(res, renderHome());
+    if (url.pathname === "/dashboard") return html(res, renderDashboard());
     if (url.pathname === "/cache-efficiency") return html(res, await renderCacheEfficiencyDashboard());
     if (url.pathname === "/cache-efficiency/snapshot") return json(res, 200, await readCacheEfficiencySummary());
     if (url.pathname.startsWith("/cache-efficiency/artifacts/")) {
@@ -753,7 +740,7 @@ export async function ensureContextMonitorServer(preferredPort = 0): Promise<{ p
       });
       return;
     }
-    return json(res, 404, { error: "not_found", endpoints: ["/", "/cache-efficiency", "/cache-efficiency/snapshot", "/health", "/snapshot", "/events", "/tools", "/llm/context-report", "/llm/context-recommendations"] });
+    return json(res, 404, { error: "not_found", endpoints: ["/", "/dashboard", "/cache-efficiency", "/cache-efficiency/snapshot", "/health", "/snapshot", "/events", "/tools", "/llm/context-report", "/llm/context-recommendations"] });
     })().catch((error) => json(res, 500, { error: "internal_error", message: String(error?.message ?? error) }));
   });
   state.server.unref();
