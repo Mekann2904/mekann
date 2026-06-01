@@ -16,6 +16,7 @@ Mekann の skill は、Pi coding agent が特定作業のために読む workflo
 | バグや性能劣化を調べたい | [`diagnose`](../mekann/skills/diagnose/SKILL.md) | `tdd`, `improve-codebase-architecture` |
 | TDD で実装したい | [`tdd`](../mekann/skills/tdd/SKILL.md) | `diagnose`, `improve-codebase-architecture` |
 | コードベースの構造を改善したい | [`improve-codebase-architecture`](../mekann/skills/improve-codebase-architecture/SKILL.md) | `grill-with-docs`, `to-issues`, `tdd` |
+| 変更差分を厳しく maintainability review したい | [`thermo-nuclear-code-quality-review`](../mekann/skills/thermo-nuclear-code-quality-review/SKILL.md) | `improve-codebase-architecture`, `tdd` |
 | 知らないコード領域の全体像が欲しい | [`zoom-out`](../mekann/skills/zoom-out/SKILL.md) | 目的に応じて任意の skill |
 | engineering skills の初期設定をしたい | [`setup-matt-pocock-skills`](../mekann/skills/setup-matt-pocock-skills/SKILL.md) | `triage`, `to-prd`, `to-issues` |
 | 反復実験で最適化したい | [`autoresearch-create`](../mekann/skills/autoresearch-create/SKILL.md) | 通常は目的整理後に使う |
@@ -192,6 +193,20 @@ Sub mode は main mode と同じ挙動になりました。implementation-delega
   - 「TDD しづらい場所を deep module 化できるか見て」
   - 「AI が迷いやすい構造を見つけて report にして」
 
+#### thermo-nuclear-code-quality-review
+
+- 詳細: [`mekann/skills/thermo-nuclear-code-quality-review/SKILL.md`](../mekann/skills/thermo-nuclear-code-quality-review/SKILL.md)
+- できること: 変更差分を非常に厳しく review し、構造劣化、spaghetti growth、巨大ファイル化、抽象境界の崩れ、不要な indirection を指摘する。
+- 使うタイミング: PR や branch の maintainability を高い基準で確認したいとき。通常 review より強く structural simplification を求めたいとき。
+- 入力: review 対象の branch、diff、関連ファイル。
+- 出力: severity 順の高確度 findings。必要なら code-judo 的な再構成案。
+- 次に使う skill: `improve-codebase-architecture`, `tdd`。
+- 重要な注意: review workflow なので、ユーザーが明示しない限りコードは編集しない。nits より構造問題を優先する。
+- 呼び出し例:
+  - 「この PR を thermo-nuclear-code-quality-review して」
+  - 「差分を厳しく maintainability review して」
+  - 「spaghetti growth がないか thermonuclear review して」
+
 #### zoom-out
 
 - 詳細: [`mekann/skills/zoom-out/SKILL.md`](../mekann/skills/zoom-out/SKILL.md)
@@ -307,5 +322,6 @@ bug fix では `diagnose` が再現ループを作り、`tdd` がその学びを
 - Skill の一覧を変更したら、この guide と `README.md` の Skills 節を更新する。
 - 新規 skill には必ず frontmatter の `name` と `description` を持たせる。
 - Pi 向け skill は、Pi の tool 名、sandbox 方針、subagent 方針に合わせる。
+- Upstream mirror は `vendor/mattpocock-skills` や `vendor/cursor-plugins` に置き、Pi 向け編集は `mekann/skills/` 側だけに行う。
 - upstream 由来 skill は謝辞を残しつつ、runtime 中に upstream と Pi 向け指示を agent が統合しなくて済むよう、`mekann/skills/` 側だけで完結させる。
 - issue tracker、triage labels、domain docs の repo 固有設定は `docs/agents/` を正とする。
