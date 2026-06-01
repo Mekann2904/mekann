@@ -3,6 +3,7 @@ import { featureConfig, featureValue } from "../../settings/featureConfig.js";
 import { featureStringValue, isFeatureEnabled } from "../../settings/enabled.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { recordContextMonitorSample } from "../context-tracker/server.js";
+import { normalizePromptSurface } from "../surface-policy.js";
 import { buildCacheableContext, collectSourceHashes, isManifestFresh, readManifest, type CacheableContextConfig, type Manifest } from "./builder.js";
 
 function cfg(): CacheableContextConfig {
@@ -84,7 +85,7 @@ export default function cacheableContextExtension(pi: ExtensionAPI): void {
       await ensureBuilt(cwd);
       const manifest = await readManifest(cwd);
       if (!manifest?.fragments.length) return [];
-      const promptSurface = featureStringValue("cacheable-context", "promptSurface", "locator", cwd);
+      const promptSurface = normalizePromptSurface(featureStringValue("cacheable-context", "promptSurface", "locator", cwd));
       if (promptSurface === "off") return [];
       if (promptSurface !== "full") {
         return [{

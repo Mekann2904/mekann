@@ -1,11 +1,14 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult, projectContextEvents } from "./store.js";
+import { appendContextEvent, readEvents, clearContext } from "./store.js";
+import { computeStats, searchEvents, formatSearchResult, projectContextEvents } from "./query.js";
+import { CONTEXT_EVENT_KINDS } from "./schema.js";
 import { buildSnapshot } from "./snapshot.js";
 import { readLatestSnapshot } from "./snapshot-store.js";
 import { handleClear } from "../clear.js";
 import { featureStringValue } from "../../settings/enabled.js";
 import { setToolsActive } from "../../settings/toolSurface.js";
+import { shouldExposeManualOrAlwaysSurface, shouldRestoreSessionContextSurface } from "../surface-policy.js";
 import {
 	CONTEXT_LEDGER_COMMAND_COMPLETIONS,
 	clampInt,
@@ -14,8 +17,10 @@ import {
 	summarizeSessionContextText,
 } from "./projection.js";
 
-export { appendContextEvent, readEvents, computeStats, clearContext, searchEvents, formatSearchResult, projectContextEvents } from "./store.js";
-export type { MekannContextEvent, MekannContextEventKind, MekannContextRef, AppendEventInput, ProjectedContextEvent, MekannContextEventStatus, MekannContextEvidenceLevel, MekannContextScope } from "./store.js";
+export { appendContextEvent, readEvents, clearContext } from "./store.js";
+export { computeStats, searchEvents, formatSearchResult, projectContextEvents } from "./query.js";
+export type { MekannContextEvent, MekannContextEventKind, MekannContextRef, ProjectedContextEvent, MekannContextEventStatus, MekannContextEvidenceLevel, MekannContextScope } from "./schema.js";
+export type { AppendEventInput } from "./store.js";
 export { buildSnapshot } from "./snapshot.js";
 
 const CONTEXT_LEDGER_TOOL_NAMES = ["search_context_events", "summarize_session_context"] as const;
@@ -24,7 +29,10 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 	let manualToolsActive = false;
 
 	function shouldExposeContextLedgerTools(): boolean {
-		return featureStringValue("context-ledger", "toolSurface", "on-demand") === "always" || manualToolsActive;
+		return shouldExposeManualOrAlwaysSurface({
+			configuredSurface: featureStringValue("context-ledger", "toolSurface", "on-demand"),
+			manualActive: manualToolsActive,
+		});
 	}
 
 	function syncContextLedgerToolSurface(): void {
@@ -35,20 +43,7 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 		manualToolsActive = active;
 		syncContextLedgerToolSurface();
 	}
-	const KindEnum = Type.Union([
-		Type.Literal("tool_result"),
-		Type.Literal("user_decision"),
-		Type.Literal("file_change"),
-		Type.Literal("error"),
-		Type.Literal("task"),
-		Type.Literal("plan"),
-		Type.Literal("subagent"),
-		Type.Literal("git"),
-		Type.Literal("rule"),
-		Type.Literal("constraint"),
-		Type.Literal("autoresearch"),
-		Type.Literal("safety_boundary"),
-	]);
+	const KindEnum = Type.Enum(Object.fromEntries(CONTEXT_EVENT_KINDS.map((kind) => [kind, kind])) as Record<string, string>);
 
 	pi.registerTool({
 		name: "search_context_events",
@@ -134,9 +129,10 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 	pi.on("session_start", async (event: any, ctx: any) => {
 		const cwd = ctx?.cwd ?? process.cwd();
 		manualToolsActive = false;
-		if ((event?.reason === "resume" || event?.reason === "reload" || event?.reason === "fork") && await readLatestSnapshot(cwd)) {
-			manualToolsActive = true;
-		}
+		manualToolsActive = shouldRestoreSessionContextSurface({
+			reason: event?.reason,
+			hasLatestSnapshot: Boolean(await readLatestSnapshot(cwd)),
+		});
 		syncContextLedgerToolSurface();
 	});
 

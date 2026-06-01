@@ -1,6 +1,6 @@
 import * as crypto from "node:crypto";
-import type { MekannContextEvent, MekannContextEventKind, ProjectedContextEvent } from "./store.js";
-import { truncate, sortByPriorityThenNewest, projectContextEvents } from "./store.js";
+import type { MekannContextEvent, MekannContextEventKind, ProjectedContextEvent } from "./schema.js";
+import { projectContextEvents, sortByPriorityThenNewest, truncate } from "./query.js";
 
 // ─── Priority labels ───────────────────────────────────────────
 
@@ -37,15 +37,18 @@ export interface SnapshotWatermark {
 	validUntil?: string;
 }
 
+function sortedSnapshotEvents(events: MekannContextEvent[]): MekannContextEvent[] {
+	return [...events].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+}
+
+function snapshotLastEventId(events: MekannContextEvent[]): string {
+	return sortedSnapshotEvents(events).at(-1)?.id ?? "";
+}
+
 export function computeSnapshotWatermark(events: MekannContextEvent[], now = Date.now()): SnapshotWatermark {
 	const hash = crypto.createHash("sha256");
 	let lastId = "";
-	// Single pass: hash events in order + track last event
-	// Stable order: by createdAt then by id
-	const indices = events.map((_, i) => i);
-	indices.sort((a, b) => events[a].createdAt - events[b].createdAt || events[a].id.localeCompare(events[b].id));
-	for (const idx of indices) {
-		const event = events[idx];
+	for (const event of sortedSnapshotEvents(events)) {
 		hash.update(event.id);
 		hash.update("\0");
 		hash.update(event.kind);
@@ -84,8 +87,7 @@ export function snapshotWatermarkMatches(xml: string, events: MekannContextEvent
 	const cachedLastId = attr("lastEventId");
 	if (events.length !== cachedCount) return false;
 	if (events.length === 0 && cachedLastId === "") return attr("schemaVersion") === "mekann-context-snapshot/v2";
-	const lastEvent = events.reduce((a, b) => a.createdAt > b.createdAt ? a : b, events[0]);
-	if (lastEvent.id !== cachedLastId) return false;
+	if (snapshotLastEventId(events) !== cachedLastId) return false;
 	// Count + lastId match; now verify hash only if needed
 	const expected = computeSnapshotWatermark(events, 0);
 	return attr("schemaVersion") === expected.schemaVersion

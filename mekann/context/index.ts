@@ -4,8 +4,12 @@ import { profileStartupStep } from "../startupProfile.js";
 
 export default async function context(pi: ExtensionAPI): Promise<void> {
 	await profileStartupStep("suite-context", async () => {
-		const modules = await profileStartupStep("context-imports", () => Promise.all([
+		const instrumentation = await profileStartupStep("context-instrumentation-imports", () => Promise.all([
 			isFeatureEnabled("context-tracker") ? profileStartupStep("import:context/context-tracker", () => import("./context-tracker/index.js")) : undefined,
+		]));
+		for (const module of instrumentation) module?.default(pi);
+
+		const modules = await profileStartupStep("context-feature-imports", () => Promise.all([
 			isFeatureEnabled("command-normalization") ? profileStartupStep("import:context/command-normalization", () => import("./command-normalization/index.js")) : undefined,
 			isFeatureEnabled("output-gate") ? profileStartupStep("import:context/output-gate", () => import("./output-gate/index.js")) : undefined,
 			isFeatureEnabled("context-ledger") ? profileStartupStep("import:context/ledger", () => import("./ledger/index.js")) : undefined,

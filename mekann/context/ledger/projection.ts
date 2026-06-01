@@ -1,6 +1,8 @@
 import { buildSnapshot, snapshotWatermarkMatches } from "./snapshot.js";
 import { readBoundedLatestSnapshot, writeLatestSnapshot } from "./snapshot-store.js";
-import { clearContext, computeStats, contextDir, eventsPath, formatSearchResult, projectContextEvents, readEvents, searchEvents, type MekannContextEventKind } from "./store.js";
+import { clearContext, contextDir, eventsPath, readEvents } from "./store.js";
+import { computeStats, formatSearchResult, projectContextEvents, searchEvents } from "./query.js";
+import type { MekannContextEventKind } from "./schema.js";
 
 export function clampInt(value: unknown, fallback: number, min: number, max: number): number {
 	const n = Number(value);
