@@ -38,3 +38,4 @@ autoresearch.checks.sh
 
 # OSS reference library
 /vendor/oss/
+/.mekann/command-normalization
