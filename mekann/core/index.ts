@@ -1,10 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import cacheFriendlyPrompt from "./cache-friendly-prompt/index.js";
-import agentGuidelines from "./agent-guidelines/index.js";
-import modelOptimizer from "./model-optimizer/index.js";
 
-export default function coreSuite(pi: ExtensionAPI): void {
-	cacheFriendlyPrompt(pi);
-	agentGuidelines(pi);
-	modelOptimizer(pi);
+export default async function coreSuite(pi: ExtensionAPI): Promise<void> {
+	(await import("./cache-friendly-prompt/index.js")).default(pi);
+	(await import("./agent-guidelines/index.js")).default(pi);
+	(await import("./model-optimizer/index.js")).default(pi);
 }

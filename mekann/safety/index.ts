@@ -1,9 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isFeatureEnabled } from "../settings/enabled.js";
-import sandbox from "./sandbox/index.js";
-import modes from "./modes/index.js";
 
-export default function safetySuite(pi: ExtensionAPI): void {
-	if (isFeatureEnabled("sandbox")) sandbox(pi);
-	if (isFeatureEnabled("modes")) modes(pi);
+export default async function safetySuite(pi: ExtensionAPI): Promise<void> {
+	if (isFeatureEnabled("sandbox")) (await import("./sandbox/index.js")).default(pi);
+	if (isFeatureEnabled("modes")) (await import("./modes/index.js")).default(pi);
 }
