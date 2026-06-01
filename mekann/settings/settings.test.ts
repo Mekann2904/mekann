@@ -105,8 +105,16 @@ describe("sandbox schema", () => {
 describe("output-gate schema", () => {
   it("has output-gate settings", () => {
     const schema = mekannSettingsSchemas.find((s) => s.feature === "output-gate")!;
-    expect(schema.settings).toHaveLength(7);
+    expect(schema.settings).toHaveLength(8);
     expect(schema.settings.find((s) => s.key === "enabled")?.defaultValue).toBe(true);
+  });
+
+  it("keeps cacheable-context default surface small and retrieval-oriented", () => {
+    const schema = mekannSettingsSchemas.find((s) => s.feature === "cacheable-context")!;
+    expect(schema.settings.find((s) => s.key === "enabled")?.defaultValue).toBe(true);
+    expect(schema.settings.find((s) => s.key === "promptSurface")?.defaultValue).toBe("locator");
+    expect(schema.settings.find((s) => s.key === "contextMode")?.defaultValue).toBe("term-index");
+    expect(schema.settings.find((s) => s.key === "maxPrefixChars")?.defaultValue).toBe(32000);
   });
 
   it("flattenEffective resolves all output-gate settings", () => {

@@ -352,6 +352,28 @@ function toolSchemaTable(): string {
     .join("")}</tbody></table>`;
 }
 
+function latestCacheableContextSample(): ContextMonitorSample | undefined {
+  for (let i = state.samples.length - 1; i >= 0; i--) {
+    if (state.samples[i].phase === "cacheable_context") return state.samples[i];
+  }
+  return undefined;
+}
+
+function cacheableContextTable(): string {
+  const sample = latestCacheableContextSample();
+  if (!sample) return '<span class="dim">No cacheable-context sample yet</span>';
+  const s = sample.summary;
+  const fragments = Array.isArray(s.fragments) ? s.fragments as any[] : [];
+  return `<table><tbody>
+<tr><td>Prefix</td><td class="accent">${fmtBytes(Number(s.prefixChars ?? 0))}</td></tr>
+<tr><td>Mode</td><td>${esc(s.contextMode)} / ${esc(s.promptSurface)}</td></tr>
+<tr><td>Fragments</td><td>${esc(s.fragmentCount)} (${esc(String(s.fragmentOrder ?? ""))})</td></tr>
+<tr><td>Max prefix</td><td>${fmtBytes(Number(s.maxPrefixChars ?? 0))}</td></tr>
+<tr><td>Hash</td><td class="dim">${esc(String(s.prefixHash ?? "").slice(0, 26))}${s.prefixHash ? "…" : ""}</td></tr>
+</tbody></table>
+${fragments.length === 0 ? "" : `<div class="spacer"></div><table><thead><tr><th>Fragment</th><th>Source</th><th>Size</th></tr></thead><tbody>${fragments.map((f) => `<tr><td>${esc(f.id)}</td><td class="dim">${esc(f.source)}</td><td>${fmtBytes(Number(f.chars ?? 0))}</td></tr>`).join("")}</tbody></table>`}`;
+}
+
 function renderDashboard(): string {
   const latest = state.samples.at(-1);
   const tokens = latestVal("contextTokens");
@@ -442,6 +464,11 @@ ${breakdown.map((c, i) => {
 <tr><td>Payload total</td><td class="accent">${fmtBytes(payload)}</td></tr>
 </tbody></table>
 </div>
+</div>
+
+<h2>Cacheable context</h2>
+<div class="panel">
+${cacheableContextTable()}
 </div>
 
 <h2>Tool impact</h2>
@@ -539,6 +566,7 @@ export function getContextMonitorSnapshot() {
   return {
     server: { port: state.port, url: state.port ? `http://127.0.0.1:${state.port}` : undefined },
     latest: state.samples.at(-1) ?? null,
+    cacheableContext: latestCacheableContextSample()?.summary ?? null,
     sampleCount: state.samples.length,
     tools: [...state.tools.values()],
     compactionCount: state.compactionCount,

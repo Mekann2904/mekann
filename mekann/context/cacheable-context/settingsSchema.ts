@@ -21,8 +21,9 @@ export const cacheableContextSettingsSchema: FeatureSettingsSchema = {
   feature: "cacheable-context",
   title: "Cacheable Context Prefix",
   settings: [
-    bool("enabled", "General", true, "CONTEXT.md / AGENTS.md / ADR index から cache-friendly な安定 prefix を生成して system prompt に追加します。LLM tool は追加しません。"),
-    stringEnum("contextMode", "Content", "distilled", ["off", "distilled", "full"], "CONTEXT.md の取り込み方式。初期値は distilled glossary です。"),
+    bool("enabled", "General", true, "CONTEXT.md / AGENTS.md / ADR index から検索用 fragment を生成します。初期値では system prompt には小さな locator だけを追加し、詳細は agent が通常の read/rg で探索します。LLM tool は追加しません。"),
+    stringEnum("promptSurface", "General", "locator", ["locator", "full", "off"], "system prompt への露出方式。locator は保存場所と探索方針だけ、full は生成済み fragment 本文を注入、off は prompt 露出なし。"),
+    stringEnum("contextMode", "Content", "term-index", ["off", "term-index", "distilled", "full"], "CONTEXT.md の取り込み方式。初期値は term-index で、用語名と検索方針だけを含めます。"),
     bool("includeAgents", "Content", true, "AGENTS.md の要約 fragment を含めます。"),
     bool("includeDomainDocs", "Content", true, "docs/agents/domain.md の要約 fragment を含めます。"),
     bool("includeAdrIndex", "Content", true, "docs/adr/*.md の ADR index fragment を含めます。ADR 全文は含めません。"),

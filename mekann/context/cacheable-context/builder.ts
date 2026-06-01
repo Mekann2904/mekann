@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 export type CacheableContextConfig = {
-  contextMode: "off" | "distilled" | "full";
+  contextMode: "off" | "term-index" | "distilled" | "full";
   includeAgents: boolean;
   includeDomainDocs: boolean;
   includeAdrIndex: boolean;
@@ -60,15 +60,46 @@ function summarizeDomain(text: string): string {
   return `## Domain docs rules from docs/agents/domain.md\n\n${(wanted.length ? wanted : text.split(/\r?\n/).slice(0, 40)).join("\n")}`;
 }
 
+function extractContextTerms(text: string, maxTerms: number): string[] {
+  const terms: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(/^\*\*([^*]+)\*\*:\s*(.*)$/);
+    if (!m) continue;
+    const name = m[1].trim();
+    if (name) terms.push(name);
+    if (terms.length >= maxTerms) break;
+  }
+  return terms;
+}
+
+function parseContextTermIndex(text: string, maxTerms: number): string {
+  const terms = extractContextTerms(text, maxTerms);
+  const list = terms.length ? terms.map((name) => `- ${name}`).join("\n") : "- No `**Term**:` entries detected; read CONTEXT.md directly.";
+  return `## CONTEXT.md retrieval index
+
+CONTEXT.md is the authoritative project glossary. This fragment is only a retrieval index, not the definition source.
+
+Search policy:
+- Use the term list below to detect existing project language before naming concepts.
+- Before relying on a term, read its definition in CONTEXT.md.
+- Also read the nearby \`_Avoid_:\` line to avoid forbidden synonyms.
+- Prefer exact term lookup: \`rg -n "^\\*\\*<term>\\*\\*:" CONTEXT.md\`
+- If unsure which term applies, search likely words: \`rg -n "word1|word2|word3" CONTEXT.md\`
+
+Defined terms:
+${list}`;
+}
+
 function parseContextGlossary(text: string, maxTerms: number): string {
   const lines = text.split(/\r?\n/);
   const terms: string[] = [];
   for (let i = 0; i < lines.length && terms.length < maxTerms; i++) {
-    const m = lines[i].match(/^\*\*([^*]+)\*\*:\s*$/);
+    const m = lines[i].match(/^\*\*([^*]+)\*\*:\s*(.*)$/);
     if (!m) continue;
     const name = m[1].trim();
     const def: string[] = [];
     let avoid = "";
+    if (m[2]?.trim()) def.push(m[2].trim());
     for (let j = i + 1; j < lines.length; j++) {
       const l = lines[j];
       if (/^\*\*([^*]+)\*\*:/.test(l) || /^#{1,3}\s+/.test(l)) break;
@@ -141,9 +172,9 @@ export async function buildCacheableContext(cwd: string, cfg: CacheableContextCo
   if (agents) fragments.push(fragment("010-agents", "AGENTS.md", summarizeAgents(agents)));
   const domain = cfg.includeDomainDocs ? await readIfExists(path.join(cwd, "docs", "agents", "domain.md")) : undefined;
   if (domain) fragments.push(fragment("020-domain-docs", "docs/agents/domain.md", summarizeDomain(domain)));
-  const context = cfg.contextMode !== "off" ? await readIfExists(path.join(cwd, "CONTEXT.md")) : undefined;
-  if (context) fragments.push(fragment("030-context", "CONTEXT.md", cfg.contextMode === "full" ? `## Project language from CONTEXT.md\n\n${context}` : parseContextGlossary(context, cfg.maxContextTerms)));
   if (cfg.includeAdrIndex) { const adr = await adrFragment(cwd, cfg.maxAdrEntries); if (adr) fragments.push(adr); }
+  const context = cfg.contextMode !== "off" ? await readIfExists(path.join(cwd, "CONTEXT.md")) : undefined;
+  if (context) fragments.push(fragment("030-context", "CONTEXT.md", cfg.contextMode === "full" ? `## Project language from CONTEXT.md\n\n${context}` : cfg.contextMode === "distilled" ? parseContextGlossary(context, cfg.maxContextTerms) : parseContextTermIndex(context, cfg.maxContextTerms)));
   if (cfg.includeCodeStructure) { const cs = await codeStructureFragment(cwd); if (cs) fragments.push(cs); }
 
   let total = 0;
