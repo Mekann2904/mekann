@@ -30,8 +30,8 @@ import type { ForkTurns } from "./contextFork.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
 import { featureConfig, featureValue } from "../../settings/featureConfig.js";
-import { featureStringValue } from "../../settings/enabled.js";
 import { setToolsActive } from "../../settings/toolSurface.js";
+import { projectFeatureToolSurface } from "../../settings/toolSurfaceProjection.js";
 import { registerSubagentFlags } from "./flags.js";
 
 let sharedSpawnAgent: ((params: SpawnParams, ctx: ExtensionContext) => Promise<SpawnResult>) | undefined;
@@ -362,13 +362,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   function syncSubagentToolSurface(ctx?: ExtensionContext): void {
     const ctrl = control;
     if (!ctrl) return;
-    const surface = featureStringValue("subagent", "toolSurface", MEKANN_SUBAGENT_DEFAULTS.toolSurface);
-    if (surface === "always") {
-      setToolsActive(pi, [...SUBAGENT_MANAGEMENT_TOOL_NAMES, ...SUBAGENT_RESULT_TOOL_NAMES], true);
-      return;
-    }
-    setToolsActive(pi, SUBAGENT_MANAGEMENT_TOOL_NAMES, hasInteractiveSubagentState(ctrl));
-    setToolsActive(pi, SUBAGENT_RESULT_TOOL_NAMES, hasPendingAgentResults(ctrl, ctx));
+    projectFeatureToolSurface(pi, "subagent", SUBAGENT_MANAGEMENT_TOOL_NAMES, MEKANN_SUBAGENT_DEFAULTS.toolSurface, () => hasInteractiveSubagentState(ctrl));
+    projectFeatureToolSurface(pi, "subagent", SUBAGENT_RESULT_TOOL_NAMES, MEKANN_SUBAGENT_DEFAULTS.toolSurface, () => hasPendingAgentResults(ctrl, ctx));
   }
 
   sharedSpawnAgent = async (params, ctx) => {

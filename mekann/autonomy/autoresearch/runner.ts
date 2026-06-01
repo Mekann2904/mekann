@@ -12,6 +12,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { randomBytes } from "node:crypto";
 import { parseMetricLines } from "./state.js";
+import { truncateTail as truncateTailShared } from "../../utils/truncate-utils/index.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -87,19 +88,7 @@ const gitShortHashCache = new Map<string, { value: string; expiresAt: number }>(
 
 /** 末尾を残して切り詰め。行数 → バイト数の順で適用。 */
 export function truncateTail(text: string, maxLines: number, maxBytes: number): string {
-	let lines = text.split("\n");
-	if (lines.length > maxLines) {
-		lines = lines.slice(-maxLines);
-	}
-	let result = lines.join("\n");
-	if (Buffer.byteLength(result, "utf8") > maxBytes) {
-		const buf = Buffer.from(result, "utf8");
-		const sliced = buf.subarray(buf.length - maxBytes);
-		result = sliced.toString("utf8");
-		const nlIdx = result.indexOf("\n");
-		if (nlIdx >= 0) result = result.slice(nlIdx + 1);
-	}
-	return result;
+	return truncateTailShared(text, { maxLines, maxBytes }).content;
 }
 
 // ---------------------------------------------------------------------------
