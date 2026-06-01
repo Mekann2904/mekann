@@ -15,6 +15,7 @@ export function spreadSessionMeta(input: { sessionId?: string; turnId?: string; 
 	return out;
 }
 import { redactSecrets } from "./redact.js";
+import { buildStructuredPreview, type OutputContentType } from "./preview.js";
 
 export interface OutputGateManifestEntry {
 	schemaVersion?: "output-gate/v1";
@@ -36,6 +37,10 @@ export interface OutputGateManifestEntry {
 	branchId?: string;
 	commandHash?: string;
 	source?: unknown;
+	contentType?: OutputContentType;
+	structuredPreview?: string;
+	retrievalHints?: string[];
+	omittedBytes?: number;
 }
 
 export interface SaveArtifactInput {
@@ -171,17 +176,20 @@ export function buildPreview(text: string, previewBytes?: number): string {
 }
 
 export function buildStoredOutputStub(entry: OutputGateManifestEntry, preview: string): string {
+	const hints = (entry.retrievalHints ?? []).slice(0, 5);
 	return [
 		`[output-gate] Large ${entry.toolName} output stored.`,
 		"",
 		`artifact: ${entry.id}`,
 		`tool: ${entry.toolName}`,
+		...(entry.contentType ? [`contentType: ${entry.contentType}`] : []),
 		`bytes: ${entry.bytes}`,
 		`lines: ${entry.lines}`,
 		`sha256: ${entry.sha256.slice(0, 8)}`,
 		"",
-		"preview:",
-		preview,
+		entry.structuredPreview ? "structured preview:" : "preview:",
+		entry.structuredPreview ?? preview,
+		...(hints.length ? ["", "retrieval hints:", ...hints.map((h) => `- ${h}`)] : []),
 		"",
 		`Use search_tool_outputs({ "query": "...", "artifact": "${entry.id}" }) to retrieve relevant snippets.`,
 	].join("\n");
@@ -206,6 +214,7 @@ export async function saveArtifact(input: SaveArtifactInput): Promise<{ entry: O
 	await fsp.writeFile(artifactAbs, redacted.text, "utf8");
 	const originalBytes = Buffer.byteLength(input.text, "utf8");
 	const originalLines = countLines(input.text);
+	const structured = buildStructuredPreview(redacted.text, { toolName: input.toolName, maxBytes: 3000 });
 	const entry: OutputGateManifestEntry = {
 		schemaVersion: "output-gate/v1",
 		id,
@@ -220,6 +229,10 @@ export async function saveArtifact(input: SaveArtifactInput): Promise<{ entry: O
 		path: relPath,
 		redacted: true,
 		redactionVersion: 1,
+		contentType: structured.contentType,
+		structuredPreview: structured.preview,
+		...(structured.retrievalHints.length ? { retrievalHints: structured.retrievalHints } : {}),
+		omittedBytes: structured.omittedBytes,
 		...spreadSessionMeta(input),
 		...(input.commandHash ? { commandHash: input.commandHash } : {}),
 		...(input.source === undefined ? {} : { source: sanitizeManifestSource(input.source) }),

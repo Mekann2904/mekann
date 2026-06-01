@@ -35,7 +35,21 @@ function capText(text: string, maxBytes: number): string {
 }
 
 function header(entry: OutputGateManifestEntry, line: number): string {
-	return `### ${entry.id} ${entry.toolName} ${line}`;
+	const type = entry.contentType ? ` ${entry.contentType}` : "";
+	return `### ${entry.id} ${entry.toolName}${type} ${line}`;
+}
+
+function artifactContext(files: SearchFile[]): string {
+	return files
+		.filter((file) => file.entry.structuredPreview || file.entry.retrievalHints?.length)
+		.slice(0, 3)
+		.map((file) => [
+			`### ${file.entry.id} artifact context`,
+			...(file.entry.contentType ? [`contentType: ${file.entry.contentType}`] : []),
+			...(file.entry.structuredPreview ? ["structured preview:", file.entry.structuredPreview] : []),
+			...(file.entry.retrievalHints?.length ? ["retrieval hints:", ...file.entry.retrievalHints.slice(0, 8).map((h) => `- ${h}`)] : []),
+		].join("\n"))
+		.join("\n\n");
 }
 
 async function selectFiles(cwd: string, artifact?: string): Promise<SearchFile[] | undefined> {
@@ -181,5 +195,9 @@ export async function searchToolOutputs(input: SearchToolOutputsInput): Promise<
 	if (preferRg) result = await searchWithRg(input.query, files, contextLines, maxResults, literal, caseSensitive);
 	if (result === undefined || (result === "" && !literal)) result = await fallbackLineScan({ ...input, caseSensitive, literal });
 	if (!result) result = "No matches.";
+	if (result === "No matches." && input.artifact) {
+		const context = artifactContext(files);
+		if (context) result = `No matches.\n\n${context}`;
+	}
 	return capText(result, input.maxSearchResultBytes ?? (Number(featureConfig("output-gate").maxSearchResultBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.maxSearchResultBytes));
 }

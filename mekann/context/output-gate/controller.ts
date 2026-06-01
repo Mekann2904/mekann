@@ -255,6 +255,9 @@ export class OutputGateController {
 		];
 		if (entry.schemaVersion) lines.push(`schemaVersion: ${entry.schemaVersion}`);
 		if (entry.redactionVersion != null) lines.push(`redactionVersion: ${entry.redactionVersion}`);
+		if (entry.contentType) lines.push(`contentType: ${entry.contentType}`);
+		if (entry.omittedBytes != null) lines.push(`omittedBytes: ${entry.omittedBytes}`);
+		if (entry.retrievalHints?.length) lines.push(`retrievalHints: ${entry.retrievalHints.join(", ")}`);
 		if (entry.originalBytes != null) lines.push(`originalBytes: ${entry.originalBytes}`);
 		if (entry.originalLines != null) lines.push(`originalLines: ${entry.originalLines}`);
 		if (entry.sessionId) lines.push(`sessionId: ${entry.sessionId}`);

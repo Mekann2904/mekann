@@ -25,7 +25,10 @@ describe("output-gate store", () => {
 		expect(fs.readFileSync(path.join(cwd, entry.path), "utf8")).toBe("hello\nworld");
 		const manifest = fs.readFileSync(manifestPath(cwd), "utf8").trim().split("\n");
 		expect(manifest).toHaveLength(1);
-		expect(JSON.parse(manifest[0]).id).toBe("og_test_1");
+		const parsed = JSON.parse(manifest[0]);
+		expect(parsed.id).toBe("og_test_1");
+		expect(parsed.contentType).toBe("text");
+		expect(parsed.structuredPreview).toContain("hello");
 	});
 
 	it("readManifest skips invalid JSONL lines", async () => {
@@ -102,6 +105,8 @@ describe("output-gate store", () => {
 		expect(result.sha256).toBeDefined();
 		expect(result.redacted).toBe(true);
 		expect(result.text).toContain("[output-gate]");
+		expect(result.text).toContain("contentType: text");
+		expect(result.text).toContain("structured preview:");
 	});
 
 	it("readManifest rethrows non-ENOENT errors", async () => {
