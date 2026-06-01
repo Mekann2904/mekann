@@ -144,7 +144,10 @@ describe("search output-gate artifacts", () => {
 		await saveArtifact({ cwd, toolName: "read", text: "extra content", idGenerator: () => "og_rgt2_2" });
 		const out = await searchToolOutputs({ cwd, query: "gamma", preferRg: true, contextLines: 1 });
 		expect(out).toContain("og_rgt2_1");
-		expect(out).toContain("gamma");
+		expect(out).toContain("2: beta");
+		expect(out).toContain("3: gamma");
+		expect(out).toContain("4: delta");
+		expect(out.match(/###/g)).toHaveLength(1);
 	});
 
 	it("searchToolOutputs with preferRg=true respects maxResults", async () => {

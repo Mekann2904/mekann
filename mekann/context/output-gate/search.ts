@@ -64,30 +64,36 @@ async function selectFiles(cwd: string, artifact?: string): Promise<SearchFile[]
 	return files;
 }
 
-interface PendingChunk {
-	entry: OutputGateManifestEntry;
-	matchLine: number;
+interface RgGroup {
+	entry?: OutputGateManifestEntry;
+	matchLine?: number;
 	lines: string[];
-	counted: boolean;
+	matchCount: number;
 }
 
-function flushChunk(chunk: PendingChunk): string {
-	return header(chunk.entry, chunk.matchLine) + "\n" + chunk.lines.join("\n");
+function flushRgGroup(group: RgGroup, chunks: string[], remainingResults: number): number {
+	if (!group.entry || group.matchLine === undefined || group.matchCount === 0 || remainingResults <= 0) return 0;
+	chunks.push(header(group.entry, group.matchLine) + "\n" + group.lines.join("\n"));
+	return Math.min(group.matchCount, remainingResults);
 }
 
 function parseRgOutput(stdout: string, files: SearchFile[], maxResults: number): string {
 	const byPath = new Map(files.map((f) => [path.resolve(f.abs), f.entry]));
 	const chunks: string[] = [];
-	let pending: PendingChunk | null = null;
+	let group: RgGroup = { lines: [], matchCount: 0 };
 	let count = 0;
 	const separatorRe = /^--$/;
 
 	for (const rawLine of stdout.split(/\r?\n/)) {
 		if (!rawLine) continue;
 
-		// rg emits "--" between non-contiguous groups
+		// rg emits "--" between non-contiguous match groups. Keep before/after
+		// context in the same group as its match instead of flushing context-only
+		// chunks ahead of the actual hit.
 		if (separatorRe.test(rawLine)) {
-			if (pending) { chunks.push(flushChunk(pending)); pending = null; }
+			count += flushRgGroup(group, chunks, maxResults - count);
+			if (count >= maxResults) break;
+			group = { lines: [], matchCount: 0 };
 			continue;
 		}
 
@@ -98,27 +104,22 @@ function parseRgOutput(stdout: string, files: SearchFile[], maxResults: number):
 		const isMatch = match[3] === ":";
 		const lineStr = `${match[2]}: ${match[4]}`;
 
-		if (isMatch) {
-			// Flush previous pending chunk if it belongs to a different match
-			if (pending) {
-				chunks.push(flushChunk(pending));
-				pending = null;
-			}
+		if (!group.entry) group.entry = entry;
+		// A new file without an rg separator is still a new retrieval group.
+		if (group.entry !== entry) {
+			count += flushRgGroup(group, chunks, maxResults - count);
 			if (count >= maxResults) break;
-			count += 1;
-			pending = { entry, matchLine: Number(match[2]), lines: [lineStr], counted: true };
-		} else {
-			// Context line — append to pending or start pending if none
-			if (!pending) {
-				pending = { entry, matchLine: Number(match[2]), lines: [lineStr], counted: false };
-			} else {
-				pending.lines.push(lineStr);
-			}
+			group = { entry, lines: [], matchCount: 0 };
 		}
+
+		if (isMatch) {
+			group.matchLine ??= Number(match[2]);
+			group.matchCount += 1;
+		}
+		group.lines.push(lineStr);
 	}
 
-	// Flush final pending chunk
-	if (pending) chunks.push(flushChunk(pending));
+	if (count < maxResults) flushRgGroup(group, chunks, maxResults - count);
 	return chunks.join("\n\n");
 }
 
