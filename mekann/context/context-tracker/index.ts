@@ -81,6 +81,7 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
   if (featureValue("context-tracker", "enabled") === false) return;
   const cfg = featureConfig("context-tracker");
   const port = Number(cfg.port ?? 0) || 0;
+  const autoStartServer = cfg.autoStartServer === true;
   let serverUrl = "";
 
   wrapRegisterTool(pi);
@@ -103,7 +104,7 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
   // ─── lifecycle hooks ─────────────────────────────────────────
 
   pi.on("session_start", async (_event: any, ctx: any) => {
-    await startServer(ctx);
+    if (autoStartServer) await startServer(ctx);
     publish(ctx, "session_start", {});
   });
 

@@ -17,7 +17,8 @@ export const contextTrackerSettingsSchema: FeatureSettingsSchema = {
   feature: "context-tracker",
   title: "Context Tracker",
   settings: [
-    bool("enabled", "General", true, "context pressure monitoring server and commands を有効にします。LLM tool は追加しません。"),
+    bool("enabled", "General", true, "context pressure monitoring commands を有効にします。LLM tool は追加しません。"),
+    bool("autoStartServer", "Server", false, "pi session_start 時に monitoring HTTP server を自動起動します。false なら /context-monitor 実行時だけ起動します。"),
     num("port", "Server", 0, 0, 65535, "monitoring HTTP server port。0 なら空き port を自動選択します。"),
   ],
 };
