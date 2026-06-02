@@ -31,10 +31,6 @@ export const deepseekModule: ProviderOptimizerModule = {
 		return isDeepseekOverflow(ctx.errorMessage);
 	},
 
-	rewriteOverflow(ctx: { model: OptimizerModel; errorMessage: string }): string {
-		return `context_length_exceeded: ${ctx.errorMessage}`;
-	},
-
 	buildPostCompactionHint(_ctx: { model: OptimizerModel }): string {
 		return DEEPSEEK_POST_COMPACTION_HINT;
 	},

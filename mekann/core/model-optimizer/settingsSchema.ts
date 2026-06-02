@@ -10,67 +10,44 @@
 
 import type { FeatureSettingsSchema, SettingSchema } from "../../settings/types.js";
 import { optimizerModules } from "./modules.js";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function bool(
-	key: string,
-	category: string,
-	defaultValue: boolean,
-	description: string,
-): SettingSchema<boolean> {
-	return {
-		key,
-		type: "boolean",
-		defaultValue,
-		description,
-		category,
-		scopes: ["global", "workspace"],
-		restartRequired: false,
-		validate(value) {
-			return typeof value === "boolean" ? [] : ["boolean 値である必要があります"];
-		},
-	};
-}
+import { boolSetting } from "./settings-utils.js";
 
 // ---------------------------------------------------------------------------
 // Base settings (feature-level, not module-specific)
 // ---------------------------------------------------------------------------
 
 const baseSettings: SettingSchema<boolean>[] = [
-	bool(
+	boolSetting(
 		"enabled",
 		"General",
 		true,
 		"model-optimizer 拡張全体の有効/無効。",
 	),
-	bool(
+	boolSetting(
 		"overflowRecovery.enabled",
 		"Features",
 		true,
 		"context overflow エラーの自動正規化を有効にする。",
 	),
-	bool(
+	boolSetting(
 		"metrics.enabled",
 		"Features",
 		true,
 		"使用量とレイテンシの session-local 計測を有効にする。",
 	),
-	bool(
+	boolSetting(
 		"compactionObserver.enabled",
 		"Features",
 		true,
 		"compaction lifecycle の観測を有効にする。",
 	),
-	bool(
+	boolSetting(
 		"postCompactionHint.enabled",
 		"Features",
 		true,
 		"compaction 後の次 turn で provider-aware continuation hint を注入する。",
 	),
-	bool(
+	boolSetting(
 		"debugLogging",
 		"Features",
 		false,

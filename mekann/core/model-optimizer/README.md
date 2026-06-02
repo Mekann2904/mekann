@@ -51,7 +51,7 @@ model-optimizer/               ← root orchestrator
 
 | # | 機能 | Hook | やること |
 |---|---|---|---|
-| 1 | **Overflow Recovery** | `message_end` | Module の `detectOverflow` / `rewriteOverflow` に dispatch |
+| 1 | **Overflow Recovery** | `message_end` | Module の `detectOverflow` に dispatch し、共通 canonical form に正規化 |
 | 2 | **Session-local Metrics** | `message_start` / `message_end` | レイテンシ・トークン使用量を in-memory 記録 |
 | 3 | **Compaction Observer** | `session_before_compact` / `session_compact` | compaction ライフサイクルを観測 |
 | 4 | **Post-compaction Hints** | `session_compact` → `before_agent_start` | Module の `buildPostCompactionHint` に dispatch |

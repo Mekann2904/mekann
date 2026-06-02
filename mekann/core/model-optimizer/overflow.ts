@@ -24,6 +24,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { canonicalOverflowMessage } from "./overflowPatterns.js";
 import type { ActiveOptimizationState } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -59,7 +60,7 @@ export function registerOverflowRecovery(
 
 		state.metrics.overflowRecoveries++;
 
-		const rewritten = module.rewriteOverflow({ model: modelStub, errorMessage });
+		const rewritten = canonicalOverflowMessage(errorMessage);
 
 		if (state.enableDebugLogging) {
 			const providerName = ctx.modelRegistry?.getProviderDisplayName(state.provider ?? "")

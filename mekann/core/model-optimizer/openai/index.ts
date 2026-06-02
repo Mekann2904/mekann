@@ -47,10 +47,6 @@ export const openaiModule: ProviderOptimizerModule = {
 		return isOpenaiOverflow(ctx.errorMessage);
 	},
 
-	rewriteOverflow(ctx: { model: OptimizerModel; errorMessage: string }): string {
-		return `context_length_exceeded: ${ctx.errorMessage}`;
-	},
-
 	buildPostCompactionHint(ctx: { model: OptimizerModel }): string {
 		return buildOpenaiCompactionHint(ctx.model.api);
 	},

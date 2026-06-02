@@ -49,12 +49,6 @@ export interface ProviderOptimizerModule {
 	detectOverflow(ctx: { model: OptimizerModel; errorMessage: string }): boolean;
 
 	/**
-	 * Rewrite an overflow error message.
-	 * Default canonical form: `context_length_exceeded: <original>`.
-	 */
-	rewriteOverflow(ctx: { model: OptimizerModel; errorMessage: string }): string;
-
-	/**
 	 * Build a post-compaction continuation hint.
 	 * Return `undefined` to skip hint injection.
 	 */

@@ -3,35 +3,16 @@
  */
 
 import type { SettingSchema } from "../../../settings/types.js";
-
-function bool(
-	key: string,
-	category: string,
-	defaultValue: boolean,
-	description: string,
-): SettingSchema<boolean> {
-	return {
-		key,
-		type: "boolean",
-		defaultValue,
-		description,
-		category,
-		scopes: ["global", "workspace"],
-		restartRequired: false,
-		validate(value) {
-			return typeof value === "boolean" ? [] : ["boolean 値である必要があります"];
-		},
-	};
-}
+import { boolSetting } from "../settings-utils.js";
 
 export const openaiOptimizerSettings: SettingSchema<boolean>[] = [
-	bool(
+	boolSetting(
 		"openaiFamily.enabled",
 		"API Families",
 		true,
 		"OpenAI API ファミリ (openai-responses, openai-completions, azure-openai-responses) 向けの最適化を有効にする。",
 	),
-	bool(
+	boolSetting(
 		"openaiCodex.enabled",
 		"API Families",
 		true,
