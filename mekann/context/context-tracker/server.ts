@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import * as fs from "node:fs/promises";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -53,20 +52,12 @@ function esc(v: unknown): string {
 
 type ContextMonitorScope = { cwd?: string; sessionId?: string };
 
-const scopeStorage = new AsyncLocalStorage<ContextMonitorScope>();
-
 function currentScope(): ContextMonitorScope {
   const latest = state.samples.at(-1);
   return { cwd: latest?.cwd, sessionId: latest?.sessionId };
 }
 
-function withScope<T>(scope: ContextMonitorScope, fn: () => T): T {
-  return scopeStorage.run(scope, fn);
-}
-
-function scopedSamples(): ContextMonitorSample[] {
-  const scope = scopeStorage.getStore();
-  if (!scope) throw new Error("Context monitor scope is required");
+function scopedSamples(scope: ContextMonitorScope = currentScope()): ContextMonitorSample[] {
   return state.samples.filter((sample) => {
     if (scope.cwd && sample.cwd && sample.cwd !== scope.cwd) return false;
     if (scope.sessionId && sample.sessionId && sample.sessionId !== scope.sessionId) return false;
@@ -278,8 +269,8 @@ function recommendations(): OptimizationRecommendation[] {
   return recs;
 }
 
-export function getContextIntelligenceReport(action = "report", limit = 20) {
-  const latest = scopedSamples().at(-1) ?? null;
+export function getContextIntelligenceReport(action = "report", limit = 20, scope: ContextMonitorScope = currentScope()) {
+  const latest = scopedSamples(scope).at(-1) ?? null;
   const health = computeHealthScore();
   const growth = growthRate();
   const base = {
@@ -301,7 +292,7 @@ export function getContextIntelligenceReport(action = "report", limit = 20) {
   };
   if (action === "health") return base;
   if (action === "top_contributors") return { ...base, topContributors: topContributors(limit), topMessages: topMessageItems(limit) };
-  if (action === "timeline") return { ...base, timeline: scopedSamples().slice(-limit) };
+  if (action === "timeline") return { ...base, timeline: scopedSamples(scope).slice(-limit) };
   if (action === "recommendations") return { ...base, recommendations: recommendations() };
   if (action === "budget") return { ...base, budget: { systemPromptPctTarget: 15, recentMessagesPctTarget: 35, summariesPctTarget: 15, toolResultsPctTarget: 20, retrievedContextPctTarget: 10, reservePctTarget: 5 }, actualBreakdown: payloadBreakdown() };
   return { ...base, topContributors: topContributors(limit), recommendations: recommendations(), payloadBreakdown: payloadBreakdown(), toolOutputBreakdown: toolOutputBreakdown(), topMessages: topMessageItems(limit) };
@@ -428,13 +419,13 @@ a:hover{text-decoration:underline}
 @media(max-width:900px){.grid2,.grid3,.grid4{grid-template-columns:1fr}}`;
 }
 
-function cacheFriendlyDirForDashboard(): string {
-  const cwd = scopedSamples().at(-1)?.cwd ?? process.cwd();
+function cacheFriendlyDirForDashboard(scope: ContextMonitorScope = currentScope()): string {
+  const cwd = scopedSamples(scope).at(-1)?.cwd ?? process.cwd();
   return path.join(cwd, ".pi-cache-friendly");
 }
 
-async function readCacheEfficiencySummary(): Promise<{ dir: string; summary: CacheFriendlySummary | null }> {
-  const dir = cacheFriendlyDirForDashboard();
+async function readCacheEfficiencySummary(scope: ContextMonitorScope = currentScope()): Promise<{ dir: string; summary: CacheFriendlySummary | null }> {
+  const dir = cacheFriendlyDirForDashboard(scope);
   try {
     return { dir, summary: JSON.parse(await fs.readFile(path.join(dir, "summary.json"), "utf8")) as CacheFriendlySummary };
   } catch {
@@ -442,9 +433,9 @@ async function readCacheEfficiencySummary(): Promise<{ dir: string; summary: Cac
   }
 }
 
-async function readCacheEfficiencySvg(name: string): Promise<string | null> {
+async function readCacheEfficiencySvg(name: string, scope: ContextMonitorScope = currentScope()): Promise<string | null> {
   if (!/^[a-z0-9][a-z0-9-]*\.svg$/i.test(name)) return null;
-  try { return await fs.readFile(path.join(cacheFriendlyDirForDashboard(), name), "utf8"); } catch { return null; }
+  try { return await fs.readFile(path.join(cacheFriendlyDirForDashboard(scope), name), "utf8"); } catch { return null; }
 }
 
 function graphImg(name: string, alt: string): string {
@@ -477,8 +468,8 @@ function actualRows(summaryByKey: Record<string, ActualProviderSummary> | undefi
   return `<table><thead><tr><th>Key</th><th>Req</th><th>Input</th><th>Read</th><th>Write</th><th>Miss</th><th>Hit</th><th>Cacheable read</th></tr></thead><tbody>${entries.map(([key, v]) => `<tr><td>${esc(key)}</td><td>${v.requests}</td><td>${esc(v.inputTotalTokens)}</td><td>${esc(v.cacheReadTokens)}</td><td>${esc(v.cacheWriteTokens)}</td><td>${esc(v.cacheMissTokens)}</td><td class="accent">${fmtPct(v.weightedTokenHitRate)}</td><td>${fmtPct(v.weightedCacheableReadRate)}</td></tr>`).join("")}</tbody></table>`;
 }
 
-async function renderCacheEfficiencyDashboard(): Promise<string> {
-  const { dir, summary } = await readCacheEfficiencySummary();
+async function renderCacheEfficiencyDashboard(scope: ContextMonitorScope = currentScope()): Promise<string> {
+  const { dir, summary } = await readCacheEfficiencySummary(scope);
   if (!summary) {
     return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cache Efficiency — Mekann</title><style>${dashboardStyle()}</style></head><body><main>${webNav()}<h1>Cache Efficiency</h1><div class="sub">actual provider cache hit rate — live update 5s</div><div class="panel"><h2>No data yet</h2><p class="dim">${esc(path.join(dir, "summary.json"))} がまだありません。cache-friendly-prompt telemetry が 1 回以上記録されると表示されます。</p></div></main></body></html>`;
   }
@@ -529,8 +520,8 @@ ${webNav()}
 </main><script>(()=>{async function refresh(){try{const r=await fetch(location.pathname+'?partial=1',{cache:'no-store'});if(!r.ok)return;const h=await r.text();const d=new DOMParser().parseFromString(h,'text/html');const n=d.querySelector('main')?.innerHTML??'';const m=document.querySelector('main');if(n&&m&&n!==m.innerHTML){const y=scrollY;m.innerHTML=n;scrollTo({top:y,behavior:'instant'});}}catch{}}setInterval(refresh,5000);})();</script></body></html>`;
 }
 
-function renderDashboard(): string {
-  const latest = scopedSamples().at(-1);
+function renderDashboard(scope: ContextMonitorScope = currentScope()): string {
+  const latest = scopedSamples(scope).at(-1);
   const tokens = latestVal("contextTokens");
   const percent = latestVal("contextPercent");
   const payload = numLatest("payloadBytes");
@@ -677,19 +668,19 @@ export function recordCompaction(): void {
   state.lastCompactionAt = Date.now();
 }
 
-export function getContextMonitorSnapshot() {
+export function getContextMonitorSnapshot(scope: ContextMonitorScope = currentScope()) {
   return {
     server: { port: state.port, url: state.port ? `http://127.0.0.1:${state.port}` : undefined },
-    latest: scopedSamples().at(-1) ?? null,
+    latest: scopedSamples(scope).at(-1) ?? null,
     cacheableContext: latestCacheableContextSample()?.summary ?? null,
-    sampleCount: scopedSamples().length,
+    sampleCount: scopedSamples(scope).length,
     tools: [...state.tools.values()],
     compactionCount: state.compactionCount,
     lastCompactionAt: state.lastCompactionAt ?? null,
     alerts: computeAlerts(),
     payloadBreakdown: payloadBreakdown(),
     toolOutputBreakdown: toolOutputBreakdown(),
-    contextIntelligence: getContextIntelligenceReport("report", 10),
+    contextIntelligence: getContextIntelligenceReport("report", 10, scope),
     decisions: state.decisions.slice(-20),
   };
 }
@@ -702,25 +693,25 @@ export async function ensureContextMonitorServer(preferredPort = 0): Promise<{ p
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const scope = currentScope();
     if (url.pathname === "/") return html(res, renderHome());
-    if (url.pathname === "/dashboard") return html(res, withScope(scope, () => renderDashboard()));
-    if (url.pathname === "/cache-efficiency") return html(res, await withScope(scope, () => renderCacheEfficiencyDashboard()));
-    if (url.pathname === "/cache-efficiency/snapshot") return json(res, 200, await withScope(scope, () => readCacheEfficiencySummary()));
+    if (url.pathname === "/dashboard") return html(res, renderDashboard(scope));
+    if (url.pathname === "/cache-efficiency") return html(res, await renderCacheEfficiencyDashboard(scope));
+    if (url.pathname === "/cache-efficiency/snapshot") return json(res, 200, await readCacheEfficiencySummary(scope));
     if (url.pathname.startsWith("/cache-efficiency/artifacts/")) {
       const name = decodeURIComponent(url.pathname.slice("/cache-efficiency/artifacts/".length));
-      const body = await withScope(scope, () => readCacheEfficiencySvg(name));
+      const body = await readCacheEfficiencySvg(name, scope);
       if (body !== null) return svg(res, body);
       return json(res, 404, { error: "not_found" });
     }
     if (url.pathname === "/health") return json(res, 200, { ok: true });
-    if (url.pathname === "/snapshot") return json(res, 200, withScope(scope, () => getContextMonitorSnapshot()));
-    if (url.pathname === "/events") return json(res, 200, withScope(scope, () => ({ samples: scopedSamples() })));
+    if (url.pathname === "/snapshot") return json(res, 200, getContextMonitorSnapshot(scope));
+    if (url.pathname === "/events") return json(res, 200, { samples: scopedSamples(scope) });
     if (url.pathname === "/tools") return json(res, 200, { tools: [...state.tools.values()], totalBytes: state.toolSchemaTotalBytes });
-    if (url.pathname === "/llm/context-report") return json(res, 200, withScope(scope, () => getContextIntelligenceReport(String(url.searchParams.get("action") ?? "report"), Number(url.searchParams.get("limit") ?? 20))));
-    if (url.pathname === "/llm/context-health") return json(res, 200, withScope(scope, () => getContextIntelligenceReport("health")));
-    if (url.pathname === "/llm/context-top-contributors") return json(res, 200, withScope(scope, () => getContextIntelligenceReport("top_contributors", Number(url.searchParams.get("limit") ?? 20))));
-    if (url.pathname === "/llm/context-timeline") return json(res, 200, withScope(scope, () => getContextIntelligenceReport("timeline", Number(url.searchParams.get("limit") ?? 50))));
-    if (url.pathname === "/llm/context-recommendations") return json(res, 200, withScope(scope, () => getContextIntelligenceReport("recommendations")));
-    if (url.pathname === "/llm/context-budget") return json(res, 200, withScope(scope, () => getContextIntelligenceReport("budget")));
+    if (url.pathname === "/llm/context-report") return json(res, 200, getContextIntelligenceReport(String(url.searchParams.get("action") ?? "report"), Number(url.searchParams.get("limit") ?? 20), scope));
+    if (url.pathname === "/llm/context-health") return json(res, 200, getContextIntelligenceReport("health", 20, scope));
+    if (url.pathname === "/llm/context-top-contributors") return json(res, 200, getContextIntelligenceReport("top_contributors", Number(url.searchParams.get("limit") ?? 20), scope));
+    if (url.pathname === "/llm/context-timeline") return json(res, 200, getContextIntelligenceReport("timeline", Number(url.searchParams.get("limit") ?? 50), scope));
+    if (url.pathname === "/llm/context-recommendations") return json(res, 200, getContextIntelligenceReport("recommendations", 20, scope));
+    if (url.pathname === "/llm/context-budget") return json(res, 200, getContextIntelligenceReport("budget", 20, scope));
     if (url.pathname === "/llm/context-decision" && req.method === "POST") {
       const chunks: Buffer[] = [];
       req.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
