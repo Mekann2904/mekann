@@ -6,6 +6,7 @@ import type {
   Readiness,
   StaticNumericScores,
 } from "./evaluate.js";
+import { applyTextRules, BROAD_QUERY_PATTERNS, firstMetricInference, RISK_RULES, SCOPE_RULES } from "./rules.js";
 
 // ─── 内部ヘルパー ─────────────────────────────────────────────
 
@@ -16,21 +17,9 @@ function clamp(value: number, min = 0, max = 1): number {
 // ── Risk detection ────────────────────────────────────────────
 
 export function detectRiskFlags(query: string): string[] {
-  const flags: string[] = [];
   const q = query.toLowerCase();
+  const flags = applyTextRules(q, RISK_RULES);
 
-  if (/\brm\s+-rf\b/.test(q) || /\brm\s+-r\s+-f\b/.test(q)) {
-    flags.push("破壊的ファイル削除 (rm -rf)");
-  }
-  if (/\bsudo\b/.test(q)) {
-    flags.push("管理者権限の使用 (sudo)");
-  }
-  if (/curl.*\|\s*sh/.test(q) || /curl.*\|\s*bash/.test(q)) {
-    flags.push("外部スクリプトの直接実行 (curl | sh)");
-  }
-  if (/\bchmod\s+777\b/.test(q)) {
-    flags.push("過度な権限付与 (chmod 777)");
-  }
   if (
     /\b(secret|token|api\s*key|password|秘密|認証情報)\b/.test(q) &&
     /(表示|送信|upload|post|出力|出力し|print|echo|show|dump)/.test(q)
@@ -50,19 +39,7 @@ export function detectRiskFlags(query: string): string[] {
 // ── Scope detection ───────────────────────────────────────────
 
 export function detectScope(query: string): string[] {
-  const scopes: string[] = [];
-  const q = query.toLowerCase();
-
-  if (/\bprepush\b/.test(q)) scopes.push("prepush");
-  if (
-    /\b(pytest|go\s+test|cargo\s+test|pnpm\s+test|npm\s+run\s+test|\btest\b|テスト)\b/.test(q)
-  )
-    scopes.push("tests");
-  if (/\b(coverage|カバレッジ)\b/.test(q)) scopes.push("coverage");
-  if (/\blint\b/.test(q)) scopes.push("lint");
-  if (/\b(build|ビルド)\b/.test(q)) scopes.push("build");
-
-  return [...new Set(scopes)];
+  return [...new Set(applyTextRules(query.toLowerCase(), SCOPE_RULES))];
 }
 
 // ── Direction inference from metric name ────────────────────
@@ -131,33 +108,11 @@ export function detectMetricNameAndDirection(
   let direction: MetricDirection = "unknown";
 
   if (!name) {
-    // latency / percentile latency は内部指標なので extraction が必要
-    if (/(p50|p90|p95|p99|latency|レイテンシ|応答時間)/i.test(q)) {
-      name = /p95/i.test(q) ? "p95_latency_ms" : "latency_ms";
-      unit = "ms";
-      direction = "lower";
-    } else if (/(速く|高速化|\btime\b|duration|\bsec\b|秒|実行時間|短縮)/.test(q)) {
-      name = "duration_seconds";
-      unit = "seconds";
-      direction = "lower";
-    } else if (
-      /(スコア|score|accuracy|pass\s*rate|success\s*rate|win\s*rate)/.test(q) &&
-      /(上げ|改善|向上)/.test(q)
-    ) {
-      const scoreMatch = q.match(/(スコア|score|accuracy|pass\s*rate|success\s*rate|win\s*rate)/);
-      name = scoreMatch ? scoreMatch[1].replace(/\s+/g, "_") : "score";
-      direction = "higher";
-    } else if (/(エラー|error|failure|crash|flaky)/.test(q) && /(減ら|削減)/.test(q)) {
-      name = "error_count";
-      direction = "lower";
-    } else if (/(コスト|cost|token|memory|size|bundle)/.test(q)) {
-      const costMatch = q.match(/(コスト|cost|token|memory|size|bundle)/);
-      name = costMatch ? costMatch[1] : "cost";
-      direction = "lower";
-    } else if (/(coverage|カバレッジ)/.test(q)) {
-      name = "coverage";
-      unit = "%";
-      direction = "higher";
+    const inferred = firstMetricInference(q);
+    if (inferred) {
+      name = inferred.name;
+      unit = inferred.unit;
+      direction = inferred.direction;
     }
   }
 
@@ -382,22 +337,7 @@ export function detectChecksPolicy(
 // ── Broad query detection ─────────────────────────────────────
 
 export function isBroadQuery(query: string): boolean {
-  const patterns = [
-    /コード品質/,
-    /品質を上げ/,
-    /品質を改善/,
-    /保守性を改善/,
-    /保守性を上げ/,
-    /保守性を向上/,
-    /良くしたい/,
-    /改善したい$/,
-    /向上したい$/,
-    /全体的に.*良く/,
-    /全体的に.*改善/,
-    /全体的に.*向上/,
-    /リファクタリングしたい/,
-  ];
-  return patterns.some((p) => p.test(query));
+  return BROAD_QUERY_PATTERNS.some((pattern) => pattern.test(query));
 }
 
 // ── Missing fields ────────────────────────────────────────────

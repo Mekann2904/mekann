@@ -38,7 +38,7 @@ const EXPECTED_PROMPT_PROVIDERS_BY_MODULE: Record<string, string[]> = {
 	"safety/modes/index.ts": ["modes"],
 	"autonomy/goal/index.ts": ["goal"],
 	"autonomy/subagent/promptProvider.ts": ["subagent"],
-	"autonomy/autoresearch/index.ts": ["autoresearch"],
+	"autonomy/autoresearch/promptProvider.ts": ["autoresearch"],
 };
 
 function read(rel: string): string {

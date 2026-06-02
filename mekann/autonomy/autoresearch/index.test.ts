@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as childProcess from "node:child_process";
-import { clearPromptProvidersForTests, collectPromptFragments } from "../../core/prompt-core/index.js";
+import { clearPromptProvidersForTests } from "../../core/prompt-core/index.js";
 
 // Mock peer dependencies before importing the extension
 vi.mock("@earendil-works/pi-coding-agent", () => ({}));
@@ -405,44 +405,6 @@ describe("autoresearchExtension", () => {
 				expect.stringContaining("autoresearch"),
 				"info",
 			);
-		});
-	});
-
-	// ── prompt provider ─────────────────────────────────────────
-
-	describe("prompt provider", () => {
-		it("returns inactive guard prompt when inactive", async () => {
-			const fragments = await collectPromptFragments({ cwd: ctx.cwd });
-			expect(fragments).toHaveLength(1);
-			expect(fragments[0]).toMatchObject({ kind: "autoresearch_policy", stability: "stable", scope: "mode", priority: 400 });
-			expect(fragments[0].content).toContain("autoresearch モード(OFF)");
-			expect(fragments[0].content).toContain("/autoresearch on");
-			expect(fragments[0].content).toContain("通常の依頼として扱う");
-			expect(fragments[0].content).toContain("autoresearch_run");
-		});
-
-		it("returns active policy and dynamic context when active", async () => {
-			const cmdHandler = pi.commands.get("autoresearch")!.handler;
-			await cmdHandler("on", createMockCtx());
-			const fragments = await collectPromptFragments({ cwd: ctx.cwd, mode: "autoresearch" });
-			expect(fragments).toHaveLength(2);
-			const policy = fragments.find((f) => f.id === "autoresearch:policy")!;
-			const activeContext = fragments.find((f) => f.id === "autoresearch:active-context")!;
-			expect(policy.kind).toBe("autoresearch_policy");
-			expect(policy).toMatchObject({ stability: "stable", scope: "mode", priority: 400, cacheIntent: "prefer_cache" });
-			expect(policy.content).toContain("autoresearch モード(アクティブ)");
-			expect(policy.content).not.toContain("### autoresearch 現在状態");
-			expect(activeContext).toMatchObject({ kind: "autoresearch_state", stability: "dynamic", scope: "turn", priority: 750, cacheIntent: "avoid_cache" });
-			expect(activeContext.content).toContain("### autoresearch 現在状態");
-		});
-
-		it("switches to inactive prompt after off", async () => {
-			const cmdHandler = pi.commands.get("autoresearch")!.handler;
-			await cmdHandler("on", createMockCtx());
-			await cmdHandler("off", createMockCtx());
-			const fragments = await collectPromptFragments({ cwd: ctx.cwd });
-			expect(fragments).toHaveLength(1);
-			expect(fragments[0].content).toContain("autoresearch モード(OFF)");
 		});
 	});
 
